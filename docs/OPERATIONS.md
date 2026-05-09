@@ -643,6 +643,115 @@ if (await isFeatureEnabled('ai-design-suggest', user?.id)) {
 
 ---
 
+## Verificación de tiers Free contra docs oficiales (mandato #9)
+
+> Verificaciones ejecutadas el **2026-05-09**. Cada cifra cita fuente y fecha. Mandato #9 (CLAUDE.md) exige que toda afirmación técnica esté respaldada por doc oficial; este bloque cierra la cola que estaba pendiente en `STATE.md`.
+
+### Vercel Hobby — [vercel.com/docs/limits](https://vercel.com/docs/limits) + [vercel.com/legal/terms](https://vercel.com/legal/terms)
+
+| Item | Valor verificado |
+|---|---|
+| Function timeout | 10 s default, **60 s máximo** |
+| Fast Data Transfer | 100 GB/mes |
+| Function invocations | 1.000.000/mes |
+| Active CPU | 4 CPU-hrs/mes |
+| Provisioned Memory | 360 GB-hrs/mes |
+| Build minutes | 6.000/mes (45 min máximo por deployment) |
+| Cron Jobs | 100 por proyecto (no usamos — ADR-017 prefiere `pg_cron`) |
+| Concurrent Builds | 1 |
+| Deployments por día | 100 |
+| Static file uploads | 100 MB |
+| Runtime logs retention | **1 hora** |
+| Domains por proyecto | 50 |
+
+> ⚠️ **Crítico — ToS uso comercial:** cita textual del [Vercel Terms](https://vercel.com/legal/terms): *"You shall only use the Services under a Hobby plan for your personal or non-commercial use."* Hobby **no permite uso comercial**. Adicionalmente: *"We may shut down and terminate projects or deployments using the Hobby plan without notice for any reason or no reason."*
+>
+> **Implicación:** Lucams_shop debe migrar a Vercel Pro **antes de la primera transacción Wompi real** (no es preferencia, es obligación contractual). El upgrade ya estaba planeado en Fase 7; queda confirmado como bloqueante.
+
+### Supabase Free — [supabase.com/pricing](https://supabase.com/pricing)
+
+| Item | Valor verificado |
+|---|---|
+| Database size | 500 MB |
+| Database compute | Shared CPU + 500 MB RAM |
+| File storage | 1 GB |
+| Monthly Active Users (Auth) | 50.000 |
+| Edge Function invocations | 500.000/mes |
+| Egress (bandwidth) | 5 GB + 5 GB cached |
+| **Pausa por inactividad** | **1 semana** sin actividad → proyecto pausado |
+| Active projects | Máximo 2 por organización |
+
+> **Implicación operativa:** durante dev, hacer al menos un deploy o consulta semanal para no perder horas re-activando el proyecto. Si quisiéramos un staging environment separado en Free (ADR-027 pendiente), consume 1 de los 2 proyectos disponibles — no bloqueante pero limita.
+
+### Supabase Queues (`pgmq`) y `pg_cron` — [supabase.com/docs/guides/queues](https://supabase.com/docs/guides/queues)
+
+| Item | Valor verificado |
+|---|---|
+| `pgmq` disponibilidad | **Disponible** vía dashboard → Integrations en proyectos con Postgres ≥ 15.6.1.143. Plan Free no excluido en docs públicas. |
+| `pg_cron` disponibilidad | **Disponible** vía dashboard → Integrations en plan Free. |
+| Límites específicos por tier | **No publicados explícitamente** en docs oficiales para Free. |
+
+> **`[pendiente verificación práctica]` (mandato #9):** confirmar al crear el proyecto Supabase real (Fase 0b) que ambos extensions activan sin errores y registrar cualquier límite que aparezca. Si fueran restringidos a planes pagos, replanteamos ADR-017 (Vercel Cron como fallback).
+
+### Resend Free — [resend.com/pricing](https://resend.com/pricing)
+
+| Item | Valor verificado |
+|---|---|
+| Emails por mes | 3.000 |
+| Emails por día | 100 |
+| Dominios custom | 1 (verificable cuando tengamos `mail.lucamsshop.co`) |
+| Retención de emails | 30 días |
+
+> **Implicación:** suficiente para dev y soft launch. 100 emails/día cubren ~30 órdenes/día con 3 emails por orden (confirmación + envío + entrega). Migrar a Pro al activar dominio propio en Fase 7 (ya planeado).
+
+### Anthropic Claude API — [platform.claude.com/docs/en/about-claude/models/overview](https://platform.claude.com/docs/en/about-claude/models/overview)
+
+| Modelo | Input USD/MTok | Output USD/MTok | Context | Max output |
+|---|---|---|---|---|
+| **Claude Sonnet 4.6** (recomendado para Estudio IA) | **$3** | **$15** | 1M tokens | 64k tokens |
+| Claude Haiku 4.5 (alternativa más barata) | $1 | $5 | 200k tokens | 64k tokens |
+| Claude Opus 4.7 (más potente) | $5 | $25 | 1M tokens | 128k tokens |
+
+> **Modelo elegido:** Sonnet 4.6 (per `INTEGRATIONS.md § Claude API`). Estimación de costo por sugerencia: ~500 tokens input + ~300 tokens output = **~$0.006 USD por sugerencia única**. Con cache 24h en Postgres (ADR-016) y rate limit por usuario, 1.000 sugerencias únicas/mes ≈ **$6 USD/mes**. Manejable. Tokens "Priority Tier" disponibles para escalado futuro.
+
+### Cloudflare R2 Free — [developers.cloudflare.com/r2/pricing](https://developers.cloudflare.com/r2/pricing/)
+
+| Item | Valor verificado |
+|---|---|
+| Storage | 10 GB-mes |
+| Class A operations (writes/lists) | 1.000.000/mes |
+| Class B operations (reads) | 10.000.000/mes |
+| **Egress** | **Free** (zero egress fees) |
+| Aplica solo a | Standard storage (no Infrequent Access) |
+
+> **Implicación:** más que suficiente para backups semanales del proyecto durante años. Egress gratis es la ventaja clave vs S3 (donde restore implica $$$). Activar en Fase 0b.
+
+### Cloudflare Turnstile Free — [cloudflare.com/products/turnstile](https://www.cloudflare.com/products/turnstile/) + [community.cloudflare.com](https://community.cloudflare.com/t/turnstile-1-million-verify-requests-limit/469162)
+
+| Item | Valor verificado |
+|---|---|
+| Plan | $0/mes |
+| Siteverify endpoint calls | **1.000.000/mes por sitio** |
+| Widgets máximos por cuenta | 20 |
+| Aplica para | Personal/hobby/business no-mission-critical |
+
+> **Implicación:** suficiente para checkout + registro + cualquier formulario público en Lucams. Activar dentro de la cuenta Cloudflare en Fase 0b.
+
+### Resumen ejecutivo de impacto en el plan
+
+| Hallazgo | Impacto en ROADMAP/decisiones |
+|---|---|
+| Vercel Hobby = sin uso comercial (ToS) | Adelantar migración a Pro al primer pago real (ya planeado en Fase 7, ahora **confirmado como obligación contractual**, no preferencia) |
+| Supabase Free se pausa a 1 semana | Disciplina de actividad semanal durante dev. Pro antes del lanzamiento (ya planeado) |
+| Supabase Free = 2 proyectos máx | Si queremos staging Free, consume 1 de 2. No bloqueante para Fase 0b |
+| `pgmq`/`pg_cron` en Free no confirmado por doc | **Verificar en Fase 0b al crear proyecto.** Si están restringidos, ADR-017 se replantea (Vercel Cron como fallback) |
+| Resend 100/día | OK para soft launch (~30 órdenes/día) |
+| R2 egress gratis | Backups robustos sin temer costo de restore |
+| Turnstile 1M/sitio | Sin preocupación de tope |
+| Sonnet 4.6 a $0.006/sugerencia | Con cache 24h, 1.000 sugerencias únicas/mes = $6 USD. Manejable |
+
+---
+
 ## Changelog operativo
 
 > Registrar cambios en infraestructura, vars o procesos.

@@ -105,24 +105,46 @@
 
 **Bloqueadores antes de Fase 0b:** ninguno técnico. Espera autorización explícita del usuario.
 
-**Cola de verificación pendiente** (mandato #9 — verificar contra docs oficiales antes de citar):
+**Cola de verificación pendiente** (mandato #9):
 
-- Vercel Hobby: function timeout, bandwidth, ToS no comercial → `vercel.com/docs/limits`.
-- Supabase Free: 500 MB DB, 1 GB storage, 50k MAU, pausa 1 semana → `supabase.com/pricing`.
-- Resend Free: 3k/mes, 100/día, solo `resend.dev` → `resend.com/pricing`.
-- Coordinadora 1.100+ destinos → `venndelo.com` o doc oficial.
-- Anthropic Sonnet 4.6 pricing → `anthropic.com/pricing`.
-- pgmq y pg_cron: disponibilidad real en plan Free de Supabase + visibility timeout/retries/max_attempts → `supabase.com/docs/guides/queues`.
-- TTL configurable de access/refresh tokens en Supabase Auth Free → `supabase.com/docs/guides/auth/sessions`.
-- Política de password configurable en plan Free → `supabase.com/docs/guides/auth/password-security`.
-- Costos y APIs de proveedores DIAN candidatos (Alegra, Siigo, Facture) → cada `docs.<provider>.co` — para ADR-025.
-- GrowthBook cloud Free real limits y cómo se compara con Vercel Edge Config → para ADR-026.
-- RNBD (Registro Nacional de Bases de Datos) ante SIC: ¿obligatorio para nuestro volumen? → consulta legal.
-- DIAN UVT 2026 valor exacto (impacta tope de sanciones) → `dian.gov.co`.
+✅ **Verificadas el 2026-05-09** (registradas con cita en `OPERATIONS.md § Verificación de tiers Free`):
+- Vercel Hobby: 60s function timeout · 100GB bandwidth · 1M invocations · 4 CPU-hrs · 1h log retention · **ToS prohíbe uso comercial** (cita textual).
+- Supabase Free: 500 MB DB · 1 GB storage · 50k MAU · 500k Edge Function invocations · 5 GB egress · pausa a 1 semana · 2 proyectos máx.
+- Resend Free: 3k/mes · 100/día · 1 dominio custom · 30 días retención.
+- Anthropic: Sonnet 4.6 = $3/MTok input + $15/MTok output, 1M context, 64k max output.
+- Cloudflare R2 Free: 10 GB · 1M Class A ops · 10M Class B ops · egress gratis.
+- Cloudflare Turnstile Free: 1M siteverify/mes/sitio · 20 widgets/cuenta.
+
+🟡 **Pendiente práctica al crear proyecto Supabase (Fase 0b):**
+- `pgmq` y `pg_cron` disponibilidad real y límites en plan Free — docs oficiales no detallan tier-specific. Si están restringidos, replanteamos ADR-017.
+
+🟡 **Pendiente todavía (consultas dirigidas al crear cuentas o tomar ADRs):**
+- TTL configurable de access/refresh tokens en Supabase Auth Free → `supabase.com/docs/guides/auth/sessions` (revisar al implementar Auth en Fase 1).
+- Política de password configurable en plan Free → `supabase.com/docs/guides/auth/password-security` (Fase 1).
+- Coordinadora 1.100+ destinos vía Venndelo → confirmar al crear cuenta sandbox Venndelo (Fase 0b).
+- Costos y APIs de Alegra/Siigo/Facture → para ADR-025 (antes de Fase 7).
+- RNBD ante SIC: ¿obligatorio para nuestro volumen? → consulta legal cuando contratemos abogado (ADR-020, antes de Fase 7).
+- UVT 2026 valor exacto en COP (impacta tope sanciones DIAN) → `dian.gov.co` cuando se redacten T&C.
 
 ---
 
 ## Bitácora (append-only, más reciente arriba)
+
+### 2026-05-09 — Verificaciones de tiers Free (sesión 5)
+
+Cola de verificación pendiente cerrada para los 6 servicios externos críticos. Resultados documentados en `OPERATIONS.md § Verificación de tiers Free contra docs oficiales` con cita y URL por cada cifra.
+
+**Hallazgo crítico:** Vercel Hobby ToS **prohíbe explícitamente uso comercial** — *"You shall only use the Services under a Hobby plan for your personal or non-commercial use."* Implica que el upgrade a Vercel Pro al primer pago real es **obligación contractual**, no preferencia de capacidad. Ya estaba planeado en Fase 7; queda confirmado como bloqueante.
+
+**Resumen de cifras clave verificadas:**
+- Vercel Hobby: 60s function timeout, 100 GB bandwidth, 1M invocations, 1h log retention, ToS no comercial.
+- Supabase Free: 500 MB DB + 1 GB storage + 50k MAU + 500k Edge Function invocations + pausa a 1 semana + 2 proyectos máx.
+- Resend Free: 3k/mes + 100/día + 1 dominio + 30 días retención.
+- Anthropic Sonnet 4.6: $3 input / $15 output por MTok, 1M context, 64k max output. Costo estimado por sugerencia IA: ~$0.006 USD.
+- Cloudflare R2 Free: 10 GB + 1M Class A + 10M Class B + **egress gratis**.
+- Cloudflare Turnstile Free: 1M siteverify/mes/sitio + 20 widgets/cuenta.
+
+**Único pendiente práctico:** confirmar `pgmq` y `pg_cron` disponibles en Supabase Free al crear el proyecto real (Fase 0b). Si estuvieran restringidos, replanteamos ADR-017.
 
 ### 2026-05-09 — Cierre de ADRs pendientes (sesión 4) + commit inicial
 
