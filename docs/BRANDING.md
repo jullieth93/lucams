@@ -167,6 +167,6 @@ El mapache es **personaje recurrente**, no solo un logo. Usos:
 
 - [ ] Logo en SVG/PNG transparente alta resolución (entregable del usuario).
 - [ ] Variantes de la mascota para distintos estados (entregable del usuario o generadas con IA): saludando, empacando, confundida, en bicicleta, sosteniendo monedas (puntos), durmiendo (loader).
-- [ ] Confirmación de tipografías de la guía Canva — si no hay respuesta, default es `Fredoka` + `Inter`.
+- [x] ~~Confirmación de tipografías de la guía Canva~~ → **cerrado en ADR-021 (2026-05-09):** Fredoka (display) + Inter (body). Si la guía Canva trae otras, se reemplaza con un cambio en `globals.css` `@theme`.
 - [ ] Tagline / propuesta de valor en una frase.
 - [ ] Foto del usuario / equipo (opcional, para sección "Sobre nosotros").

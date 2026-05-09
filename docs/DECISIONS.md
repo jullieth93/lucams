@@ -427,8 +427,118 @@ Registro cronológico de decisiones de producto y arquitectura, con el "por qué
 
 ---
 
+## ADR-020 — Estrategia legal: plantillas Lucams + revisión de abogado CO
+
+**Fecha:** 2026-05-09
+**Estado:** ✅ Aceptada (decisión del usuario)
+
+**Contexto:** Lucams_shop debe publicar 9 documentos legales antes del lanzamiento (Política de privacidad, T&C, Cookies, Devoluciones, Garantías, Subprocesadores, Tratamiento de datos, Habeas Data PQR, Seguridad). Normas investigadas y operativizadas en [`COMPLIANCE.md`](./COMPLIANCE.md). Pregunta abierta: ¿abogado redacta desde cero, plantillas nuestras sin revisión, o híbrido?
+
+**Decisión:** Lucams redacta plantillas con base en lo investigado (Ley 1581, Ley 1480 art. 47, DIAN Resolución 165, etc.). Un **abogado colombiano especialista en consumo y comercio digital** las revisa antes de Fase 7.
+
+**Por qué:**
+- Las normas ya están citadas con fuente oficial — el abogado refina, no parte de cero.
+- Costo realista para PYME: ~$300–600 USD por revisión (vs $1.500–2.500 USD por redacción completa).
+- Tiempo: 2–4 semanas (vs 6–10 semanas).
+- Estilo PYMES estándar; un abogado responsable lee todo antes de firmar, así que la calidad final es comparable a la opción cara.
+
+**Consecuencia:**
+- Plantillas redactadas en Fase 7 (no antes — necesitamos schema final, lista de subprocesadores estable, política de retracto cerrada).
+- Tarea bloqueante para lanzamiento: el operador contrata abogado CO especialista (entregable del usuario, no de Claude).
+- Si el abogado encuentra problemas estructurales (ej. exclusión de retracto por personalización mal aplicada), volvemos a `COMPLIANCE.md` antes de re-redactar.
+
+---
+
+## ADR-021 — Tipografías: Fredoka (display) + Inter (body)
+
+**Fecha:** 2026-05-09
+**Estado:** ✅ Aceptada (decisión del usuario)
+
+**Contexto:** El branding necesita un par tipográfico fijado para arrancar Fase 1 (sin esto, los tokens `--font-display` y `--font-body` del `@theme` Tailwind v4 quedan undefined). `BRANDING.md` proponía Fredoka/Baloo 2 + Inter/Nunito sin cerrar.
+
+**Decisión:** **Fredoka** como display, **Inter** como body.
+
+**Por qué:**
+- Fredoka es display redondeada bubble que encaja con el logo "LUCAMS" multicolor.
+- Inter es la sans serif estándar de la industria para e-commerce: legible en cuerpos largos, soporta `tabular-nums` para precios alineados, optimizada para múltiples weights.
+- Ambas son Google Fonts (libres, optimizables con `next/font`).
+- Si la guía Canva del usuario aparece con otras, se reemplaza vía un solo cambio en `globals.css` `@theme`.
+
+**Consecuencia:**
+- `apps/web/app/globals.css` define `--font-display: "Fredoka"` y `--font-body: "Inter"` desde Fase 1.
+- Carga vía `next/font/google` con `display: swap`.
+- Preconnect a `fonts.googleapis.com` y `fonts.gstatic.com` en `<head>`.
+
+---
+
+## ADR-026 — Feature flags: tabla `FeatureFlag` en Postgres (sin vendor externo)
+
+**Fecha:** 2026-05-09
+**Estado:** ✅ Aceptada (decisión del usuario)
+
+**Contexto:** Lucams_shop necesita feature flags desde Fase 1 (canary releases, kill switches, A/B testing futuro, promociones temporales sin redeploy). [`OPERATIONS.md`](./OPERATIONS.md) listaba opciones: tabla Postgres, GrowthBook cloud Free, Vercel Edge Config, LaunchDarkly.
+
+**Decisión:** tabla `FeatureFlag` en Postgres + helper `lib/feature-flags.ts` con cache 60s en memoria del servidor.
+
+**Por qué:**
+- Coherente con ADR-016 (rate-limit y cache en Postgres, no Redis externo).
+- Mismo principio "no agregar vendors hasta que métricas reales lo justifiquen".
+- Cache de 60s elimina la latencia de Postgres (lectura desde cache: <1 ms; miss: ~30 ms).
+- UI: página `/admin/feature-flags` con toggle + slider de rollout, construida con shadcn/ui en ~1 día.
+
+**Implementación inicial:**
+
+```prisma
+model FeatureFlag {
+  key              String   @id
+  description      String
+  enabled          Boolean  @default(false)
+  rolloutPercent   Int      @default(0)    // 0-100
+  targetUserIds    String[]                 // override por userId específico
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+```
+
+```ts
+// lib/feature-flags.ts (esqueleto)
+const cache = new Map<string, { value: FeatureFlag; expiresAt: number }>();
+
+export async function isFeatureEnabled(key: string, userId?: string): Promise<boolean> {
+  const cached = cache.get(key);
+  const now = Date.now();
+  if (cached && cached.expiresAt > now) return evaluate(cached.value, userId);
+
+  const flag = await prisma.featureFlag.findUnique({ where: { key } });
+  if (!flag) return false;
+  cache.set(key, { value: flag, expiresAt: now + 60_000 });
+  return evaluate(flag, userId);
+}
+
+function evaluate(flag: FeatureFlag, userId?: string): boolean {
+  if (!flag.enabled) return false;
+  if (userId && flag.targetUserIds.includes(userId)) return true;
+  if (flag.rolloutPercent === 100) return true;
+  if (flag.rolloutPercent === 0) return false;
+  // Hash determinista del userId para que el mismo usuario siempre vea lo mismo
+  const bucket = userId ? deterministicBucket(userId) : Math.random();
+  return bucket * 100 < flag.rolloutPercent;
+}
+```
+
+**Criterios para migrar a GrowthBook u otro (medibles, no preventivos):**
+- Volumen de A/B tests > 5 simultáneos sostenidos durante 30 días, **o**
+- Necesidad de targeting complejo (por ciudad, día de la semana, segmento de cliente), **o**
+- Equipo crece > 3 personas que necesitan UI sin acceso al admin del sitio.
+
+Cuando se cumpla cualquiera: **ADR-028** documenta el switch (aislado en `lib/feature-flags.ts`).
+
+---
+
 > Próximas decisiones a documentar cuando se tomen:
-> - ADR-020: ¿plantilla legal por nosotros o por abogado?
-> - ADR-021: tipografías finales (cuando usuario confirme).
 > - ADR-022: alternativa de monitoreo de errores elegida (en Fase 7).
-> - ADR-023: criterio de cambio de Postgres rate-limit a Redis externo (cuando ocurra).
+> - ADR-023: criterio de migración Postgres rate-limit → Redis externo.
+> - ADR-024: distributed tracing / OpenTelemetry strategy (post-lanzamiento si volumen lo justifica).
+> - ADR-025: proveedor de facturación electrónica DIAN (Alegra / Siigo / Facture / otro), antes de Fase 7.
+> - ADR-027: necesidad de staging environment (re-evaluar post-lanzamiento).
+> - ADR-028: criterio de migración Postgres `FeatureFlag` → GrowthBook u otro (cuando ocurra).
