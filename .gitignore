@@ -1,0 +1,126 @@
+# ──────────────── Lucams_shop — .gitignore ────────────────
+# Política: documentar arriba de cada bloque QUÉ se ignora y POR QUÉ.
+# Cualquier patrón nuevo debe agregar contexto en este archivo y, si es
+# operativamente importante, también mencionarse en docs/OPERATIONS.md.
+
+# ──────────────── Variables de entorno (CRÍTICO) ────────────────
+# Nunca commitear secretos. Solo .env.example (placeholders) está versionado.
+.env
+.env.*
+!.env.example
+!.env.*.example
+
+# ──────────────── Node.js / pnpm ────────────────
+node_modules/
+.pnpm-store/
+.pnp.*
+.yarn/
+
+# Lock files de otros gestores (usamos pnpm, mandato #3)
+package-lock.json
+yarn.lock
+bun.lockb
+
+# ──────────────── Next.js ────────────────
+.next/
+out/
+.vercel/
+next-env.d.ts
+
+# ──────────────── TypeScript ────────────────
+*.tsbuildinfo
+.tsbuildinfo
+
+# ──────────────── Prisma ────────────────
+# El cliente generado se regenera con `prisma generate`; no versionar
+packages/db/node_modules/.prisma/
+packages/db/.prisma/
+
+# ──────────────── Supabase local ────────────────
+# `supabase start` crea contenedores y volumenes que no van al repo
+supabase/.branches/
+supabase/.temp/
+supabase/.env
+
+# ──────────────── Tests y coverage ────────────────
+coverage/
+.nyc_output/
+test-results/
+playwright-report/
+playwright/.cache/
+
+# ──────────────── Logs locales ────────────────
+# Logs de dev local (mandato #10: la VM como símil-Vercel local)
+logs/
+*.log
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ──────────────── Backups locales ────────────────
+# Snapshots ad-hoc del usuario; no deben ir a Git ni a GitHub.
+backups/
+*.sql.gz
+*.dump
+
+# ──────────────── IDE / editor ────────────────
+# VSCode: solo compartimos extensiones recomendadas si las hay.
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json.example
+.idea/
+*.swp
+*.swo
+*.swn
+.history/
+
+# Claude Code: configuración personal/local (permissions, hooks, statusline).
+# settings.json puede contener permisos otorgados por este usuario que no
+# deberían imponerse al resto del equipo. settings.local.json es local por
+# definición. Si en el futuro queremos compartir un baseline, creamos
+# .claude/settings.example.json y lo permitimos explícitamente.
+.claude/
+
+# ──────────────── OS ────────────────
+.DS_Store
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# ──────────────── Cache de tooling ────────────────
+.eslintcache
+.stylelintcache
+.turbo/
+.parcel-cache/
+
+# ──────────────── Diseño / activos pesados ────────────────
+# Las fuentes de Figma / Canva / .ai / .psd no van al repo (live en Drive del usuario)
+*.fig
+*.ai
+*.psd
+*.sketch
+
+# Imágenes de prueba grandes (las imágenes oficiales viven en Supabase Storage)
+public/uploads/*
+!public/uploads/.gitkeep
+
+# ──────────────── Reportes y outputs locales ────────────────
+.lighthouseci/
+audit-reports/
+storybook-static/
+
+# ──────────────── Build artifacts (otros) ────────────────
+dist/
+build/
+*.tar.gz
+
+# ──────────────── Secret scanning local ────────────────
+# Reportes que pudieran exponer secretos detectados
+gitleaks-report.json
+.secrets.baseline
+
+# ──────────────── Misc ────────────────
+.env.vault
+.envrc
+.direnv/

@@ -1,0 +1,651 @@
+# Operations — Lucams_shop
+
+Variables de entorno consolidadas, comandos de despliegue, runbook de incidentes y plan de monitoreo. Este documento se actualiza cada vez que se agrega una integración nueva o se cambia un proceso operativo.
+
+> **Estado actual:** la mayoría de comandos no aplican porque aún no hay código. Se completa al avanzar las fases.
+
+---
+
+## Entorno de desarrollo (VM dedicada — símil Vercel local)
+
+> **Mandato #10:** la VM es 100% dedicada al proyecto, usuario con `sudo`, persistencia local, instalación global permitida. **No usar venvs Python ni contenedores Docker** salvo necesidad explícita y justificada. La VM debe **funcionar como símil local de Vercel** (logs accesibles, variables de entorno configuradas, hot reload, healthchecks).
+
+### Prerrequisitos a instalar globalmente (una sola vez)
+
+```bash
+# Node.js 22 LTS (gestor recomendado: fnm o nvm)
+curl -fsSL https://fnm.vercel.app/install | bash
+fnm install 22 && fnm use 22
+
+# pnpm (verificar instrucciones oficiales: pnpm.io/installation)
+curl -fsSL https://get.pnpm.io/install.sh | sh -
+
+# Supabase CLI (para dev local con Postgres + Auth + Storage en Docker)
+# Doc oficial: supabase.com/docs/guides/local-development/cli/getting-started
+curl -fsSL https://supabase.com/install.sh | sh
+
+# Vercel CLI (para emular el runtime de Vercel localmente)
+pnpm add -g vercel
+
+# GitHub CLI (para PRs, issues, secrets)
+sudo dnf install -y gh   # o equivalente según distro
+gh auth login
+```
+
+> **Verificación pendiente (mandato #9):** cuando se ejecuten estos comandos por primera vez, confirmar versiones contra docs oficiales y registrar versiones en `STATE.md` para que la VM sea reproducible.
+
+### Estructura de variables de entorno locales
+
+```
+lucams_shop/
+├── .env.example          # Versionado en git, valores placeholder
+├── .env.local            # Gitignored, valores reales para tu desarrollo
+└── apps/web/.env.local   # (opcional) overrides específicos del Next.js
+```
+
+- **`.env.example`** se commitea siempre que se agrega/quita una variable.
+- **`.env.local`** nunca se commitea (ver `.gitignore`).
+- En Vercel se configuran por entorno (Production / Preview / Development) en el dashboard.
+
+### Símil Vercel local: cómo correr el stack
+
+```bash
+# 1. Levantar Supabase local (Postgres + Auth + Storage + Realtime + Edge Functions, todo en Docker)
+#    Esto evita depender de Supabase Free (que se pausa) y da paridad con producción.
+supabase start
+# Salida: anon key, service_role key, DB URL → copiar a .env.local
+
+# 2. Levantar Next.js en modo dev (símil a Vercel)
+pnpm --filter web dev
+# Por defecto en http://localhost:3000
+
+# 3. Alternativa: usar Vercel CLI para emular el runtime de Vercel exactamente
+vercel dev
+# Esto incluye: rutas dinámicas, Edge Functions, Image Optimization, ISR
+
+# 4. Aplicar migraciones a la DB local
+pnpm --filter @lucams/db prisma migrate dev
+
+# 5. Sembrar productos seed
+pnpm --filter @lucams/db prisma db seed
+```
+
+### Logs locales (símil Vercel Logs)
+
+Durante `pnpm dev` los logs salen a stdout. Para una experiencia más cercana a Vercel:
+
+```bash
+# Logs del Next.js
+pnpm --filter web dev | tee logs/next-$(date +%F).log
+
+# Logs de Supabase local
+supabase status                  # ver puertos
+supabase logs --tail             # stream en vivo de Postgres + servicios
+
+# Logs estructurados por nivel (desde el código usar pino o similar)
+LOG_LEVEL=debug pnpm --filter web dev
+```
+
+> **Política de logs:** estructurados (JSON), con campos `level`, `requestId`, `userId` (si autenticado), `route`, `latencyMs`. **PII redactada:** nunca loggear emails completos, teléfonos, direcciones, payloads de tarjetas. Detalle en [`SECURITY.md` § Logging](./SECURITY.md#logging).
+
+### Healthchecks locales (mismos que producción)
+
+```bash
+# Una vez levantado el dev server
+curl -f http://localhost:3000/api/health           # 200 si DB y app OK
+curl -f http://localhost:3000/api/health/db        # 200 si Postgres responde
+curl -f http://localhost:3000/api/health/integrations
+# Encadenado:
+curl -f http://localhost:3000/api/health && echo OK
+```
+
+### Symlink de Supabase local con datos de prueba
+
+```bash
+# Reset rápido de la DB local con seed
+supabase db reset                # destruye datos locales y re-aplica migraciones + seed
+
+# Snapshot manual antes de un cambio peligroso
+supabase db dump --local > backups/local-$(date +%F-%H%M).sql
+```
+
+### Convenciones de la VM
+
+- **Repo en:** `/home/ansible/workspaces/lucams_shop/`
+- **Logs locales en:** `/home/ansible/workspaces/lucams_shop/logs/` (gitignored)
+- **Backups locales en:** `/home/ansible/workspaces/lucams_shop/backups/` (gitignored)
+- **Git remote:** GitHub del usuario (configurado en Fase 0b).
+- **Nada de credenciales** en historial de shell ni en archivos versionados.
+
+---
+
+## Variables de entorno
+
+### Lista consolidada
+
+```bash
+# ─── App ───
+NEXT_PUBLIC_SITE_URL=http://localhost:3000        # dev
+# NEXT_PUBLIC_SITE_URL=https://lucamsshop.co       # prod
+
+NEXT_PUBLIC_WA_NUMBER=573150718723                # WhatsApp temporal del usuario
+
+# ─── Supabase ───
+NEXT_PUBLIC_SUPABASE_URL=https://xxxxx.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJxxxxx
+SUPABASE_SERVICE_ROLE_KEY=eyJxxxxx                # Server-only, NUNCA al cliente
+DATABASE_URL=postgresql://postgres:[pwd]@xxx.pooler.supabase.com:6543/postgres?pgbouncer=true
+DIRECT_DATABASE_URL=postgresql://postgres:[pwd]@xxx.supabase.com:5432/postgres
+
+# ─── Wompi ───
+WOMPI_ENV=sandbox                                  # sandbox | production
+WOMPI_PUBLIC_KEY=pub_test_xxxxxxxxxxxxxx
+WOMPI_PRIVATE_KEY=prv_test_xxxxxxxxxxxxxx
+WOMPI_INTEGRITY_SECRET=test_integrity_xxxxxxxxxxxxxx
+WOMPI_EVENTS_SECRET=test_events_xxxxxxxxxxxxxx
+NEXT_PUBLIC_WOMPI_PUBLIC_KEY=$WOMPI_PUBLIC_KEY    # Para widget en cliente
+
+# ─── Venndelo ───
+VENNDELO_ENV=sandbox
+VENNDELO_API_URL=https://api.venndelo.com/v1
+VENNDELO_API_KEY=xxxxxxxxxxxxxx
+VENNDELO_WEBHOOK_SECRET=xxxxxxxxxxxxxx
+VENNDELO_ORIGIN_CITY=Bogotá                        # Ciudad de recolección
+VENNDELO_ORIGIN_DEPARTMENT=Cundinamarca            # Departamento de recolección
+
+# ─── Resend ───
+RESEND_API_KEY=re_xxxxxxxxxxxxxx
+EMAIL_FROM=Lucams_shop <onboarding@resend.dev>     # dev
+# EMAIL_FROM=Lucams_shop <hola@mail.lucamsshop.co>  # prod
+
+# ─── Claude API ───
+ANTHROPIC_API_KEY=sk-ant-xxxxxxxxxxxxxx
+ANTHROPIC_MODEL=claude-sonnet-4-6
+
+# ─── Cloudflare Turnstile (CAPTCHA invisible en checkout y registro) ───
+NEXT_PUBLIC_TURNSTILE_SITE_KEY=0x4AAAAAAAxxxxxxxxx  # Para widget en cliente
+TURNSTILE_SECRET_KEY=0x4AAAAAAAxxxxxxxxx            # Server-only, validación de token
+
+# ─── Cloudflare R2 (backups en producción) ───
+R2_ACCOUNT_ID=xxxxxxxxxxxxxx
+R2_ACCESS_KEY_ID=xxxxxxxxxxxxxx
+R2_SECRET_ACCESS_KEY=xxxxxxxxxxxxxx
+R2_BUCKET=lucams-backups
+
+# ─── Misc ───
+NODE_ENV=development                               # development | production
+LOG_LEVEL=info                                     # debug | info | warn | error
+NEXT_TELEMETRY_DISABLED=1                          # Anonymous telemetry de Next.js apagada
+```
+
+> **Nunca commitear los valores reales.** Mantener el archivo `.env.example` (con placeholders) versionado en el repo y `.env.local` (con valores reales) ignorado. Ver [`/.gitignore`](../.gitignore).
+
+### Convenciones
+
+- **Vars con `NEXT_PUBLIC_`** son accesibles desde el navegador. **No poner secretos** ahí.
+- **`SUPABASE_SERVICE_ROLE_KEY`** y **`*_PRIVATE_KEY`** son server-only.
+- En desarrollo: archivo `.env.local` (gitignored).
+- En Vercel: configurar por entorno (Production / Preview / Development) en el dashboard.
+- **Nunca commitear** valores reales. Mantener un `.env.example` con valores ficticios como referencia.
+
+### Política de rotación
+
+| Secreto | Frecuencia | Después de |
+|---|---|---|
+| Wompi production keys | Anual | Compromiso sospechoso |
+| Supabase service_role | Anual | Compromiso sospechoso |
+| Resend API key | Anual | Compromiso sospechoso |
+| Anthropic API key | 6 meses | Cambio de equipo |
+| Venndelo API key | Anual | Compromiso sospechoso |
+
+---
+
+## Comandos (cuando exista código)
+
+### Desarrollo local
+
+```bash
+# Instalar dependencias
+pnpm install
+
+# Levantar dev server
+pnpm --filter web dev
+
+# Aplicar migración de Prisma
+pnpm --filter @lucams/db prisma migrate dev
+
+# Generar cliente Prisma
+pnpm --filter @lucams/db prisma generate
+
+# Seed inicial de productos
+pnpm --filter @lucams/db prisma db seed
+
+# Lint
+pnpm lint
+
+# Typecheck
+pnpm typecheck
+
+# Tests unitarios
+pnpm test
+
+# Tests E2E (Playwright)
+pnpm test:e2e
+
+# Lighthouse local
+pnpm lighthouse
+```
+
+### Despliegue
+
+```bash
+# Vercel hace deploy automático en push a main + preview en cada PR.
+# Despliegue manual:
+vercel deploy --prod
+
+# Promover preview a producción:
+vercel promote <deployment-url>
+
+# Rollback:
+vercel rollback <deployment-url>
+```
+
+### Supabase
+
+```bash
+# Aplicar migración SQL adicional (RLS, funciones)
+supabase db push
+
+# Conectarse a la DB
+supabase db connect
+
+# Backup manual
+supabase db dump --data-only > backup-$(date +%F).sql
+```
+
+---
+
+## Runbook de incidentes
+
+> Cada incidente debe quedar registrado en un archivo `docs/incidents/YYYY-MM-DD-titulo.md` con: descripción, impacto, root cause, mitigación, prevención.
+
+### Incidente: Webhook de Wompi no procesó una orden
+
+**Síntomas:** cliente pagó (recibe email de Wompi), pero `Order` sigue en `PENDING_PAYMENT`.
+
+**Diagnóstico:**
+1. Verificar `WebhookEvent` en DB: ¿se recibió el evento? Si no, el problema está en Wompi (panel de eventos).
+2. Si se recibió: ver `processedAt`. Si está null, ver Vercel Logs del request `/api/wompi/webhook` para errores.
+3. Verificar que la firma del webhook era válida.
+
+**Mitigación:**
+1. Validar manualmente el pago en panel Wompi.
+2. Marcar `Order.status = PAID` desde admin con razón "manual_after_webhook_failure".
+3. Crear envío Venndelo manualmente.
+4. Notificar al cliente.
+
+**Prevención:**
+- Implementar reintentos con backoff cuando el webhook handler falle (vía `pgmq` con visibility timeout, ADR-017).
+- Job `pg_cron` cada 15 min que enqueue en `order_reconciliation` las órdenes en `PENDING_PAYMENT` con > 1h y consume los mensajes consultando Wompi por su estado real.
+
+---
+
+### Incidente: Stock negativo o sobreventa
+
+**Síntomas:** dos órdenes pagaron por el mismo último item disponible.
+
+**Diagnóstico:**
+1. Ver `InventoryLog` del variant afectado en orden cronológico.
+2. Verificar timing: ¿hubo dos pagos en menos de 1s?
+
+**Mitigación:**
+1. Una de las órdenes ya pagada se contacta al cliente para ofrecer:
+   - Reembolso completo, o
+   - Reservar para próxima reposición + cupón de compensación.
+2. Marcar la orden como `CANCELLED` con razón "oversold_compensated".
+
+**Prevención (modelo cerrado en ADR-014):**
+- **Reserva de stock al pasar a `PENDING_PAYMENT`** vía tabla `StockReservation` con `expiresAt = NOW() + 15 min`.
+- **Cleanup vía `pg_cron`** cada minuto: `DELETE FROM "StockReservation" WHERE "expiresAt" < NOW()` (libera la reserva).
+- **Descuento real** al pasar a `PAID`: transacción atómica con `SELECT ... FOR UPDATE` sobre `ProductVariant`, registrar `InventoryLog` con `reason='ORDER_PAID'`.
+- Constraint `CHECK ("stock" >= 0)` a nivel DB sobre `ProductVariant`.
+- Si la reserva expiró antes del PAID y ya no hay stock: webhook handler aborta, marca orden `CANCELLED`, notifica al cliente y reembolsa vía Wompi.
+
+---
+
+### Incidente: Supabase pausado por inactividad (solo Free)
+
+**Síntomas:** el sitio devuelve 500 al consultar la DB.
+
+**Diagnóstico:** dashboard Supabase muestra el proyecto en estado "paused".
+
+**Mitigación:**
+1. Click "Restore" en el dashboard.
+2. Esperar 1-2 min a que la DB esté disponible.
+
+**Prevención:**
+- Migrar a Pro antes del lanzamiento (no se pausa).
+- Mientras tanto, en dev hacer al menos un deploy o consulta semanal.
+
+---
+
+### Incidente: Email no llega al cliente
+
+**Síntomas:** cliente reporta no haber recibido confirmación.
+
+**Diagnóstico:**
+1. Buscar el email en panel Resend (logs de envío).
+2. Si dice "delivered" → revisar SPAM del cliente; problema del MTA.
+3. Si dice "bounced" → email inválido o blocklist.
+4. Si no aparece → el código no llamó al SDK; revisar Vercel Logs.
+
+**Mitigación:**
+- Reenviar manualmente desde admin.
+- Si el dominio está blocklisted, contactar al ISP para deslistar.
+
+**Prevención:**
+- Alertar en Resend cuando bounce rate > 5%.
+- Validar email en checkout con regex + DNS MX lookup opcional.
+
+---
+
+### Incidente: Vercel deploy falla
+
+**Síntomas:** PR muestra "Build failed" en Vercel.
+
+**Diagnóstico:** Logs de build en el dashboard de Vercel.
+
+**Mitigación:**
+- Si es error de TS/lint: arreglar y hacer push.
+- Si es error de instalación: verificar `package.json` y `pnpm-lock.yaml` versionados.
+- Si Vercel está caído: esperar (status.vercel.com).
+
+**Prevención:**
+- CI en GitHub Actions corre antes del merge para no llegar a Vercel con errores triviales.
+
+---
+
+### Incidente: Pago realizado pero envío no se creó en Venndelo
+
+**Síntomas:** orden en `PAID` sin `venndeloShipmentId`.
+
+**Diagnóstico:** Vercel Logs del flujo post-pago.
+
+**Mitigación:**
+1. Crear el envío manualmente desde admin (`/admin/ordenes/[id]/crear-envio`).
+2. Si Venndelo está caído (verificar status), reintentar después.
+
+**Prevención:**
+- Cola `shipment_creation_retry` en `pgmq` con visibility timeout 60s y backoff implícito por reintentos del consumer.
+- Job `pg_cron` cada 15 min: detecta órdenes `PAID` sin `venndeloShipmentId` con > 1h y las enqueue.
+- Consumer idempotente: chequea `venndeloShipmentId` antes de crear (no duplicar envíos en Venndelo).
+
+---
+
+## Plan de monitoreo (TBD — Fase 7)
+
+> **Decisión pendiente:** se evaluará una alternativa gratuita antes del lanzamiento. Opciones:
+>
+> 1. **Sentry Free** — 5k eventos/mes, 1 usuario. Stack traces + alertas.
+> 2. **BetterStack** — logging + uptime monitor, free tier generoso.
+> 3. **Highlight.io** — session replay + errores.
+> 4. **Vercel Logs + alertas custom** — `error.tsx` global que postea a Resend cuando se capture un error 500.
+>
+> Decisión final se documenta como ADR-016 cuando se tome.
+
+### Mientras tanto (Fase 0a–6)
+
+- `console.error` con contexto en cada catch.
+- Vercel Logs accesible vía dashboard.
+- Cliente reporta errores manualmente vía WhatsApp / email.
+
+---
+
+## Backup y recuperación
+
+### Durante desarrollo (Free)
+
+- **Supabase Free** no tiene backups automáticos. **Crítico:** export semanal manual:
+  ```bash
+  supabase db dump --data-only > backups/$(date +%F).sql
+  ```
+- Subir a un repo privado o Drive del usuario.
+
+### En producción (Supabase Pro)
+
+- **PITR 7 días** automático.
+- Export adicional semanal a Cloudflare R2 (script en GitHub Actions).
+- Verificar restauración cada trimestre con un environment de testing.
+
+---
+
+## Healthchecks
+
+> A implementar en Fase 1.
+
+- `GET /api/health` — devuelve 200 si DB y Supabase responden.
+- `GET /api/health/wompi` — verifica que Wompi responde (consulta a `/v1/merchants/[id]`).
+- `GET /api/health/venndelo` — verifica que Venndelo responde.
+
+Configurar en BetterStack (free) o UptimeRobot (free) para alertas si alguno cae > 3 min.
+
+---
+
+## Performance budget — alertas
+
+Cuando se rompan estos límites, abrir issue automático:
+
+| Métrica | Umbral | Acción |
+|---|---|---|
+| Lighthouse Performance | < 90 | Bloquear merge en PR |
+| Bundle JS por página | > 250 KB gz | Revisar imports |
+| TTFB home (ISR) | > 500 ms | Investigar regresión |
+| Function execution time | > 30 s | Revisar logs y queries |
+| DB connections | > 80% del límite | Migrar a Pro / añadir pgBouncer |
+
+---
+
+## Costos — tracking mensual
+
+> A revisar el día 1 de cada mes una vez en producción.
+
+| Servicio | Plan | Costo | Notas |
+|---|---|---|---|
+| Vercel Pro | $20/mes | — | — |
+| Supabase Pro | $25/mes | — | — |
+| Resend Pro | $20/mes | — | — |
+| Anthropic | Variable | — | Alerta si > $30/mes |
+| Wompi | Por trx | — | 2.65% + $700 + IVA (plan Avanzado, frecuencia mensual). [Verificado: wompi.com/es/co/planes-tarifas a 2026-05-09](https://wompi.com/es/co/planes-tarifas/) |
+| Venndelo | Por envío | — | 0% comisión |
+| Dominio | $50.000 COP/año | — | mi.com.co |
+| **Total fijo** | | **~$272.000 COP/mes** | |
+
+---
+
+## Contacto y escalamiento
+
+| Tipo de incidente | A quién avisar |
+|---|---|
+| Pasarela de pago caída | Soporte Wompi (panel) + usuario |
+| Logística caída | Soporte Venndelo + usuario |
+| DB caída | Soporte Supabase + usuario |
+| Sitio caído | Vercel status + usuario |
+| Pregunta del cliente | WhatsApp del usuario (+57 315 071 8723 temporal) |
+
+---
+
+## DevOps — branching, releases, environments, feature flags
+
+### Branching strategy: trunk-based con PRs
+
+- **`main`** es la rama de producción. Siempre deployable.
+- **Feature branches:** `feat/<slug>`, `fix/<slug>`, `chore/<slug>`, `docs/<slug>`, `refactor/<slug>`.
+- **PRs obligatorios** a `main` con:
+  - Status checks pasando (typecheck, lint, unit, integration, RLS, e2e, audit, secrets).
+  - Review (cuando haya equipo > 1).
+  - Branch up to date con `main`.
+- **Squash merge** por default (mantiene `main` con historial limpio).
+- **Branch protection** en `main`: no force push, no deletes, signed commits requeridos.
+- **Branches efímeros:** se eliminan tras merge.
+
+### Release strategy: continuous deployment + canary cuando aplique
+
+| Tipo | Trigger | Audiencia |
+|---|---|---|
+| **Preview** | Cada PR | Reviewer / QA manual / Lighthouse CI |
+| **Production** | Merge a `main` | 100% del tráfico |
+| **Canary** | Manual (cuando se quiere) | 10% del tráfico vía Vercel split o feature flag (Fase 7+) |
+
+- **Versionado:** tags `vX.Y.Z` (semver) en cada release de producción significativa.
+  - `X` mayor: cambios que rompen compatibilidad de schema o API público.
+  - `Y` menor: features nuevas no rompedoras.
+  - `Z` patch: bugfixes y mejoras menores.
+- **Changelog:** `CHANGELOG.md` actualizado en cada release tag con entradas Conventional Commits agrupadas (Keep a Changelog format).
+
+### Environments
+
+| Environment | Cómo se levanta | Usado para | DB |
+|---|---|---|---|
+| **Local (dev)** | `pnpm dev` + `supabase start` | Desarrollo del usuario | Supabase local en Docker |
+| **Vercel Preview** | Push a feature branch | QA por PR, Lighthouse CI, smoke tests | **Supabase Free del proyecto** (mismo que prod hasta tener Pro) |
+| **Production** | Merge a `main` | Tráfico real | Supabase Pro (al lanzar) |
+
+#### ¿Necesitamos staging?
+
+- **Pre-lanzamiento (Fase 0–6):** **No.** Vercel Previews + Supabase local cubren el caso. Agregar staging multiplica costos sin beneficio claro.
+- **Post-lanzamiento:** **Re-evaluar** si se introducen migraciones complejas o features que requieren validación real con datos de producción anonimizados.
+
+> **Si se decide staging después:** ADR nuevo. Implicaría Vercel Pro + Supabase Pro extra + sync manual o automático de schema (no de datos PII).
+
+### Feature flags
+
+> Patrón obligatorio para features arriesgadas o experimentales. ADR pendiente sobre proveedor (ADR-026 a tomar).
+
+#### Opciones a evaluar antes de Fase 5
+
+| Proveedor | Tier Free | Pros | Contras |
+|---|---|---|---|
+| **Vercel Edge Config** | Hobby incluido | Integrado, edge-fast, sin red extra | Sin UI rica de targeting · funciones limitadas |
+| **GrowthBook** (cloud Free) | 5 ambientes, sin límite usuarios | UI completa, A/B testing nativo, gratis para nuestra escala | +1 vendor |
+| **Self-hosted GrowthBook en Supabase** | Sin costo extra | Control total, no exfiltra datos | Mantenimiento extra |
+| **Tabla `FeatureFlag` en Postgres** | Cero | Cero vendors, fácil | Sin UI; cambios requieren SQL |
+| **LaunchDarkly** | Sin Free real | Industria estándar | Caro |
+
+**Recomendación inicial (a confirmar en ADR-026):** **GrowthBook cloud Free** + cliente JS simple. Coherente con free-tier-first y da UI de targeting.
+
+#### Patrón de uso
+
+```ts
+// lib/feature-flags.ts
+import { evaluateFlag } from '@/lib/feature-flags-client';
+
+export async function isFeatureEnabled(flagKey: string, userId?: string): Promise<boolean> {
+  return await evaluateFlag(flagKey, { userId, env: process.env.NODE_ENV });
+}
+
+// uso:
+if (await isFeatureEnabled('ai-design-suggest', user?.id)) {
+  // ...
+}
+```
+
+#### Convenciones
+
+- Nombres de flag en `kebab-case`: `ai-design-suggest`, `cod-payment`, `wholesale-portal`.
+- Cada flag tiene un **owner**, una **fecha de activación esperada**, y una **fecha de cleanup** (cuándo se quita el flag y queda 100% on).
+- Tabla de flags activos en `STATE.md` (sección "Feature flags activos") para que el operador siempre sepa qué está experimental.
+
+---
+
+## Disaster Recovery (DR)
+
+### Objetivos
+
+- **RPO (Recovery Point Objective):** ≤ 24 h. Aceptamos perder hasta 24h de datos en el peor escenario.
+- **RTO (Recovery Time Objective):** ≤ 4 h. El sitio debe estar de vuelta en máximo 4h.
+
+### Capas de defensa
+
+| Capa | Mecanismo | Recuperación |
+|---|---|---|
+| App (Vercel) | Inmutable deploys + Git | Rollback a deployment previo: `vercel rollback <url>` (segundos) |
+| DB (Supabase Pro) | PITR 7 días + backup diario | Restore desde dashboard (~30 min) |
+| Storage (Supabase) | Replicación interna AWS | — (transparente) |
+| Backup off-site (R2) | Export semanal a R2 | Restore manual desde dump SQL (~2h) |
+| DNS (Cloudflare) | Configuración versionada en repo (Terraform o manual) | Recreación manual (~30 min) |
+
+### Procedimiento de recuperación end-to-end
+
+```
+1. ¿Qué se cayó?
+   - Solo Vercel: rollback al deployment previo. ETA 5 min.
+   - Solo DB: restore PITR al punto sano. ETA 30 min.
+   - Storage: depender de replicación interna o R2 backup. ETA 2 h.
+   - Todo: combinación de los anteriores.
+
+2. Comunicar a clientes (status page o email masivo si los emails funcionan).
+
+3. Activar MAINTENANCE_MODE=true en Vercel para evitar tráfico durante restore.
+
+4. Ejecutar restore.
+
+5. Verificar:
+   - /api/health/* responde 200.
+   - Datos críticos (Order, Customer) están consistentes vs último estado conocido.
+   - Smoke tests E2E en staging o producción passed.
+
+6. Desactivar MAINTENANCE_MODE.
+
+7. Post-mortem dentro de 48 h.
+```
+
+### DR drills (cuatrimestral)
+
+> Mandato: probar la restauración real cada 3 meses. Sin drills, el plan de DR no existe.
+
+#### Drill #1: Restore parcial de DB desde PITR
+
+```bash
+# 1. En un proyecto Supabase de testing, restaurar un PITR de hace 24h.
+# 2. Verificar que la app conecta con la DB restaurada.
+# 3. Ejecutar smoke tests E2E.
+# 4. Documentar tiempo total y cualquier issue encontrado.
+# 5. Resultado en docs/incidents/YYYY-Qx-dr-drill.md.
+```
+
+#### Drill #2: Restore desde backup R2
+
+```bash
+# 1. Bajar el último backup semanal de R2.
+# 2. Aplicar a Supabase de testing.
+# 3. Validar integridad (counts de tablas críticas, queries de cross-check).
+# 4. Documentar.
+```
+
+#### Drill #3: Rollback de Vercel
+
+```bash
+# 1. Deploy intencionalmente "roto" a producción (ej. respuesta 500 forzada en /api/health).
+# 2. Detectar vía monitoreo.
+# 3. Rollback con `vercel rollback`.
+# 4. Verificar resolución < 5 min.
+# 5. Documentar.
+```
+
+### Calendario de DR drills
+
+| Trimestre | Drill | Responsable |
+|---|---|---|
+| Q1 cada año | Drill #1 (PITR DB) | Operador |
+| Q2 | Drill #2 (R2 backup) | Operador |
+| Q3 | Drill #3 (Vercel rollback) | Operador |
+| Q4 | Drill combinado (todos) | Operador |
+
+---
+
+## Changelog operativo
+
+> Registrar cambios en infraestructura, vars o procesos.
+
+- **2026-05-09** — Cierre de Fase 0a. Auditoría de coherencia aplicada (21 hallazgos resueltos). 6 ADRs nuevos (014–019). Variables de entorno expandidas con Turnstile (`TURNSTILE_*`), R2 (`R2_*`), `VENNDELO_ORIGIN_DEPARTMENT`. Política de stock cerrada (reserva al `PENDING_PAYMENT` + descuento al `PAID`). Background jobs migran de Vercel Cron a `pgmq` + `pg_cron`. Rate-limit y cache se mueven a Postgres. Documento `SECURITY.md` creado como fuente única de seguridad.
+- **2026-05-09** — Documento creado en Fase 0a.
