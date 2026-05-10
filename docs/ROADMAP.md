@@ -7,7 +7,7 @@ Ocho fases. La Fase 0a es la única que está autorizada al momento de escribir 
 | Fase | Nombre | Estado | Aprobado |
 |---|---|---|---|
 | 0a | Estructura de documentación | 🟢 Completada (2026-05-09) | ✅ Sí |
-| 0b | Cuentas externas en Free | ⏸️ Pendiente | ❌ No |
+| 0b | Cuentas externas críticas para Fase 1 (re-scope) | 🟢 Completada (2026-05-09) | ✅ Sí |
 | 1 | Base sólida (core técnico) | ⏸️ Pendiente | ❌ No |
 | 2 | Catálogo y carrito (storefront) | ⏸️ Pendiente | ❌ No |
 | 3 | Estudio de Personalización | ⏸️ Pendiente | ❌ No |
@@ -52,21 +52,36 @@ Ocho fases. La Fase 0a es la única que está autorizada al momento de escribir 
 
 ---
 
-## Fase 0b — Cuentas externas en Free ⏸️
+## Fase 0b — Cuentas externas críticas para Fase 1 🟢 Completada (2026-05-09)
 
-> **Alcance:** crear cuentas en servicios externos. El usuario hace, Claude guía.
+> **Re-scope al final de Fase 0b:** la lista original incluía 8 cuentas. Al revisar **qué bloquea realmente arrancar Fase 1**, solo 4 son críticas. Las otras 4 (Cloudflare, Anthropic, Venndelo, Wompi sandbox) se mueven a sus fases respectivas — se crean cuando se vayan a usar, no antes. Esto evita el costo de mantener cuentas "frías" y reduce surface area mientras no se necesitan.
 
-### Tareas (todas en tier Free)
+### Tareas (todas en tier Free) — completadas
 
-- [ ] Cuenta **Supabase** (proyecto Free, región más cercana a Colombia: South America `sa-east-1` o `us-east-1`)
-- [ ] Cuenta **Vercel** (Hobby, conectada a GitHub del proyecto)
-- [ ] Cuenta **Resend** (Free, sin dominio aún)
-- [ ] Cuenta **Cloudflare** (Free, sin dominio aún) → **habilitar Turnstile** dentro de la cuenta para CAPTCHA
-- [ ] Avanzar gestión de **Wompi** (sandbox primero)
-- [ ] Cuenta **Venndelo** (sandbox)
-- [ ] Cuenta **Anthropic** (API key con presupuesto mensual)
-- [ ] **GitHub** repositorio creado y conectado a Vercel
-- [ ] **Cloudflare R2** activado dentro de la cuenta Cloudflare (para backups en Fase 7)
+- [x] **GitHub** repositorio `jullieth93/lucams` creado, branch `develop`, 7 commits pusheados, integrado con Vercel.
+- [x] **Supabase** proyecto `zxkucphbsfygakgxcnik` Free, región `sa-east-1` (São Paulo), Postgres standard. GitHub linked. Auto-RLS ON, Auto-expose tables OFF, Data API ON. Extensiones habilitadas: `pgmq`, `pg_cron`, `pgcrypto`, `pg_stat_statements`. Connection test OK.
+- [x] **Vercel** Hobby (cuenta `jullieth93`) conectado al repo. Proyecto `lucams-shop` deployado (build vacío esperado, sirve 404 hasta que llegue código en Fase 1). Webhook GitHub→Vercel funcionando.
+- [x] **Resend** Free. API key con scope "Sending access" (least privilege). Dominio default `resend.dev` mientras no tengamos `mail.lucamsshop.co`.
+
+### Movidas a fases posteriores (con justificación)
+
+- **Cloudflare** (DNS + Turnstile + R2) → Fase 1 (Turnstile junto al signup) y Fase 7 (DNS + R2 al lanzar).
+- **Anthropic** API key → Fase 3 (cuando se implemente el Estudio de Personalización con IA).
+- **Venndelo** sandbox → Fase 4 (cuando se implemente el checkout con cotización).
+- **Wompi** sandbox → Fase 4 (cuando se implemente el checkout). Su gestión la lleva la operadora externamente.
+
+### Verificación de tiers Free contra docs oficiales (mandato #9) — completada
+
+Ver [`OPERATIONS.md` § Verificación de tiers Free](OPERATIONS.md#verificación-de-tiers-free-contra-docs-oficiales-mandato-9). Todas las cifras citadas con URL y fecha. Hallazgo crítico: Vercel Hobby ToS prohíbe uso comercial — upgrade a Pro confirmado como obligación contractual antes del primer pago real (Fase 7).
+
+### Incidentes de seguridad durante Fase 0b — resueltos
+
+Dos leaks de credenciales por uso inadvertido de `Read`/`cat` sobre `.env.local`:
+
+1. **2026-05-09 ~20:48** — `SUPABASE_SECRET_KEY` expuesta en transcript. Resuelto: rotación + revocación de la vieja. Post-mortem en [`docs/incidents/2026-05-09-secret-key-leak.md`](incidents/2026-05-09-secret-key-leak.md).
+2. **2026-05-09 ~22:50** — `RESEND_API_KEY` parcialmente expuesta (regex de redacción incompleta). Resuelto: rotación + revocación.
+
+Mitigaciones permanentes aplicadas: nueva sección en [`SECURITY.md` § Manipulación segura de archivos de credenciales por agentes IA](SECURITY.md#manipulación-segura-de-archivos-de-credenciales-por-agentes-ia), nuevos vectores en runbook IRP-001, memoria `feedback_never_read_env_files.md` actualizada con anti-patrones específicos. GitHub Push Protection bloqueó el push de un commit con la secret key — sistema funcionó como esperado.
 
 ### Verificación de tiers Free contra docs oficiales (mandato #9)
 

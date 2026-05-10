@@ -12,7 +12,7 @@
 
 ## Resumen actual
 
-**Fase 0a completada (2026-05-09) — versión productive readiness.** Tras dos auditorías (coherencia + productive readiness, 21 + 43 hallazgos), la documentación cubre patrones cross-cutting, compliance colombiano (Ley 1581, Ley 1480, DIAN), observabilidad cuantitativa, DevOps maduro y testing estratégico. **Sin código todavía.** Esperando autorización del usuario para arrancar Fase 0b (cuentas externas en tier Free).
+**Fase 0a completada (2026-05-09) + Fase 0b completada con re-scope (2026-05-09).** Documentación auditada (21 + 43 hallazgos resueltos). 4 cuentas externas críticas para Fase 1 creadas y validadas: GitHub `jullieth93/lucams`, Supabase `zxkucphbsfygakgxcnik` (sa-east-1, Postgres standard, 4 extensiones habilitadas), Vercel `lucams-shop` (Hobby, conectado al repo), Resend Free (sending-only API key). Cloudflare/Anthropic/Wompi/Venndelo postergadas a sus fases respectivas (no bloquean Fase 1). Dos incidentes de leak de credenciales durante Fase 0b — resueltos con rotación + post-mortem + actualizaciones a SECURITY.md. **Sin código de aplicación todavía.** Lista para arrancar Fase 1 (scaffolding monorepo + Next.js + Auth + RLS) cuando la operadora autorice.
 
 ---
 
@@ -92,18 +92,29 @@
 
 ## Próximo paso
 
-**Fase 0b — cuentas externas en Free.** Cuando el usuario autorice, se guía paso a paso para crear:
+**Fase 1 — Base sólida (core técnico).** Cuando la operadora autorice, se inicia:
 
-1. Supabase (proyecto Free, región `sa-east-1` o más cercana a Colombia).
-2. Vercel (Hobby, conectado al repo de GitHub).
-3. Resend (Free, sin dominio aún).
-4. Cloudflare (Free, sin dominio aún) — habilitar Turnstile.
-5. Wompi (sandbox, gestión en curso del comercio).
-6. Venndelo (sandbox).
-7. Anthropic (API key con presupuesto mensual).
-8. GitHub (repo creado y conectado a Vercel).
+1. Inicializar monorepo con `pnpm-workspace.yaml`.
+2. `pnpm create next-app@latest apps/web` (Next.js 15 + TS + **Tailwind v4** + React 19 + App Router).
+3. Instalar shadcn/ui (style `new-york`, `tw-animate-css`, `sonner` per ADR-015).
+4. `packages/db` con Prisma + schema completo. SQL migrations habilitan `pgmq`, `pg_cron`, `pgcrypto`, `pg_stat_statements` (ya disponibles en proyecto Supabase).
+5. Migración inicial aplicada en Supabase (la integración GitHub→Supabase ya está activa).
+6. Clientes Supabase (`browser.ts`, `server.ts`, `service.ts`) usando **publishable + secret keys** (no anon/service_role legacy).
+7. RLS policies + tests automáticos con cliente impostor (criterio bloqueante de aceptación).
+8. Auth Supabase (registro, login, recuperación de password).
+9. Layout base con tokens Tailwind v4 (Fredoka + Inter, paleta de `BRANDING.md`).
+10. CI en GitHub Actions: typecheck + lint + tests + RLS + secret scanning (gitleaks) + dep audit.
+11. Healthchecks `/api/health/*`.
+12. Patrones cross-cutting de `CONVENTIONS.md`: RFC 7807 errors, capa de servicio, idempotency keys, request ID con AsyncLocalStorage, logger `pino` con redact PII, `fetchWithTimeout`/`withRetry`/`CircuitBreaker`, `safeRedirectTarget`.
+13. Crear cuenta Cloudflare + habilitar Turnstile (en simultáneo con el signup form).
 
-**Bloqueadores antes de Fase 0b:** ninguno técnico. Espera autorización explícita del usuario.
+**Bloqueadores antes de Fase 1:** ninguno técnico. Espera autorización explícita de la operadora.
+
+**Cuentas creadas just-in-time durante fases posteriores:**
+- Cloudflare (DNS + Turnstile + R2) → durante Fase 1 (Turnstile en signup) y Fase 7 (DNS + R2 al lanzar productivo).
+- Anthropic API key → durante Fase 3 (Estudio de IA con Claude).
+- Venndelo sandbox → durante Fase 4 (checkout con cotización).
+- Wompi sandbox → durante Fase 4 (en gestión externa de la operadora).
 
 **Cola de verificación pendiente** (mandato #9):
 
@@ -129,6 +140,21 @@
 ---
 
 ## Bitácora (append-only, más reciente arriba)
+
+### 2026-05-09 — Cierre Fase 0b con re-scope (sesión 8)
+
+**Decisión de la operadora:** cerrar Fase 0b con las 4 cuentas críticas (GitHub, Supabase, Vercel, Resend) y diferir Cloudflare/Anthropic/Venndelo a sus fases respectivas. Razón pragmática: ninguna de las 4 postergadas bloquea Fase 1, y mantener cuentas "frías" no usadas suma surface area sin beneficio.
+
+**Lo creado y validado en esta tanda:**
+- **Vercel Hobby** (`lucams-shop.vercel.app`): conectado a GitHub `jullieth93/lucams`, primer deploy exitoso con HTTP 404 esperado (no hay código aún), webhook GitHub→Vercel funcionando.
+- **Resend Free**: API key con scope "Sending access" (least privilege), validada con `restricted_api_key` error code (confirma key válida + scoped). Dominio default `resend.dev`.
+
+**Incidente de seguridad #2 durante esta tanda:** al diagnosticar un 401 de Resend (que era esperado por el scope, no por key inválida), Claude usó `cat -A .env.local` con regex de redacción `[A-Za-z0-9]+` que NO incluía underscore. La key real quedó parcialmente visible en transcript. Resuelto: rotación + revocación + actualización de memoria con anti-patrones específicos (no usar `cat`, no combinar prefix+suffix, no redacciones parciales).
+
+**Documentación actualizada:**
+- `ROADMAP.md` Fase 0b marcada 🟢 con re-scope explícito documentado.
+- `STATE.md` resumen actual y próximo paso ahora apuntan a Fase 1.
+- `feedback_never_read_env_files.md` ampliada con sección "Anti-patrones específicos" (cat, regex incompletas, prefix+suffix combinados).
 
 ### 2026-05-09 — Setup proyecto Supabase + extensiones + connection test (sesión 7)
 
