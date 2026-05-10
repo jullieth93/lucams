@@ -576,10 +576,37 @@ El propio Next.js 16 advierte vía `apps/web/AGENTS.md`: *"This is NOT the Next.
 
 ---
 
+## ADR-029 — `vercel.json` en monorepo: ubicación dentro del Root Directory de Vercel, NO en repo root
+
+**Fecha:** 2026-05-10
+**Estado:** Aceptado.
+
+**Contexto:**
+Durante el cierre del scaffolding de Fase 1, los deploys de Vercel devolvían HTTP 404 en `/` y `/api/health` aunque la build local funcionaba en HTTP 200. La UI de Vercel tenía `Root Directory = apps/web` correctamente y "Include files outside the root directory" habilitado. El `vercel.json` estaba en `/vercel.json` (repo root) con `framework: "nextjs"`, `outputDirectory: ".next"` e `ignoreCommand` — pero ninguna de esas directivas se aplicaba.
+
+**Investigación contra doc oficial Vercel:**
+- [Static Configuration with vercel.json](https://vercel.com/docs/project-configuration/vercel-json) (actualizada 2026-03-11) afirma: *"This file should be created in your project's root directory"*.
+- En el contexto de Vercel, **"project's root directory"** se refiere al **Root Directory configurado en Settings → Build and Deployment**, NO al repo root de GitHub. La frase es ambigua y se presta a confusión, pero Vercel lo confirma operacionalmente: si el archivo está fuera del Root Directory, lo ignora por completo.
+- El toggle "Include files outside the root directory" sí permite acceder a archivos del padre durante el build (ej. `pnpm-workspace.yaml`, `packages/*`), pero **no** se usa para descubrir `vercel.json`. La discovery de `vercel.json` es estricta: solo dentro del Root Directory.
+
+**Decisión:**
+1. `vercel.json` debe vivir en `apps/web/vercel.json` (mismo path que el Root Directory configurado en Vercel).
+2. **Nunca** colocar `vercel.json` en el repo root cuando hay Root Directory configurado.
+3. Mantener el contenido **mínimo**: solo `{"$schema": ..., "framework": "nextjs"}` como redundancia explícita. Cuando `framework=nextjs` está aplicado, Vercel auto-detecta el resto (`buildCommand`, `outputDirectory`, `installCommand`) sin necesidad de declararlos.
+4. Si se necesita `ignoreCommand` futuro, los paths deben ser relativos al Root Directory (`apps/web/`), no al repo root. Como alternativa, usar el toggle UI **"Skip deployments unaffected"** que Vercel ofrece nativamente para monorepos pnpm — hace el mismo trabajo sin scripting.
+
+**Consecuencias:**
+- El fix se aplicó en commit `62a83ae` (2026-05-10). Build de producción quedó exitoso en 25s; `https://lucams-shop.vercel.app/` y `/api/health` ambos en HTTP 200.
+- Cualquier mención futura de "`vercel.json` en root" en documentación interna debe interpretarse como "en el Root Directory de Vercel", no en el repo root.
+- Si agregamos otra app al monorepo (ej. `apps/admin`), cada app sería un proyecto Vercel separado con su propio Root Directory y su propio `apps/<app>/vercel.json`.
+- **Patrón general:** cuando una herramienta cloud habla de "root directory" en monorepos, asumir que se refiere a la subcarpeta configurada como punto de entrada, no al repo root. Verificar contra doc antes de colocar archivos de config.
+
+---
+
 > Próximas decisiones a documentar cuando se tomen:
 > - ADR-022: alternativa de monitoreo de errores elegida (en Fase 7).
 > - ADR-023: criterio de migración Postgres rate-limit → Redis externo.
-> - ADR-024: distributed tracing / OpenTelemetry strategy (post-lanzamiento si volumen lo justifica).
 > - ADR-025: proveedor de facturación electrónica DIAN (Alegra / Siigo / Facture / otro), antes de Fase 7.
-> - ADR-027: necesidad de staging environment (re-evaluar post-lanzamiento).
+> - ADR-027: necesidad de staging environment (re-evaluar post-lanzamiento; Vercel previews pueden cubrir el rol).
 > - ADR-028: criterio de migración Postgres `FeatureFlag` → GrowthBook u otro (cuando ocurra).
+> - ADR-030: distributed tracing / OpenTelemetry strategy (post-lanzamiento si volumen lo justifica).

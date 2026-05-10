@@ -12,7 +12,32 @@
 
 ## Resumen actual
 
-**Fase 0a + 0b cerradas. Fase 1 EN CURSO (scaffolding inicial + paridad Vercel completados, 2026-05-09).** Monorepo pnpm + Next.js **16.2.6** + React 19.2.4 + Tailwind v4 + shadcn/ui (`radix-nova`) + Turbopack default. Tokens Lucams (paleta brand) y Fredoka + Inter aplicados. Home placeholder HTTP 200 local. Build de producción limpio (4 páginas estáticas, 0 warnings). `vercel.json` declarativo en root para que Vercel buildee correctamente desde monorepo. **Makefile orquestador** en `/home/ansible/workspaces/lucams-shop-local/` con comandos para stack (`make up/down/status/logs`), quality gates (`make build/typecheck/lint/format`) y validación local↔cloud (`make env-check/health/vercel-parity`). **Acción pendiente de la operadora:** sincronizar las 11 env vars en Vercel Dashboard antes del próximo deploy con código que use Supabase. (`[YOUR-PASSWORD]` en `.env.local` ya resuelto.) **Próximo bloque de Fase 1:** RLS policies, Auth Supabase, patrones cross-cutting (RFC 7807, capa de servicio, idempotency, request ID, logger pino con redact).
+**Fase 0a + 0b cerradas. Fase 1 EN CURSO — scaffolding inicial completo + DEPLOY VERCEL FUNCIONAL (2026-05-10).** Monorepo pnpm + Next.js **16.2.6** + React 19.2.4 + Tailwind v4 + shadcn/ui (`radix-nova`) + Turbopack default. Tokens Lucams y Fredoka + Inter aplicados. Local: HTTP 200 home + `/api/health`. **Producción Vercel: HTTP 200 home + `/api/health` (commit `62a83ae`)**, 4 rutas (`/`, `/_not-found`, `/api/health`), build 25s, build cache creado. **Makefile orquestador** en `/home/ansible/workspaces/lucams-shop-local/`. **Bug crítico resuelto (ver ADR-027):** `vercel.json` debe vivir en `apps/web/` (Root Directory configurado en Vercel UI), NO en repo root. **Próximo bloque de Fase 1:** Prisma schema + RLS policies + Auth Supabase + patrones cross-cutting (RFC 7807, capa de servicio, idempotency, request ID, logger pino con redact).
+
+---
+
+## Última sesión — 2026-05-10 (debug + fix de Vercel deploy productivo)
+
+**Origen:** después de cerrar el scaffolding local, push a Vercel devolvía HTTP 404 en home y `/api/health` durante 2.5+ minutos. Build aparecía como "Deployment Failed".
+
+**Diagnóstico contra doc oficial Vercel (actualizada 2026-03-17):**
+
+1. **Auditoría de config Vercel UI:** Root Directory = `apps/web` ✓, "Include files outside" = Enabled ✓, Node 24.x ✓. **Pero Framework Preset = "Other"** (debió ser Next.js).
+2. **Auditoría de `vercel.json`:** estaba en `/vercel.json` (repo root). La doc dice *"This file should be created in your project's root directory"* — y "project's root directory" en Vercel = el Root Directory configurado, NO el repo root. **Por eso Vercel ignoraba el archivo entero** y `framework: "nextjs"` no aplicaba.
+3. **Webhook GitHub→Vercel funcionaba**, los pushes sí disparaban deploys (verificado con `git ls-remote` y `91eea18` apareciendo en lista). El problema NO era de tracking de branch.
+
+**Fix aplicado (commit `62a83ae`):**
+- `git mv vercel.json apps/web/vercel.json`
+- Simplificado a solo `{"$schema": ..., "framework": "nextjs"}`
+- Removido `outputDirectory` (auto-derivado cuando framework=nextjs) y `ignoreCommand` (paths se romperían con la nueva ubicación; "Skip deployments unaffected" del UI lo cubre).
+
+**Resultado:**
+- Build exitoso en 25s. `Detected Next.js version: 16.2.6` confirmado en log.
+- Producción: `https://lucams-shop.vercel.app/` → HTTP 200, `/api/health` → JSON con `version: "62a83aea..."`, `environment: "production"`.
+- Build cache creado para acelerar próximos deploys.
+- Decisión registrada como **ADR-027** en `docs/DECISIONS.md`.
+
+**Lección clave para futuro:** En monorepos Vercel con Root Directory configurado, **`vercel.json` vive en el Root Directory**, no en el repo root. La frase "project's root directory" en la doc es ambigua y confunde.
 
 ---
 
