@@ -12,7 +12,7 @@
 
 ## Resumen actual
 
-**Fase 0a + 0b cerradas. Fase 1 EN CURSO (scaffolding inicial + paridad Vercel completados, 2026-05-09).** Monorepo pnpm + Next.js **16.2.6** + React 19.2.4 + Tailwind v4 + shadcn/ui (`radix-nova`) + Turbopack default. Tokens Lucams (paleta brand) y Fredoka + Inter aplicados. Home placeholder HTTP 200 local. Build de producción limpio (4 páginas estáticas, 0 warnings). `vercel.json` declarativo en root para que Vercel buildee correctamente desde monorepo. **Makefile orquestador** en `/tmp/lucams-shop-local/` con comandos para stack (`make up/down/status/logs`), quality gates (`make build/typecheck/lint/format`) y validación local↔cloud (`make env-check/health/vercel-parity`). **Acciones pendientes de la operadora:** (1) reemplazar `[YOUR-PASSWORD]` literal en `DATABASE_URL` y `DIRECT_URL` de `.env.local` (detectado por `make env-check`); (2) sincronizar las 11 env vars en Vercel Dashboard antes del próximo deploy con código que use Supabase. **Próximo bloque de Fase 1:** RLS policies, Auth Supabase, patrones cross-cutting (RFC 7807, capa de servicio, idempotency, request ID, logger pino con redact).
+**Fase 0a + 0b cerradas. Fase 1 EN CURSO (scaffolding inicial + paridad Vercel completados, 2026-05-09).** Monorepo pnpm + Next.js **16.2.6** + React 19.2.4 + Tailwind v4 + shadcn/ui (`radix-nova`) + Turbopack default. Tokens Lucams (paleta brand) y Fredoka + Inter aplicados. Home placeholder HTTP 200 local. Build de producción limpio (4 páginas estáticas, 0 warnings). `vercel.json` declarativo en root para que Vercel buildee correctamente desde monorepo. **Makefile orquestador** en `/home/ansible/workspaces/lucams-shop-local/` con comandos para stack (`make up/down/status/logs`), quality gates (`make build/typecheck/lint/format`) y validación local↔cloud (`make env-check/health/vercel-parity`). **Acción pendiente de la operadora:** sincronizar las 11 env vars en Vercel Dashboard antes del próximo deploy con código que use Supabase. (`[YOUR-PASSWORD]` en `.env.local` ya resuelto.) **Próximo bloque de Fase 1:** RLS policies, Auth Supabase, patrones cross-cutting (RFC 7807, capa de servicio, idempotency, request ID, logger pino con redact).
 
 ---
 
@@ -141,9 +141,24 @@
 
 ## Bitácora (append-only, más reciente arriba)
 
+### 2026-05-09 — Operadora actualiza .env.local + state dir movido a workspaces (sesión 11)
+
+**Hechos:**
+
+1. **Operadora reemplazó `[YOUR-PASSWORD]` en `.env.local`.** Verificado por `make env-check`: las 6 vars críticas ahora están loaded sin placeholder (`DATABASE_URL` 124 chars, `DIRECT_URL` 109 chars). Esto desbloquea Prisma para Fase 1 schema.
+
+2. **State dir movido de `/tmp/lucams-shop-local/` a `/home/ansible/workspaces/lucams-shop-local/`.** Razón de la operadora: `/tmp/` se puede borrar por antigüedad o reboot de la VM, perdiendo histórico de logs entre sesiones. La nueva ubicación es:
+   - Paralela al repo (no adentro) → no contamina el árbol git ni requiere gitignore.
+   - Persistente entre reinicios → histórico de logs accesible para debug "qué pasó hace 3 días".
+   - Coherente con la convención del workspace de la operadora (todo en `/home/ansible/workspaces/`).
+
+3. **`STATE_DIR ?= /home/ansible/workspaces/lucams-shop-local`** ahora es el default del Makefile. Smoke test post-move verde: `make help`, `env-check`, `health` desde la nueva ubicación funcionan idénticamente.
+
+4. **OPERATIONS.md y STATE.md** actualizados — todas las menciones a `/tmp/lucams-shop-local/` reemplazadas por la nueva ruta.
+
 ### 2026-05-09 — Compatibilidad local↔Vercel + Makefile orquestador (sesión 10)
 
-**Operadora pidió:** (1) validar que el entorno local sea compatible con Vercel dado que la VM es ambiente de desarrollo; (2) crear un `Makefile` + sistema de logs en `/tmp/lucams-shop-local/` siguiendo el patrón de `/tmp/commerce-ops-local/`.
+**Operadora pidió:** (1) validar que el entorno local sea compatible con Vercel dado que la VM es ambiente de desarrollo; (2) crear un `Makefile` + sistema de logs en `/home/ansible/workspaces/lucams-shop-local/` siguiendo el patrón de `/tmp/commerce-ops-local/`.
 
 **Hechos:**
 
@@ -156,7 +171,7 @@
    - `outputDirectory: "apps/web/.next"`
    - `ignoreCommand` que skipea deploy cuando solo cambian docs
 
-3. **Makefile creado en `/tmp/lucams-shop-local/Makefile`** con comandos espejo del runtime de Vercel:
+3. **Makefile creado en `/home/ansible/workspaces/lucams-shop-local/Makefile`** con comandos espejo del runtime de Vercel:
    - **Stack:** `make up`, `down`, `restart`, `status`, `logs SERVICE=web`, `clean`.
    - **Quality gates:** `make build`, `typecheck`, `lint`, `format`.
    - **Validación local↔cloud:** `make env-check` (lista vars sin exponer valores, detecta placeholders), `make health` (healthchecks Supabase Auth + REST + web local), `make vercel-parity` (reproduce el build EXACTO de Vercel).

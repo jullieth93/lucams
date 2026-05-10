@@ -179,23 +179,23 @@ Vive en el root: [`vercel.json`](../vercel.json). Sus campos:
 
 ## Entorno local con Make (símil-Vercel)
 
-> Patrón inspirado en `commerce-ops-platform`. Centraliza todos los comandos del entorno de desarrollo local en un Makefile en `/tmp/lucams-shop-local/Makefile` para que la VM se sienta como un símil-Vercel sin necesidad de memorizar comandos pnpm largos.
+> Patrón inspirado en `commerce-ops-platform`. Centraliza todos los comandos del entorno de desarrollo local en un Makefile en `/home/ansible/workspaces/lucams-shop-local/Makefile` para que la VM se sienta como un símil-Vercel sin necesidad de memorizar comandos pnpm largos.
 
 ### Estructura
 
 ```
-/tmp/lucams-shop-local/
+/home/ansible/workspaces/lucams-shop-local/
 ├── Makefile          ← orquestador
 ├── logs/             ← un .log por servicio (web.log, etc.)
 └── pids/             ← un .pid por servicio (track/kill)
 ```
 
-> Vive en `/tmp/` porque los logs/pids son ephemeral. Un reboot de la VM los borra junto con los procesos — comportamiento correcto.
+> Vive en `/home/ansible/workspaces/lucams-shop-local/` (paralelo al repo, no dentro) para **persistir entre reinicios** de la VM. La operadora rechazó la ubicación inicial `/tmp/` precisamente para que el histórico de logs no se pierda por antigüedad o reboot. Al ser paralelo (no adentro del repo) tampoco contamina el árbol git.
 
 ### Comandos disponibles
 
 ```bash
-cd /tmp/lucams-shop-local && make help
+cd /home/ansible/workspaces/lucams-shop-local && make help
 ```
 
 #### Stack
