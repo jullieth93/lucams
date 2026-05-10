@@ -37,9 +37,13 @@ export async function rateLimit(
   limit: number,
   windowSeconds: number,
 ): Promise<RateLimitResult> {
+  // Casts explícitos: Prisma serializa `number` JS como `bigint` (int8) por
+  // defecto. La función rate_limit_check tiene firma (text, int, int) — sin
+  // los ::int, Postgres no encuentra overload y tira 42883
+  // "function rate_limit_check(text, bigint, bigint) does not exist".
   const rows = await prisma.$queryRaw<
     Array<{ allowed: boolean; count: number; reset_at: Date }>
-  >`SELECT * FROM rate_limit_check(${key}, ${limit}, ${windowSeconds})`;
+  >`SELECT * FROM rate_limit_check(${key}::text, ${limit}::int, ${windowSeconds}::int)`;
 
   const row = rows[0];
   if (!row) {
