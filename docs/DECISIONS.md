@@ -535,6 +535,47 @@ Cuando se cumpla cualquiera: **ADR-028** documenta el switch (aislado en `lib/fe
 
 ---
 
+## ADR-024 — Next.js 16 (no 15) + adaptación a sus breaking changes
+
+**Fecha:** 2026-05-09
+**Estado:** ✅ Aceptada (descubierto durante scaffolding Fase 1)
+
+**Contexto:** Las decisiones previas (ADR-001, ADR-015) asumían "Next.js 15". Al ejecutar `pnpm create next-app@latest` en Fase 1, llegó **Next.js 16.2.6** (versión actual a 2026-05-09) — una versión major nueva con breaking changes documentados en `apps/web/node_modules/next/dist/docs/01-app/02-guides/upgrading/version-16.md`.
+
+El propio Next.js 16 advierte vía `apps/web/AGENTS.md`: *"This is NOT the Next.js you know. This version has breaking changes — APIs, conventions, and file structure may all differ from your training data."*
+
+**Decisión:** adoptar Next.js 16 (no degradar a 15) y adaptar nuestra arquitectura a sus convenciones.
+
+**Por qué:**
+- Next.js 16 es la versión actual estable. Bajar a 15 sería deuda inmediata.
+- Turbopack default = builds más rápidos sin flags.
+- React 19.2 viene incluido — alineado con ADR-015 (React 19 + Tailwind v4 + shadcn/ui).
+- La doc local del paquete está disponible para verificar APIs específicas (cumple mandato #9).
+
+**Breaking changes que afectan nuestros patrones documentados:**
+
+| Cambio | Impacto en Lucams_shop | Acción |
+|---|---|---|
+| **Async Request APIs obligatorio** | `cookies()`, `headers()`, `params`, `searchParams` siempre `await` | Documentado en `CONVENTIONS.md`. `lib/supabase/server.ts` debe usar `await cookies()`. |
+| **`middleware.ts` → `proxy.ts`** | El archivo se renombró; edge runtime ya no soportado en `proxy` (solo nodejs) | Para nuestro middleware de auth/CORS/headers usaremos `proxy.ts`. Edge runtime no lo necesitamos en escala inicial. Si en el futuro lo requerimos, mantenemos `middleware.ts` separado. |
+| **`themeColor` movido de `metadata` a `viewport` export** | Layout root debe exportar `viewport` separado | Aplicado en `apps/web/app/layout.tsx`. Patrón documentado en CONVENTIONS. |
+| **`revalidateTag` requiere segundo argumento** (cacheLife profile) | Cuando agreguemos cache de productos, usar `revalidateTag('products', 'max')` | Documentar al implementar. |
+| **`updateTag` nuevo** (read-your-writes en Server Actions) | Útil para checkout/admin actions | Adoptar en Fase 4 cuando hagamos Server Actions de mutación. |
+| **`images.domains` deprecated** → usar `images.remotePatterns` | Para imágenes de Supabase Storage | Configurar en `next.config.ts` cuando agreguemos imágenes de productos. |
+| **`next lint` removed** → usar ESLint CLI directo | `package.json` ya tiene `"lint": "eslint"` (no `next lint`) | Hecho. |
+| **`serverRuntimeConfig`/`publicRuntimeConfig` removidos** | Usar `process.env` + `NEXT_PUBLIC_*` directo | Ya era nuestro plan. |
+| **AMP support removed** | Sin impacto (no usábamos) | Ninguna. |
+| **shadcn/ui style: `radix-nova` (no "new-york")** | El nombre del preset evolucionó. Funcionalidad equivalente. | Actualizado ADR-021. |
+
+**Style shadcn/ui actualizado:** ADR-015 mencionaba "style new-york". El comando `pnpm dlx shadcn@latest init --defaults` instaló el preset **`radix-nova`** (la evolución del antiguo new-york + base components con Radix primitives). El `components.json` del repo refleja este valor real. Funcionalmente idéntico para nuestros propósitos.
+
+**Consecuencia:**
+- ARCHITECTURE.md, CLAUDE.md mandato #3, CONVENTIONS.md actualizados con "Next.js 16" + las convenciones específicas (async APIs, proxy.ts, viewport export).
+- `apps/web/AGENTS.md` (autogenerado) queda como recordatorio para futuras sesiones de Claude Code.
+- Cualquier patrón que tomemos de tutoriales/blogs de "Next.js 15" debe revisarse contra la doc local de Next.js 16 antes de copiarlo.
+
+---
+
 > Próximas decisiones a documentar cuando se tomen:
 > - ADR-022: alternativa de monitoreo de errores elegida (en Fase 7).
 > - ADR-023: criterio de migración Postgres rate-limit → Redis externo.

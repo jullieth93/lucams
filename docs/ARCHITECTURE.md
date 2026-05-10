@@ -132,7 +132,7 @@ lucams_shop/
 |---|---|---|
 | Runtime | Node.js | 22 LTS |
 | Package manager | pnpm | 9.x |
-| Framework | Next.js | 15.x (App Router, RSC, Server Actions) |
+| Framework | Next.js | **16.x (App Router, RSC, Server Actions, Turbopack default)** — actualizado al hacer scaffolding (Fase 1) |
 | Lenguaje | TypeScript | 5.x estricto |
 | UI | Tailwind CSS | **4.x (sintaxis CSS-first con `@theme`)** |
 | Componentes | shadcn/ui | latest (style `new-york`, soporte oficial v4) |

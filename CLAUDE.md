@@ -53,7 +53,7 @@ Si una tarea cruza varias áreas, lee los archivos relevantes en paralelo. Si no
 
 1. **No es MVP.** El sitio debe nacer 100% productivo, listo para vender desde el día 1.
 2. **Free durante desarrollo, Pro al lanzar.** Nunca activar tiers de pago hasta el lanzamiento productivo.
-3. **Stack fijo:** Next.js 15 (App Router) + TypeScript + **Tailwind v4** + shadcn/ui sobre **monorepo pnpm** (`apps/web` + `packages/db` + `packages/ui`), Supabase (DB+Auth+Storage+Realtime), Vercel.
+3. **Stack fijo:** Next.js **16** (App Router, RSC, Server Actions, Turbopack default) + TypeScript + **Tailwind v4** + shadcn/ui (style `radix-nova`) sobre **monorepo pnpm** (`apps/web` + `packages/db` + `packages/ui`), Supabase (DB+Auth+Storage+Realtime), Vercel. **Next.js 16 tiene breaking changes vs 15** — ver `apps/web/AGENTS.md` y la guía local `apps/web/node_modules/next/dist/docs/01-app/02-guides/upgrading/version-16.md` antes de escribir código nuevo.
 4. **Pasarela:** Wompi (con adaptador `PaymentProvider` que permite sumar Mercado Pago después).
 5. **Logística:** Venndelo (Coordinadora + contraentrega activa desde día 1).
 6. **WhatsApp:** solo `wa.me` con mensaje pre-armado contextual; sin Twilio API por ahora.

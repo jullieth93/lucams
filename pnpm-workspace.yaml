@@ -1,0 +1,12 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+# Build scripts approved per pnpm 11+ security policy (write-protected since 2024).
+# These packages require their install/postinstall scripts to function:
+#   - sharp:         used by next/image for server-side image optimization (AVIF/WebP)
+#   - unrs-resolver: required by tailwind v4 + eslint dependency resolution
+allowBuilds:
+  msw: true
+  sharp: true
+  unrs-resolver: true

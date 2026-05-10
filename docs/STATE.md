@@ -12,7 +12,7 @@
 
 ## Resumen actual
 
-**Fase 0a completada (2026-05-09) + Fase 0b completada con re-scope (2026-05-09).** Documentación auditada (21 + 43 hallazgos resueltos). 4 cuentas externas críticas para Fase 1 creadas y validadas: GitHub `jullieth93/lucams`, Supabase `zxkucphbsfygakgxcnik` (sa-east-1, Postgres standard, 4 extensiones habilitadas), Vercel `lucams-shop` (Hobby, conectado al repo), Resend Free (sending-only API key). Cloudflare/Anthropic/Wompi/Venndelo postergadas a sus fases respectivas (no bloquean Fase 1). Dos incidentes de leak de credenciales durante Fase 0b — resueltos con rotación + post-mortem + actualizaciones a SECURITY.md. **Sin código de aplicación todavía.** Lista para arrancar Fase 1 (scaffolding monorepo + Next.js + Auth + RLS) cuando la operadora autorice.
+**Fase 0a + 0b cerradas. Fase 1 EN CURSO (scaffolding inicial completado, 2026-05-09).** Monorepo pnpm + Next.js **16.2.6** (no 15 — actualizado, ver ADR-024) + React 19.2.4 + Tailwind v4 (CSS-first, `@theme inline`) + shadcn/ui (style `radix-nova`) + tw-animate-css + Turbopack default funcionando. Tokens Lucams aplicados a `globals.css` (paleta brand kawaii: morado/turquesa/coral/rosa/amarillo/cream + neutrales + feedback + radii). Tipografías Fredoka + Inter cargando vía `next/font/google`. Home placeholder con identidad Lucams renderiza en HTTP 200. Build de producción limpio (4 páginas estáticas pre-renderizadas, sin warnings). `lib/utils.ts` con `cn()` helper. Prettier + prettier-plugin-tailwindcss configurados. **Próximo bloque de Fase 1:** RLS policies, Auth Supabase, healthchecks, patrones cross-cutting (RFC 7807, capa de servicio, idempotency, request ID).
 
 ---
 
@@ -140,6 +140,45 @@
 ---
 
 ## Bitácora (append-only, más reciente arriba)
+
+### 2026-05-09 — Fase 1 scaffolding inicial (sesión 9)
+
+**Modo autonomía:** la operadora pidió que actuara con más autonomía dentro de los permisos `Bash(*)` de la VM dedicada (mandato #10). Procedí con bloques digeribles + commits frecuentes + pausa solo en decisiones destructivas.
+
+**Hechos:**
+- **Tooling instalado:** Node.js 22.22.2 (NodeSource RPM en Oracle Linux 9.7) + pnpm 11.0.9 (vía corepack) + npm 10.9.7.
+- **Monorepo inicializado:** `pnpm-workspace.yaml` con `apps/*` y `packages/*`. `package.json` root con scripts compartidos (`dev`, `build`, `lint`, `typecheck`, `format`). `engines` y `packageManager` declarados.
+- **`apps/web` creado:** `pnpm create next-app@latest --typescript --tailwind --eslint --app --no-src-dir --import-alias "@/*" --use-pnpm --turbopack`. Llegó **Next.js 16.2.6** (no 15.x como decían los docs originales — actualizamos).
+- **Hallazgo crítico:** Next.js 16 trae breaking changes vs 15. La advertencia oficial `apps/web/AGENTS.md` lo señala explícitamente: *"This is NOT the Next.js you know."* Leí `node_modules/next/dist/docs/01-app/02-guides/upgrading/version-16.md` y documenté los cambios que afectan nuestra arquitectura (saga, middleware, async APIs, themeColor, revalidateTag, images config) en **ADR-024**.
+- **shadcn/ui v4 instalado:** `pnpm dlx shadcn@latest init --defaults --no-monorepo --base radix`. Style `radix-nova` (la evolución del antiguo "new-york" — actualizamos ADR-021 para reflejar el nombre real). Dependencias: `class-variance-authority`, `clsx`, `lucide-react`, `radix-ui`, `tailwind-merge`, `tw-animate-css`.
+- **Branding aplicado en código:**
+  - `lib/utils.ts` con `cn()` helper.
+  - `app/globals.css` reemplazado: `@theme inline` con paleta brand Lucams (morado/turquesa/coral/rosa/amarillo/cream) + tokens semánticos shadcn mapeados a la paleta + `--font-display: Fredoka` y `--font-body: Inter` + radii kawaii (12px) + estilos base con `prefers-reduced-motion`.
+  - `app/layout.tsx`: `lang="es-CO"`, fuentes vía `next/font/google` con `display: swap`, metadata + viewport export separados (Next 16 breaking change), título y descripción Lucams.
+  - `app/page.tsx`: home placeholder con mascota mapache 🦝, paleta brand visible, propuesta de valor, link a Instagram. Reemplaza la default Next welcome.
+  - Assets default removidos (`next.svg`, `vercel.svg`, etc.).
+- **Quality gates pasando:**
+  - Typecheck: ✅ sin errores.
+  - Lint (ESLint flat config): ✅ sin errores.
+  - Build de producción: ✅ 4.6s con Turbopack, 4 páginas estáticas pre-renderizadas, **sin warnings** tras mover `themeColor` a `viewport` export.
+  - Dev server: arranca en ~500ms con Turbopack default.
+- **Prettier:** instalado en root con `prettier-plugin-tailwindcss`. `.prettierrc.json` y `.prettierignore` configurados. Scripts `format` y `format:check` ya estaban en root `package.json`.
+- **pnpm build approvals:** `sharp` (next/image), `unrs-resolver` (tailwind/eslint), `msw` (testing) aprobados explícitamente vía `pnpm-workspace.yaml` `allowBuilds`.
+
+**Documentación actualizada:**
+- ADR-024 nuevo en `DECISIONS.md` documentando Next.js 16 + breaking changes que adoptamos.
+- ARCHITECTURE.md: tabla de versiones actualizada (Next.js 15.x → 16.x).
+- CLAUDE.md mandato #3: stack actualizado con Next.js 16 + style `radix-nova` + advertencia sobre breaking changes.
+
+**Lo que NO hicimos en este bloque (Fase 1 continúa):**
+- Prisma + `packages/db` schema (siguiente).
+- RLS policies + tests automáticos.
+- Auth Supabase (registro, login, recuperación).
+- Patrones cross-cutting (`lib/errors.ts`, `lib/rate-limit.ts`, `lib/cache.ts`, `lib/queue.ts`, `lib/logger.ts`, `lib/idempotency.ts`, `lib/circuit-breaker.ts`, etc. per CONVENTIONS.md).
+- Healthchecks `/api/health/*`.
+- Header + Footer + WhatsApp FAB.
+- CI GitHub Actions (typecheck + lint + tests + secret scanning).
+- Cloudflare + Turnstile (cuenta a crear cuando lleguemos a signup form).
 
 ### 2026-05-09 — Cierre Fase 0b con re-scope (sesión 8)
 

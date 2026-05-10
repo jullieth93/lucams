@@ -1,0 +1,170 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+/*
+ * Tokens de Lucams_shop — Tailwind v4 CSS-first config (ADR-015).
+ *
+ * Estructura:
+ *  1. @theme inline → tokens que generan utilidades Tailwind (`bg-brand-purple`,
+ *     `font-display`, etc.). Mapea de variables --brand-* a las que Tailwind
+ *     lee con namespace --color-*, --font-*.
+ *  2. :root → los valores reales de las variables en modo claro.
+ *  3. .dark → overrides para modo oscuro (cuando lo activemos).
+ *
+ * Documentación de la paleta: docs/BRANDING.md
+ * Decisión Tailwind v4: docs/DECISIONS.md ADR-015
+ * Decisión tipografías: docs/DECISIONS.md ADR-021 (Fredoka + Inter)
+ */
+
+@theme inline {
+  /* Marca Lucams — kawaii colombiano */
+  --color-brand-purple: var(--brand-purple);
+  --color-brand-purple-dark: var(--brand-purple-dark);
+  --color-brand-turquoise: var(--brand-turquoise);
+  --color-brand-pink: var(--brand-pink);
+  --color-brand-coral: var(--brand-coral);
+  --color-brand-yellow: var(--brand-yellow);
+  --color-brand-cream: var(--brand-cream);
+
+  /* Neutrales (foreground/background base) */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+
+  /* Feedback (estados de UI: success/error/warning) */
+  --color-success: var(--success);
+  --color-error: var(--error);
+  --color-warning: var(--warning);
+
+  /* shadcn/ui semantic tokens (radix-nova preset) */
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* Tipografías (cargadas vía next/font/google en app/layout.tsx) */
+  --font-display: var(--font-fredoka), "Baloo 2", system-ui, sans-serif;
+  --font-body: var(--font-inter), "Nunito", system-ui, sans-serif;
+
+  /* Radii (curvas suaves para encajar con tono kawaii) */
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+:root {
+  /* ─────── Marca Lucams ─────── */
+  --brand-purple: #7C6AAD;
+  --brand-purple-dark: #3D2E5C;
+  --brand-turquoise: #5DD9D1;
+  --brand-pink: #E85B9F;
+  --brand-coral: #F58A6F;
+  --brand-yellow: #FFD93D;
+  --brand-cream: #FFF8F0;
+
+  /* ─────── Neutrales (modo claro) ─────── */
+  --background: #FFFFFF;
+  --foreground: #1F1733;            /* texto principal cuerpo */
+
+  /* ─────── Feedback ─────── */
+  --success: #3FBE6E;
+  --error: #E84B5B;
+  --warning: #F5A623;
+
+  /* ─────── shadcn semantic (modo claro) ─────── */
+  --card: #FFFFFF;
+  --card-foreground: var(--foreground);
+  --popover: #FFFFFF;
+  --popover-foreground: var(--foreground);
+  --primary: var(--brand-purple);
+  --primary-foreground: #FFFFFF;
+  --secondary: var(--brand-cream);
+  --secondary-foreground: var(--brand-purple-dark);
+  --muted: #F5F4F8;
+  --muted-foreground: #6B6383;
+  --accent: var(--brand-turquoise);
+  --accent-foreground: var(--brand-purple-dark);
+  --destructive: var(--error);
+  --destructive-foreground: #FFFFFF;
+  --border: #E6E2EC;
+  --input: #E6E2EC;
+  --ring: var(--brand-purple);
+
+  /* ─────── Radii base ─────── */
+  --radius: 0.75rem;                /* 12px — curvas suaves kawaii */
+}
+
+.dark {
+  /* Modo oscuro pendiente — ADR para definir cuándo se activa.
+     Por ahora se accede solo al añadir clase `.dark` al <html>. */
+  --background: #1A1530;
+  --foreground: #ECE5F2;
+
+  --card: #2A2240;
+  --card-foreground: var(--foreground);
+  --popover: #2A2240;
+  --popover-foreground: var(--foreground);
+  --primary: var(--brand-purple);
+  --primary-foreground: #FFFFFF;
+  --secondary: #3D2E5C;
+  --secondary-foreground: var(--brand-cream);
+  --muted: #2A2240;
+  --muted-foreground: #9E94B5;
+  --accent: var(--brand-turquoise);
+  --accent-foreground: var(--brand-purple-dark);
+  --border: #3D2E5C;
+  --input: #3D2E5C;
+  --ring: var(--brand-turquoise);
+}
+
+/* ─────── Estilos base globales ─────── */
+
+* {
+  border-color: var(--border);
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-body);
+  font-feature-settings: "rlig" 1, "calt" 1;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Display font para headings y elementos prominentes */
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+/* Tabular nums para precios alineados */
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Reduced motion respeto */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
