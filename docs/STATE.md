@@ -12,7 +12,42 @@
 
 ## Resumen actual
 
-**Fase 0a + 0b cerradas. Fase 1 EN CURSO — capa transversal completa + proxy.ts en producción (2026-05-10).** Monorepo pnpm + Next.js **16.2.6** + React 19.2.4 + Tailwind v4 + shadcn/ui (`radix-nova`). Local + Vercel productivo en HTTP 200 con TODOS los headers de seguridad (CSP, HSTS, X-Frame-Options, etc.) + X-Request-Id por request + CORS estricto en `/api/*`. **Capa cross-cutting deployada (commit `779deae`):** `lib/errors.ts` (RFC 7807 + 8 AppError specialized), `lib/request-id.ts` (AsyncLocalStorage), `lib/logger.ts` (pino + redact PII), `lib/supabase/{browser,server,service}.ts` (3 clientes con privilegios distintos), `proxy.ts` (middleware Next 16 con request-id + Supabase session refresh + security headers + CORS allowlist). Bug crítico Vercel resuelto en ADR-029 (`vercel.json` debe vivir en `apps/web/`, no en repo root). **Próximo bloque de Fase 1:** `packages/db` (Prisma schema + audit fields + RLS policies) + `lib/rate-limit.ts` (Postgres-based, ADR-016) + `/api/health/db`.
+**Fase 0a + 0b cerradas. Fase 1 EN CURSO — capa transversal + datalayer foundation en producción (2026-05-10).** Monorepo pnpm + Next.js **16.2.6** + React 19.2.4 + Tailwind v4 + shadcn/ui (`radix-nova`). Local + Vercel productivo con TODOS los headers de seguridad + X-Request-Id + CORS estricto. **Capa cross-cutting + datalayer deployados (commit `e9d25d8`):** `lib/errors.ts` (RFC 7807 + 8 AppError), `lib/request-id.ts` (AsyncLocalStorage), `lib/logger.ts` (pino + redact PII), `lib/supabase/{browser,server,service}.ts`, `proxy.ts` (Next 16 middleware + session refresh + 7 security headers + CORS), `packages/db/` (Prisma + 5 core models con audit fields), `/api/health/db` (Postgres connectivity OK en producción, 452ms Vercel→Supabase US). Bug Vercel resuelto en ADR-029 (`vercel.json` en `apps/web/`). **Próximo bloque Fase 1:** resto de modelos Prisma (Cart/Order/Coupon/Review/etc.) + RLS policies SQL + audit fields middleware + `lib/rate-limit.ts` + migración inicial (`prisma migrate dev`).
+
+---
+
+## Última sesión — 2026-05-10 (datalayer foundation: packages/db + /api/health/db)
+
+**Origen:** Lucy pidió continuar autónomo + dos reglas nuevas: "marcar acciones que requieren humano" (ya guardada en sesión previa) + "recordar pruebas GUI cuando aplique".
+
+**Hechos:**
+
+1. **`packages/db/`** creado como workspace package `@lucams/db` (commit `e9d25d8`):
+   - `prisma/schema.prisma` con los 5 modelos CORE: `Customer`, `Address`, `Category`, `Product`, `ProductVariant`. Audit fields uniformes por modelo (`createdAt`, `updatedAt`, `createdBy`, `updatedBy`, `deletedAt`, `deletedBy`) per `docs/CONVENTIONS.md`. Foreign-key cascade rules explícitas (Customer.referredBy → SetNull, Address.customer → Cascade, Category.parent → Restrict, Product.category → Restrict, ProductVariant.product → Cascade). Indexes en `(deletedAt)` y columnas de lookup.
+   - `src/index.ts` con `PrismaClient` singleton + global cache (sobrevive HMR de Next sin fugar conexiones).
+   - `postinstall: prisma generate` en package.json — clave para que el client se regenere en Vercel build.
+   - **Bug resuelto:** quité `output` custom del generator. Con un output custom, `apps/web` no resolvía `@prisma/client` por pnpm hoisting. Dejándolo al default, Prisma lo genera en `node_modules/.pnpm/...` y todos los workspaces lo ven.
+   - Aprobé build scripts de `prisma`, `@prisma/client`, `@prisma/engines` en `pnpm-workspace.yaml`.
+
+2. **`apps/web/lib/db.ts`** re-exporta `prisma` + tipos desde `@lucams/db`. `import 'server-only'` enforced — Prisma jamás runtime cliente.
+
+3. **`apps/web/app/api/health/db/route.ts`** — Postgres connectivity probe. Ejecuta `prisma.$queryRaw\`SELECT 1\``, devuelve `{status, check, latencyMs, timestamp}`. On error: log estructurado (`event: 'health.db.fail'`) + RFC 7807 `InternalError` 500 vía `problemResponse`. `force-dynamic` + `runtime: 'nodejs'`.
+
+**Verificaciones:**
+- Local: `/api/health/db` 200 con latencyMs 1800-4400ms (Bogotá→Supabase US).
+- Producción Vercel: 452ms — confirma que postinstall hook ejecutó `prisma generate` en build y que `DATABASE_URL` + `SUPABASE_SECRET_KEY` en Vercel env vars están bien configurados.
+- typecheck + build pasaron en ambos contextos. Build output ahora muestra 5 rutas (`/`, `/_not-found`, `/api/health`, `/api/health/db`, + Proxy middleware).
+
+**Memoria nueva guardada:**
+- `feedback_gui_test_reminder.md` — Cuando un cambio toque UI/UX (storefront, branding, emails, studio canvas), recordar a Lucy probar visualmente en navegador. Backend puro (lib/*, API JSON, infra) no requiere recordatorio. Este turno fue 100% backend → ninguna prueba GUI necesaria.
+
+**Pendiente Fase 1 (siguiente bloque):**
+- Resto de modelos Prisma de `docs/ARCHITECTURE.md`: `Cart`, `CartItem`, `Order`, `OrderItem`, `Coupon`, `Review`, `InventoryLog`, `AdminUser`, `AbandonedCart`, `LoyaltyTxn`, `Referral`, `BlogPost`, `WebhookEvent`, `StockReservation`, `AdminActionLog`.
+- `supabase/migrations/*.sql` para RLS policies (Prisma no las maneja).
+- Audit fields middleware (auto-fill `createdBy`/`updatedBy` desde sesión).
+- `prisma migrate dev` para crear las tablas en Supabase y commitear la migration generada.
+- `lib/rate-limit.ts` Postgres-based (ADR-016).
+- Auth flow básico (`/login`, `/register` con Supabase Auth).
 
 ---
 
