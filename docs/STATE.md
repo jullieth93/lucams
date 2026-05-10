@@ -12,7 +12,49 @@
 
 ## Resumen actual
 
-**Fase 0a + 0b cerradas. Fase 1 EN CURSO — scaffolding inicial completo + DEPLOY VERCEL FUNCIONAL (2026-05-10).** Monorepo pnpm + Next.js **16.2.6** + React 19.2.4 + Tailwind v4 + shadcn/ui (`radix-nova`) + Turbopack default. Tokens Lucams y Fredoka + Inter aplicados. Local: HTTP 200 home + `/api/health`. **Producción Vercel: HTTP 200 home + `/api/health` (commit `62a83ae`)**, 4 rutas (`/`, `/_not-found`, `/api/health`), build 25s, build cache creado. **Makefile orquestador** en `/home/ansible/workspaces/lucams-shop-local/`. **Bug crítico resuelto (ver ADR-027):** `vercel.json` debe vivir en `apps/web/` (Root Directory configurado en Vercel UI), NO en repo root. **Próximo bloque de Fase 1:** Prisma schema + RLS policies + Auth Supabase + patrones cross-cutting (RFC 7807, capa de servicio, idempotency, request ID, logger pino con redact).
+**Fase 0a + 0b cerradas. Fase 1 EN CURSO — capa transversal completa + proxy.ts en producción (2026-05-10).** Monorepo pnpm + Next.js **16.2.6** + React 19.2.4 + Tailwind v4 + shadcn/ui (`radix-nova`). Local + Vercel productivo en HTTP 200 con TODOS los headers de seguridad (CSP, HSTS, X-Frame-Options, etc.) + X-Request-Id por request + CORS estricto en `/api/*`. **Capa cross-cutting deployada (commit `779deae`):** `lib/errors.ts` (RFC 7807 + 8 AppError specialized), `lib/request-id.ts` (AsyncLocalStorage), `lib/logger.ts` (pino + redact PII), `lib/supabase/{browser,server,service}.ts` (3 clientes con privilegios distintos), `proxy.ts` (middleware Next 16 con request-id + Supabase session refresh + security headers + CORS allowlist). Bug crítico Vercel resuelto en ADR-029 (`vercel.json` debe vivir en `apps/web/`, no en repo root). **Próximo bloque de Fase 1:** `packages/db` (Prisma schema + audit fields + RLS policies) + `lib/rate-limit.ts` (Postgres-based, ADR-016) + `/api/health/db`.
+
+---
+
+## Última sesión — 2026-05-10 (capa transversal Fase 1: errors + logger + Supabase + proxy)
+
+**Origen:** después de cerrar el deploy de Vercel, Lucy pidió continuar Fase 1 en autonomía. Implementé en una pasada todas las utilidades transversales que el resto del código va a usar.
+
+**Hechos:**
+
+1. **`lib/errors.ts`** (commit `b09477c`) — RFC 7807 Problem Details. `AppError` base + 8 subclases (`Validation`, `NotFound`, `Unauthorized`, `Forbidden`, `Conflict`, `Unprocessable`, `TooManyRequests`, `InternalError`). `problemResponse()` convierte error → `Response` con `application/problem+json`. Adaptado a Zod v4: usa `z.flattenError()` (la API `error.flatten()` v3 está deprecada).
+
+2. **`lib/request-id.ts`** (commit `b09477c`) — UUID v4 propagado vía `AsyncLocalStorage` (Node API). `withRequestId(id, fn)` envuelve handlers, `getRequestId()` lee desde cualquier código aguas abajo sin pasar el ID explícito.
+
+3. **`lib/logger.ts`** (commit `b09477c`) — `pino` con redact paths cubriendo secretos por patrón (`*Key`, `*Secret`, `*Token`), headers sensibles (`auth`, `cookie`), y PII directa (`email`, `phone`, `password`). JSON crudo en producción (Vercel logs lo parsea), `pino-pretty` en dev.
+
+4. **`lib/supabase/{browser,server,service}.ts`** (commit `039ab76`) — 3 clientes con privilegios distintos:
+   - `browser.ts`: `createBrowserClient` con publishable key → rol Postgres `anon` con RLS.
+   - `server.ts`: `createServerClient` con publishable key + adapter `getAll/setAll` para cookies (Next.js 16 `await cookies()`). Try/catch silencioso en setAll porque Server Components no pueden mutar cookies — proxy.ts maneja refresh.
+   - `service.ts`: secret key → rol `service_role`, bypassa RLS, `import 'server-only'` enforce. Reservado para webhooks, jobs, admin scripts.
+
+5. **`proxy.ts`** (commit `779deae`) — middleware Next 16 (renombrado de `middleware.ts`, edge runtime no soportado). Cuatro responsabilidades en orden:
+   - Generar `X-Request-Id` (UUID v4), exponerlo en response — incluso en 403.
+   - Refrescar sesión Supabase con `getAll/setAll` adapter + `getUser()` trigger.
+   - CORS allowlist para `/api/*`: lucamsshop.co + www + `*.vercel.app` previews + (dev) localhost. Origen no permitido → 403.
+   - Security headers: HSTS (2y), X-Frame-Options DENY, X-Content-Type-Options nosniff, Referrer-Policy strict-origin-when-cross-origin, Permissions-Policy (camera/mic/geo denegados), X-DNS-Prefetch-Control on, Content-Security-Policy completa (Wompi/Cloudflare/Supabase/Venndelo/Anthropic en allowlists; nonces diferidos).
+
+**Verificaciones:**
+- `pnpm --filter web typecheck` ✓ y `build` ✓ en cada commit (4 rutas, 0 warnings, build con `ƒ Proxy (Middleware)` confirmado).
+- Local: `curl -I http://localhost:3000/` muestra 7 headers de seguridad + X-Request-Id. CORS bloquea `Origin: https://evil.com` → 403 con X-Request-Id presente.
+- Producción Vercel: deploys exitosos `b09477c → 039ab76 → 779deae`. Headers de seguridad confirmados con `curl -I https://lucams-shop.vercel.app/`.
+
+**Decisiones técnicas en el camino (sin necesidad de ADR):**
+- Zod v4 (`z.flattenError`) sobre v3 (`err.flatten()`).
+- `pino-pretty` solo en dev vía `transport.target` con guard `isDev`.
+- Errores de dominio (`payment-declined`, `shipping-unavailable`, `webhook-signature-invalid`) diferidos a sus features (no en `lib/errors.ts` genérico).
+- `proxy.ts` matcher excluye `_next/static`, `_next/image`, fonts, imágenes — no necesitan headers/cookies.
+- Bug encontrado al escribir comments JSDoc: `*/` literal (en `app/api/*/route.ts`) cierra el block comment. Corregido reformulando.
+
+**Memoria nueva guardada:**
+- `feedback_flag_human_required.md` — cuando una tarea requiera acción humana (UI dashboards, cuentas, rotación, pagos), prefijar con `**ACCIÓN HUMANA REQUERIDA:**` y separarlo del análisis técnico. Razón: en sesiones previas Lucy se quedó esperando sin saber si yo trabajaba o si ella tenía que hacer algo.
+
+**Pendiente Fase 1:** `packages/db` (Prisma schema + audit fields + RLS policies) → `lib/rate-limit.ts` (Postgres-based, ADR-016) → `/api/health/db` (healthcheck Postgres) → posiblemente auth flow básico.
 
 ---
 
