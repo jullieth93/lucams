@@ -1,19 +1,22 @@
 // Schema Prisma — Lucams_shop
 //
-// Fuente de spec: docs/ARCHITECTURE.md § Modelo de datos + docs/CONVENTIONS.md
-// § DB — soft delete + audit fields + § DB — foreign keys cascade explícito.
+// Fuente de spec: docs/ARCHITECTURE.md § Modelo de datos +
+// docs/CONVENTIONS.md § DB — soft delete + audit fields + § DB —
+// foreign keys cascade explícito + ADR-014 (reserva stock) +
+// ADR-016 (rate-limit Postgres).
 //
 // Convenciones aplicadas:
 //   - id: cuid()
 //   - Precios: Int (centavos COP) — nunca float (mandato CLAUDE.md).
-//   - Audit fields en TODA entidad mutable: createdAt, updatedAt, createdBy,
-//     updatedBy, deletedAt, deletedBy.
+//   - Audit fields en TODA entidad MUTABLE: createdAt, updatedAt,
+//     createdBy, updatedBy, deletedAt, deletedBy.
+//   - Append-only logs (InventoryLog, LoyaltyTxn, AdminActionLog,
+//     WebhookEvent, Referral, StockReservation): solo createdAt.
 //   - Soft delete: filtrar por `deletedAt IS NULL` en repositories.
-//   - onDelete explícito en cada relación (Prisma default es Restrict).
+//   - onDelete explícito en cada relación.
 //
-// Esta primera versión define los 5 modelos del CORE de catálogo/cliente.
-// Los modelos de carrito, órdenes, cupones, reviews, etc. se añadirán en
-// commits siguientes para no comer la sesión en un solo paso.
+// Tablas NO-Prisma (creadas vía supabase/migrations/*.sql):
+//   - rate_limit_buckets, cache_entries (ADR-016): bajo nivel, snake_case.
 
 generator client {
   provider = "prisma-client-js"
@@ -25,21 +28,59 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
+// ──────────────────────── ENUMS ────────────────────────
+
+enum AdminRole {
+  SUPERADMIN
+  MANAGER
+  FULFILLMENT
+}
+
+enum OrderStatus {
+  DRAFT
+  PENDING_PAYMENT
+  PAID
+  FULFILLING
+  SHIPPED
+  DELIVERED
+  CANCELLED
+  REFUNDED
+}
+
+enum PaymentMethod {
+  WOMPI
+  COD
+}
+
+enum CouponType {
+  PERCENT
+  FIXED
+  FREE_SHIPPING
+}
+
+enum WebhookSource {
+  WOMPI
+  VENNDELO
+}
+
 // ──────────────────────── IDENTIDAD ────────────────────────
 
 model Customer {
-  id             String    @id @default(cuid())
-  email          String    @unique
+  id             String       @id @default(cuid())
+  email          String       @unique
   phone          String?
   firstName      String?
   lastName       String?
-  supabaseUserId String    @unique
-  loyaltyPoints  Int       @default(0)
-  referralCode   String    @unique
+  supabaseUserId String       @unique
+  loyaltyPoints  Int          @default(0)
+  referralCode   String       @unique
   referredById   String?
-  referredBy     Customer? @relation("Referrals", fields: [referredById], references: [id], onDelete: SetNull)
-  referrals      Customer[] @relation("Referrals")
+  referredBy     Customer?    @relation("Referrals", fields: [referredById], references: [id], onDelete: SetNull)
+  referrals      Customer[]   @relation("Referrals")
   addresses      Address[]
+  orders         Order[]
+  reviews        Review[]
+  loyaltyTxns    LoyaltyTxn[]
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -52,7 +93,7 @@ model Customer {
 }
 
 model Address {
-  id         String  @id @default(cuid())
+  id         String   @id @default(cuid())
   customerId String
   customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
   name       String
@@ -62,7 +103,7 @@ model Address {
   department String
   zip        String?
   phone      String
-  isDefault  Boolean @default(false)
+  isDefault  Boolean  @default(false)
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -72,6 +113,24 @@ model Address {
   deletedBy String?
 
   @@index([customerId, deletedAt])
+}
+
+model AdminUser {
+  id             String    @id @default(cuid())
+  supabaseUserId String    @unique
+  email          String    @unique
+  role           AdminRole
+  isActive       Boolean   @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  createdBy String?
+  updatedBy String?
+  deletedAt DateTime?
+  deletedBy String?
+
+  @@index([deletedAt])
+  @@index([role, isActive])
 }
 
 // ──────────────────────── CATÁLOGO ────────────────────────
@@ -101,22 +160,23 @@ model Category {
 }
 
 model Product {
-  id                    String   @id @default(cuid())
-  slug                  String   @unique
+  id                    String           @id @default(cuid())
+  slug                  String           @unique
   name                  String
   description           String
   basePrice             Int
   compareAtPrice        Int?
   cost                  Int?
-  sku                   String   @unique
-  isPersonalizable      Boolean  @default(false)
+  sku                   String           @unique
+  isPersonalizable      Boolean          @default(false)
   personalizationSchema Json?
   images                String[]
   categoryId            String
-  category              Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  category              Category         @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   variants              ProductVariant[]
-  isActive              Boolean  @default(true)
-  isFeatured            Boolean  @default(false)
+  reviews               Review[]
+  isActive              Boolean          @default(true)
+  isFeatured            Boolean          @default(false)
   seoTitle              String?
   seoDescription        String?
 
@@ -133,14 +193,18 @@ model Product {
 }
 
 model ProductVariant {
-  id         String  @id @default(cuid())
-  productId  String
-  product    Product @relation(fields: [productId], references: [id], onDelete: Cascade)
-  name       String
-  sku        String  @unique
-  price      Int?
-  stock      Int     @default(0)
-  attributes Json
+  id            String             @id @default(cuid())
+  productId     String
+  product       Product            @relation(fields: [productId], references: [id], onDelete: Cascade)
+  name          String
+  sku           String             @unique
+  price         Int?
+  stock         Int                @default(0)
+  attributes    Json
+  inventoryLogs InventoryLog[]
+  cartItems     CartItem[]
+  orderItems    OrderItem[]
+  reservations  StockReservation[]
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -151,4 +215,262 @@ model ProductVariant {
 
   @@index([productId, deletedAt])
   @@index([stock])
+}
+
+model InventoryLog {
+  id        String         @id @default(cuid())
+  variantId String
+  variant   ProductVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  delta     Int
+  reason    String
+  orderId   String?
+  createdAt DateTime       @default(now())
+  createdBy String?
+
+  @@index([variantId, createdAt])
+}
+
+// ──────────────────────── CARRITO Y ÓRDENES ────────────────────────
+
+model Cart {
+  id         String         @id @default(cuid())
+  customerId String?
+  sessionId  String         @unique
+  currency   String         @default("COP")
+  items      CartItem[]
+  abandoned  AbandonedCart?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  createdBy String?
+  updatedBy String?
+  deletedAt DateTime?
+  deletedBy String?
+
+  @@index([customerId, deletedAt])
+}
+
+model CartItem {
+  id           String         @id @default(cuid())
+  cartId       String
+  cart         Cart           @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  variantId    String
+  variant      ProductVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  qty          Int
+  customDesign Json?
+  unitPrice    Int
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([cartId])
+}
+
+model Order {
+  id                 String        @id @default(cuid())
+  number             String        @unique
+  customerId         String?
+  customer           Customer?     @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  email              String
+  phone              String
+  shippingAddress    Json
+  subtotal           Int
+  discount           Int           @default(0)
+  shipping           Int
+  tax                Int           @default(0)
+  total              Int
+  currency           String        @default("COP")
+  status             OrderStatus   @default(DRAFT)
+  paymentMethod      PaymentMethod
+  wompiTransactionId String?
+  venndeloShipmentId String?
+  trackingUrl        String?
+  couponId           String?
+  coupon             Coupon?       @relation(fields: [couponId], references: [id], onDelete: SetNull)
+  notes              String?
+  items              OrderItem[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  createdBy String?
+  updatedBy String?
+  deletedAt DateTime?
+  deletedBy String?
+
+  @@index([customerId, deletedAt])
+  @@index([status, createdAt])
+  @@index([wompiTransactionId])
+}
+
+model OrderItem {
+  id             String         @id @default(cuid())
+  orderId        String
+  order          Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  variantId      String
+  variant        ProductVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  qty            Int
+  unitPrice      Int
+  customDesign   Json?
+  designAssetUrl String?
+
+  createdAt DateTime @default(now())
+
+  @@index([orderId])
+}
+
+model Coupon {
+  id        String     @id @default(cuid())
+  code      String     @unique
+  type      CouponType
+  value     Int
+  minOrder  Int?
+  maxUses   Int?
+  usedCount Int        @default(0)
+  validFrom DateTime
+  validTo   DateTime
+  isActive  Boolean    @default(true)
+  orders    Order[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  createdBy String?
+  updatedBy String?
+  deletedAt DateTime?
+  deletedBy String?
+
+  @@index([code, isActive, deletedAt])
+  @@index([validFrom, validTo])
+}
+
+// ──────────────────────── RESEÑAS ────────────────────────
+
+model Review {
+  id         String    @id @default(cuid())
+  productId  String
+  product    Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  customerId String?
+  customer   Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  rating     Int
+  comment    String
+  images     String[]
+  isApproved Boolean   @default(false)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  createdBy String?
+  updatedBy String?
+  deletedAt DateTime?
+  deletedBy String?
+
+  @@index([productId, isApproved, deletedAt])
+  @@index([customerId])
+}
+
+// ──────────────────────── MARKETING / LOYALTY ────────────────────────
+
+model AbandonedCart {
+  id                 String    @id @default(cuid())
+  cartId             String    @unique
+  cart               Cart      @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  email              String
+  lastReminderSentAt DateTime?
+  recoveredAt        DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([recoveredAt, lastReminderSentAt])
+}
+
+model LoyaltyTxn {
+  id         String    @id @default(cuid())
+  customerId String?
+  customer   Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  delta      Int
+  reason     String
+  orderId    String?
+  createdAt  DateTime  @default(now())
+
+  @@index([customerId, createdAt])
+}
+
+model Referral {
+  id            String    @id @default(cuid())
+  referrerId    String
+  referredEmail String
+  status        String
+  rewardedAt    DateTime?
+  createdAt     DateTime  @default(now())
+
+  @@index([referrerId, status])
+  @@index([referredEmail])
+}
+
+model BlogPost {
+  id             String    @id @default(cuid())
+  slug           String    @unique
+  title          String
+  content        String
+  coverImage     String?
+  author         String
+  publishedAt    DateTime?
+  isPublished    Boolean   @default(false)
+  seoTitle       String?
+  seoDescription String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  createdBy String?
+  updatedBy String?
+  deletedAt DateTime?
+  deletedBy String?
+
+  @@index([isPublished, publishedAt])
+  @@index([deletedAt])
+}
+
+// ──────────────────────── IDEMPOTENCIA / WEBHOOKS ────────────────────────
+
+model WebhookEvent {
+  id          String        @id @default(cuid())
+  source      WebhookSource
+  externalId  String
+  payload     Json
+  processedAt DateTime?
+  createdAt   DateTime      @default(now())
+
+  @@unique([source, externalId])
+  @@index([processedAt])
+}
+
+// ──────────────────────── RESERVA DE STOCK (ADR-014) ────────────────────────
+
+model StockReservation {
+  id        String         @id @default(cuid())
+  orderId   String
+  variantId String
+  variant   ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  qty       Int
+  expiresAt DateTime
+  createdAt DateTime       @default(now())
+
+  @@index([expiresAt])
+  @@index([orderId])
+}
+
+// ──────────────────────── AUDIT LOG ADMIN ────────────────────────
+
+model AdminActionLog {
+  id         String   @id @default(cuid())
+  actorId    String
+  action     String
+  entityType String
+  entityId   String
+  metadata   Json
+  ip         String?
+  userAgent  String?
+  createdAt  DateTime @default(now())
+
+  @@index([actorId, createdAt])
+  @@index([entityType, entityId])
 }

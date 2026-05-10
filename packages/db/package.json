@@ -11,15 +11,17 @@
   "scripts": {
     "postinstall": "prisma generate",
     "db:generate": "prisma generate",
-    "db:push": "prisma db push",
-    "db:migrate": "prisma migrate dev",
-    "db:studio": "prisma studio",
+    "db:push": "dotenv -e ../../.env.local -- prisma db push",
+    "db:migrate": "dotenv -e ../../.env.local -- prisma migrate dev",
+    "db:migrate:deploy": "prisma migrate deploy",
+    "db:studio": "dotenv -e ../../.env.local -- prisma studio",
     "db:format": "prisma format"
   },
   "dependencies": {
     "@prisma/client": "^6.18.0"
   },
   "devDependencies": {
+    "dotenv-cli": "^11.0.0",
     "prisma": "^6.18.0",
     "typescript": "^5"
   }
