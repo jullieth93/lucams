@@ -603,10 +603,49 @@ Durante el cierre del scaffolding de Fase 1, los deploys de Vercel devolvían HT
 
 ---
 
+## ADR-030 — Auth: URLs separadas para cliente (`/login`) vs admin (`/admin/login`)
+
+**Fecha:** 2026-05-10
+**Estado:** Aceptado.
+
+**Contexto:**
+Al implementar el flujo de autenticación basado en magneticas.cl como referencia funcional, surgió la pregunta: ¿una sola página de login con role-check post-autenticación (estilo magneticas.cl), o URLs completamente separadas para cliente y admin? Tenemos dos tablas distintas en el schema (`Customer` y `AdminUser`) cada una linkeada al mismo `auth.users` de Supabase vía `supabaseUserId`.
+
+**Decisión:**
+URLs **completamente separadas**:
+
+- **Cliente final:** `/login`, `/registro`, `/recuperar-password`. Registro abierto a cualquiera. Tras autenticación se verifica existencia de fila en `Customer`.
+- **Admin/staff:** `/admin/login` (pendiente). **Sin endpoint de registro público** — los admins se crean server-side (Supabase Dashboard o flujo de invitación interno). Tras autenticación se verifica existencia de fila en `AdminUser` con `isActive=true`.
+- `proxy.ts` ya tiene preparado el gating para `/admin/*` — se activará cuando exista la sección admin real.
+
+**Razones:**
+
+1. **Superficie de ataque:** la URL `/admin/login` no es visible desde el sitio público. Atacantes externos no saben que existe (security through obscurity es defensa en profundidad, no la única).
+2. **UX clara:** el equipo de fulfillment no se confunde con la página de clientes. Cada audiencia tiene su flujo.
+3. **Branding distinto:** la página admin puede ser más sobria (utilitaria, eficiente) mientras que la de cliente es kawaii (Fredoka, paleta brand). No tienen por qué compartir layout.
+4. **Authorization granular:** RBAC por roles (`SUPERADMIN`/`MANAGER`/`FULFILLMENT`) se aplica solo en el contexto admin sin contaminar el flujo cliente.
+5. **No-registro admin** es más seguro: cero riesgo de que alguien externo se cree cuenta "admin" por error. El primer admin se siembra con un INSERT directo o un script controlado.
+
+**Alternativa descartada (login único + role-check):**
+- Ventaja: una sola página, menos código.
+- Desventaja: revela que existe interfaz admin a cualquier visitante. Requiere lógica condicional de redirect post-auth. Mezcla branding. Endpoint de registro tendría que rechazar admins (qué pasa si un admin existing se "registra"?). Demasiado complejidad para un beneficio pequeño.
+
+**Consecuencias:**
+- Hay duplicación de código entre `/login` cliente y `/admin/login` (forms, server actions). Aceptable: las diferencias (qué tabla se consulta, qué destino post-login) justifican la separación. Se puede extraer un componente compartido `<AuthCard>` si se vuelve pesado.
+- El header dinámico debe saber distinguir si el usuario actual es cliente (mostrar "Mi cuenta") o admin (mostrar "Panel admin" + link a `/admin/dashboard`).
+- `lib/auth.ts` expone helpers separados: `getCurrentCustomer()` y `getCurrentAdmin()`.
+
+**Referencias:**
+- docs/SECURITY.md § Auth + RBAC.
+- docs/ARCHITECTURE.md § Identidad (tablas Customer + AdminUser).
+- `proxy.ts` (auth gate `/admin/*` documentado como pendiente).
+
+---
+
 > Próximas decisiones a documentar cuando se tomen:
 > - ADR-022: alternativa de monitoreo de errores elegida (en Fase 7).
 > - ADR-023: criterio de migración Postgres rate-limit → Redis externo.
 > - ADR-025: proveedor de facturación electrónica DIAN (Alegra / Siigo / Facture / otro), antes de Fase 7.
 > - ADR-027: necesidad de staging environment (re-evaluar post-lanzamiento; Vercel previews pueden cubrir el rol).
 > - ADR-028: criterio de migración Postgres `FeatureFlag` → GrowthBook u otro (cuando ocurra).
-> - ADR-030: distributed tracing / OpenTelemetry strategy (post-lanzamiento si volumen lo justifica).
+> - ADR-031: distributed tracing / OpenTelemetry strategy (post-lanzamiento si volumen lo justifica).

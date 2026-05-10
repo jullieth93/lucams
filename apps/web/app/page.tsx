@@ -9,11 +9,16 @@
  *  - Tokens Lucams (brand-purple, brand-turquoise, brand-pink, brand-yellow)
  *    están disponibles como utilidades Tailwind v4.
  *  - Identidad de marca kawaii visible desde el primer commit.
+ *  - SiteHeader dinámico — muestra login/registro o nombre+logout según sesión.
  */
+
+import { SiteHeader } from "@/components/site-header";
 
 export default function Home() {
   return (
-    <main className="flex flex-1 items-center justify-center bg-brand-cream px-6 py-16">
+    <div className="flex min-h-screen flex-col">
+      <SiteHeader />
+      <main className="flex flex-1 items-center justify-center bg-brand-cream px-6 py-16">
       <div className="max-w-2xl text-center">
         <span
           aria-hidden="true"
@@ -61,6 +66,7 @@ export default function Home() {
           .
         </p>
       </div>
-    </main>
+      </main>
+    </div>
   );
 }

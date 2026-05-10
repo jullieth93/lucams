@@ -15,7 +15,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { loginAction, type LoginActionState } from "./actions";
 
-export function LoginForm() {
+export function LoginForm({
+  initialError,
+  initialSuccess,
+}: {
+  initialError?: string;
+  initialSuccess?: string;
+}) {
   const [state, formAction, pending] = useActionState<
     LoginActionState | null,
     FormData
@@ -31,6 +37,29 @@ export function LoginForm() {
           Entra a tu cuenta para seguir personalizando tus imanes.
         </CardDescription>
       </CardHeader>
+
+      {initialSuccess && !state && (
+        <div className="mx-6 mb-2">
+          <div
+            role="status"
+            className="rounded-md bg-success/10 px-3 py-2 text-sm border border-success/20"
+            style={{ color: "var(--success)" }}
+          >
+            {initialSuccess}
+          </div>
+        </div>
+      )}
+
+      {initialError && !state && (
+        <div className="mx-6 mb-2">
+          <div
+            role="alert"
+            className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive"
+          >
+            {initialError}
+          </div>
+        </div>
+      )}
 
       <form action={formAction}>
         <CardContent className="space-y-4">
