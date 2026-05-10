@@ -12,7 +12,55 @@
 
 ## Resumen actual
 
-**Fase 0a + 0b cerradas. Fase 1 EN CURSO — backend completo + Auth flow básico en producción (2026-05-10).** Monorepo pnpm + Next.js **16.2.6** + React 19.2.4 + Tailwind v4 + shadcn/ui (`radix-nova`). **Auth flow desplegado (commit `ca1d73e`):** `/login`, `/registro`, `/recuperar-password` con identidad Lucams (gradiente brand-cream→purple, Fredoka headings, paleta kawaii, NO el blanco minimalista de magneticas.cl). Server actions con Zod v4 + rate-limit Postgres + Supabase Auth + creación de Customer vía Prisma + saga rollback en error. shadcn components base instalados (button/input/label/card, style `radix-nova`). 7 rutas en producción Vercel (HTTP 200 todas). Backend stack completo: capa transversal (`errors`/`request-id`/`logger`), 3 clientes Supabase, `proxy.ts` con session refresh + 7 headers + CORS, `packages/db/` con 20 modelos + RLS, rate-limit Postgres (ADR-016). **ACCIONES HUMANAS PENDIENTES para que Auth funcione end-to-end:** configurar Site URL + Redirect URLs en Supabase Auth Dashboard. **Prueba GUI pendiente** del flujo completo (visual + interacción + responsive). **Próximo bloque Fase 1:** audit middleware (Prisma `$extends`) + página de reset-password callback + logout + lib/auth helpers + email templates Resend (Fase 1 finaliza con storefront mínimo en Fase 2).
+**Fase 0a + 0b cerradas. Fase 1 EN CURSO — flujo cliente AUTH COMPLETO en producción (2026-05-10).** Monorepo pnpm + Next.js **16.2.6** + React 19.2.4 + Tailwind v4 + shadcn/ui (`radix-nova`). **10 rutas en Vercel (HTTP 200 todas):** `/`, `/login`, `/registro`, `/recuperar-password`, `/restablecer-password` (protected), `/mi-cuenta` (protected), `/auth/callback`, `/auth/logout`, `/api/health`, `/api/health/db`. **Flujo cliente end-to-end deployado (commit `5bdd81d`):** signup → email confirmation → login → mi-cuenta → logout + recovery password completo. `lib/auth.ts` con `getCurrentUser`/`getCurrentCustomer`. SiteHeader dinámico (logged-in vs out). Identidad Lucams real (Fredoka, paleta kawaii, mascota emoji, NO blanco magneticas). **ADR-030 documenta arquitectura URLs separadas cliente vs admin** (admin pendiente). Backend stack completo: capa transversal + 3 clientes Supabase + `proxy.ts` (session refresh + 7 security headers + CORS) + `packages/db/` (20 modelos + RLS) + rate-limit Postgres (ADR-016). **ACCIONES HUMANAS PENDIENTES** para que Auth funcione end-to-end: configurar Site URL + Redirect URLs en Supabase Auth Dashboard. **PRUEBA GUI** del flujo completo (signup real → email → confirmar → login → mi-cuenta → logout). **Próximo bloque Fase 1:** flujo admin (`/admin/login` + `/admin/dashboard` + gate proxy + seed primer admin) + email templates customizados Resend SMTP + customer profile editing + right-to-deletion (Ley 1581).
+
+---
+
+## Última sesión — 2026-05-10 (flujo cliente AUTH COMPLETO — callback, reset, logout, mi-cuenta, header)
+
+**Origen:** Lucy aprobó visualmente el batch anterior y preguntó "¿este login es para admins o cómo va a funcionar?". Eso disparó decisión arquitectónica formalizada en **ADR-030: URLs separadas para cliente (`/login`) vs admin (`/admin/login`)**. Confirmó vía AskUserQuestion: (a) completar primero flujo cliente, (b) URLs separadas. Procedí en autónomo a cerrar el flujo cliente completo.
+
+**Hechos (commit `5bdd81d`):**
+
+1. **`lib/auth.ts`** — helpers server-side:
+   - `getCurrentUser()`: `supabase.auth.getUser()` (no `getSession()` para authz — Supabase docs explicit).
+   - `getCurrentCustomer()`: join con tabla `Customer` vía Prisma `findFirst` (no `findUnique` porque combina `supabaseUserId` + `deletedAt: null`). Devuelve null si no hay sesión o no hay Customer row o soft-deleted.
+
+2. **`/auth/callback`** route handler — URL a la que apuntan los emails de Supabase (signup confirmation, password recovery). Lee `?code`, llama `exchangeCodeForSession` (escribe cookies vía el adapter), redirige según `?type`: `recovery` → `/restablecer-password`, otro → `/`. Errors → `/login?error=link-invalido|link-expirado`.
+
+3. **`/restablecer-password`** — página protegida (redirect si no hay sesión temporal del recovery flow). Form con un único password field (min 8). Action: `supabase.auth.updateUser({password})` + `signOut()` para forzar re-login limpio. Redirect `/login?reset=ok` con banner success.
+
+4. **`/auth/logout`** — server action que llama `signOut()` y redirige a `/`. Usable desde cualquier `<form action={logoutAction}>`. Logs `auth.logout.success`.
+
+5. **`/mi-cuenta`** — página protegida (redirect a `/login?next=/mi-cuenta` si no hay sesión Customer). Muestra perfil: nombre, email, teléfono, puntos Lucams, código de referido. Lista secciones pendientes (órdenes, direcciones, etc.). Botón "Cerrar sesión" en header propio.
+
+6. **`SiteHeader` (`components/site-header.tsx`)** — Server Component async. Logged-out: links a `/login` + button primary a `/registro`. Logged-in: "Hola, {firstName}" + botón logout. Integrado en `/` (home).
+
+7. **`/login` page** — reescrita como async para leer `searchParams` (Next 16 async). Mapea `?error=link-invalido|link-expirado` y `?reset=ok` a banners (rojo / verde) que se muestran arriba del form. `LoginForm` acepta `initialError`/`initialSuccess` props.
+
+**Verificaciones:**
+- typecheck + build ✓ — 10 rutas (`/`, `/_not-found`, `/api/health`, `/api/health/db`, `/auth/callback`, `/login`, `/mi-cuenta`, `/recuperar-password`, `/registro`, `/restablecer-password`) + Proxy middleware.
+- Local: rutas públicas 200, protected → 307 con redirect correcto.
+- Producción Vercel: mismas verificaciones, todo OK.
+
+**ADR-030 — Separación URLs cliente vs admin (`docs/DECISIONS.md`):**
+- Decisión: URLs separadas (no login único con role-check).
+- Razones: superficie de ataque, UX clara, branding distinto, authorization granular, no risk de admin self-registration.
+- Trade-off: pequeña duplicación de código aceptable; se puede extraer `<AuthCard>` compartido si crece.
+
+**ACCIONES HUMANAS pendientes para que Auth funcione real:**
+1. **Supabase Dashboard → Authentication → URL Configuration:**
+   - Site URL: `https://lucams-shop.vercel.app`
+   - Additional Redirect URLs: `https://lucams-shop.vercel.app/**`, `http://localhost:3000/**`
+2. **Prueba GUI end-to-end** del flujo completo (signup real + email confirm + login + mi-cuenta + logout + forgot + reset).
+3. (Opcional) Customizar Email Templates en Supabase Dashboard, o migrar a Resend SMTP en próxima fase.
+
+**Próximos bloques Fase 1:**
+- **Admin flow** — `/admin/login` (sin registro público) + `/admin/dashboard` + gate `proxy.ts` para `/admin/*` + seed primer AdminUser via Supabase + Prisma manual. **Sin GUI shadcn kawaii — usar layout más sobrio/utilitario para admin** per ADR-030.
+- Email template customization Resend SMTP.
+- Customer profile editing (cambiar nombre, teléfono, contraseña).
+- Right to deletion Ley 1581 art. 8 (soft delete Customer + `supabaseService.auth.admin.deleteUser`).
+- Audit middleware Prisma `$extends` para auto-fill `createdBy`/`updatedBy`.
 
 ---
 
