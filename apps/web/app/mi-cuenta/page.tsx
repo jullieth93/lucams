@@ -14,9 +14,9 @@
  */
 
 import type { Metadata } from "next";
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { logoutAction } from "@/app/auth/logout/actions";
+import { BrandMark } from "@/components/brand-mark";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -44,18 +44,7 @@ export default async function MiCuentaPage() {
     <div className="min-h-screen bg-brand-cream">
       <header className="px-6 py-6 sm:px-10 border-b border-brand-purple/10 bg-white">
         <div className="max-w-4xl mx-auto flex items-center justify-between">
-          <Link
-            href="/"
-            className="inline-flex items-baseline gap-2 group"
-            aria-label="Inicio Lucams_shop"
-          >
-            <span className="font-display text-2xl font-bold tracking-tight text-brand-purple-dark group-hover:text-brand-purple transition-colors">
-              Lucams
-            </span>
-            <span className="font-display text-lg text-brand-pink group-hover:text-brand-coral transition-colors">
-              shop
-            </span>
-          </Link>
+          <BrandMark size="sm" animated />
           <form action={logoutAction}>
             <Button
               type="submit"
