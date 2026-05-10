@@ -54,7 +54,8 @@ export async function loginAction(
 
   const hdrs = await headers();
   const ip = hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
-  const rl = await rateLimit(`login:${ip}`, 5, 15 * 60);
+  const isProd = process.env.VERCEL_ENV === "production";
+  const rl = await rateLimit(`login:${ip}`, isProd ? 5 : 50, 15 * 60);
   if (!rl.allowed) {
     logger.warn({ event: "auth.login.rate_limited", ip, count: rl.count });
     return {
