@@ -12,7 +12,53 @@
 
 ## Resumen actual
 
-**Fase 0a + 0b cerradas. Fase 1 EN CURSO — capa transversal + datalayer foundation en producción (2026-05-10).** Monorepo pnpm + Next.js **16.2.6** + React 19.2.4 + Tailwind v4 + shadcn/ui (`radix-nova`). Local + Vercel productivo con TODOS los headers de seguridad + X-Request-Id + CORS estricto. **Capa cross-cutting + datalayer deployados (commit `e9d25d8`):** `lib/errors.ts` (RFC 7807 + 8 AppError), `lib/request-id.ts` (AsyncLocalStorage), `lib/logger.ts` (pino + redact PII), `lib/supabase/{browser,server,service}.ts`, `proxy.ts` (Next 16 middleware + session refresh + 7 security headers + CORS), `packages/db/` (Prisma + 5 core models con audit fields), `/api/health/db` (Postgres connectivity OK en producción, 452ms Vercel→Supabase US). Bug Vercel resuelto en ADR-029 (`vercel.json` en `apps/web/`). **Próximo bloque Fase 1:** resto de modelos Prisma (Cart/Order/Coupon/Review/etc.) + RLS policies SQL + audit fields middleware + `lib/rate-limit.ts` + migración inicial (`prisma migrate dev`).
+**Fase 0a + 0b cerradas. Fase 1 EN CURSO — infraestructura backend COMPLETA en producción (2026-05-10).** Monorepo pnpm + Next.js **16.2.6** + React 19.2.4 + Tailwind v4 + shadcn/ui (`radix-nova`). Local + Vercel productivo con TODOS los headers de seguridad + X-Request-Id + CORS estricto. **Backend Fase 1 desplegado (commit `002eff1`):** capa transversal (`lib/errors.ts` RFC 7807 + 8 AppError, `lib/request-id.ts` AsyncLocalStorage, `lib/logger.ts` pino+redact), 3 clientes Supabase (`browser`/`server`/`service`), `proxy.ts` con session refresh + 7 headers + CORS, **`packages/db/` con 20 modelos Prisma + audit fields + migración inicial aplicada a Supabase**, **RLS habilitada en TODAS las tablas con policies de catálogo público + customer-owned + deny-by-default para tablas internas**, **rate-limit Postgres** (ADR-016: tabla `rate_limit_buckets` + función SQL `rate_limit_check` + `lib/rate-limit.ts`, verificado con smoke test: 3 allowed → 4th blocked). `/api/health/db` 338ms en producción Vercel→Supabase US. ADR-029 documenta el fix de Vercel monorepo. **Próximo bloque Fase 1:** audit fields middleware (Prisma `$extends` para auto-fill createdBy/updatedBy desde sesión) + Auth flow (login/register con shadcn UI + Supabase Auth + server actions). Auth flow es el primer bloque con UI visible → requiere prueba GUI.
+
+---
+
+## Última sesión — 2026-05-10 (datalayer completo: 20 modelos + migración + RLS + rate-limit)
+
+**Origen:** Lucy autorizó "procede con todo" tras el cierre del datalayer foundation. Ejecuté schema completo + migración + RLS + rate-limit en una pasada autónoma.
+
+**Hechos:**
+
+1. **Schema expansion** (commit `e572ebf`) — `packages/db/prisma/schema.prisma` extendido de 5 a **20 modelos** + 5 enums (AdminRole, OrderStatus, PaymentMethod, CouponType, WebhookSource). Modelos añadidos: AdminUser, InventoryLog, Cart, CartItem, Order, OrderItem, Coupon, Review, AbandonedCart, LoyaltyTxn, Referral, BlogPost, WebhookEvent, StockReservation, AdminActionLog. Audit fields uniformes en mutables; append-only logs solo con createdAt. Foreign-key cascade rules explícitas por modelo per `docs/CONVENTIONS.md` (Cascade/SetNull/Restrict según semántica). Indexes en `(deletedAt)` + columnas de lookup.
+
+2. **dotenv-cli** (commit `e572ebf`) — añadido como devDep en `packages/db/`. Scripts `db:migrate`/`db:push`/`db:studio` envueltos con `dotenv -e ../../.env.local --` porque Prisma solo lee `.env` por defecto. `postinstall: prisma generate` sigue sin envolverlo porque no necesita DB.
+
+3. **Migración inicial aplicada** (commit `e572ebf`) — `pnpm --filter @lucams/db db:migrate --name init` ejecutó contra Supabase (aws-1-us-east-2.pooler.supabase.com, schema `public`). Migración guardada en `packages/db/prisma/migrations/20260510203116_init/`. Las 20 tablas existen ahora en la DB de producción.
+
+4. **RLS policies** (commit `e572ebf`) — `supabase/migrations/00000000000002_rls_policies.sql` aplicado via `prisma db execute --file ...`:
+   - `ENABLE ROW LEVEL SECURITY` en las 20 tablas Prisma.
+   - **Catálogo público:** Category/Product/ProductVariant/Review (approved)/BlogPost (published) → SELECT abierto a `anon`+`authenticated` con filtros de visibilidad (`isActive`/`isApproved`/`isPublished`+`deletedAt IS NULL`).
+   - **Customer-owned (via `auth.uid()::text = Customer.supabaseUserId`):** Customer (SELECT/UPDATE), Address (ALL), Cart+CartItem (ALL para carros con customer; anon carts vía service_role), Order+OrderItem (SELECT), LoyaltyTxn (SELECT), Review (INSERT propio → moderación).
+   - **Deny-by-default (RLS sin policies):** AdminUser, InventoryLog, Coupon, AbandonedCart, Referral, WebhookEvent, StockReservation, AdminActionLog. Solo `service_role` los toca (bypasea RLS).
+   - SQL idempotente: cada CREATE POLICY precedido por DROP POLICY IF EXISTS.
+
+5. **Rate limit Postgres** (commit `002eff1`, ADR-016):
+   - `supabase/migrations/00000000000003_rate_limit.sql`: tabla `rate_limit_buckets` (snake_case, no-Prisma) + función SQL `rate_limit_check(key, limit, window_seconds)` con `INSERT...ON CONFLICT` atómico que increment + reset por ventana. RLS habilitada deny-by-default; solo service_role accede.
+   - `apps/web/lib/rate-limit.ts`: wrapper `rateLimit(key, limit, windowSeconds)` via `prisma.$queryRaw`. `import 'server-only'`. Fail-open si la función no devuelve filas (defensa).
+   - **Smoke test end-to-end verificado:** 3 calls con limit=3 → `allowed: true` (count 1/2/3); 4ta call → `allowed: false` (count 4); reset_at consistente; cleanup OK.
+
+**Verificación final producción Vercel:**
+- home → 200
+- `/api/health` → version `002eff1d...` (último commit)
+- `/api/health/db` → 338ms latencyMs (mejoró desde 452ms — Prisma client warm cache)
+- Schema migrado, RLS activo, rate-limit funcional, todos los endpoints verificados.
+
+**Decisiones técnicas tomadas en el camino:**
+- Audit fields solo en mutables (skip en append-only logs como InventoryLog/LoyaltyTxn/etc.).
+- Carts anónimos NO via RLS — pasan por service_role en server-side. Más simple y seguro.
+- Rate-limit fail-open por defecto si SQL devuelve no-rows (mejor permitir que bloquear sin razón).
+- Cleanup automático de buckets via pg_cron diferido hasta que pg_cron esté activado en Supabase.
+
+**Bloque GUI evitado intencionalmente:** Auth flow (login/register) requiere componentes shadcn + pruebas visuales en navegador. Lo dejé para próximo turno cuando Lucy pueda validarlo. Este turno fue 100% backend → ninguna prueba GUI necesaria.
+
+**Pendiente Fase 1 (próximos bloques):**
+- **Audit fields middleware** — Prisma `$extends` que auto-llena `createdBy`/`updatedBy` desde la sesión Supabase actual (lee del cookie store del request).
+- **Auth flow** (NEEDS GUI) — `/login` + `/register` con shadcn UI + Supabase Auth + server actions. Incluye rate-limit en endpoints de auth.
+- **Webhook handler genérico** con idempotencia via tabla `WebhookEvent` (cuando se conecten Wompi/Venndelo en Fase 4/5).
+- **pg_cron jobs** (cuando se active la extensión): cleanup rate_limit_buckets + cart-recovery emails + stock reservation expiry.
 
 ---
 
