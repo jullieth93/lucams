@@ -116,11 +116,9 @@ export async function signupAction(
       status: authError.status,
       message: authError.message,
     });
-    const debugSuffix = ` [${authError.code ?? authError.status ?? "unknown"}]`;
     return {
       error:
-        "No pudimos crear tu cuenta. Si ya tienes una, intenta iniciar sesión." +
-        debugSuffix,
+        "No pudimos crear tu cuenta. Si ya tienes una, intenta iniciar sesión.",
     };
   }
 
