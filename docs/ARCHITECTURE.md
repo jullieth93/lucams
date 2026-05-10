@@ -83,8 +83,8 @@ lucams_shop/
 │       ├── lib/
 │       │   ├── supabase/
 │       │   │   ├── server.ts             # Cliente con cookies (SSR)
-│       │   │   ├── browser.ts            # Cliente con anon key
-│       │   │   └── service.ts            # Cliente service_role (admin only)
+│       │   │   ├── browser.ts            # Cliente con publishable key (rol Postgres `anon`)
+│       │   │   └── service.ts            # Cliente con secret key (rol Postgres `service_role`, admin only)
 │       │   ├── payment/
 │       │   │   ├── types.ts              # Interface PaymentProvider
 │       │   │   ├── wompi.ts              # WompiProvider
@@ -652,7 +652,7 @@ export async function POST() {
 
 ## Row-Level Security (Supabase)
 
-Cuando una tabla se accede con la `anon_key` (cliente browser), debe tener RLS habilitada.
+Cuando una tabla se accede desde el cliente browser (con la **publishable key** `sb_publishable_*`, que mapea al rol Postgres `anon`), debe tener RLS habilitada.
 
 | Tabla | Política |
 |---|---|
@@ -663,11 +663,11 @@ Cuando una tabla se accede con la `anon_key` (cliente browser), debe tener RLS h
 | `OrderItem` | Hereda permisos de `Order`. |
 | `Review` | Lectura pública si `is_approved = true`. Escritura solo del autor. |
 | `Product`, `Category`, `BlogPost` | Lectura pública si `is_active`/`is_published`. Escritura solo admin. |
-| `Coupon`, `InventoryLog`, `StockReservation`, `WebhookEvent`, `AdminUser`, `AdminActionLog` | Sin acceso desde anon — solo `service_role` (server-side). |
-| `rate_limit_buckets`, `cache_entries` | Sin acceso desde anon — solo `service_role`. |
-| `pgmq.*` | Acceso solo vía `service_role`; los consumers viven en Edge Functions o API routes server-side. |
+| `Coupon`, `InventoryLog`, `StockReservation`, `WebhookEvent`, `AdminUser`, `AdminActionLog` | Sin acceso desde el rol `anon` (publishable key) — solo `service_role` (secret key, server-side). |
+| `rate_limit_buckets`, `cache_entries` | Sin acceso desde `anon` — solo `service_role`. |
+| `pgmq.*` | Acceso solo vía `service_role` (secret key); los consumers viven en Edge Functions o API routes server-side. |
 
-Las rutas `/api/*` que necesiten escribir tablas restringidas usan `lib/supabase/service.ts` (service_role key, server-only).
+Las rutas `/api/*` que necesiten escribir tablas restringidas usan `lib/supabase/service.ts` (secret key `sb_secret_*` que mapea al rol `service_role`, server-only).
 
 ## Abstracción `PaymentProvider`
 

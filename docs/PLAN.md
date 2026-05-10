@@ -209,7 +209,7 @@ WebhookEvent (source: WOMPI|VENNDELO, externalId UNIQUE)
 **Reglas:**
 - Precios en **enteros (centavos COP)**.
 - Row-Level Security en Supabase para `Customer`, `Cart`, `Order`, `Address`, `Review`.
-- Admin pasa por server-only routes con `service_role` key.
+- Admin pasa por server-only routes con la **secret key** (`sb_secret_*`, mapea al rol Postgres `service_role`).
 - `WebhookEvent.@@unique` garantiza idempotencia ante reintentos.
 - **Reserva de stock al `PENDING_PAYMENT` con TTL 15 min** (ADR-014); descuento real al `PAID`.
 - **Background jobs en `pgmq` + `pg_cron`** (ADR-017), no Vercel Cron.
@@ -241,7 +241,7 @@ WebhookEvent (source: WOMPI|VENNDELO, externalId UNIQUE)
 - Política de privacidad y Términos acorde a Ley 1581 (datos) y Ley 1480 (consumidor).
 - Backup automático (Supabase Pro al lanzar) + export semanal a Cloudflare R2.
 - Roles admin con `AdminUser.role` y middleware en `/admin/*`.
-- **RLS por defecto** en toda tabla con acceso `anon_key`. Mandato #12.
+- **RLS por defecto** en toda tabla accesible desde el cliente público (publishable key, rol Postgres `anon`). Mandato #12.
 - **Headers de seguridad** (CSP, X-Frame-Options, Referrer-Policy, Permissions-Policy) configurados desde Fase 1.
 - **Validación de input centralizada** con Zod en `lib/validation/`.
 - **Audit log** (`AdminActionLog`) para acciones administrativas (cambio manual de orden, ajuste manual de inventario, aprobación de reseña).

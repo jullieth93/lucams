@@ -53,7 +53,7 @@ lucams_shop/
 # 1. Levantar Supabase local (Postgres + Auth + Storage + Realtime + Edge Functions, todo en Docker)
 #    Esto evita depender de Supabase Free (que se pausa) y da paridad con producción.
 supabase start
-# Salida: anon key, service_role key, DB URL → copiar a .env.local
+# Salida: publishable key, secret key, DB URL → copiar a .env.local
 
 # 2. Levantar Next.js en modo dev (símil a Vercel)
 pnpm --filter web dev
@@ -132,8 +132,8 @@ NEXT_PUBLIC_WA_NUMBER=573150718723                # WhatsApp temporal del usuari
 
 # ─── Supabase ───
 NEXT_PUBLIC_SUPABASE_URL=https://xxxxx.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJxxxxx
-SUPABASE_SERVICE_ROLE_KEY=eyJxxxxx                # Server-only, NUNCA al cliente
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=eyJxxxxx
+SUPABASE_SECRET_KEY=eyJxxxxx                # Server-only, NUNCA al cliente
 DATABASE_URL=postgresql://postgres:[pwd]@xxx.pooler.supabase.com:6543/postgres?pgbouncer=true
 DIRECT_DATABASE_URL=postgresql://postgres:[pwd]@xxx.supabase.com:5432/postgres
 
@@ -183,7 +183,7 @@ NEXT_TELEMETRY_DISABLED=1                          # Anonymous telemetry de Next
 ### Convenciones
 
 - **Vars con `NEXT_PUBLIC_`** son accesibles desde el navegador. **No poner secretos** ahí.
-- **`SUPABASE_SERVICE_ROLE_KEY`** y **`*_PRIVATE_KEY`** son server-only.
+- **`SUPABASE_SECRET_KEY`** y **`*_PRIVATE_KEY`** son server-only.
 - En desarrollo: archivo `.env.local` (gitignored).
 - En Vercel: configurar por entorno (Production / Preview / Development) en el dashboard.
 - **Nunca commitear** valores reales. Mantener un `.env.example` con valores ficticios como referencia.
@@ -193,7 +193,7 @@ NEXT_TELEMETRY_DISABLED=1                          # Anonymous telemetry de Next
 | Secreto | Frecuencia | Después de |
 |---|---|---|
 | Wompi production keys | Anual | Compromiso sospechoso |
-| Supabase service_role | Anual | Compromiso sospechoso |
+| Supabase secret key | Anual o ad-hoc | Compromiso sospechoso. Las nuevas secret keys (`sb_secret_*`) son revocables/rotables sin downtime — múltiples activas a la vez |
 | Resend API key | Anual | Compromiso sospechoso |
 | Anthropic API key | 6 meses | Cambio de equipo |
 | Venndelo API key | Anual | Compromiso sospechoso |

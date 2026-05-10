@@ -36,7 +36,7 @@
 | Atacante sin cuenta | SQL injection, XSS, CSRF | Prisma + React + SameSite cookies + CSP |
 | Insider (empleado) | Abuso del admin | RBAC + audit log + 2FA |
 | Suplantador | Webhook falso de Wompi/Venndelo | HMAC verification + idempotencia |
-| Compromiso de secreto | Llave service_role expuesta | Rotación + nunca al cliente + .gitignored |
+| Compromiso de secreto | Secret key (`sb_secret_*`) expuesta | Rotación inmediata (Supabase permite múltiples secret keys, revocar la comprometida sin downtime) + nunca al cliente + .gitignored |
 | Subida maliciosa | Archivo con malware en storage | Allowlist MIME + tamaño máximo + nombre aleatorio + render server |
 | Pago fraudulento | Stolen card en checkout | Wompi 3DS + Turnstile + límites Wompi |
 
@@ -99,7 +99,7 @@
 
 ### Row-Level Security (Supabase / Postgres RLS)
 
-> **Mandato #12:** toda tabla con acceso vía `anon_key` debe tener RLS habilitada. Sin excepciones.
+> **Mandato #12:** toda tabla accesible desde el cliente público (vía publishable key, que mapea al rol Postgres `anon`) debe tener RLS habilitada. Sin excepciones.
 
 Políticas detalladas en [`ARCHITECTURE.md` § Row-Level Security](./ARCHITECTURE.md#row-level-security-supabase). Patrones:
 
@@ -132,14 +132,14 @@ import { createClient } from '@supabase/supabase-js';
 
 describe('RLS', () => {
   it('customer A cannot see customer B orders', async () => {
-    const sbA = createClient(URL, ANON_KEY, { auth: { ... session A ... } });
+    const sbA = createClient(URL, PUBLISHABLE_KEY, { auth: { ... session A ... } });
     const { data, error } = await sbA.from('Order').select('*').eq('customerId', 'CUSTOMER_B');
     expect(data).toEqual([]);
     expect(error).toBeNull(); // RLS no devuelve error, devuelve vacío
   });
 
   it('non-admin cannot read AdminActionLog', async () => {
-    const sbCustomer = createClient(URL, ANON_KEY, { auth: { ... customer session ... } });
+    const sbCustomer = createClient(URL, PUBLISHABLE_KEY, { auth: { ... customer session ... } });
     const { data } = await sbCustomer.from('AdminActionLog').select('*');
     expect(data).toEqual([]);
   });
@@ -152,9 +152,9 @@ describe('RLS', () => {
 
 ### Reglas de oro
 
-1. **Las API keys nunca viven en el front-end.** Las únicas vars expuestas al navegador son las que empiezan con `NEXT_PUBLIC_*` y deben ser **diseñadas para ser públicas** (anon key de Supabase, public key de Wompi, site key de Turnstile).
+1. **Las API keys nunca viven en el front-end.** Las únicas vars expuestas al navegador son las que empiezan con `NEXT_PUBLIC_*` y deben ser **diseñadas para ser públicas** (publishable key de Supabase, public key de Wompi, site key de Turnstile).
 2. **Las llaves "públicas" se protegen con reglas de dominio:**
-   - **Supabase anon key:** sus permisos están limitados por RLS; aunque sea visible, sin RLS rota no puede leer datos privados.
+   - **Supabase publishable key (`sb_publishable_*`):** mapea al rol Postgres `anon`; sus permisos están limitados por RLS. Aunque sea visible, sin RLS rota no puede leer datos privados. Reemplaza la legacy `anon` JWT key (deprecada para proyectos creados después del 2025-11-01).
    - **Wompi public key:** Wompi valida que las transacciones se generen desde dominios autorizados en su panel. Configurar `lucamsshop.co` y `*.vercel.app` en Wompi.
    - **Turnstile site key:** Cloudflare valida site key contra dominio. Configurar dominios permitidos en panel.
    - **Anthropic API key:** **NUNCA es pública.** Solo server-side. Llamar a `/api/ai/*` desde el cliente, nunca el cliente al endpoint de Anthropic directo.
@@ -166,9 +166,9 @@ describe('RLS', () => {
 
 | Variable | Tipo | Visible en cliente | Doc oficial protección |
 |---|---|---|---|
-| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Pública (RLS-protected) | Sí | RLS + JWT firmado con secret server-only |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (`sb_publishable_*`) | Pública (RLS-protected) | Sí | Mapea al rol Postgres `anon` · permisos limitados por RLS · whitelist de dominio en Supabase si se activa |
 | `NEXT_PUBLIC_SUPABASE_URL` | Pública | Sí | — |
-| `SUPABASE_SERVICE_ROLE_KEY` | **PRIVADA — bypassa RLS** | **NO** | Solo server, gitignored |
+| `SUPABASE_SECRET_KEY` (`sb_secret_*`) | **PRIVADA — bypassa RLS** | **NO** | Mapea al rol Postgres `service_role`. Solo server, gitignored. Múltiples secret keys soportadas (rotación sin downtime) |
 | `NEXT_PUBLIC_WOMPI_PUBLIC_KEY` | Pública | Sí | Whitelist de dominio en panel Wompi |
 | `WOMPI_PRIVATE_KEY` | Privada | **NO** | — |
 | `WOMPI_INTEGRITY_SECRET` | Privada | **NO** | — |
@@ -855,20 +855,23 @@ Decisión definitiva de observabilidad de errores: ADR-022 abierto en Fase 7.
 
 ### Runbook por escenario
 
-#### Runbook IRP-001: Llave `SUPABASE_SERVICE_ROLE_KEY` expuesta
+#### Runbook IRP-001: Llave `SUPABASE_SECRET_KEY` (`sb_secret_*`) expuesta
 
 ```
 Severidad: P0
 ETA contención: 15 min
 
-1. Ir a panel Supabase → Project Settings → API → Reset service_role key.
-2. Copiar nuevo valor.
-3. Vercel → Project → Settings → Environment Variables → editar SUPABASE_SERVICE_ROLE_KEY.
-4. Trigger redeploy desde Vercel (o `vercel deploy --prod`).
-5. Verificar /api/health responde 200 con la nueva key.
-6. Auditar últimos 7 días de Supabase Auth logs y queries con la key vieja por accesos sospechosos.
-7. Si hubo tráfico anómalo: revisar tablas críticas (Order, Customer) por modificaciones.
-8. Postmortem en 24h.
+1. Ir a panel Supabase → Project Settings → API keys → Secret keys.
+2. Click "Create new secret key" para generar reemplazo (las nuevas secret keys
+   permiten múltiples activas simultáneamente — no hay downtime).
+3. Copiar el nuevo valor.
+4. Vercel → Project → Settings → Environment Variables → editar SUPABASE_SECRET_KEY.
+5. Trigger redeploy desde Vercel (o `vercel deploy --prod`).
+6. Verificar /api/health responde 200 con la nueva key.
+7. Auditar últimos 7 días de Supabase Auth logs y queries con la key vieja por accesos sospechosos.
+8. **Revocar** la secret key comprometida en panel Supabase (no solo crear la nueva — la vieja sigue activa hasta revocarla explícitamente).
+9. Si hubo tráfico anómalo: revisar tablas críticas (Order, Customer) por modificaciones.
+10. Postmortem en 24h.
 ```
 
 #### Runbook IRP-002: Webhook de Wompi con tráfico anómalo (replay attack o forge)
@@ -895,7 +898,7 @@ ETA contención: 15 min · ETA reporte SIC: 15 días hábiles
 1. Identificar alcance:
    - Qué datos fueron expuestos (emails? teléfonos? direcciones? fotos?)
    - Cuántos titulares afectados.
-   - Cómo (RLS bypass? service_role expuesta? SQL injection?)
+   - Cómo (RLS bypass? secret key expuesta? SQL injection?)
 2. Cerrar el vector inmediatamente (rotar credenciales, parchar, revocar accesos).
 3. Notificar al equipo legal (abogado) o al usuario operador.
 4. Preparar comunicación a titulares afectados (email transparente, sin tecnicismos).
@@ -936,7 +939,7 @@ ETA contención: 2 h
 | **Interno** | No sensible pero solo para el equipo | Métricas agregadas, schema de DB, métricas pgmq | Server-side, accesible a admins | OK loggear |
 | **Confidencial — PII directa** | Identifica a una persona | Email, teléfono, nombre, dirección, foto del estudio | Postgres con RLS, Storage privado, encriptado en tránsito y reposo | **Redactado** en logs (`pino` redact) |
 | **Restringida — PII sensible** | Datos especialmente protegidos por Ley 1581 | Solo si recolectamos: salud, biometría, ideología, etc. (no aplica hoy) | Encriptación a nivel campo + acceso auditado | **Nunca** en logs |
-| **Crítica — Secretos de sistema** | Llaves, tokens, credenciales | `SUPABASE_SERVICE_ROLE_KEY`, `WOMPI_PRIVATE_KEY`, `ANTHROPIC_API_KEY`, `CSRF_SECRET` | Solo en `.env*` (gitignored) y Vercel env vars | **Nunca** en logs (redactado por patrón) |
+| **Crítica — Secretos de sistema** | Llaves, tokens, credenciales | `SUPABASE_SECRET_KEY` (`sb_secret_*`), `WOMPI_PRIVATE_KEY`, `ANTHROPIC_API_KEY`, `CSRF_SECRET` | Solo en `.env*` (gitignored) y Vercel env vars | **Nunca** en logs (redactado por patrón) |
 | **Regulada — Financiera** | Datos de pagos | Wompi `transactionId`, `amount`, `currency` (ya en nuestra DB); **NUNCA** PAN, CVV, expiración (Wompi maneja) | Postgres con RLS y audit log | Sin PAN ni CVV. `last4` permitido si Wompi lo provee. |
 
 ### Encriptación

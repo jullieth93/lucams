@@ -219,12 +219,14 @@ export async function POST(req: Request) {
 
 ## 3. Supabase
 
+> **Nota sobre API keys (verificado: [supabase.com/docs/guides/api/api-keys](https://supabase.com/docs/guides/api/api-keys) a 2026-05-09):** Supabase reemplazó las legacy `anon` y `service_role` keys (formato JWT) por las nuevas **Publishable** (`sb_publishable_*`) y **Secret** (`sb_secret_*`) keys. *"New projects no longer have anon and service_role available for use."* Las publishable mapean al rol Postgres `anon`; las secret mapean al rol Postgres `service_role` — el modelo de seguridad es idéntico, solo cambian los nombres y el formato del token. Las legacy funcionan hasta fin de 2026 en proyectos viejos. **Lucams_shop usa las nuevas.**
+
 ### Variables de entorno
 
 ```bash
 NEXT_PUBLIC_SUPABASE_URL=https://xxxxx.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=eyJxxxxx
-SUPABASE_SERVICE_ROLE_KEY=eyJxxxxx  # Server-only, NUNCA al cliente
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_xxxxx     # Pública, mapea a rol Postgres `anon`
+SUPABASE_SECRET_KEY=sb_secret_xxxxx                            # Server-only, mapea a rol Postgres `service_role`, NUNCA al cliente
 DATABASE_URL=postgresql://postgres:[password]@xxx.pooler.supabase.com:6543/postgres?pgbouncer=true
 DIRECT_DATABASE_URL=postgresql://postgres:[password]@xxx.supabase.com:5432/postgres
 ```
@@ -232,18 +234,18 @@ DIRECT_DATABASE_URL=postgresql://postgres:[password]@xxx.supabase.com:5432/postg
 ### Tres clientes en `lib/supabase/`
 
 ```ts
-// browser.ts — usa anon key, RLS aplica
+// browser.ts — usa publishable key, mapea a rol Postgres `anon`, RLS aplica
 import { createBrowserClient } from '@supabase/ssr';
-export const supabase = createBrowserClient(url, anonKey);
+export const supabase = createBrowserClient(url, publishableKey);
 
 // server.ts — usa cookies del request, RLS aplica con la sesión del user
 import { createServerClient } from '@supabase/ssr';
 import { cookies } from 'next/headers';
-export const getSupabaseServer = () => createServerClient(url, anonKey, { cookies });
+export const getSupabaseServer = () => createServerClient(url, publishableKey, { cookies });
 
-// service.ts — usa service_role, bypassa RLS, SOLO server-side
+// service.ts — usa secret key, mapea a rol Postgres `service_role`, bypassa RLS, SOLO server-side
 import { createClient } from '@supabase/supabase-js';
-export const supabaseAdmin = createClient(url, serviceRoleKey, {
+export const supabaseAdmin = createClient(url, secretKey, {
   auth: { persistSession: false },
 });
 ```
@@ -570,7 +572,7 @@ Los jobs durables (recuperación de carrito, reconciliación de órdenes, retry 
 
 ### Variables de entorno
 
-No se necesitan vars dedicadas: el acceso a `pgmq` usa `SUPABASE_SERVICE_ROLE_KEY` que ya existe.
+No se necesitan vars dedicadas: el acceso a `pgmq` usa `SUPABASE_SECRET_KEY` que ya existe.
 
 ### Colas previstas
 
@@ -611,7 +613,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const supabase = createClient(
   Deno.env.get('SUPABASE_URL')!,
-  Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
+  Deno.env.get('SUPABASE_SECRET_KEY')!,
 );
 
 Deno.serve(async () => {
