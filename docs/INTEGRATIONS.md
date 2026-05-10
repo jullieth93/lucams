@@ -221,6 +221,8 @@ export async function POST(req: Request) {
 
 > **Nota sobre API keys (verificado: [supabase.com/docs/guides/api/api-keys](https://supabase.com/docs/guides/api/api-keys) a 2026-05-09):** Supabase reemplazó las legacy `anon` y `service_role` keys (formato JWT) por las nuevas **Publishable** (`sb_publishable_*`) y **Secret** (`sb_secret_*`) keys. *"New projects no longer have anon and service_role available for use."* Las publishable mapean al rol Postgres `anon`; las secret mapean al rol Postgres `service_role` — el modelo de seguridad es idéntico, solo cambian los nombres y el formato del token. Las legacy funcionan hasta fin de 2026 en proyectos viejos. **Lucams_shop usa las nuevas.**
 
+> **Cambio de comportamiento descubierto al testear (2026-05-09):** el endpoint `/rest/v1/` (introspección OpenAPI del schema) ahora **requiere secret key** — la publishable no lo puede leer. Mensaje de error: *"Only secret API keys can be used for this endpoint."* Esto es **mejor postura de seguridad**: el schema completo de la DB ya no es leakeable a cualquiera con la publishable. La publishable sigue válida para queries específicas (`/rest/v1/<tabla>`) bajo RLS, Auth, Storage, Realtime.
+
 ### Variables de entorno
 
 ```bash
@@ -228,7 +230,7 @@ NEXT_PUBLIC_SUPABASE_URL=https://xxxxx.supabase.co
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_xxxxx     # Pública, mapea a rol Postgres `anon`
 SUPABASE_SECRET_KEY=sb_secret_xxxxx                            # Server-only, mapea a rol Postgres `service_role`, NUNCA al cliente
 DATABASE_URL=postgresql://postgres:[password]@xxx.pooler.supabase.com:6543/postgres?pgbouncer=true
-DIRECT_DATABASE_URL=postgresql://postgres:[password]@xxx.supabase.com:5432/postgres
+DIRECT_URL=postgresql://postgres:[password]@xxx.supabase.com:5432/postgres
 ```
 
 ### Tres clientes en `lib/supabase/`

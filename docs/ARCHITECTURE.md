@@ -166,7 +166,7 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
-  directUrl = env("DIRECT_DATABASE_URL")  // Para migraciones, sin pgBouncer
+  directUrl = env("DIRECT_URL")  // Para migraciones, sin pgBouncer (convención oficial Supabase+Prisma)
 }
 
 // ──────────────── IDENTIDAD ────────────────

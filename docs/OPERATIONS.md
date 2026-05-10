@@ -135,7 +135,7 @@ NEXT_PUBLIC_SUPABASE_URL=https://xxxxx.supabase.co
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=eyJxxxxx
 SUPABASE_SECRET_KEY=eyJxxxxx                # Server-only, NUNCA al cliente
 DATABASE_URL=postgresql://postgres:[pwd]@xxx.pooler.supabase.com:6543/postgres?pgbouncer=true
-DIRECT_DATABASE_URL=postgresql://postgres:[pwd]@xxx.supabase.com:5432/postgres
+DIRECT_URL=postgresql://postgres:[pwd]@xxx.supabase.com:5432/postgres
 
 # ─── Wompi ───
 WOMPI_ENV=sandbox                                  # sandbox | production

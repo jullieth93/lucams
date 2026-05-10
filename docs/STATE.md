@@ -115,8 +115,8 @@
 - Cloudflare R2 Free: 10 GB · 1M Class A ops · 10M Class B ops · egress gratis.
 - Cloudflare Turnstile Free: 1M siteverify/mes/sitio · 20 widgets/cuenta.
 
-🟡 **Pendiente práctica al crear proyecto Supabase (Fase 0b):**
-- `pgmq` y `pg_cron` disponibilidad real y límites en plan Free — docs oficiales no detallan tier-specific. Si están restringidos, replanteamos ADR-017.
+✅ **Cerrado el 2026-05-09 (sesión 7):**
+- `pgmq`, `pg_cron`, `pgcrypto`, `pg_stat_statements` habilitados sin error en proyecto Supabase Free `zxkucphbsfygakgxcnik`. Validan ADR-016 (rate-limit/cache en Postgres + pg_cron) y ADR-017 (background jobs en pgmq).
 
 🟡 **Pendiente todavía (consultas dirigidas al crear cuentas o tomar ADRs):**
 - TTL configurable de access/refresh tokens en Supabase Auth Free → `supabase.com/docs/guides/auth/sessions` (revisar al implementar Auth en Fase 1).
@@ -129,6 +129,27 @@
 ---
 
 ## Bitácora (append-only, más reciente arriba)
+
+### 2026-05-09 — Setup proyecto Supabase + extensiones + connection test (sesión 7)
+
+**Hechos:**
+- Proyecto Supabase creado: `zxkucphbsfygakgxcnik.supabase.co`, region `sa-east-1` (São Paulo), Postgres standard (NO OrioleDB Alpha), GitHub linked a `jullieth93/lucams`, Auto-RLS ON, Auto-expose tables OFF, Data API ON.
+- Las 5 vars de Supabase copiadas a `.env.local` (ignorado por git): URL + Publishable + Secret + DATABASE_URL pooled (6543) + DIRECT_URL direct (5432).
+- 4 extensiones habilitadas vía dashboard: `pgmq`, `pg_cron`, `pgcrypto`, `pg_stat_statements`. **Cierra el último pendiente práctico de la cola de verificación.** Confirma que ADR-016 y ADR-017 son ejecutables en plan Free.
+- Connection test ejecutado sin exponer credenciales (`set -a; source .env.local; set +a; curl`). Resultados:
+  - Auth health, Auth settings, Storage list: HTTP 200 con publishable key.
+  - REST root con secret key: HTTP 200.
+  - **Hallazgo nuevo:** REST root `/rest/v1/` con publishable da HTTP 401 con mensaje *"Only secret API keys can be used for this endpoint"* — comportamiento nuevo del sistema publishable/secret. La introspección OpenAPI del schema ahora requiere secret. Es **mejor postura de seguridad** (la publishable no puede leak schema completo). Documentado en `INTEGRATIONS.md` § Supabase.
+
+**Bug en `.env.example` corregido:** `EMAIL_FROM=Lucams_shop <onboarding@resend.dev>` rompía bash `source` por los `<`/`>`. Corregido a `EMAIL_FROM="Lucams_shop <onboarding@resend.dev>"` (con quotes) en `.env.example` y `.env.local`.
+
+**Var rename:** `DIRECT_DATABASE_URL` → `DIRECT_URL` (convención oficial Supabase+Prisma per [supabase.com/docs/guides/database/prisma](https://supabase.com/docs/guides/database/prisma)). Aplicado a `.env.example`, `.env.local` (vía `sed`, sin leer contenido para no exponer secretos), `docs/OPERATIONS.md`, `docs/INTEGRATIONS.md`, `docs/ARCHITECTURE.md`.
+
+**⚠️ Incidente de seguridad — leak de secret key:**
+- Mientras hacía un Edit a `.env.local`, la herramienta Edit exigió Read previo. Al hacer `Read .env.local`, la `SUPABASE_SECRET_KEY` real (`sb_secret_REDACTED`) entró a mi contexto y por lo tanto al transcript del chat.
+- Severidad real: P0 según runbook IRP-001. Severidad práctica: baja (DB vacía, dev environment, no producción).
+- Operadora decidió no rotar inmediatamente — queda como **deuda crítica obligatoria antes de cerrar la sesión**.
+- Aprendizaje guardado en memory `feedback_never_read_env_files.md`: **nunca usar Read/Edit/Write sobre `.env*`**. Solo `sed` via Bash, que modifica in-place sin exponer contenido. Inspeccionar nombres de vars con `grep`/`cut`. Cargar valores en subshell con `set -a; source; set +a` para que vivan en el subprocess y no en mi contexto.
 
 ### 2026-05-09 — Migración a publishable/secret keys de Supabase (sesión 6)
 
