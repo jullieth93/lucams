@@ -105,16 +105,44 @@ export async function signupAction(
     },
   });
 
-  if (authError || !authData.user) {
+  if (authError) {
     logger.info({
       event: "auth.signup.auth_fail",
       ip,
-      code: authError?.code,
-      status: authError?.status,
+      code: authError.code,
+      status: authError.status,
+      message: authError.message,
+    });
+    const debugSuffix = ` [${authError.code ?? authError.status ?? "unknown"}]`;
+    return {
+      error:
+        "No pudimos crear tu cuenta. Si ya tienes una, intenta iniciar sesión." +
+        debugSuffix,
+    };
+  }
+
+  if (!authData.user) {
+    logger.info({ event: "auth.signup.no_user", ip });
+    return {
+      error: "No pudimos crear tu cuenta. Intenta de nuevo en un momento.",
+    };
+  }
+
+  // Detección anti-enumeración: Supabase devuelve "éxito falso" con
+  // identities=[] cuando el email YA ESTÁ registrado. Sin este check,
+  // entraríamos al flujo de Customer.create con un userId existente, lo
+  // cual rompería la unique constraint en email Y arriesgaría borrar el
+  // user real en el rollback.
+  const isExistingUser = (authData.user.identities ?? []).length === 0;
+  if (isExistingUser) {
+    logger.info({
+      event: "auth.signup.already_exists",
+      ip,
+      userId: authData.user.id,
     });
     return {
       error:
-        "No pudimos crear tu cuenta. Si ya tienes una, intenta iniciar sesión.",
+        "Este correo ya tiene una cuenta. Inicia sesión o usa 'Olvidé mi contraseña'.",
     };
   }
 
@@ -139,9 +167,12 @@ export async function signupAction(
         userId,
         err: err instanceof Error ? err.message : String(err),
       },
-      "Customer row failed; attempting auth user rollback",
+      "Customer row failed; rolling back auth user (we created it)",
     );
     try {
+      // Rollback SEGURO acá: detectamos arriba que el user NO existía
+      // antes (identities.length > 0 → recién creado). Por tanto este
+      // delete solo afecta la fila que acabamos de crear.
       await supabaseService.auth.admin.deleteUser(userId);
     } catch (rollbackErr) {
       logger.error(
