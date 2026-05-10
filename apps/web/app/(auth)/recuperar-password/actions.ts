@@ -18,6 +18,7 @@
 import { headers } from "next/headers";
 import { z } from "zod";
 import { logger } from "@/lib/logger";
+import { getRequestOrigin } from "@/lib/origin";
 import { rateLimit } from "@/lib/rate-limit";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -55,8 +56,12 @@ export async function recuperarPasswordAction(
     };
   }
 
+  const origin = await getRequestOrigin();
   const supabase = await createSupabaseServerClient();
-  const { error } = await supabase.auth.resetPasswordForEmail(parsed.data.email);
+  const { error } = await supabase.auth.resetPasswordForEmail(
+    parsed.data.email,
+    { redirectTo: `${origin}/auth/callback?type=recovery` },
+  );
 
   if (error) {
     logger.info({

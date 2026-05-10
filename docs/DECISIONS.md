@@ -642,10 +642,86 @@ URLs **completamente separadas**:
 
 ---
 
+## ADR-031 — Guest-first browsing + welcome coupon strategy (NO wall de registro)
+
+**Fecha:** 2026-05-10
+**Estado:** Aceptado — diseño. Implementación viene en Fase 2 (catálogo + carrito + checkout).
+
+**Contexto:**
+Lucy planteó como punto de vista estratégico: *"hay gente que no le gusta registrarse, pueden abandonar página, pensar en que el usuario pueda comprar sin un registro y cuando desee registrarse puede obtener cupones o regalos"*. Industry data: **el muro de registro mata 30-40% de la conversión** en e-commerce. Magneticas.cl probablemente tiene guest checkout (no auditado a fondo). Nuestro objetivo es **superar a magneticas** no solo en tecnología sino también en conversión.
+
+**Decisión:**
+Adoptar **guest-first browsing** + **welcome coupon como incentivo opt-in** para registro.
+
+**Componentes del flujo (a implementar en Fase 2):**
+
+1. **Browsing libre sin login.** Toda página de catálogo (`/`, `/productos`, `/producto/[slug]`, `/categoria/[slug]`) es accesible sin sesión. RLS ya tiene policies de lectura pública para `Product`, `ProductVariant`, `Category`, `Review` aprobada y `BlogPost` publicado.
+
+2. **Carrito anónimo.** El modelo `Cart` ya tiene `customerId String?` nullable + `sessionId String @unique`. Estrategia:
+   - Cliente anónimo recibe un `sessionId` via cookie HttpOnly (`__lcs_session`).
+   - Las operaciones del carrito (add/remove/update) pasan por server actions que usan `supabaseService` (bypass RLS) porque RLS no puede validar sessionId del cliente.
+   - Al login/signup, el carrito anónimo se asocia (merge) con el `Customer` recién autenticado: `UPDATE Cart SET customerId = ... WHERE sessionId = ...`.
+
+3. **Guest checkout.** En `/checkout` ofrecer dos opciones lado a lado:
+   - **"Continuar como invitada"** — pide email + dirección + teléfono. Crea `Order` con `customerId NULL`. Tracking funciona por order number + email.
+   - **"Crear cuenta y obtener 10% off"** — registro inline con cupón aplicado automáticamente.
+
+   Por defecto seleccionada la opción guest (no forzar registro).
+
+4. **Welcome coupon.** Crear código de cupón al registrarse:
+   - Modelo `Coupon` ya existe con tipo `PERCENT` / `FIXED` / `FREE_SHIPPING`.
+   - Al crear `Customer`, generar Coupon dedicado: code `WELCOME-{first8chars_of_referralCode}`, type `PERCENT`, value 10, validTo +30 días, maxUses 1, isActive true.
+   - Email de bienvenida lo menciona prominente.
+   - Banner en home post-login: "Te damos la bienvenida con 10% en tu primera compra — usa el código WELCOME-XXXX."
+   - Auto-aplicar en checkout si está en la sesión del cliente (UX premium).
+
+5. **Triggers de registro inteligentes.** NO mostrar modal de registro al abrir el site. Mostrar prompts **contextuales** donde el valor del registro es máximo:
+   - Después de agregar al carrito por primera vez → tooltip suave "Crea tu cuenta y guarda tu carrito".
+   - En checkout → CTA destacado "10% off si te registras antes de pagar".
+   - Después de comprar como guest → "¿Quieres guardar tu orden? Crea tu cuenta con este email" (auto-llena el email del checkout).
+   - Después de N segundos en la home si nunca se ha visto el banner → discreto banner "Crea cuenta y obtén 10% en tu primera compra".
+
+6. **Tracking de funnel.** Usar `pino` logger con eventos estructurados:
+   - `funnel.product_view` (productId, sessionId, customerId?)
+   - `funnel.cart_add` (variantId, sessionId, customerId?)
+   - `funnel.checkout_start` (sessionId, customerId?, guest: boolean)
+   - `funnel.signup_from_checkout` (cuponApplied: boolean)
+   - `funnel.order_placed` (orderId, guest: boolean, couponId?)
+
+   Permite medir conversión sin tracking externo. Si volumen lo justifica → PostHog/Plausible self-hosted en Fase 7.
+
+**Razones:**
+
+1. **Conversión máxima.** Eliminar el wall de registro es el cambio de mayor impacto en conversión para tiendas pequeñas-medianas (>30% según múltiples industry reports, ej. Baymard Institute).
+2. **Cupón como incentivo positivo** en lugar de barrera: el usuario elige registrarse a cambio de beneficio claro y cuantificado, no porque lo obliguen.
+3. **Aprovecha el schema existente.** Cart.customerId nullable, Coupon model, AbandonedCart, sessionId — todo está. Falta solo el flujo.
+4. **Compatible con compliance.** Guest checkout no exime de Ley 1581 (datos de envío son PII) — el banner de consentimiento aplica igual. Pero NO requiere consentimiento de "tratamiento extendido" (marketing emails, perfilamiento) hasta que la persona se registre voluntariamente.
+5. **Diferenciador vs magneticas.** Aunque ellos podrían tener guest checkout, el welcome coupon explícito + triggers contextuales + auto-apply son ventajas concretas de UX. Lucy lo pidió como visual + estratégico superior.
+
+**Trade-offs aceptados:**
+
+- **Datos del guest customer no acumulan loyalty points ni referral history.** Es feature, no bug — la propuesta de valor del registro queda clara.
+- **Más complejidad en `Order`:** queries futuras del admin deben manejar `Customer? | null` en columnas. Aceptable — el schema ya lo permite.
+- **Sessionid en cookie HttpOnly:** dependemos de que la cookie sobreviva entre visitas para no perder el carrito. Si el user borra cookies → carrito perdido. Aceptable.
+
+**Pendiente diseñar (no en este ADR):**
+
+- Reglas anti-abuso del welcome coupon (un solo uso por email + IP + device fingerprint suave).
+- Email template del welcome con cupón.
+- Componente UI del cart merging (animación al hacer login con carrito anónimo activo).
+- A/B test futuro: ¿el wall blando convierte más que el guest checkout? (Hipótesis: no, pero medir).
+
+**Referencias:**
+- docs/COMPETITIVE_ANALYSIS.md § Gaps de UX (gap #10 carrito abandonado).
+- docs/ARCHITECTURE.md § Cart (sessionId schema).
+- ADR-030 (auth flow customer — este ADR construye encima).
+
+---
+
 > Próximas decisiones a documentar cuando se tomen:
 > - ADR-022: alternativa de monitoreo de errores elegida (en Fase 7).
 > - ADR-023: criterio de migración Postgres rate-limit → Redis externo.
 > - ADR-025: proveedor de facturación electrónica DIAN (Alegra / Siigo / Facture / otro), antes de Fase 7.
 > - ADR-027: necesidad de staging environment (re-evaluar post-lanzamiento; Vercel previews pueden cubrir el rol).
 > - ADR-028: criterio de migración Postgres `FeatureFlag` → GrowthBook u otro (cuando ocurra).
-> - ADR-031: distributed tracing / OpenTelemetry strategy (post-lanzamiento si volumen lo justifica).
+> - ADR-032: distributed tracing / OpenTelemetry strategy (post-lanzamiento si volumen lo justifica).

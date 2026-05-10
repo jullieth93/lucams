@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState } from "react";
+import { useActionState, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PasswordInput } from "@/components/password-input";
 import { signupAction, type SignupActionState } from "./actions";
 
 export function RegistroForm() {
@@ -20,9 +21,14 @@ export function RegistroForm() {
     SignupActionState | null,
     FormData
   >(signupAction, null);
+  const [password, setPassword] = useState("");
+  const [passwordConfirm, setPasswordConfirm] = useState("");
+
+  const passwordsMatch =
+    !passwordConfirm || password === passwordConfirm;
 
   return (
-    <Card className="shadow-xl border-brand-purple/10">
+    <Card className="shadow-xl border-brand-purple/10 animate-in fade-in slide-in-from-bottom-3 duration-500">
       <CardHeader className="space-y-2">
         <CardTitle className="font-display text-2xl text-brand-purple-dark">
           Crea tu cuenta Lucams
@@ -30,18 +36,33 @@ export function RegistroForm() {
         <CardDescription className="text-base">
           Empieza a personalizar imanes únicos en minutos.
         </CardDescription>
+        <p className="pt-1 text-sm text-muted-foreground">
+          ¿Ya tienes cuenta?{" "}
+          <Link
+            href="/login"
+            className="font-medium text-brand-pink hover:text-brand-coral underline-offset-4 hover:underline"
+          >
+            Inicia sesión
+          </Link>
+        </p>
       </CardHeader>
 
       {state?.success ? (
-        <CardContent>
+        <CardContent className="text-center space-y-3 py-4">
+          <span
+            aria-hidden="true"
+            className="inline-block text-5xl motion-safe:animate-bounce"
+          >
+            🎉
+          </span>
           <div
             role="status"
-            className="rounded-md bg-success/10 px-4 py-3 text-sm text-success-foreground border border-success/20"
+            className="rounded-md bg-success/10 px-4 py-3 text-sm border border-success/20 text-left"
             style={{ color: "var(--success)" }}
           >
             {state.success}
           </div>
-          <p className="mt-4 text-sm text-center text-muted-foreground">
+          <p className="text-sm text-muted-foreground">
             ¿Ya confirmaste?{" "}
             <Link
               href="/login"
@@ -64,6 +85,7 @@ export function RegistroForm() {
                   autoComplete="given-name"
                   required
                   placeholder="María"
+                  disabled={pending}
                   aria-invalid={Boolean(state?.fieldErrors?.firstName)}
                 />
                 {state?.fieldErrors?.firstName && (
@@ -85,6 +107,7 @@ export function RegistroForm() {
                   type="text"
                   autoComplete="family-name"
                   placeholder="Pérez"
+                  disabled={pending}
                   aria-invalid={Boolean(state?.fieldErrors?.lastName)}
                 />
                 {state?.fieldErrors?.lastName && (
@@ -104,6 +127,7 @@ export function RegistroForm() {
                 autoComplete="email"
                 required
                 placeholder="tu@email.com"
+                disabled={pending}
                 aria-invalid={Boolean(state?.fieldErrors?.email)}
               />
               {state?.fieldErrors?.email && (
@@ -115,21 +139,48 @@ export function RegistroForm() {
 
             <div className="space-y-2">
               <Label htmlFor="password">Contraseña</Label>
-              <Input
+              <PasswordInput
                 id="password"
                 name="password"
-                type="password"
                 autoComplete="new-password"
                 required
                 minLength={8}
+                disabled={pending}
+                value={password}
+                onValueChange={setPassword}
+                showStrength
                 aria-invalid={Boolean(state?.fieldErrors?.password)}
               />
-              <p className="text-xs text-muted-foreground">
-                Mínimo 8 caracteres.
-              </p>
               {state?.fieldErrors?.password && (
                 <p className="text-sm text-destructive">
                   {state.fieldErrors.password[0]}
+                </p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="passwordConfirm">Confirmar contraseña</Label>
+              <PasswordInput
+                id="passwordConfirm"
+                name="passwordConfirm"
+                autoComplete="new-password"
+                required
+                minLength={8}
+                disabled={pending}
+                value={passwordConfirm}
+                onValueChange={setPasswordConfirm}
+                aria-invalid={
+                  Boolean(state?.fieldErrors?.passwordConfirm) || !passwordsMatch
+                }
+              />
+              {!passwordsMatch && (
+                <p className="text-sm text-destructive">
+                  Las contraseñas no coinciden.
+                </p>
+              )}
+              {state?.fieldErrors?.passwordConfirm && passwordsMatch && (
+                <p className="text-sm text-destructive">
+                  {state.fieldErrors.passwordConfirm[0]}
                 </p>
               )}
             </div>
@@ -165,23 +216,46 @@ export function RegistroForm() {
           <CardFooter className="flex flex-col gap-4 mt-4">
             <Button
               type="submit"
-              className="w-full bg-brand-purple hover:bg-brand-purple-dark text-white font-semibold"
-              disabled={pending}
+              className="w-full bg-brand-purple hover:bg-brand-purple-dark text-white font-semibold transition-all hover:shadow-md hover:-translate-y-px active:translate-y-px"
+              disabled={pending || !passwordsMatch}
             >
-              {pending ? "Creando..." : "Crear cuenta"}
+              {pending ? (
+                <span className="inline-flex items-center gap-2">
+                  <SpinnerIcon /> Creando...
+                </span>
+              ) : (
+                "Crear cuenta"
+              )}
             </Button>
-            <p className="text-sm text-center text-muted-foreground">
-              ¿Ya tienes cuenta?{" "}
-              <Link
-                href="/login"
-                className="font-medium text-brand-pink hover:text-brand-coral underline-offset-4 hover:underline"
-              >
-                Iniciar sesión
-              </Link>
-            </p>
           </CardFooter>
         </form>
       )}
     </Card>
+  );
+}
+
+function SpinnerIcon() {
+  return (
+    <svg
+      className="h-4 w-4 animate-spin"
+      xmlns="http://www.w3.org/2000/svg"
+      fill="none"
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+    >
+      <circle
+        className="opacity-25"
+        cx="12"
+        cy="12"
+        r="10"
+        stroke="currentColor"
+        strokeWidth="4"
+      />
+      <path
+        className="opacity-75"
+        fill="currentColor"
+        d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
+      />
+    </svg>
   );
 }

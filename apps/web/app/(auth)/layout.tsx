@@ -1,19 +1,17 @@
 /*
  * Layout para el flujo de autenticación.
  *
- * Aplica a /login, /registro, /recuperar-password y derivados. Identidad
- * Lucams (kawaii, paleta brand, Fredoka) — OPUESTO al minimalismo blanco
- * de magneticas.cl per CLAUDE.md mandato de branding.
+ * Identidad Lucams (kawaii, paleta brand, Fredoka) — opuesto al
+ * minimalismo blanco de magneticas.cl.
  *
- * Estructura:
- *  - Fondo gradiente cream → light-purple (sin imagen — vector puro).
- *  - Wordmark "Lucams" arriba en Fredoka brand-purple.
- *  - Card centered (max-w-md) con sombra suave.
- *  - Footer mínimo con link a inicio.
+ * Decoración:
+ *  - Fondo gradiente cream → white → light-purple (sin imagen — vector puro).
+ *  - Wordmark "Lucams shop" arriba.
+ *  - Mascota mapache animada en esquina (placeholder emoji 🦝 + animación
+ *    CSS sutil — wiggle/peek). Reemplazable por SVG/imagen real más tarde.
+ *  - Footer mínimo con link a WhatsApp.
  *
- * Pendiente cuando lleguen assets reales:
- *  - SVG del logo (insignia mapache) en lugar del wordmark text-only.
- *  - Ilustración mascota mapache decorativa en esquina.
+ * Animaciones respetan `prefers-reduced-motion` (todas usan `motion-safe:`).
  */
 
 import Link from "next/link";
@@ -21,11 +19,21 @@ import type { ReactNode } from "react";
 
 export default function AuthLayout({ children }: { children: ReactNode }) {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-brand-cream via-white to-brand-purple/10 flex flex-col">
-      <header className="px-6 py-6 sm:px-10">
+    <div className="relative min-h-screen overflow-hidden bg-gradient-to-br from-brand-cream via-white to-brand-purple/10 flex flex-col">
+      {/* Decoración: blobs suaves de color de fondo */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute -top-24 -right-24 h-72 w-72 rounded-full bg-brand-pink/15 blur-3xl"
+      />
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute -bottom-32 -left-32 h-80 w-80 rounded-full bg-brand-turquoise/15 blur-3xl"
+      />
+
+      <header className="relative z-10 px-6 py-6 sm:px-10">
         <Link
           href="/"
-          className="inline-flex items-baseline gap-2 group"
+          className="inline-flex items-baseline gap-2 group transition-transform hover:-translate-y-0.5"
           aria-label="Inicio Lucams_shop"
         >
           <span className="font-display text-2xl font-bold tracking-tight text-brand-purple-dark group-hover:text-brand-purple transition-colors">
@@ -37,11 +45,23 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
         </Link>
       </header>
 
-      <main className="flex-1 flex items-center justify-center px-4 pb-12 sm:pb-16">
-        <div className="w-full max-w-md">{children}</div>
+      <main className="relative z-10 flex-1 flex items-center justify-center px-4 pb-12 sm:pb-16">
+        <div className="relative w-full max-w-md">
+          {/* Mascota decorativa — emoji 🦝 con bounce sutil. Placeholder
+              hasta tener asset real. Solo desktop+ (sm:) para no robar
+              espacio en móvil. */}
+          <span
+            aria-hidden="true"
+            className="hidden sm:block absolute -top-12 -right-4 text-5xl motion-safe:animate-bounce motion-safe:[animation-duration:3s] origin-bottom"
+            style={{ filter: "drop-shadow(0 4px 6px rgba(124, 106, 173, 0.2))" }}
+          >
+            🦝
+          </span>
+          {children}
+        </div>
       </main>
 
-      <footer className="px-6 py-6 text-center text-sm text-muted-foreground">
+      <footer className="relative z-10 px-6 py-6 text-center text-sm text-muted-foreground">
         <p>
           ¿Necesitas ayuda?{" "}
           <a

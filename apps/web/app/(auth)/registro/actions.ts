@@ -2,24 +2,18 @@
  * Server Action — registro de nuevo cliente.
  *
  * Flujo (saga simple):
- *   1. Validar input con Zod (email, password ≥ 8, nombre).
+ *   1. Validar input con Zod (email, password ≥ 8 + passwordConfirm match,
+ *      nombre).
  *   2. Rate-limit por IP (3 cuentas / hora) para mitigar abuso.
- *   3. supabase.auth.signUp({ email, password }) — crea fila en auth.users.
- *   4. prisma.customer.create — crea fila en Customer con supabaseUserId,
- *      referralCode único, y datos de perfil. Prisma usa DATABASE_URL con
- *      rol `postgres` → bypasea RLS automáticamente (no necesita service
- *      client; igual de seguro porque vive server-side).
- *   5. Compensación: si (4) falla, intentar borrar el auth.user vía
- *      supabaseService.auth.admin.deleteUser para no dejar huérfanos.
- *      Si la compensación también falla, log y devolver error genérico
- *      (el dueño puede usar /recuperar-password después).
- *
- * Email confirmation:
- *   - Supabase tiene confirmación de email habilitada por default.
- *   - Si `data.session === null`: se envió email; pedimos al usuario que
- *     revise su bandeja antes de poder iniciar sesión.
- *   - Si `data.session !== null`: la confirmación estaba apagada en la
- *     configuración del proyecto y el usuario queda logueado al instante.
+ *   3. supabase.auth.signUp({ email, password, options.emailRedirectTo })
+ *      — el emailRedirectTo dinámico hace que los links del email apunten
+ *      al origin actual del request (localhost vs vercel), no a un valor
+ *      hardcoded del dashboard.
+ *   4. prisma.customer.create — fila en Customer con supabaseUserId,
+ *      referralCode único, audit createdBy=userId. Prisma usa DATABASE_URL
+ *      con rol postgres → bypasea RLS automáticamente.
+ *   5. Compensación: si (4) falla, supabaseService.auth.admin.deleteUser
+ *      para no dejar huérfanos.
  */
 
 "use server";
@@ -30,28 +24,38 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
+import { getRequestOrigin } from "@/lib/origin";
 import { rateLimit } from "@/lib/rate-limit";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { supabaseService } from "@/lib/supabase/service";
 
-const SignupSchema = z.object({
-  email: z.string().email("Email inválido"),
-  password: z
-    .string()
-    .min(8, "Mínimo 8 caracteres")
-    .max(72, "Máximo 72 caracteres"),
-  firstName: z
-    .string()
-    .min(1, "Tu nombre es obligatorio")
-    .max(50, "Máximo 50 caracteres"),
-  lastName: z.string().max(50, "Máximo 50 caracteres").optional(),
-});
+const SignupSchema = z
+  .object({
+    email: z.string().email("Email inválido"),
+    password: z
+      .string()
+      .min(8, "Mínimo 8 caracteres")
+      .max(72, "Máximo 72 caracteres"),
+    passwordConfirm: z.string(),
+    firstName: z
+      .string()
+      .min(1, "Tu nombre es obligatorio")
+      .max(50, "Máximo 50 caracteres"),
+    lastName: z.string().max(50, "Máximo 50 caracteres").optional(),
+  })
+  .refine((d) => d.password === d.passwordConfirm, {
+    message: "Las contraseñas no coinciden.",
+    path: ["passwordConfirm"],
+  });
 
 export type SignupActionState = {
   error?: string;
   success?: string;
   fieldErrors?: Partial<
-    Record<"email" | "password" | "firstName" | "lastName", string[]>
+    Record<
+      "email" | "password" | "passwordConfirm" | "firstName" | "lastName",
+      string[]
+    >
   >;
 };
 
@@ -66,6 +70,7 @@ export async function signupAction(
   const raw = {
     email: formData.get("email"),
     password: formData.get("password"),
+    passwordConfirm: formData.get("passwordConfirm"),
     firstName: formData.get("firstName"),
     lastName: formData.get("lastName") || undefined,
   };
@@ -90,10 +95,14 @@ export async function signupAction(
     };
   }
 
+  const origin = await getRequestOrigin();
   const supabase = await createSupabaseServerClient();
   const { data: authData, error: authError } = await supabase.auth.signUp({
     email: parsed.data.email,
     password: parsed.data.password,
+    options: {
+      emailRedirectTo: `${origin}/auth/callback`,
+    },
   });
 
   if (authError || !authData.user) {
