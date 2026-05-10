@@ -1,0 +1,154 @@
+// Schema Prisma — Lucams_shop
+//
+// Fuente de spec: docs/ARCHITECTURE.md § Modelo de datos + docs/CONVENTIONS.md
+// § DB — soft delete + audit fields + § DB — foreign keys cascade explícito.
+//
+// Convenciones aplicadas:
+//   - id: cuid()
+//   - Precios: Int (centavos COP) — nunca float (mandato CLAUDE.md).
+//   - Audit fields en TODA entidad mutable: createdAt, updatedAt, createdBy,
+//     updatedBy, deletedAt, deletedBy.
+//   - Soft delete: filtrar por `deletedAt IS NULL` en repositories.
+//   - onDelete explícito en cada relación (Prisma default es Restrict).
+//
+// Esta primera versión define los 5 modelos del CORE de catálogo/cliente.
+// Los modelos de carrito, órdenes, cupones, reviews, etc. se añadirán en
+// commits siguientes para no comer la sesión en un solo paso.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ──────────────────────── IDENTIDAD ────────────────────────
+
+model Customer {
+  id             String    @id @default(cuid())
+  email          String    @unique
+  phone          String?
+  firstName      String?
+  lastName       String?
+  supabaseUserId String    @unique
+  loyaltyPoints  Int       @default(0)
+  referralCode   String    @unique
+  referredById   String?
+  referredBy     Customer? @relation("Referrals", fields: [referredById], references: [id], onDelete: SetNull)
+  referrals      Customer[] @relation("Referrals")
+  addresses      Address[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  createdBy String?
+  updatedBy String?
+  deletedAt DateTime?
+  deletedBy String?
+
+  @@index([deletedAt])
+}
+
+model Address {
+  id         String  @id @default(cuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  name       String
+  line1      String
+  line2      String?
+  city       String
+  department String
+  zip        String?
+  phone      String
+  isDefault  Boolean @default(false)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  createdBy String?
+  updatedBy String?
+  deletedAt DateTime?
+  deletedBy String?
+
+  @@index([customerId, deletedAt])
+}
+
+// ──────────────────────── CATÁLOGO ────────────────────────
+
+model Category {
+  id          String     @id @default(cuid())
+  slug        String     @unique
+  name        String
+  description String?
+  image       String?
+  parentId    String?
+  parent      Category?  @relation("Subcategories", fields: [parentId], references: [id], onDelete: Restrict)
+  children    Category[] @relation("Subcategories")
+  products    Product[]
+  order       Int        @default(0)
+  isActive    Boolean    @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  createdBy String?
+  updatedBy String?
+  deletedAt DateTime?
+  deletedBy String?
+
+  @@index([deletedAt])
+  @@index([parentId])
+}
+
+model Product {
+  id                    String   @id @default(cuid())
+  slug                  String   @unique
+  name                  String
+  description           String
+  basePrice             Int
+  compareAtPrice        Int?
+  cost                  Int?
+  sku                   String   @unique
+  isPersonalizable      Boolean  @default(false)
+  personalizationSchema Json?
+  images                String[]
+  categoryId            String
+  category              Category @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  variants              ProductVariant[]
+  isActive              Boolean  @default(true)
+  isFeatured            Boolean  @default(false)
+  seoTitle              String?
+  seoDescription        String?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  createdBy String?
+  updatedBy String?
+  deletedAt DateTime?
+  deletedBy String?
+
+  @@index([deletedAt])
+  @@index([categoryId])
+  @@index([isActive, isFeatured])
+}
+
+model ProductVariant {
+  id         String  @id @default(cuid())
+  productId  String
+  product    Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  name       String
+  sku        String  @unique
+  price      Int?
+  stock      Int     @default(0)
+  attributes Json
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  createdBy String?
+  updatedBy String?
+  deletedAt DateTime?
+  deletedBy String?
+
+  @@index([productId, deletedAt])
+  @@index([stock])
+}

@@ -6,7 +6,12 @@ packages:
 # These packages require their install/postinstall scripts to function:
 #   - sharp:         used by next/image for server-side image optimization (AVIF/WebP)
 #   - unrs-resolver: required by tailwind v4 + eslint dependency resolution
+#   - prisma / @prisma/client / @prisma/engines: download Prisma query engine binary
+#   - msw: mock service worker — required for tests (postinstall sets up SW)
 allowBuilds:
+  '@prisma/client': true
+  '@prisma/engines': true
   msw: true
+  prisma: true
   sharp: true
   unrs-resolver: true
