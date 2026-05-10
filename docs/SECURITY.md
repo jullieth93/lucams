@@ -186,6 +186,42 @@ describe('RLS', () => {
 - **Pre-commit hook** con `gitleaks` o equivalente que escanea diff antes de permitir commit.
 - **CI step** que escanea el repo completo en cada PR.
 - **GitHub Secret Scanning** habilitado a nivel de repo (gratis para repos públicos; revisar privados).
+- **GitHub Push Protection** activo a nivel de cuenta (rechaza push si detecta credenciales reales). Validado el 2026-05-09 cuando bloqueó un push con `sb_secret_*` real — ver [`docs/incidents/2026-05-09-secret-key-leak.md`](incidents/2026-05-09-secret-key-leak.md).
+
+### Manipulación segura de archivos de credenciales por agentes IA
+
+> Mandato derivado del incidente del 2026-05-09 (leak de `SUPABASE_SECRET_KEY`). Toda sesión futura de Claude Code u otro agente IA con acceso a filesystem **debe** seguir estas reglas, complementarias a las anteriores.
+
+**El problema:** las herramientas estándar de los agentes IA (`Read`, `Edit`, `Write`) cargan el contenido del archivo en el contexto del modelo y por lo tanto al transcript persistente de la conversación. Para archivos públicos esto es deseable; para archivos de credenciales es un leak silencioso.
+
+**Archivos restringidos** (nunca usar `Read`/`Edit`/`Write` sobre estos):
+
+- `.env`, `.env.local`, `.env.development`, `.env.production`, cualquier `.env.*`
+- `~/.git-credentials`
+- `~/.aws/credentials`, `~/.config/gcloud/...`, otros credential stores
+- `.npmrc` con tokens
+- Cualquier archivo cuyo nombre o ubicación sugiera contenido sensible (auth tokens, API keys, passwords, JWTs, connection strings con password embebido)
+
+**Operaciones permitidas y cómo hacerlas:**
+
+| Operación | Método correcto | Por qué es seguro |
+|---|---|---|
+| **Modificar valores** | `sed -i 's/OLD/NEW/' .env.local` via Bash | `sed -i` modifica in-place sin imprimir contenido en la salida |
+| **Renombrar variables** | `sed -i 's/^OLD_NAME=/NEW_NAME=/' .env.local` | Idem |
+| **Inspeccionar nombres de variables** | `grep -E '^[A-Z_]+=' .env.local \| cut -d= -f1` | Solo nombres antes del `=`, valores nunca |
+| **Verificar que una var está cargada** | `set -a; source .env.local; set +a; [ -n "$VAR" ] && echo loaded` en una sola línea Bash | Vars viven en el subshell, no en el contexto del modelo |
+| **Verificar tipo/longitud sin valor** | `${#VAR}` (longitud), `${VAR:0:N}...` (prefijo público como `sb_publishable_`) | El prefijo de 10-15 chars de un secret no compromete nada |
+| **Probar conexión** | `set -a; source .env.local; set +a; curl -H "apikey: $VAR" URL` en una sola línea | Las vars se inyectan al curl pero no aparecen en la salida |
+
+**Operaciones prohibidas:**
+
+- `cat .env.local`
+- `Read .env.local` con la herramienta del agente
+- `Edit` o `Write` sobre `.env.local` (Edit requiere Read previo, Write reemplaza pero pasa por contexto)
+- Hacer `echo $SECRET_VAR` que imprima el valor
+- Loggear cualquier var que matchee `*KEY*`, `*SECRET*`, `*TOKEN*`, `*PASSWORD*`
+
+**Si el agente IA ya leyó el archivo (incidente):** ejecutar [Runbook IRP-001](#runbook-irp-001-llave-supabase_secret_key-sb_secret_-expuesta) inmediatamente — rotar la credencial, no aceptar el riesgo "porque la DB está vacía". El transcript persiste; el riesgo escala cuando llegue data real.
 
 ---
 
@@ -856,6 +892,13 @@ Decisión definitiva de observabilidad de errores: ADR-022 abierto en Fase 7.
 ### Runbook por escenario
 
 #### Runbook IRP-001: Llave `SUPABASE_SECRET_KEY` (`sb_secret_*`) expuesta
+
+**Vectores conocidos de exposición:**
+- Commit accidental al repo (mitigado por gitleaks pre-commit + GitHub Push Protection).
+- Logs en producción (mitigado por `pino` redact).
+- Compartida en chat/email/Slack/issue.
+- **Lectura inadvertida por agente IA** (Claude Code u otro): el agente usa `Read`/`Edit`/`Write` sobre `.env.local` y la key entra al transcript persistente. Vector confirmado en [docs/incidents/2026-05-09-secret-key-leak.md](../incidents/2026-05-09-secret-key-leak.md). Prevención: ver [§ Manipulación segura de archivos de credenciales por agentes IA](#manipulación-segura-de-archivos-de-credenciales-por-agentes-ia).
+- Push intentado a GitHub donde Push Protection capturó el valor (incluso si rechazó el push, el sistema lo loggea).
 
 ```
 Severidad: P0

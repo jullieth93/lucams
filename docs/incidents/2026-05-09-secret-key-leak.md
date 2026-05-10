@@ -48,10 +48,10 @@ Durante el setup de Fase 0b (Supabase), Claude leyó `/home/ansible/workspaces/l
 
 ## Acciones (con responsable y fecha límite)
 
-- [ ] **Rotar la secret key comprometida** — Operadora — antes de cerrar la sesión 2026-05-09. Pasos: crear nueva secret key en Supabase Dashboard → reemplazar valor en `.env.local` con `sed` o editor (NO en chat) → revocar/disable la key vieja en Supabase. Validar que el sitio sigue conectando.
+- [x] **Rotar la secret key comprometida** — Operadora — completado 2026-05-09 ~22:30 COT. Pasos ejecutados: nueva secret key creada en Supabase Dashboard → operadora actualizó `.env.local` en su editor (sin pasar por chat) → key vieja revocada en Supabase. Validación: connection test contra REST API y Auth devolvieron HTTP 200 con la nueva key. La key vieja queda inutilizada en cualquier sistema que la haya capturado (transcript, GitHub Push Protection logs).
 - [x] **Memoria del agente:** crear `feedback_never_read_env_files.md` que prohíbe `Read`/`Edit`/`Write` sobre `.env*` y prescribe `sed` para modificación + `grep`/`cut` para inspección de nombres. — Claude — completado 2026-05-09.
-- [ ] **Actualizar `SECURITY.md`:** agregar sección "Manipulación segura de archivos de credenciales por agentes IA" con la prescripción `sed`-only. — Claude — antes de cerrar Fase 0b (al pushear el commit que cierra esta sesión).
-- [ ] **Actualizar `SECURITY.md` § IRP-001 runbook:** agregar al runbook que el origen "Read inadvertido por agente IA" es uno de los vectores conocidos. — Claude — antes de cerrar Fase 0b.
+- [x] **Actualizar `SECURITY.md`:** agregada sección "Manipulación segura de archivos de credenciales por agentes IA" con la prescripción `sed`-only, lista de archivos restringidos, tabla de operaciones permitidas vs prohibidas. — Claude — completado 2026-05-09.
+- [x] **Actualizar `SECURITY.md` § IRP-001 runbook:** agregado bloque "Vectores conocidos de exposición" al inicio del runbook, incluyendo "Lectura inadvertida por agente IA" y "Push capturado por Push Protection". — Claude — completado 2026-05-09.
 - [ ] **Considerar pre-commit hook que escanee transcripts antes de pushearlos** (futuro): si en algún momento exportamos transcripts al repo, gitleaks debería bloquear cualquier `sb_secret_*` o similar. Por ahora los transcripts no entran al repo, así que es prevención futura. — Diferido. ADR cuando aplique.
 
 ## Lecciones aprendidas
