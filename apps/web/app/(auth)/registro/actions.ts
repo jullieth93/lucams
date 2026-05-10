@@ -119,9 +119,13 @@ export async function signupAction(
       status: authError.status,
       message: authError.message,
     });
+    // DEBUG TEMPORAL: incluir el código de Supabase en el mensaje para
+    // diagnosticar errores que solo se ven server-side.
+    const debugSuffix = ` [${authError.code ?? authError.status ?? "no-code"}]`;
     return {
       error:
-        "No pudimos crear tu cuenta. Si ya tienes una, intenta iniciar sesión.",
+        "No pudimos crear tu cuenta. Si ya tienes una, intenta iniciar sesión." +
+        debugSuffix,
     };
   }
 
