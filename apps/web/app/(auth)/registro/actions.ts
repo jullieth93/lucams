@@ -86,10 +86,13 @@ export async function signupAction(
 
   const hdrs = await headers();
   const ip = hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
-  // Límites: en producción Vercel restrictivos para mitigar abuso;
-  // en dev/preview generosos para no estorbar al equipo testeando.
+  // Límites: pre-launch intermedios (Lucy testeando sin tropezar pero
+  // bots básicos bloqueados); preview/dev generosos.
+  // TODO al lanzar de verdad (custom domain + tráfico real): bajar prod
+  // a 3/hora signup, 5/15min login, 3/hora reset, o usar env var
+  // LUCAMS_RATE_LIMIT_MODE=strict para discriminar sin tocar código.
   const isProd = process.env.VERCEL_ENV === "production";
-  const rl = await rateLimit(`signup:${ip}`, isProd ? 3 : 30, 60 * 60);
+  const rl = await rateLimit(`signup:${ip}`, isProd ? 10 : 30, 60 * 60);
   if (!rl.allowed) {
     logger.warn({ event: "auth.signup.rate_limited", ip, count: rl.count });
     return {

@@ -47,8 +47,9 @@ export async function recuperarPasswordAction(
 
   const hdrs = await headers();
   const ip = hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  // Límites pre-launch intermedios; ver TODO en registro/actions.ts.
   const isProd = process.env.VERCEL_ENV === "production";
-  const rl = await rateLimit(`reset-password:${ip}`, isProd ? 3 : 30, 60 * 60);
+  const rl = await rateLimit(`reset-password:${ip}`, isProd ? 10 : 30, 60 * 60);
   if (!rl.allowed) {
     logger.warn({ event: "auth.reset.rate_limited", ip, count: rl.count });
     return {
