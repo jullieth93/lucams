@@ -119,6 +119,129 @@ supabase db dump --local > backups/local-$(date +%F-%H%M).sql
 
 ---
 
+## Compatibilidad local ↔ Vercel (paridad de runtime)
+
+> Mandato #10 dice que la VM funciona como **símil-Vercel local**. Esta sección documenta la paridad entre comandos/configuración local y los que Vercel ejecuta en cada deploy.
+
+### Matriz de paridad
+
+| Aspecto | Local (VM) | Vercel | Estado |
+|---|---|---|---|
+| Versión Node | 22.22.2 (NodeSource RPM) | 22 (default Next 16) | ✅ |
+| Package manager | pnpm 11.0.9 (vía corepack) | pnpm (detectado por `pnpm-lock.yaml`) | ✅ |
+| **Build command** | `pnpm --filter web build` | igual (declarado en `vercel.json`) | ✅ |
+| **Install command** | `pnpm install --frozen-lockfile` | igual (declarado en `vercel.json`) | ✅ |
+| **Output directory** | `apps/web/.next/` | igual (declarado en `vercel.json`) | ✅ |
+| **Framework detection** | Next.js auto | Forced `"nextjs"` en `vercel.json` (evita falsa detección por `package.json` root del workspace) | ✅ |
+| Image optimization | `sharp` 0.34.5 (build script aprobado en `pnpm-workspace.yaml`) | Vercel managed (mismo binary) | ✅ |
+| Edge runtime | no usado | no usado (mantenemos `proxy.ts` con runtime nodejs) | ✅ |
+| Telemetry | `NEXT_TELEMETRY_DISABLED=1` en `.env.local` | Idem en Vercel env vars | ✅ |
+
+### Gap crítico — sincronización de env vars
+
+**Vercel NO tiene las env vars del proyecto configuradas todavía.** En local viven en `.env.local`; en Vercel hay que copiarlas a Project Settings → Environment Variables. Antes de Fase 1 con código que toque Supabase (`lib/supabase/*`, Prisma, Auth), **es bloqueante**.
+
+#### Vars a sincronizar (de `.env.local` a Vercel UI)
+
+Para los 3 environments de Vercel: **Production**, **Preview**, **Development**.
+
+| Variable | Pública (visible al cliente) | Notas |
+|---|---|---|
+| `NEXT_PUBLIC_SITE_URL` | ✅ | Cambia entre local (`http://localhost:3000`) y prod (`https://lucamsshop.co` cuando se compre) |
+| `NEXT_PUBLIC_SUPABASE_URL` | ✅ | Igual en todos los entornos |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | ✅ | Igual en todos los entornos |
+| `SUPABASE_SECRET_KEY` | ❌ Solo server | **Marcar como Encrypted en Vercel** |
+| `DATABASE_URL` | ❌ | Pooler (puerto 6543), reemplazar `[YOUR-PASSWORD]` con la db password |
+| `DIRECT_URL` | ❌ | Direct (puerto 5432), idem |
+| `RESEND_API_KEY` | ❌ Solo server | Encrypted |
+| `EMAIL_FROM` | ❌ | Texto plano (`Lucams_shop <onboarding@resend.dev>`) |
+| `NEXT_PUBLIC_WA_NUMBER` | ✅ | `573150718723` |
+| `NODE_ENV` | ❌ | `production` en Vercel (no se setea manual; Vercel lo maneja) |
+| `NEXT_TELEMETRY_DISABLED` | ❌ | `1` |
+
+> **Cómo agregarlas:** Vercel Dashboard → Project `lucams-shop` → Settings → Environment Variables → "Add New". Para cada var, marcar los 3 entornos (Production, Preview, Development) salvo que el valor difiera. Las que tienen `*_KEY`, `*_SECRET`, `DATABASE_*` deben marcarse como **Encrypted** (default checkbox).
+
+> **Verificación:** después de configurarlas, push cualquier commit. El log del deploy en Vercel debe mostrar `pnpm install` y `pnpm --filter web build` ejecutarse sin "Missing environment variable" warnings.
+
+### `vercel.json` del repo
+
+Vive en el root: [`vercel.json`](../vercel.json). Sus campos:
+
+| Campo | Valor | Por qué |
+|---|---|---|
+| `framework` | `"nextjs"` | Forzar detección — el `package.json` root es del workspace, no de Next |
+| `buildCommand` | `pnpm --filter web build` | Solo buildea `apps/web` (no packages futuros) |
+| `installCommand` | `pnpm install --frozen-lockfile` | Coherente con CI: falla si lockfile no está sincronizado |
+| `outputDirectory` | `apps/web/.next` | Donde Next.js deja el build |
+| `ignoreCommand` | `git diff HEAD^ HEAD --quiet -- ./apps/web ./packages ./pnpm-lock.yaml ./package.json ./pnpm-workspace.yaml` | Skip deploy cuando solo cambian docs (ahorra build minutes) |
+
+---
+
+## Entorno local con Make (símil-Vercel)
+
+> Patrón inspirado en `commerce-ops-platform`. Centraliza todos los comandos del entorno de desarrollo local en un Makefile en `/tmp/lucams-shop-local/Makefile` para que la VM se sienta como un símil-Vercel sin necesidad de memorizar comandos pnpm largos.
+
+### Estructura
+
+```
+/tmp/lucams-shop-local/
+├── Makefile          ← orquestador
+├── logs/             ← un .log por servicio (web.log, etc.)
+└── pids/             ← un .pid por servicio (track/kill)
+```
+
+> Vive en `/tmp/` porque los logs/pids son ephemeral. Un reboot de la VM los borra junto con los procesos — comportamiento correcto.
+
+### Comandos disponibles
+
+```bash
+cd /tmp/lucams-shop-local && make help
+```
+
+#### Stack
+
+| Comando | Acción |
+|---|---|
+| `make up` | Inicia Next.js dev server (background, log a `logs/web.log`, pid en `pids/web.pid`) |
+| `make down` | Mata el dev server |
+| `make restart` | down + up |
+| `make status` | Lista procesos vivos con su PID |
+| `make logs SERVICE=web` | `tail -f logs/web.log` |
+| `make clean` | Borra logs/ y pids/ |
+
+#### Quality gates (sin levantar dev server)
+
+| Comando | Acción |
+|---|---|
+| `make build` | Build de producción (mismo comando que Vercel ejecuta) |
+| `make typecheck` | `tsc --noEmit` |
+| `make lint` | ESLint |
+| `make format` | Prettier --write |
+
+#### Validación local-cloud
+
+| Comando | Acción |
+|---|---|
+| `make env-check` | Lista vars de `.env.local` con su estado (loaded / missing / placeholder). **No expone valores** |
+| `make health` | Healthchecks: Supabase Auth, Supabase REST, web local (si está arriba) |
+| `make vercel-parity` | Reproduce el build EXACTO que Vercel ejecuta. Si funciona local, funciona en Vercel |
+
+### Convenciones del Makefile
+
+- **No usa Read/cat sobre `.env.local`.** Carga las vars con `set -a && source .env.local && set +a` en una subshell, evitando exposure al transcript.
+- **`env-check` solo muestra nombres + length**, nunca valores. Detecta placeholders como `[YOUR-PASSWORD]` o `PLACEHOLDER` y los marca con ❌.
+- **PID tracking robusto**: si un proceso muere fuera del control de make, `make status` detecta y limpia el PID huérfano.
+- **No expone secretos en stdout**, solo HTTP codes y nombres de variables.
+
+### Cuándo lo usás
+
+- **Día a día de desarrollo:** `make up` por la mañana, `make logs SERVICE=web` mientras codeás, `make down` al final.
+- **Antes de pushear:** `make typecheck && make lint && make build` para verificar que todos los gates pasan.
+- **Si algo en Vercel falla:** `make vercel-parity` para reproducir el problema localmente con los mismos comandos.
+- **Onboarding de un dev nuevo:** `make help` da todo el panorama en 30 segundos.
+
+---
+
 ## Variables de entorno
 
 ### Lista consolidada

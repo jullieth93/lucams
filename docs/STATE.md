@@ -12,7 +12,7 @@
 
 ## Resumen actual
 
-**Fase 0a + 0b cerradas. Fase 1 EN CURSO (scaffolding inicial completado, 2026-05-09).** Monorepo pnpm + Next.js **16.2.6** (no 15 — actualizado, ver ADR-024) + React 19.2.4 + Tailwind v4 (CSS-first, `@theme inline`) + shadcn/ui (style `radix-nova`) + tw-animate-css + Turbopack default funcionando. Tokens Lucams aplicados a `globals.css` (paleta brand kawaii: morado/turquesa/coral/rosa/amarillo/cream + neutrales + feedback + radii). Tipografías Fredoka + Inter cargando vía `next/font/google`. Home placeholder con identidad Lucams renderiza en HTTP 200. Build de producción limpio (4 páginas estáticas pre-renderizadas, sin warnings). `lib/utils.ts` con `cn()` helper. Prettier + prettier-plugin-tailwindcss configurados. **Próximo bloque de Fase 1:** RLS policies, Auth Supabase, healthchecks, patrones cross-cutting (RFC 7807, capa de servicio, idempotency, request ID).
+**Fase 0a + 0b cerradas. Fase 1 EN CURSO (scaffolding inicial + paridad Vercel completados, 2026-05-09).** Monorepo pnpm + Next.js **16.2.6** + React 19.2.4 + Tailwind v4 + shadcn/ui (`radix-nova`) + Turbopack default. Tokens Lucams (paleta brand) y Fredoka + Inter aplicados. Home placeholder HTTP 200 local. Build de producción limpio (4 páginas estáticas, 0 warnings). `vercel.json` declarativo en root para que Vercel buildee correctamente desde monorepo. **Makefile orquestador** en `/tmp/lucams-shop-local/` con comandos para stack (`make up/down/status/logs`), quality gates (`make build/typecheck/lint/format`) y validación local↔cloud (`make env-check/health/vercel-parity`). **Acciones pendientes de la operadora:** (1) reemplazar `[YOUR-PASSWORD]` literal en `DATABASE_URL` y `DIRECT_URL` de `.env.local` (detectado por `make env-check`); (2) sincronizar las 11 env vars en Vercel Dashboard antes del próximo deploy con código que use Supabase. **Próximo bloque de Fase 1:** RLS policies, Auth Supabase, patrones cross-cutting (RFC 7807, capa de servicio, idempotency, request ID, logger pino con redact).
 
 ---
 
@@ -140,6 +140,39 @@
 ---
 
 ## Bitácora (append-only, más reciente arriba)
+
+### 2026-05-09 — Compatibilidad local↔Vercel + Makefile orquestador (sesión 10)
+
+**Operadora pidió:** (1) validar que el entorno local sea compatible con Vercel dado que la VM es ambiente de desarrollo; (2) crear un `Makefile` + sistema de logs en `/tmp/lucams-shop-local/` siguiendo el patrón de `/tmp/commerce-ops-local/`.
+
+**Hechos:**
+
+1. **Vercel CLI 53.3.1 instalado** globalmente (`sudo npm install -g vercel`). No se hizo `vercel link` interactivo — la operadora puede hacerlo después si quiere `vercel pull`. Para validación documental no fue necesario.
+
+2. **Hallazgo crítico de paridad:** Vercel está deployando desde la raíz del repo (donde el `package.json` es del workspace, no de Next.js) → todos los deploys post-push devuelven HTTP 404 con `x-vercel-error: NOT_FOUND`. **Solución implementada:** `vercel.json` en la raíz del repo declarando explícitamente:
+   - `framework: "nextjs"` (forzar)
+   - `buildCommand: "pnpm --filter web build"`
+   - `installCommand: "pnpm install --frozen-lockfile"`
+   - `outputDirectory: "apps/web/.next"`
+   - `ignoreCommand` que skipea deploy cuando solo cambian docs
+
+3. **Makefile creado en `/tmp/lucams-shop-local/Makefile`** con comandos espejo del runtime de Vercel:
+   - **Stack:** `make up`, `down`, `restart`, `status`, `logs SERVICE=web`, `clean`.
+   - **Quality gates:** `make build`, `typecheck`, `lint`, `format`.
+   - **Validación local↔cloud:** `make env-check` (lista vars sin exponer valores, detecta placeholders), `make health` (healthchecks Supabase Auth + REST + web local), `make vercel-parity` (reproduce el build EXACTO de Vercel).
+   - Patrón heredado del otro proyecto: `nohup` + PID files + log redirection + healthcheck por `kill -0`.
+   - Make instalado en la VM con `sudo dnf install -y make`.
+
+4. **Smoke test del Makefile completo verde:** `up`, `status` (RUNNING + PID), `health` (3/3 checks 200), `down`, `vercel-parity` (build limpio, BUILD_ID generado), `env-check` (detecta correctamente vars cargadas vs placeholders).
+
+5. **Hallazgo CRÍTICO descubierto por `make env-check`:** en `.env.local` los campos `DATABASE_URL` y `DIRECT_URL` **siguen con `[YOUR-PASSWORD]` literal** — la operadora copió las connection strings de Supabase Dashboard pero no reemplazó el placeholder con la database password real. **No bloquea hoy** (el código actual no toca DB) **pero bloqueará Fase 1 schema** cuando Prisma intente conectar. **Acción de la operadora**: reemplazar `[YOUR-PASSWORD]` en ambas líneas de `.env.local` con la password generada al crear el proyecto Supabase.
+
+6. **Gap pendiente para Vercel** (no bloqueante para deploy actual del Hello World, sí para Fase 1 con Supabase):
+   - Las env vars del proyecto NO están en Vercel UI todavía. Antes del próximo deploy con código que use Supabase, la operadora debe ir a Vercel Dashboard → Settings → Environment Variables y copiar las 11 variables de `.env.local` para los 3 entornos (Production, Preview, Development), marcando como Encrypted las que son secretas.
+
+**Documentación añadida:**
+- `OPERATIONS.md` § "Compatibilidad local ↔ Vercel" — matriz de paridad + lista de env vars a sincronizar + descripción del `vercel.json`.
+- `OPERATIONS.md` § "Entorno local con Make (símil-Vercel)" — comandos disponibles, convenciones, cuándo usarlo.
 
 ### 2026-05-09 — Fase 1 scaffolding inicial (sesión 9)
 
