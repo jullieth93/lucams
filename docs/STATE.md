@@ -12,7 +12,60 @@
 
 ## Resumen actual
 
-**Fase 0a + 0b cerradas. Fase 1 EN CURSO — infraestructura backend COMPLETA en producción (2026-05-10).** Monorepo pnpm + Next.js **16.2.6** + React 19.2.4 + Tailwind v4 + shadcn/ui (`radix-nova`). Local + Vercel productivo con TODOS los headers de seguridad + X-Request-Id + CORS estricto. **Backend Fase 1 desplegado (commit `002eff1`):** capa transversal (`lib/errors.ts` RFC 7807 + 8 AppError, `lib/request-id.ts` AsyncLocalStorage, `lib/logger.ts` pino+redact), 3 clientes Supabase (`browser`/`server`/`service`), `proxy.ts` con session refresh + 7 headers + CORS, **`packages/db/` con 20 modelos Prisma + audit fields + migración inicial aplicada a Supabase**, **RLS habilitada en TODAS las tablas con policies de catálogo público + customer-owned + deny-by-default para tablas internas**, **rate-limit Postgres** (ADR-016: tabla `rate_limit_buckets` + función SQL `rate_limit_check` + `lib/rate-limit.ts`, verificado con smoke test: 3 allowed → 4th blocked). `/api/health/db` 338ms en producción Vercel→Supabase US. ADR-029 documenta el fix de Vercel monorepo. **Próximo bloque Fase 1:** audit fields middleware (Prisma `$extends` para auto-fill createdBy/updatedBy desde sesión) + Auth flow (login/register con shadcn UI + Supabase Auth + server actions). Auth flow es el primer bloque con UI visible → requiere prueba GUI.
+**Fase 0a + 0b cerradas. Fase 1 EN CURSO — backend completo + Auth flow básico en producción (2026-05-10).** Monorepo pnpm + Next.js **16.2.6** + React 19.2.4 + Tailwind v4 + shadcn/ui (`radix-nova`). **Auth flow desplegado (commit `ca1d73e`):** `/login`, `/registro`, `/recuperar-password` con identidad Lucams (gradiente brand-cream→purple, Fredoka headings, paleta kawaii, NO el blanco minimalista de magneticas.cl). Server actions con Zod v4 + rate-limit Postgres + Supabase Auth + creación de Customer vía Prisma + saga rollback en error. shadcn components base instalados (button/input/label/card, style `radix-nova`). 7 rutas en producción Vercel (HTTP 200 todas). Backend stack completo: capa transversal (`errors`/`request-id`/`logger`), 3 clientes Supabase, `proxy.ts` con session refresh + 7 headers + CORS, `packages/db/` con 20 modelos + RLS, rate-limit Postgres (ADR-016). **ACCIONES HUMANAS PENDIENTES para que Auth funcione end-to-end:** configurar Site URL + Redirect URLs en Supabase Auth Dashboard. **Prueba GUI pendiente** del flujo completo (visual + interacción + responsive). **Próximo bloque Fase 1:** audit middleware (Prisma `$extends`) + página de reset-password callback + logout + lib/auth helpers + email templates Resend (Fase 1 finaliza con storefront mínimo en Fase 2).
+
+---
+
+## Última sesión — 2026-05-10 (Auth flow básico — primera UI visible Lucams)
+
+**Origen:** Lucy pidió continuar con el enfoque de magneticas.cl como referencia funcional. Implementé Auth flow básico (login/registro/recuperar-password) con identidad Lucams REAL (no shadcn genérico).
+
+**Hechos:**
+
+1. **Estudio competitivo:** WebFetch a magneticas.cl. Patrones detectados (`/account/login`, `/account/register`): email + contraseña sin social login ni "remember me", links a forgot-password + register, tono cálido emocional, layout centered card, identidad minimalista blanca.
+
+2. **shadcn components instalados** vía `pnpm dlx shadcn add`: button, card, input, label (style `radix-nova`).
+
+3. **`app/(auth)/layout.tsx`** (commit `ca1d73e`) — layout dedicado para auth. Gradiente `brand-cream → white → brand-purple/10`, wordmark "Lucams + shop" en Fredoka con colores brand, footer con link a WhatsApp `+57 315 071 8723`. **Opuesto al minimalismo blanco de magneticas** — fondo cálido kawaii.
+
+4. **`/login`** — Card con título "Bienvenida de vuelta" en Fredoka brand-purple-dark + Input email/password + button primary brand-purple + links a /recuperar-password (text-brand-pink) y /registro. Server action `loginAction` valida con Zod, rate-limit `login:<ip>` 5/15min, llama `supabase.auth.signInWithPassword`. Error genérico al cliente (no enumera cuentas) + log estructurado con código.
+
+5. **`/registro`** — Card con título "Crea tu cuenta Lucams" + grid 2-cols nombre/apellido + email + password (min 8) + texto de consentimiento Ley 1581. Server action `signupAction` con saga: (a) Zod, (b) rate-limit `signup:<ip>` 3/hora, (c) `supabase.auth.signUp`, (d) `prisma.customer.create` con `supabaseUserId` + `referralCode` (`LCS-<8hex>`) + audit `createdBy=userId`. Compensación en falla (4): `supabaseService.auth.admin.deleteUser` para no dejar huérfanos. Muestra "Te enviamos un correo para confirmar" inline si Supabase devuelve `session: null`; si confirmación está apagada, redirect a `/`.
+
+6. **`/recuperar-password`** — Card con email field. Server action `recuperarPasswordAction` con rate-limit `reset-password:<ip>` 3/hora. **SIEMPRE devuelve success genérico** independiente de si el email existe (mitigación de account enumeration). Llama `supabase.auth.resetPasswordForEmail`.
+
+7. **Patrón React 19 `useActionState`** en los 3 form components para mostrar errores inline + estado pending sin redirect roundtrip. `aria-invalid` + `aria-describedby` para a11y básica.
+
+8. **Eventos de logger estructurados:**
+   - `auth.login.{success,fail,rate_limited}`
+   - `auth.signup.{success,auth_fail,customer_create_fail,rollback_fail,rate_limited}`
+   - `auth.reset.{sent,fail,rate_limited}`
+
+**Verificaciones:**
+- typecheck + build ✓ (7 rutas: home, login, registro, recuperar-password, /api/health, /api/health/db, _not-found + Proxy).
+- Local: HTTP 200 en `/login`, `/registro`, `/recuperar-password`. HTML inspection confirma headings, buttons, links, wordmark.
+- Producción Vercel `ca1d73e`: las 6 URLs públicas en HTTP 200.
+
+**⚠️ ACCIONES HUMANAS PENDIENTES para que Auth funcione end-to-end:**
+
+1. **Supabase Dashboard → Authentication → URL Configuration:**
+   - Site URL: `https://lucams-shop.vercel.app`
+   - Additional Redirect URLs: `https://lucams-shop.vercel.app/**`, `http://localhost:3000/**`
+
+2. **Email Templates** (opcional pero importante para identidad): Authentication → Email Templates. Por default Supabase manda emails en inglés genéricos. Customizar para español + tono Lucams, O esperar a integración Resend (próxima fase).
+
+3. **Prueba visual del flujo** en navegador (ver bloque GUI suggested abajo).
+
+**🔍 PRUEBA VISUAL pendiente** — el flujo es la primera UI visible de Lucams. Hay que validar visualmente que el branding queda Lucams (kawaii) y no genérico shadcn.
+
+**Pendiente Fase 1 (próximos bloques):**
+- **Audit middleware** Prisma `$extends` para auto-fill `createdBy`/`updatedBy` desde sesión actual.
+- **Reset-password callback** — la página que recibe el link del email y permite establecer nueva contraseña (`/establecer-password` o similar).
+- **Logout** — server action que llama `supabase.auth.signOut()`.
+- **Customer profile page** (`/mi-cuenta`) — magneticas pattern.
+- **Header logged-in vs logged-out** — depende de helper `lib/auth.ts` (función `getCurrentUser()` server-side).
+- **Email confirmation callback** — Supabase emails apuntan a una URL que debemos implementar para hacer `exchangeCodeForSession`.
+- **Email templates Resend SMTP** — sustituir los defaults de Supabase para tener brand consistente.
 
 ---
 
