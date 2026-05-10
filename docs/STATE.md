@@ -141,6 +141,29 @@
 
 ## Bitácora (append-only, más reciente arriba)
 
+### 2026-05-09 — Fix deploy Vercel: Root Directory + simplificación vercel.json (sesión 12)
+
+**Síntoma:** después de pushear el commit `a025589` (que agregaba `/api/health`), el deploy de Vercel seguía respondiendo HTTP 404 con `x-vercel-error: NOT_FOUND` en `lucams-shop.vercel.app/`.
+
+**Diagnóstico** (gracias al build log que la operadora extrajo del dashboard):
+
+```
+23:29:58.579 Warning: Could not identify Next.js version, ensure it is defined as a project dependency.
+23:29:58.593 Error: No Next.js version detected. Make sure your package.json has "next" in either "dependencies" or "devDependencies". Also check your Root Directory setting matches the directory of your package.json file.
+```
+
+El log mostró que Vercel SÍ ejecutó nuestro `installCommand` (`pnpm install --frozen-lockfile` desde root, 12.3s OK con las 667 deps). Pero después intentó detectar Next.js leyendo el `package.json` del **Root Directory** (que estaba en `./` por default, importado antes de tener `apps/web/`). El `package.json` del workspace root NO contiene `next` — `next` vive en `apps/web/package.json`. Resultado: error y deploy fallido.
+
+**Aprendizaje crítico:** declarar `framework: "nextjs"` en `vercel.json` **NO supera** esa validación. Vercel valida `next` en el `package.json` del Root Directory **antes** de leer `vercel.json` para framework override. La solución canónica para monorepos es **Root Directory = `apps/web`** en Vercel UI.
+
+**Acciones:**
+
+1. **Operadora cambió Root Directory a `apps/web`** en Vercel UI (Settings → General → Root Directory). Disparó re-deploy automático.
+2. **Claude simplificó `vercel.json` del repo** a solo `ignoreCommand`. Eliminados `framework`, `buildCommand`, `installCommand`, `outputDirectory` — Vercel los auto-detecta correctamente cuando Root Directory apunta a `apps/web/`. El `ignoreCommand` se queda porque se ejecuta desde la raíz del repo (no del Root Directory) y necesitamos paths relativos al repo entero para skip-docs-only.
+3. **`OPERATIONS.md` actualizado:** sección "vercel.json del repo" reescrita para reflejar la versión minimal + nueva subsección "Configuración requerida en Vercel UI" listando Root Directory y otros settings auto-detect. Nota explicativa del aprendizaje incluida.
+
+**Validación pendiente:** próximo push debe disparar deploy que sirva la home Lucams en HTTP 200 + `/api/health` con JSON correcto.
+
 ### 2026-05-09 — Operadora actualiza .env.local + state dir movido a workspaces (sesión 11)
 
 **Hechos:**

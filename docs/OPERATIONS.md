@@ -165,15 +165,24 @@ Para los 3 environments de Vercel: **Production**, **Preview**, **Development**.
 
 ### `vercel.json` del repo
 
-Vive en el root: [`vercel.json`](../vercel.json). Sus campos:
+Vive en el root: [`vercel.json`](../vercel.json). Es **minimal por diseño** — solo declara el `ignoreCommand`. La configuración de framework/build/install/output viene del **Root Directory** del proyecto en Vercel UI (debe estar seteado a `apps/web`).
 
 | Campo | Valor | Por qué |
 |---|---|---|
-| `framework` | `"nextjs"` | Forzar detección — el `package.json` root es del workspace, no de Next |
-| `buildCommand` | `pnpm --filter web build` | Solo buildea `apps/web` (no packages futuros) |
-| `installCommand` | `pnpm install --frozen-lockfile` | Coherente con CI: falla si lockfile no está sincronizado |
-| `outputDirectory` | `apps/web/.next` | Donde Next.js deja el build |
-| `ignoreCommand` | `git diff HEAD^ HEAD --quiet -- ./apps/web ./packages ./pnpm-lock.yaml ./package.json ./pnpm-workspace.yaml` | Skip deploy cuando solo cambian docs (ahorra build minutes) |
+| `ignoreCommand` | `git diff HEAD^ HEAD --quiet -- ./apps/web ./packages ./pnpm-lock.yaml ./package.json ./pnpm-workspace.yaml ./vercel.json` | Skip deploy cuando solo cambian docs (ahorra build minutes). Se ejecuta desde la raíz del repo (no del Root Directory), por eso los paths son `./apps/web` etc. |
+
+> **Por qué Root Directory en UI y no `framework`/`buildCommand` en `vercel.json`:** Vercel valida la presencia de `next` en el `package.json` del **Root Directory** **antes** de leer `vercel.json`. Como nuestro `package.json` del repo root es del workspace (no de Next.js), declarar `framework: nextjs` en `vercel.json` no supera esa validación — produce el error *"No Next.js version detected"*. La solución correcta para monorepos es Root Directory = `apps/web`. Aprendido el 2026-05-09 al fallar el primer deploy con `vercel.json` "completo" — ver [`STATE.md` § sesión 12](STATE.md).
+
+### Configuración requerida en Vercel UI
+
+| Setting | Valor | Cómo |
+|---|---|---|
+| **Root Directory** | `apps/web` | Settings → General → Root Directory → input. **Crítico**: sin esto los deploys fallan con "No Next.js version detected". |
+| Framework | (auto-detect) | Vercel detecta Next.js en `apps/web/package.json` |
+| Build Command | (auto-detect = `next build`) | — |
+| Install Command | (auto-detect = `pnpm install`) | Detecta `pnpm-workspace.yaml` en el padre, instala desde root del workspace |
+| Output Directory | (auto-detect = `.next`) | — |
+| Node Version | 22.x | Settings → General → Node.js Version |
 
 ---
 
