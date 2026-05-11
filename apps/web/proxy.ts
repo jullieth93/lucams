@@ -40,6 +40,14 @@ const SECURITY_HEADERS: Record<string, string> = {
   "X-DNS-Prefetch-Control": "on",
 };
 
+// `upgrade-insecure-requests` solo en producción/preview (donde Vercel
+// sirve HTTPS). En dev local servimos por HTTP plano (localhost o IP
+// LAN de la VM) — incluirlo rompería todos los recursos CSS/JS/font al
+// forzar al browser a promoverlos a HTTPS que no existe.
+const IS_PROD_DEPLOY =
+  process.env.VERCEL_ENV === "production" ||
+  process.env.VERCEL_ENV === "preview";
+
 const CSP = [
   "default-src 'self'",
   "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com https://checkout.wompi.co",
@@ -51,7 +59,7 @@ const CSP = [
   "form-action 'self' https://checkout.wompi.co",
   "base-uri 'self'",
   "object-src 'none'",
-  "upgrade-insecure-requests",
+  ...(IS_PROD_DEPLOY ? ["upgrade-insecure-requests"] : []),
 ].join("; ");
 
 const ALLOWED_ORIGINS: (string | RegExp)[] = [
