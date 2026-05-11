@@ -26,7 +26,10 @@ export function RestablecerForm({ email }: { email: string }) {
     FormData
   >(restablecerPasswordAction, null);
   const [password, setPassword] = useState("");
+  const [passwordConfirm, setPasswordConfirm] = useState("");
   const [token, setToken] = useState("");
+
+  const passwordsMatch = !passwordConfirm || password === passwordConfirm;
 
   return (
     <Card className="shadow-xl border-brand-purple/10 animate-in fade-in slide-in-from-bottom-3 duration-500">
@@ -101,6 +104,33 @@ export function RestablecerForm({ email }: { email: string }) {
             )}
           </div>
 
+          <div className="space-y-2">
+            <Label htmlFor="passwordConfirm">Confirmar nueva contraseña</Label>
+            <PasswordInput
+              id="passwordConfirm"
+              name="passwordConfirm"
+              autoComplete="new-password"
+              required
+              minLength={8}
+              disabled={pending}
+              value={passwordConfirm}
+              onValueChange={setPasswordConfirm}
+              aria-invalid={
+                Boolean(state?.fieldErrors?.passwordConfirm) || !passwordsMatch
+              }
+            />
+            {!passwordsMatch && (
+              <p className="text-sm text-destructive">
+                Las contraseñas no coinciden.
+              </p>
+            )}
+            {state?.fieldErrors?.passwordConfirm && passwordsMatch && (
+              <p className="text-sm text-destructive">
+                {state.fieldErrors.passwordConfirm[0]}
+              </p>
+            )}
+          </div>
+
           {state?.error && !state.fieldErrors && (
             <div
               role="alert"
@@ -115,7 +145,12 @@ export function RestablecerForm({ email }: { email: string }) {
           <Button
             type="submit"
             className="w-full bg-brand-purple hover:bg-brand-purple-dark text-white font-semibold transition-all hover:shadow-md hover:-translate-y-px active:translate-y-px"
-            disabled={pending || token.length < 6 || password.length < 8}
+            disabled={
+              pending ||
+              token.length < 6 ||
+              password.length < 8 ||
+              !passwordsMatch
+            }
           >
             {pending ? (
               <span className="inline-flex items-center gap-2">

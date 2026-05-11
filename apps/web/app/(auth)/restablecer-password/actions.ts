@@ -30,18 +30,26 @@ import { logger } from "@/lib/logger";
 import { rateLimit } from "@/lib/rate-limit";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
-const Schema = z.object({
-  email: z.string().email("Email inválido"),
-  token: z.string().regex(/^\d{6,10}$/, "Código de 6 a 10 dígitos"),
-  password: z
-    .string()
-    .min(8, "Mínimo 8 caracteres")
-    .max(72, "Máximo 72 caracteres"),
-});
+const Schema = z
+  .object({
+    email: z.string().email("Email inválido"),
+    token: z.string().regex(/^\d{6,10}$/, "Código de 6 a 10 dígitos"),
+    password: z
+      .string()
+      .min(8, "Mínimo 8 caracteres")
+      .max(72, "Máximo 72 caracteres"),
+    passwordConfirm: z.string(),
+  })
+  .refine((d) => d.password === d.passwordConfirm, {
+    message: "Las contraseñas no coinciden.",
+    path: ["passwordConfirm"],
+  });
 
 export type RestablecerActionState = {
   error?: string;
-  fieldErrors?: Partial<Record<"email" | "token" | "password", string[]>>;
+  fieldErrors?: Partial<
+    Record<"email" | "token" | "password" | "passwordConfirm", string[]>
+  >;
 };
 
 export async function restablecerPasswordAction(
@@ -52,6 +60,7 @@ export async function restablecerPasswordAction(
     email: formData.get("email"),
     token: String(formData.get("token") ?? "").replace(/\s+/g, ""),
     password: formData.get("password"),
+    passwordConfirm: formData.get("passwordConfirm"),
   });
 
   if (!parsed.success) {
