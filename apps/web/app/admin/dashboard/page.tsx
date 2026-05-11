@@ -123,21 +123,26 @@ export default async function AdminDashboardPage() {
             Acciones rápidas
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <Card className="border-slate-200">
-              <CardHeader>
-                <CardTitle className="text-base text-slate-900">
-                  Productos
-                </CardTitle>
-                <CardDescription className="text-slate-600">
-                  Crear, editar, archivar productos del catálogo.
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <span className="inline-block rounded bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
-                  Próximamente · Fase 2
-                </span>
-              </CardContent>
-            </Card>
+            <Link
+              href="/admin/productos"
+              className="block transition-shadow hover:shadow-md rounded-lg"
+            >
+              <Card className="border-slate-200 hover:border-slate-300 h-full">
+                <CardHeader>
+                  <CardTitle className="text-base text-slate-900">
+                    Productos →
+                  </CardTitle>
+                  <CardDescription className="text-slate-600">
+                    Crear, editar, archivar productos del catálogo.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <span className="inline-block rounded bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
+                    Disponible
+                  </span>
+                </CardContent>
+              </Card>
+            </Link>
 
             <Card className="border-slate-200">
               <CardHeader>
