@@ -124,6 +124,27 @@ export default async function AdminDashboardPage() {
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <Link
+              href="/admin/categorias"
+              className="block transition-shadow hover:shadow-md rounded-lg"
+            >
+              <Card className="border-slate-200 hover:border-slate-300 h-full">
+                <CardHeader>
+                  <CardTitle className="text-base text-slate-900">
+                    Categorías →
+                  </CardTitle>
+                  <CardDescription className="text-slate-600">
+                    Agrupar productos por tipo. Necesario antes de crear productos.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <span className="inline-block rounded bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
+                    Disponible
+                  </span>
+                </CardContent>
+              </Card>
+            </Link>
+
+            <Link
               href="/admin/productos"
               className="block transition-shadow hover:shadow-md rounded-lg"
             >
