@@ -100,11 +100,14 @@ Antes de iniciar la fase, citar fuente con fecha en `OPERATIONS.md` para:
 
 ---
 
-## Fase 1 — Base sólida (core técnico) 🟡 EN CURSO
+## Fase 1 — Base sólida (core técnico) 🟢 Completada (auth completo, 2026-05-11)
 
 > **Alcance:** scaffolding del monorepo, modelo de datos, autenticación, sistema de diseño base. Sin features de producto todavía.
 >
-> **Estado (2026-05-11):** ✅ lado **customer** completo y testeado por Lucy (signup OTP + login + logout + recuperar-password + restablecer + brand assets + security hardening). ⏸️ Pendiente lado **admin** + **profile editing + right-to-deletion Ley 1581**.
+> **Estado (2026-05-11):**
+> - ✅ lado **customer** completo y testeado (signup OTP + login + logout + recuperar-password + restablecer + brand assets + security hardening + email autocomplete)
+> - ✅ lado **admin** completo y testeado (`/admin/login` + `/admin/dashboard` + gate proxy + seed scripts + 4/4 pruebas Lucy pasadas)
+> - ⏸️ Pendiente: **profile editing + right-to-deletion Ley 1581** (diferido a próximas fases por priorización; el flow customer básico ya cubre el caso de uso principal)
 
 ### Tareas
 

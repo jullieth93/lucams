@@ -12,7 +12,58 @@
 
 ## Resumen actual
 
-**Fase 0a + 0b cerradas. Fase 1 customer-side CERRADA y testeada (2026-05-11).** Monorepo pnpm + Next.js **16.2.6** + Tailwind v4 + shadcn/ui (`radix-nova`). Stack productivo (Vercel) + local (VM) idénticos. **Customer auth flow end-to-end probado por Lucy (commit `ea54b62`):** signup con OTP de 6-10 dígitos + login + logout + `/mi-cuenta` + recuperar-password con OTP + restablecer-password con confirm + signOut global. **Hardening de seguridad implementado:** Pwned Passwords (HaveIBeenPwned k-anonymity), rate-limit doble IP+email (`lib/rate-limit-keys.ts`), eventos `security.*` en logger pino, scope:'global' al cambiar password (invalida todas las sesiones del user). **Brand assets reales** en `apps/web/public/brand/lucams-logo.png` (468×468 RGBA, 256KB en repo → ~5KB WebP servido al browser por Next.js Image optimizer). **3 email templates kawaii** pegados en Supabase Dashboard (Confirm signup, Reset password, Password changed) + tracking en `docs/EMAIL_TEMPLATES.md`. **EmailInput con autocomplete** de 8 dominios populares (gmail/hotmail/outlook/yahoo/icloud/live/hotmail.es/yahoo.es) + pattern HTML5 estricto. Decisiones formalizadas: ADR-030 URLs separadas cliente vs admin, ADR-031 guest-first browsing. Trigger sync auth.users→Customer descartado (bug de Supabase Auth API HTTP) — limpieza vía `make seed-clean` script. **Próximo bloque: Fase 1.b admin mínimo + Fase 2 catálogo público + carrito anon.**
+**Fase 0a + 0b cerradas. Fase 1 (customer + admin) CERRADA y testeada (2026-05-11).** Monorepo pnpm + Next.js **16.2.6** + Tailwind v4 + shadcn/ui (`radix-nova`). Stack productivo (Vercel) + local (VM) idénticos. **Customer auth flow end-to-end probado por Lucy (commit `ea54b62`):** signup con OTP de 6-10 dígitos + login + logout + `/mi-cuenta` + recuperar-password con OTP + restablecer-password con confirm + signOut global. **Hardening de seguridad implementado:** Pwned Passwords (HaveIBeenPwned k-anonymity), rate-limit doble IP+email (`lib/rate-limit-keys.ts`), eventos `security.*` en logger pino, scope:'global' al cambiar password (invalida todas las sesiones del user). **Brand assets reales** en `apps/web/public/brand/lucams-logo.png` (468×468 RGBA, 256KB en repo → ~5KB WebP servido al browser por Next.js Image optimizer). **3 email templates kawaii** pegados en Supabase Dashboard (Confirm signup, Reset password, Password changed) + tracking en `docs/EMAIL_TEMPLATES.md`. **EmailInput con autocomplete** de 8 dominios populares (gmail/hotmail/outlook/yahoo/icloud/live/hotmail.es/yahoo.es) + pattern HTML5 estricto. Decisiones formalizadas: ADR-030 URLs separadas cliente vs admin, ADR-031 guest-first browsing. Trigger sync auth.users→Customer descartado (bug de Supabase Auth API HTTP) — limpieza vía `make seed-clean` script. **Próximo bloque: Fase 1.b admin mínimo + Fase 2 catálogo público + carrito anon.**
+
+---
+
+## Última sesión — 2026-05-11 (Fase 1.b — Admin flow + roles unificados)
+
+**Origen:** Cerrada Fase 1.a customer, Lucy autorizó la combinación A+B (admin mínimo primero, después catálogo). Este turno implementa el admin completo.
+
+**Hechos (commits `1b9b2c9` + `eae7740`):**
+
+1. **`lib/auth.ts` extiende con `getCurrentAdmin()`** análogo a `getCurrentCustomer()`. Retorna AdminUser si está activo (`isActive=true, deletedAt=null`).
+
+2. **Layout admin sobrio** (`app/admin/layout.tsx`) — slate-50 bg, `robots: noindex`, sin kawaii. Diferenciado del flow customer.
+
+3. **`/admin/login` con server action propia** (`app/admin/login/{page,login-form,actions}.tsx`):
+   - Validación Zod + rate-limit doble IP+email (estricto: 5/15min prod, vs 15/15min cliente).
+   - Verifica `signInWithPassword` + AdminUser activo.
+   - **Anti-enumeration:** si email+password OK pero NO admin → `signOut()` + mismo error "Credenciales incorrectas" que credenciales mal.
+
+4. **`/admin/dashboard` con métricas** (`app/admin/dashboard/page.tsx`):
+   - 4 cards (Customers / Orders / Products / Pending reviews) via `Promise.all` de `prisma.count`.
+   - 3 cards "Próximamente · Fase 2/4" como placeholders de futuros CRUDs.
+   - Header con email + role + botón "Ir al sitio" + logout.
+
+5. **Gate en `proxy.ts`** (Edge-safe): `/admin/*` excepto `/admin/login` requiere sesión Supabase. La verificación AdminUser activa la hacen las pages con `getCurrentAdmin()` (Prisma no corre en Edge).
+
+6. **`SiteHeader` muestra chip "Panel admin"** cuando el current user es admin. Solo desktop (`sm:inline-flex`).
+
+7. **`packages/db/scripts/seed-admin.mjs`** — script idempotente. `EMAIL=x@y.com make seed-admin` promueve a SUPERADMIN un auth.user existente. Reactivación + actualización si ya existe.
+
+8. **`packages/db/scripts/seed-test-customer.mjs`** — para testing de "user no-admin". Usa `supabase.auth.admin.createUser` con `email_confirm=true` → bypasea sandbox de Resend. Default: `test+cliente@example.com / TestCliente2026!`.
+
+9. **Documentación de Fase 1.b en ROADMAP:** ⏸️ → 🟡 EN CURSO → ✅ (auth completo).
+
+**Verificación end-to-end por Lucy (4/4 pruebas pasaron):**
+- ✅ Prueba A: Login cliente + chip "Panel admin" en header + acceso a `/admin/dashboard` sin re-login (cookie persiste, una sola sesión multi-rol)
+- ✅ Prueba B: Logout → `/admin/dashboard` redirect a `/admin/login` → login → dashboard
+- ✅ Prueba C: `/admin/login` con `test+cliente@example.com` → "Credenciales incorrectas" (anti-enumeration validado)
+- ✅ Prueba D: Login normal con test customer → home cliente OK + NO chip admin + intento `/admin/dashboard` → redirige a `/admin/login`
+
+**Modelo de roles validado:**
+- 1 `auth.users` row + 1 cookie sesión = 1 identidad de auth
+- N tablas de rol (Customer, AdminUser) apuntan al mismo `supabaseUserId`
+- Cada page pregunta por la fila de rol que necesita
+- `/login` y `/admin/login` usan la MISMA sesión pero rutean según rol verificado
+
+**Pendiente próximo turno (Fase 2):**
+- Admin CRUD productos (sin esto, storefront no tiene qué mostrar)
+- Storefront público `/productos` + `/producto/[slug]`
+- Carrito anon vía sessionId cookie (ADR-031 guest-first)
+- Categorías CRUD
+- Upload imágenes Supabase Storage
 
 ---
 
