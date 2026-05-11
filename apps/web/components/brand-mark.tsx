@@ -132,49 +132,98 @@ export function RaccoonFace() {
     <svg
       viewBox="0 0 64 64"
       xmlns="http://www.w3.org/2000/svg"
-      className="h-[72%] w-[72%]"
+      className="h-[78%] w-[78%]"
       aria-hidden="true"
     >
-      {/* Orejas */}
-      <circle cx="18" cy="20" r="6" fill="#C7C3D6" />
-      <circle cx="18" cy="21" r="3" fill="#E85B9F" opacity="0.75" />
-      <circle cx="46" cy="20" r="6" fill="#C7C3D6" />
-      <circle cx="46" cy="21" r="3" fill="#E85B9F" opacity="0.75" />
+      <defs>
+        {/* Cara: gradiente radial cream → gris lavanda (volumen) */}
+        <radialGradient id="rfFace" cx="50%" cy="42%" r="58%">
+          <stop offset="0%" stopColor="#F4F0FA" />
+          <stop offset="100%" stopColor="#C9C0DD" />
+        </radialGradient>
+        {/* Orejas: gradiente para profundidad */}
+        <radialGradient id="rfEar" cx="50%" cy="50%" r="60%">
+          <stop offset="0%" stopColor="#A89DC2" />
+          <stop offset="100%" stopColor="#6E6088" />
+        </radialGradient>
+      </defs>
 
-      {/* Cara */}
-      <circle cx="32" cy="34" r="20" fill="#E8E4F0" />
+      {/* Orejas (van detrás de la cara) */}
+      <ellipse cx="15" cy="17" rx="8" ry="9" fill="url(#rfEar)" />
+      <ellipse cx="15" cy="19" rx="3.5" ry="4" fill="#F09BB8" />
+      <ellipse cx="49" cy="17" rx="8" ry="9" fill="url(#rfEar)" />
+      <ellipse cx="49" cy="19" rx="3.5" ry="4" fill="#F09BB8" />
 
-      {/* Máscara mapache (alrededor de ojos) */}
-      <ellipse cx="24" cy="32" rx="8" ry="6" fill="#3D2E5C" />
-      <ellipse cx="40" cy="32" rx="8" ry="6" fill="#3D2E5C" />
+      {/* Cara con volumen */}
+      <circle cx="32" cy="36" r="22" fill="url(#rfFace)" />
 
-      {/* Ojos blancos */}
-      <circle cx="24" cy="32" r="3" fill="white" />
-      <circle cx="40" cy="32" r="3" fill="white" />
+      {/* Whiskers (delgadas, sutiles) */}
+      <g stroke="#9A8FB5" strokeWidth="0.8" strokeLinecap="round" opacity="0.55">
+        <line x1="2" y1="38" x2="11" y2="38.5" />
+        <line x1="2" y1="42" x2="11" y2="41" />
+        <line x1="53" y1="38.5" x2="62" y2="38" />
+        <line x1="53" y1="41" x2="62" y2="42" />
+      </g>
 
-      {/* Pupilas */}
-      <circle cx="25" cy="32.5" r="1.5" fill="#1F1733" />
-      <circle cx="41" cy="32.5" r="1.5" fill="#1F1733" />
-
-      {/* Brillito en ojos */}
-      <circle cx="23.5" cy="31" r="0.6" fill="white" />
-      <circle cx="39.5" cy="31" r="0.6" fill="white" />
-
-      {/* Nariz */}
-      <ellipse cx="32" cy="40" rx="2.2" ry="1.6" fill="#1F1733" />
-
-      {/* Sonrisa */}
+      {/* Máscara mapache — más redondeada */}
       <path
-        d="M 28 44 Q 32 47 36 44"
-        stroke="#1F1733"
-        strokeWidth="1.6"
-        fill="none"
-        strokeLinecap="round"
+        d="M 13 30 Q 22 21 31 30 Q 32 32 31 34 Q 22 41 13 34 Q 12 32 13 30 Z"
+        fill="#2A1F45"
+      />
+      <path
+        d="M 51 30 Q 42 21 33 30 Q 32 32 33 34 Q 42 41 51 34 Q 52 32 51 30 Z"
+        fill="#2A1F45"
       />
 
-      {/* Cachetitos rosados */}
-      <circle cx="16" cy="40" r="2.5" fill="#E85B9F" opacity="0.4" />
-      <circle cx="48" cy="40" r="2.5" fill="#E85B9F" opacity="0.4" />
+      {/* Ojos grandes brillantes */}
+      <ellipse cx="22" cy="31" rx="4.2" ry="4.6" fill="white" />
+      <ellipse cx="42" cy="31" rx="4.2" ry="4.6" fill="white" />
+      <ellipse cx="22.5" cy="31.5" rx="2.8" ry="3.3" fill="#1A1530" />
+      <ellipse cx="42.5" cy="31.5" rx="2.8" ry="3.3" fill="#1A1530" />
+
+      {/* Brillitos grandes en ojos (kawaii sparkle) */}
+      <circle cx="21.4" cy="30" r="1.3" fill="white" />
+      <circle cx="41.4" cy="30" r="1.3" fill="white" />
+      <circle cx="23.7" cy="32.8" r="0.5" fill="white" />
+      <circle cx="43.7" cy="32.8" r="0.5" fill="white" />
+
+      {/* Cejas tenues — expresión amable */}
+      <path
+        d="M 17 24 Q 22 22 26.5 24"
+        stroke="#2A1F45"
+        strokeWidth="1.1"
+        fill="none"
+        strokeLinecap="round"
+        opacity="0.7"
+      />
+      <path
+        d="M 37.5 24 Q 42 22 47 24"
+        stroke="#2A1F45"
+        strokeWidth="1.1"
+        fill="none"
+        strokeLinecap="round"
+        opacity="0.7"
+      />
+
+      {/* Cachetitos rosados grandes */}
+      <ellipse cx="14" cy="42" rx="3.8" ry="2.5" fill="#F09BB8" opacity="0.55" />
+      <ellipse cx="50" cy="42" rx="3.8" ry="2.5" fill="#F09BB8" opacity="0.55" />
+
+      {/* Nariz pequeña tipo corazón */}
+      <path
+        d="M 32 41.5 C 30 40 28.6 41.6 30 43.2 L 32 45.4 L 34 43.2 C 35.4 41.6 34 40 32 41.5 Z"
+        fill="#1A1530"
+      />
+
+      {/* Boca "w" pequeña — kawaii por excelencia */}
+      <path
+        d="M 28.5 47.5 Q 30.25 49 32 47.5 Q 33.75 49 35.5 47.5"
+        stroke="#1A1530"
+        strokeWidth="1.3"
+        fill="none"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   );
 }
