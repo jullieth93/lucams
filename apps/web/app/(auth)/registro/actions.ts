@@ -98,6 +98,10 @@ export async function signupAction(
 
   // Rate-limit doble: por IP y por email. Cubre botnet (muchas IPs ↔ 1
   // email) Y un atacante atacando muchos emails desde una IP.
+  // Bucket de IP y bucket de email tienen mismos límites durante
+  // pre-launch (testing requiere room). Defense-in-depth real cuando
+  // bajemos prod a límites estrictos al lanzar — TODO mismo que en
+  // registro/actions.ts cabecera.
   const rlIp = await rateLimit(
     ipKey("signup", ip),
     isProd ? 10 : 30,
@@ -105,7 +109,7 @@ export async function signupAction(
   );
   const rlEmail = await rateLimit(
     emailKey("signup", parsed.data.email),
-    isProd ? 3 : 10,
+    isProd ? 10 : 30,
     60 * 60,
   );
   if (!rlIp.allowed || !rlEmail.allowed) {

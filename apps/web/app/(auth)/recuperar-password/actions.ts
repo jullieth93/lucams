@@ -59,7 +59,7 @@ export async function recuperarPasswordAction(
   );
   const rlEmail = await rateLimit(
     emailKey("reset-password", parsed.data.email),
-    isProd ? 3 : 10,
+    isProd ? 10 : 30,
     60 * 60,
   );
   if (!rlIp.allowed || !rlEmail.allowed) {

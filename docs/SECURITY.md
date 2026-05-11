@@ -66,10 +66,11 @@
 - **Strength meter informativo** custom (5 niveles: muy débil / débil / razonable / fuerte / muy fuerte). Cálculo en `lib/password-strength.ts` — pondera longitud + clases de caracteres + penaliza secuencias comunes (`123`, `qwerty`) y términos locales (`lucams`, `password`). NO bloquea, solo informa.
 - **Pwned Passwords (HaveIBeenPwned)** vía `lib/pwned-passwords.ts`. Usa k-anonymity (SHA-1 prefijo de 5 chars → API gratis sin envío de password). Bloquea registro/cambio de password si está en breaches conocidos. Fail-open si HIBP cae.
 - **Rate-limit doble por IP + por email** (`lib/rate-limit-keys.ts`):
-  - Signup: 10 IP/h + 3 email/h (prod) — mitiga botnet con varias IPs por email Y atacante atacando muchos emails desde una IP.
-  - Login: 15 IP/15min + 8 email/15min.
-  - Reset-password: 10 IP/h + 3 email/h.
-  - Verify-recovery (OTP entry): 10 IP/15min + 5 email/15min.
+  - Signup: 10 IP/h + 10 email/h (prod).
+  - Login: 15 IP/15min + 15 email/15min.
+  - Reset-password: 10 IP/h + 10 email/h.
+  - Verify-recovery (OTP entry): 10 IP/15min + 10 email/15min.
+  - Durante pre-launch (commit `8b640ee` ajuste, 2026-05-11): bucket de email == bucket de IP. La defensa-en-profundidad existe solo cuando atacante distribuye sobre varias IPs (caso real de credential stuffing). Para single-source (1 IP, 1 email), el bucket más estricto pega — pero al ser iguales, prácticamente lo limita IP. **Al lanzar productivo con tráfico real**, bajar email a más estricto que IP (signup 3/h, reset 3/h) para detener botnets.
   - El email se hashea con SHA-256 truncado a 16 chars antes de usar como key — no aparece en claro en `rate_limit_buckets`.
 - **Recuperación con OTP de 6-10 dígitos** (no link). Inmune a Gmail prefetch que consume tokens de links.
 - **Confirmar contraseña** obligatorio en signup y reset (campos duplicados con `.refine()` Zod + validación inline en client).

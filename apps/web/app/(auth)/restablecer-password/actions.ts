@@ -85,7 +85,7 @@ export async function restablecerPasswordAction(
   );
   const rlEmail = await rateLimit(
     emailKey("verify-recovery", parsed.data.email),
-    isProd ? 5 : 15,
+    isProd ? 10 : 30,
     15 * 60,
   );
   if (!rlIp.allowed || !rlEmail.allowed) {

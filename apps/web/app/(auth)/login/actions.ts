@@ -65,7 +65,7 @@ export async function loginAction(
   );
   const rlEmail = await rateLimit(
     emailKey("login", parsed.data.email),
-    isProd ? 8 : 30,
+    isProd ? 15 : 50,
     15 * 60,
   );
   if (!rlIp.allowed || !rlEmail.allowed) {
