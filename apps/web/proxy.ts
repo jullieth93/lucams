@@ -108,7 +108,24 @@ export async function proxy(request: NextRequest) {
     },
   );
 
-  await supabase.auth.getUser();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  // Gate /admin/* — requiere sesión Supabase. La verificación adicional
+  // de que el user efectivamente tiene fila AdminUser activa la hacemos
+  // en las pages (`getCurrentAdmin()`), porque no podemos correr Prisma
+  // dentro del proxy (Edge-runtime safe). Acá solo nos aseguramos de
+  // que NO se sirvan páginas admin a anónimos.
+  //
+  // Excepción: /admin/login es público (es donde el user se autentica).
+  const path = request.nextUrl.pathname;
+  const isAdminPath =
+    path.startsWith("/admin") && !path.startsWith("/admin/login");
+  if (isAdminPath && !user) {
+    const redirectUrl = new URL("/admin/login", request.url);
+    return NextResponse.redirect(redirectUrl);
+  }
 
   response.headers.set("X-Request-Id", requestId);
   for (const [k, v] of Object.entries(SECURITY_HEADERS)) {

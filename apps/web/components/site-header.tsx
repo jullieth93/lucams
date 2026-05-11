@@ -17,10 +17,13 @@ import Link from "next/link";
 import { logoutAction } from "@/app/auth/logout/actions";
 import { BrandMark } from "@/components/brand-mark";
 import { Button } from "@/components/ui/button";
-import { getCurrentCustomer } from "@/lib/auth";
+import { getCurrentAdmin, getCurrentCustomer } from "@/lib/auth";
 
 export async function SiteHeader() {
-  const session = await getCurrentCustomer();
+  const [session, admin] = await Promise.all([
+    getCurrentCustomer(),
+    getCurrentAdmin(),
+  ]);
 
   return (
     <header className="px-6 py-4 sm:px-10 border-b border-brand-purple/10 bg-white">
@@ -28,6 +31,14 @@ export async function SiteHeader() {
         <BrandMark size="sm" animated />
 
         <nav className="flex items-center gap-2 sm:gap-4">
+          {admin && (
+            <Link
+              href="/admin/dashboard"
+              className="hidden sm:inline-flex text-xs font-semibold uppercase tracking-wider text-brand-purple-dark bg-brand-yellow/30 hover:bg-brand-yellow/50 px-3 py-1.5 rounded-md transition-colors"
+            >
+              Panel admin
+            </Link>
+          )}
           {session ? (
             <>
               <Link

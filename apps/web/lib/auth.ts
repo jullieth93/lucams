@@ -27,7 +27,7 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
-import type { Customer } from "@lucams/db";
+import type { AdminUser, Customer } from "@lucams/db";
 
 export async function getCurrentUser() {
   const supabase = await createSupabaseServerClient();
@@ -50,4 +50,27 @@ export async function getCurrentCustomer(): Promise<
   if (!customer) return null;
 
   return { user, customer };
+}
+
+/**
+ * Devuelve el AdminUser asociado al user autenticado si existe Y está
+ * activo (isActive=true) Y no soft-deleted (deletedAt=null).
+ *
+ * Cliente Y admin pueden compartir el mismo auth.user — un mismo email
+ * puede ser ambas cosas. Un admin que NO sea cliente solo tendrá fila
+ * en AdminUser, no en Customer.
+ */
+export async function getCurrentAdmin(): Promise<
+  | { user: NonNullable<Awaited<ReturnType<typeof getCurrentUser>>>; admin: AdminUser }
+  | null
+> {
+  const user = await getCurrentUser();
+  if (!user) return null;
+
+  const admin = await prisma.adminUser.findFirst({
+    where: { supabaseUserId: user.id, isActive: true, deletedAt: null },
+  });
+  if (!admin) return null;
+
+  return { user, admin };
 }
