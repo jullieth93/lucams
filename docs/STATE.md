@@ -12,11 +12,78 @@
 
 ## Resumen actual
 
-**Fase 0a + 0b cerradas. Fase 1 (customer + admin) CERRADA y testeada (2026-05-11).** Monorepo pnpm + Next.js **16.2.6** + Tailwind v4 + shadcn/ui (`radix-nova`). Stack productivo (Vercel) + local (VM) idénticos. **Customer auth flow end-to-end probado por Lucy (commit `ea54b62`):** signup con OTP de 6-10 dígitos + login + logout + `/mi-cuenta` + recuperar-password con OTP + restablecer-password con confirm + signOut global. **Hardening de seguridad implementado:** Pwned Passwords (HaveIBeenPwned k-anonymity), rate-limit doble IP+email (`lib/rate-limit-keys.ts`), eventos `security.*` en logger pino, scope:'global' al cambiar password (invalida todas las sesiones del user). **Brand assets reales** en `apps/web/public/brand/lucams-logo.png` (468×468 RGBA, 256KB en repo → ~5KB WebP servido al browser por Next.js Image optimizer). **3 email templates kawaii** pegados en Supabase Dashboard (Confirm signup, Reset password, Password changed) + tracking en `docs/EMAIL_TEMPLATES.md`. **EmailInput con autocomplete** de 8 dominios populares (gmail/hotmail/outlook/yahoo/icloud/live/hotmail.es/yahoo.es) + pattern HTML5 estricto. Decisiones formalizadas: ADR-030 URLs separadas cliente vs admin, ADR-031 guest-first browsing. Trigger sync auth.users→Customer descartado (bug de Supabase Auth API HTTP) — limpieza vía `make seed-clean` script. **Próximo bloque: Fase 1.b admin mínimo + Fase 2 catálogo público + carrito anon.**
+**Fase 0a + 0b + 1 (customer + admin) cerradas. Fase 2 (catálogo + carrito anon) AVANZADA (2026-05-11).** Monorepo pnpm + Next.js **16.2.6** + Tailwind v4 + shadcn/ui (`radix-nova`). Auth completo (customer + admin) end-to-end probado por Lucy. **Catálogo admin operativo:** CRUD productos (listado paginado, crear con auto-slug + validación, editar, archivar) + CRUD categorías (listado + create inline, archivar bloqueado si hay productos) + seed demo (4 categorías + 8 productos via `make seed-products`, idempotente). **Storefront público vivo:** `/productos` con filtro por categoría chips, `/producto/[slug]` con galería placeholder + breadcrumb + descuento + WhatsApp deep-link contextual, ProductCard kawaii reutilizable, formatCOP shared. **Carrito anon end-to-end:** cookie `cart_session` (UUID server-generated, HttpOnly, 30d, no firmado por entropía + dato no sensible), Cart/CartItem en Postgres, variant "Default" auto-creada por producto (CartItem.variantId required), merge inteligente al login/verifyOtp (suma qty por variantId, hard-delete del anon post-merge). Header con ShoppingBag icon + counter. **Próximo bloque: imágenes de productos (Supabase Storage) + checkout Wompi (Fase 3).**
 
 ---
 
-## Última sesión — 2026-05-11 (Fase 1.b — Admin flow + roles unificados)
+## Última sesión — 2026-05-11 (Fase 2 — Catálogo admin + storefront público + carrito anon)
+
+**Origen:** Fase 1.b admin testeada 4/4, Lucy autorizó continuar a Fase 2. Esta sesión cubre todo el bloque catálogo + carrito hasta dejar el flow guest "ver → agregar → ver carrito → ajustar qty" funcionando end-to-end, listo para el siguiente paso (checkout Wompi en Fase 3).
+
+**Hechos por commit:**
+
+**1) Admin CRUD productos (commit `d9fab6b`):**
+- `features/products/{schemas,service}.ts` separados (patrón CONVENTIONS). Schema Zod estricto: slug kebab-case, SKU `[A-Z0-9-]+`, basePrice/compareAtPrice/cost como `z.number().int().nonnegative()` (centavos COP, mandato CLAUDE.md). `ProductValidationError` clase con field tipado.
+- `app/admin/productos/page.tsx`: listado paginado 20/page con búsqueda fuzzy en name/sku/slug. Sin paginación de cursor todavía (offset basta < 1k productos).
+- `app/admin/productos/nuevo/page.tsx` + `[id]/page.tsx`: forms create/edit con shared `product-form.tsx`. PriceField muestra pesos al usuario, persiste centavos via hidden input + Math.round. Auto-slug desde name (slugify con NFD). Checkbox helpers, sección SEO opcional, botón "Archivar" en edit (soft-delete vía `deletedAt`).
+- `actions.ts`: create/update/delete con `getCurrentAdmin()` defensivo + revalidatePath + redirect con flag (`?created=1`, `?deleted=1`).
+
+**2) Admin CRUD categorías (commit `8714985`):**
+- `features/categories/{schemas,service}.ts`. `softDeleteCategory` bloqueado si hay productos asociados (anti-orphan: el producto requiere categoryId NOT NULL).
+- `app/admin/categorias/page.tsx`: tabla simple (categorías < 20) + form inline `create-category-form.tsx`. Edit-inline diferido (no es bloqueante todavía).
+- Dashboard admin gana cards "Categorías" + "Productos" como "Disponible" (antes "Próximamente").
+
+**3) Seed catálogo demo (commit `d31f037`):**
+- `packages/db/scripts/seed-products.mjs`: 4 categorías (`fotoimanes`, `recorditos-eventos`, `organizate-bonito`, `calendarios`) + 8 productos (3 featured con compareAtPrice para mostrar descuentos). Idempotente: `upsert by slug`. Precios en centavos COP. SKUs estructurados (`FI-POL-G-6`, `EVT-BS-KIT`, etc).
+- Makefile: `make seed-products` (en /home/ansible/workspaces/lucams-shop-local/Makefile).
+
+**4) Storefront público (commit `c77e641`):**
+- `features/products/public-service.ts` separado de admin: enforza `deletedAt:null + isActive:true` en product Y category. Tres funciones: `listStorefrontCategories`, `listStorefrontProducts({categorySlug?, featured?, limit?})`, `getStorefrontProductBySlug`. Anti-leak: nada de archivados aparece al público.
+- `app/productos/page.tsx`: grid 2/3/4 cols responsive, category chips con counts, empty state kawaii con CTA.
+- `app/producto/[slug]/page.tsx`: galería placeholder (gradient kawaii cuando no hay imágenes), breadcrumb, badge "Personalizable" + descuento -X%, WhatsApp deep-link con mensaje pre-armado contextual (`Hola Lucams 👋 Quiero saber más sobre "<name>" (SKU X)`), generateMetadata dinámico con seoTitle/seoDescription fallback.
+- `components/product-card.tsx`: reutilizable. Hover scale, badges absolute corners.
+- `lib/format.ts`: `formatCOP(centavos)` shared (`Intl.NumberFormat('es-CO', {currency:'COP'})`). Removido duplicate inline de admin.
+- Home gana CTA "Ver catálogo →". Header gana link "Tienda".
+
+**5) Carrito anon end-to-end (commit `7bfc879`):**
+- **Schema-side:** `features/products/service.ts createProduct` ahora crea variant "Default" (`sku-DEFAULT`) en la misma transacción Prisma. CartItem y OrderItem requieren variantId; sin variantes admin reales todavía, el default es el path mínimo para comprar. `seed-products.mjs` backfilea variants default por producto existente (idempotente).
+- **`lib/cart-session.ts`:** cookie `cart_session` con UUID v4 server-generated. HttpOnly, SameSite=Lax, Secure(prod), 30 días. **No HMAC-firmada:** 122 bits de entropía es suficiente para data efímera sin PII; documentado el trade-off en el archivo.
+- **`features/cart/service.ts`:** `getCartDetail` / `getCartItemCount` / `addProductToCart` / `updateCartItemQty` / `removeCartItem` / `mergeAnonCartIntoCustomer`. Pricing snapshot al agregar (`variant.price ?? product.basePrice`). Items con producto archivado se filtran en read (el admin que archive un producto efectivamente lo saca de carritos en vuelo). MAX_QTY_PER_ITEM=99.
+- **Merge inteligente al login/signup:**
+  - Anon vacío + customer sin cart → noop.
+  - Anon con items + customer sin cart → re-asignar anon a customer (mismo sessionId).
+  - Ambos existen → fold del anon en customer cart sumando qty por variantId; **hard-delete del anon** post-merge (Cart no tiene valor de auditoría y `sessionId @unique` no respeta `deletedAt`).
+  - Cookie se rota al sessionId del customer cart si era distinto.
+  - Errores de merge se loggean (`cart.merge_fail`) pero NO bloquean auth.
+- **`/carrito` page:** lista con qty controls (+/−), remove forms, sidebar con subtotal/total/items count, CTA checkout disabled "(próximamente)". Empty state.
+- **`/producto/[slug]`:** botón "Añadir al carrito" wired al server action. Banner ✨ "Agregado" cuando vuelve con `?added=1` + link "Ver carrito →".
+- **Header:** ShoppingBag icon con badge pink mostrando cartCount (cap 99+).
+
+**Validaciones técnicas:**
+- `make typecheck` OK
+- `make lint` OK
+- Smoke tests curl: `/productos`, `/producto/<slug>`, `/producto/no-existe` (404), `/productos?categoria=fotoimanes` (filter), `/carrito` — todos 200 con contenido esperado.
+
+**Pendiente prueba visual por Lucy (anon + login flow + merge):**
+- Anon: agregar al carrito → counter sube → ver carrito → cambiar qty → remover.
+- Login con cart anon poblado → merge funcionando.
+- Logout → cookie persiste, cart sigue visible (comportamiento e-commerce estándar).
+
+**Decisiones tomadas en sesión (cocreación):**
+- **Cart storage:** Postgres + sessionId cookie (vs cookie pura o Redis). Justificación: enables abandoned cart recovery emails posterior, server-authoritative, sin dependencias externas. Aliné con mandato #11 CLAUDE.md.
+- **Merge policy:** suma inteligente por variantId (vs reemplaza / descarta). Mejor UX: "no perdiste nada".
+- **Cookie sin firmar:** discutible; mitigado por (a) UUID alta entropía + (b) cart sin PII ni precio autoritativo. TODO: revisar si más adelante guardamos customDesign con datos personales.
+- **Default variant pattern:** sin schema migration. Cada producto tiene su "Default" 1:1 hasta que existan variantes admin reales. Cuando lleguen, se reemplazan o expanden.
+
+**Pendiente próximo turno (Fase 2 cierre + Fase 3):**
+- Imágenes de productos: upload via Supabase Storage en admin form + render real en cards/detail/cart. Hasta entonces gradient kawaii como placeholder.
+- Admin de variantes reales (multi-variant products).
+- Estudio de personalización en vivo (react-konva) — diferenciador #1.
+- Phase 3: checkout Wompi (PaymentProvider adapter + saga de pago + Venndelo logística + DIAN factura).
+
+---
+
+## Sesión anterior — 2026-05-11 (Fase 1.b — Admin flow + roles unificados)
 
 **Origen:** Cerrada Fase 1.a customer, Lucy autorizó la combinación A+B (admin mínimo primero, después catálogo). Este turno implementa el admin completo.
 
@@ -449,23 +516,25 @@
 
 ## Próximo paso
 
-**Fase 1 — Base sólida (core técnico).** Cuando la operadora autorice, se inicia:
+**Fase 2 cierre + arranque Fase 3 — Catálogo completo (con imágenes + variantes) y checkout.**
 
-1. Inicializar monorepo con `pnpm-workspace.yaml`.
-2. `pnpm create next-app@latest apps/web` (Next.js 15 + TS + **Tailwind v4** + React 19 + App Router).
-3. Instalar shadcn/ui (style `new-york`, `tw-animate-css`, `sonner` per ADR-015).
-4. `packages/db` con Prisma + schema completo. SQL migrations habilitan `pgmq`, `pg_cron`, `pgcrypto`, `pg_stat_statements` (ya disponibles en proyecto Supabase).
-5. Migración inicial aplicada en Supabase (la integración GitHub→Supabase ya está activa).
-6. Clientes Supabase (`browser.ts`, `server.ts`, `service.ts`) usando **publishable + secret keys** (no anon/service_role legacy).
-7. RLS policies + tests automáticos con cliente impostor (criterio bloqueante de aceptación).
-8. Auth Supabase (registro, login, recuperación de password).
-9. Layout base con tokens Tailwind v4 (Fredoka + Inter, paleta de `BRANDING.md`).
-10. CI en GitHub Actions: typecheck + lint + tests + RLS + secret scanning (gitleaks) + dep audit.
-11. Healthchecks `/api/health/*`.
-12. Patrones cross-cutting de `CONVENTIONS.md`: RFC 7807 errors, capa de servicio, idempotency keys, request ID con AsyncLocalStorage, logger `pino` con redact PII, `fetchWithTimeout`/`withRetry`/`CircuitBreaker`, `safeRedirectTarget`.
-13. Crear cuenta Cloudflare + habilitar Turnstile (en simultáneo con el signup form).
+Inmediato (cierre Fase 2):
 
-**Bloqueadores antes de Fase 1:** ninguno técnico. Espera autorización explícita de la operadora.
+1. **Prueba visual completa por Lucy** del flow guest end-to-end:
+   - Anon: producto → add → counter sube → /carrito → cambiar qty → remover.
+   - Login con cart anon poblado → merge funcionando.
+2. **Imágenes de productos vía Supabase Storage:**
+   - Bucket público `product-images` con RLS de write para `AdminUser`.
+   - Upload en `app/admin/productos/[id]/page.tsx` (file input multi).
+   - Render real en cards/detail/cart (reemplazar gradient placeholder).
+3. **Admin de variantes reales** (multi-variant products) — el "Default" pattern es bridge, no destino final.
+4. **Estudio de personalización en vivo** (react-konva) — diferenciador #1, central a la propuesta de valor.
+
+Después (Fase 3 — checkout):
+
+1. PaymentProvider adapter (Wompi primero, MercadoPago a futuro per CLAUDE.md mandato #4).
+2. Saga de checkout: reserva stock → crear Order → tokenizar pago Wompi → confirmar → crear envío Venndelo → DIAN factura electrónica (Fase 7).
+3. Address forms (Customer.addresses), shipping quote, contraentrega flag, coupon redemption.
 
 **Cuentas creadas just-in-time durante fases posteriores:**
 - Cloudflare (DNS + Turnstile + R2) → durante Fase 1 (Turnstile en signup) y Fase 7 (DNS + R2 al lanzar productivo).
@@ -497,6 +566,23 @@
 ---
 
 ## Bitácora (append-only, más reciente arriba)
+
+### 2026-05-11 — Fase 2: catálogo admin + storefront público + carrito anon
+
+Sesión larga que cubrió todo el bloque catálogo + carrito hasta dejar el flow guest "ver → agregar → carrito → ajustar qty" operativo. Commits: `d9fab6b` (admin productos CRUD) → `8714985` (admin categorías) → `d31f037` (seed demo 4×8) → `c77e641` (storefront público) → `7bfc879` (carrito anon + merge).
+
+Decisiones cocreadas con Lucy:
+- **Cart en Postgres** + sessionId cookie (vs cookie pura o Redis). Habilita abandoned-cart emails posterior, server-authoritative, alineado con mandato #11 CLAUDE.md.
+- **Merge inteligente** al login (suma qty por variantId, vs reemplazo). UX no destructiva.
+- **Cookie sin firmar HMAC** — UUID server-generated de 122 bits + ausencia de PII en cart hacen suficiente la entropía. Documentado en `lib/cart-session.ts` para revisar si se almacena `customDesign` con datos sensibles.
+- **Default variant pattern** sin schema migration: cada producto auto-crea variant "Default" en createProduct para satisfacer `CartItem.variantId` required. Bridge hasta variantes admin reales.
+
+Detalles arquitectura:
+- `features/products/public-service.ts` separado de `service.ts` admin — enforza `deletedAt:null + isActive:true` en product Y category. El admin service queda libre para surfacear archivados en `/admin`.
+- `features/cart/service.ts` con merge transaccional + hard-delete del anon (sessionId @unique no respeta deletedAt). Items con producto archivado se filtran en `getCartDetail` (admin que archive efectivamente saca el item de carritos en vuelo).
+- `lib/format.ts` shared (eliminada duplicación en admin/productos/page.tsx).
+
+Pendiente prueba visual end-to-end por Lucy + imágenes Storage + variantes admin reales.
 
 ### 2026-05-09 — Fix deploy Vercel: Root Directory + simplificación vercel.json (sesión 12)
 

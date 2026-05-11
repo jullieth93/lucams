@@ -8,8 +8,8 @@ Ocho fases. La Fase 0a es la única que está autorizada al momento de escribir 
 |---|---|---|---|
 | 0a | Estructura de documentación | 🟢 Completada (2026-05-09) | ✅ Sí |
 | 0b | Cuentas externas críticas para Fase 1 (re-scope) | 🟢 Completada (2026-05-09) | ✅ Sí |
-| 1 | Base sólida (core técnico) | ⏸️ Pendiente | ❌ No |
-| 2 | Catálogo y carrito (storefront) | ⏸️ Pendiente | ❌ No |
+| 1 | Base sólida (core técnico) | 🟢 Completada (auth completo, 2026-05-11) | ✅ Sí |
+| 2 | Catálogo y carrito (storefront) | 🟡 EN CURSO (admin CRUD + storefront + cart anon listos, 2026-05-11) | ✅ Sí |
 | 3 | Estudio de Personalización | ⏸️ Pendiente | ❌ No |
 | 4 | Checkout, pagos y logística | ⏸️ Pendiente | ❌ No |
 | 5 | Marketing engine | ⏸️ Pendiente | ❌ No |
@@ -185,23 +185,27 @@ Antes de iniciar la fase, citar fuente con fecha en `OPERATIONS.md` para:
 
 ---
 
-## Fase 2 — Catálogo y carrito (storefront público) ⏸️
+## Fase 2 — Catálogo y carrito (storefront público) 🟡 EN CURSO (2026-05-11)
 
 > **Alcance:** todo lo navegable sin checkout.
 
+> **Pivote vs plan original:** Carrito en **Postgres** (Cart + CartItem) con sessionId cookie, NO Zustand+localStorage. Razón: server-authoritative, habilita abandoned-cart emails posterior, alineado con mandato #11 CLAUDE.md (Postgres en pre-launch). Stock realtime queda para Fase 3 (junto con checkout).
+
 ### Tareas
 
-- [ ] Seed de DB con 30+ productos espejo de magneticas.cl (placeholders)
-- [ ] Home con hero, categorías destacadas, productos destacados, testimonios
-- [ ] `/catalogo` con filtros (categoría, precio, en stock) y orden
-- [ ] `/categoria/[slug]` con paginación
-- [ ] `/producto/[slug]` con galería, descripción, variantes, agregar al carrito
-- [ ] Carrito persistente (Zustand + `localStorage`) con realtime de stock (Supabase Realtime)
-- [ ] `/carrito` con resumen, modificar cantidades, código de cupón
-- [ ] Reseñas con foto en PDP (lectura)
-- [ ] Productos relacionados / recomendaciones simples
-- [ ] SEO: metadata por página, sitemap dinámico, robots, JSON-LD `Product`
-- [ ] Open Graph e Twitter Cards dinámicos por producto
+- [x] **Admin CRUD productos** (commit `d9fab6b`) — listado paginado, crear con auto-slug, editar, archivar (soft-delete)
+- [x] **Admin CRUD categorías** (commit `8714985`) — listado + create inline, archivar bloqueado si hay productos
+- [x] **Seed catálogo demo** (commit `d31f037`) — 4 categorías + 8 productos via `make seed-products` (idempotente, upsert by slug)
+- [x] **Storefront público** (commit `c77e641`) — `/productos` con filtro por categoría chips + `/producto/[slug]` con detalle + breadcrumb + WhatsApp deep-link
+- [x] **Carrito anon end-to-end** (commit `7bfc879`) — cookie sessionId UUID, Cart/CartItem Postgres, merge inteligente al login/signup, variant Default auto-creada por producto
+- [ ] **Imágenes de productos vía Supabase Storage** — bucket `product-images` + upload en admin form + render real en cards/detail/cart
+- [ ] **Admin de variantes reales** — multi-variant products (el "Default" pattern es bridge, no destino final)
+- [ ] **Home con hero + productos destacados** — reemplazar placeholder actual con featured products grid
+- [ ] **Filtros adicionales en /productos** — precio rango, en stock, orden (precio asc/desc, recientes, destacados)
+- [ ] **Reseñas con foto en PDP** (lectura) — Review model ya existe
+- [ ] **Productos relacionados / recomendaciones simples**
+- [ ] **SEO: metadata por página, sitemap dinámico, robots, JSON-LD `Product`**
+- [ ] **Open Graph e Twitter Cards dinámicos por producto**
 
 #### Tareas adicionales (productive readiness audit)
 
