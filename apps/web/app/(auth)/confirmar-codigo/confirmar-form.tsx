@@ -1,5 +1,6 @@
 "use client";
 
+import { Mail } from "lucide-react";
 import Link from "next/link";
 import { useActionState, useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -42,9 +43,9 @@ export function ConfirmarForm({
       <CardHeader className="space-y-2 text-center">
         <span
           aria-hidden="true"
-          className="block text-5xl motion-safe:[animation:var(--animate-float)] motion-safe:[animation-duration:2.5s]"
+          className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-brand-cream text-brand-purple motion-safe:[animation:var(--animate-float)] motion-safe:[animation-duration:2.5s]"
         >
-          📬
+          <Mail className="h-8 w-8" strokeWidth={1.75} />
         </span>
         <CardTitle className="font-display text-2xl text-brand-purple-dark">
           {firstName ? `Listo, ${firstName}` : "Revisa tu correo"}

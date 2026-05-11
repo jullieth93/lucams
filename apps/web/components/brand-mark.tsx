@@ -127,7 +127,7 @@ export function BrandMark({
  * (signature del mapache), ojos blancos con pupila, hocico, sonrisita.
  * Width/height = 100% del contenedor (escala con el badge sm/md/lg).
  */
-function RaccoonFace() {
+export function RaccoonFace() {
   return (
     <svg
       viewBox="0 0 64 64"

@@ -12,6 +12,7 @@
  *  - SiteHeader dinámico — muestra login/registro o nombre+logout según sesión.
  */
 
+import { RaccoonFace } from "@/components/brand-mark";
 import { SiteHeader } from "@/components/site-header";
 
 export default function Home() {
@@ -22,9 +23,9 @@ export default function Home() {
       <div className="max-w-2xl text-center">
         <span
           aria-hidden="true"
-          className="mb-6 inline-flex h-24 w-24 items-center justify-center rounded-full bg-brand-purple text-5xl shadow-lg ring-4 ring-brand-yellow"
+          className="mb-6 inline-flex h-24 w-24 items-center justify-center rounded-full bg-brand-purple shadow-lg ring-4 ring-brand-yellow motion-safe:animate-[var(--animate-float)] motion-safe:[animation-duration:3s]"
         >
-          🦝
+          <RaccoonFace />
         </span>
 
         <h1 className="text-4xl font-display text-brand-purple-dark sm:text-5xl">
@@ -52,7 +53,8 @@ export default function Home() {
         </div>
 
         <p className="mt-12 text-sm text-muted-foreground">
-          🛠️ Sitio en desarrollo. Volvemos pronto con el catálogo completo.
+          <span aria-hidden="true" className="text-brand-coral">●</span>{" "}
+          Sitio en desarrollo. Volvemos pronto con el catálogo completo.
           <br />
           Mientras tanto, escribinos en{" "}
           <a
