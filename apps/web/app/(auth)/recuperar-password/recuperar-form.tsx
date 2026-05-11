@@ -11,8 +11,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { EmailInput } from "@/components/email-input";
 import {
   recuperarPasswordAction,
   type RecuperarActionState,
@@ -58,11 +58,9 @@ export function RecuperarForm() {
           <CardContent className="space-y-4">
             <div className="space-y-2">
               <Label htmlFor="email">Correo electrónico</Label>
-              <Input
+              <EmailInput
                 id="email"
                 name="email"
-                type="email"
-                autoComplete="email"
                 required
                 placeholder="tu@email.com"
                 disabled={pending}
