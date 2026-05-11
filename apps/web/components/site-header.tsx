@@ -31,6 +31,12 @@ export async function SiteHeader() {
         <BrandMark size="sm" animated />
 
         <nav className="flex items-center gap-2 sm:gap-4">
+          <Link
+            href="/productos"
+            className="text-sm font-medium text-brand-purple-dark hover:text-brand-purple"
+          >
+            Tienda
+          </Link>
           {admin && (
             <Link
               href="/admin/dashboard"

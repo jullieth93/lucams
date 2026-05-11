@@ -42,6 +42,15 @@ export default function Home() {
           </span>
         </p>
 
+        <div className="mt-8">
+          <a
+            href="/productos"
+            className="inline-block rounded-full bg-brand-purple px-6 py-3 text-base font-semibold text-white shadow-md transition-colors hover:bg-brand-purple-dark"
+          >
+            Ver catálogo →
+          </a>
+        </div>
+
         <div className="mt-10 flex flex-wrap items-center justify-center gap-3 text-sm font-medium">
           <span className="rounded-full bg-brand-turquoise/20 px-4 py-1.5 text-brand-purple-dark">
             Estudio de personalización en vivo
@@ -55,10 +64,7 @@ export default function Home() {
         </div>
 
         <p className="mt-12 text-sm text-muted-foreground">
-          <span aria-hidden="true" className="text-brand-coral">●</span>{" "}
-          Sitio en desarrollo. Volvemos pronto con el catálogo completo.
-          <br />
-          Mientras tanto, escribinos en{" "}
+          También nos encuentras en{" "}
           <a
             href="https://www.instagram.com/lucams_shop"
             className="text-brand-purple underline-offset-4 hover:underline"

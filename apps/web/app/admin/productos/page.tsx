@@ -12,6 +12,7 @@ import { ArrowLeft, Plus, Search, Edit3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { getCurrentAdmin } from "@/lib/auth";
+import { formatCOP } from "@/lib/format";
 import { listProducts } from "@/features/products/service";
 
 export const metadata: Metadata = {
@@ -245,11 +246,3 @@ function EmptyState({ hasSearch }: { hasSearch: boolean }) {
   );
 }
 
-function formatCOP(centavos: number): string {
-  const pesos = centavos / 100;
-  return new Intl.NumberFormat("es-CO", {
-    style: "currency",
-    currency: "COP",
-    maximumFractionDigits: 0,
-  }).format(pesos);
-}
