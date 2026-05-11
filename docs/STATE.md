@@ -12,7 +12,64 @@
 
 ## Resumen actual
 
-**Fase 0a + 0b cerradas. Fase 1 EN CURSO — flujo cliente AUTH COMPLETO en producción (2026-05-10).** Monorepo pnpm + Next.js **16.2.6** + React 19.2.4 + Tailwind v4 + shadcn/ui (`radix-nova`). **10 rutas en Vercel (HTTP 200 todas):** `/`, `/login`, `/registro`, `/recuperar-password`, `/restablecer-password` (protected), `/mi-cuenta` (protected), `/auth/callback`, `/auth/logout`, `/api/health`, `/api/health/db`. **Flujo cliente end-to-end deployado (commit `5bdd81d`):** signup → email confirmation → login → mi-cuenta → logout + recovery password completo. `lib/auth.ts` con `getCurrentUser`/`getCurrentCustomer`. SiteHeader dinámico (logged-in vs out). Identidad Lucams real (Fredoka, paleta kawaii, mascota emoji, NO blanco magneticas). **ADR-030 documenta arquitectura URLs separadas cliente vs admin** (admin pendiente). Backend stack completo: capa transversal + 3 clientes Supabase + `proxy.ts` (session refresh + 7 security headers + CORS) + `packages/db/` (20 modelos + RLS) + rate-limit Postgres (ADR-016). **ACCIONES HUMANAS PENDIENTES** para que Auth funcione end-to-end: configurar Site URL + Redirect URLs en Supabase Auth Dashboard. **PRUEBA GUI** del flujo completo (signup real → email → confirmar → login → mi-cuenta → logout). **Próximo bloque Fase 1:** flujo admin (`/admin/login` + `/admin/dashboard` + gate proxy + seed primer admin) + email templates customizados Resend SMTP + customer profile editing + right-to-deletion (Ley 1581).
+**Fase 0a + 0b cerradas. Fase 1 customer-side CERRADA y testeada (2026-05-11).** Monorepo pnpm + Next.js **16.2.6** + Tailwind v4 + shadcn/ui (`radix-nova`). Stack productivo (Vercel) + local (VM) idénticos. **Customer auth flow end-to-end probado por Lucy (commit `ea54b62`):** signup con OTP de 6-10 dígitos + login + logout + `/mi-cuenta` + recuperar-password con OTP + restablecer-password con confirm + signOut global. **Hardening de seguridad implementado:** Pwned Passwords (HaveIBeenPwned k-anonymity), rate-limit doble IP+email (`lib/rate-limit-keys.ts`), eventos `security.*` en logger pino, scope:'global' al cambiar password (invalida todas las sesiones del user). **Brand assets reales** en `apps/web/public/brand/lucams-logo.png` (468×468 RGBA, 256KB en repo → ~5KB WebP servido al browser por Next.js Image optimizer). **3 email templates kawaii** pegados en Supabase Dashboard (Confirm signup, Reset password, Password changed) + tracking en `docs/EMAIL_TEMPLATES.md`. **EmailInput con autocomplete** de 8 dominios populares (gmail/hotmail/outlook/yahoo/icloud/live/hotmail.es/yahoo.es) + pattern HTML5 estricto. Decisiones formalizadas: ADR-030 URLs separadas cliente vs admin, ADR-031 guest-first browsing. Trigger sync auth.users→Customer descartado (bug de Supabase Auth API HTTP) — limpieza vía `make seed-clean` script. **Próximo bloque: Fase 1.b admin mínimo + Fase 2 catálogo público + carrito anon.**
+
+---
+
+## Última sesión — 2026-05-11 (Hardening + UX polish + cierre Fase 1 customer auth)
+
+**Origen:** Lucy validó visualmente el flujo y empezamos a probarlo end-to-end. Durante el testing surgieron varios issues + ideas de mejora. Se cocrearon como un solo arco temático: **completar y endurecer el flow de auth customer hasta dejarlo listo para tráfico real**.
+
+**Hechos por dominio:**
+
+**1) Templates de email + flujo OTP:**
+- Migración de Reset password de link a OTP (commit `9ef96cd`) — mismo patrón que signup, evita bug de Gmail prefetch que consume tokens.
+- Reescritura de `/restablecer-password`: ahora recibe email + OTP + nueva password en una sola action (`verifyOtp` + `updateUser` + `signOut global` atómicos).
+- 3 templates HTML kawaii pegados en Supabase Dashboard: Confirm signup, Reset password, Password changed. Layout tabla anidada con inline CSS (estándar email cross-client), logo desde URL absoluta Vercel, paleta brand-purple/pink/cream.
+- Tracking de estado de los 13 templates Supabase Auth en nuevo `docs/EMAIL_TEMPLATES.md` (✅ personalizados / ⚠️ default / descarte por flow no implementado).
+
+**2) Seguridad — 4 mejoras propuestas y aceptadas por Lucy (commit `88791a2`):**
+- **Pwned Passwords check** (`lib/pwned-passwords.ts`): SHA-1 prefijo de 5 chars → HaveIBeenPwned API gratis con k-anonymity. Bloquea registro/reset si la contraseña aparece en breaches conocidos. Fail-open si HIBP cae. Smoke-test: `password123` detectada con 2.25M de breaches.
+- **signOut global al cambiar password** (`scope: 'global'`): invalida todas las refresh tokens del user en otros devices. Si alguien robó la contraseña, cambiarla lo echa de TODO.
+- **Rate-limit doble IP + email** (`lib/rate-limit-keys.ts`): email se hashea con SHA-256 truncado (no aparece en claro en buckets). Cubre botnet (muchas IPs ↔ 1 email) Y atacante con muchos emails desde 1 IP. Cabled en signup/login/reset-password/verify-recovery.
+- **Eventos `security.*` estructurados** en logger pino (login.success/fail, pwned.signup_block/reset_block/api_fail, password.reset_success con flag globalSignOut).
+- Lucy preguntó por **anti-reutilización de últimas N contraseñas**. Análisis honesto: alto costo operacional (PasswordHistory paralela + bcrypt.compare) vs beneficio marginal vs Pwned Passwords. Decidido NO implementar y se documentó la decisión en `docs/SECURITY.md`.
+
+**3) UX hardening:**
+- **Confirm password en `/restablecer-password`** (paridad con signup, Zod `.refine()` + validación inline cliente).
+- **`<EmailInput>` component** (`apps/web/components/email-input.tsx`): dropdown de 8 dominios populares cuando user tipea `lucy@gma...`, validación HTML5 pattern más estricta que el default `type="email"` (requiere TLD 2-24 chars), animación fade-in slide-from-top. Cabled en /registro, /login, /recuperar-password. Lucy verificó visualmente en web + móvil.
+- **EmailInput justificación:** mejora UX sin reemplazar Zod server-side. Server valida independientemente.
+
+**4) Brand assets reales:**
+- Lucy subió `apps/web/public/brand/lucams-logo.png` (468×468 RGBA, 256KB en repo → ~5KB WebP servido al browser via Next.js Image optimizer).
+- BrandMark unificado: usa el mismo `lucams-logo.png` en TODOS los headers + hero. Tamaños 56px (storefront/mi-cuenta), 72px (auth pages), 180px (hero home).
+- Decisión cocreada con Lucy: descartado el mascot-only crop después de probarlo — un solo asset es más simple de mantener.
+- `<RaccoonFace />` SVG kawaii custom queda como **fallback defensivo** del `<LucamsLogo />` (se renderea solo si el archivo PNG no carga).
+
+**5) Bugs y fixes encontrados durante testing:**
+- **Trigger SQL sync auth.users → Customer descartado** (commit `c62174b`): la Supabase Auth API HTTP falla con 500 cuando hay cualquier trigger custom en auth.users que toque schema public. Documentado todo en `supabase/migrations/00000000000004_sync_auth_users_delete.sql` (comentario largo con TODAS las cosas que probamos sin éxito) — historia para que nadie pierda tiempo intentando lo mismo. Reemplazo: `FORCE=1 make seed-clean` script (`packages/db/scripts/seed-clean.mjs`) hace cleanup explícito Customer + AdminUser + auth.users.
+- **CSP `upgrade-insecure-requests` en dev** rompía estilos en http://192.168.20.180:3000 (LAN IP no tiene HTTPS). Fix: gate en `IS_PROD_DEPLOY` (commit `b264c79`). Estilos solo se rompen en `http` cuando es dev/preview, en producción Vercel sigue con HSTS.
+- **Chrome/Linux sin Noto Color Emoji** renderea emojis como "ND GLYPH". Fix: reemplazar todos los emojis renderizados al cliente por SVG inline o lucide-react icons (commits `13fde9d`, `ddf58f9`). Emojis solo en comentarios de código.
+- **Next.js 16 bloquea HMR desde IP LAN** por safety. Fix: `allowedDevOrigins: ['192.168.20.180','localhost','127.0.0.1']` en `next.config.ts` (commit `93f5ee8`).
+- **OTP 8 dígitos vs form maxLength=6**: form muy estricto bloqueaba escribir el código completo. Fix: maxLength=10 + pattern `\d{6,10}` + Zod regex idem (commit `1157ff0`).
+- **Rate-limit email demasiado estricto durante pre-launch** (3/h colaba a Lucy testeando). Fix: bajar email bucket a igualar el de IP (commit `88ae83e`). Anotado TODO para apretar al lanzar real.
+
+**6) Verificación end-to-end por Lucy:**
+- ✅ Signup con Pwned check, OTP de email, confirmación de cuenta, redirect a home con header logged-in.
+- ✅ Login con email autocomplete dropdown, caps lock alert, password toggle.
+- ✅ Logout, vuelta a anónimo.
+- ✅ Recuperar password → email con OTP kawaii → restablecer-password con OTP + nueva password + confirm.
+- ✅ Reentrar con nueva password tras signOut global.
+- ✅ Visual en Chrome + Firefox + móvil 375px — todos OK.
+
+**Pendientes administrativos cerrados en este turno:**
+- STATE.md actualizado.
+- ROADMAP.md: marcar Fase 1.a customer-side como completa.
+- Optimización PNG: descartada — Next.js Image optimizer ya entrega 5KB WebP en lugar del PNG raw de 256KB (verificado con curl).
+
+**Próximo bloque (acordado con Lucy via AskUserQuestion):**
+- **Fase 1.b admin flow mínimo** (`/admin/login` + `/admin/dashboard` + gate `proxy.ts` para `/admin/*` + seed primer AdminUser via SQL).
+- Después: **Fase 2 catálogo público + carrito anon** (guest-first per ADR-031: listing de productos, página de producto, carrito vía sessionId cookie, integración con stock realtime).
 
 ---
 

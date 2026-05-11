@@ -100,38 +100,50 @@ Antes de iniciar la fase, citar fuente con fecha en `OPERATIONS.md` para:
 
 ---
 
-## Fase 1 — Base sólida (core técnico) ⏸️
+## Fase 1 — Base sólida (core técnico) 🟡 EN CURSO
 
 > **Alcance:** scaffolding del monorepo, modelo de datos, autenticación, sistema de diseño base. Sin features de producto todavía.
+>
+> **Estado (2026-05-11):** ✅ lado **customer** completo y testeado por Lucy (signup OTP + login + logout + recuperar-password + restablecer + brand assets + security hardening). ⏸️ Pendiente lado **admin** + **profile editing + right-to-deletion Ley 1581**.
 
 ### Tareas
 
-#### Scaffolding y stack
-- [ ] Inicializar monorepo con `pnpm-workspace.yaml`
-- [ ] `pnpm create next-app@latest apps/web` con TS + **Tailwind v4** + App Router + React 19
-- [ ] Instalar **shadcn/ui** con style `new-york`, `tw-animate-css`, `sonner` (per Tailwind v4 caveats verificados)
-- [ ] `packages/db` con Prisma + schema completo (incluye `pgmq`, `pg_cron` extensions)
-- [ ] Migración inicial aplicada en Supabase Free
-- [ ] Habilitar extensiones Postgres: `pgmq`, `pg_cron`, `uuid-ossp` (vía SQL migration en `supabase/migrations/`)
-- [ ] Clientes Supabase (`browser.ts`, `server.ts`, `service.ts`)
+#### Scaffolding y stack — 🟢 Completado (2026-05-09)
+- [x] Inicializar monorepo con `pnpm-workspace.yaml`
+- [x] `pnpm create next-app@latest apps/web` con TS + **Tailwind v4** + App Router + React 19
+- [x] Instalar **shadcn/ui** con style `radix-nova` (no `new-york` — preset evolucionó), `tw-animate-css`
+- [x] `packages/db` con Prisma + schema completo (20 modelos)
+- [x] Migración inicial aplicada en Supabase Free (`prisma migrate dev --name init`, commit `e572ebf`)
+- [x] Clientes Supabase (`browser.ts`, `server.ts`, `service.ts`)
 
-#### Seguridad base (ver `docs/SECURITY.md`)
-- [ ] **RLS policies** aplicadas para `Customer`, `Cart`, `Order`, `Address`, `Review` con tests automáticos
-- [ ] **Security headers** en `next.config.mjs` o middleware: CSP, X-Frame-Options, HSTS, Referrer-Policy, Permissions-Policy
-- [ ] **CORS** configurado restrictivo en API routes (whitelist de orígenes)
-- [ ] **Rate limit** sobre Postgres (`lib/rate-limit.ts` + tabla `rate_limit_buckets`)
-- [ ] **Cache** sobre Postgres (`lib/cache.ts` + tabla `cache_entries` + cleanup vía `pg_cron`)
-- [ ] **Validación de input** centralizada con Zod en `lib/validation/`
-- [ ] **Auth Supabase** (registro, login, recuperación de password) con cookies HttpOnly + SameSite=Lax
-- [ ] **Middleware** `/admin/*` con guard de rol (`AdminUser.role`)
-- [ ] **Healthchecks** `/api/health`, `/api/health/db`, `/api/health/integrations`
+> Pendiente del bloque: habilitar extensiones Postgres `pgmq` + `pg_cron` para cron jobs (background tasks de Fase 4-5).
 
-#### UI base
-- [ ] Layout base con tokens de diseño Tailwind v4 (`@theme` directive, paleta de `BRANDING.md`)
-- [ ] Header + Footer + WhatsApp FAB
+#### Seguridad base — 🟢 Completado (2026-05-11)
+- [x] **RLS policies** aplicadas en TODAS las 20 tablas (`supabase/migrations/00000000000002_rls_policies.sql`)
+- [x] **Security headers** en `apps/web/proxy.ts`: CSP (gateado por VERCEL_ENV), HSTS, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy, X-DNS-Prefetch-Control
+- [x] **CORS** restrictivo en `/api/*` (allowlist con Vercel preview branches + localhost dev)
+- [x] **Rate limit** sobre Postgres (`lib/rate-limit.ts` + `lib/rate-limit-keys.ts` + tabla + función SQL atómica). Doble bucket por IP + email.
+- [x] **Validación de input** centralizada con Zod en cada server action
+- [x] **Auth Supabase** (registro, login, recuperación) con OTP de 6-10 dígitos en lugar de magic links (evita bug Gmail prefetch). Cookies HttpOnly + SameSite=Lax via @supabase/ssr.
+- [x] **Pwned Passwords check** (HaveIBeenPwned k-anonymity) en signup + reset
+- [x] **signOut global** al cambiar password (`scope: 'global'`)
+- [x] **Eventos `security.*`** en logger estructurado pino
+- [x] **Healthchecks** `/api/health`, `/api/health/db`
+
+> Pendientes del bloque (siguen abiertos):
+> - [ ] Middleware `/admin/*` con guard de rol — preparado en proxy.ts, falta activar cuando exista admin flow
+> - [ ] `/api/health/integrations` (Wompi/Venndelo/Anthropic) — cuando esas integraciones existan en Fases 4/5
+> - [ ] Cache sobre Postgres (`lib/cache.ts` + tabla `cache_entries`) — diferido a cuando aparezca el primer caso de uso real
+
+#### UI base — 🟡 EN CURSO
+- [x] Layout base con tokens Tailwind v4 (`@theme inline` directive con paleta brand-purple/turquoise/pink/coral/yellow/cream + Fredoka/Inter via next/font/google)
+- [x] **BrandMark + LucamsLogo** unificados — logo real PNG 468×468 RGBA en `public/brand/lucams-logo.png`, servido como WebP 5KB via Next Image optimizer
+- [x] **SiteHeader dinámico** (logged-in vs logged-out)
+- [x] Footer mínimo en /(auth) layout con link a WhatsApp
+- [ ] WhatsApp FAB global (todavía pendiente — solo está en footer de auth)
 - [ ] Página 404 con mascota
-- [ ] Página `error.tsx` global (sin filtrar PII en mensajes)
-- [ ] i18n routing es-CO/en con `next-intl`
+- [ ] Página `error.tsx` global (sin filtrar PII)
+- [ ] i18n routing es-CO/en con `next-intl` (diferido — pre-launch solo es-CO)
 
 #### CI/CD y observabilidad
 - [ ] CI en GitHub Actions: typecheck + lint + tests + secret scanning + dep audit
@@ -140,22 +152,22 @@ Antes de iniciar la fase, citar fuente con fecha en `OPERATIONS.md` para:
 - [ ] Vercel Preview deployment funcionando
 - [ ] Renovate o Dependabot configurado para PRs automáticos de actualización
 
-#### Patrones cross-cutting (productive readiness audit 2026-05-09)
+#### Patrones cross-cutting (productive readiness audit 2026-05-09) — 🟡 EN CURSO
 
-- [ ] **Error format RFC 7807** — `lib/errors.ts` con `ProblemDetails` + helpers (`problem.validation`, `problem.notFound`, etc.) + página `/legal/problems/[slug]` para que los URIs sean dereferenceables
-- [ ] **Capa de servicio** — estructura `features/<feat>/{service.ts, repository.ts, server-actions.ts, schemas.ts}` con tests unitarios sobre service mockeando repository
-- [ ] **Idempotency keys** — tabla `IdempotencyKeys` + `lib/idempotency.ts` + cleanup vía `pg_cron`
-- [ ] **Audit fields auto-fill** — `createdBy/updatedBy/deletedAt/deletedBy` en repositories
-- [ ] **Soft delete consistente** — filtro default `WHERE "deletedAt" IS NULL` en repositories
-- [ ] **Request ID correlation** — middleware genera UUID, `AsyncLocalStorage` lo propaga, header `X-Request-Id` en respuesta
-- [ ] **Logger estructurado** — `pino` con redact de PII (emails, phones, tokens, *Secret/*Key)
-- [ ] **`/api/metrics`** protegido con bearer token (preparado para scraper Prometheus futuro)
-- [ ] **Migration strategy** documentada — expand-then-contract aplicado desde la primera migración
-- [ ] **Indexing inicial** — set definido en CONVENTIONS aplicado vía migration
-- [ ] **`fetchWithTimeout` + `withRetry` + `CircuitBreaker`** en `lib/` con uso obligatorio en llamadas externas
-- [ ] **`safeRedirectTarget`** en `lib/redirects.ts` para prevenir open redirects
-- [ ] **Tests RLS automatizados** con cliente impostor (criterio de aceptación)
-- [ ] **`@axe-core/react`** en dev mode + `axe-playwright` en CI
+- [x] **Error format RFC 7807** — `lib/errors.ts` con `AppError` + 8 subclases + `problemResponse()`. Falta página `/legal/problems/[slug]` dereferenceable (diferido a Fase 4 cuando se generen errores RFC 7807 reales)
+- [ ] **Capa de servicio** — pendiente. Cuando aparezca el primer feature de dominio complejo (probable Cart o Order en Fase 2/4)
+- [ ] **Idempotency keys** — pendiente. Necesario en Fase 4 (webhook Wompi)
+- [x] **Audit fields uniformes** en schema Prisma (createdBy/updatedBy/deletedAt/deletedBy en mutables). Falta auto-fill desde sesión en Prisma `$extends` middleware
+- [x] **Soft delete consistente** — convención documentada en CONVENTIONS.md, schema lo soporta. Aplicación en repositories pendiente
+- [x] **Request ID correlation** — `lib/request-id.ts` con AsyncLocalStorage, generado en proxy.ts, header X-Request-Id en respuesta
+- [x] **Logger estructurado** — `pino` con redact paths para *Secret/*Key/*Token/email/phone/password + bindings + ISO timestamp
+- [ ] **`/api/metrics`** con bearer token — diferido a Fase 7 observabilidad
+- [x] **Migration strategy** — Prisma migrations + supabase/migrations/*.sql para SQL custom (RLS, rate-limit, etc.). Convención documentada
+- [x] **Indexing inicial** — schema Prisma incluye índices en deletedAt + columns de lookup + composite indexes
+- [ ] **`fetchWithTimeout` + `withRetry` + `CircuitBreaker`** — pendiente. Necesario en Fase 4-5 (Wompi/Venndelo/Anthropic calls)
+- [ ] **`safeRedirectTarget`** — pendiente
+- [ ] **Tests RLS automatizados** — pendiente, criterio importante antes de tráfico real
+- [ ] **`@axe-core/react`** — pendiente a11y automation
 
 ### Criterio de aceptación
 
