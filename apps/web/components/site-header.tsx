@@ -14,15 +14,20 @@
  */
 
 import Link from "next/link";
+import { ShoppingBag } from "lucide-react";
 import { logoutAction } from "@/app/auth/logout/actions";
 import { BrandMark } from "@/components/brand-mark";
 import { Button } from "@/components/ui/button";
+import { getCartItemCount } from "@/features/cart/service";
 import { getCurrentAdmin, getCurrentCustomer } from "@/lib/auth";
+import { peekCartSession } from "@/lib/cart-session";
 
 export async function SiteHeader() {
-  const [session, admin] = await Promise.all([
+  const sessionId = await peekCartSession();
+  const [session, admin, cartCount] = await Promise.all([
     getCurrentCustomer(),
     getCurrentAdmin(),
+    sessionId ? getCartItemCount(sessionId) : Promise.resolve(0),
   ]);
 
   return (
@@ -36,6 +41,18 @@ export async function SiteHeader() {
             className="text-sm font-medium text-brand-purple-dark hover:text-brand-purple"
           >
             Tienda
+          </Link>
+          <Link
+            href="/carrito"
+            className="relative inline-flex items-center text-brand-purple-dark hover:text-brand-purple"
+            aria-label={`Carrito (${cartCount} ítems)`}
+          >
+            <ShoppingBag className="h-5 w-5" />
+            {cartCount > 0 && (
+              <span className="absolute -right-2 -top-2 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-brand-pink px-1 text-[10px] font-bold text-white tabular-nums">
+                {cartCount > 99 ? "99+" : cartCount}
+              </span>
+            )}
           </Link>
           {admin && (
             <Link

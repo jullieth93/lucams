@@ -123,24 +123,44 @@ export async function createProduct(
   if (slugConflict) throw new ProductValidationError("slug", `Slug "${input.slug}" ya existe`);
   if (skuConflict) throw new ProductValidationError("sku", `SKU "${input.sku}" ya existe`);
 
-  return prisma.product.create({
-    data: {
-      name: input.name,
-      slug: input.slug,
-      description: input.description,
-      basePrice: input.basePrice,
-      compareAtPrice: input.compareAtPrice ?? null,
-      cost: input.cost ?? null,
-      sku: input.sku,
-      isPersonalizable: input.isPersonalizable,
-      isActive: input.isActive,
-      isFeatured: input.isFeatured,
-      seoTitle: input.seoTitle ?? null,
-      seoDescription: input.seoDescription ?? null,
-      categoryId: input.categoryId,
-      images: [],
-      ...(createdBy ? { createdBy } : {}),
-    },
+  // Crear producto + variante default en la misma transacción.
+  // CartItem y OrderItem requieren variantId — sin variante el producto
+  // no se puede comprar. Pre-variantes-admin: cada producto tiene una
+  // "Default" 1:1 con price=null (hereda basePrice) y stock=0 (sin
+  // enforcement). Cuando se sumen variantes reales se reemplazan o
+  // expanden.
+  return prisma.$transaction(async (tx) => {
+    const product = await tx.product.create({
+      data: {
+        name: input.name,
+        slug: input.slug,
+        description: input.description,
+        basePrice: input.basePrice,
+        compareAtPrice: input.compareAtPrice ?? null,
+        cost: input.cost ?? null,
+        sku: input.sku,
+        isPersonalizable: input.isPersonalizable,
+        isActive: input.isActive,
+        isFeatured: input.isFeatured,
+        seoTitle: input.seoTitle ?? null,
+        seoDescription: input.seoDescription ?? null,
+        categoryId: input.categoryId,
+        images: [],
+        ...(createdBy ? { createdBy } : {}),
+      },
+    });
+    await tx.productVariant.create({
+      data: {
+        productId: product.id,
+        name: "Default",
+        sku: `${input.sku}-DEFAULT`,
+        price: null,
+        stock: 0,
+        attributes: {},
+        ...(createdBy ? { createdBy } : {}),
+      },
+    });
+    return product;
   });
 }
 

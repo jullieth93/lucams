@@ -23,6 +23,9 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
+import { mergeAnonCartIntoCustomer } from "@/features/cart/service";
+import { peekCartSession, setCartSessionCookie } from "@/lib/cart-session";
+import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { getRequestOrigin } from "@/lib/origin";
 import { rateLimit } from "@/lib/rate-limit";
@@ -72,7 +75,7 @@ export async function verifyOtpAction(
   }
 
   const supabase = await createSupabaseServerClient();
-  const { error } = await supabase.auth.verifyOtp({
+  const { data: authData, error } = await supabase.auth.verifyOtp({
     email: parsed.data.email,
     token: parsed.data.token,
     type: "signup",
@@ -92,7 +95,35 @@ export async function verifyOtpAction(
   }
 
   logger.info({ event: "auth.verify_otp.success", ip });
+
+  // Merge anon cart si existía. Errores no bloquean el signup.
+  if (authData.user) await mergeCartSafely(authData.user.id);
+
   redirect("/");
+}
+
+async function mergeCartSafely(supabaseUserId: string): Promise<void> {
+  try {
+    const anonSessionId = await peekCartSession();
+    if (!anonSessionId) return;
+    const customer = await prisma.customer.findFirst({
+      where: { supabaseUserId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!customer) return;
+    const finalSessionId = await mergeAnonCartIntoCustomer(
+      anonSessionId,
+      customer.id,
+    );
+    if (finalSessionId !== anonSessionId) {
+      await setCartSessionCookie(finalSessionId);
+    }
+  } catch (err) {
+    logger.warn({
+      event: "cart.merge_fail",
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
 }
 
 const ResendSchema = z.object({

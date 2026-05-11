@@ -162,7 +162,7 @@ for (const p of productsData) {
     continue;
   }
   const { categorySlug, ...rest } = p;
-  await prisma.product.upsert({
+  const product = await prisma.product.upsert({
     where: { slug: p.slug },
     update: {
       ...rest,
@@ -177,6 +177,25 @@ for (const p of productsData) {
       images: [],
     },
   });
+
+  // Variante default — CartItem/OrderItem requieren variantId. Mientras
+  // no se manejen variantes reales en admin, cada producto tiene una
+  // "Default" 1:1 con price=null (hereda basePrice), stock=0 (sin
+  // enforcement de inventario en pre-launch).
+  const variantSku = `${p.sku}-DEFAULT`;
+  await prisma.productVariant.upsert({
+    where: { sku: variantSku },
+    update: { deletedAt: null, name: "Default" },
+    create: {
+      productId: product.id,
+      name: "Default",
+      sku: variantSku,
+      price: null,
+      stock: 0,
+      attributes: {},
+    },
+  });
+
   console.log(`  ✓ ${p.name}  (${p.sku})`);
 }
 

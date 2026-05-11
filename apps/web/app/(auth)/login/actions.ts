@@ -19,6 +19,9 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
+import { mergeAnonCartIntoCustomer } from "@/features/cart/service";
+import { peekCartSession, setCartSessionCookie } from "@/lib/cart-session";
+import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { rateLimit } from "@/lib/rate-limit";
 import { emailKey, ipKey } from "@/lib/rate-limit-keys";
@@ -82,7 +85,7 @@ export async function loginAction(
   }
 
   const supabase = await createSupabaseServerClient();
-  const { error } = await supabase.auth.signInWithPassword({
+  const { data: authData, error } = await supabase.auth.signInWithPassword({
     email: parsed.data.email,
     password: parsed.data.password,
   });
@@ -99,5 +102,34 @@ export async function loginAction(
   }
 
   logger.info({ event: "security.login.success", ip });
+
+  // Merge anon cart si existía. Errores acá NO bloquean login —
+  // un cart roto no debe impedir entrar a la cuenta.
+  await mergeCartSafely(authData.user.id);
+
   redirect("/");
+}
+
+async function mergeCartSafely(supabaseUserId: string): Promise<void> {
+  try {
+    const anonSessionId = await peekCartSession();
+    if (!anonSessionId) return;
+    const customer = await prisma.customer.findFirst({
+      where: { supabaseUserId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!customer) return;
+    const finalSessionId = await mergeAnonCartIntoCustomer(
+      anonSessionId,
+      customer.id,
+    );
+    if (finalSessionId !== anonSessionId) {
+      await setCartSessionCookie(finalSessionId);
+    }
+  } catch (err) {
+    logger.warn({
+      event: "cart.merge_fail",
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
 }

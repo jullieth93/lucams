@@ -19,9 +19,11 @@ import { ChevronRight, Sparkles, MessageCircle } from "lucide-react";
 import { SiteHeader } from "@/components/site-header";
 import { Button } from "@/components/ui/button";
 import { formatCOP } from "@/lib/format";
+import { addToCartAction } from "@/app/carrito/actions";
 import { getStorefrontProductBySlug } from "@/features/products/public-service";
 
 type Params = Promise<{ slug: string }>;
+type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
 
 export async function generateMetadata({
   params,
@@ -40,12 +42,16 @@ export async function generateMetadata({
 
 export default async function ProductoDetallePage({
   params,
+  searchParams,
 }: {
   params: Params;
+  searchParams: SearchParams;
 }) {
-  const { slug } = await params;
+  const [{ slug }, sp] = await Promise.all([params, searchParams]);
   const product = await getStorefrontProductBySlug(slug);
   if (!product) notFound();
+  const justAdded = sp.added === "1";
+  const errorMsg = typeof sp.error === "string" ? sp.error : null;
 
   const hasDiscount =
     product.compareAtPrice != null && product.compareAtPrice > product.basePrice;
@@ -61,6 +67,23 @@ export default async function ProductoDetallePage({
 
       <main className="flex-1 px-6 py-8 sm:px-10">
         <div className="mx-auto max-w-5xl">
+          {justAdded && (
+            <div className="mb-4 flex items-center justify-between gap-3 rounded-md border border-brand-turquoise/30 bg-brand-turquoise/10 px-4 py-3 text-sm text-brand-purple-dark">
+              <span>✨ Agregado al carrito.</span>
+              <Link
+                href="/carrito"
+                className="font-semibold text-brand-purple hover:text-brand-purple-dark"
+              >
+                Ver carrito →
+              </Link>
+            </div>
+          )}
+          {errorMsg && (
+            <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {errorMsg}
+            </div>
+          )}
+
           <nav
             className="mb-6 flex items-center gap-1 text-xs text-brand-purple-dark/60"
             aria-label="Breadcrumb"
@@ -141,15 +164,22 @@ export default async function ProductoDetallePage({
               </p>
 
               <div className="space-y-2 pt-2">
-                <Button
-                  type="button"
-                  className="w-full bg-brand-purple text-white hover:bg-brand-purple-dark"
-                  size="lg"
-                  disabled
-                  title="Carrito en construcción"
-                >
-                  Añadir al carrito (próximamente)
-                </Button>
+                <form action={addToCartAction}>
+                  <input type="hidden" name="slug" value={product.slug} />
+                  <input type="hidden" name="qty" value={1} />
+                  <input
+                    type="hidden"
+                    name="returnTo"
+                    value={`/producto/${product.slug}`}
+                  />
+                  <Button
+                    type="submit"
+                    className="w-full bg-brand-purple text-white hover:bg-brand-purple-dark"
+                    size="lg"
+                  >
+                    Añadir al carrito
+                  </Button>
+                </form>
                 {waHref && (
                   <a
                     href={waHref}
