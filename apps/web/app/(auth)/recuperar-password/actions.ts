@@ -5,20 +5,20 @@
  *   1. Validar email con Zod.
  *   2. Rate-limit por IP (3 intentos / hora) para mitigar spam.
  *   3. supabase.auth.resetPasswordForEmail(...).
- *   4. SIEMPRE devolver success (sin distinguir si el email existe o no)
- *      para no facilitar enumeración de cuentas.
- *
- * El email contiene un magic link con tokens que apuntan a una ruta que
- * Supabase Auth maneja (callback). La página de "establecer nueva
- * contraseña" se crea después.
+ *      Supabase manda email con {{ .Token }} (OTP de 6-10 dígitos),
+ *      no link — configurado en el template de Supabase Dashboard.
+ *   4. Redirect a /restablecer-password?email=... donde el user
+ *      tipea OTP + nueva contraseña.
+ *   5. Si el email NO existe, igual hacemos redirect para no leakear
+ *      la existencia de la cuenta (anti-enumeración).
  */
 
 "use server";
 
 import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 import { z } from "zod";
 import { logger } from "@/lib/logger";
-import { getRequestOrigin } from "@/lib/origin";
 import { rateLimit } from "@/lib/rate-limit";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
@@ -58,11 +58,13 @@ export async function recuperarPasswordAction(
     };
   }
 
-  const origin = await getRequestOrigin();
+  // Sin redirectTo: el flujo de recovery ahora es OTP (no link). El
+  // user recibe un código numérico en el email (template Reset password
+  // configurado con {{ .Token }}) y lo tipea en /restablecer-password.
+  // Esto evita el bug de Gmail prefetch que consume tokens de links.
   const supabase = await createSupabaseServerClient();
   const { error } = await supabase.auth.resetPasswordForEmail(
     parsed.data.email,
-    { redirectTo: `${origin}/auth/callback?type=recovery` },
   );
 
   if (error) {
@@ -72,13 +74,12 @@ export async function recuperarPasswordAction(
       code: error.code,
       status: error.status,
     });
-    // Aún así devolvemos success genérico para no leakear si el email existe.
+    // Aún así redirigimos al form siguiente para no leakear si existe.
   } else {
     logger.info({ event: "auth.reset.sent", ip });
   }
 
-  return {
-    success:
-      "Si esa dirección tiene una cuenta, te enviamos un correo con instrucciones. Revisa tu bandeja (incluido spam).",
-  };
+  redirect(
+    `/restablecer-password?email=${encodeURIComponent(parsed.data.email)}`,
+  );
 }

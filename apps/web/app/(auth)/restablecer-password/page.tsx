@@ -1,20 +1,27 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { getCurrentUser } from "@/lib/auth";
 import { RestablecerForm } from "./restablecer-form";
 
 export const metadata: Metadata = {
-  title: "Nueva contraseña · Lucams_shop",
-  description: "Establece una nueva contraseña para tu cuenta Lucams.",
+  title: "Restablecer contraseña · Lucams_shop",
+  description: "Ingresa el código que te enviamos por correo y tu nueva contraseña.",
 };
 
-export default async function RestablecerPasswordPage() {
-  // Esta página requiere sesión activa (la temporal del flujo de recovery).
-  // Si llegan acá sin sesión, mandamos a /login con instrucciones.
-  const user = await getCurrentUser();
-  if (!user) {
+type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
+
+export default async function RestablecerPasswordPage({
+  searchParams,
+}: {
+  searchParams: SearchParams;
+}) {
+  const sp = await searchParams;
+  const email = typeof sp.email === "string" ? sp.email : undefined;
+
+  // Sin email no se puede verificar el OTP. El user debió pasar por
+  // /recuperar-password primero, que setea el query param.
+  if (!email) {
     redirect("/recuperar-password?error=link-invalido");
   }
 
-  return <RestablecerForm />;
+  return <RestablecerForm email={email} />;
 }

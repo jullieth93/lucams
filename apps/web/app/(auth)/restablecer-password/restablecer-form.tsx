@@ -1,7 +1,9 @@
 "use client";
 
+import { KeyRound } from "lucide-react";
 import Link from "next/link";
 import { useActionState, useState } from "react";
+import { PasswordInput } from "@/components/password-input";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -11,33 +13,72 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { PasswordInput } from "@/components/password-input";
 import {
   restablecerPasswordAction,
   type RestablecerActionState,
 } from "./actions";
 
-export function RestablecerForm() {
+export function RestablecerForm({ email }: { email: string }) {
   const [state, formAction, pending] = useActionState<
     RestablecerActionState | null,
     FormData
   >(restablecerPasswordAction, null);
   const [password, setPassword] = useState("");
+  const [token, setToken] = useState("");
 
   return (
     <Card className="shadow-xl border-brand-purple/10 animate-in fade-in slide-in-from-bottom-3 duration-500">
-      <CardHeader className="space-y-2">
+      <CardHeader className="space-y-2 text-center">
+        <span
+          aria-hidden="true"
+          className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-brand-cream text-brand-purple motion-safe:[animation:var(--animate-float)] motion-safe:[animation-duration:2.5s]"
+        >
+          <KeyRound className="h-8 w-8" strokeWidth={1.75} />
+        </span>
         <CardTitle className="font-display text-2xl text-brand-purple-dark">
-          Establece tu nueva contraseña
+          Restablece tu contraseña
         </CardTitle>
         <CardDescription className="text-base">
-          Elige una contraseña segura. Después podrás iniciar sesión con ella.
+          Te enviamos un código a{" "}
+          <span className="font-medium text-brand-purple-dark">{email}</span>.
+          Escríbelo aquí junto con tu nueva contraseña.
         </CardDescription>
       </CardHeader>
 
       <form action={formAction}>
+        <input type="hidden" name="email" value={email} />
+
         <CardContent className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="token" className="text-center block">
+              Código del correo
+            </Label>
+            <Input
+              id="token"
+              name="token"
+              type="text"
+              inputMode="numeric"
+              pattern="\d{6,10}"
+              maxLength={10}
+              autoComplete="one-time-code"
+              required
+              autoFocus
+              value={token}
+              onChange={(e) => setToken(e.target.value.replace(/\D/g, ""))}
+              placeholder="00000000"
+              className="text-center text-2xl font-mono tracking-[0.4em] h-14"
+              disabled={pending}
+              aria-invalid={Boolean(state?.fieldErrors?.token)}
+            />
+            {state?.fieldErrors?.token && (
+              <p className="text-sm text-destructive text-center">
+                {state.fieldErrors.token[0]}
+              </p>
+            )}
+          </div>
+
           <div className="space-y-2">
             <Label htmlFor="password">Nueva contraseña</Label>
             <PasswordInput
@@ -74,22 +115,23 @@ export function RestablecerForm() {
           <Button
             type="submit"
             className="w-full bg-brand-purple hover:bg-brand-purple-dark text-white font-semibold transition-all hover:shadow-md hover:-translate-y-px active:translate-y-px"
-            disabled={pending}
+            disabled={pending || token.length < 6 || password.length < 8}
           >
             {pending ? (
               <span className="inline-flex items-center gap-2">
                 <SpinnerIcon /> Guardando...
               </span>
             ) : (
-              "Guardar contraseña"
+              "Guardar nueva contraseña"
             )}
           </Button>
           <p className="text-sm text-center text-muted-foreground">
+            ¿No te llegó el código?{" "}
             <Link
-              href="/login"
+              href="/recuperar-password"
               className="font-medium text-brand-pink hover:text-brand-coral underline-offset-4 hover:underline"
             >
-              Cancelar y volver a iniciar sesión
+              Solicitar otro
             </Link>
           </p>
         </CardFooter>

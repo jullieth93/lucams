@@ -1,28 +1,21 @@
 /*
  * GET /auth/callback — Supabase Auth callback URL.
  *
- * Esta es la URL a la que apuntan los emails que envía Supabase Auth:
- *   - Confirmación de email tras signup: type=signup (o sin type, depende
- *     de configuración).
- *   - Recovery flow de contraseña: type=recovery → tras exchange el user
- *     queda logueado temporalmente y lo redirigimos a /restablecer-password
- *     para que ponga la nueva contraseña.
- *   - Magic links (no usados aún): type=magiclink → exchange y home.
+ * Estado actual del repo (2026-05-11): este endpoint NO es disparado
+ * por los flujos principales:
+ *   - Signup confirmation → usa OTP, no link. Página: /confirmar-codigo.
+ *   - Reset password → usa OTP, no link. Página: /restablecer-password.
  *
- * Funcionamiento:
+ * Se mantiene activo como fallback defensivo + para futuros flujos que
+ * podrían querer link (ej. magic link auth, email change confirmation
+ * — no implementados todavía).
+ *
+ * Funcionamiento (cuando se usa):
  *   1. Supabase pone `?code=XXX&type=...` en el URL del email.
- *   2. Acá llamamos `supabase.auth.exchangeCodeForSession(code)` que
- *      valida el código + escribe las cookies de sesión (vía el adapter
- *      getAll/setAll de createSupabaseServerClient).
- *   3. Redirigimos según `type`:
- *        recovery → /restablecer-password (form de nueva contraseña)
- *        cualquier otro → / (home, ya autenticado)
+ *   2. exchangeCodeForSession(code) valida + escribe cookies de sesión.
+ *   3. Redirige a `/` o a `/restablecer-password` según `type`.
  *
- * Si el code es inválido o expiró, redirigimos a /login con mensaje de error.
- *
- * Referencias:
- *   - @supabase/ssr exchange flow.
- *   - docs/SECURITY.md § Auth callbacks.
+ * Si el code es inválido o expiró, redirige a /login con mensaje de error.
  */
 
 import { NextResponse, type NextRequest } from "next/server";
