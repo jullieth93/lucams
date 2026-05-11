@@ -47,33 +47,7 @@ export function RegistroForm() {
         </p>
       </CardHeader>
 
-      {state?.success ? (
-        <CardContent className="text-center space-y-3 py-4">
-          <span
-            aria-hidden="true"
-            className="inline-block text-5xl motion-safe:animate-bounce"
-          >
-            🎉
-          </span>
-          <div
-            role="status"
-            className="rounded-md bg-success/10 px-4 py-3 text-sm border border-success/20 text-left"
-            style={{ color: "var(--success)" }}
-          >
-            {state.success}
-          </div>
-          <p className="text-sm text-muted-foreground">
-            ¿Ya confirmaste?{" "}
-            <Link
-              href="/login"
-              className="font-medium text-brand-pink hover:text-brand-coral underline-offset-4 hover:underline"
-            >
-              Inicia sesión
-            </Link>
-          </p>
-        </CardContent>
-      ) : (
-        <form action={formAction}>
+      <form action={formAction}>
           <CardContent className="space-y-4">
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
@@ -229,7 +203,6 @@ export function RegistroForm() {
             </Button>
           </CardFooter>
         </form>
-      )}
     </Card>
   );
 }

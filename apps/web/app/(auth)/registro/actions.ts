@@ -119,13 +119,9 @@ export async function signupAction(
       status: authError.status,
       message: authError.message,
     });
-    // DEBUG TEMPORAL: incluir el código de Supabase en el mensaje para
-    // diagnosticar errores que solo se ven server-side.
-    const debugSuffix = ` [${authError.code ?? authError.status ?? "no-code"}]`;
     return {
       error:
-        "No pudimos crear tu cuenta. Si ya tienes una, intenta iniciar sesión." +
-        debugSuffix,
+        "No pudimos crear tu cuenta. Si ya tienes una, intenta iniciar sesión.",
     };
   }
 
@@ -208,11 +204,18 @@ export async function signupAction(
     needsEmailConfirmation: !authData.session,
   });
 
+  // Si Supabase requiere email confirmation (default), Supabase envió un
+  // OTP de 6 dígitos al correo (configurado en email template).
+  // Redirigimos a /confirmar-codigo donde el user lo tipea.
+  //
+  // Si email confirmation está desactivado (sólo dev), session viene
+  // populated y entramos directo.
   if (!authData.session) {
-    return {
-      success:
-        "¡Cuenta creada! Te enviamos un correo para confirmar tu email. Revisa tu bandeja (incluido spam).",
-    };
+    const params = new URLSearchParams({
+      email: parsed.data.email,
+      firstName: parsed.data.firstName,
+    });
+    redirect(`/confirmar-codigo?${params.toString()}`);
   }
 
   redirect("/");
