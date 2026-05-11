@@ -22,6 +22,7 @@ import { randomBytes } from "node:crypto";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
+import { Prisma } from "@lucams/db";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { getRequestOrigin } from "@/lib/origin";
@@ -164,15 +165,32 @@ export async function signupAction(
       },
     });
   } catch (err) {
+    // Detección específica del caso "huérfano en Customer":
+    // P2002 = Prisma unique constraint violation. La causa más probable
+    // es un Customer huérfano (auth.user fue borrado pero Customer
+    // sobrevivió). Con el trigger sync_auth_users_delete en producción
+    // esto no debería ocurrir nunca — pero en caso de inconsistencia
+    // damos un mensaje accionable en lugar del genérico.
+    const isUniqueViolation =
+      err instanceof Prisma.PrismaClientKnownRequestError &&
+      err.code === "P2002";
+    const violatedField =
+      isUniqueViolation && Array.isArray(err.meta?.target)
+        ? (err.meta.target as string[])[0]
+        : undefined;
+
     logger.error(
       {
         event: "auth.signup.customer_create_fail",
         ip,
         userId,
+        prismaCode: isUniqueViolation ? err.code : undefined,
+        violatedField,
         err: err instanceof Error ? err.message : String(err),
       },
       "Customer row failed; rolling back auth user (we created it)",
     );
+
     try {
       // Rollback SEGURO acá: detectamos arriba que el user NO existía
       // antes (identities.length > 0 → recién creado). Por tanto este
@@ -192,6 +210,14 @@ export async function signupAction(
         "Auth user rollback failed — manual cleanup may be required",
       );
     }
+
+    if (isUniqueViolation && violatedField === "email") {
+      return {
+        error:
+          "Este correo ya estuvo asociado a una cuenta anterior. Si fue tuya, escribe a soporte para reactivarla. Si crees que es un error, intenta con otro correo.",
+      };
+    }
+
     return {
       error: "Algo salió mal creando tu perfil. Intenta de nuevo en un momento.",
     };

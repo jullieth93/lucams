@@ -97,6 +97,9 @@ importers:
         specifier: ^6.18.0
         version: 6.19.3(prisma@6.19.3(typescript@5.9.3))(typescript@5.9.3)
     devDependencies:
+      '@supabase/supabase-js':
+        specifier: ^2.105.4
+        version: 2.105.4
       dotenv-cli:
         specifier: ^11.0.0
         version: 11.0.0

@@ -39,5 +39,8 @@ export const prisma =
 
 if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
 
-export type { Prisma } from "@prisma/client";
+// Re-exporta Prisma como namespace + valor (no solo type) para que
+// consumers puedan hacer `instanceof Prisma.PrismaClientKnownRequestError`
+// además de usar Prisma.Customer<...> en signaturas.
+export { Prisma } from "@prisma/client";
 export * from "@prisma/client";

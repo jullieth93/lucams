@@ -8,5 +8,4 @@
  */
 
 import "server-only";
-export { prisma } from "@lucams/db";
-export type { Prisma } from "@lucams/db";
+export { prisma, Prisma } from "@lucams/db";
