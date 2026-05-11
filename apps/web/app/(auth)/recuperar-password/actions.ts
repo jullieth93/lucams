@@ -20,6 +20,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { logger } from "@/lib/logger";
 import { rateLimit } from "@/lib/rate-limit";
+import { emailKey, ipKey } from "@/lib/rate-limit-keys";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 const ResetSchema = z.object({
@@ -47,11 +48,27 @@ export async function recuperarPasswordAction(
 
   const hdrs = await headers();
   const ip = hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
-  // Límites pre-launch intermedios; ver TODO en registro/actions.ts.
   const isProd = process.env.VERCEL_ENV === "production";
-  const rl = await rateLimit(`reset-password:${ip}`, isProd ? 10 : 30, 60 * 60);
-  if (!rl.allowed) {
-    logger.warn({ event: "auth.reset.rate_limited", ip, count: rl.count });
+
+  // Rate-limit doble: por IP y por email. Reset es un vector común
+  // de account-enumeration y spam — limites más conservadores.
+  const rlIp = await rateLimit(
+    ipKey("reset-password", ip),
+    isProd ? 10 : 30,
+    60 * 60,
+  );
+  const rlEmail = await rateLimit(
+    emailKey("reset-password", parsed.data.email),
+    isProd ? 3 : 10,
+    60 * 60,
+  );
+  if (!rlIp.allowed || !rlEmail.allowed) {
+    logger.warn({
+      event: "auth.reset.rate_limited",
+      ip,
+      ipCount: rlIp.count,
+      emailCount: rlEmail.count,
+    });
     return {
       error:
         "Demasiados intentos. Por favor espera una hora antes de reintentar.",

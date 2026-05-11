@@ -60,10 +60,33 @@
 
 ### Política de contraseñas
 
-- Mínimo **10 caracteres** (configurable en panel Supabase).
-- **Bloqueo temporal** tras 5 intentos fallidos en 15 min (configurable; Supabase tiene rate limit de auth nativo).
-- **Recuperación de password:** link con TTL de 1h.
-- **No reuso del último password** (Supabase no lo hace nativamente — implementar verificación adicional si es requisito).
+**Implementado actualmente (commit `68da751` y siguientes, 2026-05-11):**
+
+- **Mínimo 8 caracteres** (Zod en server actions). Supabase config también lo refuerza server-side.
+- **Strength meter informativo** custom (5 niveles: muy débil / débil / razonable / fuerte / muy fuerte). Cálculo en `lib/password-strength.ts` — pondera longitud + clases de caracteres + penaliza secuencias comunes (`123`, `qwerty`) y términos locales (`lucams`, `password`). NO bloquea, solo informa.
+- **Pwned Passwords (HaveIBeenPwned)** vía `lib/pwned-passwords.ts`. Usa k-anonymity (SHA-1 prefijo de 5 chars → API gratis sin envío de password). Bloquea registro/cambio de password si está en breaches conocidos. Fail-open si HIBP cae.
+- **Rate-limit doble por IP + por email** (`lib/rate-limit-keys.ts`):
+  - Signup: 10 IP/h + 3 email/h (prod) — mitiga botnet con varias IPs por email Y atacante atacando muchos emails desde una IP.
+  - Login: 15 IP/15min + 8 email/15min.
+  - Reset-password: 10 IP/h + 3 email/h.
+  - Verify-recovery (OTP entry): 10 IP/15min + 5 email/15min.
+  - El email se hashea con SHA-256 truncado a 16 chars antes de usar como key — no aparece en claro en `rate_limit_buckets`.
+- **Recuperación con OTP de 6-10 dígitos** (no link). Inmune a Gmail prefetch que consume tokens de links.
+- **Confirmar contraseña** obligatorio en signup y reset (campos duplicados con `.refine()` Zod + validación inline en client).
+- **signOut global tras cambiar password** (`scope: 'global'`). Invalida TODAS las sesiones del user en otros devices/browsers — si alguien tenía sesión activa con la contraseña vieja, queda fuera al cambio.
+- **Account enumeration mitigation:** mensajes genéricos ("Si esa cuenta existe, te enviamos email...") en flows donde aplica.
+
+**Decisión deliberada — NO implementado:**
+
+- **No-reuso de últimas N contraseñas.** Costo operacional alto (tabla `PasswordHistory` paralela + bcrypt.compare por entrada). Beneficio marginal vs Pwned Passwords (que ya cubre el principal vector). Re-evaluar si compliance lo exige (banking, no es nuestro caso).
+
+**Eventos de seguridad loggeados (event prefix `security.*`):**
+
+- `security.login.success` / `security.login.fail`
+- `security.pwned.signup_block` / `security.pwned.reset_block`
+- `security.password.reset_success` (con flag `globalSignOut`)
+- `security.pwned.api_fail` / `security.pwned.fetch_error` (HIBP caído)
+- Rate-limit hits ya van como `auth.*.rate_limited` (con `ipCount` + `emailCount`).
 
 ### MFA
 

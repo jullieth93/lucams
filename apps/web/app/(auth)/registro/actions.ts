@@ -26,7 +26,9 @@ import { Prisma } from "@lucams/db";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { getRequestOrigin } from "@/lib/origin";
+import { checkPwnedPassword } from "@/lib/pwned-passwords";
 import { rateLimit } from "@/lib/rate-limit";
+import { emailKey, ipKey } from "@/lib/rate-limit-keys";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { supabaseService } from "@/lib/supabase/service";
 
@@ -93,12 +95,49 @@ export async function signupAction(
   // a 3/hora signup, 5/15min login, 3/hora reset, o usar env var
   // LUCAMS_RATE_LIMIT_MODE=strict para discriminar sin tocar código.
   const isProd = process.env.VERCEL_ENV === "production";
-  const rl = await rateLimit(`signup:${ip}`, isProd ? 10 : 30, 60 * 60);
-  if (!rl.allowed) {
-    logger.warn({ event: "auth.signup.rate_limited", ip, count: rl.count });
+
+  // Rate-limit doble: por IP y por email. Cubre botnet (muchas IPs ↔ 1
+  // email) Y un atacante atacando muchos emails desde una IP.
+  const rlIp = await rateLimit(
+    ipKey("signup", ip),
+    isProd ? 10 : 30,
+    60 * 60,
+  );
+  const rlEmail = await rateLimit(
+    emailKey("signup", parsed.data.email),
+    isProd ? 3 : 10,
+    60 * 60,
+  );
+  if (!rlIp.allowed || !rlEmail.allowed) {
+    logger.warn({
+      event: "auth.signup.rate_limited",
+      ip,
+      ipCount: rlIp.count,
+      emailCount: rlEmail.count,
+    });
     return {
       error:
         "Demasiados intentos de registro. Espera una hora antes de reintentar.",
+    };
+  }
+
+  // Pwned Passwords check. Si está en breaches conocidos, bloqueamos.
+  // Fail-open si el servicio cae (no bloqueamos al user por nuestro
+  // problema operacional).
+  const pwned = await checkPwnedPassword(parsed.data.password);
+  if (pwned.pwned === true && "count" in pwned) {
+    logger.info({
+      event: "security.pwned.signup_block",
+      ip,
+      count: pwned.count,
+    });
+    return {
+      error: "Contraseña insegura.",
+      fieldErrors: {
+        password: [
+          `Esta contraseña apareció en filtraciones de datos públicas (${pwned.count.toLocaleString()} veces). Elige una distinta.`,
+        ],
+      },
     };
   }
 

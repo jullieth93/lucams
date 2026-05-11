@@ -21,6 +21,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { logger } from "@/lib/logger";
 import { rateLimit } from "@/lib/rate-limit";
+import { emailKey, ipKey } from "@/lib/rate-limit-keys";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 const LoginSchema = z.object({
@@ -54,11 +55,26 @@ export async function loginAction(
 
   const hdrs = await headers();
   const ip = hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
-  // Límites pre-launch intermedios; ver TODO en registro/actions.ts.
   const isProd = process.env.VERCEL_ENV === "production";
-  const rl = await rateLimit(`login:${ip}`, isProd ? 15 : 50, 15 * 60);
-  if (!rl.allowed) {
-    logger.warn({ event: "auth.login.rate_limited", ip, count: rl.count });
+
+  // Rate-limit doble: por IP y por email.
+  const rlIp = await rateLimit(
+    ipKey("login", ip),
+    isProd ? 15 : 50,
+    15 * 60,
+  );
+  const rlEmail = await rateLimit(
+    emailKey("login", parsed.data.email),
+    isProd ? 8 : 30,
+    15 * 60,
+  );
+  if (!rlIp.allowed || !rlEmail.allowed) {
+    logger.warn({
+      event: "auth.login.rate_limited",
+      ip,
+      ipCount: rlIp.count,
+      emailCount: rlEmail.count,
+    });
     return {
       error:
         "Demasiados intentos. Por favor espera unos minutos antes de reintentar.",
@@ -73,14 +89,15 @@ export async function loginAction(
 
   if (error) {
     logger.info({
-      event: "auth.login.fail",
+      event: "security.login.fail",
       ip,
       code: error.code,
       status: error.status,
+      emailRlCount: rlEmail.count,
     });
     return { error: "Credenciales incorrectas. Intenta de nuevo." };
   }
 
-  logger.info({ event: "auth.login.success", ip });
+  logger.info({ event: "security.login.success", ip });
   redirect("/");
 }

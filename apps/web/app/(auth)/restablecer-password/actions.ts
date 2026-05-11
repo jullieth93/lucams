@@ -27,7 +27,9 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { logger } from "@/lib/logger";
+import { checkPwnedPassword } from "@/lib/pwned-passwords";
 import { rateLimit } from "@/lib/rate-limit";
+import { emailKey, ipKey } from "@/lib/rate-limit-keys";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 const Schema = z
@@ -74,15 +76,46 @@ export async function restablecerPasswordAction(
   const hdrs = await headers();
   const ip = hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
   const isProd = process.env.VERCEL_ENV === "production";
-  const rl = await rateLimit(
-    `verify-recovery:${ip}`,
+
+  // Rate-limit doble: por IP y por email. Mitiga brute-force del OTP.
+  const rlIp = await rateLimit(
+    ipKey("verify-recovery", ip),
     isProd ? 10 : 30,
     15 * 60,
   );
-  if (!rl.allowed) {
-    logger.warn({ event: "auth.restablecer.rate_limited", ip });
+  const rlEmail = await rateLimit(
+    emailKey("verify-recovery", parsed.data.email),
+    isProd ? 5 : 15,
+    15 * 60,
+  );
+  if (!rlIp.allowed || !rlEmail.allowed) {
+    logger.warn({
+      event: "auth.restablecer.rate_limited",
+      ip,
+      ipCount: rlIp.count,
+      emailCount: rlEmail.count,
+    });
     return {
       error: "Demasiados intentos. Espera unos minutos antes de reintentar.",
+    };
+  }
+
+  // Pwned Passwords check. Igual que en signup — no permitir password
+  // en breaches conocidos.
+  const pwned = await checkPwnedPassword(parsed.data.password);
+  if (pwned.pwned === true && "count" in pwned) {
+    logger.info({
+      event: "security.pwned.reset_block",
+      ip,
+      count: pwned.count,
+    });
+    return {
+      error: "Contraseña insegura.",
+      fieldErrors: {
+        password: [
+          `Esta contraseña apareció en filtraciones de datos públicas (${pwned.count.toLocaleString()} veces). Elige una distinta.`,
+        ],
+      },
     };
   }
 
@@ -125,9 +158,17 @@ export async function restablecerPasswordAction(
     };
   }
 
-  // Paso 3: cerrar la sesión temporal para forzar login limpio.
-  await supabase.auth.signOut();
+  // Paso 3: cerrar TODAS las sesiones (scope: 'global') del user.
+  // Si alguien robó la contraseña y tiene sesión activa en otro
+  // device/browser, cambiar la contraseña lo desloguea inmediatamente.
+  // signOut sin scope solo cierra la sesión actual — insuficiente
+  // para post-incidente.
+  await supabase.auth.signOut({ scope: "global" });
 
-  logger.info({ event: "auth.restablecer.success", ip });
+  logger.info({
+    event: "security.password.reset_success",
+    ip,
+    globalSignOut: true,
+  });
   redirect("/login?reset=ok");
 }
