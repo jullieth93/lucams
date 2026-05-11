@@ -50,7 +50,7 @@ export function ConfirmarForm({
           {firstName ? `Listo, ${firstName}` : "Revisa tu correo"}
         </CardTitle>
         <CardDescription className="text-base">
-          Te enviamos un código de 6 dígitos a{" "}
+          Te enviamos un código a{" "}
           <span className="font-medium text-brand-purple-dark">{email}</span>.
           Escríbelo aquí para activar tu cuenta.
         </CardDescription>
@@ -68,15 +68,15 @@ export function ConfirmarForm({
               name="token"
               type="text"
               inputMode="numeric"
-              pattern="\d{6}"
-              maxLength={6}
+              pattern="\d{6,10}"
+              maxLength={10}
               autoComplete="one-time-code"
               required
               autoFocus
               value={token}
               onChange={(e) => setToken(e.target.value.replace(/\D/g, ""))}
-              placeholder="123456"
-              className="text-center text-2xl font-mono tracking-[0.5em] h-14"
+              placeholder="00000000"
+              className="text-center text-2xl font-mono tracking-[0.4em] h-14"
               disabled={verifying}
               aria-invalid={Boolean(verifyState?.fieldErrors?.token)}
             />
@@ -123,7 +123,7 @@ export function ConfirmarForm({
           <Button
             type="submit"
             className="w-full bg-brand-purple hover:bg-brand-purple-dark text-white font-semibold transition-all hover:shadow-md hover:-translate-y-px active:translate-y-px"
-            disabled={verifying || token.length !== 6}
+            disabled={verifying || token.length < 6}
           >
             {verifying ? (
               <span className="inline-flex items-center gap-2">

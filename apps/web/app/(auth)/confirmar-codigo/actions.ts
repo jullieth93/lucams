@@ -28,11 +28,15 @@ import { getRequestOrigin } from "@/lib/origin";
 import { rateLimit } from "@/lib/rate-limit";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
+// OTP length: configurable en Supabase (Auth → Configuration → OTP).
+// Default histórico es 6, pero algunos proyectos están en 8. Aceptamos
+// 6-10 para ser flexibles — verifyOtp del lado de Supabase valida el
+// token real, acá solo prevenimos garbage obvio.
 const VerifySchema = z.object({
   email: z.string().email(),
   token: z
     .string()
-    .regex(/^\d{6}$/, "Debe ser un código de 6 dígitos"),
+    .regex(/^\d{6,10}$/, "Debe ser un código numérico de 6 a 10 dígitos"),
 });
 
 export type VerifyOtpActionState = {
