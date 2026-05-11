@@ -89,7 +89,7 @@ export function BrandMark({
           "transition-transform group-hover:scale-105",
         )}
       >
-        🦝
+        <RaccoonFace />
       </span>
       <span className="inline-flex items-baseline gap-1">
         <span
@@ -110,5 +110,71 @@ export function BrandMark({
         </span>
       </span>
     </Link>
+  );
+}
+
+/*
+ * Mascota mapache kawaii — SVG inline placeholder.
+ *
+ * Razón de SVG en lugar de emoji 🦝:
+ *  Chrome en Linux sin Noto Color Emoji muestra "ND GLYPH" (no
+ *  rendering glyph). Firefox tiene emoji embebido y funciona.
+ *  Para que el branding sea consistente cross-browser/OS, dibujamos
+ *  el mapache como SVG. Cuando llegue el asset oficial de Lucy
+ *  (PNG/SVG del logo real), se reemplaza solo este componente.
+ *
+ * Diseño: cara redonda gris claro, máscara oscura alrededor de ojos
+ * (signature del mapache), ojos blancos con pupila, hocico, sonrisita.
+ * Width/height = 100% del contenedor (escala con el badge sm/md/lg).
+ */
+function RaccoonFace() {
+  return (
+    <svg
+      viewBox="0 0 64 64"
+      xmlns="http://www.w3.org/2000/svg"
+      className="h-[72%] w-[72%]"
+      aria-hidden="true"
+    >
+      {/* Orejas */}
+      <circle cx="18" cy="20" r="6" fill="#C7C3D6" />
+      <circle cx="18" cy="21" r="3" fill="#E85B9F" opacity="0.75" />
+      <circle cx="46" cy="20" r="6" fill="#C7C3D6" />
+      <circle cx="46" cy="21" r="3" fill="#E85B9F" opacity="0.75" />
+
+      {/* Cara */}
+      <circle cx="32" cy="34" r="20" fill="#E8E4F0" />
+
+      {/* Máscara mapache (alrededor de ojos) */}
+      <ellipse cx="24" cy="32" rx="8" ry="6" fill="#3D2E5C" />
+      <ellipse cx="40" cy="32" rx="8" ry="6" fill="#3D2E5C" />
+
+      {/* Ojos blancos */}
+      <circle cx="24" cy="32" r="3" fill="white" />
+      <circle cx="40" cy="32" r="3" fill="white" />
+
+      {/* Pupilas */}
+      <circle cx="25" cy="32.5" r="1.5" fill="#1F1733" />
+      <circle cx="41" cy="32.5" r="1.5" fill="#1F1733" />
+
+      {/* Brillito en ojos */}
+      <circle cx="23.5" cy="31" r="0.6" fill="white" />
+      <circle cx="39.5" cy="31" r="0.6" fill="white" />
+
+      {/* Nariz */}
+      <ellipse cx="32" cy="40" rx="2.2" ry="1.6" fill="#1F1733" />
+
+      {/* Sonrisa */}
+      <path
+        d="M 28 44 Q 32 47 36 44"
+        stroke="#1F1733"
+        strokeWidth="1.6"
+        fill="none"
+        strokeLinecap="round"
+      />
+
+      {/* Cachetitos rosados */}
+      <circle cx="16" cy="40" r="2.5" fill="#E85B9F" opacity="0.4" />
+      <circle cx="48" cy="40" r="2.5" fill="#E85B9F" opacity="0.4" />
+    </svg>
   );
 }
