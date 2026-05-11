@@ -12,7 +12,7 @@
  *  - SiteHeader dinámico — muestra login/registro o nombre+logout según sesión.
  */
 
-import { RaccoonFace } from "@/components/brand-mark";
+import { LucamsLogo } from "@/components/lucams-logo";
 import { SiteHeader } from "@/components/site-header";
 
 export default function Home() {
@@ -21,12 +21,14 @@ export default function Home() {
       <SiteHeader />
       <main className="flex flex-1 items-center justify-center bg-brand-cream px-6 py-16">
       <div className="max-w-2xl text-center">
-        <span
-          aria-hidden="true"
-          className="mb-6 inline-flex h-24 w-24 items-center justify-center rounded-full bg-brand-purple shadow-lg ring-4 ring-brand-yellow motion-safe:animate-[var(--animate-float)] motion-safe:[animation-duration:3s]"
-        >
-          <RaccoonFace />
-        </span>
+        <div className="mb-6 inline-block motion-safe:animate-[var(--animate-float)] motion-safe:[animation-duration:3s]">
+          <LucamsLogo
+            variant="full"
+            size={180}
+            priority
+            className="drop-shadow-xl"
+          />
+        </div>
 
         <h1 className="text-4xl font-display text-brand-purple-dark sm:text-5xl">
           Lucams<span className="text-brand-pink">_shop</span>
