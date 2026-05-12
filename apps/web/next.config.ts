@@ -7,6 +7,26 @@ const nextConfig: NextConfig = {
   // bloquea esos accesos por default por seguridad. Esta lista NO aplica
   // en producción (Vercel no usa next dev).
   allowedDevOrigins: ["192.168.20.180", "localhost", "127.0.0.1"],
+
+  // Optimización de imágenes remotas. Next 16 requiere `remotePatterns`
+  // (deprecated `domains`). Permitimos:
+  //   - Supabase Storage bucket público product-images (fotos uploaded
+  //     vía admin UI cuando Lucy tenga material real).
+  //   - Unsplash CDN (fotos demo hot-linked en seed-products.mjs hasta
+  //     que Lucy reemplace por foto real).
+  images: {
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "zxkucphbsfygakgxcnik.supabase.co",
+        pathname: "/storage/v1/object/public/product-images/**",
+      },
+      {
+        protocol: "https",
+        hostname: "images.unsplash.com",
+      },
+    ],
+  },
 };
 
 export default nextConfig;

@@ -61,26 +61,72 @@ enum CouponType {
 enum WebhookSource {
   WOMPI
   VENNDELO
+  RESEND
+}
+
+// Documento de identidad / tributario colombiano (DIAN factura electrónica).
+enum DocumentType {
+  CC // Cédula de ciudadanía
+  CE // Cédula de extranjería
+  NIT // NIT empresa
+  PP // Pasaporte
+  TI // Tarjeta de identidad
+}
+
+// Responsabilidad tributaria DIAN simplificada — se expande si hace falta.
+enum TaxResponsibility {
+  PERSONA_NATURAL_NO_RESPONSABLE
+  PERSONA_NATURAL_RESPONSABLE
+  PERSONA_JURIDICA
+}
+
+// Estado de la factura electrónica DIAN para el Order.
+enum DianStatus {
+  NOT_REQUIRED
+  PENDING
+  SENT
+  ACCEPTED
+  REJECTED
+}
+
+// Scope de consentimiento Ley 1581 colombiana — granular para que el
+// banner de cookies + newsletter + habeas data registren cada toggle
+// por separado con su versión, IP, UA, fecha.
+enum ConsentScope {
+  COOKIES_NECESSARY // siempre on
+  COOKIES_FUNCTIONAL
+  COOKIES_ANALYTICS
+  COOKIES_MARKETING
+  NEWSLETTER
+  MARKETING_PROFILING // perfilamiento (segmentación, recomendaciones)
+  HABEAS_DATA // autorización general tratamiento de datos personales
 }
 
 // ──────────────────────── IDENTIDAD ────────────────────────
 
 model Customer {
-  id             String       @id @default(cuid())
-  email          String       @unique
-  phone          String?
-  firstName      String?
-  lastName       String?
-  supabaseUserId String       @unique
-  loyaltyPoints  Int          @default(0)
-  referralCode   String       @unique
-  referredById   String?
-  referredBy     Customer?    @relation("Referrals", fields: [referredById], references: [id], onDelete: SetNull)
-  referrals      Customer[]   @relation("Referrals")
-  addresses      Address[]
-  orders         Order[]
-  reviews        Review[]
-  loyaltyTxns    LoyaltyTxn[]
+  id                String             @id @default(cuid())
+  email             String             @unique
+  phone             String?
+  firstName         String?
+  lastName          String?
+  supabaseUserId    String             @unique
+  // Datos tributarios DIAN — opcionales en perfil, obligatorios en
+  // checkout cuando se emite factura electrónica (Fase 7).
+  documentType      DocumentType?
+  documentNumber    String? // nullable porque se completa en checkout
+  taxResponsibility TaxResponsibility?
+  loyaltyPoints     Int                @default(0)
+  referralCode      String             @unique
+  referredById      String?
+  referredBy        Customer?          @relation("Referrals", fields: [referredById], references: [id], onDelete: SetNull)
+  referrals         Customer[]         @relation("Referrals")
+  addresses         Address[]
+  orders            Order[]
+  reviews           Review[]
+  loyaltyTxns       LoyaltyTxn[]
+  consents          Consent[]
+  supportTickets    SupportTicket[]
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -90,6 +136,7 @@ model Customer {
   deletedBy String?
 
   @@index([deletedAt])
+  @@index([documentType, documentNumber])
 }
 
 model Address {
@@ -267,28 +314,36 @@ model CartItem {
 }
 
 model Order {
-  id                 String        @id @default(cuid())
-  number             String        @unique
-  customerId         String?
-  customer           Customer?     @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  email              String
-  phone              String
-  shippingAddress    Json
-  subtotal           Int
-  discount           Int           @default(0)
-  shipping           Int
-  tax                Int           @default(0)
-  total              Int
-  currency           String        @default("COP")
-  status             OrderStatus   @default(DRAFT)
-  paymentMethod      PaymentMethod
-  wompiTransactionId String?
-  venndeloShipmentId String?
-  trackingUrl        String?
-  couponId           String?
-  coupon             Coupon?       @relation(fields: [couponId], references: [id], onDelete: SetNull)
-  notes              String?
-  items              OrderItem[]
+  id                    String        @id @default(cuid())
+  number                String        @unique
+  customerId            String?
+  customer              Customer?     @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  email                 String
+  phone                 String
+  shippingAddress       Json
+  subtotal              Int
+  discount              Int           @default(0)
+  shipping              Int
+  tax                   Int           @default(0)
+  total                 Int
+  currency              String        @default("COP")
+  status                OrderStatus   @default(DRAFT)
+  paymentMethod         PaymentMethod
+  wompiTransactionId    String?
+  venndeloShipmentId    String?
+  trackingUrl           String?
+  couponId              String?
+  coupon                Coupon?       @relation(fields: [couponId], references: [id], onDelete: SetNull)
+  notes                 String?
+  items                 OrderItem[]
+  // DIAN factura electrónica (Fase 7 implementa el envío; aquí el
+  // schema queda ready para no remigrar después).
+  billingDocumentType   DocumentType?
+  billingDocumentNumber String?
+  billingName           String?
+  dianStatus            DianStatus    @default(NOT_REQUIRED)
+  dianCufe              String? // CUFE devuelto por la DIAN
+  dianXmlUrl            String? // URL del XML firmado
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -300,6 +355,7 @@ model Order {
   @@index([customerId, deletedAt])
   @@index([status, createdAt])
   @@index([wompiTransactionId])
+  @@index([dianStatus])
 }
 
 model OrderItem {
@@ -353,7 +409,14 @@ model Review {
   rating     Int
   comment    String
   images     String[]
+  // Datos del reseñador (snapshot al momento de la reseña — para
+  // mostrar incluso si customer queda nullado por delete account).
+  authorName String?
+  authorCity String?
   isApproved Boolean   @default(false)
+  // Marcar reseñas excepcionales para mostrar en la home + secciones
+  // destacadas. Solo admin moderator setea featured=true.
+  featured   Boolean   @default(false)
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -364,6 +427,7 @@ model Review {
 
   @@index([productId, isApproved, deletedAt])
   @@index([customerId])
+  @@index([featured, isApproved])
 }
 
 // ──────────────────────── MARKETING / LOYALTY ────────────────────────
@@ -473,4 +537,146 @@ model AdminActionLog {
 
   @@index([actorId, createdAt])
   @@index([entityType, entityId])
+}
+
+// ──────────────────────── CONSENTIMIENTO LEY 1581 ────────────────────────
+// Registro granular de consentimiento del titular según Ley 1581.
+// Cada toggle del banner cookies + newsletter + autorización general
+// se persiste como una fila independiente con versión, IP, UA y fecha.
+// Append-only: revocación crea nueva fila con accepted=false y
+// `revokedAt` apuntando al toggle revocado.
+
+model Consent {
+  id         String       @id @default(cuid())
+  customerId String?
+  customer   Customer?    @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  // Para guests/newsletter sin cuenta: identificamos por email.
+  email      String?
+  scope      ConsentScope
+  accepted   Boolean
+  // Versión del aviso de privacidad / términos que el titular vió
+  // al consentir. Si cambia el aviso, requeríamos re-consentimiento.
+  version    String
+  ipAddress  String?
+  userAgent  String?
+  // Si revoca un consentimiento previo, apunta a su id.
+  revokesId  String?
+  revokes    Consent?     @relation("ConsentRevocations", fields: [revokesId], references: [id], onDelete: SetNull)
+  revokedBy  Consent[]    @relation("ConsentRevocations")
+  acceptedAt DateTime     @default(now())
+
+  @@index([customerId, scope])
+  @@index([email, scope])
+  @@index([scope, acceptedAt])
+}
+
+// ──────────────────────── OBSERVABILIDAD ────────────────────────
+
+// Reportes RUM (Real User Monitoring) — Web Vitals enviados desde
+// `app/_vitals.tsx` con useReportWebVitals. Permite agregar por route
+// y mostrar p50/p75/p95 en /admin/performance.
+
+model WebVital {
+  id        String   @id @default(cuid())
+  name      String // "LCP" | "FID" | "CLS" | "INP" | "TTFB" | "FCP"
+  value     Float
+  rating    String // "good" | "needs-improvement" | "poor"
+  delta     Float
+  navType   String? // "navigate" | "reload" | "back-forward" | "prerender"
+  route     String // path normalizado (e.g. "/producto/[slug]")
+  sessionId String?
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@index([name, route, createdAt])
+  @@index([route, createdAt])
+}
+
+// Eventos custom de funnel (add-to-cart, search, newsletter-signup,
+// product-view) — alternativa propia a Google Analytics. Solo se
+// escriben si el customer dió consentimiento ANALYTICS o MARKETING
+// según el caso. Append-only.
+
+model SiteEvent {
+  id         String   @id @default(cuid())
+  name       String // "cart.add" | "search.query" | "newsletter.signup" | "product.view" ...
+  customerId String?
+  sessionId  String?
+  route      String?
+  metadata   Json     @default("{}")
+  createdAt  DateTime @default(now())
+
+  @@index([name, createdAt])
+  @@index([customerId, createdAt])
+  @@index([sessionId, createdAt])
+}
+
+// Reportes de error capturados client+server, deduplicados por
+// fingerprint (SHA-1 de message + stack[:3]). Alternativa propia
+// a Sentry (mandato CLAUDE.md sin Sentry hasta evaluar Fase 7).
+
+model ErrorReport {
+  id          String    @id @default(cuid())
+  fingerprint String    @unique
+  message     String
+  stack       String?
+  url         String?
+  userAgent   String?
+  userId      String?
+  digest      String?
+  // count incrementa con cada ocurrencia del mismo fingerprint.
+  count       Int       @default(1)
+  status      String    @default("OPEN") // "OPEN" | "RESOLVED" | "IGNORED"
+  metadata    Json      @default("{}")
+  firstSeenAt DateTime  @default(now())
+  lastSeenAt  DateTime  @default(now())
+  resolvedAt  DateTime?
+  resolvedBy  String?
+
+  @@index([status, lastSeenAt])
+  @@index([fingerprint])
+}
+
+// Webhooks de Resend para tracking de email transaccional.
+// Idempotente via WebhookEvent.unique([source, externalId]); aquí
+// guardamos la versión normalizada por email destino para joins
+// fáciles con Customer.
+
+model EmailEvent {
+  id         String   @id @default(cuid())
+  resendId   String   @unique
+  type       String // "email.sent" | "email.delivered" | "email.bounced" | "email.complained" | "email.opened" | "email.clicked"
+  to         String
+  fromEmail  String
+  subject    String?
+  metadata   Json     @default("{}")
+  occurredAt DateTime
+  createdAt  DateTime @default(now())
+
+  @@index([to, occurredAt])
+  @@index([type, occurredAt])
+}
+
+// ──────────────────────── SOPORTE ────────────────────────
+
+model SupportTicket {
+  id         String    @id @default(cuid())
+  customerId String?
+  customer   Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  email      String
+  name       String
+  subject    String
+  message    String
+  status     String    @default("OPEN") // "OPEN" | "IN_PROGRESS" | "CLOSED"
+  ip         String?
+  userAgent  String?
+  resolvedAt DateTime?
+  resolvedBy String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, createdAt])
+  @@index([customerId])
+  @@index([email])
 }
