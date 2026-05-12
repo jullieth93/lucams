@@ -18,6 +18,7 @@
 
 import type { ReactNode } from "react";
 import { BrandMark } from "@/components/brand-mark";
+import { buildWhatsAppUrl } from "@/lib/wa";
 
 export default function AuthLayout({ children }: { children: ReactNode }) {
   return (
@@ -45,7 +46,7 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
           ¿Necesitas ayuda?{" "}
           <a
             className="font-medium text-brand-pink hover:text-brand-coral underline-offset-4 hover:underline"
-            href="https://wa.me/573150718723"
+            href={buildWhatsAppUrl({ kind: "support" })}
             target="_blank"
             rel="noopener noreferrer"
           >

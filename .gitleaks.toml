@@ -1,0 +1,52 @@
+# gitleaks config — Lucams_shop
+#
+# Detecta secrets en commits/PRs. Corre en CI via gitleaks-action.
+# Si tira falso positivo legítimo, agregar a [[allowlist]] con justificación
+# en el comentario.
+
+title = "Lucams gitleaks config"
+
+[extend]
+# Empezamos con la baseline oficial. Cualquier regla extra se agrega
+# debajo.
+useDefault = true
+
+[[rules]]
+id = "supabase-secret-key-pattern"
+description = "Supabase service_role / secret key"
+# Detecta SUPABASE_SECRET_KEY=eyJ... fuera de .env.example
+regex = '''(?i)SUPABASE_SECRET_KEY\s*=\s*['"]?(eyJ[A-Za-z0-9_\-]{20,})['"]?'''
+keywords = ["SUPABASE_SECRET_KEY"]
+
+[[rules]]
+id = "wompi-private-key"
+description = "Wompi private key (prv_prod_*)"
+regex = '''prv_(test|prod)_[A-Za-z0-9_-]{20,}'''
+keywords = ["prv_test_", "prv_prod_"]
+
+[[rules]]
+id = "anthropic-api-key"
+description = "Anthropic API key"
+regex = '''sk-ant-[A-Za-z0-9_-]{20,}'''
+keywords = ["sk-ant-"]
+
+[[rules]]
+id = "resend-api-key"
+description = "Resend API key"
+regex = '''re_[A-Za-z0-9_-]{20,}'''
+keywords = ["re_"]
+
+[allowlist]
+description = "Placeholders y ejemplos en docs/env.example son seguros"
+paths = [
+    '''\.env\.example$''',
+    '''docs/.*\.md$''',
+    '''README\.md$''',
+    '''\.gitleaks\.toml$''',
+]
+regexes = [
+    '''PLACEHOLDER''',
+    '''placeholder''',
+    '''xxxxxxxx''',
+    '''eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.placeholder''',
+]

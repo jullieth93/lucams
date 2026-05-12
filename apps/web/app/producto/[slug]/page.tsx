@@ -19,6 +19,7 @@ import { ChevronRight, Sparkles, MessageCircle } from "lucide-react";
 import { SiteHeader } from "@/components/site-header";
 import { Button } from "@/components/ui/button";
 import { formatCOP } from "@/lib/format";
+import { buildWhatsAppUrl } from "@/lib/wa";
 import { addToCartAction } from "@/app/carrito/actions";
 import { getStorefrontProductBySlug } from "@/features/products/public-service";
 
@@ -55,11 +56,11 @@ export default async function ProductoDetallePage({
 
   const hasDiscount =
     product.compareAtPrice != null && product.compareAtPrice > product.basePrice;
-  const waNumber = process.env.NEXT_PUBLIC_WA_NUMBER;
-  const waMessage = encodeURIComponent(
-    `Hola Lucams 👋 Quiero saber más sobre "${product.name}" (SKU ${product.sku}).`,
-  );
-  const waHref = waNumber ? `https://wa.me/${waNumber}?text=${waMessage}` : null;
+  const waHref = buildWhatsAppUrl({
+    kind: "product",
+    productName: product.name,
+    sku: product.sku,
+  });
 
   return (
     <div className="flex min-h-screen flex-col bg-brand-cream">

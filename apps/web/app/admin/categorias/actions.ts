@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
+import { recordAdminAction } from "@/lib/admin-audit";
 import { getCurrentAdmin } from "@/lib/auth";
 import {
   CategoryValidationError,
@@ -45,11 +46,18 @@ export async function createCategoryAction(
   }
 
   try {
-    await createCategory(parsed.data, session.admin.id);
+    const category = await createCategory(parsed.data, session.admin.id);
     logger.info({
       event: "admin.category.created",
       adminId: session.admin.id,
       slug: parsed.data.slug,
+    });
+    await recordAdminAction({
+      actorId: session.admin.id,
+      action: "category.create",
+      entityType: "Category",
+      entityId: category.id,
+      metadata: { slug: category.slug, name: category.name },
     });
     revalidatePath("/admin/categorias");
     redirect("/admin/categorias?created=1");
@@ -94,6 +102,13 @@ export async function updateCategoryAction(
 
   try {
     await updateCategory(id, parsed.data, session.admin.id);
+    await recordAdminAction({
+      actorId: session.admin.id,
+      action: "category.update",
+      entityType: "Category",
+      entityId: id,
+      metadata: { fields: Object.keys(parsed.data) },
+    });
     revalidatePath("/admin/categorias");
     return {};
   } catch (err) {
@@ -127,6 +142,12 @@ export async function deleteCategoryAction(formData: FormData): Promise<void> {
       event: "admin.category.deleted",
       adminId: session.admin.id,
       categoryId: id,
+    });
+    await recordAdminAction({
+      actorId: session.admin.id,
+      action: "category.archive",
+      entityType: "Category",
+      entityId: id,
     });
     revalidatePath("/admin/categorias");
     redirect("/admin/categorias?deleted=1");

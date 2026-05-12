@@ -11,6 +11,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
+import { recordAdminAction } from "@/lib/admin-audit";
 import { getCurrentAdmin } from "@/lib/auth";
 import { logger } from "@/lib/logger";
 import {
@@ -98,6 +99,13 @@ export async function createProductAction(
       productId: product.id,
       slug: product.slug,
     });
+    await recordAdminAction({
+      actorId: session.admin.id,
+      action: "product.create",
+      entityType: "Product",
+      entityId: product.id,
+      metadata: { slug: product.slug, sku: product.sku, name: product.name },
+    });
     revalidatePath("/admin/productos");
     redirect(`/admin/productos/${product.id}?created=1`);
   } catch (err) {
@@ -148,6 +156,13 @@ export async function updateProductAction(
       adminId: session.admin.id,
       productId: product.id,
     });
+    await recordAdminAction({
+      actorId: session.admin.id,
+      action: "product.update",
+      entityType: "Product",
+      entityId: product.id,
+      metadata: { fields: Object.keys(parsed.data).filter((k) => k !== "id") },
+    });
     revalidatePath("/admin/productos");
     revalidatePath(`/admin/productos/${product.id}`);
     return {};
@@ -182,6 +197,12 @@ export async function deleteProductAction(formData: FormData): Promise<void> {
     event: "admin.product.deleted",
     adminId: session.admin.id,
     productId: id,
+  });
+  await recordAdminAction({
+    actorId: session.admin.id,
+    action: "product.archive",
+    entityType: "Product",
+    entityId: id,
   });
   revalidatePath("/admin/productos");
   redirect("/admin/productos?deleted=1");
