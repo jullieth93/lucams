@@ -275,7 +275,7 @@ WebhookEvent (source: WOMPI|VENNDELO, externalId UNIQUE)
 | Branding: paleta kawaii con mascota mapache                                        | —        | ✅     |
 | Dominio `lucamsshop.co` en mi.com.co (al lanzar)                                   | 011      | ✅     |
 | Sentry/monitoreo: fuera del alcance hasta Fase 7                                   | 008      | ✅     |
-| WhatsApp temporal `+57 315 071 8723`                                               | —        | ✅     |
+| WhatsApp temporal `+57 320 887 3826`                                               | —        | ✅     |
 | **Stock**: reserva al `PENDING_PAYMENT` (TTL 15 min) + descuento al `PAID`         | 014      | ✅     |
 | **Rate limit + cache** en Postgres + `pg_cron`, sin Redis externo                  | 016      | ✅     |
 | **Background jobs** en `pgmq` + `pg_cron`, no Vercel Cron                          | 017      | ✅     |

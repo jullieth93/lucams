@@ -617,7 +617,7 @@ Cuando se rompan estos límites, abrir issue automático:
 | Logística caída        | Soporte Venndelo + usuario                       |
 | DB caída               | Soporte Supabase + usuario                       |
 | Sitio caído            | Vercel status + usuario                          |
-| Pregunta del cliente   | WhatsApp del usuario (+57 315 071 8723 temporal) |
+| Pregunta del cliente   | WhatsApp del usuario (+57 320 887 3826 temporal) |
 
 ---
 

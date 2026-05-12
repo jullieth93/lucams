@@ -81,7 +81,7 @@ Si una tarea cruza varias áreas, lee los archivos relevantes en paralelo. Si no
 ## Datos clave
 
 - **Dominio:** `lucamsshop.co` en mi.com.co (al lanzar).
-- **WhatsApp temporal:** +57 315 071 8723 (centralizado en `NEXT_PUBLIC_WA_NUMBER`).
+- **WhatsApp temporal:** +57 320 887 3826 (centralizado en `NEXT_PUBLIC_WA_NUMBER`).
 - **Productos iniciales:** 30+ espejo de magneticas.cl con placeholders (cliente reemplaza fotos/precios).
 - **Pago contraentrega:** activo desde el lanzamiento.
 - **Costo dev:** $0/mes. **Costo prod:** ~$68 USD/mes + comisiones.

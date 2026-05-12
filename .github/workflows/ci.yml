@@ -22,7 +22,7 @@ env:
   SUPABASE_SECRET_KEY: placeholder
   DATABASE_URL: postgresql://placeholder:placeholder@localhost:5432/postgres
   DIRECT_URL: postgresql://placeholder:placeholder@localhost:5432/postgres
-  NEXT_PUBLIC_WA_NUMBER: "573150718723"
+  NEXT_PUBLIC_WA_NUMBER: "573208873826"
   CSRF_SECRET: placeholder-csrf-secret-32-chars-min
   NEXT_TELEMETRY_DISABLED: "1"
 

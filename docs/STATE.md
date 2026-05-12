@@ -274,7 +274,7 @@
 
 2. **shadcn components instalados** vía `pnpm dlx shadcn add`: button, card, input, label (style `radix-nova`).
 
-3. **`app/(auth)/layout.tsx`** (commit `ca1d73e`) — layout dedicado para auth. Gradiente `brand-cream → white → brand-purple/10`, wordmark "Lucams + shop" en Fredoka con colores brand, footer con link a WhatsApp `+57 315 071 8723`. **Opuesto al minimalismo blanco de magneticas** — fondo cálido kawaii.
+3. **`app/(auth)/layout.tsx`** (commit `ca1d73e`) — layout dedicado para auth. Gradiente `brand-cream → white → brand-purple/10`, wordmark "Lucams + shop" en Fredoka con colores brand, footer con link a WhatsApp `+57 320 887 3826`. **Opuesto al minimalismo blanco de magneticas** — fondo cálido kawaii.
 
 4. **`/login`** — Card con título "Bienvenida de vuelta" en Fredoka brand-purple-dark + Input email/password + button primary brand-purple + links a /recuperar-password (text-brand-pink) y /registro. Server action `loginAction` valida con Zod, rate-limit `login:<ip>` 5/15min, llama `supabase.auth.signInWithPassword`. Error genérico al cliente (no enumera cuentas) + log estructurado con código.
 

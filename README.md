@@ -5,7 +5,7 @@ E-commerce colombiano de productos magnéticos personalizados. Inspirado en [mag
 - **Sitio en producción:** _(pendiente, dominio `lucamsshop.co` se compra al lanzar)_
 - **Instagram:** [@lucams_shop](https://www.instagram.com/lucams_shop)
 - **Linktree actual:** [linktr.ee/Lucams_shop](https://linktr.ee/Lucams_shop)
-- **WhatsApp (temporal):** +57 315 071 8723
+- **WhatsApp (temporal):** +57 320 887 3826
 
 ## Estado del proyecto
 
