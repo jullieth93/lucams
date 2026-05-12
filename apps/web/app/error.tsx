@@ -39,7 +39,7 @@ export default function Error({
         Algo salió mal de nuestro lado
       </h1>
       <p className="text-brand-purple-dark/70 mt-3 max-w-md text-base">
-        Ya quedó registrado. Podés intentar de nuevo o volver al inicio.
+        Ya quedó registrado. Puedes intentar de nuevo o volver al inicio.
       </p>
 
       {error.digest && (

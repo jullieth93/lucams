@@ -52,7 +52,7 @@ export default function GlobalError({
           Algo se rompió de raíz
         </h1>
         <p style={{ margin: 0, maxWidth: 480, opacity: 0.75 }}>
-          Ya quedó registrado. Refrescá la página o volvé al inicio.
+          Ya quedó registrado. Refrescá la página o vuelve al inicio.
         </p>
         {error.digest && (
           <p

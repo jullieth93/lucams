@@ -43,7 +43,7 @@ type Cat = {
 
 const ICONS: Record<string, LucideIcon> = {
   "foto-imanes": Camera,
-  "recorditos-eventos": PartyPopper,
+  "recuerdos-eventos": PartyPopper,
   organizate: ClipboardList,
   calendarios: Calendar,
   pequenes: Baby,

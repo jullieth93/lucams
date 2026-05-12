@@ -7,15 +7,15 @@ import { MousePointerClick, Sparkles, Package } from "lucide-react";
 const STEPS = [
   {
     icon: MousePointerClick,
-    title: "Eligís",
+    title: "Eliges",
     description:
-      "Elegís el formato que más te guste en nuestro catálogo. Hay opciones para fotos, eventos, organización y más.",
+      "Eliges el formato que más te guste en nuestro catálogo. Hay opciones para fotos, eventos, organización y más.",
   },
   {
     icon: Sparkles,
-    title: "Personalizás",
+    title: "Personalizas",
     description:
-      "Subís tus fotos o nos contás tu idea por WhatsApp. Pronto vas a poder diseñarlo en vivo aquí mismo.",
+      "Subes tus fotos o nos cuentas tu idea por WhatsApp. Pronto vas a poder diseñarlo en vivo aquí mismo.",
   },
   {
     icon: Package,

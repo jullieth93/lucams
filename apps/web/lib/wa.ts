@@ -38,7 +38,7 @@ export function buildWhatsAppMessage(ctx: WhatsAppContext): string {
     case "order":
       return `Hola Lucams 👋 Quiero consultar el estado de mi pedido ${ctx.orderNumber}.`;
     case "wholesale":
-      return `Hola Lucams 👋 Estoy interesado/a en pedido al por mayor / corporativo. ¿Me podés contar?`;
+      return `Hola Lucams 👋 Estoy interesado/a en pedido al por mayor / corporativo. ¿Me puedes contar?`;
     case "custom":
       return ctx.text;
   }

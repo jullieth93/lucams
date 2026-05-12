@@ -120,7 +120,7 @@ export function ProductImages({ productId, images }: { productId: string; images
             Aún no hay imágenes para este producto.
           </p>
           <p className="mt-1 text-xs text-slate-500">
-            Subí 1-5 imágenes. La primera será la principal en el catálogo.
+            Sube 1-5 imágenes. La primera será la principal en el catálogo.
           </p>
         </div>
       ) : (

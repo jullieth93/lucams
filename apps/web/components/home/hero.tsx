@@ -28,7 +28,7 @@ export function HomeHero() {
             Tus recuerdos, <span className="text-brand-pink">en imán</span>.
           </h1>
           <p className="text-brand-purple-dark/80 max-w-lg text-lg leading-relaxed">
-            Foto-imanes, recorditos para eventos, calendarios y planners magnéticos personalizables.
+            Foto-imanes, recuerdos para eventos, calendarios y planners magnéticos personalizables.
             Diseño kawaii. Entrega a 1.100+ destinos de Colombia.
           </p>
           <div className="flex flex-wrap items-center gap-3">

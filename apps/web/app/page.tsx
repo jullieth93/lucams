@@ -32,7 +32,7 @@ import { buildWhatsAppUrl } from "@/lib/wa";
 export const metadata: Metadata = {
   title: "Lucams_shop — Tus recuerdos en imán",
   description:
-    "Imanes magnéticos personalizados, fotoimanes, recorditos para eventos, calendarios y planners. Hechos a mano en Colombia con entrega a 1.100+ destinos.",
+    "Imanes magnéticos personalizados, fotoimanes, recuerdos para eventos, calendarios y planners. Hechos a mano en Colombia con entrega a 1.100+ destinos.",
 };
 
 // Home consulta DB (categorías, productos featured, reseñas) en SSR.
@@ -62,7 +62,7 @@ export default async function Home() {
         <section className="mx-auto max-w-6xl px-6 py-12 sm:px-10 sm:py-16">
           <header className="mb-8 text-center">
             <h2 className="font-display text-brand-purple-dark text-3xl sm:text-4xl">
-              Explorá las categorías
+              Explora las categorías
             </h2>
             <p className="text-brand-purple-dark/70 mt-2">Imanes para cada rincón de tu vida.</p>
           </header>
@@ -144,7 +144,7 @@ export default async function Home() {
               className="bg-brand-turquoise/30 absolute -bottom-12 -left-12 h-48 w-48 rounded-full blur-3xl"
             />
             <h2 className="font-display relative text-3xl text-white sm:text-4xl">
-              ¿Tenés una idea distinta?
+              ¿Tienes una idea distinta?
             </h2>
             <p className="relative mt-3 text-white/80">
               Cotizamos a medida: regalos corporativos, eventos, bodas y proyectos especiales.
@@ -156,7 +156,7 @@ export default async function Home() {
                 rel="noopener noreferrer"
                 className="text-brand-purple-dark hover:bg-brand-cream inline-block rounded-full bg-white px-6 py-3 text-sm font-semibold transition-colors"
               >
-                Hablanos por WhatsApp
+                Háblanos por WhatsApp
               </a>
               <Link
                 href="/productos"

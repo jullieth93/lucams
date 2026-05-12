@@ -46,7 +46,7 @@ export default function NotFound() {
       <p className="text-brand-purple-dark/60 mt-10 text-sm">
         ¿Buscabas algo en particular?{" "}
         <Link href="/contacto" className="text-brand-purple font-medium hover:underline">
-          Contanos
+          Cuéntanos
         </Link>{" "}
         y te ayudamos.
       </p>

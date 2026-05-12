@@ -40,8 +40,8 @@ const categoriesData = [
     isActive: true,
   },
   {
-    slug: "recorditos-eventos",
-    name: "Recorditos para Eventos",
+    slug: "recuerdos-eventos",
+    name: "Recuerdos para Eventos",
     description: "Detalles personalizados para bodas, baby showers, cumpleaños y graduaciones.",
     order: 2,
     isActive: true,
@@ -211,48 +211,48 @@ const productsData = [
     images: [UNSPLASH("1604782206219-3b9576575203")],
   },
 
-  // ─── Recorditos para Eventos (6) ───
+  // ─── Recuerdos para Eventos (6) ───
   {
-    slug: "recorditos-cumpleanos-x20",
+    slug: "recuerdos-cumpleanos-x20",
     sku: "EVT-CUMP-20",
-    name: "Recorditos de Cumpleaños x20",
+    name: "Recuerdos de Cumpleaños x20",
     description:
       "Kit de 20 imanes personalizados para cumpleaños. Diseño con nombre, edad y motivo de la fiesta. Incluye empaque individual.",
     basePrice: 11500000,
-    categorySlug: "recorditos-eventos",
+    categorySlug: "recuerdos-eventos",
     isPersonalizable: true,
     images: [UNSPLASH("1530103862676-de8c9debad1d")],
   },
   {
-    slug: "recorditos-bautizo-x12",
+    slug: "recuerdos-bautizo-x12",
     sku: "EVT-BAUT-12",
-    name: "Recorditos de Bautizo x12",
+    name: "Recuerdos de Bautizo x12",
     description:
       "12 imanes personalizados para bautizo. Diseño tierno con nombre del bebé y fecha. Empaque incluido.",
     basePrice: 9000000,
-    categorySlug: "recorditos-eventos",
+    categorySlug: "recuerdos-eventos",
     isPersonalizable: true,
     images: [UNSPLASH("1525258946800-98cfd641d0de")],
   },
   {
-    slug: "recorditos-graduacion-x20",
+    slug: "recuerdos-graduacion-x20",
     sku: "EVT-GRAD-20",
-    name: "Recorditos de Graduación x20",
+    name: "Recuerdos de Graduación x20",
     description:
       "20 imanes personalizados con birrete, diploma y fecha de graduación. El recordatorio perfecto para invitados.",
     basePrice: 9000000,
-    categorySlug: "recorditos-eventos",
+    categorySlug: "recuerdos-eventos",
     isPersonalizable: true,
     images: [UNSPLASH("1523580494863-6f3031224c94")],
   },
   {
-    slug: "recorditos-matrimonio",
+    slug: "recuerdos-matrimonio",
     sku: "EVT-MAT-VAR",
-    name: "Recorditos de Matrimonio",
+    name: "Recuerdos de Matrimonio",
     description:
       "Imanes para invitados de matrimonio. Diseño elegante con tus nombres, fecha y motivo floral. Empaque incluido. Cotización por cantidad.",
     basePrice: 3000000,
-    categorySlug: "recorditos-eventos",
+    categorySlug: "recuerdos-eventos",
     isPersonalizable: true,
     isFeatured: true,
     images: [UNSPLASH("1519741497674-611481863552")],
@@ -262,20 +262,20 @@ const productsData = [
     sku: "EVT-ANITO",
     name: "Mi Primer Añito",
     description:
-      "Recorditos personalizados para el primer cumpleaños. Diseño dulce con la foto del bebé, nombre y fecha.",
+      "Recuerdos personalizados para el primer cumpleaños. Diseño dulce con la foto del bebé, nombre y fecha.",
     basePrice: 4500000,
-    categorySlug: "recorditos-eventos",
+    categorySlug: "recuerdos-eventos",
     isPersonalizable: true,
     images: [UNSPLASH("1525258946800-98cfd641d0de")],
   },
   {
-    slug: "recorditos-quinceanera",
+    slug: "recuerdos-quinceanera",
     sku: "EVT-QUINCE-20",
-    name: "Recorditos de Quinceañera",
+    name: "Recuerdos de Quinceañera",
     description:
       "20 imanes personalizados con la foto de los XV. Marco floral, fecha y nombre. Recordatorio único para el día especial.",
     basePrice: 11500000,
-    categorySlug: "recorditos-eventos",
+    categorySlug: "recuerdos-eventos",
     isPersonalizable: true,
     images: [UNSPLASH("1525258946800-98cfd641d0de")],
   },
@@ -671,10 +671,10 @@ const reviewsData = [
   { productSlug: "set-fotoimanes-corazon", rating: 5, comment: "Regalo de aniversario perfecto. Mi novio quedó enamorado.", authorName: "Sofía V.", authorCity: "Pereira", featured: true, isApproved: true },
   { productSlug: "set-fotoimanes-corazon", rating: 5, comment: "Adorables. Los corazones tienen un acabado mate súper bonito.", authorName: "Valentina G.", authorCity: "Manizales", isApproved: true },
 
-  // featured: recorditos-matrimonio
-  { productSlug: "recorditos-matrimonio", rating: 5, comment: "Los entregamos en nuestra boda y los invitados los aman. Calidad insuperable.", authorName: "Andrés & Laura", authorCity: "Cartagena", featured: true, isApproved: true },
-  { productSlug: "recorditos-matrimonio", rating: 5, comment: "Lucy nos asesoró por WhatsApp con el diseño, súper paciente. Llegaron antes de lo prometido.", authorName: "Pablo H.", authorCity: "Bogotá", isApproved: true },
-  { productSlug: "recorditos-matrimonio", rating: 4, comment: "Hermosos. Sugerencia: tener opción de varios diseños base para elegir.", authorName: "Camila T.", authorCity: "Medellín", isApproved: true },
+  // featured: recuerdos-matrimonio
+  { productSlug: "recuerdos-matrimonio", rating: 5, comment: "Los entregamos en nuestra boda y los invitados los aman. Calidad insuperable.", authorName: "Andrés & Laura", authorCity: "Cartagena", featured: true, isApproved: true },
+  { productSlug: "recuerdos-matrimonio", rating: 5, comment: "Lucy nos asesoró por WhatsApp con el diseño, súper paciente. Llegaron antes de lo prometido.", authorName: "Pablo H.", authorCity: "Bogotá", isApproved: true },
+  { productSlug: "recuerdos-matrimonio", rating: 4, comment: "Hermosos. Sugerencia: tener opción de varios diseños base para elegir.", authorName: "Camila T.", authorCity: "Medellín", isApproved: true },
 
   // featured: calendario-mes-a-mes-fotos
   { productSlug: "calendario-mes-a-mes-fotos", rating: 5, comment: "Lo mejor para el escritorio. Cambio el imán cada mes y siempre veo una foto distinta. Lo amo.", authorName: "Juan D.", authorCity: "Bogotá", featured: true, isApproved: true },

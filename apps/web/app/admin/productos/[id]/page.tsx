@@ -69,7 +69,7 @@ export default async function EditarProductoPage({
       <main className="mx-auto max-w-3xl space-y-4 px-6 py-8">
         {justCreated && (
           <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-            ✓ Producto creado. Ya podés editar más detalles o agregar variantes.
+            ✓ Producto creado. Ya puedes editar más detalles o agregar variantes.
           </div>
         )}
         <ProductForm

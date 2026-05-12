@@ -32,7 +32,7 @@ const CATEGORY_STYLES: Record<string, { icon: LucideIcon; gradient: string }> = 
     icon: Camera,
     gradient: "from-brand-purple/20 via-brand-pink/20 to-brand-coral/20",
   },
-  "recorditos-eventos": {
+  "recuerdos-eventos": {
     icon: PartyPopper,
     gradient: "from-brand-coral/25 via-brand-yellow/25 to-brand-pink/15",
   },

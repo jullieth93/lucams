@@ -92,7 +92,7 @@ export function GlobalSearch() {
         open={open}
         onOpenChange={setOpen}
         title="Buscar productos"
-        description="Escribí parte del nombre o SKU"
+        description="Escribe parte del nombre o SKU"
       >
         <CommandInput placeholder="Buscar productos..." value={query} onValueChange={setQuery} />
         <CommandList>
@@ -100,11 +100,11 @@ export function GlobalSearch() {
             <CommandEmpty>
               <div className="flex flex-col items-center gap-2 py-4">
                 <Sparkles className="text-brand-purple/40 h-6 w-6" />
-                <span>Nada por aquí — probá con otra palabra.</span>
+                <span>Nada por aquí — prueba con otra palabra.</span>
               </div>
             </CommandEmpty>
           ) : (
-            <CommandGroup heading={query.trim() ? "Resultados" : "Empezá a escribir..."}>
+            <CommandGroup heading={query.trim() ? "Resultados" : "Empieza a escribir..."}>
               {results.map((p) => (
                 <CommandItem
                   key={p.id}

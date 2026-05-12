@@ -23,7 +23,7 @@ import {
 export const metadata: Metadata = {
   title: "Tienda",
   description:
-    "Imanes magnéticos personalizados, fotoimanes, recorditos para eventos y más. Hechos a mano en Colombia.",
+    "Imanes magnéticos personalizados, fotoimanes, recuerdos para eventos y más. Hechos a mano en Colombia.",
 };
 
 type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;

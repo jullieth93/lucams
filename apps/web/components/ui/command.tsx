@@ -27,7 +27,7 @@ function Command({ className, ...props }: React.ComponentProps<typeof CommandPri
 
 function CommandDialog({
   title = "Command Menu",
-  description = "Buscá productos por nombre o SKU",
+  description = "Busca productos por nombre o SKU",
   children,
   open,
   onOpenChange,
