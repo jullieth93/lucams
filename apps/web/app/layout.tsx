@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Fredoka, Inter } from "next/font/google";
+import { WebVitalsReporter } from "@/components/web-vitals";
 import "./globals.css";
 
 /*
@@ -59,7 +60,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="es-CO" className={`${fredoka.variable} ${inter.variable} h-full antialiased`}>
-      <body className="flex min-h-full flex-col">{children}</body>
+      <body className="flex min-h-full flex-col">
+        {children}
+        <WebVitalsReporter />
+      </body>
     </html>
   );
 }

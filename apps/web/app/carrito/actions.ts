@@ -1,21 +1,26 @@
 /*
  * Server actions del carrito.
  *
- * Cubre añadir, actualizar qty y remover. Las tres consultan/crean el
- * cart via lib/cart-session (cookie sessionId), llaman al service y
- * revalidan las paths impactadas.
+ * Cubre añadir, actualizar qty y remover. Las tres validan input con
+ * Zod, consultan/crean el cart via lib/cart-session (cookie sessionId),
+ * llaman al service y revalidan las paths impactadas.
+ *
+ * Logging: cada acción emite `cart.<verb>.<result>` con sessionId +
+ * customerId si está logueado.
  */
 
 "use server";
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { z } from "zod";
 import {
   addProductToCart,
   CartError,
   removeCartItem,
   updateCartItemQty,
 } from "@/features/cart/service";
+import { AddToCartSchema, RemoveItemSchema, UpdateQtySchema } from "@/features/cart/schemas";
 import { getCurrentCustomer } from "@/lib/auth";
 import { getOrCreateCartSession, peekCartSession } from "@/lib/cart-session";
 import { logger } from "@/lib/logger";
@@ -37,11 +42,21 @@ function errorMessage(err: unknown): string {
 }
 
 export async function addToCartAction(formData: FormData): Promise<void> {
-  const slug = String(formData.get("slug") ?? "");
-  const qty = Math.max(1, Number(formData.get("qty") ?? 1));
-  const returnTo = String(formData.get("returnTo") ?? "/carrito");
+  const parsed = AddToCartSchema.safeParse({
+    slug: String(formData.get("slug") ?? ""),
+    qty: Math.max(1, Number(formData.get("qty") ?? 1)),
+    returnTo: (formData.get("returnTo") || undefined) as string | undefined,
+  });
 
-  if (!slug) redirect(returnTo);
+  if (!parsed.success) {
+    const flat = z.flattenError(parsed.error);
+    const firstError = Object.values(flat.fieldErrors)[0]?.[0] ?? "Datos inválidos";
+    logger.warn({ event: "cart.add.invalid_input", err: flat.fieldErrors });
+    redirect(`/carrito?error=${encodeURIComponent(firstError)}`);
+  }
+
+  const { slug, qty, returnTo: returnToValidated } = parsed.data;
+  const returnTo = returnToValidated ?? "/carrito";
 
   const sessionId = await getOrCreateCartSession();
   const customer = await getCurrentCustomer();
@@ -54,7 +69,7 @@ export async function addToCartAction(formData: FormData): Promise<void> {
       qty,
     });
     logger.info({
-      event: "cart.add",
+      event: "cart.add.success",
       sessionId,
       customerId: customer?.customer.id ?? null,
       slug,
@@ -66,7 +81,7 @@ export async function addToCartAction(formData: FormData): Promise<void> {
   } catch (err) {
     if (err instanceof Error && err.message === "NEXT_REDIRECT") throw err;
     logger.warn({
-      event: "cart.add_fail",
+      event: "cart.add.fail",
       slug,
       err: err instanceof Error ? err.message : String(err),
     });
@@ -78,20 +93,35 @@ export async function updateQtyAction(formData: FormData): Promise<void> {
   const sessionId = await peekCartSession();
   if (!sessionId) redirect("/carrito");
 
-  const itemId = String(formData.get("itemId") ?? "");
-  const qty = Number(formData.get("qty") ?? 0);
-  if (!itemId) redirect("/carrito");
+  const parsed = UpdateQtySchema.safeParse({
+    itemId: String(formData.get("itemId") ?? ""),
+    qty: Number(formData.get("qty") ?? 0),
+  });
+
+  if (!parsed.success) {
+    logger.warn({
+      event: "cart.update.invalid_input",
+      err: z.flattenError(parsed.error).fieldErrors,
+    });
+    redirect("/carrito");
+  }
 
   try {
-    await updateCartItemQty(sessionId, itemId, qty);
+    await updateCartItemQty(sessionId, parsed.data.itemId, parsed.data.qty);
+    logger.info({
+      event: "cart.update.success",
+      sessionId,
+      itemId: parsed.data.itemId,
+      qty: parsed.data.qty,
+    });
     revalidatePath("/carrito");
     revalidatePath("/", "layout");
   } catch (err) {
     if (err instanceof Error && err.message === "NEXT_REDIRECT") throw err;
     logger.warn({
-      event: "cart.update_fail",
-      itemId,
-      qty,
+      event: "cart.update.fail",
+      itemId: parsed.data.itemId,
+      qty: parsed.data.qty,
       err: err instanceof Error ? err.message : String(err),
     });
   }
@@ -102,18 +132,31 @@ export async function removeItemAction(formData: FormData): Promise<void> {
   const sessionId = await peekCartSession();
   if (!sessionId) redirect("/carrito");
 
-  const itemId = String(formData.get("itemId") ?? "");
-  if (!itemId) redirect("/carrito");
+  const parsed = RemoveItemSchema.safeParse({
+    itemId: String(formData.get("itemId") ?? ""),
+  });
+  if (!parsed.success) {
+    logger.warn({
+      event: "cart.remove.invalid_input",
+      err: z.flattenError(parsed.error).fieldErrors,
+    });
+    redirect("/carrito");
+  }
 
   try {
-    await removeCartItem(sessionId, itemId);
+    await removeCartItem(sessionId, parsed.data.itemId);
+    logger.info({
+      event: "cart.remove.success",
+      sessionId,
+      itemId: parsed.data.itemId,
+    });
     revalidatePath("/carrito");
     revalidatePath("/", "layout");
   } catch (err) {
     if (err instanceof Error && err.message === "NEXT_REDIRECT") throw err;
     logger.warn({
-      event: "cart.remove_fail",
-      itemId,
+      event: "cart.remove.fail",
+      itemId: parsed.data.itemId,
       err: err instanceof Error ? err.message : String(err),
     });
   }

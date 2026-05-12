@@ -7,6 +7,7 @@ import { getCurrentAdmin } from "@/lib/auth";
 import { getProductById, listCategoriesForSelect } from "@/features/products/service";
 import { deleteProductAction, updateProductAction } from "../actions";
 import { ProductForm } from "../product-form";
+import { ProductImages } from "../product-images";
 
 export const metadata: Metadata = {
   title: "Editar producto",
@@ -92,6 +93,7 @@ export default async function EditarProductoPage({
           action={updateProductAction}
           submitLabel="Guardar cambios"
         />
+        <ProductImages productId={product.id} images={product.images} />
       </main>
     </div>
   );
