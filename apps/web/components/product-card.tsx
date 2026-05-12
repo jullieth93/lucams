@@ -23,7 +23,7 @@ export function ProductCard({ product }: { product: StorefrontProductCard }) {
       href={`/producto/${product.slug}`}
       className="group border-brand-purple/10 flex flex-col overflow-hidden rounded-xl border bg-white transition-shadow hover:shadow-lg"
     >
-      <div className="from-brand-turquoise/15 via-brand-cream to-brand-pink/15 relative aspect-square w-full overflow-hidden bg-gradient-to-br">
+      <div className="from-brand-turquoise/15 via-brand-cream to-brand-pink/15 relative aspect-square w-full overflow-hidden bg-gradient-to-br text-transparent">
         {product.images.length > 0 ? (
           <Image
             src={product.images[0]}
