@@ -17,6 +17,14 @@ import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 
+// Endpoint dinámico (no pre-renderizable). En Next 16 con turbopack, los
+// route handlers que importan transitivamente pino fallaban al "collect
+// page data" durante `next build` con el error críptico:
+//   Error: default level:info must be included in custom levels
+// Forzar dynamic skipea ese análisis estático.
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
+
 const VitalSchema = z.object({
   name: z.enum(["LCP", "FID", "CLS", "INP", "TTFB", "FCP"]),
   value: z.number().finite(),

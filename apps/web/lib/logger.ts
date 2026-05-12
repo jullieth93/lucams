@@ -1,9 +1,16 @@
 /*
  * Logger estructurado JSON con redacción de PII y secretos.
  *
- * Patrón: pino con `redact.paths` y `censor: '[REDACTED]'`. Todos los logs
- * salen como JSON una-línea-por-evento — formato apto para Vercel logs y
- * cualquier ingestor (Better Stack, Logtail, futuro pipeline).
+ * Implementación basada en console.log nativo (NO pino). Razón: pino +
+ * turbopack Next 16 tienen un bug de bundling reproducible que rompe
+ * `next build` con el error críptico:
+ *   "Error: default level:info must be included in custom levels"
+ * Probado serverExternalPackages, force-dynamic, quitar transport — el
+ * issue persiste. La pérdida es mínima: console.log con JSON ya es
+ * compatible con Vercel logs / Better Stack / cualquier ingestor.
+ *
+ * API público idéntica al de pino (info / warn / error / debug) — los
+ * 16 callsites en la app no requieren cambio.
  *
  * Reglas de uso (ver docs/CONVENTIONS.md § Logger y docs/SECURITY.md §
  * Datos clasificados):
@@ -11,44 +18,113 @@
  *  - NUNCA interpolar PII en el mensaje: `logger.info('user ' + email)` ❌.
  *  - Incluir `requestId: getRequestId()` en cada log de un request handler.
  *
- * Niveles:
- *  - dev: 'debug' por defecto, output bonito vía pino-pretty
- *  - prod: 'info' por defecto, JSON crudo (Vercel los parsea)
+ * Redact:
+ *  - Por key name (case-insensitive): password, token, secret, key, cookie,
+ *    authorization, email, phone, document.
+ *  - Por path absoluto: `req.headers.authorization`, `req.headers.cookie`.
+ *  - Valor reemplazado con '[REDACTED]'.
+ *
+ * Levels:
+ *  - debug < info < warn < error
+ *  - default: 'debug' en dev, 'info' en prod
  *  - configurable vía LOG_LEVEL
  *
- * Redact paths cubren: secretos por patrón (*Key, *Secret, *Token), headers
- * sensibles (auth, cookies), y PII directa (email, phone, password).
+ * Output: JSON una-línea-por-evento a stdout (info/debug) o stderr
+ * (warn/error). Vercel los parsea automático.
  */
 
-import pino from "pino";
+type LogLevel = "debug" | "info" | "warn" | "error";
+type LogObject = Record<string, unknown>;
 
-const REDACT_PATHS = [
-  "req.headers.authorization",
-  "req.headers.cookie",
-  "*.email",
-  "*.phone",
-  "*.password",
-  "*.*Secret",
-  "*.*Key",
-  "*.*Token",
-];
+const LEVEL_VALUE: Record<LogLevel, number> = {
+  debug: 10,
+  info: 20,
+  warn: 30,
+  error: 40,
+};
+
+const REDACT_KEYS = new Set([
+  "password",
+  "newpassword",
+  "currentpassword",
+  "token",
+  "accesstoken",
+  "refreshtoken",
+  "secret",
+  "apisecret",
+  "clientsecret",
+  "key",
+  "apikey",
+  "privatekey",
+  "publickey",
+  "cookie",
+  "authorization",
+  "email",
+  "phone",
+  "documentnumber",
+]);
+
+function shouldRedactKey(key: string): boolean {
+  const k = key.toLowerCase();
+  if (REDACT_KEYS.has(k)) return true;
+  // Match suffixes like *Secret, *Token, *Key
+  return /(secret|token|key|password|cookie|authorization)$/i.test(k);
+}
+
+function redact(value: unknown, depth = 0): unknown {
+  if (depth > 6) return "[DEEP]";
+  if (value === null || value === undefined) return value;
+  if (typeof value !== "object") return value;
+  if (value instanceof Date) return value.toISOString();
+  if (value instanceof Error) {
+    return {
+      name: value.name,
+      message: value.message,
+      stack: value.stack,
+    };
+  }
+  if (Array.isArray(value)) {
+    return value.map((v) => redact(v, depth + 1));
+  }
+  const out: LogObject = {};
+  for (const [k, v] of Object.entries(value as LogObject)) {
+    out[k] = shouldRedactKey(k) ? "[REDACTED]" : redact(v, depth + 1);
+  }
+  return out;
+}
 
 const isDev = process.env.NODE_ENV !== "production";
+const configuredLevel = (process.env.LOG_LEVEL ?? (isDev ? "debug" : "info")) as LogLevel;
+const minLevel = LEVEL_VALUE[configuredLevel] ?? LEVEL_VALUE.info;
+const env = process.env.VERCEL_ENV ?? process.env.NODE_ENV ?? "unknown";
 
-export const logger = pino({
-  level: process.env.LOG_LEVEL ?? (isDev ? "debug" : "info"),
-  redact: { paths: REDACT_PATHS, censor: "[REDACTED]" },
-  formatters: {
-    bindings: () => ({
-      env: process.env.VERCEL_ENV ?? process.env.NODE_ENV ?? "unknown",
-      app: "lucams-shop-web",
-    }),
-  },
-  timestamp: pino.stdTimeFunctions.isoTime,
-  ...(isDev && {
-    transport: {
-      target: "pino-pretty",
-      options: { colorize: true, translateTime: "HH:MM:ss.l" },
-    },
-  }),
-});
+function emit(level: LogLevel, payload: LogObject | string, msg?: string): void {
+  if (LEVEL_VALUE[level] < minLevel) return;
+  let body: LogObject;
+  if (typeof payload === "string") {
+    body = { msg: payload };
+  } else {
+    body = redact(payload) as LogObject;
+    if (msg && !body.msg) body.msg = msg;
+  }
+  const record = {
+    level,
+    time: new Date().toISOString(),
+    env,
+    app: "lucams-shop-web",
+    ...body,
+  };
+  const line = JSON.stringify(record);
+  if (level === "error" || level === "warn") {
+    console.error(line);
+  } else {
+    console.log(line);
+  }
+}
+
+export const logger = {
+  debug: (payload: LogObject | string, msg?: string) => emit("debug", payload, msg),
+  info: (payload: LogObject | string, msg?: string) => emit("info", payload, msg),
+  warn: (payload: LogObject | string, msg?: string) => emit("warn", payload, msg),
+  error: (payload: LogObject | string, msg?: string) => emit("error", payload, msg),
+};
