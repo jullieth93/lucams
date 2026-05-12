@@ -9,6 +9,7 @@
  */
 
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import { Minus, Plus, Sparkles, Trash2 } from "lucide-react";
 import { SiteHeader } from "@/components/site-header";
@@ -63,13 +64,14 @@ export default async function CarritoPage({ searchParams }: { searchParams: Sear
                     key={item.itemId}
                     className="border-brand-purple/10 flex gap-4 rounded-xl border bg-white p-3"
                   >
-                    <div className="from-brand-turquoise/15 via-brand-cream to-brand-pink/15 aspect-square h-24 w-24 flex-shrink-0 overflow-hidden rounded-md bg-gradient-to-br">
+                    <div className="from-brand-turquoise/15 via-brand-cream to-brand-pink/15 relative aspect-square h-24 w-24 flex-shrink-0 overflow-hidden rounded-md bg-gradient-to-br">
                       {item.imageUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
+                        <Image
                           src={item.imageUrl}
                           alt={item.productName}
-                          className="h-full w-full object-cover"
+                          fill
+                          sizes="96px"
+                          className="object-cover"
                         />
                       ) : (
                         <div className="flex h-full w-full items-center justify-center">

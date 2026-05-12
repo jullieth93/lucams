@@ -13,6 +13,7 @@
  */
 
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ChevronRight, Sparkles, MessageCircle } from "lucide-react";
@@ -99,13 +100,15 @@ export default async function ProductoDetallePage({
 
           <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
             <div className="space-y-3">
-              <div className="border-brand-purple/10 from-brand-turquoise/15 via-brand-cream to-brand-pink/15 aspect-square w-full overflow-hidden rounded-xl border bg-gradient-to-br">
+              <div className="border-brand-purple/10 from-brand-turquoise/15 via-brand-cream to-brand-pink/15 relative aspect-square w-full overflow-hidden rounded-xl border bg-gradient-to-br">
                 {product.images.length > 0 ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
+                  <Image
                     src={product.images[0]}
                     alt={product.name}
-                    className="h-full w-full object-cover"
+                    fill
+                    sizes="(max-width: 768px) 100vw, 50vw"
+                    priority
+                    className="object-cover"
                   />
                 ) : (
                   <div className="flex h-full w-full items-center justify-center">
@@ -116,13 +119,18 @@ export default async function ProductoDetallePage({
               {product.images.length > 1 && (
                 <div className="grid grid-cols-4 gap-2">
                   {product.images.slice(1, 5).map((img, idx) => (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
+                    <div
                       key={idx}
-                      src={img}
-                      alt={`${product.name} — vista ${idx + 2}`}
-                      className="aspect-square w-full rounded-md object-cover"
-                    />
+                      className="relative aspect-square w-full overflow-hidden rounded-md"
+                    >
+                      <Image
+                        src={img}
+                        alt={`${product.name} — vista ${idx + 2}`}
+                        fill
+                        sizes="(max-width: 768px) 25vw, 12vw"
+                        className="object-cover"
+                      />
+                    </div>
                   ))}
                 </div>
               )}

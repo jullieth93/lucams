@@ -130,7 +130,7 @@ const productsData = [
     categorySlug: "foto-imanes",
     isPersonalizable: true,
     isFeatured: true,
-    images: [UNSPLASH("1606498679340-0aec3185edbd"), UNSPLASH("1606227713604-b1bcc6918526")],
+    images: [UNSPLASH("1606498679340-0aec3185edbd"), UNSPLASH("1502920917128-1aa500764cbd")],
   },
   {
     slug: "set-9-fotoimanes-polaroid-color",
@@ -174,7 +174,7 @@ const productsData = [
     basePrice: 5800000,
     categorySlug: "foto-imanes",
     isPersonalizable: true,
-    images: [UNSPLASH("1576504677599-3a4f3ad9d3a8")],
+    images: [UNSPLASH("1502920917128-1aa500764cbd")],
   },
   {
     slug: "set-fotoimanes-circulares",
@@ -232,7 +232,7 @@ const productsData = [
     basePrice: 9000000,
     categorySlug: "recorditos-eventos",
     isPersonalizable: true,
-    images: [UNSPLASH("1518614368389-aaa54f6090a9")],
+    images: [UNSPLASH("1525258946800-98cfd641d0de")],
   },
   {
     slug: "recorditos-graduacion-x20",
@@ -266,7 +266,7 @@ const productsData = [
     basePrice: 4500000,
     categorySlug: "recorditos-eventos",
     isPersonalizable: true,
-    images: [UNSPLASH("1607533669693-c2c0c6d1f3aa")],
+    images: [UNSPLASH("1525258946800-98cfd641d0de")],
   },
   {
     slug: "recorditos-quinceanera",
@@ -360,7 +360,7 @@ const productsData = [
     categorySlug: "calendarios",
     isPersonalizable: true,
     isFeatured: true,
-    images: [UNSPLASH("1546662555-90c2c1f8c728")],
+    images: [UNSPLASH("1606166187734-a4cb74079037")],
   },
   {
     slug: "calendario-floral-mes-a-mes",
@@ -382,7 +382,7 @@ const productsData = [
     basePrice: 700000,
     categorySlug: "calendarios",
     isPersonalizable: false,
-    images: [UNSPLASH("1606166325683-e6c8a1d50e36")],
+    images: [UNSPLASH("1606166187734-a4cb74079037")],
   },
 
   // ─── Para los Peques (5) ───
@@ -395,7 +395,7 @@ const productsData = [
     basePrice: 5800000,
     categorySlug: "pequenes",
     isPersonalizable: false,
-    images: [UNSPLASH("1581012182579-cca4956ba3b8")],
+    images: [UNSPLASH("1471107340929-a87cd0f5b5f3")],
   },
   {
     slug: "set-fichas-numeros",

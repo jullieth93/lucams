@@ -6,6 +6,7 @@
  * placeholder por <Image src={product.images[0]} ... />.
  */
 
+import Image from "next/image";
 import Link from "next/link";
 import { Sparkles } from "lucide-react";
 import { formatCOP } from "@/lib/format";
@@ -24,12 +25,13 @@ export function ProductCard({ product }: { product: StorefrontProductCard }) {
     >
       <div className="from-brand-turquoise/15 via-brand-cream to-brand-pink/15 relative aspect-square w-full overflow-hidden bg-gradient-to-br">
         {product.images.length > 0 ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
+          <Image
             src={product.images[0]}
             alt={product.name}
+            fill
+            sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
             loading="lazy"
-            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+            className="object-cover transition-transform duration-300 group-hover:scale-105"
           />
         ) : (
           <div className="flex h-full w-full items-center justify-center">
