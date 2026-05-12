@@ -17,6 +17,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ChevronRight, Sparkles, MessageCircle } from "lucide-react";
+import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { Button } from "@/components/ui/button";
 import { formatCOP } from "@/lib/format";
@@ -199,6 +200,7 @@ export default async function ProductoDetallePage({
           </div>
         </div>
       </main>
+      <SiteFooter />
     </div>
   );
 }

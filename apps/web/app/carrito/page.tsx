@@ -12,6 +12,7 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { Minus, Plus, Sparkles, Trash2 } from "lucide-react";
+import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { Button } from "@/components/ui/button";
 import { getCartDetail } from "@/features/cart/service";
@@ -157,6 +158,7 @@ export default async function CarritoPage({ searchParams }: { searchParams: Sear
           )}
         </div>
       </main>
+      <SiteFooter />
     </div>
   );
 }

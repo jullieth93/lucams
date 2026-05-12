@@ -13,8 +13,9 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Sparkles } from "lucide-react";
-import { SiteHeader } from "@/components/site-header";
 import { ProductCard } from "@/components/product-card";
+import { SiteFooter } from "@/components/site-footer";
+import { SiteHeader } from "@/components/site-header";
 import {
   listStorefrontCategories,
   listStorefrontProducts,
@@ -99,6 +100,7 @@ export default async function ProductosPage({ searchParams }: { searchParams: Se
           )}
         </div>
       </main>
+      <SiteFooter />
     </div>
   );
 }

@@ -16,6 +16,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { LucamsLogo } from "@/components/lucams-logo";
+import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { CategoryGrid } from "@/components/home/category-grid";
 import { FeaturedCarousel } from "@/components/home/featured-carousel";
@@ -168,6 +169,7 @@ export default async function Home() {
           </div>
         </section>
       </main>
+      <SiteFooter />
     </div>
   );
 }
