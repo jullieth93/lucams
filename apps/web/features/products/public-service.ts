@@ -66,7 +66,9 @@ export async function listStorefrontProducts(opts: {
   const items = await prisma.product.findMany({
     where: {
       ...STOREFRONT_WHERE,
-      ...(opts.categorySlug ? { category: { ...STOREFRONT_WHERE.category, slug: opts.categorySlug } } : {}),
+      ...(opts.categorySlug
+        ? { category: { ...STOREFRONT_WHERE.category, slug: opts.categorySlug } }
+        : {}),
       ...(opts.featured ? { isFeatured: true } : {}),
     },
     orderBy: [{ isFeatured: "desc" }, { createdAt: "desc" }],

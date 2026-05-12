@@ -6,11 +6,11 @@ Todo lo que esté en `public/brand/` es servido directo por Next.js bajo
 
 ## Archivos esperados
 
-| Archivo | Uso | Tamaño recomendado |
-|---|---|---|
-| `lucams-logo.png` (o `.svg`) | Logo completo (insignia + LUCAMS + SHOP). Usado en hero del home, página 404, emails, redes sociales | min 512×512 PNG, ideal SVG |
-| `lucams-mascot.png` (o `.svg`) | Solo el mapache kawaii recortado, fondo transparente. Usado en el header de cada página (badge chico) | min 128×128 PNG cuadrado, fondo transparente, ideal SVG |
-| `favicon.ico` / `favicon.svg` | Favicon del browser. Generado a partir del mascot o del logo (Lucy decide). Vive en `apps/web/app/favicon.ico` | 32×32 + 16×16 ICO |
+| Archivo                        | Uso                                                                                                            | Tamaño recomendado                                      |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| `lucams-logo.png` (o `.svg`)   | Logo completo (insignia + LUCAMS + SHOP). Usado en hero del home, página 404, emails, redes sociales           | min 512×512 PNG, ideal SVG                              |
+| `lucams-mascot.png` (o `.svg`) | Solo el mapache kawaii recortado, fondo transparente. Usado en el header de cada página (badge chico)          | min 128×128 PNG cuadrado, fondo transparente, ideal SVG |
+| `favicon.ico` / `favicon.svg`  | Favicon del browser. Generado a partir del mascot o del logo (Lucy decide). Vive en `apps/web/app/favicon.ico` | 32×32 + 16×16 ICO                                       |
 
 ## Convenciones
 
@@ -28,6 +28,7 @@ Todo lo que esté en `public/brand/` es servido directo por Next.js bajo
 ## Acción pendiente al momento de este README (2026-05-11)
 
 Estamos esperando que la operadora del proyecto suba:
+
 1. `lucams-logo.png` (o equivalente) — actualmente vive como SVG kawaii
    placeholder dibujado a mano en `components/brand-mark.tsx`
 2. `lucams-mascot.png` (o equivalente) — actualmente reusa el placeholder

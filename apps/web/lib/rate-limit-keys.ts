@@ -22,10 +22,7 @@
 import { createHash } from "node:crypto";
 
 export function hashEmail(email: string): string {
-  return createHash("sha256")
-    .update(email.toLowerCase().trim())
-    .digest("hex")
-    .slice(0, 16);
+  return createHash("sha256").update(email.toLowerCase().trim()).digest("hex").slice(0, 16);
 }
 
 export function ipKey(scope: string, ip: string): string {

@@ -17,13 +17,7 @@ import { redirect } from "next/navigation";
 import { LogOut, Users, ShoppingBag, Package, MessageSquare, ExternalLink } from "lucide-react";
 import { logoutAction } from "@/app/auth/logout/actions";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { getCurrentAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 
@@ -37,35 +31,30 @@ export default async function AdminDashboardPage() {
 
   // Métricas básicas. En Phase 2/4 esto se va a expandir con queries
   // más ricas (ventas del mes, conversiones, top productos, etc.).
-  const [customerCount, orderCount, productCount, pendingReviews] =
-    await Promise.all([
-      prisma.customer.count({ where: { deletedAt: null } }),
-      prisma.order.count({ where: { deletedAt: null } }),
-      prisma.product.count({ where: { deletedAt: null } }),
-      prisma.review.count({
-        where: { isApproved: false, deletedAt: null },
-      }),
-    ]);
+  const [customerCount, orderCount, productCount, pendingReviews] = await Promise.all([
+    prisma.customer.count({ where: { deletedAt: null } }),
+    prisma.order.count({ where: { deletedAt: null } }),
+    prisma.product.count({ where: { deletedAt: null } }),
+    prisma.review.count({
+      where: { isApproved: false, deletedAt: null },
+    }),
+  ]);
 
   return (
     <div className="min-h-screen bg-slate-50">
       <header className="border-b border-slate-200 bg-white">
-        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between gap-4">
+        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-4">
           <div>
-            <p className="text-xs text-slate-500 uppercase tracking-wider">
-              Panel admin
-            </p>
+            <p className="text-xs tracking-wider text-slate-500 uppercase">Panel admin</p>
             <h1 className="text-lg font-bold text-slate-900">
               {session.admin.email}{" "}
-              <span className="text-sm font-normal text-slate-500">
-                · {session.admin.role}
-              </span>
+              <span className="text-sm font-normal text-slate-500">· {session.admin.role}</span>
             </h1>
           </div>
           <div className="flex items-center gap-2">
             <Link
               href="/"
-              className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-700 hover:text-slate-900 px-3 py-1.5 rounded-md hover:bg-slate-100 transition-colors"
+              className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100 hover:text-slate-900"
             >
               <ExternalLink className="h-4 w-4" />
               Ir al sitio
@@ -77,7 +66,7 @@ export default async function AdminDashboardPage() {
                 size="sm"
                 className="text-slate-700 hover:bg-slate-100"
               >
-                <LogOut className="h-4 w-4 mr-1.5" />
+                <LogOut className="mr-1.5 h-4 w-4" />
                 Cerrar sesión
               </Button>
             </form>
@@ -85,12 +74,12 @@ export default async function AdminDashboardPage() {
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-6 py-8 space-y-8">
+      <main className="mx-auto max-w-6xl space-y-8 px-6 py-8">
         <section>
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-500 mb-3">
+          <h2 className="mb-3 text-sm font-semibold tracking-wider text-slate-500 uppercase">
             Estado del negocio
           </h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
             <MetricCard
               icon={<Users className="h-5 w-5" />}
               label="Clientes"
@@ -119,19 +108,17 @@ export default async function AdminDashboardPage() {
         </section>
 
         <section>
-          <h2 className="text-sm font-semibold uppercase tracking-wider text-slate-500 mb-3">
+          <h2 className="mb-3 text-sm font-semibold tracking-wider text-slate-500 uppercase">
             Acciones rápidas
           </h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
             <Link
               href="/admin/categorias"
-              className="block transition-shadow hover:shadow-md rounded-lg"
+              className="block rounded-lg transition-shadow hover:shadow-md"
             >
-              <Card className="border-slate-200 hover:border-slate-300 h-full">
+              <Card className="h-full border-slate-200 hover:border-slate-300">
                 <CardHeader>
-                  <CardTitle className="text-base text-slate-900">
-                    Categorías →
-                  </CardTitle>
+                  <CardTitle className="text-base text-slate-900">Categorías →</CardTitle>
                   <CardDescription className="text-slate-600">
                     Agrupar productos por tipo. Necesario antes de crear productos.
                   </CardDescription>
@@ -146,13 +133,11 @@ export default async function AdminDashboardPage() {
 
             <Link
               href="/admin/productos"
-              className="block transition-shadow hover:shadow-md rounded-lg"
+              className="block rounded-lg transition-shadow hover:shadow-md"
             >
-              <Card className="border-slate-200 hover:border-slate-300 h-full">
+              <Card className="h-full border-slate-200 hover:border-slate-300">
                 <CardHeader>
-                  <CardTitle className="text-base text-slate-900">
-                    Productos →
-                  </CardTitle>
+                  <CardTitle className="text-base text-slate-900">Productos →</CardTitle>
                   <CardDescription className="text-slate-600">
                     Crear, editar, archivar productos del catálogo.
                   </CardDescription>
@@ -167,9 +152,7 @@ export default async function AdminDashboardPage() {
 
             <Card className="border-slate-200">
               <CardHeader>
-                <CardTitle className="text-base text-slate-900">
-                  Órdenes
-                </CardTitle>
+                <CardTitle className="text-base text-slate-900">Órdenes</CardTitle>
                 <CardDescription className="text-slate-600">
                   Ver pedidos, cambiar estado, generar envío Venndelo.
                 </CardDescription>
@@ -183,9 +166,7 @@ export default async function AdminDashboardPage() {
 
             <Card className="border-slate-200">
               <CardHeader>
-                <CardTitle className="text-base text-slate-900">
-                  Reseñas
-                </CardTitle>
+                <CardTitle className="text-base text-slate-900">Reseñas</CardTitle>
                 <CardDescription className="text-slate-600">
                   Aprobar o rechazar reseñas pendientes de moderación.
                 </CardDescription>
@@ -220,9 +201,7 @@ function MetricCard({
         {icon}
       </div>
       <div className="mt-3">
-        <p className="text-2xl font-bold text-slate-900 tabular-nums">
-          {value.toLocaleString()}
-        </p>
+        <p className="text-2xl font-bold text-slate-900 tabular-nums">{value.toLocaleString()}</p>
         <p className="text-sm text-slate-600">{label}</p>
       </div>
     </div>

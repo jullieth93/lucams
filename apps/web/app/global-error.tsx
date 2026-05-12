@@ -38,8 +38,7 @@ export default function GlobalError({
           textAlign: "center",
           background: "#FFF8F0",
           color: "#3D2E5C",
-          fontFamily:
-            'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif',
+          fontFamily: 'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif',
         }}
       >
         <div style={{ fontSize: "4rem", lineHeight: 1 }}>🙊</div>
@@ -67,7 +66,15 @@ export default function GlobalError({
             Ref: {error.digest}
           </p>
         )}
-        <div style={{ marginTop: "2rem", display: "flex", gap: "0.75rem", flexWrap: "wrap", justifyContent: "center" }}>
+        <div
+          style={{
+            marginTop: "2rem",
+            display: "flex",
+            gap: "0.75rem",
+            flexWrap: "wrap",
+            justifyContent: "center",
+          }}
+        >
           <button
             type="button"
             onClick={() => reset()}

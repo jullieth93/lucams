@@ -7,6 +7,7 @@
 **Lucams_shop** es un e-commerce colombiano de productos magnéticos personalizados. Hoy solo existe en Instagram ([@lucams_shop](https://www.instagram.com/lucams_shop)) y Linktree ([linktr.ee/Lucams_shop](https://linktr.ee/Lucams_shop)). Toma como referencia funcional a [magneticas.cl](https://www.magneticas.cl) (Chile) pero el mandato es **superarla en valor agregado**, no copiarla.
 
 **Mandatos del usuario (no negociables):**
+
 - **No es MVP**. El sitio debe nacer 100% productivo, listo para vender desde el día 1.
 - **Free durante todo el desarrollo**, upgrade a Pro únicamente al lanzar a producción.
 - Datos en **Supabase** y su ecosistema (Auth, Storage, Realtime, Edge Functions).
@@ -20,14 +21,14 @@
 
 ## Vercel vs Render — decisión: **Vercel**
 
-| Criterio | Vercel | Render |
-|---|---|---|
-| Soporte Next.js | Nativo (lo construyen ellos) | Genérico |
-| ISR / Edge runtime | Sí, automático | Manual / limitado |
-| Image Optimization | Integrada | No |
-| Preview deployments | Automáticos por PR | Sí pero más lento |
-| Costo Pro | $20/mes/miembro | Web Service $7 + DB $7 = $14/mes |
-| Mejor para | Apps Next.js con SSR/ISR/edge | Backends largos, workers, websockets persistentes |
+| Criterio            | Vercel                        | Render                                            |
+| ------------------- | ----------------------------- | ------------------------------------------------- |
+| Soporte Next.js     | Nativo (lo construyen ellos)  | Genérico                                          |
+| ISR / Edge runtime  | Sí, automático                | Manual / limitado                                 |
+| Image Optimization  | Integrada                     | No                                                |
+| Preview deployments | Automáticos por PR            | Sí pero más lento                                 |
+| Costo Pro           | $20/mes/miembro               | Web Service $7 + DB $7 = $14/mes                  |
+| Mejor para          | Apps Next.js con SSR/ISR/edge | Backends largos, workers, websockets persistentes |
 
 Render es excelente para apps Rails/Django o servicios con estado en memoria. **Para un Next.js + Supabase + Wompi como este, Vercel es la elección obvia**: ISR para revalidar páginas de producto cuando cambia stock o precio, Edge Functions de baja latencia para webhooks de Wompi/Venndelo, integración 1-clic con Supabase, y la mejor DX del mercado.
 
@@ -35,17 +36,17 @@ Render es excelente para apps Rails/Django o servicios con estado en memoria. **
 
 ## Stack: Free durante dev → Pro al lanzar
 
-| Capa | Servicio | Tier en **desarrollo** | Tier en **producción** | Costo dev | Costo prod USD/mes |
-|---|---|---|---|---|---|
-| App | **Vercel** | Hobby (Free) | Pro | $0 | $20 |
-| DB + Auth + Storage | **Supabase** | Free | Pro | $0 | $25 |
-| Email transaccional | **Resend** | Free (3k emails/mes, dominio resend.dev) | Pro (50k emails/mes, dominio propio) | $0 | $20 |
-| WhatsApp | `wa.me` link (sin API) | — | — | $0 | $0 |
-| DNS + CDN | **Cloudflare** | Free | Free | $0 | $0 |
-| Dominio | `lucamsshop.co` | — (`*.vercel.app`) | **mi.com.co** | $0 | ~$3-5 (~$50.000 COP/año) |
-| Pasarela | **Wompi** | Sandbox | Producción | $0 | 2.65% + $700 + IVA por trx (plan Avanzado, frecuencia mensual) |
-| Logística | **Venndelo** | Sandbox | Producción | $0 | Costo de envío (0% comisión) |
-| Monitoreo errores | _Fuera del plan_ | — | — | $0 | $0 |
+| Capa                | Servicio               | Tier en **desarrollo**                   | Tier en **producción**               | Costo dev | Costo prod USD/mes                                             |
+| ------------------- | ---------------------- | ---------------------------------------- | ------------------------------------ | --------- | -------------------------------------------------------------- |
+| App                 | **Vercel**             | Hobby (Free)                             | Pro                                  | $0        | $20                                                            |
+| DB + Auth + Storage | **Supabase**           | Free                                     | Pro                                  | $0        | $25                                                            |
+| Email transaccional | **Resend**             | Free (3k emails/mes, dominio resend.dev) | Pro (50k emails/mes, dominio propio) | $0        | $20                                                            |
+| WhatsApp            | `wa.me` link (sin API) | —                                        | —                                    | $0        | $0                                                             |
+| DNS + CDN           | **Cloudflare**         | Free                                     | Free                                 | $0        | $0                                                             |
+| Dominio             | `lucamsshop.co`        | — (`*.vercel.app`)                       | **mi.com.co**                        | $0        | ~$3-5 (~$50.000 COP/año)                                       |
+| Pasarela            | **Wompi**              | Sandbox                                  | Producción                           | $0        | 2.65% + $700 + IVA por trx (plan Avanzado, frecuencia mensual) |
+| Logística           | **Venndelo**           | Sandbox                                  | Producción                           | $0        | Costo de envío (0% comisión)                                   |
+| Monitoreo errores   | _Fuera del plan_       | —                                        | —                                    | $0        | $0                                                             |
 
 **Costo durante desarrollo: $0/mes.**
 **Costo al pasar a producción: ~$68 USD/mes (~$272.000 COP/mes)** + comisiones variables.
@@ -61,12 +62,12 @@ Render es excelente para apps Rails/Django o servicios con estado en memoria. **
 
 ### Hitos de upgrade
 
-| Trigger | Servicio a migrar |
-|---|---|
-| Primera transacción real (sandbox → prod Wompi) | Vercel → Pro, Supabase → Pro |
-| Verificación de dominio para email | Resend → Pro, configurar `mail.lucamsshop.co` |
-| Compra del dominio | mi.com.co (`lucamsshop.co`) |
-| Volumen >1k visitas/día | Evaluar monitoreo (Sentry Free u otro) |
+| Trigger                                         | Servicio a migrar                             |
+| ----------------------------------------------- | --------------------------------------------- |
+| Primera transacción real (sandbox → prod Wompi) | Vercel → Pro, Supabase → Pro                  |
+| Verificación de dominio para email              | Resend → Pro, configurar `mail.lucamsshop.co` |
+| Compra del dominio                              | mi.com.co (`lucamsshop.co`)                   |
+| Volumen >1k visitas/día                         | Evaluar monitoreo (Sentry Free u otro)        |
 
 ---
 
@@ -76,16 +77,16 @@ Render es excelente para apps Rails/Django o servicios con estado en memoria. **
 
 **Paleta (design tokens):**
 
-| Token | HEX | Uso |
-|---|---|---|
+| Token                     | HEX       | Uso                                          |
+| ------------------------- | --------- | -------------------------------------------- |
 | `brand-purple` (primario) | `#7C6AAD` | Fondos destacados, header, botones primarios |
-| `brand-purple-dark` | `#3D2E5C` | Texto principal, headings |
-| `brand-turquoise` | `#5DD9D1` | Acento, badges "nuevo", links |
-| `brand-pink` | `#E85B9F` | CTAs secundarias, precios en oferta |
-| `brand-coral` | `#F58A6F` | Acentos cálidos, banners |
-| `brand-yellow` | `#FFD93D` | Highlights, corazones, badges envío gratis |
-| `brand-cream` | `#FFF8F0` | Fondos suaves alternativos |
-| `neutral-white` | `#FFFFFF` | Fondos principales |
+| `brand-purple-dark`       | `#3D2E5C` | Texto principal, headings                    |
+| `brand-turquoise`         | `#5DD9D1` | Acento, badges "nuevo", links                |
+| `brand-pink`              | `#E85B9F` | CTAs secundarias, precios en oferta          |
+| `brand-coral`             | `#F58A6F` | Acentos cálidos, banners                     |
+| `brand-yellow`            | `#FFD93D` | Highlights, corazones, badges envío gratis   |
+| `brand-cream`             | `#FFF8F0` | Fondos suaves alternativos                   |
+| `neutral-white`           | `#FFFFFF` | Fondos principales                           |
 
 **Tono de diseño:** kawaii, lúdico, cercano, familiar — opuesto al minimalismo blanco de magneticas.cl.
 
@@ -207,6 +208,7 @@ WebhookEvent (source: WOMPI|VENNDELO, externalId UNIQUE)
 ```
 
 **Reglas:**
+
 - Precios en **enteros (centavos COP)**.
 - Row-Level Security en Supabase para `Customer`, `Cart`, `Order`, `Address`, `Review`.
 - Admin pasa por server-only routes con la **secret key** (`sb_secret_*`, mapea al rol Postgres `service_role`).
@@ -261,24 +263,24 @@ WebhookEvent (source: WOMPI|VENNDELO, externalId UNIQUE)
 
 ## Decisiones cerradas
 
-| Item | ADR | Estado |
-|---|---|---|
-| Stack Next.js 15 + TS + **Tailwind v4 + React 19** + shadcn/ui sobre monorepo pnpm | 001, 015 | ✅ |
-| Hosting Vercel (Free dev → Pro prod) | 002 | ✅ |
-| DB Supabase (Free dev → Pro prod) | 003 | ✅ |
-| Pasarela Wompi (con adaptador para sumar MP) | 004 | ✅ |
-| Logística Venndelo + COD día 1 | 005, 009 | ✅ |
-| WhatsApp `wa.me` (sin Twilio API) | 006 | ✅ |
-| Catálogo seed: 30+ productos espejo de magneticas.cl con placeholders | 010 | ✅ |
-| Branding: paleta kawaii con mascota mapache | — | ✅ |
-| Dominio `lucamsshop.co` en mi.com.co (al lanzar) | 011 | ✅ |
-| Sentry/monitoreo: fuera del alcance hasta Fase 7 | 008 | ✅ |
-| WhatsApp temporal `+57 315 071 8723` | — | ✅ |
-| **Stock**: reserva al `PENDING_PAYMENT` (TTL 15 min) + descuento al `PAID` | 014 | ✅ |
-| **Rate limit + cache** en Postgres + `pg_cron`, sin Redis externo | 016 | ✅ |
-| **Background jobs** en `pgmq` + `pg_cron`, no Vercel Cron | 017 | ✅ |
-| **Argumentación obligatoria** — no suposiciones, citar fuente oficial | 018 | ✅ |
-| **Traceability** vía `docs/STATE.md` y `docs/audits/` | 019 | ✅ |
+| Item                                                                               | ADR      | Estado |
+| ---------------------------------------------------------------------------------- | -------- | ------ |
+| Stack Next.js 15 + TS + **Tailwind v4 + React 19** + shadcn/ui sobre monorepo pnpm | 001, 015 | ✅     |
+| Hosting Vercel (Free dev → Pro prod)                                               | 002      | ✅     |
+| DB Supabase (Free dev → Pro prod)                                                  | 003      | ✅     |
+| Pasarela Wompi (con adaptador para sumar MP)                                       | 004      | ✅     |
+| Logística Venndelo + COD día 1                                                     | 005, 009 | ✅     |
+| WhatsApp `wa.me` (sin Twilio API)                                                  | 006      | ✅     |
+| Catálogo seed: 30+ productos espejo de magneticas.cl con placeholders              | 010      | ✅     |
+| Branding: paleta kawaii con mascota mapache                                        | —        | ✅     |
+| Dominio `lucamsshop.co` en mi.com.co (al lanzar)                                   | 011      | ✅     |
+| Sentry/monitoreo: fuera del alcance hasta Fase 7                                   | 008      | ✅     |
+| WhatsApp temporal `+57 315 071 8723`                                               | —        | ✅     |
+| **Stock**: reserva al `PENDING_PAYMENT` (TTL 15 min) + descuento al `PAID`         | 014      | ✅     |
+| **Rate limit + cache** en Postgres + `pg_cron`, sin Redis externo                  | 016      | ✅     |
+| **Background jobs** en `pgmq` + `pg_cron`, no Vercel Cron                          | 017      | ✅     |
+| **Argumentación obligatoria** — no suposiciones, citar fuente oficial              | 018      | ✅     |
+| **Traceability** vía `docs/STATE.md` y `docs/audits/`                              | 019      | ✅     |
 
 > Cronología completa en [`DECISIONS.md`](./DECISIONS.md).
 

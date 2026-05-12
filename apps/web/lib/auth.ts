@@ -37,10 +37,10 @@ export async function getCurrentUser() {
   return user;
 }
 
-export async function getCurrentCustomer(): Promise<
-  | { user: NonNullable<Awaited<ReturnType<typeof getCurrentUser>>>; customer: Customer }
-  | null
-> {
+export async function getCurrentCustomer(): Promise<{
+  user: NonNullable<Awaited<ReturnType<typeof getCurrentUser>>>;
+  customer: Customer;
+} | null> {
   const user = await getCurrentUser();
   if (!user) return null;
 
@@ -60,10 +60,10 @@ export async function getCurrentCustomer(): Promise<
  * puede ser ambas cosas. Un admin que NO sea cliente solo tendrá fila
  * en AdminUser, no en Customer.
  */
-export async function getCurrentAdmin(): Promise<
-  | { user: NonNullable<Awaited<ReturnType<typeof getCurrentUser>>>; admin: AdminUser }
-  | null
-> {
+export async function getCurrentAdmin(): Promise<{
+  user: NonNullable<Awaited<ReturnType<typeof getCurrentUser>>>;
+  admin: AdminUser;
+} | null> {
   const user = await getCurrentUser();
   if (!user) return null;
 

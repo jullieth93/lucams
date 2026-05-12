@@ -28,11 +28,7 @@ export const metadata: Metadata = {
 
 type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
 
-export default async function ProductosPage({
-  searchParams,
-}: {
-  searchParams: SearchParams;
-}) {
+export default async function ProductosPage({ searchParams }: { searchParams: SearchParams }) {
   const sp = await searchParams;
   const categorySlug = typeof sp.categoria === "string" ? sp.categoria : undefined;
 
@@ -41,21 +37,19 @@ export default async function ProductosPage({
     listStorefrontProducts({ categorySlug }),
   ]);
 
-  const activeCategory = categorySlug
-    ? categories.find((c) => c.slug === categorySlug)
-    : null;
+  const activeCategory = categorySlug ? categories.find((c) => c.slug === categorySlug) : null;
 
   return (
-    <div className="flex min-h-screen flex-col bg-brand-cream">
+    <div className="bg-brand-cream flex min-h-screen flex-col">
       <SiteHeader />
 
       <main className="flex-1 px-6 py-10 sm:px-10">
         <div className="mx-auto max-w-6xl">
           <header className="mb-8">
-            <h1 className="font-display text-3xl text-brand-purple-dark sm:text-4xl">
+            <h1 className="font-display text-brand-purple-dark text-3xl sm:text-4xl">
               {activeCategory ? activeCategory.name : "Tienda Lucams"}
             </h1>
-            <p className="mt-2 max-w-2xl text-base text-brand-purple-dark/70">
+            <p className="text-brand-purple-dark/70 mt-2 max-w-2xl text-base">
               {activeCategory?.description ??
                 "Imanes que cuentan historias. Personalizables, hechos a mano, listos para llegar a tu nevera."}
             </p>
@@ -63,11 +57,7 @@ export default async function ProductosPage({
 
           {categories.length > 0 && (
             <nav className="mb-8 flex flex-wrap gap-2" aria-label="Categorías">
-              <CategoryChip
-                href="/productos"
-                label="Todo"
-                active={!categorySlug}
-              />
+              <CategoryChip href="/productos" label="Todo" active={!categorySlug} />
               {categories.map((c) => (
                 <CategoryChip
                   key={c.id}
@@ -81,12 +71,12 @@ export default async function ProductosPage({
           )}
 
           {products.length === 0 ? (
-            <div className="rounded-xl border border-brand-purple/10 bg-white px-6 py-16 text-center">
-              <Sparkles className="mx-auto h-10 w-10 text-brand-purple/40" />
-              <p className="mt-4 text-lg font-semibold text-brand-purple-dark">
+            <div className="border-brand-purple/10 rounded-xl border bg-white px-6 py-16 text-center">
+              <Sparkles className="text-brand-purple/40 mx-auto h-10 w-10" />
+              <p className="text-brand-purple-dark mt-4 text-lg font-semibold">
                 Sin productos por ahora
               </p>
-              <p className="mt-1 text-sm text-brand-purple-dark/60">
+              <p className="text-brand-purple-dark/60 mt-1 text-sm">
                 {activeCategory
                   ? "Esta categoría todavía no tiene productos publicados."
                   : "Estamos cargando el catálogo. Vuelve pronto."}
@@ -94,7 +84,7 @@ export default async function ProductosPage({
               {activeCategory && (
                 <Link
                   href="/productos"
-                  className="mt-4 inline-block text-sm font-semibold text-brand-purple hover:text-brand-purple-dark"
+                  className="text-brand-purple hover:text-brand-purple-dark mt-4 inline-block text-sm font-semibold"
                 >
                   Ver todo el catálogo →
                 </Link>
@@ -129,19 +119,13 @@ function CategoryChip({
       href={href}
       className={
         active
-          ? "rounded-full bg-brand-purple px-4 py-1.5 text-sm font-semibold text-white"
-          : "rounded-full border border-brand-purple/20 bg-white px-4 py-1.5 text-sm font-medium text-brand-purple-dark hover:border-brand-purple/40 hover:bg-brand-purple/5"
+          ? "bg-brand-purple rounded-full px-4 py-1.5 text-sm font-semibold text-white"
+          : "border-brand-purple/20 text-brand-purple-dark hover:border-brand-purple/40 hover:bg-brand-purple/5 rounded-full border bg-white px-4 py-1.5 text-sm font-medium"
       }
     >
       {label}
       {count !== undefined && (
-        <span
-          className={
-            active
-              ? "ml-1.5 text-white/70"
-              : "ml-1.5 text-brand-purple-dark/40"
-          }
-        >
+        <span className={active ? "ml-1.5 text-white/70" : "text-brand-purple-dark/40 ml-1.5"}>
           ({count})
         </span>
       )}

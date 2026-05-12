@@ -28,34 +28,34 @@ magneticas.cl es un e-commerce chileno **maduro** (60+ productos activos, segmen
 
 ## Visión general de magneticas.cl
 
-| Atributo | Valor |
-|---|---|
-| URL | https://www.magneticas.cl |
-| Tagline / hero | *"Tienda online de fotos y planners magnéticos personalizados. Ofrecemos productos creativos para organización, decoración y recuerdos únicos. Envío gratis stgo."* |
-| Stack inferido | Shopify-like custom (URLs `/cl/productos/`, no `/collections/...`) |
-| Categorías top | INICIO · CATÁLOGO COMPLETO · CURSOS ONLINE · FOTOS Y RECUERDOS · ORGANIZACIÓN Y JUEGOS · DECO Y REGALOS · PUBLICITARIOS |
-| Subcategorías | 10 (Packs, Recuerdos, Publicitarios, Organización, Calendarios, Coleccionables, Juegos, Cuadros, Regalos, Snoopy) |
-| Productos catalogados | ~60+ visibles (paginación de 2) |
-| Pago | Webpay (Transbank) + transferencia bancaria |
-| Logística | Personal manual en Santiago (entrega 14:00–21:00) + Starken/Bluexpress regiones |
-| Envío gratis | Compras > $35.000 CLP en Santiago |
-| Tiempos | 2–4 días Santiago, 3–7 días regiones |
-| Devoluciones | 7 días, **excluye personalizados** (consistente con Ley del Consumidor CL) |
-| Soporte | Email + WhatsApp |
-| Tono de marca | Cálido, emotivo, familiar ("emprendimiento familiar", "magia de lo simple") |
-| Paleta | Blanco + pasteles (lila, verde, celeste, rosado) + acentos vibrantes |
+| Atributo              | Valor                                                                                                                                                               |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| URL                   | https://www.magneticas.cl                                                                                                                                           |
+| Tagline / hero        | _"Tienda online de fotos y planners magnéticos personalizados. Ofrecemos productos creativos para organización, decoración y recuerdos únicos. Envío gratis stgo."_ |
+| Stack inferido        | Shopify-like custom (URLs `/cl/productos/`, no `/collections/...`)                                                                                                  |
+| Categorías top        | INICIO · CATÁLOGO COMPLETO · CURSOS ONLINE · FOTOS Y RECUERDOS · ORGANIZACIÓN Y JUEGOS · DECO Y REGALOS · PUBLICITARIOS                                             |
+| Subcategorías         | 10 (Packs, Recuerdos, Publicitarios, Organización, Calendarios, Coleccionables, Juegos, Cuadros, Regalos, Snoopy)                                                   |
+| Productos catalogados | ~60+ visibles (paginación de 2)                                                                                                                                     |
+| Pago                  | Webpay (Transbank) + transferencia bancaria                                                                                                                         |
+| Logística             | Personal manual en Santiago (entrega 14:00–21:00) + Starken/Bluexpress regiones                                                                                     |
+| Envío gratis          | Compras > $35.000 CLP en Santiago                                                                                                                                   |
+| Tiempos               | 2–4 días Santiago, 3–7 días regiones                                                                                                                                |
+| Devoluciones          | 7 días, **excluye personalizados** (consistente con Ley del Consumidor CL)                                                                                          |
+| Soporte               | Email + WhatsApp                                                                                                                                                    |
+| Tono de marca         | Cálido, emotivo, familiar ("emprendimiento familiar", "magia de lo simple")                                                                                         |
+| Paleta                | Blanco + pasteles (lila, verde, celeste, rosado) + acentos vibrantes                                                                                                |
 
 ### Productos top de su home
 
 > Datos verificados contra magneticas.cl/ a 2026-05-09.
 
-| Producto | Precio CLP | Observación |
-|---|---|---|
-| Recuerdos Cumpleaños x20 | $24.990 | Top de gama, evento personalizado |
-| 20 Mini Polaroid | $12.990 | Best-seller foto-imanes |
-| Planner Magnético MENSUAL | $7.990 | Producto reutilizable popular |
-| Big Box Día Mamá | $14.990 | Producto temporal con descuento |
-| Calendario Mes a Mes 2026 | $9.990 | Producto temporal anual |
+| Producto                  | Precio CLP | Observación                       |
+| ------------------------- | ---------- | --------------------------------- |
+| Recuerdos Cumpleaños x20  | $24.990    | Top de gama, evento personalizado |
+| 20 Mini Polaroid          | $12.990    | Best-seller foto-imanes           |
+| Planner Magnético MENSUAL | $7.990     | Producto reutilizable popular     |
+| Big Box Día Mamá          | $14.990    | Producto temporal con descuento   |
+| Calendario Mes a Mes 2026 | $9.990     | Producto temporal anual           |
 
 ---
 
@@ -78,8 +78,8 @@ magneticas.cl es un e-commerce chileno **maduro** (60+ productos activos, segmen
 
 ### Copy emocional
 
-- magneticas.cl: *"Celebra el cumpleaños de tu bebé con nuestros imanes personalizados"* / *"magia de lo simple, lo funcional y lo bonito"* / *"emprendimiento familiar"*.
-- Lucams adopta un tono **igualmente cálido pero más kawaii colombiano**: *"Tus recuerdos, en imán"* / *"¡Tu carrito está esperando! Agrega un imancito ✨"*.
+- magneticas.cl: _"Celebra el cumpleaños de tu bebé con nuestros imanes personalizados"_ / _"magia de lo simple, lo funcional y lo bonito"_ / _"emprendimiento familiar"_.
+- Lucams adopta un tono **igualmente cálido pero más kawaii colombiano**: _"Tus recuerdos, en imán"_ / _"¡Tu carrito está esperando! Agrega un imancito ✨"_.
 - Detalle de tono y voz en [`BRANDING.md` § Tono de voz](BRANDING.md#tono-de-voz).
 
 ### Prácticas comerciales
@@ -106,37 +106,37 @@ magneticas.cl es un e-commerce chileno **maduro** (60+ productos activos, segmen
 
 ### 1. Estudio de Personalización en vivo (diferenciador #1)
 
-| | magneticas.cl | Lucams_shop |
-|---|---|---|
-| Paso 1: cliente compra | Sí | Sí |
-| Paso 2: cliente envía fotos | **Por email o WhatsApp tras comprar** ⏳ | **En vivo en el editor antes de pagar** ⚡ |
-| Paso 3: validación de diseño | Manual (humano arma el imán) | Cliente ve preview 3D antes de pagar |
-| Paso 4: producción | Tras aprobación manual | Tras pago (PNG ya generado server-side) |
-| Tiempo total | 2–4 días + ida-vuelta de email | 0 minutos para diseñar; 2–4 días producción |
-| Riesgo de error | Alto (mala foto = retrabajo) | Bajo (cliente vio el diseño exacto) |
+|                              | magneticas.cl                            | Lucams_shop                                 |
+| ---------------------------- | ---------------------------------------- | ------------------------------------------- |
+| Paso 1: cliente compra       | Sí                                       | Sí                                          |
+| Paso 2: cliente envía fotos  | **Por email o WhatsApp tras comprar** ⏳ | **En vivo en el editor antes de pagar** ⚡  |
+| Paso 3: validación de diseño | Manual (humano arma el imán)             | Cliente ve preview 3D antes de pagar        |
+| Paso 4: producción           | Tras aprobación manual                   | Tras pago (PNG ya generado server-side)     |
+| Tiempo total                 | 2–4 días + ida-vuelta de email           | 0 minutos para diseñar; 2–4 días producción |
+| Riesgo de error              | Alto (mala foto = retrabajo)             | Bajo (cliente vio el diseño exacto)         |
 
 **Implementación:** `react-konva` + `react-three-fiber` + Claude API ([ARCHITECTURE.md § Diferenciador #1](ARCHITECTURE.md), [ROADMAP § Fase 3](ROADMAP.md)).
 
 ### 2. Pagos colombianos completos
 
-| | magneticas.cl | Lucams_shop |
-|---|---|---|
-| Tarjeta crédito/débito | Webpay (CL) | Wompi (CO) |
-| PSE / transferencia banco | Transferencia manual con comprobante | **PSE Wompi nativo** |
-| Wallet móvil | No | **Nequi + Daviplata** vía Wompi |
-| Bancolombia transferencia | No (Chile) | **Sí, Wompi nativo** |
-| **Pago contraentrega (COD)** | **No** | **Sí, vía Venndelo desde día 1** |
+|                              | magneticas.cl                        | Lucams_shop                      |
+| ---------------------------- | ------------------------------------ | -------------------------------- |
+| Tarjeta crédito/débito       | Webpay (CL)                          | Wompi (CO)                       |
+| PSE / transferencia banco    | Transferencia manual con comprobante | **PSE Wompi nativo**             |
+| Wallet móvil                 | No                                   | **Nequi + Daviplata** vía Wompi  |
+| Bancolombia transferencia    | No (Chile)                           | **Sí, Wompi nativo**             |
+| **Pago contraentrega (COD)** | **No**                               | **Sí, vía Venndelo desde día 1** |
 
 > COD es **crítico** en e-commerce CO: eleva conversión 30–50% en regiones fuera de las grandes ciudades ([ADR-009](DECISIONS.md)).
 
 ### 3. Logística sin dependencia personal
 
-| | magneticas.cl | Lucams_shop |
-|---|---|---|
-| Despacho | "Hacemos los despachos personalmente en Santiago todos los días, 14:00–21:00 hrs" | API Venndelo con Coordinadora (1.100+ destinos) |
-| Tracking | Limitado | Webhook tracking + email automático |
-| Cobertura | Santiago + Starken/Bluexpress regiones | Cobertura nacional CO con un solo proveedor |
-| Escalabilidad | Limitada por capacidad humana | Limitada solo por volumen de Coordinadora |
+|               | magneticas.cl                                                                     | Lucams_shop                                     |
+| ------------- | --------------------------------------------------------------------------------- | ----------------------------------------------- |
+| Despacho      | "Hacemos los despachos personalmente en Santiago todos los días, 14:00–21:00 hrs" | API Venndelo con Coordinadora (1.100+ destinos) |
+| Tracking      | Limitado                                                                          | Webhook tracking + email automático             |
+| Cobertura     | Santiago + Starken/Bluexpress regiones                                            | Cobertura nacional CO con un solo proveedor     |
+| Escalabilidad | Limitada por capacidad humana                                                     | Limitada solo por volumen de Coordinadora       |
 
 ### 4. Sin riesgo legal por marcas
 
@@ -148,26 +148,26 @@ magneticas.cl tiene productos con Disney, Warner, Peanuts, Coca-Cola, Spotify, e
 
 ### 5. Brand más memorable
 
-| | magneticas.cl | Lucams_shop |
-|---|---|---|
-| Logo | Texto en mayúsculas | Insignia con mascota mapache + bubble multicolor |
-| Mascota | No tiene | Mapache recurrente (loader, 404, empty states, emails) |
-| Paleta | Blanco + pasteles tibios | Morado fuerte + turquesa + rosa + coral + amarillo |
-| Tono | Cálido convencional | Cálido + lúdico + kawaii |
-| Diferenciación visual | Bajo (similar a otras tiendas Shopify) | Alto (visual icónico) |
+|                       | magneticas.cl                          | Lucams_shop                                            |
+| --------------------- | -------------------------------------- | ------------------------------------------------------ |
+| Logo                  | Texto en mayúsculas                    | Insignia con mascota mapache + bubble multicolor       |
+| Mascota               | No tiene                               | Mapache recurrente (loader, 404, empty states, emails) |
+| Paleta                | Blanco + pasteles tibios               | Morado fuerte + turquesa + rosa + coral + amarillo     |
+| Tono                  | Cálido convencional                    | Cálido + lúdico + kawaii                               |
+| Diferenciación visual | Bajo (similar a otras tiendas Shopify) | Alto (visual icónico)                                  |
 
 ### 6. Stack y arquitectura
 
-| | magneticas.cl | Lucams_shop |
-|---|---|---|
-| Stack | Shopify-like cerrado | Next.js 15 + RSC + Tailwind v4 + shadcn/ui |
-| SEO | Decente (meta básicos) | ISR + JSON-LD por producto + sitemap dinámico + OG dinámico |
-| Performance | No medido públicamente | Lighthouse ≥ 95 como criterio de aceptación |
-| PWA | No | Sí (instalable, offline básico) |
-| Realtime | No | Stock realtime (Supabase Realtime) |
-| Email automation | Básico | Lifecycle (welcome series, recompra, cumpleaños, carrito abandonado con cupón) |
-| A11y | No declarado | WCAG 2.1 AA con tests automatizados |
-| i18n | Solo español | es-CO base, expandible a otros mercados |
+|                  | magneticas.cl          | Lucams_shop                                                                    |
+| ---------------- | ---------------------- | ------------------------------------------------------------------------------ |
+| Stack            | Shopify-like cerrado   | Next.js 15 + RSC + Tailwind v4 + shadcn/ui                                     |
+| SEO              | Decente (meta básicos) | ISR + JSON-LD por producto + sitemap dinámico + OG dinámico                    |
+| Performance      | No medido públicamente | Lighthouse ≥ 95 como criterio de aceptación                                    |
+| PWA              | No                     | Sí (instalable, offline básico)                                                |
+| Realtime         | No                     | Stock realtime (Supabase Realtime)                                             |
+| Email automation | Básico                 | Lifecycle (welcome series, recompra, cumpleaños, carrito abandonado con cupón) |
+| A11y             | No declarado           | WCAG 2.1 AA con tests automatizados                                            |
+| i18n             | Solo español           | es-CO base, expandible a otros mercados                                        |
 
 ### 7. Compliance + observabilidad + DR
 
@@ -215,21 +215,21 @@ magneticas.cl no expone esto al usuario, pero un sitio productivo serio lo neces
 
 ## Adaptaciones culturales Chile → Colombia
 
-| Aspecto | magneticas.cl (CL) | Lucams_shop (CO) |
-|---|---|---|
-| **Moneda** | CLP (sin separador decimal estándar: $9.990) | COP (sin decimales, en centavos internos: $42.000 mostrado) |
-| **Despacho gratis threshold** | $35.000 CLP en Santiago | TBD por el operador (sugerido: $80.000–100.000 COP en Bogotá/Medellín/Cali) |
-| **Fiesta patria** | 18 de septiembre (sombrero de huaso) | 20 de julio (Día de la Independencia) + 7 de agosto (Boyacá) |
-| **Día de la Madre** | Mayo (segundo domingo) — coincide | Mayo (segundo domingo) — productos similares aplican |
-| **Tradiciones únicas CO** | — | **Día de las Velitas** (7 dic) · **Novena de aguinaldos** (16–24 dic) · **Quinceañera** (latina general) |
-| **Tono linguístico** | Tutea con jerga chilena suave | Tutea con colombianismos suaves ("súper bonito", "regalo de pana", "imancito"). Sin "vos", sin "huevón". |
-| **Logística** | Starken/Bluexpress (CL) | Coordinadora (vía Venndelo) |
-| **Pasarela** | Webpay (Transbank, CL) | Wompi (Bancolombia, CO) |
-| **Departamentos/Regiones** | 16 regiones CL | 32 departamentos CO (lista en validación Zod del checkout) |
-| **Compliance** | Ley del Consumidor (CL), SERNAC | Ley 1581 (Habeas Data) + Ley 1480 (Consumidor) + DIAN (factura electrónica) |
-| **Documento de identidad** | RUT | Cédula de Ciudadanía (CC) o NIT (B2B) |
-| **Teléfonos** | +56 9 XXXXXXXX (8 dígitos) | +57 3XX XXX XXXX (10 dígitos, móvil empieza con 3) |
-| **Direcciones** | Comuna + Región | Barrio + Ciudad + Departamento (más componentes; ya modelado en `Address`) |
+| Aspecto                       | magneticas.cl (CL)                           | Lucams_shop (CO)                                                                                         |
+| ----------------------------- | -------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| **Moneda**                    | CLP (sin separador decimal estándar: $9.990) | COP (sin decimales, en centavos internos: $42.000 mostrado)                                              |
+| **Despacho gratis threshold** | $35.000 CLP en Santiago                      | TBD por el operador (sugerido: $80.000–100.000 COP en Bogotá/Medellín/Cali)                              |
+| **Fiesta patria**             | 18 de septiembre (sombrero de huaso)         | 20 de julio (Día de la Independencia) + 7 de agosto (Boyacá)                                             |
+| **Día de la Madre**           | Mayo (segundo domingo) — coincide            | Mayo (segundo domingo) — productos similares aplican                                                     |
+| **Tradiciones únicas CO**     | —                                            | **Día de las Velitas** (7 dic) · **Novena de aguinaldos** (16–24 dic) · **Quinceañera** (latina general) |
+| **Tono linguístico**          | Tutea con jerga chilena suave                | Tutea con colombianismos suaves ("súper bonito", "regalo de pana", "imancito"). Sin "vos", sin "huevón". |
+| **Logística**                 | Starken/Bluexpress (CL)                      | Coordinadora (vía Venndelo)                                                                              |
+| **Pasarela**                  | Webpay (Transbank, CL)                       | Wompi (Bancolombia, CO)                                                                                  |
+| **Departamentos/Regiones**    | 16 regiones CL                               | 32 departamentos CO (lista en validación Zod del checkout)                                               |
+| **Compliance**                | Ley del Consumidor (CL), SERNAC              | Ley 1581 (Habeas Data) + Ley 1480 (Consumidor) + DIAN (factura electrónica)                              |
+| **Documento de identidad**    | RUT                                          | Cédula de Ciudadanía (CC) o NIT (B2B)                                                                    |
+| **Teléfonos**                 | +56 9 XXXXXXXX (8 dígitos)                   | +57 3XX XXX XXXX (10 dígitos, móvil empieza con 3)                                                       |
+| **Direcciones**               | Comuna + Región                              | Barrio + Ciudad + Departamento (más componentes; ya modelado en `Address`)                               |
 
 ---
 
@@ -240,6 +240,7 @@ magneticas.cl no expone esto al usuario, pero un sitio productivo serio lo neces
 ### 1. Uso de marcas registradas sin licencia visible (ALTO RIESGO)
 
 magneticas.cl publica productos con:
+
 - **Disney** (Hannah Montana, Crucero Disney, Mystery Box con personajes Disney)
 - **Warner Bros.** (Harry Potter — Mini Magnets holográficos, Mystery Box)
 - **Peanuts Worldwide LLC** (toda la "Colección Snoopy": imanes, marcapáginas, calendarios, planners, notas)
@@ -265,9 +266,9 @@ magneticas.cl publica productos con:
 
 ### 2. Política de devolución poco clara sobre quién paga retorno
 
-- magneticas.cl: *"Coordinaremos contigo el retiro del producto en tu domicilio"* — no especifica quién paga el envío.
+- magneticas.cl: _"Coordinaremos contigo el retiro del producto en tu domicilio"_ — no especifica quién paga el envío.
 - Bajo Ley 1480 art. 47 colombiana: si la causa del retracto es del consumidor (cambio de opinión), el consumidor paga el retorno. Si la causa es producto defectuoso, el proveedor paga.
-- **Política Lucams (a publicar):** clara desde el primer día — *"Si retornás por arrepentimiento (5 días hábiles), tú pagas el envío de retorno. Si el producto llegó defectuoso, nosotros lo pagamos."* Documentado en [COMPLIANCE.md § Retracto](COMPLIANCE.md#derecho-de-retracto-art-47--verificado).
+- **Política Lucams (a publicar):** clara desde el primer día — _"Si retornás por arrepentimiento (5 días hábiles), tú pagas el envío de retorno. Si el producto llegó defectuoso, nosotros lo pagamos."_ Documentado en [COMPLIANCE.md § Retracto](COMPLIANCE.md#derecho-de-retracto-art-47--verificado).
 
 ### 3. Sin mención visible de Habeas Data al recolectar datos
 
@@ -287,23 +288,23 @@ magneticas.cl publica productos con:
 
 > Mientras navegaba magneticas.cl, observé patrones que **podemos hacer mejor**.
 
-| # | Gap detectado | Cómo Lucams lo resuelve |
-|---|---|---|
-| 1 | **Variedad de cantidad por pack** está rígida (6 ó 12 ó 20). Si el cliente quiere 8, no hay opción. | **Bundle Creator dinámico** (3/5/10/N imanes con descuento progresivo). Producto NUEVO Lucams. |
-| 2 | **Personalización fuera de la compra** (email/WhatsApp después). Punto de fricción y abandono. | **Estudio de Personalización en vivo antes de pagar.** |
-| 3 | **No hay preview 3D** de cómo se va a ver el imán en una nevera real. | **Vista 3D con react-three-fiber** rotable. |
-| 4 | **Recomendaciones de diseño manuales** (cliente decide solo). | **Asistente IA Claude** sugiere plantillas según ocasión. |
-| 5 | **Información sobre ocasiones** atomizada por categoría sin guía cruzada. | **Blog con ideas de regalo** SEO-optimizado (`/blog/ideas-regalo-dia-madre-colombia`). |
-| 6 | **Sin programa de fidelidad visible** en su home. | **Puntos Lucams** con `/cuenta/puntos` desde Fase 5. |
-| 7 | **Sin programa de referidos.** | **`referralCode` único + reward para ambos.** |
-| 8 | **Reseñas mostradas como testimonios curados** (no UGC con foto del cliente). | **Reseñas con foto del cliente** (UGC), aprobación admin. |
-| 9 | **No hay portal mayorista B2B explícito** (publicitarios están en catálogo retail). | **`/mayorista`** con login separado o `isWholesale` flag, listas de precios escalonados, generación de PDF de cotización. |
-| 10 | **Carrito abandonado** sin estrategia visible. | **Email automation 1h y 24h** con cupón en el primer recordatorio (vía pgmq + pg_cron). |
-| 11 | **PWA / instalación móvil** ausente. | **PWA instalable** con manifest + service worker. |
-| 12 | **Stock no indicado en tiempo real** (cliente puede agregar al carrito un producto agotado). | **Stock realtime** (Supabase Realtime) que actualiza el botón de "Agregar al carrito" en vivo. |
-| 13 | **Búsqueda básica.** | **Postgres full-text** sobre `Product.name + description` con `gin` index. |
-| 14 | **Productos relacionados** no parecen sofisticados. | **Recomendaciones simples** en Fase 2 + IA-driven en Fase 3+. |
-| 15 | **Carga de fotos** sin guía de calidad mínima (resolución, formato). | Estudio Lucams **valida MIME + tamaño + advierte si la resolución es baja para 300 DPI** antes de aceptar. |
+| #   | Gap detectado                                                                                       | Cómo Lucams lo resuelve                                                                                                   |
+| --- | --------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| 1   | **Variedad de cantidad por pack** está rígida (6 ó 12 ó 20). Si el cliente quiere 8, no hay opción. | **Bundle Creator dinámico** (3/5/10/N imanes con descuento progresivo). Producto NUEVO Lucams.                            |
+| 2   | **Personalización fuera de la compra** (email/WhatsApp después). Punto de fricción y abandono.      | **Estudio de Personalización en vivo antes de pagar.**                                                                    |
+| 3   | **No hay preview 3D** de cómo se va a ver el imán en una nevera real.                               | **Vista 3D con react-three-fiber** rotable.                                                                               |
+| 4   | **Recomendaciones de diseño manuales** (cliente decide solo).                                       | **Asistente IA Claude** sugiere plantillas según ocasión.                                                                 |
+| 5   | **Información sobre ocasiones** atomizada por categoría sin guía cruzada.                           | **Blog con ideas de regalo** SEO-optimizado (`/blog/ideas-regalo-dia-madre-colombia`).                                    |
+| 6   | **Sin programa de fidelidad visible** en su home.                                                   | **Puntos Lucams** con `/cuenta/puntos` desde Fase 5.                                                                      |
+| 7   | **Sin programa de referidos.**                                                                      | **`referralCode` único + reward para ambos.**                                                                             |
+| 8   | **Reseñas mostradas como testimonios curados** (no UGC con foto del cliente).                       | **Reseñas con foto del cliente** (UGC), aprobación admin.                                                                 |
+| 9   | **No hay portal mayorista B2B explícito** (publicitarios están en catálogo retail).                 | **`/mayorista`** con login separado o `isWholesale` flag, listas de precios escalonados, generación de PDF de cotización. |
+| 10  | **Carrito abandonado** sin estrategia visible.                                                      | **Email automation 1h y 24h** con cupón en el primer recordatorio (vía pgmq + pg_cron).                                   |
+| 11  | **PWA / instalación móvil** ausente.                                                                | **PWA instalable** con manifest + service worker.                                                                         |
+| 12  | **Stock no indicado en tiempo real** (cliente puede agregar al carrito un producto agotado).        | **Stock realtime** (Supabase Realtime) que actualiza el botón de "Agregar al carrito" en vivo.                            |
+| 13  | **Búsqueda básica.**                                                                                | **Postgres full-text** sobre `Product.name + description` con `gin` index.                                                |
+| 14  | **Productos relacionados** no parecen sofisticados.                                                 | **Recomendaciones simples** en Fase 2 + IA-driven en Fase 3+.                                                             |
+| 15  | **Carga de fotos** sin guía de calidad mínima (resolución, formato).                                | Estudio Lucams **valida MIME + tamaño + advierte si la resolución es baja para 300 DPI** antes de aceptar.                |
 
 ---
 
@@ -316,6 +317,7 @@ magneticas.cl es un competidor **respetable** con catálogo maduro, copy emocion
 > "Tomamos el modelo de negocio de magneticas.cl (que funciona) y lo construimos sobre un stack moderno (Next.js + Supabase) con valor agregado real (Estudio en vivo + 3D + IA + COD + sin marcas pirateadas + compliance CO + observabilidad), adaptado culturalmente a Colombia."
 
 **Lo que NO debemos hacer:**
+
 - Copiar a ciegas (sus errores legales, sus dependencias manuales).
 - Diferenciar solo en branding (es necesario pero no suficiente).
 - Lanzar sin compliance (DIAN, Habeas Data, Retracto) — sería peor que ellos por estar en CO.

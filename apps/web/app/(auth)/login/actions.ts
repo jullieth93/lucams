@@ -50,9 +50,7 @@ export async function loginAction(
     const flat = z.flattenError(parsed.error);
     return {
       error: "Datos inválidos.",
-      fieldErrors: flat.fieldErrors as Partial<
-        Record<"email" | "password", string[]>
-      >,
+      fieldErrors: flat.fieldErrors as Partial<Record<"email" | "password", string[]>>,
     };
   }
 
@@ -61,16 +59,8 @@ export async function loginAction(
   const isProd = process.env.VERCEL_ENV === "production";
 
   // Rate-limit doble: por IP y por email.
-  const rlIp = await rateLimit(
-    ipKey("login", ip),
-    isProd ? 15 : 50,
-    15 * 60,
-  );
-  const rlEmail = await rateLimit(
-    emailKey("login", parsed.data.email),
-    isProd ? 15 : 50,
-    15 * 60,
-  );
+  const rlIp = await rateLimit(ipKey("login", ip), isProd ? 15 : 50, 15 * 60);
+  const rlEmail = await rateLimit(emailKey("login", parsed.data.email), isProd ? 15 : 50, 15 * 60);
   if (!rlIp.allowed || !rlEmail.allowed) {
     logger.warn({
       event: "auth.login.rate_limited",
@@ -79,8 +69,7 @@ export async function loginAction(
       emailCount: rlEmail.count,
     });
     return {
-      error:
-        "Demasiados intentos. Por favor espera unos minutos antes de reintentar.",
+      error: "Demasiados intentos. Por favor espera unos minutos antes de reintentar.",
     };
   }
 
@@ -119,10 +108,7 @@ async function mergeCartSafely(supabaseUserId: string): Promise<void> {
       select: { id: true },
     });
     if (!customer) return;
-    const finalSessionId = await mergeAnonCartIntoCustomer(
-      anonSessionId,
-      customer.id,
-    );
+    const finalSessionId = await mergeAnonCartIntoCustomer(anonSessionId, customer.id);
     if (finalSessionId !== anonSessionId) {
       await setCartSessionCookie(finalSessionId);
     }

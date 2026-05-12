@@ -24,11 +24,7 @@ export const metadata: Metadata = {
 
 type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
 
-export default async function CarritoPage({
-  searchParams,
-}: {
-  searchParams: SearchParams;
-}) {
+export default async function CarritoPage({ searchParams }: { searchParams: SearchParams }) {
   const sp = await searchParams;
   const justAdded = sp.added === "1";
   const errorMsg = typeof sp.error === "string" ? sp.error : null;
@@ -37,17 +33,17 @@ export default async function CarritoPage({
   const cart = sessionId ? await getCartDetail(sessionId) : null;
 
   return (
-    <div className="flex min-h-screen flex-col bg-brand-cream">
+    <div className="bg-brand-cream flex min-h-screen flex-col">
       <SiteHeader />
 
       <main className="flex-1 px-6 py-8 sm:px-10">
         <div className="mx-auto max-w-4xl">
-          <h1 className="mb-6 font-display text-3xl text-brand-purple-dark sm:text-4xl">
+          <h1 className="font-display text-brand-purple-dark mb-6 text-3xl sm:text-4xl">
             Tu carrito
           </h1>
 
           {justAdded && (
-            <div className="mb-4 rounded-md border border-brand-turquoise/30 bg-brand-turquoise/10 px-4 py-3 text-sm text-brand-purple-dark">
+            <div className="border-brand-turquoise/30 bg-brand-turquoise/10 text-brand-purple-dark mb-4 rounded-md border px-4 py-3 text-sm">
               ✨ Producto agregado al carrito.
             </div>
           )}
@@ -61,13 +57,13 @@ export default async function CarritoPage({
             <EmptyCart />
           ) : (
             <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-              <ul className="md:col-span-2 space-y-3">
+              <ul className="space-y-3 md:col-span-2">
                 {cart.items.map((item) => (
                   <li
                     key={item.itemId}
-                    className="flex gap-4 rounded-xl border border-brand-purple/10 bg-white p-3"
+                    className="border-brand-purple/10 flex gap-4 rounded-xl border bg-white p-3"
                   >
-                    <div className="aspect-square h-24 w-24 flex-shrink-0 overflow-hidden rounded-md bg-gradient-to-br from-brand-turquoise/15 via-brand-cream to-brand-pink/15">
+                    <div className="from-brand-turquoise/15 via-brand-cream to-brand-pink/15 aspect-square h-24 w-24 flex-shrink-0 overflow-hidden rounded-md bg-gradient-to-br">
                       {item.imageUrl ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img
@@ -77,7 +73,7 @@ export default async function CarritoPage({
                         />
                       ) : (
                         <div className="flex h-full w-full items-center justify-center">
-                          <Sparkles className="h-7 w-7 text-brand-purple/40" />
+                          <Sparkles className="text-brand-purple/40 h-7 w-7" />
                         </div>
                       )}
                     </div>
@@ -86,16 +82,14 @@ export default async function CarritoPage({
                         <div>
                           <Link
                             href={`/producto/${item.productSlug}`}
-                            className="font-semibold text-brand-purple-dark hover:text-brand-purple"
+                            className="text-brand-purple-dark hover:text-brand-purple font-semibold"
                           >
                             {item.productName}
                           </Link>
                           {item.isPersonalizable && (
-                            <p className="text-xs text-brand-purple/70">
-                              Personalizable
-                            </p>
+                            <p className="text-brand-purple/70 text-xs">Personalizable</p>
                           )}
-                          <p className="mt-1 text-sm text-brand-purple-dark/70 tabular-nums">
+                          <p className="text-brand-purple-dark/70 mt-1 text-sm tabular-nums">
                             {formatCOP(item.unitPrice)} c/u
                           </p>
                         </div>
@@ -114,7 +108,7 @@ export default async function CarritoPage({
                       </div>
                       <div className="flex items-center justify-between gap-3">
                         <QtyControls itemId={item.itemId} qty={item.qty} />
-                        <span className="font-bold text-brand-purple-dark tabular-nums">
+                        <span className="text-brand-purple-dark font-bold tabular-nums">
                           {formatCOP(item.lineTotal)}
                         </span>
                       </div>
@@ -123,32 +117,27 @@ export default async function CarritoPage({
                 ))}
               </ul>
 
-              <aside className="space-y-3 self-start rounded-xl border border-brand-purple/10 bg-white p-5">
-                <h2 className="font-display text-lg text-brand-purple-dark">
-                  Resumen
-                </h2>
+              <aside className="border-brand-purple/10 space-y-3 self-start rounded-xl border bg-white p-5">
+                <h2 className="font-display text-brand-purple-dark text-lg">Resumen</h2>
                 <div className="space-y-1 text-sm">
-                  <div className="flex justify-between text-brand-purple-dark/70">
+                  <div className="text-brand-purple-dark/70 flex justify-between">
                     <span>
-                      Subtotal ({cart.itemCount}{" "}
-                      {cart.itemCount === 1 ? "ítem" : "ítems"})
+                      Subtotal ({cart.itemCount} {cart.itemCount === 1 ? "ítem" : "ítems"})
                     </span>
-                    <span className="tabular-nums">
-                      {formatCOP(cart.subtotal)}
-                    </span>
+                    <span className="tabular-nums">{formatCOP(cart.subtotal)}</span>
                   </div>
-                  <div className="flex justify-between text-brand-purple-dark/60">
+                  <div className="text-brand-purple-dark/60 flex justify-between">
                     <span>Envío</span>
                     <span>Calculado en checkout</span>
                   </div>
                 </div>
-                <div className="flex justify-between border-t border-brand-purple/10 pt-3 text-lg font-bold text-brand-purple-dark">
+                <div className="border-brand-purple/10 text-brand-purple-dark flex justify-between border-t pt-3 text-lg font-bold">
                   <span>Total</span>
                   <span className="tabular-nums">{formatCOP(cart.subtotal)}</span>
                 </div>
                 <Button
                   type="button"
-                  className="w-full bg-brand-purple text-white hover:bg-brand-purple-dark"
+                  className="bg-brand-purple hover:bg-brand-purple-dark w-full text-white"
                   size="lg"
                   disabled
                   title="Checkout en construcción"
@@ -157,7 +146,7 @@ export default async function CarritoPage({
                 </Button>
                 <Link
                   href="/productos"
-                  className="block text-center text-sm text-brand-purple-dark/70 hover:text-brand-purple"
+                  className="text-brand-purple-dark/70 hover:text-brand-purple block text-center text-sm"
                 >
                   ← Seguir comprando
                 </Link>
@@ -172,17 +161,15 @@ export default async function CarritoPage({
 
 function EmptyCart() {
   return (
-    <div className="rounded-xl border border-brand-purple/10 bg-white px-6 py-16 text-center">
-      <Sparkles className="mx-auto h-10 w-10 text-brand-purple/40" />
-      <p className="mt-4 text-lg font-semibold text-brand-purple-dark">
-        Tu carrito está vacío
-      </p>
-      <p className="mt-1 text-sm text-brand-purple-dark/60">
+    <div className="border-brand-purple/10 rounded-xl border bg-white px-6 py-16 text-center">
+      <Sparkles className="text-brand-purple/40 mx-auto h-10 w-10" />
+      <p className="text-brand-purple-dark mt-4 text-lg font-semibold">Tu carrito está vacío</p>
+      <p className="text-brand-purple-dark/60 mt-1 text-sm">
         Encuentra el imán perfecto para tu nevera.
       </p>
       <Link
         href="/productos"
-        className="mt-4 inline-block rounded-full bg-brand-purple px-5 py-2 text-sm font-semibold text-white hover:bg-brand-purple-dark"
+        className="bg-brand-purple hover:bg-brand-purple-dark mt-4 inline-block rounded-full px-5 py-2 text-sm font-semibold text-white"
       >
         Ver catálogo →
       </Link>
@@ -192,20 +179,20 @@ function EmptyCart() {
 
 function QtyControls({ itemId, qty }: { itemId: string; qty: number }) {
   return (
-    <div className="inline-flex items-center rounded-md border border-brand-purple/20 bg-white">
+    <div className="border-brand-purple/20 inline-flex items-center rounded-md border bg-white">
       <form action={updateQtyAction}>
         <input type="hidden" name="itemId" value={itemId} />
         <input type="hidden" name="qty" value={qty - 1} />
         <button
           type="submit"
-          className="flex h-8 w-8 items-center justify-center text-brand-purple-dark hover:bg-brand-purple/10 disabled:opacity-40"
+          className="text-brand-purple-dark hover:bg-brand-purple/10 flex h-8 w-8 items-center justify-center disabled:opacity-40"
           aria-label="Disminuir cantidad"
           disabled={qty <= 1}
         >
           <Minus className="h-3.5 w-3.5" />
         </button>
       </form>
-      <span className="w-8 text-center text-sm font-semibold tabular-nums text-brand-purple-dark">
+      <span className="text-brand-purple-dark w-8 text-center text-sm font-semibold tabular-nums">
         {qty}
       </span>
       <form action={updateQtyAction}>
@@ -213,7 +200,7 @@ function QtyControls({ itemId, qty }: { itemId: string; qty: number }) {
         <input type="hidden" name="qty" value={qty + 1} />
         <button
           type="submit"
-          className="flex h-8 w-8 items-center justify-center text-brand-purple-dark hover:bg-brand-purple/10 disabled:opacity-40"
+          className="text-brand-purple-dark hover:bg-brand-purple/10 flex h-8 w-8 items-center justify-center disabled:opacity-40"
           aria-label="Aumentar cantidad"
           disabled={qty >= 99}
         >

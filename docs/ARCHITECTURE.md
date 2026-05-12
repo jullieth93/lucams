@@ -128,29 +128,29 @@ lucams_shop/
 
 ## Stack y versiones objetivo
 
-| Capa | Tecnología | Versión objetivo |
-|---|---|---|
-| Runtime | Node.js | 22 LTS |
-| Package manager | pnpm | 9.x |
-| Framework | Next.js | **16.x (App Router, RSC, Server Actions, Turbopack default)** — actualizado al hacer scaffolding (Fase 1) |
-| Lenguaje | TypeScript | 5.x estricto |
-| UI | Tailwind CSS | **4.x (sintaxis CSS-first con `@theme`)** |
-| Componentes | shadcn/ui | latest (style `new-york`, soporte oficial v4) |
-| Animaciones | `tw-animate-css` | latest (reemplaza `tailwindcss-animate` deprecado en v4) |
-| Toast/notif | `sonner` | latest (reemplaza `toast` deprecado en v4) |
-| State (cliente) | Zustand | 5.x |
-| Validación | Zod | 3.x |
-| ORM | Prisma | 6.x |
-| DB | Postgres | Supabase managed |
-| Auth | Supabase Auth | latest |
-| Editor canvas | react-konva | 18.x |
-| 3D | three.js + react-three-fiber | latest |
-| Email | Resend SDK | latest |
-| IA | `@anthropic-ai/sdk` | latest |
-| Tests unit | Vitest | 2.x |
-| Tests E2E | Playwright | latest |
-| Lint | ESLint + `eslint-config-next` | latest |
-| Format | Prettier | 3.x |
+| Capa            | Tecnología                    | Versión objetivo                                                                                          |
+| --------------- | ----------------------------- | --------------------------------------------------------------------------------------------------------- |
+| Runtime         | Node.js                       | 22 LTS                                                                                                    |
+| Package manager | pnpm                          | 9.x                                                                                                       |
+| Framework       | Next.js                       | **16.x (App Router, RSC, Server Actions, Turbopack default)** — actualizado al hacer scaffolding (Fase 1) |
+| Lenguaje        | TypeScript                    | 5.x estricto                                                                                              |
+| UI              | Tailwind CSS                  | **4.x (sintaxis CSS-first con `@theme`)**                                                                 |
+| Componentes     | shadcn/ui                     | latest (style `new-york`, soporte oficial v4)                                                             |
+| Animaciones     | `tw-animate-css`              | latest (reemplaza `tailwindcss-animate` deprecado en v4)                                                  |
+| Toast/notif     | `sonner`                      | latest (reemplaza `toast` deprecado en v4)                                                                |
+| State (cliente) | Zustand                       | 5.x                                                                                                       |
+| Validación      | Zod                           | 3.x                                                                                                       |
+| ORM             | Prisma                        | 6.x                                                                                                       |
+| DB              | Postgres                      | Supabase managed                                                                                          |
+| Auth            | Supabase Auth                 | latest                                                                                                    |
+| Editor canvas   | react-konva                   | 18.x                                                                                                      |
+| 3D              | three.js + react-three-fiber  | latest                                                                                                    |
+| Email           | Resend SDK                    | latest                                                                                                    |
+| IA              | `@anthropic-ai/sdk`           | latest                                                                                                    |
+| Tests unit      | Vitest                        | 2.x                                                                                                       |
+| Tests E2E       | Playwright                    | latest                                                                                                    |
+| Lint            | ESLint + `eslint-config-next` | latest                                                                                                    |
+| Format          | Prettier                      | 3.x                                                                                                       |
 
 ## Modelo de datos (Prisma)
 
@@ -527,13 +527,13 @@ model AdminActionLog {
 
 > Configuradas en Supabase vía dashboard o migración SQL. Verificar disponibilidad en plan Free contra [supabase.com/docs/guides/database/extensions](https://supabase.com/docs/guides/database/extensions).
 
-| Extensión | Propósito | ADR |
-|---|---|---|
-| `uuid-ossp` | Generación de UUIDs (alternativa a `cuid()` cuando aplique) | — |
-| `pgcrypto` | Hashing de tokens internos, generación segura de slugs aleatorios | — |
-| `pg_cron` | Schedule de jobs internos (cleanup, enqueue de pgmq, expiración de reservas) | 016, 017 |
-| `pgmq` | Cola de mensajes durable con exactly-once delivery | 017 |
-| `pg_stat_statements` | Observabilidad de queries (top consumidores) en producción | — |
+| Extensión            | Propósito                                                                    | ADR      |
+| -------------------- | ---------------------------------------------------------------------------- | -------- |
+| `uuid-ossp`          | Generación de UUIDs (alternativa a `cuid()` cuando aplique)                  | —        |
+| `pgcrypto`           | Hashing de tokens internos, generación segura de slugs aleatorios            | —        |
+| `pg_cron`            | Schedule de jobs internos (cleanup, enqueue de pgmq, expiración de reservas) | 016, 017 |
+| `pgmq`               | Cola de mensajes durable con exactly-once delivery                           | 017      |
+| `pg_stat_statements` | Observabilidad de queries (top consumidores) en producción                   | —        |
 
 ### Ejemplo de migración SQL para extensiones y jobs base
 
@@ -626,21 +626,21 @@ SELECT cron.schedule(
 
 ```ts
 // supabase/functions/cart-recovery-consumer/index.ts
-import { supabaseAdmin } from '@/lib/supabase/service';
+import { supabaseAdmin } from "@/lib/supabase/service";
 
 export async function POST() {
   const { data: messages } = await supabaseAdmin
-    .schema('pgmq_public')
-    .rpc('read', { queue_name: 'cart_recovery_1h', vt: 30, qty: 10 });
+    .schema("pgmq_public")
+    .rpc("read", { queue_name: "cart_recovery_1h", vt: 30, qty: 10 });
 
   for (const msg of messages) {
     try {
       await processCartRecovery(msg.message);
       await supabaseAdmin
-        .schema('pgmq_public')
-        .rpc('delete', { queue_name: 'cart_recovery_1h', msg_id: msg.msg_id });
+        .schema("pgmq_public")
+        .rpc("delete", { queue_name: "cart_recovery_1h", msg_id: msg.msg_id });
     } catch (err) {
-      console.error('Error processing message', msg.msg_id, err);
+      console.error("Error processing message", msg.msg_id, err);
       // Dejar que VT expire → reintento automático
     }
   }
@@ -654,18 +654,18 @@ export async function POST() {
 
 Cuando una tabla se accede desde el cliente browser (con la **publishable key** `sb_publishable_*`, que mapea al rol Postgres `anon`), debe tener RLS habilitada.
 
-| Tabla | Política |
-|---|---|
-| `Customer` | Un cliente solo puede leer/actualizar su propio registro (`auth.uid() = supabase_user_id`). |
-| `Address` | Solo el dueño (`customer_id` corresponde al cliente autenticado). |
-| `Cart` | Cliente autenticado o cookie de sesión que coincida con `session_id`. |
-| `Order` | Cliente solo lee sus propias órdenes. |
-| `OrderItem` | Hereda permisos de `Order`. |
-| `Review` | Lectura pública si `is_approved = true`. Escritura solo del autor. |
-| `Product`, `Category`, `BlogPost` | Lectura pública si `is_active`/`is_published`. Escritura solo admin. |
-| `Coupon`, `InventoryLog`, `StockReservation`, `WebhookEvent`, `AdminUser`, `AdminActionLog` | Sin acceso desde el rol `anon` (publishable key) — solo `service_role` (secret key, server-side). |
-| `rate_limit_buckets`, `cache_entries` | Sin acceso desde `anon` — solo `service_role`. |
-| `pgmq.*` | Acceso solo vía `service_role` (secret key); los consumers viven en Edge Functions o API routes server-side. |
+| Tabla                                                                                       | Política                                                                                                     |
+| ------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `Customer`                                                                                  | Un cliente solo puede leer/actualizar su propio registro (`auth.uid() = supabase_user_id`).                  |
+| `Address`                                                                                   | Solo el dueño (`customer_id` corresponde al cliente autenticado).                                            |
+| `Cart`                                                                                      | Cliente autenticado o cookie de sesión que coincida con `session_id`.                                        |
+| `Order`                                                                                     | Cliente solo lee sus propias órdenes.                                                                        |
+| `OrderItem`                                                                                 | Hereda permisos de `Order`.                                                                                  |
+| `Review`                                                                                    | Lectura pública si `is_approved = true`. Escritura solo del autor.                                           |
+| `Product`, `Category`, `BlogPost`                                                           | Lectura pública si `is_active`/`is_published`. Escritura solo admin.                                         |
+| `Coupon`, `InventoryLog`, `StockReservation`, `WebhookEvent`, `AdminUser`, `AdminActionLog` | Sin acceso desde el rol `anon` (publishable key) — solo `service_role` (secret key, server-side).            |
+| `rate_limit_buckets`, `cache_entries`                                                       | Sin acceso desde `anon` — solo `service_role`.                                                               |
+| `pgmq.*`                                                                                    | Acceso solo vía `service_role` (secret key); los consumers viven en Edge Functions o API routes server-side. |
 
 Las rutas `/api/*` que necesiten escribir tablas restringidas usan `lib/supabase/service.ts` (secret key `sb_secret_*` que mapea al rol `service_role`, server-only).
 
@@ -675,10 +675,10 @@ Diseño desde el día 1 para no acoplarse a Wompi y permitir agregar Mercado Pag
 
 ```ts
 // lib/payment/types.ts
-import type { Order } from '@prisma/client';
+import type { Order } from "@prisma/client";
 
 export interface PaymentProvider {
-  readonly name: 'wompi' | 'mercadopago';
+  readonly name: "wompi" | "mercadopago";
 
   /** Crea la sesión de pago y devuelve URL de redirección o config para widget */
   createCheckout(order: Order): Promise<{
@@ -698,14 +698,14 @@ export interface PaymentProvider {
 }
 
 export type PaymentStatus =
-  | { status: 'PENDING' }
-  | { status: 'APPROVED'; paidAt: Date }
-  | { status: 'DECLINED'; reason: string }
-  | { status: 'VOIDED' };
+  | { status: "PENDING" }
+  | { status: "APPROVED"; paidAt: Date }
+  | { status: "DECLINED"; reason: string }
+  | { status: "VOIDED" };
 
 export type PaymentEvent = {
   externalId: string;
-  status: PaymentStatus['status'];
+  status: PaymentStatus["status"];
   amount: number;
   currency: string;
   raw: unknown;
@@ -714,11 +714,11 @@ export type PaymentEvent = {
 
 ```ts
 // lib/payment/index.ts
-import { WompiProvider } from './wompi';
+import { WompiProvider } from "./wompi";
 
-export function getPaymentProvider(name = 'wompi'): PaymentProvider {
+export function getPaymentProvider(name = "wompi"): PaymentProvider {
   switch (name) {
-    case 'wompi':
+    case "wompi":
       return new WompiProvider();
     // case 'mercadopago':
     //   return new MercadoPagoProvider();
@@ -732,13 +732,14 @@ export function getPaymentProvider(name = 'wompi'): PaymentProvider {
 
 Tres buckets con políticas distintas (detalle exhaustivo en [`SECURITY.md` § File upload](./SECURITY.md#file-upload-y-storage)):
 
-| Bucket | Visibilidad | Uso | TTL URL firmada |
-|---|---|---|---|
-| `products` | Público (lectura abierta) | Imágenes oficiales del catálogo | — |
-| `customer-uploads` | Privado | Fotos que sube el cliente al estudio de personalización | 1 hora |
-| `production-assets` | Privado | PNG alta resolución generados al confirmar orden, descargables solo por admin con rol `FULFILLMENT` | 15 minutos |
+| Bucket              | Visibilidad               | Uso                                                                                                 | TTL URL firmada |
+| ------------------- | ------------------------- | --------------------------------------------------------------------------------------------------- | --------------- |
+| `products`          | Público (lectura abierta) | Imágenes oficiales del catálogo                                                                     | —               |
+| `customer-uploads`  | Privado                   | Fotos que sube el cliente al estudio de personalización                                             | 1 hora          |
+| `production-assets` | Privado                   | PNG alta resolución generados al confirmar orden, descargables solo por admin con rol `FULFILLMENT` | 15 minutos      |
 
 **Reglas:**
+
 - Validación de tipo MIME + tamaño en server (no confiar en cliente).
 - Nombres de archivo aleatorios (`pgcrypto`) para evitar enumeración.
 - Allowlist de extensiones: `jpg`, `png`, `webp`, `heic` (convertido a webp en server).
@@ -789,17 +790,17 @@ shadcn/ui usa Radix primitives, que ya cumplen ARIA. Mantener `aria-*` props cua
 
 ## Performance budget
 
-| Métrica | Objetivo |
-|---|---|
-| Lighthouse Performance | ≥ 95 |
-| Lighthouse SEO | ≥ 95 |
-| Lighthouse A11y | ≥ 95 |
-| Lighthouse Best Practices | ≥ 95 |
-| Largest Contentful Paint | < 2.5 s |
-| Time to First Byte (home con ISR) | < 200 ms |
-| Cumulative Layout Shift | < 0.1 |
-| First Input Delay / INP | < 200 ms |
-| Bundle JS (page) | < 200 KB gz |
+| Métrica                           | Objetivo    |
+| --------------------------------- | ----------- |
+| Lighthouse Performance            | ≥ 95        |
+| Lighthouse SEO                    | ≥ 95        |
+| Lighthouse A11y                   | ≥ 95        |
+| Lighthouse Best Practices         | ≥ 95        |
+| Largest Contentful Paint          | < 2.5 s     |
+| Time to First Byte (home con ISR) | < 200 ms    |
+| Cumulative Layout Shift           | < 0.1       |
+| First Input Delay / INP           | < 200 ms    |
+| Bundle JS (page)                  | < 200 KB gz |
 
 ## Testing
 
@@ -819,24 +820,24 @@ shadcn/ui usa Radix primitives, que ya cumplen ARIA. Mantener `aria-*` props cua
 
 Para no duplicar contenido, esta sección referencia las fuentes únicas de patrones que aplican a todo el código:
 
-| Patrón | Fuente única |
-|---|---|
-| Naming (FE, BE, DB) | [`CONVENTIONS.md` § Naming](./CONVENTIONS.md#naming) |
-| Server Component vs Client Component | [`CONVENTIONS.md` § RSC vs Client](./CONVENTIONS.md#frontend--server-components-vs-client-components) |
-| Formularios y validación | [`CONVENTIONS.md` § Formularios](./CONVENTIONS.md#frontend--formularios-y-validación) |
-| Estados de UI (loading, error, empty) | [`CONVENTIONS.md` § Estados](./CONVENTIONS.md#frontend--estados-de-ui-loading-error-empty) |
-| API conventions (REST + Server Actions) | [`CONVENTIONS.md` § APIs](./CONVENTIONS.md#backend--apis-rest--server-actions) |
-| Formato estándar de errores (RFC 7807) | [`CONVENTIONS.md` § Errores RFC 7807](./CONVENTIONS.md#backend--formato-estándar-de-errores-rfc-7807) |
-| Capa de servicio (service.ts / repository.ts) | [`CONVENTIONS.md` § Capa de servicio](./CONVENTIONS.md#backend--capa-de-servicio) |
-| **Saga pattern** (Wompi → Venndelo → Email) | [`CONVENTIONS.md` § Saga pattern](./CONVENTIONS.md#backend--saga-pattern-para-flujos-distribuidos) |
-| **Idempotency keys** | [`CONVENTIONS.md` § Idempotency](./CONVENTIONS.md#backend--idempotency-keys) |
-| Naming SQL (snake_case vs PascalCase) | [`CONVENTIONS.md` § DB naming](./CONVENTIONS.md#db--naming-sql) |
-| **Migration strategy** (expand-then-contract) | [`CONVENTIONS.md` § Migration strategy](./CONVENTIONS.md#db--migration-strategy-expand-then-contract) |
-| **Indexing strategy** | [`CONVENTIONS.md` § Indexing](./CONVENTIONS.md#db--indexing-strategy) |
-| **Soft delete + audit fields** (`createdBy`, `updatedBy`, `deletedAt`) | [`CONVENTIONS.md` § Soft delete](./CONVENTIONS.md#db--soft-delete--audit-fields) |
-| Foreign keys cascade explícito | [`CONVENTIONS.md` § FK cascade](./CONVENTIONS.md#db--foreign-keys-cascade-explícito) |
-| **Retention y archival** | [`CONVENTIONS.md` § Retention](./CONVENTIONS.md#db--retention-y-archival) |
-| **Timeouts, retries, circuit breakers** | [`CONVENTIONS.md` § Resiliencia](./CONVENTIONS.md#resiliencia--timeouts-retries-circuit-breakers) |
-| **Logging y request ID correlation** | [`CONVENTIONS.md` § Logging](./CONVENTIONS.md#logging-y-request-id-correlation) |
+| Patrón                                                                 | Fuente única                                                                                          |
+| ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| Naming (FE, BE, DB)                                                    | [`CONVENTIONS.md` § Naming](./CONVENTIONS.md#naming)                                                  |
+| Server Component vs Client Component                                   | [`CONVENTIONS.md` § RSC vs Client](./CONVENTIONS.md#frontend--server-components-vs-client-components) |
+| Formularios y validación                                               | [`CONVENTIONS.md` § Formularios](./CONVENTIONS.md#frontend--formularios-y-validación)                 |
+| Estados de UI (loading, error, empty)                                  | [`CONVENTIONS.md` § Estados](./CONVENTIONS.md#frontend--estados-de-ui-loading-error-empty)            |
+| API conventions (REST + Server Actions)                                | [`CONVENTIONS.md` § APIs](./CONVENTIONS.md#backend--apis-rest--server-actions)                        |
+| Formato estándar de errores (RFC 7807)                                 | [`CONVENTIONS.md` § Errores RFC 7807](./CONVENTIONS.md#backend--formato-estándar-de-errores-rfc-7807) |
+| Capa de servicio (service.ts / repository.ts)                          | [`CONVENTIONS.md` § Capa de servicio](./CONVENTIONS.md#backend--capa-de-servicio)                     |
+| **Saga pattern** (Wompi → Venndelo → Email)                            | [`CONVENTIONS.md` § Saga pattern](./CONVENTIONS.md#backend--saga-pattern-para-flujos-distribuidos)    |
+| **Idempotency keys**                                                   | [`CONVENTIONS.md` § Idempotency](./CONVENTIONS.md#backend--idempotency-keys)                          |
+| Naming SQL (snake_case vs PascalCase)                                  | [`CONVENTIONS.md` § DB naming](./CONVENTIONS.md#db--naming-sql)                                       |
+| **Migration strategy** (expand-then-contract)                          | [`CONVENTIONS.md` § Migration strategy](./CONVENTIONS.md#db--migration-strategy-expand-then-contract) |
+| **Indexing strategy**                                                  | [`CONVENTIONS.md` § Indexing](./CONVENTIONS.md#db--indexing-strategy)                                 |
+| **Soft delete + audit fields** (`createdBy`, `updatedBy`, `deletedAt`) | [`CONVENTIONS.md` § Soft delete](./CONVENTIONS.md#db--soft-delete--audit-fields)                      |
+| Foreign keys cascade explícito                                         | [`CONVENTIONS.md` § FK cascade](./CONVENTIONS.md#db--foreign-keys-cascade-explícito)                  |
+| **Retention y archival**                                               | [`CONVENTIONS.md` § Retention](./CONVENTIONS.md#db--retention-y-archival)                             |
+| **Timeouts, retries, circuit breakers**                                | [`CONVENTIONS.md` § Resiliencia](./CONVENTIONS.md#resiliencia--timeouts-retries-circuit-breakers)     |
+| **Logging y request ID correlation**                                   | [`CONVENTIONS.md` § Logging](./CONVENTIONS.md#logging-y-request-id-correlation)                       |
 
 > **Mandato:** cuando se introduce un patrón nuevo que aplica cross-cutting, vive en `CONVENTIONS.md`. ARCHITECTURE.md describe la **estructura** del sistema, no los **patrones de código**.

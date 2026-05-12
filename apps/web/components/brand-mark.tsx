@@ -105,14 +105,8 @@ export function RaccoonFace() {
       <ellipse cx="49" cy="17" rx="8" ry="9" fill="url(#rfEar)" />
       <ellipse cx="49" cy="19" rx="3.5" ry="4" fill="#F09BB8" />
       <circle cx="32" cy="36" r="22" fill="url(#rfFace)" />
-      <path
-        d="M 13 30 Q 22 21 31 30 Q 32 32 31 34 Q 22 41 13 34 Q 12 32 13 30 Z"
-        fill="#2A1F45"
-      />
-      <path
-        d="M 51 30 Q 42 21 33 30 Q 32 32 33 34 Q 42 41 51 34 Q 52 32 51 30 Z"
-        fill="#2A1F45"
-      />
+      <path d="M 13 30 Q 22 21 31 30 Q 32 32 31 34 Q 22 41 13 34 Q 12 32 13 30 Z" fill="#2A1F45" />
+      <path d="M 51 30 Q 42 21 33 30 Q 32 32 33 34 Q 42 41 51 34 Q 52 32 51 30 Z" fill="#2A1F45" />
       <ellipse cx="22" cy="31" rx="4.2" ry="4.6" fill="white" />
       <ellipse cx="42" cy="31" rx="4.2" ry="4.6" fill="white" />
       <ellipse cx="22.5" cy="31.5" rx="2.8" ry="3.3" fill="#1A1530" />

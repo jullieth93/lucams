@@ -23,15 +23,15 @@ export function LoginForm({
   initialError?: string;
   initialSuccess?: string;
 }) {
-  const [state, formAction, pending] = useActionState<
-    LoginActionState | null,
-    FormData
-  >(loginAction, null);
+  const [state, formAction, pending] = useActionState<LoginActionState | null, FormData>(
+    loginAction,
+    null,
+  );
 
   return (
-    <Card className="shadow-xl border-brand-purple/10 animate-in fade-in slide-in-from-bottom-3 duration-500">
+    <Card className="border-brand-purple/10 animate-in fade-in slide-in-from-bottom-3 shadow-xl duration-500">
       <CardHeader className="space-y-2">
-        <CardTitle className="font-display text-2xl text-brand-purple-dark">
+        <CardTitle className="font-display text-brand-purple-dark text-2xl">
           Bienvenida de vuelta
         </CardTitle>
         <CardDescription className="text-base">
@@ -43,7 +43,7 @@ export function LoginForm({
         <div className="mx-6 mb-2">
           <div
             role="status"
-            className="rounded-md bg-success/10 px-3 py-2 text-sm border border-success/20"
+            className="bg-success/10 border-success/20 rounded-md border px-3 py-2 text-sm"
             style={{ color: "var(--success)" }}
           >
             {initialSuccess}
@@ -55,7 +55,7 @@ export function LoginForm({
         <div className="mx-6 mb-2">
           <div
             role="alert"
-            className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive"
+            className="bg-destructive/10 text-destructive rounded-md px-3 py-2 text-sm"
           >
             {initialError}
           </div>
@@ -73,12 +73,10 @@ export function LoginForm({
               placeholder="tu@email.com"
               disabled={pending}
               aria-invalid={Boolean(state?.fieldErrors?.email)}
-              aria-describedby={
-                state?.fieldErrors?.email ? "email-error" : undefined
-              }
+              aria-describedby={state?.fieldErrors?.email ? "email-error" : undefined}
             />
             {state?.fieldErrors?.email && (
-              <p id="email-error" className="text-sm text-destructive">
+              <p id="email-error" className="text-destructive text-sm">
                 {state.fieldErrors.email[0]}
               </p>
             )}
@@ -89,7 +87,7 @@ export function LoginForm({
               <Label htmlFor="password">Contraseña</Label>
               <Link
                 href="/recuperar-password"
-                className="text-sm font-medium text-brand-pink hover:text-brand-coral underline-offset-4 hover:underline"
+                className="text-brand-pink hover:text-brand-coral text-sm font-medium underline-offset-4 hover:underline"
               >
                 ¿Olvidaste tu contraseña?
               </Link>
@@ -103,26 +101,24 @@ export function LoginForm({
               aria-invalid={Boolean(state?.fieldErrors?.password)}
             />
             {state?.fieldErrors?.password && (
-              <p className="text-sm text-destructive">
-                {state.fieldErrors.password[0]}
-              </p>
+              <p className="text-destructive text-sm">{state.fieldErrors.password[0]}</p>
             )}
           </div>
 
           {state?.error && !state.fieldErrors && (
             <div
               role="alert"
-              className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive"
+              className="bg-destructive/10 text-destructive rounded-md px-3 py-2 text-sm"
             >
               {state.error}
             </div>
           )}
         </CardContent>
 
-        <CardFooter className="flex flex-col gap-4 mt-4">
+        <CardFooter className="mt-4 flex flex-col gap-4">
           <Button
             type="submit"
-            className="w-full bg-brand-purple hover:bg-brand-purple-dark text-white font-semibold transition-all hover:shadow-md hover:-translate-y-px active:translate-y-px"
+            className="bg-brand-purple hover:bg-brand-purple-dark w-full font-semibold text-white transition-all hover:-translate-y-px hover:shadow-md active:translate-y-px"
             disabled={pending}
           >
             {pending ? (
@@ -133,11 +129,11 @@ export function LoginForm({
               "Iniciar sesión"
             )}
           </Button>
-          <p className="text-sm text-center text-muted-foreground">
+          <p className="text-muted-foreground text-center text-sm">
             ¿Aún no tienes cuenta?{" "}
             <Link
               href="/registro"
-              className="font-medium text-brand-pink hover:text-brand-coral underline-offset-4 hover:underline"
+              className="text-brand-pink hover:text-brand-coral font-medium underline-offset-4 hover:underline"
             >
               Crear cuenta
             </Link>
@@ -157,19 +153,8 @@ function SpinnerIcon() {
       viewBox="0 0 24 24"
       aria-hidden="true"
     >
-      <circle
-        className="opacity-25"
-        cx="12"
-        cy="12"
-        r="10"
-        stroke="currentColor"
-        strokeWidth="4"
-      />
-      <path
-        className="opacity-75"
-        fill="currentColor"
-        d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
-      />
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
     </svg>
   );
 }

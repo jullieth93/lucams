@@ -3,7 +3,10 @@ import { prisma } from "@/lib/db";
 import type { CategoryCreateInput } from "./schemas";
 
 export class CategoryValidationError extends Error {
-  constructor(public field: "slug" | "general", message: string) {
+  constructor(
+    public field: "slug" | "general",
+    message: string,
+  ) {
     super(message);
     this.name = "CategoryValidationError";
   }
@@ -25,10 +28,7 @@ export async function listCategories() {
   });
 }
 
-export async function createCategory(
-  input: CategoryCreateInput,
-  createdBy: string | null,
-) {
+export async function createCategory(input: CategoryCreateInput, createdBy: string | null) {
   const conflict = await prisma.category.findUnique({
     where: { slug: input.slug },
     select: { id: true },

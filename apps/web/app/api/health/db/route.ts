@@ -49,8 +49,6 @@ export async function GET(): Promise<Response> {
       { event: "health.db.fail", latencyMs, err: err instanceof Error ? err.message : String(err) },
       "Postgres healthcheck failed",
     );
-    return problemResponse(
-      new InternalError("Postgres no responde. Revisar logs por requestId."),
-    );
+    return problemResponse(new InternalError("Postgres no responde. Revisar logs por requestId."));
   }
 }

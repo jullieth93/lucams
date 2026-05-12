@@ -16,8 +16,7 @@ export default async function ConfirmarCodigoPage({
 }) {
   const sp = await searchParams;
   const email = typeof sp.email === "string" ? sp.email : undefined;
-  const firstName =
-    typeof sp.firstName === "string" ? sp.firstName : undefined;
+  const firstName = typeof sp.firstName === "string" ? sp.firstName : undefined;
 
   // Sin email no podemos verificar — el flujo solo tiene sentido tras /registro.
   if (!email) {

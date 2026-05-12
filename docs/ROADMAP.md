@@ -4,17 +4,17 @@ Ocho fases. La Fase 0a es la única que está autorizada al momento de escribir 
 
 ## Vista general
 
-| Fase | Nombre | Estado | Aprobado |
-|---|---|---|---|
-| 0a | Estructura de documentación | 🟢 Completada (2026-05-09) | ✅ Sí |
-| 0b | Cuentas externas críticas para Fase 1 (re-scope) | 🟢 Completada (2026-05-09) | ✅ Sí |
-| 1 | Base sólida (core técnico) | 🟢 Completada (auth completo, 2026-05-11) | ✅ Sí |
-| 2 | Catálogo y carrito (storefront) | 🟡 EN CURSO (admin CRUD + storefront + cart anon listos, 2026-05-11) | ✅ Sí |
-| 3 | Estudio de Personalización | ⏸️ Pendiente | ❌ No |
-| 4 | Checkout, pagos y logística | ⏸️ Pendiente | ❌ No |
-| 5 | Marketing engine | ⏸️ Pendiente | ❌ No |
-| 6 | Backoffice y B2B | ⏸️ Pendiente | ❌ No |
-| 7 | Pulido productivo + lanzamiento | ⏸️ Pendiente | ❌ No |
+| Fase | Nombre                                           | Estado                                                               | Aprobado |
+| ---- | ------------------------------------------------ | -------------------------------------------------------------------- | -------- |
+| 0a   | Estructura de documentación                      | 🟢 Completada (2026-05-09)                                           | ✅ Sí    |
+| 0b   | Cuentas externas críticas para Fase 1 (re-scope) | 🟢 Completada (2026-05-09)                                           | ✅ Sí    |
+| 1    | Base sólida (core técnico)                       | 🟢 Completada (auth completo, 2026-05-11)                            | ✅ Sí    |
+| 2    | Catálogo y carrito (storefront)                  | 🟡 EN CURSO (admin CRUD + storefront + cart anon listos, 2026-05-11) | ✅ Sí    |
+| 3    | Estudio de Personalización                       | ⏸️ Pendiente                                                         | ❌ No    |
+| 4    | Checkout, pagos y logística                      | ⏸️ Pendiente                                                         | ❌ No    |
+| 5    | Marketing engine                                 | ⏸️ Pendiente                                                         | ❌ No    |
+| 6    | Backoffice y B2B                                 | ⏸️ Pendiente                                                         | ❌ No    |
+| 7    | Pulido productivo + lanzamiento                  | ⏸️ Pendiente                                                         | ❌ No    |
 
 ---
 
@@ -86,6 +86,7 @@ Mitigaciones permanentes aplicadas: nueva sección en [`SECURITY.md` § Manipula
 ### Verificación de tiers Free contra docs oficiales (mandato #9)
 
 Antes de iniciar la fase, citar fuente con fecha en `OPERATIONS.md` para:
+
 - [ ] Vercel Hobby: function timeout, bandwidth/mes, ToS uso comercial → `vercel.com/docs/limits` y `vercel.com/legal/terms`
 - [ ] Supabase Free: límites DB/Storage/MAU/pausa → `supabase.com/pricing`
 - [ ] Resend Free: límites de envío y dominio → `resend.com/pricing`
@@ -105,6 +106,7 @@ Antes de iniciar la fase, citar fuente con fecha en `OPERATIONS.md` para:
 > **Alcance:** scaffolding del monorepo, modelo de datos, autenticación, sistema de diseño base. Sin features de producto todavía.
 >
 > **Estado (2026-05-11):**
+>
 > - ✅ lado **customer** completo y testeado (signup OTP + login + logout + recuperar-password + restablecer + brand assets + security hardening + email autocomplete)
 > - ✅ lado **admin** completo y testeado (`/admin/login` + `/admin/dashboard` + gate proxy + seed scripts + 4/4 pruebas Lucy pasadas)
 > - ⏸️ Pendiente: **profile editing + right-to-deletion Ley 1581** (diferido a próximas fases por priorización; el flow customer básico ya cubre el caso de uso principal)
@@ -112,6 +114,7 @@ Antes de iniciar la fase, citar fuente con fecha en `OPERATIONS.md` para:
 ### Tareas
 
 #### Scaffolding y stack — 🟢 Completado (2026-05-09)
+
 - [x] Inicializar monorepo con `pnpm-workspace.yaml`
 - [x] `pnpm create next-app@latest apps/web` con TS + **Tailwind v4** + App Router + React 19
 - [x] Instalar **shadcn/ui** con style `radix-nova` (no `new-york` — preset evolucionó), `tw-animate-css`
@@ -122,6 +125,7 @@ Antes de iniciar la fase, citar fuente con fecha en `OPERATIONS.md` para:
 > Pendiente del bloque: habilitar extensiones Postgres `pgmq` + `pg_cron` para cron jobs (background tasks de Fase 4-5).
 
 #### Seguridad base — 🟢 Completado (2026-05-11)
+
 - [x] **RLS policies** aplicadas en TODAS las 20 tablas (`supabase/migrations/00000000000002_rls_policies.sql`)
 - [x] **Security headers** en `apps/web/proxy.ts`: CSP (gateado por VERCEL_ENV), HSTS, X-Frame-Options, X-Content-Type-Options, Referrer-Policy, Permissions-Policy, X-DNS-Prefetch-Control
 - [x] **CORS** restrictivo en `/api/*` (allowlist con Vercel preview branches + localhost dev)
@@ -134,11 +138,13 @@ Antes de iniciar la fase, citar fuente con fecha en `OPERATIONS.md` para:
 - [x] **Healthchecks** `/api/health`, `/api/health/db`
 
 > Pendientes del bloque (siguen abiertos):
+>
 > - [ ] Middleware `/admin/*` con guard de rol — preparado en proxy.ts, falta activar cuando exista admin flow
 > - [ ] `/api/health/integrations` (Wompi/Venndelo/Anthropic) — cuando esas integraciones existan en Fases 4/5
 > - [ ] Cache sobre Postgres (`lib/cache.ts` + tabla `cache_entries`) — diferido a cuando aparezca el primer caso de uso real
 
 #### UI base — 🟡 EN CURSO
+
 - [x] Layout base con tokens Tailwind v4 (`@theme inline` directive con paleta brand-purple/turquoise/pink/coral/yellow/cream + Fredoka/Inter via next/font/google)
 - [x] **BrandMark + LucamsLogo** unificados — logo real PNG 468×468 RGBA en `public/brand/lucams-logo.png`, servido como WebP 5KB via Next Image optimizer
 - [x] **SiteHeader dinámico** (logged-in vs logged-out)
@@ -149,6 +155,7 @@ Antes de iniciar la fase, citar fuente con fecha en `OPERATIONS.md` para:
 - [ ] i18n routing es-CO/en con `next-intl` (diferido — pre-launch solo es-CO)
 
 #### CI/CD y observabilidad
+
 - [ ] CI en GitHub Actions: typecheck + lint + tests + secret scanning + dep audit
 - [ ] Pre-commit hook con `lint-staged` (formato + lint en archivos staged)
 - [ ] Vercel Logs como monitoreo básico
@@ -163,9 +170,9 @@ Antes de iniciar la fase, citar fuente con fecha en `OPERATIONS.md` para:
 - [x] **Audit fields uniformes** en schema Prisma (createdBy/updatedBy/deletedAt/deletedBy en mutables). Falta auto-fill desde sesión en Prisma `$extends` middleware
 - [x] **Soft delete consistente** — convención documentada en CONVENTIONS.md, schema lo soporta. Aplicación en repositories pendiente
 - [x] **Request ID correlation** — `lib/request-id.ts` con AsyncLocalStorage, generado en proxy.ts, header X-Request-Id en respuesta
-- [x] **Logger estructurado** — `pino` con redact paths para *Secret/*Key/*Token/email/phone/password + bindings + ISO timestamp
+- [x] **Logger estructurado** — `pino` con redact paths para *Secret/*Key/\*Token/email/phone/password + bindings + ISO timestamp
 - [ ] **`/api/metrics`** con bearer token — diferido a Fase 7 observabilidad
-- [x] **Migration strategy** — Prisma migrations + supabase/migrations/*.sql para SQL custom (RLS, rate-limit, etc.). Convención documentada
+- [x] **Migration strategy** — Prisma migrations + supabase/migrations/\*.sql para SQL custom (RLS, rate-limit, etc.). Convención documentada
 - [x] **Indexing inicial** — schema Prisma incluye índices en deletedAt + columns de lookup + composite indexes
 - [ ] **`fetchWithTimeout` + `withRetry` + `CircuitBreaker`** — pendiente. Necesario en Fase 4-5 (Wompi/Venndelo/Anthropic calls)
 - [ ] **`safeRedirectTarget`** — pendiente

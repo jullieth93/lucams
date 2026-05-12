@@ -20,10 +20,7 @@ import {
   softDeleteProduct,
   updateProduct,
 } from "@/features/products/service";
-import {
-  ProductCreateSchema,
-  ProductUpdateSchema,
-} from "@/features/products/schemas";
+import { ProductCreateSchema, ProductUpdateSchema } from "@/features/products/schemas";
 
 export type ProductActionState = {
   error?: string;
@@ -63,7 +60,9 @@ function parsePayload(formData: FormData) {
     basePrice: getOptNum("basePrice") ?? 0,
     compareAtPrice: getOptNum("compareAtPrice"),
     cost: getOptNum("cost"),
-    sku: String(get("sku") ?? "").trim().toUpperCase(),
+    sku: String(get("sku") ?? "")
+      .trim()
+      .toUpperCase(),
     categoryId: String(get("categoryId") ?? ""),
     isPersonalizable: get("isPersonalizable") === "on",
     isActive: get("isActive") === "on",

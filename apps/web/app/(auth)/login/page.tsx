@@ -17,11 +17,7 @@ const SUCCESS_MESSAGES: Record<string, string> = {
 
 type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
 
-export default async function LoginPage({
-  searchParams,
-}: {
-  searchParams: SearchParams;
-}) {
+export default async function LoginPage({ searchParams }: { searchParams: SearchParams }) {
   const sp = await searchParams;
   const errorParam = typeof sp.error === "string" ? sp.error : undefined;
   const resetParam = typeof sp.reset === "string" ? sp.reset : undefined;

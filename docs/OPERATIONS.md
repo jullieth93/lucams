@@ -125,17 +125,17 @@ supabase db dump --local > backups/local-$(date +%F-%H%M).sql
 
 ### Matriz de paridad
 
-| Aspecto | Local (VM) | Vercel | Estado |
-|---|---|---|---|
-| Versión Node | 22.22.2 (NodeSource RPM) | 22 (default Next 16) | ✅ |
-| Package manager | pnpm 11.0.9 (vía corepack) | pnpm (detectado por `pnpm-lock.yaml`) | ✅ |
-| **Build command** | `pnpm --filter web build` | igual (declarado en `vercel.json`) | ✅ |
-| **Install command** | `pnpm install --frozen-lockfile` | igual (declarado en `vercel.json`) | ✅ |
-| **Output directory** | `apps/web/.next/` | igual (declarado en `vercel.json`) | ✅ |
-| **Framework detection** | Next.js auto | Forced `"nextjs"` en `vercel.json` (evita falsa detección por `package.json` root del workspace) | ✅ |
-| Image optimization | `sharp` 0.34.5 (build script aprobado en `pnpm-workspace.yaml`) | Vercel managed (mismo binary) | ✅ |
-| Edge runtime | no usado | no usado (mantenemos `proxy.ts` con runtime nodejs) | ✅ |
-| Telemetry | `NEXT_TELEMETRY_DISABLED=1` en `.env.local` | Idem en Vercel env vars | ✅ |
+| Aspecto                 | Local (VM)                                                      | Vercel                                                                                           | Estado |
+| ----------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ | ------ |
+| Versión Node            | 22.22.2 (NodeSource RPM)                                        | 22 (default Next 16)                                                                             | ✅     |
+| Package manager         | pnpm 11.0.9 (vía corepack)                                      | pnpm (detectado por `pnpm-lock.yaml`)                                                            | ✅     |
+| **Build command**       | `pnpm --filter web build`                                       | igual (declarado en `vercel.json`)                                                               | ✅     |
+| **Install command**     | `pnpm install --frozen-lockfile`                                | igual (declarado en `vercel.json`)                                                               | ✅     |
+| **Output directory**    | `apps/web/.next/`                                               | igual (declarado en `vercel.json`)                                                               | ✅     |
+| **Framework detection** | Next.js auto                                                    | Forced `"nextjs"` en `vercel.json` (evita falsa detección por `package.json` root del workspace) | ✅     |
+| Image optimization      | `sharp` 0.34.5 (build script aprobado en `pnpm-workspace.yaml`) | Vercel managed (mismo binary)                                                                    | ✅     |
+| Edge runtime            | no usado                                                        | no usado (mantenemos `proxy.ts` con runtime nodejs)                                              | ✅     |
+| Telemetry               | `NEXT_TELEMETRY_DISABLED=1` en `.env.local`                     | Idem en Vercel env vars                                                                          | ✅     |
 
 ### Gap crítico — sincronización de env vars
 
@@ -145,19 +145,19 @@ supabase db dump --local > backups/local-$(date +%F-%H%M).sql
 
 Para los 3 environments de Vercel: **Production**, **Preview**, **Development**.
 
-| Variable | Pública (visible al cliente) | Notas |
-|---|---|---|
-| `NEXT_PUBLIC_SITE_URL` | ✅ | Cambia entre local (`http://localhost:3000`) y prod (`https://lucamsshop.co` cuando se compre) |
-| `NEXT_PUBLIC_SUPABASE_URL` | ✅ | Igual en todos los entornos |
-| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | ✅ | Igual en todos los entornos |
-| `SUPABASE_SECRET_KEY` | ❌ Solo server | **Marcar como Encrypted en Vercel** |
-| `DATABASE_URL` | ❌ | Pooler (puerto 6543), reemplazar `[YOUR-PASSWORD]` con la db password |
-| `DIRECT_URL` | ❌ | Direct (puerto 5432), idem |
-| `RESEND_API_KEY` | ❌ Solo server | Encrypted |
-| `EMAIL_FROM` | ❌ | Texto plano (`Lucams_shop <onboarding@resend.dev>`) |
-| `NEXT_PUBLIC_WA_NUMBER` | ✅ | `573150718723` |
-| `NODE_ENV` | ❌ | `production` en Vercel (no se setea manual; Vercel lo maneja) |
-| `NEXT_TELEMETRY_DISABLED` | ❌ | `1` |
+| Variable                               | Pública (visible al cliente) | Notas                                                                                          |
+| -------------------------------------- | ---------------------------- | ---------------------------------------------------------------------------------------------- |
+| `NEXT_PUBLIC_SITE_URL`                 | ✅                           | Cambia entre local (`http://localhost:3000`) y prod (`https://lucamsshop.co` cuando se compre) |
+| `NEXT_PUBLIC_SUPABASE_URL`             | ✅                           | Igual en todos los entornos                                                                    |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | ✅                           | Igual en todos los entornos                                                                    |
+| `SUPABASE_SECRET_KEY`                  | ❌ Solo server               | **Marcar como Encrypted en Vercel**                                                            |
+| `DATABASE_URL`                         | ❌                           | Pooler (puerto 6543), reemplazar `[YOUR-PASSWORD]` con la db password                          |
+| `DIRECT_URL`                           | ❌                           | Direct (puerto 5432), idem                                                                     |
+| `RESEND_API_KEY`                       | ❌ Solo server               | Encrypted                                                                                      |
+| `EMAIL_FROM`                           | ❌                           | Texto plano (`Lucams_shop <onboarding@resend.dev>`)                                            |
+| `NEXT_PUBLIC_WA_NUMBER`                | ✅                           | `573150718723`                                                                                 |
+| `NODE_ENV`                             | ❌                           | `production` en Vercel (no se setea manual; Vercel lo maneja)                                  |
+| `NEXT_TELEMETRY_DISABLED`              | ❌                           | `1`                                                                                            |
 
 > **Cómo agregarlas:** Vercel Dashboard → Project `lucams-shop` → Settings → Environment Variables → "Add New". Para cada var, marcar los 3 entornos (Production, Preview, Development) salvo que el valor difiera. Las que tienen `*_KEY`, `*_SECRET`, `DATABASE_*` deben marcarse como **Encrypted** (default checkbox).
 
@@ -167,22 +167,22 @@ Para los 3 environments de Vercel: **Production**, **Preview**, **Development**.
 
 Vive en el root: [`vercel.json`](../vercel.json). Es **minimal por diseño** — solo declara el `ignoreCommand`. La configuración de framework/build/install/output viene del **Root Directory** del proyecto en Vercel UI (debe estar seteado a `apps/web`).
 
-| Campo | Valor | Por qué |
-|---|---|---|
+| Campo           | Valor                                                                                                                      | Por qué                                                                                                                                                         |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `ignoreCommand` | `git diff HEAD^ HEAD --quiet -- ./apps/web ./packages ./pnpm-lock.yaml ./package.json ./pnpm-workspace.yaml ./vercel.json` | Skip deploy cuando solo cambian docs (ahorra build minutes). Se ejecuta desde la raíz del repo (no del Root Directory), por eso los paths son `./apps/web` etc. |
 
-> **Por qué Root Directory en UI y no `framework`/`buildCommand` en `vercel.json`:** Vercel valida la presencia de `next` en el `package.json` del **Root Directory** **antes** de leer `vercel.json`. Como nuestro `package.json` del repo root es del workspace (no de Next.js), declarar `framework: nextjs` en `vercel.json` no supera esa validación — produce el error *"No Next.js version detected"*. La solución correcta para monorepos es Root Directory = `apps/web`. Aprendido el 2026-05-09 al fallar el primer deploy con `vercel.json` "completo" — ver [`STATE.md` § sesión 12](STATE.md).
+> **Por qué Root Directory en UI y no `framework`/`buildCommand` en `vercel.json`:** Vercel valida la presencia de `next` en el `package.json` del **Root Directory** **antes** de leer `vercel.json`. Como nuestro `package.json` del repo root es del workspace (no de Next.js), declarar `framework: nextjs` en `vercel.json` no supera esa validación — produce el error _"No Next.js version detected"_. La solución correcta para monorepos es Root Directory = `apps/web`. Aprendido el 2026-05-09 al fallar el primer deploy con `vercel.json` "completo" — ver [`STATE.md` § sesión 12](STATE.md).
 
 ### Configuración requerida en Vercel UI
 
-| Setting | Valor | Cómo |
-|---|---|---|
-| **Root Directory** | `apps/web` | Settings → General → Root Directory → input. **Crítico**: sin esto los deploys fallan con "No Next.js version detected". |
-| Framework | (auto-detect) | Vercel detecta Next.js en `apps/web/package.json` |
-| Build Command | (auto-detect = `next build`) | — |
-| Install Command | (auto-detect = `pnpm install`) | Detecta `pnpm-workspace.yaml` en el padre, instala desde root del workspace |
-| Output Directory | (auto-detect = `.next`) | — |
-| Node Version | 22.x | Settings → General → Node.js Version |
+| Setting            | Valor                          | Cómo                                                                                                                     |
+| ------------------ | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
+| **Root Directory** | `apps/web`                     | Settings → General → Root Directory → input. **Crítico**: sin esto los deploys fallan con "No Next.js version detected". |
+| Framework          | (auto-detect)                  | Vercel detecta Next.js en `apps/web/package.json`                                                                        |
+| Build Command      | (auto-detect = `next build`)   | —                                                                                                                        |
+| Install Command    | (auto-detect = `pnpm install`) | Detecta `pnpm-workspace.yaml` en el padre, instala desde root del workspace                                              |
+| Output Directory   | (auto-detect = `.next`)        | —                                                                                                                        |
+| Node Version       | 22.x                           | Settings → General → Node.js Version                                                                                     |
 
 ---
 
@@ -209,31 +209,31 @@ cd /home/ansible/workspaces/lucams-shop-local && make help
 
 #### Stack
 
-| Comando | Acción |
-|---|---|
-| `make up` | Inicia Next.js dev server (background, log a `logs/web.log`, pid en `pids/web.pid`) |
-| `make down` | Mata el dev server |
-| `make restart` | down + up |
-| `make status` | Lista procesos vivos con su PID |
-| `make logs SERVICE=web` | `tail -f logs/web.log` |
-| `make clean` | Borra logs/ y pids/ |
+| Comando                 | Acción                                                                              |
+| ----------------------- | ----------------------------------------------------------------------------------- |
+| `make up`               | Inicia Next.js dev server (background, log a `logs/web.log`, pid en `pids/web.pid`) |
+| `make down`             | Mata el dev server                                                                  |
+| `make restart`          | down + up                                                                           |
+| `make status`           | Lista procesos vivos con su PID                                                     |
+| `make logs SERVICE=web` | `tail -f logs/web.log`                                                              |
+| `make clean`            | Borra logs/ y pids/                                                                 |
 
 #### Quality gates (sin levantar dev server)
 
-| Comando | Acción |
-|---|---|
-| `make build` | Build de producción (mismo comando que Vercel ejecuta) |
-| `make typecheck` | `tsc --noEmit` |
-| `make lint` | ESLint |
-| `make format` | Prettier --write |
+| Comando          | Acción                                                 |
+| ---------------- | ------------------------------------------------------ |
+| `make build`     | Build de producción (mismo comando que Vercel ejecuta) |
+| `make typecheck` | `tsc --noEmit`                                         |
+| `make lint`      | ESLint                                                 |
+| `make format`    | Prettier --write                                       |
 
 #### Validación local-cloud
 
-| Comando | Acción |
-|---|---|
-| `make env-check` | Lista vars de `.env.local` con su estado (loaded / missing / placeholder). **No expone valores** |
-| `make health` | Healthchecks: Supabase Auth, Supabase REST, web local (si está arriba) |
-| `make vercel-parity` | Reproduce el build EXACTO que Vercel ejecuta. Si funciona local, funciona en Vercel |
+| Comando              | Acción                                                                                           |
+| -------------------- | ------------------------------------------------------------------------------------------------ |
+| `make env-check`     | Lista vars de `.env.local` con su estado (loaded / missing / placeholder). **No expone valores** |
+| `make health`        | Healthchecks: Supabase Auth, Supabase REST, web local (si está arriba)                           |
+| `make vercel-parity` | Reproduce el build EXACTO que Vercel ejecuta. Si funciona local, funciona en Vercel              |
 
 ### Convenciones del Makefile
 
@@ -322,13 +322,13 @@ NEXT_TELEMETRY_DISABLED=1                          # Anonymous telemetry de Next
 
 ### Política de rotación
 
-| Secreto | Frecuencia | Después de |
-|---|---|---|
-| Wompi production keys | Anual | Compromiso sospechoso |
-| Supabase secret key | Anual o ad-hoc | Compromiso sospechoso. Las nuevas secret keys (`sb_secret_*`) son revocables/rotables sin downtime — múltiples activas a la vez |
-| Resend API key | Anual | Compromiso sospechoso |
-| Anthropic API key | 6 meses | Cambio de equipo |
-| Venndelo API key | Anual | Compromiso sospechoso |
+| Secreto               | Frecuencia     | Después de                                                                                                                      |
+| --------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| Wompi production keys | Anual          | Compromiso sospechoso                                                                                                           |
+| Supabase secret key   | Anual o ad-hoc | Compromiso sospechoso. Las nuevas secret keys (`sb_secret_*`) son revocables/rotables sin downtime — múltiples activas a la vez |
+| Resend API key        | Anual          | Compromiso sospechoso                                                                                                           |
+| Anthropic API key     | 6 meses        | Cambio de equipo                                                                                                                |
+| Venndelo API key      | Anual          | Compromiso sospechoso                                                                                                           |
 
 ---
 
@@ -406,17 +406,20 @@ supabase db dump --data-only > backup-$(date +%F).sql
 **Síntomas:** cliente pagó (recibe email de Wompi), pero `Order` sigue en `PENDING_PAYMENT`.
 
 **Diagnóstico:**
+
 1. Verificar `WebhookEvent` en DB: ¿se recibió el evento? Si no, el problema está en Wompi (panel de eventos).
 2. Si se recibió: ver `processedAt`. Si está null, ver Vercel Logs del request `/api/wompi/webhook` para errores.
 3. Verificar que la firma del webhook era válida.
 
 **Mitigación:**
+
 1. Validar manualmente el pago en panel Wompi.
 2. Marcar `Order.status = PAID` desde admin con razón "manual_after_webhook_failure".
 3. Crear envío Venndelo manualmente.
 4. Notificar al cliente.
 
 **Prevención:**
+
 - Implementar reintentos con backoff cuando el webhook handler falle (vía `pgmq` con visibility timeout, ADR-017).
 - Job `pg_cron` cada 15 min que enqueue en `order_reconciliation` las órdenes en `PENDING_PAYMENT` con > 1h y consume los mensajes consultando Wompi por su estado real.
 
@@ -427,16 +430,19 @@ supabase db dump --data-only > backup-$(date +%F).sql
 **Síntomas:** dos órdenes pagaron por el mismo último item disponible.
 
 **Diagnóstico:**
+
 1. Ver `InventoryLog` del variant afectado en orden cronológico.
 2. Verificar timing: ¿hubo dos pagos en menos de 1s?
 
 **Mitigación:**
+
 1. Una de las órdenes ya pagada se contacta al cliente para ofrecer:
    - Reembolso completo, o
    - Reservar para próxima reposición + cupón de compensación.
 2. Marcar la orden como `CANCELLED` con razón "oversold_compensated".
 
 **Prevención (modelo cerrado en ADR-014):**
+
 - **Reserva de stock al pasar a `PENDING_PAYMENT`** vía tabla `StockReservation` con `expiresAt = NOW() + 15 min`.
 - **Cleanup vía `pg_cron`** cada minuto: `DELETE FROM "StockReservation" WHERE "expiresAt" < NOW()` (libera la reserva).
 - **Descuento real** al pasar a `PAID`: transacción atómica con `SELECT ... FOR UPDATE` sobre `ProductVariant`, registrar `InventoryLog` con `reason='ORDER_PAID'`.
@@ -452,10 +458,12 @@ supabase db dump --data-only > backup-$(date +%F).sql
 **Diagnóstico:** dashboard Supabase muestra el proyecto en estado "paused".
 
 **Mitigación:**
+
 1. Click "Restore" en el dashboard.
 2. Esperar 1-2 min a que la DB esté disponible.
 
 **Prevención:**
+
 - Migrar a Pro antes del lanzamiento (no se pausa).
 - Mientras tanto, en dev hacer al menos un deploy o consulta semanal.
 
@@ -466,16 +474,19 @@ supabase db dump --data-only > backup-$(date +%F).sql
 **Síntomas:** cliente reporta no haber recibido confirmación.
 
 **Diagnóstico:**
+
 1. Buscar el email en panel Resend (logs de envío).
 2. Si dice "delivered" → revisar SPAM del cliente; problema del MTA.
 3. Si dice "bounced" → email inválido o blocklist.
 4. Si no aparece → el código no llamó al SDK; revisar Vercel Logs.
 
 **Mitigación:**
+
 - Reenviar manualmente desde admin.
 - Si el dominio está blocklisted, contactar al ISP para deslistar.
 
 **Prevención:**
+
 - Alertar en Resend cuando bounce rate > 5%.
 - Validar email en checkout con regex + DNS MX lookup opcional.
 
@@ -488,11 +499,13 @@ supabase db dump --data-only > backup-$(date +%F).sql
 **Diagnóstico:** Logs de build en el dashboard de Vercel.
 
 **Mitigación:**
+
 - Si es error de TS/lint: arreglar y hacer push.
 - Si es error de instalación: verificar `package.json` y `pnpm-lock.yaml` versionados.
 - Si Vercel está caído: esperar (status.vercel.com).
 
 **Prevención:**
+
 - CI en GitHub Actions corre antes del merge para no llegar a Vercel con errores triviales.
 
 ---
@@ -504,10 +517,12 @@ supabase db dump --data-only > backup-$(date +%F).sql
 **Diagnóstico:** Vercel Logs del flujo post-pago.
 
 **Mitigación:**
+
 1. Crear el envío manualmente desde admin (`/admin/ordenes/[id]/crear-envio`).
 2. Si Venndelo está caído (verificar status), reintentar después.
 
 **Prevención:**
+
 - Cola `shipment_creation_retry` en `pgmq` con visibility timeout 60s y backoff implícito por reintentos del consumer.
 - Job `pg_cron` cada 15 min: detecta órdenes `PAID` sin `venndeloShipmentId` con > 1h y las enqueue.
 - Consumer idempotente: chequea `venndeloShipmentId` antes de crear (no duplicar envíos en Venndelo).
@@ -567,13 +582,13 @@ Configurar en BetterStack (free) o UptimeRobot (free) para alertas si alguno cae
 
 Cuando se rompan estos límites, abrir issue automático:
 
-| Métrica | Umbral | Acción |
-|---|---|---|
-| Lighthouse Performance | < 90 | Bloquear merge en PR |
-| Bundle JS por página | > 250 KB gz | Revisar imports |
-| TTFB home (ISR) | > 500 ms | Investigar regresión |
-| Function execution time | > 30 s | Revisar logs y queries |
-| DB connections | > 80% del límite | Migrar a Pro / añadir pgBouncer |
+| Métrica                 | Umbral           | Acción                          |
+| ----------------------- | ---------------- | ------------------------------- |
+| Lighthouse Performance  | < 90             | Bloquear merge en PR            |
+| Bundle JS por página    | > 250 KB gz      | Revisar imports                 |
+| TTFB home (ISR)         | > 500 ms         | Investigar regresión            |
+| Function execution time | > 30 s           | Revisar logs y queries          |
+| DB connections          | > 80% del límite | Migrar a Pro / añadir pgBouncer |
 
 ---
 
@@ -581,28 +596,28 @@ Cuando se rompan estos límites, abrir issue automático:
 
 > A revisar el día 1 de cada mes una vez en producción.
 
-| Servicio | Plan | Costo | Notas |
-|---|---|---|---|
-| Vercel Pro | $20/mes | — | — |
-| Supabase Pro | $25/mes | — | — |
-| Resend Pro | $20/mes | — | — |
-| Anthropic | Variable | — | Alerta si > $30/mes |
-| Wompi | Por trx | — | 2.65% + $700 + IVA (plan Avanzado, frecuencia mensual). [Verificado: wompi.com/es/co/planes-tarifas a 2026-05-09](https://wompi.com/es/co/planes-tarifas/) |
-| Venndelo | Por envío | — | 0% comisión |
-| Dominio | $50.000 COP/año | — | mi.com.co |
-| **Total fijo** | | **~$272.000 COP/mes** | |
+| Servicio       | Plan            | Costo                 | Notas                                                                                                                                                      |
+| -------------- | --------------- | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Vercel Pro     | $20/mes         | —                     | —                                                                                                                                                          |
+| Supabase Pro   | $25/mes         | —                     | —                                                                                                                                                          |
+| Resend Pro     | $20/mes         | —                     | —                                                                                                                                                          |
+| Anthropic      | Variable        | —                     | Alerta si > $30/mes                                                                                                                                        |
+| Wompi          | Por trx         | —                     | 2.65% + $700 + IVA (plan Avanzado, frecuencia mensual). [Verificado: wompi.com/es/co/planes-tarifas a 2026-05-09](https://wompi.com/es/co/planes-tarifas/) |
+| Venndelo       | Por envío       | —                     | 0% comisión                                                                                                                                                |
+| Dominio        | $50.000 COP/año | —                     | mi.com.co                                                                                                                                                  |
+| **Total fijo** |                 | **~$272.000 COP/mes** |                                                                                                                                                            |
 
 ---
 
 ## Contacto y escalamiento
 
-| Tipo de incidente | A quién avisar |
-|---|---|
-| Pasarela de pago caída | Soporte Wompi (panel) + usuario |
-| Logística caída | Soporte Venndelo + usuario |
-| DB caída | Soporte Supabase + usuario |
-| Sitio caído | Vercel status + usuario |
-| Pregunta del cliente | WhatsApp del usuario (+57 315 071 8723 temporal) |
+| Tipo de incidente      | A quién avisar                                   |
+| ---------------------- | ------------------------------------------------ |
+| Pasarela de pago caída | Soporte Wompi (panel) + usuario                  |
+| Logística caída        | Soporte Venndelo + usuario                       |
+| DB caída               | Soporte Supabase + usuario                       |
+| Sitio caído            | Vercel status + usuario                          |
+| Pregunta del cliente   | WhatsApp del usuario (+57 315 071 8723 temporal) |
 
 ---
 
@@ -622,11 +637,11 @@ Cuando se rompan estos límites, abrir issue automático:
 
 ### Release strategy: continuous deployment + canary cuando aplique
 
-| Tipo | Trigger | Audiencia |
-|---|---|---|
-| **Preview** | Cada PR | Reviewer / QA manual / Lighthouse CI |
-| **Production** | Merge a `main` | 100% del tráfico |
-| **Canary** | Manual (cuando se quiere) | 10% del tráfico vía Vercel split o feature flag (Fase 7+) |
+| Tipo           | Trigger                   | Audiencia                                                 |
+| -------------- | ------------------------- | --------------------------------------------------------- |
+| **Preview**    | Cada PR                   | Reviewer / QA manual / Lighthouse CI                      |
+| **Production** | Merge a `main`            | 100% del tráfico                                          |
+| **Canary**     | Manual (cuando se quiere) | 10% del tráfico vía Vercel split o feature flag (Fase 7+) |
 
 - **Versionado:** tags `vX.Y.Z` (semver) en cada release de producción significativa.
   - `X` mayor: cambios que rompen compatibilidad de schema o API público.
@@ -636,11 +651,11 @@ Cuando se rompan estos límites, abrir issue automático:
 
 ### Environments
 
-| Environment | Cómo se levanta | Usado para | DB |
-|---|---|---|---|
-| **Local (dev)** | `pnpm dev` + `supabase start` | Desarrollo del usuario | Supabase local en Docker |
-| **Vercel Preview** | Push a feature branch | QA por PR, Lighthouse CI, smoke tests | **Supabase Free del proyecto** (mismo que prod hasta tener Pro) |
-| **Production** | Merge a `main` | Tráfico real | Supabase Pro (al lanzar) |
+| Environment        | Cómo se levanta               | Usado para                            | DB                                                              |
+| ------------------ | ----------------------------- | ------------------------------------- | --------------------------------------------------------------- |
+| **Local (dev)**    | `pnpm dev` + `supabase start` | Desarrollo del usuario                | Supabase local en Docker                                        |
+| **Vercel Preview** | Push a feature branch         | QA por PR, Lighthouse CI, smoke tests | **Supabase Free del proyecto** (mismo que prod hasta tener Pro) |
+| **Production**     | Merge a `main`                | Tráfico real                          | Supabase Pro (al lanzar)                                        |
 
 #### ¿Necesitamos staging?
 
@@ -655,13 +670,13 @@ Cuando se rompan estos límites, abrir issue automático:
 
 #### Opciones a evaluar antes de Fase 5
 
-| Proveedor | Tier Free | Pros | Contras |
-|---|---|---|---|
-| **Vercel Edge Config** | Hobby incluido | Integrado, edge-fast, sin red extra | Sin UI rica de targeting · funciones limitadas |
-| **GrowthBook** (cloud Free) | 5 ambientes, sin límite usuarios | UI completa, A/B testing nativo, gratis para nuestra escala | +1 vendor |
-| **Self-hosted GrowthBook en Supabase** | Sin costo extra | Control total, no exfiltra datos | Mantenimiento extra |
-| **Tabla `FeatureFlag` en Postgres** | Cero | Cero vendors, fácil | Sin UI; cambios requieren SQL |
-| **LaunchDarkly** | Sin Free real | Industria estándar | Caro |
+| Proveedor                              | Tier Free                        | Pros                                                        | Contras                                        |
+| -------------------------------------- | -------------------------------- | ----------------------------------------------------------- | ---------------------------------------------- |
+| **Vercel Edge Config**                 | Hobby incluido                   | Integrado, edge-fast, sin red extra                         | Sin UI rica de targeting · funciones limitadas |
+| **GrowthBook** (cloud Free)            | 5 ambientes, sin límite usuarios | UI completa, A/B testing nativo, gratis para nuestra escala | +1 vendor                                      |
+| **Self-hosted GrowthBook en Supabase** | Sin costo extra                  | Control total, no exfiltra datos                            | Mantenimiento extra                            |
+| **Tabla `FeatureFlag` en Postgres**    | Cero                             | Cero vendors, fácil                                         | Sin UI; cambios requieren SQL                  |
+| **LaunchDarkly**                       | Sin Free real                    | Industria estándar                                          | Caro                                           |
 
 **Recomendación inicial (a confirmar en ADR-026):** **GrowthBook cloud Free** + cliente JS simple. Coherente con free-tier-first y da UI de targeting.
 
@@ -669,14 +684,14 @@ Cuando se rompan estos límites, abrir issue automático:
 
 ```ts
 // lib/feature-flags.ts
-import { evaluateFlag } from '@/lib/feature-flags-client';
+import { evaluateFlag } from "@/lib/feature-flags-client";
 
 export async function isFeatureEnabled(flagKey: string, userId?: string): Promise<boolean> {
   return await evaluateFlag(flagKey, { userId, env: process.env.NODE_ENV });
 }
 
 // uso:
-if (await isFeatureEnabled('ai-design-suggest', user?.id)) {
+if (await isFeatureEnabled("ai-design-suggest", user?.id)) {
   // ...
 }
 ```
@@ -698,13 +713,13 @@ if (await isFeatureEnabled('ai-design-suggest', user?.id)) {
 
 ### Capas de defensa
 
-| Capa | Mecanismo | Recuperación |
-|---|---|---|
-| App (Vercel) | Inmutable deploys + Git | Rollback a deployment previo: `vercel rollback <url>` (segundos) |
-| DB (Supabase Pro) | PITR 7 días + backup diario | Restore desde dashboard (~30 min) |
-| Storage (Supabase) | Replicación interna AWS | — (transparente) |
-| Backup off-site (R2) | Export semanal a R2 | Restore manual desde dump SQL (~2h) |
-| DNS (Cloudflare) | Configuración versionada en repo (Terraform o manual) | Recreación manual (~30 min) |
+| Capa                 | Mecanismo                                             | Recuperación                                                     |
+| -------------------- | ----------------------------------------------------- | ---------------------------------------------------------------- |
+| App (Vercel)         | Inmutable deploys + Git                               | Rollback a deployment previo: `vercel rollback <url>` (segundos) |
+| DB (Supabase Pro)    | PITR 7 días + backup diario                           | Restore desde dashboard (~30 min)                                |
+| Storage (Supabase)   | Replicación interna AWS                               | — (transparente)                                                 |
+| Backup off-site (R2) | Export semanal a R2                                   | Restore manual desde dump SQL (~2h)                              |
+| DNS (Cloudflare)     | Configuración versionada en repo (Terraform o manual) | Recreación manual (~30 min)                                      |
 
 ### Procedimiento de recuperación end-to-end
 
@@ -766,12 +781,12 @@ if (await isFeatureEnabled('ai-design-suggest', user?.id)) {
 
 ### Calendario de DR drills
 
-| Trimestre | Drill | Responsable |
-|---|---|---|
-| Q1 cada año | Drill #1 (PITR DB) | Operador |
-| Q2 | Drill #2 (R2 backup) | Operador |
-| Q3 | Drill #3 (Vercel rollback) | Operador |
-| Q4 | Drill combinado (todos) | Operador |
+| Trimestre   | Drill                      | Responsable |
+| ----------- | -------------------------- | ----------- |
+| Q1 cada año | Drill #1 (PITR DB)         | Operador    |
+| Q2          | Drill #2 (R2 backup)       | Operador    |
+| Q3          | Drill #3 (Vercel rollback) | Operador    |
+| Q4          | Drill combinado (todos)    | Operador    |
 
 ---
 
@@ -781,106 +796,106 @@ if (await isFeatureEnabled('ai-design-suggest', user?.id)) {
 
 ### Vercel Hobby — [vercel.com/docs/limits](https://vercel.com/docs/limits) + [vercel.com/legal/terms](https://vercel.com/legal/terms)
 
-| Item | Valor verificado |
-|---|---|
-| Function timeout | 10 s default, **60 s máximo** |
-| Fast Data Transfer | 100 GB/mes |
-| Function invocations | 1.000.000/mes |
-| Active CPU | 4 CPU-hrs/mes |
-| Provisioned Memory | 360 GB-hrs/mes |
-| Build minutes | 6.000/mes (45 min máximo por deployment) |
-| Cron Jobs | 100 por proyecto (no usamos — ADR-017 prefiere `pg_cron`) |
-| Concurrent Builds | 1 |
-| Deployments por día | 100 |
-| Static file uploads | 100 MB |
-| Runtime logs retention | **1 hora** |
-| Domains por proyecto | 50 |
+| Item                   | Valor verificado                                          |
+| ---------------------- | --------------------------------------------------------- |
+| Function timeout       | 10 s default, **60 s máximo**                             |
+| Fast Data Transfer     | 100 GB/mes                                                |
+| Function invocations   | 1.000.000/mes                                             |
+| Active CPU             | 4 CPU-hrs/mes                                             |
+| Provisioned Memory     | 360 GB-hrs/mes                                            |
+| Build minutes          | 6.000/mes (45 min máximo por deployment)                  |
+| Cron Jobs              | 100 por proyecto (no usamos — ADR-017 prefiere `pg_cron`) |
+| Concurrent Builds      | 1                                                         |
+| Deployments por día    | 100                                                       |
+| Static file uploads    | 100 MB                                                    |
+| Runtime logs retention | **1 hora**                                                |
+| Domains por proyecto   | 50                                                        |
 
-> ⚠️ **Crítico — ToS uso comercial:** cita textual del [Vercel Terms](https://vercel.com/legal/terms): *"You shall only use the Services under a Hobby plan for your personal or non-commercial use."* Hobby **no permite uso comercial**. Adicionalmente: *"We may shut down and terminate projects or deployments using the Hobby plan without notice for any reason or no reason."*
+> ⚠️ **Crítico — ToS uso comercial:** cita textual del [Vercel Terms](https://vercel.com/legal/terms): _"You shall only use the Services under a Hobby plan for your personal or non-commercial use."_ Hobby **no permite uso comercial**. Adicionalmente: _"We may shut down and terminate projects or deployments using the Hobby plan without notice for any reason or no reason."_
 >
 > **Implicación:** Lucams_shop debe migrar a Vercel Pro **antes de la primera transacción Wompi real** (no es preferencia, es obligación contractual). El upgrade ya estaba planeado en Fase 7; queda confirmado como bloqueante.
 
 ### Supabase Free — [supabase.com/pricing](https://supabase.com/pricing)
 
-| Item | Valor verificado |
-|---|---|
-| Database size | 500 MB |
-| Database compute | Shared CPU + 500 MB RAM |
-| File storage | 1 GB |
-| Monthly Active Users (Auth) | 50.000 |
-| Edge Function invocations | 500.000/mes |
-| Egress (bandwidth) | 5 GB + 5 GB cached |
-| **Pausa por inactividad** | **1 semana** sin actividad → proyecto pausado |
-| Active projects | Máximo 2 por organización |
+| Item                        | Valor verificado                              |
+| --------------------------- | --------------------------------------------- |
+| Database size               | 500 MB                                        |
+| Database compute            | Shared CPU + 500 MB RAM                       |
+| File storage                | 1 GB                                          |
+| Monthly Active Users (Auth) | 50.000                                        |
+| Edge Function invocations   | 500.000/mes                                   |
+| Egress (bandwidth)          | 5 GB + 5 GB cached                            |
+| **Pausa por inactividad**   | **1 semana** sin actividad → proyecto pausado |
+| Active projects             | Máximo 2 por organización                     |
 
 > **Implicación operativa:** durante dev, hacer al menos un deploy o consulta semanal para no perder horas re-activando el proyecto. Si quisiéramos un staging environment separado en Free (ADR-027 pendiente), consume 1 de los 2 proyectos disponibles — no bloqueante pero limita.
 
 ### Supabase Queues (`pgmq`) y `pg_cron` — [supabase.com/docs/guides/queues](https://supabase.com/docs/guides/queues)
 
-| Item | Valor verificado |
-|---|---|
-| `pgmq` disponibilidad | **Disponible** vía dashboard → Integrations en proyectos con Postgres ≥ 15.6.1.143. Plan Free no excluido en docs públicas. |
-| `pg_cron` disponibilidad | **Disponible** vía dashboard → Integrations en plan Free. |
-| Límites específicos por tier | **No publicados explícitamente** en docs oficiales para Free. |
+| Item                         | Valor verificado                                                                                                            |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `pgmq` disponibilidad        | **Disponible** vía dashboard → Integrations en proyectos con Postgres ≥ 15.6.1.143. Plan Free no excluido en docs públicas. |
+| `pg_cron` disponibilidad     | **Disponible** vía dashboard → Integrations en plan Free.                                                                   |
+| Límites específicos por tier | **No publicados explícitamente** en docs oficiales para Free.                                                               |
 
 > **`[pendiente verificación práctica]` (mandato #9):** confirmar al crear el proyecto Supabase real (Fase 0b) que ambos extensions activan sin errores y registrar cualquier límite que aparezca. Si fueran restringidos a planes pagos, replanteamos ADR-017 (Vercel Cron como fallback).
 
 ### Resend Free — [resend.com/pricing](https://resend.com/pricing)
 
-| Item | Valor verificado |
-|---|---|
-| Emails por mes | 3.000 |
-| Emails por día | 100 |
-| Dominios custom | 1 (verificable cuando tengamos `mail.lucamsshop.co`) |
-| Retención de emails | 30 días |
+| Item                | Valor verificado                                     |
+| ------------------- | ---------------------------------------------------- |
+| Emails por mes      | 3.000                                                |
+| Emails por día      | 100                                                  |
+| Dominios custom     | 1 (verificable cuando tengamos `mail.lucamsshop.co`) |
+| Retención de emails | 30 días                                              |
 
 > **Implicación:** suficiente para dev y soft launch. 100 emails/día cubren ~30 órdenes/día con 3 emails por orden (confirmación + envío + entrega). Migrar a Pro al activar dominio propio en Fase 7 (ya planeado).
 
 ### Anthropic Claude API — [platform.claude.com/docs/en/about-claude/models/overview](https://platform.claude.com/docs/en/about-claude/models/overview)
 
-| Modelo | Input USD/MTok | Output USD/MTok | Context | Max output |
-|---|---|---|---|---|
-| **Claude Sonnet 4.6** (recomendado para Estudio IA) | **$3** | **$15** | 1M tokens | 64k tokens |
-| Claude Haiku 4.5 (alternativa más barata) | $1 | $5 | 200k tokens | 64k tokens |
-| Claude Opus 4.7 (más potente) | $5 | $25 | 1M tokens | 128k tokens |
+| Modelo                                              | Input USD/MTok | Output USD/MTok | Context     | Max output  |
+| --------------------------------------------------- | -------------- | --------------- | ----------- | ----------- |
+| **Claude Sonnet 4.6** (recomendado para Estudio IA) | **$3**         | **$15**         | 1M tokens   | 64k tokens  |
+| Claude Haiku 4.5 (alternativa más barata)           | $1             | $5              | 200k tokens | 64k tokens  |
+| Claude Opus 4.7 (más potente)                       | $5             | $25             | 1M tokens   | 128k tokens |
 
 > **Modelo elegido:** Sonnet 4.6 (per `INTEGRATIONS.md § Claude API`). Estimación de costo por sugerencia: ~500 tokens input + ~300 tokens output = **~$0.006 USD por sugerencia única**. Con cache 24h en Postgres (ADR-016) y rate limit por usuario, 1.000 sugerencias únicas/mes ≈ **$6 USD/mes**. Manejable. Tokens "Priority Tier" disponibles para escalado futuro.
 
 ### Cloudflare R2 Free — [developers.cloudflare.com/r2/pricing](https://developers.cloudflare.com/r2/pricing/)
 
-| Item | Valor verificado |
-|---|---|
-| Storage | 10 GB-mes |
-| Class A operations (writes/lists) | 1.000.000/mes |
-| Class B operations (reads) | 10.000.000/mes |
-| **Egress** | **Free** (zero egress fees) |
-| Aplica solo a | Standard storage (no Infrequent Access) |
+| Item                              | Valor verificado                        |
+| --------------------------------- | --------------------------------------- |
+| Storage                           | 10 GB-mes                               |
+| Class A operations (writes/lists) | 1.000.000/mes                           |
+| Class B operations (reads)        | 10.000.000/mes                          |
+| **Egress**                        | **Free** (zero egress fees)             |
+| Aplica solo a                     | Standard storage (no Infrequent Access) |
 
 > **Implicación:** más que suficiente para backups semanales del proyecto durante años. Egress gratis es la ventaja clave vs S3 (donde restore implica $$$). Activar en Fase 0b.
 
 ### Cloudflare Turnstile Free — [cloudflare.com/products/turnstile](https://www.cloudflare.com/products/turnstile/) + [community.cloudflare.com](https://community.cloudflare.com/t/turnstile-1-million-verify-requests-limit/469162)
 
-| Item | Valor verificado |
-|---|---|
-| Plan | $0/mes |
-| Siteverify endpoint calls | **1.000.000/mes por sitio** |
-| Widgets máximos por cuenta | 20 |
-| Aplica para | Personal/hobby/business no-mission-critical |
+| Item                       | Valor verificado                            |
+| -------------------------- | ------------------------------------------- |
+| Plan                       | $0/mes                                      |
+| Siteverify endpoint calls  | **1.000.000/mes por sitio**                 |
+| Widgets máximos por cuenta | 20                                          |
+| Aplica para                | Personal/hobby/business no-mission-critical |
 
 > **Implicación:** suficiente para checkout + registro + cualquier formulario público en Lucams. Activar dentro de la cuenta Cloudflare en Fase 0b.
 
 ### Resumen ejecutivo de impacto en el plan
 
-| Hallazgo | Impacto en ROADMAP/decisiones |
-|---|---|
-| Vercel Hobby = sin uso comercial (ToS) | Adelantar migración a Pro al primer pago real (ya planeado en Fase 7, ahora **confirmado como obligación contractual**, no preferencia) |
-| Supabase Free se pausa a 1 semana | Disciplina de actividad semanal durante dev. Pro antes del lanzamiento (ya planeado) |
-| Supabase Free = 2 proyectos máx | Si queremos staging Free, consume 1 de 2. No bloqueante para Fase 0b |
-| `pgmq`/`pg_cron` en Free no confirmado por doc | **Verificar en Fase 0b al crear proyecto.** Si están restringidos, ADR-017 se replantea (Vercel Cron como fallback) |
-| Resend 100/día | OK para soft launch (~30 órdenes/día) |
-| R2 egress gratis | Backups robustos sin temer costo de restore |
-| Turnstile 1M/sitio | Sin preocupación de tope |
-| Sonnet 4.6 a $0.006/sugerencia | Con cache 24h, 1.000 sugerencias únicas/mes = $6 USD. Manejable |
+| Hallazgo                                       | Impacto en ROADMAP/decisiones                                                                                                           |
+| ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| Vercel Hobby = sin uso comercial (ToS)         | Adelantar migración a Pro al primer pago real (ya planeado en Fase 7, ahora **confirmado como obligación contractual**, no preferencia) |
+| Supabase Free se pausa a 1 semana              | Disciplina de actividad semanal durante dev. Pro antes del lanzamiento (ya planeado)                                                    |
+| Supabase Free = 2 proyectos máx                | Si queremos staging Free, consume 1 de 2. No bloqueante para Fase 0b                                                                    |
+| `pgmq`/`pg_cron` en Free no confirmado por doc | **Verificar en Fase 0b al crear proyecto.** Si están restringidos, ADR-017 se replantea (Vercel Cron como fallback)                     |
+| Resend 100/día                                 | OK para soft launch (~30 órdenes/día)                                                                                                   |
+| R2 egress gratis                               | Backups robustos sin temer costo de restore                                                                                             |
+| Turnstile 1M/sitio                             | Sin preocupación de tope                                                                                                                |
+| Sonnet 4.6 a $0.006/sugerencia                 | Con cache 24h, 1.000 sugerencias únicas/mes = $6 USD. Manejable                                                                         |
 
 ---
 

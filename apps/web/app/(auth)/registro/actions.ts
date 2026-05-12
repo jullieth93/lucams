@@ -35,15 +35,9 @@ import { supabaseService } from "@/lib/supabase/service";
 const SignupSchema = z
   .object({
     email: z.string().email("Email inválido"),
-    password: z
-      .string()
-      .min(8, "Mínimo 8 caracteres")
-      .max(72, "Máximo 72 caracteres"),
+    password: z.string().min(8, "Mínimo 8 caracteres").max(72, "Máximo 72 caracteres"),
     passwordConfirm: z.string(),
-    firstName: z
-      .string()
-      .min(1, "Tu nombre es obligatorio")
-      .max(50, "Máximo 50 caracteres"),
+    firstName: z.string().min(1, "Tu nombre es obligatorio").max(50, "Máximo 50 caracteres"),
     lastName: z.string().max(50, "Máximo 50 caracteres").optional(),
   })
   .refine((d) => d.password === d.passwordConfirm, {
@@ -55,10 +49,7 @@ export type SignupActionState = {
   error?: string;
   success?: string;
   fieldErrors?: Partial<
-    Record<
-      "email" | "password" | "passwordConfirm" | "firstName" | "lastName",
-      string[]
-    >
+    Record<"email" | "password" | "passwordConfirm" | "firstName" | "lastName", string[]>
   >;
 };
 
@@ -102,16 +93,8 @@ export async function signupAction(
   // pre-launch (testing requiere room). Defense-in-depth real cuando
   // bajemos prod a límites estrictos al lanzar — TODO mismo que en
   // registro/actions.ts cabecera.
-  const rlIp = await rateLimit(
-    ipKey("signup", ip),
-    isProd ? 10 : 30,
-    60 * 60,
-  );
-  const rlEmail = await rateLimit(
-    emailKey("signup", parsed.data.email),
-    isProd ? 10 : 30,
-    60 * 60,
-  );
+  const rlIp = await rateLimit(ipKey("signup", ip), isProd ? 10 : 30, 60 * 60);
+  const rlEmail = await rateLimit(emailKey("signup", parsed.data.email), isProd ? 10 : 30, 60 * 60);
   if (!rlIp.allowed || !rlEmail.allowed) {
     logger.warn({
       event: "auth.signup.rate_limited",
@@ -120,8 +103,7 @@ export async function signupAction(
       emailCount: rlEmail.count,
     });
     return {
-      error:
-        "Demasiados intentos de registro. Espera una hora antes de reintentar.",
+      error: "Demasiados intentos de registro. Espera una hora antes de reintentar.",
     };
   }
 
@@ -164,8 +146,7 @@ export async function signupAction(
       message: authError.message,
     });
     return {
-      error:
-        "No pudimos crear tu cuenta. Si ya tienes una, intenta iniciar sesión.",
+      error: "No pudimos crear tu cuenta. Si ya tienes una, intenta iniciar sesión.",
     };
   }
 
@@ -189,8 +170,7 @@ export async function signupAction(
       userId: authData.user.id,
     });
     return {
-      error:
-        "Este correo ya tiene una cuenta. Inicia sesión o usa 'Olvidé mi contraseña'.",
+      error: "Este correo ya tiene una cuenta. Inicia sesión o usa 'Olvidé mi contraseña'.",
     };
   }
 
@@ -215,8 +195,7 @@ export async function signupAction(
     // esto no debería ocurrir nunca — pero en caso de inconsistencia
     // damos un mensaje accionable en lugar del genérico.
     const isUniqueViolation =
-      err instanceof Prisma.PrismaClientKnownRequestError &&
-      err.code === "P2002";
+      err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002";
     const violatedField =
       isUniqueViolation && Array.isArray(err.meta?.target)
         ? (err.meta.target as string[])[0]
@@ -245,10 +224,7 @@ export async function signupAction(
           event: "auth.signup.rollback_fail",
           ip,
           userId,
-          err:
-            rollbackErr instanceof Error
-              ? rollbackErr.message
-              : String(rollbackErr),
+          err: rollbackErr instanceof Error ? rollbackErr.message : String(rollbackErr),
         },
         "Auth user rollback failed — manual cleanup may be required",
       );

@@ -18,13 +18,7 @@ import { redirect } from "next/navigation";
 import { logoutAction } from "@/app/auth/logout/actions";
 import { BrandMark } from "@/components/brand-mark";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { getCurrentCustomer } from "@/lib/auth";
 
 export const metadata: Metadata = {
@@ -37,13 +31,12 @@ export default async function MiCuentaPage() {
   if (!session) redirect("/login?next=/mi-cuenta");
 
   const { customer } = session;
-  const displayName =
-    customer.firstName ?? customer.email.split("@")[0] ?? "Lucamer";
+  const displayName = customer.firstName ?? customer.email.split("@")[0] ?? "Lucamer";
 
   return (
-    <div className="min-h-screen bg-brand-cream">
-      <header className="px-6 py-6 sm:px-10 border-b border-brand-purple/10 bg-white">
-        <div className="max-w-4xl mx-auto flex items-center justify-between">
+    <div className="bg-brand-cream min-h-screen">
+      <header className="border-brand-purple/10 border-b bg-white px-6 py-6 sm:px-10">
+        <div className="mx-auto flex max-w-4xl items-center justify-between">
           <BrandMark size="sm" animated />
           <form action={logoutAction}>
             <Button
@@ -58,40 +51,30 @@ export default async function MiCuentaPage() {
       </header>
 
       <main className="px-4 py-10 sm:py-14">
-        <div className="max-w-4xl mx-auto space-y-6">
+        <div className="mx-auto max-w-4xl space-y-6">
           <div>
-            <h1 className="font-display text-3xl text-brand-purple-dark">
-              Hola, {displayName} 👋
-            </h1>
-            <p className="text-muted-foreground mt-1">
-              Bienvenida a tu espacio Lucams.
-            </p>
+            <h1 className="font-display text-brand-purple-dark text-3xl">Hola, {displayName} 👋</h1>
+            <p className="text-muted-foreground mt-1">Bienvenida a tu espacio Lucams.</p>
           </div>
 
           <Card>
             <CardHeader>
-              <CardTitle className="font-display text-xl text-brand-purple-dark">
+              <CardTitle className="font-display text-brand-purple-dark text-xl">
                 Tu perfil
               </CardTitle>
-              <CardDescription>
-                Esta es la información que tenemos de ti.
-              </CardDescription>
+              <CardDescription>Esta es la información que tenemos de ti.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               <ProfileRow label="Nombre">
-                {[customer.firstName, customer.lastName]
-                  .filter(Boolean)
-                  .join(" ") || "—"}
+                {[customer.firstName, customer.lastName].filter(Boolean).join(" ") || "—"}
               </ProfileRow>
               <ProfileRow label="Correo">{customer.email}</ProfileRow>
               <ProfileRow label="Teléfono">{customer.phone ?? "—"}</ProfileRow>
               <ProfileRow label="Puntos Lucams">
-                <span className="font-semibold text-brand-purple">
-                  {customer.loyaltyPoints}
-                </span>
+                <span className="text-brand-purple font-semibold">{customer.loyaltyPoints}</span>
               </ProfileRow>
               <ProfileRow label="Código de referido">
-                <code className="rounded bg-brand-cream px-2 py-1 text-sm font-mono text-brand-purple-dark">
+                <code className="bg-brand-cream text-brand-purple-dark rounded px-2 py-1 font-mono text-sm">
                   {customer.referralCode}
                 </code>
               </ProfileRow>
@@ -100,14 +83,12 @@ export default async function MiCuentaPage() {
 
           <Card>
             <CardHeader>
-              <CardTitle className="font-display text-xl text-brand-purple-dark">
+              <CardTitle className="font-display text-brand-purple-dark text-xl">
                 Pronto aquí
               </CardTitle>
-              <CardDescription>
-                Estamos preparando estas secciones para ti.
-              </CardDescription>
+              <CardDescription>Estamos preparando estas secciones para ti.</CardDescription>
             </CardHeader>
-            <CardContent className="space-y-2 text-sm text-muted-foreground">
+            <CardContent className="text-muted-foreground space-y-2 text-sm">
               <p>· Mis órdenes — histórico de compras + tracking.</p>
               <p>· Mis direcciones — guardadas para checkout rápido.</p>
               <p>· Mis reseñas — productos que has calificado.</p>
@@ -121,17 +102,11 @@ export default async function MiCuentaPage() {
   );
 }
 
-function ProfileRow({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
+function ProfileRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-4 py-2 border-b border-brand-purple/10 last:border-0">
-      <dt className="text-sm text-muted-foreground sm:w-40">{label}</dt>
-      <dd className="text-base text-foreground">{children}</dd>
+    <div className="border-brand-purple/10 flex flex-col gap-1 border-b py-2 last:border-0 sm:flex-row sm:items-center sm:gap-4">
+      <dt className="text-muted-foreground text-sm sm:w-40">{label}</dt>
+      <dd className="text-foreground text-base">{children}</dd>
     </div>
   );
 }

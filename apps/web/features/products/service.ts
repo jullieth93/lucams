@@ -11,10 +11,7 @@
 
 import "server-only";
 import { prisma, type Prisma } from "@/lib/db";
-import type {
-  ProductCreateInput,
-  ProductUpdateInput,
-} from "./schemas";
+import type { ProductCreateInput, ProductUpdateInput } from "./schemas";
 
 export type ProductListItem = {
   id: string;
@@ -110,10 +107,7 @@ export async function getProductById(id: string) {
   });
 }
 
-export async function createProduct(
-  input: ProductCreateInput,
-  createdBy: string | null,
-) {
+export async function createProduct(input: ProductCreateInput, createdBy: string | null) {
   // Verificar unicidad slug + sku (mejor mensaje de error que el de
   // Prisma P2002 genérico).
   const [slugConflict, skuConflict] = await Promise.all([
@@ -164,10 +158,7 @@ export async function createProduct(
   });
 }
 
-export async function updateProduct(
-  input: ProductUpdateInput,
-  updatedBy: string | null,
-) {
+export async function updateProduct(input: ProductUpdateInput, updatedBy: string | null) {
   const { id, ...rest } = input;
 
   // Si cambian slug/sku, verificar unicidad excluyendo el propio.

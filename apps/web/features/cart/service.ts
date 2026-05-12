@@ -47,7 +47,9 @@ export type CartDetail = {
 };
 
 export class CartError extends Error {
-  constructor(public code: "PRODUCT_NOT_FOUND" | "NO_DEFAULT_VARIANT" | "QTY_INVALID" | "ITEM_NOT_FOUND") {
+  constructor(
+    public code: "PRODUCT_NOT_FOUND" | "NO_DEFAULT_VARIANT" | "QTY_INVALID" | "ITEM_NOT_FOUND",
+  ) {
     super(code);
     this.name = "CartError";
   }
@@ -253,10 +255,7 @@ export async function updateCartItemQty(
   return toDetail(reloaded!);
 }
 
-export async function removeCartItem(
-  sessionId: string,
-  itemId: string,
-): Promise<CartDetail> {
+export async function removeCartItem(sessionId: string, itemId: string): Promise<CartDetail> {
   return updateCartItemQty(sessionId, itemId, 0);
 }
 

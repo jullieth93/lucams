@@ -12,10 +12,7 @@
 import { Eye, EyeOff, AlertTriangle } from "lucide-react";
 import { useState, type ComponentProps } from "react";
 import { Input } from "@/components/ui/input";
-import {
-  calculatePasswordStrength,
-  type PasswordScore,
-} from "@/lib/password-strength";
+import { calculatePasswordStrength, type PasswordScore } from "@/lib/password-strength";
 import { cn } from "@/lib/utils";
 
 type Props = Omit<ComponentProps<"input">, "type"> & {
@@ -73,7 +70,7 @@ export function PasswordInput({
           aria-label={visible ? "Ocultar contraseña" : "Mostrar contraseña"}
           aria-pressed={visible}
           onClick={() => setVisible((v) => !v)}
-          className="absolute inset-y-0 right-0 flex items-center px-3 text-muted-foreground hover:text-brand-purple focus:outline-none focus-visible:text-brand-purple"
+          className="text-muted-foreground hover:text-brand-purple focus-visible:text-brand-purple absolute inset-y-0 right-0 flex items-center px-3 focus:outline-none"
           tabIndex={-1}
         >
           {visible ? (
@@ -87,7 +84,7 @@ export function PasswordInput({
       {capsLock && (
         <p
           role="status"
-          className="flex items-center gap-1.5 text-xs text-warning"
+          className="text-warning flex items-center gap-1.5 text-xs"
           style={{ color: "var(--warning)" }}
         >
           <AlertTriangle className="h-3 w-3" aria-hidden="true" />
@@ -107,17 +104,13 @@ export function PasswordInput({
                 key={i}
                 className={cn(
                   "h-1 flex-1 rounded-full transition-colors duration-300",
-                  (strength.score as number) > i
-                    ? strength.color
-                    : "bg-muted",
+                  (strength.score as number) > i ? strength.color : "bg-muted",
                 )}
               />
             ))}
           </div>
           <p className="flex justify-between text-xs">
-            <span className="font-medium text-foreground/80">
-              {strength.label}
-            </span>
+            <span className="text-foreground/80 font-medium">{strength.label}</span>
             <span className="text-muted-foreground">{strength.suggestion}</span>
           </p>
         </div>

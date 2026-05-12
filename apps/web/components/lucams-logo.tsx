@@ -62,7 +62,7 @@ export function LucamsLogo({
       <span
         aria-hidden="true"
         className={[
-          "inline-flex items-center justify-center rounded-full bg-brand-purple shadow-lg ring-4 ring-brand-yellow",
+          "bg-brand-purple ring-brand-yellow inline-flex items-center justify-center rounded-full shadow-lg ring-4",
           className,
         ]
           .filter(Boolean)

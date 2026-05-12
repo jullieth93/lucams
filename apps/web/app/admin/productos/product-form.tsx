@@ -14,19 +14,9 @@
 
 import Link from "next/link";
 import { useActionState, useState } from "react";
-import type {
-  createProductAction,
-  ProductActionState,
-  updateProductAction,
-} from "./actions";
+import type { createProductAction, ProductActionState, updateProductAction } from "./actions";
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
@@ -55,16 +45,11 @@ type Props = {
   submitLabel: string;
 };
 
-export function ProductForm({
-  categories,
-  initialProduct,
-  action,
-  submitLabel,
-}: Props) {
-  const [state, formAction, pending] = useActionState<
-    ProductActionState | null,
-    FormData
-  >(action, null);
+export function ProductForm({ categories, initialProduct, action, submitLabel }: Props) {
+  const [state, formAction, pending] = useActionState<ProductActionState | null, FormData>(
+    action,
+    null,
+  );
 
   const isEdit = Boolean(initialProduct);
   const [name, setName] = useState(initialProduct?.name ?? "");
@@ -92,11 +77,7 @@ export function ProductForm({
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <Field
-            id="name"
-            label="Nombre"
-            error={state?.fieldErrors?.name?.[0]}
-          >
+          <Field id="name" label="Nombre" error={state?.fieldErrors?.name?.[0]}>
             <Input
               id="name"
               name="name"
@@ -129,11 +110,7 @@ export function ProductForm({
             />
           </Field>
 
-          <Field
-            id="description"
-            label="Descripción"
-            error={state?.fieldErrors?.description?.[0]}
-          >
+          <Field id="description" label="Descripción" error={state?.fieldErrors?.description?.[0]}>
             <Textarea
               id="description"
               name="description"
@@ -163,18 +140,14 @@ export function ProductForm({
               />
             </Field>
 
-            <Field
-              id="categoryId"
-              label="Categoría"
-              error={state?.fieldErrors?.categoryId?.[0]}
-            >
+            <Field id="categoryId" label="Categoría" error={state?.fieldErrors?.categoryId?.[0]}>
               <select
                 id="categoryId"
                 name="categoryId"
                 required
                 defaultValue={initialProduct?.categoryId ?? ""}
                 disabled={pending}
-                className="flex h-9 w-full rounded-lg border border-input bg-transparent px-3 py-1 text-sm shadow-xs transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50"
+                className="border-input focus-visible:border-ring focus-visible:ring-ring/50 flex h-9 w-full rounded-lg border bg-transparent px-3 py-1 text-sm shadow-xs transition-colors outline-none focus-visible:ring-3 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <option value="" disabled>
                   Selecciona...
@@ -186,7 +159,7 @@ export function ProductForm({
                 ))}
               </select>
               {categories.length === 0 && (
-                <p className="text-xs text-amber-700 mt-1">
+                <p className="mt-1 text-xs text-amber-700">
                   No hay categorías. Crea una primero o corre{" "}
                   <code className="text-xs">make seed-products</code>.
                 </p>
@@ -200,8 +173,7 @@ export function ProductForm({
         <CardHeader>
           <CardTitle className="text-base text-slate-900">Precio (en pesos COP)</CardTitle>
           <CardDescription className="text-slate-600">
-            Se guarda internamente en centavos. Aquí se digita en pesos
-            enteros (sin decimales).
+            Se guarda internamente en centavos. Aquí se digita en pesos enteros (sin decimales).
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -218,7 +190,9 @@ export function ProductForm({
               id="compareAtPrice"
               label="Precio antes"
               hint="opcional — si está, se muestra tachado"
-              defaultPesos={initialProduct?.compareAtPrice ? initialProduct.compareAtPrice / 100 : null}
+              defaultPesos={
+                initialProduct?.compareAtPrice ? initialProduct.compareAtPrice / 100 : null
+              }
               error={state?.fieldErrors?.compareAtPrice?.[0]}
               pending={pending}
             />
@@ -297,7 +271,10 @@ export function ProductForm({
       </Card>
 
       {state?.error && !state.fieldErrors && (
-        <div role="alert" className="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">
+        <div
+          role="alert"
+          className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
+        >
           {state.error}
         </div>
       )}
@@ -305,15 +282,12 @@ export function ProductForm({
       <div className="flex items-center gap-3">
         <Button
           type="submit"
-          className="bg-slate-900 hover:bg-slate-800 text-white font-semibold"
+          className="bg-slate-900 font-semibold text-white hover:bg-slate-800"
           disabled={pending}
         >
           {pending ? "Guardando..." : submitLabel}
         </Button>
-        <Link
-          href="/admin/productos"
-          className="text-sm text-slate-600 hover:text-slate-900"
-        >
+        <Link href="/admin/productos" className="text-sm text-slate-600 hover:text-slate-900">
           Cancelar
         </Link>
       </div>
@@ -363,16 +337,12 @@ function PriceField({
   error?: string;
   pending: boolean;
 }) {
-  const [pesos, setPesos] = useState<string>(
-    defaultPesos !== null ? String(defaultPesos) : "",
-  );
+  const [pesos, setPesos] = useState<string>(defaultPesos !== null ? String(defaultPesos) : "");
   const centavos = pesos === "" ? "" : String(Math.round(Number(pesos) * 100));
   return (
     <Field id={id} label={label} hint={hint} error={error}>
       <div className="relative">
-        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-sm text-slate-500">
-          $
-        </span>
+        <span className="absolute top-1/2 left-2.5 -translate-y-1/2 text-sm text-slate-500">$</span>
         <Input
           id={`${id}__display`}
           type="number"
@@ -403,7 +373,7 @@ function Checkbox({
   disabled: boolean;
 }) {
   return (
-    <label className="flex items-start gap-2 text-sm text-slate-700 cursor-pointer">
+    <label className="flex cursor-pointer items-start gap-2 text-sm text-slate-700">
       <input
         type="checkbox"
         name={name}

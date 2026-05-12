@@ -52,11 +52,7 @@ export async function recuperarPasswordAction(
 
   // Rate-limit doble: por IP y por email. Reset es un vector común
   // de account-enumeration y spam — limites más conservadores.
-  const rlIp = await rateLimit(
-    ipKey("reset-password", ip),
-    isProd ? 10 : 30,
-    60 * 60,
-  );
+  const rlIp = await rateLimit(ipKey("reset-password", ip), isProd ? 10 : 30, 60 * 60);
   const rlEmail = await rateLimit(
     emailKey("reset-password", parsed.data.email),
     isProd ? 10 : 30,
@@ -70,8 +66,7 @@ export async function recuperarPasswordAction(
       emailCount: rlEmail.count,
     });
     return {
-      error:
-        "Demasiados intentos. Por favor espera una hora antes de reintentar.",
+      error: "Demasiados intentos. Por favor espera una hora antes de reintentar.",
     };
   }
 
@@ -80,9 +75,7 @@ export async function recuperarPasswordAction(
   // configurado con {{ .Token }}) y lo tipea en /restablecer-password.
   // Esto evita el bug de Gmail prefetch que consume tokens de links.
   const supabase = await createSupabaseServerClient();
-  const { error } = await supabase.auth.resetPasswordForEmail(
-    parsed.data.email,
-  );
+  const { error } = await supabase.auth.resetPasswordForEmail(parsed.data.email);
 
   if (error) {
     logger.info({
@@ -96,7 +89,5 @@ export async function recuperarPasswordAction(
     logger.info({ event: "auth.reset.sent", ip });
   }
 
-  redirect(
-    `/restablecer-password?email=${encodeURIComponent(parsed.data.email)}`,
-  );
+  redirect(`/restablecer-password?email=${encodeURIComponent(parsed.data.email)}`);
 }

@@ -38,13 +38,8 @@ export type PwnedCheckResult =
   | { pwned: true; count: number }
   | { pwned: false; failed: true; reason: string };
 
-export async function checkPwnedPassword(
-  password: string,
-): Promise<PwnedCheckResult> {
-  const sha1 = createHash("sha1")
-    .update(password)
-    .digest("hex")
-    .toUpperCase();
+export async function checkPwnedPassword(password: string): Promise<PwnedCheckResult> {
+  const sha1 = createHash("sha1").update(password).digest("hex").toUpperCase();
   const prefix = sha1.slice(0, 5);
   const suffix = sha1.slice(5);
 

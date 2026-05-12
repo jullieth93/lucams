@@ -29,16 +29,16 @@
 
 ## Modelo de amenazas resumido
 
-| Actor | Vector | Mitigación principal |
-|---|---|---|
-| Bot scraper | Scraping de catálogo, abuso de `/api/ai/*` | Rate limit + Turnstile + cache |
-| Atacante con cuenta | Acceso a datos de otros usuarios | RLS + tests automatizados |
-| Atacante sin cuenta | SQL injection, XSS, CSRF | Prisma + React + SameSite cookies + CSP |
-| Insider (empleado) | Abuso del admin | RBAC + audit log + 2FA |
-| Suplantador | Webhook falso de Wompi/Venndelo | HMAC verification + idempotencia |
-| Compromiso de secreto | Secret key (`sb_secret_*`) expuesta | Rotación inmediata (Supabase permite múltiples secret keys, revocar la comprometida sin downtime) + nunca al cliente + .gitignored |
-| Subida maliciosa | Archivo con malware en storage | Allowlist MIME + tamaño máximo + nombre aleatorio + render server |
-| Pago fraudulento | Stolen card en checkout | Wompi 3DS + Turnstile + límites Wompi |
+| Actor                 | Vector                                     | Mitigación principal                                                                                                               |
+| --------------------- | ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
+| Bot scraper           | Scraping de catálogo, abuso de `/api/ai/*` | Rate limit + Turnstile + cache                                                                                                     |
+| Atacante con cuenta   | Acceso a datos de otros usuarios           | RLS + tests automatizados                                                                                                          |
+| Atacante sin cuenta   | SQL injection, XSS, CSRF                   | Prisma + React + SameSite cookies + CSP                                                                                            |
+| Insider (empleado)    | Abuso del admin                            | RBAC + audit log + 2FA                                                                                                             |
+| Suplantador           | Webhook falso de Wompi/Venndelo            | HMAC verification + idempotencia                                                                                                   |
+| Compromiso de secreto | Secret key (`sb_secret_*`) expuesta        | Rotación inmediata (Supabase permite múltiples secret keys, revocar la comprometida sin downtime) + nunca al cliente + .gitignored |
+| Subida maliciosa      | Archivo con malware en storage             | Allowlist MIME + tamaño máximo + nombre aleatorio + render server                                                                  |
+| Pago fraudulento      | Stolen card en checkout                    | Wompi 3DS + Turnstile + límites Wompi                                                                                              |
 
 ---
 
@@ -110,12 +110,12 @@
 
 ### RBAC — modelo de roles
 
-| Rol | Aplica a | Permisos |
-|---|---|---|
-| `customer` (default Supabase) | Clientes finales | Leer/escribir sus propias órdenes, dirección, reseñas |
-| `SUPERADMIN` | Operador del negocio | Todo el `/admin/*` |
-| `MANAGER` | Empleado de tienda | Productos, inventario, órdenes, reseñas |
-| `FULFILLMENT` | Operador logístico | Órdenes (cambio de estado, descarga PNG producción) |
+| Rol                           | Aplica a             | Permisos                                              |
+| ----------------------------- | -------------------- | ----------------------------------------------------- |
+| `customer` (default Supabase) | Clientes finales     | Leer/escribir sus propias órdenes, dirección, reseñas |
+| `SUPERADMIN`                  | Operador del negocio | Todo el `/admin/*`                                    |
+| `MANAGER`                     | Empleado de tienda   | Productos, inventario, órdenes, reseñas               |
+| `FULFILLMENT`                 | Operador logístico   | Órdenes (cambio de estado, descarga PNG producción)   |
 
 - Tabla `AdminUser` con `role` y `isActive`.
 - Middleware en `app/middleware.ts` valida que `auth.uid()` esté en `AdminUser` con `isActive=true` y rol permitido para la ruta.
@@ -188,22 +188,22 @@ describe('RLS', () => {
 
 ### Inventario de claves
 
-| Variable | Tipo | Visible en cliente | Doc oficial protección |
-|---|---|---|---|
-| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (`sb_publishable_*`) | Pública (RLS-protected) | Sí | Mapea al rol Postgres `anon` · permisos limitados por RLS · whitelist de dominio en Supabase si se activa |
-| `NEXT_PUBLIC_SUPABASE_URL` | Pública | Sí | — |
-| `SUPABASE_SECRET_KEY` (`sb_secret_*`) | **PRIVADA — bypassa RLS** | **NO** | Mapea al rol Postgres `service_role`. Solo server, gitignored. Múltiples secret keys soportadas (rotación sin downtime) |
-| `NEXT_PUBLIC_WOMPI_PUBLIC_KEY` | Pública | Sí | Whitelist de dominio en panel Wompi |
-| `WOMPI_PRIVATE_KEY` | Privada | **NO** | — |
-| `WOMPI_INTEGRITY_SECRET` | Privada | **NO** | — |
-| `WOMPI_EVENTS_SECRET` | Privada (HMAC webhooks) | **NO** | — |
-| `VENNDELO_API_KEY` | Privada | **NO** | — |
-| `VENNDELO_WEBHOOK_SECRET` | Privada (HMAC webhooks) | **NO** | — |
-| `RESEND_API_KEY` | Privada | **NO** | — |
-| `ANTHROPIC_API_KEY` | Privada | **NO** | Solo en `/api/ai/*` server |
-| `NEXT_PUBLIC_TURNSTILE_SITE_KEY` | Pública | Sí | Whitelist de dominio en Cloudflare |
-| `TURNSTILE_SECRET_KEY` | Privada | **NO** | Server-only para validación de token |
-| `R2_*` | Privada | **NO** | — |
+| Variable                                                    | Tipo                      | Visible en cliente | Doc oficial protección                                                                                                  |
+| ----------------------------------------------------------- | ------------------------- | ------------------ | ----------------------------------------------------------------------------------------------------------------------- |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (`sb_publishable_*`) | Pública (RLS-protected)   | Sí                 | Mapea al rol Postgres `anon` · permisos limitados por RLS · whitelist de dominio en Supabase si se activa               |
+| `NEXT_PUBLIC_SUPABASE_URL`                                  | Pública                   | Sí                 | —                                                                                                                       |
+| `SUPABASE_SECRET_KEY` (`sb_secret_*`)                       | **PRIVADA — bypassa RLS** | **NO**             | Mapea al rol Postgres `service_role`. Solo server, gitignored. Múltiples secret keys soportadas (rotación sin downtime) |
+| `NEXT_PUBLIC_WOMPI_PUBLIC_KEY`                              | Pública                   | Sí                 | Whitelist de dominio en panel Wompi                                                                                     |
+| `WOMPI_PRIVATE_KEY`                                         | Privada                   | **NO**             | —                                                                                                                       |
+| `WOMPI_INTEGRITY_SECRET`                                    | Privada                   | **NO**             | —                                                                                                                       |
+| `WOMPI_EVENTS_SECRET`                                       | Privada (HMAC webhooks)   | **NO**             | —                                                                                                                       |
+| `VENNDELO_API_KEY`                                          | Privada                   | **NO**             | —                                                                                                                       |
+| `VENNDELO_WEBHOOK_SECRET`                                   | Privada (HMAC webhooks)   | **NO**             | —                                                                                                                       |
+| `RESEND_API_KEY`                                            | Privada                   | **NO**             | —                                                                                                                       |
+| `ANTHROPIC_API_KEY`                                         | Privada                   | **NO**             | Solo en `/api/ai/*` server                                                                                              |
+| `NEXT_PUBLIC_TURNSTILE_SITE_KEY`                            | Pública                   | Sí                 | Whitelist de dominio en Cloudflare                                                                                      |
+| `TURNSTILE_SECRET_KEY`                                      | Privada                   | **NO**             | Server-only para validación de token                                                                                    |
+| `R2_*`                                                      | Privada                   | **NO**             | —                                                                                                                       |
 
 ### Detección automática de secretos
 
@@ -228,14 +228,14 @@ describe('RLS', () => {
 
 **Operaciones permitidas y cómo hacerlas:**
 
-| Operación | Método correcto | Por qué es seguro |
-|---|---|---|
-| **Modificar valores** | `sed -i 's/OLD/NEW/' .env.local` via Bash | `sed -i` modifica in-place sin imprimir contenido en la salida |
-| **Renombrar variables** | `sed -i 's/^OLD_NAME=/NEW_NAME=/' .env.local` | Idem |
-| **Inspeccionar nombres de variables** | `grep -E '^[A-Z_]+=' .env.local \| cut -d= -f1` | Solo nombres antes del `=`, valores nunca |
-| **Verificar que una var está cargada** | `set -a; source .env.local; set +a; [ -n "$VAR" ] && echo loaded` en una sola línea Bash | Vars viven en el subshell, no en el contexto del modelo |
-| **Verificar tipo/longitud sin valor** | `${#VAR}` (longitud), `${VAR:0:N}...` (prefijo público como `sb_publishable_`) | El prefijo de 10-15 chars de un secret no compromete nada |
-| **Probar conexión** | `set -a; source .env.local; set +a; curl -H "apikey: $VAR" URL` en una sola línea | Las vars se inyectan al curl pero no aparecen en la salida |
+| Operación                              | Método correcto                                                                          | Por qué es seguro                                              |
+| -------------------------------------- | ---------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| **Modificar valores**                  | `sed -i 's/OLD/NEW/' .env.local` via Bash                                                | `sed -i` modifica in-place sin imprimir contenido en la salida |
+| **Renombrar variables**                | `sed -i 's/^OLD_NAME=/NEW_NAME=/' .env.local`                                            | Idem                                                           |
+| **Inspeccionar nombres de variables**  | `grep -E '^[A-Z_]+=' .env.local \| cut -d= -f1`                                          | Solo nombres antes del `=`, valores nunca                      |
+| **Verificar que una var está cargada** | `set -a; source .env.local; set +a; [ -n "$VAR" ] && echo loaded` en una sola línea Bash | Vars viven en el subshell, no en el contexto del modelo        |
+| **Verificar tipo/longitud sin valor**  | `${#VAR}` (longitud), `${VAR:0:N}...` (prefijo público como `sb_publishable_`)           | El prefijo de 10-15 chars de un secret no compromete nada      |
+| **Probar conexión**                    | `set -a; source .env.local; set +a; curl -H "apikey: $VAR" URL` en una sola línea        | Las vars se inyectan al curl pero no aparecen en la salida     |
 
 **Operaciones prohibidas:**
 
@@ -255,14 +255,14 @@ describe('RLS', () => {
 
 ### Set base (Fase 1)
 
-| Header | Valor | Por qué |
-|---|---|---|
-| `Strict-Transport-Security` | `max-age=63072000; includeSubDomains; preload` | Fuerza HTTPS por 2 años en navegadores que lo cachean |
-| `X-Frame-Options` | `DENY` | Previene clickjacking (no se embebe el sitio en iframes) |
-| `X-Content-Type-Options` | `nosniff` | Previene MIME sniffing por el navegador |
-| `Referrer-Policy` | `strict-origin-when-cross-origin` | Limita info referrer enviada a otros dominios |
-| `Permissions-Policy` | `camera=(), microphone=(), geolocation=()` | Niega APIs sensibles que no usamos |
-| `X-DNS-Prefetch-Control` | `on` | Optimización menor para preconectar a CDN |
+| Header                      | Valor                                          | Por qué                                                  |
+| --------------------------- | ---------------------------------------------- | -------------------------------------------------------- |
+| `Strict-Transport-Security` | `max-age=63072000; includeSubDomains; preload` | Fuerza HTTPS por 2 años en navegadores que lo cachean    |
+| `X-Frame-Options`           | `DENY`                                         | Previene clickjacking (no se embebe el sitio en iframes) |
+| `X-Content-Type-Options`    | `nosniff`                                      | Previene MIME sniffing por el navegador                  |
+| `Referrer-Policy`           | `strict-origin-when-cross-origin`              | Limita info referrer enviada a otros dominios            |
+| `Permissions-Policy`        | `camera=(), microphone=(), geolocation=()`     | Niega APIs sensibles que no usamos                       |
+| `X-DNS-Prefetch-Control`    | `on`                                           | Optimización menor para preconectar a CDN                |
 
 ### Content-Security-Policy (CSP)
 
@@ -294,11 +294,11 @@ curl -I https://lucamsshop.co
 Tests E2E (Playwright):
 
 ```ts
-test('security headers present', async ({ request }) => {
-  const response = await request.get('/');
-  expect(response.headers()['strict-transport-security']).toContain('max-age=63072000');
-  expect(response.headers()['x-frame-options']).toBe('DENY');
-  expect(response.headers()['content-security-policy']).toContain("default-src 'self'");
+test("security headers present", async ({ request }) => {
+  const response = await request.get("/");
+  expect(response.headers()["strict-transport-security"]).toContain("max-age=63072000");
+  expect(response.headers()["x-frame-options"]).toBe("DENY");
+  expect(response.headers()["content-security-policy"]).toContain("default-src 'self'");
 });
 ```
 
@@ -317,25 +317,25 @@ test('security headers present', async ({ request }) => {
 ```ts
 // apps/web/middleware.ts (fragmento)
 const ALLOWED_ORIGINS = [
-  'https://lucamsshop.co',
-  /^https:\/\/.*\.vercel\.app$/,  // Previews
-  ...(process.env.NODE_ENV === 'development' ? ['http://localhost:3000'] : []),
+  "https://lucamsshop.co",
+  /^https:\/\/.*\.vercel\.app$/, // Previews
+  ...(process.env.NODE_ENV === "development" ? ["http://localhost:3000"] : []),
 ];
 
 export function middleware(req: NextRequest) {
-  const origin = req.headers.get('origin');
-  const isApi = req.nextUrl.pathname.startsWith('/api/');
+  const origin = req.headers.get("origin");
+  const isApi = req.nextUrl.pathname.startsWith("/api/");
   if (!isApi || !origin) return NextResponse.next();
 
-  const allowed = ALLOWED_ORIGINS.some(o =>
-    typeof o === 'string' ? o === origin : o.test(origin)
+  const allowed = ALLOWED_ORIGINS.some((o) =>
+    typeof o === "string" ? o === origin : o.test(origin),
   );
-  if (!allowed) return new NextResponse('Forbidden', { status: 403 });
+  if (!allowed) return new NextResponse("Forbidden", { status: 403 });
 
   const res = NextResponse.next();
-  res.headers.set('Access-Control-Allow-Origin', origin);
-  res.headers.set('Access-Control-Allow-Credentials', 'true');
-  res.headers.set('Vary', 'Origin');
+  res.headers.set("Access-Control-Allow-Origin", origin);
+  res.headers.set("Access-Control-Allow-Credentials", "true");
+  res.headers.set("Vary", "Origin");
   return res;
 }
 ```
@@ -358,22 +358,22 @@ export function middleware(req: NextRequest) {
 
 ```ts
 // apps/web/lib/csrf.ts
-import { createHash, randomBytes } from 'crypto';
+import { createHash, randomBytes } from "crypto";
 
 export function generateCsrfToken(sessionId: string): string {
-  const salt = randomBytes(16).toString('hex');
-  const hash = createHash('sha256')
+  const salt = randomBytes(16).toString("hex");
+  const hash = createHash("sha256")
     .update(`${sessionId}:${salt}:${process.env.CSRF_SECRET}`)
-    .digest('hex');
+    .digest("hex");
   return `${salt}.${hash}`;
 }
 
 export function verifyCsrfToken(sessionId: string, token: string): boolean {
-  const [salt, expected] = token.split('.');
+  const [salt, expected] = token.split(".");
   if (!salt || !expected) return false;
-  const actual = createHash('sha256')
+  const actual = createHash("sha256")
     .update(`${sessionId}:${salt}:${process.env.CSRF_SECRET}`)
-    .digest('hex');
+    .digest("hex");
   return actual === expected;
 }
 ```
@@ -388,29 +388,29 @@ Rate limit en Postgres + `pg_cron` durante dev y arranque productivo. Migrar a R
 
 ### Buckets y límites
 
-| Endpoint | Clave | Límite | Ventana | Razón |
-|---|---|---|---|---|
-| `POST /api/ai/design-suggest` | IP + cuenta autenticada | 20 / 5 min | 5 min | Costo Claude API |
-| `POST /api/checkout/create` | IP | 10 / 10 min | 10 min | Anti-fraude |
-| `POST /auth/signup` (Supabase) | IP | 5 / 1 h | 1 h | Anti-bot |
-| `POST /auth/login` | IP + email | 5 / 15 min | 15 min | Anti-brute force |
-| `POST /api/shipping/quote` | IP | 60 / 1 min | 1 min | Genera tráfico a Venndelo |
-| `POST /api/upload/sign` | userId | 30 / 10 min | 10 min | Anti-DoS de storage |
-| Webhooks Wompi/Venndelo | externalId | 1 / siempre | — | Idempotencia (`@@unique`) |
-| Storefront público (lectura) | IP | 1.000 / 1 min | 1 min | Anti-scraper agresivo |
+| Endpoint                       | Clave                   | Límite        | Ventana | Razón                     |
+| ------------------------------ | ----------------------- | ------------- | ------- | ------------------------- |
+| `POST /api/ai/design-suggest`  | IP + cuenta autenticada | 20 / 5 min    | 5 min   | Costo Claude API          |
+| `POST /api/checkout/create`    | IP                      | 10 / 10 min   | 10 min  | Anti-fraude               |
+| `POST /auth/signup` (Supabase) | IP                      | 5 / 1 h       | 1 h     | Anti-bot                  |
+| `POST /auth/login`             | IP + email              | 5 / 15 min    | 15 min  | Anti-brute force          |
+| `POST /api/shipping/quote`     | IP                      | 60 / 1 min    | 1 min   | Genera tráfico a Venndelo |
+| `POST /api/upload/sign`        | userId                  | 30 / 10 min   | 10 min  | Anti-DoS de storage       |
+| Webhooks Wompi/Venndelo        | externalId              | 1 / siempre   | —       | Idempotencia (`@@unique`) |
+| Storefront público (lectura)   | IP                      | 1.000 / 1 min | 1 min   | Anti-scraper agresivo     |
 
 ### Implementación
 
 ```ts
 // lib/rate-limit.ts
-import { supabaseAdmin } from './supabase/service';
+import { supabaseAdmin } from "./supabase/service";
 
 export async function rateLimit(
   key: string,
   limit: number,
-  windowSec: number
+  windowSec: number,
 ): Promise<{ allowed: boolean; remaining: number; resetAt: Date }> {
-  const { data, error } = await supabaseAdmin.rpc('rate_limit_increment', {
+  const { data, error } = await supabaseAdmin.rpc("rate_limit_increment", {
     p_key: key,
     p_limit: limit,
     p_window_sec: windowSec,
@@ -481,25 +481,30 @@ Retry-After: 120
 
 ```ts
 // lib/validation/checkout.ts
-import { z } from 'zod';
+import { z } from "zod";
 
 export const ShippingAddressSchema = z.object({
-  name: z.string().min(2).max(80).regex(/^[\p{L}\s'.-]+$/u, 'Solo letras y espacios'),
+  name: z
+    .string()
+    .min(2)
+    .max(80)
+    .regex(/^[\p{L}\s'.-]+$/u, "Solo letras y espacios"),
   line1: z.string().min(5).max(120),
   line2: z.string().max(120).optional(),
   city: z.string().min(2).max(80),
-  department: z.enum([
-    'Amazonas', 'Antioquia', 'Arauca', /* ... 32 deptos CO ... */
-  ]),
-  zip: z.string().regex(/^\d{6}$/).optional(),
-  phone: z.string().regex(/^(\+57)?3\d{9}$/, 'Celular CO inválido'),
+  department: z.enum(["Amazonas", "Antioquia", "Arauca" /* ... 32 deptos CO ... */]),
+  zip: z
+    .string()
+    .regex(/^\d{6}$/)
+    .optional(),
+  phone: z.string().regex(/^(\+57)?3\d{9}$/, "Celular CO inválido"),
 });
 
 export const CheckoutPayloadSchema = z.object({
   email: z.string().email().toLowerCase().trim(),
   cartId: z.string().cuid(),
   shippingAddress: ShippingAddressSchema,
-  paymentMethod: z.enum(['WOMPI', 'COD']),
+  paymentMethod: z.enum(["WOMPI", "COD"]),
   couponCode: z.string().max(40).optional(),
 });
 
@@ -540,22 +545,22 @@ export async function POST(req: Request) {
 
 > Mandato: **todo recurso temporal tiene TTL explícito.** Nada infinito.
 
-| Recurso | TTL | Mecanismo |
-|---|---|---|
-| Access token Supabase | 1 h | Auto-rotation con refresh token |
-| Refresh token Supabase | 30 días | Rotation en cada uso |
-| Session cookie del admin | 30 min idle | Middleware revalida |
-| Reset password link | 1 h | Token firmado con secret + expiración |
-| Email confirmation link | 24 h | Idem |
-| Reserva de stock (`StockReservation`) | 15 min | `pg_cron` cleanup cada minuto (ADR-014) |
-| Cache de respuestas IA | 24 h | `cache_entries.expires_at` + `pg_cron` |
-| Cache de cotizaciones Venndelo | 5 min | Idem |
-| Rate limit windows | 1 h | `pg_cron` cleanup |
-| URL firmada `customer-uploads` | 1 h | Supabase Storage signed URL |
-| URL firmada `production-assets` | 15 min | Idem (acceso solo admin) |
-| Webhook events archivados | 90 días | Cleanup manual o `pg_cron` |
-| Audit logs admin | 2 años | Política legal |
-| Backups en R2 | 1 año (semanales) | Lifecycle rule en bucket |
+| Recurso                               | TTL               | Mecanismo                               |
+| ------------------------------------- | ----------------- | --------------------------------------- |
+| Access token Supabase                 | 1 h               | Auto-rotation con refresh token         |
+| Refresh token Supabase                | 30 días           | Rotation en cada uso                    |
+| Session cookie del admin              | 30 min idle       | Middleware revalida                     |
+| Reset password link                   | 1 h               | Token firmado con secret + expiración   |
+| Email confirmation link               | 24 h              | Idem                                    |
+| Reserva de stock (`StockReservation`) | 15 min            | `pg_cron` cleanup cada minuto (ADR-014) |
+| Cache de respuestas IA                | 24 h              | `cache_entries.expires_at` + `pg_cron`  |
+| Cache de cotizaciones Venndelo        | 5 min             | Idem                                    |
+| Rate limit windows                    | 1 h               | `pg_cron` cleanup                       |
+| URL firmada `customer-uploads`        | 1 h               | Supabase Storage signed URL             |
+| URL firmada `production-assets`       | 15 min            | Idem (acceso solo admin)                |
+| Webhook events archivados             | 90 días           | Cleanup manual o `pg_cron`              |
+| Audit logs admin                      | 2 años            | Política legal                          |
+| Backups en R2                         | 1 año (semanales) | Lifecycle rule en bucket                |
 
 ---
 
@@ -663,17 +668,18 @@ JSON estructurado con campos mínimos:
 
 ### Niveles
 
-| Nivel | Cuándo |
-|---|---|
-| `debug` | Solo dev. Datos verbosos para depuración. |
-| `info` | Eventos normales (request, response, queue processed). |
-| `warn` | Algo inusual pero no roto (rate limit hit, retry). |
-| `error` | Algo falló y necesita atención. |
-| `fatal` | El proceso no puede continuar. |
+| Nivel   | Cuándo                                                 |
+| ------- | ------------------------------------------------------ |
+| `debug` | Solo dev. Datos verbosos para depuración.              |
+| `info`  | Eventos normales (request, response, queue processed). |
+| `warn`  | Algo inusual pero no roto (rate limit hit, retry).     |
+| `error` | Algo falló y necesita atención.                        |
+| `fatal` | El proceso no puede continuar.                         |
 
 ### PII redactada
 
 **Nunca loggear:**
+
 - Email completo → loggear hash o `cu***@gmail.com`.
 - Teléfono completo → últimos 4 dígitos.
 - Dirección → ciudad/depto solamente.
@@ -694,24 +700,26 @@ Implementar en logger global con función `redact(payload, fields)`.
 
 ### Datos personales recolectados
 
-| Campo | Origen | Propósito | Retención |
-|---|---|---|---|
-| Email | Registro / checkout | Auth, comunicación transaccional, marketing (opt-in) | Mientras la cuenta exista + 1 año |
-| Teléfono | Checkout | Logística (contacto del repartidor) | Mientras la orden esté activa + 5 años (legal) |
-| Dirección | Checkout | Logística | Idem |
-| Nombre | Checkout / registro | Personalización + emails | Idem |
-| Fotos subidas (estudio) | Personalización | Producción del imán | Mientras la orden esté activa + 90 días |
-| IP | Logs / rate limit | Seguridad, prevención de fraude | 90 días |
+| Campo                   | Origen              | Propósito                                            | Retención                                      |
+| ----------------------- | ------------------- | ---------------------------------------------------- | ---------------------------------------------- |
+| Email                   | Registro / checkout | Auth, comunicación transaccional, marketing (opt-in) | Mientras la cuenta exista + 1 año              |
+| Teléfono                | Checkout            | Logística (contacto del repartidor)                  | Mientras la orden esté activa + 5 años (legal) |
+| Dirección               | Checkout            | Logística                                            | Idem                                           |
+| Nombre                  | Checkout / registro | Personalización + emails                             | Idem                                           |
+| Fotos subidas (estudio) | Personalización     | Producción del imán                                  | Mientras la orden esté activa + 90 días        |
+| IP                      | Logs / rate limit   | Seguridad, prevención de fraude                      | 90 días                                        |
 
 ### Derechos del titular (Ley 1581)
 
 Página `/cuenta/privacidad` permite al cliente:
+
 - Ver sus datos almacenados.
 - Solicitar corrección.
 - Solicitar exportación (`GET /api/me/export` genera ZIP con JSON + imágenes).
 - Solicitar eliminación de cuenta (`DELETE /api/me/account`).
 
 **Eliminación de cuenta:**
+
 - Soft-delete inmediato (`Customer.deletedAt`).
 - Pasados 30 días: hard-delete de PII directa (email, phone, name → `[deleted-user]`), preservar datos transaccionales anonimizados (`Order` queda pero sin nombre/email del cliente).
 - Logs y backups: PII se purga en próximos ciclos de cleanup.
@@ -792,60 +800,60 @@ Decisión definitiva de observabilidad de errores: ADR-022 abierto en Fase 7.
 
 ### Las 6 categorías STRIDE
 
-| Letra | Categoría | Definición (cita textual del doc oficial) | Mitigación principal en Lucams_shop |
-|---|---|---|---|
-| **S** | Spoofing | *"illegally accessing and then using another user's authentication information"* | Supabase Auth + MFA admin + cookies HttpOnly+Secure+SameSite=Lax |
-| **T** | Tampering | *"malicious modification of data... unauthorized changes... alteration of data as it flows"* | RLS + HTTPS + HMAC en webhooks + integridad Wompi (`WOMPI_INTEGRITY_SECRET`) |
-| **R** | Repudiation | *"users who deny performing an action without other parties having any way to prove otherwise"* | `AdminActionLog` + logs estructurados con `requestId` + `WebhookEvent` con timestamp |
-| **I** | Information Disclosure | *"exposure of information to individuals who are not supposed to have access to it"* | RLS + service_role solo server-side + redact PII en logs + URL firmada con TTL |
-| **D** | Denial of Service | *"deny service to valid users... making a Web server temporarily unavailable"* | Rate limit + Turnstile + Cloudflare DDoS protection + circuit breakers |
-| **E** | Elevation of Privilege | *"unprivileged user gains privileged access"* | RBAC (`AdminUser.role`) + middleware `/admin/*` + tests RLS automáticos + mass assignment prevention |
+| Letra | Categoría              | Definición (cita textual del doc oficial)                                                       | Mitigación principal en Lucams_shop                                                                  |
+| ----- | ---------------------- | ----------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| **S** | Spoofing               | _"illegally accessing and then using another user's authentication information"_                | Supabase Auth + MFA admin + cookies HttpOnly+Secure+SameSite=Lax                                     |
+| **T** | Tampering              | _"malicious modification of data... unauthorized changes... alteration of data as it flows"_    | RLS + HTTPS + HMAC en webhooks + integridad Wompi (`WOMPI_INTEGRITY_SECRET`)                         |
+| **R** | Repudiation            | _"users who deny performing an action without other parties having any way to prove otherwise"_ | `AdminActionLog` + logs estructurados con `requestId` + `WebhookEvent` con timestamp                 |
+| **I** | Information Disclosure | _"exposure of information to individuals who are not supposed to have access to it"_            | RLS + service_role solo server-side + redact PII en logs + URL firmada con TTL                       |
+| **D** | Denial of Service      | _"deny service to valid users... making a Web server temporarily unavailable"_                  | Rate limit + Turnstile + Cloudflare DDoS protection + circuit breakers                               |
+| **E** | Elevation of Privilege | _"unprivileged user gains privileged access"_                                                   | RBAC (`AdminUser.role`) + middleware `/admin/*` + tests RLS automáticos + mass assignment prevention |
 
 ### Aplicación por flujo crítico
 
 #### Flujo 1: Registro y login
 
-| Vector STRIDE | Amenaza concreta | Mitigación |
-|---|---|---|
-| Spoofing | Atacante usa email/password robado | Bloqueo tras 5 fallos en 15 min · MFA opcional cliente · MFA obligatorio admin |
-| Tampering | Reset password link interceptado | TTL 1h · token firmado · email envío via Resend con DKIM |
-| Repudiation | Usuario niega haber registrado la cuenta | `Consent` con `acceptedAt`, `ip`, `userAgent` versionado |
-| Information Disclosure | Mensaje "email no registrado" permite enumeración | Mensaje genérico "credenciales inválidas" en login fail |
-| Denial of Service | Bot crea 1000 cuentas/min | Rate limit `auth.signup` 5/h por IP + Turnstile |
-| Elevation of Privilege | Usuario edita rol vía mass assignment | Schemas Zod sin `role` en payloads de cliente; `role` solo desde panel admin |
+| Vector STRIDE          | Amenaza concreta                                  | Mitigación                                                                     |
+| ---------------------- | ------------------------------------------------- | ------------------------------------------------------------------------------ |
+| Spoofing               | Atacante usa email/password robado                | Bloqueo tras 5 fallos en 15 min · MFA opcional cliente · MFA obligatorio admin |
+| Tampering              | Reset password link interceptado                  | TTL 1h · token firmado · email envío via Resend con DKIM                       |
+| Repudiation            | Usuario niega haber registrado la cuenta          | `Consent` con `acceptedAt`, `ip`, `userAgent` versionado                       |
+| Information Disclosure | Mensaje "email no registrado" permite enumeración | Mensaje genérico "credenciales inválidas" en login fail                        |
+| Denial of Service      | Bot crea 1000 cuentas/min                         | Rate limit `auth.signup` 5/h por IP + Turnstile                                |
+| Elevation of Privilege | Usuario edita rol vía mass assignment             | Schemas Zod sin `role` en payloads de cliente; `role` solo desde panel admin   |
 
 #### Flujo 2: Checkout + pago Wompi
 
-| Vector STRIDE | Amenaza | Mitigación |
-|---|---|---|
-| Spoofing | Webhook falso simulando Wompi | HMAC verification con `WOMPI_EVENTS_SECRET` + IP whitelist |
-| Tampering | Modificar `amount` entre cliente y servidor | Servidor recalcula totales desde DB · firma de integridad Wompi |
-| Repudiation | Cliente niega haber autorizado | Wompi 3DS (challenge ante banco emisor) + `WebhookEvent` con payload completo |
-| Information Disclosure | PCI: tarjeta queda en logs | Wompi maneja tarjetas, nunca tocan nuestro server · logger con redact |
-| Denial of Service | Bot llena `Order` con `PENDING_PAYMENT` que nunca paga | Rate limit `/api/checkout/create` 10/10min · TTL 15min en `StockReservation` libera stock |
-| Elevation of Privilege | Cambiar `paymentMethod=COD` para no pagar | Validación server-side; COD requiere validación adicional + dirección verificada |
+| Vector STRIDE          | Amenaza                                                | Mitigación                                                                                |
+| ---------------------- | ------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
+| Spoofing               | Webhook falso simulando Wompi                          | HMAC verification con `WOMPI_EVENTS_SECRET` + IP whitelist                                |
+| Tampering              | Modificar `amount` entre cliente y servidor            | Servidor recalcula totales desde DB · firma de integridad Wompi                           |
+| Repudiation            | Cliente niega haber autorizado                         | Wompi 3DS (challenge ante banco emisor) + `WebhookEvent` con payload completo             |
+| Information Disclosure | PCI: tarjeta queda en logs                             | Wompi maneja tarjetas, nunca tocan nuestro server · logger con redact                     |
+| Denial of Service      | Bot llena `Order` con `PENDING_PAYMENT` que nunca paga | Rate limit `/api/checkout/create` 10/10min · TTL 15min en `StockReservation` libera stock |
+| Elevation of Privilege | Cambiar `paymentMethod=COD` para no pagar              | Validación server-side; COD requiere validación adicional + dirección verificada          |
 
 #### Flujo 3: Estudio de Personalización (upload)
 
-| Vector STRIDE | Amenaza | Mitigación |
-|---|---|---|
-| Spoofing | URL firmada de otro usuario | `auth.uid()` validado en `/api/upload/sign`; URL contiene userId hash |
-| Tampering | Subir archivo distinto al validado | Validación MIME + tamaño en server post-upload (no confiar en cliente) |
-| Repudiation | "Yo no subí esa imagen" | `customer-uploads` bucket con metadata `uploadedBy=userId` |
-| Information Disclosure | Acceso a fotos de otros clientes | Bucket privado · URL firmada TTL 1h · enumeración prevenida (UUID en filename) |
-| Denial of Service | 1000 uploads de 10MB c/u en 1 min | Rate limit 30/10min por usuario + tamaño máximo 10MB |
+| Vector STRIDE          | Amenaza                                               | Mitigación                                                                     |
+| ---------------------- | ----------------------------------------------------- | ------------------------------------------------------------------------------ |
+| Spoofing               | URL firmada de otro usuario                           | `auth.uid()` validado en `/api/upload/sign`; URL contiene userId hash          |
+| Tampering              | Subir archivo distinto al validado                    | Validación MIME + tamaño en server post-upload (no confiar en cliente)         |
+| Repudiation            | "Yo no subí esa imagen"                               | `customer-uploads` bucket con metadata `uploadedBy=userId`                     |
+| Information Disclosure | Acceso a fotos de otros clientes                      | Bucket privado · URL firmada TTL 1h · enumeración prevenida (UUID en filename) |
+| Denial of Service      | 1000 uploads de 10MB c/u en 1 min                     | Rate limit 30/10min por usuario + tamaño máximo 10MB                           |
 | Elevation of Privilege | Cliente lee `production-assets` (privado, solo admin) | RLS bucket-level; URL firmada solo se genera en endpoints admin con role check |
 
 #### Flujo 4: Background jobs (pgmq)
 
-| Vector STRIDE | Amenaza | Mitigación |
-|---|---|---|
-| Spoofing | Cliente envía mensaje a `pgmq` directo | Acceso a `pgmq.*` solo con `service_role`; RLS bloquea anon |
-| Tampering | Mensaje en cola modificado | `pgmq` corre dentro de Postgres; modificar requiere acceso DB |
-| Repudiation | Job ejecutado pero "nadie sabe quién lo encoló" | Mensajes incluyen `requestId` y `enqueuedBy` para auditoría |
-| Information Disclosure | Mensajes de email queue contienen PII | Mensajes en cola con `customerId` (no email completo); consumer hace fetch al procesar |
-| Denial of Service | Cola crece indefinidamente | Cleanup vía `pg_cron`; alerta si lag > 30 min |
-| Elevation of Privilege | Consumer ejecutado con permisos elevados | Edge Functions con `service_role` solo para operaciones explícitas; resto vía cliente con RLS |
+| Vector STRIDE          | Amenaza                                         | Mitigación                                                                                    |
+| ---------------------- | ----------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| Spoofing               | Cliente envía mensaje a `pgmq` directo          | Acceso a `pgmq.*` solo con `service_role`; RLS bloquea anon                                   |
+| Tampering              | Mensaje en cola modificado                      | `pgmq` corre dentro de Postgres; modificar requiere acceso DB                                 |
+| Repudiation            | Job ejecutado pero "nadie sabe quién lo encoló" | Mensajes incluyen `requestId` y `enqueuedBy` para auditoría                                   |
+| Information Disclosure | Mensajes de email queue contienen PII           | Mensajes en cola con `customerId` (no email completo); consumer hace fetch al procesar        |
+| Denial of Service      | Cola crece indefinidamente                      | Cleanup vía `pg_cron`; alerta si lag > 30 min                                                 |
+| Elevation of Privilege | Consumer ejecutado con permisos elevados        | Edge Functions con `service_role` solo para operaciones explícitas; resto vía cliente con RLS |
 
 ### Pendiente
 
@@ -860,12 +868,12 @@ Decisión definitiva de observabilidad de errores: ADR-022 abierto en Fase 7.
 
 ### Definiciones
 
-| Severidad | Definición | Tiempo de respuesta |
-|---|---|---|
+| Severidad        | Definición                                                                             | Tiempo de respuesta  |
+| ---------------- | -------------------------------------------------------------------------------------- | -------------------- |
 | **P0 — Crítica** | Brecha activa (datos siendo exfiltrados, dinero siendo robado, sitio caído por ataque) | Inmediata (< 15 min) |
-| **P1 — Alta** | Vulnerabilidad explotable confirmada o comportamiento anómalo grave | < 2 h |
-| **P2 — Media** | Vulnerabilidad teórica con explotación compleja, o anomalía sin impacto inmediato | < 24 h |
-| **P3 — Baja** | Hallazgo informativo (configuración subóptima, dependencia con CVE bajo) | < 7 días |
+| **P1 — Alta**    | Vulnerabilidad explotable confirmada o comportamiento anómalo grave                    | < 2 h                |
+| **P2 — Media**   | Vulnerabilidad teórica con explotación compleja, o anomalía sin impacto inmediato      | < 24 h               |
+| **P3 — Baja**    | Hallazgo informativo (configuración subóptima, dependencia con CVE bajo)               | < 7 días             |
 
 ### Las 6 fases (NIST SP 800-61)
 
@@ -884,15 +892,15 @@ Decisión definitiva de observabilidad de errores: ADR-022 abierto en Fase 7.
 
 #### 3. Contención
 
-| Tipo de incidente | Acción inmediata |
-|---|---|
-| Credencial comprometida (API key) | Rotar inmediatamente en panel del vendor + redeploy |
-| Cuenta admin comprometida | Suspender desde panel Supabase Auth + invalidar sesiones |
-| Webhook flooding (signature válida pero tráfico anómalo) | Cloudflare WAF rule temporal + alertar a Wompi/Venndelo |
-| Sitio bajo DDoS | Cloudflare "Under Attack" mode + IP whitelist solo admin |
-| Dato sensible expuesto en logs | Borrar de Vercel Logs (si retención lo permite) + rotar credenciales si aplica |
-| Database corrupted | Modo mantenimiento (`MAINTENANCE_MODE=true`) + restore desde PITR |
-| Phishing usando nuestro dominio | Reportar a phishtank.com + advertencia en homepage + email a clientes |
+| Tipo de incidente                                        | Acción inmediata                                                               |
+| -------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| Credencial comprometida (API key)                        | Rotar inmediatamente en panel del vendor + redeploy                            |
+| Cuenta admin comprometida                                | Suspender desde panel Supabase Auth + invalidar sesiones                       |
+| Webhook flooding (signature válida pero tráfico anómalo) | Cloudflare WAF rule temporal + alertar a Wompi/Venndelo                        |
+| Sitio bajo DDoS                                          | Cloudflare "Under Attack" mode + IP whitelist solo admin                       |
+| Dato sensible expuesto en logs                           | Borrar de Vercel Logs (si retención lo permite) + rotar credenciales si aplica |
+| Database corrupted                                       | Modo mantenimiento (`MAINTENANCE_MODE=true`) + restore desde PITR              |
+| Phishing usando nuestro dominio                          | Reportar a phishtank.com + advertencia en homepage + email a clientes          |
 
 #### 4. Erradicación
 
@@ -918,6 +926,7 @@ Decisión definitiva de observabilidad de errores: ADR-022 abierto en Fase 7.
 #### Runbook IRP-001: Llave `SUPABASE_SECRET_KEY` (`sb_secret_*`) expuesta
 
 **Vectores conocidos de exposición:**
+
 - Commit accidental al repo (mitigado por gitleaks pre-commit + GitHub Push Protection).
 - Logs en producción (mitigado por `pino` redact).
 - Compartida en chat/email/Slack/issue.
@@ -1000,14 +1009,14 @@ ETA contención: 2 h
 
 ### Niveles
 
-| Nivel | Definición | Ejemplos en Lucams_shop | Almacenamiento permitido | Logging |
-|---|---|---|---|---|
-| **Público** | Información destinada a ser visible en internet | Catálogo de productos, blog, paleta de colores | Cualquier capa | OK loggear |
-| **Interno** | No sensible pero solo para el equipo | Métricas agregadas, schema de DB, métricas pgmq | Server-side, accesible a admins | OK loggear |
-| **Confidencial — PII directa** | Identifica a una persona | Email, teléfono, nombre, dirección, foto del estudio | Postgres con RLS, Storage privado, encriptado en tránsito y reposo | **Redactado** en logs (`pino` redact) |
-| **Restringida — PII sensible** | Datos especialmente protegidos por Ley 1581 | Solo si recolectamos: salud, biometría, ideología, etc. (no aplica hoy) | Encriptación a nivel campo + acceso auditado | **Nunca** en logs |
-| **Crítica — Secretos de sistema** | Llaves, tokens, credenciales | `SUPABASE_SECRET_KEY` (`sb_secret_*`), `WOMPI_PRIVATE_KEY`, `ANTHROPIC_API_KEY`, `CSRF_SECRET` | Solo en `.env*` (gitignored) y Vercel env vars | **Nunca** en logs (redactado por patrón) |
-| **Regulada — Financiera** | Datos de pagos | Wompi `transactionId`, `amount`, `currency` (ya en nuestra DB); **NUNCA** PAN, CVV, expiración (Wompi maneja) | Postgres con RLS y audit log | Sin PAN ni CVV. `last4` permitido si Wompi lo provee. |
+| Nivel                             | Definición                                      | Ejemplos en Lucams_shop                                                                                       | Almacenamiento permitido                                           | Logging                                               |
+| --------------------------------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ | ----------------------------------------------------- |
+| **Público**                       | Información destinada a ser visible en internet | Catálogo de productos, blog, paleta de colores                                                                | Cualquier capa                                                     | OK loggear                                            |
+| **Interno**                       | No sensible pero solo para el equipo            | Métricas agregadas, schema de DB, métricas pgmq                                                               | Server-side, accesible a admins                                    | OK loggear                                            |
+| **Confidencial — PII directa**    | Identifica a una persona                        | Email, teléfono, nombre, dirección, foto del estudio                                                          | Postgres con RLS, Storage privado, encriptado en tránsito y reposo | **Redactado** en logs (`pino` redact)                 |
+| **Restringida — PII sensible**    | Datos especialmente protegidos por Ley 1581     | Solo si recolectamos: salud, biometría, ideología, etc. (no aplica hoy)                                       | Encriptación a nivel campo + acceso auditado                       | **Nunca** en logs                                     |
+| **Crítica — Secretos de sistema** | Llaves, tokens, credenciales                    | `SUPABASE_SECRET_KEY` (`sb_secret_*`), `WOMPI_PRIVATE_KEY`, `ANTHROPIC_API_KEY`, `CSRF_SECRET`                | Solo en `.env*` (gitignored) y Vercel env vars                     | **Nunca** en logs (redactado por patrón)              |
+| **Regulada — Financiera**         | Datos de pagos                                  | Wompi `transactionId`, `amount`, `currency` (ya en nuestra DB); **NUNCA** PAN, CVV, expiración (Wompi maneja) | Postgres con RLS y audit log                                       | Sin PAN ni CVV. `last4` permitido si Wompi lo provee. |
 
 ### Encriptación
 
@@ -1018,22 +1027,22 @@ ETA contención: 2 h
 
 ### Tabla maestra (mantener actualizada al agregar campos)
 
-| Tabla.Campo | Clasificación | Notas |
-|---|---|---|
-| `Customer.email` | PII directa | Hash SHA-256 cuando se loggea |
-| `Customer.phone` | PII directa | Solo últimos 4 dígitos en logs |
-| `Customer.firstName/lastName` | PII directa | Iniciales solamente en logs |
-| `Address.line1/line2/city` | PII directa | Solo ciudad/depto en logs agregados |
-| `Order.email/phone/shippingAddress` | PII directa (snapshot) | Idem |
-| `Order.wompiTransactionId` | Regulada | Loggeable para soporte |
-| `Order.total/subtotal/etc.` | Interno | Loggeable |
-| `Review.images[]` | PII directa (URL apunta a foto del cliente) | Bucket privado + URL firmada |
-| `OrderItem.customDesign` | PII directa (puede contener foto) | Idem |
-| `Customer.supabaseUserId` | Interno | OK loggear |
-| `Customer.referralCode` | Interno | OK loggear |
-| `AdminActionLog.metadata` | Interno (puede contener IDs de PII) | Loggeable; depende de scope |
-| `WebhookEvent.payload` | Regulada (datos Wompi) | Acceso solo `service_role` |
-| `*Secret*`, `*Key*`, `*Token*` env vars | Crítica | **NUNCA** logging |
+| Tabla.Campo                             | Clasificación                               | Notas                               |
+| --------------------------------------- | ------------------------------------------- | ----------------------------------- |
+| `Customer.email`                        | PII directa                                 | Hash SHA-256 cuando se loggea       |
+| `Customer.phone`                        | PII directa                                 | Solo últimos 4 dígitos en logs      |
+| `Customer.firstName/lastName`           | PII directa                                 | Iniciales solamente en logs         |
+| `Address.line1/line2/city`              | PII directa                                 | Solo ciudad/depto en logs agregados |
+| `Order.email/phone/shippingAddress`     | PII directa (snapshot)                      | Idem                                |
+| `Order.wompiTransactionId`              | Regulada                                    | Loggeable para soporte              |
+| `Order.total/subtotal/etc.`             | Interno                                     | Loggeable                           |
+| `Review.images[]`                       | PII directa (URL apunta a foto del cliente) | Bucket privado + URL firmada        |
+| `OrderItem.customDesign`                | PII directa (puede contener foto)           | Idem                                |
+| `Customer.supabaseUserId`               | Interno                                     | OK loggear                          |
+| `Customer.referralCode`                 | Interno                                     | OK loggear                          |
+| `AdminActionLog.metadata`               | Interno (puede contener IDs de PII)         | Loggeable; depende de scope         |
+| `WebhookEvent.payload`                  | Regulada (datos Wompi)                      | Acceso solo `service_role`          |
+| `*Secret*`, `*Key*`, `*Token*` env vars | Crítica                                     | **NUNCA** logging                   |
 
 ---
 
@@ -1045,15 +1054,15 @@ ETA contención: 2 h
 
 ```tsx
 // components/storefront/cookie-consent.tsx
-'use client';
-import { useEffect, useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { recordConsent } from '@/features/consent/server-actions';
+"use client";
+import { useEffect, useState } from "react";
+import { Button } from "@/components/ui/button";
+import { recordConsent } from "@/features/consent/server-actions";
 
-const VERSION = 'v1.0-2026-05-09';
+const VERSION = "v1.0-2026-05-09";
 
 type Categories = {
-  necessary: true;       // No editable
+  necessary: true; // No editable
   functional: boolean;
   analytics: boolean;
   marketing: boolean;
@@ -1062,52 +1071,91 @@ type Categories = {
 export function CookieConsent() {
   const [shown, setShown] = useState(false);
   const [categories, setCategories] = useState<Categories>({
-    necessary: true, functional: true, analytics: false, marketing: false,
+    necessary: true,
+    functional: true,
+    analytics: false,
+    marketing: false,
   });
 
   useEffect(() => {
-    const stored = localStorage.getItem('__lc_consent');
+    const stored = localStorage.getItem("__lc_consent");
     if (!stored || JSON.parse(stored).version !== VERSION) setShown(true);
   }, []);
 
   async function save(cats: Categories) {
     const payload = { ...cats, version: VERSION, acceptedAt: new Date().toISOString() };
-    localStorage.setItem('__lc_consent', JSON.stringify(payload));
+    localStorage.setItem("__lc_consent", JSON.stringify(payload));
     document.cookie = `__lc_consent=${VERSION}; max-age=31536000; path=/; samesite=lax; secure`;
-    await recordConsent(payload);  // Server-side: tabla Consent
+    await recordConsent(payload); // Server-side: tabla Consent
     setShown(false);
   }
 
   if (!shown) return null;
 
   return (
-    <div role="dialog" aria-labelledby="cc-title" aria-describedby="cc-desc"
-         className="fixed bottom-4 left-4 right-4 md:left-auto md:max-w-md bg-brand-cream border-2 border-brand-purple-dark rounded-lg p-4 shadow-lg z-50">
-      <h2 id="cc-title" className="font-display text-lg text-brand-purple-dark">
+    <div
+      role="dialog"
+      aria-labelledby="cc-title"
+      aria-describedby="cc-desc"
+      className="bg-brand-cream border-brand-purple-dark fixed right-4 bottom-4 left-4 z-50 rounded-lg border-2 p-4 shadow-lg md:left-auto md:max-w-md"
+    >
+      <h2 id="cc-title" className="font-display text-brand-purple-dark text-lg">
         ¡Hola! Usamos cookies 🍪
       </h2>
-      <p id="cc-desc" className="text-sm mt-2">
+      <p id="cc-desc" className="mt-2 text-sm">
         Las necesarias hacen funcionar el sitio. Las demás son opcionales y nos ayudan a mejorarlo.
-        Podés cambiar tu elección en cualquier momento desde <a href="/legal/cookies" className="underline">configuración de cookies</a>.
+        Podés cambiar tu elección en cualquier momento desde{" "}
+        <a href="/legal/cookies" className="underline">
+          configuración de cookies
+        </a>
+        .
       </p>
       {/* Switches por categoría */}
       <div className="mt-3 space-y-2">
-        <label><input type="checkbox" checked disabled /> Necesarias (siempre)</label>
-        <label><input type="checkbox" checked={categories.functional}
-          onChange={e => setCategories({ ...categories, functional: e.target.checked })} /> Funcionales</label>
-        <label><input type="checkbox" checked={categories.analytics}
-          onChange={e => setCategories({ ...categories, analytics: e.target.checked })} /> Analíticas</label>
-        <label><input type="checkbox" checked={categories.marketing}
-          onChange={e => setCategories({ ...categories, marketing: e.target.checked })} /> Marketing</label>
+        <label>
+          <input type="checkbox" checked disabled /> Necesarias (siempre)
+        </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={categories.functional}
+            onChange={(e) => setCategories({ ...categories, functional: e.target.checked })}
+          />{" "}
+          Funcionales
+        </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={categories.analytics}
+            onChange={(e) => setCategories({ ...categories, analytics: e.target.checked })}
+          />{" "}
+          Analíticas
+        </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={categories.marketing}
+            onChange={(e) => setCategories({ ...categories, marketing: e.target.checked })}
+          />{" "}
+          Marketing
+        </label>
       </div>
-      <div className="mt-4 flex gap-2 flex-wrap">
-        <Button onClick={() => save({ necessary: true, functional: false, analytics: false, marketing: false })}>
+      <div className="mt-4 flex flex-wrap gap-2">
+        <Button
+          onClick={() =>
+            save({ necessary: true, functional: false, analytics: false, marketing: false })
+          }
+        >
           Solo necesarias
         </Button>
         <Button variant="outline" onClick={() => save(categories)}>
           Guardar elección
         </Button>
-        <Button onClick={() => save({ necessary: true, functional: true, analytics: true, marketing: true })}>
+        <Button
+          onClick={() =>
+            save({ necessary: true, functional: true, analytics: true, marketing: true })
+          }
+        >
           Aceptar todas
         </Button>
       </div>
@@ -1128,11 +1176,11 @@ export function CookieConsent() {
 
 ```tsx
 // app/(storefront)/layout.tsx (fragmento)
-import { headers } from 'next/headers';
-import Script from 'next/script';
+import { headers } from "next/headers";
+import Script from "next/script";
 
 export default async function Layout({ children }) {
-  const consentCookie = (await headers()).get('cookie')?.match(/__lc_consent=([^;]+)/)?.[1];
+  const consentCookie = (await headers()).get("cookie")?.match(/__lc_consent=([^;]+)/)?.[1];
   const consent = consentCookie ? JSON.parse(decodeURIComponent(consentCookie)) : null;
 
   return (
@@ -1167,11 +1215,11 @@ export default async function Layout({ children }) {
 
 ```ts
 // lib/redirects.ts
-const ALLOWED_HOSTS = new Set(['lucamsshop.co']);
+const ALLOWED_HOSTS = new Set(["lucamsshop.co"]);
 
-export function safeRedirectTarget(input: string | null, fallback = '/'): string {
+export function safeRedirectTarget(input: string | null, fallback = "/"): string {
   if (!input) return fallback;
-  if (input.startsWith('/') && !input.startsWith('//')) return input; // relativo seguro
+  if (input.startsWith("/") && !input.startsWith("//")) return input; // relativo seguro
   try {
     const url = new URL(input);
     if (ALLOWED_HOSTS.has(url.host)) return url.pathname + url.search;

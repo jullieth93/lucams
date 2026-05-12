@@ -24,13 +24,7 @@
 
 "use client";
 
-import {
-  useEffect,
-  useRef,
-  useState,
-  type ChangeEvent,
-  type ComponentProps,
-} from "react";
+import { useEffect, useRef, useState, type ChangeEvent, type ComponentProps } from "react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
@@ -48,8 +42,7 @@ const POPULAR_DOMAINS = [
 // Regex práctico para emails consumer (RFC 5321 simplificado).
 // Más estricto que el `type=email` HTML5: requiere al menos un punto
 // en el dominio + TLD de 2-24 chars.
-const EMAIL_PATTERN =
-  "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,24}$";
+const EMAIL_PATTERN = "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,24}$";
 
 type Props = Omit<ComponentProps<"input">, "type" | "pattern"> & {
   value?: string;
@@ -66,9 +59,7 @@ export function EmailInput({
   onBlur,
   ...inputProps
 }: Props) {
-  const [internalValue, setInternalValue] = useState(
-    String(defaultValue ?? ""),
-  );
+  const [internalValue, setInternalValue] = useState(String(defaultValue ?? ""));
   const [open, setOpen] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
@@ -95,8 +86,7 @@ export function EmailInput({
   const partial = atIdx >= 0 ? value.slice(atIdx + 1).toLowerCase() : "";
 
   // Si el dominio ya está completo (matchea exacto), no mostrar sugerencias.
-  const alreadyComplete =
-    atIdx >= 0 && POPULAR_DOMAINS.some((d) => d === partial);
+  const alreadyComplete = atIdx >= 0 && POPULAR_DOMAINS.some((d) => d === partial);
 
   const suggestions =
     atIdx >= 0 && local.length > 0 && !alreadyComplete
@@ -141,7 +131,7 @@ export function EmailInput({
         <ul
           role="listbox"
           aria-label="Sugerencias de dominio"
-          className="absolute left-0 right-0 top-full z-20 mt-1 overflow-hidden rounded-lg border border-border bg-popover shadow-lg animate-in fade-in slide-in-from-top-1 duration-150"
+          className="border-border bg-popover animate-in fade-in slide-in-from-top-1 absolute top-full right-0 left-0 z-20 mt-1 overflow-hidden rounded-lg border shadow-lg duration-150"
         >
           {suggestions.map((domain) => (
             <li key={domain} role="option" aria-selected="false">
@@ -155,9 +145,7 @@ export function EmailInput({
                 )}
               >
                 <span className="text-muted-foreground">{local}@</span>
-                <span className="font-medium text-brand-purple-dark">
-                  {domain}
-                </span>
+                <span className="text-brand-purple-dark font-medium">{domain}</span>
               </button>
             </li>
           ))}

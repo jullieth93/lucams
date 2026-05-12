@@ -3,6 +3,7 @@
 > **Cómo leer este archivo.** Es el índice narrativo del proyecto. La fuente de verdad de cada dominio sigue siendo el `.md` correspondiente (ROADMAP, ARCHITECTURE, DECISIONS, etc.) — STATE.md te dice **dónde estás parado** y **qué pasó en la última sesión** sin tener que leer todo.
 >
 > **Cómo se mantiene.** Al cerrar cualquier sesión con cambios, Claude Code actualiza:
+>
 > 1. El bloque **Resumen actual** (un párrafo, siempre arriba).
 > 2. La sección **Última sesión** (qué se hizo en esta iteración).
 > 3. El bloque **Próximo paso** (qué viene cuando se reanude).
@@ -23,21 +24,25 @@
 **Hechos por commit:**
 
 **1) Admin CRUD productos (commit `d9fab6b`):**
+
 - `features/products/{schemas,service}.ts` separados (patrón CONVENTIONS). Schema Zod estricto: slug kebab-case, SKU `[A-Z0-9-]+`, basePrice/compareAtPrice/cost como `z.number().int().nonnegative()` (centavos COP, mandato CLAUDE.md). `ProductValidationError` clase con field tipado.
 - `app/admin/productos/page.tsx`: listado paginado 20/page con búsqueda fuzzy en name/sku/slug. Sin paginación de cursor todavía (offset basta < 1k productos).
 - `app/admin/productos/nuevo/page.tsx` + `[id]/page.tsx`: forms create/edit con shared `product-form.tsx`. PriceField muestra pesos al usuario, persiste centavos via hidden input + Math.round. Auto-slug desde name (slugify con NFD). Checkbox helpers, sección SEO opcional, botón "Archivar" en edit (soft-delete vía `deletedAt`).
 - `actions.ts`: create/update/delete con `getCurrentAdmin()` defensivo + revalidatePath + redirect con flag (`?created=1`, `?deleted=1`).
 
 **2) Admin CRUD categorías (commit `8714985`):**
+
 - `features/categories/{schemas,service}.ts`. `softDeleteCategory` bloqueado si hay productos asociados (anti-orphan: el producto requiere categoryId NOT NULL).
 - `app/admin/categorias/page.tsx`: tabla simple (categorías < 20) + form inline `create-category-form.tsx`. Edit-inline diferido (no es bloqueante todavía).
 - Dashboard admin gana cards "Categorías" + "Productos" como "Disponible" (antes "Próximamente").
 
 **3) Seed catálogo demo (commit `d31f037`):**
+
 - `packages/db/scripts/seed-products.mjs`: 4 categorías (`fotoimanes`, `recorditos-eventos`, `organizate-bonito`, `calendarios`) + 8 productos (3 featured con compareAtPrice para mostrar descuentos). Idempotente: `upsert by slug`. Precios en centavos COP. SKUs estructurados (`FI-POL-G-6`, `EVT-BS-KIT`, etc).
 - Makefile: `make seed-products` (en /home/ansible/workspaces/lucams-shop-local/Makefile).
 
 **4) Storefront público (commit `c77e641`):**
+
 - `features/products/public-service.ts` separado de admin: enforza `deletedAt:null + isActive:true` en product Y category. Tres funciones: `listStorefrontCategories`, `listStorefrontProducts({categorySlug?, featured?, limit?})`, `getStorefrontProductBySlug`. Anti-leak: nada de archivados aparece al público.
 - `app/productos/page.tsx`: grid 2/3/4 cols responsive, category chips con counts, empty state kawaii con CTA.
 - `app/producto/[slug]/page.tsx`: galería placeholder (gradient kawaii cuando no hay imágenes), breadcrumb, badge "Personalizable" + descuento -X%, WhatsApp deep-link con mensaje pre-armado contextual (`Hola Lucams 👋 Quiero saber más sobre "<name>" (SKU X)`), generateMetadata dinámico con seoTitle/seoDescription fallback.
@@ -46,6 +51,7 @@
 - Home gana CTA "Ver catálogo →". Header gana link "Tienda".
 
 **5) Carrito anon end-to-end (commit `7bfc879`):**
+
 - **Schema-side:** `features/products/service.ts createProduct` ahora crea variant "Default" (`sku-DEFAULT`) en la misma transacción Prisma. CartItem y OrderItem requieren variantId; sin variantes admin reales todavía, el default es el path mínimo para comprar. `seed-products.mjs` backfilea variants default por producto existente (idempotente).
 - **`lib/cart-session.ts`:** cookie `cart_session` con UUID v4 server-generated. HttpOnly, SameSite=Lax, Secure(prod), 30 días. **No HMAC-firmada:** 122 bits de entropía es suficiente para data efímera sin PII; documentado el trade-off en el archivo.
 - **`features/cart/service.ts`:** `getCartDetail` / `getCartItemCount` / `addProductToCart` / `updateCartItemQty` / `removeCartItem` / `mergeAnonCartIntoCustomer`. Pricing snapshot al agregar (`variant.price ?? product.basePrice`). Items con producto archivado se filtran en read (el admin que archive un producto efectivamente lo saca de carritos en vuelo). MAX_QTY_PER_ITEM=99.
@@ -60,22 +66,26 @@
 - **Header:** ShoppingBag icon con badge pink mostrando cartCount (cap 99+).
 
 **Validaciones técnicas:**
+
 - `make typecheck` OK
 - `make lint` OK
 - Smoke tests curl: `/productos`, `/producto/<slug>`, `/producto/no-existe` (404), `/productos?categoria=fotoimanes` (filter), `/carrito` — todos 200 con contenido esperado.
 
 **Pendiente prueba visual por Lucy (anon + login flow + merge):**
+
 - Anon: agregar al carrito → counter sube → ver carrito → cambiar qty → remover.
 - Login con cart anon poblado → merge funcionando.
 - Logout → cookie persiste, cart sigue visible (comportamiento e-commerce estándar).
 
 **Decisiones tomadas en sesión (cocreación):**
+
 - **Cart storage:** Postgres + sessionId cookie (vs cookie pura o Redis). Justificación: enables abandoned cart recovery emails posterior, server-authoritative, sin dependencias externas. Aliné con mandato #11 CLAUDE.md.
 - **Merge policy:** suma inteligente por variantId (vs reemplaza / descarta). Mejor UX: "no perdiste nada".
 - **Cookie sin firmar:** discutible; mitigado por (a) UUID alta entropía + (b) cart sin PII ni precio autoritativo. TODO: revisar si más adelante guardamos customDesign con datos personales.
 - **Default variant pattern:** sin schema migration. Cada producto tiene su "Default" 1:1 hasta que existan variantes admin reales. Cuando lleguen, se reemplazan o expanden.
 
 **Pendiente próximo turno (Fase 2 cierre + Fase 3):**
+
 - Imágenes de productos: upload via Supabase Storage en admin form + render real en cards/detail/cart. Hasta entonces gradient kawaii como placeholder.
 - Admin de variantes reales (multi-variant products).
 - Estudio de personalización en vivo (react-konva) — diferenciador #1.
@@ -114,18 +124,21 @@
 9. **Documentación de Fase 1.b en ROADMAP:** ⏸️ → 🟡 EN CURSO → ✅ (auth completo).
 
 **Verificación end-to-end por Lucy (4/4 pruebas pasaron):**
+
 - ✅ Prueba A: Login cliente + chip "Panel admin" en header + acceso a `/admin/dashboard` sin re-login (cookie persiste, una sola sesión multi-rol)
 - ✅ Prueba B: Logout → `/admin/dashboard` redirect a `/admin/login` → login → dashboard
 - ✅ Prueba C: `/admin/login` con `test+cliente@example.com` → "Credenciales incorrectas" (anti-enumeration validado)
 - ✅ Prueba D: Login normal con test customer → home cliente OK + NO chip admin + intento `/admin/dashboard` → redirige a `/admin/login`
 
 **Modelo de roles validado:**
+
 - 1 `auth.users` row + 1 cookie sesión = 1 identidad de auth
 - N tablas de rol (Customer, AdminUser) apuntan al mismo `supabaseUserId`
 - Cada page pregunta por la fila de rol que necesita
 - `/login` y `/admin/login` usan la MISMA sesión pero rutean según rol verificado
 
 **Pendiente próximo turno (Fase 2):**
+
 - Admin CRUD productos (sin esto, storefront no tiene qué mostrar)
 - Storefront público `/productos` + `/producto/[slug]`
 - Carrito anon vía sessionId cookie (ADR-031 guest-first)
@@ -141,12 +154,14 @@
 **Hechos por dominio:**
 
 **1) Templates de email + flujo OTP:**
+
 - Migración de Reset password de link a OTP (commit `9ef96cd`) — mismo patrón que signup, evita bug de Gmail prefetch que consume tokens.
 - Reescritura de `/restablecer-password`: ahora recibe email + OTP + nueva password en una sola action (`verifyOtp` + `updateUser` + `signOut global` atómicos).
 - 3 templates HTML kawaii pegados en Supabase Dashboard: Confirm signup, Reset password, Password changed. Layout tabla anidada con inline CSS (estándar email cross-client), logo desde URL absoluta Vercel, paleta brand-purple/pink/cream.
 - Tracking de estado de los 13 templates Supabase Auth en nuevo `docs/EMAIL_TEMPLATES.md` (✅ personalizados / ⚠️ default / descarte por flow no implementado).
 
 **2) Seguridad — 4 mejoras propuestas y aceptadas por Lucy (commit `88791a2`):**
+
 - **Pwned Passwords check** (`lib/pwned-passwords.ts`): SHA-1 prefijo de 5 chars → HaveIBeenPwned API gratis con k-anonymity. Bloquea registro/reset si la contraseña aparece en breaches conocidos. Fail-open si HIBP cae. Smoke-test: `password123` detectada con 2.25M de breaches.
 - **signOut global al cambiar password** (`scope: 'global'`): invalida todas las refresh tokens del user en otros devices. Si alguien robó la contraseña, cambiarla lo echa de TODO.
 - **Rate-limit doble IP + email** (`lib/rate-limit-keys.ts`): email se hashea con SHA-256 truncado (no aparece en claro en buckets). Cubre botnet (muchas IPs ↔ 1 email) Y atacante con muchos emails desde 1 IP. Cabled en signup/login/reset-password/verify-recovery.
@@ -154,17 +169,20 @@
 - Lucy preguntó por **anti-reutilización de últimas N contraseñas**. Análisis honesto: alto costo operacional (PasswordHistory paralela + bcrypt.compare) vs beneficio marginal vs Pwned Passwords. Decidido NO implementar y se documentó la decisión en `docs/SECURITY.md`.
 
 **3) UX hardening:**
+
 - **Confirm password en `/restablecer-password`** (paridad con signup, Zod `.refine()` + validación inline cliente).
 - **`<EmailInput>` component** (`apps/web/components/email-input.tsx`): dropdown de 8 dominios populares cuando user tipea `lucy@gma...`, validación HTML5 pattern más estricta que el default `type="email"` (requiere TLD 2-24 chars), animación fade-in slide-from-top. Cabled en /registro, /login, /recuperar-password. Lucy verificó visualmente en web + móvil.
 - **EmailInput justificación:** mejora UX sin reemplazar Zod server-side. Server valida independientemente.
 
 **4) Brand assets reales:**
+
 - Lucy subió `apps/web/public/brand/lucams-logo.png` (468×468 RGBA, 256KB en repo → ~5KB WebP servido al browser via Next.js Image optimizer).
 - BrandMark unificado: usa el mismo `lucams-logo.png` en TODOS los headers + hero. Tamaños 56px (storefront/mi-cuenta), 72px (auth pages), 180px (hero home).
 - Decisión cocreada con Lucy: descartado el mascot-only crop después de probarlo — un solo asset es más simple de mantener.
 - `<RaccoonFace />` SVG kawaii custom queda como **fallback defensivo** del `<LucamsLogo />` (se renderea solo si el archivo PNG no carga).
 
 **5) Bugs y fixes encontrados durante testing:**
+
 - **Trigger SQL sync auth.users → Customer descartado** (commit `c62174b`): la Supabase Auth API HTTP falla con 500 cuando hay cualquier trigger custom en auth.users que toque schema public. Documentado todo en `supabase/migrations/00000000000004_sync_auth_users_delete.sql` (comentario largo con TODAS las cosas que probamos sin éxito) — historia para que nadie pierda tiempo intentando lo mismo. Reemplazo: `FORCE=1 make seed-clean` script (`packages/db/scripts/seed-clean.mjs`) hace cleanup explícito Customer + AdminUser + auth.users.
 - **CSP `upgrade-insecure-requests` en dev** rompía estilos en http://192.168.20.180:3000 (LAN IP no tiene HTTPS). Fix: gate en `IS_PROD_DEPLOY` (commit `b264c79`). Estilos solo se rompen en `http` cuando es dev/preview, en producción Vercel sigue con HSTS.
 - **Chrome/Linux sin Noto Color Emoji** renderea emojis como "ND GLYPH". Fix: reemplazar todos los emojis renderizados al cliente por SVG inline o lucide-react icons (commits `13fde9d`, `ddf58f9`). Emojis solo en comentarios de código.
@@ -173,6 +191,7 @@
 - **Rate-limit email demasiado estricto durante pre-launch** (3/h colaba a Lucy testeando). Fix: bajar email bucket a igualar el de IP (commit `88ae83e`). Anotado TODO para apretar al lanzar real.
 
 **6) Verificación end-to-end por Lucy:**
+
 - ✅ Signup con Pwned check, OTP de email, confirmación de cuenta, redirect a home con header logged-in.
 - ✅ Login con email autocomplete dropdown, caps lock alert, password toggle.
 - ✅ Logout, vuelta a anónimo.
@@ -181,11 +200,13 @@
 - ✅ Visual en Chrome + Firefox + móvil 375px — todos OK.
 
 **Pendientes administrativos cerrados en este turno:**
+
 - STATE.md actualizado.
 - ROADMAP.md: marcar Fase 1.a customer-side como completa.
 - Optimización PNG: descartada — Next.js Image optimizer ya entrega 5KB WebP en lugar del PNG raw de 256KB (verificado con curl).
 
 **Próximo bloque (acordado con Lucy via AskUserQuestion):**
+
 - **Fase 1.b admin flow mínimo** (`/admin/login` + `/admin/dashboard` + gate `proxy.ts` para `/admin/*` + seed primer AdminUser via SQL).
 - Después: **Fase 2 catálogo público + carrito anon** (guest-first per ADR-031: listing de productos, página de producto, carrito vía sessionId cookie, integración con stock realtime).
 
@@ -214,16 +235,19 @@
 7. **`/login` page** — reescrita como async para leer `searchParams` (Next 16 async). Mapea `?error=link-invalido|link-expirado` y `?reset=ok` a banners (rojo / verde) que se muestran arriba del form. `LoginForm` acepta `initialError`/`initialSuccess` props.
 
 **Verificaciones:**
+
 - typecheck + build ✓ — 10 rutas (`/`, `/_not-found`, `/api/health`, `/api/health/db`, `/auth/callback`, `/login`, `/mi-cuenta`, `/recuperar-password`, `/registro`, `/restablecer-password`) + Proxy middleware.
 - Local: rutas públicas 200, protected → 307 con redirect correcto.
 - Producción Vercel: mismas verificaciones, todo OK.
 
 **ADR-030 — Separación URLs cliente vs admin (`docs/DECISIONS.md`):**
+
 - Decisión: URLs separadas (no login único con role-check).
 - Razones: superficie de ataque, UX clara, branding distinto, authorization granular, no risk de admin self-registration.
 - Trade-off: pequeña duplicación de código aceptable; se puede extraer `<AuthCard>` compartido si crece.
 
 **ACCIONES HUMANAS pendientes para que Auth funcione real:**
+
 1. **Supabase Dashboard → Authentication → URL Configuration:**
    - Site URL: `https://lucams-shop.vercel.app`
    - Additional Redirect URLs: `https://lucams-shop.vercel.app/**`, `http://localhost:3000/**`
@@ -231,6 +255,7 @@
 3. (Opcional) Customizar Email Templates en Supabase Dashboard, o migrar a Resend SMTP en próxima fase.
 
 **Próximos bloques Fase 1:**
+
 - **Admin flow** — `/admin/login` (sin registro público) + `/admin/dashboard` + gate `proxy.ts` para `/admin/*` + seed primer AdminUser via Supabase + Prisma manual. **Sin GUI shadcn kawaii — usar layout más sobrio/utilitario para admin** per ADR-030.
 - Email template customization Resend SMTP.
 - Customer profile editing (cambiar nombre, teléfono, contraseña).
@@ -265,7 +290,8 @@
    - `auth.reset.{sent,fail,rate_limited}`
 
 **Verificaciones:**
-- typecheck + build ✓ (7 rutas: home, login, registro, recuperar-password, /api/health, /api/health/db, _not-found + Proxy).
+
+- typecheck + build ✓ (7 rutas: home, login, registro, recuperar-password, /api/health, /api/health/db, \_not-found + Proxy).
 - Local: HTTP 200 en `/login`, `/registro`, `/recuperar-password`. HTML inspection confirma headings, buttons, links, wordmark.
 - Producción Vercel `ca1d73e`: las 6 URLs públicas en HTTP 200.
 
@@ -282,6 +308,7 @@
 **🔍 PRUEBA VISUAL pendiente** — el flujo es la primera UI visible de Lucams. Hay que validar visualmente que el branding queda Lucams (kawaii) y no genérico shadcn.
 
 **Pendiente Fase 1 (próximos bloques):**
+
 - **Audit middleware** Prisma `$extends` para auto-fill `createdBy`/`updatedBy` desde sesión actual.
 - **Reset-password callback** — la página que recibe el link del email y permite establecer nueva contraseña (`/establecer-password` o similar).
 - **Logout** — server action que llama `supabase.auth.signOut()`.
@@ -317,12 +344,14 @@
    - **Smoke test end-to-end verificado:** 3 calls con limit=3 → `allowed: true` (count 1/2/3); 4ta call → `allowed: false` (count 4); reset_at consistente; cleanup OK.
 
 **Verificación final producción Vercel:**
+
 - home → 200
 - `/api/health` → version `002eff1d...` (último commit)
 - `/api/health/db` → 338ms latencyMs (mejoró desde 452ms — Prisma client warm cache)
 - Schema migrado, RLS activo, rate-limit funcional, todos los endpoints verificados.
 
 **Decisiones técnicas tomadas en el camino:**
+
 - Audit fields solo en mutables (skip en append-only logs como InventoryLog/LoyaltyTxn/etc.).
 - Carts anónimos NO via RLS — pasan por service_role en server-side. Más simple y seguro.
 - Rate-limit fail-open por defecto si SQL devuelve no-rows (mejor permitir que bloquear sin razón).
@@ -331,6 +360,7 @@
 **Bloque GUI evitado intencionalmente:** Auth flow (login/register) requiere componentes shadcn + pruebas visuales en navegador. Lo dejé para próximo turno cuando Lucy pueda validarlo. Este turno fue 100% backend → ninguna prueba GUI necesaria.
 
 **Pendiente Fase 1 (próximos bloques):**
+
 - **Audit fields middleware** — Prisma `$extends` que auto-llena `createdBy`/`updatedBy` desde la sesión Supabase actual (lee del cookie store del request).
 - **Auth flow** (NEEDS GUI) — `/login` + `/register` con shadcn UI + Supabase Auth + server actions. Incluye rate-limit en endpoints de auth.
 - **Webhook handler genérico** con idempotencia via tabla `WebhookEvent` (cuando se conecten Wompi/Venndelo en Fase 4/5).
@@ -353,17 +383,20 @@
 
 2. **`apps/web/lib/db.ts`** re-exporta `prisma` + tipos desde `@lucams/db`. `import 'server-only'` enforced — Prisma jamás runtime cliente.
 
-3. **`apps/web/app/api/health/db/route.ts`** — Postgres connectivity probe. Ejecuta `prisma.$queryRaw\`SELECT 1\``, devuelve `{status, check, latencyMs, timestamp}`. On error: log estructurado (`event: 'health.db.fail'`) + RFC 7807 `InternalError` 500 vía `problemResponse`. `force-dynamic` + `runtime: 'nodejs'`.
+3. **`apps/web/app/api/health/db/route.ts`** — Postgres connectivity probe. Ejecuta `prisma.$queryRaw\`SELECT 1\``, devuelve `{status, check, latencyMs, timestamp}`. On error: log estructurado (`event: 'health.db.fail'`) + RFC 7807 `InternalError`500 vía`problemResponse`. `force-dynamic`+`runtime: 'nodejs'`.
 
 **Verificaciones:**
+
 - Local: `/api/health/db` 200 con latencyMs 1800-4400ms (Bogotá→Supabase US).
 - Producción Vercel: 452ms — confirma que postinstall hook ejecutó `prisma generate` en build y que `DATABASE_URL` + `SUPABASE_SECRET_KEY` en Vercel env vars están bien configurados.
 - typecheck + build pasaron en ambos contextos. Build output ahora muestra 5 rutas (`/`, `/_not-found`, `/api/health`, `/api/health/db`, + Proxy middleware).
 
 **Memoria nueva guardada:**
-- `feedback_gui_test_reminder.md` — Cuando un cambio toque UI/UX (storefront, branding, emails, studio canvas), recordar a Lucy probar visualmente en navegador. Backend puro (lib/*, API JSON, infra) no requiere recordatorio. Este turno fue 100% backend → ninguna prueba GUI necesaria.
+
+- `feedback_gui_test_reminder.md` — Cuando un cambio toque UI/UX (storefront, branding, emails, studio canvas), recordar a Lucy probar visualmente en navegador. Backend puro (lib/\*, API JSON, infra) no requiere recordatorio. Este turno fue 100% backend → ninguna prueba GUI necesaria.
 
 **Pendiente Fase 1 (siguiente bloque):**
+
 - Resto de modelos Prisma de `docs/ARCHITECTURE.md`: `Cart`, `CartItem`, `Order`, `OrderItem`, `Coupon`, `Review`, `InventoryLog`, `AdminUser`, `AbandonedCart`, `LoyaltyTxn`, `Referral`, `BlogPost`, `WebhookEvent`, `StockReservation`, `AdminActionLog`.
 - `supabase/migrations/*.sql` para RLS policies (Prisma no las maneja).
 - Audit fields middleware (auto-fill `createdBy`/`updatedBy` desde sesión).
@@ -397,11 +430,13 @@
    - Security headers: HSTS (2y), X-Frame-Options DENY, X-Content-Type-Options nosniff, Referrer-Policy strict-origin-when-cross-origin, Permissions-Policy (camera/mic/geo denegados), X-DNS-Prefetch-Control on, Content-Security-Policy completa (Wompi/Cloudflare/Supabase/Venndelo/Anthropic en allowlists; nonces diferidos).
 
 **Verificaciones:**
+
 - `pnpm --filter web typecheck` ✓ y `build` ✓ en cada commit (4 rutas, 0 warnings, build con `ƒ Proxy (Middleware)` confirmado).
 - Local: `curl -I http://localhost:3000/` muestra 7 headers de seguridad + X-Request-Id. CORS bloquea `Origin: https://evil.com` → 403 con X-Request-Id presente.
 - Producción Vercel: deploys exitosos `b09477c → 039ab76 → 779deae`. Headers de seguridad confirmados con `curl -I https://lucams-shop.vercel.app/`.
 
 **Decisiones técnicas en el camino (sin necesidad de ADR):**
+
 - Zod v4 (`z.flattenError`) sobre v3 (`err.flatten()`).
 - `pino-pretty` solo en dev vía `transport.target` con guard `isDev`.
 - Errores de dominio (`payment-declined`, `shipping-unavailable`, `webhook-signature-invalid`) diferidos a sus features (no en `lib/errors.ts` genérico).
@@ -409,6 +444,7 @@
 - Bug encontrado al escribir comments JSDoc: `*/` literal (en `app/api/*/route.ts`) cierra el block comment. Corregido reformulando.
 
 **Memoria nueva guardada:**
+
 - `feedback_flag_human_required.md` — cuando una tarea requiera acción humana (UI dashboards, cuentas, rotación, pagos), prefijar con `**ACCIÓN HUMANA REQUERIDA:**` y separarlo del análisis técnico. Razón: en sesiones previas Lucy se quedó esperando sin saber si yo trabajaba o si ella tenía que hacer algo.
 
 **Pendiente Fase 1:** `packages/db` (Prisma schema + audit fields + RLS policies) → `lib/rate-limit.ts` (Postgres-based, ADR-016) → `/api/health/db` (healthcheck Postgres) → posiblemente auth flow básico.
@@ -422,15 +458,17 @@
 **Diagnóstico contra doc oficial Vercel (actualizada 2026-03-17):**
 
 1. **Auditoría de config Vercel UI:** Root Directory = `apps/web` ✓, "Include files outside" = Enabled ✓, Node 24.x ✓. **Pero Framework Preset = "Other"** (debió ser Next.js).
-2. **Auditoría de `vercel.json`:** estaba en `/vercel.json` (repo root). La doc dice *"This file should be created in your project's root directory"* — y "project's root directory" en Vercel = el Root Directory configurado, NO el repo root. **Por eso Vercel ignoraba el archivo entero** y `framework: "nextjs"` no aplicaba.
+2. **Auditoría de `vercel.json`:** estaba en `/vercel.json` (repo root). La doc dice _"This file should be created in your project's root directory"_ — y "project's root directory" en Vercel = el Root Directory configurado, NO el repo root. **Por eso Vercel ignoraba el archivo entero** y `framework: "nextjs"` no aplicaba.
 3. **Webhook GitHub→Vercel funcionaba**, los pushes sí disparaban deploys (verificado con `git ls-remote` y `91eea18` apareciendo en lista). El problema NO era de tracking de branch.
 
 **Fix aplicado (commit `62a83ae`):**
+
 - `git mv vercel.json apps/web/vercel.json`
 - Simplificado a solo `{"$schema": ..., "framework": "nextjs"}`
 - Removido `outputDirectory` (auto-derivado cuando framework=nextjs) y `ignoreCommand` (paths se romperían con la nueva ubicación; "Skip deployments unaffected" del UI lo cubre).
 
 **Resultado:**
+
 - Build exitoso en 25s. `Detected Next.js version: 16.2.6` confirmado en log.
 - Producción: `https://lucams-shop.vercel.app/` → HTTP 200, `/api/health` → JSON con `version: "62a83aea..."`, `environment: "production"`.
 - Build cache creado para acelerar próximos deploys.
@@ -480,6 +518,7 @@
 **Alcance:** carga de contexto inicial + auditoría de coherencia + endurecimiento productivo de toda la documentación.
 
 **Hechos:**
+
 1. **Auditoría de coherencia** completa de los 7 documentos del proyecto. 21 hallazgos detectados, registrados en [`docs/audits/2026-05-09-coherence-audit.md`](audits/2026-05-09-coherence-audit.md). H5 retirado tras verificación contra Wompi docs.
 2. **Verificación contra fuentes oficiales** de las afirmaciones técnicas críticas:
    - Wompi: `2.65% + $700 + IVA` confirmado ([wompi.com/es/co/planes-tarifas](https://wompi.com/es/co/planes-tarifas/)).
@@ -537,6 +576,7 @@ Después (Fase 3 — checkout):
 3. Address forms (Customer.addresses), shipping quote, contraentrega flag, coupon redemption.
 
 **Cuentas creadas just-in-time durante fases posteriores:**
+
 - Cloudflare (DNS + Turnstile + R2) → durante Fase 1 (Turnstile en signup) y Fase 7 (DNS + R2 al lanzar productivo).
 - Anthropic API key → durante Fase 3 (Estudio de IA con Claude).
 - Venndelo sandbox → durante Fase 4 (checkout con cotización).
@@ -545,6 +585,7 @@ Después (Fase 3 — checkout):
 **Cola de verificación pendiente** (mandato #9):
 
 ✅ **Verificadas el 2026-05-09** (registradas con cita en `OPERATIONS.md § Verificación de tiers Free`):
+
 - Vercel Hobby: 60s function timeout · 100GB bandwidth · 1M invocations · 4 CPU-hrs · 1h log retention · **ToS prohíbe uso comercial** (cita textual).
 - Supabase Free: 500 MB DB · 1 GB storage · 50k MAU · 500k Edge Function invocations · 5 GB egress · pausa a 1 semana · 2 proyectos máx.
 - Resend Free: 3k/mes · 100/día · 1 dominio custom · 30 días retención.
@@ -553,9 +594,11 @@ Después (Fase 3 — checkout):
 - Cloudflare Turnstile Free: 1M siteverify/mes/sitio · 20 widgets/cuenta.
 
 ✅ **Cerrado el 2026-05-09 (sesión 7):**
+
 - `pgmq`, `pg_cron`, `pgcrypto`, `pg_stat_statements` habilitados sin error en proyecto Supabase Free `zxkucphbsfygakgxcnik`. Validan ADR-016 (rate-limit/cache en Postgres + pg_cron) y ADR-017 (background jobs en pgmq).
 
 🟡 **Pendiente todavía (consultas dirigidas al crear cuentas o tomar ADRs):**
+
 - TTL configurable de access/refresh tokens en Supabase Auth Free → `supabase.com/docs/guides/auth/sessions` (revisar al implementar Auth en Fase 1).
 - Política de password configurable en plan Free → `supabase.com/docs/guides/auth/password-security` (Fase 1).
 - Coordinadora 1.100+ destinos vía Venndelo → confirmar al crear cuenta sandbox Venndelo (Fase 0b).
@@ -572,12 +615,14 @@ Después (Fase 3 — checkout):
 Sesión larga que cubrió todo el bloque catálogo + carrito hasta dejar el flow guest "ver → agregar → carrito → ajustar qty" operativo. Commits: `d9fab6b` (admin productos CRUD) → `8714985` (admin categorías) → `d31f037` (seed demo 4×8) → `c77e641` (storefront público) → `7bfc879` (carrito anon + merge).
 
 Decisiones cocreadas con Lucy:
+
 - **Cart en Postgres** + sessionId cookie (vs cookie pura o Redis). Habilita abandoned-cart emails posterior, server-authoritative, alineado con mandato #11 CLAUDE.md.
 - **Merge inteligente** al login (suma qty por variantId, vs reemplazo). UX no destructiva.
 - **Cookie sin firmar HMAC** — UUID server-generated de 122 bits + ausencia de PII en cart hacen suficiente la entropía. Documentado en `lib/cart-session.ts` para revisar si se almacena `customDesign` con datos sensibles.
 - **Default variant pattern** sin schema migration: cada producto auto-crea variant "Default" en createProduct para satisfacer `CartItem.variantId` required. Bridge hasta variantes admin reales.
 
 Detalles arquitectura:
+
 - `features/products/public-service.ts` separado de `service.ts` admin — enforza `deletedAt:null + isActive:true` en product Y category. El admin service queda libre para surfacear archivados en `/admin`.
 - `features/cart/service.ts` con merge transaccional + hard-delete del anon (sessionId @unique no respeta deletedAt). Items con producto archivado se filtran en `getCartDetail` (admin que archive efectivamente saca el item de carritos en vuelo).
 - `lib/format.ts` shared (eliminada duplicación en admin/productos/page.tsx).
@@ -652,6 +697,7 @@ El log mostró que Vercel SÍ ejecutó nuestro `installCommand` (`pnpm install -
    - Las env vars del proyecto NO están en Vercel UI todavía. Antes del próximo deploy con código que use Supabase, la operadora debe ir a Vercel Dashboard → Settings → Environment Variables y copiar las 11 variables de `.env.local` para los 3 entornos (Production, Preview, Development), marcando como Encrypted las que son secretas.
 
 **Documentación añadida:**
+
 - `OPERATIONS.md` § "Compatibilidad local ↔ Vercel" — matriz de paridad + lista de env vars a sincronizar + descripción del `vercel.json`.
 - `OPERATIONS.md` § "Entorno local con Make (símil-Vercel)" — comandos disponibles, convenciones, cuándo usarlo.
 
@@ -660,10 +706,11 @@ El log mostró que Vercel SÍ ejecutó nuestro `installCommand` (`pnpm install -
 **Modo autonomía:** la operadora pidió que actuara con más autonomía dentro de los permisos `Bash(*)` de la VM dedicada (mandato #10). Procedí con bloques digeribles + commits frecuentes + pausa solo en decisiones destructivas.
 
 **Hechos:**
+
 - **Tooling instalado:** Node.js 22.22.2 (NodeSource RPM en Oracle Linux 9.7) + pnpm 11.0.9 (vía corepack) + npm 10.9.7.
 - **Monorepo inicializado:** `pnpm-workspace.yaml` con `apps/*` y `packages/*`. `package.json` root con scripts compartidos (`dev`, `build`, `lint`, `typecheck`, `format`). `engines` y `packageManager` declarados.
 - **`apps/web` creado:** `pnpm create next-app@latest --typescript --tailwind --eslint --app --no-src-dir --import-alias "@/*" --use-pnpm --turbopack`. Llegó **Next.js 16.2.6** (no 15.x como decían los docs originales — actualizamos).
-- **Hallazgo crítico:** Next.js 16 trae breaking changes vs 15. La advertencia oficial `apps/web/AGENTS.md` lo señala explícitamente: *"This is NOT the Next.js you know."* Leí `node_modules/next/dist/docs/01-app/02-guides/upgrading/version-16.md` y documenté los cambios que afectan nuestra arquitectura (saga, middleware, async APIs, themeColor, revalidateTag, images config) en **ADR-024**.
+- **Hallazgo crítico:** Next.js 16 trae breaking changes vs 15. La advertencia oficial `apps/web/AGENTS.md` lo señala explícitamente: _"This is NOT the Next.js you know."_ Leí `node_modules/next/dist/docs/01-app/02-guides/upgrading/version-16.md` y documenté los cambios que afectan nuestra arquitectura (saga, middleware, async APIs, themeColor, revalidateTag, images config) en **ADR-024**.
 - **shadcn/ui v4 instalado:** `pnpm dlx shadcn@latest init --defaults --no-monorepo --base radix`. Style `radix-nova` (la evolución del antiguo "new-york" — actualizamos ADR-021 para reflejar el nombre real). Dependencias: `class-variance-authority`, `clsx`, `lucide-react`, `radix-ui`, `tailwind-merge`, `tw-animate-css`.
 - **Branding aplicado en código:**
   - `lib/utils.ts` con `cn()` helper.
@@ -680,11 +727,13 @@ El log mostró que Vercel SÍ ejecutó nuestro `installCommand` (`pnpm install -
 - **pnpm build approvals:** `sharp` (next/image), `unrs-resolver` (tailwind/eslint), `msw` (testing) aprobados explícitamente vía `pnpm-workspace.yaml` `allowBuilds`.
 
 **Documentación actualizada:**
+
 - ADR-024 nuevo en `DECISIONS.md` documentando Next.js 16 + breaking changes que adoptamos.
 - ARCHITECTURE.md: tabla de versiones actualizada (Next.js 15.x → 16.x).
 - CLAUDE.md mandato #3: stack actualizado con Next.js 16 + style `radix-nova` + advertencia sobre breaking changes.
 
 **Lo que NO hicimos en este bloque (Fase 1 continúa):**
+
 - Prisma + `packages/db` schema (siguiente).
 - RLS policies + tests automáticos.
 - Auth Supabase (registro, login, recuperación).
@@ -699,12 +748,14 @@ El log mostró que Vercel SÍ ejecutó nuestro `installCommand` (`pnpm install -
 **Decisión de la operadora:** cerrar Fase 0b con las 4 cuentas críticas (GitHub, Supabase, Vercel, Resend) y diferir Cloudflare/Anthropic/Venndelo a sus fases respectivas. Razón pragmática: ninguna de las 4 postergadas bloquea Fase 1, y mantener cuentas "frías" no usadas suma surface area sin beneficio.
 
 **Lo creado y validado en esta tanda:**
+
 - **Vercel Hobby** (`lucams-shop.vercel.app`): conectado a GitHub `jullieth93/lucams`, primer deploy exitoso con HTTP 404 esperado (no hay código aún), webhook GitHub→Vercel funcionando.
 - **Resend Free**: API key con scope "Sending access" (least privilege), validada con `restricted_api_key` error code (confirma key válida + scoped). Dominio default `resend.dev`.
 
 **Incidente de seguridad #2 durante esta tanda:** al diagnosticar un 401 de Resend (que era esperado por el scope, no por key inválida), Claude usó `cat -A .env.local` con regex de redacción `[A-Za-z0-9]+` que NO incluía underscore. La key real quedó parcialmente visible en transcript. Resuelto: rotación + revocación + actualización de memoria con anti-patrones específicos (no usar `cat`, no combinar prefix+suffix, no redacciones parciales).
 
 **Documentación actualizada:**
+
 - `ROADMAP.md` Fase 0b marcada 🟢 con re-scope explícito documentado.
 - `STATE.md` resumen actual y próximo paso ahora apuntan a Fase 1.
 - `feedback_never_read_env_files.md` ampliada con sección "Anti-patrones específicos" (cat, regex incompletas, prefix+suffix combinados).
@@ -712,19 +763,21 @@ El log mostró que Vercel SÍ ejecutó nuestro `installCommand` (`pnpm install -
 ### 2026-05-09 — Setup proyecto Supabase + extensiones + connection test (sesión 7)
 
 **Hechos:**
+
 - Proyecto Supabase creado: `zxkucphbsfygakgxcnik.supabase.co`, region `sa-east-1` (São Paulo), Postgres standard (NO OrioleDB Alpha), GitHub linked a `jullieth93/lucams`, Auto-RLS ON, Auto-expose tables OFF, Data API ON.
 - Las 5 vars de Supabase copiadas a `.env.local` (ignorado por git): URL + Publishable + Secret + DATABASE_URL pooled (6543) + DIRECT_URL direct (5432).
 - 4 extensiones habilitadas vía dashboard: `pgmq`, `pg_cron`, `pgcrypto`, `pg_stat_statements`. **Cierra el último pendiente práctico de la cola de verificación.** Confirma que ADR-016 y ADR-017 son ejecutables en plan Free.
 - Connection test ejecutado sin exponer credenciales (`set -a; source .env.local; set +a; curl`). Resultados:
   - Auth health, Auth settings, Storage list: HTTP 200 con publishable key.
   - REST root con secret key: HTTP 200.
-  - **Hallazgo nuevo:** REST root `/rest/v1/` con publishable da HTTP 401 con mensaje *"Only secret API keys can be used for this endpoint"* — comportamiento nuevo del sistema publishable/secret. La introspección OpenAPI del schema ahora requiere secret. Es **mejor postura de seguridad** (la publishable no puede leak schema completo). Documentado en `INTEGRATIONS.md` § Supabase.
+  - **Hallazgo nuevo:** REST root `/rest/v1/` con publishable da HTTP 401 con mensaje _"Only secret API keys can be used for this endpoint"_ — comportamiento nuevo del sistema publishable/secret. La introspección OpenAPI del schema ahora requiere secret. Es **mejor postura de seguridad** (la publishable no puede leak schema completo). Documentado en `INTEGRATIONS.md` § Supabase.
 
 **Bug en `.env.example` corregido:** `EMAIL_FROM=Lucams_shop <onboarding@resend.dev>` rompía bash `source` por los `<`/`>`. Corregido a `EMAIL_FROM="Lucams_shop <onboarding@resend.dev>"` (con quotes) en `.env.example` y `.env.local`.
 
 **Var rename:** `DIRECT_DATABASE_URL` → `DIRECT_URL` (convención oficial Supabase+Prisma per [supabase.com/docs/guides/database/prisma](https://supabase.com/docs/guides/database/prisma)). Aplicado a `.env.example`, `.env.local` (vía `sed`, sin leer contenido para no exponer secretos), `docs/OPERATIONS.md`, `docs/INTEGRATIONS.md`, `docs/ARCHITECTURE.md`.
 
 **⚠️ Incidente de seguridad — leak de secret key:**
+
 - Mientras hacía un Edit a `.env.local`, la herramienta Edit exigió Read previo. Al hacer `Read .env.local`, la `SUPABASE_SECRET_KEY` real (`sb_secret_REDACTED`) entró a mi contexto y por lo tanto al transcript del chat.
 - Severidad real: P0 según runbook IRP-001. Severidad práctica: baja (DB vacía, dev environment, no producción).
 - Operadora decidió no rotar inmediatamente — queda como **deuda crítica obligatoria antes de cerrar la sesión**.
@@ -735,13 +788,15 @@ El log mostró que Vercel SÍ ejecutó nuestro `installCommand` (`pnpm install -
 **Hallazgo del operador (Lucy):** al copiar credenciales del dashboard Supabase a `.env.local`, observó que las API keys ya no se llaman `anon` y `service_role` sino **Publishable** y **Secret**.
 
 **Verificación contra docs oficiales** ([supabase.com/docs/guides/api/api-keys](https://supabase.com/docs/guides/api/api-keys), [Supabase Discussion #29260](https://github.com/orgs/supabase/discussions/29260)):
+
 - Las legacy `anon`/`service_role` (formato JWT) están siendo reemplazadas por `sb_publishable_*` y `sb_secret_*` (token strings con prefijo).
-- Cita textual crítica: *"Projects restored from 1st November 2025 will no longer be restored with the legacy API keys. **New projects no longer have anon and service_role available for use.**"*
+- Cita textual crítica: _"Projects restored from 1st November 2025 will no longer be restored with the legacy API keys. **New projects no longer have anon and service_role available for use.**"_
 - Nuestro proyecto se creó hoy (2026-05-09) → solo tiene las nuevas keys.
 - Mapeo de seguridad idéntico: publishable → rol Postgres `anon`, secret → rol Postgres `service_role`. Drop-in replacement.
 - Ventaja del nuevo sistema: múltiples secret keys revocables (rotación sin downtime).
 
 **Cambios aplicados:**
+
 - `.env.example` y `.env.local`: `NEXT_PUBLIC_SUPABASE_ANON_KEY` → `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`; `SUPABASE_SERVICE_ROLE_KEY` → `SUPABASE_SECRET_KEY` (editado por el operador).
 - `docs/OPERATIONS.md`: bloque env vars + política de rotación actualizada.
 - `docs/SECURITY.md`: inventario de claves, runbook IRP-001 (con nuevo paso "revocar la key vieja explícitamente"), threat model, clasificación de datos.
@@ -755,9 +810,10 @@ El log mostró que Vercel SÍ ejecutó nuestro `installCommand` (`pnpm install -
 
 Cola de verificación pendiente cerrada para los 6 servicios externos críticos. Resultados documentados en `OPERATIONS.md § Verificación de tiers Free contra docs oficiales` con cita y URL por cada cifra.
 
-**Hallazgo crítico:** Vercel Hobby ToS **prohíbe explícitamente uso comercial** — *"You shall only use the Services under a Hobby plan for your personal or non-commercial use."* Implica que el upgrade a Vercel Pro al primer pago real es **obligación contractual**, no preferencia de capacidad. Ya estaba planeado en Fase 7; queda confirmado como bloqueante.
+**Hallazgo crítico:** Vercel Hobby ToS **prohíbe explícitamente uso comercial** — _"You shall only use the Services under a Hobby plan for your personal or non-commercial use."_ Implica que el upgrade a Vercel Pro al primer pago real es **obligación contractual**, no preferencia de capacidad. Ya estaba planeado en Fase 7; queda confirmado como bloqueante.
 
 **Resumen de cifras clave verificadas:**
+
 - Vercel Hobby: 60s function timeout, 100 GB bandwidth, 1M invocations, 1h log retention, ToS no comercial.
 - Supabase Free: 500 MB DB + 1 GB storage + 50k MAU + 500k Edge Function invocations + pausa a 1 semana + 2 proyectos máx.
 - Resend Free: 3k/mes + 100/día + 1 dominio + 30 días retención.
@@ -770,17 +826,20 @@ Cola de verificación pendiente cerrada para los 6 servicios externos críticos.
 ### 2026-05-09 — Cierre de ADRs pendientes (sesión 4) + commit inicial
 
 **ADRs cerrados con input del usuario:**
+
 - **ADR-020 — Estrategia legal:** Lucams redacta plantillas con base en COMPLIANCE.md + abogado colombiano especialista en consumo/comercio digital revisa antes de Fase 7. Costo estimado ~$300–600 USD, 2–4 semanas. Bloqueante para lanzamiento.
 - **ADR-021 — Tipografías:** **Fredoka** (display) + **Inter** (body). Ambas Google Fonts, vía `next/font/google` con `display: swap`. Definidas en `globals.css` `@theme` desde Fase 1.
 - **ADR-026 — Feature flags:** tabla `FeatureFlag` en Postgres + helper `lib/feature-flags.ts` con cache 60s. Sin vendor externo (mismo principio que ADR-016). Criterios de migración futura a GrowthBook documentados.
 
 **Commit hygiene:**
+
 - Configurado `git config --local user.name "Lucy Hurtado" --local user.email "r.julliethhr@gmail.com"`.
 - `.claude/` agregado a `.gitignore` (settings.json es personal, no se comparte).
 - Branch `develop` se mantiene como rama de trabajo. Se renombra a `main` al crear el repo en GitHub (Fase 0b).
 - **Commit `9a2c826`** ejecutado: 21 files, 8.854 inserciones, 8 borrados. Conventional Commits style. Sin Co-Authored-By per preferencia del operador.
 
 **Estado de ADRs:**
+
 - 22 ADRs cerrados (001 a 021, 026).
 - 6 ADRs todavía abiertos: 022 (monitoreo errores, Fase 7), 023 (Redis trigger, futuro), 024 (OpenTelemetry, futuro), 025 (DIAN provider, antes de Fase 7), 027 (staging, post-lanzamiento), 028 (GrowthBook trigger, futuro).
 

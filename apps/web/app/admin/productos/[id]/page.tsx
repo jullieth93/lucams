@@ -4,10 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import { ArrowLeft, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getCurrentAdmin } from "@/lib/auth";
-import {
-  getProductById,
-  listCategoriesForSelect,
-} from "@/features/products/service";
+import { getProductById, listCategoriesForSelect } from "@/features/products/service";
 import { deleteProductAction, updateProductAction } from "../actions";
 import { ProductForm } from "../product-form";
 
@@ -32,17 +29,14 @@ export default async function EditarProductoPage({
   const sp = await searchParams;
   const justCreated = sp.created === "1";
 
-  const [product, categories] = await Promise.all([
-    getProductById(id),
-    listCategoriesForSelect(),
-  ]);
+  const [product, categories] = await Promise.all([getProductById(id), listCategoriesForSelect()]);
 
   if (!product) notFound();
 
   return (
     <div className="min-h-screen bg-slate-50">
       <header className="border-b border-slate-200 bg-white">
-        <div className="max-w-3xl mx-auto px-6 py-4 flex items-center justify-between gap-3">
+        <div className="mx-auto flex max-w-3xl items-center justify-between gap-3 px-6 py-4">
           <div className="flex items-center gap-3">
             <Link
               href="/admin/productos"
@@ -52,12 +46,8 @@ export default async function EditarProductoPage({
               <ArrowLeft className="h-5 w-5" />
             </Link>
             <div>
-              <p className="text-xs text-slate-500 uppercase tracking-wider">
-                Admin · Productos
-              </p>
-              <h1 className="text-lg font-bold text-slate-900">
-                {product.name}
-              </h1>
+              <p className="text-xs tracking-wider text-slate-500 uppercase">Admin · Productos</p>
+              <h1 className="text-lg font-bold text-slate-900">{product.name}</h1>
             </div>
           </div>
           <form action={deleteProductAction}>
@@ -68,16 +58,16 @@ export default async function EditarProductoPage({
               size="sm"
               className="text-red-700 hover:bg-red-50"
             >
-              <Trash2 className="h-4 w-4 mr-1.5" />
+              <Trash2 className="mr-1.5 h-4 w-4" />
               Archivar
             </Button>
           </form>
         </div>
       </header>
 
-      <main className="max-w-3xl mx-auto px-6 py-8 space-y-4">
+      <main className="mx-auto max-w-3xl space-y-4 px-6 py-8">
         {justCreated && (
-          <div className="rounded-md bg-emerald-50 border border-emerald-200 px-3 py-2 text-sm text-emerald-700">
+          <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
             ✓ Producto creado. Ya podés editar más detalles o agregar variantes.
           </div>
         )}

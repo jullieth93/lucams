@@ -40,25 +40,25 @@
 
 ## Naming
 
-| Elemento | Convención | Ejemplo |
-|---|---|---|
-| Archivos TS/TSX | `kebab-case.tsx` o nombre del componente PascalCase | `product-card.tsx`, `ProductCard.tsx` (mantener una convención por carpeta) |
-| Componentes React | `PascalCase` | `ProductCard`, `CheckoutStepper` |
-| Hooks | `useXxx` camelCase | `useCart`, `useDebounce` |
-| Funciones / variables | `camelCase` | `formatCOP`, `currentUser` |
-| Constantes globales | `SCREAMING_SNAKE_CASE` | `MAX_UPLOAD_BYTES`, `WA_NUMBER` |
-| Tipos / Interfaces | `PascalCase` (sin prefijo `I`) | `Order`, `CheckoutPayload` |
-| Enums | `PascalCase` con valores `SCREAMING_SNAKE_CASE` | `OrderStatus.PENDING_PAYMENT` |
-| Tablas Prisma (modelos) | `PascalCase` singular | `Customer`, `OrderItem` |
-| Columnas Prisma | `camelCase` | `firstName`, `createdAt` |
-| Tablas SQL nativas (no-Prisma) | `snake_case` plural | `rate_limit_buckets`, `cache_entries` |
-| Funciones SQL | `snake_case` con prefijo | `rate_limit_increment` |
-| Variables de entorno | `SCREAMING_SNAKE_CASE` con prefijo `NEXT_PUBLIC_` solo si visible en cliente | `WOMPI_PRIVATE_KEY`, `NEXT_PUBLIC_SITE_URL` |
-| Slugs (URLs) | `kebab-case` | `/categoria/dia-de-la-madre` |
-| Branches Git | `tipo/descripcion-corta` | `feat/checkout-multi-step`, `fix/wompi-webhook-replay` |
-| Commits | Conventional Commits | `feat(checkout): add COD as payment method` |
-| Tags Git | `v<semver>` | `v0.3.1` |
-| Imports absolutos | `@/...` apuntando a `apps/web/` | `import { cn } from '@/lib/utils'` |
+| Elemento                       | Convención                                                                   | Ejemplo                                                                     |
+| ------------------------------ | ---------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| Archivos TS/TSX                | `kebab-case.tsx` o nombre del componente PascalCase                          | `product-card.tsx`, `ProductCard.tsx` (mantener una convención por carpeta) |
+| Componentes React              | `PascalCase`                                                                 | `ProductCard`, `CheckoutStepper`                                            |
+| Hooks                          | `useXxx` camelCase                                                           | `useCart`, `useDebounce`                                                    |
+| Funciones / variables          | `camelCase`                                                                  | `formatCOP`, `currentUser`                                                  |
+| Constantes globales            | `SCREAMING_SNAKE_CASE`                                                       | `MAX_UPLOAD_BYTES`, `WA_NUMBER`                                             |
+| Tipos / Interfaces             | `PascalCase` (sin prefijo `I`)                                               | `Order`, `CheckoutPayload`                                                  |
+| Enums                          | `PascalCase` con valores `SCREAMING_SNAKE_CASE`                              | `OrderStatus.PENDING_PAYMENT`                                               |
+| Tablas Prisma (modelos)        | `PascalCase` singular                                                        | `Customer`, `OrderItem`                                                     |
+| Columnas Prisma                | `camelCase`                                                                  | `firstName`, `createdAt`                                                    |
+| Tablas SQL nativas (no-Prisma) | `snake_case` plural                                                          | `rate_limit_buckets`, `cache_entries`                                       |
+| Funciones SQL                  | `snake_case` con prefijo                                                     | `rate_limit_increment`                                                      |
+| Variables de entorno           | `SCREAMING_SNAKE_CASE` con prefijo `NEXT_PUBLIC_` solo si visible en cliente | `WOMPI_PRIVATE_KEY`, `NEXT_PUBLIC_SITE_URL`                                 |
+| Slugs (URLs)                   | `kebab-case`                                                                 | `/categoria/dia-de-la-madre`                                                |
+| Branches Git                   | `tipo/descripcion-corta`                                                     | `feat/checkout-multi-step`, `fix/wompi-webhook-replay`                      |
+| Commits                        | Conventional Commits                                                         | `feat(checkout): add COD as payment method`                                 |
+| Tags Git                       | `v<semver>`                                                                  | `v0.3.1`                                                                    |
+| Imports absolutos              | `@/...` apuntando a `apps/web/`                                              | `import { cn } from '@/lib/utils'`                                          |
 
 ---
 
@@ -135,6 +135,7 @@ apps/web/
 ## Frontend — Server Components vs Client Components
 
 **Default: Server Component (RSC).** Solo declarar `'use client'` cuando se necesita una de:
+
 - Estado local (`useState`, `useReducer`).
 - Hooks de efecto (`useEffect`, `useLayoutEffect`).
 - Eventos del navegador (`onClick`, `onChange`, etc.) — excepto en form actions.
@@ -148,13 +149,13 @@ Cuando una página es mayormente server pero tiene una isla interactiva: el serv
 ```tsx
 // app/(storefront)/producto/[slug]/page.tsx — Server Component
 export default async function ProductPage({ params }: { params: { slug: string } }) {
-  const product = await getProductBySlug(params.slug);  // Server-side fetch
+  const product = await getProductBySlug(params.slug); // Server-side fetch
   if (!product) notFound();
   return (
     <article>
-      <ProductGallery images={product.images} />        {/* Server */}
-      <ProductInfo product={product} />                 {/* Server */}
-      <AddToCartButton variantId={product.variants[0].id} />  {/* Client island */}
+      <ProductGallery images={product.images} /> {/* Server */}
+      <ProductInfo product={product} /> {/* Server */}
+      <AddToCartButton variantId={product.variants[0].id} /> {/* Client island */}
     </article>
   );
 }
@@ -162,22 +163,22 @@ export default async function ProductPage({ params }: { params: { slug: string }
 
 ```tsx
 // components/storefront/add-to-cart-button.tsx
-'use client';
+"use client";
 export function AddToCartButton({ variantId }: { variantId: string }) {
-  const addItem = useCart(s => s.addItem);
+  const addItem = useCart((s) => s.addItem);
   return <Button onClick={() => addItem(variantId)}>Agregar al carrito</Button>;
 }
 ```
 
 ### Datos: cuándo `fetch` vs Server Action vs API route
 
-| Escenario | Patrón |
-|---|---|
-| Lectura inicial en SSR/RSC | Server Component con `await fetch()` o Prisma directo |
-| Mutación de cliente (form submit, button click) | **Server Action** (preferido) |
-| Mutación llamada por terceros (webhooks) | **API route** (`app/api/.../route.ts`) |
-| Lectura desde cliente (búsqueda, autocomplete) | Server Action si autenticado, API route con rate limit si público |
-| Streaming de IA | API route con Edge runtime |
+| Escenario                                       | Patrón                                                            |
+| ----------------------------------------------- | ----------------------------------------------------------------- |
+| Lectura inicial en SSR/RSC                      | Server Component con `await fetch()` o Prisma directo             |
+| Mutación de cliente (form submit, button click) | **Server Action** (preferido)                                     |
+| Mutación llamada por terceros (webhooks)        | **API route** (`app/api/.../route.ts`)                            |
+| Lectura desde cliente (búsqueda, autocomplete)  | Server Action si autenticado, API route con rate limit si público |
+| Streaming de IA                                 | API route con Edge runtime                                        |
 
 ### Hidratación selectiva
 
@@ -197,25 +198,25 @@ Imágenes pesadas no entran en client bundle: usar `next/image` con `priority` s
 
 ```tsx
 // features/checkout/components/checkout-form.tsx
-'use client';
-import { useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { CheckoutPayloadSchema, CheckoutPayload } from '../schemas';
-import { createOrder } from '../server-actions';
+"use client";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { CheckoutPayloadSchema, CheckoutPayload } from "../schemas";
+import { createOrder } from "../server-actions";
 
 export function CheckoutForm() {
   const form = useForm<CheckoutPayload>({
     resolver: zodResolver(CheckoutPayloadSchema),
-    defaultValues: { paymentMethod: 'WOMPI' },
-    mode: 'onBlur',  // Valida en blur, no en cada keystroke (mejor UX)
+    defaultValues: { paymentMethod: "WOMPI" },
+    mode: "onBlur", // Valida en blur, no en cada keystroke (mejor UX)
   });
 
   async function onSubmit(values: CheckoutPayload) {
     const result = await createOrder(values);
     if (!result.ok) {
       // Mapear errores de servidor a campos del form si aplica
-      if (result.problem.type === 'https://lucamsshop.co/problems/invalid-coupon') {
-        form.setError('couponCode', { message: result.problem.detail });
+      if (result.problem.type === "https://lucamsshop.co/problems/invalid-coupon") {
+        form.setError("couponCode", { message: result.problem.detail });
       }
       return;
     }
@@ -249,10 +250,10 @@ export function CheckoutForm() {
 
 ```tsx
 // app/(storefront)/cuenta/ordenes/page.tsx
-import { Suspense } from 'react';
-import { ErrorBoundary } from '@/components/error-boundary';
-import { OrderListSkeleton } from '@/components/skeletons/order-list-skeleton';
-import { OrderList } from './order-list';
+import { Suspense } from "react";
+import { ErrorBoundary } from "@/components/error-boundary";
+import { OrderListSkeleton } from "@/components/skeletons/order-list-skeleton";
+import { OrderList } from "./order-list";
 
 export default function OrdersPage() {
   return (
@@ -284,9 +285,9 @@ export default function OrdersPage() {
 
 ### Cuándo cada una
 
-| Patrón | Usar para |
-|---|---|
-| **Server Action** | 90% de mutaciones desde la UI (forms, botones de "marcar leído", etc.) |
+| Patrón                                 | Usar para                                                                                 |
+| -------------------------------------- | ----------------------------------------------------------------------------------------- |
+| **Server Action**                      | 90% de mutaciones desde la UI (forms, botones de "marcar leído", etc.)                    |
 | **API route** (`app/api/.../route.ts`) | Webhooks de terceros · endpoints públicos para mobile/integraciones · streaming · uploads |
 
 ### Server Actions — convención
@@ -304,14 +305,16 @@ type Result<T> = Ok<T> | Err;
 
 ```ts
 // features/checkout/server-actions.ts
-'use server';
-import { CheckoutPayloadSchema, type CheckoutPayload } from './schemas';
-import * as service from './service';
-import { problemFromError, problem } from '@/lib/errors';
-import { rateLimit } from '@/lib/rate-limit';
-import { getRequestId } from '@/lib/request-id';
+"use server";
+import { CheckoutPayloadSchema, type CheckoutPayload } from "./schemas";
+import * as service from "./service";
+import { problemFromError, problem } from "@/lib/errors";
+import { rateLimit } from "@/lib/rate-limit";
+import { getRequestId } from "@/lib/request-id";
 
-export async function createOrder(input: CheckoutPayload): Promise<Result<{ orderId: string; redirectUrl?: string }>> {
+export async function createOrder(
+  input: CheckoutPayload,
+): Promise<Result<{ orderId: string; redirectUrl?: string }>> {
   const requestId = getRequestId();
   const parsed = CheckoutPayloadSchema.safeParse(input);
   if (!parsed.success) return { ok: false, problem: problem.validation(parsed.error, requestId) };
@@ -347,30 +350,30 @@ export async function createOrder(input: CheckoutPayload): Promise<Result<{ orde
 ```ts
 // lib/errors.ts
 export type ProblemDetails = {
-  type: string;          // URI identificador del tipo: https://lucamsshop.co/problems/<slug>
-  title: string;         // Título legible corto
-  status: number;        // Código HTTP
-  detail?: string;       // Detalle específico de esta ocurrencia (sin PII)
-  instance?: string;     // URI de esta ocurrencia (puede incluir requestId)
-  requestId?: string;    // Extension propia para correlación
-  errors?: Record<string, string[]>;  // Para validation errors (extensión típica)
+  type: string; // URI identificador del tipo: https://lucamsshop.co/problems/<slug>
+  title: string; // Título legible corto
+  status: number; // Código HTTP
+  detail?: string; // Detalle específico de esta ocurrencia (sin PII)
+  instance?: string; // URI de esta ocurrencia (puede incluir requestId)
+  requestId?: string; // Extension propia para correlación
+  errors?: Record<string, string[]>; // Para validation errors (extensión típica)
 };
 
 export const problem = {
   validation(zodErr: ZodError, requestId: string): ProblemDetails {
     return {
-      type: 'https://lucamsshop.co/problems/validation',
-      title: 'Datos de entrada inválidos',
+      type: "https://lucamsshop.co/problems/validation",
+      title: "Datos de entrada inválidos",
       status: 400,
-      detail: 'Uno o más campos no cumplen el formato requerido.',
+      detail: "Uno o más campos no cumplen el formato requerido.",
       requestId,
       errors: zodErr.flatten().fieldErrors as Record<string, string[]>,
     };
   },
   notFound(resource: string, requestId: string): ProblemDetails {
     return {
-      type: 'https://lucamsshop.co/problems/not-found',
-      title: 'Recurso no encontrado',
+      type: "https://lucamsshop.co/problems/not-found",
+      title: "Recurso no encontrado",
       status: 404,
       detail: `No se encontró ${resource}.`,
       requestId,
@@ -378,10 +381,10 @@ export const problem = {
   },
   tooManyRequests(requestId: string): ProblemDetails {
     return {
-      type: 'https://lucamsshop.co/problems/too-many-requests',
-      title: 'Demasiadas solicitudes',
+      type: "https://lucamsshop.co/problems/too-many-requests",
+      title: "Demasiadas solicitudes",
       status: 429,
-      detail: 'Por favor espera unos momentos antes de reintentar.',
+      detail: "Por favor espera unos momentos antes de reintentar.",
       requestId,
     };
   },
@@ -392,8 +395,8 @@ export function problemResponse(p: ProblemDetails): Response {
   return new Response(JSON.stringify(p), {
     status: p.status,
     headers: {
-      'Content-Type': 'application/problem+json',
-      'X-Request-Id': p.requestId ?? '',
+      "Content-Type": "application/problem+json",
+      "X-Request-Id": p.requestId ?? "",
     },
   });
 }
@@ -403,19 +406,19 @@ export function problemResponse(p: ProblemDetails): Response {
 
 > Cada tipo se documenta en `app/(legal)/problems/[slug]/page.tsx` para que los URIs sean dereferenceables (per RFC 7807).
 
-| Slug | Status | Cuándo |
-|---|---|---|
-| `validation` | 400 | Body no pasa Zod |
-| `unauthorized` | 401 | No autenticado |
-| `forbidden` | 403 | Autenticado pero sin permiso |
-| `not-found` | 404 | Recurso inexistente |
-| `conflict` | 409 | Idempotency key conflict, stock agotado, etc. |
-| `unprocessable` | 422 | Estado inválido para la operación |
-| `too-many-requests` | 429 | Rate limit |
-| `payment-declined` | 402 | Wompi declinó |
-| `shipping-unavailable` | 503 | Venndelo no responde |
-| `webhook-signature-invalid` | 401 | Firma incorrecta (no revelar detalles) |
-| `internal-error` | 500 | Catch-all (con requestId) |
+| Slug                        | Status | Cuándo                                        |
+| --------------------------- | ------ | --------------------------------------------- |
+| `validation`                | 400    | Body no pasa Zod                              |
+| `unauthorized`              | 401    | No autenticado                                |
+| `forbidden`                 | 403    | Autenticado pero sin permiso                  |
+| `not-found`                 | 404    | Recurso inexistente                           |
+| `conflict`                  | 409    | Idempotency key conflict, stock agotado, etc. |
+| `unprocessable`             | 422    | Estado inválido para la operación             |
+| `too-many-requests`         | 429    | Rate limit                                    |
+| `payment-declined`          | 402    | Wompi declinó                                 |
+| `shipping-unavailable`      | 503    | Venndelo no responde                          |
+| `webhook-signature-invalid` | 401    | Firma incorrecta (no revelar detalles)        |
+| `internal-error`            | 500    | Catch-all (con requestId)                     |
 
 ---
 
@@ -443,31 +446,33 @@ features/checkout/
 
 ```ts
 // features/checkout/service.ts
-import * as repo from './repository';
-import { reserveStock, releaseStock } from '@/features/inventory/service';
-import { getPaymentProvider } from '@/lib/payment';
+import * as repo from "./repository";
+import { reserveStock, releaseStock } from "@/features/inventory/service";
+import { getPaymentProvider } from "@/lib/payment";
 
 export async function createOrder(payload: CheckoutPayload, requestId: string) {
   return await repo.transaction(async (tx) => {
     const cart = await repo.findCartById(tx, payload.cartId);
-    if (!cart) throw new NotFoundError('cart');
+    if (!cart) throw new NotFoundError("cart");
 
-    const order = await repo.createOrder(tx, { /* ... */ });
+    const order = await repo.createOrder(tx, {
+      /* ... */
+    });
     await reserveStock(tx, order.id, cart.items, requestId);
 
-    if (payload.paymentMethod === 'WOMPI') {
-      const provider = getPaymentProvider('wompi');
+    if (payload.paymentMethod === "WOMPI") {
+      const provider = getPaymentProvider("wompi");
       const checkout = await provider.createCheckout(order);
       await repo.attachPaymentReference(tx, order.id, checkout.externalId);
       return { orderId: order.id, redirectUrl: checkout.redirectUrl };
     }
 
-    if (payload.paymentMethod === 'COD') {
-      await repo.markOrderPaid(tx, order.id, 'COD');
+    if (payload.paymentMethod === "COD") {
+      await repo.markOrderPaid(tx, order.id, "COD");
       return { orderId: order.id };
     }
 
-    throw new UnprocessableError('payment-method');
+    throw new UnprocessableError("payment-method");
   });
 }
 ```
@@ -490,25 +495,35 @@ type Step<TCtx> = {
   compensate: (ctx: TCtx) => Promise<void>;
 };
 
-export async function runSaga<TCtx>(steps: Step<TCtx>[], initial: TCtx, requestId: string): Promise<TCtx> {
+export async function runSaga<TCtx>(
+  steps: Step<TCtx>[],
+  initial: TCtx,
+  requestId: string,
+): Promise<TCtx> {
   let ctx = initial;
   const completed: Step<TCtx>[] = [];
 
   for (const step of steps) {
     try {
-      logger.info({ saga: 'order-fulfillment', step: step.name, status: 'start', requestId });
+      logger.info({ saga: "order-fulfillment", step: step.name, status: "start", requestId });
       ctx = await step.forward(ctx);
       completed.push(step);
-      logger.info({ saga: 'order-fulfillment', step: step.name, status: 'ok', requestId });
+      logger.info({ saga: "order-fulfillment", step: step.name, status: "ok", requestId });
     } catch (err) {
-      logger.error({ saga: 'order-fulfillment', step: step.name, status: 'fail', err, requestId });
+      logger.error({ saga: "order-fulfillment", step: step.name, status: "fail", err, requestId });
       // Compensar en orden inverso
       for (const done of completed.reverse()) {
         try {
           await done.compensate(ctx);
         } catch (compErr) {
           // Si la compensación falla, ALERTA al operador (audit + email).
-          logger.fatal({ saga: 'order-fulfillment', step: done.name, status: 'compensation-failed', compErr, requestId });
+          logger.fatal({
+            saga: "order-fulfillment",
+            step: done.name,
+            status: "compensation-failed",
+            compErr,
+            requestId,
+          });
           await alertOperator(`Compensación falló en saga ${requestId}, paso ${done.name}`);
         }
       }
@@ -524,24 +539,30 @@ export async function runSaga<TCtx>(steps: Step<TCtx>[], initial: TCtx, requestI
 ```ts
 // features/orders/saga-process-paid.ts
 const stockStep: Step<Ctx> = {
-  name: 'commit-stock',
+  name: "commit-stock",
   forward: async (ctx) => ({ ...ctx, inventoryDelta: await commitReservedStock(ctx.orderId) }),
-  compensate: async (ctx) => { await rollbackInventoryDelta(ctx.inventoryDelta); },
+  compensate: async (ctx) => {
+    await rollbackInventoryDelta(ctx.inventoryDelta);
+  },
 };
 
 const shipmentStep: Step<Ctx> = {
-  name: 'create-shipment',
+  name: "create-shipment",
   forward: async (ctx) => ({ ...ctx, shipment: await venndelo.createShipment(ctx.order) }),
-  compensate: async (ctx) => { if (ctx.shipment) await venndelo.cancelShipment(ctx.shipment.id); },
+  compensate: async (ctx) => {
+    if (ctx.shipment) await venndelo.cancelShipment(ctx.shipment.id);
+  },
 };
 
 const emailStep: Step<Ctx> = {
-  name: 'send-confirmation-email',
+  name: "send-confirmation-email",
   forward: async (ctx) => {
-    await enqueue('email_send', { template: 'order-confirmation', to: ctx.order.email, data: ctx });
+    await enqueue("email_send", { template: "order-confirmation", to: ctx.order.email, data: ctx });
     return ctx;
   },
-  compensate: async () => { /* email falló al enqueue es raro; el consumer pgmq tiene retries */ },
+  compensate: async () => {
+    /* email falló al enqueue es raro; el consumer pgmq tiene retries */
+  },
 };
 
 await runSaga([stockStep, shipmentStep, emailStep], { orderId, order }, requestId);
@@ -574,31 +595,31 @@ await runSaga([stockStep, shipmentStep, emailStep], { orderId, order }, requestI
 
 ```ts
 // lib/idempotency.ts
-import { supabaseAdmin } from './supabase/service';
-import { createHash } from 'crypto';
+import { supabaseAdmin } from "./supabase/service";
+import { createHash } from "crypto";
 
 export async function withIdempotency<T>(
   key: string,
   requestBody: unknown,
   fn: () => Promise<T>,
-  ttlSec = 86400  // 24h
+  ttlSec = 86400, // 24h
 ): Promise<{ cached: boolean; result: T }> {
-  const requestHash = createHash('sha256').update(JSON.stringify(requestBody)).digest('hex');
+  const requestHash = createHash("sha256").update(JSON.stringify(requestBody)).digest("hex");
   const existing = await supabaseAdmin
-    .from('IdempotencyKeys')
-    .select('requestHash, response, expiresAt')
-    .eq('key', key)
+    .from("IdempotencyKeys")
+    .select("requestHash, response, expiresAt")
+    .eq("key", key)
     .maybeSingle();
 
   if (existing.data) {
     if (existing.data.requestHash !== requestHash) {
-      throw new ConflictError('idempotency-mismatch');  // Mismo key, distinto body → 409
+      throw new ConflictError("idempotency-mismatch"); // Mismo key, distinto body → 409
     }
     return { cached: true, result: existing.data.response as T };
   }
 
   const result = await fn();
-  await supabaseAdmin.from('IdempotencyKeys').insert({
+  await supabaseAdmin.from("IdempotencyKeys").insert({
     key,
     requestHash,
     response: result,
@@ -634,17 +655,17 @@ Cliente envía `Idempotency-Key: <uuid>`. Server lo valida (UUID v4) y lo usa.
 
 ## DB — naming SQL
 
-| Elemento | Convención |
-|---|---|
-| Tablas creadas por Prisma | `PascalCase` (lo que Prisma genera por defecto) — preservar |
-| Tablas creadas por SQL nativo (migrations no-Prisma) | `snake_case` plural |
-| Columnas Prisma | `camelCase` |
-| Columnas SQL nativas | `snake_case` |
-| Índices | `<table>_<columns>_idx` |
-| Foreign keys | `<from_table>_<column>_fkey` |
-| Constraints check | `<table>_<column>_check` |
-| Funciones | `snake_case` con namespace si aplica (`public.rate_limit_increment`) |
-| Triggers | `<table>_<event>_<action>` |
+| Elemento                                             | Convención                                                           |
+| ---------------------------------------------------- | -------------------------------------------------------------------- |
+| Tablas creadas por Prisma                            | `PascalCase` (lo que Prisma genera por defecto) — preservar          |
+| Tablas creadas por SQL nativo (migrations no-Prisma) | `snake_case` plural                                                  |
+| Columnas Prisma                                      | `camelCase`                                                          |
+| Columnas SQL nativas                                 | `snake_case`                                                         |
+| Índices                                              | `<table>_<columns>_idx`                                              |
+| Foreign keys                                         | `<from_table>_<column>_fkey`                                         |
+| Constraints check                                    | `<table>_<column>_check`                                             |
+| Funciones                                            | `snake_case` con namespace si aplica (`public.rate_limit_increment`) |
+| Triggers                                             | `<table>_<event>_<action>`                                           |
 
 > Mezcla intencional: las tablas de modelo de dominio (gestionadas por Prisma) usan PascalCase. Las tablas auxiliares de infra (rate limit, cache, idempotency, queues) usan snake_case porque las creamos manualmente con SQL.
 
@@ -663,12 +684,12 @@ Cliente envía `Idempotency-Key: <uuid>`. Server lo valida (UUID v4) y lo usa.
 
 ### Ejemplo: renombrar `Customer.fullName` → `Customer.firstName + lastName`
 
-| Release | Acción |
-|---|---|
-| R1 (expand) | Agregar `firstName`, `lastName` como nullables. Trigger que sincroniza `fullName ↔ firstName/lastName`. |
-| R2 (backfill) | Job que llena `firstName`/`lastName` desde `fullName` para registros viejos. |
-| R3 (cutover) | App lee/escribe `firstName`/`lastName` directo. Trigger sigue por seguridad. |
-| R4 (contract) | Eliminar `fullName`, eliminar trigger. |
+| Release       | Acción                                                                                                  |
+| ------------- | ------------------------------------------------------------------------------------------------------- |
+| R1 (expand)   | Agregar `firstName`, `lastName` como nullables. Trigger que sincroniza `fullName ↔ firstName/lastName`. |
+| R2 (backfill) | Job que llena `firstName`/`lastName` desde `fullName` para registros viejos.                            |
+| R3 (cutover)  | App lee/escribe `firstName`/`lastName` directo. Trigger sigue por seguridad.                            |
+| R4 (contract) | Eliminar `fullName`, eliminar trigger.                                                                  |
 
 ### Reglas
 
@@ -758,16 +779,16 @@ model SomeEntity {
 
 ## DB — foreign keys cascade explícito
 
-| Relación | `ON DELETE` | Razón |
-|---|---|---|
-| `OrderItem.orderId` → `Order` | `CASCADE` | Si se borra una orden (caso raro), sus items también |
-| `CartItem.cartId` → `Cart` | `CASCADE` | Idem |
-| `Address.customerId` → `Customer` | `CASCADE` | Si el cliente se borra, sus direcciones también |
-| `Order.customerId` → `Customer` | `SET NULL` | Preservar histórico de ventas aunque el cliente se borre (PII removida pero analítica intacta) |
-| `Review.customerId` → `Customer` | `SET NULL` | Idem |
-| `InventoryLog.variantId` → `ProductVariant` | `RESTRICT` | Nunca permitir borrar un variant que tiene historial |
-| `OrderItem.variantId` → `ProductVariant` | `RESTRICT` | Idem |
-| `LoyaltyTxn.customerId` → `Customer` | `SET NULL` | Preservar histórico contable |
+| Relación                                    | `ON DELETE` | Razón                                                                                          |
+| ------------------------------------------- | ----------- | ---------------------------------------------------------------------------------------------- |
+| `OrderItem.orderId` → `Order`               | `CASCADE`   | Si se borra una orden (caso raro), sus items también                                           |
+| `CartItem.cartId` → `Cart`                  | `CASCADE`   | Idem                                                                                           |
+| `Address.customerId` → `Customer`           | `CASCADE`   | Si el cliente se borra, sus direcciones también                                                |
+| `Order.customerId` → `Customer`             | `SET NULL`  | Preservar histórico de ventas aunque el cliente se borre (PII removida pero analítica intacta) |
+| `Review.customerId` → `Customer`            | `SET NULL`  | Idem                                                                                           |
+| `InventoryLog.variantId` → `ProductVariant` | `RESTRICT`  | Nunca permitir borrar un variant que tiene historial                                           |
+| `OrderItem.variantId` → `ProductVariant`    | `RESTRICT`  | Idem                                                                                           |
+| `LoyaltyTxn.customerId` → `Customer`        | `SET NULL`  | Preservar histórico contable                                                                   |
 
 > **Default que NO usamos:** Prisma no fuerza `ON DELETE CASCADE` por defecto (`Restrict`). Toda relación debe declarar explícitamente con `onDelete: Cascade | SetNull | Restrict`.
 
@@ -782,17 +803,17 @@ model OrderItem {
 
 ## DB — retention y archival
 
-| Datos | Retención online | Después | Mecanismo |
-|---|---|---|---|
-| `Customer` (PII directa) activos | Mientras la cuenta exista | — | — |
-| `Customer` borrados | 30 días post-`deletedAt` | Hard delete + anonimización en logs/backups | Cron `pg_cron` |
-| `Order` | 5 años (legal) | Archivo a R2 (parquet) + delete | Cron mensual |
-| `Cart` abandonado | 90 días | Hard delete | Cron diario |
-| `WebhookEvent` | 90 días | Archivo a R2 + delete | Cron mensual |
-| `AdminActionLog` | 2 años | Archivo a R2 + delete | Cron mensual |
-| `InventoryLog` | Indefinido | Particionar por año si crece mucho | Manual cuando se necesite |
-| `LoyaltyTxn` | Vigencia del programa | Hard delete cuando programa se cierra | Manual |
-| Logs Vercel | Lo que cubre el plan | Sin acción (Vercel maneja) | — |
+| Datos                            | Retención online          | Después                                     | Mecanismo                 |
+| -------------------------------- | ------------------------- | ------------------------------------------- | ------------------------- |
+| `Customer` (PII directa) activos | Mientras la cuenta exista | —                                           | —                         |
+| `Customer` borrados              | 30 días post-`deletedAt`  | Hard delete + anonimización en logs/backups | Cron `pg_cron`            |
+| `Order`                          | 5 años (legal)            | Archivo a R2 (parquet) + delete             | Cron mensual              |
+| `Cart` abandonado                | 90 días                   | Hard delete                                 | Cron diario               |
+| `WebhookEvent`                   | 90 días                   | Archivo a R2 + delete                       | Cron mensual              |
+| `AdminActionLog`                 | 2 años                    | Archivo a R2 + delete                       | Cron mensual              |
+| `InventoryLog`                   | Indefinido                | Particionar por año si crece mucho          | Manual cuando se necesite |
+| `LoyaltyTxn`                     | Vigencia del programa     | Hard delete cuando programa se cierra       | Manual                    |
+| Logs Vercel                      | Lo que cubre el plan      | Sin acción (Vercel maneja)                  | —                         |
 
 > **Archivado a R2:** formato Parquet comprimido. Script en `supabase/functions/archive-monthly/`. Se prueba la restauración cada trimestre.
 
@@ -806,7 +827,7 @@ model OrderItem {
 // lib/fetch-with-timeout.ts
 export async function fetchWithTimeout(
   url: string,
-  init: RequestInit & { timeoutMs?: number } = {}
+  init: RequestInit & { timeoutMs?: number } = {},
 ): Promise<Response> {
   const { timeoutMs = 5000, ...rest } = init;
   const controller = new AbortController();
@@ -819,14 +840,14 @@ export async function fetchWithTimeout(
 }
 ```
 
-| Llamada | Timeout |
-|---|---|
-| Wompi `/v1/transactions/<id>` | 5 s |
-| Wompi `/v1/transactions` (POST) | 10 s |
-| Venndelo quote | 5 s |
-| Venndelo create shipment | 15 s |
-| Anthropic `/v1/messages` | 30 s (modelo puede tardar) |
-| Resend `/emails` | 10 s |
+| Llamada                         | Timeout                    |
+| ------------------------------- | -------------------------- |
+| Wompi `/v1/transactions/<id>`   | 5 s                        |
+| Wompi `/v1/transactions` (POST) | 10 s                       |
+| Venndelo quote                  | 5 s                        |
+| Venndelo create shipment        | 15 s                       |
+| Anthropic `/v1/messages`        | 30 s (modelo puede tardar) |
+| Resend `/emails`                | 10 s                       |
 
 ### Retries con backoff exponencial
 
@@ -834,7 +855,7 @@ export async function fetchWithTimeout(
 // lib/retry.ts
 export async function withRetry<T>(
   fn: () => Promise<T>,
-  opts: { attempts?: number; baseMs?: number; maxMs?: number } = {}
+  opts: { attempts?: number; baseMs?: number; maxMs?: number } = {},
 ): Promise<T> {
   const { attempts = 3, baseMs = 200, maxMs = 5000 } = opts;
   for (let i = 0; i < attempts; i++) {
@@ -842,12 +863,12 @@ export async function withRetry<T>(
       return await fn();
     } catch (err) {
       if (i === attempts - 1) throw err;
-      if (!isRetryable(err)) throw err;  // 4xx no se reintenta
+      if (!isRetryable(err)) throw err; // 4xx no se reintenta
       const delay = Math.min(baseMs * 2 ** i + Math.random() * 100, maxMs);
-      await new Promise(r => setTimeout(r, delay));
+      await new Promise((r) => setTimeout(r, delay));
     }
   }
-  throw new Error('unreachable');
+  throw new Error("unreachable");
 }
 ```
 
@@ -861,28 +882,28 @@ Para llamadas críticas (Wompi, Venndelo):
 // lib/circuit-breaker.ts (simplificado)
 class CircuitBreaker {
   private failures = 0;
-  private state: 'closed' | 'open' | 'half-open' = 'closed';
+  private state: "closed" | "open" | "half-open" = "closed";
   private lastFailureAt = 0;
 
   constructor(private opts: { threshold: number; resetMs: number }) {}
 
   async exec<T>(fn: () => Promise<T>): Promise<T> {
-    if (this.state === 'open') {
+    if (this.state === "open") {
       if (Date.now() - this.lastFailureAt > this.opts.resetMs) {
-        this.state = 'half-open';
+        this.state = "half-open";
       } else {
-        throw new Error('CIRCUIT_OPEN');
+        throw new Error("CIRCUIT_OPEN");
       }
     }
     try {
       const result = await fn();
       this.failures = 0;
-      this.state = 'closed';
+      this.state = "closed";
       return result;
     } catch (err) {
       this.failures++;
       this.lastFailureAt = Date.now();
-      if (this.failures >= this.opts.threshold) this.state = 'open';
+      if (this.failures >= this.opts.threshold) this.state = "open";
       throw err;
     }
   }
@@ -901,13 +922,14 @@ export const wompiCB = new CircuitBreaker({ threshold: 5, resetMs: 30000 });
 ### Request ID
 
 Cada request entrante recibe un `requestId` (UUID v4) generado en `middleware.ts`. Se propaga:
+
 - Header de respuesta `X-Request-Id`.
 - Cookie `__rid` para correlación entre páginas (opcional).
 - Argumento implícito en logger, jobs pgmq, emails.
 
 ```ts
 // lib/request-id.ts (simplificado, real impl con AsyncLocalStorage)
-import { AsyncLocalStorage } from 'async_hooks';
+import { AsyncLocalStorage } from "async_hooks";
 const als = new AsyncLocalStorage<string>();
 
 export function withRequestId<T>(id: string, fn: () => T): T {
@@ -915,7 +937,7 @@ export function withRequestId<T>(id: string, fn: () => T): T {
 }
 
 export function getRequestId(): string {
-  return als.getStore() ?? 'no-request-id';
+  return als.getStore() ?? "no-request-id";
 }
 ```
 
@@ -923,24 +945,24 @@ export function getRequestId(): string {
 
 ```ts
 // lib/logger.ts
-import pino from 'pino';
+import pino from "pino";
 
 const REDACT_PATHS = [
-  'req.headers.authorization',
-  'req.headers.cookie',
-  '*.email',     // emails parciales
-  '*.phone',     // teléfonos parciales
-  '*.password',
-  '*.*Secret',
-  '*.*Key',
-  '*.*Token',
+  "req.headers.authorization",
+  "req.headers.cookie",
+  "*.email", // emails parciales
+  "*.phone", // teléfonos parciales
+  "*.password",
+  "*.*Secret",
+  "*.*Key",
+  "*.*Token",
 ];
 
 export const logger = pino({
-  level: process.env.LOG_LEVEL ?? 'info',
-  redact: { paths: REDACT_PATHS, censor: '[REDACTED]' },
+  level: process.env.LOG_LEVEL ?? "info",
+  redact: { paths: REDACT_PATHS, censor: "[REDACTED]" },
   formatters: {
-    bindings: () => ({ env: process.env.NODE_ENV, app: 'lucams-shop' }),
+    bindings: () => ({ env: process.env.NODE_ENV, app: "lucams-shop" }),
   },
   timestamp: pino.stdTimeFunctions.isoTime,
 });
@@ -949,7 +971,7 @@ export const logger = pino({
 Uso:
 
 ```ts
-logger.info({ event: 'order.created', orderId, customerId, requestId: getRequestId() });
+logger.info({ event: "order.created", orderId, customerId, requestId: getRequestId() });
 ```
 
 > **Nunca** `logger.info('User ' + email + ' did X')`. Usar siempre objeto estructurado con campos: `logger.info({ event, userId, requestId })`.

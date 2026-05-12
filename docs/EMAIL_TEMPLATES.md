@@ -25,26 +25,26 @@
 
 ### Authentication (acción del user)
 
-| Template | Variable principal | Estado | Notas |
-|---|---|---|---|
-| **Confirm signup** | `{{ .Token }}` (OTP) | ✅ Personalizado | OTP de 6-10 dígitos. Lucy lo pegó 2026-05-11. |
-| **Reset password** | `{{ .Token }}` (OTP) | ✅ Personalizado | OTP. Migrado de link a OTP en commit `9ef96cd` para evitar Gmail prefetch. |
-| **Invite user** | `{{ .ConfirmationURL }}` o `{{ .Token }}` | ⚠️ Default Supabase | **Pendiente** — implementar al agregar flow de admin invita admin (próxima fase). |
-| **Magic link** | `{{ .Token }}` | ⚠️ Default Supabase | **Pendiente / descartado** — nuestro flow es password-based, no usamos magic link como login. Si se llega a habilitar para login alternativo, personalizar. |
-| **Change email address** | `{{ .ConfirmationURL }}` o `{{ .Token }}` | ⚠️ Default Supabase | **Pendiente** — implementar cuando se exponga "cambiar email" en /mi-cuenta. Posiblemente migrar a OTP. |
-| **Reauthentication** | `{{ .Token }}` | ⚠️ Default Supabase | **Pendiente** — para acciones sensibles (cambiar email, borrar cuenta). Implementar cuando se exponga right-to-deletion (Fase 4, Ley 1581). |
+| Template                 | Variable principal                        | Estado              | Notas                                                                                                                                                       |
+| ------------------------ | ----------------------------------------- | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Confirm signup**       | `{{ .Token }}` (OTP)                      | ✅ Personalizado    | OTP de 6-10 dígitos. Lucy lo pegó 2026-05-11.                                                                                                               |
+| **Reset password**       | `{{ .Token }}` (OTP)                      | ✅ Personalizado    | OTP. Migrado de link a OTP en commit `9ef96cd` para evitar Gmail prefetch.                                                                                  |
+| **Invite user**          | `{{ .ConfirmationURL }}` o `{{ .Token }}` | ⚠️ Default Supabase | **Pendiente** — implementar al agregar flow de admin invita admin (próxima fase).                                                                           |
+| **Magic link**           | `{{ .Token }}`                            | ⚠️ Default Supabase | **Pendiente / descartado** — nuestro flow es password-based, no usamos magic link como login. Si se llega a habilitar para login alternativo, personalizar. |
+| **Change email address** | `{{ .ConfirmationURL }}` o `{{ .Token }}` | ⚠️ Default Supabase | **Pendiente** — implementar cuando se exponga "cambiar email" en /mi-cuenta. Posiblemente migrar a OTP.                                                     |
+| **Reauthentication**     | `{{ .Token }}`                            | ⚠️ Default Supabase | **Pendiente** — para acciones sensibles (cambiar email, borrar cuenta). Implementar cuando se exponga right-to-deletion (Fase 4, Ley 1581).                 |
 
 ### Security (notificaciones, NO requieren acción)
 
-| Template | Variable principal | Estado | Notas |
-|---|---|---|---|
-| **Password changed** | — | ✅ Personalizado | Lucy lo pegó 2026-05-11. Avisa al user que su password cambió. Si no fue él, contacta soporte. |
-| **Email address changed** | — | ⚠️ Default Supabase | **Pendiente** — implementar junto con "Change email address" del bloque anterior. |
-| **Phone number changed** | — | ⚠️ Default Supabase | **Pendiente / descartado** — actualmente no usamos teléfono como factor de auth. Si se agrega 2FA por SMS, personalizar. |
-| **Identity linked** | — | ⚠️ Default Supabase | **Pendiente / descartado** — implementar cuando se habilite social login (Google/Facebook), si llega ese momento. |
-| **Identity unlinked** | — | ⚠️ Default Supabase | Idem anterior. |
-| **MFA method added** | — | ⚠️ Default Supabase | **Pendiente** — implementar al agregar 2FA opcional (futuro, post-Phase 2). |
-| **MFA method removed** | — | ⚠️ Default Supabase | Idem anterior. |
+| Template                  | Variable principal | Estado              | Notas                                                                                                                    |
+| ------------------------- | ------------------ | ------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| **Password changed**      | —                  | ✅ Personalizado    | Lucy lo pegó 2026-05-11. Avisa al user que su password cambió. Si no fue él, contacta soporte.                           |
+| **Email address changed** | —                  | ⚠️ Default Supabase | **Pendiente** — implementar junto con "Change email address" del bloque anterior.                                        |
+| **Phone number changed**  | —                  | ⚠️ Default Supabase | **Pendiente / descartado** — actualmente no usamos teléfono como factor de auth. Si se agrega 2FA por SMS, personalizar. |
+| **Identity linked**       | —                  | ⚠️ Default Supabase | **Pendiente / descartado** — implementar cuando se habilite social login (Google/Facebook), si llega ese momento.        |
+| **Identity unlinked**     | —                  | ⚠️ Default Supabase | Idem anterior.                                                                                                           |
+| **MFA method added**      | —                  | ⚠️ Default Supabase | **Pendiente** — implementar al agregar 2FA opcional (futuro, post-Phase 2).                                              |
+| **MFA method removed**    | —                  | ⚠️ Default Supabase | Idem anterior.                                                                                                           |
 
 ## Cuándo revisar este doc
 

@@ -18,7 +18,7 @@ Durante el setup de Fase 0b (Supabase), Claude leyó `/home/ansible/workspaces/l
 - **~20:00** — Operadora crea proyecto Supabase y copia las 5 variables a `.env.local` (incluida la secret key).
 - **~20:30** — Conversación sobre cambio de naming `anon`/`service_role` → `publishable`/`secret`. Operadora actualiza nombres en `.env.example` y `.env.local`.
 - **~20:45** — Operadora indica que docs Supabase usan `DIRECT_URL`, no `DIRECT_DATABASE_URL`. Claude inicia rename across docs.
-- **~20:48** — Claude intenta `Edit .env.local` para hacer el rename. Edit falla con: *"File has not been read yet. Read it first before writing to it."*
+- **~20:48** — Claude intenta `Edit .env.local` para hacer el rename. Edit falla con: _"File has not been read yet. Read it first before writing to it."_
 - **~20:48** — Claude ejecuta `Read .env.local` para satisfacer el requisito. **Toda la línea de `SUPABASE_SECRET_KEY=sb_secret_REDACTED` queda en el contexto del modelo y por lo tanto en el transcript.**
 - **~20:49** — Claude detecta el leak inmediatamente, alerta a la operadora, recomienda ejecutar runbook IRP-001 (revocar + rotar).
 - **~20:50** — Operadora decide no rotar inmediatamente. Razones: DB vacía, ambiente dev, no producción. Acepta el riesgo informado, agenda rotación al final de la sesión.

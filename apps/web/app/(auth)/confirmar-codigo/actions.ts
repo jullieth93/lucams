@@ -37,9 +37,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 // token real, acá solo prevenimos garbage obvio.
 const VerifySchema = z.object({
   email: z.string().email(),
-  token: z
-    .string()
-    .regex(/^\d{6,10}$/, "Debe ser un código numérico de 6 a 10 dígitos"),
+  token: z.string().regex(/^\d{6,10}$/, "Debe ser un código numérico de 6 a 10 dígitos"),
 });
 
 export type VerifyOtpActionState = {
@@ -89,8 +87,7 @@ export async function verifyOtpAction(
       status: error.status,
     });
     return {
-      error:
-        "El código no es válido o ya expiró. Solicita uno nuevo o revisa tu email.",
+      error: "El código no es válido o ya expiró. Solicita uno nuevo o revisa tu email.",
     };
   }
 
@@ -111,10 +108,7 @@ async function mergeCartSafely(supabaseUserId: string): Promise<void> {
       select: { id: true },
     });
     if (!customer) return;
-    const finalSessionId = await mergeAnonCartIntoCustomer(
-      anonSessionId,
-      customer.id,
-    );
+    const finalSessionId = await mergeAnonCartIntoCustomer(anonSessionId, customer.id);
     if (finalSessionId !== anonSessionId) {
       await setCartSessionCookie(finalSessionId);
     }

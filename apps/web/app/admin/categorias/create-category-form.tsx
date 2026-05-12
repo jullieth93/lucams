@@ -5,16 +5,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import {
-  createCategoryAction,
-  type CategoryActionState,
-} from "./actions";
+import { createCategoryAction, type CategoryActionState } from "./actions";
 
 export function CreateCategoryForm() {
-  const [state, formAction, pending] = useActionState<
-    CategoryActionState | null,
-    FormData
-  >(createCategoryAction, null);
+  const [state, formAction, pending] = useActionState<CategoryActionState | null, FormData>(
+    createCategoryAction,
+    null,
+  );
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [slugTouched, setSlugTouched] = useState(false);
@@ -30,7 +27,7 @@ export function CreateCategoryForm() {
     <form action={formAction} className="space-y-3">
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1.5">
-          <Label htmlFor="name" className="text-slate-700 text-sm">
+          <Label htmlFor="name" className="text-sm text-slate-700">
             Nombre
           </Label>
           <Input
@@ -47,7 +44,7 @@ export function CreateCategoryForm() {
           )}
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="slug" className="text-slate-700 text-sm">
+          <Label htmlFor="slug" className="text-sm text-slate-700">
             Slug
           </Label>
           <Input
@@ -70,7 +67,7 @@ export function CreateCategoryForm() {
       </div>
 
       <div className="space-y-1.5">
-        <Label htmlFor="description" className="text-slate-700 text-sm">
+        <Label htmlFor="description" className="text-sm text-slate-700">
           Descripción (opcional)
         </Label>
         <Textarea
@@ -84,7 +81,7 @@ export function CreateCategoryForm() {
 
       <div className="grid grid-cols-3 gap-3">
         <div className="space-y-1.5">
-          <Label htmlFor="order" className="text-slate-700 text-sm">
+          <Label htmlFor="order" className="text-sm text-slate-700">
             Orden
           </Label>
           <Input
@@ -97,7 +94,7 @@ export function CreateCategoryForm() {
             disabled={pending}
           />
         </div>
-        <label className="flex items-center gap-2 text-sm text-slate-700 self-end pb-2 col-span-2">
+        <label className="col-span-2 flex items-center gap-2 self-end pb-2 text-sm text-slate-700">
           <input
             type="checkbox"
             name="isActive"
@@ -110,14 +107,14 @@ export function CreateCategoryForm() {
       </div>
 
       {state?.error && !state.fieldErrors && (
-        <div className="rounded-md bg-red-50 border border-red-200 px-3 py-2 text-sm text-red-700">
+        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
           {state.error}
         </div>
       )}
 
       <Button
         type="submit"
-        className="bg-slate-900 hover:bg-slate-800 text-white font-semibold"
+        className="bg-slate-900 font-semibold text-white hover:bg-slate-800"
         disabled={pending}
       >
         {pending ? "Creando..." : "Crear categoría"}

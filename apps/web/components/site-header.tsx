@@ -31,25 +31,25 @@ export async function SiteHeader() {
   ]);
 
   return (
-    <header className="px-6 py-4 sm:px-10 border-b border-brand-purple/10 bg-white">
-      <div className="max-w-6xl mx-auto flex items-center justify-between gap-4">
+    <header className="border-brand-purple/10 border-b bg-white px-6 py-4 sm:px-10">
+      <div className="mx-auto flex max-w-6xl items-center justify-between gap-4">
         <BrandMark size="sm" animated />
 
         <nav className="flex items-center gap-2 sm:gap-4">
           <Link
             href="/productos"
-            className="text-sm font-medium text-brand-purple-dark hover:text-brand-purple"
+            className="text-brand-purple-dark hover:text-brand-purple text-sm font-medium"
           >
             Tienda
           </Link>
           <Link
             href="/carrito"
-            className="relative inline-flex items-center text-brand-purple-dark hover:text-brand-purple"
+            className="text-brand-purple-dark hover:text-brand-purple relative inline-flex items-center"
             aria-label={`Carrito (${cartCount} ítems)`}
           >
             <ShoppingBag className="h-5 w-5" />
             {cartCount > 0 && (
-              <span className="absolute -right-2 -top-2 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-brand-pink px-1 text-[10px] font-bold text-white tabular-nums">
+              <span className="bg-brand-pink absolute -top-2 -right-2 inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[10px] font-bold text-white tabular-nums">
                 {cartCount > 99 ? "99+" : cartCount}
               </span>
             )}
@@ -57,7 +57,7 @@ export async function SiteHeader() {
           {admin && (
             <Link
               href="/admin/dashboard"
-              className="hidden sm:inline-flex text-xs font-semibold uppercase tracking-wider text-brand-purple-dark bg-brand-yellow/30 hover:bg-brand-yellow/50 px-3 py-1.5 rounded-md transition-colors"
+              className="text-brand-purple-dark bg-brand-yellow/30 hover:bg-brand-yellow/50 hidden rounded-md px-3 py-1.5 text-xs font-semibold tracking-wider uppercase transition-colors sm:inline-flex"
             >
               Panel admin
             </Link>
@@ -66,12 +66,9 @@ export async function SiteHeader() {
             <>
               <Link
                 href="/mi-cuenta"
-                className="text-sm font-medium text-brand-purple-dark hover:text-brand-purple"
+                className="text-brand-purple-dark hover:text-brand-purple text-sm font-medium"
               >
-                Hola,{" "}
-                <span className="font-semibold">
-                  {session.customer.firstName ?? "tú"}
-                </span>
+                Hola, <span className="font-semibold">{session.customer.firstName ?? "tú"}</span>
               </Link>
               <form action={logoutAction}>
                 <Button
@@ -88,13 +85,13 @@ export async function SiteHeader() {
             <>
               <Link
                 href="/login"
-                className="text-sm font-medium text-brand-purple-dark hover:text-brand-purple"
+                className="text-brand-purple-dark hover:text-brand-purple text-sm font-medium"
               >
                 Iniciar sesión
               </Link>
               <Link
                 href="/registro"
-                className="rounded-md bg-brand-purple px-3 py-1.5 text-sm font-semibold text-white hover:bg-brand-purple-dark transition-colors"
+                className="bg-brand-purple hover:bg-brand-purple-dark rounded-md px-3 py-1.5 text-sm font-semibold text-white transition-colors"
               >
                 Crear cuenta
               </Link>

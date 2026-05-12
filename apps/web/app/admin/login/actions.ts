@@ -62,11 +62,7 @@ export async function adminLoginAction(
 
   // Rate-limit admin más estricto que cliente (atacar admin es target
   // de alto valor; cliente legítimo admin loguea pocas veces al día).
-  const rlIp = await rateLimit(
-    ipKey("admin-login", ip),
-    isProd ? 5 : 30,
-    15 * 60,
-  );
+  const rlIp = await rateLimit(ipKey("admin-login", ip), isProd ? 5 : 30, 15 * 60);
   const rlEmail = await rateLimit(
     emailKey("admin-login", parsed.data.email),
     isProd ? 5 : 30,
@@ -80,17 +76,15 @@ export async function adminLoginAction(
       emailCount: rlEmail.count,
     });
     return {
-      error:
-        "Demasiados intentos. Por favor espera unos minutos antes de reintentar.",
+      error: "Demasiados intentos. Por favor espera unos minutos antes de reintentar.",
     };
   }
 
   const supabase = await createSupabaseServerClient();
-  const { data: authData, error: authError } =
-    await supabase.auth.signInWithPassword({
-      email: parsed.data.email,
-      password: parsed.data.password,
-    });
+  const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+    email: parsed.data.email,
+    password: parsed.data.password,
+  });
 
   if (authError || !authData.user) {
     logger.info({

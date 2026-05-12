@@ -18,10 +18,7 @@ const slugRegex = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const skuRegex = /^[A-Z0-9-]+$/;
 
 export const ProductCreateSchema = z.object({
-  name: z
-    .string()
-    .min(2, "Nombre muy corto (mín 2 chars)")
-    .max(120, "Máximo 120 chars"),
+  name: z.string().min(2, "Nombre muy corto (mín 2 chars)").max(120, "Máximo 120 chars"),
   slug: z
     .string()
     .min(2, "Slug muy corto")
@@ -36,13 +33,7 @@ export const ProductCreateSchema = z.object({
     .int("Debe ser un entero (centavos COP)")
     .nonnegative("No puede ser negativo")
     .max(100_000_000, "Demasiado alto"),
-  compareAtPrice: z
-    .number()
-    .int()
-    .nonnegative()
-    .max(100_000_000)
-    .optional()
-    .nullable(),
+  compareAtPrice: z.number().int().nonnegative().max(100_000_000).optional().nullable(),
   cost: z.number().int().nonnegative().max(100_000_000).optional().nullable(),
   sku: z
     .string()

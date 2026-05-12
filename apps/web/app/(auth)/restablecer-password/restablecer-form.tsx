@@ -15,16 +15,13 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import {
-  restablecerPasswordAction,
-  type RestablecerActionState,
-} from "./actions";
+import { restablecerPasswordAction, type RestablecerActionState } from "./actions";
 
 export function RestablecerForm({ email }: { email: string }) {
-  const [state, formAction, pending] = useActionState<
-    RestablecerActionState | null,
-    FormData
-  >(restablecerPasswordAction, null);
+  const [state, formAction, pending] = useActionState<RestablecerActionState | null, FormData>(
+    restablecerPasswordAction,
+    null,
+  );
   const [password, setPassword] = useState("");
   const [passwordConfirm, setPasswordConfirm] = useState("");
   const [token, setToken] = useState("");
@@ -32,21 +29,21 @@ export function RestablecerForm({ email }: { email: string }) {
   const passwordsMatch = !passwordConfirm || password === passwordConfirm;
 
   return (
-    <Card className="shadow-xl border-brand-purple/10 animate-in fade-in slide-in-from-bottom-3 duration-500">
+    <Card className="border-brand-purple/10 animate-in fade-in slide-in-from-bottom-3 shadow-xl duration-500">
       <CardHeader className="space-y-2 text-center">
         <span
           aria-hidden="true"
-          className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-brand-cream text-brand-purple motion-safe:[animation:var(--animate-float)] motion-safe:[animation-duration:2.5s]"
+          className="bg-brand-cream text-brand-purple mx-auto flex h-16 w-16 items-center justify-center rounded-full motion-safe:[animation:var(--animate-float)] motion-safe:[animation-duration:2.5s]"
         >
           <KeyRound className="h-8 w-8" strokeWidth={1.75} />
         </span>
-        <CardTitle className="font-display text-2xl text-brand-purple-dark">
+        <CardTitle className="font-display text-brand-purple-dark text-2xl">
           Restablece tu contraseña
         </CardTitle>
         <CardDescription className="text-base">
           Te enviamos un código a{" "}
-          <span className="font-medium text-brand-purple-dark">{email}</span>.
-          Escríbelo aquí junto con tu nueva contraseña.
+          <span className="text-brand-purple-dark font-medium">{email}</span>. Escríbelo aquí junto
+          con tu nueva contraseña.
         </CardDescription>
       </CardHeader>
 
@@ -55,7 +52,7 @@ export function RestablecerForm({ email }: { email: string }) {
 
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="token" className="text-center block">
+            <Label htmlFor="token" className="block text-center">
               Código del correo
             </Label>
             <Input
@@ -71,14 +68,12 @@ export function RestablecerForm({ email }: { email: string }) {
               value={token}
               onChange={(e) => setToken(e.target.value.replace(/\D/g, ""))}
               placeholder="00000000"
-              className="text-center text-2xl font-mono tracking-[0.4em] h-14"
+              className="h-14 text-center font-mono text-2xl tracking-[0.4em]"
               disabled={pending}
               aria-invalid={Boolean(state?.fieldErrors?.token)}
             />
             {state?.fieldErrors?.token && (
-              <p className="text-sm text-destructive text-center">
-                {state.fieldErrors.token[0]}
-              </p>
+              <p className="text-destructive text-center text-sm">{state.fieldErrors.token[0]}</p>
             )}
           </div>
 
@@ -96,11 +91,9 @@ export function RestablecerForm({ email }: { email: string }) {
               showStrength
               aria-invalid={Boolean(state?.fieldErrors?.password)}
             />
-            <p className="text-xs text-muted-foreground">Mínimo 8 caracteres.</p>
+            <p className="text-muted-foreground text-xs">Mínimo 8 caracteres.</p>
             {state?.fieldErrors?.password && (
-              <p className="text-sm text-destructive">
-                {state.fieldErrors.password[0]}
-              </p>
+              <p className="text-destructive text-sm">{state.fieldErrors.password[0]}</p>
             )}
           </div>
 
@@ -115,42 +108,31 @@ export function RestablecerForm({ email }: { email: string }) {
               disabled={pending}
               value={passwordConfirm}
               onValueChange={setPasswordConfirm}
-              aria-invalid={
-                Boolean(state?.fieldErrors?.passwordConfirm) || !passwordsMatch
-              }
+              aria-invalid={Boolean(state?.fieldErrors?.passwordConfirm) || !passwordsMatch}
             />
             {!passwordsMatch && (
-              <p className="text-sm text-destructive">
-                Las contraseñas no coinciden.
-              </p>
+              <p className="text-destructive text-sm">Las contraseñas no coinciden.</p>
             )}
             {state?.fieldErrors?.passwordConfirm && passwordsMatch && (
-              <p className="text-sm text-destructive">
-                {state.fieldErrors.passwordConfirm[0]}
-              </p>
+              <p className="text-destructive text-sm">{state.fieldErrors.passwordConfirm[0]}</p>
             )}
           </div>
 
           {state?.error && !state.fieldErrors && (
             <div
               role="alert"
-              className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive"
+              className="bg-destructive/10 text-destructive rounded-md px-3 py-2 text-sm"
             >
               {state.error}
             </div>
           )}
         </CardContent>
 
-        <CardFooter className="flex flex-col gap-4 mt-4">
+        <CardFooter className="mt-4 flex flex-col gap-4">
           <Button
             type="submit"
-            className="w-full bg-brand-purple hover:bg-brand-purple-dark text-white font-semibold transition-all hover:shadow-md hover:-translate-y-px active:translate-y-px"
-            disabled={
-              pending ||
-              token.length < 6 ||
-              password.length < 8 ||
-              !passwordsMatch
-            }
+            className="bg-brand-purple hover:bg-brand-purple-dark w-full font-semibold text-white transition-all hover:-translate-y-px hover:shadow-md active:translate-y-px"
+            disabled={pending || token.length < 6 || password.length < 8 || !passwordsMatch}
           >
             {pending ? (
               <span className="inline-flex items-center gap-2">
@@ -160,11 +142,11 @@ export function RestablecerForm({ email }: { email: string }) {
               "Guardar nueva contraseña"
             )}
           </Button>
-          <p className="text-sm text-center text-muted-foreground">
+          <p className="text-muted-foreground text-center text-sm">
             ¿No te llegó el código?{" "}
             <Link
               href="/recuperar-password"
-              className="font-medium text-brand-pink hover:text-brand-coral underline-offset-4 hover:underline"
+              className="text-brand-pink hover:text-brand-coral font-medium underline-offset-4 hover:underline"
             >
               Solicitar otro
             </Link>
@@ -184,19 +166,8 @@ function SpinnerIcon() {
       viewBox="0 0 24 24"
       aria-hidden="true"
     >
-      <circle
-        className="opacity-25"
-        cx="12"
-        cy="12"
-        r="10"
-        stroke="currentColor"
-        strokeWidth="4"
-      />
-      <path
-        className="opacity-75"
-        fill="currentColor"
-        d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z"
-      />
+      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z" />
     </svg>
   );
 }

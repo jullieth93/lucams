@@ -45,8 +45,7 @@ const SECURITY_HEADERS: Record<string, string> = {
 // LAN de la VM) — incluirlo rompería todos los recursos CSS/JS/font al
 // forzar al browser a promoverlos a HTTPS que no existe.
 const IS_PROD_DEPLOY =
-  process.env.VERCEL_ENV === "production" ||
-  process.env.VERCEL_ENV === "preview";
+  process.env.VERCEL_ENV === "production" || process.env.VERCEL_ENV === "preview";
 
 const CSP = [
   "default-src 'self'",
@@ -120,8 +119,7 @@ export async function proxy(request: NextRequest) {
   //
   // Excepción: /admin/login es público (es donde el user se autentica).
   const path = request.nextUrl.pathname;
-  const isAdminPath =
-    path.startsWith("/admin") && !path.startsWith("/admin/login");
+  const isAdminPath = path.startsWith("/admin") && !path.startsWith("/admin/login");
   if (isAdminPath && !user) {
     const redirectUrl = new URL("/admin/login", request.url);
     return NextResponse.redirect(redirectUrl);

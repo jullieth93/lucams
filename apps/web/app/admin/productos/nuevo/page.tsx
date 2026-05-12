@@ -20,7 +20,7 @@ export default async function NuevoProductoPage() {
   return (
     <div className="min-h-screen bg-slate-50">
       <header className="border-b border-slate-200 bg-white">
-        <div className="max-w-3xl mx-auto px-6 py-4 flex items-center gap-3">
+        <div className="mx-auto flex max-w-3xl items-center gap-3 px-6 py-4">
           <Link
             href="/admin/productos"
             className="text-slate-500 hover:text-slate-700"
@@ -29,15 +29,13 @@ export default async function NuevoProductoPage() {
             <ArrowLeft className="h-5 w-5" />
           </Link>
           <div>
-            <p className="text-xs text-slate-500 uppercase tracking-wider">
-              Admin · Productos
-            </p>
+            <p className="text-xs tracking-wider text-slate-500 uppercase">Admin · Productos</p>
             <h1 className="text-lg font-bold text-slate-900">Nuevo producto</h1>
           </div>
         </div>
       </header>
 
-      <main className="max-w-3xl mx-auto px-6 py-8">
+      <main className="mx-auto max-w-3xl px-6 py-8">
         <ProductForm
           categories={categories}
           action={createProductAction}

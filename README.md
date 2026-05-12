@@ -28,21 +28,21 @@ E-commerce colombiano de productos magnéticos personalizados. Inspirado en [mag
 
 ## Documentación
 
-| Archivo | Contenido |
-|---|---|
-| [docs/PLAN.md](docs/PLAN.md) | Plan maestro del proyecto (fuente de verdad) |
-| [docs/BRANDING.md](docs/BRANDING.md) | Logo, paleta, mascota, tipografías, tono |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Stack, estructura de carpetas, modelo de datos, RLS, extensiones Postgres, background jobs |
-| [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md) | Wompi, Venndelo, Claude API, Resend, WhatsApp, pgmq |
-| [docs/SECURITY.md](docs/SECURITY.md) | RLS, CORS, headers, rate limit, secrets, auth, RBAC, CSP, validación, file upload, PII |
-| [docs/ROADMAP.md](docs/ROADMAP.md) | Fases de implementación con checklist |
-| [docs/DECISIONS.md](docs/DECISIONS.md) | Log cronológico de decisiones (ADRs) |
-| [docs/OPERATIONS.md](docs/OPERATIONS.md) | Variables de entorno, despliegue, runbook, entorno de desarrollo VM (símil Vercel local) |
-| [docs/STATE.md](docs/STATE.md) | Estado actual + bitácora inter-sesión (índice narrativo) |
-| [docs/CATALOG_SEED.md](docs/CATALOG_SEED.md) | Catálogo seed (37 productos paritarios con magneticas.cl, adaptados a Lucams) |
-| [docs/COMPETITIVE_ANALYSIS.md](docs/COMPETITIVE_ANALYSIS.md) | Análisis competitivo vs magneticas.cl (qué copiamos, mejoramos, descartamos) |
-| [docs/audits/](docs/audits/) | Auditorías históricas (coherencia, seguridad, performance) — `YYYY-MM-DD-<slug>.md` |
-| [CLAUDE.md](CLAUDE.md) | Contexto persistente para futuras sesiones de Claude Code |
+| Archivo                                                      | Contenido                                                                                  |
+| ------------------------------------------------------------ | ------------------------------------------------------------------------------------------ |
+| [docs/PLAN.md](docs/PLAN.md)                                 | Plan maestro del proyecto (fuente de verdad)                                               |
+| [docs/BRANDING.md](docs/BRANDING.md)                         | Logo, paleta, mascota, tipografías, tono                                                   |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)                 | Stack, estructura de carpetas, modelo de datos, RLS, extensiones Postgres, background jobs |
+| [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md)                 | Wompi, Venndelo, Claude API, Resend, WhatsApp, pgmq                                        |
+| [docs/SECURITY.md](docs/SECURITY.md)                         | RLS, CORS, headers, rate limit, secrets, auth, RBAC, CSP, validación, file upload, PII     |
+| [docs/ROADMAP.md](docs/ROADMAP.md)                           | Fases de implementación con checklist                                                      |
+| [docs/DECISIONS.md](docs/DECISIONS.md)                       | Log cronológico de decisiones (ADRs)                                                       |
+| [docs/OPERATIONS.md](docs/OPERATIONS.md)                     | Variables de entorno, despliegue, runbook, entorno de desarrollo VM (símil Vercel local)   |
+| [docs/STATE.md](docs/STATE.md)                               | Estado actual + bitácora inter-sesión (índice narrativo)                                   |
+| [docs/CATALOG_SEED.md](docs/CATALOG_SEED.md)                 | Catálogo seed (37 productos paritarios con magneticas.cl, adaptados a Lucams)              |
+| [docs/COMPETITIVE_ANALYSIS.md](docs/COMPETITIVE_ANALYSIS.md) | Análisis competitivo vs magneticas.cl (qué copiamos, mejoramos, descartamos)               |
+| [docs/audits/](docs/audits/)                                 | Auditorías históricas (coherencia, seguridad, performance) — `YYYY-MM-DD-<slug>.md`        |
+| [CLAUDE.md](CLAUDE.md)                                       | Contexto persistente para futuras sesiones de Claude Code                                  |
 
 ## Cómo correr (cuando exista código)
 

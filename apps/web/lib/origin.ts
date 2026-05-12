@@ -20,7 +20,6 @@ export async function getRequestOrigin(): Promise<string> {
   const h = await headers();
   const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
   const protoHeader = h.get("x-forwarded-proto");
-  const proto =
-    protoHeader ?? (process.env.NODE_ENV === "production" ? "https" : "http");
+  const proto = protoHeader ?? (process.env.NODE_ENV === "production" ? "https" : "http");
   return `${proto}://${host}`;
 }

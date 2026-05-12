@@ -44,16 +44,16 @@
 
 ## Stack
 
-| Capa | Herramienta | Por qué |
-|---|---|---|
-| Unit + integración rápida | **Vitest** | Rápido, ESM-native, compatible con TS, mejor DX que Jest |
-| Component (React) | **Vitest + Testing Library** | Idem + RTL para query semántico |
-| E2E navegador | **Playwright** | Soporta multi-browser, autoespera, generación de codegen, paralelización |
-| Visual regression | **Playwright screenshots** + comparación Pixelmatch | Suficiente sin pagar Chromatic/Percy en MVP |
-| Performance | **Lighthouse CI** + **k6** (load testing) | Lighthouse para web vitals, k6 para load API |
-| Accesibilidad | **`@axe-core/playwright`** + **`@axe-core/react`** | Automatiza WCAG 2.1 AA |
-| Mocking de red | **MSW** (Mock Service Worker) | Intercepta fetch sin tocar el código bajo test |
-| DB tests (RLS) | **Supabase local** + Vitest | DB real, no mock, único modo de validar RLS |
+| Capa                      | Herramienta                                         | Por qué                                                                  |
+| ------------------------- | --------------------------------------------------- | ------------------------------------------------------------------------ |
+| Unit + integración rápida | **Vitest**                                          | Rápido, ESM-native, compatible con TS, mejor DX que Jest                 |
+| Component (React)         | **Vitest + Testing Library**                        | Idem + RTL para query semántico                                          |
+| E2E navegador             | **Playwright**                                      | Soporta multi-browser, autoespera, generación de codegen, paralelización |
+| Visual regression         | **Playwright screenshots** + comparación Pixelmatch | Suficiente sin pagar Chromatic/Percy en MVP                              |
+| Performance               | **Lighthouse CI** + **k6** (load testing)           | Lighthouse para web vitals, k6 para load API                             |
+| Accesibilidad             | **`@axe-core/playwright`** + **`@axe-core/react`**  | Automatiza WCAG 2.1 AA                                                   |
+| Mocking de red            | **MSW** (Mock Service Worker)                       | Intercepta fetch sin tocar el código bajo test                           |
+| DB tests (RLS)            | **Supabase local** + Vitest                         | DB real, no mock, único modo de validar RLS                              |
 
 ---
 
@@ -84,10 +84,10 @@ features/checkout/
 
 ```ts
 // __tests__/setup.ts
-import { beforeAll, afterAll, afterEach } from 'vitest';
-import { server } from './msw-server';
+import { beforeAll, afterAll, afterEach } from "vitest";
+import { server } from "./msw-server";
 
-beforeAll(() => server.listen({ onUnhandledRequest: 'error' }));
+beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 ```
@@ -100,17 +100,17 @@ afterAll(() => server.close());
 
 > **Mock cuando el dependiente cuesta dinero, lentitud o flakiness. Real en todo lo demás.**
 
-| Dependencia | Estrategia | Razón |
-|---|---|---|
-| **Postgres** | Real (Supabase local) | RLS, transacciones, pgmq, pg_cron solo se validan con DB real |
-| **Wompi API** | MSW intercept con respuestas grabadas | Cuenta de costo + sandbox lento |
-| **Venndelo API** | MSW intercept | Idem |
-| **Anthropic API** | MSW intercept | Costo + lentitud + variabilidad de respuesta IA |
-| **Resend API** | MSW intercept | Costo del free tier |
-| **Supabase Storage** | Real (Supabase local) | Validar URL firmada, MIME, etc. |
-| **Supabase Auth** | Real (Supabase local) | Sesiones, MFA, etc. |
-| **Lib internas** (`lib/cart.ts`, `lib/format.ts`, etc.) | Sin mock — funciones puras | Mock de funciones puras es antipatrón |
-| **Repository** | Mock en unit, real en integración | Permite separar lógica de dominio de infraestructura |
+| Dependencia                                             | Estrategia                            | Razón                                                         |
+| ------------------------------------------------------- | ------------------------------------- | ------------------------------------------------------------- |
+| **Postgres**                                            | Real (Supabase local)                 | RLS, transacciones, pgmq, pg_cron solo se validan con DB real |
+| **Wompi API**                                           | MSW intercept con respuestas grabadas | Cuenta de costo + sandbox lento                               |
+| **Venndelo API**                                        | MSW intercept                         | Idem                                                          |
+| **Anthropic API**                                       | MSW intercept                         | Costo + lentitud + variabilidad de respuesta IA               |
+| **Resend API**                                          | MSW intercept                         | Costo del free tier                                           |
+| **Supabase Storage**                                    | Real (Supabase local)                 | Validar URL firmada, MIME, etc.                               |
+| **Supabase Auth**                                       | Real (Supabase local)                 | Sesiones, MFA, etc.                                           |
+| **Lib internas** (`lib/cart.ts`, `lib/format.ts`, etc.) | Sin mock — funciones puras            | Mock de funciones puras es antipatrón                         |
+| **Repository**                                          | Mock en unit, real en integración     | Permite separar lógica de dominio de infraestructura          |
 
 ### Anti-patrones a evitar
 
@@ -137,18 +137,18 @@ afterAll(() => server.close());
 
 ```ts
 // lib/payment/wompi.test.ts
-import { describe, it, expect } from 'vitest';
-import { generateIntegritySignature } from './wompi';
+import { describe, it, expect } from "vitest";
+import { generateIntegritySignature } from "./wompi";
 
-describe('Wompi integrity signature', () => {
-  it('genera SHA256 correcto del concatenado', () => {
-    const sig = generateIntegritySignature('REF-123', 1500000, 'COP', 'test_secret');
-    expect(sig).toBe('e8a4f...'); // valor pre-calculado
+describe("Wompi integrity signature", () => {
+  it("genera SHA256 correcto del concatenado", () => {
+    const sig = generateIntegritySignature("REF-123", 1500000, "COP", "test_secret");
+    expect(sig).toBe("e8a4f..."); // valor pre-calculado
   });
 
-  it('valor distinto si cambia un solo carácter', () => {
-    const a = generateIntegritySignature('REF-123', 1500000, 'COP', 'test_secret');
-    const b = generateIntegritySignature('REF-124', 1500000, 'COP', 'test_secret');
+  it("valor distinto si cambia un solo carácter", () => {
+    const a = generateIntegritySignature("REF-123", 1500000, "COP", "test_secret");
+    const b = generateIntegritySignature("REF-124", 1500000, "COP", "test_secret");
     expect(a).not.toBe(b);
   });
 });
@@ -158,21 +158,21 @@ describe('Wompi integrity signature', () => {
 
 ```tsx
 // components/storefront/product-card.test.tsx
-import { render, screen } from '@testing-library/react';
-import { ProductCard } from './product-card';
+import { render, screen } from "@testing-library/react";
+import { ProductCard } from "./product-card";
 
-describe('ProductCard', () => {
-  const product = { id: 'p1', name: 'Imán de prueba', basePrice: 1500000, images: ['/p.jpg'] };
+describe("ProductCard", () => {
+  const product = { id: "p1", name: "Imán de prueba", basePrice: 1500000, images: ["/p.jpg"] };
 
-  it('muestra el nombre y el precio formateado', () => {
+  it("muestra el nombre y el precio formateado", () => {
     render(<ProductCard product={product} />);
-    expect(screen.getByText('Imán de prueba')).toBeInTheDocument();
-    expect(screen.getByText('$15.000')).toBeInTheDocument();
+    expect(screen.getByText("Imán de prueba")).toBeInTheDocument();
+    expect(screen.getByText("$15.000")).toBeInTheDocument();
   });
 
-  it('tiene alt text descriptivo en la imagen', () => {
+  it("tiene alt text descriptivo en la imagen", () => {
     render(<ProductCard product={product} />);
-    expect(screen.getByRole('img')).toHaveAccessibleName(/imán de prueba/i);
+    expect(screen.getByRole("img")).toHaveAccessibleName(/imán de prueba/i);
   });
 });
 ```
@@ -185,13 +185,13 @@ describe('ProductCard', () => {
 
 ```ts
 // __tests__/integration/setup.ts
-import { execSync } from 'child_process';
-import { beforeAll, afterAll, beforeEach } from 'vitest';
+import { execSync } from "child_process";
+import { beforeAll, afterAll, beforeEach } from "vitest";
 
 beforeAll(() => {
-  execSync('supabase start', { stdio: 'inherit' });
-  execSync('pnpm prisma migrate deploy', { stdio: 'inherit' });
-  execSync('pnpm prisma db seed', { stdio: 'inherit' });
+  execSync("supabase start", { stdio: "inherit" });
+  execSync("pnpm prisma migrate deploy", { stdio: "inherit" });
+  execSync("pnpm prisma db seed", { stdio: "inherit" });
 });
 
 beforeEach(async () => {
@@ -216,26 +216,35 @@ afterAll(() => {
 
 ```ts
 // features/checkout/service.integration.test.ts
-import { describe, it, expect } from 'vitest';
-import { createOrder } from './service';
-import { createTestCart, createTestCustomer } from '@/__tests__/factories';
+import { describe, it, expect } from "vitest";
+import { createOrder } from "./service";
+import { createTestCart, createTestCustomer } from "@/__tests__/factories";
 
-describe('createOrder (integration)', () => {
-  it('reserva stock al crear order PENDING_PAYMENT', async () => {
+describe("createOrder (integration)", () => {
+  it("reserva stock al crear order PENDING_PAYMENT", async () => {
     const customer = await createTestCustomer();
-    const cart = await createTestCart({ customerId: customer.id, items: [{ variantId: 'v1', qty: 2 }] });
+    const cart = await createTestCart({
+      customerId: customer.id,
+      items: [{ variantId: "v1", qty: 2 }],
+    });
 
-    const result = await createOrder({
-      cartId: cart.id, email: customer.email, /* ... */
-    }, 'req-test-1');
+    const result = await createOrder(
+      {
+        cartId: cart.id,
+        email: customer.email /* ... */,
+      },
+      "req-test-1",
+    );
 
-    const reservation = await prisma.stockReservation.findFirst({ where: { orderId: result.orderId } });
+    const reservation = await prisma.stockReservation.findFirst({
+      where: { orderId: result.orderId },
+    });
     expect(reservation).toBeTruthy();
     expect(reservation!.qty).toBe(2);
     expect(reservation!.expiresAt.getTime()).toBeGreaterThan(Date.now());
   });
 
-  it('rechaza si no hay stock suficiente', async () => {
+  it("rechaza si no hay stock suficiente", async () => {
     // Setup variant con stock = 0
     // Llamar createOrder
     // Esperar ConflictError
@@ -251,8 +260,8 @@ describe('createOrder (integration)', () => {
 
 ```ts
 // __tests__/rls.test.ts
-import { describe, it, expect } from 'vitest';
-import { createClient } from '@supabase/supabase-js';
+import { describe, it, expect } from "vitest";
+import { createClient } from "@supabase/supabase-js";
 
 const URL = process.env.SUPABASE_TEST_URL!;
 const ANON = process.env.SUPABASE_TEST_ANON!;
@@ -263,29 +272,29 @@ async function asUser(email: string, password: string) {
   return sb;
 }
 
-describe('RLS: Customer isolation', () => {
-  it('cliente A no ve órdenes de cliente B', async () => {
-    const sbA = await asUser('a@test.local', 'pwdA');
-    const { data, error } = await sbA.from('Order').select('*').eq('customerId', 'CUSTOMER_B_ID');
+describe("RLS: Customer isolation", () => {
+  it("cliente A no ve órdenes de cliente B", async () => {
+    const sbA = await asUser("a@test.local", "pwdA");
+    const { data, error } = await sbA.from("Order").select("*").eq("customerId", "CUSTOMER_B_ID");
     expect(error).toBeNull();
     expect(data).toEqual([]);
   });
 
-  it('cliente sin auth no lee Customer table', async () => {
+  it("cliente sin auth no lee Customer table", async () => {
     const sb = createClient(URL, ANON);
-    const { data } = await sb.from('Customer').select('*');
+    const { data } = await sb.from("Customer").select("*");
     expect(data).toEqual([]);
   });
 
-  it('cliente normal no lee AdminActionLog', async () => {
-    const sbA = await asUser('a@test.local', 'pwdA');
-    const { data } = await sbA.from('AdminActionLog').select('*');
+  it("cliente normal no lee AdminActionLog", async () => {
+    const sbA = await asUser("a@test.local", "pwdA");
+    const { data } = await sbA.from("AdminActionLog").select("*");
     expect(data).toEqual([]);
   });
 
-  it('admin SÍ lee órdenes de cualquier cliente', async () => {
-    const sbAdmin = await asUser('admin@test.local', 'pwdAdmin');
-    const { data, error } = await sbAdmin.from('Order').select('*').limit(5);
+  it("admin SÍ lee órdenes de cualquier cliente", async () => {
+    const sbAdmin = await asUser("admin@test.local", "pwdAdmin");
+    const { data, error } = await sbAdmin.from("Order").select("*").limit(5);
     expect(error).toBeNull();
     expect(data!.length).toBeGreaterThan(0);
   });
@@ -300,39 +309,39 @@ describe('RLS: Customer isolation', () => {
 
 ### Flujos críticos cubiertos
 
-| Flujo | Descripción | Frecuencia |
-|---|---|---|
-| **Compra Wompi sandbox completa** | Catálogo → PDP → carrito → checkout → tarjeta `4242` → orden PAID | Cada PR + cada deploy |
-| **Compra COD completa** | Idem pero contraentrega | Cada PR |
-| **Personalización + compra** | Estudio canvas → guardar diseño → checkout | Cada PR |
-| **Registro + login + reset password** | Auth completo | Cada PR |
-| **Aplicar cupón** | Cupón válido, vencido, agotado | Cada PR |
-| **Admin: crear producto** | Login admin → CRUD producto → revalidate | Cada PR |
-| **Admin: cambiar estado de orden** | Manual con razón → email notificación | Cada PR |
-| **Retracto** | Solicitar retracto → aprobar → recibir → reembolsar | Fase 4+ |
-| **Stock oversold (negative path)** | Dos clientes compran último item simultáneamente → uno gana, otro recibe error claro | Cada PR (después de Fase 4) |
+| Flujo                                 | Descripción                                                                          | Frecuencia                  |
+| ------------------------------------- | ------------------------------------------------------------------------------------ | --------------------------- |
+| **Compra Wompi sandbox completa**     | Catálogo → PDP → carrito → checkout → tarjeta `4242` → orden PAID                    | Cada PR + cada deploy       |
+| **Compra COD completa**               | Idem pero contraentrega                                                              | Cada PR                     |
+| **Personalización + compra**          | Estudio canvas → guardar diseño → checkout                                           | Cada PR                     |
+| **Registro + login + reset password** | Auth completo                                                                        | Cada PR                     |
+| **Aplicar cupón**                     | Cupón válido, vencido, agotado                                                       | Cada PR                     |
+| **Admin: crear producto**             | Login admin → CRUD producto → revalidate                                             | Cada PR                     |
+| **Admin: cambiar estado de orden**    | Manual con razón → email notificación                                                | Cada PR                     |
+| **Retracto**                          | Solicitar retracto → aprobar → recibir → reembolsar                                  | Fase 4+                     |
+| **Stock oversold (negative path)**    | Dos clientes compran último item simultáneamente → uno gana, otro recibe error claro | Cada PR (después de Fase 4) |
 
 ### Estructura
 
 ```ts
 // e2e/checkout-wompi.spec.ts
-import { test, expect } from '@playwright/test';
+import { test, expect } from "@playwright/test";
 
-test.describe('Compra Wompi sandbox', () => {
-  test('flujo completo aprobado', async ({ page }) => {
-    await page.goto('/');
-    await page.getByRole('link', { name: /catálogo/i }).click();
-    await page.getByRole('link', { name: /imán/i }).first().click();
-    await page.getByRole('button', { name: /agregar al carrito/i }).click();
-    await page.getByRole('link', { name: /carrito/i }).click();
-    await page.getByRole('button', { name: /pagar/i }).click();
+test.describe("Compra Wompi sandbox", () => {
+  test("flujo completo aprobado", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("link", { name: /catálogo/i }).click();
+    await page.getByRole("link", { name: /imán/i }).first().click();
+    await page.getByRole("button", { name: /agregar al carrito/i }).click();
+    await page.getByRole("link", { name: /carrito/i }).click();
+    await page.getByRole("button", { name: /pagar/i }).click();
 
     // Llenar formulario de checkout
-    await page.getByLabel('Email').fill('test@example.com');
-    await page.getByLabel('Nombre').fill('Test User');
+    await page.getByLabel("Email").fill("test@example.com");
+    await page.getByLabel("Nombre").fill("Test User");
     // ... resto
 
-    await page.getByRole('button', { name: /pagar ahora/i }).click();
+    await page.getByRole("button", { name: /pagar ahora/i }).click();
 
     // Mock o sandbox real de Wompi: usar tarjeta 4242
     // ... interactuar con widget
@@ -359,9 +368,9 @@ test.describe('Compra Wompi sandbox', () => {
 
 ```ts
 // e2e/visual.spec.ts
-test('home se ve igual que el snapshot', async ({ page }) => {
-  await page.goto('/');
-  await expect(page).toHaveScreenshot('home.png', { maxDiffPixels: 100 });
+test("home se ve igual que el snapshot", async ({ page }) => {
+  await page.goto("/");
+  await expect(page).toHaveScreenshot("home.png", { maxDiffPixels: 100 });
 });
 ```
 
@@ -387,8 +396,8 @@ test('home se ve igual que el snapshot', async ({ page }) => {
 ### En unit (RTL)
 
 ```tsx
-import { axe } from 'jest-axe'; // o vitest-axe
-test('ProductCard no tiene violaciones de a11y', async () => {
+import { axe } from "jest-axe"; // o vitest-axe
+test("ProductCard no tiene violaciones de a11y", async () => {
   const { container } = render(<ProductCard product={mockProduct} />);
   const results = await axe(container);
   expect(results).toHaveNoViolations();
@@ -398,10 +407,10 @@ test('ProductCard no tiene violaciones de a11y', async () => {
 ### En E2E (Playwright)
 
 ```ts
-import { injectAxe, checkA11y } from 'axe-playwright';
+import { injectAxe, checkA11y } from "axe-playwright";
 
-test('home cumple WCAG 2.1 AA', async ({ page }) => {
-  await page.goto('/');
+test("home cumple WCAG 2.1 AA", async ({ page }) => {
+  await page.goto("/");
   await injectAxe(page);
   await checkA11y(page, null, {
     detailedReport: true,
@@ -431,43 +440,50 @@ test('home cumple WCAG 2.1 AA', async ({ page }) => {
 
 ```json
 // lighthouse-budget.json
-[{
-  "path": "/*",
-  "timings": [
-    { "metric": "interactive", "budget": 3000 },
-    { "metric": "first-contentful-paint", "budget": 1500 }
-  ],
-  "resourceSizes": [
-    { "resourceType": "script", "budget": 250 },
-    { "resourceType": "total", "budget": 1000 }
-  ]
-}]
+[
+  {
+    "path": "/*",
+    "timings": [
+      { "metric": "interactive", "budget": 3000 },
+      { "metric": "first-contentful-paint", "budget": 1500 }
+    ],
+    "resourceSizes": [
+      { "resourceType": "script", "budget": 250 },
+      { "resourceType": "total", "budget": 1000 }
+    ]
+  }
+]
 ```
 
 ### Load testing con k6
 
 ```js
 // load/checkout-burst.js
-import http from 'k6/http';
-import { check, sleep } from 'k6';
+import http from "k6/http";
+import { check, sleep } from "k6";
 
 export const options = {
   stages: [
-    { duration: '30s', target: 50 },   // ramp-up
-    { duration: '1m', target: 50 },    // sostenido 50 RPS
-    { duration: '30s', target: 100 },  // pico
-    { duration: '1m', target: 100 },
-    { duration: '30s', target: 0 },    // ramp-down
+    { duration: "30s", target: 50 }, // ramp-up
+    { duration: "1m", target: 50 }, // sostenido 50 RPS
+    { duration: "30s", target: 100 }, // pico
+    { duration: "1m", target: 100 },
+    { duration: "30s", target: 0 }, // ramp-down
   ],
   thresholds: {
-    http_req_duration: ['p(95)<2000'],  // p95 < 2s
-    http_req_failed: ['rate<0.01'],     // < 1% errores
+    http_req_duration: ["p(95)<2000"], // p95 < 2s
+    http_req_failed: ["rate<0.01"], // < 1% errores
   },
 };
 
 export default function () {
-  const res = http.post(`${__ENV.BASE_URL}/api/checkout/create`, JSON.stringify({ /* ... */ }));
-  check(res, { 'status 200': r => r.status === 200 });
+  const res = http.post(
+    `${__ENV.BASE_URL}/api/checkout/create`,
+    JSON.stringify({
+      /* ... */
+    }),
+  );
+  check(res, { "status 200": (r) => r.status === 200 });
   sleep(1);
 }
 ```
@@ -482,29 +498,29 @@ Set mínimo de tests E2E que correr **inmediatamente después de un deploy a pro
 
 ```ts
 // e2e/smoke.spec.ts
-test.describe.parallel('Smoke', () => {
-  test('home carga en < 3s', async ({ page }) => {
+test.describe.parallel("Smoke", () => {
+  test("home carga en < 3s", async ({ page }) => {
     const start = Date.now();
-    await page.goto('/');
+    await page.goto("/");
     expect(Date.now() - start).toBeLessThan(3000);
   });
 
-  test('/api/health responde 200', async ({ request }) => {
-    const res = await request.get('/api/health');
+  test("/api/health responde 200", async ({ request }) => {
+    const res = await request.get("/api/health");
     expect(res.status()).toBe(200);
   });
 
-  test('/api/health/db responde 200', async ({ request }) => {
-    const res = await request.get('/api/health/db');
+  test("/api/health/db responde 200", async ({ request }) => {
+    const res = await request.get("/api/health/db");
     expect(res.status()).toBe(200);
   });
 
-  test('PDP de producto seed carga', async ({ page }) => {
-    await page.goto('/producto/iman-foto-personalizado');
-    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+  test("PDP de producto seed carga", async ({ page }) => {
+    await page.goto("/producto/iman-foto-personalizado");
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
   });
 
-  test('checkout completo con tarjeta sandbox', async ({ page }) => {
+  test("checkout completo con tarjeta sandbox", async ({ page }) => {
     // Variante reducida del E2E completo, solo el happy path
   });
 });
@@ -514,15 +530,15 @@ test.describe.parallel('Smoke', () => {
 
 ## Tests de seguridad
 
-| Test | Herramienta | Cuándo |
-|---|---|---|
-| `pnpm audit --audit-level=high` | npm audit | Cada PR |
-| `gitleaks detect` (secret scanning) | gitleaks | Cada PR |
-| Headers de seguridad presentes | Playwright (assertions sobre `response.headers()`) | Cada deploy |
-| Rate limit funciona | Playwright (loop hasta 429) | Cada PR (Fase 1+) |
-| Webhook firma inválida es rechazada | Vitest integration | Cada PR (Fase 4+) |
-| RLS impostor falla | Vitest integration | Cada PR |
-| Pen test manual | Externo | Pre-lanzamiento |
+| Test                                | Herramienta                                        | Cuándo            |
+| ----------------------------------- | -------------------------------------------------- | ----------------- |
+| `pnpm audit --audit-level=high`     | npm audit                                          | Cada PR           |
+| `gitleaks detect` (secret scanning) | gitleaks                                           | Cada PR           |
+| Headers de seguridad presentes      | Playwright (assertions sobre `response.headers()`) | Cada deploy       |
+| Rate limit funciona                 | Playwright (loop hasta 429)                        | Cada PR (Fase 1+) |
+| Webhook firma inválida es rechazada | Vitest integration                                 | Cada PR (Fase 4+) |
+| RLS impostor falla                  | Vitest integration                                 | Cada PR           |
+| Pen test manual                     | Externo                                            | Pre-lanzamiento   |
 
 ---
 
@@ -576,14 +592,14 @@ jobs:
 
 > Coverage no es la meta — es la consecuencia. Pero sirve como salud check.
 
-| Capa | Coverage mínimo (line) |
-|---|---|
-| `lib/` (utils puros) | 90% |
-| `features/<feat>/service.ts` | 80% |
+| Capa                            | Coverage mínimo (line)  |
+| ------------------------------- | ----------------------- |
+| `lib/` (utils puros)            | 90%                     |
+| `features/<feat>/service.ts`    | 80%                     |
 | `features/<feat>/repository.ts` | 70% (tests integración) |
-| `app/api/*/route.ts` | 70% |
-| `components/` | 50% (rendering + a11y) |
-| **Total proyecto** | ≥ 70% |
+| `app/api/*/route.ts`            | 70%                     |
+| `components/`                   | 50% (rendering + a11y)  |
+| **Total proyecto**              | ≥ 70%                   |
 
 CI rompe si baja del threshold definido (`vitest.config.ts` → `coverage.thresholds`).
 

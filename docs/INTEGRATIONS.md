@@ -4,14 +4,14 @@ Detalle de cada integración externa: cómo se conecta, qué endpoints/webhooks 
 
 ## Tabla resumen
 
-| Integración | Propósito | SDK / método | Webhooks | Sandbox |
-|---|---|---|---|---|
-| **Wompi** | Pasarela de pago | REST + Web Checkout | `transaction.updated` | Sí |
-| **Venndelo** | Logística (Coordinadora + COD) | REST API pública | Tracking (`shipment.updated`) | Sí |
-| **Supabase** | DB + Auth + Storage + Realtime | `@supabase/supabase-js` | — | Mismo proyecto Free |
-| **Resend** | Email transaccional | `resend` SDK | — (sin webhooks por ahora) | Subdominio `resend.dev` |
-| **Claude API** | Asistente de diseño en estudio | `@anthropic-ai/sdk` | — | Mismo endpoint |
-| **WhatsApp** | Botón flotante con mensaje pre-armado | `wa.me` URL scheme | — | — |
+| Integración    | Propósito                             | SDK / método            | Webhooks                      | Sandbox                 |
+| -------------- | ------------------------------------- | ----------------------- | ----------------------------- | ----------------------- |
+| **Wompi**      | Pasarela de pago                      | REST + Web Checkout     | `transaction.updated`         | Sí                      |
+| **Venndelo**   | Logística (Coordinadora + COD)        | REST API pública        | Tracking (`shipment.updated`) | Sí                      |
+| **Supabase**   | DB + Auth + Storage + Realtime        | `@supabase/supabase-js` | —                             | Mismo proyecto Free     |
+| **Resend**     | Email transaccional                   | `resend` SDK            | — (sin webhooks por ahora)    | Subdominio `resend.dev` |
+| **Claude API** | Asistente de diseño en estudio        | `@anthropic-ai/sdk`     | —                             | Mismo endpoint          |
+| **WhatsApp**   | Botón flotante con mensaje pre-armado | `wa.me` URL scheme      | —                             | —                       |
 
 ---
 
@@ -73,7 +73,7 @@ Cliente               Lucams_shop                   Wompi                 Vennde
 
 ```ts
 // lib/payment/wompi.ts
-import { createHash } from 'crypto';
+import { createHash } from "crypto";
 
 function generateIntegritySignature(
   reference: string,
@@ -82,7 +82,7 @@ function generateIntegritySignature(
   integritySecret: string,
 ): string {
   const concatenated = `${reference}${amountInCents}${currency}${integritySecret}`;
-  return createHash('sha256').update(concatenated).digest('hex');
+  return createHash("sha256").update(concatenated).digest("hex");
 }
 ```
 
@@ -95,28 +95,29 @@ Wompi envía cada evento con un `signature.checksum` que es:
 async function verifyWebhook(req: Request): Promise<boolean> {
   const body = await req.json();
   const { signature, timestamp } = body;
-  const properties = signature.properties.map((path: string) =>
-    getValueByPath(body.data, path)
-  ).join('');
-  const expected = createHash('sha256')
+  const properties = signature.properties
+    .map((path: string) => getValueByPath(body.data, path))
+    .join("");
+  const expected = createHash("sha256")
     .update(`${properties}${timestamp}${process.env.WOMPI_EVENTS_SECRET}`)
-    .digest('hex');
+    .digest("hex");
   return expected === signature.checksum;
 }
 ```
 
 ### Estados de transacción
 
-| Estado Wompi | OrderStatus interno | Acción |
-|---|---|---|
-| `APPROVED` | `PAID` | Crear envío Venndelo, descontar stock, enviar email |
-| `DECLINED` | `CANCELLED` | Liberar stock reservado, email de fallido |
-| `VOIDED` | `REFUNDED` | Restaurar stock, email de reembolso |
-| `ERROR` | `CANCELLED` | Liberar stock, log de error |
+| Estado Wompi | OrderStatus interno | Acción                                              |
+| ------------ | ------------------- | --------------------------------------------------- |
+| `APPROVED`   | `PAID`              | Crear envío Venndelo, descontar stock, enviar email |
+| `DECLINED`   | `CANCELLED`         | Liberar stock reservado, email de fallido           |
+| `VOIDED`     | `REFUNDED`          | Restaurar stock, email de reembolso                 |
+| `ERROR`      | `CANCELLED`         | Liberar stock, log de error                         |
 
 ### Pago contraentrega (COD)
 
 No pasa por Wompi. Flujo:
+
 1. Cliente elige "Pago contraentrega" en checkout.
 2. Order se crea directo con `paymentMethod=COD` y `status=PAID`.
 3. Se crea envío Venndelo COD (Venndelo cobra al entregar).
@@ -143,21 +144,21 @@ VENNDELO_ORIGIN_DEPARTMENT=Cundinamarca
 
 ### Endpoints clave
 
-| Endpoint | Uso |
-|---|---|
-| `POST /shipments/quote` | Cotización en checkout: peso + ciudad/depto destino → costo |
-| `POST /shipments` | Crear envío al pasar Order a `PAID` |
-| `GET /shipments/:id` | Consultar estado actual |
-| `GET /shipments/:id/label` | Descargar guía PDF |
-| `POST /webhooks` | Endpoint nuestro para recibir cambios de estado |
+| Endpoint                   | Uso                                                         |
+| -------------------------- | ----------------------------------------------------------- |
+| `POST /shipments/quote`    | Cotización en checkout: peso + ciudad/depto destino → costo |
+| `POST /shipments`          | Crear envío al pasar Order a `PAID`                         |
+| `GET /shipments/:id`       | Consultar estado actual                                     |
+| `GET /shipments/:id/label` | Descargar guía PDF                                          |
+| `POST /webhooks`           | Endpoint nuestro para recibir cambios de estado             |
 
 ### Flujo en checkout
 
 ```ts
 // app/api/shipping/quote/route.ts
-import { z } from 'zod';
-import { rateLimit } from '@/lib/rate-limit';
-import { cacheGet, cacheSet } from '@/lib/cache';
+import { z } from "zod";
+import { rateLimit } from "@/lib/rate-limit";
+import { cacheGet, cacheSet } from "@/lib/cache";
 
 const QuoteSchema = z.object({
   city: z.string().min(2).max(80),
@@ -166,9 +167,9 @@ const QuoteSchema = z.object({
 });
 
 export async function POST(req: Request) {
-  const ip = req.headers.get('x-forwarded-for') ?? 'unknown';
+  const ip = req.headers.get("x-forwarded-for") ?? "unknown";
   const allowed = await rateLimit(`shipping_quote:${ip}`, 30, 60); // 30 req/min
-  if (!allowed) return new Response('Too Many Requests', { status: 429 });
+  if (!allowed) return new Response("Too Many Requests", { status: 429 });
 
   const parsed = QuoteSchema.safeParse(await req.json());
   if (!parsed.success) return Response.json(parsed.error, { status: 400 });
@@ -207,21 +208,21 @@ export async function POST(req: Request) {
 ### Mapeo de estados
 
 | Estado Venndelo | OrderStatus interno |
-|---|---|
-| `created` | `FULFILLING` |
-| `picked_up` | `SHIPPED` |
-| `in_transit` | `SHIPPED` |
-| `delivered` | `DELIVERED` |
-| `returned` | `CANCELLED` |
-| `failed` | `CANCELLED` |
+| --------------- | ------------------- |
+| `created`       | `FULFILLING`        |
+| `picked_up`     | `SHIPPED`           |
+| `in_transit`    | `SHIPPED`           |
+| `delivered`     | `DELIVERED`         |
+| `returned`      | `CANCELLED`         |
+| `failed`        | `CANCELLED`         |
 
 ---
 
 ## 3. Supabase
 
-> **Nota sobre API keys (verificado: [supabase.com/docs/guides/api/api-keys](https://supabase.com/docs/guides/api/api-keys) a 2026-05-09):** Supabase reemplazó las legacy `anon` y `service_role` keys (formato JWT) por las nuevas **Publishable** (`sb_publishable_*`) y **Secret** (`sb_secret_*`) keys. *"New projects no longer have anon and service_role available for use."* Las publishable mapean al rol Postgres `anon`; las secret mapean al rol Postgres `service_role` — el modelo de seguridad es idéntico, solo cambian los nombres y el formato del token. Las legacy funcionan hasta fin de 2026 en proyectos viejos. **Lucams_shop usa las nuevas.**
+> **Nota sobre API keys (verificado: [supabase.com/docs/guides/api/api-keys](https://supabase.com/docs/guides/api/api-keys) a 2026-05-09):** Supabase reemplazó las legacy `anon` y `service_role` keys (formato JWT) por las nuevas **Publishable** (`sb_publishable_*`) y **Secret** (`sb_secret_*`) keys. _"New projects no longer have anon and service_role available for use."_ Las publishable mapean al rol Postgres `anon`; las secret mapean al rol Postgres `service_role` — el modelo de seguridad es idéntico, solo cambian los nombres y el formato del token. Las legacy funcionan hasta fin de 2026 en proyectos viejos. **Lucams_shop usa las nuevas.**
 
-> **Cambio de comportamiento descubierto al testear (2026-05-09):** el endpoint `/rest/v1/` (introspección OpenAPI del schema) ahora **requiere secret key** — la publishable no lo puede leer. Mensaje de error: *"Only secret API keys can be used for this endpoint."* Esto es **mejor postura de seguridad**: el schema completo de la DB ya no es leakeable a cualquiera con la publishable. La publishable sigue válida para queries específicas (`/rest/v1/<tabla>`) bajo RLS, Auth, Storage, Realtime.
+> **Cambio de comportamiento descubierto al testear (2026-05-09):** el endpoint `/rest/v1/` (introspección OpenAPI del schema) ahora **requiere secret key** — la publishable no lo puede leer. Mensaje de error: _"Only secret API keys can be used for this endpoint."_ Esto es **mejor postura de seguridad**: el schema completo de la DB ya no es leakeable a cualquiera con la publishable. La publishable sigue válida para queries específicas (`/rest/v1/<tabla>`) bajo RLS, Auth, Storage, Realtime.
 
 ### Variables de entorno
 
@@ -237,16 +238,16 @@ DIRECT_URL=postgresql://postgres:[password]@xxx.supabase.com:5432/postgres
 
 ```ts
 // browser.ts — usa publishable key, mapea a rol Postgres `anon`, RLS aplica
-import { createBrowserClient } from '@supabase/ssr';
+import { createBrowserClient } from "@supabase/ssr";
 export const supabase = createBrowserClient(url, publishableKey);
 
 // server.ts — usa cookies del request, RLS aplica con la sesión del user
-import { createServerClient } from '@supabase/ssr';
-import { cookies } from 'next/headers';
+import { createServerClient } from "@supabase/ssr";
+import { cookies } from "next/headers";
 export const getSupabaseServer = () => createServerClient(url, publishableKey, { cookies });
 
 // service.ts — usa secret key, mapea a rol Postgres `service_role`, bypassa RLS, SOLO server-side
-import { createClient } from '@supabase/supabase-js';
+import { createClient } from "@supabase/supabase-js";
 export const supabaseAdmin = createClient(url, secretKey, {
   auth: { persistSession: false },
 });
@@ -264,10 +265,12 @@ Suscripción a cambios en `ProductVariant.stock` para alertar en checkout si se 
 
 ```ts
 const channel = supabase
-  .channel('stock-changes')
-  .on('postgres_changes',
-    { event: 'UPDATE', schema: 'public', table: 'ProductVariant' },
-    payload => updateLocalStock(payload.new))
+  .channel("stock-changes")
+  .on(
+    "postgres_changes",
+    { event: "UPDATE", schema: "public", table: "ProductVariant" },
+    (payload) => updateLocalStock(payload.new),
+  )
   .subscribe();
 ```
 
@@ -294,15 +297,15 @@ EMAIL_FROM=Lucams_shop <onboarding@resend.dev>
 
 ### Plantillas a crear (`lib/email/templates/`)
 
-| Template | Trigger | Plantilla react-email |
-|---|---|---|
-| `welcome.tsx` | Registro de cliente | Mascota saludando |
-| `order-confirmation.tsx` | Order pasa a `PAID` | Items + total + tracking placeholder |
-| `order-shipped.tsx` | Webhook Venndelo `picked_up` | Tracking URL + ETA |
-| `order-delivered.tsx` | Webhook Venndelo `delivered` | Pidiendo reseña |
-| `cart-recovery-1h.tsx` | Cron 1h después de abandono | Cupón 5% |
-| `cart-recovery-24h.tsx` | Cron 24h después | Recordatorio sin cupón |
-| `password-reset.tsx` | Solicitud de reset | Link con TTL 1h |
+| Template                 | Trigger                      | Plantilla react-email                |
+| ------------------------ | ---------------------------- | ------------------------------------ |
+| `welcome.tsx`            | Registro de cliente          | Mascota saludando                    |
+| `order-confirmation.tsx` | Order pasa a `PAID`          | Items + total + tracking placeholder |
+| `order-shipped.tsx`      | Webhook Venndelo `picked_up` | Tracking URL + ETA                   |
+| `order-delivered.tsx`    | Webhook Venndelo `delivered` | Pidiendo reseña                      |
+| `cart-recovery-1h.tsx`   | Cron 1h después de abandono  | Cupón 5%                             |
+| `cart-recovery-24h.tsx`  | Cron 24h después             | Recordatorio sin cupón               |
+| `password-reset.tsx`     | Solicitud de reset           | Link con TTL 1h                      |
 
 ### Limitaciones Free a recordar
 
@@ -315,12 +318,12 @@ EMAIL_FROM=Lucams_shop <onboarding@resend.dev>
 
 Resend genera estos valores en el panel cuando se agrega el dominio. Configurarlos en Cloudflare DNS:
 
-| Tipo | Nombre | Valor (ejemplo, Resend genera el real) | Propósito |
-|---|---|---|---|
-| `TXT` | `mail` | `v=spf1 include:amazonses.com ~all` | SPF — autoriza a Resend a enviar como `@mail.lucamsshop.co` |
-| `TXT` | `resend._domainkey.mail` | `p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQ...` | DKIM — firma criptográfica de los emails |
-| `TXT` | `_dmarc.mail` | `v=DMARC1; p=quarantine; rua=mailto:dmarc@mail.lucamsshop.co; pct=100` | DMARC — política de tratamiento de mensajes que fallen SPF/DKIM |
-| `MX` | `mail` | `feedback-smtp.us-east-1.amazonses.com` (priority 10) | Bounces y feedback |
+| Tipo  | Nombre                   | Valor (ejemplo, Resend genera el real)                                 | Propósito                                                       |
+| ----- | ------------------------ | ---------------------------------------------------------------------- | --------------------------------------------------------------- |
+| `TXT` | `mail`                   | `v=spf1 include:amazonses.com ~all`                                    | SPF — autoriza a Resend a enviar como `@mail.lucamsshop.co`     |
+| `TXT` | `resend._domainkey.mail` | `p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQ...`                          | DKIM — firma criptográfica de los emails                        |
+| `TXT` | `_dmarc.mail`            | `v=DMARC1; p=quarantine; rua=mailto:dmarc@mail.lucamsshop.co; pct=100` | DMARC — política de tratamiento de mensajes que fallen SPF/DKIM |
+| `MX`  | `mail`                   | `feedback-smtp.us-east-1.amazonses.com` (priority 10)                  | Bounces y feedback                                              |
 
 > **Política DMARC inicial:** `quarantine` (los falsificados van a SPAM). A los 30 días sin problemas, subir a `reject` (los falsificados se descartan).
 
@@ -413,22 +416,18 @@ export function buildWhatsAppLink(message: string): string {
 }
 
 export function whatsappForProduct(productName: string): string {
-  return buildWhatsAppLink(
-    `Hola, me interesa el producto *${productName}*, ¿está disponible?`
-  );
+  return buildWhatsAppLink(`Hola, me interesa el producto *${productName}*, ¿está disponible?`);
 }
 
 export function whatsappForCart(items: { name: string; qty: number }[], totalCOP: number): string {
-  const lines = items.map(i => `- ${i.qty}× ${i.name}`).join('\n');
+  const lines = items.map((i) => `- ${i.qty}× ${i.name}`).join("\n");
   return buildWhatsAppLink(
-    `Hola, quiero confirmar este pedido:\n\n${lines}\n\nTotal: $${totalCOP.toLocaleString('es-CO')}`
+    `Hola, quiero confirmar este pedido:\n\n${lines}\n\nTotal: $${totalCOP.toLocaleString("es-CO")}`,
   );
 }
 
 export function whatsappForOrder(orderNumber: string): string {
-  return buildWhatsAppLink(
-    `Hola, ¿podrían darme info sobre mi orden #${orderNumber}?`
-  );
+  return buildWhatsAppLink(`Hola, ¿podrían darme info sobre mi orden #${orderNumber}?`);
 }
 ```
 
@@ -446,11 +445,11 @@ Componente `<WhatsAppFAB />` en `components/storefront/`, presente en `(storefro
 
 **Usar un proveedor tecnológico autorizado por DIAN** en lugar de software propio o software gratuito. Candidatos a evaluar antes de Fase 7 (ADR-025 a tomar):
 
-| Proveedor | API | Costo aprox. | Verificar pre-elección |
-|---|---|---|---|
-| Alegra | REST + SDK Node | ~$25-50 USD/mes | `alegra.com/colombia` — confirmar plan, soporte de nota crédito vía API |
-| Siigo | REST | Similar | `siigo.com` |
-| Facture | REST API-first | TBD | `facture.co` |
+| Proveedor | API             | Costo aprox.    | Verificar pre-elección                                                  |
+| --------- | --------------- | --------------- | ----------------------------------------------------------------------- |
+| Alegra    | REST + SDK Node | ~$25-50 USD/mes | `alegra.com/colombia` — confirmar plan, soporte de nota crédito vía API |
+| Siigo     | REST            | Similar         | `siigo.com`                                                             |
+| Facture   | REST API-first  | TBD             | `facture.co`                                                            |
 
 ### Variables de entorno (cuando se elija proveedor)
 
@@ -471,26 +470,30 @@ Patrón análogo a `PaymentProvider`: interfaz que permite cambiar de proveedor 
 ```ts
 // lib/invoicing/types.ts
 export interface InvoiceProvider {
-  readonly name: 'alegra' | 'siigo' | 'facture';
+  readonly name: "alegra" | "siigo" | "facture";
 
   /** Emite factura electrónica para una orden pagada */
   emitInvoice(order: OrderForInvoice): Promise<{
     invoiceNumber: string;
-    cufe: string;          // Código Único de Factura Electrónica
+    cufe: string; // Código Único de Factura Electrónica
     pdfUrl: string;
     xmlUrl: string;
     emittedAt: Date;
   }>;
 
   /** Emite nota crédito para reembolsos/anulaciones */
-  emitCreditNote(invoiceId: string, amount: number, reason: string): Promise<{
+  emitCreditNote(
+    invoiceId: string,
+    amount: number,
+    reason: string,
+  ): Promise<{
     creditNoteNumber: string;
     cufe: string;
     pdfUrl: string;
   }>;
 
   /** Consulta estado en DIAN */
-  getInvoiceStatus(invoiceNumber: string): Promise<'ACCEPTED' | 'REJECTED' | 'PENDING'>;
+  getInvoiceStatus(invoiceNumber: string): Promise<"ACCEPTED" | "REJECTED" | "PENDING">;
 }
 ```
 
@@ -532,15 +535,15 @@ Reembolsos parciales o totales requieren nota crédito electrónica. Se emite v�
 
 ### Aplicación por integración
 
-| Integración | Timeout | Retry | Circuit breaker |
-|---|---|---|---|
-| Wompi GET status | 5 s | 3 intentos, backoff exp. base 200ms | threshold=5, resetMs=30000 |
-| Wompi POST transaction | 10 s | 1 intento (no idempotente) | Idem |
-| Venndelo quote | 5 s | 3 intentos | threshold=5, resetMs=30000 |
-| Venndelo create shipment | 15 s | 3 intentos vía pgmq (durables) | threshold=3, resetMs=60000 |
-| Anthropic | 30 s | 2 intentos para 5xx, 0 para 4xx | threshold=10, resetMs=60000 |
-| Resend | 10 s | 3 intentos vía pgmq | threshold=5, resetMs=30000 |
-| Proveedor DIAN | 15 s | 5 intentos vía pgmq | threshold=3, resetMs=120000 |
+| Integración              | Timeout | Retry                               | Circuit breaker             |
+| ------------------------ | ------- | ----------------------------------- | --------------------------- |
+| Wompi GET status         | 5 s     | 3 intentos, backoff exp. base 200ms | threshold=5, resetMs=30000  |
+| Wompi POST transaction   | 10 s    | 1 intento (no idempotente)          | Idem                        |
+| Venndelo quote           | 5 s     | 3 intentos                          | threshold=5, resetMs=30000  |
+| Venndelo create shipment | 15 s    | 3 intentos vía pgmq (durables)      | threshold=3, resetMs=60000  |
+| Anthropic                | 30 s    | 2 intentos para 5xx, 0 para 4xx     | threshold=10, resetMs=60000 |
+| Resend                   | 10 s    | 3 intentos vía pgmq                 | threshold=5, resetMs=30000  |
+| Proveedor DIAN           | 15 s    | 5 intentos vía pgmq                 | threshold=3, resetMs=120000 |
 
 ### Request ID correlation
 
@@ -548,8 +551,8 @@ Toda llamada outbound incluye header `X-Lucams-Request-Id: <uuid>`. Algunos vend
 
 ```ts
 // lib/external-call.ts
-import { fetchWithTimeout } from './fetch-with-timeout';
-import { getRequestId } from './request-id';
+import { fetchWithTimeout } from "./fetch-with-timeout";
+import { getRequestId } from "./request-id";
 
 export async function externalFetch(url: string, init: RequestInit & { timeoutMs: number }) {
   const requestId = getRequestId();
@@ -557,8 +560,8 @@ export async function externalFetch(url: string, init: RequestInit & { timeoutMs
     ...init,
     headers: {
       ...init.headers,
-      'X-Lucams-Request-Id': requestId,
-      'User-Agent': `Lucams_shop/1.0 (+https://lucamsshop.co)`,
+      "X-Lucams-Request-Id": requestId,
+      "User-Agent": `Lucams_shop/1.0 (+https://lucamsshop.co)`,
     },
   });
 }
@@ -570,7 +573,7 @@ export async function externalFetch(url: string, init: RequestInit & { timeoutMs
 
 ### Por qué este modelo
 
-Los jobs durables (recuperación de carrito, reconciliación de órdenes, retry de envíos, send de emails) viven en `pgmq` + `pg_cron`, no en Vercel Cron. Razones detalladas en [ADR-017](./DECISIONS.md). Verificación oficial: [supabase.com/docs/guides/queues](https://supabase.com/docs/guides/queues) (consultada 2026-05-09): *"Postgres-native durable Message Queue system with guaranteed delivery"*.
+Los jobs durables (recuperación de carrito, reconciliación de órdenes, retry de envíos, send de emails) viven en `pgmq` + `pg_cron`, no en Vercel Cron. Razones detalladas en [ADR-017](./DECISIONS.md). Verificación oficial: [supabase.com/docs/guides/queues](https://supabase.com/docs/guides/queues) (consultada 2026-05-09): _"Postgres-native durable Message Queue system with guaranteed delivery"_.
 
 ### Variables de entorno
 
@@ -578,30 +581,30 @@ No se necesitan vars dedicadas: el acceso a `pgmq` usa `SUPABASE_SECRET_KEY` que
 
 ### Colas previstas
 
-| Cola | Productor | Consumidor | Frecuencia |
-|---|---|---|---|
-| `cart_recovery_1h` | `pg_cron` cada 5 min | Edge Function | A 1h del abandono |
-| `cart_recovery_24h` | `pg_cron` cada 5 min | Edge Function | A 24h del abandono |
-| `order_reconciliation` | `pg_cron` cada 15 min | Edge Function | Órdenes en `PENDING_PAYMENT` >1h |
+| Cola                      | Productor                                   | Consumidor    | Frecuencia                         |
+| ------------------------- | ------------------------------------------- | ------------- | ---------------------------------- |
+| `cart_recovery_1h`        | `pg_cron` cada 5 min                        | Edge Function | A 1h del abandono                  |
+| `cart_recovery_24h`       | `pg_cron` cada 5 min                        | Edge Function | A 24h del abandono                 |
+| `order_reconciliation`    | `pg_cron` cada 15 min                       | Edge Function | Órdenes en `PENDING_PAYMENT` >1h   |
 | `shipment_creation_retry` | Webhook handler de Wompi al fallar Venndelo | Edge Function | Inmediato + reintentos con backoff |
-| `email_send` | Cualquier flujo que mande email | Edge Function | Inmediato |
+| `email_send`              | Cualquier flujo que mande email             | Edge Function | Inmediato                          |
 
 ### Patrón de productor (en server-side)
 
 ```ts
 // lib/queue.ts
-import { supabaseAdmin } from '@/lib/supabase/service';
+import { supabaseAdmin } from "@/lib/supabase/service";
 
 export async function enqueue<T>(queueName: string, payload: T): Promise<void> {
   const { error } = await supabaseAdmin
-    .schema('pgmq_public')
-    .rpc('send', { queue_name: queueName, message: payload });
+    .schema("pgmq_public")
+    .rpc("send", { queue_name: queueName, message: payload });
   if (error) throw new Error(`Failed to enqueue to ${queueName}: ${error.message}`);
 }
 
 // Uso en webhook de Wompi
-await enqueue('email_send', {
-  template: 'order-confirmation',
+await enqueue("email_send", {
+  template: "order-confirmation",
   to: order.email,
   data: { orderNumber: order.number, items, total },
 });
@@ -611,30 +614,25 @@ await enqueue('email_send', {
 
 ```ts
 // supabase/functions/email-send-consumer/index.ts
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-const supabase = createClient(
-  Deno.env.get('SUPABASE_URL')!,
-  Deno.env.get('SUPABASE_SECRET_KEY')!,
-);
+const supabase = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SECRET_KEY")!);
 
 Deno.serve(async () => {
-  const { data: messages } = await supabase
-    .schema('pgmq_public')
-    .rpc('read', {
-      queue_name: 'email_send',
-      vt: 30,           // visibility timeout 30s
-      qty: 5,           // batch
-    });
+  const { data: messages } = await supabase.schema("pgmq_public").rpc("read", {
+    queue_name: "email_send",
+    vt: 30, // visibility timeout 30s
+    qty: 5, // batch
+  });
 
   for (const msg of messages ?? []) {
     try {
       await sendEmailViaResend(msg.message);
       await supabase
-        .schema('pgmq_public')
-        .rpc('delete', { queue_name: 'email_send', msg_id: msg.msg_id });
+        .schema("pgmq_public")
+        .rpc("delete", { queue_name: "email_send", msg_id: msg.msg_id });
     } catch (err) {
-      console.error('Email send failed', { msg_id: msg.msg_id, err });
+      console.error("Email send failed", { msg_id: msg.msg_id, err });
       // No borrar → VT expira → reintento automático
       // Si falla N veces, archivar manualmente o mover a dead-letter queue
     }
@@ -702,6 +700,7 @@ SELECT pgmq.metrics('email_send');
 ## Checklist por integración (al pasar a producción)
 
 ### Wompi
+
 - [ ] Cuenta de comercio aprobada (`comercios.wompi.co`)
 - [ ] Llaves de producción configuradas en Vercel
 - [ ] Webhook configurado en panel Wompi apuntando a `https://lucamsshop.co/api/wompi/webhook`
@@ -709,6 +708,7 @@ SELECT pgmq.metrics('email_send');
 - [ ] Cambiar `WOMPI_ENV=production`
 
 ### Venndelo
+
 - [ ] Cuenta de producción activada
 - [ ] Dirección de origen para recolección configurada
 - [ ] API key de producción en Vercel
@@ -716,17 +716,20 @@ SELECT pgmq.metrics('email_send');
 - [ ] Probar envío real con destino conocido
 
 ### Resend
+
 - [ ] DNS de `mail.lucamsshop.co` configurado (SPF, DKIM, DMARC)
 - [ ] Dominio verificado en Resend
 - [ ] Plan Pro activado
 - [ ] `EMAIL_FROM` actualizado a dominio propio
 
 ### Claude API
+
 - [ ] API key con presupuesto mensual configurado
 - [ ] Alertas de costo activas
 - [ ] Rate limit en endpoint validado
 
 ### WhatsApp
+
 - [ ] Número definitivo de WhatsApp Business configurado
 - [ ] Estado/foto de WhatsApp Business actualizados
 - [ ] Plantilla de respuestas frecuentes lista

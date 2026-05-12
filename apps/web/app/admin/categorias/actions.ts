@@ -22,7 +22,9 @@ export type CategoryActionState = {
 function parsePayload(formData: FormData) {
   return {
     name: String(formData.get("name") ?? "").trim(),
-    slug: String(formData.get("slug") ?? "").trim().toLowerCase(),
+    slug: String(formData.get("slug") ?? "")
+      .trim()
+      .toLowerCase(),
     description: (formData.get("description") || null) as string | null,
     isActive: formData.get("isActive") === "on",
     order: Number(formData.get("order") ?? 0),

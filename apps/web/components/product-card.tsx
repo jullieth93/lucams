@@ -12,22 +12,17 @@ import { formatCOP } from "@/lib/format";
 import type { StorefrontProductCard } from "@/features/products/public-service";
 
 export function ProductCard({ product }: { product: StorefrontProductCard }) {
-  const hasDiscount =
-    product.compareAtPrice != null && product.compareAtPrice > product.basePrice;
+  const hasDiscount = product.compareAtPrice != null && product.compareAtPrice > product.basePrice;
   const discountPct = hasDiscount
-    ? Math.round(
-        ((product.compareAtPrice! - product.basePrice) /
-          product.compareAtPrice!) *
-          100,
-      )
+    ? Math.round(((product.compareAtPrice! - product.basePrice) / product.compareAtPrice!) * 100)
     : 0;
 
   return (
     <Link
       href={`/producto/${product.slug}`}
-      className="group flex flex-col overflow-hidden rounded-xl border border-brand-purple/10 bg-white transition-shadow hover:shadow-lg"
+      className="group border-brand-purple/10 flex flex-col overflow-hidden rounded-xl border bg-white transition-shadow hover:shadow-lg"
     >
-      <div className="relative aspect-square w-full overflow-hidden bg-gradient-to-br from-brand-turquoise/15 via-brand-cream to-brand-pink/15">
+      <div className="from-brand-turquoise/15 via-brand-cream to-brand-pink/15 relative aspect-square w-full overflow-hidden bg-gradient-to-br">
         {product.images.length > 0 ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -38,35 +33,35 @@ export function ProductCard({ product }: { product: StorefrontProductCard }) {
           />
         ) : (
           <div className="flex h-full w-full items-center justify-center">
-            <Sparkles className="h-12 w-12 text-brand-purple/40" />
+            <Sparkles className="text-brand-purple/40 h-12 w-12" />
           </div>
         )}
 
         {product.isPersonalizable && (
-          <span className="absolute left-2 top-2 rounded-full bg-brand-purple px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-white">
+          <span className="bg-brand-purple absolute top-2 left-2 rounded-full px-2 py-0.5 text-[10px] font-semibold tracking-wider text-white uppercase">
             Personalizable
           </span>
         )}
         {hasDiscount && (
-          <span className="absolute right-2 top-2 rounded-full bg-brand-pink px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-white">
+          <span className="bg-brand-pink absolute top-2 right-2 rounded-full px-2 py-0.5 text-[10px] font-semibold tracking-wider text-white uppercase">
             -{discountPct}%
           </span>
         )}
       </div>
 
       <div className="flex flex-1 flex-col gap-1 p-3">
-        <p className="text-[10px] font-medium uppercase tracking-wider text-brand-purple/70">
+        <p className="text-brand-purple/70 text-[10px] font-medium tracking-wider uppercase">
           {product.category.name}
         </p>
-        <h3 className="font-semibold text-brand-purple-dark line-clamp-2 group-hover:text-brand-purple">
+        <h3 className="text-brand-purple-dark group-hover:text-brand-purple line-clamp-2 font-semibold">
           {product.name}
         </h3>
-        <div className="mt-auto pt-2 flex items-baseline gap-2">
-          <span className="text-lg font-bold text-brand-purple-dark tabular-nums">
+        <div className="mt-auto flex items-baseline gap-2 pt-2">
+          <span className="text-brand-purple-dark text-lg font-bold tabular-nums">
             {formatCOP(product.basePrice)}
           </span>
           {hasDiscount && (
-            <span className="text-xs text-brand-purple/50 line-through tabular-nums">
+            <span className="text-brand-purple/50 text-xs tabular-nums line-through">
               {formatCOP(product.compareAtPrice!)}
             </span>
           )}

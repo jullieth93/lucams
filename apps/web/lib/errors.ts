@@ -135,10 +135,7 @@ export class InternalError extends AppError {
   }
 }
 
-export function problemResponse(
-  err: AppError | ProblemDetails,
-  requestId?: string,
-): Response {
+export function problemResponse(err: AppError | ProblemDetails, requestId?: string): Response {
   const p: ProblemDetails = err instanceof AppError ? err.toProblem(requestId) : err;
   return new Response(JSON.stringify(p), {
     status: p.status,

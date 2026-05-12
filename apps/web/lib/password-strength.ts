@@ -54,18 +54,7 @@ const SUGGESTIONS: Record<PasswordScore, string> = {
   4: "Inquebrantable. Bien hecho.",
 };
 
-const COMMON_SEQUENCES = [
-  "123",
-  "234",
-  "345",
-  "456",
-  "567",
-  "678",
-  "789",
-  "abc",
-  "qwerty",
-  "asdf",
-];
+const COMMON_SEQUENCES = ["123", "234", "345", "456", "567", "678", "789", "abc", "qwerty", "asdf"];
 
 const COMMON_TERMS = ["password", "contrasena", "contraseña", "lucams", "admin"];
 

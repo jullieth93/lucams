@@ -3,6 +3,7 @@
 ## Logo
 
 Insignia circular con:
+
 - **Mascota mapache** estilo kawaii sobre fondo morado lavanda, con mejillas rosadas y mirada amigable.
 - Tipografía **"LUCAMS"** en estilo bubble/balloon con letras multicolor (turquesa, rosa, coral, amarillo).
 - **"SHOP"** en pequeño debajo, color púrpura oscuro.
@@ -15,21 +16,21 @@ Insignia circular con:
 
 ### Tabla de tokens
 
-| Token | HEX | RGB | HSL | Uso principal |
-|---|---|---|---|---|
+| Token                     | HEX       | RGB           | HSL           | Uso principal                                |
+| ------------------------- | --------- | ------------- | ------------- | -------------------------------------------- |
 | `brand-purple` (primario) | `#7C6AAD` | 124, 106, 173 | `253 26% 55%` | Fondos destacados, header, botones primarios |
-| `brand-purple-dark` | `#3D2E5C` | 61, 46, 92 | `261 33% 27%` | Texto principal sobre claro, headings |
-| `brand-turquoise` | `#5DD9D1` | 93, 217, 209 | `176 60% 61%` | Acento, badges "nuevo", links |
-| `brand-pink` | `#E85B9F` | 232, 91, 159 | `331 75% 63%` | CTAs secundarias, precios en oferta |
-| `brand-coral` | `#F58A6F` | 245, 138, 111 | `12 86% 70%` | Acentos cálidos, banners |
-| `brand-yellow` | `#FFD93D` | 255, 217, 61 | `49 100% 62%` | Highlights, corazones, badges "envío gratis" |
-| `brand-cream` | `#FFF8F0` | 255, 248, 240 | `32 100% 97%` | Fondos suaves alternativos al blanco puro |
-| `neutral-white` | `#FFFFFF` | 255, 255, 255 | `0 0% 100%` | Fondos principales |
-| `neutral-text` | `#1F1733` | 31, 23, 51 | `258 38% 15%` | Texto cuerpo |
-| `neutral-muted` | `#6B6383` | 107, 99, 131 | `253 14% 45%` | Texto secundario, placeholders |
-| `feedback-success` | `#3FBE6E` | — | — | Confirmaciones, "pagado" |
-| `feedback-error` | `#E84B5B` | — | — | Errores, validaciones |
-| `feedback-warning` | `#F5A623` | — | — | Avisos, stock bajo |
+| `brand-purple-dark`       | `#3D2E5C` | 61, 46, 92    | `261 33% 27%` | Texto principal sobre claro, headings        |
+| `brand-turquoise`         | `#5DD9D1` | 93, 217, 209  | `176 60% 61%` | Acento, badges "nuevo", links                |
+| `brand-pink`              | `#E85B9F` | 232, 91, 159  | `331 75% 63%` | CTAs secundarias, precios en oferta          |
+| `brand-coral`             | `#F58A6F` | 245, 138, 111 | `12 86% 70%`  | Acentos cálidos, banners                     |
+| `brand-yellow`            | `#FFD93D` | 255, 217, 61  | `49 100% 62%` | Highlights, corazones, badges "envío gratis" |
+| `brand-cream`             | `#FFF8F0` | 255, 248, 240 | `32 100% 97%` | Fondos suaves alternativos al blanco puro    |
+| `neutral-white`           | `#FFFFFF` | 255, 255, 255 | `0 0% 100%`   | Fondos principales                           |
+| `neutral-text`            | `#1F1733` | 31, 23, 51    | `258 38% 15%` | Texto cuerpo                                 |
+| `neutral-muted`           | `#6B6383` | 107, 99, 131  | `253 14% 45%` | Texto secundario, placeholders               |
+| `feedback-success`        | `#3FBE6E` | —             | —             | Confirmaciones, "pagado"                     |
+| `feedback-error`          | `#E84B5B` | —             | —             | Errores, validaciones                        |
+| `feedback-warning`        | `#F5A623` | —             | —             | Avisos, stock bajo                           |
 
 ### Implementación en Tailwind v4 (CSS-first)
 
@@ -41,20 +42,20 @@ Insignia circular con:
 
 @theme {
   /* Paleta de marca — generan utilidades bg-brand-purple, text-brand-pink, etc. */
-  --color-brand-purple: #7C6AAD;
-  --color-brand-purple-dark: #3D2E5C;
-  --color-brand-turquoise: #5DD9D1;
-  --color-brand-pink: #E85B9F;
-  --color-brand-coral: #F58A6F;
-  --color-brand-yellow: #FFD93D;
-  --color-brand-cream: #FFF8F0;
+  --color-brand-purple: #7c6aad;
+  --color-brand-purple-dark: #3d2e5c;
+  --color-brand-turquoise: #5dd9d1;
+  --color-brand-pink: #e85b9f;
+  --color-brand-coral: #f58a6f;
+  --color-brand-yellow: #ffd93d;
+  --color-brand-cream: #fff8f0;
 
   /* Neutrales y feedback */
-  --color-neutral-text: #1F1733;
-  --color-neutral-muted: #6B6383;
-  --color-feedback-success: #3FBE6E;
-  --color-feedback-error: #E84B5B;
-  --color-feedback-warning: #F5A623;
+  --color-neutral-text: #1f1733;
+  --color-neutral-muted: #6b6383;
+  --color-feedback-success: #3fbe6e;
+  --color-feedback-error: #e84b5b;
+  --color-feedback-warning: #f5a623;
 
   /* Tipografías — generan utilidades font-display, font-body */
   --font-display: "Fredoka", "Baloo 2", system-ui, sans-serif;
@@ -88,18 +89,18 @@ Insignia circular con:
 
 El mapache es **personaje recurrente**, no solo un logo. Usos:
 
-| Contexto | Implementación |
-|---|---|
-| Loader de páginas | Mapache animado (Lottie o GIF) girando o saltando |
-| Carrito vacío | "¡Lucams está esperando que llenes el carrito!" + ilustración |
-| Página 404 | Mapache con cara confundida + "Esta página se perdió" |
-| Empty state del estudio | "¡Hola! ¿Qué imán vamos a crear hoy?" |
-| Programa de fidelidad | "Puntos Lucams" con el mapache sosteniendo monedas |
-| Email de bienvenida | Mapache saludando |
-| Email de confirmación de orden | Mapache empacando |
-| Email de envío | Mapache montado en bicicleta o cartero |
-| Push notifications | Cara del mapache como ícono |
-| Favicon | Cara del mapache simplificada |
+| Contexto                       | Implementación                                                |
+| ------------------------------ | ------------------------------------------------------------- |
+| Loader de páginas              | Mapache animado (Lottie o GIF) girando o saltando             |
+| Carrito vacío                  | "¡Lucams está esperando que llenes el carrito!" + ilustración |
+| Página 404                     | Mapache con cara confundida + "Esta página se perdió"         |
+| Empty state del estudio        | "¡Hola! ¿Qué imán vamos a crear hoy?"                         |
+| Programa de fidelidad          | "Puntos Lucams" con el mapache sosteniendo monedas            |
+| Email de bienvenida            | Mapache saludando                                             |
+| Email de confirmación de orden | Mapache empacando                                             |
+| Email de envío                 | Mapache montado en bicicleta o cartero                        |
+| Push notifications             | Cara del mapache como ícono                                   |
+| Favicon                        | Cara del mapache simplificada                                 |
 
 > Pendiente: ilustraciones derivadas del logo en variantes (saludo, empacando, sorprendido). Se pueden generar con IA o pedir al ilustrador del logo original.
 
@@ -107,23 +108,23 @@ El mapache es **personaje recurrente**, no solo un logo. Usos:
 
 ### Familias propuestas (Google Fonts, gratis)
 
-| Familia | Uso | Pesos | Por qué |
-|---|---|---|---|
-| **Fredoka** o **Baloo 2** | Display / Headlines | 400, 500, 600, 700 | Bubble redondeada, encaja con el logo |
-| **Inter** o **Nunito** | Cuerpo / UI | 400, 500, 600 | Legibilidad alta, tono amigable |
-| **Inter** (con `tabular-nums`) | Precios, labels técnicos | 500, 600 | Alineación consistente de números |
+| Familia                        | Uso                      | Pesos              | Por qué                               |
+| ------------------------------ | ------------------------ | ------------------ | ------------------------------------- |
+| **Fredoka** o **Baloo 2**      | Display / Headlines      | 400, 500, 600, 700 | Bubble redondeada, encaja con el logo |
+| **Inter** o **Nunito**         | Cuerpo / UI              | 400, 500, 600      | Legibilidad alta, tono amigable       |
+| **Inter** (con `tabular-nums`) | Precios, labels técnicos | 500, 600           | Alineación consistente de números     |
 
 ### Escala tipográfica
 
-| Token | Tamaño | Line height | Uso |
-|---|---|---|---|
-| `text-display` | 48px / 3rem | 1.1 | Hero, títulos de campaña |
-| `text-h1` | 36px / 2.25rem | 1.2 | Títulos de página |
-| `text-h2` | 28px / 1.75rem | 1.3 | Secciones |
-| `text-h3` | 22px / 1.375rem | 1.4 | Subsecciones |
-| `text-body` | 16px / 1rem | 1.5 | Cuerpo |
-| `text-small` | 14px / 0.875rem | 1.5 | Labels, captions |
-| `text-tiny` | 12px / 0.75rem | 1.4 | Badges, footnotes |
+| Token          | Tamaño          | Line height | Uso                      |
+| -------------- | --------------- | ----------- | ------------------------ |
+| `text-display` | 48px / 3rem     | 1.1         | Hero, títulos de campaña |
+| `text-h1`      | 36px / 2.25rem  | 1.2         | Títulos de página        |
+| `text-h2`      | 28px / 1.75rem  | 1.3         | Secciones                |
+| `text-h3`      | 22px / 1.375rem | 1.4         | Subsecciones             |
+| `text-body`    | 16px / 1rem     | 1.5         | Cuerpo                   |
+| `text-small`   | 14px / 0.875rem | 1.5         | Labels, captions         |
+| `text-tiny`    | 12px / 0.75rem  | 1.4         | Badges, footnotes        |
 
 > Pendiente del usuario: confirmar si la guía Canva especifica otras tipografías. Si no responde, se usan `Fredoka` + `Inter`.
 
@@ -137,13 +138,13 @@ El mapache es **personaje recurrente**, no solo un logo. Usos:
 
 ### Ejemplos de copy
 
-| Contexto | ❌ Evitar | ✅ Usar |
-|---|---|---|
-| Hero | "Soluciones magnéticas para tu hogar" | "Tus recuerdos, en imán" |
-| CTA primario | "Realizar compra" | "Pagar ahora" |
-| Carrito vacío | "El carrito se encuentra vacío" | "¡Tu carrito está esperando! Agrega un imancito ✨" |
-| Error de stock | "Producto no disponible" | "¡Uy! Se agotó. Te avisamos cuando vuelva 💌" |
-| Confirmación | "Su pedido ha sido procesado exitosamente" | "¡Listo! Empezamos a preparar tu pedido 🎉" |
+| Contexto       | ❌ Evitar                                  | ✅ Usar                                             |
+| -------------- | ------------------------------------------ | --------------------------------------------------- |
+| Hero           | "Soluciones magnéticas para tu hogar"      | "Tus recuerdos, en imán"                            |
+| CTA primario   | "Realizar compra"                          | "Pagar ahora"                                       |
+| Carrito vacío  | "El carrito se encuentra vacío"            | "¡Tu carrito está esperando! Agrega un imancito ✨" |
+| Error de stock | "Producto no disponible"                   | "¡Uy! Se agotó. Te avisamos cuando vuelva 💌"       |
+| Confirmación   | "Su pedido ha sido procesado exitosamente" | "¡Listo! Empezamos a preparar tu pedido 🎉"         |
 
 ## Activos a producir
 

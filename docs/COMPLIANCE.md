@@ -20,15 +20,15 @@
 
 ## Resumen ejecutivo de obligaciones
 
-| Norma | Aplica si... | Bloqueante para lanzar |
-|---|---|---|
-| **Ley 1581 / Decreto 1377** (Habeas Data) | Recolectamos datos personales (sí: emails, teléfonos, direcciones, fotos) | ✅ Sí |
-| **Ley 1480** (Estatuto del Consumidor) | Vendemos B2C (sí) | ✅ Sí |
-| **Facturación electrónica DIAN** | Somos responsables de IVA (sí, al inscribir el negocio) | ✅ Sí (multas hasta 1% de ingresos) |
-| **IVA 19% standard** | Productos no exentos (los imanes están gravados a tarifa general) | ✅ Sí |
-| **Retención en la fuente** | Comprador es agente retenedor (B2B mayorista) | Solo para Fase 6 (B2B) |
-| **Registro Único de Comerciantes (RUES)** | Operamos comercialmente | ✅ Sí (no es código, es trámite) |
-| **Cámara de Comercio** | Registro mercantil del negocio | ✅ Sí (trámite) |
+| Norma                                     | Aplica si...                                                              | Bloqueante para lanzar              |
+| ----------------------------------------- | ------------------------------------------------------------------------- | ----------------------------------- |
+| **Ley 1581 / Decreto 1377** (Habeas Data) | Recolectamos datos personales (sí: emails, teléfonos, direcciones, fotos) | ✅ Sí                               |
+| **Ley 1480** (Estatuto del Consumidor)    | Vendemos B2C (sí)                                                         | ✅ Sí                               |
+| **Facturación electrónica DIAN**          | Somos responsables de IVA (sí, al inscribir el negocio)                   | ✅ Sí (multas hasta 1% de ingresos) |
+| **IVA 19% standard**                      | Productos no exentos (los imanes están gravados a tarifa general)         | ✅ Sí                               |
+| **Retención en la fuente**                | Comprador es agente retenedor (B2B mayorista)                             | Solo para Fase 6 (B2B)              |
+| **Registro Único de Comerciantes (RUES)** | Operamos comercialmente                                                   | ✅ Sí (no es código, es trámite)    |
+| **Cámara de Comercio**                    | Registro mercantil del negocio                                            | ✅ Sí (trámite)                     |
 
 ---
 
@@ -143,16 +143,16 @@ Antes de la compra, el sitio debe mostrar:
 
 #### Excepciones legales (las relevantes para nosotros)
 
-> Cita textual del art. 47: *"contratos de suministro de bienes confeccionados conforme a las especificaciones del consumidor o claramente personalizados"* están **exceptuados** del derecho de retracto.
+> Cita textual del art. 47: _"contratos de suministro de bienes confeccionados conforme a las especificaciones del consumidor o claramente personalizados"_ están **exceptuados** del derecho de retracto.
 
 **Implicación crítica para Lucams_shop:**
 
-| Producto | Aplica retracto |
-|---|---|
-| Imanes del catálogo estándar (no personalizados) | ✅ Sí — 5 días hábiles |
-| Imanes del Estudio de Personalización (con foto del cliente o texto custom) | ❌ **No** — exceptuado por personalización |
-| Bundles del catálogo estándar | ✅ Sí |
-| Bundles que incluyen al menos un imán personalizado | ❌ No (preferimos cubrir todo el bundle por consistencia) |
+| Producto                                                                    | Aplica retracto                                           |
+| --------------------------------------------------------------------------- | --------------------------------------------------------- |
+| Imanes del catálogo estándar (no personalizados)                            | ✅ Sí — 5 días hábiles                                    |
+| Imanes del Estudio de Personalización (con foto del cliente o texto custom) | ❌ **No** — exceptuado por personalización                |
+| Bundles del catálogo estándar                                               | ✅ Sí                                                     |
+| Bundles que incluyen al menos un imán personalizado                         | ❌ No (preferimos cubrir todo el bundle por consistencia) |
 
 > **Decisión operativa:** la exclusión por personalización aplica solo si el producto fue **claramente personalizado** (tiene foto/texto custom del cliente). Productos del catálogo "estándar" (imanes pre-diseñados sin personalización del cliente) **sí tienen retracto**. Esto debe quedar claro en la página de cada producto.
 
@@ -256,27 +256,28 @@ model RetractRequest {
 ### Obligación
 
 Toda persona natural o jurídica responsable de IVA en Colombia debe facturar electrónicamente. Sanciones:
+
 - Cierre del establecimiento por **3 días**, **o**
 - Multa equivalente al **1% de los ingresos operacionales del año anterior**, hasta tope de **950 UVT**.
 
 ### Modalidades de cumplimiento
 
-| Modalidad | Cuándo |
-|---|---|
-| **Software gratuito DIAN** | Hasta 2.000 facturas/año y bajo cierto umbral de ingresos |
-| **Proveedor tecnológico autorizado** (PT) | Más de 80 proveedores habilitados; integran con nuestra app vía API |
-| **Software propio habilitado** | Solo si el negocio justifica el desarrollo + habilitación (no nuestro caso) |
+| Modalidad                                 | Cuándo                                                                      |
+| ----------------------------------------- | --------------------------------------------------------------------------- |
+| **Software gratuito DIAN**                | Hasta 2.000 facturas/año y bajo cierto umbral de ingresos                   |
+| **Proveedor tecnológico autorizado** (PT) | Más de 80 proveedores habilitados; integran con nuestra app vía API         |
+| **Software propio habilitado**            | Solo si el negocio justifica el desarrollo + habilitación (no nuestro caso) |
 
 ### Decisión operativa para Lucams_shop
 
 **Usar un proveedor tecnológico autorizado** (no software propio, no gratuito DIAN — el gratuito no se integra bien con un e-commerce). Candidatos a evaluar antes de Fase 7:
 
-| Proveedor | Notas | Verificar |
-|---|---|---|
-| **Alegra** | API + dashboard. Plan más bajo ~$25-50 USD/mes. Integración Node disponible. | `alegra.com/colombia` |
-| **Siigo** | Líder local. API. Costo similar. | `siigo.com` |
-| **Facture** | API-first. Más técnico. | `facture.co` |
-| **DIAN gratis** | Solo para volumen bajo, sin API real. Descartado. | — |
+| Proveedor       | Notas                                                                        | Verificar             |
+| --------------- | ---------------------------------------------------------------------------- | --------------------- |
+| **Alegra**      | API + dashboard. Plan más bajo ~$25-50 USD/mes. Integración Node disponible. | `alegra.com/colombia` |
+| **Siigo**       | Líder local. API. Costo similar.                                             | `siigo.com`           |
+| **Facture**     | API-first. Más técnico.                                                      | `facture.co`          |
+| **DIAN gratis** | Solo para volumen bajo, sin API real. Descartado.                            | —                     |
 
 > **ADR pendiente (cuando se elija):** ADR-025 — proveedor de facturación electrónica.
 
@@ -325,6 +326,7 @@ model Invoice {
 ### Verificaciones pendientes (mandato #9)
 
 Antes de elegir proveedor:
+
 - [ ] Confirmar costo mensual del plan más básico de cada candidato.
 - [ ] Verificar disponibilidad de API REST y SDK Node.
 - [ ] Confirmar soporte de notas de crédito vía API.
@@ -368,18 +370,18 @@ export function calculateTax(subtotalCents: number): { iva: number; total: numbe
 
 ## Documentos legales requeridos en el sitio
 
-| Documento | URL | Origen | Verificación |
-|---|---|---|---|
-| **Política de Privacidad** (Habeas Data) | `/legal/privacidad` | Plantilla CO + revisión legal | Versión y fecha visibles |
-| **Términos y Condiciones** | `/legal/terminos` | Idem | Idem |
-| **Política de Cookies** | `/legal/cookies` | Idem | Idem |
-| **Política de Devoluciones y Retracto** | `/legal/devoluciones` | Idem | Idem |
-| **Política de Garantía** | `/legal/garantias` | Idem | Idem |
-| **Política de Tratamiento de Datos Personales** | `/legal/tratamiento-datos` | Plantilla SIC + revisión legal | Idem |
-| **Aviso de Privacidad** | Modal al primer contacto + footer link | Idem | Idem |
-| **Habeas Data — formulario PQR** | `/legal/habeas-data` | Form + email `habeas-data@lucamsshop.co` | — |
-| **Lista de subprocesadores** | `/legal/subprocesadores` | Generada de `docs/COMPLIANCE.md` | Actualización al cambiar stack |
-| **Política de seguridad / divulgación de vulnerabilidades** | `/legal/security` | Texto interno | — |
+| Documento                                                   | URL                                    | Origen                                   | Verificación                   |
+| ----------------------------------------------------------- | -------------------------------------- | ---------------------------------------- | ------------------------------ |
+| **Política de Privacidad** (Habeas Data)                    | `/legal/privacidad`                    | Plantilla CO + revisión legal            | Versión y fecha visibles       |
+| **Términos y Condiciones**                                  | `/legal/terminos`                      | Idem                                     | Idem                           |
+| **Política de Cookies**                                     | `/legal/cookies`                       | Idem                                     | Idem                           |
+| **Política de Devoluciones y Retracto**                     | `/legal/devoluciones`                  | Idem                                     | Idem                           |
+| **Política de Garantía**                                    | `/legal/garantias`                     | Idem                                     | Idem                           |
+| **Política de Tratamiento de Datos Personales**             | `/legal/tratamiento-datos`             | Plantilla SIC + revisión legal           | Idem                           |
+| **Aviso de Privacidad**                                     | Modal al primer contacto + footer link | Idem                                     | Idem                           |
+| **Habeas Data — formulario PQR**                            | `/legal/habeas-data`                   | Form + email `habeas-data@lucamsshop.co` | —                              |
+| **Lista de subprocesadores**                                | `/legal/subprocesadores`               | Generada de `docs/COMPLIANCE.md`         | Actualización al cambiar stack |
+| **Política de seguridad / divulgación de vulnerabilidades** | `/legal/security`                      | Texto interno                            | —                              |
 
 > Cada documento tiene **versionado**: header `Versión X.Y — vigente desde YYYY-MM-DD`. Cambios mayores requieren re-aceptación del usuario activo.
 
@@ -391,12 +393,12 @@ Aunque la Ley 1581 colombiana no exige banner de cookies tan estricto como GDPR,
 
 ### Categorías
 
-| Categoría | Default | Bloqueable por usuario |
-|---|---|---|
-| **Estrictamente necesarias** | ON | ❌ No (sin estas el sitio no funciona) |
-| **Funcionales** (idioma, dark mode, último carrito visto) | ON | ✅ Sí |
-| **Analíticas** (Vercel Analytics si se activa, conteos agregados) | OFF (opt-in) | ✅ Sí |
-| **Marketing** (remarketing, pixels de Facebook/Google si se activan) | OFF (opt-in) | ✅ Sí |
+| Categoría                                                            | Default      | Bloqueable por usuario                 |
+| -------------------------------------------------------------------- | ------------ | -------------------------------------- |
+| **Estrictamente necesarias**                                         | ON           | ❌ No (sin estas el sitio no funciona) |
+| **Funcionales** (idioma, dark mode, último carrito visto)            | ON           | ✅ Sí                                  |
+| **Analíticas** (Vercel Analytics si se activa, conteos agregados)    | OFF (opt-in) | ✅ Sí                                  |
+| **Marketing** (remarketing, pixels de Facebook/Google si se activan) | OFF (opt-in) | ✅ Sí                                  |
 
 ### Implementación
 
@@ -408,15 +410,15 @@ Aunque la Ley 1581 colombiana no exige banner de cookies tan estricto como GDPR,
 
 ### Cookies que usamos (catálogo a mantener actualizado)
 
-| Cookie | Propósito | Tipo | TTL |
-|---|---|---|---|
-| `sb-access-token` | Supabase Auth | Necesaria | 1 h |
-| `sb-refresh-token` | Supabase Auth | Necesaria | 30 días |
-| `__rid` | Request ID correlation | Necesaria | sesión |
-| `__lc_consent` | Estado del consentimiento de cookies | Necesaria | 1 año |
-| `__lc_session` | Cart sessionId (anónimo) | Necesaria | 90 días |
-| `__lc_locale` | Idioma elegido | Funcional | 1 año |
-| `__lc_theme` | Modo oscuro/claro | Funcional | 1 año |
+| Cookie             | Propósito                            | Tipo      | TTL     |
+| ------------------ | ------------------------------------ | --------- | ------- |
+| `sb-access-token`  | Supabase Auth                        | Necesaria | 1 h     |
+| `sb-refresh-token` | Supabase Auth                        | Necesaria | 30 días |
+| `__rid`            | Request ID correlation               | Necesaria | sesión  |
+| `__lc_consent`     | Estado del consentimiento de cookies | Necesaria | 1 año   |
+| `__lc_session`     | Cart sessionId (anónimo)             | Necesaria | 90 días |
+| `__lc_locale`      | Idioma elegido                       | Funcional | 1 año   |
+| `__lc_theme`       | Modo oscuro/claro                    | Funcional | 1 año   |
 
 ---
 
@@ -426,18 +428,18 @@ Aunque la Ley 1581 colombiana no exige banner de cookies tan estricto como GDPR,
 
 ### Subprocesadores activos
 
-| Servicio | Propósito | País | Datos transferidos | Base legal |
-|---|---|---|---|---|
-| **Supabase** | DB, Auth, Storage | EE.UU. (AWS us-east-1 o sa-east-1) | Todos los datos del cliente (RLS aplicado) | Consentimiento + ejecución del contrato |
-| **Vercel** | Hosting de la app | EE.UU. (edge global) | Datos en tránsito durante la sesión + logs | Idem |
-| **Wompi** | Procesamiento de pagos | Colombia | Datos de la transacción + datos del cliente para anti-fraude | Necesidad contractual |
-| **Venndelo / Coordinadora** | Logística | Colombia | Nombre, dirección, teléfono | Necesidad contractual |
-| **Resend** | Email transaccional | EE.UU. | Email + contenido del mensaje | Necesidad contractual |
-| **Anthropic** | Asistente IA del estudio | EE.UU. | Prompt del estudio (sin PII directa) | Consentimiento explícito |
-| **Cloudflare** | DNS + CDN + Turnstile + R2 backups | Global | Datos en tránsito + IP + backups encriptados | Idem |
-| **Mi.com.co** | Registrador de dominio | Colombia | Datos del registrante (operador, no cliente) | Necesidad contractual |
-| **GitHub** | Repositorio de código | EE.UU. | No procesa datos de clientes | — |
-| **Proveedor DIAN** (Alegra/Siigo/Facture — TBD) | Facturación electrónica | Colombia | Datos de la factura (NIT/CC, nombre, items) | Obligación legal |
+| Servicio                                        | Propósito                          | País                               | Datos transferidos                                           | Base legal                              |
+| ----------------------------------------------- | ---------------------------------- | ---------------------------------- | ------------------------------------------------------------ | --------------------------------------- |
+| **Supabase**                                    | DB, Auth, Storage                  | EE.UU. (AWS us-east-1 o sa-east-1) | Todos los datos del cliente (RLS aplicado)                   | Consentimiento + ejecución del contrato |
+| **Vercel**                                      | Hosting de la app                  | EE.UU. (edge global)               | Datos en tránsito durante la sesión + logs                   | Idem                                    |
+| **Wompi**                                       | Procesamiento de pagos             | Colombia                           | Datos de la transacción + datos del cliente para anti-fraude | Necesidad contractual                   |
+| **Venndelo / Coordinadora**                     | Logística                          | Colombia                           | Nombre, dirección, teléfono                                  | Necesidad contractual                   |
+| **Resend**                                      | Email transaccional                | EE.UU.                             | Email + contenido del mensaje                                | Necesidad contractual                   |
+| **Anthropic**                                   | Asistente IA del estudio           | EE.UU.                             | Prompt del estudio (sin PII directa)                         | Consentimiento explícito                |
+| **Cloudflare**                                  | DNS + CDN + Turnstile + R2 backups | Global                             | Datos en tránsito + IP + backups encriptados                 | Idem                                    |
+| **Mi.com.co**                                   | Registrador de dominio             | Colombia                           | Datos del registrante (operador, no cliente)                 | Necesidad contractual                   |
+| **GitHub**                                      | Repositorio de código              | EE.UU.                             | No procesa datos de clientes                                 | —                                       |
+| **Proveedor DIAN** (Alegra/Siigo/Facture — TBD) | Facturación electrónica            | Colombia                           | Datos de la factura (NIT/CC, nombre, items)                  | Obligación legal                        |
 
 ### Política
 
@@ -456,23 +458,23 @@ Aunque la Ley 1581 colombiana no exige banner de cookies tan estricto como GDPR,
 
 ## Calendario de cumplimiento
 
-| Hito | Cuándo | Bloqueante |
-|---|---|---|
-| Constituir el negocio (RUES + Cámara de Comercio) | Antes de Fase 7 | ✅ Sí |
-| Obtener RUT con responsabilidad 42 (facturador electrónico) | Antes de Fase 7 | ✅ Sí |
-| Solicitar resolución de numeración a DIAN | Antes de Fase 7 | ✅ Sí |
-| Firmar contrato con proveedor de facturación electrónica | Antes de Fase 7 | ✅ Sí |
-| Revisión legal de los 9 documentos del sitio | Antes de Fase 7 | ✅ Sí (ADR-020) |
-| Política de privacidad y T&C publicados | Antes de Fase 7 | ✅ Sí |
-| Banner de consentimiento de cookies funcional | Antes de Fase 7 | ✅ Sí |
-| Habilitación de proveedor DIAN (si software propio) | N/A (usamos PT autorizado) | — |
-| Registro Nacional de Bases de Datos (RNBD) si aplica | Confirmar con abogado | Posible |
-| Email `habeas-data@lucamsshop.co` operativo + SLA de PQR | Lanzamiento | ✅ Sí |
-| Email `retracto@lucamsshop.co` operativo | Lanzamiento | ✅ Sí |
-| Tabla `Consent` registrando cada autorización | Fase 1 | ✅ Sí |
-| Endpoint `/api/me/data-export` | Fase 1 | ✅ Sí |
-| Endpoint `DELETE /api/me/account` con flujo 30 días | Fase 1 | ✅ Sí |
-| Cron `pg_cron` de hard delete tras 30 días | Fase 1 | ✅ Sí |
-| Flujo de retracto end-to-end | Fase 4 | ✅ Sí |
-| Flujo de garantía | Fase 6 | ✅ Sí |
-| Reporte de incidente a SIC ante brecha (procedimiento) | Documentar en Fase 7 | ✅ Sí |
+| Hito                                                        | Cuándo                     | Bloqueante      |
+| ----------------------------------------------------------- | -------------------------- | --------------- |
+| Constituir el negocio (RUES + Cámara de Comercio)           | Antes de Fase 7            | ✅ Sí           |
+| Obtener RUT con responsabilidad 42 (facturador electrónico) | Antes de Fase 7            | ✅ Sí           |
+| Solicitar resolución de numeración a DIAN                   | Antes de Fase 7            | ✅ Sí           |
+| Firmar contrato con proveedor de facturación electrónica    | Antes de Fase 7            | ✅ Sí           |
+| Revisión legal de los 9 documentos del sitio                | Antes de Fase 7            | ✅ Sí (ADR-020) |
+| Política de privacidad y T&C publicados                     | Antes de Fase 7            | ✅ Sí           |
+| Banner de consentimiento de cookies funcional               | Antes de Fase 7            | ✅ Sí           |
+| Habilitación de proveedor DIAN (si software propio)         | N/A (usamos PT autorizado) | —               |
+| Registro Nacional de Bases de Datos (RNBD) si aplica        | Confirmar con abogado      | Posible         |
+| Email `habeas-data@lucamsshop.co` operativo + SLA de PQR    | Lanzamiento                | ✅ Sí           |
+| Email `retracto@lucamsshop.co` operativo                    | Lanzamiento                | ✅ Sí           |
+| Tabla `Consent` registrando cada autorización               | Fase 1                     | ✅ Sí           |
+| Endpoint `/api/me/data-export`                              | Fase 1                     | ✅ Sí           |
+| Endpoint `DELETE /api/me/account` con flujo 30 días         | Fase 1                     | ✅ Sí           |
+| Cron `pg_cron` de hard delete tras 30 días                  | Fase 1                     | ✅ Sí           |
+| Flujo de retracto end-to-end                                | Fase 4                     | ✅ Sí           |
+| Flujo de garantía                                           | Fase 6                     | ✅ Sí           |
+| Reporte de incidente a SIC ante brecha (procedimiento)      | Documentar en Fase 7       | ✅ Sí           |

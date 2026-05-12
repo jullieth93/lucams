@@ -36,10 +36,7 @@ const Schema = z
   .object({
     email: z.string().email("Email inválido"),
     token: z.string().regex(/^\d{6,10}$/, "Código de 6 a 10 dígitos"),
-    password: z
-      .string()
-      .min(8, "Mínimo 8 caracteres")
-      .max(72, "Máximo 72 caracteres"),
+    password: z.string().min(8, "Mínimo 8 caracteres").max(72, "Máximo 72 caracteres"),
     passwordConfirm: z.string(),
   })
   .refine((d) => d.password === d.passwordConfirm, {
@@ -49,9 +46,7 @@ const Schema = z
 
 export type RestablecerActionState = {
   error?: string;
-  fieldErrors?: Partial<
-    Record<"email" | "token" | "password" | "passwordConfirm", string[]>
-  >;
+  fieldErrors?: Partial<Record<"email" | "token" | "password" | "passwordConfirm", string[]>>;
 };
 
 export async function restablecerPasswordAction(
@@ -78,11 +73,7 @@ export async function restablecerPasswordAction(
   const isProd = process.env.VERCEL_ENV === "production";
 
   // Rate-limit doble: por IP y por email. Mitiga brute-force del OTP.
-  const rlIp = await rateLimit(
-    ipKey("verify-recovery", ip),
-    isProd ? 10 : 30,
-    15 * 60,
-  );
+  const rlIp = await rateLimit(ipKey("verify-recovery", ip), isProd ? 10 : 30, 15 * 60);
   const rlEmail = await rateLimit(
     emailKey("verify-recovery", parsed.data.email),
     isProd ? 10 : 30,
@@ -136,8 +127,7 @@ export async function restablecerPasswordAction(
       status: verifyErr.status,
     });
     return {
-      error:
-        "El código no es válido o ya expiró. Solicita uno nuevo desde 'Olvidé mi contraseña'.",
+      error: "El código no es válido o ya expiró. Solicita uno nuevo desde 'Olvidé mi contraseña'.",
     };
   }
 
