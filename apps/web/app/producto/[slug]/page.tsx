@@ -100,7 +100,7 @@ export default async function ProductoDetallePage({
 
           <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
             <div className="space-y-3">
-              <div className="border-brand-purple/10 from-brand-turquoise/15 via-brand-cream to-brand-pink/15 relative aspect-square w-full overflow-hidden rounded-xl border bg-gradient-to-br text-transparent">
+              <div className="border-brand-purple/10 from-brand-turquoise/15 via-brand-cream to-brand-pink/15 relative aspect-square w-full overflow-hidden rounded-xl border bg-gradient-to-br">
                 {product.images.length > 0 ? (
                   <Image
                     src={product.images[0]}
@@ -121,7 +121,7 @@ export default async function ProductoDetallePage({
                   {product.images.slice(1, 5).map((img, idx) => (
                     <div
                       key={idx}
-                      className="relative aspect-square w-full overflow-hidden rounded-md text-transparent"
+                      className="relative aspect-square w-full overflow-hidden rounded-md"
                     >
                       <Image
                         src={img}

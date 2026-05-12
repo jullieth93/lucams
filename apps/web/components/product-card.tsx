@@ -21,13 +21,14 @@ export function ProductCard({ product }: { product: StorefrontProductCard }) {
   return (
     <Link
       href={`/producto/${product.slug}`}
+      aria-label={product.name}
       className="group border-brand-purple/10 flex flex-col overflow-hidden rounded-xl border bg-white transition-shadow hover:shadow-lg"
     >
-      <div className="from-brand-turquoise/15 via-brand-cream to-brand-pink/15 relative aspect-square w-full overflow-hidden bg-gradient-to-br text-transparent">
+      <div className="from-brand-turquoise/15 via-brand-cream to-brand-pink/15 relative aspect-square w-full overflow-hidden bg-gradient-to-br">
         {product.images.length > 0 ? (
           <Image
             src={product.images[0]}
-            alt={product.name}
+            alt=""
             fill
             sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
             loading="lazy"
