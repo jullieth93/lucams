@@ -216,7 +216,7 @@ export async function SiteFooter() {
                 Lanzamientos, promos y curaduría kawaii. Sin spam — máximo una vez al mes.
               </p>
             </div>
-            <NewsletterForm compact />
+            <NewsletterForm compact variant="dark" />
           </div>
         </div>
 

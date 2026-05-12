@@ -8,8 +8,8 @@
 "use server";
 
 import { searchStorefrontProducts } from "@/features/products/public-service";
-import type { StorefrontProductCard } from "@/features/products/public-service";
+import type { SearchResult } from "@/features/products/public-service";
 
-export async function searchProductsAction(query: string): Promise<StorefrontProductCard[]> {
+export async function searchProductsAction(query: string): Promise<SearchResult[]> {
   return searchStorefrontProducts(query);
 }

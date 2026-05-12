@@ -14,7 +14,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { subscribeNewsletterAction, type NewsletterFormState } from "@/features/newsletter/actions";
 
-export function NewsletterForm({ compact = false }: { compact?: boolean }) {
+export function NewsletterForm({
+  compact = false,
+  variant = "light",
+}: {
+  compact?: boolean;
+  variant?: "light" | "dark";
+}) {
+  const isDark = variant === "dark";
   const emailId = useId();
   const consentId = useId();
   const formRef = useRef<HTMLFormElement>(null);
@@ -57,7 +64,10 @@ export function NewsletterForm({ compact = false }: { compact?: boolean }) {
       </div>
       <label
         htmlFor={consentId}
-        className="text-brand-purple-dark/70 mt-2 flex items-start gap-2 text-xs"
+        className={
+          "mt-2 flex items-start gap-2 text-xs " +
+          (isDark ? "text-white/80" : "text-brand-purple-dark/70")
+        }
       >
         <input
           id={consentId}
@@ -65,13 +75,21 @@ export function NewsletterForm({ compact = false }: { compact?: boolean }) {
           type="checkbox"
           required
           disabled={pending}
-          className="text-brand-purple focus:ring-brand-purple/30 border-brand-purple/40 mt-0.5 h-3.5 w-3.5 rounded"
+          className={
+            "mt-0.5 h-3.5 w-3.5 rounded " +
+            (isDark
+              ? "text-brand-pink border-white/40 bg-white/10 focus:ring-white/30"
+              : "text-brand-purple focus:ring-brand-purple/30 border-brand-purple/40")
+          }
         />
         <span>
           Acepto recibir comunicaciones de Lucams_shop. Podré dar de baja cuando quiera. Ver{" "}
           <a
             href="/legal/privacidad"
-            className="text-brand-purple underline-offset-2 hover:underline"
+            className={
+              "underline-offset-2 hover:underline " +
+              (isDark ? "text-brand-pink hover:text-white" : "text-brand-purple")
+            }
             target="_blank"
             rel="noopener"
           >

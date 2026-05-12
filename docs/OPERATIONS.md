@@ -155,7 +155,7 @@ Para los 3 environments de Vercel: **Production**, **Preview**, **Development**.
 | `DIRECT_URL`                           | ❌                           | Direct (puerto 5432), idem                                                                     |
 | `RESEND_API_KEY`                       | ❌ Solo server               | Encrypted                                                                                      |
 | `EMAIL_FROM`                           | ❌                           | Texto plano (`Lucams_shop <onboarding@resend.dev>`)                                            |
-| `NEXT_PUBLIC_WA_NUMBER`                | ✅                           | `573150718723`                                                                                 |
+| `NEXT_PUBLIC_WA_NUMBER`                | ✅                           | `573208873826`                                                                                 |
 | `NODE_ENV`                             | ❌                           | `production` en Vercel (no se setea manual; Vercel lo maneja)                                  |
 | `NEXT_TELEMETRY_DISABLED`              | ❌                           | `1`                                                                                            |
 
@@ -260,7 +260,7 @@ cd /home/ansible/workspaces/lucams-shop-local && make help
 NEXT_PUBLIC_SITE_URL=http://localhost:3000        # dev
 # NEXT_PUBLIC_SITE_URL=https://lucamsshop.co       # prod
 
-NEXT_PUBLIC_WA_NUMBER=573150718723                # WhatsApp temporal del usuario
+NEXT_PUBLIC_WA_NUMBER=573208873826                # WhatsApp temporal del usuario
 
 # ─── Supabase ───
 NEXT_PUBLIC_SUPABASE_URL=https://xxxxx.supabase.co

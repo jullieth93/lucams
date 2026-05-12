@@ -11,7 +11,7 @@
  * como el único punto de cambio.
  */
 
-const FALLBACK_NUMBER = "573150718723"; // Lucy WhatsApp temporal — ver .env.example
+const FALLBACK_NUMBER = "573208873826"; // Lucy WhatsApp temporal — ver .env.example
 
 export function getWhatsAppNumber(): string {
   return process.env.NEXT_PUBLIC_WA_NUMBER || FALLBACK_NUMBER;

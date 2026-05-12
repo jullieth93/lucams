@@ -7,11 +7,11 @@
 
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import useEmblaCarousel from "embla-carousel-react";
 import Autoplay from "embla-carousel-autoplay";
 import Link from "next/link";
-import { Star } from "lucide-react";
+import { ChevronLeft, ChevronRight, Star } from "lucide-react";
 import type { StorefrontReview } from "@/features/reviews/public-service";
 
 export function ReviewsCarousel({ reviews }: { reviews: StorefrontReview[] }) {
@@ -21,6 +21,8 @@ export function ReviewsCarousel({ reviews }: { reviews: StorefrontReview[] }) {
   );
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [snaps, setSnaps] = useState<number[]>([]);
+  const scrollPrev = useCallback(() => emblaApi?.scrollPrev(), [emblaApi]);
+  const scrollNext = useCallback(() => emblaApi?.scrollNext(), [emblaApi]);
 
   useEffect(() => {
     if (!emblaApi) return;
@@ -40,19 +42,39 @@ export function ReviewsCarousel({ reviews }: { reviews: StorefrontReview[] }) {
   if (reviews.length === 0) return null;
 
   return (
-    <div>
-      <div className="overflow-hidden" ref={emblaRef}>
-        <div className="flex gap-4">
-          {reviews.map((r) => (
-            <div
-              key={r.id}
-              className="min-w-0 shrink-0 grow-0 basis-full sm:basis-1/2 lg:basis-1/3"
-            >
-              <ReviewCard review={r} />
-            </div>
-          ))}
+    <div className="relative">
+      <div className="px-0 sm:px-12">
+        <div className="overflow-hidden" ref={emblaRef}>
+          <div className="flex gap-4">
+            {reviews.map((r) => (
+              <div
+                key={r.id}
+                className="min-w-0 shrink-0 grow-0 basis-full sm:basis-1/2 lg:basis-1/3"
+              >
+                <ReviewCard review={r} />
+              </div>
+            ))}
+          </div>
         </div>
       </div>
+
+      <button
+        type="button"
+        onClick={scrollPrev}
+        aria-label="Reseña anterior"
+        className="bg-brand-purple/90 hover:bg-brand-purple absolute top-1/2 left-0 hidden h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full text-white shadow-lg transition-colors sm:flex"
+      >
+        <ChevronLeft className="h-5 w-5" />
+      </button>
+      <button
+        type="button"
+        onClick={scrollNext}
+        aria-label="Siguiente reseña"
+        className="bg-brand-purple/90 hover:bg-brand-purple absolute top-1/2 right-0 hidden h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full text-white shadow-lg transition-colors sm:flex"
+      >
+        <ChevronRight className="h-5 w-5" />
+      </button>
+
       <div className="mt-4 flex justify-center gap-1.5">
         {snaps.map((_, i) => (
           <button

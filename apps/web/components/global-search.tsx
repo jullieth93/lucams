@@ -23,13 +23,13 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import { formatCOP } from "@/lib/format";
-import type { StorefrontProductCard } from "@/features/products/public-service";
+import type { SearchResult } from "@/features/products/public-service";
 import { searchProductsAction } from "@/app/actions/search";
 
 export function GlobalSearch() {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<StorefrontProductCard[]>([]);
+  const [results, setResults] = useState<SearchResult[]>([]);
   const [, startTransition] = useTransition();
   const router = useRouter();
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -61,7 +61,7 @@ export function GlobalSearch() {
         const r = await searchProductsAction(trimmed);
         setResults(r);
       });
-    }, 200);
+    }, 120);
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
@@ -104,7 +104,15 @@ export function GlobalSearch() {
               </div>
             </CommandEmpty>
           ) : (
-            <CommandGroup heading={query.trim() ? "Resultados" : "Empieza a escribir..."}>
+            <CommandGroup
+              heading={
+                !query.trim()
+                  ? "Empieza a escribir..."
+                  : results[0]?.isSuggestion
+                    ? "¿Querías decir...?"
+                    : "Resultados"
+              }
+            >
               {results.map((p) => (
                 <CommandItem
                   key={p.id}

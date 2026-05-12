@@ -1,8 +1,8 @@
 /*
  * Hero kawaii — mascote + headline + dual CTA + blobs decorativos.
  *
- * Headlines rotativos: 3 mensajes que se intercambian con fade cada 4s
- * vía CSS keyframes (sin JS, respetando prefers-reduced-motion).
+ * Móvil: logo más pequeño + CTAs visibles sin scroll (above the fold).
+ * Desktop: layout 2-col más espacioso.
  */
 
 import Link from "next/link";
@@ -19,22 +19,38 @@ export function HomeHero() {
         <div className="bg-brand-yellow/20 absolute -bottom-24 left-1/3 h-64 w-64 rounded-full blur-3xl" />
       </div>
 
-      <div className="grid items-center gap-8 px-2 py-12 sm:py-16 md:grid-cols-2 md:py-20">
-        <div className="order-2 space-y-6 md:order-1">
+      {/* Móvil: stack vertical compacto (logo arriba pequeño + texto + CTAs).
+          Desktop: grid 2-col con logo grande a la derecha. */}
+      <div className="grid items-center gap-4 px-2 py-6 sm:gap-8 sm:py-12 md:grid-cols-2 md:py-16 lg:py-20">
+        {/* Logo: arriba en móvil (pequeño) / derecha en desktop (grande) */}
+        <div className="order-1 flex justify-center md:order-2">
+          <div className="motion-safe:animate-[var(--animate-float)] motion-safe:[animation-duration:4s]">
+            <LucamsLogo variant="full" size={140} priority className="drop-shadow-xl md:hidden" />
+            <LucamsLogo
+              variant="full"
+              size={280}
+              priority
+              className="hidden drop-shadow-2xl md:block"
+            />
+          </div>
+        </div>
+
+        {/* Texto + CTAs */}
+        <div className="order-2 space-y-4 text-center sm:space-y-6 md:order-1 md:text-left">
           <span className="bg-brand-purple/10 text-brand-purple-dark inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold tracking-wider uppercase">
             ✨ Hecho a mano en Bogotá
           </span>
-          <h1 className="font-display text-brand-purple-dark text-4xl leading-tight sm:text-5xl md:text-6xl">
+          <h1 className="font-display text-brand-purple-dark text-3xl leading-tight sm:text-5xl md:text-6xl">
             Tus recuerdos, <span className="text-brand-pink">en imán</span>.
           </h1>
-          <p className="text-brand-purple-dark/80 max-w-lg text-lg leading-relaxed">
+          <p className="text-brand-purple-dark/80 mx-auto max-w-lg text-base leading-relaxed sm:text-lg md:mx-0">
             Foto-imanes, recuerdos para eventos, calendarios y planners magnéticos personalizables.
-            Diseño kawaii. Entrega a 1.100+ destinos de Colombia.
+            Entrega a 1.100+ destinos de Colombia.
           </p>
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-3 md:justify-start">
             <Link
               href="/productos"
-              className="bg-brand-purple hover:bg-brand-purple-dark inline-block rounded-full px-6 py-3 text-base font-semibold text-white shadow-md transition-colors"
+              className="bg-brand-purple hover:bg-brand-purple-dark inline-block rounded-full px-5 py-2.5 text-sm font-semibold text-white shadow-md transition-colors sm:px-6 sm:py-3 sm:text-base"
             >
               Ver catálogo →
             </Link>
@@ -42,12 +58,12 @@ export function HomeHero() {
               href={buildWhatsAppUrl({ kind: "support" })}
               target="_blank"
               rel="noopener noreferrer"
-              className="border-brand-purple/30 text-brand-purple-dark hover:bg-brand-purple/5 inline-block rounded-full border bg-white px-6 py-3 text-base font-semibold transition-colors"
+              className="border-brand-purple/30 text-brand-purple-dark hover:bg-brand-purple/5 inline-block rounded-full border bg-white px-5 py-2.5 text-sm font-semibold transition-colors sm:px-6 sm:py-3 sm:text-base"
             >
               Personalizar el mío
             </a>
           </div>
-          <div className="flex flex-wrap items-center gap-2 pt-3 text-xs font-medium">
+          <div className="flex flex-wrap items-center justify-center gap-2 pt-2 text-xs font-medium md:justify-start">
             <span className="bg-brand-turquoise/20 text-brand-purple-dark rounded-full px-3 py-1">
               Estudio en vivo (pronto)
             </span>
@@ -57,12 +73,6 @@ export function HomeHero() {
             <span className="bg-brand-yellow/30 text-brand-purple-dark rounded-full px-3 py-1">
               5-7 días hábiles
             </span>
-          </div>
-        </div>
-
-        <div className="order-1 flex justify-center md:order-2">
-          <div className="motion-safe:animate-[var(--animate-float)] motion-safe:[animation-duration:4s]">
-            <LucamsLogo variant="full" size={280} priority className="drop-shadow-2xl" />
           </div>
         </div>
       </div>

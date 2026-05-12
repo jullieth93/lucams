@@ -88,45 +88,75 @@ export async function listStorefrontProducts(opts: {
 }
 
 /**
- * Búsqueda fuzzy de productos via pg_trgm + unaccent. Usado por header
- * Cmd+K palette. La función SQL `immutable_unaccent` se creó en la
- * migración supabase/00000000000005_search_and_storage.sql.
+ * Búsqueda fuzzy con tolerancia a typos via pg_trgm similarity.
  *
- * Estrategia:
- *  - Si la query es < 2 chars devuelve vacío (evita full table scan).
- *  - Sanitiza: trim + max 80 chars + sin caracteres especiales SQL.
- *  - Usa LIKE con unaccent en name/description/sku/slug.
- *  - Limit 8 — suficiente para autocomplete.
+ * Algoritmo (ordenado por rendimiento):
+ *  1. Si query es 1 char → vacío (full scan no vale).
+ *  2. Si query ≥ 2 chars:
+ *     a. Match exacto/prefix con ILIKE (rápido y prioritario).
+ *     b. Fuzzy match con similarity() ≥ 0.25 (tolera typos como
+ *        "fotoiman" → "fotoimanes", "calenadrio" → "calendario").
+ *     c. Match por substring en SKU/slug (códigos exactos).
+ *  3. Combinamos resultados ordenados por score DESC (exact > prefix
+ *     > similarity > sku), dedup por id. Top 8.
+ *  4. Si 0 resultados con threshold 0.25, retornamos "suggestions"
+ *     con threshold 0.1 (max 3) marcadas con `isSuggestion=true`
+ *     para que el cliente muestre "¿Querías decir...?".
+ *
+ * `immutable_unaccent` se creó en supabase/00000000000005_search...sql
+ * con índice GIN trigram en Product.name + description.
+ *
+ * Referencia: https://www.postgresql.org/docs/current/pgtrgm.html
  */
-export async function searchStorefrontProducts(rawQuery: string): Promise<StorefrontProductCard[]> {
+export type SearchResult = StorefrontProductCard & {
+  score: number;
+  isSuggestion?: boolean;
+};
+
+export async function searchStorefrontProducts(rawQuery: string): Promise<SearchResult[]> {
   const q = rawQuery.trim().slice(0, 80);
   if (q.length < 2) return [];
 
-  // Escape para LIKE: % y _ son wildcards en LIKE; ' es delimitador.
-  // Reemplazamos con espacio para no romper la query.
+  // Sanitización: quitamos wildcards LIKE y SQL delimiters.
   const safe = q.replace(/[%_'"\\]/g, " ").trim();
   if (safe.length < 2) return [];
 
+  type Row = {
+    id: string;
+    slug: string;
+    name: string;
+    basePrice: number;
+    compareAtPrice: number | null;
+    isPersonalizable: boolean;
+    images: string[];
+    categoryName: string;
+    categorySlug: string;
+    score: number;
+  };
+
   const pattern = `%${safe}%`;
-  // $queryRaw con Prisma.sql template tag previene SQL injection
-  // automáticamente — los $1/$2/etc se bindean parametrizados.
-  const rows = await prisma.$queryRaw<
-    Array<{
-      id: string;
-      slug: string;
-      name: string;
-      basePrice: number;
-      compareAtPrice: number | null;
-      isPersonalizable: boolean;
-      images: string[];
-      categoryName: string;
-      categorySlug: string;
-    }>
-  >`
+  const prefixPattern = `${safe}%`;
+
+  // Query principal: scoring híbrido.
+  //   - 3.0 si match exacto en name (case-insensitive + unaccent)
+  //   - 2.0 si prefix en name
+  //   - 1.5 si prefix en sku/slug
+  //   - similarity(name, q) escalado [0, 1] como base si pasa threshold
+  //   - 0.6 si substring en description
+  // GREATEST() toma el mayor → un mismo row no se "infla" sumando.
+  const rows = await prisma.$queryRaw<Row[]>`
     SELECT
       p.id, p.slug, p.name, p."basePrice", p."compareAtPrice",
       p."isPersonalizable", p.images,
-      c.name as "categoryName", c.slug as "categorySlug"
+      c.name AS "categoryName", c.slug AS "categorySlug",
+      GREATEST(
+        CASE WHEN immutable_unaccent(LOWER(p.name)) = immutable_unaccent(LOWER(${safe})) THEN 3.0 ELSE 0 END,
+        CASE WHEN immutable_unaccent(LOWER(p.name)) LIKE immutable_unaccent(LOWER(${prefixPattern})) THEN 2.0 ELSE 0 END,
+        CASE WHEN LOWER(p.sku) LIKE LOWER(${prefixPattern}) OR LOWER(p.slug) LIKE LOWER(${prefixPattern}) THEN 1.5 ELSE 0 END,
+        similarity(immutable_unaccent(p.name), immutable_unaccent(${safe})),
+        CASE WHEN immutable_unaccent(LOWER(p.description)) LIKE immutable_unaccent(LOWER(${pattern})) THEN 0.6 ELSE 0 END,
+        CASE WHEN LOWER(p.sku) LIKE LOWER(${pattern}) OR LOWER(p.slug) LIKE LOWER(${pattern}) THEN 0.8 ELSE 0 END
+      ) AS score
     FROM "Product" p
     JOIN "Category" c ON c.id = p."categoryId"
     WHERE p."deletedAt" IS NULL
@@ -134,15 +164,54 @@ export async function searchStorefrontProducts(rawQuery: string): Promise<Storef
       AND c."deletedAt" IS NULL
       AND c."isActive" = true
       AND (
-        immutable_unaccent(p.name) ILIKE immutable_unaccent(${pattern})
-        OR immutable_unaccent(p.description) ILIKE immutable_unaccent(${pattern})
-        OR p.sku ILIKE ${pattern}
-        OR p.slug ILIKE ${pattern}
+        immutable_unaccent(LOWER(p.name)) LIKE immutable_unaccent(LOWER(${pattern}))
+        OR immutable_unaccent(LOWER(p.description)) LIKE immutable_unaccent(LOWER(${pattern}))
+        OR LOWER(p.sku) LIKE LOWER(${pattern})
+        OR LOWER(p.slug) LIKE LOWER(${pattern})
+        OR similarity(immutable_unaccent(p.name), immutable_unaccent(${safe})) > 0.25
       )
-    ORDER BY p."isFeatured" DESC, p."createdAt" DESC
+    ORDER BY score DESC, p."isFeatured" DESC, p."createdAt" DESC
     LIMIT 8
   `;
-  return rows.map((r) => ({
+
+  if (rows.length > 0) {
+    return rows.map((r) => mapRow(r));
+  }
+
+  // Fallback "did you mean": threshold más permisivo (0.1), top 3,
+  // marcadas como sugerencias.
+  const suggestions = await prisma.$queryRaw<Row[]>`
+    SELECT
+      p.id, p.slug, p.name, p."basePrice", p."compareAtPrice",
+      p."isPersonalizable", p.images,
+      c.name AS "categoryName", c.slug AS "categorySlug",
+      similarity(immutable_unaccent(p.name), immutable_unaccent(${safe})) AS score
+    FROM "Product" p
+    JOIN "Category" c ON c.id = p."categoryId"
+    WHERE p."deletedAt" IS NULL
+      AND p."isActive" = true
+      AND c."deletedAt" IS NULL
+      AND c."isActive" = true
+      AND similarity(immutable_unaccent(p.name), immutable_unaccent(${safe})) > 0.1
+    ORDER BY score DESC
+    LIMIT 3
+  `;
+  return suggestions.map((r) => ({ ...mapRow(r), isSuggestion: true }));
+}
+
+function mapRow(r: {
+  id: string;
+  slug: string;
+  name: string;
+  basePrice: number;
+  compareAtPrice: number | null;
+  isPersonalizable: boolean;
+  images: string[];
+  categoryName: string;
+  categorySlug: string;
+  score: number;
+}): SearchResult {
+  return {
     id: r.id,
     slug: r.slug,
     name: r.name,
@@ -151,7 +220,8 @@ export async function searchStorefrontProducts(rawQuery: string): Promise<Storef
     isPersonalizable: r.isPersonalizable,
     images: r.images,
     category: { slug: r.categorySlug, name: r.categoryName },
-  }));
+    score: Number(r.score),
+  };
 }
 
 export async function getStorefrontProductBySlug(

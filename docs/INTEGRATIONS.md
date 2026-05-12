@@ -402,7 +402,7 @@ Sin Twilio API por ahora. Solo botón flotante con mensaje pre-armado contextual
 ### Variables de entorno
 
 ```bash
-NEXT_PUBLIC_WA_NUMBER=573150718723   # Sin + ni espacios, formato wa.me
+NEXT_PUBLIC_WA_NUMBER=573208873826   # Sin + ni espacios, formato wa.me
 ```
 
 ### Implementación

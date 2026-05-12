@@ -51,13 +51,19 @@ export function FeaturedCarousel({ products }: { products: StorefrontProductCard
 
   return (
     <div className="relative">
-      <div className="overflow-hidden" ref={emblaRef}>
-        <div className="flex gap-4">
-          {products.map((p) => (
-            <div key={p.id} className="min-w-0 shrink-0 grow-0 basis-1/2 sm:basis-1/3 lg:basis-1/4">
-              <ProductCard product={p} />
-            </div>
-          ))}
+      {/* Padding lateral en desktop para que las arrows queden fuera del slide area */}
+      <div className="px-0 sm:px-12">
+        <div className="overflow-hidden" ref={emblaRef}>
+          <div className="flex gap-4">
+            {products.map((p) => (
+              <div
+                key={p.id}
+                className="min-w-0 shrink-0 grow-0 basis-1/2 sm:basis-1/3 lg:basis-1/4"
+              >
+                <ProductCard product={p} />
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -65,7 +71,7 @@ export function FeaturedCarousel({ products }: { products: StorefrontProductCard
         type="button"
         onClick={scrollPrev}
         aria-label="Anterior"
-        className="bg-brand-purple/90 hover:bg-brand-purple absolute top-1/2 -left-2 hidden h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full text-white shadow-lg transition-colors sm:flex"
+        className="bg-brand-purple/90 hover:bg-brand-purple absolute top-1/2 left-0 hidden h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full text-white shadow-lg transition-colors sm:flex"
       >
         <ChevronLeft className="h-5 w-5" />
       </button>
@@ -73,7 +79,7 @@ export function FeaturedCarousel({ products }: { products: StorefrontProductCard
         type="button"
         onClick={scrollNext}
         aria-label="Siguiente"
-        className="bg-brand-purple/90 hover:bg-brand-purple absolute top-1/2 -right-2 hidden h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full text-white shadow-lg transition-colors sm:flex"
+        className="bg-brand-purple/90 hover:bg-brand-purple absolute top-1/2 right-0 hidden h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full text-white shadow-lg transition-colors sm:flex"
       >
         <ChevronRight className="h-5 w-5" />
       </button>
