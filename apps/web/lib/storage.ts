@@ -20,12 +20,7 @@ import { supabaseService } from "@/lib/supabase/service";
 const BUCKET = "product-images";
 const MAX_BYTES = 5 * 1024 * 1024; // 5 MB
 
-const ALLOWED_MIME = new Set([
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-  "image/avif",
-]);
+const ALLOWED_MIME = new Set(["image/jpeg", "image/png", "image/webp", "image/avif"]);
 
 export class StorageError extends Error {
   constructor(
@@ -77,16 +72,10 @@ export async function uploadProductImage(opts: {
     throw new StorageError("EMPTY_FILE", "Archivo vacío");
   }
   if (file.size > MAX_BYTES) {
-    throw new StorageError(
-      "FILE_TOO_LARGE",
-      `El archivo excede ${MAX_BYTES / 1024 / 1024} MB`,
-    );
+    throw new StorageError("FILE_TOO_LARGE", `El archivo excede ${MAX_BYTES / 1024 / 1024} MB`);
   }
   if (!ALLOWED_MIME.has(file.type)) {
-    throw new StorageError(
-      "INVALID_TYPE",
-      `Tipo "${file.type}" no permitido (jpg/png/webp/avif)`,
-    );
+    throw new StorageError("INVALID_TYPE", `Tipo "${file.type}" no permitido (jpg/png/webp/avif)`);
   }
 
   const ext = inferExtension(file.type);
@@ -94,19 +83,14 @@ export async function uploadProductImage(opts: {
   const supabase = supabaseService;
   const buffer = Buffer.from(await file.arrayBuffer());
 
-  const { error: uploadErr } = await supabase.storage
-    .from(BUCKET)
-    .upload(filename, buffer, {
-      contentType: file.type,
-      cacheControl: "31536000", // 1 año — los nombres ya tienen UUID, son inmutables
-      upsert: false,
-    });
+  const { error: uploadErr } = await supabase.storage.from(BUCKET).upload(filename, buffer, {
+    contentType: file.type,
+    cacheControl: "31536000", // 1 año — los nombres ya tienen UUID, son inmutables
+    upsert: false,
+  });
 
   if (uploadErr) {
-    throw new StorageError(
-      "UPLOAD_FAILED",
-      `Error subiendo: ${uploadErr.message}`,
-    );
+    throw new StorageError("UPLOAD_FAILED", `Error subiendo: ${uploadErr.message}`);
   }
 
   const { data } = supabase.storage.from(BUCKET).getPublicUrl(filename);
@@ -124,10 +108,7 @@ export async function deleteProductImage(publicUrl: string): Promise<void> {
   const supabase = supabaseService;
   const { error } = await supabase.storage.from(BUCKET).remove([path]);
   if (error) {
-    throw new StorageError(
-      "DELETE_FAILED",
-      `Error borrando: ${error.message}`,
-    );
+    throw new StorageError("DELETE_FAILED", `Error borrando: ${error.message}`);
   }
 }
 
