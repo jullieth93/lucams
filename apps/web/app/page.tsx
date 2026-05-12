@@ -1,74 +1,172 @@
 /*
- * Home page — placeholder Lucams_shop.
+ * Home — landing del storefront.
  *
- * Esta es la página inicial del scaffolding Fase 1. Se reemplazará en Fase 2
- * (storefront público) con el hero real + categorías destacadas + productos.
+ * Secciones (en orden):
+ *   1. SiteHeader (mega-menú + búsqueda)
+ *   2. Hero kawaii
+ *   3. Categorías visuales (7)
+ *   4. "Así de fácil" — 3 pasos
+ *   5. Productos destacados (Embla)
+ *   6. Lo que dicen quienes nos compran (reseñas reales o empty kawaii)
+ *   7. CTA cierre
  *
- * Por ahora confirma que:
- *  - Tipografías Fredoka (display) + Inter (body) cargan vía next/font/google.
- *  - Tokens Lucams (brand-purple, brand-turquoise, brand-pink, brand-yellow)
- *    están disponibles como utilidades Tailwind v4.
- *  - Identidad de marca kawaii visible desde el primer commit.
- *  - SiteHeader dinámico — muestra login/registro o nombre+logout según sesión.
+ * SSR puro con Promise.all para que cada query no bloquee al resto.
  */
 
+import type { Metadata } from "next";
+import Link from "next/link";
 import { LucamsLogo } from "@/components/lucams-logo";
 import { SiteHeader } from "@/components/site-header";
+import { CategoryGrid } from "@/components/home/category-grid";
+import { FeaturedCarousel } from "@/components/home/featured-carousel";
+import { HomeHero } from "@/components/home/hero";
+import { HowItWorks } from "@/components/home/how-it-works";
+import { ReviewsCarousel } from "@/components/home/reviews-carousel";
+import {
+  listStorefrontCategories,
+  listStorefrontProducts,
+} from "@/features/products/public-service";
+import { listFeaturedReviews } from "@/features/reviews/public-service";
+import { buildWhatsAppUrl } from "@/lib/wa";
 
-export default function Home() {
+export const metadata: Metadata = {
+  title: "Lucams_shop — Tus recuerdos en imán",
+  description:
+    "Imanes magnéticos personalizados, fotoimanes, recorditos para eventos, calendarios y planners. Hechos a mano en Colombia con entrega a 1.100+ destinos.",
+};
+
+// Home consulta DB (categorías, productos featured, reseñas) en SSR.
+// Marcamos dynamic para que Next no intente pre-renderizar en build con
+// DATABASE_URL placeholder (Vercel + CI). En runtime se sirve siempre
+// fresco — el catálogo cambia poco así que está OK por ahora; si la
+// carga sube, envolver listStorefrontCategories etc. con unstable_cache.
+export const dynamic = "force-dynamic";
+
+export default async function Home() {
+  const [categories, featured, reviews] = await Promise.all([
+    listStorefrontCategories(),
+    listStorefrontProducts({ featured: true, limit: 10 }),
+    listFeaturedReviews(8),
+  ]);
+
   return (
     <div className="flex min-h-screen flex-col">
       <SiteHeader />
-      <main className="bg-brand-cream flex flex-1 items-center justify-center px-6 py-16">
-        <div className="max-w-2xl text-center">
-          <div className="mb-6 inline-block motion-safe:animate-[var(--animate-float)] motion-safe:[animation-duration:3s]">
-            <LucamsLogo variant="full" size={180} priority className="drop-shadow-xl" />
-          </div>
-
-          <h1 className="font-display text-brand-purple-dark text-4xl sm:text-5xl">
-            Lucams<span className="text-brand-pink">_shop</span>
-          </h1>
-
-          <p className="text-foreground/80 mt-4 text-lg leading-relaxed">
-            E-commerce colombiano de imanes magnéticos personalizados.
-            <br />
-            <span className="text-brand-purple-dark font-medium">Tus recuerdos, en imán.</span>
-          </p>
-
-          <div className="mt-8">
-            <a
-              href="/productos"
-              className="bg-brand-purple hover:bg-brand-purple-dark inline-block rounded-full px-6 py-3 text-base font-semibold text-white shadow-md transition-colors"
-            >
-              Ver catálogo →
-            </a>
-          </div>
-
-          <div className="mt-10 flex flex-wrap items-center justify-center gap-3 text-sm font-medium">
-            <span className="bg-brand-turquoise/20 text-brand-purple-dark rounded-full px-4 py-1.5">
-              Estudio de personalización en vivo
-            </span>
-            <span className="bg-brand-coral/20 text-brand-purple-dark rounded-full px-4 py-1.5">
-              Pago contraentrega
-            </span>
-            <span className="bg-brand-yellow/30 text-brand-purple-dark rounded-full px-4 py-1.5">
-              1.100+ destinos en Colombia
-            </span>
-          </div>
-
-          <p className="text-muted-foreground mt-12 text-sm">
-            También nos encuentras en{" "}
-            <a
-              href="https://www.instagram.com/lucams_shop"
-              className="text-brand-purple underline-offset-4 hover:underline"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Instagram @lucams_shop
-            </a>
-            .
-          </p>
+      <main className="bg-brand-cream flex-1">
+        {/* Hero */}
+        <div className="mx-auto max-w-6xl px-6 sm:px-10">
+          <HomeHero />
         </div>
+
+        {/* Categorías */}
+        <section className="mx-auto max-w-6xl px-6 py-12 sm:px-10 sm:py-16">
+          <header className="mb-8 text-center">
+            <h2 className="font-display text-brand-purple-dark text-3xl sm:text-4xl">
+              Explorá las categorías
+            </h2>
+            <p className="text-brand-purple-dark/70 mt-2">Imanes para cada rincón de tu vida.</p>
+          </header>
+          <CategoryGrid categories={categories} />
+        </section>
+
+        {/* Cómo funciona */}
+        <section className="bg-white">
+          <div className="mx-auto max-w-6xl px-6 py-12 sm:px-10 sm:py-16">
+            <header className="mb-10 text-center">
+              <h2 className="font-display text-brand-purple-dark text-3xl sm:text-4xl">
+                Así de fácil
+              </h2>
+              <p className="text-brand-purple-dark/70 mt-2">Tu imán hecho con cariño en 3 pasos.</p>
+            </header>
+            <HowItWorks />
+          </div>
+        </section>
+
+        {/* Productos destacados */}
+        <section className="mx-auto max-w-6xl px-6 py-12 sm:px-10 sm:py-16">
+          <header className="mb-8 flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h2 className="font-display text-brand-purple-dark text-3xl sm:text-4xl">
+                Imanes que están enamorando
+              </h2>
+              <p className="text-brand-purple-dark/70 mt-2">Los favoritos de la temporada.</p>
+            </div>
+            <Link
+              href="/productos"
+              className="text-brand-purple hover:text-brand-purple-dark text-sm font-semibold"
+            >
+              Ver todo →
+            </Link>
+          </header>
+          {featured.length > 0 ? (
+            <FeaturedCarousel products={featured} />
+          ) : (
+            <div className="border-brand-purple/10 rounded-xl border bg-white px-6 py-12 text-center">
+              <p className="text-brand-purple-dark/70">Cargando destacados pronto ✨</p>
+            </div>
+          )}
+        </section>
+
+        {/* Reseñas */}
+        <section className="bg-white">
+          <div className="mx-auto max-w-6xl px-6 py-12 sm:px-10 sm:py-16">
+            <header className="mb-8 text-center">
+              <h2 className="font-display text-brand-purple-dark text-3xl sm:text-4xl">
+                Lo que dicen quienes ya nos compran
+              </h2>
+              <p className="text-brand-purple-dark/70 mt-2">Historias reales de neveras felices.</p>
+            </header>
+            {reviews.length > 0 ? (
+              <ReviewsCarousel reviews={reviews} />
+            ) : (
+              <div className="mx-auto max-w-md text-center">
+                <LucamsLogo variant="full" size={120} className="mx-auto opacity-80" />
+                <p className="text-brand-purple-dark mt-4 font-semibold">
+                  Sé el primero en contarnos cómo te llegó tu imán 💜
+                </p>
+                <p className="text-brand-purple-dark/60 mt-1 text-sm">
+                  Cuando los primeros clientes reseñen, aparecerán acá.
+                </p>
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* CTA cierre */}
+        <section className="mx-auto max-w-6xl px-6 py-12 sm:px-10 sm:py-16">
+          <div className="from-brand-purple to-brand-purple-dark relative overflow-hidden rounded-2xl bg-gradient-to-br p-8 text-center sm:p-12">
+            <div
+              aria-hidden="true"
+              className="bg-brand-pink/30 absolute -top-12 -right-12 h-48 w-48 rounded-full blur-3xl"
+            />
+            <div
+              aria-hidden="true"
+              className="bg-brand-turquoise/30 absolute -bottom-12 -left-12 h-48 w-48 rounded-full blur-3xl"
+            />
+            <h2 className="font-display relative text-3xl text-white sm:text-4xl">
+              ¿Tenés una idea distinta?
+            </h2>
+            <p className="relative mt-3 text-white/80">
+              Cotizamos a medida: regalos corporativos, eventos, bodas y proyectos especiales.
+            </p>
+            <div className="relative mt-6 flex flex-wrap justify-center gap-3">
+              <a
+                href={buildWhatsAppUrl({ kind: "support" })}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-brand-purple-dark hover:bg-brand-cream inline-block rounded-full bg-white px-6 py-3 text-sm font-semibold transition-colors"
+              >
+                Hablanos por WhatsApp
+              </a>
+              <Link
+                href="/productos"
+                className="inline-block rounded-full border border-white/30 px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-white/10"
+              >
+                Ver catálogo
+              </Link>
+            </div>
+          </div>
+        </section>
       </main>
     </div>
   );

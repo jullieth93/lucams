@@ -1,72 +1,81 @@
 /*
- * SiteHeader — header dinámico para páginas de storefront.
+ * SiteHeader — header dinámico para storefront.
  *
- * Renderiza el wordmark Lucams + navegación de cuenta dependiendo de si
- * hay sesión activa:
- *   - Sin sesión: links a /login y /registro.
- *   - Con sesión Customer: saludo "Hola, <nombre>" + link a /mi-cuenta
- *     + botón de logout (form con server action).
+ * Estructura:
+ *   - Wordmark + mascote (BrandMark)
+ *   - Nav: "Tienda" con mega-menú (categorías visuales) + búsqueda Cmd+K
+ *   - Acciones: carrito (con badge contador) + auth links / cuenta
+ *   - Chip "Panel admin" si el usuario es AdminUser activo
  *
- * NO usar en /(auth)/* ni /mi-cuenta — esas pages tienen su propio header
- * (auth flow tiene fondo gradiente; mi-cuenta tiene su layout).
- *
- * Diseño: kawaii Lucams (Fredoka, brand-purple-dark text, brand-pink links).
+ * NO usar en /(auth)/* ni /mi-cuenta ni /admin — esos layouts traen su
+ * propio header.
  */
 
 import Link from "next/link";
 import { ShoppingBag } from "lucide-react";
 import { logoutAction } from "@/app/auth/logout/actions";
 import { BrandMark } from "@/components/brand-mark";
+import { GlobalSearch } from "@/components/global-search";
+import { ShopMegaMenu } from "@/components/shop-mega-menu";
 import { Button } from "@/components/ui/button";
 import { getCartItemCount } from "@/features/cart/service";
+import { listStorefrontCategories } from "@/features/products/public-service";
 import { getCurrentAdmin, getCurrentCustomer } from "@/lib/auth";
 import { peekCartSession } from "@/lib/cart-session";
 
 export async function SiteHeader() {
   const sessionId = await peekCartSession();
-  const [session, admin, cartCount] = await Promise.all([
+  const [session, admin, cartCount, categories] = await Promise.all([
     getCurrentCustomer(),
     getCurrentAdmin(),
     sessionId ? getCartItemCount(sessionId) : Promise.resolve(0),
+    listStorefrontCategories(),
   ]);
 
   return (
-    <header className="border-brand-purple/10 border-b bg-white px-6 py-4 sm:px-10">
-      <div className="mx-auto flex max-w-6xl items-center justify-between gap-4">
+    <header className="border-brand-purple/10 sticky top-0 z-40 border-b bg-white/95 px-4 backdrop-blur supports-[backdrop-filter]:bg-white/80 sm:px-10">
+      <div className="mx-auto flex max-w-6xl items-center justify-between gap-3 py-3">
         <BrandMark size="sm" animated />
 
-        <nav className="flex items-center gap-2 sm:gap-4">
+        <nav className="flex items-center gap-1 sm:gap-3">
+          <ShopMegaMenu categories={categories} />
+
           <Link
             href="/productos"
-            className="text-brand-purple-dark hover:text-brand-purple text-sm font-medium"
+            className="text-brand-purple-dark hover:text-brand-purple hidden text-sm font-medium sm:inline"
           >
-            Tienda
+            Catálogo
           </Link>
+
+          <GlobalSearch />
+
           <Link
             href="/carrito"
-            className="text-brand-purple-dark hover:text-brand-purple relative inline-flex items-center"
+            className="text-brand-purple-dark hover:text-brand-purple relative inline-flex items-center p-1.5"
             aria-label={`Carrito (${cartCount} ítems)`}
           >
             <ShoppingBag className="h-5 w-5" />
             {cartCount > 0 && (
-              <span className="bg-brand-pink absolute -top-2 -right-2 inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[10px] font-bold text-white tabular-nums">
+              <span className="bg-brand-pink absolute -top-1 -right-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[10px] font-bold text-white tabular-nums">
                 {cartCount > 99 ? "99+" : cartCount}
               </span>
             )}
           </Link>
+
           {admin && (
             <Link
               href="/admin/dashboard"
-              className="text-brand-purple-dark bg-brand-yellow/30 hover:bg-brand-yellow/50 hidden rounded-md px-3 py-1.5 text-xs font-semibold tracking-wider uppercase transition-colors sm:inline-flex"
+              className="text-brand-purple-dark bg-brand-yellow/30 hover:bg-brand-yellow/50 hidden rounded-md px-2.5 py-1 text-[11px] font-semibold tracking-wider uppercase transition-colors sm:inline-flex"
             >
               Panel admin
             </Link>
           )}
+
           {session ? (
             <>
               <Link
                 href="/mi-cuenta"
-                className="text-brand-purple-dark hover:text-brand-purple text-sm font-medium"
+                className="text-brand-purple-dark hover:text-brand-purple hidden text-sm font-medium sm:inline"
               >
                 Hola, <span className="font-semibold">{session.customer.firstName ?? "tú"}</span>
               </Link>
@@ -77,7 +86,7 @@ export async function SiteHeader() {
                   size="sm"
                   className="text-brand-purple-dark hover:text-brand-purple"
                 >
-                  Cerrar sesión
+                  Salir
                 </Button>
               </form>
             </>
@@ -85,13 +94,13 @@ export async function SiteHeader() {
             <>
               <Link
                 href="/login"
-                className="text-brand-purple-dark hover:text-brand-purple text-sm font-medium"
+                className="text-brand-purple-dark hover:text-brand-purple hidden text-sm font-medium sm:inline"
               >
-                Iniciar sesión
+                Ingresar
               </Link>
               <Link
                 href="/registro"
-                className="bg-brand-purple hover:bg-brand-purple-dark rounded-md px-3 py-1.5 text-sm font-semibold text-white transition-colors"
+                className="bg-brand-purple hover:bg-brand-purple-dark hidden rounded-md px-3 py-1.5 text-sm font-semibold text-white transition-colors sm:inline-flex"
               >
                 Crear cuenta
               </Link>

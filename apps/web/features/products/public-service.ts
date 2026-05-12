@@ -87,6 +87,73 @@ export async function listStorefrontProducts(opts: {
   return items;
 }
 
+/**
+ * Búsqueda fuzzy de productos via pg_trgm + unaccent. Usado por header
+ * Cmd+K palette. La función SQL `immutable_unaccent` se creó en la
+ * migración supabase/00000000000005_search_and_storage.sql.
+ *
+ * Estrategia:
+ *  - Si la query es < 2 chars devuelve vacío (evita full table scan).
+ *  - Sanitiza: trim + max 80 chars + sin caracteres especiales SQL.
+ *  - Usa LIKE con unaccent en name/description/sku/slug.
+ *  - Limit 8 — suficiente para autocomplete.
+ */
+export async function searchStorefrontProducts(rawQuery: string): Promise<StorefrontProductCard[]> {
+  const q = rawQuery.trim().slice(0, 80);
+  if (q.length < 2) return [];
+
+  // Escape para LIKE: % y _ son wildcards en LIKE; ' es delimitador.
+  // Reemplazamos con espacio para no romper la query.
+  const safe = q.replace(/[%_'"\\]/g, " ").trim();
+  if (safe.length < 2) return [];
+
+  const pattern = `%${safe}%`;
+  // $queryRaw con Prisma.sql template tag previene SQL injection
+  // automáticamente — los $1/$2/etc se bindean parametrizados.
+  const rows = await prisma.$queryRaw<
+    Array<{
+      id: string;
+      slug: string;
+      name: string;
+      basePrice: number;
+      compareAtPrice: number | null;
+      isPersonalizable: boolean;
+      images: string[];
+      categoryName: string;
+      categorySlug: string;
+    }>
+  >`
+    SELECT
+      p.id, p.slug, p.name, p."basePrice", p."compareAtPrice",
+      p."isPersonalizable", p.images,
+      c.name as "categoryName", c.slug as "categorySlug"
+    FROM "Product" p
+    JOIN "Category" c ON c.id = p."categoryId"
+    WHERE p."deletedAt" IS NULL
+      AND p."isActive" = true
+      AND c."deletedAt" IS NULL
+      AND c."isActive" = true
+      AND (
+        immutable_unaccent(p.name) ILIKE immutable_unaccent(${pattern})
+        OR immutable_unaccent(p.description) ILIKE immutable_unaccent(${pattern})
+        OR p.sku ILIKE ${pattern}
+        OR p.slug ILIKE ${pattern}
+      )
+    ORDER BY p."isFeatured" DESC, p."createdAt" DESC
+    LIMIT 8
+  `;
+  return rows.map((r) => ({
+    id: r.id,
+    slug: r.slug,
+    name: r.name,
+    basePrice: r.basePrice,
+    compareAtPrice: r.compareAtPrice,
+    isPersonalizable: r.isPersonalizable,
+    images: r.images,
+    category: { slug: r.categorySlug, name: r.categoryName },
+  }));
+}
+
 export async function getStorefrontProductBySlug(
   slug: string,
 ): Promise<StorefrontProductDetail | null> {
