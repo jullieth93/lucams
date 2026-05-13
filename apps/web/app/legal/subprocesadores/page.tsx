@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { CmsMarkdown } from "@/components/cms/cms-markdown";
+import { LegalPageHeader } from "@/components/legal/legal-page-header";
 
 export const metadata: Metadata = {
   title: "Subprocesadores",
@@ -22,10 +23,7 @@ Notificaremos por email a clientes registrados cualquier cambio sustancial en es
 export default function Page() {
   return (
     <>
-      <h1 className="font-display text-brand-purple-dark text-3xl sm:text-4xl">Subprocesadores</h1>
-      <p className="text-brand-purple-dark/60 mt-2 text-sm">
-        Última actualización: 2026-05-12 · Versión v1
-      </p>
+      <LegalPageHeader blockKey="legal.subprocesadores.heading" defaultTitle="Subprocesadores" />
       <CmsMarkdown blockKey="legal.subprocesadores" fallback={FALLBACK} className="mt-6" />
     </>
   );

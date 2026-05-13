@@ -156,10 +156,16 @@ export default async function AdminDashboardPage() {
             >
               <Card className="h-full border-slate-200 hover:border-slate-300">
                 <CardHeader>
-                  <CardTitle className="text-base text-slate-900">Contenido del sitio →</CardTitle>
+                  <CardTitle className="text-base text-slate-900">
+                    Contenido del sitio (avanzado) →
+                  </CardTitle>
                   <CardDescription className="text-slate-600">
-                    Editar textos legales, mensajes del home, email, horario, WhatsApp y todo lo
-                    editable del sitio.
+                    Para cambios rápidos del día a día, usa el botón{" "}
+                    <span className="bg-brand-purple/10 text-brand-purple inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium">
+                      ✏ Editar este sitio
+                    </span>{" "}
+                    abajo a la derecha del sitio público. Acá adentro: historial de cambios,
+                    revertir versiones, crear bloques nuevos manualmente y gestión avanzada.
                   </CardDescription>
                 </CardHeader>
                 <CardContent>

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { CmsMarkdown } from "@/components/cms/cms-markdown";
+import { LegalPageHeader } from "@/components/legal/legal-page-header";
 
 export const metadata: Metadata = {
   title: "Términos y Condiciones",
@@ -12,12 +13,7 @@ Documento en revisión legal — versión final próximamente.`;
 export default function Page() {
   return (
     <>
-      <h1 className="font-display text-brand-purple-dark text-3xl sm:text-4xl">
-        Términos y Condiciones
-      </h1>
-      <p className="text-brand-purple-dark/60 mt-2 text-sm">
-        Última actualización: 2026-05-12 · Versión v1
-      </p>
+      <LegalPageHeader blockKey="legal.terminos.heading" defaultTitle="Términos y Condiciones" />
       <CmsMarkdown blockKey="legal.terminos" fallback={FALLBACK} className="mt-6" />
     </>
   );

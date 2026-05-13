@@ -80,13 +80,42 @@ export async function GET(
     });
   }
 
-  return Response.json(
-    {
-      type: "https://lucamsshop.co/errors/cms-key-not-found",
-      title: "No encontrado",
-      status: 404,
-      detail: `No hay bloque ni setting con key "${key}".`,
+  // Si no existe en DB: heurística por convención de naming.
+  //   - MAYÚSCULAS + _ → setting (ej. CONTACT_EMAIL, BUSINESS_HOURS)
+  //   - kebab-case con puntos → bloque (ej. home.hero.badge)
+  // Devolvemos un "preset nuevo" con isNew=true. Al publicar desde el
+  // modal, las server actions inlineEdit*Action hacen auto-create.
+  // Permite editar cualquier wrapper recién agregado sin tener que
+  // seedear primero.
+  const looksLikeSetting = /^[A-Z][A-Z0-9_]*$/.test(key);
+  if (looksLikeSetting) {
+    return Response.json({
+      kind: "setting",
+      isNew: true,
+      setting: {
+        id: null,
+        key,
+        value: "",
+        valueType: "TEXT",
+        category: "BUSINESS",
+        label: key,
+        description: null,
+      },
+    });
+  }
+  return Response.json({
+    kind: "block",
+    isNew: true,
+    block: {
+      id: null,
+      key,
+      title: null,
+      body: "",
+      format: "MARKDOWN",
+      category: "MARKETING",
+      description: null,
+      isPublished: false,
+      publishedVersion: null,
     },
-    { status: 404, headers: { "Content-Type": "application/problem+json" } },
-  );
+  });
 }

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { CmsMarkdown } from "@/components/cms/cms-markdown";
+import { LegalPageHeader } from "@/components/legal/legal-page-header";
 
 export const metadata: Metadata = {
   title: "Garantías",
@@ -14,10 +15,7 @@ Escribe a **hola@lucamsshop.co** con tu número de pedido y fotos del defecto.`;
 export default function Page() {
   return (
     <>
-      <h1 className="font-display text-brand-purple-dark text-3xl sm:text-4xl">Garantías</h1>
-      <p className="text-brand-purple-dark/60 mt-2 text-sm">
-        Última actualización: 2026-05-12 · Versión v1
-      </p>
+      <LegalPageHeader blockKey="legal.garantias.heading" defaultTitle="Garantías" />
       <CmsMarkdown blockKey="legal.garantias" fallback={FALLBACK} className="mt-6" />
     </>
   );

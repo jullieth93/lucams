@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { CmsMarkdown } from "@/components/cms/cms-markdown";
+import { LegalPageHeader } from "@/components/legal/legal-page-header";
 
 export const metadata: Metadata = {
   title: "Aviso de Privacidad",
@@ -15,12 +16,7 @@ Si tienes preguntas o quieres ejercer tus derechos como titular (acceso, rectifi
 export default function Page() {
   return (
     <>
-      <h1 className="font-display text-brand-purple-dark text-3xl sm:text-4xl">
-        Aviso de Privacidad
-      </h1>
-      <p className="text-brand-purple-dark/60 mt-2 text-sm">
-        Última actualización: 2026-05-12 · Versión v1
-      </p>
+      <LegalPageHeader blockKey="legal.privacidad.heading" defaultTitle="Aviso de Privacidad" />
       <CmsMarkdown blockKey="legal.privacidad" fallback={FALLBACK} className="mt-6" />
     </>
   );

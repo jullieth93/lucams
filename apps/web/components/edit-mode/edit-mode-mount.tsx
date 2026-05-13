@@ -16,11 +16,12 @@
 import { useEffect, useState } from "react";
 import { EditModeToolbar } from "./edit-mode-toolbar";
 import { EditOverlay } from "./edit-overlay";
+import { EditModeWelcome } from "./edit-mode-welcome";
 import { InlineEditor } from "./inline-editor";
 
 export function EditModeMount({ adminEmail }: { adminEmail: string }) {
   const [enabled, setEnabled] = useState(false);
-  const [activeKey, setActiveKey] = useState<string | null>(null);
+  const [active, setActive] = useState<{ key: string; currentText: string } | null>(null);
 
   // Persist preference en localStorage para que sobreviva navegación.
   // queueMicrotask para evitar la regla react-hooks/set-state-in-effect:
@@ -42,8 +43,19 @@ export function EditModeMount({ adminEmail }: { adminEmail: string }) {
         adminEmail={adminEmail}
         onToggle={() => setEnabled((v) => !v)}
       />
-      {enabled && <EditOverlay onSelect={setActiveKey} />}
-      {activeKey && <InlineEditor cmsKey={activeKey} onClose={() => setActiveKey(null)} />}
+      {enabled && (
+        <>
+          <EditOverlay onSelect={setActive} />
+          <EditModeWelcome />
+        </>
+      )}
+      {active && (
+        <InlineEditor
+          cmsKey={active.key}
+          fallbackText={active.currentText}
+          onClose={() => setActive(null)}
+        />
+      )}
     </>
   );
 }

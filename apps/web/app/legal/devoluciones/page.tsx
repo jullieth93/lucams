@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { CmsMarkdown } from "@/components/cms/cms-markdown";
+import { LegalPageHeader } from "@/components/legal/legal-page-header";
 
 export const metadata: Metadata = {
   title: "Devoluciones y Retracto",
@@ -14,12 +15,10 @@ Escríbenos a **hola@lucamsshop.co** o por WhatsApp dentro de los 5 días hábil
 export default function Page() {
   return (
     <>
-      <h1 className="font-display text-brand-purple-dark text-3xl sm:text-4xl">
-        Devoluciones y Retracto
-      </h1>
-      <p className="text-brand-purple-dark/60 mt-2 text-sm">
-        Última actualización: 2026-05-12 · Versión v1
-      </p>
+      <LegalPageHeader
+        blockKey="legal.devoluciones.heading"
+        defaultTitle="Devoluciones y Retracto"
+      />
       <CmsMarkdown blockKey="legal.devoluciones" fallback={FALLBACK} className="mt-6" />
     </>
   );

@@ -98,10 +98,7 @@ export default async function Home() {
           <header className="mb-8 flex flex-wrap items-end justify-between gap-3">
             <div>
               <h2 className="font-display text-brand-purple-dark text-3xl sm:text-4xl">
-                <CmsText
-                  blockKey="home.featured.heading"
-                  fallback="Imanes que están enamorando"
-                />
+                <CmsText blockKey="home.featured.heading" fallback="Imanes que están enamorando" />
               </h2>
               <p className="text-brand-purple-dark/70 mt-2">
                 <CmsText
@@ -122,10 +119,7 @@ export default async function Home() {
           ) : (
             <div className="border-brand-purple/10 rounded-xl border bg-white px-6 py-12 text-center">
               <p className="text-brand-purple-dark/70">
-                <CmsText
-                  blockKey="home.featured.empty"
-                  fallback="Cargando destacados pronto ✨"
-                />
+                <CmsText blockKey="home.featured.empty" fallback="Cargando destacados pronto ✨" />
               </p>
             </div>
           )}

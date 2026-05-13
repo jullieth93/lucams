@@ -33,8 +33,9 @@ import {
 
 type LoadedBlock = {
   kind: "block";
+  isNew?: boolean;
   block: {
-    id: string;
+    id: string | null;
     key: string;
     title: string | null;
     body: string;
@@ -47,8 +48,9 @@ type LoadedBlock = {
 
 type LoadedSetting = {
   kind: "setting";
+  isNew?: boolean;
   setting: {
-    id: string;
+    id: string | null;
     key: string;
     value: string;
     valueType: "TEXT" | "EMAIL" | "URL" | "NUMBER" | "PHONE" | "COLOR" | "BOOLEAN";
@@ -59,7 +61,15 @@ type LoadedSetting = {
 
 type Loaded = LoadedBlock | LoadedSetting;
 
-export function InlineEditor({ cmsKey, onClose }: { cmsKey: string; onClose: () => void }) {
+export function InlineEditor({
+  cmsKey,
+  fallbackText,
+  onClose,
+}: {
+  cmsKey: string;
+  fallbackText: string;
+  onClose: () => void;
+}) {
   const router = useRouter();
   const [loaded, setLoaded] = useState<Loaded | null>(null);
   const [body, setBody] = useState("");
@@ -81,8 +91,15 @@ export function InlineEditor({ cmsKey, onClose }: { cmsKey: string; onClose: () 
         const data = (await r.json()) as Loaded;
         if (cancelled) return;
         setLoaded(data);
-        if (data.kind === "block") setBody(data.block.body);
-        else setValue(data.setting.value);
+        if (data.kind === "block") {
+          // Para bloques nuevos (isNew=true) usamos el texto que la
+          // página está mostrando como fallback hardcoded — Lucy ve
+          // lo mismo que tenía antes y puede editar a partir de ahí
+          // sin retipear desde cero.
+          setBody(data.isNew && fallbackText ? fallbackText : data.block.body);
+        } else {
+          setValue(data.isNew && fallbackText ? fallbackText : data.setting.value);
+        }
       } catch {
         if (!cancelled) setError("No pudimos cargar el contenido.");
       }
@@ -90,7 +107,7 @@ export function InlineEditor({ cmsKey, onClose }: { cmsKey: string; onClose: () 
     return () => {
       cancelled = true;
     };
-  }, [cmsKey]);
+  }, [cmsKey, fallbackText]);
 
   // Cerrar con ESC
   useEffect(() => {
@@ -158,7 +175,14 @@ export function InlineEditor({ cmsKey, onClose }: { cmsKey: string; onClose: () 
                   ? (loaded.block.title ?? loaded.block.key)
                   : loaded.setting.label}
             </div>
-            <div className="font-mono text-xs text-slate-500">{cmsKey}</div>
+            <div className="flex items-center gap-2 text-xs">
+              <span className="font-mono text-slate-500">{cmsKey}</span>
+              {loaded?.isNew && (
+                <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-medium text-amber-800">
+                  🆕 Nuevo — se crea al publicar
+                </span>
+              )}
+            </div>
           </div>
           <button
             type="button"

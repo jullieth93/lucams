@@ -26,17 +26,72 @@ type Highlight = {
   rect: DOMRect;
 } | null;
 
-export function EditOverlay({ onSelect }: { onSelect: (key: string) => void }) {
+export function EditOverlay({
+  onSelect,
+}: {
+  onSelect: (input: { key: string; currentText: string }) => void;
+}) {
   const [hover, setHover] = useState<Highlight>(null);
   const frameRef = useRef<number | null>(null);
 
   useEffect(() => {
-    // Inject CSS para los elementos data-cms-key (cursor + ligero hover state)
+    // Inject CSS para elementos editables. Cuando edit mode está ON:
+    //   - Outline morado tenue siempre visible (no solo en hover)
+    //   - Lapicito ✏️ persistente esquina superior derecha
+    //   - En hover: outline más fuerte + background tint + lapicito
+    //     más grande, para indicar "ESTE es el que voy a editar"
+    //
+    // [data-cms-key] es position:relative para que ::before absolute
+    // se posicione respecto al elemento editable, no al viewport.
+    //
+    // pointer-events:none en ::before evita que el lapicito robe los
+    // clicks (el click va al elemento editable).
     const styleEl = document.createElement("style");
     styleEl.id = "lucams-edit-overlay-styles";
     styleEl.textContent = `
-      [data-cms-key] { cursor: pointer !important; }
-      [data-cms-key]:hover { outline: 2px dashed #7c6aad; outline-offset: 4px; }
+      [data-cms-key] {
+        position: relative;
+        cursor: pointer !important;
+        outline: 1px dashed rgba(124, 106, 173, 0.35);
+        outline-offset: 3px;
+        transition: outline-color 0.15s, background-color 0.15s;
+        border-radius: 2px;
+      }
+      [data-cms-key]:hover {
+        outline: 2px dashed #7c6aad;
+        outline-offset: 4px;
+        background-color: rgba(124, 106, 173, 0.06);
+      }
+      [data-cms-key]::before {
+        content: "✏";
+        position: absolute;
+        top: -10px;
+        right: -10px;
+        width: 18px;
+        height: 18px;
+        background: #7c6aad;
+        color: white;
+        font-size: 11px;
+        line-height: 18px;
+        text-align: center;
+        border-radius: 9999px;
+        pointer-events: none;
+        z-index: 50;
+        opacity: 0.55;
+        transition: opacity 0.15s, transform 0.15s;
+        box-shadow: 0 1px 2px rgba(0,0,0,0.15);
+      }
+      [data-cms-key]:hover::before {
+        opacity: 1;
+        transform: scale(1.15);
+      }
+      /* Versión sutil para settings (con engranaje ⚙ además del lapicito) */
+      [data-cms-kind="setting"]::before {
+        content: "⚙";
+      }
+      /* No outlear el wrapper de la toolbar/modal por error */
+      [data-edit-mode-ui] [data-cms-key],
+      [data-edit-mode-ui] [data-cms-key]::before { display: none !important; }
     `;
     document.head.appendChild(styleEl);
 
@@ -83,7 +138,14 @@ export function EditOverlay({ onSelect }: { onSelect: (key: string) => void }) {
       e.stopImmediatePropagation();
       e.stopPropagation();
       const key = el.getAttribute("data-cms-key");
-      if (key) onSelect(key);
+      if (key) {
+        // currentText: si el bloque no existe en DB y caller usa
+        // <CmsText fallback="..."/>, el DOM tiene el fallback ya
+        // renderizado. Lo pasamos al modal como valor inicial para
+        // que Lucy no tenga que retipear desde cero.
+        const currentText = (el.textContent ?? "").trim();
+        onSelect({ key, currentText });
+      }
     };
 
     // Capture phase + window-level para correr antes que React (que

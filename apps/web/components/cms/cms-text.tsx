@@ -14,8 +14,11 @@ import { getCmsBlock } from "@/lib/cms";
 
 export async function CmsText({ blockKey, fallback }: { blockKey: string; fallback: string }) {
   const block = await getCmsBlock(blockKey);
+  // Span inline normal (no display:contents) para que el Visual Editor
+  // pueda posicionar el lapicito ::before sobre el elemento. En modo
+  // normal el span es invisible al usuario (sin padding/border).
   return (
-    <span data-cms-key={blockKey} data-cms-kind="block" style={{ display: "contents" }}>
+    <span data-cms-key={blockKey} data-cms-kind="block">
       {block?.body ?? fallback}
     </span>
   );

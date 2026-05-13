@@ -132,7 +132,7 @@ export async function SiteFooter() {
           {/* Col 2 — Tienda */}
           <div>
             <h3 className="mb-3 text-sm font-semibold tracking-wider text-white uppercase">
-              Tienda
+              <CmsText blockKey="footer.column.shop" fallback="Tienda" />
             </h3>
             <ul className="space-y-2 text-sm text-white/80">
               {categories.map((c) => (
@@ -150,7 +150,7 @@ export async function SiteFooter() {
                   href="/productos"
                   className="text-brand-pink hover:text-brand-coral font-semibold transition-colors"
                 >
-                  Ver todo →
+                  <CmsText blockKey="footer.shop.cta-all" fallback="Ver todo →" />
                 </Link>
               </li>
             </ul>
@@ -159,7 +159,7 @@ export async function SiteFooter() {
           {/* Col 3 — Información (legal) */}
           <div>
             <h3 className="mb-3 text-sm font-semibold tracking-wider text-white uppercase">
-              Información
+              <CmsText blockKey="footer.column.info" fallback="Información" />
             </h3>
             <ul className="space-y-2 text-sm text-white/80">
               {LEGAL_LINKS.map((l) => (
@@ -175,7 +175,7 @@ export async function SiteFooter() {
           {/* Col 4 — Atención cliente */}
           <div>
             <h3 className="mb-3 text-sm font-semibold tracking-wider text-white uppercase">
-              Atención cliente
+              <CmsText blockKey="footer.column.support" fallback="Atención cliente" />
             </h3>
             <ul className="space-y-3 text-sm text-white/80">
               <li>

@@ -824,4 +824,55 @@ El chatbot futuro consumirá `/api/cms/search?q=<pregunta>` para hacer RAG: embe
 > - ADR-027: necesidad de staging environment (re-evaluar post-lanzamiento; Vercel previews pueden cubrir el rol).
 > - ADR-028: criterio de migración Postgres `FeatureFlag` → GrowthBook u otro (cuando ocurra).
 > - ADR-032: distributed tracing / OpenTelemetry strategy (post-lanzamiento si volumen lo justifica).
-> - ADR-034: visual in-place editor pattern + provider/overlay architecture (cuando se cierre Sub-bloque K).
+> - ADR-035: pgvector + Claude API embeddings (cuando se construya chatbot RAG, Fase 5+).
+
+---
+
+## ADR-034 — Visual In-Place Editor + Admin form-based coexistence
+
+**Fecha:** 2026-05-12
+
+**Contexto.** Tras J.1 (admin form-based en `/admin/contenido`) y K (Visual In-Place Editor sobre el sitio público), surge la pregunta: ¿qué rol juega cada uno y cómo se complementan sin duplicarse? Lucy quiere claridad operativa: dónde edita qué.
+
+**Decisión.** Los dos flujos coexisten con roles complementarios:
+
+1. **Visual In-Place Editor** = flujo del 90% del tiempo
+   - Lucy navega `lucamsshop.co` (o preview Vercel), ve algo a cambiar, hover sobre el texto, click, edita en popover, publica. Sin abrir admin, sin navegar.
+   - Cada `<CmsText>`/`<CmsSetting>`/`<CmsMarkdown>` lleva `data-cms-key` invisible; en modo edición el CSS inyectado les dibuja un lapicito ✏️ persistente + outline punteado. Hover → outline más fuerte. Click → modal.
+   - Bloques aún no creados se auto-crean al primer publicar (categoría derivada del prefijo del key — `home.*` → HOME, `legal.*` → LEGAL, etc.).
+   - Solo se monta para `getCurrentAdmin()` truthy. Cero JS extra para visitantes anónimos.
+
+2. **`/admin/contenido` (form-based)** = back office para el 10% restante
+   - **Revertir** un cambio a versión anterior (version history visible)
+   - **Auditar** quién cambió qué cuándo (AdminActionLog con acciones `cms.block.*` y `cms.setting.*`)
+   - **Archivar** bloques obsoletos (soft-delete)
+   - **Gestionar settings sin wrapper visible** (ej. defaults SEO en `<head>`, claves técnicas que no aparecen como texto editorial)
+   - **Búsqueda + filtrado masivo** por categoría o key
+   - Crear bloques con key específica manualmente (raro — el auto-create del visual editor cubre casi todos los casos)
+
+**Qué NO está en CMS** (intencional):
+
+- Productos individuales (`Product` table) → `/admin/productos`
+- Categorías (`Category` table) → `/admin/categorias`
+- Microcopy técnico (botones "Añadir al carrito", labels de form, errores de validación) — multiplica versiones sin valor editorial
+- Header de navegación del sitio ("Tienda", "Buscar", "Ingresar") — microcopy técnico
+
+**Endpoint API admin** `/api/admin/cms/by-key/[key]` devuelve siempre un estado editable (incluso si la key no existe en DB — `isNew: true` + preset vacío para que el modal abra y al publicar se auto-cree). Esto resuelve el bug "Bloque no encontrado" cuando un wrapper recién agregado aún no tiene fila en `CmsBlock`.
+
+**Onboarding.** Al activar modo edición por primera vez, `<EditModeWelcome>` muestra tip kawaii explicando el lapicito + dónde se gestiona lo no editable. Persiste en `localStorage.lucams_edit_mode_onboarding_seen`.
+
+**Dashboard `/admin/dashboard`** prioriza visualmente al visual editor: la card "Contenido del sitio (avanzado)" indica explícitamente que el flujo del día a día es el botón ✏️ desde el sitio público, y que el admin form-based es para historial / revert / gestión avanzada.
+
+**Consecuencias positivas:**
+
+- Lucy edita 95% del contenido sin abrir admin
+- El admin form-based sigue cubriendo todos los casos edge (revert, archive, audit)
+- Ambos comparten 100% del backend (mismo schema, mismas server actions, mismo cache invalidation)
+- Auto-create elimina fricción de "registrar key antes de usar"
+
+**Consecuencias negativas:**
+
+- Dos lugares donde Lucy puede editar lo mismo → necesita claridad sobre cuándo usar cuál (mitigado con dashboard card + welcome tooltip)
+- Lapicito visible en 30+ elementos puede generar ruido visual en modo edición — mitigado con opacidad 0.55 default + escala on hover
+
+**Referencias.** Commits `020eedf` (K inicial), `d69d323` (wrappers + click block), K.fix actual (lapicito persistente + welcome tip + ADR). Plan en `~/.claude/plans/lee-complemtante-el-proyecto-wiggly-mist.md` sub-bloque K.

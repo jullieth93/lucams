@@ -23,7 +23,7 @@ export async function CmsSetting({
 }) {
   const setting = await getSiteSetting(settingKey);
   return (
-    <span data-cms-key={settingKey} data-cms-kind="setting" style={{ display: "contents" }}>
+    <span data-cms-key={settingKey} data-cms-kind="setting">
       {setting?.value ?? fallback}
     </span>
   );

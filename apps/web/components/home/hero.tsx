@@ -43,10 +43,7 @@ export async function HomeHero() {
             <CmsText blockKey="home.hero.badge" fallback="✨ Hecho a mano en Bogotá" />
           </span>
           <h1 className="font-display text-brand-purple-dark text-3xl leading-tight sm:text-5xl md:text-6xl">
-            <CmsText
-              blockKey="home.hero.title-prefix"
-              fallback="Tus recuerdos, "
-            />
+            <CmsText blockKey="home.hero.title-prefix" fallback="Tus recuerdos, " />
             <span className="text-brand-pink">
               <CmsText blockKey="home.hero.title-accent" fallback="en imán" />
             </span>
