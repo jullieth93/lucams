@@ -59,10 +59,7 @@ import { generateGridLayout } from "./grid-layout";
  *   // → v2.gridLayout === { cols: 3, rows: 2, gap: 16 }
  *   // → v2.unitTemplate === v1 sin los assetId/assetUrl del image-placeholder
  */
-export function migrateCanvasV1ToV2(
-  data: CanvasData,
-  slotCount: number = 1,
-): MultiSlotCanvasData {
+export function migrateCanvasV1ToV2(data: CanvasData, slotCount: number = 1): MultiSlotCanvasData {
   // Idempotencia: si ya es V2, retornar sin tocar.
   if (isCanvasV2(data)) {
     return data;
@@ -167,7 +164,9 @@ export function extractAssetFromV1(v1: CanvasDataV1): { assetId: string; assetUr
 export function flattenSlotToV1(v2: MultiSlotCanvasData, slotIndex: number): CanvasDataV1 {
   const slot = v2.slots[slotIndex];
   if (!slot) {
-    throw new Error(`flattenSlotToV1: slotIndex ${slotIndex} out of range (slotCount=${v2.slotCount})`);
+    throw new Error(
+      `flattenSlotToV1: slotIndex ${slotIndex} out of range (slotCount=${v2.slotCount})`,
+    );
   }
 
   const flattened: CanvasDataV1 = {

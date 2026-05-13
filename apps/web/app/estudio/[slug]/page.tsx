@@ -62,7 +62,7 @@ export default async function EstudioPage({ params }: { params: Params }) {
             Volver al producto
           </Link>
 
-          <div className="bg-white rounded-3xl p-8 sm:p-12 shadow-lg shadow-brand-purple/10">
+          <div className="shadow-brand-purple/10 rounded-3xl bg-white p-8 shadow-lg sm:p-12">
             <div className="bg-brand-purple/10 mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full">
               <Construction className="text-brand-purple h-10 w-10" />
             </div>
@@ -88,7 +88,7 @@ export default async function EstudioPage({ params }: { params: Params }) {
                   href={waHref}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="bg-brand-purple hover:bg-brand-purple-dark inline-flex h-12 items-center justify-center gap-2 rounded-md px-8 text-base font-semibold text-white shadow-lg shadow-brand-purple/30"
+                  className="bg-brand-purple hover:bg-brand-purple-dark shadow-brand-purple/30 inline-flex h-12 items-center justify-center gap-2 rounded-md px-8 text-base font-semibold text-white shadow-lg"
                 >
                   <MessageCircle className="h-5 w-5" />
                   Personalizar por WhatsApp

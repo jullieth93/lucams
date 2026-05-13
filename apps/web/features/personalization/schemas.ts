@@ -115,8 +115,8 @@ export type SaveCanvasInput = z.infer<typeof SaveCanvasSchema>;
 // usado en cart/order para mostrar al cliente "esto es lo que vas a recibir".
 
 const DATA_URL_RE = /^data:image\/(png|webp|jpeg);base64,/;
-const PREVIEW_MAX_BYTES = 8 * 1024 * 1024;       // 8 MB base64 ≈ 6 MB binario
-const PRODUCTION_MAX_BYTES = 20 * 1024 * 1024;   // 20 MB base64 por slot
+const PREVIEW_MAX_BYTES = 8 * 1024 * 1024; // 8 MB base64 ≈ 6 MB binario
+const PRODUCTION_MAX_BYTES = 20 * 1024 * 1024; // 20 MB base64 por slot
 const MAX_TOTAL_PRODUCTION_BYTES = 120 * 1024 * 1024; // 120 MB total (20 slots × ~6 MB)
 
 const DataUrlSchema = z
@@ -136,7 +136,9 @@ export const FinalizeDesignSchema = z
     productionDataUrls: z.array(DataUrlSchema).min(1).max(50),
   })
   .refine(
-    (data) => data.productionDataUrls.reduce((sum, url) => sum + url.length, 0) <= MAX_TOTAL_PRODUCTION_BYTES,
+    (data) =>
+      data.productionDataUrls.reduce((sum, url) => sum + url.length, 0) <=
+      MAX_TOTAL_PRODUCTION_BYTES,
     {
       message: `Tamaño total de producción excede ${MAX_TOTAL_PRODUCTION_BYTES / 1024 / 1024} MB`,
       path: ["productionDataUrls"],

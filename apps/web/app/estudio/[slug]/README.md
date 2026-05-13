@@ -38,6 +38,7 @@ Para un producto como "Set 6 Foto-imanes Polaroid Grande" (6 imanes físicos en 
 - Preview compositado: 1 PNG mosaico del grid para mostrar en cart/orden.
 
 Diferencia con paradigma "1 canvas grande con N slots":
+
 - Set de 6 imanes ≠ 1 imán grande con 6 ventanas
 - Lucy imprime 6 piezas separadas, cliente recibe 6 imanes que distribuye en su nevera
 
@@ -46,27 +47,31 @@ Diferencia con paradigma "1 canvas grande con N slots":
 ```ts
 type MultiSlotCanvasData = {
   version: 2;
-  unitTemplate: CanvasData;      // plantilla unitaria (1 imán, V1 shape)
-  slotCount: number;             // 6, 9, 12, 20 según photoSlots producto
+  unitTemplate: CanvasData; // plantilla unitaria (1 imán, V1 shape)
+  slotCount: number; // 6, 9, 12, 20 según photoSlots producto
   slots: SlotState[];
   gridLayout: { cols: number; rows: number; gap: number };
 };
 
 type SlotState = {
-  slotIndex: number;             // 0..N-1
+  slotIndex: number; // 0..N-1
   assetId: string | null;
   assetUrl: string | null;
   // Per-slot overrides (M.3.b.4):
-  cropX?: number; cropY?: number; cropW?: number; cropH?: number;
-  brightness?: number;           // -100 a +100
+  cropX?: number;
+  cropY?: number;
+  cropW?: number;
+  cropH?: number;
+  brightness?: number; // -100 a +100
   contrast?: number;
   saturation?: number;
-  rotation?: number;             // grados
-  filter?: 'vintage' | 'vivid' | 'bw' | 'pastel' | 'polaroid' | null;
-  textOverride?: string;         // si el template tiene texto editable
+  rotation?: number; // grados
+  filter?: "vintage" | "vivid" | "bw" | "pastel" | "polaroid" | null;
+  textOverride?: string; // si el template tiene texto editable
 };
 
-type CanvasData = {              // shape V1 — usado como unitTemplate dentro de V2
+type CanvasData = {
+  // shape V1 — usado como unitTemplate dentro de V2
   version: 1;
   stage: { width: number; height: number; dpiPreview: number; dpiProduction: number };
   layers: CanvasLayer[];
@@ -254,49 +259,49 @@ Extensión de los tokens brand globales (definidos en `apps/web/app/globals.css`
 ```css
 :root {
   /* Slot states */
-  --estudio-slot-empty-bg:        #FFF8F0; /* brand-cream */
-  --estudio-slot-empty-border:    #7C6AAD; /* brand-purple, dashed */
-  --estudio-slot-filled-shadow:   rgba(124, 106, 173, 0.15);
-  --estudio-slot-selected-ring:   #5DD9D1; /* brand-turquoise */
-  --estudio-slot-error-bg:        #FFE5EC;
+  --estudio-slot-empty-bg: #fff8f0; /* brand-cream */
+  --estudio-slot-empty-border: #7c6aad; /* brand-purple, dashed */
+  --estudio-slot-filled-shadow: rgba(124, 106, 173, 0.15);
+  --estudio-slot-selected-ring: #5dd9d1; /* brand-turquoise */
+  --estudio-slot-error-bg: #ffe5ec;
 
   /* Realism overlay */
-  --estudio-bleed-color:          rgba(255, 255, 255, 0.85);
-  --estudio-safe-area-color:      rgba(93, 217, 209, 0.6);
-  --estudio-shadow-exterior:      rgba(0, 0, 0, 0.18);
+  --estudio-bleed-color: rgba(255, 255, 255, 0.85);
+  --estudio-safe-area-color: rgba(93, 217, 209, 0.6);
+  --estudio-shadow-exterior: rgba(0, 0, 0, 0.18);
 
   /* Transitions */
-  --estudio-trans-fast:    150ms ease-out;
-  --estudio-trans-medium:  300ms ease-out;
-  --estudio-trans-slow:    600ms cubic-bezier(0.4, 0, 0.2, 1);
-  --estudio-stagger:       80ms;        /* entre slots en auto-fill */
+  --estudio-trans-fast: 150ms ease-out;
+  --estudio-trans-medium: 300ms ease-out;
+  --estudio-trans-slow: 600ms cubic-bezier(0.4, 0, 0.2, 1);
+  --estudio-stagger: 80ms; /* entre slots en auto-fill */
 
   /* Spacing */
-  --estudio-gap-tight:     8px;
-  --estudio-gap:           16px;
-  --estudio-gap-loose:     32px;
+  --estudio-gap-tight: 8px;
+  --estudio-gap: 16px;
+  --estudio-gap-loose: 32px;
 }
 
 @media (prefers-reduced-motion: reduce) {
   :root {
-    --estudio-trans-fast:    0ms;
-    --estudio-trans-medium:  0ms;
-    --estudio-trans-slow:    0ms;
-    --estudio-stagger:       0ms;
+    --estudio-trans-fast: 0ms;
+    --estudio-trans-medium: 0ms;
+    --estudio-trans-slow: 0ms;
+    --estudio-stagger: 0ms;
   }
 }
 ```
 
 ## Estados de un slot
 
-| Estado    | Visual                                                                 | Interacción                                  |
-|-----------|------------------------------------------------------------------------|----------------------------------------------|
-| `empty`   | Cream bg + dashed purple border + número grande "N" + hint "Click"     | Click → asset picker / Tap → file picker     |
-| `hover`   | Border 2px solid purple + scale 1.02                                   | Pre-click feedback                           |
-| `dropping`| Border 2px solid turquoise + bg turquoise/10 + pulse                   | Cuando asset es draggeado encima             |
-| `filled`  | Foto del cliente + overlay realismo + shadow purple/15                 | Click → modal ajustar foto                   |
-| `selected`| Filled + ring turquoise 3px afuera del bleed                           | Después de click; muestra controles inline   |
-| `error`   | Bg red-50 + border red + icon ⚠️                                       | Foto rechazada (low-res, etc.)               |
+| Estado     | Visual                                                             | Interacción                                |
+| ---------- | ------------------------------------------------------------------ | ------------------------------------------ |
+| `empty`    | Cream bg + dashed purple border + número grande "N" + hint "Click" | Click → asset picker / Tap → file picker   |
+| `hover`    | Border 2px solid purple + scale 1.02                               | Pre-click feedback                         |
+| `dropping` | Border 2px solid turquoise + bg turquoise/10 + pulse               | Cuando asset es draggeado encima           |
+| `filled`   | Foto del cliente + overlay realismo + shadow purple/15             | Click → modal ajustar foto                 |
+| `selected` | Filled + ring turquoise 3px afuera del bleed                       | Después de click; muestra controles inline |
+| `error`    | Bg red-50 + border red + icon ⚠️                                   | Foto rechazada (low-res, etc.)             |
 
 ## Cómo agregar un `PersonalizationKind` nuevo
 
@@ -313,20 +318,20 @@ Extensión de los tokens brand globales (definidos en `apps/web/app/globals.css`
 
 ## Telemetry events estandarizados
 
-| Event                              | Payload                                          | Cuándo se emite                        |
-|------------------------------------|--------------------------------------------------|----------------------------------------|
-| `estudio.load.success`             | `productSlug, slotCount, kind`                   | Mount editor                           |
-| `estudio.upload.success`           | `assetId, sizeBytes, mimeType, validationLevel`  | Foto subida OK                         |
-| `estudio.upload.warn_low_quality`  | `assetId, reason ('dark'/'blur'/'lowres')`       | Validación sharp warning               |
-| `estudio.upload.fail`              | `reason, sizeBytes, mimeType`                    | Upload rechazado server                |
-| `estudio.slot.assign`              | `slotIndex, designId, method ('drag'/'tap'/'auto-fill')` | Foto asignada a slot           |
-| `estudio.slot.clear`               | `slotIndex, designId`                            | Foto quitada de slot                   |
-| `estudio.template.change`          | `fromTemplate, toTemplate, preservedAssets`      | Plantilla cambiada                     |
-| `estudio.photo.adjust`             | `slotIndex, changes (brightness/etc.)`           | Foto ajustada                          |
-| `estudio.finalize.start`           | `designId, slotCount`                            | Click "¡Listo!"                        |
-| `estudio.finalize.success`         | `designId, productionUrlsCount, durationMs`     | Snapshot generado + cart added         |
-| `estudio.finalize.fail`            | `designId, reason`                               | Finalize falló                         |
-| `estudio.abandon`                  | `designId, lastStep, slotsCompleted/slotCount`  | beforeunload sin finalizar             |
+| Event                             | Payload                                                  | Cuándo se emite                |
+| --------------------------------- | -------------------------------------------------------- | ------------------------------ |
+| `estudio.load.success`            | `productSlug, slotCount, kind`                           | Mount editor                   |
+| `estudio.upload.success`          | `assetId, sizeBytes, mimeType, validationLevel`          | Foto subida OK                 |
+| `estudio.upload.warn_low_quality` | `assetId, reason ('dark'/'blur'/'lowres')`               | Validación sharp warning       |
+| `estudio.upload.fail`             | `reason, sizeBytes, mimeType`                            | Upload rechazado server        |
+| `estudio.slot.assign`             | `slotIndex, designId, method ('drag'/'tap'/'auto-fill')` | Foto asignada a slot           |
+| `estudio.slot.clear`              | `slotIndex, designId`                                    | Foto quitada de slot           |
+| `estudio.template.change`         | `fromTemplate, toTemplate, preservedAssets`              | Plantilla cambiada             |
+| `estudio.photo.adjust`            | `slotIndex, changes (brightness/etc.)`                   | Foto ajustada                  |
+| `estudio.finalize.start`          | `designId, slotCount`                                    | Click "¡Listo!"                |
+| `estudio.finalize.success`        | `designId, productionUrlsCount, durationMs`              | Snapshot generado + cart added |
+| `estudio.finalize.fail`           | `designId, reason`                                       | Finalize falló                 |
+| `estudio.abandon`                 | `designId, lastStep, slotsCompleted/slotCount`           | beforeunload sin finalizar     |
 
 Todos los eventos pasan por `apps/web/lib/estudio-telemetry.ts` que loguea
 structured + (futuro Fase 5) envía a analytics agregador respetando consent
@@ -336,17 +341,18 @@ cookies.
 
 Validado en CI vía Lighthouse CI:
 
-| Métrica          | Desktop | Mobile |
-|------------------|---------|--------|
-| Performance      | ≥ 95    | ≥ 90   |
-| Accessibility    | ≥ 95    | ≥ 95   |
-| Best Practices   | ≥ 95    | ≥ 95   |
-| SEO              | ≥ 90    | ≥ 90   |
-| LCP              | < 2.0s  | < 2.5s |
-| INP              | < 100ms | < 200ms|
-| CLS              | < 0.05  | < 0.1  |
+| Métrica        | Desktop | Mobile  |
+| -------------- | ------- | ------- |
+| Performance    | ≥ 95    | ≥ 90    |
+| Accessibility  | ≥ 95    | ≥ 95    |
+| Best Practices | ≥ 95    | ≥ 95    |
+| SEO            | ≥ 90    | ≥ 90    |
+| LCP            | < 2.0s  | < 2.5s  |
+| INP            | < 100ms | < 200ms |
+| CLS            | < 0.05  | < 0.1   |
 
 Estrategias aplicadas:
+
 - Konva chunk lazy-loaded con `next/dynamic + ssr: false` (no en initial bundle)
 - React 19 transitions para template change (no blocking UI)
 - Image optim via `next/image` con responsive `sizes`
@@ -375,6 +381,7 @@ Estrategias aplicadas:
 Ver `tests/unit/`, `tests/integration/`, `tests/e2e/` para los specs.
 
 Comandos:
+
 ```bash
 make test-unit        # vitest
 make test-integration # vitest con DB de test

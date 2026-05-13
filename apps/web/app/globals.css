@@ -71,85 +71,108 @@
 }
 
 @keyframes wiggle {
-  0%, 100% { transform: rotate(0deg); }
-  20% { transform: rotate(-10deg); }
-  50% { transform: rotate(10deg); }
-  80% { transform: rotate(-6deg); }
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  20% {
+    transform: rotate(-10deg);
+  }
+  50% {
+    transform: rotate(10deg);
+  }
+  80% {
+    transform: rotate(-6deg);
+  }
 }
 
 @keyframes float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-6px); }
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
 }
 
 @keyframes pop {
-  0% { transform: scale(0.6); opacity: 0; }
-  60% { transform: scale(1.08); opacity: 1; }
-  100% { transform: scale(1); opacity: 1; }
+  0% {
+    transform: scale(0.6);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.08);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 
 :root {
   /* ─────── Marca Lucams ─────── */
-  --brand-purple: #7C6AAD;
-  --brand-purple-dark: #3D2E5C;
-  --brand-turquoise: #5DD9D1;
-  --brand-pink: #E85B9F;
-  --brand-coral: #F58A6F;
-  --brand-yellow: #FFD93D;
-  --brand-cream: #FFF8F0;
+  --brand-purple: #7c6aad;
+  --brand-purple-dark: #3d2e5c;
+  --brand-turquoise: #5dd9d1;
+  --brand-pink: #e85b9f;
+  --brand-coral: #f58a6f;
+  --brand-yellow: #ffd93d;
+  --brand-cream: #fff8f0;
 
   /* ─────── Neutrales (modo claro) ─────── */
-  --background: #FFFFFF;
-  --foreground: #1F1733;            /* texto principal cuerpo */
+  --background: #ffffff;
+  --foreground: #1f1733; /* texto principal cuerpo */
 
   /* ─────── Feedback ─────── */
-  --success: #3FBE6E;
-  --error: #E84B5B;
-  --warning: #F5A623;
+  --success: #3fbe6e;
+  --error: #e84b5b;
+  --warning: #f5a623;
 
   /* ─────── shadcn semantic (modo claro) ─────── */
-  --card: #FFFFFF;
+  --card: #ffffff;
   --card-foreground: var(--foreground);
-  --popover: #FFFFFF;
+  --popover: #ffffff;
   --popover-foreground: var(--foreground);
   --primary: var(--brand-purple);
-  --primary-foreground: #FFFFFF;
+  --primary-foreground: #ffffff;
   --secondary: var(--brand-cream);
   --secondary-foreground: var(--brand-purple-dark);
-  --muted: #F5F4F8;
-  --muted-foreground: #6B6383;
+  --muted: #f5f4f8;
+  --muted-foreground: #6b6383;
   --accent: var(--brand-turquoise);
   --accent-foreground: var(--brand-purple-dark);
   --destructive: var(--error);
-  --destructive-foreground: #FFFFFF;
-  --border: #E6E2EC;
-  --input: #E6E2EC;
+  --destructive-foreground: #ffffff;
+  --border: #e6e2ec;
+  --input: #e6e2ec;
   --ring: var(--brand-purple);
 
   /* ─────── Radii base ─────── */
-  --radius: 0.75rem;                /* 12px — curvas suaves kawaii */
+  --radius: 0.75rem; /* 12px — curvas suaves kawaii */
 }
 
 .dark {
   /* Modo oscuro pendiente — ADR para definir cuándo se activa.
      Por ahora se accede solo al añadir clase `.dark` al <html>. */
-  --background: #1A1530;
-  --foreground: #ECE5F2;
+  --background: #1a1530;
+  --foreground: #ece5f2;
 
-  --card: #2A2240;
+  --card: #2a2240;
   --card-foreground: var(--foreground);
-  --popover: #2A2240;
+  --popover: #2a2240;
   --popover-foreground: var(--foreground);
   --primary: var(--brand-purple);
-  --primary-foreground: #FFFFFF;
-  --secondary: #3D2E5C;
+  --primary-foreground: #ffffff;
+  --secondary: #3d2e5c;
   --secondary-foreground: var(--brand-cream);
-  --muted: #2A2240;
-  --muted-foreground: #9E94B5;
+  --muted: #2a2240;
+  --muted-foreground: #9e94b5;
   --accent: var(--brand-turquoise);
   --accent-foreground: var(--brand-purple-dark);
-  --border: #3D2E5C;
-  --input: #3D2E5C;
+  --border: #3d2e5c;
+  --input: #3d2e5c;
   --ring: var(--brand-turquoise);
 }
 
@@ -163,13 +186,20 @@ body {
   background-color: var(--background);
   color: var(--foreground);
   font-family: var(--font-body);
-  font-feature-settings: "rlig" 1, "calt" 1;
+  font-feature-settings:
+    "rlig" 1,
+    "calt" 1;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
 /* Display font para headings y elementos prominentes */
-h1, h2, h3, h4, h5, h6 {
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
   font-family: var(--font-display);
   font-weight: 600;
   letter-spacing: -0.01em;

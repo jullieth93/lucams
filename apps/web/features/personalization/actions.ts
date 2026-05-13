@@ -20,18 +20,12 @@ import { logger } from "@/lib/logger";
 import { uploadCustomerPhoto } from "@/lib/storage";
 import { prisma } from "@/lib/db";
 import {
-  CanvasDataSchema,
   CreateDraftDesignSchema,
   FinalizeDesignSchema,
   SaveCanvasSchema,
   UploadAssetMetadataSchema,
 } from "./schemas";
-import {
-  createDraftDesign,
-  finalizeDesign,
-  getOwnedDesign,
-  saveCanvas,
-} from "./service";
+import { createDraftDesign, finalizeDesign, getOwnedDesign, saveCanvas } from "./service";
 
 // ──────────── Helpers ────────────
 
@@ -44,21 +38,17 @@ async function resolveOwner() {
 
 // ──────────── Create draft ────────────
 
-export async function createDraftDesignAction(input: {
-  productId: string;
-  templateId?: string;
-}) {
+export async function createDraftDesignAction(input: { productId: string; templateId?: string }) {
   const parsed = CreateDraftDesignSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false as const, code: "VALIDATION" as const, message: parsed.error.message };
   }
 
-  let { customerId, sessionId } = await resolveOwner();
+  const { customerId, sessionId: existingSession } = await resolveOwner();
   // Si anon y no había cookie, crear una ahora. createDraftDesign requiere
   // al menos uno de customerId/sessionId.
-  if (!customerId && !sessionId) {
-    sessionId = await getOrCreateCartSession();
-  }
+  const sessionId =
+    !customerId && !existingSession ? await getOrCreateCartSession() : existingSession;
 
   try {
     const design = await createDraftDesign({
@@ -79,10 +69,7 @@ export async function createDraftDesignAction(input: {
 
 // ──────────── Save canvas (debounced 2s desde cliente) ────────────
 
-export async function saveCanvasAction(input: {
-  designId: string;
-  canvasData: unknown;
-}) {
+export async function saveCanvasAction(input: { designId: string; canvasData: unknown }) {
   const parsed = SaveCanvasSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false as const, code: "VALIDATION" as const, message: parsed.error.message };

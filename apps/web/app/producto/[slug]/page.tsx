@@ -188,7 +188,7 @@ export default async function ProductoDetallePage({
                     {/* CTA primaria: ir al Estudio. M.3 implementará /estudio/[slug]. */}
                     <Link
                       href={`/estudio/${product.slug}`}
-                      className="bg-brand-purple hover:bg-brand-purple-dark inline-flex h-12 w-full items-center justify-center gap-2 rounded-md px-6 text-base font-semibold text-white shadow-lg shadow-brand-purple/30 transition-all hover:shadow-xl hover:shadow-brand-purple/40"
+                      className="bg-brand-purple hover:bg-brand-purple-dark shadow-brand-purple/30 hover:shadow-brand-purple/40 inline-flex h-12 w-full items-center justify-center gap-2 rounded-md px-6 text-base font-semibold text-white shadow-lg transition-all hover:shadow-xl"
                     >
                       <Sparkles className="h-5 w-5" />
                       Personalizar tu imán →

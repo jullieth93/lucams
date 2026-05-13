@@ -133,7 +133,12 @@ type UnknownLayer = {
   [key: string]: unknown;
 };
 
-export type CanvasLayer = BackgroundLayer | ImagePlaceholderLayer | TextLayer | ShapeLayer | UnknownLayer;
+export type CanvasLayer =
+  | BackgroundLayer
+  | ImagePlaceholderLayer
+  | TextLayer
+  | ShapeLayer
+  | UnknownLayer;
 
 export type CanvasDataV1 = {
   version: 1;

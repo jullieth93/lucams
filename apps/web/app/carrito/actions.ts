@@ -143,7 +143,11 @@ const AddPersonalizedSchema = z.object({
 
 export type AddPersonalizedResult =
   | { ok: true; itemCount: number }
-  | { ok: false; code: "VALIDATION" | "FORBIDDEN" | "DESIGN_NOT_READY" | "INTERNAL"; message: string };
+  | {
+      ok: false;
+      code: "VALIDATION" | "FORBIDDEN" | "DESIGN_NOT_READY" | "INTERNAL";
+      message: string;
+    };
 
 export async function addPersonalizedToCartAction(input: {
   designId: string;

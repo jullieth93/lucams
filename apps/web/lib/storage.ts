@@ -198,12 +198,13 @@ export async function uploadCustomerPhoto(opts: {
   let height: number;
   try {
     const pipeline = sharp(opts.buffer).rotate(); // auto-orient + strip EXIF
-    const isHeic =
-      opts.originalMimeType === "image/heic" || opts.originalMimeType === "image/heif";
+    const isHeic = opts.originalMimeType === "image/heic" || opts.originalMimeType === "image/heif";
     if (isHeic) {
       // HEIC requiere libvips compilado con heif (Vercel build incluye).
       // Si falla, sharp lanza error claro al cliente.
-      const out = await pipeline.jpeg({ quality: 92, mozjpeg: true }).toBuffer({ resolveWithObject: true });
+      const out = await pipeline
+        .jpeg({ quality: 92, mozjpeg: true })
+        .toBuffer({ resolveWithObject: true });
       processed = out.data;
       finalMime = "image/jpeg";
       width = out.info.width;
@@ -249,7 +250,10 @@ export async function uploadCustomerPhoto(opts: {
     .from(CUSTOMER_UPLOADS_BUCKET)
     .createSignedUrl(filename, 3600);
   if (signErr || !signed) {
-    throw new StorageError("UPLOAD_FAILED", `Subió pero no pudimos firmar URL: ${signErr?.message ?? "unknown"}`);
+    throw new StorageError(
+      "UPLOAD_FAILED",
+      `Subió pero no pudimos firmar URL: ${signErr?.message ?? "unknown"}`,
+    );
   }
 
   return {
@@ -273,7 +277,10 @@ export async function refreshCustomerUploadSignedUrl(path: string): Promise<stri
     .from(CUSTOMER_UPLOADS_BUCKET)
     .createSignedUrl(path, 3600);
   if (error || !data) {
-    throw new StorageError("UPLOAD_FAILED", `No pudimos refirmar URL: ${error?.message ?? "unknown"}`);
+    throw new StorageError(
+      "UPLOAD_FAILED",
+      `No pudimos refirmar URL: ${error?.message ?? "unknown"}`,
+    );
   }
   return data.signedUrl;
 }

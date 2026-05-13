@@ -125,7 +125,10 @@ function fallbackLayout(slotCount: number): { cols: number; rows: number } {
  *
  * @returns `{ width, height }` del grid total (incluyendo gaps).
  */
-export function gridViewportSize(unitStage: CanvasStage, layout: GridLayout): {
+export function gridViewportSize(
+  unitStage: CanvasStage,
+  layout: GridLayout,
+): {
   width: number;
   height: number;
 } {

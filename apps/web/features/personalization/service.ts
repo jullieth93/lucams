@@ -257,8 +257,7 @@ export async function finalizeDesign(opts: {
 
   // Validar que la cantidad de production snapshots matchea slotCount del Design
   const canvasData = design.canvasData as unknown as CanvasData;
-  const expectedSlotCount =
-    canvasData.version === 2 ? (canvasData as CanvasDataV2).slotCount : 1;
+  const expectedSlotCount = canvasData.version === 2 ? (canvasData as CanvasDataV2).slotCount : 1;
   if (opts.productionDataUrls.length !== expectedSlotCount) {
     throw new Error(
       `INCOMPLETE_SLOTS: expected ${expectedSlotCount} production snapshots, got ${opts.productionDataUrls.length}`,

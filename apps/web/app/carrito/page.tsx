@@ -80,7 +80,7 @@ export default async function CarritoPage() {
                               ✨ Tu diseño ·{" "}
                               <Link
                                 href={`/estudio/${item.productSlug}?designId=${item.designId}`}
-                                className="text-brand-purple underline hover:text-brand-purple-dark"
+                                className="text-brand-purple hover:text-brand-purple-dark underline"
                               >
                                 Editar
                               </Link>
