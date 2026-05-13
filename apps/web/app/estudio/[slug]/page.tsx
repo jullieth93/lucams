@@ -1,29 +1,31 @@
 /*
- * Estudio de Personalización — entry server component.
+ * Estudio de Personalización — entry server component (M.3.b Capa 2).
  *
- * Estado actual: M.3.b Capa 1 cerrada (modelo V2 multi-slot canvas). Editor
- * client (Capa 2) en construcción — el page muestra mensaje de transición.
- *
- * El backend M.3.b ya está listo:
- *   - canvasData V2 (MultiSlotCanvasData) en types.ts + schemas.ts
- *   - createDraftDesign genera V2 con N slots según photoSlots del producto
- *   - finalizeDesign acepta N productionDataUrls (uno por imán físico)
- *   - migration Prisma Design.productionUrls: String[] aplicada
- *   - lib/grid-layout.ts + lib/canvas-migrate.ts helpers
- *
- * Capa 2 implementará el editor multi-slot real con react-konva.
+ * Flow:
+ *   1. Verifica producto + kind != NONE
+ *   2. Carga plantillas disponibles del kind
+ *   3. Si hay ?designId= en query (recover flow), levanta el Design existente
+ *      con sus assets ya subidos (signed URLs refrescadas)
+ *   4. Lee `photoSlots` del personalizationSchema del producto
+ *   5. Renderiza <StudioEditor> client-side con dynamic import (Konva
+ *      requiere window)
  */
 
 import type { Metadata } from "next";
-import Link from "next/link";
+import dynamic from "next/dynamic";
 import { notFound } from "next/navigation";
-import { ArrowLeft, MessageCircle, Sparkles, Construction } from "lucide-react";
-import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
-import { buildWhatsAppUrl } from "@/lib/wa";
 import { getStorefrontProductBySlug } from "@/features/products/public-service";
+import { listTemplatesForKind, getOwnedDesign } from "@/features/personalization/service";
+import { parsePhotoProductConfig } from "@/features/personalization/schemas";
+import { peekCartSession } from "@/lib/cart-session";
+import { getCurrentCustomer } from "@/lib/auth";
+import { prisma } from "@/lib/db";
+import { refreshCustomerUploadSignedUrl } from "@/lib/storage";
+import type { CanvasData, StudioAsset } from "./types";
 
 type Params = Promise<{ slug: string }>;
+type SearchParams = Promise<{ designId?: string; template?: string }>;
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { slug } = await params;
@@ -36,84 +38,96 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
   };
 }
 
-export default async function EstudioPage({ params }: { params: Params }) {
-  const { slug } = await params;
+const StudioEditor = dynamic(
+  () => import("./studio-editor").then((mod) => ({ default: mod.StudioEditor })),
+  {
+    loading: () => (
+      <div className="flex flex-1 items-center justify-center p-12">
+        <div className="text-brand-purple/70 flex items-center gap-3">
+          <div className="border-brand-purple/30 border-t-brand-purple h-6 w-6 animate-spin rounded-full border-2" />
+          <span>Cargando estudio...</span>
+        </div>
+      </div>
+    ),
+  },
+);
+
+export default async function EstudioPage({
+  params,
+  searchParams,
+}: {
+  params: Params;
+  searchParams: SearchParams;
+}) {
+  const [{ slug }, sp] = await Promise.all([params, searchParams]);
   const product = await getStorefrontProductBySlug(slug);
   if (!product) notFound();
   if (product.personalizationKind === "NONE") notFound();
 
-  const waHref = await buildWhatsAppUrl({
-    kind: "personalize",
-    productName: product.name,
-    sku: product.sku,
+  const photoConfig = parsePhotoProductConfig(product.personalizationSchema);
+
+  // Cargar plantillas activas del kind (globales + product-specific)
+  const templatesRaw = await listTemplatesForKind(product.personalizationKind, {
+    productId: product.id,
   });
+  const templates = templatesRaw.map((t) => ({
+    ...t,
+    canvasData: t.canvasData as unknown as import("./types").CanvasDataV1,
+  }));
+
+  // Recover flow: si pasaron ?designId=, levantar el Design existente
+  let initialDesignId: string | null = null;
+  let initialDesignCanvas: CanvasData | null = null;
+  let initialDesignAssets: StudioAsset[] = [];
+
+  if (sp.designId) {
+    const customer = await getCurrentCustomer();
+    const sessionId = customer ? null : await peekCartSession();
+    const design = await getOwnedDesign(sp.designId, {
+      customerId: customer?.customer.id ?? null,
+      sessionId,
+    });
+    if (design && design.status === "DRAFT") {
+      initialDesignId = design.id;
+      initialDesignCanvas = design.canvasData as unknown as CanvasData;
+      // Hidratar DesignAssets existentes con signed URLs refrescadas
+      const dbAssets = await prisma.designAsset.findMany({
+        where: { designId: design.id },
+        select: { id: true, storageUrl: true, width: true, height: true },
+      });
+      initialDesignAssets = await Promise.all(
+        dbAssets.map(async (a) => ({
+          id: a.id,
+          signedUrl: await refreshCustomerUploadSignedUrl(a.storageUrl),
+          width: a.width,
+          height: a.height,
+        })),
+      );
+    }
+  }
 
   return (
     <div className="bg-brand-cream flex min-h-screen flex-col">
       <SiteHeader />
 
-      <main className="flex-1 px-6 py-12 sm:px-10">
-        <div className="mx-auto max-w-2xl text-center">
-          <Link
-            href={`/producto/${product.slug}`}
-            className="text-brand-purple/70 hover:text-brand-purple mb-8 inline-flex items-center gap-1 text-sm"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Volver al producto
-          </Link>
-
-          <div className="shadow-brand-purple/10 rounded-3xl bg-white p-8 shadow-lg sm:p-12">
-            <div className="bg-brand-purple/10 mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full">
-              <Construction className="text-brand-purple h-10 w-10" />
-            </div>
-
-            <h1 className="font-display text-brand-purple-dark text-3xl sm:text-4xl">
-              Estudio v2 — en construcción
-            </h1>
-
-            <p className="text-brand-purple-dark/80 mt-4 text-base leading-relaxed">
-              Estamos puliendo el editor para que diseñes <strong>{product.name}</strong> con la
-              experiencia que merece. La estructura de datos multi-slot ya está lista; el editor
-              interactivo se conecta en los próximos commits.
-            </p>
-
-            <p className="text-brand-purple-dark/70 mt-4 text-sm">
-              Mientras tanto, contanos por WhatsApp qué querés personalizar — te guiamos paso a
-              paso, recibimos tus fotos y te mostramos vista previa antes de imprimir.
-            </p>
-
-            <div className="mt-8 flex flex-col items-center gap-3">
-              {waHref && (
-                <a
-                  href={waHref}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="bg-brand-purple hover:bg-brand-purple-dark shadow-brand-purple/30 inline-flex h-12 items-center justify-center gap-2 rounded-md px-8 text-base font-semibold text-white shadow-lg"
-                >
-                  <MessageCircle className="h-5 w-5" />
-                  Personalizar por WhatsApp
-                </a>
-              )}
-              <Link
-                href={`/producto/${product.slug}`}
-                className="text-brand-purple/70 hover:text-brand-purple text-sm"
-              >
-                ← Volver al producto
-              </Link>
-            </div>
-
-            <div className="border-brand-purple/10 mt-10 border-t pt-6">
-              <p className="text-brand-purple-dark/50 text-xs">
-                <Sparkles className="mr-1 inline h-3 w-3" />
-                Próximamente: editor en vivo con tus fotos, plantillas kawaii, vista previa
-                instantánea y ajustes profesionales.
-              </p>
-            </div>
-          </div>
-        </div>
+      <main className="flex flex-1 flex-col">
+        <StudioEditor
+          product={{
+            id: product.id,
+            slug: product.slug,
+            name: product.name,
+            sku: product.sku,
+            personalizationKind: product.personalizationKind,
+            personalizationSchema: product.personalizationSchema,
+            images: product.images,
+          }}
+          templates={templates}
+          initialDesignId={initialDesignId}
+          initialDesignCanvas={initialDesignCanvas}
+          initialDesignAssets={initialDesignAssets}
+          photoSlots={photoConfig.photoSlots}
+        />
       </main>
-
-      <SiteFooter />
     </div>
   );
 }

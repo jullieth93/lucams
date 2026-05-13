@@ -197,6 +197,9 @@ export type MultiSlotCanvasData = {
   gridLayout: GridLayout;
 };
 
+/** Alias de conveniencia — algunos consumidores usan `CanvasDataV2` por simetría con V1. */
+export type CanvasDataV2 = MultiSlotCanvasData;
+
 /**
  * Unión discriminada — el editor maneja ambas versiones via type guard
  * `isCanvasV2()`. Designs nuevos crean directamente V2; designs legacy V1
