@@ -13,17 +13,21 @@
  */
 
 import type { Metadata } from "next";
-import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ChevronRight, Sparkles, MessageCircle } from "lucide-react";
+import { ChevronRight, MessageCircle } from "lucide-react";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { Button } from "@/components/ui/button";
+import { ProductGallery } from "@/components/product-detail/product-gallery";
+import { RelatedProducts } from "@/components/product-detail/related-products";
 import { formatCOP } from "@/lib/format";
 import { buildWhatsAppUrl } from "@/lib/wa";
 import { addToCartAction } from "@/app/carrito/actions";
-import { getStorefrontProductBySlug } from "@/features/products/public-service";
+import {
+  getStorefrontProductBySlug,
+  listRelatedProducts,
+} from "@/features/products/public-service";
 
 type Params = Promise<{ slug: string }>;
 type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
@@ -32,9 +36,29 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
   const { slug } = await params;
   const product = await getStorefrontProductBySlug(slug);
   if (!product) return { title: "Producto no encontrado" };
+  const title = product.seoTitle ?? product.name;
+  const description = product.seoDescription ?? product.description.slice(0, 160);
+  const image = product.images[0] ?? "/brand/lucams-logo.png";
   return {
-    title: product.seoTitle ?? product.name,
-    description: product.seoDescription ?? product.description.slice(0, 160),
+    title,
+    description,
+    openGraph: {
+      title,
+      description,
+      type: "website",
+      images: [{ url: image, alt: product.name }],
+      locale: "es_CO",
+      siteName: "Lucams_shop",
+    },
+    twitter: {
+      card: "summary_large_image",
+      title,
+      description,
+      images: [image],
+    },
+    alternates: {
+      canonical: `/producto/${product.slug}`,
+    },
   };
 }
 
@@ -51,6 +75,12 @@ export default async function ProductoDetallePage({
   const justAdded = sp.added === "1";
   const errorMsg = typeof sp.error === "string" ? sp.error : null;
 
+  const related = await listRelatedProducts({
+    productId: product.id,
+    categorySlug: product.category.slug,
+    limit: 4,
+  });
+
   const hasDiscount = product.compareAtPrice != null && product.compareAtPrice > product.basePrice;
   const waHref = await buildWhatsAppUrl({
     kind: "product",
@@ -58,8 +88,41 @@ export default async function ProductoDetallePage({
     sku: product.sku,
   });
 
+  // JSON-LD Product structured data — Google rich results.
+  // basePrice está en centavos COP → dividir por 100 para schema.org.
+  // priceValidUntil usa la updatedAt + 1 año (no Date.now() para evitar
+  // impuras; se actualiza naturalmente cada vez que admin edita el producto).
+  const oneYearMs = 365 * 24 * 60 * 60 * 1000;
+  const priceValidUntil = new Date(product.updatedAt.getTime() + oneYearMs)
+    .toISOString()
+    .slice(0, 10);
+  const jsonLd = {
+    "@context": "https://schema.org/",
+    "@type": "Product",
+    name: product.name,
+    description: product.description.slice(0, 5000),
+    sku: product.sku,
+    image: product.images.length > 0 ? product.images : ["/brand/lucams-logo.png"],
+    category: product.category.name,
+    brand: { "@type": "Brand", name: "Lucams_shop" },
+    offers: {
+      "@type": "Offer",
+      url: `https://lucamsshop.co/producto/${product.slug}`,
+      priceCurrency: "COP",
+      price: (product.basePrice / 100).toFixed(0),
+      priceValidUntil,
+      availability: "https://schema.org/InStock",
+      itemCondition: "https://schema.org/NewCondition",
+      seller: { "@type": "Organization", name: "Lucams_shop" },
+    },
+  };
+
   return (
     <div className="bg-brand-cream flex min-h-screen flex-col">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+      />
       <SiteHeader />
 
       <main className="flex-1 px-6 py-8 sm:px-10">
@@ -100,42 +163,7 @@ export default async function ProductoDetallePage({
           </nav>
 
           <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
-            <div className="space-y-3">
-              <div className="border-brand-purple/10 from-brand-turquoise/15 via-brand-cream to-brand-pink/15 relative aspect-square w-full overflow-hidden rounded-xl border bg-gradient-to-br">
-                {product.images.length > 0 ? (
-                  <Image
-                    src={product.images[0]}
-                    alt={product.name}
-                    fill
-                    sizes="(max-width: 768px) 100vw, 50vw"
-                    priority
-                    className="object-cover"
-                  />
-                ) : (
-                  <div className="flex h-full w-full items-center justify-center">
-                    <Sparkles className="text-brand-purple/30 h-20 w-20" />
-                  </div>
-                )}
-              </div>
-              {product.images.length > 1 && (
-                <div className="grid grid-cols-4 gap-2">
-                  {product.images.slice(1, 5).map((img, idx) => (
-                    <div
-                      key={idx}
-                      className="relative aspect-square w-full overflow-hidden rounded-md"
-                    >
-                      <Image
-                        src={img}
-                        alt={`${product.name} — vista ${idx + 2}`}
-                        fill
-                        sizes="(max-width: 768px) 25vw, 12vw"
-                        className="object-cover"
-                      />
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
+            <ProductGallery images={product.images} alt={product.name} />
 
             <div className="space-y-5">
               <div>
@@ -198,6 +226,8 @@ export default async function ProductoDetallePage({
               </p>
             </div>
           </div>
+
+          <RelatedProducts products={related} />
         </div>
       </main>
       <SiteFooter />

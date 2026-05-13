@@ -14,6 +14,7 @@
  */
 
 import "server-only";
+import type { Prisma } from "@lucams/db";
 import { prisma } from "@/lib/db";
 
 export type StorefrontProductCard = {
@@ -32,6 +33,7 @@ export type StorefrontProductDetail = StorefrontProductCard & {
   sku: string;
   seoTitle: string | null;
   seoDescription: string | null;
+  updatedAt: Date;
 };
 
 const STOREFRONT_WHERE = {
@@ -58,20 +60,57 @@ export async function listStorefrontCategories() {
   });
 }
 
-export async function listStorefrontProducts(opts: {
+export type StorefrontFilters = {
   categorySlug?: string;
   featured?: boolean;
+  isPersonalizable?: boolean;
+  onlyDiscounted?: boolean;
+  minPrice?: number; // centavos COP
+  maxPrice?: number;
+  sort?: "recent" | "price-asc" | "price-desc" | "featured" | "name";
   limit?: number;
-}): Promise<StorefrontProductCard[]> {
+};
+
+export async function listStorefrontProducts(
+  opts: StorefrontFilters = {},
+): Promise<StorefrontProductCard[]> {
+  const where: Prisma.ProductWhereInput = {
+    ...STOREFRONT_WHERE,
+    ...(opts.categorySlug
+      ? { category: { ...STOREFRONT_WHERE.category, slug: opts.categorySlug } }
+      : {}),
+    ...(opts.featured ? { isFeatured: true } : {}),
+    ...(opts.isPersonalizable ? { isPersonalizable: true } : {}),
+    ...(opts.onlyDiscounted ? { compareAtPrice: { not: null } } : {}),
+    ...(opts.minPrice != null || opts.maxPrice != null
+      ? {
+          basePrice: {
+            ...(opts.minPrice != null ? { gte: opts.minPrice } : {}),
+            ...(opts.maxPrice != null ? { lte: opts.maxPrice } : {}),
+          },
+        }
+      : {}),
+  };
+
+  const orderBy = (() => {
+    switch (opts.sort) {
+      case "price-asc":
+        return [{ basePrice: "asc" as const }];
+      case "price-desc":
+        return [{ basePrice: "desc" as const }];
+      case "featured":
+        return [{ isFeatured: "desc" as const }, { createdAt: "desc" as const }];
+      case "name":
+        return [{ name: "asc" as const }];
+      case "recent":
+      default:
+        return [{ isFeatured: "desc" as const }, { createdAt: "desc" as const }];
+    }
+  })();
+
   const items = await prisma.product.findMany({
-    where: {
-      ...STOREFRONT_WHERE,
-      ...(opts.categorySlug
-        ? { category: { ...STOREFRONT_WHERE.category, slug: opts.categorySlug } }
-        : {}),
-      ...(opts.featured ? { isFeatured: true } : {}),
-    },
-    orderBy: [{ isFeatured: "desc" }, { createdAt: "desc" }],
+    where,
+    orderBy,
     take: opts.limit,
     select: {
       id: true,
@@ -85,6 +124,22 @@ export async function listStorefrontProducts(opts: {
     },
   });
   return items;
+}
+
+/**
+ * Min/max precio del catálogo activo — usado para definir los
+ * límites del slider de filtro de precio en /productos.
+ */
+export async function getStorefrontPriceRange(): Promise<{ min: number; max: number }> {
+  const agg = await prisma.product.aggregate({
+    where: STOREFRONT_WHERE,
+    _min: { basePrice: true },
+    _max: { basePrice: true },
+  });
+  return {
+    min: agg._min.basePrice ?? 0,
+    max: agg._max.basePrice ?? 0,
+  };
 }
 
 /**
@@ -241,7 +296,65 @@ export async function getStorefrontProductBySlug(
       images: true,
       seoTitle: true,
       seoDescription: true,
+      updatedAt: true,
       category: { select: { slug: true, name: true } },
     },
   });
+}
+
+/**
+ * Productos relacionados: misma categoría que el producto actual,
+ * excluyendo el actual. Fallback a destacados si la categoría tiene
+ * pocos productos (< 4 después de excluir).
+ */
+export async function listRelatedProducts(opts: {
+  productId: string;
+  categorySlug: string;
+  limit?: number;
+}): Promise<StorefrontProductCard[]> {
+  const take = opts.limit ?? 4;
+  const sameCategory = await prisma.product.findMany({
+    where: {
+      ...STOREFRONT_WHERE,
+      category: { ...STOREFRONT_WHERE.category, slug: opts.categorySlug },
+      NOT: { id: opts.productId },
+    },
+    orderBy: [{ isFeatured: "desc" }, { createdAt: "desc" }],
+    take,
+    select: {
+      id: true,
+      slug: true,
+      name: true,
+      basePrice: true,
+      compareAtPrice: true,
+      isPersonalizable: true,
+      images: true,
+      category: { select: { slug: true, name: true } },
+    },
+  });
+  if (sameCategory.length >= take) return sameCategory;
+
+  // Completar con featured de otras categorías
+  const missing = take - sameCategory.length;
+  const seenIds = new Set([opts.productId, ...sameCategory.map((p) => p.id)]);
+  const featured = await prisma.product.findMany({
+    where: {
+      ...STOREFRONT_WHERE,
+      isFeatured: true,
+      NOT: { id: { in: Array.from(seenIds) } },
+    },
+    orderBy: { createdAt: "desc" },
+    take: missing,
+    select: {
+      id: true,
+      slug: true,
+      name: true,
+      basePrice: true,
+      compareAtPrice: true,
+      isPersonalizable: true,
+      images: true,
+      category: { select: { slug: true, name: true } },
+    },
+  });
+  return [...sameCategory, ...featured];
 }
