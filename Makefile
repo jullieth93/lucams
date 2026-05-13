@@ -1,4 +1,4 @@
-.PHONY: help install build typecheck lint format migrate seed-products test test-unit test-e2e test-rls test-load test-coverage clean
+.PHONY: help install build typecheck lint format migrate seed-products seed-templates test test-unit test-e2e test-rls test-load test-coverage clean
 
 # Makefile en repo — targets primitivos para CI y devs locales.
 # El Makefile completo de runtime (con state/log/pid management,
@@ -15,6 +15,7 @@ help:
 	@echo "  make format       Prettier --write"
 	@echo "  make migrate      pnpm prisma migrate deploy"
 	@echo "  make seed-products  Pobla catálogo demo (idempotente)"
+	@echo "  make seed-templates Pobla plantillas Estudio Personalización"
 	@echo ""
 	@echo "  Tests (Vitest/Playwright se setean en sub-bloques siguientes):"
 	@echo "    make test         Todos los tests"
@@ -42,6 +43,9 @@ migrate:
 
 seed-products:
 	pnpm --filter @lucams/db exec node scripts/seed-products.mjs
+
+seed-templates:
+	pnpm --filter @lucams/db exec node scripts/seed-templates.mjs
 
 test: test-unit test-e2e
 
