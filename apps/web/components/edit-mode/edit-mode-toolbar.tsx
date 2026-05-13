@@ -24,7 +24,10 @@ export function EditModeToolbar({
   onToggle: () => void;
 }) {
   return (
-    <div className="pointer-events-none fixed right-4 bottom-4 z-[9999] flex flex-col items-end gap-2">
+    <div
+      data-edit-mode-ui
+      className="pointer-events-none fixed right-4 bottom-4 z-[9999] flex flex-col items-end gap-2"
+    >
       {enabled && (
         <div className="bg-brand-purple-dark/90 pointer-events-auto rounded-full px-3 py-1 text-xs font-medium text-white shadow-lg backdrop-blur">
           Modo edición ON · {adminEmail}

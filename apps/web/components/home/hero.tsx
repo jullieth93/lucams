@@ -10,17 +10,11 @@
 
 import Link from "next/link";
 import { LucamsLogo } from "@/components/lucams-logo";
-import { getCmsBlock } from "@/lib/cms";
+import { CmsText } from "@/components/cms/cms-text";
 import { buildWhatsAppUrl } from "@/lib/wa";
 
 export async function HomeHero() {
-  const [badge, description, ctaPrimary, ctaSecondary, waSupportUrl] = await Promise.all([
-    getCmsBlock("home.hero.badge"),
-    getCmsBlock("home.hero.description"),
-    getCmsBlock("home.hero.cta-primary"),
-    getCmsBlock("home.hero.cta-secondary"),
-    buildWhatsAppUrl({ kind: "support" }),
-  ]);
+  const waSupportUrl = await buildWhatsAppUrl({ kind: "support" });
 
   return (
     <section className="relative overflow-hidden">
@@ -46,21 +40,30 @@ export async function HomeHero() {
 
         <div className="order-2 space-y-4 text-center sm:space-y-6 md:order-1 md:text-left">
           <span className="bg-brand-purple/10 text-brand-purple-dark inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold tracking-wider uppercase">
-            {badge?.body ?? "✨ Hecho a mano en Bogotá"}
+            <CmsText blockKey="home.hero.badge" fallback="✨ Hecho a mano en Bogotá" />
           </span>
           <h1 className="font-display text-brand-purple-dark text-3xl leading-tight sm:text-5xl md:text-6xl">
-            Tus recuerdos, <span className="text-brand-pink">en imán</span>.
+            <CmsText
+              blockKey="home.hero.title-prefix"
+              fallback="Tus recuerdos, "
+            />
+            <span className="text-brand-pink">
+              <CmsText blockKey="home.hero.title-accent" fallback="en imán" />
+            </span>
+            .
           </h1>
           <p className="text-brand-purple-dark/80 mx-auto max-w-lg text-base leading-relaxed sm:text-lg md:mx-0">
-            {description?.body ??
-              "Foto-imanes, recuerdos para eventos, calendarios y planners magnéticos personalizables. Entrega a 1.100+ destinos de Colombia."}
+            <CmsText
+              blockKey="home.hero.description"
+              fallback="Foto-imanes, recuerdos para eventos, calendarios y planners magnéticos personalizables. Entrega a 1.100+ destinos de Colombia."
+            />
           </p>
           <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-3 md:justify-start">
             <Link
               href="/productos"
               className="bg-brand-purple hover:bg-brand-purple-dark inline-block rounded-full px-5 py-2.5 text-sm font-semibold text-white shadow-md transition-colors sm:px-6 sm:py-3 sm:text-base"
             >
-              {ctaPrimary?.body ?? "Ver catálogo →"}
+              <CmsText blockKey="home.hero.cta-primary" fallback="Ver catálogo →" />
             </Link>
             <a
               href={waSupportUrl}
@@ -68,18 +71,18 @@ export async function HomeHero() {
               rel="noopener noreferrer"
               className="border-brand-purple/30 text-brand-purple-dark hover:bg-brand-purple/5 inline-block rounded-full border bg-white px-5 py-2.5 text-sm font-semibold transition-colors sm:px-6 sm:py-3 sm:text-base"
             >
-              {ctaSecondary?.body ?? "Personalizar el mío"}
+              <CmsText blockKey="home.hero.cta-secondary" fallback="Personalizar el mío" />
             </a>
           </div>
           <div className="flex flex-wrap items-center justify-center gap-2 pt-2 text-xs font-medium md:justify-start">
             <span className="bg-brand-turquoise/20 text-brand-purple-dark rounded-full px-3 py-1">
-              Estudio en vivo (pronto)
+              <CmsText blockKey="home.hero.chip-studio" fallback="Estudio en vivo (pronto)" />
             </span>
             <span className="bg-brand-coral/20 text-brand-purple-dark rounded-full px-3 py-1">
-              Pago contraentrega
+              <CmsText blockKey="home.hero.chip-cod" fallback="Pago contraentrega" />
             </span>
             <span className="bg-brand-yellow/30 text-brand-purple-dark rounded-full px-3 py-1">
-              5-7 días hábiles
+              <CmsText blockKey="home.hero.chip-eta" fallback="5-7 días hábiles" />
             </span>
           </div>
         </div>

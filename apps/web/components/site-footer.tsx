@@ -17,8 +17,10 @@
 import Link from "next/link";
 import { Mail, MessageCircle } from "lucide-react";
 import { NewsletterForm } from "@/components/newsletter-form";
+import { CmsText } from "@/components/cms/cms-text";
+import { CmsSetting } from "@/components/cms/cms-setting";
 import { listStorefrontCategories } from "@/features/products/public-service";
-import { getCmsBlock, getSettingValue } from "@/lib/cms";
+import { getSettingValue } from "@/lib/cms";
 import { buildWhatsAppUrl, getWhatsAppNumber } from "@/lib/wa";
 
 const LEGAL_LINKS = [
@@ -62,30 +64,14 @@ function TikTokIcon({ className }: { className?: string }) {
 }
 
 export async function SiteFooter() {
-  const [
-    categories,
-    waSupportUrl,
-    taglineBlock,
-    newsletterHeading,
-    newsletterDesc,
-    contactEmail,
-    businessHours,
-    instagramUrl,
-    tiktokUrl,
-    copyrightYear,
-    copyrightTagline,
-  ] = await Promise.all([
+  // Settings que se usan como atributos (href/mailto) los necesitamos
+  // como string raw — los display los wrappea <CmsSetting>.
+  const [categories, waSupportUrl, contactEmail, instagramUrl, tiktokUrl] = await Promise.all([
     listStorefrontCategories(),
     buildWhatsAppUrl({ kind: "support" }),
-    getCmsBlock("footer.tagline"),
-    getCmsBlock("footer.newsletter.heading"),
-    getCmsBlock("footer.newsletter.description"),
     getSettingValue("CONTACT_EMAIL", "hola@lucamsshop.co"),
-    getSettingValue("BUSINESS_HOURS", "Lun-Sáb 9am – 7pm COT"),
     getSettingValue("SOCIAL_INSTAGRAM_URL", "https://www.instagram.com/lucams_shop"),
     getSettingValue("SOCIAL_TIKTOK_URL", "https://www.tiktok.com/@lucams_shop"),
-    getSettingValue("COPYRIGHT_YEAR", "2026"),
-    getSettingValue("COPYRIGHT_TAGLINE", "Hecho con 💜 en Bogotá"),
   ]);
   const buildVersion = process.env.NEXT_PUBLIC_BUILD_VERSION ?? "dev";
   const waNumberDisplay = getWhatsAppNumber().replace(/^57(\d{3})(\d{3})(\d{4})$/, "+57 $1 $2 $3");
@@ -107,7 +93,10 @@ export async function SiteFooter() {
               Lucams<span className="text-brand-pink">_shop</span>
             </p>
             <p className="mt-2 text-sm text-white/80">
-              {taglineBlock?.body ?? "Tus recuerdos, en imán. Hechos a mano con cariño en Bogotá."}
+              <CmsText
+                blockKey="footer.tagline"
+                fallback="Tus recuerdos, en imán. Hechos a mano con cariño en Bogotá."
+              />
             </p>
             <div className="mt-4 flex gap-2">
               <a
@@ -206,10 +195,12 @@ export async function SiteFooter() {
                   className="inline-flex items-center gap-1.5 transition-colors hover:text-white"
                 >
                   <Mail className="h-4 w-4" />
-                  {contactEmail}
+                  <CmsSetting settingKey="CONTACT_EMAIL" fallback="hola@lucamsshop.co" />
                 </a>
               </li>
-              <li className="text-xs text-white/60">{businessHours}</li>
+              <li className="text-xs text-white/60">
+                <CmsSetting settingKey="BUSINESS_HOURS" fallback="Lun-Sáb 9am – 7pm COT" />
+              </li>
               <li className="pt-1">
                 <Link
                   href="/ayuda"
@@ -235,11 +226,16 @@ export async function SiteFooter() {
           <div className="grid items-center gap-6 md:grid-cols-2">
             <div>
               <h3 className="font-display text-xl text-white sm:text-2xl">
-                {newsletterHeading?.body ?? "Recibe el correo del cariño 💜"}
+                <CmsText
+                  blockKey="footer.newsletter.heading"
+                  fallback="Recibe el correo del cariño 💜"
+                />
               </h3>
               <p className="mt-1 text-sm text-white/75">
-                {newsletterDesc?.body ??
-                  "Lanzamientos, promos y curaduría kawaii. Sin spam — máximo una vez al mes."}
+                <CmsText
+                  blockKey="footer.newsletter.description"
+                  fallback="Lanzamientos, promos y curaduría kawaii. Sin spam — máximo una vez al mes."
+                />
               </p>
             </div>
             <NewsletterForm compact variant="dark" />
@@ -249,7 +245,8 @@ export async function SiteFooter() {
         {/* Copyright */}
         <div className="mt-12 flex flex-col items-center justify-between gap-3 border-t border-white/10 pt-6 text-xs text-white/60 md:flex-row">
           <p>
-            © {copyrightYear} Lucams_shop · {copyrightTagline}
+            © <CmsSetting settingKey="COPYRIGHT_YEAR" fallback="2026" /> Lucams_shop ·{" "}
+            <CmsSetting settingKey="COPYRIGHT_TAGLINE" fallback="Hecho con 💜 en Bogotá" />
           </p>
           <p className="font-mono text-[10px] text-white/40">v{buildVersion.slice(0, 7)}</p>
         </div>

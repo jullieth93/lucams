@@ -16,7 +16,7 @@ import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { Button } from "@/components/ui/button";
 import { getCartDetail } from "@/features/cart/service";
-import { getCmsBlock } from "@/lib/cms";
+import { CmsText } from "@/components/cms/cms-text";
 import { formatCOP } from "@/lib/format";
 import { peekCartSession } from "@/lib/cart-session";
 import { removeItemAction, updateQtyAction } from "./actions";
@@ -33,11 +33,7 @@ export default async function CarritoPage({ searchParams }: { searchParams: Sear
   const errorMsg = typeof sp.error === "string" ? sp.error : null;
 
   const sessionId = await peekCartSession();
-  const [cart, emptyTitle, emptyDescription] = await Promise.all([
-    sessionId ? getCartDetail(sessionId) : Promise.resolve(null),
-    getCmsBlock("cart.empty.title"),
-    getCmsBlock("cart.empty.description"),
-  ]);
+  const cart = sessionId ? await getCartDetail(sessionId) : null;
 
   return (
     <div className="bg-brand-cream flex min-h-screen flex-col">
@@ -61,10 +57,7 @@ export default async function CarritoPage({ searchParams }: { searchParams: Sear
           )}
 
           {!cart || cart.items.length === 0 ? (
-            <EmptyCart
-              title={emptyTitle?.body ?? "Tu carrito está vacío"}
-              description={emptyDescription?.body ?? "Encuentra el imán perfecto para tu nevera."}
-            />
+            <EmptyCart />
           ) : (
             <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
               <ul className="space-y-3 md:col-span-2">
@@ -171,12 +164,19 @@ export default async function CarritoPage({ searchParams }: { searchParams: Sear
   );
 }
 
-function EmptyCart({ title, description }: { title: string; description: string }) {
+function EmptyCart() {
   return (
     <div className="border-brand-purple/10 rounded-xl border bg-white px-6 py-16 text-center">
       <Sparkles className="text-brand-purple/40 mx-auto h-10 w-10" />
-      <p className="text-brand-purple-dark mt-4 text-lg font-semibold">{title}</p>
-      <p className="text-brand-purple-dark/60 mt-1 text-sm">{description}</p>
+      <p className="text-brand-purple-dark mt-4 text-lg font-semibold">
+        <CmsText blockKey="cart.empty.title" fallback="Tu carrito está vacío" />
+      </p>
+      <p className="text-brand-purple-dark/60 mt-1 text-sm">
+        <CmsText
+          blockKey="cart.empty.description"
+          fallback="Encuentra el imán perfecto para tu nevera."
+        />
+      </p>
       <Link
         href="/productos"
         className="bg-brand-purple hover:bg-brand-purple-dark mt-4 inline-block rounded-full px-5 py-2 text-sm font-semibold text-white"

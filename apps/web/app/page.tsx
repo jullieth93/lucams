@@ -29,7 +29,7 @@ import {
   listStorefrontProducts,
 } from "@/features/products/public-service";
 import { listFeaturedReviews } from "@/features/reviews/public-service";
-import { getCmsBlock } from "@/lib/cms";
+import { CmsText } from "@/components/cms/cms-text";
 import { buildWhatsAppUrl } from "@/lib/wa";
 
 export const metadata: Metadata = {
@@ -43,40 +43,11 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
-  const [
-    categories,
-    featured,
-    reviews,
-    waSupportUrl,
-    catHeading,
-    catSubtext,
-    stepsHeading,
-    stepsSubtext,
-    featuredHeading,
-    featuredSubtext,
-    featuredEmpty,
-    reviewsHeading,
-    reviewsSubtext,
-    reviewsEmpty,
-    ctaHeading,
-    ctaDescription,
-  ] = await Promise.all([
+  const [categories, featured, reviews, waSupportUrl] = await Promise.all([
     listStorefrontCategories(),
     listStorefrontProducts({ featured: true, limit: 10 }),
     listFeaturedReviews(8),
     buildWhatsAppUrl({ kind: "support" }),
-    getCmsBlock("home.categories.heading"),
-    getCmsBlock("home.categories.subtext"),
-    getCmsBlock("home.howitworks.heading"),
-    getCmsBlock("home.howitworks.subtext"),
-    getCmsBlock("home.featured.heading"),
-    getCmsBlock("home.featured.subtext"),
-    getCmsBlock("home.featured.empty"),
-    getCmsBlock("home.reviews.heading"),
-    getCmsBlock("home.reviews.subtext"),
-    getCmsBlock("home.reviews.empty"),
-    getCmsBlock("home.cta.heading"),
-    getCmsBlock("home.cta.description"),
   ]);
 
   return (
@@ -92,10 +63,13 @@ export default async function Home() {
         <section className="mx-auto max-w-6xl px-6 py-12 sm:px-10 sm:py-16">
           <header className="mb-8 text-center">
             <h2 className="font-display text-brand-purple-dark text-3xl sm:text-4xl">
-              {catHeading?.body ?? "Explora las categorías"}
+              <CmsText blockKey="home.categories.heading" fallback="Explora las categorías" />
             </h2>
             <p className="text-brand-purple-dark/70 mt-2">
-              {catSubtext?.body ?? "Imanes para cada rincón de tu vida."}
+              <CmsText
+                blockKey="home.categories.subtext"
+                fallback="Imanes para cada rincón de tu vida."
+              />
             </p>
           </header>
           <CategoryGrid categories={categories} />
@@ -106,10 +80,13 @@ export default async function Home() {
           <div className="mx-auto max-w-6xl px-6 py-12 sm:px-10 sm:py-16">
             <header className="mb-10 text-center">
               <h2 className="font-display text-brand-purple-dark text-3xl sm:text-4xl">
-                {stepsHeading?.body ?? "Así de fácil"}
+                <CmsText blockKey="home.howitworks.heading" fallback="Así de fácil" />
               </h2>
               <p className="text-brand-purple-dark/70 mt-2">
-                {stepsSubtext?.body ?? "Tu imán hecho con cariño en 3 pasos."}
+                <CmsText
+                  blockKey="home.howitworks.subtext"
+                  fallback="Tu imán hecho con cariño en 3 pasos."
+                />
               </p>
             </header>
             <HowItWorks />
@@ -121,10 +98,16 @@ export default async function Home() {
           <header className="mb-8 flex flex-wrap items-end justify-between gap-3">
             <div>
               <h2 className="font-display text-brand-purple-dark text-3xl sm:text-4xl">
-                {featuredHeading?.body ?? "Imanes que están enamorando"}
+                <CmsText
+                  blockKey="home.featured.heading"
+                  fallback="Imanes que están enamorando"
+                />
               </h2>
               <p className="text-brand-purple-dark/70 mt-2">
-                {featuredSubtext?.body ?? "Los favoritos de la temporada."}
+                <CmsText
+                  blockKey="home.featured.subtext"
+                  fallback="Los favoritos de la temporada."
+                />
               </p>
             </div>
             <Link
@@ -139,7 +122,10 @@ export default async function Home() {
           ) : (
             <div className="border-brand-purple/10 rounded-xl border bg-white px-6 py-12 text-center">
               <p className="text-brand-purple-dark/70">
-                {featuredEmpty?.body ?? "Cargando destacados pronto ✨"}
+                <CmsText
+                  blockKey="home.featured.empty"
+                  fallback="Cargando destacados pronto ✨"
+                />
               </p>
             </div>
           )}
@@ -150,10 +136,16 @@ export default async function Home() {
           <div className="mx-auto max-w-6xl px-6 py-12 sm:px-10 sm:py-16">
             <header className="mb-8 text-center">
               <h2 className="font-display text-brand-purple-dark text-3xl sm:text-4xl">
-                {reviewsHeading?.body ?? "Lo que dicen quienes ya nos compran"}
+                <CmsText
+                  blockKey="home.reviews.heading"
+                  fallback="Lo que dicen quienes ya nos compran"
+                />
               </h2>
               <p className="text-brand-purple-dark/70 mt-2">
-                {reviewsSubtext?.body ?? "Historias reales de neveras felices."}
+                <CmsText
+                  blockKey="home.reviews.subtext"
+                  fallback="Historias reales de neveras felices."
+                />
               </p>
             </header>
             {reviews.length > 0 ? (
@@ -162,7 +154,10 @@ export default async function Home() {
               <div className="mx-auto max-w-md text-center">
                 <LucamsLogo variant="full" size={120} className="mx-auto opacity-80" />
                 <p className="text-brand-purple-dark mt-4 font-semibold">
-                  {reviewsEmpty?.body ?? "Sé el primero en contarnos cómo te llegó tu imán 💜"}
+                  <CmsText
+                    blockKey="home.reviews.empty"
+                    fallback="Sé el primero en contarnos cómo te llegó tu imán 💜"
+                  />
                 </p>
                 <p className="text-brand-purple-dark/60 mt-1 text-sm">
                   Cuando los primeros clientes reseñen, aparecerán acá.
@@ -184,11 +179,13 @@ export default async function Home() {
               className="bg-brand-turquoise/30 absolute -bottom-12 -left-12 h-48 w-48 rounded-full blur-3xl"
             />
             <h2 className="font-display relative text-3xl text-white sm:text-4xl">
-              {ctaHeading?.body ?? "¿Tienes una idea distinta?"}
+              <CmsText blockKey="home.cta.heading" fallback="¿Tienes una idea distinta?" />
             </h2>
             <p className="relative mt-3 text-white/80">
-              {ctaDescription?.body ??
-                "Cotizamos a medida: regalos corporativos, eventos, bodas y proyectos especiales."}
+              <CmsText
+                blockKey="home.cta.description"
+                fallback="Cotizamos a medida: regalos corporativos, eventos, bodas y proyectos especiales."
+              />
             </p>
             <div className="relative mt-6 flex flex-wrap justify-center gap-3">
               <a

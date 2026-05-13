@@ -72,21 +72,28 @@ export function EditOverlay({ onSelect }: { onSelect: (key: string) => void }) {
 
     const handleClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement | null;
+      // Si el click es sobre nuestra propia toolbar/modal lo dejamos pasar.
+      if (target?.closest("[data-edit-mode-ui]")) return;
       const el = target?.closest<HTMLElement>("[data-cms-key]");
       if (!el) return;
-      // Bloquear navegación / submit del sitio mientras estamos editando.
+      // Bloquear TODA propagación + navegación. stopImmediatePropagation
+      // garantiza que React (que escucha en bubble) NO recibe el click,
+      // por lo que Next.Link.onClick nunca dispara router.push.
       e.preventDefault();
+      e.stopImmediatePropagation();
       e.stopPropagation();
       const key = el.getAttribute("data-cms-key");
       if (key) onSelect(key);
     };
 
+    // Capture phase + window-level para correr antes que React (que
+    // delega en root container) y antes que cualquier listener nativo.
     document.addEventListener("mousemove", handleMove, { passive: true });
-    document.addEventListener("click", handleClick, { capture: true });
+    window.addEventListener("click", handleClick, { capture: true });
 
     return () => {
       document.removeEventListener("mousemove", handleMove);
-      document.removeEventListener("click", handleClick, { capture: true } as EventListenerOptions);
+      window.removeEventListener("click", handleClick, { capture: true } as EventListenerOptions);
       if (frameRef.current !== null) cancelAnimationFrame(frameRef.current);
     };
   }, [onSelect]);

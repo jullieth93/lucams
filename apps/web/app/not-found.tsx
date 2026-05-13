@@ -8,18 +8,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { LucamsLogo } from "@/components/lucams-logo";
-import { getCmsBlock } from "@/lib/cms";
+import { CmsText } from "@/components/cms/cms-text";
 
 export const metadata: Metadata = {
   title: "Página no encontrada",
   robots: { index: false, follow: false },
 };
 
-export default async function NotFound() {
-  const [title, description] = await Promise.all([
-    getCmsBlock("error.404.title"),
-    getCmsBlock("error.404.description"),
-  ]);
+export default function NotFound() {
   return (
     <div className="bg-brand-cream flex min-h-screen flex-col items-center justify-center px-6 py-16 text-center">
       <div className="motion-safe:animate-[var(--animate-float)] motion-safe:[animation-duration:3s]">
@@ -27,11 +23,13 @@ export default async function NotFound() {
       </div>
 
       <h1 className="font-display text-brand-purple-dark mt-8 text-3xl sm:text-5xl">
-        {title?.body ?? "Esta página se nos perdió 👀"}
+        <CmsText blockKey="error.404.title" fallback="Esta página se nos perdió 👀" />
       </h1>
       <p className="text-brand-purple-dark/70 mt-3 max-w-md text-base">
-        {description?.body ??
-          "Probablemente cambiamos algo de lugar o el link tiene un typo. Te ayudamos a volver:"}
+        <CmsText
+          blockKey="error.404.description"
+          fallback="Probablemente cambiamos algo de lugar o el link tiene un typo. Te ayudamos a volver:"
+        />
       </p>
 
       <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
