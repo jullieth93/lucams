@@ -95,6 +95,23 @@ Registro cronológico de decisiones de producto y arquitectura, con el "por qué
 
 **Consecuencia:** Si Wompi falla en aprobar el comercio o se demora más de lo esperado, podemos lanzar con Mercado Pago provisionalmente sin reescribir.
 
+### Addendum 2026-05-13 — Hosted Checkout + integrity signing
+
+Tras investigar la doc oficial Wompi previo a implementar sub-bloque N, se concretan estas sub-decisiones:
+
+- **Modo de checkout: Hosted Checkout (Web Checkout)** vs Widget JS embebido. Razones:
+  - PCI-DSS scope reducido: el cliente nunca ingresa tarjeta en nuestro dominio, sólo redirección a `checkout.wompi.co`.
+  - Soporte automático de Nequi/PSE/Bancolombia/Daviplata/tarjeta sin que tengamos que cablear UI por método.
+  - Wompi mantiene la UI de pago — no hay que actualizar nuestro código si agregan métodos nuevos.
+- **Trade-off:** salimos del dominio durante el pago (UX menos cohesiva). Mitigado con redirect post-pago a `/checkout/confirmacion?id={transactionId}` + brand consistente en página de confirmación.
+- **Integrity signing SHA256 obligatorio** (`WOMPI_INTEGRITY_SECRET` separado de `WOMPI_EVENTS_SECRET`): cada link de checkout incluye una firma para evitar tampering del monto o referencia. Sin firma → checkout rechazado por Wompi.
+- **Webhook events (`WOMPI_EVENTS_SECRET`):** verificación HMAC-SHA256 separada, distinto de integrity. La doc lo marca explícito — no reusar la misma clave.
+- **Idempotencia:** `WebhookEvent` table con unique `[source='wompi', externalId]` (ya existe en schema). Cada `transaction.updated` se persiste idempotente.
+- **Status de Order:** Wompi devuelve `APPROVED/DECLINED/VOIDED/ERROR`. Mapping a nuestro state machine: APPROVED→PAID, DECLINED→FAILED, VOIDED→CANCELLED. ERROR queda PENDING_PAYMENT con flag manual-review.
+- **No verificar status solo por query param post-redirect** — siempre cruzar con `GET /transactions/{id}`. El query param es informativo, no autoritativo (alguien podría forjarlo).
+
+Verificado contra `developers.wompi.co` (doc oficial, 2026-05-13).
+
 ---
 
 ## ADR-005 — Logística: Venndelo (Coordinadora + COD)
@@ -115,6 +132,33 @@ Registro cronológico de decisiones de producto y arquitectura, con el "por qué
 - No requiere mensualidad ni costos fijos.
 
 **Consecuencia:** Acoplamiento a Coordinadora vía Venndelo. Si Venndelo cierra o cambia condiciones, hay alternativas (Servientrega, Interrapidísimo, Envía) que requerirían re-integración.
+
+### Addendum 2026-05-13 — V1 con asterisks: adapter + mock + polling 30min
+
+Tras 12 preguntas a soporte Venndelo + pruebas reales con `POST /orders/quotation` (sandbox no existe, pruebas en producción con wallet de prueba), se concretan estas sub-decisiones para el sub-bloque O:
+
+**Gaps confirmados con soporte Venndelo (2026-05-13):**
+
+1. **Sin sandbox** — sólo ambiente producción. Pruebas reales consumen wallet (~$10.900 COP por cotización Bogotá-Medellín, $0 sólo si abortamos antes de `request-pickup`).
+2. **Sin webhooks** — para clientes API NO existen. El cliente debe hacer polling de `GET /shipments/{id}` cada N tiempo para detectar transitions de status. Lo confirmaron por escrito.
+3. **Catálogo de ciudades inconsistente** — Bogotá D.C. listada como `subdivision_code: 25` (Cundinamarca) aunque DANE dice 11. Verificado por POST /orders/quotation con 11 vs 25 → mismo etag/precio, el API resuelve por `city_code` solo.
+4. **OpenAPI doc no documenta autenticación de webhooks** — moot ya que no hay webhooks para clients.
+
+**Decisión arquitectónica V1 con asterisks (3 condiciones obligatorias):**
+
+1. **Adapter `ShippingProvider` desde día 1** (interfaz Venndelo + mock + futuros). Si Venndelo discontinúa o sale un competidor con webhooks, sub-bloque de migración aislado en `features/shipping/providers/`. No volvemos a reescribir el checkout.
+2. **Mock client `MockShippingProvider`** en dev/CI con quotes deterministas + simulación de transitions automáticas. Sin esto los E2E tests gastarían wallet real cada PR.
+3. **Polling cada 30 min** (`pg_cron` job `sync-shipments.mjs`): por cada Order en status SHIPPED no entregada, llama `GET /shipments/{id}` y actualiza local. 30 min es trade-off: lo suficientemente fresco para UX ("tracking update cada 30 min" disclaimer visible al cliente) sin matar la API rate-limit.
+4. **UX disclaimer obligatorio:** "Actualizaciones de tracking cada 30 minutos. Para ver el estado en vivo, usá el link de Coordinadora." Esto setea expectativas honestas vs e-commerces con webhook real-time.
+
+**Configuración pickup verificada (2026-05-13):**
+
+- `VENNDELO_PICKUP_CITY_CODE=11001000` (DANE oficial Bogotá D.C.)
+- `VENNDELO_PICKUP_SUBDIVISION_CODE=11` (DANE departamental — Venndelo acepta tanto 11 como 25 sin error, usamos 11 por consistencia legal/DIAN)
+- `VENNDELO_PICKUP_COUNTRY_CODE=CO`
+- `VENNDELO_PICKUP_CONTACT_PHONE=...` (10 dígitos sin `+`, formato Colombia)
+
+**Cuándo reabrir esta decisión:** si Venndelo lanza webhooks para clients, si volumen justifica polling más agresivo (cada 5 min), o si aparece un competidor (Treggo, ShipBob LatAm, alguna nueva integración Coordinadora directa) con mejor relación.
 
 ---
 
@@ -824,7 +868,7 @@ El chatbot futuro consumirá `/api/cms/search?q=<pregunta>` para hacer RAG: embe
 > - ADR-027: necesidad de staging environment (re-evaluar post-lanzamiento; Vercel previews pueden cubrir el rol).
 > - ADR-028: criterio de migración Postgres `FeatureFlag` → GrowthBook u otro (cuando ocurra).
 > - ADR-032: distributed tracing / OpenTelemetry strategy (post-lanzamiento si volumen lo justifica).
-> - ADR-035: pgvector + Claude API embeddings (cuando se construya chatbot RAG, Fase 5+).
+> - ADR-036: pgvector + Claude API embeddings (cuando se construya chatbot RAG, Fase 5+).
 
 ---
 
@@ -876,3 +920,92 @@ El chatbot futuro consumirá `/api/cms/search?q=<pregunta>` para hacer RAG: embe
 - Lapicito visible en 30+ elementos puede generar ruido visual en modo edición — mitigado con opacidad 0.55 default + escala on hover
 
 **Referencias.** Commits `020eedf` (K inicial), `d69d323` (wrappers + click block), K.fix actual (lapicito persistente + welcome tip + ADR). Plan en `~/.claude/plans/lee-complemtante-el-proyecto-wiggly-mist.md` sub-bloque K.
+
+---
+
+## ADR-035 — Estudio de Personalización: react-konva + 9 kinds + 3 buckets Storage
+
+**Fecha:** 2026-05-13
+**Estado:** ✅ Aceptada
+**Sub-bloque:** M
+
+**Contexto.** ADR-013 ya estableció el Estudio de Personalización como **diferenciador #1** vs magneticas.cl (concepto). Falta concretar la arquitectura técnica: ¿qué librería de canvas?, ¿cómo modelamos los tipos de experiencia (foto-pack vs calendario vs evento)?, ¿dónde guardamos las fotos del cliente vs los renders 300 DPI?, ¿cuándo el cliente puede editar y cuándo el diseño queda inmutable?
+
+Audit del catálogo (M.1.c) reveló 9 categorías × experiencias distintas: 6 fotoimanes libres ≠ calendario mes-a-mes (12 fotos slots fijos) ≠ recordatorio bautizo (foto opcional + texto evento) ≠ imán publicitario (logo + datos contacto). Modelar todo como "Json libre" en `Product.personalizationSchema` (estado pre-M) genera deuda — cada consumidor reinventa el shape.
+
+**Decisión.**
+
+1. **Tipos fuertes con enum `PersonalizationKind`** (9 valores en Prisma):
+   - `PHOTO_PACK` — N fotos libres, posiciones flexibles en canvas
+   - `PHOTO_GRID` — N fotos en grid fijo (3×3, 1×3, etc.)
+   - `CALENDAR_PHOTO_MONTH` — 12 fotos (una por mes) + año
+   - `CALENDAR_PHOTO_HERO` — 1 foto hero + planner
+   - `EVENT_FAVOR` — texto evento (nombre, fecha, lugar) + foto opcional
+   - `BUSINESS_LOGO` — logo + datos contacto (B2B)
+   - `CUSTOM_DECOR` — composición libre foto + frase
+   - `TEXT_ONLY` — solo texto (frases motivacionales)
+   - `NONE` — NO personalizable (coleccionables, planners genéricos)
+   - Cada `Product` declara un kind, y `Product.personalizationSchema: Json?` agrega config específica del kind (`photoSlots`, `aspectRatio`, `eventFields[]`, `minQuantity`, etc.).
+   - El estudio M.3 routea a un sub-editor distinto según kind del producto al cargar `/estudio/[slug]`.
+
+2. **Librería de canvas: `react-konva` 18.x.** Razones:
+   - API React-friendly (Stage/Layer/Group/Image/Text/Rect/Shape) sin manipular `<canvas>` imperativo
+   - ~50KB gzipped — aceptable para el bundle del estudio (lazy loaded)
+   - Touch handlers nativos (pan/pinch/rotate) para mobile UX
+   - `stage.toDataURL({ pixelRatio: 6 })` para snapshot 300 DPI directo del cliente — evita round-trip a render server-side V1
+   - Maduro (>10 años), comunidad amplia, sin lock-in (`canvasData` es JSON portable)
+   - Rechazadas: Fabric.js (no React-first), tldraw (overkill), three.js (3D, no 2D)
+
+3. **Modelo `Design` (3 tablas nuevas)**:
+   - `Design` — el diseño en sí (status: DRAFT/READY/USED_IN_ORDER/ARCHIVED). `canvasData: Json` serialización Konva. `previewUrl` + `productionUrl` separados (público vs privado).
+   - `DesignAsset` — fotos subidas por el cliente (con metadata: width/height/sizeBytes/exifStripped/malwareScanned)
+   - `PersonalizationTemplate` — plantillas base (Polaroid clásico, Marco corazón, etc.) que el cliente clona como punto de partida.
+   - FKs nuevos: `CartItem.designId?` + `OrderItem.designId?` (nullable porque NONE products no tienen design)
+
+4. **3 buckets Supabase Storage** (privacy + costo separados):
+   - `customer-uploads` — privado, 10MB max, RLS owner-only via `metadata->>'owner_id' = auth.uid()`. Fotos crudas del cliente, antes de strip EXIF.
+   - `design-previews` — público, 3MB max, admin write. Thumbnails 1080×1080 PNG para mostrar en cart/order/PDP. Hot-link friendly para `next/image`.
+   - `production-assets` — privado, 30MB max, admin-only via `is_active_admin()`. PNG 300 DPI listo para impresión, solo Lucy/operaciones descarga.
+
+5. **State machine `DesignStatus`**:
+   - `DRAFT` → editable, autosave 2s debounce
+   - `READY` → snapshot generado (preview + production), inmutable
+   - `USED_IN_ORDER` → vinculado a OrderItem, congelado para siempre. `canvasData` snapshot duplicado a `OrderItem.customDesign` Json por si el Design se borra después
+   - `ARCHIVED` → soft-delete (Lucy en admin puede revivir)
+
+6. **Plantillas iniciales seedeadas** (`seed-templates.mjs`): 30 templates distribuidas por kind. `canvasData` JSON con tokens brand inline (`#7C6AAD`, etc.) + fontFamily Fredoka/Baloo 2/Inter. previewUrl Unsplash placeholder; renders reales se generan en M.7 (test E2E).
+
+**Por qué este shape (no alternativas)**:
+
+- **vs "todo Json libre"** — types fuertes evitan bugs runtime cuando el editor cambia. TypeScript autocompleta los kinds. Migrations explícitas en lugar de "campo del Json desapareció silencioso".
+- **vs "1 bucket único"** — separación por privacidad es ley (Ley 1581 — fotos del cliente son dato personal, RLS owner-only no negociable) + costo (Supabase Free tier 1GB compartido — production 300 DPI son grandes, no queremos pagar Pro solo por servirlos hot-link como si fueran preview).
+- **vs "render server-side desde día 1"** — `stage.toDataURL` cliente-side evita complejidad inicial. Si móviles low-end no aguantan pixelRatio 6, plan B documentado en M.3: Supabase Edge Function con node-canvas. Postergamos hasta tener métricas reales.
+- **vs "Estudio post-checkout (Fase 3 plan original)"** — Lucy insiste "la personalización ES el producto" → invertimos jerarquía. PDP de producto personalizable tiene CTA primaria "Personalizar tu imán →" (M.2). Checkout viene después del design READY.
+
+**Trade-offs aceptados**:
+
+- 9 kinds = 9 sub-editores especializados en M.3 (más código que un editor único). Mitigado: cada kind hereda layout base + sólo customiza panel lateral (templates + campos evento) + decoraciones canvas.
+- Canvas data como Json bloquea búsqueda SQL profunda ("dame todos los Design que usan Fredoka") — aceptable, ese caso no existe en el negocio.
+- react-konva no es SSR-friendly (`window` dependency). Editor `/estudio/[slug]/studio-editor.tsx` queda como `"use client"` con dynamic import + Suspense fallback.
+
+**Consecuencias positivas**:
+
+- Cliente ve EXACTAMENTE lo que recibe (canvas WYSIWYG + overlay realismo M.8) → menos devoluciones por "no se parecía a lo que diseñé"
+- Diferenciador #1 vs magneticas.cl que aún usa WhatsApp para personalizar (fricción + asincronía)
+- Schema-ready para Fase 5+ IA Assist (Claude API sugiere template + asignación de fotos a slots)
+
+**Consecuencias negativas**:
+
+- Stack más complejo (react-konva + sharp server + 3 buckets Storage + 9 kinds). Curva de aprendizaje para futuros contribuidores.
+- Auto-save 2s + snapshots PNG aumentan tráfico Supabase Storage. Mitigado: monitoring del bucket size, alerta si crece >5GB/mes (free tier 1GB, Pro 100GB).
+
+**Verificación M.1 (cerrado 2026-05-13):**
+
+- Schema Prisma aplicado: `Design` + `DesignAsset` + `PersonalizationTemplate` + enums (commit `f9380e0`)
+- 3 buckets Storage + RLS aplicados via `supabase/migrations/00000000000006_storage_personalization.sql` (commit `592b766`)
+- Catálogo realineado 9 cats / 49 productos con `personalizationKind` (commit `bfe0c14`)
+- 30 plantillas seedeadas (commit `80e320f`)
+
+**Cuándo reabrir esta decisión:** si react-konva queda obsoleto, si el bundle del estudio supera 200KB gzipped, si Lucy reporta UX issues que requieran cambio de paradigma (ej. preferencia por WYSIWYG sin canvas, sólo "asistente que dispara emails"), o si pgvector + RAG (ADR-036 futuro) requiere reformatear `canvasData` para hacerlo searchable.
+
+**Referencias.** Sub-bloque M en plan `~/.claude/plans/lee-complemtante-el-proyecto-wiggly-mist.md`. Commits `f9380e0`/`592b766`/`bfe0c14`/`80e320f`. Lectura recomendada antes de tocar: `packages/db/prisma/schema.prisma` (modelos Design/DesignAsset/PersonalizationTemplate), `supabase/migrations/00000000000006_storage_personalization.sql`, `packages/db/scripts/seed-templates.mjs`.
