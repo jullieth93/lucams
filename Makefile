@@ -47,6 +47,12 @@ seed-products:
 seed-templates:
 	pnpm --filter @lucams/db exec node scripts/seed-templates.mjs
 
+# ONE-SHOT (2026-05-13): actualiza /legal/* con texto Ley 2439/2024.
+# Preserva ediciones manuales (heurística: solo actualiza body que matchea seed v1).
+# Después de correr una vez, este target queda para histórico.
+update-legal-ley-2439:
+	pnpm --filter @lucams/db exec node scripts/update-legal-ley-2439.mjs
+
 test: test-unit test-e2e
 
 test-unit:

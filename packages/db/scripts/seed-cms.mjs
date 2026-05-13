@@ -35,25 +35,77 @@ const blocks = [
     category: "LEGAL",
     format: "MARKDOWN",
     description: "Aparece en /legal/privacidad y en el link del footer.",
-    body: `En **Lucams_shop** nos tomamos en serio la protección de tus datos personales en cumplimiento de la **Ley 1581 de 2012** y el **Decreto 1377 de 2013** de Colombia.
-
-Este es el aviso de privacidad versión 1. Estamos puliendo el documento final con asesoría legal para reflejar de forma precisa el responsable, las finalidades, los derechos del titular y los mecanismos de contacto.
-
-Mientras tanto, si tienes preguntas sobre cómo tratamos tus datos o quieres ejercer tus derechos como titular (acceso, rectificación, supresión, revocación), escríbenos a **hola@lucamsshop.co**.
+    body: `En **Lucams_shop** protegemos tus datos personales conforme a la **Ley 1581 de 2012** (Régimen General de Protección de Datos Personales) y el **Decreto 1377 de 2013** que la reglamenta.
 
 ## Responsable del tratamiento
 
-**Lucams_shop**, con domicilio en Bogotá, Colombia.
+**Lucams_shop** opera como emprendimiento de comercio electrónico de productos magnéticos personalizados con domicilio en **Bogotá D.C., Colombia**.
+
+Datos de contacto del responsable:
+
+- Email: **hola@lucamsshop.co**
+- WhatsApp: +57 320 887 3826
+- Sitio web: [lucamsshop.co](https://lucamsshop.co)
+
+## Datos personales que tratamos
+
+Recolectamos datos para procesar tu pedido y mejorar tu experiencia:
+
+- **Identificación:** nombre, apellidos, documento de identidad (para facturación si aplica)
+- **Contacto:** email, teléfono, dirección de envío
+- **Comerciales:** historial de pedidos, productos vistos, preferencias
+- **Técnicos:** dirección IP, navegador, dispositivo (en cumplimiento con tu consentimiento de cookies)
+- **Imágenes:** fotos que subes para personalizar productos (tratadas con confidencialidad — ver Estudio de Personalización)
+
+## Finalidades del tratamiento
+
+Tus datos se usan únicamente para:
+
+1. Procesar y entregar tus pedidos
+2. Comunicarte el estado de tus pedidos (email/WhatsApp)
+3. Cumplir obligaciones contables, tributarias y de garantía
+4. Mejorar el sitio y los productos (analítica anónima si autorizas cookies analíticas)
+5. Enviarte comunicaciones comerciales (solo si te suscribes al newsletter)
+
+**No vendemos ni compartimos tus datos con terceros para sus propios fines comerciales.**
+
+## Derechos como titular
+
+Conforme al **artículo 8 de la Ley 1581**, tienes derecho a:
+
+- **Conocer** qué datos tuyos tenemos y para qué los usamos
+- **Actualizar** o **rectificar** información inexacta
+- **Solicitar prueba** de la autorización otorgada
+- **Ser informado** sobre el uso dado a tus datos
+- **Revocar la autorización** o **solicitar la supresión** cuando no se respeten los principios legales
+- **Presentar queja ante la SIC** (Superintendencia de Industria y Comercio)
+
+Procedimiento detallado en [Hábeas Data](/legal/habeas-data).
 
 ## Subprocesadores
 
-Lista de terceros que tratan datos en nuestro nombre disponible en [/legal/subprocesadores](/legal/subprocesadores).
+Algunos servicios técnicos tratan datos en nuestro nombre (hosting, procesamiento de pagos, envío de emails, logística). Lista completa con DPA firmado en [Subprocesadores](/legal/subprocesadores).
+
+## Cookies
+
+Usamos cookies necesarias para que el sitio funcione y opcionales para mejorar la experiencia. Detalle y panel de preferencias en [Política de Cookies](/legal/cookies).
+
+## Conservación de datos
+
+Mantenemos tus datos mientras tengas cuenta activa o exista relación comercial. Datos contables se conservan por **10 años** conforme al Código de Comercio. Puedes solicitar supresión anticipada vía [Hábeas Data](/legal/habeas-data) — evaluamos cada solicitud según base legal.
+
+## Reclamos
+
+Si consideras que vulneramos tus derechos, puedes presentar queja ante la **Superintendencia de Industria y Comercio (SIC)**: [sic.gov.co](https://www.sic.gov.co/).
 
 ## Más información
 
-- [Política de Cookies](/legal/cookies)
+- [Términos y Condiciones](/legal/terminos)
 - [Hábeas Data — ejercicio de derechos](/legal/habeas-data)
-- [Términos y Condiciones](/legal/terminos)`,
+- [Política de Cookies](/legal/cookies)
+- [Subprocesadores](/legal/subprocesadores)
+
+*Versión 1.1 — actualizada el 13 de mayo de 2026. Documento sujeto a revisión por asesoría legal antes del lanzamiento productivo.*`,
   },
   {
     key: "legal.terminos",
@@ -61,28 +113,37 @@ Lista de terceros que tratan datos en nuestro nombre disponible en [/legal/subpr
     category: "LEGAL",
     format: "MARKDOWN",
     description: "Aparece en /legal/terminos y en el link del footer.",
-    body: `Al usar **lucamsshop.co** aceptas estos Términos y Condiciones de uso y compra. Los productos vendidos están sujetos a la legislación colombiana, en particular la **Ley 1480 de 2011** (Estatuto del Consumidor).
+    body: `Al usar **lucamsshop.co** aceptas estos Términos y Condiciones de uso y compra. Los productos vendidos están sujetos a la legislación colombiana, en particular la **Ley 1480 de 2011** (Estatuto del Consumidor) y la **Ley 2439 de 2024** que modifica disposiciones de comercio electrónico.
 
 ## Precios y pagos
 
 Todos los precios en pesos colombianos (COP) incluyen IVA cuando aplique. Aceptamos los siguientes medios de pago:
 
 - Tarjetas crédito/débito y PSE vía Wompi
+- Nequi, Bancolombia transferencia, Daviplata (vía Wompi)
 - Pago contraentrega con Coordinadora (donde aplique)
 
 ## Derecho de retracto
 
-Según el **artículo 47 de la Ley 1480**, tienes derecho a retractarte dentro de los **5 días hábiles** siguientes a la entrega, sin necesidad de justificar tu decisión, salvo en productos personalizados conforme a tus especificaciones. Ver [Devoluciones y Retracto](/legal/devoluciones).
+Según el **artículo 47 de la Ley 1480 de 2011**, tienes derecho a retractarte dentro de los **5 días hábiles** siguientes a la entrega, sin necesidad de justificar tu decisión. Conforme a la **Ley 2439 de 2024**, una vez ejerces el retracto y nos entregas el producto, el reembolso se efectúa dentro de **15 días calendario**.
+
+Este derecho no aplica a **productos personalizados conforme a tus especificaciones** (foto-imanes, calendarios con tus fotos, recordatorios de eventos con datos de tu evento, imanes publicitarios con tu logo, etc.) por su naturaleza única e irrepetible (Ley 1480 art. 47 numeral 1).
+
+Ver [Devoluciones y Retracto](/legal/devoluciones) para el procedimiento detallado.
 
 ## Garantía legal
 
-Conforme al **artículo 11 de la Ley 1480**, ofrecemos garantía legal de un año contado desde la fecha de entrega para defectos de fabricación o calidad. Ver [Garantías](/legal/garantias).
+Conforme al **artículo 11 de la Ley 1480**, ofrecemos garantía legal de **un año** contado desde la fecha de entrega para defectos de fabricación, materiales o funcionamiento. Ver [Garantías](/legal/garantias).
 
 ## Privacidad
 
-Tu información se trata conforme a la **Ley 1581 de 2012**. Detalles en [Aviso de Privacidad](/legal/privacidad).
+Tu información se trata conforme a la **Ley 1581 de 2012** y el **Decreto 1377 de 2013**. Detalles en [Aviso de Privacidad](/legal/privacidad).
 
-*Documento en revisión legal — versión final próximamente.*`,
+## Reclamos
+
+Si tu reclamo no se resuelve, puedes acudir a la Superintendencia de Industria y Comercio (SIC): [sic.gov.co](https://www.sic.gov.co/).
+
+*Documento en revisión por asesoría legal — versión 1.1 actualizada el 13 de mayo de 2026 con Ley 2439 de 2024.*`,
   },
   {
     key: "legal.cookies",
@@ -127,20 +188,40 @@ Tu información se trata conforme a la **Ley 1581 de 2012**. Detalles en [Aviso 
     category: "LEGAL",
     format: "MARKDOWN",
     description: "Aparece en /legal/devoluciones.",
-    body: `## Derecho de retracto (Ley 1480 art. 47)
+    body: `## Derecho de retracto (Ley 1480 art. 47 + Ley 2439 de 2024)
 
-Tienes **5 días hábiles** desde la entrega para retractarte sin justificación, EXCEPTO en productos personalizados conforme a tus especificaciones (foto-imanes, recuerdos personalizados, calendarios con tus fotos, planners con foto, etc.).
+Tienes **5 días hábiles** desde la entrega para retractarte sin justificación.
 
-## Cómo retractarte
+### Productos que NO admiten retracto
 
-1. Escríbenos a **hola@lucamsshop.co** o por WhatsApp dentro de los 5 días hábiles.
-2. El producto debe regresar en su empaque original sin uso.
-3. Coordinaremos el envío de devolución (asume el consumidor según Ley 1480).
-4. Reembolso al medio de pago original dentro de los 30 días siguientes a la recepción del producto.
+Conforme al **artículo 47 numeral 1 de la Ley 1480**, no se acepta retracto sobre productos personalizados conforme a tus especificaciones:
+
+- Foto-imanes con tus fotos
+- Calendarios con tus 12 fotos
+- Recordatorios de eventos con datos personalizados (cumpleaños, bautizo, matrimonio, etc.)
+- Imanes publicitarios con tu logo o información empresarial
+- Cualquier producto donde tú hayas elegido la imagen, texto, layout o composición final
+
+Esta excepción está claramente identificada en el catálogo: cualquier producto con la etiqueta "Personalizable" cae aquí.
+
+## Cómo retractarte (productos NO personalizados)
+
+1. **Escríbenos** a **hola@lucamsshop.co** o por WhatsApp dentro de los 5 días hábiles desde que recibiste el producto.
+2. **Indica el medio de devolución** elegido (el mismo medio de pago original o cuenta bancaria).
+3. **Devuelve el producto** en su empaque original sin uso (el costo del envío de devolución lo asume el consumidor según Ley 1480 art. 47).
+4. **Reembolso** dentro de **15 días calendario** desde el momento en que cumpliste los requisitos (informaste el medio + devolviste el producto), conforme a la **Ley 2439 de 2024**.
+
+Este plazo de 15 días calendario reemplaza el anterior de 30 días hábiles previsto en la Ley 1480 original.
 
 ## Garantía legal
 
-Para defectos de fabricación, ver [Garantías](/legal/garantias).`,
+Para defectos de fabricación o calidad (no retracto), ver [Garantías](/legal/garantias). El plazo y procedimiento es distinto.
+
+## Reclamos
+
+Si no quedas conforme con nuestra respuesta puedes acudir a la Superintendencia de Industria y Comercio (SIC): [sic.gov.co](https://www.sic.gov.co/).
+
+*Actualizado 13 de mayo de 2026 — Ley 2439 de 2024.*`,
   },
   {
     key: "legal.garantias",
