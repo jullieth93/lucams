@@ -63,25 +63,23 @@ async function checkService(
 }
 
 export default async function StatusPage() {
-  const [db, web] = await Promise.all([
-    checkService("Base de datos (Postgres)", "Catálogo, pedidos, contenido CMS", "/api/health/db"),
+  const [web, db, storage, resend] = await Promise.all([
     checkService("Sitio web (Vercel)", "Storefront público y admin", "/api/health"),
+    checkService("Base de datos (Postgres)", "Catálogo, pedidos, contenido CMS", "/api/health/db"),
+    checkService(
+      "Almacenamiento de imágenes (Supabase Storage)",
+      "Fotos de productos",
+      "/api/health/storage",
+    ),
+    checkService(
+      "Envío de emails (Resend)",
+      "Confirmaciones, OTP, recuperación de password",
+      "/api/health/resend",
+    ),
   ]);
 
-  // Servicios pendientes — sub-bloque F los implementa.
+  // Wompi se mide cuando la integración esté productiva (Fase 3).
   const pending: ServiceStatus[] = [
-    {
-      name: "Almacenamiento de imágenes (Supabase Storage)",
-      description: "Fotos de productos",
-      status: "pending",
-      detail: "Healthcheck llega en sub-bloque F",
-    },
-    {
-      name: "Envío de emails (Resend)",
-      description: "Confirmaciones, OTP, recuperación de password",
-      status: "pending",
-      detail: "Healthcheck llega en sub-bloque F",
-    },
     {
       name: "Pagos (Wompi)",
       description: "Procesamiento de tarjetas y PSE",
@@ -90,7 +88,7 @@ export default async function StatusPage() {
     },
   ];
 
-  const services: ServiceStatus[] = [db, web, ...pending];
+  const services: ServiceStatus[] = [web, db, storage, resend, ...pending];
   const allOk = services.every((s) => s.status === "ok" || s.status === "pending");
   const anyDown = services.some((s) => s.status === "down");
 

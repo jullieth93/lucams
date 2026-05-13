@@ -176,6 +176,26 @@ export default async function AdminDashboardPage() {
               </Card>
             </Link>
 
+            <Link
+              href="/admin/auditoria"
+              className="block rounded-lg transition-shadow hover:shadow-md"
+            >
+              <Card className="h-full border-slate-200 hover:border-slate-300">
+                <CardHeader>
+                  <CardTitle className="text-base text-slate-900">Auditoría →</CardTitle>
+                  <CardDescription className="text-slate-600">
+                    Quién cambió qué cuándo. Registro inmutable de todas las acciones admin
+                    (crear/editar/borrar productos, contenido CMS, settings, logins).
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <span className="inline-block rounded bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
+                    Disponible
+                  </span>
+                </CardContent>
+              </Card>
+            </Link>
+
             <Card className="border-slate-200">
               <CardHeader>
                 <CardTitle className="text-base text-slate-900">Órdenes</CardTitle>

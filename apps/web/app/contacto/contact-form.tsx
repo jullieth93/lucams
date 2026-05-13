@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { TurnstileWidget } from "@/components/turnstile-widget";
 import { submitContactAction } from "@/features/support/actions";
 import { SUBJECT_LABELS, SUPPORT_SUBJECTS } from "@/features/support/schemas";
 
@@ -130,6 +131,10 @@ export function ContactForm() {
         {state?.fieldErrors?.message && (
           <p className="text-xs text-red-700">{state.fieldErrors.message[0]}</p>
         )}
+      </div>
+
+      <div className="pt-1">
+        <TurnstileWidget size="flexible" />
       </div>
 
       <Button

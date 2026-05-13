@@ -12,6 +12,7 @@ import { useActionState, useEffect, useId, useRef } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { TurnstileWidget } from "@/components/turnstile-widget";
 import { subscribeNewsletterAction, type NewsletterFormState } from "@/features/newsletter/actions";
 
 export function NewsletterForm({
@@ -98,6 +99,9 @@ export function NewsletterForm({
           (Ley 1581).
         </span>
       </label>
+      <div className="mt-2">
+        <TurnstileWidget size="compact" theme={isDark ? "dark" : "light"} />
+      </div>
     </form>
   );
 }

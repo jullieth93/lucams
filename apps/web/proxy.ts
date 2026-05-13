@@ -36,8 +36,18 @@ const SECURITY_HEADERS: Record<string, string> = {
   "X-Frame-Options": "DENY",
   "X-Content-Type-Options": "nosniff",
   "Referrer-Policy": "strict-origin-when-cross-origin",
-  "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+  // Permissions-Policy: deny capacidades por default. /estudio/* (Fase 3
+  // editor canvas) podrá necesitar camera — se override allí.
+  "Permissions-Policy":
+    "camera=(), microphone=(), geolocation=(), payment=(), usb=(), magnetometer=(), accelerometer=(), gyroscope=()",
   "X-DNS-Prefetch-Control": "on",
+  // Cross-Origin isolation: COOP same-origin protege contra cross-window
+  // attacks (window.opener exploits). CORP same-site previene cross-origin
+  // resource leak. COEP credentialless permite imágenes Unsplash sin
+  // crossorigin attr (vs require-corp que rompería el catálogo de fotos
+  // hot-linked).
+  "Cross-Origin-Opener-Policy": "same-origin",
+  "Cross-Origin-Resource-Policy": "same-site",
 };
 
 // `upgrade-insecure-requests` solo en producción/preview (donde Vercel
@@ -74,8 +84,25 @@ function isOriginAllowed(origin: string): boolean {
 
 export async function proxy(request: NextRequest) {
   const requestId = crypto.randomUUID();
-  const isApi = request.nextUrl.pathname.startsWith("/api/");
+  const path = request.nextUrl.pathname;
+  const isApi = path.startsWith("/api/");
   const origin = request.headers.get("origin");
+
+  // Maintenance gate: env flag NEXT_PUBLIC_MAINTENANCE_MODE=1 redirige
+  // todo el tráfico público a /maintenance. Excepciones:
+  //  - /maintenance (la misma página)
+  //  - /admin/* (admins pueden seguir trabajando)
+  //  - /api/health/* (healthchecks externos siguen funcionando)
+  //  - /_next assets (Next infrastructure)
+  if (
+    process.env.NEXT_PUBLIC_MAINTENANCE_MODE === "1" &&
+    !path.startsWith("/maintenance") &&
+    !path.startsWith("/admin") &&
+    !path.startsWith("/api/health") &&
+    !path.startsWith("/_next")
+  ) {
+    return NextResponse.redirect(new URL("/maintenance", request.url));
+  }
 
   if (isApi && origin && !isOriginAllowed(origin)) {
     return new NextResponse("Forbidden", {
@@ -118,7 +145,6 @@ export async function proxy(request: NextRequest) {
   // que NO se sirvan páginas admin a anónimos.
   //
   // Excepción: /admin/login es público (es donde el user se autentica).
-  const path = request.nextUrl.pathname;
   const isAdminPath = path.startsWith("/admin") && !path.startsWith("/admin/login");
   if (isAdminPath && !user) {
     const redirectUrl = new URL("/admin/login", request.url);

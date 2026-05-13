@@ -25,6 +25,7 @@ import { rateLimit } from "@/lib/rate-limit";
 import { emailKey, hashEmail, ipKey } from "@/lib/rate-limit-keys";
 import { logger } from "@/lib/logger";
 import { getCurrentCustomer } from "@/lib/auth";
+import { verifyTurnstileToken } from "@/lib/turnstile";
 import { SupportTicketSchema, type SupportTicketInput } from "./schemas";
 
 export type SupportActionState =
@@ -57,6 +58,17 @@ export async function submitContactAction(
   const hdrs = await headers();
   const ip = hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
   const userAgent = hdrs.get("user-agent") ?? null;
+
+  // Turnstile: bloquea bots. En dev sin secret pasa automáticamente.
+  const turnstileToken = String(formData.get("cf-turnstile-response") ?? "");
+  const turnstile = await verifyTurnstileToken(turnstileToken, ip);
+  if (!turnstile.success) {
+    logger.warn({ event: "support.ticket.turnstile_failed", ip, reason: turnstile.reason });
+    return {
+      ok: false,
+      error: "Validación anti-bot falló. Recargá la página e intentá de nuevo.",
+    };
+  }
 
   // Rate-limit: 5/día por IP + 3/día por email hash. 24h window.
   const [byIp, byEmail] = await Promise.all([

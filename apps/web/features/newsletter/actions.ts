@@ -14,6 +14,7 @@ import { subscribeNewsletter } from "@/features/newsletter/service";
 import { logger } from "@/lib/logger";
 import { rateLimit } from "@/lib/rate-limit";
 import { emailKey, ipKey } from "@/lib/rate-limit-keys";
+import { verifyTurnstileToken } from "@/lib/turnstile";
 
 export type NewsletterFormState = {
   ok?: boolean;
@@ -41,6 +42,14 @@ export async function subscribeNewsletterAction(
   const ip = hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
   const ua = hdrs.get("user-agent") ?? null;
   const isProd = process.env.VERCEL_ENV === "production";
+
+  // Turnstile (anti-bot). En dev sin secret pasa automáticamente.
+  const turnstileToken = String(formData.get("cf-turnstile-response") ?? "");
+  const turnstile = await verifyTurnstileToken(turnstileToken, ip);
+  if (!turnstile.success) {
+    logger.warn({ event: "newsletter.turnstile_failed", ip, reason: turnstile.reason });
+    return { error: "Validación anti-bot falló. Recargá la página e intentá de nuevo." };
+  }
 
   // Rate-limit: 5/hora por IP (anti-spam), 2/hora por email (re-suscripción).
   const rlIp = await rateLimit(ipKey("newsletter", ip), isProd ? 5 : 20, 60 * 60);
