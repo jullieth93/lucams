@@ -1,21 +1,19 @@
 /*
- * Zod schemas — Estudio de Personalización (M.3).
+ * Zod schemas — Estudio de Personalización (M.3.b v2).
  *
- * Las shapes están alineadas con los modelos Prisma Design/DesignAsset
- * y el formato `canvasData` definido en seed-templates.mjs.
+ * Coexisten 2 versiones de canvasData:
+ *   - V1 (CanvasDataV1Schema)   — legacy M.3, 1 image-placeholder por design
+ *   - V2 (CanvasDataV2Schema)   — actual M.3.b, slot-por-imán
  *
- * `CanvasDataSchema` es deliberadamente laxo en `layers[].type` (passthrough)
- * porque el editor agregará tipos de capa nuevos a lo largo del tiempo
- * (sticker, decoration, mask, etc.) sin romper validación. Lo crítico es
- * que `stage` esté presente y `layers` sea array.
+ * `CanvasDataSchema` es la unión discriminada por `version`. Server acepta
+ * ambas; el service layer migra V1→V2 automáticamente al cargar/guardar.
  */
 
 import { z } from "zod";
 
-// ──────────── Canvas data ────────────
-//
-// Shape mínimo. Layers son objetos arbitrarios; el editor cliente sabe
-// renderearlos según su `type`. Server NO interpreta capas — solo persiste.
+// ──────────────────────────────────────────────────────────────────
+//  Canvas V1 — plantilla unitaria / legacy
+// ──────────────────────────────────────────────────────────────────
 
 export const StageSchema = z.object({
   width: z.number().int().min(100).max(8000),
@@ -31,17 +29,69 @@ export const CanvasLayerSchema = z
   })
   .catchall(z.unknown());
 
-export const CanvasDataSchema = z
+export const CanvasDataV1Schema = z
   .object({
-    version: z.number().int().min(1).default(1),
+    version: z.literal(1),
     stage: StageSchema,
     layers: z.array(CanvasLayerSchema).max(200),
   })
-  .catchall(z.unknown()); // permite extras: grid, perMonth, etc.
+  .catchall(z.unknown());
+
+export type CanvasDataV1 = z.infer<typeof CanvasDataV1Schema>;
+
+// ──────────────────────────────────────────────────────────────────
+//  Canvas V2 — multi-slot
+// ──────────────────────────────────────────────────────────────────
+
+export const PhotoFilterPresetSchema = z.enum(["vintage", "vivid", "bw", "pastel", "polaroid"]);
+
+export const SlotStateSchema = z.object({
+  slotIndex: z.number().int().min(0).max(99),
+  assetId: z.string().nullable(),
+  assetUrl: z.string().nullable(),
+  // Per-slot overrides — todos opcionales y validados con rangos sanos.
+  cropX: z.number().optional(),
+  cropY: z.number().optional(),
+  cropW: z.number().optional(),
+  cropH: z.number().optional(),
+  brightness: z.number().min(-100).max(100).optional(),
+  contrast: z.number().min(-100).max(100).optional(),
+  saturation: z.number().min(-100).max(100).optional(),
+  rotation: z.number().min(-180).max(180).optional(),
+  filter: PhotoFilterPresetSchema.nullable().optional(),
+  textOverride: z.string().max(500).optional(),
+});
+
+export const GridLayoutSchema = z.object({
+  cols: z.number().int().min(1).max(20),
+  rows: z.number().int().min(1).max(20),
+  gap: z.number().int().min(0).max(64),
+});
+
+export const CanvasDataV2Schema = z.object({
+  version: z.literal(2),
+  unitTemplate: CanvasDataV1Schema,
+  slotCount: z.number().int().min(1).max(50), // soporte hasta 50 slots (calendarios + extreme cases)
+  slots: z.array(SlotStateSchema).max(50),
+  gridLayout: GridLayoutSchema,
+});
+
+export type CanvasDataV2 = z.infer<typeof CanvasDataV2Schema>;
+
+// ──────────────────────────────────────────────────────────────────
+//  Unión discriminada V1 | V2
+// ──────────────────────────────────────────────────────────────────
+
+export const CanvasDataSchema = z.discriminatedUnion("version", [
+  CanvasDataV1Schema,
+  CanvasDataV2Schema,
+]);
 
 export type CanvasData = z.infer<typeof CanvasDataSchema>;
 
-// ──────────── Create draft ────────────
+// ──────────────────────────────────────────────────────────────────
+//  Server Action inputs
+// ──────────────────────────────────────────────────────────────────
 
 export const CreateDraftDesignSchema = z.object({
   productId: z.string().min(1),
@@ -49,45 +99,86 @@ export const CreateDraftDesignSchema = z.object({
 });
 export type CreateDraftDesignInput = z.infer<typeof CreateDraftDesignSchema>;
 
-// ──────────── Save canvas (auto-save 2s debounce desde cliente) ────────────
-
 export const SaveCanvasSchema = z.object({
   designId: z.string().min(1),
   canvasData: CanvasDataSchema,
 });
 export type SaveCanvasInput = z.infer<typeof SaveCanvasSchema>;
 
-// ──────────── Finalize (snapshot READY) ────────────
+// ──────────────────────── Finalize (M.3.b — N PNGs por producto) ────────────────────────
+//
+// V2 emite múltiples productionDataUrls (uno por imán físico) en lugar de 1.
+// El cliente genera N snapshots via stage.toDataURL() por cada slot llenado
+// y los envía juntos al server.
+//
+// `previewDataUrl` es el snapshot del grid completo (preview compositado)
+// usado en cart/order para mostrar al cliente "esto es lo que vas a recibir".
 
-// Las dataURL pueden ser muy grandes (~2-4MB en base64 a 1080×1080 PNG +
-// 6-12MB a 6480×6480). Validamos el prefijo data:image/(png|webp) y limit
-// de tamaño general (20MB base64 = ~15MB binario).
 const DATA_URL_RE = /^data:image\/(png|webp|jpeg);base64,/;
+const PREVIEW_MAX_BYTES = 8 * 1024 * 1024;       // 8 MB base64 ≈ 6 MB binario
+const PRODUCTION_MAX_BYTES = 20 * 1024 * 1024;   // 20 MB base64 por slot
+const MAX_TOTAL_PRODUCTION_BYTES = 120 * 1024 * 1024; // 120 MB total (20 slots × ~6 MB)
 
-export const FinalizeDesignSchema = z.object({
-  designId: z.string().min(1),
-  previewDataUrl: z
-    .string()
-    .max(8 * 1024 * 1024) // 8MB base64 ≈ 6MB binario para preview 1080×1080
-    .regex(DATA_URL_RE, "Formato inválido (debe ser data:image/png|webp)"),
-  productionDataUrl: z
-    .string()
-    .max(20 * 1024 * 1024) // 20MB base64 ≈ 15MB binario para 300 DPI render
-    .regex(DATA_URL_RE),
-});
+const DataUrlSchema = z
+  .string()
+  .max(PRODUCTION_MAX_BYTES)
+  .regex(DATA_URL_RE, "Formato inválido (debe ser data:image/png|webp|jpeg)");
+
+export const FinalizeDesignSchema = z
+  .object({
+    designId: z.string().min(1),
+    /** Preview compositado del grid (1080×1080 PNG típico). */
+    previewDataUrl: z.string().max(PREVIEW_MAX_BYTES).regex(DATA_URL_RE),
+    /**
+     * Uno por slot. Array de longitud === Design.slotCount. Cada elemento
+     * es PNG 300 DPI del slot individual (para producción).
+     */
+    productionDataUrls: z.array(DataUrlSchema).min(1).max(50),
+  })
+  .refine(
+    (data) => data.productionDataUrls.reduce((sum, url) => sum + url.length, 0) <= MAX_TOTAL_PRODUCTION_BYTES,
+    {
+      message: `Tamaño total de producción excede ${MAX_TOTAL_PRODUCTION_BYTES / 1024 / 1024} MB`,
+      path: ["productionDataUrls"],
+    },
+  );
 export type FinalizeDesignInput = z.infer<typeof FinalizeDesignSchema>;
 
-// ──────────── Upload asset ────────────
+// ──────────────────────── Upload asset ────────────────────────
 
 const ALLOWED_MIME = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"] as const;
 
 export const UploadAssetMetadataSchema = z.object({
-  designId: z.string().min(1).optional(), // null si el cliente sube antes de crear el draft
+  designId: z.string().min(1).optional(),
   mimeType: z.enum(ALLOWED_MIME),
   sizeBytes: z
     .number()
     .int()
     .min(1)
-    .max(10 * 1024 * 1024), // 10 MB max
+    .max(10 * 1024 * 1024),
 });
 export type UploadAssetMetadata = z.infer<typeof UploadAssetMetadataSchema>;
+
+// ──────────────────────── Product personalization schema ────────────────────────
+//
+// Validar el shape de `Product.personalizationSchema` (JSON libre) al usarlo.
+// El editor lo lee para configurar el grid de slots + indicadores de tamaño.
+
+export const PhotoProductConfigSchema = z.object({
+  photoSlots: z.number().int().min(1).max(50),
+  aspectRatio: z.string().optional(),
+  sizeCm: z.string().optional(),
+  shape: z.enum(["rectangle", "circle", "heart", "custom"]).optional(),
+  minQuantity: z.number().int().min(1).optional(),
+});
+export type PhotoProductConfig = z.infer<typeof PhotoProductConfigSchema>;
+
+/**
+ * Helper: parse personalizationSchema con default seguro (1 slot) si no
+ * matchea el shape esperado. Usado por el editor para fallback graceful.
+ */
+export function parsePhotoProductConfig(raw: unknown): PhotoProductConfig {
+  const parsed = PhotoProductConfigSchema.safeParse(raw);
+  if (parsed.success) return parsed.data;
+  return { photoSlots: 1 };
+}

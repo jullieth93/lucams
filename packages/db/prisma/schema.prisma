@@ -883,12 +883,19 @@ model Design {
   // canvasData: Konva stage serialization. Estructura validada por features/
   // personalization/schemas.ts con Zod en cada save.
   canvasData    Json
-  // previewUrl: snapshot 1080×1080 PNG público (Supabase Storage bucket
-  // design-previews). Visible en cart/order display al cliente.
+  // previewUrl: snapshot compositado del grid completo (PNG público, bucket
+  // design-previews). Visible en cart/order display al cliente. En V1
+  // (legacy M.3) es snapshot 1080×1080 single. En V2 (M.3.b multi-slot) es
+  // mosaico del grid completo.
   previewUrl    String?
-  // productionUrl: PNG 300 DPI privado (bucket production-assets). Admin
-  // descarga para imprenta. NULL hasta status=READY o USED_IN_ORDER.
+  // productionUrl: V1 legacy single PNG 300 DPI privado. Para V2 está null
+  // y la info de producción vive en productionUrls[]. Mantener nullable
+  // por retrocompat — designs M.3 existentes siguen siendo descargables.
   productionUrl String?
+  // productionUrls: V2 (M.3.b) — N paths privados en bucket production-assets,
+  // uno por imán físico del pack. Admin descarga el ZIP de N PNGs 300 DPI
+  // para imprenta. Empty array hasta status=READY o USED_IN_ORDER.
+  productionUrls String[]                 @default([])
   // metadata: selección plantilla + marco + color + ajustes filtros foto-edit.
   metadata      Json                     @default("{}")
   // shareToken: link público read-only para colaboración (sub-bloque K+M

@@ -104,11 +104,18 @@ export async function saveCanvasAction(input: {
 }
 
 // ──────────── Finalize (READY snapshot) ────────────
+//
+// V2: el cliente envía 1 preview compositado del grid + N production snapshots
+// (uno por slot llenado). Server valida que productionDataUrls.length matchea
+// el slotCount del Design + que todos los slots tienen assetUrl.
+//
+// El error code `INCOMPLETE_SLOTS` permite al cliente mostrar UI específica
+// (modal listando slots vacíos) en lugar de error genérico.
 
 export async function finalizeDesignAction(input: {
   designId: string;
   previewDataUrl: string;
-  productionDataUrl: string;
+  productionDataUrls: string[];
 }) {
   const parsed = FinalizeDesignSchema.safeParse(input);
   if (!parsed.success) {
@@ -119,15 +126,23 @@ export async function finalizeDesignAction(input: {
     const design = await finalizeDesign({
       designId: parsed.data.designId,
       previewDataUrl: parsed.data.previewDataUrl,
-      productionDataUrl: parsed.data.productionDataUrl,
+      productionDataUrls: parsed.data.productionDataUrls,
       customerId,
       sessionId,
     });
-    return { ok: true as const, previewUrl: design.previewUrl, status: design.status };
+    return {
+      ok: true as const,
+      previewUrl: design.previewUrl,
+      status: design.status,
+      productionSlotsCount: design.productionUrls.length,
+    };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    logger.warn({ event: "design.finalize.fail", err: msg }, "finalizeDesign failed");
-    return { ok: false as const, code: "INTERNAL" as const, message: msg };
+    const code: "INCOMPLETE_SLOTS" | "INTERNAL" = msg.startsWith("INCOMPLETE_SLOTS")
+      ? "INCOMPLETE_SLOTS"
+      : "INTERNAL";
+    logger.warn({ event: "design.finalize.fail", code, err: msg }, "finalizeDesign failed");
+    return { ok: false as const, code, message: msg };
   }
 }
 
