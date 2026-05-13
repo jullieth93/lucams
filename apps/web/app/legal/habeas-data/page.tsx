@@ -1,8 +1,35 @@
 import type { Metadata } from "next";
+import { CmsMarkdown } from "@/components/cms/cms-markdown";
 
 export const metadata: Metadata = {
   title: "Hábeas Data",
 };
+
+const FALLBACK = `Como titular de datos personales, conforme a la **Ley 1581 de 2012** tienes los siguientes derechos sobre la información que Lucams_shop ha recolectado de ti.
+
+## Tus derechos
+
+- **Acceso:** conocer qué datos tuyos tenemos.
+- **Rectificación:** corregir datos inexactos o desactualizados.
+- **Actualización:** agregar información faltante.
+- **Supresión:** eliminar datos cuando no haya base legal para conservarlos.
+- **Revocación de la autorización:** retirar tu consentimiento en cualquier momento (newsletter, marketing, etc.).
+- **Reclamo ante la SIC:** si consideras que vulneramos tus derechos puedes presentar queja ante la Superintendencia de Industria y Comercio.
+
+## Cómo ejercer tus derechos
+
+Escríbenos a **hola@lucamsshop.co** indicando:
+
+1. Tu nombre completo y documento de identidad
+2. Email con el que te registraste
+3. El derecho que deseas ejercer
+4. Una breve descripción de tu solicitud
+
+Tenemos hasta **10 días hábiles** para responder consultas y **15 días hábiles** para reclamos. Si necesitamos más tiempo te avisaremos.
+
+## Reclamo ante la SIC
+
+Si no estás conforme con nuestra respuesta puedes acudir a la Superintendencia de Industria y Comercio: [sic.gov.co](https://www.sic.gov.co).`;
 
 export default function Page() {
   return (
@@ -11,55 +38,7 @@ export default function Page() {
       <p className="text-brand-purple-dark/60 mt-2 text-sm">
         Última actualización: 2026-05-12 · Versión v1
       </p>
-      <p className="mt-6">
-        Como titular de datos personales, conforme a la <strong>Ley 1581 de 2012</strong> tienes los
-        siguientes derechos sobre la información que Lucams_shop ha recolectado de ti:
-      </p>
-      <h2>Tus derechos</h2>
-      <ul>
-        <li>
-          <strong>Acceso:</strong> conocer qué datos tuyos tenemos.
-        </li>
-        <li>
-          <strong>Rectificación:</strong> corregir datos inexactos o desactualizados.
-        </li>
-        <li>
-          <strong>Actualización:</strong> agregar información faltante.
-        </li>
-        <li>
-          <strong>Supresión:</strong> eliminar datos cuando no haya base legal para conservarlos.
-        </li>
-        <li>
-          <strong>Revocación de la autorización:</strong> retirar tu consentimiento en cualquier
-          momento (newsletter, marketing, etc.).
-        </li>
-        <li>
-          <strong>Reclamo ante la SIC:</strong> si consideras que vulneramos tus derechos puedes
-          presentar queja ante la Superintendencia de Industria y Comercio.
-        </li>
-      </ul>
-      <h2>Cómo ejercer tus derechos</h2>
-      <p>
-        Escríbenos a <a href="mailto:hola@lucamsshop.co">hola@lucamsshop.co</a> indicando:
-      </p>
-      <ol>
-        <li>Tu nombre completo y documento de identidad</li>
-        <li>Email con el que te registraste</li>
-        <li>El derecho que deseas ejercer</li>
-        <li>Una breve descripción de tu solicitud</li>
-      </ol>
-      <p>
-        Tenemos hasta <strong>10 días hábiles</strong> para responder consultas y{" "}
-        <strong>15 días hábiles</strong> para reclamos. Si necesitamos más tiempo te avisaremos.
-      </p>
-      <h2>Reclamo ante la SIC</h2>
-      <p>
-        Si no estás conforme con nuestra respuesta puedes acudir a la Superintendencia de Industria
-        y Comercio:{" "}
-        <a href="https://www.sic.gov.co" target="_blank" rel="noopener noreferrer">
-          sic.gov.co
-        </a>
-      </p>
+      <CmsMarkdown blockKey="legal.habeas-data" fallback={FALLBACK} className="mt-6" />
     </>
   );
 }

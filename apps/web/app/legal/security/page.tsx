@@ -1,8 +1,35 @@
 import type { Metadata } from "next";
+import { CmsMarkdown } from "@/components/cms/cms-markdown";
 
 export const metadata: Metadata = {
   title: "Seguridad",
 };
+
+const FALLBACK = `## Divulgación responsable
+
+Si encontraste una vulnerabilidad de seguridad en Lucams_shop, te agradecemos reportarla antes de divulgarla públicamente. Escríbenos a **security@lucamsshop.co** con:
+
+- Descripción del problema
+- Pasos para reproducir
+- Impacto potencial
+- Tu contacto para coordinar
+
+Nos comprometemos a:
+
+- Confirmar recepción en máximo **3 días hábiles**
+- Mantener tu identidad confidencial si lo prefieres
+- Acreditarte públicamente al cerrar el reporte (si lo deseas)
+- **NO** emprender acciones legales contra investigadores que actúen de buena fe
+
+## Alcance
+
+**En scope:** lucamsshop.co y sus subdominios.
+
+**Fuera de scope:** vulnerabilidades sociales (phishing a empleados), DoS volumétricos, problemas en proveedores de terceros (reportarlos a su programa).
+
+## security.txt
+
+Archivo machine-readable disponible en [/.well-known/security.txt](/.well-known/security.txt).`;
 
 export default function Page() {
   return (
@@ -11,39 +38,7 @@ export default function Page() {
       <p className="text-brand-purple-dark/60 mt-2 text-sm">
         Última actualización: 2026-05-12 · Versión v1
       </p>
-      <h2>Divulgación responsable</h2>
-      <p>
-        Si encontraste una vulnerabilidad de seguridad en Lucams_shop, te agradecemos reportarla
-        antes de divulgarla públicamente. Escríbenos a{" "}
-        <a href="mailto:security@lucamsshop.co">security@lucamsshop.co</a> con:
-      </p>
-      <ul>
-        <li>Descripción del problema</li>
-        <li>Pasos para reproducir</li>
-        <li>Impacto potencial</li>
-        <li>Tu contacto para coordinar</li>
-      </ul>
-      <p>Nos comprometemos a:</p>
-      <ul>
-        <li>Confirmar recepción en máximo 3 días hábiles</li>
-        <li>Mantener tu identidad confidencial si lo prefieres</li>
-        <li>Acreditarte públicamente al cerrar el reporte (si lo deseas)</li>
-        <li>NO emprender acciones legales contra investigadores que actúen de buena fe</li>
-      </ul>
-      <h2>Alcance</h2>
-      <p>
-        En scope: lucamsshop.co y sus subdominios. Fuera de scope: vulnerabilidades sociales
-        (phishing a empleados), DoS volumétricos, problemas en proveedores de terceros (reportarlos
-        a su programa).
-      </p>
-      <h2>security.txt</h2>
-      <p>
-        Archivo machine-readable disponible en{" "}
-        <a href="/.well-known/security.txt" target="_blank">
-          /.well-known/security.txt
-        </a>
-        .
-      </p>
+      <CmsMarkdown blockKey="legal.security" fallback={FALLBACK} className="mt-6" />
     </>
   );
 }

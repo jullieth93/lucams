@@ -10,7 +10,6 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import {
   Mail,
-  Phone,
   Globe,
   Hash,
   Clock,
