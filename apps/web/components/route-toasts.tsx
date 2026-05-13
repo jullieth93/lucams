@@ -42,6 +42,7 @@ const SUCCESS_MESSAGES: Record<string, { msg: string; href?: string; cta?: strin
     href: "/carrito",
     cta: "Ver carrito",
   },
+  personalized: { msg: "💜 Tu diseño está listo y agregado al carrito" },
   removed: { msg: "Producto removido del carrito." },
   subscribed: { msg: "¡Suscrito al newsletter! Te avisamos del lanzamiento ✨" },
   saved: { msg: "Guardado ✓" },

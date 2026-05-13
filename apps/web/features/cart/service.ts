@@ -35,6 +35,9 @@ export type CartLineItem = {
   unitPrice: number;
   lineTotal: number;
   imageUrl: string | null;
+  designId: string | null;
+  /** Si designId está set, este es el previewUrl del Design (1080×1080 PNG público). */
+  designPreviewUrl: string | null;
 };
 
 export type CartDetail = {
@@ -96,6 +99,13 @@ const cartItemsInclude = {
           },
         },
       },
+      design: {
+        select: {
+          id: true,
+          previewUrl: true,
+          status: true,
+        },
+      },
     },
   },
 };
@@ -147,7 +157,11 @@ function toDetail(cart: RawCart): CartDetail {
       qty: i.qty,
       unitPrice: i.unitPrice,
       lineTotal: i.qty * i.unitPrice,
-      imageUrl: i.variant.product.images[0] ?? null,
+      // Si CartItem tiene designId vinculado, mostramos el preview del Design
+      // en vez de la imagen genérica del producto. Mejora el "WYSIWYG" del cart.
+      imageUrl: i.design?.previewUrl ?? i.variant.product.images[0] ?? null,
+      designId: i.designId,
+      designPreviewUrl: i.design?.previewUrl ?? null,
     }));
   return {
     cartId: cart.id,
@@ -232,6 +246,91 @@ export async function addProductToCart(opts: {
   return toDetail(reloaded!);
 }
 
+// ─────────────────────────────────────────────────────────────────────
+// Add personalized item — Estudio "¡Listo!" → cart
+// ─────────────────────────────────────────────────────────────────────
+//
+// Una vez Design.status=READY, el cliente lo agrega al carrito. Diferencias
+// vs addProductToCart:
+//   - Se requiere designId (estado READY validado).
+//   - Cada Design es UN cart item — no agrupar por variantId. Si el cliente
+//     agrega "Pack 6 fotoimanes" personalizado dos veces, son dos diseños
+//     distintos = dos CartItems. Si quiere 2 copias del mismo diseño,
+//     ajusta qty del CartItem existente.
+//   - Validación de ownership del Design ya la hizo el Server Action que
+//     llama esto. Aquí solo verificamos status READY.
+
+export async function addPersonalizedToCart(opts: {
+  sessionId: string;
+  customerId: string | null;
+  designId: string;
+  qty: number;
+}): Promise<CartDetail> {
+  if (opts.qty < 1 || opts.qty > MAX_QTY_PER_ITEM) {
+    throw new CartError("QTY_INVALID");
+  }
+
+  // Fetch design + product + default variant. Validar status READY.
+  const design = await prisma.design.findUnique({
+    where: { id: opts.designId },
+    select: {
+      id: true,
+      status: true,
+      product: {
+        select: {
+          id: true,
+          basePrice: true,
+          isActive: true,
+          deletedAt: true,
+          variants: {
+            where: { deletedAt: null, sku: { endsWith: "-DEFAULT" } },
+            select: { id: true, price: true },
+            take: 1,
+          },
+        },
+      },
+    },
+  });
+  if (!design || !design.product.isActive || design.product.deletedAt) {
+    throw new CartError("PRODUCT_NOT_FOUND");
+  }
+  if (design.status !== "READY") {
+    // Design no listo (DRAFT / USED_IN_ORDER / ARCHIVED). Reusar
+    // PRODUCT_NOT_FOUND error para evitar surface DRAFT details al cliente.
+    throw new CartError("PRODUCT_NOT_FOUND");
+  }
+  const variant = design.product.variants[0];
+  if (!variant) throw new CartError("NO_DEFAULT_VARIANT");
+
+  const unitPrice = variant.price ?? design.product.basePrice;
+  const cart = await ensureCart(opts.sessionId, opts.customerId);
+
+  // Buscar si ya hay un CartItem para este designId — agregar al qty existente.
+  // Caso de re-entrar al editor: el cliente personaliza Design X, lo agrega
+  // al cart, vuelve al estudio, hace cambios, "¡Listo!" otra vez → mismo
+  // designId, debe sumar al qty existente (mejora UX vs duplicar).
+  const existing = cart.items.find((i) => i.designId === opts.designId);
+  if (existing) {
+    await prisma.cartItem.update({
+      where: { id: existing.id },
+      data: { qty: Math.min(MAX_QTY_PER_ITEM, existing.qty + opts.qty) },
+    });
+  } else {
+    await prisma.cartItem.create({
+      data: {
+        cartId: cart.id,
+        variantId: variant.id,
+        designId: opts.designId,
+        qty: opts.qty,
+        unitPrice,
+      },
+    });
+  }
+
+  const reloaded = await findCartBySession(opts.sessionId);
+  return toDetail(reloaded!);
+}
+
 export async function updateCartItemQty(
   sessionId: string,
   itemId: string,
@@ -306,9 +405,16 @@ export async function mergeAnonCartIntoCustomer(
   if (customerCart.id === anonCart.id) return anonSessionId;
 
   // Caso 3: merge. Fold del anon en el customer cart.
+  // Items con designId NUNCA se agrupan con otros por variantId — cada diseño
+  // personalizado es único. Solo agrupamos por (variantId AND mismo designId)
+  // o (variantId AND ninguno tiene designId).
   await prisma.$transaction(async (tx) => {
     for (const anonItem of anonCart.items) {
-      const dup = customerCart.items.find((i) => i.variantId === anonItem.variantId);
+      const dup = customerCart.items.find(
+        (i) =>
+          i.variantId === anonItem.variantId &&
+          (i.designId ?? null) === (anonItem.designId ?? null),
+      );
       if (dup) {
         await tx.cartItem.update({
           where: { id: dup.id },
@@ -322,6 +428,7 @@ export async function mergeAnonCartIntoCustomer(
             qty: anonItem.qty,
             unitPrice: anonItem.unitPrice,
             customDesign: anonItem.customDesign ?? undefined,
+            designId: anonItem.designId ?? undefined, // M.4 preservar Design vinculado
           },
         });
       }

@@ -75,8 +75,20 @@ export default async function CarritoPage() {
                           >
                             {item.productName}
                           </Link>
-                          {item.isPersonalizable && (
-                            <p className="text-brand-purple/70 text-xs">Personalizable</p>
+                          {item.designId ? (
+                            <p className="text-brand-purple/80 text-xs font-medium">
+                              ✨ Tu diseño ·{" "}
+                              <Link
+                                href={`/estudio/${item.productSlug}?designId=${item.designId}`}
+                                className="text-brand-purple underline hover:text-brand-purple-dark"
+                              >
+                                Editar
+                              </Link>
+                            </p>
+                          ) : (
+                            item.isPersonalizable && (
+                              <p className="text-brand-purple/70 text-xs">Personalizable</p>
+                            )
                           )}
                           <p className="text-brand-purple-dark/70 mt-1 text-sm tabular-nums">
                             {formatCOP(item.unitPrice)} c/u

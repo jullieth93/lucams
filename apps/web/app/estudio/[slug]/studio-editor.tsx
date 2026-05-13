@@ -27,6 +27,7 @@ import {
   finalizeDesignAction,
   saveCanvasAction,
 } from "@/features/personalization/actions";
+import { addPersonalizedToCartAction } from "@/app/carrito/actions";
 import { StudioCanvas } from "./studio-canvas";
 import { StudioSidebar } from "./studio-sidebar";
 import { StudioToolbar } from "./studio-toolbar";
@@ -214,14 +215,25 @@ export function StudioEditor({
         previewDataUrl,
         productionDataUrl,
       });
-      if (result.ok) {
-        // M.4 cabletará: agregar al cart con designId.
-        // Por ahora redirigimos al PDP con flag de éxito.
-        router.push(`/producto/${product.slug}?personalized=1`);
-      } else {
+      if (!result.ok) {
         setAutoSaveStatus({ kind: "error", message: result.message });
         setIsFinalizing(false);
+        return;
       }
+
+      // M.4: Design.status=READY, agregar al cart con designId.
+      const addResult = await addPersonalizedToCartAction({ designId, qty: 1 });
+      if (!addResult.ok) {
+        setAutoSaveStatus({
+          kind: "error",
+          message: `Diseño guardado, pero no pudimos agregarlo al carrito: ${addResult.message}`,
+        });
+        setIsFinalizing(false);
+        return;
+      }
+
+      // Éxito end-to-end → redirect al carrito
+      router.push("/carrito?personalized=1");
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setAutoSaveStatus({ kind: "error", message: `Error generando snapshot: ${msg}` });

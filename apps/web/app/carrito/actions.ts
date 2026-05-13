@@ -15,12 +15,14 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import {
+  addPersonalizedToCart,
   addProductToCart,
   CartError,
   removeCartItem,
   updateCartItemQty,
 } from "@/features/cart/service";
 import { AddToCartSchema, RemoveItemSchema, UpdateQtySchema } from "@/features/cart/schemas";
+import { getOwnedDesign } from "@/features/personalization/service";
 import { getCurrentCustomer } from "@/lib/auth";
 import { getOrCreateCartSession, peekCartSession } from "@/lib/cart-session";
 import { logger } from "@/lib/logger";
@@ -126,6 +128,80 @@ export async function updateQtyAction(formData: FormData): Promise<void> {
     });
   }
   redirect("/carrito");
+}
+
+// ──────────── Add personalized (Estudio "¡Listo!" → cart) ────────────
+//
+// Programatic action (no FormData) — el editor M.3 la llama directamente.
+// Recibe designId + qty. Verifica ownership del design (no se puede agregar
+// el design de otro). Si todo OK, crea/incrementa CartItem con designId.
+
+const AddPersonalizedSchema = z.object({
+  designId: z.string().min(1),
+  qty: z.number().int().min(1).max(99).default(1),
+});
+
+export type AddPersonalizedResult =
+  | { ok: true; itemCount: number }
+  | { ok: false; code: "VALIDATION" | "FORBIDDEN" | "DESIGN_NOT_READY" | "INTERNAL"; message: string };
+
+export async function addPersonalizedToCartAction(input: {
+  designId: string;
+  qty?: number;
+}): Promise<AddPersonalizedResult> {
+  const parsed = AddPersonalizedSchema.safeParse({
+    designId: input.designId,
+    qty: input.qty ?? 1,
+  });
+  if (!parsed.success) {
+    return { ok: false, code: "VALIDATION", message: parsed.error.message };
+  }
+
+  const sessionId = await getOrCreateCartSession();
+  const customer = await getCurrentCustomer();
+  const customerId = customer?.customer.id ?? null;
+
+  // Verify ownership del Design vía service de personalization.
+  const design = await getOwnedDesign(parsed.data.designId, { customerId, sessionId });
+  if (!design) {
+    return { ok: false, code: "FORBIDDEN", message: "Diseño no encontrado o no autorizado" };
+  }
+  if (design.status !== "READY") {
+    return {
+      ok: false,
+      code: "DESIGN_NOT_READY",
+      message: `El diseño está en estado ${design.status} — debe estar READY para agregarlo al carrito`,
+    };
+  }
+
+  try {
+    const cart = await addPersonalizedToCart({
+      sessionId,
+      customerId,
+      designId: parsed.data.designId,
+      qty: parsed.data.qty,
+    });
+    logger.info({
+      event: "cart.add_personalized.success",
+      designId: parsed.data.designId,
+      qty: parsed.data.qty,
+      itemCount: cart.itemCount,
+    });
+    revalidatePath("/carrito");
+    revalidatePath("/", "layout");
+    return { ok: true, itemCount: cart.itemCount };
+  } catch (err) {
+    logger.warn({
+      event: "cart.add_personalized.fail",
+      designId: parsed.data.designId,
+      err: err instanceof Error ? err.message : String(err),
+    });
+    return {
+      ok: false,
+      code: "INTERNAL",
+      message: errorMessage(err),
+    };
+  }
 }
 
 export async function removeItemAction(formData: FormData): Promise<void> {
