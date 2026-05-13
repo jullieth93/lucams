@@ -43,28 +43,19 @@ migrate:
 seed-products:
 	pnpm --filter @lucams/db exec node scripts/seed-products.mjs
 
-test: test-unit test-e2e test-rls
+test: test-unit test-e2e
 
 test-unit:
-	@if pnpm --filter web run 2>&1 | grep -q "test:unit"; then \
-		pnpm --filter web test:unit; \
-	else \
-		echo "test:unit no configurado todavía (sub-bloque H)"; \
-	fi
+	pnpm --filter web test
 
 test-e2e:
-	@if pnpm --filter web run 2>&1 | grep -q "test:e2e"; then \
-		pnpm --filter web test:e2e; \
-	else \
-		echo "test:e2e no configurado todavía (sub-bloque H)"; \
-	fi
+	pnpm --filter web test:e2e
+
+test-coverage:
+	pnpm --filter web test:coverage
 
 test-rls:
-	@if pnpm --filter web run 2>&1 | grep -q "test:rls"; then \
-		pnpm --filter web test:rls; \
-	else \
-		echo "test:rls no configurado todavía (sub-bloque H)"; \
-	fi
+	@echo "RLS automated tests pendientes — sub-bloque L (QA exhaustivo)"
 
 clean:
 	rm -rf apps/web/.next apps/web/node_modules/.cache
