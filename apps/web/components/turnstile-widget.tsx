@@ -91,7 +91,15 @@ export function TurnstileWidget({
         async
         defer
       />
-      <div ref={containerRef} className="cf-turnstile" />
+      {/*
+       * NO usar className="cf-turnstile" — Cloudflare auto-detecta esa
+       * clase y dispara render automático ANTES de que nuestro useEffect
+       * corra window.turnstile.render() con la sitekey. Sin sitekey en
+       * data-attr el auto-render falla con:
+       *   "Invalid or missing type for parameter sitekey, expected string"
+       * Bug observado en logs 2026-05-12 (M.0 hotfix).
+       */}
+      <div ref={containerRef} className="lucams-turnstile-host" />
     </>
   );
 }
