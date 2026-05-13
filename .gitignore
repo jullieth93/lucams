@@ -4,11 +4,14 @@
 # operativamente importante, también mencionarse en docs/OPERATIONS.md.
 
 # ──────────────── Variables de entorno (CRÍTICO) ────────────────
-# Nunca commitear secretos. Solo .env.example (placeholders) está versionado.
+# Nunca commitear secretos. Solo .env.example (placeholders) está versionado,
+# en cualquier nivel del monorepo (root o apps/web/, packages/db/, etc.).
 .env
 .env.*
 !.env.example
 !.env.*.example
+!**/.env.example
+!**/.env.*.example
 
 # ──────────────── Node.js / pnpm ────────────────
 node_modules/
