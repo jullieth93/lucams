@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Fredoka, Inter } from "next/font/google";
 import { Toaster } from "@/components/ui/sonner";
 import { WebVitalsReporter } from "@/components/web-vitals";
+import { CookiesBanner } from "@/components/cookies-banner";
 import { EditModeProvider } from "@/components/edit-mode/edit-mode-provider";
 import "./globals.css";
 
@@ -66,6 +67,7 @@ export default function RootLayout({
         {children}
         <Toaster position="top-right" richColors closeButton />
         <WebVitalsReporter />
+        <CookiesBanner />
         {/* Visual In-Place Editor — solo se monta si el caller es admin
             (decidido server-side dentro de EditModeProvider). Para
             visitantes anónimos / clientes este componente devuelve null
