@@ -20,7 +20,8 @@ import type { ReactNode } from "react";
 import { BrandMark } from "@/components/brand-mark";
 import { buildWhatsAppUrl } from "@/lib/wa";
 
-export default function AuthLayout({ children }: { children: ReactNode }) {
+export default async function AuthLayout({ children }: { children: ReactNode }) {
+  const waSupportUrl = await buildWhatsAppUrl({ kind: "support" });
   return (
     <div className="from-brand-cream to-brand-purple/10 relative flex min-h-screen flex-col overflow-hidden bg-gradient-to-br via-white">
       {/* Blobs de color para profundidad — pointer-events-none */}
@@ -46,7 +47,7 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
           ¿Necesitas ayuda?{" "}
           <a
             className="text-brand-pink hover:text-brand-coral font-medium underline-offset-4 hover:underline"
-            href={buildWhatsAppUrl({ kind: "support" })}
+            href={waSupportUrl}
             target="_blank"
             rel="noopener noreferrer"
           >

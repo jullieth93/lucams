@@ -52,7 +52,7 @@ export default async function ProductoDetallePage({
   const errorMsg = typeof sp.error === "string" ? sp.error : null;
 
   const hasDiscount = product.compareAtPrice != null && product.compareAtPrice > product.basePrice;
-  const waHref = buildWhatsAppUrl({
+  const waHref = await buildWhatsAppUrl({
     kind: "product",
     productName: product.name,
     sku: product.sku,

@@ -1,6 +1,9 @@
 /*
  * Home — landing del storefront.
  *
+ * Casi todo el contenido editorial viene del CMS (CmsBlock / SiteSetting)
+ * con fallback hardcoded — Lucy puede editar desde /admin/contenido.
+ *
  * Secciones (en orden):
  *   1. SiteHeader (mega-menú + búsqueda)
  *   2. Hero kawaii
@@ -9,8 +12,6 @@
  *   5. Productos destacados (Embla)
  *   6. Lo que dicen quienes nos compran (reseñas reales o empty kawaii)
  *   7. CTA cierre
- *
- * SSR puro con Promise.all para que cada query no bloquee al resto.
  */
 
 import type { Metadata } from "next";
@@ -28,6 +29,7 @@ import {
   listStorefrontProducts,
 } from "@/features/products/public-service";
 import { listFeaturedReviews } from "@/features/reviews/public-service";
+import { getCmsBlock } from "@/lib/cms";
 import { buildWhatsAppUrl } from "@/lib/wa";
 
 export const metadata: Metadata = {
@@ -36,18 +38,45 @@ export const metadata: Metadata = {
     "Imanes magnéticos personalizados, fotoimanes, recuerdos para eventos, calendarios y planners. Hechos a mano en Colombia con entrega a 1.100+ destinos.",
 };
 
-// Home consulta DB (categorías, productos featured, reseñas) en SSR.
-// Marcamos dynamic para que Next no intente pre-renderizar en build con
-// DATABASE_URL placeholder (Vercel + CI). En runtime se sirve siempre
-// fresco — el catálogo cambia poco así que está OK por ahora; si la
-// carga sube, envolver listStorefrontCategories etc. con unstable_cache.
+// Home consulta DB en SSR — dynamic para que Next no pre-renderice
+// en build con DATABASE_URL placeholder.
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
-  const [categories, featured, reviews] = await Promise.all([
+  const [
+    categories,
+    featured,
+    reviews,
+    waSupportUrl,
+    catHeading,
+    catSubtext,
+    stepsHeading,
+    stepsSubtext,
+    featuredHeading,
+    featuredSubtext,
+    featuredEmpty,
+    reviewsHeading,
+    reviewsSubtext,
+    reviewsEmpty,
+    ctaHeading,
+    ctaDescription,
+  ] = await Promise.all([
     listStorefrontCategories(),
     listStorefrontProducts({ featured: true, limit: 10 }),
     listFeaturedReviews(8),
+    buildWhatsAppUrl({ kind: "support" }),
+    getCmsBlock("home.categories.heading"),
+    getCmsBlock("home.categories.subtext"),
+    getCmsBlock("home.howitworks.heading"),
+    getCmsBlock("home.howitworks.subtext"),
+    getCmsBlock("home.featured.heading"),
+    getCmsBlock("home.featured.subtext"),
+    getCmsBlock("home.featured.empty"),
+    getCmsBlock("home.reviews.heading"),
+    getCmsBlock("home.reviews.subtext"),
+    getCmsBlock("home.reviews.empty"),
+    getCmsBlock("home.cta.heading"),
+    getCmsBlock("home.cta.description"),
   ]);
 
   return (
@@ -63,9 +92,11 @@ export default async function Home() {
         <section className="mx-auto max-w-6xl px-6 py-12 sm:px-10 sm:py-16">
           <header className="mb-8 text-center">
             <h2 className="font-display text-brand-purple-dark text-3xl sm:text-4xl">
-              Explora las categorías
+              {catHeading?.body ?? "Explora las categorías"}
             </h2>
-            <p className="text-brand-purple-dark/70 mt-2">Imanes para cada rincón de tu vida.</p>
+            <p className="text-brand-purple-dark/70 mt-2">
+              {catSubtext?.body ?? "Imanes para cada rincón de tu vida."}
+            </p>
           </header>
           <CategoryGrid categories={categories} />
         </section>
@@ -75,9 +106,11 @@ export default async function Home() {
           <div className="mx-auto max-w-6xl px-6 py-12 sm:px-10 sm:py-16">
             <header className="mb-10 text-center">
               <h2 className="font-display text-brand-purple-dark text-3xl sm:text-4xl">
-                Así de fácil
+                {stepsHeading?.body ?? "Así de fácil"}
               </h2>
-              <p className="text-brand-purple-dark/70 mt-2">Tu imán hecho con cariño en 3 pasos.</p>
+              <p className="text-brand-purple-dark/70 mt-2">
+                {stepsSubtext?.body ?? "Tu imán hecho con cariño en 3 pasos."}
+              </p>
             </header>
             <HowItWorks />
           </div>
@@ -88,9 +121,11 @@ export default async function Home() {
           <header className="mb-8 flex flex-wrap items-end justify-between gap-3">
             <div>
               <h2 className="font-display text-brand-purple-dark text-3xl sm:text-4xl">
-                Imanes que están enamorando
+                {featuredHeading?.body ?? "Imanes que están enamorando"}
               </h2>
-              <p className="text-brand-purple-dark/70 mt-2">Los favoritos de la temporada.</p>
+              <p className="text-brand-purple-dark/70 mt-2">
+                {featuredSubtext?.body ?? "Los favoritos de la temporada."}
+              </p>
             </div>
             <Link
               href="/productos"
@@ -103,7 +138,9 @@ export default async function Home() {
             <FeaturedCarousel products={featured} />
           ) : (
             <div className="border-brand-purple/10 rounded-xl border bg-white px-6 py-12 text-center">
-              <p className="text-brand-purple-dark/70">Cargando destacados pronto ✨</p>
+              <p className="text-brand-purple-dark/70">
+                {featuredEmpty?.body ?? "Cargando destacados pronto ✨"}
+              </p>
             </div>
           )}
         </section>
@@ -113,9 +150,11 @@ export default async function Home() {
           <div className="mx-auto max-w-6xl px-6 py-12 sm:px-10 sm:py-16">
             <header className="mb-8 text-center">
               <h2 className="font-display text-brand-purple-dark text-3xl sm:text-4xl">
-                Lo que dicen quienes ya nos compran
+                {reviewsHeading?.body ?? "Lo que dicen quienes ya nos compran"}
               </h2>
-              <p className="text-brand-purple-dark/70 mt-2">Historias reales de neveras felices.</p>
+              <p className="text-brand-purple-dark/70 mt-2">
+                {reviewsSubtext?.body ?? "Historias reales de neveras felices."}
+              </p>
             </header>
             {reviews.length > 0 ? (
               <ReviewsCarousel reviews={reviews} />
@@ -123,7 +162,7 @@ export default async function Home() {
               <div className="mx-auto max-w-md text-center">
                 <LucamsLogo variant="full" size={120} className="mx-auto opacity-80" />
                 <p className="text-brand-purple-dark mt-4 font-semibold">
-                  Sé el primero en contarnos cómo te llegó tu imán 💜
+                  {reviewsEmpty?.body ?? "Sé el primero en contarnos cómo te llegó tu imán 💜"}
                 </p>
                 <p className="text-brand-purple-dark/60 mt-1 text-sm">
                   Cuando los primeros clientes reseñen, aparecerán acá.
@@ -145,14 +184,15 @@ export default async function Home() {
               className="bg-brand-turquoise/30 absolute -bottom-12 -left-12 h-48 w-48 rounded-full blur-3xl"
             />
             <h2 className="font-display relative text-3xl text-white sm:text-4xl">
-              ¿Tienes una idea distinta?
+              {ctaHeading?.body ?? "¿Tienes una idea distinta?"}
             </h2>
             <p className="relative mt-3 text-white/80">
-              Cotizamos a medida: regalos corporativos, eventos, bodas y proyectos especiales.
+              {ctaDescription?.body ??
+                "Cotizamos a medida: regalos corporativos, eventos, bodas y proyectos especiales."}
             </p>
             <div className="relative mt-6 flex flex-wrap justify-center gap-3">
               <a
-                href={buildWhatsAppUrl({ kind: "support" })}
+                href={waSupportUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-brand-purple-dark hover:bg-brand-cream inline-block rounded-full bg-white px-6 py-3 text-sm font-semibold transition-colors"

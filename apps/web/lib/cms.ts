@@ -42,19 +42,25 @@ export type SiteSettingData = {
  */
 export const getCmsBlock = unstable_cache(
   async (key: string): Promise<CmsBlockData | null> => {
-    const block = await prisma.cmsBlock.findFirst({
-      where: { key, isPublished: true, deletedAt: null },
-      include: { publishedVersion: true },
-    });
-    if (!block || !block.publishedVersion) return null;
-    return {
-      key: block.key,
-      title: block.publishedVersion.title ?? block.title,
-      body: block.publishedVersion.body,
-      format: block.publishedVersion.format,
-      version: block.publishedVersion.version,
-      updatedAt: block.updatedAt,
-    };
+    try {
+      const block = await prisma.cmsBlock.findFirst({
+        where: { key, isPublished: true, deletedAt: null },
+        include: { publishedVersion: true },
+      });
+      if (!block || !block.publishedVersion) return null;
+      return {
+        key: block.key,
+        title: block.publishedVersion.title ?? block.title,
+        body: block.publishedVersion.body,
+        format: block.publishedVersion.format,
+        version: block.publishedVersion.version,
+        updatedAt: block.updatedAt,
+      };
+    } catch {
+      // DB unreachable (build time con placeholder, network blip, etc.)
+      // → null para que el componente caller use su fallback hardcoded.
+      return null;
+    }
   },
   ["cms-block"],
   { tags: ["cms"], revalidate: 3600 },
@@ -67,35 +73,39 @@ export const getCmsBlock = unstable_cache(
  */
 export const getCmsBlocksByCategory = unstable_cache(
   async (category: string): Promise<CmsBlockData[]> => {
-    const blocks = await prisma.cmsBlock.findMany({
-      where: {
-        category: category as
-          | "LEGAL"
-          | "HOME"
-          | "FOOTER"
-          | "EMPTY_STATE"
-          | "COOKIES"
-          | "FAQ"
-          | "SUPPORT"
-          | "MAINTENANCE"
-          | "EMAIL"
-          | "MARKETING",
-        isPublished: true,
-        deletedAt: null,
-      },
-      include: { publishedVersion: true },
-      orderBy: { key: "asc" },
-    });
-    return blocks
-      .filter((b) => b.publishedVersion)
-      .map((b) => ({
-        key: b.key,
-        title: b.publishedVersion!.title ?? b.title,
-        body: b.publishedVersion!.body,
-        format: b.publishedVersion!.format,
-        version: b.publishedVersion!.version,
-        updatedAt: b.updatedAt,
-      }));
+    try {
+      const blocks = await prisma.cmsBlock.findMany({
+        where: {
+          category: category as
+            | "LEGAL"
+            | "HOME"
+            | "FOOTER"
+            | "EMPTY_STATE"
+            | "COOKIES"
+            | "FAQ"
+            | "SUPPORT"
+            | "MAINTENANCE"
+            | "EMAIL"
+            | "MARKETING",
+          isPublished: true,
+          deletedAt: null,
+        },
+        include: { publishedVersion: true },
+        orderBy: { key: "asc" },
+      });
+      return blocks
+        .filter((b) => b.publishedVersion)
+        .map((b) => ({
+          key: b.key,
+          title: b.publishedVersion!.title ?? b.title,
+          body: b.publishedVersion!.body,
+          format: b.publishedVersion!.format,
+          version: b.publishedVersion!.version,
+          updatedAt: b.updatedAt,
+        }));
+    } catch {
+      return [];
+    }
   },
   ["cms-blocks-by-category"],
   { tags: ["cms"], revalidate: 3600 },
@@ -107,15 +117,19 @@ export const getCmsBlocksByCategory = unstable_cache(
  */
 export const getSiteSetting = unstable_cache(
   async (key: string): Promise<SiteSettingData | null> => {
-    const setting = await prisma.siteSetting.findUnique({
-      where: { key },
-    });
-    if (!setting) return null;
-    return {
-      key: setting.key,
-      value: setting.value,
-      valueType: setting.valueType,
-    };
+    try {
+      const setting = await prisma.siteSetting.findUnique({
+        where: { key },
+      });
+      if (!setting) return null;
+      return {
+        key: setting.key,
+        value: setting.value,
+        valueType: setting.valueType,
+      };
+    } catch {
+      return null;
+    }
   },
   ["cms-setting"],
   { tags: ["cms"], revalidate: 3600 },
@@ -127,14 +141,18 @@ export const getSiteSetting = unstable_cache(
  */
 export const getAllSiteSettings = unstable_cache(
   async (): Promise<SiteSettingData[]> => {
-    const settings = await prisma.siteSetting.findMany({
-      orderBy: [{ category: "asc" }, { key: "asc" }],
-    });
-    return settings.map((s) => ({
-      key: s.key,
-      value: s.value,
-      valueType: s.valueType,
-    }));
+    try {
+      const settings = await prisma.siteSetting.findMany({
+        orderBy: [{ category: "asc" }, { key: "asc" }],
+      });
+      return settings.map((s) => ({
+        key: s.key,
+        value: s.value,
+        valueType: s.valueType,
+      }));
+    } catch {
+      return [];
+    }
   },
   ["cms-settings-all"],
   { tags: ["cms"], revalidate: 3600 },
