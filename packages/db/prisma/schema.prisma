@@ -178,6 +178,9 @@ model Customer {
   loyaltyTxns       LoyaltyTxn[]
   consents          Consent[]
   supportTickets    SupportTicket[]
+  // Sub-bloque M — Estudio de Personalización (diferenciador #1)
+  designs           Design[]
+  designAssets      DesignAsset[]
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -258,23 +261,33 @@ model Category {
 }
 
 model Product {
-  id                    String           @id @default(cuid())
-  slug                  String           @unique
+  id                    String                    @id @default(cuid())
+  slug                  String                    @unique
   name                  String
   description           String
   basePrice             Int
   compareAtPrice        Int?
   cost                  Int?
-  sku                   String           @unique
-  isPersonalizable      Boolean          @default(false)
+  sku                   String                    @unique
+  // Personalización (sub-bloque M)
+  // - isPersonalizable: flag legacy. NONE = no personalizable. Mantenido por
+  //   compat hasta migrar consumers a personalizationKind != NONE.
+  // - personalizationKind: enum tipado fuerte. Define el tipo de experiencia
+  //   de personalización (PHOTO_PACK, CALENDAR_PHOTO_MONTH, EVENT_FAVOR...).
+  // - personalizationSchema: metadata específica por kind (ej. photoSlots:6,
+  //   aspectRatio:"1:1", allowText:true) — JSON validado en runtime con Zod.
+  isPersonalizable      Boolean                   @default(false)
+  personalizationKind   PersonalizationKind       @default(NONE)
   personalizationSchema Json?
   images                String[]
   categoryId            String
-  category              Category         @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  category              Category                  @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   variants              ProductVariant[]
   reviews               Review[]
-  isActive              Boolean          @default(true)
-  isFeatured            Boolean          @default(false)
+  designs               Design[]
+  templates             PersonalizationTemplate[]
+  isActive              Boolean                   @default(true)
+  isFeatured            Boolean                   @default(false)
   seoTitle              String?
   seoDescription        String?
 
@@ -288,6 +301,7 @@ model Product {
   @@index([deletedAt])
   @@index([categoryId])
   @@index([isActive, isFeatured])
+  @@index([personalizationKind, isActive])
 }
 
 model ProductVariant {
@@ -355,13 +369,21 @@ model CartItem {
   variantId    String
   variant      ProductVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
   qty          Int
-  customDesign Json?
   unitPrice    Int
+  // Personalización (sub-bloque M)
+  // - designId: si el producto requiere personalización, apunta al Design
+  //   draft/ready del cliente. NULL para productos NONE.
+  // - customDesign: campo legacy mantenido para compat retroactiva con
+  //   carritos pre-M. Nuevos carts usan designId. Deprecate en V2.
+  designId     String?
+  design       Design?        @relation(fields: [designId], references: [id], onDelete: SetNull)
+  customDesign Json?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([cartId])
+  @@index([designId])
 }
 
 model Order {
@@ -417,12 +439,22 @@ model OrderItem {
   variant        ProductVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
   qty            Int
   unitPrice      Int
+  // Personalización (sub-bloque M)
+  // - designId: snapshot del Design en estado USED_IN_ORDER (immutable post-pago).
+  //   Si el Design original se borra después, la order conserva customDesign +
+  //   designAssetUrl como audit history.
+  // - customDesign: copia JSON inmutable del Design.canvasData al confirmar el order.
+  // - designAssetUrl: URL del PNG 300 DPI listo para impresión (Supabase Storage
+  //   bucket production-assets).
+  designId       String?
+  design         Design?        @relation(fields: [designId], references: [id], onDelete: SetNull)
   customDesign   Json?
   designAssetUrl String?
 
   createdAt DateTime @default(now())
 
   @@index([orderId])
+  @@index([designId])
 }
 
 model Coupon {
@@ -805,4 +837,126 @@ model SiteSetting {
   updatedBy String?
 
   @@index([category])
+}
+
+// ──────────────────────── PERSONALIZACIÓN (sub-bloque M) ────────────────────────
+// Diferenciador #1 de Lucams_shop (CLAUDE.md mandato): editor canvas in-browser
+// para que el cliente personalice cada producto con sus fotos + plantillas.
+//
+// Modelo conceptual:
+//   - Product.personalizationKind: tipo de experiencia (PHOTO_PACK, CALENDAR_*, etc.)
+//   - PersonalizationTemplate: plantillas pre-armadas por kind (canvas layouts).
+//   - Design: el diseño que el cliente está creando/creó. Vincula a Cart/Order.
+//   - DesignAsset: cada foto subida por el cliente (privada, RLS owner-only).
+//
+// ADR-035 (a documentar al cerrar M): "Estudio = corazón del producto, no add-on"
+
+enum PersonalizationKind {
+  PHOTO_PACK // N fotos requeridas, posiciones libres en canvas
+  PHOTO_GRID // N fotos con grid fijo (ej. 2×3, 3×4)
+  CALENDAR_PHOTO_MONTH // 12 fotos (una por mes) + año
+  CALENDAR_PHOTO_HERO // 1 foto + planner mensual
+  EVENT_FAVOR // texto evento + foto opcional + plantilla pre-armada
+  BUSINESS_LOGO // logo + datos contacto (B2B publicitario)
+  CUSTOM_DECOR // foto/frase + composición libre
+  TEXT_ONLY // sin fotos, solo texto (frases motivacionales)
+  NONE // producto NO personalizable (coleccionables prearmados)
+}
+
+enum DesignStatus {
+  DRAFT // el cliente lo está construyendo, auto-save periódico
+  READY // confirmado, listo para añadir al carrito o ya en cart
+  USED_IN_ORDER // snapshot post-checkout, immutable
+  ARCHIVED // soft-deleted por el customer (mi-cuenta → mis diseños)
+}
+
+model Design {
+  id            String                   @id @default(cuid())
+  customerId    String?
+  customer      Customer?                @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  sessionId     String? // anon flow, matches cart_session cookie
+  productId     String
+  product       Product                  @relation(fields: [productId], references: [id], onDelete: Restrict)
+  templateId    String?
+  template      PersonalizationTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  status        DesignStatus             @default(DRAFT)
+  // canvasData: Konva stage serialization. Estructura validada por features/
+  // personalization/schemas.ts con Zod en cada save.
+  canvasData    Json
+  // previewUrl: snapshot 1080×1080 PNG público (Supabase Storage bucket
+  // design-previews). Visible en cart/order display al cliente.
+  previewUrl    String?
+  // productionUrl: PNG 300 DPI privado (bucket production-assets). Admin
+  // descarga para imprenta. NULL hasta status=READY o USED_IN_ORDER.
+  productionUrl String?
+  // metadata: selección plantilla + marco + color + ajustes filtros foto-edit.
+  metadata      Json                     @default("{}")
+  // shareToken: link público read-only para colaboración (sub-bloque K+M
+  // futuro: "compartí con tu pareja antes de comprar"). Genera en cliente.
+  shareToken    String?                  @unique
+  assets        DesignAsset[]
+  cartItems     CartItem[]
+  orderItems    OrderItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  createdBy String?
+  updatedBy String?
+
+  @@index([customerId, status])
+  @@index([sessionId, status])
+  @@index([productId])
+  @@index([status, updatedAt])
+}
+
+model DesignAsset {
+  id             String    @id @default(cuid())
+  designId       String?
+  design         Design?   @relation(fields: [designId], references: [id], onDelete: SetNull)
+  customerId     String?
+  customer       Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  sessionId      String?
+  // storageUrl: Supabase Storage bucket customer-uploads (privado, RLS
+  // owner-only). URL firmada con TTL 1h al cliente; admin con service role.
+  storageUrl     String
+  mimeType       String // image/jpeg | image/png | image/webp
+  sizeBytes      Int
+  width          Int
+  height         Int
+  exifStripped   Boolean   @default(false)
+  malwareScanned Boolean   @default(false)
+
+  createdAt DateTime @default(now())
+
+  @@index([designId])
+  @@index([customerId, createdAt])
+  @@index([sessionId, createdAt])
+}
+
+model PersonalizationTemplate {
+  id         String              @id @default(cuid())
+  // productId null = template global aplica a cualquier producto del kind.
+  // productId set = template específico para ese producto.
+  productId  String?
+  product    Product?            @relation(fields: [productId], references: [id], onDelete: Cascade)
+  kind       PersonalizationKind
+  name       String // "Polaroid clásico", "Marco corazón rosa"
+  slug       String              @unique
+  previewUrl String // thumbnail del template (Supabase Storage public)
+  // canvasData: estructura base del canvas (capas, marcos, decoraciones).
+  // El cliente la usa como punto de partida + reemplaza placeholders foto.
+  canvasData Json
+  isActive   Boolean             @default(true)
+  order      Int                 @default(0)
+  designs    Design[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  createdBy String?
+  updatedBy String?
+  deletedAt DateTime?
+  deletedBy String?
+
+  @@index([kind, isActive, order])
+  @@index([productId, isActive])
 }
