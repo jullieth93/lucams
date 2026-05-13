@@ -27,7 +27,7 @@ export async function CmsMarkdown({
   const body = block?.body ?? fallback;
 
   return (
-    <div className={"cms-markdown " + className}>
+    <div className={"cms-markdown " + className} data-cms-key={blockKey} data-cms-kind="block">
       <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
         {body}
       </ReactMarkdown>

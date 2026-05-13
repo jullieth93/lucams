@@ -247,3 +247,23 @@ export async function updateSiteSetting(input: SiteSettingUpdateInput, updatedBy
     },
   });
 }
+
+// ─────────────────── Inline editor lookups (sub-bloque K) ───────────────────
+
+/**
+ * Busca un bloque por su key (no id). Usado por el endpoint
+ * /api/admin/cms/by-key/[key] que sirve al Visual In-Place Editor.
+ */
+export async function getCmsBlockByKey(key: string) {
+  return prisma.cmsBlock.findFirst({
+    where: { key, deletedAt: null },
+    include: { publishedVersion: true },
+  });
+}
+
+/**
+ * Busca un setting por su key (no id).
+ */
+export async function getSiteSettingByKey(key: string) {
+  return prisma.siteSetting.findUnique({ where: { key } });
+}
