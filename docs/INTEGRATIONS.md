@@ -697,6 +697,150 @@ SELECT pgmq.metrics('email_send');
 
 ---
 
+## 10. CMS API (interno, preparado para RAG)
+
+Endpoints públicos sin auth que exponen el contenido CMS publicado del sitio para consumo programático (integraciones externas, futuro chatbot Claude con RAG).
+
+**Base URL.** `https://lucamsshop.co/api/cms/*` (prod) o `http://localhost:3000/api/cms/*` (dev).
+
+**Auth.** Ninguna — el contenido publicado ya es público en el sitio. Si se agregan settings con info sensible en el futuro, filtrar en `/api/cms/settings/route.ts` antes de responder.
+
+**Rate-limit.** 30 reqs/min por IP. Excedido devuelve `429` con `application/problem+json` y `Retry-After` header.
+
+**Cache HTTP.** `Cache-Control: public, max-age=300, s-maxage=3600, stale-while-revalidate=86400` en bloques + settings. Search más corto (60/300). Invalidación inmediata cuando admin publica via `updateTag("cms")` en Server Action.
+
+### Endpoints
+
+#### GET `/api/cms/blocks`
+
+Lista todos los bloques publicados. Opcional `?category=X`.
+
+```bash
+curl https://lucamsshop.co/api/cms/blocks?category=legal
+```
+
+```json
+{
+  "count": 8,
+  "category": "LEGAL",
+  "blocks": [
+    {
+      "key": "legal.privacidad",
+      "title": "Aviso de Privacidad",
+      "body": "## Tratamiento de datos personales\n\n...",
+      "format": "MARKDOWN",
+      "category": "LEGAL",
+      "description": "Aviso visible en /legal/privacidad",
+      "version": 3,
+      "updatedAt": "2026-05-12T01:23:45.000Z"
+    }
+  ]
+}
+```
+
+Categorías válidas: `LEGAL`, `HOME`, `FOOTER`, `EMPTY_STATE`, `COOKIES`, `FAQ`, `SUPPORT`, `MAINTENANCE`, `EMAIL`, `MARKETING`.
+
+#### GET `/api/cms/blocks/[key]`
+
+Bloque individual por key. `404` si no existe o no está publicado.
+
+```bash
+curl https://lucamsshop.co/api/cms/blocks/legal.privacidad
+```
+
+#### GET `/api/cms/settings`
+
+Lista todos los SiteSetting. Opcional `?category=X`.
+
+Categorías válidas: `CONTACT`, `BUSINESS`, `LEGAL`, `COMMERCE`, `SOCIAL`, `EXTERNAL`, `WHATSAPP`, `COPYRIGHT`, `SEO`.
+
+```bash
+curl https://lucamsshop.co/api/cms/settings?category=contact
+```
+
+```json
+{
+  "count": 2,
+  "category": "CONTACT",
+  "settings": [
+    {
+      "key": "CONTACT_EMAIL",
+      "value": "hola@lucamsshop.co",
+      "valueType": "EMAIL",
+      "category": "CONTACT",
+      "label": "Email de contacto público",
+      "description": "Aparece en footer + páginas legales"
+    }
+  ]
+}
+```
+
+#### GET `/api/cms/search?q=texto`
+
+Búsqueda full-text con `pg_trgm` + `unaccent`. Tolerante a typos y acentos. Top 20 ordenados por similarity DESC.
+
+```bash
+curl "https://lucamsshop.co/api/cms/search?q=garanti"
+# matchea "Garantías", "garantía"
+```
+
+```json
+{
+  "query": "garanti",
+  "count": 1,
+  "results": [
+    { "key": "legal.garantias", "title": "Garantías", "body": "...", "version": 1, ... }
+  ]
+}
+```
+
+`q` debe tener mínimo 2 chars. Sin `q` o `q.length < 2` devuelve `400`.
+
+### Uso desde futuro chatbot Claude (RAG)
+
+El chatbot embebe el body de los matches en el prompt:
+
+```ts
+// Pseudo-código del futuro chatbot Fase 5+
+const userQuestion = "¿en cuántos días puedo devolver un producto?";
+
+const r = await fetch(`/api/cms/search?q=${encodeURIComponent(userQuestion)}`);
+const { results } = await r.json();
+
+const context = results
+  .slice(0, 3)
+  .map((b) => `[${b.key} v${b.version}] ${b.body}`)
+  .join("\n\n");
+
+const prompt = `Contexto del sitio:\n${context}\n\nPregunta del usuario: ${userQuestion}\n\nResponde con base SOLO en el contexto. Cita el bloque (ej. "según [legal.devoluciones v3]").`;
+
+const answer = await anthropic.messages.create({
+  model: "claude-sonnet-4-6",
+  max_tokens: 500,
+  messages: [{ role: "user", content: prompt }],
+});
+```
+
+**Beneficio del versionado:** la respuesta incluye `v3` → auditable. Si el aviso cambia (`v4` publicada) y un usuario reporta una respuesta vieja, podemos rebobinar exactamente qué versión usó el chatbot.
+
+**Cuando crezca el volumen:** migrar a embeddings con `pgvector` (Supabase tiene extension nativa) para similarity semántica además de la sintáctica de pg_trgm. Decisión en Fase 5+ cuando se justifique.
+
+### Cómo agregar contenido nuevo desde admin
+
+1. Login admin en `/admin/login`
+2. Ir a `/admin/contenido` → tab "Bloques" o "Configuración"
+3. Crear/editar → previsualización live en tiempo real
+4. "Publicar" → cambio visible en sitio y en API en el próximo request (cache invalidado via tag `cms`)
+
+### Referencias
+
+- ADR-033 en `docs/DECISIONS.md`: arquitectura completa del CMS
+- `apps/web/lib/cms.ts`: helpers + tipos
+- `apps/web/app/api/cms/*`: endpoints implementados
+- `packages/db/scripts/seed-cms.mjs`: seed idempotente
+
+---
+
 ## Checklist por integración (al pasar a producción)
 
 ### Wompi

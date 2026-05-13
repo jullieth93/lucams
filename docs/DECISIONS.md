@@ -765,6 +765,57 @@ Adoptar **guest-first browsing** + **welcome coupon como incentivo opt-in** para
 
 ---
 
+## ADR-033 — CMS interno (2 tablas) + endpoints públicos RAG-ready
+
+**Fecha:** 2026-05-12
+
+**Contexto.** Lucy es no-técnica y necesita editar contenido del sitio sin pedir a Claude/dev por cada cambio: email de contacto, horarios, slogans, mensajes pre-armados de WhatsApp, plazos legales, aviso de privacidad, FAQ, copy de la home. Además se planea un chatbot Claude (Fase 5+) que necesita acceso programático a este contenido para responder preguntas con base en información actualizada (RAG).
+
+**Opciones consideradas.**
+
+1. **CMS externo (Sanity, Contentful, Strapi).** Headless, maduro, UI lista. Pero: vendor lock-in, costo recurrente al pasar a Pro (~$99/mes Sanity, ~$300/mes Contentful), dependencia de uptime ajena, complejidad de sincronización entre DB Supabase y CMS externo, dificultad para integrar audit trail con AdminActionLog ya existente.
+2. **Markdown files en repo (Velite, ContentLayer).** Cero costo, pero requiere PR por cada edición. Lucy no puede editar.
+3. **CMS in-house en Postgres** (decisión). Reusa Supabase + Prisma + admin existente. Versionado per save. Cero costo extra. Audit trail nativo via AdminActionLog. RAG endpoint sale gratis (mismo Postgres).
+
+**Decisión.** Construir CMS interno con 2 modelos:
+
+- **CmsBlock** + **CmsBlockVersion** (append-only versioning como Notion/Sanity) para prosa larga editorial (legal, home headings, footer copy, FAQ, email templates). Cada save crea una nueva versión; admin elige cuál publicar via `publishedVersionId`. Soft-delete con `deletedAt`. 10 categorías (`BlockCategory` enum): LEGAL, HOME, FOOTER, EMPTY_STATE, COOKIES, FAQ, SUPPORT, MAINTENANCE, EMAIL, MARKETING.
+- **SiteSetting** key/value atómico (sin versionado) para configurables: emails, números, URLs, horarios, mensajes pre-armados de WA, plazos legales. 9 categorías (`SettingCategory` enum): CONTACT, BUSINESS, LEGAL, COMMERCE, SOCIAL, EXTERNAL, WHATSAPP, COPYRIGHT, SEO.
+
+**Editor admin** estilo Webflow Designer: textarea markdown + preview live + cheatsheet amarillo siempre visible. Sin TipTap/Lexical (over-engineering para Lucams). Tabs Bloques / Configuración en `/admin/contenido`.
+
+**Cache.** `unstable_cache` con tag global `cms`. Cuando admin publica, `updateTag("cms")` invalida cache (Next 16 cambió `revalidateTag` para requerir cacheLife profile — `updateTag` es la API correcta para invalidación inmediata).
+
+**Build resilience.** Todos los helpers de `lib/cms.ts` envueltos en `try/catch` que devuelven null/[] silentemente si la DB es unreachable. Permite `next build` con DATABASE_URL placeholder (Vercel CI) y degradación graceful en runtime. Componentes consumidores siempre tienen fallback markdown hardcoded.
+
+**Endpoints públicos RAG-ready.** 4 endpoints sin auth con rate-limit 30/min IP y cache HTTP agresivo:
+
+- `GET /api/cms/blocks?category=...` — lista bloques publicados
+- `GET /api/cms/blocks/[key]` — bloque individual
+- `GET /api/cms/settings?category=...` — settings
+- `GET /api/cms/search?q=...` — full-text con `pg_trgm` + `unaccent` (tolerante a typos y acentos), top 20 por similarity
+
+El chatbot futuro consumirá `/api/cms/search?q=<pregunta>` para hacer RAG: embebe el body de los matches en el prompt para Claude API, y devuelve respuesta con citas a `version` del bloque (auditoría: "respondí con la versión 3 del aviso de privacidad").
+
+**Consecuencias positivas.**
+
+- Lucy editora autónoma desde día 1 — sin tocar código.
+- Versionado completo + rollback a cualquier versión previa.
+- Audit trail nativo (cada publish va a AdminActionLog).
+- RAG foundation lista para chatbot Fase 5+ sin migración.
+- Cero costo recurrente.
+- Cache invalidation inmediata vía tag.
+
+**Consecuencias negativas.**
+
+- Markdown plain learning curve para Lucy (mitigado con cheatsheet siempre visible).
+- Sin WYSIWYG (descartado intencionalmente — Webflow-like in-place editor se hace en Sub-bloque K como capa cliente sobre esta fundación).
+- `CmsBlockVersion` crece sin límite (mitigación pendiente: pg_cron purge versiones > 1 año, keep last 50 + last 5 publicadas, evaluar en H).
+
+**Referencias.** Plan `~/.claude/plans/lee-complemtante-el-proyecto-wiggly-mist.md` Sub-bloque J + K. Commits `a0c4e34` (schema), `b1f82e3` (admin UI), `5c6de84` (seed + migración part 1), `9c258ed` (legal pages part 2). Lectura recomendada antes de tocar: `apps/web/lib/cms.ts`, `apps/web/features/cms/service.ts`, `docs/INTEGRATIONS.md § CMS API`.
+
+---
+
 > Próximas decisiones a documentar cuando se tomen:
 >
 > - ADR-022: alternativa de monitoreo de errores elegida (en Fase 7).
@@ -773,3 +824,4 @@ Adoptar **guest-first browsing** + **welcome coupon como incentivo opt-in** para
 > - ADR-027: necesidad de staging environment (re-evaluar post-lanzamiento; Vercel previews pueden cubrir el rol).
 > - ADR-028: criterio de migración Postgres `FeatureFlag` → GrowthBook u otro (cuando ocurra).
 > - ADR-032: distributed tracing / OpenTelemetry strategy (post-lanzamiento si volumen lo justifica).
+> - ADR-034: visual in-place editor pattern + provider/overlay architecture (cuando se cierre Sub-bloque K).
