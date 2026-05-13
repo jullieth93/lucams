@@ -15,7 +15,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ChevronRight, MessageCircle } from "lucide-react";
+import { ChevronRight, MessageCircle, Sparkles } from "lucide-react";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { Button } from "@/components/ui/button";
@@ -85,6 +85,12 @@ export default async function ProductoDetallePage({
     productName: product.name,
     sku: product.sku,
   });
+
+  // M.2 — "Personalizar primero": si el producto requiere personalización,
+  // la CTA primaria es ir al Estudio. "Añadir al carrito" se oculta hasta
+  // que haya un Design READY (M.4 cablea ese flow). Si kind=NONE, mantiene
+  // el flujo clásico de añadir al carrito directo.
+  const requiresPersonalization = product.personalizationKind !== "NONE";
 
   // JSON-LD Product structured data — Google rich results.
   // basePrice está en centavos COP → dividir por 100 para schema.org.
@@ -177,18 +183,34 @@ export default async function ProductoDetallePage({
               </p>
 
               <div className="space-y-2 pt-2">
-                <form action={addToCartAction}>
-                  <input type="hidden" name="slug" value={product.slug} />
-                  <input type="hidden" name="qty" value={1} />
-                  <input type="hidden" name="returnTo" value={`/producto/${product.slug}`} />
-                  <Button
-                    type="submit"
-                    className="bg-brand-purple hover:bg-brand-purple-dark w-full text-white"
-                    size="lg"
-                  >
-                    Añadir al carrito
-                  </Button>
-                </form>
+                {requiresPersonalization ? (
+                  <>
+                    {/* CTA primaria: ir al Estudio. M.3 implementará /estudio/[slug]. */}
+                    <Link
+                      href={`/estudio/${product.slug}`}
+                      className="bg-brand-purple hover:bg-brand-purple-dark inline-flex h-12 w-full items-center justify-center gap-2 rounded-md px-6 text-base font-semibold text-white shadow-lg shadow-brand-purple/30 transition-all hover:shadow-xl hover:shadow-brand-purple/40"
+                    >
+                      <Sparkles className="h-5 w-5" />
+                      Personalizar tu imán →
+                    </Link>
+                    <p className="text-brand-purple-dark/60 text-center text-xs">
+                      Diseñá en vivo • Vista previa al instante
+                    </p>
+                  </>
+                ) : (
+                  <form action={addToCartAction}>
+                    <input type="hidden" name="slug" value={product.slug} />
+                    <input type="hidden" name="qty" value={1} />
+                    <input type="hidden" name="returnTo" value={`/producto/${product.slug}`} />
+                    <Button
+                      type="submit"
+                      className="bg-brand-purple hover:bg-brand-purple-dark w-full text-white"
+                      size="lg"
+                    >
+                      Añadir al carrito
+                    </Button>
+                  </form>
+                )}
                 {waHref && (
                   <a
                     href={waHref}

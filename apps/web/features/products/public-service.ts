@@ -34,7 +34,22 @@ export type StorefrontProductDetail = StorefrontProductCard & {
   seoTitle: string | null;
   seoDescription: string | null;
   updatedAt: Date;
+  personalizationKind: PersonalizationKind;
+  personalizationSchema: unknown; // Json libre — Estudio M.3 lo interpreta según kind
 };
+
+// Re-export del enum Prisma para que consumidores no importen @prisma/client.
+// En M.3 el editor enrutará a sub-editor según kind.
+export type PersonalizationKind =
+  | "PHOTO_PACK"
+  | "PHOTO_GRID"
+  | "CALENDAR_PHOTO_MONTH"
+  | "CALENDAR_PHOTO_HERO"
+  | "EVENT_FAVOR"
+  | "BUSINESS_LOGO"
+  | "CUSTOM_DECOR"
+  | "TEXT_ONLY"
+  | "NONE";
 
 const STOREFRONT_WHERE = {
   deletedAt: null,
@@ -293,6 +308,8 @@ export async function getStorefrontProductBySlug(
       compareAtPrice: true,
       sku: true,
       isPersonalizable: true,
+      personalizationKind: true,
+      personalizationSchema: true,
       images: true,
       seoTitle: true,
       seoDescription: true,
