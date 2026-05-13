@@ -36,13 +36,7 @@ import { StudioSidebar } from "./studio-sidebar";
 import { StudioToolbar } from "./studio-toolbar";
 import { StudioAssetPickerModal } from "./studio-asset-picker-modal";
 import { createStudioStore } from "./lib/store";
-import type {
-  CanvasData,
-  CanvasDataV2,
-  StudioAsset,
-  StudioProduct,
-  StudioTemplate,
-} from "./types";
+import type { CanvasData, CanvasDataV2, StudioAsset, StudioProduct, StudioTemplate } from "./types";
 import { ensureCanvasV2 } from "./lib/canvas-migrate";
 
 const AUTO_SAVE_DELAY_MS = 2000;
