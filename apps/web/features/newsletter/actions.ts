@@ -15,6 +15,9 @@ import { logger } from "@/lib/logger";
 import { rateLimit } from "@/lib/rate-limit";
 import { emailKey, ipKey } from "@/lib/rate-limit-keys";
 import { verifyTurnstileToken } from "@/lib/turnstile";
+import { sendEmail } from "@/lib/resend";
+import { newsletterWelcomeEmail } from "@/features/emails/templates/newsletter-welcome";
+import { createHash } from "node:crypto";
 
 export type NewsletterFormState = {
   ok?: boolean;
@@ -78,6 +81,29 @@ export async function subscribeNewsletterAction(
 
   if (!result.ok) {
     return { error: result.message };
+  }
+
+  // Email de bienvenida solo para nuevos suscriptores. Fire-and-forget.
+  // Token de unsubscribe = SHA-256 del email (Lucy va a verificarlo en
+  // futuro endpoint /unsubscribe). No es secreto criptográfico — solo
+  // evita que cualquiera pueda dar de baja a otros poniendo el email
+  // crudo en el URL.
+  if (!result.alreadySubscribed) {
+    const unsubscribeToken = createHash("sha256")
+      .update(`${parsed.data.email}:${process.env.CSRF_SECRET ?? "dev"}`)
+      .digest("hex")
+      .slice(0, 32);
+    void (async () => {
+      const tpl = await newsletterWelcomeEmail({ unsubscribeToken });
+      await sendEmail({
+        to: parsed.data.email,
+        subject: tpl.subject,
+        html: tpl.html,
+        text: tpl.text,
+        idempotencyKey: `newsletter:welcome:${unsubscribeToken}`,
+        tags: [{ name: "kind", value: "newsletter-welcome" }],
+      });
+    })();
   }
 
   return {

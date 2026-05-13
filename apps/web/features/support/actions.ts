@@ -26,6 +26,10 @@ import { emailKey, hashEmail, ipKey } from "@/lib/rate-limit-keys";
 import { logger } from "@/lib/logger";
 import { getCurrentCustomer } from "@/lib/auth";
 import { verifyTurnstileToken } from "@/lib/turnstile";
+import { sendEmail } from "@/lib/resend";
+import { getSettingValue } from "@/lib/cms";
+import { supportTicketReceivedEmail } from "@/features/emails/templates/support-ticket-received";
+import { supportTicketInternalEmail } from "@/features/emails/templates/support-ticket-internal";
 import { SupportTicketSchema, type SupportTicketInput } from "./schemas";
 
 export type SupportActionState =
@@ -112,6 +116,48 @@ export async function submitContactAction(
       subject: parsed.data.subject,
       hasCustomer: !!session?.customer.id,
     });
+
+    // Emails fire-and-forget (no bloquean response). 2 templates:
+    //   - received: confirmación al cliente con su mensaje
+    //   - internal: notificación a hola@lucamsshop.co con Reply-To
+    void (async () => {
+      const contactEmail = await getSettingValue("CONTACT_EMAIL", "hola@lucamsshop.co");
+      const [received, internal] = await Promise.all([
+        supportTicketReceivedEmail({
+          customerName: parsed.data.name,
+          ticketId: ticket.id,
+          subject: parsed.data.subject,
+          message: parsed.data.message,
+        }),
+        supportTicketInternalEmail({
+          customerName: parsed.data.name,
+          customerEmail: parsed.data.email,
+          ticketId: ticket.id,
+          subject: parsed.data.subject,
+          message: parsed.data.message,
+          ip,
+        }),
+      ]);
+      await Promise.all([
+        sendEmail({
+          to: parsed.data.email,
+          subject: received.subject,
+          html: received.html,
+          text: received.text,
+          idempotencyKey: `support:received:${ticket.id}`,
+          tags: [{ name: "kind", value: "support-received" }],
+        }),
+        sendEmail({
+          to: contactEmail,
+          subject: internal.subject,
+          html: internal.html,
+          text: internal.text,
+          replyTo: internal.replyTo,
+          idempotencyKey: `support:internal:${ticket.id}`,
+          tags: [{ name: "kind", value: "support-internal" }],
+        }),
+      ]);
+    })();
 
     return { ok: true, ticketId: ticket.id };
   } catch (err) {
