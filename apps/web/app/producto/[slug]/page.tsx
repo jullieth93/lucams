@@ -69,11 +69,9 @@ export default async function ProductoDetallePage({
   params: Params;
   searchParams: SearchParams;
 }) {
-  const [{ slug }, sp] = await Promise.all([params, searchParams]);
+  const [{ slug }] = await Promise.all([params, searchParams]);
   const product = await getStorefrontProductBySlug(slug);
   if (!product) notFound();
-  const justAdded = sp.added === "1";
-  const errorMsg = typeof sp.error === "string" ? sp.error : null;
 
   const related = await listRelatedProducts({
     productId: product.id,
@@ -127,23 +125,6 @@ export default async function ProductoDetallePage({
 
       <main className="flex-1 px-6 py-8 sm:px-10">
         <div className="mx-auto max-w-5xl">
-          {justAdded && (
-            <div className="border-brand-turquoise/30 bg-brand-turquoise/10 text-brand-purple-dark mb-4 flex items-center justify-between gap-3 rounded-md border px-4 py-3 text-sm">
-              <span>✨ Agregado al carrito.</span>
-              <Link
-                href="/carrito"
-                className="text-brand-purple hover:text-brand-purple-dark font-semibold"
-              >
-                Ver carrito →
-              </Link>
-            </div>
-          )}
-          {errorMsg && (
-            <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-              {errorMsg}
-            </div>
-          )}
-
           <nav
             className="text-brand-purple-dark/60 mb-6 flex items-center gap-1 text-xs"
             aria-label="Breadcrumb"

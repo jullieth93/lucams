@@ -25,13 +25,9 @@ export const metadata: Metadata = {
   title: "Carrito",
 };
 
-type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
-
-export default async function CarritoPage({ searchParams }: { searchParams: SearchParams }) {
-  const sp = await searchParams;
-  const justAdded = sp.added === "1";
-  const errorMsg = typeof sp.error === "string" ? sp.error : null;
-
+export default async function CarritoPage() {
+  // RouteToasts en app/layout.tsx maneja ?added=1 y ?error=... como
+  // toast sonner, así que acá ya no rendereamos los banners inline.
   const sessionId = await peekCartSession();
   const cart = sessionId ? await getCartDetail(sessionId) : null;
 
@@ -44,17 +40,6 @@ export default async function CarritoPage({ searchParams }: { searchParams: Sear
           <h1 className="font-display text-brand-purple-dark mb-6 text-3xl sm:text-4xl">
             Tu carrito
           </h1>
-
-          {justAdded && (
-            <div className="border-brand-turquoise/30 bg-brand-turquoise/10 text-brand-purple-dark mb-4 rounded-md border px-4 py-3 text-sm">
-              ✨ Producto agregado al carrito.
-            </div>
-          )}
-          {errorMsg && (
-            <div className="mb-4 rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-              {errorMsg}
-            </div>
-          )}
 
           {!cart || cart.items.length === 0 ? (
             <EmptyCart />
