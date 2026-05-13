@@ -1,4 +1,4 @@
-.PHONY: help install build typecheck lint format migrate seed-products test test-unit test-e2e test-rls clean
+.PHONY: help install build typecheck lint format migrate seed-products test test-unit test-e2e test-rls test-load test-coverage clean
 
 # Makefile en repo — targets primitivos para CI y devs locales.
 # El Makefile completo de runtime (con state/log/pid management,
@@ -56,6 +56,10 @@ test-coverage:
 
 test-rls:
 	@echo "RLS automated tests pendientes — sub-bloque L (QA exhaustivo)"
+
+test-load:
+	@command -v k6 >/dev/null 2>&1 || { echo "k6 no instalado. https://k6.io/docs/get-started/installation/"; exit 1; }
+	k6 run tests/load/storefront-browsing.js
 
 clean:
 	rm -rf apps/web/.next apps/web/node_modules/.cache
