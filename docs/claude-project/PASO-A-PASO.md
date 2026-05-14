@@ -48,11 +48,11 @@ Claude Projects acepta hasta 200K tokens de "Project Knowledge" — archivos per
 
 **Cómo descargar los archivos**: están en este repo en `docs/claude-project/`. Las 3 opciones:
 
-| Método | Cómo |
-|---|---|
+| Método                    | Cómo                                                                                                                       |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
 | **Download desde GitHub** | https://github.com/jullieth93/lucams/tree/develop/docs/claude-project → click en cada archivo → "Raw" → guardar como `.md` |
-| **Git local** | `cd /ruta/al/repo && cat docs/claude-project/paleta-brand.md` y copiá a un archivo .md |
-| **Copy-paste directo** | Abrí cada archivo en VS Code / editor → copiá el contenido → pegalo en Claude como mensaje + "guardar como knowledge file" |
+| **Git local**             | `cd /ruta/al/repo && cat docs/claude-project/paleta-brand.md` y copiá a un archivo .md                                     |
+| **Copy-paste directo**    | Abrí cada archivo en VS Code / editor → copiá el contenido → pegalo en Claude como mensaje + "guardar como knowledge file" |
 
 ---
 
@@ -63,6 +63,7 @@ Dentro del Project, escribí este mensaje de prueba:
 > "Hola. Antes de empezar, decime: ¿qué plantillas ya existen en el catálogo Lucams y cuál es el color `#D4AF37`?"
 
 Claude debería responder:
+
 - Listar las 11 plantillas activas (de `plantillas-existentes.md`)
 - Identificar `#D4AF37` como **gold** de la paleta (de `paleta-brand.md`)
 
@@ -101,7 +102,8 @@ Nueva plantilla "Día del Padre".
 ▸ Paleta: usar solo brand listado en paleta-brand.md.
 ```
 
-Claude devolverá el SVG en un bloque ```svg```. Copialo, pegámelo a mí y yo:
+Claude devolverá el SVG en un bloque `svg`. Copialo, pegámelo a mí y yo:
+
 - Lo valido contra los criterios técnicos
 - Si pasa, lo agrego a `apps/web/public/templates/<slug>.svg`
 - Lo agrego al seed con sus coords correspondientes

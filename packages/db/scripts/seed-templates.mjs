@@ -670,6 +670,47 @@ const templatesData = [
     },
   },
 
+  // ════════════════════════ PHOTO_PACK extra (Baby Shower — generado vía Project) ════════════════════════
+
+  // 2026-05-14 — primera plantilla generada vía Claude Project "Lucams SVG Designer".
+  // Briefing: marco polaroid para baby shower con flores acuarela en esquinas +
+  // ribbon blush abajo. Paleta blush/sage-green/cream/yellow.
+  // Ajustes manuales aplicados: scattered-leaves + sparkles desplazadas a marcos
+  // laterales para no tapar la foto del cliente.
+  {
+    slug: "photo-pack-baby-shower",
+    kind: "PHOTO_PACK",
+    name: "Baby Shower",
+    order: 5,
+    previewUrl: "/templates/photo-pack-baby-shower.svg",
+    canvasData: {
+      version: 1,
+      stage: stage(720, 920),
+      layers: [
+        background("#FFFFFF"),
+        photoSlot({
+          id: "p1",
+          x: 60,
+          y: 60,
+          width: 600,
+          height: 620,
+          cornerRadius: 12,
+          label: "Foto del bebé",
+        }),
+        asset({
+          id: "frame",
+          src: "/templates/photo-pack-baby-shower.svg",
+          x: 0,
+          y: 0,
+          width: 720,
+          height: 920,
+        }),
+        // Zona reservada caption: (60, 720, 600, 80) — text overlay editable
+        // (todavía no implementado en M.3.b.D, queda reservado)
+      ],
+    },
+  },
+
   // ════════════════════════ BUSINESS_LOGO (1) ════════════════════════
 
   {

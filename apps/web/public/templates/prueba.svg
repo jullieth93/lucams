@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  polaroid-amigos-bff.svg
+  Photo area transparente: (60, 60, 600, 680)
+  Decoraciones: 4 corners dorados + ribbon coral-rosa abajo + estrellitas
+  Stage: 720×920
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="720" height="920" viewBox="0 0 720 920" fill="none">
+  <defs>
+    <linearGradient id="ribbon-grad" x1="220" y1="790" x2="500" y2="860" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#E85B9F"/>
+      <stop offset="100%" stop-color="#F58A6F"/>
+    </linearGradient>
+  </defs>
+
+  <g id="header">
+    <rect x="0" y="0" width="720" height="60" fill="#FFF8F0"/>
+  </g>
+
+  <g id="photo-frame">
+    <rect x="0" y="0" width="720" height="60" fill="#FFFFFF"/>
+    <rect x="0" y="60" width="60" height="680" fill="#FFFFFF"/>
+    <rect x="660" y="60" width="60" height="680" fill="#FFFFFF"/>
+    <rect x="0" y="740" width="720" height="180" fill="#FFFFFF"/>
+
+    <rect
+      x="60"
+      y="60"
+      width="600"
+      height="680"
+      rx="8"
+      fill="none"
+      stroke="#EEEEEE"
+      stroke-width="1"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    />
+  </g>
+
+  <g id="decorations" stroke-linecap="round" stroke-linejoin="round">
+
+    <g id="corner-ornaments" fill="#D4AF37">
+      <path d="M60 60 H105 Q92 60 86 73 V105 H74 V80 Q74 68 60 60Z"/>
+      <path d="M660 60 H615 Q628 60 634 73 V105 H646 V80 Q646 68 660 60Z"/>
+      <path d="M60 740 H105 Q92 740 86 727 V695 H74 V720 Q74 732 60 740Z"/>
+      <path d="M660 740 H615 Q628 740 634 727 V695 H646 V720 Q646 732 660 740Z"/>
+    </g>
+
+    <g id="corner-stars" fill="#FFD93D" opacity="0.9">
+      <circle cx="118" cy="90" r="4"/>
+      <circle cx="602" cy="90" r="4"/>
+      <circle cx="118" cy="710" r="4"/>
+      <circle cx="602" cy="710" r="4"/>
+    </g>
+
+    <g id="ribbon">
+      <path
+        d="M220 790
+           H500
+           Q525 790 535 805
+           Q545 820 535 835
+           Q525 850 500 850
+           H220
+           Q195 850 185 835
+           Q175 820 185 805
+           Q195 790 220 790Z"
+        fill="url(#ribbon-grad)"
+      />
+
+      <path d="M220 790 L180 815 L220 840Z" fill="#E85B9F"/>
+      <path d="M500 790 L540 815 L500 840Z" fill="#F58A6F"/>
+    </g>
+
+    <g id="stars" fill="#7C6AAD" opacity="0.7">
+      <circle cx="130" cy="835" r="4"/>
+      <circle cx="165" cy="865" r="3"/>
+      <circle cx="210" cy="845" r="5"/>
+      <circle cx="560" cy="835" r="4"/>
+      <circle cx="600" cy="860" r="3"/>
+      <circle cx="635" cy="840" r="5"/>
+      <circle cx="310" cy="875" r="3"/>
+      <circle cx="410" cy="880" r="4"/>
+    </g>
+
+    <g id="accent-lines" stroke="#5DD9D1" stroke-width="3">
+      <line x1="85" y1="780" x2="135" y2="780"/>
+      <line x1="585" y1="780" x2="635" y2="780"/>
+    </g>
+
+  </g>
+</svg>

@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  photo-pack-baby-shower.svg
+  Stage: 720×920 (7×9 cm vertical)
+  Agujero foto: (60, 60, 600, 620) rx=12
+  Zonas reservadas overlay:
+    - caption nombre bebé: (60, 720, 600, 80)
+  Paleta: blush #FFE5EC, sage-green #B5C9A8, cream #FFF8F0, yellow #FFD93D, white #FFFFFF
+  Generado vía Claude Project + ajustes manuales (scattered-leaves + sparkles
+  desplazados fuera del área foto para no tapar la foto del cliente).
+-->
+<svg width="720" height="920" viewBox="0 0 720 920" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="ribbonGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#FFF8F0" stop-opacity="0.4"/>
+      <stop offset="50%" stop-color="#FFE5EC" stop-opacity="1"/>
+      <stop offset="100%" stop-color="#FFF8F0" stop-opacity="0.4"/>
+    </linearGradient>
+    <radialGradient id="flowerCenter" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0%" stop-color="#FFD93D"/>
+      <stop offset="100%" stop-color="#FFE5EC"/>
+    </radialGradient>
+  </defs>
+
+  <g id="frame">
+    <rect x="0" y="0" width="720" height="920" fill="#FFFFFF"/>
+    <rect x="60" y="60" width="600" height="620" rx="12" fill="none" stroke="#B5C9A8" stroke-width="1" opacity="0.12"/>
+  </g>
+
+  <g id="flowers-corners">
+    <g id="flower-tl" transform="translate(40, 40)">
+      <ellipse cx="0" cy="-14" rx="9" ry="13" fill="#FFE5EC" opacity="0.85"/>
+      <ellipse cx="13" cy="-4" rx="13" ry="9" fill="#FFE5EC" opacity="0.85"/>
+      <ellipse cx="9" cy="12" rx="11" ry="14" fill="#FFE5EC" opacity="0.85"/>
+      <ellipse cx="-10" cy="10" rx="13" ry="10" fill="#FFE5EC" opacity="0.85"/>
+      <ellipse cx="-13" cy="-7" rx="10" ry="12" fill="#FFE5EC" opacity="0.85"/>
+      <circle cx="0" cy="0" r="6" fill="url(#flowerCenter)"/>
+      <path d="M -28,4 Q -22,-8 -14,-6 Q -20,2 -28,4 Z" fill="#B5C9A8" opacity="0.9"/>
+      <path d="M 6,-26 Q 16,-22 14,-14 Q 4,-18 6,-26 Z" fill="#B5C9A8" opacity="0.9"/>
+    </g>
+
+    <g id="flower-tr" transform="translate(680, 40)">
+      <ellipse cx="0" cy="-14" rx="9" ry="13" fill="#FFE5EC" opacity="0.85"/>
+      <ellipse cx="13" cy="-4" rx="13" ry="9" fill="#FFE5EC" opacity="0.85"/>
+      <ellipse cx="9" cy="12" rx="11" ry="14" fill="#FFE5EC" opacity="0.85"/>
+      <ellipse cx="-10" cy="10" rx="13" ry="10" fill="#FFE5EC" opacity="0.85"/>
+      <ellipse cx="-13" cy="-7" rx="10" ry="12" fill="#FFE5EC" opacity="0.85"/>
+      <circle cx="0" cy="0" r="6" fill="url(#flowerCenter)"/>
+      <path d="M 28,4 Q 22,-8 14,-6 Q 20,2 28,4 Z" fill="#B5C9A8" opacity="0.9"/>
+      <path d="M -6,-26 Q -16,-22 -14,-14 Q -4,-18 -6,-26 Z" fill="#B5C9A8" opacity="0.9"/>
+    </g>
+
+    <g id="flower-bl" transform="translate(40, 700)">
+      <ellipse cx="0" cy="-14" rx="9" ry="13" fill="#FFE5EC" opacity="0.85"/>
+      <ellipse cx="13" cy="-4" rx="13" ry="9" fill="#FFE5EC" opacity="0.85"/>
+      <ellipse cx="9" cy="12" rx="11" ry="14" fill="#FFE5EC" opacity="0.85"/>
+      <ellipse cx="-10" cy="10" rx="13" ry="10" fill="#FFE5EC" opacity="0.85"/>
+      <ellipse cx="-13" cy="-7" rx="10" ry="12" fill="#FFE5EC" opacity="0.85"/>
+      <circle cx="0" cy="0" r="6" fill="url(#flowerCenter)"/>
+      <path d="M -28,-4 Q -22,8 -14,6 Q -20,-2 -28,-4 Z" fill="#B5C9A8" opacity="0.9"/>
+      <path d="M 8,24 Q 18,20 16,12 Q 6,16 8,24 Z" fill="#B5C9A8" opacity="0.9"/>
+    </g>
+
+    <g id="flower-br" transform="translate(680, 700)">
+      <ellipse cx="0" cy="-14" rx="9" ry="13" fill="#FFE5EC" opacity="0.85"/>
+      <ellipse cx="13" cy="-4" rx="13" ry="9" fill="#FFE5EC" opacity="0.85"/>
+      <ellipse cx="9" cy="12" rx="11" ry="14" fill="#FFE5EC" opacity="0.85"/>
+      <ellipse cx="-10" cy="10" rx="13" ry="10" fill="#FFE5EC" opacity="0.85"/>
+      <ellipse cx="-13" cy="-7" rx="10" ry="12" fill="#FFE5EC" opacity="0.85"/>
+      <circle cx="0" cy="0" r="6" fill="url(#flowerCenter)"/>
+      <path d="M 28,-4 Q 22,8 14,6 Q 20,-2 28,-4 Z" fill="#B5C9A8" opacity="0.9"/>
+      <path d="M -8,24 Q -18,20 -16,12 Q -6,16 -8,24 Z" fill="#B5C9A8" opacity="0.9"/>
+    </g>
+  </g>
+
+  <g id="scattered-leaves">
+    <!-- Ajuste manual: las 3 leaves desplazadas a los marcos laterales (x<60 / x>660)
+         para no tapar la foto del cliente. -->
+    <path d="M 35,380 Q 15,388 22,406 Q 40,402 35,380 Z" fill="#B5C9A8" opacity="0.75"/>
+    <path d="M 22,406 L 32,392" stroke="#B5C9A8" stroke-width="1" stroke-linecap="round" opacity="0.6"/>
+    <path d="M 685,260 Q 705,268 698,286 Q 680,282 685,260 Z" fill="#B5C9A8" opacity="0.75"/>
+    <path d="M 698,286 L 688,272" stroke="#B5C9A8" stroke-width="1" stroke-linecap="round" opacity="0.6"/>
+    <path d="M 690,560 Q 708,554 704,538 Q 688,544 690,560 Z" fill="#B5C9A8" opacity="0.7"/>
+  </g>
+
+  <g id="sparkles">
+    <!-- Ajuste manual: sparkles desplazadas a los marcos laterales -->
+    <path d="M 30,180 L 32,186 L 38,188 L 32,190 L 30,196 L 28,190 L 22,188 L 28,186 Z" fill="#FFD93D" opacity="0.95"/>
+    <path d="M 685,620 L 687,625 L 692,627 L 687,629 L 685,634 L 683,629 L 678,627 L 683,625 Z" fill="#FFD93D" opacity="0.95"/>
+  </g>
+
+  <g id="ribbon-blush">
+    <path d="M 60,830 Q 360,820 660,830 L 660,870 Q 360,860 60,870 Z" fill="url(#ribbonGrad)"/>
+    <path d="M 40,838 L 60,830 L 60,870 L 40,878 L 50,854 Z" fill="#FFE5EC" opacity="0.8"/>
+    <path d="M 680,838 L 660,830 L 660,870 L 680,878 L 670,854 Z" fill="#FFE5EC" opacity="0.8"/>
+    <line x1="100" y1="850" x2="160" y2="850" stroke="#B5C9A8" stroke-width="1" stroke-linecap="round" opacity="0.5"/>
+    <line x1="560" y1="850" x2="620" y2="850" stroke="#B5C9A8" stroke-width="1" stroke-linecap="round" opacity="0.5"/>
+    <circle cx="360" cy="850" r="3" fill="#FFD93D" opacity="0.8"/>
+  </g>
+</svg>

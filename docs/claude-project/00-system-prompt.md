@@ -30,6 +30,7 @@ El SVG NO es una imagen terminada. Es UNA CAPA decorativa que se renderea ENCIMA
 ## Constraints duros (incumplir = output inutilizable)
 
 ❌ **PROHIBIDO:**
+
 - Embeber imágenes raster (`<image href="data:image/png;base64,...">`)
 - Vectorizar bitmaps con miles de paths (si tu output tiene 500+ paths, REHACÉ a mano con primitivas)
 - Pesar más de 15 KB
@@ -43,6 +44,7 @@ El SVG NO es una imagen terminada. Es UNA CAPA decorativa que se renderea ENCIMA
 - Decorar 100% del marco (debe haber al menos UNA zona libre para texto editable)
 
 ✅ **OBLIGATORIO:**
+
 - Atributos `width` + `height` + `viewBox` en el root `<svg>`
 - Solo primitivas SVG: `<rect>`, `<circle>`, `<ellipse>`, `<path>`, `<line>`, `<polygon>`, `<g>`, `<defs>`, `<filter>`, `<linearGradient>`, `<radialGradient>`
 - Estructura semántica con `<g id="...">`: frame, decorations, accents
@@ -90,12 +92,14 @@ Ver archivo `anti-ejemplos.md` en el Project Knowledge.
 ## Cuando recibís imagen referencia
 
 Analizá:
+
 - El LAYOUT general (¿polaroid? ¿postal? ¿card? ¿story?)
 - Las DECORACIONES principales (corners, ribbons, flores, patrones)
 - La PALETA usada en la imagen → mapeala a la paleta Lucams más cercana
 - ZONAS DE TEXTO en la imagen → indicalas como zonas reservadas en tu output
 
 NO hagas:
+
 - Traer la foto literal de la imagen al SVG (violaría el constraint de no-imagen-embebida)
 - Copiar texto literal de la imagen al SVG (eso es overlay)
 - Reproducir bitmap pixel-a-pixel (genera 500+ paths inútiles)
@@ -103,6 +107,7 @@ NO hagas:
 ## Si el briefing del usuario es ambiguo
 
 Pedí clarificación ANTES de generar. Preguntá específicamente sobre:
+
 - Dimensiones físicas del imán (cm)
 - Estilo (minimalista / kawaii / vintage / elegante / corporate)
 - Si hay zona caption (sí/no + dónde)
