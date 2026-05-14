@@ -23,6 +23,7 @@ import { ArrowLeft, Check, Loader2, AlertCircle, Sparkles, Ruler } from "lucide-
 import type { StoreApi } from "zustand";
 import { useStore } from "zustand";
 import { compareSizeToObject } from "./lib/size-comparator";
+import { LucamsLogo } from "@/components/lucams-logo";
 import {
   selectFilledSlotCount,
   selectIsComplete,
@@ -89,17 +90,7 @@ export function StudioToolbar({
 
         {/* A1.1 — Hero del estudio: avatar producto + nombre + medidas físicas grandes */}
         <div className="hidden flex-1 items-center justify-center gap-3 md:flex">
-          {productImageUrl && (
-            <div className="ring-brand-purple/15 relative h-10 w-10 overflow-hidden rounded-md shadow-sm ring-1">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={productImageUrl}
-                alt=""
-                className="h-full w-full object-cover"
-                aria-hidden
-              />
-            </div>
-          )}
+          <ProductAvatar productImageUrl={productImageUrl} productName={productName} />
           <div className="flex flex-col items-start leading-tight">
             <p className="text-brand-purple-dark text-sm font-semibold">
               Personalizar · {productName}
@@ -267,6 +258,47 @@ function formatRelative(timestamp: number): string {
 }
 
 // ──────────────────────────────────────────────────────────────────
+//  FIX-3 — ProductAvatar con fallback al mascote
+// ──────────────────────────────────────────────────────────────────
+//
+// Si el productImageUrl no carga (Unsplash tarda, CSP, red caída) el
+// avatar quedaba como cuadrado blanco vacío. Fallback con mascote Lucams.
+
+function ProductAvatar({
+  productImageUrl,
+  productName,
+}: {
+  productImageUrl?: string;
+  productName: string;
+}) {
+  const [errored, setErrored] = useState(false);
+
+  // Sin URL → directo al fallback con mascote
+  if (!productImageUrl || errored) {
+    return (
+      <div
+        className="ring-brand-purple/15 from-brand-cream to-brand-pink/15 flex h-10 w-10 items-center justify-center overflow-hidden rounded-md bg-gradient-to-br shadow-sm ring-1"
+        aria-label={productName}
+      >
+        <LucamsLogo variant="mascot" size={28} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="ring-brand-purple/15 relative h-10 w-10 overflow-hidden rounded-md shadow-sm ring-1">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={productImageUrl}
+        alt={productName}
+        className="h-full w-full object-cover"
+        onError={() => setErrored(true)}
+      />
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────
 //  P0.5 — Chip de tamaño con comparador a objeto cotidiano
 // ──────────────────────────────────────────────────────────────────
 //
@@ -317,7 +349,7 @@ function SizeChipWithComparator({ sizeCm }: { sizeCm: string }) {
               exit={{ opacity: 0, y: -4, scale: 0.96 }}
               transition={{ duration: 0.18, ease: "easeOut" }}
               role="tooltip"
-              className="ring-brand-purple/15 absolute top-full left-1/2 z-40 mt-2 w-56 -translate-x-1/2 rounded-xl bg-white p-3 shadow-xl ring-1"
+              className="ring-brand-purple/15 absolute top-full left-1/2 z-40 mt-2 w-64 -translate-x-1/2 rounded-xl bg-white p-3 shadow-xl ring-1"
             >
               <div className="flex items-center gap-2">
                 <span className="text-3xl leading-none" aria-hidden>
@@ -327,11 +359,15 @@ function SizeChipWithComparator({ sizeCm }: { sizeCm: string }) {
                   <p className="text-brand-purple-dark text-xs leading-tight font-bold">
                     Tu imán será {comparison.phrase}
                   </p>
-                  <p className="text-brand-purple-dark/60 mt-0.5 text-[10px]">
-                    {sizeCm} cm — {comparison.name}
-                  </p>
+                  <p className="text-brand-purple-dark/60 mt-0.5 text-[10px]">{comparison.name}</p>
                 </div>
               </div>
+              {/* FIX-5 — Dimensión explícita ancho × alto para evitar la
+                  ambigüedad "7×9 o 9×7". Convención del catálogo: primero
+                  ancho, después alto. */}
+              <p className="text-brand-purple-dark/55 border-brand-purple/10 mt-2 border-t pt-1.5 text-[10px]">
+                <span className="font-bold">Medida:</span> {comparison.humanLabel}
+              </p>
               {/* Pico apuntando al chip */}
               <span
                 aria-hidden

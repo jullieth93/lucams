@@ -59,7 +59,13 @@ const FOCUS_RING = "0 0 0 3px rgb(93 217 209)"; // brand-turquoise
 type StudioSlotProps = {
   slotState: SlotState;
   unitTemplate: CanvasDataV1;
-  displaySize: number; // px lógicos del slot en pantalla
+  /** Ancho lógico del slot en pantalla. Si no se pasa displayHeight, se usa
+   * el aspect ratio del unitTemplate.stage para calcular height (FIX-1). */
+  displaySize: number;
+  /** Alto lógico del slot en pantalla. Si se omite, deriva del aspect ratio
+   * del unitTemplate. Importante: el slot DEBE respetar el aspect físico
+   * del producto (7×9 cm = vertical, no cuadrado). */
+  displayHeight?: number;
   isSelected: boolean;
   totalSlots: number;
   /** M.3.b.A2.5 — Tamaño físico del imán (ej "5×5 cm") leído del product.personalizationSchema.sizeCm. */
@@ -85,6 +91,7 @@ function StudioSlotImpl({
   slotState,
   unitTemplate,
   displaySize,
+  displayHeight,
   isSelected,
   totalSlots,
   sizeCm,
@@ -111,8 +118,16 @@ function StudioSlotImpl({
     };
   }, [onRegisterStage]);
 
-  // Calculate scale to fit unitTemplate stage en displaySize
-  const scale = displaySize / Math.max(unitTemplate.stage.width, unitTemplate.stage.height);
+  // FIX-1 — Aspect ratio físico del slot.
+  // El motion.div + Konva Stage DEBEN respetar las proporciones físicas del
+  // producto (7×9 cm = vertical), no forzar cuadrado. Antes el container
+  // CSS era `width=height=displaySize` lo que generaba padding interno
+  // visible cuando el unitTemplate no era cuadrado.
+  const aspect = unitTemplate.stage.height / unitTemplate.stage.width;
+  const slotWidth = displaySize;
+  const slotHeight = displayHeight ?? displaySize * aspect;
+  // Scale Konva: misma proporción horizontal y vertical (no distorsiona)
+  const scale = slotWidth / unitTemplate.stage.width;
 
   // ──────────── Drag & drop nativo ────────────
   const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
@@ -184,177 +199,204 @@ function StudioSlotImpl({
     : `Imán ${slotState.slotIndex + 1} de ${totalSlots}, vacío. Enter para subir foto.`;
 
   return (
-    <motion.div
-      ref={containerRef}
-      role="button"
-      tabIndex={0}
-      aria-label={ariaLabel}
-      aria-pressed={isSelected}
-      onClick={(e: ReactMouseEvent) => {
-        e.preventDefault();
-        onClick();
-      }}
-      onKeyDown={handleKeyDown}
-      onDragOver={handleDragOver}
-      onDragLeave={handleDragLeave}
-      onDrop={handleDrop}
-      data-slot-index={slotState.slotIndex}
-      data-state={
-        isDropping
-          ? "dropping"
-          : slotState.assetUrl
-            ? isSelected
-              ? "selected"
-              : "filled"
-            : "empty"
-      }
-      className={[
-        "group relative cursor-pointer overflow-hidden bg-white outline-none",
-        "transition-shadow duration-200",
-        isSelected ? "ring-brand-turquoise ring-2 ring-offset-2" : "",
-        isDropping ? "ring-brand-turquoise ring-2 ring-offset-2" : "",
-      ].join(" ")}
-      style={{
-        width: displaySize,
-        height: displaySize,
-        borderRadius: 8,
-      }}
-      whileHover={{ scale: 1.02 }}
-      whileTap={{ scale: 0.98 }}
-      animate={{ scale: isDropping ? 1.04 : 1 }}
-      transition={{ duration: 0.15, ease: "easeOut" }}
-      onFocus={(e) => {
-        if (e.currentTarget instanceof HTMLElement) {
-          e.currentTarget.style.boxShadow = FOCUS_RING;
+    <div className="group/wrapper flex flex-col items-center gap-1.5">
+      <motion.div
+        ref={containerRef}
+        role="button"
+        tabIndex={0}
+        aria-label={ariaLabel}
+        aria-pressed={isSelected}
+        onClick={(e: ReactMouseEvent) => {
+          e.preventDefault();
+          onClick();
+        }}
+        onKeyDown={handleKeyDown}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+        data-slot-index={slotState.slotIndex}
+        data-state={
+          isDropping
+            ? "dropping"
+            : slotState.assetUrl
+              ? isSelected
+                ? "selected"
+                : "filled"
+              : "empty"
         }
-      }}
-      onBlur={(e) => {
-        if (e.currentTarget instanceof HTMLElement) {
-          e.currentTarget.style.boxShadow = "";
-        }
-      }}
-    >
-      {/* Konva Stage — 3 layers stacked:
+        className={[
+          "group relative cursor-pointer overflow-hidden bg-white outline-none",
+          "transition-shadow duration-200",
+          isSelected ? "ring-brand-turquoise ring-2 ring-offset-2" : "",
+          isDropping ? "ring-brand-turquoise ring-2 ring-offset-2" : "",
+        ].join(" ")}
+        style={{
+          width: slotWidth,
+          height: slotHeight,
+          borderRadius: 8,
+        }}
+        whileHover={{ scale: 1.02 }}
+        whileTap={{ scale: 0.98 }}
+        animate={{ scale: isDropping ? 1.04 : 1 }}
+        transition={{ duration: 0.15, ease: "easeOut" }}
+        onFocus={(e) => {
+          if (e.currentTarget instanceof HTMLElement) {
+            e.currentTarget.style.boxShadow = FOCUS_RING;
+          }
+        }}
+        onBlur={(e) => {
+          if (e.currentTarget instanceof HTMLElement) {
+            e.currentTarget.style.boxShadow = "";
+          }
+        }}
+      >
+        {/* Konva Stage — 3 layers stacked:
           1. RealismShadowLayer (bottom) — sombra del imán físico
           2. Content Layer (middle)      — unit template del seed
           3. RealismOverlayLayer (top)   — acabado glossy + bleed/safe guides */}
-      <Stage
-        width={displaySize}
-        height={displaySize}
-        scaleX={scale}
-        scaleY={scale}
-        ref={(s: Konva.Stage | null) => {
-          stageRef.current = s;
-        }}
-        listening={false}
-      >
-        <RealismShadowLayer
-          stage={unitTemplate.stage}
-          shape={shape}
-          cornerRadiusPx={cornerRadiusPx}
-        />
-        <Layer>
-          {unitTemplate.layers.map((layer) => renderLayer(layer, slotState, unitTemplate.stage))}
-        </Layer>
-        <RealismOverlayLayer
-          stage={unitTemplate.stage}
-          shape={shape}
-          finish={finish}
-          cornerRadiusPx={cornerRadiusPx}
-          showGuides={showRealismGuides}
-        />
-      </Stage>
+        <Stage
+          width={slotWidth}
+          height={slotHeight}
+          scaleX={scale}
+          scaleY={scale}
+          ref={(s: Konva.Stage | null) => {
+            stageRef.current = s;
+          }}
+          listening={false}
+        >
+          <RealismShadowLayer
+            stage={unitTemplate.stage}
+            shape={shape}
+            cornerRadiusPx={cornerRadiusPx}
+          />
+          <Layer>
+            {unitTemplate.layers.map((layer) => renderLayer(layer, slotState, unitTemplate.stage))}
+          </Layer>
+          <RealismOverlayLayer
+            stage={unitTemplate.stage}
+            shape={shape}
+            finish={finish}
+            cornerRadiusPx={cornerRadiusPx}
+            showGuides={showRealismGuides}
+          />
+        </Stage>
 
-      {/* P0.1 — Slot vacío con mascote Lucams + microcopy emocional tuteo.
+        {/* P0.1 — Slot vacío con mascote Lucams + microcopy emocional tuteo.
           Anti-patrón: NO usar "Photo here" / "Click para subir" (Shutterfly).
           Mensaje emocional + mascote como guía → es la mascota la que invita. */}
-      <AnimatePresence>
-        {!slotState.assetUrl && (
-          <motion.div
-            key="empty"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.25 }}
-            className={[
-              "absolute inset-0 flex flex-col items-center justify-center gap-1 transition-colors",
-              isDropping
-                ? "from-brand-turquoise/35 to-brand-turquoise/15 bg-gradient-to-br"
-                : "from-brand-cream/95 to-brand-cream/80 bg-gradient-to-br backdrop-blur-[1px]",
-            ].join(" ")}
-            aria-hidden="true"
-          >
-            {/* Borde punteado interno — animado al drop */}
+        <AnimatePresence>
+          {!slotState.assetUrl && (
             <motion.div
-              animate={{
-                borderColor: isDropping ? "rgb(93, 217, 209)" : "rgba(124, 106, 173, 0.25)",
-                scale: isDropping ? 1.02 : 1,
-              }}
-              transition={{ duration: 0.2 }}
-              className="pointer-events-none absolute inset-2 rounded-md border-2 border-dashed"
-            />
-
-            {/* Mascote Lucams bobbing — invita al cliente.
-                Al drop: bounce + wiggle excitado. */}
-            <motion.div
-              animate={{
-                y: isDropping ? -4 : [0, -3, 0],
-                rotate: isDropping ? [0, -8, 8, 0] : 0,
-              }}
-              transition={{
-                y: {
-                  duration: isDropping ? 0.3 : 2.4,
-                  repeat: isDropping ? 0 : Infinity,
-                  ease: "easeInOut",
-                },
-                rotate: { duration: 0.4, ease: "easeInOut" },
-              }}
-            >
-              <LucamsLogo variant="mascot" size={44} />
-            </motion.div>
-
-            {/* Microcopy emocional tuteo — cambia según estado drop */}
-            <span
+              key="empty"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.25 }}
               className={[
-                "mt-0.5 px-2 text-center text-[11px] leading-tight font-semibold transition-colors",
-                isDropping ? "text-brand-turquoise" : "text-brand-purple-dark/75",
+                "absolute inset-0 flex flex-col items-center justify-center gap-1 transition-colors",
+                isDropping
+                  ? "from-brand-turquoise/35 to-brand-turquoise/15 bg-gradient-to-br"
+                  : "from-brand-cream/95 to-brand-cream/80 bg-gradient-to-br backdrop-blur-[1px]",
               ].join(" ")}
+              aria-hidden="true"
             >
-              {isDropping ? "¡Soltala acá! 💜" : "Pasame una foto"}
-            </span>
+              {/* Borde punteado interno — animado al drop */}
+              <motion.div
+                animate={{
+                  borderColor: isDropping ? "rgb(93, 217, 209)" : "rgba(124, 106, 173, 0.25)",
+                  scale: isDropping ? 1.02 : 1,
+                }}
+                transition={{ duration: 0.2 }}
+                className="pointer-events-none absolute inset-2 rounded-md border-2 border-dashed"
+              />
 
-            {/* Indicador del slot (sutil, sin gritar) */}
-            <span className="text-brand-purple-dark/40 text-[9px] font-medium tracking-wider uppercase">
-              Imán #{slotState.slotIndex + 1}
-            </span>
-          </motion.div>
-        )}
-      </AnimatePresence>
+              {/* Mascote Lucams bobbing — invita al cliente.
+                Al drop: bounce + wiggle excitado. */}
+              <motion.div
+                animate={{
+                  y: isDropping ? -4 : [0, -3, 0],
+                  rotate: isDropping ? [0, -8, 8, 0] : 0,
+                }}
+                transition={{
+                  y: {
+                    duration: isDropping ? 0.3 : 2.4,
+                    repeat: isDropping ? 0 : Infinity,
+                    ease: "easeInOut",
+                  },
+                  rotate: { duration: 0.4, ease: "easeInOut" },
+                }}
+              >
+                <LucamsLogo variant="mascot" size={44} />
+              </motion.div>
 
-      {/* A1.5 — Filled hover premium: glassmorphism + acciones flotantes con stagger */}
-      <AnimatePresence>
+              {/* Microcopy emocional tuteo — cambia según estado drop */}
+              <span
+                className={[
+                  "mt-0.5 px-2 text-center text-[11px] leading-tight font-semibold transition-colors",
+                  isDropping ? "text-brand-turquoise" : "text-brand-purple-dark/75",
+                ].join(" ")}
+              >
+                {isDropping ? "¡Soltala acá! 💜" : "Pasame una foto"}
+              </span>
+
+              {/* Indicador del slot (sutil, sin gritar) */}
+              <span className="text-brand-purple-dark/40 text-[9px] font-medium tracking-wider uppercase">
+                Imán #{slotState.slotIndex + 1}
+              </span>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        {/* Glassmorphism overlay sutil cuando hover sobre foto (solo decorativo) */}
         {slotState.assetUrl && (
-          <motion.div
-            key="filled-actions"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-200 group-focus-within:opacity-100 group-hover:opacity-100"
-          >
-            {/* Glassmorphism overlay sutil cuando hover */}
-            <div className="absolute inset-0 bg-gradient-to-b from-black/0 via-black/0 to-black/15" />
+          <div
+            className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/0 via-black/0 to-black/10 opacity-0 transition-opacity duration-200 group-hover/wrapper:opacity-100"
+            aria-hidden
+          />
+        )}
 
-            {/* Acciones flotantes top-right con stagger */}
-            <motion.div
-              initial={{ x: 8, opacity: 0 }}
-              animate={{ x: 0, opacity: 1 }}
-              transition={{ duration: 0.2, ease: "easeOut" }}
-              className="pointer-events-auto absolute top-2 right-2 flex flex-col gap-1.5"
+        {/* Número del slot top-left chiquito (badge mínimo, NO tapa la foto) */}
+        {slotState.assetUrl && (
+          <div
+            className="bg-brand-purple/80 absolute top-1.5 left-1.5 flex h-5 min-w-[1.25rem] items-center justify-center rounded-full px-1 text-[10px] font-bold text-white shadow-sm"
+            aria-hidden
+          >
+            {slotState.slotIndex + 1}
+          </div>
+        )}
+      </motion.div>
+
+      {/* FIX-2 — Footer bar de acciones FUERA del slot.
+        Visible siempre que el slot está lleno O seleccionado (no solo hover),
+        para que el cliente vea claramente qué puede hacer.
+        Anti-patrón superpuesto adentro: tapaba la foto en slots chicos.
+        Patrón Casetify/Mixbook: action bar inferior fuera del canvas. */}
+      {(slotState.assetUrl || isSelected) && (
+        <motion.div
+          initial={{ opacity: 0, y: -4 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.2, ease: "easeOut" }}
+          className="flex items-center gap-1.5"
+          style={{ width: slotWidth }}
+        >
+          {/* Tamaño físico — chip a la izquierda con orientación explícita */}
+          {sizeCm && (
+            <span
+              className="text-brand-purple-dark/70 bg-brand-cream/90 ring-brand-purple/10 inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-bold ring-1"
+              aria-label={`Tamaño físico ${sizeCm}`}
+              title={`Tu imán será ${sizeCm} cm (ancho × alto)`}
             >
+              📐 {sizeCm}
+            </span>
+          )}
+
+          {/* Acciones secundarias derecha — solo cuando slot lleno */}
+          {slotState.assetUrl && (
+            <div className="ml-auto flex items-center gap-1">
               {onAdjust && (
                 <motion.button
                   type="button"
-                  whileHover={{ scale: 1.08 }}
+                  whileHover={{ scale: 1.1 }}
                   whileTap={{ scale: 0.94 }}
                   onClick={(e) => {
                     e.stopPropagation();
@@ -362,15 +404,15 @@ function StudioSlotImpl({
                   }}
                   aria-label={`Ajustar foto del imán ${slotState.slotIndex + 1} (filtros)`}
                   title="Aplicar filtros a esta foto"
-                  className="text-brand-purple ring-brand-purple/10 focus:ring-brand-turquoise flex h-8 w-8 items-center justify-center rounded-full bg-white/90 shadow-md ring-1 backdrop-blur-sm hover:bg-white focus:ring-2 focus:outline-none"
+                  className="text-brand-purple ring-brand-purple/20 hover:bg-brand-purple/5 focus:ring-brand-turquoise hover:ring-brand-purple/40 flex h-6 w-6 items-center justify-center rounded-md bg-white shadow-sm ring-1 focus:ring-2 focus:outline-none"
                   tabIndex={-1}
                 >
-                  <Wand2 className="h-3.5 w-3.5" />
+                  <Wand2 className="h-3 w-3" />
                 </motion.button>
               )}
               <motion.button
                 type="button"
-                whileHover={{ scale: 1.08 }}
+                whileHover={{ scale: 1.1 }}
                 whileTap={{ scale: 0.94 }}
                 onClick={(e) => {
                   e.stopPropagation();
@@ -378,34 +420,16 @@ function StudioSlotImpl({
                 }}
                 aria-label={`Quitar foto del imán ${slotState.slotIndex + 1}`}
                 title="Quitar esta foto"
-                className="flex h-8 w-8 items-center justify-center rounded-full bg-white/90 text-red-700 shadow-md ring-1 ring-red-200 backdrop-blur-sm hover:bg-white focus:ring-2 focus:ring-red-500 focus:outline-none"
+                className="flex h-6 w-6 items-center justify-center rounded-md bg-white text-red-600 shadow-sm ring-1 ring-red-200 hover:bg-red-50 hover:ring-red-400 focus:ring-2 focus:ring-red-500 focus:outline-none"
                 tabIndex={-1}
               >
-                <Trash2 className="h-3.5 w-3.5" />
+                <Trash2 className="h-3 w-3" />
               </motion.button>
-            </motion.div>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {/* Badge del slot cuando está lleno (número discreto esquina) */}
-      {slotState.assetUrl && (
-        <div className="bg-brand-purple/85 absolute top-1.5 left-1.5 flex h-6 min-w-[1.5rem] items-center justify-center rounded-full px-1.5 text-xs font-bold text-white">
-          {slotState.slotIndex + 1}
-        </div>
+            </div>
+          )}
+        </motion.div>
       )}
-
-      {/* M.3.b.A2.5 — Badge tamaño físico (bottom-right) — evidencia el tamaño real del imán.
-          Posición bottom-right para no chocar con el trash button (top-right) cuando slot está lleno. */}
-      {sizeCm && (
-        <div
-          className="text-brand-purple-dark ring-brand-purple/10 pointer-events-none absolute right-1.5 bottom-1.5 rounded-md bg-white/95 px-2 py-0.5 text-[10px] font-bold tracking-tight shadow-sm ring-1"
-          aria-label={`Tamaño físico ${sizeCm}`}
-        >
-          📐 {sizeCm}
-        </div>
-      )}
-    </motion.div>
+    </div>
   );
 }
 
@@ -417,6 +441,7 @@ export const StudioSlot = memo(StudioSlotImpl, (prev, next) => {
     prev.slotState.filter === next.slotState.filter &&
     prev.isSelected === next.isSelected &&
     prev.displaySize === next.displaySize &&
+    prev.displayHeight === next.displayHeight &&
     prev.unitTemplate === next.unitTemplate &&
     prev.sizeCm === next.sizeCm &&
     prev.shape === next.shape &&

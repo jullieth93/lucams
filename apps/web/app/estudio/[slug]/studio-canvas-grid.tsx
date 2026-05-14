@@ -195,6 +195,7 @@ export function StudioCanvasGrid({
                 slotState={slot}
                 unitTemplate={canvasData.unitTemplate}
                 displaySize={slotDisplaySize}
+                displayHeight={slotHeight}
                 isSelected={selectedSlotIndex === slot.slotIndex}
                 totalSlots={canvasData.slotCount}
                 sizeCm={sizeCm}

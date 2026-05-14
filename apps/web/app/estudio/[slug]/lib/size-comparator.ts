@@ -25,6 +25,10 @@ export type SizeComparison = {
   name: string;
   /** Frase corta tipo "como una X" */
   phrase: string;
+  /** Orientación detectada del imán: vertical / horizontal / cuadrado / círculo */
+  orientation: "vertical" | "horizontal" | "square" | "round";
+  /** Etiqueta humana ej. "7 cm de ancho × 9 cm de alto" */
+  humanLabel: string;
 };
 
 /**
@@ -51,6 +55,23 @@ export function compareSizeToObject(sizeCm: string | undefined): SizeComparison 
   const maxDim = Math.max(parsed.widthCm, parsed.heightCm);
   const minDim = Math.min(parsed.widthCm, parsed.heightCm);
   const isSquare = Math.abs(parsed.widthCm - parsed.heightCm) < 0.5;
+  const isSingleDim = !sizeCm.match(/[×x]/i);
+
+  // FIX-5 — Orientación explícita. Resuelve la ambigüedad "7×9 o 9×7".
+  // Por convención del catálogo el primer número es ANCHO, el segundo ALTO.
+  const orientation: SizeComparison["orientation"] = isSingleDim
+    ? "round"
+    : isSquare
+      ? "square"
+      : parsed.heightCm > parsed.widthCm
+        ? "vertical"
+        : "horizontal";
+
+  const humanLabel = isSingleDim
+    ? `${parsed.widthCm} cm de diámetro`
+    : isSquare
+      ? `${parsed.widthCm} × ${parsed.heightCm} cm (cuadrado)`
+      : `${parsed.widthCm} cm de ancho × ${parsed.heightCm} cm de alto (${orientation === "vertical" ? "vertical" : "horizontal"})`;
 
   // 3 cm o menos
   if (maxDim <= 3.5) {
@@ -58,6 +79,8 @@ export function compareSizeToObject(sizeCm: string | undefined): SizeComparison 
       emoji: "🪙",
       name: "Moneda de $1.000",
       phrase: "como una moneda de mil",
+      orientation,
+      humanLabel,
     };
   }
 
@@ -67,6 +90,8 @@ export function compareSizeToObject(sizeCm: string | undefined): SizeComparison 
       emoji: "🍪",
       name: "Galleta Oreo",
       phrase: "como una galleta Oreo",
+      orientation,
+      humanLabel,
     };
   }
 
@@ -76,6 +101,8 @@ export function compareSizeToObject(sizeCm: string | undefined): SizeComparison 
       emoji: "💳",
       name: "Mitad de tarjeta de crédito",
       phrase: "como media tarjeta de crédito",
+      orientation,
+      humanLabel,
     };
   }
 
@@ -85,6 +112,8 @@ export function compareSizeToObject(sizeCm: string | undefined): SizeComparison 
       emoji: "📸",
       name: "Polaroid clásica",
       phrase: "como una polaroid clásica",
+      orientation,
+      humanLabel,
     };
   }
 
@@ -94,6 +123,8 @@ export function compareSizeToObject(sizeCm: string | undefined): SizeComparison 
       emoji: "💿",
       name: "CD",
       phrase: "como un CD",
+      orientation,
+      humanLabel,
     };
   }
 
@@ -103,6 +134,8 @@ export function compareSizeToObject(sizeCm: string | undefined): SizeComparison 
       emoji: "💵",
       name: "Billete de $5.000",
       phrase: "como un billete de cinco mil",
+      orientation,
+      humanLabel,
     };
   }
 
@@ -112,6 +145,8 @@ export function compareSizeToObject(sizeCm: string | undefined): SizeComparison 
       emoji: "🍽️",
       name: "Posavasos grande",
       phrase: "como un posavasos grande",
+      orientation,
+      humanLabel,
     };
   }
 
@@ -121,6 +156,8 @@ export function compareSizeToObject(sizeCm: string | undefined): SizeComparison 
       emoji: "🥖",
       name: "Plato pequeño",
       phrase: "como un plato pequeño",
+      orientation,
+      humanLabel,
     };
   }
 
@@ -129,5 +166,7 @@ export function compareSizeToObject(sizeCm: string | undefined): SizeComparison 
     emoji: "📓",
     name: "Cuaderno A5",
     phrase: "como un cuaderno A5",
+    orientation,
+    humanLabel,
   };
 }

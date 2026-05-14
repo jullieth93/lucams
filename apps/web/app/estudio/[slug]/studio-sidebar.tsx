@@ -394,12 +394,31 @@ function TemplateCard({
               "0 1px 2px rgba(0,0,0,0.06), 0 4px 8px rgba(0,0,0,0.10), 0 8px 16px rgba(124,106,173,0.12)",
           }}
         >
+          {/* FIX-4 — Dummy photo placeholder DEBAJO del SVG asset.
+              Sin esto, plantillas tipo "Polaroid Romántica" (marco blanco
+              sobre fondo blanco) eran invisibles en la card. El gradient
+              pastel simula que hay una foto ahí. */}
+          <div
+            className="absolute inset-0"
+            style={{
+              background:
+                "linear-gradient(135deg, #F4ECFF 0%, #FFE5EC 35%, #FFF2D9 70%, #DDF5F3 100%)",
+            }}
+            aria-hidden
+          />
+          {/* Silueta pequeña tipo mascote en el centro del placeholder */}
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center opacity-30">
+            <span className="text-3xl" aria-hidden>
+              💜
+            </span>
+          </div>
+          {/* SVG marco — va ENCIMA del placeholder */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={template.previewUrl}
             alt=""
             aria-hidden
-            className="h-full w-full object-contain"
+            className="relative h-full w-full object-contain"
             loading="lazy"
           />
           {/* Glossy overlay sutil simulando laminado del imán */}
