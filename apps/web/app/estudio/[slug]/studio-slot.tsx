@@ -82,6 +82,8 @@ type StudioSlotProps = {
   onClear: () => void;
   /** M.3.b.B.3 — Abrir modal de ajustar foto (filtros). Solo se llama si slot lleno. */
   onAdjust?: () => void;
+  /** M.3.b.D — Click sobre text layer editable abre el editor inline. */
+  onTextEdit?: (textLayerId: string) => void;
   onAssetDrop: (asset: StudioAsset) => void;
   onKeyboardNav: (direction: "up" | "down" | "left" | "right") => void;
   onRegisterStage?: (stage: Konva.Stage | null) => void;
@@ -102,6 +104,7 @@ function StudioSlotImpl({
   onClick,
   onClear,
   onAdjust,
+  onTextEdit,
   onAssetDrop,
   onKeyboardNav,
   onRegisterStage,
@@ -262,7 +265,12 @@ function StudioSlotImpl({
           ref={(s: Konva.Stage | null) => {
             stageRef.current = s;
           }}
-          listening={false}
+          // M.3.b.D — Stage debe escuchar eventos para captar clicks sobre
+          // text layers editables. Antes era listening={false} para que el
+          // div padre captara todos los clicks (open picker modal). Ahora
+          // diferenciamos: si el slot tiene texts editables, escuchamos
+          // a nivel Konva Text node (los demás layers tienen listening=false).
+          listening={!!onTextEdit}
         >
           <RealismShadowLayer
             stage={unitTemplate.stage}
@@ -270,7 +278,9 @@ function StudioSlotImpl({
             cornerRadiusPx={cornerRadiusPx}
           />
           <Layer>
-            {unitTemplate.layers.map((layer) => renderLayer(layer, slotState, unitTemplate.stage))}
+            {unitTemplate.layers.map((layer) =>
+              renderLayer(layer, slotState, unitTemplate.stage, onTextEdit),
+            )}
           </Layer>
           <RealismOverlayLayer
             stage={unitTemplate.stage}
@@ -439,6 +449,7 @@ export const StudioSlot = memo(StudioSlotImpl, (prev, next) => {
     prev.slotState.assetUrl === next.slotState.assetUrl &&
     prev.slotState.assetId === next.slotState.assetId &&
     prev.slotState.filter === next.slotState.filter &&
+    prev.slotState.textOverrides === next.slotState.textOverrides &&
     prev.isSelected === next.isSelected &&
     prev.displaySize === next.displaySize &&
     prev.displayHeight === next.displayHeight &&
@@ -460,6 +471,7 @@ function renderLayer(
   layer: CanvasLayer,
   slotState: SlotState,
   stage: { width: number; height: number },
+  onTextEdit: ((layerId: string) => void) | undefined,
 ) {
   switch (layer.type) {
     case "background":
@@ -481,8 +493,11 @@ function renderLayer(
           slotState={slotState}
         />
       );
-    case "text":
-      return renderText(layer as never, stage);
+    case "text": {
+      const textLayer = layer as never as { id: string };
+      const override = slotState.textOverrides?.[textLayer.id];
+      return renderText(textLayer as never, stage, override, onTextEdit);
+    }
     case "shape":
       return renderShape(layer as never);
     case "asset":
@@ -539,29 +554,78 @@ type TextLayerData = {
   fontFamily?: string;
   fontSize?: number;
   fill?: string;
+  fontWeight?: string;
   align?: "left" | "center" | "right";
+  editable?: boolean;
 };
 
-function renderText(layer: TextLayerData, stage: { width: number; height: number }) {
-  // Convención del seed: text usa x/y como CENTER. Para centrar visualmente:
+/**
+ * M.3.b.D — Render de text layer con soporte para overrides del slot.
+ * Si el layer es editable y hay onTextEdit callback, el texto recibe
+ * cursor pointer + click handler que abre el editor inline.
+ */
+function renderText(
+  layer: TextLayerData,
+  stage: { width: number; height: number },
+  override: import("./types").TextOverride | undefined,
+  onTextEdit: ((layerId: string) => void) | undefined,
+) {
+  // Combinar layer base + override del slot. Cada campo del override
+  // sobrescribe el layer base si está definido.
+  const finalText = override?.text ?? layer.text;
+  const fontSize = override?.fontSize ?? layer.fontSize ?? 48;
+  const fontFamily = override?.fontFamily ?? layer.fontFamily ?? "Fredoka, Inter, sans-serif";
+  const fill = override?.fill ?? layer.fill ?? "#3D2E5C";
+  const fontStyle = override?.fontWeight ?? layer.fontWeight;
+  const align = layer.align ?? "center";
+
+  // Convención del seed: text usa x/y como CENTER del bounding box.
+  // Para centrar visualmente:
   // - Render con width = stage.width y align (default center) → texto se alinea
   //   respecto a esa width.
   // - x = 0 (alineamos desde el inicio del stage horizontal).
   // - y = layer.y - fontSize/2 → centra verticalmente alrededor de layer.y.
-  // Esto solo funciona si align==="center" (que es el default del seed).
-  const fontSize = layer.fontSize ?? 48;
-  const align = layer.align ?? "center";
+  // Esto solo funciona si align==="center". Para align "left"/"right" usamos x directo.
+  const isEditable = layer.editable === true && onTextEdit !== undefined;
+
   return (
     <Text
       key={layer.id}
       x={align === "center" ? 0 : layer.x}
       y={layer.y - fontSize / 2}
       width={align === "center" ? stage.width : undefined}
-      text={layer.text}
-      fontFamily={layer.fontFamily ?? "Fredoka, Inter, sans-serif"}
+      text={finalText}
+      fontFamily={fontFamily}
       fontSize={fontSize}
-      fill={layer.fill ?? "#3D2E5C"}
+      fill={fill}
+      fontStyle={fontStyle}
       align={align}
+      // M.3.b.D — text editable: click abre el editor inline.
+      listening={isEditable}
+      onMouseEnter={(e) => {
+        if (isEditable) {
+          const stageNode = e.target.getStage();
+          if (stageNode) stageNode.container().style.cursor = "text";
+        }
+      }}
+      onMouseLeave={(e) => {
+        if (isEditable) {
+          const stageNode = e.target.getStage();
+          if (stageNode) stageNode.container().style.cursor = "";
+        }
+      }}
+      onClick={(e) => {
+        if (isEditable && onTextEdit) {
+          e.cancelBubble = true;
+          onTextEdit(layer.id);
+        }
+      }}
+      onTap={(e) => {
+        if (isEditable && onTextEdit) {
+          e.cancelBubble = true;
+          onTextEdit(layer.id);
+        }
+      }}
     />
   );
 }

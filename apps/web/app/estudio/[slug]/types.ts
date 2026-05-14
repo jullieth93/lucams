@@ -200,8 +200,23 @@ export type SlotState = {
   saturation?: number; // -100 a +100
   rotation?: number; // grados (-180 a +180)
   filter?: PhotoFilterPreset | null;
-  /** Si el template tiene un TextLayer editable, este override lo reemplaza por slot. */
+  /** M.3.b.D — Overrides por TextLayer editable, indexados por TextLayer.id.
+   * Permite múltiples zonas de texto editables por slot (Instagram post:
+   * username + likes + caption + hashtags = 4 zonas).
+   * Cada override puede sobrescribir text, color, font, size individualmente. */
+  textOverrides?: Record<string, TextOverride>;
+  /** @deprecated — Usar `textOverrides[layerId].text`. Mantenido por backward compat. */
   textOverride?: string;
+};
+
+/** M.3.b.D — Override de un TextLayer específico. Cualquier campo no
+ *  declarado mantiene el valor del layer base del unitTemplate. */
+export type TextOverride = {
+  text?: string;
+  fontFamily?: string;
+  fontSize?: number;
+  fill?: string;
+  fontWeight?: string;
 };
 
 export type PhotoFilterPreset = "vintage" | "vivid" | "bw" | "pastel" | "polaroid";

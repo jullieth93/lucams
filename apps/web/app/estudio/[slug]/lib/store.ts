@@ -85,6 +85,14 @@ export type StudioStoreState = {
   autoFillSlots: () => void;
   /** M.3.b.B.3 — Aplicar/quitar filter preset a un slot específico. */
   setSlotFilter: (slotIndex: number, filter: import("../types").PhotoFilterPreset | null) => void;
+  /** M.3.b.D — Aplicar/quitar override de un text layer editable en un slot.
+   *  Si `override === null`, limpia el override del textLayerId (vuelve al
+   *  texto/color/fuente base del template). */
+  setSlotTextOverride: (
+    slotIndex: number,
+    textLayerId: string,
+    override: import("../types").TextOverride | null,
+  ) => void;
   selectSlot: (slotIndex: number | null) => void;
   setSelectedTemplate: (templateId: string | null) => void;
   applyTemplate: (template: StudioTemplate) => void;
@@ -188,6 +196,28 @@ export function createStudioStore() {
       const next: CanvasDataV2 = {
         ...canvasData,
         slots: canvasData.slots.map((s) => (s.slotIndex === slotIndex ? { ...s, filter } : s)),
+      };
+      get().setCanvasData(next);
+    },
+
+    setSlotTextOverride: (slotIndex, textLayerId, override) => {
+      const { canvasData } = get();
+      if (!canvasData) return;
+      const next: CanvasDataV2 = {
+        ...canvasData,
+        slots: canvasData.slots.map((s) => {
+          if (s.slotIndex !== slotIndex) return s;
+          const nextOverrides = { ...(s.textOverrides ?? {}) };
+          if (override === null) {
+            delete nextOverrides[textLayerId];
+          } else {
+            nextOverrides[textLayerId] = override;
+          }
+          // Si no quedan overrides, eliminar el objeto entero (cleanup)
+          const finalOverrides =
+            Object.keys(nextOverrides).length === 0 ? undefined : nextOverrides;
+          return { ...s, textOverrides: finalOverrides };
+        }),
       };
       get().setCanvasData(next);
     },

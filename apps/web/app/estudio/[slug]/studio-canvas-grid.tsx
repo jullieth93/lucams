@@ -44,6 +44,8 @@ type StudioCanvasGridProps = {
   onSlotClick: (slotIndex: number) => void;
   /** M.3.b.B.3 — abrir modal ajustar foto (filtros) para un slot lleno. */
   onSlotAdjust?: (slotIndex: number) => void;
+  /** M.3.b.D — abrir editor de texto inline al click sobre text layer editable. */
+  onTextEdit?: (slotIndex: number, textLayerId: string) => void;
   registerSlotStages: (stages: Map<number, Konva.Stage | null>) => void;
 };
 
@@ -56,6 +58,7 @@ export function StudioCanvasGrid({
   showRealismGuides,
   onSlotClick,
   onSlotAdjust,
+  onTextEdit,
   registerSlotStages,
 }: StudioCanvasGridProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -209,6 +212,9 @@ export function StudioCanvasGrid({
                 }}
                 onClear={() => clearSlot(slot.slotIndex)}
                 onAdjust={onSlotAdjust ? () => onSlotAdjust(slot.slotIndex) : undefined}
+                onTextEdit={
+                  onTextEdit ? (textLayerId) => onTextEdit(slot.slotIndex, textLayerId) : undefined
+                }
                 onAssetDrop={(asset: StudioAsset) => assignAssetToSlot(slot.slotIndex, asset)}
                 onKeyboardNav={(dir) => handleKeyboardNav(slot.slotIndex, dir)}
                 onRegisterStage={registerStage(slot.slotIndex)}

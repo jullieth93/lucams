@@ -38,6 +38,7 @@ import { StudioSidebar } from "./studio-sidebar";
 import { StudioToolbar } from "./studio-toolbar";
 import { StudioAssetPickerModal } from "./studio-asset-picker-modal";
 import { StudioPhotoAdjustModal } from "./studio-photo-adjust-modal";
+import { StudioTextEditorModal } from "./studio-text-editor-modal";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Sparkles } from "lucide-react";
 import { createStudioStore } from "./lib/store";
@@ -75,6 +76,11 @@ export function StudioEditor({
   const [showRealismGuides, setShowRealismGuides] = useState(false);
   // A2.8 — Sheet drawer mobile state (sidebar bottom slide-up).
   const [mobileSheetOpen, setMobileSheetOpen] = useState(false);
+  // M.3.b.D — Text editor inline state: { slotIndex, textLayerId } o null
+  const [textEditTarget, setTextEditTarget] = useState<{
+    slotIndex: number;
+    textLayerId: string;
+  } | null>(null);
   const slotStagesRef = useRef<Map<number, Konva.Stage | null>>(new Map());
 
   // M.3.b.A2.5 — Lee `sizeCm` del producto para badge visual en cada slot.
@@ -412,6 +418,7 @@ export function StudioEditor({
             showRealismGuides={showRealismGuides}
             onSlotClick={handleSlotClick}
             onSlotAdjust={(slotIndex) => setAdjustSlotIndex(slotIndex)}
+            onTextEdit={(slotIndex, textLayerId) => setTextEditTarget({ slotIndex, textLayerId })}
             registerSlotStages={(stages) => {
               slotStagesRef.current = stages;
             }}
@@ -469,6 +476,13 @@ export function StudioEditor({
         store={store}
         slotIndex={adjustSlotIndex}
         onClose={() => setAdjustSlotIndex(null)}
+      />
+
+      {/* M.3.b.D — Modal editor de texto inline */}
+      <TextEditorModalWrapper
+        store={store}
+        target={textEditTarget}
+        onClose={() => setTextEditTarget(null)}
       />
     </div>
   );
@@ -598,4 +612,56 @@ async function buildCompositedPreview(
   }
 
   return compositeCanvas.toDataURL("image/png");
+}
+
+// ──────────────────────────────────────────────────────────────────
+//  TextEditorModalWrapper — M.3.b.D
+//  Extrae text layer base + override actual via store atómicamente.
+// ──────────────────────────────────────────────────────────────────
+
+function TextEditorModalWrapper({
+  store,
+  target,
+  onClose,
+}: {
+  store: ReturnType<typeof createStudioStore>;
+  target: { slotIndex: number; textLayerId: string } | null;
+  onClose: () => void;
+}) {
+  // Selectores ATÓMICOS — retornan primitivos para evitar re-render loops
+  const layerJson = useStore(store, (s) => {
+    if (!target) return null;
+    const found = s.canvasData?.unitTemplate?.layers?.find(
+      (l) => l.type === "text" && (l as { id: string }).id === target.textLayerId,
+    );
+    return found ? JSON.stringify(found) : null;
+  });
+
+  const overrideJson = useStore(store, (s) => {
+    if (!target) return null;
+    const slot = s.canvasData?.slots?.find((sl) => sl.slotIndex === target.slotIndex);
+    const ov = slot?.textOverrides?.[target.textLayerId];
+    return ov ? JSON.stringify(ov) : null;
+  });
+
+  const slotCount = useStore(store, (s) => s.canvasData?.slotCount ?? 0);
+  const setSlotTextOverride = useStore(store, (s) => s.setSlotTextOverride);
+
+  const layer = layerJson ? (JSON.parse(layerJson) as import("./types").TextLayer) : null;
+  const currentOverride = overrideJson
+    ? (JSON.parse(overrideJson) as import("./types").TextOverride)
+    : undefined;
+
+  return (
+    <StudioTextEditorModal
+      isOpen={target !== null && layer !== null}
+      layer={layer}
+      currentOverride={currentOverride}
+      slotLabel={target ? `Imán ${target.slotIndex + 1} de ${slotCount}` : undefined}
+      onClose={onClose}
+      onApply={(override) => {
+        if (target) setSlotTextOverride(target.slotIndex, target.textLayerId, override);
+      }}
+    />
+  );
 }
