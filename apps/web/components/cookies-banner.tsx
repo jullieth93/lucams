@@ -24,7 +24,13 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { X, Sparkles, Cookie } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { persistCookieConsentAction } from "@/features/consent/actions";
 import {
   acceptAllPreferences,
@@ -150,10 +156,10 @@ export function CookiesBanner() {
                 <X className="h-4 w-4" />
               </button>
             </div>
-            <p className="text-brand-purple-dark/70 text-sm">
+            <DialogDescription className="text-brand-purple-dark/70 text-sm">
               Elegí qué cookies querés permitir. Las necesarias no se pueden desactivar porque hacen
               que el sitio funcione (login, carrito).
-            </p>
+            </DialogDescription>
           </DialogHeader>
 
           <div className="space-y-3">

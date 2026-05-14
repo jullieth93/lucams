@@ -360,25 +360,35 @@ function extractAssetsFromCanvas(canvasData: CanvasDataV2): StudioAsset[] {
 }
 
 /**
- * Helper exportado para que componentes selectivos calculen slot progress
- * sin re-render innecesario. Pasarlo como selector a useStore para
- * suscribirse solo al progress.
+ * Selectores ATÓMICOS para slot progress. Cada hook retorna un primitivo
+ * → comparación Object.is funciona sin shallow ni memoization.
+ *
+ * Patrón crítico (lección 2026-05-13): un selector compuesto
+ * `selectSlotProgress` que retorna `{ filled, total, emptySlotIndices: [...] }`
+ * crea referencias nuevas en cada call. `useShallow` no funciona con
+ * arrays anidados (compara `===` element-by-element pero la REFERENCIA del
+ * array es nueva → shallow ve diff → re-render infinito).
+ *
+ * Solución: 1 hook = 1 primitive. Combina los hooks en el componente.
  */
-export function selectSlotProgress(state: StudioStoreState): {
-  filled: number;
-  total: number;
-  complete: boolean;
-  emptySlotIndices: number[];
-} {
-  if (!state.canvasData) {
-    return { filled: 0, total: 0, complete: false, emptySlotIndices: [] };
-  }
-  const filled = state.canvasData.slots.filter((s) => !!s.assetUrl).length;
+
+/** Cuenta de slots con assetUrl. Primitive number → Object.is funciona. */
+export function selectFilledSlotCount(state: StudioStoreState): number {
+  if (!state.canvasData) return 0;
+  return state.canvasData.slots.filter((s) => !!s.assetUrl).length;
+}
+
+/** Total de slots del design. Primitive number. */
+export function selectTotalSlotCount(state: StudioStoreState): number {
+  return state.canvasData?.slotCount ?? 0;
+}
+
+/** Boolean derivado — todos los slots tienen asset. */
+export function selectIsComplete(state: StudioStoreState): boolean {
+  if (!state.canvasData) return false;
   const total = state.canvasData.slotCount;
-  const emptySlotIndices = state.canvasData.slots
-    .filter((s) => !s.assetUrl)
-    .map((s) => s.slotIndex);
-  return { filled, total, complete: filled === total, emptySlotIndices };
+  if (total === 0) return false;
+  return state.canvasData.slots.filter((s) => !!s.assetUrl).length === total;
 }
 
 /**

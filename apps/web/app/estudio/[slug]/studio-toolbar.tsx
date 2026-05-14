@@ -21,8 +21,12 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft, Check, Loader2, AlertCircle, Sparkles } from "lucide-react";
 import type { StoreApi } from "zustand";
 import { useStore } from "zustand";
-import { useShallow } from "zustand/react/shallow";
-import { selectSlotProgress, type StudioStoreState } from "./lib/store";
+import {
+  selectFilledSlotCount,
+  selectIsComplete,
+  selectTotalSlotCount,
+  type StudioStoreState,
+} from "./lib/store";
 
 type StudioToolbarProps = {
   store: StoreApi<StudioStoreState>;
@@ -34,13 +38,16 @@ type StudioToolbarProps = {
 export function StudioToolbar({ store, productName, productSlug, onFinalize }: StudioToolbarProps) {
   const autoSaveStatus = useStore(store, (s) => s.autoSaveStatus);
   const isFinalizing = useStore(store, (s) => s.isFinalizing);
-  const progress = useStore(store, useShallow(selectSlotProgress));
+  // Suscripciones atómicas (primitivos) — evitan re-render infinito que daba
+  // un selector compuesto. Ver lib/store.ts comment "Selectores ATÓMICOS".
+  const filled = useStore(store, selectFilledSlotCount);
+  const total = useStore(store, selectTotalSlotCount);
+  const complete = useStore(store, selectIsComplete);
 
-  const canFinalize = progress.complete && !isFinalizing;
+  const canFinalize = complete && !isFinalizing;
 
-  // Tooltip dinámico cuando deshabilitado
-  const disabledTooltip = !progress.complete
-    ? `Faltan ${progress.total - progress.filled} fotos por cargar antes de poder finalizar`
+  const disabledTooltip = !complete
+    ? `Faltan ${total - filled} fotos por cargar antes de poder finalizar`
     : undefined;
 
   return (
@@ -65,7 +72,7 @@ export function StudioToolbar({ store, productName, productSlug, onFinalize }: S
           <span aria-hidden className="text-brand-purple/30">
             ·
           </span>
-          <ProgressBadge filled={progress.filled} total={progress.total} />
+          <ProgressBadge filled={filled} total={total} />
         </div>
 
         <div className="flex items-center gap-3">
@@ -105,7 +112,7 @@ export function StudioToolbar({ store, productName, productSlug, onFinalize }: S
 
       {/* Progress badge mobile (visible solo < md) */}
       <div className="border-brand-purple/10 bg-brand-cream/50 flex items-center justify-center border-t py-2 md:hidden">
-        <ProgressBadge filled={progress.filled} total={progress.total} />
+        <ProgressBadge filled={filled} total={total} />
       </div>
     </header>
   );

@@ -17,9 +17,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Upload, Image as ImageIcon, Sparkles, Wand2, Loader2, Check } from "lucide-react";
 import type { StoreApi } from "zustand";
 import { useStore } from "zustand";
-import { useShallow } from "zustand/react/shallow";
 import { uploadDesignAssetAction } from "@/features/personalization/actions";
-import { selectSlotProgress, type StudioStoreState } from "./lib/store";
+import { selectFilledSlotCount, selectTotalSlotCount, type StudioStoreState } from "./lib/store";
 import type { StudioAsset, StudioTemplate } from "./types";
 
 type StudioSidebarProps = {
@@ -38,7 +37,9 @@ export function StudioSidebar({ store, productName, productSku }: StudioSidebarP
   const templates = useStore(store, (s) => s.templates);
   const selectedTemplateId = useStore(store, (s) => s.selectedTemplateId);
   const designId = useStore(store, (s) => s.designId);
-  const progress = useStore(store, useShallow(selectSlotProgress));
+  // Suscripciones atómicas — evita re-render infinito por shallow compare de array nested.
+  const filledSlots = useStore(store, selectFilledSlotCount);
+  const totalSlots = useStore(store, selectTotalSlotCount);
   const addAsset = useStore(store, (s) => s.addAsset);
   const autoFillSlots = useStore(store, (s) => s.autoFillSlots);
   const applyTemplate = useStore(store, (s) => s.applyTemplate);
@@ -75,7 +76,7 @@ export function StudioSidebar({ store, productName, productSku }: StudioSidebarP
     e.dataTransfer.effectAllowed = "copy";
   };
 
-  const emptySlots = progress.total - progress.filled;
+  const emptySlots = totalSlots - filledSlots;
   const canAutoFill = assets.length > 0 && emptySlots > 0;
 
   return (
@@ -87,7 +88,7 @@ export function StudioSidebar({ store, productName, productSku }: StudioSidebarP
       </div>
 
       {/* Progress bar X/N — el feedback más importante del editor */}
-      <ProgressBar filled={progress.filled} total={progress.total} />
+      <ProgressBar filled={filledSlots} total={totalSlots} />
 
       {/* ──────── Mis fotos ──────── */}
       <section aria-labelledby="sidebar-mis-fotos">

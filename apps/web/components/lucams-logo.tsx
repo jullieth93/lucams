@@ -53,8 +53,11 @@ export function LucamsLogo({
   className?: string;
   priority?: boolean;
 }) {
-  // Estado: tracker de qué source intentar. svg → png → fallback SVG inline.
-  const [step, setStep] = useState<"svg" | "png" | "fallback">("svg");
+  // Estado: tracker de qué source intentar. png → fallback SVG inline.
+  // SVG path queda en SOURCES por compatibilidad futura, pero como Lucy
+  // todavía no subió .svg (solo .png), arrancamos en png para evitar el
+  // 404 ruidoso del intento svg que siempre falla.
+  const [step, setStep] = useState<"svg" | "png" | "fallback">("png");
 
   if (step === "fallback") {
     // Fallback: el SVG kawaii dentro del badge purple+ring (look anterior).
