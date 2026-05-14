@@ -187,9 +187,7 @@ export function createStudioStore() {
       if (!canvasData) return;
       const next: CanvasDataV2 = {
         ...canvasData,
-        slots: canvasData.slots.map((s) =>
-          s.slotIndex === slotIndex ? { ...s, filter } : s,
-        ),
+        slots: canvasData.slots.map((s) => (s.slotIndex === slotIndex ? { ...s, filter } : s)),
       };
       get().setCanvasData(next);
     },

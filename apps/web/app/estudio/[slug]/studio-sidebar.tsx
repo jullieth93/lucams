@@ -328,8 +328,8 @@ function TemplateCard({
       className={[
         "group relative flex flex-col gap-1.5 overflow-hidden rounded-lg p-1.5 text-left transition-shadow focus:outline-none",
         isSelected
-          ? "bg-gradient-to-br from-brand-turquoise/10 to-brand-purple/10 ring-2 ring-brand-turquoise shadow-md"
-          : "ring-1 ring-brand-purple/15 hover:ring-brand-purple/40 hover:shadow-md focus-visible:ring-2 focus-visible:ring-brand-turquoise",
+          ? "from-brand-turquoise/10 to-brand-purple/10 ring-brand-turquoise bg-gradient-to-br shadow-md ring-2"
+          : "ring-brand-purple/15 hover:ring-brand-purple/40 focus-visible:ring-brand-turquoise ring-1 hover:shadow-md focus-visible:ring-2",
       ].join(" ")}
     >
       <div className="bg-brand-cream/60 relative aspect-square overflow-hidden rounded-md">

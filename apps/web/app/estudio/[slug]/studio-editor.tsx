@@ -296,7 +296,7 @@ export function StudioEditor({
     // + mensaje contextual. Reemplaza el spinner básico.
     const skelCount = Math.min(photoSlots, 6);
     return (
-      <div className="bg-gradient-to-b from-brand-cream/40 to-white flex flex-1 flex-col">
+      <div className="from-brand-cream/40 flex flex-1 flex-col bg-gradient-to-b to-white">
         {/* Header skeleton */}
         <div className="border-brand-purple/10 sticky top-0 z-10 border-b bg-white/95 backdrop-blur">
           <div className="flex items-center justify-between gap-4 px-4 py-3 sm:px-6">
@@ -325,9 +325,7 @@ export function StudioEditor({
               </div>
             </div>
             <div className="flex flex-col">
-              <p className="text-brand-purple-dark text-sm font-bold">
-                Preparando tu lienzo...
-              </p>
+              <p className="text-brand-purple-dark text-sm font-bold">Preparando tu lienzo...</p>
               <p className="text-brand-purple-dark/55 text-xs">
                 Cargando tu producto y plantillas en un instante ✨
               </p>
@@ -345,15 +343,15 @@ export function StudioEditor({
             {Array.from({ length: skelCount }).map((_, i) => (
               <div
                 key={i}
-                className="aspect-square overflow-hidden rounded-md bg-gradient-to-br from-brand-cream/80 to-white shadow-sm"
+                className="from-brand-cream/80 aspect-square overflow-hidden rounded-md bg-gradient-to-br to-white shadow-sm"
               >
                 {/* Shimmer overlay */}
                 <div className="relative h-full w-full overflow-hidden">
                   <div
-                    className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/60 to-transparent animate-shimmer"
+                    className="animate-shimmer absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/60 to-transparent"
                     style={{ animationDelay: `${i * 0.12}s` }}
                   />
-                  <div className="absolute inset-3 rounded border-2 border-dashed border-brand-purple/15" />
+                  <div className="border-brand-purple/15 absolute inset-3 rounded border-2 border-dashed" />
                 </div>
               </div>
             ))}
@@ -421,7 +419,7 @@ export function StudioEditor({
           <button
             type="button"
             aria-label="Abrir herramientas (plantillas y fotos)"
-            className="bg-brand-purple text-white ring-brand-purple/30 fixed right-4 bottom-4 z-30 inline-flex h-14 items-center gap-2 rounded-full px-5 text-sm font-bold shadow-xl ring-4 transition-transform hover:scale-105 active:scale-95 lg:hidden"
+            className="bg-brand-purple ring-brand-purple/30 fixed right-4 bottom-4 z-30 inline-flex h-14 items-center gap-2 rounded-full px-5 text-sm font-bold text-white shadow-xl ring-4 transition-transform hover:scale-105 active:scale-95 lg:hidden"
           >
             <Sparkles className="h-5 w-5" />
             <span>Editar</span>
@@ -438,11 +436,7 @@ export function StudioEditor({
           </SheetHeader>
           {/* Reusa el mismo StudioSidebar — no se duplica el código */}
           <div className="pb-6">
-            <StudioSidebar
-              store={store}
-              productName={product.name}
-              productSku={product.sku}
-            />
+            <StudioSidebar store={store} productName={product.name} productSku={product.sku} />
           </div>
         </SheetContent>
       </Sheet>

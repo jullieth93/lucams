@@ -18,11 +18,7 @@
 
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Check } from "lucide-react";
-import {
-  FILTER_LABELS,
-  FILTER_DESCRIPTIONS,
-  FILTER_ORDER,
-} from "./lib/photo-filters";
+import { FILTER_LABELS, FILTER_DESCRIPTIONS, FILTER_ORDER } from "./lib/photo-filters";
 import type { PhotoFilterPreset } from "./types";
 
 type StudioPhotoAdjustModalProps = {

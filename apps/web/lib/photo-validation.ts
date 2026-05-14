@@ -124,7 +124,9 @@ export type ValidatePhotoOpts = {
  * Corre los 3 checks sobre la foto.
  * NO bloquea el upload — el caller decide qué hacer con el resultado.
  */
-export async function validatePhotoQuality(opts: ValidatePhotoOpts): Promise<PhotoValidationResult> {
+export async function validatePhotoQuality(
+  opts: ValidatePhotoOpts,
+): Promise<PhotoValidationResult> {
   const { buffer, width, height, productSizeCm } = opts;
 
   // ───────── 1. RESOLUCIÓN ─────────

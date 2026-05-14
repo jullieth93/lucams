@@ -88,7 +88,7 @@ export function StudioToolbar({
         {/* A1.1 — Hero del estudio: avatar producto + nombre + medidas físicas grandes */}
         <div className="hidden flex-1 items-center justify-center gap-3 md:flex">
           {productImageUrl && (
-            <div className="ring-brand-purple/15 relative h-10 w-10 overflow-hidden rounded-md ring-1 shadow-sm">
+            <div className="ring-brand-purple/15 relative h-10 w-10 overflow-hidden rounded-md shadow-sm ring-1">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={productImageUrl}
@@ -117,7 +117,9 @@ export function StudioToolbar({
               </p>
             )}
           </div>
-          <span aria-hidden className="text-brand-purple/20">·</span>
+          <span aria-hidden className="text-brand-purple/20">
+            ·
+          </span>
           <ProgressBadge filled={filled} total={total} />
         </div>
 
@@ -127,7 +129,9 @@ export function StudioToolbar({
               type="button"
               onClick={onToggleRealismGuides}
               aria-pressed={!!showRealismGuides}
-              aria-label={showRealismGuides ? "Ocultar guías de seguridad" : "Mostrar guías de seguridad"}
+              aria-label={
+                showRealismGuides ? "Ocultar guías de seguridad" : "Mostrar guías de seguridad"
+              }
               title="Líneas amarillas = zona de corte. Líneas verdes = zona segura para texto importante."
               className={[
                 "focus:ring-brand-purple inline-flex h-9 items-center gap-1.5 rounded-md px-2.5 text-xs font-semibold transition-colors focus:ring-2 focus:ring-offset-1 focus:outline-none",
@@ -137,7 +141,9 @@ export function StudioToolbar({
               ].join(" ")}
             >
               <Ruler className="h-3.5 w-3.5" aria-hidden />
-              <span className="hidden sm:inline">{showRealismGuides ? "Guías visibles" : "Ver guías"}</span>
+              <span className="hidden sm:inline">
+                {showRealismGuides ? "Guías visibles" : "Ver guías"}
+              </span>
             </button>
           )}
           <AutoSaveIndicator status={autoSaveStatus} isFinalizing={isFinalizing} />

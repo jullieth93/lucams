@@ -282,14 +282,14 @@ function StudioSlotImpl({
             </motion.div>
 
             {/* Número grande del slot */}
-            <span className="text-brand-purple mt-2 text-2xl font-bold tabular-nums leading-none">
+            <span className="text-brand-purple mt-2 text-2xl leading-none font-bold tabular-nums">
               {slotState.slotIndex + 1}
             </span>
 
             {/* Hint contextual: cambia si está en drop-state */}
             <span
               className={[
-                "mt-1 text-[10px] font-medium uppercase tracking-wide transition-colors",
+                "mt-1 text-[10px] font-medium tracking-wide uppercase transition-colors",
                 isDropping ? "text-brand-turquoise" : "text-brand-purple-dark/55",
               ].join(" ")}
             >
@@ -307,7 +307,7 @@ function StudioSlotImpl({
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-within:opacity-100"
+            className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-200 group-focus-within:opacity-100 group-hover:opacity-100"
           >
             {/* Glassmorphism overlay sutil cuando hover */}
             <div className="absolute inset-0 bg-gradient-to-b from-black/0 via-black/0 to-black/15" />
@@ -330,7 +330,7 @@ function StudioSlotImpl({
                   }}
                   aria-label={`Ajustar foto del imán ${slotState.slotIndex + 1} (filtros)`}
                   title="Aplicar filtros a esta foto"
-                  className="text-brand-purple ring-brand-purple/10 flex h-8 w-8 items-center justify-center rounded-full bg-white/90 shadow-md ring-1 backdrop-blur-sm hover:bg-white focus:ring-2 focus:ring-brand-turquoise focus:outline-none"
+                  className="text-brand-purple ring-brand-purple/10 focus:ring-brand-turquoise flex h-8 w-8 items-center justify-center rounded-full bg-white/90 shadow-md ring-1 backdrop-blur-sm hover:bg-white focus:ring-2 focus:outline-none"
                   tabIndex={-1}
                 >
                   <Wand2 className="h-3.5 w-3.5" />

@@ -84,18 +84,14 @@ export const FILTER_DESCRIPTIONS: Record<PhotoFilterPreset, string> = {
   polaroid: "Tono cálido tipo polaroid vintage",
 };
 
-export const FILTER_ORDER: PhotoFilterPreset[] = [
-  "vivid",
-  "vintage",
-  "polaroid",
-  "pastel",
-  "bw",
-];
+export const FILTER_ORDER: PhotoFilterPreset[] = ["vivid", "vintage", "polaroid", "pastel", "bw"];
 
 /**
  * Devuelve los params Konva para un preset, o null si filter es null/"none".
  */
-export function getFilterParams(filter: PhotoFilterPreset | null | undefined): PhotoFilterParams | null {
+export function getFilterParams(
+  filter: PhotoFilterPreset | null | undefined,
+): PhotoFilterParams | null {
   if (!filter) return null;
   return FILTER_PRESETS[filter] ?? null;
 }
