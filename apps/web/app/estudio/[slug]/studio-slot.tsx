@@ -34,8 +34,15 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Camera, Trash2, Wand2 } from "lucide-react";
 import { Stage, Layer, Rect, Image as KonvaImage, Group, Text, Circle, Path } from "react-konva";
 import useImage from "use-image";
-import Konva from "konva";
+import type Konva from "konva";
 import type { FilterFunction } from "konva/lib/Node";
+// Import filters específicos (no `import Konva from "konva"` que duplica instancia
+// y dispara warning "Several Konva instances detected" rompiendo useImage).
+// react-konva ya carga Konva runtime; acá solo necesitamos las funciones filter.
+import { Brighten } from "konva/lib/filters/Brighten";
+import { Contrast } from "konva/lib/filters/Contrast";
+import { Grayscale } from "konva/lib/filters/Grayscale";
+import { HSL } from "konva/lib/filters/HSL";
 import type {
   CanvasDataV1,
   CanvasLayer,
@@ -606,12 +613,11 @@ function ImagePlaceholder({
     const params = getFilterParams(slotState.filter);
     if (!params) return { filtersArray: [] as FilterFunction[], filterParams: null };
     const f: FilterFunction[] = [];
-    // Konva.Filters typed como `Filter = FilterFunction | string`. En runtime
-    // siempre son FilterFunction — cast explicito para satisfacer el TS strict.
-    if (params.grayscale) f.push(Konva.Filters.Grayscale as FilterFunction);
-    if (params.brightness !== 0) f.push(Konva.Filters.Brighten as FilterFunction);
-    if (params.contrast !== 0) f.push(Konva.Filters.Contrast as FilterFunction);
-    if (params.saturation !== 0 || params.hue !== 0) f.push(Konva.Filters.HSL as FilterFunction);
+    // Filters importados directamente del paquete (evita duplicar Konva runtime).
+    if (params.grayscale) f.push(Grayscale as FilterFunction);
+    if (params.brightness !== 0) f.push(Brighten as FilterFunction);
+    if (params.contrast !== 0) f.push(Contrast as FilterFunction);
+    if (params.saturation !== 0 || params.hue !== 0) f.push(HSL as FilterFunction);
     return { filtersArray: f, filterParams: params };
   }, [slotState.filter]);
 

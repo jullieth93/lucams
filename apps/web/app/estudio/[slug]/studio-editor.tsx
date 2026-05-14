@@ -475,15 +475,26 @@ function PhotoAdjustModalWrapper({
   slotIndex: number | null;
   onClose: () => void;
 }) {
-  const slots = useStore(store, (s) => s.canvasData?.slots ?? []);
+  // Selectores ATÓMICOS primitivos — evita el re-render infinito que daba
+  // selector compuesto `s.canvasData?.slots ?? []` (array literal nuevo cada
+  // render → React detecta cambio → loop). Memoria feedback_react_atomic_selectors.
+  const slotAssetUrl = useStore(store, (s) =>
+    slotIndex !== null
+      ? (s.canvasData?.slots?.find((sl) => sl.slotIndex === slotIndex)?.assetUrl ?? null)
+      : null,
+  );
+  const slotFilter = useStore(store, (s) =>
+    slotIndex !== null
+      ? (s.canvasData?.slots?.find((sl) => sl.slotIndex === slotIndex)?.filter ?? null)
+      : null,
+  );
   const setSlotFilter = useStore(store, (s) => s.setSlotFilter);
-  const slot = slotIndex !== null ? slots.find((s) => s.slotIndex === slotIndex) : null;
 
   return (
     <StudioPhotoAdjustModal
-      isOpen={slotIndex !== null && !!slot?.assetUrl}
-      photoUrl={slot?.assetUrl ?? null}
-      currentFilter={slot?.filter ?? null}
+      isOpen={slotIndex !== null && !!slotAssetUrl}
+      photoUrl={slotAssetUrl}
+      currentFilter={slotFilter}
       slotIndex={slotIndex}
       onClose={onClose}
       onApply={(filter) => {
