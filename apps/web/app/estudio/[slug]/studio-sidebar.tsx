@@ -60,7 +60,17 @@ export function StudioSidebar({ store, productName, productSku }: StudioSidebarP
             signedUrl: result.signedUrl,
             width: result.width,
             height: result.height,
+            validationLevel: result.validationLevel,
+            validationMessage: result.validationMessage,
           });
+          // M.3.b.B.2 — Si la foto subió con calidad insuficiente, mostrar
+          // banner naranja persistente con el mensaje (cliente decide si usarla).
+          if (result.validationLevel === "warning-strong" || result.validationLevel === "error") {
+            setUploadError(
+              result.validationMessage ??
+                "La foto tiene problemas de calidad. Revisá la sugerencia.",
+            );
+          }
         } else {
           setUploadError(result.message);
         }
@@ -162,12 +172,15 @@ export function StudioSidebar({ store, productName, productSku }: StudioSidebarP
                   onDragStart={(e) =>
                     onDragStartAsset(e as unknown as React.DragEvent<HTMLDivElement>, asset)
                   }
-                  title="Arrastrá al canvas o tocá un slot vacío para asignar"
+                  title={
+                    asset.validationMessage ??
+                    "Arrastrá al canvas o tocá un slot vacío para asignar"
+                  }
                   initial={{ opacity: 0, scale: 0.85 }}
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.85 }}
                   transition={{ duration: 0.2, delay: idx * 0.04 }}
-                  className="border-brand-purple/20 hover:border-brand-purple focus-within:ring-brand-turquoise aspect-square cursor-grab overflow-hidden rounded-md border-2 focus-within:ring-2 active:cursor-grabbing"
+                  className="border-brand-purple/20 hover:border-brand-purple focus-within:ring-brand-turquoise relative aspect-square cursor-grab overflow-hidden rounded-md border-2 focus-within:ring-2 active:cursor-grabbing"
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
@@ -176,6 +189,17 @@ export function StudioSidebar({ store, productName, productSku }: StudioSidebarP
                     className="h-full w-full object-cover"
                     draggable={false}
                   />
+                  {/* M.3.b.B.2 — Badge validación calidad foto */}
+                  {asset.validationLevel === "warning-strong" && (
+                    <div className="absolute top-1 right-1 rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-bold text-red-700 shadow">
+                      ⚠️
+                    </div>
+                  )}
+                  {asset.validationLevel === "warning-soft" && (
+                    <div className="absolute top-1 right-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800 shadow">
+                      ⓘ
+                    </div>
+                  )}
                 </motion.div>
               ))}
             </AnimatePresence>

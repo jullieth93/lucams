@@ -37,6 +37,7 @@ import { StudioCanvasGrid } from "./studio-canvas-grid";
 import { StudioSidebar } from "./studio-sidebar";
 import { StudioToolbar } from "./studio-toolbar";
 import { StudioAssetPickerModal } from "./studio-asset-picker-modal";
+import { StudioPhotoAdjustModal } from "./studio-photo-adjust-modal";
 import { createStudioStore } from "./lib/store";
 import type { CanvasData, CanvasDataV2, StudioAsset, StudioProduct, StudioTemplate } from "./types";
 import { ensureCanvasV2 } from "./lib/canvas-migrate";
@@ -63,8 +64,13 @@ export function StudioEditor({
   const router = useRouter();
   const store = useMemo(() => createStudioStore(), []);
   const [pickerSlotIndex, setPickerSlotIndex] = useState<number | null>(null);
+  // M.3.b.B.3 — Slot index del modal de ajustar foto (filtros).
+  const [adjustSlotIndex, setAdjustSlotIndex] = useState<number | null>(null);
   const [bootError, setBootError] = useState<string | null>(null);
   const [booting, setBooting] = useState(true);
+  // M.3.b.B.1 — Toggle bleed + safe area guides (default off para que cliente
+  // no se confunda con líneas de seguridad si no las necesita ver).
+  const [showRealismGuides, setShowRealismGuides] = useState(false);
   const slotStagesRef = useRef<Map<number, Konva.Stage | null>>(new Map());
 
   // M.3.b.A2.5 — Lee `sizeCm` del producto para badge visual en cada slot.
@@ -298,6 +304,8 @@ export function StudioEditor({
         store={store}
         productName={product.name}
         productSlug={product.slug}
+        showRealismGuides={showRealismGuides}
+        onToggleRealismGuides={() => setShowRealismGuides((v) => !v)}
         onFinalize={handleFinalize}
       />
 
@@ -313,7 +321,12 @@ export function StudioEditor({
           <StudioCanvasGrid
             store={store}
             sizeCm={productConfig.sizeCm}
+            shape={productConfig.shape}
+            finish={productConfig.finish}
+            cornerRadiusPx={productConfig.cornerRadiusPx}
+            showRealismGuides={showRealismGuides}
             onSlotClick={handleSlotClick}
+            onSlotAdjust={(slotIndex) => setAdjustSlotIndex(slotIndex)}
             registerSlotStages={(stages) => {
               slotStagesRef.current = stages;
             }}
@@ -331,7 +344,45 @@ export function StudioEditor({
         onSelectAsset={handleAssetSelected}
         onAssetUploaded={handleAssetUploaded}
       />
+
+      {/* M.3.b.B.3 — Modal de ajustar foto (filtros) */}
+      <PhotoAdjustModalWrapper
+        store={store}
+        slotIndex={adjustSlotIndex}
+        onClose={() => setAdjustSlotIndex(null)}
+      />
     </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────
+//  PhotoAdjustModalWrapper — extrae slot state via store + monta modal
+// ──────────────────────────────────────────────────────────────────
+
+function PhotoAdjustModalWrapper({
+  store,
+  slotIndex,
+  onClose,
+}: {
+  store: ReturnType<typeof createStudioStore>;
+  slotIndex: number | null;
+  onClose: () => void;
+}) {
+  const slots = useStore(store, (s) => s.canvasData?.slots ?? []);
+  const setSlotFilter = useStore(store, (s) => s.setSlotFilter);
+  const slot = slotIndex !== null ? slots.find((s) => s.slotIndex === slotIndex) : null;
+
+  return (
+    <StudioPhotoAdjustModal
+      isOpen={slotIndex !== null && !!slot?.assetUrl}
+      photoUrl={slot?.assetUrl ?? null}
+      currentFilter={slot?.filter ?? null}
+      slotIndex={slotIndex}
+      onClose={onClose}
+      onApply={(filter) => {
+        if (slotIndex !== null) setSlotFilter(slotIndex, filter);
+      }}
+    />
   );
 }
 

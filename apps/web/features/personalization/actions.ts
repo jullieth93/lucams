@@ -199,6 +199,21 @@ export async function uploadDesignAssetAction(formData: FormData) {
     }
   }
 
+  // M.3.b.B.2 — Buscar productSizeCm del product asociado al Design para DPI check.
+  // Si no hay Design (upload sin draft creado aún) → sin sizeCm, validation
+  // solo evalúa brillo + blur.
+  let productSizeCm: string | undefined;
+  if (design) {
+    const product = await prisma.product.findUnique({
+      where: { id: design.productId },
+      select: { personalizationSchema: true },
+    });
+    if (product?.personalizationSchema && typeof product.personalizationSchema === "object") {
+      const cfg = product.personalizationSchema as { sizeCm?: unknown };
+      if (typeof cfg.sizeCm === "string") productSizeCm = cfg.sizeCm;
+    }
+  }
+
   try {
     const buffer = Buffer.from(await file.arrayBuffer());
     const uploaded = await uploadCustomerPhoto({
@@ -206,6 +221,7 @@ export async function uploadDesignAssetAction(formData: FormData) {
       originalMimeType: metaParsed.data.mimeType,
       ownerId,
       designId: metaParsed.data.designId ?? null,
+      productSizeCm,
     });
 
     // Persistir DesignAsset
@@ -231,6 +247,7 @@ export async function uploadDesignAssetAction(formData: FormData) {
         designId: metaParsed.data.designId,
         ownerType: customerId ? "customer" : "session",
         sizeBytes: uploaded.sizeBytes,
+        validationLevel: uploaded.validation?.level,
       },
       "Customer photo uploaded",
     );
@@ -241,6 +258,10 @@ export async function uploadDesignAssetAction(formData: FormData) {
       signedUrl: uploaded.signedUrl,
       width: uploaded.width,
       height: uploaded.height,
+      // M.3.b.B.2 — Validación de calidad para que el cliente muestre warning UI.
+      validationLevel: uploaded.validation?.level,
+      validationMessage: uploaded.validation?.message,
+      validationRecommendation: uploaded.validation?.recommendation,
     };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

@@ -308,4 +308,18 @@ export type PhotoProductConfig = {
   shape?: "rectangle" | "circle" | "heart" | "custom";
   /** Cantidad mínima de pedido (para kinds B2B como BUSINESS_LOGO). */
   minQuantity?: number;
+  /**
+   * Acabado del imán físico — afecta overlay de realismo:
+   *   - "matte"  → sin reflejo, textura neutral (default)
+   *   - "glossy" → gradient blanco semi-transparente top-left simula reflejo
+   *   - "soft-touch" → muy sutil reflejo (placeholder, ahora se renderea como matte)
+   * M.3.b.B.1.
+   */
+  finish?: "matte" | "glossy" | "soft-touch";
+  /**
+   * cornerRadius del imán físico en px (sobre stage del unitTemplate).
+   * Default 0. Imanes tipo "card" típicamente 24-32 sobre stage 1080.
+   * Si shape === "circle" o "heart" se ignora (la forma define el contorno).
+   */
+  cornerRadiusPx?: number;
 };

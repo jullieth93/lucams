@@ -83,6 +83,8 @@ export type StudioStoreState = {
   clearSlot: (slotIndex: number) => void;
   swapSlots: (a: number, b: number) => void;
   autoFillSlots: () => void;
+  /** M.3.b.B.3 — Aplicar/quitar filter preset a un slot específico. */
+  setSlotFilter: (slotIndex: number, filter: import("../types").PhotoFilterPreset | null) => void;
   selectSlot: (slotIndex: number | null) => void;
   setSelectedTemplate: (templateId: string | null) => void;
   applyTemplate: (template: StudioTemplate) => void;
@@ -174,7 +176,19 @@ export function createStudioStore() {
       const next: CanvasDataV2 = {
         ...canvasData,
         slots: canvasData.slots.map((s) =>
-          s.slotIndex === slotIndex ? { ...s, assetId: null, assetUrl: null } : s,
+          s.slotIndex === slotIndex ? { ...s, assetId: null, assetUrl: null, filter: null } : s,
+        ),
+      };
+      get().setCanvasData(next);
+    },
+
+    setSlotFilter: (slotIndex, filter) => {
+      const { canvasData } = get();
+      if (!canvasData) return;
+      const next: CanvasDataV2 = {
+        ...canvasData,
+        slots: canvasData.slots.map((s) =>
+          s.slotIndex === slotIndex ? { ...s, filter } : s,
         ),
       };
       get().setCanvasData(next);

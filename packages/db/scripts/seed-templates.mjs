@@ -581,13 +581,96 @@ const templatesData = [
     },
   },
 
+  // ════════════════════════ CUSTOM_DECOR (extra Social Post) ════════════════════════
+
+  {
+    slug: "decor-marco-social-post",
+    kind: "CUSTOM_DECOR",
+    name: "Marco Social Post",
+    order: 10,
+    previewUrl: "/templates/social-post-frame.svg",
+    canvasData: {
+      version: 1,
+      stage: stage(400, 580),
+      layers: [
+        background("#FFFFFF"),
+        // Foto cliente CUADRADA DEBAJO del asset (visible por photo area sin checkerboard)
+        photoSlot({
+          id: "p1",
+          x: 20,
+          y: 85,
+          width: 360,
+          height: 360,
+          cornerRadius: 2,
+          label: "Tu foto",
+        }),
+        // Asset SVG v4: marco limpio basado en ig_post.svg de Lucy
+        asset({
+          id: "frame",
+          src: "/templates/social-post-frame.svg",
+          x: 0,
+          y: 0,
+          width: 400,
+          height: 580,
+        }),
+        // 4 zonas editables — coords convertidos baseline→top sobre stage 400×580
+        text({
+          id: "user_name",
+          x: 75,
+          y: 42,
+          text: "user_name",
+          fontFamily: "Arial",
+          fontSize: 15,
+          fill: "#262626",
+          fontWeight: "bold",
+          align: "left",
+          editable: true,
+        }),
+        text({
+          id: "likes_count",
+          x: 43,
+          y: 507,
+          text: "362 likes",
+          fontFamily: "Arial",
+          fontSize: 14,
+          fill: "#262626",
+          fontWeight: "bold",
+          align: "left",
+          editable: true,
+        }),
+        text({
+          id: "title_caption",
+          x: 25,
+          y: 534,
+          text: "your title here",
+          fontFamily: "Arial",
+          fontSize: 14,
+          fill: "#262626",
+          align: "left",
+          editable: true,
+        }),
+        text({
+          id: "hashtags",
+          x: 130,
+          y: 534,
+          text: "#hashtag #loremipsum",
+          fontFamily: "Arial",
+          fontSize: 14,
+          fill: "#00376B", // azul Instagram hashtags
+          align: "left",
+          editable: true,
+        }),
+      ],
+    },
+  },
+
   // ════════════════════════ BUSINESS_LOGO (1) ════════════════════════
 
   {
     slug: "business-corporativo-limpio",
     kind: "BUSINESS_LOGO",
     name: "Corporativo Limpio",
-    order: 10,
+    order: 11,
     previewUrl: "/templates/business-corporativo.svg",
     canvasData: {
       version: 1,

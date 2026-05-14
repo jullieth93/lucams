@@ -28,13 +28,14 @@
  * Por ahora todos los slots se montan al inicio.
  */
 
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from "react";
 import { motion } from "framer-motion";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, Wand2 } from "lucide-react";
 import { Stage, Layer, Rect, Image as KonvaImage, Group, Text, Circle, Path } from "react-konva";
 import useImage from "use-image";
-import type Konva from "konva";
+import Konva from "konva";
+import type { FilterFunction } from "konva/lib/Node";
 import type {
   CanvasDataV1,
   CanvasLayer,
@@ -42,6 +43,8 @@ import type {
   SlotState,
   StudioAsset,
 } from "./types";
+import { RealismShadowLayer, RealismOverlayLayer } from "./studio-realism-overlay";
+import { getFilterParams } from "./lib/photo-filters";
 
 const FOCUS_RING = "0 0 0 3px rgb(93 217 209)"; // brand-turquoise
 
@@ -53,8 +56,18 @@ type StudioSlotProps = {
   totalSlots: number;
   /** M.3.b.A2.5 — Tamaño físico del imán (ej "5×5 cm") leído del product.personalizationSchema.sizeCm. */
   sizeCm?: string;
+  /** M.3.b.B.1 — forma física del imán para overlay realismo. */
+  shape?: "rectangle" | "circle" | "heart" | "custom";
+  /** M.3.b.B.1 — acabado físico para overlay glossy. */
+  finish?: "matte" | "glossy" | "soft-touch";
+  /** M.3.b.B.1 — cornerRadius en px del imán físico (solo aplica si shape=rectangle). */
+  cornerRadiusPx?: number;
+  /** M.3.b.B.1 — toggle global para mostrar bleed + safe guides. */
+  showRealismGuides?: boolean;
   onClick: () => void;
   onClear: () => void;
+  /** M.3.b.B.3 — Abrir modal de ajustar foto (filtros). Solo se llama si slot lleno. */
+  onAdjust?: () => void;
   onAssetDrop: (asset: StudioAsset) => void;
   onKeyboardNav: (direction: "up" | "down" | "left" | "right") => void;
   onRegisterStage?: (stage: Konva.Stage | null) => void;
@@ -67,8 +80,13 @@ function StudioSlotImpl({
   isSelected,
   totalSlots,
   sizeCm,
+  shape,
+  finish,
+  cornerRadiusPx,
+  showRealismGuides,
   onClick,
   onClear,
+  onAdjust,
   onAssetDrop,
   onKeyboardNav,
   onRegisterStage,
@@ -208,7 +226,10 @@ function StudioSlotImpl({
         }
       }}
     >
-      {/* Konva Stage — render del unit template + asset si está lleno */}
+      {/* Konva Stage — 3 layers stacked:
+          1. RealismShadowLayer (bottom) — sombra del imán físico
+          2. Content Layer (middle)      — unit template del seed
+          3. RealismOverlayLayer (top)   — acabado glossy + bleed/safe guides */}
       <Stage
         width={displaySize}
         height={displaySize}
@@ -219,9 +240,21 @@ function StudioSlotImpl({
         }}
         listening={false}
       >
+        <RealismShadowLayer
+          stage={unitTemplate.stage}
+          shape={shape}
+          cornerRadiusPx={cornerRadiusPx}
+        />
         <Layer>
           {unitTemplate.layers.map((layer) => renderLayer(layer, slotState, unitTemplate.stage))}
         </Layer>
+        <RealismOverlayLayer
+          stage={unitTemplate.stage}
+          shape={shape}
+          finish={finish}
+          cornerRadiusPx={cornerRadiusPx}
+          showGuides={showRealismGuides}
+        />
       </Stage>
 
       {/* Overlay placeholder cuando slot está vacío */}
@@ -240,20 +273,37 @@ function StudioSlotImpl({
         </div>
       )}
 
-      {/* Botón quitar foto cuando slot está lleno */}
+      {/* Botones flotantes cuando slot está lleno: ajustar (filtros) + quitar */}
       {slotState.assetUrl && (
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onClear();
-          }}
-          aria-label={`Quitar foto del imán ${slotState.slotIndex + 1}`}
-          className="absolute top-1.5 right-1.5 flex h-7 w-7 items-center justify-center rounded-full bg-white/85 text-red-700 opacity-0 shadow transition-opacity group-hover:opacity-100 hover:bg-white focus:opacity-100 focus:ring-2 focus:ring-red-500 focus:outline-none"
-          tabIndex={-1}
-        >
-          <Trash2 className="h-3.5 w-3.5" />
-        </button>
+        <div className="absolute top-1.5 right-1.5 flex flex-col gap-1.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+          {onAdjust && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onAdjust();
+              }}
+              aria-label={`Ajustar foto del imán ${slotState.slotIndex + 1} (filtros)`}
+              title="Aplicar filtros a esta foto"
+              className="text-brand-purple flex h-7 w-7 items-center justify-center rounded-full bg-white/95 shadow hover:bg-white focus:ring-2 focus:ring-brand-turquoise focus:outline-none"
+              tabIndex={-1}
+            >
+              <Wand2 className="h-3.5 w-3.5" />
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onClear();
+            }}
+            aria-label={`Quitar foto del imán ${slotState.slotIndex + 1}`}
+            className="flex h-7 w-7 items-center justify-center rounded-full bg-white/95 text-red-700 shadow hover:bg-white focus:ring-2 focus:ring-red-500 focus:outline-none"
+            tabIndex={-1}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        </div>
       )}
 
       {/* Badge del slot cuando está lleno (número discreto esquina) */}
@@ -282,10 +332,15 @@ export const StudioSlot = memo(StudioSlotImpl, (prev, next) => {
     prev.slotState.slotIndex === next.slotState.slotIndex &&
     prev.slotState.assetUrl === next.slotState.assetUrl &&
     prev.slotState.assetId === next.slotState.assetId &&
+    prev.slotState.filter === next.slotState.filter &&
     prev.isSelected === next.isSelected &&
     prev.displaySize === next.displaySize &&
     prev.unitTemplate === next.unitTemplate &&
-    prev.sizeCm === next.sizeCm
+    prev.sizeCm === next.sizeCm &&
+    prev.shape === next.shape &&
+    prev.finish === next.finish &&
+    prev.cornerRadiusPx === next.cornerRadiusPx &&
+    prev.showRealismGuides === next.showRealismGuides
   );
 });
 StudioSlot.displayName = "StudioSlot";
@@ -488,12 +543,41 @@ function ImagePlaceholder({
   slotState: SlotState;
 }) {
   const [image] = useImage(slotState.assetUrl ?? "", "anonymous");
+  const imageNodeRef = useRef<Konva.Image | null>(null);
   // Convención del seed (verificada): image-placeholder usa x/y como TOP-LEFT
   // del slot (esquina superior izquierda). Ej. polaroid-clasico tiene
   // x=60, y=60, width=600, height=700 sobre stage 720x920 → slot va de
   // (60,60) a (660,760). NO restar width/2 ni height/2.
   const x = layer.x;
   const y = layer.y;
+
+  // M.3.b.B.3 — Calcular Konva filters según slotState.filter preset.
+  const { filtersArray, filterParams } = useMemo(() => {
+    const params = getFilterParams(slotState.filter);
+    if (!params) return { filtersArray: [] as FilterFunction[], filterParams: null };
+    const f: FilterFunction[] = [];
+    // Konva.Filters typed como `Filter = FilterFunction | string`. En runtime
+    // siempre son FilterFunction — cast explicito para satisfacer el TS strict.
+    if (params.grayscale) f.push(Konva.Filters.Grayscale as FilterFunction);
+    if (params.brightness !== 0) f.push(Konva.Filters.Brighten as FilterFunction);
+    if (params.contrast !== 0) f.push(Konva.Filters.Contrast as FilterFunction);
+    if (params.saturation !== 0 || params.hue !== 0) f.push(Konva.Filters.HSL as FilterFunction);
+    return { filtersArray: f, filterParams: params };
+  }, [slotState.filter]);
+
+  // M.3.b.B.3 — Cuando cambia la foto o filter, re-cache (Konva filters
+  // requieren image.cache() para aplicarse correctamente).
+  useEffect(() => {
+    const node = imageNodeRef.current;
+    if (!node || !image) return;
+    if (filtersArray.length > 0) {
+      node.cache();
+      node.getLayer()?.batchDraw();
+    } else {
+      node.clearCache();
+      node.getLayer()?.batchDraw();
+    }
+  }, [image, filtersArray.length, slotState.filter]);
 
   if (slotState.assetUrl && image) {
     // Calcular crop "cover": llenar el slot manteniendo aspect ratio de la foto,
@@ -523,11 +607,20 @@ function ImagePlaceholder({
         rotation={layer.rotation ?? 0}
       >
         <KonvaImage
+          ref={(n) => {
+            imageNodeRef.current = n;
+          }}
           image={image}
           width={layer.width}
           height={layer.height}
           cornerRadius={layer.cornerRadius ?? 0}
           crop={{ x: cropX, y: cropY, width: cropW, height: cropH }}
+          // M.3.b.B.3 — filters + params (no-op si sin filter)
+          filters={filtersArray.length > 0 ? filtersArray : undefined}
+          brightness={filterParams?.brightness ?? 0}
+          contrast={filterParams?.contrast ?? 0}
+          saturation={filterParams?.saturation ?? 0}
+          hue={filterParams?.hue ?? 0}
         />
       </Group>
     );

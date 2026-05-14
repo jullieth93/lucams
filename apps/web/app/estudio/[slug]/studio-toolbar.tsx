@@ -18,7 +18,7 @@
 
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, Check, Loader2, AlertCircle, Sparkles } from "lucide-react";
+import { ArrowLeft, Check, Loader2, AlertCircle, Sparkles, Ruler } from "lucide-react";
 import type { StoreApi } from "zustand";
 import { useStore } from "zustand";
 import {
@@ -32,10 +32,21 @@ type StudioToolbarProps = {
   store: StoreApi<StudioStoreState>;
   productName: string;
   productSlug: string;
+  /** M.3.b.B.1 — toggle bleed + safe area overlay guides. */
+  showRealismGuides?: boolean;
+  /** M.3.b.B.1 — callback al cambiar el toggle. */
+  onToggleRealismGuides?: () => void;
   onFinalize: () => void;
 };
 
-export function StudioToolbar({ store, productName, productSlug, onFinalize }: StudioToolbarProps) {
+export function StudioToolbar({
+  store,
+  productName,
+  productSlug,
+  showRealismGuides,
+  onToggleRealismGuides,
+  onFinalize,
+}: StudioToolbarProps) {
   const autoSaveStatus = useStore(store, (s) => s.autoSaveStatus);
   const isFinalizing = useStore(store, (s) => s.isFinalizing);
   // Suscripciones atómicas (primitivos) — evitan re-render infinito que daba
@@ -76,6 +87,24 @@ export function StudioToolbar({ store, productName, productSlug, onFinalize }: S
         </div>
 
         <div className="flex items-center gap-3">
+          {onToggleRealismGuides && (
+            <button
+              type="button"
+              onClick={onToggleRealismGuides}
+              aria-pressed={!!showRealismGuides}
+              aria-label={showRealismGuides ? "Ocultar guías de seguridad" : "Mostrar guías de seguridad"}
+              title="Líneas amarillas = zona de corte. Líneas verdes = zona segura para texto importante."
+              className={[
+                "focus:ring-brand-purple inline-flex h-9 items-center gap-1.5 rounded-md px-2.5 text-xs font-semibold transition-colors focus:ring-2 focus:ring-offset-1 focus:outline-none",
+                showRealismGuides
+                  ? "bg-amber-100 text-amber-800 ring-1 ring-amber-300"
+                  : "text-brand-purple-dark/70 hover:bg-brand-purple/10 hover:text-brand-purple-dark",
+              ].join(" ")}
+            >
+              <Ruler className="h-3.5 w-3.5" aria-hidden />
+              <span className="hidden sm:inline">{showRealismGuides ? "Guías visibles" : "Ver guías"}</span>
+            </button>
+          )}
           <AutoSaveIndicator status={autoSaveStatus} isFinalizing={isFinalizing} />
           <button
             type="button"

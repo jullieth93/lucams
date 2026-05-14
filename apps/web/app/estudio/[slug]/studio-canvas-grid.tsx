@@ -33,14 +33,29 @@ type StudioCanvasGridProps = {
   store: StoreApi<StudioStoreState>;
   /** M.3.b.A2.5 — Tamaño físico del producto (ej "5×5 cm") para badge en slots. */
   sizeCm?: string;
+  /** M.3.b.B.1 — forma física del imán para overlay realismo. */
+  shape?: "rectangle" | "circle" | "heart" | "custom";
+  /** M.3.b.B.1 — acabado físico para overlay glossy. */
+  finish?: "matte" | "glossy" | "soft-touch";
+  /** M.3.b.B.1 — cornerRadius en px del imán físico. */
+  cornerRadiusPx?: number;
+  /** M.3.b.B.1 — toggle global para bleed + safe guides. */
+  showRealismGuides?: boolean;
   onSlotClick: (slotIndex: number) => void;
+  /** M.3.b.B.3 — abrir modal ajustar foto (filtros) para un slot lleno. */
+  onSlotAdjust?: (slotIndex: number) => void;
   registerSlotStages: (stages: Map<number, Konva.Stage | null>) => void;
 };
 
 export function StudioCanvasGrid({
   store,
   sizeCm,
+  shape,
+  finish,
+  cornerRadiusPx,
+  showRealismGuides,
   onSlotClick,
+  onSlotAdjust,
   registerSlotStages,
 }: StudioCanvasGridProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -163,11 +178,16 @@ export function StudioCanvasGrid({
                 isSelected={selectedSlotIndex === slot.slotIndex}
                 totalSlots={canvasData.slotCount}
                 sizeCm={sizeCm}
+                shape={shape}
+                finish={finish}
+                cornerRadiusPx={cornerRadiusPx}
+                showRealismGuides={showRealismGuides}
                 onClick={() => {
                   selectSlot(slot.slotIndex);
                   onSlotClick(slot.slotIndex);
                 }}
                 onClear={() => clearSlot(slot.slotIndex)}
+                onAdjust={onSlotAdjust ? () => onSlotAdjust(slot.slotIndex) : undefined}
                 onAssetDrop={(asset: StudioAsset) => assignAssetToSlot(slot.slotIndex, asset)}
                 onKeyboardNav={(dir) => handleKeyboardNav(slot.slotIndex, dir)}
                 onRegisterStage={registerStage(slot.slotIndex)}

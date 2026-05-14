@@ -152,6 +152,10 @@ export type CustomerUploadResult = {
   sizeBytes: number;
   mimeType: string;
   exifStripped: boolean;
+  /** M.3.b.B.2 — resultado de validación calidad. Si no se pasa sizeCm, el
+   * resolution check se omite y el resto corre. Si todo OK, el caller puede
+   * ignorar este campo. */
+  validation?: import("./photo-validation").PhotoValidationResult;
 };
 
 /**
@@ -171,6 +175,9 @@ export async function uploadCustomerPhoto(opts: {
   originalMimeType: string;
   ownerId: string; // customerId o sessionId
   designId: string | null; // null si aún no se creó el Design
+  /** M.3.b.B.2 — tamaño físico del imán para validar resolución vs DPI 300.
+   * Ej "5×5" / "15×15". Si no se pasa, el resolution check se omite. */
+  productSizeCm?: string;
 }): Promise<CustomerUploadResult> {
   if (opts.buffer.length === 0) {
     throw new StorageError("EMPTY_FILE", "Archivo vacío");
@@ -256,6 +263,23 @@ export async function uploadCustomerPhoto(opts: {
     );
   }
 
+  // M.3.b.B.2 — Validación de calidad post-procesamiento (no bloquea upload,
+  // solo informa al cliente). Si el caller no pasa productSizeCm, omitimos
+  // el DPI check y solo evaluamos brillo/blur.
+  let validation: CustomerUploadResult["validation"];
+  try {
+    const { validatePhotoQuality } = await import("./photo-validation");
+    validation = await validatePhotoQuality({
+      buffer: processed,
+      width,
+      height,
+      productSizeCm: opts.productSizeCm,
+    });
+  } catch {
+    // Validación opcional — si falla por OOM o sharp bug, no rompemos el upload.
+    validation = undefined;
+  }
+
   return {
     path: filename,
     signedUrl: signed.signedUrl,
@@ -264,6 +288,7 @@ export async function uploadCustomerPhoto(opts: {
     sizeBytes: processed.length,
     mimeType: finalMime,
     exifStripped: true,
+    validation,
   };
 }
 

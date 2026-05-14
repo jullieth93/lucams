@@ -99,9 +99,20 @@ export function StudioAssetPickerModal({
             signedUrl: result.signedUrl,
             width: result.width,
             height: result.height,
+            validationLevel: result.validationLevel,
+            validationMessage: result.validationMessage,
           };
           onAssetUploaded(asset);
-          // Auto-asignar al slot si solo se subió 1 archivo
+          // M.3.b.B.2 — Si validación falló con error, mostrar warning prominente
+          // pero NO auto-asignar (cliente decide).
+          if (result.validationLevel === "error") {
+            setError(
+              result.validationMessage ??
+                "La foto subida no cumple los requisitos mínimos de calidad.",
+            );
+            continue;
+          }
+          // Auto-asignar al slot si solo se subió 1 archivo (y no hay error)
           if (files.length === 1) {
             onSelectAsset(asset);
             onClose();
@@ -225,8 +236,13 @@ export function StudioAssetPickerModal({
                               onSelectAsset(asset);
                               onClose();
                             }}
-                            aria-label="Asignar esta foto al slot"
-                            className="border-brand-purple/20 hover:border-brand-purple focus:border-brand-turquoise focus:ring-brand-turquoise aspect-square overflow-hidden rounded-md border-2 transition-all hover:scale-105 focus:ring-2 focus:outline-none"
+                            aria-label={
+                              asset.validationMessage
+                                ? `Asignar foto al slot. Aviso: ${asset.validationMessage}`
+                                : "Asignar esta foto al slot"
+                            }
+                            title={asset.validationMessage}
+                            className="border-brand-purple/20 hover:border-brand-purple focus:border-brand-turquoise focus:ring-brand-turquoise relative aspect-square overflow-hidden rounded-md border-2 transition-all hover:scale-105 focus:ring-2 focus:outline-none"
                           >
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img
@@ -235,6 +251,23 @@ export function StudioAssetPickerModal({
                               className="h-full w-full object-cover"
                               loading="lazy"
                             />
+                            {/* M.3.b.B.2 — Badge de validación calidad foto */}
+                            {asset.validationLevel === "warning-strong" && (
+                              <div
+                                className="absolute top-1 right-1 rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-bold text-red-700 shadow"
+                                aria-hidden
+                              >
+                                ⚠️
+                              </div>
+                            )}
+                            {asset.validationLevel === "warning-soft" && (
+                              <div
+                                className="absolute top-1 right-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800 shadow"
+                                aria-hidden
+                              >
+                                ⓘ
+                              </div>
+                            )}
                           </button>
                         ))}
                       </div>

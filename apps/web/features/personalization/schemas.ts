@@ -207,6 +207,9 @@ export const PhotoProductConfigSchema = z.object({
   sizeCm: z.string().optional(),
   shape: z.enum(["rectangle", "circle", "heart", "custom"]).optional(),
   minQuantity: z.number().int().min(1).optional(),
+  // M.3.b.B.1 — realismo del imán físico
+  finish: z.enum(["matte", "glossy", "soft-touch"]).optional(),
+  cornerRadiusPx: z.number().int().min(0).max(500).optional(),
 });
 export type PhotoProductConfig = z.infer<typeof PhotoProductConfigSchema>;
 

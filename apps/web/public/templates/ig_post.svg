@@ -1,0 +1,73 @@
+<svg width="400" height="580" viewBox="0 0 400 580" fill="none" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+  <defs>
+    <!-- Filtro para la sombra interior del área de la foto -->
+    <filter id="inner-shadow" x="0" y="0" width="100%" height="100%">
+      <feOffset dx="0" dy="2"/>
+      <feGaussianBlur stdDeviation="3" result="offset-blur"/>
+      <feComposite operator="out" in="SourceGraphic" in2="offset-blur" result="inverse"/>
+      <feFlood flood-color="black" flood-opacity="0.2" result="color"/>
+      <feComposite operator="in" in="color" in2="inverse" result="shadow"/>
+      <feComposite operator="over" in="shadow" in2="SourceGraphic"/>
+    </filter>
+    
+    <!-- Patrón de transparencia (Checkerboard) -->
+    <pattern id="checkerboard" width="20" height="20" patternUnits="userSpaceOnUse">
+      <rect width="10" height="10" fill="#E5E5E5"/>
+      <rect x="10" y="10" width="10" height="10" fill="#E5E5E5"/>
+      <rect x="10" width="10" height="10" fill="#D1D1D1"/>
+      <rect y="10" width="10" height="10" fill="#D1D1D1"/>
+    </pattern>
+  </defs>
+
+  <!-- Fondo Card -->
+  <rect width="400" height="580" fill="white"/>
+
+  <!-- CABECERA -->
+  <g id="header">
+    <circle cx="45" cy="45" r="18" stroke="#262626" stroke-width="1.5"/>
+    <circle cx="45" cy="40.5" r="5" fill="#262626"/>
+    <path d="M34 51.5C34 46.5 38.5 45.5 45 45.5C51.5 45.5 56 46.5 56 51.5" stroke="#262626" stroke-width="1.5" stroke-linecap="round"/>
+    
+    <text id="editable-username" x="75" y="51" font-family="Arial, Helvetica, sans-serif" font-weight="600" font-size="15" fill="#262626">user_name</text>
+    
+    <!-- Botón Follow -->
+    <rect x="257" y="32" width="92" height="28" rx="4" stroke="#3897f0" stroke-width="1.2"/>
+    <text x="303" y="50" font-family="Arial" font-weight="bold" font-size="12" fill="#3897f0" text-anchor="middle">FOLLOW</text>
+    
+    <!-- Opciones (Puntos) -->
+    <circle cx="370" cy="46" r="1.5" fill="#262626"/>
+    <circle cx="377" cy="46" r="1.5" fill="#262626"/>
+    <circle cx="384" cy="46" r="1.5" fill="#262626"/>
+  </g>
+
+  <!-- ÁREA DE FOTO DINÁMICA -->
+  <g id="photo-container" filter="url(#inner-shadow)">
+    <rect x="20" y="85" width="360" height="360" fill="url(#checkerboard)" rx="2"/>
+    <!-- El desarrollador solo debe cambiar el xlink:href -->
+    <image id="user-image" x="20" y="85" width="360" height="360" preserveAspectRatio="xMidYMid slice" xlink:href=""/>
+  </g>
+
+  <!-- ICONOS DE INTERACCIÓN -->
+  <g id="actions" transform="translate(25, 465)">
+    <!-- Corazón (Like) -->
+    <path d="M11 4.5C11 4.5 9.5 2 6.5 2C3 2 1 5 1 8.5C1 13 11 19 11 19C11 19 21 13 21 8.5C21 5 19 2 15.5 2C12.5 2 11 4.5 11 4.5Z" stroke="#262626" stroke-width="2" stroke-linejoin="round"/>
+    <!-- Comentario -->
+    <path d="M48 2H68C70 2 71 3 71 5V17C71 19 70 20 68 20H55L48 25V2Z" stroke="#262626" stroke-width="2" stroke-linejoin="round" transform="translate(5, 0)"/>
+    <!-- Compartir (Avión) -->
+    <path d="M102 2L125 11L102 20L108 11L102 2Z" stroke="#262626" stroke-width="2" stroke-linejoin="round" transform="translate(10, 0)"/>
+    <!-- Bookmark -->
+    <path d="M335 2V22L345 16L355 22V2H335Z" stroke="#262626" stroke-width="2" stroke-linejoin="round"/>
+  </g>
+
+  <!-- SECCIÓN DE TEXTO EDITABLE -->
+  <g id="text-fields" transform="translate(25, 510)">
+    <!-- Icono Corazón Likes -->
+    <path d="M0 6L5 11L10 6C10 4 8 2 6 2C5 2 5 3 5 3C5 3 5 2 4 2C2 2 0 4 0 6Z" fill="#262626"/>
+    <text id="editable-likes" x="18" y="11" font-family="Arial, sans-serif" font-weight="bold" font-size="14" fill="#262626">362 likes</text>
+    
+    <text id="editable-title" x="0" y="38" font-family="Arial, sans-serif" font-size="14" fill="#262626">your title here</text>
+    
+    <!-- Hashtags con color específico de Instagram -->
+    <text id="editable-hashtags" x="105" y="38" font-family="Arial, sans-serif" font-size="14" fill="#00376B">#hashtag #loremipsum</text>
+  </g>
+</svg>
