@@ -305,7 +305,7 @@ function renderLayer(
         />
       );
     case "text":
-      return renderText(layer as never);
+      return renderText(layer as never, stage);
     case "shape":
       return renderShape(layer as never);
     default:
@@ -324,18 +324,26 @@ type TextLayerData = {
   align?: "left" | "center" | "right";
 };
 
-function renderText(layer: TextLayerData) {
+function renderText(layer: TextLayerData, stage: { width: number; height: number }) {
+  // Convención del seed: text usa x/y como CENTER. Para centrar visualmente:
+  // - Render con width = stage.width y align (default center) → texto se alinea
+  //   respecto a esa width.
+  // - x = 0 (alineamos desde el inicio del stage horizontal).
+  // - y = layer.y - fontSize/2 → centra verticalmente alrededor de layer.y.
+  // Esto solo funciona si align==="center" (que es el default del seed).
+  const fontSize = layer.fontSize ?? 48;
+  const align = layer.align ?? "center";
   return (
     <Text
       key={layer.id}
-      x={layer.x - 540}
-      y={layer.y - (layer.fontSize ?? 48) / 2}
-      width={1080}
+      x={align === "center" ? 0 : layer.x}
+      y={layer.y - fontSize / 2}
+      width={align === "center" ? stage.width : undefined}
       text={layer.text}
       fontFamily={layer.fontFamily ?? "Fredoka, Inter, sans-serif"}
-      fontSize={layer.fontSize ?? 48}
+      fontSize={fontSize}
       fill={layer.fill ?? "#3D2E5C"}
-      align={layer.align ?? "center"}
+      align={align}
     />
   );
 }
@@ -356,6 +364,8 @@ type ShapeLayerData = {
 function renderShape(layer: ShapeLayerData) {
   const cornerRadius =
     layer.kind === "circle" ? Math.min(layer.width, layer.height) / 2 : (layer.cornerRadius ?? 0);
+  // Convención del seed: shapes usan x/y como CENTER (heart-frame, ring, etc.).
+  // Konva Rect espera top-left, así que restamos width/2 y height/2.
   return (
     <Rect
       key={layer.id}
@@ -383,10 +393,32 @@ function ImagePlaceholder({
   slotState: SlotState;
 }) {
   const [image] = useImage(slotState.assetUrl ?? "", "anonymous");
-  const x = layer.x - layer.width / 2;
-  const y = layer.y - layer.height / 2;
+  // Convención del seed (verificada): image-placeholder usa x/y como TOP-LEFT
+  // del slot (esquina superior izquierda). Ej. polaroid-clasico tiene
+  // x=60, y=60, width=600, height=700 sobre stage 720x920 → slot va de
+  // (60,60) a (660,760). NO restar width/2 ni height/2.
+  const x = layer.x;
+  const y = layer.y;
 
   if (slotState.assetUrl && image) {
+    // Calcular crop "cover": llenar el slot manteniendo aspect ratio de la foto,
+    // recortando el exceso (igual que CSS object-fit: cover).
+    const slotAspect = layer.width / layer.height;
+    const imgAspect = image.width / image.height;
+    let cropX = 0;
+    let cropY = 0;
+    let cropW = image.width;
+    let cropH = image.height;
+    if (imgAspect > slotAspect) {
+      // Foto más ancha que slot → recortar laterales
+      cropW = image.height * slotAspect;
+      cropX = (image.width - cropW) / 2;
+    } else if (imgAspect < slotAspect) {
+      // Foto más alta que slot → recortar arriba/abajo
+      cropH = image.width / slotAspect;
+      cropY = (image.height - cropH) / 2;
+    }
+
     return (
       <Group
         x={x + layer.width / 2}
@@ -400,8 +432,7 @@ function ImagePlaceholder({
           width={layer.width}
           height={layer.height}
           cornerRadius={layer.cornerRadius ?? 0}
-          // Cubrir el slot manteniendo aspect ratio (object-fit: cover)
-          // Konva no soporta cover nativo, calculamos crop dimensions del source image.
+          crop={{ x: cropX, y: cropY, width: cropW, height: cropH }}
         />
       </Group>
     );

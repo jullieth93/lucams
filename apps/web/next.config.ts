@@ -22,6 +22,14 @@ const nextConfig: NextConfig = {
         pathname: "/storage/v1/object/public/product-images/**",
       },
       {
+        // Estudio M.3.b — preview compositado del grid (multi-slot snapshot)
+        // visible en cart/order para que el cliente vea su diseño final.
+        // Bucket `design-previews` es público (no signed URL).
+        protocol: "https",
+        hostname: "zxkucphbsfygakgxcnik.supabase.co",
+        pathname: "/storage/v1/object/public/design-previews/**",
+      },
+      {
         protocol: "https",
         hostname: "images.unsplash.com",
       },
