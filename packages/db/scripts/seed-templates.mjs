@@ -581,46 +581,52 @@ const templatesData = [
     },
   },
 
-  // ════════════════════════ CUSTOM_DECOR (extra Social Post) ════════════════════════
+  // ════════════════════════ PHOTO_PACK extra (Social Post Cuadrado) ════════════════════════
 
+  // Aterrizado 2026-05-13: era "decor-marco-social-post" (CUSTOM_DECOR) — flotaba
+  // suelto sin anclaje físico. Ahora plantilla del producto cuadrado 5×5 cm
+  // (set-12-fotoimanes-cuadrados, aspectRatio 1:1).
+  // Stage 590×590 px = 5×5 cm a 300 DPI exactos.
   {
-    slug: "decor-marco-social-post",
-    kind: "CUSTOM_DECOR",
-    name: "Marco Social Post",
-    order: 10,
+    slug: "photo-pack-social-post-cuadrado",
+    kind: "PHOTO_PACK",
+    name: "Social Post Cuadrado",
+    order: 4,
     previewUrl: "/templates/social-post-frame.svg",
+    // El aspect ratio se calcula dinámicamente en listTemplatesForKind a partir
+    // de canvasData.stage.width/height — no requiere campo adicional en schema.
     canvasData: {
       version: 1,
-      stage: stage(400, 580),
+      stage: stage(590, 590),
       layers: [
         background("#FFFFFF"),
-        // Foto cliente CUADRADA DEBAJO del asset (visible por photo area sin checkerboard)
+        // Foto cliente DEBAJO del asset (rectangular dentro del marco cuadrado)
         photoSlot({
           id: "p1",
-          x: 20,
-          y: 85,
-          width: 360,
-          height: 360,
-          cornerRadius: 2,
+          x: 0,
+          y: 65,
+          width: 590,
+          height: 380,
+          cornerRadius: 0,
           label: "Tu foto",
         }),
-        // Asset SVG v4: marco limpio basado en ig_post.svg de Lucy
+        // Asset SVG v5: marco social post cuadrado 590×590
         asset({
           id: "frame",
           src: "/templates/social-post-frame.svg",
           x: 0,
           y: 0,
-          width: 400,
-          height: 580,
+          width: 590,
+          height: 590,
         }),
-        // 4 zonas editables — coords convertidos baseline→top sobre stage 400×580
+        // 4 zonas editables — coords convertidos baseline→top sobre stage 590×590
         text({
           id: "user_name",
-          x: 75,
-          y: 42,
+          x: 58,
+          y: 18,
           text: "user_name",
           fontFamily: "Arial",
-          fontSize: 15,
+          fontSize: 13,
           fill: "#262626",
           fontWeight: "bold",
           align: "left",
@@ -628,11 +634,11 @@ const templatesData = [
         }),
         text({
           id: "likes_count",
-          x: 43,
-          y: 507,
+          x: 37,
+          y: 492,
           text: "362 likes",
           fontFamily: "Arial",
-          fontSize: 14,
+          fontSize: 13,
           fill: "#262626",
           fontWeight: "bold",
           align: "left",
@@ -640,22 +646,22 @@ const templatesData = [
         }),
         text({
           id: "title_caption",
-          x: 25,
-          y: 534,
+          x: 18,
+          y: 520,
           text: "your title here",
           fontFamily: "Arial",
-          fontSize: 14,
+          fontSize: 12,
           fill: "#262626",
           align: "left",
           editable: true,
         }),
         text({
           id: "hashtags",
-          x: 130,
-          y: 534,
+          x: 160,
+          y: 520,
           text: "#hashtag #loremipsum",
           fontFamily: "Arial",
-          fontSize: 14,
+          fontSize: 12,
           fill: "#00376B", // azul Instagram hashtags
           align: "left",
           editable: true,

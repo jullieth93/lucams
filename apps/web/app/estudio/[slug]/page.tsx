@@ -66,9 +66,12 @@ export default async function EstudioPage({
 
   const photoConfig = parsePhotoProductConfig(product.personalizationSchema);
 
-  // Cargar plantillas activas del kind (globales + product-specific)
+  // Cargar plantillas activas del kind (globales + product-specific).
+  // Filtra por aspect ratio del producto físico — solo plantillas cuyo stage
+  // matchee el aspect físico aparecen en el sidebar (M.3.b.B.4 aterrizado).
   const templatesRaw = await listTemplatesForKind(product.personalizationKind, {
     productId: product.id,
+    productAspectRatio: photoConfig.aspectRatio,
   });
   const templates = templatesRaw.map((t) => ({
     ...t,

@@ -343,9 +343,9 @@ export async function finalizeDesign(opts: {
 
 export async function listTemplatesForKind(
   kind: string,
-  opts?: { productId?: string; take?: number },
+  opts?: { productId?: string; take?: number; productAspectRatio?: string },
 ) {
-  return prisma.personalizationTemplate.findMany({
+  const templates = await prisma.personalizationTemplate.findMany({
     where: {
       kind: kind as never,
       isActive: true,
@@ -364,6 +364,37 @@ export async function listTemplatesForKind(
       canvasData: true,
     },
   });
+
+  // Aspect filter aterrizado 2026-05-13: solo mostrar plantillas cuyo
+  // canvasData.stage.width/height matchee con el aspect ratio del producto.
+  // Si no se pasa productAspectRatio, devuelve todas (legacy behavior).
+  if (!opts?.productAspectRatio) return templates;
+  const target = parseAspectRatio(opts.productAspectRatio);
+  if (target === null) return templates;
+  return templates.filter((t) => {
+    const a = templateAspectRatio(t.canvasData);
+    if (a === null) return true; // template sin stage parseable → permitir
+    return Math.abs(a - target) <= 0.05;
+  });
+}
+
+/** Parsea "1:1", "4:5", "7:9" → ratio numérico width/height. */
+function parseAspectRatio(s: string): number | null {
+  const m = s.match(/^(\d+(?:\.\d+)?)\s*[:×x]\s*(\d+(?:\.\d+)?)$/i);
+  if (!m) return null;
+  const h = parseFloat(m[2]);
+  if (h === 0) return null;
+  return parseFloat(m[1]) / h;
+}
+
+/** Aspect width/height del stage de la plantilla, o null si no parseable. */
+function templateAspectRatio(canvasData: unknown): number | null {
+  if (!canvasData || typeof canvasData !== "object") return null;
+  const cd = canvasData as { stage?: { width?: unknown; height?: unknown } };
+  const w = typeof cd.stage?.width === "number" ? cd.stage.width : null;
+  const h = typeof cd.stage?.height === "number" ? cd.stage.height : null;
+  if (w === null || h === null || h === 0) return null;
+  return w / h;
 }
 
 // ──────────────────────────────────────────────────────────────────
