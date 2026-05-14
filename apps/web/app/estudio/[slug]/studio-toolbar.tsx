@@ -17,10 +17,12 @@
  */
 
 import Link from "next/link";
+import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft, Check, Loader2, AlertCircle, Sparkles, Ruler } from "lucide-react";
 import type { StoreApi } from "zustand";
 import { useStore } from "zustand";
+import { compareSizeToObject } from "./lib/size-comparator";
 import {
   selectFilledSlotCount,
   selectIsComplete,
@@ -104,11 +106,7 @@ export function StudioToolbar({
             </p>
             {(productSizeCm || productSlotCount) && (
               <p className="text-brand-purple-dark/55 mt-0.5 flex items-center gap-1.5 text-[11px] font-medium">
-                {productSizeCm && (
-                  <span className="bg-brand-cream text-brand-purple-dark ring-brand-purple/10 inline-flex items-center gap-1 rounded-full px-2 py-0.5 ring-1">
-                    📐 {productSizeCm} cm
-                  </span>
-                )}
+                {productSizeCm && <SizeChipWithComparator sizeCm={productSizeCm} />}
                 {productSlotCount && (
                   <span className="text-brand-purple-dark/55">
                     · {productSlotCount} {productSlotCount === 1 ? "imán" : "imanes"}
@@ -266,4 +264,83 @@ function formatRelative(timestamp: number): string {
   if (sec < 60) return `Guardado hace ${sec}s`;
   const min = Math.floor(sec / 60);
   return `Guardado hace ${min}m`;
+}
+
+// ──────────────────────────────────────────────────────────────────
+//  P0.5 — Chip de tamaño con comparador a objeto cotidiano
+// ──────────────────────────────────────────────────────────────────
+//
+// Click sobre el chip → toggle popover con visual "🍪 como una galleta Oreo".
+// Diferenciador "tienda que envidiar": ningún competidor del rubro magnetos lo
+// hace, reduce devoluciones por "llegó más chico de lo esperado".
+
+function SizeChipWithComparator({ sizeCm }: { sizeCm: string }) {
+  const [open, setOpen] = useState(false);
+  const comparison = compareSizeToObject(sizeCm);
+
+  if (!comparison) {
+    // Sin match — render chip plano sin clickable.
+    return (
+      <span className="bg-brand-cream text-brand-purple-dark ring-brand-purple/10 inline-flex items-center gap-1 rounded-full px-2 py-0.5 ring-1">
+        📐 {sizeCm} cm
+      </span>
+    );
+  }
+
+  return (
+    <span className="relative inline-block">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        aria-label={`Tamaño físico ${sizeCm} cm. Click para ver comparación con objeto cotidiano.`}
+        className="bg-brand-cream text-brand-purple-dark ring-brand-purple/15 hover:bg-brand-yellow/20 hover:ring-brand-purple/40 focus:ring-brand-turquoise inline-flex items-center gap-1 rounded-full px-2 py-0.5 ring-1 transition-colors focus:ring-2 focus:ring-offset-1 focus:outline-none"
+      >
+        📐 {sizeCm} cm
+        <span className="text-brand-purple-dark/40 text-[9px]">{open ? "▴" : "▾"}</span>
+      </button>
+
+      <AnimatePresence>
+        {open && (
+          <>
+            {/* Backdrop click-to-close */}
+            <button
+              type="button"
+              aria-label="Cerrar comparador"
+              onClick={() => setOpen(false)}
+              className="fixed inset-0 z-30 cursor-default"
+              tabIndex={-1}
+            />
+            <motion.div
+              initial={{ opacity: 0, y: -4, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -4, scale: 0.96 }}
+              transition={{ duration: 0.18, ease: "easeOut" }}
+              role="tooltip"
+              className="ring-brand-purple/15 absolute top-full left-1/2 z-40 mt-2 w-56 -translate-x-1/2 rounded-xl bg-white p-3 shadow-xl ring-1"
+            >
+              <div className="flex items-center gap-2">
+                <span className="text-3xl leading-none" aria-hidden>
+                  {comparison.emoji}
+                </span>
+                <div className="flex flex-col">
+                  <p className="text-brand-purple-dark text-xs leading-tight font-bold">
+                    Tu imán será {comparison.phrase}
+                  </p>
+                  <p className="text-brand-purple-dark/60 mt-0.5 text-[10px]">
+                    {sizeCm} cm — {comparison.name}
+                  </p>
+                </div>
+              </div>
+              {/* Pico apuntando al chip */}
+              <span
+                aria-hidden
+                className="ring-brand-purple/15 absolute -top-1.5 left-1/2 h-3 w-3 -translate-x-1/2 rotate-45 bg-white ring-1"
+              />
+            </motion.div>
+          </>
+        )}
+      </AnimatePresence>
+    </span>
+  );
 }

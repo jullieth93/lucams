@@ -31,7 +31,8 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Camera, Trash2, Wand2 } from "lucide-react";
+import { Trash2, Wand2 } from "lucide-react";
+import { LucamsLogo } from "@/components/lucams-logo";
 import { Stage, Layer, Rect, Image as KonvaImage, Group, Text, Circle, Path } from "react-konva";
 import useImage from "use-image";
 import type Konva from "konva";
@@ -264,7 +265,9 @@ function StudioSlotImpl({
         />
       </Stage>
 
-      {/* A1.4 — Empty state premium: pulse + camera icon + dashed border interno */}
+      {/* P0.1 — Slot vacío con mascote Lucams + microcopy emocional tuteo.
+          Anti-patrón: NO usar "Photo here" / "Click para subir" (Shutterfly).
+          Mensaje emocional + mascote como guía → es la mascota la que invita. */}
       <AnimatePresence>
         {!slotState.assetUrl && (
           <motion.div
@@ -273,34 +276,56 @@ function StudioSlotImpl({
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 0.25 }}
-            className="from-brand-cream/95 to-brand-cream/85 absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br backdrop-blur-[1px]"
+            className={[
+              "absolute inset-0 flex flex-col items-center justify-center gap-1 transition-colors",
+              isDropping
+                ? "from-brand-turquoise/35 to-brand-turquoise/15 bg-gradient-to-br"
+                : "from-brand-cream/95 to-brand-cream/80 bg-gradient-to-br backdrop-blur-[1px]",
+            ].join(" ")}
             aria-hidden="true"
           >
-            {/* Dashed border interno animado */}
-            <div className="border-brand-purple/25 absolute inset-2 rounded-md border-2 border-dashed" />
-
-            {/* Camera icon con bounce sutil */}
+            {/* Borde punteado interno — animado al drop */}
             <motion.div
-              animate={{ y: [0, -3, 0] }}
-              transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
-              className="from-brand-purple/15 to-brand-pink/15 ring-brand-purple/10 flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br shadow-sm ring-1"
+              animate={{
+                borderColor: isDropping ? "rgb(93, 217, 209)" : "rgba(124, 106, 173, 0.25)",
+                scale: isDropping ? 1.02 : 1,
+              }}
+              transition={{ duration: 0.2 }}
+              className="pointer-events-none absolute inset-2 rounded-md border-2 border-dashed"
+            />
+
+            {/* Mascote Lucams bobbing — invita al cliente.
+                Al drop: bounce + wiggle excitado. */}
+            <motion.div
+              animate={{
+                y: isDropping ? -4 : [0, -3, 0],
+                rotate: isDropping ? [0, -8, 8, 0] : 0,
+              }}
+              transition={{
+                y: {
+                  duration: isDropping ? 0.3 : 2.4,
+                  repeat: isDropping ? 0 : Infinity,
+                  ease: "easeInOut",
+                },
+                rotate: { duration: 0.4, ease: "easeInOut" },
+              }}
             >
-              <Camera className="text-brand-purple h-5 w-5" />
+              <LucamsLogo variant="mascot" size={44} />
             </motion.div>
 
-            {/* Número grande del slot */}
-            <span className="text-brand-purple mt-2 text-2xl leading-none font-bold tabular-nums">
-              {slotState.slotIndex + 1}
-            </span>
-
-            {/* Hint contextual: cambia si está en drop-state */}
+            {/* Microcopy emocional tuteo — cambia según estado drop */}
             <span
               className={[
-                "mt-1 text-[10px] font-medium tracking-wide uppercase transition-colors",
-                isDropping ? "text-brand-turquoise" : "text-brand-purple-dark/55",
+                "mt-0.5 px-2 text-center text-[11px] leading-tight font-semibold transition-colors",
+                isDropping ? "text-brand-turquoise" : "text-brand-purple-dark/75",
               ].join(" ")}
             >
-              {isDropping ? "Soltá la foto" : "Click o arrastrá"}
+              {isDropping ? "¡Soltala acá! 💜" : "Pasame una foto"}
+            </span>
+
+            {/* Indicador del slot (sutil, sin gritar) */}
+            <span className="text-brand-purple-dark/40 text-[9px] font-medium tracking-wider uppercase">
+              Imán #{slotState.slotIndex + 1}
             </span>
           </motion.div>
         )}

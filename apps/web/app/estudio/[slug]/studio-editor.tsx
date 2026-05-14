@@ -393,7 +393,13 @@ export function StudioEditor({
           className="border-brand-purple/10 hidden bg-white lg:block lg:w-72 lg:border-r"
           aria-label="Herramientas del Estudio"
         >
-          <StudioSidebar store={store} productName={product.name} productSku={product.sku} />
+          <StudioSidebar
+            store={store}
+            productName={product.name}
+            productSku={product.sku}
+            productSizeCm={productConfig.sizeCm}
+            productShape={productConfig.shape}
+          />
         </aside>
 
         <section className="flex flex-1 items-start justify-center p-4 pb-24 lg:p-8 lg:pb-8">
@@ -436,7 +442,13 @@ export function StudioEditor({
           </SheetHeader>
           {/* Reusa el mismo StudioSidebar — no se duplica el código */}
           <div className="pb-6">
-            <StudioSidebar store={store} productName={product.name} productSku={product.sku} />
+            <StudioSidebar
+              store={store}
+              productName={product.name}
+              productSku={product.sku}
+              productSizeCm={productConfig.sizeCm}
+              productShape={productConfig.shape}
+            />
           </div>
         </SheetContent>
       </Sheet>

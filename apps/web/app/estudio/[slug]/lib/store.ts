@@ -404,6 +404,18 @@ export function selectIsComplete(state: StudioStoreState): boolean {
 }
 
 /**
+ * P0.2 — Boolean primitivo: ¿este assetId está usado en algún slot?
+ * Curried para que el componente pueda llamarlo per-asset sin re-render
+ * de los demás.
+ */
+export function selectAssetIsUsed(assetId: string) {
+  return (state: StudioStoreState): boolean => {
+    if (!state.canvasData) return false;
+    return state.canvasData.slots.some((s) => s.assetId === assetId);
+  };
+}
+
+/**
  * Slot por índice. Usado por StudioSlot para suscribirse solo a su propio
  * slice del state (no re-renderea si otros slots cambian).
  */

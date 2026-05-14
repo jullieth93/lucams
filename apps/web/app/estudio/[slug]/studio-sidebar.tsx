@@ -19,19 +19,36 @@ import { toast } from "sonner";
 import type { StoreApi } from "zustand";
 import { useStore } from "zustand";
 import { uploadDesignAssetAction } from "@/features/personalization/actions";
-import { selectFilledSlotCount, selectTotalSlotCount, type StudioStoreState } from "./lib/store";
+import {
+  selectAssetIsUsed,
+  selectFilledSlotCount,
+  selectTotalSlotCount,
+  type StudioStoreState,
+} from "./lib/store";
 import type { StudioAsset, StudioTemplate } from "./types";
 
 type StudioSidebarProps = {
   store: StoreApi<StudioStoreState>;
   productName: string;
   productSku: string;
+  /** P0.7 — tamaño físico del producto para mostrar bajo cada plantilla. */
+  productSizeCm?: string;
+  /** P0.7 — forma física para borde redondeado realista de la card. */
+  productShape?: "rectangle" | "circle" | "heart" | "custom";
 };
 
-export function StudioSidebar({ store, productName, productSku }: StudioSidebarProps) {
+export function StudioSidebar({
+  store,
+  productName,
+  productSku,
+  productSizeCm,
+  productShape,
+}: StudioSidebarProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(0);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  // P0.2 — Toggle "ocultar usadas" tipo Mixbook Hide Used.
+  const [hideUsed, setHideUsed] = useState(false);
 
   // Suscripciones selectivas zustand
   const assets = useStore(store, (s) => s.assets);
@@ -105,10 +122,36 @@ export function StudioSidebar({ store, productName, productSku }: StudioSidebarP
       <section aria-labelledby="sidebar-mis-fotos">
         <div
           id="sidebar-mis-fotos"
-          className="text-brand-purple-dark mb-3 flex items-center gap-2 text-sm font-semibold"
+          className="text-brand-purple-dark mb-3 flex items-center justify-between gap-2 text-sm font-semibold"
         >
-          <ImageIcon className="text-brand-purple h-4 w-4" />
-          Mis fotos
+          <span className="flex items-center gap-2">
+            <ImageIcon className="text-brand-purple h-4 w-4" />
+            Mis fotos
+            {assets.length > 0 && (
+              <span className="text-brand-purple-dark/40 text-[10px] font-medium tabular-nums">
+                ({assets.length})
+              </span>
+            )}
+          </span>
+          {/* P0.2 — Toggle "Solo no usadas" (Mixbook Hide Used) — solo visible si hay fotos */}
+          {assets.length > 1 && (
+            <button
+              type="button"
+              onClick={() => setHideUsed((v) => !v)}
+              aria-pressed={hideUsed}
+              className={[
+                "text-[10px] font-bold tracking-wide uppercase transition-colors",
+                hideUsed
+                  ? "text-brand-turquoise"
+                  : "text-brand-purple-dark/45 hover:text-brand-purple-dark/70",
+              ].join(" ")}
+              title={
+                hideUsed ? "Mostrar todas las fotos" : "Ocultar fotos que ya pegaste en algún imán"
+              }
+            >
+              {hideUsed ? "✓ Solo no usadas" : "Ver todas"}
+            </button>
+          )}
         </div>
 
         <button
@@ -161,47 +204,19 @@ export function StudioSidebar({ store, productName, productSku }: StudioSidebarP
           </motion.button>
         )}
 
-        {/* Lista de assets con drag handle */}
+        {/* Lista de assets con drag handle + checkmark "usada" + filtro Hide Used */}
         {assets.length > 0 && (
           <div role="list" aria-label="Fotos subidas" className="mt-3 grid grid-cols-3 gap-2">
             <AnimatePresence>
               {assets.map((asset, idx) => (
-                <motion.div
+                <AssetThumb
                   key={asset.id}
-                  role="listitem"
-                  draggable
-                  onDragStart={(e) =>
-                    onDragStartAsset(e as unknown as React.DragEvent<HTMLDivElement>, asset)
-                  }
-                  title={
-                    asset.validationMessage ??
-                    "Arrastrá al canvas o tocá un slot vacío para asignar"
-                  }
-                  initial={{ opacity: 0, scale: 0.85 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  exit={{ opacity: 0, scale: 0.85 }}
-                  transition={{ duration: 0.2, delay: idx * 0.04 }}
-                  className="border-brand-purple/20 hover:border-brand-purple focus-within:ring-brand-turquoise relative aspect-square cursor-grab overflow-hidden rounded-md border-2 focus-within:ring-2 active:cursor-grabbing"
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={asset.signedUrl}
-                    alt={`Foto subida ${idx + 1}`}
-                    className="h-full w-full object-cover"
-                    draggable={false}
-                  />
-                  {/* M.3.b.B.2 — Badge validación calidad foto */}
-                  {asset.validationLevel === "warning-strong" && (
-                    <div className="absolute top-1 right-1 rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-bold text-red-700 shadow">
-                      ⚠️
-                    </div>
-                  )}
-                  {asset.validationLevel === "warning-soft" && (
-                    <div className="absolute top-1 right-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800 shadow">
-                      ⓘ
-                    </div>
-                  )}
-                </motion.div>
+                  store={store}
+                  asset={asset}
+                  idx={idx}
+                  hideUsed={hideUsed}
+                  onDragStart={(e) => onDragStartAsset(e, asset)}
+                />
               ))}
             </AnimatePresence>
           </div>
@@ -245,6 +260,8 @@ export function StudioSidebar({ store, productName, productSku }: StudioSidebarP
                 key={tpl.id}
                 template={tpl}
                 isSelected={tpl.id === selectedTemplateId}
+                productSizeCm={productSizeCm}
+                productShape={productShape}
                 onClick={() => {
                   if (tpl.id === selectedTemplateId) return; // no-op si ya está
                   applyTemplate(tpl);
@@ -307,60 +324,366 @@ function ProgressBar({ filled, total }: { filled: number; total: number }) {
 function TemplateCard({
   template,
   isSelected,
+  productSizeCm,
+  productShape,
   onClick,
 }: {
   template: StudioTemplate;
   isSelected: boolean;
+  productSizeCm?: string;
+  productShape?: "rectangle" | "circle" | "heart" | "custom";
   onClick: () => void;
 }) {
-  // A1.3 — Card visual premium: hover scale + ring brand-turquoise al seleccionar
-  // + thumbnail aspect-square con bg cream y border sutil + check ✓ overlay si selected.
+  // P0.7 — Card que renderea el imán físico real con la plantilla aplicada,
+  // no un SVG plano flotando. Patrón Casetify: el cliente ve EXACTAMENTE cómo
+  // se verá el producto físico (proporción real + sombra de grosor + forma).
+  //
+  // Mejoras vs A1.3:
+  // - cornerRadius según productShape (rectangle = 8%, circle = full)
+  // - Sombra exterior realista (multi-layer) simulando grosor 3mm
+  // - Medida física visible bajo el nombre
+  // - Aspect ratio del thumb deriva del aspect ratio del template (no siempre cuadrado)
+
+  // Derivar aspect del template canvasData
+  const templateAspect =
+    template.canvasData?.stage?.width && template.canvasData.stage.height
+      ? template.canvasData.stage.width / template.canvasData.stage.height
+      : 1;
+  const aspectClass =
+    templateAspect > 1.1 ? "aspect-[4/3]" : templateAspect < 0.9 ? "aspect-[3/4]" : "aspect-square";
+
+  // cornerRadius según shape físico
+  const shapeRadiusClass =
+    productShape === "circle"
+      ? "rounded-full"
+      : productShape === "rectangle"
+        ? "rounded-md"
+        : "rounded-md";
+
   return (
     <motion.button
       type="button"
       role="radio"
       aria-checked={isSelected}
-      aria-label={`Plantilla ${template.name}${isSelected ? " (seleccionada)" : ""}`}
+      aria-label={`Plantilla ${template.name}${isSelected ? " (seleccionada)" : ""}${productSizeCm ? ` para imán ${productSizeCm} cm` : ""}`}
       onClick={onClick}
       whileHover={{ scale: isSelected ? 1 : 1.03, y: isSelected ? 0 : -2 }}
       whileTap={{ scale: 0.97 }}
       transition={{ type: "spring", stiffness: 320, damping: 22 }}
       className={[
-        "group relative flex flex-col gap-1.5 overflow-hidden rounded-lg p-1.5 text-left transition-shadow focus:outline-none",
+        "group relative flex flex-col gap-1.5 overflow-hidden rounded-lg p-2 text-left transition-shadow focus:outline-none",
         isSelected
           ? "from-brand-turquoise/10 to-brand-purple/10 ring-brand-turquoise bg-gradient-to-br shadow-md ring-2"
           : "ring-brand-purple/15 hover:ring-brand-purple/40 focus-visible:ring-brand-turquoise ring-1 hover:shadow-md focus-visible:ring-2",
       ].join(" ")}
     >
-      <div className="bg-brand-cream/60 relative aspect-square overflow-hidden rounded-md">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={template.previewUrl}
-          alt={template.name}
-          className="h-full w-full object-contain transition-transform duration-300 group-hover:scale-105"
-          loading="lazy"
-        />
-        {/* Check ✓ overlay esquina al seleccionar */}
+      {/* Stage cream que simula la superficie sobre la que reposa el imán */}
+      <div className="from-brand-cream/40 to-brand-cream/80 relative flex aspect-square items-center justify-center overflow-hidden rounded-md bg-gradient-to-br p-2">
+        {/* "Imán físico" — thumb del SVG con sombra realista + cornerRadius físico */}
+        <div
+          className={[
+            "relative overflow-hidden bg-white transition-transform duration-300 group-hover:scale-105",
+            aspectClass,
+            shapeRadiusClass,
+          ].join(" ")}
+          style={{
+            maxWidth: "92%",
+            maxHeight: "92%",
+            // Sombra multi-capa simulando grosor 3mm del imán físico
+            boxShadow:
+              "0 1px 2px rgba(0,0,0,0.06), 0 4px 8px rgba(0,0,0,0.10), 0 8px 16px rgba(124,106,173,0.12)",
+          }}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={template.previewUrl}
+            alt=""
+            aria-hidden
+            className="h-full w-full object-contain"
+            loading="lazy"
+          />
+          {/* Glossy overlay sutil simulando laminado del imán */}
+          <div
+            className="pointer-events-none absolute inset-0"
+            style={{
+              background:
+                "linear-gradient(135deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0) 40%)",
+            }}
+            aria-hidden
+          />
+        </div>
+
+        {/* Check ✓ overlay al seleccionar */}
         {isSelected && (
           <motion.div
             initial={{ scale: 0, rotate: -90 }}
             animate={{ scale: 1, rotate: 0 }}
             transition={{ type: "spring", stiffness: 380, damping: 18 }}
-            className="bg-brand-turquoise absolute top-1.5 right-1.5 flex h-6 w-6 items-center justify-center rounded-full shadow-md ring-2 ring-white"
+            className="bg-brand-turquoise absolute top-1.5 right-1.5 z-10 flex h-6 w-6 items-center justify-center rounded-full shadow-md ring-2 ring-white"
             aria-hidden
           >
             <Check className="h-3.5 w-3.5 text-white" strokeWidth={3} />
           </motion.div>
         )}
       </div>
-      <p
+
+      {/* Nombre + medida física */}
+      <div className="flex flex-col gap-0.5 px-0.5">
+        <p
+          className={[
+            "line-clamp-2 text-xs leading-tight font-semibold transition-colors",
+            isSelected ? "text-brand-purple-dark" : "text-brand-purple-dark/80",
+          ].join(" ")}
+        >
+          {template.name}
+        </p>
+        {productSizeCm && (
+          <p className="text-brand-purple-dark/45 text-[10px] font-medium tabular-nums">
+            📐 {productSizeCm} cm
+          </p>
+        )}
+      </div>
+    </motion.button>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────
+//  P0.2 — AssetThumb: thumb + green checkmark "usada" + hide filter
+// ──────────────────────────────────────────────────────────────────
+//
+// Patrón Mixbook: cada foto del tray muestra un check verde si ya está pegada
+// en algún slot. Filtro "Solo no usadas" oculta las usadas para que el cliente
+// se enfoque solo en las pendientes. Reduce fricción y confusión.
+//
+// Implementación con selector ATÓMICO `selectAssetIsUsed(id)` (memoria
+// feedback_react_atomic_selectors_no_arrays): cada thumb se suscribe solo a
+// su propio bit boolean → no re-render cuando otro slot cambia.
+
+function AssetThumb({
+  store,
+  asset,
+  idx,
+  hideUsed,
+  onDragStart,
+}: {
+  store: StoreApi<StudioStoreState>;
+  asset: StudioAsset;
+  idx: number;
+  hideUsed: boolean;
+  onDragStart: (e: React.DragEvent<HTMLDivElement>) => void;
+}) {
+  const isUsed = useStore(store, selectAssetIsUsed(asset.id));
+  // P0.3 — Estado del modal de warning calidad (al click sobre thumb problemático)
+  const [showQualityModal, setShowQualityModal] = useState(false);
+  const hasWarning =
+    asset.validationLevel === "warning-strong" || asset.validationLevel === "warning-soft";
+
+  // Hide Used filter
+  if (hideUsed && isUsed) return null;
+
+  return (
+    <>
+      <motion.div
+        role="listitem"
+        draggable
+        onDragStart={(e) => onDragStart(e as unknown as React.DragEvent<HTMLDivElement>)}
+        onClick={hasWarning ? () => setShowQualityModal(true) : undefined}
+        title={
+          isUsed
+            ? "Ya está pegada en algún imán. Podés arrastrar otra foto."
+            : hasWarning
+              ? "Click para ver detalles del problema de calidad."
+              : "Arrastrá al canvas o tocá un slot vacío para asignar"
+        }
+        initial={{ opacity: 0, scale: 0.85 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.85 }}
+        transition={{ duration: 0.2, delay: idx * 0.04 }}
         className={[
-          "line-clamp-2 px-0.5 text-xs font-semibold transition-colors",
-          isSelected ? "text-brand-purple-dark" : "text-brand-purple-dark/75",
+          "relative aspect-square cursor-grab overflow-hidden rounded-md border-2 transition-all focus-within:ring-2 active:cursor-grabbing",
+          asset.validationLevel === "warning-strong"
+            ? "border-red-300/70 focus-within:ring-red-400 hover:border-red-500"
+            : asset.validationLevel === "warning-soft"
+              ? "border-amber-300/70 focus-within:ring-amber-400 hover:border-amber-500"
+              : isUsed
+                ? "border-emerald-400/70 focus-within:ring-emerald-400 hover:border-emerald-500"
+                : "border-brand-purple/20 hover:border-brand-purple focus-within:ring-brand-turquoise",
         ].join(" ")}
       >
-        {template.name}
-      </p>
-    </motion.button>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={asset.signedUrl}
+          alt={`Foto subida ${idx + 1}`}
+          className={[
+            "h-full w-full object-cover transition-opacity",
+            isUsed ? "opacity-75" : "",
+          ].join(" ")}
+          draggable={false}
+        />
+
+        {/* P0.2 — Green checkmark cuando foto está usada en al menos 1 slot */}
+        {isUsed && (
+          <motion.div
+            initial={{ scale: 0, rotate: -90 }}
+            animate={{ scale: 1, rotate: 0 }}
+            transition={{ type: "spring", stiffness: 400, damping: 20 }}
+            className="absolute bottom-1 left-1 flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 shadow ring-2 ring-white"
+            aria-label="Foto ya usada en un imán"
+          >
+            <Check className="h-3 w-3 text-white" strokeWidth={3} />
+          </motion.div>
+        )}
+
+        {/* M.3.b.B.2 — Badge validación calidad foto (top-right) */}
+        {asset.validationLevel === "warning-strong" && (
+          <div
+            className="absolute top-1 right-1 rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-bold text-red-700 shadow"
+            aria-label="Resolución baja"
+          >
+            ⚠️
+          </div>
+        )}
+        {asset.validationLevel === "warning-soft" && (
+          <div
+            className="absolute top-1 right-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800 shadow"
+            aria-label="Aviso de calidad"
+          >
+            ⓘ
+          </div>
+        )}
+      </motion.div>
+
+      {/* P0.3 — Modal de calidad: explica el problema + sugerencia accionable */}
+      <PhotoQualityModal
+        open={showQualityModal}
+        onClose={() => setShowQualityModal(false)}
+        asset={asset}
+      />
+    </>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────
+//  P0.3 — PhotoQualityModal: explica problemas de baja resolución/brillo/blur
+// ──────────────────────────────────────────────────────────────────
+//
+// Patrón Mixbook: cuando el cliente intenta usar una foto con problemas
+// de calidad, popup explicativo con sugerencia accionable. Reduce la
+// frustración post-compra ("llegó pixelado") + da al cliente alternativas.
+
+function PhotoQualityModal({
+  open,
+  onClose,
+  asset,
+}: {
+  open: boolean;
+  onClose: () => void;
+  asset: StudioAsset;
+}) {
+  const isStrong = asset.validationLevel === "warning-strong";
+  const isSoft = asset.validationLevel === "warning-soft";
+  const message =
+    asset.validationMessage ?? "La foto tiene un detalle de calidad que vale la pena revisar.";
+
+  return (
+    <AnimatePresence>
+      {open && (
+        <>
+          {/* Backdrop */}
+          <motion.button
+            type="button"
+            aria-label="Cerrar"
+            onClick={onClose}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-50 cursor-default bg-black/40 backdrop-blur-sm"
+            tabIndex={-1}
+          />
+          {/* Modal */}
+          <motion.div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="photo-quality-title"
+            initial={{ opacity: 0, scale: 0.94, y: 8 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.94, y: 8 }}
+            transition={{ duration: 0.2, ease: "easeOut" }}
+            className="ring-brand-purple/10 fixed top-1/2 left-1/2 z-50 w-[92vw] max-w-md -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-2xl bg-white shadow-2xl ring-1"
+          >
+            {/* Header con icono según severidad */}
+            <div
+              className={[
+                "flex items-start gap-3 px-5 pt-5 pb-3",
+                isStrong ? "bg-red-50" : "bg-amber-50",
+              ].join(" ")}
+            >
+              <div
+                className={[
+                  "flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-xl shadow ring-2 ring-white",
+                  isStrong ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-800",
+                ].join(" ")}
+                aria-hidden
+              >
+                {isStrong ? "⚠️" : "ⓘ"}
+              </div>
+              <div className="flex-1">
+                <h2
+                  id="photo-quality-title"
+                  className={[
+                    "text-base leading-tight font-bold",
+                    isStrong ? "text-red-800" : "text-amber-900",
+                  ].join(" ")}
+                >
+                  {isStrong ? "Cuidado con esta foto" : "Aviso sobre esta foto"}
+                </h2>
+                <p
+                  className={[
+                    "mt-1 text-xs",
+                    isStrong ? "text-red-700/85" : "text-amber-800/85",
+                  ].join(" ")}
+                >
+                  {isSoft ? "Se puede usar igual, pero" : "Recomendamos revisarla:"}
+                </p>
+              </div>
+            </div>
+
+            {/* Body con thumbnail + mensaje */}
+            <div className="flex gap-3 px-5 py-4">
+              {/* Thumb grande */}
+              <div className="ring-brand-purple/10 h-24 w-24 shrink-0 overflow-hidden rounded-md ring-1">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={asset.signedUrl}
+                  alt="Foto en revisión"
+                  className="h-full w-full object-cover"
+                />
+              </div>
+              <div className="flex flex-1 flex-col justify-center text-sm">
+                <p className="text-brand-purple-dark leading-snug font-medium">{message}</p>
+                <div className="text-brand-purple-dark/65 mt-2 space-y-1 text-xs">
+                  <p className="font-semibold">¿Qué podés hacer?</p>
+                  <ul className="ml-3 list-disc space-y-0.5">
+                    <li>Subir una foto de mayor resolución (la original, no la de WhatsApp)</li>
+                    <li>Si la foto ya es la mejor que tienes, igual la podemos imprimir</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer actions */}
+            <div className="border-brand-purple/10 flex items-center justify-end gap-2 border-t px-5 py-3">
+              <button
+                type="button"
+                onClick={onClose}
+                className="text-brand-purple-dark/70 hover:bg-brand-purple/10 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors"
+              >
+                Entendido
+              </button>
+            </div>
+          </motion.div>
+        </>
+      )}
+    </AnimatePresence>
   );
 }
