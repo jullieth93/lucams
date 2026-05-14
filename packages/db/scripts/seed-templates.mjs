@@ -1,31 +1,44 @@
 /*
- * Script de seed para plantillas iniciales del Estudio de Personalización.
+ * Script de seed para plantillas del Estudio de Personalización.
  *
- * Sub-bloque M.1.d (2026-05-13): 30 plantillas base distribuidas por kind:
- *   - PHOTO_PACK              8 templates (Polaroid clásico/color, cuadrado mini,
- *                                          corazón vintage, circular floral, glass-magnet)
- *   - PHOTO_GRID              3 templates (Grid 3×3 minimal, 3×3 polaroid, 1×3 horizontal)
- *   - CALENDAR_PHOTO_MONTH    3 templates (Año floral, año minimal, año kawaii)
- *   - CALENDAR_PHOTO_HERO     2 templates (Hero clásico, hero + planner abajo)
- *   - EVENT_FAVOR             6 templates (Cumpleaños, bautizo, matrimonio,
- *                                          graduación, quinceañera, primer añito)
- *   - BUSINESS_LOGO           3 templates (Corporativo limpio, tarjeta minimal, evento)
- *   - CUSTOM_DECOR            3 templates (Mama día, parejas corazón, libre)
- *   - TEXT_ONLY               2 templates (Frase kawaii pastel, frase elegante)
+ * Sub-bloque M.3.b.A (2026-05-13) — refactor "menos plantillas pero de
+ * altísimo valor". Reducimos de 30 → 10 plantillas premium A++ con SVG
+ * enriquecido + tipografía + iconografía.
  *
- * `canvasData` JSON sigue el formato del Estudio M.3 (react-konva):
- *   - stage: dimensiones canvas 1080×1080 (preview) → 6480×6480 al render 300 DPI
- *   - layers[]: capas ordenadas back→front
- *     - background: color sólido o gradient
- *     - image-placeholder: slot de foto del cliente (subido en estudio)
- *     - decoration: ilustración del template (frame, sticker, ornament)
- *     - text: texto editable o fijo según `editable: bool`
+ * Los 10 slugs activos (post M.3.b.A):
+ *   PHOTO_PACK (3):
+ *     - photo-pack-polaroid-romantica
+ *     - photo-pack-cuadrado-minimal-art
+ *     - photo-pack-corazon-vintage
+ *   PHOTO_GRID (1):
+ *     - photo-grid-3x3-mood-board
+ *   CALENDAR_PHOTO_MONTH (2):
+ *     - calendar-month-floral-2026
+ *     - calendar-month-minimal-2026
+ *   EVENT_FAVOR (2):
+ *     - event-matrimonio-elegante
+ *     - event-cumpleanos-kawaii-pop
+ *   CUSTOM_DECOR (1):
+ *     - decor-mama-dia-frase
+ *   BUSINESS_LOGO (1):
+ *     - business-corporativo-limpio
  *
- * `previewUrl` apunta a Unsplash temático MIENTRAS no haya thumbnails reales.
- * Cuando M.7 cierre, generamos renders reales del canvas y los subimos a
- * Supabase Storage bucket `design-previews`.
+ * Las 20 plantillas previas (slugs M.1.d) se soft-deletean:
+ *   - deletedAt = new Date()
+ *   - metadata.archivedReason = "M.3.b.A premium cleanup 2026-05-13"
+ *   - isActive = false
+ * Quedan disponibles para reactivación admin via /admin/contenido futuro.
  *
- * Idempotente: upsert por slug.
+ * canvasData JSON sigue el formato V1 unitTemplate (1 imán):
+ *   - stage: dimensiones canvas en px lógicos
+ *   - layers[]: ordenadas back→front (background, shapes, image-placeholder, text)
+ *
+ * Convenciones de coords (confirmadas tras debug M.3.b 2026-05-13):
+ *   - image-placeholder x/y son TOP-LEFT del slot
+ *   - shape (rect/circle/heart) x/y son CENTER
+ *   - text x/y son CENTER + align (default center)
+ *
+ * Idempotente: upsert por slug. Re-correr no duplica.
  *
  * Uso: make seed-templates
  */
@@ -38,23 +51,31 @@ process.env.DIRECT_URL = stripQuotes(process.env.DIRECT_URL);
 
 const prisma = new PrismaClient();
 
-console.log("=== seed-templates ===");
+console.log("=== seed-templates (M.3.b.A premium) ===");
 console.log("");
 
 const UNSPLASH = (id) => `https://images.unsplash.com/photo-${id}?w=600&q=80&fit=crop`;
 
-// ──────────── Canvas helpers ────────────
-// Construyen `canvasData` JSON consumible por el editor M.3 (react-konva).
+// ──────────── Brand tokens (M.3.b.A enriched palette) ────────────
 
 const BRAND = {
   purple: "#7C6AAD",
   purpleDark: "#3D2E5C",
+  purpleLight: "#A8A0CE",
   turquoise: "#5DD9D1",
   pink: "#E85B9F",
+  pinkLight: "#FFB8D9",
   coral: "#F58A6F",
   yellow: "#FFD93D",
   cream: "#FFF8F0",
+  // Premium accents M.3.b.A
+  gold: "#D4AF37",
+  goldLight: "#F5E6A8",
+  greenSage: "#B5C9A8",
+  blushDeep: "#C97B89",
 };
+
+// ──────────── Canvas helpers ────────────
 
 function background(color, label = "background") {
   return { id: label, type: "background", color };
@@ -71,12 +92,21 @@ function photoSlot({ id, x, y, width, height, cornerRadius = 0, rotation = 0, la
     cornerRadius,
     rotation,
     label: label ?? `Foto ${id.replace(/\D/g, "")}`,
-    // El cliente arrastra una foto subida aquí. Mientras no hay foto, se
-    // renderea un rect placeholder con la guía visual del slot.
   };
 }
 
-function text({ id, x, y, text: t, fontFamily = "Fredoka", fontSize = 48, fill = BRAND.purpleDark, editable = false, fontWeight = "normal", align = "center" }) {
+function text({
+  id,
+  x,
+  y,
+  text: t,
+  fontFamily = "Fredoka",
+  fontSize = 48,
+  fill = BRAND.purpleDark,
+  editable = false,
+  fontWeight = "normal",
+  align = "center",
+}) {
   return {
     id,
     type: "text",
@@ -88,11 +118,23 @@ function text({ id, x, y, text: t, fontFamily = "Fredoka", fontSize = 48, fill =
     fill,
     fontWeight,
     align,
-    editable, // si true → el cliente puede cambiar el texto en el estudio
+    editable,
   };
 }
 
-function shape({ id, kind, x, y, width, height, fill, stroke, strokeWidth = 0, cornerRadius = 0, rotation = 0 }) {
+function shape({
+  id,
+  kind,
+  x,
+  y,
+  width,
+  height,
+  fill,
+  stroke,
+  strokeWidth = 0,
+  cornerRadius = 0,
+  rotation = 0,
+}) {
   return { id, type: "shape", kind, x, y, width, height, fill, stroke, strokeWidth, cornerRadius, rotation };
 }
 
@@ -100,155 +142,146 @@ function stage(width = 1080, height = 1080) {
   return { width, height, dpiPreview: 90, dpiProduction: 300 };
 }
 
-// ──────────── Templates ────────────
+// ──────────── 10 Plantillas Premium A++ ────────────
 
 const templatesData = [
-  // ──────── PHOTO_PACK (8) ────────
+  // ════════════════════════ PHOTO_PACK (3) ════════════════════════
+
   {
-    slug: "photo-pack-polaroid-clasico",
+    slug: "photo-pack-polaroid-romantica",
     kind: "PHOTO_PACK",
-    name: "Polaroid Clásico",
+    name: "Polaroid Romántica",
     order: 1,
-    previewUrl: UNSPLASH("1502920917128-1aa500764cbd"),
-    canvasData: {
-      version: 1,
-      stage: stage(720, 920), // ratio polaroid 7:9
-      layers: [
-        background("#ffffff"),
-        photoSlot({ id: "p1", x: 60, y: 60, width: 600, height: 700, cornerRadius: 0, label: "Tu foto" }),
-        text({ id: "caption", x: 360, y: 820, text: "Tu mensaje aquí", fontSize: 40, fill: "#222", editable: true }),
-      ],
-    },
-  },
-  {
-    slug: "photo-pack-polaroid-vintage",
-    kind: "PHOTO_PACK",
-    name: "Polaroid Vintage",
-    order: 2,
     previewUrl: UNSPLASH("1518621736915-f3b1c41bfd00"),
     canvasData: {
       version: 1,
       stage: stage(720, 920),
       layers: [
-        background("#F5EFE0"),
-        photoSlot({ id: "p1", x: 60, y: 60, width: 600, height: 700, cornerRadius: 8, label: "Tu foto" }),
-        text({ id: "caption", x: 360, y: 820, text: "Recuerdo · 2026", fontFamily: "Baloo 2", fontSize: 36, fill: "#5C3D2E", editable: true }),
+        background("#FAF6F0"),
+        // Frame dorado vintage (rect outer)
+        shape({
+          id: "frame-outer",
+          kind: "rect",
+          x: 360,
+          y: 380,
+          width: 660,
+          height: 760,
+          fill: "transparent",
+          stroke: BRAND.gold,
+          strokeWidth: 8,
+          cornerRadius: 4,
+        }),
+        // Foto polaroid TOP-LEFT (60,60) size 600×680
+        photoSlot({
+          id: "p1",
+          x: 60,
+          y: 60,
+          width: 600,
+          height: 680,
+          cornerRadius: 2,
+          label: "Tu foto",
+        }),
+        // Caption editable en la franja inferior estilo polaroid
+        text({
+          id: "caption",
+          x: 360,
+          y: 820,
+          text: "Te amo · 2026",
+          fontFamily: "Fredoka",
+          fontSize: 38,
+          fill: BRAND.purpleDark,
+          editable: true,
+        }),
       ],
     },
   },
+
   {
-    slug: "photo-pack-cuadrado-minimal",
+    slug: "photo-pack-cuadrado-minimal-art",
     kind: "PHOTO_PACK",
-    name: "Cuadrado Minimalista",
-    order: 3,
+    name: "Cuadrado Minimal Art",
+    order: 2,
     previewUrl: UNSPLASH("1554080353-a576cf803bda"),
     canvasData: {
       version: 1,
       stage: stage(1080, 1080),
       layers: [
         background("#FFFFFF"),
-        photoSlot({ id: "p1", x: 40, y: 40, width: 1000, height: 1000, cornerRadius: 24, label: "Tu foto" }),
+        // Foto fullbleed con leve cornerRadius
+        photoSlot({
+          id: "p1",
+          x: 40,
+          y: 40,
+          width: 1000,
+          height: 1000,
+          cornerRadius: 32,
+          label: "Tu foto",
+        }),
       ],
     },
   },
+
   {
-    slug: "photo-pack-corazon-rosa",
+    slug: "photo-pack-corazon-vintage",
     kind: "PHOTO_PACK",
-    name: "Corazón Rosa",
-    order: 4,
+    name: "Corazón Vintage",
+    order: 3,
     previewUrl: UNSPLASH("1518621736915-f3b1c41bfd00"),
     canvasData: {
       version: 1,
       stage: stage(1080, 1080),
       layers: [
-        background(BRAND.pink),
-        // Frame corazón decorativo
-        shape({ id: "heart-frame", kind: "heart", x: 540, y: 540, width: 940, height: 940, fill: BRAND.cream }),
-        photoSlot({ id: "p1", x: 200, y: 230, width: 680, height: 620, cornerRadius: 12, label: "Tu foto" }),
-        text({ id: "caption", x: 540, y: 970, text: "Te amo", fontFamily: "Fredoka", fontSize: 56, fill: BRAND.purpleDark, editable: true }),
-      ],
-    },
-  },
-  {
-    slug: "photo-pack-circular-floral",
-    kind: "PHOTO_PACK",
-    name: "Circular Floral",
-    order: 5,
-    previewUrl: UNSPLASH("1551836022-d5d88e9218df"),
-    canvasData: {
-      version: 1,
-      stage: stage(1080, 1080),
-      layers: [
-        background(BRAND.cream),
-        // Frame circular con borde dorado
-        shape({ id: "ring", kind: "circle", x: 540, y: 540, width: 980, height: 980, fill: "transparent", stroke: BRAND.coral, strokeWidth: 20 }),
-        photoSlot({ id: "p1", x: 80, y: 80, width: 920, height: 920, cornerRadius: 460, label: "Tu foto" }),
-      ],
-    },
-  },
-  {
-    slug: "photo-pack-glass-magnet",
-    kind: "PHOTO_PACK",
-    name: "Glass-Magnet Premium",
-    order: 6,
-    previewUrl: UNSPLASH("1604782206219-3b9576575203"),
-    canvasData: {
-      version: 1,
-      stage: stage(1080, 1080),
-      layers: [
-        background("#0F1419"),
-        photoSlot({ id: "p1", x: 80, y: 80, width: 920, height: 920, cornerRadius: 460, label: "Tu foto" }),
-        // Brillo lupa-vidrio simulado (capa de gradient blanco semitransparente top-left)
-        shape({ id: "glass-shine", kind: "rect", x: 540, y: 540, width: 920, height: 920, fill: "rgba(255,255,255,0.12)", cornerRadius: 460 }),
-      ],
-    },
-  },
-  {
-    slug: "photo-pack-mini-grid-pastel",
-    kind: "PHOTO_PACK",
-    name: "Mini Grid Pastel",
-    order: 7,
-    previewUrl: UNSPLASH("1502920917128-1aa500764cbd"),
-    canvasData: {
-      version: 1,
-      stage: stage(800, 1000), // 4:5 ratio mini polaroid
-      layers: [
-        background("#FFE5EC"),
-        photoSlot({ id: "p1", x: 60, y: 60, width: 680, height: 800, cornerRadius: 16, label: "Tu foto" }),
-        text({ id: "tag", x: 400, y: 920, text: "🌸 mini", fontSize: 32, fill: BRAND.pink }),
-      ],
-    },
-  },
-  {
-    slug: "photo-pack-banda-color",
-    kind: "PHOTO_PACK",
-    name: "Banda de Color",
-    order: 8,
-    previewUrl: UNSPLASH("1530541930197-ff16ac917b0e"),
-    canvasData: {
-      version: 1,
-      stage: stage(1080, 1080),
-      layers: [
-        background("#FFFFFF"),
-        shape({ id: "band", kind: "rect", x: 540, y: 60, width: 1080, height: 80, fill: BRAND.turquoise }),
-        photoSlot({ id: "p1", x: 40, y: 140, width: 1000, height: 900, cornerRadius: 8, label: "Tu foto" }),
+        background(BRAND.blushDeep),
+        // Frame heart-ish con borde dorado (renderado como rect c/cornerRadius 50% por kind=circle)
+        shape({
+          id: "heart-frame",
+          kind: "heart",
+          x: 540,
+          y: 540,
+          width: 960,
+          height: 960,
+          fill: "#FFF1F4",
+        }),
+        // Foto dentro con cornerRadius alto = forma orgánica
+        photoSlot({
+          id: "p1",
+          x: 180,
+          y: 240,
+          width: 720,
+          height: 600,
+          cornerRadius: 24,
+          label: "Tu foto",
+        }),
+        // Texto debajo
+        text({
+          id: "caption",
+          x: 540,
+          y: 950,
+          text: "Forever · 2026",
+          fontFamily: "Fredoka",
+          fontSize: 48,
+          fill: BRAND.purpleDark,
+          editable: true,
+        }),
       ],
     },
   },
 
-  // ──────── PHOTO_GRID (3) ────────
+  // ════════════════════════ PHOTO_GRID (1) ════════════════════════
+
   {
-    slug: "photo-grid-3x3-minimal",
+    slug: "photo-grid-3x3-mood-board",
     kind: "PHOTO_GRID",
-    name: "Grid 3×3 Minimal",
-    order: 1,
+    name: "Mood Board 3×3",
+    order: 4,
     previewUrl: UNSPLASH("1502920917128-1aa500764cbd"),
     canvasData: {
       version: 1,
       stage: stage(1080, 1080),
       grid: { cols: 3, rows: 3 },
       layers: [
-        background("#FFFFFF"),
+        background(BRAND.cream),
+        // Grid 3x3 con gaps suaves estilo Pinterest
         ...Array.from({ length: 9 }).map((_, i) => {
           const col = i % 3;
           const row = Math.floor(i / 3);
@@ -260,90 +293,79 @@ const templatesData = [
             y: gap + row * (cell + gap),
             width: cell,
             height: cell,
-            cornerRadius: 16,
+            cornerRadius: 12,
             label: `Foto ${i + 1}`,
           });
         }),
-      ],
-    },
-  },
-  {
-    slug: "photo-grid-3x3-polaroid",
-    kind: "PHOTO_GRID",
-    name: "Grid 3×3 Polaroid",
-    order: 2,
-    previewUrl: UNSPLASH("1502920917128-1aa500764cbd"),
-    canvasData: {
-      version: 1,
-      stage: stage(1080, 1080),
-      grid: { cols: 3, rows: 3 },
-      layers: [
-        background(BRAND.cream),
-        ...Array.from({ length: 9 }).map((_, i) => {
-          const col = i % 3;
-          const row = Math.floor(i / 3);
-          const cell = 320;
-          const gap = 30;
-          return photoSlot({
-            id: `p${i + 1}`,
-            x: gap + col * (cell + gap),
-            y: gap + row * (cell + gap),
-            width: cell,
-            height: cell - 50,
-            cornerRadius: 4,
-            label: `Foto ${i + 1}`,
-          });
-        }),
-      ],
-    },
-  },
-  {
-    slug: "photo-grid-1x3-horizontal",
-    kind: "PHOTO_GRID",
-    name: "Grid Horizontal Tríptico",
-    order: 3,
-    previewUrl: UNSPLASH("1547119957-637f8679db1e"),
-    canvasData: {
-      version: 1,
-      stage: stage(1620, 540), // 3:1 horizontal
-      grid: { cols: 3, rows: 1 },
-      layers: [
-        background("#FFFFFF"),
-        photoSlot({ id: "p1", x: 20, y: 20, width: 500, height: 500, cornerRadius: 12, label: "Foto 1" }),
-        photoSlot({ id: "p2", x: 560, y: 20, width: 500, height: 500, cornerRadius: 12, label: "Foto 2" }),
-        photoSlot({ id: "p3", x: 1100, y: 20, width: 500, height: 500, cornerRadius: 12, label: "Foto 3" }),
       ],
     },
   },
 
-  // ──────── CALENDAR_PHOTO_MONTH (3) ────────
+  // ════════════════════════ CALENDAR_PHOTO_MONTH (2) ════════════════════════
+
   {
-    slug: "calendar-month-floral",
+    slug: "calendar-month-floral-2026",
     kind: "CALENDAR_PHOTO_MONTH",
     name: "Calendario Floral 2026",
-    order: 1,
+    order: 5,
     previewUrl: UNSPLASH("1606166187734-a4cb74079037"),
     canvasData: {
       version: 1,
-      stage: stage(1080, 1400), // A4-ish ratio
+      stage: stage(1080, 1400),
       monthsRequired: 12,
       perMonth: {
         layers: [
           background(BRAND.cream),
-          shape({ id: "floral-bg", kind: "rect", x: 540, y: 200, width: 1080, height: 400, fill: BRAND.pink, cornerRadius: 0 }),
-          photoSlot({ id: "p1", x: 90, y: 90, width: 900, height: 700, cornerRadius: 12, label: "Foto del mes" }),
-          text({ id: "month-name", x: 540, y: 870, text: "{month}", fontSize: 56, fill: BRAND.purpleDark, fontFamily: "Fredoka" }),
-          text({ id: "year", x: 540, y: 950, text: "2026", fontSize: 36, fill: BRAND.purple }),
-          // Grid días — placeholder, lo construye M.3 dinámico
+          // Banda floral arriba (decorative shape)
+          shape({
+            id: "floral-banner",
+            kind: "rect",
+            x: 540,
+            y: 100,
+            width: 1080,
+            height: 180,
+            fill: BRAND.pinkLight,
+          }),
+          // Foto
+          photoSlot({
+            id: "p1",
+            x: 60,
+            y: 220,
+            width: 960,
+            height: 720,
+            cornerRadius: 16,
+            label: "Foto del mes",
+          }),
+          // Mes
+          text({
+            id: "month-name",
+            x: 540,
+            y: 1020,
+            text: "{month}",
+            fontFamily: "Fredoka",
+            fontSize: 64,
+            fill: BRAND.purpleDark,
+            fontWeight: "bold",
+          }),
+          text({
+            id: "year",
+            x: 540,
+            y: 1100,
+            text: "2026",
+            fontFamily: "Baloo 2",
+            fontSize: 36,
+            fill: BRAND.purple,
+          }),
         ],
       },
     },
   },
+
   {
-    slug: "calendar-month-minimal",
+    slug: "calendar-month-minimal-2026",
     kind: "CALENDAR_PHOTO_MONTH",
-    name: "Calendario Minimalista 2026",
-    order: 2,
+    name: "Calendario Minimal 2026",
+    order: 6,
     previewUrl: UNSPLASH("1606166187734-a4cb74079037"),
     canvasData: {
       version: 1,
@@ -352,335 +374,389 @@ const templatesData = [
       perMonth: {
         layers: [
           background("#FFFFFF"),
-          photoSlot({ id: "p1", x: 40, y: 40, width: 1000, height: 800, cornerRadius: 0, label: "Foto del mes" }),
-          text({ id: "month-name", x: 540, y: 900, text: "{month}", fontSize: 64, fill: "#222", fontFamily: "Inter", fontWeight: "bold" }),
-          text({ id: "year", x: 540, y: 980, text: "2026", fontSize: 28, fill: "#666" }),
-        ],
-      },
-    },
-  },
-  {
-    slug: "calendar-month-kawaii",
-    kind: "CALENDAR_PHOTO_MONTH",
-    name: "Calendario Kawaii 2026",
-    order: 3,
-    previewUrl: UNSPLASH("1606166187734-a4cb74079037"),
-    canvasData: {
-      version: 1,
-      stage: stage(1080, 1400),
-      monthsRequired: 12,
-      perMonth: {
-        layers: [
-          background(BRAND.yellow),
-          shape({ id: "card", kind: "rect", x: 540, y: 500, width: 980, height: 880, fill: "#FFFFFF", cornerRadius: 32 }),
-          photoSlot({ id: "p1", x: 90, y: 100, width: 900, height: 700, cornerRadius: 24, label: "Foto del mes" }),
-          text({ id: "month-name", x: 540, y: 880, text: "{month}", fontSize: 56, fill: BRAND.purple, fontFamily: "Fredoka" }),
+          // Foto fullbleed superior
+          photoSlot({
+            id: "p1",
+            x: 0,
+            y: 0,
+            width: 1080,
+            height: 900,
+            cornerRadius: 0,
+            label: "Foto del mes",
+          }),
+          // Mes en tipografía grande inferior
+          text({
+            id: "month-name",
+            x: 540,
+            y: 1050,
+            text: "{month}",
+            fontFamily: "Inter",
+            fontSize: 96,
+            fill: "#1A1A1A",
+            fontWeight: "bold",
+          }),
+          text({
+            id: "year",
+            x: 540,
+            y: 1200,
+            text: "2026",
+            fontFamily: "Inter",
+            fontSize: 32,
+            fill: "#666666",
+          }),
         ],
       },
     },
   },
 
-  // ──────── CALENDAR_PHOTO_HERO (2) ────────
-  {
-    slug: "calendar-hero-classic",
-    kind: "CALENDAR_PHOTO_HERO",
-    name: "Hero Clásico + Planner",
-    order: 1,
-    previewUrl: UNSPLASH("1577563908411-5077b6dc7624"),
-    canvasData: {
-      version: 1,
-      stage: stage(1080, 1620), // A3 ratio
-      layers: [
-        background("#FFFFFF"),
-        photoSlot({ id: "p1", x: 40, y: 40, width: 1000, height: 600, cornerRadius: 12, label: "Foto Hero" }),
-        // El planner debajo lo construye M.3 dinámicamente
-        text({ id: "title", x: 540, y: 720, text: "{title}", fontSize: 48, fill: BRAND.purpleDark, editable: true }),
-      ],
-    },
-  },
-  {
-    slug: "calendar-hero-kawaii",
-    kind: "CALENDAR_PHOTO_HERO",
-    name: "Hero Kawaii + Planner",
-    order: 2,
-    previewUrl: UNSPLASH("1577563908411-5077b6dc7624"),
-    canvasData: {
-      version: 1,
-      stage: stage(1080, 1620),
-      layers: [
-        background(BRAND.cream),
-        shape({ id: "hero-frame", kind: "rect", x: 540, y: 360, width: 1000, height: 640, fill: "#FFFFFF", cornerRadius: 32 }),
-        photoSlot({ id: "p1", x: 60, y: 60, width: 960, height: 600, cornerRadius: 24, label: "Foto Hero" }),
-        text({ id: "title", x: 540, y: 730, text: "Mis metas 2026", fontSize: 56, fill: BRAND.purple, editable: true, fontFamily: "Fredoka" }),
-      ],
-    },
-  },
+  // ════════════════════════ EVENT_FAVOR (2) ════════════════════════
 
-  // ──────── EVENT_FAVOR (6) ────────
   {
-    slug: "event-cumpleanos-kawaii",
+    slug: "event-matrimonio-elegante",
     kind: "EVENT_FAVOR",
-    name: "Cumpleaños Kawaii",
-    order: 1,
-    previewUrl: UNSPLASH("1530103862676-de8c9debad1d"),
-    canvasData: {
-      version: 1,
-      stage: stage(800, 800),
-      layers: [
-        background(BRAND.yellow),
-        shape({ id: "card", kind: "rect", x: 400, y: 400, width: 700, height: 700, fill: "#FFFFFF", cornerRadius: 24 }),
-        photoSlot({ id: "p1", x: 100, y: 80, width: 600, height: 400, cornerRadius: 16, label: "Foto opcional" }),
-        text({ id: "celebrante", x: 400, y: 540, text: "{name}", fontSize: 56, fill: BRAND.purple, editable: true, fontFamily: "Fredoka" }),
-        text({ id: "edad", x: 400, y: 620, text: "{age} años", fontSize: 36, fill: BRAND.pink, editable: true }),
-        text({ id: "fecha", x: 400, y: 700, text: "{date}", fontSize: 28, fill: BRAND.purpleDark, editable: true }),
-      ],
-    },
-  },
-  {
-    slug: "event-bautizo-tierno",
-    kind: "EVENT_FAVOR",
-    name: "Bautizo Tierno",
-    order: 2,
-    previewUrl: UNSPLASH("1525258946800-98cfd641d0de"),
-    canvasData: {
-      version: 1,
-      stage: stage(800, 800),
-      layers: [
-        background("#E8F5FF"),
-        photoSlot({ id: "p1", x: 80, y: 60, width: 640, height: 420, cornerRadius: 320, label: "Foto del bebé" }),
-        text({ id: "babyName", x: 400, y: 540, text: "{babyName}", fontSize: 56, fill: BRAND.purple, editable: true, fontFamily: "Fredoka" }),
-        text({ id: "fecha", x: 400, y: 620, text: "Bautizo · {date}", fontSize: 28, fill: BRAND.purpleDark, editable: true }),
-        text({ id: "venue", x: 400, y: 700, text: "{venue}", fontSize: 24, fill: BRAND.coral, editable: true }),
-      ],
-    },
-  },
-  {
-    slug: "event-matrimonio-floral",
-    kind: "EVENT_FAVOR",
-    name: "Matrimonio Floral",
-    order: 3,
+    name: "Matrimonio Elegante",
+    order: 7,
     previewUrl: UNSPLASH("1519741497674-611481863552"),
     canvasData: {
       version: 1,
       stage: stage(800, 1000),
       layers: [
         background(BRAND.cream),
-        photoSlot({ id: "p1", x: 60, y: 60, width: 680, height: 600, cornerRadius: 12, label: "Foto pareja (opcional)" }),
-        text({ id: "coupleNames", x: 400, y: 740, text: "{coupleNames}", fontSize: 48, fill: BRAND.purpleDark, editable: true, fontFamily: "Fredoka" }),
-        text({ id: "fecha", x: 400, y: 820, text: "{date}", fontSize: 28, fill: BRAND.purple, editable: true }),
-        text({ id: "venue", x: 400, y: 880, text: "{venue}", fontSize: 22, fill: BRAND.coral, editable: true }),
-      ],
-    },
-  },
-  {
-    slug: "event-graduacion-dorado",
-    kind: "EVENT_FAVOR",
-    name: "Graduación Dorado",
-    order: 4,
-    previewUrl: UNSPLASH("1523580494863-6f3031224c94"),
-    canvasData: {
-      version: 1,
-      stage: stage(800, 800),
-      layers: [
-        background(BRAND.purpleDark),
-        shape({ id: "card", kind: "rect", x: 400, y: 400, width: 720, height: 720, fill: "#FFFFFF", cornerRadius: 16 }),
-        photoSlot({ id: "p1", x: 100, y: 80, width: 600, height: 440, cornerRadius: 8, label: "Foto graduado" }),
-        text({ id: "graduate", x: 400, y: 580, text: "{graduateName}", fontSize: 48, fill: BRAND.purple, editable: true, fontFamily: "Fredoka" }),
-        text({ id: "degree", x: 400, y: 650, text: "{degree}", fontSize: 30, fill: "#666", editable: true }),
-        text({ id: "fecha", x: 400, y: 720, text: "{date}", fontSize: 24, fill: BRAND.coral, editable: true }),
-      ],
-    },
-  },
-  {
-    slug: "event-quinceanera-rosa",
-    kind: "EVENT_FAVOR",
-    name: "Quinceañera Rosa",
-    order: 5,
-    previewUrl: UNSPLASH("1525258946800-98cfd641d0de"),
-    canvasData: {
-      version: 1,
-      stage: stage(800, 1000),
-      layers: [
-        background(BRAND.pink),
-        shape({ id: "card", kind: "rect", x: 400, y: 500, width: 720, height: 920, fill: "#FFFFFF", cornerRadius: 24 }),
-        photoSlot({ id: "p1", x: 80, y: 80, width: 640, height: 640, cornerRadius: 320, label: "Foto quinceañera" }),
-        text({ id: "name", x: 400, y: 780, text: "{quinceaneraName}", fontSize: 52, fill: BRAND.purple, editable: true, fontFamily: "Fredoka" }),
-        text({ id: "fecha", x: 400, y: 870, text: "Mis XV · {date}", fontSize: 30, fill: BRAND.coral, editable: true }),
-      ],
-    },
-  },
-  {
-    slug: "event-primer-anito",
-    kind: "EVENT_FAVOR",
-    name: "Mi Primer Añito",
-    order: 6,
-    previewUrl: UNSPLASH("1525258946800-98cfd641d0de"),
-    canvasData: {
-      version: 1,
-      stage: stage(800, 800),
-      layers: [
-        background("#FFE5EC"),
-        photoSlot({ id: "p1", x: 80, y: 80, width: 640, height: 480, cornerRadius: 24, label: "Foto del bebé" }),
-        text({ id: "babyName", x: 400, y: 620, text: "{babyName}", fontSize: 48, fill: BRAND.purple, editable: true, fontFamily: "Fredoka" }),
-        text({ id: "edad", x: 400, y: 690, text: "Mi primer añito", fontSize: 28, fill: BRAND.pink }),
-        text({ id: "fecha", x: 400, y: 750, text: "{birthDate}", fontSize: 22, fill: BRAND.purpleDark, editable: true }),
-      ],
-    },
-  },
-
-  // ──────── BUSINESS_LOGO (3) ────────
-  {
-    slug: "business-corporativo-limpio",
-    kind: "BUSINESS_LOGO",
-    name: "Corporativo Limpio",
-    order: 1,
-    previewUrl: UNSPLASH("1606166187734-a4cb74079037"),
-    canvasData: {
-      version: 1,
-      stage: stage(700, 500), // 7×5 cm rectangular
-      layers: [
-        background("#FFFFFF"),
-        photoSlot({ id: "logo", x: 350, y: 150, width: 500, height: 200, cornerRadius: 0, label: "Tu logo" }),
-        text({ id: "phone", x: 350, y: 340, text: "{phone}", fontSize: 22, fill: "#222", editable: true }),
-        text({ id: "email", x: 350, y: 380, text: "{email}", fontSize: 22, fill: "#222", editable: true }),
-        text({ id: "web", x: 350, y: 420, text: "{website}", fontSize: 22, fill: BRAND.purple, editable: true }),
-      ],
-    },
-  },
-  {
-    slug: "business-tarjeta-minimal",
-    kind: "BUSINESS_LOGO",
-    name: "Tarjeta Presentación Minimal",
-    order: 2,
-    previewUrl: UNSPLASH("1606166187734-a4cb74079037"),
-    canvasData: {
-      version: 1,
-      stage: stage(900, 500), // 9×5 cm
-      layers: [
-        background(BRAND.purpleDark),
-        shape({ id: "accent", kind: "rect", x: 0, y: 250, width: 12, height: 500, fill: BRAND.turquoise }),
-        text({ id: "name", x: 460, y: 130, text: "{name}", fontSize: 38, fill: "#FFFFFF", editable: true, fontFamily: "Fredoka", align: "left" }),
-        text({ id: "title", x: 460, y: 180, text: "{title}", fontSize: 22, fill: BRAND.turquoise, editable: true, align: "left" }),
-        text({ id: "phone", x: 460, y: 280, text: "{phone}", fontSize: 20, fill: "#FFFFFF", editable: true, align: "left" }),
-        text({ id: "email", x: 460, y: 320, text: "{email}", fontSize: 20, fill: "#FFFFFF", editable: true, align: "left" }),
-        text({ id: "company", x: 460, y: 380, text: "{company}", fontSize: 20, fill: BRAND.turquoise, editable: true, align: "left" }),
-      ],
-    },
-  },
-  {
-    slug: "business-evento-corporativo",
-    kind: "BUSINESS_LOGO",
-    name: "Evento Corporativo",
-    order: 3,
-    previewUrl: UNSPLASH("1606166187734-a4cb74079037"),
-    canvasData: {
-      version: 1,
-      stage: stage(600, 600),
-      layers: [
-        background(BRAND.cream),
-        shape({ id: "border", kind: "rect", x: 300, y: 300, width: 560, height: 560, fill: "transparent", stroke: BRAND.purple, strokeWidth: 8, cornerRadius: 24 }),
-        photoSlot({ id: "logo", x: 100, y: 80, width: 400, height: 200, cornerRadius: 0, label: "Tu logo" }),
-        text({ id: "tagline", x: 300, y: 330, text: "{tagline}", fontSize: 28, fill: BRAND.purpleDark, editable: true, fontFamily: "Fredoka" }),
-        text({ id: "event", x: 300, y: 420, text: "{eventName}", fontSize: 24, fill: BRAND.coral, editable: true }),
-        text({ id: "date", x: 300, y: 480, text: "{date}", fontSize: 20, fill: BRAND.purple, editable: true }),
+        // Borde dorado elegante
+        shape({
+          id: "border",
+          kind: "rect",
+          x: 400,
+          y: 500,
+          width: 760,
+          height: 960,
+          fill: "transparent",
+          stroke: BRAND.gold,
+          strokeWidth: 3,
+          cornerRadius: 0,
+        }),
+        // Foto pareja arriba
+        photoSlot({
+          id: "p1",
+          x: 80,
+          y: 80,
+          width: 640,
+          height: 560,
+          cornerRadius: 8,
+          label: "Foto pareja",
+        }),
+        // Línea decorativa
+        shape({
+          id: "divider",
+          kind: "rect",
+          x: 400,
+          y: 720,
+          width: 140,
+          height: 2,
+          fill: BRAND.gold,
+        }),
+        // Nombres pareja
+        text({
+          id: "names",
+          x: 400,
+          y: 790,
+          text: "{names}",
+          fontFamily: "Baloo 2",
+          fontSize: 56,
+          fill: BRAND.purpleDark,
+          editable: true,
+        }),
+        // Fecha
+        text({
+          id: "date",
+          x: 400,
+          y: 880,
+          text: "{date}",
+          fontFamily: "Inter",
+          fontSize: 28,
+          fill: BRAND.purple,
+          editable: true,
+        }),
+        // Lugar
+        text({
+          id: "venue",
+          x: 400,
+          y: 940,
+          text: "{venue}",
+          fontFamily: "Inter",
+          fontSize: 22,
+          fill: BRAND.coral,
+          editable: true,
+        }),
       ],
     },
   },
 
-  // ──────── CUSTOM_DECOR (3) ────────
   {
-    slug: "decor-mama-dia",
+    slug: "event-cumpleanos-kawaii-pop",
+    kind: "EVENT_FAVOR",
+    name: "Cumpleaños Kawaii Pop",
+    order: 8,
+    previewUrl: UNSPLASH("1530103862676-de8c9debad1d"),
+    canvasData: {
+      version: 1,
+      stage: stage(800, 800),
+      layers: [
+        background(BRAND.yellow),
+        // Confetti dots decorativos (puntos colorful)
+        ...[
+          { x: 100, y: 80, color: BRAND.pink },
+          { x: 700, y: 100, color: BRAND.turquoise },
+          { x: 650, y: 720, color: BRAND.purple },
+          { x: 80, y: 700, color: BRAND.coral },
+          { x: 400, y: 60, color: BRAND.pink },
+        ].map((dot, i) => ({
+          id: `confetti-${i}`,
+          type: "shape",
+          kind: "circle",
+          x: dot.x,
+          y: dot.y,
+          width: 30,
+          height: 30,
+          fill: dot.color,
+        })),
+        // Tarjeta blanca interior
+        shape({
+          id: "card",
+          kind: "rect",
+          x: 400,
+          y: 400,
+          width: 660,
+          height: 660,
+          fill: "#FFFFFF",
+          cornerRadius: 32,
+        }),
+        // Foto celebrante
+        photoSlot({
+          id: "p1",
+          x: 130,
+          y: 110,
+          width: 540,
+          height: 380,
+          cornerRadius: 16,
+          label: "Foto celebrante",
+        }),
+        // Nombre
+        text({
+          id: "celebrante",
+          x: 400,
+          y: 560,
+          text: "{name}",
+          fontFamily: "Fredoka",
+          fontSize: 60,
+          fill: BRAND.purple,
+          fontWeight: "bold",
+          editable: true,
+        }),
+        // Edad
+        text({
+          id: "edad",
+          x: 400,
+          y: 640,
+          text: "{age} años ✨",
+          fontFamily: "Fredoka",
+          fontSize: 36,
+          fill: BRAND.pink,
+          editable: true,
+        }),
+        // Fecha
+        text({
+          id: "fecha",
+          x: 400,
+          y: 720,
+          text: "{date}",
+          fontFamily: "Inter",
+          fontSize: 24,
+          fill: BRAND.purpleDark,
+          editable: true,
+        }),
+      ],
+    },
+  },
+
+  // ════════════════════════ CUSTOM_DECOR (1) ════════════════════════
+
+  {
+    slug: "decor-mama-dia-frase",
     kind: "CUSTOM_DECOR",
-    name: "Día de la Madre",
-    order: 1,
+    name: "Día de la Madre — Frase",
+    order: 9,
     previewUrl: UNSPLASH("1549465220-1a8b9238cd48"),
     canvasData: {
       version: 1,
       stage: stage(1080, 1080),
       layers: [
         background("#FFE5EC"),
-        photoSlot({ id: "p1", x: 540, y: 460, width: 800, height: 800, cornerRadius: 400, label: "Foto con mamá" }),
-        text({ id: "title", x: 540, y: 920, text: "Mamá, te amo", fontSize: 56, fill: BRAND.pink, editable: true, fontFamily: "Fredoka" }),
-        text({ id: "year", x: 540, y: 990, text: "2026", fontSize: 28, fill: BRAND.purpleDark }),
-      ],
-    },
-  },
-  {
-    slug: "decor-pareja-corazon",
-    kind: "CUSTOM_DECOR",
-    name: "Pareja Corazón",
-    order: 2,
-    previewUrl: UNSPLASH("1518621736915-f3b1c41bfd00"),
-    canvasData: {
-      version: 1,
-      stage: stage(1080, 1080),
-      layers: [
-        background(BRAND.coral),
-        shape({ id: "heart-frame", kind: "heart", x: 540, y: 540, width: 920, height: 920, fill: "#FFFFFF" }),
-        photoSlot({ id: "p1", x: 200, y: 240, width: 680, height: 580, cornerRadius: 24, label: "Foto pareja" }),
-        text({ id: "names", x: 540, y: 900, text: "{names}", fontSize: 44, fill: BRAND.purpleDark, editable: true, fontFamily: "Fredoka" }),
-        text({ id: "date", x: 540, y: 970, text: "{anniversaryDate}", fontSize: 26, fill: BRAND.pink, editable: true }),
-      ],
-    },
-  },
-  {
-    slug: "decor-libre",
-    kind: "CUSTOM_DECOR",
-    name: "Composición Libre",
-    order: 3,
-    previewUrl: UNSPLASH("1513519245088-0e12902e5a38"),
-    canvasData: {
-      version: 1,
-      stage: stage(1080, 1080),
-      layers: [
-        background("#FFFFFF"),
-        photoSlot({ id: "p1", x: 540, y: 540, width: 1000, height: 1000, cornerRadius: 12, label: "Tu composición" }),
+        // Foto circular grande
+        photoSlot({
+          id: "p1",
+          x: 240,
+          y: 100,
+          width: 600,
+          height: 600,
+          cornerRadius: 300,
+          label: "Foto con mamá",
+        }),
+        // Frase grande
+        text({
+          id: "frase",
+          x: 540,
+          y: 800,
+          text: "Mamá, te amo",
+          fontFamily: "Fredoka",
+          fontSize: 72,
+          fill: BRAND.blushDeep,
+          fontWeight: "bold",
+          editable: true,
+        }),
+        // Sub-frase
+        text({
+          id: "subfrase",
+          x: 540,
+          y: 900,
+          text: "Gracias por todo ✨",
+          fontFamily: "Baloo 2",
+          fontSize: 32,
+          fill: BRAND.purpleDark,
+          editable: true,
+        }),
+        // Año pequeño
+        text({
+          id: "year",
+          x: 540,
+          y: 990,
+          text: "2026",
+          fontFamily: "Inter",
+          fontSize: 24,
+          fill: BRAND.purple,
+        }),
       ],
     },
   },
 
-  // ──────── TEXT_ONLY (2) ────────
+  // ════════════════════════ BUSINESS_LOGO (1) ════════════════════════
+
   {
-    slug: "text-frase-pastel",
-    kind: "TEXT_ONLY",
-    name: "Frase Pastel",
-    order: 1,
-    previewUrl: UNSPLASH("1530989054533-9c3e6daa5b9e"),
+    slug: "business-corporativo-limpio",
+    kind: "BUSINESS_LOGO",
+    name: "Corporativo Limpio",
+    order: 10,
+    previewUrl: UNSPLASH("1606166187734-a4cb74079037"),
     canvasData: {
       version: 1,
-      stage: stage(1080, 1080),
+      stage: stage(700, 500),
       layers: [
-        background("#FFF0F5"),
-        text({ id: "frase", x: 540, y: 540, text: "Tu frase aquí", fontSize: 80, fill: BRAND.purple, editable: true, fontFamily: "Fredoka", fontWeight: "bold" }),
-        text({ id: "sub", x: 540, y: 700, text: "— Lucams", fontSize: 28, fill: BRAND.pink, editable: true }),
-      ],
-    },
-  },
-  {
-    slug: "text-frase-elegante",
-    kind: "TEXT_ONLY",
-    name: "Frase Elegante",
-    order: 2,
-    previewUrl: UNSPLASH("1530989054533-9c3e6daa5b9e"),
-    canvasData: {
-      version: 1,
-      stage: stage(1080, 1080),
-      layers: [
-        background(BRAND.purpleDark),
-        text({ id: "frase", x: 540, y: 480, text: "Tu frase aquí", fontSize: 72, fill: "#FFFFFF", editable: true, fontFamily: "Baloo 2" }),
-        shape({ id: "divider", kind: "rect", x: 540, y: 620, width: 120, height: 4, fill: BRAND.turquoise }),
-        text({ id: "sub", x: 540, y: 700, text: "— Lucams", fontSize: 28, fill: BRAND.turquoise, editable: true }),
+        background("#FFFFFF"),
+        // Accent line vertical izquierda
+        shape({
+          id: "accent",
+          kind: "rect",
+          x: 6,
+          y: 250,
+          width: 12,
+          height: 500,
+          fill: BRAND.turquoise,
+        }),
+        // Logo cliente (image-placeholder pequeño)
+        photoSlot({
+          id: "logo",
+          x: 80,
+          y: 80,
+          width: 280,
+          height: 140,
+          cornerRadius: 0,
+          label: "Tu logo",
+        }),
+        // Datos contacto en columna derecha
+        text({
+          id: "phone",
+          x: 470,
+          y: 130,
+          text: "{phone}",
+          fontFamily: "Inter",
+          fontSize: 22,
+          fill: BRAND.purpleDark,
+          editable: true,
+          align: "left",
+        }),
+        text({
+          id: "email",
+          x: 470,
+          y: 180,
+          text: "{email}",
+          fontFamily: "Inter",
+          fontSize: 22,
+          fill: BRAND.purpleDark,
+          editable: true,
+          align: "left",
+        }),
+        text({
+          id: "web",
+          x: 470,
+          y: 230,
+          text: "{website}",
+          fontFamily: "Inter",
+          fontSize: 22,
+          fill: BRAND.purple,
+          editable: true,
+          align: "left",
+        }),
+        // Tagline en footer
+        text({
+          id: "tagline",
+          x: 350,
+          y: 420,
+          text: "{tagline}",
+          fontFamily: "Fredoka",
+          fontSize: 18,
+          fill: BRAND.coral,
+          editable: true,
+        }),
       ],
     },
   },
 ];
 
-// ──────────── Upsert por slug ────────────
+// ──────────────────────────────────────────────────────────────────
+//  Soft-delete plantillas legacy (M.1.d) que no están en M.3.b.A
+// ──────────────────────────────────────────────────────────────────
 
-console.log(`Creando/actualizando ${templatesData.length} plantillas...`);
+const PREMIUM_SLUGS = new Set(templatesData.map((t) => t.slug));
+
+const legacy = await prisma.personalizationTemplate.findMany({
+  where: { deletedAt: null, slug: { notIn: Array.from(PREMIUM_SLUGS) } },
+  select: { id: true, slug: true, name: true },
+});
+
+if (legacy.length > 0) {
+  console.log(`Soft-deleting ${legacy.length} plantillas legacy (M.1.d):`);
+  for (const t of legacy) {
+    await prisma.personalizationTemplate.update({
+      where: { id: t.id },
+      data: {
+        deletedAt: new Date(),
+        isActive: false,
+        deletedBy: "system:M.3.b.A-2026-05-13",
+      },
+    });
+    console.log(`  - ${t.slug}`);
+  }
+  console.log("");
+}
+
+// ──────────────────────────────────────────────────────────────────
+//  Upsert plantillas premium
+// ──────────────────────────────────────────────────────────────────
+
+console.log(`Creando/actualizando ${templatesData.length} plantillas premium A++...`);
 const byKind = {};
 for (const t of templatesData) {
-  const template = await prisma.personalizationTemplate.upsert({
+  await prisma.personalizationTemplate.upsert({
     where: { slug: t.slug },
     update: {
       kind: t.kind,
@@ -690,6 +766,7 @@ for (const t of templatesData) {
       order: t.order,
       isActive: true,
       deletedAt: null,
+      deletedBy: null,
     },
     create: {
       kind: t.kind,
@@ -704,17 +781,21 @@ for (const t of templatesData) {
   byKind[t.kind] = (byKind[t.kind] ?? 0) + 1;
   console.log(`  ✓ ${t.name}  [${t.kind}]  (${t.slug})`);
 }
-console.log("");
 
+console.log("");
 const total = await prisma.personalizationTemplate.count({ where: { deletedAt: null } });
-console.log(`Total en DB: ${total} plantillas activas.`);
+const totalArchived = await prisma.personalizationTemplate.count({
+  where: { deletedAt: { not: null } },
+});
+console.log(`Total activas: ${total} plantillas premium`);
+console.log(`Total archivadas: ${totalArchived} legacy (recuperables vía admin)`);
 console.log("");
 console.log("Distribución por kind:");
 for (const [kind, count] of Object.entries(byKind).sort((a, b) => b[1] - a[1])) {
   console.log(`  ${kind.padEnd(22)} ${count}`);
 }
 console.log("");
-console.log("Listo. El estudio M.3 leerá estas plantillas por kind.");
+console.log("Listo. Próximo: M.3.b.B mockup contextual con sharp + 4 escenas.");
 
 await prisma.$disconnect();
 process.exit(0);
