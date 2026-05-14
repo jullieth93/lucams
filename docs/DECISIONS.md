@@ -1009,3 +1009,80 @@ Audit del catálogo (M.1.c) reveló 9 categorías × experiencias distintas: 6 f
 **Cuándo reabrir esta decisión:** si react-konva queda obsoleto, si el bundle del estudio supera 200KB gzipped, si Lucy reporta UX issues que requieran cambio de paradigma (ej. preferencia por WYSIWYG sin canvas, sólo "asistente que dispara emails"), o si pgvector + RAG (ADR-036 futuro) requiere reformatear `canvasData` para hacerlo searchable.
 
 **Referencias.** Sub-bloque M en plan `~/.claude/plans/lee-complemtante-el-proyecto-wiggly-mist.md`. Commits `f9380e0`/`592b766`/`bfe0c14`/`80e320f`. Lectura recomendada antes de tocar: `packages/db/prisma/schema.prisma` (modelos Design/DesignAsset/PersonalizationTemplate), `supabase/migrations/00000000000006_storage_personalization.sql`, `packages/db/scripts/seed-templates.mjs`.
+
+## ADR-036 — Information Architecture del catálogo: naming, variants y categoría "De Temporada"
+
+**Estado.** Aceptada y aplicada — 2026-05-14.
+
+**Contexto.** Tras consolidar las primeras 3 familias de productos en variants (M.3.b.CAT.1-4, commit `944332f`), Lucy reportó que el catálogo seguía mal organizado: nombres como "Set 6 Foto-imanes Polaroid Grande" mienten cuando el producto base tiene variants 6/9/12/20; mezclamos "Set / Pack / Box / Caja" sin reglas; y faltaba una categoría para productos estacionales (Día Madre, Día Padre, Navidad). Pidió "lo pienses bien y lo propongas como lo recomiendan los especialistas".
+
+Auditoría detectó 4 sistemas léxicos competidores en 49 productos (9 con "Set", 7 con "Pack", 4 con "Box/Big Box/Mini Box", 6 con "Recuerdos de X") + 11 productos con cantidad/tamaño incrustado en el nombre + 5 productos archivados por consolidate (Polaroid x3, Box Día Madre x1, Rutina x1) que ya eran variants pero el seed seguía declarando.
+
+**Decisión.** Refactor integral de Information Architecture, aplicado al `seed-products.mjs` y a `Category.name`:
+
+1. **5 reglas de naming (estándar Casetify / Shutterfly / Vistaprint adaptado a Lucams):**
+   - **R1.** Un solo prefijo para "producto multi-imán": `Set`. `Pack` se reserva exclusivamente para B2B ("Pack Empresarial Mixto"). `Box`/`Caja` para regalo-en-caja. `Cuadro`/`Planner`/`Calendario`/`Imán` para producto único de su tipo.
+   - **R2.** Shape SÍ va en el nombre (Polaroid, Cuadrados, Circulares, Corazón) — es identitario del producto, no variant.
+   - **R3.** Cantidad y tamaño NUNCA van en el nombre del producto base si son variants. Cantidad en "x20" o número en "Set 12" → variant.
+   - **R4.** Patrón consistente por categoría: `Fotoimanes [Shape]`, `Recuerdos de [Evento]`, `Calendario [Tema]`, `Imán Publicitario [Forma]` (singular), `Planner [Período]`, `Box [Ocasión]`, `Cuadro [Contenido]`, coleccionables sin prefijo.
+   - **R5.** Filtros laterales en `/productos` (shape / cantidad / tamaño / precio) toman la carga de discoverability.
+
+2. **10 categorías** (era 9). Nueva: `de-temporada` para ediciones estacionales (Día Madre, Día Padre, Navidad, San Valentín). Coexiste con `regalos-personalizados` (Pareja, Recién Nacido, Sorpresa — año-redondo). Display renames: `foto-imanes` → "Fotoimanes" (sin "Packs de Fotos Magnéticas"), `organizate` → "Organización", `regalos-personalizados` → "Cajas Regalo", `juegos-aprendizaje` → "Juegos y Aprendizaje" (sin "Magnéticos" redundante).
+
+3. **Box Día de la Madre movido a `de-temporada`** (mantiene SKU `REG-BB-MAMA` para idempotencia; solo cambia `categoryId`). Productos sembrados nuevos en la categoría: `SEA-BB-PAPA` (Box Día del Padre, 2 variants Big/Mini paralelo a Día Madre) y `SEA-NAV-8` (Edición Navidad Kawaii, coleccionable temporal sin variants).
+
+4. **Variants declarados inline en `productsData[]`**. Antes el seed creaba "Default" por producto y `consolidate-product-families.mjs` postprocesaba. Ahora cada producto con opciones reales declara su `variants[]` con SKU/name/price/attributes. El loop del seed:
+   - Si `variants` declarado → upserta cada uno por SKU y archiva el "Default" sobreviente + cualquier variant huérfano.
+   - Si NO declarado → mantiene legacy "Default" (CartItem/OrderItem requieren variantId).
+   - SKUs siguen patrón `<base-sku>-V<n>` (ej. `FI-POL-12-V1`) → compatible con los variants ya creados por consolidate-script en commit `944332f`. Upsert preserva IDs → los redirects 301 en `apps/web/lib/product-redirects.ts` siguen válidos.
+
+5. **Nuevos variants creados (~62 totales, distribución):**
+   - Fotoimanes: Polaroid 4 (heredado) + Cuadrados 3 + Circulares 3 + Corazón 3 + Glass 2 = 15
+   - Recuerdos: Cumple 3 + Bautizo 2 + Graduación 3 + Matrimonio 3 + Mi Primer Año 2 + Quinceañera 2 = 15
+   - Publicitarios: Rectangular 3 (tamaño) + Circular 3 (diámetro) + Mixto 3 (volumen) = 9
+   - Cuadros: con Foto 3 + con Frase 3 + Marcos 3 = 9
+   - Organización: Notas 3 + Separadores 3 = 6
+   - De Temporada: Box Mamá 2 (heredado) + Box Papá 2 = 4
+   - Calendarios: Mini 2 = 2
+   - Juegos: Rutina 2 (heredado) = 2
+   - Resto sin variants (productos únicos)
+
+**Por qué este shape (no alternativas):**
+
+- **vs sub-categorías por shape (foto-imanes/polaroid)** — agrega un nivel extra de navegación que infla el menú. Mejor mantener categoría plana + filtros laterales por shape. Es lo que hacen Society6, Casetify, Etsy.
+- **vs script de rename ad-hoc + sin tocar seed** — generaba drift: si Lucy corría `make seed-products` después, sobreescribía los renames con los nombres viejos. Reescribir el seed garantiza que el estado terminal sea idempotente.
+- **vs mantener "Pack" en coleccionables** — "Pack Animalitos Kawaii" tiene info redundante (la categoría ya dice "Coleccionables"). "Animalitos Kawaii" se lee más limpio. Lucy puede reintroducir "Pack" en admin si lo prefiere comercialmente.
+- **vs crear categoría `seasonal-edition`** — `de-temporada` es 100% legible es-CO y mantiene la convención de slugs cortos del resto.
+
+**Trade-offs aceptados:**
+
+- ~30 productos cambian de `name` display. **SEO**: slugs intactos → cero impacto Google. **Reviews + Cart items + Orders existentes** apuntan a `productId` → cero ruptura.
+- Algunos precios de variants son estimados (no son cotizaciones reales de Lucy). Marcados como TODO en el seed; Lucy ajustará en admin cuando defina pricing oficial.
+- `consolidate-product-families.mjs` queda redundante (su efecto está integrado al seed). Lo dejamos como script histórico — corre idempotente y no rompe nada.
+
+**Consecuencias positivas:**
+
+- Cliente lee un sistema léxico coherente — "Pack" y "Set" dejan de ser intercambiables visualmente.
+- Variants tienen sentido — el nombre base no miente sobre cantidad o tamaño.
+- Discoverability sube: cuando entres a `/productos`, el chip "X opciones" en la card (M.3.b.CAT.6) le dice al cliente que adentro puede elegir cantidad/tamaño.
+- Categoría "De Temporada" da pivote claro para campañas (Día Madre mayo, Día Padre junio, Navidad nov-ene, San Valentín feb).
+
+**Consecuencias negativas:**
+
+- 62 variants ahora visibles en admin variant CRUD (M.3.b.CAT.7 pendiente) — más rows que mantener cuando llegue.
+- "Big Box" y "Mini Box" dejan de ser productos separados — clientes que buscaban "Big Box" en Google llegan al base y eligen variant en el selector. Inicial fricción de un click.
+
+**Verificación M.3.b.CAT.10 (cerrado 2026-05-14):**
+
+- 10 categorías en DB + 46 productos base + ~62 variants inline (commits de esta sesión).
+- `make seed-products` idempotente: re-corre sin duplicar variants y sin reactivar productos archivados.
+- Storefront muestra chips "X opciones" en cards (M.3.b.CAT.6 commit `0775b30`).
+- PDP de Fotoimanes Polaroid / Cuadrados / Circulares / Corazón etc. muestra selector funcional (M.3.b.CAT.3 commit `944332f`).
+
+**Cuándo reabrir esta decisión:**
+
+- Si Lucy contrata un copywriter profesional y propone otro sistema léxico (probable post-launch).
+- Si análisis de búsqueda interna (`/api/search` + pg_trgm) muestra que clientes buscan "Pack 12" / "Big Box" como query frecuente — ahí el SEO de los slugs viejos via redirects deja de cubrir y haría falta agregar alias.
+- Si entran categorías nuevas que no encajan en las 10 actuales (corporativo regalado, escolar, eventos pre-armados).
+
+**Referencias.** Plan `~/.claude/plans/lee-complemtante-el-proyecto-wiggly-mist.md` sub-bloque M.3.b.CAT. Commits `944332f` (CAT.1-4) + `0775b30` (CAT.6+8) + commit de esta sesión (CAT.10). Lectura recomendada antes de tocar: `packages/db/scripts/seed-products.mjs` (nuevo header con reglas R1-R5), `apps/web/lib/product-redirects.ts` (slugs legacy → base + variant pre-seleccionado), `apps/web/features/products/variant-schemas.ts` (Zod attributes).
