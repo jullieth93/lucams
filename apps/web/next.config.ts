@@ -35,6 +35,28 @@ const nextConfig: NextConfig = {
       },
     ],
   },
+
+  // M.3.b.fix (2026-05-13) — Next.js 16 redujo el default de
+  // `serverActions.bodySizeLimit` de 4 MB (Next 15) a 1 MB. El Estudio
+  // del Personalización envía `saveCanvasAction` con canvasData V2 que
+  // incluye unitTemplate (~5-10 KB), slots[] con signed URLs Supabase
+  // (~600 bytes/slot con token JWT), gridLayout + metadata. Para 20 slots
+  // (calendarios con 12 fotos × 1 mes) + cambios de plantilla acumulados
+  // puede acercarse al límite. Subimos a 10 MB para holgura.
+  //
+  // `finalizeDesignAction` (N PNGs 300 DPI base64) tiene su propio cap
+  // en Zod schema (productionDataUrls total ≤ 120 MB) pero NO pasa por
+  // este límite porque el productionDataUrl se compone client-side y se
+  // envía via FormData de uploadDesignAssetAction (NO Server Action JSON).
+  //
+  // Defense in depth: Zod en SaveCanvasSchema limita el JSON deserializado
+  // a 1 MB (validación tipo-safe post-parse). Body limit 10 MB es solo
+  // para evitar 413 antes del parse — el límite real lo aplica Zod.
+  experimental: {
+    serverActions: {
+      bodySizeLimit: "10mb",
+    },
+  },
 };
 
 export default nextConfig;

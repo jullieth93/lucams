@@ -72,8 +72,19 @@ export async function createDraftDesignAction(input: { productId: string; templa
 export async function saveCanvasAction(input: { designId: string; canvasData: unknown }) {
   const parsed = SaveCanvasSchema.safeParse(input);
   if (!parsed.success) {
+    // Log structured con detalle del fallo (incluye M.3.b.fix size cap)
+    logger.warn(
+      {
+        event: "design.save_canvas.validation_fail",
+        designId: input.designId,
+        issues: parsed.error.issues.slice(0, 3).map((i) => i.message),
+      },
+      "saveCanvas validation rejected",
+    );
     return { ok: false as const, code: "VALIDATION" as const, message: parsed.error.message };
   }
+  // Telemetry M.3.b.fix — tracking payload size para early-detect regresiones
+  const payloadSize = JSON.stringify(parsed.data.canvasData).length;
   const { customerId, sessionId } = await resolveOwner();
   try {
     await saveCanvas({
@@ -82,10 +93,21 @@ export async function saveCanvasAction(input: { designId: string; canvasData: un
       customerId,
       sessionId,
     });
+    logger.info(
+      {
+        event: "design.save_canvas.success",
+        designId: parsed.data.designId,
+        payloadBytes: payloadSize,
+      },
+      "saveCanvas OK",
+    );
     return { ok: true as const };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    logger.warn({ event: "design.save_canvas.fail", err: msg }, "saveCanvas failed");
+    logger.warn(
+      { event: "design.save_canvas.fail", err: msg, payloadBytes: payloadSize },
+      "saveCanvas failed",
+    );
     return { ok: false as const, code: "INTERNAL" as const, message: msg };
   }
 }

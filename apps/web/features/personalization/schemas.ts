@@ -99,10 +99,27 @@ export const CreateDraftDesignSchema = z.object({
 });
 export type CreateDraftDesignInput = z.infer<typeof CreateDraftDesignSchema>;
 
-export const SaveCanvasSchema = z.object({
-  designId: z.string().min(1),
-  canvasData: CanvasDataSchema,
-});
+// M.3.b.fix — Cap defensivo de tamaño JSON del canvasData. Un canvasData V2
+// típico pesa 8-30 KB; cualquier payload > 1 MB indica bug (ej. cliente
+// enviando dataURL base64 por error). 1 MB es ~2.5× el ancho de banda
+// realistic worst-case (calendario 12 slots con metadata extensa).
+const MAX_CANVAS_DATA_BYTES = 1 * 1024 * 1024;
+
+export const SaveCanvasSchema = z
+  .object({
+    designId: z.string().min(1),
+    canvasData: CanvasDataSchema,
+  })
+  .superRefine((data, ctx) => {
+    const size = JSON.stringify(data.canvasData).length;
+    if (size > MAX_CANVAS_DATA_BYTES) {
+      ctx.addIssue({
+        code: "custom",
+        message: `canvasData excede ${MAX_CANVAS_DATA_BYTES / 1024 / 1024} MB (recibido ${(size / 1024 / 1024).toFixed(2)} MB) — posible payload corrupto`,
+        path: ["canvasData"],
+      });
+    }
+  });
 export type SaveCanvasInput = z.infer<typeof SaveCanvasSchema>;
 
 // ──────────────────────── Finalize (M.3.b — N PNGs por producto) ────────────────────────
