@@ -31,6 +31,7 @@ import {
   finalizeDesignAction,
   saveCanvasAction,
 } from "@/features/personalization/actions";
+import { parsePhotoProductConfig } from "@/features/personalization/schemas";
 import { addPersonalizedToCartAction } from "@/app/carrito/actions";
 import { StudioCanvasGrid } from "./studio-canvas-grid";
 import { StudioSidebar } from "./studio-sidebar";
@@ -65,6 +66,14 @@ export function StudioEditor({
   const [bootError, setBootError] = useState<string | null>(null);
   const [booting, setBooting] = useState(true);
   const slotStagesRef = useRef<Map<number, Konva.Stage | null>>(new Map());
+
+  // M.3.b.A2.5 — Lee `sizeCm` del producto para badge visual en cada slot.
+  // Producto config viene como JSON unknown, parsePhotoProductConfig hace
+  // safeParse Zod con fallback a {photoSlots: 1}. Solo usamos sizeCm.
+  const productConfig = useMemo(
+    () => parsePhotoProductConfig(product.personalizationSchema),
+    [product.personalizationSchema],
+  );
 
   // Subscribir reactivamente al modal — assets/designId del store, no snapshot
   const modalAssets = useStore(store, (s) => s.assets);
@@ -303,6 +312,7 @@ export function StudioEditor({
         <section className="flex flex-1 items-start justify-center p-4 lg:p-8">
           <StudioCanvasGrid
             store={store}
+            sizeCm={productConfig.sizeCm}
             onSlotClick={handleSlotClick}
             registerSlotStages={(stages) => {
               slotStagesRef.current = stages;

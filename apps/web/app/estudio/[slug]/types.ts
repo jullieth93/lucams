@@ -127,6 +127,33 @@ export type ShapeLayer = {
   rotation?: number;
 };
 
+/**
+ * Asset layer (M.3.b.A2 — paradigma pacdora): renderea una imagen SVG/PNG
+ * externa como capa visual. Permite plantillas con marcos elaborados,
+ * ornamentos, decoraciones, sin tener que codificar paths SVG inline.
+ *
+ * Layer ordering típico para plantillas WOW:
+ *   1. background (color sólido)
+ *   2. image-placeholder (foto cliente)        ← se ve por el "hueco" del asset
+ *   3. asset (PNG/SVG con área transparente)    ← define el marco visual
+ *   4. text (editable, encima del asset)
+ *
+ * El `src` apunta a `public/templates/<slug>.svg` o `.png`. Solo permitimos
+ * paths del repo (no URLs externas) por seguridad — validado en Zod schema.
+ */
+export type AssetLayer = {
+  id: string;
+  type: "asset";
+  /** Path relativo a /templates/ — ej "/templates/polaroid-romantica.svg" */
+  src: string;
+  x: number; // top-left
+  y: number;
+  width: number;
+  height: number;
+  rotation?: number;
+  opacity?: number;
+};
+
 type UnknownLayer = {
   id: string;
   type: string;
@@ -138,6 +165,7 @@ export type CanvasLayer =
   | ImagePlaceholderLayer
   | TextLayer
   | ShapeLayer
+  | AssetLayer
   | UnknownLayer;
 
 export type CanvasDataV1 = {

@@ -31,12 +31,15 @@ const MOBILE_BREAKPOINT = 640;
 
 type StudioCanvasGridProps = {
   store: StoreApi<StudioStoreState>;
+  /** M.3.b.A2.5 — Tamaño físico del producto (ej "5×5 cm") para badge en slots. */
+  sizeCm?: string;
   onSlotClick: (slotIndex: number) => void;
   registerSlotStages: (stages: Map<number, Konva.Stage | null>) => void;
 };
 
 export function StudioCanvasGrid({
   store,
+  sizeCm,
   onSlotClick,
   registerSlotStages,
 }: StudioCanvasGridProps) {
@@ -159,6 +162,7 @@ export function StudioCanvasGrid({
                 displaySize={slotDisplaySize}
                 isSelected={selectedSlotIndex === slot.slotIndex}
                 totalSlots={canvasData.slotCount}
+                sizeCm={sizeCm}
                 onClick={() => {
                   selectSlot(slot.slotIndex);
                   onSlotClick(slot.slotIndex);

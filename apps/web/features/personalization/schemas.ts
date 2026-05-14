@@ -22,12 +22,30 @@ export const StageSchema = z.object({
   dpiProduction: z.number().int().min(150).max(600).default(300),
 });
 
+// M.3.b.A2 — Layer asset: regex valida que src sea path local del repo
+// (`/templates/<slug>.svg|png|jpg`) y NO URLs externas. Esto previene
+// inyección de assets remotos en el editor (XSS via SVG malicioso).
+const ASSET_SRC_RE = /^\/templates\/[a-z0-9-]+\.(svg|png|jpg|jpeg|webp)$/;
+
 export const CanvasLayerSchema = z
   .object({
     id: z.string().min(1),
     type: z.string().min(1),
   })
-  .catchall(z.unknown());
+  .catchall(z.unknown())
+  .superRefine((layer, ctx) => {
+    // Validar src de AssetLayer si type === "asset"
+    if (layer.type === "asset") {
+      const src = (layer as { src?: unknown }).src;
+      if (typeof src !== "string" || !ASSET_SRC_RE.test(src)) {
+        ctx.addIssue({
+          code: "custom",
+          message: `Asset layer ${layer.id}: src debe matchear /templates/<slug>.svg|png|jpg|webp`,
+          path: ["src"],
+        });
+      }
+    }
+  });
 
 export const CanvasDataV1Schema = z
   .object({

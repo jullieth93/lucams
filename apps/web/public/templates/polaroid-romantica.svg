@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Polaroid Romántica — M.3.b.A2.
+  Marco polaroid blanco con caption inferior + sombra exterior sutil.
+  Área transparente central (donde va la foto del cliente) en (60, 60) tamaño 600×680.
+  Stage 720×920 matchea el canvasData del seed.
+  Caption editable se sobrepone en (360, 820) — el texto real va como TextLayer aparte
+  encima de este SVG.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 920" width="720" height="920">
+  <!-- Sombra exterior del polaroid -->
+  <defs>
+    <filter id="shadow" x="-10%" y="-5%" width="120%" height="115%">
+      <feDropShadow dx="0" dy="6" stdDeviation="8" flood-color="#000" flood-opacity="0.18"/>
+    </filter>
+  </defs>
+
+  <!-- Marco polaroid blanco (todo excepto el área central) -->
+  <!-- Marco superior -->
+  <rect x="0" y="0" width="720" height="60" fill="#FFFFFF" filter="url(#shadow)"/>
+  <!-- Marco izquierdo -->
+  <rect x="0" y="60" width="60" height="680" fill="#FFFFFF"/>
+  <!-- Marco derecho -->
+  <rect x="660" y="60" width="60" height="680" fill="#FFFFFF"/>
+  <!-- Marco inferior con caption (área grande para texto manuscrito) -->
+  <rect x="0" y="740" width="720" height="180" fill="#FFFFFF"/>
+
+  <!-- Borde sutil dorado interno alrededor del área foto (estilo vintage) -->
+  <rect x="56" y="56" width="608" height="688" fill="none" stroke="#D4AF37" stroke-width="2"/>
+
+  <!-- Decoración: 4 corners ornamentales en las esquinas del área foto -->
+  <g fill="#D4AF37" opacity="0.85">
+    <!-- TL -->
+    <path d="M 60 60 L 80 60 L 60 80 Z"/>
+    <!-- TR -->
+    <path d="M 660 60 L 640 60 L 660 80 Z"/>
+    <!-- BL -->
+    <path d="M 60 740 L 80 740 L 60 720 Z"/>
+    <!-- BR -->
+    <path d="M 660 740 L 640 740 L 660 720 Z"/>
+  </g>
+
+  <!-- Mini estrellitas decorativas en el caption area -->
+  <g fill="#D4AF37" opacity="0.4">
+    <circle cx="80" cy="860" r="3"/>
+    <circle cx="640" cy="860" r="3"/>
+    <circle cx="100" cy="880" r="2"/>
+    <circle cx="620" cy="880" r="2"/>
+  </g>
+</svg>

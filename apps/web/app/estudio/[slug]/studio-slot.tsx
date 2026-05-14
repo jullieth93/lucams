@@ -32,7 +32,7 @@ import { memo, useCallback, useEffect, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from "react";
 import { motion } from "framer-motion";
 import { Plus, Trash2 } from "lucide-react";
-import { Stage, Layer, Rect, Image as KonvaImage, Group, Text } from "react-konva";
+import { Stage, Layer, Rect, Image as KonvaImage, Group, Text, Circle, Path } from "react-konva";
 import useImage from "use-image";
 import type Konva from "konva";
 import type {
@@ -51,6 +51,8 @@ type StudioSlotProps = {
   displaySize: number; // px lógicos del slot en pantalla
   isSelected: boolean;
   totalSlots: number;
+  /** M.3.b.A2.5 — Tamaño físico del imán (ej "5×5 cm") leído del product.personalizationSchema.sizeCm. */
+  sizeCm?: string;
   onClick: () => void;
   onClear: () => void;
   onAssetDrop: (asset: StudioAsset) => void;
@@ -64,6 +66,7 @@ function StudioSlotImpl({
   displaySize,
   isSelected,
   totalSlots,
+  sizeCm,
   onClick,
   onClear,
   onAssetDrop,
@@ -259,6 +262,17 @@ function StudioSlotImpl({
           {slotState.slotIndex + 1}
         </div>
       )}
+
+      {/* M.3.b.A2.5 — Badge tamaño físico (bottom-right) — evidencia el tamaño real del imán.
+          Posición bottom-right para no chocar con el trash button (top-right) cuando slot está lleno. */}
+      {sizeCm && (
+        <div
+          className="text-brand-purple-dark ring-brand-purple/10 pointer-events-none absolute right-1.5 bottom-1.5 rounded-md bg-white/95 px-2 py-0.5 text-[10px] font-bold tracking-tight shadow-sm ring-1"
+          aria-label={`Tamaño físico ${sizeCm}`}
+        >
+          📐 {sizeCm}
+        </div>
+      )}
     </motion.div>
   );
 }
@@ -270,7 +284,8 @@ export const StudioSlot = memo(StudioSlotImpl, (prev, next) => {
     prev.slotState.assetId === next.slotState.assetId &&
     prev.isSelected === next.isSelected &&
     prev.displaySize === next.displaySize &&
-    prev.unitTemplate === next.unitTemplate
+    prev.unitTemplate === next.unitTemplate &&
+    prev.sizeCm === next.sizeCm
   );
 });
 StudioSlot.displayName = "StudioSlot";
@@ -308,9 +323,50 @@ function renderLayer(
       return renderText(layer as never, stage);
     case "shape":
       return renderShape(layer as never);
+    case "asset":
+      return <AssetLayerRenderer key={layer.id} layer={layer as never} />;
     default:
       return null;
   }
+}
+
+type AssetLayerData = {
+  id: string;
+  src: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotation?: number;
+  opacity?: number;
+};
+
+/**
+ * M.3.b.A2 — Renderea un asset SVG/PNG externo como capa visual.
+ * Paradigma pacdora: el asset tiene transparencia y se superpone al
+ * image-placeholder (la foto del cliente queda visible por el hueco).
+ *
+ * useImage("anonymous") permite cargar SVG via fetch + decode, listo para
+ * stage.toDataURL() al finalize.
+ */
+function AssetLayerRenderer({ layer }: { layer: AssetLayerData }) {
+  const [image] = useImage(layer.src, "anonymous");
+  if (!image) {
+    // Fallback rect transparente mientras carga (no se ve, evita layout shift)
+    return null;
+  }
+  return (
+    <KonvaImage
+      image={image}
+      x={layer.x}
+      y={layer.y}
+      width={layer.width}
+      height={layer.height}
+      rotation={layer.rotation ?? 0}
+      opacity={layer.opacity ?? 1}
+      listening={false}
+    />
+  );
 }
 
 type TextLayerData = {
@@ -361,11 +417,50 @@ type ShapeLayerData = {
   cornerRadius?: number;
 };
 
+// SVG path data normalizado para heart shape — bezier curves clásica.
+// ViewBox 0 0 100 100, centro en (50, 50). Lo escalamos al width/height del layer.
+//
+// Path inspirado en SVG estándar de heart icon (Wikimedia commons CC0).
+const HEART_PATH_DATA =
+  "M50,82 C28,68 6,52 6,32 C6,18 16,8 28,8 C38,8 44,12 50,22 C56,12 62,8 72,8 C84,8 94,18 94,32 C94,52 72,68 50,82 Z";
+
 function renderShape(layer: ShapeLayerData) {
-  const cornerRadius =
-    layer.kind === "circle" ? Math.min(layer.width, layer.height) / 2 : (layer.cornerRadius ?? 0);
-  // Convención del seed: shapes usan x/y como CENTER (heart-frame, ring, etc.).
-  // Konva Rect espera top-left, así que restamos width/2 y height/2.
+  // M.3.b.A2.1 — Switch real por kind (antes siempre Rect, bug del heart "cuadrado")
+  // Convención del seed: shapes usan x/y como CENTER.
+
+  if (layer.kind === "circle") {
+    return (
+      <Circle
+        key={layer.id}
+        x={layer.x}
+        y={layer.y}
+        radius={Math.min(layer.width, layer.height) / 2}
+        fill={layer.fill}
+        stroke={layer.stroke}
+        strokeWidth={layer.strokeWidth ?? 0}
+      />
+    );
+  }
+
+  if (layer.kind === "heart") {
+    // Path está definido en viewBox 100×100. Scale al width/height del layer.
+    // x/y del Path en Konva representan top-left de un bounding box implícito.
+    return (
+      <Path
+        key={layer.id}
+        x={layer.x - layer.width / 2}
+        y={layer.y - layer.height / 2}
+        scaleX={layer.width / 100}
+        scaleY={layer.height / 100}
+        data={HEART_PATH_DATA}
+        fill={layer.fill}
+        stroke={layer.stroke}
+        strokeWidth={(layer.strokeWidth ?? 0) / (layer.width / 100)}
+      />
+    );
+  }
+
+  // Default: rect (con cornerRadius opcional)
   return (
     <Rect
       key={layer.id}
@@ -376,7 +471,7 @@ function renderShape(layer: ShapeLayerData) {
       fill={layer.fill}
       stroke={layer.stroke}
       strokeWidth={layer.strokeWidth ?? 0}
-      cornerRadius={cornerRadius}
+      cornerRadius={layer.cornerRadius ?? 0}
     />
   );
 }
