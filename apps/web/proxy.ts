@@ -30,6 +30,7 @@
 
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { PRODUCT_REDIRECTS } from "@/lib/product-redirects";
 
 const SECURITY_HEADERS: Record<string, string> = {
   "Strict-Transport-Security": "max-age=63072000; includeSubDomains; preload",
@@ -87,6 +88,19 @@ export async function proxy(request: NextRequest) {
   const path = request.nextUrl.pathname;
   const isApi = path.startsWith("/api/");
   const origin = request.headers.get("origin");
+
+  // M.3.b.CAT.8 — Redirects 301 de slugs legacy (productos archivados al
+  // consolidar familias) hacia el producto base + variant pre-seleccionado.
+  // Mapa generado por make consolidate-product-families.
+  if (path.startsWith("/producto/")) {
+    const slug = path.slice("/producto/".length).split("/")[0];
+    const target = PRODUCT_REDIRECTS[slug];
+    if (target) {
+      // target ya viene como "base-slug?variant=v_id"
+      const targetUrl = new URL(`/producto/${target}`, request.url);
+      return NextResponse.redirect(targetUrl, 301);
+    }
+  }
 
   // Maintenance gate: env flag NEXT_PUBLIC_MAINTENANCE_MODE=1 redirige
   // todo el tráfico público a /maintenance. Excepciones:

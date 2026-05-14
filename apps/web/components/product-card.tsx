@@ -53,8 +53,18 @@ export function ProductCard({ product }: { product: StorefrontProductCard }) {
       </div>
 
       <div className="flex flex-1 flex-col gap-1 p-3">
-        <p className="text-brand-purple/70 text-[10px] font-medium tracking-wider uppercase">
-          {product.category.name}
+        <p className="text-brand-purple/70 flex items-center gap-1.5 text-[10px] font-medium tracking-wider uppercase">
+          <span>{product.category.name}</span>
+          {product.variantCount != null && product.variantCount > 1 && (
+            <>
+              <span className="text-brand-purple/30" aria-hidden>
+                ·
+              </span>
+              <span className="bg-brand-turquoise/15 text-brand-purple-dark rounded-full px-1.5 py-0.5 text-[9px] font-semibold tracking-normal normal-case">
+                {product.variantCount} opciones
+              </span>
+            </>
+          )}
         </p>
         <h3 className="text-brand-purple-dark group-hover:text-brand-purple line-clamp-2 font-semibold">
           {product.name}

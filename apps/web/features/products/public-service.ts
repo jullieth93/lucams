@@ -26,6 +26,10 @@ export type StorefrontProductCard = {
   isPersonalizable: boolean;
   images: string[];
   category: { slug: string; name: string };
+  /** M.3.b.CAT.6 — Cantidad de variants activos. Si > 1, mostrar chip
+   *  "X opciones" en la card (UX descubribilidad: cliente sabe que adentro
+   *  puede elegir cantidad/tamaño/color sin entrar). */
+  variantCount?: number;
 };
 
 export type StorefrontProductDetail = StorefrontProductCard & {
@@ -145,9 +149,10 @@ export async function listStorefrontProducts(
       isPersonalizable: true,
       images: true,
       category: { select: { slug: true, name: true } },
+      _count: { select: { variants: { where: { deletedAt: null } } } },
     },
   });
-  return items;
+  return items.map(({ _count, ...p }) => ({ ...p, variantCount: _count.variants }));
 }
 
 /**
@@ -351,7 +356,7 @@ export async function listRelatedProducts(opts: {
   limit?: number;
 }): Promise<StorefrontProductCard[]> {
   const take = opts.limit ?? 4;
-  const sameCategory = await prisma.product.findMany({
+  const sameCategoryRaw = await prisma.product.findMany({
     where: {
       ...STOREFRONT_WHERE,
       category: { ...STOREFRONT_WHERE.category, slug: opts.categorySlug },
@@ -368,14 +373,19 @@ export async function listRelatedProducts(opts: {
       isPersonalizable: true,
       images: true,
       category: { select: { slug: true, name: true } },
+      _count: { select: { variants: { where: { deletedAt: null } } } },
     },
   });
+  const sameCategory: StorefrontProductCard[] = sameCategoryRaw.map(({ _count, ...p }) => ({
+    ...p,
+    variantCount: _count.variants,
+  }));
   if (sameCategory.length >= take) return sameCategory;
 
   // Completar con featured de otras categorías
   const missing = take - sameCategory.length;
   const seenIds = new Set([opts.productId, ...sameCategory.map((p) => p.id)]);
-  const featured = await prisma.product.findMany({
+  const featuredRaw = await prisma.product.findMany({
     where: {
       ...STOREFRONT_WHERE,
       isFeatured: true,
@@ -392,7 +402,12 @@ export async function listRelatedProducts(opts: {
       isPersonalizable: true,
       images: true,
       category: { select: { slug: true, name: true } },
+      _count: { select: { variants: { where: { deletedAt: null } } } },
     },
   });
+  const featured: StorefrontProductCard[] = featuredRaw.map(({ _count, ...p }) => ({
+    ...p,
+    variantCount: _count.variants,
+  }));
   return [...sameCategory, ...featured];
 }
