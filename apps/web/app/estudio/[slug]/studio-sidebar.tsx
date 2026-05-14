@@ -14,7 +14,15 @@
 
 import { useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Upload, Image as ImageIcon, Sparkles, Wand2, Loader2, Check } from "lucide-react";
+import {
+  Upload,
+  Image as ImageIcon,
+  Sparkles,
+  Wand2,
+  Loader2,
+  Check,
+  GripVertical,
+} from "lucide-react";
 import { toast } from "sonner";
 import type { StoreApi } from "zustand";
 import { useStore } from "zustand";
@@ -225,6 +233,15 @@ export function StudioSidebar({
         {assets.length === 0 && uploading === 0 && (
           <p className="text-brand-purple-dark/50 mt-3 text-xs italic">
             Tip: subí tus fotos primero, después usá el botón mágico para repartirlas en los slots.
+          </p>
+        )}
+
+        {/* M.3.b.UX.6 — Microcopy cuando todos los slots están llenos pero
+            hay fotos sin asignar: explicar que se pueden cambiar arrastrando. */}
+        {assets.length > 0 && emptySlots === 0 && totalSlots > 0 && (
+          <p className="text-brand-purple-dark/55 bg-brand-turquoise/10 mt-3 rounded-md px-2.5 py-2 text-xs">
+            ✨ Todos los imanes tienen foto. Arrastrá cualquier foto encima de un imán para
+            cambiarla.
           </p>
         )}
       </section>
@@ -519,7 +536,7 @@ function AssetThumb({
         exit={{ opacity: 0, scale: 0.85 }}
         transition={{ duration: 0.2, delay: idx * 0.04 }}
         className={[
-          "relative aspect-square cursor-grab overflow-hidden rounded-md border-2 transition-all focus-within:ring-2 active:cursor-grabbing",
+          "group/thumb relative aspect-square cursor-grab overflow-hidden rounded-md border-2 transition-all focus-within:ring-2 hover:shadow-md active:cursor-grabbing",
           asset.validationLevel === "warning-strong"
             ? "border-red-300/70 focus-within:ring-red-400 hover:border-red-500"
             : asset.validationLevel === "warning-soft"
@@ -539,6 +556,15 @@ function AssetThumb({
           ].join(" ")}
           draggable={false}
         />
+
+        {/* M.3.b.UX.6 — Drag handle visual top-left, sutil, visible solo en hover.
+            Indica al cliente "esta foto se puede arrastrar al imán". */}
+        <div
+          className="bg-brand-purple/85 pointer-events-none absolute top-1 left-1 flex h-5 w-5 items-center justify-center rounded-md text-white opacity-0 shadow-sm transition-opacity group-hover/thumb:opacity-100"
+          aria-hidden
+        >
+          <GripVertical className="h-3 w-3" />
+        </div>
 
         {/* P0.2 — Green checkmark cuando foto está usada en al menos 1 slot */}
         {isUsed && (

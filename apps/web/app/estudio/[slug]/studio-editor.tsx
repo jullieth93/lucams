@@ -35,7 +35,8 @@ import { parsePhotoProductConfig } from "@/features/personalization/schemas";
 import { addPersonalizedToCartAction } from "@/app/carrito/actions";
 import { StudioCanvasGrid } from "./studio-canvas-grid";
 import { StudioSidebar } from "./studio-sidebar";
-import { StudioToolbar } from "./studio-toolbar";
+import { StudioToolbar, StudioFinalizeFab } from "./studio-toolbar";
+import { StudioOnboarding } from "./studio-onboarding";
 import { StudioAssetPickerModal } from "./studio-asset-picker-modal";
 import { StudioPhotoAdjustModal } from "./studio-photo-adjust-modal";
 import { StudioTextEditorModal } from "./studio-text-editor-modal";
@@ -432,7 +433,7 @@ export function StudioEditor({
           <button
             type="button"
             aria-label="Abrir herramientas (plantillas y fotos)"
-            className="bg-brand-purple ring-brand-purple/30 fixed right-4 bottom-4 z-30 inline-flex h-14 items-center gap-2 rounded-full px-5 text-sm font-bold text-white shadow-xl ring-4 transition-transform hover:scale-105 active:scale-95 lg:hidden"
+            className="bg-brand-turquoise ring-brand-turquoise/30 fixed bottom-4 left-4 z-30 inline-flex h-14 items-center gap-2 rounded-full px-5 text-sm font-bold text-white shadow-xl ring-4 transition-transform hover:scale-105 active:scale-95 lg:hidden"
           >
             <Sparkles className="h-5 w-5" />
             <span>Editar</span>
@@ -484,6 +485,13 @@ export function StudioEditor({
         target={textEditTarget}
         onClose={() => setTextEditTarget(null)}
       />
+
+      {/* M.3.b.UX.1 — FAB ¡Listo! mobile (visible solo <sm, fixed bottom-right) */}
+      <StudioFinalizeFab store={store} onFinalize={handleFinalize} />
+
+      {/* M.3.b.UX.5 — Onboarding tutorial primera vez. Se auto-detecta via
+          localStorage; si ya se onboardeó (key="v1"), no muestra nada. */}
+      <StudioOnboarding />
     </div>
   );
 }

@@ -23,7 +23,8 @@
 
 import { useState } from "react";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { Check, Type } from "lucide-react";
+import { Slider } from "@/components/ui/slider";
+import { Bold, Check, Italic, Type } from "lucide-react";
 import { FONT_PRESETS, TEXT_COLOR_PRESETS } from "./lib/fonts";
 import type { TextLayer, TextOverride } from "./types";
 
@@ -75,8 +76,29 @@ function ModalInner({
     currentOverride?.fontFamily ?? layer?.fontFamily ?? FONT_PRESETS[0].fontFamily,
   );
   const [fill, setFill] = useState(currentOverride?.fill ?? layer?.fill ?? "#262626");
+  // M.3.b.UX.4 — Font size slider + bold/italic toggles
+  const baseFontSize = layer?.fontSize ?? 24;
+  const [fontSize, setFontSize] = useState(currentOverride?.fontSize ?? baseFontSize);
+  const baseFontWeight = layer?.fontWeight ?? "normal";
+  const initialWeight = currentOverride?.fontWeight ?? baseFontWeight;
+  const [isBold, setIsBold] = useState(
+    initialWeight === "bold" || initialWeight === "italic bold" || initialWeight === "bold italic",
+  );
+  const [isItalic, setIsItalic] = useState(
+    initialWeight === "italic" ||
+      initialWeight === "italic bold" ||
+      initialWeight === "bold italic",
+  );
 
   if (!layer) return null;
+
+  // Compute fontWeight final desde toggles
+  const computedFontWeight = (() => {
+    if (isBold && isItalic) return "bold italic";
+    if (isBold) return "bold";
+    if (isItalic) return "italic";
+    return "normal";
+  })();
 
   // Construir el override final: solo incluye fields que difieren del base.
   const handleApply = () => {
@@ -85,6 +107,8 @@ function ModalInner({
     if (fontFamily !== (layer.fontFamily ?? FONT_PRESETS[0].fontFamily))
       override.fontFamily = fontFamily;
     if (fill !== (layer.fill ?? "#262626")) override.fill = fill;
+    if (fontSize !== baseFontSize) override.fontSize = fontSize;
+    if (computedFontWeight !== baseFontWeight) override.fontWeight = computedFontWeight;
     // Si nada cambió, limpiar el override existente (null)
     const hasChanges = Object.keys(override).length > 0;
     onApply(hasChanges ? override : null);
@@ -95,10 +119,13 @@ function ModalInner({
     setText(layer.text);
     setFontFamily(layer.fontFamily ?? FONT_PRESETS[0].fontFamily);
     setFill(layer.fill ?? "#262626");
+    setFontSize(baseFontSize);
+    setIsBold(baseFontWeight === "bold" || baseFontWeight.includes("bold"));
+    setIsItalic(baseFontWeight === "italic" || baseFontWeight.includes("italic"));
   };
 
-  // Preview compute
-  const previewFontSize = Math.min((layer.fontSize ?? 24) * 0.6, 28);
+  // Preview compute — escala 70% del fontSize actual (no del base original)
+  const previewFontSize = Math.min(fontSize * 0.7, 36);
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
@@ -118,14 +145,15 @@ function ModalInner({
         </div>
 
         <div className="space-y-4 p-4">
-          {/* Preview live */}
+          {/* Preview live — más grande (min-h 100px) + escala 70% en vez de 60% */}
           <div
-            className="ring-brand-purple/10 from-brand-cream flex min-h-[60px] items-center justify-center rounded-md bg-gradient-to-br to-white px-3 py-4 text-center ring-1"
+            className="ring-brand-purple/10 from-brand-cream flex min-h-[100px] items-center justify-center rounded-md bg-gradient-to-br to-white px-3 py-4 text-center ring-1"
             style={{
               fontFamily,
               color: fill,
               fontSize: previewFontSize,
-              fontWeight: layer.fontWeight ?? "normal",
+              fontWeight: isBold ? "bold" : "normal",
+              fontStyle: isItalic ? "italic" : "normal",
               lineHeight: 1.1,
               wordBreak: "break-word",
             }}
@@ -151,6 +179,56 @@ function ModalInner({
               placeholder="Escribí tu texto…"
               autoFocus
             />
+          </div>
+
+          {/* M.3.b.UX.4 — Font size slider + bold/italic toggles */}
+          <div className="flex items-end gap-3">
+            <div className="flex-1">
+              <label className="text-brand-purple-dark/70 mb-1.5 flex items-center justify-between text-xs font-semibold">
+                <span>Tamaño</span>
+                <span className="text-brand-purple-dark/55 tabular-nums">{fontSize}px</span>
+              </label>
+              <Slider
+                min={8}
+                max={72}
+                step={2}
+                value={[fontSize]}
+                onValueChange={(v) => setFontSize(v[0])}
+                aria-label="Tamaño del texto"
+              />
+            </div>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => setIsBold((v) => !v)}
+                aria-pressed={isBold}
+                aria-label="Negrita"
+                title="Negrita"
+                className={[
+                  "focus:ring-brand-turquoise flex h-9 w-9 items-center justify-center rounded-md transition-colors focus:ring-2 focus:outline-none",
+                  isBold
+                    ? "bg-brand-purple text-white shadow-sm"
+                    : "ring-brand-purple/20 text-brand-purple-dark/70 hover:bg-brand-purple/10 ring-1",
+                ].join(" ")}
+              >
+                <Bold className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsItalic((v) => !v)}
+                aria-pressed={isItalic}
+                aria-label="Cursiva"
+                title="Cursiva"
+                className={[
+                  "focus:ring-brand-turquoise flex h-9 w-9 items-center justify-center rounded-md transition-colors focus:ring-2 focus:outline-none",
+                  isItalic
+                    ? "bg-brand-purple text-white shadow-sm"
+                    : "ring-brand-purple/20 text-brand-purple-dark/70 hover:bg-brand-purple/10 ring-1",
+                ].join(" ")}
+              >
+                <Italic className="h-4 w-4" />
+              </button>
+            </div>
           </div>
 
           {/* Color picker */}

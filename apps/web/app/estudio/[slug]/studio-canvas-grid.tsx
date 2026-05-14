@@ -27,7 +27,13 @@ import type { CanvasDataV2, StudioAsset } from "./types";
 import { selectUnitImagePlaceholder, type StudioStoreState } from "./lib/store";
 
 const MAX_VIEWPORT_WIDTH = 720; // px lógicos máximo del grid en desktop
-const MOBILE_BREAKPOINT = 640;
+
+// M.3.b.UX.7 — Responsive progresivo. 4 breakpoints en vez de 1.
+// Min slot displaySize 120px (slot chico pero acciones tappeables ≥44px).
+const BP_NARROW = 380; // <380px → 1 columna (slot fullwidth)
+const BP_MOBILE = 640; // 380-639 → 2 columnas
+const BP_TABLET = 1024; // 640-1023 → 3 columnas
+const MIN_SLOT_SIZE = 120; // garantía mínima para tappeables
 
 type StudioCanvasGridProps = {
   store: StoreApi<StudioStoreState>;
@@ -87,13 +93,21 @@ export function StudioCanvasGrid({
 
   const layout = useMemo(() => {
     if (!canvasData) return null;
-    // Adaptación mobile: si cols >= 4 y viewport mobile, bajar a max 3 cols
-    if (containerWidth < MOBILE_BREAKPOINT && canvasData.gridLayout.cols >= 4) {
-      const cols = Math.min(3, canvasData.gridLayout.cols);
-      const rows = Math.ceil(canvasData.slotCount / cols);
-      return { ...canvasData.gridLayout, cols, rows };
-    }
-    return canvasData.gridLayout;
+    // M.3.b.UX.7 — Responsive progresivo: cap de cols según viewport.
+    //   <380px  → max 1 col (slot fullwidth)
+    //   <640px  → max 2 cols
+    //   <1024px → max 3 cols
+    //   ≥1024px → cols del gridLayout original (3-5 según slotCount)
+    let maxCols: number;
+    if (containerWidth < BP_NARROW) maxCols = 1;
+    else if (containerWidth < BP_MOBILE) maxCols = 2;
+    else if (containerWidth < BP_TABLET) maxCols = 3;
+    else maxCols = canvasData.gridLayout.cols; // sin cap en desktop
+
+    const cols = Math.min(maxCols, canvasData.gridLayout.cols);
+    if (cols === canvasData.gridLayout.cols) return canvasData.gridLayout;
+    const rows = Math.ceil(canvasData.slotCount / cols);
+    return { ...canvasData.gridLayout, cols, rows };
   }, [canvasData, containerWidth]);
 
   // A2.6 — Crossfade visual al cambiar plantilla. Detectamos cambio en
@@ -128,7 +142,7 @@ export function StudioCanvasGrid({
   // `containerWidth`. Mantenemos el aspect ratio del unitTemplate.
   const slotAspect = canvasData.unitTemplate.stage.height / canvasData.unitTemplate.stage.width;
   const availableW = containerWidth - layout.gap * (layout.cols - 1);
-  const slotDisplaySize = Math.max(80, Math.floor(availableW / layout.cols));
+  const slotDisplaySize = Math.max(MIN_SLOT_SIZE, Math.floor(availableW / layout.cols));
   const slotHeight = slotDisplaySize * slotAspect;
 
   // Keyboard navigation entre slots

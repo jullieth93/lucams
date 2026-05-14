@@ -112,7 +112,8 @@ export function StudioToolbar({
           <ProgressBadge filled={filled} total={total} />
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
+          {/* M.3.b.UX.1 — Toggle guías visible solo desktop (mobile no cabe + uso raro) */}
           {onToggleRealismGuides && (
             <button
               type="button"
@@ -123,57 +124,164 @@ export function StudioToolbar({
               }
               title="Líneas amarillas = zona de corte. Líneas verdes = zona segura para texto importante."
               className={[
-                "focus:ring-brand-purple inline-flex h-9 items-center gap-1.5 rounded-md px-2.5 text-xs font-semibold transition-colors focus:ring-2 focus:ring-offset-1 focus:outline-none",
+                "focus:ring-brand-purple hidden h-9 items-center gap-1.5 rounded-md px-2.5 text-xs font-semibold transition-colors focus:ring-2 focus:ring-offset-1 focus:outline-none sm:inline-flex",
                 showRealismGuides
                   ? "bg-amber-100 text-amber-800 ring-1 ring-amber-300"
                   : "text-brand-purple-dark/70 hover:bg-brand-purple/10 hover:text-brand-purple-dark",
               ].join(" ")}
             >
               <Ruler className="h-3.5 w-3.5" aria-hidden />
-              <span className="hidden sm:inline">
-                {showRealismGuides ? "Guías visibles" : "Ver guías"}
-              </span>
+              <span>{showRealismGuides ? "Guías visibles" : "Ver guías"}</span>
             </button>
           )}
           <AutoSaveIndicator status={autoSaveStatus} isFinalizing={isFinalizing} />
-          <button
-            type="button"
-            disabled={!canFinalize}
-            onClick={onFinalize}
-            title={disabledTooltip}
-            aria-label={
-              canFinalize
-                ? "Listo, generar diseño final"
-                : (disabledTooltip ?? "No se puede finalizar todavía")
-            }
-            aria-disabled={!canFinalize}
-            className={[
-              "focus:ring-brand-purple inline-flex h-10 items-center gap-2 rounded-md px-4 text-sm font-semibold transition-all focus:ring-2 focus:ring-offset-2 focus:outline-none",
-              canFinalize
-                ? "bg-brand-purple hover:bg-brand-purple-dark shadow-brand-purple/20 hover:shadow-brand-purple/30 text-white shadow-md hover:shadow-lg"
-                : "bg-brand-purple/30 cursor-not-allowed text-white",
-            ].join(" ")}
-          >
-            {isFinalizing ? (
-              <>
-                <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-                <span>Guardando diseño...</span>
-              </>
-            ) : (
-              <>
-                <Sparkles className="h-4 w-4" aria-hidden />
-                <span>¡Listo!</span>
-              </>
-            )}
-          </button>
+          {/* M.3.b.UX.1 — Finalize button INLINE solo desktop (sm+).
+              En mobile el FAB es la única forma de finalizar (montado por
+              StudioEditor afuera del toolbar para que flote sobre el canvas). */}
+          <div className="hidden sm:block">
+            <FinalizeButton
+              isFinalizing={isFinalizing}
+              canFinalize={canFinalize}
+              disabledTooltip={disabledTooltip}
+              onFinalize={onFinalize}
+              variant="inline"
+            />
+          </div>
         </div>
       </div>
 
       {/* Progress badge mobile (visible solo < md) */}
-      <div className="border-brand-purple/10 bg-brand-cream/50 flex items-center justify-center border-t py-2 md:hidden">
+      <div className="border-brand-purple/10 bg-brand-cream/50 flex items-center justify-center gap-2 border-t py-2 md:hidden">
         <ProgressBadge filled={filled} total={total} />
+        {/* AutoSave indicator mobile abajo del progress */}
+        <AutoSaveIndicator status={autoSaveStatus} isFinalizing={isFinalizing} />
       </div>
     </header>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────
+//  M.3.b.UX.1 — FinalizeButton (extraído para reusar como FAB mobile)
+// ──────────────────────────────────────────────────────────────────
+//
+// Botón ¡Listo! con 2 variantes:
+//  - "inline": versión del toolbar desktop (h-10 px-4)
+//  - "fab":    versión floating mobile bottom-right (h-14, sombra deep,
+//              pulse animation cuando canFinalize)
+
+export function FinalizeButton({
+  isFinalizing,
+  canFinalize,
+  disabledTooltip,
+  onFinalize,
+  variant,
+}: {
+  isFinalizing: boolean;
+  canFinalize: boolean;
+  disabledTooltip?: string;
+  onFinalize: () => void;
+  variant: "inline" | "fab";
+}) {
+  if (variant === "fab") {
+    return (
+      <button
+        type="button"
+        disabled={!canFinalize}
+        onClick={onFinalize}
+        title={disabledTooltip}
+        aria-label={
+          canFinalize
+            ? "Listo, generar diseño final"
+            : (disabledTooltip ?? "No se puede finalizar todavía")
+        }
+        aria-disabled={!canFinalize}
+        className={[
+          "focus:ring-brand-purple fixed right-4 bottom-4 z-30 inline-flex h-14 items-center gap-2 rounded-full px-5 text-sm font-bold transition-all focus:ring-2 focus:ring-offset-2 focus:outline-none sm:hidden",
+          canFinalize
+            ? "bg-brand-purple hover:bg-brand-purple-dark shadow-brand-purple/30 ring-brand-purple/20 text-white shadow-2xl ring-4 hover:scale-105 active:scale-95"
+            : "bg-brand-purple/40 cursor-not-allowed text-white shadow-md",
+        ].join(" ")}
+      >
+        {isFinalizing ? (
+          <>
+            <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
+            <span>Guardando...</span>
+          </>
+        ) : (
+          <>
+            <Sparkles className="h-5 w-5" aria-hidden />
+            <span>¡Listo!</span>
+          </>
+        )}
+      </button>
+    );
+  }
+
+  // Inline (desktop toolbar)
+  return (
+    <button
+      type="button"
+      disabled={!canFinalize}
+      onClick={onFinalize}
+      title={disabledTooltip}
+      aria-label={
+        canFinalize
+          ? "Listo, generar diseño final"
+          : (disabledTooltip ?? "No se puede finalizar todavía")
+      }
+      aria-disabled={!canFinalize}
+      className={[
+        "focus:ring-brand-purple inline-flex h-10 items-center gap-2 rounded-md px-4 text-sm font-semibold transition-all focus:ring-2 focus:ring-offset-2 focus:outline-none",
+        canFinalize
+          ? "bg-brand-purple hover:bg-brand-purple-dark shadow-brand-purple/20 hover:shadow-brand-purple/30 text-white shadow-md hover:shadow-lg"
+          : "bg-brand-purple/30 cursor-not-allowed text-white",
+      ].join(" ")}
+    >
+      {isFinalizing ? (
+        <>
+          <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
+          <span>Guardando diseño...</span>
+        </>
+      ) : (
+        <>
+          <Sparkles className="h-4 w-4" aria-hidden />
+          <span>¡Listo!</span>
+        </>
+      )}
+    </button>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────
+//  StudioFinalizeFab — FAB ¡Listo! mobile (montado desde editor)
+// ──────────────────────────────────────────────────────────────────
+//
+// Hijo del editor (no del toolbar) porque debe flotar fuera del header
+// sticky. Lee del store los mismos selectores que el toolbar.
+
+export function StudioFinalizeFab({
+  store,
+  onFinalize,
+}: {
+  store: StoreApi<StudioStoreState>;
+  onFinalize: () => void;
+}) {
+  const isFinalizing = useStore(store, (s) => s.isFinalizing);
+  const filled = useStore(store, selectFilledSlotCount);
+  const total = useStore(store, selectTotalSlotCount);
+  const complete = useStore(store, selectIsComplete);
+  const canFinalize = complete && !isFinalizing;
+  const disabledTooltip = !complete
+    ? `Faltan ${total - filled} fotos por cargar antes de poder finalizar`
+    : undefined;
+  return (
+    <FinalizeButton
+      isFinalizing={isFinalizing}
+      canFinalize={canFinalize}
+      disabledTooltip={disabledTooltip}
+      onFinalize={onFinalize}
+      variant="fab"
+    />
   );
 }
 

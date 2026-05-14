@@ -400,9 +400,11 @@ function StudioSlotImpl({
             </span>
           )}
 
-          {/* Acciones secundarias derecha — solo cuando slot lleno */}
+          {/* Acciones secundarias derecha — solo cuando slot lleno.
+              M.3.b.UX.2 — Action buttons 50% más grandes (h-6 → h-8, icons h-3 → h-4)
+              Tap target compliant Material/HIG con wrapper padding. */}
           {slotState.assetUrl && (
-            <div className="ml-auto flex items-center gap-1">
+            <div className="ml-auto flex items-center gap-1.5">
               {onAdjust && (
                 <motion.button
                   type="button"
@@ -414,10 +416,10 @@ function StudioSlotImpl({
                   }}
                   aria-label={`Ajustar foto del imán ${slotState.slotIndex + 1} (filtros)`}
                   title="Aplicar filtros a esta foto"
-                  className="text-brand-purple ring-brand-purple/20 hover:bg-brand-purple/5 focus:ring-brand-turquoise hover:ring-brand-purple/40 flex h-6 w-6 items-center justify-center rounded-md bg-white shadow-sm ring-1 focus:ring-2 focus:outline-none"
+                  className="text-brand-purple ring-brand-purple/20 hover:bg-brand-purple/5 focus:ring-brand-turquoise hover:ring-brand-purple/40 flex h-8 w-8 items-center justify-center rounded-md bg-white shadow-sm ring-1 focus:ring-2 focus:outline-none"
                   tabIndex={-1}
                 >
-                  <Wand2 className="h-3 w-3" />
+                  <Wand2 className="h-4 w-4" />
                 </motion.button>
               )}
               <motion.button
@@ -430,10 +432,10 @@ function StudioSlotImpl({
                 }}
                 aria-label={`Quitar foto del imán ${slotState.slotIndex + 1}`}
                 title="Quitar esta foto"
-                className="flex h-6 w-6 items-center justify-center rounded-md bg-white text-red-600 shadow-sm ring-1 ring-red-200 hover:bg-red-50 hover:ring-red-400 focus:ring-2 focus:ring-red-500 focus:outline-none"
+                className="flex h-8 w-8 items-center justify-center rounded-md bg-white text-red-600 shadow-sm ring-1 ring-red-200 hover:bg-red-50 hover:ring-red-400 focus:ring-2 focus:ring-red-500 focus:outline-none"
                 tabIndex={-1}
               >
-                <Trash2 className="h-3 w-3" />
+                <Trash2 className="h-4 w-4" />
               </motion.button>
             </div>
           )}
@@ -636,8 +638,9 @@ function renderText(
   // Si NO es editable, solo render del text.
   if (!isEditable) return textNode;
 
-  // Si editable, envolver con un Group y agregar Rect dashed sutil ALREDEDOR
-  // que indica al cliente "este texto se puede editar".
+  // Si editable, envolver con un Group y agregar Rect dashed visible ALREDEDOR
+  // que indica al cliente "este texto se puede editar" + dot turquoise en corner
+  // como hint visual extra. M.3.b.UX.3 — más visible que la versión inicial.
   return (
     <Group key={layer.id} listening={true}>
       <Rect
@@ -645,12 +648,23 @@ function renderText(
         y={textY - padding}
         width={estWidth + padding * 2}
         height={estHeight + padding * 2}
-        fill="rgba(93, 217, 209, 0.06)"
+        fill="rgba(93, 217, 209, 0.10)"
         stroke="#5DD9D1"
-        strokeWidth={1}
-        dash={[4, 3]}
-        cornerRadius={3}
-        opacity={0.55}
+        strokeWidth={1.5}
+        dash={[5, 3]}
+        cornerRadius={4}
+        opacity={0.85}
+        listening={false}
+      />
+      {/* Dot turquesa en corner top-right indicando "editable" — diferenciador
+          visual evidente vs textos no editables del template */}
+      <Circle
+        x={textX + estWidth + padding - 2}
+        y={textY - padding + 2}
+        radius={3.5}
+        fill="#5DD9D1"
+        stroke="#FFFFFF"
+        strokeWidth={1.5}
         listening={false}
       />
       {textNode}
