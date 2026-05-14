@@ -27,18 +27,68 @@ Cualquier color fuera de esta paleta debe ser justificado en un comentario al in
 | `neutral-900` | `#262626` | Texto principal, iconos sobre fondo claro                   |
 | `neutral-500` | `#666666` | Texto secundario, hints, captions                           |
 
-## Reglas de uso por estilo
+## Mapping concepto → paleta sugerida (la IA usa esto para decidir sola)
 
-| Estilo de plantilla               | Paleta sugerida                                       |
-| --------------------------------- | ----------------------------------------------------- |
-| **Polaroid clásico romántico**    | gold + white + cream + accents pink                   |
-| **Cumpleaños kawaii**             | yellow + pink + purple + coral + sparkles             |
-| **Boda elegante**                 | gold + cream + sage-green + neutral-900               |
-| **Baby shower**                   | blush + pink + sage-green + cream                     |
-| **Minimalista moderno**           | turquoise OR purple + neutral-900 + white             |
-| **Social post (Instagram style)** | white + neutral-900 + `#3897F0` (azul UI excepcional) |
-| **Vintage / retro**               | gold + coral + neutral-500 + cream                    |
-| **Corporate / business**          | purple-dark + turquoise + neutral-900 + white         |
+| Concepto / vibe                 | Dominante (60%)     | Acentos (30%)                  | Neutro (10%) | Mood                |
+| ------------------------------- | ------------------- | ------------------------------ | ------------ | ------------------- |
+| **Polaroid clásico romántico**  | gold                | pink                           | cream        | Elegante, atemporal |
+| **Cumpleaños kawaii**           | yellow              | pink + coral                   | cream        | Alegre, infantil    |
+| **Boda elegante**               | gold                | sage-green                     | cream        | Sofisticado         |
+| **Baby shower**                 | blush               | sage-green + yellow (sparkles) | cream        | Tierno, suave       |
+| **Minimalista moderno**         | turquoise OR purple | neutral-900                    | white        | Limpio, urbano      |
+| **Social post (Instagram)**     | white               | neutral-900 + `#3897F0`        | neutral-500  | Tecnológico, viral  |
+| **Vintage / retro**             | gold + coral        | sage-green                     | cream        | Nostálgico          |
+| **Corporate / business**        | purple-dark         | turquoise                      | white        | Profesional         |
+| **Día del padre**               | turquoise           | gold (sparkles)                | cream        | Sobrio, fuerte      |
+| **Navidad / fiestas**           | coral               | gold + sage-green              | cream        | Cálido, festivo     |
+| **Aniversario**                 | gold                | pink                           | cream        | Romántico maduro    |
+| **Mascotas / pet love**         | sage-green          | yellow + blush                 | cream        | Tierno, natural     |
+| **Halloween kawaii**            | purple-dark         | coral + yellow                 | cream        | Misterioso lúdico   |
+| **Graduación**                  | purple              | gold                           | cream        | Logro, prestigio    |
+| **Día de la madre**             | pink                | blush + sage-green             | cream        | Cálido, afectivo    |
+| **Verano / playa**              | turquoise           | yellow + coral                 | cream        | Energético, fresco  |
+| **Bautismo / primera comunión** | sage-green          | gold                           | white        | Sereno, espiritual  |
+
+## Reglas para componer paletas brand (cuando elegís sola)
+
+**Regla 1 — Jerarquía cromática 1 + 2 + 1**:
+
+- 1 color **DOMINANTE** (~60% de la decoración visual)
+- 2 colores **ACENTOS** (~30%)
+- 1 color **NEUTRO** (~10%, fondos, separadores)
+
+NO usar 4+ colores con peso igual — queda saturado y "tienda barata".
+
+**Regla 2 — Coherencia tonal**:
+
+- Combinar SOLO cálidos entre sí (pink + coral + yellow + gold), o
+- SOLO fríos (purple + turquoise + sage-green), o
+- 1 cálido + 1 frío contrastantes (turquoise + coral) = efecto pop
+- NUNCA mezclar 3+ cálidos con 3+ fríos = confunde
+
+**Regla 3 — Brand recognition**:
+AL MENOS UN color brand fuerte debe estar presente (purple, turquoise, pink, coral, yellow, gold). No usar solo neutros + cream → la plantilla pierde identidad Lucams.
+
+**Regla 4 — Cuándo usar gold**:
+
+- Eventos elegantes (bodas, aniversarios, graduación, comunión)
+- Decoraciones tipo "corner ornament" o "wreath"
+- Combinado con cream y/o neutral-900 = efecto "premium"
+- NO usar para infantil → para infantil usar yellow
+
+**Regla 5 — Cuándo usar yellow**:
+
+- Sparkles, confetti, alegría
+- Infantil (cumpleaños niño, baby shower neutro)
+- Verano, sol
+- Pequeñas dosis (sparkles, dots) — yellow grande es agresivo
+
+**Regla 6 — Cuándo usar purple-dark (#3D2E5C)**:
+
+- Headings, corporate, halloween kawaii
+- Como dominante en plantillas "sobrias" o "misteriosas"
+- Combina bien con turquoise (contraste brand)
+- NO usar para baby shower, primavera, eventos suaves
 
 ## Color azul Instagram excepcional
 
