@@ -17,6 +17,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Upload, Image as ImageIcon, Sparkles, Wand2, Loader2, Check } from "lucide-react";
 import type { StoreApi } from "zustand";
 import { useStore } from "zustand";
+import { useShallow } from "zustand/react/shallow";
 import { uploadDesignAssetAction } from "@/features/personalization/actions";
 import { selectSlotProgress, type StudioStoreState } from "./lib/store";
 import type { StudioAsset, StudioTemplate } from "./types";
@@ -37,7 +38,7 @@ export function StudioSidebar({ store, productName, productSku }: StudioSidebarP
   const templates = useStore(store, (s) => s.templates);
   const selectedTemplateId = useStore(store, (s) => s.selectedTemplateId);
   const designId = useStore(store, (s) => s.designId);
-  const progress = useStore(store, selectSlotProgress);
+  const progress = useStore(store, useShallow(selectSlotProgress));
   const addAsset = useStore(store, (s) => s.addAsset);
   const autoFillSlots = useStore(store, (s) => s.autoFillSlots);
   const applyTemplate = useStore(store, (s) => s.applyTemplate);

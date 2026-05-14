@@ -24,6 +24,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useStore } from "zustand";
 import type Konva from "konva";
 import {
   createDraftDesignAction,
@@ -64,6 +65,10 @@ export function StudioEditor({
   const [bootError, setBootError] = useState<string | null>(null);
   const [booting, setBooting] = useState(true);
   const slotStagesRef = useRef<Map<number, Konva.Stage | null>>(new Map());
+
+  // Subscribir reactivamente al modal — assets/designId del store, no snapshot
+  const modalAssets = useStore(store, (s) => s.assets);
+  const modalDesignId = useStore(store, (s) => s.designId);
 
   // ──────────── Boot: crear draft (o recuperar existente) ────────────
   useEffect(() => {
@@ -310,8 +315,8 @@ export function StudioEditor({
         isOpen={pickerSlotIndex !== null}
         slotIndex={pickerSlotIndex}
         totalSlots={photoSlots}
-        assets={store.getState().assets}
-        designId={store.getState().designId}
+        assets={modalAssets}
+        designId={modalDesignId}
         onClose={() => setPickerSlotIndex(null)}
         onSelectAsset={handleAssetSelected}
         onAssetUploaded={handleAssetUploaded}

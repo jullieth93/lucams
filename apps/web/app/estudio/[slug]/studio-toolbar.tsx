@@ -21,6 +21,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft, Check, Loader2, AlertCircle, Sparkles } from "lucide-react";
 import type { StoreApi } from "zustand";
 import { useStore } from "zustand";
+import { useShallow } from "zustand/react/shallow";
 import { selectSlotProgress, type StudioStoreState } from "./lib/store";
 
 type StudioToolbarProps = {
@@ -33,7 +34,7 @@ type StudioToolbarProps = {
 export function StudioToolbar({ store, productName, productSlug, onFinalize }: StudioToolbarProps) {
   const autoSaveStatus = useStore(store, (s) => s.autoSaveStatus);
   const isFinalizing = useStore(store, (s) => s.isFinalizing);
-  const progress = useStore(store, selectSlotProgress);
+  const progress = useStore(store, useShallow(selectSlotProgress));
 
   const canFinalize = progress.complete && !isFinalizing;
 
