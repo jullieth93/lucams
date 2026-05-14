@@ -93,6 +93,26 @@ export function StudioCanvasGrid({
     return canvasData.gridLayout;
   }, [canvasData, containerWidth]);
 
+  // A2.6 — Crossfade visual al cambiar plantilla. Detectamos cambio en
+  // unitTemplate (referencia distinta = template aplicado nuevo) y disparamos
+  // un overlay degradé que se desvanece. Los Konva Stages NO remontan.
+  // Los hooks DEBEN ir antes del early return (rules-of-hooks).
+  const [transitioning, setTransitioning] = useState(false);
+  const prevTemplateRef = useRef<CanvasDataV2["unitTemplate"] | null>(null);
+  useEffect(() => {
+    if (!canvasData?.unitTemplate) return;
+    if (prevTemplateRef.current === null) {
+      prevTemplateRef.current = canvasData.unitTemplate;
+      return;
+    }
+    if (prevTemplateRef.current !== canvasData.unitTemplate) {
+      prevTemplateRef.current = canvasData.unitTemplate;
+      setTransitioning(true);
+      const t = window.setTimeout(() => setTransitioning(false), 500);
+      return () => window.clearTimeout(t);
+    }
+  }, [canvasData?.unitTemplate]);
+
   if (!canvasData || !layout) {
     return (
       <div className="flex items-center justify-center py-12">
@@ -143,7 +163,7 @@ export function StudioCanvasGrid({
   return (
     <div
       ref={containerRef}
-      className="mx-auto w-full"
+      className="relative mx-auto w-full"
       style={{ maxWidth: MAX_VIEWPORT_WIDTH }}
       aria-label="Lienzo del Estudio de Personalización"
     >
@@ -196,6 +216,20 @@ export function StudioCanvasGrid({
           ))}
         </AnimatePresence>
       </motion.div>
+
+      {/* A2.6 — Overlay de transición al cambiar plantilla */}
+      <AnimatePresence>
+        {transitioning && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: [0, 0.7, 0] }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.5, times: [0, 0.3, 1], ease: "easeOut" }}
+            className="from-brand-turquoise/15 via-brand-cream/60 to-brand-purple/15 pointer-events-none absolute inset-0 bg-gradient-to-br backdrop-blur-[2px]"
+            aria-hidden
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

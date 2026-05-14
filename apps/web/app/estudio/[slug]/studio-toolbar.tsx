@@ -32,6 +32,12 @@ type StudioToolbarProps = {
   store: StoreApi<StudioStoreState>;
   productName: string;
   productSlug: string;
+  /** A1.1 — URL de la imagen del producto (mini avatar en el header). */
+  productImageUrl?: string;
+  /** A1.1 — Tamaño físico del imán, ej "5×5 cm". */
+  productSizeCm?: string;
+  /** A1.1 — Cantidad total de imanes del pack (ej 6, 12). */
+  productSlotCount?: number;
   /** M.3.b.B.1 — toggle bleed + safe area overlay guides. */
   showRealismGuides?: boolean;
   /** M.3.b.B.1 — callback al cambiar el toggle. */
@@ -43,6 +49,9 @@ export function StudioToolbar({
   store,
   productName,
   productSlug,
+  productImageUrl,
+  productSizeCm,
+  productSlotCount,
   showRealismGuides,
   onToggleRealismGuides,
   onFinalize,
@@ -76,13 +85,39 @@ export function StudioToolbar({
           <span className="hidden sm:inline">Volver</span>
         </Link>
 
+        {/* A1.1 — Hero del estudio: avatar producto + nombre + medidas físicas grandes */}
         <div className="hidden flex-1 items-center justify-center gap-3 md:flex">
-          <p className="text-brand-purple-dark text-sm font-semibold">
-            Personalizar: {productName}
-          </p>
-          <span aria-hidden className="text-brand-purple/30">
-            ·
-          </span>
+          {productImageUrl && (
+            <div className="ring-brand-purple/15 relative h-10 w-10 overflow-hidden rounded-md ring-1 shadow-sm">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={productImageUrl}
+                alt=""
+                className="h-full w-full object-cover"
+                aria-hidden
+              />
+            </div>
+          )}
+          <div className="flex flex-col items-start leading-tight">
+            <p className="text-brand-purple-dark text-sm font-semibold">
+              Personalizar · {productName}
+            </p>
+            {(productSizeCm || productSlotCount) && (
+              <p className="text-brand-purple-dark/55 mt-0.5 flex items-center gap-1.5 text-[11px] font-medium">
+                {productSizeCm && (
+                  <span className="bg-brand-cream text-brand-purple-dark ring-brand-purple/10 inline-flex items-center gap-1 rounded-full px-2 py-0.5 ring-1">
+                    📐 {productSizeCm} cm
+                  </span>
+                )}
+                {productSlotCount && (
+                  <span className="text-brand-purple-dark/55">
+                    · {productSlotCount} {productSlotCount === 1 ? "imán" : "imanes"}
+                  </span>
+                )}
+              </p>
+            )}
+          </div>
+          <span aria-hidden className="text-brand-purple/20">·</span>
           <ProgressBadge filled={filled} total={total} />
         </div>
 

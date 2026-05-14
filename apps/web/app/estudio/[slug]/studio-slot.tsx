@@ -30,8 +30,8 @@
 
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from "react";
-import { motion } from "framer-motion";
-import { Plus, Trash2, Wand2 } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Camera, Trash2, Wand2 } from "lucide-react";
 import { Stage, Layer, Rect, Image as KonvaImage, Group, Text, Circle, Path } from "react-konva";
 import useImage from "use-image";
 import Konva from "konva";
@@ -257,54 +257,104 @@ function StudioSlotImpl({
         />
       </Stage>
 
-      {/* Overlay placeholder cuando slot está vacío */}
-      {!slotState.assetUrl && (
-        <div
-          className="bg-brand-cream/85 absolute inset-0 flex flex-col items-center justify-center"
-          aria-hidden="true"
-        >
-          <div className="bg-brand-purple/15 flex h-10 w-10 items-center justify-center rounded-full">
-            <Plus className="text-brand-purple h-5 w-5" />
-          </div>
-          <span className="text-brand-purple mt-2 text-2xl font-bold">
-            {slotState.slotIndex + 1}
-          </span>
-          <span className="text-brand-purple-dark/60 mt-1 text-xs">Click para subir</span>
-        </div>
-      )}
-
-      {/* Botones flotantes cuando slot está lleno: ajustar (filtros) + quitar */}
-      {slotState.assetUrl && (
-        <div className="absolute top-1.5 right-1.5 flex flex-col gap-1.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
-          {onAdjust && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onAdjust();
-              }}
-              aria-label={`Ajustar foto del imán ${slotState.slotIndex + 1} (filtros)`}
-              title="Aplicar filtros a esta foto"
-              className="text-brand-purple flex h-7 w-7 items-center justify-center rounded-full bg-white/95 shadow hover:bg-white focus:ring-2 focus:ring-brand-turquoise focus:outline-none"
-              tabIndex={-1}
-            >
-              <Wand2 className="h-3.5 w-3.5" />
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onClear();
-            }}
-            aria-label={`Quitar foto del imán ${slotState.slotIndex + 1}`}
-            className="flex h-7 w-7 items-center justify-center rounded-full bg-white/95 text-red-700 shadow hover:bg-white focus:ring-2 focus:ring-red-500 focus:outline-none"
-            tabIndex={-1}
+      {/* A1.4 — Empty state premium: pulse + camera icon + dashed border interno */}
+      <AnimatePresence>
+        {!slotState.assetUrl && (
+          <motion.div
+            key="empty"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.25 }}
+            className="from-brand-cream/95 to-brand-cream/85 absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br backdrop-blur-[1px]"
+            aria-hidden="true"
           >
-            <Trash2 className="h-3.5 w-3.5" />
-          </button>
-        </div>
-      )}
+            {/* Dashed border interno animado */}
+            <div className="border-brand-purple/25 absolute inset-2 rounded-md border-2 border-dashed" />
+
+            {/* Camera icon con bounce sutil */}
+            <motion.div
+              animate={{ y: [0, -3, 0] }}
+              transition={{ duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
+              className="from-brand-purple/15 to-brand-pink/15 ring-brand-purple/10 flex h-12 w-12 items-center justify-center rounded-full bg-gradient-to-br shadow-sm ring-1"
+            >
+              <Camera className="text-brand-purple h-5 w-5" />
+            </motion.div>
+
+            {/* Número grande del slot */}
+            <span className="text-brand-purple mt-2 text-2xl font-bold tabular-nums leading-none">
+              {slotState.slotIndex + 1}
+            </span>
+
+            {/* Hint contextual: cambia si está en drop-state */}
+            <span
+              className={[
+                "mt-1 text-[10px] font-medium uppercase tracking-wide transition-colors",
+                isDropping ? "text-brand-turquoise" : "text-brand-purple-dark/55",
+              ].join(" ")}
+            >
+              {isDropping ? "Soltá la foto" : "Click o arrastrá"}
+            </span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* A1.5 — Filled hover premium: glassmorphism + acciones flotantes con stagger */}
+      <AnimatePresence>
+        {slotState.assetUrl && (
+          <motion.div
+            key="filled-actions"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="pointer-events-none absolute inset-0 opacity-0 transition-opacity duration-200 group-hover:opacity-100 group-focus-within:opacity-100"
+          >
+            {/* Glassmorphism overlay sutil cuando hover */}
+            <div className="absolute inset-0 bg-gradient-to-b from-black/0 via-black/0 to-black/15" />
+
+            {/* Acciones flotantes top-right con stagger */}
+            <motion.div
+              initial={{ x: 8, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
+              className="pointer-events-auto absolute top-2 right-2 flex flex-col gap-1.5"
+            >
+              {onAdjust && (
+                <motion.button
+                  type="button"
+                  whileHover={{ scale: 1.08 }}
+                  whileTap={{ scale: 0.94 }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onAdjust();
+                  }}
+                  aria-label={`Ajustar foto del imán ${slotState.slotIndex + 1} (filtros)`}
+                  title="Aplicar filtros a esta foto"
+                  className="text-brand-purple ring-brand-purple/10 flex h-8 w-8 items-center justify-center rounded-full bg-white/90 shadow-md ring-1 backdrop-blur-sm hover:bg-white focus:ring-2 focus:ring-brand-turquoise focus:outline-none"
+                  tabIndex={-1}
+                >
+                  <Wand2 className="h-3.5 w-3.5" />
+                </motion.button>
+              )}
+              <motion.button
+                type="button"
+                whileHover={{ scale: 1.08 }}
+                whileTap={{ scale: 0.94 }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onClear();
+                }}
+                aria-label={`Quitar foto del imán ${slotState.slotIndex + 1}`}
+                title="Quitar esta foto"
+                className="flex h-8 w-8 items-center justify-center rounded-full bg-white/90 text-red-700 shadow-md ring-1 ring-red-200 backdrop-blur-sm hover:bg-white focus:ring-2 focus:ring-red-500 focus:outline-none"
+                tabIndex={-1}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </motion.button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Badge del slot cuando está lleno (número discreto esquina) */}
       {slotState.assetUrl && (

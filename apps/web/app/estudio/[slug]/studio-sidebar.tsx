@@ -15,6 +15,7 @@
 import { useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Upload, Image as ImageIcon, Sparkles, Wand2, Loader2, Check } from "lucide-react";
+import { toast } from "sonner";
 import type { StoreApi } from "zustand";
 import { useStore } from "zustand";
 import { uploadDesignAssetAction } from "@/features/personalization/actions";
@@ -244,7 +245,15 @@ export function StudioSidebar({ store, productName, productSku }: StudioSidebarP
                 key={tpl.id}
                 template={tpl}
                 isSelected={tpl.id === selectedTemplateId}
-                onClick={() => applyTemplate(tpl)}
+                onClick={() => {
+                  if (tpl.id === selectedTemplateId) return; // no-op si ya está
+                  applyTemplate(tpl);
+                  // A2.7 — Toast premium feedback
+                  toast.success(`Plantilla "${tpl.name}" aplicada`, {
+                    duration: 2200,
+                    icon: "✨",
+                  });
+                }}
               />
             ))}
           </div>
@@ -304,30 +313,54 @@ function TemplateCard({
   isSelected: boolean;
   onClick: () => void;
 }) {
+  // A1.3 — Card visual premium: hover scale + ring brand-turquoise al seleccionar
+  // + thumbnail aspect-square con bg cream y border sutil + check ✓ overlay si selected.
   return (
-    <button
+    <motion.button
       type="button"
       role="radio"
       aria-checked={isSelected}
-      aria-label={`Plantilla ${template.name}`}
+      aria-label={`Plantilla ${template.name}${isSelected ? " (seleccionada)" : ""}`}
       onClick={onClick}
+      whileHover={{ scale: isSelected ? 1 : 1.03, y: isSelected ? 0 : -2 }}
+      whileTap={{ scale: 0.97 }}
+      transition={{ type: "spring", stiffness: 320, damping: 22 }}
       className={[
-        "flex flex-col gap-1.5 rounded-md p-1.5 text-left transition-all focus:ring-2 focus:outline-none",
+        "group relative flex flex-col gap-1.5 overflow-hidden rounded-lg p-1.5 text-left transition-shadow focus:outline-none",
         isSelected
-          ? "bg-brand-purple/10 ring-brand-purple ring-2"
-          : "hover:bg-brand-purple/5 ring-brand-purple/10 focus:ring-brand-turquoise ring-1",
+          ? "bg-gradient-to-br from-brand-turquoise/10 to-brand-purple/10 ring-2 ring-brand-turquoise shadow-md"
+          : "ring-1 ring-brand-purple/15 hover:ring-brand-purple/40 hover:shadow-md focus-visible:ring-2 focus-visible:ring-brand-turquoise",
       ].join(" ")}
     >
-      <div className="bg-brand-purple/5 aspect-square overflow-hidden rounded">
+      <div className="bg-brand-cream/60 relative aspect-square overflow-hidden rounded-md">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={template.previewUrl}
           alt={template.name}
-          className="h-full w-full object-cover"
+          className="h-full w-full object-contain transition-transform duration-300 group-hover:scale-105"
           loading="lazy"
         />
+        {/* Check ✓ overlay esquina al seleccionar */}
+        {isSelected && (
+          <motion.div
+            initial={{ scale: 0, rotate: -90 }}
+            animate={{ scale: 1, rotate: 0 }}
+            transition={{ type: "spring", stiffness: 380, damping: 18 }}
+            className="bg-brand-turquoise absolute top-1.5 right-1.5 flex h-6 w-6 items-center justify-center rounded-full shadow-md ring-2 ring-white"
+            aria-hidden
+          >
+            <Check className="h-3.5 w-3.5 text-white" strokeWidth={3} />
+          </motion.div>
+        )}
       </div>
-      <p className="text-brand-purple-dark line-clamp-2 text-xs font-medium">{template.name}</p>
-    </button>
+      <p
+        className={[
+          "line-clamp-2 px-0.5 text-xs font-semibold transition-colors",
+          isSelected ? "text-brand-purple-dark" : "text-brand-purple-dark/75",
+        ].join(" ")}
+      >
+        {template.name}
+      </p>
+    </motion.button>
   );
 }

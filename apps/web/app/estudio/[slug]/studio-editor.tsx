@@ -38,6 +38,8 @@ import { StudioSidebar } from "./studio-sidebar";
 import { StudioToolbar } from "./studio-toolbar";
 import { StudioAssetPickerModal } from "./studio-asset-picker-modal";
 import { StudioPhotoAdjustModal } from "./studio-photo-adjust-modal";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { Sparkles } from "lucide-react";
 import { createStudioStore } from "./lib/store";
 import type { CanvasData, CanvasDataV2, StudioAsset, StudioProduct, StudioTemplate } from "./types";
 import { ensureCanvasV2 } from "./lib/canvas-migrate";
@@ -71,6 +73,8 @@ export function StudioEditor({
   // M.3.b.B.1 — Toggle bleed + safe area guides (default off para que cliente
   // no se confunda con líneas de seguridad si no las necesita ver).
   const [showRealismGuides, setShowRealismGuides] = useState(false);
+  // A2.8 — Sheet drawer mobile state (sidebar bottom slide-up).
+  const [mobileSheetOpen, setMobileSheetOpen] = useState(false);
   const slotStagesRef = useRef<Map<number, Konva.Stage | null>>(new Map());
 
   // M.3.b.A2.5 — Lee `sizeCm` del producto para badge visual en cada slot.
@@ -288,12 +292,85 @@ export function StudioEditor({
   }
 
   if (booting) {
+    // A1.2 — Skeleton premium: hero card con shimmer + grid de placeholders pulse
+    // + mensaje contextual. Reemplaza el spinner básico.
+    const skelCount = Math.min(photoSlots, 6);
     return (
-      <div className="flex flex-1 items-center justify-center p-12">
-        <div className="text-brand-purple/70 flex items-center gap-3">
-          <div className="border-brand-purple/30 border-t-brand-purple h-6 w-6 animate-spin rounded-full border-2" />
-          <span>Preparando lienzo...</span>
+      <div className="bg-gradient-to-b from-brand-cream/40 to-white flex flex-1 flex-col">
+        {/* Header skeleton */}
+        <div className="border-brand-purple/10 sticky top-0 z-10 border-b bg-white/95 backdrop-blur">
+          <div className="flex items-center justify-between gap-4 px-4 py-3 sm:px-6">
+            <div className="bg-brand-purple/10 h-6 w-20 animate-pulse rounded" />
+            <div className="hidden items-center gap-3 md:flex">
+              <div className="bg-brand-purple/10 h-10 w-10 animate-pulse rounded-md" />
+              <div className="flex flex-col gap-1.5">
+                <div className="bg-brand-purple/10 h-3 w-40 animate-pulse rounded" />
+                <div className="bg-brand-purple/10 h-2 w-24 animate-pulse rounded" />
+              </div>
+            </div>
+            <div className="bg-brand-purple/15 h-9 w-24 animate-pulse rounded-md" />
+          </div>
         </div>
+
+        {/* Body: mascote contextual + grid de slots fantasma */}
+        <div className="flex flex-1 flex-col items-center justify-center gap-6 p-8">
+          <div className="flex items-center gap-3">
+            {/* Mascote bobbing */}
+            <div className="relative h-12 w-12">
+              <div className="from-brand-purple/40 via-brand-pink/30 to-brand-yellow/30 absolute inset-0 animate-pulse rounded-full bg-gradient-to-br shadow-md" />
+              <div className="absolute inset-1 flex items-center justify-center rounded-full bg-white">
+                <span className="text-xl" role="img" aria-label="mascote">
+                  💜
+                </span>
+              </div>
+            </div>
+            <div className="flex flex-col">
+              <p className="text-brand-purple-dark text-sm font-bold">
+                Preparando tu lienzo...
+              </p>
+              <p className="text-brand-purple-dark/55 text-xs">
+                Cargando tu producto y plantillas en un instante ✨
+              </p>
+            </div>
+          </div>
+
+          {/* Mini grid skeleton de slots */}
+          <div
+            className="grid w-full max-w-md gap-2"
+            style={{
+              gridTemplateColumns: `repeat(${Math.min(3, skelCount)}, 1fr)`,
+            }}
+            aria-hidden
+          >
+            {Array.from({ length: skelCount }).map((_, i) => (
+              <div
+                key={i}
+                className="aspect-square overflow-hidden rounded-md bg-gradient-to-br from-brand-cream/80 to-white shadow-sm"
+              >
+                {/* Shimmer overlay */}
+                <div className="relative h-full w-full overflow-hidden">
+                  <div
+                    className="absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/60 to-transparent animate-shimmer"
+                    style={{ animationDelay: `${i * 0.12}s` }}
+                  />
+                  <div className="absolute inset-3 rounded border-2 border-dashed border-brand-purple/15" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* CSS shimmer keyframes inline (sin agregar al globals — local al componente) */}
+        <style jsx>{`
+          @keyframes shimmer {
+            100% {
+              transform: translateX(100%);
+            }
+          }
+          :global(.animate-shimmer) {
+            animation: shimmer 1.8s infinite;
+          }
+        `}</style>
       </div>
     );
   }
@@ -304,20 +381,24 @@ export function StudioEditor({
         store={store}
         productName={product.name}
         productSlug={product.slug}
+        productImageUrl={product.images?.[0]}
+        productSizeCm={productConfig.sizeCm}
+        productSlotCount={photoSlots}
         showRealismGuides={showRealismGuides}
         onToggleRealismGuides={() => setShowRealismGuides((v) => !v)}
         onFinalize={handleFinalize}
       />
 
       <div className="flex flex-1 flex-col lg:flex-row">
+        {/* Sidebar desktop (visible lg+, oculto en mobile — usa sheet drawer) */}
         <aside
-          className="border-brand-purple/10 bg-white lg:w-72 lg:border-r"
+          className="border-brand-purple/10 hidden bg-white lg:block lg:w-72 lg:border-r"
           aria-label="Herramientas del Estudio"
         >
           <StudioSidebar store={store} productName={product.name} productSku={product.sku} />
         </aside>
 
-        <section className="flex flex-1 items-start justify-center p-4 lg:p-8">
+        <section className="flex flex-1 items-start justify-center p-4 pb-24 lg:p-8 lg:pb-8">
           <StudioCanvasGrid
             store={store}
             sizeCm={productConfig.sizeCm}
@@ -333,6 +414,38 @@ export function StudioEditor({
           />
         </section>
       </div>
+
+      {/* A2.8 — FAB mobile + Sheet drawer bottom para la sidebar */}
+      <Sheet open={mobileSheetOpen} onOpenChange={setMobileSheetOpen}>
+        <SheetTrigger asChild>
+          <button
+            type="button"
+            aria-label="Abrir herramientas (plantillas y fotos)"
+            className="bg-brand-purple text-white ring-brand-purple/30 fixed right-4 bottom-4 z-30 inline-flex h-14 items-center gap-2 rounded-full px-5 text-sm font-bold shadow-xl ring-4 transition-transform hover:scale-105 active:scale-95 lg:hidden"
+          >
+            <Sparkles className="h-5 w-5" />
+            <span>Editar</span>
+          </button>
+        </SheetTrigger>
+        <SheetContent
+          side="bottom"
+          className="border-brand-purple/10 max-h-[88vh] overflow-y-auto rounded-t-2xl border-t bg-white p-0 lg:hidden"
+        >
+          <SheetHeader className="border-brand-purple/10 sticky top-0 z-10 border-b bg-white/95 px-4 py-3 backdrop-blur">
+            <SheetTitle className="text-brand-purple-dark text-base font-bold">
+              Personalizar
+            </SheetTitle>
+          </SheetHeader>
+          {/* Reusa el mismo StudioSidebar — no se duplica el código */}
+          <div className="pb-6">
+            <StudioSidebar
+              store={store}
+              productName={product.name}
+              productSku={product.sku}
+            />
+          </div>
+        </SheetContent>
+      </Sheet>
 
       <StudioAssetPickerModal
         isOpen={pickerSlotIndex !== null}
