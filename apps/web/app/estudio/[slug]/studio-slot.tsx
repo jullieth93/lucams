@@ -579,20 +579,25 @@ function renderText(
   const fontStyle = override?.fontWeight ?? layer.fontWeight;
   const align = layer.align ?? "center";
 
-  // Convención del seed: text usa x/y como CENTER del bounding box.
-  // Para centrar visualmente:
-  // - Render con width = stage.width y align (default center) → texto se alinea
-  //   respecto a esa width.
-  // - x = 0 (alineamos desde el inicio del stage horizontal).
-  // - y = layer.y - fontSize/2 → centra verticalmente alrededor de layer.y.
-  // Esto solo funciona si align==="center". Para align "left"/"right" usamos x directo.
   const isEditable = layer.editable === true && onTextEdit !== undefined;
 
-  return (
+  // M.3.b.D — Bounding box aproximado para el indicador dashed visual.
+  // Solo aplica si el text es editable — el cliente VE el rect dashed sutil
+  // alrededor del texto que indica "esto se puede editar".
+  // El cálculo es aproximado (text.length × fontSize × 0.55) — Konva no
+  // expone bounding box exacto sin medirlo. Funciona OK para textos cortos.
+  const textY = layer.y - fontSize / 2;
+  const textX = align === "center" ? 0 : layer.x;
+  const estWidth =
+    align === "center" ? stage.width : Math.max(60, finalText.length * fontSize * 0.55);
+  const estHeight = fontSize * 1.2;
+  const padding = Math.max(2, fontSize * 0.1);
+
+  const textNode = (
     <Text
-      key={layer.id}
-      x={align === "center" ? 0 : layer.x}
-      y={layer.y - fontSize / 2}
+      key={`${layer.id}-text`}
+      x={textX}
+      y={textY}
       width={align === "center" ? stage.width : undefined}
       text={finalText}
       fontFamily={fontFamily}
@@ -600,7 +605,6 @@ function renderText(
       fill={fill}
       fontStyle={fontStyle}
       align={align}
-      // M.3.b.D — text editable: click abre el editor inline.
       listening={isEditable}
       onMouseEnter={(e) => {
         if (isEditable) {
@@ -627,6 +631,30 @@ function renderText(
         }
       }}
     />
+  );
+
+  // Si NO es editable, solo render del text.
+  if (!isEditable) return textNode;
+
+  // Si editable, envolver con un Group y agregar Rect dashed sutil ALREDEDOR
+  // que indica al cliente "este texto se puede editar".
+  return (
+    <Group key={layer.id} listening={true}>
+      <Rect
+        x={textX - padding}
+        y={textY - padding}
+        width={estWidth + padding * 2}
+        height={estHeight + padding * 2}
+        fill="rgba(93, 217, 209, 0.06)"
+        stroke="#5DD9D1"
+        strokeWidth={1}
+        dash={[4, 3]}
+        cornerRadius={3}
+        opacity={0.55}
+        listening={false}
+      />
+      {textNode}
+    </Group>
   );
 }
 

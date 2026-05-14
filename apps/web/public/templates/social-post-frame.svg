@@ -19,8 +19,13 @@
 -->
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
      width="590" height="590" viewBox="0 0 590 590" fill="none">
-  <!-- Card blanca de fondo -->
-  <rect width="590" height="590" fill="#FFFFFF"/>
+  <!-- Marco social post: header blanco (0-65) + footer blanco (445-590).
+       Centro (y 65-445) queda TRANSPARENTE para que la foto del cliente
+       se vea a través. Anti-patrón corregido 2026-05-14: antes había un
+       <rect width="590" height="590" fill="white"/> fullbleed que tapaba
+       la foto. -->
+  <rect x="0" y="0" width="590" height="65" fill="#FFFFFF"/>
+  <rect x="0" y="445" width="590" height="145" fill="#FFFFFF"/>
 
   <!-- ══════════════ HEADER (0-58) ══════════════ -->
   <g id="header">
