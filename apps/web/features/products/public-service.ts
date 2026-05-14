@@ -36,6 +36,15 @@ export type StorefrontProductDetail = StorefrontProductCard & {
   updatedAt: Date;
   personalizationKind: PersonalizationKind;
   personalizationSchema: unknown; // Json libre — Estudio M.3 lo interpreta según kind
+  /** M.3.b.CAT — variants del producto (cantidad/tamaño/color/etc).
+   *  Si product.variants.length > 1, el PDP muestra selector. */
+  variants: Array<{
+    id: string;
+    name: string;
+    sku: string;
+    price: number | null;
+    attributes: unknown;
+  }>;
 };
 
 // Re-export del enum Prisma para que consumidores no importen @prisma/client.
@@ -315,6 +324,18 @@ export async function getStorefrontProductBySlug(
       seoDescription: true,
       updatedAt: true,
       category: { select: { slug: true, name: true } },
+      // M.3.b.CAT — variants no-soft-deleted del producto
+      variants: {
+        where: { deletedAt: null },
+        select: {
+          id: true,
+          name: true,
+          sku: true,
+          price: true,
+          attributes: true,
+        },
+        orderBy: { createdAt: "asc" },
+      },
     },
   });
 }

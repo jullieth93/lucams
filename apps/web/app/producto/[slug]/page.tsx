@@ -21,6 +21,7 @@ import { SiteHeader } from "@/components/site-header";
 import { Button } from "@/components/ui/button";
 import { ProductGallery } from "@/components/product-detail/product-gallery";
 import { RelatedProducts } from "@/components/product-detail/related-products";
+import { VariantSelector } from "./variant-selector";
 import { formatCOP } from "@/lib/format";
 import { buildWhatsAppUrl } from "@/lib/wa";
 import { addToCartAction } from "@/app/carrito/actions";
@@ -69,9 +70,18 @@ export default async function ProductoDetallePage({
   params: Params;
   searchParams: SearchParams;
 }) {
-  const [{ slug }] = await Promise.all([params, searchParams]);
+  const [{ slug }, sp] = await Promise.all([params, searchParams]);
   const product = await getStorefrontProductBySlug(slug);
   if (!product) notFound();
+
+  // M.3.b.CAT.3 — Variant seleccionado via ?variant=id (deep-link).
+  // Si no se pasa, default al primer variant. Si product.variants.length < 2
+  // tampoco mostrar selector (sigue siendo single-variant pero invisible).
+  const requestedVariantId = typeof sp.variant === "string" ? sp.variant : undefined;
+  const selectedVariant =
+    product.variants.find((v) => v.id === requestedVariantId) ?? product.variants[0] ?? null;
+  // Precio final: variant.price override o basePrice
+  const displayPrice = selectedVariant?.price ?? product.basePrice;
 
   const related = await listRelatedProducts({
     productId: product.id,
@@ -169,7 +179,7 @@ export default async function ProductoDetallePage({
 
               <div className="flex items-baseline gap-3">
                 <span className="text-brand-purple-dark text-3xl font-bold tabular-nums">
-                  {formatCOP(product.basePrice)}
+                  {formatCOP(displayPrice)}
                 </span>
                 {hasDiscount && (
                   <span className="text-brand-purple-dark/40 text-lg tabular-nums line-through">
@@ -182,12 +192,17 @@ export default async function ProductoDetallePage({
                 {product.description}
               </p>
 
+              {/* M.3.b.CAT.3 — Selector de variants si product tiene 2+ */}
+              {product.variants.length > 1 && (
+                <VariantSelector productBasePrice={product.basePrice} variants={product.variants} />
+              )}
+
               <div className="space-y-2 pt-2">
                 {requiresPersonalization ? (
                   <>
-                    {/* CTA primaria: ir al Estudio. M.3 implementará /estudio/[slug]. */}
+                    {/* CTA primaria: ir al Estudio con variant pre-seleccionado */}
                     <Link
-                      href={`/estudio/${product.slug}`}
+                      href={`/estudio/${product.slug}${selectedVariant ? `?variant=${selectedVariant.id}` : ""}`}
                       className="bg-brand-purple hover:bg-brand-purple-dark shadow-brand-purple/30 hover:shadow-brand-purple/40 inline-flex h-12 w-full items-center justify-center gap-2 rounded-md px-6 text-base font-semibold text-white shadow-lg transition-all hover:shadow-xl"
                     >
                       <Sparkles className="h-5 w-5" />

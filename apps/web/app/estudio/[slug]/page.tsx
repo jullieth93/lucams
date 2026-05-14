@@ -25,7 +25,7 @@ import { refreshCustomerUploadSignedUrl } from "@/lib/storage";
 import type { CanvasData, StudioAsset } from "./types";
 
 type Params = Promise<{ slug: string }>;
-type SearchParams = Promise<{ designId?: string; template?: string }>;
+type SearchParams = Promise<{ designId?: string; template?: string; variant?: string }>;
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { slug } = await params;
@@ -64,7 +64,22 @@ export default async function EstudioPage({
   if (!product) notFound();
   if (product.personalizationKind === "NONE") notFound();
 
-  const photoConfig = parsePhotoProductConfig(product.personalizationSchema);
+  // M.3.b.CAT.4 — Si el query trae ?variant=id, mergear sus attributes
+  // sobre el personalizationSchema base. Esto cambia photoSlots, sizeCm,
+  // shape, etc. del editor según la variant elegida.
+  const requestedVariantId = typeof sp.variant === "string" ? sp.variant : undefined;
+  const selectedVariant =
+    product.variants.find((v) => v.id === requestedVariantId) ?? product.variants[0] ?? null;
+  const { mergeVariantOverProduct, parseVariantAttributes } =
+    await import("@/features/products/variant-schemas");
+  const mergedSchema = selectedVariant
+    ? mergeVariantOverProduct(
+        product.personalizationSchema as Record<string, unknown>,
+        parseVariantAttributes(selectedVariant.attributes),
+      )
+    : (product.personalizationSchema as Record<string, unknown>);
+
+  const photoConfig = parsePhotoProductConfig(mergedSchema);
 
   // Cargar plantillas activas del kind (globales + product-specific).
   // Filtra por aspect ratio del producto físico — solo plantillas cuyo stage
@@ -121,7 +136,8 @@ export default async function EstudioPage({
             name: product.name,
             sku: product.sku,
             personalizationKind: product.personalizationKind,
-            personalizationSchema: product.personalizationSchema,
+            // M.3.b.CAT.4 — pasar mergedSchema (variant attributes sobre base)
+            personalizationSchema: mergedSchema,
             images: product.images,
           }}
           templates={templates}

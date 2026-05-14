@@ -1,4 +1,4 @@
-.PHONY: help install build typecheck lint format migrate seed-products seed-templates test test-unit test-e2e test-rls test-load test-coverage clean
+.PHONY: help install build typecheck lint format migrate seed-products seed-templates consolidate-product-families test test-unit test-e2e test-rls test-load test-coverage clean
 
 # Makefile en repo — targets primitivos para CI y devs locales.
 # El Makefile completo de runtime (con state/log/pid management,
@@ -46,6 +46,12 @@ seed-products:
 
 seed-templates:
 	pnpm --filter @lucams/db exec node scripts/seed-templates.mjs
+
+# M.3.b.CAT.2 (2026-05-14): consolida familias de productos fragmentados
+# en variants del producto base. Soft-deletea hermanos + migra reviews +
+# genera apps/web/lib/product-redirects.ts. Idempotente.
+consolidate-product-families:
+	pnpm --filter @lucams/db exec node scripts/consolidate-product-families.mjs
 
 # ONE-SHOT (2026-05-13): actualiza /legal/* con texto Ley 2439/2024.
 # Preserva ediciones manuales (heurística: solo actualiza body que matchea seed v1).
