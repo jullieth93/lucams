@@ -38,6 +38,7 @@ import { StudioSidebar } from "./studio-sidebar";
 import { StudioToolbar, StudioFinalizeFab } from "./studio-toolbar";
 import { StudioOnboarding } from "./studio-onboarding";
 import { StudioPreviewModal } from "./studio-preview-modal";
+import { StudioGesturesHint } from "./studio-gestures-hint";
 import { StudioAssetPickerModal } from "./studio-asset-picker-modal";
 import { StudioPhotoAdjustModal } from "./studio-photo-adjust-modal";
 import { StudioTextEditorModal } from "./studio-text-editor-modal";
@@ -497,6 +498,10 @@ export function StudioEditor({
           localStorage; si ya se onboardeó (key="v1"), no muestra nada. */}
       <StudioOnboarding />
 
+      {/* M.3.b.UX.v11 — Banner de gestos primera vez (drag/zoom/dblclick).
+        Trigger: el slot tiene foto cargada. Se persiste en localStorage. */}
+      <StudioGesturesHintWrapper store={store} />
+
       {/* M.3.b.UX.bug v3 — Modal "Vista previa final" (Lucy 2026-05-15). */}
       <StudioPreviewModalWrapper
         store={store}
@@ -555,6 +560,19 @@ function StudioPreviewModalWrapper({
       isFinalizing={isFinalizing}
     />
   );
+}
+
+// ──────────────────────────────────────────────────────────────────
+//  StudioGesturesHintWrapper — suscribe al store + dispara hint cuando
+//  hay al menos 1 slot con foto cargada (señal de "cliente activo").
+// ──────────────────────────────────────────────────────────────────
+function StudioGesturesHintWrapper({ store }: { store: ReturnType<typeof createStudioStore> }) {
+  // Conteo de slots con foto. selector atómico (number primitivo, no array).
+  const filledCount = useStore(
+    store,
+    (s) => s.canvasData?.slots.filter((sl) => !!sl.assetUrl).length ?? 0,
+  );
+  return <StudioGesturesHint trigger={filledCount > 0} />;
 }
 
 // ──────────────────────────────────────────────────────────────────

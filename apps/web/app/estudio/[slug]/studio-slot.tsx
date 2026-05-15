@@ -53,6 +53,7 @@ import type {
 } from "./types";
 import { RealismShadowLayer, RealismOverlayLayer } from "./studio-realism-overlay";
 import { getFilterParams } from "./lib/photo-filters";
+import { analyzeSmartCrop, checkPhotoQuality } from "./lib/smart-crop";
 
 const FOCUS_RING = "0 0 0 3px rgb(93 217 209)"; // brand-turquoise
 
@@ -135,6 +136,15 @@ function StudioSlotImpl({
   // capturaban el ref. State es seguro y el extra rerender por drag start/end
   // es aceptable (1 vez por drag).
   const [wasDraggingPhoto, setWasDraggingPhoto] = useState(false);
+
+  // M.3.b.UX.v11 — Quality check de la foto al cargar.
+  // El slot también carga la image (además del ImagePlaceholder interno) para
+  // poder calcular quality vs sizeCm. Browser cachea — no impact performance.
+  const [photoImage] = useImage(slotState.assetUrl ?? "", "anonymous");
+  const photoQuality = useMemo(() => {
+    if (!photoImage || !slotState.assetUrl) return null;
+    return checkPhotoQuality(photoImage, sizeCm);
+  }, [photoImage, slotState.assetUrl, sizeCm]);
 
   // Expose Konva stage to parent (para snapshot al finalizar)
   useEffect(() => {
@@ -586,6 +596,32 @@ function StudioSlotImpl({
               title={`Tu imán será ${sizeCm} cm (ancho × alto)`}
             >
               📐 {sizeCm}
+            </span>
+          )}
+
+          {/* M.3.b.UX.v11 — Warning de calidad si la foto es de baja resolución
+            para imprimir al tamaño físico. Detección automática al cargar foto
+            (checkPhotoQuality calcula DPI efectivo a 300 DPI estándar imprenta). */}
+          {photoQuality && !photoQuality.ok && (
+            <span
+              className={[
+                "inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-bold ring-1",
+                photoQuality.severity === "error"
+                  ? "bg-red-50 text-red-700 ring-red-200"
+                  : "bg-amber-50 text-amber-800 ring-amber-200",
+              ].join(" ")}
+              aria-label={
+                photoQuality.severity === "error"
+                  ? "Foto demasiado chica para imprimir bien"
+                  : "Foto al límite de resolución"
+              }
+              title={
+                photoQuality.severity === "error"
+                  ? `Esta foto (${photoQuality.actualPx?.w}×${photoQuality.actualPx?.h}px) se verá pixelada al imprimir a ${sizeCm} cm. Recomendado: ${photoQuality.requiredPx?.w}×${photoQuality.requiredPx?.h}px o más.`
+                  : `Esta foto está al límite de resolución para ${sizeCm} cm. Puede verse OK, pero recomendamos ${photoQuality.requiredPx?.w}×${photoQuality.requiredPx?.h}px o más.`
+              }
+            >
+              {photoQuality.severity === "error" ? "⚠" : "ⓘ"} calidad
             </span>
           )}
 
@@ -1168,6 +1204,41 @@ function ImagePlaceholder({
       node.getLayer()?.batchDraw();
     }
   }, [image, filtersArray.length, slotState.filter]);
+
+  // M.3.b.UX.v11 (Lucy 2026-05-15) — Smart auto-crop al cargar foto NUEVA.
+  // Solo aplica si:
+  //   1. Imagen cargada
+  //   2. NO hay photoTransform persistido (foto recién subida, no editada)
+  //   3. Hay callback para persistir el offset
+  //
+  // El algoritmo usa smartcrop.js (heurística contraste + saturación + bordes,
+  // similar a Cloudinary / Apple Photos) para detectar el área más interesante
+  // de la foto y centrar esa zona en el slot. Si el cliente carga una foto
+  // familiar con caras descentradas a la derecha, el smart crop moverá la foto
+  // a la izquierda para centrar las caras en el corazón/círculo/etc.
+  //
+  // El cliente puede sobreescribir manualmente con drag/zoom igual que antes.
+  // La sugerencia es solo el punto inicial, no permanente.
+  useEffect(() => {
+    if (!image || !onPhotoTransformChange) return;
+    if (slotState.photoTransform) return; // ya editada, no auto-aplicar
+    const coverScale = Math.max(
+      layer.width / image.naturalWidth,
+      layer.height / image.naturalHeight,
+    );
+    let cancelled = false;
+    analyzeSmartCrop(image, layer.width, layer.height, coverScale).then((result) => {
+      if (cancelled || !result) return;
+      // Solo aplicar si el offset es significativo (>5% del slot). Si el centro
+      // de la imagen ya está bien encuadrado, no molestar.
+      const minOffset = Math.min(layer.width, layer.height) * 0.05;
+      if (Math.abs(result.offsetX) < minOffset && Math.abs(result.offsetY) < minOffset) return;
+      onPhotoTransformChange({ offsetX: result.offsetX, offsetY: result.offsetY });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [image, slotState.photoTransform, onPhotoTransformChange, layer.width, layer.height]);
 
   if (slotState.assetUrl && image) {
     // M.3.b.UX.v9 (Lucy 2026-05-15) — Approach industria-estándar (Mixbook, Canva,
