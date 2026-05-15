@@ -98,17 +98,22 @@ export function StudioPhotoAdjustModal({
           </div>
           <Slider
             id="zoom-slider"
-            min={100}
-            max={200}
+            min={50}
+            max={300}
             step={5}
             value={[zoomPct]}
             onValueChange={(values) => onScaleChange(values[0] / 100)}
             className="py-1"
             aria-label="Nivel de zoom de la foto"
           />
+          <div className="text-brand-purple-dark/55 flex justify-between text-[10px]">
+            <span>50% (ver toda la foto)</span>
+            <span>100% (cover)</span>
+            <span>300% (acercar)</span>
+          </div>
           <p className="text-brand-purple-dark/55 text-[11px]">
-            Arrastrá la foto en el canvas para reposicionarla. Más zoom = más detalle, menos campo
-            visible.
+            Arrastrá la foto libremente en el canvas para encuadrarla. Bajá el zoom (50-99%) si
+            querés ver toda la foto con padding. Subí (101-300%) para acercar a un detalle.
           </p>
         </div>
 

@@ -1067,77 +1067,40 @@ function ImagePlaceholder({
   }, [image, filtersArray.length, slotState.filter]);
 
   if (slotState.assetUrl && image) {
-    // M.3.b.UX.v8 (Lucy 2026-05-15) — Algoritmo MODULAR adaptativo de scale.
+    // M.3.b.UX.v9 (Lucy 2026-05-15) — Approach industria-estándar (Mixbook, Canva,
+    // Vistaprint). Después de iteraciones v6-v8 con overscan automático invisible,
+    // Lucy señaló correctamente que esos approaches "macheteaban" la solución.
     //
-    // En vez de un overscan fijo (que era el approach v6=1.15 y v7=1.5), el
-    // scale se calcula DINÁMICAMENTE para cada combinación de foto + slot,
-    // garantizando un margen mínimo de drag en CADA eje independiente del
-    // aspect ratio. Adaptable a:
-    //   - foto cuadrada en slot cuadrado
-    //   - foto vertical en slot cuadrado (caso heart)
-    //   - foto panorámica en slot horizontal (calendarios)
-    //   - foto cuadrada en slot vertical (polaroid 7×9)
-    //   - cualquier combinación
+    // Approach correcto:
+    //   1. Default scale = cover EXACTO sin overscan invisible. Cliente ve cover
+    //      por default, sin sorpresas.
+    //   2. Slider zoom AMPLIO (50%-300%) en el modal. Cliente DECIDE el zoom:
+    //      - 50%: foto más chica que slot, padding visible. Útil para encuadrar
+    //        toda la foto sin recorte.
+    //      - 100%: cover exacto (default).
+    //      - 200-300%: zoom-in fuerte para acercar a un detalle.
+    //   3. Drag SIN bounds: el cliente puede mover la foto libremente. Sin
+    //      limitaciones artificiales. Si la mueve fuera, ve el background y
+    //      entiende.
+    //   4. Warning visual sutil si la foto no cubre el slot completo.
     //
-    // Cálculo:
-    //   1. coverScale_base = max(slot.w / image.w, slot.h / image.h)
-    //      → garantiza cobertura mínima del slot.
-    //   2. Para cada eje, scale_needed_axis = (slot.size_axis × OVERSCAN_FACTOR)
-    //      / image.size_axis donde OVERSCAN_FACTOR = 1.4 (=1 + 2 × 20% margen).
-    //   3. final_base_scale = max(coverScale_base, scale_needed_X, scale_needed_Y)
-    //      → toma el más restrictivo: garantiza COBERTURA + MARGEN_MIN en ambos.
-    //   4. user_scale (slotState.photoTransform.scale ?? 1) multiplica el final
-    //      → cliente puede zoom-in extra desde el modal.
-    //
-    // Ejemplos concretos:
-    //
-    //   Foto vertical 1000×1500 en slot heart 552×552:
-    //     ratioW=0.552, ratioH=0.368, coverScale=0.552
-    //     scaleNeededX = 552×1.4/1000 = 0.773  ← restrictivo (más grande)
-    //     scaleNeededY = 552×1.4/1500 = 0.515
-    //     finalScale = max(0.552, 0.773, 0.515) = 0.773
-    //     renderedW=773, maxOffsetX=110 px ✓ (vs 41 px en v6)
-    //
-    //   Foto cuadrada 1000×1000 en slot heart 552×552:
-    //     ratioW=ratioH=0.552, coverScale=0.552
-    //     scaleNeededX=scaleNeededY = 552×1.4/1000 = 0.773
-    //     finalScale = 0.773
-    //     maxOffsetX=maxOffsetY=110 px ✓ (vs 0 px sin overscan)
-    //
-    //   Foto panorámica 2000×1000 en slot 800×600 (calendario):
-    //     ratioW=0.4, ratioH=0.6, coverScale=0.6
-    //     scaleNeededX = 800×1.4/2000 = 0.56
-    //     scaleNeededY = 600×1.4/1000 = 0.84  ← restrictivo
-    //     finalScale = 0.84
-    //     renderedW=1680, renderedH=840 → maxOffsetX=440, maxOffsetY=120 px ✓
-    //
-    // Trade-off: por default el cliente ve ~28% menos área de la foto que con
-    // cover exacto. Es el costo de garantizar reposicionamiento flexible.
-    // Industria: Vistaprint, Mixbook, Shutterfly hacen lo mismo o más zoom.
-
-    const MIN_DRAG_MARGIN_PCT = 0.2; // 20% del slot en cada lado del eje
-    const OVERSCAN_FACTOR = 1 + 2 * MIN_DRAG_MARGIN_PCT; // 1.4
+    // Es lo que hacen los editores reales. Modular, transparente, sin algoritmos
+    // ocultos que limiten al cliente.
 
     const coverScaleBase = Math.max(layer.width / image.width, layer.height / image.height);
-    const scaleNeededX = (layer.width * OVERSCAN_FACTOR) / image.width;
-    const scaleNeededY = (layer.height * OVERSCAN_FACTOR) / image.height;
-    const baseScale = Math.max(coverScaleBase, scaleNeededX, scaleNeededY);
-
     const userScale = slotState.photoTransform?.scale ?? 1;
-    const effectiveScale = Math.max(1, userScale);
-    const finalScale = baseScale * effectiveScale;
+    // Permite zoom-out hasta 0.5 (foto 50% del cover). Floor para evitar
+    // tamaños absurdos (foto < 10% del slot).
+    const effectiveScale = Math.max(0.5, Math.min(3, userScale));
+    const finalScale = coverScaleBase * effectiveScale;
 
     const renderedW = image.width * finalScale;
     const renderedH = image.height * finalScale;
 
-    const maxOffsetX = Math.max(0, (renderedW - layer.width) / 2);
-    const maxOffsetY = Math.max(0, (renderedH - layer.height) / 2);
-
+    // v9 — offset directo del transform persistido. Sin clamping artificial.
     const photoOffset = slotState.photoTransform
       ? { x: slotState.photoTransform.offsetX, y: slotState.photoTransform.offsetY }
       : { x: 0, y: 0 };
-    const clampedX = Math.max(-maxOffsetX, Math.min(maxOffsetX, photoOffset.x));
-    const clampedY = Math.max(-maxOffsetY, Math.min(maxOffsetY, photoOffset.y));
 
     const isDraggable = !!onPhotoTransformChange;
 
@@ -1181,25 +1144,14 @@ function ImagePlaceholder({
           image={image}
           width={renderedW}
           height={renderedH}
-          x={layer.width / 2 + clampedX}
-          y={layer.height / 2 + clampedY}
+          x={layer.width / 2 + photoOffset.x}
+          y={layer.height / 2 + photoOffset.y}
           offsetX={renderedW / 2}
           offsetY={renderedH / 2}
           draggable={isDraggable}
-          dragBoundFunc={
-            isDraggable
-              ? (pos) => ({
-                  x: Math.max(
-                    layer.width / 2 - maxOffsetX,
-                    Math.min(layer.width / 2 + maxOffsetX, pos.x),
-                  ),
-                  y: Math.max(
-                    layer.height / 2 - maxOffsetY,
-                    Math.min(layer.height / 2 + maxOffsetY, pos.y),
-                  ),
-                })
-              : undefined
-          }
+          // M.3.b.UX.v9 — drag SIN bounds (libre). El cliente decide dónde
+          // poner la foto. Si la mueve fuera del slot, ve el background (warning
+          // visible). Patrón industria: Mixbook, Canva, Vistaprint.
           onDragStart={() => {
             if (onPhotoDragStart) onPhotoDragStart();
           }}
