@@ -156,6 +156,30 @@ export function StudioToolbar({
         {/* AutoSave indicator mobile abajo del progress */}
         <AutoSaveIndicator status={autoSaveStatus} isFinalizing={isFinalizing} />
       </div>
+
+      {/* M.3.b.UX.bug Lucy 2026-05-15 — leyenda visible cuando "Ver guías" ON.
+        El cliente sí ve las líneas dashed pero no entiende qué significan.
+        Banner sutil amber/green con explicación corta. */}
+      {showRealismGuides && (
+        <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 border-t border-amber-200 bg-amber-50/60 px-3 py-1.5 text-[11px] text-amber-900">
+          <span className="inline-flex items-center gap-1.5">
+            <span
+              aria-hidden
+              className="inline-block h-0.5 w-4 rounded-sm bg-amber-500"
+              style={{ borderTop: "2px dashed rgb(245 158 11 / 0.85)" }}
+            />
+            Línea amarilla = borde de impresión (no pongas nada importante acá)
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <span
+              aria-hidden
+              className="inline-block h-0.5 w-4 rounded-sm"
+              style={{ borderTop: "2px dashed rgb(34 197 94 / 0.85)" }}
+            />
+            Línea verde = zona segura (texto y caras adentro de acá)
+          </span>
+        </div>
+      )}
     </header>
   );
 }

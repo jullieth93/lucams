@@ -129,11 +129,12 @@ function asset({ id, src, x = 0, y = 0, width, height, rotation = 0, opacity = 1
 //   - Mantener 1 plantilla premium: "Polaroid Instagram" basada en `ig_post.svg`,
 //     asignada al producto Fotoimanes Polaroid (SKU FI-POL-12) como plantilla
 //     premium del catálogo.
-//   - Crear 8 plantillas globales "Personalización Libre (temporal)" — una por
-//     kind personalizable — para que todo producto con personalización tenga
-//     fallback funcional mientras Lucy regenera plantillas premium con el
-//     Claude Project. Canvas blanco + image-placeholder + textos editables
-//     opcionales. Cliente sube foto y/o agrega texto.
+//   - Crear 8 plantillas globales "Personalización Libre" — una por
+//     kind personalizable — diseño minimalista intencional (canvas limpio +
+//     image-placeholder + texto editable opcional) para clientes que prefieren
+//     simplicidad sobre decoración. Cliente sube foto y/o agrega texto.
+//     No es plantilla "transitoria" sino una opción legítima del catálogo
+//     (decisión Lucy 2026-05-15: "lo básico no quiere decir malo").
 //
 // Las plantillas premium nuevas se irán agregando una a una en sesiones
 // futuras, siguiendo la matriz "Estrategia de plantilla por tipo" de ADR-037.
@@ -263,7 +264,7 @@ const templatesData = [
     },
   },
 
-  // ════════════════════ Plantillas globales "Personalización Libre (temporal)" ════════════════════
+  // ════════════════════ Plantillas globales "Personalización Libre" ════════════════════
   //
   // 8 plantillas, una por kind personalizable. Fallback funcional mientras
   // se regeneran las plantillas premium una a una. Cliente sube foto + texto
@@ -273,7 +274,7 @@ const templatesData = [
     slug: "libre-photo-pack",
     productId: null,
     kind: "PHOTO_PACK",
-    name: "Personalización Libre (temporal)",
+    name: "Personalización Libre",
     order: 99,
     previewUrl: "/templates/personalizacion-libre.svg",
     canvasData: blankCanvas({ stageW: 600, stageH: 800, includeText: true }),
@@ -282,7 +283,7 @@ const templatesData = [
     slug: "libre-photo-grid",
     productId: null,
     kind: "PHOTO_GRID",
-    name: "Personalización Libre (temporal)",
+    name: "Personalización Libre",
     order: 99,
     previewUrl: "/templates/personalizacion-libre.svg",
     canvasData: blankCanvas({ stageW: 720, stageH: 720, includeText: false }),
@@ -291,7 +292,7 @@ const templatesData = [
     slug: "libre-calendar-photo-month",
     productId: null,
     kind: "CALENDAR_PHOTO_MONTH",
-    name: "Personalización Libre (temporal)",
+    name: "Personalización Libre",
     order: 99,
     previewUrl: "/templates/personalizacion-libre.svg",
     canvasData: blankCanvas({
@@ -305,7 +306,7 @@ const templatesData = [
     slug: "libre-calendar-photo-hero",
     productId: null,
     kind: "CALENDAR_PHOTO_HERO",
-    name: "Personalización Libre (temporal)",
+    name: "Personalización Libre",
     order: 99,
     previewUrl: "/templates/personalizacion-libre.svg",
     canvasData: blankCanvas({
@@ -319,7 +320,7 @@ const templatesData = [
     slug: "libre-event-favor",
     productId: null,
     kind: "EVENT_FAVOR",
-    name: "Personalización Libre (temporal)",
+    name: "Personalización Libre",
     order: 99,
     previewUrl: "/templates/personalizacion-libre.svg",
     canvasData: blankCanvas({ stageW: 600, stageH: 800, includeText: true }),
@@ -328,7 +329,7 @@ const templatesData = [
     slug: "libre-business-logo",
     productId: null,
     kind: "BUSINESS_LOGO",
-    name: "Personalización Libre (temporal)",
+    name: "Personalización Libre",
     order: 99,
     previewUrl: "/templates/personalizacion-libre.svg",
     canvasData: blankCanvas({
@@ -342,7 +343,7 @@ const templatesData = [
     slug: "libre-custom-decor",
     productId: null,
     kind: "CUSTOM_DECOR",
-    name: "Personalización Libre (temporal)",
+    name: "Personalización Libre",
     order: 99,
     previewUrl: "/templates/personalizacion-libre.svg",
     canvasData: blankCanvas({ stageW: 600, stageH: 800, includeText: true }),
@@ -351,7 +352,7 @@ const templatesData = [
     slug: "libre-text-only",
     productId: null,
     kind: "TEXT_ONLY",
-    name: "Personalización Libre (temporal)",
+    name: "Personalización Libre",
     order: 99,
     previewUrl: "/templates/personalizacion-libre.svg",
     canvasData: {

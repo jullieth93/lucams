@@ -286,6 +286,37 @@ export function RealismOverlayLayer({
           />
         </>
       )}
+
+      {/* M.3.b.UX.bug Lucy 2026-05-15 — guides para heart shape.
+        Antes el toggle "Ver guías" no hacía nada en Corazón.
+        Replico el patrón de circle: dibujo el HEART_PATH escalado
+        a (1 - 2 × INSET) — heart con padding interno = bleed/safe interior. */}
+      {showGuides && shape === "heart" && (
+        <>
+          <Path
+            data={HEART_PATH_DATA}
+            x={bleedX}
+            y={bleedY}
+            scaleX={(stage.width - 2 * bleedX) / 100}
+            scaleY={(stage.height - 2 * bleedY) / 100}
+            stroke={BLEED_COLOR}
+            strokeWidth={Math.max(1.5, stage.width * 0.0035) / ((stage.width - 2 * bleedX) / 100)}
+            dash={DASH_BLEED.map((d) => d / ((stage.width - 2 * bleedX) / 100))}
+            listening={false}
+          />
+          <Path
+            data={HEART_PATH_DATA}
+            x={safeX}
+            y={safeY}
+            scaleX={(stage.width - 2 * safeX) / 100}
+            scaleY={(stage.height - 2 * safeY) / 100}
+            stroke={SAFE_COLOR}
+            strokeWidth={Math.max(1.5, stage.width * 0.0035) / ((stage.width - 2 * safeX) / 100)}
+            dash={DASH_SAFE.map((d) => d / ((stage.width - 2 * safeX) / 100))}
+            listening={false}
+          />
+        </>
+      )}
     </Layer>
   );
 }

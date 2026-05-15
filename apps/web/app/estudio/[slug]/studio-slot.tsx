@@ -279,7 +279,7 @@ function StudioSlotImpl({
           />
           <Layer>
             {unitTemplate.layers.map((layer) =>
-              renderLayer(layer, slotState, unitTemplate.stage, onTextEdit),
+              renderLayer(layer, slotState, unitTemplate.stage, onTextEdit, shape),
             )}
           </Layer>
           <RealismOverlayLayer
@@ -474,6 +474,7 @@ function renderLayer(
   slotState: SlotState,
   stage: { width: number; height: number },
   onTextEdit: ((layerId: string) => void) | undefined,
+  shape?: "rectangle" | "circle" | "heart" | "custom",
 ) {
   switch (layer.type) {
     case "background":
@@ -493,6 +494,7 @@ function renderLayer(
           key={layer.id}
           layer={layer as ImagePlaceholderLayer}
           slotState={slotState}
+          shape={shape}
         />
       );
     case "text": {
@@ -748,12 +750,46 @@ function renderShape(layer: ShapeLayerData) {
 //  ImagePlaceholder — renderiza el slot Konva con foto o placeholder
 // ──────────────────────────────────────────────────────────────────
 
+// M.3.b.UX.bug — Lucy 2026-05-15: cuando el producto es shape heart/circle,
+// la foto del cliente debe verse RECORTADA por esa silueta, no como rectángulo
+// con un corazón decorativo encima. Konva `Group.clipFunc` aplica un path
+// arbitrario al canvas context — solo lo dentro del path se renderea.
+function makeShapeClipFunc(
+  shape: "heart" | "circle",
+  width: number,
+  height: number,
+): (ctx: Konva.Context) => void {
+  return (ctx) => {
+    ctx.beginPath();
+    if (shape === "heart") {
+      // Mismo path bezier que HEART_PATH_DATA, ejecutado en canvas API.
+      // viewBox 100×100 → escala a (width × height).
+      const sx = width / 100;
+      const sy = height / 100;
+      ctx.moveTo(50 * sx, 82 * sy);
+      ctx.bezierCurveTo(28 * sx, 68 * sy, 6 * sx, 52 * sy, 6 * sx, 32 * sy);
+      ctx.bezierCurveTo(6 * sx, 18 * sy, 16 * sx, 8 * sy, 28 * sx, 8 * sy);
+      ctx.bezierCurveTo(38 * sx, 8 * sy, 44 * sx, 12 * sy, 50 * sx, 22 * sy);
+      ctx.bezierCurveTo(56 * sx, 12 * sy, 62 * sx, 8 * sy, 72 * sx, 8 * sy);
+      ctx.bezierCurveTo(84 * sx, 8 * sy, 94 * sx, 18 * sy, 94 * sx, 32 * sy);
+      ctx.bezierCurveTo(94 * sx, 52 * sy, 72 * sx, 68 * sy, 50 * sx, 82 * sy);
+    } else {
+      // circle — radio = min(w,h)/2
+      const r = Math.min(width, height) / 2;
+      ctx.arc(width / 2, height / 2, r, 0, Math.PI * 2);
+    }
+    ctx.closePath();
+  };
+}
+
 function ImagePlaceholder({
   layer,
   slotState,
+  shape,
 }: {
   layer: ImagePlaceholderLayer;
   slotState: SlotState;
+  shape?: "rectangle" | "circle" | "heart" | "custom";
 }) {
   const [image] = useImage(slotState.assetUrl ?? "", "anonymous");
   const imageNodeRef = useRef<Konva.Image | null>(null);
@@ -810,6 +846,13 @@ function ImagePlaceholder({
       cropY = (image.height - cropH) / 2;
     }
 
+    // M.3.b.UX.bug — clipping por silueta del producto físico (heart/circle).
+    // Group con clipFunc canvas-API recorta solo lo dentro de la silueta.
+    const clipFunc =
+      shape === "heart" || shape === "circle"
+        ? makeShapeClipFunc(shape, layer.width, layer.height)
+        : undefined;
+
     return (
       <Group
         x={x + layer.width / 2}
@@ -817,6 +860,7 @@ function ImagePlaceholder({
         offsetX={layer.width / 2}
         offsetY={layer.height / 2}
         rotation={layer.rotation ?? 0}
+        clipFunc={clipFunc}
       >
         <KonvaImage
           ref={(n) => {
@@ -825,7 +869,8 @@ function ImagePlaceholder({
           image={image}
           width={layer.width}
           height={layer.height}
-          cornerRadius={layer.cornerRadius ?? 0}
+          // Cuando hay clipFunc por shape, el cornerRadius del layer es ruido visual.
+          cornerRadius={clipFunc ? 0 : (layer.cornerRadius ?? 0)}
           crop={{ x: cropX, y: cropY, width: cropW, height: cropH }}
           // M.3.b.B.3 — filters + params (no-op si sin filter)
           filters={filtersArray.length > 0 ? filtersArray : undefined}

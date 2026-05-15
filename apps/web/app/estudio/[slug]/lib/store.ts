@@ -181,10 +181,18 @@ export function createStudioStore() {
     clearSlot: (slotIndex) => {
       const { canvasData } = get();
       if (!canvasData) return;
+      // M.3.b.UX.bug — Lucy 2026-05-15: al borrar foto, también se limpian
+      // textOverrides + filter del slot. Razón: el cliente había editado
+      // "Aceite de Coco" sobre la foto de un frasco; al borrar la foto el
+      // texto quedaba huérfano sin contexto. Mejor reset completo: pasar el
+      // slot a estado "vacío" puro. Si el cliente quiere conservar texto,
+      // que cambie de foto via picker (no clear).
       const next: CanvasDataV2 = {
         ...canvasData,
         slots: canvasData.slots.map((s) =>
-          s.slotIndex === slotIndex ? { ...s, assetId: null, assetUrl: null, filter: null } : s,
+          s.slotIndex === slotIndex
+            ? { ...s, assetId: null, assetUrl: null, filter: null, textOverrides: undefined }
+            : s,
         ),
       };
       get().setCanvasData(next);
