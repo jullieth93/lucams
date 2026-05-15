@@ -37,10 +37,7 @@
  * mejor performance que content layer.
  */
 
-import { Layer, Rect, Circle, Path } from "react-konva";
-
-const HEART_PATH_DATA =
-  "M50,82 C28,68 6,52 6,32 C6,18 16,8 28,8 C38,8 44,12 50,22 C56,12 62,8 72,8 C84,8 94,18 94,32 C94,52 72,68 50,82 Z";
+import { Layer, Rect } from "react-konva";
 
 // M.3.b.UX.bug v4 (Lucy 2026-05-15): simplificación de guías.
 // Quitamos la guía "bleed" (era la línea amarilla) — redundante porque la
@@ -71,15 +68,13 @@ type RealismProps = {
 //  RealismShadowLayer — DEBAJO del content
 // ──────────────────────────────────────────────────────────────────
 
-export function RealismShadowLayer({
-  stage,
-  shape = "rectangle",
-  cornerRadiusPx = 0,
-}: RealismProps) {
-  // Sombra direccional: ligero offset vertical + blur generoso + opacity baja
-  // Simula iluminación natural desde arriba-izquierda (típica fotografía producto).
+export function RealismShadowLayer({ stage, cornerRadiusPx = 0 }: RealismProps) {
+  // M.3.b.UX.v5 (Lucy 2026-05-15) — el imán físico siempre es rectangular
+  // (patrón de la industria de imanes magnéticos), independiente del shape
+  // del área de foto. El `shape` ahora solo controla cómo se recorta la foto
+  // adentro (heart/circle/rect). Por eso la sombra es siempre rect.
   const shadowProps = {
-    fill: "#FFFFFF", // necesita pixels no-transparentes para que la sombra se renderee
+    fill: "#FFFFFF",
     shadowColor: "rgba(0, 0, 0, 0.28)",
     shadowBlur: Math.max(18, stage.width * 0.025),
     shadowOffsetX: 0,
@@ -88,30 +83,6 @@ export function RealismShadowLayer({
     listening: false,
   };
 
-  if (shape === "circle") {
-    return (
-      <Layer listening={false}>
-        <Circle
-          x={stage.width / 2}
-          y={stage.height / 2}
-          radius={Math.min(stage.width, stage.height) / 2}
-          {...shadowProps}
-        />
-      </Layer>
-    );
-  }
-
-  if (shape === "heart") {
-    const scaleX = stage.width / 100;
-    const scaleY = stage.height / 100;
-    return (
-      <Layer listening={false}>
-        <Path data={HEART_PATH_DATA} x={0} y={0} scaleX={scaleX} scaleY={scaleY} {...shadowProps} />
-      </Layer>
-    );
-  }
-
-  // rectangle (default)
   return (
     <Layer listening={false}>
       <Rect
@@ -137,7 +108,6 @@ type RealismOverlayProps = RealismProps & {
 
 export function RealismOverlayLayer({
   stage,
-  shape = "rectangle",
   finish = "matte",
   cornerRadiusPx = 0,
   showGuides = false,
@@ -178,70 +148,38 @@ export function RealismOverlayLayer({
   const safeH = stage.height * (1 - SAFE_INSET_PCT * 2);
   const safeStrokeWidth = Math.max(2, stage.width * 0.005);
 
+  // M.3.b.UX.v5 (Lucy 2026-05-15) — silueta del producto físico siempre
+  // rectangular (los imanes magnéticos se fabrican en rect/cuadrado). El
+  // shape del producto controla solo el clipping de la foto adentro, no la
+  // silueta del imán. Por eso overlay glossy + edge stroke + safe guide
+  // son siempre rect (con cornerRadius si aplica).
   return (
     <Layer listening={false}>
       {/* Acabado glossy (si aplica) */}
-      {glossyGradient &&
-        (shape === "circle" ? (
-          <Circle
-            x={stage.width / 2}
-            y={stage.height / 2}
-            radius={Math.min(stage.width, stage.height) / 2}
-            {...glossyGradient}
-          />
-        ) : shape === "heart" ? (
-          <Path
-            data={HEART_PATH_DATA}
-            x={0}
-            y={0}
-            scaleX={stage.width / 100}
-            scaleY={stage.height / 100}
-            {...glossyGradient}
-          />
-        ) : (
-          <Rect
-            x={0}
-            y={0}
-            width={stage.width}
-            height={stage.height}
-            cornerRadius={cornerRadiusPx}
-            {...glossyGradient}
-          />
-        ))}
-
-      {/* Edge stroke fino que simula borde físico del imán */}
-      {shape === "circle" ? (
-        <Circle
-          x={stage.width / 2}
-          y={stage.height / 2}
-          radius={Math.min(stage.width, stage.height) / 2}
-          {...edgeStroke}
-        />
-      ) : shape === "heart" ? (
-        <Path
-          data={HEART_PATH_DATA}
-          x={0}
-          y={0}
-          scaleX={stage.width / 100}
-          scaleY={stage.height / 100}
-          {...edgeStroke}
-        />
-      ) : (
+      {glossyGradient && (
         <Rect
           x={0}
           y={0}
           width={stage.width}
           height={stage.height}
           cornerRadius={cornerRadiusPx}
-          {...edgeStroke}
+          {...glossyGradient}
         />
       )}
 
-      {/* Safe area guide — "distancia mínima del texto al borde físico".
-        Única guide visible (M.3.b.UX.v4 Lucy 2026-05-15). La línea bleed
-        anterior era redundante porque la silueta del producto YA define el
-        borde de impresión. Color brand-purple para consistencia visual. */}
-      {showGuides && shape !== "circle" && shape !== "heart" && (
+      {/* Edge stroke fino que simula borde físico del imán rectangular */}
+      <Rect
+        x={0}
+        y={0}
+        width={stage.width}
+        height={stage.height}
+        cornerRadius={cornerRadiusPx}
+        {...edgeStroke}
+      />
+
+      {/* Safe area guide rectangular — "mantén texto y caras adentro de esta
+        línea para que no se corten al imprimir". Color brand-purple. */}
+      {showGuides && (
         <Rect
           x={safeX}
           y={safeY}
@@ -251,32 +189,6 @@ export function RealismOverlayLayer({
           stroke={SAFE_COLOR}
           strokeWidth={safeStrokeWidth}
           dash={DASH_SAFE}
-          listening={false}
-        />
-      )}
-
-      {showGuides && shape === "circle" && (
-        <Circle
-          x={stage.width / 2}
-          y={stage.height / 2}
-          radius={Math.min(stage.width, stage.height) / 2 - safeX}
-          stroke={SAFE_COLOR}
-          strokeWidth={safeStrokeWidth}
-          dash={DASH_SAFE}
-          listening={false}
-        />
-      )}
-
-      {showGuides && shape === "heart" && (
-        <Path
-          data={HEART_PATH_DATA}
-          x={safeX}
-          y={safeY}
-          scaleX={(stage.width - 2 * safeX) / 100}
-          scaleY={(stage.height - 2 * safeY) / 100}
-          stroke={SAFE_COLOR}
-          strokeWidth={safeStrokeWidth / ((stage.width - 2 * safeX) / 100)}
-          dash={DASH_SAFE.map((d) => d / ((stage.width - 2 * safeX) / 100))}
           listening={false}
         />
       )}

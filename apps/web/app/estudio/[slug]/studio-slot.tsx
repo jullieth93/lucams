@@ -115,6 +115,16 @@ function StudioSlotImpl({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<Konva.Stage | null>(null);
   const [isDropping, setIsDropping] = useState(false);
+  // M.3.b.UX.v5 (Lucy 2026-05-15) — flag para evitar que el drag de la foto
+  // dispare el picker modal al soltar el click. Cuando Konva detecta drag,
+  // se setea wasDraggingPhoto=true; el click handler del wrapper div verifica
+  // este flag y aborta si está activo. Se libera 100ms después del drag end
+  // para que el mouseup nativo subsequente no dispare el click.
+  // Usamos useState (no ref) por la regla `react-hooks/refs` de React 19:
+  // refs no se pueden leer durante render; los closures de los handlers
+  // capturaban el ref. State es seguro y el extra rerender por drag start/end
+  // es aceptable (1 vez por drag).
+  const [wasDraggingPhoto, setWasDraggingPhoto] = useState(false);
 
   // Expose Konva stage to parent (para snapshot al finalizar)
   useEffect(() => {
@@ -199,6 +209,18 @@ function StudioSlotImpl({
     [onClick, onClear, onKeyboardNav, slotState.assetUrl],
   );
 
+  // ──────────── Photo drag flag (M.3.b.UX.v5) ────────────
+  const handlePhotoDragStart = useCallback(() => {
+    setWasDraggingPhoto(true);
+  }, []);
+  const handlePhotoDragEnd = useCallback(() => {
+    // 100ms post-dragend para que el mouseup del browser que llegue al
+    // wrapper NO dispare el picker. Konva drag termina con mouseup nativo.
+    setTimeout(() => {
+      setWasDraggingPhoto(false);
+    }, 100);
+  }, []);
+
   // ──────────── ARIA label ────────────
   const ariaLabel = slotState.assetUrl
     ? `Imán ${slotState.slotIndex + 1} de ${totalSlots}, con foto cargada. Enter para cambiar foto, Delete para quitar.`
@@ -213,6 +235,14 @@ function StudioSlotImpl({
         aria-label={ariaLabel}
         aria-pressed={isSelected}
         onClick={(e: ReactMouseEvent) => {
+          // M.3.b.UX.v5 (Lucy 2026-05-15) — si el cliente acaba de arrastrar
+          // la foto, NO abrir el picker modal. El drag termina con un mouseup
+          // nativo que el browser propaga al wrapper div y dispararía
+          // onClick() inadvertidamente.
+          if (wasDraggingPhoto) {
+            e.preventDefault();
+            return;
+          }
           e.preventDefault();
           onClick();
         }}
@@ -280,12 +310,20 @@ function StudioSlotImpl({
             cornerRadiusPx={cornerRadiusPx}
           />
           <Layer>
-            {/* M.3.b.UX.bug v2 — clipping a nivel Layer cuando shape es heart/circle.
-              Group con clipFunc canvas-API recorta TODO el contenido (background +
-              foto + asset SVG + texts editables) por la silueta del producto físico.
-              Esto coincide exacto con el edge stroke del overlay (mismo stage), no
-              hay franja desalineada. Texto que quede fuera del corazón no se ve
-              (lo cual es correcto: un imán heart no se imprime en zona rectangular). */}
+            {/* M.3.b.UX.v5 (Lucy 2026-05-15) — Layer dividido en 3 capas
+              conceptuales para que el producto rectangular muestre el área
+              de foto en shape heart/circle + texto fuera del clipping:
+
+                1. Background (full stage = silueta rectangular del producto)
+                2. Group clipFunc heart/circle → solo image + asset adentro
+                3. Text layers (fuera del clipFunc) → en posición original
+                   del seed, abajo del heart, donde el cliente espera
+                   editarlos.
+
+              Para shape rectangle todo va plano sin Group clipFunc. */}
+            {unitTemplate.layers
+              .filter((l) => l.type === "background")
+              .map((layer) => renderLayer(layer, slotState, unitTemplate.stage, onTextEdit))}
             {shape === "heart" || shape === "circle" ? (
               <Group
                 clipFunc={makeShapeClipFunc(
@@ -294,7 +332,25 @@ function StudioSlotImpl({
                   unitTemplate.stage.height,
                 )}
               >
-                {unitTemplate.layers.map((layer) =>
+                {unitTemplate.layers
+                  .filter((l) => l.type !== "background" && l.type !== "text")
+                  .map((layer) =>
+                    renderLayer(
+                      layer,
+                      slotState,
+                      unitTemplate.stage,
+                      onTextEdit,
+                      shape,
+                      onPhotoOffsetChange,
+                      handlePhotoDragStart,
+                      handlePhotoDragEnd,
+                    ),
+                  )}
+              </Group>
+            ) : (
+              unitTemplate.layers
+                .filter((l) => l.type !== "background" && l.type !== "text")
+                .map((layer) =>
                   renderLayer(
                     layer,
                     slotState,
@@ -302,21 +358,14 @@ function StudioSlotImpl({
                     onTextEdit,
                     shape,
                     onPhotoOffsetChange,
+                    handlePhotoDragStart,
+                    handlePhotoDragEnd,
                   ),
-                )}
-              </Group>
-            ) : (
-              unitTemplate.layers.map((layer) =>
-                renderLayer(
-                  layer,
-                  slotState,
-                  unitTemplate.stage,
-                  onTextEdit,
-                  undefined,
-                  onPhotoOffsetChange,
-                ),
-              )
+                )
             )}
+            {unitTemplate.layers
+              .filter((l) => l.type === "text")
+              .map((layer) => renderLayer(layer, slotState, unitTemplate.stage, onTextEdit))}
           </Layer>
           <RealismOverlayLayer
             stage={unitTemplate.stage}
@@ -514,6 +563,8 @@ export function renderLayer(
   onTextEdit: ((layerId: string) => void) | undefined,
   shape?: "rectangle" | "circle" | "heart" | "custom",
   onPhotoOffsetChange?: (offset: { x: number; y: number }) => void,
+  onPhotoDragStart?: () => void,
+  onPhotoDragEnd?: () => void,
 ) {
   switch (layer.type) {
     case "background":
@@ -528,22 +579,25 @@ export function renderLayer(
         />
       );
     case "image-placeholder": {
-      // M.3.b.UX.bug v2 — para productos shape heart/circle, expandir el
-      // image-placeholder al stage completo. Razón: el seed declara el slot
-      // con padding (ej. 40px) pensando en producto rectangular. Cuando el
-      // shape es heart/circle, ese padding deja franjas blancas dentro de la
-      // silueta clipeada. Override en runtime: la foto cubre todo el stage,
-      // el clipFunc del Layer la recorta a la silueta del producto físico.
-      const expandToStage = shape === "heart" || shape === "circle";
-      const effectiveLayer = expandToStage
-        ? ({
-            ...(layer as ImagePlaceholderLayer),
-            x: 0,
-            y: 0,
-            width: stage.width,
-            height: stage.height,
-            cornerRadius: 0,
-          } as ImagePlaceholderLayer)
+      // M.3.b.UX.v5 (Lucy 2026-05-15) — Para shape heart/circle, expandir el
+      // image-placeholder al BOUNDING BOX del shape (zona cuadrada centrada
+      // del stage), NO al stage completo. Antes expandíamos a stage→ el heart
+      // quedaba estirado al aspect del template (3:4). Ahora el heart se ve
+      // proporcionado (1:1) y el resto del stage queda libre para texto +
+      // background del producto rectangular.
+      const useShapeBox = shape === "heart" || shape === "circle";
+      const effectiveLayer = useShapeBox
+        ? (() => {
+            const box = getShapeBoundingBox(stage.width, stage.height);
+            return {
+              ...(layer as ImagePlaceholderLayer),
+              x: box.x,
+              y: box.y,
+              width: box.width,
+              height: box.height,
+              cornerRadius: 0,
+            } as ImagePlaceholderLayer;
+          })()
         : (layer as ImagePlaceholderLayer);
       return (
         <ImagePlaceholder
@@ -551,31 +605,21 @@ export function renderLayer(
           layer={effectiveLayer}
           slotState={slotState}
           onPhotoOffsetChange={onPhotoOffsetChange}
+          onPhotoDragStart={onPhotoDragStart}
+          onPhotoDragEnd={onPhotoDragEnd}
         />
       );
     }
     case "text": {
+      // M.3.b.UX.v5 (Lucy 2026-05-15) — REVERTIDO el reposicionamiento que
+      // hicimos en v4. El texto queda en su posición original del seed
+      // (típicamente parte inferior del stage rectangular). El producto
+      // físico ES rectangular, así que el texto se imprime abajo del heart
+      // de la foto, donde estaba planeado conceptualmente. El text layer NO
+      // se clipea por el heart (queda fuera del Group clipFunc).
       const textLayer = layer as TextLayerData;
       const override = slotState.textOverrides?.[textLayer.id];
-
-      // M.3.b.UX.bug v4 — Lucy 2026-05-15: cuando el producto físico es shape
-      // heart/circle, el texto editable del template (típicamente diseñado en
-      // y=stage.h-60 para producto rectangular) cae FUERA de la silueta y se
-      // clipea. Solución: reposicionar el texto al área inferior dentro del
-      // shape y aplicar styling de legibilidad-sobre-foto (stroke blanco +
-      // shadow oscuro). Permite al cliente escribir mensaje legible.
-      const isOnPhoto = shape === "heart" || shape === "circle";
-      const effectiveTextLayer: TextLayerData = isOnPhoto
-        ? {
-            ...textLayer,
-            // Heart: 72% del stage — área de mayor anchura cerca del centro inferior.
-            // Circle: 78% — parte inferior del círculo donde queda buena zona visible.
-            x: stage.width / 2,
-            y: shape === "heart" ? stage.height * 0.72 : stage.height * 0.78,
-          }
-        : textLayer;
-
-      return renderText(effectiveTextLayer, stage, override, onTextEdit, isOnPhoto);
+      return renderText(textLayer, stage, override, onTextEdit, false);
     }
     case "shape":
       return renderShape(layer as never);
@@ -843,36 +887,105 @@ function renderShape(layer: ShapeLayerData) {
 //  ImagePlaceholder — renderiza el slot Konva con foto o placeholder
 // ──────────────────────────────────────────────────────────────────
 
-// M.3.b.UX.bug — Lucy 2026-05-15: cuando el producto es shape heart/circle,
-// la foto del cliente debe verse RECORTADA por esa silueta, no como rectángulo
-// con un corazón decorativo encima. Konva `Group.clipFunc` aplica un path
-// arbitrario al canvas context — solo lo dentro del path se renderea.
+// M.3.b.UX.v5 (Lucy 2026-05-15) — `shape` del producto controla SOLO el clipping
+// del área de foto, NO la silueta del producto físico. El producto físico es
+// siempre rectangular (más cornerRadius si aplica) — patrón de la industria
+// de imanes magnéticos. Por eso:
+//   - El heart/circle clip se aplica en una zona CUADRADA centrada del stage
+//     (para que el shape no quede estirado en aspect 3:4 del template).
+//   - El texto editable queda fuera de este clipping → visible en el rectángulo
+//     del producto, abajo del heart, donde se va a imprimir realmente.
+//   - El background del template también queda fuera del clipping → llena el
+//     rectángulo entero (= silueta del producto).
+//
 // Exportado para reuso en <StudioPreviewModal>.
 export function makeShapeClipFunc(
   shape: "heart" | "circle",
-  width: number,
-  height: number,
+  stageWidth: number,
+  stageHeight: number,
 ): (ctx: Konva.Context) => void {
+  // Bounding box CUADRADO centrado en el stage. El heart/circle se renderea
+  // dentro de este cuadrado sin estirar. El cuadrado se coloca pegado al
+  // borde superior con padding leve (8% del lado) — coincide con la zona de
+  // foto que da espacio para texto abajo (≈25% inferior del stage).
+  const size = Math.min(stageWidth, stageHeight) * 0.92;
+  const offsetX = (stageWidth - size) / 2;
+  const offsetY = stageHeight * 0.04; // pegado arriba con padding pequeño
   return (ctx) => {
     ctx.beginPath();
     if (shape === "heart") {
-      // Mismo path bezier que HEART_PATH_DATA, ejecutado en canvas API.
-      // viewBox 100×100 → escala a (width × height).
-      const sx = width / 100;
-      const sy = height / 100;
-      ctx.moveTo(50 * sx, 82 * sy);
-      ctx.bezierCurveTo(28 * sx, 68 * sy, 6 * sx, 52 * sy, 6 * sx, 32 * sy);
-      ctx.bezierCurveTo(6 * sx, 18 * sy, 16 * sx, 8 * sy, 28 * sx, 8 * sy);
-      ctx.bezierCurveTo(38 * sx, 8 * sy, 44 * sx, 12 * sy, 50 * sx, 22 * sy);
-      ctx.bezierCurveTo(56 * sx, 12 * sy, 62 * sx, 8 * sy, 72 * sx, 8 * sy);
-      ctx.bezierCurveTo(84 * sx, 8 * sy, 94 * sx, 18 * sy, 94 * sx, 32 * sy);
-      ctx.bezierCurveTo(94 * sx, 52 * sy, 72 * sx, 68 * sy, 50 * sx, 82 * sy);
+      const sx = size / 100;
+      const sy = size / 100;
+      ctx.moveTo(offsetX + 50 * sx, offsetY + 82 * sy);
+      ctx.bezierCurveTo(
+        offsetX + 28 * sx,
+        offsetY + 68 * sy,
+        offsetX + 6 * sx,
+        offsetY + 52 * sy,
+        offsetX + 6 * sx,
+        offsetY + 32 * sy,
+      );
+      ctx.bezierCurveTo(
+        offsetX + 6 * sx,
+        offsetY + 18 * sy,
+        offsetX + 16 * sx,
+        offsetY + 8 * sy,
+        offsetX + 28 * sx,
+        offsetY + 8 * sy,
+      );
+      ctx.bezierCurveTo(
+        offsetX + 38 * sx,
+        offsetY + 8 * sy,
+        offsetX + 44 * sx,
+        offsetY + 12 * sy,
+        offsetX + 50 * sx,
+        offsetY + 22 * sy,
+      );
+      ctx.bezierCurveTo(
+        offsetX + 56 * sx,
+        offsetY + 12 * sy,
+        offsetX + 62 * sx,
+        offsetY + 8 * sy,
+        offsetX + 72 * sx,
+        offsetY + 8 * sy,
+      );
+      ctx.bezierCurveTo(
+        offsetX + 84 * sx,
+        offsetY + 8 * sy,
+        offsetX + 94 * sx,
+        offsetY + 18 * sy,
+        offsetX + 94 * sx,
+        offsetY + 32 * sy,
+      );
+      ctx.bezierCurveTo(
+        offsetX + 94 * sx,
+        offsetY + 52 * sy,
+        offsetX + 72 * sx,
+        offsetY + 68 * sy,
+        offsetX + 50 * sx,
+        offsetY + 82 * sy,
+      );
     } else {
-      // circle — radio = min(w,h)/2
-      const r = Math.min(width, height) / 2;
-      ctx.arc(width / 2, height / 2, r, 0, Math.PI * 2);
+      // circle — radio = size/2 (cuadrado centrado)
+      const r = size / 2;
+      ctx.arc(offsetX + r, offsetY + r, r, 0, Math.PI * 2);
     }
     ctx.closePath();
+  };
+}
+
+// Helper para que image-placeholder y otras zonas que dependen del bounding
+// box del heart/circle conozcan dónde está exactamente.
+export function getShapeBoundingBox(
+  stageWidth: number,
+  stageHeight: number,
+): { x: number; y: number; width: number; height: number } {
+  const size = Math.min(stageWidth, stageHeight) * 0.92;
+  return {
+    x: (stageWidth - size) / 2,
+    y: stageHeight * 0.04,
+    width: size,
+    height: size,
   };
 }
 
@@ -880,12 +993,19 @@ function ImagePlaceholder({
   layer,
   slotState,
   onPhotoOffsetChange,
+  onPhotoDragStart,
+  onPhotoDragEnd,
 }: {
   layer: ImagePlaceholderLayer;
   slotState: SlotState;
   /** M.3.b.UX.v4 (Lucy 2026-05-15) — callback al reposicionar la foto con drag.
    * `undefined` = drag deshabilitado (modo vista previa). */
   onPhotoOffsetChange?: (offset: { x: number; y: number }) => void;
+  /** M.3.b.UX.v5 (Lucy 2026-05-15) — callbacks para que el wrapper sepa si el
+   * cliente está/estuvo arrastrando la foto, y aborte el picker modal en ese
+   * caso. Internamente el wrapper setea un ref y lo libera tras un timeout. */
+  onPhotoDragStart?: () => void;
+  onPhotoDragEnd?: () => void;
 }) {
   const [image] = useImage(slotState.assetUrl ?? "", "anonymous");
   const imageNodeRef = useRef<Konva.Image | null>(null);
@@ -1015,12 +1135,16 @@ function ImagePlaceholder({
                 })
               : undefined
           }
+          onDragStart={() => {
+            if (onPhotoDragStart) onPhotoDragStart();
+          }}
           onDragEnd={(e) => {
             if (!onPhotoOffsetChange) return;
             onPhotoOffsetChange({
               x: e.target.x() - layer.width / 2,
               y: e.target.y() - layer.height / 2,
             });
+            if (onPhotoDragEnd) onPhotoDragEnd();
           }}
           onMouseEnter={(e) => {
             if (isDraggable) {
