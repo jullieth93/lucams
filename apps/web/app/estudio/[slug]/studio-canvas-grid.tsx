@@ -76,7 +76,7 @@ export function StudioCanvasGrid({
   const selectedSlotIndex = useStore(store, (s) => s.selectedSlotIndex);
   const assignAssetToSlot = useStore(store, (s) => s.assignAssetToSlot);
   const clearSlot = useStore(store, (s) => s.clearSlot);
-  const setSlotPhotoOffset = useStore(store, (s) => s.setSlotPhotoOffset);
+  const setSlotPhotoTransform = useStore(store, (s) => s.setSlotPhotoTransform);
   const selectSlot = useStore(store, (s) => s.selectSlot);
 
   // Responsive scale
@@ -230,7 +230,13 @@ export function StudioCanvasGrid({
                 onTextEdit={
                   onTextEdit ? (textLayerId) => onTextEdit(slot.slotIndex, textLayerId) : undefined
                 }
-                onPhotoOffsetChange={(offset) => setSlotPhotoOffset(slot.slotIndex, offset)}
+                onPhotoTransformChange={(offset) =>
+                  setSlotPhotoTransform(slot.slotIndex, {
+                    offsetX: offset.x,
+                    offsetY: offset.y,
+                  })
+                }
+                onCenterPhoto={() => setSlotPhotoTransform(slot.slotIndex, null)}
                 onAssetDrop={(asset: StudioAsset) => assignAssetToSlot(slot.slotIndex, asset)}
                 onKeyboardNav={(dir) => handleKeyboardNav(slot.slotIndex, dir)}
                 onRegisterStage={registerStage(slot.slotIndex)}

@@ -583,7 +583,16 @@ function PhotoAdjustModalWrapper({
       ? (s.canvasData?.slots?.find((sl) => sl.slotIndex === slotIndex)?.filter ?? null)
       : null,
   );
+  // M.3.b.UX.v6 — scale del transform de la foto.
+  const slotScale = useStore(
+    store,
+    (s) =>
+      (slotIndex !== null
+        ? s.canvasData?.slots?.find((sl) => sl.slotIndex === slotIndex)?.photoTransform?.scale
+        : null) ?? 1,
+  );
   const setSlotFilter = useStore(store, (s) => s.setSlotFilter);
+  const setSlotPhotoTransform = useStore(store, (s) => s.setSlotPhotoTransform);
 
   return (
     <StudioPhotoAdjustModal
@@ -591,9 +600,16 @@ function PhotoAdjustModalWrapper({
       photoUrl={slotAssetUrl}
       currentFilter={slotFilter}
       slotIndex={slotIndex}
+      currentScale={slotScale}
       onClose={onClose}
       onApply={(filter) => {
         if (slotIndex !== null) setSlotFilter(slotIndex, filter);
+      }}
+      onScaleChange={(scale) => {
+        if (slotIndex !== null) setSlotPhotoTransform(slotIndex, { scale });
+      }}
+      onResetTransform={() => {
+        if (slotIndex !== null) setSlotPhotoTransform(slotIndex, null);
       }}
     />
   );

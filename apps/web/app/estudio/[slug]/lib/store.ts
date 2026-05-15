@@ -93,9 +93,15 @@ export type StudioStoreState = {
     textLayerId: string,
     override: import("../types").TextOverride | null,
   ) => void;
-  /** M.3.b.UX.v4 — Reposicionar la foto del slot dentro del frame (pan).
-   *  `offset === null` resetea al centro default (cover crop). */
-  setSlotPhotoOffset: (slotIndex: number, offset: { x: number; y: number } | null) => void;
+  /** M.3.b.UX.v6 — Set parcial del transform de la foto del slot.
+   *  - `transform = null` → reset al default (offsetX/Y=0, scale=1).
+   *  - `transform = { offsetX?, offsetY?, scale? }` → merge sobre el actual.
+   *  El editor aplica el overscan default 1.15× internamente, scale=1 acá
+   *  significa "cover × 1.15" (default). scale > 1 → cliente hace zoom in. */
+  setSlotPhotoTransform: (
+    slotIndex: number,
+    transform: { offsetX?: number; offsetY?: number; scale?: number } | null,
+  ) => void;
   selectSlot: (slotIndex: number | null) => void;
   setSelectedTemplate: (templateId: string | null) => void;
   applyTemplate: (template: StudioTemplate) => void;
@@ -200,7 +206,7 @@ export function createStudioStore() {
                 assetUrl: null,
                 filter: null,
                 textOverrides: undefined,
-                photoOffset: undefined,
+                photoTransform: undefined,
               }
             : s,
         ),
@@ -218,16 +224,25 @@ export function createStudioStore() {
       get().setCanvasData(next);
     },
 
-    setSlotPhotoOffset: (slotIndex, offset) => {
+    setSlotPhotoTransform: (slotIndex, transform) => {
       const { canvasData } = get();
       if (!canvasData) return;
       const next: CanvasDataV2 = {
         ...canvasData,
-        slots: canvasData.slots.map((s) =>
-          s.slotIndex === slotIndex
-            ? { ...s, photoOffset: offset === null ? undefined : offset }
-            : s,
-        ),
+        slots: canvasData.slots.map((s) => {
+          if (s.slotIndex !== slotIndex) return s;
+          if (transform === null) return { ...s, photoTransform: undefined };
+          // Merge: solo override los campos provistos.
+          const current = s.photoTransform ?? { offsetX: 0, offsetY: 0, scale: 1 };
+          return {
+            ...s,
+            photoTransform: {
+              offsetX: transform.offsetX ?? current.offsetX,
+              offsetY: transform.offsetY ?? current.offsetY,
+              scale: transform.scale ?? current.scale,
+            },
+          };
+        }),
       };
       get().setCanvasData(next);
     },

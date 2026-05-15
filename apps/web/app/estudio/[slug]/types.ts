@@ -207,12 +207,13 @@ export type SlotState = {
   textOverrides?: Record<string, TextOverride>;
   /** @deprecated — Usar `textOverrides[layerId].text`. Mantenido por backward compat. */
   textOverride?: string;
-  /** M.3.b.UX.v4 (Lucy 2026-05-15) — pan de la foto dentro del slot.
-   *  Offset desde el centro del slot en coords del stage. Permite al cliente
-   *  reposicionar la foto cuando el crop "cover" default deja un sujeto fuera
-   *  de cuadro (típico en heart/circle donde la silueta recorta caras).
-   *  Valores `undefined` = foto centrada (default cover crop). */
-  photoOffset?: { x: number; y: number };
+  /** M.3.b.UX.v6 (Lucy 2026-05-15) — Transformación de la foto dentro del slot.
+   *  - offsetX/Y: pan en coords del stage desde el centro del slot.
+   *  - scale: factor sobre el "cover scale" base. 1.0 = cover exacto (puede no
+   *    permitir drag en ambos ejes si aspect coincide). El editor aplica un
+   *    overscan default 1.15 para garantizar drag siempre.
+   *  Valor `undefined` = transform default (centrada, scale cover × 1.15). */
+  photoTransform?: { offsetX: number; offsetY: number; scale: number };
 };
 
 /** M.3.b.D — Override de un TextLayer específico. Cualquier campo no

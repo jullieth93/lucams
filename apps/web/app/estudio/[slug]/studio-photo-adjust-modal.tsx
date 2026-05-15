@@ -17,7 +17,9 @@
  */
 
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { Check } from "lucide-react";
+import { Check, ZoomIn, RotateCcw } from "lucide-react";
+import { Slider } from "@/components/ui/slider";
+import { Button } from "@/components/ui/button";
 import { FILTER_LABELS, FILTER_DESCRIPTIONS, FILTER_ORDER } from "./lib/photo-filters";
 import type { PhotoFilterPreset } from "./types";
 
@@ -26,8 +28,14 @@ type StudioPhotoAdjustModalProps = {
   photoUrl: string | null;
   currentFilter: PhotoFilterPreset | null;
   slotIndex: number | null;
+  /** M.3.b.UX.v6 (Lucy 2026-05-15) — zoom del cliente sobre el cover scale.
+   *  1.0 = default (cover × overscan 1.15). 2.0 = zoom 2×. */
+  currentScale: number;
   onClose: () => void;
   onApply: (filter: PhotoFilterPreset | null) => void;
+  onScaleChange: (scale: number) => void;
+  /** M.3.b.UX.v6 — reset transform: vuelve la foto al centro con scale=1. */
+  onResetTransform: () => void;
 };
 
 // CSS filter equivalents para preview (no idéntico a Konva, suficiente para
@@ -45,15 +53,22 @@ export function StudioPhotoAdjustModal({
   photoUrl,
   currentFilter,
   slotIndex,
+  currentScale,
   onClose,
   onApply,
+  onScaleChange,
+  onResetTransform,
 }: StudioPhotoAdjustModalProps) {
   if (!photoUrl) return null;
 
-  const handleSelect = (filter: PhotoFilterPreset | null) => {
+  // M.3.b.UX.v6 — filter NO autocierra. Cliente puede ajustar zoom +
+  // filter combinados, cierra con botón "Listo" o ESC. Más fluido.
+  const handleSelectFilter = (filter: PhotoFilterPreset | null) => {
     onApply(filter);
-    onClose();
   };
+
+  // Slider value es porcentaje 100-200% del cover-overscan default.
+  const zoomPct = Math.round(currentScale * 100);
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
@@ -62,10 +77,57 @@ export function StudioPhotoAdjustModal({
           Ajustar foto del imán {slotIndex !== null ? slotIndex + 1 : ""}
         </DialogTitle>
         <DialogDescription className="text-brand-purple-dark/60 text-sm">
-          Elegí un filtro pre-armado. Los cambios se aplican al confirmar.
+          Aplicá zoom, reposicionalá la foto arrastrándola en el canvas, o elegí un filtro.
         </DialogDescription>
 
-        <div className="mt-4">
+        {/* M.3.b.UX.v6 — Zoom slider. 100% = cover default (cliente puede
+          arrastrar foto). 100-200% = zoom progresivo (más detalle de la
+          foto visible, menos campo visible). */}
+        <div className="mt-4 space-y-2">
+          <div className="flex items-center justify-between">
+            <label
+              htmlFor="zoom-slider"
+              className="text-brand-purple-dark flex items-center gap-1.5 text-sm font-semibold"
+            >
+              <ZoomIn className="h-4 w-4" />
+              Zoom
+            </label>
+            <span className="text-brand-purple-dark/70 text-xs font-bold tabular-nums">
+              {zoomPct}%
+            </span>
+          </div>
+          <Slider
+            id="zoom-slider"
+            min={100}
+            max={200}
+            step={5}
+            value={[zoomPct]}
+            onValueChange={(values) => onScaleChange(values[0] / 100)}
+            className="py-1"
+            aria-label="Nivel de zoom de la foto"
+          />
+          <p className="text-brand-purple-dark/55 text-[11px]">
+            Arrastrá la foto en el canvas para reposicionarla. Más zoom = más detalle, menos campo
+            visible.
+          </p>
+        </div>
+
+        {/* Reset transform — vuelve scale=1 + offset=0 */}
+        <div className="border-brand-purple/10 mt-4 flex border-t pt-4">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={onResetTransform}
+            className="border-brand-purple/30 text-brand-purple-dark hover:bg-brand-purple/5 gap-1.5"
+          >
+            <RotateCcw className="h-3.5 w-3.5" />
+            Centrar y resetear zoom
+          </Button>
+        </div>
+
+        <div className="mt-5">
+          <h3 className="text-brand-purple-dark mb-2 text-sm font-semibold">Filtros</h3>
           {/* Grid de presets: 6 cards (sin filtro + 5 presets) */}
           <div
             role="radiogroup"
@@ -79,7 +141,7 @@ export function StudioPhotoAdjustModal({
               cssFilter="none"
               label="Sin filtro"
               description="Foto original sin ajustes"
-              onClick={() => handleSelect(null)}
+              onClick={() => handleSelectFilter(null)}
             />
 
             {FILTER_ORDER.map((preset) => (
@@ -90,10 +152,20 @@ export function StudioPhotoAdjustModal({
                 cssFilter={CSS_FILTER_BY_PRESET[preset]}
                 label={FILTER_LABELS[preset]}
                 description={FILTER_DESCRIPTIONS[preset]}
-                onClick={() => handleSelect(preset)}
+                onClick={() => handleSelectFilter(preset)}
               />
             ))}
           </div>
+        </div>
+
+        <div className="border-brand-purple/10 mt-5 flex justify-end border-t pt-4">
+          <Button
+            type="button"
+            onClick={onClose}
+            className="bg-brand-purple hover:bg-brand-purple-dark text-white"
+          >
+            Listo
+          </Button>
         </div>
       </DialogContent>
     </Dialog>

@@ -31,7 +31,7 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Trash2, Wand2 } from "lucide-react";
+import { Trash2, Wand2, RotateCcw } from "lucide-react";
 import { LucamsLogo } from "@/components/lucams-logo";
 import { Stage, Layer, Rect, Image as KonvaImage, Group, Text, Circle, Path } from "react-konva";
 import useImage from "use-image";
@@ -85,7 +85,10 @@ type StudioSlotProps = {
   /** M.3.b.D — Click sobre text layer editable abre el editor inline. */
   onTextEdit?: (textLayerId: string) => void;
   /** M.3.b.UX.v4 — Reposicionar la foto del slot vía drag dentro del bounding box. */
-  onPhotoOffsetChange?: (offset: { x: number; y: number }) => void;
+  onPhotoTransformChange?: (offset: { x: number; y: number }) => void;
+  /** M.3.b.UX.v6 — Reset transform (centra foto + scale=1). Solo se muestra
+   *  si la foto fue transformada (offset != 0 o scale != 1). */
+  onCenterPhoto?: () => void;
   onAssetDrop: (asset: StudioAsset) => void;
   onKeyboardNav: (direction: "up" | "down" | "left" | "right") => void;
   onRegisterStage?: (stage: Konva.Stage | null) => void;
@@ -107,7 +110,8 @@ function StudioSlotImpl({
   onClear,
   onAdjust,
   onTextEdit,
-  onPhotoOffsetChange,
+  onPhotoTransformChange,
+  onCenterPhoto,
   onAssetDrop,
   onKeyboardNav,
   onRegisterStage,
@@ -302,7 +306,7 @@ function StudioSlotImpl({
           // text layers editables. M.3.b.UX.v4: también si hay drag de foto.
           // Si el slot tiene texts editables o drag de foto habilitado,
           // escuchamos a nivel Konva (los demás layers tienen listening=false).
-          listening={!!onTextEdit || !!onPhotoOffsetChange}
+          listening={!!onTextEdit || !!onPhotoTransformChange}
         >
           <RealismShadowLayer
             stage={unitTemplate.stage}
@@ -341,7 +345,7 @@ function StudioSlotImpl({
                       unitTemplate.stage,
                       onTextEdit,
                       shape,
-                      onPhotoOffsetChange,
+                      onPhotoTransformChange,
                       handlePhotoDragStart,
                       handlePhotoDragEnd,
                     ),
@@ -357,7 +361,7 @@ function StudioSlotImpl({
                     unitTemplate.stage,
                     onTextEdit,
                     shape,
-                    onPhotoOffsetChange,
+                    onPhotoTransformChange,
                     handlePhotoDragStart,
                     handlePhotoDragEnd,
                   ),
@@ -490,6 +494,25 @@ function StudioSlotImpl({
               Tap target compliant Material/HIG con wrapper padding. */}
           {slotState.assetUrl && (
             <div className="ml-auto flex items-center gap-1.5">
+              {/* M.3.b.UX.v6 — Botón Centrar: visible solo si transform aplicado.
+                Resetea offsetX/Y a 0 + scale a 1 (cover overscan default). */}
+              {onCenterPhoto && slotState.photoTransform && (
+                <motion.button
+                  type="button"
+                  whileHover={{ scale: 1.1 }}
+                  whileTap={{ scale: 0.94 }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onCenterPhoto();
+                  }}
+                  aria-label={`Centrar la foto del imán ${slotState.slotIndex + 1}`}
+                  title="Volver al centro y resetear zoom"
+                  className="text-brand-purple-dark/70 ring-brand-purple/15 hover:bg-brand-purple/5 hover:text-brand-purple-dark focus:ring-brand-turquoise hover:ring-brand-purple/30 flex h-8 w-8 items-center justify-center rounded-md bg-white shadow-sm ring-1 focus:ring-2 focus:outline-none"
+                  tabIndex={-1}
+                >
+                  <RotateCcw className="h-4 w-4" />
+                </motion.button>
+              )}
               {onAdjust && (
                 <motion.button
                   type="button"
@@ -499,8 +522,8 @@ function StudioSlotImpl({
                     e.stopPropagation();
                     onAdjust();
                   }}
-                  aria-label={`Ajustar foto del imán ${slotState.slotIndex + 1} (filtros)`}
-                  title="Aplicar filtros a esta foto"
+                  aria-label={`Ajustar foto del imán ${slotState.slotIndex + 1} (zoom y filtros)`}
+                  title="Aplicar zoom y filtros a esta foto"
                   className="text-brand-purple ring-brand-purple/20 hover:bg-brand-purple/5 focus:ring-brand-turquoise hover:ring-brand-purple/40 flex h-8 w-8 items-center justify-center rounded-md bg-white shadow-sm ring-1 focus:ring-2 focus:outline-none"
                   tabIndex={-1}
                 >
@@ -537,7 +560,7 @@ export const StudioSlot = memo(StudioSlotImpl, (prev, next) => {
     prev.slotState.assetId === next.slotState.assetId &&
     prev.slotState.filter === next.slotState.filter &&
     prev.slotState.textOverrides === next.slotState.textOverrides &&
-    prev.slotState.photoOffset === next.slotState.photoOffset &&
+    prev.slotState.photoTransform === next.slotState.photoTransform &&
     prev.isSelected === next.isSelected &&
     prev.displaySize === next.displaySize &&
     prev.displayHeight === next.displayHeight &&
@@ -562,7 +585,7 @@ export function renderLayer(
   stage: { width: number; height: number },
   onTextEdit: ((layerId: string) => void) | undefined,
   shape?: "rectangle" | "circle" | "heart" | "custom",
-  onPhotoOffsetChange?: (offset: { x: number; y: number }) => void,
+  onPhotoTransformChange?: (offset: { x: number; y: number }) => void,
   onPhotoDragStart?: () => void,
   onPhotoDragEnd?: () => void,
 ) {
@@ -604,7 +627,7 @@ export function renderLayer(
           key={layer.id}
           layer={effectiveLayer}
           slotState={slotState}
-          onPhotoOffsetChange={onPhotoOffsetChange}
+          onPhotoTransformChange={onPhotoTransformChange}
           onPhotoDragStart={onPhotoDragStart}
           onPhotoDragEnd={onPhotoDragEnd}
         />
@@ -992,7 +1015,7 @@ export function getShapeBoundingBox(
 function ImagePlaceholder({
   layer,
   slotState,
-  onPhotoOffsetChange,
+  onPhotoTransformChange,
   onPhotoDragStart,
   onPhotoDragEnd,
 }: {
@@ -1000,7 +1023,7 @@ function ImagePlaceholder({
   slotState: SlotState;
   /** M.3.b.UX.v4 (Lucy 2026-05-15) — callback al reposicionar la foto con drag.
    * `undefined` = drag deshabilitado (modo vista previa). */
-  onPhotoOffsetChange?: (offset: { x: number; y: number }) => void;
+  onPhotoTransformChange?: (offset: { x: number; y: number }) => void;
   /** M.3.b.UX.v5 (Lucy 2026-05-15) — callbacks para que el wrapper sepa si el
    * cliente está/estuvo arrastrando la foto, y aborte el picker modal en ese
    * caso. Internamente el wrapper setea un ref y lo libera tras un timeout. */
@@ -1044,37 +1067,44 @@ function ImagePlaceholder({
   }, [image, filtersArray.length, slotState.filter]);
 
   if (slotState.assetUrl && image) {
-    // M.3.b.UX.v4 (Lucy 2026-05-15) — approach refactoreado para soportar drag.
+    // M.3.b.UX.v6 (Lucy 2026-05-15) — Transform photo en 3 capas:
     //
-    // ANTES: KonvaImage con width × height = layer + crop "cover" calculado
-    // (qué porción de la imagen se renderea). Cliente NO podía mover la foto.
+    //   1. coverScale: la imagen se escala al máximo entre slot.w/image.w y
+    //      slot.h/image.h, garantizando cobertura completa.
     //
-    // AHORA: imagen escalada a "cover" del slot (renderedW × renderedH ≥ slot)
-    // con posición que el cliente puede arrastrar (draggable). dragBoundFunc
-    // limita el movimiento para que la imagen siempre cubra el slot completo
-    // (no aparezcan áreas vacías en los bordes). El crop "default centrado" se
-    // logra con la posición inicial; el reposicionamiento es offset del centro.
+    //   2. defaultOverscan (1.15): multiplicador adicional aplicado SIEMPRE
+    //      para que ambos ejes tengan margen de drag aunque el aspect de
+    //      la foto coincida con el del slot. Sin esto, una foto cuadrada
+    //      en slot cuadrado tendría maxOffsetX = maxOffsetY = 0 → no se
+    //      puede arrastrar en ningún eje. Esta era la queja de Lucy.
     //
-    // Clipping: para shape rectangle, el Group local clipea al bounding box
-    // (con cornerRadius si aplica) → imagen no se ve fuera del slot. Para
-    // shape heart/circle, el Layer-level clipFunc del Stage hace el clipping
-    // adicional (silueta del producto físico).
+    //   3. userScale (slotState.photoTransform.scale ?? 1): zoom del cliente
+    //      desde el modal de ajustar foto. 1 = default cover×overscan. >1 =
+    //      zoom in (más detalle visible, menos área de la foto). <1 NO se
+    //      permite (rompería cobertura).
+    //
+    // dragBoundFunc limita el pan para que la imagen siempre cubra el slot.
 
-    const coverScale = Math.max(layer.width / image.width, layer.height / image.height);
+    const DEFAULT_OVERSCAN = 1.15;
+    const userScale = slotState.photoTransform?.scale ?? 1;
+    const effectiveScale = Math.max(1, userScale); // floor 1 evita zoom-out abajo del cover
+    const coverScale =
+      Math.max(layer.width / image.width, layer.height / image.height) *
+      DEFAULT_OVERSCAN *
+      effectiveScale;
     const renderedW = image.width * coverScale;
     const renderedH = image.height * coverScale;
 
-    // Drag bounds: la imagen escalada (renderedW/H) puede moverse máximo
-    // (renderedW - slotW) / 2 en cada lado para mantener cobertura.
     const maxOffsetX = Math.max(0, (renderedW - layer.width) / 2);
     const maxOffsetY = Math.max(0, (renderedH - layer.height) / 2);
 
-    const photoOffset = slotState.photoOffset ?? { x: 0, y: 0 };
-    // Clampear el offset persistido por si la imagen cambió de aspect.
+    const photoOffset = slotState.photoTransform
+      ? { x: slotState.photoTransform.offsetX, y: slotState.photoTransform.offsetY }
+      : { x: 0, y: 0 };
     const clampedX = Math.max(-maxOffsetX, Math.min(maxOffsetX, photoOffset.x));
     const clampedY = Math.max(-maxOffsetY, Math.min(maxOffsetY, photoOffset.y));
 
-    const isDraggable = !!onPhotoOffsetChange;
+    const isDraggable = !!onPhotoTransformChange;
 
     // Clip del Group local: rounded rect cuando cornerRadius, rect plano resto.
     // Para heart/circle no hace falta acá porque el Layer-level clipFunc del
@@ -1139,8 +1169,8 @@ function ImagePlaceholder({
             if (onPhotoDragStart) onPhotoDragStart();
           }}
           onDragEnd={(e) => {
-            if (!onPhotoOffsetChange) return;
-            onPhotoOffsetChange({
+            if (!onPhotoTransformChange) return;
+            onPhotoTransformChange({
               x: e.target.x() - layer.width / 2,
               y: e.target.y() - layer.height / 2,
             });
