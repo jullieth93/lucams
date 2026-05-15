@@ -84,6 +84,8 @@ type StudioSlotProps = {
   onAdjust?: () => void;
   /** M.3.b.D — Click sobre text layer editable abre el editor inline. */
   onTextEdit?: (textLayerId: string) => void;
+  /** M.3.b.UX.v4 — Reposicionar la foto del slot vía drag dentro del bounding box. */
+  onPhotoOffsetChange?: (offset: { x: number; y: number }) => void;
   onAssetDrop: (asset: StudioAsset) => void;
   onKeyboardNav: (direction: "up" | "down" | "left" | "right") => void;
   onRegisterStage?: (stage: Konva.Stage | null) => void;
@@ -105,6 +107,7 @@ function StudioSlotImpl({
   onClear,
   onAdjust,
   onTextEdit,
+  onPhotoOffsetChange,
   onAssetDrop,
   onKeyboardNav,
   onRegisterStage,
@@ -266,11 +269,10 @@ function StudioSlotImpl({
             stageRef.current = s;
           }}
           // M.3.b.D — Stage debe escuchar eventos para captar clicks sobre
-          // text layers editables. Antes era listening={false} para que el
-          // div padre captara todos los clicks (open picker modal). Ahora
-          // diferenciamos: si el slot tiene texts editables, escuchamos
-          // a nivel Konva Text node (los demás layers tienen listening=false).
-          listening={!!onTextEdit}
+          // text layers editables. M.3.b.UX.v4: también si hay drag de foto.
+          // Si el slot tiene texts editables o drag de foto habilitado,
+          // escuchamos a nivel Konva (los demás layers tienen listening=false).
+          listening={!!onTextEdit || !!onPhotoOffsetChange}
         >
           <RealismShadowLayer
             stage={unitTemplate.stage}
@@ -293,12 +295,26 @@ function StudioSlotImpl({
                 )}
               >
                 {unitTemplate.layers.map((layer) =>
-                  renderLayer(layer, slotState, unitTemplate.stage, onTextEdit, shape),
+                  renderLayer(
+                    layer,
+                    slotState,
+                    unitTemplate.stage,
+                    onTextEdit,
+                    shape,
+                    onPhotoOffsetChange,
+                  ),
                 )}
               </Group>
             ) : (
               unitTemplate.layers.map((layer) =>
-                renderLayer(layer, slotState, unitTemplate.stage, onTextEdit),
+                renderLayer(
+                  layer,
+                  slotState,
+                  unitTemplate.stage,
+                  onTextEdit,
+                  undefined,
+                  onPhotoOffsetChange,
+                ),
               )
             )}
           </Layer>
@@ -472,6 +488,7 @@ export const StudioSlot = memo(StudioSlotImpl, (prev, next) => {
     prev.slotState.assetId === next.slotState.assetId &&
     prev.slotState.filter === next.slotState.filter &&
     prev.slotState.textOverrides === next.slotState.textOverrides &&
+    prev.slotState.photoOffset === next.slotState.photoOffset &&
     prev.isSelected === next.isSelected &&
     prev.displaySize === next.displaySize &&
     prev.displayHeight === next.displayHeight &&
@@ -496,6 +513,7 @@ export function renderLayer(
   stage: { width: number; height: number },
   onTextEdit: ((layerId: string) => void) | undefined,
   shape?: "rectangle" | "circle" | "heart" | "custom",
+  onPhotoOffsetChange?: (offset: { x: number; y: number }) => void,
 ) {
   switch (layer.type) {
     case "background":
@@ -527,12 +545,37 @@ export function renderLayer(
             cornerRadius: 0,
           } as ImagePlaceholderLayer)
         : (layer as ImagePlaceholderLayer);
-      return <ImagePlaceholder key={layer.id} layer={effectiveLayer} slotState={slotState} />;
+      return (
+        <ImagePlaceholder
+          key={layer.id}
+          layer={effectiveLayer}
+          slotState={slotState}
+          onPhotoOffsetChange={onPhotoOffsetChange}
+        />
+      );
     }
     case "text": {
-      const textLayer = layer as never as { id: string };
+      const textLayer = layer as TextLayerData;
       const override = slotState.textOverrides?.[textLayer.id];
-      return renderText(textLayer as never, stage, override, onTextEdit);
+
+      // M.3.b.UX.bug v4 — Lucy 2026-05-15: cuando el producto físico es shape
+      // heart/circle, el texto editable del template (típicamente diseñado en
+      // y=stage.h-60 para producto rectangular) cae FUERA de la silueta y se
+      // clipea. Solución: reposicionar el texto al área inferior dentro del
+      // shape y aplicar styling de legibilidad-sobre-foto (stroke blanco +
+      // shadow oscuro). Permite al cliente escribir mensaje legible.
+      const isOnPhoto = shape === "heart" || shape === "circle";
+      const effectiveTextLayer: TextLayerData = isOnPhoto
+        ? {
+            ...textLayer,
+            // Heart: 72% del stage — área de mayor anchura cerca del centro inferior.
+            // Circle: 78% — parte inferior del círculo donde queda buena zona visible.
+            x: stage.width / 2,
+            y: shape === "heart" ? stage.height * 0.72 : stage.height * 0.78,
+          }
+        : textLayer;
+
+      return renderText(effectiveTextLayer, stage, override, onTextEdit, isOnPhoto);
     }
     case "shape":
       return renderShape(layer as never);
@@ -605,6 +648,10 @@ function renderText(
   stage: { width: number; height: number },
   override: import("./types").TextOverride | undefined,
   onTextEdit: ((layerId: string) => void) | undefined,
+  // M.3.b.UX.bug v4 — el texto se renderea ENCIMA de la foto cliente (shape
+  // heart/circle). Aplica stroke blanco + shadow para legibilidad sobre
+  // cualquier color de fondo.
+  onPhoto: boolean = false,
 ) {
   // Combinar layer base + override del slot. Cada campo del override
   // sobrescribe el layer base si está definido.
@@ -614,6 +661,19 @@ function renderText(
   const fill = override?.fill ?? layer.fill ?? "#3D2E5C";
   const fontStyle = override?.fontWeight ?? layer.fontWeight;
   const align = layer.align ?? "center";
+
+  // Styling adicional cuando el texto va sobre foto.
+  const onPhotoStyling = onPhoto
+    ? {
+        stroke: "rgba(255, 255, 255, 0.92)",
+        strokeWidth: Math.max(2, fontSize * 0.08),
+        fillAfterStrokeEnabled: true,
+        shadowColor: "rgba(0, 0, 0, 0.55)",
+        shadowBlur: 6,
+        shadowOffsetY: 2,
+        shadowOpacity: 1,
+      }
+    : null;
 
   const isEditable = layer.editable === true && onTextEdit !== undefined;
 
@@ -642,6 +702,7 @@ function renderText(
       fontStyle={fontStyle}
       align={align}
       listening={isEditable}
+      {...(onPhotoStyling ?? {})}
       onMouseEnter={(e) => {
         if (isEditable) {
           const stageNode = e.target.getStage();
@@ -818,9 +879,13 @@ export function makeShapeClipFunc(
 function ImagePlaceholder({
   layer,
   slotState,
+  onPhotoOffsetChange,
 }: {
   layer: ImagePlaceholderLayer;
   slotState: SlotState;
+  /** M.3.b.UX.v4 (Lucy 2026-05-15) — callback al reposicionar la foto con drag.
+   * `undefined` = drag deshabilitado (modo vista previa). */
+  onPhotoOffsetChange?: (offset: { x: number; y: number }) => void;
 }) {
   const [image] = useImage(slotState.assetUrl ?? "", "anonymous");
   const imageNodeRef = useRef<Konva.Image | null>(null);
@@ -859,31 +924,60 @@ function ImagePlaceholder({
   }, [image, filtersArray.length, slotState.filter]);
 
   if (slotState.assetUrl && image) {
-    // Calcular crop "cover": llenar el slot manteniendo aspect ratio de la foto,
-    // recortando el exceso (igual que CSS object-fit: cover).
-    const slotAspect = layer.width / layer.height;
-    const imgAspect = image.width / image.height;
-    let cropX = 0;
-    let cropY = 0;
-    let cropW = image.width;
-    let cropH = image.height;
-    if (imgAspect > slotAspect) {
-      // Foto más ancha que slot → recortar laterales
-      cropW = image.height * slotAspect;
-      cropX = (image.width - cropW) / 2;
-    } else if (imgAspect < slotAspect) {
-      // Foto más alta que slot → recortar arriba/abajo
-      cropH = image.width / slotAspect;
-      cropY = (image.height - cropH) / 2;
-    }
+    // M.3.b.UX.v4 (Lucy 2026-05-15) — approach refactoreado para soportar drag.
+    //
+    // ANTES: KonvaImage con width × height = layer + crop "cover" calculado
+    // (qué porción de la imagen se renderea). Cliente NO podía mover la foto.
+    //
+    // AHORA: imagen escalada a "cover" del slot (renderedW × renderedH ≥ slot)
+    // con posición que el cliente puede arrastrar (draggable). dragBoundFunc
+    // limita el movimiento para que la imagen siempre cubra el slot completo
+    // (no aparezcan áreas vacías en los bordes). El crop "default centrado" se
+    // logra con la posición inicial; el reposicionamiento es offset del centro.
+    //
+    // Clipping: para shape rectangle, el Group local clipea al bounding box
+    // (con cornerRadius si aplica) → imagen no se ve fuera del slot. Para
+    // shape heart/circle, el Layer-level clipFunc del Stage hace el clipping
+    // adicional (silueta del producto físico).
 
-    // M.3.b.UX.bug v2 — Lucy 2026-05-15: el clipping NO se hace acá sino a nivel
-    // Content Layer (en el Stage de studio-slot, ver más abajo). Si lo hago acá
-    // sobre el bounding box del image-placeholder (que tiene padding del stage),
-    // el heart de clipping queda desfasado del edge stroke del overlay (que se
-    // dibuja sobre stage completo). Resultado visible: franja blanca entre la
-    // foto recortada y el contorno gris. La solución correcta es clipear TODO
-    // el Content Layer al stage completo → ambos shapes coinciden exactos.
+    const coverScale = Math.max(layer.width / image.width, layer.height / image.height);
+    const renderedW = image.width * coverScale;
+    const renderedH = image.height * coverScale;
+
+    // Drag bounds: la imagen escalada (renderedW/H) puede moverse máximo
+    // (renderedW - slotW) / 2 en cada lado para mantener cobertura.
+    const maxOffsetX = Math.max(0, (renderedW - layer.width) / 2);
+    const maxOffsetY = Math.max(0, (renderedH - layer.height) / 2);
+
+    const photoOffset = slotState.photoOffset ?? { x: 0, y: 0 };
+    // Clampear el offset persistido por si la imagen cambió de aspect.
+    const clampedX = Math.max(-maxOffsetX, Math.min(maxOffsetX, photoOffset.x));
+    const clampedY = Math.max(-maxOffsetY, Math.min(maxOffsetY, photoOffset.y));
+
+    const isDraggable = !!onPhotoOffsetChange;
+
+    // Clip del Group local: rounded rect cuando cornerRadius, rect plano resto.
+    // Para heart/circle no hace falta acá porque el Layer-level clipFunc del
+    // Stage ya recorta a la silueta (este Group queda dentro del heart).
+    const cornerR = layer.cornerRadius ?? 0;
+    const groupClipFunc =
+      cornerR > 0
+        ? (ctx: Konva.Context) => {
+            ctx.beginPath();
+            const r = Math.min(cornerR, layer.width / 2, layer.height / 2);
+            ctx.moveTo(r, 0);
+            ctx.lineTo(layer.width - r, 0);
+            ctx.quadraticCurveTo(layer.width, 0, layer.width, r);
+            ctx.lineTo(layer.width, layer.height - r);
+            ctx.quadraticCurveTo(layer.width, layer.height, layer.width - r, layer.height);
+            ctx.lineTo(r, layer.height);
+            ctx.quadraticCurveTo(0, layer.height, 0, layer.height - r);
+            ctx.lineTo(0, r);
+            ctx.quadraticCurveTo(0, 0, r, 0);
+            ctx.closePath();
+          }
+        : undefined;
+
     return (
       <Group
         x={x + layer.width / 2}
@@ -891,16 +985,67 @@ function ImagePlaceholder({
         offsetX={layer.width / 2}
         offsetY={layer.height / 2}
         rotation={layer.rotation ?? 0}
+        {...(groupClipFunc
+          ? { clipFunc: groupClipFunc }
+          : { clip: { x: 0, y: 0, width: layer.width, height: layer.height } })}
       >
         <KonvaImage
           ref={(n) => {
             imageNodeRef.current = n;
           }}
           image={image}
-          width={layer.width}
-          height={layer.height}
-          cornerRadius={layer.cornerRadius ?? 0}
-          crop={{ x: cropX, y: cropY, width: cropW, height: cropH }}
+          width={renderedW}
+          height={renderedH}
+          x={layer.width / 2 + clampedX}
+          y={layer.height / 2 + clampedY}
+          offsetX={renderedW / 2}
+          offsetY={renderedH / 2}
+          draggable={isDraggable}
+          dragBoundFunc={
+            isDraggable
+              ? (pos) => ({
+                  x: Math.max(
+                    layer.width / 2 - maxOffsetX,
+                    Math.min(layer.width / 2 + maxOffsetX, pos.x),
+                  ),
+                  y: Math.max(
+                    layer.height / 2 - maxOffsetY,
+                    Math.min(layer.height / 2 + maxOffsetY, pos.y),
+                  ),
+                })
+              : undefined
+          }
+          onDragEnd={(e) => {
+            if (!onPhotoOffsetChange) return;
+            onPhotoOffsetChange({
+              x: e.target.x() - layer.width / 2,
+              y: e.target.y() - layer.height / 2,
+            });
+          }}
+          onMouseEnter={(e) => {
+            if (isDraggable) {
+              const s = e.target.getStage();
+              if (s) s.container().style.cursor = "grab";
+            }
+          }}
+          onMouseLeave={(e) => {
+            if (isDraggable) {
+              const s = e.target.getStage();
+              if (s) s.container().style.cursor = "";
+            }
+          }}
+          onMouseDown={(e) => {
+            if (isDraggable) {
+              const s = e.target.getStage();
+              if (s) s.container().style.cursor = "grabbing";
+            }
+          }}
+          onMouseUp={(e) => {
+            if (isDraggable) {
+              const s = e.target.getStage();
+              if (s) s.container().style.cursor = "grab";
+            }
+          }}
           // M.3.b.B.3 — filters + params (no-op si sin filter)
           filters={filtersArray.length > 0 ? filtersArray : undefined}
           brightness={filterParams?.brightness ?? 0}

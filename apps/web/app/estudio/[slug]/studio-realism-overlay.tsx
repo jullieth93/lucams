@@ -42,12 +42,18 @@ import { Layer, Rect, Circle, Path } from "react-konva";
 const HEART_PATH_DATA =
   "M50,82 C28,68 6,52 6,32 C6,18 16,8 28,8 C38,8 44,12 50,22 C56,12 62,8 72,8 C84,8 94,18 94,32 C94,52 72,68 50,82 Z";
 
-const BLEED_INSET_PCT = 0.04;
+// M.3.b.UX.bug v4 (Lucy 2026-05-15): simplificación de guías.
+// Quitamos la guía "bleed" (era la línea amarilla) — redundante porque la
+// silueta del producto físico (heart/circle/rectangle) YA define el borde
+// de impresión. Mantenemos UNA sola guía con concepto claro: "Distancia
+// mínima del texto al borde" para que el cliente sepa dónde puede escribir
+// con seguridad de que no se corta al imprimir.
+//
+// SAFE_INSET_PCT calibrado al ~3mm en un imán típico 5×5cm → ~6% del width.
+// Opacidad aumentada (0.55 → 0.80) + strokeWidth +50% para que sea visible.
 const SAFE_INSET_PCT = 0.08;
-const BLEED_COLOR = "rgba(245, 158, 11, 0.55)"; // yellow-amber
-const SAFE_COLOR = "rgba(34, 197, 94, 0.55)"; // green
-const DASH_BLEED: number[] = [10, 8];
-const DASH_SAFE: number[] = [6, 6];
+const SAFE_COLOR = "rgba(124, 106, 173, 0.85)"; // brand-purple — coherente con el resto del editor
+const DASH_SAFE: number[] = [8, 6];
 
 type Shape = "rectangle" | "circle" | "heart" | "custom";
 type Finish = "matte" | "glossy" | "soft-touch";
@@ -165,17 +171,12 @@ export function RealismOverlayLayer({
     listening: false,
   };
 
-  // Bleed area (inset)
-  const bleedX = stage.width * BLEED_INSET_PCT;
-  const bleedY = stage.height * BLEED_INSET_PCT;
-  const bleedW = stage.width * (1 - BLEED_INSET_PCT * 2);
-  const bleedH = stage.height * (1 - BLEED_INSET_PCT * 2);
-
-  // Safe area (más interior)
+  // Safe area = distancia mínima del texto al borde físico. Único guide visible.
   const safeX = stage.width * SAFE_INSET_PCT;
   const safeY = stage.height * SAFE_INSET_PCT;
   const safeW = stage.width * (1 - SAFE_INSET_PCT * 2);
   const safeH = stage.height * (1 - SAFE_INSET_PCT * 2);
+  const safeStrokeWidth = Math.max(2, stage.width * 0.005);
 
   return (
     <Layer listening={false}>
@@ -236,86 +237,48 @@ export function RealismOverlayLayer({
         />
       )}
 
-      {/* Bleed + safe guides (toggle) */}
+      {/* Safe area guide — "distancia mínima del texto al borde físico".
+        Única guide visible (M.3.b.UX.v4 Lucy 2026-05-15). La línea bleed
+        anterior era redundante porque la silueta del producto YA define el
+        borde de impresión. Color brand-purple para consistencia visual. */}
       {showGuides && shape !== "circle" && shape !== "heart" && (
-        <>
-          <Rect
-            x={bleedX}
-            y={bleedY}
-            width={bleedW}
-            height={bleedH}
-            cornerRadius={Math.max(0, cornerRadiusPx - bleedX)}
-            stroke={BLEED_COLOR}
-            strokeWidth={Math.max(1.5, stage.width * 0.0035)}
-            dash={DASH_BLEED}
-            listening={false}
-          />
-          <Rect
-            x={safeX}
-            y={safeY}
-            width={safeW}
-            height={safeH}
-            cornerRadius={Math.max(0, cornerRadiusPx - safeX)}
-            stroke={SAFE_COLOR}
-            strokeWidth={Math.max(1.5, stage.width * 0.0035)}
-            dash={DASH_SAFE}
-            listening={false}
-          />
-        </>
+        <Rect
+          x={safeX}
+          y={safeY}
+          width={safeW}
+          height={safeH}
+          cornerRadius={Math.max(0, cornerRadiusPx - safeX)}
+          stroke={SAFE_COLOR}
+          strokeWidth={safeStrokeWidth}
+          dash={DASH_SAFE}
+          listening={false}
+        />
       )}
 
       {showGuides && shape === "circle" && (
-        <>
-          <Circle
-            x={stage.width / 2}
-            y={stage.height / 2}
-            radius={Math.min(stage.width, stage.height) / 2 - bleedX}
-            stroke={BLEED_COLOR}
-            strokeWidth={Math.max(1.5, stage.width * 0.0035)}
-            dash={DASH_BLEED}
-            listening={false}
-          />
-          <Circle
-            x={stage.width / 2}
-            y={stage.height / 2}
-            radius={Math.min(stage.width, stage.height) / 2 - safeX}
-            stroke={SAFE_COLOR}
-            strokeWidth={Math.max(1.5, stage.width * 0.0035)}
-            dash={DASH_SAFE}
-            listening={false}
-          />
-        </>
+        <Circle
+          x={stage.width / 2}
+          y={stage.height / 2}
+          radius={Math.min(stage.width, stage.height) / 2 - safeX}
+          stroke={SAFE_COLOR}
+          strokeWidth={safeStrokeWidth}
+          dash={DASH_SAFE}
+          listening={false}
+        />
       )}
 
-      {/* M.3.b.UX.bug Lucy 2026-05-15 — guides para heart shape.
-        Antes el toggle "Ver guías" no hacía nada en Corazón.
-        Replico el patrón de circle: dibujo el HEART_PATH escalado
-        a (1 - 2 × INSET) — heart con padding interno = bleed/safe interior. */}
       {showGuides && shape === "heart" && (
-        <>
-          <Path
-            data={HEART_PATH_DATA}
-            x={bleedX}
-            y={bleedY}
-            scaleX={(stage.width - 2 * bleedX) / 100}
-            scaleY={(stage.height - 2 * bleedY) / 100}
-            stroke={BLEED_COLOR}
-            strokeWidth={Math.max(1.5, stage.width * 0.0035) / ((stage.width - 2 * bleedX) / 100)}
-            dash={DASH_BLEED.map((d) => d / ((stage.width - 2 * bleedX) / 100))}
-            listening={false}
-          />
-          <Path
-            data={HEART_PATH_DATA}
-            x={safeX}
-            y={safeY}
-            scaleX={(stage.width - 2 * safeX) / 100}
-            scaleY={(stage.height - 2 * safeY) / 100}
-            stroke={SAFE_COLOR}
-            strokeWidth={Math.max(1.5, stage.width * 0.0035) / ((stage.width - 2 * safeX) / 100)}
-            dash={DASH_SAFE.map((d) => d / ((stage.width - 2 * safeX) / 100))}
-            listening={false}
-          />
-        </>
+        <Path
+          data={HEART_PATH_DATA}
+          x={safeX}
+          y={safeY}
+          scaleX={(stage.width - 2 * safeX) / 100}
+          scaleY={(stage.height - 2 * safeY) / 100}
+          stroke={SAFE_COLOR}
+          strokeWidth={safeStrokeWidth / ((stage.width - 2 * safeX) / 100)}
+          dash={DASH_SAFE.map((d) => d / ((stage.width - 2 * safeX) / 100))}
+          listening={false}
+        />
       )}
     </Layer>
   );

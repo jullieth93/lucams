@@ -175,27 +175,26 @@ export function StudioToolbar({
         <AutoSaveIndicator status={autoSaveStatus} isFinalizing={isFinalizing} />
       </div>
 
-      {/* M.3.b.UX.bug Lucy 2026-05-15 — leyenda visible cuando "Ver guías" ON.
-        El cliente sí ve las líneas dashed pero no entiende qué significan.
-        Banner sutil amber/green con explicación corta. */}
+      {/* M.3.b.UX.v4 Lucy 2026-05-15 — leyenda simplificada y contextualizada.
+        Una sola guide ahora (la silueta del producto YA es el borde físico).
+        Anclamos al tamaño real del imán para que el cliente entienda la
+        proporción concreta (no solo "una línea adentro"). */}
       {showRealismGuides && (
-        <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1 border-t border-amber-200 bg-amber-50/60 px-3 py-1.5 text-[11px] text-amber-900">
-          <span className="inline-flex items-center gap-1.5">
-            <span
-              aria-hidden
-              className="inline-block h-0.5 w-4 rounded-sm bg-amber-500"
-              style={{ borderTop: "2px dashed rgb(245 158 11 / 0.85)" }}
-            />
-            Línea amarilla = borde de impresión (no pongas nada importante acá)
-          </span>
+        <div className="border-brand-purple/15 bg-brand-purple/5 text-brand-purple-dark flex flex-wrap items-center justify-center gap-x-3 gap-y-1 border-t px-3 py-1.5 text-[11px]">
           <span className="inline-flex items-center gap-1.5">
             <span
               aria-hidden
               className="inline-block h-0.5 w-4 rounded-sm"
-              style={{ borderTop: "2px dashed rgb(34 197 94 / 0.85)" }}
+              style={{ borderTop: "2.5px dashed rgb(124 106 173 / 0.85)" }}
             />
-            Línea verde = zona segura (texto y caras adentro de acá)
+            <strong>Línea morada</strong> = mantén texto y caras adentro para que no se corten al
+            imprimir
           </span>
+          {productSizeCm && (
+            <span className="text-brand-purple-dark/60">
+              · Tu imán físico mide <strong>{productSizeCm} cm</strong>
+            </span>
+          )}
         </div>
       )}
     </header>

@@ -93,6 +93,9 @@ export type StudioStoreState = {
     textLayerId: string,
     override: import("../types").TextOverride | null,
   ) => void;
+  /** M.3.b.UX.v4 — Reposicionar la foto del slot dentro del frame (pan).
+   *  `offset === null` resetea al centro default (cover crop). */
+  setSlotPhotoOffset: (slotIndex: number, offset: { x: number; y: number } | null) => void;
   selectSlot: (slotIndex: number | null) => void;
   setSelectedTemplate: (templateId: string | null) => void;
   applyTemplate: (template: StudioTemplate) => void;
@@ -191,7 +194,14 @@ export function createStudioStore() {
         ...canvasData,
         slots: canvasData.slots.map((s) =>
           s.slotIndex === slotIndex
-            ? { ...s, assetId: null, assetUrl: null, filter: null, textOverrides: undefined }
+            ? {
+                ...s,
+                assetId: null,
+                assetUrl: null,
+                filter: null,
+                textOverrides: undefined,
+                photoOffset: undefined,
+              }
             : s,
         ),
       };
@@ -204,6 +214,20 @@ export function createStudioStore() {
       const next: CanvasDataV2 = {
         ...canvasData,
         slots: canvasData.slots.map((s) => (s.slotIndex === slotIndex ? { ...s, filter } : s)),
+      };
+      get().setCanvasData(next);
+    },
+
+    setSlotPhotoOffset: (slotIndex, offset) => {
+      const { canvasData } = get();
+      if (!canvasData) return;
+      const next: CanvasDataV2 = {
+        ...canvasData,
+        slots: canvasData.slots.map((s) =>
+          s.slotIndex === slotIndex
+            ? { ...s, photoOffset: offset === null ? undefined : offset }
+            : s,
+        ),
       };
       get().setCanvasData(next);
     },
