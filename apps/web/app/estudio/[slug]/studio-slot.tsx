@@ -1067,27 +1067,32 @@ function ImagePlaceholder({
   }, [image, filtersArray.length, slotState.filter]);
 
   if (slotState.assetUrl && image) {
-    // M.3.b.UX.v6 (Lucy 2026-05-15) — Transform photo en 3 capas:
+    // M.3.b.UX.v7 (Lucy 2026-05-15) — Transform photo en 3 capas:
     //
     //   1. coverScale: la imagen se escala al máximo entre slot.w/image.w y
     //      slot.h/image.h, garantizando cobertura completa.
     //
-    //   2. defaultOverscan (1.15): multiplicador adicional aplicado SIEMPRE
-    //      para que ambos ejes tengan margen de drag aunque el aspect de
-    //      la foto coincida con el del slot. Sin esto, una foto cuadrada
-    //      en slot cuadrado tendría maxOffsetX = maxOffsetY = 0 → no se
-    //      puede arrastrar en ningún eje. Esta era la queja de Lucy.
+    //   2. DEFAULT_OVERSCAN (1.5): multiplicador adicional aplicado SIEMPRE
+    //      para que ambos ejes tengan margen amplio de drag. Lucy 2026-05-15
+    //      reportó que con 1.15 (v6) una foto vertical en slot cuadrado solo
+    //      podía moverse ~41px horizontal — insuficiente para corregir un
+    //      sujeto descentrado en la imagen original. Con 1.5 → ~138px margen
+    //      horizontal en mismo caso (3× más rango).
     //
-    //   3. userScale (slotState.photoTransform.scale ?? 1): zoom del cliente
-    //      desde el modal de ajustar foto. 1 = default cover×overscan. >1 =
-    //      zoom in (más detalle visible, menos área de la foto). <1 NO se
-    //      permite (rompería cobertura).
+    //      Trade-off: cliente ve por default ~33% menos área de la foto que
+    //      cover exacto. Mitigado por: cliente puede ajustar zoom (slider en
+    //      modal) — el "default" es razonable, ajuste fino con slider.
+    //      Industria estándar: Vistaprint/Mixbook usan overscan 1.3-1.5.
+    //
+    //   3. userScale (slotState.photoTransform.scale ?? 1): multiplicador del
+    //      cliente sobre el default overscan. 1 = default cover×1.5. 2 = zoom
+    //      total cover×3 (extremo). Floor 1 evita zoom-out abajo del cover.
     //
     // dragBoundFunc limita el pan para que la imagen siempre cubra el slot.
 
-    const DEFAULT_OVERSCAN = 1.15;
+    const DEFAULT_OVERSCAN = 1.5;
     const userScale = slotState.photoTransform?.scale ?? 1;
-    const effectiveScale = Math.max(1, userScale); // floor 1 evita zoom-out abajo del cover
+    const effectiveScale = Math.max(1, userScale);
     const coverScale =
       Math.max(layer.width / image.width, layer.height / image.height) *
       DEFAULT_OVERSCAN *
