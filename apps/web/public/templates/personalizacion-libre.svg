@@ -14,7 +14,7 @@
     <text fill="#3D2E5C" font-family="Fredoka, sans-serif" font-size="22" font-weight="700" y="28">Libre</text>
   </g>
   <g transform="translate(200, 390)" text-anchor="middle">
-    <text fill="#3D2E5C" opacity="0.6" font-family="Inter, sans-serif" font-size="14">Subí foto y</text>
-    <text fill="#3D2E5C" opacity="0.6" font-family="Inter, sans-serif" font-size="14" y="20">escribí tu mensaje</text>
+    <text fill="#3D2E5C" opacity="0.6" font-family="Inter, sans-serif" font-size="14">Sube una foto y</text>
+    <text fill="#3D2E5C" opacity="0.6" font-family="Inter, sans-serif" font-size="14" y="20">escribe tu mensaje</text>
   </g>
 </svg>

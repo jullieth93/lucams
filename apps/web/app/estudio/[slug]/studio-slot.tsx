@@ -278,8 +278,28 @@ function StudioSlotImpl({
             cornerRadiusPx={cornerRadiusPx}
           />
           <Layer>
-            {unitTemplate.layers.map((layer) =>
-              renderLayer(layer, slotState, unitTemplate.stage, onTextEdit, shape),
+            {/* M.3.b.UX.bug v2 — clipping a nivel Layer cuando shape es heart/circle.
+              Group con clipFunc canvas-API recorta TODO el contenido (background +
+              foto + asset SVG + texts editables) por la silueta del producto físico.
+              Esto coincide exacto con el edge stroke del overlay (mismo stage), no
+              hay franja desalineada. Texto que quede fuera del corazón no se ve
+              (lo cual es correcto: un imán heart no se imprime en zona rectangular). */}
+            {shape === "heart" || shape === "circle" ? (
+              <Group
+                clipFunc={makeShapeClipFunc(
+                  shape,
+                  unitTemplate.stage.width,
+                  unitTemplate.stage.height,
+                )}
+              >
+                {unitTemplate.layers.map((layer) =>
+                  renderLayer(layer, slotState, unitTemplate.stage, onTextEdit, shape),
+                )}
+              </Group>
+            ) : (
+              unitTemplate.layers.map((layer) =>
+                renderLayer(layer, slotState, unitTemplate.stage, onTextEdit),
+              )
             )}
           </Layer>
           <RealismOverlayLayer
@@ -469,7 +489,8 @@ StudioSlot.displayName = "StudioSlot";
 //  Layer rendering — replica del unitTemplate dentro de cada slot
 // ──────────────────────────────────────────────────────────────────
 
-function renderLayer(
+// Exportado para reuso en <StudioPreviewModal>.
+export function renderLayer(
   layer: CanvasLayer,
   slotState: SlotState,
   stage: { width: number; height: number },
@@ -488,15 +509,26 @@ function renderLayer(
           fill={(layer as { color: string }).color}
         />
       );
-    case "image-placeholder":
-      return (
-        <ImagePlaceholder
-          key={layer.id}
-          layer={layer as ImagePlaceholderLayer}
-          slotState={slotState}
-          shape={shape}
-        />
-      );
+    case "image-placeholder": {
+      // M.3.b.UX.bug v2 — para productos shape heart/circle, expandir el
+      // image-placeholder al stage completo. Razón: el seed declara el slot
+      // con padding (ej. 40px) pensando en producto rectangular. Cuando el
+      // shape es heart/circle, ese padding deja franjas blancas dentro de la
+      // silueta clipeada. Override en runtime: la foto cubre todo el stage,
+      // el clipFunc del Layer la recorta a la silueta del producto físico.
+      const expandToStage = shape === "heart" || shape === "circle";
+      const effectiveLayer = expandToStage
+        ? ({
+            ...(layer as ImagePlaceholderLayer),
+            x: 0,
+            y: 0,
+            width: stage.width,
+            height: stage.height,
+            cornerRadius: 0,
+          } as ImagePlaceholderLayer)
+        : (layer as ImagePlaceholderLayer);
+      return <ImagePlaceholder key={layer.id} layer={effectiveLayer} slotState={slotState} />;
+    }
     case "text": {
       const textLayer = layer as never as { id: string };
       const override = slotState.textOverrides?.[textLayer.id];
@@ -754,7 +786,8 @@ function renderShape(layer: ShapeLayerData) {
 // la foto del cliente debe verse RECORTADA por esa silueta, no como rectángulo
 // con un corazón decorativo encima. Konva `Group.clipFunc` aplica un path
 // arbitrario al canvas context — solo lo dentro del path se renderea.
-function makeShapeClipFunc(
+// Exportado para reuso en <StudioPreviewModal>.
+export function makeShapeClipFunc(
   shape: "heart" | "circle",
   width: number,
   height: number,
@@ -785,11 +818,9 @@ function makeShapeClipFunc(
 function ImagePlaceholder({
   layer,
   slotState,
-  shape,
 }: {
   layer: ImagePlaceholderLayer;
   slotState: SlotState;
-  shape?: "rectangle" | "circle" | "heart" | "custom";
 }) {
   const [image] = useImage(slotState.assetUrl ?? "", "anonymous");
   const imageNodeRef = useRef<Konva.Image | null>(null);
@@ -846,13 +877,13 @@ function ImagePlaceholder({
       cropY = (image.height - cropH) / 2;
     }
 
-    // M.3.b.UX.bug — clipping por silueta del producto físico (heart/circle).
-    // Group con clipFunc canvas-API recorta solo lo dentro de la silueta.
-    const clipFunc =
-      shape === "heart" || shape === "circle"
-        ? makeShapeClipFunc(shape, layer.width, layer.height)
-        : undefined;
-
+    // M.3.b.UX.bug v2 — Lucy 2026-05-15: el clipping NO se hace acá sino a nivel
+    // Content Layer (en el Stage de studio-slot, ver más abajo). Si lo hago acá
+    // sobre el bounding box del image-placeholder (que tiene padding del stage),
+    // el heart de clipping queda desfasado del edge stroke del overlay (que se
+    // dibuja sobre stage completo). Resultado visible: franja blanca entre la
+    // foto recortada y el contorno gris. La solución correcta es clipear TODO
+    // el Content Layer al stage completo → ambos shapes coinciden exactos.
     return (
       <Group
         x={x + layer.width / 2}
@@ -860,7 +891,6 @@ function ImagePlaceholder({
         offsetX={layer.width / 2}
         offsetY={layer.height / 2}
         rotation={layer.rotation ?? 0}
-        clipFunc={clipFunc}
       >
         <KonvaImage
           ref={(n) => {
@@ -869,8 +899,7 @@ function ImagePlaceholder({
           image={image}
           width={layer.width}
           height={layer.height}
-          // Cuando hay clipFunc por shape, el cornerRadius del layer es ruido visual.
-          cornerRadius={clipFunc ? 0 : (layer.cornerRadius ?? 0)}
+          cornerRadius={layer.cornerRadius ?? 0}
           crop={{ x: cropX, y: cropY, width: cropW, height: cropH }}
           // M.3.b.B.3 — filters + params (no-op si sin filter)
           filters={filtersArray.length > 0 ? filtersArray : undefined}

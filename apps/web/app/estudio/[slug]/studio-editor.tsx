@@ -24,7 +24,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { useStore } from "zustand";
+import { useStore, type StoreApi } from "zustand";
 import type Konva from "konva";
 import {
   createDraftDesignAction,
@@ -37,12 +37,13 @@ import { StudioCanvasGrid } from "./studio-canvas-grid";
 import { StudioSidebar } from "./studio-sidebar";
 import { StudioToolbar, StudioFinalizeFab } from "./studio-toolbar";
 import { StudioOnboarding } from "./studio-onboarding";
+import { StudioPreviewModal } from "./studio-preview-modal";
 import { StudioAssetPickerModal } from "./studio-asset-picker-modal";
 import { StudioPhotoAdjustModal } from "./studio-photo-adjust-modal";
 import { StudioTextEditorModal } from "./studio-text-editor-modal";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Sparkles } from "lucide-react";
-import { createStudioStore } from "./lib/store";
+import { createStudioStore, type StudioStoreState } from "./lib/store";
 import type { CanvasData, CanvasDataV2, StudioAsset, StudioProduct, StudioTemplate } from "./types";
 import { ensureCanvasV2 } from "./lib/canvas-migrate";
 
@@ -70,6 +71,8 @@ export function StudioEditor({
   const [pickerSlotIndex, setPickerSlotIndex] = useState<number | null>(null);
   // M.3.b.B.3 — Slot index del modal de ajustar foto (filtros).
   const [adjustSlotIndex, setAdjustSlotIndex] = useState<number | null>(null);
+  // M.3.b.UX.bug v3 — Modal Vista previa fullscreen (Lucy 2026-05-15).
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
   const [bootError, setBootError] = useState<string | null>(null);
   const [booting, setBooting] = useState(true);
   // M.3.b.B.1 — Toggle bleed + safe area guides (default off para que cliente
@@ -391,6 +394,7 @@ export function StudioEditor({
         productSlotCount={photoSlots}
         showRealismGuides={showRealismGuides}
         onToggleRealismGuides={() => setShowRealismGuides((v) => !v)}
+        onOpenPreview={() => setShowPreviewModal(true)}
         onFinalize={handleFinalize}
       />
 
@@ -492,7 +496,64 @@ export function StudioEditor({
       {/* M.3.b.UX.5 — Onboarding tutorial primera vez. Se auto-detecta via
           localStorage; si ya se onboardeó (key="v1"), no muestra nada. */}
       <StudioOnboarding />
+
+      {/* M.3.b.UX.bug v3 — Modal "Vista previa final" (Lucy 2026-05-15). */}
+      <StudioPreviewModalWrapper
+        store={store}
+        open={showPreviewModal}
+        onClose={() => setShowPreviewModal(false)}
+        productName={product.name}
+        productSizeCm={productConfig.sizeCm}
+        shape={productConfig.shape}
+        finish={productConfig.finish}
+        cornerRadiusPx={productConfig.cornerRadiusPx}
+        onFinalize={() => {
+          setShowPreviewModal(false);
+          handleFinalize();
+        }}
+      />
     </div>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────
+//  StudioPreviewModalWrapper — suscribe isFinalizing del store
+// ──────────────────────────────────────────────────────────────────
+function StudioPreviewModalWrapper({
+  store,
+  open,
+  onClose,
+  productName,
+  productSizeCm,
+  shape,
+  finish,
+  cornerRadiusPx,
+  onFinalize,
+}: {
+  store: StoreApi<StudioStoreState>;
+  open: boolean;
+  onClose: () => void;
+  productName: string;
+  productSizeCm?: string;
+  shape?: "rectangle" | "circle" | "heart" | "custom";
+  finish?: "matte" | "glossy" | "soft-touch";
+  cornerRadiusPx?: number;
+  onFinalize: () => void;
+}) {
+  const isFinalizing = useStore(store, (s) => s.isFinalizing);
+  return (
+    <StudioPreviewModal
+      open={open}
+      onClose={onClose}
+      store={store}
+      productName={productName}
+      productSizeCm={productSizeCm}
+      shape={shape}
+      finish={finish}
+      cornerRadiusPx={cornerRadiusPx}
+      onFinalize={onFinalize}
+      isFinalizing={isFinalizing}
+    />
   );
 }
 

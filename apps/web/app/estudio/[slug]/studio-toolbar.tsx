@@ -19,7 +19,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, Check, Loader2, AlertCircle, Sparkles, Ruler } from "lucide-react";
+import { ArrowLeft, Check, Loader2, AlertCircle, Sparkles, Ruler, Eye } from "lucide-react";
 import type { StoreApi } from "zustand";
 import { useStore } from "zustand";
 import { compareSizeToObject } from "./lib/size-comparator";
@@ -45,6 +45,8 @@ type StudioToolbarProps = {
   showRealismGuides?: boolean;
   /** M.3.b.B.1 — callback al cambiar el toggle. */
   onToggleRealismGuides?: () => void;
+  /** M.3.b.UX.bug v3 — abre el modal de Vista previa final. */
+  onOpenPreview?: () => void;
   onFinalize: () => void;
 };
 
@@ -57,6 +59,7 @@ export function StudioToolbar({
   productSlotCount,
   showRealismGuides,
   onToggleRealismGuides,
+  onOpenPreview,
   onFinalize,
 }: StudioToolbarProps) {
   const autoSaveStatus = useStore(store, (s) => s.autoSaveStatus);
@@ -132,6 +135,21 @@ export function StudioToolbar({
             >
               <Ruler className="h-3.5 w-3.5" aria-hidden />
               <span>{showRealismGuides ? "Guías visibles" : "Ver guías"}</span>
+            </button>
+          )}
+          {/* M.3.b.UX.bug v3 — Vista previa fullscreen sin chrome del editor.
+            Habilitado siempre (cliente puede ver el estado actual aunque
+            falten fotos — útil para evaluar progreso). */}
+          {onOpenPreview && (
+            <button
+              type="button"
+              onClick={onOpenPreview}
+              aria-label="Abrir vista previa final"
+              title="Ver cómo se imprimirá tu pedido, sin guías ni decoración del editor"
+              className="text-brand-purple-dark/70 hover:bg-brand-purple/10 hover:text-brand-purple-dark focus:ring-brand-purple hidden h-9 items-center gap-1.5 rounded-md px-2.5 text-xs font-semibold transition-colors focus:ring-2 focus:ring-offset-1 focus:outline-none sm:inline-flex"
+            >
+              <Eye className="h-3.5 w-3.5" aria-hidden />
+              <span>Vista previa</span>
             </button>
           )}
           <AutoSaveIndicator status={autoSaveStatus} isFinalizing={isFinalizing} />
