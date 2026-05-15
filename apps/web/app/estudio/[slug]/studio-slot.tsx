@@ -1067,38 +1067,68 @@ function ImagePlaceholder({
   }, [image, filtersArray.length, slotState.filter]);
 
   if (slotState.assetUrl && image) {
-    // M.3.b.UX.v7 (Lucy 2026-05-15) — Transform photo en 3 capas:
+    // M.3.b.UX.v8 (Lucy 2026-05-15) — Algoritmo MODULAR adaptativo de scale.
     //
-    //   1. coverScale: la imagen se escala al máximo entre slot.w/image.w y
-    //      slot.h/image.h, garantizando cobertura completa.
+    // En vez de un overscan fijo (que era el approach v6=1.15 y v7=1.5), el
+    // scale se calcula DINÁMICAMENTE para cada combinación de foto + slot,
+    // garantizando un margen mínimo de drag en CADA eje independiente del
+    // aspect ratio. Adaptable a:
+    //   - foto cuadrada en slot cuadrado
+    //   - foto vertical en slot cuadrado (caso heart)
+    //   - foto panorámica en slot horizontal (calendarios)
+    //   - foto cuadrada en slot vertical (polaroid 7×9)
+    //   - cualquier combinación
     //
-    //   2. DEFAULT_OVERSCAN (1.5): multiplicador adicional aplicado SIEMPRE
-    //      para que ambos ejes tengan margen amplio de drag. Lucy 2026-05-15
-    //      reportó que con 1.15 (v6) una foto vertical en slot cuadrado solo
-    //      podía moverse ~41px horizontal — insuficiente para corregir un
-    //      sujeto descentrado en la imagen original. Con 1.5 → ~138px margen
-    //      horizontal en mismo caso (3× más rango).
+    // Cálculo:
+    //   1. coverScale_base = max(slot.w / image.w, slot.h / image.h)
+    //      → garantiza cobertura mínima del slot.
+    //   2. Para cada eje, scale_needed_axis = (slot.size_axis × OVERSCAN_FACTOR)
+    //      / image.size_axis donde OVERSCAN_FACTOR = 1.4 (=1 + 2 × 20% margen).
+    //   3. final_base_scale = max(coverScale_base, scale_needed_X, scale_needed_Y)
+    //      → toma el más restrictivo: garantiza COBERTURA + MARGEN_MIN en ambos.
+    //   4. user_scale (slotState.photoTransform.scale ?? 1) multiplica el final
+    //      → cliente puede zoom-in extra desde el modal.
     //
-    //      Trade-off: cliente ve por default ~33% menos área de la foto que
-    //      cover exacto. Mitigado por: cliente puede ajustar zoom (slider en
-    //      modal) — el "default" es razonable, ajuste fino con slider.
-    //      Industria estándar: Vistaprint/Mixbook usan overscan 1.3-1.5.
+    // Ejemplos concretos:
     //
-    //   3. userScale (slotState.photoTransform.scale ?? 1): multiplicador del
-    //      cliente sobre el default overscan. 1 = default cover×1.5. 2 = zoom
-    //      total cover×3 (extremo). Floor 1 evita zoom-out abajo del cover.
+    //   Foto vertical 1000×1500 en slot heart 552×552:
+    //     ratioW=0.552, ratioH=0.368, coverScale=0.552
+    //     scaleNeededX = 552×1.4/1000 = 0.773  ← restrictivo (más grande)
+    //     scaleNeededY = 552×1.4/1500 = 0.515
+    //     finalScale = max(0.552, 0.773, 0.515) = 0.773
+    //     renderedW=773, maxOffsetX=110 px ✓ (vs 41 px en v6)
     //
-    // dragBoundFunc limita el pan para que la imagen siempre cubra el slot.
+    //   Foto cuadrada 1000×1000 en slot heart 552×552:
+    //     ratioW=ratioH=0.552, coverScale=0.552
+    //     scaleNeededX=scaleNeededY = 552×1.4/1000 = 0.773
+    //     finalScale = 0.773
+    //     maxOffsetX=maxOffsetY=110 px ✓ (vs 0 px sin overscan)
+    //
+    //   Foto panorámica 2000×1000 en slot 800×600 (calendario):
+    //     ratioW=0.4, ratioH=0.6, coverScale=0.6
+    //     scaleNeededX = 800×1.4/2000 = 0.56
+    //     scaleNeededY = 600×1.4/1000 = 0.84  ← restrictivo
+    //     finalScale = 0.84
+    //     renderedW=1680, renderedH=840 → maxOffsetX=440, maxOffsetY=120 px ✓
+    //
+    // Trade-off: por default el cliente ve ~28% menos área de la foto que con
+    // cover exacto. Es el costo de garantizar reposicionamiento flexible.
+    // Industria: Vistaprint, Mixbook, Shutterfly hacen lo mismo o más zoom.
 
-    const DEFAULT_OVERSCAN = 1.5;
+    const MIN_DRAG_MARGIN_PCT = 0.2; // 20% del slot en cada lado del eje
+    const OVERSCAN_FACTOR = 1 + 2 * MIN_DRAG_MARGIN_PCT; // 1.4
+
+    const coverScaleBase = Math.max(layer.width / image.width, layer.height / image.height);
+    const scaleNeededX = (layer.width * OVERSCAN_FACTOR) / image.width;
+    const scaleNeededY = (layer.height * OVERSCAN_FACTOR) / image.height;
+    const baseScale = Math.max(coverScaleBase, scaleNeededX, scaleNeededY);
+
     const userScale = slotState.photoTransform?.scale ?? 1;
     const effectiveScale = Math.max(1, userScale);
-    const coverScale =
-      Math.max(layer.width / image.width, layer.height / image.height) *
-      DEFAULT_OVERSCAN *
-      effectiveScale;
-    const renderedW = image.width * coverScale;
-    const renderedH = image.height * coverScale;
+    const finalScale = baseScale * effectiveScale;
+
+    const renderedW = image.width * finalScale;
+    const renderedH = image.height * finalScale;
 
     const maxOffsetX = Math.max(0, (renderedW - layer.width) / 2);
     const maxOffsetY = Math.max(0, (renderedH - layer.height) / 2);
