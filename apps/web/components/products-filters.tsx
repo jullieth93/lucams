@@ -18,7 +18,7 @@
  * Slider de precio debouncea más (500ms) porque dispara muchos events.
  */
 
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Filter, X, SlidersHorizontal } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -112,40 +112,50 @@ function FiltersForm({
 
   const applyTimer = useRef<number | null>(null);
 
-  const apply = useMemo(() => {
-    return (delay = 0) => {
-      if (applyTimer.current) window.clearTimeout(applyTimer.current);
-      applyTimer.current = window.setTimeout(() => {
-        const params = new URLSearchParams();
-        if (q.trim()) params.set("q", q.trim());
-        if (categoria) params.set("categoria", categoria);
-        if (minPrice > minBound) params.set("minPrice", String(minPrice));
-        if (maxPrice < maxBound) params.set("maxPrice", String(maxPrice));
-        if (personalizable) params.set("personalizable", "1");
-        if (descuento) params.set("descuento", "1");
-        if (destacados) params.set("destacados", "1");
-        if (orden !== "recent") params.set("orden", orden);
-        const qs = params.toString();
-        startTransition(() => {
-          router.push(qs ? `/productos?${qs}` : "/productos");
-        });
-      }, delay);
-    };
-  }, [
-    q,
-    categoria,
-    minPrice,
-    maxPrice,
-    personalizable,
-    descuento,
-    destacados,
-    orden,
-    minBound,
-    maxBound,
-    router,
-  ]);
+  // M.3.b.CAT.11 (2026-05-14) — bug fix Lucy reportó: "no se actualiza
+  // real a la selección". Causa: handler llamaba setX + apply() pero apply
+  // leía el state viejo del closure del render actual. Fix: pasar valor
+  // nuevo explícito como override en cada call.
+  type ApplyOverride = Partial<{
+    q: string;
+    categoria: string;
+    minPrice: number;
+    maxPrice: number;
+    personalizable: boolean;
+    descuento: boolean;
+    destacados: boolean;
+    orden: string;
+  }>;
+
+  function apply(delay = 0, overrides: ApplyOverride = {}) {
+    if (applyTimer.current) window.clearTimeout(applyTimer.current);
+    const _q = overrides.q ?? q;
+    const _categoria = overrides.categoria ?? categoria;
+    const _minPrice = overrides.minPrice ?? minPrice;
+    const _maxPrice = overrides.maxPrice ?? maxPrice;
+    const _personalizable = overrides.personalizable ?? personalizable;
+    const _descuento = overrides.descuento ?? descuento;
+    const _destacados = overrides.destacados ?? destacados;
+    const _orden = overrides.orden ?? orden;
+    applyTimer.current = window.setTimeout(() => {
+      const params = new URLSearchParams();
+      if (_q.trim()) params.set("q", _q.trim());
+      if (_categoria) params.set("categoria", _categoria);
+      if (_minPrice > minBound) params.set("minPrice", String(_minPrice));
+      if (_maxPrice < maxBound) params.set("maxPrice", String(_maxPrice));
+      if (_personalizable) params.set("personalizable", "1");
+      if (_descuento) params.set("descuento", "1");
+      if (_destacados) params.set("destacados", "1");
+      if (_orden !== "recent") params.set("orden", _orden);
+      const qs = params.toString();
+      startTransition(() => {
+        router.push(qs ? `/productos?${qs}` : "/productos");
+      });
+    }, delay);
+  }
 
   function clearAll() {
+    if (applyTimer.current) window.clearTimeout(applyTimer.current);
     setQ("");
     setCategoria("");
     setMinPrice(minBound);
@@ -174,15 +184,6 @@ function FiltersForm({
           <Filter className="h-3.5 w-3.5" />
           Filtros
         </h2>
-        {hasActive && (
-          <button
-            type="button"
-            onClick={clearAll}
-            className="text-brand-purple hover:text-brand-purple-dark text-xs font-semibold"
-          >
-            Limpiar
-          </button>
-        )}
       </div>
 
       {/* Search */}
@@ -195,8 +196,9 @@ function FiltersForm({
           type="search"
           value={q}
           onChange={(e) => {
-            setQ(e.target.value);
-            apply(300);
+            const v = e.target.value;
+            setQ(v);
+            apply(300, { q: v });
           }}
           placeholder="Ej. fotoimán"
           className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
@@ -209,8 +211,9 @@ function FiltersForm({
         <select
           value={categoria}
           onChange={(e) => {
-            setCategoria(e.target.value);
-            apply(0);
+            const v = e.target.value;
+            setCategoria(v);
+            apply(0, { categoria: v });
           }}
           className="border-brand-purple/20 focus:ring-brand-purple/30 w-full rounded-md border bg-white px-3 py-2 text-sm focus:ring-2 focus:outline-none"
         >
@@ -239,7 +242,7 @@ function FiltersForm({
             onValueChange={(values) => {
               setMinPrice(values[0]);
               setMaxPrice(values[1]);
-              apply(500);
+              apply(500, { minPrice: values[0], maxPrice: values[1] });
             }}
             className="py-1"
           />
@@ -254,7 +257,7 @@ function FiltersForm({
           checked={personalizable}
           onChange={(v) => {
             setPersonalizable(v);
-            apply(0);
+            apply(0, { personalizable: v });
           }}
         />
         <FilterCheckbox
@@ -262,7 +265,7 @@ function FiltersForm({
           checked={descuento}
           onChange={(v) => {
             setDescuento(v);
-            apply(0);
+            apply(0, { descuento: v });
           }}
         />
         <FilterCheckbox
@@ -270,7 +273,7 @@ function FiltersForm({
           checked={destacados}
           onChange={(v) => {
             setDestacados(v);
-            apply(0);
+            apply(0, { destacados: v });
           }}
         />
       </fieldset>
@@ -281,8 +284,9 @@ function FiltersForm({
         <select
           value={orden}
           onChange={(e) => {
-            setOrden(e.target.value);
-            apply(0);
+            const v = e.target.value;
+            setOrden(v);
+            apply(0, { orden: v });
           }}
           className="border-brand-purple/20 focus:ring-brand-purple/30 w-full rounded-md border bg-white px-3 py-2 text-sm focus:ring-2 focus:outline-none"
         >
@@ -292,6 +296,26 @@ function FiltersForm({
           <option value="price-desc">Precio: mayor a menor</option>
           <option value="name">Nombre A-Z</option>
         </select>
+      </div>
+
+      {/* Acciones — botones explícitos para no-técnicos */}
+      <div className="border-brand-purple/10 flex gap-2 border-t pt-4">
+        <Button
+          type="button"
+          onClick={() => apply(0)}
+          className="bg-brand-purple hover:bg-brand-purple-dark flex-1 text-white"
+        >
+          Aplicar
+        </Button>
+        <Button
+          type="button"
+          onClick={clearAll}
+          variant="outline"
+          disabled={!hasActive}
+          className="border-brand-purple/30 text-brand-purple-dark hover:bg-brand-purple/5"
+        >
+          Reiniciar
+        </Button>
       </div>
     </div>
   );

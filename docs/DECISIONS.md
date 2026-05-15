@@ -1086,3 +1086,76 @@ Auditoría detectó 4 sistemas léxicos competidores en 49 productos (9 con "Set
 - Si entran categorías nuevas que no encajan en las 10 actuales (corporativo regalado, escolar, eventos pre-armados).
 
 **Referencias.** Plan `~/.claude/plans/lee-complemtante-el-proyecto-wiggly-mist.md` sub-bloque M.3.b.CAT. Commits `944332f` (CAT.1-4) + `0775b30` (CAT.6+8) + commit de esta sesión (CAT.10). Lectura recomendada antes de tocar: `packages/db/scripts/seed-products.mjs` (nuevo header con reglas R1-R5), `apps/web/lib/product-redirects.ts` (slugs legacy → base + variant pre-seleccionado), `apps/web/features/products/variant-schemas.ts` (Zod attributes).
+
+## ADR-037 — Estrategia de plantilla por tipo de producto + reset del catálogo de plantillas
+
+**Estado.** Aceptada y aplicada — 2026-05-14.
+
+**Contexto.** Tras el refactor de Information Architecture (ADR-036), Lucy revisó las 11 plantillas SVG visibles en el Estudio y reportó que solo `ig_post.svg` cumplía el estándar visual "tienda que envidiar". Las otras 10 eran placeholder/draft de calidad mixta. Co-creación 2026-05-14: decisión de **borrar todas las mediocres + dejar solo `ig_post.svg` activa + crear fallback "Personalización Libre (temporal)" por kind** mientras Lucy regenera plantillas una a una vía el Claude Project "Lucams SVG Designer".
+
+Decisión paralela: definir formalmente **qué es editable en cada tipo de producto** para que las plantillas nuevas no se diseñen ad-hoc.
+
+**Decisión.** Cinco bloques:
+
+1. **Reset del catálogo de plantillas.** Soft-deleteadas las 11 plantillas pre-existentes (incluyendo Polaroid Romántica, Baby Shower, Cuadrado Minimal Art, Calendario Floral 2026, etc. — todas las que NO usaban `ig_post.svg`). Borrados los 14 archivos SVG correspondientes de `apps/web/public/templates/`, dejando solo `ig_post.svg` + nuevo placeholder `personalizacion-libre.svg`. Reseed con 9 plantillas activas.
+
+2. **`ig_post.svg` → plantilla "Polaroid Instagram" asignada a Fotoimanes Polaroid (SKU FI-POL-12).** Aspect 400×580 (~7:10) encaja con los variants Polaroid 7×9 cm, 6×8 cm. `productId` no nullable en el seed → solo aparece dentro del editor de Fotoimanes Polaroid, no como global.
+
+3. **8 plantillas globales "Personalización Libre (temporal)"** (una por kind personalizable). Canvas blanco + image-placeholder + opcional texto editable. `productId: null` → aparecen para cualquier producto del kind. Garantiza que todo producto personalizable tenga al menos una plantilla funcional aunque no esté regenerada todavía. Order 99 → quedan al final del sidebar (cliente prefiere plantillas premium primero).
+
+4. **Matriz "Estrategia de plantilla por tipo de producto"** (rige las plantillas nuevas a generar):
+
+   | Tipo de producto                                                                                                       | Foto editable     | Texto editable                                                                 | Decoración                                 | Notas                                                                                                                                                                                                   |
+   | ---------------------------------------------------------------------------------------------------------------------- | ----------------- | ------------------------------------------------------------------------------ | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+   | **Fotoimanes (Polaroid / Cuadrados / Circulares / Corazón / Glass)**                                                   | ✅ Sí             | Opcional (algunas plantillas decoradas estilo `ig_post.svg`, otras minimalist) | Marco del shape (identitario del producto) | El shape vive en producto, no en plantilla                                                                                                                                                              |
+   | **Recuerdos de [Evento]** (Cumple, Bautizo, Matrimonio, Quinceañera, Graduación, Mi Primer Año)                        | ✅ Sí             | ✅ Sí (nombre del festejado + fecha + motivo)                                  | Decoración temática del evento             | Plantilla por evento                                                                                                                                                                                    |
+   | **Calendarios** (Foto-Mes, Foto + Planner, Floral, Mini)                                                               | ✅ Sí (foto hero) | ❌ No (mes/año/días/festivos son fijos del SVG)                                | Cielo/colinas/decoración kawaii            | Estáticos: cuando llegue noviembre, Lucy genera 12 SVG nuevos del año siguiente. NO templating dinámico `{MONTH}` — los festivos colombianos cambian (días móviles + decretos), no se pueden hardcodear |
+   | **Cajas Regalo + De Temporada** (Pareja, Recién Nacido, Sorpresa, Día Madre, Día Padre, Navidad)                       | ✅ Sí             | ✅ Sí (frase corta personalizada)                                              | Decoración temática                        | Plantilla por ocasión                                                                                                                                                                                   |
+   | **Cuadros con Foto**                                                                                                   | ✅ Sí             | ❌                                                                             | Marco simple                               | Foco en la foto                                                                                                                                                                                         |
+   | **Cuadros con Frase**                                                                                                  | ❌                | ✅ Sí                                                                          | Tipografía grande + paleta brand           | Sin foto                                                                                                                                                                                                |
+   | **Publicitarios**                                                                                                      | Logo (image)      | ✅ Sí (nombre + teléfono + email + redes)                                      | Limpia B2B                                 | No foto personal del cliente                                                                                                                                                                            |
+   | **NONE** (Coleccionables, Juegos, Caja Sorpresa, Edición Navidad, Calendario Floral, Marcos, Notas, Planners sin foto) | ❌ Sin Estudio    | ❌                                                                             | —                                          | Botón único "Añadir al carrito" en PDP                                                                                                                                                                  |
+
+5. **Pendientes documentados (sesiones siguientes):**
+   - **Admin UI plantillas** `/admin/plantillas` con CRUD para que Lucy (no técnica) gestione plantillas autónomamente — upload SVG, orden, asignar producto, activar/archivar. Hoy depende del seed (código).
+   - **Mockup contextual en PDP** estilo foto Lucy compartida (mano + nevera + imán). Dos planes: (A) Lucy genera con IA + sube como `Product.images[0]` desde admin (manual, $0 código); (B) M.3.b.B.5 ya planeado: pipeline sharp + 4 escenas curadas + perspective warp + composite del diseño del cliente post-Estudio. No excluyentes.
+   - **Reseñas con plantilla**: cuando hay reseñas con foto, taggear qué plantilla generó esa reseña para mostrar en sidebar ("83% de clientes que usaron Polaroid Instagram calificaron 5★"). Schema-ready, UX futura.
+   - **Filtros catálogo — shape contextual**: cuando categoría=foto-imanes, agregar checkboxes shape (Polaroid / Cuadrado / Circular / Corazón / Glass). Requiere campo `shape` standarizado en Product o parsing de slug. Postergado a próxima sesión.
+
+**Por qué este shape (no alternativas):**
+
+- **vs mantener las 10 plantillas mediocres y mejorarlas in-place** — Lucy explicó que el bar visual es "tienda que envidiar", regenerar de cero usando el Claude Project es más rápido y consistente que retocar pieza a pieza. Las plantillas son drop-in (archivos SVG en `public/templates/`).
+- **vs bloquear el Estudio cuando no hay plantilla premium** — frustración del cliente que entra a "Personalizar" y encuentra wall. La plantilla "Personalización Libre" da fallback funcional con canvas blanco.
+- **vs templating dinámico de mes/año en calendarios** — los festivos colombianos cambian año a año (Día del Trabajo móvil, lunes festivos por ley Emiliani, decretos presidenciales). Hardcodear es honesto. Lucy genera 12 SVG cada noviembre para el año siguiente.
+- **vs admin UI plantillas en esta misma sesión** — scope grande (~6h con CRUD + upload + reorder). Lucy puede iterar plantillas vía seed mientras tanto; admin UI es próximo sub-bloque.
+
+**Trade-offs aceptados:**
+
+- 8 plantillas "Personalización Libre" con preview idéntico (placeholder SVG genérico) son visualmente iguales en el sidebar — diferenciadas solo por kind. Aceptable porque son transitorias.
+- "Polaroid Instagram" en este momento es la única plantilla premium activa — la PDP de Fotoimanes Polaroid muestra solo 1 plantilla + la fallback. La PDP de los otros 4 Fotoimanes (Cuadrados/Circulares/Corazón/Glass) muestra solo la fallback hasta que Lucy regenere premiums.
+
+**Consecuencias positivas:**
+
+- Cero plantillas mediocres rompen la promesa "tienda que envidiar".
+- Estudio sigue funcional en cada producto personalizable (no hay deadlock por falta de plantilla).
+- Lucy puede priorizar qué plantillas regenerar primero según volumen de venta esperado.
+
+**Consecuencias negativas:**
+
+- 42 plantillas archivadas en DB (de migraciones previas + las 11 reset acá). Más rows. Aceptable porque `deletedAt` filter las excluye en queries normales.
+- Fallback "Personalización Libre" no es "tienda que envidiar" — funcional sí, premium no. Por eso se llama "(temporal)".
+
+**Verificación M.3.b.CAT.11 (cerrado 2026-05-14):**
+
+- `make seed-templates` ejecuta idempotente: 9 plantillas activas, 42 archivadas.
+- `/producto/abecedario-magnetico` (NONE) muestra "Añadir al carrito" y NO "Personalizar tu imán". ✅
+- `/estudio/abecedario-magnetico` (NONE) → 404. ✅
+- `/producto/set-12-fotoimanes-polaroid` muestra "Personalizar tu imán →" + Estudio activa con 2 plantillas (Polaroid Instagram premium + Personalización Libre fallback).
+- Filtros `/productos`: slider con thumb visible (border-2 brand-purple + bg-white + shadow-md) + botones "Aplicar / Reiniciar" debajo + bug stale state corregido (pasar valor nuevo explícito en cada call de `apply`).
+
+**Cuándo reabrir esta decisión:**
+
+- Cuando Lucy contrate diseñador kawaii freelance o regenere las plantillas premium con el Project — actualizar matriz si surge un tipo nuevo (ej. plantillas para Día de Madre con foto del bebé incluida).
+- Si volumen del negocio requiere admin UI plantillas (es decir, cuando Lucy ya no quiera depender del seed para iterar).
+
+**Referencias.** Plan `~/.claude/plans/lee-complemtante-el-proyecto-wiggly-mist.md` sub-bloque M.3.b. Co-creación 2026-05-14. Lectura recomendada antes de tocar: `packages/db/scripts/seed-templates.mjs` (header con estrategia M.3.b.CAT.11), `apps/web/public/templates/` (solo `ig_post.svg` + `personalizacion-libre.svg`), `apps/web/components/products-filters.tsx` (fix stale state + Aplicar/Reiniciar), `apps/web/components/ui/slider.tsx` (token brand visible).

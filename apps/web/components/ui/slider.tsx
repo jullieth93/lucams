@@ -33,18 +33,18 @@ function Slider({
     >
       <SliderPrimitive.Track
         data-slot="slider-track"
-        className="bg-muted relative grow overflow-hidden rounded-full data-horizontal:h-1 data-horizontal:w-full data-vertical:h-full data-vertical:w-1"
+        className="bg-brand-purple/15 relative grow overflow-hidden rounded-full data-horizontal:h-2 data-horizontal:w-full data-vertical:h-full data-vertical:w-2"
       >
         <SliderPrimitive.Range
           data-slot="slider-range"
-          className="bg-primary absolute select-none data-horizontal:h-full data-vertical:w-full"
+          className="bg-brand-purple absolute select-none data-horizontal:h-full data-vertical:w-full"
         />
       </SliderPrimitive.Track>
       {Array.from({ length: _values.length }, (_, index) => (
         <SliderPrimitive.Thumb
           data-slot="slider-thumb"
           key={index}
-          className="border-ring ring-ring/50 relative block size-3 shrink-0 rounded-full border bg-white transition-[color,box-shadow] select-none after:absolute after:-inset-2 hover:ring-3 focus-visible:ring-3 focus-visible:outline-hidden active:ring-3 disabled:pointer-events-none disabled:opacity-50"
+          className="border-brand-purple ring-brand-purple/30 relative block size-5 shrink-0 cursor-grab rounded-full border-2 bg-white shadow-md transition-[color,box-shadow,transform] select-none after:absolute after:-inset-2 hover:scale-110 hover:ring-4 focus-visible:ring-4 focus-visible:outline-hidden active:cursor-grabbing active:ring-4 disabled:pointer-events-none disabled:opacity-50"
         />
       ))}
     </SliderPrimitive.Root>

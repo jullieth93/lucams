@@ -121,514 +121,104 @@ function asset({ id, src, x = 0, y = 0, width, height, rotation = 0, opacity = 1
   };
 }
 
-// ──────────── 10 Plantillas Premium A++ (paradigma pacdora) ────────────
+// ──────────── Plantillas activas (M.3.b.CAT.11, 2026-05-14) ────────────
+//
+// Estrategia aprobada con Lucy (sesión 2026-05-14):
+//   - Borrar las 11 plantillas mediocres pre-existentes (todas excepto la que
+//     usaba `ig_post.svg`).
+//   - Mantener 1 plantilla premium: "Polaroid Instagram" basada en `ig_post.svg`,
+//     asignada al producto Fotoimanes Polaroid (SKU FI-POL-12) como plantilla
+//     premium del catálogo.
+//   - Crear 8 plantillas globales "Personalización Libre (temporal)" — una por
+//     kind personalizable — para que todo producto con personalización tenga
+//     fallback funcional mientras Lucy regenera plantillas premium con el
+//     Claude Project. Canvas blanco + image-placeholder + textos editables
+//     opcionales. Cliente sube foto y/o agrega texto.
+//
+// Las plantillas premium nuevas se irán agregando una a una en sesiones
+// futuras, siguiendo la matriz "Estrategia de plantilla por tipo" de ADR-037.
+
+const FOTOIMANES_POLAROID_SKU = "FI-POL-12";
+
+const polaroidProduct = await prisma.product.findUnique({
+  where: { sku: FOTOIMANES_POLAROID_SKU },
+  select: { id: true },
+});
+if (!polaroidProduct) {
+  console.error(`✗ Producto base Fotoimanes Polaroid (SKU=${FOTOIMANES_POLAROID_SKU}) no existe.`);
+  console.error("  Corré primero: make seed-products");
+  await prisma.$disconnect();
+  process.exit(1);
+}
+
+// Helper para canvas blanco con foto + texto editable opcional.
+// Stage aspect ratio elegido por kind para encajar con producto físico típico.
+function blankCanvas({ stageW, stageH, photoLabel = "Tu foto", includeText = false }) {
+  const layers = [
+    background("#FFFFFF"),
+    photoSlot({
+      id: "p1",
+      x: 40,
+      y: 40,
+      width: stageW - 80,
+      height: includeText ? stageH - 140 : stageH - 80,
+      cornerRadius: 8,
+      label: photoLabel,
+    }),
+  ];
+  if (includeText) {
+    layers.push(
+      text({
+        id: "free_text",
+        x: stageW / 2,
+        y: stageH - 60,
+        text: "Escribí tu mensaje",
+        fontFamily: "Fredoka",
+        fontSize: 36,
+        fill: BRAND.purpleDark,
+        fontWeight: "bold",
+        editable: true,
+      }),
+    );
+  }
+  return { version: 1, stage: stage(stageW, stageH), layers };
+}
 
 const templatesData = [
-  // ════════════════════════ PHOTO_PACK (3) ════════════════════════
-
+  // ════════════════════ Plantilla premium #1 — Fotoimanes Polaroid (ig_post.svg) ════════════════════
+  //
+  // Aspect 400×580 (relación ~7:10) — encaja con variants Polaroid 7×9 cm, 6×8 cm.
+  // Asset SVG con marco Instagram: avatar, username, iconos like/comment/share,
+  // likes count, caption + hashtags. 4 zonas de texto editable.
   {
-    slug: "photo-pack-polaroid-romantica",
+    slug: "photo-pack-polaroid-instagram",
+    productId: polaroidProduct.id, // solo aparece en Fotoimanes Polaroid
     kind: "PHOTO_PACK",
-    name: "Polaroid Romántica",
+    name: "Polaroid Instagram",
     order: 1,
-    previewUrl: "/templates/polaroid-romantica.svg",
+    previewUrl: "/templates/ig_post.svg",
     canvasData: {
       version: 1,
-      stage: stage(720, 920),
-      layers: [
-        background("#FAF6F0"),
-        // Foto cliente (DEBAJO del asset, se ve por el hueco)
-        photoSlot({ id: "p1", x: 60, y: 60, width: 600, height: 680, label: "Tu foto" }),
-        // Asset SVG: marco polaroid blanco con corners dorados + sombra
-        asset({
-          id: "frame",
-          src: "/templates/polaroid-romantica.svg",
-          x: 0,
-          y: 0,
-          width: 720,
-          height: 920,
-        }),
-        // Caption editable (encima del asset)
-        text({
-          id: "caption",
-          x: 360,
-          y: 820,
-          text: "Te amo · 2026",
-          fontFamily: "Fredoka",
-          fontSize: 38,
-          fill: BRAND.purpleDark,
-          editable: true,
-        }),
-      ],
-    },
-  },
-
-  {
-    slug: "photo-pack-cuadrado-minimal-art",
-    kind: "PHOTO_PACK",
-    name: "Cuadrado Minimal Art",
-    order: 2,
-    previewUrl: "/templates/cuadrado-minimal-art.svg",
-    canvasData: {
-      version: 1,
-      stage: stage(1080, 1080),
+      stage: stage(400, 580),
       layers: [
         background("#FFFFFF"),
-        photoSlot({
-          id: "p1",
-          x: 40,
-          y: 40,
-          width: 1000,
-          height: 1000,
-          cornerRadius: 32,
-          label: "Tu foto",
-        }),
-        // Asset SVG: washi tape diagonal + sombra exterior
+        photoSlot({ id: "p1", x: 20, y: 50, width: 360, height: 380, label: "Tu foto" }),
         asset({
           id: "frame",
-          src: "/templates/cuadrado-minimal-art.svg",
+          src: "/templates/ig_post.svg",
           x: 0,
           y: 0,
-          width: 1080,
-          height: 1080,
+          width: 400,
+          height: 580,
         }),
-      ],
-    },
-  },
-
-  {
-    slug: "photo-pack-corazon-vintage",
-    kind: "PHOTO_PACK",
-    name: "Corazón Vintage",
-    order: 3,
-    previewUrl: "/templates/corazon-vintage.svg",
-    canvasData: {
-      version: 1,
-      stage: stage(1080, 1080),
-      layers: [
-        background(BRAND.blushDeep),
-        // Foto DEBAJO del asset heart (se ve por dentro del corazón)
-        photoSlot({
-          id: "p1",
-          x: 180,
-          y: 240,
-          width: 720,
-          height: 600,
-          cornerRadius: 24,
-          label: "Tu foto",
-        }),
-        // Asset SVG: heart REAL + borde dorado + 4 flores en esquinas
-        asset({
-          id: "frame",
-          src: "/templates/corazon-vintage.svg",
-          x: 0,
-          y: 0,
-          width: 1080,
-          height: 1080,
-        }),
-        // Caption editable encima del heart
-        text({
-          id: "caption",
-          x: 540,
-          y: 950,
-          text: "Forever · 2026",
-          fontFamily: "Fredoka",
-          fontSize: 48,
-          fill: "#FFFFFF",
-          editable: true,
-        }),
-      ],
-    },
-  },
-
-  // ════════════════════════ PHOTO_GRID (1) ════════════════════════
-
-  {
-    slug: "photo-grid-3x3-mood-board",
-    kind: "PHOTO_GRID",
-    name: "Mood Board 3×3",
-    order: 4,
-    previewUrl: "/templates/mood-board-3x3.svg",
-    canvasData: {
-      version: 1,
-      stage: stage(1080, 1080),
-      grid: { cols: 3, rows: 3 },
-      layers: [
-        background(BRAND.cream),
-        // 9 slots de foto en grid 3×3
-        ...Array.from({ length: 9 }).map((_, i) => {
-          const col = i % 3;
-          const row = Math.floor(i / 3);
-          const cell = 320;
-          const gap = 30;
-          return photoSlot({
-            id: `p${i + 1}`,
-            x: gap + col * (cell + gap),
-            y: gap + row * (cell + gap),
-            width: cell,
-            height: cell,
-            cornerRadius: 12,
-            label: `Foto ${i + 1}`,
-          });
-        }),
-        // Asset SVG: washi tape en 3 esquinas + sombra suave
-        asset({
-          id: "frame",
-          src: "/templates/mood-board-3x3.svg",
-          x: 0,
-          y: 0,
-          width: 1080,
-          height: 1080,
-        }),
-      ],
-    },
-  },
-
-  // ════════════════════════ CALENDAR_PHOTO_MONTH (2) ════════════════════════
-
-  {
-    slug: "calendar-month-floral-2026",
-    kind: "CALENDAR_PHOTO_MONTH",
-    name: "Calendario Floral 2026",
-    order: 5,
-    previewUrl: "/templates/calendar-floral-2026.svg",
-    canvasData: {
-      version: 1,
-      stage: stage(1080, 1400),
-      monthsRequired: 12,
-      perMonth: {
-        layers: [
-          background(BRAND.cream),
-          photoSlot({
-            id: "p1",
-            x: 60,
-            y: 220,
-            width: 960,
-            height: 720,
-            cornerRadius: 16,
-            label: "Foto del mes",
-          }),
-          // Asset SVG: banner floral + 5+ flores
-          asset({
-            id: "frame",
-            src: "/templates/calendar-floral-2026.svg",
-            x: 0,
-            y: 0,
-            width: 1080,
-            height: 1400,
-          }),
-          text({
-            id: "month-name",
-            x: 540,
-            y: 1020,
-            text: "{month}",
-            fontFamily: "Fredoka",
-            fontSize: 64,
-            fill: BRAND.purpleDark,
-            fontWeight: "bold",
-          }),
-          text({
-            id: "year",
-            x: 540,
-            y: 1100,
-            text: "2026",
-            fontFamily: "Baloo 2",
-            fontSize: 36,
-            fill: BRAND.purple,
-          }),
-        ],
-      },
-    },
-  },
-
-  {
-    slug: "calendar-month-minimal-2026",
-    kind: "CALENDAR_PHOTO_MONTH",
-    name: "Calendario Minimal 2026",
-    order: 6,
-    previewUrl: "/templates/calendar-minimal-2026.svg",
-    canvasData: {
-      version: 1,
-      stage: stage(1080, 1400),
-      monthsRequired: 12,
-      perMonth: {
-        layers: [
-          background("#FFFFFF"),
-          photoSlot({
-            id: "p1",
-            x: 0,
-            y: 0,
-            width: 1080,
-            height: 900,
-            cornerRadius: 0,
-            label: "Foto del mes",
-          }),
-          // Asset SVG: accent coral + bordes finos
-          asset({
-            id: "frame",
-            src: "/templates/calendar-minimal-2026.svg",
-            x: 0,
-            y: 0,
-            width: 1080,
-            height: 1400,
-          }),
-          text({
-            id: "month-name",
-            x: 540,
-            y: 1050,
-            text: "{month}",
-            fontFamily: "Inter",
-            fontSize: 96,
-            fill: "#1A1A1A",
-            fontWeight: "bold",
-          }),
-          text({
-            id: "year",
-            x: 540,
-            y: 1200,
-            text: "2026",
-            fontFamily: "Inter",
-            fontSize: 32,
-            fill: "#666666",
-          }),
-        ],
-      },
-    },
-  },
-
-  // ════════════════════════ EVENT_FAVOR (2) ════════════════════════
-
-  {
-    slug: "event-matrimonio-elegante",
-    kind: "EVENT_FAVOR",
-    name: "Matrimonio Elegante",
-    order: 7,
-    previewUrl: "/templates/matrimonio-elegante.svg",
-    canvasData: {
-      version: 1,
-      stage: stage(800, 1000),
-      layers: [
-        background(BRAND.cream),
-        photoSlot({
-          id: "p1",
-          x: 80,
-          y: 80,
-          width: 640,
-          height: 560,
-          cornerRadius: 8,
-          label: "Foto pareja",
-        }),
-        // Asset SVG: laurel wreath dorado + divider art deco + corners
-        asset({
-          id: "frame",
-          src: "/templates/matrimonio-elegante.svg",
-          x: 0,
-          y: 0,
-          width: 800,
-          height: 1000,
-        }),
-        text({
-          id: "names",
-          x: 400,
-          y: 790,
-          text: "{names}",
-          fontFamily: "Baloo 2",
-          fontSize: 56,
-          fill: BRAND.purpleDark,
-          editable: true,
-        }),
-        text({
-          id: "date",
-          x: 400,
-          y: 880,
-          text: "{date}",
-          fontFamily: "Inter",
-          fontSize: 28,
-          fill: BRAND.purple,
-          editable: true,
-        }),
-        text({
-          id: "venue",
-          x: 400,
-          y: 940,
-          text: "{venue}",
-          fontFamily: "Inter",
-          fontSize: 22,
-          fill: BRAND.coral,
-          editable: true,
-        }),
-      ],
-    },
-  },
-
-  {
-    slug: "event-cumpleanos-kawaii-pop",
-    kind: "EVENT_FAVOR",
-    name: "Cumpleaños Kawaii Pop",
-    order: 8,
-    previewUrl: "/templates/cumpleanos-kawaii-pop.svg",
-    canvasData: {
-      version: 1,
-      stage: stage(800, 800),
-      layers: [
-        background(BRAND.yellow),
-        photoSlot({
-          id: "p1",
-          x: 130,
-          y: 110,
-          width: 540,
-          height: 380,
-          cornerRadius: 16,
-          label: "Foto celebrante",
-        }),
-        // Asset SVG: confetti mixto + burst rays + card blanca
-        asset({
-          id: "frame",
-          src: "/templates/cumpleanos-kawaii-pop.svg",
-          x: 0,
-          y: 0,
-          width: 800,
-          height: 800,
-        }),
-        text({
-          id: "celebrante",
-          x: 400,
-          y: 560,
-          text: "{name}",
-          fontFamily: "Fredoka",
-          fontSize: 60,
-          fill: BRAND.purple,
-          fontWeight: "bold",
-          editable: true,
-        }),
-        text({
-          id: "edad",
-          x: 400,
-          y: 640,
-          text: "{age} años ✨",
-          fontFamily: "Fredoka",
-          fontSize: 36,
-          fill: BRAND.pink,
-          editable: true,
-        }),
-        text({
-          id: "fecha",
-          x: 400,
-          y: 720,
-          text: "{date}",
-          fontFamily: "Inter",
-          fontSize: 24,
-          fill: BRAND.purpleDark,
-          editable: true,
-        }),
-      ],
-    },
-  },
-
-  // ════════════════════════ CUSTOM_DECOR (1) ════════════════════════
-
-  {
-    slug: "decor-mama-dia-frase",
-    kind: "CUSTOM_DECOR",
-    name: "Día de la Madre — Frase",
-    order: 9,
-    previewUrl: "/templates/mama-dia-frase.svg",
-    canvasData: {
-      version: 1,
-      stage: stage(1080, 1080),
-      layers: [
-        background("#FFE5EC"),
-        photoSlot({
-          id: "p1",
-          x: 240,
-          y: 100,
-          width: 600,
-          height: 600,
-          cornerRadius: 300,
-          label: "Foto con mamá",
-        }),
-        // Asset SVG: flores grandes + anillo decorativo + corazones
-        asset({
-          id: "frame",
-          src: "/templates/mama-dia-frase.svg",
-          x: 0,
-          y: 0,
-          width: 1080,
-          height: 1080,
-        }),
-        text({
-          id: "frase",
-          x: 540,
-          y: 830,
-          text: "Mamá, te amo",
-          fontFamily: "Fredoka",
-          fontSize: 72,
-          fill: BRAND.blushDeep,
-          fontWeight: "bold",
-          editable: true,
-        }),
-        text({
-          id: "subfrase",
-          x: 540,
-          y: 920,
-          text: "Gracias por todo ✨",
-          fontFamily: "Baloo 2",
-          fontSize: 32,
-          fill: BRAND.purpleDark,
-          editable: true,
-        }),
-      ],
-    },
-  },
-
-  // ════════════════════════ PHOTO_PACK extra (Social Post Cuadrado) ════════════════════════
-
-  // Aterrizado 2026-05-13: era "decor-marco-social-post" (CUSTOM_DECOR) — flotaba
-  // suelto sin anclaje físico. Ahora plantilla del producto cuadrado 5×5 cm
-  // (set-12-fotoimanes-cuadrados, aspectRatio 1:1).
-  // Stage 590×590 px = 5×5 cm a 300 DPI exactos.
-  {
-    slug: "photo-pack-social-post-cuadrado",
-    kind: "PHOTO_PACK",
-    name: "Social Post Cuadrado",
-    order: 4,
-    previewUrl: "/templates/social-post-frame.svg",
-    // El aspect ratio se calcula dinámicamente en listTemplatesForKind a partir
-    // de canvasData.stage.width/height — no requiere campo adicional en schema.
-    canvasData: {
-      version: 1,
-      stage: stage(590, 590),
-      layers: [
-        background("#FFFFFF"),
-        // Foto cliente DEBAJO del asset (rectangular dentro del marco cuadrado)
-        photoSlot({
-          id: "p1",
-          x: 0,
-          y: 65,
-          width: 590,
-          height: 380,
-          cornerRadius: 0,
-          label: "Tu foto",
-        }),
-        // Asset SVG v5: marco social post cuadrado 590×590
-        asset({
-          id: "frame",
-          src: "/templates/social-post-frame.svg",
-          x: 0,
-          y: 0,
-          width: 590,
-          height: 590,
-        }),
-        // 4 zonas editables — fontSizes aumentados para legibilidad a escala
-        // del slot (slot 1/12 ≈ 200-250px de display, antes textos 12-13 px
-        // se renderean a ~5px ilegibles). Ahora 28-32px → 11-13px renderado, legible.
+        // 4 textos editables — replicando estructura ig_post.svg
         text({
           id: "user_name",
-          x: 68,
-          y: 35,
+          x: 50,
+          y: 25,
           text: "@tu_usuario",
-          fontFamily: "Inter, sans-serif",
-          fontSize: 28,
+          fontFamily: "Inter",
+          fontSize: 20,
           fill: "#262626",
           fontWeight: "bold",
           align: "left",
@@ -636,23 +226,23 @@ const templatesData = [
         }),
         text({
           id: "likes_count",
-          x: 50,
-          y: 478,
+          x: 30,
+          y: 475,
           text: "362 likes",
-          fontFamily: "Inter, sans-serif",
-          fontSize: 26,
+          fontFamily: "Inter",
+          fontSize: 18,
           fill: "#262626",
           fontWeight: "bold",
           align: "left",
           editable: true,
         }),
         text({
-          id: "title_caption",
-          x: 22,
-          y: 515,
+          id: "caption",
+          x: 15,
+          y: 510,
           text: "Tu título acá",
-          fontFamily: "Inter, sans-serif",
-          fontSize: 28,
+          fontFamily: "Inter",
+          fontSize: 20,
           fill: "#262626",
           fontWeight: "bold",
           align: "left",
@@ -660,12 +250,12 @@ const templatesData = [
         }),
         text({
           id: "hashtags",
-          x: 22,
-          y: 548,
+          x: 15,
+          y: 545,
           text: "#mirecuerdo #lucamsshop",
-          fontFamily: "Inter, sans-serif",
-          fontSize: 22,
-          fill: "#00376B", // azul Instagram hashtags
+          fontFamily: "Inter",
+          fontSize: 16,
+          fill: "#00376B",
           align: "left",
           editable: true,
         }),
@@ -673,110 +263,112 @@ const templatesData = [
     },
   },
 
-  // ════════════════════════ PHOTO_PACK extra (Baby Shower — generado vía Project) ════════════════════════
-
-  // 2026-05-14 — primera plantilla generada vía Claude Project "Lucams SVG Designer".
-  // Briefing: marco polaroid para baby shower con flores acuarela en esquinas +
-  // ribbon blush abajo. Paleta blush/sage-green/cream/yellow.
-  // Ajustes manuales aplicados: scattered-leaves + sparkles desplazadas a marcos
-  // laterales para no tapar la foto del cliente.
+  // ════════════════════ Plantillas globales "Personalización Libre (temporal)" ════════════════════
+  //
+  // 8 plantillas, una por kind personalizable. Fallback funcional mientras
+  // se regeneran las plantillas premium una a una. Cliente sube foto + texto
+  // libre. NO tienen `productId` → globales, aparecen en cualquier producto
+  // del kind que no tenga plantillas premium específicas.
   {
-    slug: "photo-pack-baby-shower",
+    slug: "libre-photo-pack",
+    productId: null,
     kind: "PHOTO_PACK",
-    name: "Baby Shower",
-    order: 5,
-    previewUrl: "/templates/photo-pack-baby-shower.svg",
-    canvasData: {
-      version: 1,
-      stage: stage(720, 920),
-      layers: [
-        background("#FFFFFF"),
-        photoSlot({
-          id: "p1",
-          x: 60,
-          y: 60,
-          width: 600,
-          height: 620,
-          cornerRadius: 12,
-          label: "Foto del bebé",
-        }),
-        asset({
-          id: "frame",
-          src: "/templates/photo-pack-baby-shower.svg",
-          x: 0,
-          y: 0,
-          width: 720,
-          height: 920,
-        }),
-        // Zona reservada caption: (60, 720, 600, 80) — text overlay editable
-        // (todavía no implementado en M.3.b.D, queda reservado)
-      ],
-    },
+    name: "Personalización Libre (temporal)",
+    order: 99,
+    previewUrl: "/templates/personalizacion-libre.svg",
+    canvasData: blankCanvas({ stageW: 600, stageH: 800, includeText: true }),
   },
-
-  // ════════════════════════ BUSINESS_LOGO (1) ════════════════════════
-
   {
-    slug: "business-corporativo-limpio",
+    slug: "libre-photo-grid",
+    productId: null,
+    kind: "PHOTO_GRID",
+    name: "Personalización Libre (temporal)",
+    order: 99,
+    previewUrl: "/templates/personalizacion-libre.svg",
+    canvasData: blankCanvas({ stageW: 720, stageH: 720, includeText: false }),
+  },
+  {
+    slug: "libre-calendar-photo-month",
+    productId: null,
+    kind: "CALENDAR_PHOTO_MONTH",
+    name: "Personalización Libre (temporal)",
+    order: 99,
+    previewUrl: "/templates/personalizacion-libre.svg",
+    canvasData: blankCanvas({
+      stageW: 600,
+      stageH: 800,
+      photoLabel: "Foto del mes",
+      includeText: false,
+    }),
+  },
+  {
+    slug: "libre-calendar-photo-hero",
+    productId: null,
+    kind: "CALENDAR_PHOTO_HERO",
+    name: "Personalización Libre (temporal)",
+    order: 99,
+    previewUrl: "/templates/personalizacion-libre.svg",
+    canvasData: blankCanvas({
+      stageW: 800,
+      stageH: 600,
+      photoLabel: "Foto hero",
+      includeText: false,
+    }),
+  },
+  {
+    slug: "libre-event-favor",
+    productId: null,
+    kind: "EVENT_FAVOR",
+    name: "Personalización Libre (temporal)",
+    order: 99,
+    previewUrl: "/templates/personalizacion-libre.svg",
+    canvasData: blankCanvas({ stageW: 600, stageH: 800, includeText: true }),
+  },
+  {
+    slug: "libre-business-logo",
+    productId: null,
     kind: "BUSINESS_LOGO",
-    name: "Corporativo Limpio",
-    order: 11,
-    previewUrl: "/templates/business-corporativo.svg",
+    name: "Personalización Libre (temporal)",
+    order: 99,
+    previewUrl: "/templates/personalizacion-libre.svg",
+    canvasData: blankCanvas({
+      stageW: 700,
+      stageH: 500,
+      photoLabel: "Tu logo",
+      includeText: true,
+    }),
+  },
+  {
+    slug: "libre-custom-decor",
+    productId: null,
+    kind: "CUSTOM_DECOR",
+    name: "Personalización Libre (temporal)",
+    order: 99,
+    previewUrl: "/templates/personalizacion-libre.svg",
+    canvasData: blankCanvas({ stageW: 600, stageH: 800, includeText: true }),
+  },
+  {
+    slug: "libre-text-only",
+    productId: null,
+    kind: "TEXT_ONLY",
+    name: "Personalización Libre (temporal)",
+    order: 99,
+    previewUrl: "/templates/personalizacion-libre.svg",
     canvasData: {
       version: 1,
-      stage: stage(700, 500),
+      stage: stage(800, 800),
       layers: [
-        background("#FFFFFF"),
-        photoSlot({
-          id: "logo",
-          x: 80,
-          y: 80,
-          width: 280,
-          height: 140,
-          cornerRadius: 0,
-          label: "Tu logo",
-        }),
-        // Asset SVG: accent turquoise + checkmark + líneas profesionales
-        asset({
-          id: "frame",
-          src: "/templates/business-corporativo.svg",
-          x: 0,
-          y: 0,
-          width: 700,
-          height: 500,
-        }),
+        background("#FFF8F0"),
         text({
-          id: "phone",
-          x: 470,
-          y: 130,
-          text: "{phone}",
-          fontFamily: "Inter",
-          fontSize: 22,
+          id: "main_text",
+          x: 400,
+          y: 400,
+          text: "Tu frase acá",
+          fontFamily: "Fredoka",
+          fontSize: 80,
           fill: BRAND.purpleDark,
+          fontWeight: "bold",
           editable: true,
-          align: "left",
-        }),
-        text({
-          id: "email",
-          x: 470,
-          y: 180,
-          text: "{email}",
-          fontFamily: "Inter",
-          fontSize: 22,
-          fill: BRAND.purpleDark,
-          editable: true,
-          align: "left",
-        }),
-        text({
-          id: "web",
-          x: 470,
-          y: 230,
-          text: "{website}",
-          fontFamily: "Inter",
-          fontSize: 22,
-          fill: BRAND.purple,
-          editable: true,
-          align: "left",
         }),
       ],
     },
@@ -802,7 +394,7 @@ if (legacy.length > 0) {
       data: {
         deletedAt: new Date(),
         isActive: false,
-        deletedBy: "system:M.3.b.A2-2026-05-13",
+        deletedBy: "system:M.3.b.CAT.11-2026-05-14",
       },
     });
     console.log(`  - ${t.slug}`);
@@ -817,11 +409,14 @@ if (legacy.length > 0) {
 console.log(`Creando/actualizando ${templatesData.length} plantillas asset paradigm...`);
 const byKind = {};
 for (const t of templatesData) {
+  // `product` es relación Prisma — usar connect/disconnect en lugar de productId directo.
+  const productRelation = t.productId ? { connect: { id: t.productId } } : { disconnect: true };
   await prisma.personalizationTemplate.upsert({
     where: { slug: t.slug },
     update: {
       kind: t.kind,
       name: t.name,
+      product: productRelation,
       previewUrl: t.previewUrl,
       canvasData: t.canvasData,
       order: t.order,
@@ -833,6 +428,7 @@ for (const t of templatesData) {
       kind: t.kind,
       name: t.name,
       slug: t.slug,
+      ...(t.productId ? { product: { connect: { id: t.productId } } } : {}),
       previewUrl: t.previewUrl,
       canvasData: t.canvasData,
       order: t.order,
@@ -840,7 +436,8 @@ for (const t of templatesData) {
     },
   });
   byKind[t.kind] = (byKind[t.kind] ?? 0) + 1;
-  console.log(`  ✓ ${t.name}  [${t.kind}]  (${t.slug}) → asset ${t.previewUrl}`);
+  const scope = t.productId ? "(producto-específico)" : "(global)";
+  console.log(`  ✓ ${t.name}  [${t.kind}]  ${scope}`);
 }
 
 console.log("");

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Placeholder de Personalización Libre (M.3.b.CAT.11, 2026-05-14).
+  Plantilla temporal mientras se regeneran plantillas premium una a una
+  vía Claude Project "Lucams SVG Designer".
+-->
+<svg width="400" height="500" viewBox="0 0 400 500" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="400" height="500" rx="16" fill="#FFFFFF" stroke="#7C6AAD" stroke-width="2" stroke-dasharray="6 6"/>
+  <g transform="translate(200, 230)" text-anchor="middle">
+    <text fill="#7C6AAD" font-family="Fredoka, sans-serif" font-size="80" font-weight="700">+</text>
+  </g>
+  <g transform="translate(200, 320)" text-anchor="middle">
+    <text fill="#3D2E5C" font-family="Fredoka, sans-serif" font-size="22" font-weight="700">Personalización</text>
+    <text fill="#3D2E5C" font-family="Fredoka, sans-serif" font-size="22" font-weight="700" y="28">Libre</text>
+  </g>
+  <g transform="translate(200, 390)" text-anchor="middle">
+    <text fill="#3D2E5C" opacity="0.6" font-family="Inter, sans-serif" font-size="14">Subí foto y</text>
+    <text fill="#3D2E5C" opacity="0.6" font-family="Inter, sans-serif" font-size="14" y="20">escribí tu mensaje</text>
+  </g>
+</svg>
