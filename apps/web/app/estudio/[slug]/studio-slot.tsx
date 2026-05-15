@@ -84,8 +84,14 @@ type StudioSlotProps = {
   onAdjust?: () => void;
   /** M.3.b.D — Click sobre text layer editable abre el editor inline. */
   onTextEdit?: (textLayerId: string) => void;
-  /** M.3.b.UX.v4 — Reposicionar la foto del slot vía drag dentro del bounding box. */
-  onPhotoTransformChange?: (offset: { x: number; y: number }) => void;
+  /** M.3.b.UX.v9 — Aplicar transform parcial a la foto del slot.
+   *  Acepta cualquier combinación de { offsetX, offsetY, scale }. Útil para:
+   *    - drag → { offsetX, offsetY }
+   *    - wheel/pinch zoom → { scale }
+   *    - tap/dblclick reset → null (manejado por onCenterPhoto) */
+  onPhotoTransformChange?: (
+    transform: Partial<{ offsetX: number; offsetY: number; scale: number }>,
+  ) => void;
   /** M.3.b.UX.v6 — Reset transform (centra foto + scale=1). Solo se muestra
    *  si la foto fue transformada (offset != 0 o scale != 1). */
   onCenterPhoto?: () => void;
@@ -225,6 +231,76 @@ function StudioSlotImpl({
     }, 100);
   }, []);
 
+  // ──────────── Photo zoom helpers (M.3.b.UX.v10) ────────────
+  // Constantes compartidas entre wheel (desktop) y pinch (mobile).
+  const SCALE_MIN = 0.5;
+  const SCALE_MAX = 3.0;
+  const clampScale = useCallback((s: number) => Math.max(SCALE_MIN, Math.min(SCALE_MAX, s)), []);
+
+  // Pinch state — distance entre 2 touches al inicio + scale al inicio.
+  const pinchInitialDistRef = useRef<number | null>(null);
+  const pinchInitialScaleRef = useRef<number>(1);
+
+  // Wheel handler: scroll up → zoom in, scroll down → zoom out.
+  // Solo aplica si la foto ya está cargada (slotState.assetUrl). Si NO,
+  // dejamos que el wheel haga scroll normal de la página.
+  const handleWheel = useCallback(
+    (e: Konva.KonvaEventObject<WheelEvent>) => {
+      if (!slotState.assetUrl || !onPhotoTransformChange) return;
+      e.evt.preventDefault();
+      // 10% por scroll tick. Sutil pero responsivo.
+      const factor = e.evt.deltaY > 0 ? 1 / 1.1 : 1.1;
+      const current = slotState.photoTransform?.scale ?? 1;
+      const next = clampScale(current * factor);
+      if (Math.abs(next - current) > 0.001) {
+        onPhotoTransformChange({ scale: next });
+      }
+    },
+    [slotState.assetUrl, slotState.photoTransform?.scale, onPhotoTransformChange, clampScale],
+  );
+
+  // Pinch handlers — usan touchstart/move/end del Stage Konva.
+  const handleTouchStart = useCallback(
+    (e: Konva.KonvaEventObject<TouchEvent>) => {
+      if (!slotState.assetUrl || !onPhotoTransformChange) return;
+      if (e.evt.touches.length === 2) {
+        e.evt.preventDefault();
+        const [t1, t2] = [e.evt.touches[0], e.evt.touches[1]];
+        const dx = t2.clientX - t1.clientX;
+        const dy = t2.clientY - t1.clientY;
+        pinchInitialDistRef.current = Math.sqrt(dx * dx + dy * dy);
+        pinchInitialScaleRef.current = slotState.photoTransform?.scale ?? 1;
+      }
+    },
+    [slotState.assetUrl, slotState.photoTransform?.scale, onPhotoTransformChange],
+  );
+
+  const handleTouchMove = useCallback(
+    (e: Konva.KonvaEventObject<TouchEvent>) => {
+      if (!onPhotoTransformChange || pinchInitialDistRef.current === null) return;
+      if (e.evt.touches.length !== 2) return;
+      e.evt.preventDefault();
+      const [t1, t2] = [e.evt.touches[0], e.evt.touches[1]];
+      const dx = t2.clientX - t1.clientX;
+      const dy = t2.clientY - t1.clientY;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      const ratio = dist / pinchInitialDistRef.current;
+      const next = clampScale(pinchInitialScaleRef.current * ratio);
+      onPhotoTransformChange({ scale: next });
+    },
+    [onPhotoTransformChange, clampScale],
+  );
+
+  const handleTouchEnd = useCallback(() => {
+    pinchInitialDistRef.current = null;
+  }, []);
+
+  // Doble click/tap → reset transform (= centrar + scale 1).
+  const handleDblClick = useCallback(() => {
+    if (!slotState.assetUrl || !onCenterPhoto) return;
+    onCenterPhoto();
+  }, [slotState.assetUrl, onCenterPhoto]);
+
   // ──────────── ARIA label ────────────
   const ariaLabel = slotState.assetUrl
     ? `Imán ${slotState.slotIndex + 1} de ${totalSlots}, con foto cargada. Enter para cambiar foto, Delete para quitar.`
@@ -303,10 +379,18 @@ function StudioSlotImpl({
             stageRef.current = s;
           }}
           // M.3.b.D — Stage debe escuchar eventos para captar clicks sobre
-          // text layers editables. M.3.b.UX.v4: también si hay drag de foto.
-          // Si el slot tiene texts editables o drag de foto habilitado,
-          // escuchamos a nivel Konva (los demás layers tienen listening=false).
+          // text layers editables. M.3.b.UX.v4+: también si hay drag/zoom de foto.
           listening={!!onTextEdit || !!onPhotoTransformChange}
+          // M.3.b.UX.v10 (Lucy 2026-05-15) — gestos de zoom:
+          //   Desktop: wheel sobre la foto → zoom in/out
+          //   Mobile:  pinch 2 dedos → zoom
+          //   Both:    doble click/tap → reset (centrar + scale 100%)
+          onWheel={handleWheel}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+          onDblClick={handleDblClick}
+          onDblTap={handleDblClick}
         >
           <RealismShadowLayer
             stage={unitTemplate.stage}
@@ -463,6 +547,22 @@ function StudioSlotImpl({
             {slotState.slotIndex + 1}
           </div>
         )}
+
+        {/* M.3.b.UX.v10 — chip de zoom visible cuando scale != 100% (foto fue
+          modificada). Feedback al cliente de cuánto zoom tiene actualmente.
+          Top-right del slot para no chocar con el badge slot # ni con action bar.
+          Solo se muestra si fluctúa del default — si está en 100%, no estorba. */}
+        {slotState.assetUrl &&
+          slotState.photoTransform?.scale &&
+          Math.abs(slotState.photoTransform.scale - 1) > 0.001 && (
+            <div
+              className="bg-brand-turquoise/90 absolute top-1.5 right-1.5 flex h-5 items-center justify-center rounded-full px-1.5 text-[10px] font-bold text-white shadow-sm"
+              aria-label={`Zoom actual ${Math.round(slotState.photoTransform.scale * 100)}%`}
+              title={`Zoom ${Math.round(slotState.photoTransform.scale * 100)}% — doble click resetea`}
+            >
+              {Math.round(slotState.photoTransform.scale * 100)}%
+            </div>
+          )}
       </motion.div>
 
       {/* FIX-2 — Footer bar de acciones FUERA del slot.
@@ -585,7 +685,9 @@ export function renderLayer(
   stage: { width: number; height: number },
   onTextEdit: ((layerId: string) => void) | undefined,
   shape?: "rectangle" | "circle" | "heart" | "custom",
-  onPhotoTransformChange?: (offset: { x: number; y: number }) => void,
+  onPhotoTransformChange?: (
+    transform: Partial<{ offsetX: number; offsetY: number; scale: number }>,
+  ) => void,
   onPhotoDragStart?: () => void,
   onPhotoDragEnd?: () => void,
 ) {
@@ -1021,12 +1123,13 @@ function ImagePlaceholder({
 }: {
   layer: ImagePlaceholderLayer;
   slotState: SlotState;
-  /** M.3.b.UX.v4 (Lucy 2026-05-15) — callback al reposicionar la foto con drag.
+  /** M.3.b.UX.v9+ — callback parcial: drag manda offsetX/Y, zoom manda scale.
    * `undefined` = drag deshabilitado (modo vista previa). */
-  onPhotoTransformChange?: (offset: { x: number; y: number }) => void;
-  /** M.3.b.UX.v5 (Lucy 2026-05-15) — callbacks para que el wrapper sepa si el
-   * cliente está/estuvo arrastrando la foto, y aborte el picker modal en ese
-   * caso. Internamente el wrapper setea un ref y lo libera tras un timeout. */
+  onPhotoTransformChange?: (
+    transform: Partial<{ offsetX: number; offsetY: number; scale: number }>,
+  ) => void;
+  /** M.3.b.UX.v5 — callbacks para que el wrapper sepa si el cliente está/estuvo
+   * arrastrando la foto, y aborte el picker modal en ese caso. */
   onPhotoDragStart?: () => void;
   onPhotoDragEnd?: () => void;
 }) {
@@ -1158,8 +1261,8 @@ function ImagePlaceholder({
           onDragEnd={(e) => {
             if (!onPhotoTransformChange) return;
             onPhotoTransformChange({
-              x: e.target.x() - layer.width / 2,
-              y: e.target.y() - layer.height / 2,
+              offsetX: e.target.x() - layer.width / 2,
+              offsetY: e.target.y() - layer.height / 2,
             });
             if (onPhotoDragEnd) onPhotoDragEnd();
           }}

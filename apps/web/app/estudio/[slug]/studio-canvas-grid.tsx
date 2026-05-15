@@ -230,11 +230,8 @@ export function StudioCanvasGrid({
                 onTextEdit={
                   onTextEdit ? (textLayerId) => onTextEdit(slot.slotIndex, textLayerId) : undefined
                 }
-                onPhotoTransformChange={(offset) =>
-                  setSlotPhotoTransform(slot.slotIndex, {
-                    offsetX: offset.x,
-                    offsetY: offset.y,
-                  })
+                onPhotoTransformChange={(transform) =>
+                  setSlotPhotoTransform(slot.slotIndex, transform)
                 }
                 onCenterPhoto={() => setSlotPhotoTransform(slot.slotIndex, null)}
                 onAssetDrop={(asset: StudioAsset) => assignAssetToSlot(slot.slotIndex, asset)}
