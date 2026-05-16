@@ -20,7 +20,7 @@ import { Loader2, Save, Lightbulb } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { MarkdownEditor } from "@/components/admin/markdown-editor";
 import {
   saveCmsBlockDraftAction,
   type CmsActionState,
@@ -100,15 +100,13 @@ export function BlockEditorForm({ block }: { block: BlockEditorBlock }) {
             </Label>
             <span className="text-xs text-slate-500">Lo que escribas se ve a la derecha →</span>
           </div>
-          <Textarea
+          <MarkdownEditor
             id="body"
             name="body"
-            value={body}
-            onChange={(e) => setBody(e.target.value)}
+            defaultValue={body}
             rows={20}
-            disabled={pending}
-            className="font-mono text-sm"
             placeholder={EXAMPLE_PLACEHOLDER}
+            onChange={setBody}
           />
 
           {/* Cheatsheet — SIEMPRE visible, no colapsado */}

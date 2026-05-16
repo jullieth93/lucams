@@ -8,9 +8,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { ArrowLeft, Plus, Search, Edit3 } from "lucide-react";
+import { Package, Plus, Search, Edit3 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { AdminPage, AdminPageHeader, AdminPageBody } from "@/components/admin-page";
 import { getCurrentAdmin } from "@/lib/auth";
 import { formatCOP } from "@/lib/format";
 import { listProducts } from "@/features/products/service";
@@ -35,33 +36,24 @@ export default async function AdminProductosPage({ searchParams }: { searchParam
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-4">
-          <div className="flex items-center gap-3">
-            <Link
-              href="/admin/dashboard"
-              className="text-slate-500 hover:text-slate-700"
-              aria-label="Volver al dashboard"
-            >
-              <ArrowLeft className="h-5 w-5" />
-            </Link>
-            <div>
-              <p className="text-xs tracking-wider text-slate-500 uppercase">Admin</p>
-              <h1 className="text-lg font-bold text-slate-900">Productos</h1>
-            </div>
-          </div>
+    <AdminPage>
+      <AdminPageHeader
+        icon={<Package className="h-5 w-5" />}
+        title="Productos"
+        subtitle={`${total} ${total === 1 ? "producto" : "productos"} en el catálogo`}
+        breadcrumbs={[{ label: "Admin", href: "/admin/dashboard" }, { label: "Productos" }]}
+        actions={
           <Link
             href="/admin/productos/nuevo"
-            className="inline-flex items-center gap-1.5 rounded-md bg-slate-900 px-3 py-2 text-sm font-semibold text-white transition-colors hover:bg-slate-800"
+            className="bg-brand-purple hover:bg-brand-purple-dark inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-sm font-semibold text-white transition-colors"
           >
             <Plus className="h-4 w-4" />
             Nuevo producto
           </Link>
-        </div>
-      </header>
+        }
+      />
 
-      <main className="mx-auto max-w-6xl space-y-4 px-6 py-8">
+      <AdminPageBody>
         {justCreated && (
           <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
             ✓ Producto creado.
@@ -154,8 +146,8 @@ export default async function AdminProductosPage({ searchParams }: { searchParam
             </div>
           </div>
         )}
-      </main>
-    </div>
+      </AdminPageBody>
+    </AdminPage>
   );
 }
 

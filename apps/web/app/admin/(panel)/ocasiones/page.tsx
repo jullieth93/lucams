@@ -11,9 +11,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { ArrowLeft, Tag, ChevronRight } from "lucide-react";
+import { Tag, ChevronRight } from "lucide-react";
 import { listOcasionTags } from "@/features/ocasiones/service";
 import { getCurrentAdmin } from "@/lib/auth";
+import { AdminPage, AdminPageHeader, AdminPageBody, AdminNotice } from "@/components/admin-page";
 import { CreateOcasionForm } from "./create-ocasion-form";
 
 export const metadata: Metadata = {
@@ -49,33 +50,21 @@ export default async function AdminOcasionesPage({ searchParams }: { searchParam
   const errorMsg = typeof sp.error === "string" ? sp.error : null;
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-5xl items-center gap-3 px-6 py-4">
-          <Link
-            href="/admin/dashboard"
-            className="text-slate-500 hover:text-slate-700"
-            aria-label="Volver"
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </Link>
-          <div>
-            <p className="text-xs tracking-wider text-slate-500 uppercase">Admin</p>
-            <h1 className="text-lg font-bold text-slate-900">Ocasiones</h1>
-          </div>
-        </div>
-      </header>
+    <AdminPage>
+      <AdminPageHeader
+        icon={<Tag className="h-5 w-5" />}
+        title="Ocasiones"
+        subtitle="Tags transversales que cruzan categorías. Alimentan al bot WhatsApp futuro."
+        breadcrumbs={[{ label: "Admin", href: "/admin/dashboard" }, { label: "Ocasiones" }]}
+      />
 
-      <main className="mx-auto max-w-5xl space-y-6 px-6 py-8">
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-          <p className="font-semibold">¿Para qué sirven las ocasiones?</p>
-          <p className="mt-1">
-            Son etiquetas que <strong>cruzan categorías</strong> y permiten que el cliente filtre
-            productos por momento o celebración (Matrimonio, Día de la Madre, Cumpleaños…). Cada
-            ocasión tiene una descripción que el bot de WhatsApp futuro usará para responder
-            preguntas como &quot;¿qué le regalo a mi mamá?&quot;.
-          </p>
-        </div>
+      <AdminPageBody>
+        <AdminNotice tone="info">
+          <strong>¿Para qué sirven?</strong> Permiten que el cliente filtre productos por momento o
+          celebración (Matrimonio, Día de la Madre, Cumpleaños…). Cada ocasión tiene una descripción
+          semántica que el bot futuro usa para responder preguntas como &quot;¿qué le regalo a mi
+          mamá?&quot;.
+        </AdminNotice>
 
         {created && (
           <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
@@ -174,7 +163,7 @@ export default async function AdminOcasionesPage({ searchParams }: { searchParam
           <h2 className="mb-4 text-base font-bold text-slate-900">Crear ocasión nueva</h2>
           <CreateOcasionForm />
         </div>
-      </main>
-    </div>
+      </AdminPageBody>
+    </AdminPage>
   );
 }

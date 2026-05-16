@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { ArrowLeft, Trash2 } from "lucide-react";
+import { Package, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { AdminPage, AdminPageHeader, AdminPageBody, AdminNotice } from "@/components/admin-page";
 import { getCurrentAdmin } from "@/lib/auth";
 import { getProductById, listCategoriesForSelect } from "@/features/products/service";
 import { deleteProductAction, updateProductAction } from "../actions";
@@ -35,22 +35,17 @@ export default async function EditarProductoPage({
   if (!product) notFound();
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-3xl items-center justify-between gap-3 px-6 py-4">
-          <div className="flex items-center gap-3">
-            <Link
-              href="/admin/productos"
-              className="text-slate-500 hover:text-slate-700"
-              aria-label="Volver a productos"
-            >
-              <ArrowLeft className="h-5 w-5" />
-            </Link>
-            <div>
-              <p className="text-xs tracking-wider text-slate-500 uppercase">Admin · Productos</p>
-              <h1 className="text-lg font-bold text-slate-900">{product.name}</h1>
-            </div>
-          </div>
+    <AdminPage>
+      <AdminPageHeader
+        icon={<Package className="h-5 w-5" />}
+        title={product.name}
+        subtitle={`SKU: ${product.sku} · slug: ${product.slug}`}
+        breadcrumbs={[
+          { label: "Admin", href: "/admin/dashboard" },
+          { label: "Productos", href: "/admin/productos" },
+          { label: product.name },
+        ]}
+        actions={
           <form action={deleteProductAction}>
             <input type="hidden" name="id" value={product.id} />
             <Button
@@ -63,14 +58,14 @@ export default async function EditarProductoPage({
               Archivar
             </Button>
           </form>
-        </div>
-      </header>
+        }
+      />
 
-      <main className="mx-auto max-w-3xl space-y-4 px-6 py-8">
+      <AdminPageBody>
         {justCreated && (
-          <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-            ✓ Producto creado. Ya puedes editar más detalles o agregar variantes.
-          </div>
+          <AdminNotice tone="success">
+            Producto creado. Ya puedes editar más detalles o agregar variantes.
+          </AdminNotice>
         )}
         <ProductForm
           categories={categories}
@@ -105,7 +100,7 @@ export default async function EditarProductoPage({
           submitLabel="Guardar cambios"
         />
         <ProductImages productId={product.id} images={product.images} />
-      </main>
-    </div>
+      </AdminPageBody>
+    </AdminPage>
   );
 }

@@ -4,7 +4,7 @@ import { useActionState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { MarkdownEditor } from "@/components/admin/markdown-editor";
 import { createCmsBlockAction, type CmsActionState } from "@/app/admin/(panel)/contenido/actions";
 
 const CATEGORIES = [
@@ -94,14 +94,12 @@ export function CreateBlockForm() {
         <Label htmlFor="body">
           Contenido inicial <span className="text-red-600">*</span>
         </Label>
-        <Textarea
+        <MarkdownEditor
           id="body"
           name="body"
           required
           rows={10}
-          disabled={pending}
           placeholder={`# Mi bloque\n\nEscribe el contenido aquí. Puedes editar después.\n\nUsa **negrita**, *cursiva*, listas con - y enlaces como [texto](url).`}
-          className="font-mono text-sm"
         />
         <p className="text-xs text-slate-500">
           Puedes editarlo después y ver una vista previa en el editor completo.

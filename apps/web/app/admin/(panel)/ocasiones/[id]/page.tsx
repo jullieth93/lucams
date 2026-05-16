@@ -5,9 +5,9 @@
  */
 
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { Tag } from "lucide-react";
+import { AdminPage, AdminPageHeader, AdminPageBody } from "@/components/admin-page";
 import { getOcasionTag } from "@/features/ocasiones/service";
 import { getCurrentAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/db";
@@ -47,24 +47,19 @@ export default async function AdminOcasionDetailPage({
   const availableProducts = allProducts.filter((p) => !linkedProductIds.has(p.id));
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-5xl items-center gap-3 px-6 py-4">
-          <Link
-            href="/admin/ocasiones"
-            className="text-slate-500 hover:text-slate-700"
-            aria-label="Volver"
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </Link>
-          <div>
-            <p className="text-xs tracking-wider text-slate-500 uppercase">Admin / Ocasiones</p>
-            <h1 className="text-lg font-bold text-slate-900">{ocasion.name}</h1>
-          </div>
-        </div>
-      </header>
+    <AdminPage>
+      <AdminPageHeader
+        icon={<Tag className="h-5 w-5" />}
+        title={ocasion.name}
+        subtitle={`Slug: ${ocasion.slug}`}
+        breadcrumbs={[
+          { label: "Admin", href: "/admin/dashboard" },
+          { label: "Ocasiones", href: "/admin/ocasiones" },
+          { label: ocasion.name },
+        ]}
+      />
 
-      <main className="mx-auto max-w-5xl space-y-6 px-6 py-8">
+      <AdminPageBody>
         <section className="rounded-lg border border-slate-200 bg-white p-6">
           <h2 className="mb-4 text-base font-bold text-slate-900">Editar ocasión</h2>
           <EditOcasionForm
@@ -101,7 +96,7 @@ export default async function AdminOcasionDetailPage({
             availableProducts={availableProducts}
           />
         </section>
-      </main>
-    </div>
+      </AdminPageBody>
+    </AdminPage>
   );
 }

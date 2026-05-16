@@ -14,7 +14,17 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Users, ShoppingBag, Package, MessageSquare, Tag, Ticket, Layers } from "lucide-react";
+import {
+  Users,
+  ShoppingBag,
+  Package,
+  MessageSquare,
+  Tag,
+  Ticket,
+  Layers,
+  Sparkles,
+} from "lucide-react";
+import { AdminPage, AdminPageHeader, AdminPageBody } from "@/components/admin-page";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { getCurrentAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/db";
@@ -57,19 +67,22 @@ export default async function AdminDashboardPage() {
     }),
   ]);
 
+  const firstName = session.admin.email.split("@")[0];
   return (
-    <div>
-      <header className="border-b border-slate-200 bg-white px-6 py-5">
-        <p className="text-xs tracking-wider text-slate-500 uppercase">Hola 👋</p>
-        <h1 className="text-2xl font-bold text-slate-900">{session.admin.email.split("@")[0]}</h1>
-        <p className="mt-0.5 text-sm text-slate-500">
-          Tenés <strong>{ocasionCount}</strong> ocasiones activas,{" "}
-          <strong>{activeCouponCount}</strong> cupones vigentes y <strong>{pendingReviews}</strong>{" "}
-          reseñas por moderar.
-        </p>
-      </header>
+    <AdminPage>
+      <AdminPageHeader
+        icon={<Sparkles className="h-5 w-5" />}
+        title={`Hola, ${firstName}`}
+        subtitle={
+          <>
+            Tenés <strong className="text-brand-purple">{ocasionCount}</strong> ocasiones activas,{" "}
+            <strong className="text-brand-purple">{activeCouponCount}</strong> cupones vigentes y{" "}
+            <strong className="text-brand-purple">{pendingReviews}</strong> reseñas por moderar.
+          </>
+        }
+      />
 
-      <main className="mx-auto max-w-6xl space-y-8 px-6 py-8">
+      <AdminPageBody>
         <section>
           <h2 className="mb-3 text-sm font-semibold tracking-wider text-slate-500 uppercase">
             Estado del negocio
@@ -277,8 +290,8 @@ export default async function AdminDashboardPage() {
             </Card>
           </div>
         </section>
-      </main>
-    </div>
+      </AdminPageBody>
+    </AdminPage>
   );
 }
 

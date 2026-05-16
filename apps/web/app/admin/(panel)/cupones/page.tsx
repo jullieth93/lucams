@@ -6,12 +6,12 @@
  */
 
 import type { Metadata } from "next";
-import Link from "next/link";
 import { redirect } from "next/navigation";
-import { ArrowLeft, Pause, Play, Ticket } from "lucide-react";
+import { Pause, Play, Ticket } from "lucide-react";
 import { listCoupons } from "@/features/coupons/service";
 import { getCurrentAdmin } from "@/lib/auth";
 import { formatCOP } from "@/lib/format";
+import { AdminPage, AdminPageHeader, AdminPageBody, AdminNotice } from "@/components/admin-page";
 import { CreateCouponForm } from "./create-coupon-form";
 import { pauseCouponAction, resumeCouponAction } from "./actions";
 
@@ -47,33 +47,21 @@ export default async function AdminCuponesPage({ searchParams }: { searchParams:
   }
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-6xl items-center gap-3 px-6 py-4">
-          <Link
-            href="/admin/dashboard"
-            className="text-slate-500 hover:text-slate-700"
-            aria-label="Volver"
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </Link>
-          <div>
-            <p className="text-xs tracking-wider text-slate-500 uppercase">Admin</p>
-            <h1 className="text-lg font-bold text-slate-900">Cupones</h1>
-          </div>
-        </div>
-      </header>
+    <AdminPage>
+      <AdminPageHeader
+        icon={<Ticket className="h-5 w-5" />}
+        title="Cupones"
+        subtitle="Códigos de descuento con restricciones por categoría / producto / mínimos / vigencia."
+        breadcrumbs={[{ label: "Admin", href: "/admin/dashboard" }, { label: "Cupones" }]}
+      />
 
-      <main className="mx-auto max-w-6xl space-y-6 px-6 py-8">
-        <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-          <p className="font-semibold">¿Cómo funcionan?</p>
-          <p className="mt-1">
-            Crea códigos de descuento que el cliente ingresa en el carrito o se aplica
-            automáticamente vía URL <code>?promo=CODIGO</code>. Los cupones marcados{" "}
-            <strong>Públicos</strong> aparecen en <code>/api/coupons/public</code> y el bot de
-            WhatsApp futuro puede informar sobre ellos.
-          </p>
-        </div>
+      <AdminPageBody>
+        <AdminNotice tone="info">
+          <strong>¿Cómo funcionan?</strong> Crea códigos de descuento que el cliente ingresa en el
+          carrito o se aplican vía URL <code>?promo=CODIGO</code>. Los cupones marcados{" "}
+          <strong>Públicos</strong> son consumidos por <code>/api/coupons/public</code> y el bot
+          WhatsApp futuro los puede informar.
+        </AdminNotice>
 
         {sp.created === "1" && (
           <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
@@ -188,7 +176,7 @@ export default async function AdminCuponesPage({ searchParams }: { searchParams:
           <h2 className="mb-4 text-base font-bold text-slate-900">Crear cupón nuevo</h2>
           <CreateCouponForm />
         </div>
-      </main>
-    </div>
+      </AdminPageBody>
+    </AdminPage>
   );
 }

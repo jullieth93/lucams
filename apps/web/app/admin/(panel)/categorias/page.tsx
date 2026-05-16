@@ -7,9 +7,9 @@
  */
 
 import type { Metadata } from "next";
-import Link from "next/link";
 import { redirect } from "next/navigation";
-import { ArrowLeft, Trash2 } from "lucide-react";
+import { Layers, Trash2 } from "lucide-react";
+import { AdminPage, AdminPageHeader, AdminPageBody } from "@/components/admin-page";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { listCategories } from "@/features/categories/service";
@@ -38,24 +38,15 @@ export default async function AdminCategoriasPage({
   const errorMsg = typeof sp.error === "string" ? sp.error : null;
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-4xl items-center gap-3 px-6 py-4">
-          <Link
-            href="/admin/dashboard"
-            className="text-slate-500 hover:text-slate-700"
-            aria-label="Volver"
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </Link>
-          <div>
-            <p className="text-xs tracking-wider text-slate-500 uppercase">Admin</p>
-            <h1 className="text-lg font-bold text-slate-900">Categorías</h1>
-          </div>
-        </div>
-      </header>
+    <AdminPage>
+      <AdminPageHeader
+        icon={<Layers className="h-5 w-5" />}
+        title="Categorías"
+        subtitle="Agrupa productos por tipo. Las sub-categorías se crean asignando categoría padre."
+        breadcrumbs={[{ label: "Admin", href: "/admin/dashboard" }, { label: "Categorías" }]}
+      />
 
-      <main className="mx-auto max-w-4xl space-y-6 px-6 py-8">
+      <AdminPageBody>
         {justCreated && (
           <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
             ✓ Categoría creada.
@@ -156,7 +147,7 @@ export default async function AdminCategoriasPage({
             <CreateCategoryForm />
           </CardContent>
         </Card>
-      </main>
-    </div>
+      </AdminPageBody>
+    </AdminPage>
   );
 }

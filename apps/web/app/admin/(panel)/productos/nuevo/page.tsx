@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { redirect } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { Plus } from "lucide-react";
+import { AdminPage, AdminPageHeader, AdminPageBody } from "@/components/admin-page";
 import { getCurrentAdmin } from "@/lib/auth";
 import { listCategoriesForSelect } from "@/features/products/service";
 import { ProductForm } from "../product-form";
@@ -18,30 +18,25 @@ export default async function NuevoProductoPage() {
   const categories = await listCategoriesForSelect();
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-3xl items-center gap-3 px-6 py-4">
-          <Link
-            href="/admin/productos"
-            className="text-slate-500 hover:text-slate-700"
-            aria-label="Volver a productos"
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </Link>
-          <div>
-            <p className="text-xs tracking-wider text-slate-500 uppercase">Admin · Productos</p>
-            <h1 className="text-lg font-bold text-slate-900">Nuevo producto</h1>
-          </div>
-        </div>
-      </header>
+    <AdminPage>
+      <AdminPageHeader
+        icon={<Plus className="h-5 w-5" />}
+        title="Nuevo producto"
+        subtitle="Crea un producto en el catálogo + variante por defecto."
+        breadcrumbs={[
+          { label: "Admin", href: "/admin/dashboard" },
+          { label: "Productos", href: "/admin/productos" },
+          { label: "Nuevo" },
+        ]}
+      />
 
-      <main className="mx-auto max-w-3xl px-6 py-8">
+      <AdminPageBody>
         <ProductForm
           categories={categories}
           action={createProductAction}
           submitLabel="Crear producto"
         />
-      </main>
-    </div>
+      </AdminPageBody>
+    </AdminPage>
   );
 }

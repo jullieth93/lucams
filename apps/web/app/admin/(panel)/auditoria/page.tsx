@@ -15,10 +15,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { Activity, ChevronLeft, ChevronRight } from "lucide-react";
 import type { Prisma } from "@lucams/db";
 import { prisma } from "@/lib/db";
 import { getCurrentAdmin } from "@/lib/auth";
+import { AdminPage, AdminPageHeader, AdminPageBody } from "@/components/admin-page";
 
 export const metadata: Metadata = {
   title: "Auditoría",
@@ -80,23 +81,21 @@ export default async function AuditoriaPage({ searchParams }: { searchParams: Se
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
-    <div className="bg-slate-50 px-6 py-8">
-      <div className="mx-auto max-w-6xl">
-        <header className="mb-6">
-          <Link
-            href="/admin/dashboard"
-            className="mb-2 inline-block text-xs text-slate-500 hover:text-slate-700"
-          >
-            ← Volver al dashboard
-          </Link>
-          <h1 className="font-display text-2xl text-slate-900">Auditoría</h1>
-          <p className="text-sm text-slate-600">
+    <AdminPage>
+      <AdminPageHeader
+        icon={<Activity className="h-5 w-5" />}
+        title="Auditoría"
+        subtitle={
+          <>
             Registro inmutable de todas las acciones admin sobre el sitio.{" "}
-            <span className="font-semibold">{total.toLocaleString("es-CO")}</span>{" "}
+            <strong className="text-brand-purple">{total.toLocaleString("es-CO")}</strong>{" "}
             {total === 1 ? "evento registrado" : "eventos registrados"}.
-          </p>
-        </header>
+          </>
+        }
+        breadcrumbs={[{ label: "Admin", href: "/admin/dashboard" }, { label: "Auditoría" }]}
+      />
 
+      <AdminPageBody>
         {/* Filtros */}
         <form
           method="GET"
@@ -279,8 +278,8 @@ export default async function AuditoriaPage({ searchParams }: { searchParams: Se
             </div>
           </nav>
         )}
-      </div>
-    </div>
+      </AdminPageBody>
+    </AdminPage>
   );
 }
 
