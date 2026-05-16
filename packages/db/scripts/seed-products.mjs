@@ -237,24 +237,65 @@ const productsData = [
       shape: "rectangle",
     },
     images: [UNSPLASH("1554080353-a576cf803bda")],
+    // Variants modulares: Cantidad (6/9/12) × Tamaño (4×4 / 5×5 / 7×7).
+    // Pricing unitario por tamaño: 4×4 $4k / 5×5 $4.5k / 7×7 $6k.
     variants: [
+      // ── 4×4 cm ──
       {
-        sku: "FI-CUAD-12-V1",
-        name: "Set 6 unidades · 5×5 cm",
+        sku: "FI-CUAD-12-V11",
+        name: "6 unidades · 4×4 cm",
+        price: 2400000,
+        attributes: { photoSlots: 6, sizeCm: "4×4", aspectRatio: "1:1", shape: "rectangle" },
+      },
+      {
+        sku: "FI-CUAD-12-V12",
+        name: "9 unidades · 4×4 cm",
+        price: 3600000,
+        attributes: { photoSlots: 9, sizeCm: "4×4", aspectRatio: "1:1", shape: "rectangle" },
+      },
+      {
+        sku: "FI-CUAD-12-V13",
+        name: "12 unidades · 4×4 cm",
+        price: 4800000,
+        attributes: { photoSlots: 12, sizeCm: "4×4", aspectRatio: "1:1", shape: "rectangle" },
+      },
+      // ── 5×5 cm ──
+      {
+        sku: "FI-CUAD-12-V21",
+        name: "6 unidades · 5×5 cm",
         price: 2700000,
         attributes: { photoSlots: 6, sizeCm: "5×5", aspectRatio: "1:1", shape: "rectangle" },
       },
       {
-        sku: "FI-CUAD-12-V2",
-        name: "Set 9 unidades · 5×5 cm",
-        price: 3600000,
+        sku: "FI-CUAD-12-V22",
+        name: "9 unidades · 5×5 cm",
+        price: 4000000,
         attributes: { photoSlots: 9, sizeCm: "5×5", aspectRatio: "1:1", shape: "rectangle" },
       },
       {
-        sku: "FI-CUAD-12-V3",
-        name: "Set 12 unidades · 5×5 cm",
-        price: 4500000,
+        sku: "FI-CUAD-12-V23",
+        name: "12 unidades · 5×5 cm",
+        price: 5400000,
         attributes: { photoSlots: 12, sizeCm: "5×5", aspectRatio: "1:1", shape: "rectangle" },
+      },
+      // ── 7×7 cm ──
+      {
+        sku: "FI-CUAD-12-V31",
+        name: "6 unidades · 7×7 cm",
+        price: 3600000,
+        attributes: { photoSlots: 6, sizeCm: "7×7", aspectRatio: "1:1", shape: "rectangle" },
+      },
+      {
+        sku: "FI-CUAD-12-V32",
+        name: "9 unidades · 7×7 cm",
+        price: 5400000,
+        attributes: { photoSlots: 9, sizeCm: "7×7", aspectRatio: "1:1", shape: "rectangle" },
+      },
+      {
+        sku: "FI-CUAD-12-V33",
+        name: "12 unidades · 7×7 cm",
+        price: 7200000,
+        attributes: { photoSlots: 12, sizeCm: "7×7", aspectRatio: "1:1", shape: "rectangle" },
       },
     ],
   },
@@ -270,24 +311,64 @@ const productsData = [
     personalizationKind: "PHOTO_PACK",
     personalizationSchema: { photoSlots: 6, aspectRatio: "1:1", shape: "circle", sizeCm: "6" },
     images: [UNSPLASH("1551836022-d5d88e9218df")],
+    // Variants modulares: Cantidad (6/9/12) × Diámetro (5 / 6 / 8 cm).
     variants: [
+      // ── 5 cm ──
       {
-        sku: "FI-CIRC-6-V1",
-        name: "Set 6 unidades · 6 cm",
+        sku: "FI-CIRC-6-V11",
+        name: "6 unidades · 5 cm diámetro",
+        price: 3000000,
+        attributes: { photoSlots: 6, sizeCm: "5", aspectRatio: "1:1", shape: "circle" },
+      },
+      {
+        sku: "FI-CIRC-6-V12",
+        name: "9 unidades · 5 cm diámetro",
+        price: 4200000,
+        attributes: { photoSlots: 9, sizeCm: "5", aspectRatio: "1:1", shape: "circle" },
+      },
+      {
+        sku: "FI-CIRC-6-V13",
+        name: "12 unidades · 5 cm diámetro",
+        price: 5400000,
+        attributes: { photoSlots: 12, sizeCm: "5", aspectRatio: "1:1", shape: "circle" },
+      },
+      // ── 6 cm ──
+      {
+        sku: "FI-CIRC-6-V21",
+        name: "6 unidades · 6 cm diámetro",
         price: 3500000,
         attributes: { photoSlots: 6, sizeCm: "6", aspectRatio: "1:1", shape: "circle" },
       },
       {
-        sku: "FI-CIRC-6-V2",
-        name: "Set 9 unidades · 6 cm",
+        sku: "FI-CIRC-6-V22",
+        name: "9 unidades · 6 cm diámetro",
         price: 4800000,
         attributes: { photoSlots: 9, sizeCm: "6", aspectRatio: "1:1", shape: "circle" },
       },
       {
-        sku: "FI-CIRC-6-V3",
-        name: "Set 12 unidades · 6 cm",
+        sku: "FI-CIRC-6-V23",
+        name: "12 unidades · 6 cm diámetro",
         price: 6000000,
         attributes: { photoSlots: 12, sizeCm: "6", aspectRatio: "1:1", shape: "circle" },
+      },
+      // ── 8 cm ──
+      {
+        sku: "FI-CIRC-6-V31",
+        name: "6 unidades · 8 cm diámetro",
+        price: 4500000,
+        attributes: { photoSlots: 6, sizeCm: "8", aspectRatio: "1:1", shape: "circle" },
+      },
+      {
+        sku: "FI-CIRC-6-V32",
+        name: "9 unidades · 8 cm diámetro",
+        price: 6300000,
+        attributes: { photoSlots: 9, sizeCm: "8", aspectRatio: "1:1", shape: "circle" },
+      },
+      {
+        sku: "FI-CIRC-6-V33",
+        name: "12 unidades · 8 cm diámetro",
+        price: 8000000,
+        attributes: { photoSlots: 12, sizeCm: "8", aspectRatio: "1:1", shape: "circle" },
       },
     ],
   },
@@ -296,7 +377,7 @@ const productsData = [
     sku: "FI-COR-6",
     name: "Fotoimanes Corazón",
     description:
-      "Fotoimanes en forma de corazón con tus fotos. Súper kawaii para regalo de aniversario o día especial. Eligí la cantidad.",
+      "Fotoimanes en forma de corazón con tus fotos. Súper kawaii para regalo de aniversario o día especial. Eligí cantidad y tamaño.",
     basePrice: 3500000,
     categorySlug: "foto-imanes",
     isPersonalizable: true,
@@ -304,24 +385,69 @@ const productsData = [
     personalizationKind: "PHOTO_PACK",
     personalizationSchema: { photoSlots: 6, shape: "heart", sizeCm: "6×6" },
     images: [UNSPLASH("1518621736915-f3b1c41bfd00")],
+    // M.3.b.UX.v13 (Lucy 2026-05-15) — Variants modulares 2 dimensiones:
+    // Cantidad (4/6/9) × Tamaño (5×5 / 6×6 / 8×8) = 9 combinaciones.
+    // Pricing: precio_unitario × cantidad. Unitario por tamaño:
+    //   5×5: $5.500  → packs $22k / $33k / $50k
+    //   6×6: $6.500  → packs $26k / $39k / $58k
+    //   8×8: $8.500  → packs $34k / $51k / $76k
     variants: [
+      // ── 5×5 cm ──
       {
-        sku: "FI-COR-6-V1",
-        name: "Set 4 corazones · 6×6 cm",
-        price: 2500000,
+        sku: "FI-COR-6-V11",
+        name: "4 corazones · 5×5 cm",
+        price: 2200000,
+        attributes: { photoSlots: 4, sizeCm: "5×5", shape: "heart" },
+      },
+      {
+        sku: "FI-COR-6-V12",
+        name: "6 corazones · 5×5 cm",
+        price: 3300000,
+        attributes: { photoSlots: 6, sizeCm: "5×5", shape: "heart" },
+      },
+      {
+        sku: "FI-COR-6-V13",
+        name: "9 corazones · 5×5 cm",
+        price: 5000000,
+        attributes: { photoSlots: 9, sizeCm: "5×5", shape: "heart" },
+      },
+      // ── 6×6 cm ──
+      {
+        sku: "FI-COR-6-V21",
+        name: "4 corazones · 6×6 cm",
+        price: 2600000,
         attributes: { photoSlots: 4, sizeCm: "6×6", shape: "heart" },
       },
       {
-        sku: "FI-COR-6-V2",
-        name: "Set 6 corazones · 6×6 cm",
-        price: 3500000,
+        sku: "FI-COR-6-V22",
+        name: "6 corazones · 6×6 cm",
+        price: 3900000,
         attributes: { photoSlots: 6, sizeCm: "6×6", shape: "heart" },
       },
       {
-        sku: "FI-COR-6-V3",
-        name: "Set 9 corazones · 6×6 cm",
-        price: 4800000,
+        sku: "FI-COR-6-V23",
+        name: "9 corazones · 6×6 cm",
+        price: 5800000,
         attributes: { photoSlots: 9, sizeCm: "6×6", shape: "heart" },
+      },
+      // ── 8×8 cm ──
+      {
+        sku: "FI-COR-6-V31",
+        name: "4 corazones · 8×8 cm",
+        price: 3400000,
+        attributes: { photoSlots: 4, sizeCm: "8×8", shape: "heart" },
+      },
+      {
+        sku: "FI-COR-6-V32",
+        name: "6 corazones · 8×8 cm",
+        price: 5100000,
+        attributes: { photoSlots: 6, sizeCm: "8×8", shape: "heart" },
+      },
+      {
+        sku: "FI-COR-6-V33",
+        name: "9 corazones · 8×8 cm",
+        price: 7600000,
+        attributes: { photoSlots: 9, sizeCm: "8×8", shape: "heart" },
       },
     ],
   },

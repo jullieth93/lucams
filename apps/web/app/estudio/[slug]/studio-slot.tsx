@@ -74,7 +74,7 @@ type StudioSlotProps = {
   /** M.3.b.B.1 — forma física del imán para overlay realismo. */
   shape?: "rectangle" | "circle" | "heart" | "custom";
   /** M.3.b.B.1 — acabado físico para overlay glossy. */
-  finish?: "matte" | "glossy" | "soft-touch";
+  finish?: "matte" | "glossy" | "soft-touch" | "glass";
   /** M.3.b.B.1 — cornerRadius en px del imán físico (solo aplica si shape=rectangle). */
   cornerRadiusPx?: number;
   /** M.3.b.B.1 — toggle global para mostrar bleed + safe guides. */

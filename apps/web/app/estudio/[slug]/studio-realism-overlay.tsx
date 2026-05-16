@@ -61,7 +61,7 @@ const SAFE_COLOR = "rgba(124, 106, 173, 0.85)"; // brand-purple — coherente co
 const DASH_SAFE: number[] = [8, 6];
 
 type Shape = "rectangle" | "circle" | "heart" | "custom";
-type Finish = "matte" | "glossy" | "soft-touch";
+type Finish = "matte" | "glossy" | "soft-touch" | "glass";
 
 type StageDims = { width: number; height: number };
 
@@ -153,8 +153,9 @@ export function RealismOverlayLayer({
 }: RealismOverlayProps) {
   // Acabado glossy: gradient blanco semi-transparente diagonal top-left → bottom-right.
   // Simula reflejo de luz sobre superficie laminada.
+  // Glass treat como glossy (mismo gradient blanco simula reflejo de vidrio).
   const glossyGradient =
-    finish === "glossy"
+    finish === "glossy" || finish === "glass"
       ? {
           fillLinearGradientStartPoint: { x: 0, y: 0 },
           fillLinearGradientEndPoint: { x: stage.width, y: stage.height },

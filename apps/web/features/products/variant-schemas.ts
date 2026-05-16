@@ -25,8 +25,8 @@ export const ProductVariantAttributesSchema = z.object({
   photoSlots: z.number().int().min(1).max(50).optional(),
   /** Forma física. Override. */
   shape: z.enum(["rectangle", "circle", "heart", "custom"]).optional(),
-  /** Acabado del material. Override. */
-  finish: z.enum(["matte", "glossy", "soft-touch"]).optional(),
+  /** Acabado del material. Override. "glass" = frente vidrio premium. */
+  finish: z.enum(["matte", "glossy", "soft-touch", "glass"]).optional(),
   /** Color de fondo del producto (ej. boxes en rosa vs azul). Solo presentación. */
   color: z.string().optional(),
   /** cornerRadius en px sobre stage del unitTemplate. Override. */
