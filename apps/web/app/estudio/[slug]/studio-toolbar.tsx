@@ -19,7 +19,16 @@
 import Link from "next/link";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, Check, Loader2, AlertCircle, Sparkles, Ruler, Eye } from "lucide-react";
+import {
+  ArrowLeft,
+  Check,
+  Loader2,
+  AlertCircle,
+  Sparkles,
+  Ruler,
+  Eye,
+  HelpCircle,
+} from "lucide-react";
 import type { StoreApi } from "zustand";
 import { useStore } from "zustand";
 import { compareSizeToObject } from "./lib/size-comparator";
@@ -47,6 +56,10 @@ type StudioToolbarProps = {
   onToggleRealismGuides?: () => void;
   /** M.3.b.UX.bug v3 — abre el modal de Vista previa final. */
   onOpenPreview?: () => void;
+  /** M.3.b.UX.v12 (Lucy 2026-05-15) — Abrir banner de gestos manualmente
+   *  (drag/zoom/dblclick). El cliente puede re-leer las instrucciones cuando
+   *  quiera. */
+  onOpenGesturesHint?: () => void;
   onFinalize: () => void;
 };
 
@@ -60,6 +73,7 @@ export function StudioToolbar({
   showRealismGuides,
   onToggleRealismGuides,
   onOpenPreview,
+  onOpenGesturesHint,
   onFinalize,
 }: StudioToolbarProps) {
   const autoSaveStatus = useStore(store, (s) => s.autoSaveStatus);
@@ -150,6 +164,19 @@ export function StudioToolbar({
             >
               <Eye className="h-3.5 w-3.5" aria-hidden />
               <span>Vista previa</span>
+            </button>
+          )}
+          {/* M.3.b.UX.v12 (Lucy 2026-05-15) — Botón "?" para re-ver gestos.
+            Icon-only para no ocupar espacio. Visible en mobile y desktop. */}
+          {onOpenGesturesHint && (
+            <button
+              type="button"
+              onClick={onOpenGesturesHint}
+              aria-label="Ver instrucciones de gestos del editor"
+              title="Cómo editar tu foto (drag, zoom, doble click)"
+              className="text-brand-purple-dark/70 hover:bg-brand-purple/10 hover:text-brand-purple-dark focus:ring-brand-purple inline-flex h-9 w-9 items-center justify-center rounded-md transition-colors focus:ring-2 focus:ring-offset-1 focus:outline-none"
+            >
+              <HelpCircle className="h-4 w-4" aria-hidden />
             </button>
           )}
           <AutoSaveIndicator status={autoSaveStatus} isFinalizing={isFinalizing} />

@@ -38,7 +38,7 @@ import { StudioSidebar } from "./studio-sidebar";
 import { StudioToolbar, StudioFinalizeFab } from "./studio-toolbar";
 import { StudioOnboarding } from "./studio-onboarding";
 import { StudioPreviewModal } from "./studio-preview-modal";
-import { StudioGesturesHint } from "./studio-gestures-hint";
+import { StudioGesturesHint, GESTURES_HINT_STORAGE_KEY } from "./studio-gestures-hint";
 import { StudioAssetPickerModal } from "./studio-asset-picker-modal";
 import { StudioPhotoAdjustModal } from "./studio-photo-adjust-modal";
 import { StudioTextEditorModal } from "./studio-text-editor-modal";
@@ -74,6 +74,10 @@ export function StudioEditor({
   const [adjustSlotIndex, setAdjustSlotIndex] = useState<number | null>(null);
   // M.3.b.UX.bug v3 — Modal Vista previa fullscreen (Lucy 2026-05-15).
   const [showPreviewModal, setShowPreviewModal] = useState(false);
+  // M.3.b.UX.v12 (Lucy 2026-05-15) — Banner de gestos: open controlado +
+  // flag persistent (no auto-dismiss cuando se abre manualmente con "?").
+  const [gesturesHintOpen, setGesturesHintOpen] = useState(false);
+  const [gesturesHintPersistent, setGesturesHintPersistent] = useState(false);
   const [bootError, setBootError] = useState<string | null>(null);
   const [booting, setBooting] = useState(true);
   // M.3.b.B.1 — Toggle bleed + safe area guides (default off para que cliente
@@ -396,6 +400,10 @@ export function StudioEditor({
         showRealismGuides={showRealismGuides}
         onToggleRealismGuides={() => setShowRealismGuides((v) => !v)}
         onOpenPreview={() => setShowPreviewModal(true)}
+        onOpenGesturesHint={() => {
+          setGesturesHintPersistent(true);
+          setGesturesHintOpen(true);
+        }}
         onFinalize={handleFinalize}
       />
 
@@ -498,9 +506,27 @@ export function StudioEditor({
           localStorage; si ya se onboardeó (key="v1"), no muestra nada. */}
       <StudioOnboarding />
 
-      {/* M.3.b.UX.v11 — Banner de gestos primera vez (drag/zoom/dblclick).
-        Trigger: el slot tiene foto cargada. Se persiste en localStorage. */}
-      <StudioGesturesHintWrapper store={store} />
+      {/* M.3.b.UX.v11/v12 — Banner de gestos. Auto-trigger 1ª vez cuando hay
+        foto + abierto manualmente desde botón "?" del toolbar. */}
+      <StudioGesturesHintWrapper
+        store={store}
+        open={gesturesHintOpen}
+        persistent={gesturesHintPersistent}
+        onClose={() => {
+          setGesturesHintOpen(false);
+          setGesturesHintPersistent(false);
+          // Marca como visto al cerrar (tanto auto como manual close cuentan).
+          try {
+            window.localStorage.setItem(GESTURES_HINT_STORAGE_KEY, "true");
+          } catch {
+            // localStorage puede no estar disponible (incognito).
+          }
+        }}
+        onAutoTrigger={() => {
+          setGesturesHintPersistent(false);
+          setGesturesHintOpen(true);
+        }}
+      />
 
       {/* M.3.b.UX.bug v3 — Modal "Vista previa final" (Lucy 2026-05-15). */}
       <StudioPreviewModalWrapper
@@ -563,16 +589,42 @@ function StudioPreviewModalWrapper({
 }
 
 // ──────────────────────────────────────────────────────────────────
-//  StudioGesturesHintWrapper — suscribe al store + dispara hint cuando
-//  hay al menos 1 slot con foto cargada (señal de "cliente activo").
+//  StudioGesturesHintWrapper (Lucy v12) — controla apertura del banner:
+//    - Auto-abrir 1ª vez que hay foto cargada (gestionado con localStorage).
+//    - Apertura manual cuando se clickea botón "?" del toolbar.
 // ──────────────────────────────────────────────────────────────────
-function StudioGesturesHintWrapper({ store }: { store: ReturnType<typeof createStudioStore> }) {
-  // Conteo de slots con foto. selector atómico (number primitivo, no array).
+function StudioGesturesHintWrapper({
+  store,
+  open,
+  onClose,
+  persistent,
+  onAutoTrigger,
+}: {
+  store: ReturnType<typeof createStudioStore>;
+  open: boolean;
+  onClose: () => void;
+  persistent: boolean;
+  /** Callback que el editor llama internamente cuando se cumple la condición
+   *  de auto-open (filledCount > 0 + localStorage no marcado). */
+  onAutoTrigger: () => void;
+}) {
+  // Conteo de slots con foto — selector atómico primitivo.
   const filledCount = useStore(
     store,
     (s) => s.canvasData?.slots.filter((sl) => !!sl.assetUrl).length ?? 0,
   );
-  return <StudioGesturesHint trigger={filledCount > 0} />;
+
+  // Auto-trigger 1ª vez (localStorage check vive acá).
+  useEffect(() => {
+    if (filledCount === 0) return;
+    if (typeof window === "undefined") return;
+    const seen = window.localStorage.getItem(GESTURES_HINT_STORAGE_KEY);
+    if (seen === "true") return;
+    const t = window.setTimeout(() => onAutoTrigger(), 600);
+    return () => window.clearTimeout(t);
+  }, [filledCount, onAutoTrigger]);
+
+  return <StudioGesturesHint open={open} onClose={onClose} persistent={persistent} />;
 }
 
 // ──────────────────────────────────────────────────────────────────

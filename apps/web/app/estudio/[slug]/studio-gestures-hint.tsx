@@ -3,38 +3,39 @@
 /*
  * StudioGesturesHint — M.3.b.UX.v11 (Lucy 2026-05-15).
  *
- * Banner instructivo que aparece una sola vez cuando el cliente carga su
- * primera foto en cualquier producto Fotoimanes. Explica los gestos de
- * edición (drag, zoom wheel/pinch, doble click) para que no descubra por
- * accidente.
+ * Banner instructivo de gestos del editor de foto. Se muestra:
+ *   - Automáticamente la PRIMERA vez que el cliente carga una foto
+ *     (gestionado por el editor con localStorage check).
+ *   - Manualmente cuando el cliente clickea el botón "?" del toolbar
+ *     (Lucy v12 — accesibilidad: poder re-ver las instrucciones).
  *
- * Persiste en localStorage tras dismiss → no vuelve a aparecer.
- *
- * Patrón: similar al tutorial de onboarding (StudioOnboarding) pero más
- * focused — solo gestos de foto, mostrado cuando ya hay foto cargada.
+ * Componente "controlled": open + onClose props. El parent maneja toda
+ * la lógica de persistencia (localStorage) y auto-trigger. Acá solo
+ * renderea el banner cuando open=true + permite auto-dismiss tras 6.5s.
  *
  * UX rules:
- *   - Auto-detecta device (touch vs mouse) y muestra solo gestos relevantes.
- *   - Auto-dismiss tras 6 segundos (o manual con X).
+ *   - Auto-detecta device (touch vs mouse) y muestra gestos relevantes.
+ *   - Auto-dismiss tras 6.5 segundos (o manual con X / overlay click).
  *   - Animación slide-up sutil para no asustar.
- *   - localStorage key versionada (v1) para resetear si cambiamos los gestos.
  */
 
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Move, ZoomIn, MousePointer2, Hand } from "lucide-react";
 
-const STORAGE_KEY = "lucams_studio_gestures_hint_v1";
+export const GESTURES_HINT_STORAGE_KEY = "lucams_studio_gestures_hint_v1";
 
 type Props = {
-  /** Mostrar el hint cuando este flag se vuelve true (ej: hay al menos 1 foto cargada). */
-  trigger: boolean;
+  open: boolean;
+  onClose: () => void;
+  /** Si true, NO auto-cierra a los 6.5s. Útil para el modo manual ("?")
+   *  donde el cliente quiere leer con calma. */
+  persistent?: boolean;
 };
 
-export function StudioGesturesHint({ trigger }: Props) {
-  const [open, setOpen] = useState(false);
-  // Lazy state initializer — calculado UNA VEZ en el primer render. Evita el
-  // setState-in-effect antipattern de React 19.
+export function StudioGesturesHint({ open, onClose, persistent = false }: Props) {
+  // Lazy state initializer — calculado UNA VEZ en el primer render.
+  // Evita el setState-in-effect antipattern de React 19.
   const [isTouch] = useState(() => {
     if (typeof window === "undefined") return false;
     return (
@@ -42,33 +43,12 @@ export function StudioGesturesHint({ trigger }: Props) {
     );
   });
 
-  // Trigger logic — solo abrir si nunca se mostró antes
+  // Auto-dismiss tras 6.5 segundos (solo cuando NO es persistent).
   useEffect(() => {
-    if (!trigger) return;
-    if (typeof window === "undefined") return;
-    const seen = window.localStorage.getItem(STORAGE_KEY);
-    if (seen === "true") return;
-    // Pequeño delay para que el cliente vea primero la foto cargada
-    const t = window.setTimeout(() => setOpen(true), 600);
+    if (!open || persistent) return;
+    const t = window.setTimeout(() => onClose(), 6500);
     return () => window.clearTimeout(t);
-  }, [trigger]);
-
-  // Auto-dismiss tras 6 segundos
-  useEffect(() => {
-    if (!open) return;
-    const t = window.setTimeout(() => handleClose(), 6500);
-    return () => window.clearTimeout(t);
-  }, [open]);
-
-  function handleClose() {
-    setOpen(false);
-    try {
-      window.localStorage.setItem(STORAGE_KEY, "true");
-    } catch {
-      // localStorage puede no estar disponible (incognito en algunos browsers).
-      // No crítico — el hint volverá a aparecer en próxima sesión.
-    }
-  }
+  }, [open, persistent, onClose]);
 
   return (
     <AnimatePresence>
@@ -133,7 +113,7 @@ export function StudioGesturesHint({ trigger }: Props) {
             </div>
             <button
               type="button"
-              onClick={handleClose}
+              onClick={onClose}
               aria-label="Cerrar este tip"
               className="text-white/70 hover:text-white"
             >
