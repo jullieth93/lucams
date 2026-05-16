@@ -14,7 +14,17 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { LogOut, Users, ShoppingBag, Package, MessageSquare, ExternalLink } from "lucide-react";
+import {
+  LogOut,
+  Users,
+  ShoppingBag,
+  Package,
+  MessageSquare,
+  ExternalLink,
+  Tag,
+  Ticket,
+  Layers,
+} from "lucide-react";
 import { logoutAction } from "@/app/auth/logout/actions";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -29,14 +39,33 @@ export default async function AdminDashboardPage() {
   const session = await getCurrentAdmin();
   if (!session) redirect("/admin/login");
 
-  // Métricas básicas. En Phase 2/4 esto se va a expandir con queries
-  // más ricas (ventas del mes, conversiones, top productos, etc.).
-  const [customerCount, orderCount, productCount, pendingReviews] = await Promise.all([
+  // Métricas básicas + PLAN_CATALOG_V2 (ocasiones, cupones, sub-cats).
+  const [
+    customerCount,
+    orderCount,
+    productCount,
+    pendingReviews,
+    ocasionCount,
+    activeCouponCount,
+    subCategoryCount,
+  ] = await Promise.all([
     prisma.customer.count({ where: { deletedAt: null } }),
     prisma.order.count({ where: { deletedAt: null } }),
     prisma.product.count({ where: { deletedAt: null } }),
     prisma.review.count({
       where: { isApproved: false, deletedAt: null },
+    }),
+    prisma.ocasionTag.count({ where: { deletedAt: null, isActive: true } }),
+    prisma.coupon.count({
+      where: {
+        deletedAt: null,
+        isActive: true,
+        validFrom: { lte: new Date() },
+        validTo: { gte: new Date() },
+      },
+    }),
+    prisma.category.count({
+      where: { deletedAt: null, parentId: { not: null } },
     }),
   ]);
 
@@ -103,6 +132,26 @@ export default async function AdminDashboardPage() {
               label="Reseñas pendientes"
               value={pendingReviews}
               accent="text-rose-700 bg-rose-50"
+            />
+          </div>
+          <div className="mt-4 grid grid-cols-2 gap-4 md:grid-cols-3">
+            <MetricCard
+              icon={<Layers className="h-5 w-5" />}
+              label="Sub-categorías"
+              value={subCategoryCount}
+              accent="text-indigo-700 bg-indigo-50"
+            />
+            <MetricCard
+              icon={<Tag className="h-5 w-5" />}
+              label="Ocasiones activas"
+              value={ocasionCount}
+              accent="text-fuchsia-700 bg-fuchsia-50"
+            />
+            <MetricCard
+              icon={<Ticket className="h-5 w-5" />}
+              label="Cupones vigentes"
+              value={activeCouponCount}
+              accent="text-teal-700 bg-teal-50"
             />
           </div>
         </section>
@@ -191,6 +240,47 @@ export default async function AdminDashboardPage() {
                 <CardContent>
                   <span className="inline-block rounded bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
                     Disponible
+                  </span>
+                </CardContent>
+              </Card>
+            </Link>
+
+            <Link
+              href="/admin/ocasiones"
+              className="block rounded-lg transition-shadow hover:shadow-md"
+            >
+              <Card className="h-full border-slate-200 hover:border-slate-300">
+                <CardHeader>
+                  <CardTitle className="text-base text-slate-900">Ocasiones →</CardTitle>
+                  <CardDescription className="text-slate-600">
+                    Tags transversales que cruzan categorías (Matrimonio, Día Madre, Cumpleaños…)
+                    para que cliente y bot WhatsApp filtren por momento o celebración.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <span className="inline-block rounded bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
+                    PLAN_CATALOG_V2
+                  </span>
+                </CardContent>
+              </Card>
+            </Link>
+
+            <Link
+              href="/admin/cupones"
+              className="block rounded-lg transition-shadow hover:shadow-md"
+            >
+              <Card className="h-full border-slate-200 hover:border-slate-300">
+                <CardHeader>
+                  <CardTitle className="text-base text-slate-900">Cupones →</CardTitle>
+                  <CardDescription className="text-slate-600">
+                    Códigos de descuento: PERCENT / FIXED / FREE_SHIPPING. Restricciones por
+                    categoría, producto, mínimos, vigencia, usos. Cupones públicos visibles para el
+                    bot.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <span className="inline-block rounded bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
+                    PLAN_CATALOG_V2
                   </span>
                 </CardContent>
               </Card>

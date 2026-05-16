@@ -202,7 +202,16 @@ const redirectsContent = `/*
 export const PRODUCT_REDIRECTS: Record<string, string> = ${JSON.stringify(redirectsMap, null, 2)};
 `;
 
-const redirectsPath = join(__dirname, "..", "..", "..", "apps", "web", "lib", "product-redirects.ts");
+const redirectsPath = join(
+  __dirname,
+  "..",
+  "..",
+  "..",
+  "apps",
+  "web",
+  "lib",
+  "product-redirects.ts",
+);
 writeFileSync(redirectsPath, redirectsContent, "utf-8");
 console.log(`\n📝 Generado ${redirectsPath} con ${Object.keys(redirectsMap).length} redirects`);
 

@@ -1159,3 +1159,194 @@ Decisión paralela: definir formalmente **qué es editable en cada tipo de produ
 - Si volumen del negocio requiere admin UI plantillas (es decir, cuando Lucy ya no quiera depender del seed para iterar).
 
 **Referencias.** Plan `~/.claude/plans/lee-complemtante-el-proyecto-wiggly-mist.md` sub-bloque M.3.b. Co-creación 2026-05-14. Lectura recomendada antes de tocar: `packages/db/scripts/seed-templates.mjs` (header con estrategia M.3.b.CAT.11), `apps/web/public/templates/` (solo `ig_post.svg` + `personalizacion-libre.svg`), `apps/web/components/products-filters.tsx` (fix stale state + Aplicar/Reiniciar), `apps/web/components/ui/slider.tsx` (token brand visible).
+
+---
+
+## ADR-038 — API Catálogo RAG-ready (PLAN_CATALOG_V2 decisión 2.10)
+
+**Fecha.** 2026-05-15
+**Status.** Aceptado
+**Sub-bloque.** PLAN_CATALOG_V2 Área 2
+
+**Contexto.** El plan consensuado (`docs/PLAN_CATALOG_V2.md`) cierra como principio rector transversal (decisión 2.11) que el catálogo debe ser AI-ready: DB = fuente de verdad, LLM = consumidor que consulta API estructurada, nunca inventa. Las decisiones 2.10 + 5.10 + 6.7 + 7.7 + 4.9 definen los endpoints públicos del catálogo que tanto la UI del sitio como el bot WhatsApp futuro Fase 5+ consumen.
+
+**Decisión.** Implementar 8 endpoints públicos bajo `/api/catalog/*` + 1 bajo `/api/coupons/*`, todos con cache HTTP + rate-limit. Sin auth (catálogo público). Excluyen datos sensibles (cost, margin, datos admin).
+
+**Endpoints:**
+
+| Endpoint                           | Devuelve                                                                                                                     | Decisión origen   |
+| ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- | ----------------- |
+| `GET /api/catalog/categories`      | Árbol jerárquico cat → sub-cats con `richDescription`, `useCase`, count productos.                                           | 2.10              |
+| `GET /api/catalog/products`        | Lista paginada filtrable (`categoria`, `subcategoria`, `ocasion`, `priceMin/Max`, `isPersonalizable`).                       | 2.10              |
+| `GET /api/catalog/products/[slug]` | Detalle: `richDescription`, `whyChooseThis`, `idealFor`, variants con `description`, `physicalSpecs`, plantillas, ocasiones. | 2.10 + 4.9 + 5.10 |
+| `GET /api/catalog/ocasiones`       | 15 ocasiones con descripción + productos asociados con `rationale` + `suggestedQuantityRange`.                               | 2.10              |
+| `GET /api/catalog/search?q=`       | Búsqueda fuzzy pg_trgm sobre name + richDescription + idealFor + tags.                                                       | 2.10 + 7.8        |
+| `GET /api/catalog/recommend`       | Productos scoreados por filtros (ocasion, destinatario, precio, kind). Misma lógica que wizard UI.                           | 6.7               |
+| `GET /api/catalog/filters`         | Filtros disponibles + facet count por contexto categoría/sub-cat.                                                            | 7.7               |
+| `GET /api/catalog/templates`       | PersonalizationTemplate por producto/kind con `mode` EDITABLE/PREMADE.                                                       | 5.10              |
+| `GET /api/coupons/public`          | Cupones `isPublic && isActive && ahora BETWEEN validFrom AND validTo`. Bot informa códigos vigentes, NUNCA inventa.          | 3.9               |
+
+**Convenciones técnicas:**
+
+- **Cache HTTP**: `Cache-Control: public, max-age=3600` (catálogo cambia raramente). Recomendaciones max-age=600 (más fresco).
+- **Rate-limit**: 30 req/min por IP (mismo patrón CMS API ADR-033). 60/min para `/api/catalog/recommend` por wizard activo.
+- **Response shape estable**: campos opcionales nunca eliminados (solo se suman). Versionado vía path si rompemos.
+- **Errores RFC 7807**: `lib/errors.ts` ya existente.
+- **CORS**: `Access-Control-Allow-Origin: *` (público).
+- **Sin auth**: catálogo público. Excepciones admin viven bajo `/api/admin/*` con cookie auth.
+- **Exclusiones obligatorias del payload**: `cost`, `margin`, `isFeatured` interno crudo, `createdBy/updatedBy/deletedBy`, datos de admin.
+
+**Por qué este shape (no alternativas):**
+
+- **vs GraphQL** — REST es más simple para bot WhatsApp + frontend Next.js. GraphQL agrega complejidad sin beneficio para nuestro volumen de queries.
+- **vs no exponer API y dejar bot leer DB directo** — viola principio AI-ready (no auth = no source of truth controlada). API normalizada permite versionado, cache, rate-limit, auditoría.
+- **vs replicar lógica en bot + UI por separado** — viola DRY. Endpoint compartido garantiza consistencia: si Lucy cambia un campo en admin, bot y UI lo ven con misma latencia (cache TTL).
+
+**Trade-offs aceptados:**
+
+- 9 endpoints nuevos = más código y tests. Aceptable porque pattern ya consolidado en CMS API (ADR-033) — reusamos infraestructura `lib/cms.ts` + `unstable_cache` + headers HTTP.
+- Cache 1h significa que cambios admin tardan máx 1h en propagarse al bot. Si Lucy edita un producto urgente puede invalidar manualmente via tag (`updateTag("catalog")`).
+
+**Consecuencias positivas:**
+
+- Bot WhatsApp Fase 5+ consume directo, sin lógica duplicada.
+- Mobile app futura puede usar la misma API.
+- SEO mejorado (sitemap puede generarse desde API).
+- Análisis externos (Lucy con su contador, Power BI, etc.) consumen desde API.
+
+**Consecuencias negativas:**
+
+- Si necesitamos cambiar shape de respuesta, hay que mantener compatibilidad o versionar `/api/v2/...`.
+- Cache HTTP requiere invalidación cuidadosa (tag-based).
+
+**Pendientes documentados (próximos sub-bloques):**
+
+- Embeddings pgvector + ADR-036 para búsqueda semántica (Fase 5+ junto con bot).
+- Endpoint `/api/admin/insights/*` para "bot admin" futuro (decisión 8.8, Fase 5+).
+- Webhook outbound al bot WhatsApp cuando hay cambios críticos (price drop, stock low) — Fase 5+.
+
+**Cuándo reabrir esta decisión.** Si el bot Fase 5+ requiere queries que el shape actual no soporta (ej. filtros geográficos por departamento Colombia, análisis temporal de tendencias), o si volumen de tráfico justifica migrar a edge runtime con cache CDN.
+
+**Referencias.** `docs/PLAN_CATALOG_V2.md` decisiones 2.10 + 2.11 + 4.9 + 5.10 + 6.7 + 7.7 + 3.9. Patrón base: ADR-033 (CMS API). `apps/web/app/api/catalog/*` (endpoints implementados). `apps/web/lib/catalog.ts` (helpers + cache + rate-limit).
+
+---
+
+## ADR-039 — Logística Aveonline + interface `ShippingProvider` (PLAN_CATALOG_V2 decisión 4.10)
+
+**Fecha.** 2026-05-15
+**Status.** Aceptado
+**Sub-bloque.** PLAN_CATALOG_V2 Área 4
+
+**Contexto.** El plan original mencionaba Venndelo como proveedor de logística (1 carrier: Coordinadora). Investigación profunda 2026-05-15 (mandato Lucy "explora 100% sin suposición") reveló **Aveonline** como agregador multi-carrier colombiano que integra Servientrega, Envia, TCC, Coordinadora, Domina, Interrapidísimo, Saferbo. Decisión 4.10 cierra con Aveonline primario + interface `ShippingProvider` que permite swap futuro a Venndelo o nuevo proveedor.
+
+**Decisión.** Implementar `features/shipping/` con interface `ShippingProvider` + 2 implementaciones (Aveonline activa, Venndelo dormida Plan B documentado en `docs/INTEGRATIONS.md`).
+
+**Interface `ShippingProvider`:**
+
+```ts
+export interface ShippingProvider {
+  // Cotiza envío. Retorna lista de carriers + precio + días entrega.
+  // En Aveonline cliente elige; en Venndelo retorna solo Coordinadora.
+  quote(params: {
+    origin: { city: string; department: string };
+    destination: { city: string; department: string };
+    items: Array<{ weightGrams: number; declaredValue: number; qty: number }>;
+    contraentrega: boolean;
+  }): Promise<ShippingQuote[]>;
+
+  // Crea guía con el carrier elegido. Retorna número guía + URL etiqueta PDF + tracking URL.
+  createShipment(params: {
+    carrier: string;
+    quoteId: string;
+    pickup: PickupAddress;
+    delivery: DeliveryAddress;
+    contraentrega: boolean;
+    valorRecaudo?: number;
+    orderId: string;
+  }): Promise<ShippingResult>;
+
+  // Consulta estado actual + histórico. Para sync periódico o consulta UI.
+  getTracking(trackingNumber: string): Promise<TrackingStatus>;
+
+  // Solicita recogida en pickup address (Aveonline: limitado a 11am del día).
+  requestPickup(params: { trackingNumbers: string[]; comments?: string }): Promise<PickupResult>;
+
+  // Procesa webhook entrante (verificación firma + parse + retorno status normalizado).
+  handleWebhook(rawBody: string, headers: Record<string, string>): Promise<WebhookEvent>;
+}
+```
+
+**Implementación Aveonline:**
+
+- Auth: JWT 1h vigencia. `lib/aveonline-auth.ts` cachea token + auto-refresh con buffer 5min antes de expirar.
+- Endpoints encapsulados: el API legacy usa POST + `tipo` discriminator; `lib/aveonline.ts` ofrece interface limpia que internamente arma los requests.
+- Webhook sin HMAC documentado → mitigación con IP whitelist Aveonline + validación de existencia del `guia` en DB + estado monotónico (no retrocede). Pedir a soporte que agregue HMAC.
+- Recogida 11am: UI admin muestra advertencia "Confirma antes de 11am para que salga hoy".
+
+**Implementación Venndelo (dormida):**
+
+- Archivo `features/shipping/venndelo.ts` queda no exportado por default. Si Aveonline falla, swap: cambiar import en `features/shipping/provider.ts` y deploy.
+- Schema `lib/venndelo.ts` ya documentado en `docs/INTEGRATIONS.md`.
+
+**Variables de entorno:**
+
+```bash
+SHIPPING_PROVIDER=aveonline  # aveonline | venndelo
+
+# Aveonline
+AVEONLINE_USUARIO=
+AVEONLINE_CLAVE=
+AVEONLINE_PICKUP_CITY=Bogotá
+AVEONLINE_PICKUP_DEPARTMENT=Cundinamarca
+AVEONLINE_PICKUP_ADDRESS=
+AVEONLINE_PICKUP_PHONE=
+
+# Venndelo (Plan B)
+VENNDELO_API_URL=
+VENNDELO_API_KEY=
+VENNDELO_WEBHOOK_SECRET=
+```
+
+**Esquema DB (campos sumados en Order):**
+
+- `shippingCarrier: String?` — carrier elegido (servientrega, tcc, coordinadora, etc.).
+- `trackingNumber: String?` — número guía.
+- `trackingUrl: String?` — URL portal carrier para que cliente vea status.
+- `labelUrl: String?` — URL impresión etiqueta PDF (rutaimpresion en Aveonline).
+
+**Por qué este shape (no alternativas):**
+
+- **vs Aveonline directo sin interface** — bloquea swap si rinde mal. Pattern `PaymentProvider` (Wompi swap-able a Mercado Pago) ya validado en proyecto; replicarlo.
+- **vs Venndelo primario** — Venndelo es single-carrier (Coordinadora). En e-commerce colombiano sensible al precio del envío, cliente que elige entre 3-5 carriers convierte mejor.
+- **vs integrar 3 carriers directos** — complejidad operativa innecesaria. Agregador resuelve negociación + tarifas.
+- **vs no operar logística (cliente coordina retiro)** — viola mandato productivo "no es MVP".
+
+**Trade-offs aceptados:**
+
+- Aveonline API legacy PHP con `tipo` discriminator. Encapsulado en `lib/aveonline.ts` con interface limpia.
+- Token 1h requiere refresh. Manejable con cache + buffer.
+- Webhook sin HMAC inicial. Mitigado con IP whitelist + validación entidad.
+- Recogida 11am operacional. UI admin avisa.
+
+**Consecuencias positivas:**
+
+- Cliente colombiano elige flete más conveniente → conversión sube.
+- Resiliencia: si carrier X falla, los otros 6 siguen operando.
+- Cobertura 90% Colombia con COD activo.
+- Lucy cura desde admin qué carriers habilitar.
+
+**Consecuencias negativas:**
+
+- Mayor superficie de integración (7 carriers vs 1).
+- Dependencia operativa con Aveonline como SaaS.
+
+**Pendientes documentados (futuro):**
+
+- Confirmar costo plan mensual Aveonline (acción humana Lucy).
+- Validar HMAC webhook con soporte Aveonline.
+- Política logística inversa (devoluciones) — falta documentación.
+- SLA latencia API publicado por Aveonline.
+
+**Cuándo reabrir esta decisión.** Si Aveonline falla en producción (costos suben, soporte malo, downtime), swap a Venndelo en ~8-12h ingeniería implementando `features/shipping/venndelo.ts`.
+
+**Referencias.** `docs/PLAN_CATALOG_V2.md` decisión 4.10. Aveonline docs: https://integraciones.aveonline.co/docs/. `docs/INTEGRATIONS.md` § Venndelo (Plan B). `features/shipping/*` (implementación). `lib/aveonline.ts` (cliente API encapsulado). `lib/aveonline-auth.ts` (token cache + refresh).

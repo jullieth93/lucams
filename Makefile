@@ -1,4 +1,4 @@
-.PHONY: help install build typecheck lint format migrate seed-products seed-templates consolidate-product-families test test-unit test-e2e test-rls test-load test-coverage clean
+.PHONY: help install build typecheck lint format migrate seed-products seed-templates seed-ocasiones seed-catalog-v2 seed-cms consolidate-product-families test test-unit test-e2e test-rls test-load test-coverage clean
 
 # Makefile en repo — targets primitivos para CI y devs locales.
 # El Makefile completo de runtime (con state/log/pid management,
@@ -14,8 +14,11 @@ help:
 	@echo "  make lint         ESLint"
 	@echo "  make format       Prettier --write"
 	@echo "  make migrate      pnpm prisma migrate deploy"
-	@echo "  make seed-products  Pobla catálogo demo (idempotente)"
-	@echo "  make seed-templates Pobla plantillas Estudio Personalización"
+	@echo "  make seed-products    Pobla catálogo demo base (idempotente)"
+	@echo "  make seed-templates   Pobla plantillas Estudio Personalización"
+	@echo "  make seed-ocasiones   Pobla 15 OcasionTag (PLAN_CATALOG_V2 1.5)"
+	@echo "  make seed-catalog-v2  Delta PLAN_CATALOG_V2 (sub-cats + placeholders + links)"
+	@echo "  make seed-cms         Pobla CmsBlocks + SiteSettings (J.1+)"
 	@echo ""
 	@echo "  Tests (Vitest/Playwright se setean en sub-bloques siguientes):"
 	@echo "    make test         Todos los tests"
@@ -46,6 +49,19 @@ seed-products:
 
 seed-templates:
 	pnpm --filter @lucams/db exec node scripts/seed-templates.mjs
+
+# PLAN_CATALOG_V2 decisión 1.5 + 2.10 + 3.4 — 15 OcasionTag.
+seed-ocasiones:
+	pnpm --filter @lucams/db exec node scripts/seed-ocasiones.mjs
+
+# PLAN_CATALOG_V2 delta — sub-categorías jerárquicas + categoría Separadores +
+# productos placeholder + ProductOcasionTag default links + enriquecimiento
+# productos existentes (physicalSpecs / idealFor / productionDays). Idempotente.
+seed-catalog-v2:
+	pnpm --filter @lucams/db exec node scripts/seed-catalog-v2.mjs
+
+seed-cms:
+	pnpm --filter @lucams/db exec node scripts/seed-cms.mjs
 
 # M.3.b.CAT.2 (2026-05-14): consolida familias de productos fragmentados
 # en variants del producto base. Soft-deletea hermanos + migra reviews +

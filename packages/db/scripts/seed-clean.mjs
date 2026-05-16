@@ -47,8 +47,7 @@ if (process.env.DIRECT_URL) {
 
 const prisma = new PrismaClient();
 
-const users =
-  await prisma.$queryRaw`SELECT id, email FROM auth.users ORDER BY created_at ASC`;
+const users = await prisma.$queryRaw`SELECT id, email FROM auth.users ORDER BY created_at ASC`;
 
 if (users.length === 0) {
   // Aún así verificamos huérfanos en Customer/AdminUser
@@ -59,9 +58,7 @@ if (users.length === 0) {
     await prisma.$disconnect();
     process.exit(0);
   }
-  console.log(
-    `auth.users vacía pero hay huérfanos: ${customers} Customer, ${admins} AdminUser.`,
-  );
+  console.log(`auth.users vacía pero hay huérfanos: ${customers} Customer, ${admins} AdminUser.`);
   if (process.env.FORCE !== "1") {
     console.log("DRY-RUN. FORCE=1 para borrar los huérfanos.");
     await prisma.$disconnect();
@@ -90,9 +87,7 @@ if (process.env.FORCE !== "1") {
 const customersBefore = await prisma.customer.count();
 const adminsBefore = await prisma.adminUser.count();
 
-console.log(
-  `Customers antes: ${customersBefore}, AdminUsers antes: ${adminsBefore}`,
-);
+console.log(`Customers antes: ${customersBefore}, AdminUsers antes: ${adminsBefore}`);
 console.log("Borrando...");
 
 // 1. Customer + AdminUser primero (cascade Prisma maneja relaciones)
@@ -106,8 +101,7 @@ console.log(`  → ${uDeleted} auth.users`);
 
 const customersAfter = await prisma.customer.count();
 const adminsAfter = await prisma.adminUser.count();
-const usersAfter =
-  await prisma.$queryRaw`SELECT count(*)::int as c FROM auth.users`;
+const usersAfter = await prisma.$queryRaw`SELECT count(*)::int as c FROM auth.users`;
 
 console.log();
 console.log(

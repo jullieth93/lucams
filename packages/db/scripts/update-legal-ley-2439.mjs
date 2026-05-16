@@ -267,7 +267,9 @@ for (const u of updates) {
 }
 
 console.log("");
-console.log(`Resumen: ${updated} actualizados, ${skipped} preservados (editados por Lucy), ${notFound} no encontrados.`);
+console.log(
+  `Resumen: ${updated} actualizados, ${skipped} preservados (editados por Lucy), ${notFound} no encontrados.`,
+);
 console.log("");
 
 if (updated > 0) {

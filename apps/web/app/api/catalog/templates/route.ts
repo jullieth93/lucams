@@ -1,0 +1,59 @@
+/*
+ * GET /api/catalog/templates?productSlug=<slug>&mode=EDITABLE|PREMADE
+ *
+ * Templates asociadas a un producto. Filtrable por mode.
+ *   - EDITABLE: cliente selecciona en estudio + completa con datos.
+ *   - PREMADE: diseño ya impreso, cliente compra tal cual.
+ *
+ * PLAN_CATALOG_V2 ADR-038 + 5.10.
+ */
+
+import { NextResponse } from "next/server";
+import { listTemplatesByProduct } from "@/lib/catalog";
+import { rateLimit } from "@/lib/rate-limit";
+
+export const dynamic = "force-dynamic";
+
+export async function GET(req: Request) {
+  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  const allowed = await rateLimit(`catalog_templates:${ip}`, 60, 60);
+  if (!allowed) {
+    return NextResponse.json(
+      { error: "Too many requests" },
+      { status: 429, headers: { "Retry-After": "60" } },
+    );
+  }
+
+  const url = new URL(req.url);
+  const productSlug = url.searchParams.get("productSlug");
+  const modeRaw = url.searchParams.get("mode");
+  const mode =
+    modeRaw === "EDITABLE" || modeRaw === "PREMADE"
+      ? (modeRaw as "EDITABLE" | "PREMADE")
+      : undefined;
+
+  if (!productSlug) {
+    return NextResponse.json(
+      { error: "productSlug query param required" },
+      { status: 400, headers: { "Access-Control-Allow-Origin": "*" } },
+    );
+  }
+
+  const templates = await listTemplatesByProduct(productSlug, mode);
+
+  return NextResponse.json(
+    {
+      templates,
+      count: templates.length,
+      productSlug,
+      mode,
+      generatedAt: new Date().toISOString(),
+    },
+    {
+      headers: {
+        "Cache-Control": "public, max-age=3600, s-maxage=3600",
+        "Access-Control-Allow-Origin": "*",
+      },
+    },
+  );
+}

@@ -156,31 +156,35 @@ enum SettingCategory {
 // ──────────────────────── IDENTIDAD ────────────────────────
 
 model Customer {
-  id                String             @id @default(cuid())
-  email             String             @unique
-  phone             String?
-  firstName         String?
-  lastName          String?
-  supabaseUserId    String             @unique
+  id                 String              @id @default(cuid())
+  email              String              @unique
+  phone              String?
+  firstName          String?
+  lastName           String?
+  supabaseUserId     String              @unique
   // Datos tributarios DIAN — opcionales en perfil, obligatorios en
   // checkout cuando se emite factura electrónica (Fase 7).
-  documentType      DocumentType?
-  documentNumber    String? // nullable porque se completa en checkout
-  taxResponsibility TaxResponsibility?
-  loyaltyPoints     Int                @default(0)
-  referralCode      String             @unique
-  referredById      String?
-  referredBy        Customer?          @relation("Referrals", fields: [referredById], references: [id], onDelete: SetNull)
-  referrals         Customer[]         @relation("Referrals")
-  addresses         Address[]
-  orders            Order[]
-  reviews           Review[]
-  loyaltyTxns       LoyaltyTxn[]
-  consents          Consent[]
-  supportTickets    SupportTicket[]
+  documentType       DocumentType?
+  documentNumber     String? // nullable porque se completa en checkout
+  taxResponsibility  TaxResponsibility?
+  loyaltyPoints      Int                 @default(0)
+  referralCode       String              @unique
+  referredById       String?
+  referredBy         Customer?           @relation("Referrals", fields: [referredById], references: [id], onDelete: SetNull)
+  referrals          Customer[]          @relation("Referrals")
+  addresses          Address[]
+  orders             Order[]
+  reviews            Review[]
+  loyaltyTxns        LoyaltyTxn[]
+  consents           Consent[]
+  supportTickets     SupportTicket[]
   // Sub-bloque M — Estudio de Personalización (diferenciador #1)
-  designs           Design[]
-  designAssets      DesignAsset[]
+  designs            Design[]
+  designAssets       DesignAsset[]
+  // PLAN_CATALOG_V2 3.9 — tracking de cupones usados.
+  couponUsages       CouponUsage[]
+  // PLAN_CATALOG_V2 6.10 — logs de recomendaciones consumidas (CTR + conversión).
+  recommendationLogs RecommendationLog[]
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -237,17 +241,34 @@ model AdminUser {
 // ──────────────────────── CATÁLOGO ────────────────────────
 
 model Category {
-  id          String     @id @default(cuid())
-  slug        String     @unique
-  name        String
-  description String?
-  image       String?
-  parentId    String?
-  parent      Category?  @relation("Subcategories", fields: [parentId], references: [id], onDelete: Restrict)
-  children    Category[] @relation("Subcategories")
-  products    Product[]
-  order       Int        @default(0)
-  isActive    Boolean    @default(true)
+  id                  String     @id @default(cuid())
+  slug                String     @unique
+  name                String
+  description         String?
+  // PLAN_CATALOG_V2 2.10 — descripción rica semántica (markdown 200-400 palabras)
+  // que alimenta al bot AI Fase 5+ y al render PDP. Lucy edita desde /admin/categorias.
+  richDescription     String?    @db.Text
+  // PLAN_CATALOG_V2 2.10 — casos de uso típicos en 2-3 frases.
+  useCase             String?
+  image               String?
+  // PLAN_CATALOG_V2 7.6 — keys de filtros visibles en esta categoría.
+  // Vacío = todos los filtros aplican (default 7.2). No vacío = override manual.
+  visibleFilters      String[]   @default([])
+  // PLAN_CATALOG_V2 7.10 — orden default del grid.
+  // "recent" | "price_asc" | "price_desc" | "most_purchased" | "featured"
+  defaultSort         String?    @default("recent")
+  // PLAN_CATALOG_V2 6.9 — slug del producto destacado manualmente (boost grid + scoring).
+  featuredProductSlug String?
+  // PLAN_CATALOG_V2 2.9 — activación programada (sub-cats estacionales).
+  // Null = sin restricción de fecha.
+  activeFrom          DateTime?
+  activeUntil         DateTime?
+  parentId            String?
+  parent              Category?  @relation("Subcategories", fields: [parentId], references: [id], onDelete: Restrict)
+  children            Category[] @relation("Subcategories")
+  products            Product[]
+  order               Int        @default(0)
+  isActive            Boolean    @default(true)
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -258,6 +279,7 @@ model Category {
 
   @@index([deletedAt])
   @@index([parentId])
+  @@index([isActive, parentId, order])
 }
 
 model Product {
@@ -279,6 +301,35 @@ model Product {
   isPersonalizable      Boolean                   @default(false)
   personalizationKind   PersonalizationKind       @default(NONE)
   personalizationSchema Json?
+  // PLAN_CATALOG_V2 2.10 — descripción rica semántica (markdown 300-800 palabras)
+  // que el bot AI Fase 5+ usa como contexto y PDP renderea como ficha extendida.
+  richDescription       String?                   @db.Text
+  // PLAN_CATALOG_V2 2.10 — "¿por qué elegir este producto?" bullets cortos.
+  whyChooseThis         String?                   @db.Text
+  // PLAN_CATALOG_V2 2.10 — array de escenarios ideales ("regalo aniversario novia",
+  // "decoración cuarto adolescente"). Bot lo usa para matchear consultas.
+  idealFor              Json                      @default("[]")
+  // PLAN_CATALOG_V2 4.1 — especificaciones físicas tipadas (Zod validado runtime).
+  // Shape: { material, thicknessMm, magnetType, weightGrams, packaging, includes[],
+  //          careInstructions?, countryOfOrigin: "CO" }
+  physicalSpecs         Json?
+  // PLAN_CATALOG_V2 4.2 — garantía legal Ley 1480 art. 11 (default 12 meses mínimo).
+  warrantyMonths        Int                       @default(12)
+  // PLAN_CATALOG_V2 4.2 — días hábiles de producción. Default 3.
+  // Productos kind=NONE (Coleccionables) deberían tener productionDays=1 (stock ready).
+  productionDays        Int                       @default(3)
+  // PLAN_CATALOG_V2 4.2 — días hábiles de envío (rango min-max según destino Aveonline).
+  shippingDaysMin       Int                       @default(2)
+  shippingDaysMax       Int                       @default(5)
+  // PLAN_CATALOG_V2 3.3 — mínimo unidades por línea de cart.
+  // Ej. Recuerdos Matrimonio min 30 invitados.
+  minimumQuantity       Int                       @default(1)
+  // PLAN_CATALOG_V2 3.3 — máximo opcional (null = sin tope).
+  maximumQuantity       Int?
+  // PLAN_CATALOG_V2 5.5 — upcharge porcentual aplicado cuando el cliente elige
+  // un template PREMADE (vs Camino 2 personalizable). Default 0% = mismo precio.
+  // Excepción: Universos pueden tener 10-15% por diseño curado premium.
+  premadeSurcharge      Int                       @default(0)
   images                String[]
   categoryId            String
   category              Category                  @relation(fields: [categoryId], references: [id], onDelete: Restrict)
@@ -286,6 +337,8 @@ model Product {
   reviews               Review[]
   designs               Design[]
   templates             PersonalizationTemplate[]
+  // PLAN_CATALOG_V2 1.5 / 2.10 — tags transversales por ocasión (matrimonio, día madre, etc.).
+  ocasionTags           ProductOcasionTag[]
   isActive              Boolean                   @default(true)
   isFeatured            Boolean                   @default(false)
   seoTitle              String?
@@ -309,6 +362,10 @@ model ProductVariant {
   productId     String
   product       Product            @relation(fields: [productId], references: [id], onDelete: Cascade)
   name          String
+  // PLAN_CATALOG_V2 2.10 — "¿por qué elegir esta variante vs otra?".
+  // Bot AI lo usa para sugerir variant correcto. Ej: "Set 12 ideal para baby shower
+  // con muchos invitados; Set 4 perfecto si solo querés un detalle simbólico".
+  description   String?
   sku           String             @unique
   price         Int?
   stock         Int                @default(0)
@@ -317,6 +374,7 @@ model ProductVariant {
   cartItems     CartItem[]
   orderItems    OrderItem[]
   reservations  StockReservation[]
+  isActive      Boolean            @default(true)
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -327,6 +385,7 @@ model ProductVariant {
 
   @@index([productId, deletedAt])
   @@index([stock])
+  @@index([productId, isActive])
 }
 
 model InventoryLog {
@@ -363,11 +422,11 @@ model Cart {
 }
 
 model CartItem {
-  id           String         @id @default(cuid())
+  id           String                   @id @default(cuid())
   cartId       String
-  cart         Cart           @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  cart         Cart                     @relation(fields: [cartId], references: [id], onDelete: Cascade)
   variantId    String
-  variant      ProductVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  variant      ProductVariant           @relation(fields: [variantId], references: [id], onDelete: Restrict)
   qty          Int
   unitPrice    Int
   // Personalización (sub-bloque M)
@@ -376,14 +435,23 @@ model CartItem {
   // - customDesign: campo legacy mantenido para compat retroactiva con
   //   carritos pre-M. Nuevos carts usan designId. Deprecate en V2.
   designId     String?
-  design       Design?        @relation(fields: [designId], references: [id], onDelete: SetNull)
+  design       Design?                  @relation(fields: [designId], references: [id], onDelete: SetNull)
   customDesign Json?
+  // PLAN_CATALOG_V2 5.3 — diseño PREMADE elegido en PDP (flujo prediseñado puro).
+  // Cliente elige uno de los N diseños del producto Coleccionables/Separadores
+  // sin pasar por estudio. Se valida que template.mode = PREMADE.
+  // NULL para productos personalizables (que usan designId) o producto sin templates.
+  templateId   String?
+  template     PersonalizationTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  // PLAN_CATALOG_V2 — metadata flexible (futuro: gift wrap, notas especiales, etc.).
+  metadata     Json                     @default("{}")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([cartId])
   @@index([designId])
+  @@index([templateId])
 }
 
 model Order {
@@ -403,10 +471,20 @@ model Order {
   status                OrderStatus   @default(DRAFT)
   paymentMethod         PaymentMethod
   wompiTransactionId    String?
+  // Legacy: venndeloShipmentId queda por compat. Nueva integración usa los campos Aveonline abajo.
   venndeloShipmentId    String?
+  // PLAN_CATALOG_V2 4.10 — Aveonline + ShippingProvider interface (ADR-039).
+  // shippingCarrier: qué carrier eligió el cliente ("envia", "tcc", "coordinadora", etc.).
+  shippingCarrier       String?
+  // PLAN_CATALOG_V2 4.10 — número de guía del carrier.
+  trackingNumber        String?
   trackingUrl           String?
+  // PLAN_CATALOG_V2 4.10 — URL de impresión etiqueta (rutaimpresion en Aveonline).
+  labelUrl              String?
   couponId              String?
   coupon                Coupon?       @relation(fields: [couponId], references: [id], onDelete: SetNull)
+  // PLAN_CATALOG_V2 3.9 — tracking del uso de cupón (incluye monto descontado).
+  couponUsage           CouponUsage?
   notes                 String?
   items                 OrderItem[]
   // DIAN factura electrónica (Fase 7 implementa el envío; aquí el
@@ -429,14 +507,15 @@ model Order {
   @@index([status, createdAt])
   @@index([wompiTransactionId])
   @@index([dianStatus])
+  @@index([trackingNumber])
 }
 
 model OrderItem {
-  id             String         @id @default(cuid())
+  id             String                   @id @default(cuid())
   orderId        String
-  order          Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  order          Order                    @relation(fields: [orderId], references: [id], onDelete: Cascade)
   variantId      String
-  variant        ProductVariant @relation(fields: [variantId], references: [id], onDelete: Restrict)
+  variant        ProductVariant           @relation(fields: [variantId], references: [id], onDelete: Restrict)
   qty            Int
   unitPrice      Int
   // Personalización (sub-bloque M)
@@ -447,28 +526,51 @@ model OrderItem {
   // - designAssetUrl: URL del PNG 300 DPI listo para impresión (Supabase Storage
   //   bucket production-assets).
   designId       String?
-  design         Design?        @relation(fields: [designId], references: [id], onDelete: SetNull)
+  design         Design?                  @relation(fields: [designId], references: [id], onDelete: SetNull)
   customDesign   Json?
   designAssetUrl String?
+  // PLAN_CATALOG_V2 5.3 — snapshot del template PREMADE al confirmar order (immutable).
+  templateId     String?
+  template       PersonalizationTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  // PLAN_CATALOG_V2 — metadata flexible (futuro: gift wrap, notas, etc.).
+  metadata       Json                     @default("{}")
 
   createdAt DateTime @default(now())
 
   @@index([orderId])
   @@index([designId])
+  @@index([templateId])
 }
 
 model Coupon {
-  id        String     @id @default(cuid())
-  code      String     @unique
-  type      CouponType
-  value     Int
-  minOrder  Int?
-  maxUses   Int?
-  usedCount Int        @default(0)
-  validFrom DateTime
-  validTo   DateTime
-  isActive  Boolean    @default(true)
-  orders    Order[]
+  id                    String        @id @default(cuid())
+  code                  String        @unique
+  type                  CouponType
+  value                 Int
+  minOrder              Int?
+  maxUses               Int?
+  usedCount             Int           @default(0)
+  validFrom             DateTime
+  validTo               DateTime
+  isActive              Boolean       @default(true)
+  // PLAN_CATALOG_V2 3.9 — restricción por categorías (array de slugs).
+  // Vacío = todas las categorías. Ej. ["de-temporada"] solo aplica en De Temporada.
+  appliesToCategories   String[]      @default([])
+  // PLAN_CATALOG_V2 3.9 — restricción por productos específicos (array de slugs).
+  // Vacío = todos los productos.
+  appliesToProductSlugs String[]      @default([])
+  // PLAN_CATALOG_V2 3.9 — máx usos por cliente. Null = ilimitado.
+  // Ej. Welcome coupon: maxUsesPerCustomer=1.
+  maxUsesPerCustomer    Int?
+  // PLAN_CATALOG_V2 3.9 — visible en /api/coupons/public para bot.
+  // Default false = código privado distribuido por canal externo.
+  isPublic              Boolean       @default(false)
+  // PLAN_CATALOG_V2 3.9 — texto público "10% off Día Madre, vence 12 mayo".
+  description           String?
+  // PLAN_CATALOG_V2 3.9 — mínimo unidades en cart. Ej. "Compra 6+ y 10% off".
+  requiresMinQuantity   Int?
+  orders                Order[]
+  usages                CouponUsage[]
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -479,6 +581,25 @@ model Coupon {
 
   @@index([code, isActive, deletedAt])
   @@index([validFrom, validTo])
+  @@index([isPublic, isActive, deletedAt])
+}
+
+// PLAN_CATALOG_V2 3.9 — tracking por cliente de uso de cupones.
+// Permite enforcement de maxUsesPerCustomer + métricas admin (top códigos,
+// total descontado, clientes que usaron cupón).
+model CouponUsage {
+  id         String    @id @default(cuid())
+  couponId   String
+  coupon     Coupon    @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  customerId String?
+  customer   Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  orderId    String    @unique
+  order      Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  appliedAt  DateTime  @default(now())
+  amount     Int // descuento aplicado en COP centavos
+
+  @@index([customerId, couponId])
+  @@index([couponId, appliedAt])
 }
 
 // ──────────────────────── RESEÑAS ────────────────────────
@@ -863,6 +984,14 @@ enum PersonalizationKind {
   NONE // producto NO personalizable (coleccionables prearmados)
 }
 
+// PLAN_CATALOG_V2 5.1 — modo de uso del template.
+//   EDITABLE: cliente selecciona en estudio + completa con datos (foto/texto).
+//   PREMADE:  diseño ya impreso, cliente lo compra tal cual sin estudio.
+enum TemplateMode {
+  EDITABLE
+  PREMADE
+}
+
 enum DesignStatus {
   DRAFT // el cliente lo está construyendo, auto-save periódico
   READY // confirmado, listo para añadir al carrito o ya en cart
@@ -871,39 +1000,39 @@ enum DesignStatus {
 }
 
 model Design {
-  id            String                   @id @default(cuid())
-  customerId    String?
-  customer      Customer?                @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  sessionId     String? // anon flow, matches cart_session cookie
-  productId     String
-  product       Product                  @relation(fields: [productId], references: [id], onDelete: Restrict)
-  templateId    String?
-  template      PersonalizationTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
-  status        DesignStatus             @default(DRAFT)
+  id             String                   @id @default(cuid())
+  customerId     String?
+  customer       Customer?                @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  sessionId      String? // anon flow, matches cart_session cookie
+  productId      String
+  product        Product                  @relation(fields: [productId], references: [id], onDelete: Restrict)
+  templateId     String?
+  template       PersonalizationTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  status         DesignStatus             @default(DRAFT)
   // canvasData: Konva stage serialization. Estructura validada por features/
   // personalization/schemas.ts con Zod en cada save.
-  canvasData    Json
+  canvasData     Json
   // previewUrl: snapshot compositado del grid completo (PNG público, bucket
   // design-previews). Visible en cart/order display al cliente. En V1
   // (legacy M.3) es snapshot 1080×1080 single. En V2 (M.3.b multi-slot) es
   // mosaico del grid completo.
-  previewUrl    String?
+  previewUrl     String?
   // productionUrl: V1 legacy single PNG 300 DPI privado. Para V2 está null
   // y la info de producción vive en productionUrls[]. Mantener nullable
   // por retrocompat — designs M.3 existentes siguen siendo descargables.
-  productionUrl String?
+  productionUrl  String?
   // productionUrls: V2 (M.3.b) — N paths privados en bucket production-assets,
   // uno por imán físico del pack. Admin descarga el ZIP de N PNGs 300 DPI
   // para imprenta. Empty array hasta status=READY o USED_IN_ORDER.
   productionUrls String[]                 @default([])
   // metadata: selección plantilla + marco + color + ajustes filtros foto-edit.
-  metadata      Json                     @default("{}")
+  metadata       Json                     @default("{}")
   // shareToken: link público read-only para colaboración (sub-bloque K+M
   // futuro: "compartí con tu pareja antes de comprar"). Genera en cliente.
-  shareToken    String?                  @unique
-  assets        DesignAsset[]
-  cartItems     CartItem[]
-  orderItems    OrderItem[]
+  shareToken     String?                  @unique
+  assets         DesignAsset[]
+  cartItems      CartItem[]
+  orderItems     OrderItem[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -941,21 +1070,28 @@ model DesignAsset {
 }
 
 model PersonalizationTemplate {
-  id         String              @id @default(cuid())
+  id          String              @id @default(cuid())
   // productId null = template global aplica a cualquier producto del kind.
   // productId set = template específico para ese producto.
-  productId  String?
-  product    Product?            @relation(fields: [productId], references: [id], onDelete: Cascade)
-  kind       PersonalizationKind
-  name       String // "Polaroid clásico", "Marco corazón rosa"
-  slug       String              @unique
-  previewUrl String // thumbnail del template (Supabase Storage public)
+  productId   String?
+  product     Product?            @relation(fields: [productId], references: [id], onDelete: Cascade)
+  kind        PersonalizationKind
+  // PLAN_CATALOG_V2 5.1 — modo de uso (EDITABLE en estudio | PREMADE compra-tal-cual).
+  mode        TemplateMode        @default(EDITABLE)
+  name        String // "Polaroid clásico", "Marco corazón rosa"
+  slug        String              @unique
+  // PLAN_CATALOG_V2 5.10 — descripción breve para PDP + bot AI.
+  description String?
+  previewUrl  String // thumbnail del template (Supabase Storage public)
   // canvasData: estructura base del canvas (capas, marcos, decoraciones).
-  // El cliente la usa como punto de partida + reemplaza placeholders foto.
-  canvasData Json
-  isActive   Boolean             @default(true)
-  order      Int                 @default(0)
-  designs    Design[]
+  // EDITABLE: cliente la usa como punto de partida + reemplaza placeholders foto.
+  // PREMADE: JSON simple con 1 capa "image" apuntando al previewUrl (decisión 5.7).
+  canvasData  Json
+  isActive    Boolean             @default(true)
+  order       Int                 @default(0)
+  designs     Design[]
+  cartItems   CartItem[]
+  orderItems  OrderItem[]
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -964,6 +1100,84 @@ model PersonalizationTemplate {
   deletedAt DateTime?
   deletedBy String?
 
-  @@index([kind, isActive, order])
-  @@index([productId, isActive])
+  @@index([kind, mode, isActive, order])
+  @@index([productId, mode, isActive])
+  @@index([mode, isActive])
+}
+
+// ──────────────────────── PLAN_CATALOG_V2 — TABLAS NUEVAS ────────────────────────
+
+// PLAN_CATALOG_V2 1.5 / 2.10 — tags transversales por ocasión que cruzan categorías.
+// Ej. "matrimonio" agrupa Recuerdos Matrimonio + Fotoimanes Corazón + Cuadro con Foto +
+// Box Pareja + Glass Magnets. Cliente filtra por ocasión y ve productos de N categorías.
+model OcasionTag {
+  id                     String              @id @default(cuid())
+  slug                   String              @unique
+  name                   String
+  // Descripción semántica (markdown 100-300 palabras) que alimenta al bot AI.
+  // Ej. "Día de la Madre se celebra el 2do domingo de mayo en Colombia..."
+  description            String              @db.Text
+  // 1-12: mes en que destacar esta ocasión (auto-rotación menú header).
+  // Null = sin mes específico (ej. Cumpleaños).
+  monthHint              Int?
+  // PLAN_CATALOG_V2 3.4 — rango sugerido de cantidad para esta ocasión.
+  // Shape: { min: int, ideal: int, max: int }. Bot recomienda variant según.
+  suggestedQuantityRange Json?
+  isActive               Boolean             @default(true)
+  order                  Int                 @default(0)
+  products               ProductOcasionTag[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  createdBy String?
+  updatedBy String?
+  deletedAt DateTime?
+  deletedBy String?
+
+  @@index([deletedAt])
+  @@index([isActive, order])
+  @@index([monthHint])
+}
+
+// PLAN_CATALOG_V2 1.5 / 2.10 — pivot Product ↔ OcasionTag con rationale por par.
+// Permite que el bot AI responda "Set Fotoimanes Corazón es ideal para matrimonio
+// PORQUE es el regalo perfecto para los novios + invitados".
+model ProductOcasionTag {
+  productId    String
+  product      Product    @relation(fields: [productId], references: [id], onDelete: Cascade)
+  ocasionTagId String
+  ocasionTag   OcasionTag @relation(fields: [ocasionTagId], references: [id], onDelete: Cascade)
+  // Texto libre para que el bot justifique la sugerencia.
+  rationale    String?
+
+  createdAt DateTime @default(now())
+
+  @@id([productId, ocasionTagId])
+  @@index([ocasionTagId])
+}
+
+// PLAN_CATALOG_V2 6.10 — tracking de recomendaciones para evolucionar scoring.
+// Cada call a /api/catalog/recommend, cross-sell cart, related PDP, o bot crea
+// un log. Datos para medir CTR + conversión + tunear pesos del scoring (decisión 6.2).
+model RecommendationLog {
+  id               String    @id @default(cuid())
+  sessionId        String // anon cart session UUID
+  customerId       String?
+  customer         Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  // "wizard" | "crosssell" | "related_pdp" | "api_bot" | "homepage_featured"
+  queryType        String
+  // Filtros / params usados en el query (JSON serializable).
+  queryParams      Json
+  // Productos sugeridos (slugs).
+  recommendedSlugs String[]
+  // Productos cliqueados por el cliente (slugs).
+  clickedSlugs     String[]  @default([])
+  // Productos efectivamente comprados de la sugerencia (slugs).
+  purchasedSlugs   String[]  @default([])
+
+  createdAt DateTime @default(now())
+
+  @@index([sessionId, createdAt])
+  @@index([customerId, createdAt])
+  @@index([queryType, createdAt])
 }

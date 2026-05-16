@@ -41,9 +41,7 @@ if (!SUPABASE_URL || !SECRET_KEY) {
   process.exit(1);
 }
 
-const email = (process.env.EMAIL ?? "test+cliente@example.com")
-  .toLowerCase()
-  .trim();
+const email = (process.env.EMAIL ?? "test+cliente@example.com").toLowerCase().trim();
 const password = process.env.PASSWORD ?? "TestCliente2026!";
 const firstName = process.env.FIRST ?? "Test";
 const lastName = process.env.LAST ?? "Cliente";
@@ -66,19 +64,16 @@ console.log(`Nombre:    ${firstName} ${lastName}`);
 console.log("");
 
 // Paso 1: crear auth.user con email_confirm=true (sin email send).
-const { data: createData, error: createErr } =
-  await supabase.auth.admin.createUser({
-    email,
-    password,
-    email_confirm: true,
-    user_metadata: { source: "seed-test-customer" },
-  });
+const { data: createData, error: createErr } = await supabase.auth.admin.createUser({
+  email,
+  password,
+  email_confirm: true,
+  user_metadata: { source: "seed-test-customer" },
+});
 
 if (createErr) {
   if (createErr.message?.includes("already been registered")) {
-    console.log(
-      `auth.user con email ${email} ya existe — saltando create.`,
-    );
+    console.log(`auth.user con email ${email} ya existe — saltando create.`);
   } else {
     console.error("ERROR creando auth.user:", createErr.message);
     await prisma.$disconnect();
@@ -123,9 +118,7 @@ console.log(`  Password: ${password}`);
 console.log("");
 console.log("Probar:");
 console.log("  - /login con esas credenciales → debe entrar (es cliente).");
-console.log(
-  "  - /admin/login con esas credenciales → 'Credenciales incorrectas' (no es admin).",
-);
+console.log("  - /admin/login con esas credenciales → 'Credenciales incorrectas' (no es admin).");
 
 await prisma.$disconnect();
 process.exit(0);

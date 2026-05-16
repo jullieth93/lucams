@@ -12,7 +12,7 @@
  */
 
 import Link from "next/link";
-import { ShoppingBag } from "lucide-react";
+import { ShoppingBag, Sparkles } from "lucide-react";
 import { logoutAction } from "@/app/auth/logout/actions";
 import { BrandMark } from "@/components/brand-mark";
 import { GlobalSearch } from "@/components/global-search";
@@ -45,6 +45,14 @@ export async function SiteHeader() {
             className="text-brand-purple-dark hover:text-brand-purple hidden text-sm font-medium sm:inline"
           >
             Catálogo
+          </Link>
+
+          <Link
+            href="/recomendador"
+            className="bg-brand-purple/10 text-brand-purple hover:bg-brand-purple/20 hidden items-center gap-1 rounded-full px-3 py-1.5 text-xs font-semibold transition-colors sm:inline-flex"
+            title="Te ayudamos a elegir en 4 preguntas"
+          >
+            <Sparkles className="h-3.5 w-3.5" /> ¿Te ayudamos a elegir?
           </Link>
 
           <GlobalSearch />

@@ -28,40 +28,41 @@
 
 ### Categorías (10 totales)
 
-| # | Slug | Nombre display | # Productos | isFeatured |
-|---|---|---|---|---|
-| 1 | `foto-imanes` | Fotoimanes | 5 | sí |
-| 2 | `recuerdos` | Recuerdos Magnéticos | 6 | sí |
-| 3 | `calendarios` | Calendarios Magnéticos | 4 | sí |
-| 4 | `publicitarios` | Imanes Publicitarios | 5 | no |
-| 5 | `organizate` | Organización | 6 | sí |
-| 6 | `regalos-personalizados` | Cajas Regalo | 3 | sí |
-| 7 | `de-temporada` | De Temporada | 3 | sí |
-| 8 | `cuadros-decoracion` | Cuadros y Decoración | 4 | sí |
-| 9 | `coleccionables` | Imanes Coleccionables | 6 | no |
-| 10 | `juegos-aprendizaje` | Juegos y Aprendizaje | 4 | no |
+| #   | Slug                     | Nombre display         | # Productos | isFeatured |
+| --- | ------------------------ | ---------------------- | ----------- | ---------- |
+| 1   | `foto-imanes`            | Fotoimanes             | 5           | sí         |
+| 2   | `recuerdos`              | Recuerdos Magnéticos   | 6           | sí         |
+| 3   | `calendarios`            | Calendarios Magnéticos | 4           | sí         |
+| 4   | `publicitarios`          | Imanes Publicitarios   | 5           | no         |
+| 5   | `organizate`             | Organización           | 6           | sí         |
+| 6   | `regalos-personalizados` | Cajas Regalo           | 3           | sí         |
+| 7   | `de-temporada`           | De Temporada           | 3           | sí         |
+| 8   | `cuadros-decoracion`     | Cuadros y Decoración   | 4           | sí         |
+| 9   | `coleccionables`         | Imanes Coleccionables  | 6           | no         |
+| 10  | `juegos-aprendizaje`     | Juegos y Aprendizaje   | 4           | no         |
 
 **Total productos**: 46.
 
 ### Distribución por tipo de personalización
 
-| Kind | Cuántos | Notas |
-|---|---|---|
-| `NONE` (no personalizable) | 20 | 6 packs Coleccionables, planners genéricos, juegos, notas, separadores, marcos, mini calendarios, edición Navidad |
-| `EVENT_FAVOR` | 7 | 6 Recuerdos + Box Recién Nacido |
-| `PHOTO_PACK` | 5 | Fotoimanes Polaroid / Cuadrados / Circulares / Corazón / Glass |
-| `BUSINESS_LOGO` | 5 | 5 Publicitarios |
-| `CUSTOM_DECOR` | 4 | Box Pareja, Box Día Madre, Box Día Padre, Cuadro con Foto |
-| `CALENDAR_PHOTO_HERO` | 2 | Calendario Foto+Planner, Planner Mensual con Foto |
-| `CALENDAR_PHOTO_MONTH` | 1 | Calendario Foto-Mes |
-| `PHOTO_GRID` | 1 | Cuadro Triple Foto |
-| `TEXT_ONLY` | 1 | Cuadro con Frase |
+| Kind                       | Cuántos | Notas                                                                                                             |
+| -------------------------- | ------- | ----------------------------------------------------------------------------------------------------------------- |
+| `NONE` (no personalizable) | 20      | 6 packs Coleccionables, planners genéricos, juegos, notas, separadores, marcos, mini calendarios, edición Navidad |
+| `EVENT_FAVOR`              | 7       | 6 Recuerdos + Box Recién Nacido                                                                                   |
+| `PHOTO_PACK`               | 5       | Fotoimanes Polaroid / Cuadrados / Circulares / Corazón / Glass                                                    |
+| `BUSINESS_LOGO`            | 5       | 5 Publicitarios                                                                                                   |
+| `CUSTOM_DECOR`             | 4       | Box Pareja, Box Día Madre, Box Día Padre, Cuadro con Foto                                                         |
+| `CALENDAR_PHOTO_HERO`      | 2       | Calendario Foto+Planner, Planner Mensual con Foto                                                                 |
+| `CALENDAR_PHOTO_MONTH`     | 1       | Calendario Foto-Mes                                                                                               |
+| `PHOTO_GRID`               | 1       | Cuadro Triple Foto                                                                                                |
+| `TEXT_ONLY`                | 1       | Cuadro con Frase                                                                                                  |
 
 **43%** de los productos del seed son NO personalizables hoy.
 
 ### Productos del pool prediseñado que YA existen en seed
 
 Categoría `coleccionables` (6 packs, kind `NONE`, no featured):
+
 - `pack-imanes-ciudades-colombia`
 - `pack-comida-colombiana`
 - `pack-frases-motivacionales`
@@ -211,19 +212,19 @@ Categorías (1)
 
 - **Decisión**: usar `Category.parentId` para sub-categorías reales con URLs propias `/productos/<categoria>/<subcategoria>`. Tabla:
 
-| # | Categoría | Sub-categorías | Criterio |
-|---|---|---|---|
-| 1 | Fotoimanes | Polaroid · Cuadrados · Circulares · Corazón · Vidrio | Forma física |
-| 2 | Recuerdos Magnéticos | Cumpleaños · Bautizo · Grado · Matrimonio · Quinceañera · Primer Año · Baby Shower | Evento |
-| 3 | Calendarios Magnéticos | Foto-Mes · Foto + Planner · Floral · Mini para regalar | Tipo |
-| 4 | Publicitarios B2B | Rectangulares · Circulares · Troquelados · Tarjeta Presentación · Pack Mixto + Pedido grande¹ | Forma + flujo B2B |
-| 5 | Organización | Planners · Notas | Uso |
-| 6 | Cajas Regalo | Pareja · Recién Nacido · Sorpresa | Destinatario |
-| 7 | De Temporada | Día Madre · Día Padre · Amor y Amistad · Halloween · Navidad · Año Nuevo | Evento estacional (rota) |
-| 8 | Cuadros y Decoración | Cuadros con Foto · Cuadros con Frase · Triple Foto · Marcos | Tipo |
-| 9 | Separadores Magnéticos | Diseños Lucams (Frases · Animalitos · Plantas · Comida) · Universos² · Personalizables (con foto / con frase) | Temática |
-| 10 | Coleccionables | Diseños Lucams (Ciudades Colombia · Comida Colombiana · Frases · Animalitos · Viajes LATAM · Mood) · Universos² (Harry Potter · Pokémon · Star Wars · Marvel · DC · Disney/Pixar · Anime Retro · Cartoons 90s) | Temática |
-| 11 | Juegos y Aprendizaje | Abecedario · Números · Rutina diaria · Emociones | Propósito infantil |
+| #   | Categoría              | Sub-categorías                                                                                                                                                                                                 | Criterio                 |
+| --- | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------ |
+| 1   | Fotoimanes             | Polaroid · Cuadrados · Circulares · Corazón · Vidrio                                                                                                                                                           | Forma física             |
+| 2   | Recuerdos Magnéticos   | Cumpleaños · Bautizo · Grado · Matrimonio · Quinceañera · Primer Año · Baby Shower                                                                                                                             | Evento                   |
+| 3   | Calendarios Magnéticos | Foto-Mes · Foto + Planner · Floral · Mini para regalar                                                                                                                                                         | Tipo                     |
+| 4   | Publicitarios B2B      | Rectangulares · Circulares · Troquelados · Tarjeta Presentación · Pack Mixto + Pedido grande¹                                                                                                                  | Forma + flujo B2B        |
+| 5   | Organización           | Planners · Notas                                                                                                                                                                                               | Uso                      |
+| 6   | Cajas Regalo           | Pareja · Recién Nacido · Sorpresa                                                                                                                                                                              | Destinatario             |
+| 7   | De Temporada           | Día Madre · Día Padre · Amor y Amistad · Halloween · Navidad · Año Nuevo                                                                                                                                       | Evento estacional (rota) |
+| 8   | Cuadros y Decoración   | Cuadros con Foto · Cuadros con Frase · Triple Foto · Marcos                                                                                                                                                    | Tipo                     |
+| 9   | Separadores Magnéticos | Diseños Lucams (Frases · Animalitos · Plantas · Comida) · Universos² · Personalizables (con foto / con frase)                                                                                                  | Temática                 |
+| 10  | Coleccionables         | Diseños Lucams (Ciudades Colombia · Comida Colombiana · Frases · Animalitos · Viajes LATAM · Mood) · Universos² (Harry Potter · Pokémon · Star Wars · Marvel · DC · Disney/Pixar · Anime Retro · Cartoons 90s) | Temática                 |
+| 11  | Juegos y Aprendizaje   | Abecedario · Números · Rutina diaria · Emociones                                                                                                                                                               | Propósito infantil       |
 
 ¹ Flujo B2B con página `/mayorista` (ver 1.6).
 ² Universos: asumiendo riesgo legal según decisión 1.7.
@@ -309,23 +310,23 @@ Categorías (1)
 - **Decisión**: admin Lucams tiene panel de control tributario con alerta proactiva basada en umbral DIAN.
 - **Settings nuevos** (categoría `FACTURACION` en `SiteSetting`):
 
-| Setting | Tipo | Default | Descripción |
-|---|---|---|---|
-| `DIAN_FACTURADOR_ELECTRONICO` | BOOLEAN | `false` | ¿Lucams registrada como facturador electrónico? |
-| `DIAN_REGIMEN` | TEXT | `persona_natural_no_responsable_iva` | Régimen tributario actual |
-| `DIAN_UMBRAL_UVT_ANUAL` | NUMBER | `3500` | Umbral UVT obligatorio facturación (configurable) |
-| `DIAN_VALOR_UVT_COP` | NUMBER | `[UVT 2026 pendiente verificación]` | Valor en COP de 1 UVT año fiscal actual |
-| `DIAN_INGRESOS_ANUALES_REGISTRADOS` | NUMBER | `0` | Acumulado año fiscal (manual hoy, auto cuando exista Orders) |
-| `DIAN_PROVEEDOR_FACTURACION` | TEXT | _vacío_ | Alegra / Siigo / Facture / otro cuando activado |
+| Setting                             | Tipo    | Default                              | Descripción                                                  |
+| ----------------------------------- | ------- | ------------------------------------ | ------------------------------------------------------------ |
+| `DIAN_FACTURADOR_ELECTRONICO`       | BOOLEAN | `false`                              | ¿Lucams registrada como facturador electrónico?              |
+| `DIAN_REGIMEN`                      | TEXT    | `persona_natural_no_responsable_iva` | Régimen tributario actual                                    |
+| `DIAN_UMBRAL_UVT_ANUAL`             | NUMBER  | `3500`                               | Umbral UVT obligatorio facturación (configurable)            |
+| `DIAN_VALOR_UVT_COP`                | NUMBER  | `[UVT 2026 pendiente verificación]`  | Valor en COP de 1 UVT año fiscal actual                      |
+| `DIAN_INGRESOS_ANUALES_REGISTRADOS` | NUMBER  | `0`                                  | Acumulado año fiscal (manual hoy, auto cuando exista Orders) |
+| `DIAN_PROVEEDOR_FACTURACION`        | TEXT    | _vacío_                              | Alegra / Siigo / Facture / otro cuando activado              |
 
 - **Card en `/admin/dashboard`**: "Estado tributario DIAN" con 4 niveles de alerta:
 
-| % vs umbral | Color | Acción |
-|---|---|---|
-| < 60% | 🟢 verde | Operación bajo umbral |
-| 60-80% | 🟡 amarillo | Empezá a planear registro DIAN |
-| 80-100% | 🟠 naranja | Crítico, activá este trimestre |
-| > 100% | 🔴 rojo | OBLIGATORIO, contactá contador |
+| % vs umbral | Color       | Acción                         |
+| ----------- | ----------- | ------------------------------ |
+| < 60%       | 🟢 verde    | Operación bajo umbral          |
+| 60-80%      | 🟡 amarillo | Empezá a planear registro DIAN |
+| 80-100%     | 🟠 naranja  | Crítico, activá este trimestre |
+| > 100%      | 🔴 rojo     | OBLIGATORIO, contactá contador |
 
 - **Email alerta mensual**: `pg_cron` día 1 a las 8am COT manda email a `r.julliethhr@gmail.com` cuando `ingresos ≥ 60% × umbral`.
 - **Auto-cálculo futuro**: cuando exista `Order.status IN (PAID, AWAITING_FULFILLMENT, SHIPPED, DELIVERED)` (Fase 4), `DIAN_INGRESOS_ANUALES_REGISTRADOS` se calcula automático sumando `Order.total` del año fiscal. Mientras tanto: Lucy actualiza manual.
@@ -373,23 +374,23 @@ Categorías (1)
 - **Decisión**: los slugs de productos NO contienen cantidad ni tamaño hardcoded. Esos atributos viven en variants (multi-dim ya cerrado Fase B).
 - **Renombres**:
 
-| Slug actual | Slug nuevo |
-|---|---|
-| `set-12-fotoimanes-polaroid` | `fotoimanes-polaroid` |
-| `set-12-fotoimanes-cuadrados` | `fotoimanes-cuadrados` |
-| `set-fotoimanes-circulares` | `fotoimanes-circulares` |
-| `set-fotoimanes-corazon` | `fotoimanes-corazon` |
-| `set-glass-magnets-personalizados` | `fotoimanes-vidrio` |
-| `recuerdos-cumpleanos-x20` | `recuerdos-cumpleanos` |
-| `recuerdos-bautizo-x12` | `recuerdos-bautizo` |
-| `recuerdos-graduacion-x20` | `recuerdos-graduacion` |
-| `imanes-publicitarios-rectos-7x5` | `publicitarios-rectangulares` |
-| `imanes-publicitarios-circulares-6cm` | `publicitarios-circulares` |
-| `pack-empresarial-mixto-100` | `publicitarios-pack-mixto` |
-| `cuadro-15x15-con-foto` | `cuadro-con-foto` |
-| `cuadro-frase-personalizada-20x20` | `cuadro-con-frase` |
-| `mini-calendarios-x10` | `mini-calendarios` |
-| `pack-separadores-libros` | (soft-deleted, ver 2.7) |
+| Slug actual                           | Slug nuevo                    |
+| ------------------------------------- | ----------------------------- |
+| `set-12-fotoimanes-polaroid`          | `fotoimanes-polaroid`         |
+| `set-12-fotoimanes-cuadrados`         | `fotoimanes-cuadrados`        |
+| `set-fotoimanes-circulares`           | `fotoimanes-circulares`       |
+| `set-fotoimanes-corazon`              | `fotoimanes-corazon`          |
+| `set-glass-magnets-personalizados`    | `fotoimanes-vidrio`           |
+| `recuerdos-cumpleanos-x20`            | `recuerdos-cumpleanos`        |
+| `recuerdos-bautizo-x12`               | `recuerdos-bautizo`           |
+| `recuerdos-graduacion-x20`            | `recuerdos-graduacion`        |
+| `imanes-publicitarios-rectos-7x5`     | `publicitarios-rectangulares` |
+| `imanes-publicitarios-circulares-6cm` | `publicitarios-circulares`    |
+| `pack-empresarial-mixto-100`          | `publicitarios-pack-mixto`    |
+| `cuadro-15x15-con-foto`               | `cuadro-con-foto`             |
+| `cuadro-frase-personalizada-20x20`    | `cuadro-con-frase`            |
+| `mini-calendarios-x10`                | `mini-calendarios`            |
+| `pack-separadores-libros`             | (soft-deleted, ver 2.7)       |
 
 - **Implica**: 15 redirects 301 desde slug viejo → nuevo en `proxy.ts` + `lib/product-redirects.ts`. Preserva SEO y enlaces compartidos.
 - **Admin**: cuando admin renombra un producto, sistema sugiere automáticamente sumar redirect 301 al map.
@@ -445,16 +446,16 @@ Categorías (1)
 
 - **Decisión**: producto genérico actual `pack-separadores-libros` se **soft-deletea**. En su lugar 9 productos temáticos uno por sub-cat:
 
-| Sub-cat | Slug nuevo |
-|---|---|
-| Frases Lucams | `separadores-frases` |
-| Animalitos | `separadores-animalitos` |
-| Plantas y naturaleza | `separadores-plantas-y-naturaleza` |
-| Comida bonita | `separadores-comida` |
-| Universo HP | `separadores-harry-potter` |
-| Universo Anime | `separadores-anime` |
-| Universo Disney | `separadores-disney` |
-| Personalizables con foto | `separadores-personalizables-foto` |
+| Sub-cat                   | Slug nuevo                          |
+| ------------------------- | ----------------------------------- |
+| Frases Lucams             | `separadores-frases`                |
+| Animalitos                | `separadores-animalitos`            |
+| Plantas y naturaleza      | `separadores-plantas-y-naturaleza`  |
+| Comida bonita             | `separadores-comida`                |
+| Universo HP               | `separadores-harry-potter`          |
+| Universo Anime            | `separadores-anime`                 |
+| Universo Disney           | `separadores-disney`                |
+| Personalizables con foto  | `separadores-personalizables-foto`  |
 | Personalizables con frase | `separadores-personalizables-frase` |
 
 - **Rationale**: las sub-cats son por TEMÁTICA. Un genérico sin temática no encaja en ninguna. Cada producto temático tendrá sus propias plantillas IA.
@@ -489,13 +490,13 @@ Categorías (1)
 
 #### Endpoints `/api/catalog/*`
 
-| Endpoint | Devuelve | Uso esperado bot |
-|---|---|---|
-| `GET /api/catalog/categories` | Árbol jerárquico cat → sub-cats con `richDescription`, `useCase`, count productos | "¿Qué categorías tienen?" |
-| `GET /api/catalog/products` | Lista paginada filtrable (`?categoria=`, `?subcategoria=`, `?ocasion=`, `?priceMin=`, `?priceMax=`, `?isPersonalizable=`) | "¿Qué tienen para matrimonio bajo 50k COP?" |
-| `GET /api/catalog/products/[slug]` | Detalle completo: `richDescription`, `whyChooseThis`, `idealFor`, variants con `description`, plantillas, ocasiones | "Contame del producto X" |
-| `GET /api/catalog/ocasiones` | 15 ocasiones con descripción + productos asociados con `rationale` | "¿Qué le regalo a mi mamá?" |
-| `GET /api/catalog/search?q=` | Búsqueda fuzzy pg_trgm sobre nombre + descripción + tags | "Quiero algo con corazones" |
+| Endpoint                           | Devuelve                                                                                                                  | Uso esperado bot                            |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
+| `GET /api/catalog/categories`      | Árbol jerárquico cat → sub-cats con `richDescription`, `useCase`, count productos                                         | "¿Qué categorías tienen?"                   |
+| `GET /api/catalog/products`        | Lista paginada filtrable (`?categoria=`, `?subcategoria=`, `?ocasion=`, `?priceMin=`, `?priceMax=`, `?isPersonalizable=`) | "¿Qué tienen para matrimonio bajo 50k COP?" |
+| `GET /api/catalog/products/[slug]` | Detalle completo: `richDescription`, `whyChooseThis`, `idealFor`, variants con `description`, plantillas, ocasiones       | "Contame del producto X"                    |
+| `GET /api/catalog/ocasiones`       | 15 ocasiones con descripción + productos asociados con `rationale`                                                        | "¿Qué le regalo a mi mamá?"                 |
+| `GET /api/catalog/search?q=`       | Búsqueda fuzzy pg_trgm sobre nombre + descripción + tags                                                                  | "Quiero algo con corazones"                 |
 
 - Cache HTTP `public, max-age=3600`.
 - Rate-limit 30/min por IP (patrón CMS).
@@ -506,23 +507,23 @@ Categorías (1)
 
 **`Product` agrega**:
 
-| Campo | Tipo | Para qué |
-|---|---|---|
-| `richDescription` | `String? @db.Text` | Markdown semántico extenso (300-800 palabras) que el bot usa como contexto |
-| `whyChooseThis` | `String? @db.Text` | "¿Por qué elegir este producto?" — bullets cortos |
-| `idealFor` | `Json @default("[]")` | Array de escenarios ideales ("regalo aniversario novia", "decoración cuarto adolescente") |
+| Campo             | Tipo                  | Para qué                                                                                  |
+| ----------------- | --------------------- | ----------------------------------------------------------------------------------------- |
+| `richDescription` | `String? @db.Text`    | Markdown semántico extenso (300-800 palabras) que el bot usa como contexto                |
+| `whyChooseThis`   | `String? @db.Text`    | "¿Por qué elegir este producto?" — bullets cortos                                         |
+| `idealFor`        | `Json @default("[]")` | Array de escenarios ideales ("regalo aniversario novia", "decoración cuarto adolescente") |
 
 **`Category` agrega**:
 
-| Campo | Tipo | Para qué |
-|---|---|---|
+| Campo             | Tipo      | Para qué                                             |
+| ----------------- | --------- | ---------------------------------------------------- |
 | `richDescription` | `String?` | "¿Qué es esta categoría? ¿Qué incluye? ¿Para quién?" |
-| `useCase` | `String?` | Casos de uso típicos en 2-3 frases |
+| `useCase`         | `String?` | Casos de uso típicos en 2-3 frases                   |
 
 **`ProductVariant` agrega**:
 
-| Campo | Tipo | Para qué |
-|---|---|---|
+| Campo         | Tipo      | Para qué                                                                                          |
+| ------------- | --------- | ------------------------------------------------------------------------------------------------- |
 | `description` | `String?` | "¿Por qué elegir esta variante vs otra?" Ej: "Set 12 ideal para baby shower con muchos invitados" |
 
 **Tabla nueva `OcasionTag` + pivot `ProductOcasionTag`** (concretiza decisión 1.5):
@@ -657,14 +658,14 @@ model ProductOcasionTag {
 
 #### Campos nuevos en `Coupon`
 
-| Campo | Tipo | Para qué |
-|---|---|---|
-| `appliesToCategories` | `String[]` | Slugs de categorías; vacío = todas |
-| `appliesToProductSlugs` | `String[]` | Slugs de productos específicos; vacío = todos |
-| `maxUsesPerCustomer` | `Int?` | Null = ilimitado por cliente |
-| `isPublic` | `Boolean @default(false)` | Visible en API pública / bot informa |
-| `description` | `String?` | Texto público "10% off Día Madre, vence 12 mayo" |
-| `requiresMinQuantity` | `Int?` | "Compra 6+ unidades y 10% off" |
+| Campo                   | Tipo                      | Para qué                                         |
+| ----------------------- | ------------------------- | ------------------------------------------------ |
+| `appliesToCategories`   | `String[]`                | Slugs de categorías; vacío = todas               |
+| `appliesToProductSlugs` | `String[]`                | Slugs de productos específicos; vacío = todos    |
+| `maxUsesPerCustomer`    | `Int?`                    | Null = ilimitado por cliente                     |
+| `isPublic`              | `Boolean @default(false)` | Visible en API pública / bot informa             |
+| `description`           | `String?`                 | Texto público "10% off Día Madre, vence 12 mayo" |
+| `requiresMinQuantity`   | `Int?`                    | "Compra 6+ unidades y 10% off"                   |
 
 #### Tabla nueva `CouponUsage`
 
@@ -1406,6 +1407,7 @@ Recordatorio Lucy 2026-05-15: cada decisión del plan debe explicitar su **Impli
 Lucy 2026-05-15: el catálogo y todo el sistema debe estar pensado para que un chatbot Fase 5+ (Claude API + RAG sobre DB) pueda responder consultas del cliente consultando DB estructurada, sin usar el LLM como fuente de verdad.
 
 **Reglas operativas**:
+
 1. **DB > LLM**: todo dato consultable por bot vive en DB con campo estructurado, no en strings dispersas en código.
 2. **API pública estructurada**: cada dominio relevante (catálogo, CMS, ocasiones, plantillas) expone endpoints `/api/<dominio>/*` con JSON estable, cache HTTP, rate-limit.
 3. **Descripciones ricas**: para cada entidad (producto, categoría, variant, plantilla, ocasión) hay un campo descripción rica markdown que el bot usa como contexto (no la columna `description` corta del listado).
@@ -1434,6 +1436,7 @@ model PricingRule {
 ```
 
 Hoy NO se implementa. Cualquier descuento que necesitemos modelar antes de tener `PricingRule` se hace con cupones (decisión 3.9). KISS / YAGNI. Reabrir solo cuando:
+
 - B2B real exige descuentos automáticos por volumen sin requerir código manual.
 - Bundles aparecen como pattern de compra frecuente (ej. "Pack matrimonio: 30 recuerdos + 1 cuadro = -15%").
 - Cupones se sienten limitados.
@@ -1476,25 +1479,25 @@ Hoy todas las decisiones que documentan APIs AI-ready están listas para que el 
 
 ### Resumen del plan cerrado (2026-05-15)
 
-| Área | Decisiones | Estado |
-|---|---|---|
-| 1 — Categorías | 9 | 🟢 cerrada |
-| 2 — Productos | 11 (2.5 descartada) | 🟢 cerrada |
-| 3 — Cantidad / Tamaño + Cupones | 9 | 🟢 cerrada |
-| 4 — Producto físico + Aveonline | 10 | 🟢 cerrada |
-| 5 — Pool prediseñado | 10 | 🟢 cerrada |
-| 6 — Selección / Recomendación | 10 | 🟢 cerrada |
-| 7 — Filtros | 11 | 🟢 cerrada |
-| 8 — Panel admin | 10 | 🟢 cerrada |
-| **TOTAL** | **80 decisiones** | ✅ |
+| Área                            | Decisiones          | Estado     |
+| ------------------------------- | ------------------- | ---------- |
+| 1 — Categorías                  | 9                   | 🟢 cerrada |
+| 2 — Productos                   | 11 (2.5 descartada) | 🟢 cerrada |
+| 3 — Cantidad / Tamaño + Cupones | 9                   | 🟢 cerrada |
+| 4 — Producto físico + Aveonline | 10                  | 🟢 cerrada |
+| 5 — Pool prediseñado            | 10                  | 🟢 cerrada |
+| 6 — Selección / Recomendación   | 10                  | 🟢 cerrada |
+| 7 — Filtros                     | 11                  | 🟢 cerrada |
+| 8 — Panel admin                 | 10                  | 🟢 cerrada |
+| **TOTAL**                       | **80 decisiones**   | ✅         |
 
 ### ADRs a redactar antes de codear
 
-| ADR | Tema | Áreas que lo demandan |
-|---|---|---|
-| ADR-038 | API Catálogo RAG-ready (5 endpoints + schema enriquecido + tabla OcasionTag) | 2.10 / 5.10 / 6.7 / 7.7 |
-| ADR-039 | Logística Aveonline con interface `ShippingProvider` (Venndelo Plan B documentado) | 4.10 |
-| ADR-040 (opcional) | Filtros configurables por categoría + endpoint `/api/catalog/filters` AI-ready | 7.2 / 7.6 / 7.7 |
+| ADR                | Tema                                                                               | Áreas que lo demandan   |
+| ------------------ | ---------------------------------------------------------------------------------- | ----------------------- |
+| ADR-038            | API Catálogo RAG-ready (5 endpoints + schema enriquecido + tabla OcasionTag)       | 2.10 / 5.10 / 6.7 / 7.7 |
+| ADR-039            | Logística Aveonline con interface `ShippingProvider` (Venndelo Plan B documentado) | 4.10                    |
+| ADR-040 (opcional) | Filtros configurables por categoría + endpoint `/api/catalog/filters` AI-ready     | 7.2 / 7.6 / 7.7         |
 
 ### Migraciones Prisma necesarias
 
@@ -1524,37 +1527,37 @@ Las migraciones se agruparán en sub-bloques temáticos para no romper datos:
 
 ### Pantallas admin (13 mejoradas/nuevas)
 
-| # | Ruta | Estado | Decisiones |
-|---|---|---|---|
-| 1 | `/admin/categorias` | mejora | 1.3 / 1.4 / 6.9 / 7.6 / 7.10 |
-| 2 | `/admin/productos` | mejora | 2.10 / 3.3 / 4.1 / 4.2 / 5.5 |
-| 3 | `/admin/productos/[id]/variants` | mejora | 2.10 / 3.1 |
-| 4 | `/admin/ocasiones` | nueva | 1.5 / 2.10 / 3.4 |
-| 5 | `/admin/plantillas` | mejora | 5.1 / 5.9 |
-| 6 | `/admin/cupones` | nueva | 3.9 |
-| 7 | `/admin/mensajes` (B2B + soporte) | nueva | 1.6 |
-| 8 | `/admin/recomendaciones` | nueva | 6.10 |
-| 9 | `/admin/contenido/configuracion` (cat FACTURACION) | mejora | 1.8 |
-| 10 | `/admin/dashboard` (notificaciones + DIAN card) | mejora | 1.8 / 8.5 |
-| 11 | `/admin/configuracion/logistica` | nueva | 4.10 |
-| 12 | `/admin/redirects` | nueva | 2.1 / 2.7 / 2.8 |
-| 13 | `/admin/sistema/auditoria` | nueva | 8.6 |
-| 14 | `/admin/sistema/backup` | nueva | 8.4 |
-| 15 | `/admin/sistema/usuarios` (roles) | nueva | 8.2 |
+| #   | Ruta                                               | Estado | Decisiones                   |
+| --- | -------------------------------------------------- | ------ | ---------------------------- |
+| 1   | `/admin/categorias`                                | mejora | 1.3 / 1.4 / 6.9 / 7.6 / 7.10 |
+| 2   | `/admin/productos`                                 | mejora | 2.10 / 3.3 / 4.1 / 4.2 / 5.5 |
+| 3   | `/admin/productos/[id]/variants`                   | mejora | 2.10 / 3.1                   |
+| 4   | `/admin/ocasiones`                                 | nueva  | 1.5 / 2.10 / 3.4             |
+| 5   | `/admin/plantillas`                                | mejora | 5.1 / 5.9                    |
+| 6   | `/admin/cupones`                                   | nueva  | 3.9                          |
+| 7   | `/admin/mensajes` (B2B + soporte)                  | nueva  | 1.6                          |
+| 8   | `/admin/recomendaciones`                           | nueva  | 6.10                         |
+| 9   | `/admin/contenido/configuracion` (cat FACTURACION) | mejora | 1.8                          |
+| 10  | `/admin/dashboard` (notificaciones + DIAN card)    | mejora | 1.8 / 8.5                    |
+| 11  | `/admin/configuracion/logistica`                   | nueva  | 4.10                         |
+| 12  | `/admin/redirects`                                 | nueva  | 2.1 / 2.7 / 2.8              |
+| 13  | `/admin/sistema/auditoria`                         | nueva  | 8.6                          |
+| 14  | `/admin/sistema/backup`                            | nueva  | 8.4                          |
+| 15  | `/admin/sistema/usuarios` (roles)                  | nueva  | 8.2                          |
 
 ### Endpoints públicos nuevos
 
-| Endpoint | Decisión |
-|---|---|
-| `GET /api/catalog/categories` | 2.10 |
-| `GET /api/catalog/products` | 2.10 |
+| Endpoint                           | Decisión          |
+| ---------------------------------- | ----------------- |
+| `GET /api/catalog/categories`      | 2.10              |
+| `GET /api/catalog/products`        | 2.10              |
 | `GET /api/catalog/products/[slug]` | 2.10 / 4.9 / 5.10 |
-| `GET /api/catalog/ocasiones` | 2.10 |
-| `GET /api/catalog/search` | 2.10 |
-| `GET /api/catalog/recommend` | 6.7 |
-| `GET /api/catalog/filters` | 7.7 |
-| `GET /api/catalog/templates` | 5.10 |
-| `GET /api/coupons/public` | 3.9 |
+| `GET /api/catalog/ocasiones`       | 2.10              |
+| `GET /api/catalog/search`          | 2.10              |
+| `GET /api/catalog/recommend`       | 6.7               |
+| `GET /api/catalog/filters`         | 7.7               |
+| `GET /api/catalog/templates`       | 5.10              |
+| `GET /api/coupons/public`          | 3.9               |
 
 Todos: cache HTTP, rate-limit, sin auth (excepto admin insights diferidos).
 
@@ -1595,21 +1598,21 @@ Todos: cache HTTP, rate-limit, sin auth (excepto admin insights diferidos).
 
 ### Estimación de implementación (rough)
 
-| Bloque | Horas estimadas | Dependencias |
-|---|---|---|
-| Migraciones Prisma (9 migrations) | 6-8h | Schema validado |
-| Seed refactor (slugs + sub-cats + productos placeholder) | 10-12h | Migraciones aplicadas |
-| Componentes públicos (MegaMenu, Filtros, Wizard, etc.) | 35-50h | Productos seeded |
-| Endpoints API públicos (9) + ADRs | 20-25h | Schema + service layer |
-| Refactor catálogo `/productos` + sub-cats jerárquicas | 15-20h | Endpoints + componentes |
-| PDP rediseño dos caminos | 12-15h | Templates en seed |
-| Sistema cupones (admin + UI cart + API público) | 15-20h | Schema + Order skeleton |
-| Admin sidebar + 7 pantallas nuevas | 40-50h | Schema completo |
-| Wizard recomendación + scoring + log | 12-15h | Productos + ocasiones |
-| Filtros sidebar + chips + URL sync | 15-20h | Endpoints filters |
-| Aveonline integration (`ShippingProvider`) | 25-30h | Schema Order + ADR-039 |
-| Tests (unit + integration + E2E mínimo) | 25-30h | Features completas |
-| **TOTAL** | **~230-295 horas ingeniería** | |
+| Bloque                                                   | Horas estimadas               | Dependencias            |
+| -------------------------------------------------------- | ----------------------------- | ----------------------- |
+| Migraciones Prisma (9 migrations)                        | 6-8h                          | Schema validado         |
+| Seed refactor (slugs + sub-cats + productos placeholder) | 10-12h                        | Migraciones aplicadas   |
+| Componentes públicos (MegaMenu, Filtros, Wizard, etc.)   | 35-50h                        | Productos seeded        |
+| Endpoints API públicos (9) + ADRs                        | 20-25h                        | Schema + service layer  |
+| Refactor catálogo `/productos` + sub-cats jerárquicas    | 15-20h                        | Endpoints + componentes |
+| PDP rediseño dos caminos                                 | 12-15h                        | Templates en seed       |
+| Sistema cupones (admin + UI cart + API público)          | 15-20h                        | Schema + Order skeleton |
+| Admin sidebar + 7 pantallas nuevas                       | 40-50h                        | Schema completo         |
+| Wizard recomendación + scoring + log                     | 12-15h                        | Productos + ocasiones   |
+| Filtros sidebar + chips + URL sync                       | 15-20h                        | Endpoints filters       |
+| Aveonline integration (`ShippingProvider`)               | 25-30h                        | Schema Order + ADR-039  |
+| Tests (unit + integration + E2E mínimo)                  | 25-30h                        | Features completas      |
+| **TOTAL**                                                | **~230-295 horas ingeniería** |                         |
 
 > Realista: 4-6 semanas de trabajo focused con commits incrementales. Cada bloque cerrado con visual check Lucy + push a develop antes de seguir.
 
@@ -1629,12 +1632,12 @@ Todos: cache HTTP, rate-limit, sin auth (excepto admin insights diferidos).
 
 ### Decisiones pendientes operativas (Lucy fuera de Claude)
 
-| Item | Estado |
-|---|---|
-| ADR-025 — Proveedor DIAN (Alegra / Siigo / Facture) | Pendiente decisión Lucy |
-| Onboarding Aveonline + costo plan | Pendiente |
-| Decisión TUVT 2026 valor exacto | [pendiente verificación DIAN] |
-| Validación HMAC webhook Aveonline | Pendiente confirmación soporte |
+| Item                                                | Estado                         |
+| --------------------------------------------------- | ------------------------------ |
+| ADR-025 — Proveedor DIAN (Alegra / Siigo / Facture) | Pendiente decisión Lucy        |
+| Onboarding Aveonline + costo plan                   | Pendiente                      |
+| Decisión TUVT 2026 valor exacto                     | [pendiente verificación DIAN]  |
+| Validación HMAC webhook Aveonline                   | Pendiente confirmación soporte |
 
 ### Riesgos identificados al cierre del plan
 
