@@ -175,12 +175,8 @@ export default async function AdminDashboardPage() {
                     Contenido del sitio (avanzado) →
                   </CardTitle>
                   <CardDescription className="text-slate-600">
-                    Para cambios rápidos del día a día, usa el botón{" "}
-                    <span className="bg-brand-purple/10 text-brand-purple inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-xs font-medium">
-                      ✏ Editar este sitio
-                    </span>{" "}
-                    abajo a la derecha del sitio público. Acá adentro: historial de cambios,
-                    revertir versiones, crear bloques nuevos manualmente y gestión avanzada.
+                    Editá textos largos del sitio (legales, FAQ, hero) y configuración global
+                    (email, horario, redes). Historial de cambios + revertir versiones.
                   </CardDescription>
                 </CardHeader>
                 <CardContent>

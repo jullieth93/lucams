@@ -127,7 +127,7 @@ const NAV_GROUPS: NavGroup[] = [
   {
     title: "Contenido",
     items: [
-      { label: "Bloques CMS", href: "/admin/contenido", icon: FileText },
+      { label: "Bloques CMS", href: "/admin/contenido/bloques", icon: FileText },
       { label: "Configuración", href: "/admin/contenido/configuracion", icon: Settings },
     ],
   },

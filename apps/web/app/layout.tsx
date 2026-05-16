@@ -4,7 +4,6 @@ import { Suspense } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { WebVitalsReporter } from "@/components/web-vitals";
 import { CookiesBanner } from "@/components/cookies-banner";
-import { EditModeProvider } from "@/components/edit-mode/edit-mode-provider";
 import { RouteToasts } from "@/components/route-toasts";
 import "./globals.css";
 
@@ -73,11 +72,6 @@ export default function RootLayout({
           <RouteToasts />
         </Suspense>
         <CookiesBanner />
-        {/* Visual In-Place Editor — solo se monta si el caller es admin
-            (decidido server-side dentro de EditModeProvider). Para
-            visitantes anónimos / clientes este componente devuelve null
-            y no se carga JS extra. */}
-        <EditModeProvider />
       </body>
     </html>
   );
