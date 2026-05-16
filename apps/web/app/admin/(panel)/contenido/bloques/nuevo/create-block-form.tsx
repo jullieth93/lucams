@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { createCmsBlockAction, type CmsActionState } from "@/app/admin/contenido/actions";
+import { createCmsBlockAction, type CmsActionState } from "@/app/admin/(panel)/contenido/actions";
 
 const CATEGORIES = [
   { value: "LEGAL", label: "📋 Textos legales" },

@@ -16,6 +16,7 @@ import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { Button } from "@/components/ui/button";
 import { getCartDetail } from "@/features/cart/service";
+import { CartCrossSell } from "@/components/cart-cross-sell";
 import { CmsText } from "@/components/cms/cms-text";
 import { formatCOP } from "@/lib/format";
 import { peekCartSession } from "@/lib/cart-session";
@@ -153,6 +154,11 @@ export default async function CarritoPage() {
                 </Link>
               </aside>
             </div>
+          )}
+
+          {/* PLAN_CATALOG_V2 6.3 — Cross-sell por ocasión dominante */}
+          {cart && cart.items.length > 0 && (
+            <CartCrossSell productSlugsInCart={cart.items.map((i) => i.productSlug)} />
           )}
         </div>
       </main>

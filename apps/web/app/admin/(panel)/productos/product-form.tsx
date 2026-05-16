@@ -40,6 +40,17 @@ type Props = {
     isFeatured: boolean;
     seoTitle: string | null;
     seoDescription: string | null;
+    // PLAN_CATALOG_V2 — campos enriquecidos AI-ready
+    richDescription?: string | null;
+    whyChooseThis?: string | null;
+    idealFor?: unknown;
+    warrantyMonths?: number;
+    productionDays?: number;
+    shippingDaysMin?: number;
+    shippingDaysMax?: number;
+    minimumQuantity?: number;
+    maximumQuantity?: number | null;
+    premadeSurcharge?: number;
   };
   action: typeof createProductAction | typeof updateProductAction;
   submitLabel: string;
@@ -264,6 +275,164 @@ export function ProductForm({ categories, initialProduct, action, submitLabel }:
               maxLength={160}
               defaultValue={initialProduct?.seoDescription ?? ""}
               placeholder="Descripción para resultados de Google. Máx 160 chars."
+              disabled={pending}
+            />
+          </Field>
+        </CardContent>
+      </Card>
+
+      {/* PLAN_CATALOG_V2 2.10 — Contenido para bot AI + ficha técnica */}
+      <Card className="border-slate-200">
+        <CardHeader>
+          <CardTitle className="text-base text-slate-900">Contenido enriquecido (bot AI)</CardTitle>
+          <CardDescription className="text-slate-600">
+            Estos campos alimentan el bot de WhatsApp futuro y la ficha extendida del producto.
+            Cuanto más completo, mejor responde el bot.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Field
+            id="richDescription"
+            label="Descripción rica (markdown 300-800 palabras)"
+            hint="Contexto extenso: para quién, cómo se usa, qué tiene de especial. El bot lo usa para responder consultas."
+          >
+            <Textarea
+              id="richDescription"
+              name="richDescription"
+              rows={6}
+              maxLength={5000}
+              defaultValue={initialProduct?.richDescription ?? ""}
+              placeholder="ej. Los Fotoimanes Polaroid Lucams están pensados para esos recuerdos chiquitos pero significativos..."
+              disabled={pending}
+            />
+          </Field>
+          <Field
+            id="whyChooseThis"
+            label="¿Por qué elegir este producto? (bullets cortos)"
+            hint="Una línea por bullet. El bot los enumera al recomendar."
+          >
+            <Textarea
+              id="whyChooseThis"
+              name="whyChooseThis"
+              rows={3}
+              maxLength={2000}
+              defaultValue={initialProduct?.whyChooseThis ?? ""}
+              placeholder={
+                "ej.\n- Acabado mate premium que no se decolora\n- 3mm de grosor, resistente\n- Hecho a mano en Bogotá"
+              }
+              disabled={pending}
+            />
+          </Field>
+          <Field
+            id="idealFor"
+            label="Escenarios ideales (un escenario por línea)"
+            hint="Bot matchea consultas con estos textos."
+          >
+            <Textarea
+              id="idealFor"
+              name="idealFor"
+              rows={3}
+              defaultValue={
+                Array.isArray(initialProduct?.idealFor)
+                  ? (initialProduct?.idealFor as string[]).join("\n")
+                  : ""
+              }
+              placeholder={
+                "ej.\nregalo aniversario novia\ndecoración cuarto adolescente\nrecordatorio cumpleaños infantil"
+              }
+              disabled={pending}
+            />
+          </Field>
+        </CardContent>
+      </Card>
+
+      <Card className="border-slate-200">
+        <CardHeader>
+          <CardTitle className="text-base text-slate-900">Comercial + Logística</CardTitle>
+          <CardDescription className="text-slate-600">
+            Tiempos, garantía y mínimos. Cliente y bot ven estos números.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid grid-cols-2 gap-4 md:grid-cols-3">
+          <Field id="warrantyMonths" label="Garantía (meses)" hint="Ley 1480 mínimo 12.">
+            <Input
+              id="warrantyMonths"
+              name="warrantyMonths"
+              type="number"
+              min={0}
+              max={120}
+              defaultValue={initialProduct?.warrantyMonths ?? 12}
+              disabled={pending}
+            />
+          </Field>
+          <Field id="productionDays" label="Producción (días)">
+            <Input
+              id="productionDays"
+              name="productionDays"
+              type="number"
+              min={1}
+              max={60}
+              defaultValue={initialProduct?.productionDays ?? 3}
+              disabled={pending}
+            />
+          </Field>
+          <div className="grid grid-cols-2 gap-2">
+            <Field id="shippingDaysMin" label="Envío mín (días)">
+              <Input
+                id="shippingDaysMin"
+                name="shippingDaysMin"
+                type="number"
+                min={0}
+                max={30}
+                defaultValue={initialProduct?.shippingDaysMin ?? 2}
+                disabled={pending}
+              />
+            </Field>
+            <Field id="shippingDaysMax" label="Envío máx">
+              <Input
+                id="shippingDaysMax"
+                name="shippingDaysMax"
+                type="number"
+                min={0}
+                max={60}
+                defaultValue={initialProduct?.shippingDaysMax ?? 5}
+                disabled={pending}
+              />
+            </Field>
+          </div>
+          <Field id="minimumQuantity" label="Cantidad mínima por orden">
+            <Input
+              id="minimumQuantity"
+              name="minimumQuantity"
+              type="number"
+              min={1}
+              defaultValue={initialProduct?.minimumQuantity ?? 1}
+              disabled={pending}
+            />
+          </Field>
+          <Field id="maximumQuantity" label="Cantidad máxima (opcional)">
+            <Input
+              id="maximumQuantity"
+              name="maximumQuantity"
+              type="number"
+              min={1}
+              defaultValue={initialProduct?.maximumQuantity ?? ""}
+              placeholder="Sin tope"
+              disabled={pending}
+            />
+          </Field>
+          <Field
+            id="premadeSurcharge"
+            label="Surcharge templates PREMADE (%)"
+            hint="0 = mismo precio. Universos con licencia: 10-15%."
+          >
+            <Input
+              id="premadeSurcharge"
+              name="premadeSurcharge"
+              type="number"
+              min={0}
+              max={100}
+              defaultValue={initialProduct?.premadeSurcharge ?? 0}
               disabled={pending}
             />
           </Field>

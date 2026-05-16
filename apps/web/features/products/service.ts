@@ -138,6 +138,17 @@ export async function createProduct(input: ProductCreateInput, createdBy: string
         isFeatured: input.isFeatured,
         seoTitle: input.seoTitle ?? null,
         seoDescription: input.seoDescription ?? null,
+        // PLAN_CATALOG_V2 — campos AI-ready opcionales
+        ...(input.richDescription !== undefined && { richDescription: input.richDescription }),
+        ...(input.whyChooseThis !== undefined && { whyChooseThis: input.whyChooseThis }),
+        ...(input.idealFor !== undefined && { idealFor: input.idealFor }),
+        ...(input.warrantyMonths !== undefined && { warrantyMonths: input.warrantyMonths }),
+        ...(input.productionDays !== undefined && { productionDays: input.productionDays }),
+        ...(input.shippingDaysMin !== undefined && { shippingDaysMin: input.shippingDaysMin }),
+        ...(input.shippingDaysMax !== undefined && { shippingDaysMax: input.shippingDaysMax }),
+        ...(input.minimumQuantity !== undefined && { minimumQuantity: input.minimumQuantity }),
+        ...(input.maximumQuantity !== undefined && { maximumQuantity: input.maximumQuantity }),
+        ...(input.premadeSurcharge !== undefined && { premadeSurcharge: input.premadeSurcharge }),
         categoryId: input.categoryId,
         images: [],
         ...(createdBy ? { createdBy } : {}),
@@ -177,10 +188,13 @@ export async function updateProduct(input: ProductUpdateInput, updatedBy: string
     if (conflict) throw new ProductValidationError("sku", `SKU "${rest.sku}" ya existe`);
   }
 
+  // idealFor es Json — necesita tratamiento especial para tipos Prisma.
+  const { idealFor, ...restWithoutJson } = rest;
   return prisma.product.update({
     where: { id },
     data: {
-      ...rest,
+      ...restWithoutJson,
+      ...(idealFor !== undefined && { idealFor }),
       ...(updatedBy ? { updatedBy } : {}),
     },
   });

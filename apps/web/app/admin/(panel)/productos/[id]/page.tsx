@@ -89,6 +89,17 @@ export default async function EditarProductoPage({
             isFeatured: product.isFeatured,
             seoTitle: product.seoTitle,
             seoDescription: product.seoDescription,
+            // PLAN_CATALOG_V2 — campos enriquecidos
+            richDescription: product.richDescription,
+            whyChooseThis: product.whyChooseThis,
+            idealFor: product.idealFor,
+            warrantyMonths: product.warrantyMonths,
+            productionDays: product.productionDays,
+            shippingDaysMin: product.shippingDaysMin,
+            shippingDaysMax: product.shippingDaysMax,
+            minimumQuantity: product.minimumQuantity,
+            maximumQuantity: product.maximumQuantity,
+            premadeSurcharge: product.premadeSurcharge,
           }}
           action={updateProductAction}
           submitLabel="Guardar cambios"

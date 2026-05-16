@@ -19,17 +19,17 @@ import { GlobalSearch } from "@/components/global-search";
 import { ShopMegaMenu } from "@/components/shop-mega-menu";
 import { Button } from "@/components/ui/button";
 import { getCartItemCount } from "@/features/cart/service";
-import { listStorefrontCategories } from "@/features/products/public-service";
+import { getCategoryTree } from "@/lib/catalog";
 import { getCurrentAdmin, getCurrentCustomer } from "@/lib/auth";
 import { peekCartSession } from "@/lib/cart-session";
 
 export async function SiteHeader() {
   const sessionId = await peekCartSession();
-  const [session, admin, cartCount, categories] = await Promise.all([
+  const [session, admin, cartCount, categoryTree] = await Promise.all([
     getCurrentCustomer(),
     getCurrentAdmin(),
     sessionId ? getCartItemCount(sessionId) : Promise.resolve(0),
-    listStorefrontCategories(),
+    getCategoryTree(),
   ]);
 
   return (
@@ -38,7 +38,7 @@ export async function SiteHeader() {
         <BrandMark size="sm" animated />
 
         <nav className="flex items-center gap-1 sm:gap-3">
-          <ShopMegaMenu categories={categories} />
+          <ShopMegaMenu tree={categoryTree} />
 
           <Link
             href="/productos"

@@ -29,6 +29,8 @@ import {
   searchStorefrontProducts,
   type StorefrontProductCard,
 } from "@/features/products/public-service";
+import { listOcasiones } from "@/lib/catalog";
+import { OcasionFilterStrip } from "@/components/ocasion-filter-strip";
 
 export const metadata: Metadata = {
   title: "Tienda",
@@ -58,6 +60,7 @@ export default async function ProductosPage({ searchParams }: { searchParams: Se
   const sp = await searchParams;
   const q = pickString(sp, "q")?.trim();
   const categoria = pickString(sp, "categoria");
+  const ocasion = pickString(sp, "ocasion");
   const personalizable = pickFlag(sp, "personalizable");
   const descuento = pickFlag(sp, "descuento");
   const destacados = pickFlag(sp, "destacados");
@@ -70,9 +73,10 @@ export default async function ProductosPage({ searchParams }: { searchParams: Se
       : "recent"
   ) as "recent" | "price-asc" | "price-desc" | "featured" | "name";
 
-  const [categories, priceRange] = await Promise.all([
+  const [categories, priceRange, ocasiones] = await Promise.all([
     listStorefrontCategories(),
     getStorefrontPriceRange(),
+    listOcasiones(),
   ]);
 
   // Si hay query de búsqueda, usar searchStorefrontProducts (fuzzy).
@@ -102,6 +106,7 @@ export default async function ProductosPage({ searchParams }: { searchParams: Se
   } else {
     products = await listStorefrontProducts({
       categorySlug: categoria,
+      ocasionSlug: ocasion,
       isPersonalizable: personalizable,
       onlyDiscounted: descuento,
       featured: destacados,
@@ -133,6 +138,7 @@ export default async function ProductosPage({ searchParams }: { searchParams: Se
             <ProductsFilters categories={categories} priceRange={priceRange} />
 
             <div className="flex-1">
+              <OcasionFilterStrip ocasiones={ocasiones} />
               <ActiveFilterChips categories={categories} />
 
               <div className="text-brand-purple-dark/70 mb-4 text-sm">

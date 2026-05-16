@@ -14,19 +14,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import {
-  LogOut,
-  Users,
-  ShoppingBag,
-  Package,
-  MessageSquare,
-  ExternalLink,
-  Tag,
-  Ticket,
-  Layers,
-} from "lucide-react";
-import { logoutAction } from "@/app/auth/logout/actions";
-import { Button } from "@/components/ui/button";
+import { Users, ShoppingBag, Package, MessageSquare, Tag, Ticket, Layers } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { getCurrentAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/db";
@@ -70,37 +58,15 @@ export default async function AdminDashboardPage() {
   ]);
 
   return (
-    <div className="min-h-screen bg-slate-50">
-      <header className="border-b border-slate-200 bg-white">
-        <div className="mx-auto flex max-w-6xl items-center justify-between gap-4 px-6 py-4">
-          <div>
-            <p className="text-xs tracking-wider text-slate-500 uppercase">Panel admin</p>
-            <h1 className="text-lg font-bold text-slate-900">
-              {session.admin.email}{" "}
-              <span className="text-sm font-normal text-slate-500">· {session.admin.role}</span>
-            </h1>
-          </div>
-          <div className="flex items-center gap-2">
-            <Link
-              href="/"
-              className="inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100 hover:text-slate-900"
-            >
-              <ExternalLink className="h-4 w-4" />
-              Ir al sitio
-            </Link>
-            <form action={logoutAction}>
-              <Button
-                type="submit"
-                variant="ghost"
-                size="sm"
-                className="text-slate-700 hover:bg-slate-100"
-              >
-                <LogOut className="mr-1.5 h-4 w-4" />
-                Cerrar sesión
-              </Button>
-            </form>
-          </div>
-        </div>
+    <div>
+      <header className="border-b border-slate-200 bg-white px-6 py-5">
+        <p className="text-xs tracking-wider text-slate-500 uppercase">Hola 👋</p>
+        <h1 className="text-2xl font-bold text-slate-900">{session.admin.email.split("@")[0]}</h1>
+        <p className="mt-0.5 text-sm text-slate-500">
+          Tenés <strong>{ocasionCount}</strong> ocasiones activas,{" "}
+          <strong>{activeCouponCount}</strong> cupones vigentes y <strong>{pendingReviews}</strong>{" "}
+          reseñas por moderar.
+        </p>
       </header>
 
       <main className="mx-auto max-w-6xl space-y-8 px-6 py-8">

@@ -29,7 +29,7 @@ import { Loader2, X } from "lucide-react";
 import {
   inlineEditBlockAction,
   inlineEditSettingAction,
-} from "@/app/admin/contenido/inline-edit-actions";
+} from "@/app/admin/(panel)/contenido/inline-edit-actions";
 
 type LoadedBlock = {
   kind: "block";

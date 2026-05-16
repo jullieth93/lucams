@@ -21,7 +21,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { saveCmsBlockDraftAction, type CmsActionState } from "@/app/admin/contenido/actions";
+import {
+  saveCmsBlockDraftAction,
+  type CmsActionState,
+} from "@/app/admin/(panel)/contenido/actions";
 
 export type BlockEditorBlock = {
   id: string;

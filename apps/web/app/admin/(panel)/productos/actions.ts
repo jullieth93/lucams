@@ -69,6 +69,20 @@ function parsePayload(formData: FormData) {
     isFeatured: get("isFeatured") === "on",
     seoTitle: (get("seoTitle") || null) as string | null,
     seoDescription: (get("seoDescription") || null) as string | null,
+    // PLAN_CATALOG_V2 — campos enriquecidos AI-ready
+    richDescription: (get("richDescription") || null) as string | null,
+    whyChooseThis: (get("whyChooseThis") || null) as string | null,
+    idealFor: String(get("idealFor") ?? "")
+      .split("\n")
+      .map((s) => s.trim())
+      .filter(Boolean),
+    warrantyMonths: getOptNum("warrantyMonths") ?? undefined,
+    productionDays: getOptNum("productionDays") ?? undefined,
+    shippingDaysMin: getOptNum("shippingDaysMin") ?? undefined,
+    shippingDaysMax: getOptNum("shippingDaysMax") ?? undefined,
+    minimumQuantity: getOptNum("minimumQuantity") ?? undefined,
+    maximumQuantity: getOptNum("maximumQuantity"),
+    premadeSurcharge: getOptNum("premadeSurcharge") ?? undefined,
   };
 }
 

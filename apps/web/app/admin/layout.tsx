@@ -1,14 +1,13 @@
 /*
  * Layout root del panel admin.
  *
- * Identidad: utilitaria y sobria — no usa el kawaii de /(auth) cliente.
- * Razón: equipo interno (fulfillment, manager, superadmin) trabaja con
- * este panel a diario, prima legibilidad sobre delight visual.
+ * PLAN_CATALOG_V2 8.1 — sidebar permanente con 5 grupos.
+ * El gate de sesión vive en proxy.ts (`/admin/*` excepto `/admin/login`).
+ * Acá NO hacemos guard porque /admin/login también pasa por este layout
+ * (sin sidebar — el shell se monta en cada page con getCurrentAdmin).
  *
- * NO incluye guard de sesión acá — el guard vive en `proxy.ts` para
- * cualquier `/admin/*` excepto `/admin/login`. Eso protege contra
- * acceso no autenticado a nivel de request, sin que importe lo que
- * renderee el server component.
+ * Identidad: utilitaria sobria (no kawaii cliente). Branding contenido
+ * en el sidebar para que las páginas mantengan layout simple slate.
  */
 
 import type { Metadata } from "next";
@@ -19,7 +18,6 @@ export const metadata: Metadata = {
     default: "Panel admin · Lucams_shop",
     template: "%s · Admin Lucams",
   },
-  // Importante: no indexar admin
   robots: { index: false, follow: false },
 };
 

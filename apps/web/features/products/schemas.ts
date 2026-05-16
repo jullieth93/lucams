@@ -46,6 +46,20 @@ export const ProductCreateSchema = z.object({
   isFeatured: z.boolean().default(false),
   seoTitle: z.string().max(70).optional().nullable(),
   seoDescription: z.string().max(160).optional().nullable(),
+  // PLAN_CATALOG_V2 2.10 — campos AI-ready opcionales
+  richDescription: z.string().max(5000).optional().nullable(),
+  whyChooseThis: z.string().max(2000).optional().nullable(),
+  idealFor: z.array(z.string().max(120)).max(20).optional(),
+  // PLAN_CATALOG_V2 4.2 — garantía + tiempos
+  warrantyMonths: z.number().int().min(0).max(120).optional(),
+  productionDays: z.number().int().min(1).max(60).optional(),
+  shippingDaysMin: z.number().int().min(0).max(30).optional(),
+  shippingDaysMax: z.number().int().min(0).max(60).optional(),
+  // PLAN_CATALOG_V2 3.3 — min/max cantidad
+  minimumQuantity: z.number().int().min(1).max(10_000).optional(),
+  maximumQuantity: z.number().int().min(1).max(10_000).optional().nullable(),
+  // PLAN_CATALOG_V2 5.5 — surcharge para templates PREMADE
+  premadeSurcharge: z.number().int().min(0).max(100).optional(),
 });
 
 export type ProductCreateInput = z.infer<typeof ProductCreateSchema>;

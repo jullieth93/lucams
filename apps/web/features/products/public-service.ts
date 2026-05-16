@@ -90,6 +90,8 @@ export async function listStorefrontCategories() {
 
 export type StorefrontFilters = {
   categorySlug?: string;
+  /** PLAN_CATALOG_V2 1.5 + 6.8 — filtro por ocasión transversal. */
+  ocasionSlug?: string;
   featured?: boolean;
   isPersonalizable?: boolean;
   onlyDiscounted?: boolean;
@@ -105,7 +107,25 @@ export async function listStorefrontProducts(
   const where: Prisma.ProductWhereInput = {
     ...STOREFRONT_WHERE,
     ...(opts.categorySlug
-      ? { category: { ...STOREFRONT_WHERE.category, slug: opts.categorySlug } }
+      ? {
+          // Match en categoría padre O cualquier sub-categoría hija
+          OR: [
+            { category: { ...STOREFRONT_WHERE.category, slug: opts.categorySlug } },
+            {
+              category: {
+                ...STOREFRONT_WHERE.category,
+                parent: { slug: opts.categorySlug },
+              },
+            },
+          ],
+        }
+      : {}),
+    ...(opts.ocasionSlug
+      ? {
+          ocasionTags: {
+            some: { ocasionTag: { slug: opts.ocasionSlug, isActive: true, deletedAt: null } },
+          },
+        }
       : {}),
     ...(opts.featured ? { isFeatured: true } : {}),
     ...(opts.isPersonalizable ? { isPersonalizable: true } : {}),
@@ -350,20 +370,52 @@ export async function getStorefrontProductBySlug(
  * excluyendo el actual. Fallback a destacados si la categoría tiene
  * pocos productos (< 4 después de excluir).
  */
+/**
+ * PLAN_CATALOG_V2 decisión 6.4 — Productos relacionados con scoring 3 capas:
+ *   Capa 1: ocasiones compartidas (+3 por cada match)
+ *   Capa 2: misma sub-categoría (+2)
+ *   Capa 3: misma categoría padre (+1)
+ * + 0.5 boost si isFeatured. Excluye el producto actual.
+ * Si no hay suficiente, completa con featured globales.
+ */
 export async function listRelatedProducts(opts: {
   productId: string;
   categorySlug: string;
   limit?: number;
 }): Promise<StorefrontProductCard[]> {
   const take = opts.limit ?? 4;
-  const sameCategoryRaw = await prisma.product.findMany({
-    where: {
-      ...STOREFRONT_WHERE,
-      category: { ...STOREFRONT_WHERE.category, slug: opts.categorySlug },
-      NOT: { id: opts.productId },
+
+  // Producto actual con ocasiones + categoría (parent + self)
+  const current = await prisma.product.findUnique({
+    where: { id: opts.productId },
+    include: {
+      category: { include: { parent: true } },
+      ocasionTags: { select: { ocasionTagId: true } },
     },
-    orderBy: [{ isFeatured: "desc" }, { createdAt: "desc" }],
-    take,
+  });
+  if (!current) return [];
+
+  const ocasionIds = current.ocasionTags.map((t) => t.ocasionTagId);
+  const parentCategoryId = current.category.parentId;
+
+  // Pool amplio: misma ocasión OR misma sub-cat OR misma cat padre
+  const where: Prisma.ProductWhereInput = {
+    ...STOREFRONT_WHERE,
+    NOT: { id: opts.productId },
+    OR: [
+      ...(ocasionIds.length > 0
+        ? [{ ocasionTags: { some: { ocasionTagId: { in: ocasionIds } } } }]
+        : []),
+      { categoryId: current.categoryId },
+      ...(parentCategoryId
+        ? [{ category: { ...STOREFRONT_WHERE.category, parentId: parentCategoryId } }]
+        : []),
+    ],
+  };
+
+  const pool = await prisma.product.findMany({
+    where,
+    take: 30,
     select: {
       id: true,
       slug: true,
@@ -371,20 +423,44 @@ export async function listRelatedProducts(opts: {
       basePrice: true,
       compareAtPrice: true,
       isPersonalizable: true,
+      isFeatured: true,
       images: true,
-      category: { select: { slug: true, name: true } },
+      categoryId: true,
+      category: { select: { slug: true, name: true, parentId: true } },
+      ocasionTags: { select: { ocasionTagId: true } },
       _count: { select: { variants: { where: { deletedAt: null } } } },
     },
   });
-  const sameCategory: StorefrontProductCard[] = sameCategoryRaw.map(({ _count, ...p }) => ({
-    ...p,
-    variantCount: _count.variants,
-  }));
-  if (sameCategory.length >= take) return sameCategory;
 
-  // Completar con featured de otras categorías
-  const missing = take - sameCategory.length;
-  const seenIds = new Set([opts.productId, ...sameCategory.map((p) => p.id)]);
+  // Scoring 3 capas
+  const scored = pool.map((p) => {
+    let score = 0;
+    const sharedOcasiones = p.ocasionTags.filter((t) => ocasionIds.includes(t.ocasionTagId)).length;
+    score += sharedOcasiones * 3;
+    if (p.categoryId === current.categoryId) score += 2;
+    else if (parentCategoryId && p.category.parentId === parentCategoryId) score += 1;
+    if (p.isFeatured) score += 0.5;
+    return { p, score };
+  });
+  scored.sort((a, b) => b.score - a.score);
+
+  const top = scored.slice(0, take).map(({ p }) => ({
+    id: p.id,
+    slug: p.slug,
+    name: p.name,
+    basePrice: p.basePrice,
+    compareAtPrice: p.compareAtPrice,
+    isPersonalizable: p.isPersonalizable,
+    images: p.images,
+    category: { slug: p.category.slug, name: p.category.name },
+    variantCount: p._count.variants,
+  }));
+
+  if (top.length >= take) return top;
+
+  // Completar con featured globales si no alcanza
+  const missing = take - top.length;
+  const seenIds = new Set([opts.productId, ...top.map((p) => p.id)]);
   const featuredRaw = await prisma.product.findMany({
     where: {
       ...STOREFRONT_WHERE,
@@ -409,5 +485,5 @@ export async function listRelatedProducts(opts: {
     ...p,
     variantCount: _count.variants,
   }));
-  return [...sameCategory, ...featured];
+  return [...top, ...featured];
 }

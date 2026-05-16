@@ -21,6 +21,7 @@ import { SiteHeader } from "@/components/site-header";
 import { Button } from "@/components/ui/button";
 import { ProductGallery } from "@/components/product-detail/product-gallery";
 import { RelatedProducts } from "@/components/product-detail/related-products";
+import { TemplatesStrip } from "@/components/product-detail/templates-strip";
 import { VariantSelector } from "./variant-selector";
 import { formatCOP } from "@/lib/format";
 import { buildWhatsAppUrl } from "@/lib/wa";
@@ -244,6 +245,8 @@ export default async function ProductoDetallePage({
               </p>
             </div>
           </div>
+
+          <TemplatesStrip productSlug={product.slug} isPersonalizable={product.isPersonalizable} />
 
           <RelatedProducts products={related} />
         </div>

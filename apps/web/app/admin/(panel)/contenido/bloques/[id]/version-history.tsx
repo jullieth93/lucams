@@ -7,7 +7,7 @@
  */
 
 import { History, RotateCcw } from "lucide-react";
-import { publishCmsBlockVersionAction } from "@/app/admin/contenido/actions";
+import { publishCmsBlockVersionAction } from "@/app/admin/(panel)/contenido/actions";
 import { Button } from "@/components/ui/button";
 
 type Version = {

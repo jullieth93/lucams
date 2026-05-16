@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import {
   updateSiteSettingAction,
   type SiteSettingActionState,
-} from "@/app/admin/contenido/actions";
+} from "@/app/admin/(panel)/contenido/actions";
 
 type Setting = {
   id: string;
