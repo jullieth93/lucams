@@ -28,7 +28,7 @@
  * Por ahora todos los slots se montan al inicio.
  */
 
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Trash2, Wand2, RotateCcw } from "lucide-react";
@@ -136,6 +136,18 @@ function StudioSlotImpl({
   // capturaban el ref. State es seguro y el extra rerender por drag start/end
   // es aceptable (1 vez por drag).
   const [wasDraggingPhoto, setWasDraggingPhoto] = useState(false);
+
+  // M.3.b.UX.v13 (Lucy 2026-05-15) — CSS clip-path para que el slot wrapper
+  // SE VEA con el shape físico del imán (heart/circle/rect). useId genera
+  // un ID único por slot para el SVG clipPath inline (objectBoundingBox 0-1
+  // → escala automática al tamaño del wrapper).
+  const heartClipId = useId();
+  const slotClipPath =
+    shape === "circle"
+      ? "circle(50% at 50% 50%)"
+      : shape === "heart"
+        ? `url(#${heartClipId})`
+        : undefined;
 
   // M.3.b.UX.v11 — Quality check de la foto al cargar.
   // El slot también carga la image (además del ImagePlaceholder interno) para
@@ -318,6 +330,17 @@ function StudioSlotImpl({
 
   return (
     <div className="group/wrapper flex flex-col items-center gap-1.5">
+      {/* M.3.b.UX.v13 — SVG clipPath inline para shape heart. objectBoundingBox
+        (0-1 normalized) escala automáticamente al tamaño del slot. */}
+      {shape === "heart" && (
+        <svg width="0" height="0" aria-hidden style={{ position: "absolute", overflow: "hidden" }}>
+          <defs>
+            <clipPath id={heartClipId} clipPathUnits="objectBoundingBox">
+              <path d="M0.5,0.82 C0.28,0.68 0.06,0.52 0.06,0.32 C0.06,0.18 0.16,0.08 0.28,0.08 C0.38,0.08 0.44,0.12 0.5,0.22 C0.56,0.12 0.62,0.08 0.72,0.08 C0.84,0.08 0.94,0.18 0.94,0.32 C0.94,0.52 0.72,0.68 0.5,0.82 Z" />
+            </clipPath>
+          </defs>
+        </svg>
+      )}
       <motion.div
         ref={containerRef}
         role="button"
@@ -359,7 +382,11 @@ function StudioSlotImpl({
         style={{
           width: slotWidth,
           height: slotHeight,
-          borderRadius: 8,
+          // M.3.b.UX.v13 — borderRadius solo aplica si shape rectangle.
+          // Para heart/circle, el clipPath define la silueta y borderRadius
+          // sería ignorado igualmente.
+          borderRadius: slotClipPath ? 0 : 8,
+          clipPath: slotClipPath,
         }}
         whileHover={{ scale: 1.02 }}
         whileTap={{ scale: 0.98 }}
@@ -408,62 +435,24 @@ function StudioSlotImpl({
             cornerRadiusPx={cornerRadiusPx}
           />
           <Layer>
-            {/* M.3.b.UX.v5 (Lucy 2026-05-15) — Layer dividido en 3 capas
-              conceptuales para que el producto rectangular muestre el área
-              de foto en shape heart/circle + texto fuera del clipping:
-
-                1. Background (full stage = silueta rectangular del producto)
-                2. Group clipFunc heart/circle → solo image + asset adentro
-                3. Text layers (fuera del clipFunc) → en posición original
-                   del seed, abajo del heart, donde el cliente espera
-                   editarlos.
-
-              Para shape rectangle todo va plano sin Group clipFunc. */}
-            {unitTemplate.layers
-              .filter((l) => l.type === "background")
-              .map((layer) => renderLayer(layer, slotState, unitTemplate.stage, onTextEdit))}
-            {shape === "heart" || shape === "circle" ? (
-              <Group
-                clipFunc={makeShapeClipFunc(
-                  shape,
-                  unitTemplate.stage.width,
-                  unitTemplate.stage.height,
-                )}
-              >
-                {unitTemplate.layers
-                  .filter((l) => l.type !== "background" && l.type !== "text")
-                  .map((layer) =>
-                    renderLayer(
-                      layer,
-                      slotState,
-                      unitTemplate.stage,
-                      onTextEdit,
-                      shape,
-                      onPhotoTransformChange,
-                      handlePhotoDragStart,
-                      handlePhotoDragEnd,
-                    ),
-                  )}
-              </Group>
-            ) : (
-              unitTemplate.layers
-                .filter((l) => l.type !== "background" && l.type !== "text")
-                .map((layer) =>
-                  renderLayer(
-                    layer,
-                    slotState,
-                    unitTemplate.stage,
-                    onTextEdit,
-                    shape,
-                    onPhotoTransformChange,
-                    handlePhotoDragStart,
-                    handlePhotoDragEnd,
-                  ),
-                )
+            {/* M.3.b.UX.v13 (Lucy 2026-05-15) — Layer único sin Group clipFunc.
+              El CSS clip-path del wrapper HTML recorta visualmente al shape
+              físico del imán (heart/circle/rect). La sombra Konva + edge stroke
+              también respetan el shape via RealismShadowLayer/Overlay.
+              Para products heart/circle el text layer del template NO se
+              renderea (renderLayer "text" returns null). */}
+            {unitTemplate.layers.map((layer) =>
+              renderLayer(
+                layer,
+                slotState,
+                unitTemplate.stage,
+                onTextEdit,
+                shape,
+                onPhotoTransformChange,
+                handlePhotoDragStart,
+                handlePhotoDragEnd,
+              ),
             )}
-            {unitTemplate.layers
-              .filter((l) => l.type === "text")
-              .map((layer) => renderLayer(layer, slotState, unitTemplate.stage, onTextEdit))}
           </Layer>
           <RealismOverlayLayer
             stage={unitTemplate.stage}
@@ -740,25 +729,22 @@ export function renderLayer(
         />
       );
     case "image-placeholder": {
-      // M.3.b.UX.v5 (Lucy 2026-05-15) — Para shape heart/circle, expandir el
-      // image-placeholder al BOUNDING BOX del shape (zona cuadrada centrada
-      // del stage), NO al stage completo. Antes expandíamos a stage→ el heart
-      // quedaba estirado al aspect del template (3:4). Ahora el heart se ve
-      // proporcionado (1:1) y el resto del stage queda libre para texto +
-      // background del producto rectangular.
-      const useShapeBox = shape === "heart" || shape === "circle";
-      const effectiveLayer = useShapeBox
-        ? (() => {
-            const box = getShapeBoundingBox(stage.width, stage.height);
-            return {
-              ...(layer as ImagePlaceholderLayer),
-              x: box.x,
-              y: box.y,
-              width: box.width,
-              height: box.height,
-              cornerRadius: 0,
-            } as ImagePlaceholderLayer;
-          })()
+      // M.3.b.UX.v13 (Lucy 2026-05-15) — Para products heart/circle, el image
+      // cubre TODO el stage. El stage para products heart/circle es cuadrado
+      // (definido en la plantilla / forzado al cargar). El Konva clipFunc
+      // adicional ya no es necesario porque el slot wrapper HTML clipPath
+      // recorta visualmente — pero lo mantenemos para que la sombra Konva
+      // también respete el shape físico.
+      const useFullStage = shape === "heart" || shape === "circle";
+      const effectiveLayer = useFullStage
+        ? ({
+            ...(layer as ImagePlaceholderLayer),
+            x: 0,
+            y: 0,
+            width: stage.width,
+            height: stage.height,
+            cornerRadius: 0,
+          } as ImagePlaceholderLayer)
         : (layer as ImagePlaceholderLayer);
       return (
         <ImagePlaceholder
@@ -772,12 +758,12 @@ export function renderLayer(
       );
     }
     case "text": {
-      // M.3.b.UX.v5 (Lucy 2026-05-15) — REVERTIDO el reposicionamiento que
-      // hicimos en v4. El texto queda en su posición original del seed
-      // (típicamente parte inferior del stage rectangular). El producto
-      // físico ES rectangular, así que el texto se imprime abajo del heart
-      // de la foto, donde estaba planeado conceptualmente. El text layer NO
-      // se clipea por el heart (queda fuera del Group clipFunc).
+      // M.3.b.UX.v13 (Lucy 2026-05-15) — Para products heart/circle, el imán
+      // físico ES esa silueta. No hay zona "abajo del corazón" donde imprimir
+      // texto. Por lo tanto omitimos el render de text layers en heart/circle.
+      // Si la plantilla tiene textos (como Polaroid Instagram), aplican solo
+      // a products rectangulares.
+      if (shape === "heart" || shape === "circle") return null;
       const textLayer = layer as TextLayerData;
       const override = slotState.textOverrides?.[textLayer.id];
       return renderText(textLayer, stage, override, onTextEdit, false);

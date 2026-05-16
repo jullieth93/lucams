@@ -277,7 +277,13 @@ const templatesData = [
     name: "Personalización Libre",
     order: 99,
     previewUrl: "/templates/personalizacion-libre.svg",
-    canvasData: blankCanvas({ stageW: 600, stageH: 800, includeText: true }),
+    // M.3.b.UX.v13 (Lucy 2026-05-15) — Stage cuadrado 600×600 para que el
+    // shape físico (heart/circle/rect cuadrado) se vea proporcionado. Para
+    // products rect vertical (Polaroid 7×9), la plantilla Polaroid Instagram
+    // tiene su propio stage 400×580 y NO usa este Libre.
+    // includeText:true se mantiene → el text se renderea solo en rect
+    // shapes (heart/circle lo skip en renderLayer "text" case).
+    canvasData: blankCanvas({ stageW: 600, stageH: 600, includeText: true }),
   },
   {
     slug: "libre-photo-grid",
