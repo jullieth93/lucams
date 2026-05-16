@@ -19,16 +19,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import {
-  ArrowLeft,
-  Check,
-  Loader2,
-  AlertCircle,
-  Sparkles,
-  Ruler,
-  HelpCircle,
-  Maximize2,
-} from "lucide-react";
+import { ArrowLeft, Check, Loader2, AlertCircle, Sparkles, Ruler, HelpCircle } from "lucide-react";
 import type { StoreApi } from "zustand";
 import { useStore } from "zustand";
 import { compareSizeToObject } from "./lib/size-comparator";
@@ -54,14 +45,6 @@ type StudioToolbarProps = {
   showRealismGuides?: boolean;
   /** M.3.b.B.1 — callback al cambiar el toggle. */
   onToggleRealismGuides?: () => void;
-  /**
-   * M.3.b.UX.fase-C (Lucy 2026-05-15) — Toggle "Ver tamaño real": renderea
-   * los slots al tamaño físico aproximado en CSS px (96 DPI baseline). Honesto:
-   * el tamaño real depende del PPI físico del monitor del cliente.
-   */
-  showRealSize?: boolean;
-  /** M.3.b.UX.fase-C — callback al togglear. */
-  onToggleRealSize?: () => void;
   /** M.3.b.UX.bug v3 — abre el modal de Vista previa final. */
   /** M.3.b.UX.v12 (Lucy 2026-05-15) — Abrir banner de gestos manualmente
    *  (drag/zoom/dblclick). El cliente puede re-leer las instrucciones cuando
@@ -79,8 +62,6 @@ export function StudioToolbar({
   productSlotCount,
   showRealismGuides,
   onToggleRealismGuides,
-  showRealSize,
-  onToggleRealSize,
   onOpenGesturesHint,
   onFinalize,
 }: StudioToolbarProps) {
@@ -159,32 +140,6 @@ export function StudioToolbar({
               <span>{showRealismGuides ? "Guías visibles" : "Ver guías"}</span>
             </button>
           )}
-          {/* M.3.b.UX.fase-C (Lucy 2026-05-15) — Toggle "Ver tamaño real".
-              Renderea los slots al tamaño físico aprox usando 96 DPI baseline
-              (1 cm ≈ 37.8 CSS px). Aproximación honesta — sin calibración del
-              monitor el tamaño es indicativo, no exacto. */}
-          {onToggleRealSize && (
-            <button
-              type="button"
-              onClick={onToggleRealSize}
-              aria-pressed={!!showRealSize}
-              aria-label={
-                showRealSize
-                  ? "Volver al tamaño del editor"
-                  : "Ver el tamaño físico aproximado de los imanes"
-              }
-              title="Aproximación al tamaño físico en pantalla (96 DPI). El tamaño exacto depende de tu monitor."
-              className={[
-                "focus:ring-brand-purple hidden h-9 items-center gap-1.5 rounded-md px-2.5 text-xs font-semibold transition-colors focus:ring-2 focus:ring-offset-1 focus:outline-none sm:inline-flex",
-                showRealSize
-                  ? "bg-brand-turquoise/15 text-brand-turquoise-dark ring-brand-turquoise/40 ring-1"
-                  : "text-brand-purple-dark/70 hover:bg-brand-purple/10 hover:text-brand-purple-dark",
-              ].join(" ")}
-            >
-              <Maximize2 className="h-3.5 w-3.5" aria-hidden />
-              <span>{showRealSize ? "Tamaño real" : "Ver tamaño real"}</span>
-            </button>
-          )}
           {/* M.3.b.UX.v12 (Lucy 2026-05-15) — Botón "?" para re-ver gestos.
             Icon-only para no ocupar espacio. Visible en mobile y desktop. */}
           {onOpenGesturesHint && (
@@ -241,25 +196,6 @@ export function StudioToolbar({
               · Tu imán físico mide <strong>{productSizeCm} cm</strong>
             </span>
           )}
-        </div>
-      )}
-
-      {/* M.3.b.UX.fase-C (Lucy 2026-05-15) — leyenda honesta del modo Tamaño Real.
-          Sin calibración del PPI del monitor el tamaño en pantalla es una
-          aproximación a 96 DPI. Lo decimos claro para no engañar al cliente. */}
-      {showRealSize && (
-        <div className="border-brand-turquoise/20 bg-brand-turquoise/5 text-brand-purple-dark flex flex-wrap items-center justify-center gap-x-2 border-t px-3 py-1.5 text-[11px]">
-          <Maximize2 className="text-brand-turquoise-dark h-3 w-3" aria-hidden />
-          <span>
-            Estás viendo el <strong>tamaño físico aproximado</strong>
-            {productSizeCm && (
-              <>
-                {" "}
-                (<strong>{productSizeCm} cm</strong>)
-              </>
-            )}
-            . El tamaño real exacto depende del PPI de tu pantalla.
-          </span>
         </div>
       )}
     </header>

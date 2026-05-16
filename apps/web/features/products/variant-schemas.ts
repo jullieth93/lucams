@@ -23,6 +23,17 @@ export const ProductVariantAttributesSchema = z.object({
   sizeCm: z.string().optional(),
   /** Cantidad de slots de foto. Override de product.personalizationSchema.photoSlots. */
   photoSlots: z.number().int().min(1).max(50).optional(),
+  /**
+   * Cantidad de UNIDADES del set/pack (distinto de photoSlots). Ej: recordatorios
+   * pre-armados x20 invitados, separadores x10, mini calendarios x20. Cada unidad
+   * NO se personaliza con foto individual del cliente — comparten diseño base o
+   * son items genéricos del pack.
+   *
+   * Diferencia conceptual:
+   *  - photoSlots = N huecos donde el cliente sube N fotos distintas para N imanes.
+   *  - quantity   = N unidades idénticas (o variantes pre-diseñadas) del producto.
+   */
+  quantity: z.number().int().min(1).max(500).optional(),
   /** Forma física. Override. */
   shape: z.enum(["rectangle", "circle", "heart", "custom"]).optional(),
   /** Acabado del material. Override. "glass" = frente vidrio premium. */
@@ -54,6 +65,7 @@ export function parseVariantAttributes(raw: unknown): ProductVariantAttributes {
  */
 export function generateVariantLabel(attrs: ProductVariantAttributes): string {
   const parts: string[] = [];
+  if (attrs.quantity) parts.push(`${attrs.quantity} unidades`);
   if (attrs.photoSlots) parts.push(`${attrs.photoSlots} fotos`);
   if (attrs.sizeCm) parts.push(`${attrs.sizeCm} cm`);
   if (attrs.color) parts.push(attrs.color);

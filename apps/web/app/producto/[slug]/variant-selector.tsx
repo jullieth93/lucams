@@ -38,7 +38,12 @@ type VariantSelectorProps = {
 };
 
 // Labels y formatters por dimensión conocida.
+// `quantity` y `photoSlots` muestran ambos "Cantidad" — son la misma idea
+// contextual desde la perspectiva del cliente y nunca coexisten en un mismo
+// producto del seed actual. Si en el futuro coexisten, el sistema mostrará
+// dos secciones con el mismo label — habría que diferenciar acá.
 const DIMENSION_LABELS: Record<string, string> = {
+  quantity: "Cantidad",
   photoSlots: "Cantidad",
   sizeCm: "Tamaño",
   shape: "Forma",
@@ -47,6 +52,7 @@ const DIMENSION_LABELS: Record<string, string> = {
 };
 
 function formatDimensionValue(key: string, value: unknown): string {
+  if (key === "quantity") return `${value} unidades`;
   if (key === "photoSlots") return `${value} unidades`;
   if (key === "sizeCm") return `${value} cm`;
   if (key === "shape") {
@@ -72,7 +78,11 @@ function formatDimensionValue(key: string, value: unknown): string {
 
 // Dimensiones que mostramos como chips. Otros (aspectRatio, cornerRadiusPx)
 // son técnicos y se infieren — no se exponen al cliente.
+// Orden importa: las dimensiones aparecen como secciones en este orden.
+//   Cantidad (quantity) primero — decisión más común del cliente.
+//   Luego Fotos / Tamaño / Forma / Color / Acabado.
 const VISIBLE_DIMENSIONS: (keyof ProductVariantAttributes)[] = [
+  "quantity",
   "photoSlots",
   "sizeCm",
   "shape",
@@ -103,13 +113,18 @@ export function VariantSelector({ productBasePrice, variants }: VariantSelectorP
       }
     }
     // Solo dimensiones con >1 valor son selectables (sino no aportan).
-    return Object.entries(dimMap)
-      .filter(([, values]) => values.size > 1)
-      .map(([key, values]) => ({
+    // Garantizamos el orden de VISIBLE_DIMENSIONS (Cantidad primero) y
+    // ordenamos los valores numéricos cuando aplica (6 antes de 12).
+    return VISIBLE_DIMENSIONS.filter((key) => dimMap[key] && dimMap[key].size > 1).map((key) => {
+      const rawValues = Array.from(dimMap[key]);
+      const isNumeric = key === "quantity" || key === "photoSlots";
+      const values = isNumeric ? rawValues.sort((a, b) => Number(a) - Number(b)) : rawValues.sort();
+      return {
         key,
         label: DIMENSION_LABELS[key] ?? key,
-        values: Array.from(values),
-      }));
+        values,
+      };
+    });
   }, [variants]);
 
   // Valor actual por dimensión (del variant seleccionado).
@@ -165,7 +180,7 @@ export function VariantSelector({ productBasePrice, variants }: VariantSelectorP
     return (
       <div className="mb-4">
         <p className="text-brand-purple-dark/70 mb-2 text-xs font-bold tracking-wider uppercase">
-          Elegí tu opción
+          Elige tu opción
         </p>
         <div role="radiogroup" aria-label="Variantes del producto" className="flex flex-col gap-2">
           {variants.map((v) => {

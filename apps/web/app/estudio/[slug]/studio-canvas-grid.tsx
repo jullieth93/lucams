@@ -47,13 +47,6 @@ type StudioCanvasGridProps = {
   cornerRadiusPx?: number;
   /** M.3.b.B.1 — toggle global para bleed + safe guides. */
   showRealismGuides?: boolean;
-  /**
-   * M.3.b.UX.fase-C (Lucy 2026-05-15) — Toggle "Ver tamaño real". Cuando true,
-   * el slot displaySize se calcula a partir de `sizeCm` × 37.8 CSS px/cm
-   * (96 DPI baseline). Aproximación honesta: el tamaño real depende del PPI
-   * físico de la pantalla del usuario, que no podemos detectar sin calibración.
-   */
-  showRealSize?: boolean;
   onSlotClick: (slotIndex: number) => void;
   /** M.3.b.B.3 — abrir modal ajustar foto (filtros) para un slot lleno. */
   onSlotAdjust?: (slotIndex: number) => void;
@@ -69,7 +62,6 @@ export function StudioCanvasGrid({
   finish,
   cornerRadiusPx,
   showRealismGuides,
-  showRealSize,
   onSlotClick,
   onSlotAdjust,
   onTextEdit,
@@ -151,26 +143,7 @@ export function StudioCanvasGrid({
   // `containerWidth`. Mantenemos el aspect ratio del unitTemplate.
   const slotAspect = canvasData.unitTemplate.stage.height / canvasData.unitTemplate.stage.width;
   const availableW = containerWidth - layout.gap * (layout.cols - 1);
-  let slotDisplaySize = Math.max(MIN_SLOT_SIZE, Math.floor(availableW / layout.cols));
-
-  // M.3.b.UX.fase-C (Lucy 2026-05-15) — Modo "Ver tamaño real". Calculamos el
-  // displaySize a partir de sizeCm asumiendo 96 DPI estándar CSS (1 cm ≈ 37.795
-  // CSS px). Es aproximación: el tamaño real físico depende del PPI de la
-  // pantalla del usuario. Lo declaramos honestamente con label "≈ tamaño real".
-  // Parse sizeCm formato común "WxH cm", "WxH", "W×H" — tomamos el width.
-  if (showRealSize && sizeCm) {
-    const match = sizeCm.match(/(\d+(?:[.,]\d+)?)/);
-    if (match) {
-      const widthCm = parseFloat(match[1].replace(",", "."));
-      if (widthCm > 0) {
-        // 1 cm = 37.795 CSS px @ 96 DPI baseline
-        const realPx = Math.round(widthCm * 37.795);
-        // Cap al MIN_SLOT_SIZE para usabilidad (imanes < 3 cm quedarían minúsculos)
-        slotDisplaySize = Math.max(MIN_SLOT_SIZE, realPx);
-      }
-    }
-  }
-
+  const slotDisplaySize = Math.max(MIN_SLOT_SIZE, Math.floor(availableW / layout.cols));
   const slotHeight = slotDisplaySize * slotAspect;
 
   // Keyboard navigation entre slots

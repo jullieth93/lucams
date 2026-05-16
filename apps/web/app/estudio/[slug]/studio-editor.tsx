@@ -80,11 +80,6 @@ export function StudioEditor({
   // M.3.b.B.1 — Toggle bleed + safe area guides (default off para que cliente
   // no se confunda con líneas de seguridad si no las necesita ver).
   const [showRealismGuides, setShowRealismGuides] = useState(false);
-  // M.3.b.UX.v13 (Lucy 2026-05-15) — Toggle "tamaño real". Cuando ON, los slots
-  // se redimensionan al tamaño físico real del imán (cm → CSS px @ ~37.8 px/cm).
-  // Asume 96 CSS DPI estándar del browser. Para precisión exacta, futuro: slider
-  // de calibración con tarjeta crédito (industria estándar Vistaprint/Mixbook).
-  const [showRealSize, setShowRealSize] = useState(false);
   // A2.8 — Sheet drawer mobile state (sidebar bottom slide-up).
   const [mobileSheetOpen, setMobileSheetOpen] = useState(false);
   // M.3.b.D — Text editor inline state: { slotIndex, textLayerId } o null
@@ -401,8 +396,6 @@ export function StudioEditor({
         productSlotCount={photoSlots}
         showRealismGuides={showRealismGuides}
         onToggleRealismGuides={() => setShowRealismGuides((v) => !v)}
-        showRealSize={showRealSize}
-        onToggleRealSize={() => setShowRealSize((v) => !v)}
         onOpenGesturesHint={() => {
           setGesturesHintPersistent(true);
           setGesturesHintOpen(true);
@@ -433,7 +426,6 @@ export function StudioEditor({
             finish={productConfig.finish}
             cornerRadiusPx={productConfig.cornerRadiusPx}
             showRealismGuides={showRealismGuides}
-            showRealSize={showRealSize}
             onSlotClick={handleSlotClick}
             onSlotAdjust={(slotIndex) => setAdjustSlotIndex(slotIndex)}
             onTextEdit={(slotIndex, textLayerId) => setTextEditTarget({ slotIndex, textLayerId })}
