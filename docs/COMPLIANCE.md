@@ -332,6 +332,36 @@ Antes de elegir proveedor:
 - [ ] Confirmar soporte de notas de crédito vía API.
 - [ ] Confirmar que el proveedor maneja el envío a DIAN (no nosotros).
 
+### Addendum 2026-05-15 — Umbral persona natural NO responsable de IVA + control proactivo en admin
+
+> Decisión Lucy en `docs/PLAN_CATALOG_V2.md` 1.8 (2026-05-15).
+
+Persona natural NO responsable de IVA en Colombia **NO está obligada** a emitir factura electrónica si sus ingresos brutos anuales del año anterior están por debajo de **3.500 UVT** ([pendiente verificación monto UVT 2026]).
+
+Por debajo del umbral, puede emitir:
+
+- **Documento equivalente POS** (sistema autorizado).
+- **Cuenta de cobro** (válida tributariamente, no es factura).
+
+Una vez cruzado el umbral (o si Lucy decide ser facturador electrónico voluntariamente para acceso B2B corporativo): registro como facturador electrónico ante DIAN, contratar proveedor tecnológico (Alegra / Siigo / Facture), implementar CUFE, XML, validación previa.
+
+**Impacto en copy público**: el banner B2B en `/productos/publicitarios` y la página `/mayorista` NO deben prometer "factura electrónica DIAN obligatoria" hasta que Lucams esté efectivamente en régimen. Texto correcto: "documentación tributaria (cuenta de cobro o factura electrónica según corresponda)".
+
+**Control proactivo en admin** (a implementar en Área 8 + Fase 4 Orders):
+
+- 6 settings nuevos en categoría `FACTURACION` de `SiteSetting`:
+  - `DIAN_FACTURADOR_ELECTRONICO` (boolean)
+  - `DIAN_REGIMEN` (text)
+  - `DIAN_UMBRAL_UVT_ANUAL` (number, default 3500)
+  - `DIAN_VALOR_UVT_COP` (number)
+  - `DIAN_INGRESOS_ANUALES_REGISTRADOS` (number)
+  - `DIAN_PROVEEDOR_FACTURACION` (text)
+- Card "Estado tributario DIAN" en `/admin/dashboard` con 4 niveles (verde < 60% / amarillo 60-80% / naranja 80-100% / rojo > 100%).
+- Job `pg_cron` mensual día 1 a las 8am COT manda email a `r.julliethhr@gmail.com` cuando ingresos ≥ 60% del umbral.
+- Cuando exista `Order` con flujo PAID en Fase 4, `DIAN_INGRESOS_ANUALES_REGISTRADOS` se auto-calcula sumando `Order.total` del año fiscal. Mientras tanto: actualización manual mensual desde admin.
+
+**Acción humana pendiente**: Lucy define con su contador cuándo activar facturación electrónica + a qué proveedor migrar (ADR-025 pendiente).
+
 ---
 
 ## IVA y retenciones
