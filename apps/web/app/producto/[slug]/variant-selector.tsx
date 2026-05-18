@@ -1,21 +1,30 @@
 "use client";
 
 /*
- * VariantSelector — M.3.b.CAT.B (Lucy 2026-05-15).
+ * VariantSelector — M.3.b.CAT.B reescrito 2026-05-18.
  *
- * Selector multi-dimensión. Detecta dinámicamente las dimensiones de los
- * variants disponibles (ej. quantity + sizeCm) y renderea un grupo de chips
- * por cada dimensión. Cliente elige una opción por dimensión; el sistema
- * busca el variant que matchea TODAS las selecciones.
+ * Arquitectura: SINGLE SOURCE OF TRUTH = local state `selectedId`.
+ *   - El selector controla su estado visual con `useState`.
+ *   - La URL es UN SIDE-EFFECT (deep-link in / out), no source.
+ *   - El click hace `setSelectedId(id)` INMEDIATO (urgent update) →
+ *     React renderea el chip nuevo seleccionado en el siguiente paint.
+ *   - Luego `router.replace(?variant=id)` en transition para que el
+ *     Server Component padre re-renderee (precio header + link al
+ *     Estudio + JSON-LD).
  *
- * Si el producto tiene variants con UNA sola dimensión (ej. solo quantity),
- * se mantiene el comportamiento V1: lista vertical con label compuesto.
+ * Por qué este patrón:
+ *   - El bug previo mezclaba `useState + useEffect(sync con URL) +
+ *     useTransition`. React 19 agrupaba el setOptimisticId dentro de
+ *     la transition → no había paint visible hasta los ~3s del RSC.
+ *   - Con un solo source, no hay bucle de sync. Local state = lo
+ *     que el cliente ve. Server state catches up async.
  *
- * URL sync: ?variant=<id> sin reload.
+ * Modo single-dim: lista vertical con price por variant.
+ * Modo multi-dim: chips por dimensión + card de Precio prominente.
  */
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useMemo, useState, useTransition, useEffect } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { Check } from "lucide-react";
 import { formatCOP } from "@/lib/format";
 import {
@@ -37,11 +46,6 @@ type VariantSelectorProps = {
   variants: Variant[];
 };
 
-// Labels y formatters por dimensión conocida.
-// `quantity` y `photoSlots` muestran ambos "Cantidad" — son la misma idea
-// contextual desde la perspectiva del cliente y nunca coexisten en un mismo
-// producto del seed actual. Si en el futuro coexisten, el sistema mostrará
-// dos secciones con el mismo label — habría que diferenciar acá.
 const DIMENSION_LABELS: Record<string, string> = {
   quantity: "Cantidad",
   photoSlots: "Cantidad",
@@ -52,35 +56,29 @@ const DIMENSION_LABELS: Record<string, string> = {
 };
 
 function formatDimensionValue(key: string, value: unknown): string {
-  if (key === "quantity") return `${value} unidades`;
-  if (key === "photoSlots") return `${value} unidades`;
+  if (key === "quantity" || key === "photoSlots") return `${value} unidades`;
   if (key === "sizeCm") return `${value} cm`;
   if (key === "shape") {
-    const shapeLabels: Record<string, string> = {
+    const labels: Record<string, string> = {
       rectangle: "Rectangular",
       circle: "Circular",
       heart: "Corazón",
       custom: "Custom",
     };
-    return shapeLabels[String(value)] ?? String(value);
+    return labels[String(value)] ?? String(value);
   }
   if (key === "finish") {
-    const finishLabels: Record<string, string> = {
+    const labels: Record<string, string> = {
       matte: "Mate",
       glossy: "Brillante",
       "soft-touch": "Soft-touch",
       glass: "Vidrio",
     };
-    return finishLabels[String(value)] ?? String(value);
+    return labels[String(value)] ?? String(value);
   }
   return String(value);
 }
 
-// Dimensiones que mostramos como chips. Otros (aspectRatio, cornerRadiusPx)
-// son técnicos y se infieren — no se exponen al cliente.
-// Orden importa: las dimensiones aparecen como secciones en este orden.
-//   Cantidad (quantity) primero — decisión más común del cliente.
-//   Luego Fotos / Tamaño / Forma / Color / Acabado.
 const VISIBLE_DIMENSIONS: (keyof ProductVariantAttributes)[] = [
   "quantity",
   "photoSlots",
@@ -93,12 +91,8 @@ const VISIBLE_DIMENSIONS: (keyof ProductVariantAttributes)[] = [
 export function VariantSelector({ productBasePrice, variants: rawVariants }: VariantSelectorProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const currentVariantId = searchParams.get("variant");
 
-  // Filtrar la variant "Default" si hay otras con attributes reales.
-  // El producto base tiene una "Default" de placeholder (attributes={})
-  // que persiste tras la consolidación de familias. Si hay variants con
-  // attributes definidos, la Default no aporta valor en el selector.
+  // Filtrar la variant "Default" vacía si hay otras con attributes reales.
   const variants = useMemo(() => {
     const withAttrs = rawVariants.filter((v) => {
       const attrs = parseVariantAttributes(v.attributes);
@@ -107,39 +101,37 @@ export function VariantSelector({ productBasePrice, variants: rawVariants }: Var
     return withAttrs.length > 0 ? withAttrs : rawVariants;
   }, [rawVariants]);
 
-  // UI optimista: estado local que se actualiza INMEDIATO al click.
-  // La navegación del server toma ~3s; sin esto, el chip seleccionado
-  // visualmente no cambia hasta que termine la navegación.
-  const [optimisticId, setOptimisticId] = useState<string | null>(
-    currentVariantId ?? variants[0]?.id ?? null,
-  );
+  // ──── SINGLE SOURCE OF TRUTH ────
+  // Inicializar con URL (deep-link) si trae variant válido, sino primer variant.
+  // useState con función ejecuta UNA SOLA VEZ en mount — la URL no resetea el
+  // state después; cualquier cambio de variant después del mount viene del
+  // click, NO de la URL.
+  const [selectedId, setSelectedId] = useState<string | null>(() => {
+    const fromUrl = searchParams.get("variant");
+    if (fromUrl && variants.some((v) => v.id === fromUrl)) return fromUrl;
+    return variants[0]?.id ?? null;
+  });
+
+  // Transition para que router.replace no bloquee paint del chip.
   const [isPending, startTransition] = useTransition();
 
-  // Sincronizar con searchParams cuando termina la navegación (o cuando
-  // el usuario llega via deep-link).
-  useEffect(() => {
-    const target = currentVariantId ?? variants[0]?.id ?? null;
-    if (target && target !== optimisticId) {
-      queueMicrotask(() => setOptimisticId(target));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentVariantId]);
-
-  const selectedId = optimisticId;
   const selectedVariant = variants.find((v) => v.id === selectedId);
 
-  // Click handler: actualiza UI optimista al instante + navega en
-  // transition para que React no bloquee el chip swap.
+  // Click handler: urgent state update + URL sync en transition.
   function selectVariant(id: string) {
-    setOptimisticId(id);
+    if (id === selectedId) return; // mismo variant, nada que hacer
+    // 1) URGENT: actualizar local state → chip + precio cambian al instante
+    setSelectedId(id);
+    // 2) TRANSITION: sincronizar URL en background (RSC se re-fetcha para
+    //    actualizar precio header + link Estudio + JSON-LD).
     const params = new URLSearchParams(searchParams.toString());
     params.set("variant", id);
     startTransition(() => {
-      router.push(`?${params.toString()}`, { scroll: false });
+      router.replace(`?${params.toString()}`, { scroll: false });
     });
   }
 
-  // Detectar dimensiones presentes en los variants y los valores únicos.
+  // Detectar dimensiones presentes con >1 valor distinto.
   const dimensions = useMemo(() => {
     if (variants.length < 2) return [];
     const dimMap: Record<string, Set<string>> = {};
@@ -152,22 +144,16 @@ export function VariantSelector({ productBasePrice, variants: rawVariants }: Var
         dimMap[key].add(String(value));
       }
     }
-    // Solo dimensiones con >1 valor son selectables (sino no aportan).
-    // Garantizamos el orden de VISIBLE_DIMENSIONS (Cantidad primero) y
-    // ordenamos los valores numéricos cuando aplica (6 antes de 12).
     return VISIBLE_DIMENSIONS.filter((key) => dimMap[key] && dimMap[key].size > 1).map((key) => {
       const rawValues = Array.from(dimMap[key]);
       const isNumeric = key === "quantity" || key === "photoSlots";
       const values = isNumeric ? rawValues.sort((a, b) => Number(a) - Number(b)) : rawValues.sort();
-      return {
-        key,
-        label: DIMENSION_LABELS[key] ?? key,
-        values,
-      };
+      return { key, label: DIMENSION_LABELS[key] ?? key, values };
     });
   }, [variants]);
 
-  // Valor actual por dimensión (del variant seleccionado).
+  // Valor actual por dimensión (del variant seleccionado) — refleja
+  // INMEDIATO porque selectedVariant depende de selectedId (local).
   const currentValues = useMemo(() => {
     if (!selectedVariant) return {} as Record<string, string>;
     const attrs = parseVariantAttributes(selectedVariant.attributes);
@@ -180,9 +166,8 @@ export function VariantSelector({ productBasePrice, variants: rawVariants }: Var
   }, [selectedVariant, dimensions]);
 
   function handleSelectValue(dimKey: string, value: string) {
-    // Buscar el variant que matchea: nueva selección en dimKey + valores actuales
-    // en las demás dimensiones. Si no existe match exacto, fallback al variant
-    // con más coincidencias (preserva tantas dimensiones como posible).
+    // Buscar variant que matchea: nueva selección en dimKey + valores
+    // actuales en las demás dimensiones. Fallback al mejor match parcial.
     const targetValues = { ...currentValues, [dimKey]: value };
     let bestVariant: Variant | null = null;
     let bestScore = -1;
@@ -197,7 +182,6 @@ export function VariantSelector({ productBasePrice, variants: rawVariants }: Var
           matches++;
         }
       }
-      // Prefer exact match
       if (matches === Object.keys(targetValues).length) {
         bestVariant = v;
         break;
@@ -213,7 +197,7 @@ export function VariantSelector({ productBasePrice, variants: rawVariants }: Var
 
   if (variants.length < 2) return null;
 
-  // ── Modo single-dimension legacy: lista vertical compuesta ──
+  // ── Modo single-dimension: lista vertical con precio por variant ──
   if (dimensions.length <= 1) {
     return (
       <div className="mb-4">
@@ -276,7 +260,7 @@ export function VariantSelector({ productBasePrice, variants: rawVariants }: Var
     );
   }
 
-  // ── Modo multi-dimension: chips por dimensión + precio en sección aparte ──
+  // ── Modo multi-dimension: chips por dimensión + card de Precio ──
   const currentPrice = selectedVariant?.price ?? productBasePrice;
 
   return (
@@ -311,12 +295,17 @@ export function VariantSelector({ productBasePrice, variants: rawVariants }: Var
         </div>
       ))}
 
-      {/* Precio del variant seleccionado, prominente */}
-      <div
-        className={`from-brand-turquoise/8 to-brand-purple/8 ring-brand-purple/15 flex items-center justify-between rounded-lg bg-gradient-to-br p-3 ring-1 transition-opacity ${isPending ? "opacity-60" : ""}`}
-      >
+      {/* Precio del variant seleccionado, prominente. Refleja inmediato
+          porque depende de selectedVariant (local). isPending solo
+          indica que el server aún está sincronizando el resto del PDP. */}
+      <div className="from-brand-turquoise/8 to-brand-purple/8 ring-brand-purple/15 flex items-center justify-between rounded-lg bg-gradient-to-br p-3 ring-1">
         <span className="text-brand-purple-dark/70 text-xs font-bold tracking-wider uppercase">
-          Precio {isPending && <span className="text-brand-purple/60">· actualizando…</span>}
+          Precio
+          {isPending && (
+            <span className="text-brand-purple/60 ml-1.5 font-normal normal-case">
+              · sincronizando…
+            </span>
+          )}
         </span>
         <span className="text-brand-purple-dark text-xl font-bold tabular-nums">
           {formatCOP(currentPrice)}
