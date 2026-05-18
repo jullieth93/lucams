@@ -128,21 +128,11 @@ export function VariantSelector({ productBasePrice, variants: rawVariants }: Var
     });
   }
 
-  // Detectar dimensiones — y decidir si son INDEPENDIENTES o ACOPLADAS.
-  //
-  // Independientes: matriz cartesiana completa (cada combinación tiene
-  //   un variant). Ej. 3 colores × 4 tamaños = 12 variants.
-  //   → Mostrar como N selectores separados (modo multi-dim).
-  //
-  // Acopladas: las variantes son "presets" donde las dimensiones cambian
-  //   juntas. Ej. "Set 6 fotos · 7×9 cm" y "Set 9 fotos · 6×8 cm" — no
-  //   existen "9 fotos · 7×9 cm" ni "6 fotos · 4×5 cm".
-  //   → Mostrar como UNA lista única (modo single-dim) para evitar que el
-  //   cliente clickee combinaciones imposibles. Esta es la arquitectura
-  //   que usa Casetify/Shutterfly/Society6 con kits/presets.
-  //
-  // Heurística: si #variants < producto-cartesiano-de-cardinalidades →
-  // acopladas. Si la matriz está completa → independientes.
+  // Detectar dimensiones presentes con >1 valor distinto.
+  // Modo multi-dim: chips por dimensión. El cliente combina libremente.
+  // Si una combinación específica no existe en el catálogo, el chip
+  // correspondiente se muestra deshabilitado ("no disponible") en lugar
+  // de cambiar la dimensión no-clickeada automáticamente.
   const dimensions = useMemo(() => {
     if (variants.length < 2) return [];
     const dimMap: Record<string, Set<string>> = {};
@@ -155,18 +145,7 @@ export function VariantSelector({ productBasePrice, variants: rawVariants }: Var
         dimMap[key].add(String(value));
       }
     }
-    const dimKeys = VISIBLE_DIMENSIONS.filter((key) => dimMap[key] && dimMap[key].size > 1);
-    if (dimKeys.length === 0) return [];
-
-    // Detectar acoplamiento: si las dimensiones no son combinables libremente
-    // (matriz incompleta), retornar [] para que el componente caiga al modo
-    // single-dim (lista única con presets).
-    const cartesianProduct = dimKeys.reduce((acc, key) => acc * dimMap[key].size, 1);
-    if (variants.length < cartesianProduct) {
-      return []; // dimensiones acopladas → lista única
-    }
-
-    return dimKeys.map((key) => {
+    return VISIBLE_DIMENSIONS.filter((key) => dimMap[key] && dimMap[key].size > 1).map((key) => {
       const rawValues = Array.from(dimMap[key]);
       const isNumeric = key === "quantity" || key === "photoSlots";
       const values = isNumeric ? rawValues.sort((a, b) => Number(a) - Number(b)) : rawValues.sort();
@@ -187,40 +166,51 @@ export function VariantSelector({ productBasePrice, variants: rawVariants }: Var
     return result;
   }, [selectedVariant, dimensions]);
 
+  // Helper: ¿existe una variant que cumpla "dimKey=value Y todas las otras
+  // dimensiones = currentValues"? Si no, el chip se deshabilita en el UI.
+  function isCombinationAvailable(dimKey: string, value: string): boolean {
+    return variants.some((v) => {
+      const attrs = parseVariantAttributes(v.attributes);
+      const dimValue = attrs[dimKey as keyof ProductVariantAttributes];
+      if (dimValue === undefined || String(dimValue) !== value) return false;
+      for (const [k, val] of Object.entries(currentValues)) {
+        if (k === dimKey) continue;
+        const variantValue = attrs[k as keyof ProductVariantAttributes];
+        if (variantValue === undefined || String(variantValue) !== val) return false;
+      }
+      return true;
+    });
+  }
+
   function handleSelectValue(dimKey: string, value: string) {
-    // INVARIANTE: el variant resultante DEBE tener `value` en `dimKey`.
-    // Esa es la dimensión que el cliente explícitamente eligió. Las demás
-    // dimensiones se preservan en el mejor esfuerzo (best match), pero
-    // si el catálogo no tiene un variant con la combinación exacta, se
-    // sacrifica una dimensión NO-clickeada antes que la clickeada.
-    //
-    // Paso 1: filtrar variants que cumplen la dimensión clickeada.
-    const candidates = variants.filter((v) => {
+    // Buscar el variant EXACTO: dimKey=value Y todas las otras dimensiones
+    // = currentValues. Si no existe (combinación no disponible), el chip
+    // ya debería estar deshabilitado en el UI; pero por seguridad: no
+    // hacer nada (no auto-cambiar las otras dimensiones).
+    const exact = variants.find((v) => {
+      const attrs = parseVariantAttributes(v.attributes);
+      const dimValue = attrs[dimKey as keyof ProductVariantAttributes];
+      if (dimValue === undefined || String(dimValue) !== value) return false;
+      for (const [k, val] of Object.entries(currentValues)) {
+        if (k === dimKey) continue;
+        const variantValue = attrs[k as keyof ProductVariantAttributes];
+        if (variantValue === undefined || String(variantValue) !== val) return false;
+      }
+      return true;
+    });
+    if (exact) {
+      selectVariant(exact.id);
+      return;
+    }
+    // Fallback: si por algún motivo el chip era clickeable pero no hay
+    // match exacto (race condition), buscar la primera variant con
+    // dimKey=value. No es ideal pero evita que el click sea no-op total.
+    const fallback = variants.find((v) => {
       const attrs = parseVariantAttributes(v.attributes);
       const dimValue = attrs[dimKey as keyof ProductVariantAttributes];
       return dimValue !== undefined && String(dimValue) === value;
     });
-    if (candidates.length === 0) return; // no hay variant con ese value
-
-    // Paso 2: si solo hay uno, ese es. Si hay varios, elegir el que más
-    // coincide con `currentValues` en las DEMÁS dimensiones (preservar
-    // la intención del cliente lo más posible).
-    let bestVariant = candidates[0];
-    let bestScore = -1;
-    for (const v of candidates) {
-      const attrs = parseVariantAttributes(v.attributes);
-      let score = 0;
-      for (const [k, val] of Object.entries(currentValues)) {
-        if (k === dimKey) continue; // ya garantizado por el filter
-        const variantValue = attrs[k as keyof ProductVariantAttributes];
-        if (variantValue !== undefined && String(variantValue) === val) score++;
-      }
-      if (score > bestScore) {
-        bestScore = score;
-        bestVariant = v;
-      }
-    }
-    selectVariant(bestVariant.id);
+    if (fallback) selectVariant(fallback.id);
   }
 
   if (variants.length < 2) return null;
@@ -301,18 +291,24 @@ export function VariantSelector({ productBasePrice, variants: rawVariants }: Var
           <div role="radiogroup" aria-label={dim.label} className="flex flex-wrap gap-2">
             {dim.values.map((value) => {
               const isSelected = currentValues[dim.key] === value;
+              const available = isSelected || isCombinationAvailable(dim.key, value);
               return (
                 <button
                   key={value}
                   type="button"
                   role="radio"
                   aria-checked={isSelected}
-                  onClick={() => handleSelectValue(dim.key, value)}
+                  aria-disabled={!available}
+                  disabled={!available}
+                  onClick={() => available && handleSelectValue(dim.key, value)}
+                  title={!available ? "No disponible con la combinación actual" : undefined}
                   className={[
-                    "focus:ring-brand-turquoise cursor-pointer rounded-lg px-3 py-2 text-sm font-semibold transition-all focus:ring-2 focus:outline-none",
+                    "focus:ring-brand-turquoise rounded-lg px-3 py-2 text-sm font-semibold transition-all focus:ring-2 focus:outline-none",
                     isSelected
-                      ? "bg-brand-purple text-white shadow-md"
-                      : "ring-brand-purple/20 text-brand-purple-dark hover:ring-brand-purple/50 hover:bg-brand-cream/50 bg-white ring-1",
+                      ? "bg-brand-purple cursor-pointer text-white shadow-md"
+                      : available
+                        ? "ring-brand-purple/20 text-brand-purple-dark hover:ring-brand-purple/50 hover:bg-brand-cream/50 cursor-pointer bg-white ring-1"
+                        : "ring-brand-purple/10 text-brand-purple-dark/35 cursor-not-allowed bg-white/40 line-through ring-1",
                   ].join(" ")}
                 >
                   {formatDimensionValue(dim.key, value)}
