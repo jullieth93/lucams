@@ -220,6 +220,122 @@ export async function listCategoriesForSelect() {
 }
 
 // ─────────────────────────────────────────────────────────────────────
+// CRUD de Variants (M.3.b.CAT.9 — Admin variants UI 2026-05-18)
+// ─────────────────────────────────────────────────────────────────────
+
+import type { VariantCreateInput, VariantUpdateInput } from "./variant-schemas";
+
+/**
+ * Lista todas las variants no archivadas de un producto, ordenadas por
+ * created date (más antiguas primero — incluyendo el "Default").
+ */
+export async function listVariantsByProduct(productId: string) {
+  return prisma.productVariant.findMany({
+    where: { productId, deletedAt: null },
+    orderBy: [{ createdAt: "asc" }],
+  });
+}
+
+export async function getVariantById(id: string) {
+  return prisma.productVariant.findFirst({
+    where: { id, deletedAt: null },
+    include: { product: { select: { id: true, slug: true, name: true, basePrice: true } } },
+  });
+}
+
+/**
+ * Crea variant nueva. SKU debe ser único globalmente; se valida antes
+ * de insertar para dar mejor mensaje de error que el P2002 genérico.
+ */
+export async function createVariant(input: VariantCreateInput, createdBy: string | null) {
+  const skuConflict = await prisma.productVariant.findUnique({
+    where: { sku: input.sku },
+    select: { id: true },
+  });
+  if (skuConflict) throw new VariantValidationError("sku", `SKU "${input.sku}" ya existe`);
+
+  return prisma.productVariant.create({
+    data: {
+      productId: input.productId,
+      name: input.name,
+      sku: input.sku,
+      description: input.description ?? null,
+      price: input.price ?? null,
+      stock: input.stock,
+      isActive: input.isActive,
+      attributes: input.attributes,
+      ...(createdBy ? { createdBy } : {}),
+    },
+  });
+}
+
+/**
+ * Edita variant. Si cambia el SKU, valida unicidad excluyendo la propia.
+ */
+export async function updateVariant(input: VariantUpdateInput, updatedBy: string | null) {
+  const { id, attributes, ...rest } = input;
+
+  if (rest.sku) {
+    const conflict = await prisma.productVariant.findFirst({
+      where: { sku: rest.sku, id: { not: id }, deletedAt: null },
+      select: { id: true },
+    });
+    if (conflict) throw new VariantValidationError("sku", `SKU "${rest.sku}" ya existe`);
+  }
+
+  return prisma.productVariant.update({
+    where: { id },
+    data: {
+      ...rest,
+      ...(attributes !== undefined && { attributes }),
+      ...(updatedBy ? { updatedBy } : {}),
+    },
+  });
+}
+
+/**
+ * Soft-delete variant. Si es la única variant activa del producto, la
+ * función rechaza (un producto debe tener al menos una variant para que
+ * cartItem/orderItem.variantId siga apuntando a algo válido).
+ */
+export async function softDeleteVariant(id: string, deletedBy: string | null) {
+  const variant = await prisma.productVariant.findUnique({
+    where: { id },
+    select: { productId: true, deletedAt: true },
+  });
+  if (!variant || variant.deletedAt) {
+    throw new VariantValidationError("general", "Variant no encontrada");
+  }
+  const activeCount = await prisma.productVariant.count({
+    where: { productId: variant.productId, deletedAt: null },
+  });
+  if (activeCount <= 1) {
+    throw new VariantValidationError(
+      "general",
+      "No se puede archivar la única variant activa del producto",
+    );
+  }
+  return prisma.productVariant.update({
+    where: { id },
+    data: {
+      deletedAt: new Date(),
+      isActive: false,
+      ...(deletedBy ? { deletedBy } : {}),
+    },
+  });
+}
+
+export class VariantValidationError extends Error {
+  constructor(
+    public field: "sku" | "name" | "price" | "stock" | "general",
+    message: string,
+  ) {
+    super(message);
+    this.name = "VariantValidationError";
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────
 // Errores específicos del dominio products. Se mapean a fieldErrors en
 // las server actions.
 

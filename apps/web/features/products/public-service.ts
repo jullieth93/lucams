@@ -30,6 +30,11 @@ export type StorefrontProductCard = {
    *  "X opciones" en la card (UX descubribilidad: cliente sabe que adentro
    *  puede elegir cantidad/tamaño/color sin entrar). */
   variantCount?: number;
+  /** M.3.b.CAT.9 — Precio mínimo efectivo entre el basePrice y todos los
+   *  variants.price override (no null). Si todos los variants heredan,
+   *  matchea basePrice. Cuando variantCount > 1 y minVariantPrice <
+   *  basePrice, el card muestra "desde $X". */
+  minVariantPrice?: number;
 };
 
 export type StorefrontProductDetail = StorefrontProductCard & {
@@ -170,9 +175,20 @@ export async function listStorefrontProducts(
       images: true,
       category: { select: { slug: true, name: true } },
       _count: { select: { variants: { where: { deletedAt: null } } } },
+      variants: {
+        where: { deletedAt: null, isActive: true },
+        select: { price: true },
+      },
     },
   });
-  return items.map(({ _count, ...p }) => ({ ...p, variantCount: _count.variants }));
+  return items.map(({ _count, variants, ...p }) => {
+    const overridePrices = variants
+      .map((v) => v.price)
+      .filter((price): price is number => price !== null && price > 0);
+    const minVariantPrice =
+      overridePrices.length > 0 ? Math.min(p.basePrice, ...overridePrices) : p.basePrice;
+    return { ...p, variantCount: _count.variants, minVariantPrice };
+  });
 }
 
 /**

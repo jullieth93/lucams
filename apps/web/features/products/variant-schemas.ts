@@ -73,6 +73,65 @@ export function generateVariantLabel(attrs: ProductVariantAttributes): string {
   return parts.join(" · ");
 }
 
+// ─────────────────── Admin CRUD schemas (Lucy edita variants) ───────────────────
+
+/**
+ * Input para crear variant nueva. SKU debe ser único globalmente
+ * (constraint Prisma). Si se omite price=null, hereda product.basePrice.
+ * stock=0 default (sin enforcement hasta Fase 4 inventario).
+ */
+export const VariantCreateSchema = z.object({
+  productId: z.string().cuid(),
+  name: z.string().trim().min(1, "Nombre requerido").max(120),
+  sku: z
+    .string()
+    .trim()
+    .min(2, "SKU requerido")
+    .max(80)
+    .regex(/^[A-Z0-9_-]+$/i, "Solo letras, números, guion y guion bajo"),
+  description: z
+    .string()
+    .trim()
+    .max(500)
+    .optional()
+    .or(z.literal("").transform(() => undefined)),
+  /** Precio override en centavos COP. null = hereda basePrice del producto. */
+  price: z.number().int().min(0).max(100_000_000).nullable().optional(),
+  stock: z.number().int().min(0).max(100_000).default(0),
+  isActive: z.boolean().default(true),
+  attributes: ProductVariantAttributesSchema.default({}),
+});
+
+export type VariantCreateInput = z.infer<typeof VariantCreateSchema>;
+
+/**
+ * Input para editar variant existente. Todos los campos opcionales — admin
+ * cambia solo lo que toca.
+ */
+export const VariantUpdateSchema = z.object({
+  id: z.string().cuid(),
+  name: z.string().trim().min(1).max(120).optional(),
+  sku: z
+    .string()
+    .trim()
+    .min(2)
+    .max(80)
+    .regex(/^[A-Z0-9_-]+$/i, "Solo letras, números, guion y guion bajo")
+    .optional(),
+  description: z
+    .string()
+    .trim()
+    .max(500)
+    .optional()
+    .or(z.literal("").transform(() => undefined)),
+  price: z.number().int().min(0).max(100_000_000).nullable().optional(),
+  stock: z.number().int().min(0).max(100_000).optional(),
+  isActive: z.boolean().optional(),
+  attributes: ProductVariantAttributesSchema.optional(),
+});
+
+export type VariantUpdateInput = z.infer<typeof VariantUpdateSchema>;
+
 /**
  * Mergea attributes de variant sobre personalizationSchema del producto.
  * El variant tiene prioridad: cualquier field declarado en variant override

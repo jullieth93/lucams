@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { Package, Trash2 } from "lucide-react";
+import { Layers, Package, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { AdminPage, AdminPageHeader, AdminPageBody, AdminNotice } from "@/components/admin-page";
 import { getCurrentAdmin } from "@/lib/auth";
@@ -46,18 +47,30 @@ export default async function EditarProductoPage({
           { label: product.name },
         ]}
         actions={
-          <form action={deleteProductAction}>
-            <input type="hidden" name="id" value={product.id} />
-            <Button
-              type="submit"
-              variant="ghost"
-              size="sm"
-              className="text-red-700 hover:bg-red-50"
+          <div className="flex items-center gap-2">
+            <Link
+              href={`/admin/productos/${product.id}/variants`}
+              className="border-brand-purple/25 text-brand-purple-dark hover:bg-brand-purple/10 inline-flex items-center gap-1.5 rounded-md border bg-white px-3 py-1.5 text-sm font-semibold transition-colors"
             >
-              <Trash2 className="mr-1.5 h-4 w-4" />
-              Archivar
-            </Button>
-          </form>
+              <Layers className="h-4 w-4" />
+              Variantes
+              <span className="bg-brand-purple/15 text-brand-purple-dark rounded px-1.5 py-0.5 text-[10px] font-bold tabular-nums">
+                {product.variants.filter((v) => !v.deletedAt).length}
+              </span>
+            </Link>
+            <form action={deleteProductAction}>
+              <input type="hidden" name="id" value={product.id} />
+              <Button
+                type="submit"
+                variant="ghost"
+                size="sm"
+                className="text-red-700 hover:bg-red-50"
+              >
+                <Trash2 className="mr-1.5 h-4 w-4" />
+                Archivar
+              </Button>
+            </form>
+          </div>
         }
       />
 

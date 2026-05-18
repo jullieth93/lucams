@@ -70,8 +70,16 @@ export function ProductCard({ product }: { product: StorefrontProductCard }) {
           {product.name}
         </h3>
         <div className="mt-auto flex items-baseline gap-2 pt-2">
+          {product.variantCount != null &&
+            product.variantCount > 1 &&
+            product.minVariantPrice != null &&
+            product.minVariantPrice < product.basePrice && (
+              <span className="text-brand-purple-dark/55 text-[10px] font-semibold tracking-wider uppercase">
+                desde
+              </span>
+            )}
           <span className="text-brand-purple-dark text-lg font-bold tabular-nums">
-            {formatCOP(product.basePrice)}
+            {formatCOP(product.minVariantPrice ?? product.basePrice)}
           </span>
           {hasDiscount && (
             <span className="text-brand-purple/50 text-xs tabular-nums line-through">
