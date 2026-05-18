@@ -5,7 +5,7 @@
 ## Pre-requisito
 
 - Cuenta en **Claude.ai** con plan **Pro** ($20/mes) o **Team**.
-- Si no tenés: https://claude.ai/upgrade → suscribite a Pro.
+- Si no tienes: https://claude.ai/upgrade → suscribite a Pro.
 - (El plan Free no permite crear Projects.)
 
 ---
@@ -13,7 +13,7 @@
 ## Paso 1: Crear el Project
 
 1. Abrí https://claude.ai en tu navegador.
-2. En la sidebar izquierda, hacé click en **"Projects"** (ícono de carpeta).
+2. En la sidebar izquierda, haz click en **"Projects"** (ícono de carpeta).
 3. Click en **"+ New project"** (esquina superior derecha).
 4. Completá:
    - **Name**: `Lucams SVG Designer`
@@ -25,7 +25,7 @@
 
 ## Paso 2: Configurar Custom Instructions
 
-1. Dentro del Project recién creado, hacé click en **"Set custom instructions"** (botón en la parte superior, abajo del nombre del Project).
+1. Dentro del Project recién creado, haz click en **"Set custom instructions"** (botón en la parte superior, abajo del nombre del Project).
 2. Abrí el archivo [00-system-prompt.md](00-system-prompt.md) de este repo.
 3. **Copiá TODO el contenido** del archivo (desde `Eres un diseñador SVG...` hasta el final).
 4. Pegalo en el campo de Custom Instructions de Claude.
@@ -39,7 +39,7 @@ Claude Projects acepta hasta 200K tokens de "Project Knowledge" — archivos per
 
 1. Dentro del Project, buscá la sección **"Project Knowledge"** (lado derecho de la pantalla).
 2. Click en **"+ Add content"** o **"Upload from device"**.
-3. Subí los 4 archivos siguientes (en este orden):
+3. Sube los 4 archivos siguientes (en este orden):
    - `paleta-brand.md`
    - `plantillas-existentes.md`
    - `coords-convencion.md`
@@ -58,7 +58,7 @@ Claude Projects acepta hasta 200K tokens de "Project Knowledge" — archivos per
 
 ## Paso 4: Verificar que funciona
 
-Dentro del Project, escribí este mensaje de prueba:
+Dentro del Project, escribe este mensaje de prueba:
 
 > "Hola. Antes de empezar, decime: ¿qué plantillas ya existen en el catálogo Lucams y cuál es el color `#D4AF37`?"
 
@@ -125,11 +125,11 @@ Si el SVG tiene problemas, mostrale el error puntual:
 
 > "Tu SVG anterior tenía 600 paths — es demasiado, los necesito en menos de 50. Rehacelo usando solo primitivas (rect, circle, path corto). No vectorices nada."
 
-> "El SVG queda invisible sobre fondo blanco porque solo tiene marco blanco. Agregá decoraciones con color brand visible (corners gold, ribbon coral, etc.)."
+> "El SVG queda invisible sobre fondo blanco porque solo tiene marco blanco. Agrega decoraciones con color brand visible (corners gold, ribbon coral, etc.)."
 
 ### Para nuevas plantillas que NO se parezcan a las existentes
 
-Pegá referencia + agregá:
+Pegá referencia + agrega:
 
 > "Esta plantilla debe ser distinta a las que ya existen en el catálogo (ver plantillas-existentes.md). Si mi briefing se parece a alguna existente, proponeme un ángulo distinto (otra paleta / otra orientación / otro nivel decorativo)."
 
@@ -141,7 +141,7 @@ Si en algún momento contratás un diseñador kawaii o ChatGPT-power-user:
 
 1. Dentro del Project → click **"Share"** (esquina superior derecha)
 2. Activá **"Share with workspace"** (requiere plan Team)
-3. Para invitar gente externa: necesitás Team plan ($30/usuario/mes)
+3. Para invitar gente externa: necesitas Team plan ($30/usuario/mes)
 
 Para uso solo tuyo, Pro alcanza.
 
@@ -150,7 +150,7 @@ Para uso solo tuyo, Pro alcanza.
 ## Costo total
 
 - **Claude Pro**: $20 USD/mes
-- **Archivos**: 0 (los tenés en tu repo)
+- **Archivos**: 0 (los tienes en tu repo)
 - **Iteraciones por plantilla**: 1-3 mensajes (incluidos en plan Pro, sin límite real para uso normal)
 
 **Total**: $20/mes para generar plantillas ilimitadas con calidad consistente.

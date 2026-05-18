@@ -24,9 +24,9 @@ export async function TemplatesStrip({
   const templates = await listTemplatesByProduct(productSlug, mode);
   if (templates.length === 0) return null;
 
-  const title = isPersonalizable ? "Empezá desde una plantilla" : "Diseños disponibles";
+  const title = isPersonalizable ? "Empieza desde una plantilla" : "Diseños disponibles";
   const subtitle = isPersonalizable
-    ? "Elegí un punto de partida y personalizá con tus fotos"
+    ? "Elige un punto de partida y personaliza con tus fotos"
     : "Compra el diseño que más te guste, listo para enviar";
 
   return (

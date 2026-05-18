@@ -140,7 +140,7 @@ export default async function OcasionPage({ params }: { params: Promise<{ slug: 
                 <Link href="/productos" className="text-brand-purple underline">
                   catálogo completo
                 </Link>{" "}
-                o usá el{" "}
+                o usa el{" "}
                 <Link href="/recomendador" className="text-brand-purple underline">
                   recomendador
                 </Link>

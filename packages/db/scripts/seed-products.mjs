@@ -184,7 +184,7 @@ const productsData = [
     sku: "FI-POL-12",
     name: "Fotoimanes Polaroid",
     description:
-      "Fotoimanes con tus fotos en formato polaroid clásico. Bordes blancos icónicos, impresión alta resolución, acabado mate. Elegí cantidad y tamaño en el selector.",
+      "Fotoimanes con tus fotos en formato polaroid clásico. Bordes blancos icónicos, impresión alta resolución, acabado mate. Elige cantidad y tamaño en el selector.",
     basePrice: 4500000,
     compareAtPrice: 5500000,
     categorySlug: "foto-imanes",
@@ -225,7 +225,7 @@ const productsData = [
     sku: "FI-CUAD-12",
     name: "Fotoimanes Cuadrados",
     description:
-      "Fotoimanes cuadrados 5×5 cm con tus fotos. Formato minimalista, sin bordes. Ideal para galerías extensas. Eligí cantidad en el selector.",
+      "Fotoimanes cuadrados 5×5 cm con tus fotos. Formato minimalista, sin bordes. Ideal para galerías extensas. Elige cantidad en el selector.",
     basePrice: 4500000,
     categorySlug: "foto-imanes",
     isPersonalizable: true,
@@ -304,7 +304,7 @@ const productsData = [
     sku: "FI-CIRC-6",
     name: "Fotoimanes Circulares",
     description:
-      "Fotoimanes circulares 6 cm con tus fotos. Forma distinta para destacar entre los rectangulares clásicos. Eligí la cantidad.",
+      "Fotoimanes circulares 6 cm con tus fotos. Forma distinta para destacar entre los rectangulares clásicos. Elige la cantidad.",
     basePrice: 3500000,
     categorySlug: "foto-imanes",
     isPersonalizable: true,
@@ -377,7 +377,7 @@ const productsData = [
     sku: "FI-COR-6",
     name: "Fotoimanes Corazón",
     description:
-      "Fotoimanes en forma de corazón con tus fotos. Súper kawaii para regalo de aniversario o día especial. Eligí cantidad y tamaño.",
+      "Fotoimanes en forma de corazón con tus fotos. Súper kawaii para regalo de aniversario o día especial. Elige cantidad y tamaño.",
     basePrice: 3500000,
     categorySlug: "foto-imanes",
     isPersonalizable: true,
@@ -487,7 +487,7 @@ const productsData = [
     sku: "EVT-CUMP-20",
     name: "Recuerdos de Cumpleaños",
     description:
-      "Imanes personalizados para cumpleaños. Nombre, edad y motivo de la fiesta. Empaque individual incluido. Eligí la cantidad según invitados.",
+      "Imanes personalizados para cumpleaños. Nombre, edad y motivo de la fiesta. Empaque individual incluido. Elige la cantidad según invitados.",
     basePrice: 11500000,
     categorySlug: "recuerdos",
     isPersonalizable: true,
@@ -720,7 +720,7 @@ const productsData = [
     sku: "CAL-MINI-10",
     name: "Mini Calendarios para Regalar",
     description:
-      "Mini calendarios magnéticos 5×7 cm. Perfectos como detalle para clientes o invitados. Diseño kawaii Lucams. Eligí la cantidad.",
+      "Mini calendarios magnéticos 5×7 cm. Perfectos como detalle para clientes o invitados. Diseño kawaii Lucams. Elige la cantidad.",
     basePrice: 700000,
     categorySlug: "calendarios",
     isPersonalizable: false,
@@ -740,7 +740,7 @@ const productsData = [
     sku: "B2B-REC-7x5",
     name: "Imán Publicitario Rectangular",
     description:
-      "Imanes publicitarios rectangulares con tu logo + datos de contacto. Mínimo 50 unidades. Eligí el tamaño.",
+      "Imanes publicitarios rectangulares con tu logo + datos de contacto. Mínimo 50 unidades. Elige el tamaño.",
     basePrice: 180000,
     categorySlug: "publicitarios",
     isPersonalizable: true,
@@ -778,7 +778,7 @@ const productsData = [
     sku: "B2B-CIRC-6",
     name: "Imán Publicitario Circular",
     description:
-      "Imanes publicitarios circulares con tu marca y frase corta. Mínimo 50 unidades. Eligí el diámetro.",
+      "Imanes publicitarios circulares con tu marca y frase corta. Mínimo 50 unidades. Elige el diámetro.",
     basePrice: 200000,
     categorySlug: "publicitarios",
     isPersonalizable: true,
@@ -847,7 +847,7 @@ const productsData = [
     sku: "B2B-MIX-100",
     name: "Pack Empresarial Mixto",
     description:
-      "Imanes mixtos (rectos + circulares) con tu marca. Ideal para ferias, eventos o repartir en tienda física. Eligí el volumen.",
+      "Imanes mixtos (rectos + circulares) con tu marca. Ideal para ferias, eventos o repartir en tienda física. Elige el volumen.",
     basePrice: 380000,
     categorySlug: "publicitarios",
     isPersonalizable: true,
@@ -935,7 +935,7 @@ const productsData = [
     sku: "ORG-NOT-4",
     name: "Notas Magnéticas",
     description:
-      "Notas magnéticas (10×15 cm) borrables. Diseños kawaii Lucams: lista, recordatorios, mood, mini-meta. Marcador incluido. Eligí cuántas querés.",
+      "Notas magnéticas (10×15 cm) borrables. Diseños kawaii Lucams: lista, recordatorios, mood, mini-meta. Marcador incluido. Elige cuántas quieres.",
     basePrice: 3000000,
     categorySlug: "organizate",
     isPersonalizable: false,
@@ -952,7 +952,7 @@ const productsData = [
     sku: "ORG-SEP-6",
     name: "Separadores Magnéticos",
     description:
-      "Separadores magnéticos para libros. Diseños mapache + frases kawaii. No se caen, no rompen páginas. Eligí la cantidad.",
+      "Separadores magnéticos para libros. Diseños mapache + frases kawaii. No se caen, no rompen páginas. Elige la cantidad.",
     basePrice: 1800000,
     categorySlug: "organizate",
     isPersonalizable: false,
@@ -1039,7 +1039,7 @@ const productsData = [
     sku: "REG-BB-MAMA",
     name: "Box Día de la Madre",
     description:
-      "Caja temática para Día de la Madre con set de fotoimanes + planner + nota personalizada + empaque premium. Eligí Big o Mini según presupuesto.",
+      "Caja temática para Día de la Madre con set de fotoimanes + planner + nota personalizada + empaque premium. Elige Big o Mini según presupuesto.",
     basePrice: 6800000,
     categorySlug: "de-temporada",
     isPersonalizable: true,
@@ -1076,7 +1076,7 @@ const productsData = [
     sku: "SEA-BB-PAPA",
     name: "Box Día del Padre",
     description:
-      "Caja temática para Día del Padre con set de fotoimanes + planner + tarjeta personalizada. Eligí Big o Mini según presupuesto.",
+      "Caja temática para Día del Padre con set de fotoimanes + planner + tarjeta personalizada. Elige Big o Mini según presupuesto.",
     basePrice: 6800000,
     categorySlug: "de-temporada",
     isPersonalizable: true,
@@ -1125,7 +1125,7 @@ const productsData = [
     sku: "DEC-CUAD-15",
     name: "Cuadro con Foto",
     description:
-      "Cuadro magnético con tu foto. Marco fino brand-purple. Composición libre en canvas. Eligí el tamaño.",
+      "Cuadro magnético con tu foto. Marco fino brand-purple. Composición libre en canvas. Elige el tamaño.",
     basePrice: 2700000,
     categorySlug: "cuadros-decoracion",
     isPersonalizable: true,
@@ -1178,7 +1178,7 @@ const productsData = [
     sku: "DEC-FRASE-20",
     name: "Cuadro con Frase",
     description:
-      "Cuadro magnético con tu frase favorita. Tipografías kawaii, colores brand. Sin fotos, solo texto. Eligí el tamaño.",
+      "Cuadro magnético con tu frase favorita. Tipografías kawaii, colores brand. Sin fotos, solo texto. Elige el tamaño.",
     basePrice: 3200000,
     categorySlug: "cuadros-decoracion",
     isPersonalizable: true,
@@ -1200,7 +1200,7 @@ const productsData = [
     sku: "DEC-MARC-2",
     name: "Marcos Magnéticos",
     description:
-      "Marcos magnéticos cuadrados 8×8 cm. Cambiás la foto cuando quieras (foto física, no impresa). Eligí la cantidad.",
+      "Marcos magnéticos cuadrados 8×8 cm. Cambiás la foto cuando quieras (foto física, no impresa). Elige la cantidad.",
     basePrice: 1400000,
     categorySlug: "cuadros-decoracion",
     isPersonalizable: false,
@@ -1319,7 +1319,7 @@ const productsData = [
     sku: "KID-RUT-7",
     name: "Rutina Infantil Magnética",
     description:
-      "Fichas magnéticas con actividades del día (cepillarse, comer, jugar, leer...). Para que los peques sigan su rutina con autonomía. Eligí cuántas actividades.",
+      "Fichas magnéticas con actividades del día (cepillarse, comer, jugar, leer...). Para que los peques sigan su rutina con autonomía. Elige cuántas actividades.",
     basePrice: 2700000,
     categorySlug: "juegos-aprendizaje",
     isPersonalizable: false,

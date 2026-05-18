@@ -40,7 +40,7 @@ export function ContactForm() {
           <span className="font-mono text-xs">{state.ticketId.slice(0, 8).toUpperCase()}</span>.
         </p>
         <p className="text-brand-purple-dark/60 mt-3 text-xs">
-          Si es urgente, escribinos por WhatsApp.
+          Si es urgente, escríbenos por WhatsApp.
         </p>
       </div>
     );

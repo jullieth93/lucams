@@ -26,7 +26,7 @@ export async function supportTicketReceivedEmail(data: SupportTicketReceivedData
   <strong>Tu mensaje:</strong><br>
   <span style="white-space:pre-wrap;color:#3D2E5C;opacity:0.85;">${escapeHtml(data.message)}</span>
 </p>
-<p>Si es urgente, también nos podés escribir por WhatsApp.</p>
+<p>Si es urgente, también nos puedes escribir por WhatsApp.</p>
 <p>Un abrazo,<br>El equipo de Lucams_shop</p>
 `;
 
@@ -40,7 +40,7 @@ Asunto: ${SUBJECT_LABELS[data.subject]}
 Tu mensaje:
 ${data.message}
 
-Si es urgente, también nos podés escribir por WhatsApp.
+Si es urgente, también nos puedes escribir por WhatsApp.
 
 Un abrazo,
 El equipo de Lucams_shop`;

@@ -95,7 +95,7 @@ export default async function AdminDashboardPage() {
         }
         subtitle={
           <>
-            Bienvenida al panel. Aquí podés gestionar todo el negocio:{" "}
+            Bienvenida al panel. Aquí puedes gestionar todo el negocio:{" "}
             <strong className="text-brand-purple">{productCount}</strong> productos,{" "}
             <strong className="text-brand-purple">{ocasionCount}</strong> ocasiones,{" "}
             <strong className="text-brand-purple">{activeCouponCount}</strong> cupones vigentes.
@@ -206,7 +206,7 @@ export default async function AdminDashboardPage() {
               href="/admin/contenido/bloques"
               icon={BookOpen}
               label="Base de conocimiento"
-              description="Editá los textos del sitio (legales, FAQ, hero) y prepará el bot futuro."
+              description="Edita los textos del sitio (legales, FAQ, hero) y prepara el bot futuro."
             />
             <QuickLink
               href="/admin/contenido/configuracion"

@@ -47,10 +47,14 @@ console.log("=== consolidate-product-families (M.3.b.CAT.2) ===\n");
  * El primer slug de cada familia es el "base". Los demás se archivan
  * pero sus attributes se preservan como variants del base.
  */
+// Nota 2026-05-18: tras rename-family-base-slugs.mjs los baseSlug quedan
+// "limpios" (sin sufijos numéricos). Aceptamos también el slug histórico
+// para que la consolidación corra idempotente antes y después del rename.
 const FAMILIES = [
   {
     name: "Set Fotoimanes Polaroid",
-    baseSlug: "set-12-fotoimanes-polaroid", // 12 fotos = el sweet spot del mercado
+    baseSlug: "set-fotoimanes-polaroid",
+    legacyBaseSlug: "set-12-fotoimanes-polaroid",
     variants: [
       {
         slug: "set-6-fotoimanes-polaroid-grande",
@@ -76,7 +80,8 @@ const FAMILIES = [
   },
   {
     name: "Box Día de la Madre",
-    baseSlug: "big-box-dia-mama",
+    baseSlug: "box-dia-mama",
+    legacyBaseSlug: "big-box-dia-mama",
     variants: [
       {
         slug: "big-box-dia-mama",
@@ -92,7 +97,8 @@ const FAMILIES = [
   },
   {
     name: "Rutina Infantil Magnética",
-    baseSlug: "rutina-infantil-7-actividades",
+    baseSlug: "rutina-infantil-magnetica",
+    legacyBaseSlug: "rutina-infantil-7-actividades",
     variants: [
       {
         slug: "rutina-infantil-7-actividades",
@@ -113,11 +119,17 @@ const redirectsMap = {};
 for (const family of FAMILIES) {
   console.log(`\n📦 Familia: ${family.name}`);
 
-  // Buscar producto base
-  const baseProduct = await prisma.product.findUnique({
+  // Buscar producto base — primero slug limpio, luego legacy.
+  let baseProduct = await prisma.product.findUnique({
     where: { slug: family.baseSlug },
     include: { variants: { where: { deletedAt: null } } },
   });
+  if (!baseProduct && family.legacyBaseSlug) {
+    baseProduct = await prisma.product.findUnique({
+      where: { slug: family.legacyBaseSlug },
+      include: { variants: { where: { deletedAt: null } } },
+    });
+  }
   if (!baseProduct) {
     console.log(`  ⚠️  Base product '${family.baseSlug}' no existe — skip familia`);
     continue;

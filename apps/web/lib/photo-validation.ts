@@ -275,7 +275,7 @@ export async function validatePhotoQuality(
     if (resolution.level !== "ok") {
       recommendation = "Una foto más grande va a quedar mejor al imprimir.";
     } else if (blur.level !== "ok") {
-      recommendation = "Probá con una foto más nítida si la tienes.";
+      recommendation = "Prueba con una foto más nítida si la tienes.";
     } else if (brightness.level !== "ok") {
       recommendation = "Una foto con más luz va a verse mejor.";
     }

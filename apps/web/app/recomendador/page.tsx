@@ -14,7 +14,7 @@ import { WizardRecomendador } from "@/components/wizard-recomendador";
 export const metadata: Metadata = {
   title: "Lucams · Recomendador",
   description:
-    "¿No sabés qué elegir? Te ayudamos en 4 preguntas a encontrar el imán perfecto para tu ocasión.",
+    "¿No sabes qué elegir? Te ayudamos en 4 preguntas a encontrar el imán perfecto para tu ocasión.",
 };
 
 export default async function RecomendadorPage() {

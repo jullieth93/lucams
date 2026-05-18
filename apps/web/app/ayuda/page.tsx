@@ -38,7 +38,7 @@ const FALLBACK_FAQS: { slug: string; question: string; answer: string }[] = [
     slug: "como-personalizo",
     question: "¿Cómo personalizo un imán?",
     answer:
-      "Elige el producto, hacé click en **Personalizar** y te abre WhatsApp para mandarnos fotos y referencias. Pronto vas a poder diseñarlo en vivo desde el sitio.",
+      "Elige el producto, haz click en **Personalizar** y te abre WhatsApp para mandarnos fotos y referencias. Pronto vas a poder diseñarlo en vivo desde el sitio.",
   },
   {
     slug: "cuanto-demora",
@@ -62,7 +62,7 @@ const FALLBACK_FAQS: { slug: string; question: string; answer: string }[] = [
     slug: "cambios-devoluciones",
     question: "¿Cómo cambio o devuelvo un producto?",
     answer:
-      "Tenés **5 días hábiles** desde la entrega para retractarte (Ley 1480 art. 47), excepto en productos personalizados. Para garantía: 1 año desde la entrega. [Más detalles](/legal/devoluciones).",
+      "Tienes **5 días hábiles** desde la entrega para retractarte (Ley 1480 art. 47), excepto en productos personalizados. Para garantía: 1 año desde la entrega. [Más detalles](/legal/devoluciones).",
   },
   {
     slug: "factura-dian",
@@ -74,25 +74,25 @@ const FALLBACK_FAQS: { slug: string; question: string; answer: string }[] = [
     slug: "datos-personales",
     question: "¿Cómo manejan mis datos personales?",
     answer:
-      "Tratamos tus datos según la **Ley 1581 de 2012** y nuestro [Aviso de Privacidad](/legal/privacidad). Podés ejercer hábeas data (acceso, rectificación, supresión, revocación) escribiéndonos.",
+      "Tratamos tus datos según la **Ley 1581 de 2012** y nuestro [Aviso de Privacidad](/legal/privacidad). Puedes ejercer hábeas data (acceso, rectificación, supresión, revocación) escribiéndonos.",
   },
   {
     slug: "borrar-mis-datos",
     question: "¿Cómo borro mi cuenta y mis datos?",
     answer:
-      "Escribinos a **hola@lucamsshop.co** desde el email registrado. Procesamos la supresión dentro de **10 días hábiles**. Más info en [Hábeas Data](/legal/habeas-data).",
+      "Escríbenos a **hola@lucamsshop.co** desde el email registrado. Procesamos la supresión dentro de **10 días hábiles**. Más info en [Hábeas Data](/legal/habeas-data).",
   },
   {
     slug: "newsletter-unsuscripcion",
     question: "¿Cómo me suscribo o desuscribo del newsletter?",
     answer:
-      "Suscripción: form en el footer. Desuscripción: link **Unsubscribe** al final de cada email que te enviemos, o escribinos a hola@lucamsshop.co.",
+      "Suscripción: form en el footer. Desuscripción: link **Unsubscribe** al final de cada email que te enviemos, o escríbenos a hola@lucamsshop.co.",
   },
   {
     slug: "regalos-eventos",
     question: "¿Hacen pedidos al por mayor o para eventos corporativos?",
     answer:
-      "¡Sí! Bodas, baby showers, eventos corporativos, recordatorios para regalos. Escribinos por WhatsApp con tu idea y volumen y te pasamos cotización personalizada.",
+      "¡Sí! Bodas, baby showers, eventos corporativos, recordatorios para regalos. Escríbenos por WhatsApp con tu idea y volumen y te pasamos cotización personalizada.",
   },
 ];
 
@@ -127,7 +127,7 @@ export default async function AyudaPage() {
             <p className="text-brand-purple-dark/70 mt-2 max-w-xl text-base">
               <CmsText
                 blockKey="support.help.subtext"
-                fallback="¿Tenés una pregunta? Acá las respuestas a las dudas más comunes. Si no encontrás lo que buscás, escribinos."
+                fallback="¿Tienes una pregunta? Acá las respuestas a las dudas más comunes. Si no encuentras lo que buscas, escríbenos."
               />
             </p>
           </header>
@@ -166,7 +166,7 @@ export default async function AyudaPage() {
             <p className="text-brand-purple-dark/70 mt-1 text-sm">
               <CmsText
                 blockKey="support.help.cta.subtext"
-                fallback="Escribinos por WhatsApp o email y te respondemos en menos de 24h."
+                fallback="Escríbenos por WhatsApp o email y te respondemos en menos de 24h."
               />
             </p>
             <div className="mt-4 flex flex-wrap justify-center gap-2">

@@ -51,7 +51,7 @@ export async function subscribeNewsletterAction(
   const turnstile = await verifyTurnstileToken(turnstileToken, ip);
   if (!turnstile.success) {
     logger.warn({ event: "newsletter.turnstile_failed", ip, reason: turnstile.reason });
-    return { error: "Validación anti-bot falló. Recargá la página e intentá de nuevo." };
+    return { error: "Validación anti-bot falló. Recarga la página e intenta de nuevo." };
   }
 
   // Rate-limit: 5/hora por IP (anti-spam), 2/hora por email (re-suscripción).

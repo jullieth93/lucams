@@ -88,7 +88,7 @@ export async function CartCrossSell({ productSlugsInCart }: { productSlugsInCart
         </Link>
       </div>
       <p className="text-brand-purple-dark/70 mb-5 text-sm">
-        Otros productos que combinan perfecto con lo que tenés.
+        Otros productos que combinan perfecto con lo que tienes.
       </p>
       <div className="grid grid-cols-2 gap-4 md:grid-cols-3">
         {suggestion.products.map((p) => (

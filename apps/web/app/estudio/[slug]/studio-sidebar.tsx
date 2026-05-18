@@ -94,7 +94,7 @@ export function StudioSidebar({
           if (result.validationLevel === "warning-strong" || result.validationLevel === "error") {
             setUploadError(
               result.validationMessage ??
-                "La foto tiene problemas de calidad. Revisá la sugerencia.",
+                "La foto tiene problemas de calidad. Revisa la sugerencia.",
             );
           }
         } else {
@@ -232,7 +232,7 @@ export function StudioSidebar({
 
         {assets.length === 0 && uploading === 0 && (
           <p className="text-brand-purple-dark/50 mt-3 text-xs italic">
-            Tip: subí tus fotos primero, después usá el botón mágico para repartirlas en los slots.
+            Tip: sube tus fotos primero, después usa el botón mágico para repartirlas en los slots.
           </p>
         )}
 
@@ -240,7 +240,7 @@ export function StudioSidebar({
             hay fotos sin asignar: explicar que se pueden cambiar arrastrando. */}
         {assets.length > 0 && emptySlots === 0 && totalSlots > 0 && (
           <p className="text-brand-purple-dark/55 bg-brand-turquoise/10 mt-3 rounded-md px-2.5 py-2 text-xs">
-            ✨ Todos los imanes tienen foto. Arrastrá cualquier foto encima de un imán para
+            ✨ Todos los imanes tienen foto. Arrastra cualquier foto encima de un imán para
             cambiarla.
           </p>
         )}
@@ -331,7 +331,7 @@ function ProgressBar({ filled, total }: { filled: number; total: number }) {
         {isComplete
           ? "¡Listo! Todas las fotos están cargadas."
           : isEmpty
-            ? "Cargá fotos para empezar."
+            ? "Carga fotos para empezar."
             : `Faltan ${total - filled} ${total - filled === 1 ? "foto" : "fotos"} para terminar.`}
       </p>
     </div>
@@ -526,10 +526,10 @@ function AssetThumb({
         onClick={hasWarning ? () => setShowQualityModal(true) : undefined}
         title={
           isUsed
-            ? "Ya está pegada en algún imán. Podés arrastrar otra foto."
+            ? "Ya está pegada en algún imán. Puedes arrastrar otra foto."
             : hasWarning
               ? "Click para ver detalles del problema de calidad."
-              : "Arrastrá al canvas o tocá un slot vacío para asignar"
+              : "Arrastra al canvas o toca un slot vacío para asignar"
         }
         initial={{ opacity: 0, scale: 0.85 }}
         animate={{ opacity: 1, scale: 1 }}
@@ -707,7 +707,7 @@ function PhotoQualityModal({
               <div className="flex flex-1 flex-col justify-center text-sm">
                 <p className="text-brand-purple-dark leading-snug font-medium">{message}</p>
                 <div className="text-brand-purple-dark/65 mt-2 space-y-1 text-xs">
-                  <p className="font-semibold">¿Qué podés hacer?</p>
+                  <p className="font-semibold">¿Qué puedes hacer?</p>
                   <ul className="ml-3 list-disc space-y-0.5">
                     <li>Subir una foto de mayor resolución (la original, no la de WhatsApp)</li>
                     <li>Si la foto ya es la mejor que tienes, igual la podemos imprimir</li>

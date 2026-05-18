@@ -20,7 +20,7 @@ import { ContactForm } from "./contact-form";
 export const metadata: Metadata = {
   title: "Contacto",
   description:
-    "Escribinos por WhatsApp, email o el formulario. Te respondemos en menos de 24 horas hábiles.",
+    "Escríbenos por WhatsApp, email o el formulario. Te respondemos en menos de 24 horas hábiles.",
 };
 
 export const dynamic = "force-dynamic";
@@ -44,7 +44,7 @@ export default async function ContactoPage() {
             <p className="text-brand-purple-dark/70 mt-2 max-w-2xl text-base">
               <CmsText
                 blockKey="support.contacto.subtext"
-                fallback="¿Una idea, una duda, un pedido especial? Escribinos por el medio que prefieras. Te respondemos en menos de 24h hábiles."
+                fallback="¿Una idea, una duda, un pedido especial? Escríbenos por el medio que prefieras. Te respondemos en menos de 24h hábiles."
               />
             </p>
           </header>
@@ -104,7 +104,7 @@ export default async function ContactoPage() {
               <div className="border-brand-purple/15 rounded-2xl border bg-white p-6">
                 <h2 className="font-display text-brand-purple-dark text-lg">¿Preguntas comunes?</h2>
                 <p className="text-brand-purple-dark/70 mt-2 text-sm">
-                  Antes de escribir, revisá el{" "}
+                  Antes de escribir, revisa el{" "}
                   <Link href="/ayuda" className="text-brand-purple font-semibold hover:underline">
                     Centro de ayuda
                   </Link>{" "}
@@ -116,7 +116,7 @@ export default async function ContactoPage() {
             {/* Columna 2: Form */}
             <section className="border-brand-purple/15 rounded-2xl border bg-white p-6 sm:p-8">
               <h2 className="font-display text-brand-purple-dark text-xl">
-                <CmsText blockKey="support.contacto.form-heading" fallback="Escribinos por aquí" />
+                <CmsText blockKey="support.contacto.form-heading" fallback="Escríbenos por aquí" />
               </h2>
               <p className="text-brand-purple-dark/70 mt-1 mb-5 text-sm">
                 <CmsText

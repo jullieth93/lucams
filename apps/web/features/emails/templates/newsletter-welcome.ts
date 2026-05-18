@@ -26,9 +26,9 @@ export async function newsletterWelcomeEmail(data: NewsletterWelcomeData) {
   <li>Promos y descuentos exclusivos</li>
   <li>Curaduría de los imanes más enamorados</li>
 </ul>
-<p>Sin spam. Te podés dar de baja cuando quieras desde el link del final.</p>
-${ctaButton(`${siteUrl}/productos`, "Mientras tanto, mirá el catálogo →")}
-<p style="font-size:13px;color:#3D2E5C;opacity:0.65;margin-top:18px;">Te suscribiste desde nuestro sitio. Si fue por error, hacé click en "Cancelar suscripción" al final de este email.</p>
+<p>Sin spam. Te puedes dar de baja cuando quieras desde el link del final.</p>
+${ctaButton(`${siteUrl}/productos`, "Mientras tanto, mira el catálogo →")}
+<p style="font-size:13px;color:#3D2E5C;opacity:0.65;margin-top:18px;">Te suscribiste desde nuestro sitio. Si fue por error, haz click en "Cancelar suscripción" al final de este email.</p>
 `;
 
   const text = `¡Estás dentro!
@@ -40,9 +40,9 @@ Una vez al mes (a veces menos) te vamos a contar:
 - Promos y descuentos exclusivos
 - Curaduría de los imanes más enamorados
 
-Sin spam. Te podés dar de baja cuando quieras.
+Sin spam. Te puedes dar de baja cuando quieras.
 
-Mientras tanto, mirá el catálogo:
+Mientras tanto, mira el catálogo:
 ${siteUrl}/productos
 
 Cancelar suscripción: ${unsubscribeUrl}`;

@@ -41,7 +41,7 @@
 - Si la plantilla es solo marco blanco sin decoración → invisible sobre fondo blanco
 - Resultado UX: confunde al cliente y reduce la conversión
 
-**Lección:** SIEMPRE agregá al menos UNA decoración con color brand visible (corners gold, ribbon coral, accent line turquoise, stars yellow, etc.) que se distinga sobre fondo blanco. Aunque el "marco" sea técnicamente blanco, las decoraciones deben dar contraste.
+**Lección:** SIEMPRE agrega al menos UNA decoración con color brand visible (corners gold, ribbon coral, accent line turquoise, stars yellow, etc.) que se distinga sobre fondo blanco. Aunque el "marco" sea técnicamente blanco, las decoraciones deben dar contraste.
 
 **Fix aplicado:** Versión v2 agregó 4 corners triangulares dorados `#D4AF37` en las esquinas del área foto + 4 estrellitas decorativas. Ahora la plantilla se distingue claramente en la sidebar.
 
@@ -70,13 +70,13 @@
 
 **Por qué se rechazaron estos detalles:**
 
-- Rect duplicado = código sucio + confusión sobre qué color debería ganar. Si querés cream en el header, NO pongas un blanco encima.
+- Rect duplicado = código sucio + confusión sobre qué color debería ganar. Si quieres cream en el header, NO pongas un blanco encima.
 - Stroke 1px con opacity alta sobre el área foto = visible cuando el cliente carga su foto, queda como un borde fino raro encima de su contenido.
 
 **Lección:**
 
 1. **1 superficie = 1 rect**. No dupliques en mismas coords.
-2. **Stroke en área-foto**: si necesitás guía visual, usá `opacity="0.15"` o menos. Sino, sin stroke.
+2. **Stroke en área-foto**: si necesitas guía visual, usa `opacity="0.15"` o menos. Sino, sin stroke.
 
 **Fix aplicado:** Versión v2 removió el rect cream duplicado + bajó opacity del stroke del área foto a 0.
 
@@ -100,7 +100,7 @@
 
 Antes de mandar tu output, verificá mentalmente:
 
-- [ ] ¿Pesa < 15 KB? (contá líneas — > 200 líneas suele estar OK; > 800 líneas sospechoso)
+- [ ] ¿Pesa < 15 KB? (cuenta líneas — > 200 líneas suele estar OK; > 800 líneas sospechoso)
 - [ ] ¿Tiene < 50 paths totales?
 - [ ] ¿El área del centro está `fill="none"`?
 - [ ] ¿Hay al menos UNA decoración con color brand (NO blanco) visible?

@@ -90,7 +90,7 @@ export function WizardRecomendador({ ocasiones }: { ocasiones: OcasionData[] }) 
               </h2>
               {results.length === 0 && (
                 <p className="text-brand-purple/70 mt-2 text-sm">
-                  Probá relajar algún filtro (presupuesto o personalización) para ver más opciones.
+                  Prueba relajar algún filtro (presupuesto o personalización) para ver más opciones.
                 </p>
               )}
             </div>
@@ -131,7 +131,7 @@ export function WizardRecomendador({ ocasiones }: { ocasiones: OcasionData[] }) 
       {step === 1 && (
         <div>
           <h2 className="text-brand-purple-dark mb-2 text-xl font-bold">¿Para qué ocasión es?</h2>
-          <p className="mb-5 text-sm text-slate-600">Elegí una o varias.</p>
+          <p className="mb-5 text-sm text-slate-600">Elige una o varias.</p>
           <div className="flex flex-wrap gap-2">
             {ocasiones.map((o) => {
               const selected = ocasionSlugs.includes(o.slug);
@@ -199,7 +199,7 @@ export function WizardRecomendador({ ocasiones }: { ocasiones: OcasionData[] }) 
 
       {step === 3 && (
         <div>
-          <h2 className="text-brand-purple-dark mb-5 text-xl font-bold">¿Cuánto querés gastar?</h2>
+          <h2 className="text-brand-purple-dark mb-5 text-xl font-bold">¿Cuánto quieres gastar?</h2>
           <div className="grid grid-cols-1 gap-2">
             {PRICE_RANGES.map((r) => (
               <button

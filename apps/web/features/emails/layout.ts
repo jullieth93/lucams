@@ -59,7 +59,7 @@ ${previewHtml}
 ${opts.bodyHtml}
       </td></tr>
       <tr><td style="padding:18px 28px;background:${BRAND_CREAM};font-size:12px;line-height:1.5;color:${BRAND_PURPLE_DARK};opacity:0.7;">
-        <p style="margin:0 0 6px 0;">¿Dudas? Escribinos a <a href="mailto:${contactEmail}" style="color:${BRAND_PURPLE};text-decoration:none;">${contactEmail}</a></p>
+        <p style="margin:0 0 6px 0;">¿Dudas? Escríbenos a <a href="mailto:${contactEmail}" style="color:${BRAND_PURPLE};text-decoration:none;">${contactEmail}</a></p>
         <p style="margin:0;">© ${escapeHtml(copyrightYear)} Lucams_shop · ${escapeHtml(footerTagline)}</p>
         ${
           opts.unsubscribeUrl

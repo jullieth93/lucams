@@ -77,7 +77,7 @@ export function StudioPhotoAdjustModal({
           Ajustar foto del imán {slotIndex !== null ? slotIndex + 1 : ""}
         </DialogTitle>
         <DialogDescription className="text-brand-purple-dark/60 text-sm">
-          Aplicá zoom, reposicionalá la foto arrastrándola en el canvas, o elegí un filtro.
+          Aplica zoom, reposicionalá la foto arrastrándola en el canvas, o elige un filtro.
         </DialogDescription>
 
         {/* M.3.b.UX.v6 — Zoom slider. 100% = cover default (cliente puede
@@ -112,8 +112,8 @@ export function StudioPhotoAdjustModal({
             <span>300% (acercar)</span>
           </div>
           <p className="text-brand-purple-dark/55 text-[11px]">
-            Arrastrá la foto libremente en el canvas para encuadrarla. Bajá el zoom (50-99%) si
-            querés ver toda la foto con padding. Subí (101-300%) para acercar a un detalle.
+            Arrastra la foto libremente en el canvas para encuadrarla. Bajá el zoom (50-99%) si
+            quieres ver toda la foto con padding. Sube (101-300%) para acercar a un detalle.
           </p>
         </div>
 

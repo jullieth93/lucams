@@ -90,14 +90,37 @@ const VISIBLE_DIMENSIONS: (keyof ProductVariantAttributes)[] = [
   "finish",
 ];
 
-export function VariantSelector({ productBasePrice, variants }: VariantSelectorProps) {
+export function VariantSelector({ productBasePrice, variants: rawVariants }: VariantSelectorProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const currentVariantId = searchParams.get("variant");
 
+  // Filtrar la variant "Default" si hay otras con attributes reales.
+  // El producto base tiene una "Default" de placeholder (attributes={})
+  // que persiste tras la consolidación de familias. Si hay variants con
+  // attributes definidos, la Default no aporta valor en el selector.
+  const variants = useMemo(() => {
+    const withAttrs = rawVariants.filter((v) => {
+      const attrs = parseVariantAttributes(v.attributes);
+      return Object.keys(attrs).length > 0;
+    });
+    return withAttrs.length > 0 ? withAttrs : rawVariants;
+  }, [rawVariants]);
+
   // Default al primero si no hay selected en URL
   const selectedId = currentVariantId ?? variants[0]?.id ?? null;
   const selectedVariant = variants.find((v) => v.id === selectedId);
+
+  // Helper: navega con full reload del server component para que se
+  // actualice precio + link al Estudio + JSON-LD. router.replace soft
+  // no re-corre el server component → solo el selector se actualiza
+  // pero el resto del PDP queda con la variant inicial.
+  function selectVariant(id: string) {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("variant", id);
+    router.push(`?${params.toString()}`, { scroll: false });
+    router.refresh();
+  }
 
   // Detectar dimensiones presentes en los variants y los valores únicos.
   const dimensions = useMemo(() => {
@@ -168,9 +191,7 @@ export function VariantSelector({ productBasePrice, variants }: VariantSelectorP
       }
     }
     if (!bestVariant) return;
-    const params = new URLSearchParams(searchParams.toString());
-    params.set("variant", bestVariant.id);
-    router.replace(`?${params.toString()}`, { scroll: false });
+    selectVariant(bestVariant.id);
   }
 
   if (variants.length < 2) return null;
@@ -195,11 +216,7 @@ export function VariantSelector({ productBasePrice, variants }: VariantSelectorP
                 type="button"
                 role="radio"
                 aria-checked={isSelected}
-                onClick={() => {
-                  const params = new URLSearchParams(searchParams.toString());
-                  params.set("variant", v.id);
-                  router.replace(`?${params.toString()}`, { scroll: false });
-                }}
+                onClick={() => selectVariant(v.id)}
                 className={[
                   "focus:ring-brand-turquoise flex w-full items-center justify-between rounded-lg p-3 text-left transition-all focus:ring-2 focus:outline-none",
                   isSelected

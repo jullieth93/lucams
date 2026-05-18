@@ -1,4 +1,4 @@
-.PHONY: help install build typecheck lint format migrate seed-products seed-templates seed-ocasiones seed-catalog-v2 seed-cms consolidate-product-families test test-unit test-e2e test-rls test-load test-coverage clean
+.PHONY: help install build typecheck lint format migrate seed-products seed-templates seed-ocasiones seed-catalog-v2 seed-cms consolidate-product-families fix-voseo-cms rename-family-base-slugs test test-unit test-e2e test-rls test-load test-coverage clean
 
 # Makefile en repo — targets primitivos para CI y devs locales.
 # El Makefile completo de runtime (con state/log/pid management,
@@ -74,6 +74,20 @@ consolidate-product-families:
 # Después de correr una vez, este target queda para histórico.
 update-legal-ley-2439:
 	pnpm --filter @lucams/db exec node scripts/update-legal-ley-2439.mjs
+
+# ONE-SHOT (2026-05-18): elimina voseo (argentino/uruguayo) de CmsBlock,
+# CmsBlockVersion, SiteSetting, Product.description y OcasionTag.description.
+# Idempotente — si no hay voseo, no escribe nada. Aplica word-boundary
+# regex para no tocar palabras como "automáticamente". Tras correr,
+# reiniciar dev o publicar cualquier bloque para invalidar cache CMS.
+fix-voseo-cms:
+	pnpm --filter @lucams/db exec node scripts/fix-voseo-cms.mjs
+
+# ONE-SHOT (2026-05-18): renombra los slugs base de familias consolidadas
+# para que queden limpios (sin sufijos numéricos del producto inicial).
+# Agrega redirect 301 del slug viejo al nuevo. Idempotente.
+rename-family-base-slugs:
+	pnpm --filter @lucams/db exec node scripts/rename-family-base-slugs.mjs
 
 test: test-unit test-e2e
 

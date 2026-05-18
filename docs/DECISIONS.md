@@ -149,7 +149,7 @@ Tras 12 preguntas a soporte Venndelo + pruebas reales con `POST /orders/quotatio
 1. **Adapter `ShippingProvider` desde día 1** (interfaz Venndelo + mock + futuros). Si Venndelo discontinúa o sale un competidor con webhooks, sub-bloque de migración aislado en `features/shipping/providers/`. No volvemos a reescribir el checkout.
 2. **Mock client `MockShippingProvider`** en dev/CI con quotes deterministas + simulación de transitions automáticas. Sin esto los E2E tests gastarían wallet real cada PR.
 3. **Polling cada 30 min** (`pg_cron` job `sync-shipments.mjs`): por cada Order en status SHIPPED no entregada, llama `GET /shipments/{id}` y actualiza local. 30 min es trade-off: lo suficientemente fresco para UX ("tracking update cada 30 min" disclaimer visible al cliente) sin matar la API rate-limit.
-4. **UX disclaimer obligatorio:** "Actualizaciones de tracking cada 30 minutos. Para ver el estado en vivo, usá el link de Coordinadora." Esto setea expectativas honestas vs e-commerces con webhook real-time.
+4. **UX disclaimer obligatorio:** "Actualizaciones de tracking cada 30 minutos. Para ver el estado en vivo, usa el link de Coordinadora." Esto setea expectativas honestas vs e-commerces con webhook real-time.
 
 **Configuración pickup verificada (2026-05-13):**
 

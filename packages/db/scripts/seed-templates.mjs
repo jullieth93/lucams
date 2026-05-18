@@ -173,7 +173,7 @@ function blankCanvas({ stageW, stageH, photoLabel = "Tu foto", includeText = fal
         id: "free_text",
         x: stageW / 2,
         y: stageH - 60,
-        text: "Escribí tu mensaje",
+        text: "Escribe tu mensaje",
         fontFamily: "Fredoka",
         fontSize: 36,
         fill: BRAND.purpleDark,

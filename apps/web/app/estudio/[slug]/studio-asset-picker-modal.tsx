@@ -163,7 +163,7 @@ export function StudioAssetPickerModal({
                       Foto para el imán {(slotIndex ?? 0) + 1} de {totalSlots}
                     </h2>
                     <p id={descId} className="text-brand-purple-dark/60 mt-0.5 text-xs">
-                      Elegí una foto ya subida o sumá una nueva.
+                      Elige una foto ya subida o suma una nueva.
                     </p>
                   </div>
                   <button
@@ -276,7 +276,7 @@ export function StudioAssetPickerModal({
 
                   {assets.length === 0 && !uploading && (
                     <p className="text-brand-purple-dark/50 mt-4 text-center text-xs italic">
-                      Todavía no subiste fotos. Empezá arriba.
+                      Todavía no subiste fotos. Empieza arriba.
                     </p>
                   )}
                 </div>

@@ -839,7 +839,7 @@ Decisión definitiva de observabilidad de errores: ADR-022 abierto en Fase 7.
 | ---------------------- | ----------------------------------------------------- | ------------------------------------------------------------------------------ |
 | Spoofing               | URL firmada de otro usuario                           | `auth.uid()` validado en `/api/upload/sign`; URL contiene userId hash          |
 | Tampering              | Subir archivo distinto al validado                    | Validación MIME + tamaño en server post-upload (no confiar en cliente)         |
-| Repudiation            | "Yo no subí esa imagen"                               | `customer-uploads` bucket con metadata `uploadedBy=userId`                     |
+| Repudiation            | "Yo no sube esa imagen"                               | `customer-uploads` bucket con metadata `uploadedBy=userId`                     |
 | Information Disclosure | Acceso a fotos de otros clientes                      | Bucket privado · URL firmada TTL 1h · enumeración prevenida (UUID en filename) |
 | Denial of Service      | 1000 uploads de 10MB c/u en 1 min                     | Rate limit 30/10min por usuario + tamaño máximo 10MB                           |
 | Elevation of Privilege | Cliente lee `production-assets` (privado, solo admin) | RLS bucket-level; URL firmada solo se genera en endpoints admin con role check |
@@ -1104,7 +1104,7 @@ export function CookieConsent() {
       </h2>
       <p id="cc-desc" className="mt-2 text-sm">
         Las necesarias hacen funcionar el sitio. Las demás son opcionales y nos ayudan a mejorarlo.
-        Podés cambiar tu elección en cualquier momento desde{" "}
+        Puedes cambiar tu elección en cualquier momento desde{" "}
         <a href="/legal/cookies" className="underline">
           configuración de cookies
         </a>

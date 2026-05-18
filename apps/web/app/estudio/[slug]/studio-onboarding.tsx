@@ -39,17 +39,17 @@ type OnboardingStep = {
 
 const STEPS: OnboardingStep[] = [
   {
-    title: "Subí tus fotos",
-    body: "Empezá por arrastrar fotos al panel de la izquierda. Aceptamos JPG, PNG, WebP y HEIC del celu.",
+    title: "Sube tus fotos",
+    body: "Empieza por arrastrar fotos al panel de la izquierda. Aceptamos JPG, PNG, WebP y HEIC del celu.",
     cta: "Siguiente",
   },
   {
     title: "Asigná a cada imán",
-    body: "Tocá un imán vacío y elegí cuál foto querés, o usá el botón mágico ‘Llenar slots con mis fotos’ para repartir todo de una.",
+    body: "Toca un imán vacío y elige cuál foto quieres, o usa el botón mágico ‘Llenar slots con mis fotos’ para repartir todo de una.",
     cta: "Siguiente",
   },
   {
-    title: "Personalizá los textos",
+    title: "Personaliza los textos",
     body: "Si la plantilla tiene textos editables (los marcados con punto turquesa), tocalos para cambiar el contenido, color y tipografía.",
     cta: "¡Empezar!",
   },

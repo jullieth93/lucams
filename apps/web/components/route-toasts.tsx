@@ -47,8 +47,8 @@ const SUCCESS_MESSAGES: Record<string, { msg: string; href?: string; cta?: strin
   subscribed: { msg: "¡Suscrito al newsletter! Te avisamos del lanzamiento ✨" },
   saved: { msg: "Guardado ✓" },
   published: { msg: "Publicado ✨ Cambio visible en el sitio." },
-  "link-invalido": { msg: "El link ya no es válido. Pedí uno nuevo." },
-  "link-expirado": { msg: "El link expiró. Pedí uno nuevo." },
+  "link-invalido": { msg: "El link ya no es válido. Pide uno nuevo." },
+  "link-expirado": { msg: "El link expiró. Pide uno nuevo." },
 };
 
 export function RouteToasts() {

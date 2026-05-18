@@ -92,8 +92,8 @@ export default async function AdminProductosPage({ searchParams }: { searchParam
             title={search ? "Sin resultados" : "Todavía no hay productos"}
             description={
               search
-                ? `Probá con otro término o creá un producto nuevo.`
-                : "Crea el primero o usá make seed-products para poblar el catálogo demo."
+                ? `Prueba con otro término o crea un producto nuevo.`
+                : "Crea el primero o usa make seed-products para poblar el catálogo demo."
             }
             action={
               !search && (

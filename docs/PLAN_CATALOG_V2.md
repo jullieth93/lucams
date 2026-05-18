@@ -108,7 +108,7 @@ Categorías (1)
 
 **Estado**: 🟢 **CERRADA** (2026-05-15). Ver decisiones 1.1 → 1.9 abajo.
 
-**Resumen ejecutivo**: 11 categorías totales (sube Separadores de sub-cat a categoría propia). Sub-categorías reales jerárquicas. Mega-menú visual en header. 15 tags transversales por ocasión. B2B con flujo `/mayorista`. Riesgo legal Coleccionables Universos asumido. Control DIAN proactivo en admin. **Principio rector**: cada categoría muestra DOS caminos visibles (Diseños listos + Personalizá tu propio). Admin gestiona todo.
+**Resumen ejecutivo**: 11 categorías totales (sube Separadores de sub-cat a categoría propia). Sub-categorías reales jerárquicas. Mega-menú visual en header. 15 tags transversales por ocasión. B2B con flujo `/mayorista`. Riesgo legal Coleccionables Universos asumido. Control DIAN proactivo en admin. **Principio rector**: cada categoría muestra DOS caminos visibles (Diseños listos + Personaliza tu propio). Admin gestiona todo.
 
 ---
 
@@ -321,12 +321,12 @@ Categorías (1)
 
 - **Card en `/admin/dashboard`**: "Estado tributario DIAN" con 4 niveles de alerta:
 
-| % vs umbral | Color       | Acción                         |
-| ----------- | ----------- | ------------------------------ |
-| < 60%       | 🟢 verde    | Operación bajo umbral          |
-| 60-80%      | 🟡 amarillo | Empezá a planear registro DIAN |
-| 80-100%     | 🟠 naranja  | Crítico, activá este trimestre |
-| > 100%      | 🔴 rojo     | OBLIGATORIO, contactá contador |
+| % vs umbral | Color       | Acción                          |
+| ----------- | ----------- | ------------------------------- |
+| < 60%       | 🟢 verde    | Operación bajo umbral           |
+| 60-80%      | 🟡 amarillo | Empieza a planear registro DIAN |
+| 80-100%     | 🟠 naranja  | Crítico, activá este trimestre  |
+| > 100%      | 🔴 rojo     | OBLIGATORIO, contactá contador  |
 
 - **Email alerta mensual**: `pg_cron` día 1 a las 8am COT manda email a `r.julliethhr@gmail.com` cuando `ingresos ≥ 60% × umbral`.
 - **Auto-cálculo futuro**: cuando exista `Order.status IN (PAID, AWAITING_FULFILLMENT, SHIPPED, DELIVERED)` (Fase 4), `DIAN_INGRESOS_ANUALES_REGISTRADOS` se calcula automático sumando `Order.total` del año fiscal. Mientras tanto: Lucy actualiza manual.
@@ -345,7 +345,7 @@ Categorías (1)
 
 - **Decisión**: cada categoría del catálogo presenta DOS caminos visibles al cliente desde el primer momento.
   - **Camino 1 — Diseños listos**: grid visual de plantillas / packs prediseñados disponibles. Cliente compra tal cual (Coleccionables, Juegos) o elige como base (Fotoimanes, Recuerdos) y completa solo datos mínimos.
-  - **Camino 2 — Personalizá tu propio**: CTA "Personalizá desde cero" → estudio canvas vacío.
+  - **Camino 2 — Personaliza tu propio**: CTA "Personaliza desde cero" → estudio canvas vacío.
 - **Distribución por categoría**: ver tabla en mensaje de chat (referencia). Sintéticamente:
   - Categorías 100% Camino 1: Coleccionables, Juegos y Aprendizaje (sin estudio).
   - Categorías mixtas: Fotoimanes, Recuerdos, Calendarios, Publicitarios, Organización, Cajas Regalo, De Temporada, Cuadros, Separadores.
@@ -567,7 +567,7 @@ model ProductOcasionTag {
   - **Área 4 (producto final)**: empaque/material/garantía como campos estructurados. Bot responde "¿qué incluye el Box Día Madre?"
   - **Área 5 (pool prediseñado)**: cada plantilla con descripción + tags + caso de uso. Bot recomienda plantillas.
   - **Área 6 (selección/recomendación)**: lógica se apoya en `ocasiones` + `idealFor` + variant `description`. Bot usa mismas reglas vía API.
-  - **Área 7 (filtros)**: filtros disponibles vía API. Bot sugiere "podés filtrar por X" o ejecuta filtro y devuelve resultados.
+  - **Área 7 (filtros)**: filtros disponibles vía API. Bot sugiere "puedes filtrar por X" o ejecuta filtro y devuelve resultados.
   - **Área 8 (admin)**: admin edita datos → DB se actualiza → bot ve cambio en máx 1h (cache TTL).
 - **Criterio de validación**: ninguna decisión futura cierra sin haber respondido "¿esto es queryable por bot vía API estructurada?".
 - **Ver también**: Nota lateral N3.
@@ -708,7 +708,7 @@ model CouponUsage {
 
 #### UI cliente
 
-- Input "¿Tenés un código?" en `/carrito`
+- Input "¿Tienes un código?" en `/carrito`
 - Server action valida + aplica + crea `CouponUsage` al completar order
 - Breakdown del carrito muestra descuento aplicado
 - Auto-apply opcional vía URL `?promo=CODE` (futuro)
@@ -965,7 +965,7 @@ model CouponUsage {
 - **Decisión**: PDP de producto muestra ambos flujos cuando aplica:
   - **Flujo prediseñado puro** (kind=NONE): grid de templates PREMADE + click directo a cart con templateId.
   - **Flujo Camino 1 con plantilla** (kind≠NONE): grid de templates EDITABLE + click navega a `/estudio/[slug]?templateId=X` pre-cargado.
-  - **Flujo Camino 2 personalizar desde cero** (kind≠NONE): botón "Personalizá desde cero" → estudio canvas vacío.
+  - **Flujo Camino 2 personalizar desde cero** (kind≠NONE): botón "Personaliza desde cero" → estudio canvas vacío.
 - **Rationale**: cliente entiende claramente cuál es la opción "rápida" (prediseñado o template aplicada) vs "personalizada completa".
 - **Implica**: PDP rediseño con dos/tres secciones visuales según `personalizationKind`.
 - **Admin**: ningún cambio (PDP renderea según data del producto).
@@ -998,11 +998,11 @@ model CouponUsage {
 
 ### [6.1] Wizard "ayudame a elegir" MVP (2026-05-15)
 
-- **Decisión**: componente wizard accesible desde header (CTA "¿Buscás algo? 🔮") + desde `/productos` (CTA prominente).
+- **Decisión**: componente wizard accesible desde header (CTA "¿Buscas algo? 🔮") + desde `/productos` (CTA prominente).
 - **4 preguntas guiadas**:
   1. **¿Para qué ocasión?** — multi-select de los 15 tags (Cumpleaños, Matrimonio, Día Madre, Empresarial, etc.). Opción "Para mí mismo" ramifica scoring distinto.
   2. **¿Para quién?** — single-select: mí · pareja · familia · amigo · cliente empresa · niño · adolescente. Filtra `Product.idealFor`.
-  3. **¿Cuánto querés gastar?** — rangos COP: Menos de $30k / $30k-$80k / $80k-$200k / $200k+. Matchea contra precio variant más bajo del producto.
+  3. **¿Cuánto quieres gastar?** — rangos COP: Menos de $30k / $30k-$80k / $80k-$200k / $200k+. Matchea contra precio variant más bajo del producto.
   4. **¿Personalizable o ya listo?** — personalizable (Camino 2 estudio) / prediseñado (Camino 1) / cualquiera. Matchea `personalizationKind`.
 - **Output**: grid de 6-12 productos recomendados ordenados por score. Si 0 resultados, mensaje "no encontramos exacto, ¿relajamos el filtro X?".
 - **Rationale**: cliente nuevo no quiere navegar 11 categorías. Wizard reduce fricción y aumenta conversión.

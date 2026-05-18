@@ -92,7 +92,7 @@ export function StudioGesturesHint({ open, onClose, persistent = false }: Props)
                     <li className="flex items-center gap-2">
                       <MousePointer2 className="text-brand-turquoise h-3.5 w-3.5" aria-hidden />
                       <span>
-                        <strong>Arrastrá con el mouse</strong> para mover la foto
+                        <strong>Arrastra con el mouse</strong> para mover la foto
                       </span>
                     </li>
                     <li className="flex items-center gap-2">

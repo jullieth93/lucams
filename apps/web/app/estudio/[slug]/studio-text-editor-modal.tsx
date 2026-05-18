@@ -176,7 +176,7 @@ function ModalInner({
               onChange={(e) => setText(e.target.value)}
               maxLength={120}
               className="border-brand-purple/15 text-brand-purple-dark focus:border-brand-turquoise focus:ring-brand-turquoise/30 w-full rounded-md border px-3 py-2 text-sm transition-colors focus:ring-2 focus:outline-none"
-              placeholder="Escribí tu texto…"
+              placeholder="Escribe tu texto…"
               autoFocus
             />
           </div>

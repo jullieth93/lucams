@@ -157,8 +157,8 @@ export function CookiesBanner() {
               </button>
             </div>
             <DialogDescription className="text-brand-purple-dark/70 text-sm">
-              Elegí qué cookies querés permitir. Las necesarias no se pueden desactivar porque hacen
-              que el sitio funcione (login, carrito).
+              Elige qué cookies quieres permitir. Las necesarias no se pueden desactivar porque
+              hacen que el sitio funcione (login, carrito).
             </DialogDescription>
           </DialogHeader>
 

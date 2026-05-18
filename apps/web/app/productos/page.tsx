@@ -154,7 +154,7 @@ export default async function ProductosPage({ searchParams }: { searchParams: Se
                   </p>
                   <p className="text-brand-purple-dark/60 mt-1 text-sm">
                     {q
-                      ? `No hay coincidencias para "${q}" con los filtros actuales. Probá quitando algún filtro o cambiando el texto.`
+                      ? `No hay coincidencias para "${q}" con los filtros actuales. Prueba quitando algún filtro o cambiando el texto.`
                       : "Ningún producto coincide con los filtros aplicados."}
                   </p>
                   <Link

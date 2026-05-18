@@ -29,7 +29,7 @@ export default function MaintenancePage() {
       <p className="text-brand-purple-dark/70 mt-4 max-w-md text-base">
         <CmsText
           blockKey="maintenance.description"
-          fallback="Volvemos en unas horas con todo brillando. Mientras tanto, escribinos por WhatsApp si necesitás ayuda urgente."
+          fallback="Volvemos en unas horas con todo brillando. Mientras tanto, escríbenos por WhatsApp si necesitas ayuda urgente."
         />
       </p>
       <p className="text-brand-purple-dark/50 mt-8 text-xs">

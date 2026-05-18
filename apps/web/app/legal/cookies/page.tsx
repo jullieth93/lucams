@@ -24,7 +24,7 @@ Cuando agreguemos analíticas o marketing en el futuro, vas a poder optar (opt-i
 
 ## Cambiar mis preferencias
 
-Podés cambiar tu elección en cualquier momento haciendo click acá abajo.`;
+Puedes cambiar tu elección en cualquier momento haciendo click acá abajo.`;
 
 export default function Page() {
   return (
@@ -33,7 +33,7 @@ export default function Page() {
       <CmsMarkdown blockKey="legal.cookies" fallback={FALLBACK} className="mt-6" />
       <div className="border-brand-purple/15 from-brand-purple/5 to-brand-pink/5 mt-8 rounded-2xl border bg-gradient-to-br p-5">
         <p className="text-brand-purple-dark/80 text-sm">
-          ¿Querés cambiar qué cookies aceptás?{" "}
+          ¿Quieres cambiar qué cookies aceptas?{" "}
           <CookiesReopenLink>Abrir preferencias</CookiesReopenLink>
         </p>
       </div>

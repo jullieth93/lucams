@@ -54,7 +54,7 @@ export async function submitContactAction(
     const flat = z.flattenError(parsed.error);
     return {
       ok: false,
-      error: "Revisá los campos marcados.",
+      error: "Revisa los campos marcados.",
       fieldErrors: flat.fieldErrors as Partial<Record<keyof SupportTicketInput, string[]>>,
     };
   }
@@ -70,7 +70,7 @@ export async function submitContactAction(
     logger.warn({ event: "support.ticket.turnstile_failed", ip, reason: turnstile.reason });
     return {
       ok: false,
-      error: "Validación anti-bot falló. Recargá la página e intentá de nuevo.",
+      error: "Validación anti-bot falló. Recarga la página e intenta de nuevo.",
     };
   }
 
@@ -90,7 +90,7 @@ export async function submitContactAction(
     return {
       ok: false,
       error:
-        "Recibimos varios mensajes desde tu cuenta hoy. Si es urgente, escribinos por WhatsApp.",
+        "Recibimos varios mensajes desde tu cuenta hoy. Si es urgente, escríbenos por WhatsApp.",
     };
   }
 
@@ -169,7 +169,7 @@ export async function submitContactAction(
     return {
       ok: false,
       error:
-        "No pudimos enviar tu mensaje. Probá de nuevo en unos minutos o escribinos por WhatsApp.",
+        "No pudimos enviar tu mensaje. Prueba de nuevo en unos minutos o escríbenos por WhatsApp.",
     };
   }
 }
