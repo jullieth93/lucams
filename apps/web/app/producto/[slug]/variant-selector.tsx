@@ -128,7 +128,21 @@ export function VariantSelector({ productBasePrice, variants: rawVariants }: Var
     });
   }
 
-  // Detectar dimensiones presentes con >1 valor distinto.
+  // Detectar dimensiones — y decidir si son INDEPENDIENTES o ACOPLADAS.
+  //
+  // Independientes: matriz cartesiana completa (cada combinación tiene
+  //   un variant). Ej. 3 colores × 4 tamaños = 12 variants.
+  //   → Mostrar como N selectores separados (modo multi-dim).
+  //
+  // Acopladas: las variantes son "presets" donde las dimensiones cambian
+  //   juntas. Ej. "Set 6 fotos · 7×9 cm" y "Set 9 fotos · 6×8 cm" — no
+  //   existen "9 fotos · 7×9 cm" ni "6 fotos · 4×5 cm".
+  //   → Mostrar como UNA lista única (modo single-dim) para evitar que el
+  //   cliente clickee combinaciones imposibles. Esta es la arquitectura
+  //   que usa Casetify/Shutterfly/Society6 con kits/presets.
+  //
+  // Heurística: si #variants < producto-cartesiano-de-cardinalidades →
+  // acopladas. Si la matriz está completa → independientes.
   const dimensions = useMemo(() => {
     if (variants.length < 2) return [];
     const dimMap: Record<string, Set<string>> = {};
@@ -141,7 +155,18 @@ export function VariantSelector({ productBasePrice, variants: rawVariants }: Var
         dimMap[key].add(String(value));
       }
     }
-    return VISIBLE_DIMENSIONS.filter((key) => dimMap[key] && dimMap[key].size > 1).map((key) => {
+    const dimKeys = VISIBLE_DIMENSIONS.filter((key) => dimMap[key] && dimMap[key].size > 1);
+    if (dimKeys.length === 0) return [];
+
+    // Detectar acoplamiento: si las dimensiones no son combinables libremente
+    // (matriz incompleta), retornar [] para que el componente caiga al modo
+    // single-dim (lista única con presets).
+    const cartesianProduct = dimKeys.reduce((acc, key) => acc * dimMap[key].size, 1);
+    if (variants.length < cartesianProduct) {
+      return []; // dimensiones acopladas → lista única
+    }
+
+    return dimKeys.map((key) => {
       const rawValues = Array.from(dimMap[key]);
       const isNumeric = key === "quantity" || key === "photoSlots";
       const values = isNumeric ? rawValues.sort((a, b) => Number(a) - Number(b)) : rawValues.sort();
