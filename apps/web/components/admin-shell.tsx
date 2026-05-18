@@ -1,23 +1,26 @@
 /*
- * <AdminShell /> — Layout shell del panel admin con sidebar permanente.
+ * <AdminShell /> — Layout shell del panel admin (v3 brand premium 2026-05-18).
  *
- * PLAN_CATALOG_V2 8.1 + redesign 2026-05-18 (basado en commerce-ops-platform
- * patrón sidebar v2 — 11 áreas top-level con grupos colapsables).
+ * Inspirado en commerce-ops-platform/phase-0-pre-prod (sidebar dark + topbar
+ * verde medio + footer con dropdown user menu). Adaptado a paleta brand
+ * Lucams: gradient brand-purple-dark (storefront footer) + acentos
+ * brand-pink + brand-turquoise.
  *
- * Filosofía:
- *   - Items leaf (sin sub-items) vs grupos colapsables (con 2+ sub-items).
- *   - Badges visuales [Próximo], [Fase 4], [Fase 5], [Fase 5+] para roadmap honesto.
- *   - Paleta brand Lucams (morado/rosa/turquesa), no slate genérico.
- *   - Top bar con indicador "Live" del sistema.
- *   - Footer con avatar + email + rol + plan + dropdown.
+ * Componentes:
+ *   - Sidebar oscuro premium con blobs decorativos brand
+ *   - Topbar minimal con breadcrumb + Live indicator
+ *   - Footer sidebar con avatar + dropdown (Cambiar contraseña + Cerrar sesión)
+ *   - 11 áreas top-level: Dashboard, Ventas, Catálogo, Comercial, Producción,
+ *     Canales, Finanzas, IA y Conocimiento, Analítica, Configuración, Mensajes
+ *   - Badges visuales [Próximo / Fase 4 / Fase 5] para items no disponibles
  *
- * Mobile: drawer slide-in + topbar siempre visible.
- * UX no-técnico aplicado: labels español llano, tuteo, fechas humanas.
+ * Mobile: drawer slide-in con backdrop.
+ * A11y: aria-expanded, aria-label, focus rings.
  */
 
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -26,8 +29,8 @@ import {
   Menu,
   X,
   ChevronDown,
-  ChevronRight,
-  Circle,
+  KeyRound,
+  Crown,
   // Áreas top-level
   LayoutDashboard,
   ShoppingCart,
@@ -85,8 +88,8 @@ type NavItem = {
 type NavGroup = {
   title: string;
   icon: LucideIcon;
-  items?: NavItem[]; // si está → es grupo colapsable
-  href?: string; // si está y no hay items → es leaf
+  items?: NavItem[];
+  href?: string;
   badge?: Badge;
   defaultOpen?: boolean;
 };
@@ -276,36 +279,53 @@ const NAV: NavGroup[] = [
   },
 ];
 
+// ─────────────────── Role badges (sidebar footer) ───────────────────
+
+const ROLE_LABEL: Record<string, string> = {
+  SUPERADMIN: "Administradora",
+  ADMIN: "Administradora",
+  EDITOR: "Editor",
+  OPERATOR: "Gestor",
+};
+
 // ─────────────────── Shell ───────────────────
 
 export function AdminShell({ admin, children }: { admin: AdminInfo; children: React.ReactNode }) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
 
+  // Cerrar drawer mobile al navegar (defer via microtask para satisfacer
+  // react-hooks/set-state-in-effect — el lint rule prefiere setState
+  // fuera del cuerpo síncrono del effect).
+  useEffect(() => {
+    queueMicrotask(() => setMobileOpen(false));
+  }, [pathname]);
+
   return (
-    <div className="bg-brand-cream/40 lg:flex lg:min-h-screen">
-      {/* Sidebar desktop */}
-      <aside className="border-brand-purple/15 hidden bg-white lg:flex lg:w-64 lg:flex-shrink-0 lg:flex-col lg:border-r">
+    <div className="bg-brand-cream/40 flex min-h-screen">
+      {/* Sidebar desktop — gradient morado oscuro premium */}
+      <aside className="from-brand-purple-dark via-brand-purple-dark to-brand-purple relative hidden overflow-hidden bg-gradient-to-b text-white lg:flex lg:w-64 lg:flex-shrink-0 lg:flex-col">
+        <SidebarDecorations />
         <SidebarContent admin={admin} pathname={pathname} onNavigate={() => {}} />
       </aside>
 
       {/* Topbar mobile */}
-      <div className="border-brand-purple/15 sticky top-0 z-30 flex items-center justify-between border-b bg-white px-4 py-3 lg:hidden">
-        <Link href="/admin/dashboard" className="flex items-center gap-2">
+      <div className="from-brand-purple-dark to-brand-purple sticky top-0 z-30 flex items-center justify-between bg-gradient-to-r px-4 py-3 text-white shadow-md lg:hidden">
+        <Link href="/admin/dashboard" className="flex items-center gap-2.5">
           <BrandIcon />
           <div>
-            <p className="text-brand-purple-dark/50 text-[10px] font-semibold tracking-wider uppercase">
-              Admin
+            <p className="text-[10px] font-semibold tracking-wider text-white/60 uppercase">
+              Panel admin
             </p>
-            <p className="font-display text-brand-purple-dark text-sm leading-tight font-bold">
-              Lucams
+            <p className="font-display text-base leading-tight font-bold text-white">
+              Lucams<span className="text-brand-pink">_shop</span>
             </p>
           </div>
         </Link>
         <button
           type="button"
           onClick={() => setMobileOpen(true)}
-          className="text-brand-purple-dark hover:bg-brand-purple/10 rounded-md p-2"
+          className="rounded-md p-2 text-white transition-colors hover:bg-white/10"
           aria-label="Abrir menú"
         >
           <Menu className="h-5 w-5" />
@@ -316,16 +336,17 @@ export function AdminShell({ admin, children }: { admin: AdminInfo; children: Re
       {mobileOpen && (
         <div className="fixed inset-0 z-50 lg:hidden">
           <div
-            className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm"
+            className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm"
             onClick={() => setMobileOpen(false)}
             aria-hidden
           />
-          <aside className="absolute top-0 left-0 flex h-full w-72 flex-col bg-white shadow-xl">
-            <div className="border-brand-purple/10 flex items-center justify-end border-b px-3 py-3">
+          <aside className="from-brand-purple-dark via-brand-purple-dark to-brand-purple absolute top-0 left-0 flex h-full w-72 flex-col overflow-hidden bg-gradient-to-b text-white shadow-2xl">
+            <SidebarDecorations />
+            <div className="relative z-10 flex items-center justify-end border-b border-white/10 px-3 py-3">
               <button
                 type="button"
                 onClick={() => setMobileOpen(false)}
-                className="text-brand-purple-dark hover:bg-brand-purple/10 rounded-md p-1.5"
+                className="rounded-md p-1.5 text-white hover:bg-white/10"
                 aria-label="Cerrar"
               >
                 <X className="h-5 w-5" />
@@ -342,40 +363,78 @@ export function AdminShell({ admin, children }: { admin: AdminInfo; children: Re
 
       {/* Contenido principal */}
       <div className="flex flex-1 flex-col overflow-x-hidden">
-        <AdminTopBar />
+        <AdminTopBar pathname={pathname} />
         <main className="flex-1">{children}</main>
       </div>
     </div>
   );
 }
 
-// ─────────────────── TopBar con indicador Live ───────────────────
+// ─────────────────── Decoración sidebar ───────────────────
 
-function AdminTopBar() {
+function SidebarDecorations() {
   return (
-    <div className="border-brand-purple/10 sticky top-0 z-20 hidden h-12 items-center justify-between border-b bg-white/90 px-6 backdrop-blur lg:flex">
-      <div className="flex items-center gap-2 text-xs text-slate-500">
-        <span className="font-semibold tracking-wider uppercase">Panel</span>
-        <span className="text-brand-purple/40">·</span>
-        <span>Lucams_shop</span>
-      </div>
-      <div className="flex items-center gap-2">
-        <span className="relative flex h-2 w-2">
-          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-          <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+    <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
+      <div className="bg-brand-pink/20 absolute -top-24 -right-16 h-64 w-64 rounded-full blur-3xl" />
+      <div className="bg-brand-turquoise/15 absolute -bottom-24 -left-16 h-72 w-72 rounded-full blur-3xl" />
+    </div>
+  );
+}
+
+// ─────────────────── TopBar premium ───────────────────
+
+function AdminTopBar({ pathname }: { pathname: string }) {
+  const crumb = labelForPath(pathname);
+  return (
+    <div className="border-brand-purple/10 sticky top-0 z-20 hidden h-14 items-center justify-between border-b bg-white/85 px-6 backdrop-blur-md lg:flex">
+      <div className="flex items-center gap-3">
+        <span className="text-brand-purple/55 text-[10px] font-semibold tracking-wider uppercase">
+          Panel
         </span>
-        <span className="text-xs font-medium text-emerald-700">Live</span>
+        <span className="text-brand-purple/30">·</span>
+        <span className="text-brand-purple-dark text-sm font-semibold">{crumb}</span>
+      </div>
+      <div className="flex items-center gap-3">
+        <Link
+          href="/"
+          target="_blank"
+          rel="noopener"
+          className="text-brand-purple-dark hover:bg-brand-purple/10 inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs font-medium transition-colors"
+        >
+          <ExternalLink className="h-3.5 w-3.5" />
+          Ver el sitio
+        </Link>
+        <div className="flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 ring-1 ring-emerald-200/60">
+          <span className="relative flex h-2 w-2">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
+            <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
+          </span>
+          <span className="text-xs font-semibold text-emerald-700">Live</span>
+        </div>
       </div>
     </div>
   );
+}
+
+function labelForPath(p: string): string {
+  if (p.startsWith("/admin/dashboard")) return "Dashboard";
+  if (p.startsWith("/admin/productos")) return "Catálogo · Productos";
+  if (p.startsWith("/admin/categorias")) return "Catálogo · Categorías";
+  if (p.startsWith("/admin/ocasiones")) return "Catálogo · Ocasiones";
+  if (p.startsWith("/admin/cupones")) return "Comercial · Cupones";
+  if (p.startsWith("/admin/contenido/bloques")) return "IA y Conocimiento · Base";
+  if (p.startsWith("/admin/contenido/configuracion")) return "Configuración · General";
+  if (p.startsWith("/admin/contenido")) return "Contenido";
+  if (p.startsWith("/admin/auditoria")) return "Analítica · Auditoría";
+  return "Lucams_shop";
 }
 
 // ─────────────────── Brand icon ───────────────────
 
 function BrandIcon() {
   return (
-    <div className="from-brand-purple via-brand-pink to-brand-coral flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br shadow-sm">
-      <Sparkles className="h-4 w-4 text-white" />
+    <div className="from-brand-pink via-brand-coral to-brand-yellow glow-brand flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br shadow-lg ring-2 ring-white/30">
+      <Sparkles className="h-[18px] w-[18px] text-white" />
     </div>
   );
 }
@@ -392,50 +451,28 @@ function SidebarContent({
   onNavigate: () => void;
 }) {
   return (
-    <div className="flex h-full flex-col overflow-y-auto">
+    <div className="relative z-10 flex h-full flex-col overflow-y-auto">
       {/* Header brand */}
       <Link
         href="/admin/dashboard"
         onClick={onNavigate}
-        className="border-brand-purple/10 hover:bg-brand-purple/5 block border-b px-5 py-4 transition-colors"
+        className="block border-b border-white/10 px-5 py-4 transition-colors hover:bg-white/5"
       >
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-3">
           <BrandIcon />
           <div>
-            <p className="text-brand-purple-dark/50 text-[10px] font-semibold tracking-wider uppercase">
+            <p className="text-[10px] font-semibold tracking-wider text-white/55 uppercase">
               Panel admin
             </p>
-            <p className="font-display text-brand-purple-dark text-lg leading-tight font-bold">
-              Lucams
+            <p className="font-display text-xl leading-tight font-bold text-white">
+              Lucams<span className="text-brand-pink">_shop</span>
             </p>
           </div>
         </div>
       </Link>
 
-      {/* User info */}
-      <div className="border-brand-purple/10 from-brand-purple/5 to-brand-pink/5 border-b bg-gradient-to-br px-5 py-3">
-        <div className="flex items-center gap-2.5">
-          <div className="from-brand-turquoise to-brand-purple flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-br font-bold text-white">
-            {admin.email[0].toUpperCase()}
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-brand-purple-dark truncate text-xs font-semibold">
-              {admin.email.split("@")[0]}
-            </p>
-            <div className="mt-0.5 flex items-center gap-1.5">
-              <span className="bg-brand-purple/15 text-brand-purple-dark rounded px-1.5 py-0.5 text-[9px] font-bold tracking-wide uppercase">
-                {admin.role}
-              </span>
-              <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold tracking-wide text-amber-700 uppercase">
-                Free
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
-
       {/* Nav */}
-      <nav className="flex-1 px-3 py-3">
+      <nav className="flex-1 px-3 py-4">
         <ul className="flex flex-col gap-0.5">
           {NAV.map((group) => (
             <NavGroupItem
@@ -448,31 +485,89 @@ function SidebarContent({
         </ul>
       </nav>
 
-      {/* Footer actions */}
-      <div className="border-brand-purple/10 bg-brand-cream/30 border-t px-3 py-3">
-        <Link
-          href="/"
-          onClick={onNavigate}
-          className="text-brand-purple-dark hover:bg-brand-purple/10 flex items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors"
+      {/* Footer: avatar con dropdown menu */}
+      <UserFooter admin={admin} onNavigate={onNavigate} />
+    </div>
+  );
+}
+
+// ─────────────────── User footer (dropdown menu) ───────────────────
+
+function UserFooter({ admin, onNavigate }: { admin: AdminInfo; onNavigate: () => void }) {
+  const [open, setOpen] = useState(false);
+  const roleLabel = ROLE_LABEL[admin.role] ?? admin.role;
+  const initial = admin.email[0].toUpperCase();
+
+  return (
+    <div className="border-t border-white/10 p-3">
+      <div className="relative">
+        <button
+          type="button"
+          onClick={() => setOpen((v) => !v)}
+          className={`flex w-full items-center gap-2.5 rounded-lg px-2 py-2 text-left transition-colors ${
+            open ? "bg-white/10" : "hover:bg-white/5"
+          }`}
+          aria-expanded={open}
+          aria-haspopup="menu"
         >
-          <ExternalLink className="h-4 w-4" />
-          Ver el sitio
-        </Link>
-        <form action={logoutAction}>
-          <button
-            type="submit"
-            className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-sm text-rose-600 transition-colors hover:bg-rose-50"
-          >
-            <LogOut className="h-4 w-4" />
-            Cerrar sesión
-          </button>
-        </form>
+          {/* Avatar */}
+          <div className="from-brand-turquoise to-brand-pink flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br text-xs font-bold text-white ring-2 ring-white/30">
+            {initial}
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[11px] text-white/85">{admin.email}</p>
+            <div className="mt-0.5 flex items-center gap-1">
+              <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-400/25 px-1.5 text-[10px] font-medium text-amber-100">
+                <Crown className="h-2.5 w-2.5" />
+                {roleLabel}
+              </span>
+              <span className="bg-brand-yellow/90 text-brand-purple-dark inline-flex items-center rounded-full px-1.5 text-[10px] font-bold tracking-wide uppercase">
+                Free
+              </span>
+            </div>
+          </div>
+          <ChevronDown
+            className={`h-3 w-3 text-white/60 transition-transform ${open ? "rotate-180" : ""}`}
+          />
+        </button>
+
+        {/* Dropdown menu (aparece ARRIBA del trigger) */}
+        {open && (
+          <>
+            <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+            <div className="from-brand-purple-dark to-brand-purple absolute right-0 bottom-full left-0 z-50 mb-2 overflow-hidden rounded-xl bg-gradient-to-br shadow-2xl ring-1 ring-white/15">
+              <div className="p-1">
+                <Link
+                  href="/admin/password"
+                  onClick={() => {
+                    setOpen(false);
+                    onNavigate();
+                  }}
+                  className="flex items-center gap-2.5 rounded-md px-3 py-2.5 text-sm text-white/85 transition-colors hover:bg-white/10 hover:text-white"
+                >
+                  <KeyRound className="h-3.5 w-3.5 flex-shrink-0 opacity-70" />
+                  Cambiar contraseña
+                </Link>
+                <div className="mx-2 my-1 border-t border-white/10" />
+                <form action={logoutAction}>
+                  <button
+                    type="submit"
+                    className="flex w-full items-center gap-2.5 rounded-md px-3 py-2.5 text-sm text-rose-200 transition-colors hover:bg-rose-500/20 hover:text-white"
+                  >
+                    <LogOut className="h-3.5 w-3.5 flex-shrink-0 opacity-80" />
+                    Cerrar sesión
+                  </button>
+                </form>
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
 }
 
-// ─────────────────── NavGroupItem (leaf O grupo colapsable) ───────────────────
+// ─────────────────── NavGroupItem ───────────────────
 
 function NavGroupItem({
   group,
@@ -483,24 +578,40 @@ function NavGroupItem({
   pathname: string;
   onNavigate: () => void;
 }) {
-  // Leaf: sin items
   if (!group.items) {
     const isActive = group.href
       ? pathname === group.href || pathname.startsWith(group.href + "/")
       : false;
     const Icon = group.icon;
+    const isSoon =
+      group.badge?.tone === "soon" ||
+      group.badge?.tone === "phase4" ||
+      group.badge?.tone === "phase5";
+
+    if (isSoon) {
+      return (
+        <li>
+          <div className="flex cursor-not-allowed items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-white/40">
+            <Icon className="h-4 w-4" />
+            <span className="flex-1">{group.title}</span>
+            {group.badge && <BadgePill badge={group.badge} />}
+          </div>
+        </li>
+      );
+    }
+
     return (
       <li>
         <Link
           href={group.href ?? "#"}
           onClick={onNavigate}
-          className={`flex items-center gap-2.5 rounded-md px-2 py-2 text-sm transition-colors ${
+          className={`flex items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-all ${
             isActive
-              ? "bg-brand-purple/12 text-brand-purple-dark font-semibold"
-              : "text-brand-purple-dark/85 hover:bg-brand-purple/8"
+              ? "text-brand-purple-dark bg-white/95 font-semibold shadow-md shadow-black/10"
+              : "text-white/85 hover:bg-white/10 hover:text-white"
           }`}
         >
-          <Icon className={`h-4 w-4 ${isActive ? "text-brand-purple" : "text-brand-purple/65"}`} />
+          <Icon className={`h-4 w-4 ${isActive ? "text-brand-purple" : ""}`} />
           <span className="flex-1">{group.title}</span>
           {group.badge && <BadgePill badge={group.badge} />}
         </Link>
@@ -508,7 +619,6 @@ function NavGroupItem({
     );
   }
 
-  // Grupo colapsable: con items
   return <NavGroupExpandable group={group} pathname={pathname} onNavigate={onNavigate} />;
 }
 
@@ -532,18 +642,18 @@ function NavGroupExpandable({
         type="button"
         onClick={() => setOpen(!open)}
         aria-expanded={open}
-        className={`flex w-full items-center gap-2.5 rounded-md px-2 py-2 text-sm transition-colors ${
+        className={`flex w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-sm transition-colors ${
           hasActive
-            ? "text-brand-purple-dark font-semibold"
-            : "text-brand-purple-dark/85 hover:bg-brand-purple/8"
+            ? "font-semibold text-white"
+            : "text-white/85 hover:bg-white/10 hover:text-white"
         }`}
       >
-        <Icon className={`h-4 w-4 ${hasActive ? "text-brand-purple" : "text-brand-purple/65"}`} />
+        <Icon className={`h-4 w-4 ${hasActive ? "text-brand-pink" : ""}`} />
         <span className="flex-1 text-left">{group.title}</span>
         <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-180" : ""}`} />
       </button>
       {open && (
-        <ul className="border-brand-purple/15 mt-0.5 ml-3 flex flex-col gap-0.5 border-l pl-2">
+        <ul className="mt-0.5 ml-3 flex flex-col gap-0.5 border-l border-white/20 pl-2">
           {items.map((it) => {
             const isActive = pathname === it.href || pathname.startsWith(it.href + "/");
             const isSoon =
@@ -555,7 +665,7 @@ function NavGroupExpandable({
               <li key={it.href}>
                 {isSoon ? (
                   <div
-                    className="flex cursor-not-allowed items-center gap-2 rounded-md px-2 py-1.5 text-[13px] text-slate-400"
+                    className="flex cursor-not-allowed items-center gap-2 rounded-md px-2 py-1.5 text-[13px] text-white/40"
                     title="Próximamente disponible"
                   >
                     <ItemIcon className="h-3.5 w-3.5" />
@@ -566,18 +676,15 @@ function NavGroupExpandable({
                   <Link
                     href={it.href}
                     onClick={onNavigate}
-                    className={`flex items-center gap-2 rounded-md px-2 py-1.5 text-[13px] transition-colors ${
+                    className={`flex items-center gap-2 rounded-md px-2 py-1.5 text-[13px] transition-all ${
                       isActive
-                        ? "bg-brand-purple/12 text-brand-purple-dark font-semibold"
-                        : "text-brand-purple-dark/80 hover:bg-brand-purple/8"
+                        ? "text-brand-purple-dark bg-white/95 font-semibold shadow-md shadow-black/10"
+                        : "text-white/80 hover:bg-white/10 hover:text-white"
                     }`}
                   >
-                    <ItemIcon
-                      className={`h-3.5 w-3.5 ${isActive ? "text-brand-purple" : "text-brand-purple/55"}`}
-                    />
+                    <ItemIcon className={`h-3.5 w-3.5 ${isActive ? "text-brand-purple" : ""}`} />
                     <span className="flex-1 truncate">{it.label}</span>
                     {it.badge && <BadgePill badge={it.badge} />}
-                    {isActive && <ChevronRight className="h-3 w-3" />}
                   </Link>
                 )}
               </li>
@@ -593,9 +700,9 @@ function NavGroupExpandable({
 
 function BadgePill({ badge }: { badge: Badge }) {
   const styles = {
-    soon: "bg-slate-100 text-slate-500",
-    phase4: "bg-amber-100 text-amber-700",
-    phase5: "bg-indigo-100 text-indigo-700",
+    soon: "bg-white/15 text-white/70",
+    phase4: "bg-amber-400/25 text-amber-100",
+    phase5: "bg-brand-turquoise/25 text-brand-turquoise",
   };
   return (
     <span
@@ -605,6 +712,3 @@ function BadgePill({ badge }: { badge: Badge }) {
     </span>
   );
 }
-
-// Suppress unused import warning (kept for future "live status" expansion)
-void Circle;

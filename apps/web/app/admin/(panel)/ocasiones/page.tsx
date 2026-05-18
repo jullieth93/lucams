@@ -1,11 +1,8 @@
 /*
- * Admin > Ocasiones — PLAN_CATALOG_V2 1.5 + 2.10 + 3.4.
+ * Admin > Ocasiones — PLAN_CATALOG_V2 1.5 + brand palette 2026-05-18.
  *
  * Lista todas las OcasionTag con count de productos asociados.
  * Crear inline + editar individual.
- *
- * UX no-técnico (memoria feedback_admin_ux_no_tecnico): labels español llano,
- * notices con emojis, fechas humanas, confirmaciones antes de archivar.
  */
 
 import type { Metadata } from "next";
@@ -14,7 +11,19 @@ import { redirect } from "next/navigation";
 import { Tag, ChevronRight } from "lucide-react";
 import { listOcasionTags } from "@/features/ocasiones/service";
 import { getCurrentAdmin } from "@/lib/auth";
-import { AdminPage, AdminPageHeader, AdminPageBody, AdminNotice } from "@/components/admin-page";
+import {
+  AdminPage,
+  AdminPageHeader,
+  AdminPageBody,
+  AdminNotice,
+  AdminTable,
+  AdminTableHead,
+  AdminTableBody,
+  AdminTableRow,
+  AdminBadge,
+  AdminEmpty,
+  AdminCard,
+} from "@/components/admin-page";
 import { CreateOcasionForm } from "./create-ocasion-form";
 
 export const metadata: Metadata = {
@@ -55,7 +64,11 @@ export default async function AdminOcasionesPage({ searchParams }: { searchParam
         icon={<Tag className="h-5 w-5" />}
         title="Ocasiones"
         subtitle="Tags transversales que cruzan categorías. Alimentan al bot WhatsApp futuro."
-        breadcrumbs={[{ label: "Admin", href: "/admin/dashboard" }, { label: "Ocasiones" }]}
+        breadcrumbs={[
+          { label: "Admin", href: "/admin/dashboard" },
+          { label: "Catálogo" },
+          { label: "Ocasiones" },
+        ]}
       />
 
       <AdminPageBody>
@@ -66,103 +79,78 @@ export default async function AdminOcasionesPage({ searchParams }: { searchParam
           mamá?&quot;.
         </AdminNotice>
 
-        {created && (
-          <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-            🟢 Ocasión creada.
-          </div>
-        )}
-        {updated && (
-          <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-            🟢 Ocasión actualizada.
-          </div>
-        )}
-        {deleted && (
-          <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
-            🟡 Ocasión archivada.
-          </div>
-        )}
-        {errorMsg && (
-          <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-            🔴 {errorMsg}
-          </div>
-        )}
+        {created && <AdminNotice tone="success">Ocasión creada.</AdminNotice>}
+        {updated && <AdminNotice tone="success">Ocasión actualizada.</AdminNotice>}
+        {deleted && <AdminNotice tone="warning">Ocasión archivada.</AdminNotice>}
+        {errorMsg && <AdminNotice tone="error">{errorMsg}</AdminNotice>}
 
-        <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-          {ocasiones.length === 0 ? (
-            <div className="px-6 py-8 text-center">
-              <Tag className="mx-auto h-10 w-10 text-slate-300" />
-              <p className="mt-2 font-medium text-slate-700">Todavía no hay ocasiones.</p>
-              <p className="mt-1 text-sm text-slate-500">
-                Corre{" "}
-                <code className="rounded bg-slate-100 px-1.5 py-0.5">make seed-ocasiones</code> para
-                poblar las 15 ocasiones base, o crea la primera abajo.
-              </p>
-            </div>
-          ) : (
-            <table className="w-full">
-              <thead className="border-b border-slate-200 bg-slate-50 text-left text-xs tracking-wider text-slate-500 uppercase">
-                <tr>
-                  <th className="px-4 py-3">Nombre</th>
-                  <th className="px-4 py-3">Slug</th>
-                  <th className="px-4 py-3">Mes destacado</th>
-                  <th className="px-4 py-3">Cantidad sugerida</th>
-                  <th className="px-4 py-3">Productos</th>
-                  <th className="px-4 py-3 text-right">Acción</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200">
-                {ocasiones.map((o) => {
-                  const range = o.suggestedQuantityRange as {
-                    min: number;
-                    ideal: number;
-                    max: number;
-                  } | null;
-                  return (
-                    <tr key={o.id} className="hover:bg-slate-50">
-                      <td className="px-4 py-3 text-sm font-medium text-slate-900">
-                        {!o.isActive && (
-                          <span className="mr-2 inline-block rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-600">
-                            Inactiva
-                          </span>
-                        )}
+        {ocasiones.length === 0 ? (
+          <AdminEmpty
+            icon={<Tag className="h-5 w-5" />}
+            title="Todavía no hay ocasiones"
+            description="Corre make seed-ocasiones para poblar las 15 ocasiones base, o crea la primera abajo."
+          />
+        ) : (
+          <AdminTable>
+            <AdminTableHead>
+              <tr>
+                <th className="px-4 py-3 text-left font-semibold">Nombre</th>
+                <th className="px-4 py-3 text-left font-semibold">Slug</th>
+                <th className="px-4 py-3 text-left font-semibold">Mes destacado</th>
+                <th className="px-4 py-3 text-left font-semibold">Cantidad sugerida</th>
+                <th className="px-4 py-3 text-center font-semibold">Productos</th>
+                <th className="px-4 py-3 text-right font-semibold">Acción</th>
+              </tr>
+            </AdminTableHead>
+            <AdminTableBody>
+              {ocasiones.map((o) => {
+                const range = o.suggestedQuantityRange as {
+                  min: number;
+                  ideal: number;
+                  max: number;
+                } | null;
+                return (
+                  <AdminTableRow key={o.id}>
+                    <td className="px-4 py-3">
+                      <div className="text-brand-purple-dark flex items-center gap-2 font-medium">
+                        {!o.isActive && <AdminBadge tone="slate">Inactiva</AdminBadge>}
                         {o.name}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-slate-500">
-                        <code className="rounded bg-slate-100 px-1.5 py-0.5 text-xs">{o.slug}</code>
-                      </td>
-                      <td className="px-4 py-3 text-sm text-slate-600">
-                        {o.monthHint ? MONTH_NAMES[o.monthHint] : "—"}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-slate-600">
-                        {range ? `${range.min} / ${range.ideal} / ${range.max}` : "—"}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-slate-600">
-                        <span className="inline-flex items-center gap-1">
-                          <Tag className="h-3 w-3" />
-                          {o._count.products}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-right">
-                        <Link
-                          href={`/admin/ocasiones/${o.id}`}
-                          className="inline-flex items-center gap-1 text-sm font-medium text-purple-700 hover:text-purple-900"
-                        >
-                          Editar
-                          <ChevronRight className="h-4 w-4" />
-                        </Link>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          )}
-        </div>
+                      </div>
+                    </td>
+                    <td className="text-brand-purple-dark/75 px-4 py-3 font-mono text-xs">
+                      {o.slug}
+                    </td>
+                    <td className="text-brand-purple-dark/85 px-4 py-3 text-sm">
+                      {o.monthHint ? MONTH_NAMES[o.monthHint] : "—"}
+                    </td>
+                    <td className="text-brand-purple-dark/85 px-4 py-3 text-sm">
+                      {range ? `${range.min} / ${range.ideal} / ${range.max}` : "—"}
+                    </td>
+                    <td className="text-brand-purple-dark/85 px-4 py-3 text-center text-sm tabular-nums">
+                      {o._count.products}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <Link
+                        href={`/admin/ocasiones/${o.id}`}
+                        className="text-brand-purple hover:text-brand-purple-dark inline-flex items-center gap-1 text-xs font-medium"
+                      >
+                        Editar
+                        <ChevronRight className="h-3.5 w-3.5" />
+                      </Link>
+                    </td>
+                  </AdminTableRow>
+                );
+              })}
+            </AdminTableBody>
+          </AdminTable>
+        )}
 
-        <div className="rounded-lg border border-slate-200 bg-white p-6">
-          <h2 className="mb-4 text-base font-bold text-slate-900">Crear ocasión nueva</h2>
+        <AdminCard className="p-5">
+          <h3 className="text-brand-purple-dark font-display mb-3 text-base font-bold">
+            Crear ocasión nueva
+          </h3>
           <CreateOcasionForm />
-        </div>
+        </AdminCard>
       </AdminPageBody>
     </AdminPage>
   );

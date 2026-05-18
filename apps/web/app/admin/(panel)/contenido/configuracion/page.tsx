@@ -1,9 +1,8 @@
 /*
- * Admin > Contenido > Configuración del sitio.
+ * Admin > Contenido > Configuración del sitio (brand 2026-05-18).
  *
  * Lista todos los SiteSettings agrupados por categoría. Cada fila se
- * edita inline (sin abrir formulario aparte). Edit pone toast al
- * guardar.
+ * edita inline. Cada cambio queda registrado en auditoría.
  */
 
 import type { Metadata } from "next";
@@ -17,9 +16,18 @@ import {
   MessageCircle,
   Copyright,
   Megaphone,
+  Cog,
 } from "lucide-react";
 import { listSiteSettings } from "@/features/cms/service";
 import { getCurrentAdmin } from "@/lib/auth";
+import {
+  AdminPage,
+  AdminPageHeader,
+  AdminPageBody,
+  AdminCard,
+  AdminEmpty,
+  AdminNotice,
+} from "@/components/admin-page";
 import { SettingRow } from "./setting-row";
 
 export const metadata: Metadata = {
@@ -80,20 +88,6 @@ export default async function ConfiguracionPage() {
 
   const settings = await listSiteSettings();
 
-  if (settings.length === 0) {
-    return (
-      <div className="rounded-lg border border-dashed border-slate-300 bg-white px-6 py-14 text-center">
-        <Mail className="mx-auto h-8 w-8 text-slate-400" />
-        <p className="mt-3 font-medium text-slate-700">Todavía no hay configuraciones cargadas.</p>
-        <p className="mt-1 text-sm text-slate-500">
-          Lo normal es que vengan pre-cargadas al instalar el sitio (correo, horario, número de
-          WhatsApp). Pídele a soporte técnico que las cargue desde el seed de configuración.
-        </p>
-      </div>
-    );
-  }
-
-  // Agrupar por categoría
   const grouped = settings.reduce(
     (acc, s) => {
       (acc[s.category] ??= []).push(s);
@@ -105,44 +99,63 @@ export default async function ConfiguracionPage() {
   const categories = Object.keys(grouped).sort();
 
   return (
-    <div className="space-y-6">
-      <p className="text-sm text-slate-600">
-        Cambios guardados aquí se reflejan en el sitio inmediatamente. Cada cambio queda registrado
-        en el historial de admin.
-      </p>
+    <AdminPage>
+      <AdminPageHeader
+        icon={<Cog className="h-5 w-5" />}
+        title="Configuración del sitio"
+        subtitle="Cambios guardados aquí se reflejan en el sitio inmediatamente y quedan registrados en auditoría."
+        breadcrumbs={[
+          { label: "Admin", href: "/admin/dashboard" },
+          { label: "Configuración" },
+          { label: "General" },
+        ]}
+      />
 
-      {categories.map((cat) => {
-        const info = CATEGORY_INFO[cat] ?? {
-          label: cat,
-          icon: Hash,
-          desc: "",
-        };
-        return (
-          <section key={cat}>
-            <div className="mb-2">
-              <h2 className="text-sm font-semibold text-slate-700">{info.label}</h2>
-              {info.desc && <p className="text-xs text-slate-500">{info.desc}</p>}
-            </div>
-            <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-              <ul className="divide-y divide-slate-100">
-                {grouped[cat].map((s) => (
-                  <SettingRow
-                    key={s.id}
-                    setting={{
-                      id: s.id,
-                      key: s.key,
-                      value: s.value,
-                      valueType: s.valueType,
-                      label: s.label,
-                      description: s.description,
-                    }}
-                  />
-                ))}
-              </ul>
-            </div>
-          </section>
-        );
-      })}
-    </div>
+      <AdminPageBody>
+        {settings.length === 0 ? (
+          <AdminEmpty
+            icon={<Cog className="h-5 w-5" />}
+            title="Todavía no hay configuraciones cargadas"
+            description="Lo normal es que vengan pre-cargadas al instalar el sitio (correo, horario, número de WhatsApp). Pídele a soporte técnico que las cargue desde el seed."
+          />
+        ) : (
+          <>
+            <AdminNotice tone="info">
+              Hay <strong>{settings.length}</strong> configuraciones disponibles agrupadas en{" "}
+              <strong>{categories.length}</strong> categorías.
+            </AdminNotice>
+
+            {categories.map((cat) => {
+              const info = CATEGORY_INFO[cat] ?? { label: cat, icon: Hash, desc: "" };
+              return (
+                <section key={cat}>
+                  <div className="mb-2.5">
+                    <h2 className="text-brand-purple-dark text-sm font-bold">{info.label}</h2>
+                    {info.desc && <p className="text-brand-purple-dark/60 text-xs">{info.desc}</p>}
+                  </div>
+                  <AdminCard className="overflow-hidden">
+                    <ul className="divide-brand-purple/10 divide-y">
+                      {grouped[cat].map((s) => (
+                        <SettingRow
+                          key={s.id}
+                          setting={{
+                            id: s.id,
+                            key: s.key,
+                            value: s.value,
+                            valueType: s.valueType,
+                            label: s.label,
+                            description: s.description,
+                          }}
+                        />
+                      ))}
+                    </ul>
+                  </AdminCard>
+                </section>
+              );
+            })}
+          </>
+        )}
+      </AdminPageBody>
+    </AdminPage>
   );
 }

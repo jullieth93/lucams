@@ -1,17 +1,24 @@
 /*
- * Admin > Categorías — Listado simple + crear inline.
- *
- * Las categorías son menos numerosas que los productos (típicamente
- * <20 en un e-commerce). Un solo screen con tabla + form de crear
- * abajo basta. Edición inline (cada row tiene su form). No paginación.
+ * Admin > Categorías — Listado + crear inline (brand palette 2026-05-18).
  */
 
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { Layers, Trash2 } from "lucide-react";
-import { AdminPage, AdminPageHeader, AdminPageBody } from "@/components/admin-page";
+import {
+  AdminPage,
+  AdminPageHeader,
+  AdminPageBody,
+  AdminTable,
+  AdminTableHead,
+  AdminTableBody,
+  AdminTableRow,
+  AdminBadge,
+  AdminEmpty,
+  AdminCard,
+  AdminNotice,
+} from "@/components/admin-page";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { listCategories } from "@/features/categories/service";
 import { getCurrentAdmin } from "@/lib/auth";
 import { CreateCategoryForm } from "./create-category-form";
@@ -43,110 +50,99 @@ export default async function AdminCategoriasPage({
         icon={<Layers className="h-5 w-5" />}
         title="Categorías"
         subtitle="Agrupa productos por tipo. Las sub-categorías se crean asignando categoría padre."
-        breadcrumbs={[{ label: "Admin", href: "/admin/dashboard" }, { label: "Categorías" }]}
+        breadcrumbs={[
+          { label: "Admin", href: "/admin/dashboard" },
+          { label: "Catálogo" },
+          { label: "Categorías" },
+        ]}
       />
 
       <AdminPageBody>
-        {justCreated && (
-          <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-            ✓ Categoría creada.
-          </div>
-        )}
-        {justDeleted && (
-          <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
-            Categoría archivada.
-          </div>
-        )}
-        {errorMsg && (
-          <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-            {errorMsg}
-          </div>
+        {justCreated && <AdminNotice tone="success">Categoría creada correctamente.</AdminNotice>}
+        {justDeleted && <AdminNotice tone="warning">Categoría archivada.</AdminNotice>}
+        {errorMsg && <AdminNotice tone="error">{errorMsg}</AdminNotice>}
+
+        {categories.length === 0 ? (
+          <AdminEmpty
+            icon={<Layers className="h-5 w-5" />}
+            title="Todavía no hay categorías"
+            description="Crea la primera abajo para empezar a categorizar productos."
+          />
+        ) : (
+          <AdminTable>
+            <AdminTableHead>
+              <tr>
+                <th className="w-16 px-4 py-3 text-left font-semibold">Orden</th>
+                <th className="px-4 py-3 text-left font-semibold">Nombre</th>
+                <th className="px-4 py-3 text-left font-semibold">Slug</th>
+                <th className="px-4 py-3 text-center font-semibold">Productos</th>
+                <th className="px-4 py-3 text-center font-semibold">Estado</th>
+                <th className="px-4 py-3" />
+              </tr>
+            </AdminTableHead>
+            <AdminTableBody>
+              {categories.map((c) => (
+                <AdminTableRow key={c.id}>
+                  <td className="text-brand-purple-dark/55 px-4 py-3 tabular-nums">{c.order}</td>
+                  <td className="px-4 py-3">
+                    <div className="text-brand-purple-dark font-medium">{c.name}</div>
+                    {c.description && (
+                      <div className="text-brand-purple-dark/55 line-clamp-1 text-xs">
+                        {c.description}
+                      </div>
+                    )}
+                  </td>
+                  <td className="text-brand-purple-dark/75 px-4 py-3 font-mono text-xs">
+                    /{c.slug}
+                  </td>
+                  <td className="text-brand-purple-dark/85 px-4 py-3 text-center tabular-nums">
+                    {c._count.products}
+                  </td>
+                  <td className="px-4 py-3 text-center">
+                    {c.isActive ? (
+                      <AdminBadge tone="emerald">Activa</AdminBadge>
+                    ) : (
+                      <AdminBadge tone="slate">Inactiva</AdminBadge>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <form action={deleteCategoryAction} className="inline">
+                      <input type="hidden" name="id" value={c.id} />
+                      <Button
+                        type="submit"
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 px-2 text-rose-600 hover:bg-rose-50"
+                        aria-label={`Archivar ${c.name}`}
+                        disabled={c._count.products > 0}
+                        title={
+                          c._count.products > 0
+                            ? "Tiene productos asociados — moverlos primero"
+                            : "Archivar"
+                        }
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </form>
+                  </td>
+                </AdminTableRow>
+              ))}
+            </AdminTableBody>
+          </AdminTable>
         )}
 
-        <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-          {categories.length === 0 ? (
-            <div className="px-6 py-8 text-center">
-              <p className="font-medium text-slate-700">Todavía no hay categorías.</p>
-              <p className="mt-1 text-sm text-slate-500">
-                Crea la primera abajo para empezar a categorizar productos.
-              </p>
-            </div>
-          ) : (
-            <table className="w-full text-sm">
-              <thead className="bg-slate-50 text-xs tracking-wider text-slate-600 uppercase">
-                <tr>
-                  <th className="w-16 px-4 py-3 text-left font-medium">Orden</th>
-                  <th className="px-4 py-3 text-left font-medium">Nombre</th>
-                  <th className="px-4 py-3 text-left font-medium">Slug</th>
-                  <th className="px-4 py-3 text-center font-medium">Productos</th>
-                  <th className="px-4 py-3 text-center font-medium">Estado</th>
-                  <th className="px-4 py-3"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {categories.map((c) => (
-                  <tr key={c.id} className="hover:bg-slate-50">
-                    <td className="px-4 py-3 text-slate-500 tabular-nums">{c.order}</td>
-                    <td className="px-4 py-3">
-                      <div className="font-medium text-slate-900">{c.name}</div>
-                      {c.description && (
-                        <div className="line-clamp-1 text-xs text-slate-500">{c.description}</div>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 font-mono text-xs text-slate-700">/{c.slug}</td>
-                    <td className="px-4 py-3 text-center text-slate-700 tabular-nums">
-                      {c._count.products}
-                    </td>
-                    <td className="px-4 py-3 text-center">
-                      {c.isActive ? (
-                        <span className="inline-block rounded bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
-                          Activa
-                        </span>
-                      ) : (
-                        <span className="inline-block rounded bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
-                          Inactiva
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <form action={deleteCategoryAction} className="inline">
-                        <input type="hidden" name="id" value={c.id} />
-                        <Button
-                          type="submit"
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 px-2 text-red-700 hover:bg-red-50"
-                          aria-label={`Archivar ${c.name}`}
-                          disabled={c._count.products > 0}
-                          title={
-                            c._count.products > 0
-                              ? "Tiene productos asociados — moverlos primero"
-                              : "Archivar"
-                          }
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      </form>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-
-        <Card className="border-slate-200">
-          <CardHeader>
-            <CardTitle className="text-base text-slate-900">Crear categoría</CardTitle>
-            <CardDescription className="text-slate-600">
+        <AdminCard className="p-5">
+          <div className="mb-3">
+            <h3 className="text-brand-purple-dark font-display text-base font-bold">
+              Crear nueva categoría
+            </h3>
+            <p className="text-brand-purple-dark/60 mt-0.5 text-sm">
               Las categorías agrupan productos por tipo (ej. Magnéticos foto, Personalizados marca,
               Decorativos, Pack).
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <CreateCategoryForm />
-          </CardContent>
-        </Card>
+            </p>
+          </div>
+          <CreateCategoryForm />
+        </AdminCard>
       </AdminPageBody>
     </AdminPage>
   );

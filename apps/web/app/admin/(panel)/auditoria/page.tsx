@@ -19,7 +19,17 @@ import { Activity, ChevronLeft, ChevronRight } from "lucide-react";
 import type { Prisma } from "@lucams/db";
 import { prisma } from "@/lib/db";
 import { getCurrentAdmin } from "@/lib/auth";
-import { AdminPage, AdminPageHeader, AdminPageBody } from "@/components/admin-page";
+import {
+  AdminPage,
+  AdminPageHeader,
+  AdminPageBody,
+  AdminCard,
+  AdminTable,
+  AdminTableHead,
+  AdminTableBody,
+  AdminTableRow,
+  AdminButton,
+} from "@/components/admin-page";
 
 export const metadata: Metadata = {
   title: "Auditoría",
@@ -92,24 +102,31 @@ export default async function AuditoriaPage({ searchParams }: { searchParams: Se
             {total === 1 ? "evento registrado" : "eventos registrados"}.
           </>
         }
-        breadcrumbs={[{ label: "Admin", href: "/admin/dashboard" }, { label: "Auditoría" }]}
+        breadcrumbs={[
+          { label: "Admin", href: "/admin/dashboard" },
+          { label: "Analítica" },
+          { label: "Auditoría" },
+        ]}
       />
 
       <AdminPageBody>
         {/* Filtros */}
         <form
           method="GET"
-          className="mb-4 grid grid-cols-1 gap-3 rounded-lg border border-slate-200 bg-white p-4 sm:grid-cols-2 lg:grid-cols-5"
+          className="border-brand-purple/10 grid grid-cols-1 gap-3 rounded-xl border bg-white p-4 shadow-sm sm:grid-cols-2 lg:grid-cols-5"
         >
           <div>
-            <label htmlFor="f-admin" className="mb-1 block text-xs font-medium text-slate-600">
+            <label
+              htmlFor="f-admin"
+              className="text-brand-purple-dark/70 mb-1 block text-xs font-semibold"
+            >
               Admin
             </label>
             <select
               id="f-admin"
               name="admin"
               defaultValue={filterAdmin ?? ""}
-              className="w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm"
+              className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 w-full rounded-md border bg-white px-2 py-1.5 text-sm focus:ring-2 focus:outline-none"
             >
               <option value="">Todos</option>
               {admins.map((a) => (
@@ -120,7 +137,10 @@ export default async function AuditoriaPage({ searchParams }: { searchParams: Se
             </select>
           </div>
           <div>
-            <label htmlFor="f-action" className="mb-1 block text-xs font-medium text-slate-600">
+            <label
+              htmlFor="f-action"
+              className="text-brand-purple-dark/70 mb-1 block text-xs font-semibold"
+            >
               Acción (prefix)
             </label>
             <input
@@ -128,11 +148,14 @@ export default async function AuditoriaPage({ searchParams }: { searchParams: Se
               name="action"
               defaultValue={filterAction ?? ""}
               placeholder="ej. cms.block"
-              className="w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm"
+              className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 w-full rounded-md border bg-white px-2 py-1.5 text-sm focus:ring-2 focus:outline-none"
             />
           </div>
           <div>
-            <label htmlFor="f-entity" className="mb-1 block text-xs font-medium text-slate-600">
+            <label
+              htmlFor="f-entity"
+              className="text-brand-purple-dark/70 mb-1 block text-xs font-semibold"
+            >
               Tipo
             </label>
             <input
@@ -140,11 +163,14 @@ export default async function AuditoriaPage({ searchParams }: { searchParams: Se
               name="entity"
               defaultValue={filterEntity ?? ""}
               placeholder="ej. Product"
-              className="w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm"
+              className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 w-full rounded-md border bg-white px-2 py-1.5 text-sm focus:ring-2 focus:outline-none"
             />
           </div>
           <div>
-            <label htmlFor="f-from" className="mb-1 block text-xs font-medium text-slate-600">
+            <label
+              htmlFor="f-from"
+              className="text-brand-purple-dark/70 mb-1 block text-xs font-semibold"
+            >
               Desde
             </label>
             <input
@@ -152,11 +178,14 @@ export default async function AuditoriaPage({ searchParams }: { searchParams: Se
               name="from"
               type="date"
               defaultValue={fromDate ?? ""}
-              className="w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm"
+              className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 w-full rounded-md border bg-white px-2 py-1.5 text-sm focus:ring-2 focus:outline-none"
             />
           </div>
           <div>
-            <label htmlFor="f-to" className="mb-1 block text-xs font-medium text-slate-600">
+            <label
+              htmlFor="f-to"
+              className="text-brand-purple-dark/70 mb-1 block text-xs font-semibold"
+            >
               Hasta
             </label>
             <input
@@ -164,19 +193,16 @@ export default async function AuditoriaPage({ searchParams }: { searchParams: Se
               name="to"
               type="date"
               defaultValue={toDate ?? ""}
-              className="w-full rounded-md border border-slate-300 bg-white px-2 py-1.5 text-sm"
+              className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 w-full rounded-md border bg-white px-2 py-1.5 text-sm focus:ring-2 focus:outline-none"
             />
           </div>
           <div className="flex items-end gap-2 sm:col-span-2 lg:col-span-5">
-            <button
-              type="submit"
-              className="rounded-md bg-slate-800 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-900"
-            >
+            <AdminButton type="submit" variant="primary" size="sm">
               Aplicar filtros
-            </button>
+            </AdminButton>
             <Link
               href="/admin/auditoria"
-              className="text-xs font-semibold text-slate-500 hover:text-slate-700"
+              className="text-brand-purple-dark/60 hover:text-brand-purple-dark text-xs font-semibold"
             >
               Limpiar
             </Link>
@@ -184,83 +210,83 @@ export default async function AuditoriaPage({ searchParams }: { searchParams: Se
         </form>
 
         {/* Tabla */}
-        <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-          <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-slate-200 text-sm">
-              <thead className="bg-slate-100 text-xs tracking-wider text-slate-600 uppercase">
+        <AdminCard className="overflow-x-auto p-0">
+          <AdminTable className="border-0 shadow-none">
+            <AdminTableHead>
+              <tr>
+                <th className="px-4 py-3 text-left font-semibold">Cuándo</th>
+                <th className="px-4 py-3 text-left font-semibold">Admin</th>
+                <th className="px-4 py-3 text-left font-semibold">Acción</th>
+                <th className="px-4 py-3 text-left font-semibold">Entidad</th>
+                <th className="px-4 py-3 text-left font-semibold">Metadata</th>
+                <th className="px-4 py-3 text-left font-semibold">IP</th>
+              </tr>
+            </AdminTableHead>
+            <AdminTableBody>
+              {logs.length === 0 ? (
                 <tr>
-                  <th className="px-4 py-2 text-left">Cuándo</th>
-                  <th className="px-4 py-2 text-left">Admin</th>
-                  <th className="px-4 py-2 text-left">Acción</th>
-                  <th className="px-4 py-2 text-left">Entidad</th>
-                  <th className="px-4 py-2 text-left">Metadata</th>
-                  <th className="px-4 py-2 text-left">IP</th>
+                  <td colSpan={6} className="text-brand-purple-dark/55 px-4 py-10 text-center">
+                    Sin eventos con los filtros aplicados.
+                  </td>
                 </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200">
-                {logs.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="px-4 py-10 text-center text-slate-500">
-                      Sin eventos con los filtros aplicados.
+              ) : (
+                logs.map((row) => (
+                  <AdminTableRow key={row.id}>
+                    <td className="text-brand-purple-dark/75 px-4 py-2 text-xs">
+                      {row.createdAt.toLocaleString("es-CO", {
+                        dateStyle: "short",
+                        timeStyle: "short",
+                      })}
                     </td>
-                  </tr>
-                ) : (
-                  logs.map((row) => (
-                    <tr key={row.id} className="hover:bg-slate-50">
-                      <td className="px-4 py-2 text-xs text-slate-600">
-                        {row.createdAt.toLocaleString("es-CO", {
-                          dateStyle: "short",
-                          timeStyle: "short",
-                        })}
-                      </td>
-                      <td className="px-4 py-2 text-xs">
-                        {adminMap.get(row.actorId) ?? (
-                          <span className="font-mono text-slate-400">
-                            {row.actorId.slice(0, 8)}
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-4 py-2 font-mono text-xs">
-                        <span className="rounded bg-slate-100 px-1.5 py-0.5">{row.action}</span>
-                      </td>
-                      <td className="px-4 py-2 text-xs">
-                        <span className="text-slate-700">{row.entityType}</span>
-                        <span className="ml-1 font-mono text-slate-400">
-                          {row.entityId.slice(0, 8)}
+                    <td className="text-brand-purple-dark px-4 py-2 text-xs">
+                      {adminMap.get(row.actorId) ?? (
+                        <span className="text-brand-purple-dark/40 font-mono">
+                          {row.actorId.slice(0, 8)}
                         </span>
-                      </td>
-                      <td className="px-4 py-2 text-xs">
-                        <details className="cursor-pointer">
-                          <summary className="text-slate-500 hover:text-slate-700">
-                            {Object.keys(row.metadata ?? {}).length} campos
-                          </summary>
-                          <pre className="mt-1 max-w-md overflow-x-auto rounded bg-slate-100 p-2 text-[10px] leading-tight">
-                            {JSON.stringify(row.metadata, null, 2)}
-                          </pre>
-                        </details>
-                      </td>
-                      <td className="px-4 py-2 font-mono text-xs text-slate-500">
-                        {row.ip ?? "—"}
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
-        </div>
+                      )}
+                    </td>
+                    <td className="px-4 py-2 font-mono text-xs">
+                      <span className="bg-brand-purple/10 text-brand-purple-dark rounded px-1.5 py-0.5">
+                        {row.action}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2 text-xs">
+                      <span className="text-brand-purple-dark/85">{row.entityType}</span>
+                      <span className="text-brand-purple-dark/40 ml-1 font-mono">
+                        {row.entityId.slice(0, 8)}
+                      </span>
+                    </td>
+                    <td className="px-4 py-2 text-xs">
+                      <details className="cursor-pointer">
+                        <summary className="text-brand-purple-dark/55 hover:text-brand-purple-dark">
+                          {Object.keys(row.metadata ?? {}).length} campos
+                        </summary>
+                        <pre className="bg-brand-purple/5 mt-1 max-w-md overflow-x-auto rounded p-2 text-[10px] leading-tight">
+                          {JSON.stringify(row.metadata, null, 2)}
+                        </pre>
+                      </details>
+                    </td>
+                    <td className="text-brand-purple-dark/55 px-4 py-2 font-mono text-xs">
+                      {row.ip ?? "—"}
+                    </td>
+                  </AdminTableRow>
+                ))
+              )}
+            </AdminTableBody>
+          </AdminTable>
+        </AdminCard>
 
         {/* Pagination */}
         {totalPages > 1 && (
-          <nav className="mt-4 flex items-center justify-between" aria-label="Paginación">
-            <p className="text-xs text-slate-600">
+          <nav className="flex items-center justify-between" aria-label="Paginación">
+            <p className="text-brand-purple-dark/70 text-xs">
               Página {page} de {totalPages}
             </p>
             <div className="flex gap-2">
               {page > 1 && (
                 <Link
                   href={`?${new URLSearchParams({ ...buildParamsObject(sp), page: String(page - 1) }).toString()}`}
-                  className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                  className="border-brand-purple/20 text-brand-purple-dark hover:bg-brand-purple/5 inline-flex items-center gap-1 rounded-md border bg-white px-3 py-1.5 text-xs font-semibold"
                 >
                   <ChevronLeft className="h-3 w-3" />
                   Anterior
@@ -269,7 +295,7 @@ export default async function AuditoriaPage({ searchParams }: { searchParams: Se
               {page < totalPages && (
                 <Link
                   href={`?${new URLSearchParams({ ...buildParamsObject(sp), page: String(page + 1) }).toString()}`}
-                  className="inline-flex items-center gap-1 rounded-md border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
+                  className="border-brand-purple/20 text-brand-purple-dark hover:bg-brand-purple/5 inline-flex items-center gap-1 rounded-md border bg-white px-3 py-1.5 text-xs font-semibold"
                 >
                   Siguiente
                   <ChevronRight className="h-3 w-3" />

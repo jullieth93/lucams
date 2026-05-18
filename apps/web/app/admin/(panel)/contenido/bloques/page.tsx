@@ -1,22 +1,32 @@
 /*
- * Admin > Contenido > Bloques — Lista todos los bloques editables.
+ * Admin > Contenido > Bloques — Lista todos los bloques editables (brand 2026-05-18).
  *
- * Agrupados por categoría con badge de estado:
- *  🟢 Publicado · 🟡 Borrador · ⚫ Archivado
- *
- * Click en cualquier fila → editor.
+ * Agrupados por categoría con badges de estado:
+ *  🟢 Publicado · 🟡 Borrador
  */
 
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { FileText, Plus } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { FileText, Plus, ChevronRight } from "lucide-react";
+import {
+  AdminPage,
+  AdminPageHeader,
+  AdminPageBody,
+  AdminTable,
+  AdminTableHead,
+  AdminTableBody,
+  AdminTableRow,
+  AdminBadge,
+  AdminEmpty,
+  AdminButton,
+  AdminNotice,
+} from "@/components/admin-page";
 import { getCurrentAdmin } from "@/lib/auth";
 import { listCmsBlocks } from "@/features/cms/service";
 
 export const metadata: Metadata = {
-  title: "Bloques de contenido",
+  title: "Base de conocimiento",
 };
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -44,7 +54,6 @@ export default async function BloquesListPage({ searchParams }: { searchParams: 
 
   const blocks = await listCmsBlocks({});
 
-  // Agrupar por categoría
   const grouped = blocks.reduce(
     (acc, b) => {
       (acc[b.category] ??= []).push(b);
@@ -56,110 +65,119 @@ export default async function BloquesListPage({ searchParams }: { searchParams: 
   const categories = Object.keys(grouped).sort();
 
   return (
-    <div className="space-y-5">
-      {justCreated && (
-        <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700">
-          ✓ Bloque creado. Ya puedes editarlo y publicarlo cuando quieras.
-        </div>
-      )}
-      {justArchived && (
-        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
-          Bloque archivado. El sitio público dejará de verlo (cae al texto por defecto).
-        </div>
-      )}
-
-      <div className="flex items-end justify-between gap-3">
-        <p className="text-sm text-slate-600">
-          {blocks.length === 0
+    <AdminPage>
+      <AdminPageHeader
+        icon={<FileText className="h-5 w-5" />}
+        title="Base de conocimiento"
+        subtitle={
+          blocks.length === 0
             ? "Todavía no hay bloques de contenido."
-            : `${blocks.length} bloque${blocks.length === 1 ? "" : "s"} en total.`}
-        </p>
-        <Link href="/admin/contenido/bloques/nuevo">
-          <Button className="bg-slate-900 text-white hover:bg-slate-800">
-            <Plus className="mr-1.5 h-4 w-4" />
+            : `${blocks.length} bloque${blocks.length === 1 ? "" : "s"} de contenido editables — alimentan storefront, emails y el bot futuro.`
+        }
+        breadcrumbs={[
+          { label: "Admin", href: "/admin/dashboard" },
+          { label: "IA y Conocimiento" },
+          { label: "Bloques" },
+        ]}
+        actions={
+          <AdminButton href="/admin/contenido/bloques/nuevo" variant="primary">
+            <Plus className="h-4 w-4" />
             Crear bloque nuevo
-          </Button>
-        </Link>
-      </div>
+          </AdminButton>
+        }
+      />
 
-      {blocks.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-slate-300 bg-white px-6 py-14 text-center">
-          <FileText className="mx-auto h-8 w-8 text-slate-400" />
-          <p className="mt-3 font-medium text-slate-700">Aún no hay bloques de contenido</p>
-          <p className="mt-1 text-sm text-slate-500">
-            Los bloques son textos largos del sitio (avisos legales, páginas de ayuda, mensajes del
-            home).
-          </p>
-          <p className="mt-1 text-sm text-slate-500">
-            Lo normal es que vengan pre-cargados al instalar el sitio. Si llegaste acá vacío,
-            créalos o avisa a soporte técnico.
-          </p>
-        </div>
-      ) : (
-        <div className="space-y-6">
-          {categories.map((cat) => (
-            <section key={cat}>
-              <h2 className="mb-2 text-sm font-semibold text-slate-700">
-                {CATEGORY_LABELS[cat] ?? cat}{" "}
-                <span className="text-xs font-normal text-slate-500">({grouped[cat].length})</span>
-              </h2>
-              <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-                <table className="w-full text-sm">
-                  <thead className="bg-slate-50 text-xs tracking-wider text-slate-600 uppercase">
+      <AdminPageBody>
+        {justCreated && (
+          <AdminNotice tone="success">
+            Bloque creado. Ya puedes editarlo y publicarlo cuando quieras.
+          </AdminNotice>
+        )}
+        {justArchived && (
+          <AdminNotice tone="warning">
+            Bloque archivado. El sitio público dejará de mostrarlo (cae al texto por defecto).
+          </AdminNotice>
+        )}
+
+        {blocks.length === 0 ? (
+          <AdminEmpty
+            icon={<FileText className="h-5 w-5" />}
+            title="Aún no hay bloques de contenido"
+            description="Los bloques son textos largos del sitio (avisos legales, páginas de ayuda, mensajes del home). Lo normal es que vengan pre-cargados al instalar el sitio."
+            action={
+              <AdminButton href="/admin/contenido/bloques/nuevo" variant="primary">
+                <Plus className="h-4 w-4" />
+                Crear primer bloque
+              </AdminButton>
+            }
+          />
+        ) : (
+          <div className="space-y-6">
+            {categories.map((cat) => (
+              <section key={cat}>
+                <h2 className="text-brand-purple-dark mb-2.5 flex items-center gap-2 text-sm font-bold">
+                  <span>{CATEGORY_LABELS[cat] ?? cat}</span>
+                  <span className="text-brand-purple-dark/50 text-xs font-normal">
+                    ({grouped[cat].length})
+                  </span>
+                </h2>
+                <AdminTable>
+                  <AdminTableHead>
                     <tr>
-                      <th className="px-4 py-3 text-left font-medium">Bloque</th>
-                      <th className="px-4 py-3 text-left font-medium">Identificador</th>
-                      <th className="px-4 py-3 text-center font-medium">Estado</th>
-                      <th className="px-4 py-3 text-center font-medium">Versión</th>
-                      <th className="px-4 py-3"></th>
+                      <th className="px-4 py-3 text-left font-semibold">Bloque</th>
+                      <th className="px-4 py-3 text-left font-semibold">Identificador</th>
+                      <th className="px-4 py-3 text-center font-semibold">Estado</th>
+                      <th className="px-4 py-3 text-center font-semibold">Versión</th>
+                      <th className="px-4 py-3" />
                     </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
+                  </AdminTableHead>
+                  <AdminTableBody>
                     {grouped[cat].map((b) => (
-                      <tr key={b.id} className="hover:bg-slate-50">
+                      <AdminTableRow key={b.id}>
                         <td className="px-4 py-3">
                           <Link
                             href={`/admin/contenido/bloques/${b.id}`}
-                            className="font-medium text-slate-900 hover:text-slate-700"
+                            className="text-brand-purple-dark hover:text-brand-purple font-medium"
                           >
                             {b.title ?? b.key}
                           </Link>
                           {b.description && (
-                            <p className="line-clamp-1 text-xs text-slate-500">{b.description}</p>
+                            <p className="text-brand-purple-dark/55 line-clamp-1 text-xs">
+                              {b.description}
+                            </p>
                           )}
                         </td>
-                        <td className="px-4 py-3 font-mono text-xs text-slate-600">{b.key}</td>
+                        <td className="text-brand-purple-dark/75 px-4 py-3 font-mono text-xs">
+                          {b.key}
+                        </td>
                         <td className="px-4 py-3 text-center">
                           {b.isPublished ? (
-                            <span className="inline-block rounded bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700">
-                              🟢 Publicado
-                            </span>
+                            <AdminBadge tone="emerald">🟢 Publicado</AdminBadge>
                           ) : (
-                            <span className="inline-block rounded bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-700">
-                              🟡 Borrador
-                            </span>
+                            <AdminBadge tone="amber">🟡 Borrador</AdminBadge>
                           )}
                         </td>
-                        <td className="px-4 py-3 text-center text-xs text-slate-500 tabular-nums">
+                        <td className="text-brand-purple-dark/65 px-4 py-3 text-center text-xs tabular-nums">
                           {b.publishedVersion?.version ? `v${b.publishedVersion.version}` : "—"}
                         </td>
                         <td className="px-4 py-3 text-right">
                           <Link
                             href={`/admin/contenido/bloques/${b.id}`}
-                            className="text-sm font-medium text-slate-700 hover:text-slate-900"
+                            className="text-brand-purple hover:text-brand-purple-dark inline-flex items-center gap-1 text-xs font-medium"
                           >
-                            Editar →
+                            Editar
+                            <ChevronRight className="h-3.5 w-3.5" />
                           </Link>
                         </td>
-                      </tr>
+                      </AdminTableRow>
                     ))}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-          ))}
-        </div>
-      )}
-    </div>
+                  </AdminTableBody>
+                </AdminTable>
+              </section>
+            ))}
+          </div>
+        )}
+      </AdminPageBody>
+    </AdminPage>
   );
 }

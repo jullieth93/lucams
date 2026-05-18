@@ -210,6 +210,51 @@ h6 {
   font-variant-numeric: tabular-nums;
 }
 
+/* ─────────── Admin utilities (inspirado en commerce-ops Kaiu) ─────────── */
+
+/* Card con elevación al hover (transición sutil 200ms) */
+.card-hover {
+  transition: all 0.2s ease;
+}
+.card-hover:hover {
+  border-color: color-mix(in srgb, var(--brand-purple) 35%, transparent);
+  box-shadow: 0 8px 24px -8px color-mix(in srgb, var(--brand-purple) 25%, transparent);
+  transform: translateY(-2px);
+}
+
+/* Glow brand sutil para logos / avatars */
+.glow-brand {
+  box-shadow: 0 0 20px color-mix(in srgb, var(--brand-purple) 30%, transparent);
+}
+
+/* Texto degradado brand-purple → brand-pink → brand-coral */
+.text-gradient-brand {
+  background: linear-gradient(135deg, var(--brand-purple), var(--brand-pink), var(--brand-coral));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* Gradient brand horizontal (botones premium) */
+.bg-gradient-brand {
+  background: linear-gradient(135deg, var(--brand-purple) 0%, var(--brand-pink) 100%);
+}
+
+/* Animaciones admin (fade-in suave al cambiar tabs) */
+.admin-fade-in {
+  animation: adminFadeIn 0.3s ease-out forwards;
+}
+@keyframes adminFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 /* Reduced motion respeto */
 @media (prefers-reduced-motion: reduce) {
   *,
