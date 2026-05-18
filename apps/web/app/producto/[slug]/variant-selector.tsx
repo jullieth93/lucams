@@ -120,10 +120,7 @@ export function VariantSelector({ productBasePrice, variants: rawVariants }: Var
   // Click handler: urgent state update + URL sync en transition.
   function selectVariant(id: string) {
     if (id === selectedId) return; // mismo variant, nada que hacer
-    // 1) URGENT: actualizar local state → chip + precio cambian al instante
     setSelectedId(id);
-    // 2) TRANSITION: sincronizar URL en background (RSC se re-fetcha para
-    //    actualizar precio header + link Estudio + JSON-LD).
     const params = new URLSearchParams(searchParams.toString());
     params.set("variant", id);
     startTransition(() => {
@@ -166,32 +163,38 @@ export function VariantSelector({ productBasePrice, variants: rawVariants }: Var
   }, [selectedVariant, dimensions]);
 
   function handleSelectValue(dimKey: string, value: string) {
-    // Buscar variant que matchea: nueva selección en dimKey + valores
-    // actuales en las demás dimensiones. Fallback al mejor match parcial.
-    const targetValues = { ...currentValues, [dimKey]: value };
-    let bestVariant: Variant | null = null;
+    // INVARIANTE: el variant resultante DEBE tener `value` en `dimKey`.
+    // Esa es la dimensión que el cliente explícitamente eligió. Las demás
+    // dimensiones se preservan en el mejor esfuerzo (best match), pero
+    // si el catálogo no tiene un variant con la combinación exacta, se
+    // sacrifica una dimensión NO-clickeada antes que la clickeada.
+    //
+    // Paso 1: filtrar variants que cumplen la dimensión clickeada.
+    const candidates = variants.filter((v) => {
+      const attrs = parseVariantAttributes(v.attributes);
+      const dimValue = attrs[dimKey as keyof ProductVariantAttributes];
+      return dimValue !== undefined && String(dimValue) === value;
+    });
+    if (candidates.length === 0) return; // no hay variant con ese value
+
+    // Paso 2: si solo hay uno, ese es. Si hay varios, elegir el que más
+    // coincide con `currentValues` en las DEMÁS dimensiones (preservar
+    // la intención del cliente lo más posible).
+    let bestVariant = candidates[0];
     let bestScore = -1;
-    for (const v of variants) {
+    for (const v of candidates) {
       const attrs = parseVariantAttributes(v.attributes);
       let score = 0;
-      let matches = 0;
-      for (const [k, val] of Object.entries(targetValues)) {
+      for (const [k, val] of Object.entries(currentValues)) {
+        if (k === dimKey) continue; // ya garantizado por el filter
         const variantValue = attrs[k as keyof ProductVariantAttributes];
-        if (variantValue !== undefined && String(variantValue) === val) {
-          score++;
-          matches++;
-        }
-      }
-      if (matches === Object.keys(targetValues).length) {
-        bestVariant = v;
-        break;
+        if (variantValue !== undefined && String(variantValue) === val) score++;
       }
       if (score > bestScore) {
         bestScore = score;
         bestVariant = v;
       }
     }
-    if (!bestVariant) return;
     selectVariant(bestVariant.id);
   }
 
@@ -219,7 +222,7 @@ export function VariantSelector({ productBasePrice, variants: rawVariants }: Var
                 aria-checked={isSelected}
                 onClick={() => selectVariant(v.id)}
                 className={[
-                  "focus:ring-brand-turquoise flex w-full items-center justify-between rounded-lg p-3 text-left transition-all focus:ring-2 focus:outline-none",
+                  "focus:ring-brand-turquoise flex w-full cursor-pointer items-center justify-between rounded-lg p-3 text-left transition-all focus:ring-2 focus:outline-none",
                   isSelected
                     ? "ring-brand-turquoise from-brand-turquoise/10 to-brand-purple/10 bg-gradient-to-br shadow-md ring-2"
                     : "ring-brand-purple/15 hover:ring-brand-purple/40 hover:bg-brand-cream/40 ring-1 hover:shadow-sm",
@@ -281,7 +284,7 @@ export function VariantSelector({ productBasePrice, variants: rawVariants }: Var
                   aria-checked={isSelected}
                   onClick={() => handleSelectValue(dim.key, value)}
                   className={[
-                    "focus:ring-brand-turquoise rounded-lg px-3 py-2 text-sm font-semibold transition-all focus:ring-2 focus:outline-none",
+                    "focus:ring-brand-turquoise cursor-pointer rounded-lg px-3 py-2 text-sm font-semibold transition-all focus:ring-2 focus:outline-none",
                     isSelected
                       ? "bg-brand-purple text-white shadow-md"
                       : "ring-brand-purple/20 text-brand-purple-dark hover:ring-brand-purple/50 hover:bg-brand-cream/50 bg-white ring-1",
