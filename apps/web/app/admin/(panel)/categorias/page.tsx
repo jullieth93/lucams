@@ -3,8 +3,9 @@
  */
 
 import type { Metadata } from "next";
+import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Layers, Trash2 } from "lucide-react";
+import { Edit3, Eye, EyeOff, Layers, Trash2 } from "lucide-react";
 import {
   AdminPage,
   AdminPageHeader,
@@ -21,8 +22,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { listCategories } from "@/features/categories/service";
 import { getCurrentAdmin } from "@/lib/auth";
-import { CreateCategoryForm } from "./create-category-form";
-import { deleteCategoryAction } from "./actions";
+import { CategoryForm } from "./category-form";
+import { deleteCategoryAction, toggleCategoryActiveAction } from "./actions";
 
 export const metadata: Metadata = {
   title: "Categorías",
@@ -106,24 +107,54 @@ export default async function AdminCategoriasPage({
                     )}
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <form action={deleteCategoryAction} className="inline">
-                      <input type="hidden" name="id" value={c.id} />
-                      <Button
-                        type="submit"
-                        variant="ghost"
-                        size="sm"
-                        className="h-7 px-2 text-rose-600 hover:bg-rose-50"
-                        aria-label={`Archivar ${c.name}`}
-                        disabled={c._count.products > 0}
-                        title={
-                          c._count.products > 0
-                            ? "Tiene productos asociados — moverlos primero"
-                            : "Archivar"
-                        }
+                    <div className="flex items-center justify-end gap-1">
+                      <Link
+                        href={`/admin/categorias/${c.id}`}
+                        className="text-brand-purple hover:bg-brand-purple/10 inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs font-medium"
+                        title="Editar"
                       >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    </form>
+                        <Edit3 className="h-3.5 w-3.5" />
+                        Editar
+                      </Link>
+                      <form action={toggleCategoryActiveAction} className="inline">
+                        <input type="hidden" name="id" value={c.id} />
+                        <input type="hidden" name="next" value={c.isActive ? "false" : "true"} />
+                        <Button
+                          type="submit"
+                          variant="ghost"
+                          size="sm"
+                          className={`h-7 px-2 ${c.isActive ? "text-amber-600 hover:bg-amber-50" : "text-emerald-600 hover:bg-emerald-50"}`}
+                          aria-label={c.isActive ? `Desactivar ${c.name}` : `Activar ${c.name}`}
+                          title={
+                            c.isActive ? "Ocultar del storefront" : "Volver a mostrar en storefront"
+                          }
+                        >
+                          {c.isActive ? (
+                            <EyeOff className="h-3.5 w-3.5" />
+                          ) : (
+                            <Eye className="h-3.5 w-3.5" />
+                          )}
+                        </Button>
+                      </form>
+                      <form action={deleteCategoryAction} className="inline">
+                        <input type="hidden" name="id" value={c.id} />
+                        <Button
+                          type="submit"
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 px-2 text-rose-600 hover:bg-rose-50"
+                          aria-label={`Archivar ${c.name}`}
+                          disabled={c._count.products > 0}
+                          title={
+                            c._count.products > 0
+                              ? "Tiene productos asociados — moverlos primero"
+                              : "Archivar"
+                          }
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </form>
+                    </div>
                   </td>
                 </AdminTableRow>
               ))}
@@ -141,7 +172,7 @@ export default async function AdminCategoriasPage({
               Decorativos, Pack).
             </p>
           </div>
-          <CreateCategoryForm />
+          <CategoryForm />
         </AdminCard>
       </AdminPageBody>
     </AdminPage>

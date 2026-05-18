@@ -1,0 +1,173 @@
+"use client";
+
+/*
+ * CategoryForm — form compartido para crear (nuevo) y editar (existente).
+ *
+ * Detecta el modo según `initialCategory`. Auto-genera slug del name al
+ * tipear (modo crear; en edit el slug es bloqueado salvo override
+ * explícito, porque cambiar el slug invalida URLs públicas).
+ *
+ * Brand 2026-05-18: tokens brand-purple, AdminNotice para errores.
+ */
+
+import { useActionState, useState } from "react";
+import { Loader2, Save } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { AdminNotice } from "@/components/admin-page";
+import { createCategoryAction, updateCategoryAction, type CategoryActionState } from "./actions";
+
+type CategoryInput = {
+  id?: string;
+  name?: string;
+  slug?: string;
+  description?: string | null;
+  isActive?: boolean;
+  order?: number;
+};
+
+export function CategoryForm({ initialCategory }: { initialCategory?: CategoryInput }) {
+  const isEdit = !!initialCategory?.id;
+  const [state, formAction, pending] = useActionState<CategoryActionState | null, FormData>(
+    isEdit ? updateCategoryAction : createCategoryAction,
+    null,
+  );
+
+  const [name, setName] = useState(initialCategory?.name ?? "");
+  const [slug, setSlug] = useState(initialCategory?.slug ?? "");
+  const [slugTouched, setSlugTouched] = useState(isEdit); // en edit, ya viene "touched"
+
+  const onNameChange = (v: string) => {
+    setName(v);
+    if (!slugTouched) setSlug(slugify(v));
+  };
+
+  return (
+    <form action={formAction} className="space-y-4">
+      {isEdit && <input type="hidden" name="id" value={initialCategory!.id} />}
+
+      {state?.error && !state.fieldErrors && <AdminNotice tone="error">{state.error}</AdminNotice>}
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="space-y-1.5">
+          <Label htmlFor="name" className="text-brand-purple-dark text-sm font-semibold">
+            Nombre <span className="text-rose-500">*</span>
+          </Label>
+          <Input
+            id="name"
+            name="name"
+            required
+            value={name}
+            onChange={(e) => onNameChange(e.target.value)}
+            placeholder="Magnéticos foto"
+            disabled={pending}
+            className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
+          />
+          {state?.fieldErrors?.name && (
+            <p className="text-xs text-rose-600">{state.fieldErrors.name[0]}</p>
+          )}
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="slug" className="text-brand-purple-dark text-sm font-semibold">
+            Slug <span className="text-rose-500">*</span>
+          </Label>
+          <Input
+            id="slug"
+            name="slug"
+            required
+            value={slug}
+            onChange={(e) => {
+              setSlug(e.target.value);
+              setSlugTouched(true);
+            }}
+            placeholder="magneticos-foto"
+            pattern="[a-z0-9]+(?:-[a-z0-9]+)*"
+            disabled={pending}
+            className="border-brand-purple/20 focus-visible:ring-brand-purple/30 font-mono text-sm"
+          />
+          {state?.fieldErrors?.slug && (
+            <p className="text-xs text-rose-600">{state.fieldErrors.slug[0]}</p>
+          )}
+          {isEdit && (
+            <p className="text-brand-purple-dark/55 text-[11px]">
+              Cambiar el slug rompe URLs públicas. Solo cambialo si vas a generar redirect 301.
+            </p>
+          )}
+        </div>
+      </div>
+
+      <div className="space-y-1.5">
+        <Label htmlFor="description" className="text-brand-purple-dark text-sm font-semibold">
+          Descripción
+        </Label>
+        <Textarea
+          id="description"
+          name="description"
+          rows={2}
+          defaultValue={initialCategory?.description ?? ""}
+          placeholder="Texto corto que se muestra en la página de la categoría…"
+          disabled={pending}
+          className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
+        />
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="space-y-1.5">
+          <Label htmlFor="order" className="text-brand-purple-dark text-sm font-semibold">
+            Orden
+          </Label>
+          <Input
+            id="order"
+            name="order"
+            type="number"
+            min={0}
+            max={9999}
+            defaultValue={initialCategory?.order ?? 0}
+            disabled={pending}
+            className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
+          />
+          <p className="text-brand-purple-dark/55 text-[11px]">
+            Menor número = aparece primero en el menú.
+          </p>
+        </div>
+
+        <label className="flex items-center gap-2 self-end pb-2 text-sm">
+          <input
+            type="checkbox"
+            name="isActive"
+            defaultChecked={initialCategory?.isActive ?? true}
+            disabled={pending}
+            className="accent-brand-purple h-4 w-4"
+          />
+          <span className="text-brand-purple-dark">Activa (visible en el storefront)</span>
+        </label>
+      </div>
+
+      <Button
+        type="submit"
+        className="bg-gradient-brand font-semibold text-white hover:brightness-110"
+        disabled={pending}
+      >
+        {pending ? (
+          <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+        ) : (
+          <Save className="mr-1.5 h-4 w-4" />
+        )}
+        {isEdit ? "Guardar cambios" : "Crear categoría"}
+      </Button>
+    </form>
+  );
+}
+
+function slugify(s: string): string {
+  return s
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 80);
+}

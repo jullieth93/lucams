@@ -131,6 +131,43 @@ export async function updateCategoryAction(
   }
 }
 
+/**
+ * Toggle rápido del flag `isActive` de una categoría. Usado en el
+ * listado /admin/categorias para activar/desactivar inline sin abrir el
+ * form completo. Si está activa, queda inactiva (oculta del storefront);
+ * si está inactiva, vuelve a activa.
+ */
+export async function toggleCategoryActiveAction(formData: FormData): Promise<void> {
+  const session = await getCurrentAdmin();
+  if (!session) redirect("/admin/login");
+
+  const id = String(formData.get("id") ?? "");
+  const next = formData.get("next") === "true"; // estado deseado
+  if (!id) return;
+
+  try {
+    await updateCategory(id, { isActive: next }, session.admin.id);
+    await recordAdminAction({
+      actorId: session.admin.id,
+      action: next ? "category.activate" : "category.deactivate",
+      entityType: "Category",
+      entityId: id,
+    });
+    revalidatePath("/admin/categorias");
+    revalidatePath("/productos");
+    revalidatePath("/", "layout");
+  } catch (err) {
+    logger.error(
+      {
+        event: "admin.category.toggle_active_fail",
+        err: err instanceof Error ? err.message : String(err),
+      },
+      "Failed to toggle category active",
+    );
+    throw err;
+  }
+}
+
 export async function deleteCategoryAction(formData: FormData): Promise<void> {
   const session = await getCurrentAdmin();
   if (!session) redirect("/admin/login");
