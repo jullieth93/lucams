@@ -13,18 +13,24 @@
  */
 
 export const PRODUCT_REDIRECTS: Record<string, string> = {
-  // Familia Polaroid: 4 slugs viejos → familia consolidada con variant pinned
-  "set-6-fotoimanes-polaroid-grande":
-    "set-fotoimanes-polaroid?variant=cmp61wrtc0001jypzl2zkggex",
-  "set-9-fotoimanes-polaroid-color": "set-fotoimanes-polaroid?variant=cmp61wsah0003jypz0ssyrktu",
-  "set-12-fotoimanes-polaroid": "set-fotoimanes-polaroid",
-  "set-20-mini-polaroids": "set-fotoimanes-polaroid?variant=cmp61wt210007jypz5j9ipwpe",
-
-  // Familia Box Día Mamá: slug viejo del base + slug hermano
   "big-box-dia-mama": "box-dia-mama",
+  "cuadro-15x15-con-foto": "cuadro-con-foto",
+  "cuadro-frase-personalizada-20x20": "cuadro-con-frase",
+  "imanes-publicitarios-circulares-6cm": "imanes-publicitarios-circulares",
+  "imanes-publicitarios-rectos-7x5": "imanes-publicitarios-rectangulares",
   "mini-box-dia-mama": "box-dia-mama?variant=cmp61wxen000bjypz2ixpaayd",
-
-  // Familia Rutina Infantil: slug viejo del base + slug hermano
+  "mini-calendarios-x10": "mini-calendarios",
+  "pack-empresarial-mixto-100": "pack-empresarial-mixto",
+  "recuerdos-bautizo-x12": "recuerdos-bautizo",
+  "recuerdos-cumpleanos-x20": "recuerdos-cumpleanos",
+  "recuerdos-graduacion-x20": "recuerdos-graduacion",
   "rutina-infantil-7-actividades": "rutina-infantil-magnetica",
   "rutina-infantil-xl-9": "rutina-infantil-magnetica?variant=cmp61x02g000fjypz44exbepn",
+  "set-12-fotoimanes-cuadrados": "set-fotoimanes-cuadrados",
+  "set-12-fotoimanes-polaroid": "set-fotoimanes-polaroid",
+  "set-20-mini-polaroids": "set-fotoimanes-polaroid?variant=cmp61wt210007jypz5j9ipwpe",
+  "set-4-notas-magneticas": "set-notas-magneticas",
+  "set-6-fotoimanes-polaroid-grande": "set-fotoimanes-polaroid?variant=cmp61wrtc0001jypzl2zkggex",
+  "set-9-fotoimanes-polaroid-color": "set-fotoimanes-polaroid?variant=cmp61wsah0003jypz0ssyrktu",
+  "set-glass-magnets-personalizados": "set-imanes-vidrio",
 };

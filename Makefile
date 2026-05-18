@@ -1,4 +1,4 @@
-.PHONY: help install build typecheck lint format migrate seed-products seed-templates seed-ocasiones seed-catalog-v2 seed-cms consolidate-product-families fix-voseo-cms rename-family-base-slugs test test-unit test-e2e test-rls test-load test-coverage clean
+.PHONY: help install build typecheck lint format migrate seed-products seed-templates seed-ocasiones seed-catalog-v2 seed-cms consolidate-product-families fix-voseo-cms rename-family-base-slugs backfill-variant-prices cleanup-slugs audit-slugs test test-unit test-e2e test-rls test-load test-coverage clean
 
 # Makefile en repo — targets primitivos para CI y devs locales.
 # El Makefile completo de runtime (con state/log/pid management,
@@ -88,6 +88,23 @@ fix-voseo-cms:
 # Agrega redirect 301 del slug viejo al nuevo. Idempotente.
 rename-family-base-slugs:
 	pnpm --filter @lucams/db exec node scripts/rename-family-base-slugs.mjs
+
+# ONE-SHOT (2026-05-18): rescata el price de los siblings soft-deleted
+# y lo aplica a las variants creadas por consolidate-product-families.
+# Sin esto las variants heredan basePrice → selector no muestra cambio
+# de precio. Idempotente: no toca variants con price ya seteado.
+backfill-variant-prices:
+	pnpm --filter @lucams/db exec node scripts/backfill-variant-prices.mjs
+
+# ONE-SHOT (2026-05-18): limpia slugs sucios del catálogo (sufijos
+# numéricos -x12 / -100 / -20x20 / -6cm, anglicismos glass→vidrio).
+# Auto-genera redirects 301. Idempotente.
+cleanup-slugs:
+	pnpm --filter @lucams/db exec node scripts/cleanup-slugs.mjs
+
+# Dump de slugs activos (productos + categorías) para auditoría.
+audit-slugs:
+	pnpm --filter @lucams/db exec node scripts/audit-slugs.mjs
 
 test: test-unit test-e2e
 

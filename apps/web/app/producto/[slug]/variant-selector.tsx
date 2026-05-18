@@ -15,7 +15,7 @@
  */
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useMemo } from "react";
+import { useMemo, useState, useTransition, useEffect } from "react";
 import { Check } from "lucide-react";
 import { formatCOP } from "@/lib/format";
 import {
@@ -107,19 +107,36 @@ export function VariantSelector({ productBasePrice, variants: rawVariants }: Var
     return withAttrs.length > 0 ? withAttrs : rawVariants;
   }, [rawVariants]);
 
-  // Default al primero si no hay selected en URL
-  const selectedId = currentVariantId ?? variants[0]?.id ?? null;
+  // UI optimista: estado local que se actualiza INMEDIATO al click.
+  // La navegación del server toma ~3s; sin esto, el chip seleccionado
+  // visualmente no cambia hasta que termine la navegación.
+  const [optimisticId, setOptimisticId] = useState<string | null>(
+    currentVariantId ?? variants[0]?.id ?? null,
+  );
+  const [isPending, startTransition] = useTransition();
+
+  // Sincronizar con searchParams cuando termina la navegación (o cuando
+  // el usuario llega via deep-link).
+  useEffect(() => {
+    const target = currentVariantId ?? variants[0]?.id ?? null;
+    if (target && target !== optimisticId) {
+      queueMicrotask(() => setOptimisticId(target));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentVariantId]);
+
+  const selectedId = optimisticId;
   const selectedVariant = variants.find((v) => v.id === selectedId);
 
-  // Helper: navega con full reload del server component para que se
-  // actualice precio + link al Estudio + JSON-LD. router.replace soft
-  // no re-corre el server component → solo el selector se actualiza
-  // pero el resto del PDP queda con la variant inicial.
+  // Click handler: actualiza UI optimista al instante + navega en
+  // transition para que React no bloquee el chip swap.
   function selectVariant(id: string) {
+    setOptimisticId(id);
     const params = new URLSearchParams(searchParams.toString());
     params.set("variant", id);
-    router.push(`?${params.toString()}`, { scroll: false });
-    router.refresh();
+    startTransition(() => {
+      router.push(`?${params.toString()}`, { scroll: false });
+    });
   }
 
   // Detectar dimensiones presentes en los variants y los valores únicos.
@@ -295,9 +312,11 @@ export function VariantSelector({ productBasePrice, variants: rawVariants }: Var
       ))}
 
       {/* Precio del variant seleccionado, prominente */}
-      <div className="from-brand-turquoise/8 to-brand-purple/8 ring-brand-purple/15 flex items-center justify-between rounded-lg bg-gradient-to-br p-3 ring-1">
+      <div
+        className={`from-brand-turquoise/8 to-brand-purple/8 ring-brand-purple/15 flex items-center justify-between rounded-lg bg-gradient-to-br p-3 ring-1 transition-opacity ${isPending ? "opacity-60" : ""}`}
+      >
         <span className="text-brand-purple-dark/70 text-xs font-bold tracking-wider uppercase">
-          Precio
+          Precio {isPending && <span className="text-brand-purple/60">· actualizando…</span>}
         </span>
         <span className="text-brand-purple-dark text-xl font-bold tabular-nums">
           {formatCOP(currentPrice)}
