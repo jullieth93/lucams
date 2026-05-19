@@ -20,10 +20,40 @@ export class OcasionValidationError extends Error {
   }
 }
 
-export async function listOcasionTags() {
+export type OcasionListOpts = {
+  q?: string;
+  status?: "all" | "active" | "inactive";
+  sort?: "order" | "name" | "recent";
+};
+
+export async function listOcasionTags(opts: OcasionListOpts = {}) {
+  const q = opts.q?.trim();
+  const orderBy = (() => {
+    switch (opts.sort) {
+      case "name":
+        return [{ name: "asc" as const }];
+      case "recent":
+        return [{ createdAt: "desc" as const }];
+      case "order":
+      default:
+        return [{ order: "asc" as const }];
+    }
+  })();
   return prisma.ocasionTag.findMany({
-    where: { deletedAt: null },
-    orderBy: { order: "asc" },
+    where: {
+      deletedAt: null,
+      ...(opts.status === "active" ? { isActive: true } : {}),
+      ...(opts.status === "inactive" ? { isActive: false } : {}),
+      ...(q
+        ? {
+            OR: [
+              { name: { contains: q, mode: "insensitive" as const } },
+              { slug: { contains: q, mode: "insensitive" as const } },
+            ],
+          }
+        : {}),
+    },
+    orderBy,
     include: { _count: { select: { products: true } } },
   });
 }

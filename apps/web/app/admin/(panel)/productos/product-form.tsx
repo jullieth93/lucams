@@ -21,7 +21,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 
-type Category = { id: string; name: string; slug: string };
+type Category = { id: string; name: string; slug: string; isSub?: boolean };
 
 type Props = {
   categories: Category[];
@@ -163,9 +163,10 @@ export function ProductForm({ categories, initialProduct, action, submitLabel }:
                 <option value="" disabled>
                   Selecciona...
                 </option>
+                {/* Sub-categorías se indentan con "— " para mostrar jerarquía. */}
                 {categories.map((c) => (
                   <option key={c.id} value={c.id}>
-                    {c.name}
+                    {c.isSub ? `— ${c.name}` : c.name}
                   </option>
                 ))}
               </select>

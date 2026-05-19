@@ -1,16 +1,19 @@
 /*
- * Admin > Productos — Listado paginado (brand palette 2026-05-18).
+ * Admin > Productos — Listado paginado + filtros + búsqueda + orden.
  *
- * Búsqueda por name / sku / slug (case-insensitive). Filtro por isActive.
- * Click en fila → editar. Brand UI: tablas con header brand-purple/5,
- * estados con AdminBadge, empty state con AdminEmpty.
+ * Filtros (query params, GET):
+ *   - q: búsqueda en name/sku/slug
+ *   - status: all | active | inactive | featured
+ *   - sort: recent | name | price-asc | price-desc
+ *   - page: paginación
  */
 
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { Package, Plus, Search, Edit3, ShoppingBag } from "lucide-react";
+import { Package, Plus, Edit3, ShoppingBag } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import {
   AdminPage,
   AdminPageHeader,
@@ -34,25 +37,50 @@ export const metadata: Metadata = {
 
 type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
 
+function pickString(sp: Record<string, string | string[] | undefined>, key: string) {
+  const v = sp[key];
+  return typeof v === "string" ? v : undefined;
+}
+
 export default async function AdminProductosPage({ searchParams }: { searchParams: SearchParams }) {
   const session = await getCurrentAdmin();
   if (!session) redirect("/admin/login");
 
   const sp = await searchParams;
   const page = Number(sp.page) || 1;
-  const search = typeof sp.q === "string" ? sp.q : undefined;
+  const q = pickString(sp, "q");
+  const statusRaw = pickString(sp, "status");
+  const status = (
+    ["active", "inactive", "featured"].includes(statusRaw ?? "") ? statusRaw : "all"
+  ) as "all" | "active" | "inactive" | "featured";
+  const sortRaw = pickString(sp, "sort");
+  const sort = (
+    ["name", "price-asc", "price-desc"].includes(sortRaw ?? "") ? sortRaw : "recent"
+  ) as "recent" | "name" | "price-asc" | "price-desc";
+
   const justCreated = sp.created === "1";
   const justDeleted = sp.deleted === "1";
 
-  const { items, total, pageSize } = await listProducts({ page, search: search ?? undefined });
+  const { items, total, pageSize } = await listProducts({
+    page,
+    search: q,
+    status,
+    sort,
+  });
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const hasActiveFilters = !!q || status !== "all" || sort !== "recent";
 
   return (
     <AdminPage>
       <AdminPageHeader
         icon={<Package className="h-5 w-5" />}
         title="Productos"
-        subtitle={`${total} ${total === 1 ? "producto" : "productos"} en el catálogo`}
+        subtitle={
+          <>
+            {total} {total === 1 ? "producto" : "productos"} en el catálogo
+            {hasActiveFilters && " · con filtros aplicados"}
+          </>
+        }
         breadcrumbs={[
           { label: "Admin", href: "/admin/dashboard" },
           { label: "Catálogo" },
@@ -70,33 +98,97 @@ export default async function AdminProductosPage({ searchParams }: { searchParam
         {justCreated && <AdminNotice tone="success">Producto creado correctamente.</AdminNotice>}
         {justDeleted && <AdminNotice tone="warning">Producto archivado (soft-delete).</AdminNotice>}
 
-        <form className="flex items-center gap-2">
-          <div className="relative max-w-md flex-1">
-            <Search className="text-brand-purple/55 absolute top-1/2 left-2.5 h-4 w-4 -translate-y-1/2" />
+        {/* Toolbar: búsqueda + filtros + ordenamiento (form GET) */}
+        <form
+          method="GET"
+          className="border-brand-purple/10 grid grid-cols-1 gap-3 rounded-xl border bg-white p-4 shadow-sm sm:grid-cols-12"
+        >
+          <div className="sm:col-span-5">
+            <label
+              htmlFor="f-q"
+              className="text-brand-purple-dark/70 mb-1 block text-xs font-semibold"
+            >
+              Buscar
+            </label>
             <Input
-              type="search"
+              id="f-q"
               name="q"
-              defaultValue={search ?? ""}
-              placeholder="Buscar por nombre, SKU o slug…"
-              className="border-brand-purple/20 focus-visible:ring-brand-purple/30 pl-8"
+              type="search"
+              defaultValue={q ?? ""}
+              placeholder="Por nombre, SKU o slug…"
+              className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
             />
           </div>
-          <AdminButton type="submit" variant="secondary" size="sm">
-            Buscar
-          </AdminButton>
+          <div className="sm:col-span-3">
+            <label
+              htmlFor="f-status"
+              className="text-brand-purple-dark/70 mb-1 block text-xs font-semibold"
+            >
+              Estado
+            </label>
+            <select
+              id="f-status"
+              name="status"
+              defaultValue={status}
+              className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 w-full rounded-md border bg-white px-2 py-1.5 text-sm focus:ring-2 focus:outline-none"
+            >
+              <option value="all">Todos</option>
+              <option value="active">Solo activos</option>
+              <option value="inactive">Solo archivados</option>
+              <option value="featured">Solo destacados</option>
+            </select>
+          </div>
+          <div className="sm:col-span-3">
+            <label
+              htmlFor="f-sort"
+              className="text-brand-purple-dark/70 mb-1 block text-xs font-semibold"
+            >
+              Ordenar por
+            </label>
+            <select
+              id="f-sort"
+              name="sort"
+              defaultValue={sort}
+              className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 w-full rounded-md border bg-white px-2 py-1.5 text-sm focus:ring-2 focus:outline-none"
+            >
+              <option value="recent">Más recientes</option>
+              <option value="name">Nombre A-Z</option>
+              <option value="price-asc">Precio menor a mayor</option>
+              <option value="price-desc">Precio mayor a menor</option>
+            </select>
+          </div>
+          <div className="flex items-end gap-2 sm:col-span-1">
+            <Button
+              type="submit"
+              size="sm"
+              className="bg-gradient-brand h-9 w-full text-white hover:brightness-110"
+            >
+              Aplicar
+            </Button>
+          </div>
+          {hasActiveFilters && (
+            <div className="sm:col-span-12">
+              <Link
+                href="/admin/productos"
+                className="text-brand-purple/70 hover:text-brand-purple-dark text-xs font-semibold"
+              >
+                Limpiar filtros
+              </Link>
+            </div>
+          )}
         </form>
 
         {items.length === 0 ? (
           <AdminEmpty
             icon={<ShoppingBag className="h-5 w-5" />}
-            title={search ? "Sin resultados" : "Todavía no hay productos"}
+            title={hasActiveFilters ? "Sin resultados" : "Todavía no hay productos"}
             description={
-              search
-                ? `Prueba con otro término o crea un producto nuevo.`
+              hasActiveFilters
+                ? "Prueba con otro término o cambia los filtros."
                 : "Crea el primero o usa make seed-products para poblar el catálogo demo."
             }
             action={
-              !search && (
+              !hasActiveFilters && (
                 <AdminButton href="/admin/productos/nuevo" variant="primary">
                   <Plus className="h-4 w-4" />
                   Crear primer producto
@@ -153,12 +245,12 @@ export default async function AdminProductosPage({ searchParams }: { searchParam
             </span>
             <div className="flex gap-1">
               {page > 1 && (
-                <PaginationLink page={page - 1} search={search}>
+                <PaginationLink page={page - 1} q={q} status={status} sort={sort}>
                   ← Anterior
                 </PaginationLink>
               )}
               {page < totalPages && (
-                <PaginationLink page={page + 1} search={search}>
+                <PaginationLink page={page + 1} q={q} status={status} sort={sort}>
                   Siguiente →
                 </PaginationLink>
               )}
@@ -172,16 +264,22 @@ export default async function AdminProductosPage({ searchParams }: { searchParam
 
 function PaginationLink({
   page,
-  search,
+  q,
+  status,
+  sort,
   children,
 }: {
   page: number;
-  search?: string;
+  q?: string;
+  status?: string;
+  sort?: string;
   children: React.ReactNode;
 }) {
   const params = new URLSearchParams();
   params.set("page", String(page));
-  if (search) params.set("q", search);
+  if (q) params.set("q", q);
+  if (status && status !== "all") params.set("status", status);
+  if (sort && sort !== "recent") params.set("sort", sort);
   return (
     <Link
       href={`/admin/productos?${params.toString()}`}

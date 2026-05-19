@@ -119,7 +119,11 @@ export async function createProductAction(
       entityId: product.id,
       metadata: { slug: product.slug, sku: product.sku, name: product.name },
     });
+    // Revalidar admin + storefront para que el cliente vea el cambio
+    // inmediatamente sin esperar al revalidate por TTL.
     revalidatePath("/admin/productos");
+    revalidatePath("/productos");
+    revalidatePath("/", "layout"); // home featured + categorías
     redirect(`/admin/productos/${product.id}?created=1`);
   } catch (err) {
     if (err instanceof ProductValidationError) {
@@ -178,6 +182,10 @@ export async function updateProductAction(
     });
     revalidatePath("/admin/productos");
     revalidatePath(`/admin/productos/${product.id}`);
+    // Revalidar todas las URLs storefront que muestran este producto.
+    revalidatePath("/productos");
+    revalidatePath(`/producto/${product.slug}`);
+    revalidatePath("/", "layout"); // home featured + categorías
     return {};
   } catch (err) {
     if (err instanceof ProductValidationError) {
@@ -218,5 +226,7 @@ export async function deleteProductAction(formData: FormData): Promise<void> {
     entityId: id,
   });
   revalidatePath("/admin/productos");
+  revalidatePath("/productos");
+  revalidatePath("/", "layout");
   redirect("/admin/productos?deleted=1");
 }

@@ -18,10 +18,50 @@ export class CouponValidationError extends Error {
   }
 }
 
-export async function listCoupons() {
+export type CouponListOpts = {
+  q?: string;
+  /** "active" = isActive + vigente hoy. "inactive" = pausado/expirado/programado. */
+  status?: "all" | "active" | "inactive";
+  sort?: "recent" | "expiry-asc" | "code" | "uses";
+};
+
+export async function listCoupons(opts: CouponListOpts = {}) {
+  const q = opts.q?.trim();
+  const now = new Date();
+  const orderBy = (() => {
+    switch (opts.sort) {
+      case "expiry-asc":
+        return [{ validTo: "asc" as const }];
+      case "code":
+        return [{ code: "asc" as const }];
+      case "uses":
+        return [{ usedCount: "desc" as const }];
+      case "recent":
+      default:
+        return [{ validTo: "desc" as const }];
+    }
+  })();
   return prisma.coupon.findMany({
-    where: { deletedAt: null },
-    orderBy: { validTo: "desc" },
+    where: {
+      deletedAt: null,
+      ...(opts.status === "active"
+        ? { isActive: true, validFrom: { lte: now }, validTo: { gte: now } }
+        : {}),
+      ...(opts.status === "inactive"
+        ? {
+            OR: [{ isActive: false }, { validTo: { lt: now } }, { validFrom: { gt: now } }],
+          }
+        : {}),
+      ...(q
+        ? {
+            OR: [
+              { code: { contains: q, mode: "insensitive" as const } },
+              { description: { contains: q, mode: "insensitive" as const } },
+            ],
+          }
+        : {}),
+    },
+    orderBy,
     include: { _count: { select: { usages: true } } },
   });
 }

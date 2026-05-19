@@ -35,12 +35,15 @@ export async function listProducts(opts: {
   page?: number;
   search?: string;
   categoryId?: string;
-  onlyActive?: boolean;
+  status?: "all" | "active" | "inactive" | "featured";
+  sort?: "recent" | "name" | "price-asc" | "price-desc";
 }): Promise<{ items: ProductListItem[]; total: number; page: number; pageSize: number }> {
   const page = Math.max(1, opts.page ?? 1);
   const where: Prisma.ProductWhereInput = {
     deletedAt: null,
-    ...(opts.onlyActive ? { isActive: true } : {}),
+    ...(opts.status === "active" ? { isActive: true } : {}),
+    ...(opts.status === "inactive" ? { isActive: false } : {}),
+    ...(opts.status === "featured" ? { isActive: true, isFeatured: true } : {}),
     ...(opts.categoryId ? { categoryId: opts.categoryId } : {}),
     ...(opts.search
       ? {
@@ -53,10 +56,24 @@ export async function listProducts(opts: {
       : {}),
   };
 
+  const orderBy: Prisma.ProductOrderByWithRelationInput = (() => {
+    switch (opts.sort) {
+      case "name":
+        return { name: "asc" };
+      case "price-asc":
+        return { basePrice: "asc" };
+      case "price-desc":
+        return { basePrice: "desc" };
+      case "recent":
+      default:
+        return { updatedAt: "desc" };
+    }
+  })();
+
   const [items, total] = await Promise.all([
     prisma.product.findMany({
       where,
-      orderBy: { updatedAt: "desc" },
+      orderBy,
       skip: (page - 1) * LIST_PAGE_SIZE,
       take: LIST_PAGE_SIZE,
       select: {
@@ -211,12 +228,42 @@ export async function softDeleteProduct(id: string, deletedBy: string | null) {
   });
 }
 
+/**
+ * Lista categorías para `<select>` del ProductForm con jerarquía:
+ * primero todas las padre alfabéticas, después cada hija indentada con
+ * "— " debajo de su padre. Si las categorías están ordenadas por
+ * `order` en admin, ese orden se respeta.
+ */
 export async function listCategoriesForSelect() {
-  return prisma.category.findMany({
+  const raw = await prisma.category.findMany({
     where: { deletedAt: null, isActive: true },
-    select: { id: true, name: true, slug: true },
-    orderBy: { name: "asc" },
+    select: { id: true, name: true, slug: true, parentId: true, order: true },
+    orderBy: [{ order: "asc" }, { name: "asc" }],
   });
+  // Reordenar: padre, luego hijos justo debajo (recursivo simple 2 niveles).
+  const parents = raw.filter((c) => c.parentId === null);
+  const childrenByParent = raw.reduce<Record<string, typeof raw>>((acc, c) => {
+    if (c.parentId) {
+      (acc[c.parentId] ??= []).push(c);
+    }
+    return acc;
+  }, {});
+  const ordered: Array<{ id: string; name: string; slug: string; isSub: boolean }> = [];
+  for (const p of parents) {
+    ordered.push({ id: p.id, name: p.name, slug: p.slug, isSub: false });
+    const subs = childrenByParent[p.id] ?? [];
+    for (const sub of subs) {
+      ordered.push({ id: sub.id, name: sub.name, slug: sub.slug, isSub: true });
+    }
+  }
+  // Sub-cats huérfanas (parentId apunta a categoría archivada) — agregarlas al final
+  const orderedIds = new Set(ordered.map((c) => c.id));
+  for (const c of raw) {
+    if (!orderedIds.has(c.id)) {
+      ordered.push({ id: c.id, name: c.name, slug: c.slug, isSub: true });
+    }
+  }
+  return ordered;
 }
 
 // ─────────────────────────────────────────────────────────────────────

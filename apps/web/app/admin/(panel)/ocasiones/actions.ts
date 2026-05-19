@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { recordAdminAction } from "@/lib/admin-audit";
 import { getCurrentAdmin } from "@/lib/auth";
+import { prisma } from "@/lib/db";
 import {
   OcasionValidationError,
   createOcasionTag,
@@ -135,6 +136,28 @@ export async function updateOcasionAction(
     if (err instanceof Error && err.message === "NEXT_REDIRECT") throw err;
     return { error: "Error al actualizar ocasión." };
   }
+}
+
+/**
+ * Toggle activar/desactivar inline desde el listado. Mismo patrón que
+ * `toggleCategoryActiveAction`. Activa = visible al cliente.
+ */
+export async function toggleOcasionActiveAction(formData: FormData): Promise<void> {
+  const session = await getCurrentAdmin();
+  if (!session) redirect("/admin/login");
+  const id = String(formData.get("id") ?? "");
+  const next = formData.get("next") === "true";
+  if (!id) return;
+  await prisma.ocasionTag.update({ where: { id }, data: { isActive: next } });
+  await recordAdminAction({
+    actorId: session.admin.id,
+    action: next ? "ocasion.activate" : "ocasion.deactivate",
+    entityType: "OcasionTag",
+    entityId: id,
+  });
+  revalidatePath("/admin/ocasiones");
+  revalidatePath("/productos");
+  revalidatePath("/", "layout");
 }
 
 export async function deleteOcasionAction(formData: FormData): Promise<void> {

@@ -1,12 +1,17 @@
 /*
- * Admin > Cupones — PLAN_CATALOG_V2 3.9 + brand palette 2026-05-18.
+ * Admin > Cupones — Listado + filtros + búsqueda + orden.
  *
- * Tipos PERCENT / FIXED / FREE_SHIPPING. Restricciones por cat/producto/min/uso.
+ * Estado tiene varios sub-estados (Activo/Pausado/Expirado/Programado/
+ * Agotado/Archivado). Como pause/resume son acciones explícitas
+ * auditadas, el badge ES el toggle solo entre Activo ↔ Pausado.
+ * Estados derivados (expirado, etc.) no son clickeables — son resultado
+ * del tiempo.
  */
 
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { Pause, Play, Ticket } from "lucide-react";
+import Link from "next/link";
+import { Ticket } from "lucide-react";
 import { listCoupons } from "@/features/coupons/service";
 import { getCurrentAdmin } from "@/lib/auth";
 import { formatCOP } from "@/lib/format";
@@ -23,6 +28,8 @@ import {
   AdminEmpty,
   AdminCard,
 } from "@/components/admin-page";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { CreateCouponForm } from "./create-coupon-form";
 import { pauseCouponAction, resumeCouponAction } from "./actions";
 
@@ -32,20 +39,39 @@ export const metadata: Metadata = {
 
 type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
 
+function pickString(sp: Record<string, string | string[] | undefined>, key: string) {
+  const v = sp[key];
+  return typeof v === "string" ? v : undefined;
+}
+
 export default async function AdminCuponesPage({ searchParams }: { searchParams: SearchParams }) {
   const session = await getCurrentAdmin();
   if (!session) redirect("/admin/login");
 
   const sp = await searchParams;
-  const coupons = await listCoupons();
-  const now = new Date();
+  const q = pickString(sp, "q");
+  const statusRaw = pickString(sp, "status");
+  const status = (["active", "inactive"].includes(statusRaw ?? "") ? statusRaw : "all") as
+    | "all"
+    | "active"
+    | "inactive";
+  const sortRaw = pickString(sp, "sort");
+  const sort = (["expiry-asc", "code", "uses"].includes(sortRaw ?? "") ? sortRaw : "recent") as
+    | "recent"
+    | "expiry-asc"
+    | "code"
+    | "uses";
 
-  type CouponBadge = {
+  const coupons = await listCoupons({ q, status, sort });
+  const now = new Date();
+  const hasActiveFilters = !!q || status !== "all" || sort !== "recent";
+
+  type CouponBadgeStyle = {
     label: string;
     tone: "emerald" | "amber" | "slate" | "blue" | "rose";
   };
 
-  function couponStatus(c: (typeof coupons)[number]): CouponBadge {
+  function couponStatus(c: (typeof coupons)[number]): CouponBadgeStyle {
     if (c.deletedAt) return { label: "Archivado", tone: "slate" };
     if (!c.isActive) return { label: "Pausado", tone: "amber" };
     if (c.validTo < now) return { label: "Expirado", tone: "slate" };
@@ -65,7 +91,12 @@ export default async function AdminCuponesPage({ searchParams }: { searchParams:
       <AdminPageHeader
         icon={<Ticket className="h-5 w-5" />}
         title="Cupones"
-        subtitle="Códigos de descuento con restricciones por categoría / producto / mínimos / vigencia."
+        subtitle={
+          <>
+            {coupons.length} {coupons.length === 1 ? "cupón" : "cupones"}
+            {hasActiveFilters && " · con filtros aplicados"}
+          </>
+        }
         breadcrumbs={[
           { label: "Admin", href: "/admin/dashboard" },
           { label: "Comercial" },
@@ -89,11 +120,94 @@ export default async function AdminCuponesPage({ searchParams }: { searchParams:
         {sp.resumed === "1" && <AdminNotice tone="success">Cupón reactivado.</AdminNotice>}
         {sp.archived === "1" && <AdminNotice tone="warning">Cupón archivado.</AdminNotice>}
 
+        {/* Toolbar */}
+        <form
+          method="GET"
+          className="border-brand-purple/10 grid grid-cols-1 gap-3 rounded-xl border bg-white p-4 shadow-sm sm:grid-cols-12"
+        >
+          <div className="sm:col-span-5">
+            <label
+              htmlFor="f-q"
+              className="text-brand-purple-dark/70 mb-1 block text-xs font-semibold"
+            >
+              Buscar
+            </label>
+            <Input
+              id="f-q"
+              name="q"
+              type="search"
+              defaultValue={q ?? ""}
+              placeholder="Por código o descripción…"
+              className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
+            />
+          </div>
+          <div className="sm:col-span-3">
+            <label
+              htmlFor="f-status"
+              className="text-brand-purple-dark/70 mb-1 block text-xs font-semibold"
+            >
+              Estado
+            </label>
+            <select
+              id="f-status"
+              name="status"
+              defaultValue={status}
+              className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 w-full rounded-md border bg-white px-2 py-1.5 text-sm focus:ring-2 focus:outline-none"
+            >
+              <option value="all">Todos</option>
+              <option value="active">Solo activos vigentes</option>
+              <option value="inactive">Pausados/expirados/programados</option>
+            </select>
+          </div>
+          <div className="sm:col-span-3">
+            <label
+              htmlFor="f-sort"
+              className="text-brand-purple-dark/70 mb-1 block text-xs font-semibold"
+            >
+              Ordenar por
+            </label>
+            <select
+              id="f-sort"
+              name="sort"
+              defaultValue={sort}
+              className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 w-full rounded-md border bg-white px-2 py-1.5 text-sm focus:ring-2 focus:outline-none"
+            >
+              <option value="recent">Vigencia más reciente</option>
+              <option value="expiry-asc">Próximos a vencer</option>
+              <option value="code">Código A-Z</option>
+              <option value="uses">Más usados</option>
+            </select>
+          </div>
+          <div className="flex items-end gap-2 sm:col-span-1">
+            <Button
+              type="submit"
+              size="sm"
+              className="bg-gradient-brand h-9 w-full text-white hover:brightness-110"
+            >
+              Aplicar
+            </Button>
+          </div>
+          {hasActiveFilters && (
+            <div className="sm:col-span-12">
+              <Link
+                href="/admin/cupones"
+                className="text-brand-purple/70 hover:text-brand-purple-dark text-xs font-semibold"
+              >
+                Limpiar filtros
+              </Link>
+            </div>
+          )}
+        </form>
+
         {coupons.length === 0 ? (
           <AdminEmpty
             icon={<Ticket className="h-5 w-5" />}
-            title="Todavía no hay cupones"
-            description="Crea el primero abajo para empezar a otorgar descuentos."
+            title={hasActiveFilters ? "Sin resultados" : "Todavía no hay cupones"}
+            description={
+              hasActiveFilters
+                ? "Prueba con otros filtros o crea un cupón nuevo."
+                : "Crea el primero abajo para empezar a otorgar descuentos."
+            }
           />
         ) : (
           <AdminTable>
@@ -102,15 +216,17 @@ export default async function AdminCuponesPage({ searchParams }: { searchParams:
                 <th className="px-4 py-3 text-left font-semibold">Código</th>
                 <th className="px-4 py-3 text-left font-semibold">Tipo</th>
                 <th className="px-4 py-3 text-left font-semibold">Valor</th>
-                <th className="px-4 py-3 text-left font-semibold">Estado</th>
+                <th className="px-4 py-3 text-center font-semibold">Estado</th>
                 <th className="px-4 py-3 text-left font-semibold">Vigencia</th>
-                <th className="px-4 py-3 text-left font-semibold">Usos</th>
-                <th className="px-4 py-3 text-right font-semibold">Acción</th>
+                <th className="px-4 py-3 text-center font-semibold">Usos</th>
               </tr>
             </AdminTableHead>
             <AdminTableBody>
               {coupons.map((c) => {
                 const status = couponStatus(c);
+                // Solo Activo/Pausado son toggleables. Los demás son
+                // estados derivados (Expirado por fecha, Agotado por uso).
+                const canToggle = !c.deletedAt && (c.isActive || status.label === "Pausado");
                 return (
                   <AdminTableRow key={c.id}>
                     <td className="px-4 py-3 text-sm">
@@ -127,19 +243,8 @@ export default async function AdminCuponesPage({ searchParams }: { searchParams:
                     <td className="text-brand-purple-dark px-4 py-3 text-sm font-semibold">
                       {formatValue(c)}
                     </td>
-                    <td className="px-4 py-3 text-sm">
-                      <AdminBadge tone={status.tone}>{status.label}</AdminBadge>
-                    </td>
-                    <td className="text-brand-purple-dark/55 px-4 py-3 text-xs">
-                      {c.validFrom.toLocaleDateString("es-CO")} →{" "}
-                      {c.validTo.toLocaleDateString("es-CO")}
-                    </td>
-                    <td className="text-brand-purple-dark/85 px-4 py-3 text-sm tabular-nums">
-                      {c.usedCount}
-                      {c.maxUses ? ` / ${c.maxUses}` : ""}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      {!c.deletedAt && (
+                    <td className="px-4 py-3 text-center text-sm">
+                      {canToggle ? (
                         <form
                           action={c.isActive ? pauseCouponAction : resumeCouponAction}
                           className="inline"
@@ -147,17 +252,31 @@ export default async function AdminCuponesPage({ searchParams }: { searchParams:
                           <input type="hidden" name="id" value={c.id} />
                           <button
                             type="submit"
-                            className="text-brand-purple/65 hover:text-brand-purple-dark"
-                            title={c.isActive ? "Pausar" : "Reactivar"}
+                            className={`inline-flex cursor-pointer items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium transition-all hover:shadow-sm ${
+                              c.isActive
+                                ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 hover:bg-emerald-100"
+                                : "bg-amber-50 text-amber-700 ring-1 ring-amber-200 hover:bg-amber-100"
+                            }`}
+                            title={c.isActive ? "Click para pausar" : "Click para reactivar"}
                           >
-                            {c.isActive ? (
-                              <Pause className="h-4 w-4" />
-                            ) : (
-                              <Play className="h-4 w-4" />
-                            )}
+                            <span
+                              className={`h-1.5 w-1.5 rounded-full ${c.isActive ? "bg-emerald-500" : "bg-amber-500"}`}
+                              aria-hidden
+                            />
+                            {status.label}
                           </button>
                         </form>
+                      ) : (
+                        <AdminBadge tone={status.tone}>{status.label}</AdminBadge>
                       )}
+                    </td>
+                    <td className="text-brand-purple-dark/55 px-4 py-3 text-xs">
+                      {c.validFrom.toLocaleDateString("es-CO")} →{" "}
+                      {c.validTo.toLocaleDateString("es-CO")}
+                    </td>
+                    <td className="text-brand-purple-dark/85 px-4 py-3 text-center text-sm tabular-nums">
+                      {c.usedCount}
+                      {c.maxUses ? ` / ${c.maxUses}` : ""}
                     </td>
                   </AdminTableRow>
                 );

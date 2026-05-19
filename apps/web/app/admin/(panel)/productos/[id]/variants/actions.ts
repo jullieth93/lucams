@@ -102,6 +102,10 @@ export async function createVariantAction(
     logger.info({ event: "admin.variant.create.success", id: v.id, sku: v.sku });
     revalidatePath(`/admin/productos/${productId}/variants`);
     revalidatePath(`/admin/productos/${productId}`);
+    // Invalidar TODOS los PDPs y listado público — variants afectan
+    // precio "desde X", chip "X opciones", y selector del PDP.
+    revalidatePath("/producto/[slug]", "page");
+    revalidatePath("/productos");
   } catch (err) {
     if (err instanceof VariantValidationError) {
       return { fieldErrors: { [err.field]: [err.message] } as VariantActionState["fieldErrors"] };
@@ -154,6 +158,10 @@ export async function updateVariantAction(
     logger.info({ event: "admin.variant.update.success", id: v.id });
     revalidatePath(`/admin/productos/${productId}/variants`);
     revalidatePath(`/admin/productos/${productId}`);
+    // Invalidar TODOS los PDPs y listado público — variants afectan
+    // precio "desde X", chip "X opciones", y selector del PDP.
+    revalidatePath("/producto/[slug]", "page");
+    revalidatePath("/productos");
   } catch (err) {
     if (err instanceof VariantValidationError) {
       return { fieldErrors: { [err.field]: [err.message] } as VariantActionState["fieldErrors"] };
@@ -185,6 +193,10 @@ export async function archiveVariantAction(formData: FormData) {
     });
     revalidatePath(`/admin/productos/${productId}/variants`);
     revalidatePath(`/admin/productos/${productId}`);
+    // Invalidar TODOS los PDPs y listado público — variants afectan
+    // precio "desde X", chip "X opciones", y selector del PDP.
+    revalidatePath("/producto/[slug]", "page");
+    revalidatePath("/productos");
   } catch (err) {
     // Re-throw para que el caller decida (typical: redirect con error en searchParams)
     if (err instanceof VariantValidationError) {
