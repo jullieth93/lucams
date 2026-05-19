@@ -28,7 +28,13 @@ import { Slider } from "@/components/ui/slider";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { formatCOP } from "@/lib/format";
 
-type Category = { id: string; slug: string; name: string; _count: { products: number } };
+type Category = {
+  id: string;
+  slug: string;
+  name: string;
+  parentId: string | null;
+  _count: { products: number };
+};
 
 export function ProductsFilters({
   categories,
@@ -205,26 +211,16 @@ function FiltersForm({
         />
       </div>
 
-      {/* Categoría */}
-      <div className="space-y-1.5">
-        <Label className="text-brand-purple-dark/80 text-xs">Categoría</Label>
-        <select
-          value={categoria}
-          onChange={(e) => {
-            const v = e.target.value;
-            setCategoria(v);
-            apply(0, { categoria: v });
-          }}
-          className="border-brand-purple/20 focus:ring-brand-purple/30 w-full rounded-md border bg-white px-3 py-2 text-sm focus:ring-2 focus:outline-none"
-        >
-          <option value="">Todas</option>
-          {categories.map((c) => (
-            <option key={c.id} value={c.slug}>
-              {c.name} ({c._count.products})
-            </option>
-          ))}
-        </select>
-      </div>
+      {/* Categoría — lista jerárquica con scroll interno (no captura scroll de
+          la página como hacía el <select> nativo de 57 opciones). */}
+      <CategoryFilter
+        categories={categories}
+        value={categoria}
+        onChange={(v) => {
+          setCategoria(v);
+          apply(0, { categoria: v });
+        }}
+      />
 
       {/* Precio */}
       {maxBound > minBound && (
@@ -340,6 +336,131 @@ function FilterCheckbox({
       />
       <span className="text-brand-purple-dark">{label}</span>
     </label>
+  );
+}
+
+/**
+ * <CategoryFilter> — lista jerárquica clickeable de categorías.
+ *
+ * Reemplaza al <select> nativo que con 57 categorías capturaba el scroll
+ * de la página al abrirse (comportamiento del browser). Esta lista:
+ *
+ *   - Muestra solo top-level por default (parentId: null).
+ *   - Expande sub-categorías al hover/click del padre con sub-cats.
+ *   - Tiene altura máxima + overflow-y interno → NUNCA captura el scroll
+ *     de la página completa.
+ *   - Active state visual brand-purple en la categoría seleccionada.
+ *   - "Todas" como opción default arriba.
+ *
+ * Patrón industria: Shopify, Amazon, Mercado Libre — todos usan listas
+ * jerárquicas en filtros, no selects, por exactamente este motivo.
+ */
+function CategoryFilter({
+  categories,
+  value,
+  onChange,
+}: {
+  categories: Category[];
+  value: string;
+  onChange: (slug: string) => void;
+}) {
+  // Agrupar: top-level + sub-cats por parentId
+  const topLevel = categories.filter((c) => c.parentId === null);
+  const subsByParent = categories.reduce<Record<string, Category[]>>((acc, c) => {
+    if (c.parentId) {
+      (acc[c.parentId] ??= []).push(c);
+    }
+    return acc;
+  }, {});
+
+  return (
+    <div className="space-y-1.5">
+      <Label className="text-brand-purple-dark/80 text-xs">Categoría</Label>
+      {/* Altura máxima + overflow interno → scroll local, no captura el de la página. */}
+      <div
+        role="radiogroup"
+        aria-label="Filtrar por categoría"
+        className="border-brand-purple/15 max-h-72 overflow-y-auto rounded-md border bg-white"
+      >
+        <CategoryRow slug="" name="Todas" isActive={value === ""} onClick={() => onChange("")} />
+        {topLevel.map((parent) => {
+          const subs = subsByParent[parent.id] ?? [];
+          const isParentActive = value === parent.slug;
+          const isSubActive = subs.some((s) => s.slug === value);
+          return (
+            <div key={parent.id}>
+              <CategoryRow
+                slug={parent.slug}
+                name={parent.name}
+                count={parent._count.products}
+                isActive={isParentActive}
+                onClick={() => onChange(parent.slug)}
+              />
+              {subs.length > 0 && (isParentActive || isSubActive) && (
+                <ul className="border-brand-purple/8 border-t bg-white/60">
+                  {subs.map((sub) => (
+                    <li key={sub.id}>
+                      <CategoryRow
+                        slug={sub.slug}
+                        name={sub.name}
+                        count={sub._count.products}
+                        isActive={value === sub.slug}
+                        isSub
+                        onClick={() => onChange(sub.slug)}
+                      />
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function CategoryRow({
+  slug,
+  name,
+  count,
+  isActive,
+  isSub,
+  onClick,
+}: {
+  slug: string;
+  name: string;
+  count?: number;
+  isActive: boolean;
+  isSub?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={isActive}
+      onClick={onClick}
+      className={[
+        "flex w-full cursor-pointer items-center justify-between gap-2 px-3 py-1.5 text-left text-sm transition-colors",
+        isSub ? "pl-7 text-[13px]" : "",
+        isActive
+          ? "bg-brand-purple/15 text-brand-purple-dark font-semibold"
+          : "text-brand-purple-dark/80 hover:bg-brand-purple/5",
+      ].join(" ")}
+      data-slug={slug}
+    >
+      <span className="flex-1 truncate">{name}</span>
+      {count !== undefined && (
+        <span
+          className={
+            isActive ? "text-brand-purple/70 text-xs" : "text-brand-purple-dark/40 text-xs"
+          }
+        >
+          {count}
+        </span>
+      )}
+    </button>
   );
 }
 
