@@ -98,9 +98,8 @@ export const ADMIN_NAV: NavGroup[] = [
         label: "Clientes",
         href: "/admin/clientes",
         icon: Users,
-        badge: { text: "Próximo", tone: "soon" },
         description:
-          "Customer 360: listado con filtros, historial de pedidos, notas internas, segmentación. Próxima sub-fase.",
+          "Customer 360: listado con filtros + perfil completo con pedidos, reseñas, direcciones, diseños, referidos y puntos de fidelidad.",
       },
       {
         label: "Reclamos",
@@ -114,9 +113,8 @@ export const ADMIN_NAV: NavGroup[] = [
         label: "Reseñas",
         href: "/admin/resenas",
         icon: Star,
-        badge: { text: "Próximo", tone: "soon" },
         description:
-          "Moderación de reseñas pendientes: aprobar/rechazar, responder al cliente, banear. Próxima sub-fase.",
+          "Moderación: aprobar/rechazar reseñas pendientes, destacar las mejores en home, archivar las que no sirven.",
       },
     ],
   },
