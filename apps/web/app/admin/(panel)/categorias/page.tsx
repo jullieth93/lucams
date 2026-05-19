@@ -1,11 +1,19 @@
 /*
- * Admin > Categorías — Listado + crear inline (brand palette 2026-05-18).
+ * Admin > Categorías — Listado + búsqueda + filtros + crear inline.
+ *
+ * Filtros (query params, server-side):
+ *   - q: búsqueda en name/slug
+ *   - status: all | active | inactive
+ *   - sort: order | name | recent
+ *
+ * Estado/Toggle: el badge "Activa/Inactiva" ES el toggle (clickeable
+ * directamente). Sin botón Eye/EyeOff separado — UX más clara.
  */
 
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Edit3, Eye, EyeOff, Layers, Trash2 } from "lucide-react";
+import { Edit3, Layers, Trash2 } from "lucide-react";
 import {
   AdminPage,
   AdminPageHeader,
@@ -14,12 +22,12 @@ import {
   AdminTableHead,
   AdminTableBody,
   AdminTableRow,
-  AdminBadge,
   AdminEmpty,
   AdminCard,
   AdminNotice,
 } from "@/components/admin-page";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { listCategories } from "@/features/categories/service";
 import { getCurrentAdmin } from "@/lib/auth";
 import { CategoryForm } from "./category-form";
@@ -31,6 +39,11 @@ export const metadata: Metadata = {
 
 type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
 
+function pickString(sp: Record<string, string | string[] | undefined>, key: string) {
+  const v = sp[key];
+  return typeof v === "string" ? v : undefined;
+}
+
 export default async function AdminCategoriasPage({
   searchParams,
 }: {
@@ -40,17 +53,34 @@ export default async function AdminCategoriasPage({
   if (!session) redirect("/admin/login");
 
   const sp = await searchParams;
-  const categories = await listCategories();
+  const q = pickString(sp, "q");
+  const statusRaw = pickString(sp, "status");
+  const status: "all" | "active" | "inactive" = (
+    ["active", "inactive"].includes(statusRaw ?? "") ? statusRaw : "all"
+  ) as "all" | "active" | "inactive";
+  const sortRaw = pickString(sp, "sort");
+  const sort = (["name", "recent"].includes(sortRaw ?? "") ? sortRaw : "order") as
+    | "order"
+    | "name"
+    | "recent";
+
+  const categories = await listCategories({ q, status, sort });
   const justCreated = sp.created === "1";
   const justDeleted = sp.deleted === "1";
   const errorMsg = typeof sp.error === "string" ? sp.error : null;
+  const hasActiveFilters = !!q || status !== "all" || sort !== "order";
 
   return (
     <AdminPage>
       <AdminPageHeader
         icon={<Layers className="h-5 w-5" />}
         title="Categorías"
-        subtitle="Agrupa productos por tipo. Las sub-categorías se crean asignando categoría padre."
+        subtitle={
+          <>
+            {categories.length} {categories.length === 1 ? "categoría" : "categorías"}
+            {hasActiveFilters && " · con filtros aplicados"}
+          </>
+        }
         breadcrumbs={[
           { label: "Admin", href: "/admin/dashboard" },
           { label: "Catálogo" },
@@ -63,11 +93,93 @@ export default async function AdminCategoriasPage({
         {justDeleted && <AdminNotice tone="warning">Categoría archivada.</AdminNotice>}
         {errorMsg && <AdminNotice tone="error">{errorMsg}</AdminNotice>}
 
+        {/* Toolbar: búsqueda + filtros + ordenamiento (form GET) */}
+        <form
+          method="GET"
+          className="border-brand-purple/10 grid grid-cols-1 gap-3 rounded-xl border bg-white p-4 shadow-sm sm:grid-cols-12"
+        >
+          <div className="sm:col-span-5">
+            <label
+              htmlFor="f-q"
+              className="text-brand-purple-dark/70 mb-1 block text-xs font-semibold"
+            >
+              Buscar
+            </label>
+            <Input
+              id="f-q"
+              name="q"
+              type="search"
+              defaultValue={q ?? ""}
+              placeholder="Por nombre o slug…"
+              className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
+            />
+          </div>
+          <div className="sm:col-span-3">
+            <label
+              htmlFor="f-status"
+              className="text-brand-purple-dark/70 mb-1 block text-xs font-semibold"
+            >
+              Estado
+            </label>
+            <select
+              id="f-status"
+              name="status"
+              defaultValue={status}
+              className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 w-full rounded-md border bg-white px-2 py-1.5 text-sm focus:ring-2 focus:outline-none"
+            >
+              <option value="all">Todas</option>
+              <option value="active">Solo activas</option>
+              <option value="inactive">Solo inactivas</option>
+            </select>
+          </div>
+          <div className="sm:col-span-3">
+            <label
+              htmlFor="f-sort"
+              className="text-brand-purple-dark/70 mb-1 block text-xs font-semibold"
+            >
+              Ordenar por
+            </label>
+            <select
+              id="f-sort"
+              name="sort"
+              defaultValue={sort}
+              className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 w-full rounded-md border bg-white px-2 py-1.5 text-sm focus:ring-2 focus:outline-none"
+            >
+              <option value="order">Orden manual</option>
+              <option value="name">Nombre A-Z</option>
+              <option value="recent">Más recientes</option>
+            </select>
+          </div>
+          <div className="flex items-end gap-2 sm:col-span-1">
+            <Button
+              type="submit"
+              size="sm"
+              className="bg-gradient-brand h-9 w-full text-white hover:brightness-110"
+            >
+              Aplicar
+            </Button>
+          </div>
+          {hasActiveFilters && (
+            <div className="sm:col-span-12">
+              <Link
+                href="/admin/categorias"
+                className="text-brand-purple/70 hover:text-brand-purple-dark text-xs font-semibold"
+              >
+                Limpiar filtros
+              </Link>
+            </div>
+          )}
+        </form>
+
         {categories.length === 0 ? (
           <AdminEmpty
             icon={<Layers className="h-5 w-5" />}
-            title="Todavía no hay categorías"
-            description="Crea la primera abajo para empezar a categorizar productos."
+            title={hasActiveFilters ? "Sin resultados" : "Todavía no hay categorías"}
+            description={
+              hasActiveFilters
+                ? "Probá quitar algún filtro o cambiar el texto de búsqueda."
+                : "Crea la primera abajo para empezar a categorizar productos."
+            }
           />
         ) : (
           <AdminTable>
@@ -78,7 +190,7 @@ export default async function AdminCategoriasPage({
                 <th className="px-4 py-3 text-left font-semibold">Slug</th>
                 <th className="px-4 py-3 text-center font-semibold">Productos</th>
                 <th className="px-4 py-3 text-center font-semibold">Estado</th>
-                <th className="px-4 py-3" />
+                <th className="px-4 py-3 text-right font-semibold">Acciones</th>
               </tr>
             </AdminTableHead>
             <AdminTableBody>
@@ -100,11 +212,32 @@ export default async function AdminCategoriasPage({
                     {c._count.products}
                   </td>
                   <td className="px-4 py-3 text-center">
-                    {c.isActive ? (
-                      <AdminBadge tone="emerald">Activa</AdminBadge>
-                    ) : (
-                      <AdminBadge tone="slate">Inactiva</AdminBadge>
-                    )}
+                    {/* El badge ES el toggle: click para cambiar activa/inactiva.
+                        Antes había un Eye/EyeOff separado del badge — confuso.
+                        Ahora una sola UI: hover destaca y dice "click para…" */}
+                    <form action={toggleCategoryActiveAction} className="inline">
+                      <input type="hidden" name="id" value={c.id} />
+                      <input type="hidden" name="next" value={c.isActive ? "false" : "true"} />
+                      <button
+                        type="submit"
+                        className={`inline-flex cursor-pointer items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium transition-all hover:shadow-sm ${
+                          c.isActive
+                            ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 hover:bg-emerald-100"
+                            : "bg-slate-100 text-slate-600 ring-1 ring-slate-200 hover:bg-slate-200"
+                        }`}
+                        title={
+                          c.isActive
+                            ? "Click para desactivar (ocultar del storefront)"
+                            : "Click para activar (mostrar en storefront)"
+                        }
+                      >
+                        <span
+                          className={`h-1.5 w-1.5 rounded-full ${c.isActive ? "bg-emerald-500" : "bg-slate-400"}`}
+                          aria-hidden
+                        />
+                        {c.isActive ? "Activa" : "Inactiva"}
+                      </button>
+                    </form>
                   </td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-1">
@@ -116,26 +249,6 @@ export default async function AdminCategoriasPage({
                         <Edit3 className="h-3.5 w-3.5" />
                         Editar
                       </Link>
-                      <form action={toggleCategoryActiveAction} className="inline">
-                        <input type="hidden" name="id" value={c.id} />
-                        <input type="hidden" name="next" value={c.isActive ? "false" : "true"} />
-                        <Button
-                          type="submit"
-                          variant="ghost"
-                          size="sm"
-                          className={`h-7 px-2 ${c.isActive ? "text-amber-600 hover:bg-amber-50" : "text-emerald-600 hover:bg-emerald-50"}`}
-                          aria-label={c.isActive ? `Desactivar ${c.name}` : `Activar ${c.name}`}
-                          title={
-                            c.isActive ? "Ocultar del storefront" : "Volver a mostrar en storefront"
-                          }
-                        >
-                          {c.isActive ? (
-                            <EyeOff className="h-3.5 w-3.5" />
-                          ) : (
-                            <Eye className="h-3.5 w-3.5" />
-                          )}
-                        </Button>
-                      </form>
                       <form action={deleteCategoryAction} className="inline">
                         <input type="hidden" name="id" value={c.id} />
                         <Button

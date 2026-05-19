@@ -75,6 +75,14 @@ export default async function Home() {
             </p>
           </header>
           <CategoryGrid categories={categories} />
+          <div className="mt-8 text-center">
+            <Link
+              href="/productos"
+              className="text-brand-purple hover:text-brand-purple-dark border-brand-purple/30 hover:bg-brand-purple/5 inline-flex items-center gap-1.5 rounded-full border px-5 py-2 text-sm font-semibold transition-colors"
+            >
+              Ver todas las categorías y productos →
+            </Link>
+          </div>
         </section>
 
         {/* Cómo funciona */}

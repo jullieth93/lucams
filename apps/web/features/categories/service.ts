@@ -12,10 +12,44 @@ export class CategoryValidationError extends Error {
   }
 }
 
-export async function listCategories() {
+export type CategoryListOpts = {
+  /** Búsqueda en name/slug (case-insensitive). */
+  q?: string;
+  /** Filtro por estado. Default: "all". */
+  status?: "active" | "inactive" | "all";
+  /** Orden. Default: por order asc + name asc. */
+  sort?: "order" | "name" | "recent";
+};
+
+export async function listCategories(opts: CategoryListOpts = {}) {
+  const q = opts.q?.trim();
+  const orderBy = (() => {
+    switch (opts.sort) {
+      case "name":
+        return [{ name: "asc" as const }];
+      case "recent":
+        return [{ createdAt: "desc" as const }];
+      case "order":
+      default:
+        return [{ order: "asc" as const }, { name: "asc" as const }];
+    }
+  })();
+
   return prisma.category.findMany({
-    where: { deletedAt: null },
-    orderBy: [{ order: "asc" }, { name: "asc" }],
+    where: {
+      deletedAt: null,
+      ...(opts.status === "active" ? { isActive: true } : {}),
+      ...(opts.status === "inactive" ? { isActive: false } : {}),
+      ...(q
+        ? {
+            OR: [
+              { name: { contains: q, mode: "insensitive" as const } },
+              { slug: { contains: q, mode: "insensitive" as const } },
+            ],
+          }
+        : {}),
+    },
+    orderBy,
     select: {
       id: true,
       name: true,

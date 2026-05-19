@@ -113,7 +113,7 @@ export function VariantSelector({ productBasePrice, variants: rawVariants }: Var
   });
 
   // Transition para que router.replace no bloquee paint del chip.
-  const [isPending, startTransition] = useTransition();
+  const [, startTransition] = useTransition();
 
   const selectedVariant = variants.find((v) => v.id === selectedId);
 
@@ -281,6 +281,13 @@ export function VariantSelector({ productBasePrice, variants: rawVariants }: Var
   // ── Modo multi-dimension: chips por dimensión + card de Precio ──
   const currentPrice = selectedVariant?.price ?? productBasePrice;
 
+  // Detectar si el catálogo tiene combinaciones faltantes (matriz
+  // incompleta). Si todos los variants posibles existen, no mostrar el
+  // microcopy explicativo (innecesario). El cálculo es barato porque
+  // dimensions ya está memoizado.
+  const cartesianTotal = dimensions.reduce((acc, d) => acc * d.values.length, 1);
+  const hasUnavailable = variants.length < cartesianTotal;
+
   return (
     <div className="mb-4 space-y-4">
       {dimensions.map((dim) => (
@@ -301,14 +308,18 @@ export function VariantSelector({ productBasePrice, variants: rawVariants }: Var
                   aria-disabled={!available}
                   disabled={!available}
                   onClick={() => available && handleSelectValue(dim.key, value)}
-                  title={!available ? "No disponible con la combinación actual" : undefined}
+                  title={
+                    !available
+                      ? `No disponible en esta combinación. Cambia primero otra opción para acceder a "${formatDimensionValue(dim.key, value)}".`
+                      : undefined
+                  }
                   className={[
                     "focus:ring-brand-turquoise rounded-lg px-3 py-2 text-sm font-semibold transition-all focus:ring-2 focus:outline-none",
                     isSelected
                       ? "bg-brand-purple cursor-pointer text-white shadow-md"
                       : available
                         ? "ring-brand-purple/20 text-brand-purple-dark hover:ring-brand-purple/50 hover:bg-brand-cream/50 cursor-pointer bg-white ring-1"
-                        : "ring-brand-purple/10 text-brand-purple-dark/35 cursor-not-allowed bg-white/40 line-through ring-1",
+                        : "ring-brand-purple/10 text-brand-purple-dark/40 bg-brand-cream/40 cursor-not-allowed ring-1",
                   ].join(" ")}
                 >
                   {formatDimensionValue(dim.key, value)}
@@ -319,17 +330,21 @@ export function VariantSelector({ productBasePrice, variants: rawVariants }: Var
         </div>
       ))}
 
+      {/* Microcopy: explica los chips atenuados cuando hay combinaciones
+          imposibles en el catálogo. No mostrar si la matriz está completa. */}
+      {hasUnavailable && (
+        <p className="text-brand-purple-dark/55 text-[11px]">
+          Las opciones atenuadas no están disponibles en esta combinación. Cambia primero la otra
+          opción para acceder a ellas.
+        </p>
+      )}
+
       {/* Precio del variant seleccionado, prominente. Refleja inmediato
-          porque depende de selectedVariant (local). isPending solo
-          indica que el server aún está sincronizando el resto del PDP. */}
+          porque depende de selectedVariant (local). El router.replace
+          en background sincroniza la URL y el RSC silenciosamente. */}
       <div className="from-brand-turquoise/8 to-brand-purple/8 ring-brand-purple/15 flex items-center justify-between rounded-lg bg-gradient-to-br p-3 ring-1">
         <span className="text-brand-purple-dark/70 text-xs font-bold tracking-wider uppercase">
           Precio
-          {isPending && (
-            <span className="text-brand-purple/60 ml-1.5 font-normal normal-case">
-              · sincronizando…
-            </span>
-          )}
         </span>
         <span className="text-brand-purple-dark text-xl font-bold tabular-nums">
           {formatCOP(currentPrice)}
