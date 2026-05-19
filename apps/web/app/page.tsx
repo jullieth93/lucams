@@ -44,7 +44,9 @@ export const dynamic = "force-dynamic";
 
 export default async function Home() {
   const [categories, featured, reviews, waSupportUrl] = await Promise.all([
-    listStorefrontCategories(),
+    // Solo top-level: la home muestra ~11 categorías padre, no 57 (mismo
+    // patrón que footer y mega-menú).
+    listStorefrontCategories({ topLevelOnly: true }),
     listStorefrontProducts({ featured: true, limit: 10 }),
     listFeaturedReviews(8),
     buildWhatsAppUrl({ kind: "support" }),
