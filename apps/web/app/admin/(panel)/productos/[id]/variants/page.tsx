@@ -38,6 +38,7 @@ import { formatCOP } from "@/lib/format";
 import { parseVariantAttributes, generateVariantLabel } from "@/features/products/variant-schemas";
 import { VariantForm } from "./variant-form";
 import { archiveVariantAction } from "./actions";
+import { ConfirmAction } from "@/components/admin/confirm-action";
 
 export const metadata: Metadata = {
   title: "Variantes",
@@ -235,7 +236,10 @@ export default async function ProductVariantsPage({
                           <Edit3 className="h-3.5 w-3.5" />
                           Editar
                         </Link>
-                        <form action={archiveVariantAction}>
+                        <ConfirmAction
+                          action={archiveVariantAction}
+                          message={`¿Archivar la variante "${v.name}"? Los pedidos que la referencian seguirán válidos, pero clientes nuevos no podrán seleccionarla.`}
+                        >
                           <input type="hidden" name="id" value={v.id} />
                           <input type="hidden" name="productId" value={id} />
                           <button
@@ -245,7 +249,7 @@ export default async function ProductVariantsPage({
                           >
                             <Archive className="h-3.5 w-3.5" />
                           </button>
-                        </form>
+                        </ConfirmAction>
                       </div>
                     </td>
                   </AdminTableRow>

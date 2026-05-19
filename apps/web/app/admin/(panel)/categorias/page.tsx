@@ -28,6 +28,7 @@ import {
 } from "@/components/admin-page";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ConfirmAction } from "@/components/admin/confirm-action";
 import { listCategories } from "@/features/categories/service";
 import { getCurrentAdmin } from "@/lib/auth";
 import { CategoryForm } from "./category-form";
@@ -249,7 +250,11 @@ export default async function AdminCategoriasPage({
                         <Edit3 className="h-3.5 w-3.5" />
                         Editar
                       </Link>
-                      <form action={deleteCategoryAction} className="inline">
+                      <ConfirmAction
+                        action={deleteCategoryAction}
+                        message={`¿Archivar la categoría "${c.name}"? Quedará oculta del storefront.`}
+                        className="inline"
+                      >
                         <input type="hidden" name="id" value={c.id} />
                         <Button
                           type="submit"
@@ -266,7 +271,7 @@ export default async function AdminCategoriasPage({
                         >
                           <Trash2 className="h-3.5 w-3.5" />
                         </Button>
-                      </form>
+                      </ConfirmAction>
                     </div>
                   </td>
                 </AdminTableRow>

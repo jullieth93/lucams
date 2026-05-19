@@ -14,6 +14,8 @@ import Link from "next/link";
 import { Package, Plus, Edit3, ShoppingBag } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+// Note: las acciones de eliminar/archivar de productos están en el page
+// de edición /admin/productos/[id], no en este listado. Aquí solo edit.
 import {
   AdminPage,
   AdminPageHeader,

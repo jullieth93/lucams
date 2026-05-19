@@ -31,253 +31,22 @@ import {
   ChevronDown,
   KeyRound,
   Crown,
-  // Áreas top-level
-  LayoutDashboard,
-  ShoppingCart,
-  Package,
-  Ticket,
-  Factory,
-  Globe,
-  DollarSign,
-  BrainCircuit,
-  BarChart2,
-  Settings,
-  MessageSquare,
-  // Sub-items
-  Box,
-  Users,
-  AlertCircle,
-  Star,
-  Layers,
-  Tag,
   Sparkles,
-  Wand2,
-  Building2,
-  ArrowRightLeft,
-  Boxes,
-  Calculator,
-  Store,
-  ShoppingBag,
-  BookOpen,
-  Bot,
-  TrendingUp,
-  Gauge,
-  Activity,
-  Cog,
-  UserPlus,
-  Plug,
-  Mail,
-  type LucideIcon,
 } from "lucide-react";
 import { logoutAction } from "@/app/auth/logout/actions";
+import { ADMIN_NAV, type NavBadge, type NavGroup } from "@/lib/admin-nav";
 
 type AdminInfo = {
   email: string;
   role: string;
 };
 
-type Badge = { text: string; tone: "soon" | "phase4" | "phase5" };
-
-type NavItem = {
-  label: string;
-  href: string;
-  icon: LucideIcon;
-  badge?: Badge;
-};
-
-type NavGroup = {
-  title: string;
-  icon: LucideIcon;
-  items?: NavItem[];
-  href?: string;
-  badge?: Badge;
-  defaultOpen?: boolean;
-};
-
-const NAV: NavGroup[] = [
-  {
-    title: "Dashboard",
-    icon: LayoutDashboard,
-    href: "/admin/dashboard",
-  },
-  {
-    title: "Ventas",
-    icon: ShoppingCart,
-    defaultOpen: true,
-    items: [
-      {
-        label: "Pedidos",
-        href: "/admin/pedidos",
-        icon: Box,
-        badge: { text: "Fase 4", tone: "phase4" },
-      },
-      {
-        label: "Clientes",
-        href: "/admin/clientes",
-        icon: Users,
-        badge: { text: "Próximo", tone: "soon" },
-      },
-      {
-        label: "Reclamos",
-        href: "/admin/reclamos",
-        icon: AlertCircle,
-        badge: { text: "Fase 4", tone: "phase4" },
-      },
-      {
-        label: "Reseñas",
-        href: "/admin/resenas",
-        icon: Star,
-        badge: { text: "Próximo", tone: "soon" },
-      },
-    ],
-  },
-  {
-    title: "Catálogo",
-    icon: Package,
-    defaultOpen: true,
-    items: [
-      { label: "Productos", href: "/admin/productos", icon: ShoppingBag },
-      { label: "Categorías", href: "/admin/categorias", icon: Layers },
-      { label: "Ocasiones", href: "/admin/ocasiones", icon: Tag },
-      {
-        label: "Plantillas",
-        href: "/admin/plantillas",
-        icon: Sparkles,
-        badge: { text: "Próximo", tone: "soon" },
-      },
-      {
-        label: "Recomendaciones",
-        href: "/admin/recomendaciones",
-        icon: Wand2,
-        badge: { text: "Fase 4", tone: "phase4" },
-      },
-    ],
-  },
-  {
-    title: "Comercial",
-    icon: Ticket,
-    items: [
-      { label: "Cupones", href: "/admin/cupones", icon: Ticket },
-      {
-        label: "Mayorista B2B",
-        href: "/admin/mayorista",
-        icon: Building2,
-        badge: { text: "Próximo", tone: "soon" },
-      },
-      {
-        label: "Redirects 301",
-        href: "/admin/redirects",
-        icon: ArrowRightLeft,
-        badge: { text: "Próximo", tone: "soon" },
-      },
-    ],
-  },
-  {
-    title: "Producción",
-    icon: Factory,
-    items: [
-      {
-        label: "Materiales e Insumos",
-        href: "/admin/materiales",
-        icon: Boxes,
-        badge: { text: "Fase 5", tone: "phase5" },
-      },
-      {
-        label: "Costos de fabricación",
-        href: "/admin/costos",
-        icon: Calculator,
-        badge: { text: "Fase 5", tone: "phase5" },
-      },
-    ],
-  },
-  {
-    title: "Canales",
-    icon: Globe,
-    items: [
-      {
-        label: "Tienda Lucams",
-        href: "/admin/canales/tienda",
-        icon: Store,
-        badge: { text: "Próximo", tone: "soon" },
-      },
-      {
-        label: "Mercado Libre",
-        href: "/admin/canales/mercadolibre",
-        icon: ShoppingBag,
-        badge: { text: "Próximo", tone: "soon" },
-      },
-    ],
-  },
-  {
-    title: "Finanzas",
-    icon: DollarSign,
-    href: "/admin/finanzas",
-    badge: { text: "Próximo", tone: "soon" },
-  },
-  {
-    title: "IA y Conocimiento",
-    icon: BrainCircuit,
-    items: [
-      { label: "Base de conocimiento", href: "/admin/contenido/bloques", icon: BookOpen },
-      {
-        label: "Bot WhatsApp",
-        href: "/admin/bot",
-        icon: Bot,
-        badge: { text: "Fase 5+", tone: "phase5" },
-      },
-    ],
-  },
-  {
-    title: "Analítica",
-    icon: BarChart2,
-    items: [
-      {
-        label: "Métricas",
-        href: "/admin/metricas",
-        icon: TrendingUp,
-        badge: { text: "Fase 4", tone: "phase4" },
-      },
-      {
-        label: "Performance",
-        href: "/admin/performance",
-        icon: Gauge,
-        badge: { text: "Próximo", tone: "soon" },
-      },
-      { label: "Auditoría", href: "/admin/auditoria", icon: Activity },
-    ],
-  },
-  {
-    title: "Configuración",
-    icon: Settings,
-    items: [
-      { label: "General", href: "/admin/contenido/configuracion", icon: Cog },
-      {
-        label: "Usuarios y acceso",
-        href: "/admin/usuarios",
-        icon: UserPlus,
-        badge: { text: "Próximo", tone: "soon" },
-      },
-      {
-        label: "Integraciones",
-        href: "/admin/integraciones",
-        icon: Plug,
-        badge: { text: "Próximo", tone: "soon" },
-      },
-      {
-        label: "Plantillas de correo",
-        href: "/admin/email-templates",
-        icon: Mail,
-        badge: { text: "Próximo", tone: "soon" },
-      },
-    ],
-  },
-  {
-    title: "Mensajes",
-    icon: MessageSquare,
-    href: "/admin/mensajes",
-    badge: { text: "Opcional", tone: "soon" },
-  },
-];
+// NAV se importa de @/lib/admin-nav (compartido con la página catch-all
+// [...placeholder]/page.tsx para mostrar info contextual cuando el
+// cliente clickea un módulo "Próximo").
+const NAV = ADMIN_NAV;
+// Alias local para compatibilidad con el código que usaba `Badge`.
+type Badge = NavBadge;
 
 // ─────────────────── Role badges (sidebar footer) ───────────────────
 
@@ -416,16 +185,27 @@ function AdminTopBar({ pathname }: { pathname: string }) {
   );
 }
 
+/**
+ * Resuelve el label del breadcrumb topbar consultando el NAV compartido.
+ * Si la ruta matchea un item del NAV → "{Grupo} · {Item}".
+ * Si matchea un top-level leaf → "{Title}".
+ * Fallback: "Lucams_shop" (no debería pasar — el catch-all placeholder
+ * cubre cualquier ruta admin no implementada).
+ */
 function labelForPath(p: string): string {
-  if (p.startsWith("/admin/dashboard")) return "Dashboard";
-  if (p.startsWith("/admin/productos")) return "Catálogo · Productos";
-  if (p.startsWith("/admin/categorias")) return "Catálogo · Categorías";
-  if (p.startsWith("/admin/ocasiones")) return "Catálogo · Ocasiones";
-  if (p.startsWith("/admin/cupones")) return "Comercial · Cupones";
-  if (p.startsWith("/admin/contenido/bloques")) return "IA y Conocimiento · Base";
-  if (p.startsWith("/admin/contenido/configuracion")) return "Configuración · General";
-  if (p.startsWith("/admin/contenido")) return "Contenido";
-  if (p.startsWith("/admin/auditoria")) return "Analítica · Auditoría";
+  // Buscar match exacto primero, luego prefix (para nested como /[id])
+  for (const group of NAV) {
+    if (group.href && (p === group.href || p.startsWith(group.href + "/"))) {
+      return group.title;
+    }
+    if (group.items) {
+      for (const item of group.items) {
+        if (p === item.href || p.startsWith(item.href + "/")) {
+          return `${group.title} · ${item.label}`;
+        }
+      }
+    }
+  }
   return "Lucams_shop";
 }
 
@@ -591,7 +371,7 @@ function NavGroupItem({
     if (isSoon) {
       return (
         <li>
-          <div className="flex cursor-not-allowed items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-white/40">
+          <div className="flex cursor-not-allowed items-center gap-2.5 rounded-md px-2.5 py-2 text-sm text-white/55">
             <Icon className="h-4 w-4" />
             <span className="flex-1">{group.title}</span>
             {group.badge && <BadgePill badge={group.badge} />}
@@ -665,7 +445,7 @@ function NavGroupExpandable({
               <li key={it.href}>
                 {isSoon ? (
                   <div
-                    className="flex cursor-not-allowed items-center gap-2 rounded-md px-2 py-1.5 text-[13px] text-white/40"
+                    className="flex cursor-not-allowed items-center gap-2 rounded-md px-2 py-1.5 text-[13px] text-white/55"
                     title="Próximamente disponible"
                   >
                     <ItemIcon className="h-3.5 w-3.5" />

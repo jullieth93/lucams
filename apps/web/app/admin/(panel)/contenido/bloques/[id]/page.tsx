@@ -15,6 +15,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { ArrowLeft, Send, EyeOff, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ConfirmAction } from "@/components/admin/confirm-action";
 import { getCurrentAdmin } from "@/lib/auth";
 import { getCmsBlockById } from "@/features/cms/service";
 import {
@@ -98,7 +99,10 @@ export default async function EditarBloquePage({
             </form>
           )}
           {block.isPublished && (
-            <form action={unpublishCmsBlockAction}>
+            <ConfirmAction
+              action={unpublishCmsBlockAction}
+              message={`¿Despublicar "${block.title ?? block.key}"? El sitio dejará de mostrarlo y caerá al texto por defecto (fallback hardcoded en código).`}
+            >
               <input type="hidden" name="blockId" value={block.id} />
               <Button
                 type="submit"
@@ -110,9 +114,12 @@ export default async function EditarBloquePage({
                 <EyeOff className="mr-1.5 h-3.5 w-3.5" />
                 Despublicar
               </Button>
-            </form>
+            </ConfirmAction>
           )}
-          <form action={deleteCmsBlockAction}>
+          <ConfirmAction
+            action={deleteCmsBlockAction}
+            message={`¿Archivar el bloque "${block.title ?? block.key}"? Quedará oculto del sitio. Tu historial de versiones se conserva.`}
+          >
             <input type="hidden" name="blockId" value={block.id} />
             <Button
               type="submit"
@@ -124,7 +131,7 @@ export default async function EditarBloquePage({
               <Trash2 className="mr-1.5 h-3.5 w-3.5" />
               Archivar
             </Button>
-          </form>
+          </ConfirmAction>
         </div>
       </div>
 

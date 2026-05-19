@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { Layers, Package, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ConfirmAction } from "@/components/admin/confirm-action";
 import { AdminPage, AdminPageHeader, AdminPageBody, AdminNotice } from "@/components/admin-page";
 import { getCurrentAdmin } from "@/lib/auth";
 import { getProductById, listCategoriesForSelect } from "@/features/products/service";
@@ -58,7 +59,10 @@ export default async function EditarProductoPage({
                 {product.variants.filter((v) => !v.deletedAt).length}
               </span>
             </Link>
-            <form action={deleteProductAction}>
+            <ConfirmAction
+              action={deleteProductAction}
+              message={`¿Archivar "${product.name}"? Quedará oculto del storefront. Podés restaurarlo después editando el producto.`}
+            >
               <input type="hidden" name="id" value={product.id} />
               <Button
                 type="submit"
@@ -69,7 +73,7 @@ export default async function EditarProductoPage({
                 <Trash2 className="mr-1.5 h-4 w-4" />
                 Archivar
               </Button>
-            </form>
+            </ConfirmAction>
           </div>
         }
       />

@@ -18,6 +18,7 @@ import {
   AdminNotice,
 } from "@/components/admin-page";
 import { Button } from "@/components/ui/button";
+import { ConfirmAction } from "@/components/admin/confirm-action";
 import { getCurrentAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { CategoryForm } from "../category-form";
@@ -121,7 +122,10 @@ export default async function EditCategoryPage({
             Archivar oculta la categoría del storefront y del menú. Las categorías con productos
             asociados no pueden archivarse — primero hay que mover esos productos a otra categoría.
           </p>
-          <form action={deleteCategoryAction}>
+          <ConfirmAction
+            action={deleteCategoryAction}
+            message={`¿Archivar la categoría "${category.name}"? Quedará oculta del storefront. Acción reversible (podés reactivarla después).`}
+          >
             <input type="hidden" name="id" value={category.id} />
             <Button
               type="submit"
@@ -138,7 +142,7 @@ export default async function EditCategoryPage({
               <Trash2 className="mr-1.5 h-4 w-4" />
               Archivar categoría
             </Button>
-          </form>
+          </ConfirmAction>
         </AdminCard>
       </AdminPageBody>
     </AdminPage>

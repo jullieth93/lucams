@@ -159,10 +159,13 @@ export function AdminTable({
   className?: string;
 }) {
   return (
+    // `overflow-x-auto` permite scroll horizontal en mobile cuando la
+    // tabla tiene muchas columnas (ej. auditoría con 6 cols). Sin esto
+    // la tabla desbordaba o se cortaba en pantallas chicas.
     <div
-      className={`border-brand-purple/10 overflow-hidden rounded-xl border bg-white shadow-sm ${className}`}
+      className={`border-brand-purple/10 overflow-x-auto rounded-xl border bg-white shadow-sm ${className}`}
     >
-      <table className="w-full text-sm">{children}</table>
+      <table className="w-full min-w-[640px] text-sm">{children}</table>
     </div>
   );
 }
