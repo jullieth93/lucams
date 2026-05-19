@@ -178,8 +178,15 @@
 
 /* ─────── Estilos base globales ─────── */
 
-* {
-  border-color: var(--border);
+/* IMPORTANTE: el universal selector `*` debe ir DENTRO de @layer base para
+ * que tenga MENOR prioridad que las utilities Tailwind (`border-brand-purple`,
+ * etc.). Si va fuera de layers, gana sobre las utilities — bug encontrado
+ * 2026-05-18 con el thumb del Slider que quedaba con border `var(--border)`
+ * (gris claro) en lugar de `var(--brand-purple)`. */
+@layer base {
+  * {
+    border-color: var(--border);
+  }
 }
 
 body {

@@ -1,5 +1,14 @@
 "use client";
 
+/*
+ * <Slider> — wrapper de Radix Slider con tokens brand.
+ *
+ * Bug fix 2026-05-18: el shadcn boilerplate usaba `data-horizontal:*`
+ * y `data-vertical:*` que NUNCA matcheaban con Radix v1+ (que setea
+ * `data-orientation="horizontal"`). Resultado: track con height 0px,
+ * thumbs invisibles. Fix: `data-[orientation=horizontal]:*` correcto.
+ */
+
 import * as React from "react";
 import { Slider as SliderPrimitive } from "radix-ui";
 
@@ -26,25 +35,40 @@ function Slider({
       min={min}
       max={max}
       className={cn(
-        "relative flex w-full touch-none items-center select-none data-disabled:opacity-50 data-vertical:h-full data-vertical:min-h-40 data-vertical:w-auto data-vertical:flex-col",
+        "relative flex w-full touch-none items-center select-none data-disabled:opacity-50",
+        "data-[orientation=vertical]:h-full data-[orientation=vertical]:min-h-40 data-[orientation=vertical]:w-auto data-[orientation=vertical]:flex-col",
         className,
       )}
       {...props}
     >
       <SliderPrimitive.Track
         data-slot="slider-track"
-        className="bg-brand-purple/15 relative grow overflow-hidden rounded-full data-horizontal:h-2 data-horizontal:w-full data-vertical:h-full data-vertical:w-2"
+        className={cn(
+          "bg-brand-purple/15 relative grow overflow-hidden rounded-full",
+          "data-[orientation=horizontal]:h-2 data-[orientation=horizontal]:w-full",
+          "data-[orientation=vertical]:h-full data-[orientation=vertical]:w-2",
+        )}
       >
         <SliderPrimitive.Range
           data-slot="slider-range"
-          className="bg-brand-purple absolute select-none data-horizontal:h-full data-vertical:w-full"
+          className={cn(
+            "bg-brand-purple absolute select-none",
+            "data-[orientation=horizontal]:h-full",
+            "data-[orientation=vertical]:w-full",
+          )}
         />
       </SliderPrimitive.Track>
       {Array.from({ length: _values.length }, (_, index) => (
         <SliderPrimitive.Thumb
           data-slot="slider-thumb"
           key={index}
-          className="border-brand-purple ring-brand-purple/30 relative block size-5 shrink-0 cursor-grab rounded-full border-2 bg-white shadow-md transition-[color,box-shadow,transform] select-none after:absolute after:-inset-2 hover:scale-110 hover:ring-4 focus-visible:ring-4 focus-visible:outline-hidden active:cursor-grabbing active:ring-4 disabled:pointer-events-none disabled:opacity-50"
+          className={cn(
+            "border-brand-purple ring-brand-purple/30 relative block size-5 shrink-0 cursor-grab rounded-full border-2 bg-white shadow-md transition-[color,box-shadow,transform] select-none",
+            "hover:scale-110 hover:ring-4",
+            "focus-visible:ring-4 focus-visible:outline-hidden",
+            "active:cursor-grabbing active:ring-4",
+            "disabled:pointer-events-none disabled:opacity-50",
+          )}
         />
       ))}
     </SliderPrimitive.Root>
