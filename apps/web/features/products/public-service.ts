@@ -75,15 +75,31 @@ const STOREFRONT_WHERE = {
   category: { deletedAt: null, isActive: true },
 } as const;
 
-export async function listStorefrontCategories() {
+/**
+ * Lista de categorías activas para storefront.
+ *
+ * Por default (`topLevelOnly: false`) retorna TODAS — útil para:
+ *   - Filter sidebar en /productos (debe mostrar TODO el árbol)
+ *   - Sitemap
+ *
+ * Con `topLevelOnly: true` retorna solo padres (parentId: null) — útil
+ * para footer y mega-menú principal, evita "desbordar" la UI con
+ * sub-categorías.
+ */
+export async function listStorefrontCategories(opts: { topLevelOnly?: boolean } = {}) {
   return prisma.category.findMany({
-    where: { deletedAt: null, isActive: true },
+    where: {
+      deletedAt: null,
+      isActive: true,
+      ...(opts.topLevelOnly ? { parentId: null } : {}),
+    },
     orderBy: [{ order: "asc" }, { name: "asc" }],
     select: {
       id: true,
       slug: true,
       name: true,
       description: true,
+      parentId: true,
       _count: {
         select: {
           products: { where: { deletedAt: null, isActive: true } },
@@ -103,17 +119,54 @@ export type StorefrontFilters = {
   minPrice?: number; // centavos COP
   maxPrice?: number;
   sort?: "recent" | "price-asc" | "price-desc" | "featured" | "name";
+  /** Si se pasa, retorna sin paginar (modo legacy: home featured, related, etc.). */
   limit?: number;
+  /** Paginación: número de página (1-based). Default 1. Se ignora si `limit` está presente. */
+  page?: number;
+  /** Tamaño de página (default 12 — 3 cols × 4 rows desktop). */
+  pageSize?: number;
 };
 
-export async function listStorefrontProducts(
+export type PaginatedStorefrontProducts = {
+  items: StorefrontProductCard[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+};
+
+/**
+ * Lista paginada — usado por /productos con UI de paginación.
+ *
+ * Usa `listStorefrontProducts` (que ya soporta skip+take con page/pageSize)
+ * + un `count` separado para calcular totalPages.
+ *
+ * Si querés un array plano sin paginar (home featured, related), llamá
+ * directo a `listStorefrontProducts` con `limit`.
+ */
+export async function listStorefrontProductsPaginated(
   opts: StorefrontFilters = {},
-): Promise<StorefrontProductCard[]> {
-  const where: Prisma.ProductWhereInput = {
+): Promise<PaginatedStorefrontProducts> {
+  const pageSize = opts.pageSize ?? 12;
+  const page = Math.max(1, opts.page ?? 1);
+  const [items, total] = await Promise.all([
+    listStorefrontProducts({ ...opts, page, pageSize, limit: undefined }),
+    prisma.product.count({ where: buildStorefrontWhere(opts) }),
+  ]);
+  return {
+    items,
+    total,
+    page,
+    pageSize,
+    totalPages: Math.max(1, Math.ceil(total / pageSize)),
+  };
+}
+
+function buildStorefrontWhere(opts: StorefrontFilters): Prisma.ProductWhereInput {
+  return {
     ...STOREFRONT_WHERE,
     ...(opts.categorySlug
       ? {
-          // Match en categoría padre O cualquier sub-categoría hija
           OR: [
             { category: { ...STOREFRONT_WHERE.category, slug: opts.categorySlug } },
             {
@@ -144,6 +197,12 @@ export async function listStorefrontProducts(
         }
       : {}),
   };
+}
+
+export async function listStorefrontProducts(
+  opts: StorefrontFilters = {},
+): Promise<StorefrontProductCard[]> {
+  const where = buildStorefrontWhere(opts);
 
   const orderBy = (() => {
     switch (opts.sort) {
@@ -161,10 +220,20 @@ export async function listStorefrontProducts(
     }
   })();
 
+  // Paginación: si `page`/`pageSize` se pasaron sin `limit`, aplica skip+take.
+  // Si `limit` está, ignora `page` (modo legacy plano).
+  const take = opts.limit ?? opts.pageSize;
+  const skip = opts.limit
+    ? undefined
+    : opts.page
+      ? (opts.page - 1) * (opts.pageSize ?? 12)
+      : undefined;
+
   const items = await prisma.product.findMany({
     where,
     orderBy,
-    take: opts.limit,
+    take,
+    skip,
     select: {
       id: true,
       slug: true,

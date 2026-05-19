@@ -67,7 +67,7 @@ export async function SiteFooter() {
   // Settings que se usan como atributos (href/mailto) los necesitamos
   // como string raw — los display los wrappea <CmsSetting>.
   const [categories, waSupportUrl, contactEmail, instagramUrl, tiktokUrl] = await Promise.all([
-    listStorefrontCategories(),
+    listStorefrontCategories({ topLevelOnly: true }),
     buildWhatsAppUrl({ kind: "support" }),
     getSettingValue("CONTACT_EMAIL", "hola@lucamsshop.co"),
     getSettingValue("SOCIAL_INSTAGRAM_URL", "https://www.instagram.com/lucams_shop"),
