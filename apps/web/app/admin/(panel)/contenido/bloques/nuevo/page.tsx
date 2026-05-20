@@ -1,15 +1,18 @@
 /*
- * Admin > Contenido > Bloque nuevo.
+ * Admin > Contenido > Bloque nuevo (brand 2026-05-20).
  *
  * Form de creación. Lo normal es que los bloques estén pre-cargados
  * en seed; esto sirve para que el admin agregue nuevos bloques
  * personalizados (banners promocionales temporales, FAQ extra, etc).
+ *
+ * Refactor: ahora usa AdminPage para evitar desborde y alinearse con
+ * el resto de páginas admin.
  */
 
 import type { Metadata } from "next";
-import Link from "next/link";
 import { redirect } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, FilePlus } from "lucide-react";
+import { AdminButton, AdminPage, AdminPageBody, AdminPageHeader } from "@/components/admin-page";
 import { getCurrentAdmin } from "@/lib/auth";
 import { CreateBlockForm } from "./create-block-form";
 
@@ -17,29 +20,37 @@ export const metadata: Metadata = {
   title: "Crear bloque",
 };
 
-export default async function NuevoBloquePage() {
+type SearchParams = Promise<{ category?: string }>;
+
+export default async function NuevoBloquePage({ searchParams }: { searchParams: SearchParams }) {
   const session = await getCurrentAdmin();
   if (!session) redirect("/admin/login");
+  const sp = await searchParams;
+  const defaultCategory = sp.category;
 
   return (
-    <div className="space-y-5">
-      <div className="flex items-start gap-3">
-        <Link
-          href="/admin/contenido/bloques"
-          className="mt-1 text-slate-500 hover:text-slate-700"
-          aria-label="Volver"
-        >
-          <ArrowLeft className="h-5 w-5" />
-        </Link>
-        <div>
-          <h2 className="text-lg font-bold text-slate-900">Crear bloque nuevo</h2>
-          <p className="mt-0.5 text-sm text-slate-500">
-            Un bloque es un texto largo editable del sitio (página, banner, FAQ, mensaje).
-          </p>
-        </div>
-      </div>
+    <AdminPage>
+      <AdminPageHeader
+        icon={<FilePlus className="h-5 w-5" />}
+        title="Crear bloque nuevo"
+        subtitle="Un bloque es un texto largo editable del sitio (página, banner, FAQ, mensaje)."
+        breadcrumbs={[
+          { label: "Admin", href: "/admin/dashboard" },
+          { label: "IA y Conocimiento" },
+          { label: "Bloques", href: "/admin/contenido/bloques" },
+          { label: "Nuevo" },
+        ]}
+        actions={
+          <AdminButton href="/admin/contenido/bloques" variant="secondary">
+            <ArrowLeft className="h-4 w-4" />
+            Volver
+          </AdminButton>
+        }
+      />
 
-      <CreateBlockForm />
-    </div>
+      <AdminPageBody>
+        <CreateBlockForm defaultCategory={defaultCategory} />
+      </AdminPageBody>
+    </AdminPage>
   );
 }

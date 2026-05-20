@@ -20,17 +20,20 @@ const CATEGORIES = [
   { value: "MARKETING", label: "📢 Banners promocionales" },
 ];
 
-export function CreateBlockForm() {
+export function CreateBlockForm({ defaultCategory }: { defaultCategory?: string }) {
   const [state, formAction, pending] = useActionState<CmsActionState | null, FormData>(
     createCmsBlockAction,
     null,
   );
 
   return (
-    <form action={formAction} className="space-y-4 rounded-lg border border-slate-200 bg-white p-5">
+    <form
+      action={formAction}
+      className="border-brand-purple/10 space-y-5 rounded-xl border bg-white p-5 shadow-sm"
+    >
       <div className="space-y-1.5">
-        <Label htmlFor="key">
-          Identificador corto <span className="text-red-600">*</span>
+        <Label htmlFor="key" className="text-brand-purple-dark font-semibold">
+          Identificador corto <span className="text-rose-600">*</span>
         </Label>
         <Input
           id="key"
@@ -39,31 +42,40 @@ export function CreateBlockForm() {
           placeholder="ej. legal.privacidad, faq.envios, home.banner-promo"
           disabled={pending}
           pattern="^[a-z][a-z0-9._-]*$"
+          className="border-brand-purple/20 focus-visible:ring-brand-purple/30 font-mono"
         />
-        <p className="text-xs text-slate-500">
+        <p className="text-brand-purple-dark/55 text-xs">
           Letras minúsculas, números, puntos y guiones. No se cambia después.
         </p>
         {state?.fieldErrors?.key && (
-          <p className="text-xs text-red-600">{state.fieldErrors.key[0]}</p>
+          <p className="text-xs text-rose-600">{state.fieldErrors.key[0]}</p>
         )}
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <div className="space-y-1.5">
-          <Label htmlFor="title">Título del bloque</Label>
-          <Input id="title" name="title" placeholder="Ej. Aviso de Privacidad" disabled={pending} />
+          <Label htmlFor="title" className="text-brand-purple-dark font-semibold">
+            Título del bloque
+          </Label>
+          <Input
+            id="title"
+            name="title"
+            placeholder="Ej. Aviso de Privacidad"
+            disabled={pending}
+            className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
+          />
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="category">
-            Categoría <span className="text-red-600">*</span>
+          <Label htmlFor="category" className="text-brand-purple-dark font-semibold">
+            Categoría <span className="text-rose-600">*</span>
           </Label>
           <select
             id="category"
             name="category"
             required
             disabled={pending}
-            defaultValue=""
-            className="border-input bg-background focus-visible:ring-ring flex h-9 w-full rounded-md border px-3 py-1 text-sm shadow-sm focus-visible:ring-1 focus-visible:outline-none"
+            defaultValue={defaultCategory ?? ""}
+            className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 flex h-9 w-full rounded-md border bg-white px-3 py-1 text-sm shadow-sm focus:ring-2 focus:outline-none"
           >
             <option value="" disabled>
               Elige una categoría...
@@ -78,39 +90,45 @@ export function CreateBlockForm() {
       </div>
 
       <div className="space-y-1.5">
-        <Label htmlFor="description">¿Dónde aparece?</Label>
+        <Label htmlFor="description" className="text-brand-purple-dark font-semibold">
+          ¿Dónde aparece?
+        </Label>
         <Input
           id="description"
           name="description"
           placeholder="Ej. Página /legal/privacidad y enlace del footer"
           disabled={pending}
+          className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
         />
-        <p className="text-xs text-slate-500">Nota para acordarte en qué parte del sitio se usa.</p>
+        <p className="text-brand-purple-dark/55 text-xs">
+          Nota para acordarte en qué parte del sitio se usa.
+        </p>
       </div>
 
       <input type="hidden" name="format" value="MARKDOWN" />
 
       <div className="space-y-1.5">
-        <Label htmlFor="body">
-          Contenido inicial <span className="text-red-600">*</span>
+        <Label htmlFor="body" className="text-brand-purple-dark font-semibold">
+          Contenido inicial <span className="text-rose-600">*</span>
         </Label>
         <MarkdownEditor
           id="body"
           name="body"
           required
-          rows={10}
-          placeholder={`# Mi bloque\n\nEscribe el contenido aquí. Puedes editar después.\n\nUsa **negrita**, *cursiva*, listas con - y enlaces como [texto](url).`}
+          rows={12}
+          placeholder={`# Mi bloque\n\nEscribe el contenido aquí. Usa los botones de arriba para formato.\n\nPuedes editarlo después y ver una vista previa en el editor completo.`}
         />
-        <p className="text-xs text-slate-500">
-          Puedes editarlo después y ver una vista previa en el editor completo.
+        <p className="text-brand-purple-dark/55 text-xs">
+          Usá los botones del toolbar para dar formato. Puedes editarlo después y ver una vista
+          previa en el editor completo.
         </p>
         {state?.fieldErrors?.body && (
-          <p className="text-xs text-red-600">{state.fieldErrors.body[0]}</p>
+          <p className="text-xs text-rose-600">{state.fieldErrors.body[0]}</p>
         )}
       </div>
 
       {state?.error && !state.fieldErrors && (
-        <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+        <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
           {state.error}
         </div>
       )}
@@ -118,7 +136,7 @@ export function CreateBlockForm() {
       <Button
         type="submit"
         disabled={pending}
-        className="bg-slate-900 text-white hover:bg-slate-800"
+        className="bg-gradient-brand text-white hover:brightness-110"
       >
         {pending ? "Creando..." : "Crear bloque (queda en borrador)"}
       </Button>

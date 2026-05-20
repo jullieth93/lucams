@@ -1,6 +1,6 @@
 /*
  * Tab "Historial" — lista de versiones del bloque con botón
- * "Volver a esta versión".
+ * "Volver a esta versión" (brand 2026-05-20).
  *
  * Cada save crea una versión. El admin ve fecha humana + texto inicial
  * + acción para republicar una versión antigua.
@@ -31,44 +31,46 @@ export function VersionHistory({
 }) {
   if (versions.length === 0) {
     return (
-      <div className="rounded-lg border border-dashed border-slate-300 px-6 py-10 text-center">
-        <History className="mx-auto h-6 w-6 text-slate-400" />
-        <p className="mt-2 text-sm text-slate-500">Sin versiones aún.</p>
+      <div className="border-brand-purple/15 px-6 py-10 text-center">
+        <History className="text-brand-purple-dark/40 mx-auto h-6 w-6" />
+        <p className="text-brand-purple-dark/60 mt-2 text-sm">Sin versiones aún.</p>
       </div>
     );
   }
 
   return (
-    <ol className="space-y-3">
+    <ol className="divide-brand-purple/10 divide-y">
       {versions.map((v) => {
         const isCurrent = v.id === currentPublishedVersionId;
         return (
           <li
             key={v.id}
             className={
-              "flex items-start justify-between gap-4 rounded-lg border bg-white p-4 " +
-              (isCurrent ? "border-emerald-300 bg-emerald-50/50" : "border-slate-200")
+              "flex items-start justify-between gap-4 p-4 " +
+              (isCurrent ? "bg-emerald-50/50" : "hover:bg-brand-purple/[0.03]")
             }
           >
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
-                <span className="text-sm font-semibold text-slate-900">Versión {v.version}</span>
+                <span className="text-brand-purple-dark text-sm font-semibold">
+                  Versión {v.version}
+                </span>
                 {isCurrent && (
                   <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-medium text-emerald-700">
                     🟢 PUBLICADA AHORA
                   </span>
                 )}
                 {v.publishedAt && !isCurrent && (
-                  <span className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-600">
+                  <span className="bg-brand-purple/10 text-brand-purple-dark/70 rounded px-1.5 py-0.5 text-[10px] font-medium">
                     Publicada antes
                   </span>
                 )}
               </div>
-              <p className="mt-1 text-xs text-slate-500">
+              <p className="text-brand-purple-dark/55 mt-1 text-xs">
                 Guardada el {formatDateHuman(v.createdAt)}
               </p>
-              <p className="mt-2 line-clamp-2 text-sm text-slate-700">
-                {v.title && <b className="text-slate-900">{v.title}: </b>}
+              <p className="text-brand-purple-dark/75 mt-2 line-clamp-2 text-sm">
+                {v.title && <b className="text-brand-purple-dark">{v.title}: </b>}
                 {v.body.replace(/[#*_`>-]/g, "").slice(0, 200)}
                 {v.body.length > 200 && "…"}
               </p>
@@ -81,7 +83,7 @@ export function VersionHistory({
                   type="submit"
                   variant="ghost"
                   size="sm"
-                  className="text-slate-700 hover:bg-slate-100"
+                  className="text-brand-purple-dark hover:bg-brand-purple/10"
                   title={`Hacer pública la versión ${v.version}`}
                 >
                   <RotateCcw className="mr-1 h-3.5 w-3.5" />
