@@ -31,6 +31,30 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { PRODUCT_REDIRECTS } from "@/lib/product-redirects";
+import { incrementRedirectHit, lookupActiveRedirect } from "@/features/redirects/service";
+
+// Cache in-memory para UrlRedirect lookups: evita hit DB en cada request.
+// TTL 60s — Lucy cambia un redirect y se ve aplicado en < 1min. Trade-off
+// aceptable vs latencia: con tráfico real, sin cache esto serían N requests
+// DB por minuto solo para misses (la mayoría de paths NO tienen redirect).
+type RedirectCacheEntry = {
+  value: { toPath: string; statusCode: number } | null;
+  expiresAt: number;
+};
+const redirectCache = new Map<string, RedirectCacheEntry>();
+const REDIRECT_CACHE_TTL_MS = 60_000;
+
+async function getRedirectWithCache(
+  path: string,
+): Promise<{ toPath: string; statusCode: number } | null> {
+  const cached = redirectCache.get(path);
+  const now = Date.now();
+  if (cached && cached.expiresAt > now) return cached.value;
+
+  const result = await lookupActiveRedirect(path).catch(() => null);
+  redirectCache.set(path, { value: result, expiresAt: now + REDIRECT_CACHE_TTL_MS });
+  return result;
+}
 
 const SECURITY_HEADERS: Record<string, string> = {
   "Strict-Transport-Security": "max-age=63072000; includeSubDomains; preload",
@@ -99,6 +123,27 @@ export async function proxy(request: NextRequest) {
       // target ya viene como "base-slug?variant=v_id"
       const targetUrl = new URL(`/producto/${target}`, request.url);
       return NextResponse.redirect(targetUrl, 301);
+    }
+  }
+
+  // Sub-fase C.3 — UrlRedirect admin-managed (301/302 dinámicos).
+  // Solo se consulta para GET de páginas (no API, no assets) para evitar
+  // overhead en requests irrelevantes.
+  if (
+    !isApi &&
+    !path.startsWith("/_next/") &&
+    !path.startsWith("/admin/") &&
+    request.method === "GET"
+  ) {
+    const dynamicRedirect = await getRedirectWithCache(path);
+    if (dynamicRedirect) {
+      // Incremento de hit count en background (no espera). Si falla, se ignora.
+      void incrementRedirectHit(path);
+      const isAbsolute = /^https?:\/\//i.test(dynamicRedirect.toPath);
+      const targetUrl = isAbsolute
+        ? dynamicRedirect.toPath
+        : new URL(dynamicRedirect.toPath, request.url);
+      return NextResponse.redirect(targetUrl, dynamicRedirect.statusCode);
     }
   }
 

@@ -1181,3 +1181,44 @@ model RecommendationLog {
   @@index([customerId, createdAt])
   @@index([queryType, createdAt])
 }
+
+// ──────────────────────── REDIRECTS (SEO) ────────────────────────
+//
+// UrlRedirect — mapeo arbitrario admin-managed para redirects 301/302
+// (URL legacy → URL nueva). Complementa product-redirects.ts (slugs de
+// productos consolidados) que vive en código generado.
+//
+// Lucy usa esto cuando:
+//   - Cambia un slug de categoría/blog/legal (SEO: no romper links externos)
+//   - Migra contenido viejo (linktree, Instagram bio)
+//   - Resuelve typos comunes con redirect ("/garantia" → "/legal/garantias")
+//
+// Lookup se hace en proxy.ts (Node runtime, Prisma directo) con cache
+// in-memory de 60s para no martillear DB en cada request.
+model UrlRedirect {
+  id          String   @id @default(cuid())
+  // Ruta de origen (sin host, sin query string). Ej: "/garantia",
+  // "/blog/promocion-mama-2025". UNIQUE para evitar conflictos.
+  fromPath    String   @unique
+  // Destino: ruta interna ("/legal/garantias") o URL externa
+  // ("https://otra.com/x"). Sin restricciones de scheme.
+  toPath      String
+  // 301 (permanent, SEO transfer) o 302 (temporary). Default 301.
+  statusCode  Int      @default(301)
+  // Opcional: descripción interna para Lucy (no se expone al cliente).
+  description String?
+  isActive    Boolean  @default(true)
+  // Contador de hits — útil para detectar redirects obsoletos.
+  hitCount    Int      @default(0)
+  lastHitAt   DateTime?
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  createdBy String?
+  updatedBy String?
+  deletedAt DateTime?
+  deletedBy String?
+
+  @@index([fromPath, isActive, deletedAt])
+  @@index([deletedAt])
+}

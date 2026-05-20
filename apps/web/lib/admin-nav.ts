@@ -161,9 +161,8 @@ export const ADMIN_NAV: NavGroup[] = [
         label: "Redirects 301",
         href: "/admin/redirects",
         icon: ArrowRightLeft,
-        badge: { text: "Próximo", tone: "soon" },
         description:
-          "Gestión de URLs legacy → nuevas (SEO). Hoy se administran desde el código (apps/web/lib/product-redirects.ts).",
+          "Gestión admin de URLs legacy → nuevas (SEO). Complementa product-redirects.ts (generado por code). Cache 60s en proxy.",
       },
     ],
   },
@@ -215,9 +214,8 @@ export const ADMIN_NAV: NavGroup[] = [
     title: "Finanzas",
     icon: DollarSign,
     href: "/admin/finanzas",
-    badge: { text: "Próximo", tone: "soon" },
     description:
-      "Dashboard financiero: ingresos, egresos, IVA, conciliación con Wompi. Próxima sub-fase.",
+      "Dashboard financiero: KPIs ingresos + DIAN + breakdown método pago. Marco preparado; datos reales llegan con Fase 2 (Checkout).",
   },
   {
     title: "IA y Conocimiento",
@@ -266,25 +264,22 @@ export const ADMIN_NAV: NavGroup[] = [
         label: "Usuarios y acceso",
         href: "/admin/usuarios",
         icon: UserPlus,
-        badge: { text: "Próximo", tone: "soon" },
         description:
-          "Gestión de admins: invitar nuevos, asignar roles, 2FA. Hoy hay solo 1 admin (tú); útil cuando crezca el equipo.",
+          "Gestión de admins: listar, promover clientes existentes, cambiar rol (Superadmin/Manager/Fulfillment), activar/desactivar. Solo Superadmin.",
       },
       {
         label: "Integraciones",
         href: "/admin/integraciones",
         icon: Plug,
-        badge: { text: "Próximo", tone: "soon" },
         description:
-          "Estado de integraciones (Wompi, Aveonline, Resend, Supabase) + rotación de keys. Próxima sub-fase.",
+          "Estado en vivo de Supabase, Wompi, Aveonline, Resend, WhatsApp, Turnstile, Anthropic + env vars requeridas + acciones humanas pendientes.",
       },
       {
         label: "Plantillas de correo",
         href: "/admin/email-templates",
         icon: Mail,
-        badge: { text: "Próximo", tone: "soon" },
         description:
-          "Editor de emails transaccionales (confirmación pedido, envío, etc.). Hoy se administran desde código.",
+          "Lista de CmsBlocks tipo EMAIL (asunto + cuerpo + CTA). Editor reusa /admin/contenido. Layout react-email vive en código.",
       },
     ],
   },
