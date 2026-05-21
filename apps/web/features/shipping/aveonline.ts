@@ -126,7 +126,7 @@ export class AveonlineProvider implements ShippingProvider {
     }));
   }
 
-  async createShipment(_params: {
+  async createShipment(params: {
     carrier: string;
     quoteId?: string;
     pickup: ShippingAddress;
@@ -136,11 +136,139 @@ export class AveonlineProvider implements ShippingProvider {
     valorRecaudoCop?: number;
     orderId: string;
   }): Promise<ShippingResult> {
-    // STUB — implementación real cuando Lucy complete onboarding KYC.
-    // ACCIÓN HUMANA REQUERIDA: validar payload exacto con soporte Aveonline.
-    throw new Error(
-      "AveonlineProvider.createShipment no implementado. Lucy debe completar onboarding KYC + validar payload con soporte.",
-    );
+    // Contrato Aveonline: docs/nacional/generacionGuia
+    // Mismo endpoint que cotización pero tipo="generarGuia2".
+    // idtransportador viene del quoteId que cotización devolvió como codTransportadora.
+    const { token, idempresa } = await getAuthToken();
+    const usuario = process.env.AVEONLINE_USUARIO!;
+    const clave = process.env.AVEONLINE_CLAVE!;
+
+    if (!params.quoteId) {
+      throw new Error(
+        "Aveonline createShipment requiere quoteId (idtransportador de la cotización).",
+      );
+    }
+
+    const productos = params.items.map((i) => ({
+      alto: "10", // cm — placeholder hasta que cada Product tenga dimensiones
+      ancho: "10",
+      largo: "10",
+      peso: String(Math.max(0.1, Math.round((i.weightGrams / 1000) * 10) / 10)), // kg, 1 decimal
+      unidades: i.qty,
+      nombre: i.productSlug,
+      ref: i.productSlug,
+      valorDeclarado: String(i.declaredValueCop),
+    }));
+
+    const valorRecaudo = params.contraentrega ? (params.valorRecaudoCop ?? 0) : 0;
+    const totalDeclarado = params.items.reduce((acc, i) => acc + i.declaredValueCop * i.qty, 0);
+
+    const body = {
+      tipo: "generarGuia2",
+      token,
+      idempresa,
+      codigo: usuario,
+      dsclavex: clave,
+      // Origen (remitente = nosotros)
+      origen: `${params.pickup.city.toUpperCase()}(${params.pickup.department.toUpperCase()})`,
+      dsdirre: params.pickup.address,
+      dsnitre: process.env.AVEONLINE_NIT ?? "0000000000",
+      dsnombre: params.pickup.contactName,
+      dstelre: params.pickup.phone,
+      dscelularre: params.pickup.phone,
+      dscorreopre: process.env.EMAIL_FROM?.match(/<(.+?)>/)?.[1] ?? "hola@lucamsshop.co",
+      // Destino (destinatario = cliente)
+      destino: `${params.delivery.city.toUpperCase()}(${params.delivery.department.toUpperCase()})`,
+      dsdir: params.delivery.address,
+      IdTipoEntrega: "1", // 1=domicilio, 2=oficina
+      dsnit: "00000",
+      dsnombrecompleto: params.delivery.contactName,
+      dstel: params.delivery.phone,
+      dscelular: params.delivery.phone,
+      dscorreop: "", // si Order tiene email, se puede inyectar via params en V2
+      idtransportador: params.quoteId, // viene de quote().quoteId = codTransportadora
+      unidades: params.items.reduce((acc, i) => acc + i.qty, 0),
+      productos,
+      dscontenido: params.items
+        .map((i) => i.productSlug)
+        .join(", ")
+        .slice(0, 80),
+      idasumecosto: 0,
+      contraentrega: params.contraentrega ? 1 : 0,
+      valorrecaudo: valorRecaudo,
+      bloquegenerarguia: "1",
+      relacion_envios: "1",
+      enviarcorreos: "1",
+      valorMinimo: 0, // 0 = suma valorDeclarado (correcto para nuestro caso)
+      dsvalor_pedido: String(totalDeclarado),
+      dsreferencia: params.orderId, // tracking interno
+      plugin: "lucamsshop",
+    };
+
+    const res = await fetch(`${BASE_URL}/nal/v1.0/generarGuiaTransporteNacional.php`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(20_000),
+    });
+
+    if (!res.ok) {
+      logger.error({
+        event: "shipping.aveonline.createshipment.http_fail",
+        status: res.status,
+        orderId: params.orderId,
+      });
+      throw new Error(`Aveonline createShipment HTTP ${res.status}`);
+    }
+
+    const data = (await res.json()) as {
+      status: string;
+      message?: string;
+      resultado?: {
+        guia?: {
+          codigo?: string;
+          mensaje?: string;
+          numguia?: number | string;
+          rutaguia?: string;
+          rotulo?: string;
+          rutasticker?: string;
+          transportadora?: string;
+        };
+      };
+    };
+
+    if (data.status !== "ok" || !data.resultado?.guia?.numguia) {
+      const msg = data.resultado?.guia?.mensaje ?? data.message ?? "respuesta inválida";
+      logger.error({
+        event: "shipping.aveonline.createshipment.fail",
+        orderId: params.orderId,
+        msg,
+      });
+      throw new Error(`Aveonline createShipment falló: ${msg}`);
+    }
+
+    const guia = data.resultado.guia;
+    const trackingNumber = String(guia.numguia);
+    // labelUrl: preferimos rutasticker (110x120 térmico) por tamaño; fallback rutaguia (PDF normal)
+    const labelUrl = guia.rutasticker ?? guia.rutaguia ?? "";
+    const trackingUrl = guia.rutaguia ?? labelUrl;
+
+    logger.info({
+      event: "shipping.aveonline.createshipment.success",
+      orderId: params.orderId,
+      trackingNumber,
+      carrier: guia.transportadora,
+    });
+
+    return {
+      trackingNumber,
+      trackingUrl,
+      labelUrl,
+      carrier: (guia.transportadora ?? params.carrier).toLowerCase().replace(/\s+/g, "-"),
+      // Aveonline no devuelve ETA exacta — caller puede estimar usando deliveryDays
+      // del quote previo y guardarlo en Order si lo necesita.
+      estimatedDeliveryAt: null,
+    };
   }
 
   async getTracking(trackingNumber: string): Promise<TrackingStatus> {
