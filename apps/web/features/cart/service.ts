@@ -265,12 +265,20 @@ export async function addPersonalizedToCart(opts: {
   customerId: string | null;
   designId: string;
   qty: number;
+  /**
+   * Variant elegido por el cliente en el flow PDP → Estudio
+   * (`/estudio/[slug]?variant=X`). Si se omite, fallback a la primera
+   * variant activa del producto (mantiene compat con productos sin variants).
+   *
+   * Si se pasa, se valida que pertenece a design.product.id (anti-tamper).
+   */
+  variantId?: string;
 }): Promise<CartDetail> {
   if (opts.qty < 1 || opts.qty > MAX_QTY_PER_ITEM) {
     throw new CartError("QTY_INVALID");
   }
 
-  // Fetch design + product + default variant. Validar status READY.
+  // Fetch design + product + variantes activas. Validar status READY.
   const design = await prisma.design.findUnique({
     where: { id: opts.designId },
     select: {
@@ -283,9 +291,9 @@ export async function addPersonalizedToCart(opts: {
           isActive: true,
           deletedAt: true,
           variants: {
-            where: { deletedAt: null, sku: { endsWith: "-DEFAULT" } },
-            select: { id: true, price: true },
-            take: 1,
+            where: { deletedAt: null },
+            select: { id: true, price: true, sku: true },
+            orderBy: { createdAt: "asc" },
           },
         },
       },
@@ -299,7 +307,25 @@ export async function addPersonalizedToCart(opts: {
     // PRODUCT_NOT_FOUND error para evitar surface DRAFT details al cliente.
     throw new CartError("PRODUCT_NOT_FOUND");
   }
-  const variant = design.product.variants[0];
+
+  // Resolver variant: si caller pasó variantId (típico tras consolidación
+  // de familias M.3.b.CAT donde N variants por size/qty), validar que
+  // pertenece al producto del Design. Si no se pasó, fallback histórico:
+  // primera variant disponible (post-M.3.b.CAT la mayoría de productos
+  // tienen al menos 1 variant; pre-consolidación había un "-DEFAULT").
+  let variant: { id: string; price: number | null } | undefined;
+  if (opts.variantId) {
+    variant = design.product.variants.find((v) => v.id === opts.variantId);
+    if (!variant) {
+      // El variantId no pertenece a este producto → posible tamper
+      // (cliente cambió URL) o variant archivado entre PDP y Estudio.
+      throw new CartError("NO_DEFAULT_VARIANT");
+    }
+  } else {
+    // Compat: primera variant activa (orden por createdAt). Para productos
+    // mono-variant queda igual; para multi-variant es elección arbitraria.
+    variant = design.product.variants[0];
+  }
   if (!variant) throw new CartError("NO_DEFAULT_VARIANT");
 
   const unitPrice = variant.price ?? design.product.basePrice;

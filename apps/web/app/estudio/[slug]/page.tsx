@@ -140,6 +140,8 @@ export default async function EstudioPage({
             personalizationSchema: mergedSchema,
             images: product.images,
           }}
+          // M.3.b.CAT — variant elegido en PDP, propagado al cart al finalizar
+          variantId={selectedVariant?.id}
           templates={templates}
           initialDesignId={initialDesignId}
           initialDesignCanvas={initialDesignCanvas}

@@ -386,11 +386,13 @@ function AutoSaveIndicator({
         {status.kind === "error" && (
           <span
             title={status.message}
-            className="flex items-center gap-1 text-red-600"
+            className="flex max-w-[300px] items-center gap-1 truncate text-red-600 sm:max-w-[480px]"
             role="alert"
           >
-            <AlertCircle className="h-3 w-3" />
-            Error al guardar
+            <AlertCircle className="h-3 w-3 flex-shrink-0" />
+            <span className="truncate" title={status.message}>
+              {status.message || "Error al guardar"}
+            </span>
           </span>
         )}
       </motion.span>

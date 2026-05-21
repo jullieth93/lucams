@@ -76,6 +76,13 @@ type StudioEditorProps = {
   initialDesignCanvas: CanvasData | null;
   initialDesignAssets: StudioAsset[];
   photoSlots: number;
+  /**
+   * Variant ID elegido en PDP (`/estudio/[slug]?variant=X`). Se propaga
+   * al cart al finalizar para que el CartItem use la variant correcta
+   * (cantidad/tamaño/etc.) — antes de M.3.b.CAT había siempre 1 variant
+   * "-DEFAULT" por producto, ahora hay N por size/qty.
+   */
+  variantId?: string;
 };
 
 export function StudioEditor({
@@ -85,6 +92,7 @@ export function StudioEditor({
   initialDesignCanvas,
   initialDesignAssets,
   photoSlots,
+  variantId,
 }: StudioEditorProps) {
   const router = useRouter();
   const store = useMemo(() => createStudioStore(), []);
@@ -293,10 +301,11 @@ export function StudioEditor({
         return;
       }
 
-      // Add to cart
+      // Add to cart — pasamos variantId del PDP (consolidación familias M.3.b.CAT)
       const addResult = await addPersonalizedToCartAction({
         designId: state.designId,
         qty: 1,
+        variantId,
       });
       if (!addResult.ok) {
         state.setIsFinalizing(false);
@@ -316,7 +325,7 @@ export function StudioEditor({
         message: err instanceof Error ? err.message : String(err),
       });
     }
-  }, [router, store]);
+  }, [router, store, variantId]);
 
   // ──────────── Estados de boot ────────────
   if (bootError) {

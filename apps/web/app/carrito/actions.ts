@@ -139,6 +139,9 @@ export async function updateQtyAction(formData: FormData): Promise<void> {
 const AddPersonalizedSchema = z.object({
   designId: z.string().min(1),
   qty: z.number().int().min(1).max(99).default(1),
+  // variantId elegido en PDP → Estudio (M.3.b.CAT consolidación familias).
+  // Service valida que pertenece a design.product.id (anti-tamper).
+  variantId: z.string().min(1).optional(),
 });
 
 export type AddPersonalizedResult =
@@ -152,10 +155,12 @@ export type AddPersonalizedResult =
 export async function addPersonalizedToCartAction(input: {
   designId: string;
   qty?: number;
+  variantId?: string;
 }): Promise<AddPersonalizedResult> {
   const parsed = AddPersonalizedSchema.safeParse({
     designId: input.designId,
     qty: input.qty ?? 1,
+    variantId: input.variantId,
   });
   if (!parsed.success) {
     return { ok: false, code: "VALIDATION", message: parsed.error.message };
@@ -184,6 +189,7 @@ export async function addPersonalizedToCartAction(input: {
       customerId,
       designId: parsed.data.designId,
       qty: parsed.data.qty,
+      variantId: parsed.data.variantId,
     });
     logger.info({
       event: "cart.add_personalized.success",
