@@ -1,21 +1,20 @@
 /*
- * AveonlineProvider — Implementación stub que define la estructura.
+ * AveonlineProvider — Implementación PLAN_CATALOG_V2 ADR-039.
  *
- * PLAN_CATALOG_V2 ADR-039. API legacy PHP con `tipo` discriminator —
- * encapsulado bajo interface limpia.
+ * API legacy PHP con `tipo` discriminator — encapsulado bajo interface
+ * limpia (ShippingProvider).
  *
- * Estado: STUB inicial. Lucy debe completar onboarding comercial
- * en aveonline.co + verificar HMAC en webhook antes de habilitar producción.
- *
- * Variables de entorno requeridas:
- *   AVEONLINE_USUARIO        — credencial plataforma
- *   AVEONLINE_CLAVE          — password
- *   AVEONLINE_PICKUP_CITY    — ciudad recogida (ej. "Bogotá")
- *   AVEONLINE_PICKUP_DEPT    — departamento (ej. "Cundinamarca")
- *   AVEONLINE_PICKUP_ADDRESS — dirección física
- *   AVEONLINE_PICKUP_PHONE   — teléfono operativo
+ * Configuración split (decisión Lucy 2026-05-20):
+ *   - Secretos técnicos en .env.local:
+ *       AVEONLINE_USUARIO  — credencial plataforma
+ *       AVEONLINE_CLAVE    — password
+ *   - Business data en SiteSettings (admin/contenido/configuracion):
+ *       PICKUP_CITY, PICKUP_DEPARTMENT, PICKUP_ADDRESS, PICKUP_PHONE,
+ *       PICKUP_CONTACT_NAME, BUSINESS_NIT
+ *   → Lucy edita los datos de recogida desde admin sin tocar código.
  */
 
+import { getSettingValue } from "@/lib/cms";
 import { logger } from "@/lib/logger";
 import type {
   PickupResult,
@@ -149,6 +148,40 @@ export class AveonlineProvider implements ShippingProvider {
       );
     }
 
+    // Business data se lee de SiteSettings (admin/contenido/configuracion).
+    // params.pickup tiene precedencia si caller los pasa explícitos (útil para
+    // testing o overrides). Si vienen vacíos, fallback a settings.
+    const [settingNit, settingCity, settingDept, settingAddress, settingPhone, settingContact] =
+      await Promise.all([
+        getSettingValue("BUSINESS_NIT", "0000000000"),
+        getSettingValue("PICKUP_CITY", ""),
+        getSettingValue("PICKUP_DEPARTMENT", ""),
+        getSettingValue("PICKUP_ADDRESS", ""),
+        getSettingValue("PICKUP_PHONE", ""),
+        getSettingValue("PICKUP_CONTACT_NAME", ""),
+      ]);
+
+    const pickupCity = params.pickup.city || settingCity;
+    const pickupDept = params.pickup.department || settingDept;
+    const pickupAddress = params.pickup.address || settingAddress;
+    const pickupPhone = params.pickup.phone || settingPhone;
+    const pickupContact = params.pickup.contactName || settingContact;
+
+    // Validación: si falta cualquier dato de pickup, error claro apuntando
+    // al admin (no a env vars).
+    const missing: string[] = [];
+    if (!pickupCity) missing.push("PICKUP_CITY");
+    if (!pickupDept) missing.push("PICKUP_DEPARTMENT");
+    if (!pickupAddress) missing.push("PICKUP_ADDRESS");
+    if (!pickupPhone) missing.push("PICKUP_PHONE");
+    if (!pickupContact) missing.push("PICKUP_CONTACT_NAME");
+    if (missing.length > 0) {
+      throw new Error(
+        `Aveonline createShipment: faltan datos de recogida [${missing.join(", ")}]. ` +
+          `Configurálos en /admin/contenido/configuracion (categoría 'Negocio').`,
+      );
+    }
+
     const productos = params.items.map((i) => ({
       alto: "10", // cm — placeholder hasta que cada Product tenga dimensiones
       ancho: "10",
@@ -169,13 +202,13 @@ export class AveonlineProvider implements ShippingProvider {
       idempresa,
       codigo: usuario,
       dsclavex: clave,
-      // Origen (remitente = nosotros)
-      origen: `${params.pickup.city.toUpperCase()}(${params.pickup.department.toUpperCase()})`,
-      dsdirre: params.pickup.address,
-      dsnitre: process.env.AVEONLINE_NIT ?? "0000000000",
-      dsnombre: params.pickup.contactName,
-      dstelre: params.pickup.phone,
-      dscelularre: params.pickup.phone,
+      // Origen (remitente = nosotros) — datos de SiteSettings
+      origen: `${pickupCity.toUpperCase()}(${pickupDept.toUpperCase()})`,
+      dsdirre: pickupAddress,
+      dsnitre: settingNit,
+      dsnombre: pickupContact,
+      dstelre: pickupPhone,
+      dscelularre: pickupPhone,
       dscorreopre: process.env.EMAIL_FROM?.match(/<(.+?)>/)?.[1] ?? "hola@lucamsshop.co",
       // Destino (destinatario = cliente)
       destino: `${params.delivery.city.toUpperCase()}(${params.delivery.department.toUpperCase()})`,

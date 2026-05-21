@@ -674,6 +674,59 @@ const settings = [
     description: "Aparece en /legal/privacidad.",
     category: "BUSINESS",
   },
+  {
+    key: "BUSINESS_NIT",
+    value: "",
+    valueType: "TEXT",
+    label: "NIT / CC del negocio (remitente)",
+    description:
+      "Documento del remitente que Aveonline usa al generar la guía. Si sos persona natural usá tu CC; si tenés sociedad usá el NIT.",
+    category: "BUSINESS",
+  },
+
+  // PICKUP — datos de la dirección donde Aveonline recoge los paquetes.
+  // Se usan al generar guías de envío. Cambialos si te mudás de taller.
+  {
+    key: "PICKUP_CITY",
+    value: "Bogotá",
+    valueType: "TEXT",
+    label: "Ciudad de recogida (envíos)",
+    description: "Ciudad donde Aveonline pasa a recoger los pedidos. Ej: 'Bogotá'.",
+    category: "BUSINESS",
+  },
+  {
+    key: "PICKUP_DEPARTMENT",
+    value: "Cundinamarca",
+    valueType: "TEXT",
+    label: "Departamento de recogida (envíos)",
+    description: "Departamento de la ciudad de recogida. Ej: 'Cundinamarca'.",
+    category: "BUSINESS",
+  },
+  {
+    key: "PICKUP_ADDRESS",
+    value: "",
+    valueType: "TEXT",
+    label: "Dirección de recogida (envíos)",
+    description:
+      "Dirección física donde el courier pasa a recoger. Ej: 'Calle 100 # 15-20, Bogotá'.",
+    category: "BUSINESS",
+  },
+  {
+    key: "PICKUP_PHONE",
+    value: "",
+    valueType: "PHONE",
+    label: "Teléfono de recogida (envíos)",
+    description: "Teléfono operativo para coordinar recogida con el courier.",
+    category: "BUSINESS",
+  },
+  {
+    key: "PICKUP_CONTACT_NAME",
+    value: "",
+    valueType: "TEXT",
+    label: "Persona de contacto para recogida",
+    description: "Nombre de quien recibe al courier en la dirección de recogida.",
+    category: "BUSINESS",
+  },
 
   // SOCIAL
   {
