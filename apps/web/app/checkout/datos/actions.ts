@@ -118,13 +118,28 @@ export async function saveDatosAction(
       email: contactParsed.data.email,
       city: addressParsed.data.city,
       department: addressParsed.data.department,
+      addressKind: addressParsed.data.kind,
     });
   } catch (err) {
+    // Logger captura stack completo (visible en web.log con stdbuf line-buffer).
+    // Al cliente solo retornamos un código sanitizado para no exponer detalles internos.
+    const errMsg = err instanceof Error ? err.message : String(err);
+    const errCode = errMsg.includes("CSRF_SECRET")
+      ? "config_csrf"
+      : errMsg.includes("cookie")
+        ? "cookie"
+        : errMsg.includes("Prisma")
+          ? "db"
+          : "unknown";
     logger.error({
       event: "checkout.step.datos.save_fail",
-      err: err instanceof Error ? err.message : String(err),
+      errCode,
+      err: errMsg,
+      stack: err instanceof Error ? err.stack : undefined,
     });
-    return { error: "Error al guardar. Reintentá." };
+    return {
+      error: `Error al guardar tus datos (cod: ${errCode}). Reintentá o avisanos por WhatsApp.`,
+    };
   }
 
   redirect("/checkout/envio");

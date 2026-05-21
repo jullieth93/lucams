@@ -17,6 +17,7 @@ import { getCartDetail } from "@/features/cart/service";
 import { getCurrentUser } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
+import { getSettingValue } from "@/lib/cms";
 import { createOrderFromCart } from "@/features/orders/service";
 import { getPaymentProvider } from "@/features/payments/provider";
 import { getShippingProvider } from "@/features/shipping/provider";
@@ -148,9 +149,25 @@ export async function quoteShipping(input: {
     };
   });
 
+  // Origen del envío = donde Aveonline recoge. Se lee de SiteSettings PICKUP_CITY +
+  // PICKUP_DEPARTMENT (Lucy los edita desde /admin/contenido/configuracion BUSINESS).
+  // Fallback a Bogotá/Cundinamarca si por algún motivo no están seteados (no rompe la cotización
+  // pero loguea warning para que admin lo corrija).
+  const [pickupCity, pickupDept] = await Promise.all([
+    getSettingValue("PICKUP_CITY", "Bogotá"),
+    getSettingValue("PICKUP_DEPARTMENT", "Cundinamarca"),
+  ]);
+  if (!pickupCity || !pickupDept) {
+    logger.warn({
+      event: "checkout.quote_shipping.pickup_settings_missing",
+      pickupCity,
+      pickupDept,
+    });
+  }
+
   try {
     const quotes = await provider.quote({
-      origin: { city: "Bogotá", department: "Cundinamarca" }, // TODO: leer de SiteSettings PICKUP_CITY/DEPT
+      origin: { city: pickupCity, department: pickupDept },
       destination: { city: input.destinationCity, department: input.destinationDepartment },
       items,
       contraentrega: input.contraentrega ?? false,

@@ -29,6 +29,28 @@ import type {
 
 const BASE_URL = "https://app.aveonline.co/api";
 
+/**
+ * Valor declarado mínimo COP que Aveonline acepta (numbererror -5 si <10000).
+ * Doc oficial: https://integraciones.aveonline.co/docs/nacional/cotizacion/
+ */
+const MIN_DECLARED_VALUE_COP = 10000;
+
+/**
+ * Normaliza ciudad+depto al formato que Aveonline espera: `CIUDAD(DEPTO)` UPPERCASE
+ * sin tildes ni "D.C." Ej: "Bogotá D.C." + "Cundinamarca" → "BOGOTA(CUNDINAMARCA)".
+ */
+function formatAveonlineCity(city: string, department: string): string {
+  const strip = (s: string) =>
+    s
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "") // quitar tildes
+      .replace(/\bD\.?\s*C\.?\b/gi, "") // quitar "D.C." de Bogotá
+      .replace(/\s+/g, " ")
+      .trim()
+      .toUpperCase();
+  return `${strip(city)}(${strip(department)})`;
+}
+
 type CachedToken = { token: string; idempresa: number; expiresAt: number };
 
 let tokenCache: CachedToken | null = null;
@@ -85,6 +107,7 @@ export class AveonlineProvider implements ShippingProvider {
     // PR C (Lucy 2026-05-21): peso + dims REALES del item.weightGrams/widthCm/etc.
     // El caller (features/checkout/service.ts) los resuelve via
     // getEffectiveShippingDims(product, variant) y lanza error si faltan.
+    // valorDeclarado forzado a mínimo Aveonline (10.000 COP) — sino devuelve numbererror -5.
     const productos = params.items.map((i) => ({
       alto: i.heightCm,
       ancho: i.widthCm,
@@ -92,39 +115,92 @@ export class AveonlineProvider implements ShippingProvider {
       peso: Math.max(0.1, Math.round((i.weightGrams / 1000) * 10) / 10), // kg, 1 decimal
       unidades: i.qty,
       nombre: i.productSlug,
-      valorDeclarado: i.declaredValueCop,
+      valorDeclarado: Math.max(MIN_DECLARED_VALUE_COP, i.declaredValueCop),
     }));
+
+    // Aveonline 2026-05-21: usar `cotizarDoble` (multi-carrier) en vez de `cotizar2`
+    // (single-carrier). cotizar2 devolvía numbererror=999 cuando idtransportador no
+    // estaba habilitado para la cuenta. cotizarDoble cotiza TODAS las habilitadas y
+    // filtramos por numbererror='-0-' acá. Doc: docs/INTEGRATIONS_AVEONLINE.md §3.
+    // Ciudad UPPERCASE con formato `CIUDAD(DEPTO)` — sino numbererror=-1 o -2.
+    const origenFmt = formatAveonlineCity(params.origin.city, params.origin.department);
+    const destinoFmt = formatAveonlineCity(params.destination.city, params.destination.department);
+
     const res = await fetch(`${BASE_URL}/nal/v1.0/generarGuiaTransporteNacional.php`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        tipo: "cotizar2",
+        tipo: "cotizarDoble",
+        access: "",
         token,
         idempresa,
-        origen: params.origin.city,
-        destino: params.destination.city,
+        origen: origenFmt,
+        destino: destinoFmt,
         productos,
         contraentrega: params.contraentrega ? 1 : 0,
+        contraentregaPayment: 0,
+        valorrecaudo: 0,
+        valorMinimo: 0,
         idasumecosto: 0,
-        plugin: "apiave",
+        plugin: "lucamsshop",
       }),
     });
     if (!res.ok) throw new Error(`Aveonline quote fail HTTP ${res.status}`);
+
+    // Schema completo (Aveonline devuelve strings donde deberían ser numbers — parseo defensivo).
     const data = (await res.json()) as {
+      status?: string;
+      message?: string;
       cotizaciones?: Array<{
-        codTransportadora: string;
-        nombreTransportadora: string;
-        total: number;
-        diasentrega: number;
+        numbererror?: string;
+        dataerror?: string;
+        codTransportadora?: string;
+        nombreTransportadora?: string;
+        total?: number;
+        diasentrega?: number | string;
       }>;
     };
-    return (data.cotizaciones ?? []).map((c) => ({
-      carrier: c.nombreTransportadora.toLowerCase().replace(/\s+/g, "-"),
-      carrierName: c.nombreTransportadora,
-      fleteCop: Math.round(c.total * 100), // pasamos a centavos
-      deliveryDays: c.diasentrega,
+
+    const all = data.cotizaciones ?? [];
+    const ok = all.filter((c) => c.numbererror === "-0-");
+    const failed = all.filter((c) => c.numbererror !== "-0-");
+
+    // Log estructurado: si todas fallaron, capturamos numbererror+dataerror para
+    // que admin vea la causa exacta en /admin/logs (con stdbuf line-buffer).
+    if (ok.length === 0 && failed.length > 0) {
+      logger.warn({
+        event: "shipping.aveonline.quote.all_failed",
+        origen: origenFmt,
+        destino: destinoFmt,
+        totalCotizaciones: all.length,
+        errores: failed.slice(0, 8).map((c) => ({
+          carrier: c.nombreTransportadora,
+          code: c.numbererror,
+          msg: c.dataerror?.slice(0, 160),
+        })),
+      });
+      throw new Error(
+        `Aveonline: ninguna transportadora cubre ${destinoFmt} desde ${origenFmt} para los productos del carrito. ` +
+          `Verificá cobertura o contactá soporte.`,
+      );
+    }
+
+    if (ok.length > 0 && failed.length > 0) {
+      logger.info({
+        event: "shipping.aveonline.quote.partial",
+        ok: ok.length,
+        failed: failed.length,
+        failedCarriers: failed.map((c) => c.nombreTransportadora),
+      });
+    }
+
+    return ok.map((c) => ({
+      carrier: (c.nombreTransportadora ?? "carrier").toLowerCase().replace(/\s+/g, "-"),
+      carrierName: c.nombreTransportadora ?? "Transportadora",
+      fleteCop: Math.round((c.total ?? 0) * 100), // pasamos a centavos
+      deliveryDays: Number(c.diasentrega) || 0,
       contraentrega: params.contraentrega,
-      quoteId: c.codTransportadora,
+      quoteId: c.codTransportadora ?? "",
     }));
   }
 
