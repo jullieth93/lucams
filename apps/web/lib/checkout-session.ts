@@ -34,11 +34,25 @@ export type ContactData = {
 };
 
 export type AddressData = {
-  city: string;
-  department: string;
-  addressLine1: string;
-  addressLine2?: string;
+  // DANE divipola (Lucy 2026-05-21)
+  deptCode: string; // 2 dígitos
+  cityCode: string; // 5 dígitos
+  department: string; // nombre human-readable
+  city: string; // nombre human-readable
   zip?: string;
+  // Dirección estructurada
+  viaType:
+    | "Calle"
+    | "Carrera"
+    | "Diagonal"
+    | "Transversal"
+    | "Avenida"
+    | "Autopista"
+    | "Circular"
+    | "Manzana";
+  viaNumber: string;
+  cruceNumber: string;
+  detail?: string;
   notes?: string;
 };
 

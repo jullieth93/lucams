@@ -5,6 +5,7 @@ import { z } from "zod";
 import { logger } from "@/lib/logger";
 import { ContactSchema, AddressSchema, BillingSchema } from "@/features/checkout/schemas";
 import { saveAddressStep, saveContactStep } from "@/features/checkout/service";
+import { getCityByCode, getDepartmentByCode } from "@/lib/dane-divipola";
 
 export type DatosActionState = {
   error?: string;
@@ -15,11 +16,13 @@ export async function saveDatosAction(
   _prev: DatosActionState | null,
   formData: FormData,
 ): Promise<DatosActionState> {
-  // Contact
+  // ─── Contacto ───
   const contactRaw = {
-    fullName: String(formData.get("fullName") ?? ""),
-    email: String(formData.get("email") ?? ""),
-    phone: String(formData.get("phone") ?? ""),
+    fullName: String(formData.get("fullName") ?? "").trim(),
+    email: String(formData.get("email") ?? "")
+      .trim()
+      .toLowerCase(),
+    phone: String(formData.get("phone") ?? "").trim(),
     documentType: (formData.get("contactDocumentType") as string) || undefined,
     documentNumber: (formData.get("contactDocumentNumber") as string) || undefined,
   };
@@ -31,14 +34,36 @@ export async function saveDatosAction(
     };
   }
 
-  // Address
+  // ─── Dirección DANE + estructurada ───
+  const deptCode = String(formData.get("deptCode") ?? "");
+  const cityCode = String(formData.get("cityCode") ?? "");
+
+  // Cross-validate: cityCode debe pertenecer al deptCode + ambos existir
+  // en nuestro catálogo (anti-tamper si cliente manipula HTML).
+  const dept = getDepartmentByCode(deptCode);
+  const city = getCityByCode(cityCode);
+  if (!dept || !city || city.deptCode !== deptCode) {
+    return {
+      error: "Departamento o ciudad inválidos. Por favor seleccioná de la lista.",
+      fieldErrors: { cityCode: ["Ciudad no válida"] },
+    };
+  }
+
   const addressRaw = {
-    city: String(formData.get("city") ?? ""),
-    department: String(formData.get("department") ?? ""),
-    addressLine1: String(formData.get("addressLine1") ?? ""),
-    addressLine2: (formData.get("addressLine2") as string) || undefined,
-    zip: (formData.get("zip") as string) || undefined,
-    notes: (formData.get("notes") as string) || undefined,
+    deptCode,
+    cityCode,
+    department: dept.name,
+    city: city.name,
+    zip: (formData.get("zip") as string)?.trim() || undefined,
+    viaType: String(formData.get("viaType") ?? "Calle"),
+    viaNumber: String(formData.get("viaNumber") ?? "")
+      .trim()
+      .toUpperCase(),
+    cruceNumber: String(formData.get("cruceNumber") ?? "")
+      .trim()
+      .toUpperCase(),
+    detail: (formData.get("detail") as string)?.trim() || undefined,
+    notes: (formData.get("notes") as string)?.trim() || undefined,
   };
   const addressParsed = AddressSchema.safeParse(addressRaw);
   if (!addressParsed.success) {
@@ -48,7 +73,7 @@ export async function saveDatosAction(
     };
   }
 
-  // Billing (opcional)
+  // ─── Facturación opcional ───
   const wantsInvoice = formData.get("wantsInvoice") === "on";
   const billingRaw = {
     wantsInvoice,
@@ -71,7 +96,12 @@ export async function saveDatosAction(
   try {
     await saveContactStep(contactParsed.data);
     await saveAddressStep(addressParsed.data, billingParsed.data);
-    logger.info({ event: "checkout.step.datos.saved", email: contactParsed.data.email });
+    logger.info({
+      event: "checkout.step.datos.saved",
+      email: contactParsed.data.email,
+      city: addressParsed.data.city,
+      department: addressParsed.data.department,
+    });
   } catch (err) {
     logger.error({
       event: "checkout.step.datos.save_fail",

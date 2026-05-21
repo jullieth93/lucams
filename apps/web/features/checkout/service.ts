@@ -26,7 +26,7 @@ import {
   clearCheckoutState,
   type CheckoutState,
 } from "@/lib/checkout-session";
-import type { ShippingSelectionInput } from "./schemas";
+import { composeAddressLine, type ShippingSelectionInput } from "./schemas";
 
 export class CheckoutError extends Error {
   constructor(
@@ -177,6 +177,14 @@ export async function finalizeCheckout(input: {
 
   // 1. Crear Order en DB.
   let order;
+  // Componer dirección estructurada en string para Aveonline + Order.
+  const addressLine1 = composeAddressLine({
+    viaType: state.address.viaType,
+    viaNumber: state.address.viaNumber,
+    cruceNumber: state.address.cruceNumber,
+    detail: state.address.detail,
+  });
+
   try {
     order = await createOrderFromCart({
       cartId: ctx.cart.cartId,
@@ -189,8 +197,7 @@ export async function finalizeCheckout(input: {
         documentNumber: state.contact.documentNumber,
         city: state.address.city,
         department: state.address.department,
-        addressLine1: state.address.addressLine1,
-        addressLine2: state.address.addressLine2,
+        addressLine1,
         zip: state.address.zip,
         notes: state.address.notes,
       },

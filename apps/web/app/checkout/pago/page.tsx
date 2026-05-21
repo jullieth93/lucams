@@ -79,8 +79,8 @@ export default async function CheckoutPagoPage({ searchParams }: { searchParams:
             href="/checkout/datos"
           >
             <p className="text-brand-purple-dark text-sm">
-              {address.addressLine1}
-              {address.addressLine2 && `, ${address.addressLine2}`}
+              {address.viaType} {address.viaNumber} # {address.cruceNumber}
+              {address.detail && ` (${address.detail})`}
             </p>
             <p className="text-brand-purple-dark/70 text-xs">
               {address.city}, {address.department}

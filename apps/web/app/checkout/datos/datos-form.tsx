@@ -1,19 +1,143 @@
 "use client";
 
-import { useActionState, useState } from "react";
+/*
+ * Step 1 — Datos del cliente (Lucy 2026-05-21 — validaciones reales).
+ *
+ * Validación cliente-side estricta:
+ *   - Nombre: solo letras + capitalización al perder foco
+ *   - Email: validación formato + autocomplete dominios + detección typos
+ *   - Teléfono: 10 dígitos móvil CO con auto-formato "300 887 3826"
+ *   - Documento: regex por tipo (CC/CE/NIT/PP/TI)
+ *   - Departamento/Ciudad: dropdowns DANE divipola (catálogo curado)
+ *   - Código postal: autocompletado por ciudad si DANE lo tiene
+ *   - Dirección: 4 campos estructurados (Vía + Número + #Cruce + Detalle)
+ */
+
+import { useActionState, useMemo, useState } from "react";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { saveDatosAction, type DatosActionState } from "./actions";
 import type { CheckoutState } from "@/lib/checkout-session";
+import {
+  DEPARTMENTS,
+  getCitiesByDeptCode,
+  getCityByCode,
+  type DaneCity,
+} from "@/lib/dane-divipola";
+import {
+  DOCUMENT_TYPE_LABELS,
+  capitalizeName,
+  formatPhone,
+  getDocumentHelp,
+  stripPhone,
+  validateDocument,
+  validateName,
+  validatePhone,
+  type DocumentType,
+} from "@/lib/colombia-validators";
+import { detectEmailTypo, isValidEmail, suggestEmails } from "@/lib/email-domains";
+import { VIA_TYPES } from "@/features/checkout/schemas";
 
 export function DatosForm({ initial }: { initial: CheckoutState }) {
   const [state, formAction, pending] = useActionState<DatosActionState | null, FormData>(
     saveDatosAction,
     null,
   );
+
+  // Estado local de cada campo con validación reactiva
+  const [fullName, setFullName] = useState(initial.contact?.fullName ?? "");
+  const [email, setEmail] = useState(initial.contact?.email ?? "");
+  const [emailSuggestions, setEmailSuggestions] = useState<string[]>([]);
+  const [emailTypoFix, setEmailTypoFix] = useState<string | null>(null);
+  const [phoneDisplay, setPhoneDisplay] = useState(
+    initial.contact?.phone ? formatPhone(initial.contact.phone) : "",
+  );
+  const [docType, setDocType] = useState<DocumentType | "">(initial.contact?.documentType ?? "");
+  const [docNumber, setDocNumber] = useState(initial.contact?.documentNumber ?? "");
+
+  // Address DANE
+  const [deptCode, setDeptCode] = useState(initial.address?.deptCode ?? "");
+  const [cityCode, setCityCode] = useState(initial.address?.cityCode ?? "");
+  const [zip, setZip] = useState(initial.address?.zip ?? "");
+  const [viaType, setViaType] = useState<(typeof VIA_TYPES)[number]>(
+    initial.address?.viaType ?? "Calle",
+  );
+  const [viaNumber, setViaNumber] = useState(initial.address?.viaNumber ?? "");
+  const [cruceNumber, setCruceNumber] = useState(initial.address?.cruceNumber ?? "");
+  const [detail, setDetail] = useState(initial.address?.detail ?? "");
+  const [notes, setNotes] = useState(initial.address?.notes ?? "");
+
+  // Billing
   const [wantsInvoice, setWantsInvoice] = useState<boolean>(initial.billing?.wantsInvoice ?? false);
+
+  // Cities filtradas por depto elegido
+  const cities = useMemo<DaneCity[]>(
+    () => (deptCode ? getCitiesByDeptCode(deptCode) : []),
+    [deptCode],
+  );
+  const selectedDept = useMemo(() => DEPARTMENTS.find((d) => d.code === deptCode), [deptCode]);
+  const selectedCity = useMemo(() => getCityByCode(cityCode), [cityCode]);
+
+  // ─── Handlers ───
+
+  function handleNameBlur() {
+    if (fullName.trim()) setFullName(capitalizeName(fullName));
+  }
+
+  function handleEmailChange(value: string) {
+    setEmail(value);
+    setEmailTypoFix(null);
+    if (value.includes("@") && !value.includes(" ")) {
+      const dotIdx = value.indexOf("@") + 1;
+      const domainPart = value.slice(dotIdx);
+      if (!domainPart.includes(".") || domainPart.endsWith(".")) {
+        setEmailSuggestions(suggestEmails(value, 4));
+      } else {
+        setEmailSuggestions([]);
+      }
+    } else {
+      setEmailSuggestions([]);
+    }
+  }
+
+  function handleEmailBlur() {
+    setEmailSuggestions([]);
+    if (email.trim()) {
+      const typo = detectEmailTypo(email.trim().toLowerCase());
+      setEmailTypoFix(typo);
+    }
+  }
+
+  function handlePhoneChange(value: string) {
+    setPhoneDisplay(formatPhone(value));
+  }
+
+  function handleDeptChange(newCode: string) {
+    setDeptCode(newCode);
+    setCityCode("");
+    setZip("");
+  }
+
+  function handleCityChange(newCode: string) {
+    setCityCode(newCode);
+    const city = getCityByCode(newCode);
+    if (city?.zip) setZip(city.zip);
+  }
+
+  function handleCruceChange(value: string) {
+    // Auto-formato: si tipea solo dígitos, sugiere "NN-NN" cuando alcanza 2-3 dígitos.
+    // No fuerza guion, solo limpia caracteres no válidos.
+    const cleaned = value.replace(/[^\dA-Za-z-]/g, "").toUpperCase();
+    setCruceNumber(cleaned);
+  }
+
+  // Validaciones derivadas
+  const isPhoneValid = phoneDisplay.length === 0 || validatePhone(phoneDisplay);
+  const isNameValid = fullName.length === 0 || validateName(fullName);
+  const isEmailValid = email.length === 0 || isValidEmail(email);
+  const isDocValid = !docType || docNumber.length === 0 || validateDocument(docType, docNumber);
 
   function err(field: string): string | null {
     return state?.fieldErrors?.[field]?.[0] ?? null;
@@ -25,71 +149,169 @@ export function DatosForm({ initial }: { initial: CheckoutState }) {
       <section className="border-brand-purple/10 rounded-2xl border bg-white p-5 shadow-sm sm:p-6">
         <h2 className="text-brand-purple-dark font-display mb-4 text-lg font-bold">1. Contacto</h2>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <Field
-            id="fullName"
-            label="Nombre completo"
-            required
-            defaultValue={initial.contact?.fullName ?? ""}
-            error={err("fullName")}
-            placeholder="Ej. Lucy Hurtado"
-          />
-          <Field
-            id="email"
-            type="email"
-            label="Email"
-            required
-            defaultValue={initial.contact?.email ?? ""}
-            error={err("email")}
-            placeholder="ej. tu@correo.com"
-            help="Aquí te enviamos la confirmación + tracking."
-          />
-          <Field
-            id="phone"
-            type="tel"
-            label="Teléfono"
-            required
-            defaultValue={initial.contact?.phone ?? ""}
-            error={err("phone")}
-            placeholder="Ej. 320 887 3826"
-            help="El courier lo usa para coordinar entrega."
-          />
-          <div className="grid grid-cols-2 gap-2">
-            <div>
-              <Label
-                htmlFor="contactDocumentType"
-                className="text-brand-purple-dark mb-1 block text-xs font-semibold"
-              >
-                Documento (opcional)
-              </Label>
+          {/* Nombre */}
+          <div>
+            <Label
+              htmlFor="fullName"
+              className="text-brand-purple-dark mb-1 block text-xs font-semibold"
+            >
+              Nombre completo <span className="text-rose-600">*</span>
+            </Label>
+            <Input
+              id="fullName"
+              name="fullName"
+              required
+              placeholder="Ej. Lucy Hurtado"
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              onBlur={handleNameBlur}
+              className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
+            />
+            <FieldHint
+              clientError={
+                fullName.length > 0 && !isNameValid
+                  ? "Solo letras, espacios y acentos (sin números)"
+                  : null
+              }
+              serverError={err("fullName")}
+            />
+          </div>
+
+          {/* Email con autocomplete */}
+          <div className="relative">
+            <Label
+              htmlFor="email"
+              className="text-brand-purple-dark mb-1 block text-xs font-semibold"
+            >
+              Email <span className="text-rose-600">*</span>
+            </Label>
+            <Input
+              id="email"
+              name="email"
+              type="email"
+              required
+              placeholder="tu@correo.com"
+              value={email}
+              onChange={(e) => handleEmailChange(e.target.value)}
+              onBlur={handleEmailBlur}
+              className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
+              autoComplete="email"
+            />
+            {/* Dropdown sugerencias */}
+            {emailSuggestions.length > 0 && (
+              <ul className="border-brand-purple/20 absolute z-10 mt-1 w-full overflow-hidden rounded-md border bg-white shadow-lg">
+                {emailSuggestions.map((s) => (
+                  <li key={s}>
+                    <button
+                      type="button"
+                      className="text-brand-purple-dark hover:bg-brand-purple/10 block w-full px-3 py-2 text-left text-sm"
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        setEmail(s);
+                        setEmailSuggestions([]);
+                      }}
+                    >
+                      {s}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <FieldHint
+              clientError={email.length > 0 && !isEmailValid ? "Email inválido" : null}
+              serverError={err("email")}
+              hint="Aquí te enviamos la confirmación + tracking"
+            />
+            {/* Sugerencia de typo */}
+            {emailTypoFix && (
+              <p className="mt-1 text-xs text-amber-700">
+                ¿Quisiste decir{" "}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEmail(emailTypoFix);
+                    setEmailTypoFix(null);
+                  }}
+                  className="font-semibold underline"
+                >
+                  {emailTypoFix}
+                </button>
+                ?
+              </p>
+            )}
+          </div>
+
+          {/* Teléfono */}
+          <div>
+            <Label
+              htmlFor="phone-display"
+              className="text-brand-purple-dark mb-1 block text-xs font-semibold"
+            >
+              Teléfono móvil <span className="text-rose-600">*</span>
+            </Label>
+            <Input
+              id="phone-display"
+              type="tel"
+              required
+              placeholder="300 887 3826"
+              value={phoneDisplay}
+              onChange={(e) => handlePhoneChange(e.target.value)}
+              maxLength={12} // 10 dígitos + 2 espacios
+              className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
+              autoComplete="tel-national"
+              inputMode="numeric"
+            />
+            {/* Campo hidden con el valor sin formato (lo que se envía al server) */}
+            <input type="hidden" name="phone" value={stripPhone(phoneDisplay)} />
+            <FieldHint
+              clientError={
+                phoneDisplay.length > 0 && !isPhoneValid
+                  ? "Móvil colombiano: 10 dígitos empezando con 3"
+                  : null
+              }
+              serverError={err("phone")}
+              hint="El courier lo usa para coordinar entrega"
+            />
+          </div>
+
+          {/* Documento (opcional) */}
+          <div>
+            <Label className="text-brand-purple-dark mb-1 block text-xs font-semibold">
+              Documento (opcional, requerido si querés factura)
+            </Label>
+            <div className="grid grid-cols-3 gap-2">
               <select
-                id="contactDocumentType"
                 name="contactDocumentType"
-                defaultValue={initial.contact?.documentType ?? ""}
-                className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 h-9 w-full rounded-md border bg-white px-2 text-sm focus:ring-2 focus:outline-none"
+                value={docType}
+                onChange={(e) => setDocType(e.target.value as DocumentType | "")}
+                className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 col-span-1 h-9 w-full rounded-md border bg-white px-2 text-sm focus:ring-2 focus:outline-none"
               >
                 <option value="">—</option>
-                <option value="CC">CC</option>
-                <option value="CE">CE</option>
-                <option value="NIT">NIT</option>
-                <option value="PP">Pasaporte</option>
-                <option value="TI">TI</option>
+                {(Object.keys(DOCUMENT_TYPE_LABELS) as DocumentType[]).map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
               </select>
-            </div>
-            <div>
-              <Label
-                htmlFor="contactDocumentNumber"
-                className="text-brand-purple-dark mb-1 block text-xs font-semibold"
-              >
-                Número
-              </Label>
               <Input
                 id="contactDocumentNumber"
                 name="contactDocumentNumber"
-                defaultValue={initial.contact?.documentNumber ?? ""}
-                placeholder="1.234.567.890"
-                className="border-brand-purple/20 focus-visible:ring-brand-purple/30 h-9"
+                value={docNumber}
+                onChange={(e) => setDocNumber(e.target.value)}
+                disabled={!docType}
+                placeholder={docType ? "1234567890" : "Elegí tipo primero"}
+                className="border-brand-purple/20 focus-visible:ring-brand-purple/30 col-span-2"
               />
             </div>
+            <FieldHint
+              clientError={
+                docType && docNumber.length > 0 && !isDocValid
+                  ? `Formato inválido. ${getDocumentHelp(docType as DocumentType)}`
+                  : null
+              }
+              serverError={err("documentNumber")}
+              hint={docType ? getDocumentHelp(docType as DocumentType) : undefined}
+            />
           </div>
         </div>
       </section>
@@ -99,73 +321,179 @@ export function DatosForm({ initial }: { initial: CheckoutState }) {
         <h2 className="text-brand-purple-dark font-display mb-4 text-lg font-bold">
           2. Dirección de envío
         </h2>
+
+        {/* Depto + Ciudad + CP */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-6">
           <div className="sm:col-span-3">
-            <Field
-              id="city"
-              label="Ciudad"
-              required
-              defaultValue={initial.address?.city ?? ""}
-              error={err("city")}
-              placeholder="Ej. Medellín"
-            />
-          </div>
-          <div className="sm:col-span-3">
-            <Field
-              id="department"
-              label="Departamento"
-              required
-              defaultValue={initial.address?.department ?? ""}
-              error={err("department")}
-              placeholder="Ej. Antioquia"
-            />
-          </div>
-          <div className="sm:col-span-4">
-            <Field
-              id="addressLine1"
-              label="Dirección"
-              required
-              defaultValue={initial.address?.addressLine1 ?? ""}
-              error={err("addressLine1")}
-              placeholder="Calle 100 # 15-20"
-            />
-          </div>
-          <div className="sm:col-span-2">
-            <Field
-              id="zip"
-              label="Código postal (opcional)"
-              defaultValue={initial.address?.zip ?? ""}
-              error={err("zip")}
-              placeholder="050001"
-            />
-          </div>
-          <div className="sm:col-span-6">
-            <Field
-              id="addressLine2"
-              label="Complemento (opcional)"
-              defaultValue={initial.address?.addressLine2 ?? ""}
-              error={err("addressLine2")}
-              placeholder="Apto 401, casa color rosa, conjunto Lucams"
-            />
-          </div>
-          <div className="sm:col-span-6">
             <Label
-              htmlFor="notes"
+              htmlFor="deptCode"
               className="text-brand-purple-dark mb-1 block text-xs font-semibold"
             >
-              Notas para el courier (opcional)
+              Departamento <span className="text-rose-600">*</span>
             </Label>
-            <textarea
-              id="notes"
-              name="notes"
-              rows={2}
-              defaultValue={initial.address?.notes ?? ""}
-              maxLength={500}
-              placeholder="Ej. timbre 2, dejar con portería"
-              className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 w-full rounded-md border bg-white px-3 py-2 text-sm focus:ring-2 focus:outline-none"
-            />
-            {err("notes") && <p className="mt-1 text-xs text-rose-600">{err("notes")}</p>}
+            <select
+              id="deptCode"
+              name="deptCode"
+              required
+              value={deptCode}
+              onChange={(e) => handleDeptChange(e.target.value)}
+              className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 h-9 w-full rounded-md border bg-white px-2 text-sm focus:ring-2 focus:outline-none"
+            >
+              <option value="">Elegí departamento...</option>
+              {DEPARTMENTS.map((d) => (
+                <option key={d.code} value={d.code}>
+                  {d.name}
+                </option>
+              ))}
+            </select>
+            <FieldHint clientError={null} serverError={err("deptCode")} />
+            {/* Hidden snapshot human-readable */}
+            <input type="hidden" name="department" value={selectedDept?.name ?? ""} />
           </div>
+
+          <div className="sm:col-span-3">
+            <Label
+              htmlFor="cityCode"
+              className="text-brand-purple-dark mb-1 block text-xs font-semibold"
+            >
+              Ciudad <span className="text-rose-600">*</span>
+            </Label>
+            <select
+              id="cityCode"
+              name="cityCode"
+              required
+              value={cityCode}
+              onChange={(e) => handleCityChange(e.target.value)}
+              disabled={!deptCode}
+              className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 h-9 w-full rounded-md border bg-white px-2 text-sm focus:ring-2 focus:outline-none disabled:bg-slate-50 disabled:text-slate-400"
+            >
+              <option value="">{deptCode ? "Elegí ciudad..." : "Primero elegí depto"}</option>
+              {cities.map((c) => (
+                <option key={c.code} value={c.code}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+            <FieldHint
+              clientError={deptCode && cities.length > 0 && !cityCode ? null : null}
+              serverError={err("cityCode")}
+              hint={
+                deptCode && cities.length === 0
+                  ? "No tenemos esa ciudad en el catálogo. Contactanos por WhatsApp."
+                  : undefined
+              }
+            />
+            <input type="hidden" name="city" value={selectedCity?.name ?? ""} />
+          </div>
+
+          <div className="sm:col-span-2">
+            <Label
+              htmlFor="zip"
+              className="text-brand-purple-dark mb-1 block text-xs font-semibold"
+            >
+              Código postal (opcional)
+            </Label>
+            <Input
+              id="zip"
+              name="zip"
+              value={zip}
+              onChange={(e) => setZip(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              placeholder="110111"
+              className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
+              inputMode="numeric"
+            />
+            <FieldHint
+              clientError={null}
+              serverError={err("zip")}
+              hint={selectedCity?.zip ? "Autocompletado para tu ciudad" : "6 dígitos"}
+            />
+          </div>
+        </div>
+
+        {/* Dirección estructurada */}
+        <div className="mt-4">
+          <Label className="text-brand-purple-dark mb-1 block text-xs font-semibold">
+            Dirección <span className="text-rose-600">*</span>
+          </Label>
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-12">
+            <select
+              name="viaType"
+              value={viaType}
+              onChange={(e) => setViaType(e.target.value as (typeof VIA_TYPES)[number])}
+              className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 h-9 w-full rounded-md border bg-white px-2 text-sm focus:ring-2 focus:outline-none sm:col-span-3"
+            >
+              {VIA_TYPES.map((v) => (
+                <option key={v} value={v}>
+                  {v}
+                </option>
+              ))}
+            </select>
+            <Input
+              name="viaNumber"
+              required
+              value={viaNumber}
+              onChange={(e) => setViaNumber(e.target.value.toUpperCase().replace(/[^\dA-Z]/g, ""))}
+              placeholder="100"
+              maxLength={10}
+              className="border-brand-purple/20 focus-visible:ring-brand-purple/30 sm:col-span-2"
+              aria-label="Número de vía"
+            />
+            <div className="border-brand-purple/20 col-span-1 hidden h-9 items-center justify-center rounded-md border bg-slate-50 text-sm font-bold text-slate-600 sm:flex">
+              #
+            </div>
+            <Input
+              name="cruceNumber"
+              required
+              value={cruceNumber}
+              onChange={(e) => handleCruceChange(e.target.value)}
+              placeholder="15-20"
+              maxLength={15}
+              className="border-brand-purple/20 focus-visible:ring-brand-purple/30 sm:col-span-6"
+              aria-label="Cruce"
+            />
+          </div>
+          <FieldHint
+            clientError={null}
+            serverError={err("viaNumber") ?? err("cruceNumber")}
+            hint="Formato: Calle 100 # 15-20"
+          />
+        </div>
+
+        <div className="mt-4">
+          <Label
+            htmlFor="detail"
+            className="text-brand-purple-dark mb-1 block text-xs font-semibold"
+          >
+            Complemento (opcional)
+          </Label>
+          <Input
+            id="detail"
+            name="detail"
+            value={detail}
+            onChange={(e) => setDetail(e.target.value)}
+            placeholder="Apto 401, Conjunto Lucams, casa color rosa..."
+            maxLength={200}
+            className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
+          />
+        </div>
+
+        <div className="mt-4">
+          <Label
+            htmlFor="notes"
+            className="text-brand-purple-dark mb-1 block text-xs font-semibold"
+          >
+            Notas para el courier (opcional)
+          </Label>
+          <textarea
+            id="notes"
+            name="notes"
+            rows={2}
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            maxLength={500}
+            placeholder="Ej. timbre 2, dejar con portería"
+            className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 w-full rounded-md border bg-white px-3 py-2 text-sm focus:ring-2 focus:outline-none"
+          />
         </div>
       </section>
 
@@ -175,8 +503,7 @@ export function DatosForm({ initial }: { initial: CheckoutState }) {
           3. Facturación electrónica
         </h2>
         <p className="text-brand-purple-dark/65 mb-4 text-sm">
-          Si necesitás factura DIAN para tu empresa, marcá la casilla. Si es compra personal, dejala
-          desmarcada.
+          Si necesitás factura DIAN, marcá la casilla. Si es compra personal, dejala sin marcar.
         </p>
 
         <label className="text-brand-purple-dark inline-flex items-center gap-2 text-sm font-medium">
@@ -212,24 +539,38 @@ export function DatosForm({ initial }: { initial: CheckoutState }) {
               </select>
             </div>
             <div className="sm:col-span-4">
-              <Field
+              <Label
+                htmlFor="billingDocumentNumber"
+                className="text-brand-purple-dark mb-1 block text-xs font-semibold"
+              >
+                Número documento <span className="text-rose-600">*</span>
+              </Label>
+              <Input
                 id="billingDocumentNumber"
-                label="Número documento"
-                required
+                name="billingDocumentNumber"
+                required={wantsInvoice}
                 defaultValue={initial.billing?.documentNumber ?? ""}
-                error={err("billingDocumentNumber")}
                 placeholder="900.123.456-7"
+                className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
               />
+              <FieldHint clientError={null} serverError={err("billingDocumentNumber")} />
             </div>
             <div className="sm:col-span-6">
-              <Field
+              <Label
+                htmlFor="billingName"
+                className="text-brand-purple-dark mb-1 block text-xs font-semibold"
+              >
+                Razón social o nombre <span className="text-rose-600">*</span>
+              </Label>
+              <Input
                 id="billingName"
-                label="Razón social o nombre"
-                required
+                name="billingName"
+                required={wantsInvoice}
                 defaultValue={initial.billing?.name ?? ""}
-                error={err("billingName")}
-                placeholder="Ej. Lucams S.A.S."
+                placeholder="Lucams S.A.S."
+                className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
               />
+              <FieldHint clientError={null} serverError={err("billingName")} />
             </div>
           </div>
         )}
@@ -262,42 +603,17 @@ export function DatosForm({ initial }: { initial: CheckoutState }) {
   );
 }
 
-function Field({
-  id,
-  label,
-  required,
-  defaultValue,
-  error,
-  placeholder,
-  help,
-  type = "text",
+function FieldHint({
+  clientError,
+  serverError,
+  hint,
 }: {
-  id: string;
-  label: string;
-  required?: boolean;
-  defaultValue?: string;
-  error?: string | null;
-  placeholder?: string;
-  help?: string;
-  type?: string;
+  clientError: string | null;
+  serverError: string | null;
+  hint?: string;
 }) {
-  return (
-    <div>
-      <Label htmlFor={id} className="text-brand-purple-dark mb-1 block text-xs font-semibold">
-        {label}
-        {required && <span className="text-rose-600"> *</span>}
-      </Label>
-      <Input
-        id={id}
-        name={id}
-        type={type}
-        required={required}
-        defaultValue={defaultValue}
-        placeholder={placeholder}
-        className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
-      />
-      {help && !error && <p className="text-brand-purple-dark/55 mt-1 text-xs">{help}</p>}
-      {error && <p className="mt-1 text-xs text-rose-600">{error}</p>}
-    </div>
-  );
+  if (clientError) return <p className="mt-1 text-xs text-rose-600">{clientError}</p>;
+  if (serverError) return <p className="mt-1 text-xs text-rose-600">{serverError}</p>;
+  if (hint) return <p className="text-brand-purple-dark/55 mt-1 text-xs">{hint}</p>;
+  return null;
 }
