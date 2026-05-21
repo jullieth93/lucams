@@ -280,7 +280,14 @@ export function StudioEditor({
     if (!state.designId || !state.canvasData || state.isFinalizing) return;
     setPreviewError(null);
     try {
-      const previewUrl = await buildCompositedPreview(state.canvasData, slotStagesRef.current);
+      // Pasar shape del producto para que el preview compositado respete
+      // la silueta real (corazón, círculo, etc.) y no se vea un rectángulo
+      // Lucy 2026-05-21 feedback: "se ve completa, no como corazón".
+      const previewUrl = await buildCompositedPreview(
+        state.canvasData,
+        slotStagesRef.current,
+        productConfig.shape,
+      );
       setPreviewDataUrl(previewUrl);
       setPreviewModalOpen(true);
     } catch (err) {
@@ -289,7 +296,7 @@ export function StudioEditor({
         message: err instanceof Error ? err.message : String(err),
       });
     }
-  }, [store]);
+  }, [store, productConfig.shape]);
 
   // ──────────── Step 2: Confirmar → upload + add to cart + redirect ────────────
   //
@@ -738,9 +745,67 @@ function findTemplateIdForCanvas(canvas: CanvasDataV2, templates: StudioTemplate
  * individuales de cada slot Konva stage y los apila en un mosaico con el
  * gridLayout. Resultado: 1 PNG 1080×~810 (según rows) que el cart muestra.
  */
+/**
+ * Aplica clip 2D según el shape del imán físico (heart/circle/rectangle).
+ * El path está normalizado a objectBoundingBox 0-1 y se escala al cell.
+ *
+ * Coords del heart match el SVG clipPath inline de studio-slot.tsx
+ * (M.3.b.UX.v13) para que el preview matchee 1:1 lo que ve el cliente
+ * en el editor.
+ */
+function applyShapeClip(
+  ctx: CanvasRenderingContext2D,
+  shape: "rectangle" | "circle" | "heart" | "custom" | undefined,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+): void {
+  if (!shape || shape === "rectangle" || shape === "custom") {
+    // Rectángulo con esquinas redondeadas sutiles (default 8px sobre cell).
+    const r = Math.min(8, w / 12);
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
+    ctx.clip();
+    return;
+  }
+  if (shape === "circle") {
+    ctx.beginPath();
+    ctx.ellipse(x + w / 2, y + h / 2, w / 2, h / 2, 0, 0, Math.PI * 2);
+    ctx.clip();
+    return;
+  }
+  if (shape === "heart") {
+    // Path normalizado 0-1 (matchea studio-slot.tsx SVG clipPath M.3.b.UX.v13).
+    // Escalamos coords 0-1 → cell pixels.
+    const sx = (n: number) => x + n * w;
+    const sy = (n: number) => y + n * h;
+    ctx.beginPath();
+    ctx.moveTo(sx(0.5), sy(0.82));
+    ctx.bezierCurveTo(sx(0.28), sy(0.68), sx(0.06), sy(0.52), sx(0.06), sy(0.32));
+    ctx.bezierCurveTo(sx(0.06), sy(0.18), sx(0.16), sy(0.08), sx(0.28), sy(0.08));
+    ctx.bezierCurveTo(sx(0.38), sy(0.08), sx(0.44), sy(0.12), sx(0.5), sy(0.22));
+    ctx.bezierCurveTo(sx(0.56), sy(0.12), sx(0.62), sy(0.08), sx(0.72), sy(0.08));
+    ctx.bezierCurveTo(sx(0.84), sy(0.08), sx(0.94), sy(0.18), sx(0.94), sy(0.32));
+    ctx.bezierCurveTo(sx(0.94), sy(0.52), sx(0.72), sy(0.68), sx(0.5), sy(0.82));
+    ctx.closePath();
+    ctx.clip();
+  }
+}
+
 async function buildCompositedPreview(
   canvasData: CanvasDataV2,
   stages: Map<number, Konva.Stage | null>,
+  shape?: "rectangle" | "circle" | "heart" | "custom",
 ): Promise<string> {
   const { gridLayout, unitTemplate, slots } = canvasData;
   // Cell size: 360×(360 * aspect) por slot en el preview
@@ -760,7 +825,10 @@ async function buildCompositedPreview(
   ctx.fillStyle = "#FFF8F0";
   ctx.fillRect(0, 0, canvasW, canvasH);
 
-  // Apilar cada slot
+  // Apilar cada slot — clipping por shape del imán físico para que el
+  // preview muestre la silueta real (corazón, círculo, etc.) y no un
+  // rectángulo. El Konva Stage devuelve siempre un rectángulo
+  // (clipping CSS no se traduce a toDataURL); el clip va acá en Canvas2D.
   for (const slot of slots) {
     const stage = stages.get(slot.slotIndex);
     if (!stage) continue;
@@ -772,7 +840,11 @@ async function buildCompositedPreview(
         const row = Math.floor(slot.slotIndex / gridLayout.cols);
         const x = col * (cellW + gap);
         const y = row * (cellH + gap);
+        // save/clip/draw/restore para que el clip aplique solo a este slot
+        ctx.save();
+        applyShapeClip(ctx, shape, x, y, cellW, cellH);
         ctx.drawImage(img, x, y, cellW, cellH);
+        ctx.restore();
         resolve();
       };
       img.onerror = () => reject(new Error("No se pudo cargar snapshot del slot"));

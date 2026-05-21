@@ -29,10 +29,16 @@ export const ContactSchema = z.object({
 export type ContactInput = z.infer<typeof ContactSchema>;
 
 /**
- * Dirección estructurada V1 (Lucy 2026-05-21):
- *   Vía (select 8 opciones) + Número (texto) + Cruce (#N-N) + Detalle (opcional)
- * Se junta a string al persistir para Aveonline:
- *   "Calle 100 # 15-20 (Apto 401, Conjunto Lucams)"
+ * Dirección estructurada V2 (Lucy 2026-05-21):
+ * Soporta direcciones URBANAS (Calle/Carrera + número + cruce) y RURALES
+ * (vereda/corregimiento + finca/lugar + referencia). Colombia tiene mucho
+ * envío rural que NO encaja en la nomenclatura DIAN urbana.
+ *
+ * Discriminated union por `kind`:
+ *   - "urban": Vía + Número + Cruce (#N-N) + Detalle (opcional)
+ *   - "rural": Vereda + Finca/Lugar (opcional) + Referencia (descriptiva)
+ *
+ * `composeAddressLine` junta los campos en un string que Aveonline acepta.
  */
 export const VIA_TYPES = [
   "Calle",
@@ -46,55 +52,74 @@ export const VIA_TYPES = [
 ] as const;
 export type ViaType = (typeof VIA_TYPES)[number];
 
+const BaseAddressFields = z.object({
+  // Códigos DANE — clave de validación cruzada cliente/server.
+  deptCode: z.string().regex(/^\d{2}$/, "Departamento inválido"),
+  cityCode: z.string().regex(/^\d{5}$/, "Ciudad inválida"),
+  department: z.string().min(2).max(80),
+  city: z.string().min(2).max(80),
+  zip: z
+    .string()
+    .regex(/^\d{6}$/, "Código postal debe tener 6 dígitos")
+    .optional()
+    .or(z.literal("")),
+  notes: z.string().max(500).trim().optional(),
+});
+
+const UrbanAddressSchema = BaseAddressFields.extend({
+  kind: z.literal("urban"),
+  viaType: z.enum(VIA_TYPES, { message: "Tipo de vía inválido" }),
+  viaNumber: z
+    .string()
+    .min(1, "Número de vía requerido")
+    .max(10)
+    .regex(/^[\dA-Z]+$/i, "Solo números y letras (ej. 100, 13B)"),
+  cruceNumber: z
+    .string()
+    .min(2, "Cruce requerido (ej. 15-20)")
+    .max(15)
+    .regex(/^\d+[A-Z]?-\d+[A-Z]?$/i, "Formato: número-número (ej. 15-20 o 13B-42)"),
+  detail: z.string().max(200).trim().optional(),
+});
+
+const RuralAddressSchema = BaseAddressFields.extend({
+  kind: z.literal("rural"),
+  vereda: z.string().min(2, "Vereda / corregimiento / sector requerido").max(120).trim(),
+  finca: z.string().max(120).trim().optional(),
+  referencia: z
+    .string()
+    .min(10, "Indicaciones para llegar: mínimo 10 caracteres (ej. 'a 200m del puente, casa azul')")
+    .max(300)
+    .trim(),
+});
+
 export const AddressSchema = z
-  .object({
-    // Códigos DANE — clave de validación cruzada cliente/server.
-    deptCode: z.string().regex(/^\d{2}$/, "Departamento inválido"),
-    cityCode: z.string().regex(/^\d{5}$/, "Ciudad inválida"),
-    // Snapshot human-readable (denormalizado para no joinear después).
-    department: z.string().min(2).max(80),
-    city: z.string().min(2).max(80),
-    zip: z
-      .string()
-      .regex(/^\d{6}$/, "Código postal debe tener 6 dígitos")
-      .optional()
-      .or(z.literal("")),
-    viaType: z.enum(VIA_TYPES, { message: "Tipo de vía inválido" }),
-    viaNumber: z
-      .string()
-      .min(1, "Número de vía requerido")
-      .max(10)
-      .regex(/^[\dA-Z]+$/i, "Solo números y letras (ej. 100, 13B)"),
-    // Cruce: NN-NN formato típico (con letras opcionales). Ej: "15-20" o "13B-42".
-    cruceNumber: z
-      .string()
-      .min(2, "Cruce requerido (ej. 15-20)")
-      .max(15)
-      .regex(/^\d+[A-Z]?-\d+[A-Z]?$/i, "Formato: número-número (ej. 15-20 o 13B-42)"),
-    detail: z.string().max(200).trim().optional(),
-    notes: z.string().max(500).trim().optional(),
-  })
+  .discriminatedUnion("kind", [UrbanAddressSchema, RuralAddressSchema])
   .refine((data) => data.cityCode.startsWith(data.deptCode), {
     message: "Ciudad no pertenece al departamento seleccionado",
     path: ["cityCode"],
   });
 export type AddressInput = z.infer<typeof AddressSchema>;
+export type UrbanAddressInput = z.infer<typeof UrbanAddressSchema>;
+export type RuralAddressInput = z.infer<typeof RuralAddressSchema>;
 
 /**
- * Junta la dirección estructurada en un string para Aveonline:
- *   "Calle 100 # 15-20 (Apto 401, Conjunto Lucams)"
+ * Junta la dirección en un string que el courier (Aveonline) recibe.
+ *
+ *   Urbana: "Calle 100 # 15-20 (Apto 401, Conjunto Lucams)"
+ *   Rural:  "Vereda El Roble — Finca Las Flores · Ref: a 200m del puente,
+ *           casa color azul"
  */
-export function composeAddressLine(input: {
-  viaType: ViaType;
-  viaNumber: string;
-  cruceNumber: string;
-  detail?: string;
-}): string {
-  const base = `${input.viaType} ${input.viaNumber.toUpperCase()} # ${input.cruceNumber.toUpperCase()}`;
-  if (input.detail?.trim()) {
-    return `${base} (${input.detail.trim()})`;
+export function composeAddressLine(input: AddressInput): string {
+  if (input.kind === "urban") {
+    const base = `${input.viaType} ${input.viaNumber.toUpperCase()} # ${input.cruceNumber.toUpperCase()}`;
+    return input.detail?.trim() ? `${base} (${input.detail.trim()})` : base;
   }
-  return base;
+  // Rural
+  const parts: string[] = [`Vereda ${input.vereda}`];
+  if (input.finca?.trim()) parts.push(`Finca ${input.finca.trim()}`);
+  parts.push(`Ref: ${input.referencia}`);
+  return parts.join(" · ");
 }
 
 export const BillingSchema = z

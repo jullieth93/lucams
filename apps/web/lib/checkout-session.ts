@@ -33,14 +33,17 @@ export type ContactData = {
   documentNumber?: string;
 };
 
-export type AddressData = {
-  // DANE divipola (Lucy 2026-05-21)
-  deptCode: string; // 2 dígitos
-  cityCode: string; // 5 dígitos
-  department: string; // nombre human-readable
-  city: string; // nombre human-readable
+type BaseAddress = {
+  deptCode: string; // 2 dígitos DANE
+  cityCode: string; // 5 dígitos DANE
+  department: string;
+  city: string;
   zip?: string;
-  // Dirección estructurada
+  notes?: string;
+};
+
+type UrbanAddress = BaseAddress & {
+  kind: "urban";
   viaType:
     | "Calle"
     | "Carrera"
@@ -53,8 +56,19 @@ export type AddressData = {
   viaNumber: string;
   cruceNumber: string;
   detail?: string;
-  notes?: string;
 };
+
+type RuralAddress = BaseAddress & {
+  kind: "rural";
+  vereda: string;
+  finca?: string;
+  referencia: string;
+};
+
+// Discriminated union: cliente elige urbana o rural en step 1 (Lucy
+// 2026-05-21 — Colombia tiene mucho envío rural que no encaja en
+// nomenclatura DIAN urbana).
+export type AddressData = UrbanAddress | RuralAddress;
 
 export type BillingData = {
   wantsInvoice: boolean;

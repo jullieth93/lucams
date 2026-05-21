@@ -69,15 +69,17 @@ export function StudioPhotoAdjustModal({
   return (
     // modal={false} — el contenido detrás (canvas Konva) sigue recibiendo
     // eventos (scroll-zoom, drag-pan). Focus NO se atrapa dentro del panel.
+    //
+    // IMPORTANTE: NO ponemos preventDefault en onInteractOutside ni
+    // onPointerDownOutside — esos handlers reciben eventos del exterior
+    // y al preventDefault Radix interpreta "no propagar", lo que termina
+    // bloqueando los eventos también al canvas. Para evitar autocierre,
+    // dejamos esos handlers no-op (Radix solo cierra con explicit close
+    // o ESC en modal=false con esos handlers vacíos).
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()} modal={false}>
       <DialogContent
-        // Reposicionamos al bottom-center (no overlay centered) y sin
-        // backdrop blocker para que canvas quede visible + interactivo
-        // arriba del panel.
         withOverlay={false}
         className="!top-auto bottom-4 left-1/2 max-w-2xl !translate-y-0 shadow-lg"
-        onInteractOutside={(e) => e.preventDefault()}
-        onPointerDownOutside={(e) => e.preventDefault()}
       >
         <DialogTitle className="text-brand-purple-dark text-lg font-bold">
           Ajustar foto del imán {slotIndex !== null ? slotIndex + 1 : ""}

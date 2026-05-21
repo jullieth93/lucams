@@ -49,22 +49,36 @@ export async function saveDatosAction(
     };
   }
 
-  const addressRaw = {
+  const addressKind = (formData.get("addressKind") as string) === "rural" ? "rural" : "urban";
+  const baseFields = {
     deptCode,
     cityCode,
     department: dept.name,
     city: city.name,
     zip: (formData.get("zip") as string)?.trim() || undefined,
-    viaType: String(formData.get("viaType") ?? "Calle"),
-    viaNumber: String(formData.get("viaNumber") ?? "")
-      .trim()
-      .toUpperCase(),
-    cruceNumber: String(formData.get("cruceNumber") ?? "")
-      .trim()
-      .toUpperCase(),
-    detail: (formData.get("detail") as string)?.trim() || undefined,
     notes: (formData.get("notes") as string)?.trim() || undefined,
   };
+  const addressRaw =
+    addressKind === "urban"
+      ? {
+          ...baseFields,
+          kind: "urban" as const,
+          viaType: String(formData.get("viaType") ?? "Calle"),
+          viaNumber: String(formData.get("viaNumber") ?? "")
+            .trim()
+            .toUpperCase(),
+          cruceNumber: String(formData.get("cruceNumber") ?? "")
+            .trim()
+            .toUpperCase(),
+          detail: (formData.get("detail") as string)?.trim() || undefined,
+        }
+      : {
+          ...baseFields,
+          kind: "rural" as const,
+          vereda: String(formData.get("vereda") ?? "").trim(),
+          finca: (formData.get("finca") as string)?.trim() || undefined,
+          referencia: String(formData.get("referencia") ?? "").trim(),
+        };
   const addressParsed = AddressSchema.safeParse(addressRaw);
   if (!addressParsed.success) {
     return {

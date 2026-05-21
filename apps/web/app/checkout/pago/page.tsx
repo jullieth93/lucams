@@ -79,9 +79,21 @@ export default async function CheckoutPagoPage({ searchParams }: { searchParams:
             href="/checkout/datos"
           >
             <p className="text-brand-purple-dark text-sm">
-              {address.viaType} {address.viaNumber} # {address.cruceNumber}
-              {address.detail && ` (${address.detail})`}
+              {address.kind === "urban" ? (
+                <>
+                  {address.viaType} {address.viaNumber} # {address.cruceNumber}
+                  {address.detail && ` (${address.detail})`}
+                </>
+              ) : (
+                <>
+                  Vereda {address.vereda}
+                  {address.finca && ` · Finca ${address.finca}`}
+                </>
+              )}
             </p>
+            {address.kind === "rural" && (
+              <p className="text-brand-purple-dark/70 text-xs italic">Ref: {address.referencia}</p>
+            )}
             <p className="text-brand-purple-dark/70 text-xs">
               {address.city}, {address.department}
               {address.zip && ` · ${address.zip}`}

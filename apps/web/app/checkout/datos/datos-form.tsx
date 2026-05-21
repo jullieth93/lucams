@@ -61,13 +61,48 @@ export function DatosForm({ initial }: { initial: CheckoutState }) {
   const [deptCode, setDeptCode] = useState(initial.address?.deptCode ?? "");
   const [cityCode, setCityCode] = useState(initial.address?.cityCode ?? "");
   const [zip, setZip] = useState(initial.address?.zip ?? "");
-  const [viaType, setViaType] = useState<(typeof VIA_TYPES)[number]>(
-    initial.address?.viaType ?? "Calle",
+  // Discriminated union urbana/rural (Lucy 2026-05-21)
+  const [addressKind, setAddressKind] = useState<"urban" | "rural">(
+    initial.address?.kind ?? "urban",
   );
-  const [viaNumber, setViaNumber] = useState(initial.address?.viaNumber ?? "");
-  const [cruceNumber, setCruceNumber] = useState(initial.address?.cruceNumber ?? "");
-  const [detail, setDetail] = useState(initial.address?.detail ?? "");
+  // Urban fields
+  const [viaType, setViaType] = useState<(typeof VIA_TYPES)[number]>(
+    initial.address?.kind === "urban" ? initial.address.viaType : "Calle",
+  );
+  const [viaNumber, setViaNumber] = useState(
+    initial.address?.kind === "urban" ? initial.address.viaNumber : "",
+  );
+  const [cruceNumber, setCruceNumber] = useState(
+    initial.address?.kind === "urban" ? initial.address.cruceNumber : "",
+  );
+  const [detail, setDetail] = useState(
+    initial.address?.kind === "urban" ? (initial.address.detail ?? "") : "",
+  );
+  // Rural fields
+  const [vereda, setVereda] = useState(
+    initial.address?.kind === "rural" ? initial.address.vereda : "",
+  );
+  const [finca, setFinca] = useState(
+    initial.address?.kind === "rural" ? (initial.address.finca ?? "") : "",
+  );
+  const [referencia, setReferencia] = useState(
+    initial.address?.kind === "rural" ? initial.address.referencia : "",
+  );
   const [notes, setNotes] = useState(initial.address?.notes ?? "");
+
+  // Preview live de cómo se verá la dirección en la guía del courier
+  const addressPreview = useMemo(() => {
+    if (addressKind === "urban") {
+      if (!viaNumber || !cruceNumber) return "";
+      const base = `${viaType} ${viaNumber.toUpperCase()} # ${cruceNumber.toUpperCase()}`;
+      return detail.trim() ? `${base} (${detail.trim()})` : base;
+    }
+    if (!vereda) return "";
+    const parts: string[] = [`Vereda ${vereda}`];
+    if (finca.trim()) parts.push(`Finca ${finca.trim()}`);
+    if (referencia.trim()) parts.push(`Ref: ${referencia.trim()}`);
+    return parts.join(" · ");
+  }, [addressKind, viaType, viaNumber, cruceNumber, detail, vereda, finca, referencia]);
 
   // Billing
   const [wantsInvoice, setWantsInvoice] = useState<boolean>(initial.billing?.wantsInvoice ?? false);
@@ -410,72 +445,208 @@ export function DatosForm({ initial }: { initial: CheckoutState }) {
           </div>
         </div>
 
-        {/* Dirección estructurada */}
+        {/* Toggle Urbana / Rural (Lucy 2026-05-21) */}
         <div className="mt-4">
-          <Label className="text-brand-purple-dark mb-1 block text-xs font-semibold">
-            Dirección <span className="text-rose-600">*</span>
+          <Label className="text-brand-purple-dark mb-2 block text-xs font-semibold">
+            Tipo de dirección <span className="text-rose-600">*</span>
           </Label>
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-12">
-            <select
-              name="viaType"
-              value={viaType}
-              onChange={(e) => setViaType(e.target.value as (typeof VIA_TYPES)[number])}
-              className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 h-9 w-full rounded-md border bg-white px-2 text-sm focus:ring-2 focus:outline-none sm:col-span-3"
+          <input type="hidden" name="addressKind" value={addressKind} />
+          <div role="radiogroup" aria-label="Tipo de dirección" className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              role="radio"
+              aria-checked={addressKind === "urban"}
+              onClick={() => setAddressKind("urban")}
+              className={
+                "rounded-lg border-2 p-3 text-left transition-all " +
+                (addressKind === "urban"
+                  ? "border-brand-purple bg-brand-purple/5 ring-brand-purple/20 ring-2"
+                  : "border-brand-purple/15 hover:border-brand-purple/30")
+              }
             >
-              {VIA_TYPES.map((v) => (
-                <option key={v} value={v}>
-                  {v}
-                </option>
-              ))}
-            </select>
-            <Input
-              name="viaNumber"
-              required
-              value={viaNumber}
-              onChange={(e) => setViaNumber(e.target.value.toUpperCase().replace(/[^\dA-Z]/g, ""))}
-              placeholder="100"
-              maxLength={10}
-              className="border-brand-purple/20 focus-visible:ring-brand-purple/30 sm:col-span-2"
-              aria-label="Número de vía"
-            />
-            <div className="border-brand-purple/20 col-span-1 hidden h-9 items-center justify-center rounded-md border bg-slate-50 text-sm font-bold text-slate-600 sm:flex">
-              #
-            </div>
-            <Input
-              name="cruceNumber"
-              required
-              value={cruceNumber}
-              onChange={(e) => handleCruceChange(e.target.value)}
-              placeholder="15-20"
-              maxLength={15}
-              className="border-brand-purple/20 focus-visible:ring-brand-purple/30 sm:col-span-6"
-              aria-label="Cruce"
-            />
+              <div className="text-brand-purple-dark text-sm font-semibold">🏙️ Urbana</div>
+              <div className="text-brand-purple-dark/65 text-xs">
+                Calle / Carrera + número (nomenclatura DIAN)
+              </div>
+            </button>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={addressKind === "rural"}
+              onClick={() => setAddressKind("rural")}
+              className={
+                "rounded-lg border-2 p-3 text-left transition-all " +
+                (addressKind === "rural"
+                  ? "border-brand-purple bg-brand-purple/5 ring-brand-purple/20 ring-2"
+                  : "border-brand-purple/15 hover:border-brand-purple/30")
+              }
+            >
+              <div className="text-brand-purple-dark text-sm font-semibold">🌳 Rural</div>
+              <div className="text-brand-purple-dark/65 text-xs">
+                Vereda / Finca / Corregimiento + referencias
+              </div>
+            </button>
           </div>
-          <FieldHint
-            clientError={null}
-            serverError={err("viaNumber") ?? err("cruceNumber")}
-            hint="Formato: Calle 100 # 15-20"
-          />
         </div>
 
-        <div className="mt-4">
-          <Label
-            htmlFor="detail"
-            className="text-brand-purple-dark mb-1 block text-xs font-semibold"
-          >
-            Complemento (opcional)
-          </Label>
-          <Input
-            id="detail"
-            name="detail"
-            value={detail}
-            onChange={(e) => setDetail(e.target.value)}
-            placeholder="Apto 401, Conjunto Lucams, casa color rosa..."
-            maxLength={200}
-            className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
-          />
-        </div>
+        {addressKind === "urban" ? (
+          <>
+            {/* Dirección estructurada urbana */}
+            <div className="mt-4">
+              <Label className="text-brand-purple-dark mb-1 block text-xs font-semibold">
+                Dirección <span className="text-rose-600">*</span>
+              </Label>
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-12">
+                <select
+                  name="viaType"
+                  value={viaType}
+                  onChange={(e) => setViaType(e.target.value as (typeof VIA_TYPES)[number])}
+                  className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 h-9 w-full rounded-md border bg-white px-2 text-sm focus:ring-2 focus:outline-none sm:col-span-3"
+                >
+                  {VIA_TYPES.map((v) => (
+                    <option key={v} value={v}>
+                      {v}
+                    </option>
+                  ))}
+                </select>
+                <Input
+                  name="viaNumber"
+                  required
+                  value={viaNumber}
+                  onChange={(e) =>
+                    setViaNumber(e.target.value.toUpperCase().replace(/[^\dA-Z]/g, ""))
+                  }
+                  placeholder="100"
+                  maxLength={10}
+                  className="border-brand-purple/20 focus-visible:ring-brand-purple/30 sm:col-span-2"
+                  aria-label="Número de vía"
+                />
+                <div className="border-brand-purple/20 col-span-1 hidden h-9 items-center justify-center rounded-md border bg-slate-50 text-sm font-bold text-slate-600 sm:flex">
+                  #
+                </div>
+                <Input
+                  name="cruceNumber"
+                  required
+                  value={cruceNumber}
+                  onChange={(e) => handleCruceChange(e.target.value)}
+                  placeholder="15-20"
+                  maxLength={15}
+                  className="border-brand-purple/20 focus-visible:ring-brand-purple/30 sm:col-span-6"
+                  aria-label="Cruce"
+                />
+              </div>
+              <FieldHint
+                clientError={null}
+                serverError={err("viaNumber") ?? err("cruceNumber")}
+                hint="Formato: Calle 100 # 15-20"
+              />
+            </div>
+
+            <div className="mt-4">
+              <Label
+                htmlFor="detail"
+                className="text-brand-purple-dark mb-1 block text-xs font-semibold"
+              >
+                Complemento (opcional)
+              </Label>
+              <Input
+                id="detail"
+                name="detail"
+                value={detail}
+                onChange={(e) => setDetail(e.target.value)}
+                placeholder="Apto 401, Conjunto Lucams, casa color rosa..."
+                maxLength={200}
+                className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
+              />
+            </div>
+          </>
+        ) : (
+          <>
+            {/* Dirección rural */}
+            <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <Label
+                  htmlFor="vereda"
+                  className="text-brand-purple-dark mb-1 block text-xs font-semibold"
+                >
+                  Vereda / Corregimiento / Sector <span className="text-rose-600">*</span>
+                </Label>
+                <Input
+                  id="vereda"
+                  name="vereda"
+                  required
+                  value={vereda}
+                  onChange={(e) => setVereda(e.target.value)}
+                  placeholder="Ej. Vereda El Roble"
+                  maxLength={120}
+                  className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
+                />
+                <FieldHint clientError={null} serverError={err("vereda")} />
+              </div>
+              <div>
+                <Label
+                  htmlFor="finca"
+                  className="text-brand-purple-dark mb-1 block text-xs font-semibold"
+                >
+                  Finca / Lugar (opcional)
+                </Label>
+                <Input
+                  id="finca"
+                  name="finca"
+                  value={finca}
+                  onChange={(e) => setFinca(e.target.value)}
+                  placeholder="Ej. Finca Las Flores"
+                  maxLength={120}
+                  className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
+                />
+              </div>
+            </div>
+            <div className="mt-4">
+              <Label
+                htmlFor="referencia"
+                className="text-brand-purple-dark mb-1 block text-xs font-semibold"
+              >
+                Indicaciones para llegar <span className="text-rose-600">*</span>
+              </Label>
+              <textarea
+                id="referencia"
+                name="referencia"
+                required
+                value={referencia}
+                onChange={(e) => setReferencia(e.target.value)}
+                rows={3}
+                maxLength={300}
+                placeholder="Ej. A 200m del puente sobre el río, casa de dos pisos color azul, portón de madera. Llamar al llegar."
+                className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 w-full rounded-md border bg-white px-3 py-2 text-sm focus:ring-2 focus:outline-none"
+              />
+              <FieldHint
+                clientError={
+                  referencia.length > 0 && referencia.length < 10
+                    ? "Mínimo 10 caracteres — el courier necesita referencias claras"
+                    : null
+                }
+                serverError={err("referencia")}
+                hint="Cuanto más detallada la referencia, más fácil para el courier"
+              />
+            </div>
+          </>
+        )}
+
+        {/* Preview live de cómo se verá la dirección */}
+        {addressPreview && (
+          <div className="border-brand-purple/15 bg-brand-purple/5 mt-4 rounded-lg border p-3">
+            <p className="text-brand-purple-dark/65 text-[10px] font-semibold tracking-wider uppercase">
+              📦 Así verá tu dirección el courier
+            </p>
+            <p className="text-brand-purple-dark mt-1 text-sm">{addressPreview}</p>
+            {selectedCity && selectedDept && (
+              <p className="text-brand-purple-dark/65 text-xs">
+                {selectedCity.name}, {selectedDept.name}
+                {zip && ` · CP ${zip}`}
+              </p>
+            )}
+          </div>
+        )}
 
         <div className="mt-4">
           <Label

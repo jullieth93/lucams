@@ -216,13 +216,9 @@ export async function finalizeCheckout(input: {
 
   // 1. Crear Order en DB.
   let order;
-  // Componer dirección estructurada en string para Aveonline + Order.
-  const addressLine1 = composeAddressLine({
-    viaType: state.address.viaType,
-    viaNumber: state.address.viaNumber,
-    cruceNumber: state.address.cruceNumber,
-    detail: state.address.detail,
-  });
+  // Componer dirección urbana O rural en string para Aveonline + Order.
+  // composeAddressLine recibe el discriminated union completo (kind + fields).
+  const addressLine1 = composeAddressLine(state.address);
 
   try {
     order = await createOrderFromCart({
