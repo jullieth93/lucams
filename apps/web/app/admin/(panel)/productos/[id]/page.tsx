@@ -7,6 +7,7 @@ import { ConfirmAction } from "@/components/admin/confirm-action";
 import { AdminPage, AdminPageHeader, AdminPageBody, AdminNotice } from "@/components/admin-page";
 import { getCurrentAdmin } from "@/lib/auth";
 import { getProductById, listCategoriesForSelect } from "@/features/products/service";
+import { parsePhysicalSpecs } from "@/features/products/shipping-schemas";
 import { deleteProductAction, updateProductAction } from "../actions";
 import { ProductForm } from "../product-form";
 import { ProductImages } from "../product-images";
@@ -35,6 +36,9 @@ export default async function EditarProductoPage({
   const [product, categories] = await Promise.all([getProductById(id), listCategoriesForSelect()]);
 
   if (!product) notFound();
+
+  // PR C — parse physicalSpecs Json para extraer peso/dims y pasarlos a la form
+  const physicalSpecs = parsePhysicalSpecs(product.physicalSpecs);
 
   return (
     <AdminPage>
@@ -112,6 +116,11 @@ export default async function EditarProductoPage({
             minimumQuantity: product.minimumQuantity,
             maximumQuantity: product.maximumQuantity,
             premadeSurcharge: product.premadeSurcharge,
+            // PR C — extraer peso/dims de physicalSpecs Json (nullable individual)
+            weightGrams: physicalSpecs.weightGrams ?? null,
+            widthCm: physicalSpecs.widthCm ?? null,
+            heightCm: physicalSpecs.heightCm ?? null,
+            depthCm: physicalSpecs.depthCm ?? null,
           }}
           action={updateProductAction}
           submitLabel="Guardar cambios"

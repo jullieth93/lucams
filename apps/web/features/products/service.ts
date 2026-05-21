@@ -124,6 +124,28 @@ export async function getProductById(id: string) {
   });
 }
 
+function buildPhysicalSpecsFromInput(input: {
+  weightGrams?: number | null;
+  widthCm?: number | null;
+  heightCm?: number | null;
+  depthCm?: number | null;
+}): Prisma.InputJsonValue | undefined {
+  if (
+    input.weightGrams == null &&
+    input.widthCm == null &&
+    input.heightCm == null &&
+    input.depthCm == null
+  ) {
+    return undefined;
+  }
+  return {
+    ...(input.weightGrams != null && { weightGrams: input.weightGrams }),
+    ...(input.widthCm != null && { widthCm: input.widthCm }),
+    ...(input.heightCm != null && { heightCm: input.heightCm }),
+    ...(input.depthCm != null && { depthCm: input.depthCm }),
+  } as Prisma.InputJsonValue;
+}
+
 export async function createProduct(input: ProductCreateInput, createdBy: string | null) {
   // Verificar unicidad slug + sku (mejor mensaje de error que el de
   // Prisma P2002 genérico).
@@ -166,6 +188,11 @@ export async function createProduct(input: ProductCreateInput, createdBy: string
         ...(input.minimumQuantity !== undefined && { minimumQuantity: input.minimumQuantity }),
         ...(input.maximumQuantity !== undefined && { maximumQuantity: input.maximumQuantity }),
         ...(input.premadeSurcharge !== undefined && { premadeSurcharge: input.premadeSurcharge }),
+        // PR C — peso/dims iniciales dentro de physicalSpecs Json
+        ...(() => {
+          const ps = buildPhysicalSpecsFromInput(input);
+          return ps !== undefined ? { physicalSpecs: ps } : {};
+        })(),
         categoryId: input.categoryId,
         images: [],
         ...(createdBy ? { createdBy } : {}),
@@ -205,13 +232,38 @@ export async function updateProduct(input: ProductUpdateInput, updatedBy: string
     if (conflict) throw new ProductValidationError("sku", `SKU "${rest.sku}" ya existe`);
   }
 
+  // PR C — peso/dims se persisten dentro de physicalSpecs Json (mergeado
+  // con specs existentes para no pisar otras keys como `material`).
+  const { weightGrams, widthCm, heightCm, depthCm, ...restNoShipping } = rest;
+  let physicalSpecsUpdate: Prisma.InputJsonValue | undefined;
+  if (
+    weightGrams !== undefined ||
+    widthCm !== undefined ||
+    heightCm !== undefined ||
+    depthCm !== undefined
+  ) {
+    const existing = await prisma.product.findUnique({
+      where: { id },
+      select: { physicalSpecs: true },
+    });
+    const current = (existing?.physicalSpecs as Record<string, unknown> | null | undefined) ?? {};
+    physicalSpecsUpdate = {
+      ...current,
+      ...(weightGrams !== undefined && weightGrams !== null && { weightGrams }),
+      ...(widthCm !== undefined && widthCm !== null && { widthCm }),
+      ...(heightCm !== undefined && heightCm !== null && { heightCm }),
+      ...(depthCm !== undefined && depthCm !== null && { depthCm }),
+    } as Prisma.InputJsonValue;
+  }
+
   // idealFor es Json — necesita tratamiento especial para tipos Prisma.
-  const { idealFor, ...restWithoutJson } = rest;
+  const { idealFor, ...restWithoutJson } = restNoShipping;
   return prisma.product.update({
     where: { id },
     data: {
       ...restWithoutJson,
       ...(idealFor !== undefined && { idealFor }),
+      ...(physicalSpecsUpdate !== undefined && { physicalSpecs: physicalSpecsUpdate }),
       ...(updatedBy ? { updatedBy } : {}),
     },
   });

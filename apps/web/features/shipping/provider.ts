@@ -24,7 +24,14 @@ export type ShippingAddress = {
 export type ShipmentItem = {
   productSlug: string;
   qty: number;
+  // PR C (Lucy 2026-05-21): peso + dimensiones REALES por producto/variant.
+  // Sin defaults hardcoded — el caller (checkout service) los resuelve via
+  // getEffectiveShippingDims(product, variant). Si falta data, lanza error
+  // antes de llegar acá.
   weightGrams: number;
+  widthCm: number;
+  heightCm: number;
+  depthCm: number;
   declaredValueCop: number; // Para seguro
 };
 

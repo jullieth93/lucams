@@ -83,6 +83,11 @@ function parsePayload(formData: FormData) {
     minimumQuantity: getOptNum("minimumQuantity") ?? undefined,
     maximumQuantity: getOptNum("maximumQuantity"),
     premadeSurcharge: getOptNum("premadeSurcharge") ?? undefined,
+    // PR C — peso + dims del paquete final (para Aveonline cotización).
+    weightGrams: getOptNum("weightGrams"),
+    widthCm: getOptNum("widthCm"),
+    heightCm: getOptNum("heightCm"),
+    depthCm: getOptNum("depthCm"),
   };
 }
 

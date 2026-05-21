@@ -21,6 +21,10 @@ import { createOrderFromCart } from "@/features/orders/service";
 import { getPaymentProvider } from "@/features/payments/provider";
 import { getShippingProvider } from "@/features/shipping/provider";
 import {
+  getEffectiveShippingDims,
+  MissingShippingDimsError,
+} from "@/features/products/shipping-schemas";
+import {
   getCheckoutState,
   setCheckoutState,
   clearCheckoutState,
@@ -102,12 +106,47 @@ export async function quoteShipping(input: {
   const ctx = await loadCheckoutContext();
   const provider = await getShippingProvider();
 
-  const items = ctx.cart.items.map((it) => ({
-    productSlug: it.productSlug,
-    qty: it.qty,
-    weightGrams: 500, // default 500g/u — TODO: tomar de Product.weightGrams cuando exista
-    declaredValueCop: it.unitPrice,
-  }));
+  // PR C — leer peso/dimensiones REALES de cada producto+variant.
+  // Sin asumir nada: si falta data → error claro a admin (no cotización fake).
+  const variantIds = ctx.cart.items.map((it) => it.variantId);
+  const variants = await prisma.productVariant.findMany({
+    where: { id: { in: variantIds } },
+    select: {
+      id: true,
+      attributes: true,
+      product: { select: { slug: true, physicalSpecs: true } },
+    },
+  });
+  const variantById = new Map(variants.map((v) => [v.id, v]));
+
+  const items = ctx.cart.items.map((it) => {
+    const v = variantById.get(it.variantId);
+    if (!v) {
+      throw new CheckoutError(
+        "SHIPPING_QUOTE_FAILED",
+        `Variant ${it.variantId} no encontrada para ${it.productSlug}`,
+      );
+    }
+    const dims = getEffectiveShippingDims(v.product.physicalSpecs, v.attributes);
+    if (!dims) {
+      const missing = new MissingShippingDimsError(v.product.slug, v.id);
+      logger.warn({
+        event: "checkout.quote_shipping.missing_dims",
+        productSlug: v.product.slug,
+        variantId: v.id,
+      });
+      throw new CheckoutError("SHIPPING_QUOTE_FAILED", missing.message);
+    }
+    return {
+      productSlug: it.productSlug,
+      qty: it.qty,
+      weightGrams: dims.weightGrams,
+      widthCm: dims.widthCm,
+      heightCm: dims.heightCm,
+      depthCm: dims.depthCm,
+      declaredValueCop: it.unitPrice,
+    };
+  });
 
   try {
     const quotes = await provider.quote({

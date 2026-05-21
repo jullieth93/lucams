@@ -82,11 +82,14 @@ export class AveonlineProvider implements ShippingProvider {
     contraentrega: boolean;
   }): Promise<ShippingQuote[]> {
     const { token, idempresa } = await getAuthToken();
+    // PR C (Lucy 2026-05-21): peso + dims REALES del item.weightGrams/widthCm/etc.
+    // El caller (features/checkout/service.ts) los resuelve via
+    // getEffectiveShippingDims(product, variant) y lanza error si faltan.
     const productos = params.items.map((i) => ({
-      alto: 5,
-      ancho: 5,
-      largo: 5,
-      peso: Math.max(1, Math.round(i.weightGrams / 100) / 10), // kg
+      alto: i.heightCm,
+      ancho: i.widthCm,
+      largo: i.depthCm,
+      peso: Math.max(0.1, Math.round((i.weightGrams / 1000) * 10) / 10), // kg, 1 decimal
       unidades: i.qty,
       nombre: i.productSlug,
       valorDeclarado: i.declaredValueCop,
@@ -182,10 +185,11 @@ export class AveonlineProvider implements ShippingProvider {
       );
     }
 
+    // PR C — dims REALES de cada producto/variant (caller las pasó en ShipmentItem).
     const productos = params.items.map((i) => ({
-      alto: "10", // cm — placeholder hasta que cada Product tenga dimensiones
-      ancho: "10",
-      largo: "10",
+      alto: String(i.heightCm),
+      ancho: String(i.widthCm),
+      largo: String(i.depthCm),
       peso: String(Math.max(0.1, Math.round((i.weightGrams / 1000) * 10) / 10)), // kg, 1 decimal
       unidades: i.qty,
       nombre: i.productSlug,

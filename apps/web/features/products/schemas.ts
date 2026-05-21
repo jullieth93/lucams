@@ -60,6 +60,13 @@ export const ProductCreateSchema = z.object({
   maximumQuantity: z.number().int().min(1).max(10_000).optional().nullable(),
   // PLAN_CATALOG_V2 5.5 — surcharge para templates PREMADE
   premadeSurcharge: z.number().int().min(0).max(100).optional(),
+  // PR C (Lucy 2026-05-21) — Envío: peso + dims del paquete final.
+  // Opcionales individualmente; el checkout valida que estén COMPLETOS
+  // (los 4) antes de cotizar Aveonline.
+  weightGrams: z.number().int().min(50).max(50_000).optional().nullable(),
+  widthCm: z.number().int().min(1).max(100).optional().nullable(),
+  heightCm: z.number().int().min(1).max(100).optional().nullable(),
+  depthCm: z.number().int().min(1).max(100).optional().nullable(),
 });
 
 export type ProductCreateInput = z.infer<typeof ProductCreateSchema>;

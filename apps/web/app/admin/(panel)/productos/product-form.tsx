@@ -51,6 +51,13 @@ type Props = {
     minimumQuantity?: number;
     maximumQuantity?: number | null;
     premadeSurcharge?: number;
+    // PR C (Lucy 2026-05-21) — Envío: peso y dims REALES.
+    // Aveonline los necesita para cotizar bien. Pre-PR C eran hardcoded
+    // placeholders (500g + 10×10×10) que falseaban la cotización.
+    weightGrams?: number | null;
+    widthCm?: number | null;
+    heightCm?: number | null;
+    depthCm?: number | null;
   };
   action: typeof createProductAction | typeof updateProductAction;
   submitLabel: string;
@@ -437,6 +444,79 @@ export function ProductForm({ categories, initialProduct, action, submitLabel }:
               disabled={pending}
             />
           </Field>
+        </CardContent>
+      </Card>
+
+      {/* ─── Envío y empaque (PR C — peso/dims reales para Aveonline) ─── */}
+      <Card className="border-slate-200">
+        <CardHeader>
+          <CardTitle className="text-base text-slate-900">📦 Envío y empaque</CardTitle>
+          <p className="mt-1 text-xs text-slate-600">
+            Aveonline usa estos datos para cotizar el envío. Sin esto, la cotización falla.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
+            <div>
+              <Label htmlFor="weightGrams">Peso (gramos)</Label>
+              <Input
+                id="weightGrams"
+                name="weightGrams"
+                type="number"
+                min={50}
+                max={50000}
+                step={1}
+                defaultValue={initialProduct?.weightGrams ?? ""}
+                placeholder="500"
+              />
+              <p className="mt-1 text-xs text-slate-500">Total paquete (50-50000 g)</p>
+            </div>
+            <div>
+              <Label htmlFor="widthCm">Ancho (cm)</Label>
+              <Input
+                id="widthCm"
+                name="widthCm"
+                type="number"
+                min={1}
+                max={100}
+                step={1}
+                defaultValue={initialProduct?.widthCm ?? ""}
+                placeholder="10"
+              />
+            </div>
+            <div>
+              <Label htmlFor="heightCm">Alto (cm)</Label>
+              <Input
+                id="heightCm"
+                name="heightCm"
+                type="number"
+                min={1}
+                max={100}
+                step={1}
+                defaultValue={initialProduct?.heightCm ?? ""}
+                placeholder="10"
+              />
+            </div>
+            <div>
+              <Label htmlFor="depthCm">Largo (cm)</Label>
+              <Input
+                id="depthCm"
+                name="depthCm"
+                type="number"
+                min={1}
+                max={100}
+                step={1}
+                defaultValue={initialProduct?.depthCm ?? ""}
+                placeholder="10"
+              />
+            </div>
+          </div>
+          <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            💡 Estos son los datos del <strong>paquete final</strong> (no del producto suelto). Si
+            una variant (Set 12 vs Set 6) tiene peso/dims distintos, configúralos en{" "}
+            <code className="rounded bg-amber-100 px-1 py-0.5">/admin/productos/[id]/variants</code>{" "}
+            con el override.
+          </div>
         </CardContent>
       </Card>
 
