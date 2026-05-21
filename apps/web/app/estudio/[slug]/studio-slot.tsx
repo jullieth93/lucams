@@ -1208,19 +1208,27 @@ function ImagePlaceholder({
     return { filtersArray: f, filterParams: params };
   }, [slotState.filter]);
 
-  // M.3.b.B.3 — Cuando cambia la foto o filter, re-cache (Konva filters
-  // requieren image.cache() para aplicarse correctamente).
+  // M.3.b.B.3 — Konva filters requieren image.cache() para aplicarse.
+  //
+  // Lucy 2026-05-21 round 4 — bug: tras aplicar filtro, el zoom dejaba de
+  // funcionar visualmente. Causa: node.cache() captura el bitmap al tamaño
+  // CURRENT del node. Al cambiar `width`/`height` por scroll-zoom, el cache
+  // queda fijo y la imagen no re-renderea al nuevo tamaño con el filter.
+  // Fix: re-cache también cuando cambian las dimensiones renderizadas
+  // (renderedW/H se calculan de photoTransform.scale + filtersArray).
   useEffect(() => {
     const node = imageNodeRef.current;
     if (!node || !image) return;
     if (filtersArray.length > 0) {
-      node.cache();
+      // pixelRatio 2 = bitmap a 2x del tamaño visible (calidad nítida sin
+      // que el cache sea desproporcionado en memoria).
+      node.cache({ pixelRatio: 2 });
       node.getLayer()?.batchDraw();
     } else {
       node.clearCache();
       node.getLayer()?.batchDraw();
     }
-  }, [image, filtersArray.length, slotState.filter]);
+  }, [image, filtersArray.length, slotState.filter, slotState.photoTransform?.scale]);
 
   // M.3.b.UX.v11 (Lucy 2026-05-15) — Smart auto-crop al cargar foto NUEVA.
   // Solo aplica si:

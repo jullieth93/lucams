@@ -19,7 +19,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, Check, Loader2, AlertCircle, Sparkles, Ruler, HelpCircle } from "lucide-react";
+import { ArrowLeft, Check, Loader2, AlertCircle, Sparkles, HelpCircle } from "lucide-react";
 import type { StoreApi } from "zustand";
 import { useStore } from "zustand";
 import { compareSizeToObject } from "./lib/size-comparator";
@@ -61,7 +61,7 @@ export function StudioToolbar({
   productSizeCm,
   productSlotCount,
   showRealismGuides,
-  onToggleRealismGuides,
+  onToggleRealismGuides: _onToggleRealismGuides,
   onOpenGesturesHint,
   onFinalize,
 }: StudioToolbarProps) {
@@ -119,30 +119,12 @@ export function StudioToolbar({
         </div>
 
         <div className="flex items-center gap-2 sm:gap-3">
-          {/* Lucy 2026-05-21 — toggle solo para "power user". Copy más claro
-              + tooltip explica para qué sirve. Default OFF para evitar confusión. */}
-          {onToggleRealismGuides && (
-            <button
-              type="button"
-              onClick={onToggleRealismGuides}
-              aria-pressed={!!showRealismGuides}
-              aria-label={
-                showRealismGuides
-                  ? "Ocultar zona segura de impresión"
-                  : "Ver zona segura de impresión"
-              }
-              title="Línea morada punteada: zona donde tu texto y caras quedan seguros sin que se corten al imprimir. Solo informativa — al pedir el imán igual mantenemos el corazón completo."
-              className={[
-                "focus:ring-brand-purple hidden h-9 items-center gap-1.5 rounded-md px-2.5 text-xs font-semibold transition-colors focus:ring-2 focus:ring-offset-1 focus:outline-none sm:inline-flex",
-                showRealismGuides
-                  ? "bg-amber-100 text-amber-800 ring-1 ring-amber-300"
-                  : "text-brand-purple-dark/70 hover:bg-brand-purple/10 hover:text-brand-purple-dark",
-              ].join(" ")}
-            >
-              <Ruler className="h-3.5 w-3.5" aria-hidden />
-              <span>{showRealismGuides ? "Zona segura" : "Ver zona segura"}</span>
-            </button>
-          )}
+          {/* Lucy 2026-05-21 round 4: toggle eliminado. La línea punteada
+              de "zona segura" no matcheaba visualmente la silueta del
+              corazón/círculo y confundía al cliente sin aportar valor real
+              (la silueta del producto YA define el borde de impresión).
+              Mantenemos prop onToggleRealismGuides en la API para futuras
+              expansiones, pero NO renderea botón. */}
           {/* M.3.b.UX.v12 (Lucy 2026-05-15) — Botón "?" para re-ver gestos.
             Icon-only para no ocupar espacio. Visible en mobile y desktop. */}
           {onOpenGesturesHint && (

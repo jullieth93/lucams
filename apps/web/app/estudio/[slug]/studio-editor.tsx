@@ -113,9 +113,12 @@ export function StudioEditor({
   const [previewModalOpen, setPreviewModalOpen] = useState(false);
   const [previewDataUrl, setPreviewDataUrl] = useState<string | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
-  // M.3.b.B.1 — Toggle bleed + safe area guides (default off para que cliente
-  // no se confunda con líneas de seguridad si no las necesita ver).
-  const [showRealismGuides, setShowRealismGuides] = useState(false);
+  // Lucy 2026-05-21 round 4: guías eliminadas. La línea punteada del
+  // "safe area" confundía al cliente porque no matcheaba visualmente la
+  // silueta del corazón/círculo. La silueta del producto ya define el
+  // borde de impresión, no necesitamos UI adicional.
+  // Hardcoded false; el código de overlay las ignora.
+  const showRealismGuides = false;
   // A2.8 — Sheet drawer mobile state (sidebar bottom slide-up).
   const [mobileSheetOpen, setMobileSheetOpen] = useState(false);
   // M.3.b.D — Text editor inline state: { slotIndex, textLayerId } o null
@@ -472,8 +475,7 @@ export function StudioEditor({
         productImageUrl={product.images?.[0]}
         productSizeCm={productConfig.sizeCm}
         productSlotCount={photoSlots}
-        showRealismGuides={showRealismGuides}
-        onToggleRealismGuides={() => setShowRealismGuides((v) => !v)}
+        showRealismGuides={false}
         onOpenGesturesHint={() => {
           setGesturesHintPersistent(true);
           setGesturesHintOpen(true);
@@ -834,26 +836,21 @@ async function buildCompositedPreview(
         const x = col * (cellW + gap);
         const y = row * (cellH + gap);
         const path = buildShapePath(shape, x, y, cellW, cellH);
-        // 1) Sombra externa sutil para destacar contra el fondo crema
-        ctx.save();
-        ctx.shadowColor = "rgba(124, 106, 173, 0.25)";
-        ctx.shadowBlur = 12;
-        ctx.shadowOffsetY = 3;
-        ctx.fillStyle = "white";
-        ctx.fill(path);
-        ctx.restore();
-        // 2) Foto clipeada al shape
+        // 1) Foto clipeada al shape (sin fill blanco previo — la propia foto
+        //    es el fondo). Sombra externa via stroke ancho + transparencia.
         ctx.save();
         ctx.clip(path);
         ctx.drawImage(img, x, y, cellW, cellH);
         ctx.restore();
-        // 3) Borde visible — clave para Lucy: "el corazón y el fondo es
-        //    blanco y no se detalla bien el contorno"
+        // 2) Borde visible para destacar la silueta sobre el fondo crema
+        //    (Lucy 2026-05-21: "el corazón y el fondo es blanco y no se
+        //    detalla bien el contorno").
         ctx.save();
         ctx.strokeStyle = "rgba(124, 106, 173, 0.7)"; // brand-purple/70
         ctx.lineWidth = 2.5;
         ctx.stroke(path);
         ctx.restore();
+        resolve();
       };
       img.onerror = () => reject(new Error("No se pudo cargar snapshot del slot"));
       img.src = slotDataUrl;
