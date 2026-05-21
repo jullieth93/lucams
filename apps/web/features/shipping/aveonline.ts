@@ -36,6 +36,34 @@ const BASE_URL = "https://app.aveonline.co/api";
 const MIN_DECLARED_VALUE_COP = 10000;
 
 /**
+ * Credenciales de la cuenta DEMO pública que Aveonline documenta como ambiente
+ * de pruebas (no existe sandbox dedicado — opera contra producción pero sin
+ * facturar mientras `bloquegenerarguia=0`). Doc:
+ * https://integraciones.aveonline.co/docs/nacional/autenticacion/
+ *
+ * idempresa = 15289 (Demo - Integracion, servicio AVEONLINE COURIER).
+ * 7 transportadoras habilitadas: 99MINUTOS, COORDINADORA MERCANTIL, ENVIA,
+ * GO ENVIOS, INTERRAPIDISIMO, SERVIENTREGA, TCC SA.
+ */
+const DEMO_CREDENTIALS = {
+  usuario: "demointegracion",
+  clave: "demointegra2021",
+} as const;
+
+/**
+ * Determina si estamos en modo prueba según `AVEONLINE_ENV`.
+ * - `test` (default si no se configura): usa cuenta demo pública +
+ *   `bloquegenerarguia=0` (no genera guía real, no factura).
+ * - `production`: usa AVEONLINE_USUARIO + AVEONLINE_CLAVE del .env +
+ *   `bloquegenerarguia=1` (genera guía real, factura).
+ *
+ * Permite probar end-to-end el flow checkout sin riesgo de cobros indebidos.
+ */
+function isProductionEnv(): boolean {
+  return process.env.AVEONLINE_ENV === "production";
+}
+
+/**
  * Normaliza ciudad+depto al formato que Aveonline espera: `CIUDAD(DEPTO)` UPPERCASE
  * sin tildes ni "D.C." Ej: "Bogotá D.C." + "Cundinamarca" → "BOGOTA(CUNDINAMARCA)".
  */
@@ -62,11 +90,16 @@ async function getAuthToken(): Promise<{ token: string; idempresa: number }> {
     return { token: tokenCache.token, idempresa: tokenCache.idempresa };
   }
 
-  const usuario = process.env.AVEONLINE_USUARIO;
-  const clave = process.env.AVEONLINE_CLAVE;
+  // En modo test usa la cuenta demo pública (sin requerir env vars).
+  // En production usa AVEONLINE_USUARIO + AVEONLINE_CLAVE del .env.
+  const isProd = isProductionEnv();
+  const usuario = isProd ? process.env.AVEONLINE_USUARIO : DEMO_CREDENTIALS.usuario;
+  const clave = isProd ? process.env.AVEONLINE_CLAVE : DEMO_CREDENTIALS.clave;
   if (!usuario || !clave) {
     throw new Error(
-      "AVEONLINE_USUARIO + AVEONLINE_CLAVE no configurados. Ver ADR-039 + .env.example.",
+      isProd
+        ? "AVEONLINE_USUARIO + AVEONLINE_CLAVE no configurados (modo production). Ver ADR-039 + .env.example."
+        : "Aveonline modo test: credenciales demo no disponibles (revisar DEMO_CREDENTIALS hardcoded).",
     );
   }
 
@@ -90,7 +123,11 @@ async function getAuthToken(): Promise<{ token: string; idempresa: number }> {
     idempresa,
     expiresAt: now + 60 * 60_000, // 1h vigencia documentada
   };
-  logger.info({ event: "shipping.aveonline.auth_refresh", idempresa });
+  logger.info({
+    event: "shipping.aveonline.auth_refresh",
+    idempresa,
+    env: isProd ? "production" : "test",
+  });
   return { token: data.token, idempresa };
 }
 
@@ -309,7 +346,9 @@ export class AveonlineProvider implements ShippingProvider {
       idasumecosto: 0,
       contraentrega: params.contraentrega ? 1 : 0,
       valorrecaudo: valorRecaudo,
-      bloquegenerarguia: "1",
+      // En modo test: bloquegenerarguia="0" → simula sin generar guía real (no factura).
+      // En production: "1" → genera guía real (factura).
+      bloquegenerarguia: isProductionEnv() ? "1" : "0",
       relacion_envios: "1",
       enviarcorreos: "1",
       valorMinimo: 0, // 0 = suma valorDeclarado (correcto para nuestro caso)

@@ -638,16 +638,88 @@ Aveonline acepta **ambos** formatos en `origen`/`destino`:
 
 ---
 
-## 12. Producción vs sandbox
+## 12. Producción vs sandbox / ambiente de pruebas
 
-| Item                      | Estado                                                                                             |
-| ------------------------- | -------------------------------------------------------------------------------------------------- |
-| Ambiente sandbox separado | **NO existe**                                                                                      |
-| Credenciales prod vs test | Las mismas                                                                                         |
-| Guías de prueba           | Se generan en producción; si NO se imprime/manifiesta no se factura. Si se manifiesta → se factura |
-| Modo "no facturar"        | `bloquegenerarguia: "0"` simula sin generar guía real                                              |
+> **Confirmación 2026-05-21 vía investigación exhaustiva + probe en vivo.** No existe un host sandbox dedicado (`sandbox.aveonline.co`, `test.aveonline.co`, etc. — todos `NO_DNS`). El mecanismo oficial de pruebas que el equipo de desarrollo de Aveonline confirmó verbalmente y que está documentado es:
 
-> Para Lucams_shop dev/staging: usar `bloquegenerarguia: "0"` en cotización y guía mock; reservar `"1"` para producción real.
+### 12.1 Cuenta DEMO pública
+
+| Campo                                       | Valor                                                                                         |
+| ------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| URL doc                                     | https://integraciones.aveonline.co/docs/nacional/autenticacion/                               |
+| `usuario`                                   | **`demointegracion`**                                                                         |
+| `clave`                                     | **`demointegra2021`**                                                                         |
+| `idempresa`                                 | **15289**                                                                                     |
+| Razón social                                | "Demo - Integracion"                                                                          |
+| Servicio                                    | AVEONLINE COURIER                                                                             |
+| Endpoint auth                               | `POST https://app.aveonline.co/api/comunes/v1.0/autenticarusuario.php` (mismo que prod)       |
+| Transportadoras activas (probe 2026-05-21)  | 7: ENVIA, COORDINADORA MERCANTIL, TCC SA, SERVIENTREGA, INTERRAPIDISIMO, 99MINUTOS, GO ENVIOS |
+| Cotización Bogotá→Medellín set 6 fotoimanes | 4 ok reales: COORDINADORA $15.930 / ENVIA $16.350 / SERVIENTREGA $17.650 / TCC $18.300        |
+| Costo de uso                                | $0 — guías que no se manifiestan no se facturan                                               |
+
+### 12.2 Flag dry-run `bloquegenerarguia`
+
+| Valor | Comportamiento                                                 |
+| ----- | -------------------------------------------------------------- |
+| `"0"` | **Modo simulación**. No genera guía real, no factura.          |
+| `"1"` | **Modo productivo**. Genera guía real, factura según contrato. |
+
+Único parámetro documentado tipo "dry-run" en toda la API. Doc oficial: https://integraciones.aveonline.co/docs/nacional/generacionGuia/ → _"Si desea generar la guia: 1. Si no: 0"_.
+
+### 12.3 Implementación en Lucams_shop (2026-05-21)
+
+Switch controlado por **env var `AVEONLINE_ENV`** (default `test`):
+
+| Modo             | Credenciales auth                                  | `bloquegenerarguia` | Cuándo usar                                |
+| ---------------- | -------------------------------------------------- | ------------------- | ------------------------------------------ |
+| `test` (default) | `demointegracion` / `demointegra2021` (hardcoded)  | `"0"` (no factura)  | dev local, Vercel preview, QA, smoke tests |
+| `production`     | `AVEONLINE_USUARIO` + `AVEONLINE_CLAVE` del `.env` | `"1"` (factura)     | Vercel production únicamente               |
+
+Configurado en `apps/web/features/shipping/aveonline.ts` (constantes `DEMO_CREDENTIALS` + función `isProductionEnv()`).
+
+> **Seguridad.** Nunca setear `AVEONLINE_ENV=production` en preview ni dev — el flag deber estar solo en Vercel production env. El default `test` garantiza fail-safe.
+
+### 12.4 Subdominios alternos descubiertos (NO usar)
+
+Investigación 2026-05-21 vía Certificate Transparency reveló subdominios que existen pero **no operan** como sandbox público:
+
+| Host                                                                                                              | Estado                   | Por qué no usar                    |
+| ----------------------------------------------------------------------------------------------------------------- | ------------------------ | ---------------------------------- |
+| `apiqa.aveonline.co`                                                                                              | 200 (ISPConfig default)  | Servidor vacío, sin API            |
+| `appdev.aveonline.co`                                                                                             | 403 (acceso restringido) | Solo interno Aveonline             |
+| `guiasqa.aveonline.co`                                                                                            | 200 (respuesta 0 bytes)  | Existe pero no operativo           |
+| `qa.aveonline.co`                                                                                                 | TCP/443 cerrado          | DNS resuelve, no acepta conexiones |
+| `developers.aveonline.co`                                                                                         | 200 (ISPConfig default)  | Página vacía, no es portal dev     |
+| `sandbox.aveonline.co`                                                                                            | NO_DNS                   | No existe                          |
+| `test.aveonline.co`, `demo.aveonline.co`, `staging.aveonline.co`, `dev.aveonline.co`, `uat`, `preprod`, `pruebas` | NO_DNS                   | No existen                         |
+
+### 12.5 Otras versiones de auth probadas
+
+| Endpoint                                                | Cuenta demo                       | Resultado                                                      |
+| ------------------------------------------------------- | --------------------------------- | -------------------------------------------------------------- |
+| v1 `comunes/v1.0/autenticarusuario.php` (tipo `auth`)   | `demointegracion/demointegra2021` | ✅ status:ok + token válido                                    |
+| v2 `comunes/v2.0/autenticarusuario.php` (tipo `authV2`) | `demointegracion/demointegra2021` | ❌ "Usuario no encontrado" — v2 requiere cuenta productiva     |
+| v3 AveCRM `auth/v3.0/index.php` (tipo `AuthProduct`)    | `demo/password`                   | ❌ "Error en usuario o contraseña" — endpoint válido, creds no |
+
+Conclusión: solo v1 acepta la cuenta demo. v2/v3 requieren credenciales productivas.
+
+### 12.6 Switch entre ambientes
+
+```bash
+# .env.local — desarrollo local
+AVEONLINE_ENV=test
+# AVEONLINE_USUARIO + AVEONLINE_CLAVE no necesarias en modo test
+
+# Vercel preview — staging
+AVEONLINE_ENV=test
+
+# Vercel production — venta real
+AVEONLINE_ENV=production
+AVEONLINE_USUARIO=<usuario_real>
+AVEONLINE_CLAVE=<clave_real>
+```
+
+El switch toma efecto en el siguiente request (no requiere redeploy si se cambia env var en Vercel y se hace `redeploy` del último build).
 
 ---
 
