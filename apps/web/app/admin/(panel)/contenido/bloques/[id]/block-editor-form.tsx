@@ -17,7 +17,7 @@ import ReactMarkdown from "react-markdown";
 import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
 import { toast } from "sonner";
-import { Loader2, Save, ChevronDown, Lightbulb } from "lucide-react";
+import { Loader2, Save, ChevronDown, Lightbulb, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -39,20 +39,70 @@ export type BlockEditorBlock = {
 };
 
 export function BlockEditorForm({ block }: { block: BlockEditorBlock }) {
-  const [body, setBody] = useState(block.body);
-  const [title, setTitle] = useState(block.title ?? "");
-  const [description, setDescription] = useState(block.description ?? "");
+  // Snapshot del "original" — lo que el usuario podría querer recuperar al
+  // "Descartar". Lo guardamos en state para que se mantenga estable entre
+  // renders (queda fijo desde mount; tras guardar exitoso lo actualizamos
+  // explícitamente). useState con initializer asegura captura única.
+  const [original, setOriginal] = useState(() => ({
+    body: block.body,
+    title: block.title ?? "",
+    description: block.description ?? "",
+  }));
+
+  const [body, setBody] = useState(() => block.body);
+  const [title, setTitle] = useState(() => block.title ?? "");
+  const [description, setDescription] = useState(() => block.description ?? "");
+  // Key para forzar remount del MarkdownEditor cuando descartamos
+  // (el editor tiene state interno propio, defaultValue solo se lee en mount).
+  const [editorKey, setEditorKey] = useState(0);
+
   const [state, formAction, pending] = useActionState<CmsActionState | null, FormData>(
     saveCmsBlockDraftAction,
     null,
   );
 
+  const isDirty =
+    body !== original.body || title !== original.title || description !== original.description;
+
   useEffect(() => {
     if (state?.error) toast.error(state.error);
     else if (state && !state.error && !state.fieldErrors) {
       toast.success("Borrador guardado. Cuando estés lista, dale a Publicar.");
+      // Tras guardado exitoso, lo "actual" pasa a ser el nuevo original.
+      // queueMicrotask defiere el setState fuera del cuerpo síncrono del
+      // effect (satisface react-hooks/set-state-in-effect — mismo patrón
+      // que setting-row.tsx tras feedback Lucy 2026-05-18).
+      queueMicrotask(() => setOriginal({ body, title, description }));
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state]);
+
+  // Aviso al cerrar pestaña / navegar fuera con cambios sin guardar.
+  // El navegador muestra su propio diálogo nativo ("¿Salir del sitio? Es
+  // posible que no se guarden los cambios..."). No podemos customizar el
+  // texto desde 2017 (spec security).
+  useEffect(() => {
+    if (!isDirty) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      // Algunos navegadores aún requieren returnValue para mostrar el diálogo.
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [isDirty]);
+
+  function discardChanges() {
+    if (!isDirty) return;
+    if (!window.confirm("¿Descartar los cambios? Volverá al contenido que tenía guardado antes.")) {
+      return;
+    }
+    setBody(original.body);
+    setTitle(original.title);
+    setDescription(original.description);
+    setEditorKey((k) => k + 1); // remount editor → re-lee defaultValue
+    toast.info("Cambios descartados.");
+  }
 
   return (
     <form action={formAction} className="space-y-5">
@@ -110,6 +160,7 @@ export function BlockEditorForm({ block }: { block: BlockEditorBlock }) {
             </span>
           </div>
           <MarkdownEditor
+            key={editorKey}
             id="body"
             name="body"
             defaultValue={body}
@@ -187,9 +238,19 @@ export function BlockEditorForm({ block }: { block: BlockEditorBlock }) {
       )}
 
       {/* Actions */}
-      <div className="border-brand-purple/10 flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-white p-4 shadow-sm">
-        <div className="text-brand-purple-dark/75 text-xs">
-          {block.isPublished ? (
+      <div
+        className={
+          "sticky bottom-3 z-10 flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-white p-4 shadow-md transition-colors " +
+          (isDirty ? "border-amber-300 ring-2 ring-amber-200/60" : "border-brand-purple/10")
+        }
+      >
+        <div className="text-brand-purple-dark/75 flex items-center gap-2 text-xs">
+          {isDirty ? (
+            <span className="inline-flex items-center gap-1.5 rounded-md bg-amber-100 px-2 py-1 text-amber-900">
+              <span className="h-2 w-2 animate-pulse rounded-full bg-amber-500" />
+              <b>Cambios sin guardar</b>
+            </span>
+          ) : block.isPublished ? (
             <>
               🟢 Este bloque <b>está publicado</b> en el sitio. Al guardar cambios queda en
               borrador. Para que se vean, pulsa <b>Publicar nueva versión</b>.
@@ -201,21 +262,37 @@ export function BlockEditorForm({ block }: { block: BlockEditorBlock }) {
             </>
           )}
         </div>
-        <Button
-          type="submit"
-          disabled={pending}
-          className="bg-gradient-brand text-white hover:brightness-110"
-        >
-          {pending ? (
-            <>
-              <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> Guardando...
-            </>
-          ) : (
-            <>
-              <Save className="mr-1.5 h-4 w-4" /> Guardar borrador
-            </>
+        <div className="flex flex-wrap items-center gap-2">
+          {isDirty && (
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={discardChanges}
+              disabled={pending}
+              className="text-brand-purple-dark hover:bg-brand-purple/10"
+              title="Volver al contenido guardado, perdiendo los cambios actuales"
+            >
+              <Undo2 className="mr-1.5 h-4 w-4" />
+              Descartar cambios
+            </Button>
           )}
-        </Button>
+          <Button
+            type="submit"
+            disabled={pending || !isDirty}
+            className="bg-gradient-brand text-white hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+            title={isDirty ? "Guardar como nueva versión borrador" : "No hay cambios para guardar"}
+          >
+            {pending ? (
+              <>
+                <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> Guardando...
+              </>
+            ) : (
+              <>
+                <Save className="mr-1.5 h-4 w-4" /> Guardar borrador
+              </>
+            )}
+          </Button>
+        </div>
       </div>
     </form>
   );

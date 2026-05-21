@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect, useState } from "react";
+import { Loader2, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -26,6 +27,46 @@ export function CreateBlockForm({ defaultCategory }: { defaultCategory?: string 
     null,
   );
 
+  // Tracking de campos para isDirty + reset.
+  const [key, setKey] = useState("");
+  const [title, setTitle] = useState("");
+  const [description, setDescription] = useState("");
+  const [body, setBody] = useState("");
+  const [category, setCategory] = useState(defaultCategory ?? "");
+  // Key para forzar remount del MarkdownEditor al limpiar.
+  const [editorKey, setEditorKey] = useState(0);
+
+  const isDirty =
+    key.length > 0 ||
+    title.length > 0 ||
+    description.length > 0 ||
+    body.length > 0 ||
+    category !== (defaultCategory ?? "");
+
+  // Aviso al cerrar pestaña con datos sin guardar.
+  useEffect(() => {
+    if (!isDirty || pending) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [isDirty, pending]);
+
+  function clearForm() {
+    if (!isDirty) return;
+    if (!window.confirm("¿Limpiar el formulario? Perderás todo lo que escribiste hasta ahora.")) {
+      return;
+    }
+    setKey("");
+    setTitle("");
+    setDescription("");
+    setBody("");
+    setCategory(defaultCategory ?? "");
+    setEditorKey((k) => k + 1);
+  }
+
   return (
     <form
       action={formAction}
@@ -42,6 +83,8 @@ export function CreateBlockForm({ defaultCategory }: { defaultCategory?: string 
           placeholder="ej. legal.privacidad, faq.envios, home.banner-promo"
           disabled={pending}
           pattern="^[a-z][a-z0-9._-]*$"
+          value={key}
+          onChange={(e) => setKey(e.target.value)}
           className="border-brand-purple/20 focus-visible:ring-brand-purple/30 font-mono"
         />
         <p className="text-brand-purple-dark/55 text-xs">
@@ -62,6 +105,8 @@ export function CreateBlockForm({ defaultCategory }: { defaultCategory?: string 
             name="title"
             placeholder="Ej. Aviso de Privacidad"
             disabled={pending}
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
             className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
           />
         </div>
@@ -74,7 +119,8 @@ export function CreateBlockForm({ defaultCategory }: { defaultCategory?: string 
             name="category"
             required
             disabled={pending}
-            defaultValue={defaultCategory ?? ""}
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
             className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 flex h-9 w-full rounded-md border bg-white px-3 py-1 text-sm shadow-sm focus:ring-2 focus:outline-none"
           >
             <option value="" disabled>
@@ -98,6 +144,8 @@ export function CreateBlockForm({ defaultCategory }: { defaultCategory?: string 
           name="description"
           placeholder="Ej. Página /legal/privacidad y enlace del footer"
           disabled={pending}
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
           className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
         />
         <p className="text-brand-purple-dark/55 text-xs">
@@ -112,10 +160,13 @@ export function CreateBlockForm({ defaultCategory }: { defaultCategory?: string 
           Contenido inicial <span className="text-rose-600">*</span>
         </Label>
         <MarkdownEditor
+          key={editorKey}
           id="body"
           name="body"
           required
           rows={12}
+          defaultValue={body}
+          onChange={setBody}
           placeholder={`# Mi bloque\n\nEscribe el contenido aquí. Usa los botones de arriba para formato.\n\nPuedes editarlo después y ver una vista previa en el editor completo.`}
         />
         <p className="text-brand-purple-dark/55 text-xs">
@@ -133,13 +184,44 @@ export function CreateBlockForm({ defaultCategory }: { defaultCategory?: string 
         </div>
       )}
 
-      <Button
-        type="submit"
-        disabled={pending}
-        className="bg-gradient-brand text-white hover:brightness-110"
-      >
-        {pending ? "Creando..." : "Crear bloque (queda en borrador)"}
-      </Button>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="text-brand-purple-dark/70 text-xs">
+          {isDirty && (
+            <span className="inline-flex items-center gap-1.5 rounded-md bg-amber-100 px-2 py-1 text-amber-900">
+              <span className="h-2 w-2 animate-pulse rounded-full bg-amber-500" />
+              <b>Cambios sin guardar</b>
+            </span>
+          )}
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {isDirty && (
+            <Button
+              type="button"
+              variant="ghost"
+              onClick={clearForm}
+              disabled={pending}
+              className="text-brand-purple-dark hover:bg-brand-purple/10"
+              title="Limpiar todo el formulario"
+            >
+              <Undo2 className="mr-1.5 h-4 w-4" />
+              Limpiar formulario
+            </Button>
+          )}
+          <Button
+            type="submit"
+            disabled={pending}
+            className="bg-gradient-brand text-white hover:brightness-110"
+          >
+            {pending ? (
+              <>
+                <Loader2 className="mr-1.5 h-4 w-4 animate-spin" /> Creando...
+              </>
+            ) : (
+              "Crear bloque (queda en borrador)"
+            )}
+          </Button>
+        </div>
+      </div>
     </form>
   );
 }
