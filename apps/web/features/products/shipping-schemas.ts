@@ -22,15 +22,17 @@ import { z } from "zod";
  *   - dimensiones: cm enteros (ancho × alto × largo).
  *
  * Mínimos defensivos:
- *   - weightGrams >= 50 (50g, peso mínimo razonable de un imán pequeño)
- *   - dims >= 1 cm (algo tiene que medir)
+ *   - weightGrams >= 10 (10g, un fotoimán pequeño individual legítimo).
+ *     Lucy 2026-05-21: bajado de 50→10 — los sets seedeados tienen 30g
+ *     (set de 4 imanes 5×5cm) que fallaba con min 50.
+ *   - dims >= 1 cm (algo tiene que medir).
  *
  * Máximos defensivos:
  *   - weightGrams <= 50000 (50 kg, paquete enorme)
  *   - dims <= 100 cm (paquete bulk)
  */
 export const ShippingDimsSchema = z.object({
-  weightGrams: z.number().int().min(50).max(50_000),
+  weightGrams: z.number().int().min(10).max(50_000),
   widthCm: z.number().int().min(1).max(100),
   heightCm: z.number().int().min(1).max(100),
   depthCm: z.number().int().min(1).max(100),
@@ -47,7 +49,7 @@ export const PhysicalSpecsSchema = z
     material: z.string().max(120).optional(),
     thicknessMm: z.number().min(0).max(50).optional(),
     magnetType: z.string().max(60).optional(),
-    weightGrams: z.number().int().min(50).max(50_000).optional(),
+    weightGrams: z.number().int().min(10).max(50_000).optional(),
     widthCm: z.number().int().min(1).max(100).optional(),
     heightCm: z.number().int().min(1).max(100).optional(),
     depthCm: z.number().int().min(1).max(100).optional(),
@@ -62,10 +64,17 @@ export type PhysicalSpecs = z.infer<typeof PhysicalSpecsSchema>;
 /**
  * Lee y valida physicalSpecs de un producto (puede venir como unknown del DB).
  * Retorna objeto parseado o vacío si falla parse (tolerante con datos legacy).
+ * En caso de falla, marca el resultado con `__parseError` para que el caller
+ * pueda diagnosticar (sin lanzar). Logger.warn dejado al caller para evitar
+ * dependencia circular.
  */
-export function parsePhysicalSpecs(input: unknown): PhysicalSpecs {
+export function parsePhysicalSpecs(input: unknown): PhysicalSpecs & { __parseError?: string } {
   const result = PhysicalSpecsSchema.safeParse(input ?? {});
-  return result.success ? result.data : {};
+  if (result.success) return result.data;
+  // Falló: incluir issues para debug. El caller decide qué hacer.
+  return {
+    __parseError: result.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; "),
+  };
 }
 
 /**

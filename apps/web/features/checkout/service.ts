@@ -24,6 +24,7 @@ import { getShippingProvider } from "@/features/shipping/provider";
 import {
   getEffectiveShippingDims,
   MissingShippingDimsError,
+  parsePhysicalSpecs,
 } from "@/features/products/shipping-schemas";
 import {
   getCheckoutState,
@@ -130,11 +131,17 @@ export async function quoteShipping(input: {
     }
     const dims = getEffectiveShippingDims(v.product.physicalSpecs, v.attributes);
     if (!dims) {
+      // Inspeccionar si el parse del Schema falló — capturamos el motivo real
+      // para diagnóstico (ej. weightGrams<min, depthCm undefined, etc.).
+      const parsed = parsePhysicalSpecs(v.product.physicalSpecs);
       const missing = new MissingShippingDimsError(v.product.slug, v.id);
       logger.warn({
         event: "checkout.quote_shipping.missing_dims",
         productSlug: v.product.slug,
         variantId: v.id,
+        productPhysicalSpecsRaw: v.product.physicalSpecs,
+        parseError: parsed.__parseError ?? null,
+        variantAttributes: v.attributes,
       });
       throw new CheckoutError("SHIPPING_QUOTE_FAILED", missing.message);
     }
