@@ -119,16 +119,19 @@ export function StudioToolbar({
         </div>
 
         <div className="flex items-center gap-2 sm:gap-3">
-          {/* M.3.b.UX.1 — Toggle guías visible solo desktop (mobile no cabe + uso raro) */}
+          {/* Lucy 2026-05-21 — toggle solo para "power user". Copy más claro
+              + tooltip explica para qué sirve. Default OFF para evitar confusión. */}
           {onToggleRealismGuides && (
             <button
               type="button"
               onClick={onToggleRealismGuides}
               aria-pressed={!!showRealismGuides}
               aria-label={
-                showRealismGuides ? "Ocultar guías de seguridad" : "Mostrar guías de seguridad"
+                showRealismGuides
+                  ? "Ocultar zona segura de impresión"
+                  : "Ver zona segura de impresión"
               }
-              title="Líneas amarillas = zona de corte. Líneas verdes = zona segura para texto importante."
+              title="Línea morada punteada: zona donde tu texto y caras quedan seguros sin que se corten al imprimir. Solo informativa — al pedir el imán igual mantenemos el corazón completo."
               className={[
                 "focus:ring-brand-purple hidden h-9 items-center gap-1.5 rounded-md px-2.5 text-xs font-semibold transition-colors focus:ring-2 focus:ring-offset-1 focus:outline-none sm:inline-flex",
                 showRealismGuides
@@ -137,7 +140,7 @@ export function StudioToolbar({
               ].join(" ")}
             >
               <Ruler className="h-3.5 w-3.5" aria-hidden />
-              <span>{showRealismGuides ? "Guías visibles" : "Ver guías"}</span>
+              <span>{showRealismGuides ? "Zona segura" : "Ver zona segura"}</span>
             </button>
           )}
           {/* M.3.b.UX.v12 (Lucy 2026-05-15) — Botón "?" para re-ver gestos.

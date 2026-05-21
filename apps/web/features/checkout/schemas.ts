@@ -46,11 +46,16 @@ export const VIA_TYPES = [
   "Diagonal",
   "Transversal",
   "Avenida",
+  "Avenida Calle",
+  "Avenida Carrera",
   "Autopista",
   "Circular",
   "Manzana",
 ] as const;
 export type ViaType = (typeof VIA_TYPES)[number];
+
+export const CARDINAL_POINTS = ["", "Norte", "Sur", "Este", "Oeste"] as const;
+export type CardinalPoint = (typeof CARDINAL_POINTS)[number];
 
 const BaseAddressFields = z.object({
   // Códigos DANE — clave de validación cruzada cliente/server.
@@ -66,6 +71,12 @@ const BaseAddressFields = z.object({
   notes: z.string().max(500).trim().optional(),
 });
 
+// Nomenclatura colombiana completa (Lucy 2026-05-21):
+//   Carrera 7A Bis Sur # 23-45  → viaType=Carrera, viaNumber=7A, viaBis=true,
+//                                  viaCardinal=Sur, cruceNumber=23-45
+//
+// viaNumber: dígitos + letras (7A, 13B, 100). Regex permite "100", "13B", "7AB".
+// cruceNumber: NN-NN con letras opcionales (15-20, 13B-42, 100A-25C).
 const UrbanAddressSchema = BaseAddressFields.extend({
   kind: z.literal("urban"),
   viaType: z.enum(VIA_TYPES, { message: "Tipo de vía inválido" }),
@@ -73,12 +84,15 @@ const UrbanAddressSchema = BaseAddressFields.extend({
     .string()
     .min(1, "Número de vía requerido")
     .max(10)
-    .regex(/^[\dA-Z]+$/i, "Solo números y letras (ej. 100, 13B)"),
+    .regex(/^\d+[A-Z]{0,3}$/i, "Empieza con número, opcional letras (ej. 100, 13B, 7AB)"),
+  viaBis: z.boolean().optional(),
+  viaCardinal: z.enum(CARDINAL_POINTS).optional(),
   cruceNumber: z
     .string()
     .min(2, "Cruce requerido (ej. 15-20)")
-    .max(15)
-    .regex(/^\d+[A-Z]?-\d+[A-Z]?$/i, "Formato: número-número (ej. 15-20 o 13B-42)"),
+    .max(20)
+    .regex(/^\d+[A-Z]{0,3}-\d+[A-Z]{0,3}$/i, "Formato: número-número (ej. 15-20, 13B-42)"),
+  cruceCardinal: z.enum(CARDINAL_POINTS).optional(),
   detail: z.string().max(200).trim().optional(),
 });
 
@@ -112,7 +126,13 @@ export type RuralAddressInput = z.infer<typeof RuralAddressSchema>;
  */
 export function composeAddressLine(input: AddressInput): string {
   if (input.kind === "urban") {
-    const base = `${input.viaType} ${input.viaNumber.toUpperCase()} # ${input.cruceNumber.toUpperCase()}`;
+    // Carrera 7A Bis Sur # 23-45 Norte (Apto 401)
+    const viaParts = [input.viaType, input.viaNumber.toUpperCase()];
+    if (input.viaBis) viaParts.push("Bis");
+    if (input.viaCardinal) viaParts.push(input.viaCardinal);
+    const cruceParts = ["#", input.cruceNumber.toUpperCase()];
+    if (input.cruceCardinal) cruceParts.push(input.cruceCardinal);
+    const base = `${viaParts.join(" ")} ${cruceParts.join(" ")}`;
     return input.detail?.trim() ? `${base} (${input.detail.trim()})` : base;
   }
   // Rural

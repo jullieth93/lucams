@@ -579,6 +579,7 @@ export function StudioEditor({
         previewUrl={previewDataUrl}
         productName={product.name}
         slotCount={photoSlots}
+        sizeCm={productConfig.sizeCm}
         unitPrice={null /* TODO PR C: precio actual del variant elegido */}
         isFinalizing={isFinalizingFlag}
         errorMessage={previewError}
@@ -746,60 +747,52 @@ function findTemplateIdForCanvas(canvas: CanvasDataV2, templates: StudioTemplate
  * gridLayout. Resultado: 1 PNG 1080×~810 (según rows) que el cart muestra.
  */
 /**
- * Aplica clip 2D según el shape del imán físico (heart/circle/rectangle).
+ * Construye un Path2D según el shape del imán físico (heart/circle/rectangle).
+ * El caller puede usarlo para `ctx.clip(path)` o `ctx.stroke(path)`.
  * El path está normalizado a objectBoundingBox 0-1 y se escala al cell.
  *
  * Coords del heart match el SVG clipPath inline de studio-slot.tsx
  * (M.3.b.UX.v13) para que el preview matchee 1:1 lo que ve el cliente
  * en el editor.
  */
-function applyShapeClip(
-  ctx: CanvasRenderingContext2D,
+function buildShapePath(
   shape: "rectangle" | "circle" | "heart" | "custom" | undefined,
   x: number,
   y: number,
   w: number,
   h: number,
-): void {
+): Path2D {
+  const path = new Path2D();
   if (!shape || shape === "rectangle" || shape === "custom") {
-    // Rectángulo con esquinas redondeadas sutiles (default 8px sobre cell).
     const r = Math.min(8, w / 12);
-    ctx.beginPath();
-    ctx.moveTo(x + r, y);
-    ctx.lineTo(x + w - r, y);
-    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
-    ctx.lineTo(x + w, y + h - r);
-    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
-    ctx.lineTo(x + r, y + h);
-    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
-    ctx.lineTo(x, y + r);
-    ctx.quadraticCurveTo(x, y, x + r, y);
-    ctx.closePath();
-    ctx.clip();
-    return;
+    path.moveTo(x + r, y);
+    path.lineTo(x + w - r, y);
+    path.quadraticCurveTo(x + w, y, x + w, y + r);
+    path.lineTo(x + w, y + h - r);
+    path.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    path.lineTo(x + r, y + h);
+    path.quadraticCurveTo(x, y + h, x, y + h - r);
+    path.lineTo(x, y + r);
+    path.quadraticCurveTo(x, y, x + r, y);
+    path.closePath();
+    return path;
   }
   if (shape === "circle") {
-    ctx.beginPath();
-    ctx.ellipse(x + w / 2, y + h / 2, w / 2, h / 2, 0, 0, Math.PI * 2);
-    ctx.clip();
-    return;
+    path.ellipse(x + w / 2, y + h / 2, w / 2, h / 2, 0, 0, Math.PI * 2);
+    return path;
   }
-  if (shape === "heart") {
-    // Path normalizado 0-1 (matchea studio-slot.tsx SVG clipPath M.3.b.UX.v13).
-    // Escalamos coords 0-1 → cell pixels.
-    const sx = (n: number) => x + n * w;
-    const sy = (n: number) => y + n * h;
-    ctx.beginPath();
-    ctx.moveTo(sx(0.5), sy(0.82));
-    ctx.bezierCurveTo(sx(0.28), sy(0.68), sx(0.06), sy(0.52), sx(0.06), sy(0.32));
-    ctx.bezierCurveTo(sx(0.06), sy(0.18), sx(0.16), sy(0.08), sx(0.28), sy(0.08));
-    ctx.bezierCurveTo(sx(0.38), sy(0.08), sx(0.44), sy(0.12), sx(0.5), sy(0.22));
-    ctx.bezierCurveTo(sx(0.56), sy(0.12), sx(0.62), sy(0.08), sx(0.72), sy(0.08));
-    ctx.bezierCurveTo(sx(0.84), sy(0.08), sx(0.94), sy(0.18), sx(0.94), sy(0.32));
-    ctx.bezierCurveTo(sx(0.94), sy(0.52), sx(0.72), sy(0.68), sx(0.5), sy(0.82));
-    ctx.closePath();
-    ctx.clip();
-  }
+  // heart — path normalizado matchea studio-slot.tsx SVG clipPath M.3.b.UX.v13
+  const sx = (n: number) => x + n * w;
+  const sy = (n: number) => y + n * h;
+  path.moveTo(sx(0.5), sy(0.82));
+  path.bezierCurveTo(sx(0.28), sy(0.68), sx(0.06), sy(0.52), sx(0.06), sy(0.32));
+  path.bezierCurveTo(sx(0.06), sy(0.18), sx(0.16), sy(0.08), sx(0.28), sy(0.08));
+  path.bezierCurveTo(sx(0.38), sy(0.08), sx(0.44), sy(0.12), sx(0.5), sy(0.22));
+  path.bezierCurveTo(sx(0.56), sy(0.12), sx(0.62), sy(0.08), sx(0.72), sy(0.08));
+  path.bezierCurveTo(sx(0.84), sy(0.08), sx(0.94), sy(0.18), sx(0.94), sy(0.32));
+  path.bezierCurveTo(sx(0.94), sy(0.52), sx(0.72), sy(0.68), sx(0.5), sy(0.82));
+  path.closePath();
+  return path;
 }
 
 async function buildCompositedPreview(
@@ -840,12 +833,27 @@ async function buildCompositedPreview(
         const row = Math.floor(slot.slotIndex / gridLayout.cols);
         const x = col * (cellW + gap);
         const y = row * (cellH + gap);
-        // save/clip/draw/restore para que el clip aplique solo a este slot
+        const path = buildShapePath(shape, x, y, cellW, cellH);
+        // 1) Sombra externa sutil para destacar contra el fondo crema
         ctx.save();
-        applyShapeClip(ctx, shape, x, y, cellW, cellH);
+        ctx.shadowColor = "rgba(124, 106, 173, 0.25)";
+        ctx.shadowBlur = 12;
+        ctx.shadowOffsetY = 3;
+        ctx.fillStyle = "white";
+        ctx.fill(path);
+        ctx.restore();
+        // 2) Foto clipeada al shape
+        ctx.save();
+        ctx.clip(path);
         ctx.drawImage(img, x, y, cellW, cellH);
         ctx.restore();
-        resolve();
+        // 3) Borde visible — clave para Lucy: "el corazón y el fondo es
+        //    blanco y no se detalla bien el contorno"
+        ctx.save();
+        ctx.strokeStyle = "rgba(124, 106, 173, 0.7)"; // brand-purple/70
+        ctx.lineWidth = 2.5;
+        ctx.stroke(path);
+        ctx.restore();
       };
       img.onerror = () => reject(new Error("No se pudo cargar snapshot del slot"));
       img.src = slotDataUrl;

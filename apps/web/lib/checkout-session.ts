@@ -50,11 +50,18 @@ type UrbanAddress = BaseAddress & {
     | "Diagonal"
     | "Transversal"
     | "Avenida"
+    | "Avenida Calle"
+    | "Avenida Carrera"
     | "Autopista"
     | "Circular"
     | "Manzana";
   viaNumber: string;
+  /** Bis (segunda vía paralela, nomenclatura DIAN CO). */
+  viaBis?: boolean;
+  /** Cuadrante (Norte/Sur/Este/Oeste) — Lucy 2026-05-21 */
+  viaCardinal?: "" | "Norte" | "Sur" | "Este" | "Oeste";
   cruceNumber: string;
+  cruceCardinal?: "" | "Norte" | "Sur" | "Este" | "Oeste";
   detail?: string;
 };
 

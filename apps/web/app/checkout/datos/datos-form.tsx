@@ -65,15 +65,24 @@ export function DatosForm({ initial }: { initial: CheckoutState }) {
   const [addressKind, setAddressKind] = useState<"urban" | "rural">(
     initial.address?.kind ?? "urban",
   );
-  // Urban fields
+  // Urban fields — nomenclatura colombiana completa (Lucy 2026-05-21)
   const [viaType, setViaType] = useState<(typeof VIA_TYPES)[number]>(
     initial.address?.kind === "urban" ? initial.address.viaType : "Calle",
   );
   const [viaNumber, setViaNumber] = useState(
     initial.address?.kind === "urban" ? initial.address.viaNumber : "",
   );
+  const [viaBis, setViaBis] = useState<boolean>(
+    initial.address?.kind === "urban" ? !!initial.address.viaBis : false,
+  );
+  const [viaCardinal, setViaCardinal] = useState<string>(
+    initial.address?.kind === "urban" ? (initial.address.viaCardinal ?? "") : "",
+  );
   const [cruceNumber, setCruceNumber] = useState(
     initial.address?.kind === "urban" ? initial.address.cruceNumber : "",
+  );
+  const [cruceCardinal, setCruceCardinal] = useState<string>(
+    initial.address?.kind === "urban" ? (initial.address.cruceCardinal ?? "") : "",
   );
   const [detail, setDetail] = useState(
     initial.address?.kind === "urban" ? (initial.address.detail ?? "") : "",
@@ -94,7 +103,12 @@ export function DatosForm({ initial }: { initial: CheckoutState }) {
   const addressPreview = useMemo(() => {
     if (addressKind === "urban") {
       if (!viaNumber || !cruceNumber) return "";
-      const base = `${viaType} ${viaNumber.toUpperCase()} # ${cruceNumber.toUpperCase()}`;
+      const viaParts = [viaType, viaNumber.toUpperCase()];
+      if (viaBis) viaParts.push("Bis");
+      if (viaCardinal) viaParts.push(viaCardinal);
+      const cruceParts = ["#", cruceNumber.toUpperCase()];
+      if (cruceCardinal) cruceParts.push(cruceCardinal);
+      const base = `${viaParts.join(" ")} ${cruceParts.join(" ")}`;
       return detail.trim() ? `${base} (${detail.trim()})` : base;
     }
     if (!vereda) return "";
@@ -102,7 +116,19 @@ export function DatosForm({ initial }: { initial: CheckoutState }) {
     if (finca.trim()) parts.push(`Finca ${finca.trim()}`);
     if (referencia.trim()) parts.push(`Ref: ${referencia.trim()}`);
     return parts.join(" · ");
-  }, [addressKind, viaType, viaNumber, cruceNumber, detail, vereda, finca, referencia]);
+  }, [
+    addressKind,
+    viaType,
+    viaNumber,
+    viaBis,
+    viaCardinal,
+    cruceNumber,
+    cruceCardinal,
+    detail,
+    vereda,
+    finca,
+    referencia,
+  ]);
 
   // Billing
   const [wantsInvoice, setWantsInvoice] = useState<boolean>(initial.billing?.wantsInvoice ?? false);
@@ -491,55 +517,114 @@ export function DatosForm({ initial }: { initial: CheckoutState }) {
 
         {addressKind === "urban" ? (
           <>
-            {/* Dirección estructurada urbana */}
-            <div className="mt-4">
-              <Label className="text-brand-purple-dark mb-1 block text-xs font-semibold">
+            {/* Dirección urbana — nomenclatura colombiana completa
+                (Lucy 2026-05-21: bis + cardinal + letras) */}
+            <div className="mt-4 space-y-3">
+              <Label className="text-brand-purple-dark block text-xs font-semibold">
                 Dirección <span className="text-rose-600">*</span>
               </Label>
-              <div className="grid grid-cols-1 gap-2 sm:grid-cols-12">
-                <select
-                  name="viaType"
-                  value={viaType}
-                  onChange={(e) => setViaType(e.target.value as (typeof VIA_TYPES)[number])}
-                  className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 h-9 w-full rounded-md border bg-white px-2 text-sm focus:ring-2 focus:outline-none sm:col-span-3"
-                >
-                  {VIA_TYPES.map((v) => (
-                    <option key={v} value={v}>
-                      {v}
-                    </option>
-                  ))}
-                </select>
-                <Input
-                  name="viaNumber"
-                  required
-                  value={viaNumber}
-                  onChange={(e) =>
-                    setViaNumber(e.target.value.toUpperCase().replace(/[^\dA-Z]/g, ""))
-                  }
-                  placeholder="100"
-                  maxLength={10}
-                  className="border-brand-purple/20 focus-visible:ring-brand-purple/30 sm:col-span-2"
-                  aria-label="Número de vía"
-                />
-                <div className="border-brand-purple/20 col-span-1 hidden h-9 items-center justify-center rounded-md border bg-slate-50 text-sm font-bold text-slate-600 sm:flex">
-                  #
+
+              {/* Primera fila: Tipo de vía + Número + Bis + Cardinal */}
+              <div>
+                <p className="text-brand-purple-dark/55 mb-1 text-[10px] font-semibold tracking-wide uppercase">
+                  Vía principal
+                </p>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-12">
+                  <select
+                    name="viaType"
+                    value={viaType}
+                    onChange={(e) => setViaType(e.target.value as (typeof VIA_TYPES)[number])}
+                    aria-label="Tipo de vía"
+                    className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 h-9 w-full rounded-md border bg-white px-2 text-sm focus:ring-2 focus:outline-none sm:col-span-4"
+                  >
+                    {VIA_TYPES.map((v) => (
+                      <option key={v} value={v}>
+                        {v}
+                      </option>
+                    ))}
+                  </select>
+                  <Input
+                    name="viaNumber"
+                    required
+                    value={viaNumber}
+                    onChange={(e) =>
+                      setViaNumber(e.target.value.toUpperCase().replace(/[^\dA-Z]/g, ""))
+                    }
+                    placeholder="7A"
+                    maxLength={10}
+                    className="border-brand-purple/20 focus-visible:ring-brand-purple/30 sm:col-span-3"
+                    aria-label="Número de vía"
+                  />
+                  <label className="border-brand-purple/20 inline-flex h-9 items-center justify-center gap-1.5 rounded-md border bg-white px-2 text-xs sm:col-span-2">
+                    <input
+                      type="checkbox"
+                      name="viaBis"
+                      checked={viaBis}
+                      onChange={(e) => setViaBis(e.target.checked)}
+                      className="accent-brand-purple h-3.5 w-3.5"
+                    />
+                    <span className="text-brand-purple-dark font-semibold">Bis</span>
+                  </label>
+                  <select
+                    name="viaCardinal"
+                    value={viaCardinal}
+                    onChange={(e) => setViaCardinal(e.target.value)}
+                    aria-label="Cuadrante de vía"
+                    className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 h-9 w-full rounded-md border bg-white px-2 text-sm focus:ring-2 focus:outline-none sm:col-span-3"
+                  >
+                    <option value="">— Cuadrante —</option>
+                    <option value="Norte">Norte</option>
+                    <option value="Sur">Sur</option>
+                    <option value="Este">Este</option>
+                    <option value="Oeste">Oeste</option>
+                  </select>
                 </div>
-                <Input
-                  name="cruceNumber"
-                  required
-                  value={cruceNumber}
-                  onChange={(e) => handleCruceChange(e.target.value)}
-                  placeholder="15-20"
-                  maxLength={15}
-                  className="border-brand-purple/20 focus-visible:ring-brand-purple/30 sm:col-span-6"
-                  aria-label="Cruce"
+                <FieldHint
+                  clientError={null}
+                  serverError={err("viaNumber")}
+                  hint="Ej. Carrera 7A Bis Sur"
                 />
               </div>
-              <FieldHint
-                clientError={null}
-                serverError={err("viaNumber") ?? err("cruceNumber")}
-                hint="Formato: Calle 100 # 15-20"
-              />
+
+              {/* Segunda fila: Cruce + Cardinal del cruce */}
+              <div>
+                <p className="text-brand-purple-dark/55 mb-1 text-[10px] font-semibold tracking-wide uppercase">
+                  Cruce
+                </p>
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-12">
+                  <div className="border-brand-purple/20 col-span-1 hidden h-9 items-center justify-center rounded-md border bg-slate-50 text-sm font-bold text-slate-600 sm:flex">
+                    #
+                  </div>
+                  <Input
+                    name="cruceNumber"
+                    required
+                    value={cruceNumber}
+                    onChange={(e) => handleCruceChange(e.target.value)}
+                    placeholder="23-45"
+                    maxLength={20}
+                    className="border-brand-purple/20 focus-visible:ring-brand-purple/30 sm:col-span-8"
+                    aria-label="Cruce"
+                  />
+                  <select
+                    name="cruceCardinal"
+                    value={cruceCardinal}
+                    onChange={(e) => setCruceCardinal(e.target.value)}
+                    aria-label="Cuadrante del cruce"
+                    className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 h-9 w-full rounded-md border bg-white px-2 text-sm focus:ring-2 focus:outline-none sm:col-span-3"
+                  >
+                    <option value="">— Cuadrante —</option>
+                    <option value="Norte">Norte</option>
+                    <option value="Sur">Sur</option>
+                    <option value="Este">Este</option>
+                    <option value="Oeste">Oeste</option>
+                  </select>
+                </div>
+                <FieldHint
+                  clientError={null}
+                  serverError={err("cruceNumber")}
+                  hint="Formato: 23-45 o 13B-42C"
+                />
+              </div>
             </div>
 
             <div className="mt-4">

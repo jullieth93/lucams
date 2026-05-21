@@ -81,7 +81,10 @@ export default async function CheckoutPagoPage({ searchParams }: { searchParams:
             <p className="text-brand-purple-dark text-sm">
               {address.kind === "urban" ? (
                 <>
-                  {address.viaType} {address.viaNumber} # {address.cruceNumber}
+                  {address.viaType} {address.viaNumber}
+                  {address.viaBis && " Bis"}
+                  {address.viaCardinal && ` ${address.viaCardinal}`} # {address.cruceNumber}
+                  {address.cruceCardinal && ` ${address.cruceCardinal}`}
                   {address.detail && ` (${address.detail})`}
                 </>
               ) : (

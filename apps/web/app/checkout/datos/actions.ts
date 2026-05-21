@@ -67,9 +67,12 @@ export async function saveDatosAction(
           viaNumber: String(formData.get("viaNumber") ?? "")
             .trim()
             .toUpperCase(),
+          viaBis: formData.get("viaBis") === "on",
+          viaCardinal: (formData.get("viaCardinal") as string) || "",
           cruceNumber: String(formData.get("cruceNumber") ?? "")
             .trim()
             .toUpperCase(),
+          cruceCardinal: (formData.get("cruceCardinal") as string) || "",
           detail: (formData.get("detail") as string)?.trim() || undefined,
         }
       : {

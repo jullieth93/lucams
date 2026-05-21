@@ -29,6 +29,9 @@ type StudioPreviewModalProps = {
   previewUrl: string | null; // dataURL del grid compositado (client-side)
   productName: string;
   slotCount: number;
+  /** Tamaño físico de cada imán (ej. "5×5 cm"). Lucy 2026-05-21 — mostrarlo
+   *  para que el cliente sepa qué tamaño real va a recibir. */
+  sizeCm?: string;
   unitPrice: number | null; // precio en centavos COP de la variant elegida
   isFinalizing: boolean;
   errorMessage: string | null;
@@ -41,6 +44,7 @@ export function StudioPreviewModal({
   previewUrl,
   productName,
   slotCount,
+  sizeCm,
   unitPrice,
   isFinalizing,
   errorMessage,
@@ -67,8 +71,14 @@ export function StudioPreviewModal({
           Así se verá tu pedido
         </DialogTitle>
         <DialogDescription className="text-brand-purple-dark/70 text-sm">
-          Esta es la vista previa de los {slotCount} imanes que vas a recibir. Revisalos antes de
-          continuar.
+          Esta es la vista previa de los {slotCount} imanes que vas a recibir.
+          {sizeCm && (
+            <>
+              {" "}
+              Cada imán mide <strong>{sizeCm}</strong>.
+            </>
+          )}{" "}
+          Revisalos antes de continuar.
         </DialogDescription>
 
         {/* Preview compositado del grid */}
@@ -92,6 +102,12 @@ export function StudioPreviewModal({
               <p className="text-brand-purple-dark font-semibold">{productName}</p>
               <p className="text-brand-purple-dark/65 text-xs">
                 {slotCount} {slotCount === 1 ? "imán personalizado" : "imanes personalizados"}
+                {sizeCm && (
+                  <>
+                    {" · "}
+                    <span className="text-brand-purple font-semibold">📐 {sizeCm} c/u</span>
+                  </>
+                )}
               </p>
             </div>
             {unitPrice !== null && (

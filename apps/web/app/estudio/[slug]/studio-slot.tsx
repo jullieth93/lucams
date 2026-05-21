@@ -264,13 +264,19 @@ function StudioSlotImpl({
   const pinchInitialScaleRef = useRef<number>(1);
 
   // Wheel handler: scroll up → zoom in, scroll down → zoom out.
-  // Solo aplica si la foto ya está cargada (slotState.assetUrl). Si NO,
-  // dejamos que el wheel haga scroll normal de la página.
+  // Solo aplica si la foto ya está cargada (slotState.assetUrl).
+  //
+  // Lucy 2026-05-21 bug: tras aplicar un filtro (B&N, Vintage, etc.),
+  // el wheel via Konva onWheel dejaba de prevenir el scroll de la
+  // página. El node.cache() del filter probablemente interfería con
+  // el dispatch del wheel event de Konva. Fix: bind native listener
+  // directo al wrapper div con `{ passive: false }` para garantizar
+  // que preventDefault() siempre funciona, sin importar el estado del
+  // filter ni de Radix Dialog encima.
   const handleWheel = useCallback(
     (e: Konva.KonvaEventObject<WheelEvent>) => {
       if (!slotState.assetUrl || !onPhotoTransformChange) return;
       e.evt.preventDefault();
-      // 10% por scroll tick. Sutil pero responsivo.
       const factor = e.evt.deltaY > 0 ? 1 / 1.1 : 1.1;
       const current = slotState.photoTransform?.scale ?? 1;
       const next = clampScale(current * factor);
@@ -280,6 +286,31 @@ function StudioSlotImpl({
     },
     [slotState.assetUrl, slotState.photoTransform?.scale, onPhotoTransformChange, clampScale],
   );
+
+  // Native wheel listener — backup que SIEMPRE puede preventDefault
+  // independiente del estado del cache de Konva o de Radix Dialog.
+  // Patrón industria standard cuando React's passive synthetic events
+  // no son confiables para preventDefault.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el || !slotState.assetUrl || !onPhotoTransformChange) return;
+    function onWheelNative(e: WheelEvent) {
+      // Solo manejamos wheel sobre el slot (no sobre el modal de filtros
+      // que está fuera del slot DOM tree).
+      e.preventDefault();
+      e.stopPropagation();
+      const factor = e.deltaY > 0 ? 1 / 1.1 : 1.1;
+      const current = slotState.photoTransform?.scale ?? 1;
+      const next = clampScale(current * factor);
+      if (Math.abs(next - current) > 0.001) {
+        onPhotoTransformChange?.({ scale: next });
+      }
+    }
+    // passive: false es clave — sin esto, React/browser puede ignorar
+    // preventDefault() y la página termina scrolleando.
+    el.addEventListener("wheel", onWheelNative, { passive: false });
+    return () => el.removeEventListener("wheel", onWheelNative);
+  }, [slotState.assetUrl, slotState.photoTransform?.scale, onPhotoTransformChange, clampScale]);
 
   // Pinch handlers — usan touchstart/move/end del Stage Konva.
   const handleTouchStart = useCallback(
