@@ -3,7 +3,7 @@
  *
  * Lista los items del cart anon (o del cart del customer si está
  * logueado). Controles: editar qty (form con +/-/input), remover ítem.
- * CTA de checkout disabled — Phase 3.
+ * CTA "Ir a pagar" → /checkout/datos (F2.1 — Fase 2 checkout).
  *
  * Si no hay cart o está vacío → empty state.
  */
@@ -137,15 +137,15 @@ export default async function CarritoPage() {
                   <span>Total</span>
                   <span className="tabular-nums">{formatCOP(cart.subtotal)}</span>
                 </div>
-                <Button
-                  type="button"
-                  className="bg-brand-purple hover:bg-brand-purple-dark w-full text-white"
-                  size="lg"
-                  disabled
-                  title="Checkout en construcción"
-                >
-                  Ir a pagar (próximamente)
-                </Button>
+                <Link href="/checkout/datos" className="block">
+                  <Button
+                    type="button"
+                    className="bg-gradient-brand w-full text-white hover:brightness-110"
+                    size="lg"
+                  >
+                    Ir a pagar →
+                  </Button>
+                </Link>
                 <Link
                   href="/productos"
                   className="text-brand-purple-dark/70 hover:text-brand-purple block text-center text-sm"
