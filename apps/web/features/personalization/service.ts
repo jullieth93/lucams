@@ -242,8 +242,17 @@ export async function saveCanvas(opts: {
 
 export async function finalizeDesign(opts: {
   designId: string;
-  previewDataUrl: string;
-  productionDataUrls: string[];
+  /** Buffer binario del preview compositado (PNG 1080×1080 típico). */
+  previewBuffer: Buffer;
+  /**
+   * Buffers binarios de los N snapshots production (PNG 300 DPI por slot).
+   * IMPORTANTE: se reciben como Buffer en vez de dataURL base64 porque
+   * Next 16 Server Actions tienen un límite de profundidad de array en
+   * el protocolo de serialización React Flight — strings base64 grandes
+   * los chunkea internamente y dispara "Maximum array nesting exceeded".
+   * Solución: action accepts FormData con Blobs, llamado convierte a Buffer.
+   */
+  productionBuffers: Buffer[];
   customerId: string | null;
   sessionId: string | null;
 }) {
@@ -258,9 +267,9 @@ export async function finalizeDesign(opts: {
   // Validar que la cantidad de production snapshots matchea slotCount del Design
   const canvasData = design.canvasData as unknown as CanvasData;
   const expectedSlotCount = canvasData.version === 2 ? (canvasData as CanvasDataV2).slotCount : 1;
-  if (opts.productionDataUrls.length !== expectedSlotCount) {
+  if (opts.productionBuffers.length !== expectedSlotCount) {
     throw new Error(
-      `INCOMPLETE_SLOTS: expected ${expectedSlotCount} production snapshots, got ${opts.productionDataUrls.length}`,
+      `INCOMPLETE_SLOTS: expected ${expectedSlotCount} production snapshots, got ${opts.productionBuffers.length}`,
     );
   }
 
@@ -274,13 +283,12 @@ export async function finalizeDesign(opts: {
   }
 
   const supabase = supabaseService;
-  const previewBuf = dataUrlToBuffer(opts.previewDataUrl);
 
   // Subir preview compositado del grid completo
   const previewPath = `${design.id}/preview.png`;
   const { error: pErr } = await supabase.storage
     .from(BUCKET_PREVIEWS)
-    .upload(previewPath, previewBuf, { contentType: "image/png", upsert: true });
+    .upload(previewPath, opts.previewBuffer, { contentType: "image/png", upsert: true });
   if (pErr) {
     logger.warn(
       { event: "design.finalize.upload_preview_fail", err: pErr.message },
@@ -295,8 +303,8 @@ export async function finalizeDesign(opts: {
   // Subir N production PNGs (uno por imán físico)
   const productionPaths: string[] = [];
   let totalProductionBytes = 0;
-  for (let i = 0; i < opts.productionDataUrls.length; i++) {
-    const buf = dataUrlToBuffer(opts.productionDataUrls[i]!);
+  for (let i = 0; i < opts.productionBuffers.length; i++) {
+    const buf = opts.productionBuffers[i]!;
     totalProductionBytes += buf.length;
     const path = `${design.id}/slot-${String(i + 1).padStart(2, "0")}.png`;
     const { error: prodErr } = await supabase.storage
@@ -327,7 +335,7 @@ export async function finalizeDesign(opts: {
     {
       event: "design.finalize.success",
       designId: design.id,
-      previewBytes: previewBuf.length,
+      previewBytes: opts.previewBuffer.length,
       productionSlotsCount: productionPaths.length,
       productionTotalBytes: totalProductionBytes,
     },
@@ -395,16 +403,4 @@ function templateAspectRatio(canvasData: unknown): number | null {
   const h = typeof cd.stage?.height === "number" ? cd.stage.height : null;
   if (w === null || h === null || h === 0) return null;
   return w / h;
-}
-
-// ──────────────────────────────────────────────────────────────────
-//  Helpers
-// ──────────────────────────────────────────────────────────────────
-
-function dataUrlToBuffer(dataUrl: string): Buffer {
-  const match = /^data:image\/(png|webp|jpeg);base64,(.+)$/.exec(dataUrl);
-  if (!match) {
-    throw new Error("Invalid dataURL format");
-  }
-  return Buffer.from(match[2]!, "base64");
 }

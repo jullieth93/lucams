@@ -19,12 +19,7 @@ import { getOrCreateCartSession, peekCartSession } from "@/lib/cart-session";
 import { logger } from "@/lib/logger";
 import { uploadCustomerPhoto } from "@/lib/storage";
 import { prisma } from "@/lib/db";
-import {
-  CreateDraftDesignSchema,
-  FinalizeDesignSchema,
-  SaveCanvasSchema,
-  UploadAssetMetadataSchema,
-} from "./schemas";
+import { CreateDraftDesignSchema, SaveCanvasSchema, UploadAssetMetadataSchema } from "./schemas";
 import { createDraftDesign, finalizeDesign, getOwnedDesign, saveCanvas } from "./service";
 
 // ──────────── Helpers ────────────
@@ -115,32 +110,85 @@ export async function saveCanvasAction(input: { designId: string; canvasData: un
 // ──────────── Finalize (READY snapshot) ────────────
 //
 // V2: el cliente envía 1 preview compositado del grid + N production snapshots
-// (uno por slot llenado). Server valida que productionDataUrls.length matchea
-// el slotCount del Design + que todos los slots tienen assetUrl.
+// (uno por slot llenado). Server valida que cantidad de buffers production
+// matchea el slotCount del Design + que todos los slots tienen assetUrl.
+//
+// Recibe FormData (NO objeto JSON) porque los PNGs son blobs binarios de
+// 2-6MB cada uno. Si se enviaran como dataURL base64 vía Server Action JSON,
+// React Flight protocol los chunkea internamente y dispara "Maximum array
+// nesting exceeded" (límite ~20 niveles de profundidad de array en wire format).
+// FormData con Blob bypassea esa serialización — bytes raw vía multipart.
 //
 // El error code `INCOMPLETE_SLOTS` permite al cliente mostrar UI específica
 // (modal listando slots vacíos) en lugar de error genérico.
 
-export async function finalizeDesignAction(input: {
-  designId: string;
-  previewDataUrl: string;
-  productionDataUrls: string[];
-}) {
-  const parsed = FinalizeDesignSchema.safeParse(input);
-  if (!parsed.success) {
-    return { ok: false as const, code: "VALIDATION" as const, message: parsed.error.message };
+const MAX_PRODUCTION_BUFFER_BYTES = 20 * 1024 * 1024; // 20 MB por slot
+const MAX_PREVIEW_BUFFER_BYTES = 8 * 1024 * 1024; // 8 MB preview compositado
+
+export async function finalizeDesignAction(
+  formData: FormData,
+): Promise<
+  | { ok: true; previewUrl: string | null; status: string; productionSlotsCount: number }
+  | { ok: false; code: "VALIDATION" | "INCOMPLETE_SLOTS" | "INTERNAL"; message: string }
+> {
+  const designId = String(formData.get("designId") ?? "").trim();
+  if (!designId) {
+    return { ok: false, code: "VALIDATION", message: "designId requerido" };
   }
+
+  const slotCountRaw = Number(formData.get("slotCount") ?? 0);
+  if (!Number.isInteger(slotCountRaw) || slotCountRaw < 1 || slotCountRaw > 50) {
+    return { ok: false, code: "VALIDATION", message: "slotCount inválido (1-50)" };
+  }
+
+  const previewBlob = formData.get("preview");
+  if (!(previewBlob instanceof Blob)) {
+    return { ok: false, code: "VALIDATION", message: "preview blob requerido" };
+  }
+  if (previewBlob.size > MAX_PREVIEW_BUFFER_BYTES) {
+    return {
+      ok: false,
+      code: "VALIDATION",
+      message: `preview demasiado grande (${Math.round(previewBlob.size / 1024 / 1024)}MB, max 8MB)`,
+    };
+  }
+  if (previewBlob.size === 0) {
+    return { ok: false, code: "VALIDATION", message: "preview vacío" };
+  }
+
+  // Lee y valida los N production blobs
+  const productionBuffers: Buffer[] = [];
+  for (let i = 0; i < slotCountRaw; i++) {
+    const blob = formData.get(`production_${i}`);
+    if (!(blob instanceof Blob)) {
+      return { ok: false, code: "VALIDATION", message: `falta production_${i}` };
+    }
+    if (blob.size === 0) {
+      return { ok: false, code: "VALIDATION", message: `production_${i} vacío` };
+    }
+    if (blob.size > MAX_PRODUCTION_BUFFER_BYTES) {
+      return {
+        ok: false,
+        code: "VALIDATION",
+        message: `slot ${i + 1} demasiado grande (${Math.round(blob.size / 1024 / 1024)}MB, max 20MB)`,
+      };
+    }
+    productionBuffers.push(Buffer.from(await blob.arrayBuffer()));
+  }
+
+  const previewBuffer = Buffer.from(await previewBlob.arrayBuffer());
+
   const { customerId, sessionId } = await resolveOwner();
   try {
     const design = await finalizeDesign({
-      designId: parsed.data.designId,
-      previewDataUrl: parsed.data.previewDataUrl,
-      productionDataUrls: parsed.data.productionDataUrls,
+      designId,
+      previewBuffer,
+      productionBuffers,
       customerId,
       sessionId,
     });
     return {
-      ok: true as const,
+      ok: true,
       previewUrl: design.previewUrl,
       status: design.status,
       productionSlotsCount: design.productionUrls.length,
@@ -151,7 +199,7 @@ export async function finalizeDesignAction(input: {
       ? "INCOMPLETE_SLOTS"
       : "INTERNAL";
     logger.warn({ event: "design.finalize.fail", code, err: msg }, "finalizeDesign failed");
-    return { ok: false as const, code, message: msg };
+    return { ok: false, code, message: msg };
   }
 }
 

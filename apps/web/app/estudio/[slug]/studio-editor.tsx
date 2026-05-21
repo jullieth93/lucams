@@ -49,6 +49,26 @@ import { ensureCanvasV2 } from "./lib/canvas-migrate";
 
 const AUTO_SAVE_DELAY_MS = 2000;
 
+/**
+ * Convierte un data URL base64 a Blob binario. Usado al finalizar el
+ * diseño para enviar los PNGs como bytes raw vía FormData en vez de
+ * strings base64 (que disparan "Maximum array nesting exceeded" en el
+ * protocolo React Flight de Next 16 Server Actions).
+ */
+function dataURLtoBlob(dataUrl: string): Blob {
+  const commaIdx = dataUrl.indexOf(",");
+  if (commaIdx < 0) throw new Error("dataURL inválido (sin coma)");
+  const meta = dataUrl.slice(0, commaIdx);
+  const base64 = dataUrl.slice(commaIdx + 1);
+  const mimeMatch = meta.match(/^data:([^;]+)/);
+  const mime = mimeMatch?.[1] ?? "image/png";
+  const binary = atob(base64);
+  const len = binary.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) bytes[i] = binary.charCodeAt(i);
+  return new Blob([bytes], { type: mime });
+}
+
 type StudioEditorProps = {
   product: StudioProduct;
   templates: StudioTemplate[];
@@ -251,12 +271,21 @@ export function StudioEditor({
       // Generar preview compositado del grid completo via canvas API
       const previewDataUrl = await buildCompositedPreview(state.canvasData, slotStagesRef.current);
 
-      // Llamar server action finalize
-      const result = await finalizeDesignAction({
-        designId: state.designId,
-        previewDataUrl,
-        productionDataUrls,
+      // Convertir dataURLs a Blobs y empaquetar en FormData.
+      // POR QUÉ FormData: Next 16 Server Actions usan React Flight protocol,
+      // que tiene un límite de profundidad de array en su wire format. Strings
+      // base64 grandes (>1MB) los chunkea internamente y dispara "Maximum array
+      // nesting exceeded". FormData envía bytes raw vía multipart — sin JSON.
+      const fd = new FormData();
+      fd.set("designId", state.designId);
+      fd.set("slotCount", String(productionDataUrls.length));
+      fd.set("preview", dataURLtoBlob(previewDataUrl), "preview.png");
+      productionDataUrls.forEach((url, i) => {
+        fd.set(`production_${i}`, dataURLtoBlob(url), `slot-${i + 1}.png`);
       });
+
+      // Llamar server action finalize
+      const result = await finalizeDesignAction(fd);
 
       if (!result.ok) {
         state.setIsFinalizing(false);

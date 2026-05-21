@@ -37,24 +37,25 @@ const nextConfig: NextConfig = {
   },
 
   // M.3.b.fix (2026-05-13) — Next.js 16 redujo el default de
-  // `serverActions.bodySizeLimit` de 4 MB (Next 15) a 1 MB. El Estudio
-  // del Personalización envía `saveCanvasAction` con canvasData V2 que
-  // incluye unitTemplate (~5-10 KB), slots[] con signed URLs Supabase
-  // (~600 bytes/slot con token JWT), gridLayout + metadata. Para 20 slots
-  // (calendarios con 12 fotos × 1 mes) + cambios de plantilla acumulados
-  // puede acercarse al límite. Subimos a 10 MB para holgura.
+  // `serverActions.bodySizeLimit` de 4 MB (Next 15) a 1 MB.
   //
-  // `finalizeDesignAction` (N PNGs 300 DPI base64) tiene su propio cap
-  // en Zod schema (productionDataUrls total ≤ 120 MB) pero NO pasa por
-  // este límite porque el productionDataUrl se compone client-side y se
-  // envía via FormData de uploadDesignAssetAction (NO Server Action JSON).
+  // Casos que requieren headroom:
+  //   - saveCanvasAction: canvasData V2 con slots[] + signed URLs Supabase
+  //     ~600 B/slot. Hasta 20 slots (calendarios) + plantillas → ~50KB típico.
+  //   - finalizeDesignAction (2026-05-21): refactor a FormData con blobs.
+  //     Envía preview (~1-2 MB) + N production PNGs (~2-5 MB c/u). Para
+  //     producto 6-slot promedio: ~18-30 MB total. Subimos a 50 MB para
+  //     cubrir caso límite de 20 slots × 2-3 MB c/u (~40-60 MB).
   //
-  // Defense in depth: Zod en SaveCanvasSchema limita el JSON deserializado
-  // a 1 MB (validación tipo-safe post-parse). Body limit 10 MB es solo
-  // para evitar 413 antes del parse — el límite real lo aplica Zod.
+  // POR QUÉ FormData en finalize en vez de dataURL JSON:
+  //   - React Flight protocol (Server Actions wire format) tiene un límite
+  //     de profundidad de array (~20 niveles). Strings base64 grandes los
+  //     chunkea internamente y dispara "Maximum array nesting exceeded".
+  //   - FormData con Blob bypassea el JSON serializer — bytes raw vía
+  //     multipart. Sin límite de "array nesting", solo de body size.
   experimental: {
     serverActions: {
-      bodySizeLimit: "10mb",
+      bodySizeLimit: "50mb",
     },
   },
 };
