@@ -40,6 +40,7 @@ import { StudioOnboarding } from "./studio-onboarding";
 import { StudioGesturesHint, GESTURES_HINT_STORAGE_KEY } from "./studio-gestures-hint";
 import { StudioAssetPickerModal } from "./studio-asset-picker-modal";
 import { StudioPhotoAdjustModal } from "./studio-photo-adjust-modal";
+import { StudioPreviewModal } from "./studio-preview-modal";
 import { StudioTextEditorModal } from "./studio-text-editor-modal";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Sparkles } from "lucide-react";
@@ -105,6 +106,13 @@ export function StudioEditor({
   const [gesturesHintPersistent, setGesturesHintPersistent] = useState(false);
   const [bootError, setBootError] = useState<string | null>(null);
   const [booting, setBooting] = useState(true);
+  // PR A.3 (Lucy 2026-05-21) — Vista previa pre-carrito: al click "Listo!"
+  // generamos preview compositado client-side y abrimos modal. El upload
+  // real (production PNGs + finalize + addToCart) solo se dispara si el
+  // cliente confirma "Sí, agregar al carrito" desde el modal.
+  const [previewModalOpen, setPreviewModalOpen] = useState(false);
+  const [previewDataUrl, setPreviewDataUrl] = useState<string | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
   // M.3.b.B.1 — Toggle bleed + safe area guides (default off para que cliente
   // no se confunda con líneas de seguridad si no las necesita ver).
   const [showRealismGuides, setShowRealismGuides] = useState(false);
@@ -128,6 +136,9 @@ export function StudioEditor({
   // Subscribir reactivamente al modal — assets/designId del store, no snapshot
   const modalAssets = useStore(store, (s) => s.assets);
   const modalDesignId = useStore(store, (s) => s.designId);
+  // PR A.3 — Subscribir reactivamente al flag de finalizing del store
+  // para que el modal preview muestre el spinner durante upload.
+  const isFinalizingFlag = useStore(store, (s) => s.isFinalizing);
 
   // ──────────── Boot: crear draft (o recuperar existente) ────────────
   useEffect(() => {
@@ -259,11 +270,36 @@ export function StudioEditor({
     [store],
   );
 
-  // ──────────── Finalize: snapshots N + preview compositado ────────────
+  // ──────────── Step 1: Listo! → genera preview compositado + abre modal ────────────
+  //
+  // PR A.3 (Lucy 2026-05-21): partimos el finalize en 2 fases. Esta solo
+  // genera el preview client-side (rápido, sin red), abre el modal para
+  // que el cliente confirme. No sube nada todavía.
   const handleFinalize = useCallback(async () => {
     const state = store.getState();
     if (!state.designId || !state.canvasData || state.isFinalizing) return;
+    setPreviewError(null);
+    try {
+      const previewUrl = await buildCompositedPreview(state.canvasData, slotStagesRef.current);
+      setPreviewDataUrl(previewUrl);
+      setPreviewModalOpen(true);
+    } catch (err) {
+      state.setAutoSaveStatus({
+        kind: "error",
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }, [store]);
+
+  // ──────────── Step 2: Confirmar → upload + add to cart + redirect ────────────
+  //
+  // Solo se invoca si el cliente confirma desde el modal. Si vuelve a editar,
+  // nada se sube y el editor queda intacto.
+  const handleConfirmFinalize = useCallback(async () => {
+    const state = store.getState();
+    if (!state.designId || !state.canvasData || state.isFinalizing || !previewDataUrl) return;
     state.setIsFinalizing(true);
+    setPreviewError(null);
     try {
       // Generar productionDataUrls (uno por slot, pixelRatio 3 para 300 DPI aprox)
       const productionDataUrls: string[] = [];
@@ -276,14 +312,8 @@ export function StudioEditor({
         productionDataUrls.push(dataUrl);
       }
 
-      // Generar preview compositado del grid completo via canvas API
-      const previewDataUrl = await buildCompositedPreview(state.canvasData, slotStagesRef.current);
-
-      // Convertir dataURLs a Blobs y empaquetar en FormData.
-      // POR QUÉ FormData: Next 16 Server Actions usan React Flight protocol,
-      // que tiene un límite de profundidad de array en su wire format. Strings
-      // base64 grandes (>1MB) los chunkea internamente y dispara "Maximum array
-      // nesting exceeded". FormData envía bytes raw vía multipart — sin JSON.
+      // FormData con blobs binarios — bypassea límite de array nesting de
+      // React Flight protocol de Next 16 (ver lib/wompi.ts comment también).
       const fd = new FormData();
       fd.set("designId", state.designId);
       fd.set("slotCount", String(productionDataUrls.length));
@@ -292,12 +322,10 @@ export function StudioEditor({
         fd.set(`production_${i}`, dataURLtoBlob(url), `slot-${i + 1}.png`);
       });
 
-      // Llamar server action finalize
       const result = await finalizeDesignAction(fd);
-
       if (!result.ok) {
         state.setIsFinalizing(false);
-        state.setAutoSaveStatus({ kind: "error", message: result.message });
+        setPreviewError(result.message);
         return;
       }
 
@@ -309,23 +337,28 @@ export function StudioEditor({
       });
       if (!addResult.ok) {
         state.setIsFinalizing(false);
-        state.setAutoSaveStatus({
-          kind: "error",
-          message: `Diseño guardado pero no pudimos agregarlo al carrito: ${addResult.message}`,
-        });
+        setPreviewError(
+          `Diseño guardado pero no pudimos agregarlo al carrito: ${addResult.message}`,
+        );
         return;
       }
 
-      // Redirect al carrito
+      // Cerramos modal antes de redirigir para evitar flicker visual.
+      setPreviewModalOpen(false);
       router.push("/carrito?personalized=1");
     } catch (err) {
       state.setIsFinalizing(false);
-      state.setAutoSaveStatus({
-        kind: "error",
-        message: err instanceof Error ? err.message : String(err),
-      });
+      setPreviewError(err instanceof Error ? err.message : String(err));
     }
-  }, [router, store, variantId]);
+  }, [router, store, variantId, previewDataUrl]);
+
+  // Cerrar modal "Volver a editar": libera estado para no acumular preview
+  // viejo si edita y vuelve a "Listo!".
+  const handleClosePreviewModal = useCallback(() => {
+    setPreviewModalOpen(false);
+    setPreviewDataUrl(null);
+    setPreviewError(null);
+  }, []);
 
   // ──────────── Estados de boot ────────────
   if (bootError) {
@@ -533,6 +566,19 @@ export function StudioEditor({
         onClose={() => setTextEditTarget(null)}
       />
 
+      {/* PR A.3 (Lucy 2026-05-21) — Vista previa pre-carrito */}
+      <StudioPreviewModal
+        isOpen={previewModalOpen}
+        previewUrl={previewDataUrl}
+        productName={product.name}
+        slotCount={photoSlots}
+        unitPrice={null /* TODO PR C: precio actual del variant elegido */}
+        isFinalizing={isFinalizingFlag}
+        errorMessage={previewError}
+        onEdit={handleClosePreviewModal}
+        onConfirm={handleConfirmFinalize}
+      />
+
       {/* M.3.b.UX.1 — FAB ¡Listo! mobile (visible solo <sm, fixed bottom-right) */}
       <StudioFinalizeFab store={store} onFinalize={handleFinalize} />
 
@@ -633,14 +679,6 @@ function PhotoAdjustModalWrapper({
       ? (s.canvasData?.slots?.find((sl) => sl.slotIndex === slotIndex)?.filter ?? null)
       : null,
   );
-  // M.3.b.UX.v6 — scale del transform de la foto.
-  const slotScale = useStore(
-    store,
-    (s) =>
-      (slotIndex !== null
-        ? s.canvasData?.slots?.find((sl) => sl.slotIndex === slotIndex)?.photoTransform?.scale
-        : null) ?? 1,
-  );
   const setSlotFilter = useStore(store, (s) => s.setSlotFilter);
   const setSlotPhotoTransform = useStore(store, (s) => s.setSlotPhotoTransform);
 
@@ -650,13 +688,9 @@ function PhotoAdjustModalWrapper({
       photoUrl={slotAssetUrl}
       currentFilter={slotFilter}
       slotIndex={slotIndex}
-      currentScale={slotScale}
       onClose={onClose}
       onApply={(filter) => {
         if (slotIndex !== null) setSlotFilter(slotIndex, filter);
-      }}
-      onScaleChange={(scale) => {
-        if (slotIndex !== null) setSlotPhotoTransform(slotIndex, { scale });
       }}
       onResetTransform={() => {
         if (slotIndex !== null) setSlotPhotoTransform(slotIndex, null);

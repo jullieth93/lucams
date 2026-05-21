@@ -43,13 +43,22 @@ function DialogContent({
   className,
   children,
   showCloseButton = true,
+  withOverlay = true,
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean;
+  /**
+   * Si false, NO renderea el overlay (backdrop) — el contenido detrás del
+   * modal queda interactivo. Pensado para modales tipo "panel auxiliar"
+   * que el usuario quiere usar SIN perder interacción con el contenido
+   * principal (ej. ajustar filtro de foto mientras zoom/pan en el canvas).
+   * Default true (comportamiento modal clásico).
+   */
+  withOverlay?: boolean;
 }) {
   return (
     <DialogPortal>
-      <DialogOverlay />
+      {withOverlay && <DialogOverlay />}
       <DialogPrimitive.Content
         data-slot="dialog-content"
         className={cn(

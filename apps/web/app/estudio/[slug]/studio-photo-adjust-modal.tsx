@@ -3,9 +3,18 @@
 /*
  * StudioPhotoAdjustModal — M.3.b.B.3 (2026-05-13).
  *
- * Modal cliente-side para aplicar filtros pre-armados a la foto de un slot.
- * 5 presets clicables (Vivid / Vintage / Polaroid / Pastel / B&N) + opción
- * "Sin filtro" para reset.
+ * Panel auxiliar (NO modal-bloqueante) para aplicar filtros pre-armados
+ * a la foto de un slot. 5 presets clicables (Vivid / Vintage / Polaroid /
+ * Pastel / B&N) + opción "Sin filtro" para reset.
+ *
+ * Cambios 2026-05-21 (feedback Lucy):
+ *   - Pasa a NON-MODAL (withOverlay=false): el canvas Konva detrás queda
+ *     interactivo. El cliente puede seguir haciendo scroll-zoom, drag-pan
+ *     y arrastrar la foto MIENTRAS ajusta filtros.
+ *   - Posicionado bottom-center (no centered overlay) para no tapar el
+ *     canvas donde está la foto que se está editando.
+ *   - Removido el slider de Zoom redundante: el scroll del mouse + pinch
+ *     ya cubren esa función. El reset button queda para volver a centrado.
  *
  * Decisiones:
  *   - Solo presets, no sliders custom (90% de los casos cubiertos con menos
@@ -13,12 +22,10 @@
  *   - Cada preview es un mini-thumbnail con CSS filters CSS-equivalents al
  *     preset Konva (rough approximation). El render real con Konva.Filters
  *     se aplica al confirmar en el canvas.
- *   - Modal anclado al slot seleccionado vía Radix Dialog (accesible, esc cierra).
  */
 
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { Check, ZoomIn, RotateCcw } from "lucide-react";
-import { Slider } from "@/components/ui/slider";
+import { Check, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FILTER_LABELS, FILTER_DESCRIPTIONS, FILTER_ORDER } from "./lib/photo-filters";
 import type { PhotoFilterPreset } from "./types";
@@ -28,13 +35,9 @@ type StudioPhotoAdjustModalProps = {
   photoUrl: string | null;
   currentFilter: PhotoFilterPreset | null;
   slotIndex: number | null;
-  /** M.3.b.UX.v6 (Lucy 2026-05-15) — zoom del cliente sobre el cover scale.
-   *  1.0 = default (cover × overscan 1.15). 2.0 = zoom 2×. */
-  currentScale: number;
   onClose: () => void;
   onApply: (filter: PhotoFilterPreset | null) => void;
-  onScaleChange: (scale: number) => void;
-  /** M.3.b.UX.v6 — reset transform: vuelve la foto al centro con scale=1. */
+  /** Reset transform: vuelve la foto al centro con scale=1. */
   onResetTransform: () => void;
 };
 
@@ -53,72 +56,39 @@ export function StudioPhotoAdjustModal({
   photoUrl,
   currentFilter,
   slotIndex,
-  currentScale,
   onClose,
   onApply,
-  onScaleChange,
   onResetTransform,
 }: StudioPhotoAdjustModalProps) {
   if (!photoUrl) return null;
 
-  // M.3.b.UX.v6 — filter NO autocierra. Cliente puede ajustar zoom +
-  // filter combinados, cierra con botón "Listo" o ESC. Más fluido.
   const handleSelectFilter = (filter: PhotoFilterPreset | null) => {
     onApply(filter);
   };
 
-  // Slider value es porcentaje 100-200% del cover-overscan default.
-  const zoomPct = Math.round(currentScale * 100);
-
   return (
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="max-w-2xl">
+    // modal={false} — el contenido detrás (canvas Konva) sigue recibiendo
+    // eventos (scroll-zoom, drag-pan). Focus NO se atrapa dentro del panel.
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()} modal={false}>
+      <DialogContent
+        // Reposicionamos al bottom-center (no overlay centered) y sin
+        // backdrop blocker para que canvas quede visible + interactivo
+        // arriba del panel.
+        withOverlay={false}
+        className="!top-auto bottom-4 left-1/2 max-w-2xl !translate-y-0 shadow-lg"
+        onInteractOutside={(e) => e.preventDefault()}
+        onPointerDownOutside={(e) => e.preventDefault()}
+      >
         <DialogTitle className="text-brand-purple-dark text-lg font-bold">
           Ajustar foto del imán {slotIndex !== null ? slotIndex + 1 : ""}
         </DialogTitle>
         <DialogDescription className="text-brand-purple-dark/60 text-sm">
-          Aplica zoom, reposicionalá la foto arrastrándola en el canvas, o elige un filtro.
+          Arrastra la foto en el canvas para encuadrar · Scroll del mouse (o pellizco) para zoom ·
+          Elegí un filtro abajo
         </DialogDescription>
 
-        {/* M.3.b.UX.v6 — Zoom slider. 100% = cover default (cliente puede
-          arrastrar foto). 100-200% = zoom progresivo (más detalle de la
-          foto visible, menos campo visible). */}
-        <div className="mt-4 space-y-2">
-          <div className="flex items-center justify-between">
-            <label
-              htmlFor="zoom-slider"
-              className="text-brand-purple-dark flex items-center gap-1.5 text-sm font-semibold"
-            >
-              <ZoomIn className="h-4 w-4" />
-              Zoom
-            </label>
-            <span className="text-brand-purple-dark/70 text-xs font-bold tabular-nums">
-              {zoomPct}%
-            </span>
-          </div>
-          <Slider
-            id="zoom-slider"
-            min={50}
-            max={300}
-            step={5}
-            value={[zoomPct]}
-            onValueChange={(values) => onScaleChange(values[0] / 100)}
-            className="py-1"
-            aria-label="Nivel de zoom de la foto"
-          />
-          <div className="text-brand-purple-dark/55 flex justify-between text-[10px]">
-            <span>50% (ver toda la foto)</span>
-            <span>100% (cover)</span>
-            <span>300% (acercar)</span>
-          </div>
-          <p className="text-brand-purple-dark/55 text-[11px]">
-            Arrastra la foto libremente en el canvas para encuadrarla. Bajá el zoom (50-99%) si
-            quieres ver toda la foto con padding. Sube (101-300%) para acercar a un detalle.
-          </p>
-        </div>
-
         {/* Reset transform — vuelve scale=1 + offset=0 */}
-        <div className="border-brand-purple/10 mt-4 flex border-t pt-4">
+        <div className="mt-2 flex">
           <Button
             type="button"
             variant="outline"
@@ -131,7 +101,7 @@ export function StudioPhotoAdjustModal({
           </Button>
         </div>
 
-        <div className="mt-5">
+        <div className="mt-3">
           <h3 className="text-brand-purple-dark mb-2 text-sm font-semibold">Filtros</h3>
           {/* Grid de presets: 6 cards (sin filtro + 5 presets) */}
           <div
