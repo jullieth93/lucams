@@ -90,9 +90,8 @@ export const ADMIN_NAV: NavGroup[] = [
         label: "Pedidos",
         href: "/admin/pedidos",
         icon: Box,
-        badge: { text: "Fase 4", tone: "phase4" },
         description:
-          "Tablero de pedidos con filtros por estado, detalle de cada orden y cambio de estado manual. Llega con Fase 2 (Checkout + Wompi) ya que necesita Orders reales.",
+          "Tablero de pedidos con filtros por estado, detalle de cada orden, reintento de guía Aveonline y cambio de estado manual (SHIPPED/DELIVERED/CANCELLED).",
       },
       {
         label: "Clientes",

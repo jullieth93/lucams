@@ -62,6 +62,7 @@ enum WebhookSource {
   WOMPI
   VENNDELO
   RESEND
+  AVEONLINE
 }
 
 // Documento de identidad / tributario colombiano (DIAN factura electrónica).

@@ -297,6 +297,89 @@ export async function processPaidOrder(
 }
 
 /**
+ * Procesa actualización de tracking desde webhook Aveonline.
+ * Aveonline envía estados normalizados (`ENTREGADA`, `EN TRANSITO`, etc.) +
+ * el carrier original que viene en la guía. Mapeamos a transiciones de Order.
+ *
+ * Reglas:
+ *   - `IN_TRANSIT` / `DISPATCHED` desde FULFILLING → SHIPPED
+ *   - `DELIVERED` desde SHIPPED → DELIVERED
+ *   - `DELIVERED` desde FULFILLING → SHIPPED + DELIVERED (skip intermedio)
+ *   - `RETURNED` / `EXCEPTION` → log warn (no transición automática; admin
+ *     decide CANCEL/REFUND manualmente)
+ *   - Estados no mapeables → no-op + log
+ */
+export async function processTrackingUpdate(input: {
+  trackingNumber: string;
+  status: "PENDING" | "DISPATCHED" | "IN_TRANSIT" | "DELIVERED" | "RETURNED" | "EXCEPTION";
+  carrierStatusRaw: string;
+}): Promise<{ status: "ok" | "no_match" | "noop"; orderNumber?: string; transitionedTo?: string }> {
+  const order = await prisma.order.findFirst({
+    where: { trackingNumber: input.trackingNumber, deletedAt: null },
+    select: { id: true, number: true, status: true },
+  });
+  if (!order) {
+    logger.warn({
+      event: "order.saga.tracking.no_match",
+      trackingNumber: input.trackingNumber,
+    });
+    return { status: "no_match" };
+  }
+
+  logger.info({
+    event: "order.saga.tracking.received",
+    orderNumber: order.number,
+    currentStatus: order.status,
+    incoming: input.status,
+    carrierRaw: input.carrierStatusRaw,
+  });
+
+  // Mapeo estados Aveonline → transiciones Order.
+  if (input.status === "DELIVERED") {
+    if (order.status === "FULFILLING") {
+      await transitionOrder(order.id, "SHIPPED").catch(() => null);
+    }
+    if (order.status === "SHIPPED" || order.status === "FULFILLING") {
+      try {
+        await transitionOrder(order.id, "DELIVERED");
+        return { status: "ok", orderNumber: order.number, transitionedTo: "DELIVERED" };
+      } catch (err) {
+        logger.warn({
+          event: "order.saga.tracking.transition_fail",
+          orderNumber: order.number,
+          to: "DELIVERED",
+          err: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+  } else if (
+    (input.status === "IN_TRANSIT" || input.status === "DISPATCHED") &&
+    order.status === "FULFILLING"
+  ) {
+    try {
+      await transitionOrder(order.id, "SHIPPED");
+      return { status: "ok", orderNumber: order.number, transitionedTo: "SHIPPED" };
+    } catch (err) {
+      logger.warn({
+        event: "order.saga.tracking.transition_fail",
+        orderNumber: order.number,
+        to: "SHIPPED",
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
+  } else if (input.status === "RETURNED" || input.status === "EXCEPTION") {
+    logger.warn({
+      event: "order.saga.tracking.needs_attention",
+      orderNumber: order.number,
+      incoming: input.status,
+      carrierRaw: input.carrierStatusRaw,
+    });
+  }
+
+  return { status: "noop", orderNumber: order.number };
+}
+
+/**
  * Procesa transaction DECLINED/VOIDED/ERROR del webhook Wompi → cancela Order.
  */
 export async function processFailedPaymentOrder(input: {

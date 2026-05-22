@@ -580,24 +580,38 @@ export class AveonlineProvider implements ShippingProvider {
 
   async handleWebhook(rawBody: string, _headers: Record<string, string>): Promise<WebhookEvent> {
     // PLAN_CATALOG_V2 ADR-039 — Webhook Aveonline NO documenta HMAC.
-    // MITIGACIÓN actual: validar existencia del trackingNumber en DB + IP whitelist.
-    // Lucy debe consultar soporte Aveonline para agregar HMAC.
+    // MITIGACIÓN: route handler valida secret en paramN (ver
+    // app/api/webhooks/aveonline/route.ts).
+    //
+    // Aveonline envía 2 shapes posibles:
+    //   - Plugin legacy WordPress: estado:[{estado_id, nombre_estado, fecha}]
+    //   - AveCRM nuevo: estado:[{nombre, timestamp}] o {nombre}
+    // Soportamos ambos via nombre_estado || nombre.
+    type EstadoItem = {
+      nombre?: string;
+      nombre_estado?: string;
+      timestamp?: string;
+      fecha?: string;
+    };
     const body = JSON.parse(rawBody) as {
       guia?: string;
-      estado?: Array<{ nombre?: string; timestamp?: string }> | { nombre?: string };
+      estado?: EstadoItem[] | EstadoItem;
     };
     const trackingNumber = body.guia ?? "";
-    const estadoArr = Array.isArray(body.estado) ? body.estado : body.estado ? [body.estado] : [];
+    const estadoArr: EstadoItem[] = Array.isArray(body.estado)
+      ? body.estado
+      : body.estado
+        ? [body.estado]
+        : [];
     const last = estadoArr[estadoArr.length - 1];
-    const status = mapAveonlineStatus(last?.nombre ?? "");
+    const nombreRaw = last?.nombre_estado ?? last?.nombre ?? "";
+    const status = mapAveonlineStatus(nombreRaw);
+    const tsRaw = last?.timestamp ?? last?.fecha;
     return {
       trackingNumber,
       status,
-      carrierStatusRaw: last?.nombre ?? "",
-      timestamp:
-        Array.isArray(body.estado) && body.estado[0]?.timestamp
-          ? new Date(body.estado[0].timestamp)
-          : new Date(),
+      carrierStatusRaw: nombreRaw,
+      timestamp: tsRaw ? new Date(tsRaw) : new Date(),
     };
   }
 }
