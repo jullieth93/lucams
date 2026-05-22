@@ -188,7 +188,9 @@ export async function quoteShipping(input: {
       quoteId: q.quoteId,
     }));
   } catch (err) {
-    logger.error({
+    // warn (no error): la página /checkout/envio maneja esto con banner
+    // amarillo "No pudimos cotizar el envío" — no es crash.
+    logger.warn({
       event: "checkout.quote_shipping.fail",
       err: err instanceof Error ? err.message : String(err),
       destination: `${input.destinationCity}, ${input.destinationDepartment}`,

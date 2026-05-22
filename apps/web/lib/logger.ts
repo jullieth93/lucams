@@ -115,8 +115,17 @@ function emit(level: LogLevel, payload: LogObject | string, msg?: string): void 
     ...body,
   };
   const line = JSON.stringify(record);
-  if (level === "error" || level === "warn") {
+  // Solo `error` real va a stderr/console.error — `warn` y `info` van a stdout
+  // para que Next.js dev no muestre overlay rojo en el browser por logs
+  // operacionales (ej. checkout.quote_shipping.fail tras un error de Aveonline
+  // que ya manejamos con CheckoutError + banner amarillo en UI).
+  // En Vercel logs (server-side) tanto stdout como stderr se parsean igual.
+  if (level === "error") {
     console.error(line);
+  } else if (level === "warn") {
+    // console.warn NO dispara el overlay de Next dev (que solo intercepta
+    // console.error), pero sí queda diferenciado en Vercel logs.
+    console.warn(line);
   } else {
     console.log(line);
   }

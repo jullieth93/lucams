@@ -65,18 +65,34 @@ function isProductionEnv(): boolean {
 
 /**
  * Normaliza ciudad+depto al formato que Aveonline espera: `CIUDAD(DEPTO)` UPPERCASE
- * sin tildes ni "D.C." Ej: "Bogotá D.C." + "Cundinamarca" → "BOGOTA(CUNDINAMARCA)".
+ * sin tildes. Ej:
+ *   "Bogotá D.C." + "Bogotá D.C." → "BOGOTA(CUNDINAMARCA)"
+ *   "Medellín" + "Antioquia" → "MEDELLIN(ANTIOQUIA)"
+ *
+ * Verificado contra `listadociudades.json` oficial de Aveonline
+ * (2026-05-21): Bogotá aparece como `BOGOTA(CUNDINAMARCA)`, NO como
+ * `BOGOTA D.C.(BOGOTA D.C.)`. Aveonline trata históricamente Bogotá
+ * como parte de Cundinamarca aunque DANE divipola la considere depto propio.
  */
 function formatAveonlineCity(city: string, department: string): string {
-  const strip = (s: string) =>
-    s
-      .normalize("NFD")
-      .replace(/[̀-ͯ]/g, "") // quitar tildes
-      .replace(/\bD\.?\s*C\.?\b/gi, "") // quitar "D.C." de Bogotá
-      .replace(/\s+/g, " ")
-      .trim()
-      .toUpperCase();
-  return `${strip(city)}(${strip(department)})`;
+  // 1) Quitar tildes
+  const noTilde = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "");
+  // 2) Quitar "D.C." con o sin espacios/puntos a los lados, sin requerir \b final
+  //    (los puntos no satisfacen word boundary contra fin de string).
+  const noDc = (s: string) => s.replace(/\s*D\.?\s*C\.?\s*/gi, " ");
+  // 3) Limpiar espacios + uppercase
+  const strip = (s: string) => noDc(noTilde(s)).replace(/\s+/g, " ").trim().toUpperCase();
+
+  let cityClean = strip(city);
+  let deptClean = strip(department);
+
+  // Mapping especial Bogotá → Cundinamarca (formato Aveonline)
+  if (cityClean === "BOGOTA" || deptClean === "BOGOTA") {
+    cityClean = "BOGOTA";
+    deptClean = "CUNDINAMARCA";
+  }
+
+  return `${cityClean}(${deptClean})`;
 }
 
 type CachedToken = { token: string; idempresa: number; expiresAt: number };
