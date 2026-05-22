@@ -26,6 +26,7 @@ import { getEffectiveShippingDims } from "@/features/products/shipping-schemas";
 import { getSettingValue } from "@/lib/cms";
 import { transitionOrder, OrderTransitionError } from "./service";
 import type { ShippingAddressInput } from "./schemas";
+import { sendOrderConfirmation, sendOrderShipped, sendOrderDelivered } from "./emails";
 
 /**
  * En modo test (AVEONLINE_ENV=test) la cuenta demo `demointegracion` NO
@@ -111,6 +112,8 @@ export async function processPaidOrder(
         orderNumber: order.number,
         wompiTransactionId: input.wompiTransactionId ?? null,
       });
+      // Email order-confirmation (fire-and-forget — emails.ts atrapa errores).
+      await sendOrderConfirmation(order.id);
     } catch (err) {
       if (err instanceof OrderTransitionError) {
         logger.warn({
@@ -342,6 +345,7 @@ export async function processTrackingUpdate(input: {
     if (order.status === "SHIPPED" || order.status === "FULFILLING") {
       try {
         await transitionOrder(order.id, "DELIVERED");
+        await sendOrderDelivered(order.id);
         return { status: "ok", orderNumber: order.number, transitionedTo: "DELIVERED" };
       } catch (err) {
         logger.warn({
@@ -358,6 +362,7 @@ export async function processTrackingUpdate(input: {
   ) {
     try {
       await transitionOrder(order.id, "SHIPPED");
+      await sendOrderShipped(order.id);
       return { status: "ok", orderNumber: order.number, transitionedTo: "SHIPPED" };
     } catch (err) {
       logger.warn({
