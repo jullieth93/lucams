@@ -22,6 +22,8 @@ export type ProductListItem = {
   isActive: boolean;
   isFeatured: boolean;
   isPersonalizable: boolean;
+  /** null = no archivado (vivo); Date = archivado en esa fecha. */
+  deletedAt: Date | null;
   category: { id: string; name: string; slug: string };
   imagesCount: number;
   variantsCount: number;
@@ -35,15 +37,19 @@ export async function listProducts(opts: {
   page?: number;
   search?: string;
   categoryId?: string;
-  status?: "all" | "active" | "inactive" | "featured";
+  status?: "all" | "active" | "inactive" | "archived" | "featured";
   sort?: "recent" | "name" | "price-asc" | "price-desc";
 }): Promise<{ items: ProductListItem[]; total: number; page: number; pageSize: number }> {
   const page = Math.max(1, opts.page ?? 1);
+  // Default: muestra TODO (activos + inactivos + archivados). Admin gestiona
+  // el estado de cada uno desde acá; el storefront filtra por isActive+deletedAt.
+  // Lucy 2026-05-22: sin esto el admin no era modular (no podía reactivar archivados).
   const where: Prisma.ProductWhereInput = {
-    deletedAt: null,
-    ...(opts.status === "active" ? { isActive: true } : {}),
-    ...(opts.status === "inactive" ? { isActive: false } : {}),
-    ...(opts.status === "featured" ? { isActive: true, isFeatured: true } : {}),
+    ...(opts.status === "active" ? { isActive: true, deletedAt: null } : {}),
+    ...(opts.status === "inactive" ? { isActive: false, deletedAt: null } : {}),
+    ...(opts.status === "archived" ? { deletedAt: { not: null } } : {}),
+    ...(opts.status === "featured" ? { isActive: true, isFeatured: true, deletedAt: null } : {}),
+    // status "all" o undefined → sin filtro, muestra TODO
     ...(opts.categoryId ? { categoryId: opts.categoryId } : {}),
     ...(opts.search
       ? {
@@ -85,6 +91,7 @@ export async function listProducts(opts: {
         isActive: true,
         isFeatured: true,
         isPersonalizable: true,
+        deletedAt: true,
         images: true,
         createdAt: true,
         updatedAt: true,
@@ -105,6 +112,7 @@ export async function listProducts(opts: {
       isActive: p.isActive,
       isFeatured: p.isFeatured,
       isPersonalizable: p.isPersonalizable,
+      deletedAt: p.deletedAt,
       category: p.category,
       imagesCount: p.images.length,
       variantsCount: p._count.variants,
@@ -118,8 +126,9 @@ export async function listProducts(opts: {
 }
 
 export async function getProductById(id: string) {
+  // Admin puede editar TODO (incluso archivados) — Lucy 2026-05-22.
   return prisma.product.findFirst({
-    where: { id, deletedAt: null },
+    where: { id },
     include: { category: true, variants: true },
   });
 }
@@ -277,6 +286,32 @@ export async function softDeleteProduct(id: string, deletedBy: string | null) {
       ...(deletedBy ? { deletedBy } : {}),
       isActive: false, // dejarlo invisible al storefront además del soft delete
     },
+  });
+}
+
+/** Restaura un producto archivado (deletedAt = null). isActive queda en false
+ * por seguridad — admin debe revisarlo + activarlo explícito. */
+export async function restoreProduct(id: string, restoredBy: string | null) {
+  return prisma.product.update({
+    where: { id },
+    data: {
+      deletedAt: null,
+      deletedBy: null,
+      isActive: false,
+      ...(restoredBy ? { updatedBy: restoredBy } : {}),
+    },
+  });
+}
+
+/** Toggle isActive de un producto (activa/desactiva sin archivar). */
+export async function toggleProductActive(
+  id: string,
+  isActive: boolean,
+  actorAdminId: string | null,
+) {
+  return prisma.product.update({
+    where: { id },
+    data: { isActive, ...(actorAdminId ? { updatedBy: actorAdminId } : {}) },
   });
 }
 

@@ -32,6 +32,7 @@ import {
 import { getCurrentAdmin } from "@/lib/auth";
 import { formatCOP } from "@/lib/format";
 import { listProducts } from "@/features/products/service";
+import { ProductQuickActions } from "./quick-actions";
 
 export const metadata: Metadata = {
   title: "Productos",
@@ -53,8 +54,8 @@ export default async function AdminProductosPage({ searchParams }: { searchParam
   const q = pickString(sp, "q");
   const statusRaw = pickString(sp, "status");
   const status = (
-    ["active", "inactive", "featured"].includes(statusRaw ?? "") ? statusRaw : "all"
-  ) as "all" | "active" | "inactive" | "featured";
+    ["active", "inactive", "archived", "featured"].includes(statusRaw ?? "") ? statusRaw : "all"
+  ) as "all" | "active" | "inactive" | "archived" | "featured";
   const sortRaw = pickString(sp, "sort");
   const sort = (
     ["name", "price-asc", "price-desc"].includes(sortRaw ?? "") ? sortRaw : "recent"
@@ -99,6 +100,12 @@ export default async function AdminProductosPage({ searchParams }: { searchParam
       <AdminPageBody>
         {justCreated && <AdminNotice tone="success">Producto creado correctamente.</AdminNotice>}
         {justDeleted && <AdminNotice tone="warning">Producto archivado (soft-delete).</AdminNotice>}
+        {sp.restored === "1" && (
+          <AdminNotice tone="success">
+            Producto restaurado (queda inactivo — usa el botón &quot;Activar&quot; para mostrarlo en
+            el storefront).
+          </AdminNotice>
+        )}
 
         {/* Toolbar: búsqueda + filtros + ordenamiento (form GET) */}
         <form
@@ -134,9 +141,10 @@ export default async function AdminProductosPage({ searchParams }: { searchParam
               defaultValue={status}
               className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 w-full rounded-md border bg-white px-2 py-1.5 text-sm focus:ring-2 focus:outline-none"
             >
-              <option value="all">Todos</option>
-              <option value="active">Solo activos</option>
-              <option value="inactive">Solo archivados</option>
+              <option value="all">Todos (activos + inactivos + archivados)</option>
+              <option value="active">Solo activos (visibles en tienda)</option>
+              <option value="inactive">Solo inactivos (ocultos pero recuperables)</option>
+              <option value="archived">Solo archivados (papelera)</option>
               <option value="featured">Solo destacados</option>
             </select>
           </div>
@@ -223,16 +231,27 @@ export default async function AdminProductosPage({ searchParams }: { searchParam
                     {formatCOP(p.basePrice)}
                   </td>
                   <td className="px-4 py-3 text-center">
-                    <ProductStatus isActive={p.isActive} isFeatured={p.isFeatured} />
+                    <ProductStatus
+                      isActive={p.isActive}
+                      isFeatured={p.isFeatured}
+                      isArchived={p.deletedAt !== null}
+                    />
                   </td>
                   <td className="px-4 py-3 text-right">
-                    <Link
-                      href={`/admin/productos/${p.id}`}
-                      className="text-brand-purple hover:text-brand-purple-dark inline-flex items-center gap-1 text-xs font-medium"
-                    >
-                      <Edit3 className="h-3.5 w-3.5" />
-                      Editar
-                    </Link>
+                    <div className="flex items-center justify-end gap-2">
+                      <ProductQuickActions
+                        productId={p.id}
+                        isActive={p.isActive}
+                        isArchived={p.deletedAt !== null}
+                      />
+                      <Link
+                        href={`/admin/productos/${p.id}`}
+                        className="text-brand-purple hover:text-brand-purple-dark inline-flex items-center gap-1 text-xs font-medium"
+                      >
+                        <Edit3 className="h-3.5 w-3.5" />
+                        Editar
+                      </Link>
+                    </div>
                   </td>
                 </AdminTableRow>
               ))}
@@ -292,8 +311,22 @@ function PaginationLink({
   );
 }
 
-function ProductStatus({ isActive, isFeatured }: { isActive: boolean; isFeatured: boolean }) {
-  if (!isActive) return <AdminBadge tone="slate">Archivado</AdminBadge>;
+function ProductStatus({
+  isActive,
+  isFeatured,
+  isArchived,
+}: {
+  isActive: boolean;
+  isFeatured: boolean;
+  isArchived: boolean;
+}) {
+  // 3 estados visuales claros para no confundir admin Lucy:
+  //   Archivado (deletedAt!=null) = papelera, requiere restaurar primero
+  //   Inactivo (isActive=false, no archivado) = oculto del storefront, recuperable
+  //   Activo (isActive=true) = visible en storefront
+  //   Destacado = activo + featured (aparece en home)
+  if (isArchived) return <AdminBadge tone="rose">Archivado</AdminBadge>;
+  if (!isActive) return <AdminBadge tone="slate">Inactivo</AdminBadge>;
   if (isFeatured) return <AdminBadge tone="amber">Destacado</AdminBadge>;
   return <AdminBadge tone="emerald">Activo</AdminBadge>;
 }

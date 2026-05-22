@@ -8,6 +8,7 @@ import { getCurrentAdmin } from "@/lib/auth";
 import {
   CategoryValidationError,
   createCategory,
+  restoreCategory,
   softDeleteCategory,
   updateCategory,
 } from "@/features/categories/service";
@@ -166,6 +167,31 @@ export async function toggleCategoryActiveAction(formData: FormData): Promise<vo
     );
     throw err;
   }
+}
+
+/** Restaura una categoría archivada (deletedAt → null). Queda inactiva
+ * por seguridad — admin la activa después si quiere mostrarla. */
+export async function restoreCategoryAction(formData: FormData): Promise<void> {
+  const session = await getCurrentAdmin();
+  if (!session) redirect("/admin/login");
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+  await restoreCategory(id, session.admin.id);
+  logger.info({
+    event: "admin.category.restored",
+    adminId: session.admin.id,
+    categoryId: id,
+  });
+  await recordAdminAction({
+    actorId: session.admin.id,
+    action: "category.restore",
+    entityType: "Category",
+    entityId: id,
+  });
+  revalidatePath("/admin/categorias");
+  revalidatePath("/productos");
+  revalidatePath("/", "layout");
+  redirect("/admin/categorias?restored=1");
 }
 
 export async function deleteCategoryAction(formData: FormData): Promise<void> {

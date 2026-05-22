@@ -13,7 +13,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Edit3, Layers, Trash2 } from "lucide-react";
+import { Edit3, Layers, RotateCcw, Trash2 } from "lucide-react";
 import {
   AdminPage,
   AdminPageHeader,
@@ -32,7 +32,7 @@ import { ConfirmAction } from "@/components/admin/confirm-action";
 import { listCategories } from "@/features/categories/service";
 import { getCurrentAdmin } from "@/lib/auth";
 import { CategoryForm } from "./category-form";
-import { deleteCategoryAction, toggleCategoryActiveAction } from "./actions";
+import { deleteCategoryAction, restoreCategoryAction, toggleCategoryActiveAction } from "./actions";
 
 export const metadata: Metadata = {
   title: "Categorías",
@@ -56,9 +56,9 @@ export default async function AdminCategoriasPage({
   const sp = await searchParams;
   const q = pickString(sp, "q");
   const statusRaw = pickString(sp, "status");
-  const status: "all" | "active" | "inactive" = (
-    ["active", "inactive"].includes(statusRaw ?? "") ? statusRaw : "all"
-  ) as "all" | "active" | "inactive";
+  const status: "all" | "active" | "inactive" | "archived" = (
+    ["active", "inactive", "archived"].includes(statusRaw ?? "") ? statusRaw : "all"
+  ) as "all" | "active" | "inactive" | "archived";
   const sortRaw = pickString(sp, "sort");
   const sort = (["name", "recent"].includes(sortRaw ?? "") ? sortRaw : "order") as
     | "order"
@@ -92,6 +92,11 @@ export default async function AdminCategoriasPage({
       <AdminPageBody>
         {justCreated && <AdminNotice tone="success">Categoría creada correctamente.</AdminNotice>}
         {justDeleted && <AdminNotice tone="warning">Categoría archivada.</AdminNotice>}
+        {sp.restored === "1" && (
+          <AdminNotice tone="success">
+            Categoría restaurada (queda inactiva — click el badge para mostrarla en el storefront).
+          </AdminNotice>
+        )}
         {errorMsg && <AdminNotice tone="error">{errorMsg}</AdminNotice>}
 
         {/* Toolbar: búsqueda + filtros + ordenamiento (form GET) */}
@@ -128,9 +133,10 @@ export default async function AdminCategoriasPage({
               defaultValue={status}
               className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 w-full rounded-md border bg-white px-2 py-1.5 text-sm focus:ring-2 focus:outline-none"
             >
-              <option value="all">Todas</option>
-              <option value="active">Solo activas</option>
-              <option value="inactive">Solo inactivas</option>
+              <option value="all">Todas (activas + inactivas + archivadas)</option>
+              <option value="active">Solo activas (visibles en tienda)</option>
+              <option value="inactive">Solo inactivas (ocultas, recuperables)</option>
+              <option value="archived">Solo archivadas (papelera)</option>
             </select>
           </div>
           <div className="sm:col-span-3">
@@ -213,65 +219,89 @@ export default async function AdminCategoriasPage({
                     {c._count.products}
                   </td>
                   <td className="px-4 py-3 text-center">
-                    {/* El badge ES el toggle: click para cambiar activa/inactiva.
-                        Antes había un Eye/EyeOff separado del badge — confuso.
-                        Ahora una sola UI: hover destaca y dice "click para…" */}
-                    <form action={toggleCategoryActiveAction} className="inline">
-                      <input type="hidden" name="id" value={c.id} />
-                      <input type="hidden" name="next" value={c.isActive ? "false" : "true"} />
-                      <button
-                        type="submit"
-                        className={`inline-flex cursor-pointer items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium transition-all hover:shadow-sm ${
-                          c.isActive
-                            ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 hover:bg-emerald-100"
-                            : "bg-slate-100 text-slate-600 ring-1 ring-slate-200 hover:bg-slate-200"
-                        }`}
-                        title={
-                          c.isActive
-                            ? "Click para desactivar (ocultar del storefront)"
-                            : "Click para activar (mostrar en storefront)"
-                        }
-                      >
-                        <span
-                          className={`h-1.5 w-1.5 rounded-full ${c.isActive ? "bg-emerald-500" : "bg-slate-400"}`}
-                          aria-hidden
-                        />
-                        {c.isActive ? "Activa" : "Inactiva"}
-                      </button>
-                    </form>
+                    {/* 3 estados: archivada / inactiva / activa. Si archivada,
+                        el badge muestra rose y NO permite toggle (primero restaurar). */}
+                    {c.deletedAt ? (
+                      <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-50 px-2.5 py-0.5 text-xs font-medium text-rose-700 ring-1 ring-rose-200">
+                        <span className="h-1.5 w-1.5 rounded-full bg-rose-500" aria-hidden />
+                        Archivada
+                      </span>
+                    ) : (
+                      <form action={toggleCategoryActiveAction} className="inline">
+                        <input type="hidden" name="id" value={c.id} />
+                        <input type="hidden" name="next" value={c.isActive ? "false" : "true"} />
+                        <button
+                          type="submit"
+                          className={`inline-flex cursor-pointer items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium transition-all hover:shadow-sm ${
+                            c.isActive
+                              ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 hover:bg-emerald-100"
+                              : "bg-slate-100 text-slate-600 ring-1 ring-slate-200 hover:bg-slate-200"
+                          }`}
+                          title={
+                            c.isActive
+                              ? "Click para desactivar (ocultar del storefront)"
+                              : "Click para activar (mostrar en storefront)"
+                          }
+                        >
+                          <span
+                            className={`h-1.5 w-1.5 rounded-full ${c.isActive ? "bg-emerald-500" : "bg-slate-400"}`}
+                            aria-hidden
+                          />
+                          {c.isActive ? "Activa" : "Inactiva"}
+                        </button>
+                      </form>
+                    )}
                   </td>
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-1">
-                      <Link
-                        href={`/admin/categorias/${c.id}`}
-                        className="text-brand-purple hover:bg-brand-purple/10 inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs font-medium"
-                        title="Editar"
-                      >
-                        <Edit3 className="h-3.5 w-3.5" />
-                        Editar
-                      </Link>
-                      <ConfirmAction
-                        action={deleteCategoryAction}
-                        message={`¿Archivar la categoría "${c.name}"? Quedará oculta del storefront.`}
-                        className="inline"
-                      >
-                        <input type="hidden" name="id" value={c.id} />
-                        <Button
-                          type="submit"
-                          variant="ghost"
-                          size="sm"
-                          className="h-7 px-2 text-rose-600 hover:bg-rose-50"
-                          aria-label={`Archivar ${c.name}`}
-                          disabled={c._count.products > 0}
-                          title={
-                            c._count.products > 0
-                              ? "Tiene productos asociados — moverlos primero"
-                              : "Archivar"
-                          }
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      </ConfirmAction>
+                      {c.deletedAt ? (
+                        <form action={restoreCategoryAction} className="inline">
+                          <input type="hidden" name="id" value={c.id} />
+                          <Button
+                            type="submit"
+                            variant="ghost"
+                            size="sm"
+                            className="h-7 gap-1 px-2 text-amber-700 hover:bg-amber-50"
+                            title="Restaurar de papelera (quedará inactiva)"
+                          >
+                            <RotateCcw className="h-3.5 w-3.5" />
+                            Restaurar
+                          </Button>
+                        </form>
+                      ) : (
+                        <>
+                          <Link
+                            href={`/admin/categorias/${c.id}`}
+                            className="text-brand-purple hover:bg-brand-purple/10 inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs font-medium"
+                            title="Editar"
+                          >
+                            <Edit3 className="h-3.5 w-3.5" />
+                            Editar
+                          </Link>
+                          <ConfirmAction
+                            action={deleteCategoryAction}
+                            message={`¿Archivar la categoría "${c.name}"? Quedará oculta del storefront.`}
+                            className="inline"
+                          >
+                            <input type="hidden" name="id" value={c.id} />
+                            <Button
+                              type="submit"
+                              variant="ghost"
+                              size="sm"
+                              className="h-7 px-2 text-rose-600 hover:bg-rose-50"
+                              aria-label={`Archivar ${c.name}`}
+                              disabled={c._count.products > 0}
+                              title={
+                                c._count.products > 0
+                                  ? "Tiene productos asociados — moverlos primero"
+                                  : "Archivar"
+                              }
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </ConfirmAction>
+                        </>
+                      )}
                     </div>
                   </td>
                 </AdminTableRow>

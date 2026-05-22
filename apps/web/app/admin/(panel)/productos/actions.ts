@@ -17,7 +17,9 @@ import { logger } from "@/lib/logger";
 import {
   createProduct,
   ProductValidationError,
+  restoreProduct,
   softDeleteProduct,
+  toggleProductActive,
   updateProduct,
 } from "@/features/products/service";
 import { ProductCreateSchema, ProductUpdateSchema } from "@/features/products/schemas";
@@ -234,4 +236,50 @@ export async function deleteProductAction(formData: FormData): Promise<void> {
   revalidatePath("/productos");
   revalidatePath("/", "layout");
   redirect("/admin/productos?deleted=1");
+}
+
+/** Restaura un producto archivado (deletedAt → null). Queda isActive=false
+ * por seguridad — admin lo activa explícito desde la fila después. */
+export async function restoreProductAction(formData: FormData): Promise<void> {
+  const session = await getCurrentAdmin();
+  if (!session) redirect("/admin/login");
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+  await restoreProduct(id, session.admin.id);
+  logger.info({ event: "admin.product.restored", adminId: session.admin.id, productId: id });
+  await recordAdminAction({
+    actorId: session.admin.id,
+    action: "product.restore",
+    entityType: "Product",
+    entityId: id,
+  });
+  revalidatePath("/admin/productos");
+  revalidatePath("/productos");
+  revalidatePath("/", "layout");
+  redirect("/admin/productos?restored=1");
+}
+
+/** Toggle isActive (activa o desactiva sin archivar). Reflejo inmediato en storefront. */
+export async function toggleProductActiveAction(formData: FormData): Promise<void> {
+  const session = await getCurrentAdmin();
+  if (!session) redirect("/admin/login");
+  const id = String(formData.get("id") ?? "");
+  const isActive = formData.get("isActive") === "true";
+  if (!id) return;
+  await toggleProductActive(id, isActive, session.admin.id);
+  logger.info({
+    event: "admin.product.toggle_active",
+    adminId: session.admin.id,
+    productId: id,
+    isActive,
+  });
+  await recordAdminAction({
+    actorId: session.admin.id,
+    action: isActive ? "product.activate" : "product.deactivate",
+    entityType: "Product",
+    entityId: id,
+  });
+  revalidatePath("/admin/productos");
+  revalidatePath("/productos");
+  revalidatePath("/", "layout");
 }

@@ -15,8 +15,8 @@ export class CategoryValidationError extends Error {
 export type CategoryListOpts = {
   /** Búsqueda en name/slug (case-insensitive). */
   q?: string;
-  /** Filtro por estado. Default: "all". */
-  status?: "active" | "inactive" | "all";
+  /** Filtro por estado. Default: "all" (muestra todo incluso archivadas). */
+  status?: "active" | "inactive" | "archived" | "all";
   /** Orden. Default: por order asc + name asc. */
   sort?: "order" | "name" | "recent";
 };
@@ -35,11 +35,13 @@ export async function listCategories(opts: CategoryListOpts = {}) {
     }
   })();
 
+  // Default: admin ve TODO (activas + inactivas + archivadas). Storefront
+  // filtra deletedAt+isActive aparte. Lucy 2026-05-22: modularidad.
   return prisma.category.findMany({
     where: {
-      deletedAt: null,
-      ...(opts.status === "active" ? { isActive: true } : {}),
-      ...(opts.status === "inactive" ? { isActive: false } : {}),
+      ...(opts.status === "active" ? { isActive: true, deletedAt: null } : {}),
+      ...(opts.status === "inactive" ? { isActive: false, deletedAt: null } : {}),
+      ...(opts.status === "archived" ? { deletedAt: { not: null } } : {}),
       ...(q
         ? {
             OR: [
@@ -56,6 +58,7 @@ export async function listCategories(opts: CategoryListOpts = {}) {
       slug: true,
       description: true,
       isActive: true,
+      deletedAt: true,
       order: true,
       _count: { select: { products: true } },
     },
@@ -118,5 +121,31 @@ export async function softDeleteCategory(id: string, deletedBy: string | null) {
       isActive: false,
       ...(deletedBy ? { deletedBy } : {}),
     },
+  });
+}
+
+/** Restaura una categoría archivada. isActive queda false; admin la activa
+ * explícito desde el listado para evitar que reaparezca en storefront sin querer. */
+export async function restoreCategory(id: string, restoredBy: string | null) {
+  return prisma.category.update({
+    where: { id },
+    data: {
+      deletedAt: null,
+      deletedBy: null,
+      isActive: false,
+      ...(restoredBy ? { updatedBy: restoredBy } : {}),
+    },
+  });
+}
+
+/** Toggle isActive de una categoría (activar/desactivar sin archivar). */
+export async function toggleCategoryActive(
+  id: string,
+  isActive: boolean,
+  actorAdminId: string | null,
+) {
+  return prisma.category.update({
+    where: { id },
+    data: { isActive, ...(actorAdminId ? { updatedBy: actorAdminId } : {}) },
   });
 }
