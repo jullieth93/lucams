@@ -96,8 +96,79 @@ function formatAveonlineCity(city: string, department: string): string {
 }
 
 type CachedToken = { token: string; idempresa: number; expiresAt: number };
+type CachedCarriers = { items: Array<{ id: number; text: string }>; expiresAt: number };
 
 let tokenCache: CachedToken | null = null;
+let carriersCache: CachedCarriers | null = null;
+
+/**
+ * Lista transportadoras habilitadas para la cuenta + cachea 24h.
+ * Sirve para resolver carrier-name → idtransportador cuando el quoteId
+ * original no está persistido (saga post-pago).
+ */
+async function listEnabledCarriers(): Promise<Array<{ id: number; text: string }>> {
+  const now = Date.now();
+  if (carriersCache && carriersCache.expiresAt > now) {
+    return carriersCache.items;
+  }
+  const { token, idempresa } = await getAuthToken();
+  const res = await fetch(`${BASE_URL}/box/v1.0/transportadora.php`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tipo: "listarTransportadorasPorEmpresa", token, id: idempresa }),
+  });
+  if (!res.ok) {
+    throw new Error(`Aveonline listarTransportadorasPorEmpresa fail HTTP ${res.status}`);
+  }
+  const data = (await res.json()) as {
+    status?: string;
+    transportadoras?: Array<{ id: number; text: string }>;
+  };
+  const items = data.transportadoras ?? [];
+  carriersCache = { items, expiresAt: now + 24 * 60 * 60_000 }; // 24h
+  logger.info({
+    event: "shipping.aveonline.carriers_refresh",
+    count: items.length,
+  });
+  return items;
+}
+
+/**
+ * Normaliza un carrier-name a slug comparable: lowercase + sin espacios +
+ * sin tildes. Ej: "COORDINADORA MERCANTIL" → "coordinadoramercantil";
+ * "coordinadora-mercantil" → "coordinadoramercantil".
+ */
+function normalizeCarrierName(s: string): string {
+  return s
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+}
+
+/**
+ * Resuelve carrier slug/name → idtransportador llamando a
+ * listEnabledCarriers. Si no encuentra match exacto, intenta substring.
+ * Lanza error si no hay match.
+ */
+async function resolveCarrierId(carrierNameOrSlug: string): Promise<string> {
+  const target = normalizeCarrierName(carrierNameOrSlug);
+  const carriers = await listEnabledCarriers();
+  // Match exacto primero
+  const exact = carriers.find((c) => normalizeCarrierName(c.text) === target);
+  if (exact) return String(exact.id);
+  // Substring fallback (ej. "coordinadora" matchea "COORDINADORA MERCANTIL")
+  const partial = carriers.find(
+    (c) =>
+      normalizeCarrierName(c.text).startsWith(target) ||
+      target.startsWith(normalizeCarrierName(c.text)),
+  );
+  if (partial) return String(partial.id);
+  throw new Error(
+    `Aveonline: carrier "${carrierNameOrSlug}" no está habilitado en esta cuenta. ` +
+      `Habilitados: ${carriers.map((c) => c.text).join(", ")}`,
+  );
+}
 
 async function getAuthToken(): Promise<{ token: string; idempresa: number }> {
   const now = Date.now();
@@ -271,14 +342,16 @@ export class AveonlineProvider implements ShippingProvider {
     // Mismo endpoint que cotización pero tipo="generarGuia2".
     // idtransportador viene del quoteId que cotización devolvió como codTransportadora.
     const { token, idempresa } = await getAuthToken();
-    const usuario = process.env.AVEONLINE_USUARIO!;
-    const clave = process.env.AVEONLINE_CLAVE!;
+    // En modo test usa creds demo, en prod usa env vars.
+    const isProd = isProductionEnv();
+    const usuario = isProd ? process.env.AVEONLINE_USUARIO! : DEMO_CREDENTIALS.usuario;
+    const clave = isProd ? process.env.AVEONLINE_CLAVE! : DEMO_CREDENTIALS.clave;
 
-    if (!params.quoteId) {
-      throw new Error(
-        "Aveonline createShipment requiere quoteId (idtransportador de la cotización).",
-      );
-    }
+    // Resolver idtransportador: si caller pasó quoteId (del flow inmediato
+    // post-checkout) lo usamos; sino lo derivamos del carrier name via
+    // listEnabledCarriers (cacheado 24h). Esto permite que la saga post-pago
+    // funcione aunque el quoteId no se haya persistido en Order.
+    const idtransportador = params.quoteId ?? (await resolveCarrierId(params.carrier));
 
     // Business data se lee de SiteSettings (admin/contenido/configuracion).
     // params.pickup tiene precedencia si caller los pasa explícitos (útil para
@@ -336,23 +409,28 @@ export class AveonlineProvider implements ShippingProvider {
       codigo: usuario,
       dsclavex: clave,
       // Origen (remitente = nosotros) — datos de SiteSettings
-      origen: `${pickupCity.toUpperCase()}(${pickupDept.toUpperCase()})`,
+      origen: formatAveonlineCity(pickupCity, pickupDept),
       dsdirre: pickupAddress,
       dsnitre: settingNit,
       dsnombre: pickupContact,
       dstelre: pickupPhone,
       dscelularre: pickupPhone,
       dscorreopre: process.env.EMAIL_FROM?.match(/<(.+?)>/)?.[1] ?? "hola@lucamsshop.co",
-      // Destino (destinatario = cliente)
-      destino: `${params.delivery.city.toUpperCase()}(${params.delivery.department.toUpperCase()})`,
+      // Destino (destinatario = cliente). Lucy 2026-05-21:
+      // - destino con formato `CIUDAD(DEPTO)` UPPERCASE igual que cotización.
+      // - dsnit del cliente (Aveonline exige ≥6 dígitos numéricos). Si el cliente
+      //   no ingresó CC en checkout, usamos "000001" como placeholder válido
+      //   (admin debe completarlo desde /admin/pedidos antes de despachar).
+      // - dscorreop con el email real del cliente (Aveonline le notifica).
+      destino: formatAveonlineCity(params.delivery.city, params.delivery.department),
       dsdir: params.delivery.address,
       IdTipoEntrega: "1", // 1=domicilio, 2=oficina
-      dsnit: "00000",
+      dsnit: (params.delivery.documentNumber ?? "").replace(/\D/g, "").slice(0, 15) || "000001",
       dsnombrecompleto: params.delivery.contactName,
       dstel: params.delivery.phone,
       dscelular: params.delivery.phone,
-      dscorreop: "", // si Order tiene email, se puede inyectar via params en V2
-      idtransportador: params.quoteId, // viene de quote().quoteId = codTransportadora
+      dscorreop: params.delivery.email ?? "",
+      idtransportador, // del quoteId (flow inmediato) o resuelto via resolveCarrierId
       unidades: params.items.reduce((acc, i) => acc + i.qty, 0),
       productos,
       dscontenido: params.items
@@ -362,9 +440,13 @@ export class AveonlineProvider implements ShippingProvider {
       idasumecosto: 0,
       contraentrega: params.contraentrega ? 1 : 0,
       valorrecaudo: valorRecaudo,
-      // En modo test: bloquegenerarguia="0" → simula sin generar guía real (no factura).
-      // En production: "1" → genera guía real (factura).
-      bloquegenerarguia: isProductionEnv() ? "1" : "0",
+      // Siempre "1" (genera guía real). La cuenta demo (`demointegracion`,
+      // idempresa 15289) en modo test NO factura — Aveonline lo absorbe
+      // como prueba. En producción usa cuenta real → factura según contrato.
+      // Lucy 2026-05-22: bloquegenerarguia="0" significa literalmente
+      // "NO la generes" → Aveonline responde "No se puede generar la guia",
+      // no útil para test e2e.
+      bloquegenerarguia: "1",
       relacion_envios: "1",
       enviarcorreos: "1",
       valorMinimo: 0, // 0 = suma valorDeclarado (correcto para nuestro caso)
@@ -411,6 +493,22 @@ export class AveonlineProvider implements ShippingProvider {
         event: "shipping.aveonline.createshipment.fail",
         orderId: params.orderId,
         msg,
+        // Lucy 2026-05-22: log response completo + body sanitizado para diagnosticar
+        // errores genéricos tipo "No se puede generar la guia".
+        responseFull: data,
+        requestBodySent: {
+          origen: body.origen,
+          destino: body.destino,
+          dsdir: body.dsdir,
+          dsnit: body.dsnit,
+          dsnombrecompleto: body.dsnombrecompleto,
+          idtransportador: body.idtransportador,
+          unidades: body.unidades,
+          productosCount: body.productos.length,
+          valorrecaudo: body.valorrecaudo,
+          contraentrega: body.contraentrega,
+          bloquegenerarguia: body.bloquegenerarguia,
+        },
       });
       throw new Error(`Aveonline createShipment falló: ${msg}`);
     }

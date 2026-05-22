@@ -99,9 +99,7 @@ for (const family of FAMILIES) {
     }
 
     if (variant.price !== null) {
-      console.log(
-        `  · ${variant.name}: price ya seteado (${variant.price}) — skip`,
-      );
+      console.log(`  · ${variant.name}: price ya seteado (${variant.price}) — skip`);
       skipped++;
       continue;
     }
@@ -110,9 +108,7 @@ for (const family of FAMILIES) {
       where: { id: variant.id },
       data: { price: sibling.basePrice },
     });
-    console.log(
-      `  ✓ ${variant.name}: price = ${sibling.basePrice} (de ${sibling.slug})`,
-    );
+    console.log(`  ✓ ${variant.name}: price = ${sibling.basePrice} (de ${sibling.slug})`);
     updated++;
   }
 }

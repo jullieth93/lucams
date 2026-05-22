@@ -1,0 +1,325 @@
+/*
+ * Saga post-PAID — orquesta lo que sucede cuando una Order pasa de
+ * PENDING_PAYMENT a PAID (típicamente disparado por el webhook Wompi):
+ *
+ *   1. transitionOrder(orderId, "PAID") + guardar wompiTransactionId.
+ *   2. Intentar createShipment con el provider activo (Aveonline).
+ *      - Si OK: guardar trackingNumber/labelUrl/trackingUrl + transitionOrder
+ *        a FULFILLING (lista para imprimir/despachar).
+ *      - Si falla: Order queda en PAID; admin puede reintentar manualmente
+ *        desde /admin/pedidos/[id]. No revertimos a PENDING_PAYMENT.
+ *   3. (Futuro P1.5) disparar email order-confirmation al cliente.
+ *
+ * Idempotente: si la Order ya tiene trackingNumber, no re-llama Aveonline.
+ * Si ya está PAID y la transición a PAID se invoca de nuevo, transitionOrder
+ * la trata como no-op (mismo estado).
+ *
+ * Lanza errores sólo para fallas técnicas inesperadas — el caller (webhook)
+ * decide si retornar 200 (ack a Wompi) o 500 (forzar reintento).
+ */
+
+import "server-only";
+import { prisma } from "@/lib/db";
+import { logger } from "@/lib/logger";
+import { getShippingProvider } from "@/features/shipping/provider";
+import { getEffectiveShippingDims } from "@/features/products/shipping-schemas";
+import { getSettingValue } from "@/lib/cms";
+import { transitionOrder, OrderTransitionError } from "./service";
+import type { ShippingAddressInput } from "./schemas";
+
+/**
+ * En modo test (AVEONLINE_ENV=test) la cuenta demo `demointegracion` NO
+ * permite generar guías reales — solo cotizar. Confirmado empíricamente
+ * 2026-05-22: Aveonline responde "No se puede generar la guia" sin detalle.
+ * Para validar el flow e2e en dev/staging, generamos un tracking simulado
+ * en lugar de llamar Aveonline. En production se usa cuenta real y SÍ se
+ * crea guía real.
+ */
+function isTestShippingMode(): boolean {
+  const env = process.env.AVEONLINE_ENV?.trim().split(/\s+/)[0]?.toLowerCase();
+  return env !== "production";
+}
+
+export type ProcessPaidOrderInput = {
+  orderId: string;
+  wompiTransactionId?: string;
+};
+
+export type ProcessPaidOrderResult = {
+  status: "ok" | "already_processed" | "shipment_failed" | "transition_failed";
+  trackingNumber?: string;
+  reason?: string;
+};
+
+/**
+ * Procesa una Order que acaba de ser confirmada como pagada.
+ * Llamado desde /api/webhooks/wompi cuando recibe transaction.updated APPROVED.
+ */
+export async function processPaidOrder(
+  input: ProcessPaidOrderInput,
+): Promise<ProcessPaidOrderResult> {
+  // 1) Cargar Order + items con dims para createShipment.
+  const order = await prisma.order.findFirst({
+    where: { id: input.orderId, deletedAt: null },
+    include: {
+      items: {
+        include: {
+          variant: {
+            select: {
+              id: true,
+              sku: true,
+              attributes: true,
+              product: {
+                select: { slug: true, name: true, physicalSpecs: true },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+  if (!order) {
+    logger.error({ event: "order.saga.paid.not_found", orderId: input.orderId });
+    return { status: "transition_failed", reason: "Order no encontrada" };
+  }
+
+  // 2) Si ya tiene tracking, fue procesada — idempotente.
+  if (order.trackingNumber) {
+    logger.info({
+      event: "order.saga.paid.already_processed",
+      orderId: order.id,
+      orderNumber: order.number,
+      trackingNumber: order.trackingNumber,
+    });
+    return {
+      status: "already_processed",
+      trackingNumber: order.trackingNumber,
+    };
+  }
+
+  // 3) Transicionar PENDING_PAYMENT → PAID (si no estaba ya).
+  if (order.status === "PENDING_PAYMENT") {
+    try {
+      await transitionOrder(order.id, "PAID", {
+        extra: input.wompiTransactionId
+          ? { wompiTransactionId: input.wompiTransactionId }
+          : undefined,
+      });
+      logger.info({
+        event: "order.saga.paid.transitioned",
+        orderId: order.id,
+        orderNumber: order.number,
+        wompiTransactionId: input.wompiTransactionId ?? null,
+      });
+    } catch (err) {
+      if (err instanceof OrderTransitionError) {
+        logger.warn({
+          event: "order.saga.paid.transition_skipped",
+          orderId: order.id,
+          from: err.from,
+          to: err.to,
+        });
+        // No abortamos — la Order puede ya estar en PAID/FULFILLING por
+        // un webhook duplicado de Wompi. Seguimos al createShipment.
+      } else {
+        throw err;
+      }
+    }
+  } else if (order.status !== "PAID" && order.status !== "FULFILLING") {
+    logger.warn({
+      event: "order.saga.paid.invalid_starting_status",
+      orderId: order.id,
+      status: order.status,
+    });
+    return {
+      status: "transition_failed",
+      reason: `Order en estado ${order.status}, no PENDING_PAYMENT`,
+    };
+  }
+
+  // 4) Construir items para Aveonline desde OrderItem con dims efectivos.
+  //    Si algún variant carece de dims (caso edge, legacy data), retornamos
+  //    shipment_failed con detalle — admin reconcilia desde /admin/pedidos/[id].
+  const items: Array<{
+    productSlug: string;
+    qty: number;
+    weightGrams: number;
+    widthCm: number;
+    heightCm: number;
+    depthCm: number;
+    declaredValueCop: number;
+  }> = [];
+  const missingDims: string[] = [];
+  for (const it of order.items) {
+    const dims = getEffectiveShippingDims(it.variant.product.physicalSpecs, it.variant.attributes);
+    if (!dims) {
+      missingDims.push(`${it.variant.product.slug}(${it.variant.id})`);
+      continue;
+    }
+    items.push({
+      productSlug: it.variant.product.slug,
+      qty: it.qty,
+      weightGrams: dims.weightGrams,
+      widthCm: dims.widthCm,
+      heightCm: dims.heightCm,
+      depthCm: dims.depthCm,
+      declaredValueCop: it.unitPrice,
+    });
+  }
+  if (missingDims.length > 0) {
+    logger.error({
+      event: "order.saga.paid.missing_dims",
+      orderId: order.id,
+      orderNumber: order.number,
+      missingVariants: missingDims,
+    });
+    return {
+      status: "shipment_failed",
+      reason: `Variantes sin peso/dimensiones: ${missingDims.join(", ")}. Configurar en /admin/productos.`,
+    };
+  }
+
+  // 5) Pickup desde SiteSettings (ya configurados por Lucy).
+  const [pickupCity, pickupDept, pickupAddress, pickupPhone, pickupContact] = await Promise.all([
+    getSettingValue("PICKUP_CITY", ""),
+    getSettingValue("PICKUP_DEPARTMENT", ""),
+    getSettingValue("PICKUP_ADDRESS", ""),
+    getSettingValue("PICKUP_PHONE", ""),
+    getSettingValue("PICKUP_CONTACT_NAME", ""),
+  ]);
+
+  // 6) Delivery desde Order.shippingAddress (snapshot del checkout).
+  const ship = order.shippingAddress as unknown as ShippingAddressInput;
+
+  // 7) Llamar provider.createShipment. En modo test usamos tracking simulado
+  //    (cuenta demo Aveonline no permite generar guías reales).
+  let shipmentResult: {
+    trackingNumber: string;
+    trackingUrl: string;
+    labelUrl: string;
+    carrier: string;
+    simulated?: boolean;
+  };
+  if (isTestShippingMode()) {
+    const simNumber = `TEST-${order.number}-${Date.now().toString().slice(-6)}`;
+    shipmentResult = {
+      trackingNumber: simNumber,
+      trackingUrl: `https://app.aveonline.co/test-tracking/${simNumber}`,
+      labelUrl: `https://app.aveonline.co/test-label/${simNumber}.pdf`,
+      carrier: order.shippingCarrier ?? "envia",
+      simulated: true,
+    };
+    logger.info({
+      event: "order.saga.paid.shipment_simulated",
+      orderId: order.id,
+      orderNumber: order.number,
+      trackingNumber: simNumber,
+      note: "AVEONLINE_ENV=test → tracking simulado (cuenta demo no genera guías reales)",
+    });
+  } else {
+    try {
+      const provider = await getShippingProvider();
+      shipmentResult = await provider.createShipment({
+        carrier: order.shippingCarrier ?? "envia",
+        // quoteId no se persiste en Order — el provider resuelve idtransportador
+        // por carrier name via resolveCarrierId (cacheado 24h).
+        quoteId: undefined,
+        pickup: {
+          city: pickupCity,
+          department: pickupDept,
+          address: pickupAddress,
+          phone: pickupPhone,
+          contactName: pickupContact,
+        },
+        delivery: {
+          city: ship.city,
+          department: ship.department,
+          address: [ship.addressLine1, ship.addressLine2].filter(Boolean).join(" "),
+          zip: ship.zip,
+          phone: ship.phone,
+          contactName: ship.fullName,
+          documentNumber: ship.documentNumber,
+          email: ship.email,
+        },
+        items,
+        contraentrega: false, // F2.1: COD no implementado todavía
+        orderId: order.id,
+      });
+    } catch (err) {
+      logger.error({
+        event: "order.saga.paid.shipment_failed",
+        orderId: order.id,
+        orderNumber: order.number,
+        err: err instanceof Error ? err.message : String(err),
+      });
+      return {
+        status: "shipment_failed",
+        reason: err instanceof Error ? err.message : "Error creando guía",
+      };
+    }
+  }
+
+  // 8) Guardar tracking + transicionar a FULFILLING.
+  try {
+    await transitionOrder(order.id, "FULFILLING", {
+      extra: {
+        trackingNumber: shipmentResult.trackingNumber,
+        trackingUrl: shipmentResult.trackingUrl,
+        labelUrl: shipmentResult.labelUrl,
+        shippingCarrier: shipmentResult.carrier,
+      },
+    });
+    logger.info({
+      event: "order.saga.paid.shipment_created",
+      orderId: order.id,
+      orderNumber: order.number,
+      trackingNumber: shipmentResult.trackingNumber,
+      carrier: shipmentResult.carrier,
+    });
+    return {
+      status: "ok",
+      trackingNumber: shipmentResult.trackingNumber,
+    };
+  } catch (err) {
+    logger.error({
+      event: "order.saga.paid.transition_to_fulfilling_failed",
+      orderId: order.id,
+      orderNumber: order.number,
+      err: err instanceof Error ? err.message : String(err),
+    });
+    // Tracking ya está guardado en la guía Aveonline pero no en nuestra DB.
+    // Admin debe reconciliar.
+    return {
+      status: "transition_failed",
+      reason: "Guía creada pero no se pudo guardar tracking en DB",
+    };
+  }
+}
+
+/**
+ * Procesa transaction DECLINED/VOIDED/ERROR del webhook Wompi → cancela Order.
+ */
+export async function processFailedPaymentOrder(input: {
+  orderId: string;
+  wompiTransactionId?: string;
+  reason: string;
+}): Promise<void> {
+  try {
+    await transitionOrder(input.orderId, "CANCELLED", {
+      extra: input.wompiTransactionId
+        ? { wompiTransactionId: input.wompiTransactionId }
+        : undefined,
+    });
+    logger.info({
+      event: "order.saga.payment_failed.cancelled",
+      orderId: input.orderId,
+      reason: input.reason,
+    });
+  } catch (err) {
+    logger.warn({
+      event: "order.saga.payment_failed.cancel_skipped",
+      orderId: input.orderId,
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
+}

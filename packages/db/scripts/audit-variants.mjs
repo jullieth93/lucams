@@ -36,9 +36,7 @@ let variantsActivos = 0;
 
 for (const p of products) {
   const activas = p.variants.filter((v) => v.isActive);
-  const conAttrs = p.variants.filter(
-    (v) => v.attributes && Object.keys(v.attributes).length > 0,
-  );
+  const conAttrs = p.variants.filter((v) => v.attributes && Object.keys(v.attributes).length > 0);
 
   variantsTotal += p.variants.length;
   variantsActivos += activas.length;

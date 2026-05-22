@@ -30,7 +30,11 @@ const RENAMES = [
   // Sufijos numéricos residuales (la cantidad/tamaño vive en variants)
   { from: "set-12-fotoimanes-cuadrados", to: "set-fotoimanes-cuadrados", reason: "residuo -12-" },
   { from: "mini-calendarios-x10", to: "mini-calendarios", reason: "cantidad en variant" },
-  { from: "pack-empresarial-mixto-100", to: "pack-empresarial-mixto", reason: "cantidad en variant" },
+  {
+    from: "pack-empresarial-mixto-100",
+    to: "pack-empresarial-mixto",
+    reason: "cantidad en variant",
+  },
   { from: "recuerdos-bautizo-x12", to: "recuerdos-bautizo", reason: "cantidad en variant" },
   { from: "recuerdos-cumpleanos-x20", to: "recuerdos-cumpleanos", reason: "cantidad en variant" },
   { from: "recuerdos-graduacion-x20", to: "recuerdos-graduacion", reason: "cantidad en variant" },
@@ -38,12 +42,28 @@ const RENAMES = [
 
   // Tamaños embebidos en slug (el tamaño vive en variants)
   { from: "cuadro-15x15-con-foto", to: "cuadro-con-foto", reason: "tamaño en variant" },
-  { from: "cuadro-frase-personalizada-20x20", to: "cuadro-con-frase", reason: "tamaño en variant + simplificar" },
-  { from: "imanes-publicitarios-circulares-6cm", to: "imanes-publicitarios-circulares", reason: "tamaño en variant" },
-  { from: "imanes-publicitarios-rectos-7x5", to: "imanes-publicitarios-rectangulares", reason: "tamaño + es-CO" },
+  {
+    from: "cuadro-frase-personalizada-20x20",
+    to: "cuadro-con-frase",
+    reason: "tamaño en variant + simplificar",
+  },
+  {
+    from: "imanes-publicitarios-circulares-6cm",
+    to: "imanes-publicitarios-circulares",
+    reason: "tamaño en variant",
+  },
+  {
+    from: "imanes-publicitarios-rectos-7x5",
+    to: "imanes-publicitarios-rectangulares",
+    reason: "tamaño + es-CO",
+  },
 
   // Anglicismos → español (Colombia)
-  { from: "set-glass-magnets-personalizados", to: "set-imanes-vidrio", reason: "anglicismo → es-CO" },
+  {
+    from: "set-glass-magnets-personalizados",
+    to: "set-imanes-vidrio",
+    reason: "anglicismo → es-CO",
+  },
 ];
 
 console.log("=== cleanup-slugs (2026-05-18) ===\n");

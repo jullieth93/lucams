@@ -75,13 +75,10 @@ async function main() {
   // (no error de red). Si auth está rota, devolvería 401.
   try {
     const fakeId = "00000-0000-FAKE";
-    const res = await fetch(
-      `${SANDBOX_API}/transactions/${encodeURIComponent(fakeId)}`,
-      {
-        headers: { Authorization: `Bearer ${privateKey}` },
-        signal: AbortSignal.timeout(10_000),
-      },
-    );
+    const res = await fetch(`${SANDBOX_API}/transactions/${encodeURIComponent(fakeId)}`, {
+      headers: { Authorization: `Bearer ${privateKey}` },
+      signal: AbortSignal.timeout(10_000),
+    });
     if (res.status === 401) {
       fail("W3 getTransaction auth", "HTTP 401 — WOMPI_PRIVATE_KEY inválida");
     } else if (res.status === 404) {
@@ -134,45 +131,39 @@ async function main() {
   // A2: cotización Bogotá → Medellín
   if (token && idempresa) {
     try {
-      const res = await fetch(
-        `${AVEONLINE_API}/nal/v1.0/generarGuiaTransporteNacional.php`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            tipo: "cotizar2",
-            token,
-            idempresa,
-            origen: "BOGOTA D.C.(CUNDINAMARCA)",
-            destino: "MEDELLIN(ANTIOQUIA)",
-            productos: [
-              {
-                alto: 5,
-                ancho: 5,
-                largo: 5,
-                peso: 0.5,
-                unidades: 1,
-                nombre: "test-product",
-                valorDeclarado: 50000,
-              },
-            ],
-            contraentrega: 0,
-            idasumecosto: 0,
-            plugin: "lucamsshop-cert",
-          }),
-          signal: AbortSignal.timeout(20_000),
-        },
-      );
+      const res = await fetch(`${AVEONLINE_API}/nal/v1.0/generarGuiaTransporteNacional.php`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tipo: "cotizar2",
+          token,
+          idempresa,
+          origen: "BOGOTA D.C.(CUNDINAMARCA)",
+          destino: "MEDELLIN(ANTIOQUIA)",
+          productos: [
+            {
+              alto: 5,
+              ancho: 5,
+              largo: 5,
+              peso: 0.5,
+              unidades: 1,
+              nombre: "test-product",
+              valorDeclarado: 50000,
+            },
+          ],
+          contraentrega: 0,
+          idasumecosto: 0,
+          plugin: "lucamsshop-cert",
+        }),
+        signal: AbortSignal.timeout(20_000),
+      });
       if (!res.ok) {
         fail("A2 cotización", `HTTP ${res.status}`);
       } else {
         const data = await res.json();
         const cot = data?.cotizaciones ?? [];
         if (cot.length === 0) {
-          fail(
-            "A2 cotización vacía",
-            `respuesta: ${JSON.stringify(data).slice(0, 200)}`,
-          );
+          fail("A2 cotización vacía", `respuesta: ${JSON.stringify(data).slice(0, 200)}`);
         } else {
           const transportadoras = cot
             .slice(0, 3)

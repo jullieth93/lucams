@@ -72,7 +72,7 @@ async function main() {
   let unknownKind = 0;
 
   for (const p of products) {
-    const existing = (p.physicalSpecs && typeof p.physicalSpecs === "object" ? p.physicalSpecs : {});
+    const existing = p.physicalSpecs && typeof p.physicalSpecs === "object" ? p.physicalSpecs : {};
     if (hasCompleteDims(existing)) {
       alreadyOk++;
       continue;

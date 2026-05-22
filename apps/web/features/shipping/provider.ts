@@ -19,6 +19,10 @@ export type ShippingAddress = {
   zip?: string;
   phone: string;
   contactName: string;
+  /** Documento (CC/NIT/etc) — Aveonline lo exige ≥6 dígitos numéricos. */
+  documentNumber?: string;
+  /** Email del destinatario (Aveonline lo notifica si presente). */
+  email?: string;
 };
 
 export type ShipmentItem = {
