@@ -1,19 +1,19 @@
 /*
  * /mi-cuenta/pedidos — Listado de pedidos del customer logueado.
  *
- * Hoy es PLACEHOLDER: el checkout productivo entra en Fase 4. Si el
- * customer tiene 0 órdenes (caso día 1), muestra empty state kawaii.
- * Cuando llegue Fase 4, este page se llena con la tabla real de orders.
+ * Muestra tabla con estado, total y fecha. Click → /mi-cuenta/pedidos/[number]
+ * con detalle del pedido (tracking, etiqueta, items).
  */
 
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Package, ShoppingBag } from "lucide-react";
+import { ChevronRight, Package, ShoppingBag } from "lucide-react";
 import { LucamsLogo } from "@/components/lucams-logo";
 import { CmsText } from "@/components/cms/cms-text";
 import { prisma } from "@/lib/db";
 import { getCurrentCustomer } from "@/lib/auth";
+import { formatCOP } from "@/lib/format";
 
 export const metadata: Metadata = {
   title: "Mis pedidos",
@@ -21,6 +21,28 @@ export const metadata: Metadata = {
 };
 
 export const dynamic = "force-dynamic";
+
+const STATUS_LABEL: Record<string, string> = {
+  PENDING_PAYMENT: "Esperando pago",
+  PAID: "Pagado",
+  FULFILLING: "En preparación",
+  SHIPPED: "Enviado",
+  DELIVERED: "Entregado",
+  CANCELLED: "Cancelado",
+  REFUNDED: "Reembolsado",
+  DRAFT: "Borrador",
+};
+
+const STATUS_BADGE_CLASS: Record<string, string> = {
+  PENDING_PAYMENT: "bg-amber-100 text-amber-900",
+  PAID: "bg-brand-purple/15 text-brand-purple-dark",
+  FULFILLING: "bg-brand-purple/15 text-brand-purple-dark",
+  SHIPPED: "bg-brand-purple/15 text-brand-purple-dark",
+  DELIVERED: "bg-emerald-100 text-emerald-900",
+  CANCELLED: "bg-rose-100 text-rose-900",
+  REFUNDED: "bg-rose-100 text-rose-900",
+  DRAFT: "bg-slate-100 text-slate-700",
+};
 
 export default async function MisPedidosPage() {
   const session = await getCurrentCustomer();
@@ -35,14 +57,23 @@ export default async function MisPedidosPage() {
       number: true,
       status: true,
       total: true,
+      shippingCarrier: true,
+      trackingNumber: true,
       createdAt: true,
+      _count: { select: { items: true } },
     },
+  });
+
+  const dateFmt = new Intl.DateTimeFormat("es-CO", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
   });
 
   return (
     <div className="bg-brand-cream flex min-h-screen flex-col">
       <main className="flex-1 px-6 py-10 sm:px-10">
-        <div className="mx-auto max-w-3xl">
+        <div className="mx-auto max-w-4xl">
           <header className="mb-8">
             <Link
               href="/mi-cuenta"
@@ -53,6 +84,11 @@ export default async function MisPedidosPage() {
             <h1 className="font-display text-brand-purple-dark text-3xl sm:text-4xl">
               <CmsText blockKey="account.orders.heading" fallback="Mis pedidos" />
             </h1>
+            {orders.length > 0 && (
+              <p className="text-brand-purple-dark/65 mt-1 text-sm">
+                {orders.length} {orders.length === 1 ? "pedido" : "pedidos"} en tu historial
+              </p>
+            )}
           </header>
 
           {orders.length === 0 ? (
@@ -79,24 +115,44 @@ export default async function MisPedidosPage() {
               </Link>
             </div>
           ) : (
-            <div className="border-brand-purple/15 overflow-hidden rounded-2xl border bg-white">
-              <ul className="divide-y">
+            <div className="border-brand-purple/15 overflow-hidden rounded-2xl border bg-white shadow-sm">
+              <ul className="divide-brand-purple/10 divide-y">
                 {orders.map((o) => (
-                  <li key={o.id} className="flex items-center gap-3 px-5 py-3">
-                    <Package className="text-brand-purple h-4 w-4 flex-shrink-0" />
-                    <div className="flex-1 text-sm">
-                      <p className="text-brand-purple-dark font-semibold">Pedido #{o.number}</p>
-                      <p className="text-brand-purple-dark/60 text-xs">
-                        {o.createdAt.toLocaleDateString("es-CO", {
-                          day: "2-digit",
-                          month: "short",
-                          year: "numeric",
-                        })}
-                      </p>
-                    </div>
-                    <span className="bg-brand-purple/10 text-brand-purple-dark rounded-full px-2 py-0.5 text-xs font-medium">
-                      {o.status}
-                    </span>
+                  <li key={o.id}>
+                    <Link
+                      href={`/mi-cuenta/pedidos/${o.number}`}
+                      className="hover:bg-brand-purple/[0.02] flex items-center gap-4 px-5 py-4 transition-colors"
+                    >
+                      <div className="bg-brand-purple/10 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full">
+                        <Package className="text-brand-purple h-5 w-5" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-brand-purple-dark font-mono text-sm font-semibold">
+                            {o.number}
+                          </span>
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${STATUS_BADGE_CLASS[o.status] ?? "bg-slate-100 text-slate-700"}`}
+                          >
+                            {STATUS_LABEL[o.status] ?? o.status}
+                          </span>
+                        </div>
+                        <div className="text-brand-purple-dark/60 mt-0.5 text-xs">
+                          {dateFmt.format(o.createdAt)} · {o._count.items}{" "}
+                          {o._count.items === 1 ? "producto" : "productos"}
+                          {o.trackingNumber && (
+                            <>
+                              {" "}
+                              · guía <span className="font-mono">{o.trackingNumber}</span>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                      <div className="text-brand-purple-dark text-right text-sm font-bold tabular-nums">
+                        {formatCOP(o.total)}
+                      </div>
+                      <ChevronRight className="text-brand-purple-dark/40 h-4 w-4 flex-shrink-0" />
+                    </Link>
                   </li>
                 ))}
               </ul>

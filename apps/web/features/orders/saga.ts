@@ -26,7 +26,12 @@ import { getEffectiveShippingDims } from "@/features/products/shipping-schemas";
 import { getSettingValue } from "@/lib/cms";
 import { transitionOrder, OrderTransitionError } from "./service";
 import type { ShippingAddressInput } from "./schemas";
-import { sendOrderConfirmation, sendOrderShipped, sendOrderDelivered } from "./emails";
+import {
+  sendOrderConfirmation,
+  sendOrderShipped,
+  sendOrderDelivered,
+  sendOrderPaymentFailed,
+} from "./emails";
 
 /**
  * En modo test (AVEONLINE_ENV=test) la cuenta demo `demointegracion` NO
@@ -403,6 +408,8 @@ export async function processFailedPaymentOrder(input: {
       orderId: input.orderId,
       reason: input.reason,
     });
+    // Email "pago rechazado" — fire-and-forget.
+    await sendOrderPaymentFailed(input.orderId, input.reason);
   } catch (err) {
     logger.warn({
       event: "order.saga.payment_failed.cancel_skipped",

@@ -28,6 +28,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "https://lucamsshop.co"),
   title: {
     default: "Lucams_shop — Tus recuerdos en imán",
     template: "%s · Lucams_shop",
@@ -42,6 +43,29 @@ export const metadata: Metadata = {
     email: false,
     address: false,
     telephone: false,
+  },
+  // OpenGraph para previews al compartir en WhatsApp, Instagram, Facebook.
+  openGraph: {
+    type: "website",
+    locale: "es_CO",
+    siteName: "Lucams_shop",
+    title: "Lucams_shop — Tus recuerdos en imán",
+    description:
+      "Imanes magnéticos personalizados hechos en Colombia. Diseñá el tuyo en vivo o elegí entre nuestros packs kawaii.",
+    images: [
+      {
+        url: "/og-image.png",
+        width: 1200,
+        height: 630,
+        alt: "Lucams_shop — Tus recuerdos en imán",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Lucams_shop — Tus recuerdos en imán",
+    description: "Imanes magnéticos personalizados hechos en Colombia.",
+    images: ["/og-image.png"],
   },
 };
 
