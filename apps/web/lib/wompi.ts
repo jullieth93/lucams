@@ -99,9 +99,25 @@ export function buildCheckoutUrl(input: {
     "amount-in-cents": String(input.amountInCents),
     reference: input.reference,
     "signature:integrity": signature,
-    "redirect-url": input.redirectUrl,
     "customer-data:email": input.customerEmail,
   });
+
+  // CloudFront WAF de Wompi bloquea (403) redirect-url que apunta a
+  // localhost/127.0.0.1 (open-redirect protection). Verificado 2026-05-21
+  // con probe progresivo: ese param dispara el block. Solución: omitirlo en
+  // dev (Wompi muestra su página propia de "gracias") y solo enviarlo en
+  // producción con dominio público real.
+  const isLocalRedirect = /\b(localhost|127\.0\.0\.1|0\.0\.0\.0)\b/i.test(input.redirectUrl);
+  if (!isLocalRedirect) {
+    params.set("redirect-url", input.redirectUrl);
+  } else {
+    logger.warn({
+      event: "wompi.checkout_url.redirect_omitted",
+      reason: "localhost-in-redirect-url (Wompi WAF would 403)",
+      redirectUrl: input.redirectUrl,
+    });
+  }
+
   if (input.taxes) {
     input.taxes.forEach((t) => {
       params.set(`tax-in-cents:${t.type.toLowerCase()}`, String(t.amountInCents));

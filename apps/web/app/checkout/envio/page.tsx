@@ -12,7 +12,7 @@ import Link from "next/link";
 import { Truck, AlertCircle } from "lucide-react";
 import { CheckoutStepper } from "../_components/stepper";
 import { OrderSummary } from "../_components/order-summary";
-import { QuoteList } from "./quote-list";
+import { EnvioStep } from "./envio-step";
 import { CheckoutError, loadCheckoutContext, quoteShipping } from "@/features/checkout/service";
 
 export const metadata: Metadata = {
@@ -59,40 +59,47 @@ export default async function CheckoutEnvioPage() {
       <CheckoutStepper current={2} />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <div className="lg:col-span-2">
-          <section className="border-brand-purple/10 rounded-2xl border bg-white p-5 shadow-sm sm:p-6">
-            <h2 className="text-brand-purple-dark font-display mb-1 flex items-center gap-2 text-lg font-bold">
-              <Truck className="h-5 w-5" />
-              Elegí cómo te lo enviamos
-            </h2>
-            <p className="text-brand-purple-dark/65 mb-5 text-sm">
-              Cotizamos con Aveonline para{" "}
-              <strong>
-                {ctx.state.address.city}, {ctx.state.address.department}
-              </strong>
-              .
-            </p>
-
-            {quoteErrorMessage ? (
-              <QuoteError message={quoteErrorMessage} />
-            ) : !quotes || quotes.length === 0 ? (
-              <QuoteError message="No encontramos transportadoras que cubran esa ciudad." />
-            ) : (
-              <QuoteList
-                quotes={quotes}
-                preselectedQuoteId={ctx.state.shippingSelection?.quoteId}
+        {quoteErrorMessage || !quotes || quotes.length === 0 ? (
+          <>
+            <div className="lg:col-span-2">
+              <section className="border-brand-purple/10 rounded-2xl border bg-white p-5 shadow-sm sm:p-6">
+                <h2 className="text-brand-purple-dark font-display mb-1 flex items-center gap-2 text-lg font-bold">
+                  <Truck className="h-5 w-5" />
+                  Elegí cómo te lo enviamos
+                </h2>
+                <p className="text-brand-purple-dark/65 mb-5 text-sm">
+                  Cotizamos con Aveonline para{" "}
+                  <strong>
+                    {ctx.state.address.city}, {ctx.state.address.department}
+                  </strong>
+                  .
+                </p>
+                <QuoteError
+                  message={
+                    quoteErrorMessage ?? "No encontramos transportadoras que cubran esa ciudad."
+                  }
+                />
+              </section>
+            </div>
+            <div className="lg:col-span-1">
+              <OrderSummary
+                cart={ctx.cart}
+                shippingCost={ctx.state.shippingSelection?.fleteCop ?? null}
+                shippingLabel={ctx.state.shippingSelection?.carrierName}
               />
-            )}
-          </section>
-        </div>
-
-        <div className="lg:col-span-1">
-          <OrderSummary
+            </div>
+          </>
+        ) : (
+          // EnvioStep es client component que comparte state entre QuoteList
+          // y OrderSummary (Lucy 2026-05-21 — sidebar reactivo al cambio de transportadora).
+          <EnvioStep
             cart={ctx.cart}
-            shippingCost={ctx.state.shippingSelection?.fleteCop ?? null}
-            shippingLabel={ctx.state.shippingSelection?.carrierName}
+            quotes={quotes}
+            preselectedQuoteId={ctx.state.shippingSelection?.quoteId}
+            destinationCity={ctx.state.address.city}
+            destinationDepartment={ctx.state.address.department}
           />
-        </div>
+        )}
       </div>
     </div>
   );

@@ -10,13 +10,19 @@ import type { ShippingSelectionInput } from "@/features/checkout/schemas";
 export function QuoteList({
   quotes,
   preselectedQuoteId,
+  onSelectionChange,
 }: {
   quotes: ShippingSelectionInput[];
   preselectedQuoteId?: string;
+  onSelectionChange?: (quoteId: string) => void;
 }) {
   const [selected, setSelected] = useState<string | null>(
     preselectedQuoteId ?? quotes[0]?.quoteId ?? null,
   );
+  const handleSelect = (quoteId: string) => {
+    setSelected(quoteId);
+    onSelectionChange?.(quoteId);
+  };
 
   const chosen = quotes.find((q) => q.quoteId === selected);
 
@@ -40,7 +46,7 @@ export function QuoteList({
                   name="quoteId-radio"
                   value={q.quoteId}
                   checked={isSelected}
-                  onChange={() => setSelected(q.quoteId)}
+                  onChange={() => handleSelect(q.quoteId)}
                   className="sr-only"
                   aria-checked={isSelected}
                 />
