@@ -22,7 +22,6 @@ import {
   AdminEmpty,
 } from "@/components/admin-page";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { getCurrentAdmin } from "@/lib/auth";
 import { listAveonlineWebhooks } from "@/features/shipping/aveonline";
 import { WebhookRegistrationForm } from "./webhook-form";
