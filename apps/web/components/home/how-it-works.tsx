@@ -31,7 +31,7 @@ const STEPS = [
     titleFallback: "Llega a tu nevera",
     descKey: "home.howitworks.step3.description",
     descFallback:
-      "Lo fabricamos a mano y te llega en 5-7 días hábiles. Pago contraentrega disponible en 1.100+ destinos.",
+      "Lo fabricamos a mano y te llega en 5-7 días hábiles. Pago en línea seguro con Wompi (tarjeta, PSE, Nequi, Bancolombia).",
   },
 ];
 

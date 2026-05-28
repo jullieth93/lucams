@@ -76,7 +76,7 @@ export async function HomeHero() {
               <CmsText blockKey="home.hero.chip-studio" fallback="Estudio en vivo (pronto)" />
             </span>
             <span className="bg-brand-coral/20 text-brand-purple-dark rounded-full px-3 py-1">
-              <CmsText blockKey="home.hero.chip-cod" fallback="Pago contraentrega" />
+              <CmsText blockKey="home.hero.chip-cod" fallback="Pago en línea seguro" />
             </span>
             <span className="bg-brand-yellow/30 text-brand-purple-dark rounded-full px-3 py-1">
               <CmsText blockKey="home.hero.chip-eta" fallback="5-7 días hábiles" />

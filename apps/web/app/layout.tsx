@@ -34,7 +34,7 @@ export const metadata: Metadata = {
     template: "%s · Lucams_shop",
   },
   description:
-    "E-commerce colombiano de imanes magnéticos personalizados. Estudio de personalización en vivo, pago contraentrega y envío a 1.100+ destinos.",
+    "E-commerce colombiano de imanes magnéticos personalizados. Estudio de personalización en vivo, pago en línea seguro y envío a 1.100+ destinos.",
   applicationName: "Lucams_shop",
   authors: [{ name: "Lucams_shop" }],
   generator: "Next.js",

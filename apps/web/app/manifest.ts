@@ -16,7 +16,7 @@ export default function manifest(): MetadataRoute.Manifest {
     name: "Lucams_shop — Tus recuerdos en imán",
     short_name: "Lucams_shop",
     description:
-      "E-commerce colombiano de imanes magnéticos personalizados. Estudio de personalización, pago contraentrega y envío a 1.100+ destinos.",
+      "E-commerce colombiano de imanes magnéticos personalizados. Estudio de personalización, pago en línea seguro y envío a 1.100+ destinos.",
     start_url: "/",
     display: "standalone",
     background_color: "#FFF8F0",

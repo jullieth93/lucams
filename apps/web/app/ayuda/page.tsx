@@ -50,7 +50,7 @@ const FALLBACK_FAQS: { slug: string; question: string; answer: string }[] = [
     slug: "metodos-pago",
     question: "¿Qué métodos de pago aceptan?",
     answer:
-      "Tarjetas de crédito y débito, PSE (cuentas bancarias), Nequi, Bancolombia transferencia, Daviplata y **pago contraentrega** (efectivo al recibir el pedido).",
+      "Tarjetas de crédito y débito, PSE (cuentas bancarias), Nequi, Bancolombia transferencia y Daviplata. Todos los pagos los procesa Wompi de forma segura (pasarela certificada). _Próximamente pago contraentrega._",
   },
   {
     slug: "envios-cobertura",
