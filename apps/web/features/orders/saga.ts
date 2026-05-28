@@ -34,17 +34,17 @@ import {
 } from "./emails";
 
 /**
- * En modo test (AVEONLINE_ENV=test) la cuenta demo `demointegracion` NO
- * permite generar guías reales — solo cotizar. Confirmado empíricamente
- * 2026-05-22: Aveonline responde "No se puede generar la guia" sin detalle.
- * Para validar el flow e2e en dev/staging, generamos un tracking simulado
- * en lugar de llamar Aveonline. En production se usa cuenta real y SÍ se
- * crea guía real.
+ * 2026-05-22 — actualizado: descubrimos que la cuenta demo `demointegracion`
+ * SÍ permite generar guías cuando el payload incluye `idagente` válido
+ * (la cuenta demo tiene agente id=20362). El error "No se puede generar la guia"
+ * que veíamos antes era por faltar idagente, NO por restricción de la cuenta.
+ *
+ * Por eso el código de la saga ahora SIEMPRE llama Aveonline (no genera tracking
+ * simulado interno). El switch AVEONLINE_ENV=test|production solo determina
+ * qué credenciales usa (demo vs reales). AVEONLINE_GENERATE_REAL=true|false
+ * controla si la guía se factura (default false = simulación sin factura,
+ * pero devuelve numguia + PDF para validar UI end-to-end).
  */
-function isTestShippingMode(): boolean {
-  const env = process.env.AVEONLINE_ENV?.trim().split(/\s+/)[0]?.toLowerCase();
-  return env !== "production";
-}
 
 export type ProcessPaidOrderInput = {
   orderId: string;
@@ -199,72 +199,55 @@ export async function processPaidOrder(
   // 6) Delivery desde Order.shippingAddress (snapshot del checkout).
   const ship = order.shippingAddress as unknown as ShippingAddressInput;
 
-  // 7) Llamar provider.createShipment. En modo test usamos tracking simulado
-  //    (cuenta demo Aveonline no permite generar guías reales).
+  // 7) Llamar provider.createShipment. Siempre real ahora — el provider
+  //    Aveonline maneja credenciales según AVEONLINE_ENV y flag de facturación
+  //    según AVEONLINE_GENERATE_REAL. Default seguro: simulación documentada
+  //    de Aveonline (devuelve numguia + PDF pero no factura).
   let shipmentResult: {
     trackingNumber: string;
     trackingUrl: string;
     labelUrl: string;
     carrier: string;
-    simulated?: boolean;
   };
-  if (isTestShippingMode()) {
-    const simNumber = `TEST-${order.number}-${Date.now().toString().slice(-6)}`;
-    shipmentResult = {
-      trackingNumber: simNumber,
-      trackingUrl: `https://app.aveonline.co/test-tracking/${simNumber}`,
-      labelUrl: `https://app.aveonline.co/test-label/${simNumber}.pdf`,
+  try {
+    const provider = await getShippingProvider();
+    shipmentResult = await provider.createShipment({
       carrier: order.shippingCarrier ?? "envia",
-      simulated: true,
-    };
-    logger.info({
-      event: "order.saga.paid.shipment_simulated",
+      // quoteId no se persiste en Order — provider resuelve idtransportador
+      // por carrier name via resolveCarrierId (cacheado 24h).
+      quoteId: undefined,
+      pickup: {
+        city: pickupCity,
+        department: pickupDept,
+        address: pickupAddress,
+        phone: pickupPhone,
+        contactName: pickupContact,
+      },
+      delivery: {
+        city: ship.city,
+        department: ship.department,
+        address: [ship.addressLine1, ship.addressLine2].filter(Boolean).join(" "),
+        zip: ship.zip,
+        phone: ship.phone,
+        contactName: ship.fullName,
+        documentNumber: ship.documentNumber,
+        email: ship.email,
+      },
+      items,
+      contraentrega: false, // F2.1: COD no implementado todavía
+      orderId: order.id,
+    });
+  } catch (err) {
+    logger.error({
+      event: "order.saga.paid.shipment_failed",
       orderId: order.id,
       orderNumber: order.number,
-      trackingNumber: simNumber,
-      note: "AVEONLINE_ENV=test → tracking simulado (cuenta demo no genera guías reales)",
+      err: err instanceof Error ? err.message : String(err),
     });
-  } else {
-    try {
-      const provider = await getShippingProvider();
-      shipmentResult = await provider.createShipment({
-        carrier: order.shippingCarrier ?? "envia",
-        // quoteId no se persiste en Order — el provider resuelve idtransportador
-        // por carrier name via resolveCarrierId (cacheado 24h).
-        quoteId: undefined,
-        pickup: {
-          city: pickupCity,
-          department: pickupDept,
-          address: pickupAddress,
-          phone: pickupPhone,
-          contactName: pickupContact,
-        },
-        delivery: {
-          city: ship.city,
-          department: ship.department,
-          address: [ship.addressLine1, ship.addressLine2].filter(Boolean).join(" "),
-          zip: ship.zip,
-          phone: ship.phone,
-          contactName: ship.fullName,
-          documentNumber: ship.documentNumber,
-          email: ship.email,
-        },
-        items,
-        contraentrega: false, // F2.1: COD no implementado todavía
-        orderId: order.id,
-      });
-    } catch (err) {
-      logger.error({
-        event: "order.saga.paid.shipment_failed",
-        orderId: order.id,
-        orderNumber: order.number,
-        err: err instanceof Error ? err.message : String(err),
-      });
-      return {
-        status: "shipment_failed",
-        reason: err instanceof Error ? err.message : "Error creando guía",
-      };
-    }
+    return {
+      status: "shipment_failed",
+      reason: err instanceof Error ? err.message : "Error creando guía",
+    };
   }
 
   // 8) Guardar tracking + transicionar a FULFILLING.

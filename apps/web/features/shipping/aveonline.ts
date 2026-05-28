@@ -97,9 +97,72 @@ function formatAveonlineCity(city: string, department: string): string {
 
 type CachedToken = { token: string; idempresa: number; expiresAt: number };
 type CachedCarriers = { items: Array<{ id: number; text: string }>; expiresAt: number };
+type CachedAgents = {
+  items: Array<{ id: number; nombre: string; direccion: string; principal: boolean }>;
+  expiresAt: number;
+};
 
 let tokenCache: CachedToken | null = null;
 let carriersCache: CachedCarriers | null = null;
+let agentsCache: CachedAgents | null = null;
+
+/**
+ * Lista agentes (puntos de despacho) habilitados en la cuenta + cachea 24h.
+ * Aveonline REQUIERE idagente válido en generarGuia2 — sin él responde
+ * "No se puede generar la guia" (verificado 2026-05-22).
+ *
+ * Doc: https://integraciones.aveonline.co/docs/nacional/agentes/crearUsuarioAgente/
+ */
+async function listEnabledAgents() {
+  const now = Date.now();
+  if (agentsCache && agentsCache.expiresAt > now) return agentsCache.items;
+  const { token, idempresa } = await getAuthToken();
+  const res = await fetch(`${BASE_URL}/comunes/v1.0/agentes.php`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tipo: "listarAgentesPorEmpresaAuth", token, idempresa }),
+  });
+  if (!res.ok) throw new Error(`Aveonline listarAgentes fail HTTP ${res.status}`);
+  const data = (await res.json()) as {
+    status?: string;
+    agentes?: Array<{
+      id?: number;
+      nombre?: string;
+      direccion?: string;
+      principal?: string;
+    }>;
+  } | null;
+  const items = (data?.agentes ?? []).map((a) => ({
+    id: Number(a.id),
+    nombre: String(a.nombre ?? ""),
+    direccion: String(a.direccion ?? ""),
+    principal: (a.principal ?? "").toUpperCase() === "SI",
+  }));
+  agentsCache = { items, expiresAt: now + 24 * 60 * 60_000 };
+  logger.info({
+    event: "shipping.aveonline.agents_refresh",
+    count: items.length,
+    principal: items.find((a) => a.principal)?.nombre ?? null,
+  });
+  return items;
+}
+
+/**
+ * Resuelve el idagente a usar. Prioriza el agente con `principal: SI`,
+ * sino usa el primero de la lista. Lanza error si la cuenta no tiene
+ * ninguno (admin debe crear uno en dashboard Aveonline).
+ */
+async function resolveDefaultAgentId(): Promise<string> {
+  const agents = await listEnabledAgents();
+  if (agents.length === 0) {
+    throw new Error(
+      "Aveonline: la cuenta NO tiene agentes (puntos de despacho) registrados. " +
+        "Creá uno en https://app.aveonline.co/ → menú Agentes/Puntos de despacho.",
+    );
+  }
+  const principal = agents.find((a) => a.principal);
+  return String((principal ?? agents[0]).id);
+}
 
 /**
  * Lista transportadoras habilitadas para la cuenta + cachea 24h.
@@ -353,6 +416,10 @@ export class AveonlineProvider implements ShippingProvider {
     // funcione aunque el quoteId no se haya persistido en Order.
     const idtransportador = params.quoteId ?? (await resolveCarrierId(params.carrier));
 
+    // Resolver idagente (REQUERIDO por Aveonline — sin él responde
+    // "No se puede generar la guia"). Cacheado 24h.
+    const idagente = await resolveDefaultAgentId();
+
     // Business data se lee de SiteSettings (admin/contenido/configuracion).
     // params.pickup tiene precedencia si caller los pasa explícitos (útil para
     // testing o overrides). Si vienen vacíos, fallback a settings.
@@ -411,6 +478,7 @@ export class AveonlineProvider implements ShippingProvider {
       // Origen (remitente = nosotros) — datos de SiteSettings
       origen: formatAveonlineCity(pickupCity, pickupDept),
       dsdirre: pickupAddress,
+      dsbarrioo: "", // opcional Aveonline; usaríamos un SiteSetting PICKUP_BARRIO si llega
       dsnitre: settingNit,
       dsnombre: pickupContact,
       dstelre: pickupPhone,
@@ -424,6 +492,7 @@ export class AveonlineProvider implements ShippingProvider {
       // - dscorreop con el email real del cliente (Aveonline le notifica).
       destino: formatAveonlineCity(params.delivery.city, params.delivery.department),
       dsdir: params.delivery.address,
+      dsbarrio: "", // opcional Aveonline
       IdTipoEntrega: "1", // 1=domicilio, 2=oficina
       dsnit: (params.delivery.documentNumber ?? "").replace(/\D/g, "").slice(0, 15) || "000001",
       dsnombrecompleto: params.delivery.contactName,
@@ -431,25 +500,27 @@ export class AveonlineProvider implements ShippingProvider {
       dscelular: params.delivery.phone,
       dscorreop: params.delivery.email ?? "",
       idtransportador, // del quoteId (flow inmediato) o resuelto via resolveCarrierId
+      idagente, // resuelto via resolveDefaultAgentId (cacheado 24h)
       unidades: params.items.reduce((acc, i) => acc + i.qty, 0),
       productos,
       dscontenido: params.items
         .map((i) => i.productSlug)
         .join(", ")
         .slice(0, 80),
-      idasumecosto: 0,
+      dscom: "",
+      idasumecosto: 1, // tenant asume costo flete
       contraentrega: params.contraentrega ? 1 : 0,
       valorrecaudo: valorRecaudo,
-      // Siempre "1" (genera guía real). La cuenta demo (`demointegracion`,
-      // idempresa 15289) en modo test NO factura — Aveonline lo absorbe
-      // como prueba. En producción usa cuenta real → factura según contrato.
-      // Lucy 2026-05-22: bloquegenerarguia="0" significa literalmente
-      // "NO la generes" → Aveonline responde "No se puede generar la guia",
-      // no útil para test e2e.
-      bloquegenerarguia: "1",
+      // Lucy 2026-05-22 — flag controlado por env AVEONLINE_GENERATE_REAL.
+      // "0" (default seguro): Aveonline simula sin facturar pero igual
+      //     devuelve numguia + PDF (validado con cuenta demo).
+      // "1": genera guía REAL facturable. Solo poner cuando cuenta productiva
+      //     esté lista y Lucy confirme explícito.
+      bloquegenerarguia: process.env.AVEONLINE_GENERATE_REAL === "true" ? "1" : "0",
       relacion_envios: "1",
       enviarcorreos: "1",
-      valorMinimo: 0, // 0 = suma valorDeclarado (correcto para nuestro caso)
+      cartaporte: "0",
+      valorMinimo: 1, // 1 = aplicar valoración mínima (recomendado por dossier)
       dsvalor_pedido: String(totalDeclarado),
       dsreferencia: params.orderId, // tracking interno
       plugin: "lucamsshop",

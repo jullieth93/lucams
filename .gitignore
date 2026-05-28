@@ -127,3 +127,5 @@ gitleaks-report.json
 .env.vault
 .envrc
 .direnv/
+
+lucams_shop.code-workspace
