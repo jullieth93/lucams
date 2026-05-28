@@ -12,6 +12,7 @@ export type OrderShippedData = {
   trackingNumber: string;
   trackingUrl: string | null;
   estimatedDays: number | null;
+  publicTrackingToken: string | null;
 };
 
 export async function orderShippedEmail(data: OrderShippedData) {
@@ -32,6 +33,12 @@ export async function orderShippedEmail(data: OrderShippedData) {
 ${etaText}
 
 ${trackingBlock}
+
+${
+  data.publicTrackingToken
+    ? `<p style="margin-top:18px;font-size:14px;">${ctaButton(`${siteUrl}/pedido/${data.publicTrackingToken}`, "Ver mi pedido completo →")}</p>`
+    : ""
+}
 
 <p style="font-size:13px;color:#3D2E5C;opacity:0.65;margin-top:18px;">Si nadie atiende cuando lleguen, la transportadora intentará entregar 2 veces más antes de devolver el paquete.</p>
 `;

@@ -496,6 +496,10 @@ model Order {
   dianStatus            DianStatus    @default(NOT_REQUIRED)
   dianCufe              String? // CUFE devuelto por la DIAN
   dianXmlUrl            String? // URL del XML firmado
+  // Token único para vista pública /pedido/[token] — guest checkout sin
+  // cuenta accede a su pedido sin login con este link (Lucy 2026-05-22).
+  // 32 chars hex generados con crypto.randomBytes(16).toString("hex").
+  publicAccessToken     String?       @unique
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt

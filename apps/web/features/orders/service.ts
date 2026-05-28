@@ -17,6 +17,7 @@
  */
 
 import "server-only";
+import crypto from "node:crypto";
 import { prisma, Prisma } from "@/lib/db";
 import { canTransition, type ShippingAddressInput } from "./schemas";
 
@@ -151,6 +152,9 @@ export async function createOrderFromCart(
 
     const number = await generateOrderNumber(tx);
 
+    // Token público para vista guest /pedido/<token> sin login.
+    const publicAccessToken = crypto.randomBytes(16).toString("hex");
+
     const order = await tx.order.create({
       data: {
         number,
@@ -166,6 +170,7 @@ export async function createOrderFromCart(
         currency: cart.currency,
         status: "PENDING_PAYMENT",
         paymentMethod: input.paymentMethod,
+        publicAccessToken,
         shippingCarrier: input.shippingSelection.carrier,
         billingDocumentType: input.billing.documentType,
         billingDocumentNumber: input.billing.documentNumber,

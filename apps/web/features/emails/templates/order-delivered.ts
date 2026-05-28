@@ -9,6 +9,7 @@ import { getSettingValue } from "@/lib/cms";
 export type OrderDeliveredData = {
   orderNumber: string;
   customerName: string;
+  publicTrackingToken: string | null;
 };
 
 export async function orderDeliveredEmail(data: OrderDeliveredData) {
@@ -22,7 +23,12 @@ export async function orderDeliveredEmail(data: OrderDeliveredData) {
 <p style="margin-top:18px;font-size:15px;"><strong>¿Nos contás cómo te fue?</strong></p>
 <p>Una reseña nos ayuda muchísimo y nos toma a vos solo 30 segundos.</p>
 
-${ctaButton(`${siteUrl}/mi-cuenta/pedidos`, "Dejar una reseña ⭐")}
+${ctaButton(
+  data.publicTrackingToken
+    ? `${siteUrl}/pedido/${data.publicTrackingToken}`
+    : `${siteUrl}/mi-cuenta/pedidos`,
+  "Dejar una reseña ⭐",
+)}
 
 <p style="font-size:13px;color:#3D2E5C;opacity:0.65;margin-top:18px;">¿Algún inconveniente con el pedido? Respondé este email o escríbenos por WhatsApp. Tenemos 5 días hábiles de retracto Ley 1480.</p>
 `;

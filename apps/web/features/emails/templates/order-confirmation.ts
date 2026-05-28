@@ -18,6 +18,8 @@ export type OrderConfirmationData = {
   shippingCarrier: string | null;
   items: Array<{ name: string; qty: number; lineTotal: number }>;
   shippingAddress: string; // ya formateada
+  /** Token público para vista guest /pedido/<token> sin login. */
+  publicTrackingToken: string | null;
 };
 
 export async function orderConfirmationEmail(data: OrderConfirmationData) {
@@ -57,7 +59,12 @@ export async function orderConfirmationEmail(data: OrderConfirmationData) {
 
 <p style="font-size:14px;color:#3D2E5C;"><strong>Enviamos a:</strong><br>${escapeHtml(data.shippingAddress)}</p>
 
-${ctaButton(`${siteUrl}/mi-cuenta/pedidos`, "Ver mi pedido →")}
+${ctaButton(
+  data.publicTrackingToken
+    ? `${siteUrl}/pedido/${data.publicTrackingToken}`
+    : `${siteUrl}/mi-cuenta/pedidos`,
+  "Ver mi pedido →",
+)}
 
 <p style="font-size:13px;color:#3D2E5C;opacity:0.65;margin-top:18px;">¿Algún cambio? Escríbenos por WhatsApp o respondé este email.</p>
 `;
@@ -77,7 +84,7 @@ Total: ${formatCOP(data.total)}
 
 Enviamos a: ${data.shippingAddress}
 
-Ver mi pedido: ${siteUrl}/mi-cuenta/pedidos`;
+Ver mi pedido: ${data.publicTrackingToken ? `${siteUrl}/pedido/${data.publicTrackingToken}` : `${siteUrl}/mi-cuenta/pedidos`}`;
 
   return {
     subject: `Pedido ${data.orderNumber} confirmado 🎉`,

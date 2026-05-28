@@ -233,6 +233,94 @@ async function resolveCarrierId(carrierNameOrSlug: string): Promise<string> {
   );
 }
 
+// ─── Webhook management (Aveonline AveCRM) ────────────────────────────────
+// Aveonline expone 3 endpoints en `avestock/api/` para que el cliente
+// registre/liste/elimine webhooks de notificación de cambios de estado.
+// Doc: https://integraciones.aveonline.co/docs/avecrm/crearWebhook/
+//
+// Como NO hay HMAC, mitigamos con `param1_value=<secret>` que Aveonline
+// envía en cada request. El receptor valida `?secret=<X>` o header.
+
+const AVECRM_BASE = "https://app.aveonline.co/avestock/api";
+
+/** Registra (o re-registra) un webhook en Aveonline para esta cuenta. */
+export async function createAveonlineWebhook(input: {
+  url: string;
+  secret: string;
+  extra?: Record<string, string>;
+}): Promise<{ ok: boolean; message: string; raw: unknown }> {
+  const { idempresa } = await getAuthToken();
+  const body: Record<string, unknown> = {
+    tipo: "authave",
+    empresa: idempresa,
+    url: input.url.slice(0, 500),
+    param1_name: "secret",
+    param1_value: input.secret.slice(0, 255),
+  };
+  if (input.extra) {
+    Object.entries(input.extra)
+      .slice(0, 3)
+      .forEach(([k, v], i) => {
+        body[`param${i + 2}_name`] = k.slice(0, 50);
+        body[`param${i + 2}_value`] = String(v).slice(0, 255);
+      });
+  }
+  const res = await fetch(`${AVECRM_BASE}/createWebhook.php`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    throw new Error(`Aveonline createWebhook HTTP ${res.status}`);
+  }
+  const data = (await res.json()) as { success?: boolean; messages?: string; message?: string };
+  return {
+    ok: Boolean(data.success),
+    message: data.messages ?? data.message ?? "",
+    raw: data,
+  };
+}
+
+/** Lista webhooks registrados para la cuenta. */
+export async function listAveonlineWebhooks(): Promise<{
+  items: Array<{ url?: string; id?: string | number; [k: string]: unknown }>;
+  raw: unknown;
+}> {
+  const { idempresa } = await getAuthToken();
+  const res = await fetch(`${AVECRM_BASE}/listWebhook.php`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tipo: "authave", empresa: idempresa }),
+  });
+  if (!res.ok) return { items: [], raw: { error: `HTTP ${res.status}` } };
+  const data = (await res.json()) as {
+    webhooks?: Array<Record<string, unknown>>;
+    data?: Array<Record<string, unknown>>;
+  };
+  const items = Array.isArray(data?.webhooks)
+    ? data.webhooks
+    : Array.isArray(data?.data)
+      ? data.data
+      : [];
+  return { items: items as { url?: string; id?: string | number }[], raw: data };
+}
+
+/** Elimina webhook por URL. */
+export async function deleteAveonlineWebhook(url: string): Promise<{
+  ok: boolean;
+  message: string;
+}> {
+  const { idempresa } = await getAuthToken();
+  const res = await fetch(`${AVECRM_BASE}/deleteWebhook.php`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tipo: "authave", empresa: idempresa, url }),
+  });
+  if (!res.ok) return { ok: false, message: `HTTP ${res.status}` };
+  const data = (await res.json()) as { success?: boolean; messages?: string };
+  return { ok: Boolean(data.success), message: data.messages ?? "" };
+}
+
 async function getAuthToken(): Promise<{ token: string; idempresa: number }> {
   const now = Date.now();
   // Refresh con 5 min de buffer antes de expirar

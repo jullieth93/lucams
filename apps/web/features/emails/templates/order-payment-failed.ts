@@ -14,6 +14,7 @@ export type OrderPaymentFailedData = {
   customerName: string;
   total: number; // centavos
   reason: string; // mensaje sanitizado de Wompi
+  publicTrackingToken: string | null;
 };
 
 export async function orderPaymentFailedEmail(data: OrderPaymentFailedData) {

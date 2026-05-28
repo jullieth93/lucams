@@ -66,6 +66,7 @@ export async function sendOrderConfirmation(orderId: string): Promise<void> {
         lineTotal: it.unitPrice * it.qty,
       })),
       shippingAddress: formatAddressLine(ship),
+      publicTrackingToken: order.publicAccessToken ?? null,
     });
 
     const result = await sendEmail({
@@ -106,6 +107,7 @@ export async function sendOrderShipped(orderId: string): Promise<void> {
         shippingCarrier: true,
         trackingNumber: true,
         trackingUrl: true,
+        publicAccessToken: true,
       },
     });
     if (!order || !order.trackingNumber) return;
@@ -120,6 +122,7 @@ export async function sendOrderShipped(orderId: string): Promise<void> {
       trackingNumber: order.trackingNumber,
       trackingUrl: order.trackingUrl,
       estimatedDays: null,
+      publicTrackingToken: order.publicAccessToken ?? null,
     });
 
     const result = await sendEmail({
@@ -153,7 +156,13 @@ export async function sendOrderPaymentFailed(orderId: string, reason: string): P
   try {
     const order = await prisma.order.findFirst({
       where: { id: orderId, deletedAt: null },
-      select: { number: true, email: true, total: true, shippingAddress: true },
+      select: {
+        number: true,
+        email: true,
+        total: true,
+        shippingAddress: true,
+        publicAccessToken: true,
+      },
     });
     if (!order) return;
     const ship = order.shippingAddress as ShippingAddrSnapshot;
@@ -162,6 +171,7 @@ export async function sendOrderPaymentFailed(orderId: string, reason: string): P
       customerName: ship.fullName ?? "Cliente",
       total: order.total,
       reason,
+      publicTrackingToken: order.publicAccessToken ?? null,
     });
     const result = await sendEmail({
       to: order.email,
@@ -194,7 +204,12 @@ export async function sendOrderDelivered(orderId: string): Promise<void> {
   try {
     const order = await prisma.order.findFirst({
       where: { id: orderId, deletedAt: null },
-      select: { number: true, email: true, shippingAddress: true },
+      select: {
+        number: true,
+        email: true,
+        shippingAddress: true,
+        publicAccessToken: true,
+      },
     });
     if (!order) return;
 
@@ -202,6 +217,7 @@ export async function sendOrderDelivered(orderId: string): Promise<void> {
     const tpl = await orderDeliveredEmail({
       orderNumber: order.number,
       customerName: ship.fullName ?? "Cliente",
+      publicTrackingToken: order.publicAccessToken ?? null,
     });
 
     const result = await sendEmail({
