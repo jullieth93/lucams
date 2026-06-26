@@ -2,9 +2,15 @@
  * Constantes y helpers compartidos para visualizar/categorizar stock.
  *
  * Usado por:
- *  - Admin: ProductStockPanel, listings con badge semáforo, filtros stock bajo
- *  - Storefront (futuro): "Quedan pocas unidades" callout
- *  - Alertas automáticas (Bloque I): job pg_cron que detecta stock bajo
+ *  - Admin: ProductStockPanel (server), product-stock-editor (CLIENT — usa MAX_STOCK_VALUE)
+ *  - Storefront (futuro): "Quedan pocas unidades" callout (client)
+ *  - Alertas automáticas (Bloque I): job pg_cron que detecta stock bajo (server)
+ *
+ * NOTA — NO marcar este file como "server-only": MAX_STOCK_VALUE se usa
+ * desde product-stock-editor.tsx ("use client") como max attr del input.
+ * Las funciones acá son puras (sin DB, sin env, sin secrets) → seguras
+ * de bundlear al cliente. server-only en stock-admin.ts y stock-actions.ts
+ * sí porque ahí sí hay Prisma + auth.
  *
  * Thresholds discutidos con Lucy (2026-06-26):
  *  - "Stock bajo" = ≤ 5 unidades. Lucy produce artesanal en lotes pequeños,
@@ -15,8 +21,6 @@
  *  - "Sobrante" arbitrario: 99999 max para form admin (impide tipear millones
  *    por accidente). Producto artesanal no debería tener stock > 1000 nunca.
  */
-
-import "server-only";
 
 export const LOW_STOCK_THRESHOLD = 5;
 export const MAX_STOCK_VALUE = 99999;
