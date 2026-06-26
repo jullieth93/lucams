@@ -25,6 +25,11 @@ export type ReviewListOpts = {
   rating?: number;
   /** "recent" (default) | "oldest" | "rating-high" | "rating-low" */
   sort?: "recent" | "oldest" | "rating-high" | "rating-low";
+  /**
+   * Filtrar por producto específico — usado por tab "Reseñas" inline
+   * en /admin/productos/[id]?section=resenas (Opción C Sprint 2).
+   */
+  productId?: string;
   page?: number;
   pageSize?: number;
 };
@@ -93,6 +98,7 @@ export async function listReviewsAdmin(opts: ReviewListOpts = {}): Promise<Revie
   const where = {
     ...statusFilter,
     ...(opts.rating ? { rating: opts.rating } : {}),
+    ...(opts.productId ? { productId: opts.productId } : {}),
     ...(q
       ? {
           OR: [
@@ -105,6 +111,12 @@ export async function listReviewsAdmin(opts: ReviewListOpts = {}): Promise<Revie
         }
       : {}),
   };
+
+  // pendingCount: si filtramos por productId, contamos pendientes DE ESE producto.
+  // Sin filtro, contamos pendientes globales (header del admin/resenas).
+  const pendingWhere = opts.productId
+    ? { isApproved: false, deletedAt: null, productId: opts.productId }
+    : { isApproved: false, deletedAt: null };
 
   const [rawItems, total, pendingCount] = await Promise.all([
     prisma.review.findMany({
@@ -130,7 +142,7 @@ export async function listReviewsAdmin(opts: ReviewListOpts = {}): Promise<Revie
       },
     }),
     prisma.review.count({ where }),
-    prisma.review.count({ where: { isApproved: false, deletedAt: null } }),
+    prisma.review.count({ where: pendingWhere }),
   ]);
 
   const items: ReviewListItem[] = rawItems.map((r) => ({
