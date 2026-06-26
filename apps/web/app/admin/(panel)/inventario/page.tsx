@@ -12,7 +12,9 @@
  *  - Búsqueda libre (nombre producto / código / nombre versión).
  *  - Orden configurable (stock asc/desc, producto A-Z, recientes).
  *  - Tabla con: producto · versión · código · stock + chip semáforo · acciones.
- *  - "Editar stock" inline por fila → reusa SimpleVariantStockEditor (A2.1).
+ *  - "Editar stock" inline por fila → CompactStockEditor (1 fila densa,
+ *    icon-only Save). Comparte server action setVariantStockAction con
+ *    el editor full del panel del producto (audit completo InventoryLog).
  *  - Link "Editar producto →" para casos donde el ajuste va más allá del stock.
  *
  * Pagination: server-side con searchParams (?page=N). PageSize=50 default.
@@ -44,7 +46,7 @@ import {
   getStockEmoji,
   getStockLabel,
 } from "@/features/products/stock-constants";
-import { SimpleVariantStockEditor } from "@/components/admin/product-stock-editor";
+import { CompactStockEditor } from "@/components/admin/compact-stock-editor";
 
 export const metadata: Metadata = {
   title: "Inventario · Admin",
@@ -267,16 +269,23 @@ function KpiTile({
           : "border-brand-purple/15 bg-white";
 
   const content = (
-    <div className={`rounded-xl border p-4 transition-colors ${toneClass} ${href ? "hover:brightness-95" : ""}`}>
-      <div className="flex items-baseline justify-between">
-        <span className="text-brand-purple-dark/70 text-xs font-semibold">
-          <span aria-hidden>{emoji}</span> {label}
-        </span>
-        <span className="text-brand-purple-dark text-2xl font-bold tabular-nums">
+    <div
+      className={`rounded-xl border p-5 transition-colors ${toneClass} ${href ? "hover:brightness-95" : ""}`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <span className="text-brand-purple-dark/75 text-xs font-semibold">
+            <span aria-hidden className="mr-1">
+              {emoji}
+            </span>
+            {label}
+          </span>
+          <p className="text-brand-purple-dark/55 mt-1 text-[11px] leading-snug">{hint}</p>
+        </div>
+        <span className="text-brand-purple-dark shrink-0 text-3xl font-bold tabular-nums leading-none">
           {value.toLocaleString("es-CO")}
         </span>
       </div>
-      <p className="text-brand-purple-dark/55 mt-1 text-[11px]">{hint}</p>
     </div>
   );
 
@@ -315,19 +324,15 @@ function InlineStockEditor({
   productId: string;
   currentStock: number;
 }) {
-  // Reusa el componente client del A2.1 que ya tiene useActionState,
-  // validación, feedback visual y conecta a InventoryLog.
-  // Renderizado compacto para tabla.
+  // CompactStockEditor: 1 fila densa (input + icon-only Save), pensado para
+  // celda de tabla. Reusa setVariantStockAction (audit InventoryLog + audit
+  // log admin). Botón disabled si no hay cambios.
   return (
-    <div className="flex justify-end">
-      <div className="w-40">
-        <SimpleVariantStockEditor
-          variantId={variantId}
-          productId={productId}
-          currentStock={currentStock}
-        />
-      </div>
-    </div>
+    <CompactStockEditor
+      variantId={variantId}
+      productId={productId}
+      currentStock={currentStock}
+    />
   );
 }
 
