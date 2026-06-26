@@ -118,19 +118,19 @@ export async function createOrderFromCart(
       throw new Error("Cart vacío — no se puede crear order");
     }
 
-    // ¿Ya existe order PENDING_PAYMENT para este cart? — idempotency.
-    // Heurística: misma combinación customerId + cartId + status PENDING_PAYMENT
-    // creada en últimos 30 min (carrito abandonado dentro del flow).
+    // P0-020 (Lucy 2026-06-26) — Idempotency real por cartId.
+    // Si este Cart ya tiene una Order PENDING_PAYMENT activa, retornamos
+    // esa misma en vez de crear duplicada. Esto cierra el caso "cliente
+    // refresca /checkout/pago" → no genera 2 Orders. Antes era heurística
+    // best-effort por customerId + last30min, ahora es exacta por cartId.
     const existing = await tx.order.findFirst({
       where: {
-        customerId: input.customerId,
+        cartId: input.cartId,
         status: "PENDING_PAYMENT",
         deletedAt: null,
-        createdAt: { gte: new Date(Date.now() - 30 * 60_000) },
       },
       orderBy: { createdAt: "desc" },
     });
-    // No nos basamos en cartId porque Order no lo guarda — esto es best-effort.
 
     const subtotal = cart.items.reduce((acc, it) => acc + it.unitPrice * it.qty, 0);
     const shippingCost = input.shippingSelection.fleteCop;
@@ -159,6 +159,7 @@ export async function createOrderFromCart(
       data: {
         number,
         customerId: input.customerId,
+        cartId: input.cartId, // P0-020 idempotency
         email: input.shipping.email,
         phone: input.shipping.phone,
         shippingAddress: input.shipping as unknown as Prisma.InputJsonValue,
@@ -209,6 +210,29 @@ export async function createOrderFromCart(
     }
 
     return order;
+  });
+}
+
+/**
+ * P0-001 (Lucy 2026-06-26) — Vacía el Cart de origen tras Order PAID exitosa.
+ *
+ * Soft-delete del Cart (deletedAt + deletedBy="saga:order-paid"). El próximo
+ * lookup por sessionId/customerId en features/cart/service.ts filtra
+ * `deletedAt: null`, así que el cliente recibe un cart vacío nuevo en la
+ * próxima request sin romper la sesión activa.
+ *
+ * NO eliminamos CartItem físicamente: queda como audit history para reportes.
+ * El snapshot de items para producción ya vive en OrderItem (immutable).
+ *
+ * Idempotente: si el cart ya fue soft-deleted, no-op silencioso.
+ */
+export async function clearCartAfterPaid(cartId: string): Promise<void> {
+  await prisma.cart.updateMany({
+    where: { id: cartId, deletedAt: null },
+    data: {
+      deletedAt: new Date(),
+      deletedBy: "saga:order-paid",
+    },
   });
 }
 

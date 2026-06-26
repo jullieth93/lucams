@@ -599,12 +599,21 @@ export class AveonlineProvider implements ShippingProvider {
       idasumecosto: 1, // tenant asume costo flete
       contraentrega: params.contraentrega ? 1 : 0,
       valorrecaudo: valorRecaudo,
-      // Lucy 2026-05-22 — flag controlado por env AVEONLINE_GENERATE_REAL.
-      // "0" (default seguro): Aveonline simula sin facturar pero igual
-      //     devuelve numguia + PDF (validado con cuenta demo).
-      // "1": genera guía REAL facturable. Solo poner cuando cuenta productiva
-      //     esté lista y Lucy confirme explícito.
-      bloquegenerarguia: process.env.AVEONLINE_GENERATE_REAL === "true" ? "1" : "0",
+      // Aveonline `bloquegenerarguia` (semántica contraintuitiva):
+      //   "1" = BLOQUEA generación facturable → SEGURO (igual devuelve numguia + PDF para staging)
+      //   "0" = genera guía REAL facturable → cartera pendiente en cuenta Aveonline
+      //
+      // Doble gate (Lucy 2026-06-26): solo facturamos si AMBAS condiciones se cumplen:
+      //   1. AVEONLINE_GENERATE_REAL === "true" (env explícita)
+      //   2. NODE_ENV === "production" O AVEONLINE_FORCE_BILLING === "true" (escape hatch dev)
+      // Default seguro: "1" (NO factura). Bug histórico: default "0" con cuenta real
+      // genera cartera pendiente (vs cuenta demo donde "0" simulaba sin facturar).
+      bloquegenerarguia:
+        process.env.AVEONLINE_GENERATE_REAL === "true" &&
+        (process.env.NODE_ENV === "production" ||
+          process.env.AVEONLINE_FORCE_BILLING === "true")
+          ? "0"
+          : "1",
       relacion_envios: "1",
       enviarcorreos: "1",
       cartaporte: "0",

@@ -501,6 +501,13 @@ model Order {
   // 32 chars hex generados con crypto.randomBytes(16).toString("hex").
   publicAccessToken     String?       @unique
 
+  // P0-020 (Lucy 2026-06-26) — Cart de origen para idempotency cart→order.
+  // NO FK (el Cart se soft-deletea al transicionar a PAID; la referencia
+  // debe sobrevivir). Lookup como string nullable para Orders pre-existentes.
+  // Permite que createOrderFromCart sea idempotente: si un cart ya tiene
+  // Order PENDING_PAYMENT activa, retornamos esa en vez de crear otra.
+  cartId                String?
+
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   createdBy String?
@@ -513,6 +520,7 @@ model Order {
   @@index([wompiTransactionId])
   @@index([dianStatus])
   @@index([trackingNumber])
+  @@index([cartId, status])
 }
 
 model OrderItem {

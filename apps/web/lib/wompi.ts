@@ -204,7 +204,20 @@ export function verifyWebhookSignature(rawBody: string): {
     eventsSecret;
 
   const expected = crypto.createHash("sha256").update(concat).digest("hex");
-  if (expected !== parsed.signature.checksum) {
+  // timingSafeEqual: previene timing-attacks que infieren bytes correctos
+  // por diferencias de microsegundos en `!==`. Requiere mismo length —
+  // ambos son hex SHA-256 de 64 chars, pero defendemos length-mismatch
+  // primero (timingSafeEqual lanza si difieren).
+  const received = parsed.signature.checksum;
+  if (expected.length !== received.length) {
+    return { valid: false, event: parsed, reason: "checksum mismatch" };
+  }
+  const expectedBuf = Buffer.from(expected, "hex");
+  const receivedBuf = Buffer.from(received, "hex");
+  if (
+    expectedBuf.length !== receivedBuf.length ||
+    !crypto.timingSafeEqual(expectedBuf, receivedBuf)
+  ) {
     return { valid: false, event: parsed, reason: "checksum mismatch" };
   }
   return { valid: true, event: parsed };

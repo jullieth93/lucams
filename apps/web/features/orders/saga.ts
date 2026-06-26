@@ -24,7 +24,7 @@ import { logger } from "@/lib/logger";
 import { getShippingProvider } from "@/features/shipping/provider";
 import { getEffectiveShippingDims } from "@/features/products/shipping-schemas";
 import { getSettingValue } from "@/lib/cms";
-import { transitionOrder, OrderTransitionError } from "./service";
+import { transitionOrder, clearCartAfterPaid, OrderTransitionError } from "./service";
 import type { ShippingAddressInput } from "./schemas";
 import {
   sendOrderConfirmation,
@@ -117,6 +117,18 @@ export async function processPaidOrder(
         orderNumber: order.number,
         wompiTransactionId: input.wompiTransactionId ?? null,
       });
+      // P0-001 (Lucy 2026-06-26) — Vaciar Cart de origen tras PAID exitoso.
+      // Previene doble cobro si el cliente refresca y reintenta. Idempotente:
+      // si Order vino sin cartId (orders pre-P0-020) o cart ya soft-deleted,
+      // updateMany ejecuta 0 rows y no-op silencioso.
+      if (order.cartId) {
+        await clearCartAfterPaid(order.cartId);
+        logger.info({
+          event: "order.saga.paid.cart_cleared",
+          orderId: order.id,
+          cartId: order.cartId,
+        });
+      }
       // Email order-confirmation (fire-and-forget — emails.ts atrapa errores).
       await sendOrderConfirmation(order.id);
     } catch (err) {
