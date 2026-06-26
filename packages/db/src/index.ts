@@ -13,9 +13,11 @@
  *     y `prisma db push` (no soportan pgBouncer). Configurado en schema.prisma.
  *
  * Logging:
- *   - En dev: `query`, `error`, `warn` para debug rápido.
- *   - En prod: solo `error`, `warn` (queries se ven en Vercel logs si pino las
- *     loggea explícitamente).
+ *   - Default: solo `error`, `warn` (señal limpia, ruido mínimo).
+ *   - Para debug de queries SQL: setea `PRISMA_LOG=query` en .env.local y
+ *     reinicia el dev server. Útil cuando se quiere ver qué SQL emite Prisma
+ *     o medir N+1; off-by-default porque flooded el log con cientos de líneas
+ *     por request.
  *
  * Referencias:
  *   - docs/INTEGRATIONS.md § Supabase (DATABASE_URL vs DIRECT_URL)
@@ -28,10 +30,13 @@ const globalForPrisma = globalThis as unknown as {
   prisma: PrismaClient | undefined;
 };
 
+const logLevels: ("query" | "error" | "warn" | "info")[] = ["error", "warn"];
+if (process.env.PRISMA_LOG === "query") logLevels.unshift("query");
+
 export const prisma =
   globalForPrisma.prisma ??
   new PrismaClient({
-    log: process.env.NODE_ENV === "production" ? ["error", "warn"] : ["query", "error", "warn"],
+    log: logLevels,
   });
 
 if (process.env.NODE_ENV !== "production") globalForPrisma.prisma = prisma;
