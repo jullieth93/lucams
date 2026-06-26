@@ -89,7 +89,7 @@ export default async function AdminFinanzasPage() {
             <strong>Este dashboard está esperando datos.</strong> Las métricas reales se llenan
             automáticamente cuando se cable el checkout productivo (Fase 2 — Wompi + Aveonline).
             Mientras tanto, te muestro el marco preparado para que sepas qué vas a ver acá. Si
-            querés acelerar Fase 2, avisame.
+            quieres acelerar Fase 2, avísame.
           </AdminNotice>
         )}
 
@@ -186,7 +186,7 @@ export default async function AdminFinanzasPage() {
             ¿Mientras tanto, qué puedo hacer?
           </h3>
           <p className="text-brand-purple-dark/75 mb-3 text-sm">
-            Pre-Fase 2 podés operar manualmente:
+            Pre-Fase 2 puedes operar manualmente:
           </p>
           <ul className="text-brand-purple-dark/75 list-inside list-disc space-y-1.5 text-sm">
             <li>

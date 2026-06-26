@@ -141,7 +141,7 @@ export const ADMIN_NAV: NavGroup[] = [
     ],
   },
   {
-    title: "Comercial",
+    title: "Promociones",
     icon: Ticket,
     items: [
       { label: "Cupones", href: "/admin/cupones", icon: Ticket },

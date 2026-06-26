@@ -316,6 +316,44 @@ export async function toggleProductActive(
 }
 
 /**
+ * Bulk: cambia isActive de N productos en una sola operación.
+ * Lucy 2026-06-26 — Opción C Sprint 3: para no clickear uno por uno cuando
+ * quiere pausar/activar varios en lote.
+ *
+ * Solo afecta productos no soft-deleted. Devuelve count para feedback.
+ */
+export async function bulkUpdateProductsActive(
+  ids: string[],
+  isActive: boolean,
+  actorAdminId: string | null,
+): Promise<{ count: number }> {
+  if (ids.length === 0) return { count: 0 };
+  const result = await prisma.product.updateMany({
+    where: { id: { in: ids }, deletedAt: null },
+    data: { isActive, ...(actorAdminId ? { updatedBy: actorAdminId } : {}) },
+  });
+  return { count: result.count };
+}
+
+/**
+ * Bulk: cambia isFeatured de N productos.
+ * Usado por Lucy para "destacar 5 productos para Día de la Madre" sin tener
+ * que entrar a cada uno.
+ */
+export async function bulkUpdateProductsFeatured(
+  ids: string[],
+  isFeatured: boolean,
+  actorAdminId: string | null,
+): Promise<{ count: number }> {
+  if (ids.length === 0) return { count: 0 };
+  const result = await prisma.product.updateMany({
+    where: { id: { in: ids }, deletedAt: null },
+    data: { isFeatured, ...(actorAdminId ? { updatedBy: actorAdminId } : {}) },
+  });
+  return { count: result.count };
+}
+
+/**
  * Lista categorías para `<select>` del ProductForm con jerarquía:
  * primero todas las padre alfabéticas, después cada hija indentada con
  * "— " debajo de su padre. Si las categorías están ordenadas por

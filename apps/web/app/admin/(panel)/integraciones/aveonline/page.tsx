@@ -158,11 +158,11 @@ export default async function AveonlineIntegrationPage({
           <ol className="text-brand-purple-dark/75 list-decimal space-y-1 pl-5 text-xs">
             <li>Aveonline necesita una URL pública (HTTPS) para llamarte.</li>
             <li>
-              En dev local podés usar <code>ngrok http 4000</code> para exponer{" "}
+              En desarrollo local puedes usar <code>ngrok http 4000</code> para exponer{" "}
               <code>localhost:4000</code> con HTTPS.
             </li>
             <li>
-              En producción usá tu dominio real (
+              En producción usa tu dominio real (
               <code>https://lucamsshop.co/api/webhooks/aveonline</code>).
             </li>
             <li>

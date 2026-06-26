@@ -322,14 +322,14 @@ export default async function AdminIntegracionesPage() {
         <AdminNotice tone="info">
           <strong>¿Qué ves acá?</strong> Estado real de los servicios externos que usa el sitio. Las
           acciones marcadas como <strong>ACCIÓN HUMANA</strong> son tareas que tú (o un superadmin)
-          tenés que hacer en el dashboard del proveedor (no se hacen desde este panel). Refrescá la
+          tienes que hacer en el dashboard del proveedor (no se hacen desde este panel). Refresca la
           página para volver a probar.
         </AdminNotice>
 
         {failCount > 0 && (
           <AdminNotice tone="error">
             <strong>Atención:</strong> hay {failCount} integración{failCount === 1 ? "" : "es"} con
-            falla. Revisá el detalle abajo y consultá el dashboard correspondiente.
+            falla. Revisa el detalle abajo y consulta el dashboard correspondiente.
           </AdminNotice>
         )}
 

@@ -119,12 +119,12 @@ export default async function EditCategoryPage({
             Zona de peligro
           </h3>
           <p className="text-brand-purple-dark/65 mb-3 text-xs">
-            Archivar oculta la categoría del storefront y del menú. Las categorías con productos
+            Archivar oculta la categoría de tu tienda y del menú. Las categorías con productos
             asociados no pueden archivarse — primero hay que mover esos productos a otra categoría.
           </p>
           <ConfirmAction
             action={deleteCategoryAction}
-            message={`¿Archivar la categoría "${category.name}"? Quedará oculta del storefront. Acción reversible (podés reactivarla después).`}
+            message={`¿Archivar la categoría "${category.name}"? Quedará oculta de tu tienda. Esta acción es reversible (puedes traerla de vuelta después).`}
           >
             <input type="hidden" name="id" value={category.id} />
             <Button

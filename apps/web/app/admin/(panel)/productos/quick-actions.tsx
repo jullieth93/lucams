@@ -43,7 +43,7 @@ export function ProductQuickActions({
             ? "inline-flex items-center gap-1 rounded-md border border-slate-200 bg-white px-2 py-1 text-[10px] font-semibold text-slate-700 hover:bg-slate-50"
             : "inline-flex items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2 py-1 text-[10px] font-semibold text-emerald-800 hover:bg-emerald-100"
         }
-        title={isActive ? "Ocultar del storefront" : "Mostrar en storefront"}
+        title={isActive ? "Ocultar de tu tienda" : "Mostrar en tu tienda"}
       >
         <Power className="h-3 w-3" />
         {isActive ? "Desactivar" : "Activar"}

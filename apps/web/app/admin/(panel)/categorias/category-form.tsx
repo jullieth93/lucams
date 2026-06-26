@@ -142,7 +142,7 @@ export function CategoryForm({ initialCategory }: { initialCategory?: CategoryIn
             disabled={pending}
             className="accent-brand-purple h-4 w-4"
           />
-          <span className="text-brand-purple-dark">Activa (visible en el storefront)</span>
+          <span className="text-brand-purple-dark">Visible en la tienda</span>
         </label>
       </div>
 

@@ -30,7 +30,7 @@ export function CreateRedirectForm() {
             <p className="mt-1 text-xs text-rose-600">{state.fieldErrors.fromPath[0]}</p>
           )}
           <p className="text-brand-purple-dark/55 mt-1 text-xs">
-            La ruta vieja que querés redirigir. Ej: <code>/garantia</code>,{" "}
+            La ruta vieja que quieres redirigir. Ej: <code>/garantia</code>,{" "}
             <code>/promo-mama-2024</code>.
           </p>
         </div>

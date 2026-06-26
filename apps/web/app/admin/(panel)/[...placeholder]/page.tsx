@@ -55,7 +55,7 @@ export default async function PlaceholderPage({ params }: { params: RouteParams 
         return "Llega en Fase 5 (gestión interna). Después de tener operación de pedidos estabilizada.";
       case "soon":
       default:
-        return "Está en próxima sub-fase del aterrizaje admin. Si lo necesitas urgente, avisame y se prioriza.";
+        return "Está en próxima sub-fase del aterrizaje admin. Si lo necesitas urgente, avísame y se prioriza.";
     }
   })();
 

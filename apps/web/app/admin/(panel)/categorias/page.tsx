@@ -94,7 +94,7 @@ export default async function AdminCategoriasPage({
         {justDeleted && <AdminNotice tone="warning">Categoría archivada.</AdminNotice>}
         {sp.restored === "1" && (
           <AdminNotice tone="success">
-            Categoría restaurada (queda inactiva — click el badge para mostrarla en el storefront).
+            Categoría restaurada. Queda pausada — clic en el chip de estado para mostrarla en tu tienda.
           </AdminNotice>
         )}
         {errorMsg && <AdminNotice tone="error">{errorMsg}</AdminNotice>}
@@ -239,8 +239,8 @@ export default async function AdminCategoriasPage({
                           }`}
                           title={
                             c.isActive
-                              ? "Click para desactivar (ocultar del storefront)"
-                              : "Click para activar (mostrar en storefront)"
+                              ? "Clic para pausar (ocultar de tu tienda)"
+                              : "Clic para activar (mostrar en tu tienda)"
                           }
                         >
                           <span
@@ -280,7 +280,7 @@ export default async function AdminCategoriasPage({
                           </Link>
                           <ConfirmAction
                             action={deleteCategoryAction}
-                            message={`¿Archivar la categoría "${c.name}"? Quedará oculta del storefront.`}
+                            message={`¿Archivar la categoría "${c.name}"? Quedará oculta de tu tienda.`}
                             className="inline"
                           >
                             <input type="hidden" name="id" value={c.id} />

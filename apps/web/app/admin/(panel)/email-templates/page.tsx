@@ -92,8 +92,8 @@ export default async function AdminEmailTemplatesPage() {
         {blocks.length === 0 ? (
           <AdminEmpty
             icon={<Mail className="h-5 w-5" />}
-            title="Aún no hay plantillas seedeadas"
-            description="Los templates de email se crean en Sub-fase G (Email + Deliverability). Mientras tanto, podés crear uno manual con el botón de arriba."
+            title="Aún no hay plantillas de correo"
+            description="Las plantillas automáticas se configuran en Sub-fase G. Mientras tanto, puedes crear una manualmente con el botón de arriba."
           />
         ) : (
           <AdminTable>

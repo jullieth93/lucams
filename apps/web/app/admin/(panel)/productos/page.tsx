@@ -33,6 +33,7 @@ import { getCurrentAdmin } from "@/lib/auth";
 import { formatCOP } from "@/lib/format";
 import { listProducts } from "@/features/products/service";
 import { ProductQuickActions } from "./quick-actions";
+import { BulkActionBar, BulkSelectAllCheckbox } from "./bulk-action-bar";
 
 export const metadata: Metadata = {
   title: "Productos",
@@ -99,11 +100,13 @@ export default async function AdminProductosPage({ searchParams }: { searchParam
 
       <AdminPageBody>
         {justCreated && <AdminNotice tone="success">Producto creado correctamente.</AdminNotice>}
-        {justDeleted && <AdminNotice tone="warning">Producto archivado (soft-delete).</AdminNotice>}
+        {justDeleted && <AdminNotice tone="warning">Producto archivado.</AdminNotice>}
+        {sp.bulkOk && <AdminNotice tone="success">{String(sp.bulkOk)}</AdminNotice>}
+        {sp.bulkError && <AdminNotice tone="error">{String(sp.bulkError)}</AdminNotice>}
         {sp.restored === "1" && (
           <AdminNotice tone="success">
-            Producto restaurado (queda inactivo — usa el botón &quot;Activar&quot; para mostrarlo en
-            el storefront).
+            Producto restaurado. Queda pausado — usa el botón &quot;Activar&quot; para mostrarlo en
+            tu tienda.
           </AdminNotice>
         )}
 
@@ -124,7 +127,7 @@ export default async function AdminProductosPage({ searchParams }: { searchParam
               name="q"
               type="search"
               defaultValue={q ?? ""}
-              placeholder="Por nombre, SKU o slug…"
+              placeholder="Por nombre, código o URL…"
               className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
             />
           </div>
@@ -210,8 +213,11 @@ export default async function AdminProductosPage({ searchParams }: { searchParam
           <AdminTable>
             <AdminTableHead>
               <tr>
+                <th className="w-10 px-3 py-3 text-left">
+                  <BulkSelectAllCheckbox />
+                </th>
                 <th className="px-4 py-3 text-left font-semibold">Producto</th>
-                <th className="px-4 py-3 text-left font-semibold">SKU</th>
+                <th className="px-4 py-3 text-left font-semibold">Código</th>
                 <th className="px-4 py-3 text-left font-semibold">Categoría</th>
                 <th className="px-4 py-3 text-right font-semibold">Precio</th>
                 <th className="px-4 py-3 text-center font-semibold">Estado</th>
@@ -221,6 +227,17 @@ export default async function AdminProductosPage({ searchParams }: { searchParam
             <AdminTableBody>
               {items.map((p) => (
                 <AdminTableRow key={p.id}>
+                  <td className="w-10 px-3 py-3 align-middle">
+                    {p.deletedAt === null && (
+                      <input
+                        type="checkbox"
+                        name="productIds"
+                        value={p.id}
+                        aria-label={`Seleccionar ${p.name}`}
+                        className="text-brand-purple focus:ring-brand-purple/40 h-4 w-4 cursor-pointer rounded border-brand-purple/30"
+                      />
+                    )}
+                  </td>
                   <td className="px-4 py-3">
                     <div className="text-brand-purple-dark font-medium">{p.name}</div>
                     <div className="text-brand-purple-dark/50 text-xs">/{p.slug}</div>
@@ -279,6 +296,13 @@ export default async function AdminProductosPage({ searchParams }: { searchParam
           </div>
         )}
       </AdminPageBody>
+
+      {/*
+       * Sprint 3 — Bulk action bar (client component, sticky bottom).
+       * Por default oculta. Aparece cuando hay al menos 1 producto checked.
+       * Lee los checkboxes con name="productIds" del documento.
+       */}
+      <BulkActionBar />
     </AdminPage>
   );
 }

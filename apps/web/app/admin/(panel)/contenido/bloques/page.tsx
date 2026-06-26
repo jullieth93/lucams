@@ -72,7 +72,7 @@ export default async function BloquesListPage({ searchParams }: { searchParams: 
         subtitle={
           blocks.length === 0
             ? "Todavía no hay bloques de contenido."
-            : `${blocks.length} bloque${blocks.length === 1 ? "" : "s"} de contenido editables — alimentan storefront, emails y el bot futuro.`
+            : `${blocks.length} bloque${blocks.length === 1 ? "" : "s"} de contenido editables — alimentan tu tienda, los correos y el bot futuro.`
         }
         breadcrumbs={[
           { label: "Admin", href: "/admin/dashboard" },
