@@ -44,6 +44,22 @@ export function BulkActionBar() {
     return () => document.removeEventListener("change", update);
   }, []);
 
+  // Hotfix P0-11: cuando la bar es visible (count > 0), agregamos un
+  // padding-bottom al body para que la paginación y la última fila no
+  // queden tapadas. La bar mide ~64px de alto + 16px de margen → 96px
+  // de espacio reservado. Lo aplicamos al <body> para que el scroll
+  // también lo respete.
+  useEffect(() => {
+    if (count > 0) {
+      document.body.style.paddingBottom = "96px";
+    } else {
+      document.body.style.paddingBottom = "";
+    }
+    return () => {
+      document.body.style.paddingBottom = "";
+    };
+  }, [count]);
+
   const clearSelection = () => {
     document
       .querySelectorAll<HTMLInputElement>('input[type="checkbox"][name="productIds"]')

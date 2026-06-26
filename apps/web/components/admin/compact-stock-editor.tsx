@@ -45,7 +45,7 @@ export function CompactStockEditor({
   const delta = hasChange ? numeric - currentStock : 0;
 
   return (
-    <form action={formAction} className="flex flex-col items-end gap-1">
+    <form action={formAction} className="flex flex-col items-end">
       <input type="hidden" name="variantId" value={variantId} />
       <input type="hidden" name="productId" value={productId} />
 
@@ -84,25 +84,33 @@ export function CompactStockEditor({
         </button>
       </div>
 
-      {/* Hint delta inline — solo cuando user editó */}
-      {hasChange && !state?.error && (
-        <p className="text-brand-purple-dark/60 text-[10px] font-medium tabular-nums">
-          {delta > 0 ? "+" : ""}
-          {delta.toLocaleString("es-CO")}
-        </p>
-      )}
-
-      {/* Error inline compacto */}
-      {state?.error && (
-        <p
-          role="alert"
-          className="flex items-center gap-1 text-[10px] font-medium text-red-700"
-          title={state.error}
-        >
-          <AlertCircle className="h-3 w-3" />
-          {state.error.length > 30 ? `${state.error.slice(0, 28)}…` : state.error}
-        </p>
-      )}
+      {/*
+       * Hotfix P0-3: reservamos altura SIEMPRE (min-h-[16px] + mt-1) para
+       * evitar que la fila de la tabla "salte" cuando el user edita y aparece
+       * el hint delta. Antes la fila crecía ~14px al editar, desalineando
+       * el resto de columnas.
+       */}
+      <div className="mt-1 flex h-[16px] items-center">
+        {hasChange && !state?.error && (
+          <p
+            className="text-brand-purple-dark/60 text-xs font-medium tabular-nums"
+            aria-label={`Cambio pendiente: ${delta > 0 ? "+" : ""}${delta}`}
+          >
+            {delta > 0 ? "+" : ""}
+            {delta.toLocaleString("es-CO")}
+          </p>
+        )}
+        {state?.error && (
+          <p
+            role="alert"
+            className="flex items-center gap-1 text-xs font-medium text-red-700"
+            title={state.error}
+          >
+            <AlertCircle className="h-3 w-3" />
+            {state.error.length > 30 ? `${state.error.slice(0, 28)}…` : state.error}
+          </p>
+        )}
+      </div>
     </form>
   );
 }

@@ -90,7 +90,11 @@ export default async function AdminDashboardPage() {
     getInventorySummary(),
   ]);
 
-  const firstName = session.admin.email.split("@")[0];
+  // Lucy 2026-06-26 hotfix #2 P0-12: el saludo antes mostraba "Hola, crittan01"
+  // (username del email) — violaba el mandato admin no-técnico. Ahora derivamos
+  // un nombre legible quitando dígitos trailing y separadores; si queda algo
+  // raro o muy corto, fallback "Hola 👋" sin nombre.
+  const displayName = deriveAdminDisplayName(session.admin.email);
 
   // Operaciones urgentes — combinamos señales reales:
   // pedidos pendientes pago + variants agotadas + reseñas sin moderar.
@@ -104,10 +108,17 @@ export default async function AdminDashboardPage() {
       <AdminPageHeader
         icon={<Sparkles className="h-5 w-5" />}
         title={
-          <>
-            Hola, <span className="text-gradient-brand">{firstName}</span>{" "}
-            <span className="inline-block">👋</span>
-          </>
+          displayName ? (
+            <>
+              Hola, <span className="text-gradient-brand">{displayName}</span>{" "}
+              <span className="inline-block">👋</span>
+            </>
+          ) : (
+            <>
+              <span className="text-gradient-brand">Hola</span>{" "}
+              <span className="inline-block">👋</span>
+            </>
+          )
         }
         subtitle={
           <>
@@ -269,4 +280,29 @@ export default async function AdminDashboardPage() {
       </AdminPageBody>
     </AdminPage>
   );
+}
+
+/**
+ * Deriva un nombre legible del email del admin (mientras AdminUser no tenga
+ * un campo displayName explícito).
+ *
+ *  crittan01@gmail.com  → "Crittan"
+ *  lucy@lucamsshop.co   → "Lucy"
+ *  r.julliethhr@...     → "R Julliethhr"
+ *  abc@…                → null  (muy corto → fallback "Hola 👋")
+ *
+ * Si quieres tu nombre exacto en el dashboard, agregalo a AdminUser
+ * cuando hagamos el form de perfil admin (backlog).
+ */
+function deriveAdminDisplayName(email: string): string | null {
+  if (!email) return null;
+  const local = email.split("@")[0];
+  if (!local) return null;
+  const clean = local
+    .replace(/\d+$/, "") // dígitos al final ("crittan01" → "crittan")
+    .replace(/[._-]+/g, " ") // separadores → espacio
+    .trim();
+  if (clean.length < 2) return null;
+  // Capitaliza la primera letra de cada palabra.
+  return clean.replace(/\b\p{L}/gu, (c) => c.toUpperCase());
 }

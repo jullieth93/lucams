@@ -67,12 +67,12 @@ export function ProductStockPanel({
           Inventario
         </h2>
         <p className="text-brand-purple-dark/75 mt-2 text-sm">
-          Este producto no tiene variantes activas. Creá al menos una desde{" "}
+          Este producto no tiene versiones activas. Crea al menos una desde{" "}
           <Link
-            href={`/admin/productos/${productId}/variants`}
+            href={`/admin/productos/${productId}?section=versiones`}
             className="text-brand-purple-dark font-semibold underline"
           >
-            Variantes
+            Versiones
           </Link>
           .
         </p>
@@ -162,11 +162,11 @@ export function ProductStockPanel({
           </ul>
 
           <Link
-            href={`/admin/productos/${productId}/variants`}
+            href={`/admin/productos/${productId}?section=versiones`}
             className="text-brand-purple bg-brand-purple/10 hover:bg-brand-purple/15 focus-visible:ring-brand-purple/40 inline-flex h-11 items-center justify-center gap-2 rounded-lg px-4 text-sm font-semibold transition-colors focus-visible:ring-2 focus-visible:outline-none"
           >
             <Layers className="h-4 w-4" />
-            Editar todas las variantes
+            Editar todas las versiones
             <ArrowRight className="h-4 w-4" />
           </Link>
         </>

@@ -28,7 +28,6 @@ import {
   AdminPage,
   AdminPageHeader,
   AdminPageBody,
-  AdminCard,
   AdminTable,
   AdminTableHead,
   AdminTableBody,
@@ -133,18 +132,23 @@ export default async function InventarioPage({
             }
           />
         ) : (
-          <AdminCard className="overflow-hidden p-0">
-            <AdminTable>
-              <AdminTableHead>
-                <tr className="text-brand-purple-dark text-xs uppercase">
-                  <th className="px-4 py-3 text-left font-semibold">Producto</th>
-                  <th className="px-4 py-3 text-left font-semibold">Versión</th>
-                  <th className="px-4 py-3 text-left font-semibold">Código</th>
-                  <th className="px-4 py-3 text-left font-semibold">Estado</th>
-                  <th className="px-4 py-3 text-right font-semibold">Stock</th>
-                  <th className="px-4 py-3 text-right font-semibold">Ajustar</th>
-                </tr>
-              </AdminTableHead>
+          <AdminTable>
+            {/*
+             * Hotfix P0-1: removido el wrapper AdminCard que duplicaba
+             * border + rounded-xl + shadow (AdminTable ya es una card).
+             * Hotfix P0-2: removidas clases redundantes del <tr> que
+             * sobrescribían el text-brand-purple-dark/70 global del head.
+             */}
+            <AdminTableHead>
+              <tr>
+                <th className="px-4 py-3 text-left font-semibold">Producto</th>
+                <th className="px-4 py-3 text-left font-semibold">Versión</th>
+                <th className="px-4 py-3 text-left font-semibold">Código</th>
+                <th className="px-4 py-3 text-left font-semibold">Estado</th>
+                <th className="px-4 py-3 text-right font-semibold">Stock</th>
+                <th className="px-4 py-3 text-right font-semibold">Ajustar</th>
+              </tr>
+            </AdminTableHead>
               <AdminTableBody>
                 {data.rows.map((row) => (
                   <AdminTableRow key={row.variantId}>
@@ -194,8 +198,7 @@ export default async function InventarioPage({
                 ))}
               </AdminTableBody>
             </AdminTable>
-          </AdminCard>
-        )}
+          )}
 
         {/* Paginación */}
         {data.totalPages > 1 && (

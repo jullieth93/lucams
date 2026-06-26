@@ -150,9 +150,14 @@ export async function ProductReviewsPanel({
             <ReviewCard
               key={r.id}
               review={r}
+              productId={productId}
               productSlug={productSlug}
               showApproveActions={subTab === "pending"}
               showFeatureToggle={subTab === "approved"}
+              // Hotfix P0-5: Archivar disponible TAMBIÉN en Pendientes
+              // (caso real: spam o reseña inapropiada que no merece moderación
+              // formal — Lucy quiere mandarla al archivo directo).
+              showArchiveAction={subTab === "pending" || subTab === "approved"}
               showRestoreAction={subTab === "archived"}
             />
           ))}
@@ -202,9 +207,11 @@ function SubTab({
 
 function ReviewCard({
   review,
+  productId,
   productSlug,
   showApproveActions,
   showFeatureToggle,
+  showArchiveAction,
   showRestoreAction,
 }: {
   review: {
@@ -217,9 +224,11 @@ function ReviewCard({
     imagesCount: number;
     createdAt: Date;
   };
+  productId: string;
   productSlug: string;
   showApproveActions: boolean;
   showFeatureToggle: boolean;
+  showArchiveAction: boolean;
   showRestoreAction: boolean;
 }) {
   const dateFmt = new Intl.DateTimeFormat("es-CO", {
@@ -310,7 +319,7 @@ function ReviewCard({
               </button>
             </form>
           )}
-          {showFeatureToggle && (
+          {showArchiveAction && (
             <form action={archiveReviewAction}>
               <input type="hidden" name="id" value={review.id} />
               <input type="hidden" name="productSlug" value={productSlug} />
@@ -325,10 +334,14 @@ function ReviewCard({
             </form>
           )}
           {showRestoreAction && (
+            // Hotfix P0-6: el href ANTES era ?productId=${review.id} (id de
+            // la reseña — bug que llevaba a un filtro vacío). Ahora usa el
+            // productId real del producto, abriendo el listado global filtrado
+            // a este producto donde Lucy puede restaurar.
             <Link
-              href={`/admin/resenas?productId=${review.id}`}
+              href={`/admin/resenas?productId=${productId}`}
               className="border-brand-purple/25 text-brand-purple-dark hover:bg-brand-purple/10 inline-flex h-9 items-center gap-1 rounded-md border bg-white px-3 text-xs font-semibold"
-              title="Restaurar desde el moderador global"
+              title="Ir al moderador global para restaurar"
             >
               <RotateCcw className="h-3.5 w-3.5" />
               Restaurar
