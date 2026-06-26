@@ -487,7 +487,7 @@ export function ProductForm({ categories, initialProduct, action, submitLabel }:
       <AdminTabPanel value="avanzado" active={activeTab}>
         <SectionCard
           title="Identificadores internos"
-          description="Estos campos se definen cuando creas el producto. Cambialos solo si sabés qué hacés."
+          description="Estos campos se definen cuando creas el producto. Cámbialos solo si sabes qué haces."
         >
           <Field
             id="slug"

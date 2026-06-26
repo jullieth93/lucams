@@ -5,9 +5,15 @@ import { Layers, Package, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ConfirmAction } from "@/components/admin/confirm-action";
 import { AdminPage, AdminPageHeader, AdminPageBody, AdminNotice } from "@/components/admin-page";
+import { ProductStockPanel } from "@/components/admin/product-stock-panel";
 import { getCurrentAdmin } from "@/lib/auth";
 import { getProductById, listCategoriesForSelect } from "@/features/products/service";
 import { parsePhysicalSpecs } from "@/features/products/shipping-schemas";
+import {
+  getStockEmoji,
+  getStockLabel,
+  summarizeStock,
+} from "@/features/products/stock-constants";
 import { deleteProductAction, updateProductAction } from "../actions";
 import { ProductForm } from "../product-form";
 import { ProductImages } from "../product-images";
@@ -40,6 +46,25 @@ export default async function EditarProductoPage({
   // PR C — parse physicalSpecs Json para extraer peso/dims y pasarlos a la form
   const physicalSpecs = parsePhysicalSpecs(product.physicalSpecs);
 
+  // ADM-P0-004 — variants para ProductStockPanel + badge stock total en header.
+  // Map a shape esperada por el panel (incluye deletedAt para filtrar inactivas).
+  const stockVariants = product.variants.map((v) => ({
+    id: v.id,
+    name: v.name,
+    sku: v.sku,
+    stock: v.stock,
+    isActive: v.isActive,
+    deletedAt: v.deletedAt,
+    attributes: v.attributes,
+  }));
+  const stockSummary = summarizeStock(stockVariants);
+  const variantsButtonClass =
+    stockSummary.worstStatus === "out"
+      ? "border-red-300 bg-red-50 text-red-800 hover:bg-red-100"
+      : stockSummary.worstStatus === "low"
+        ? "border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100"
+        : "border-brand-purple/25 bg-white text-brand-purple-dark hover:bg-brand-purple/10";
+
   return (
     <AdminPage>
       <AdminPageHeader
@@ -55,17 +80,27 @@ export default async function EditarProductoPage({
           <div className="flex items-center gap-2">
             <Link
               href={`/admin/productos/${product.id}/variants`}
-              className="border-brand-purple/25 text-brand-purple-dark hover:bg-brand-purple/10 inline-flex items-center gap-1.5 rounded-md border bg-white px-3 py-1.5 text-sm font-semibold transition-colors"
+              className={
+                "inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-sm font-semibold transition-colors " +
+                variantsButtonClass
+              }
+              aria-label={`Variantes: ${stockSummary.variantsCount}, ${getStockLabel(stockSummary.worstStatus, stockSummary.totalUnits)}`}
             >
               <Layers className="h-4 w-4" />
-              Variantes
-              <span className="bg-brand-purple/15 text-brand-purple-dark rounded px-1.5 py-0.5 text-[10px] font-bold tabular-nums">
-                {product.variants.filter((v) => !v.deletedAt).length}
+              <span>Variantes</span>
+              <span className="rounded bg-white/60 px-1.5 py-0.5 text-[10px] font-bold tabular-nums">
+                {stockSummary.variantsCount}
+              </span>
+              <span aria-hidden className="ml-0.5">
+                {getStockEmoji(stockSummary.worstStatus)}
+              </span>
+              <span className="hidden tabular-nums sm:inline">
+                {stockSummary.totalUnits.toLocaleString("es-CO")} uds
               </span>
             </Link>
             <ConfirmAction
               action={deleteProductAction}
-              message={`¿Archivar "${product.name}"? Quedará oculto del storefront. Podés restaurarlo después editando el producto.`}
+              message={`¿Archivar "${product.name}"? Quedará oculto del storefront. Puedes restaurarlo después editando el producto.`}
             >
               <input type="hidden" name="id" value={product.id} />
               <Button
@@ -85,9 +120,18 @@ export default async function EditarProductoPage({
       <AdminPageBody>
         {justCreated && (
           <AdminNotice tone="success">
-            Producto creado. Ya puedes editar más detalles o agregar variantes.
+            Producto creado. Ahora puedes ajustar el stock, subir imágenes y revisar el resto de los
+            detalles.
           </AdminNotice>
         )}
+
+        {/*
+         * ADM-P0-004 — ProductStockPanel arriba del form. Stock es la
+         * información más crítica del día a día; merece su propio panel
+         * visible sin entrar a tabs ni a sub-páginas.
+         */}
+        <ProductStockPanel productId={product.id} variants={stockVariants} />
+
         <ProductForm
           categories={categories}
           initialProduct={{
