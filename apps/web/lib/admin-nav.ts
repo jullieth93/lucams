@@ -123,24 +123,21 @@ export const ADMIN_NAV: NavGroup[] = [
     defaultOpen: true,
     items: [
       { label: "Productos", href: "/admin/productos", icon: ShoppingBag },
+      {
+        label: "Inventario",
+        href: "/admin/inventario",
+        icon: Boxes,
+        description:
+          "Stock de todas las versiones de un vistazo. Filtra por agotadas o stock bajo y ajusta cantidades sin entrar producto por producto.",
+      },
       { label: "Categorías", href: "/admin/categorias", icon: Layers },
       { label: "Ocasiones", href: "/admin/ocasiones", icon: Tag },
-      {
-        label: "Plantillas",
-        href: "/admin/plantillas",
-        icon: Sparkles,
-        badge: { text: "Próximo", tone: "soon" },
-        description:
-          "Editor de plantillas pre-armadas para el Estudio (composiciones que el cliente parte y personaliza).",
-      },
-      {
-        label: "Recomendaciones",
-        href: "/admin/recomendaciones",
-        icon: Wand2,
-        badge: { text: "Fase 4", tone: "phase4" },
-        description:
-          "Sistema de recomendaciones cross-sell + bestsellers + 'compran junto'. Llega con Fase 4.",
-      },
+      // Lucy 2026-06-26 — Opción C — Entries placeholder eliminadas del sidebar:
+      // - "Plantillas" (chocaba con /admin/email-templates y con PersonalizationTemplate
+      //   ya seedeado en BD). Cuando se construya el editor de plantillas del Estudio,
+      //   irá en grupo "Estudio" con nombre "Plantillas del Estudio".
+      // - "Recomendaciones" será dashboard de analytics sobre RecommendationLog, no
+      //   editor — pertenece al grupo "Analítica" cuando llegue Fase 4.
     ],
   },
   {

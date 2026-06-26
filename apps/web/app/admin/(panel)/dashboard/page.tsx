@@ -43,6 +43,7 @@ import {
 } from "@/components/admin-page";
 import { getCurrentAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { getInventorySummary } from "@/features/products/inventory-service";
 
 export const metadata: Metadata = {
   title: "Dashboard",
@@ -52,17 +53,26 @@ export default async function AdminDashboardPage() {
   const session = await getCurrentAdmin();
   if (!session) redirect("/admin/login");
 
+  // Pedidos pendientes = Orders en PENDING_PAYMENT (esperando pago Wompi).
+  // No incluyo PAID/FULFILLING porque esos ya están en producción.
+  // Lucy 2026-06-26 — antes orderCount era count total, mostraba ruido en KPI.
+  const pendingOrdersWhere = {
+    deletedAt: null,
+    status: "PENDING_PAYMENT" as const,
+  };
+
   const [
     customerCount,
-    orderCount,
+    pendingOrderCount,
     productCount,
     pendingReviews,
     ocasionCount,
     activeCouponCount,
     subCategoryCount,
+    inventorySummary,
   ] = await Promise.all([
     prisma.customer.count({ where: { deletedAt: null } }),
-    prisma.order.count({ where: { deletedAt: null } }),
+    prisma.order.count({ where: pendingOrdersWhere }),
     prisma.product.count({ where: { deletedAt: null } }),
     prisma.review.count({ where: { isApproved: false, deletedAt: null } }),
     prisma.ocasionTag.count({ where: { deletedAt: null, isActive: true } }),
@@ -75,12 +85,18 @@ export default async function AdminDashboardPage() {
       },
     }),
     prisma.category.count({ where: { deletedAt: null, parentId: { not: null } } }),
+    // Lucy 2026-06-26 — Opción C Sprint 1: KPI real de inventario reemplaza
+    // los hardcoded `0` que mentían sobre stock y reclamos.
+    getInventorySummary(),
   ]);
 
   const firstName = session.admin.email.split("@")[0];
 
-  // Operaciones urgentes (placeholder hasta Fase 4 — orders / reclamos / stock real)
-  const opsAlerts = pendingReviews; // por ahora solo reseñas
+  // Operaciones urgentes — combinamos señales reales:
+  // pedidos pendientes pago + variants agotadas + reseñas sin moderar.
+  // hasAlerts dispara el chip "Atención" en el hero.
+  const opsAlerts =
+    pendingOrderCount + inventorySummary.outCount + pendingReviews;
   const hasAlerts = opsAlerts > 0;
 
   return (
@@ -124,28 +140,41 @@ export default async function AdminDashboardPage() {
           </h2>
           <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
             <OpsCard
-              href="/admin/pedidos"
+              href="/admin/pedidos?estado=PENDING_PAYMENT"
               icon={Box}
-              label="Pedidos pendientes"
-              value={orderCount}
-              description="Por confirmar"
+              label="Pedidos pendientes pago"
+              value={pendingOrderCount}
+              description={
+                pendingOrderCount > 0 ? "Esperan completar pago" : "Sin pendientes"
+              }
               tone="purple"
+              urgent={pendingOrderCount > 0}
             />
             <OpsCard
-              href="/admin/reclamos"
-              icon={AlertCircle}
-              label="Reclamos abiertos"
-              value={0}
-              description="Sin gestionar"
-              tone="coral"
-            />
-            <OpsCard
-              href="/admin/productos"
+              href="/admin/inventario?estado=out"
               icon={AlertTriangle}
-              label="Productos sin stock"
-              value={0}
-              description="Variantes críticas"
+              label="Versiones agotadas"
+              value={inventorySummary.outCount}
+              description={
+                inventorySummary.outCount > 0
+                  ? "No se pueden vender hasta reponer"
+                  : "Todo con stock"
+              }
               tone="amber"
+              urgent={inventorySummary.outCount > 0}
+            />
+            <OpsCard
+              href="/admin/inventario?estado=low"
+              icon={AlertCircle}
+              label="Stock bajo"
+              value={inventorySummary.lowCount}
+              description={
+                inventorySummary.lowCount > 0
+                  ? "5 unidades o menos"
+                  : "Sin alertas de stock bajo"
+              }
+              tone="coral"
+              urgent={inventorySummary.lowCount > 0}
             />
             <OpsCard
               href="/admin/resenas"
