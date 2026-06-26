@@ -73,11 +73,11 @@ export function ProductImages({ productId, images }: { productId: string; images
   };
 
   return (
-    <section className="rounded-lg border border-slate-200 bg-white p-5">
+    <section className="rounded-lg border border-brand-purple/15 bg-white p-5">
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-base font-semibold text-slate-900">Imágenes</h2>
-          <p className="mt-0.5 text-xs text-slate-500">
+          <h2 className="text-base font-semibold text-brand-purple-dark">Imágenes</h2>
+          <p className="mt-0.5 text-xs text-brand-purple-dark/55">
             La primera imagen es la principal. JPG/PNG/WebP/AVIF · máx 5 MB c/u.
           </p>
         </div>
@@ -94,7 +94,7 @@ export function ProductImages({ productId, images }: { productId: string; images
           <Button
             type="button"
             size="sm"
-            className="bg-slate-900 text-white hover:bg-slate-800"
+            className="bg-brand-purple text-white hover:bg-brand-purple-dark"
             disabled={pending}
             onClick={() => fileInputRef.current?.click()}
           >
@@ -115,11 +115,11 @@ export function ProductImages({ productId, images }: { productId: string; images
       )}
 
       {images.length === 0 ? (
-        <div className="rounded-md border border-dashed border-slate-300 px-4 py-10 text-center">
-          <p className="text-sm font-medium text-slate-700">
+        <div className="rounded-md border border-dashed border-brand-purple/25 px-4 py-10 text-center">
+          <p className="text-sm font-medium text-brand-purple-dark/80">
             Aún no hay imágenes para este producto.
           </p>
-          <p className="mt-1 text-xs text-slate-500">
+          <p className="mt-1 text-xs text-brand-purple-dark/55">
             Sube 1-5 imágenes. La primera será la principal en el catálogo.
           </p>
         </div>
@@ -128,7 +128,7 @@ export function ProductImages({ productId, images }: { productId: string; images
           {images.map((url, idx) => (
             <li
               key={url}
-              className="group relative overflow-hidden rounded-md border border-slate-200 bg-slate-50"
+              className="group relative overflow-hidden rounded-md border border-brand-purple/15 bg-brand-purple/5"
             >
               <div className="aspect-square w-full">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -142,7 +142,7 @@ export function ProductImages({ productId, images }: { productId: string; images
               <div className="absolute right-1.5 bottom-1.5 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
                 <button
                   type="button"
-                  className="rounded bg-white/95 p-1.5 text-slate-700 hover:bg-white disabled:opacity-40"
+                  className="rounded bg-white/95 p-1.5 text-brand-purple-dark/80 hover:bg-white disabled:opacity-40"
                   onClick={() => handleReorder(idx, idx - 1)}
                   disabled={pending || idx === 0}
                   aria-label="Mover arriba"
@@ -152,7 +152,7 @@ export function ProductImages({ productId, images }: { productId: string; images
                 </button>
                 <button
                   type="button"
-                  className="rounded bg-white/95 p-1.5 text-slate-700 hover:bg-white disabled:opacity-40"
+                  className="rounded bg-white/95 p-1.5 text-brand-purple-dark/80 hover:bg-white disabled:opacity-40"
                   onClick={() => handleReorder(idx, idx + 1)}
                   disabled={pending || idx === images.length - 1}
                   aria-label="Mover abajo"

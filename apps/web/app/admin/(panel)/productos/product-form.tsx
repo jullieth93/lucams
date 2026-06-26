@@ -393,7 +393,7 @@ export function ProductForm({ categories, initialProduct, action, submitLabel }:
                 defaultValue={initialProduct?.weightGrams ?? ""}
                 placeholder="500"
               />
-              <p className="mt-1 text-xs text-slate-500">50 – 50.000 g</p>
+              <p className="mt-1 text-xs text-brand-purple-dark/55">50 – 50.000 g</p>
             </div>
             <div>
               <Label htmlFor="widthCm">Ancho (cm)</Label>
@@ -435,7 +435,7 @@ export function ProductForm({ categories, initialProduct, action, submitLabel }:
               />
             </div>
           </div>
-          <p className="text-xs text-slate-600">
+          <p className="text-xs text-brand-purple-dark/65">
             💡 Estos son los datos del <strong>paquete final</strong>, no del producto suelto. Si una
             variante (Set 12 vs Set 6) tiene peso o dimensiones distintos, configúralos desde
             Variantes con un valor específico.
@@ -573,12 +573,12 @@ export function ProductForm({ categories, initialProduct, action, submitLabel }:
       <div className="flex items-center gap-3">
         <Button
           type="submit"
-          className="bg-slate-900 font-semibold text-white hover:bg-slate-800"
+          className="bg-brand-purple font-semibold text-white hover:bg-brand-purple-dark"
           disabled={pending}
         >
           {pending ? "Guardando..." : submitLabel}
         </Button>
-        <Link href="/admin/productos" className="text-sm text-slate-600 hover:text-slate-900">
+        <Link href="/admin/productos" className="text-sm text-brand-purple-dark/65 hover:text-brand-purple-dark">
           Cancelar
         </Link>
       </div>
@@ -598,10 +598,10 @@ function SectionCard({
   children: React.ReactNode;
 }) {
   return (
-    <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-5">
+    <section className="space-y-4 rounded-xl border border-brand-purple/15 bg-white p-5">
       <header className="space-y-1">
-        <h2 className="text-base font-semibold text-slate-900">{title}</h2>
-        {description && <p className="text-xs text-slate-600">{description}</p>}
+        <h2 className="text-base font-semibold text-brand-purple-dark">{title}</h2>
+        {description && <p className="text-xs text-brand-purple-dark/65">{description}</p>}
       </header>
       <div className="space-y-4">{children}</div>
     </section>
@@ -623,11 +623,11 @@ function Field({
 }) {
   return (
     <div className="space-y-1.5">
-      <Label htmlFor={id} className="text-slate-700">
+      <Label htmlFor={id} className="text-brand-purple-dark/80">
         {label}
       </Label>
       {children}
-      {hint && !error && <p className="text-xs text-slate-500">{hint}</p>}
+      {hint && !error && <p className="text-xs text-brand-purple-dark/55">{hint}</p>}
       {error && <p className="text-xs text-red-600">{error}</p>}
     </div>
   );
@@ -655,7 +655,7 @@ function PriceField({
   return (
     <Field id={id} label={label} hint={hint} error={error}>
       <div className="relative">
-        <span className="absolute top-1/2 left-2.5 -translate-y-1/2 text-sm text-slate-500">$</span>
+        <span className="absolute top-1/2 left-2.5 -translate-y-1/2 text-sm text-brand-purple-dark/55">$</span>
         <Input
           id={`${id}__display`}
           type="number"
@@ -688,17 +688,17 @@ function Checkbox({
   disabled: boolean;
 }) {
   return (
-    <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-transparent p-2 text-sm text-slate-700 hover:bg-slate-50">
+    <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-transparent p-2 text-sm text-brand-purple-dark/80 hover:bg-brand-purple/5">
       <input
         type="checkbox"
         name={name}
         defaultChecked={defaultChecked}
         disabled={disabled}
-        className="mt-0.5 h-5 w-5 rounded border-slate-300 text-slate-900 focus:ring-slate-700"
+        className="mt-0.5 h-5 w-5 rounded border-brand-purple/25 text-brand-purple-dark focus:ring-brand-purple/50"
       />
       <span className="flex-1">
-        <span className="block font-medium text-slate-800">{label}</span>
-        {hint && <span className="mt-0.5 block text-xs text-slate-500">{hint}</span>}
+        <span className="block font-medium text-brand-purple-dark">{label}</span>
+        {hint && <span className="mt-0.5 block text-xs text-brand-purple-dark/55">{hint}</span>}
       </span>
     </label>
   );
