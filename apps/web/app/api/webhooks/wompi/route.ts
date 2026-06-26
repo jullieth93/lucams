@@ -58,6 +58,53 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "no event" }, { status: 400 });
   }
 
+  // 2.5) P1-011 (Lucy 2026-06-26) — Defensas anti-replay.
+  // (a) Timestamp dentro de ventana ±5 min: rechaza payload viejo capturado
+  //     por atacante y replay-eado después. Wompi sandbox envía timestamp Unix.
+  //     Toleramos drift de reloj y latencias razonables.
+  // (b) Environment match: rechaza un webhook prod en dev (o viceversa)
+  //     incluso si por accidente las keys quedaron crossed entre entornos.
+  //
+  // Escape hatch para tests/smoke locales que firman timestamp viejo:
+  // WOMPI_DISABLE_TIMESTAMP_CHECK=true bypasea la ventana.
+  const TIMESTAMP_WINDOW_SEC = 5 * 60; // 5 minutos
+  const nowSec = Math.floor(Date.now() / 1000);
+  const eventSec = Number(event.timestamp);
+  const ageSec = Math.abs(nowSec - eventSec);
+  const skipTsCheck = process.env.WOMPI_DISABLE_TIMESTAMP_CHECK === "true";
+  if (!skipTsCheck && (Number.isNaN(eventSec) || ageSec > TIMESTAMP_WINDOW_SEC)) {
+    logger.warn({
+      event: "webhook.wompi.replay_rejected",
+      reason: "timestamp out of window",
+      eventTimestamp: event.timestamp,
+      nowSec,
+      ageSec,
+      windowSec: TIMESTAMP_WINDOW_SEC,
+    });
+    return NextResponse.json(
+      { error: "timestamp out of window" },
+      { status: 401 },
+    );
+  }
+
+  // Environment match: prod no debe procesar webhooks "test" y dev no debe
+  // procesar "prod". WOMPI_ENV: "sandbox" en dev/local → acepta event.environment="test".
+  // En prod, NODE_ENV=production → acepta event.environment="prod".
+  const isProd = process.env.NODE_ENV === "production";
+  const expectedEnv = isProd ? "prod" : "test";
+  if (event.environment !== expectedEnv && !skipTsCheck) {
+    logger.warn({
+      event: "webhook.wompi.environment_mismatch",
+      expectedEnv,
+      receivedEnv: event.environment,
+      nodeEnv: process.env.NODE_ENV,
+    });
+    return NextResponse.json(
+      { error: "environment mismatch" },
+      { status: 401 },
+    );
+  }
+
   const transaction = event.data?.transaction;
   if (!transaction) {
     logger.warn({ event: "webhook.wompi.no_transaction", eventType: event.event });

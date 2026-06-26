@@ -25,6 +25,8 @@ import { getShippingProvider } from "@/features/shipping/provider";
 import { getEffectiveShippingDims } from "@/features/products/shipping-schemas";
 import { getSettingValue } from "@/lib/cms";
 import { transitionOrder, clearCartAfterPaid, OrderTransitionError } from "./service";
+import { decrementStockForOrder } from "./stock";
+import { InsufficientStockError } from "./errors";
 import type { ShippingAddressInput } from "./schemas";
 import {
   sendOrderConfirmation,
@@ -104,12 +106,34 @@ export async function processPaidOrder(
   }
 
   // 3) Transicionar PENDING_PAYMENT → PAID (si no estaba ya).
+  //    P0-002: la transición + decremento de stock + InventoryLog ocurren
+  //    atómicamente en una sola $transaction. Si el stock se agotó entre
+  //    PENDING_PAYMENT y este punto (carrera ganada por otro comprador),
+  //    InsufficientStockError → rollback → Order queda en PENDING_PAYMENT
+  //    con flag para reconciliación manual (Wompi ya cobró pero no hay stock).
   if (order.status === "PENDING_PAYMENT") {
     try {
-      await transitionOrder(order.id, "PAID", {
-        extra: input.wompiTransactionId
-          ? { wompiTransactionId: input.wompiTransactionId }
-          : undefined,
+      await prisma.$transaction(async (tx) => {
+        // Decremento atómico de stock + InventoryLog (idempotente).
+        await decrementStockForOrder(tx, {
+          id: order.id,
+          number: order.number,
+          items: order.items.map((it) => ({ variantId: it.variantId, qty: it.qty })),
+        });
+        // Transición de estado dentro de la misma tx.
+        // Nota: transitionOrder usa `prisma` directo (no tx), pero como
+        // su transition-to-PAID NO necesita `revertStock`, este update
+        // simple no abre $transaction nested. Lo invocamos como
+        // tx.order.update inline para garantizar atomicidad.
+        await tx.order.update({
+          where: { id: order.id },
+          data: {
+            status: "PAID",
+            ...(input.wompiTransactionId
+              ? { wompiTransactionId: input.wompiTransactionId }
+              : {}),
+          },
+        });
       });
       logger.info({
         event: "order.saga.paid.transitioned",
@@ -117,10 +141,7 @@ export async function processPaidOrder(
         orderNumber: order.number,
         wompiTransactionId: input.wompiTransactionId ?? null,
       });
-      // P0-001 (Lucy 2026-06-26) — Vaciar Cart de origen tras PAID exitoso.
-      // Previene doble cobro si el cliente refresca y reintenta. Idempotente:
-      // si Order vino sin cartId (orders pre-P0-020) o cart ya soft-deleted,
-      // updateMany ejecuta 0 rows y no-op silencioso.
+      // P0-001 — Vaciar Cart de origen tras PAID exitoso.
       if (order.cartId) {
         await clearCartAfterPaid(order.cartId);
         logger.info({
@@ -132,6 +153,25 @@ export async function processPaidOrder(
       // Email order-confirmation (fire-and-forget — emails.ts atrapa errores).
       await sendOrderConfirmation(order.id);
     } catch (err) {
+      if (err instanceof InsufficientStockError) {
+        // Caso patológico: Wompi APPROVED pero stock se agotó (carrera).
+        // Order queda en PENDING_PAYMENT. ACCIÓN HUMANA REQUERIDA:
+        // admin debe revisar /admin/pedidos + decidir refund o producir stock.
+        logger.error({
+          event: "order.saga.paid.no_stock",
+          orderId: order.id,
+          orderNumber: order.number,
+          wompiTransactionId: input.wompiTransactionId ?? null,
+          variantId: err.variantId,
+          requested: err.requested,
+          available: err.available ?? null,
+          reason: "Stock agotado entre PENDING_PAYMENT y PAID — refund manual",
+        });
+        return {
+          status: "shipment_failed",
+          reason: `Stock insuficiente al confirmar pago (variant ${err.variantId}). Requiere reconciliación admin.`,
+        };
+      }
       if (err instanceof OrderTransitionError) {
         logger.warn({
           event: "order.saga.paid.transition_skipped",

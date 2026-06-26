@@ -7,6 +7,7 @@ import {
   finalizeCheckout,
   savePaymentMethodStep,
 } from "@/features/checkout/service";
+import { InsufficientStockError } from "@/features/orders/errors";
 
 export async function payWompiAction(): Promise<void> {
   await savePaymentMethodStep("WOMPI");
@@ -24,6 +25,22 @@ export async function payWompiAction(): Promise<void> {
     redirect(result.checkoutUrl);
   } catch (err) {
     if (err instanceof Error && err.message === "NEXT_REDIRECT") throw err;
+    // P0-002 — Stock se agotó entre /checkout/datos y este finalizeCheckout.
+    // Redirigir a /carrito con mensaje claro. El cart todavía tiene los items
+    // (no se vacía hasta PAID) — cliente puede ajustar qty o quitar el item.
+    if (err instanceof InsufficientStockError) {
+      logger.warn({
+        event: "checkout.pago.stock_unavailable",
+        variantId: err.variantId,
+        requested: err.requested,
+        available: err.available ?? null,
+      });
+      redirect(
+        `/carrito?error=${encodeURIComponent(
+          "Uno de los productos ya no está disponible. Por favor revisa tu carrito.",
+        )}`,
+      );
+    }
     const msg = err instanceof CheckoutError ? err.message : "Error iniciando pago";
     logger.error({
       event: "checkout.pago.finalize_fail",

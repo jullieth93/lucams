@@ -12,8 +12,13 @@
  *  - DECLINED/VOIDED/ERROR: mostrar error + CTA "Reintentar pago" → /carrito
  *  - Sin query id (acceso directo): redirect a home.
  *
- * El cambio de Order.status a PAID NO se hace acá — eso es trabajo del
- * webhook /api/webhooks/wompi (F2.2). Este page solo MUESTRA estado.
+ * P0-012 (Lucy 2026-06-26) — Fallback idempotente processPaidOrder.
+ * Si Wompi devuelve APPROVED Y la Order sigue en PENDING_PAYMENT (caso
+ * típico: webhook Wompi sandbox URL no configurada en dashboard, o el
+ * webhook está demorado), disparamos processPaidOrder acá como red de
+ * seguridad. processPaidOrder es idempotente (3 capas: WebhookEvent
+ * unique, status guard, InventoryLog ledger), así que si el webhook
+ * SÍ llega después no genera doble-decremento ni doble-guía.
  */
 
 import type { Metadata } from "next";
@@ -25,6 +30,7 @@ import { Button } from "@/components/ui/button";
 import { getTransaction } from "@/lib/wompi";
 import { logger } from "@/lib/logger";
 import { finishCheckoutSession } from "@/features/checkout/service";
+import { processPaidOrder } from "@/features/orders/saga";
 import { prisma } from "@/lib/db";
 import { formatCOP } from "@/lib/format";
 
@@ -62,7 +68,7 @@ export default async function CheckoutGraciasPage({
   }
 
   // Lookup Order por reference (= Order.number)
-  const order = await prisma.order.findFirst({
+  let order = await prisma.order.findFirst({
     where: { number: tx.reference, deletedAt: null },
     select: {
       id: true,
@@ -76,6 +82,53 @@ export default async function CheckoutGraciasPage({
   });
 
   if (tx.status === "APPROVED") {
+    // P0-012 — Fallback idempotente: si la Order sigue en PENDING_PAYMENT,
+    // el webhook Wompi no llegó (o se demoró). Disparamos processPaidOrder
+    // acá. Si ya pasó por el webhook, processPaidOrder retorna
+    // "already_processed" y no hace nada.
+    if (order && order.status === "PENDING_PAYMENT") {
+      const orderId = order.id;
+      const orderNumber = order.number;
+      logger.info({
+        event: "checkout.gracias.fallback_saga",
+        orderId,
+        orderNumber,
+        txId: tx.id,
+      });
+      try {
+        const result = await processPaidOrder({
+          orderId,
+          wompiTransactionId: tx.id,
+        });
+        logger.info({
+          event: "checkout.gracias.fallback_result",
+          orderId,
+          status: result.status,
+          trackingNumber: result.trackingNumber ?? null,
+        });
+        // Re-leer order para mostrar tracking/status actualizado al cliente.
+        order = await prisma.order.findFirst({
+          where: { id: orderId, deletedAt: null },
+          select: {
+            id: true,
+            number: true,
+            status: true,
+            total: true,
+            email: true,
+            shippingCarrier: true,
+            shippingAddress: true,
+          },
+        });
+      } catch (err) {
+        logger.error({
+          event: "checkout.gracias.fallback_fail",
+          orderId,
+          err: err instanceof Error ? err.message : String(err),
+        });
+        // Mostramos ApprovedPage igual — el pago sí fue aprobado por Wompi.
+        // Si la saga falló, admin reconcilia manualmente desde /admin/pedidos.
+      }
+    }
     // Limpiar cookie del checkout (ya cumplió su propósito).
     await finishCheckoutSession();
     return <ApprovedPage order={order} txId={tx.id} />;

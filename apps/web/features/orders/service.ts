@@ -20,6 +20,7 @@ import "server-only";
 import crypto from "node:crypto";
 import { prisma, Prisma } from "@/lib/db";
 import { canTransition, type ShippingAddressInput } from "./schemas";
+import { assertStockAvailable, revertStockForOrder } from "./stock";
 
 const ORDER_PAGE_SIZE = 20;
 
@@ -150,6 +151,17 @@ export async function createOrderFromCart(
       };
     }
 
+    // P0-002 (Lucy 2026-06-26) — Validar stock disponible antes de crear Order.
+    // Lectura solamente; el decremento real ocurre en saga POST-PAID (evita
+    // "secuestrar" stock por carritos abandonados ~30-40% en Wompi).
+    // Esta validación filtra el caso obvio "ya no hay" antes de invitar al
+    // cliente al checkout; la defensa real contra concurrencia es el UPDATE
+    // atómico en decrementStockForOrder.
+    await assertStockAvailable(
+      tx,
+      cart.items.map((it) => ({ variantId: it.variantId, qty: it.qty })),
+    );
+
     const number = await generateOrderNumber(tx);
 
     // Token público para vista guest /pedido/<token> sin login.
@@ -260,6 +272,39 @@ export async function transitionOrder(
   if (!canTransition(current.status, to)) {
     throw new OrderTransitionError(current.status, to);
   }
+
+  // P0-002 (Lucy 2026-06-26) — Si la transición es a CANCELLED/REFUNDED,
+  // revertir stock dentro de la misma transacción. revertStockForOrder es
+  // idempotente y no-op si NO hubo decremento previo (caso PENDING_PAYMENT →
+  // CANCELLED por DECLINED). El UPDATE de Order y el revert son atómicos.
+  const needsRevert = to === "CANCELLED" || to === "REFUNDED";
+
+  if (needsRevert) {
+    return prisma.$transaction(async (tx) => {
+      const updated = await tx.order.update({
+        where: { id: orderId },
+        data: {
+          status: to as Prisma.OrderUpdateInput["status"],
+          updatedBy: options.actorAdminId ?? null,
+          ...options.extra,
+        },
+      });
+      const orderWithItems = await tx.order.findFirst({
+        where: { id: orderId },
+        select: {
+          id: true,
+          number: true,
+          items: { select: { variantId: true, qty: true } },
+        },
+      });
+      if (orderWithItems) {
+        const revertReason = to === "REFUNDED" ? "ORDER_REFUNDED" : "ORDER_CANCELLED";
+        await revertStockForOrder(tx, orderWithItems, revertReason);
+      }
+      return updated;
+    });
+  }
+
   return prisma.order.update({
     where: { id: orderId },
     data: {
