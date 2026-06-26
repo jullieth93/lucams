@@ -153,13 +153,8 @@ export const ADMIN_NAV: NavGroup[] = [
         description:
           "Cuentas mayoristas con precios especiales, listas de precios B2B y aprobación de pedidos en lote.",
       },
-      {
-        label: "Redirects 301",
-        href: "/admin/redirects",
-        icon: ArrowRightLeft,
-        description:
-          "Gestión admin de URLs legacy → nuevas (SEO). Complementa product-redirects.ts (generado por code). Cache 60s en proxy.",
-      },
+      // P1-17: "Redirects 301" se movió a Configuración — no es una promo,
+      // es plumbing SEO. Lo dejamos cerca de Integraciones y General.
     ],
   },
   {
@@ -276,6 +271,14 @@ export const ADMIN_NAV: NavGroup[] = [
         icon: Mail,
         description:
           "Lista de CmsBlocks tipo EMAIL (asunto + cuerpo + CTA). Editor reusa /admin/contenido. Layout react-email vive en código.",
+      },
+      // P1-17: movido desde "Promociones" — es plumbing SEO, no oferta comercial.
+      {
+        label: "Redirects 301",
+        href: "/admin/redirects",
+        icon: ArrowRightLeft,
+        description:
+          "URLs viejas que redirigen a las nuevas (SEO). Útil cuando renombras un producto o categoría y quieres preservar los links indexados en Google.",
       },
     ],
   },

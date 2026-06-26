@@ -132,12 +132,13 @@ export default async function InventarioPage({
             }
           />
         ) : (
-          <AdminTable>
+          <AdminTable minWidth={800}>
             {/*
              * Hotfix P0-1: removido el wrapper AdminCard que duplicaba
              * border + rounded-xl + shadow (AdminTable ya es una card).
              * Hotfix P0-2: removidas clases redundantes del <tr> que
              * sobrescribían el text-brand-purple-dark/70 global del head.
+             * Hotfix P0-14: minWidth=800 da más respiro a 6 columnas.
              */}
             <AdminTableHead>
               <tr>
@@ -153,25 +154,29 @@ export default async function InventarioPage({
                 {data.rows.map((row) => (
                   <AdminTableRow key={row.variantId}>
                     <td className="px-4 py-3">
-                      <Link
-                        href={`/admin/productos/${row.productId}`}
-                        className="text-brand-purple-dark hover:text-brand-purple inline-flex items-center gap-1 text-sm font-semibold"
-                      >
-                        {row.productName}
-                        <ExternalLink
-                          className="h-3 w-3 opacity-50"
-                          aria-label="Abrir producto"
-                        />
-                      </Link>
-                      {!row.isProductActive && (
-                        <span
-                          className="ml-2 inline-block rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-900"
-                          title="Producto pausado — no visible en la tienda"
+                      {/*
+                       * Hotfix P0-4: nombre + badge "Pausado" + categoría en
+                       * un flex-wrap controlado para evitar que el badge
+                       * caiga en línea sola con nombres largos.
+                       */}
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                        <Link
+                          href={`/admin/productos/${row.productId}`}
+                          className="text-brand-purple-dark hover:text-brand-purple inline-flex items-center gap-1 text-sm font-semibold"
                         >
-                          Pausado
-                        </span>
-                      )}
-                      <p className="text-brand-purple-dark/55 mt-0.5 text-[11px]">
+                          {row.productName}
+                          <ExternalLink className="h-3 w-3 opacity-50" aria-hidden />
+                        </Link>
+                        {!row.isProductActive && (
+                          <span
+                            className="inline-block rounded bg-amber-100 px-1.5 py-0.5 text-xs font-semibold text-amber-900"
+                            title="Producto pausado — no visible en la tienda"
+                          >
+                            Pausado
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-brand-purple-dark/55 mt-0.5 text-xs">
                         {row.categoryName}
                       </p>
                     </td>

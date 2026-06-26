@@ -50,8 +50,13 @@ export function SimpleVariantStockEditor({
       <input type="hidden" name="variantId" value={variantId} />
       <input type="hidden" name="productId" value={productId} />
 
-      <div className="grid grid-cols-[1fr_auto] gap-2 sm:max-w-md">
-        <div className="space-y-1.5">
+      {/*
+       * Hotfix P0-8: grid colapsa a 1 columna en mobile (<sm) para evitar
+       * overflow horizontal cuando el container del producto es <360px.
+       * Desktop sigue siendo grid 2 cols con max-w-md.
+       */}
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_auto] sm:max-w-md">
+        <div className="min-w-0 space-y-1.5">
           <Label htmlFor="newStock" className="text-brand-purple-dark/80 text-sm font-medium">
             Cantidad disponible
           </Label>
@@ -65,7 +70,7 @@ export function SimpleVariantStockEditor({
             value={value}
             onChange={(e) => setValue(e.target.value)}
             placeholder="0"
-            className="h-11 text-base tabular-nums"
+            className="h-11 w-full text-base tabular-nums"
             disabled={pending}
             aria-describedby="newStock-hint"
             required

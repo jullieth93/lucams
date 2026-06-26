@@ -76,12 +76,13 @@ function SectionLink({
     ? "bg-brand-purple text-white shadow-sm"
     : "text-brand-purple-dark/70 hover:bg-brand-purple/8 hover:text-brand-purple-dark";
 
+  // Hotfix P1-7: el badge amber pierde urgencia en estado active (amber-300/30
+  // sobre púrpura = beige apagado). Mantenemos el amber sólido siempre para
+  // que "tienes pendientes" se lea igual de claro al estar parado en la tab.
   const badgeClass = (() => {
     if (!badge) return "";
     if (badgeTone === "amber") {
-      return active
-        ? "bg-amber-300/30 text-white"
-        : "bg-amber-100 text-amber-900";
+      return "bg-amber-100 text-amber-900";
     }
     return active
       ? "bg-white/25 text-white"

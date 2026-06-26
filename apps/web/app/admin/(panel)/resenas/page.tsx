@@ -26,6 +26,7 @@ import {
   AdminTableRow,
 } from "@/components/admin-page";
 import { ConfirmAction } from "@/components/admin/confirm-action";
+import { BulkReviewBar, BulkSelectAllReviewsCheckbox } from "./bulk-review-bar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { getCurrentAdmin } from "@/lib/auth";
@@ -135,6 +136,8 @@ export default async function AdminResenasPage({ searchParams }: { searchParams:
         {sp.rejected === "1" && (
           <AdminNotice tone="warning">Reseña marcada como pendiente.</AdminNotice>
         )}
+        {sp.bulkOk && <AdminNotice tone="success">{String(sp.bulkOk)}</AdminNotice>}
+        {sp.bulkError && <AdminNotice tone="error">{String(sp.bulkError)}</AdminNotice>}
         {sp.featured === "1" && (
           <AdminNotice tone="success">Reseña destacada en la home.</AdminNotice>
         )}
@@ -270,6 +273,9 @@ export default async function AdminResenasPage({ searchParams }: { searchParams:
           <AdminTable>
             <AdminTableHead>
               <tr>
+                <th className="w-10 px-3 py-3 text-left">
+                  <BulkSelectAllReviewsCheckbox />
+                </th>
                 <th className="px-4 py-3 text-left font-semibold">Producto</th>
                 <th className="px-4 py-3 text-center font-semibold">Estrellas</th>
                 <th className="px-4 py-3 text-left font-semibold">Reseña</th>
@@ -282,6 +288,18 @@ export default async function AdminResenasPage({ searchParams }: { searchParams:
             <AdminTableBody>
               {items.map((r) => (
                 <AdminTableRow key={r.id}>
+                  <td className="w-10 px-3 py-3 align-middle">
+                    {/* Bulk: solo permite seleccionar reseñas no archivadas. */}
+                    {!r.isArchived && (
+                      <input
+                        type="checkbox"
+                        name="reviewIds"
+                        value={r.id}
+                        aria-label={`Seleccionar reseña de ${r.authorName ?? "anónimo"}`}
+                        className="text-brand-purple focus:ring-brand-purple/40 h-4 w-4 cursor-pointer rounded border-brand-purple/30"
+                      />
+                    )}
+                  </td>
                   <td className="px-4 py-3">
                     <Link
                       href={`/producto/${r.productSlug}`}
@@ -437,6 +455,9 @@ export default async function AdminResenasPage({ searchParams }: { searchParams:
           </div>
         )}
       </AdminPageBody>
+
+      {/* Sprint backlog Opción C: bar flotante bulk approve/archive. */}
+      <BulkReviewBar />
     </AdminPage>
   );
 }

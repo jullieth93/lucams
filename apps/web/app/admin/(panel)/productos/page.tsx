@@ -74,6 +74,11 @@ export default async function AdminProductosPage({ searchParams }: { searchParam
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const hasActiveFilters = !!q || status !== "all" || sort !== "recent";
 
+  // Hotfix P1-15: si el filtro es "archivados", los checkboxes de bulk no
+  // tienen sentido (no podés bulk-modificar archivados). Ocultamos la columna
+  // entera para evitar el margen fantasma.
+  const showBulkColumn = status !== "archived";
+
   return (
     <AdminPage>
       <AdminPageHeader
@@ -100,7 +105,13 @@ export default async function AdminProductosPage({ searchParams }: { searchParam
 
       <AdminPageBody>
         {justCreated && <AdminNotice tone="success">Producto creado correctamente.</AdminNotice>}
-        {justDeleted && <AdminNotice tone="warning">Producto archivado.</AdminNotice>}
+        {/* Hotfix P1-16: archivar es acción reversible deliberada — success, no warning. */}
+        {justDeleted && (
+          <AdminNotice tone="success">
+            Producto archivado. Puedes restaurarlo cuando quieras desde el filtro
+            &quot;Archivados&quot;.
+          </AdminNotice>
+        )}
         {sp.bulkOk && <AdminNotice tone="success">{String(sp.bulkOk)}</AdminNotice>}
         {sp.bulkError && <AdminNotice tone="error">{String(sp.bulkError)}</AdminNotice>}
         {sp.restored === "1" && (
@@ -213,9 +224,11 @@ export default async function AdminProductosPage({ searchParams }: { searchParam
           <AdminTable>
             <AdminTableHead>
               <tr>
-                <th className="w-10 px-3 py-3 text-left">
-                  <BulkSelectAllCheckbox />
-                </th>
+                {showBulkColumn && (
+                  <th className="w-10 px-3 py-3 text-left">
+                    <BulkSelectAllCheckbox />
+                  </th>
+                )}
                 <th className="px-4 py-3 text-left font-semibold">Producto</th>
                 <th className="px-4 py-3 text-left font-semibold">Código</th>
                 <th className="px-4 py-3 text-left font-semibold">Categoría</th>
@@ -227,17 +240,19 @@ export default async function AdminProductosPage({ searchParams }: { searchParam
             <AdminTableBody>
               {items.map((p) => (
                 <AdminTableRow key={p.id}>
-                  <td className="w-10 px-3 py-3 align-middle">
-                    {p.deletedAt === null && (
-                      <input
-                        type="checkbox"
-                        name="productIds"
-                        value={p.id}
-                        aria-label={`Seleccionar ${p.name}`}
-                        className="text-brand-purple focus:ring-brand-purple/40 h-4 w-4 cursor-pointer rounded border-brand-purple/30"
-                      />
-                    )}
-                  </td>
+                  {showBulkColumn && (
+                    <td className="w-10 px-3 py-3 align-middle">
+                      {p.deletedAt === null && (
+                        <input
+                          type="checkbox"
+                          name="productIds"
+                          value={p.id}
+                          aria-label={`Seleccionar ${p.name}`}
+                          className="text-brand-purple focus:ring-brand-purple/40 h-4 w-4 cursor-pointer rounded border-brand-purple/30"
+                        />
+                      )}
+                    </td>
+                  )}
                   <td className="px-4 py-3">
                     <div className="text-brand-purple-dark font-medium">{p.name}</div>
                     <div className="text-brand-purple-dark/50 text-xs">/{p.slug}</div>
@@ -255,6 +270,12 @@ export default async function AdminProductosPage({ searchParams }: { searchParam
                     />
                   </td>
                   <td className="px-4 py-3 text-right">
+                    {/*
+                     * Hotfix P0-10: ambas acciones ahora con mismo tratamiento
+                     * (borde + h-9 + font-semibold + text-xs) — antes "Editar"
+                     * era link plano sin chrome al lado del button QuickActions
+                     * con borde, inconsistencia visual.
+                     */}
                     <div className="flex items-center justify-end gap-2">
                       <ProductQuickActions
                         productId={p.id}
@@ -263,7 +284,7 @@ export default async function AdminProductosPage({ searchParams }: { searchParam
                       />
                       <Link
                         href={`/admin/productos/${p.id}`}
-                        className="text-brand-purple hover:text-brand-purple-dark inline-flex items-center gap-1 text-xs font-medium"
+                        className="border-brand-purple/25 text-brand-purple hover:bg-brand-purple/10 inline-flex h-9 items-center gap-1.5 rounded-md border bg-white px-3 text-xs font-semibold"
                       >
                         <Edit3 className="h-3.5 w-3.5" />
                         Editar

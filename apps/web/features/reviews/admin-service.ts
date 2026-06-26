@@ -231,3 +231,39 @@ export async function restoreReview(id: string, adminUserId: string) {
     data: { deletedAt: null, deletedBy: null, updatedBy: adminUserId },
   });
 }
+
+/**
+ * Bulk: aprueba N reseñas (pendientes → publicadas). Lucy 2026-06-26 — Opción
+ * C backlog. Solo afecta reseñas no soft-deleted. Devuelve count.
+ */
+export async function bulkApproveReviews(
+  ids: string[],
+  adminUserId: string,
+): Promise<{ count: number }> {
+  if (ids.length === 0) return { count: 0 };
+  const result = await prisma.review.updateMany({
+    where: { id: { in: ids }, deletedAt: null },
+    data: { isApproved: true, updatedBy: adminUserId },
+  });
+  return { count: result.count };
+}
+
+/**
+ * Bulk: archiva N reseñas (las saca de la tienda). Reversible vía restore.
+ */
+export async function bulkArchiveReviews(
+  ids: string[],
+  adminUserId: string,
+): Promise<{ count: number }> {
+  if (ids.length === 0) return { count: 0 };
+  const result = await prisma.review.updateMany({
+    where: { id: { in: ids }, deletedAt: null },
+    data: {
+      deletedAt: new Date(),
+      deletedBy: adminUserId,
+      featured: false,
+      isApproved: false,
+    },
+  });
+  return { count: result.count };
+}

@@ -154,18 +154,25 @@ export function AdminCard({
 export function AdminTable({
   children,
   className = "",
+  minWidth = 640,
 }: {
   children: ReactNode;
   className?: string;
+  /**
+   * Ancho mínimo de la tabla en px antes de activar scroll horizontal.
+   * Hotfix P0-14: subir a 800 en tablas de 6+ columnas (ej. /admin/inventario)
+   * donde 640px hacía las columnas muy estrechas y el editor de stock
+   * se pegaba al borde.
+   */
+  minWidth?: number;
 }) {
   return (
-    // `overflow-x-auto` permite scroll horizontal en mobile cuando la
-    // tabla tiene muchas columnas (ej. auditoría con 6 cols). Sin esto
-    // la tabla desbordaba o se cortaba en pantallas chicas.
     <div
       className={`border-brand-purple/10 overflow-x-auto rounded-xl border bg-white shadow-sm ${className}`}
     >
-      <table className="w-full min-w-[640px] text-sm">{children}</table>
+      <table className="w-full text-sm" style={{ minWidth: `${minWidth}px` }}>
+        {children}
+      </table>
     </div>
   );
 }

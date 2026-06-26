@@ -182,8 +182,9 @@ function SubTab({
   tone: "amber" | "emerald" | "muted";
   href: string;
 }) {
+  // Hotfix P1-9: h-11 (44px touch target) — consistente con ProductSectionNav.
   const base =
-    "focus-visible:ring-brand-purple/50 inline-flex h-10 items-center gap-1.5 rounded-lg px-3.5 text-sm font-semibold whitespace-nowrap transition-colors focus-visible:ring-2 focus-visible:outline-none";
+    "focus-visible:ring-brand-purple/50 inline-flex h-11 items-center gap-1.5 rounded-lg px-3.5 text-sm font-semibold whitespace-nowrap transition-colors focus-visible:ring-2 focus-visible:outline-none";
   const activeClass = (() => {
     if (active) return "bg-brand-purple text-white shadow-sm";
     return "text-brand-purple-dark/70 hover:bg-brand-purple/8 hover:text-brand-purple-dark";
@@ -198,9 +199,12 @@ function SubTab({
   return (
     <Link href={href} aria-current={active ? "page" : undefined} className={`${base} ${activeClass}`}>
       <span>{label}</span>
-      <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums ${badgeClass}`}>
-        {count}
-      </span>
+      {/* Hotfix P2-7: omitir badge cuando count=0 (consistente con ProductSectionNav). */}
+      {count > 0 && (
+        <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums ${badgeClass}`}>
+          {count}
+        </span>
+      )}
     </Link>
   );
 }
@@ -244,10 +248,17 @@ function ReviewCard({
     <AdminCard className="p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
+          {/*
+           * Hotfix P0-13: flex-wrap + truncate en nombre del autor —
+           * antes con nombres largos toda la fila desbordaba a la derecha.
+           * Hotfix P1-12: metadata estandarizada a text-xs purple-dark/60.
+           */}
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <Stars rating={review.rating} />
-            <span className="text-brand-purple-dark text-sm font-semibold">{author}</span>
-            <span className="text-brand-purple-dark/55 text-xs">
+            <span className="text-brand-purple-dark min-w-0 truncate text-sm font-semibold">
+              {author}
+            </span>
+            <span className="text-brand-purple-dark/60 text-xs">
               {city} · {dateFmt.format(review.createdAt)}
             </span>
             {review.featured && (
@@ -257,8 +268,8 @@ function ReviewCard({
               </AdminBadge>
             )}
             {review.imagesCount > 0 && (
-              <span className="text-brand-purple-dark/55 text-xs">
-                📷 {review.imagesCount} foto{review.imagesCount === 1 ? "" : "s"}
+              <span className="text-brand-purple-dark/60 text-xs">
+                {review.imagesCount} foto{review.imagesCount === 1 ? "" : "s"}
               </span>
             )}
           </div>
