@@ -570,17 +570,40 @@ export function ProductForm({ categories, initialProduct, action, submitLabel }:
         </div>
       )}
 
-      <div className="flex items-center gap-3">
+      {/*
+       * ADM-P0-003 — Sticky bottom bar.
+       * Pegada al borde inferior del viewport SIEMPRE que haya scroll en el form.
+       * Mobile-first: ocupa todo el ancho y tiene padding generoso para tap.
+       * Desktop: contenido alineado a la derecha con cancelar a la izquierda.
+       *
+       * Patrón inspirado en /admin/contenido/bloques/[id] que el audit identificó
+       * como "el modelo a seguir" del admin. z-20 para quedar encima del tab bar
+       * pero por debajo de modales (z-50).
+       */}
+      <div
+        className="border-brand-purple/15 sticky bottom-0 z-20 -mx-4 -mb-4 mt-6 flex items-center justify-between gap-3 border-t bg-white/95 px-4 py-3 backdrop-blur sm:-mx-0 sm:-mb-0 sm:rounded-b-xl sm:px-5"
+      >
+        <Link
+          href="/admin/productos"
+          className="text-sm font-medium text-brand-purple-dark/65 hover:text-brand-purple-dark"
+        >
+          ← Cancelar
+        </Link>
         <Button
           type="submit"
-          className="bg-brand-purple font-semibold text-white hover:bg-brand-purple-dark"
+          size="lg"
+          className="bg-brand-purple font-semibold text-white shadow-sm hover:bg-brand-purple-dark disabled:opacity-60"
           disabled={pending}
         >
-          {pending ? "Guardando..." : submitLabel}
+          {pending ? (
+            <>
+              <span className="mr-1.5 inline-block h-3 w-3 animate-spin rounded-full border-2 border-white/40 border-t-white" />
+              Guardando…
+            </>
+          ) : (
+            <>💾 {submitLabel}</>
+          )}
         </Button>
-        <Link href="/admin/productos" className="text-sm text-brand-purple-dark/65 hover:text-brand-purple-dark">
-          Cancelar
-        </Link>
       </div>
     </form>
   );
