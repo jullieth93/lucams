@@ -28,6 +28,10 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./"),
+      // "server-only" lo resuelve Next.js internamente; en vitest node lo
+      // aliasamos a un stub no-op para poder testear módulos server-side
+      // (stock ledger, wompi env, etc.).
+      "server-only": path.resolve(__dirname, "./tests/stubs/server-only.ts"),
     },
   },
 });

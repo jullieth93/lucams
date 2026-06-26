@@ -28,3 +28,24 @@ export class InsufficientStockError extends Error {
     this.name = "InsufficientStockError";
   }
 }
+
+/**
+ * El ledger de stock ya fue aplicado para este (orderId, reason, variantId).
+ *
+ * Lanzado por `decrementStockForOrder` / `revertStockForOrder` cuando el
+ * UNIQUE INDEX parcial de InventoryLog dispara P2002 — significa que otra
+ * transacción concurrente (típico: webhook Wompi + fallback /checkout/gracias
+ * corriendo a la vez) ya hizo el trabajo y commiteó primero.
+ *
+ * El caller (processPaidOrder) lo trata como idempotente: la orden ya fue
+ * procesada por el ganador de la carrera, NO se re-procesa ni se duplica guía.
+ */
+export class StockAlreadyAppliedError extends Error {
+  constructor(
+    public orderId: string,
+    public reason: string,
+  ) {
+    super(`Stock ya aplicado para order ${orderId} (${reason}) — carrera concurrente`);
+    this.name = "StockAlreadyAppliedError";
+  }
+}

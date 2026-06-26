@@ -131,7 +131,22 @@ export default async function CheckoutGraciasPage({
     }
     // Limpiar cookie del checkout (ya cumplió su propósito).
     await finishCheckoutSession();
-    return <ApprovedPage order={order} txId={tx.id} />;
+
+    // #8 (certificación Bloque A) — NO mentir. Wompi aprobó el cobro, pero la
+    // Order solo está realmente confirmada si la saga la llevó a PAID/FULFILLING.
+    // Si quedó en PENDING_PAYMENT (stock agotado, fallo de saga), mostrar una
+    // página honesta de "recibimos tu pago, lo estamos verificando" en vez de
+    // "¡pedido confirmado!" — el cliente no debe creer que está listo cuando
+    // hay una reconciliación pendiente.
+    const confirmed =
+      order?.status === "PAID" ||
+      order?.status === "FULFILLING" ||
+      order?.status === "SHIPPED" ||
+      order?.status === "DELIVERED";
+    if (confirmed) {
+      return <ApprovedPage order={order} txId={tx.id} />;
+    }
+    return <PaymentReceivedPage orderNumber={order?.number ?? tx.reference} txId={tx.id} />;
   }
   if (tx.status === "PENDING") {
     return <PendingPage orderNumber={tx.reference} txId={tx.id} />;
@@ -262,6 +277,46 @@ function PendingPage({ orderNumber, txId }: { orderNumber: string; txId: string 
   );
 }
 
+/**
+ * #8 (certificación Bloque A) — Wompi aprobó el cobro pero la Order NO llegó a
+ * PAID (stock agotado en la carrera, o fallo de saga). Página HONESTA: el dinero
+ * se recibió, lo estamos verificando — NO "pedido confirmado". Evita que el
+ * cliente crea que está listo cuando hay reconciliación admin pendiente.
+ */
+function PaymentReceivedPage({ orderNumber, txId }: { orderNumber: string; txId: string }) {
+  return (
+    <div className="mx-auto max-w-2xl py-8 text-center">
+      <div className="inline-flex h-20 w-20 items-center justify-center rounded-full bg-amber-50 ring-8 ring-amber-100">
+        <Clock className="h-12 w-12 text-amber-600" />
+      </div>
+      <h1 className="font-display text-brand-purple-dark mt-6 text-3xl font-bold sm:text-4xl">
+        Recibimos tu pago, lo estamos confirmando ⏳
+      </h1>
+      <p className="text-brand-purple-dark/75 mx-auto mt-3 max-w-md text-sm sm:text-base">
+        Tu pago fue aprobado y lo estamos verificando para preparar tu pedido. En cuanto esté
+        todo listo te llega un correo con los detalles. Si en unas horas no recibes nada,
+        escríbenos y lo revisamos enseguida.
+      </p>
+      <p className="text-brand-purple-dark/55 mt-4 text-xs">
+        Pedido <code className="font-mono font-bold">{orderNumber}</code> · Wompi{" "}
+        <code className="font-mono">{txId.slice(0, 16)}…</code>
+      </p>
+      <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
+        <Link href="/contacto">
+          <Button size="lg" variant="outline" className="border-brand-purple/30 text-brand-purple-dark">
+            Contactar soporte
+          </Button>
+        </Link>
+        <Link href="/">
+          <Button size="lg" className="bg-gradient-brand text-white hover:brightness-110">
+            Volver al inicio
+          </Button>
+        </Link>
+      </div>
+    </div>
+  );
+}
+
 function FailedPage({ reason }: { reason: string }) {
   return (
     <div className="mx-auto max-w-2xl py-8 text-center">
@@ -275,8 +330,8 @@ function FailedPage({ reason }: { reason: string }) {
         {reason}
       </p>
       <p className="text-brand-purple-dark/65 mx-auto mt-4 max-w-md text-sm">
-        Tu carrito sigue intacto. Podés reintentar con otro método de pago o contactarnos si querés
-        ayuda.
+        Tu carrito sigue intacto. Puedes reintentar con otro método de pago o contactarnos si
+        necesitas ayuda.
       </p>
       <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
         <Link href="/contacto">

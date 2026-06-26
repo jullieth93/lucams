@@ -20,11 +20,16 @@ import {
   AdminTableRow,
   AdminEmpty,
   AdminBadge,
+  AdminNotice,
 } from "@/components/admin-page";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { getCurrentAdmin } from "@/lib/auth";
-import { listOrders, type OrderListOpts } from "@/features/orders/service";
+import {
+  listOrders,
+  countOrdersNeedingReconciliation,
+  type OrderListOpts,
+} from "@/features/orders/service";
 import { formatCOP } from "@/lib/format";
 
 export const metadata: Metadata = { title: "Pedidos" };
@@ -84,9 +89,21 @@ export default async function AdminPedidosPage({ searchParams }: { searchParams:
     ["oldest", "total-desc"].includes(sortRaw ?? "") ? sortRaw : "recent"
   ) as OrderListOpts["sort"];
   const page = Number(sp.page) || 1;
+  // #6 (certificación Bloque A) — filtro "necesitan atención": órdenes donde
+  // Wompi cobró pero el stock se agotó (reconciliación admin pendiente).
+  const needsReconFilter = pickString(sp, "atencion") === "1";
 
-  const { items, total, totalPages } = await listOrders({ q, status, sort, page });
-  const hasActiveFilters = !!q || status !== "all" || sort !== "recent";
+  const { items, total, totalPages } = await listOrders({
+    q,
+    status,
+    sort,
+    page,
+    needsReconciliation: needsReconFilter || undefined,
+  });
+  const hasActiveFilters = !!q || status !== "all" || sort !== "recent" || needsReconFilter;
+
+  // Contador global de órdenes que necesitan reconciliación (para el banner).
+  const reconCount = await countOrdersNeedingReconciliation();
 
   const dateFmt = new Intl.DateTimeFormat("es-CO", {
     day: "2-digit",
@@ -115,6 +132,31 @@ export default async function AdminPedidosPage({ searchParams }: { searchParams:
       />
 
       <AdminPageBody>
+        {/*
+         * #6 (certificación Bloque A) — Banner de alerta: órdenes donde Wompi
+         * cobró pero el stock se agotó al confirmar. Necesitan que Lucy decida
+         * reembolso o producir stock. VISIBLE (no muere en un log).
+         */}
+        {reconCount > 0 && !needsReconFilter && (
+          <AdminNotice tone="error">
+            <strong>
+              🔴 {reconCount} pedido{reconCount === 1 ? "" : "s"} necesita
+              {reconCount === 1 ? "" : "n"} tu atención
+            </strong>{" "}
+            — el pago se cobró pero no había stock suficiente al confirmar.{" "}
+            <Link href="/admin/pedidos?atencion=1" className="font-semibold underline">
+              Ver pedidos a reconciliar →
+            </Link>
+          </AdminNotice>
+        )}
+        {needsReconFilter && (
+          <AdminNotice tone="warning">
+            Mostrando solo pedidos que necesitan reconciliación (pago cobrado sin stock).{" "}
+            <Link href="/admin/pedidos" className="font-semibold underline">
+              Ver todos los pedidos
+            </Link>
+          </AdminNotice>
+        )}
         <form
           method="GET"
           className="border-brand-purple/10 grid grid-cols-1 gap-3 rounded-xl border bg-white p-4 shadow-sm sm:grid-cols-12"
@@ -252,9 +294,20 @@ export default async function AdminPedidosPage({ searchParams }: { searchParams:
                       {formatCOP(o.total)}
                     </td>
                     <td className="px-4 py-3">
-                      <AdminBadge tone={STATUS_TONE[o.status] ?? "slate"}>
-                        {STATUS_LABEL[o.status] ?? o.status}
-                      </AdminBadge>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <AdminBadge tone={STATUS_TONE[o.status] ?? "slate"}>
+                          {STATUS_LABEL[o.status] ?? o.status}
+                        </AdminBadge>
+                        {/* #6 — flag visible de reconciliación pendiente. */}
+                        {o.needsReconciliation && (
+                          <span
+                            className="inline-flex items-center gap-1 rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-[10px] font-bold text-red-800"
+                            title={o.reconciliationReason ?? "Pago cobrado sin stock — requiere atención"}
+                          >
+                            🔴 Reconciliar
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-4 py-3">
                       {o.trackingNumber ? (

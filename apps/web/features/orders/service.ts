@@ -19,6 +19,7 @@
 import "server-only";
 import crypto from "node:crypto";
 import { prisma, Prisma } from "@/lib/db";
+import { logger } from "@/lib/logger";
 import { canTransition, type ShippingAddressInput } from "./schemas";
 import { assertStockAvailable, revertStockForOrder } from "./stock";
 
@@ -99,6 +100,47 @@ export type CreateOrderFromCartResult = {
  * validar antes de invocar.
  */
 export async function createOrderFromCart(
+  input: CreateOrderFromCartInput,
+): Promise<CreateOrderFromCartResult> {
+  try {
+    return await createOrderFromCartTx(input);
+  } catch (err) {
+    // #12 (certificación Bloque A) — backstop de idempotencia a nivel DB.
+    // Si dos finalizeCheckout concurrentes del mismo cart pasaron ambos el
+    // findFirst (READ COMMITTED no vio la otra tx aún), el UNIQUE INDEX parcial
+    // Order_cartId_pending_unique deja crear solo una; la perdedora recibe P2002.
+    // Re-consultamos la orden ganadora y la devolvemos como si la hubiéramos
+    // creado — el cliente termina con UNA sola orden y UN solo cobro Wompi.
+    if (isCartPendingUniqueViolation(err)) {
+      const winner = await prisma.order.findFirst({
+        where: { cartId: input.cartId, status: "PENDING_PAYMENT", deletedAt: null },
+        orderBy: { createdAt: "desc" },
+        select: { id: true, number: true, total: true, subtotal: true, shipping: true, discount: true },
+      });
+      if (winner) {
+        logger.info({
+          event: "order.create.concurrent_idempotent",
+          cartId: input.cartId,
+          orderId: winner.id,
+          orderNumber: winner.number,
+        });
+        return winner;
+      }
+    }
+    throw err;
+  }
+}
+
+/** Detecta P2002 del índice parcial unique de Order.cartId (carrera de checkout). */
+function isCartPendingUniqueViolation(err: unknown): boolean {
+  return (
+    err instanceof Prisma.PrismaClientKnownRequestError &&
+    err.code === "P2002" &&
+    JSON.stringify(err.meta ?? {}).includes("cartId")
+  );
+}
+
+async function createOrderFromCartTx(
   input: CreateOrderFromCartInput,
 ): Promise<CreateOrderFromCartResult> {
   return prisma.$transaction(async (tx) => {
@@ -345,6 +387,8 @@ export type OrderListOpts = {
     | "DELIVERED"
     | "CANCELLED"
     | "REFUNDED";
+  /** #6 — filtro especial: solo órdenes que necesitan reconciliación admin. */
+  needsReconciliation?: boolean;
   sort?: "recent" | "oldest" | "total-desc";
   page?: number;
   pageSize?: number;
@@ -370,6 +414,7 @@ export async function listOrders(opts: OrderListOpts = {}) {
   const where: Prisma.OrderWhereInput = {
     deletedAt: null,
     ...(opts.status && opts.status !== "all" ? { status: opts.status } : {}),
+    ...(opts.needsReconciliation ? { needsReconciliation: true } : {}),
     ...(q
       ? {
           OR: [
@@ -404,4 +449,14 @@ export async function listOrders(opts: OrderListOpts = {}) {
     pageSize,
     totalPages: Math.max(1, Math.ceil(total / pageSize)),
   };
+}
+
+/**
+ * #6 — Cuántas órdenes necesitan reconciliación admin (Wompi cobró pero stock
+ * se agotó). Para el banner de alerta en /admin/pedidos y futuras métricas.
+ */
+export async function countOrdersNeedingReconciliation(): Promise<number> {
+  return prisma.order.count({
+    where: { needsReconciliation: true, deletedAt: null },
+  });
 }

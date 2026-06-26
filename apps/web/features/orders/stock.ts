@@ -30,7 +30,21 @@
 import "server-only";
 import { Prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
-import { InsufficientStockError } from "./errors";
+import { InsufficientStockError, StockAlreadyAppliedError } from "./errors";
+
+/**
+ * ¿Es un P2002 (unique violation) del índice parcial de InventoryLog?
+ * Lo usamos para distinguir la carrera concurrente benigna (otro tx ya aplicó
+ * el ledger) de un error técnico real.
+ */
+function isInventoryLogUniqueViolation(err: unknown): boolean {
+  return (
+    err instanceof Prisma.PrismaClientKnownRequestError &&
+    err.code === "P2002" &&
+    // target puede ser el nombre del índice o el array de columnas según el driver.
+    JSON.stringify(err.meta ?? {}).includes("InventoryLog")
+  );
+}
 
 /**
  * Razones canónicas para InventoryLog.
@@ -138,15 +152,34 @@ export async function decrementStockForOrder(
       // Throw → tx caller rollback → Order NO transiciona a PAID.
       throw new InsufficientStockError(item.variantId, item.qty);
     }
-    await tx.inventoryLog.create({
-      data: {
-        variantId: item.variantId,
-        delta: -item.qty,
-        reason: INVENTORY_REASON.ORDER_PAID,
-        orderId: order.id,
-        createdBy: "system:order-saga",
-      },
-    });
+    try {
+      await tx.inventoryLog.create({
+        data: {
+          variantId: item.variantId,
+          delta: -item.qty,
+          reason: INVENTORY_REASON.ORDER_PAID,
+          orderId: order.id,
+          createdBy: "system:order-saga",
+        },
+      });
+    } catch (err) {
+      // P2002 del índice parcial unique (orderId, reason, variantId): otra tx
+      // concurrente (webhook + fallback /gracias) ya decrementó este variant
+      // para esta orden. La precondición findFirst no lo vio porque el ganador
+      // aún no había commiteado. Re-lanzamos como StockAlreadyAppliedError →
+      // el caller hace rollback de ESTA tx (sin doble-decremento) y trata la
+      // orden como ya procesada por el ganador. Backstop físico del ledger.
+      if (isInventoryLogUniqueViolation(err)) {
+        logger.info({
+          event: "stock.decrement.concurrent_already_applied",
+          orderId: order.id,
+          orderNumber: order.number,
+          variantId: item.variantId,
+        });
+        throw new StockAlreadyAppliedError(order.id, INVENTORY_REASON.ORDER_PAID);
+      }
+      throw err;
+    }
     decremented.push(item.variantId);
   }
 
@@ -218,15 +251,32 @@ export async function revertStockForOrder(
       where: { id: item.variantId },
       data: { stock: { increment: item.qty } },
     });
-    await tx.inventoryLog.create({
-      data: {
-        variantId: item.variantId,
-        delta: item.qty,
-        reason,
-        orderId: order.id,
-        createdBy: "system:order-saga",
-      },
-    });
+    try {
+      await tx.inventoryLog.create({
+        data: {
+          variantId: item.variantId,
+          delta: item.qty,
+          reason,
+          orderId: order.id,
+          createdBy: "system:order-saga",
+        },
+      });
+    } catch (err) {
+      // Carrera concurrente de revert (ej. dos cancelaciones a la vez): el
+      // índice parcial unique impide el doble-revert físicamente. Re-lanzamos
+      // para rollback de esta tx — el ganador ya revirtió el stock correcto.
+      if (isInventoryLogUniqueViolation(err)) {
+        logger.info({
+          event: "stock.revert.concurrent_already_applied",
+          orderId: order.id,
+          orderNumber: order.number,
+          variantId: item.variantId,
+          reason,
+        });
+        throw new StockAlreadyAppliedError(order.id, reason);
+      }
+      throw err;
+    }
     reverted.push(item.variantId);
   }
 

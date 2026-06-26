@@ -23,7 +23,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
-import { verifyWebhookSignature } from "@/lib/wompi";
+import { verifyWebhookSignature, getWompiExpectedWebhookEnv } from "@/lib/wompi";
 import { processPaidOrder, processFailedPaymentOrder } from "@/features/orders/saga";
 
 export const dynamic = "force-dynamic";
@@ -87,17 +87,17 @@ export async function POST(req: Request) {
     );
   }
 
-  // Environment match: prod no debe procesar webhooks "test" y dev no debe
-  // procesar "prod". WOMPI_ENV: "sandbox" en dev/local → acepta event.environment="test".
-  // En prod, NODE_ENV=production → acepta event.environment="prod".
-  const isProd = process.env.NODE_ENV === "production";
-  const expectedEnv = isProd ? "prod" : "test";
+  // Environment match: prod no debe procesar webhooks "test" y viceversa.
+  // #3 (certificación Bloque A): derivamos de WOMPI_ENV (misma fuente que el
+  // cliente API), NO de NODE_ENV — en Vercel preview NODE_ENV=production aunque
+  // WOMPI_ENV=sandbox, lo que rechazaba webhooks sandbox legítimos con 401.
+  const expectedEnv = getWompiExpectedWebhookEnv();
   if (event.environment !== expectedEnv && !skipTsCheck) {
     logger.warn({
       event: "webhook.wompi.environment_mismatch",
       expectedEnv,
       receivedEnv: event.environment,
-      nodeEnv: process.env.NODE_ENV,
+      wompiEnv: process.env.WOMPI_ENV,
     });
     return NextResponse.json(
       { error: "environment mismatch" },

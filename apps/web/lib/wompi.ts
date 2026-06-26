@@ -34,6 +34,19 @@ function getEnv(): WompiEnv {
   return raw === "production" ? "production" : "sandbox";
 }
 
+/**
+ * #3 (certificación Bloque A) — El `environment` que esperamos en los webhooks
+ * de Wompi, derivado de WOMPI_ENV (la MISMA fuente que usa el cliente API).
+ *
+ * Wompi manda environment="prod" en producción y "test" en sandbox. Antes el
+ * webhook lo derivaba de NODE_ENV, que en Vercel preview es "production" aunque
+ * WOMPI_ENV=sandbox → rechazaba webhooks sandbox legítimos con 401. Unificar la
+ * fuente elimina esa inconsistencia.
+ */
+export function getWompiExpectedWebhookEnv(): "prod" | "test" {
+  return getEnv() === "production" ? "prod" : "test";
+}
+
 export function getWompiConfig() {
   const env = getEnv();
   const publicKey = process.env.WOMPI_PUBLIC_KEY?.trim();

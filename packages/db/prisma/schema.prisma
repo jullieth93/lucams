@@ -400,6 +400,14 @@ model InventoryLog {
   createdBy String?
 
   @@index([variantId, createdAt])
+  // NOTA: existe un UNIQUE INDEX PARCIAL que Prisma no puede expresar (índices
+  // condicionales con WHERE no son soportados por @@unique). Vive en la migración
+  // 20260626224910_fix_inventory_log_unique_per_variant:
+  //   UNIQUE (orderId, reason, variantId)
+  //     WHERE reason IN ('ORDER_PAID','ORDER_CANCELLED','ORDER_REFUNDED')
+  // Garantiza idempotencia física del ledger (no se decrementa/revierte el mismo
+  // variant 2x para el mismo order+reason) permitiendo múltiples variants por orden.
+  // Si tocás este modelo, NO regeneres una migración que dropee este índice parcial.
 }
 
 // ──────────────────────── CARRITO Y ÓRDENES ────────────────────────
@@ -472,6 +480,13 @@ model Order {
   status                OrderStatus   @default(DRAFT)
   paymentMethod         PaymentMethod
   wompiTransactionId    String?
+  // #6 (certificación Bloque A 2026-06-26) — caso patológico: Wompi cobró pero
+  // el stock se agotó entre PENDING_PAYMENT y PAID (carrera sobre última unidad).
+  // La orden queda PENDING_PAYMENT y se marca acá para que sea VISIBLE en
+  // /admin/pedidos (filtro "Necesitan atención") en vez de morir en un log que
+  // nadie ve (mandato #7 sin Sentry). ACCIÓN HUMANA: refund o producir stock.
+  needsReconciliation   Boolean       @default(false)
+  reconciliationReason  String?
   // Legacy: venndeloShipmentId queda por compat. Nueva integración usa los campos Aveonline abajo.
   venndeloShipmentId    String?
   // PLAN_CATALOG_V2 4.10 — Aveonline + ShippingProvider interface (ADR-039).
@@ -521,6 +536,7 @@ model Order {
   @@index([dianStatus])
   @@index([trackingNumber])
   @@index([cartId, status])
+  @@index([needsReconciliation])
 }
 
 model OrderItem {

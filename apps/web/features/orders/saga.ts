@@ -26,7 +26,7 @@ import { getEffectiveShippingDims } from "@/features/products/shipping-schemas";
 import { getSettingValue } from "@/lib/cms";
 import { transitionOrder, clearCartAfterPaid, OrderTransitionError } from "./service";
 import { decrementStockForOrder } from "./stock";
-import { InsufficientStockError } from "./errors";
+import { InsufficientStockError, StockAlreadyAppliedError } from "./errors";
 import type { ShippingAddressInput } from "./schemas";
 import {
   sendOrderConfirmation,
@@ -58,6 +58,51 @@ export type ProcessPaidOrderResult = {
   trackingNumber?: string;
   reason?: string;
 };
+
+/**
+ * #6 (certificación Bloque A) — Marca una Order como "necesita reconciliación".
+ *
+ * Caso patológico: Wompi APPROVED pero el stock se agotó entre PENDING_PAYMENT
+ * y PAID (carrera real sobre la última unidad). La orden queda PENDING_PAYMENT
+ * y SIN este flag moriría en un logger.error que nadie ve (mandato #7: sin
+ * Sentry). Persistir el flag la hace VISIBLE en /admin/pedidos para que Lucy
+ * la atienda (refund o producir stock).
+ *
+ * Write SEPARADO e idempotente — corre DESPUÉS de que la $transaction de PAID
+ * hizo rollback, sobre la orden que sigue PENDING_PAYMENT. Best-effort: si este
+ * update falla, ya quedó el logger.error; no propagamos (no queremos que Wompi
+ * reintente en loop por un fallo de marcado).
+ *
+ * TODO Bloque B: cuando Resend esté verificado, disparar email de alerta a Lucy.
+ */
+async function flagOrderNeedsReconciliation(
+  orderId: string,
+  wompiTransactionId: string | null,
+  err: InsufficientStockError,
+): Promise<void> {
+  const reason =
+    `Pago Wompi APROBADO pero stock agotado al confirmar (variant ${err.variantId}, ` +
+    `pedía ${err.requested}${err.available !== undefined ? `, había ${err.available}` : ""}). ` +
+    `Tx Wompi: ${wompiTransactionId ?? "—"}. Decidir reembolso o producir stock.`;
+  try {
+    await prisma.order.update({
+      where: { id: orderId },
+      data: { needsReconciliation: true, reconciliationReason: reason },
+    });
+    logger.warn({
+      event: "order.saga.paid.flagged_reconciliation",
+      orderId,
+      wompiTransactionId,
+    });
+  } catch (flagErr) {
+    // No propagamos — el logger.error del caller ya dejó rastro.
+    logger.error({
+      event: "order.saga.paid.flag_reconciliation_failed",
+      orderId,
+      err: flagErr instanceof Error ? flagErr.message : String(flagErr),
+    });
+  }
+}
 
 /**
  * Procesa una Order que acaba de ser confirmada como pagada.
@@ -153,10 +198,33 @@ export async function processPaidOrder(
       // Email order-confirmation (fire-and-forget — emails.ts atrapa errores).
       await sendOrderConfirmation(order.id);
     } catch (err) {
+      if (err instanceof StockAlreadyAppliedError) {
+        // Carrera concurrente benigna: webhook + fallback /gracias procesaron
+        // la misma orden a la vez. El ganador ya decrementó stock + transicionó
+        // a PAID. Esta tx hizo rollback limpio (sin doble-decremento). Tratamos
+        // como idempotente: NO continuamos a createShipment (el ganador lo hace)
+        // para evitar doble-guía Aveonline. Re-leemos para devolver el tracking.
+        const winner = await prisma.order.findUnique({
+          where: { id: order.id },
+          select: { trackingNumber: true },
+        });
+        logger.info({
+          event: "order.saga.paid.concurrent_idempotent_skip",
+          orderId: order.id,
+          orderNumber: order.number,
+          winnerTracking: winner?.trackingNumber ?? null,
+        });
+        return {
+          status: "already_processed",
+          trackingNumber: winner?.trackingNumber ?? undefined,
+        };
+      }
       if (err instanceof InsufficientStockError) {
-        // Caso patológico: Wompi APPROVED pero stock se agotó (carrera).
-        // Order queda en PENDING_PAYMENT. ACCIÓN HUMANA REQUERIDA:
-        // admin debe revisar /admin/pedidos + decidir refund o producir stock.
+        // Caso patológico: Wompi APPROVED pero stock se agotó (carrera real
+        // sobre la última unidad). Order queda en PENDING_PAYMENT. Marcamos
+        // needsReconciliation (#6) en un write SEPARADO (fuera de la tx que
+        // hizo rollback) para que sea VISIBLE en /admin/pedidos, y disparamos
+        // alerta. ACCIÓN HUMANA: admin refunda o produce stock.
         logger.error({
           event: "order.saga.paid.no_stock",
           orderId: order.id,
@@ -167,6 +235,7 @@ export async function processPaidOrder(
           available: err.available ?? null,
           reason: "Stock agotado entre PENDING_PAYMENT y PAID — refund manual",
         });
+        await flagOrderNeedsReconciliation(order.id, input.wompiTransactionId ?? null, err);
         return {
           status: "shipment_failed",
           reason: `Stock insuficiente al confirmar pago (variant ${err.variantId}). Requiere reconciliación admin.`,
