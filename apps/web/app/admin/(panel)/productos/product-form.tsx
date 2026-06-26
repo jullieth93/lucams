@@ -3,9 +3,23 @@
 /*
  * Form compartido para crear y editar productos.
  *
- * Recibe `initialProduct` opcional. Si no hay, modo crear (action =
- * createProductAction). Si hay, modo editar (action = updateProductAction,
- * con `id` hidden en el form).
+ * ADM-P0-001 (Lucy 2026-06-26) — Reorganizado en 5 tabs para reducir
+ * sobrecarga visual. Lucy reportó que la pantalla edición se sentía
+ * sobrecargada: 28 inputs en 7 cards apiladas verticalmente con
+ * ~1300px de altura. Ahora la mayoría de las ediciones (cambiar
+ * precio, toggle visible, subir imagen) caben en el tab "Resumen"
+ * sin scroll significativo.
+ *
+ * Tabs:
+ *   - Resumen (default): nombre, categoría, precio, descripción corta,
+ *     flags visibilidad
+ *   - Texto y bot: descripción larga + contenido AI
+ *   - Logística: peso, dims, días producción/envío, garantía, qty
+ *   - SEO: títulos y descripciones para Google
+ *   - Avanzado: slug, sku, costo, recargo premade
+ *
+ * Implementación: AdminTabBar usa searchParam ?tab= y togglea visibilidad
+ * de panels SIN desmontarlos (preserva FormData bajo useActionState).
  *
  * Conversión de precio: el user tipea PESOS (ej. 15000), el form envía
  * CENTAVOS (1500000) — multiplicación inline + visualización con thousand
@@ -16,12 +30,22 @@ import Link from "next/link";
 import { useActionState, useState } from "react";
 import type { createProductAction, ProductActionState, updateProductAction } from "./actions";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { AdminTabBar, AdminTabPanel, useAdminActiveTab } from "@/components/admin/admin-tabs";
 
 type Category = { id: string; name: string; slug: string; isSub?: boolean };
+
+const TABS = [
+  { value: "resumen", label: "Resumen" },
+  { value: "texto", label: "Texto y bot" },
+  { value: "logistica", label: "Logística" },
+  { value: "seo", label: "SEO" },
+  { value: "avanzado", label: "Avanzado" },
+] as const;
+
+const TAB_VALUES = TABS.map((t) => t.value);
 
 type Props = {
   categories: Category[];
@@ -40,7 +64,6 @@ type Props = {
     isFeatured: boolean;
     seoTitle: string | null;
     seoDescription: string | null;
-    // PLAN_CATALOG_V2 — campos enriquecidos AI-ready
     richDescription?: string | null;
     whyChooseThis?: string | null;
     idealFor?: unknown;
@@ -51,9 +74,6 @@ type Props = {
     minimumQuantity?: number;
     maximumQuantity?: number | null;
     premadeSurcharge?: number;
-    // PR C (Lucy 2026-05-21) — Envío: peso y dims REALES.
-    // Aveonline los necesita para cotizar bien. Pre-PR C eran hardcoded
-    // placeholders (500g + 10×10×10) que falseaban la cotización.
     weightGrams?: number | null;
     widthCm?: number | null;
     heightCm?: number | null;
@@ -73,8 +93,6 @@ export function ProductForm({ categories, initialProduct, action, submitLabel }:
   const [name, setName] = useState(initialProduct?.name ?? "");
   const [slug, setSlug] = useState(initialProduct?.slug ?? "");
 
-  // Auto-generar slug a partir del nombre solo si es modo CREAR
-  // y el user no tocó el slug aún.
   const [slugTouched, setSlugTouched] = useState(false);
   const onNameChange = (v: string) => {
     setName(v);
@@ -83,19 +101,33 @@ export function ProductForm({ categories, initialProduct, action, submitLabel }:
     }
   };
 
+  const activeTab = useAdminActiveTab("tab", "resumen", TAB_VALUES);
+
+  // Si algún tab tiene field errors después de submit, mostrar dot rojo en su tab.
+  const errorsByTab = computeErrorTabs(state?.fieldErrors);
+  const tabsWithBadges = TABS.map((t) => ({
+    ...t,
+    badge: errorsByTab.has(t.value) ? (
+      <span
+        className="inline-block h-2 w-2 rounded-full bg-red-500"
+        aria-label="Esta sección tiene errores"
+      />
+    ) : undefined,
+  }));
+
   return (
-    <form action={formAction} className="space-y-6">
+    <form action={formAction} className="space-y-5">
       {initialProduct && <input type="hidden" name="id" value={initialProduct.id} />}
 
-      <Card className="border-slate-200">
-        <CardHeader>
-          <CardTitle className="text-base text-slate-900">Información básica</CardTitle>
-          <CardDescription className="text-slate-600">
-            Datos visibles para el cliente final.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <Field id="name" label="Nombre" error={state?.fieldErrors?.name?.[0]}>
+      <AdminTabBar tabs={tabsWithBadges} param="tab" defaultTab="resumen" />
+
+      {/* ─────── TAB: RESUMEN (default — 80% de las ediciones) ─────── */}
+      <AdminTabPanel value="resumen" active={activeTab}>
+        <SectionCard
+          title="Identidad"
+          description="Lo que el cliente ve primero."
+        >
+          <Field id="name" label="Nombre del producto" error={state?.fieldErrors?.name?.[0]}>
             <Input
               id="name"
               name="name"
@@ -107,96 +139,51 @@ export function ProductForm({ categories, initialProduct, action, submitLabel }:
             />
           </Field>
 
-          <Field
-            id="slug"
-            label="Slug (URL)"
-            hint="solo minúsculas, números y guiones — aparece en la URL del producto"
-            error={state?.fieldErrors?.slug?.[0]}
-          >
-            <Input
-              id="slug"
-              name="slug"
+          <Field id="categoryId" label="Categoría" error={state?.fieldErrors?.categoryId?.[0]}>
+            <select
+              id="categoryId"
+              name="categoryId"
               required
-              value={slug}
-              onChange={(e) => {
-                setSlug(e.target.value);
-                setSlugTouched(true);
-              }}
-              placeholder="iman-foto-personalizado-a4"
-              pattern="[a-z0-9]+(?:-[a-z0-9]+)*"
+              defaultValue={initialProduct?.categoryId ?? ""}
               disabled={pending}
-            />
+              className="border-input focus-visible:border-ring focus-visible:ring-ring/50 flex h-10 w-full rounded-lg border bg-transparent px-3 py-1 text-sm shadow-xs transition-colors outline-none focus-visible:ring-3 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <option value="" disabled>
+                Selecciona una categoría…
+              </option>
+              {categories.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.isSub ? `— ${c.name}` : c.name}
+                </option>
+              ))}
+            </select>
+            {categories.length === 0 && (
+              <p className="mt-1 text-xs text-amber-700">
+                Aún no hay categorías. Crea una primero desde el menú Categorías.
+              </p>
+            )}
           </Field>
 
-          <Field id="description" label="Descripción" error={state?.fieldErrors?.description?.[0]}>
+          <Field
+            id="description"
+            label="Descripción corta"
+            hint="Resumen que se ve en la página del producto, justo debajo del nombre."
+            error={state?.fieldErrors?.description?.[0]}
+          >
             <Textarea
               id="description"
               name="description"
               required
-              rows={5}
+              rows={4}
               defaultValue={initialProduct?.description ?? ""}
-              placeholder="Imán personalizado con tu foto favorita. Impresión alta resolución, acabado mate, ideal para nevera o casillero..."
+              placeholder="Imán personalizado con tu foto favorita. Impresión alta resolución, acabado mate, ideal para nevera o casillero."
               disabled={pending}
             />
           </Field>
+        </SectionCard>
 
-          <div className="grid grid-cols-2 gap-4">
-            <Field
-              id="sku"
-              label="SKU"
-              hint="código interno — mayúsculas, números, guiones"
-              error={state?.fieldErrors?.sku?.[0]}
-            >
-              <Input
-                id="sku"
-                name="sku"
-                required
-                defaultValue={initialProduct?.sku ?? ""}
-                placeholder="IMAN-FOTO-A4"
-                className="font-mono uppercase"
-                disabled={pending}
-              />
-            </Field>
-
-            <Field id="categoryId" label="Categoría" error={state?.fieldErrors?.categoryId?.[0]}>
-              <select
-                id="categoryId"
-                name="categoryId"
-                required
-                defaultValue={initialProduct?.categoryId ?? ""}
-                disabled={pending}
-                className="border-input focus-visible:border-ring focus-visible:ring-ring/50 flex h-9 w-full rounded-lg border bg-transparent px-3 py-1 text-sm shadow-xs transition-colors outline-none focus-visible:ring-3 disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                <option value="" disabled>
-                  Selecciona...
-                </option>
-                {/* Sub-categorías se indentan con "— " para mostrar jerarquía. */}
-                {categories.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.isSub ? `— ${c.name}` : c.name}
-                  </option>
-                ))}
-              </select>
-              {categories.length === 0 && (
-                <p className="mt-1 text-xs text-amber-700">
-                  No hay categorías. Crea una primero o corre{" "}
-                  <code className="text-xs">make seed-products</code>.
-                </p>
-              )}
-            </Field>
-          </div>
-        </CardContent>
-      </Card>
-
-      <Card className="border-slate-200">
-        <CardHeader>
-          <CardTitle className="text-base text-slate-900">Precio (en pesos COP)</CardTitle>
-          <CardDescription className="text-slate-600">
-            Se guarda internamente en centavos. Aquí se digita en pesos enteros (sin decimales).
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-3 gap-4">
+        <SectionCard title="Precio">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <PriceField
               id="basePrice"
               label="Precio venta"
@@ -207,122 +194,81 @@ export function ProductForm({ categories, initialProduct, action, submitLabel }:
             />
             <PriceField
               id="compareAtPrice"
-              label="Precio antes"
-              hint="opcional — si está, se muestra tachado"
+              label="Precio antes (promo)"
+              hint="Opcional. Se muestra tachado para mostrar descuento."
               defaultPesos={
                 initialProduct?.compareAtPrice ? initialProduct.compareAtPrice / 100 : null
               }
               error={state?.fieldErrors?.compareAtPrice?.[0]}
               pending={pending}
             />
-            <PriceField
-              id="cost"
-              label="Costo interno"
-              hint="opcional — no visible al cliente"
-              defaultPesos={initialProduct?.cost ? initialProduct.cost / 100 : null}
-              error={state?.fieldErrors?.cost?.[0]}
-              pending={pending}
-            />
           </div>
-        </CardContent>
-      </Card>
+        </SectionCard>
 
-      <Card className="border-slate-200">
-        <CardHeader>
-          <CardTitle className="text-base text-slate-900">Visibilidad y flags</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
+        <SectionCard
+          title="Visibilidad"
+          description="Quién ve este producto en la tienda."
+        >
           <Checkbox
             name="isActive"
-            label="Activo (visible en el storefront)"
+            label="🟢 Visible en la tienda"
+            hint="Cuando está apagado, el producto sigue acá pero deja de mostrarse al cliente."
             defaultChecked={initialProduct?.isActive ?? true}
             disabled={pending}
           />
           <Checkbox
             name="isFeatured"
-            label="Destacado (aparece en home y prioridad en listings)"
+            label="⭐ Destacado en home"
+            hint="Aparece en la sección de destacados del home y primero en listings."
             defaultChecked={initialProduct?.isFeatured ?? false}
             disabled={pending}
           />
           <Checkbox
             name="isPersonalizable"
-            label="Personalizable (incluye el estudio de personalización en vivo)"
+            label="🎨 Personalizable"
+            hint="Activa el estudio de personalización en vivo en la página del producto."
             defaultChecked={initialProduct?.isPersonalizable ?? false}
             disabled={pending}
           />
-        </CardContent>
-      </Card>
+        </SectionCard>
+      </AdminTabPanel>
 
-      <Card className="border-slate-200">
-        <CardHeader>
-          <CardTitle className="text-base text-slate-900">SEO (opcional)</CardTitle>
-          <CardDescription className="text-slate-600">
-            Si no se completan, se usan name y description como fallback.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <Field id="seoTitle" label="SEO Title" error={state?.fieldErrors?.seoTitle?.[0]}>
-            <Input
-              id="seoTitle"
-              name="seoTitle"
-              maxLength={70}
-              defaultValue={initialProduct?.seoTitle ?? ""}
-              placeholder="Imán de foto personalizado — Lucams_shop"
-              disabled={pending}
-            />
-          </Field>
-          <Field
-            id="seoDescription"
-            label="SEO Description"
-            error={state?.fieldErrors?.seoDescription?.[0]}
-          >
-            <Textarea
-              id="seoDescription"
-              name="seoDescription"
-              rows={2}
-              maxLength={160}
-              defaultValue={initialProduct?.seoDescription ?? ""}
-              placeholder="Descripción para resultados de Google. Máx 160 chars."
-              disabled={pending}
-            />
-          </Field>
-        </CardContent>
-      </Card>
-
-      {/* PLAN_CATALOG_V2 2.10 — Contenido para bot AI + ficha técnica */}
-      <Card className="border-slate-200">
-        <CardHeader>
-          <CardTitle className="text-base text-slate-900">Contenido enriquecido (bot AI)</CardTitle>
-          <CardDescription className="text-slate-600">
-            Estos campos alimentan el bot de WhatsApp futuro y la ficha extendida del producto.
-            Cuanto más completo, mejor responde el bot.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
+      {/* ─────── TAB: TEXTO Y BOT ─────── */}
+      <AdminTabPanel value="texto" active={activeTab}>
+        <SectionCard
+          title="Descripción larga (markdown)"
+          description="Contexto extenso del producto. El bot lo usa para responder consultas por WhatsApp."
+        >
           <Field
             id="richDescription"
-            label="Descripción rica (markdown 300-800 palabras)"
-            hint="Contexto extenso: para quién, cómo se usa, qué tiene de especial. El bot lo usa para responder consultas."
+            label="Descripción rica (300-800 palabras)"
+            hint="Para quién, cómo se usa, qué tiene de especial. Soporta markdown."
           >
             <Textarea
               id="richDescription"
               name="richDescription"
-              rows={6}
+              rows={8}
               maxLength={5000}
               defaultValue={initialProduct?.richDescription ?? ""}
-              placeholder="ej. Los Fotoimanes Polaroid Lucams están pensados para esos recuerdos chiquitos pero significativos..."
+              placeholder="ej. Los Fotoimanes Polaroid Lucams están pensados para esos recuerdos chiquitos pero significativos…"
               disabled={pending}
             />
           </Field>
+        </SectionCard>
+
+        <SectionCard
+          title="Para el bot de WhatsApp"
+          description="El bot usa estos textos cuando un cliente pregunta por este producto."
+        >
           <Field
             id="whyChooseThis"
-            label="¿Por qué elegir este producto? (bullets cortos)"
+            label="¿Por qué elegir este producto?"
             hint="Una línea por bullet. El bot los enumera al recomendar."
           >
             <Textarea
               id="whyChooseThis"
               name="whyChooseThis"
-              rows={3}
+              rows={4}
               maxLength={2000}
               defaultValue={initialProduct?.whyChooseThis ?? ""}
               placeholder={
@@ -331,15 +277,16 @@ export function ProductForm({ categories, initialProduct, action, submitLabel }:
               disabled={pending}
             />
           </Field>
+
           <Field
             id="idealFor"
-            label="Escenarios ideales (un escenario por línea)"
-            hint="Bot matchea consultas con estos textos."
+            label="Escenarios ideales"
+            hint="Un escenario por línea. El bot matchea consultas con estos textos."
           >
             <Textarea
               id="idealFor"
               name="idealFor"
-              rows={3}
+              rows={4}
               defaultValue={
                 Array.isArray(initialProduct?.idealFor)
                   ? (initialProduct?.idealFor as string[]).join("\n")
@@ -351,41 +298,39 @@ export function ProductForm({ categories, initialProduct, action, submitLabel }:
               disabled={pending}
             />
           </Field>
-        </CardContent>
-      </Card>
+        </SectionCard>
+      </AdminTabPanel>
 
-      <Card className="border-slate-200">
-        <CardHeader>
-          <CardTitle className="text-base text-slate-900">Comercial + Logística</CardTitle>
-          <CardDescription className="text-slate-600">
-            Tiempos, garantía y mínimos. Cliente y bot ven estos números.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="grid grid-cols-2 gap-4 md:grid-cols-3">
-          <Field id="warrantyMonths" label="Garantía (meses)" hint="Ley 1480 mínimo 12.">
-            <Input
-              id="warrantyMonths"
-              name="warrantyMonths"
-              type="number"
-              min={0}
-              max={120}
-              defaultValue={initialProduct?.warrantyMonths ?? 12}
-              disabled={pending}
-            />
-          </Field>
-          <Field id="productionDays" label="Producción (días)">
-            <Input
-              id="productionDays"
-              name="productionDays"
-              type="number"
-              min={1}
-              max={60}
-              defaultValue={initialProduct?.productionDays ?? 3}
-              disabled={pending}
-            />
-          </Field>
-          <div className="grid grid-cols-2 gap-2">
-            <Field id="shippingDaysMin" label="Envío mín (días)">
+      {/* ─────── TAB: LOGÍSTICA ─────── */}
+      <AdminTabPanel value="logistica" active={activeTab}>
+        <SectionCard
+          title="Tiempos y garantía"
+          description="Lo que el cliente ve sobre cuánto demora y qué incluye."
+        >
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+            <Field id="warrantyMonths" label="Garantía (meses)" hint="Ley 1480 mínimo 12.">
+              <Input
+                id="warrantyMonths"
+                name="warrantyMonths"
+                type="number"
+                min={0}
+                max={120}
+                defaultValue={initialProduct?.warrantyMonths ?? 12}
+                disabled={pending}
+              />
+            </Field>
+            <Field id="productionDays" label="Producción (días)">
+              <Input
+                id="productionDays"
+                name="productionDays"
+                type="number"
+                min={1}
+                max={60}
+                defaultValue={initialProduct?.productionDays ?? 3}
+                disabled={pending}
+              />
+            </Field>
+            <Field id="shippingDaysMin" label="Envío mínimo (días)">
               <Input
                 id="shippingDaysMin"
                 name="shippingDaysMin"
@@ -396,7 +341,7 @@ export function ProductForm({ categories, initialProduct, action, submitLabel }:
                 disabled={pending}
               />
             </Field>
-            <Field id="shippingDaysMax" label="Envío máx">
+            <Field id="shippingDaysMax" label="Envío máximo (días)">
               <Input
                 id="shippingDaysMax"
                 name="shippingDaysMax"
@@ -407,56 +352,35 @@ export function ProductForm({ categories, initialProduct, action, submitLabel }:
                 disabled={pending}
               />
             </Field>
+            <Field id="minimumQuantity" label="Cantidad mínima por orden">
+              <Input
+                id="minimumQuantity"
+                name="minimumQuantity"
+                type="number"
+                min={1}
+                defaultValue={initialProduct?.minimumQuantity ?? 1}
+                disabled={pending}
+              />
+            </Field>
+            <Field id="maximumQuantity" label="Cantidad máxima por orden">
+              <Input
+                id="maximumQuantity"
+                name="maximumQuantity"
+                type="number"
+                min={1}
+                defaultValue={initialProduct?.maximumQuantity ?? ""}
+                placeholder="Sin tope"
+                disabled={pending}
+              />
+            </Field>
           </div>
-          <Field id="minimumQuantity" label="Cantidad mínima por orden">
-            <Input
-              id="minimumQuantity"
-              name="minimumQuantity"
-              type="number"
-              min={1}
-              defaultValue={initialProduct?.minimumQuantity ?? 1}
-              disabled={pending}
-            />
-          </Field>
-          <Field id="maximumQuantity" label="Cantidad máxima (opcional)">
-            <Input
-              id="maximumQuantity"
-              name="maximumQuantity"
-              type="number"
-              min={1}
-              defaultValue={initialProduct?.maximumQuantity ?? ""}
-              placeholder="Sin tope"
-              disabled={pending}
-            />
-          </Field>
-          <Field
-            id="premadeSurcharge"
-            label="Surcharge templates PREMADE (%)"
-            hint="0 = mismo precio. Universos con licencia: 10-15%."
-          >
-            <Input
-              id="premadeSurcharge"
-              name="premadeSurcharge"
-              type="number"
-              min={0}
-              max={100}
-              defaultValue={initialProduct?.premadeSurcharge ?? 0}
-              disabled={pending}
-            />
-          </Field>
-        </CardContent>
-      </Card>
+        </SectionCard>
 
-      {/* ─── Envío y empaque (PR C — peso/dims reales para Aveonline) ─── */}
-      <Card className="border-slate-200">
-        <CardHeader>
-          <CardTitle className="text-base text-slate-900">📦 Envío y empaque</CardTitle>
-          <p className="mt-1 text-xs text-slate-600">
-            Aveonline usa estos datos para cotizar el envío. Sin esto, la cotización falla.
-          </p>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
+        <SectionCard
+          title="📦 Empaque para el envío"
+          description="Aveonline necesita peso y dimensiones del paquete final para cotizar. Sin esto, la cotización falla."
+        >
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
             <div>
               <Label htmlFor="weightGrams">Peso (gramos)</Label>
               <Input
@@ -469,7 +393,7 @@ export function ProductForm({ categories, initialProduct, action, submitLabel }:
                 defaultValue={initialProduct?.weightGrams ?? ""}
                 placeholder="500"
               />
-              <p className="mt-1 text-xs text-slate-500">Total paquete (50-50000 g)</p>
+              <p className="mt-1 text-xs text-slate-500">50 – 50.000 g</p>
             </div>
             <div>
               <Label htmlFor="widthCm">Ancho (cm)</Label>
@@ -511,15 +435,132 @@ export function ProductForm({ categories, initialProduct, action, submitLabel }:
               />
             </div>
           </div>
-          <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-            💡 Estos son los datos del <strong>paquete final</strong> (no del producto suelto). Si
-            una variant (Set 12 vs Set 6) tiene peso/dims distintos, configúralos en{" "}
-            <code className="rounded bg-amber-100 px-1 py-0.5">/admin/productos/[id]/variants</code>{" "}
-            con el override.
-          </div>
-        </CardContent>
-      </Card>
+          <p className="text-xs text-slate-600">
+            💡 Estos son los datos del <strong>paquete final</strong>, no del producto suelto. Si una
+            variante (Set 12 vs Set 6) tiene peso o dimensiones distintos, configúralos desde
+            Variantes con un valor específico.
+          </p>
+        </SectionCard>
+      </AdminTabPanel>
 
+      {/* ─────── TAB: SEO ─────── */}
+      <AdminTabPanel value="seo" active={activeTab}>
+        <SectionCard
+          title="Cómo se ve en Google"
+          description="Si dejas los campos vacíos, usamos el nombre y la descripción corta."
+        >
+          <Field
+            id="seoTitle"
+            label="Título para Google"
+            hint="Lo que aparece como link azul en los resultados. Máx 70 caracteres."
+            error={state?.fieldErrors?.seoTitle?.[0]}
+          >
+            <Input
+              id="seoTitle"
+              name="seoTitle"
+              maxLength={70}
+              defaultValue={initialProduct?.seoTitle ?? ""}
+              placeholder="Imán de foto personalizado — Lucams_shop"
+              disabled={pending}
+            />
+          </Field>
+          <Field
+            id="seoDescription"
+            label="Descripción para Google"
+            hint="Texto debajo del link en los resultados. Máx 160 caracteres."
+            error={state?.fieldErrors?.seoDescription?.[0]}
+          >
+            <Textarea
+              id="seoDescription"
+              name="seoDescription"
+              rows={3}
+              maxLength={160}
+              defaultValue={initialProduct?.seoDescription ?? ""}
+              placeholder="Descripción para resultados de Google."
+              disabled={pending}
+            />
+          </Field>
+        </SectionCard>
+      </AdminTabPanel>
+
+      {/* ─────── TAB: AVANZADO (setup ocasional) ─────── */}
+      <AdminTabPanel value="avanzado" active={activeTab}>
+        <SectionCard
+          title="Identificadores internos"
+          description="Estos campos se definen cuando creas el producto. Cambialos solo si sabés qué hacés."
+        >
+          <Field
+            id="slug"
+            label="Dirección web (slug)"
+            hint="Aparece en la URL del producto. Solo minúsculas, números y guiones."
+            error={state?.fieldErrors?.slug?.[0]}
+          >
+            <Input
+              id="slug"
+              name="slug"
+              required
+              value={slug}
+              onChange={(e) => {
+                setSlug(e.target.value);
+                setSlugTouched(true);
+              }}
+              placeholder="iman-foto-personalizado-a4"
+              pattern="[a-z0-9]+(?:-[a-z0-9]+)*"
+              disabled={pending}
+            />
+          </Field>
+
+          <Field
+            id="sku"
+            label="Código interno (SKU)"
+            hint="Para tu inventario interno. Mayúsculas, números y guiones."
+            error={state?.fieldErrors?.sku?.[0]}
+          >
+            <Input
+              id="sku"
+              name="sku"
+              required
+              defaultValue={initialProduct?.sku ?? ""}
+              placeholder="IMAN-FOTO-A4"
+              className="font-mono uppercase"
+              disabled={pending}
+            />
+          </Field>
+        </SectionCard>
+
+        <SectionCard
+          title="Costos internos"
+          description="Esta información no se muestra al cliente. Sirve para tus reportes y para el bot de cotizaciones."
+        >
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <PriceField
+              id="cost"
+              label="Costo interno"
+              hint="Cuánto te cuesta producir uno."
+              defaultPesos={initialProduct?.cost ? initialProduct.cost / 100 : null}
+              error={state?.fieldErrors?.cost?.[0]}
+              pending={pending}
+            />
+            <Field
+              id="premadeSurcharge"
+              label="Recargo plantillas premium (%)"
+              hint="0 = sin recargo. Si usás diseños bajo licencia (ej. Disney), 10-15%."
+            >
+              <Input
+                id="premadeSurcharge"
+                name="premadeSurcharge"
+                type="number"
+                min={0}
+                max={100}
+                defaultValue={initialProduct?.premadeSurcharge ?? 0}
+                disabled={pending}
+              />
+            </Field>
+          </div>
+        </SectionCard>
+      </AdminTabPanel>
+
+      {/* Error global (no atado a campo) */}
       {state?.error && !state.fieldErrors && (
         <div
           role="alert"
@@ -542,6 +583,28 @@ export function ProductForm({ categories, initialProduct, action, submitLabel }:
         </Link>
       </div>
     </form>
+  );
+}
+
+/* ──────────────────────────────────────────────────────────────────── */
+
+function SectionCard({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="space-y-4 rounded-xl border border-slate-200 bg-white p-5">
+      <header className="space-y-1">
+        <h2 className="text-base font-semibold text-slate-900">{title}</h2>
+        {description && <p className="text-xs text-slate-600">{description}</p>}
+      </header>
+      <div className="space-y-4">{children}</div>
+    </section>
   );
 }
 
@@ -614,24 +677,29 @@ function PriceField({
 function Checkbox({
   name,
   label,
+  hint,
   defaultChecked,
   disabled,
 }: {
   name: string;
   label: string;
+  hint?: string;
   defaultChecked: boolean;
   disabled: boolean;
 }) {
   return (
-    <label className="flex cursor-pointer items-start gap-2 text-sm text-slate-700">
+    <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-transparent p-2 text-sm text-slate-700 hover:bg-slate-50">
       <input
         type="checkbox"
         name={name}
         defaultChecked={defaultChecked}
         disabled={disabled}
-        className="mt-0.5 h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-700"
+        className="mt-0.5 h-5 w-5 rounded border-slate-300 text-slate-900 focus:ring-slate-700"
       />
-      <span>{label}</span>
+      <span className="flex-1">
+        <span className="block font-medium text-slate-800">{label}</span>
+        {hint && <span className="mt-0.5 block text-xs text-slate-500">{hint}</span>}
+      </span>
     </label>
   );
 }
@@ -644,4 +712,49 @@ function slugify(s: string): string {
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
     .slice(0, 80);
+}
+
+/**
+ * Mapea fieldErrors → set de tabs que contienen al menos 1 error.
+ * Permite mostrar dot rojo en el tab para que Lucy sepa dónde mirar
+ * después de un submit fallido.
+ */
+function computeErrorTabs(fieldErrors?: Record<string, string[] | undefined>): Set<string> {
+  const out = new Set<string>();
+  if (!fieldErrors) return out;
+  const mapping: Record<string, string> = {
+    name: "resumen",
+    description: "resumen",
+    categoryId: "resumen",
+    basePrice: "resumen",
+    compareAtPrice: "resumen",
+    isActive: "resumen",
+    isFeatured: "resumen",
+    isPersonalizable: "resumen",
+    richDescription: "texto",
+    whyChooseThis: "texto",
+    idealFor: "texto",
+    warrantyMonths: "logistica",
+    productionDays: "logistica",
+    shippingDaysMin: "logistica",
+    shippingDaysMax: "logistica",
+    minimumQuantity: "logistica",
+    maximumQuantity: "logistica",
+    weightGrams: "logistica",
+    widthCm: "logistica",
+    heightCm: "logistica",
+    depthCm: "logistica",
+    seoTitle: "seo",
+    seoDescription: "seo",
+    slug: "avanzado",
+    sku: "avanzado",
+    cost: "avanzado",
+    premadeSurcharge: "avanzado",
+  };
+  for (const [field, errors] of Object.entries(fieldErrors)) {
+    if (errors && errors.length > 0 && mapping[field]) {
+      out.add(mapping[field]);
+    }
+  }
+  return out;
 }
