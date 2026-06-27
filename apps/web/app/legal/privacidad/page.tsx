@@ -7,11 +7,52 @@ export const metadata: Metadata = {
   description: "Política de tratamiento de datos personales · Ley 1581 de 2012 (Colombia).",
 };
 
-const FALLBACK = `En **Lucams_shop** nos tomamos en serio la protección de tus datos personales en cumplimiento de la **Ley 1581 de 2012** y el **Decreto 1377 de 2013** de Colombia.
+// P0-006 (Bloque B 2026-06-27) — texto sustantivo basado en docs/COMPLIANCE.md
+// (texto base aviso de privacidad) + Ley 1581 de 2012 + Decreto 1377 de 2013.
+// Sigue sujeto a revisión de abogado antes del lanzamiento (NIT pendiente).
+const FALLBACK = `**Lucams_shop S.A.S.** es responsable del tratamiento de tus datos personales,
+conforme a la **Ley 1581 de 2012** y el **Decreto 1377 de 2013** de Colombia.
 
-Este es el aviso de privacidad versión 1. Estamos puliendo el documento final con asesoría legal.
+## Qué datos recolectamos
 
-Si tienes preguntas o quieres ejercer tus derechos como titular (acceso, rectificación, supresión, revocación), escríbenos a **hola@lucamsshop.co**.`;
+- **Identificación**: nombre, correo electrónico y teléfono.
+- **Contacto**: dirección de envío.
+- **Pago**: información mínima de la transacción (los datos sensibles de tu
+  tarjeta los maneja Wompi, no nosotros).
+- **Comportamiento**: historial de pedidos, productos vistos y reseñas.
+- **Imágenes**: las fotos que subes al Estudio de Personalización.
+
+## Para qué los usamos
+
+- Procesar tu pedido, cobrarlo y enviarlo.
+- Enviarte comunicaciones sobre tu compra (confirmación, despacho, entrega).
+- Enviarte novedades y promociones **solo si das tu consentimiento** (opcional, y
+  puedes cancelarlo cuando quieras).
+- Mejorar el servicio con analítica agregada y anonimizada.
+
+## Tus derechos como titular
+
+- Conocer, actualizar y rectificar tus datos.
+- Solicitar prueba de la autorización que nos diste.
+- Ser informado del uso que les damos.
+- Revocar la autorización y/o solicitar la supresión de tus datos.
+- Acceder gratuitamente a tus datos.
+- Presentar quejas ante la **Superintendencia de Industria y Comercio (SIC)** por
+  infracciones a la Ley 1581.
+
+## Cómo ejercer tus derechos
+
+Escríbenos a **habeas-data@lucamsshop.co**. Respondemos las consultas en máximo 10
+días hábiles y los reclamos en máximo 15 días hábiles, según la ley.
+
+## Encargados del tratamiento
+
+Para prestarte el servicio compartimos datos con proveedores que actúan como
+encargados (hosting, correos, pagos, logística). Puedes ver la lista en
+**Subprocesadores**. Todos están obligados contractualmente a proteger tus datos.
+
+> Última actualización: junio de 2026. Este aviso se revisa periódicamente; si
+> cambia de forma sustancial, te lo informaremos.`;
 
 export default function Page() {
   return (

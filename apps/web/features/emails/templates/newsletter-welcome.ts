@@ -10,12 +10,15 @@ import { renderEmailLayout, ctaButton } from "../layout";
 import { getSettingValue } from "@/lib/cms";
 
 export type NewsletterWelcomeData = {
-  unsubscribeToken: string; // futuro: para link /unsubscribe?token=...
+  email: string; // P0-005: va en el URL junto al token (el token solo verifica).
+  unsubscribeToken: string;
 };
 
 export async function newsletterWelcomeEmail(data: NewsletterWelcomeData) {
   const siteUrl = await getSettingValue("SITE_URL", "https://lucamsshop.co");
-  const unsubscribeUrl = `${siteUrl}/unsubscribe?token=${encodeURIComponent(data.unsubscribeToken)}`;
+  const unsubscribeUrl =
+    `${siteUrl}/unsubscribe?email=${encodeURIComponent(data.email)}` +
+    `&token=${encodeURIComponent(data.unsubscribeToken)}`;
 
   const bodyHtml = `
 <h1 style="margin:0 0 12px 0;font-size:22px;color:#3D2E5C;">¡Estás dentro! 💜</h1>

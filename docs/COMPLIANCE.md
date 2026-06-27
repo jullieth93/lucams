@@ -139,7 +139,7 @@ Antes de la compra, el sitio debe mostrar:
 
 ### Derecho de retracto (art. 47) — verificado
 
-> **5 días hábiles** desde la entrega del bien para retractarse sin justificación. Reembolso debe hacerse en máximo **15 días calendario**.
+> **5 días hábiles** desde la entrega del bien para retractarse sin justificación (Ley 1480 art. 47, sin cambios). El reembolso para comercio electrónico debe hacerse en máximo **15 días calendario** contados desde que el consumidor ejerce el retracto — plazo introducido por la **Ley 2439 de 2024** (art. 3, modifica el art. 47), que lo bajó de los 30 días hábiles anteriores. Verificado el 2026-06-27 contra [Holland & Knight — Ley 2439 de 2024](https://www.hklaw.com/en/insights/publications/2025/01/ley-2439-de-2024-modificaciones-al-estatuto-del-consumidor-en-colombia) + Gestor Normativo Función Pública.
 
 #### Excepciones legales (las relevantes para nosotros)
 

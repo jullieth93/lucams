@@ -17,7 +17,7 @@ import { emailKey, ipKey } from "@/lib/rate-limit-keys";
 import { verifyTurnstileToken } from "@/lib/turnstile";
 import { sendEmail } from "@/lib/resend";
 import { newsletterWelcomeEmail } from "@/features/emails/templates/newsletter-welcome";
-import { createHash } from "node:crypto";
+import { computeUnsubscribeToken } from "@/features/newsletter/unsubscribe";
 
 export type NewsletterFormState = {
   ok?: boolean;
@@ -84,19 +84,16 @@ export async function subscribeNewsletterAction(
   }
 
   // Email de bienvenida solo para nuevos suscriptores. Fire-and-forget.
-  // Token de unsubscribe = SHA-256 del email (Lucy va a verificarlo en
-  // futuro endpoint /unsubscribe). No es secreto criptográfico — solo
-  // evita que cualquiera pueda dar de baja a otros poniendo el email
-  // crudo en el URL.
+  // El token (SHA-256 del email) viaja JUNTO al email en el link
+  // /unsubscribe?email=...&token=...; el endpoint recomputa y verifica
+  // timing-safe (computeUnsubscribeToken). P0-005.
   if (!result.alreadySubscribed) {
-    const unsubscribeToken = createHash("sha256")
-      .update(`${parsed.data.email}:${process.env.CSRF_SECRET ?? "dev"}`)
-      .digest("hex")
-      .slice(0, 32);
+    const email = parsed.data.email;
+    const unsubscribeToken = computeUnsubscribeToken(email);
     void (async () => {
-      const tpl = await newsletterWelcomeEmail({ unsubscribeToken });
+      const tpl = await newsletterWelcomeEmail({ email, unsubscribeToken });
       await sendEmail({
-        to: parsed.data.email,
+        to: email,
         subject: tpl.subject,
         html: tpl.html,
         text: tpl.text,

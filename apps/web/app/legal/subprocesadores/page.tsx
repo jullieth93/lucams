@@ -6,19 +6,37 @@ export const metadata: Metadata = {
   title: "Subprocesadores",
 };
 
-const FALLBACK = `Lucams_shop usa los siguientes proveedores que pueden tratar datos personales en nuestro nombre. Mantenemos un Acuerdo de Procesamiento de Datos (DPA) firmado con cada uno, y exigimos garantías de seguridad adecuadas.
+// P0-008 (Bloque B 2026-06-27) — actualizado de Venndelo a Aveonline (ADR-039).
+// Aveonline es un agregador logístico que rutea cada envío por una de varias
+// transportadoras colombianas; esas transportadoras reciben los datos de entrega
+// (nombre, dirección, teléfono) para hacer la entrega, por eso se listan.
+const FALLBACK = `Lucams_shop usa los siguientes proveedores que pueden tratar datos personales en nuestro nombre. Mantenemos un Acuerdo de Procesamiento de Datos (DPA) con cada uno y exigimos garantías de seguridad adecuadas.
 
 | Proveedor | País | Propósito | DPA |
 |---|---|---|---|
 | Supabase | US / EU | Base de datos PostgreSQL, autenticación, almacenamiento de archivos | [Ver](https://supabase.com/legal/dpa) |
 | Vercel | US | Hosting, despliegue y CDN del sitio web | [Ver](https://vercel.com/legal/dpa) |
-| Resend | US | Envío de emails transaccionales y newsletter | [Ver](https://resend.com/legal/dpa) |
-| Wompi | Colombia | Procesamiento de pagos (tarjetas y PSE) | [Ver](https://wompi.com/legal) |
-| Venndelo / Coordinadora | Colombia | Logística de envíos a 1.100+ destinos | [Ver](https://venndelo.com/legal) |
-| Cloudflare | US | Anti-bot Turnstile y protección DDoS | [Ver](https://www.cloudflare.com/cloudflare-customer-dpa/) |
+| Resend | US | Envío de correos transaccionales y newsletter | [Ver](https://resend.com/legal/dpa) |
+| Wompi | Colombia | Procesamiento de pagos (tarjetas, PSE y contraentrega) | [Ver](https://wompi.com/legal) |
+| Aveonline | Colombia | Agregador de logística: cotiza y genera las guías de envío | [Ver](https://www.aveonline.co/) |
+| Cloudflare | US | Anti-bot (Turnstile) y protección DDoS | [Ver](https://www.cloudflare.com/cloudflare-customer-dpa/) |
 | Anthropic (Claude API) | US | Asistente IA para personalización de productos (futuro) | [Ver](https://www.anthropic.com/legal/dpa) |
 
-Notificaremos por email a clientes registrados cualquier cambio sustancial en este listado con al menos **30 días** de anticipación.`;
+### Transportadoras
+
+Aveonline entrega tu pedido a través de una de estas transportadoras, según la
+cobertura y tarifa de tu ciudad. La transportadora recibe tus datos de entrega
+(nombre, dirección, teléfono) únicamente para completar el envío:
+
+- Envía
+- Coordinadora
+- Servientrega
+- Interrapidísimo
+- TCC
+- Deprisa
+- Saferbo
+
+Notificaremos por correo a los clientes registrados cualquier cambio sustancial en este listado con al menos **30 días** de anticipación.`;
 
 export default function Page() {
   return (

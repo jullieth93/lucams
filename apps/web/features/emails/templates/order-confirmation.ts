@@ -66,7 +66,7 @@ ${ctaButton(
   "Ver mi pedido →",
 )}
 
-<p style="font-size:13px;color:#3D2E5C;opacity:0.65;margin-top:18px;">¿Algún cambio? Escríbenos por WhatsApp o respondé este email.</p>
+<p style="font-size:13px;color:#3D2E5C;opacity:0.65;margin-top:18px;">¿Algún cambio? Escríbenos por WhatsApp o responde este correo.</p>
 `;
 
   const text = `¡Tu pedido está confirmado!
