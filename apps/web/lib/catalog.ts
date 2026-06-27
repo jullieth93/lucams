@@ -130,7 +130,10 @@ export const getCategoryTree = unstable_cache(
     try {
       const all = await prisma.category.findMany({
         where: { deletedAt: null },
-        orderBy: { order: "asc" },
+        // Desempate por nombre: si dos categorías tienen el mismo `order` (caso
+        // común: todas en 0), Postgres devolvía orden indeterminado en el menú
+        // del cliente. Bug reportado por Lucy 2026-06-27.
+        orderBy: [{ order: "asc" }, { name: "asc" }],
         include: {
           _count: { select: { products: { where: { isActive: true, deletedAt: null } } } },
         },
@@ -184,7 +187,7 @@ export const getCategoryBySlug = unstable_cache(
         include: {
           children: {
             where: { deletedAt: null, isActive: true },
-            orderBy: { order: "asc" },
+            orderBy: [{ order: "asc" }, { name: "asc" }],
             include: {
               _count: {
                 select: { products: { where: { isActive: true, deletedAt: null } } },

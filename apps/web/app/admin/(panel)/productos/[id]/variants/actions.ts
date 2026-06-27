@@ -79,7 +79,8 @@ export async function createVariantAction(
     name: formData.get("name"),
     sku: String(formData.get("sku") ?? "").toUpperCase(),
     description: formData.get("description"),
-    price: priceStr === "" ? null : Number(priceStr),
+    // El form pide PESOS (consistente con el producto). Guardamos en CENTAVOS.
+    price: priceStr === "" ? null : Math.round(Number(priceStr) * 100),
     stock: Number(formData.get("stock") ?? 0),
     isActive: formData.get("isActive") === "on",
     attributes: parseAttributesFromForm(formData),
@@ -135,7 +136,8 @@ export async function updateVariantAction(
     name: formData.get("name"),
     sku: String(formData.get("sku") ?? "").toUpperCase(),
     description: formData.get("description"),
-    price: priceStr === "" ? null : Number(priceStr),
+    // El form pide PESOS (consistente con el producto). Guardamos en CENTAVOS.
+    price: priceStr === "" ? null : Math.round(Number(priceStr) * 100),
     stock: Number(formData.get("stock") ?? 0),
     isActive: formData.get("isActive") === "on",
     attributes: parseAttributesFromForm(formData),

@@ -71,14 +71,14 @@ export function VariantForm({
           hint="Identificador único — solo letras/números/guion"
         />
         <Field
-          label="Precio override (COP)"
+          label="Precio de esta opción"
           name="price"
           type="number"
-          defaultValue={variant?.price?.toString() ?? ""}
-          placeholder="Dejar vacío para heredar del producto"
+          defaultValue={variant?.price != null ? Math.round(variant.price / 100).toString() : ""}
+          placeholder="Ej: 45000"
           mono
           error={state?.fieldErrors?.price?.[0]}
-          hint="En centavos de peso. Vacío = usa basePrice del producto"
+          hint="En pesos (ej. 45000 = $45.000). Déjalo vacío para usar el precio del producto."
         />
         <Field
           label="Stock"

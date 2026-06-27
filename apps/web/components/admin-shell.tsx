@@ -72,8 +72,11 @@ export function AdminShell({ admin, children }: { admin: AdminInfo; children: Re
 
   return (
     <div className="bg-brand-cream/40 flex min-h-screen">
-      {/* Sidebar desktop — gradient morado oscuro premium */}
-      <aside className="from-brand-purple-dark via-brand-purple-dark to-brand-purple relative hidden overflow-hidden bg-gradient-to-b text-white lg:flex lg:w-64 lg:flex-shrink-0 lg:flex-col">
+      {/* Sidebar desktop — gradient morado oscuro premium.
+          Lucy 2026-06-27: sticky + h-screen para que NO se escape al hacer scroll.
+          SidebarContent ya tiene h-full + overflow-y-auto, así que el menú scrollea
+          adentro si es más alto que la pantalla. */}
+      <aside className="from-brand-purple-dark via-brand-purple-dark to-brand-purple relative hidden overflow-hidden bg-gradient-to-b text-white lg:sticky lg:top-0 lg:flex lg:h-screen lg:w-64 lg:flex-shrink-0 lg:flex-col">
         <SidebarDecorations />
         <SidebarContent admin={admin} pathname={pathname} onNavigate={() => {}} />
       </aside>
