@@ -3,27 +3,23 @@
 /*
  * Form compartido para crear y editar productos.
  *
- * ADM-P0-001 (Lucy 2026-06-26) — Reorganizado en 5 tabs para reducir
- * sobrecarga visual. Lucy reportó que la pantalla edición se sentía
- * sobrecargada: 28 inputs en 7 cards apiladas verticalmente con
- * ~1300px de altura. Ahora la mayoría de las ediciones (cambiar
- * precio, toggle visible, subir imagen) caben en el tab "Resumen"
- * sin scroll significativo.
+ * Lucy 2026-06-27 — Reducido de 5 a 3 pestañas para bajar la sobrecarga, y el
+ * precio salió del producto: vive en cada OPCIÓN (ProductVariant). El producto
+ * es la "familia"; lo que tiene precio/código/stock son sus opciones.
  *
- * Tabs:
- *   - Resumen (default): nombre, categoría, precio, descripción corta,
- *     flags visibilidad
- *   - Texto y bot: descripción larga + contenido AI
- *   - Logística: peso, dims, días producción/envío, garantía, qty
- *   - SEO: títulos y descripciones para Google
- *   - Avanzado: slug, sku, costo, recargo premade
+ * Pestañas:
+ *   - Lo básico (default): nombre, categoría, descripción corta, visibilidad.
+ *     Al CREAR pide un precio inicial; al EDITAR muestra "desde $X" (solo lectura).
+ *   - Detalles (opcional): texto largo + bot AI + logística (tiempos, peso, dims)
+ *     + SEO. Todo lo "se configura una vez".
+ *   - Avanzado: dirección web (slug), código de familia (sku), precio base por
+ *     defecto (solo edición, respaldo), costos internos, recargo premium.
  *
- * Implementación: AdminTabBar usa searchParam ?tab= y togglea visibilidad
- * de panels SIN desmontarlos (preserva FormData bajo useActionState).
+ * Implementación: AdminTabBar usa searchParam ?tab= y togglea visibilidad de
+ * panels SIN desmontarlos (preserva FormData bajo useActionState).
  *
- * Conversión de precio: el user tipea PESOS (ej. 15000), el form envía
- * CENTAVOS (1500000) — multiplicación inline + visualización con thousand
- * separator para legibilidad.
+ * Conversión de precio: el user tipea PESOS (ej. 15000), el form envía CENTAVOS
+ * (1500000) — multiplicación inline + visualización con separador de miles.
  */
 
 import Link from "next/link";
@@ -34,14 +30,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { AdminTabBar, AdminTabPanel, useAdminActiveTab } from "@/components/admin/admin-tabs";
+import { formatCOP } from "@/lib/format";
 
 type Category = { id: string; name: string; slug: string; isSub?: boolean };
 
 const TABS = [
-  { value: "resumen", label: "Resumen" },
-  { value: "texto", label: "Texto y bot" },
-  { value: "logistica", label: "Logística" },
-  { value: "seo", label: "SEO" },
+  { value: "basico", label: "Lo básico" },
+  { value: "detalles", label: "Detalles" },
   { value: "avanzado", label: "Avanzado" },
 ] as const;
 
@@ -49,6 +44,11 @@ const TAB_VALUES = TABS.map((t) => t.value);
 
 type Props = {
   categories: Category[];
+  /**
+   * Precio "desde" (centavos) = el más barato entre las opciones, para mostrar
+   * SOLO LECTURA en modo edición. El precio real se gestiona en cada opción.
+   */
+  priceFrom?: number | null;
   initialProduct?: {
     id: string;
     name: string;
@@ -83,7 +83,7 @@ type Props = {
   submitLabel: string;
 };
 
-export function ProductForm({ categories, initialProduct, action, submitLabel }: Props) {
+export function ProductForm({ categories, priceFrom, initialProduct, action, submitLabel }: Props) {
   const [state, formAction, pending] = useActionState<ProductActionState | null, FormData>(
     action,
     null,
@@ -101,10 +101,10 @@ export function ProductForm({ categories, initialProduct, action, submitLabel }:
     }
   };
 
-  const activeTab = useAdminActiveTab("tab", "resumen", TAB_VALUES);
+  const activeTab = useAdminActiveTab("tab", "basico", TAB_VALUES);
 
   // Si algún tab tiene field errors después de submit, mostrar dot rojo en su tab.
-  const errorsByTab = computeErrorTabs(state?.fieldErrors);
+  const errorsByTab = computeErrorTabs(state?.fieldErrors, isEdit);
   const tabsWithBadges = TABS.map((t) => ({
     ...t,
     badge: errorsByTab.has(t.value) ? (
@@ -119,10 +119,10 @@ export function ProductForm({ categories, initialProduct, action, submitLabel }:
     <form action={formAction} className="space-y-5">
       {initialProduct && <input type="hidden" name="id" value={initialProduct.id} />}
 
-      <AdminTabBar tabs={tabsWithBadges} param="tab" defaultTab="resumen" />
+      <AdminTabBar tabs={tabsWithBadges} param="tab" defaultTab="basico" />
 
-      {/* ─────── TAB: RESUMEN (default — 80% de las ediciones) ─────── */}
-      <AdminTabPanel value="resumen" active={activeTab}>
+      {/* ─────── TAB: LO BÁSICO (lo esencial — 90% de las ediciones) ─────── */}
+      <AdminTabPanel value="basico" active={activeTab}>
         <SectionCard
           title="Identidad"
           description="Lo que el cliente ve primero."
@@ -182,28 +182,49 @@ export function ProductForm({ categories, initialProduct, action, submitLabel }:
           </Field>
         </SectionCard>
 
-        <SectionCard title="Precio">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <PriceField
-              id="basePrice"
-              label="Precio venta"
-              required
-              defaultPesos={initialProduct ? initialProduct.basePrice / 100 : null}
-              error={state?.fieldErrors?.basePrice?.[0]}
-              pending={pending}
-            />
-            <PriceField
-              id="compareAtPrice"
-              label="Precio antes (promo)"
-              hint="Opcional. Se muestra tachado para mostrar descuento."
-              defaultPesos={
-                initialProduct?.compareAtPrice ? initialProduct.compareAtPrice / 100 : null
-              }
-              error={state?.fieldErrors?.compareAtPrice?.[0]}
-              pending={pending}
-            />
-          </div>
-        </SectionCard>
+        {/*
+         * Precio (Lucy 2026-06-27) — el precio vive en cada OPCIÓN, no en el
+         * producto. Al CREAR pedimos un precio inicial (la primera opción).
+         * Al EDITAR mostramos "desde $X" solo lectura + link a Opciones.
+         */}
+        {isEdit ? (
+          <SectionCard title="Precio">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div>
+                <p className="text-brand-purple-dark text-sm font-semibold">
+                  {priceFrom != null ? `Desde ${formatCOP(priceFrom)}` : "Sin precio aún"}
+                </p>
+                <p className="text-brand-purple-dark/60 mt-0.5 text-xs">
+                  El precio se define en cada opción (cada una puede costar distinto).
+                </p>
+              </div>
+              {initialProduct && (
+                <a
+                  href={`/admin/productos/${initialProduct.id}?section=opciones`}
+                  className="border-brand-purple/25 text-brand-purple-dark hover:bg-brand-purple/10 inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md border bg-white px-3 text-xs font-semibold"
+                >
+                  Gestionar opciones y precios →
+                </a>
+              )}
+            </div>
+          </SectionCard>
+        ) : (
+          <SectionCard
+            title="Precio inicial"
+            description="El precio de la primera opción del producto. Después puedes agregar más opciones con sus propios precios."
+          >
+            <div className="sm:max-w-xs">
+              <PriceField
+                id="basePrice"
+                label="Precio"
+                required
+                defaultPesos={null}
+                error={state?.fieldErrors?.basePrice?.[0]}
+                pending={pending}
+              />
+            </div>
+          </SectionCard>
+        )}
 
         <SectionCard
           title="Visibilidad"
@@ -233,8 +254,8 @@ export function ProductForm({ categories, initialProduct, action, submitLabel }:
         </SectionCard>
       </AdminTabPanel>
 
-      {/* ─────── TAB: TEXTO Y BOT ─────── */}
-      <AdminTabPanel value="texto" active={activeTab}>
+      {/* ─────── TAB: DETALLES (texto bot + logística + SEO — opcional) ─────── */}
+      <AdminTabPanel value="detalles" active={activeTab}>
         <SectionCard
           title="Descripción larga (markdown)"
           description="Contexto extenso del producto. El bot lo usa para responder consultas por WhatsApp."
@@ -299,10 +320,6 @@ export function ProductForm({ categories, initialProduct, action, submitLabel }:
             />
           </Field>
         </SectionCard>
-      </AdminTabPanel>
-
-      {/* ─────── TAB: LOGÍSTICA ─────── */}
-      <AdminTabPanel value="logistica" active={activeTab}>
         <SectionCard
           title="Tiempos y garantía"
           description="Lo que el cliente ve sobre cuánto demora y qué incluye."
@@ -441,10 +458,6 @@ export function ProductForm({ categories, initialProduct, action, submitLabel }:
             Variantes con un valor específico.
           </p>
         </SectionCard>
-      </AdminTabPanel>
-
-      {/* ─────── TAB: SEO ─────── */}
-      <AdminTabPanel value="seo" active={activeTab}>
         <SectionCard
           title="Cómo se ve en Google"
           description="Si dejas los campos vacíos, usamos el nombre y la descripción corta."
@@ -512,8 +525,8 @@ export function ProductForm({ categories, initialProduct, action, submitLabel }:
 
           <Field
             id="sku"
-            label="Código interno (SKU)"
-            hint="Para tu inventario interno. Mayúsculas, números y guiones."
+            label="Código de familia (interno)"
+            hint="Código del producto en general. Cada opción tiene además su propio código. Mayúsculas, números y guiones."
             error={state?.fieldErrors?.sku?.[0]}
           >
             <Input
@@ -527,6 +540,39 @@ export function ProductForm({ categories, initialProduct, action, submitLabel }:
             />
           </Field>
         </SectionCard>
+
+        {/*
+         * Precio base por defecto (solo edición). El precio normalmente vive en
+         * cada opción; esto es el valor de respaldo que se usa si una opción no
+         * define precio propio. Por eso está acá, en Avanzado, no en Lo básico.
+         */}
+        {isEdit && (
+          <SectionCard
+            title="Precio base por defecto"
+            description="Se usa solo si una opción no tiene precio propio. El precio que ve el cliente sale de cada opción."
+          >
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <PriceField
+                id="basePrice"
+                label="Precio base"
+                required
+                defaultPesos={initialProduct ? initialProduct.basePrice / 100 : null}
+                error={state?.fieldErrors?.basePrice?.[0]}
+                pending={pending}
+              />
+              <PriceField
+                id="compareAtPrice"
+                label="Precio antes (promo)"
+                hint="Opcional. Se muestra tachado para mostrar descuento."
+                defaultPesos={
+                  initialProduct?.compareAtPrice ? initialProduct.compareAtPrice / 100 : null
+                }
+                error={state?.fieldErrors?.compareAtPrice?.[0]}
+                pending={pending}
+              />
+            </div>
+          </SectionCard>
+        )}
 
         <SectionCard
           title="Costos internos"
@@ -742,33 +788,38 @@ function slugify(s: string): string {
  * Permite mostrar dot rojo en el tab para que Lucy sepa dónde mirar
  * después de un submit fallido.
  */
-function computeErrorTabs(fieldErrors?: Record<string, string[] | undefined>): Set<string> {
+function computeErrorTabs(
+  fieldErrors: Record<string, string[] | undefined> | undefined,
+  isEdit: boolean,
+): Set<string> {
   const out = new Set<string>();
   if (!fieldErrors) return out;
+  // basePrice/compareAtPrice viven en "básico" al crear y en "avanzado" al editar.
+  const priceTab = isEdit ? "avanzado" : "basico";
   const mapping: Record<string, string> = {
-    name: "resumen",
-    description: "resumen",
-    categoryId: "resumen",
-    basePrice: "resumen",
-    compareAtPrice: "resumen",
-    isActive: "resumen",
-    isFeatured: "resumen",
-    isPersonalizable: "resumen",
-    richDescription: "texto",
-    whyChooseThis: "texto",
-    idealFor: "texto",
-    warrantyMonths: "logistica",
-    productionDays: "logistica",
-    shippingDaysMin: "logistica",
-    shippingDaysMax: "logistica",
-    minimumQuantity: "logistica",
-    maximumQuantity: "logistica",
-    weightGrams: "logistica",
-    widthCm: "logistica",
-    heightCm: "logistica",
-    depthCm: "logistica",
-    seoTitle: "seo",
-    seoDescription: "seo",
+    name: "basico",
+    description: "basico",
+    categoryId: "basico",
+    basePrice: priceTab,
+    compareAtPrice: priceTab,
+    isActive: "basico",
+    isFeatured: "basico",
+    isPersonalizable: "basico",
+    richDescription: "detalles",
+    whyChooseThis: "detalles",
+    idealFor: "detalles",
+    warrantyMonths: "detalles",
+    productionDays: "detalles",
+    shippingDaysMin: "detalles",
+    shippingDaysMax: "detalles",
+    minimumQuantity: "detalles",
+    maximumQuantity: "detalles",
+    weightGrams: "detalles",
+    widthCm: "detalles",
+    heightCm: "detalles",
+    depthCm: "detalles",
+    seoTitle: "detalles",
+    seoDescription: "detalles",
     slug: "avanzado",
     sku: "avanzado",
     cost: "avanzado",

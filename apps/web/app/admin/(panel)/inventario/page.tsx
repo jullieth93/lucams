@@ -9,9 +9,9 @@
  *  - KPI strip header: 🔴 agotados / 🟡 bajos / 🟢 ok / total unidades.
  *  - Filtro por estado (Todos / Agotados / Stock bajo / OK).
  *  - Filtro por categoría.
- *  - Búsqueda libre (nombre producto / código / nombre versión).
+ *  - Búsqueda libre (nombre producto / código / nombre opción).
  *  - Orden configurable (stock asc/desc, producto A-Z, recientes).
- *  - Tabla con: producto · versión · código · stock + chip semáforo · acciones.
+ *  - Tabla con: producto · opción · código · stock + chip semáforo · acciones.
  *  - "Editar stock" inline por fila → CompactStockEditor (1 fila densa,
  *    icon-only Save). Comparte server action setVariantStockAction con
  *    el editor full del panel del producto (audit completo InventoryLog).
@@ -71,7 +71,7 @@ export default async function InventarioPage({
     : "all";
   const categoryId = typeof sp.categoria === "string" ? sp.categoria : undefined;
   const q = typeof sp.q === "string" ? sp.q : undefined;
-  // Default "product-asc": agrupa las versiones de cada producto juntas (modelo
+  // Default "product-asc": agrupa las opciones de cada producto juntas (modelo
   // mental de Lucy: piensa en productos, no en SKUs sueltos). Para triage de
   // stock bajo están el filtro 🟡/🔴 + el sort "Stock más bajo primero".
   const sortRaw = typeof sp.orden === "string" ? sp.orden : "product-asc";
@@ -86,16 +86,16 @@ export default async function InventarioPage({
   ]);
 
   // Metadata de agrupación visual por producto: cada fila sabe si es la PRIMERA
-  // de su producto (muestra nombre+categoría) o una continuación (versión del
+  // de su producto (muestra nombre+categoría) o una continuación (opción del
   // mismo producto, con sangría). El tono de fondo alterna por grupo para que
-  // las versiones de un producto se lean como un bloque conectado.
+  // las opciones de un producto se lean como un bloque conectado.
   let groupCounter = -1;
   let prevProductId = "";
   const grouped = data.rows.map((row) => {
     const isFirstOfProduct = row.productId !== prevProductId;
     if (isFirstOfProduct) groupCounter += 1;
     prevProductId = row.productId;
-    // Cuántas versiones tiene este producto en la página (para el "N versiones").
+    // Cuántas opciones tiene este producto en la página (para el "N opciones").
     const variantsInGroup = data.rows.filter((r) => r.productId === row.productId).length;
     return { row, isFirstOfProduct, tinted: groupCounter % 2 === 1, variantsInGroup };
   });
@@ -105,7 +105,7 @@ export default async function InventarioPage({
       <AdminPageHeader
         icon={<Boxes className="h-5 w-5" />}
         title="Inventario"
-        subtitle={`${data.summary.totalVariants.toLocaleString("es-CO")} versiones activas · ${data.summary.totalUnits.toLocaleString("es-CO")} unidades en total`}
+        subtitle={`${data.summary.totalVariants.toLocaleString("es-CO")} opciones activas · ${data.summary.totalUnits.toLocaleString("es-CO")} unidades en total`}
         breadcrumbs={[
           { label: "Admin", href: "/admin/dashboard" },
           { label: "Catálogo" },
@@ -140,8 +140,8 @@ export default async function InventarioPage({
                 : status === "low"
                   ? "Sin stock bajo — todo en orden"
                   : q
-                    ? "No encontramos versiones que coincidan"
-                    : "Aún no hay versiones activas"
+                    ? "No encontramos opciones que coincidan"
+                    : "Aún no hay opciones activas"
             }
             description={
               q || categoryId
@@ -161,7 +161,7 @@ export default async function InventarioPage({
             <AdminTableHead>
               <tr>
                 <th className="px-4 py-3 text-left font-semibold">Producto</th>
-                <th className="px-4 py-3 text-left font-semibold">Versión</th>
+                <th className="px-4 py-3 text-left font-semibold">Opción</th>
                 <th className="px-4 py-3 text-left font-semibold">Código</th>
                 <th className="px-4 py-3 text-left font-semibold">Estado</th>
                 <th className="px-4 py-3 text-right font-semibold">Stock</th>
@@ -174,7 +174,7 @@ export default async function InventarioPage({
                     key={row.variantId}
                     className={
                       // Fondo de grupo + línea superior al empezar un producto nuevo,
-                      // para que las versiones de un mismo producto se lean juntas.
+                      // para que las opciones de un mismo producto se lean juntas.
                       (tinted ? "bg-brand-purple/[0.025] " : "") +
                       (isFirstOfProduct ? "border-brand-purple/15 border-t-2" : "")
                     }
@@ -204,7 +204,7 @@ export default async function InventarioPage({
                             {variantsInGroup > 1 && (
                               <span className="text-brand-purple-dark/45">
                                 {" · "}
-                                {variantsInGroup} versiones
+                                {variantsInGroup} opciones
                               </span>
                             )}
                           </p>
@@ -214,7 +214,7 @@ export default async function InventarioPage({
                         // visualmente con el producto de arriba (no repetimos el nombre).
                         <span
                           className="text-brand-purple-dark/35 pl-3 text-xs"
-                          aria-label={`Otra versión de ${row.productName}`}
+                          aria-label={`Otra opción de ${row.productName}`}
                         >
                           ↳ misma familia
                         </span>
@@ -270,7 +270,7 @@ function KpiStrip({ out, low, ok }: { out: number; low: number; ok: number }) {
         value={out}
         tone={out > 0 ? "danger" : "muted"}
         href={out > 0 ? "/admin/inventario?estado=out" : undefined}
-        hint="Versiones con 0 unidades — no se pueden vender"
+        hint="Opciones con 0 unidades — no se pueden vender"
       />
       <KpiTile
         emoji="🟡"
@@ -441,7 +441,7 @@ function FiltersBar({
           type="search"
           name="q"
           defaultValue={q ?? ""}
-          placeholder="Por nombre, código o versión…"
+          placeholder="Por nombre, código o opción…"
           className="border-brand-purple/25 text-brand-purple-dark placeholder:text-brand-purple-dark/40 h-10 w-full rounded-lg border bg-white px-3 text-sm"
         />
       </label>
@@ -507,7 +507,7 @@ function Pagination({
       aria-label="Paginación"
     >
       <p className="text-brand-purple-dark/65">
-        Página {page} de {totalPages} · {total.toLocaleString("es-CO")} versiones
+        Página {page} de {totalPages} · {total.toLocaleString("es-CO")} opciones
       </p>
       <div className="flex gap-2">
         {page > 1 && (

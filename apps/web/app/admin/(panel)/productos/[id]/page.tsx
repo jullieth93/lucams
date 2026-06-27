@@ -2,7 +2,7 @@
  * /admin/productos/[id] — vista detalle del producto con 3 secciones:
  *
  *   ?section=editar (default) → ProductForm + StockPanel + CouponsWidget + Images
- *   ?section=versiones        → ProductVariantsPanel (movido de /variants)
+ *   ?section=opciones        → ProductVariantsPanel (movido de /variants)
  *   ?section=resenas          → ProductReviewsPanel (nuevo)
  *
  * Lucy 2026-06-26 — Opción C Sprint 2: el sub-nav <ProductSectionNav> arriba
@@ -41,7 +41,7 @@ export const metadata: Metadata = {
 type Params = Promise<{ id: string }>;
 type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
 
-const VALID_SECTIONS: ProductSection[] = ["editar", "versiones", "resenas"];
+const VALID_SECTIONS: ProductSection[] = ["editar", "opciones", "resenas"];
 
 export default async function ProductoDetallePage({
   params,
@@ -86,6 +86,14 @@ export default async function ProductoDetallePage({
     attributes: v.attributes,
   }));
   const stockSummary = summarizeStock(stockVariants);
+
+  // "Desde $X" = el precio más barato entre las opciones activas (cada opción
+  // hereda basePrice si no define el suyo). Solo para mostrar en el form (edit).
+  const activeForPrice = product.variants.filter((v) => !v.deletedAt);
+  const priceFrom =
+    activeForPrice.length > 0
+      ? Math.min(...activeForPrice.map((v) => v.price ?? product.basePrice))
+      : product.basePrice;
 
   return (
     <AdminPage>
@@ -145,7 +153,7 @@ export default async function ProductoDetallePage({
 
             {/*
              * Resumen de stock SOLO LECTURA (Lucy 2026-06-27). El editor de stock
-             * vive en la pestaña Versiones (y en Inventario), no acá — para no
+             * vive en la pestaña Opciones (y en Inventario), no acá — para no
              * tener "lo mismo en 3 lados". Acá solo se ve + un botón para ir a
              * gestionarlo donde corresponde.
              */}
@@ -165,6 +173,7 @@ export default async function ProductoDetallePage({
 
             <ProductForm
               categories={await listCategoriesForSelect()}
+              priceFrom={priceFrom}
               initialProduct={{
                 id: product.id,
                 name: product.name,
@@ -203,7 +212,7 @@ export default async function ProductoDetallePage({
         )}
 
         {/* ── Section: VERSIONES ── */}
-        {section === "versiones" && (
+        {section === "opciones" && (
           <ProductVariantsPanel
             productId={product.id}
             basePrice={product.basePrice}
@@ -227,7 +236,7 @@ export default async function ProductoDetallePage({
 /**
  * Resumen de stock SOLO LECTURA para la pestaña Editar (Lucy 2026-06-27).
  * Muestra el estado del inventario del producto de un vistazo, pero el ajuste
- * se hace en Versiones / Inventario (un solo lugar para editar, no tres).
+ * se hace en Opciones / Inventario (un solo lugar para editar, no tres).
  */
 function ProductStockSummaryReadonly({
   productId,
@@ -259,7 +268,7 @@ function ProductStockSummaryReadonly({
             {getStockEmoji(worstStatus)} {totalUnits.toLocaleString("es-CO")} unidades en total
             <span className="text-brand-purple-dark/55 font-normal">
               {" · "}
-              {variantsCount} {variantsCount === 1 ? "versión" : "versiones"}
+              {variantsCount} {variantsCount === 1 ? "opción" : "opciones"}
             </span>
           </p>
           {(outCount > 0 || lowCount > 0) && (
@@ -272,7 +281,7 @@ function ProductStockSummaryReadonly({
         </div>
       </div>
       <Link
-        href={`/admin/productos/${productId}?section=versiones`}
+        href={`/admin/productos/${productId}?section=opciones`}
         className="border-brand-purple/25 text-brand-purple-dark hover:bg-brand-purple/10 inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md border bg-white px-3 text-xs font-semibold"
       >
         Gestionar stock

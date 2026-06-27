@@ -18,6 +18,8 @@ export type ProductListItem = {
   slug: string;
   name: string;
   basePrice: number;
+  /** Precio más barato entre las opciones activas (para mostrar "desde $X"). */
+  priceFrom: number;
   sku: string;
   isActive: boolean;
   isFeatured: boolean;
@@ -97,6 +99,7 @@ export async function listProducts(opts: {
         updatedAt: true,
         category: { select: { id: true, name: true, slug: true } },
         _count: { select: { variants: true } },
+        variants: { where: { deletedAt: null }, select: { price: true } },
       },
     }),
     prisma.product.count({ where }),
@@ -108,6 +111,11 @@ export async function listProducts(opts: {
       slug: p.slug,
       name: p.name,
       basePrice: p.basePrice,
+      // "Desde $X": el más barato entre opciones activas (heredan basePrice si null).
+      priceFrom:
+        p.variants.length > 0
+          ? Math.min(...p.variants.map((v) => v.price ?? p.basePrice))
+          : p.basePrice,
       sku: p.sku,
       isActive: p.isActive,
       isFeatured: p.isFeatured,

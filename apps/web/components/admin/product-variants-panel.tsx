@@ -3,16 +3,16 @@
  *
  * Movido desde /admin/productos/[id]/variants/page.tsx (Lucy 2026-06-26
  * Opción C Sprint 2). Antes era sub-ruta escondida; ahora vive en
- * /admin/productos/[id]?section=versiones con el sub-nav del producto
+ * /admin/productos/[id]?section=opciones con el sub-nav del producto
  * siempre visible arriba.
  *
  * Mantiene:
  *  - Form crear / editar inline con ?new=1 / ?edit=ID (deep-linkeable)
  *  - Acciones server actions existentes (createVariantAction,
  *    updateVariantAction, archiveVariantAction) en /productos/[id]/variants/actions.ts
- *  - Notice pedagógico sobre qué son las versiones
+ *  - Notice pedagógico sobre qué son las opciones
  *
- * Renombramos visualmente "variantes" → "versiones" en el copy de Lucy
+ * Renombramos visualmente "variantes" → "opciones" en el copy de Lucy
  * (mantenemos "variant" en código por compatibilidad con schema/types).
  */
 
@@ -55,8 +55,8 @@ export async function ProductVariantsPanel({
       {errorMsg && <AdminNotice tone="error">{errorMsg}</AdminNotice>}
 
       <AdminNotice tone="info">
-        <strong>¿Qué son las versiones?</strong> Permiten ofrecer el mismo producto en distintas
-        cantidades, tamaños o colores. Ejemplo: el &quot;Set Polaroid&quot; con versiones de 6, 9
+        <strong>¿Qué son las opciones?</strong> Permiten ofrecer el mismo producto en distintas
+        cantidades, tamaños o colores. Ejemplo: el &quot;Set Polaroid&quot; con opciones de 6, 9
         y 12 fotos. El cliente elige en la tienda, el precio se ajusta solo, y al ir al estudio
         de personalización se le piden los espacios correctos. Si dejas el precio vacío, hereda
         el del producto base.
@@ -73,11 +73,11 @@ export async function ProductVariantsPanel({
             Ver el inventario de todos los productos →
           </Link>
           <Link
-            href={`/admin/productos/${productId}?section=versiones&new=1`}
+            href={`/admin/productos/${productId}?section=opciones&new=1`}
             className="bg-gradient-brand inline-flex h-11 items-center gap-1.5 rounded-lg px-4 text-sm font-semibold text-white shadow-sm transition-all hover:brightness-110"
           >
             <Plus className="h-4 w-4" />
-            Nueva versión
+            Nueva opción
           </Link>
         </div>
       )}
@@ -87,10 +87,10 @@ export async function ProductVariantsPanel({
         <AdminCard className="p-5">
           <div className="mb-4 flex items-center justify-between">
             <h3 className="text-brand-purple-dark font-display text-lg font-bold">
-              Nueva versión
+              Nueva opción
             </h3>
             <Link
-              href={`/admin/productos/${productId}?section=versiones`}
+              href={`/admin/productos/${productId}?section=opciones`}
               className="text-brand-purple-dark/60 hover:text-brand-purple-dark text-xs font-semibold"
             >
               Cancelar
@@ -104,14 +104,14 @@ export async function ProductVariantsPanel({
       {variants.length === 0 ? (
         <AdminEmpty
           icon={<ShoppingBag className="h-5 w-5" />}
-          title="Este producto no tiene versiones"
-          description="Es raro — todo producto debería tener al menos la versión Única. Crea una con el botón de arriba."
+          title="Este producto no tiene opciones"
+          description="Es raro — todo producto debería tener al menos la opción Única. Crea una con el botón de arriba."
         />
       ) : (
         <AdminTable>
           <AdminTableHead>
             <tr>
-              <th className="px-4 py-3 text-left font-semibold">Versión</th>
+              <th className="px-4 py-3 text-left font-semibold">Opción</th>
               <th className="px-4 py-3 text-left font-semibold">Código</th>
               <th className="px-4 py-3 text-left font-semibold">Características</th>
               <th className="px-4 py-3 text-right font-semibold">Precio</th>
@@ -138,7 +138,7 @@ export async function ProductVariantsPanel({
                           Editando: {visibleName}
                         </h3>
                         <Link
-                          href={`/admin/productos/${productId}?section=versiones`}
+                          href={`/admin/productos/${productId}?section=opciones`}
                           className="text-brand-purple-dark/60 hover:text-brand-purple-dark text-xs font-semibold"
                         >
                           Cancelar
@@ -207,7 +207,7 @@ export async function ProductVariantsPanel({
                   <td className="px-4 py-3 text-right">
                     <div className="flex items-center justify-end gap-1">
                       <Link
-                        href={`/admin/productos/${productId}?section=versiones&edit=${v.id}`}
+                        href={`/admin/productos/${productId}?section=opciones&edit=${v.id}`}
                         className="text-brand-purple hover:text-brand-purple-dark inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium"
                       >
                         <Edit3 className="h-3.5 w-3.5" />
@@ -215,7 +215,7 @@ export async function ProductVariantsPanel({
                       </Link>
                       <ConfirmAction
                         action={archiveVariantAction}
-                        message={`¿Archivar la versión "${visibleName}"? Los pedidos que la usan siguen válidos, pero clientes nuevos no podrán seleccionarla.`}
+                        message={`¿Archivar la opción "${visibleName}"? Los pedidos que la usan siguen válidos, pero clientes nuevos no podrán seleccionarla.`}
                       >
                         <input type="hidden" name="id" value={v.id} />
                         <input type="hidden" name="productId" value={productId} />

@@ -1,12 +1,12 @@
 "use client";
 
 /*
- * <CompactStockEditor> — versión densa del editor de stock para usar
+ * <CompactStockEditor> — opción densa del editor de stock para usar
  * dentro de filas de tabla.
  *
  * Lucy 2026-06-26 — el editor "full" del panel de producto (ya retirado, diseñado
  * para el panel del producto) ocupa demasiado vertical y horizontal cuando
- * se mete en una columna de tabla. Esta versión:
+ * se mete en una columna de tabla. Esta opción:
  *  - 1 sola fila (input + botón icon-only Save)
  *  - Sin label (la columna ya dice "Stock" o "Cantidad")
  *  - Botón deshabilitado si no hay cambios → cero ruido visual
@@ -14,7 +14,7 @@
  *  - Feedback: toast-like inline solo si error (éxito = revalidatePath
  *    refresca el value mostrado en la columna stock = self-evident)
  *
- * Único editor de stock del admin: se usa en Inventario y en la pestaña Versiones
+ * Único editor de stock del admin: se usa en Inventario y en la pestaña Opciones
  * del producto. Server action setVariantStockAction
  * con audit InventoryLog + recordAdminAction).
  */

@@ -164,7 +164,7 @@ export default async function AdminDashboardPage() {
             <OpsCard
               href="/admin/inventario?estado=out"
               icon={AlertTriangle}
-              label="Versiones agotadas"
+              label="Opciones agotadas"
               value={inventorySummary.outCount}
               description={
                 inventorySummary.outCount > 0

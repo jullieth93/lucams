@@ -1,7 +1,7 @@
 /*
- * <ProductSectionNav> — sub-nav del producto con [Editar | Versiones | Reseñas].
+ * <ProductSectionNav> — sub-nav del producto con [Editar | Opciones | Reseñas].
  *
- * Lucy 2026-06-26 — Opción C Sprint 2: el problema era que las versiones (stock
+ * Lucy 2026-06-26 — Opción C Sprint 2: el problema era que las opciones (stock
  * + precio efectivo, datos diarios) vivían en sub-ruta escondida que solo se
  * descubría entrando al editor. Resolvemos NO con sub-ruta sino con un sub-nav
  * SIEMPRE visible arriba del contenido. Pattern Shopify "Product detail tabs".
@@ -10,14 +10,14 @@
  *  - Server component que renderea Links con searchParam ?section= deep-link,
  *    refresh-safe, SEO-friendly.
  *  - Touch targets h-11 (≥44px), scroll horizontal en mobile.
- *  - Badge con count cuando aplica (versiones · reseñas pendientes).
+ *  - Badge con count cuando aplica (opciones · reseñas pendientes).
  *  - Estilo idéntico a AdminTabBar de tabs internos para coherencia visual.
  */
 
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-export type ProductSection = "editar" | "versiones" | "resenas";
+export type ProductSection = "editar" | "opciones" | "resenas";
 
 export function ProductSectionNav({
   productId,
@@ -41,9 +41,9 @@ export function ProductSectionNav({
         active={currentSection === "editar"}
       />
       <SectionLink
-        href={`/admin/productos/${productId}?section=versiones`}
-        label="Versiones"
-        active={currentSection === "versiones"}
+        href={`/admin/productos/${productId}?section=opciones`}
+        label="Opciones"
+        active={currentSection === "opciones"}
         badge={variantsCount > 0 ? variantsCount : undefined}
       />
       <SectionLink

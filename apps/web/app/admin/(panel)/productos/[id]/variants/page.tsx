@@ -2,8 +2,8 @@
  * Legacy redirect — Lucy 2026-06-26 Opción C Sprint 2.
  *
  * Antes esta ruta era una página completa para gestionar variantes. Ahora
- * el contenido vive en /admin/productos/[id]?section=versiones para que el
- * sub-nav del producto sea siempre visible y las versiones no estén
+ * el contenido vive en /admin/productos/[id]?section=opciones para que el
+ * sub-nav del producto sea siempre visible y las opciones no estén
  * escondidas.
  *
  * Mantenemos el redirect aquí para que bookmarks antiguos de Lucy sigan
@@ -33,7 +33,7 @@ export default async function VariantsLegacyRedirect({
   // Preservar searchParams (new=1, edit=ID) para que flujos en curso
   // (form de creación abierto, edición de una variante) no se interrumpan.
   const qs = new URLSearchParams();
-  qs.set("section", "versiones");
+  qs.set("section", "opciones");
   for (const [k, v] of Object.entries(sp)) {
     if (typeof v === "string") qs.set(k, v);
   }

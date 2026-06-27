@@ -260,7 +260,13 @@ export default async function AdminProductosPage({ searchParams }: { searchParam
                   <td className="text-brand-purple-dark/75 px-4 py-3 font-mono text-xs">{p.sku}</td>
                   <td className="text-brand-purple-dark/85 px-4 py-3">{p.category.name}</td>
                   <td className="text-brand-purple-dark px-4 py-3 text-right font-semibold tabular-nums">
-                    {formatCOP(p.basePrice)}
+                    {/* "desde $X" cuando hay varias opciones con precios distintos */}
+                    {p.variantsCount > 1 && (
+                      <span className="text-brand-purple-dark/45 mr-1 text-[10px] font-normal">
+                        desde
+                      </span>
+                    )}
+                    {formatCOP(p.priceFrom)}
                   </td>
                   <td className="px-4 py-3 text-center">
                     <ProductStatus
