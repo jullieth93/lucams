@@ -71,16 +71,34 @@ export default async function InventarioPage({
     : "all";
   const categoryId = typeof sp.categoria === "string" ? sp.categoria : undefined;
   const q = typeof sp.q === "string" ? sp.q : undefined;
-  const sortRaw = typeof sp.orden === "string" ? sp.orden : "stock-asc";
+  // Default "product-asc": agrupa las versiones de cada producto juntas (modelo
+  // mental de Lucy: piensa en productos, no en SKUs sueltos). Para triage de
+  // stock bajo están el filtro 🟡/🔴 + el sort "Stock más bajo primero".
+  const sortRaw = typeof sp.orden === "string" ? sp.orden : "product-asc";
   const sort: InventorySortKey = VALID_SORT.includes(sortRaw as InventorySortKey)
     ? (sortRaw as InventorySortKey)
-    : "stock-asc";
+    : "product-asc";
   const page = Math.max(1, Number(sp.page ?? "1") || 1);
 
   const [data, categories] = await Promise.all([
     listVariantsAcrossProducts({ status, categoryId, q, sort, page }),
     listCategoriesForInventoryFilter(),
   ]);
+
+  // Metadata de agrupación visual por producto: cada fila sabe si es la PRIMERA
+  // de su producto (muestra nombre+categoría) o una continuación (versión del
+  // mismo producto, con sangría). El tono de fondo alterna por grupo para que
+  // las versiones de un producto se lean como un bloque conectado.
+  let groupCounter = -1;
+  let prevProductId = "";
+  const grouped = data.rows.map((row) => {
+    const isFirstOfProduct = row.productId !== prevProductId;
+    if (isFirstOfProduct) groupCounter += 1;
+    prevProductId = row.productId;
+    // Cuántas versiones tiene este producto en la página (para el "N versiones").
+    const variantsInGroup = data.rows.filter((r) => r.productId === row.productId).length;
+    return { row, isFirstOfProduct, tinted: groupCounter % 2 === 1, variantsInGroup };
+  });
 
   return (
     <AdminPage>
@@ -151,48 +169,70 @@ export default async function InventarioPage({
               </tr>
             </AdminTableHead>
               <AdminTableBody>
-                {data.rows.map((row) => (
-                  <AdminTableRow key={row.variantId}>
-                    <td className="px-4 py-3">
-                      {/*
-                       * Hotfix P0-4: nombre + badge "Pausado" + categoría en
-                       * un flex-wrap controlado para evitar que el badge
-                       * caiga en línea sola con nombres largos.
-                       */}
-                      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                        <Link
-                          href={`/admin/productos/${row.productId}`}
-                          className="text-brand-purple-dark hover:text-brand-purple inline-flex items-center gap-1 text-sm font-semibold"
+                {grouped.map(({ row, isFirstOfProduct, tinted, variantsInGroup }) => (
+                  <AdminTableRow
+                    key={row.variantId}
+                    className={
+                      // Fondo de grupo + línea superior al empezar un producto nuevo,
+                      // para que las versiones de un mismo producto se lean juntas.
+                      (tinted ? "bg-brand-purple/[0.025] " : "") +
+                      (isFirstOfProduct ? "border-brand-purple/15 border-t-2" : "")
+                    }
+                  >
+                    <td className="px-4 py-3 align-top">
+                      {isFirstOfProduct ? (
+                        <>
+                          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                            <Link
+                              href={`/admin/productos/${row.productId}`}
+                              className="text-brand-purple-dark hover:text-brand-purple inline-flex items-center gap-1 text-sm font-semibold"
+                            >
+                              {row.productName}
+                              <ExternalLink className="h-3 w-3 opacity-50" aria-hidden />
+                            </Link>
+                            {!row.isProductActive && (
+                              <span
+                                className="inline-block rounded bg-amber-100 px-1.5 py-0.5 text-xs font-semibold text-amber-900"
+                                title="Producto pausado — no visible en la tienda"
+                              >
+                                Pausado
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-brand-purple-dark/55 mt-0.5 text-xs">
+                            {row.categoryName}
+                            {variantsInGroup > 1 && (
+                              <span className="text-brand-purple-dark/45">
+                                {" · "}
+                                {variantsInGroup} versiones
+                              </span>
+                            )}
+                          </p>
+                        </>
+                      ) : (
+                        // Continuación: misma familia. Sangría + guion para conectar
+                        // visualmente con el producto de arriba (no repetimos el nombre).
+                        <span
+                          className="text-brand-purple-dark/35 pl-3 text-xs"
+                          aria-label={`Otra versión de ${row.productName}`}
                         >
-                          {row.productName}
-                          <ExternalLink className="h-3 w-3 opacity-50" aria-hidden />
-                        </Link>
-                        {!row.isProductActive && (
-                          <span
-                            className="inline-block rounded bg-amber-100 px-1.5 py-0.5 text-xs font-semibold text-amber-900"
-                            title="Producto pausado — no visible en la tienda"
-                          >
-                            Pausado
-                          </span>
-                        )}
-                      </div>
-                      <p className="text-brand-purple-dark/55 mt-0.5 text-xs">
-                        {row.categoryName}
-                      </p>
+                          ↳ misma familia
+                        </span>
+                      )}
                     </td>
-                    <td className="text-brand-purple-dark/80 px-4 py-3 text-sm">
+                    <td className="text-brand-purple-dark/80 px-4 py-3 align-top text-sm">
                       {row.variantName === "Default" ? "Única" : row.variantName}
                     </td>
-                    <td className="text-brand-purple-dark/65 px-4 py-3 font-mono text-xs">
+                    <td className="text-brand-purple-dark/65 px-4 py-3 align-top font-mono text-xs">
                       {row.variantSku}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3 align-top">
                       <StatusChip status={row.status} stock={row.stock} />
                     </td>
-                    <td className="text-brand-purple-dark px-4 py-3 text-right text-sm font-bold tabular-nums">
+                    <td className="text-brand-purple-dark px-4 py-3 text-right align-top text-sm font-bold tabular-nums">
                       {row.stock.toLocaleString("es-CO")}
                     </td>
-                    <td className="px-4 py-3">
+                    <td className="px-4 py-3 align-top">
                       <InlineStockEditor
                         variantId={row.variantId}
                         productId={row.productId}
@@ -413,9 +453,9 @@ function FiltersBar({
           defaultValue={sort}
           className="border-brand-purple/25 text-brand-purple-dark h-10 w-full rounded-lg border bg-white px-3 text-sm"
         >
+          <option value="product-asc">Por producto (agrupado)</option>
           <option value="stock-asc">Stock más bajo primero</option>
           <option value="stock-desc">Stock más alto primero</option>
-          <option value="product-asc">Producto A-Z</option>
           <option value="recent">Editados recientemente</option>
         </select>
       </label>
