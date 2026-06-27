@@ -53,6 +53,8 @@ export type StorefrontProductDetail = StorefrontProductCard & {
     sku: string;
     price: number | null;
     attributes: unknown;
+    /** D1: fotos propias de la opción. Vacío = el PDP usa las del producto. */
+    images: string[];
   }>;
 };
 
@@ -443,6 +445,8 @@ export async function getStorefrontProductBySlug(
           sku: true,
           price: true,
           attributes: true,
+          // D1: fotos propias de la opción. Vacío = el PDP usa las del producto.
+          images: true,
         },
         orderBy: { createdAt: "asc" },
       },

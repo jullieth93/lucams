@@ -219,6 +219,7 @@ export default async function ProductoDetallePage({
           <ProductVariantsPanel
             productId={product.id}
             basePrice={product.basePrice}
+            productImageCount={product.images.length}
             searchParams={sp}
           />
         )}

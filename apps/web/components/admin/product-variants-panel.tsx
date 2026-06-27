@@ -34,15 +34,19 @@ import { listVariantsByProduct } from "@/features/products/service";
 import { ConfirmAction } from "@/components/admin/confirm-action";
 import { CompactStockEditor } from "@/components/admin/compact-stock-editor";
 import { VariantForm } from "@/app/admin/(panel)/productos/[id]/variants/variant-form";
+import { VariantImages } from "@/app/admin/(panel)/productos/[id]/variants/variant-images";
 import { archiveVariantAction } from "@/app/admin/(panel)/productos/[id]/variants/actions";
 
 export async function ProductVariantsPanel({
   productId,
   basePrice,
+  productImageCount,
   searchParams,
 }: {
   productId: string;
   basePrice: number;
+  /** Fotos del producto — para explicar la herencia en VariantImages (D1). */
+  productImageCount: number;
   searchParams: { [key: string]: string | string[] | undefined };
 }) {
   const variants = await listVariantsByProduct(productId);
@@ -157,6 +161,14 @@ export async function ProductVariantsPanel({
                           attributes: attrs,
                         }}
                       />
+                      {/* D1: fotos propias de esta opción (vacío = hereda del producto). */}
+                      <div className="mt-4">
+                        <VariantImages
+                          variantId={v.id}
+                          images={v.images}
+                          productImageCount={productImageCount}
+                        />
+                      </div>
                     </td>
                   </tr>
                 );

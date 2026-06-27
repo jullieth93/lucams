@@ -84,6 +84,15 @@ export default async function ProductoDetallePage({
   // Precio final: variant.price override o basePrice
   const displayPrice = selectedVariant?.price ?? product.basePrice;
 
+  // D1 (Lucy 2026-06-27): la galería muestra las fotos de la OPCIÓN elegida si
+  // tiene propias; si no, hereda las del producto (espeja la herencia de price).
+  // El selector hace router.replace(?variant=id) → este RSC re-renderiza con la
+  // opción nueva y la galería se actualiza.
+  const galleryImages =
+    selectedVariant?.images && selectedVariant.images.length > 0
+      ? selectedVariant.images
+      : product.images;
+
   const related = await listRelatedProducts({
     productId: product.id,
     categorySlug: product.category.slug,
@@ -161,7 +170,12 @@ export default async function ProductoDetallePage({
           </nav>
 
           <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
-            <ProductGallery images={product.images} alt={product.name} />
+            {/* key por opción: reinicia la galería a la portada al cambiar de opción. */}
+            <ProductGallery
+              key={selectedVariant?.id ?? "base"}
+              images={galleryImages}
+              alt={product.name}
+            />
 
             <div className="space-y-5">
               <div>

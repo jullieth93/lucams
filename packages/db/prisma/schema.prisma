@@ -370,6 +370,10 @@ model ProductVariant {
   sku           String             @unique
   price         Int?
   stock         Int                @default(0)
+  // D1 (Lucy 2026-06-27): fotos propias de la opción. Vacío = hereda
+  // Product.images (espeja la herencia de `price`). El PDP cambia la galería
+  // al elegir la opción; el admin las sube desde el editor de la opción.
+  images        String[]           @default([])
   attributes    Json
   inventoryLogs InventoryLog[]
   cartItems     CartItem[]
