@@ -427,6 +427,26 @@ export async function getVariantById(id: string) {
  * Crea variant nueva. SKU debe ser único globalmente; se valida antes
  * de insertar para dar mejor mensaje de error que el P2002 genérico.
  */
+/**
+ * D4 (Lucy 2026-06-27): `Product.basePrice` se auto-deriva de las opciones —
+ * Lucy ya no lo edita a mano (campo escondido). Lo fijamos = precio MÍNIMO
+ * explícito entre las opciones activas, para que coincida con el "desde $X"
+ * que ve el cliente. Si ninguna opción tiene precio propio, se deja el basePrice
+ * actual como fallback (no lo pisamos con 0). Idempotente.
+ */
+export async function syncProductBasePrice(productId: string): Promise<void> {
+  const cheapest = await prisma.productVariant.findFirst({
+    where: { productId, deletedAt: null, isActive: true, price: { not: null } },
+    orderBy: { price: "asc" },
+    select: { price: true },
+  });
+  if (cheapest?.price == null) return;
+  await prisma.product.update({
+    where: { id: productId },
+    data: { basePrice: cheapest.price },
+  });
+}
+
 export async function createVariant(input: VariantCreateInput, createdBy: string | null) {
   const skuConflict = await prisma.productVariant.findUnique({
     where: { sku: input.sku },
@@ -434,7 +454,7 @@ export async function createVariant(input: VariantCreateInput, createdBy: string
   });
   if (skuConflict) throw new VariantValidationError("sku", `SKU "${input.sku}" ya existe`);
 
-  return prisma.productVariant.create({
+  const created = await prisma.productVariant.create({
     data: {
       productId: input.productId,
       name: input.name,
@@ -447,6 +467,8 @@ export async function createVariant(input: VariantCreateInput, createdBy: string
       ...(createdBy ? { createdBy } : {}),
     },
   });
+  await syncProductBasePrice(input.productId);
+  return created;
 }
 
 /**
@@ -463,7 +485,7 @@ export async function updateVariant(input: VariantUpdateInput, updatedBy: string
     if (conflict) throw new VariantValidationError("sku", `SKU "${rest.sku}" ya existe`);
   }
 
-  return prisma.productVariant.update({
+  const updated = await prisma.productVariant.update({
     where: { id },
     data: {
       ...rest,
@@ -471,6 +493,8 @@ export async function updateVariant(input: VariantUpdateInput, updatedBy: string
       ...(updatedBy ? { updatedBy } : {}),
     },
   });
+  await syncProductBasePrice(updated.productId);
+  return updated;
 }
 
 /**
@@ -495,7 +519,7 @@ export async function softDeleteVariant(id: string, deletedBy: string | null) {
       "No se puede archivar la única variant activa del producto",
     );
   }
-  return prisma.productVariant.update({
+  const deleted = await prisma.productVariant.update({
     where: { id },
     data: {
       deletedAt: new Date(),
@@ -503,6 +527,8 @@ export async function softDeleteVariant(id: string, deletedBy: string | null) {
       ...(deletedBy ? { deletedBy } : {}),
     },
   });
+  await syncProductBasePrice(variant.productId);
+  return deleted;
 }
 
 export class VariantValidationError extends Error {

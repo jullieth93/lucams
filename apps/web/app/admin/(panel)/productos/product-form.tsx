@@ -561,28 +561,22 @@ export function ProductForm({ categories, priceFrom, initialProduct, action, sub
         </SectionCard>
 
         {/*
-         * Precio base por defecto (solo edición). El precio normalmente vive en
-         * cada opción; esto es el valor de respaldo que se usa si una opción no
-         * define precio propio. Por eso está acá, en Avanzado, no en Lo básico.
+         * D4 (Lucy 2026-06-27): el "Precio base por defecto" ya NO se edita a
+         * mano — se auto-deriva del precio más bajo de las opciones (ver
+         * syncProductBasePrice). Mantenemos su valor con un input oculto para no
+         * pisarlo al guardar el producto. Aquí solo queda el precio tachado (promo).
          */}
         {isEdit && (
           <SectionCard
-            title="Precio base por defecto"
-            description="Se usa solo si una opción no tiene precio propio. El precio que ve el cliente sale de cada opción."
+            title="Precio tachado (promoción)"
+            description="Opcional. Si lo pones, se muestra tachado al lado del precio para resaltar el descuento."
           >
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <PriceField
-                id="basePrice"
-                label="Precio base"
-                required
-                defaultPesos={initialProduct ? initialProduct.basePrice / 100 : null}
-                error={state?.fieldErrors?.basePrice?.[0]}
-                pending={pending}
-              />
+            <input type="hidden" name="basePrice" value={initialProduct?.basePrice ?? 0} />
+            <div className="sm:max-w-xs">
               <PriceField
                 id="compareAtPrice"
-                label="Precio antes (promo)"
-                hint="Opcional. Se muestra tachado para mostrar descuento."
+                label="Precio antes"
+                hint="Déjalo vacío si no hay promoción."
                 defaultPesos={
                   initialProduct?.compareAtPrice ? initialProduct.compareAtPrice / 100 : null
                 }
@@ -590,6 +584,10 @@ export function ProductForm({ categories, priceFrom, initialProduct, action, sub
                 pending={pending}
               />
             </div>
+            <p className="text-brand-purple-dark/55 mt-2 text-[11px]">
+              💡 El precio normal sale de cada opción. El precio base del producto se calcula solo,
+              a partir de la opción más barata.
+            </p>
           </SectionCard>
         )}
 
