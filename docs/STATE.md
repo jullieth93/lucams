@@ -31,9 +31,10 @@ Ley 2439/2024 (reembolso 15 días calendario), voseo→tuteo en emails. **Admin 
 actions, sidebar reagrupado. **Pulido UX admin "amigable" (2026-06-27):** auditoría
 multi-agente de ~18 comentarios de Lucy → 3 bugs cerrados (precio opción en pesos, orden
 categorías determinista, sidebar sticky) + sprint "Admin amigable" + sub-categorías +
-flechas reorden + precio base auto-derivado + ordenar por clic en columnas. **Pendiente
-decidido por Lucy: fotos por opción (D1, migración + storefront) — checkpoint antes de
-migrar.** **Próximo: P0-004 verificar dominio Resend (ACCIÓN HUMANA DNS) → Bloque C
+flechas reorden + precio base auto-derivado + ordenar por clic en columnas + **fotos por
+opción (D1: migración `ProductVariant.images` + uploader admin + galería reactiva en el
+PDP)**. Los 6 bloques del feedback cerrados (7 commits). **Próximo: P0-004 verificar
+dominio Resend (ACCIÓN HUMANA DNS) → Bloque C
 (Seguridad: RBAC/Turnstile/RLS).** Detalle de fases intermedias (catálogo, carrito,
 checkout, admin UX) en el historial git + bitácora abajo.
 
@@ -69,11 +70,13 @@ el catálogo; reordenar categorías = flechas ↑/↓; sub-categorías = SÍ; pr
   opciones activas) corre tras crear/editar/borrar opción; campo escondido en Avanzado.
 - `0a105ba` **D6 ordenar por clic:** primitive `<SortableHeader>` (RSC, sin JS cliente) +
   migrados productos/inventario/cupones/categorías; dropdown "Ordenar por" solo en mobile.
-
-**Pendiente (decidido, NO implementado):** **D1 fotos por opción** — es L: migración Prisma
-(`ProductVariant.images`/`image`) + uploader por opción en admin + galería del PDP que
-reacciona al selector de opción en el storefront. Se paró ANTES de migrar para checkpoint
-con Lucy (cambio irreversible + outward-facing). Compite en prioridad con Bloque C Seguridad.
+- `8b46680` **D1 fotos por opción:** `ProductVariant.images String[]` (migración manual
+  20260627090000 aplicada con `db execute` + `migrate resolve` — el shadow DB de migrate dev
+  falla por pg_trgm, y db push quería dropear `rate_limit_buckets` por drift). Uploader por
+  opción en admin (`variant-images.tsx` + `image-actions.ts`, herencia explicada). PDP:
+  galería = fotos de la opción si tiene, si no las del producto; `key={variantId}` reinicia
+  al cambiar. **OJO drift preexistente:** `rate_limit_buckets` está en la DB pero NO en el
+  schema Prisma — NO usar `prisma db push` (lo dropearía); usar migraciones manuales.
 
 **Prueba GUI pendiente (Lucy, navegador):** precio opción en pesos, desglose stock, Detalles
 limpio, "Hacer portada", crear sub-categoría + flechas, ordenar por clic en encabezados,

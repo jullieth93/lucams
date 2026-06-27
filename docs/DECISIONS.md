@@ -1356,13 +1356,13 @@ VENNDELO_WEBHOOK_SECRET=
 ## ADR-040 — Pulido UX admin "amigable" (feedback de Lucy 2026-06-27)
 
 **Fecha:** 2026-06-27
-**Estado:** ✅ Aceptada (D1 fotos por opción pendiente de implementar — decidida, no migrada)
+**Estado:** ✅ Aceptada e implementada (los 6 bloques cerrados, commits abajo)
 
 **Contexto:** Lucy (editora no-técnica) dio ~18 comentarios sobre el panel admin con la premisa "el admin es importante PERO debe ser simple y amigable para mí". Auditoría multi-agente (6 clusters verificados contra el código) en `docs/audits/2026-06-27-admin-ux-feedback/`: 3 bugs, ~11 mejoras, 5 decisiones de producto.
 
 **Decisiones de Lucy (las que cambian comportamiento de la tienda):**
 
-- **D1 — Fotos por opción:** SÍ, para todo el catálogo. Cada `ProductVariant` podrá tener fotos propias; el PDP del cliente cambia la galería al elegir opción. Herencia: opción usa sus fotos, si no, las del producto (espeja `variant.price ?? basePrice`). **Es L: requiere migración Prisma + uploader admin + galería reactiva en storefront. Aún NO implementada** — se hace en un cambio dedicado, compite en prioridad con Bloque C Seguridad.
+- **D1 — Fotos por opción:** SÍ, para todo el catálogo. Cada `ProductVariant` tiene `images String[]`; el PDP cambia la galería al elegir opción. Herencia: opción usa sus fotos, si no, las del producto (espeja `variant.price ?? basePrice`). Implementada (commit `8b46680`): migración `20260627090000_product_variant_images` aplicada a mano (`db execute` + `migrate resolve`, porque migrate dev falla por el shadow DB sin pg_trgm y db push quería dropear `rate_limit_buckets` por drift preexistente) + uploader admin por opción + galería reactiva en storefront.
 - **D2 — Sub-categorías:** SÍ, 1 nivel (coherente con rutas `/productos/[categoria]/[subcategoria]`). `parentId` ya existía en el modelo. Implementada (commit `892343b`).
 - **D3 — Reordenar categorías con flechas ↑/↓:** se eliminó el campo manual "número de orden" (confundía + causaba el bug de orden duplicado). Orden auto-asignado; reorden por flechas. Implementada (`892343b`).
 - **D4 — Precio base del producto auto-derivado:** con el precio viviendo en cada opción, `Product.basePrice` se calcula solo (= mínimo de las opciones) y se esconde de la UI. Implementada (`dd638fd`).
@@ -1372,6 +1372,6 @@ VENNDELO_WEBHOOK_SECRET=
 
 **Por qué importa admin + front cliente juntos:** varios puntos (fotos por opción, orden de categorías, descripciones/SEO, sub-categorías) tienen contraparte en el storefront y se diseñan juntos para no rehacer. Hallazgo clave: la "descripción larga" que se le pedía a Lucy NUNCA se mostraba al cliente (solo `description` corta) → se escondió.
 
-**Consecuencia:** el admin muestra menos campos (lo técnico colapsado/escondido), el precio es coherente en pesos, las categorías se gestionan visualmente. Queda deuda: implementar D1 (fotos por opción) y revisar si `compareAtPrice` (promo) debería pasar a nivel opción.
+**Consecuencia:** el admin muestra menos campos (lo técnico colapsado/escondido), el precio es coherente en pesos, las categorías se gestionan visualmente, cada opción puede tener sus fotos. Queda deuda menor: revisar si `compareAtPrice` (promo) debería pasar a nivel opción. **Aviso de infra:** la DB tiene drift preexistente (`rate_limit_buckets` existe en DB pero no en el schema Prisma) → NO usar `prisma db push` (lo dropearía); las migraciones nuevas se aplican a mano con `db execute` + `migrate resolve` mientras el shadow DB de `migrate dev` falle por `pg_trgm`.
 
-**Referencias.** `docs/audits/2026-06-27-admin-ux-feedback/00-PLAN.md` (plan + tabla maestra de los 18 puntos). Commits `b9aa66a`, `d06047e`, `892343b`, `dd638fd`, `0a105ba`.
+**Referencias.** `docs/audits/2026-06-27-admin-ux-feedback/00-PLAN.md` (plan + tabla maestra de los 18 puntos). Commits `b9aa66a`, `d06047e`, `892343b`, `dd638fd`, `0a105ba`, `8b46680`.
