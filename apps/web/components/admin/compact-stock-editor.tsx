@@ -4,7 +4,7 @@
  * <CompactStockEditor> — versión densa del editor de stock para usar
  * dentro de filas de tabla.
  *
- * Lucy 2026-06-26 — hotfix UI inventario: SimpleVariantStockEditor (diseñado
+ * Lucy 2026-06-26 — el editor "full" del panel de producto (ya retirado, diseñado
  * para el panel del producto) ocupa demasiado vertical y horizontal cuando
  * se mete en una columna de tabla. Esta versión:
  *  - 1 sola fila (input + botón icon-only Save)
@@ -14,7 +14,8 @@
  *  - Feedback: toast-like inline solo si error (éxito = revalidatePath
  *    refresca el value mostrado en la columna stock = self-evident)
  *
- * Comparte server action con SimpleVariantStockEditor (setVariantStockAction
+ * Único editor de stock del admin: se usa en Inventario y en la pestaña Versiones
+ * del producto. Server action setVariantStockAction
  * con audit InventoryLog + recordAdminAction).
  */
 

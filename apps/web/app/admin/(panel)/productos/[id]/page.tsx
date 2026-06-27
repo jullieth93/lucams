@@ -13,11 +13,11 @@
 
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
-import { Package, Trash2 } from "lucide-react";
+import Link from "next/link";
+import { Package, Trash2, Boxes, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ConfirmAction } from "@/components/admin/confirm-action";
 import { AdminPage, AdminPageHeader, AdminPageBody, AdminNotice } from "@/components/admin-page";
-import { ProductStockPanel } from "@/components/admin/product-stock-panel";
 import { ProductSectionNav, type ProductSection } from "@/components/admin/product-section-nav";
 import { ProductVariantsPanel } from "@/components/admin/product-variants-panel";
 import { ProductReviewsPanel } from "@/components/admin/product-reviews-panel";
@@ -143,7 +143,20 @@ export default async function ProductoDetallePage({
               </AdminNotice>
             )}
 
-            <ProductStockPanel productId={product.id} variants={stockVariants} />
+            {/*
+             * Resumen de stock SOLO LECTURA (Lucy 2026-06-27). El editor de stock
+             * vive en la pestaña Versiones (y en Inventario), no acá — para no
+             * tener "lo mismo en 3 lados". Acá solo se ve + un botón para ir a
+             * gestionarlo donde corresponde.
+             */}
+            <ProductStockSummaryReadonly
+              productId={product.id}
+              totalUnits={stockSummary.totalUnits}
+              variantsCount={stockSummary.variantsCount}
+              outCount={stockSummary.outCount}
+              lowCount={stockSummary.lowCount}
+              worstStatus={stockSummary.worstStatus}
+            />
 
             <ProductCouponsWidget
               productSlug={product.slug}
@@ -208,5 +221,63 @@ export default async function ProductoDetallePage({
         )}
       </AdminPageBody>
     </AdminPage>
+  );
+}
+
+/**
+ * Resumen de stock SOLO LECTURA para la pestaña Editar (Lucy 2026-06-27).
+ * Muestra el estado del inventario del producto de un vistazo, pero el ajuste
+ * se hace en Versiones / Inventario (un solo lugar para editar, no tres).
+ */
+function ProductStockSummaryReadonly({
+  productId,
+  totalUnits,
+  variantsCount,
+  outCount,
+  lowCount,
+  worstStatus,
+}: {
+  productId: string;
+  totalUnits: number;
+  variantsCount: number;
+  outCount: number;
+  lowCount: number;
+  worstStatus: "out" | "low" | "ok";
+}) {
+  const toneClass =
+    worstStatus === "out"
+      ? "border-red-200 bg-red-50"
+      : worstStatus === "low"
+        ? "border-amber-200 bg-amber-50"
+        : "border-brand-purple/15 bg-white";
+  return (
+    <section className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border p-4 ${toneClass}`}>
+      <div className="flex items-center gap-3">
+        <Boxes className="text-brand-purple-dark/60 h-5 w-5 shrink-0" />
+        <div>
+          <p className="text-brand-purple-dark text-sm font-semibold">
+            {getStockEmoji(worstStatus)} {totalUnits.toLocaleString("es-CO")} unidades en total
+            <span className="text-brand-purple-dark/55 font-normal">
+              {" · "}
+              {variantsCount} {variantsCount === 1 ? "versión" : "versiones"}
+            </span>
+          </p>
+          {(outCount > 0 || lowCount > 0) && (
+            <p className="text-brand-purple-dark/65 mt-0.5 text-xs">
+              {outCount > 0 && `🔴 ${outCount} agotada${outCount === 1 ? "" : "s"}`}
+              {outCount > 0 && lowCount > 0 && " · "}
+              {lowCount > 0 && `🟡 ${lowCount} con stock bajo`}
+            </p>
+          )}
+        </div>
+      </div>
+      <Link
+        href={`/admin/productos/${productId}?section=versiones`}
+        className="border-brand-purple/25 text-brand-purple-dark hover:bg-brand-purple/10 inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md border bg-white px-3 text-xs font-semibold"
+      >
+        Gestionar stock
+        <ArrowRight className="h-3.5 w-3.5" />
+      </Link>
+    </section>
   );
 }

@@ -2,12 +2,12 @@
  * Constantes y helpers compartidos para visualizar/categorizar stock.
  *
  * Usado por:
- *  - Admin: ProductStockPanel (server), product-stock-editor (CLIENT — usa MAX_STOCK_VALUE)
+ *  - Admin: inventario + pestaña Versiones, compact-stock-editor (CLIENT — usa MAX_STOCK_VALUE)
  *  - Storefront (futuro): "Quedan pocas unidades" callout (client)
  *  - Alertas automáticas (Bloque I): job pg_cron que detecta stock bajo (server)
  *
  * NOTA — NO marcar este file como "server-only": MAX_STOCK_VALUE se usa
- * desde product-stock-editor.tsx ("use client") como max attr del input.
+ * desde compact-stock-editor.tsx ("use client") como max attr del input.
  * Las funciones acá son puras (sin DB, sin env, sin secrets) → seguras
  * de bundlear al cliente. server-only en stock-admin.ts y stock-actions.ts
  * sí porque ahí sí hay Prisma + auth.

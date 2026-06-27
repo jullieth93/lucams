@@ -17,7 +17,7 @@
  */
 
 import Link from "next/link";
-import { ShoppingBag, Plus, Archive, Edit3 } from "lucide-react";
+import { ShoppingBag, Plus, Archive, Edit3, Boxes } from "lucide-react";
 import {
   AdminTable,
   AdminTableHead,
@@ -32,6 +32,7 @@ import { formatCOP } from "@/lib/format";
 import { parseVariantAttributes, generateVariantLabel } from "@/features/products/variant-schemas";
 import { listVariantsByProduct } from "@/features/products/service";
 import { ConfirmAction } from "@/components/admin/confirm-action";
+import { CompactStockEditor } from "@/components/admin/compact-stock-editor";
 import { VariantForm } from "@/app/admin/(panel)/productos/[id]/variants/variant-form";
 import { archiveVariantAction } from "@/app/admin/(panel)/productos/[id]/variants/actions";
 
@@ -62,7 +63,15 @@ export async function ProductVariantsPanel({
       </AdminNotice>
 
       {!newOpen && !editingId && (
-        <div className="flex justify-end">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          {/* Aquí editas el stock de ESTE producto; en Inventario ves el de todos. */}
+          <Link
+            href="/admin/inventario"
+            className="text-brand-purple hover:text-brand-purple-dark inline-flex items-center gap-1 text-xs font-semibold"
+          >
+            <Boxes className="h-3.5 w-3.5" />
+            Ver el inventario de todos los productos →
+          </Link>
           <Link
             href={`/admin/productos/${productId}?section=versiones&new=1`}
             className="bg-gradient-brand inline-flex h-11 items-center gap-1.5 rounded-lg px-4 text-sm font-semibold text-white shadow-sm transition-all hover:brightness-110"
@@ -179,10 +188,16 @@ export async function ProductVariantsPanel({
                       </div>
                     )}
                   </td>
-                  <td className="text-brand-purple-dark/85 px-4 py-3 text-right tabular-nums">
-                    {v.stock.toLocaleString("es-CO")}
+                  <td className="px-4 py-3 align-top">
+                    {/* Editor rápido de stock — mismo que en Inventario, para
+                        que ajustar stock se sienta igual en los dos lados. */}
+                    <CompactStockEditor
+                      variantId={v.id}
+                      productId={productId}
+                      currentStock={v.stock}
+                    />
                   </td>
-                  <td className="px-4 py-3 text-center">
+                  <td className="px-4 py-3 text-center align-top">
                     {v.isActive ? (
                       <AdminBadge tone="emerald">Activa</AdminBadge>
                     ) : (
