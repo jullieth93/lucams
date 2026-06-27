@@ -1,6 +1,13 @@
 # Plan: Lucams_shop — E-commerce productivo (no MVP) que supera a magneticas.cl
 
 > **Fuente de verdad canónica.** Cualquier cambio de rumbo se refleja primero aquí, luego en los demás `.md` del proyecto.
+>
+> **🔄 Refresh 2026-06-27.** Este plan se actualizó para corregir desfases con la realidad del
+> código: **stack = Next.js 16** (no 15), **logística = Aveonline** (Venndelo queda como Plan B,
+> ver [ADR-039](DECISIONS.md)). El avance real por fase vive en [`STATE.md`](STATE.md) +
+> [`ROADMAP.md`](ROADMAP.md) (refrescado el mismo día): a hoy, el **checkout/pagos está certificado
+> (Bloque A, 48 tests)**, compliance básico hecho, y el admin del catálogo restructurado y pulido.
+> Pendiente pre-launch: Seguridad (C), Observabilidad (D), Testing (E), Refund/Cupones (F).
 
 ## Context
 
@@ -11,10 +18,10 @@
 - **No es MVP**. El sitio debe nacer 100% productivo, listo para vender desde el día 1.
 - **Free durante todo el desarrollo**, upgrade a Pro únicamente al lanzar a producción.
 - Datos en **Supabase** y su ecosistema (Auth, Storage, Realtime, Edge Functions).
-- Stack: **Next.js 15 (App Router) + TypeScript + Tailwind + shadcn/ui**.
+- Stack: **Next.js 16 (App Router) + TypeScript + Tailwind v4 + shadcn/ui**.
 - Despliegue en **Vercel** (decisión justificada abajo).
 - Pasarela: **Wompi** (en gestión por el usuario).
-- Logística: **Venndelo** (Coordinadora + contraentrega + API pública).
+- Logística: **Aveonline** (Coordinadora + contraentrega + API pública). _Venndelo = Plan B (ADR-039)._
 - Dominio: `lucamsshop.co` registrado en **mi.com.co** (al lanzar).
 
 ---
@@ -30,7 +37,7 @@
 | Costo Pro           | $20/mes/miembro               | Web Service $7 + DB $7 = $14/mes                  |
 | Mejor para          | Apps Next.js con SSR/ISR/edge | Backends largos, workers, websockets persistentes |
 
-Render es excelente para apps Rails/Django o servicios con estado en memoria. **Para un Next.js + Supabase + Wompi como este, Vercel es la elección obvia**: ISR para revalidar páginas de producto cuando cambia stock o precio, Edge Functions de baja latencia para webhooks de Wompi/Venndelo, integración 1-clic con Supabase, y la mejor DX del mercado.
+Render es excelente para apps Rails/Django o servicios con estado en memoria. **Para un Next.js + Supabase + Wompi como este, Vercel es la elección obvia**: ISR para revalidar páginas de producto cuando cambia stock o precio, Edge Functions de baja latencia para webhooks de Wompi/Aveonline, integración 1-clic con Supabase, y la mejor DX del mercado.
 
 ---
 
@@ -45,7 +52,7 @@ Render es excelente para apps Rails/Django o servicios con estado en memoria. **
 | DNS + CDN           | **Cloudflare**         | Free                                     | Free                                 | $0        | $0                                                             |
 | Dominio             | `lucamsshop.co`        | — (`*.vercel.app`)                       | **mi.com.co**                        | $0        | ~$3-5 (~$50.000 COP/año)                                       |
 | Pasarela            | **Wompi**              | Sandbox                                  | Producción                           | $0        | 2.65% + $700 + IVA por trx (plan Avanzado, frecuencia mensual) |
-| Logística           | **Venndelo**           | Sandbox                                  | Producción                           | $0        | Costo de envío (0% comisión)                                   |
+| Logística           | **Aveonline**           | Sandbox                                  | Producción                           | $0        | Costo de envío (0% comisión)                                   |
 | Monitoreo errores   | _Fuera del plan_       | —                                        | —                                    | $0        | $0                                                             |
 
 **Costo durante desarrollo: $0/mes.**
@@ -105,7 +112,7 @@ Magneticas.cl es un Shopify/Jumpseller estándar. Lucams_shop debe nacer con fea
 1. **Estudio de Personalización en vivo** (react-konva) — editor canvas con plantillas, fotos, texto, fondos, en tiempo real. Guarda JSON del diseño + PNG alta resolución para producción. **Diferenciador #1.**
 2. **Vista previa 3D en nevera** (Three.js) — el imán renderizado sobre nevera 3D rotable.
 3. **Asistente IA de diseño** (Claude API) — sugiere plantillas según ocasión + paleta.
-4. **Pagos múltiples** — Wompi (tarjeta + PSE + Nequi + Bancolombia) + contraentrega Venndelo.
+4. **Pagos múltiples** — Wompi (tarjeta + PSE + Nequi + Bancolombia) + contraentrega Aveonline.
 5. **WhatsApp `wa.me`** con mensaje pre-armado contextual (sin Twilio API por ahora).
 6. **Programa de fidelidad** (`puntos Lucams`).
 7. **Programa de referidos** con códigos únicos.
@@ -126,7 +133,7 @@ Magneticas.cl es un Shopify/Jumpseller estándar. Lucams_shop debe nacer con fea
 ```
 lucams_shop/
 ├── apps/
-│   └── web/                              # Next.js 15 (App Router)
+│   └── web/                              # Next.js 16 (App Router)
 │       ├── app/
 │       │   ├── (storefront)/
 │       │   │   ├── page.tsx              # Home
@@ -223,7 +230,7 @@ WebhookEvent (source: WOMPI|VENNDELO, externalId UNIQUE)
 ## Integraciones — resumen
 
 - **Wompi**: pasarela principal. Adaptador `PaymentProvider` permite sumar Mercado Pago después sin reescribir.
-- **Venndelo**: cotización + creación de envíos + tracking + COD. Partner Coordinadora.
+- **Aveonline**: cotización + creación de envíos + tracking + COD. Partner Coordinadora.
 - **Claude API**: asistente de diseño en el estudio de personalización.
 - **Resend**: emails transaccionales (confirmación, recuperación carrito, reseña).
 - **WhatsApp `wa.me`**: botón flotante con mensaje pre-armado contextual.
@@ -265,11 +272,11 @@ WebhookEvent (source: WOMPI|VENNDELO, externalId UNIQUE)
 
 | Item                                                                               | ADR      | Estado |
 | ---------------------------------------------------------------------------------- | -------- | ------ |
-| Stack Next.js 15 + TS + **Tailwind v4 + React 19** + shadcn/ui sobre monorepo pnpm | 001, 015 | ✅     |
+| Stack Next.js 16 + TS + **Tailwind v4 + React 19** + shadcn/ui sobre monorepo pnpm | 001, 015 | ✅     |
 | Hosting Vercel (Free dev → Pro prod)                                               | 002      | ✅     |
 | DB Supabase (Free dev → Pro prod)                                                  | 003      | ✅     |
 | Pasarela Wompi (con adaptador para sumar MP)                                       | 004      | ✅     |
-| Logística Venndelo + COD día 1                                                     | 005, 009 | ✅     |
+| Logística Aveonline + COD día 1                                                     | 005, 009 | ✅     |
 | WhatsApp `wa.me` (sin Twilio API)                                                  | 006      | ✅     |
 | Catálogo seed: 30+ productos espejo de magneticas.cl con placeholders              | 010      | ✅     |
 | Branding: paleta kawaii con mascota mapache                                        | —        | ✅     |
@@ -295,17 +302,18 @@ WebhookEvent (source: WOMPI|VENNDELO, externalId UNIQUE)
 
 ## Fases de implementación
 
-> Detalle con criterios de aceptación en [`ROADMAP.md`](./ROADMAP.md).
+> Detalle con criterios de aceptación en [`ROADMAP.md`](./ROADMAP.md). **Estado real refrescado
+> 2026-06-27** (fuente fiel: [`STATE.md`](./STATE.md) + git):
 
-- **Fase 0a** — Estructura de documentación (en curso, este es el alcance único actual).
-- **Fase 0b** — Cuentas externas en Free (Supabase, Vercel, Resend, Wompi sandbox, Venndelo sandbox, Cloudflare).
-- **Fase 1** — Base sólida: monorepo, Next.js 15, Prisma, Supabase Auth + RLS, CI, layout base.
-- **Fase 2** — Catálogo y carrito (storefront público + SEO + i18n).
-- **Fase 3** — Estudio de Personalización (canvas + 3D + IA).
-- **Fase 4** — Checkout, pagos y logística (Wompi + COD + Venndelo + emails).
-- **Fase 5** — Marketing engine (cupones, fidelidad, referidos, bundles, blog).
-- **Fase 6** — Backoffice y B2B (admin, mayorista, analytics).
-- **Fase 7** — Pulido productivo + migración Free→Pro + dominio + lanzamiento.
+- **Fase 0a** ✅ — Estructura de documentación.
+- **Fase 0b** ✅ — Cuentas externas en Free (Supabase, Vercel, Resend, Wompi sandbox, Aveonline sandbox, Cloudflare).
+- **Fase 1** ✅ — Base sólida: monorepo, Next.js 16, Prisma, Supabase Auth + RLS, layout base. _(CI/CD + tests RLS → Bloques C/E pendientes.)_
+- **Fase 2** ✅ — Catálogo y carrito (storefront público + SEO). Admin del catálogo restructurado y pulido (2026-06-27).
+- **Fase 3** 🔄 — Estudio de Personalización (canvas hecho; faltan plantillas ≈2/30, 3D y compartir).
+- **Fase 4** ✅ **certificada** — Checkout, pagos y logística (Wompi sandbox + COD + Aveonline + saga + emails). **Bloque A, 48 tests.** Pendiente: llaves de producción + refund/retracto (Bloque F).
+- **Fase 5** ⏳ — Marketing engine (cupones, fidelidad, referidos, bundles, blog). _Incluye la redención de cupones en checkout (Bloque F)._
+- **Fase 6** ⏳ — Backoffice y B2B (admin, mayorista, analytics).
+- **Fase 7** ⏳ — Pulido productivo + migración Free→Pro + dominio + lanzamiento. _Incluye Bloques C (Seguridad), D (Observabilidad), E (Testing)._
 
 ---
 

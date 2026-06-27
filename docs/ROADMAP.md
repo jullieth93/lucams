@@ -1,20 +1,38 @@
 # Roadmap — Lucams_shop
 
-Ocho fases. La Fase 0a es la única que está autorizada al momento de escribir este documento. El resto requiere aprobación explícita del usuario antes de arrancar.
+Ocho fases (0a–7). Este roadmap se **refrescó el 2026-06-27** para reflejar el estado real del código — antes marcaba "Fase 2 en curso" cuando checkout, pagos y admin ya estaban hechos.
+
+> **⚠️ Cómo leer las fases vs. el estado real.** El detalle por fase abajo conserva el plan original (con sus checklists históricos), pero **la fuente fiel del avance día a día es [`STATE.md`](STATE.md) + el historial git**, no los checkboxes de cada fase. Cuando un checklist y la tabla de abajo se contradigan, gana la tabla + STATE.md.
+
+### Mapeo: "Bloques A–F" (nomenclatura de trabajo) ↔ Fases
+
+El trabajo reciente se nombró por **bloques**; equivalen a:
+
+| Bloque | Qué es | Fase(s) | Estado |
+| --- | --- | --- | --- |
+| **A** | Checkout + Pagos + Saga (Wompi + Aveonline) | Fase 4 | ✅ **Certificado** (48 tests) |
+| **B** | Compliance + Emails (Ley 1581/1480, retracto) | transversal (Fase 2/4) | ✅ Hecho (55 tests) |
+| **Opción C** | Restructura admin del catálogo | Fase 2/6 | ✅ Hecho |
+| **C** | Seguridad (RBAC, MFA admin, RLS tests, CSRF, Turnstile) | Fase 1 + Fase 7 | ⏳ Pendiente |
+| **D** | Observabilidad (dashboard, alertas, SLOs) | Fase 7 | ⏳ Pendiente |
+| **E** | Testing (RLS, E2E, visual, a11y) | transversal / Fase 7 | ⏳ Pendiente |
+| **F** | Refund + Cupones (redención en checkout, reembolso admin) | Fase 4/5 | ⏳ Pendiente |
 
 ## Vista general
 
-| Fase | Nombre                                           | Estado                                                               | Aprobado |
-| ---- | ------------------------------------------------ | -------------------------------------------------------------------- | -------- |
-| 0a   | Estructura de documentación                      | 🟢 Completada (2026-05-09)                                           | ✅ Sí    |
-| 0b   | Cuentas externas críticas para Fase 1 (re-scope) | 🟢 Completada (2026-05-09)                                           | ✅ Sí    |
-| 1    | Base sólida (core técnico)                       | 🟢 Completada (auth completo, 2026-05-11)                            | ✅ Sí    |
-| 2    | Catálogo y carrito (storefront)                  | 🟡 EN CURSO (admin CRUD + storefront + cart anon listos, 2026-05-11) | ✅ Sí    |
-| 3    | Estudio de Personalización                       | ⏸️ Pendiente                                                         | ❌ No    |
-| 4    | Checkout, pagos y logística                      | ⏸️ Pendiente                                                         | ❌ No    |
-| 5    | Marketing engine                                 | ⏸️ Pendiente                                                         | ❌ No    |
-| 6    | Backoffice y B2B                                 | ⏸️ Pendiente                                                         | ❌ No    |
-| 7    | Pulido productivo + lanzamiento                  | ⏸️ Pendiente                                                         | ❌ No    |
+| Fase | Nombre                                           | Estado                                                                | Aprobado |
+| ---- | ------------------------------------------------ | --------------------------------------------------------------------- | -------- |
+| 0a   | Estructura de documentación                      | 🟢 Completada (2026-05-09)                                            | ✅ Sí    |
+| 0b   | Cuentas externas críticas para Fase 1 (re-scope) | 🟢 Completada (2026-05-09)                                            | ✅ Sí    |
+| 1    | Base sólida (core técnico)                       | 🟢 Completada (auth + seguridad base; CI/CD y tests RLS → Bloques C/E) | ✅ Sí    |
+| 2    | Catálogo y carrito (storefront)                  | 🟢 Completada (admin CRUD + storefront + carrito + admin pulido 2026-06-27) | ✅ Sí    |
+| 3    | Estudio de Personalización                       | 🔄 Núcleo hecho; faltan plantillas (≈2/30), vista 3D y compartir       | ✅ Sí    |
+| 4    | Checkout, pagos y logística                      | 🟢 **Completada y CERTIFICADA** (Bloque A · Wompi + Aveonline + saga · 48 tests) | ✅ Sí    |
+| 5    | Marketing engine                                 | ⏸️ Pendiente (incl. redención de cupones → Bloque F)                  | ❌ No    |
+| 6    | Backoffice y B2B                                 | ⏸️ Pendiente                                                          | ❌ No    |
+| 7    | Pulido productivo + lanzamiento                  | ⏸️ Pendiente (incl. Bloques C Seguridad · D Observabilidad · E Testing) | ❌ No    |
+
+> **Logística:** el plan original citaba **Venndelo**; la integración **realmente implementada es Aveonline** (ver [ADR-039](DECISIONS.md) e [INTEGRATIONS.md](INTEGRATIONS.md)). Donde abajo se lea "Venndelo" en tareas de Fase 4+, léase **Aveonline** (Venndelo queda como Plan B). **Stack:** Next.js **16** (no 15).
 
 ---
 
@@ -192,7 +210,13 @@ Antes de iniciar la fase, citar fuente con fecha en `OPERATIONS.md` para:
 
 ---
 
-## Fase 2 — Catálogo y carrito (storefront público) 🟡 EN CURSO (2026-05-11)
+## Fase 2 — Catálogo y carrito (storefront público) 🟢 Completada
+
+> **Actualización 2026-06-27:** completada y luego ampliada. Admin CRUD de productos/categorías,
+> storefront público (`/productos`, `/producto/[slug]`), carrito anónimo en Postgres con merge al
+> login, imágenes y variantes/opciones. El admin del catálogo se restructuró ("Opción C") y se
+> pulió la UX (sub-categorías, fotos por opción, ordenar por clic, etc. — ver ADR-040 y git
+> 2026-06-27). Lo de abajo es el checklist histórico de cuando arrancó la fase.
 
 > **Alcance:** todo lo navegable sin checkout.
 
@@ -233,7 +257,13 @@ Antes de iniciar la fase, citar fuente con fecha en `OPERATIONS.md` para:
 
 ---
 
-## Fase 3 — Estudio de Personalización (diferenciador #1) ⏸️
+## Fase 3 — Estudio de Personalización (diferenciador #1) 🔄 Núcleo hecho, incompleto
+
+> **Actualización 2026-06-27:** el núcleo del Estudio (editor canvas + finalize→PNG alta
+> resolución) está construido, pero faltan los assets y vistas extra: **solo ≈2 de las ~30
+> plantillas SVG**, **no existe la vista 3D en nevera** ni el **compartir diseño** (`/d/[token]`),
+> y tiene 0% de cobertura de tests. Deseable-no-bloqueante del primer lanzamiento salvo las
+> plantillas (acción humana: diseñarlas/contratarlas).
 
 > **Alcance:** el "plus" frente a magneticas.cl. Editor visual + 3D + IA.
 
@@ -277,7 +307,16 @@ Antes de iniciar la fase, citar fuente con fecha en `OPERATIONS.md` para:
 
 ---
 
-## Fase 4 — Checkout, pagos y logística ⏸️
+## Fase 4 — Checkout, pagos y logística 🟢 Completada y CERTIFICADA (Bloque A)
+
+> **Actualización 2026-06-27:** este es el **Bloque A**, que pasó una **certificación adversarial
+> multi-agente** y quedó con **48 tests de integración (DB real) en verde**. Incluye: checkout con
+> **Wompi (sandbox)**, **saga post-pago** (stock → envío → email con compensaciones), webhooks de
+> Wompi y **Aveonline** (HMAC, anti-replay, idempotencia física del ledger, env-match), logística
+> **Aveonline** (Coordinadora + contraentrega), claim atómico de guía, VOIDED→REFUNDED con revert
+> de stock, y reconciliación visible en `/admin/pedidos`. **Pendiente solo:** llaves/cuenta de
+> **producción** (acción humana) + el flujo de **retracto E2E** y **refund desde admin** (Bloque F).
+> El checklist de abajo es el plan original; donde dice "Venndelo", léase **Aveonline**.
 
 > **Alcance:** convertir carritos en órdenes pagadas y enviadas.
 
