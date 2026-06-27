@@ -138,7 +138,9 @@ export async function updateVariantAction(
     description: formData.get("description"),
     // El form pide PESOS (consistente con el producto). Guardamos en CENTAVOS.
     price: priceStr === "" ? null : Math.round(Number(priceStr) * 100),
-    stock: Number(formData.get("stock") ?? 0),
+    // 3d (Lucy 2026-06-27): el stock NO se edita en este form (se hace con el
+    // editor rápido del listado/Inventario). Lo omitimos para no pisarlo —
+    // VariantUpdateSchema.stock es opcional y updateVariant no lo toca si falta.
     isActive: formData.get("isActive") === "on",
     attributes: parseAttributesFromForm(formData),
   });

@@ -30,6 +30,7 @@ import {
   summarizeStock,
 } from "@/features/products/stock-constants";
 import { prisma } from "@/lib/db";
+import { formatCOP } from "@/lib/format";
 import { deleteProductAction, updateProductAction } from "../actions";
 import { ProductForm } from "../product-form";
 import { ProductImages } from "../product-images";
@@ -160,10 +161,12 @@ export default async function ProductoDetallePage({
             <ProductStockSummaryReadonly
               productId={product.id}
               totalUnits={stockSummary.totalUnits}
-              variantsCount={stockSummary.variantsCount}
-              outCount={stockSummary.outCount}
-              lowCount={stockSummary.lowCount}
               worstStatus={stockSummary.worstStatus}
+              options={activeForPrice.map((v) => ({
+                name: v.name === "Default" ? "Única" : v.name,
+                stock: v.stock,
+                price: v.price ?? product.basePrice,
+              }))}
             />
 
             <ProductCouponsWidget
@@ -235,58 +238,65 @@ export default async function ProductoDetallePage({
 
 /**
  * Resumen de stock SOLO LECTURA para la pestaña Editar (Lucy 2026-06-27).
- * Muestra el estado del inventario del producto de un vistazo, pero el ajuste
- * se hace en Opciones / Inventario (un solo lugar para editar, no tres).
+ * 3b: ahora muestra el DESGLOSE por opción (nombre · stock con emoji · precio),
+ * no solo el total — para que de un vistazo Lucy vea cuál opción está roja.
+ * El ajuste se hace en Opciones / Inventario (un solo lugar para editar).
  */
 function ProductStockSummaryReadonly({
   productId,
   totalUnits,
-  variantsCount,
-  outCount,
-  lowCount,
   worstStatus,
+  options,
 }: {
   productId: string;
   totalUnits: number;
-  variantsCount: number;
-  outCount: number;
-  lowCount: number;
   worstStatus: "out" | "low" | "ok";
+  options: Array<{ name: string; stock: number; price: number }>;
 }) {
   const toneClass =
     worstStatus === "out"
-      ? "border-red-200 bg-red-50"
+      ? "border-red-200"
       : worstStatus === "low"
-        ? "border-amber-200 bg-amber-50"
-        : "border-brand-purple/15 bg-white";
+        ? "border-amber-200"
+        : "border-brand-purple/15";
+  const dot = (stock: number) => (stock <= 0 ? "🔴" : stock <= 5 ? "🟡" : "🟢");
   return (
-    <section className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border p-4 ${toneClass}`}>
-      <div className="flex items-center gap-3">
-        <Boxes className="text-brand-purple-dark/60 h-5 w-5 shrink-0" />
-        <div>
-          <p className="text-brand-purple-dark text-sm font-semibold">
-            {getStockEmoji(worstStatus)} {totalUnits.toLocaleString("es-CO")} unidades en total
-            <span className="text-brand-purple-dark/55 font-normal">
-              {" · "}
-              {variantsCount} {variantsCount === 1 ? "opción" : "opciones"}
-            </span>
-          </p>
-          {(outCount > 0 || lowCount > 0) && (
-            <p className="text-brand-purple-dark/65 mt-0.5 text-xs">
-              {outCount > 0 && `🔴 ${outCount} agotada${outCount === 1 ? "" : "s"}`}
-              {outCount > 0 && lowCount > 0 && " · "}
-              {lowCount > 0 && `🟡 ${lowCount} con stock bajo`}
-            </p>
-          )}
-        </div>
+    <section className={`space-y-3 rounded-xl border bg-white p-4 ${toneClass}`}>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="text-brand-purple-dark flex items-center gap-2 text-sm font-semibold">
+          <Boxes className="text-brand-purple-dark/60 h-5 w-5" />
+          {getStockEmoji(worstStatus)} {totalUnits.toLocaleString("es-CO")} unidades en total
+          <span className="text-brand-purple-dark/55 font-normal">
+            · {options.length} {options.length === 1 ? "opción" : "opciones"}
+          </span>
+        </p>
+        <Link
+          href={`/admin/productos/${productId}?section=opciones`}
+          className="border-brand-purple/25 text-brand-purple-dark hover:bg-brand-purple/10 inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md border bg-white px-3 text-xs font-semibold"
+        >
+          Gestionar opciones y stock
+          <ArrowRight className="h-3.5 w-3.5" />
+        </Link>
       </div>
-      <Link
-        href={`/admin/productos/${productId}?section=opciones`}
-        className="border-brand-purple/25 text-brand-purple-dark hover:bg-brand-purple/10 inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md border bg-white px-3 text-xs font-semibold"
-      >
-        Gestionar stock
-        <ArrowRight className="h-3.5 w-3.5" />
-      </Link>
+      {/* Desglose por opción */}
+      <ul className="divide-brand-purple/10 border-brand-purple/10 divide-y overflow-hidden rounded-lg border">
+        {options.map((o, i) => (
+          <li
+            key={i}
+            className="flex flex-wrap items-center justify-between gap-2 bg-white px-3 py-2 text-sm"
+          >
+            <span className="text-brand-purple-dark font-medium">{o.name}</span>
+            <span className="flex items-center gap-3">
+              <span className="text-brand-purple-dark/70 text-xs tabular-nums">
+                {formatCOP(o.price)}
+              </span>
+              <span className="text-brand-purple-dark inline-flex items-center gap-1 text-xs font-semibold tabular-nums">
+                {dot(o.stock)} {o.stock.toLocaleString("es-CO")} u.
+              </span>
+            </span>
+          </li>
+        ))}
+      </ul>
     </section>
   );
 }

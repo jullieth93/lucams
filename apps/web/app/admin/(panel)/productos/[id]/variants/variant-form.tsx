@@ -80,14 +80,8 @@ export function VariantForm({
           error={state?.fieldErrors?.price?.[0]}
           hint="En pesos (ej. 45000 = $45.000). Déjalo vacío para usar el precio del producto."
         />
-        <Field
-          label="Stock"
-          name="stock"
-          type="number"
-          defaultValue={(variant?.stock ?? 0).toString()}
-          mono
-          hint="0 = sin enforcement (Fase 4 inventario real)"
-        />
+        {/* 3d: el stock se edita con el botón rápido del listado de opciones y
+            en Inventario, no acá — para no tenerlo en dos lados. */}
       </div>
 
       <Field

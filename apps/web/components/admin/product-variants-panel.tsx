@@ -70,7 +70,7 @@ export async function ProductVariantsPanel({
             className="text-brand-purple hover:text-brand-purple-dark inline-flex items-center gap-1 text-xs font-semibold"
           >
             <Boxes className="h-3.5 w-3.5" />
-            Ver el inventario de todos los productos →
+            Ir al inventario completo →
           </Link>
           <Link
             href={`/admin/productos/${productId}?section=opciones&new=1`}

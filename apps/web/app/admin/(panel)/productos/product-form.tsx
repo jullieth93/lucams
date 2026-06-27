@@ -166,8 +166,8 @@ export function ProductForm({ categories, priceFrom, initialProduct, action, sub
 
           <Field
             id="description"
-            label="Descripción corta"
-            hint="Resumen que se ve en la página del producto, justo debajo del nombre."
+            label="Descripción"
+            hint="Es la que ve el cliente en la página del producto. También se usa para Google."
             error={state?.fieldErrors?.description?.[0]}
           >
             <Textarea
@@ -254,12 +254,22 @@ export function ProductForm({ categories, priceFrom, initialProduct, action, sub
         </SectionCard>
       </AdminTabPanel>
 
-      {/* ─────── TAB: DETALLES (texto bot + logística + SEO — opcional) ─────── */}
+      {/* ─────── TAB: DETALLES (logística visible + textos/SEO colapsados) ─────── */}
       <AdminTabPanel value="detalles" active={activeTab}>
-        <SectionCard
-          title="Descripción larga (markdown)"
-          description="Contexto extenso del producto. El bot lo usa para responder consultas por WhatsApp."
-        >
+        {/*
+         * Lucy 2026-06-27 — los textos del bot + descripción larga + SEO se
+         * colapsan: son OPCIONALES y no estorban. Lo que el cliente ve es la
+         * "Descripción" de Lo básico; el SEO de Google ya funciona automático.
+         */}
+        <CollapsibleDetails summary="📝 Textos extra (opcional — para el bot de WhatsApp, que llega más adelante)">
+          <p className="text-brand-purple-dark/55 mb-3 text-xs">
+            No hacen falta para vender. Estos textos alimentarán al bot de WhatsApp
+            cuando exista (Fase 5). Por ahora puedes dejarlos vacíos.
+          </p>
+          <SectionCard
+            title="Descripción larga (opcional)"
+            description="Contexto extenso. Solo lo usará el bot; el cliente ve la Descripción de Lo básico."
+          >
           <Field
             id="richDescription"
             label="Descripción rica (300-800 palabras)"
@@ -319,7 +329,9 @@ export function ProductForm({ categories, priceFrom, initialProduct, action, sub
               disabled={pending}
             />
           </Field>
-        </SectionCard>
+          </SectionCard>
+        </CollapsibleDetails>
+
         <SectionCard
           title="Tiempos y garantía"
           description="Lo que el cliente ve sobre cuánto demora y qué incluye."
@@ -458,10 +470,16 @@ export function ProductForm({ categories, priceFrom, initialProduct, action, sub
             Variantes con un valor específico.
           </p>
         </SectionCard>
-        <SectionCard
-          title="Cómo se ve en Google"
-          description="Si dejas los campos vacíos, usamos el nombre y la descripción corta."
-        >
+        <CollapsibleDetails summary="🔎 Cómo se ve en Google (opcional — ya funciona solo)">
+          <p className="mb-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+            ✅ Tu producto <strong>ya aparece bien en Google</strong> automáticamente, usando su
+            nombre y descripción. Solo toca esto si quieres personalizar el texto exacto que se ve
+            en los resultados de búsqueda.
+          </p>
+          <SectionCard
+            title="Personalizar el texto de Google"
+            description="Si dejas los campos vacíos, usamos el nombre y la descripción del producto."
+          >
           <Field
             id="seoTitle"
             label="Título para Google"
@@ -493,7 +511,8 @@ export function ProductForm({ categories, priceFrom, initialProduct, action, sub
               disabled={pending}
             />
           </Field>
-        </SectionCard>
+          </SectionCard>
+        </CollapsibleDetails>
       </AdminTabPanel>
 
       {/* ─────── TAB: AVANZADO (setup ocasional) ─────── */}
@@ -674,6 +693,31 @@ function SectionCard({
       </header>
       <div className="space-y-4">{children}</div>
     </section>
+  );
+}
+
+/**
+ * Sección colapsable (native <details>) para campos OPCIONALES que no estorban
+ * la vista por defecto. Lucy 2026-06-27: esconde bot/SEO/descripción larga.
+ * Los campos siguen en el form (se envían), solo arrancan plegados.
+ */
+function CollapsibleDetails({
+  summary,
+  children,
+}: {
+  summary: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <details className="border-brand-purple/15 group rounded-xl border bg-white">
+      <summary className="text-brand-purple-dark hover:bg-brand-purple/5 flex cursor-pointer list-none items-center justify-between rounded-xl px-5 py-3.5 text-sm font-semibold select-none">
+        <span>{summary}</span>
+        <span className="text-brand-purple-dark/50 text-xs transition-transform group-open:rotate-90">
+          ▶
+        </span>
+      </summary>
+      <div className="space-y-4 px-5 pt-1 pb-5">{children}</div>
+    </details>
   );
 }
 

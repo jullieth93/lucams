@@ -76,9 +76,11 @@ export function ProductImages({ productId, images }: { productId: string; images
     <section className="rounded-lg border border-brand-purple/15 bg-white p-5">
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-base font-semibold text-brand-purple-dark">Imágenes</h2>
+          <h2 className="text-base font-semibold text-brand-purple-dark">Fotos del producto</h2>
           <p className="mt-0.5 text-xs text-brand-purple-dark/55">
-            La primera imagen es la principal. JPG/PNG/WebP/AVIF · máx 5 MB c/u.
+            La <strong className="text-brand-purple-dark/75">⭐ portada</strong> es la que se ve en
+            el catálogo. Para cambiarla, usa <em>“Hacer portada”</em> en cualquier foto. JPG/PNG/WebP
+            · máx 5 MB c/u.
           </p>
         </div>
         <div>
@@ -120,7 +122,7 @@ export function ProductImages({ productId, images }: { productId: string; images
             Aún no hay imágenes para este producto.
           </p>
           <p className="mt-1 text-xs text-brand-purple-dark/55">
-            Sube 1-5 imágenes. La primera será la principal en el catálogo.
+            Sube 1-5 fotos. La primera será la portada en el catálogo (luego la puedes cambiar).
           </p>
         </div>
       ) : (
@@ -128,16 +130,32 @@ export function ProductImages({ productId, images }: { productId: string; images
           {images.map((url, idx) => (
             <li
               key={url}
-              className="group relative overflow-hidden rounded-md border border-brand-purple/15 bg-brand-purple/5"
+              className={`group relative overflow-hidden rounded-md border bg-brand-purple/5 ${
+                idx === 0
+                  ? "border-brand-purple ring-2 ring-brand-purple/30"
+                  : "border-brand-purple/15"
+              }`}
             >
               <div className="aspect-square w-full">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={url} alt={`Imagen ${idx + 1}`} className="h-full w-full object-cover" />
               </div>
-              {idx === 0 && (
-                <span className="absolute top-1.5 left-1.5 inline-flex items-center gap-1 rounded bg-emerald-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">
-                  <Star className="h-2.5 w-2.5" /> Principal
+              {idx === 0 ? (
+                <span className="bg-brand-purple absolute top-1.5 left-1.5 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold text-white shadow-sm">
+                  <Star className="h-2.5 w-2.5 fill-current" /> Portada
                 </span>
+              ) : (
+                // 5a: un solo clic para volver portada cualquier foto (antes había
+                // que apretar ↑ varias veces). Siempre visible, no solo en hover.
+                <button
+                  type="button"
+                  className="text-brand-purple-dark absolute top-1.5 left-1.5 inline-flex items-center gap-1 rounded bg-white/95 px-1.5 py-0.5 text-[10px] font-semibold shadow-sm hover:bg-white disabled:opacity-40"
+                  onClick={() => handleReorder(idx, 0)}
+                  disabled={pending}
+                  title="Usar esta foto como portada del catálogo"
+                >
+                  <Star className="h-2.5 w-2.5" /> Hacer portada
+                </button>
               )}
               <div className="absolute right-1.5 bottom-1.5 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
                 <button
@@ -146,7 +164,7 @@ export function ProductImages({ productId, images }: { productId: string; images
                   onClick={() => handleReorder(idx, idx - 1)}
                   disabled={pending || idx === 0}
                   aria-label="Mover arriba"
-                  title="Mover arriba (será imagen principal)"
+                  title="Mover una posición arriba"
                 >
                   <ArrowUp className="h-3.5 w-3.5" />
                 </button>

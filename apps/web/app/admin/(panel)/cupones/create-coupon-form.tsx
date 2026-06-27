@@ -201,13 +201,24 @@ export function CreateCouponForm() {
         </div>
       )}
 
-      <button
-        type="submit"
-        disabled={isPending}
-        className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-60"
-      >
-        {isPending ? "Creando..." : "Crear cupón"}
-      </button>
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="submit"
+          disabled={isPending}
+          className="rounded-md bg-emerald-600 px-4 py-2 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-60"
+        >
+          {isPending ? "Creando..." : "Crear cupón"}
+        </button>
+        {/* 6b: Cancelar limpia el form y cierra el colapsable. */}
+        <button
+          type="reset"
+          disabled={isPending}
+          onClick={(e) => e.currentTarget.closest("details")?.removeAttribute("open")}
+          className="border-brand-purple/25 text-brand-purple-dark hover:bg-brand-purple/5 rounded-md border bg-white px-4 py-2 text-sm font-semibold disabled:opacity-60"
+        >
+          Cancelar
+        </button>
+      </div>
     </form>
   );
 }

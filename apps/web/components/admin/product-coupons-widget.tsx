@@ -100,10 +100,12 @@ export async function ProductCouponsWidget({
   return (
     <AdminCard className="p-4">
       <div className="mb-3 flex items-center justify-between gap-3">
+        {/* 6c: título honesto — algunos cupones aplican a TODA la tienda, no
+            solo a este producto. El badge "General" lo aclara por fila. */}
         <h3 className="text-brand-purple-dark flex items-center gap-2 text-sm font-semibold">
           <Ticket className="h-4 w-4" />
-          {applicable.length} promoción{applicable.length === 1 ? "" : "es"} activa
-          {applicable.length === 1 ? "" : "s"} para este producto
+          {applicable.length} promoción{applicable.length === 1 ? "" : "es"} que aplica
+          {applicable.length === 1 ? "" : "n"} aquí
         </h3>
         <Link
           href="/admin/cupones"
@@ -140,10 +142,10 @@ function CouponRow({
   };
 }) {
   const dateFmt = new Intl.DateTimeFormat("es-CO", { day: "numeric", month: "short" });
+  const isStoreWide =
+    coupon.appliesToProductSlugs.length === 0 && coupon.appliesToCategories.length === 0;
   const scope = (() => {
-    if (coupon.appliesToProductSlugs.length === 0 && coupon.appliesToCategories.length === 0) {
-      return "Aplica a toda la tienda";
-    }
+    if (isStoreWide) return "Aplica a toda la tienda";
     if (coupon.appliesToProductSlugs.length > 0) return "Aplica a productos específicos";
     return "Aplica a categorías específicas";
   })();
@@ -168,6 +170,14 @@ function CouponRow({
           <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-800">
             {value}
           </span>
+          {isStoreWide && (
+            <span
+              className="bg-brand-purple/10 text-brand-purple-dark rounded-full px-2 py-0.5 text-[10px] font-semibold"
+              title="Este cupón aplica a toda la tienda, no solo a este producto"
+            >
+              🏪 General
+            </span>
+          )}
         </div>
         {coupon.description && (
           <p className="text-brand-purple-dark/65 mt-1 text-xs">{coupon.description}</p>

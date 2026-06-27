@@ -285,12 +285,23 @@ export default async function AdminCuponesPage({ searchParams }: { searchParams:
           </AdminTable>
         )}
 
-        <AdminCard className="p-5">
-          <h3 className="text-brand-purple-dark font-display mb-3 text-base font-bold">
-            Crear cupón nuevo
-          </h3>
-          <CreateCouponForm />
-        </AdminCard>
+        {/*
+         * Lucy 2026-06-27 (6b): antes el form de crear estaba SIEMPRE abierto al
+         * fondo y Lucy "no veía cómo volver/cancelar". Ahora es colapsable: la
+         * lista es lo principal, el form se abre a propósito y se cierra con el
+         * mismo título o con "Cancelar". Arranca cerrado.
+         */}
+        <details className="border-brand-purple/15 group rounded-xl border bg-white">
+          <summary className="text-brand-purple-dark hover:bg-brand-purple/5 font-display flex cursor-pointer list-none items-center justify-between rounded-xl px-5 py-4 text-base font-bold select-none">
+            <span>➕ Crear un cupón nuevo</span>
+            <span className="text-brand-purple-dark/50 text-xs transition-transform group-open:rotate-90">
+              ▶
+            </span>
+          </summary>
+          <div className="border-brand-purple/10 border-t px-5 pt-4 pb-5">
+            <CreateCouponForm />
+          </div>
+        </details>
       </AdminPageBody>
     </AdminPage>
   );
