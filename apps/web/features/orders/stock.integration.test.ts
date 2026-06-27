@@ -224,6 +224,112 @@ describe.skipIf(!hasDb)("stock ledger — integración DB (certificación Bloque
       }),
     ).resolves.toBeTruthy();
   }, 30000);
+
+  it("#11-P1: claim atómico de guía — dos claims concurrentes, solo uno gana", async () => {
+    // Orden PAID con tracking null y claim null (estado tras crash/lentitud
+    // en un createShipment previo). Dos processPaidOrder concurrentes intentan
+    // clamar la guía con el mismo updateMany condicional.
+    const order = await prisma.order.create({
+      data: {
+        number: `LCM-TEST-CLAIM-${Date.now()}`,
+        email: "claim@lucams.test",
+        phone: "3000000000",
+        shippingAddress: {},
+        subtotal: 1000,
+        shipping: 0,
+        total: 1000,
+        paymentMethod: "WOMPI",
+        status: "PAID",
+      },
+      select: { id: true },
+    });
+
+    const staleCutoff = new Date(Date.now() - 10 * 60 * 1000);
+    const claimOnce = () =>
+      prisma.order.updateMany({
+        where: {
+          id: order.id,
+          trackingNumber: null,
+          OR: [{ shipmentClaimedAt: null }, { shipmentClaimedAt: { lt: staleCutoff } }],
+        },
+        data: { shipmentClaimedAt: new Date() },
+      });
+
+    // Dos claims "concurrentes". El UPDATE condicional serializa: exactamente
+    // uno actualiza la fila (count=1), el otro ve shipmentClaimedAt ya seteado
+    // (count=0). Suma de counts === 1 → imposible doble guía.
+    const [a, b] = await Promise.all([claimOnce(), claimOnce()]);
+    expect(a.count + b.count).toBe(1);
+
+    // Un 3er claim inmediato también falla (claim fresco retenido).
+    const c = await claimOnce();
+    expect(c.count).toBe(0);
+
+    // Cleanup.
+    await prisma.order.delete({ where: { id: order.id } });
+  }, 30000);
+
+  it("#10: VOIDED sobre orden PAID → REFUNDED y revierte el stock", async () => {
+    // Crear una Order real PAID con un ítem + un decremento previo (ORDER_PAID).
+    const stockBefore = (await prisma.productVariant.findUnique({
+      where: { id: variantA },
+      select: { stock: true },
+    }))!.stock;
+
+    const order = await prisma.order.create({
+      data: {
+        number: `LCM-TEST-VOID-${Date.now()}`,
+        email: "test@lucams.test",
+        phone: "3000000000",
+        shippingAddress: {},
+        subtotal: 1000,
+        shipping: 0,
+        total: 1000,
+        paymentMethod: "WOMPI",
+        status: "PAID",
+        items: { create: [{ variantId: variantA, qty: 1, unitPrice: 1000 }] },
+      },
+      select: { id: true },
+    });
+    // Simular el decremento previo (lo que processPaidOrder habría hecho).
+    await prisma.$transaction((tx) =>
+      decrementStockForOrder(tx, {
+        id: order.id,
+        number: "LCM-TEST-VOID",
+        items: [{ variantId: variantA, qty: 1 }],
+      }),
+    );
+
+    // VOIDED llega → processFailedPaymentOrder debe llevar PAID → REFUNDED
+    // (no CANCELLED, que es ilegal desde PAID) y revertir el stock.
+    const { processFailedPaymentOrder } = await import("./saga");
+    await processFailedPaymentOrder({
+      orderId: order.id,
+      reason: "VOIDED por Wompi (test)",
+    });
+
+    const after = await prisma.order.findUnique({
+      where: { id: order.id },
+      select: { status: true },
+    });
+    expect(after?.status).toBe("REFUNDED");
+
+    // Stock revertido a su valor original.
+    const stockAfter = (await prisma.productVariant.findUnique({
+      where: { id: variantA },
+      select: { stock: true },
+    }))!.stock;
+    expect(stockAfter).toBe(stockBefore);
+
+    const refundLog = await prisma.inventoryLog.findFirst({
+      where: { orderId: order.id, reason: INVENTORY_REASON.ORDER_REFUNDED },
+    });
+    expect(refundLog).toBeTruthy();
+
+    // Cleanup de la Order de este test (los logs los borra el afterAll por variantId).
+    await prisma.orderItem.deleteMany({ where: { orderId: order.id } });
+    await prisma.order.delete({ where: { id: order.id } });
+  }, 30000);
 });
 
 // Garantiza que StockAlreadyAppliedError es exportable e instanciable

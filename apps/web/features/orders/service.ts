@@ -102,33 +102,50 @@ export type CreateOrderFromCartResult = {
 export async function createOrderFromCart(
   input: CreateOrderFromCartInput,
 ): Promise<CreateOrderFromCartResult> {
-  try {
-    return await createOrderFromCartTx(input);
-  } catch (err) {
-    // #12 (certificación Bloque A) — backstop de idempotencia a nivel DB.
-    // Si dos finalizeCheckout concurrentes del mismo cart pasaron ambos el
-    // findFirst (READ COMMITTED no vio la otra tx aún), el UNIQUE INDEX parcial
-    // Order_cartId_pending_unique deja crear solo una; la perdedora recibe P2002.
-    // Re-consultamos la orden ganadora y la devolvemos como si la hubiéramos
-    // creado — el cliente termina con UNA sola orden y UN solo cobro Wompi.
-    if (isCartPendingUniqueViolation(err)) {
-      const winner = await prisma.order.findFirst({
-        where: { cartId: input.cartId, status: "PENDING_PAYMENT", deletedAt: null },
-        orderBy: { createdAt: "desc" },
-        select: { id: true, number: true, total: true, subtotal: true, shipping: true, discount: true },
-      });
-      if (winner) {
-        logger.info({
-          event: "order.create.concurrent_idempotent",
-          cartId: input.cartId,
-          orderId: winner.id,
-          orderNumber: winner.number,
+  // #15 (post-launch Bloque A) — retry sobre colisión de Order.number.
+  // generateOrderNumber usa count()+1: dos checkouts concurrentes de carts
+  // DISTINTOS pueden calcular el mismo número → P2002 en Order.number. Antes
+  // eso reventaba con error genérico (venta perdida). Reintentamos hasta 10×;
+  // el count() siguiente ya ve la orden ganadora y avanza el número. 10 cubre
+  // hasta 10 checkouts simultáneos en el mismo boundary (holgado para Instagram).
+  const MAX_NUMBER_RETRIES = 10;
+  for (let attempt = 1; attempt <= MAX_NUMBER_RETRIES; attempt++) {
+    try {
+      return await createOrderFromCartTx(input);
+    } catch (err) {
+      // #12 — Carrera del MISMO cart: el unique parcial Order(cartId) dejó crear
+      // solo una. Devolvemos la ganadora (1 orden, 1 cobro).
+      if (isCartPendingUniqueViolation(err)) {
+        const winner = await prisma.order.findFirst({
+          where: { cartId: input.cartId, status: "PENDING_PAYMENT", deletedAt: null },
+          orderBy: { createdAt: "desc" },
+          select: { id: true, number: true, total: true, subtotal: true, shipping: true, discount: true },
         });
-        return winner;
+        if (winner) {
+          logger.info({
+            event: "order.create.concurrent_idempotent",
+            cartId: input.cartId,
+            orderId: winner.id,
+            orderNumber: winner.number,
+          });
+          return winner;
+        }
+        throw err;
       }
+      // #15 — Colisión de número (carts distintos): reintentar con número fresco.
+      if (isOrderNumberCollision(err) && attempt < MAX_NUMBER_RETRIES) {
+        logger.warn({
+          event: "order.create.number_collision_retry",
+          cartId: input.cartId,
+          attempt,
+        });
+        continue;
+      }
+      throw err;
     }
-    throw err;
   }
+  // Inalcanzable salvo 10 colisiones seguidas (improbabilísimo); fail explícito.
+  throw new Error("No se pudo generar un número de orden único tras varios intentos");
 }
 
 /** Detecta P2002 del índice parcial unique de Order.cartId (carrera de checkout). */
@@ -137,6 +154,15 @@ function isCartPendingUniqueViolation(err: unknown): boolean {
     err instanceof Prisma.PrismaClientKnownRequestError &&
     err.code === "P2002" &&
     JSON.stringify(err.meta ?? {}).includes("cartId")
+  );
+}
+
+/** Detecta P2002 del unique de Order.number (colisión de numeración concurrente). */
+function isOrderNumberCollision(err: unknown): boolean {
+  return (
+    err instanceof Prisma.PrismaClientKnownRequestError &&
+    err.code === "P2002" &&
+    JSON.stringify(err.meta ?? {}).includes("number")
   );
 }
 
@@ -279,9 +305,17 @@ async function createOrderFromCartTx(
  * El snapshot de items para producción ya vive en OrderItem (immutable).
  *
  * Idempotente: si el cart ya fue soft-deleted, no-op silencioso.
+ *
+ * #9/#16 (post-launch Bloque A) — acepta un TransactionClient opcional para
+ * correr DENTRO de la $transaction de PAID (atómico con el cambio de estado).
+ * Antes corría afuera con `prisma` desnudo: si fallaba abortaba la creación de
+ * guía, y si el cart no se vaciaba quedaba ventana de doble-checkout/doble-cobro.
  */
-export async function clearCartAfterPaid(cartId: string): Promise<void> {
-  await prisma.cart.updateMany({
+export async function clearCartAfterPaid(
+  cartId: string,
+  client: Prisma.TransactionClient | typeof prisma = prisma,
+): Promise<void> {
+  await client.cart.updateMany({
     where: { id: cartId, deletedAt: null },
     data: {
       deletedAt: new Date(),

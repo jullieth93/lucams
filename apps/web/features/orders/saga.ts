@@ -29,7 +29,7 @@ import { decrementStockForOrder } from "./stock";
 import { InsufficientStockError, StockAlreadyAppliedError } from "./errors";
 import type { ShippingAddressInput } from "./schemas";
 import {
-  sendOrderConfirmation,
+  sendOrderConfirmationOnce,
   sendOrderShipped,
   sendOrderDelivered,
   sendOrderPaymentFailed,
@@ -166,10 +166,6 @@ export async function processPaidOrder(
           items: order.items.map((it) => ({ variantId: it.variantId, qty: it.qty })),
         });
         // Transición de estado dentro de la misma tx.
-        // Nota: transitionOrder usa `prisma` directo (no tx), pero como
-        // su transition-to-PAID NO necesita `revertStock`, este update
-        // simple no abre $transaction nested. Lo invocamos como
-        // tx.order.update inline para garantizar atomicidad.
         await tx.order.update({
           where: { id: order.id },
           data: {
@@ -179,6 +175,13 @@ export async function processPaidOrder(
               : {}),
           },
         });
+        // #9/#16 (post-launch Bloque A) — Vaciar Cart DENTRO de la misma tx.
+        // Atómico con el cambio a PAID: imposible que quede PAID con cart activo
+        // (ventana de doble-checkout/doble-cobro) o que un blip de DB en el
+        // clearCart aborte el resto del flujo (createShipment).
+        if (order.cartId) {
+          await clearCartAfterPaid(order.cartId, tx);
+        }
       });
       logger.info({
         event: "order.saga.paid.transitioned",
@@ -186,17 +189,6 @@ export async function processPaidOrder(
         orderNumber: order.number,
         wompiTransactionId: input.wompiTransactionId ?? null,
       });
-      // P0-001 — Vaciar Cart de origen tras PAID exitoso.
-      if (order.cartId) {
-        await clearCartAfterPaid(order.cartId);
-        logger.info({
-          event: "order.saga.paid.cart_cleared",
-          orderId: order.id,
-          cartId: order.cartId,
-        });
-      }
-      // Email order-confirmation (fire-and-forget — emails.ts atrapa errores).
-      await sendOrderConfirmation(order.id);
     } catch (err) {
       if (err instanceof StockAlreadyAppliedError) {
         // Carrera concurrente benigna: webhook + fallback /gracias procesaron
@@ -266,6 +258,14 @@ export async function processPaidOrder(
     };
   }
 
+  // #2 (post-launch Bloque A) — Email de confirmación idempotente Y recuperable.
+  // Corre acá (después del bloque PENDING_PAYMENT, antes de la guía) para que:
+  //  - first-pass (PENDING_PAYMENT→PAID): se envíe.
+  //  - retry de una orden PAID-sin-email (saga crasheó tras commit): se reenvíe
+  //    (confirmationSentAt sigue null). No duplica (se marca al enviar + Resend
+  //    idempotencyKey). Fire-and-forget: no aborta la creación de guía si falla.
+  await sendOrderConfirmationOnce(order.id);
+
   // 4) Construir items para Aveonline desde OrderItem con dims efectivos.
   //    Si algún variant carece de dims (caso edge, legacy data), retornamos
   //    shipment_failed con detalle — admin reconcilia desde /admin/pedidos/[id].
@@ -320,6 +320,45 @@ export async function processPaidOrder(
   // 6) Delivery desde Order.shippingAddress (snapshot del checkout).
   const ship = order.shippingAddress as unknown as ShippingAddressInput;
 
+  // 6.5) #11-P1 (verificación post-launch) — CLAIM ATÓMICO de creación de guía.
+  //   El guard `if (order.trackingNumber)` al inicio es read-then-act: dos
+  //   processPaidOrder concurrentes sobre una orden ya PAID con tracking=null
+  //   (createShipment lento/fallido antes) AMBAS lo pasan y AMBAS llegan acá →
+  //   doble guía Aveonline. Esas invocaciones saltan la $transaction de stock
+  //   (status ya no es PENDING_PAYMENT), así que el backstop StockAlreadyApplied
+  //   no las cubre. Este updateMany condicional es el punto de serialización:
+  //   solo UNA gana el claim (count=1) y llama a Aveonline; las demás (count=0)
+  //   se saltean como idempotentes. Stale-reclaim a los 10 min cubre un proceso
+  //   que crasheó tras clamar (no deja la guía bloqueada para siempre).
+  const STALE_CLAIM_MS = 10 * 60 * 1000;
+  const staleCutoff = new Date(Date.now() - STALE_CLAIM_MS);
+  const claim = await prisma.order.updateMany({
+    where: {
+      id: order.id,
+      trackingNumber: null,
+      OR: [{ shipmentClaimedAt: null }, { shipmentClaimedAt: { lt: staleCutoff } }],
+    },
+    data: { shipmentClaimedAt: new Date() },
+  });
+  if (claim.count !== 1) {
+    // Otro proceso ya está creando (o creó) la guía. Idempotente: no llamamos
+    // a Aveonline. Re-leemos para devolver el tracking si el ganador ya terminó.
+    const fresh = await prisma.order.findUnique({
+      where: { id: order.id },
+      select: { trackingNumber: true },
+    });
+    logger.info({
+      event: "order.saga.paid.shipment_claim_skipped",
+      orderId: order.id,
+      orderNumber: order.number,
+      winnerTracking: fresh?.trackingNumber ?? null,
+    });
+    return {
+      status: "already_processed",
+      trackingNumber: fresh?.trackingNumber ?? undefined,
+    };
+  }
+
   // 7) Llamar provider.createShipment. Siempre real ahora — el provider
   //    Aveonline maneja credenciales según AVEONLINE_ENV y flag de facturación
   //    según AVEONLINE_GENERATE_REAL. Default seguro: simulación documentada
@@ -365,22 +404,73 @@ export async function processPaidOrder(
       orderNumber: order.number,
       err: err instanceof Error ? err.message : String(err),
     });
+    // #11-P1 — Liberar el claim para que un reintento legítimo (admin o webhook
+    // posterior) pueda volver a intentar la guía. Solo si seguimos sin tracking.
+    await prisma.order
+      .updateMany({
+        where: { id: order.id, trackingNumber: null },
+        data: { shipmentClaimedAt: null },
+      })
+      .catch(() => null);
     return {
       status: "shipment_failed",
       reason: err instanceof Error ? err.message : "Error creando guía",
     };
   }
 
-  // 8) Guardar tracking + transicionar a FULFILLING.
+  // 8) #11 (post-launch Bloque A) — Persistir el trackingNumber INMEDIATAMENTE
+  //    tras crear la guía, ANTES de transicionar a FULFILLING. Crítico anti
+  //    doble-guía: si solo lo guardáramos junto con la transición y esa fallara,
+  //    la guía Aveonline existiría sin trackingNumber en nuestra DB → un reintento
+  //    re-llamaría Aveonline (doble guía + doble costo). Con el tracking ya
+  //    persistido, el guard `if (order.trackingNumber)` al inicio de
+  //    processPaidOrder corta el reintento limpio (already_processed).
   try {
-    await transitionOrder(order.id, "FULFILLING", {
-      extra: {
+    await prisma.order.update({
+      where: { id: order.id },
+      data: {
         trackingNumber: shipmentResult.trackingNumber,
         trackingUrl: shipmentResult.trackingUrl,
         labelUrl: shipmentResult.labelUrl,
         shippingCarrier: shipmentResult.carrier,
       },
     });
+  } catch (err) {
+    // La guía YA existe en Aveonline pero no pudimos persistir el tracking.
+    // NO liberamos el claim (un reintento re-crearía guía = doble guía); en su
+    // lugar marcamos needsReconciliation para que un humano asocie la guía
+    // huérfana. El claim queda retenido evitando auto-retry; el detalle del
+    // tracking va en reconciliationReason para que admin lo copie a mano.
+    logger.error({
+      event: "order.saga.paid.tracking_persist_failed",
+      orderId: order.id,
+      orderNumber: order.number,
+      trackingNumber: shipmentResult.trackingNumber,
+      err: err instanceof Error ? err.message : String(err),
+    });
+    await prisma.order
+      .update({
+        where: { id: order.id },
+        data: {
+          needsReconciliation: true,
+          reconciliationReason:
+            `Guía Aveonline creada (tracking ${shipmentResult.trackingNumber}, ` +
+            `carrier ${shipmentResult.carrier}) pero no se pudo guardar en la DB. ` +
+            `Asociá el tracking manualmente desde el detalle del pedido.`,
+        },
+      })
+      .catch(() => null);
+    return {
+      status: "transition_failed",
+      reason: "Guía creada en Aveonline pero no se pudo guardar tracking en DB (reconciliar)",
+    };
+  }
+
+  // 9) Transicionar a FULFILLING. El tracking YA está en DB, así que si esta
+  //    transición falla, el reintento es seguro (guard de trackingNumber corta
+  //    antes de re-crear guía).
+  try {
+    await transitionOrder(order.id, "FULFILLING");
     logger.info({
       event: "order.saga.paid.shipment_created",
       orderId: order.id,
@@ -399,11 +489,11 @@ export async function processPaidOrder(
       orderNumber: order.number,
       err: err instanceof Error ? err.message : String(err),
     });
-    // Tracking ya está guardado en la guía Aveonline pero no en nuestra DB.
-    // Admin debe reconciliar.
+    // Tracking ya persistido — la orden quedó PAID con guía. Admin puede
+    // re-disparar la transición desde /admin/pedidos sin riesgo de doble-guía.
     return {
-      status: "transition_failed",
-      reason: "Guía creada pero no se pudo guardar tracking en DB",
+      status: "ok",
+      trackingNumber: shipmentResult.trackingNumber,
     };
   }
 }
@@ -494,31 +584,103 @@ export async function processTrackingUpdate(input: {
 }
 
 /**
- * Procesa transaction DECLINED/VOIDED/ERROR del webhook Wompi → cancela Order.
+ * Procesa transaction DECLINED/VOIDED/ERROR del webhook Wompi.
+ *
+ * #10 (post-launch Bloque A) — elige el estado terminal LEGAL según el estado
+ * actual de la Order, en vez de forzar siempre CANCELLED (ilegal desde PAID →
+ * la transición lanzaba OrderTransitionError, se tragaba, y el stock NO se
+ * revertía → inventario sobre-comprometido):
+ *
+ *   - DRAFT / PENDING_PAYMENT  → CANCELLED  (no hubo cobro/decremento; no-op de stock)
+ *   - PAID / DELIVERED         → REFUNDED   (dinero capturado y devuelto; revierte stock)
+ *   - FULFILLING / SHIPPED     → CANCELLED  (legal desde esos estados; revierte stock)
+ *   - CANCELLED / REFUNDED     → no-op (ya terminal)
+ *
+ * Tanto CANCELLED como REFUNDED disparan el revert de stock en transitionOrder
+ * (idempotente, solo si hubo decremento previo).
  */
 export async function processFailedPaymentOrder(input: {
   orderId: string;
   wompiTransactionId?: string;
   reason: string;
 }): Promise<void> {
-  try {
-    await transitionOrder(input.orderId, "CANCELLED", {
-      extra: input.wompiTransactionId
-        ? { wompiTransactionId: input.wompiTransactionId }
-        : undefined,
+  // P2 (verificación post-launch) — la carrera APPROVED+VOIDED casi-simultánea
+  // creaba un TOCTOU: el target se precalculaba con un status que transitionOrder
+  // luego re-leía fresco; si cambió (ej. el webhook APPROVED commiteó PAID en el
+  // medio), el target precalculado quedaba ilegal → OrderTransitionError tragado
+  // → VOIDED perdido (orden "pagada fantasma" sin refund). Reintentamos hasta 3×
+  // re-leyendo el status en cada vuelta para elegir un target legal contra el
+  // estado real. Cada iteración es idempotente (transición a estado terminal).
+  const MAX_ATTEMPTS = 3;
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    const current = await prisma.order.findFirst({
+      where: { id: input.orderId, deletedAt: null },
+      select: { status: true, number: true },
     });
-    logger.info({
-      event: "order.saga.payment_failed.cancelled",
-      orderId: input.orderId,
-      reason: input.reason,
-    });
-    // Email "pago rechazado" — fire-and-forget.
-    await sendOrderPaymentFailed(input.orderId, input.reason);
-  } catch (err) {
-    logger.warn({
-      event: "order.saga.payment_failed.cancel_skipped",
-      orderId: input.orderId,
-      err: err instanceof Error ? err.message : String(err),
-    });
+    if (!current) {
+      logger.warn({ event: "order.saga.payment_failed.not_found", orderId: input.orderId });
+      return;
+    }
+
+    // Ya terminal → no-op.
+    if (current.status === "CANCELLED" || current.status === "REFUNDED") {
+      logger.info({
+        event: "order.saga.payment_failed.already_terminal",
+        orderId: input.orderId,
+        status: current.status,
+      });
+      return;
+    }
+
+    // Si el dinero ya estaba capturado (PAID/DELIVERED), un VOIDED/refund se
+    // modela como REFUNDED. Desde FULFILLING/SHIPPED, CANCELLED es la transición
+    // legal y también revierte stock. Antes del pago, CANCELLED.
+    const target =
+      current.status === "PAID" || current.status === "DELIVERED" ? "REFUNDED" : "CANCELLED";
+
+    try {
+      await transitionOrder(input.orderId, target, {
+        extra: input.wompiTransactionId
+          ? { wompiTransactionId: input.wompiTransactionId }
+          : undefined,
+      });
+      logger.info({
+        event: "order.saga.payment_failed.transitioned",
+        orderId: input.orderId,
+        from: current.status,
+        to: target,
+        reason: input.reason,
+      });
+      // P3 — el email "tu pago no se completó" SOLO tiene sentido cuando el pago
+      // nunca se capturó (DECLINED sobre PENDING_PAYMENT/DRAFT). Para REFUNDED
+      // (era PAID) sería contradictorio. El email de reembolso/cancelación
+      // post-pago llega con Bloque B (plantillas de correo).
+      if (target === "CANCELLED" && current.status !== "FULFILLING" && current.status !== "SHIPPED") {
+        await sendOrderPaymentFailed(input.orderId, input.reason);
+      }
+      return; // éxito
+    } catch (err) {
+      // Si fue OrderTransitionError por carrera (status cambió bajo nuestros pies),
+      // reintentamos re-leyendo. Otros errores: log y salimos.
+      if (err instanceof OrderTransitionError && attempt < MAX_ATTEMPTS) {
+        logger.warn({
+          event: "order.saga.payment_failed.toctou_retry",
+          orderId: input.orderId,
+          attemptedFrom: current.status,
+          attemptedTo: target,
+          actualErr: `${err.from}→${err.to}`,
+          attempt,
+        });
+        continue;
+      }
+      logger.warn({
+        event: "order.saga.payment_failed.transition_skipped",
+        orderId: input.orderId,
+        from: current.status,
+        to: target,
+        err: err instanceof Error ? err.message : String(err),
+      });
+      return;
+    }
   }
 }

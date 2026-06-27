@@ -34,7 +34,7 @@ function formatAddressLine(ship: ShippingAddrSnapshot): string {
 }
 
 /** Envia order-confirmation tras Order PAID. */
-export async function sendOrderConfirmation(orderId: string): Promise<void> {
+export async function sendOrderConfirmation(orderId: string): Promise<boolean> {
   try {
     const order = await prisma.order.findFirst({
       where: { id: orderId, deletedAt: null },
@@ -46,7 +46,7 @@ export async function sendOrderConfirmation(orderId: string): Promise<void> {
         },
       },
     });
-    if (!order) return;
+    if (!order) return false;
 
     const ship = order.shippingAddress as ShippingAddrSnapshot;
     const customerName = ship.fullName ?? "Cliente";
@@ -86,9 +86,58 @@ export async function sendOrderConfirmation(orderId: string): Promise<void> {
       to: order.email,
       result: result.sent ? "ok" : `skip:${result.reason}`,
     });
+    return result.sent;
   } catch (err) {
     logger.error({
       event: "order.email.confirmation.fail",
+      orderId,
+      err: err instanceof Error ? err.message : String(err),
+    });
+    return false;
+  }
+}
+
+/**
+ * #2 (post-launch Bloque A) — Envía el email de confirmación SOLO si no se
+ * envió antes (confirmationSentAt null), marcando el timestamp al lograrlo.
+ *
+ * Recuperable + idempotente: si la saga crashea entre el commit de PAID y este
+ * envío, un reintento de processPaidOrder lo manda (sigue null). Si ya se envió,
+ * no-op. El timestamp se setea SOLO tras un envío exitoso, así que un fallo de
+ * Resend deja confirmationSentAt null y el próximo reintento lo reintenta.
+ *
+ * Doble-defensa: sendOrderConfirmation usa idempotencyKey en Resend, así que
+ * incluso si dos procesos concurrentes pasan el guard, Resend dedupe el email.
+ */
+export async function sendOrderConfirmationOnce(orderId: string): Promise<void> {
+  const order = await prisma.order.findFirst({
+    where: { id: orderId, deletedAt: null },
+    select: { id: true, confirmationSentAt: true },
+  });
+  if (!order || order.confirmationSentAt) return;
+
+  // P2 (verificación post-launch) — marcar confirmationSentAt SOLO si el envío
+  // fue exitoso. Antes se marcaba siempre: un fallo de Resend (circuito abierto,
+  // sin API key, 4xx, retries agotados) dejaba al cliente sin email y la saga
+  // nunca lo reintentaba. Ahora un envío fallido deja confirmationSentAt null →
+  // el próximo processPaidOrder (o reenvío admin) lo reintenta. Idempotencia
+  // ante éxito: el flag + el idempotencyKey de Resend evitan el doble email.
+  const sent = await sendOrderConfirmation(orderId);
+  if (!sent) {
+    logger.warn({ event: "order.email.confirmation.not_marked_will_retry", orderId });
+    return;
+  }
+
+  try {
+    await prisma.order.update({
+      where: { id: orderId },
+      data: { confirmationSentAt: new Date() },
+    });
+  } catch (err) {
+    // P3 — no propagamos: el email YA se envió; un fallo al marcar el timestamp
+    // solo causaría un reintento que el idempotencyKey de Resend deduplica.
+    logger.error({
+      event: "order.email.confirmation.mark_failed",
       orderId,
       err: err instanceof Error ? err.message : String(err),
     });

@@ -64,7 +64,7 @@ export default async function CheckoutGraciasPage({
       txId,
       err: err instanceof Error ? err.message : String(err),
     });
-    return <FailedPage reason="No pudimos confirmar tu pago. Si te cobraron, contactanos." />;
+    return <FailedPage reason="No pudimos confirmar tu pago. Si te cobraron, contáctanos." />;
   }
 
   // Lookup Order por reference (= Order.number)
@@ -86,6 +86,28 @@ export default async function CheckoutGraciasPage({
     // el webhook Wompi no llegó (o se demoró). Disparamos processPaidOrder
     // acá. Si ya pasó por el webhook, processPaidOrder retorna
     // "already_processed" y no hace nada.
+    // #14 (post-launch Bloque A) — simetrizar la validación de monto con el
+    // webhook (route.ts valida amount_in_cents === order.total). Antes el
+    // fallback disparaba processPaidOrder sin re-chequear el monto. Inexplotable
+    // hoy (el monto va atado a la firma de integridad de Wompi y order.total es
+    // inmutable), pero mantener ambas rutas simétricas evita una asimetría
+    // defensiva si en el futuro se permite editar el total.
+    const amountOk = order ? tx.amount_in_cents === order.total : false;
+    if (order && order.status === "PENDING_PAYMENT" && !amountOk) {
+      logger.error({
+        event: "checkout.gracias.amount_mismatch",
+        orderId: order.id,
+        orderNumber: order.number,
+        expected: order.total,
+        received: tx.amount_in_cents,
+        txId: tx.id,
+      });
+      // No procesamos: el webhook (con la misma validación) lo marcará para
+      // revisión. Mostramos página honesta de "verificando" en vez de confirmar.
+      await finishCheckoutSession();
+      return <PaymentReceivedPage orderNumber={order.number} txId={tx.id} />;
+    }
+
     if (order && order.status === "PENDING_PAYMENT") {
       const orderId = order.id;
       const orderNumber = order.number;

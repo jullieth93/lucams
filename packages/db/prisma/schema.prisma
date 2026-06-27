@@ -487,6 +487,18 @@ model Order {
   // nadie ve (mandato #7 sin Sentry). ACCIÓN HUMANA: refund o producir stock.
   needsReconciliation   Boolean       @default(false)
   reconciliationReason  String?
+  // #2 (post-launch Bloque A) — timestamp de envío del email de confirmación.
+  // Hace el envío idempotente Y recuperable: si la saga crashea entre el commit
+  // de PAID y el envío del email, un reintento de processPaidOrder lo manda
+  // (confirmationSentAt sigue null) sin duplicar (se setea al enviar).
+  confirmationSentAt    DateTime?
+  // #11-P1 (verificación post-launch Bloque A) — claim atómico de creación de
+  // guía. processPaidOrder hace un updateMany condicional (WHERE trackingNumber
+  // null AND (shipmentClaimedAt null OR stale)) ANTES de llamar a Aveonline:
+  // solo un proceso concurrente gana el claim, el resto se saltea → imposible
+  // crear 2 guías para la misma orden ya-PAID-sin-tracking. Se libera en fallo
+  // y se re-clama si quedó stale (proceso crasheado) tras 10 min.
+  shipmentClaimedAt     DateTime?
   // Legacy: venndeloShipmentId queda por compat. Nueva integración usa los campos Aveonline abajo.
   venndeloShipmentId    String?
   // PLAN_CATALOG_V2 4.10 — Aveonline + ShippingProvider interface (ADR-039).
