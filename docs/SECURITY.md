@@ -594,27 +594,45 @@ Definidos en [`ARCHITECTURE.md` § Storage](./ARCHITECTURE.md#storage-supabase).
 
 ---
 
-## Webhooks (Wompi, Venndelo)
+## Webhooks (Wompi, Aveonline)
+
+> Estado implementado (Bloque A, certificado 2026-06-27). Secrets de webhook:
+> `WOMPI_EVENTS_SECRET` (HMAC eventos Wompi) y `AVEONLINE_WEBHOOK_SECRET` (firma de
+> los `tracking.updated` de Aveonline). Ambos son privados, solo en `.env*`
+> gitignored, nunca en cliente.
 
 ### Verificación de firma
 
-- **Wompi:** verificar `signature.checksum` con HMAC-SHA256 del concatenado de propiedades + timestamp + `WOMPI_EVENTS_SECRET` (detalle en [`INTEGRATIONS.md` § Wompi](./INTEGRATIONS.md#1-wompi-pasarela-de-pago--proveedor-principal)).
-- **Venndelo:** verificar HMAC con `VENNDELO_WEBHOOK_SECRET` (header `X-Venndelo-Signature` o equivalente — confirmar contra doc oficial).
-- **Rechazo HTTP 401** si la firma no coincide. **No revelar la razón** en la respuesta.
+- **Wompi:** `verifyWebhookSignature` (`apps/web/lib/wompi.ts`) verifica
+  `signature.checksum` con HMAC-SHA256 del concatenado de propiedades + timestamp +
+  `WOMPI_EVENTS_SECRET`, comparado **timing-safe** (`crypto.timingSafeEqual`) tras
+  validar que checksum/properties/timestamp existan (detalle en
+  [`INTEGRATIONS.md` § Wompi](./INTEGRATIONS.md#1-wompi-pasarela-de-pago--proveedor-principal)).
+- **Aveonline:** el webhook `/api/webhooks/aveonline` valida `AVEONLINE_WEBHOOK_SECRET`.
+- **Rechazo HTTP 401** si la firma no coincide. **No revelar la razón** al cliente.
 
 ### Idempotencia
 
-- Tabla `WebhookEvent(@@unique([source, externalId]))`.
-- Insertar primero (con `ON CONFLICT DO NOTHING`); si ya existía, devolver 200 sin re-procesar.
+- Tabla `WebhookEvent(@@unique([source, externalId]))`. El `externalId` de Wompi es
+  `${transaction.id}-${status}-${timestamp}` → un retry real de Wompi (mismo
+  timestamp firmado) produce el mismo key y se deduplica.
+- Si ya estaba `processedAt`, devolver 200 sin re-procesar.
+- La saga POST-PAID tiene además idempotencia física en el ledger (índice parcial
+  unique `InventoryLog(orderId, reason, variantId)`) + claim atómico de creación de
+  guía (`Order.shipmentClaimedAt`) — ver `docs/audits/2026-06-26-certify-bloque-a/`.
 
-### Replay protection
+### Replay protection (implementado, P1-011)
 
-- **Verificar `timestamp` no más viejo que 5 min** (acepta drift de reloj razonable).
-- Rechazar timestamps futuros > 1 min.
+- **Ventana ±5 min** sobre `event.timestamp` (acepta drift de reloj razonable).
+  Fuera de ventana → 401. `WOMPI_DISABLE_TIMESTAMP_CHECK=true` solo para tests locales.
+- **Environment match**: el webhook exige que `event.environment` coincida con
+  `WOMPI_ENV` (no `NODE_ENV` — evita falsos 401 en Vercel preview). Un webhook
+  "prod" no se procesa en sandbox y viceversa.
 
 ### Whitelist de IPs (cuando la integración lo permite)
 
-- Wompi y Venndelo publican rangos de IPs salientes. Validar a nivel middleware o Cloudflare WAF.
+- Wompi y Aveonline publican rangos de IPs salientes. Validar a nivel middleware o
+  Cloudflare WAF (pendiente — la firma HMAC es la defensa primaria actual).
 
 ---
 

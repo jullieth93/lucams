@@ -13,7 +13,24 @@
 
 ## Resumen actual
 
-**Fase 0a + 0b + 1 (customer + admin) cerradas. Fase 2 (catálogo + carrito anon) AVANZADA (2026-05-11).** Monorepo pnpm + Next.js **16.2.6** + Tailwind v4 + shadcn/ui (`radix-nova`). Auth completo (customer + admin) end-to-end probado por Lucy. **Catálogo admin operativo:** CRUD productos (listado paginado, crear con auto-slug + validación, editar, archivar) + CRUD categorías (listado + create inline, archivar bloqueado si hay productos) + seed demo (4 categorías + 8 productos via `make seed-products`, idempotente). **Storefront público vivo:** `/productos` con filtro por categoría chips, `/producto/[slug]` con galería placeholder + breadcrumb + descuento + WhatsApp deep-link contextual, ProductCard kawaii reutilizable, formatCOP shared. **Carrito anon end-to-end:** cookie `cart_session` (UUID server-generated, HttpOnly, 30d, no firmado por entropía + dato no sensible), Cart/CartItem en Postgres, variant "Default" auto-creada por producto (CartItem.variantId required), merge inteligente al login/verifyOtp (suma qty por variantId, hard-delete del anon post-merge). Header con ShoppingBag icon + counter. **Próximo bloque: imágenes de productos (Supabase Storage) + checkout Wompi (Fase 3).**
+**Checkout/pagos CERTIFICADO + Compliance Bloque B cerrado (2026-06-27).** El flujo de
+checkout (Wompi + Aveonline + saga POST-PAID) pasó por una **certificación adversarial
+multi-agente** que encontró y cerró un P0 bloqueante (índice unique de InventoryLog sin
+variantId rompía toda orden multi-ítem, reproducido contra DB) + 4 fixes pre-launch + 5
+post-launch + un P1 de doble-guía concurrente hallado en la verificación. Garantías ahora
+en el código: idempotencia física del ledger (índice parcial `(orderId, reason, variantId)`
++ manejo P2002), claim atómico de guía (`Order.shipmentClaimedAt`), clearCart dentro de la
+tx PAID, email de confirmación idempotente/recuperable (`confirmationSentAt`),
+VOIDED→REFUNDED con revert de stock, retry de colisión de `Order.number`, unique parcial de
+`Order.cartId`, anti-replay + env-match en webhook, reconciliación visible
+(`needsReconciliation` + banner en /admin/pedidos). **48 tests de orders (integración DB
+real) verdes.** **Bloque B compliance:** `/unsubscribe` (Ley 1581), textos legales reales
+(privacidad/términos/devoluciones/subprocesadores Aveonline), retracto verificado contra
+Ley 2439/2024 (reembolso 15 días calendario), voseo→tuteo en emails. **Admin restructurado
+(Opción C):** /admin/inventario, sub-nav del producto (Editar/Versiones/Reseñas), bulk
+actions, sidebar reagrupado. **Próximo: P0-004 verificar dominio Resend (ACCIÓN HUMANA DNS)
+→ Bloque C (Seguridad: RBAC/Turnstile/RLS).** Detalle de fases intermedias (catálogo,
+carrito, checkout, admin UX) en el historial git + bitácora abajo.
 
 ---
 
@@ -609,6 +626,42 @@ Después (Fase 3 — checkout):
 ---
 
 ## Bitácora (append-only, más reciente arriba)
+
+### 2026-06-27 — Certificación Bloque A (checkout/pagos) + Bloque B (compliance)
+
+> Nota: entre 2026-05-11 y esta fecha hubo varias sesiones (imágenes producto,
+> checkout Wompi, integración Aveonline, admin UX redesign, restructuración
+> Catálogo "Opción C") que NO quedaron registradas en bitácora; su detalle está
+> en el historial git. Esta entrada cubre la sesión de certificación + compliance.
+
+- **Certificación adversarial de Bloque A (saga/pagos)** con workflow multi-agente
+  (6 atacantes + verificación de cada hallazgo). Veredicto inicial 🔴 NO APTO: un
+  **P0 reproducido contra la DB** — el índice unique `InventoryLog(orderId, reason)`
+  sin `variantId` hacía fallar el 2º INSERT de toda orden multi-ítem → P2002 →
+  rollback → Order atascada PENDING_PAYMENT pese a Wompi APPROVED. Reportes en
+  `docs/audits/2026-06-26-certify-bloque-a/`.
+- **Pre-launch (commit 900a0e0):** índice corregido a `(orderId, reason, variantId)`
+  + manejo P2002 (`StockAlreadyAppliedError`); `/gracias` no miente (ramifica por
+  order.status); `Order.needsReconciliation` visible en /admin/pedidos; unique
+  parcial `Order.cartId` + catch P2002; env-match del webhook desde `WOMPI_ENV`.
+  + regression tests (integración DB real).
+- **Post-launch + P1 (commit siguiente):** persistir trackingNumber + **claim
+  atómico `Order.shipmentClaimedAt`** (cierra el P1 de doble-guía concurrente que
+  la verificación adversarial encontró); clearCart dentro de la tx PAID; email
+  idempotente/recuperable (`confirmationSentAt`); VOIDED→REFUNDED con revert +
+  retry TOCTOU; retry colisión `Order.number`. **48 tests verdes.** Verificación en
+  `docs/audits/2026-06-26-certify-bloque-a/01-VERIFY-POSTLAUNCH.md`.
+- **Bloque B compliance:** `/unsubscribe?email=&token=` (Ley 1581, token SHA-256
+  verificado timing-safe, registra Consent revocación + Resend unsubscribed);
+  textos legales reales en privacidad/términos/devoluciones/subprocesadores
+  (Aveonline, no Venndelo); **retracto verificado contra Ley 2439/2024** (mandato
+  #9 — el retracto sigue 5 días hábiles; el cambio es reembolso e-commerce a 15
+  días calendario); voseo→tuteo en email templates. 55 tests verdes.
+- **Docs:** COMPLIANCE.md cita Ley 2439/2024; SECURITY.md actualizado (webhooks
+  Wompi+Aveonline, anti-replay, env-match, claim de guía); memoria
+  `reference_retracto_ley_2439_2024`.
+- **Pendiente:** P0-004 verificar dominio `mail.lucamsshop.co` en Resend (ACCIÓN
+  HUMANA — DNS SPF/DKIM/DMARC). Siguiente bloque sugerido: C (Seguridad).
 
 ### 2026-05-11 — Fase 2: catálogo admin + storefront público + carrito anon
 
