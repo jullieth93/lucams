@@ -28,6 +28,7 @@ import {
   AdminEmpty,
   AdminButton,
   AdminNotice,
+  SortableHeader,
 } from "@/components/admin-page";
 import { getCurrentAdmin } from "@/lib/auth";
 import { formatCOP } from "@/lib/format";
@@ -162,7 +163,10 @@ export default async function AdminProductosPage({ searchParams }: { searchParam
               <option value="featured">Solo destacados</option>
             </select>
           </div>
-          <div className="sm:col-span-3">
+          {/* En desktop se ordena con clic en los encabezados de la tabla
+              (SortableHeader). El dropdown queda solo para mobile, donde los
+              headers son difíciles de tocar. Lucy 2026-06-27 #1. */}
+          <div className="sm:hidden">
             <label
               htmlFor="f-sort"
               className="text-brand-purple-dark/70 mb-1 block text-xs font-semibold"
@@ -229,10 +233,24 @@ export default async function AdminProductosPage({ searchParams }: { searchParam
                     <BulkSelectAllCheckbox />
                   </th>
                 )}
-                <th className="px-4 py-3 text-left font-semibold">Producto</th>
+                <SortableHeader
+                  label="Producto"
+                  ascValue="name"
+                  currentSort={sort}
+                  basePath="/admin/productos"
+                  preserve={{ q, status: status !== "all" ? status : undefined }}
+                />
                 <th className="px-4 py-3 text-left font-semibold">Código</th>
                 <th className="px-4 py-3 text-left font-semibold">Categoría</th>
-                <th className="px-4 py-3 text-right font-semibold">Precio</th>
+                <SortableHeader
+                  label="Precio"
+                  ascValue="price-asc"
+                  descValue="price-desc"
+                  currentSort={sort}
+                  basePath="/admin/productos"
+                  preserve={{ q, status: status !== "all" ? status : undefined }}
+                  align="right"
+                />
                 <th className="px-4 py-3 text-center font-semibold">Estado</th>
                 <th className="px-4 py-3" />
               </tr>

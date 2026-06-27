@@ -27,6 +27,7 @@ import {
   AdminBadge,
   AdminEmpty,
   AdminCard,
+  SortableHeader,
 } from "@/components/admin-page";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -159,7 +160,8 @@ export default async function AdminCuponesPage({ searchParams }: { searchParams:
               <option value="inactive">Pausados/expirados/programados</option>
             </select>
           </div>
-          <div className="sm:col-span-3">
+          {/* Desktop: clic en encabezados. Dropdown solo mobile. Lucy #1. */}
+          <div className="sm:hidden">
             <label
               htmlFor="f-sort"
               className="text-brand-purple-dark/70 mb-1 block text-xs font-semibold"
@@ -213,12 +215,32 @@ export default async function AdminCuponesPage({ searchParams }: { searchParams:
           <AdminTable>
             <AdminTableHead>
               <tr>
-                <th className="px-4 py-3 text-left font-semibold">Código</th>
+                <SortableHeader
+                  label="Código"
+                  ascValue="code"
+                  currentSort={sort}
+                  basePath="/admin/cupones"
+                  preserve={{ q, status: status !== "all" ? status : undefined }}
+                />
                 <th className="px-4 py-3 text-left font-semibold">Tipo</th>
                 <th className="px-4 py-3 text-left font-semibold">Valor</th>
                 <th className="px-4 py-3 text-center font-semibold">Estado</th>
-                <th className="px-4 py-3 text-left font-semibold">Vigencia</th>
-                <th className="px-4 py-3 text-center font-semibold">Usos</th>
+                <SortableHeader
+                  label="Vigencia"
+                  ascValue="expiry-asc"
+                  descValue="recent"
+                  currentSort={sort}
+                  basePath="/admin/cupones"
+                  preserve={{ q, status: status !== "all" ? status : undefined }}
+                />
+                <SortableHeader
+                  label="Usos"
+                  ascValue="uses"
+                  currentSort={sort}
+                  basePath="/admin/cupones"
+                  preserve={{ q, status: status !== "all" ? status : undefined }}
+                  align="center"
+                />
               </tr>
             </AdminTableHead>
             <AdminTableBody>

@@ -33,6 +33,7 @@ import {
   AdminTableBody,
   AdminTableRow,
   AdminEmpty,
+  SortableHeader,
 } from "@/components/admin-page";
 import { getCurrentAdmin } from "@/lib/auth";
 import {
@@ -160,11 +161,35 @@ export default async function InventarioPage({
              */}
             <AdminTableHead>
               <tr>
-                <th className="px-4 py-3 text-left font-semibold">Producto</th>
+                <SortableHeader
+                  label="Producto"
+                  ascValue="product-asc"
+                  currentSort={sort}
+                  basePath="/admin/inventario"
+                  paramName="orden"
+                  preserve={{
+                    q,
+                    estado: status !== "all" ? status : undefined,
+                    categoria: categoryId,
+                  }}
+                />
                 <th className="px-4 py-3 text-left font-semibold">Opción</th>
                 <th className="px-4 py-3 text-left font-semibold">Código</th>
                 <th className="px-4 py-3 text-left font-semibold">Estado</th>
-                <th className="px-4 py-3 text-right font-semibold">Stock</th>
+                <SortableHeader
+                  label="Stock"
+                  ascValue="stock-asc"
+                  descValue="stock-desc"
+                  currentSort={sort}
+                  basePath="/admin/inventario"
+                  paramName="orden"
+                  preserve={{
+                    q,
+                    estado: status !== "all" ? status : undefined,
+                    categoria: categoryId,
+                  }}
+                  align="right"
+                />
                 <th className="px-4 py-3 text-right font-semibold">Ajustar</th>
               </tr>
             </AdminTableHead>
@@ -446,7 +471,8 @@ function FiltersBar({
         />
       </label>
 
-      <label className="space-y-1">
+      {/* Desktop: clic en encabezados Producto/Stock. Dropdown solo mobile. Lucy #1. */}
+      <label className="space-y-1 sm:hidden">
         <span className="text-brand-purple-dark/70 block text-xs font-semibold">Ordenar por</span>
         <select
           name="orden"

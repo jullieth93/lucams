@@ -25,6 +25,7 @@ import {
   AdminEmpty,
   AdminCard,
   AdminNotice,
+  SortableHeader,
 } from "@/components/admin-page";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -178,7 +179,9 @@ export default async function AdminCategoriasPage({
               <option value="archived">Solo archivadas (papelera)</option>
             </select>
           </div>
-          <div className="sm:col-span-3">
+          {/* Desktop: clic en "Orden" (vuelve al manual con flechas) o "Nombre".
+              Dropdown solo mobile. Lucy 2026-06-27 #1. */}
+          <div className="sm:hidden">
             <label
               htmlFor="f-sort"
               className="text-brand-purple-dark/70 mb-1 block text-xs font-semibold"
@@ -231,8 +234,20 @@ export default async function AdminCategoriasPage({
           <AdminTable>
             <AdminTableHead>
               <tr>
-                <th className="w-20 px-4 py-3 text-left font-semibold">Orden</th>
-                <th className="px-4 py-3 text-left font-semibold">Nombre</th>
+                <SortableHeader
+                  label="Orden"
+                  ascValue="order"
+                  currentSort={sort}
+                  basePath="/admin/categorias"
+                  preserve={{ q, status: status !== "all" ? status : undefined }}
+                />
+                <SortableHeader
+                  label="Nombre"
+                  ascValue="name"
+                  currentSort={sort}
+                  basePath="/admin/categorias"
+                  preserve={{ q, status: status !== "all" ? status : undefined }}
+                />
                 <th className="px-4 py-3 text-left font-semibold">Slug</th>
                 <th className="px-4 py-3 text-center font-semibold">Productos</th>
                 <th className="px-4 py-3 text-center font-semibold">Estado</th>

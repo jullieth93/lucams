@@ -33,6 +33,9 @@ import {
   Minus,
   ArrowRight,
   Sparkles,
+  ChevronUp,
+  ChevronDown,
+  ChevronsUpDown,
   type LucideIcon,
 } from "lucide-react";
 
@@ -198,6 +201,83 @@ export function AdminTableRow({
 }) {
   return (
     <tr className={`hover:bg-brand-purple/[0.03] transition-colors ${className}`}>{children}</tr>
+  );
+}
+
+/**
+ * <SortableHeader> — encabezado de columna clickeable que ordena la tabla
+ * (Lucy 2026-06-27, punto #1: "más fácil con clic en la columna" en vez del
+ * dropdown "Ordenar por"). RSC puro: renderiza un <th> con un <Link> que sólo
+ * cambia el searchParam de orden — sin JS de cliente.
+ *
+ * Basado en VALORES (no en key+dir) para no romper los `sort` ad-hoc que ya
+ * usan los services (ej. "price-asc", "recent", "stock-desc"). La columna sabe
+ * sus valores asc/desc; al clickear alterna entre ellos y preserva los demás
+ * filtros (q, status…) reseteando la paginación.
+ */
+export function SortableHeader({
+  label,
+  ascValue,
+  descValue,
+  currentSort,
+  basePath,
+  paramName = "sort",
+  preserve = {},
+  align = "left",
+}: {
+  label: string;
+  /** Valor de `sort` para orden ascendente (ej. "price-asc"). */
+  ascValue: string;
+  /** Valor para descendente. Si se omite, la columna sólo ordena en un sentido. */
+  descValue?: string;
+  /** Valor actual del searchParam de orden. */
+  currentSort?: string;
+  basePath: string;
+  paramName?: string;
+  /** Otros searchParams a conservar al ordenar (q, status, categoria…). */
+  preserve?: Record<string, string | undefined>;
+  align?: "left" | "center" | "right";
+}) {
+  const isAsc = currentSort === ascValue;
+  const isDesc = descValue !== undefined && currentSort === descValue;
+  const isActive = isAsc || isDesc;
+  // Si está asc y existe desc → siguiente click invierte; si no → asc.
+  const nextValue = isAsc && descValue ? descValue : ascValue;
+
+  const params = new URLSearchParams();
+  for (const [k, v] of Object.entries(preserve)) {
+    if (v) params.set(k, v);
+  }
+  params.set(paramName, nextValue);
+  params.set("page", "1");
+  const href = `${basePath}?${params.toString()}`;
+
+  const alignClass =
+    align === "right" ? "text-right" : align === "center" ? "text-center" : "text-left";
+  const justifyClass =
+    align === "right" ? "justify-end" : align === "center" ? "justify-center" : "justify-start";
+  const Icon = isAsc ? ChevronUp : isDesc ? ChevronDown : ChevronsUpDown;
+
+  return (
+    <th
+      className={`px-4 py-3 font-semibold ${alignClass}`}
+      aria-sort={isAsc ? "ascending" : isDesc ? "descending" : "none"}
+    >
+      <Link
+        href={href}
+        title={`Ordenar por ${label.toLowerCase()}`}
+        className={`group hover:text-brand-purple-dark inline-flex items-center gap-1 ${justifyClass}`}
+      >
+        <span>{label}</span>
+        <Icon
+          className={`h-3.5 w-3.5 transition-colors ${
+            isActive
+              ? "text-brand-purple"
+              : "text-brand-purple-dark/25 group-hover:text-brand-purple-dark/50"
+          }`}
+        />
+      </Link>
+    </th>
   );
 }
 
