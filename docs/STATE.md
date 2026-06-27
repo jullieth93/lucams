@@ -28,9 +28,56 @@ real) verdes.** **Bloque B compliance:** `/unsubscribe` (Ley 1581), textos legal
 (privacidad/términos/devoluciones/subprocesadores Aveonline), retracto verificado contra
 Ley 2439/2024 (reembolso 15 días calendario), voseo→tuteo en emails. **Admin restructurado
 (Opción C):** /admin/inventario, sub-nav del producto (Editar/Versiones/Reseñas), bulk
-actions, sidebar reagrupado. **Próximo: P0-004 verificar dominio Resend (ACCIÓN HUMANA DNS)
-→ Bloque C (Seguridad: RBAC/Turnstile/RLS).** Detalle de fases intermedias (catálogo,
-carrito, checkout, admin UX) en el historial git + bitácora abajo.
+actions, sidebar reagrupado. **Pulido UX admin "amigable" (2026-06-27):** auditoría
+multi-agente de ~18 comentarios de Lucy → 3 bugs cerrados (precio opción en pesos, orden
+categorías determinista, sidebar sticky) + sprint "Admin amigable" + sub-categorías +
+flechas reorden + precio base auto-derivado + ordenar por clic en columnas. **Pendiente
+decidido por Lucy: fotos por opción (D1, migración + storefront) — checkpoint antes de
+migrar.** **Próximo: P0-004 verificar dominio Resend (ACCIÓN HUMANA DNS) → Bloque C
+(Seguridad: RBAC/Turnstile/RLS).** Detalle de fases intermedias (catálogo, carrito,
+checkout, admin UX) en el historial git + bitácora abajo.
+
+---
+
+## Última sesión — 2026-06-27 (Pulido UX admin "amigable" — feedback de Lucy)
+
+**Origen:** Lucy dio un batch de ~18 comentarios sobre el panel admin con la premisa "el
+admin es importante PERO debe ser simple y amigable para mí (no soy técnica)", y pidió
+aterrizarlos "a la realidad del desarrollo, tanto admin como front cliente".
+
+**Auditoría:** workflow multi-agente (6 clusters verificados contra el código real)
+→ `docs/audits/2026-06-27-admin-ux-feedback/` (00-PLAN.md + 6 clusters). Veredicto:
+3 bugs reales, ~11 mejoras, 5 decisiones. Decisiones de Lucy: fotos por opción = SÍ todo
+el catálogo; reordenar categorías = flechas ↑/↓; sub-categorías = SÍ; precio base = auto.
+
+**Hechos por commit:**
+
+- `b9aa66a` **3 bugs:** precio de opción guardaba CENTAVOS crudos (escribir "5000" → $50);
+  ahora en pesos como el producto (display /100, guardar ×100). Orden de categorías sin
+  desempate → menú del cliente indeterminado; ahora `[{order},{name}]` en `lib/catalog.ts`.
+  Sidebar no sticky → `lg:sticky lg:top-0 lg:h-screen`.
+- `d06047e` **Sprint "Admin amigable":** "Descripción corta"→"Descripción"; bot/SEO/desc
+  larga colapsados (`CollapsibleDetails`, nota "Google ya funciona solo"); stock fuera del
+  form full de opción (updateVariant no lo pisa); resumen de stock → desglose por opción;
+  cupones con form colapsable + Cancelar; widget cupones honesto + badge "🏪 General";
+  foto de portada explícita + botón "Hacer portada".
+- `892343b` **Categorías D2+D3:** sub-categorías (parentId, selector "categoría madre",
+  validación 1 nivel, listado en árbol indentado, badge "N sub") + reordenar con flechas
+  ↑/↓ (`moveCategory` re-secuencia el grupo, robusto ante orders duplicados); fuera el
+  campo manual "número de orden" (auto-asignado).
+- `dd638fd` **D4 precio base auto:** `syncProductBasePrice` (= precio mínimo de las
+  opciones activas) corre tras crear/editar/borrar opción; campo escondido en Avanzado.
+- `0a105ba` **D6 ordenar por clic:** primitive `<SortableHeader>` (RSC, sin JS cliente) +
+  migrados productos/inventario/cupones/categorías; dropdown "Ordenar por" solo en mobile.
+
+**Pendiente (decidido, NO implementado):** **D1 fotos por opción** — es L: migración Prisma
+(`ProductVariant.images`/`image`) + uploader por opción en admin + galería del PDP que
+reacciona al selector de opción en el storefront. Se paró ANTES de migrar para checkpoint
+con Lucy (cambio irreversible + outward-facing). Compite en prioridad con Bloque C Seguridad.
+
+**Prueba GUI pendiente (Lucy, navegador):** precio opción en pesos, desglose stock, Detalles
+limpio, "Hacer portada", crear sub-categoría + flechas, ordenar por clic en encabezados,
+sidebar fijo, Cancelar en cupones.
 
 ---
 

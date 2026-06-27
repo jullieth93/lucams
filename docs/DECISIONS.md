@@ -1350,3 +1350,28 @@ VENNDELO_WEBHOOK_SECRET=
 **Cuándo reabrir esta decisión.** Si Aveonline falla en producción (costos suben, soporte malo, downtime), swap a Venndelo en ~8-12h ingeniería implementando `features/shipping/venndelo.ts`.
 
 **Referencias.** `docs/PLAN_CATALOG_V2.md` decisión 4.10. Aveonline docs: https://integraciones.aveonline.co/docs/. `docs/INTEGRATIONS.md` § Venndelo (Plan B). `features/shipping/*` (implementación). `lib/aveonline.ts` (cliente API encapsulado). `lib/aveonline-auth.ts` (token cache + refresh).
+
+---
+
+## ADR-040 — Pulido UX admin "amigable" (feedback de Lucy 2026-06-27)
+
+**Fecha:** 2026-06-27
+**Estado:** ✅ Aceptada (D1 fotos por opción pendiente de implementar — decidida, no migrada)
+
+**Contexto:** Lucy (editora no-técnica) dio ~18 comentarios sobre el panel admin con la premisa "el admin es importante PERO debe ser simple y amigable para mí". Auditoría multi-agente (6 clusters verificados contra el código) en `docs/audits/2026-06-27-admin-ux-feedback/`: 3 bugs, ~11 mejoras, 5 decisiones de producto.
+
+**Decisiones de Lucy (las que cambian comportamiento de la tienda):**
+
+- **D1 — Fotos por opción:** SÍ, para todo el catálogo. Cada `ProductVariant` podrá tener fotos propias; el PDP del cliente cambia la galería al elegir opción. Herencia: opción usa sus fotos, si no, las del producto (espeja `variant.price ?? basePrice`). **Es L: requiere migración Prisma + uploader admin + galería reactiva en storefront. Aún NO implementada** — se hace en un cambio dedicado, compite en prioridad con Bloque C Seguridad.
+- **D2 — Sub-categorías:** SÍ, 1 nivel (coherente con rutas `/productos/[categoria]/[subcategoria]`). `parentId` ya existía en el modelo. Implementada (commit `892343b`).
+- **D3 — Reordenar categorías con flechas ↑/↓:** se eliminó el campo manual "número de orden" (confundía + causaba el bug de orden duplicado). Orden auto-asignado; reorden por flechas. Implementada (`892343b`).
+- **D4 — Precio base del producto auto-derivado:** con el precio viviendo en cada opción, `Product.basePrice` se calcula solo (= mínimo de las opciones) y se esconde de la UI. Implementada (`dd638fd`).
+- **D6 — Ordenar tablas por clic en columna:** reemplaza el dropdown "Ordenar por" en desktop; el dropdown queda solo en mobile (headers difíciles de tocar). Implementada (`0a105ba`).
+
+**Bugs cerrados (commit `b9aa66a`):** precio de opción se guardaba en centavos crudos (riesgo de vender 100× más barato); orden de categorías sin desempate (menú del cliente indeterminado); sidebar no sticky.
+
+**Por qué importa admin + front cliente juntos:** varios puntos (fotos por opción, orden de categorías, descripciones/SEO, sub-categorías) tienen contraparte en el storefront y se diseñan juntos para no rehacer. Hallazgo clave: la "descripción larga" que se le pedía a Lucy NUNCA se mostraba al cliente (solo `description` corta) → se escondió.
+
+**Consecuencia:** el admin muestra menos campos (lo técnico colapsado/escondido), el precio es coherente en pesos, las categorías se gestionan visualmente. Queda deuda: implementar D1 (fotos por opción) y revisar si `compareAtPrice` (promo) debería pasar a nivel opción.
+
+**Referencias.** `docs/audits/2026-06-27-admin-ux-feedback/00-PLAN.md` (plan + tabla maestra de los 18 puntos). Commits `b9aa66a`, `d06047e`, `892343b`, `dd638fd`, `0a105ba`.
