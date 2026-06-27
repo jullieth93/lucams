@@ -12,6 +12,55 @@ export class CategoryValidationError extends Error {
   }
 }
 
+/**
+ * Siguiente `order` libre dentro de un grupo de hermanas (mismo parentId).
+ * D3 (Lucy 2026-06-27): el orden se auto-asigna al crear; Lucy no lo escribe.
+ */
+async function nextOrderInGroup(parentId: string | null): Promise<number> {
+  const last = await prisma.category.findFirst({
+    where: { parentId, deletedAt: null },
+    orderBy: { order: "desc" },
+    select: { order: true },
+  });
+  return (last?.order ?? -1) + 1;
+}
+
+/**
+ * Valida que una categoría pueda colgar de `parentId` respetando el límite de
+ * 1 nivel (el storefront sólo tiene rutas /productos/[categoria]/[subcategoria]).
+ * `selfId` se pasa en edición para impedir auto-referencia / volverse hija
+ * teniendo ya hijas propias.
+ */
+async function assertValidParent(parentId: string, selfId?: string): Promise<void> {
+  if (selfId && parentId === selfId) {
+    throw new CategoryValidationError("general", "Una categoría no puede ser su propia madre.");
+  }
+  const parent = await prisma.category.findFirst({
+    where: { id: parentId, deletedAt: null },
+    select: { parentId: true },
+  });
+  if (!parent) {
+    throw new CategoryValidationError("general", "La categoría madre elegida no existe.");
+  }
+  if (parent.parentId) {
+    throw new CategoryValidationError(
+      "general",
+      "Solo se permite un nivel de sub-categorías (la madre ya es una sub-categoría).",
+    );
+  }
+  if (selfId) {
+    const childCount = await prisma.category.count({
+      where: { parentId: selfId, deletedAt: null },
+    });
+    if (childCount > 0) {
+      throw new CategoryValidationError(
+        "general",
+        "Esta categoría ya tiene sub-categorías, así que no puede volverse sub-categoría de otra.",
+      );
+    }
+  }
+}
+
 export type CategoryListOpts = {
   /** Búsqueda en name/slug (case-insensitive). */
   q?: string;
@@ -60,8 +109,24 @@ export async function listCategories(opts: CategoryListOpts = {}) {
       isActive: true,
       deletedAt: true,
       order: true,
-      _count: { select: { products: true } },
+      parentId: true,
+      parent: { select: { name: true } },
+      _count: { select: { products: true, children: true } },
     },
+  });
+}
+
+/** Categorías de primer nivel (parentId null), activas, para usar como opciones
+ * "categoría madre" en el form. Excluye `excludeId` (la propia, en edición). */
+export async function listParentCategoryOptions(excludeId?: string) {
+  return prisma.category.findMany({
+    where: {
+      parentId: null,
+      deletedAt: null,
+      ...(excludeId ? { id: { not: excludeId } } : {}),
+    },
+    orderBy: [{ order: "asc" }, { name: "asc" }],
+    select: { id: true, name: true },
   });
 }
 
@@ -72,13 +137,20 @@ export async function createCategory(input: CategoryCreateInput, createdBy: stri
   });
   if (conflict) throw new CategoryValidationError("slug", `Slug "${input.slug}" ya existe`);
 
+  const parentId = input.parentId ?? null;
+  if (parentId) await assertValidParent(parentId);
+
+  // D3: orden auto = último de su grupo de hermanas + 1 (salvo que venga explícito).
+  const order = input.order ?? (await nextOrderInGroup(parentId));
+
   return prisma.category.create({
     data: {
       name: input.name,
       slug: input.slug,
       description: input.description ?? null,
       isActive: input.isActive,
-      order: input.order,
+      parentId,
+      order,
       ...(createdBy ? { createdBy } : {}),
     },
   });
@@ -96,10 +168,69 @@ export async function updateCategory(
     });
     if (conflict) throw new CategoryValidationError("slug", `Slug "${input.slug}" ya existe`);
   }
+
+  // D2: si cambia la categoría madre, validamos el límite de 1 nivel y
+  // reubicamos el `order` al final del nuevo grupo de hermanas.
+  let orderOverride: number | undefined;
+  if (input.parentId !== undefined) {
+    const current = await prisma.category.findUnique({
+      where: { id },
+      select: { parentId: true },
+    });
+    const newParentId = input.parentId ?? null;
+    if (newParentId) await assertValidParent(newParentId, id);
+    if ((current?.parentId ?? null) !== newParentId) {
+      orderOverride = await nextOrderInGroup(newParentId);
+    }
+  }
+
   return prisma.category.update({
     where: { id },
-    data: { ...input, ...(updatedBy ? { updatedBy } : {}) },
+    data: {
+      ...input,
+      ...(orderOverride !== undefined ? { order: orderOverride } : {}),
+      ...(updatedBy ? { updatedBy } : {}),
+    },
   });
+}
+
+/**
+ * Reordena una categoría dentro de su grupo de hermanas (mismo parentId),
+ * intercambiándola con la vecina en la dirección dada. Re-secuencia TODO el
+ * grupo a 0..n para ser robusto ante `order` duplicados (datos legacy en 0).
+ * D3 (Lucy 2026-06-27): reemplaza el campo manual "número de orden".
+ */
+export async function moveCategory(
+  id: string,
+  direction: "up" | "down",
+  actorId: string | null,
+) {
+  const cat = await prisma.category.findUnique({
+    where: { id },
+    select: { parentId: true },
+  });
+  if (!cat) return;
+
+  const siblings = await prisma.category.findMany({
+    where: { parentId: cat.parentId, deletedAt: null },
+    orderBy: [{ order: "asc" }, { name: "asc" }],
+    select: { id: true },
+  });
+  const idx = siblings.findIndex((s) => s.id === id);
+  const swapIdx = direction === "up" ? idx - 1 : idx + 1;
+  if (idx < 0 || swapIdx < 0 || swapIdx >= siblings.length) return; // ya en el borde
+
+  const reordered = [...siblings];
+  [reordered[idx], reordered[swapIdx]] = [reordered[swapIdx], reordered[idx]];
+
+  await prisma.$transaction(
+    reordered.map((s, i) =>
+      prisma.category.update({
+        where: { id: s.id },
+        data: { order: i, ...(s.id === id && actorId ? { updatedBy: actorId } : {}) },
+      }),
+    ),
+  );
 }
 
 export async function softDeleteCategory(id: string, deletedBy: string | null) {

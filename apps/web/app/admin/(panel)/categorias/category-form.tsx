@@ -26,9 +26,17 @@ type CategoryInput = {
   description?: string | null;
   isActive?: boolean;
   order?: number;
+  parentId?: string | null;
 };
 
-export function CategoryForm({ initialCategory }: { initialCategory?: CategoryInput }) {
+export function CategoryForm({
+  initialCategory,
+  parentOptions = [],
+}: {
+  initialCategory?: CategoryInput;
+  /** Categorías de primer nivel para elegir como "madre" (sub-categorías). */
+  parentOptions?: { id: string; name: string }[];
+}) {
   const isEdit = !!initialCategory?.id;
   const [state, formAction, pending] = useActionState<CategoryActionState | null, FormData>(
     isEdit ? updateCategoryAction : createCategoryAction,
@@ -116,21 +124,26 @@ export function CategoryForm({ initialCategory }: { initialCategory?: CategoryIn
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <div className="space-y-1.5">
-          <Label htmlFor="order" className="text-brand-purple-dark text-sm font-semibold">
-            Orden
+          <Label htmlFor="parentId" className="text-brand-purple-dark text-sm font-semibold">
+            Categoría madre
           </Label>
-          <Input
-            id="order"
-            name="order"
-            type="number"
-            min={0}
-            max={9999}
-            defaultValue={initialCategory?.order ?? 0}
+          <select
+            id="parentId"
+            name="parentId"
+            defaultValue={initialCategory?.parentId ?? ""}
             disabled={pending}
-            className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
-          />
+            className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 w-full rounded-md border bg-white px-2 py-2 text-sm focus:ring-2 focus:outline-none"
+          >
+            <option value="">— Ninguna (categoría principal) —</option>
+            {parentOptions.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
           <p className="text-brand-purple-dark/55 text-[11px]">
-            Menor número = aparece primero en el menú.
+            Déjalo en “Ninguna” para una categoría principal. Elige una madre para crear una
+            sub-categoría (ej. madre “Magnéticos” → “Magnéticos foto”).
           </p>
         </div>
 

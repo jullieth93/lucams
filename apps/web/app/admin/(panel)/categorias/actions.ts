@@ -8,6 +8,7 @@ import { getCurrentAdmin } from "@/lib/auth";
 import {
   CategoryValidationError,
   createCategory,
+  moveCategory,
   restoreCategory,
   softDeleteCategory,
   updateCategory,
@@ -21,6 +22,7 @@ export type CategoryActionState = {
 };
 
 function parsePayload(formData: FormData) {
+  const parentRaw = String(formData.get("parentId") ?? "").trim();
   return {
     name: String(formData.get("name") ?? "").trim(),
     slug: String(formData.get("slug") ?? "")
@@ -28,7 +30,9 @@ function parsePayload(formData: FormData) {
       .toLowerCase(),
     description: (formData.get("description") || null) as string | null,
     isActive: formData.get("isActive") === "on",
-    order: Number(formData.get("order") ?? 0),
+    // "" (— Ninguna —) => null = categoría principal.
+    parentId: parentRaw === "" ? null : parentRaw,
+    // D3: el orden ya NO viene del form — lo auto-asigna el service.
   };
 }
 
@@ -164,6 +168,42 @@ export async function toggleCategoryActiveAction(formData: FormData): Promise<vo
         err: err instanceof Error ? err.message : String(err),
       },
       "Failed to toggle category active",
+    );
+    throw err;
+  }
+}
+
+/**
+ * Reordena una categoría dentro de su grupo (flechas ↑/↓ del listado).
+ * D3 (Lucy 2026-06-27): reemplaza el campo manual "número de orden".
+ */
+export async function moveCategoryAction(formData: FormData): Promise<void> {
+  const session = await getCurrentAdmin();
+  if (!session) redirect("/admin/login");
+
+  const id = String(formData.get("id") ?? "");
+  const direction = formData.get("direction") === "up" ? "up" : "down";
+  if (!id) return;
+
+  try {
+    await moveCategory(id, direction, session.admin.id);
+    await recordAdminAction({
+      actorId: session.admin.id,
+      action: "category.reorder",
+      entityType: "Category",
+      entityId: id,
+      metadata: { direction },
+    });
+    revalidatePath("/admin/categorias");
+    revalidatePath("/productos");
+    revalidatePath("/", "layout");
+  } catch (err) {
+    logger.error(
+      {
+        event: "admin.category.reorder_fail",
+        err: err instanceof Error ? err.message : String(err),
+      },
+      "Failed to reorder category",
     );
     throw err;
   }

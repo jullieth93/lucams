@@ -21,6 +21,7 @@ import { Button } from "@/components/ui/button";
 import { ConfirmAction } from "@/components/admin/confirm-action";
 import { getCurrentAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { listParentCategoryOptions } from "@/features/categories/service";
 import { CategoryForm } from "../category-form";
 import { deleteCategoryAction } from "../actions";
 
@@ -48,10 +49,15 @@ export default async function EditCategoryPage({
     where: { id, deletedAt: null },
     include: {
       parent: { select: { id: true, name: true, slug: true } },
-      _count: { select: { products: true } },
+      _count: { select: { products: true, children: true } },
     },
   });
   if (!category) notFound();
+
+  // Opciones de madre: top-level menos la propia. Si esta categoría ya tiene
+  // sub-categorías, no puede volverse hija (depth máx 1) → no ofrecemos madres.
+  const parentOptions =
+    category._count.children > 0 ? [] : await listParentCategoryOptions(category.id);
 
   return (
     <AdminPage>
@@ -102,6 +108,7 @@ export default async function EditCategoryPage({
 
         <AdminCard className="p-5">
           <CategoryForm
+            parentOptions={parentOptions}
             initialCategory={{
               id: category.id,
               name: category.name,
@@ -109,8 +116,16 @@ export default async function EditCategoryPage({
               description: category.description,
               isActive: category.isActive,
               order: category.order,
+              parentId: category.parentId,
             }}
           />
+          {category._count.children > 0 && (
+            <p className="text-brand-purple-dark/55 mt-3 text-xs">
+              Esta categoría tiene {category._count.children} sub-categoría
+              {category._count.children === 1 ? "" : "s"}, por eso no puede convertirse en
+              sub-categoría de otra.
+            </p>
+          )}
         </AdminCard>
 
         {/* Archivar (peligro). Bloqueado si tiene productos. */}

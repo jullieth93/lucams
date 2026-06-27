@@ -13,7 +13,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Edit3, Layers, RotateCcw, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, CornerDownRight, Edit3, Layers, RotateCcw, Trash2 } from "lucide-react";
 import {
   AdminPage,
   AdminPageHeader,
@@ -29,10 +29,15 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ConfirmAction } from "@/components/admin/confirm-action";
-import { listCategories } from "@/features/categories/service";
+import { listCategories, listParentCategoryOptions } from "@/features/categories/service";
 import { getCurrentAdmin } from "@/lib/auth";
 import { CategoryForm } from "./category-form";
-import { deleteCategoryAction, restoreCategoryAction, toggleCategoryActiveAction } from "./actions";
+import {
+  deleteCategoryAction,
+  moveCategoryAction,
+  restoreCategoryAction,
+  toggleCategoryActiveAction,
+} from "./actions";
 
 export const metadata: Metadata = {
   title: "Categorías",
@@ -65,7 +70,41 @@ export default async function AdminCategoriasPage({
     | "name"
     | "recent";
 
-  const categories = await listCategories({ q, status, sort });
+  const [categories, parentOptions] = await Promise.all([
+    listCategories({ q, status, sort }),
+    listParentCategoryOptions(),
+  ]);
+
+  // D2/D3: organizamos en árbol (madre → sub-categorías indentadas). Las flechas
+  // ↑/↓ solo tienen sentido en "orden manual" sin búsqueda; en otros modos
+  // mostramos plano. orphan = sub-categoría cuya madre quedó fuera del filtro.
+  const isManualOrder = sort === "order" && !q;
+  const childrenByParent = new Map<string, typeof categories>();
+  for (const c of categories) {
+    if (c.parentId) {
+      const arr = childrenByParent.get(c.parentId) ?? [];
+      arr.push(c);
+      childrenByParent.set(c.parentId, arr);
+    }
+  }
+  type Row = { cat: (typeof categories)[number]; depth: number; first: boolean; last: boolean };
+  const displayRows: Row[] = [];
+  const pushGroup = (group: typeof categories, depth: number) => {
+    group.forEach((cat, i) => {
+      displayRows.push({ cat, depth, first: i === 0, last: i === group.length - 1 });
+      const kids = childrenByParent.get(cat.id);
+      if (kids && kids.length > 0) pushGroup(kids, depth + 1);
+    });
+  };
+  const topLevel = categories.filter((c) => !c.parentId);
+  pushGroup(topLevel, 0);
+  // Sub-categorías huérfanas (madre filtrada): las agregamos planas al final.
+  const shownIds = new Set(displayRows.map((r) => r.cat.id));
+  const orphans = categories.filter((c) => !shownIds.has(c.id));
+  orphans.forEach((cat, i) =>
+    displayRows.push({ cat, depth: 0, first: i === 0, last: i === orphans.length - 1 }),
+  );
+
   const justCreated = sp.created === "1";
   const justDeleted = sp.deleted === "1";
   const errorMsg = typeof sp.error === "string" ? sp.error : null;
@@ -192,7 +231,7 @@ export default async function AdminCategoriasPage({
           <AdminTable>
             <AdminTableHead>
               <tr>
-                <th className="w-16 px-4 py-3 text-left font-semibold">Orden</th>
+                <th className="w-20 px-4 py-3 text-left font-semibold">Orden</th>
                 <th className="px-4 py-3 text-left font-semibold">Nombre</th>
                 <th className="px-4 py-3 text-left font-semibold">Slug</th>
                 <th className="px-4 py-3 text-center font-semibold">Productos</th>
@@ -201,13 +240,42 @@ export default async function AdminCategoriasPage({
               </tr>
             </AdminTableHead>
             <AdminTableBody>
-              {categories.map((c) => (
+              {displayRows.map(({ cat: c, depth, first, last }) => (
                 <AdminTableRow key={c.id}>
-                  <td className="text-brand-purple-dark/55 px-4 py-3 tabular-nums">{c.order}</td>
                   <td className="px-4 py-3">
-                    <div className="text-brand-purple-dark font-medium">{c.name}</div>
+                    {/* D3: flechas ↑/↓ en lugar del número de orden manual.
+                        Solo activas en "orden manual" sin búsqueda. */}
+                    {isManualOrder && !c.deletedAt ? (
+                      <div className="flex items-center gap-0.5">
+                        <ReorderButton id={c.id} direction="up" disabled={first} />
+                        <ReorderButton id={c.id} direction="down" disabled={last} />
+                      </div>
+                    ) : (
+                      <span className="text-brand-purple-dark/35 text-xs tabular-nums">
+                        {c.order}
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    <div
+                      className="text-brand-purple-dark flex items-center gap-1.5 font-medium"
+                      style={depth > 0 ? { paddingLeft: `${depth * 1.25}rem` } : undefined}
+                    >
+                      {depth > 0 && (
+                        <CornerDownRight className="text-brand-purple-dark/35 h-3.5 w-3.5 shrink-0" />
+                      )}
+                      {c.name}
+                      {c._count.children > 0 && (
+                        <span className="bg-brand-purple/10 text-brand-purple-dark/70 rounded-full px-1.5 py-0.5 text-[10px] font-semibold">
+                          {c._count.children} sub
+                        </span>
+                      )}
+                    </div>
                     {c.description && (
-                      <div className="text-brand-purple-dark/55 line-clamp-1 text-xs">
+                      <div
+                        className="text-brand-purple-dark/55 line-clamp-1 text-xs"
+                        style={depth > 0 ? { paddingLeft: `${depth * 1.25 + 1.25}rem` } : undefined}
+                      >
                         {c.description}
                       </div>
                     )}
@@ -320,9 +388,37 @@ export default async function AdminCategoriasPage({
               Decorativos, Pack).
             </p>
           </div>
-          <CategoryForm />
+          <CategoryForm parentOptions={parentOptions} />
         </AdminCard>
       </AdminPageBody>
     </AdminPage>
+  );
+}
+
+/** Botón ↑/↓ que reordena una categoría dentro de su grupo (D3). */
+function ReorderButton({
+  id,
+  direction,
+  disabled,
+}: {
+  id: string;
+  direction: "up" | "down";
+  disabled: boolean;
+}) {
+  const Icon = direction === "up" ? ArrowUp : ArrowDown;
+  return (
+    <form action={moveCategoryAction} className="inline">
+      <input type="hidden" name="id" value={id} />
+      <input type="hidden" name="direction" value={direction} />
+      <button
+        type="submit"
+        disabled={disabled}
+        aria-label={direction === "up" ? "Subir" : "Bajar"}
+        title={direction === "up" ? "Subir en el orden" : "Bajar en el orden"}
+        className="text-brand-purple-dark/60 hover:bg-brand-purple/10 hover:text-brand-purple-dark inline-flex h-7 w-7 items-center justify-center rounded-md disabled:cursor-not-allowed disabled:opacity-25"
+      >
+        <Icon className="h-3.5 w-3.5" />
+      </button>
+    </form>
   );
 }
