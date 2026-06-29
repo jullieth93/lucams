@@ -40,7 +40,15 @@ export async function listProducts(opts: {
   search?: string;
   categoryId?: string;
   status?: "all" | "active" | "inactive" | "archived" | "featured";
-  sort?: "recent" | "name" | "price-asc" | "price-desc";
+  sort?:
+    | "recent"
+    | "name"
+    | "price-asc"
+    | "price-desc"
+    | "sku-asc"
+    | "sku-desc"
+    | "category-asc"
+    | "category-desc";
 }): Promise<{ items: ProductListItem[]; total: number; page: number; pageSize: number }> {
   const page = Math.max(1, opts.page ?? 1);
   // Default: muestra TODO (activos + inactivos + archivados). Admin gestiona
@@ -72,6 +80,14 @@ export async function listProducts(opts: {
         return { basePrice: "asc" };
       case "price-desc":
         return { basePrice: "desc" };
+      case "sku-asc":
+        return { sku: "asc" };
+      case "sku-desc":
+        return { sku: "desc" };
+      case "category-asc":
+        return { category: { name: "asc" } };
+      case "category-desc":
+        return { category: { name: "desc" } };
       case "recent":
       default:
         return { updatedAt: "desc" };

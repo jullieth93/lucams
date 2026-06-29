@@ -60,8 +60,26 @@ export default async function AdminProductosPage({ searchParams }: { searchParam
   ) as "all" | "active" | "inactive" | "archived" | "featured";
   const sortRaw = pickString(sp, "sort");
   const sort = (
-    ["name", "price-asc", "price-desc"].includes(sortRaw ?? "") ? sortRaw : "recent"
-  ) as "recent" | "name" | "price-asc" | "price-desc";
+    [
+      "name",
+      "price-asc",
+      "price-desc",
+      "sku-asc",
+      "sku-desc",
+      "category-asc",
+      "category-desc",
+    ].includes(sortRaw ?? "")
+      ? sortRaw
+      : "recent"
+  ) as
+    | "recent"
+    | "name"
+    | "price-asc"
+    | "price-desc"
+    | "sku-asc"
+    | "sku-desc"
+    | "category-asc"
+    | "category-desc";
 
   const justCreated = sp.created === "1";
   const justDeleted = sp.deleted === "1";
@@ -74,6 +92,17 @@ export default async function AdminProductosPage({ searchParams }: { searchParam
   });
   const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const hasActiveFilters = !!q || status !== "all" || sort !== "recent";
+
+  // Clamp: si piden una página fuera de rango (URL manipulada o salto inválido),
+  // redirigir a la última válida preservando filtros — evita el empty-state engañoso.
+  if (page > totalPages && total > 0) {
+    const params = new URLSearchParams();
+    params.set("page", String(totalPages));
+    if (q) params.set("q", q);
+    if (status !== "all") params.set("status", status);
+    if (sort !== "recent") params.set("sort", sort);
+    redirect(`/admin/productos?${params.toString()}`);
+  }
 
   // Hotfix P1-15: si el filtro es "archivados", los checkboxes de bulk no
   // tienen sentido (no puedes bulk-modificar archivados). Ocultamos la columna
@@ -183,6 +212,10 @@ export default async function AdminProductosPage({ searchParams }: { searchParam
               <option value="name">Nombre A-Z</option>
               <option value="price-asc">Precio menor a mayor</option>
               <option value="price-desc">Precio mayor a menor</option>
+              <option value="sku-asc">Código A-Z</option>
+              <option value="sku-desc">Código Z-A</option>
+              <option value="category-asc">Categoría A-Z</option>
+              <option value="category-desc">Categoría Z-A</option>
             </select>
           </div>
           <div className="flex items-end gap-2 sm:col-span-1">
@@ -240,8 +273,22 @@ export default async function AdminProductosPage({ searchParams }: { searchParam
                   basePath="/admin/productos"
                   preserve={{ q, status: status !== "all" ? status : undefined }}
                 />
-                <th className="px-4 py-3 text-left font-semibold">Código</th>
-                <th className="px-4 py-3 text-left font-semibold">Categoría</th>
+                <SortableHeader
+                  label="Código"
+                  ascValue="sku-asc"
+                  descValue="sku-desc"
+                  currentSort={sort}
+                  basePath="/admin/productos"
+                  preserve={{ q, status: status !== "all" ? status : undefined }}
+                />
+                <SortableHeader
+                  label="Categoría"
+                  ascValue="category-asc"
+                  descValue="category-desc"
+                  currentSort={sort}
+                  basePath="/admin/productos"
+                  preserve={{ q, status: status !== "all" ? status : undefined }}
+                />
                 <SortableHeader
                   label="Precio"
                   ascValue="price-asc"
@@ -322,23 +369,81 @@ export default async function AdminProductosPage({ searchParams }: { searchParam
         )}
 
         {totalPages > 1 && (
-          <div className="text-brand-purple-dark/70 flex items-center justify-between text-sm">
+          <nav
+            aria-label="Paginación"
+            className="text-brand-purple-dark/70 flex flex-wrap items-center justify-between gap-3 text-sm"
+          >
             <span>
               {total} productos · página {page} de {totalPages}
             </span>
-            <div className="flex gap-1">
-              {page > 1 && (
-                <PaginationLink page={page - 1} q={q} status={status} sort={sort}>
-                  ← Anterior
-                </PaginationLink>
-              )}
-              {page < totalPages && (
-                <PaginationLink page={page + 1} q={q} status={status} sort={sort}>
-                  Siguiente →
-                </PaginationLink>
-              )}
+            <div className="flex flex-wrap items-center gap-1.5">
+              <PaginationLink
+                page={1}
+                q={q}
+                status={status}
+                sort={sort}
+                disabled={page === 1}
+                title="Primera página"
+              >
+                « Primera
+              </PaginationLink>
+              <PaginationLink
+                page={page - 1}
+                q={q}
+                status={status}
+                sort={sort}
+                disabled={page === 1}
+              >
+                ← Anterior
+              </PaginationLink>
+
+              {/* Ir directo a una página (form GET; re-emite los filtros como hidden). */}
+              <form method="GET" action="/admin/productos" className="flex items-center gap-1">
+                {q && <input type="hidden" name="q" value={q} />}
+                {status !== "all" && <input type="hidden" name="status" value={status} />}
+                {sort !== "recent" && <input type="hidden" name="sort" value={sort} />}
+                <label htmlFor="goto-page" className="text-xs">
+                  Ir a
+                </label>
+                <input
+                  id="goto-page"
+                  type="number"
+                  name="page"
+                  min={1}
+                  max={totalPages}
+                  defaultValue={page}
+                  aria-label="Número de página"
+                  className="border-brand-purple/25 focus:border-brand-purple focus:ring-brand-purple/20 h-8 w-14 rounded-md border bg-white px-2 text-center text-xs tabular-nums focus:ring-2 focus:outline-none"
+                />
+                <button
+                  type="submit"
+                  className="border-brand-purple/25 text-brand-purple-dark hover:bg-brand-purple/10 h-8 rounded-md border bg-white px-2.5 text-xs font-semibold"
+                >
+                  Ir
+                </button>
+              </form>
+
+              <PaginationLink
+                page={page + 1}
+                q={q}
+                status={status}
+                sort={sort}
+                disabled={page === totalPages}
+              >
+                Siguiente →
+              </PaginationLink>
+              <PaginationLink
+                page={totalPages}
+                q={q}
+                status={status}
+                sort={sort}
+                disabled={page === totalPages}
+                title="Última página"
+              >
+                Última »
+              </PaginationLink>
             </div>
-          </div>
+          </nav>
         )}
       </AdminPageBody>
 
@@ -357,14 +462,29 @@ function PaginationLink({
   q,
   status,
   sort,
+  disabled,
+  title,
   children,
 }: {
   page: number;
   q?: string;
   status?: string;
   sort?: string;
+  disabled?: boolean;
+  title?: string;
   children: React.ReactNode;
 }) {
+  // Deshabilitado (borde de rango): span gris no-clickeable en vez de link muerto.
+  if (disabled) {
+    return (
+      <span
+        aria-disabled="true"
+        className="border-brand-purple/10 text-brand-purple-dark/30 cursor-not-allowed rounded-md border bg-white px-3 py-1.5 text-xs font-medium"
+      >
+        {children}
+      </span>
+    );
+  }
   const params = new URLSearchParams();
   params.set("page", String(page));
   if (q) params.set("q", q);
@@ -373,6 +493,7 @@ function PaginationLink({
   return (
     <Link
       href={`/admin/productos?${params.toString()}`}
+      title={title}
       className="border-brand-purple/20 hover:bg-brand-purple/5 text-brand-purple-dark rounded-md border bg-white px-3 py-1.5 text-xs font-medium"
     >
       {children}
