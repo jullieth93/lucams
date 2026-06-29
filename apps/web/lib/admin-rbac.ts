@@ -59,13 +59,15 @@ export function filterNavByRole<
   if (role === "SUPERADMIN") return groups;
   const out: T[] = [];
   for (const g of groups) {
-    if (g.items && g.items.length > 0) {
+    if (g.items) {
+      // Grupo con lista: se muestra solo si queda ≥1 item visible. Un grupo cuyos
+      // items se filtran todos (o declarado `items: []`) NO se muestra.
       const items = g.items.filter((it) => canAccessAdminPath(role, it.href));
       if (items.length > 0) out.push({ ...g, items } as T);
     } else if (g.href) {
       if (canAccessAdminPath(role, g.href)) out.push(g);
     } else {
-      out.push(g);
+      out.push(g); // grupo estructural sin items ni href → se conserva
     }
   }
   return out;
