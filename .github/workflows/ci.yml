@@ -11,6 +11,10 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Least privilege: el GITHUB_TOKEN solo necesita leer el repo (Bloque C / S5).
+permissions:
+  contents: read
+
 env:
   NODE_VERSION: "22"
   PNPM_VERSION: "11.0.9"
@@ -124,3 +128,30 @@ jobs:
 
       - name: Prettier check
         run: pnpm format:check
+
+  dep-audit:
+    name: Dependency audit (pnpm)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Falla el CI si hay vulnerabilidades high/critical en dependencias de PRODUCCIÓN
+      # (Bloque C / S3). --prod excluye el toolchain de dev (vitest/jsdom/undici), cuyas
+      # vulns no se despliegan. Si aparece una high en prod, hay que triarla antes de mergear.
+      - name: Audit production dependencies (high+)
+        run: pnpm audit --prod --audit-level=high
