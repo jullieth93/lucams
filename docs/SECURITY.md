@@ -264,13 +264,15 @@ describe('RLS', () => {
 | `Permissions-Policy`        | `camera=(), microphone=(), geolocation=()`     | Niega APIs sensibles que no usamos                       |
 | `X-DNS-Prefetch-Control`    | `on`                                           | Optimización menor para preconectar a CDN                |
 
-### Content-Security-Policy (CSP)
+### Content-Security-Policy (CSP) — implementada con nonce (C3, ADR-043)
 
-Política inicial — **revisar tras cada nueva integración**:
+Se construye **por request** en `apps/web/proxy.ts` (`buildCsp(nonce)`). **Dos modos:**
+
+**Producción / preview** (`VERCEL_ENV` = production|preview) — `script-src` con **nonce + `strict-dynamic`** (sin `'unsafe-inline'` ni `'unsafe-eval'`):
 
 ```
 default-src 'self';
-script-src 'self' 'unsafe-inline' https://challenges.cloudflare.com https://checkout.wompi.co;
+script-src 'self' 'nonce-<aleatorio-por-request>' 'strict-dynamic' https://challenges.cloudflare.com https://checkout.wompi.co;
 style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
 img-src 'self' data: blob: https://*.supabase.co https://*.coordinadora.com;
 font-src 'self' https://fonts.gstatic.com;
@@ -282,7 +284,17 @@ object-src 'none';
 upgrade-insecure-requests;
 ```
 
-> **Nota:** `'unsafe-inline'` en script/style se elimina cuando next.js genera nonces para inline (ver `next.config.mjs`). Idealmente usar **CSP con `nonce`** desde Fase 1.
+**Desarrollo** — `script-src 'self' 'unsafe-inline' 'unsafe-eval' …` (sin nonce). El dev server de Next inyecta scripts de HMR/overlay que con nonce se romperían; **el nonce se valida en un deploy prod-like**, no en dev.
+
+**Cómo funciona el nonce** (guía oficial Next 16, `node_modules/next/dist/docs/01-app/02-guides/content-security-policy.md`):
+
+- El proxy genera un nonce nuevo por request, lo pone en el **request header** `x-nonce` + `Content-Security-Policy`, y en el **response header**. Next lo extrae del CSP y lo aplica automáticamente a TODOS sus `<script>` (framework, bundles, inline) durante el SSR. Integrado con el flujo `getAll/setAll` de Supabase (`nextWithNonce()` clona los headers actuales → preserva cookies refrescadas).
+- **`style-src` mantiene `'unsafe-inline'` a propósito:** los atributos `style=""` inline NO aceptan nonce (solo elementos `<style>`/`<script>`) → removerlo rompería toda la UI. El riesgo XSS por CSS es mucho menor que por script.
+- **`'unsafe-eval'` solo en dev** (HMR + reconstrucción de stacks de React); en prod no se usa.
+
+> ⚠️ **Regla de mantenimiento:** el nonce exige **render dinámico en toda página** — una página estática se prerenderea sin nonce y sus scripts quedan **bloqueados** en prod. La app ya es ~97% dinámica; las pocas estáticas llevan `export const dynamic = "force-dynamic"` (registro, recomendador, maintenance, recuperar-password, not-found). **Toda página nueva debe ser dinámica.** `/manifest.webmanifest` se deja estática (no tiene scripts).
+
+**Verificación (prod-like).** Con `VERCEL_ENV=preview next start`, en cada request el nonce del header `Content-Security-Policy` debe coincidir con el de cada `<script nonce="…">` del HTML (0 scripts sin nonce). Verificado 2026-06-29 en home, registro, recomendador, maintenance, producto, admin/login, carrito, contacto, login. **GUI pendiente (Lucy):** recorrer storefront + estudio/canvas + checkout + Turnstile + admin en un deploy preview con la consola abierta buscando `Refused to execute … violates Content Security Policy`.
 
 ### Verificación
 
