@@ -14,11 +14,10 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import { Activity, ChevronLeft, ChevronRight } from "lucide-react";
 import type { Prisma } from "@lucams/db";
 import { prisma } from "@/lib/db";
-import { getCurrentAdmin } from "@/lib/auth";
+import { requireRole } from "@/lib/admin-rbac-guard";
 import {
   AdminPage,
   AdminPageHeader,
@@ -48,8 +47,7 @@ function pickString(sp: Record<string, string | string[] | undefined>, key: stri
 }
 
 export default async function AuditoriaPage({ searchParams }: { searchParams: SearchParams }) {
-  const session = await getCurrentAdmin();
-  if (!session) redirect("/admin/login");
+  const session = await requireRole(["SUPERADMIN"]);
 
   const sp = await searchParams;
   const filterAdmin = pickString(sp, "admin");

@@ -9,11 +9,10 @@
  */
 
 import type { Metadata } from "next";
-import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Ticket } from "lucide-react";
 import { listCoupons } from "@/features/coupons/service";
-import { getCurrentAdmin } from "@/lib/auth";
+import { requireRole } from "@/lib/admin-rbac-guard";
 import { formatCOP } from "@/lib/format";
 import {
   AdminPage,
@@ -46,8 +45,7 @@ function pickString(sp: Record<string, string | string[] | undefined>, key: stri
 }
 
 export default async function AdminCuponesPage({ searchParams }: { searchParams: SearchParams }) {
-  const session = await getCurrentAdmin();
-  if (!session) redirect("/admin/login");
+  const session = await requireRole(["SUPERADMIN"]);
 
   const sp = await searchParams;
   const q = pickString(sp, "q");

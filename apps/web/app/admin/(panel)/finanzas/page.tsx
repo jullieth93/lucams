@@ -14,7 +14,6 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import { DollarSign, TrendingUp, Receipt, CreditCard, FileText, ArrowRight } from "lucide-react";
 import {
   AdminBadge,
@@ -24,7 +23,7 @@ import {
   AdminPageBody,
   AdminPageHeader,
 } from "@/components/admin-page";
-import { getCurrentAdmin } from "@/lib/auth";
+import { requireRole } from "@/lib/admin-rbac-guard";
 import { prisma } from "@/lib/db";
 import { formatCOP } from "@/lib/format";
 
@@ -36,8 +35,7 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 export default async function AdminFinanzasPage() {
-  const session = await getCurrentAdmin();
-  if (!session) redirect("/admin/login");
+  const session = await requireRole(["SUPERADMIN"]);
 
   // Probar contadores reales: si hay alguna orden pagada en DB ya, los
   // mostramos; si no, mantenemos los placeholders educativos.

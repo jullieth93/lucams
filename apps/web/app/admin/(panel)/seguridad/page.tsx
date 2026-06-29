@@ -4,7 +4,6 @@
  */
 
 import type { Metadata } from "next";
-import { redirect } from "next/navigation";
 import { ShieldCheck, ShieldAlert, KeyRound } from "lucide-react";
 import {
   AdminPage,
@@ -13,7 +12,7 @@ import {
   AdminCard,
   AdminNotice,
 } from "@/components/admin-page";
-import { getCurrentAdmin } from "@/lib/auth";
+import { requireRole } from "@/lib/admin-rbac-guard";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { countUnusedRecoveryCodes } from "@/features/admin-mfa/recovery-codes";
 import { MfaEnroll } from "./mfa-enroll";
@@ -29,8 +28,7 @@ export default async function AdminSeguridadPage({
 }: {
   searchParams: SearchParams;
 }) {
-  const session = await getCurrentAdmin();
-  if (!session) redirect("/admin/login");
+  const session = await requireRole(["SUPERADMIN"]);
   const sp = await searchParams;
 
   const supabase = await createSupabaseServerClient();

@@ -36,6 +36,8 @@ import {
 } from "lucide-react";
 import { logoutAction } from "@/app/auth/logout/actions";
 import { ADMIN_NAV, type NavBadge, type NavGroup } from "@/lib/admin-nav";
+import { filterNavByRole } from "@/lib/admin-rbac";
+import type { AdminRole } from "@lucams/db";
 
 type AdminInfo = {
   email: string;
@@ -250,10 +252,11 @@ function SidebarContent({
         </div>
       </Link>
 
-      {/* Nav */}
+      {/* Nav — filtrado por rol (RBAC). SUPERADMIN ve todo; MANAGER/FULFILLMENT
+          solo lo que les corresponde (lib/admin-rbac). */}
       <nav className="flex-1 px-3 py-4">
         <ul className="flex flex-col gap-0.5">
-          {NAV.map((group) => (
+          {filterNavByRole(NAV, admin.role as AdminRole).map((group) => (
             <NavGroupItem
               key={group.title}
               group={group}
