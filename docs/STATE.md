@@ -40,7 +40,47 @@ checkout, admin UX) en el historial git + bitácora abajo.
 
 ---
 
-## Última sesión — 2026-06-27 (Pulido UX admin "amigable" — feedback de Lucy)
+## Última sesión — 2026-06-27 (Barrido UX/UI integral — 2da tanda de feedback de Lucy)
+
+**Origen:** Lucy dio una 2da tanda de comentarios (productos, opciones, generales) + el
+mandato "recorre TODO el ecosistema UX/UI, no des por hecho, ajusta y certifica". Auditoría
+multi-agente de 6 frentes → `docs/audits/2026-06-27-ux-sweep/`. Decisiones: D1 precio tachado
+por opción = SÍ (migrar); atributos forma/acabado/proporción = quitar del form; nombre opción
+= libre + sugerencia; módulos técnicos = dejar pero simplificar.
+
+**Hechos por commit (7):**
+
+- `a1b87bc` **Globales:** cursor "manito" (1 regla global en globals.css `@layer base`) ·
+  voseo→tuteo (~38 strings, "Diseñá"→"Diseña" etc.) · sin jerga dev en UI ("make seed-…",
+  "/api/coupons/public").
+- `48bfcb5` **Productos:** ordenar por Código (sku) y Categoría además de Producto/Precio
+  (service + whitelist + SortableHeader) · paginación « Primera/Última » + "ir a página N"
+  (form GET con filtros hidden) + clamp de page fuera de rango.
+- `7b10158` **Opciones:** form de edición FUERA de la tabla (era `<tr colSpan>` bajo el
+  thead — el "error de UI" que vio Lucy) · atributos a lenguaje llano (4 campos; forma/
+  acabado/proporción ocultos preservados) · nombre con sugerencia en vivo · precio con "$"+COP.
+- `e2ba896` **Precio tachado por opción (D1):** `ProductVariant.compareAtPrice`
+  (migración 20260627150000, manual + backfill que evita descuento negativo) · form de opción
+  con el campo · PDP usa el tachado de la opción elegida (reactivo) · cards leen
+  `product.compareAtPrice` denormalizado = promo de la opción más barata (syncProductBasePrice).
+- `b4c8063` **Loading (G2):** `<Button loading>` + primitive `<PendingSubmitButton>` ·
+  propagado a "Añadir al carrito" (anti doble-clic), ProductQuickActions, toggle+flechas de
+  categorías. El `<SubmitButton>` queda de patrón para el resto.
+- `6244436` **Módulos:** cupones Tipo en español · finanzas sin jerga de fases · roles con
+  diccionario único (`lib/admin-roles`) — antes el sidebar usaba valores de enum inexistentes.
+
+**Pendiente (backlog de pulido, no bloqueante):** propagar el spinner a los ~50 botones
+restantes (reseñas/usuarios/redirects/ocasiones server-component forms); D4 "simplificar lo
+técnico" en Auditoría/Redirects/Integraciones; pulidos menores (dashboard KPI "Pedidos del
+mes", inventario "↳ misma familia", ocasiones "2/5/10"). Todo con typecheck+build+smoke verde.
+
+**Prueba GUI pendiente (Lucy):** ordenar productos por Código/Categoría + "ir a página";
+editar opción (form solo, precio $, sugerencia de nombre, precio tachado); tienda con promo
+por opción; cursor manito + spinners; cupones/finanzas/roles en español.
+
+---
+
+## Última sesión previa — 2026-06-27 (Pulido UX admin "amigable" — feedback de Lucy)
 
 **Origen:** Lucy dio un batch de ~18 comentarios sobre el panel admin con la premisa "el
 admin es importante PERO debe ser simple y amigable para mí (no soy técnica)", y pidió

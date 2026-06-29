@@ -1375,3 +1375,25 @@ VENNDELO_WEBHOOK_SECRET=
 **Consecuencia:** el admin muestra menos campos (lo técnico colapsado/escondido), el precio es coherente en pesos, las categorías se gestionan visualmente, cada opción puede tener sus fotos. Queda deuda menor: revisar si `compareAtPrice` (promo) debería pasar a nivel opción. **Aviso de infra:** la DB tiene drift preexistente (`rate_limit_buckets` existe en DB pero no en el schema Prisma) → NO usar `prisma db push` (lo dropearía); las migraciones nuevas se aplican a mano con `db execute` + `migrate resolve` mientras el shadow DB de `migrate dev` falle por `pg_trgm`.
 
 **Referencias.** `docs/audits/2026-06-27-admin-ux-feedback/00-PLAN.md` (plan + tabla maestra de los 18 puntos). Commits `b9aa66a`, `d06047e`, `892343b`, `dd638fd`, `0a105ba`, `8b46680`.
+
+---
+
+## ADR-041 — Barrido UX/UI integral del admin (2da tanda feedback Lucy 2026-06-27)
+
+**Fecha:** 2026-06-27
+**Estado:** ✅ Aceptada (alto impacto implementado; backlog de pulido menor documentado)
+
+**Contexto:** 2da tanda de feedback de Lucy (productos, opciones, comentarios generales) con el mandato "recorre TODO el ecosistema UX/UI, no des por hecho, ajusta y certifica". Auditoría multi-agente de 6 frentes en `docs/audits/2026-06-27-ux-sweep/`.
+
+**Decisiones de Lucy:**
+
+- **Precio tachado (promo) por OPCIÓN, no por producto.** Antes `Product.compareAtPrice` se comparaba contra el precio de la opción → descuento podía salir negativo en la tienda. Se movió a `ProductVariant.compareAtPrice` (migración 20260627150000, manual + backfill que solo copia promos válidas). El PDP usa el tachado de la opción elegida; las cards leen `product.compareAtPrice` **denormalizado** = promo de la opción más barata (mantenido por `syncProductBasePrice`). Implementado (commit `e2ba896`).
+- **Atributos de opción: quitar forma/acabado/proporción del form** (Lucy nunca los usa). Se preservan ocultos para no perder datos. Quedan 4 campos en lenguaje llano. Nombre de opción = libre con sugerencia en vivo. Implementado (`7b10158`).
+- **Cursor "manito" global** (1 regla CSS) + **spinner de "procesando"** en botones (foundation `Button.loading` + `<PendingSubmitButton>`, propagado a lo de más tráfico/riesgo). Commits `a1b87bc`, `b4c8063`.
+- **Módulos técnicos (Auditoría/Redirects/Integraciones): dejarlos pero simplificar lo técnico** (no ocultarlos). Pendiente de implementar.
+
+**Bugs/inconsistencias cerrados:** form de edición de opción encajado en la tabla (se sacó fuera); voseo en ~38 strings (es-CO tuteo); jerga de dev visible (`make seed-…`); cupones mostraban enum crudo; roles con diccionarios distintos (uno con valores de enum inexistentes) → `lib/admin-roles` único; productos ordenable solo por 2 columnas + paginación sin saltos.
+
+**Consecuencia:** el admin es más claro y consistente, el precio/promo es coherente por opción, y se evitó un bug de descuento negativo en la tienda. **Backlog (no bloqueante):** propagar el spinner a los ~50 botones restantes (forms server-component); simplificar lo técnico de Auditoría/Redirects/Integraciones; pulidos menores (dashboard/inventario/ocasiones copy).
+
+**Referencias.** `docs/audits/2026-06-27-ux-sweep/00-PLAN.md`. Commits `a1b87bc`, `48bfcb5`, `7b10158`, `e2ba896`, `b4c8063`, `6244436`.
