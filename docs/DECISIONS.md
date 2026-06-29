@@ -1397,3 +1397,31 @@ VENNDELO_WEBHOOK_SECRET=
 **Consecuencia:** el admin es más claro y consistente, el precio/promo es coherente por opción, y se evitó un bug de descuento negativo en la tienda. **Backlog (no bloqueante):** propagar el spinner a los ~50 botones restantes (forms server-component); simplificar lo técnico de Auditoría/Redirects/Integraciones; pulidos menores (dashboard/inventario/ocasiones copy).
 
 **Referencias.** `docs/audits/2026-06-27-ux-sweep/00-PLAN.md`. Commits `a1b87bc`, `48bfcb5`, `7b10158`, `e2ba896`, `b4c8063`, `6244436`.
+
+---
+
+## ADR-042 — Bloque C Seguridad: arranque + decisiones de Lucy (2026-06-27)
+
+**Fecha:** 2026-06-27
+**Estado:** 🔄 En curso (P0 críticos cerrados; MFA/Reseñas/RBAC/tests pendientes)
+
+**Contexto:** Auditoría de seguridad pre-launch (`docs/audits/2026-06-27-security-bloque-c/`). La autenticación de `/admin/*` ya era sólida; los huecos eran RLS incompleta, rate-limit roto, RBAC decorativo, MFA ausente.
+
+**Cerrado y verificado (P0):**
+- **Rate-limit del catálogo roto** (`const allowed = await rateLimit()` sobre un objeto → `!allowed` siempre false → nunca frenaba). Fix en 10 rutas. Verificado: 29×200 → 6×429. Commit `96ea33d`.
+- **RLS deny-by-default** en las 17 tablas públicas sin candado (PII de clientes expuesta vía PostgREST). Migración `00000000000007`, aplicada al dev DB (autorizado por Lucy). La app no se rompe (lee vía Prisma/service_role). Commit `bcdc6c2`.
+- **CI hardening:** `pnpm audit --prod` bloqueante + dependabot + permisos mínimos; `shadcn` (CLI) movido a devDeps (eliminó un high de producción). Commit `0d35c00`.
+
+**Decisiones de Lucy:**
+- **MFA admin (TOTP): SÍ, para su cuenta SUPERADMIN desde el día 1.** Yo construyo la pantalla de enrolamiento (QR + verificar + códigos de recuperación); ella escanea con su app. _Pendiente de implementar._
+- **RLS: autorizó escribir Y aplicar** a la DB de desarrollo. Hecho.
+- **Reseñas: implementar el flujo para el launch** (form + Turnstile + verificación de compra + moderación, que ya existe en admin). _Pendiente._
+- **Registro: dejar el mensaje claro** ("este correo ya tiene cuenta") — mejor UX; el abuso se acota con rate-limit por IP. _Decisión registrada aquí; T9 no se cambia._
+
+**Pendiente del bloque (autónomo):** RBAC por rol (A5), tests RLS + guard anti-reincidencia (R3/R4), MFA (A6), Reseñas (T10), Turnstile en registro/reset/checkout (T2-T4), MIME real + EXIF + rate-limit upload (F1/F2/F6), idle-timeout/logout global/flags cookie (A7-A9), quitar CORS `*` + CSP por nonce (C2/C3).
+
+**ACCIÓN HUMANA REQUERIDA (verificaciones de Lucy):**
+- **Turnstile en producción:** confirmar que `NEXT_PUBLIC_TURNSTILE_SITE_KEY` y `TURNSTILE_SECRET_KEY` están en Vercel prod (si falta el secret, contacto/newsletter se bloquean por diseño fail-closed).
+- **Branch protection en GitHub** (`main`/`develop`): PR obligatorio + reviews + status checks requeridos + no force-push. Si falta, todos los gates de CI son evadibles (P0 efectivo).
+
+**Referencias.** `docs/audits/2026-06-27-security-bloque-c/00-PLAN.md`. Commits `96ea33d`, `bcdc6c2`, `0d35c00`.
