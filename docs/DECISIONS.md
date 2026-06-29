@@ -1418,7 +1418,13 @@ VENNDELO_WEBHOOK_SECRET=
 - **Reseñas: implementar el flujo para el launch** (form + Turnstile + verificación de compra + moderación, que ya existe en admin). _Pendiente._
 - **Registro: dejar el mensaje claro** ("este correo ya tiene cuenta") — mejor UX; el abuso se acota con rate-limit por IP. _Decisión registrada aquí; T9 no se cambia._
 
-**Pendiente del bloque (autónomo):** RBAC por rol (A5), tests RLS + guard anti-reincidencia (R3/R4), MFA (A6), Reseñas (T10), Turnstile en registro/reset/checkout (T2-T4), MIME real + EXIF + rate-limit upload (F1/F2/F6), idle-timeout/logout global/flags cookie (A7-A9), quitar CORS `*` + CSP por nonce (C2/C3).
+**Implementado después (commits del mismo día):**
+- **MFA admin (A6)** `7583d58` — enroll/QR + reto al entrar + candado en layout + break-glass `make admin-mfa-reset`.
+- **Reseñas (T10)** `02a2988` — flujo cliente con verificación de compra + Turnstile + moderación.
+- **Turnstile registro/reset (T2/T3) + MIME real por magic bytes (F1)** `8777e28`.
+- **Guard anti-reincidencia RLS (R4)** `fb2af0e` — test que falla si una tabla pública queda sin candado.
+
+**Pendiente del bloque (backend, no testeable por Lucy / menor / riesgo):** RBAC por rol (A5 — solo aplica al agregar empleados; Lucy es SUPERADMIN = ve todo), Turnstile + rate-limit en checkout (T4), idle-timeout 30min (A7, toca proxy), logout global admin (A8), CSP por nonce (C3, requiere validación visual), rate-limit en upload (F2), matriz completa de tests RLS (R3). **CORS `*` en /api/catalog/* se deja A PROPÓSITO:** son APIs públicas read-only sin credenciales (consumo público intencional, ej. bot futuro) → `*` no es vulnerabilidad ahí.
 
 **ACCIÓN HUMANA REQUERIDA (verificaciones de Lucy):**
 - **Turnstile en producción:** confirmar que `NEXT_PUBLIC_TURNSTILE_SITE_KEY` y `TURNSTILE_SECRET_KEY` están en Vercel prod (si falta el secret, contacto/newsletter se bloquean por diseño fail-closed).
