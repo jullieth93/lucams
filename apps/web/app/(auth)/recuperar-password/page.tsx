@@ -6,6 +6,10 @@ export const metadata: Metadata = {
   description: "Recupera el acceso a tu cuenta Lucams_shop.",
 };
 
+// CSP por nonce (C3) requiere render dinámico: una página estática se prerenderea
+// sin nonce y sus scripts quedarían bloqueados. Forzamos dinámico.
+export const dynamic = "force-dynamic";
+
 export default function RecuperarPasswordPage() {
   return <RecuperarForm />;
 }

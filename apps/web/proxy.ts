@@ -89,19 +89,36 @@ const IS_PROD_DEPLOY =
 const ADMIN_IDLE_LIMIT_MS = 30 * 60 * 1000;
 const ADMIN_ACTIVITY_COOKIE = "admin_last_activity";
 
-const CSP = [
-  "default-src 'self'",
-  "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com https://checkout.wompi.co",
-  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-  "img-src 'self' data: blob: https://*.supabase.co https://*.coordinadora.com",
-  "font-src 'self' https://fonts.gstatic.com",
-  "connect-src 'self' https://*.supabase.co https://api.venndelo.com https://api.anthropic.com https://api.wompi.co",
-  "frame-src 'self' https://challenges.cloudflare.com https://checkout.wompi.co",
-  "form-action 'self' https://checkout.wompi.co",
-  "base-uri 'self'",
-  "object-src 'none'",
-  ...(IS_PROD_DEPLOY ? ["upgrade-insecure-requests"] : []),
-].join("; ");
+// CSP por nonce (C3, Lucy 2026-06-27). script-src usa nonce + strict-dynamic: los
+// scripts de Next llevan el nonce automáticamente y los que ellos cargan
+// (Turnstile vía next/script) se confían por propagación. style-src mantiene
+// 'unsafe-inline' a propósito: los atributos style="" inline NO aceptan nonce
+// (el nonce solo aplica a elementos <style>/<script>) y removerlo rompería toda
+// la UI. 'unsafe-eval' solo en dev (HMR + stacks de React); en prod no se usa.
+// Guía oficial: node_modules/next/.../guides/content-security-policy.md
+function buildCsp(nonce: string): string {
+  // Solo prod/preview usan nonce + strict-dynamic. En dev mantenemos el CSP
+  // permisivo de siempre ('unsafe-inline'/'unsafe-eval') porque el dev server de
+  // Next inyecta scripts de HMR/overlay que con nonce se romperían — y el nonce
+  // se valida de verdad en un deploy prod-like, no en dev. El nonce token solo
+  // aparece en prod, así que en dev Next no encuentra nonce y usa 'unsafe-inline'.
+  const scriptSrc = IS_PROD_DEPLOY
+    ? `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' https://challenges.cloudflare.com https://checkout.wompi.co`
+    : "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com https://checkout.wompi.co";
+  return [
+    "default-src 'self'",
+    scriptSrc,
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+    "img-src 'self' data: blob: https://*.supabase.co https://*.coordinadora.com",
+    "font-src 'self' https://fonts.gstatic.com",
+    "connect-src 'self' https://*.supabase.co https://api.venndelo.com https://api.anthropic.com https://api.wompi.co",
+    "frame-src 'self' https://challenges.cloudflare.com https://checkout.wompi.co",
+    "form-action 'self' https://checkout.wompi.co",
+    "base-uri 'self'",
+    "object-src 'none'",
+    ...(IS_PROD_DEPLOY ? ["upgrade-insecure-requests"] : []),
+  ].join("; ");
+}
 
 const ALLOWED_ORIGINS: (string | RegExp)[] = [
   "https://lucamsshop.co",
@@ -119,6 +136,20 @@ export async function proxy(request: NextRequest) {
   const path = request.nextUrl.pathname;
   const isApi = path.startsWith("/api/");
   const origin = request.headers.get("origin");
+
+  // CSP por nonce (C3): un nonce nuevo por request. Se inyecta en los request
+  // headers (x-nonce + Content-Security-Policy) para que Next lo aplique a sus
+  // scripts durante el SSR, y en el response header para el browser. Helper que
+  // clona los headers ACTUALES del request (incluye cookies ya refrescadas por
+  // Supabase) + agrega el nonce.
+  const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
+  const cspValue = buildCsp(nonce);
+  const nextWithNonce = () => {
+    const headers = new Headers(request.headers);
+    headers.set("x-nonce", nonce);
+    headers.set("content-security-policy", cspValue);
+    return NextResponse.next({ request: { headers } });
+  };
 
   // M.3.b.CAT.8 — Redirects 301 de slugs legacy (productos archivados al
   // consolidar familias) hacia el producto base + variant pre-seleccionado.
@@ -177,7 +208,7 @@ export async function proxy(request: NextRequest) {
     });
   }
 
-  let response = NextResponse.next({ request });
+  let response = nextWithNonce();
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -191,7 +222,7 @@ export async function proxy(request: NextRequest) {
           for (const { name, value } of cookiesToSet) {
             request.cookies.set(name, value);
           }
-          response = NextResponse.next({ request });
+          response = nextWithNonce();
           for (const { name, value, options } of cookiesToSet) {
             response.cookies.set(name, value, options);
           }
@@ -246,7 +277,7 @@ export async function proxy(request: NextRequest) {
   for (const [k, v] of Object.entries(SECURITY_HEADERS)) {
     response.headers.set(k, v);
   }
-  response.headers.set("Content-Security-Policy", CSP);
+  response.headers.set("Content-Security-Policy", cspValue);
 
   if (isApi && origin && isOriginAllowed(origin)) {
     response.headers.set("Access-Control-Allow-Origin", origin);

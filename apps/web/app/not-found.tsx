@@ -15,6 +15,9 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
+// CSP por nonce (C3) requiere render dinámico (ver recuperar-password).
+export const dynamic = "force-dynamic";
+
 export default function NotFound() {
   return (
     <div className="bg-brand-cream flex min-h-screen flex-col items-center justify-center px-6 py-16 text-center">

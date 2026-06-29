@@ -13,6 +13,7 @@
  */
 
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ChevronRight, MessageCircle, Sparkles } from "lucide-react";
@@ -145,10 +146,15 @@ export default async function ProductoDetallePage({
     },
   };
 
+  // CSP por nonce (C3): el JSON-LD es un bloque de datos (exento de script-src),
+  // pero le pasamos el nonce por robustez ante navegadores estrictos.
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
+
   return (
     <div className="bg-brand-cream flex min-h-screen flex-col">
       <script
         type="application/ld+json"
+        nonce={nonce}
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
       <SiteHeader />
