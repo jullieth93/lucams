@@ -1,7 +1,30 @@
 "use client";
 
-import { Power, RotateCcw } from "lucide-react";
+import type { ReactNode } from "react";
+import { useFormStatus } from "react-dom";
+import { Power, RotateCcw, Loader2 } from "lucide-react";
 import { restoreProductAction, toggleProductActiveAction } from "./actions";
+
+/** Botón submit que muestra spinner + se deshabilita mientras procesa. */
+function ActionButton({
+  className,
+  title,
+  icon,
+  label,
+}: {
+  className: string;
+  title: string;
+  icon: ReactNode;
+  label: string;
+}) {
+  const { pending } = useFormStatus();
+  return (
+    <button type="submit" disabled={pending} className={`${className} disabled:opacity-60`} title={title}>
+      {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : icon}
+      {label}
+    </button>
+  );
+}
 
 /**
  * Botones rápidos por fila: toggle activar/desactivar (si no archivado) +
@@ -24,14 +47,12 @@ export function ProductQuickActions({
     return (
       <form action={restoreProductAction} className="inline">
         <input type="hidden" name="id" value={productId} />
-        <button
-          type="submit"
+        <ActionButton
           className="inline-flex h-9 items-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-3 text-xs font-semibold text-amber-900 hover:bg-amber-100"
           title="Restaurar de la papelera (queda pausado)"
-        >
-          <RotateCcw className="h-3.5 w-3.5" />
-          Restaurar
-        </button>
+          icon={<RotateCcw className="h-3.5 w-3.5" />}
+          label="Restaurar"
+        />
       </form>
     );
   }
@@ -40,18 +61,16 @@ export function ProductQuickActions({
     <form action={toggleProductActiveAction} className="inline">
       <input type="hidden" name="id" value={productId} />
       <input type="hidden" name="isActive" value={isActive ? "false" : "true"} />
-      <button
-        type="submit"
+      <ActionButton
         className={
           isActive
             ? "inline-flex h-9 items-center gap-1.5 rounded-md border border-brand-purple/20 bg-white px-3 text-xs font-semibold text-brand-purple-dark/80 hover:bg-brand-purple/5"
             : "inline-flex h-9 items-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50 px-3 text-xs font-semibold text-emerald-900 hover:bg-emerald-100"
         }
         title={isActive ? "Ocultar de tu tienda" : "Mostrar en tu tienda"}
-      >
-        <Power className="h-3.5 w-3.5" />
-        {isActive ? "Pausar" : "Activar"}
-      </button>
+        icon={<Power className="h-3.5 w-3.5" />}
+        label={isActive ? "Pausar" : "Activar"}
+      />
     </form>
   );
 }

@@ -18,7 +18,7 @@ import { notFound } from "next/navigation";
 import { ChevronRight, MessageCircle, Sparkles } from "lucide-react";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
-import { Button } from "@/components/ui/button";
+import { SubmitButton } from "@/components/admin/submit-button";
 import { ProductGallery } from "@/components/product-detail/product-gallery";
 import { RelatedProducts } from "@/components/product-detail/related-products";
 import { TemplatesStrip } from "@/components/product-detail/templates-strip";
@@ -235,13 +235,14 @@ export default async function ProductoDetallePage({
                     <input type="hidden" name="slug" value={product.slug} />
                     <input type="hidden" name="qty" value={1} />
                     <input type="hidden" name="returnTo" value={`/producto/${product.slug}`} />
-                    <Button
-                      type="submit"
-                      className="bg-brand-purple hover:bg-brand-purple-dark w-full text-white"
+                    {/* SubmitButton: spinner + disabled al enviar → evita doble-clic
+                        (compra duplicada). Lucy 2026-06-27. */}
+                    <SubmitButton
+                      label="Añadir al carrito"
+                      pendingLabel="Añadiendo…"
                       size="lg"
-                    >
-                      Añadir al carrito
-                    </Button>
+                      className="bg-brand-purple hover:bg-brand-purple-dark w-full text-white"
+                    />
                   </form>
                 )}
                 {waHref && (

@@ -30,6 +30,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ConfirmAction } from "@/components/admin/confirm-action";
+import { PendingSubmitButton } from "@/components/admin/pending-submit-button";
 import { listCategories, listParentCategoryOptions } from "@/features/categories/service";
 import { getCurrentAdmin } from "@/lib/auth";
 import { CategoryForm } from "./category-form";
@@ -313,9 +314,9 @@ export default async function AdminCategoriasPage({
                       <form action={toggleCategoryActiveAction} className="inline">
                         <input type="hidden" name="id" value={c.id} />
                         <input type="hidden" name="next" value={c.isActive ? "false" : "true"} />
-                        <button
-                          type="submit"
-                          className={`inline-flex cursor-pointer items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium transition-all hover:shadow-sm ${
+                        <PendingSubmitButton
+                          spinnerClass="h-3 w-3"
+                          className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium transition-all hover:shadow-sm ${
                             c.isActive
                               ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 hover:bg-emerald-100"
                               : "bg-slate-100 text-slate-600 ring-1 ring-slate-200 hover:bg-slate-200"
@@ -325,13 +326,15 @@ export default async function AdminCategoriasPage({
                               ? "Clic para pausar (ocultar de tu tienda)"
                               : "Clic para activar (mostrar en tu tienda)"
                           }
+                          idleIcon={
+                            <span
+                              className={`h-1.5 w-1.5 rounded-full ${c.isActive ? "bg-emerald-500" : "bg-slate-400"}`}
+                              aria-hidden
+                            />
+                          }
                         >
-                          <span
-                            className={`h-1.5 w-1.5 rounded-full ${c.isActive ? "bg-emerald-500" : "bg-slate-400"}`}
-                            aria-hidden
-                          />
                           {c.isActive ? "Activa" : "Inactiva"}
-                        </button>
+                        </PendingSubmitButton>
                       </form>
                     )}
                   </td>
@@ -421,19 +424,31 @@ function ReorderButton({
   disabled: boolean;
 }) {
   const Icon = direction === "up" ? ArrowUp : ArrowDown;
+  const cls =
+    "text-brand-purple-dark/60 hover:bg-brand-purple/10 hover:text-brand-purple-dark inline-flex h-7 w-7 items-center justify-center rounded-md disabled:cursor-not-allowed disabled:opacity-25";
+  // En el borde (no se puede mover más), botón inerte deshabilitado.
+  if (disabled) {
+    return (
+      <button
+        type="button"
+        disabled
+        aria-label={direction === "up" ? "Subir" : "Bajar"}
+        className={cls}
+      >
+        <Icon className="h-3.5 w-3.5" />
+      </button>
+    );
+  }
   return (
     <form action={moveCategoryAction} className="inline">
       <input type="hidden" name="id" value={id} />
       <input type="hidden" name="direction" value={direction} />
-      <button
-        type="submit"
-        disabled={disabled}
-        aria-label={direction === "up" ? "Subir" : "Bajar"}
+      <PendingSubmitButton
+        ariaLabel={direction === "up" ? "Subir" : "Bajar"}
         title={direction === "up" ? "Subir en el orden" : "Bajar en el orden"}
-        className="text-brand-purple-dark/60 hover:bg-brand-purple/10 hover:text-brand-purple-dark inline-flex h-7 w-7 items-center justify-center rounded-md disabled:cursor-not-allowed disabled:opacity-25"
-      >
-        <Icon className="h-3.5 w-3.5" />
-      </button>
+        className={cls}
+        idleIcon={<Icon className="h-3.5 w-3.5" />}
+      />
     </form>
   );
 }
