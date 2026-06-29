@@ -125,7 +125,7 @@ export function ContactForm() {
           minLength={10}
           maxLength={4000}
           rows={6}
-          placeholder="Contanos en qué te podemos ayudar..."
+          placeholder="Cuéntanos en qué te podemos ayudar..."
           className="border-brand-purple/20 focus-visible:ring-brand-purple/30 resize-y"
         />
         {state?.fieldErrors?.message && (

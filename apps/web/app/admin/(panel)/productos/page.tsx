@@ -76,7 +76,7 @@ export default async function AdminProductosPage({ searchParams }: { searchParam
   const hasActiveFilters = !!q || status !== "all" || sort !== "recent";
 
   // Hotfix P1-15: si el filtro es "archivados", los checkboxes de bulk no
-  // tienen sentido (no podés bulk-modificar archivados). Ocultamos la columna
+  // tienen sentido (no puedes bulk-modificar archivados). Ocultamos la columna
   // entera para evitar el margen fantasma.
   const showBulkColumn = status !== "archived";
 
@@ -213,7 +213,7 @@ export default async function AdminProductosPage({ searchParams }: { searchParam
             description={
               hasActiveFilters
                 ? "Prueba con otro término o cambia los filtros."
-                : "Crea el primero o usa make seed-products para poblar el catálogo demo."
+                : "Crea tu primer producto con el botón de arriba."
             }
             action={
               !hasActiveFilters && (

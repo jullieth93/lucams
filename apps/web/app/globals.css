@@ -187,6 +187,26 @@
   * {
     border-color: var(--border);
   }
+
+  /* Cursor de "manito" en todo lo clicable (Lucy 2026-06-27): los browsers
+   * ponen `cursor: default` en <button> y Tailwind v4 Preflight no lo cambia,
+   * así que la mayoría de los botones no mostraban affordance. Una sola regla
+   * global lo arregla en TODO el panel y la tienda — sin tocar 100 sitios.
+   * Va dentro de @layer base para no ganarle a las utilities. */
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  label[for],
+  summary,
+  select:not(:disabled),
+  a[href] {
+    cursor: pointer;
+  }
+
+  button:disabled,
+  [role="button"][aria-disabled="true"],
+  [aria-disabled="true"] {
+    cursor: not-allowed;
+  }
 }
 
 body {

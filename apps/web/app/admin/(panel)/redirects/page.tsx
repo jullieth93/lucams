@@ -229,7 +229,7 @@ export default async function AdminRedirectsPage({ searchParams }: { searchParam
             title={hasActiveFilters ? "Sin resultados" : "No hay redirects todavía"}
             description={
               hasActiveFilters
-                ? "Probá quitar algún filtro."
+                ? "Prueba quitar algún filtro."
                 : "Usá el form de arriba para crear el primero."
             }
           />

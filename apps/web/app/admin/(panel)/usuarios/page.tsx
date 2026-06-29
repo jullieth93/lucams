@@ -281,7 +281,7 @@ export default async function AdminUsuariosPage({ searchParams }: { searchParams
             title={hasActiveFilters ? "Sin resultados" : "No hay admins"}
             description={
               hasActiveFilters
-                ? "Probá quitar algún filtro."
+                ? "Prueba quitar algún filtro."
                 : "Usa el form de arriba para promover el primer admin."
             }
           />

@@ -224,7 +224,7 @@ export default async function ProductoDetallePage({
                       Personalizar tu imán →
                     </Link>
                     <p className="text-brand-purple-dark/60 text-center text-xs">
-                      Diseñá en vivo • Vista previa al instante
+                      Diseña en vivo • Vista previa al instante
                     </p>
                   </>
                 ) : (

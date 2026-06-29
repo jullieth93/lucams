@@ -50,7 +50,7 @@ export async function setVariantStockAction(
 ): Promise<StockActionState> {
   const session = await getCurrentAdmin();
   if (!session) {
-    return { error: "Sesión expirada. Volvé a iniciar sesión." };
+    return { error: "Sesión expirada. Vuelve a iniciar sesión." };
   }
 
   // Parse + Zod validation
@@ -124,6 +124,6 @@ export async function setVariantStockAction(
       err: err instanceof Error ? err.message : String(err),
       variantId: parsed.data.variantId,
     });
-    return { error: "Algo salió mal al actualizar el stock. Probá de nuevo." };
+    return { error: "Algo salió mal al actualizar el stock. Prueba de nuevo." };
   }
 }

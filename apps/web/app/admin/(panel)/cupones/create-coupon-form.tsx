@@ -190,7 +190,7 @@ export function CreateCouponForm() {
         <label className="flex items-center gap-2 text-sm">
           <input type="checkbox" name="isPublic" className="h-4 w-4 rounded border-slate-300" />
           <span className="text-slate-700">
-            Público (visible en /api/coupons/public y bot WhatsApp)
+            Público (se puede mostrar abiertamente, ej. en una promoción o el bot de WhatsApp)
           </span>
         </label>
       </div>

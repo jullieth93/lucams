@@ -160,7 +160,7 @@ export default async function CustomerPedidoDetallePage({
                 Este pedido fue {order.status === "REFUNDED" ? "reembolsado" : "cancelado"}.
               </p>
               <p className="mt-1 text-xs text-rose-800">
-                Si tenés dudas, escribinos por WhatsApp o respondé el email que te enviamos.
+                Si tienes dudas, escribinos por WhatsApp o respondé el email que te enviamos.
               </p>
             </div>
           )}

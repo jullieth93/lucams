@@ -78,7 +78,7 @@ export function StudioPreviewModal({
               Cada imán mide <strong>{sizeCm}</strong>.
             </>
           )}{" "}
-          Revisalos antes de continuar.
+          Revísalos antes de continuar.
         </DialogDescription>
 
         {/* Preview compositado del grid */}

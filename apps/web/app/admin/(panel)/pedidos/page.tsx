@@ -245,7 +245,7 @@ export default async function AdminPedidosPage({ searchParams }: { searchParams:
             title={hasActiveFilters ? "Sin resultados" : "Aún no hay pedidos"}
             description={
               hasActiveFilters
-                ? "Probá quitar algún filtro o cambiar el texto de búsqueda."
+                ? "Prueba quitar algún filtro o cambiar el texto de búsqueda."
                 : "Cuando el primer cliente complete checkout, aparecerá acá."
             }
           />

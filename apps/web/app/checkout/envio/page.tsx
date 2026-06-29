@@ -65,7 +65,7 @@ export default async function CheckoutEnvioPage() {
               <section className="border-brand-purple/10 rounded-2xl border bg-white p-5 shadow-sm sm:p-6">
                 <h2 className="text-brand-purple-dark font-display mb-1 flex items-center gap-2 text-lg font-bold">
                   <Truck className="h-5 w-5" />
-                  Elegí cómo te lo enviamos
+                  Elige cómo te lo enviamos
                 </h2>
                 <p className="text-brand-purple-dark/65 mb-5 text-sm">
                   Cotizamos con Aveonline para{" "}

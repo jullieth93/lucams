@@ -1,5 +1,5 @@
 /*
- * <CartCrossSell /> — Widget "Completá tu regalo con..."
+ * <CartCrossSell /> — Widget "Completa tu regalo con..."
  *
  * PLAN_CATALOG_V2 decisión 6.3.
  * Algoritmo:
@@ -78,7 +78,7 @@ export async function CartCrossSell({ productSlugsInCart }: { productSlugsInCart
     <section className="mt-8">
       <div className="mb-4 flex items-baseline justify-between">
         <h2 className="text-brand-purple-dark text-lg font-bold">
-          Completá tu regalo de {suggestion.ocasionName.toLowerCase()}
+          Completa tu regalo de {suggestion.ocasionName.toLowerCase()}
         </h2>
         <Link
           href={`/ocasion/${suggestion.products[0].ocasionSlugs[0] ?? "matrimonio"}`}

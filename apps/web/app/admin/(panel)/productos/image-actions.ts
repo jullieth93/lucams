@@ -43,7 +43,7 @@ export async function uploadProductImagesAction(formData: FormData): Promise<Act
 
   if (product.images.length + files.length > MAX_IMAGES_PER_PRODUCT) {
     return {
-      error: `Máximo ${MAX_IMAGES_PER_PRODUCT} imágenes por producto. Borrá algunas primero.`,
+      error: `Máximo ${MAX_IMAGES_PER_PRODUCT} imágenes por producto. Borra algunas primero.`,
     };
   }
 

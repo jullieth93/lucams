@@ -86,7 +86,7 @@ export function StudioPhotoAdjustModal({
         </DialogTitle>
         <DialogDescription className="text-brand-purple-dark/60 text-sm">
           Arrastra la foto en el canvas para encuadrar · Scroll del mouse (o pellizco) para zoom ·
-          Elegí un filtro abajo
+          Elige un filtro abajo
         </DialogDescription>
 
         {/* Reset transform — vuelve scale=1 + offset=0 */}

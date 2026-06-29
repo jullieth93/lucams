@@ -51,7 +51,7 @@ export const metadata: Metadata = {
     siteName: "Lucams_shop",
     title: "Lucams_shop — Tus recuerdos en imán",
     description:
-      "Imanes magnéticos personalizados hechos en Colombia. Diseñá el tuyo en vivo o elegí entre nuestros packs kawaii.",
+      "Imanes magnéticos personalizados hechos en Colombia. Diseña el tuyo en vivo o elegí entre nuestros packs kawaii.",
     images: [
       {
         url: "/og-image.png",

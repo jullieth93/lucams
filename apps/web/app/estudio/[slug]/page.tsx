@@ -33,7 +33,7 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
   if (!product) return { title: "Producto no encontrado" };
   return {
     title: `Personalizar — ${product.name}`,
-    description: `Diseñá tu ${product.name.toLowerCase()} en vivo. Estudio de personalización Lucams.`,
+    description: `Diseña tu ${product.name.toLowerCase()} en vivo. Estudio de personalización Lucams.`,
     robots: { index: false, follow: false },
   };
 }

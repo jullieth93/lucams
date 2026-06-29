@@ -338,7 +338,7 @@ export function DatosForm({ initial }: { initial: CheckoutState }) {
           {/* Documento (opcional) */}
           <div>
             <Label className="text-brand-purple-dark mb-1 block text-xs font-semibold">
-              Documento (opcional, requerido si querés factura)
+              Documento (opcional, requerido si quieres factura)
             </Label>
             <div className="grid grid-cols-3 gap-2">
               <select
@@ -360,7 +360,7 @@ export function DatosForm({ initial }: { initial: CheckoutState }) {
                 value={docNumber}
                 onChange={(e) => setDocNumber(e.target.value)}
                 disabled={!docType}
-                placeholder={docType ? "1234567890" : "Elegí tipo primero"}
+                placeholder={docType ? "1234567890" : "Elige tipo primero"}
                 className="border-brand-purple/20 focus-visible:ring-brand-purple/30 col-span-2"
               />
             </div>
@@ -400,7 +400,7 @@ export function DatosForm({ initial }: { initial: CheckoutState }) {
               onChange={(e) => handleDeptChange(e.target.value)}
               className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 h-9 w-full rounded-md border bg-white px-2 text-sm focus:ring-2 focus:outline-none"
             >
-              <option value="">Elegí departamento...</option>
+              <option value="">Elige departamento...</option>
               {DEPARTMENTS.map((d) => (
                 <option key={d.code} value={d.code}>
                   {d.name}
@@ -428,7 +428,7 @@ export function DatosForm({ initial }: { initial: CheckoutState }) {
               disabled={!deptCode}
               className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 h-9 w-full rounded-md border bg-white px-2 text-sm focus:ring-2 focus:outline-none disabled:bg-slate-50 disabled:text-slate-400"
             >
-              <option value="">{deptCode ? "Elegí ciudad..." : "Primero elegí depto"}</option>
+              <option value="">{deptCode ? "Elige ciudad..." : "Primero elegí depto"}</option>
               {cities.map((c) => (
                 <option key={c.code} value={c.code}>
                   {c.name}
@@ -759,7 +759,7 @@ export function DatosForm({ initial }: { initial: CheckoutState }) {
           3. Facturación electrónica
         </h2>
         <p className="text-brand-purple-dark/65 mb-4 text-sm">
-          Si necesitás factura DIAN, marcá la casilla. Si es compra personal, dejala sin marcar.
+          Si necesitas factura DIAN, marcá la casilla. Si es compra personal, dejala sin marcar.
         </p>
 
         <label className="text-brand-purple-dark inline-flex items-center gap-2 text-sm font-medium">

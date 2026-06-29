@@ -127,7 +127,7 @@ export default async function AdminFinanzasPage() {
         {totalRefunded > 0 && (
           <AdminNotice tone="warning">
             Hay {totalRefunded} pedido{totalRefunded === 1 ? "" : "s"} reembolsado
-            {totalRefunded === 1 ? "" : "s"}. Revisalo
+            {totalRefunded === 1 ? "" : "s"}. Revísalo
             {totalRefunded === 1 ? "" : "s"} en{" "}
             <Link href="/admin/pedidos" className="underline">
               /admin/pedidos

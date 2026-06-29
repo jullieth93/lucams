@@ -166,7 +166,7 @@ export default async function AdminClientesPage({ searchParams }: { searchParams
             title={hasActiveFilters ? "Sin resultados" : "Aún no hay clientes registrados"}
             description={
               hasActiveFilters
-                ? "Probá quitar algún filtro o cambiar el texto de búsqueda."
+                ? "Prueba quitar algún filtro o cambiar el texto de búsqueda."
                 : "Cuando el primer cliente se registre, aparecerá acá."
             }
           />

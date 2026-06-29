@@ -263,7 +263,7 @@ export default async function AdminResenasPage({ searchParams }: { searchParams:
             }
             description={
               hasActiveFilters
-                ? "Probá quitar algún filtro o cambiar el texto de búsqueda."
+                ? "Prueba quitar algún filtro o cambiar el texto de búsqueda."
                 : status === "pending"
                   ? "Cuando un cliente envíe una reseña aparecerá acá para moderar."
                   : "Las reseñas que apruebes aparecerán en este listado."

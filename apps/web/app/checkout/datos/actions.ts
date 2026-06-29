@@ -29,7 +29,7 @@ export async function saveDatosAction(
   const contactParsed = ContactSchema.safeParse(contactRaw);
   if (!contactParsed.success) {
     return {
-      error: "Revisá los datos de contacto",
+      error: "Revisa los datos de contacto",
       fieldErrors: z.flattenError(contactParsed.error).fieldErrors as Record<string, string[]>,
     };
   }
@@ -85,7 +85,7 @@ export async function saveDatosAction(
   const addressParsed = AddressSchema.safeParse(addressRaw);
   if (!addressParsed.success) {
     return {
-      error: "Revisá la dirección de envío",
+      error: "Revisa la dirección de envío",
       fieldErrors: z.flattenError(addressParsed.error).fieldErrors as Record<string, string[]>,
     };
   }
@@ -105,7 +105,7 @@ export async function saveDatosAction(
   const billingParsed = BillingSchema.safeParse(billingRaw);
   if (!billingParsed.success) {
     return {
-      error: "Si querés factura electrónica, completá los datos de facturación",
+      error: "Si quieres factura electrónica, completá los datos de facturación",
       fieldErrors: z.flattenError(billingParsed.error).fieldErrors as Record<string, string[]>,
     };
   }

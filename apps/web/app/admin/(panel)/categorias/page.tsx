@@ -226,7 +226,7 @@ export default async function AdminCategoriasPage({
             title={hasActiveFilters ? "Sin resultados" : "Todavía no hay categorías"}
             description={
               hasActiveFilters
-                ? "Probá quitar algún filtro o cambiar el texto de búsqueda."
+                ? "Prueba quitar algún filtro o cambiar el texto de búsqueda."
                 : "Crea la primera abajo para empezar a categorizar productos."
             }
           />

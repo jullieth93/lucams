@@ -194,8 +194,8 @@ export default async function AdminOcasionesPage({ searchParams }: { searchParam
             title={hasActiveFilters ? "Sin resultados" : "Todavía no hay ocasiones"}
             description={
               hasActiveFilters
-                ? "Probá quitar algún filtro o cambiar el texto."
-                : "Corre make seed-ocasiones para poblar las 15 ocasiones base, o crea la primera abajo."
+                ? "Prueba quitar algún filtro o cambiar el texto."
+                : "Crea tu primera ocasión con el formulario de abajo."
             }
           />
         ) : (
