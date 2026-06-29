@@ -87,6 +87,14 @@ export default async function AdminCuponesPage({ searchParams }: { searchParams:
     return formatCOP(c.value);
   }
 
+  // Tipo en español llano (Lucy 2026-06-27) — antes mostraba el enum crudo.
+  function typeLabel(t: string) {
+    if (t === "PERCENT") return "Porcentaje";
+    if (t === "FIXED") return "Monto fijo";
+    if (t === "FREE_SHIPPING") return "Envío gratis";
+    return t;
+  }
+
   return (
     <AdminPage>
       <AdminPageHeader
@@ -261,7 +269,9 @@ export default async function AdminCuponesPage({ searchParams }: { searchParams:
                         </span>
                       )}
                     </td>
-                    <td className="text-brand-purple-dark/85 px-4 py-3 text-sm">{c.type}</td>
+                    <td className="text-brand-purple-dark/85 px-4 py-3 text-sm">
+                      {typeLabel(c.type)}
+                    </td>
                     <td className="text-brand-purple-dark px-4 py-3 text-sm font-semibold">
                       {formatValue(c)}
                     </td>

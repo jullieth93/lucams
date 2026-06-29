@@ -78,7 +78,7 @@ export default async function AdminFinanzasPage() {
         subtitle={
           hasRealData
             ? `${totalPaidOrders} pedido${totalPaidOrders === 1 ? "" : "s"} confirmado${totalPaidOrders === 1 ? "" : "s"}`
-            : "Sin datos todavía — esperando Fase 2 (Checkout)"
+            : "Aún sin ventas registradas"
         }
         breadcrumbs={[{ label: "Admin", href: "/admin/dashboard" }, { label: "Finanzas" }]}
       />
@@ -86,10 +86,9 @@ export default async function AdminFinanzasPage() {
       <AdminPageBody>
         {!hasRealData && (
           <AdminNotice tone="info">
-            <strong>Este dashboard está esperando datos.</strong> Las métricas reales se llenan
-            automáticamente cuando se cable el checkout productivo (Fase 2 — Wompi + Aveonline).
-            Mientras tanto, te muestro el marco preparado para que sepas qué vas a ver acá. Si
-            quieres acelerar Fase 2, avísame.
+            <strong>Este panel está esperando ventas.</strong> Las métricas reales se llenan solas
+            apenas empieces a vender. Mientras tanto, te muestro cómo se verá para que sepas qué vas
+            a encontrar aquí.
           </AdminNotice>
         )}
 
@@ -99,7 +98,7 @@ export default async function AdminFinanzasPage() {
             icon={<TrendingUp className="h-5 w-5" />}
             label="Ingresos totales"
             value={hasRealData ? formatCOP(totalRevenue) : "—"}
-            hint={hasRealData ? "Suma de pedidos pagados" : "Disponible con Fase 2"}
+            hint={hasRealData ? "Suma de pedidos pagados" : "Disponible cuando haya ventas"}
             highlight={hasRealData}
           />
           <Kpi
@@ -114,7 +113,7 @@ export default async function AdminFinanzasPage() {
             icon={<CreditCard className="h-5 w-5" />}
             label="Este mes"
             value={hasRealData ? ordersThisMonth.toLocaleString("es-CO") : "0"}
-            hint={hasRealData ? "Pedidos confirmados del mes corriente" : "Disponible con Fase 2"}
+            hint={hasRealData ? "Pedidos confirmados del mes corriente" : "Disponible cuando haya ventas"}
           />
           <Kpi
             icon={<FileText className="h-5 w-5" />}
@@ -139,44 +138,44 @@ export default async function AdminFinanzasPage() {
         {/* Bloques previstos */}
         <section>
           <h2 className="text-brand-purple-dark font-display mb-3 text-base font-bold">
-            Qué verás acá cuando Fase 2 esté cerrada
+            Qué verás aquí próximamente
           </h2>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <BlocoFuturo
               icon={<TrendingUp className="h-5 w-5" />}
               title="Ingresos por período"
               description="Gráfico de ventas día/semana/mes/año con comparativo vs período anterior. Detección automática de picos y caídas."
-              phase="Fase 2 + Q.6"
+              phase="Próximamente"
             />
             <BlocoFuturo
               icon={<CreditCard className="h-5 w-5" />}
               title="Breakdown por método de pago"
               description="Cuánto entra por tarjeta vs PSE vs Nequi vs contraentrega. Útil para negociar comisiones con Wompi."
-              phase="Fase 2 (Wompi)"
+              phase="Próximamente"
             />
             <BlocoFuturo
               icon={<Receipt className="h-5 w-5" />}
               title="IVA cobrado vs pagado"
               description="Total IVA cobrado al cliente + IVA a pagar a DIAN. Listo para tu contador."
-              phase="Fase 2 + W (DIAN)"
+              phase="Próximamente"
             />
             <BlocoFuturo
               icon={<FileText className="h-5 w-5" />}
               title="Facturación electrónica DIAN"
               description="Estado por orden (PENDIENTE / ENVIADA / ACEPTADA / RECHAZADA), descarga XML/PDF, reintentos."
-              phase="W (Compliance)"
+              phase="Próximamente"
             />
             <BlocoFuturo
               icon={<DollarSign className="h-5 w-5" />}
               title="Conciliación Wompi"
               description="Job diario que compara transacciones Wompi vs Orders en DB. Reporta discrepancias."
-              phase="N.5 (Wompi reconcile)"
+              phase="Próximamente"
             />
             <BlocoFuturo
               icon={<TrendingUp className="h-5 w-5" />}
               title="Ticket promedio y AOV"
               description="Promedio de pedido (Average Order Value), productos con mejor margen, ranking categorías."
-              phase="Q.6 (Reportes)"
+              phase="Próximamente"
             />
           </div>
         </section>
@@ -186,7 +185,7 @@ export default async function AdminFinanzasPage() {
             ¿Mientras tanto, qué puedo hacer?
           </h3>
           <p className="text-brand-purple-dark/75 mb-3 text-sm">
-            Pre-Fase 2 puedes operar manualmente:
+            Mientras tanto, puedes ir dejando todo listo:
           </p>
           <ul className="text-brand-purple-dark/75 list-inside list-disc space-y-1.5 text-sm">
             <li>

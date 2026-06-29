@@ -22,6 +22,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { adminRoleLabel } from "@/lib/admin-roles";
 import { usePathname } from "next/navigation";
 import {
   LogOut,
@@ -49,13 +50,8 @@ const NAV = ADMIN_NAV;
 type Badge = NavBadge;
 
 // ─────────────────── Role badges (sidebar footer) ───────────────────
-
-const ROLE_LABEL: Record<string, string> = {
-  SUPERADMIN: "Administradora",
-  ADMIN: "Administradora",
-  EDITOR: "Editor",
-  OPERATOR: "Gestor",
-};
+// Diccionario único compartido (lib/admin-roles) — antes el sidebar usaba
+// valores de enum inexistentes y no coincidía con /admin/usuarios.
 
 // ─────────────────── Shell ───────────────────
 
@@ -278,7 +274,7 @@ function SidebarContent({
 
 function UserFooter({ admin, onNavigate }: { admin: AdminInfo; onNavigate: () => void }) {
   const [open, setOpen] = useState(false);
-  const roleLabel = ROLE_LABEL[admin.role] ?? admin.role;
+  const roleLabel = adminRoleLabel(admin.role);
   const initial = admin.email[0].toUpperCase();
 
   return (

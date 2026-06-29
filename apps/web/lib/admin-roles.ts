@@ -1,0 +1,17 @@
+/**
+ * Diccionario ÚNICO de etiquetas de roles admin en español (Lucy 2026-06-27).
+ *
+ * Antes el sidebar y /admin/usuarios tenían diccionarios distintos y hasta con
+ * valores de enum inexistentes (ADMIN/EDITOR/OPERATOR), así que el mismo rol se
+ * veía con nombres diferentes según la pantalla. El enum real es
+ * SUPERADMIN | MANAGER | FULFILLMENT (ver prisma `enum AdminRole`).
+ */
+export const ADMIN_ROLE_LABEL: Record<string, string> = {
+  SUPERADMIN: "Administradora",
+  MANAGER: "Gestora",
+  FULFILLMENT: "Despachos",
+};
+
+export function adminRoleLabel(role: string): string {
+  return ADMIN_ROLE_LABEL[role] ?? role;
+}

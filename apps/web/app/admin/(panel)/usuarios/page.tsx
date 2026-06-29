@@ -32,6 +32,7 @@ import { ConfirmAction } from "@/components/admin/confirm-action";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { getCurrentAdmin } from "@/lib/auth";
+import { ADMIN_ROLE_LABEL } from "@/lib/admin-roles";
 import { listAdminUsers } from "@/features/admin-users/service";
 import { changeAdminRoleAction, toggleAdminActiveAction } from "./actions";
 import { PromoteForm } from "./promote-form";
@@ -60,11 +61,8 @@ const ROLE_TONE: Record<string, "purple" | "blue" | "amber"> = {
   MANAGER: "blue",
   FULFILLMENT: "amber",
 };
-const ROLE_LABEL: Record<string, string> = {
-  SUPERADMIN: "Superadmin",
-  MANAGER: "Manager",
-  FULFILLMENT: "Fulfillment",
-};
+// Diccionario único compartido (lib/admin-roles) — consistente con el sidebar.
+const ROLE_LABEL = ADMIN_ROLE_LABEL;
 
 export default async function AdminUsuariosPage({ searchParams }: { searchParams: SearchParams }) {
   const session = await getCurrentAdmin();
