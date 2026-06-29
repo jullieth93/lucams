@@ -17,6 +17,8 @@
 import { getCurrentCustomer } from "@/lib/auth";
 import { getOrCreateCartSession, peekCartSession } from "@/lib/cart-session";
 import { logger } from "@/lib/logger";
+import { rateLimit } from "@/lib/rate-limit";
+import { ownerKey } from "@/lib/rate-limit-keys";
 import { uploadCustomerPhoto } from "@/lib/storage";
 import { prisma } from "@/lib/db";
 import { CreateDraftDesignSchema, SaveCanvasSchema, UploadAssetMetadataSchema } from "./schemas";
@@ -233,6 +235,19 @@ export async function uploadDesignAssetAction(formData: FormData) {
   // sessionId garantizado: si no hay aún, lo creamos (anon sube → necesita cookie).
   const sessionId = anonSession ?? (await getOrCreateCartSession());
   const ownerId = customerId ?? sessionId;
+
+  // F2 — rate-limit de subida por dueño (sesión/cliente): el estudio es público,
+  // así que limitamos el flood de storage por bots. Generoso para un diseño real.
+  const isProd = process.env.VERCEL_ENV === "production";
+  const rl = await rateLimit(ownerKey("upload_design_asset", ownerId), isProd ? 30 : 200, 600);
+  if (!rl.allowed) {
+    logger.warn({ event: "design.asset.upload.rate_limited", ownerId, count: rl.count });
+    return {
+      ok: false as const,
+      code: "RATE_LIMIT" as const,
+      message: "Has subido muchas imágenes en poco tiempo. Espera unos minutos e inténtalo de nuevo.",
+    };
+  }
 
   // Si pasaron designId, verificar ownership.
   let design = null;

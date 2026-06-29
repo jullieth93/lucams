@@ -32,3 +32,8 @@ export function ipKey(scope: string, ip: string): string {
 export function emailKey(scope: string, email: string): string {
   return `${scope}:email:${hashEmail(email)}`;
 }
+
+/** Key por dueño (customerId o sessionId anónima) — para abuso por sesión. */
+export function ownerKey(scope: string, ownerId: string): string {
+  return `${scope}:owner:${ownerId}`;
+}

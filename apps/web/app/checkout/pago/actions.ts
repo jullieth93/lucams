@@ -1,7 +1,10 @@
 "use server";
 
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { logger } from "@/lib/logger";
+import { rateLimit } from "@/lib/rate-limit";
+import { ipKey } from "@/lib/rate-limit-keys";
 import {
   CheckoutError,
   finalizeCheckout,
@@ -10,6 +13,22 @@ import {
 import { InsufficientStockError } from "@/features/orders/errors";
 
 export async function payWompiAction(): Promise<void> {
+  // T4 — rate-limit por IP: finalizeCheckout crea una orden + pega a Wompi, así
+  // que limitamos el abuso (creación masiva de órdenes basura). Generoso para no
+  // bloquear reintentos legítimos de un cliente con errores.
+  const hdrs = await headers();
+  const ip = hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  const isProd = process.env.VERCEL_ENV === "production";
+  const rl = await rateLimit(ipKey("checkout_pay", ip), isProd ? 20 : 100, 600);
+  if (!rl.allowed) {
+    logger.warn({ event: "checkout.pago.rate_limited", ip, count: rl.count });
+    redirect(
+      `/checkout/pago?error=${encodeURIComponent(
+        "Demasiados intentos seguidos. Espera unos minutos e inténtalo de nuevo.",
+      )}`,
+    );
+  }
+
   await savePaymentMethodStep("WOMPI");
 
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:4000";
