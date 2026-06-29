@@ -58,6 +58,39 @@ function inferExtension(mime: string): string {
 }
 
 /**
+ * Detecta el MIME REAL por los magic bytes del archivo (Bloque C / F1), en vez
+ * de confiar en file.type (que el cliente puede falsificar). Devuelve null si no
+ * reconoce un formato de imagen permitido. Previene subir un .html/.svg/polyglot
+ * con extensión .jpg.
+ */
+function sniffImageMime(buf: Buffer): string | null {
+  if (buf.length < 12) return null;
+  // JPEG: FF D8 FF
+  if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return "image/jpeg";
+  // PNG: 89 50 4E 47 0D 0A 1A 0A
+  if (
+    buf[0] === 0x89 &&
+    buf[1] === 0x50 &&
+    buf[2] === 0x4e &&
+    buf[3] === 0x47 &&
+    buf[4] === 0x0d &&
+    buf[5] === 0x0a &&
+    buf[6] === 0x1a &&
+    buf[7] === 0x0a
+  )
+    return "image/png";
+  // WebP: "RIFF"...."WEBP"
+  if (buf.toString("ascii", 0, 4) === "RIFF" && buf.toString("ascii", 8, 12) === "WEBP")
+    return "image/webp";
+  // AVIF: ....ftyp + brand avif/avis
+  if (buf.toString("ascii", 4, 8) === "ftyp") {
+    const brand = buf.toString("ascii", 8, 12);
+    if (brand === "avif" || brand === "avis") return "image/avif";
+  }
+  return null;
+}
+
+/**
  * Sube una imagen al bucket. El llamador (server action admin) ya
  * verificó que el usuario es admin — esta función no re-checkea
  * auth, asume llamador autorizado.
@@ -78,13 +111,23 @@ export async function uploadProductImage(opts: {
     throw new StorageError("INVALID_TYPE", `Tipo "${file.type}" no permitido (jpg/png/webp/avif)`);
   }
 
-  const ext = inferExtension(file.type);
+  const buffer = Buffer.from(await file.arrayBuffer());
+  // F1: validar el MIME REAL por magic bytes (no confiar en file.type) + usarlo
+  // como contentType forzado (anti-polyglot/XSS).
+  const realMime = sniffImageMime(buffer);
+  if (!realMime || !ALLOWED_MIME.has(realMime)) {
+    throw new StorageError(
+      "INVALID_TYPE",
+      "El archivo no es una imagen válida (jpg/png/webp/avif).",
+    );
+  }
+
+  const ext = inferExtension(realMime);
   const filename = `${productId}/${randomUUID()}.${ext}`;
   const supabase = supabaseService;
-  const buffer = Buffer.from(await file.arrayBuffer());
 
   const { error: uploadErr } = await supabase.storage.from(BUCKET).upload(filename, buffer, {
-    contentType: file.type,
+    contentType: realMime,
     cacheControl: "31536000", // 1 año — los nombres ya tienen UUID, son inmutables
     upsert: false,
   });

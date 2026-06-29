@@ -15,6 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { EmailInput } from "@/components/email-input";
 import { PasswordInput } from "@/components/password-input";
+import { TurnstileWidget } from "@/components/turnstile-widget";
 import { signupAction, type SignupActionState } from "./actions";
 
 export function RegistroForm() {
@@ -161,6 +162,7 @@ export function RegistroForm() {
             </Link>{" "}
             (Ley 1581 Habeas Data).
           </p>
+          <TurnstileWidget />
         </CardContent>
 
         <CardFooter className="mt-4 flex flex-col gap-4">

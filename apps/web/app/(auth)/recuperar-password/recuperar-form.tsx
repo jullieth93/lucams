@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { EmailInput } from "@/components/email-input";
+import { TurnstileWidget } from "@/components/turnstile-widget";
 import { recuperarPasswordAction, type RecuperarActionState } from "./actions";
 
 export function RecuperarForm() {
@@ -76,6 +77,7 @@ export function RecuperarForm() {
                 {state.error}
               </div>
             )}
+            <TurnstileWidget />
           </CardContent>
 
           <CardFooter className="mt-4 flex flex-col gap-4">

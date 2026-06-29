@@ -29,6 +29,7 @@ import { getRequestOrigin } from "@/lib/origin";
 import { checkPwnedPassword } from "@/lib/pwned-passwords";
 import { rateLimit } from "@/lib/rate-limit";
 import { emailKey, ipKey } from "@/lib/rate-limit-keys";
+import { verifyTurnstileToken } from "@/lib/turnstile";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { supabaseService } from "@/lib/supabase/service";
 
@@ -80,6 +81,16 @@ export async function signupAction(
 
   const hdrs = await headers();
   const ip = hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+
+  // Anti-bot (Bloque C / T2): registro es un flujo de alto abuso.
+  const turnstile = await verifyTurnstileToken(
+    String(formData.get("cf-turnstile-response") ?? ""),
+    ip,
+  );
+  if (!turnstile.success) {
+    return { error: "No pudimos verificar que no eres un robot. Recarga la página e intenta de nuevo." };
+  }
+
   // Límites: pre-launch intermedios (Lucy testeando sin tropezar pero
   // bots básicos bloqueados); preview/dev generosos.
   // TODO al lanzar de verdad (custom domain + tráfico real): bajar prod

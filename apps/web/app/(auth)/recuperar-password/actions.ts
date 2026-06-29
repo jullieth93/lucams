@@ -21,6 +21,7 @@ import { z } from "zod";
 import { logger } from "@/lib/logger";
 import { rateLimit } from "@/lib/rate-limit";
 import { emailKey, ipKey } from "@/lib/rate-limit-keys";
+import { verifyTurnstileToken } from "@/lib/turnstile";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 const ResetSchema = z.object({
@@ -49,6 +50,15 @@ export async function recuperarPasswordAction(
   const hdrs = await headers();
   const ip = hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
   const isProd = process.env.VERCEL_ENV === "production";
+
+  // Anti-bot (Bloque C / T3): reset es vector de email-bombing.
+  const turnstile = await verifyTurnstileToken(
+    String(formData.get("cf-turnstile-response") ?? ""),
+    ip,
+  );
+  if (!turnstile.success) {
+    return { error: "No pudimos verificar que no eres un robot. Recarga la página e intenta de nuevo." };
+  }
 
   // Rate-limit doble: por IP y por email. Reset es un vector común
   // de account-enumeration y spam — limites más conservadores.
