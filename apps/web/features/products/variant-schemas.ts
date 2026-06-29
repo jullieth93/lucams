@@ -97,6 +97,8 @@ export const VariantCreateSchema = z.object({
     .or(z.literal("").transform(() => undefined)),
   /** Precio override en centavos COP. null = hereda basePrice del producto. */
   price: z.number().int().min(0).max(100_000_000).nullable().optional(),
+  /** Precio tachado (promo) en centavos COP. null = sin promo. */
+  compareAtPrice: z.number().int().min(0).max(100_000_000).nullable().optional(),
   stock: z.number().int().min(0).max(100_000).default(0),
   isActive: z.boolean().default(true),
   attributes: ProductVariantAttributesSchema.default({}),
@@ -125,6 +127,7 @@ export const VariantUpdateSchema = z.object({
     .optional()
     .or(z.literal("").transform(() => undefined)),
   price: z.number().int().min(0).max(100_000_000).nullable().optional(),
+  compareAtPrice: z.number().int().min(0).max(100_000_000).nullable().optional(),
   stock: z.number().int().min(0).max(100_000).optional(),
   isActive: z.boolean().optional(),
   attributes: ProductVariantAttributesSchema.optional(),

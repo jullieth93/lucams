@@ -22,6 +22,7 @@ type VariantInput = {
   sku?: string;
   description?: string | null;
   price?: number | null;
+  compareAtPrice?: number | null;
   stock?: number;
   isActive?: boolean;
   attributes?: ProductVariantAttributes;
@@ -109,6 +110,21 @@ export function VariantForm({
           mono
           error={state?.fieldErrors?.price?.[0]}
           hint="En pesos colombianos (ej. 45000 = $45.000). Vacío = usa el precio del producto."
+        />
+        <Field
+          label="Precio tachado (promoción)"
+          name="compareAtPrice"
+          type="number"
+          prefix="$"
+          defaultValue={
+            variant?.compareAtPrice != null
+              ? Math.round(variant.compareAtPrice / 100).toString()
+              : ""
+          }
+          placeholder="Opcional"
+          mono
+          error={state?.fieldErrors?.compareAtPrice?.[0]}
+          hint="Precio “antes” que se muestra tachado al lado del precio. Déjalo vacío si no hay promo."
         />
         {/* El stock se edita con el botón rápido del listado de opciones y en
             Inventario, no acá — para no tenerlo en dos lados. */}

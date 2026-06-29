@@ -561,31 +561,26 @@ export function ProductForm({ categories, priceFrom, initialProduct, action, sub
         </SectionCard>
 
         {/*
-         * D4 (Lucy 2026-06-27): el "Precio base por defecto" ya NO se edita a
-         * mano — se auto-deriva del precio más bajo de las opciones (ver
-         * syncProductBasePrice). Mantenemos su valor con un input oculto para no
-         * pisarlo al guardar el producto. Aquí solo queda el precio tachado (promo).
+         * D4 + D1 (Lucy 2026-06-27): el precio base se auto-deriva (input oculto
+         * para no pisarlo al guardar), y el "precio tachado / promoción" se movió
+         * a CADA OPCIÓN (junto a su precio) — antes vivía acá a nivel producto y
+         * el descuento podía salir mal en la tienda. Conservamos compareAtPrice
+         * del producto con un input oculto (vestigial) para no pisarlo.
          */}
         {isEdit && (
           <SectionCard
-            title="Precio tachado (promoción)"
-            description="Opcional. Si lo pones, se muestra tachado al lado del precio para resaltar el descuento."
+            title="Precios"
+            description="El precio normal y el precio tachado (promoción) se ponen en cada opción, en la pestaña Opciones."
           >
             <input type="hidden" name="basePrice" value={initialProduct?.basePrice ?? 0} />
-            <div className="sm:max-w-xs">
-              <PriceField
-                id="compareAtPrice"
-                label="Precio antes"
-                hint="Déjalo vacío si no hay promoción."
-                defaultPesos={
-                  initialProduct?.compareAtPrice ? initialProduct.compareAtPrice / 100 : null
-                }
-                error={state?.fieldErrors?.compareAtPrice?.[0]}
-                pending={pending}
-              />
-            </div>
-            <p className="text-brand-purple-dark/55 mt-2 text-[11px]">
-              💡 El precio normal sale de cada opción. El precio base del producto se calcula solo,
+            <input
+              type="hidden"
+              name="compareAtPrice"
+              value={initialProduct?.compareAtPrice ?? ""}
+            />
+            <p className="text-brand-purple-dark/65 text-sm">
+              💡 El precio (y su promoción) vive en cada <strong>opción</strong>. Ve a la pestaña{" "}
+              <strong>Opciones</strong> para ajustarlos. El precio base del producto se calcula solo,
               a partir de la opción más barata.
             </p>
           </SectionCard>

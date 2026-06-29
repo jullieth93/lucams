@@ -52,6 +52,8 @@ export type StorefrontProductDetail = StorefrontProductCard & {
     name: string;
     sku: string;
     price: number | null;
+    /** Precio tachado (promo) por opción. Null = sin promo. */
+    compareAtPrice: number | null;
     attributes: unknown;
     /** D1: fotos propias de la opción. Vacío = el PDP usa las del producto. */
     images: string[];
@@ -258,6 +260,8 @@ export async function listStorefrontProducts(
       .filter((price): price is number => price !== null && price > 0);
     const minVariantPrice =
       overridePrices.length > 0 ? Math.min(p.basePrice, ...overridePrices) : p.basePrice;
+    // p.compareAtPrice está denormalizado = promo de la opción más barata
+    // (syncProductBasePrice), así que la card muestra el descuento correcto.
     return { ...p, variantCount: _count.variants, minVariantPrice };
   });
 }
@@ -444,6 +448,8 @@ export async function getStorefrontProductBySlug(
           name: true,
           sku: true,
           price: true,
+          // Precio tachado (promo) por opción — Lucy 2026-06-27.
+          compareAtPrice: true,
           attributes: true,
           // D1: fotos propias de la opción. Vacío = el PDP usa las del producto.
           images: true,

@@ -130,6 +130,7 @@ export async function ProductVariantsPanel({
               sku: editingVariant.sku,
               description: editingVariant.description,
               price: editingVariant.price,
+              compareAtPrice: editingVariant.compareAtPrice,
               stock: editingVariant.stock,
               isActive: editingVariant.isActive,
               attributes: parseVariantAttributes(editingVariant.attributes),

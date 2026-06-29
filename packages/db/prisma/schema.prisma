@@ -369,6 +369,10 @@ model ProductVariant {
   description   String?
   sku           String             @unique
   price         Int?
+  // Lucy 2026-06-27: "precio tachado" (promoción) POR OPCIÓN. Antes vivía en
+  // Product.compareAtPrice, pero el precio real es por opción → el descuento
+  // podía salir negativo en la tienda. Centavos COP. Null = sin promo.
+  compareAtPrice Int?
   stock         Int                @default(0)
   // D1 (Lucy 2026-06-27): fotos propias de la opción. Vacío = hereda
   // Product.images (espeja la herencia de `price`). El PDP cambia la galería

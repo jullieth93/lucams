@@ -26,7 +26,9 @@ import {
 
 export type VariantActionState = {
   error?: string;
-  fieldErrors?: Partial<Record<"name" | "sku" | "price" | "stock" | "description", string[]>>;
+  fieldErrors?: Partial<
+    Record<"name" | "sku" | "price" | "compareAtPrice" | "stock" | "description", string[]>
+  >;
 };
 
 /**
@@ -74,6 +76,7 @@ export async function createVariantAction(
 
   const productId = String(formData.get("productId") ?? "");
   const priceStr = String(formData.get("price") ?? "").trim();
+  const compareStr = String(formData.get("compareAtPrice") ?? "").trim();
   const parsed = VariantCreateSchema.safeParse({
     productId,
     name: formData.get("name"),
@@ -81,6 +84,7 @@ export async function createVariantAction(
     description: formData.get("description"),
     // El form pide PESOS (consistente con el producto). Guardamos en CENTAVOS.
     price: priceStr === "" ? null : Math.round(Number(priceStr) * 100),
+    compareAtPrice: compareStr === "" ? null : Math.round(Number(compareStr) * 100),
     stock: Number(formData.get("stock") ?? 0),
     isActive: formData.get("isActive") === "on",
     attributes: parseAttributesFromForm(formData),
@@ -131,6 +135,7 @@ export async function updateVariantAction(
 
   const productId = String(formData.get("productId") ?? "");
   const priceStr = String(formData.get("price") ?? "").trim();
+  const compareStr = String(formData.get("compareAtPrice") ?? "").trim();
   const parsed = VariantUpdateSchema.safeParse({
     id: formData.get("id"),
     name: formData.get("name"),
@@ -138,6 +143,7 @@ export async function updateVariantAction(
     description: formData.get("description"),
     // El form pide PESOS (consistente con el producto). Guardamos en CENTAVOS.
     price: priceStr === "" ? null : Math.round(Number(priceStr) * 100),
+    compareAtPrice: compareStr === "" ? null : Math.round(Number(compareStr) * 100),
     // 3d (Lucy 2026-06-27): el stock NO se edita en este form (se hace con el
     // editor rápido del listado/Inventario). Lo omitimos para no pisarlo —
     // VariantUpdateSchema.stock es opcional y updateVariant no lo toca si falta.

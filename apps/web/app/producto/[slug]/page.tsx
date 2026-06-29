@@ -99,7 +99,10 @@ export default async function ProductoDetallePage({
     limit: 4,
   });
 
-  const hasDiscount = product.compareAtPrice != null && product.compareAtPrice > product.basePrice;
+  // Precio tachado (promo) de la OPCIÓN elegida (Lucy 2026-06-27). Solo se
+  // muestra si es estrictamente mayor al precio actual → nunca descuento negativo.
+  const displayCompareAt = selectedVariant?.compareAtPrice ?? null;
+  const hasDiscount = displayCompareAt != null && displayCompareAt > displayPrice;
   const waHref = await buildWhatsAppUrl({
     kind: "product",
     productName: product.name,
@@ -198,7 +201,7 @@ export default async function ProductoDetallePage({
                 </span>
                 {hasDiscount && (
                   <span className="text-brand-purple-dark/40 text-lg tabular-nums line-through">
-                    {formatCOP(product.compareAtPrice!)}
+                    {formatCOP(displayCompareAt!)}
                   </span>
                 )}
               </div>

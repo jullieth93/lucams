@@ -454,12 +454,22 @@ export async function syncProductBasePrice(productId: string): Promise<void> {
   const cheapest = await prisma.productVariant.findFirst({
     where: { productId, deletedAt: null, isActive: true, price: { not: null } },
     orderBy: { price: "asc" },
-    select: { price: true },
+    select: { price: true, compareAtPrice: true },
   });
   if (cheapest?.price == null) return;
   await prisma.product.update({
     where: { id: productId },
-    data: { basePrice: cheapest.price },
+    data: {
+      basePrice: cheapest.price,
+      // Lucy 2026-06-27: denormalizamos el "precio tachado" del producto = el de
+      // la opción más barata. Las cards del storefront leen product.compareAtPrice,
+      // así que con esto muestran el descuento correcto de la opción "desde" sin
+      // recalcular por opción. Solo si es una promo válida (> precio).
+      compareAtPrice:
+        cheapest.compareAtPrice != null && cheapest.compareAtPrice > cheapest.price
+          ? cheapest.compareAtPrice
+          : null,
+    },
   });
 }
 
@@ -477,6 +487,7 @@ export async function createVariant(input: VariantCreateInput, createdBy: string
       sku: input.sku,
       description: input.description ?? null,
       price: input.price ?? null,
+      compareAtPrice: input.compareAtPrice ?? null,
       stock: input.stock,
       isActive: input.isActive,
       attributes: input.attributes,
