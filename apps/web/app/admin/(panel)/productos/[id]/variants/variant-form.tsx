@@ -8,8 +8,8 @@
 
 "use client";
 
-import { useActionState } from "react";
-import { Loader2, Save } from "lucide-react";
+import { useActionState, useState } from "react";
+import { Loader2, Save, Sparkles } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { AdminNotice } from "@/components/admin-page";
@@ -43,123 +43,124 @@ export function VariantForm({
   );
   const attrs = variant?.attributes ?? {};
 
+  // Estado controlado para SUGERIR el nombre en vivo desde las características (D3).
+  const [name, setName] = useState(variant?.name ?? "");
+  const [photoSlots, setPhotoSlots] = useState(attrs.photoSlots?.toString() ?? "");
+  const [quantity, setQuantity] = useState(attrs.quantity?.toString() ?? "");
+  const [sizeCm, setSizeCm] = useState(attrs.sizeCm ?? "");
+  const [color, setColor] = useState(attrs.color ?? "");
+
+  const suggestedName = buildSuggestedName({ photoSlots, quantity, sizeCm, color });
+
   return (
     <form action={formAction} className="space-y-4">
       <input type="hidden" name="productId" value={productId} />
       {isEdit && <input type="hidden" name="id" value={variant!.id} />}
+      {/* D2 (Lucy 2026-06-27): forma / acabado / proporción ya no se muestran
+          (nunca los usa). Se preservan ocultos para NO perder datos de opciones
+          que sí los tuvieran. */}
+      <input type="hidden" name="attr_shape" value={attrs.shape ?? ""} />
+      <input type="hidden" name="attr_finish" value={attrs.finish ?? ""} />
+      <input type="hidden" name="attr_aspectRatio" value={attrs.aspectRatio ?? ""} />
 
       {state?.error && <AdminNotice tone="error">{state.error}</AdminNotice>}
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div>
+          <Field
+            label="Nombre de la opción"
+            name="name"
+            value={name}
+            onChange={setName}
+            required
+            placeholder="Ej. Set 12 fotos"
+            error={state?.fieldErrors?.name?.[0]}
+            hint="Como lo verá el cliente al elegir esta opción."
+          />
+          {suggestedName && suggestedName !== name && (
+            <button
+              type="button"
+              onClick={() => setName(suggestedName)}
+              className="text-brand-purple hover:text-brand-purple-dark mt-1 inline-flex items-center gap-1 text-[11px] font-semibold"
+              title="Usar esta sugerencia como nombre"
+            >
+              <Sparkles className="h-3 w-3" />
+              Sugerencia: “{suggestedName}” · usar
+            </button>
+          )}
+        </div>
         <Field
-          label="Nombre de la variante"
-          name="name"
-          defaultValue={variant?.name}
-          required
-          placeholder="Ej. Set 12 unidades"
-          error={state?.fieldErrors?.name?.[0]}
-          hint="Cómo se ve en el selector del PDP"
-        />
-        <Field
-          label="SKU"
+          label="Código (SKU)"
           name="sku"
           defaultValue={variant?.sku}
           required
           placeholder="POLAROID-12"
           mono
           error={state?.fieldErrors?.sku?.[0]}
-          hint="Identificador único — solo letras/números/guion"
+          hint="Identificador interno único — solo letras, números y guion."
         />
         <Field
-          label="Precio de esta opción"
+          label="Precio de esta opción (COP)"
           name="price"
           type="number"
+          prefix="$"
           defaultValue={variant?.price != null ? Math.round(variant.price / 100).toString() : ""}
-          placeholder="Ej: 45000"
+          placeholder="45000"
           mono
           error={state?.fieldErrors?.price?.[0]}
-          hint="En pesos (ej. 45000 = $45.000). Déjalo vacío para usar el precio del producto."
+          hint="En pesos colombianos (ej. 45000 = $45.000). Vacío = usa el precio del producto."
         />
-        {/* 3d: el stock se edita con el botón rápido del listado de opciones y
-            en Inventario, no acá — para no tenerlo en dos lados. */}
+        {/* El stock se edita con el botón rápido del listado de opciones y en
+            Inventario, no acá — para no tenerlo en dos lados. */}
       </div>
 
       <Field
-        label="Descripción interna"
+        label="Nota interna (opcional)"
         name="description"
         defaultValue={variant?.description ?? ""}
-        placeholder="¿Por qué elegir esta variante vs otras? (uso futuro bot AI)"
+        placeholder="Solo para ti / el equipo. El cliente no la ve."
         as="textarea"
       />
 
-      {/* Attributes (lo que diferencia esta variante de las hermanas) */}
+      {/* Características de la opción — lenguaje llano (Lucy 2026-06-27). */}
       <div className="border-brand-purple/10 rounded-lg border bg-white/60 p-4">
-        <h4 className="text-brand-purple-dark mb-3 text-sm font-bold">
-          Atributos diferenciadores
-          <span className="text-brand-purple-dark/55 ml-2 text-xs font-normal">
-            (qué hace que esta variante sea distinta)
-          </span>
-        </h4>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <h4 className="text-brand-purple-dark text-sm font-bold">¿En qué se diferencia esta opción?</h4>
+        <p className="text-brand-purple-dark/55 mt-0.5 mb-3 text-xs">
+          Llena solo lo que aplique. Con esto armamos la sugerencia de nombre y, en productos
+          personalizables, sabemos cuántas fotos pedirle al cliente.
+        </p>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <Field
-            label="Cantidad de fotos"
+            label="¿Cuántas fotos lleva?"
             name="attr_photoSlots"
             type="number"
-            defaultValue={attrs.photoSlots?.toString() ?? ""}
-            mono
-            hint="Slots para fotos del cliente"
+            value={photoSlots}
+            onChange={setPhotoSlots}
+            placeholder="Ej: 12"
+            hint="Espacios para fotos que sube el cliente."
           />
           <Field
-            label="Cantidad unidades"
+            label="¿Cuántas unidades trae?"
             name="attr_quantity"
             type="number"
-            defaultValue={attrs.quantity?.toString() ?? ""}
-            mono
-            hint="Para packs/sets pre-armados"
+            value={quantity}
+            onChange={setQuantity}
+            placeholder="Ej: 6"
+            hint="Para packs o sets ya armados."
           />
           <Field
-            label="Tamaño físico"
+            label="Tamaño"
             name="attr_sizeCm"
-            defaultValue={attrs.sizeCm ?? ""}
-            placeholder="7×9"
-            hint="En centímetros"
+            value={sizeCm}
+            onChange={setSizeCm}
+            placeholder="Ej: 7×9 cm"
           />
           <Field
             label="Color"
             name="attr_color"
-            defaultValue={attrs.color ?? ""}
-            placeholder="rosa, azul, etc."
-          />
-          <SelectField
-            label="Forma"
-            name="attr_shape"
-            defaultValue={attrs.shape ?? ""}
-            options={[
-              { value: "", label: "— Heredar del producto —" },
-              { value: "rectangle", label: "Rectángulo" },
-              { value: "circle", label: "Círculo" },
-              { value: "heart", label: "Corazón" },
-              { value: "custom", label: "Personalizada" },
-            ]}
-          />
-          <SelectField
-            label="Acabado"
-            name="attr_finish"
-            defaultValue={attrs.finish ?? ""}
-            options={[
-              { value: "", label: "— Heredar del producto —" },
-              { value: "matte", label: "Mate" },
-              { value: "glossy", label: "Brillante" },
-              { value: "soft-touch", label: "Soft touch" },
-              { value: "glass", label: "Vidrio premium" },
-            ]}
-          />
-          <Field
-            label="Aspect ratio"
-            name="attr_aspectRatio"
-            defaultValue={attrs.aspectRatio ?? ""}
-            placeholder="1:1, 4:5"
-            hint="Override del producto"
+            value={color}
+            onChange={setColor}
+            placeholder="Ej: rosa, azul…"
           />
         </div>
       </div>
@@ -172,7 +173,7 @@ export function VariantForm({
           defaultChecked={variant?.isActive ?? true}
           className="accent-brand-purple h-4 w-4"
         />
-        Activa (visible en selector del PDP)
+        Visible para el cliente (aparece como opción en la tienda)
       </label>
 
       <div className="flex items-center gap-2 pt-2">
@@ -186,7 +187,7 @@ export function VariantForm({
           ) : (
             <Save className="mr-1.5 h-4 w-4" />
           )}
-          {isEdit ? "Guardar cambios" : "Crear variante"}
+          {isEdit ? "Guardar cambios" : "Crear opción"}
         </Button>
         {onClose && (
           <Button type="button" variant="ghost" onClick={onClose}>
@@ -198,10 +199,27 @@ export function VariantForm({
   );
 }
 
+/** Sugerencia de nombre de opción a partir de sus características (D3). */
+function buildSuggestedName(a: {
+  photoSlots: string;
+  quantity: string;
+  sizeCm: string;
+  color: string;
+}): string {
+  const parts: string[] = [];
+  if (a.photoSlots.trim()) parts.push(`${a.photoSlots.trim()} fotos`);
+  if (a.quantity.trim()) parts.push(`${a.quantity.trim()} unidades`);
+  if (a.sizeCm.trim()) parts.push(a.sizeCm.trim());
+  if (a.color.trim()) parts.push(a.color.trim());
+  return parts.join(" · ");
+}
+
 function Field({
   label,
   name,
   defaultValue,
+  value,
+  onChange,
   placeholder,
   type = "text",
   required,
@@ -209,10 +227,14 @@ function Field({
   hint,
   error,
   as,
+  prefix,
 }: {
   label: string;
   name: string;
   defaultValue?: string;
+  /** Si se pasa value+onChange, el input es controlado (para sugerencias en vivo). */
+  value?: string;
+  onChange?: (v: string) => void;
   placeholder?: string;
   type?: string;
   required?: boolean;
@@ -220,58 +242,51 @@ function Field({
   hint?: string;
   error?: string;
   as?: "textarea";
+  /** Adorno a la izquierda del input (ej. "$" para precios). */
+  prefix?: string;
 }) {
-  const InputEl = as === "textarea" ? "textarea" : Input;
+  const controlled = value !== undefined && onChange !== undefined;
+  const baseClass = `border-brand-purple/20 focus-visible:ring-brand-purple/30 ${
+    mono ? "font-mono text-sm" : ""
+  }`;
   return (
     <div>
       <label htmlFor={name} className="text-brand-purple-dark mb-1 block text-xs font-semibold">
         {label}
         {required && <span className="text-rose-500">*</span>}
       </label>
-      <InputEl
-        id={name}
-        name={name}
-        type={as === "textarea" ? undefined : type}
-        defaultValue={defaultValue}
-        placeholder={placeholder}
-        required={required}
-        rows={as === "textarea" ? 2 : undefined}
-        className={`border-brand-purple/20 focus-visible:ring-brand-purple/30 ${mono ? "font-mono text-sm" : ""} ${as === "textarea" ? "w-full rounded-md border bg-white px-3 py-2 text-sm" : ""}`}
-      />
+      {as === "textarea" ? (
+        <textarea
+          id={name}
+          name={name}
+          defaultValue={defaultValue}
+          placeholder={placeholder}
+          required={required}
+          rows={2}
+          className={`${baseClass} w-full rounded-md border bg-white px-3 py-2 text-sm`}
+        />
+      ) : (
+        <div className="relative">
+          {prefix && (
+            <span className="text-brand-purple-dark/50 pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-sm">
+              {prefix}
+            </span>
+          )}
+          <Input
+            id={name}
+            name={name}
+            type={type}
+            placeholder={placeholder}
+            required={required}
+            className={`${baseClass} ${prefix ? "pl-7" : ""}`}
+            {...(controlled
+              ? { value, onChange: (e: React.ChangeEvent<HTMLInputElement>) => onChange!(e.target.value) }
+              : { defaultValue })}
+          />
+        </div>
+      )}
       {hint && !error && <p className="text-brand-purple-dark/55 mt-1 text-[11px]">{hint}</p>}
       {error && <p className="mt-1 text-[11px] text-rose-600">{error}</p>}
-    </div>
-  );
-}
-
-function SelectField({
-  label,
-  name,
-  defaultValue,
-  options,
-}: {
-  label: string;
-  name: string;
-  defaultValue?: string;
-  options: { value: string; label: string }[];
-}) {
-  return (
-    <div>
-      <label htmlFor={name} className="text-brand-purple-dark mb-1 block text-xs font-semibold">
-        {label}
-      </label>
-      <select
-        id={name}
-        name={name}
-        defaultValue={defaultValue}
-        className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 w-full rounded-md border bg-white px-2 py-1.5 text-sm focus:ring-2 focus:outline-none"
-      >
-        {options.map((opt) => (
-          <option key={opt.value} value={opt.value}>
-            {opt.label}
-          </option>
-        ))}
-      </select>
     </div>
   );
 }

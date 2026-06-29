@@ -51,7 +51,11 @@ export async function ProductVariantsPanel({
 }) {
   const variants = await listVariantsByProduct(productId);
   const editingId = typeof searchParams.edit === "string" ? searchParams.edit : null;
+  const editingVariant = editingId ? (variants.find((v) => v.id === editingId) ?? null) : null;
   const newOpen = searchParams.new === "1";
+  // Lucy 2026-06-27: al crear/editar mostramos SOLO el form (no la tabla con su
+  // encabezado flotando encima — se veía como un "error de UI").
+  const formMode = newOpen || editingVariant !== null;
   const errorMsg = typeof searchParams.error === "string" ? searchParams.error : null;
 
   return (
@@ -66,7 +70,7 @@ export async function ProductVariantsPanel({
         el del producto base.
       </AdminNotice>
 
-      {!newOpen && !editingId && (
+      {!formMode && (
         <div className="flex flex-wrap items-center justify-between gap-2">
           {/* Aquí editas el stock de ESTE producto; en Inventario ves el de todos. */}
           <Link
@@ -104,15 +108,54 @@ export async function ProductVariantsPanel({
         </AdminCard>
       )}
 
-      {/* Listado */}
-      {variants.length === 0 ? (
-        <AdminEmpty
-          icon={<ShoppingBag className="h-5 w-5" />}
-          title="Este producto no tiene opciones"
-          description="Es raro — todo producto debería tener al menos la opción Única. Crea una con el botón de arriba."
-        />
-      ) : (
-        <AdminTable>
+      {/* Form editar — FUERA de la tabla (Lucy 2026-06-27). */}
+      {editingVariant && (
+        <AdminCard className="p-5">
+          <div className="mb-4 flex items-center justify-between">
+            <h3 className="text-brand-purple-dark font-display text-lg font-bold">
+              Editando: {editingVariant.name === "Default" ? "Única" : editingVariant.name}
+            </h3>
+            <Link
+              href={`/admin/productos/${productId}?section=opciones`}
+              className="text-brand-purple-dark/60 hover:text-brand-purple-dark inline-flex items-center gap-1 text-xs font-semibold"
+            >
+              ← Volver a las opciones
+            </Link>
+          </div>
+          <VariantForm
+            productId={productId}
+            variant={{
+              id: editingVariant.id,
+              name: editingVariant.name,
+              sku: editingVariant.sku,
+              description: editingVariant.description,
+              price: editingVariant.price,
+              stock: editingVariant.stock,
+              isActive: editingVariant.isActive,
+              attributes: parseVariantAttributes(editingVariant.attributes),
+            }}
+          />
+          {/* D1: fotos propias de esta opción (vacío = hereda del producto). */}
+          <div className="mt-4">
+            <VariantImages
+              variantId={editingVariant.id}
+              images={editingVariant.images}
+              productImageCount={productImageCount}
+            />
+          </div>
+        </AdminCard>
+      )}
+
+      {/* Listado (oculto mientras creas/editas) */}
+      {!formMode &&
+        (variants.length === 0 ? (
+          <AdminEmpty
+            icon={<ShoppingBag className="h-5 w-5" />}
+            title="Este producto no tiene opciones"
+            description="Es raro — todo producto debería tener al menos la opción Única. Crea una con el botón de arriba."
+          />
+        ) : (
+          <AdminTable>
           <AdminTableHead>
             <tr>
               <th className="px-4 py-3 text-left font-semibold">Opción</th>
@@ -128,51 +171,9 @@ export async function ProductVariantsPanel({
             {variants.map((v) => {
               const attrs = parseVariantAttributes(v.attributes);
               const label = generateVariantLabel(attrs);
-              const isEditing = editingId === v.id;
               const effectivePrice = v.price ?? basePrice;
               const inheritsPrice = v.price === null;
               const visibleName = v.name === "Default" ? "Única" : v.name;
-
-              if (isEditing) {
-                return (
-                  <tr key={v.id} className="bg-brand-purple/[0.03]">
-                    <td colSpan={7} className="px-4 py-5">
-                      <div className="mb-3 flex items-center justify-between">
-                        <h3 className="text-brand-purple-dark font-display text-base font-bold">
-                          Editando: {visibleName}
-                        </h3>
-                        <Link
-                          href={`/admin/productos/${productId}?section=opciones`}
-                          className="text-brand-purple-dark/60 hover:text-brand-purple-dark text-xs font-semibold"
-                        >
-                          Cancelar
-                        </Link>
-                      </div>
-                      <VariantForm
-                        productId={productId}
-                        variant={{
-                          id: v.id,
-                          name: v.name,
-                          sku: v.sku,
-                          description: v.description,
-                          price: v.price,
-                          stock: v.stock,
-                          isActive: v.isActive,
-                          attributes: attrs,
-                        }}
-                      />
-                      {/* D1: fotos propias de esta opción (vacío = hereda del producto). */}
-                      <div className="mt-4">
-                        <VariantImages
-                          variantId={v.id}
-                          images={v.images}
-                          productImageCount={productImageCount}
-                        />
-                      </div>
-                    </td>
-                  </tr>
-                );
-              }
 
               return (
                 <AdminTableRow key={v.id}>
@@ -246,7 +247,7 @@ export async function ProductVariantsPanel({
             })}
           </AdminTableBody>
         </AdminTable>
-      )}
+        ))}
     </section>
   );
 }
