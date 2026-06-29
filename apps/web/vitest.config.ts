@@ -17,6 +17,12 @@ export default defineConfig({
   test: {
     environment: "node",
     globals: false,
+    // Retry para flakes TRANSITORIOS de infraestructura: los tests de integración
+    // pegan al pooler de Supabase (pgbouncer :6543), que bajo concurrencia
+    // ocasionalmente rechaza/cae una conexión ("Can't reach database server").
+    // La lógica de los tests es determinista → un retry reconecta y pasa; un bug
+    // real falla los 3 intentos. En CI con Postgres local (directo) no aplica.
+    retry: 2,
     include: ["**/*.{test,spec}.{ts,tsx}"],
     exclude: ["**/node_modules/**", "**/.next/**", "**/tests/e2e/**"],
     coverage: {
