@@ -21,6 +21,7 @@ import { SiteHeader } from "@/components/site-header";
 import { SubmitButton } from "@/components/admin/submit-button";
 import { ProductGallery } from "@/components/product-detail/product-gallery";
 import { RelatedProducts } from "@/components/product-detail/related-products";
+import { ProductReviews } from "./product-reviews";
 import { TemplatesStrip } from "@/components/product-detail/templates-strip";
 import { VariantSelector } from "./variant-selector";
 import { formatCOP } from "@/lib/format";
@@ -265,6 +266,8 @@ export default async function ProductoDetallePage({
           </div>
 
           <TemplatesStrip productSlug={product.slug} isPersonalizable={product.isPersonalizable} />
+
+          <ProductReviews productId={product.id} slug={product.slug} />
 
           <RelatedProducts products={related} />
         </div>

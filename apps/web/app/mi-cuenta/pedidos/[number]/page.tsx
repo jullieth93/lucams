@@ -271,7 +271,7 @@ export default async function CustomerPedidoDetallePage({
                 Tu reseña nos ayuda muchísimo (30 segundos).
               </p>
               <Link
-                href={`/producto/${order.items[0]?.variant.product.slug}?review=1`}
+                href={`/producto/${order.items[0]?.variant.product.slug}#resenas`}
                 className="bg-brand-purple hover:bg-brand-purple-dark mt-3 inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold text-white shadow-sm"
               >
                 <Star className="h-3.5 w-3.5" />
