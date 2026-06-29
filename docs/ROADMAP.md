@@ -13,7 +13,7 @@ El trabajo reciente se nombró por **bloques**; equivalen a:
 | **A** | Checkout + Pagos + Saga (Wompi + Aveonline) | Fase 4 | ✅ **Certificado** (48 tests) |
 | **B** | Compliance + Emails (Ley 1581/1480, retracto) | transversal (Fase 2/4) | ✅ Hecho (55 tests) |
 | **Opción C** | Restructura admin del catálogo | Fase 2/6 | ✅ Hecho |
-| **C** | Seguridad (RBAC, MFA admin, RLS tests, CSRF, Turnstile) | Fase 1 + Fase 7 | ⏳ Pendiente |
+| **C** | Seguridad (RBAC, MFA admin, RLS, CSRF, Turnstile, CSP nonce) | Fase 1 + Fase 7 | ✅ Hecho (7/7 — ADR-042/043; matriz RLS completa R3 → en E) |
 | **D** | Observabilidad (dashboard, alertas, SLOs) | Fase 7 | ⏳ Pendiente |
 | **E** | Testing (RLS, E2E, visual, a11y) | transversal / Fase 7 | ⏳ Pendiente |
 | **F** | Refund + Cupones (redención en checkout, reembolso admin) | Fase 4/5 | ⏳ Pendiente |

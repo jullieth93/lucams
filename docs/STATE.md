@@ -33,14 +33,46 @@ multi-agente de ~18 comentarios de Lucy → 3 bugs cerrados (precio opción en p
 categorías determinista, sidebar sticky) + sprint "Admin amigable" + sub-categorías +
 flechas reorden + precio base auto-derivado + ordenar por clic en columnas + **fotos por
 opción (D1: migración `ProductVariant.images` + uploader admin + galería reactiva en el
-PDP)**. Los 6 bloques del feedback cerrados (7 commits). **Próximo: P0-004 verificar
-dominio Resend (ACCIÓN HUMANA DNS) → Bloque C
-(Seguridad: RBAC/Turnstile/RLS).** Detalle de fases intermedias (catálogo, carrito,
-checkout, admin UX) en el historial git + bitácora abajo.
+PDP)**. Los 6 bloques del feedback cerrados (7 commits). **Bloque C Seguridad CERRADO
+(7/7, 2026-06-29):** P0 (rate-limit, RLS 17 tablas, CI) + MFA admin completo (enroll/QR +
+reto + **códigos de respaldo** + cambiar dispositivo) + Reseñas + Turnstile registro/reset +
+RBAC por rol + logout global + idle-timeout 30min + rate-limit checkout/upload + **CSP por
+nonce en prod** (ADR-042/043). **Próximo: validar C3 (CSP) en deploy preview de Vercel +
+P0-004 verificar dominio Resend (ACCIÓN HUMANA DNS) → Bloque E (Testing: matriz RLS R3 +
+E2E) o Bloque F (Reembolsos+Cupones).** Detalle de fases intermedias en el historial git +
+bitácora abajo.
 
 ---
 
-## Última sesión — 2026-06-27 (Barrido UX/UI integral — 2da tanda de feedback de Lucy)
+## Última sesión — 2026-06-29 (Bloque C Seguridad: cierre 7/7 + códigos de respaldo MFA + disco)
+
+**Infra:** la VM se quedó sin espacio (`/home` 10G al 100% → FATAL de Turbopack). Se liberó
+borrando `.next` + prune de pnpm, y luego se **amplió `/home` de 10G a 40G** vía LVM tomando
+espacio de `/srv/isos` (todo XFS = no encoge → respaldo + lvremove + lvextend + xfs_growfs +
+recrear donante; data verificada idéntica con `diff -r`, reboot-safe). Quedan 17G de buffer
+en el grupo LVM.
+
+**Cuenta admin:** validada `r.julliethhr@gmail.com` (SUPERADMIN, MFA activo). Reseteo de
+contraseña vía service role (con login real de verificación).
+
+**Códigos de respaldo MFA (feedback de Lucy):** el módulo de Seguridad estaba incompleto.
+Se agregó: tabla `AdminRecoveryCode` (hash sha256, RLS), generar/regenerar 10 códigos
+(mostrados una vez), usar un código al entrar (`/admin/login/mfa` → consume + desactiva TOTP
+vía service role), y **cambiar de autenticador/dispositivo**. Commit `105c786`.
+
+**Bloque C Seguridad — los 6 items que faltaban (ADR-043):** A5 RBAC por rol (`08f9cd4`),
+A7/A8/A9 idle-timeout + logout global + cookie flags (`4e2fc3e`), T4/F2 rate-limit
+checkout+upload (`d35b899`), C3 CSP por nonce en prod (`036b261`). Bloque C queda **7/7**.
+Verificación C3 prod-like: 0 scripts sin nonce en 9 páginas. 56 tests verdes.
+
+**Próximo:** Lucy valida C3 en deploy preview de Vercel (consola abierta buscando errores
+CSP). Luego Bloque E (Testing/E2E + matriz RLS R3) o Bloque F (Reembolsos+Cupones). Sigue
+pendiente la ACCIÓN HUMANA del dominio Resend (DNS) + Turnstile keys en prod + branch
+protection en GitHub.
+
+---
+
+## Sesión — 2026-06-27 (Barrido UX/UI integral — 2da tanda de feedback de Lucy)
 
 **Origen:** Lucy dio una 2da tanda de comentarios (productos, opciones, generales) + el
 mandato "recorre TODO el ecosistema UX/UI, no des por hecho, ajusta y certifica". Auditoría

@@ -1431,3 +1431,21 @@ VENNDELO_WEBHOOK_SECRET=
 - **Branch protection en GitHub** (`main`/`develop`): PR obligatorio + reviews + status checks requeridos + no force-push. Si falta, todos los gates de CI son evadibles (P0 efectivo).
 
 **Referencias.** `docs/audits/2026-06-27-security-bloque-c/00-PLAN.md`. Commits `96ea33d`, `bcdc6c2`, `0d35c00`.
+
+## ADR-043 — Bloque C Seguridad: cierre completo (7/7) (2026-06-29)
+
+**Contexto.** ADR-042 dejó 6 items de hardening pendientes ("backend, no testeable / menor / riesgo"). Lucy pidió cerrar el bloque. Todos implementados, certificados y commiteados.
+
+**Implementado:**
+- **A5 · RBAC por rol** `08f9cd4` — matriz ruta→roles (`lib/admin-rbac.ts` puro + `lib/admin-rbac-guard.ts` server). Menú lateral filtrado por rol + `requireRole(["SUPERADMIN"])` en finanzas/seguridad/auditoría/cupones (bloquea acceso directo por URL). Hoy solo existe SUPERADMIN → no afecta a Lucy; prepara empleados.
+- **A8 · Logout global** + **A7 · Idle-timeout 30min** + **A9 · Cookie flags** `4e2fc3e` — `adminLogoutAction` con `signOut({scope:"global"})`; el proxy marca actividad (cookie `admin_last_activity` httpOnly+sameSite+secure-prod) y a los 30min sin actividad limpia las cookies `sb-*` y manda a `/admin/login?expired=1` (ventana deslizante).
+- **T4 · Rate-limit checkout** + **F2 · Rate-limit upload estudio** `d35b899` — `payWompiAction` (IP, prod 20/10min) y `uploadDesignAssetAction` (por dueño, prod 30/10min). Turnstile en checkout se omite a propósito (fricción al pago). Nuevo helper `ownerKey()`.
+- **C3 · CSP por nonce** `036b261` — script-src reemplaza `'unsafe-inline' 'unsafe-eval'` por `'nonce-X' 'strict-dynamic'` en prod/preview (guía oficial Next 16). El proxy genera nonce/request e integra con el flujo getAll/setAll de Supabase. **Dev mantiene el CSP permisivo** (el dev server inyecta scripts HMR que con nonce se romperían; el nonce se valida en deploy prod-like). style-src mantiene `'unsafe-inline'` (los atributos `style=""` no aceptan nonce).
+
+**Decisión derivada (importante para mantenimiento).** El nonce CSP **exige render dinámico en toda página** (una estática se prerenderea sin nonce → sus scripts quedan bloqueados). La app ya era 97% dinámica; se forzó `export const dynamic = "force-dynamic"` en las estáticas restantes (registro, recomendador, maintenance, recuperar-password, not-found). **Regla a futuro:** toda página nueva debe ser dinámica, o sus scripts se bloquearán en prod. `/manifest.webmanifest` se deja estática (no tiene scripts).
+
+**Verificación.** Prod-like (`VERCEL_ENV=preview`): en home, registro, recomendador, maintenance, producto, admin/login, carrito, contacto, login → 0 scripts sin nonce (el nonce del header == el de cada `<script>`). typecheck + build + 56 tests verdes. Dev intacto (CSP permisivo, smoke 200).
+
+**ACCIÓN HUMANA REQUERIDA (Lucy).** Validar C3 en un **deploy preview de Vercel** (no en dev, que usa el CSP permisivo): recorrer storefront + estudio/canvas + checkout + Turnstile (registro) + todo el admin, con la consola del navegador abierta buscando errores `Refused to execute ... violates Content Security Policy`.
+
+**Referencias.** Commits `08f9cd4`, `4e2fc3e`, `d35b899`, `036b261`. [[ADR-042]].
