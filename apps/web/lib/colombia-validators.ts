@@ -76,9 +76,18 @@ export function calculateNitDV(nit: string): string {
 // Ej: 3208873826
 const PHONE_REGEX = /^3\d{9}$/;
 
-export function validatePhone(value: string): boolean {
+/**
+ * Normaliza a los 10 dígitos locales. Tolera el indicativo país +57: si quedan
+ * 12 dígitos que empiezan en "57" (ej. "+57 320 887 3826"), lo quita.
+ */
+function normalizeMobileDigits(value: string): string {
   const digits = value.replace(/\D/g, "");
-  return PHONE_REGEX.test(digits);
+  if (digits.length === 12 && digits.startsWith("57")) return digits.slice(2);
+  return digits;
+}
+
+export function validatePhone(value: string): boolean {
+  return PHONE_REGEX.test(normalizeMobileDigits(value));
 }
 
 /**
@@ -86,14 +95,14 @@ export function validatePhone(value: string): boolean {
  * El valor que se persiste/envía a Aveonline NO incluye espacios.
  */
 export function formatPhone(value: string): string {
-  const digits = value.replace(/\D/g, "").slice(0, 10);
+  const digits = normalizeMobileDigits(value).slice(0, 10);
   if (digits.length <= 3) return digits;
   if (digits.length <= 6) return `${digits.slice(0, 3)} ${digits.slice(3)}`;
   return `${digits.slice(0, 3)} ${digits.slice(3, 6)} ${digits.slice(6)}`;
 }
 
 export function stripPhone(value: string): string {
-  return value.replace(/\D/g, "").slice(0, 10);
+  return normalizeMobileDigits(value).slice(0, 10);
 }
 
 // ─── Nombre ───

@@ -281,11 +281,13 @@ describe("validatePhone — celular colombiano", () => {
     expect(validatePhone("abcdefghij")).toBe(false);
   });
 
-  // ── Comportamiento LATENTE documentado (ver bugsFound) ──
-  it("CAVEAT: rechaza número con indicativo internacional +57 (queda en 12 dígitos)", () => {
-    // Tras quitar no-dígitos quedan 12 ('573208873826') → falla ^3\d{9}$.
-    expect(validatePhone("+57 320 887 3826")).toBe(false);
-    expect(validatePhone("573208873826")).toBe(false);
+  // ── Indicativo país +57: se tolera (Lucy 2026-06-29) ──
+  it("tolera el indicativo internacional +57 (lo normaliza a 10 dígitos)", () => {
+    expect(validatePhone("+57 320 887 3826")).toBe(true);
+    expect(validatePhone("573208873826")).toBe(true);
+  });
+  it("sigue rechazando 12 dígitos que NO empiezan en 57", () => {
+    expect(validatePhone("103208873826")).toBe(false);
   });
 });
 
@@ -342,10 +344,11 @@ describe("stripPhone — normaliza a dígitos crudos", () => {
     expect(stripPhone("abc")).toBe("");
   });
 
-  // ── Comportamiento LATENTE documentado (ver bugsFound) ──
-  it("CAVEAT: con indicativo +57 produce un número mal recortado", () => {
-    // '+573208873826extra' → '573208873826' → trunca 10 → '5732088738'.
-    expect(stripPhone("+573208873826extra")).toBe("5732088738");
+  // ── Indicativo país +57: se normaliza (Lucy 2026-06-29) ──
+  it("normaliza el indicativo +57 a los 10 dígitos locales", () => {
+    // '+57 320 887 3826' → '573208873826' (12, empieza en 57) → '3208873826'.
+    expect(stripPhone("+57 320 887 3826")).toBe("3208873826");
+    expect(stripPhone("573208873826")).toBe("3208873826");
   });
 });
 
