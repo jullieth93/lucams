@@ -14,6 +14,7 @@
 import type { LucideIcon } from "lucide-react";
 import {
   LayoutDashboard,
+  ShieldCheck,
   ShoppingCart,
   Package,
   Ticket,
@@ -251,6 +252,13 @@ export const ADMIN_NAV: NavGroup[] = [
     icon: Settings,
     items: [
       { label: "General", href: "/admin/contenido/configuracion", icon: Cog },
+      {
+        label: "Seguridad (2 pasos)",
+        href: "/admin/seguridad",
+        icon: ShieldCheck,
+        description:
+          "Verificación en 2 pasos (MFA/TOTP) de tu cuenta admin: activar, desactivar.",
+      },
       {
         label: "Usuarios y acceso",
         href: "/admin/usuarios",
