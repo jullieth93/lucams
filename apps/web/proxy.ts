@@ -14,10 +14,12 @@
  *   3. CORS estricto en `/api/*`: bloquea orígenes no listados.
  *   4. Security headers (HSTS, X-Frame-Options, CSP, etc.) — ver
  *      docs/SECURITY.md § Headers de seguridad.
+ *   5. Auth gate `/admin/*`: redirige anónimos a /admin/login (la verificación
+ *      de fila AdminUser activa la hacen las pages con getCurrentAdmin()).
+ *   6. Idle-timeout admin (A7): 30 min sin actividad → limpia sesión + re-login.
  *
  * NO se hace acá:
- *   - Auth gate `/admin/*` — pendiente cuando exista la sección admin.
- *   - Rate limit — pendiente, vive en `lib/rate-limit.ts` (ADR-016).
+ *   - Rate limit — vive en `lib/rate-limit.ts` (ADR-016), aplicado en las actions.
  *   - CSRF — Server Actions de Next 16 son inmunes; API routes con cookies
  *     se protegen con `SameSite=Lax` por defecto.
  *
@@ -81,6 +83,11 @@ const SECURITY_HEADERS: Record<string, string> = {
 // forzar al browser a promoverlos a HTTPS que no existe.
 const IS_PROD_DEPLOY =
   process.env.VERCEL_ENV === "production" || process.env.VERCEL_ENV === "preview";
+
+// Idle-timeout admin (Lucy 2026-06-27, Bloque C / A7): 30 min sin actividad →
+// cierre de sesión. Ventana deslizante: cada request admin renueva la marca.
+const ADMIN_IDLE_LIMIT_MS = 30 * 60 * 1000;
+const ADMIN_ACTIVITY_COOKIE = "admin_last_activity";
 
 const CSP = [
   "default-src 'self'",
@@ -208,6 +215,31 @@ export async function proxy(request: NextRequest) {
   if (isAdminPath && !user) {
     const redirectUrl = new URL("/admin/login", request.url);
     return NextResponse.redirect(redirectUrl);
+  }
+
+  // Idle-timeout admin (A7): si pasaron >30 min sin actividad, limpiamos las
+  // cookies de sesión Supabase (sb-*) + la marca y forzamos re-login. Ventana
+  // deslizante: en cada request admin renovamos la marca de actividad.
+  if (isAdminPath && user) {
+    const last = Number(request.cookies.get(ADMIN_ACTIVITY_COOKIE)?.value ?? 0);
+    const now = Date.now();
+    if (last && now - last > ADMIN_IDLE_LIMIT_MS) {
+      const url = new URL("/admin/login", request.url);
+      url.searchParams.set("expired", "1");
+      const expired = NextResponse.redirect(url);
+      for (const c of request.cookies.getAll()) {
+        if (c.name.startsWith("sb-")) expired.cookies.delete(c.name);
+      }
+      expired.cookies.delete(ADMIN_ACTIVITY_COOKIE);
+      return expired;
+    }
+    response.cookies.set(ADMIN_ACTIVITY_COOKIE, String(now), {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: IS_PROD_DEPLOY,
+      path: "/admin",
+      maxAge: 60 * 60,
+    });
   }
 
   response.headers.set("X-Request-Id", requestId);

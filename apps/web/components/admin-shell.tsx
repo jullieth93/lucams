@@ -34,7 +34,7 @@ import {
   Crown,
   Sparkles,
 } from "lucide-react";
-import { logoutAction } from "@/app/auth/logout/actions";
+import { adminLogoutAction } from "@/app/auth/logout/actions";
 import { ADMIN_NAV, type NavBadge, type NavGroup } from "@/lib/admin-nav";
 import { filterNavByRole } from "@/lib/admin-rbac";
 import type { AdminRole } from "@lucams/db";
@@ -331,7 +331,7 @@ function UserFooter({ admin, onNavigate }: { admin: AdminInfo; onNavigate: () =>
                   Cambiar contraseña
                 </Link>
                 <div className="mx-2 my-1 border-t border-white/10" />
-                <form action={logoutAction}>
+                <form action={adminLogoutAction}>
                   <button
                     type="submit"
                     className="flex w-full items-center gap-2.5 rounded-md px-3 py-2.5 text-sm text-rose-200 transition-colors hover:bg-rose-500/20 hover:text-white"
