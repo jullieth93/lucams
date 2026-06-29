@@ -44,7 +44,7 @@ bitácora abajo.
 
 ---
 
-## Última sesión — 2026-06-29 (Bloque C Seguridad: cierre 7/7 + códigos de respaldo MFA + disco)
+## Última sesión — 2026-06-29 (Bloque C 7/7 + Bloque E arranque: R3 + 368 unit tests + disco + MFA recovery)
 
 **Infra:** la VM se quedó sin espacio (`/home` 10G al 100% → FATAL de Turbopack). Se liberó
 borrando `.next` + prune de pnpm, y luego se **amplió `/home` de 10G a 40G** vía LVM tomando
@@ -65,10 +65,20 @@ A7/A8/A9 idle-timeout + logout global + cookie flags (`4e2fc3e`), T4/F2 rate-lim
 checkout+upload (`d35b899`), C3 CSP por nonce en prod (`036b261`). Bloque C queda **7/7**.
 Verificación C3 prod-like: 0 scripts sin nonce en 9 páginas. 56 tests verdes.
 
-**Próximo:** Lucy valida C3 en deploy preview de Vercel (consola abierta buscando errores
-CSP). Luego Bloque E (Testing/E2E + matriz RLS R3) o Bloque F (Reembolsos+Cupones). Sigue
-pendiente la ACCIÓN HUMANA del dominio Resend (DNS) + Turnstile keys en prod + branch
-protection en GitHub.
+**Bloque E Testing — en curso (misma sesión):** R3 matriz RLS (`5d488b3`, 43 tests — el
+impostor anon/authenticated no lee/escribe 20 tablas sensibles vía PostgREST; hallazgo: anon
+Y authenticated reciben 42501 en TODAS las tablas, PostgREST cerrado). + 368 unit tests para
+8 módulos sin cobertura vía workflow de 8 agentes auto-verificados (`628b9e8`): wompi (firma
+integridad+webhook), admin-rbac, validadores Colombia, DIVIPOLA, password-strength, cupones,
+recovery-codes, wa. **Suite 56 → 467 tests, todos verdes.** Fixes derivados: filterNavByRole
+descarta grupos vacíos; validatePhone/stripPhone toleran +57 (`4f601fe`); `retry:2` en vitest
+para el flake del pooler de Supabase bajo concurrencia (`714e814`). Caveats benignos
+documentados (calculateNitDV asume NIT base, password-strength heurístico simple).
+
+**Próximo:** seguir Bloque E con más unit tests verificables, o el setup E2E (Playwright), o el
+**CI-DB** (Supabase local en CI — OJO: necesita Docker, no se valida en esta VM, se prueba al
+hacer push). Pendiente además: Lucy valida C3 en deploy preview de Vercel (consola buscando
+errores CSP); ACCIÓN HUMANA dominio Resend (DNS) + Turnstile keys en prod + branch protection.
 
 ---
 
