@@ -41,7 +41,11 @@ export function PendingSubmitButton({
       aria-busy={pending}
       className={`${className ?? ""} disabled:opacity-60`}
     >
-      {pending ? <Loader2 className={`${spinnerClass} animate-spin`} /> : idleIcon}
+      {/* Envolvemos el ícono (que viene del padre) en un span keyed para que
+          React no lo trate como lista sin key — evita el warning de keys. */}
+      <span key="icon" className="contents">
+        {pending ? <Loader2 className={`${spinnerClass} animate-spin`} /> : idleIcon}
+      </span>
       {children}
     </button>
   );
