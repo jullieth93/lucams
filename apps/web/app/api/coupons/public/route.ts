@@ -22,7 +22,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
-  const allowed = await rateLimit(`coupons_public:${ip}`, 30, 60);
+  const { allowed } = await rateLimit(`coupons_public:${ip}`, 30, 60);
   if (!allowed) {
     return NextResponse.json(
       { error: "Too many requests" },

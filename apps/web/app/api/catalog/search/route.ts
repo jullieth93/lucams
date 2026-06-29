@@ -15,7 +15,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
-  const allowed = await rateLimit(`catalog_search:${ip}`, 60, 60);
+  const { allowed } = await rateLimit(`catalog_search:${ip}`, 60, 60);
   if (!allowed) {
     return NextResponse.json(
       { error: "Too many requests" },
