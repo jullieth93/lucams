@@ -228,6 +228,8 @@ model AdminUser {
   role           AdminRole
   isActive       Boolean   @default(true)
 
+  recoveryCodes AdminRecoveryCode[]
+
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
   createdBy String?
@@ -237,6 +239,21 @@ model AdminUser {
 
   @@index([deletedAt])
   @@index([role, isActive])
+}
+
+// Códigos de respaldo de MFA (Lucy 2026-06-27). Supabase no provee recovery
+// codes nativos para TOTP, así que los gestionamos acá: se guarda solo el HASH
+// (sha256); el código en claro se muestra UNA vez al generarlo. Al usarse en el
+// login, se marca usedAt y se desactiva el factor TOTP (acceso de emergencia).
+model AdminRecoveryCode {
+  id          String    @id @default(cuid())
+  adminUserId String
+  adminUser   AdminUser @relation(fields: [adminUserId], references: [id], onDelete: Cascade)
+  codeHash    String
+  usedAt      DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([adminUserId, usedAt])
 }
 
 // ──────────────────────── CATÁLOGO ────────────────────────

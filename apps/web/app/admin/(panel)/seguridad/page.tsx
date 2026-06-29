@@ -15,14 +15,23 @@ import {
 } from "@/components/admin-page";
 import { getCurrentAdmin } from "@/lib/auth";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { countUnusedRecoveryCodes } from "@/features/admin-mfa/recovery-codes";
 import { MfaEnroll } from "./mfa-enroll";
-import { disableMfaAction } from "./actions";
+import { RecoveryCodesPanel } from "./recovery-codes-panel";
+import { disableMfaAction, changeMfaDeviceAction } from "./actions";
 
 export const metadata: Metadata = { title: "Seguridad" };
 
-export default async function AdminSeguridadPage() {
+type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
+
+export default async function AdminSeguridadPage({
+  searchParams,
+}: {
+  searchParams: SearchParams;
+}) {
   const session = await getCurrentAdmin();
   if (!session) redirect("/admin/login");
+  const sp = await searchParams;
 
   const supabase = await createSupabaseServerClient();
   const { data: factorsData } = await supabase.auth.mfa.listFactors();
@@ -30,6 +39,7 @@ export default async function AdminSeguridadPage() {
     (f) => f.factor_type === "totp" && f.status === "verified",
   );
   const isEnabled = !!verifiedTotp;
+  const unusedCodes = isEnabled ? await countUnusedRecoveryCodes(session.admin.id) : 0;
 
   return (
     <AdminPage>
@@ -57,33 +67,61 @@ export default async function AdminSeguridadPage() {
           </div>
 
           {isEnabled ? (
-            <div className="space-y-4">
+            <div className="space-y-6">
               <AdminNotice tone="success">
                 Tu cuenta está protegida: al entrar al panel te pediremos un código de tu app de
                 autenticación, además de la contraseña.
               </AdminNotice>
-              <div className="text-brand-purple-dark/70 text-sm">
-                <p className="mb-1 font-semibold">¿Perdiste el teléfono?</p>
-                <p>
-                  Hay un mecanismo de emergencia: desde el servidor se ejecuta{" "}
-                  <code className="bg-brand-purple/10 rounded px-1.5 py-0.5 text-xs">
-                    make admin-mfa-reset
-                  </code>{" "}
-                  para desactivar la verificación y volver a enrolarla. (Lo corre quien administra el
-                  servidor.)
-                </p>
+
+              {/* Códigos de respaldo */}
+              <div className="border-brand-purple/10 border-t pt-5">
+                <RecoveryCodesPanel unusedCount={unusedCodes} />
               </div>
-              <form action={disableMfaAction}>
-                <button
-                  type="submit"
-                  className="rounded-md border border-rose-200 bg-white px-4 py-2 text-sm font-semibold text-rose-600 hover:bg-rose-50"
-                >
-                  Desactivar verificación en 2 pasos
-                </button>
-              </form>
+
+              {/* Cambiar dispositivo */}
+              <div className="border-brand-purple/10 border-t pt-5">
+                <h3 className="text-brand-purple-dark mb-1 font-semibold">
+                  Cambiar de autenticador / dispositivo
+                </h3>
+                <p className="text-brand-purple-dark/70 mb-3 text-sm">
+                  ¿Cambiaste de celular o de app? Esto desactiva el actual y te muestra un código QR
+                  nuevo para volver a configurarlo.
+                </p>
+                <form action={changeMfaDeviceAction}>
+                  <button
+                    type="submit"
+                    className="border-brand-purple/25 text-brand-purple-dark hover:bg-brand-purple/5 rounded-md border bg-white px-4 py-2 text-sm font-semibold"
+                  >
+                    Cambiar dispositivo
+                  </button>
+                </form>
+              </div>
+
+              {/* Desactivar */}
+              <div className="border-brand-purple/10 border-t pt-5">
+                <h3 className="text-brand-purple-dark mb-1 font-semibold">Desactivar</h3>
+                <p className="text-brand-purple-dark/70 mb-3 text-sm">
+                  Quita la verificación en 2 pasos (también borra tus códigos de respaldo). Tu cuenta
+                  quedará protegida solo con la contraseña.
+                </p>
+                <form action={disableMfaAction}>
+                  <button
+                    type="submit"
+                    className="rounded-md border border-rose-200 bg-white px-4 py-2 text-sm font-semibold text-rose-600 hover:bg-rose-50"
+                  >
+                    Desactivar verificación en 2 pasos
+                  </button>
+                </form>
+              </div>
             </div>
           ) : (
             <div className="space-y-4">
+              {sp.reconfig === "1" && (
+                <AdminNotice tone="info">
+                  Desactivamos tu autenticador anterior. Escanea el código QR de abajo con tu nuevo
+                  dispositivo para volver a activar la verificación en 2 pasos.
+                </AdminNotice>
+              )}
               <p className="text-brand-purple-dark/75 text-sm">
                 Tu panel ve finanzas y datos de clientes. La verificación en 2 pasos agrega una capa
                 extra: además de tu contraseña, pediremos un código que cambia cada 30 segundos en tu
