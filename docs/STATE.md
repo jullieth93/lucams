@@ -70,10 +70,14 @@ impostor anon/authenticated no lee/escribe 20 tablas sensibles vía PostgREST; h
 Y authenticated reciben 42501 en TODAS las tablas, PostgREST cerrado). + 368 unit tests para
 8 módulos sin cobertura vía workflow de 8 agentes auto-verificados (`628b9e8`): wompi (firma
 integridad+webhook), admin-rbac, validadores Colombia, DIVIPOLA, password-strength, cupones,
-recovery-codes, wa. **Suite 56 → 467 tests, todos verdes.** Fixes derivados: filterNavByRole
-descarta grupos vacíos; validatePhone/stripPhone toleran +57 (`4f601fe`); `retry:2` en vitest
-para el flake del pooler de Supabase bajo concurrencia (`714e814`). Caveats benignos
-documentados (calculateNitDV asume NIT base, password-strength heurístico simple).
+recovery-codes, wa. **Lote 2 (`7e25f45`, 332 tests)** con pipeline write→revisión adversarial
++ refuerzo: checkout/service, cart/service, customers/service, rate-limit (incl. concurrencia
+atómica), turnstile + pwned-passwords (fetch mockeado), storage (MIME magic bytes + upload
+happy path), photo-validation, cart-session, checkout-session. La revisión adversarial halló y
+reforzó 1 weak (storage: happy path no se ejercitaba por mock incompleto). **Suite 56 → 805
+tests, todos verdes.** Fixes derivados: filterNavByRole descarta grupos vacíos;
+validatePhone/stripPhone toleran +57 (`4f601fe`); `retry:2` en vitest para el flake del pooler
+de Supabase bajo concurrencia (`714e814`). Caveats benignos documentados.
 
 **Próximo:** seguir Bloque E con más unit tests verificables, o el setup E2E (Playwright), o el
 **CI-DB** (Supabase local en CI — OJO: necesita Docker, no se valida en esta VM, se prueba al
