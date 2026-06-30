@@ -13,7 +13,9 @@
  */
 
 import { test, expect, type Page } from "@playwright/test";
-import { PrismaClient } from "@prisma/client";
+// PrismaClient vía @lucams/db (re-exporta @prisma/client) — resoluble por tsc
+// desde apps/web y sin el import `server-only` de @/lib/db (rompería en Node).
+import { PrismaClient } from "@lucams/db";
 
 const prisma = new PrismaClient();
 const RUN = `e2e-${Date.now()}`;
