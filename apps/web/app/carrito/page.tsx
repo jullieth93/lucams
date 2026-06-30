@@ -137,7 +137,13 @@ export default async function CarritoPage() {
                   <span>Total</span>
                   <span className="tabular-nums">{formatCOP(cart.subtotal)}</span>
                 </div>
-                <Link href="/checkout/datos" className="block">
+                {/* prefetch={false}: /checkout/datos depende del estado MUTABLE del
+                    carrito y redirige a /carrito si lo ve vacío. En prod, el prefetch
+                    del Link puede cachear ese redirect (si corre en un instante donde
+                    el carrito luce vacío — p.ej. read-after-write tras agregar) → "Ir
+                    a pagar" rebotaría. Sin prefetch, el clic siempre evalúa fresco.
+                    Investigado con E2E (Lucy 2026-06-29). */}
+                <Link href="/checkout/datos" prefetch={false} className="block">
                   <Button
                     type="button"
                     className="bg-gradient-brand w-full text-white hover:brightness-110"
