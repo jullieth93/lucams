@@ -79,6 +79,16 @@ tests, todos verdes.** Fixes derivados: filterNavByRole descarta grupos vacíos;
 validatePhone/stripPhone toleran +57 (`4f601fe`); `retry:2` en vitest para el flake del pooler
 de Supabase bajo concurrencia (`714e814`). Caveats benignos documentados.
 
+**E2E Playwright arrancado (`2a176d2`/`68d984d`):** arreglado el config (default :4000, reusa el
+dev server de make) + 1er flujo de compra (`compra.spec.ts`, 2 tests): como el catálogo real es
+100% personalizable, el test crea un producto efímero NO personalizable y lo limpia — cubre
+PDP→agregar al carrito→/carrito muestra ítem→/checkout/datos carga con ítems. Suite E2E 11/11
+(2 compra + 9 smoke; arreglado 1 smoke stale de privacidad). De paso, limpiados 9 productos
+basura que la desconexión dejó en el catálogo. Observación a revisar: el `<Link>` "Ir a pagar"
+(nav RSC client-side) rebotó a /carrito justo tras agregar (el goto directo funciona) — posible
+sutileza de prefetch/cookie. Correr E2E: `PLAYWRIGHT_BASE_URL=http://localhost:4000 dotenv -e
+.env.local -- playwright test`.
+
 **Próximo:** seguir Bloque E con más unit tests verificables, o el setup E2E (Playwright), o el
 **CI-DB** (Supabase local en CI — OJO: necesita Docker, no se valida en esta VM, se prueba al
 hacer push). Pendiente además: Lucy valida C3 en deploy preview de Vercel (consola buscando
