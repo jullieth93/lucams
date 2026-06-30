@@ -96,8 +96,13 @@ y en prod el prefetch del `<Link>` cachea ese redirect → fix `prefetch={false}
 Sumado: **login admin E2E** (admin efímero sin MFA → dashboard; credenciales inválidas → login).
 Robustez: los asserts post-mutación usan `expect().toPass()` + retry:1 local en Playwright (mismo
 motivo que retry:2 en vitest). **Suite E2E 13/13** (9 smoke + 2 compra + 2 admin login).
-Limitación conocida (no bug de producto): los forms server-action de mutación del carrito
-(cantidad/quitar) no disparan en el contexto headless de Playwright — pendiente de investigar.
+Investigación carrito (corrige nota previa): las mutaciones del carrito (cantidad/quitar) SÍ
+funcionan — verificado a nivel DB (CartItem 1→0 al quitar). La flakiness del E2E es la
+**staleness del read del pooler de Supabase en el SSR** (el dev server lee stale mientras la DB
+ya está actualizada), no un form roto. **Hallazgos de calidad pendientes (pre-existentes, para
+investigación dedicada):** (1) mismatch de hidratación "won't be patched up" en páginas con el
+footer; (2) el footer (NewsletterForm con Turnstile) carga Cloudflare Turnstile en TODAS las
+páginas → 403s del challenge-platform + preload sin usar. Vale la pena lazy-load del Turnstile.
 
 **Próximo:** seguir Bloque E con más unit tests verificables, o el setup E2E (Playwright), o el
 **CI-DB** (Supabase local en CI — OJO: necesita Docker, no se valida en esta VM, se prueba al
