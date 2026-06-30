@@ -42,7 +42,8 @@ test.describe("storefront smoke", () => {
   test("/legal/privacidad renders content", async ({ page }) => {
     await page.goto("/legal/privacidad");
     await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
-    await expect(page.getByText(/Ley 1581/i)).toBeVisible();
+    // .first(): la página cita "Ley 1581" varias veces (strict mode si no).
+    await expect(page.getByText(/Ley 1581/i).first()).toBeVisible();
   });
 
   test("/status reports services", async ({ page }) => {

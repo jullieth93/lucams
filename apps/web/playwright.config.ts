@@ -14,7 +14,10 @@
 
 import { defineConfig, devices } from "@playwright/test";
 
-const PORT = process.env.PORT ?? "3000";
+// El dev server de esta VM corre en :4000 (gestionado por make en
+// lucams-shop-local). Default a 4000 y reusa el server ya levantado; en CI se
+// usa PLAYWRIGHT_BASE_URL (Vercel preview).
+const PORT = process.env.PORT ?? "4000";
 const BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? `http://localhost:${PORT}`;
 const isCI = !!process.env.CI;
 
@@ -41,7 +44,7 @@ export default defineConfig({
     ? {}
     : {
         webServer: {
-          command: "pnpm dev",
+          command: "PORT=4000 pnpm dev",
           url: BASE_URL,
           reuseExistingServer: !isCI,
           timeout: 180_000,
