@@ -89,6 +89,16 @@ basura que la desconexión dejó en el catálogo. Observación a revisar: el `<L
 sutileza de prefetch/cookie. Correr E2E: `PLAYWRIGHT_BASE_URL=http://localhost:4000 dotenv -e
 .env.local -- playwright test`.
 
+**E2E ampliado + bug "Ir a pagar" resuelto (`8a27a84`/`551d5f9`):** investigado el rebote — con
+logs server-side se confirmó que loadCheckoutContext recibe el sessionId correcto pero
+getCartDetail ve el carrito intermitentemente vacío (**read-after-write del pooler de Supabase**)
+y en prod el prefetch del `<Link>` cachea ese redirect → fix `prefetch={false}` en "Ir a pagar".
+Sumado: **login admin E2E** (admin efímero sin MFA → dashboard; credenciales inválidas → login).
+Robustez: los asserts post-mutación usan `expect().toPass()` + retry:1 local en Playwright (mismo
+motivo que retry:2 en vitest). **Suite E2E 13/13** (9 smoke + 2 compra + 2 admin login).
+Limitación conocida (no bug de producto): los forms server-action de mutación del carrito
+(cantidad/quitar) no disparan en el contexto headless de Playwright — pendiente de investigar.
+
 **Próximo:** seguir Bloque E con más unit tests verificables, o el setup E2E (Playwright), o el
 **CI-DB** (Supabase local en CI — OJO: necesita Docker, no se valida en esta VM, se prueba al
 hacer push). Pendiente además: Lucy valida C3 en deploy preview de Vercel (consola buscando
