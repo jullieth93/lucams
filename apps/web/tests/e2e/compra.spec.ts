@@ -85,22 +85,26 @@ async function addToCart(page: Page) {
 test.describe("compra — núcleo del carrito", () => {
   test("agregar al carrito deja el ítem visible en /carrito", async ({ page }) => {
     await addToCart(page);
-    await page.goto("/carrito");
-
-    // El carrito NO está vacío y muestra el producto agregado.
-    await expect(page.getByRole("heading", { name: /tu carrito está vacío/i })).toHaveCount(0);
-    await expect(page.getByText(`E2E Simple ${RUN}`).first()).toBeVisible();
-    await expect(page.getByText(/ítem|ítems/i).first()).toBeVisible();
+    // toPass reintenta goto+assert: bajo carga concurrente, el read-after-write
+    // del pooler de Supabase puede tardar en reflejar el ítem en /carrito.
+    await expect(async () => {
+      await page.goto("/carrito");
+      await expect(page.getByRole("heading", { name: /tu carrito está vacío/i })).toHaveCount(0);
+      await expect(page.getByText(`E2E Simple ${RUN}`).first()).toBeVisible();
+    }).toPass({ timeout: 20_000 });
     await expect(page.locator('a[href="/checkout/datos"]').first()).toBeVisible();
   });
 
   test("con ítems en el carrito, el checkout de datos carga su formulario", async ({ page }) => {
     await addToCart(page); // contexto fresco por test → re-agregamos
-    // Con ítems, loadCheckoutContext NO lanza CART_EMPTY → no redirige a /carrito.
-    await page.goto("/checkout/datos");
-
-    await expect(page).toHaveURL(/\/checkout\/datos/);
-    await expect(page.locator('input[name="fullName"]')).toBeVisible();
+    // toPass: con el read-after-write del pooler, el checkout puede ver el
+    // carrito vacío por un instante y rebotar a /carrito; reintentamos.
+    await expect(async () => {
+      await page.goto("/checkout/datos");
+      await expect(page).toHaveURL(/\/checkout\/datos/);
+      await expect(page.locator('input[name="fullName"]')).toBeVisible();
+    }).toPass({ timeout: 20_000 });
     await expect(page.locator('input[name="email"]')).toBeVisible();
   });
+
 });

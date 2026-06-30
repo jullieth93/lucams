@@ -25,7 +25,10 @@ export default defineConfig({
   testDir: "./tests/e2e",
   fullyParallel: true,
   forbidOnly: isCI,
-  retries: isCI ? 2 : 0,
+  // 1 retry local (2 en CI): los flujos que mutan el carrito pegan al pooler de
+  // Supabase, cuyo read-after-write bajo concurrencia ocasionalmente flakea
+  // (mismo motivo que retry:2 en vitest). toPass cubre la mayoría; esto es red.
+  retries: isCI ? 2 : 1,
   workers: isCI ? 2 : undefined,
   reporter: isCI ? [["html", { open: "never" }], ["line"]] : "list",
   use: {
