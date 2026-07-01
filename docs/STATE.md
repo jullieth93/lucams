@@ -104,6 +104,16 @@ investigación dedicada):** (1) mismatch de hidratación "won't be patched up" e
 footer; (2) el footer (NewsletterForm con Turnstile) carga Cloudflare Turnstile en TODAS las
 páginas → 403s del challenge-platform + preload sin usar. Vale la pena lazy-load del Turnstile.
 
+**Lote 3 de tests + 3 bugs de código arreglados (`1595995`/`4def824`):** 416 tests (catálogo:
+products/categories/ocasiones + lib/catalog, cms/service, redirects, consent Ley 1581, resend
+mockeado, admin-roles) con pipeline write→revisión adversarial (8 sólidos + 1 weak corregido).
+La revisión destapó y se arreglaron 3 bugs REALES: (1) `adminRoleLabel('__proto__'/'toString')`
+devolvía la propiedad heredada en vez de string → `Object.hasOwn`; (2) `products.listProducts`
+el "desde $X" incluía variantes INACTIVAS → filtro `isActive:true`; (3) `categories.updateCategory`
+crasheaba con P2002 al renombrar al slug de una archivada → `findUnique` + error amigable.
+**Suite total ~1.221 tests vitest**, todos verdes. Bloque E acumula 4 bugs reales cazados por
+los tests (+ el +57 y "Ir a pagar" de tramos previos).
+
 **Próximo:** seguir Bloque E con más unit tests verificables, o el setup E2E (Playwright), o el
 **CI-DB** (Supabase local en CI — OJO: necesita Docker, no se valida en esta VM, se prueba al
 hacer push). Pendiente además: Lucy valida C3 en deploy preview de Vercel (consola buscando
