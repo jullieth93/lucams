@@ -115,7 +115,10 @@ export async function listProducts(opts: {
         updatedAt: true,
         category: { select: { id: true, name: true, slug: true } },
         _count: { select: { variants: true } },
-        variants: { where: { deletedAt: null }, select: { price: true } },
+        // Solo variantes ACTIVAS para el "desde $X" — una opción desactivada no
+        // se puede comprar, así que no debe bajar el precio mostrado. (Bug hallado
+        // por tests: antes solo filtraba deletedAt, Lucy 2026-06-30.)
+        variants: { where: { deletedAt: null, isActive: true }, select: { price: true } },
       },
     }),
     prisma.product.count({ where }),

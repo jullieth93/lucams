@@ -437,11 +437,9 @@ describe.skipIf(!hasDb)("products/service — integración DB", { timeout: T }, 
       expect(item.variantsCount).toBe(0);
     });
 
-    it("BUG-CANDIDATE: priceFrom INCLUYE variantes INACTIVAS (filtra solo deletedAt, no isActive)", async () => {
-      // El comentario del código dice "el más barato entre opciones ACTIVAS", pero
-      // la query solo aplica `where: { deletedAt: null }` — NO filtra isActive. Una
-      // variante inactiva más barata baja el "desde $X" mostrado. Documentamos el
-      // comportamiento REAL (no el que dice el comentario).
+    it("priceFrom EXCLUYE variantes INACTIVAS (solo cuenta opciones comprables)", async () => {
+      // Una opción desactivada no se puede comprar, así que no debe bajar el
+      // "desde $X". La query filtra isActive:true (fix del bug hallado por tests).
       const cat = await makeCategory({ label: "lp-pfinactive" });
       const p = await makeProduct({
         categoryId: cat.id,
@@ -454,9 +452,8 @@ describe.skipIf(!hasDb)("products/service — integración DB", { timeout: T }, 
       });
       const res = await listProducts({ categoryId: cat.id });
       const item = res.items.find((i) => i.id === p.id)!;
-      // Comportamiento REAL: 1000 (incluye la inactiva). Si algún día se arregla
-      // para honrar isActive, este valor debería pasar a 5000.
-      expect(item.priceFrom).toBe(1_000);
+      // La inactiva ($1000) se ignora → "desde $5000" (la activa más barata).
+      expect(item.priceFrom).toBe(5_000);
     });
 
     it("priceFrom EXCLUYE variantes archivadas (deletedAt != null) pero variantsCount las INCLUYE", async () => {

@@ -162,11 +162,17 @@ export async function updateCategory(
   updatedBy: string | null,
 ) {
   if (input.slug) {
-    const conflict = await prisma.category.findFirst({
-      where: { slug: input.slug, id: { not: id }, deletedAt: null },
+    // findUnique (no findFirst con deletedAt:null) para detectar también el slug
+    // de una categoría ARCHIVADA — el UNIQUE de la DB lo ocupa igual. Antes esto
+    // lanzaba un P2002 sin capturar; ahora da un error amigable. (Fix bug hallado
+    // por tests, Lucy 2026-06-30.)
+    const conflict = await prisma.category.findUnique({
+      where: { slug: input.slug },
       select: { id: true },
     });
-    if (conflict) throw new CategoryValidationError("slug", `Slug "${input.slug}" ya existe`);
+    if (conflict && conflict.id !== id) {
+      throw new CategoryValidationError("slug", `Slug "${input.slug}" ya existe`);
+    }
   }
 
   // D2: si cambia la categoría madre, validamos el límite de 1 nivel y

@@ -280,6 +280,17 @@ describe.skipIf(!hasDb)("categories/service — integración DB (CRUD + jerarqu�
       ).rejects.toMatchObject({ name: "CategoryValidationError", field: "slug" });
     });
 
+    it("rechaza renombrar a un slug de una categoría ARCHIVADA con error amigable (no P2002)", async () => {
+      // El UNIQUE de la DB ocupa el slug aunque esté soft-deleted. Antes esto
+      // lanzaba un P2002 crudo; ahora findUnique lo detecta → CategoryValidationError.
+      const archivedSlug = nextSlug("archived");
+      await seedCat({ slug: archivedSlug, deletedAt: new Date() });
+      const other = await seedCat();
+      await expect(
+        updateCategory(other.id, { slug: archivedSlug }, null),
+      ).rejects.toMatchObject({ name: "CategoryValidationError", field: "slug" });
+    });
+
     it("update sobre un id inexistente lanza P2025 (no CategoryValidationError)", async () => {
       await expect(
         updateCategory(`c${RUN}ghostid`, { name: "x" }, null),
