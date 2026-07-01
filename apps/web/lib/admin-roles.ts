@@ -13,5 +13,8 @@ export const ADMIN_ROLE_LABEL: Record<string, string> = {
 };
 
 export function adminRoleLabel(role: string): string {
-  return ADMIN_ROLE_LABEL[role] ?? role;
+  // Object.hasOwn evita que claves heredadas del prototype ("toString",
+  // "__proto__", etc.) devuelvan la propiedad heredada en vez del string —
+  // garantiza el tipo de retorno `string`. (Bug hallado por tests, Lucy 2026-06-30.)
+  return Object.hasOwn(ADMIN_ROLE_LABEL, role) ? ADMIN_ROLE_LABEL[role] : role;
 }
