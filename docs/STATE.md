@@ -121,9 +121,22 @@ total, número único, snapshot), payments/provider (factory + adapter Wompi), e
 provider weak→solid). **6º bug de código:** getPaymentProvider hacía require('./wompi') antes del
 check → reordenado. Fixes de calidad de la revisión: afterAll resiliente (no deja huérfanos),
 makeVariant con SKU único por llamada (retry-safe, evitó un P2002 real en la corrida completa),
-reconciliation direccional. **Suite total ~1.425 tests vitest.** Bloque E ya cubre catálogo,
+reconciliation direccional. **Suite total ~1.446 tests vitest.** Bloque E ya cubre catálogo,
 cupones, checkout/cart/customers, cms/redirects/consent, pagos+webhook, RLS, storage, MFA/RBAC,
 la saga de órdenes y los emails al cliente.
+
+**CI-DB LISTO (`16c3835`) — el mayor salto de calidad:** el CI corría los tests con un
+DATABASE_URL placeholder → los ~1.400 de integración NO protegían nada (solo local). Ahora el
+job levanta un **service container postgres:15** y arma el schema desde cero: `.github/ci/
+supabase-compat.sql` (stub de lo que Supabase provee y las migraciones necesitan en un PG pelado
+— extensiones pg_trgm/unaccent/pgcrypto/uuid-ossp, roles anon/authenticated/service_role, auth
++ auth.uid(), stubs storage) → `prisma migrate deploy` → las 7 SQL de supabase/migrations → vitest.
+Conexión DIRECTA (sin pooler) → **rápido y sin flakiness**. NEXT_PUBLIC_SUPABASE_URL vacío → R3
+(rls-matrix, que exige PostgREST/GoTrue real) salta limpio; R3 refactorizado a clientes lazy para
+saltar sin romper la colección. **VALIDADO localmente** montando un Postgres real (mismo flujo +
+env del CI): **1403 pasan, 43 saltan, 0 fallan en ~21s** (vs ~15 min con el pooler). Cada PR ahora
+enforza la suite. (Bonus: el Postgres local en :5433 sirve para correr los tests localmente en
+segundos en vez de minutos.)
 
 **Próximo:** seguir Bloque E con más unit tests verificables, o el setup E2E (Playwright), o el
 **CI-DB** (Supabase local en CI — OJO: necesita Docker, no se valida en esta VM, se prueba al
