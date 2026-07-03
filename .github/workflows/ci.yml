@@ -65,9 +65,39 @@ jobs:
         run: pnpm --filter web build
 
   unit-tests:
-    name: Vitest unit tests
+    name: Vitest tests (unit + integración con Postgres)
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 12
+    # Postgres real (service container) → los ~1.400 tests, incl. integración con DB,
+    # corren y se ENFORCEAN en CI. Conexión directa (sin pooler) → rápido y sin flakiness.
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: lucams_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      # DB del service (sobreescribe los placeholders globales).
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/lucams_test
+      DIRECT_URL: postgresql://postgres:postgres@localhost:5432/lucams_test
+      # Dummies de Wompi: finalizeCheckout construye el provider; los tests mockean la API real.
+      WOMPI_ENV: sandbox
+      WOMPI_PUBLIC_KEY: pub_test_ci
+      WOMPI_PRIVATE_KEY: prv_test_ci
+      WOMPI_INTEGRITY_SECRET: test_integrity_ci
+      WOMPI_EVENTS_SECRET: test_events_ci
+      # Vacío → los tests que exigen el stack Supabase REAL (R3 rls-matrix, que pega a
+      # PostgREST/GoTrue) saltan limpio. El resto usa Prisma contra el service o mockea supabase.
+      NEXT_PUBLIC_SUPABASE_URL: ""
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ""
+      SUPABASE_SECRET_KEY: ""
     steps:
       - uses: actions/checkout@v4
 
@@ -88,7 +118,20 @@ jobs:
       - name: Generate Prisma client
         run: pnpm --filter @lucams/db db:generate
 
-      - name: Run vitest
+      - name: Compat de Supabase (roles + extensiones + stubs auth/storage)
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f .github/ci/supabase-compat.sql
+
+      - name: Aplicar migraciones Prisma (schema desde cero)
+        run: pnpm --filter @lucams/db exec prisma migrate deploy
+
+      - name: Aplicar migraciones SQL de Supabase (RLS, funciones)
+        run: |
+          for f in $(ls supabase/migrations/*.sql | sort); do
+            echo "→ $f"
+            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$f"
+          done
+
+      - name: Run vitest (unit + integración)
         run: pnpm --filter web test
 
   secrets-scan:

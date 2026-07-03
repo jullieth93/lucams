@@ -56,12 +56,18 @@ const SENSITIVE = [
 ] as const;
 
 describe.skipIf(!canRun)("RLS matrix R3 — la API pública no filtra datos sensibles", () => {
-  const anon = createClient(URL!, ANON!, { auth: { persistSession: false } });
-  const service = createClient(URL!, SERVICE!, { auth: { persistSession: false } });
+  // Clientes LAZY (asignados en beforeAll, que no corre si el describe se salta).
+  // Crearlos en el cuerpo del describe con `URL!` reventaría la colección cuando
+  // faltan las llaves Supabase (createClient(undefined)) — p.ej. en un CI de solo
+  // Postgres. Con esto el skipIf salta limpio sin romper el archivo.
+  let anon: SupabaseClient;
+  let service: SupabaseClient;
   let authed: SupabaseClient;
   let ephemeralUserId: string | undefined;
 
   beforeAll(async () => {
+    anon = createClient(URL!, ANON!, { auth: { persistSession: false } });
+    service = createClient(URL!, SERVICE!, { auth: { persistSession: false } });
     // Usuario efímero para ejercer el rol `authenticated` sin depender de cuentas reales.
     const email = `rls-matrix-${Date.now()}@example.com`;
     const password = "Rls-Matrix-Test-9182734650";
