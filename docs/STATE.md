@@ -48,7 +48,27 @@ de fases intermedias en el historial git + bitácora abajo.
 
 ---
 
-## Última sesión — 2026-07-03 (Bloque E: E2E reto MFA + Estudio + a11y skip-link + runner estable)
+## Última sesión — 2026-07-03 (Bloque E: axe WCAG AA + contraste sin tocar paleta + E2E MFA/Estudio/a11y)
+
+**axe-core WCAG 2.1 AA + remediación de contraste (`032bf85`, `b8d4d8e`).** Lucy aprobó la dep
+`@axe-core/playwright`. Integrado (`axe.spec.ts` + `_helpers/axe-scan.ts`): auditoría de 9 páginas
+clave con gate ESTRICTA (0 serious/critical). axe halló 3 tipos de violación real:
+- **select-name** (crítico): el `<select>` de ordenar del catálogo tenía label visible pero sin
+  asociar → `htmlFor`/`id`.
+- **link-in-text-block** (serio): enlaces privacidad/términos en contacto/registro distinguidos
+  solo por color → subrayado persistente.
+- **color-contrast** (serio, sistémico en las 9): la paleta kawaii pastel no llega a AA 4.5:1 en
+  texto pequeño. **Decisión (ADR-044): cumplir AA SIN tocar los 7 colores** — tokens de texto
+  derivados AA (`--brand-muted #6b6280`, `--brand-pink-ink #c42b76`, `--brand-coral-ink`), pills/
+  enlaces purple sólido→`purple-dark`, botón WhatsApp `emerald-600→700`. 299 usos en ~90 archivos.
+  Los colores vibrantes se conservan para fondos/decoración/títulos grandes. **axe 9/9 = 0
+  violaciones** (antes: contraste en las 9). Commit grande: 108 archivos.
+- **ACCIÓN HUMANA REQUERIDA (Lucy):** revisar visualmente que el look kawaii se conserva (el texto
+  secundario quedó algo más oscuro/legible; badges/enlaces rosa pequeños usan rosa más profundo).
+  Si algo se ve pesado, se ajusta el token en un solo lugar (`globals.css`). Suite E2E total: **35**
+  (smoke+compra+admin+MFA+Estudio+a11y 9+axe 9), verde (33 pass + 2 flakes tolerados).
+
+## Sesión — 2026-07-03 (Bloque E: E2E reto MFA + Estudio + a11y skip-link + runner estable)
 
 **a11y sin dependencia (`6fe4e2c`):** encontrado un gap real — **no había skip-link**
 (WCAG 2.4.1 Bypass Blocks) en todo el sitio. Agregado en el layout raíz como primer
