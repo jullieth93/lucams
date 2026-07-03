@@ -37,14 +37,49 @@ PDP)**. Los 6 bloques del feedback cerrados (7 commits). **Bloque C Seguridad CE
 (7/7, 2026-06-29):** P0 (rate-limit, RLS 17 tablas, CI) + MFA admin completo (enroll/QR +
 reto + **códigos de respaldo** + cambiar dispositivo) + Reseñas + Turnstile registro/reset +
 RBAC por rol + logout global + idle-timeout 30min + rate-limit checkout/upload + **CSP por
-nonce en prod** (ADR-042/043). **Próximo: validar C3 (CSP) en deploy preview de Vercel +
-P0-004 verificar dominio Resend (ACCIÓN HUMANA DNS) → Bloque E (Testing: matriz RLS R3 +
-E2E) o Bloque F (Reembolsos+Cupones).** Detalle de fases intermedias en el historial git +
-bitácora abajo.
+nonce en prod** (ADR-042/043). **Bloque E Testing a fondo (2026-07-03):** ~1.529 tests vitest
+(servicio/lib + 83 de UI con revisión adversarial) + **CI-DB LISTO** (Postgres real en cada PR)
++ **E2E Playwright 17/17** — smoke, compra, login admin, **reto MFA (TOTP RFC 6238 propio +
+código de respaldo)** y **Estudio Konva**; runner local serial (next dev + pooler no toleran
+concurrencia). **Próximo: validar C3 (CSP) en deploy preview de Vercel + P0-004 verificar
+dominio Resend (ACCIÓN HUMANA DNS); en Bloque E falta a11y con axe (dep por aprobar), E2E
+envío/pago (deps externas), visual y load; o pasar a Bloque F (Reembolsos+Cupones).** Detalle
+de fases intermedias en el historial git + bitácora abajo.
 
 ---
 
-## Última sesión — 2026-06-29 (Bloque C 7/7 + Bloque E arranque: R3 + 368 unit tests + disco + MFA recovery)
+## Última sesión — 2026-07-03 (Bloque E: E2E reto MFA + Estudio + runner E2E estable)
+
+**Reto MFA E2E (`95967e8`):** el flujo completo de control de acceso admin con MFA.
+`tests/e2e/_helpers/totp.ts` implementa **TOTP RFC 6238 con Node crypto** (no hay lib de TOTP
+en el proyecto) — verificado: Supabase acepta nuestros códigos. `admin-mfa.spec.ts` crea un
+admin efímero, le **enrola MFA** vía supabase-js en `beforeAll` e inserta un código de respaldo
+conocido (replicando `hashCode` = sha256 del código normalizado, porque `recovery-codes.ts`
+tiene `import "server-only"` y no se puede importar en el contexto Node de Playwright). Dos
+caminos: login → reto TOTP → dashboard; login → **código de respaldo** → `/admin/seguridad?reconfig=1`
+(el respaldo DESACTIVA el MFA, por eso `describe.serial` con TOTP primero).
+
+**Estudio E2E (`ed7e600`):** el diferenciador #1. `estudio.spec.ts` navega al Estudio de un
+producto real personalizable (catálogo 100% personalizable → solo navegación, sin mutación) y
+verifica que el editor carga (pasa el dynamic-import spinner) y **monta el lienzo Konva
+(`<canvas>`)** + su chrome (barra de herramientas + subir foto). No conduce el canvas (drag/drop
+Konva es demasiado frágil en Playwright). `test.slow()` + `waitUntil:"domcontentloaded"` absorben
+el cold-compile on-demand de `next dev` para la ruta pesada de Konva (>60s local; instantáneo
+contra el build prod de CI). Un slug inexistente → 404 (la ruta no es un agujero abierto).
+
+**Runner E2E estabilizado (mismo `95967e8`):** la suite completa flakeaba bajo concurrencia.
+Causa raíz **verificada** (no fue lag transitorio): dos add-to-cart en paralelo contra `next dev`
++ el pooler hacen que uno **pierda su redirect `?added=1`** (serial pasa 2/2, paralelo flakea).
+Fixes: `compra.spec.ts addToCart` ahora espera el redirect `?added=1` (señal fiable del write)
+en vez del conteo del header (read de una sola vez por el pooler, stale bajo carga sin retry);
+`playwright.config.ts` → **local workers=1** (CI 2 contra build prod), test timeout 60s (headroom
+addToCart + toPass), retries 2. **Suite E2E 17/17, 0 flaky (2.5 min serial).**
+
+**Correr E2E:** `PLAYWRIGHT_BASE_URL=http://localhost:4000 dotenv -e ../../.env.local -- playwright test`
+desde `apps/web` (necesita el dev server en :4000 + DATABASE_URL/llaves Supabase; sin ellas los
+specs que tocan Supabase se saltan limpio).
+
+## Sesión — 2026-06-29 (Bloque C 7/7 + Bloque E arranque: R3 + 368 unit tests + disco + MFA recovery)
 
 **Infra:** la VM se quedó sin espacio (`/home` 10G al 100% → FATAL de Turbopack). Se liberó
 borrando `.next` + prune de pnpm, y luego se **amplió `/home` de 10G a 40G** vía LVM tomando
