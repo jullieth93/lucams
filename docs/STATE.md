@@ -56,8 +56,10 @@ elemento enfocable (oculto con `sr-only`, visible con `focus:not-sr-only`, salta
 `#contenido`), con `id="contenido" tabIndex={-1}` en los **19 `<main>`** del storefront/cuenta
 + el `<main>` del `AdminShell`. `a11y.spec.ts` (Playwright nativo, sin `@axe-core`) guarda los
 invariantes — `lang="es-CO"`, un solo `main#contenido`, ninguna `<img>` sin `alt`, ≥1 `h1` —
-en 5 páginas públicas + una PDP real, y conduce el skip-link de punta a punta (Tab lo enfoca →
-Enter mueve el foco a `main#contenido` + ancla la URL). **7/7 a11y verdes. Suite E2E total: 24.**
+en 5 páginas públicas + una PDP real, conduce el skip-link de punta a punta (Tab lo enfoca →
+Enter mueve el foco a `main#contenido` + ancla la URL), y verifica que **todos los campos de
+`/login` y `/registro` tienen nombre accesible** (WCAG 4.1.2/3.3.2 — pasan; los forms ya usan
+`<Label htmlFor>` + `<Input id>`). **9/9 a11y verdes. Suite E2E total: 26, 0 flaky (2.9 min).**
 **ACCIÓN HUMANA REQUERIDA (opcional):** para la capa AUTOMATIZADA de reglas WCAG falta aprobar
 la dependencia dev `@axe-core/playwright` (no instalada — mandato de no instalar deps sin OK).
 
