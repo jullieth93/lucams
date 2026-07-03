@@ -50,7 +50,7 @@ export default function NotFound() {
         </Link>
       </div>
 
-      <p className="text-brand-purple-dark/60 mt-10 text-sm">
+      <p className="text-brand-muted mt-10 text-sm">
         ¿Buscabas algo en particular?{" "}
         <Link href="/contacto" className="text-brand-purple font-medium hover:underline">
           Cuéntanos

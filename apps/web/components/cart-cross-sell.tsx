@@ -82,7 +82,7 @@ export async function CartCrossSell({ productSlugsInCart }: { productSlugsInCart
         </h2>
         <Link
           href={`/ocasion/${suggestion.products[0].ocasionSlugs[0] ?? "matrimonio"}`}
-          className="text-brand-purple hover:text-brand-purple-dark text-sm font-semibold"
+          className="text-brand-purple-dark hover:text-brand-purple text-sm font-semibold"
         >
           Ver más →
         </Link>

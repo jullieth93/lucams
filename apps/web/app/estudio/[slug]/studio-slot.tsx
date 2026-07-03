@@ -553,7 +553,7 @@ function StudioSlotImpl({
               </span>
 
               {/* Indicador del slot (sutil, sin gritar) */}
-              <span className="text-brand-purple-dark/40 text-[9px] font-medium tracking-wider uppercase">
+              <span className="text-brand-muted text-[9px] font-medium tracking-wider uppercase">
                 Imán #{slotState.slotIndex + 1}
               </span>
             </motion.div>

@@ -194,7 +194,7 @@ export function ProductForm({ categories, priceFrom, initialProduct, action, sub
                 <p className="text-brand-purple-dark text-sm font-semibold">
                   {priceFrom != null ? `Desde ${formatCOP(priceFrom)}` : "Sin precio aún"}
                 </p>
-                <p className="text-brand-purple-dark/60 mt-0.5 text-xs">
+                <p className="text-brand-muted mt-0.5 text-xs">
                   El precio se define en cada opción (cada una puede costar distinto).
                 </p>
               </div>
@@ -262,7 +262,7 @@ export function ProductForm({ categories, priceFrom, initialProduct, action, sub
          * "Descripción" de Lo básico; el SEO de Google ya funciona automático.
          */}
         <CollapsibleDetails summary="📝 Textos extra (opcional — para el bot de WhatsApp, que llega más adelante)">
-          <p className="text-brand-purple-dark/55 mb-3 text-xs">
+          <p className="text-brand-muted mb-3 text-xs">
             No hacen falta para vender. Estos textos alimentarán al bot de WhatsApp
             cuando exista (Fase 5). Por ahora puedes dejarlos vacíos.
           </p>
@@ -422,7 +422,7 @@ export function ProductForm({ categories, priceFrom, initialProduct, action, sub
                 defaultValue={initialProduct?.weightGrams ?? ""}
                 placeholder="500"
               />
-              <p className="mt-1 text-xs text-brand-purple-dark/55">50 – 50.000 g</p>
+              <p className="mt-1 text-xs text-brand-muted">50 – 50.000 g</p>
             </div>
             <div>
               <Label htmlFor="widthCm">Ancho (cm)</Label>
@@ -464,7 +464,7 @@ export function ProductForm({ categories, priceFrom, initialProduct, action, sub
               />
             </div>
           </div>
-          <p className="text-xs text-brand-purple-dark/65">
+          <p className="text-xs text-brand-muted">
             💡 Estos son los datos del <strong>paquete final</strong>, no del producto suelto. Si una
             variante (Set 12 vs Set 6) tiene peso o dimensiones distintos, configúralos desde
             Variantes con un valor específico.
@@ -578,7 +578,7 @@ export function ProductForm({ categories, priceFrom, initialProduct, action, sub
               name="compareAtPrice"
               value={initialProduct?.compareAtPrice ?? ""}
             />
-            <p className="text-brand-purple-dark/65 text-sm">
+            <p className="text-brand-muted text-sm">
               💡 El precio (y su promoción) vive en cada <strong>opción</strong>. Ve a la pestaña{" "}
               <strong>Opciones</strong> para ajustarlos. El precio base del producto se calcula solo,
               a partir de la opción más barata.
@@ -643,7 +643,7 @@ export function ProductForm({ categories, priceFrom, initialProduct, action, sub
       >
         <Link
           href="/admin/productos"
-          className="text-sm font-medium text-brand-purple-dark/65 hover:text-brand-purple-dark"
+          className="text-sm font-medium text-brand-muted hover:text-brand-purple-dark"
         >
           ← Cancelar
         </Link>
@@ -682,7 +682,7 @@ function SectionCard({
     <section className="space-y-4 rounded-xl border border-brand-purple/15 bg-white p-5">
       <header className="space-y-1">
         <h2 className="text-base font-semibold text-brand-purple-dark">{title}</h2>
-        {description && <p className="text-xs text-brand-purple-dark/65">{description}</p>}
+        {description && <p className="text-xs text-brand-muted">{description}</p>}
       </header>
       <div className="space-y-4">{children}</div>
     </section>
@@ -705,7 +705,7 @@ function CollapsibleDetails({
     <details className="border-brand-purple/15 group rounded-xl border bg-white">
       <summary className="text-brand-purple-dark hover:bg-brand-purple/5 flex cursor-pointer list-none items-center justify-between rounded-xl px-5 py-3.5 text-sm font-semibold select-none">
         <span>{summary}</span>
-        <span className="text-brand-purple-dark/50 text-xs transition-transform group-open:rotate-90">
+        <span className="text-brand-muted text-xs transition-transform group-open:rotate-90">
           ▶
         </span>
       </summary>
@@ -733,7 +733,7 @@ function Field({
         {label}
       </Label>
       {children}
-      {hint && !error && <p className="text-xs text-brand-purple-dark/55">{hint}</p>}
+      {hint && !error && <p className="text-xs text-brand-muted">{hint}</p>}
       {error && <p className="text-xs text-red-600">{error}</p>}
     </div>
   );
@@ -761,7 +761,7 @@ function PriceField({
   return (
     <Field id={id} label={label} hint={hint} error={error}>
       <div className="relative">
-        <span className="absolute top-1/2 left-2.5 -translate-y-1/2 text-sm text-brand-purple-dark/55">$</span>
+        <span className="absolute top-1/2 left-2.5 -translate-y-1/2 text-sm text-brand-muted">$</span>
         <Input
           id={`${id}__display`}
           type="number"
@@ -804,7 +804,7 @@ function Checkbox({
       />
       <span className="flex-1">
         <span className="block font-medium text-brand-purple-dark">{label}</span>
-        {hint && <span className="mt-0.5 block text-xs text-brand-purple-dark/55">{hint}</span>}
+        {hint && <span className="mt-0.5 block text-xs text-brand-muted">{hint}</span>}
       </span>
     </label>
   );

@@ -232,7 +232,7 @@ function Kpi({
 }) {
   return (
     <AdminCard className="p-4">
-      <div className="text-brand-purple-dark/55 mb-1 flex items-center gap-1.5 text-xs font-semibold tracking-wide uppercase">
+      <div className="text-brand-muted mb-1 flex items-center gap-1.5 text-xs font-semibold tracking-wide uppercase">
         {icon}
         {label}
       </div>
@@ -245,7 +245,7 @@ function Kpi({
       >
         {value}
       </div>
-      <p className="text-brand-purple-dark/55 mt-1 text-xs">{hint}</p>
+      <p className="text-brand-muted mt-1 text-xs">{hint}</p>
     </AdminCard>
   );
 }
@@ -264,7 +264,7 @@ function BlocoFuturo({
   return (
     <AdminCard className="p-4">
       <div className="flex items-start gap-3">
-        <div className="bg-brand-purple/10 text-brand-purple flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg">
+        <div className="bg-brand-purple/10 text-brand-purple-dark flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg">
           {icon}
         </div>
         <div className="min-w-0 flex-1">
@@ -272,7 +272,7 @@ function BlocoFuturo({
             <h4 className="text-brand-purple-dark text-sm font-semibold">{title}</h4>
             <AdminBadge tone="blue">{phase}</AdminBadge>
           </div>
-          <p className="text-brand-purple-dark/65 mt-1 text-xs">{description}</p>
+          <p className="text-brand-muted mt-1 text-xs">{description}</p>
         </div>
         <ArrowRight className="text-brand-purple-dark/30 mt-1 h-4 w-4 flex-shrink-0" />
       </div>

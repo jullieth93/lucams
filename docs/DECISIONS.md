@@ -1449,3 +1449,19 @@ VENNDELO_WEBHOOK_SECRET=
 **ACCIÓN HUMANA REQUERIDA (Lucy).** Validar C3 en un **deploy preview de Vercel** (no en dev, que usa el CSP permisivo): recorrer storefront + estudio/canvas + checkout + Turnstile (registro) + todo el admin, con la consola del navegador abierta buscando errores `Refused to execute ... violates Content Security Policy`.
 
 **Referencias.** Commits `08f9cd4`, `4e2fc3e`, `d35b899`, `036b261`. [[ADR-042]].
+
+## ADR-044 — Accesibilidad WCAG 2.1 AA: tonos de texto sin tocar la paleta (2026-07-03)
+
+**Contexto.** Se integró `@axe-core/playwright` (auditoría automatizada WCAG 2.1 A/AA sobre 9 páginas clave) y encontró 3 tipos de violación reales: `select-name` (crítico), `link-in-text-block` (serio) y `color-contrast` sistémico (serio, en las 9 páginas). El contraste es la tensión clásica: la paleta kawaii pastel (purple `#7c6aad`, pink `#e85b9f`, coral `#f58a6f`) sobre crema/blanco no alcanza el 4.5:1 de AA en **texto pequeño/secundario** (ratios 2.5–4.4). Lucy aprobó abordarlo priorizando calidad, con el mandato de **no modificar la paleta** sin decisión documentada.
+
+**Decisión.** Cumplir AA **conservando intactos los 7 colores de la paleta**. Los colores kawaii se mantienen para fondos, decoración, íconos, mascota, títulos grandes y botones; para el **texto** donde el pastel no da contraste, se introdujeron **tonos derivados AA** como tokens nuevos (no reemplazan la paleta):
+- `--brand-muted: #6b6280` (`text-brand-muted`) — texto secundario, ~5.5:1 sobre blanco/crema. Reemplazó a `text-brand-purple-dark/{40–65}` y `text-brand-purple/{40–70}` (299 usos en ~90 archivos).
+- `--brand-pink-ink: #c42b76` (`text/bg-brand-pink-ink`) — texto/enlace/badge rosa pequeño (blanco sobre él ≥4.5:1). Reemplazó `text-brand-pink` en enlaces (auth) y `bg-brand-pink` en badges de descuento.
+- `--brand-coral-ink: #b0492e` — hover de enlaces coral.
+- Texto `text-brand-purple` sólido pequeño (pills, enlaces) → `text-brand-purple-dark` (ya en paleta). Botón WhatsApp `bg-emerald-600`→`emerald-700` (verde neutro, no marca).
+
+**Regla a futuro.** Texto pequeño/secundario/interactivo usa `text-brand-muted` / `*-ink` / `text-brand-purple-dark`, **no** los pasteles a baja opacidad. Los colores vibrantes se reservan para fondos/decoración/títulos grandes (AA "large text" = 3:1, que sí cumplen). La gate `axe.spec.ts` es **estricta**: 0 violaciones serious/critical (contraste incluido) en cada PR.
+
+**Verificación.** axe 9/9 con 0 violaciones (antes: contraste en las 9). Suite E2E completa verde (33 pass + 2 flaky tolerados). typecheck limpio. Ningún test unitario asertaba las clases cambiadas (37 de componentes verdes). Paleta (`--brand-*` de los 7 colores) sin cambios.
+
+**ACCIÓN HUMANA REQUERIDA (Lucy).** Revisar **visualmente** en el navegador que el look kawaii se conserva: el texto secundario quedó un poco más oscuro (más legible) y los badges/enlaces rosa pequeños usan un rosa más profundo. Mirar home, catálogo, PDP, carrito, contacto, registro/login y el Estudio. Si algún tono se ve "pesado", se ajusta el token (un solo lugar en `globals.css`). [[ADR-040]].

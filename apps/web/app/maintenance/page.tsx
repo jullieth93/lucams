@@ -35,7 +35,7 @@ export default function MaintenancePage() {
           fallback="Volvemos en unas horas con todo brillando. Mientras tanto, escríbenos por WhatsApp si necesitas ayuda urgente."
         />
       </p>
-      <p className="text-brand-purple-dark/50 mt-8 text-xs">
+      <p className="text-brand-muted mt-8 text-xs">
         Mantenimiento programado · {new Date().toLocaleString("es-CO", { dateStyle: "medium" })}
       </p>
     </div>

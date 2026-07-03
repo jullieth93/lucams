@@ -30,7 +30,7 @@ export function PromoteForm() {
           {state?.fieldErrors?.email && (
             <p className="mt-1 text-xs text-rose-600">{state.fieldErrors.email[0]}</p>
           )}
-          <p className="text-brand-purple-dark/55 mt-1 text-xs">
+          <p className="text-brand-muted mt-1 text-xs">
             La persona debe estar registrada como cliente primero (signup público).
           </p>
         </div>

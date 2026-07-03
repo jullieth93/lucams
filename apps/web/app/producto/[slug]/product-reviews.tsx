@@ -40,7 +40,7 @@ export async function ProductReviews({ productId, slug }: { productId: string; s
       </div>
 
       {reviews.length === 0 ? (
-        <p className="text-brand-purple-dark/60 mb-6 text-sm">
+        <p className="text-brand-muted mb-6 text-sm">
           Todavía no hay reseñas. ¡Si compraste este producto, sé la primera persona en opinar!
         </p>
       ) : (
@@ -65,7 +65,7 @@ export async function ProductReviews({ productId, slug }: { productId: string; s
                 </span>
               </div>
               <p className="text-brand-purple-dark/80 text-sm whitespace-pre-line">{r.comment}</p>
-              <p className="text-brand-purple-dark/45 mt-1 text-xs">{dateFmt.format(r.createdAt)}</p>
+              <p className="text-brand-muted mt-1 text-xs">{dateFmt.format(r.createdAt)}</p>
             </li>
           ))}
         </ul>
@@ -78,7 +78,7 @@ export async function ProductReviews({ productId, slug }: { productId: string; s
           <ReviewForm productId={productId} slug={slug} />
         ) : (
           <p className="text-brand-purple-dark/70 text-sm">
-            <Link href="/login" className="text-brand-purple font-semibold underline">
+            <Link href="/login" className="text-brand-purple-dark font-semibold underline">
               Inicia sesión
             </Link>{" "}
             para dejar una reseña. Solo puedes reseñar productos que compraste.

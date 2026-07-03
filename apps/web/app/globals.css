@@ -25,6 +25,13 @@
   --color-brand-coral: var(--brand-coral);
   --color-brand-yellow: var(--brand-yellow);
   --color-brand-cream: var(--brand-cream);
+  /* Tonos de TEXTO accesibles (WCAG AA ≥4.5:1). NO reemplazan la paleta —los 7
+     colores kawaii siguen intactos para fondos/decoración/títulos grandes— son solo
+     para texto pequeño/secundario/interactivo donde el pastel no da contraste.
+     Ver ADR-044 en docs/DECISIONS.md. */
+  --color-brand-muted: var(--brand-muted);
+  --color-brand-pink-ink: var(--brand-pink-ink);
+  --color-brand-coral-ink: var(--brand-coral-ink);
 
   /* Neutrales (foreground/background base) */
   --color-background: var(--background);
@@ -120,6 +127,11 @@
   --brand-coral: #f58a6f;
   --brand-yellow: #ffd93d;
   --brand-cream: #fff8f0;
+
+  /* ─── Tonos de texto AA (derivados de la marca, oscurecidos para contraste) ─── */
+  --brand-muted: #6b6280; /* texto secundario · ~5.5:1 sobre blanco/crema */
+  --brand-pink-ink: #c42b76; /* texto/enlace rosa pequeño · AA */
+  --brand-coral-ink: #b0492e; /* texto coral pequeño · AA */
 
   /* ─────── Neutrales (modo claro) ─────── */
   --background: #ffffff;

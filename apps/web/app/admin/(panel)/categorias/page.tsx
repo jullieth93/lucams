@@ -213,7 +213,7 @@ export default async function AdminCategoriasPage({
             <div className="sm:col-span-12">
               <Link
                 href="/admin/categorias"
-                className="text-brand-purple/70 hover:text-brand-purple-dark text-xs font-semibold"
+                className="text-brand-muted hover:text-brand-purple-dark text-xs font-semibold"
               >
                 Limpiar filtros
               </Link>
@@ -289,7 +289,7 @@ export default async function AdminCategoriasPage({
                     </div>
                     {c.description && (
                       <div
-                        className="text-brand-purple-dark/55 line-clamp-1 text-xs"
+                        className="text-brand-muted line-clamp-1 text-xs"
                         style={depth > 0 ? { paddingLeft: `${depth * 1.25 + 1.25}rem` } : undefined}
                       >
                         {c.description}
@@ -401,7 +401,7 @@ export default async function AdminCategoriasPage({
             <h3 className="text-brand-purple-dark font-display text-base font-bold">
               Crear nueva categoría
             </h3>
-            <p className="text-brand-purple-dark/60 mt-0.5 text-sm">
+            <p className="text-brand-muted mt-0.5 text-sm">
               Las categorías agrupan productos por tipo (ej. Magnéticos foto, Personalizados marca,
               Decorativos, Pack).
             </p>
@@ -425,7 +425,7 @@ function ReorderButton({
 }) {
   const Icon = direction === "up" ? ArrowUp : ArrowDown;
   const cls =
-    "text-brand-purple-dark/60 hover:bg-brand-purple/10 hover:text-brand-purple-dark inline-flex h-7 w-7 items-center justify-center rounded-md disabled:cursor-not-allowed disabled:opacity-25";
+    "text-brand-muted hover:bg-brand-purple/10 hover:text-brand-purple-dark inline-flex h-7 w-7 items-center justify-center rounded-md disabled:cursor-not-allowed disabled:opacity-25";
   // En el borde (no se puede mover más), botón inerte deshabilitado.
   if (disabled) {
     return (

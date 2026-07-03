@@ -131,14 +131,14 @@ function ModalInner({
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-w-md p-0">
         <div className="border-brand-purple/10 flex items-center gap-2 border-b px-4 py-3">
-          <div className="bg-brand-purple/10 text-brand-purple flex h-7 w-7 items-center justify-center rounded-md">
+          <div className="bg-brand-purple/10 text-brand-purple-dark flex h-7 w-7 items-center justify-center rounded-md">
             <Type className="h-4 w-4" />
           </div>
           <div className="flex flex-col">
             <DialogTitle className="text-brand-purple-dark text-sm font-bold">
               Editar texto
             </DialogTitle>
-            <DialogDescription className="text-brand-purple-dark/55 text-[11px]">
+            <DialogDescription className="text-brand-muted text-[11px]">
               {slotLabel ? `${slotLabel} · ` : ""}Click &quot;Aplicar&quot; para guardar
             </DialogDescription>
           </div>
@@ -186,7 +186,7 @@ function ModalInner({
             <div className="flex-1">
               <label className="text-brand-purple-dark/70 mb-1.5 flex items-center justify-between text-xs font-semibold">
                 <span>Tamaño</span>
-                <span className="text-brand-purple-dark/55 tabular-nums">{fontSize}px</span>
+                <span className="text-brand-muted tabular-nums">{fontSize}px</span>
               </label>
               <Slider
                 min={8}

@@ -92,7 +92,7 @@ export default async function AveonlineIntegrationPage({
               Registrar webhook en Aveonline
             </h2>
           </div>
-          <p className="text-brand-purple-dark/65 mb-3 text-xs">
+          <p className="text-brand-muted mb-3 text-xs">
             Aveonline llamará a esta URL cada vez que cambie el estado de una guía (recogida, en
             tránsito, entregada, etc.). El path{" "}
             <code className="bg-brand-purple/10 rounded px-1.5 py-0.5">
@@ -170,7 +170,7 @@ export default async function AveonlineIntegrationPage({
               y descarta peticiones falsas.
             </li>
           </ol>
-          <p className="text-brand-purple-dark/55 mt-3 text-xs">
+          <p className="text-brand-muted mt-3 text-xs">
             Doc oficial:{" "}
             <Link
               href="https://integraciones.aveonline.co/docs/avecrm/crearWebhook/"

@@ -243,7 +243,7 @@ export default async function AdminResenasPage({ searchParams }: { searchParams:
             <div className="sm:col-span-12">
               <Link
                 href="/admin/resenas"
-                className="text-brand-purple/70 hover:text-brand-purple-dark text-xs font-semibold"
+                className="text-brand-muted hover:text-brand-purple-dark text-xs font-semibold"
               >
                 Limpiar filtros
               </Link>
@@ -303,7 +303,7 @@ export default async function AdminResenasPage({ searchParams }: { searchParams:
                   <td className="px-4 py-3">
                     <Link
                       href={`/producto/${r.productSlug}`}
-                      className="text-brand-purple hover:text-brand-purple-dark inline-flex items-center gap-1 text-xs font-medium"
+                      className="text-brand-purple-dark hover:text-brand-purple inline-flex items-center gap-1 text-xs font-medium"
                       target="_blank"
                       rel="noreferrer"
                     >
@@ -322,7 +322,7 @@ export default async function AdminResenasPage({ searchParams }: { searchParams:
                       {r.comment}
                     </p>
                     {r.imagesCount > 0 && (
-                      <span className="text-brand-purple-dark/55 mt-1 inline-flex items-center gap-1 text-[10px]">
+                      <span className="text-brand-muted mt-1 inline-flex items-center gap-1 text-[10px]">
                         <ImageIcon className="h-3 w-3" />
                         {r.imagesCount} {r.imagesCount === 1 ? "foto" : "fotos"}
                       </span>
@@ -331,10 +331,10 @@ export default async function AdminResenasPage({ searchParams }: { searchParams:
                   <td className="text-brand-purple-dark/85 px-4 py-3 text-xs">
                     <div>{r.authorName ?? r.customerFullName ?? "—"}</div>
                     {r.authorCity && (
-                      <div className="text-brand-purple-dark/55 text-[10px]">{r.authorCity}</div>
+                      <div className="text-brand-muted text-[10px]">{r.authorCity}</div>
                     )}
                     {r.customerEmail && (
-                      <div className="text-brand-purple-dark/55 text-[10px]">{r.customerEmail}</div>
+                      <div className="text-brand-muted text-[10px]">{r.customerEmail}</div>
                     )}
                   </td>
                   <td className="px-4 py-3">
@@ -349,7 +349,7 @@ export default async function AdminResenasPage({ searchParams }: { searchParams:
                       {r.featured && <AdminBadge tone="purple">Destacada</AdminBadge>}
                     </div>
                   </td>
-                  <td className="text-brand-purple-dark/65 px-4 py-3 text-xs">
+                  <td className="text-brand-muted px-4 py-3 text-xs">
                     {dateFmt.format(r.createdAt)}
                   </td>
                   <td className="px-4 py-3">
@@ -360,7 +360,7 @@ export default async function AdminResenasPage({ searchParams }: { searchParams:
                           <input type="hidden" name="productSlug" value={r.productSlug} />
                           <button
                             type="submit"
-                            className="text-brand-purple hover:text-brand-purple-dark text-xs font-medium"
+                            className="text-brand-purple-dark hover:text-brand-purple text-xs font-medium"
                           >
                             Restaurar
                           </button>
@@ -399,7 +399,7 @@ export default async function AdminResenasPage({ searchParams }: { searchParams:
                                 type="submit"
                                 className={
                                   r.featured
-                                    ? "text-brand-purple hover:text-brand-purple-dark rounded-md border border-purple-300 px-2 py-1 text-[11px] font-semibold"
+                                    ? "text-brand-purple-dark hover:text-brand-purple rounded-md border border-purple-300 px-2 py-1 text-[11px] font-semibold"
                                     : "text-brand-purple hover:bg-brand-purple/10 rounded-md border border-purple-300 px-2 py-1 text-[11px] font-semibold"
                                 }
                                 title={
@@ -420,7 +420,7 @@ export default async function AdminResenasPage({ searchParams }: { searchParams:
                             <input type="hidden" name="productSlug" value={r.productSlug} />
                             <button
                               type="submit"
-                              className="text-brand-purple-dark/55 text-[11px] font-medium hover:text-red-600"
+                              className="text-brand-muted text-[11px] font-medium hover:text-red-600"
                             >
                               Archivar
                             </button>

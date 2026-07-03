@@ -61,7 +61,7 @@ export async function TemplatesStrip({
                   />
                 ) : (
                   <div className="flex h-full w-full items-center justify-center">
-                    <Sparkles className="text-brand-purple/40 h-8 w-8" />
+                    <Sparkles className="text-brand-muted h-8 w-8" />
                   </div>
                 )}
                 {!isPersonalizable && (
@@ -75,7 +75,7 @@ export async function TemplatesStrip({
                   {t.name}
                 </p>
                 {t.description && (
-                  <p className="text-brand-purple-dark/55 mt-0.5 line-clamp-2 text-[10px]">
+                  <p className="text-brand-muted mt-0.5 line-clamp-2 text-[10px]">
                     {t.description}
                   </p>
                 )}

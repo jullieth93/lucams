@@ -77,7 +77,7 @@ export default async function MisPedidosPage() {
           <header className="mb-8">
             <Link
               href="/mi-cuenta"
-              className="text-brand-purple-dark/60 hover:text-brand-purple mb-2 inline-block text-xs"
+              className="text-brand-muted hover:text-brand-purple mb-2 inline-block text-xs"
             >
               ← Mi cuenta
             </Link>
@@ -85,7 +85,7 @@ export default async function MisPedidosPage() {
               <CmsText blockKey="account.orders.heading" fallback="Mis pedidos" />
             </h1>
             {orders.length > 0 && (
-              <p className="text-brand-purple-dark/65 mt-1 text-sm">
+              <p className="text-brand-muted mt-1 text-sm">
                 {orders.length} {orders.length === 1 ? "pedido" : "pedidos"} en tu historial
               </p>
             )}
@@ -100,7 +100,7 @@ export default async function MisPedidosPage() {
                   fallback="Aún no has hecho un pedido"
                 />
               </p>
-              <p className="text-brand-purple-dark/65 mt-2 text-sm">
+              <p className="text-brand-muted mt-2 text-sm">
                 <CmsText
                   blockKey="account.orders.empty.subtext"
                   fallback="Cuando hagas tu primer pedido aparecerá aquí con todos los detalles ✨"
@@ -137,7 +137,7 @@ export default async function MisPedidosPage() {
                             {STATUS_LABEL[o.status] ?? o.status}
                           </span>
                         </div>
-                        <div className="text-brand-purple-dark/60 mt-0.5 text-xs">
+                        <div className="text-brand-muted mt-0.5 text-xs">
                           {dateFmt.format(o.createdAt)} · {o._count.items}{" "}
                           {o._count.items === 1 ? "producto" : "productos"}
                           {o.trackingNumber && (
@@ -151,7 +151,7 @@ export default async function MisPedidosPage() {
                       <div className="text-brand-purple-dark text-right text-sm font-bold tabular-nums">
                         {formatCOP(o.total)}
                       </div>
-                      <ChevronRight className="text-brand-purple-dark/40 h-4 w-4 flex-shrink-0" />
+                      <ChevronRight className="text-brand-muted h-4 w-4 flex-shrink-0" />
                     </Link>
                   </li>
                 ))}

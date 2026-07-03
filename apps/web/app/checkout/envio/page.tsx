@@ -67,7 +67,7 @@ export default async function CheckoutEnvioPage() {
                   <Truck className="h-5 w-5" />
                   Elige cómo te lo enviamos
                 </h2>
-                <p className="text-brand-purple-dark/65 mb-5 text-sm">
+                <p className="text-brand-muted mb-5 text-sm">
                   Cotizamos con Aveonline para{" "}
                   <strong>
                     {ctx.state.address.city}, {ctx.state.address.department}

@@ -30,7 +30,7 @@ export function OcasionFilterStrip({ ocasiones }: { ocasiones: OcasionData[] }) 
 
   return (
     <div className="mb-5">
-      <div className="text-brand-purple-dark/60 mb-2 text-xs font-bold tracking-wider uppercase">
+      <div className="text-brand-muted mb-2 text-xs font-bold tracking-wider uppercase">
         Ocasión
       </div>
       {/* Mobile/tablet: scroll horizontal con fade en bordes. Desktop lg+: wrap a 2 líneas. */}

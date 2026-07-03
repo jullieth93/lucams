@@ -134,7 +134,7 @@ export function StudioCanvasGrid({
   if (!canvasData || !layout) {
     return (
       <div className="flex items-center justify-center py-12">
-        <span className="text-brand-purple/70 text-sm">Cargando lienzo...</span>
+        <span className="text-brand-muted text-sm">Cargando lienzo...</span>
       </div>
     );
   }

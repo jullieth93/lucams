@@ -67,7 +67,7 @@ export default async function ContactoPage() {
                   href={waSupportUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="mt-4 inline-flex items-center gap-2 rounded-full bg-emerald-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-emerald-700"
+                  className="mt-4 inline-flex items-center gap-2 rounded-full bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-emerald-800"
                 >
                   <MessageCircle className="h-4 w-4" />
                   Hablanos por WhatsApp →
@@ -85,7 +85,7 @@ export default async function ContactoPage() {
                 >
                   <CmsSetting settingKey="CONTACT_EMAIL" fallback="hola@lucamsshop.co" />
                 </a>
-                <p className="text-brand-purple-dark/65 mt-2 text-xs">
+                <p className="text-brand-muted mt-2 text-xs">
                   Para temas legales:{" "}
                   <CmsSetting settingKey="SECURITY_EMAIL" fallback="security@lucamsshop.co" />
                 </p>

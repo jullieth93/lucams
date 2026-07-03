@@ -125,7 +125,7 @@ export default async function AdminPedidoDetallePage({
                             unoptimized
                           />
                         ) : (
-                          <div className="text-brand-purple/40 flex h-full w-full items-center justify-center text-xs">
+                          <div className="text-brand-muted flex h-full w-full items-center justify-center text-xs">
                             sin foto
                           </div>
                         )}
@@ -137,7 +137,7 @@ export default async function AdminPedidoDetallePage({
                         <div className="text-brand-purple-dark text-sm font-semibold">
                           {it.variant.sku}
                         </div>
-                        <div className="text-brand-purple-dark/65 text-xs">
+                        <div className="text-brand-muted text-xs">
                           {formatCOP(it.unitPrice)} c/u · qty {it.qty}
                         </div>
                         {it.designAssetUrl && (
@@ -145,7 +145,7 @@ export default async function AdminPedidoDetallePage({
                             href={it.designAssetUrl}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="text-brand-purple hover:text-brand-purple-dark mt-1 inline-block text-xs underline"
+                            className="text-brand-purple-dark hover:text-brand-purple mt-1 inline-block text-xs underline"
                           >
                             Descargar PNG producción
                           </a>
@@ -180,12 +180,12 @@ export default async function AdminPedidoDetallePage({
                     order.customer ? (
                       <Link
                         href={`/admin/clientes/${order.customer.id}`}
-                        className="text-brand-purple hover:text-brand-purple-dark underline"
+                        className="text-brand-purple-dark hover:text-brand-purple underline"
                       >
                         Ver perfil
                       </Link>
                     ) : (
-                      <span className="text-brand-purple-dark/40">Guest checkout</span>
+                      <span className="text-brand-muted">Guest checkout</span>
                     )
                   }
                 />
@@ -198,12 +198,12 @@ export default async function AdminPedidoDetallePage({
                 {ship.addressLine1}
                 {ship.addressLine2 ? ` · ${ship.addressLine2}` : ""}
               </div>
-              <div className="text-brand-purple-dark/65 mt-1 text-xs">
+              <div className="text-brand-muted mt-1 text-xs">
                 {ship.city}, {ship.department}
                 {ship.zip ? ` · ${ship.zip}` : ""}
               </div>
               {ship.notes && (
-                <div className="text-brand-purple-dark/55 mt-2 text-xs italic">
+                <div className="text-brand-muted mt-2 text-xs italic">
                   Nota: {ship.notes}
                 </div>
               )}
@@ -240,7 +240,7 @@ export default async function AdminPedidoDetallePage({
                       href={`https://comercios.wompi.co/transactions/${order.wompiTransactionId}`}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="text-brand-purple hover:text-brand-purple-dark font-mono text-xs underline"
+                      className="text-brand-purple-dark hover:text-brand-purple font-mono text-xs underline"
                     >
                       {order.wompiTransactionId.slice(0, 18)}…
                     </a>
@@ -290,7 +290,7 @@ export default async function AdminPedidoDetallePage({
                   )}
                 </>
               ) : (
-                <p className="text-brand-purple-dark/55 text-xs">Sin guía generada todavía</p>
+                <p className="text-brand-muted text-xs">Sin guía generada todavía</p>
               )}
             </Card>
 
@@ -330,7 +330,7 @@ function Card({
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="flex items-start justify-between gap-3 py-1">
-      <dt className="text-brand-purple-dark/65 text-xs">{label}</dt>
+      <dt className="text-brand-muted text-xs">{label}</dt>
       <dd className="text-brand-purple-dark text-right text-xs font-medium">{value}</dd>
     </div>
   );

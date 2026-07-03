@@ -83,7 +83,7 @@ export function GlobalSearch() {
       >
         <Search className="h-4 w-4" />
         <span className="hidden text-xs sm:inline">Buscar</span>
-        <kbd className="border-brand-purple/20 text-brand-purple-dark/60 hidden rounded border px-1.5 py-0.5 text-[10px] sm:inline">
+        <kbd className="border-brand-purple/20 text-brand-muted hidden rounded border px-1.5 py-0.5 text-[10px] sm:inline">
           ⌘K
         </kbd>
       </button>
@@ -99,7 +99,7 @@ export function GlobalSearch() {
           {query.trim().length >= 2 && results.length === 0 ? (
             <CommandEmpty>
               <div className="flex flex-col items-center gap-2 py-4">
-                <Sparkles className="text-brand-purple/40 h-6 w-6" />
+                <Sparkles className="text-brand-muted h-6 w-6" />
                 <span>Nada por aquí — prueba con otra palabra.</span>
               </div>
             </CommandEmpty>
@@ -129,7 +129,7 @@ export function GlobalSearch() {
                     <span className="text-brand-purple-dark truncate text-sm font-medium">
                       {p.name}
                     </span>
-                    <span className="text-brand-purple-dark/60 truncate text-xs">
+                    <span className="text-brand-muted truncate text-xs">
                       {p.category.name}
                     </span>
                   </div>

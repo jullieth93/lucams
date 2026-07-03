@@ -109,7 +109,7 @@ export default async function CustomerPedidoDetallePage({
         <div className="mx-auto max-w-3xl">
           <Link
             href="/mi-cuenta/pedidos"
-            className="text-brand-purple-dark/60 hover:text-brand-purple mb-3 inline-flex items-center gap-1 text-xs"
+            className="text-brand-muted hover:text-brand-purple mb-3 inline-flex items-center gap-1 text-xs"
           >
             <ChevronLeft className="h-3 w-3" />
             Mis pedidos
@@ -118,7 +118,7 @@ export default async function CustomerPedidoDetallePage({
             <h1 className="font-display text-brand-purple-dark text-3xl sm:text-4xl">
               Pedido {order.number}
             </h1>
-            <p className="text-brand-purple-dark/65 mt-1 text-sm">
+            <p className="text-brand-muted mt-1 text-sm">
               {dateFmt.format(order.createdAt)} · {STATUS_LABEL[order.status] ?? order.status}
             </p>
           </header>
@@ -142,7 +142,7 @@ export default async function CustomerPedidoDetallePage({
                       </div>
                       <span
                         className={`mt-2 text-center text-[10px] font-medium ${
-                          done ? "text-brand-purple-dark" : "text-brand-purple-dark/40"
+                          done ? "text-brand-purple-dark" : "text-brand-muted"
                         }`}
                       >
                         {s.label}
@@ -186,7 +186,7 @@ export default async function CustomerPedidoDetallePage({
                           unoptimized
                         />
                       ) : (
-                        <div className="text-brand-purple/40 flex h-full w-full items-center justify-center text-[10px]">
+                        <div className="text-brand-muted flex h-full w-full items-center justify-center text-[10px]">
                           {it.qty}×
                         </div>
                       )}
@@ -195,7 +195,7 @@ export default async function CustomerPedidoDetallePage({
                       <div className="text-brand-purple-dark text-sm font-semibold">
                         {it.variant.product.name}
                       </div>
-                      <div className="text-brand-purple-dark/65 text-xs">
+                      <div className="text-brand-muted text-xs">
                         {it.variant.name} · {it.qty} × {formatCOP(it.unitPrice)}
                       </div>
                     </div>
@@ -226,12 +226,12 @@ export default async function CustomerPedidoDetallePage({
               {ship.addressLine1}
               {ship.addressLine2 && ` · ${ship.addressLine2}`}
             </p>
-            <p className="text-brand-purple-dark/60 mt-1 text-xs">
+            <p className="text-brand-muted mt-1 text-xs">
               {ship.city}, {ship.department}
               {ship.zip ? ` · ${ship.zip}` : ""}
             </p>
             {ship.notes && (
-              <p className="text-brand-purple-dark/55 mt-2 text-xs italic">Nota: {ship.notes}</p>
+              <p className="text-brand-muted mt-2 text-xs italic">Nota: {ship.notes}</p>
             )}
           </Card>
 
@@ -267,7 +267,7 @@ export default async function CustomerPedidoDetallePage({
               <p className="text-brand-purple-dark mt-2 text-sm font-semibold">
                 ¿Cómo te llegó tu pedido?
               </p>
-              <p className="text-brand-purple-dark/65 mt-1 text-xs">
+              <p className="text-brand-muted mt-1 text-xs">
                 Tu reseña nos ayuda muchísimo (30 segundos).
               </p>
               <Link
@@ -308,7 +308,7 @@ function Card({
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="flex items-center justify-between gap-3 py-1">
-      <dt className="text-brand-purple-dark/65 text-xs">{label}</dt>
+      <dt className="text-brand-muted text-xs">{label}</dt>
       <dd className="text-brand-purple-dark text-right text-xs font-medium">{value}</dd>
     </div>
   );

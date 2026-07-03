@@ -357,7 +357,7 @@ export default async function AdminIntegracionesPage() {
                         </div>
                         <p className="text-brand-purple-dark/75 mt-1 text-sm">{i.description}</p>
                         {i.healthDetail && (
-                          <p className="text-brand-purple-dark/65 mt-2 text-xs">
+                          <p className="text-brand-muted mt-2 text-xs">
                             <strong>Detalle:</strong> {i.healthDetail}
                           </p>
                         )}
@@ -368,10 +368,10 @@ export default async function AdminIntegracionesPage() {
                           </p>
                         )}
                         <details className="mt-3">
-                          <summary className="text-brand-purple-dark/55 hover:text-brand-purple-dark cursor-pointer text-xs">
+                          <summary className="text-brand-muted hover:text-brand-purple-dark cursor-pointer text-xs">
                             Ver variables de entorno requeridas ({i.envVarsRequired.length})
                           </summary>
-                          <ul className="text-brand-purple-dark/65 mt-2 grid grid-cols-1 gap-1 font-mono text-[11px] sm:grid-cols-2">
+                          <ul className="text-brand-muted mt-2 grid grid-cols-1 gap-1 font-mono text-[11px] sm:grid-cols-2">
                             {i.envVarsRequired.map((v) => {
                               const present = !!process.env[v] && process.env[v]!.trim() !== "";
                               return (

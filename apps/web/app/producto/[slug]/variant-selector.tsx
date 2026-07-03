@@ -319,7 +319,7 @@ export function VariantSelector({ productBasePrice, variants: rawVariants }: Var
                       ? "bg-brand-purple cursor-pointer text-white shadow-md"
                       : available
                         ? "ring-brand-purple/20 text-brand-purple-dark hover:ring-brand-purple/50 hover:bg-brand-cream/50 cursor-pointer bg-white ring-1"
-                        : "ring-brand-purple/10 text-brand-purple-dark/40 bg-brand-cream/40 cursor-not-allowed ring-1",
+                        : "ring-brand-purple/10 text-brand-muted bg-brand-cream/40 cursor-not-allowed ring-1",
                   ].join(" ")}
                 >
                   {formatDimensionValue(dim.key, value)}
@@ -333,7 +333,7 @@ export function VariantSelector({ productBasePrice, variants: rawVariants }: Var
       {/* Microcopy: explica los chips atenuados cuando hay combinaciones
           imposibles en el catálogo. No mostrar si la matriz está completa. */}
       {hasUnavailable && (
-        <p className="text-brand-purple-dark/55 text-[11px]">
+        <p className="text-brand-muted text-[11px]">
           Las opciones atenuadas no están disponibles en esta combinación. Cambia primero la otra
           opción para acceder a ellas.
         </p>

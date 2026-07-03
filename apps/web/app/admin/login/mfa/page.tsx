@@ -40,7 +40,7 @@ export default async function AdminMfaPage() {
           <h1 className="text-brand-purple-dark font-display text-xl font-bold">
             Verificación en 2 pasos
           </h1>
-          <p className="text-brand-purple-dark/65 mt-1 text-sm">
+          <p className="text-brand-muted mt-1 text-sm">
             Escribe el código de 6 dígitos de tu app de autenticación para entrar.
           </p>
         </div>

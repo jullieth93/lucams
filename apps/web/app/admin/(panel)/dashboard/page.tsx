@@ -146,7 +146,7 @@ export default async function AdminDashboardPage() {
       <AdminPageBody>
         {/* ─────────────── Operaciones ─────────────── */}
         <section>
-          <h2 className="text-brand-purple-dark/55 mb-3 text-xs font-bold tracking-widest uppercase">
+          <h2 className="text-brand-muted mb-3 text-xs font-bold tracking-widest uppercase">
             Operaciones del día
           </h2>
           <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -201,7 +201,7 @@ export default async function AdminDashboardPage() {
 
         {/* ─────────────── Negocio (KPIs) ─────────────── */}
         <section>
-          <h2 className="text-brand-purple-dark/55 mb-3 text-xs font-bold tracking-widest uppercase">
+          <h2 className="text-brand-muted mb-3 text-xs font-bold tracking-widest uppercase">
             Estado del negocio
           </h2>
           <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -214,7 +214,7 @@ export default async function AdminDashboardPage() {
 
         {/* ─────────────── Acceso rápido ─────────────── */}
         <section>
-          <h2 className="text-brand-purple-dark/55 mb-3 text-xs font-bold tracking-widest uppercase">
+          <h2 className="text-brand-muted mb-3 text-xs font-bold tracking-widest uppercase">
             Acceso rápido
           </h2>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -259,7 +259,7 @@ export default async function AdminDashboardPage() {
 
         {/* ─────────────── Auditoría ─────────────── */}
         <section>
-          <h2 className="text-brand-purple-dark/55 mb-3 text-xs font-bold tracking-widest uppercase">
+          <h2 className="text-brand-muted mb-3 text-xs font-bold tracking-widest uppercase">
             Trazabilidad
           </h2>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">

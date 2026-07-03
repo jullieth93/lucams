@@ -43,7 +43,7 @@ export function WebhookRegistrationForm({
           Registrar
         </Button>
       </div>
-      <p className="text-brand-purple-dark/55 text-[10px]">
+      <p className="text-brand-muted text-[10px]">
         Aveonline va a recibir:{" "}
         <code>{`{baseUrl}/api/webhooks/aveonline?secret=<AVEONLINE_WEBHOOK_SECRET>`}</code>
       </p>

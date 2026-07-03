@@ -114,7 +114,7 @@ export default async function AdminEmailTemplatesPage() {
                       {b.key}
                     </code>
                     {b.description && (
-                      <p className="text-brand-purple-dark/55 mt-1 text-xs">{b.description}</p>
+                      <p className="text-brand-muted mt-1 text-xs">{b.description}</p>
                     )}
                   </td>
                   <td className="text-brand-purple-dark px-4 py-3 align-top text-xs font-medium">
@@ -127,13 +127,13 @@ export default async function AdminEmailTemplatesPage() {
                       <AdminBadge tone="amber">Borrador</AdminBadge>
                     )}
                   </td>
-                  <td className="text-brand-purple-dark/65 px-4 py-3 align-top text-xs">
+                  <td className="text-brand-muted px-4 py-3 align-top text-xs">
                     {dateFmt.format(b.updatedAt)}
                   </td>
                   <td className="px-4 py-3 text-right align-top">
                     <Link
                       href={`/admin/contenido/bloques/${b.id}`}
-                      className="text-brand-purple hover:text-brand-purple-dark text-xs font-semibold"
+                      className="text-brand-purple-dark hover:text-brand-purple text-xs font-semibold"
                     >
                       Editar →
                     </Link>

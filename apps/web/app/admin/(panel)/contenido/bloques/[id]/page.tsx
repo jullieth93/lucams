@@ -188,7 +188,7 @@ export default async function EditarBloquePage({
             <History className="h-5 w-5" />
             Historial de versiones
           </h3>
-          <p className="text-brand-purple-dark/65 mb-3 text-sm">
+          <p className="text-brand-muted mb-3 text-sm">
             Cada vez que guardas se crea una versión. Puedes volver a cualquier versión anterior con
             un clic.
           </p>

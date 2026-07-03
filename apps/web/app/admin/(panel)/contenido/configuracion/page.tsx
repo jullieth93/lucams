@@ -131,7 +131,7 @@ export default async function ConfiguracionPage() {
                 <section key={cat}>
                   <div className="mb-2.5">
                     <h2 className="text-brand-purple-dark text-sm font-bold">{info.label}</h2>
-                    {info.desc && <p className="text-brand-purple-dark/60 text-xs">{info.desc}</p>}
+                    {info.desc && <p className="text-brand-muted text-xs">{info.desc}</p>}
                   </div>
                   <AdminCard className="overflow-hidden">
                     <ul className="divide-brand-purple/10 divide-y">

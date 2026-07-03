@@ -41,7 +41,7 @@ export function RegistroForm() {
           ¿Ya tienes cuenta?{" "}
           <Link
             href="/login"
-            className="text-brand-pink hover:text-brand-coral font-medium underline-offset-4 hover:underline"
+            className="text-brand-pink-ink hover:text-brand-coral-ink font-medium underline-offset-4 hover:underline"
           >
             Inicia sesión
           </Link>
@@ -153,11 +153,11 @@ export function RegistroForm() {
 
           <p className="text-muted-foreground text-xs">
             Al crear tu cuenta aceptas nuestros{" "}
-            <Link href="/terminos" className="text-brand-pink underline underline-offset-4">
+            <Link href="/terminos" className="text-brand-pink-ink underline underline-offset-4">
               términos
             </Link>{" "}
             y la{" "}
-            <Link href="/privacidad" className="text-brand-pink underline underline-offset-4">
+            <Link href="/privacidad" className="text-brand-pink-ink underline underline-offset-4">
               política de privacidad
             </Link>{" "}
             (Ley 1581 Habeas Data).

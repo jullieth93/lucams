@@ -29,7 +29,7 @@ export function CreateRedirectForm() {
           {state?.fieldErrors?.fromPath && (
             <p className="mt-1 text-xs text-rose-600">{state.fieldErrors.fromPath[0]}</p>
           )}
-          <p className="text-brand-purple-dark/55 mt-1 text-xs">
+          <p className="text-brand-muted mt-1 text-xs">
             La ruta vieja que quieres redirigir. Ej: <code>/garantia</code>,{" "}
             <code>/promo-mama-2024</code>.
           </p>
@@ -51,7 +51,7 @@ export function CreateRedirectForm() {
           {state?.fieldErrors?.toPath && (
             <p className="mt-1 text-xs text-rose-600">{state.fieldErrors.toPath[0]}</p>
           )}
-          <p className="text-brand-purple-dark/55 mt-1 text-xs">
+          <p className="text-brand-muted mt-1 text-xs">
             Adónde mandar al visitante. Ruta interna (<code>/legal/garantias</code>) o URL externa
             completa.
           </p>

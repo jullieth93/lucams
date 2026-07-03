@@ -162,7 +162,7 @@ export default async function ProductoDetallePage({
       <main id="contenido" tabIndex={-1} className="flex-1 px-6 py-8 sm:px-10">
         <div className="mx-auto max-w-5xl">
           <nav
-            className="text-brand-purple-dark/60 mb-6 flex items-center gap-1 text-xs"
+            className="text-brand-muted mb-6 flex items-center gap-1 text-xs"
             aria-label="Breadcrumb"
           >
             <Link href="/productos" className="hover:text-brand-purple">
@@ -176,7 +176,7 @@ export default async function ProductoDetallePage({
               {product.category.name}
             </Link>
             <ChevronRight className="h-3 w-3" />
-            <span className="text-brand-purple-dark/40">{product.name}</span>
+            <span className="text-brand-muted">{product.name}</span>
           </nav>
 
           <div className="grid grid-cols-1 gap-8 md:grid-cols-2">
@@ -189,7 +189,7 @@ export default async function ProductoDetallePage({
 
             <div className="space-y-5">
               <div>
-                <p className="text-brand-purple/70 text-xs font-medium tracking-wider uppercase">
+                <p className="text-brand-muted text-xs font-medium tracking-wider uppercase">
                   {product.category.name}
                 </p>
                 <h1 className="font-display text-brand-purple-dark mt-1 text-3xl sm:text-4xl">
@@ -207,7 +207,7 @@ export default async function ProductoDetallePage({
                   {formatCOP(displayPrice)}
                 </span>
                 {hasDiscount && (
-                  <span className="text-brand-purple-dark/40 text-lg tabular-nums line-through">
+                  <span className="text-brand-muted text-lg tabular-nums line-through">
                     {formatCOP(displayCompareAt!)}
                   </span>
                 )}
@@ -233,7 +233,7 @@ export default async function ProductoDetallePage({
                       <Sparkles className="h-5 w-5" />
                       Personalizar tu imán →
                     </Link>
-                    <p className="text-brand-purple-dark/60 text-center text-xs">
+                    <p className="text-brand-muted text-center text-xs">
                       Diseña en vivo • Vista previa al instante
                     </p>
                   </>
@@ -265,7 +265,7 @@ export default async function ProductoDetallePage({
                 )}
               </div>
 
-              <p className="text-brand-purple-dark/50 pt-2 text-xs">
+              <p className="text-brand-muted pt-2 text-xs">
                 SKU: <span className="font-mono">{product.sku}</span>
               </p>
             </div>

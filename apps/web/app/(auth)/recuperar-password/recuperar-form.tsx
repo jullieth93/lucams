@@ -45,7 +45,7 @@ export function RecuperarForm() {
           <p className="text-muted-foreground mt-4 text-center text-sm">
             <Link
               href="/login"
-              className="text-brand-pink hover:text-brand-coral font-medium underline-offset-4 hover:underline"
+              className="text-brand-pink-ink hover:text-brand-coral-ink font-medium underline-offset-4 hover:underline"
             >
               Volver a iniciar sesión
             </Link>
@@ -97,7 +97,7 @@ export function RecuperarForm() {
             <p className="text-muted-foreground text-center text-sm">
               <Link
                 href="/login"
-                className="text-brand-pink hover:text-brand-coral font-medium underline-offset-4 hover:underline"
+                className="text-brand-pink-ink hover:text-brand-coral-ink font-medium underline-offset-4 hover:underline"
               >
                 Volver a iniciar sesión
               </Link>

@@ -159,7 +159,7 @@ export default async function ProductosPage({ searchParams }: { searchParams: Se
               <div className="text-brand-purple-dark/70 mb-4 text-sm">
                 {total} {total === 1 ? "producto encontrado" : "productos encontrados"}
                 {totalPages > 1 && (
-                  <span className="text-brand-purple-dark/55 ml-1.5">
+                  <span className="text-brand-muted ml-1.5">
                     · página {page} de {totalPages}
                   </span>
                 )}
@@ -167,18 +167,18 @@ export default async function ProductosPage({ searchParams }: { searchParams: Se
 
               {products.length === 0 ? (
                 <div className="border-brand-purple/10 rounded-xl border bg-white px-6 py-16 text-center">
-                  <Sparkles className="text-brand-purple/40 mx-auto h-10 w-10" />
+                  <Sparkles className="text-brand-muted mx-auto h-10 w-10" />
                   <p className="text-brand-purple-dark mt-4 text-lg font-semibold">
                     No encontramos productos
                   </p>
-                  <p className="text-brand-purple-dark/60 mt-1 text-sm">
+                  <p className="text-brand-muted mt-1 text-sm">
                     {q
                       ? `No hay coincidencias para "${q}" con los filtros actuales. Prueba quitando algún filtro o cambiando el texto.`
                       : "Ningún producto coincide con los filtros aplicados."}
                   </p>
                   <Link
                     href="/productos"
-                    className="text-brand-purple hover:text-brand-purple-dark mt-4 inline-block text-sm font-semibold"
+                    className="text-brand-purple-dark hover:text-brand-purple mt-4 inline-block text-sm font-semibold"
                   >
                     Limpiar filtros →
                   </Link>
@@ -246,7 +246,7 @@ function Pagination({
       className="border-brand-purple/10 mt-8 flex items-center justify-between border-t pt-6"
       aria-label="Paginación de productos"
     >
-      <div className="text-brand-purple-dark/65 text-xs">
+      <div className="text-brand-muted text-xs">
         Página {currentPage} de {totalPages}
       </div>
       <div className="flex items-center gap-1.5">
@@ -268,7 +268,7 @@ function Pagination({
             p === "..." ? (
               <span
                 key={`gap-${idx}`}
-                className="text-brand-purple-dark/40 px-2 text-xs"
+                className="text-brand-muted px-2 text-xs"
                 aria-hidden
               >
                 …

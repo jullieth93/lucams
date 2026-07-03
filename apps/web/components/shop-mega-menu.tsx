@@ -94,7 +94,7 @@ export function ShopMegaMenu({ tree }: { tree: CategoryNode[] }) {
                               <span className="text-brand-purple-dark text-sm font-bold">
                                 {cat.name}
                               </span>
-                              <span className="text-brand-purple-dark/55 text-[10px]">
+                              <span className="text-brand-muted text-[10px]">
                                 {cat.productCount}{" "}
                                 {cat.productCount === 1 ? "producto" : "productos"}
                               </span>
@@ -130,7 +130,7 @@ export function ShopMegaMenu({ tree }: { tree: CategoryNode[] }) {
                   </div>
 
                   <div className="border-brand-purple/10 mt-4 border-t pt-4">
-                    <p className="text-brand-purple/60 mb-2 text-[10px] font-bold tracking-wider uppercase">
+                    <p className="text-brand-muted mb-2 text-[10px] font-bold tracking-wider uppercase">
                       Por ocasión
                     </p>
                     <div className="flex flex-wrap gap-1.5">
@@ -154,7 +154,7 @@ export function ShopMegaMenu({ tree }: { tree: CategoryNode[] }) {
 
                   <Link
                     href="/productos"
-                    className="text-brand-purple hover:text-brand-purple-dark mt-4 block text-center text-sm font-semibold"
+                    className="text-brand-purple-dark hover:text-brand-purple mt-4 block text-center text-sm font-semibold"
                   >
                     Ver todo el catálogo →
                   </Link>
@@ -193,7 +193,7 @@ export function ShopMegaMenu({ tree }: { tree: CategoryNode[] }) {
               );
             })}
             <div className="border-brand-purple/10 mt-4 border-t pt-3">
-              <p className="text-brand-purple/60 mb-2 px-2 text-[10px] font-bold tracking-wider uppercase">
+              <p className="text-brand-muted mb-2 px-2 text-[10px] font-bold tracking-wider uppercase">
                 Por ocasión
               </p>
               <div className="flex flex-wrap gap-1.5 px-2">
@@ -255,7 +255,7 @@ function MobileCategoryAccordion({
           </span>
           <span className="flex flex-1 flex-col">
             <span className="text-brand-purple-dark text-sm font-medium">{cat.name}</span>
-            <span className="text-brand-purple-dark/50 text-[10px]">
+            <span className="text-brand-muted text-[10px]">
               {cat.productCount} {cat.productCount === 1 ? "producto" : "productos"}
             </span>
           </span>
@@ -266,7 +266,7 @@ function MobileCategoryAccordion({
             onClick={() => setExpanded(!expanded)}
             aria-expanded={expanded}
             aria-label={`Expandir sub-categorías de ${cat.name}`}
-            className="text-brand-purple-dark/60 hover:bg-brand-purple/10 rounded p-1"
+            className="text-brand-muted hover:bg-brand-purple/10 rounded p-1"
           >
             <ChevronDown
               className={`h-4 w-4 transition-transform ${expanded ? "rotate-180" : ""}`}

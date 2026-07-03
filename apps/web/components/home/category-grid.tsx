@@ -83,10 +83,10 @@ export function CategoryGrid({ categories }: { categories: CategoryItem[] }) {
               <Icon className="text-brand-purple h-6 w-6" />
             </div>
             <h3 className="font-display text-brand-purple-dark text-lg leading-tight">{c.name}</h3>
-            <p className="text-brand-purple-dark/60 text-xs">
+            <p className="text-brand-muted text-xs">
               {c._count.products} {c._count.products === 1 ? "producto" : "productos"}
             </p>
-            <span className="text-brand-purple-dark/60 group-hover:text-brand-purple mt-auto text-xs font-medium transition-colors">
+            <span className="text-brand-muted group-hover:text-brand-purple mt-auto text-xs font-medium transition-colors">
               Ver categoría →
             </span>
           </Link>

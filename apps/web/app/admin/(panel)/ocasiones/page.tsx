@@ -180,7 +180,7 @@ export default async function AdminOcasionesPage({ searchParams }: { searchParam
             <div className="sm:col-span-12">
               <Link
                 href="/admin/ocasiones"
-                className="text-brand-purple/70 hover:text-brand-purple-dark text-xs font-semibold"
+                className="text-brand-muted hover:text-brand-purple-dark text-xs font-semibold"
               >
                 Limpiar filtros
               </Link>
@@ -260,7 +260,7 @@ export default async function AdminOcasionesPage({ searchParams }: { searchParam
                     <td className="px-4 py-3 text-right">
                       <Link
                         href={`/admin/ocasiones/${o.id}`}
-                        className="text-brand-purple hover:text-brand-purple-dark inline-flex items-center gap-1 text-xs font-medium"
+                        className="text-brand-purple-dark hover:text-brand-purple inline-flex items-center gap-1 text-xs font-medium"
                       >
                         Editar
                         <ChevronRight className="h-3.5 w-3.5" />

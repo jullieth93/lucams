@@ -120,7 +120,7 @@ export default async function EditCategoryPage({
             }}
           />
           {category._count.children > 0 && (
-            <p className="text-brand-purple-dark/55 mt-3 text-xs">
+            <p className="text-brand-muted mt-3 text-xs">
               Esta categoría tiene {category._count.children} sub-categoría
               {category._count.children === 1 ? "" : "s"}, por eso no puede convertirse en
               sub-categoría de otra.
@@ -133,7 +133,7 @@ export default async function EditCategoryPage({
           <h3 className="text-brand-purple-dark font-display mb-2 text-sm font-bold">
             Zona de peligro
           </h3>
-          <p className="text-brand-purple-dark/65 mb-3 text-xs">
+          <p className="text-brand-muted mb-3 text-xs">
             Archivar oculta la categoría de tu tienda y del menú. Las categorías con productos
             asociados no pueden archivarse — primero hay que mover esos productos a otra categoría.
           </p>

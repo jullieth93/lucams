@@ -30,7 +30,7 @@ export function CheckoutStepper({ current }: { current: 1 | 2 | 3 }) {
                       ? "bg-emerald-500 text-white ring-emerald-100"
                       : isCurrent
                         ? "bg-gradient-brand ring-brand-purple/20 text-white"
-                        : "text-brand-purple-dark/55 ring-brand-purple/10 bg-white")
+                        : "text-brand-muted ring-brand-purple/10 bg-white")
                   }
                   aria-current={isCurrent ? "step" : undefined}
                 >
@@ -41,7 +41,7 @@ export function CheckoutStepper({ current }: { current: 1 | 2 | 3 }) {
                     "text-sm font-semibold whitespace-nowrap transition-colors " +
                     (isCompleted || isCurrent
                       ? "text-brand-purple-dark"
-                      : "text-brand-purple-dark/50")
+                      : "text-brand-muted")
                   }
                 >
                   {step.label}

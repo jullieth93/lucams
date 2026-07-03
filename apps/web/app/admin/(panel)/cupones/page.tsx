@@ -199,7 +199,7 @@ export default async function AdminCuponesPage({ searchParams }: { searchParams:
             <div className="sm:col-span-12">
               <Link
                 href="/admin/cupones"
-                className="text-brand-purple/70 hover:text-brand-purple-dark text-xs font-semibold"
+                className="text-brand-muted hover:text-brand-purple-dark text-xs font-semibold"
               >
                 Limpiar filtros
               </Link>
@@ -300,7 +300,7 @@ export default async function AdminCuponesPage({ searchParams }: { searchParams:
                         <AdminBadge tone={status.tone}>{status.label}</AdminBadge>
                       )}
                     </td>
-                    <td className="text-brand-purple-dark/55 px-4 py-3 text-xs">
+                    <td className="text-brand-muted px-4 py-3 text-xs">
                       {c.validFrom.toLocaleDateString("es-CO")} →{" "}
                       {c.validTo.toLocaleDateString("es-CO")}
                     </td>
@@ -324,7 +324,7 @@ export default async function AdminCuponesPage({ searchParams }: { searchParams:
         <details className="border-brand-purple/15 group rounded-xl border bg-white">
           <summary className="text-brand-purple-dark hover:bg-brand-purple/5 font-display flex cursor-pointer list-none items-center justify-between rounded-xl px-5 py-4 text-base font-bold select-none">
             <span>➕ Crear un cupón nuevo</span>
-            <span className="text-brand-purple-dark/50 text-xs transition-transform group-open:rotate-90">
+            <span className="text-brand-muted text-xs transition-transform group-open:rotate-90">
               ▶
             </span>
           </summary>

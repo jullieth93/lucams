@@ -82,7 +82,7 @@ export function VariantForm({
             <button
               type="button"
               onClick={() => setName(suggestedName)}
-              className="text-brand-purple hover:text-brand-purple-dark mt-1 inline-flex items-center gap-1 text-[11px] font-semibold"
+              className="text-brand-purple-dark hover:text-brand-purple mt-1 inline-flex items-center gap-1 text-[11px] font-semibold"
               title="Usar esta sugerencia como nombre"
             >
               <Sparkles className="h-3 w-3" />
@@ -141,7 +141,7 @@ export function VariantForm({
       {/* Características de la opción — lenguaje llano (Lucy 2026-06-27). */}
       <div className="border-brand-purple/10 rounded-lg border bg-white/60 p-4">
         <h4 className="text-brand-purple-dark text-sm font-bold">¿En qué se diferencia esta opción?</h4>
-        <p className="text-brand-purple-dark/55 mt-0.5 mb-3 text-xs">
+        <p className="text-brand-muted mt-0.5 mb-3 text-xs">
           Llena solo lo que aplique. Con esto armamos la sugerencia de nombre y, en productos
           personalizables, sabemos cuántas fotos pedirle al cliente.
         </p>
@@ -284,7 +284,7 @@ function Field({
       ) : (
         <div className="relative">
           {prefix && (
-            <span className="text-brand-purple-dark/50 pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-sm">
+            <span className="text-brand-muted pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-sm">
               {prefix}
             </span>
           )}
@@ -301,7 +301,7 @@ function Field({
           />
         </div>
       )}
-      {hint && !error && <p className="text-brand-purple-dark/55 mt-1 text-[11px]">{hint}</p>}
+      {hint && !error && <p className="text-brand-muted mt-1 text-[11px]">{hint}</p>}
       {error && <p className="mt-1 text-[11px] text-rose-600">{error}</p>}
     </div>
   );

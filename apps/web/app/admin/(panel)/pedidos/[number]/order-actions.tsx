@@ -30,7 +30,7 @@ export function OrderActions({
     return (
       <section className="border-brand-purple/10 rounded-xl border bg-white p-5 shadow-sm">
         <h2 className="text-brand-purple-dark mb-2 text-sm font-bold">Acciones</h2>
-        <p className="text-brand-purple-dark/55 text-xs">
+        <p className="text-brand-muted text-xs">
           Sin acciones disponibles para este estado.
         </p>
       </section>

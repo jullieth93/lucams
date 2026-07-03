@@ -146,7 +146,7 @@ export function RestablecerForm({ email }: { email: string }) {
             ¿No te llegó el código?{" "}
             <Link
               href="/recuperar-password"
-              className="text-brand-pink hover:text-brand-coral font-medium underline-offset-4 hover:underline"
+              className="text-brand-pink-ink hover:text-brand-coral-ink font-medium underline-offset-4 hover:underline"
             >
               Solicitar otro
             </Link>

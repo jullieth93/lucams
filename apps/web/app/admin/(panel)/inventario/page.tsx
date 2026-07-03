@@ -224,10 +224,10 @@ export default async function InventarioPage({
                               </span>
                             )}
                           </div>
-                          <p className="text-brand-purple-dark/55 mt-0.5 text-xs">
+                          <p className="text-brand-muted mt-0.5 text-xs">
                             {row.categoryName}
                             {variantsInGroup > 1 && (
-                              <span className="text-brand-purple-dark/45">
+                              <span className="text-brand-muted">
                                 {" · "}
                                 {variantsInGroup} opciones
                               </span>
@@ -248,7 +248,7 @@ export default async function InventarioPage({
                     <td className="text-brand-purple-dark/80 px-4 py-3 align-top text-sm">
                       {row.variantName === "Default" ? "Única" : row.variantName}
                     </td>
-                    <td className="text-brand-purple-dark/65 px-4 py-3 align-top font-mono text-xs">
+                    <td className="text-brand-muted px-4 py-3 align-top font-mono text-xs">
                       {row.variantSku}
                     </td>
                     <td className="px-4 py-3 align-top">
@@ -353,7 +353,7 @@ function KpiTile({
             </span>
             {label}
           </span>
-          <p className="text-brand-purple-dark/55 mt-1 text-[11px] leading-snug">{hint}</p>
+          <p className="text-brand-muted mt-1 text-[11px] leading-snug">{hint}</p>
         </div>
         <span className="text-brand-purple-dark shrink-0 text-3xl font-bold tabular-nums leading-none">
           {value.toLocaleString("es-CO")}
@@ -467,7 +467,7 @@ function FiltersBar({
           name="q"
           defaultValue={q ?? ""}
           placeholder="Por nombre, código o opción…"
-          className="border-brand-purple/25 text-brand-purple-dark placeholder:text-brand-purple-dark/40 h-10 w-full rounded-lg border bg-white px-3 text-sm"
+          className="border-brand-purple/25 text-brand-purple-dark placeholder:text-brand-muted h-10 w-full rounded-lg border bg-white px-3 text-sm"
         />
       </label>
 
@@ -496,7 +496,7 @@ function FiltersBar({
         {(status !== "all" || categoryId || q) && (
           <Link
             href="/admin/inventario"
-            className="text-brand-purple-dark/65 hover:text-brand-purple-dark inline-flex h-10 items-center px-3 text-sm font-medium"
+            className="text-brand-muted hover:text-brand-purple-dark inline-flex h-10 items-center px-3 text-sm font-medium"
           >
             Limpiar
           </Link>
@@ -532,7 +532,7 @@ function Pagination({
       className="flex items-center justify-between gap-3 text-sm"
       aria-label="Paginación"
     >
-      <p className="text-brand-purple-dark/65">
+      <p className="text-brand-muted">
         Página {page} de {totalPages} · {total.toLocaleString("es-CO")} opciones
       </p>
       <div className="flex gap-2">

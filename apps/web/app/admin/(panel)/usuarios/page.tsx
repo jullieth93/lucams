@@ -88,7 +88,7 @@ export default async function AdminUsuariosPage({ searchParams }: { searchParams
         <AdminPageBody>
           <AdminCard className="p-6">
             <div className="flex items-start gap-4">
-              <div className="bg-brand-purple/10 text-brand-purple flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full">
+              <div className="bg-brand-purple/10 text-brand-purple-dark flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-full">
                 <Lock className="h-6 w-6" />
               </div>
               <div>
@@ -101,7 +101,7 @@ export default async function AdminUsuariosPage({ searchParams }: { searchParams
                 </p>
                 <Link
                   href="/admin/dashboard"
-                  className="text-brand-purple hover:text-brand-purple-dark mt-3 inline-block text-sm font-semibold"
+                  className="text-brand-purple-dark hover:text-brand-purple mt-3 inline-block text-sm font-semibold"
                 >
                   ← Volver al dashboard
                 </Link>
@@ -265,7 +265,7 @@ export default async function AdminUsuariosPage({ searchParams }: { searchParams
             <div className="sm:col-span-12">
               <Link
                 href="/admin/usuarios"
-                className="text-brand-purple/70 hover:text-brand-purple-dark text-xs font-semibold"
+                className="text-brand-muted hover:text-brand-purple-dark text-xs font-semibold"
               >
                 Limpiar filtros
               </Link>
@@ -302,7 +302,7 @@ export default async function AdminUsuariosPage({ searchParams }: { searchParams
                     <td className="text-brand-purple-dark px-4 py-3 text-xs font-medium">
                       {a.email}
                       {isSelf && (
-                        <span className="text-brand-purple/70 ml-2 text-[10px]">(tú)</span>
+                        <span className="text-brand-muted ml-2 text-[10px]">(tú)</span>
                       )}
                     </td>
                     <td className="px-4 py-3">
@@ -317,7 +317,7 @@ export default async function AdminUsuariosPage({ searchParams }: { searchParams
                         <AdminBadge tone="slate">Desactivado</AdminBadge>
                       )}
                     </td>
-                    <td className="text-brand-purple-dark/65 px-4 py-3 text-xs">
+                    <td className="text-brand-muted px-4 py-3 text-xs">
                       {dateFmt.format(a.createdAt)}
                     </td>
                     <td className="px-4 py-3">
@@ -336,7 +336,7 @@ export default async function AdminUsuariosPage({ searchParams }: { searchParams
                             </select>
                             <button
                               type="submit"
-                              className="text-brand-purple hover:text-brand-purple-dark text-[11px] font-semibold"
+                              className="text-brand-purple-dark hover:text-brand-purple text-[11px] font-semibold"
                               title="Cambiar rol"
                             >
                               Guardar

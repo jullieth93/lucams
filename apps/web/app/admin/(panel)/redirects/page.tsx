@@ -215,7 +215,7 @@ export default async function AdminRedirectsPage({ searchParams }: { searchParam
             <div className="sm:col-span-12">
               <Link
                 href="/admin/redirects"
-                className="text-brand-purple/70 hover:text-brand-purple-dark text-xs font-semibold"
+                className="text-brand-muted hover:text-brand-purple-dark text-xs font-semibold"
               >
                 Limpiar filtros
               </Link>
@@ -254,7 +254,7 @@ export default async function AdminRedirectsPage({ searchParams }: { searchParam
                       {r.fromPath}
                     </code>
                     {r.description && (
-                      <p className="text-brand-purple-dark/55 mt-1 text-xs">{r.description}</p>
+                      <p className="text-brand-muted mt-1 text-xs">{r.description}</p>
                     )}
                   </td>
                   <td className="px-4 py-3 align-top">
@@ -279,12 +279,12 @@ export default async function AdminRedirectsPage({ searchParams }: { searchParam
                   <td className="text-brand-purple-dark/85 px-4 py-3 text-right align-top text-xs tabular-nums">
                     {r.hitCount.toLocaleString("es-CO")}
                     {r.lastHitAt && (
-                      <div className="text-brand-purple-dark/55 text-[10px]">
+                      <div className="text-brand-muted text-[10px]">
                         último {dateFmt.format(r.lastHitAt)}
                       </div>
                     )}
                   </td>
-                  <td className="text-brand-purple-dark/65 px-4 py-3 align-top text-xs">
+                  <td className="text-brand-muted px-4 py-3 align-top text-xs">
                     {dateFmt.format(r.createdAt)}
                   </td>
                   <td className="px-4 py-3 align-top">
@@ -294,7 +294,7 @@ export default async function AdminRedirectsPage({ searchParams }: { searchParam
                           <input type="hidden" name="id" value={r.id} />
                           <button
                             type="submit"
-                            className="text-brand-purple hover:text-brand-purple-dark text-[11px] font-medium"
+                            className="text-brand-purple-dark hover:text-brand-purple text-[11px] font-medium"
                           >
                             Restaurar
                           </button>
@@ -321,7 +321,7 @@ export default async function AdminRedirectsPage({ searchParams }: { searchParam
                             <input type="hidden" name="id" value={r.id} />
                             <button
                               type="submit"
-                              className="text-brand-purple-dark/55 text-[11px] font-medium hover:text-rose-600"
+                              className="text-brand-muted text-[11px] font-medium hover:text-rose-600"
                             >
                               Archivar
                             </button>

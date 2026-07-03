@@ -43,7 +43,7 @@ const StudioEditor = dynamic(
   {
     loading: () => (
       <div className="flex flex-1 items-center justify-center p-12">
-        <div className="text-brand-purple/70 flex items-center gap-3">
+        <div className="text-brand-muted flex items-center gap-3">
           <div className="border-brand-purple/30 border-t-brand-purple h-6 w-6 animate-spin rounded-full border-2" />
           <span>Cargando estudio...</span>
         </div>

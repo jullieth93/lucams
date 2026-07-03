@@ -75,7 +75,7 @@ export async function ProductVariantsPanel({
           {/* Aquí editas el stock de ESTE producto; en Inventario ves el de todos. */}
           <Link
             href="/admin/inventario"
-            className="text-brand-purple hover:text-brand-purple-dark inline-flex items-center gap-1 text-xs font-semibold"
+            className="text-brand-purple-dark hover:text-brand-purple inline-flex items-center gap-1 text-xs font-semibold"
           >
             <Boxes className="h-3.5 w-3.5" />
             Ir al inventario completo →
@@ -99,7 +99,7 @@ export async function ProductVariantsPanel({
             </h3>
             <Link
               href={`/admin/productos/${productId}?section=opciones`}
-              className="text-brand-purple-dark/60 hover:text-brand-purple-dark text-xs font-semibold"
+              className="text-brand-muted hover:text-brand-purple-dark text-xs font-semibold"
             >
               Cancelar
             </Link>
@@ -117,7 +117,7 @@ export async function ProductVariantsPanel({
             </h3>
             <Link
               href={`/admin/productos/${productId}?section=opciones`}
-              className="text-brand-purple-dark/60 hover:text-brand-purple-dark inline-flex items-center gap-1 text-xs font-semibold"
+              className="text-brand-muted hover:text-brand-purple-dark inline-flex items-center gap-1 text-xs font-semibold"
             >
               ← Volver a las opciones
             </Link>
@@ -181,7 +181,7 @@ export async function ProductVariantsPanel({
                   <td className="px-4 py-3">
                     <div className="text-brand-purple-dark font-medium">{visibleName}</div>
                     {v.description && (
-                      <div className="text-brand-purple-dark/55 line-clamp-1 text-xs">
+                      <div className="text-brand-muted line-clamp-1 text-xs">
                         {v.description}
                       </div>
                     )}
@@ -197,7 +197,7 @@ export async function ProductVariantsPanel({
                   <td className="text-brand-purple-dark px-4 py-3 text-right font-semibold tabular-nums">
                     {formatCOP(effectivePrice)}
                     {inheritsPrice && (
-                      <div className="text-brand-purple-dark/45 text-[10px] font-normal">
+                      <div className="text-brand-muted text-[10px] font-normal">
                         (hereda del producto)
                       </div>
                     )}
@@ -222,7 +222,7 @@ export async function ProductVariantsPanel({
                     <div className="flex items-center justify-end gap-1">
                       <Link
                         href={`/admin/productos/${productId}?section=opciones&edit=${v.id}`}
-                        className="text-brand-purple hover:text-brand-purple-dark inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium"
+                        className="text-brand-purple-dark hover:text-brand-purple inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium"
                       >
                         <Edit3 className="h-3.5 w-3.5" />
                         Editar

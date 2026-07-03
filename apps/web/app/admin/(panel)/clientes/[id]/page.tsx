@@ -135,7 +135,7 @@ export default async function ClienteDetailPage({ params }: { params: RouteParam
                 value={
                   <a
                     href={`mailto:${customer.email}`}
-                    className="text-brand-purple hover:text-brand-purple-dark"
+                    className="text-brand-purple-dark hover:text-brand-purple"
                   >
                     {customer.email}
                   </a>
@@ -148,7 +148,7 @@ export default async function ClienteDetailPage({ params }: { params: RouteParam
                   customer.phone ? (
                     <a
                       href={`tel:${customer.phone}`}
-                      className="text-brand-purple hover:text-brand-purple-dark"
+                      className="text-brand-purple-dark hover:text-brand-purple"
                     >
                       {customer.phone}
                     </a>
@@ -192,7 +192,7 @@ export default async function ClienteDetailPage({ params }: { params: RouteParam
           <h2 className="text-brand-purple-dark font-display mb-3 flex items-center gap-2 text-lg font-bold">
             <ShoppingBag className="h-5 w-5" />
             Pedidos
-            <span className="text-brand-purple-dark/55 text-sm font-normal">
+            <span className="text-brand-muted text-sm font-normal">
               ({customer._count.orders})
             </span>
           </h2>
@@ -214,7 +214,7 @@ export default async function ClienteDetailPage({ params }: { params: RouteParam
                       <div className="text-brand-purple-dark font-mono text-sm font-bold">
                         {order.number}
                       </div>
-                      <div className="text-brand-purple-dark/55 text-xs">
+                      <div className="text-brand-muted text-xs">
                         {dateTimeFmt.format(order.createdAt)}
                       </div>
                     </div>
@@ -238,7 +238,7 @@ export default async function ClienteDetailPage({ params }: { params: RouteParam
           <h2 className="text-brand-purple-dark font-display mb-3 flex items-center gap-2 text-lg font-bold">
             <Star className="h-5 w-5" />
             Reseñas
-            <span className="text-brand-purple-dark/55 text-sm font-normal">
+            <span className="text-brand-muted text-sm font-normal">
               ({customer._count.reviews})
             </span>
           </h2>
@@ -281,7 +281,7 @@ export default async function ClienteDetailPage({ params }: { params: RouteParam
                     <p className="text-brand-purple-dark/85 line-clamp-2 text-sm">
                       {review.comment}
                     </p>
-                    <p className="text-brand-purple-dark/45 mt-1 text-[11px]">
+                    <p className="text-brand-muted mt-1 text-[11px]">
                       {dateTimeFmt.format(review.createdAt)}
                     </p>
                   </li>
@@ -296,7 +296,7 @@ export default async function ClienteDetailPage({ params }: { params: RouteParam
           <h2 className="text-brand-purple-dark font-display mb-3 flex items-center gap-2 text-lg font-bold">
             <MapPin className="h-5 w-5" />
             Direcciones
-            <span className="text-brand-purple-dark/55 text-sm font-normal">
+            <span className="text-brand-muted text-sm font-normal">
               ({customer.addresses.length})
             </span>
           </h2>
@@ -319,7 +319,7 @@ export default async function ClienteDetailPage({ params }: { params: RouteParam
                     {addr.city}, {addr.department}
                     {addr.zip && ` · ${addr.zip}`}
                   </div>
-                  <div className="text-brand-purple-dark/55 mt-1 text-[11px]">
+                  <div className="text-brand-muted mt-1 text-[11px]">
                     Tel: {addr.phone}
                   </div>
                 </AdminCard>
@@ -334,7 +334,7 @@ export default async function ClienteDetailPage({ params }: { params: RouteParam
             <h2 className="text-brand-purple-dark font-display mb-3 flex items-center gap-2 text-lg font-bold">
               <Sparkles className="h-5 w-5" />
               Diseños del Estudio
-              <span className="text-brand-purple-dark/55 text-sm font-normal">
+              <span className="text-brand-muted text-sm font-normal">
                 ({customer._count.designs})
               </span>
             </h2>
@@ -370,7 +370,7 @@ export default async function ClienteDetailPage({ params }: { params: RouteParam
             <h2 className="text-brand-purple-dark font-display mb-3 flex items-center gap-2 text-lg font-bold">
               <UserPlus className="h-5 w-5" />
               Referidos
-              <span className="text-brand-purple-dark/55 text-sm font-normal">
+              <span className="text-brand-muted text-sm font-normal">
                 ({customer._count.referrals})
               </span>
             </h2>
@@ -392,11 +392,11 @@ export default async function ClienteDetailPage({ params }: { params: RouteParam
                       >
                         <Link
                           href={`/admin/clientes/${r.id}`}
-                          className="text-brand-purple hover:text-brand-purple-dark truncate"
+                          className="text-brand-purple-dark hover:text-brand-purple truncate"
                         >
                           {refName}
                         </Link>
-                        <span className="text-brand-purple-dark/55 text-[11px]">
+                        <span className="text-brand-muted text-[11px]">
                           {dateFmt.format(r.createdAt)}
                         </span>
                       </li>
@@ -423,7 +423,7 @@ function Field({
 }) {
   return (
     <div>
-      <dt className="text-brand-purple-dark/60 mb-0.5 flex items-center gap-1 text-[11px] font-semibold tracking-wider uppercase">
+      <dt className="text-brand-muted mb-0.5 flex items-center gap-1 text-[11px] font-semibold tracking-wider uppercase">
         {icon}
         {label}
       </dt>

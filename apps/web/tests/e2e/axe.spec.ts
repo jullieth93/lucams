@@ -39,25 +39,20 @@ test.afterAll(async () => {
 });
 
 const BLOCKING = new Set(["serious", "critical"]);
-// `color-contrast` queda fuera del umbral bloqueante de forma DELIBERADA y temporal:
-// la paleta kawaii pastel (purple/pink/coral sobre crema) no alcanza WCAG AA 4.5:1 en
-// texto secundario, y remediarla es una decisión de marca de Lucy (ADR pendiente, no se
-// toca la paleta sin su OK — ver docs/DECISIONS.md). El resto de reglas SÍ bloquean, así
-// que la guarda protege contra regresiones nuevas (labels, ARIA, roles, nombres, etc.).
-const PENDING_RULES = new Set(["color-contrast"]);
+// Gate ESTRICTA: cero violaciones serious/critical, contraste INCLUIDO. La paleta
+// kawaii se conservó intacta; el contraste AA se logró con tonos de texto derivados
+// (brand-muted / pink-ink / coral-ink) — ver ADR-044 en docs/DECISIONS.md.
 
 async function auditPage(page: import("@playwright/test").Page, label: string, path: string) {
   test.slow();
   await page.goto(path, { waitUntil: "domcontentloaded" });
   const violations = await scanA11y(page);
-  // Visible en el output para triage (incluye moderate/minor y color-contrast).
+  // Visible en el output para triage (incluye moderate/minor).
   console.log(formatViolations(label, violations));
-  const blocking = violations.filter(
-    (v) => v.impact && BLOCKING.has(v.impact) && !PENDING_RULES.has(v.id),
-  );
+  const blocking = violations.filter((v) => v.impact && BLOCKING.has(v.impact));
   expect(
     blocking.map((v) => `${v.id} (${v.impact})`),
-    `violaciones serious/critical (excl. contraste pendiente) en ${label}`,
+    `violaciones serious/critical en ${label}`,
   ).toEqual([]);
 }
 

@@ -78,7 +78,7 @@ export default async function Home() {
           <div className="mt-8 text-center">
             <Link
               href="/productos"
-              className="text-brand-purple hover:text-brand-purple-dark border-brand-purple/30 hover:bg-brand-purple/5 inline-flex items-center gap-1.5 rounded-full border px-5 py-2 text-sm font-semibold transition-colors"
+              className="text-brand-purple-dark hover:text-brand-purple border-brand-purple/30 hover:bg-brand-purple/5 inline-flex items-center gap-1.5 rounded-full border px-5 py-2 text-sm font-semibold transition-colors"
             >
               Ver todas las categorías y productos →
             </Link>
@@ -119,7 +119,7 @@ export default async function Home() {
             </div>
             <Link
               href="/productos"
-              className="text-brand-purple hover:text-brand-purple-dark text-sm font-semibold"
+              className="text-brand-purple-dark hover:text-brand-purple text-sm font-semibold"
             >
               Ver todo →
             </Link>
@@ -163,7 +163,7 @@ export default async function Home() {
                     fallback="Sé el primero en contarnos cómo te llegó tu imán 💜"
                   />
                 </p>
-                <p className="text-brand-purple-dark/60 mt-1 text-sm">
+                <p className="text-brand-muted mt-1 text-sm">
                   Cuando los primeros clientes reseñen, aparecerán acá.
                 </p>
               </div>

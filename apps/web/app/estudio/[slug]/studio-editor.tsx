@@ -419,7 +419,7 @@ export function StudioEditor({
             </div>
             <div className="flex flex-col">
               <p className="text-brand-purple-dark text-sm font-bold">Preparando tu lienzo...</p>
-              <p className="text-brand-purple-dark/55 text-xs">
+              <p className="text-brand-muted text-xs">
                 Cargando tu producto y plantillas en un instante ✨
               </p>
             </div>

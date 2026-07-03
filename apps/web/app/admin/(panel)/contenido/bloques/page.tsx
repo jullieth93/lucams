@@ -117,7 +117,7 @@ export default async function BloquesListPage({ searchParams }: { searchParams: 
               <section key={cat}>
                 <h2 className="text-brand-purple-dark mb-2.5 flex items-center gap-2 text-sm font-bold">
                   <span>{CATEGORY_LABELS[cat] ?? cat}</span>
-                  <span className="text-brand-purple-dark/50 text-xs font-normal">
+                  <span className="text-brand-muted text-xs font-normal">
                     ({grouped[cat].length})
                   </span>
                 </h2>
@@ -142,7 +142,7 @@ export default async function BloquesListPage({ searchParams }: { searchParams: 
                             {b.title ?? b.key}
                           </Link>
                           {b.description && (
-                            <p className="text-brand-purple-dark/55 line-clamp-1 text-xs">
+                            <p className="text-brand-muted line-clamp-1 text-xs">
                               {b.description}
                             </p>
                           )}
@@ -157,13 +157,13 @@ export default async function BloquesListPage({ searchParams }: { searchParams: 
                             <AdminBadge tone="amber">🟡 Borrador</AdminBadge>
                           )}
                         </td>
-                        <td className="text-brand-purple-dark/65 px-4 py-3 text-center text-xs tabular-nums">
+                        <td className="text-brand-muted px-4 py-3 text-center text-xs tabular-nums">
                           {b.publishedVersion?.version ? `v${b.publishedVersion.version}` : "—"}
                         </td>
                         <td className="px-4 py-3 text-right">
                           <Link
                             href={`/admin/contenido/bloques/${b.id}`}
-                            className="text-brand-purple hover:text-brand-purple-dark inline-flex items-center gap-1 text-xs font-medium"
+                            className="text-brand-purple-dark hover:text-brand-purple inline-flex items-center gap-1 text-xs font-medium"
                           >
                             Editar
                             <ChevronRight className="h-3.5 w-3.5" />

@@ -61,7 +61,7 @@ export function MfaChallenge({ factorId }: { factorId: string }) {
             placeholder="XXXXX-XXXXX"
             className="border-brand-purple/25 focus:border-brand-purple focus:ring-brand-purple/20 h-12 w-full rounded-md border bg-white px-3 text-center font-mono text-lg tracking-widest uppercase focus:ring-2 focus:outline-none"
           />
-          <p className="text-brand-purple-dark/55 mt-1 text-xs">
+          <p className="text-brand-muted mt-1 text-xs">
             Es uno de los códigos que guardaste al activar la verificación. Tras usarlo,
             reconfigura la verificación en 2 pasos.
           </p>
@@ -78,7 +78,7 @@ export function MfaChallenge({ factorId }: { factorId: string }) {
         <button
           type="button"
           onClick={() => setMode("totp")}
-          className="text-brand-purple hover:text-brand-purple-dark w-full text-center text-xs font-semibold"
+          className="text-brand-purple-dark hover:text-brand-purple w-full text-center text-xs font-semibold"
         >
           ← Volver a usar el código de la app
         </button>
@@ -116,7 +116,7 @@ export function MfaChallenge({ factorId }: { factorId: string }) {
       <button
         type="button"
         onClick={() => setMode("recovery")}
-        className="text-brand-purple hover:text-brand-purple-dark w-full text-center text-xs font-semibold"
+        className="text-brand-purple-dark hover:text-brand-purple w-full text-center text-xs font-semibold"
       >
         ¿No tienes el teléfono? Usar un código de respaldo
       </button>

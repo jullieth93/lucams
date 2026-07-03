@@ -84,7 +84,7 @@ export function StudioPhotoAdjustModal({
         <DialogTitle className="text-brand-purple-dark text-lg font-bold">
           Ajustar foto del imán {slotIndex !== null ? slotIndex + 1 : ""}
         </DialogTitle>
-        <DialogDescription className="text-brand-purple-dark/60 text-sm">
+        <DialogDescription className="text-brand-muted text-sm">
           Arrastra la foto en el canvas para encuadrar · Scroll del mouse (o pellizco) para zoom ·
           Elige un filtro abajo
         </DialogDescription>
@@ -199,7 +199,7 @@ function FilterCard({
       </div>
       <div className="text-center">
         <p className="text-brand-purple-dark text-xs font-bold">{label}</p>
-        <p className="text-brand-purple-dark/55 hidden text-[10px] sm:block">{description}</p>
+        <p className="text-brand-muted hidden text-[10px] sm:block">{description}</p>
       </div>
     </button>
   );

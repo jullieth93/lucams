@@ -127,7 +127,7 @@ export function StudioOnboarding() {
                 <LucamsLogo variant="mascot" size={56} />
               </motion.div>
               <div className="flex-1 pt-1">
-                <p className="text-brand-purple-dark/55 text-[10px] font-semibold tracking-wider uppercase">
+                <p className="text-brand-muted text-[10px] font-semibold tracking-wider uppercase">
                   Paso {step + 1} de {STEPS.length}
                 </p>
                 <h2
@@ -142,7 +142,7 @@ export function StudioOnboarding() {
                 onClick={skip}
                 aria-label="Saltar tutorial"
                 title="Saltar tutorial"
-                className="text-brand-purple-dark/40 hover:bg-brand-purple/10 hover:text-brand-purple-dark/70 flex h-7 w-7 items-center justify-center rounded-md transition-colors focus:outline-none"
+                className="text-brand-muted hover:bg-brand-purple/10 hover:text-brand-purple-dark/70 flex h-7 w-7 items-center justify-center rounded-md transition-colors focus:outline-none"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -176,7 +176,7 @@ export function StudioOnboarding() {
               <button
                 type="button"
                 onClick={skip}
-                className="text-brand-purple-dark/60 hover:text-brand-purple-dark text-xs font-semibold underline"
+                className="text-brand-muted hover:text-brand-purple-dark text-xs font-semibold underline"
               >
                 Saltar
               </button>

@@ -46,7 +46,7 @@ export default async function AuthLayout({ children }: { children: ReactNode }) 
         <p>
           ¿Necesitas ayuda?{" "}
           <a
-            className="text-brand-pink hover:text-brand-coral font-medium underline-offset-4 hover:underline"
+            className="text-brand-pink-ink hover:text-brand-coral-ink font-medium underline-offset-4 hover:underline"
             href={waSupportUrl}
             target="_blank"
             rel="noopener noreferrer"

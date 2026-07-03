@@ -66,7 +66,7 @@ export default async function CheckoutPagoPage({ searchParams }: { searchParams:
             <p className="text-brand-purple-dark/70 text-xs">{contact.email}</p>
             <p className="text-brand-purple-dark/70 text-xs">{contact.phone}</p>
             {contact.documentType && contact.documentNumber && (
-              <p className="text-brand-purple-dark/55 text-xs">
+              <p className="text-brand-muted text-xs">
                 {contact.documentType} {contact.documentNumber}
               </p>
             )}
@@ -102,7 +102,7 @@ export default async function CheckoutPagoPage({ searchParams }: { searchParams:
               {address.zip && ` · ${address.zip}`}
             </p>
             {address.notes && (
-              <p className="text-brand-purple-dark/55 mt-1 text-xs italic">Nota: {address.notes}</p>
+              <p className="text-brand-muted mt-1 text-xs italic">Nota: {address.notes}</p>
             )}
             <p className="text-brand-purple-dark mt-2 text-xs font-medium">
               Vía {shippingSelection.carrierName}
@@ -122,7 +122,7 @@ export default async function CheckoutPagoPage({ searchParams }: { searchParams:
               <p className="text-brand-purple-dark/70 text-xs">
                 {billing.documentType} {billing.documentNumber}
               </p>
-              <p className="text-brand-purple-dark/55 mt-1 text-xs">
+              <p className="text-brand-muted mt-1 text-xs">
                 Recibirás la factura DIAN a {contact.email}
               </p>
             </ReviewCard>
@@ -139,13 +139,13 @@ export default async function CheckoutPagoPage({ searchParams }: { searchParams:
               <CheckCircle2 className="text-brand-purple h-6 w-6 flex-shrink-0" />
               <div className="flex-1">
                 <div className="text-brand-purple-dark text-sm font-semibold">Pagar con Wompi</div>
-                <div className="text-brand-purple-dark/65 text-xs">
+                <div className="text-brand-muted text-xs">
                   Tarjeta crédito/débito · PSE · Nequi · Bancolombia
                 </div>
               </div>
             </div>
 
-            <div className="text-brand-purple-dark/65 mb-4 flex items-start gap-2 text-xs">
+            <div className="text-brand-muted mb-4 flex items-start gap-2 text-xs">
               <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-emerald-600" />
               <span>
                 Al pagar serás redirigido a Wompi (Bancolombia). Tu información bancaria nunca pasa
@@ -197,7 +197,7 @@ function ReviewCard({
         </h3>
         <Link
           href={href}
-          className="text-brand-purple hover:text-brand-purple-dark text-xs font-semibold"
+          className="text-brand-purple-dark hover:text-brand-purple text-xs font-semibold"
         >
           Editar
         </Link>

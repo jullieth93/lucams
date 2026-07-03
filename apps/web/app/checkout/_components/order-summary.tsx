@@ -26,7 +26,7 @@ export function OrderSummary({
       <h2 className="text-brand-purple-dark font-display mb-4 flex items-center gap-2 text-base font-bold">
         <ShoppingBag className="h-4 w-4" />
         Tu pedido
-        <span className="text-brand-purple-dark/55 ml-auto text-xs font-normal">
+        <span className="text-brand-muted ml-auto text-xs font-normal">
           {cart.itemCount} {cart.itemCount === 1 ? "producto" : "productos"}
         </span>
       </h2>
@@ -48,7 +48,7 @@ export function OrderSummary({
                   {item.productName}
                 </p>
                 {item.isPersonalizable && item.designPreviewUrl && (
-                  <p className="text-brand-purple/70 text-[10px]">Personalizado</p>
+                  <p className="text-brand-muted text-[10px]">Personalizado</p>
                 )}
               </div>
               <div className="text-brand-purple-dark flex-shrink-0 text-xs font-semibold tabular-nums">
@@ -69,14 +69,14 @@ export function OrderSummary({
           <dt className="text-brand-purple-dark/70">Envío</dt>
           <dd className="text-brand-purple-dark/85 text-right tabular-nums">
             {shipping === null ? (
-              <span className="text-brand-purple-dark/45 text-xs italic">Calculado en step 2</span>
+              <span className="text-brand-muted text-xs italic">Calculado en step 2</span>
             ) : shipping === 0 ? (
               <span className="font-semibold text-emerald-700">Gratis</span>
             ) : (
               <>
                 {formatCOP(shipping)}
                 {shippingLabel && (
-                  <span className="text-brand-purple-dark/55 block text-[10px] font-normal">
+                  <span className="text-brand-muted block text-[10px] font-normal">
                     {shippingLabel}
                   </span>
                 )}
@@ -90,7 +90,7 @@ export function OrderSummary({
             {formatCOP(total)}
           </dd>
         </div>
-        <p className="text-brand-purple-dark/55 mt-1 text-[10px]">IVA incluido (Colombia)</p>
+        <p className="text-brand-muted mt-1 text-[10px]">IVA incluido (Colombia)</p>
       </dl>
     </aside>
   );

@@ -77,7 +77,7 @@ export function ProductImages({ productId, images }: { productId: string; images
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
           <h2 className="text-base font-semibold text-brand-purple-dark">Fotos del producto</h2>
-          <p className="mt-0.5 text-xs text-brand-purple-dark/55">
+          <p className="mt-0.5 text-xs text-brand-muted">
             La <strong className="text-brand-purple-dark/75">⭐ portada</strong> es la que se ve en
             el catálogo. Para cambiarla, usa <em>“Hacer portada”</em> en cualquier foto. JPG/PNG/WebP
             · máx 5 MB c/u.
@@ -121,7 +121,7 @@ export function ProductImages({ productId, images }: { productId: string; images
           <p className="text-sm font-medium text-brand-purple-dark/80">
             Aún no hay imágenes para este producto.
           </p>
-          <p className="mt-1 text-xs text-brand-purple-dark/55">
+          <p className="mt-1 text-xs text-brand-muted">
             Sube 1-5 fotos. La primera será la portada en el catálogo (luego la puedes cambiar).
           </p>
         </div>

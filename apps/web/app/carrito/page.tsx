@@ -63,7 +63,7 @@ export default async function CarritoPage() {
                         />
                       ) : (
                         <div className="flex h-full w-full items-center justify-center">
-                          <Sparkles className="text-brand-purple/40 h-7 w-7" />
+                          <Sparkles className="text-brand-muted h-7 w-7" />
                         </div>
                       )}
                     </div>
@@ -81,14 +81,14 @@ export default async function CarritoPage() {
                               ✨ Tu diseño ·{" "}
                               <Link
                                 href={`/estudio/${item.productSlug}?designId=${item.designId}`}
-                                className="text-brand-purple hover:text-brand-purple-dark underline"
+                                className="text-brand-purple-dark hover:text-brand-purple underline"
                               >
                                 Editar
                               </Link>
                             </p>
                           ) : (
                             item.isPersonalizable && (
-                              <p className="text-brand-purple/70 text-xs">Personalizable</p>
+                              <p className="text-brand-muted text-xs">Personalizable</p>
                             )
                           )}
                           <p className="text-brand-purple-dark/70 mt-1 text-sm tabular-nums">
@@ -128,7 +128,7 @@ export default async function CarritoPage() {
                     </span>
                     <span className="tabular-nums">{formatCOP(cart.subtotal)}</span>
                   </div>
-                  <div className="text-brand-purple-dark/60 flex justify-between">
+                  <div className="text-brand-muted flex justify-between">
                     <span>Envío</span>
                     <span>Calculado en checkout</span>
                   </div>
@@ -176,11 +176,11 @@ export default async function CarritoPage() {
 function EmptyCart() {
   return (
     <div className="border-brand-purple/10 rounded-xl border bg-white px-6 py-16 text-center">
-      <Sparkles className="text-brand-purple/40 mx-auto h-10 w-10" />
+      <Sparkles className="text-brand-muted mx-auto h-10 w-10" />
       <p className="text-brand-purple-dark mt-4 text-lg font-semibold">
         <CmsText blockKey="cart.empty.title" fallback="Tu carrito está vacío" />
       </p>
-      <p className="text-brand-purple-dark/60 mt-1 text-sm">
+      <p className="text-brand-muted mt-1 text-sm">
         <CmsText
           blockKey="cart.empty.description"
           fallback="Encuentra el imán perfecto para tu nevera."

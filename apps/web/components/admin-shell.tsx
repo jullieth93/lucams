@@ -160,7 +160,7 @@ function AdminTopBar({ pathname }: { pathname: string }) {
   return (
     <div className="border-brand-purple/10 sticky top-0 z-20 hidden h-14 items-center justify-between border-b bg-white/85 px-6 backdrop-blur-md lg:flex">
       <div className="flex items-center gap-3">
-        <span className="text-brand-purple/55 text-[10px] font-semibold tracking-wider uppercase">
+        <span className="text-brand-muted text-[10px] font-semibold tracking-wider uppercase">
           Panel
         </span>
         <span className="text-brand-purple/30">·</span>

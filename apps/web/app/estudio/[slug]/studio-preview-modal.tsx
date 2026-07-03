@@ -100,7 +100,7 @@ export function StudioPreviewModal({
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0 flex-1">
               <p className="text-brand-purple-dark font-semibold">{productName}</p>
-              <p className="text-brand-purple-dark/65 text-xs">
+              <p className="text-brand-muted text-xs">
                 {slotCount} {slotCount === 1 ? "imán personalizado" : "imanes personalizados"}
                 {sizeCm && (
                   <>

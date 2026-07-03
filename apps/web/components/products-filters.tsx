@@ -457,7 +457,7 @@ function CategoryRow({
       {count !== undefined && (
         <span
           className={
-            isActive ? "text-brand-purple/70 text-xs" : "text-brand-purple-dark/40 text-xs"
+            isActive ? "text-brand-muted text-xs" : "text-brand-muted text-xs"
           }
         >
           {count}

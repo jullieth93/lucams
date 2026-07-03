@@ -100,7 +100,7 @@ export function CategoryForm({
             <p className="text-xs text-rose-600">{state.fieldErrors.slug[0]}</p>
           )}
           {isEdit && (
-            <p className="text-brand-purple-dark/55 text-[11px]">
+            <p className="text-brand-muted text-[11px]">
               Cambiar el slug rompe URLs públicas. Solo cambialo si vas a generar redirect 301.
             </p>
           )}
@@ -141,7 +141,7 @@ export function CategoryForm({
               </option>
             ))}
           </select>
-          <p className="text-brand-purple-dark/55 text-[11px]">
+          <p className="text-brand-muted text-[11px]">
             Déjalo en “Ninguna” para una categoría principal. Elige una madre para crear una
             sub-categoría (ej. madre “Magnéticos” → “Magnéticos foto”).
           </p>

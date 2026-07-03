@@ -231,7 +231,7 @@ export default async function AdminProductosPage({ searchParams }: { searchParam
             <div className="sm:col-span-12">
               <Link
                 href="/admin/productos"
-                className="text-brand-purple/70 hover:text-brand-purple-dark text-xs font-semibold"
+                className="text-brand-muted hover:text-brand-purple-dark text-xs font-semibold"
               >
                 Limpiar filtros
               </Link>
@@ -320,14 +320,14 @@ export default async function AdminProductosPage({ searchParams }: { searchParam
                   )}
                   <td className="px-4 py-3">
                     <div className="text-brand-purple-dark font-medium">{p.name}</div>
-                    <div className="text-brand-purple-dark/50 text-xs">/{p.slug}</div>
+                    <div className="text-brand-muted text-xs">/{p.slug}</div>
                   </td>
                   <td className="text-brand-purple-dark/75 px-4 py-3 font-mono text-xs">{p.sku}</td>
                   <td className="text-brand-purple-dark/85 px-4 py-3">{p.category.name}</td>
                   <td className="text-brand-purple-dark px-4 py-3 text-right font-semibold tabular-nums">
                     {/* "desde $X" cuando hay varias opciones con precios distintos */}
                     {p.variantsCount > 1 && (
-                      <span className="text-brand-purple-dark/45 mr-1 text-[10px] font-normal">
+                      <span className="text-brand-muted mr-1 text-[10px] font-normal">
                         desde
                       </span>
                     )}

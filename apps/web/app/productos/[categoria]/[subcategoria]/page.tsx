@@ -81,7 +81,7 @@ export default async function SubCategoryPage({
             <p className="text-brand-purple/80 mt-2 max-w-3xl text-base">{subCat.description}</p>
           )}
           {subCat.useCase && (
-            <p className="text-brand-purple/70 mt-1 max-w-3xl text-sm italic">{subCat.useCase}</p>
+            <p className="text-brand-muted mt-1 max-w-3xl text-sm italic">{subCat.useCase}</p>
           )}
           <p className="mt-3 text-sm text-slate-500">
             {subCat.productCount} {subCat.productCount === 1 ? "producto" : "productos"} disponibles

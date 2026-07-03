@@ -78,7 +78,7 @@ export function VariantImages({
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
           <h3 className="text-brand-purple-dark text-base font-semibold">Fotos de esta opción</h3>
-          <p className="text-brand-purple-dark/55 mt-0.5 text-xs">
+          <p className="text-brand-muted mt-0.5 text-xs">
             {images.length === 0
               ? `Si no subes ninguna, esta opción usa las ${productImageCount} foto${
                   productImageCount === 1 ? "" : "s"
@@ -125,7 +125,7 @@ export function VariantImages({
           <p className="text-brand-purple-dark/70 text-sm font-medium">
             Esta opción hereda las fotos del producto.
           </p>
-          <p className="text-brand-purple-dark/50 mt-1 text-xs">
+          <p className="text-brand-muted mt-1 text-xs">
             Sube fotos solo si esta opción luce diferente (otro formato, color, cantidad).
           </p>
         </div>

@@ -152,7 +152,7 @@ export default async function AdminClientesPage({ searchParams }: { searchParams
             <div className="sm:col-span-12">
               <Link
                 href="/admin/clientes"
-                className="text-brand-purple/70 hover:text-brand-purple-dark text-xs font-semibold"
+                className="text-brand-muted hover:text-brand-purple-dark text-xs font-semibold"
               >
                 Limpiar filtros
               </Link>
@@ -189,7 +189,7 @@ export default async function AdminClientesPage({ searchParams }: { searchParams
                 <AdminTableRow key={c.id}>
                   <td className="px-4 py-3">
                     <div className="text-brand-purple-dark font-medium">{c.fullName}</div>
-                    {c.phone && <div className="text-brand-purple-dark/55 text-xs">{c.phone}</div>}
+                    {c.phone && <div className="text-brand-muted text-xs">{c.phone}</div>}
                   </td>
                   <td className="text-brand-purple-dark/85 px-4 py-3 text-xs">{c.email}</td>
                   <td className="text-brand-purple-dark/75 px-4 py-3 text-xs">
@@ -201,7 +201,7 @@ export default async function AdminClientesPage({ searchParams }: { searchParams
                     {c.ordersCount > 0 ? (
                       <AdminBadge tone="emerald">{c.ordersCount}</AdminBadge>
                     ) : (
-                      <span className="text-brand-purple-dark/40 text-xs">0</span>
+                      <span className="text-brand-muted text-xs">0</span>
                     )}
                   </td>
                   <td className="px-4 py-3 text-center">
@@ -210,19 +210,19 @@ export default async function AdminClientesPage({ searchParams }: { searchParams
                         {c.reviewsCount}
                       </span>
                     ) : (
-                      <span className="text-brand-purple-dark/40 text-xs">—</span>
+                      <span className="text-brand-muted text-xs">—</span>
                     )}
                   </td>
                   <td className="text-brand-purple-dark/85 px-4 py-3 text-right text-xs tabular-nums">
                     {c.loyaltyPoints.toLocaleString("es-CO")}
                   </td>
-                  <td className="text-brand-purple-dark/65 px-4 py-3 text-xs">
+                  <td className="text-brand-muted px-4 py-3 text-xs">
                     {dateFmt.format(c.createdAt)}
                   </td>
                   <td className="px-4 py-3 text-right">
                     <Link
                       href={`/admin/clientes/${c.id}`}
-                      className="text-brand-purple hover:text-brand-purple-dark inline-flex items-center gap-1 text-xs font-medium"
+                      className="text-brand-purple-dark hover:text-brand-purple inline-flex items-center gap-1 text-xs font-medium"
                     >
                       Ver perfil
                       <ChevronRight className="h-3.5 w-3.5" />

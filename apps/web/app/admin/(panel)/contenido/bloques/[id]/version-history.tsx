@@ -32,8 +32,8 @@ export function VersionHistory({
   if (versions.length === 0) {
     return (
       <div className="border-brand-purple/15 px-6 py-10 text-center">
-        <History className="text-brand-purple-dark/40 mx-auto h-6 w-6" />
-        <p className="text-brand-purple-dark/60 mt-2 text-sm">Sin versiones aún.</p>
+        <History className="text-brand-muted mx-auto h-6 w-6" />
+        <p className="text-brand-muted mt-2 text-sm">Sin versiones aún.</p>
       </div>
     );
   }
@@ -66,7 +66,7 @@ export function VersionHistory({
                   </span>
                 )}
               </div>
-              <p className="text-brand-purple-dark/55 mt-1 text-xs">
+              <p className="text-brand-muted mt-1 text-xs">
                 Guardada el {formatDateHuman(v.createdAt)}
               </p>
               <p className="text-brand-purple-dark/75 mt-2 line-clamp-2 text-sm">

@@ -89,7 +89,7 @@ export function WizardRecomendador({ ocasiones }: { ocasiones: OcasionData[] }) 
                   : "No encontramos un match exacto"}
               </h2>
               {results.length === 0 && (
-                <p className="text-brand-purple/70 mt-2 text-sm">
+                <p className="text-brand-muted mt-2 text-sm">
                   Prueba relajar algún filtro (presupuesto o personalización) para ver más opciones.
                 </p>
               )}

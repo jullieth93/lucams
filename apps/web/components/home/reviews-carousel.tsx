@@ -116,7 +116,7 @@ function ReviewCard({ review }: { review: StorefrontReview }) {
         <p className="text-brand-purple-dark text-sm font-semibold">
           {review.authorName ?? "Cliente Lucams"}
         </p>
-        <p className="text-brand-purple-dark/60 text-xs">
+        <p className="text-brand-muted text-xs">
           {review.authorCity ? `${review.authorCity} · ` : ""}
           <Link
             href={`/producto/${review.productSlug}`}

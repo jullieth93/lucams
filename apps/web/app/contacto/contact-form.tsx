@@ -39,7 +39,7 @@ export function ContactForm() {
           Te respondemos a tu email en menos de 24h. Tu ticket es{" "}
           <span className="font-mono text-xs">{state.ticketId.slice(0, 8).toUpperCase()}</span>.
         </p>
-        <p className="text-brand-purple-dark/60 mt-3 text-xs">
+        <p className="text-brand-muted mt-3 text-xs">
           Si es urgente, escríbenos por WhatsApp.
         </p>
       </div>
@@ -156,7 +156,7 @@ export function ContactForm() {
         )}
       </Button>
 
-      <p className="text-brand-purple-dark/50 text-center text-xs">
+      <p className="text-brand-muted text-center text-xs">
         Tu información se trata según el{" "}
         <a href="/legal/privacidad" className="text-brand-purple underline underline-offset-2">
           Aviso de Privacidad

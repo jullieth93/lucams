@@ -142,7 +142,7 @@ export default async function StatusPage() {
                 />
                 <div className="flex-1">
                   <p className="text-brand-purple-dark text-sm font-semibold">{s.name}</p>
-                  <p className="text-brand-purple-dark/60 mt-0.5 text-xs">{s.description}</p>
+                  <p className="text-brand-muted mt-0.5 text-xs">{s.description}</p>
                   {s.detail && (
                     <p
                       className={
@@ -153,7 +153,7 @@ export default async function StatusPage() {
                     </p>
                   )}
                 </div>
-                <span className="text-brand-purple-dark/60 text-xs tabular-nums">
+                <span className="text-brand-muted text-xs tabular-nums">
                   {s.status === "ok" && s.latencyMs != null && `${s.latencyMs}ms`}
                   {s.status === "down" && "Caído"}
                   {s.status === "pending" && "Pendiente"}
@@ -162,7 +162,7 @@ export default async function StatusPage() {
             ))}
           </div>
 
-          <p className="text-brand-purple-dark/55 mt-6 text-center text-xs">
+          <p className="text-brand-muted mt-6 text-center text-xs">
             Verificado en tiempo real ·{" "}
             {new Date().toLocaleString("es-CO", { dateStyle: "medium", timeStyle: "short" })}
           </p>

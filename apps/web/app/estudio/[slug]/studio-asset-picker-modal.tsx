@@ -162,7 +162,7 @@ export function StudioAssetPickerModal({
                     <h2 id={titleId} className="text-brand-purple-dark font-display text-lg">
                       Foto para el imán {(slotIndex ?? 0) + 1} de {totalSlots}
                     </h2>
-                    <p id={descId} className="text-brand-purple-dark/60 mt-0.5 text-xs">
+                    <p id={descId} className="text-brand-muted mt-0.5 text-xs">
                       Elige una foto ya subida o suma una nueva.
                     </p>
                   </div>
@@ -170,7 +170,7 @@ export function StudioAssetPickerModal({
                     type="button"
                     onClick={onClose}
                     aria-label="Cerrar"
-                    className="text-brand-purple-dark/60 hover:text-brand-purple-dark hover:bg-brand-cream focus:ring-brand-purple rounded-md p-2 transition-colors focus:ring-2 focus:outline-none"
+                    className="text-brand-muted hover:text-brand-purple-dark hover:bg-brand-cream focus:ring-brand-purple rounded-md p-2 transition-colors focus:ring-2 focus:outline-none"
                   >
                     <X className="h-4 w-4" />
                   </button>
@@ -275,7 +275,7 @@ export function StudioAssetPickerModal({
                   )}
 
                   {assets.length === 0 && !uploading && (
-                    <p className="text-brand-purple-dark/50 mt-4 text-center text-xs italic">
+                    <p className="text-brand-muted mt-4 text-center text-xs italic">
                       Todavía no subiste fotos. Empieza arriba.
                     </p>
                   )}

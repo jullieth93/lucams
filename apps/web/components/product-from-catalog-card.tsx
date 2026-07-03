@@ -46,7 +46,7 @@ export function ProductFromCatalogCard({
           />
         ) : (
           <div className="flex h-full w-full items-center justify-center">
-            <Sparkles className="text-brand-purple/40 h-12 w-12" />
+            <Sparkles className="text-brand-muted h-12 w-12" />
           </div>
         )}
 
@@ -56,14 +56,14 @@ export function ProductFromCatalogCard({
           </span>
         )}
         {hasDiscount && (
-          <span className="bg-brand-pink absolute top-2 right-2 rounded-full px-2 py-0.5 text-[10px] font-bold text-white">
+          <span className="bg-brand-pink-ink absolute top-2 right-2 rounded-full px-2 py-0.5 text-[10px] font-bold text-white">
             -{discountPct}%
           </span>
         )}
       </div>
 
       <div className="flex flex-1 flex-col p-3">
-        <p className="text-brand-purple/70 text-[10px] font-medium tracking-wider uppercase">
+        <p className="text-brand-muted text-[10px] font-medium tracking-wider uppercase">
           {product.parentCategoryName ?? product.categoryName}
         </p>
         <h3 className="text-brand-purple-dark mt-1 line-clamp-2 text-sm leading-snug font-semibold">
@@ -75,7 +75,7 @@ export function ProductFromCatalogCard({
             <p className="text-brand-purple-dark text-sm font-bold">
               Desde {formatCOP(product.minPrice)}
               {product.minPrice !== product.maxPrice && (
-                <span className="text-brand-purple/60 ml-1 text-xs font-normal">
+                <span className="text-brand-muted ml-1 text-xs font-normal">
                   · hasta {formatCOP(product.maxPrice)}
                 </span>
               )}

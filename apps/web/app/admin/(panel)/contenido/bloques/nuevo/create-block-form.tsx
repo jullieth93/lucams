@@ -87,7 +87,7 @@ export function CreateBlockForm({ defaultCategory }: { defaultCategory?: string 
           onChange={(e) => setKey(e.target.value)}
           className="border-brand-purple/20 focus-visible:ring-brand-purple/30 font-mono"
         />
-        <p className="text-brand-purple-dark/55 text-xs">
+        <p className="text-brand-muted text-xs">
           Letras minúsculas, números, puntos y guiones. No se cambia después.
         </p>
         {state?.fieldErrors?.key && (
@@ -148,7 +148,7 @@ export function CreateBlockForm({ defaultCategory }: { defaultCategory?: string 
           onChange={(e) => setDescription(e.target.value)}
           className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
         />
-        <p className="text-brand-purple-dark/55 text-xs">
+        <p className="text-brand-muted text-xs">
           Nota para acordarte en qué parte del sitio se usa.
         </p>
       </div>
@@ -169,7 +169,7 @@ export function CreateBlockForm({ defaultCategory }: { defaultCategory?: string 
           onChange={setBody}
           placeholder={`# Mi bloque\n\nEscribe el contenido aquí. Usa los botones de arriba para formato.\n\nPuedes editarlo después y ver una vista previa en el editor completo.`}
         />
-        <p className="text-brand-purple-dark/55 text-xs">
+        <p className="text-brand-muted text-xs">
           Usá los botones del toolbar para dar formato. Puedes editarlo después y ver una vista
           previa en el editor completo.
         </p>

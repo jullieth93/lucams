@@ -27,7 +27,7 @@ export function RecoveryCodesPanel({ unusedCount }: { unusedCount: number }) {
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2">
-        <KeyRound className="text-brand-purple-dark/60 h-5 w-5" />
+        <KeyRound className="text-brand-muted h-5 w-5" />
         <h3 className="text-brand-purple-dark font-semibold">Códigos de respaldo</h3>
       </div>
       <p className="text-brand-purple-dark/70 text-sm">

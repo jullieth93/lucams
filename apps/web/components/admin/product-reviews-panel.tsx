@@ -79,7 +79,7 @@ export async function ProductReviewsPanel({
               <MessageSquare className="h-5 w-5" />
               Reseñas de este producto
             </h2>
-            <p className="text-brand-purple-dark/65 mt-0.5 text-xs">
+            <p className="text-brand-muted mt-0.5 text-xs">
               {totalAllStatuses === 0
                 ? "Aún no hay reseñas para este producto."
                 : `${totalAllStatuses} reseña${totalAllStatuses === 1 ? "" : "s"} en total · ${pendingTotal} pendiente${pendingTotal === 1 ? "" : "s"} de moderar`}
@@ -258,7 +258,7 @@ function ReviewCard({
             <span className="text-brand-purple-dark min-w-0 truncate text-sm font-semibold">
               {author}
             </span>
-            <span className="text-brand-purple-dark/60 text-xs">
+            <span className="text-brand-muted text-xs">
               {city} · {dateFmt.format(review.createdAt)}
             </span>
             {review.featured && (
@@ -268,7 +268,7 @@ function ReviewCard({
               </AdminBadge>
             )}
             {review.imagesCount > 0 && (
-              <span className="text-brand-purple-dark/60 text-xs">
+              <span className="text-brand-muted text-xs">
                 {review.imagesCount} foto{review.imagesCount === 1 ? "" : "s"}
               </span>
             )}

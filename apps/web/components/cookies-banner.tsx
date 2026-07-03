@@ -124,7 +124,7 @@ export function CookiesBanner() {
               <button
                 type="button"
                 onClick={() => setModalOpen(true)}
-                className="text-brand-purple hover:text-brand-purple-dark rounded-full px-4 py-2 text-xs font-semibold underline-offset-2 hover:underline"
+                className="text-brand-purple-dark hover:text-brand-purple rounded-full px-4 py-2 text-xs font-semibold underline-offset-2 hover:underline"
               >
                 Personalizar
               </button>
@@ -249,7 +249,7 @@ function PreferenceRow({
             </span>
           )}
         </div>
-        <p className="text-brand-purple-dark/65 text-xs leading-snug">{description}</p>
+        <p className="text-brand-muted text-xs leading-snug">{description}</p>
       </div>
     </label>
   );
@@ -264,7 +264,7 @@ export function CookiesReopenLink({ children }: { children: React.ReactNode }) {
     <button
       type="button"
       onClick={openCookiesPreferences}
-      className="text-brand-purple hover:text-brand-purple-dark font-semibold underline-offset-2 hover:underline"
+      className="text-brand-purple-dark hover:text-brand-purple font-semibold underline-offset-2 hover:underline"
     >
       {children}
     </button>

@@ -124,7 +124,7 @@ export function BlockEditorForm({ block }: { block: BlockEditorBlock }) {
             disabled={pending}
             className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
           />
-          <p className="text-brand-purple-dark/55 text-xs">
+          <p className="text-brand-muted text-xs">
             Es el título que se ve dentro del bloque (no en el menú).
           </p>
         </div>
@@ -141,7 +141,7 @@ export function BlockEditorForm({ block }: { block: BlockEditorBlock }) {
             disabled={pending}
             className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
           />
-          <p className="text-brand-purple-dark/55 text-xs">
+          <p className="text-brand-muted text-xs">
             Una nota para acordarte dónde se usa este bloque en el sitio.
           </p>
         </div>
@@ -155,7 +155,7 @@ export function BlockEditorForm({ block }: { block: BlockEditorBlock }) {
             <Label htmlFor="body" className="text-brand-purple-dark text-base font-semibold">
               Contenido
             </Label>
-            <span className="text-brand-purple-dark/55 text-xs">
+            <span className="text-brand-muted text-xs">
               Lo que escribas se ve a la derecha →
             </span>
           </div>
@@ -176,7 +176,7 @@ export function BlockEditorForm({ block }: { block: BlockEditorBlock }) {
                 <Lightbulb className="h-3.5 w-3.5 text-amber-600" />
                 ¿Prefieres escribir el formato a mano? Ver atajos
               </span>
-              <ChevronDown className="text-brand-purple-dark/50 h-3.5 w-3.5 transition-transform group-open:rotate-180" />
+              <ChevronDown className="text-brand-muted h-3.5 w-3.5 transition-transform group-open:rotate-180" />
             </summary>
             <div className="text-brand-purple-dark/75 px-3 pt-1 pb-3 text-xs">
               <ul className="grid grid-cols-1 gap-y-1 sm:grid-cols-2">
@@ -203,7 +203,7 @@ export function BlockEditorForm({ block }: { block: BlockEditorBlock }) {
                   enlace
                 </li>
               </ul>
-              <p className="text-brand-purple-dark/55 mt-2">
+              <p className="text-brand-muted mt-2">
                 Para separar párrafos: deja una línea vacía en el medio.
               </p>
             </div>
@@ -214,7 +214,7 @@ export function BlockEditorForm({ block }: { block: BlockEditorBlock }) {
         <div className="space-y-2">
           <div className="flex items-center justify-between gap-2">
             <Label className="text-brand-purple-dark text-base font-semibold">Vista previa</Label>
-            <span className="text-brand-purple-dark/55 text-xs">Así se va a ver en el sitio</span>
+            <span className="text-brand-muted text-xs">Así se va a ver en el sitio</span>
           </div>
           <div className="prose prose-sm prose-headings:font-display prose-headings:text-brand-purple-dark prose-a:text-brand-purple border-brand-purple/15 min-h-[500px] max-w-none rounded-lg border bg-white p-5 shadow-sm">
             {body.trim() ? (
@@ -222,7 +222,7 @@ export function BlockEditorForm({ block }: { block: BlockEditorBlock }) {
                 {body}
               </ReactMarkdown>
             ) : (
-              <p className="text-brand-purple-dark/40 italic">
+              <p className="text-brand-muted italic">
                 Empieza a escribir a la izquierda...
               </p>
             )}

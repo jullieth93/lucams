@@ -55,7 +55,7 @@ export function QuoteList({
                     "flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full transition-colors " +
                     (isSelected
                       ? "bg-brand-purple text-white"
-                      : "bg-brand-purple/10 text-brand-purple-dark/60")
+                      : "bg-brand-purple/10 text-brand-muted")
                   }
                 >
                   {isSelected ? <Check className="h-5 w-5" /> : <Truck className="h-4 w-4" />}
@@ -64,7 +64,7 @@ export function QuoteList({
                   <div className="text-brand-purple-dark text-sm font-semibold">
                     {q.carrierName}
                   </div>
-                  <div className="text-brand-purple-dark/65 mt-0.5 flex items-center gap-2 text-xs">
+                  <div className="text-brand-muted mt-0.5 flex items-center gap-2 text-xs">
                     <Clock className="h-3 w-3" />
                     {q.deliveryDays === 0
                       ? "Entrega hoy"

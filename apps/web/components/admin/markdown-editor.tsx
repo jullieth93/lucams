@@ -230,7 +230,7 @@ export function MarkdownEditor({
             })}
           </div>
         ))}
-        <div className="text-brand-purple-dark/55 ml-auto hidden text-[11px] font-medium sm:block">
+        <div className="text-brand-muted ml-auto hidden text-[11px] font-medium sm:block">
           💡 Selecciona texto y dale a un botón
         </div>
       </div>

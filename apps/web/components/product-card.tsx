@@ -36,7 +36,7 @@ export function ProductCard({ product }: { product: StorefrontProductCard }) {
           />
         ) : (
           <div className="flex h-full w-full items-center justify-center">
-            <Sparkles className="text-brand-purple/40 h-12 w-12" />
+            <Sparkles className="text-brand-muted h-12 w-12" />
           </div>
         )}
 
@@ -46,14 +46,14 @@ export function ProductCard({ product }: { product: StorefrontProductCard }) {
           </span>
         )}
         {hasDiscount && (
-          <span className="bg-brand-pink absolute top-2 right-2 rounded-full px-2 py-0.5 text-[10px] font-semibold tracking-wider text-white uppercase">
+          <span className="bg-brand-pink-ink absolute top-2 right-2 rounded-full px-2 py-0.5 text-[10px] font-semibold tracking-wider text-white uppercase">
             -{discountPct}%
           </span>
         )}
       </div>
 
       <div className="flex flex-1 flex-col gap-1 p-3">
-        <p className="text-brand-purple/70 flex items-center gap-1.5 text-[10px] font-medium tracking-wider uppercase">
+        <p className="text-brand-muted flex items-center gap-1.5 text-[10px] font-medium tracking-wider uppercase">
           <span>{product.category.name}</span>
           {product.variantCount != null && product.variantCount > 1 && (
             <>
@@ -74,7 +74,7 @@ export function ProductCard({ product }: { product: StorefrontProductCard }) {
             product.variantCount > 1 &&
             product.minVariantPrice != null &&
             product.minVariantPrice < product.basePrice && (
-              <span className="text-brand-purple-dark/55 text-[10px] font-semibold tracking-wider uppercase">
+              <span className="text-brand-muted text-[10px] font-semibold tracking-wider uppercase">
                 desde
               </span>
             )}
@@ -82,7 +82,7 @@ export function ProductCard({ product }: { product: StorefrontProductCard }) {
             {formatCOP(product.minVariantPrice ?? product.basePrice)}
           </span>
           {hasDiscount && (
-            <span className="text-brand-purple/50 text-xs tabular-nums line-through">
+            <span className="text-brand-muted text-xs tabular-nums line-through">
               {formatCOP(product.compareAtPrice!)}
             </span>
           )}

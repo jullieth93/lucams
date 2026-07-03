@@ -120,7 +120,7 @@ export function StudioSidebar({
       {/* Producto info */}
       <div>
         <p className="text-brand-purple-dark text-sm font-semibold">{productName}</p>
-        <p className="text-brand-purple/60 mt-0.5 text-xs">SKU {productSku}</p>
+        <p className="text-brand-muted mt-0.5 text-xs">SKU {productSku}</p>
       </div>
 
       {/* Progress bar X/N — el feedback más importante del editor */}
@@ -136,7 +136,7 @@ export function StudioSidebar({
             <ImageIcon className="text-brand-purple h-4 w-4" />
             Mis fotos
             {assets.length > 0 && (
-              <span className="text-brand-purple-dark/40 text-[10px] font-medium tabular-nums">
+              <span className="text-brand-muted text-[10px] font-medium tabular-nums">
                 ({assets.length})
               </span>
             )}
@@ -151,7 +151,7 @@ export function StudioSidebar({
                 "text-[10px] font-bold tracking-wide uppercase transition-colors",
                 hideUsed
                   ? "text-brand-turquoise"
-                  : "text-brand-purple-dark/45 hover:text-brand-purple-dark/70",
+                  : "text-brand-muted hover:text-brand-purple-dark/70",
               ].join(" ")}
               title={
                 hideUsed ? "Mostrar todas las fotos" : "Ocultar fotos que ya pegaste en algún imán"
@@ -231,7 +231,7 @@ export function StudioSidebar({
         )}
 
         {assets.length === 0 && uploading === 0 && (
-          <p className="text-brand-purple-dark/50 mt-3 text-xs italic">
+          <p className="text-brand-muted mt-3 text-xs italic">
             Tip: sube tus fotos primero, después usa el botón mágico para repartirlas en los slots.
           </p>
         )}
@@ -239,7 +239,7 @@ export function StudioSidebar({
         {/* M.3.b.UX.6 — Microcopy cuando todos los slots están llenos pero
             hay fotos sin asignar: explicar que se pueden cambiar arrastrando. */}
         {assets.length > 0 && emptySlots === 0 && totalSlots > 0 && (
-          <p className="text-brand-purple-dark/55 bg-brand-turquoise/10 mt-3 rounded-md px-2.5 py-2 text-xs">
+          <p className="text-brand-muted bg-brand-turquoise/10 mt-3 rounded-md px-2.5 py-2 text-xs">
             ✨ Todos los imanes tienen foto. Arrastra cualquier foto encima de un imán para
             cambiarla.
           </p>
@@ -257,13 +257,13 @@ export function StudioSidebar({
         >
           <Sparkles className="text-brand-purple h-4 w-4" />
           Plantillas
-          <span className="text-brand-purple-dark/40 text-xs font-normal">
+          <span className="text-brand-muted text-xs font-normal">
             ({templates.length})
           </span>
         </div>
 
         {templates.length === 0 ? (
-          <p className="text-brand-purple-dark/50 text-xs italic">
+          <p className="text-brand-muted text-xs italic">
             Aún no hay plantillas para este producto.
           </p>
         ) : (
@@ -327,7 +327,7 @@ function ProgressBar({ filled, total }: { filled: number; total: number }) {
           transition={{ duration: 0.4, ease: "easeOut" }}
         />
       </div>
-      <p className="text-brand-purple-dark/60 mt-1.5 text-xs">
+      <p className="text-brand-muted mt-1.5 text-xs">
         {isComplete
           ? "¡Listo! Todas las fotos están cargadas."
           : isEmpty
@@ -474,7 +474,7 @@ function TemplateCard({
           {template.name}
         </p>
         {productSizeCm && (
-          <p className="text-brand-purple-dark/45 text-[10px] font-medium tabular-nums">
+          <p className="text-brand-muted text-[10px] font-medium tabular-nums">
             📐 {productSizeCm} cm
           </p>
         )}
@@ -706,7 +706,7 @@ function PhotoQualityModal({
               </div>
               <div className="flex flex-1 flex-col justify-center text-sm">
                 <p className="text-brand-purple-dark leading-snug font-medium">{message}</p>
-                <div className="text-brand-purple-dark/65 mt-2 space-y-1 text-xs">
+                <div className="text-brand-muted mt-2 space-y-1 text-xs">
                   <p className="font-semibold">¿Qué puedes hacer?</p>
                   <ul className="ml-3 list-disc space-y-0.5">
                     <li>Subir una foto de mayor resolución (la original, no la de WhatsApp)</li>

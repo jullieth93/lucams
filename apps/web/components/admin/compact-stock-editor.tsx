@@ -94,7 +94,7 @@ export function CompactStockEditor({
       <div className="mt-1 flex h-[16px] items-center">
         {hasChange && !state?.error && (
           <p
-            className="text-brand-purple-dark/60 text-xs font-medium tabular-nums"
+            className="text-brand-muted text-xs font-medium tabular-nums"
             aria-label={`Cambio pendiente: ${delta > 0 ? "+" : ""}${delta}`}
           >
             {delta > 0 ? "+" : ""}

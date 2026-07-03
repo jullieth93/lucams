@@ -22,7 +22,7 @@ export function LegalPageHeader({
       <h1 className="font-display text-brand-purple-dark text-3xl sm:text-4xl">
         <CmsText blockKey={blockKey} fallback={defaultTitle} />
       </h1>
-      <p className="text-brand-purple-dark/60 mt-2 text-sm">
+      <p className="text-brand-muted mt-2 text-sm">
         <CmsText
           blockKey="legal.last-updated"
           fallback="Última actualización: 2026-05-12 · Versión v1"

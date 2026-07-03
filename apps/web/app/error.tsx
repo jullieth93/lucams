@@ -43,7 +43,7 @@ export default function Error({
       </p>
 
       {error.digest && (
-        <p className="text-brand-purple-dark/40 mt-2 font-mono text-xs">Ref: {error.digest}</p>
+        <p className="text-brand-muted mt-2 font-mono text-xs">Ref: {error.digest}</p>
       )}
 
       <div className="mt-8 flex flex-wrap items-center justify-center gap-3">

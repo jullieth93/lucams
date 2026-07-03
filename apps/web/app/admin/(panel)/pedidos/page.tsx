@@ -231,7 +231,7 @@ export default async function AdminPedidosPage({ searchParams }: { searchParams:
             <div className="sm:col-span-12">
               <Link
                 href="/admin/pedidos"
-                className="text-brand-purple/70 hover:text-brand-purple-dark text-xs font-semibold"
+                className="text-brand-muted hover:text-brand-purple-dark text-xs font-semibold"
               >
                 Limpiar filtros
               </Link>
@@ -276,14 +276,14 @@ export default async function AdminPedidosPage({ searchParams }: { searchParams:
                         {o.number}
                       </div>
                       {o.wompiTransactionId && (
-                        <div className="text-brand-purple-dark/40 font-mono text-[10px]">
+                        <div className="text-brand-muted font-mono text-[10px]">
                           wompi · {o.wompiTransactionId.slice(0, 14)}…
                         </div>
                       )}
                     </td>
                     <td className="px-4 py-3">
                       <div className="text-brand-purple-dark text-sm font-medium">{fullName}</div>
-                      <div className="text-brand-purple-dark/55 text-xs">{o.email}</div>
+                      <div className="text-brand-muted text-xs">{o.email}</div>
                     </td>
                     <td className="px-4 py-3 text-center">
                       <span className="text-brand-purple-dark/85 text-xs tabular-nums">
@@ -315,23 +315,23 @@ export default async function AdminPedidosPage({ searchParams }: { searchParams:
                           <div className="text-brand-purple-dark/85 text-xs">
                             {o.shippingCarrier ?? "—"}
                           </div>
-                          <div className="text-brand-purple-dark/55 font-mono text-[10px]">
+                          <div className="text-brand-muted font-mono text-[10px]">
                             {o.trackingNumber}
                           </div>
                         </div>
                       ) : (
-                        <span className="text-brand-purple-dark/40 text-xs">
+                        <span className="text-brand-muted text-xs">
                           {o.shippingCarrier ?? "—"}
                         </span>
                       )}
                     </td>
-                    <td className="text-brand-purple-dark/65 px-4 py-3 text-xs">
+                    <td className="text-brand-muted px-4 py-3 text-xs">
                       {dateFmt.format(o.createdAt)}
                     </td>
                     <td className="px-4 py-3 text-right">
                       <Link
                         href={`/admin/pedidos/${o.number}`}
-                        className="text-brand-purple hover:text-brand-purple-dark inline-flex items-center gap-1 text-xs font-medium"
+                        className="text-brand-purple-dark hover:text-brand-purple inline-flex items-center gap-1 text-xs font-medium"
                       >
                         Ver detalle
                         <ChevronRight className="h-3.5 w-3.5" />

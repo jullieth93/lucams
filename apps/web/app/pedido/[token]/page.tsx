@@ -118,11 +118,11 @@ export default async function PublicOrderPage({ params }: { params: Promise<{ to
       <main id="contenido" tabIndex={-1} className="flex-1 px-6 py-10 sm:px-10">
         <div className="mx-auto max-w-3xl">
           <header className="mb-6">
-            <p className="text-brand-purple-dark/65 text-xs tracking-wider uppercase">Tu pedido</p>
+            <p className="text-brand-muted text-xs tracking-wider uppercase">Tu pedido</p>
             <h1 className="font-display text-brand-purple-dark text-3xl sm:text-4xl">
               {order.number}
             </h1>
-            <p className="text-brand-purple-dark/65 mt-1 text-sm">
+            <p className="text-brand-muted mt-1 text-sm">
               {dateFmt.format(order.createdAt)} · {STATUS_LABEL[order.status] ?? order.status}
             </p>
           </header>
@@ -145,7 +145,7 @@ export default async function PublicOrderPage({ params }: { params: Promise<{ to
                       </div>
                       <span
                         className={`mt-2 text-center text-[10px] font-medium ${
-                          done ? "text-brand-purple-dark" : "text-brand-purple-dark/40"
+                          done ? "text-brand-purple-dark" : "text-brand-muted"
                         }`}
                       >
                         {s.label}
@@ -186,7 +186,7 @@ export default async function PublicOrderPage({ params }: { params: Promise<{ to
                           unoptimized
                         />
                       ) : (
-                        <div className="text-brand-purple/40 flex h-full w-full items-center justify-center text-[10px]">
+                        <div className="text-brand-muted flex h-full w-full items-center justify-center text-[10px]">
                           {it.qty}×
                         </div>
                       )}
@@ -195,7 +195,7 @@ export default async function PublicOrderPage({ params }: { params: Promise<{ to
                       <div className="text-brand-purple-dark text-sm font-semibold">
                         {it.variant.product.name}
                       </div>
-                      <div className="text-brand-purple-dark/65 text-xs">
+                      <div className="text-brand-muted text-xs">
                         {it.variant.name} · {it.qty} × {formatCOP(it.unitPrice)}
                       </div>
                     </div>
@@ -225,7 +225,7 @@ export default async function PublicOrderPage({ params }: { params: Promise<{ to
               {ship.addressLine1}
               {ship.addressLine2 && ` · ${ship.addressLine2}`}
             </p>
-            <p className="text-brand-purple-dark/60 mt-1 text-xs">
+            <p className="text-brand-muted mt-1 text-xs">
               {ship.city}, {ship.department}
               {ship.zip ? ` · ${ship.zip}` : ""}
             </p>
@@ -259,7 +259,7 @@ export default async function PublicOrderPage({ params }: { params: Promise<{ to
             <p className="text-brand-purple-dark text-sm font-semibold">
               ¿Quieres ver todos tus pedidos?
             </p>
-            <p className="text-brand-purple-dark/65 mt-1 text-xs">
+            <p className="text-brand-muted mt-1 text-xs">
               Crea una cuenta con el email <strong>{order.email}</strong> y vas a tener historial,
               direcciones guardadas y descuentos exclusivos.
             </p>
@@ -299,7 +299,7 @@ function Card({
 function Row({ label, value }: { label: string; value: React.ReactNode }) {
   return (
     <div className="flex items-center justify-between gap-3 py-1">
-      <dt className="text-brand-purple-dark/65 text-xs">{label}</dt>
+      <dt className="text-brand-muted text-xs">{label}</dt>
       <dd className="text-brand-purple-dark text-right text-xs font-medium">{value}</dd>
     </div>
   );

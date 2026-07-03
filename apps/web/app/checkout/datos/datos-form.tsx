@@ -491,7 +491,7 @@ export function DatosForm({ initial }: { initial: CheckoutState }) {
               }
             >
               <div className="text-brand-purple-dark text-sm font-semibold">🏙️ Urbana</div>
-              <div className="text-brand-purple-dark/65 text-xs">
+              <div className="text-brand-muted text-xs">
                 Calle / Carrera + número (nomenclatura DIAN)
               </div>
             </button>
@@ -508,7 +508,7 @@ export function DatosForm({ initial }: { initial: CheckoutState }) {
               }
             >
               <div className="text-brand-purple-dark text-sm font-semibold">🌳 Rural</div>
-              <div className="text-brand-purple-dark/65 text-xs">
+              <div className="text-brand-muted text-xs">
                 Vereda / Finca / Corregimiento + referencias
               </div>
             </button>
@@ -526,7 +526,7 @@ export function DatosForm({ initial }: { initial: CheckoutState }) {
 
               {/* Primera fila: Tipo de vía + Número + Bis + Cardinal */}
               <div>
-                <p className="text-brand-purple-dark/55 mb-1 text-[10px] font-semibold tracking-wide uppercase">
+                <p className="text-brand-muted mb-1 text-[10px] font-semibold tracking-wide uppercase">
                   Vía principal
                 </p>
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-12">
@@ -588,7 +588,7 @@ export function DatosForm({ initial }: { initial: CheckoutState }) {
 
               {/* Segunda fila: Cruce + Cardinal del cruce */}
               <div>
-                <p className="text-brand-purple-dark/55 mb-1 text-[10px] font-semibold tracking-wide uppercase">
+                <p className="text-brand-muted mb-1 text-[10px] font-semibold tracking-wide uppercase">
                   Cruce
                 </p>
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-12">
@@ -720,12 +720,12 @@ export function DatosForm({ initial }: { initial: CheckoutState }) {
         {/* Preview live de cómo se verá la dirección */}
         {addressPreview && (
           <div className="border-brand-purple/15 bg-brand-purple/5 mt-4 rounded-lg border p-3">
-            <p className="text-brand-purple-dark/65 text-[10px] font-semibold tracking-wider uppercase">
+            <p className="text-brand-muted text-[10px] font-semibold tracking-wider uppercase">
               📦 Así verá tu dirección el courier
             </p>
             <p className="text-brand-purple-dark mt-1 text-sm">{addressPreview}</p>
             {selectedCity && selectedDept && (
-              <p className="text-brand-purple-dark/65 text-xs">
+              <p className="text-brand-muted text-xs">
                 {selectedCity.name}, {selectedDept.name}
                 {zip && ` · CP ${zip}`}
               </p>
@@ -758,7 +758,7 @@ export function DatosForm({ initial }: { initial: CheckoutState }) {
         <h2 className="text-brand-purple-dark font-display mb-2 text-lg font-bold">
           3. Facturación electrónica
         </h2>
-        <p className="text-brand-purple-dark/65 mb-4 text-sm">
+        <p className="text-brand-muted mb-4 text-sm">
           Si necesitas factura DIAN, marcá la casilla. Si es compra personal, dejala sin marcar.
         </p>
 
@@ -870,6 +870,6 @@ function FieldHint({
 }) {
   if (clientError) return <p className="mt-1 text-xs text-rose-600">{clientError}</p>;
   if (serverError) return <p className="mt-1 text-xs text-rose-600">{serverError}</p>;
-  if (hint) return <p className="text-brand-purple-dark/55 mt-1 text-xs">{hint}</p>;
+  if (hint) return <p className="text-brand-muted mt-1 text-xs">{hint}</p>;
   return null;
 }

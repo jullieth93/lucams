@@ -265,9 +265,9 @@ function ProductStockSummaryReadonly({
     <section className={`space-y-3 rounded-xl border bg-white p-4 ${toneClass}`}>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-brand-purple-dark flex items-center gap-2 text-sm font-semibold">
-          <Boxes className="text-brand-purple-dark/60 h-5 w-5" />
+          <Boxes className="text-brand-muted h-5 w-5" />
           {getStockEmoji(worstStatus)} {totalUnits.toLocaleString("es-CO")} unidades en total
-          <span className="text-brand-purple-dark/55 font-normal">
+          <span className="text-brand-muted font-normal">
             · {options.length} {options.length === 1 ? "opción" : "opciones"}
           </span>
         </p>

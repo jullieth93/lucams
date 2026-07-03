@@ -52,7 +52,7 @@ export default function Loading() {
               </div>
               <div className="mt-8 flex flex-col items-center text-center">
                 <LucamsLogo variant="full" size={70} className="opacity-50" />
-                <p className="text-brand-purple-dark/55 mt-2 text-xs">Lucams está armando esto…</p>
+                <p className="text-brand-muted mt-2 text-xs">Lucams está armando esto…</p>
               </div>
             </div>
           </div>

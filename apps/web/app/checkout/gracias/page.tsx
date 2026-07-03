@@ -226,7 +226,7 @@ function ApprovedPage({
         {addr && (
           <DetailRow icon={<MapPin className="h-4 w-4" />} label="Enviamos a">
             <span className="block">{addr.fullName}</span>
-            <span className="text-brand-purple-dark/65 block text-xs">
+            <span className="text-brand-muted block text-xs">
               {addr.addressLine1}
               {addr.city && `, ${addr.city}`}
               {addr.department && `, ${addr.department}`}
@@ -249,7 +249,7 @@ function ApprovedPage({
         </DetailRow>
       </div>
 
-      <div className="text-brand-purple-dark/55 mt-8 text-xs">
+      <div className="text-brand-muted mt-8 text-xs">
         Comprobante Wompi: <code className="font-mono">{txId.slice(0, 16)}…</code>
       </div>
 
@@ -286,7 +286,7 @@ function PendingPage({ orderNumber, txId }: { orderNumber: string; txId: string 
         Algunos métodos (PSE / transferencia) tardan unos minutos en confirmarse. Te enviamos un
         email cuando esté todo OK.
       </p>
-      <p className="text-brand-purple-dark/55 mt-4 text-xs">
+      <p className="text-brand-muted mt-4 text-xs">
         Pedido <code className="font-mono font-bold">{orderNumber}</code> · Wompi{" "}
         <code className="font-mono">{txId.slice(0, 16)}…</code>
       </p>
@@ -319,7 +319,7 @@ function PaymentReceivedPage({ orderNumber, txId }: { orderNumber: string; txId:
         todo listo te llega un correo con los detalles. Si en unas horas no recibes nada,
         escríbenos y lo revisamos enseguida.
       </p>
-      <p className="text-brand-purple-dark/55 mt-4 text-xs">
+      <p className="text-brand-muted mt-4 text-xs">
         Pedido <code className="font-mono font-bold">{orderNumber}</code> · Wompi{" "}
         <code className="font-mono">{txId.slice(0, 16)}…</code>
       </p>
@@ -351,7 +351,7 @@ function FailedPage({ reason }: { reason: string }) {
       <p className="text-brand-purple-dark/75 mx-auto mt-3 max-w-md text-sm sm:text-base">
         {reason}
       </p>
-      <p className="text-brand-purple-dark/65 mx-auto mt-4 max-w-md text-sm">
+      <p className="text-brand-muted mx-auto mt-4 max-w-md text-sm">
         Tu carrito sigue intacto. Puedes reintentar con otro método de pago o contactarnos si
         necesitas ayuda.
       </p>
@@ -386,9 +386,9 @@ function DetailRow({
 }) {
   return (
     <div className="border-brand-purple/10 flex items-start gap-3 rounded-xl border bg-white p-3.5 text-left">
-      <div className="text-brand-purple/70 mt-0.5">{icon}</div>
+      <div className="text-brand-muted mt-0.5">{icon}</div>
       <div className="min-w-0 flex-1">
-        <div className="text-brand-purple-dark/55 text-[10px] font-semibold tracking-wider uppercase">
+        <div className="text-brand-muted text-[10px] font-semibold tracking-wider uppercase">
           {label}
         </div>
         <div className="text-brand-purple-dark mt-0.5 text-sm">{children}</div>

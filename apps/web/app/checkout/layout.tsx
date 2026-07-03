@@ -36,7 +36,7 @@ export default function CheckoutLayout({ children }: { children: React.ReactNode
             <span className="sm:hidden">Carrito</span>
           </Link>
 
-          <div className="text-brand-purple-dark/55 hidden items-center gap-1.5 text-xs font-medium md:inline-flex">
+          <div className="text-brand-muted hidden items-center gap-1.5 text-xs font-medium md:inline-flex">
             <Lock className="h-3.5 w-3.5" />
             Compra segura
           </div>
@@ -47,7 +47,7 @@ export default function CheckoutLayout({ children }: { children: React.ReactNode
 
       {/* Footer minimal con badges */}
       <footer className="border-brand-purple/10 mt-auto border-t bg-white/60 py-5 backdrop-blur-sm">
-        <div className="text-brand-purple-dark/65 mx-auto flex max-w-6xl flex-wrap items-center justify-center gap-x-6 gap-y-2 px-4 text-xs sm:justify-between sm:px-6">
+        <div className="text-brand-muted mx-auto flex max-w-6xl flex-wrap items-center justify-center gap-x-6 gap-y-2 px-4 text-xs sm:justify-between sm:px-6">
           <div className="flex items-center gap-1.5">
             <Lock className="h-3 w-3" />
             Pago seguro Wompi · Envío Aveonline

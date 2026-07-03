@@ -75,12 +75,12 @@ export async function ProductCouponsWidget({
       <AdminCard className="border-brand-purple/10 bg-brand-purple/[0.03] p-4">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            <Ticket className="text-brand-purple-dark/55 h-4 w-4" />
+            <Ticket className="text-brand-muted h-4 w-4" />
             <div>
               <p className="text-brand-purple-dark/80 text-sm font-medium">
                 Sin promociones activas para este producto
               </p>
-              <p className="text-brand-purple-dark/55 text-xs">
+              <p className="text-brand-muted text-xs">
                 Crea un cupón desde Promociones para ofrecer descuentos.
               </p>
             </div>
@@ -109,7 +109,7 @@ export async function ProductCouponsWidget({
         </h3>
         <Link
           href="/admin/cupones"
-          className="text-brand-purple hover:text-brand-purple-dark inline-flex items-center gap-1 text-xs font-semibold"
+          className="text-brand-purple-dark hover:text-brand-purple inline-flex items-center gap-1 text-xs font-semibold"
         >
           Editar promociones
           <ExternalLink className="h-3 w-3" />
@@ -180,9 +180,9 @@ function CouponRow({
           )}
         </div>
         {coupon.description && (
-          <p className="text-brand-purple-dark/65 mt-1 text-xs">{coupon.description}</p>
+          <p className="text-brand-muted mt-1 text-xs">{coupon.description}</p>
         )}
-        <p className="text-brand-purple-dark/55 mt-0.5 text-[11px]">
+        <p className="text-brand-muted mt-0.5 text-[11px]">
           {scope} · Vence el {dateFmt.format(coupon.validTo)}
           {coupon.maxUses !== null && (
             <>

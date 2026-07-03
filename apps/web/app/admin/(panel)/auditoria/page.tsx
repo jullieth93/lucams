@@ -200,7 +200,7 @@ export default async function AuditoriaPage({ searchParams }: { searchParams: Se
             </AdminButton>
             <Link
               href="/admin/auditoria"
-              className="text-brand-purple-dark/60 hover:text-brand-purple-dark text-xs font-semibold"
+              className="text-brand-muted hover:text-brand-purple-dark text-xs font-semibold"
             >
               Limpiar
             </Link>
@@ -223,7 +223,7 @@ export default async function AuditoriaPage({ searchParams }: { searchParams: Se
             <AdminTableBody>
               {logs.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="text-brand-purple-dark/55 px-4 py-10 text-center">
+                  <td colSpan={6} className="text-brand-muted px-4 py-10 text-center">
                     Sin eventos con los filtros aplicados.
                   </td>
                 </tr>
@@ -238,7 +238,7 @@ export default async function AuditoriaPage({ searchParams }: { searchParams: Se
                     </td>
                     <td className="text-brand-purple-dark px-4 py-2 text-xs">
                       {adminMap.get(row.actorId) ?? (
-                        <span className="text-brand-purple-dark/40 font-mono">
+                        <span className="text-brand-muted font-mono">
                           {row.actorId.slice(0, 8)}
                         </span>
                       )}
@@ -250,13 +250,13 @@ export default async function AuditoriaPage({ searchParams }: { searchParams: Se
                     </td>
                     <td className="px-4 py-2 text-xs">
                       <span className="text-brand-purple-dark/85">{row.entityType}</span>
-                      <span className="text-brand-purple-dark/40 ml-1 font-mono">
+                      <span className="text-brand-muted ml-1 font-mono">
                         {row.entityId.slice(0, 8)}
                       </span>
                     </td>
                     <td className="px-4 py-2 text-xs">
                       <details className="cursor-pointer">
-                        <summary className="text-brand-purple-dark/55 hover:text-brand-purple-dark">
+                        <summary className="text-brand-muted hover:text-brand-purple-dark">
                           {Object.keys(row.metadata ?? {}).length} campos
                         </summary>
                         <pre className="bg-brand-purple/5 mt-1 max-w-md overflow-x-auto rounded p-2 text-[10px] leading-tight">
@@ -264,7 +264,7 @@ export default async function AuditoriaPage({ searchParams }: { searchParams: Se
                         </pre>
                       </details>
                     </td>
-                    <td className="text-brand-purple-dark/55 px-4 py-2 font-mono text-xs">
+                    <td className="text-brand-muted px-4 py-2 font-mono text-xs">
                       {row.ip ?? "—"}
                     </td>
                   </AdminTableRow>

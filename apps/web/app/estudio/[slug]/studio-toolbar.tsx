@@ -102,10 +102,10 @@ export function StudioToolbar({
               Personalizar · {productName}
             </p>
             {(productSizeCm || productSlotCount) && (
-              <p className="text-brand-purple-dark/55 mt-0.5 flex items-center gap-1.5 text-[11px] font-medium">
+              <p className="text-brand-muted mt-0.5 flex items-center gap-1.5 text-[11px] font-medium">
                 {productSizeCm && <SizeChipWithComparator sizeCm={productSizeCm} />}
                 {productSlotCount && (
-                  <span className="text-brand-purple-dark/55">
+                  <span className="text-brand-muted">
                     · {productSlotCount} {productSlotCount === 1 ? "imán" : "imanes"}
                   </span>
                 )}
@@ -177,7 +177,7 @@ export function StudioToolbar({
             imprimir
           </span>
           {productSizeCm && (
-            <span className="text-brand-purple-dark/60">
+            <span className="text-brand-muted">
               · Tu imán físico mide <strong>{productSizeCm} cm</strong>
             </span>
           )}
@@ -355,17 +355,17 @@ function AutoSaveIndicator({
         transition={{ duration: 0.15 }}
         className="hidden items-center gap-1 text-xs sm:flex"
       >
-        {status.kind === "idle" && <span className="text-brand-purple-dark/40">Editando…</span>}
+        {status.kind === "idle" && <span className="text-brand-muted">Editando…</span>}
         {status.kind === "saving" && (
           <>
-            <Loader2 className="text-brand-purple/70 h-3 w-3 animate-spin" />
-            <span className="text-brand-purple/70">Guardando...</span>
+            <Loader2 className="text-brand-muted h-3 w-3 animate-spin" />
+            <span className="text-brand-muted">Guardando...</span>
           </>
         )}
         {status.kind === "saved" && (
           <>
             <Check className="h-3 w-3 text-emerald-600" />
-            <span className="text-brand-purple-dark/60">{formatRelative(status.at)}</span>
+            <span className="text-brand-muted">{formatRelative(status.at)}</span>
           </>
         )}
         {status.kind === "error" && (
@@ -466,7 +466,7 @@ function SizeChipWithComparator({ sizeCm }: { sizeCm: string }) {
         className="bg-brand-cream text-brand-purple-dark ring-brand-purple/15 hover:bg-brand-yellow/20 hover:ring-brand-purple/40 focus:ring-brand-turquoise inline-flex items-center gap-1 rounded-full px-2 py-0.5 ring-1 transition-colors focus:ring-2 focus:ring-offset-1 focus:outline-none"
       >
         📐 {sizeCm} cm
-        <span className="text-brand-purple-dark/40 text-[9px]">{open ? "▴" : "▾"}</span>
+        <span className="text-brand-muted text-[9px]">{open ? "▴" : "▾"}</span>
       </button>
 
       <AnimatePresence>
@@ -496,13 +496,13 @@ function SizeChipWithComparator({ sizeCm }: { sizeCm: string }) {
                   <p className="text-brand-purple-dark text-xs leading-tight font-bold">
                     Tu imán será {comparison.phrase}
                   </p>
-                  <p className="text-brand-purple-dark/60 mt-0.5 text-[10px]">{comparison.name}</p>
+                  <p className="text-brand-muted mt-0.5 text-[10px]">{comparison.name}</p>
                 </div>
               </div>
               {/* FIX-5 — Dimensión explícita ancho × alto para evitar la
                   ambigüedad "7×9 o 9×7". Convención del catálogo: primero
                   ancho, después alto. */}
-              <p className="text-brand-purple-dark/55 border-brand-purple/10 mt-2 border-t pt-1.5 text-[10px]">
+              <p className="text-brand-muted border-brand-purple/10 mt-2 border-t pt-1.5 text-[10px]">
                 <span className="font-bold">Medida:</span> {comparison.humanLabel}
               </p>
               {/* Pico apuntando al chip */}
