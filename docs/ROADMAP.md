@@ -15,7 +15,7 @@ El trabajo reciente se nombró por **bloques**; equivalen a:
 | **Opción C** | Restructura admin del catálogo | Fase 2/6 | ✅ Hecho |
 | **C** | Seguridad (RBAC, MFA admin, RLS, CSRF, Turnstile, CSP nonce) | Fase 1 + Fase 7 | ✅ Hecho (7/7 — ADR-042/043; matriz RLS completa R3 → en E) |
 | **D** | Observabilidad (dashboard, alertas, SLOs) | Fase 7 | ⏳ Pendiente |
-| **E** | Testing (RLS, E2E, visual, a11y) | transversal / Fase 7 | 🟡 En curso (R3 matriz RLS + ~**1.221 vitest** con revisión adversarial en 3 lotes; **E2E Playwright 13/13** (smoke + compra + login admin) + **4 bugs reales arreglados** (+57 tel, "Ir a pagar", priceFrom inactivas, updateCategory P2002, admin-roles prototype). Falta: CI-DB/Supabase-local, E2E envío/pago/MFA/estudio, visual, a11y, load) |
+| **E** | Testing (RLS, E2E, visual, a11y) | transversal / Fase 7 | 🟡 En curso (R3 matriz RLS + ~**1.425 vitest** con revisión adversarial en 4 lotes — incl. la ruta de ingresos (orders saga/service, payments, emails); **E2E Playwright 13/13** + **6 bugs reales arreglados**. Falta: CI-DB/Supabase-local, E2E envío/pago/MFA/estudio, componentes/a11y (falta dep axe), visual, load) |
 | **F** | Refund + Cupones (redención en checkout, reembolso admin) | Fase 4/5 | ⏳ Pendiente |
 
 ## Vista general

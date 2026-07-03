@@ -114,6 +114,17 @@ crasheaba con P2002 al renombrar al slug de una archivada → `findUnique` + err
 **Suite total ~1.221 tests vitest**, todos verdes. Bloque E acumula 4 bugs reales cazados por
 los tests (+ el +57 y "Ir a pagar" de tramos previos).
 
+**Lote 4 revenue-critical (`78dd926`, ~206 tests):** el corazón de la ruta de ingresos —
+orders/saga (POST-PAID: PAID→stock→guía→email, idempotencia), orders/service (createOrderFromCart,
+total, número único, snapshot), payments/provider (factory + adapter Wompi), emails/templates (las
+7 plantillas), lib/auth (sesión mockeada) — pipeline write→revisión adversarial (4 sólidos +
+provider weak→solid). **6º bug de código:** getPaymentProvider hacía require('./wompi') antes del
+check → reordenado. Fixes de calidad de la revisión: afterAll resiliente (no deja huérfanos),
+makeVariant con SKU único por llamada (retry-safe, evitó un P2002 real en la corrida completa),
+reconciliation direccional. **Suite total ~1.425 tests vitest.** Bloque E ya cubre catálogo,
+cupones, checkout/cart/customers, cms/redirects/consent, pagos+webhook, RLS, storage, MFA/RBAC,
+la saga de órdenes y los emails al cliente.
+
 **Próximo:** seguir Bloque E con más unit tests verificables, o el setup E2E (Playwright), o el
 **CI-DB** (Supabase local en CI — OJO: necesita Docker, no se valida en esta VM, se prueba al
 hacer push). Pendiente además: Lucy valida C3 en deploy preview de Vercel (consola buscando
