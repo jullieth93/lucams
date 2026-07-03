@@ -10,7 +10,7 @@ export default function Loading() {
   return (
     <div className="bg-brand-cream flex min-h-screen flex-col">
       <SiteHeader />
-      <main className="flex-1 px-6 py-8 sm:px-10">
+      <main id="contenido" tabIndex={-1} className="flex-1 px-6 py-8 sm:px-10">
         <div className="mx-auto max-w-5xl">
           <div className="bg-brand-purple/10 mb-6 h-3 w-48 animate-pulse rounded" />
 

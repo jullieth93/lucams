@@ -105,7 +105,7 @@ export default async function CustomerPedidoDetallePage({
 
   return (
     <div className="bg-brand-cream flex min-h-screen flex-col">
-      <main className="flex-1 px-6 py-10 sm:px-10">
+      <main id="contenido" tabIndex={-1} className="flex-1 px-6 py-10 sm:px-10">
         <div className="mx-auto max-w-3xl">
           <Link
             href="/mi-cuenta/pedidos"

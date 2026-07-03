@@ -20,7 +20,7 @@ export default async function AdminLoginPage({
   const { expired } = await searchParams;
 
   return (
-    <main className="flex min-h-screen flex-col items-center justify-center bg-slate-50 px-4 py-12">
+    <main id="contenido" tabIndex={-1} className="flex min-h-screen flex-col items-center justify-center bg-slate-50 px-4 py-12">
       {expired === "1" && (
         <div className="mb-4 w-full max-w-sm rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
           Cerramos tu sesión por inactividad (30 minutos). Vuelve a iniciar sesión.

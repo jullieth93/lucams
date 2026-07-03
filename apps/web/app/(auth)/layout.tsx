@@ -38,7 +38,7 @@ export default async function AuthLayout({ children }: { children: ReactNode }) 
         <BrandMark size="md" animated />
       </header>
 
-      <main className="relative z-10 flex flex-1 items-center justify-center px-4 pb-12 sm:pb-16">
+      <main id="contenido" tabIndex={-1} className="relative z-10 flex flex-1 items-center justify-center px-4 pb-12 sm:pb-16">
         <div className="w-full max-w-md">{children}</div>
       </main>
 

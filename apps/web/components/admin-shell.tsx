@@ -134,7 +134,9 @@ export function AdminShell({ admin, children }: { admin: AdminInfo; children: Re
       {/* Contenido principal */}
       <div className="flex flex-1 flex-col overflow-x-hidden">
         <AdminTopBar pathname={pathname} />
-        <main className="flex-1">{children}</main>
+        <main id="contenido" tabIndex={-1} className="flex-1">
+          {children}
+        </main>
       </div>
     </div>
   );

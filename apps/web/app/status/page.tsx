@@ -96,7 +96,7 @@ export default async function StatusPage() {
     <div className="bg-brand-cream flex min-h-screen flex-col">
       <SiteHeader />
 
-      <main className="flex-1 px-6 py-10 sm:px-10">
+      <main id="contenido" tabIndex={-1} className="flex-1 px-6 py-10 sm:px-10">
         <div className="mx-auto max-w-2xl">
           <header className="mb-8 text-center">
             <h1 className="font-display text-brand-purple-dark text-3xl sm:text-4xl">

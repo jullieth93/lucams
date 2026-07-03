@@ -89,6 +89,15 @@ export default function RootLayout({
   return (
     <html lang="es-CO" className={`${fredoka.variable} ${inter.variable} h-full antialiased`}>
       <body className="flex min-h-full flex-col">
+        {/* Skip-link (WCAG 2.4.1 Bypass Blocks): primer elemento enfocable —
+            oculto hasta recibir foco por teclado (Tab), salta al <main id="contenido">
+            de cada página evitando repetir el nav. */}
+        <a
+          href="#contenido"
+          className="focus:bg-brand-purple focus:ring-brand-turquoise sr-only focus:not-sr-only focus:fixed focus:top-4 focus:left-4 focus:z-[100] focus:rounded-lg focus:px-4 focus:py-2 focus:text-sm focus:font-semibold focus:text-white focus:shadow-lg focus:ring-2 focus:outline-none"
+        >
+          Saltar al contenido
+        </a>
         {children}
         <Toaster position="top-right" richColors closeButton />
         <WebVitalsReporter />

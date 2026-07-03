@@ -115,7 +115,7 @@ export default async function PublicOrderPage({ params }: { params: Promise<{ to
         </div>
       </header>
 
-      <main className="flex-1 px-6 py-10 sm:px-10">
+      <main id="contenido" tabIndex={-1} className="flex-1 px-6 py-10 sm:px-10">
         <div className="mx-auto max-w-3xl">
           <header className="mb-6">
             <p className="text-brand-purple-dark/65 text-xs tracking-wider uppercase">Tu pedido</p>

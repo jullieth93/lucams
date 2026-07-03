@@ -72,7 +72,7 @@ export default async function MisPedidosPage() {
 
   return (
     <div className="bg-brand-cream flex min-h-screen flex-col">
-      <main className="flex-1 px-6 py-10 sm:px-10">
+      <main id="contenido" tabIndex={-1} className="flex-1 px-6 py-10 sm:px-10">
         <div className="mx-auto max-w-4xl">
           <header className="mb-8">
             <Link

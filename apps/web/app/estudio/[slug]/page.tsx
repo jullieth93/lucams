@@ -128,7 +128,7 @@ export default async function EstudioPage({
     <div className="bg-brand-cream flex min-h-screen flex-col">
       <SiteHeader />
 
-      <main className="flex flex-1 flex-col">
+      <main id="contenido" tabIndex={-1} className="flex flex-1 flex-col">
         <StudioEditor
           product={{
             id: product.id,

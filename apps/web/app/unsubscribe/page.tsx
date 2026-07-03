@@ -50,7 +50,7 @@ export default async function UnsubscribePage({
   return (
     <div className="flex min-h-screen flex-col">
       <SiteHeader />
-      <main className="bg-brand-cream flex flex-1 items-center justify-center px-6 py-16">
+      <main id="contenido" tabIndex={-1} className="bg-brand-cream flex flex-1 items-center justify-center px-6 py-16">
         <div className="mx-auto max-w-md text-center">
           <div
             className={

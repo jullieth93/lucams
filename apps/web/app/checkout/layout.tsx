@@ -43,7 +43,7 @@ export default function CheckoutLayout({ children }: { children: React.ReactNode
         </div>
       </header>
 
-      <main className="flex-1 px-4 py-6 sm:px-6 sm:py-10">{children}</main>
+      <main id="contenido" tabIndex={-1} className="flex-1 px-4 py-6 sm:px-6 sm:py-10">{children}</main>
 
       {/* Footer minimal con badges */}
       <footer className="border-brand-purple/10 mt-auto border-t bg-white/60 py-5 backdrop-blur-sm">

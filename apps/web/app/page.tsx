@@ -55,7 +55,7 @@ export default async function Home() {
   return (
     <div className="flex min-h-screen flex-col">
       <SiteHeader />
-      <main className="bg-brand-cream flex-1">
+      <main id="contenido" tabIndex={-1} className="bg-brand-cream flex-1">
         {/* Hero */}
         <div className="mx-auto max-w-6xl px-6 sm:px-10">
           <HomeHero />

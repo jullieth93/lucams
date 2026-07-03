@@ -36,7 +36,7 @@ export default async function CarritoPage() {
     <div className="bg-brand-cream flex min-h-screen flex-col">
       <SiteHeader />
 
-      <main className="flex-1 px-6 py-8 sm:px-10">
+      <main id="contenido" tabIndex={-1} className="flex-1 px-6 py-8 sm:px-10">
         <div className="mx-auto max-w-4xl">
           <h1 className="font-display text-brand-purple-dark mb-6 text-3xl sm:text-4xl">
             Tu carrito

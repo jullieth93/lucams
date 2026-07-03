@@ -159,7 +159,7 @@ export default async function ProductoDetallePage({
       />
       <SiteHeader />
 
-      <main className="flex-1 px-6 py-8 sm:px-10">
+      <main id="contenido" tabIndex={-1} className="flex-1 px-6 py-8 sm:px-10">
         <div className="mx-auto max-w-5xl">
           <nav
             className="text-brand-purple-dark/60 mb-6 flex items-center gap-1 text-xs"

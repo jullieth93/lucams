@@ -50,7 +50,7 @@ export default async function MiCuentaPage() {
         </div>
       </header>
 
-      <main className="px-4 py-10 sm:py-14">
+      <main id="contenido" tabIndex={-1} className="px-4 py-10 sm:py-14">
         <div className="mx-auto max-w-4xl space-y-6">
           <div>
             <h1 className="font-display text-brand-purple-dark text-3xl">Hola, {displayName} 👋</h1>
