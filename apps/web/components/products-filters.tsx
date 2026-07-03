@@ -276,8 +276,11 @@ function FiltersForm({
 
       {/* Orden */}
       <div className="space-y-1.5">
-        <Label className="text-brand-purple-dark/80 text-xs">Ordenar por</Label>
+        <Label htmlFor="sort-select" className="text-brand-purple-dark/80 text-xs">
+          Ordenar por
+        </Label>
         <select
+          id="sort-select"
           value={orden}
           onChange={(e) => {
             const v = e.target.value;

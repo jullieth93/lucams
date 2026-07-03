@@ -153,11 +153,11 @@ export function RegistroForm() {
 
           <p className="text-muted-foreground text-xs">
             Al crear tu cuenta aceptas nuestros{" "}
-            <Link href="/terminos" className="text-brand-pink underline-offset-4 hover:underline">
+            <Link href="/terminos" className="text-brand-pink underline underline-offset-4">
               términos
             </Link>{" "}
             y la{" "}
-            <Link href="/privacidad" className="text-brand-pink underline-offset-4 hover:underline">
+            <Link href="/privacidad" className="text-brand-pink underline underline-offset-4">
               política de privacidad
             </Link>{" "}
             (Ley 1581 Habeas Data).

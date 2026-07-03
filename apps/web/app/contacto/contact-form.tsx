@@ -158,7 +158,7 @@ export function ContactForm() {
 
       <p className="text-brand-purple-dark/50 text-center text-xs">
         Tu información se trata según el{" "}
-        <a href="/legal/privacidad" className="text-brand-purple hover:underline">
+        <a href="/legal/privacidad" className="text-brand-purple underline underline-offset-2">
           Aviso de Privacidad
         </a>
         . Sin spam.
