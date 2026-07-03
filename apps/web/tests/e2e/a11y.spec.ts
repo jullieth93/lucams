@@ -59,6 +59,37 @@ test.describe("a11y — invariantes en páginas clave", () => {
     expect(await page.locator("h1").count()).toBeGreaterThanOrEqual(1);
   });
 
+  // Nombres accesibles en formularios (WCAG 4.1.2 / 3.3.2): un input sin label
+  // asociado es invisible para un lector de pantalla. Comprobamos los formularios
+  // de auth (cargan sin setup de carrito/sesión).
+  for (const path of ["/login", "/registro"]) {
+    test(`${path}: todos los campos del formulario tienen nombre accesible`, async ({ page }) => {
+      // Rutas no golpeadas por otros specs → `next dev` las compila on-demand al
+      // primer hit (>60s local); slow() lo absorbe. Instantáneo en CI (build prod).
+      test.slow();
+      await page.goto(path);
+      const sinNombre = await page
+        .locator(
+          "input:not([type=hidden]):not([type=submit]):not([type=button]), textarea, select",
+        )
+        .evaluateAll((els) =>
+          els
+            .filter((el) => {
+              const id = (el as HTMLElement).id;
+              const byFor = !!id && !!document.querySelector(`label[for="${CSS.escape(id)}"]`);
+              const wrapped = !!el.closest("label");
+              const ariaLabel = ((el.getAttribute("aria-label") ?? "").trim().length > 0);
+              const lb = el.getAttribute("aria-labelledby");
+              const byLabelledby = lb ? lb.split(/\s+/).some((i) => !!document.getElementById(i)) : false;
+              const title = ((el.getAttribute("title") ?? "").trim().length > 0);
+              return !(byFor || wrapped || ariaLabel || byLabelledby || title);
+            })
+            .map((el) => el.getAttribute("name") || (el as HTMLElement).id || el.tagName),
+        );
+      expect(sinNombre, `campos sin nombre accesible en ${path}`).toEqual([]);
+    });
+  }
+
   test("skip-link (WCAG 2.4.1): primer foco por teclado y salta al contenido", async ({
     page,
   }) => {
