@@ -48,7 +48,27 @@ de fases intermedias en el historial git + bitácora abajo.
 
 ---
 
-## Última sesión — 2026-07-03 (Bloque F1: redención de cupones en checkout + axe WCAG AA + E2E)
+## Última sesión — 2026-07-03 (Bloque F1 cupones + F2 reembolso admin + axe WCAG AA)
+
+**Bloque F2 — reembolso desde admin (`191f95f`).** La máquina de estados (PAID/DELIVERED →
+REFUNDED) + revert de stock atómico ya existían; se sumó el flujo admin encima. El dinero en
+Wompi se mueve **MANUAL** (contraentrega + preferencia de operar la pasarela a mano).
+- Migración `20260703120000_order_refund_audit_fields`: Order gana `refundedAt`/`refundedBy`/
+  `refundReason`/`refundAmount`. (Aplicada con `migrate deploy` — `migrate dev` falla por la
+  shadow DB sin `pg_trgm`, mismo issue del CI-DB; se creó el SQL a mano.)
+- `refundOrder(orderId, {adminId, reason})`: valida reembolsable, transiciona a REFUNDED (revierte
+  stock vía `transitionOrder`), sella auditoría (`refundAmount` = total) + email. Idempotente
+  (ya-REFUNDED → no-op, sin doble-revert).
+- Plantilla `refund-issued` + `sendOrderRefunded` (idempotencyKey por orden). Acción admin
+  `refundOrderAction` (auditada) + disclosure "Reembolsar pedido…" con motivo + aviso "el dinero
+  se emite manual en Wompi" + Card de reembolso en el detalle.
+- Tests: `refundOrder` PAID→REFUNDED (auditoría + revert + log ORDER_REFUNDED + email +
+  idempotencia) + rechazo de estado no reembolsable. **Dev server reiniciado** (cliente Prisma
+  nuevo). **Hallazgo:** los tests de integración flakean por el pooler transaccional (`:6543`
+  read-after-write); correr con `DIRECT_URL` (`:5432`) los estabiliza (CI usa Postgres real, sin
+  pooler). **Próximo: F3 retracto (Ley 2439).**
+
+## Sesión — 2026-07-03 (Bloque F1: redención de cupones en checkout + axe WCAG AA + E2E)
 
 **Bloque F1 — cupones en checkout (`1ccc5e4`).** La infra de cupones (modelos, admin CRUD,
 service) ya existía; faltaba APLICARLOS al pagar. Implementado punta a punta:
