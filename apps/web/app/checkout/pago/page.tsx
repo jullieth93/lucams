@@ -13,7 +13,8 @@ import { CheckCircle2, AlertCircle, CreditCard, MapPin, User, Receipt } from "lu
 import { CheckoutStepper } from "../_components/stepper";
 import { OrderSummary } from "../_components/order-summary";
 import { PayWompiForm } from "./pay-button";
-import { CheckoutError, loadCheckoutContext } from "@/features/checkout/service";
+import { CouponField } from "./coupon-field";
+import { CheckoutError, getAppliedCoupon, loadCheckoutContext } from "@/features/checkout/service";
 
 export const metadata: Metadata = {
   title: "Pago · Checkout",
@@ -43,6 +44,9 @@ export default async function CheckoutPagoPage({ searchParams }: { searchParams:
   if (!ctx.state.shippingSelection) redirect("/checkout/envio");
 
   const { contact, address, billing, shippingSelection } = ctx.state;
+
+  // F1 — cupón aplicado (si hay): descuento vigente + posible aviso si dejó de valer.
+  const applied = await getAppliedCoupon();
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -165,11 +169,19 @@ export default async function CheckoutPagoPage({ searchParams }: { searchParams:
           </section>
         </div>
 
-        <div className="lg:col-span-1">
+        <div className="lg:col-span-1 space-y-4">
+          <div className="border-brand-purple/10 rounded-2xl border bg-white p-4 shadow-sm">
+            <CouponField
+              appliedCode={applied?.code}
+              appliedError={applied?.error}
+            />
+          </div>
           <OrderSummary
             cart={ctx.cart}
             shippingCost={shippingSelection.fleteCop}
             shippingLabel={shippingSelection.carrierName}
+            discount={applied && !applied.error ? applied.discount : 0}
+            couponCode={applied && !applied.error ? applied.code : undefined}
           />
         </div>
       </div>

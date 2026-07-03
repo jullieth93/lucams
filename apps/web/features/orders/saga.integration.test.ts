@@ -172,22 +172,27 @@ async function makeVariant(stock: number, tag: string): Promise<string> {
  */
 async function makePendingOrder(
   items: Array<{ variantId: string; qty: number; unitPrice: number }>,
-  opts: { cartId?: string; numberTag: string },
+  opts: { cartId?: string; numberTag: string; couponId?: string; discount?: number; customerId?: string },
 ): Promise<string> {
+  const subtotal = items.reduce((a, it) => a + it.unitPrice * it.qty, 0);
+  const discount = opts.discount ?? 0;
   const order = await prisma.order.create({
     data: {
       number: `LCM-${RUN}-${opts.numberTag}`.toUpperCase(),
       email: SHIP_ADDR.email,
       phone: SHIP_ADDR.phone,
       shippingAddress: SHIP_ADDR,
-      subtotal: items.reduce((a, it) => a + it.unitPrice * it.qty, 0),
+      subtotal,
+      discount,
       shipping: 0,
-      total: items.reduce((a, it) => a + it.unitPrice * it.qty, 0),
+      total: subtotal - discount,
       currency: "COP",
       paymentMethod: "WOMPI",
       status: "PENDING_PAYMENT",
       shippingCarrier: "envia",
       cartId: opts.cartId,
+      couponId: opts.couponId,
+      customerId: opts.customerId,
       items: { create: items },
     },
     select: { id: true },
@@ -286,6 +291,7 @@ describe.skipIf(!hasDb)("saga POST-PAID — integración DB (ruta de ingresos)",
       await prisma.order.deleteMany({ where: { id: { in: orderIds } } });
     }
     await prisma.cart.deleteMany({ where: { id: { startsWith: `${RUN}-cart` } } });
+    await prisma.coupon.deleteMany({ where: { code: { startsWith: RUN.toUpperCase() } } });
     if (variantIds.length) {
       await prisma.productVariant.deleteMany({ where: { id: { in: variantIds } } });
     }
@@ -344,6 +350,50 @@ describe.skipIf(!hasDb)("saga POST-PAID — integración DB (ruta de ingresos)",
 
       // Email de confirmación disparado una vez.
       expect(emailCalls.filter((c) => c.fn === "sendOrderConfirmationOnce")).toHaveLength(1);
+    }, 30000);
+
+    it("F1 — al PAGAR con cupón: crea CouponUsage e incrementa usedCount (una sola vez)", async () => {
+      const coupon = await prisma.coupon.create({
+        data: {
+          code: `${RUN}-CPN`.toUpperCase(),
+          type: "FIXED",
+          value: 3000,
+          validFrom: new Date("2026-01-01"),
+          validTo: new Date("2027-01-01"),
+          usedCount: 0,
+        },
+        select: { id: true },
+      });
+      const variantId = await makeVariant(10, "cpn");
+      const orderId = await makePendingOrder([{ variantId, qty: 2, unitPrice: 5000 }], {
+        numberTag: "CPN1",
+        couponId: coupon.id,
+        discount: 3000,
+      });
+
+      await processPaidOrder({ orderId, wompiTransactionId: "wompi-tx-cpn1" });
+
+      // CouponUsage creado con el monto descontado, ligado 1:1 a la orden.
+      const usages = await prisma.couponUsage.findMany({ where: { couponId: coupon.id } });
+      expect(usages).toHaveLength(1);
+      expect(usages[0].orderId).toBe(orderId);
+      expect(usages[0].amount).toBe(3000);
+      // usedCount denormalizado incrementado.
+      const after = await prisma.coupon.findUnique({
+        where: { id: coupon.id },
+        select: { usedCount: true },
+      });
+      expect(after?.usedCount).toBe(1);
+
+      // Idempotencia: re-procesar (webhook duplicado) NO doble-cuenta el uso.
+      await processPaidOrder({ orderId, wompiTransactionId: "wompi-tx-cpn1" });
+      const usagesAfter = await prisma.couponUsage.count({ where: { couponId: coupon.id } });
+      expect(usagesAfter).toBe(1);
+      const finalCoupon = await prisma.coupon.findUnique({
+        where: { id: coupon.id },
+        select: { usedCount: true },
+      });
+      expect(finalCoupon?.usedCount).toBe(1);
     }, 30000);
 
     it("decrementa TODAS las variantes de una orden multi-ítem antes de crear una sola guía", async () => {

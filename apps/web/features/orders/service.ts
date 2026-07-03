@@ -22,6 +22,7 @@ import { prisma, Prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { canTransition, type ShippingAddressInput } from "./schemas";
 import { assertStockAvailable, revertStockForOrder } from "./stock";
+import { priceCouponForCart } from "@/features/coupons/redemption";
 
 const ORDER_PAGE_SIZE = 20;
 
@@ -203,7 +204,28 @@ async function createOrderFromCartTx(
 
     const subtotal = cart.items.reduce((acc, it) => acc + it.unitPrice * it.qty, 0);
     const shippingCost = input.shippingSelection.fleteCop;
-    const discount = 0; // TODO: aplicar cupón en F2.1 si input.couponCode.
+    // F1 — aplicar cupón con re-validación atómica DENTRO de la tx: si el código
+    // dejó de ser válido (venció, se agotó, tope por cliente) entre que el cliente
+    // lo aplicó y pagó, se ignora en silencio (orden sin descuento) en vez de
+    // reventar el checkout. Sin couponId → la saga PAID no crea CouponUsage.
+    let discount = 0;
+    let couponId: string | null = null;
+    if (input.couponCode) {
+      const priced = await priceCouponForCart(
+        {
+          code: input.couponCode,
+          cartId: input.cartId,
+          shippingCost,
+          customerId: input.customerId,
+          now: new Date(),
+        },
+        tx,
+      );
+      if (priced.ok) {
+        discount = priced.discount;
+        couponId = priced.couponId;
+      }
+    }
     const tax = 0; // IVA incluido en precios (Colombia); DIAN reporting en F2.4.
     const total = subtotal + shippingCost - discount + tax;
 
@@ -240,6 +262,7 @@ async function createOrderFromCartTx(
         number,
         customerId: input.customerId,
         cartId: input.cartId, // P0-020 idempotency
+        couponId, // F1 — null si no hubo cupón válido
         email: input.shipping.email,
         phone: input.shipping.phone,
         shippingAddress: input.shipping as unknown as Prisma.InputJsonValue,

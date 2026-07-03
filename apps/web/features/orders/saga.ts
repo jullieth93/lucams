@@ -175,6 +175,25 @@ export async function processPaidOrder(
               : {}),
           },
         });
+        // F1 — registrar el uso del cupón AL PAGAR (no al crear la orden: una
+        // PENDING_PAYMENT puede no pagarse nunca). Atómico con la transición a
+        // PAID, y este bloque solo corre en la transición PENDING_PAYMENT→PAID,
+        // así que el CouponUsage (orderId @unique) se crea una sola vez y el
+        // usedCount denormalizado no se doble-incrementa.
+        if (order.couponId && order.discount > 0) {
+          await tx.couponUsage.create({
+            data: {
+              couponId: order.couponId,
+              customerId: order.customerId,
+              orderId: order.id,
+              amount: order.discount,
+            },
+          });
+          await tx.coupon.update({
+            where: { id: order.couponId },
+            data: { usedCount: { increment: 1 } },
+          });
+        }
         // #9/#16 (post-launch Bloque A) — Vaciar Cart DENTRO de la misma tx.
         // Atómico con el cambio a PAID: imposible que quede PAID con cart activo
         // (ventana de doble-checkout/doble-cobro) o que un blip de DB en el

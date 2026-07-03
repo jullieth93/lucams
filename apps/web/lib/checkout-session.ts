@@ -100,6 +100,7 @@ export type CheckoutState = {
   billing?: BillingData;
   shippingSelection?: ShippingSelection;
   paymentMethod?: "WOMPI" | "COD";
+  couponCode?: string; // F1 — código aplicado; el descuento se recalcula al vuelo
   updatedAt: number; // epoch ms
 };
 

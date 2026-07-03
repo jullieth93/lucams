@@ -12,14 +12,19 @@ export function OrderSummary({
   cart,
   shippingCost,
   shippingLabel,
+  discount,
+  couponCode,
 }: {
   cart: CartDetail;
   shippingCost?: number | null;
   shippingLabel?: string;
+  discount?: number; // F1 — descuento por cupón (COP centavos)
+  couponCode?: string;
 }) {
   const subtotal = cart.subtotal;
   const shipping = shippingCost ?? null;
-  const total = subtotal + (shipping ?? 0);
+  const appliedDiscount = discount ?? 0;
+  const total = Math.max(0, subtotal + (shipping ?? 0) - appliedDiscount);
 
   return (
     <aside className="border-brand-purple/15 sticky top-24 rounded-2xl border bg-white p-5 shadow-sm">
@@ -84,6 +89,17 @@ export function OrderSummary({
             )}
           </dd>
         </div>
+        {appliedDiscount > 0 && (
+          <div className="flex justify-between">
+            <dt className="text-emerald-700">
+              Descuento
+              {couponCode && <span className="ml-1 font-semibold">({couponCode})</span>}
+            </dt>
+            <dd className="font-semibold text-emerald-700 tabular-nums">
+              −{formatCOP(appliedDiscount)}
+            </dd>
+          </div>
+        )}
         <div className="border-brand-purple/10 mt-2 flex justify-between border-t pt-3">
           <dt className="text-brand-purple-dark font-display text-base font-bold">Total</dt>
           <dd className="text-brand-purple-dark font-display text-lg font-bold tabular-nums">

@@ -19,6 +19,7 @@ import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { getSettingValue } from "@/lib/cms";
 import { createOrderFromCart } from "@/features/orders/service";
+import { priceCouponForCart } from "@/features/coupons/redemption";
 import { getPaymentProvider } from "@/features/payments/provider";
 import { getShippingProvider } from "@/features/shipping/provider";
 import {
@@ -265,6 +266,7 @@ export async function finalizeCheckout(input: {
       shippingSelection: state.shippingSelection,
       billing,
       paymentMethod: state.paymentMethod,
+      couponCode: state.couponCode, // F1 — se re-valida atómicamente en la tx
       notes: state.address.notes,
     });
   } catch (err) {
@@ -340,6 +342,58 @@ export async function saveShippingSelectionStep(selection: ShippingSelectionInpu
 
 export async function savePaymentMethodStep(method: "WOMPI" | "COD") {
   await setCheckoutState({ paymentMethod: method, step: 3 });
+}
+
+/**
+ * F1 — Valida un código contra el carrito actual y, si aplica, lo guarda en el
+ * state. El descuento no se persiste (se recalcula al vuelo y se re-valida en la
+ * tx al crear la orden), solo el código.
+ */
+export async function applyCoupon(
+  rawCode: string,
+): Promise<{ ok: true; code: string; discount: number } | { ok: false; message: string }> {
+  const code = rawCode.trim();
+  if (!code) return { ok: false, message: "Escribe un código." };
+  const ctx = await loadCheckoutContext();
+  const shippingCost = ctx.state.shippingSelection?.fleteCop ?? 0;
+  const priced = await priceCouponForCart({
+    code,
+    cartId: ctx.cart.cartId,
+    shippingCost,
+    customerId: ctx.customerId,
+  });
+  if (!priced.ok) return { ok: false, message: priced.message };
+  await setCheckoutState({ couponCode: priced.code });
+  return { ok: true, code: priced.code, discount: priced.discount };
+}
+
+/** F1 — Quita el cupón aplicado del state. */
+export async function removeCoupon(): Promise<void> {
+  await setCheckoutState({ couponCode: undefined });
+}
+
+/**
+ * F1 — Descuento vigente del cupón guardado en state, para el resumen del pedido.
+ * null si no hay cupón; `error` si el guardado dejó de ser válido (ej. el carrito
+ * bajó del mínimo) — el resumen lo muestra como aviso y no descuenta.
+ */
+export async function getAppliedCoupon(): Promise<{
+  code: string;
+  discount: number;
+  error?: string;
+} | null> {
+  const ctx = await loadCheckoutContext();
+  const code = ctx.state.couponCode;
+  if (!code) return null;
+  const shippingCost = ctx.state.shippingSelection?.fleteCop ?? 0;
+  const priced = await priceCouponForCart({
+    code,
+    cartId: ctx.cart.cartId,
+    shippingCost,
+    customerId: ctx.customerId,
+  });
+  if (priced.ok) return { code, discount: priced.discount };
+  return { code, discount: 0, error: priced.message };
 }
 
 export async function finishCheckoutSession() {

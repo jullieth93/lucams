@@ -2,12 +2,15 @@
 
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { revalidatePath } from "next/cache";
 import { logger } from "@/lib/logger";
 import { rateLimit } from "@/lib/rate-limit";
 import { ipKey } from "@/lib/rate-limit-keys";
 import {
+  applyCoupon,
   CheckoutError,
   finalizeCheckout,
+  removeCoupon,
   savePaymentMethodStep,
 } from "@/features/checkout/service";
 import { InsufficientStockError } from "@/features/orders/errors";
@@ -67,4 +70,51 @@ export async function payWompiAction(): Promise<void> {
     });
     redirect(`/checkout/pago?error=${encodeURIComponent(msg)}`);
   }
+}
+
+// ─────────────────────────── F1 — Cupones ───────────────────────────
+
+export type CouponActionState = {
+  ok: boolean;
+  message?: string;
+  code?: string;
+  discount?: number;
+} | null;
+
+/**
+ * Aplica un código de cupón al checkout. Rate-limited por IP para evitar
+ * enumeración de códigos (fuerza bruta adivinando cupones). Devuelve estado para
+ * feedback en el UI vía useActionState.
+ */
+export async function applyCouponAction(
+  _prev: CouponActionState,
+  formData: FormData,
+): Promise<CouponActionState> {
+  const hdrs = await headers();
+  const ip = hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  const isProd = process.env.VERCEL_ENV === "production";
+  const rl = await rateLimit(ipKey("coupon_apply", ip), isProd ? 15 : 100, 600);
+  if (!rl.allowed) {
+    return { ok: false, message: "Demasiados intentos. Espera unos minutos." };
+  }
+
+  const code = String(formData.get("code") ?? "");
+  try {
+    const res = await applyCoupon(code);
+    if (!res.ok) return { ok: false, message: res.message };
+    revalidatePath("/checkout/pago");
+    return { ok: true, code: res.code, discount: res.discount, message: `Cupón ${res.code} aplicado ✨` };
+  } catch (err) {
+    logger.warn({
+      event: "checkout.coupon.apply_fail",
+      err: err instanceof Error ? err.message : String(err),
+    });
+    return { ok: false, message: "No pudimos aplicar el cupón. Revisa tu carrito." };
+  }
+}
+
+/** Quita el cupón aplicado y refresca el resumen. */
+export async function removeCouponAction(): Promise<void> {
+  await removeCoupon();
+  revalidatePath("/checkout/pago");
 }
