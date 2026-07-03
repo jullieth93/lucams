@@ -48,7 +48,20 @@ de fases intermedias en el historial git + bitácora abajo.
 
 ---
 
-## Última sesión — 2026-07-03 (Bloque E: E2E reto MFA + Estudio + runner E2E estable)
+## Última sesión — 2026-07-03 (Bloque E: E2E reto MFA + Estudio + a11y skip-link + runner estable)
+
+**a11y sin dependencia (`6fe4e2c`):** encontrado un gap real — **no había skip-link**
+(WCAG 2.4.1 Bypass Blocks) en todo el sitio. Agregado en el layout raíz como primer
+elemento enfocable (oculto con `sr-only`, visible con `focus:not-sr-only`, salta a
+`#contenido`), con `id="contenido" tabIndex={-1}` en los **19 `<main>`** del storefront/cuenta
++ el `<main>` del `AdminShell`. `a11y.spec.ts` (Playwright nativo, sin `@axe-core`) guarda los
+invariantes — `lang="es-CO"`, un solo `main#contenido`, ninguna `<img>` sin `alt`, ≥1 `h1` —
+en 5 páginas públicas + una PDP real, y conduce el skip-link de punta a punta (Tab lo enfoca →
+Enter mueve el foco a `main#contenido` + ancla la URL). **7/7 a11y verdes. Suite E2E total: 24.**
+**ACCIÓN HUMANA REQUERIDA (opcional):** para la capa AUTOMATIZADA de reglas WCAG falta aprobar
+la dependencia dev `@axe-core/playwright` (no instalada — mandato de no instalar deps sin OK).
+
+
 
 **Reto MFA E2E (`95967e8`):** el flujo completo de control de acceso admin con MFA.
 `tests/e2e/_helpers/totp.ts` implementa **TOTP RFC 6238 con Node crypto** (no hay lib de TOTP
