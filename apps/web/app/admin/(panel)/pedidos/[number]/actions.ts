@@ -5,7 +5,8 @@ import { logger } from "@/lib/logger";
 import { getCurrentAdmin } from "@/lib/auth";
 import { recordAdminAction } from "@/lib/admin-audit";
 import { processPaidOrder } from "@/features/orders/saga";
-import { transitionOrder } from "@/features/orders/service";
+import { refundOrder, transitionOrder } from "@/features/orders/service";
+import { formatCOP } from "@/lib/format";
 
 /**
  * Reintenta la saga post-PAID (útil cuando el primer intento falló por
@@ -89,5 +90,52 @@ export async function transitionOrderAction(
       err: err instanceof Error ? err.message : String(err),
     });
     return { error: err instanceof Error ? err.message : "Error transicionando" };
+  }
+}
+
+/**
+ * F2 — Reembolso desde admin. Marca la orden REFUNDED (revierte stock + audita
+ * quién/cuándo/motivo/monto) y dispara el email al cliente. El DINERO en Wompi se
+ * mueve MANUALMENTE: el mensaje de éxito se lo recuerda al admin. Solo aplica a
+ * órdenes PAID o DELIVERED (la máquina de estados lo valida).
+ */
+export async function refundOrderAction(
+  _prev: { error?: string; success?: string } | null,
+  formData: FormData,
+): Promise<{ error?: string; success?: string }> {
+  const session = await getCurrentAdmin();
+  if (!session) return { error: "No autorizado" };
+
+  const orderId = String(formData.get("orderId") ?? "");
+  const reason = String(formData.get("reason") ?? "").trim();
+  if (!orderId) return { error: "Falta orderId" };
+
+  try {
+    const res = await refundOrder(orderId, {
+      adminId: session.admin.id,
+      reason: reason || undefined,
+    });
+    await recordAdminAction({
+      actorId: session.admin.id,
+      action: "order.refund",
+      entityType: "Order",
+      entityId: orderId,
+      metadata: { status: res.status, amount: res.amount, reason: reason || null },
+    });
+    revalidatePath("/admin/pedidos");
+    revalidatePath(`/admin/pedidos/[number]`, "page");
+    if (res.status === "already_refunded") {
+      return { success: "La orden ya estaba reembolsada." };
+    }
+    return {
+      success: `Reembolso de ${formatCOP(res.amount)} registrado. Recuerda emitir el dinero en Wompi manualmente.`,
+    };
+  } catch (err) {
+    logger.warn({
+      event: "admin.order.refund_fail",
+      orderId,
+      err: err instanceof Error ? err.message : String(err),
+    });
+    return { error: err instanceof Error ? err.message : "Error al reembolsar" };
   }
 }

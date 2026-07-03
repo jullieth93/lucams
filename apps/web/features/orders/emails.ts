@@ -17,6 +17,7 @@ import { orderConfirmationEmail } from "@/features/emails/templates/order-confir
 import { orderShippedEmail } from "@/features/emails/templates/order-shipped";
 import { orderDeliveredEmail } from "@/features/emails/templates/order-delivered";
 import { orderPaymentFailedEmail } from "@/features/emails/templates/order-payment-failed";
+import { refundIssuedEmail } from "@/features/emails/templates/refund-issued";
 
 type ShippingAddrSnapshot = {
   fullName?: string;
@@ -289,6 +290,56 @@ export async function sendOrderDelivered(orderId: string): Promise<void> {
   } catch (err) {
     logger.error({
       event: "order.email.delivered.fail",
+      orderId,
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+/** F2 — email al cliente confirmando el reembolso emitido. Best-effort. */
+export async function sendOrderRefunded(orderId: string): Promise<void> {
+  try {
+    const order = await prisma.order.findFirst({
+      where: { id: orderId, deletedAt: null },
+      select: {
+        number: true,
+        email: true,
+        shippingAddress: true,
+        refundAmount: true,
+        total: true,
+        refundReason: true,
+      },
+    });
+    if (!order) return;
+
+    const ship = order.shippingAddress as ShippingAddrSnapshot;
+    const tpl = await refundIssuedEmail({
+      orderNumber: order.number,
+      customerName: ship.fullName ?? "Cliente",
+      amount: order.refundAmount ?? order.total,
+      reason: order.refundReason,
+    });
+
+    const result = await sendEmail({
+      to: order.email,
+      subject: tpl.subject,
+      html: tpl.html,
+      text: tpl.text,
+      idempotencyKey: `${order.number}-refunded`,
+      tags: [
+        { name: "type", value: "order_refunded" },
+        { name: "order_number", value: order.number },
+      ],
+    });
+    logger.info({
+      event: "order.email.refunded.sent",
+      orderNumber: order.number,
+      to: order.email,
+      result: result.sent ? "ok" : `skip:${result.reason}`,
+    });
+  } catch (err) {
+    logger.error({
+      event: "order.email.refunded.fail",
       orderId,
       err: err instanceof Error ? err.message : String(err),
     });

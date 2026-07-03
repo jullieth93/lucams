@@ -512,6 +512,14 @@ model Order {
   // nadie ve (mandato #7 sin Sentry). ACCIÓN HUMANA: refund o producir stock.
   needsReconciliation   Boolean       @default(false)
   reconciliationReason  String?
+  // Bloque F2 — auditoría del reembolso desde admin. El movimiento de dinero en
+  // Wompi es MANUAL (contraentrega + preferencia de operar la pasarela a mano);
+  // estos campos registran quién marcó la orden REFUNDED, cuándo, por qué y el
+  // monto (= total para reembolso completo). refundedBy = AdminUser.id.
+  refundedAt            DateTime?
+  refundedBy            String?
+  refundReason          String?
+  refundAmount          Int?
   // #2 (post-launch Bloque A) — timestamp de envío del email de confirmación.
   // Hace el envío idempotente Y recuperable: si la saga crashea entre el commit
   // de PAID y el envío del email, un reintento de processPaidOrder lo manda

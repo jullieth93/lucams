@@ -23,6 +23,7 @@ import { logger } from "@/lib/logger";
 import { canTransition, type ShippingAddressInput } from "./schemas";
 import { assertStockAvailable, revertStockForOrder } from "./stock";
 import { priceCouponForCart } from "@/features/coupons/redemption";
+import { sendOrderRefunded } from "./emails";
 
 const ORDER_PAGE_SIZE = 20;
 
@@ -412,6 +413,53 @@ export async function transitionOrder(
       ...options.extra,
     },
   });
+}
+
+/**
+ * F2 — Reembolso desde admin. Valida que la orden sea reembolsable (PAID o
+ * DELIVERED → REFUNDED según la máquina de estados), transiciona a REFUNDED
+ * (revierte stock atómicamente vía transitionOrder), registra la auditoría
+ * (quién/cuándo/motivo/monto = total) y envía el email de confirmación. El
+ * movimiento de dinero en Wompi es MANUAL (contraentrega + operación manual de
+ * la pasarela). Idempotente: si ya está REFUNDED, no-op.
+ */
+export async function refundOrder(
+  orderId: string,
+  opts: { adminId: string; reason?: string },
+): Promise<{ status: "refunded" | "already_refunded"; orderNumber: string; amount: number }> {
+  const order = await prisma.order.findFirst({
+    where: { id: orderId, deletedAt: null },
+    select: { id: true, number: true, status: true, total: true },
+  });
+  if (!order) throw new OrderNotFoundError(orderId);
+  if (order.status === "REFUNDED") {
+    return { status: "already_refunded", orderNumber: order.number, amount: order.total };
+  }
+  if (!canTransition(order.status, "REFUNDED")) {
+    throw new OrderTransitionError(order.status, "REFUNDED");
+  }
+
+  await transitionOrder(orderId, "REFUNDED", {
+    actorAdminId: opts.adminId,
+    extra: {
+      refundedAt: new Date(),
+      refundedBy: opts.adminId,
+      refundReason: opts.reason?.trim() || null,
+      refundAmount: order.total,
+    },
+  });
+
+  // Email best-effort (sendOrderRefunded ya captura sus errores internamente).
+  await sendOrderRefunded(orderId);
+
+  logger.info({
+    event: "order.refund.done",
+    orderId,
+    orderNumber: order.number,
+    amount: order.total,
+    adminId: opts.adminId,
+  });
+  return { status: "refunded", orderNumber: order.number, amount: order.total };
 }
 
 /** Lookup por id o number (admin UI puede usar cualquiera). */

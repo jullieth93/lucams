@@ -109,11 +109,15 @@ vi.mock("./emails", async () => {
     sendOrderPaymentFailed: async (orderId: string, reason: string) => {
       emailCalls.push({ fn: "sendOrderPaymentFailed", orderId, extra: reason });
     },
+    sendOrderRefunded: async (orderId: string) => {
+      emailCalls.push({ fn: "sendOrderRefunded", orderId });
+    },
   };
 });
 
 import { prisma } from "@/lib/db";
 import { processPaidOrder, processFailedPaymentOrder, processTrackingUpdate } from "./saga";
+import { refundOrder } from "./service";
 import { INVENTORY_REASON } from "./stock";
 
 const hasDb = Boolean(process.env.DATABASE_URL);
@@ -151,6 +155,10 @@ const SHIP_ADDR = {
 // el UNIQUE de sku (P2002). El contador sobrevive al retry (mismo módulo) → SKU
 // nuevo en cada intento. (Fix aislamiento hallado por la revisión.)
 let variantSeq = 0;
+// Contador para números de orden únicos POR LLAMADA. Sin esto, un test que flakea
+// en el intento 1 (read-after-write del pooler) re-crea el mismo `number` fijo en
+// el retry → P2002. El seq da un número fresco por intento (igual que variantSeq).
+let numberSeq = 0;
 async function makeVariant(stock: number, tag: string): Promise<string> {
   const v = await prisma.productVariant.create({
     data: {
@@ -178,7 +186,7 @@ async function makePendingOrder(
   const discount = opts.discount ?? 0;
   const order = await prisma.order.create({
     data: {
-      number: `LCM-${RUN}-${opts.numberTag}`.toUpperCase(),
+      number: `LCM-${RUN}-${opts.numberTag}-${++numberSeq}`.toUpperCase(),
       email: SHIP_ADDR.email,
       phone: SHIP_ADDR.phone,
       shippingAddress: SHIP_ADDR,
@@ -395,6 +403,57 @@ describe.skipIf(!hasDb)("saga POST-PAID — integración DB (ruta de ingresos)",
       });
       expect(finalCoupon?.usedCount).toBe(1);
     }, 30000);
+
+    it("F2 — refundOrder: PAID→REFUNDED, revierte stock, audita y es idempotente", async () => {
+      const variantId = await makeVariant(10, "rf");
+      const orderId = await makePendingOrder([{ variantId, qty: 3, unitPrice: 5000 }], {
+        numberTag: "RF1",
+      });
+      // Falla la guía a propósito → la orden queda en PAID (no avanza a FULFILLING),
+      // que es un estado reembolsable, con el stock ya decrementado (10 - 3 = 7).
+      shipmentShouldThrow = new Error("Aveonline caído (test)");
+      await processPaidOrder({ orderId, wompiTransactionId: "wompi-tx-rf1" });
+      expect(await stockOf(variantId)).toBe(7);
+      const paid = await prisma.order.findUnique({ where: { id: orderId }, select: { status: true } });
+      expect(paid?.status).toBe("PAID");
+
+      const res = await refundOrder(orderId, { adminId: "admin-rf", reason: "producto defectuoso" });
+      expect(res.status).toBe("refunded");
+      expect(res.amount).toBe(15_000); // total (subtotal, envío 0)
+
+      const o = await prisma.order.findUnique({
+        where: { id: orderId },
+        select: { status: true, refundedAt: true, refundedBy: true, refundReason: true, refundAmount: true },
+      });
+      expect(o?.status).toBe("REFUNDED");
+      expect(o?.refundedBy).toBe("admin-rf");
+      expect(o?.refundReason).toBe("producto defectuoso");
+      expect(o?.refundAmount).toBe(15_000);
+      expect(o?.refundedAt).not.toBeNull();
+
+      // Stock revertido (7 + 3 = 10) + log ORDER_REFUNDED + email disparado.
+      expect(await stockOf(variantId)).toBe(10);
+      expect(await logsFor(orderId, "ORDER_REFUNDED")).toHaveLength(1);
+      expect(emailCalls.filter((c) => c.fn === "sendOrderRefunded")).toHaveLength(1);
+
+      // Idempotencia: re-refund → already_refunded, sin sobrescribir ni doble-revertir.
+      const again = await refundOrder(orderId, { adminId: "otro-admin", reason: "otra" });
+      expect(again.status).toBe("already_refunded");
+      const o2 = await prisma.order.findUnique({ where: { id: orderId }, select: { refundedBy: true } });
+      expect(o2?.refundedBy).toBe("admin-rf");
+      expect(await stockOf(variantId)).toBe(10);
+    }, 30000);
+
+    it("F2 — refundOrder rechaza un estado no reembolsable (PENDING_PAYMENT)", async () => {
+      const variantId = await makeVariant(5, "rf2");
+      const orderId = await makePendingOrder([{ variantId, qty: 1, unitPrice: 5000 }], {
+        numberTag: "RF2",
+      });
+      // Nunca se pagó → PENDING_PAYMENT; PENDING_PAYMENT → REFUNDED no es legal.
+      await expect(refundOrder(orderId, { adminId: "admin-rf" })).rejects.toThrow();
+      const o = await prisma.order.findUnique({ where: { id: orderId }, select: { status: true } });
+      expect(o?.status).toBe("PENDING_PAYMENT");
+    });
 
     it("decrementa TODAS las variantes de una orden multi-ítem antes de crear una sola guía", async () => {
       const vA = await makeVariant(10, "multiA");

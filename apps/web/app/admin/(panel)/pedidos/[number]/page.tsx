@@ -16,7 +16,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import Image from "next/image";
 import { notFound, redirect } from "next/navigation";
-import { Box, User, MapPin, CreditCard, Truck, Package } from "lucide-react";
+import { Box, User, MapPin, CreditCard, Truck, Package, Undo2 } from "lucide-react";
 import { AdminPage, AdminPageHeader, AdminPageBody, AdminBadge } from "@/components/admin-page";
 import { getCurrentAdmin } from "@/lib/auth";
 import { getOrder } from "@/features/orders/service";
@@ -228,6 +228,26 @@ export default async function AdminPedidoDetallePage({
                 </div>
               </dl>
             </Card>
+
+            {/* Reembolso (F2) — visible solo si la orden fue reembolsada */}
+            {order.status === "REFUNDED" && (
+              <Card icon={<Undo2 className="h-4 w-4" />} title="Reembolso">
+                <Row label="Monto" value={formatCOP(order.refundAmount ?? order.total)} />
+                {order.refundedAt && (
+                  <Row
+                    label="Fecha"
+                    value={new Date(order.refundedAt).toLocaleString("es-CO", {
+                      dateStyle: "medium",
+                      timeStyle: "short",
+                    })}
+                  />
+                )}
+                {order.refundReason && <Row label="Motivo" value={order.refundReason} />}
+                <p className="mt-2 text-[11px] text-amber-700">
+                  ⚠️ El dinero se emite manualmente en Wompi.
+                </p>
+              </Card>
+            )}
 
             {/* Pago */}
             <Card icon={<CreditCard className="h-4 w-4" />} title="Pago">
