@@ -91,12 +91,14 @@ let provider: PaymentProvider | null = null;
 export function getPaymentProvider(): PaymentProvider {
   if (provider) return provider;
   const choice = (process.env.PAYMENT_PROVIDER ?? "wompi").trim().toLowerCase();
-  // Import dinámico para evitar cargar SDK del provider no activo.
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const mod = require("./wompi") as { WompiPaymentProvider: new () => PaymentProvider };
+  // El check va ANTES del require: así un provider no soportado falla con el
+  // error claro sin cargar el SDK de Wompi (honra el "import dinámico" del intent).
   if (choice !== "wompi") {
     throw new Error(`PAYMENT_PROVIDER="${choice}" no soportado todavía. Solo "wompi" en Fase 2.`);
   }
+  // Import dinámico para evitar cargar SDK del provider no activo.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const mod = require("./wompi") as { WompiPaymentProvider: new () => PaymentProvider };
   provider = new mod.WompiPaymentProvider();
   return provider;
 }
