@@ -48,7 +48,28 @@ de fases intermedias en el historial git + bitácora abajo.
 
 ---
 
-## Última sesión — 2026-07-03 (Bloque E: axe WCAG AA + contraste sin tocar paleta + E2E MFA/Estudio/a11y)
+## Última sesión — 2026-07-03 (Bloque F1: redención de cupones en checkout + axe WCAG AA + E2E)
+
+**Bloque F1 — cupones en checkout (`1ccc5e4`).** La infra de cupones (modelos, admin CRUD,
+service) ya existía; faltaba APLICARLOS al pagar. Implementado punta a punta:
+- `features/coupons/redemption.ts`: `priceCouponPure` (núcleo puro — valida TODAS las reglas del
+  modelo: activo, vigencia, usos globales + por-cliente, minOrder, requiresMinQuantity,
+  restricción por categoría/producto; calcula descuento PERCENT/FIXED/FREE_SHIPPING sobre el
+  subtotal elegible) + `priceCouponForCart` (carga cupón + items con slug producto/categoría,
+  acepta un TransactionClient).
+- `createOrderFromCart` aplica el cupón con **re-validación atómica dentro de la tx** (si venció
+  entre aplicar y pagar → se ignora en silencio, orden sin descuento; nunca revienta el checkout).
+  Persiste `discount` + `couponId`.
+- Saga PAID: registra `CouponUsage` + incrementa `usedCount`, atómico con la transición a PAID,
+  una sola vez (bloque guardado + `orderId @unique`). NO en la creación (una PENDING puede no
+  pagarse).
+- Estado de checkout lleva `couponCode`; acciones `applyCoupon`/`removeCoupon` rate-limited
+  (anti-enumeración de códigos) + `CouponField` en el paso de pago + línea de descuento en
+  `OrderSummary`.
+- Tests: **17 unit puros + 5 integración DB + saga CouponUsage** (idempotente). 85 tests de
+  orders/checkout sin regresión. **Próximo: F2 (reembolso admin) y F3 (retracto Ley 2439).**
+
+## Sesión — 2026-07-03 (Bloque E: axe WCAG AA + contraste sin tocar paleta + E2E MFA/Estudio/a11y)
 
 **axe-core WCAG 2.1 AA + remediación de contraste (`032bf85`, `b8d4d8e`).** Lucy aprobó la dep
 `@axe-core/playwright`. Integrado (`axe.spec.ts` + `_helpers/axe-scan.ts`): auditoría de 9 páginas
