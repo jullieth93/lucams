@@ -75,11 +75,13 @@ async function addToCart(page: Page) {
   const addBtn = page.getByRole("button", { name: /añadir al carrito/i });
   await expect(addBtn).toBeVisible();
   await addBtn.click();
-  // Tras el server action + refresh, el header refleja "Carrito (1 ítem)" —
-  // señal fiable de que la cookie de sesión y el ítem ya existen.
-  await expect(page.getByRole("link", { name: /carrito \(1 ítem/i })).toBeVisible({
-    timeout: 15_000,
-  });
+  // El server action inserta el ítem y redirige a `${returnTo}?added=1` — esperar
+  // ESE redirect es la señal fiable de que el ítem quedó en DB. NO gateamos en el
+  // conteo del header ("Carrito (N ítems)"): ese es un read de una sola vez por el
+  // pooler de Supabase y, bajo carga, puede verse stale (0 ítems) sin reintentarse,
+  // colgando el wait 15s en vano. La verificación real la hace el toPass del caller
+  // sobre /carrito o /checkout, que sí tolera el read-after-write del pooler.
+  await page.waitForURL(/[?&]added=1/, { timeout: 15_000 });
 }
 
 test.describe("compra — núcleo del carrito", () => {
@@ -91,7 +93,7 @@ test.describe("compra — núcleo del carrito", () => {
       await page.goto("/carrito");
       await expect(page.getByRole("heading", { name: /tu carrito está vacío/i })).toHaveCount(0);
       await expect(page.getByText(`E2E Simple ${RUN}`).first()).toBeVisible();
-    }).toPass({ timeout: 20_000 });
+    }).toPass({ timeout: 30_000 });
     await expect(page.locator('a[href="/checkout/datos"]').first()).toBeVisible();
   });
 
@@ -103,7 +105,7 @@ test.describe("compra — núcleo del carrito", () => {
       await page.goto("/checkout/datos");
       await expect(page).toHaveURL(/\/checkout\/datos/);
       await expect(page.locator('input[name="fullName"]')).toBeVisible();
-    }).toPass({ timeout: 20_000 });
+    }).toPass({ timeout: 30_000 });
     await expect(page.locator('input[name="email"]')).toBeVisible();
   });
 
