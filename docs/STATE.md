@@ -138,6 +138,16 @@ env del CI): **1403 pasan, 43 saltan, 0 fallan en ~21s** (vs ~15 min con el pool
 enforza la suite. (Bonus: el Postgres local en :5433 sirve para correr los tests localmente en
 segundos en vez de minutos.)
 
+**Capa de UI cubierta (`bc2a2cf`/`75e9831`) — antes 0%:** 83 tests de componentes con
+@testing-library + jsdom + queries ACCESIBLES (getByRole/getByLabelText). ProductCard (plantilla,
+8) + batch de 6 con pipeline write→revisión adversarial (5 sólidos + global-search): cookies-banner
+(consent Ley 1581), products-filters (URL/router, atrapa un bug de closure ya documentado),
+password-input, email-input, ocasion-filter-strip, global-search. Gotchas documentados:
+afterEach(cleanup) manual (globals:false), alt="" decorativo, nbsp de Intl en formatCOP, mocks de
+next/link·image·navigation. **Suite total ~1.529 vitest.** Follow-ups no bloqueantes: slider de
+precio + re-sync back/forward, casos de cierre de modal, medidor de fuerza con anchor semántico;
+**a11y con axe/vitest-axe queda pendiente de aprobar la dep** (TESTING.md la pide, WCAG 2.1 AA).
+
 **Próximo:** seguir Bloque E con más unit tests verificables, o el setup E2E (Playwright), o el
 **CI-DB** (Supabase local en CI — OJO: necesita Docker, no se valida en esta VM, se prueba al
 hacer push). Pendiente además: Lucy valida C3 en deploy preview de Vercel (consola buscando
