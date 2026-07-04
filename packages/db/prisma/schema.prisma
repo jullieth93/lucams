@@ -910,6 +910,26 @@ model WebVital {
   @@index([route, createdAt])
 }
 
+// Bloque D — captura de errores del servidor en DB (sin Sentry, mandato #7).
+// Alimentado por instrumentation.onRequestError (todos los errores no manejados
+// de RSC/route handlers/server actions). Append-only. Es la fuente para el panel
+// /admin/observability y (futuro) las alertas por email. `digest` agrupa el mismo
+// error (Next lo asigna); permite contar ocurrencias de un mismo fallo.
+model ErrorLog {
+  id          String   @id @default(cuid())
+  message     String
+  digest      String? // id de agrupación de Next para el mismo error
+  stack       String? // primeras líneas del stack (truncado)
+  routePath   String? // ruta del archivo, e.g. /checkout/pago
+  requestPath String? // path del request, e.g. /checkout/pago?x=1
+  method      String? // GET | POST | …
+  routeType   String? // render | route | action | proxy
+  createdAt   DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([digest, createdAt])
+}
+
 // Eventos custom de funnel (add-to-cart, search, newsletter-signup,
 // product-view) — alternativa propia a Google Analytics. Solo se
 // escriben si el customer dió consentimiento ANALYTICS o MARKETING

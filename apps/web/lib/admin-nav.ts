@@ -49,6 +49,7 @@ import {
   Plug,
   Mail,
   Undo2,
+  HeartPulse,
 } from "lucide-react";
 
 /** Badge visual + filtro de estado. */
@@ -243,6 +244,13 @@ export const ADMIN_NAV: NavGroup[] = [
         badge: { text: "Fase 4", tone: "phase4" },
         description:
           "Reportes de ventas, productos más vendidos, conversión, ticket promedio. Llega con datos reales (post-Fase 2).",
+      },
+      {
+        label: "Salud técnica",
+        href: "/admin/observability",
+        icon: HeartPulse,
+        description:
+          "Panel de salud del sistema: errores del servidor, webhooks, órdenes a reconciliar, reversas de stock y Web Vitals. La fuente para saber si algo está roto (sin Sentry).",
       },
       {
         label: "Performance",
