@@ -48,7 +48,22 @@ de fases intermedias en el historial git + bitácora abajo.
 
 ---
 
-## Última sesión — 2026-07-03 (Bloque F: cupones + reembolso admin + retracto backend + axe WCAG AA)
+## Última sesión — 2026-07-03 (Bloque F COMPLETO: cupones + reembolso + retracto + axe WCAG AA)
+
+**Bloque F3 — retracto UI + gestión admin (`567d53d`, parte 2 de 2). Bloque F cerrado.**
+- **Cliente:** `RetractControl` por item en `/mi-cuenta/pedidos/[number]` — "Solicitar retracto"
+  con motivo si el item es elegible, badge de estado si ya hay solicitud, nota "personalizado →
+  sin retracto" si aplica; `requestRetractAction` re-valida.
+- **Admin:** `/admin/retractos` (SUPERADMIN, deny-by-default) lista por estado + acciones del ciclo
+  (aprobar → email instrucciones, marcar recibido, registrar reembolso con método → email
+  reembolso, rechazar con motivo). Dinero **manual** (el UI lo dice). Per-item; NO toca el estado
+  de la orden ni restaura stock (devuelto puede no ser revendible; el admin ajusta a mano).
+- Servicio: state machine `RETRACT_TRANSITIONS` + approve/reject/markReceived/refundRetract
+  (auditados) + `listRetractRequests`. 2 plantillas email + wrappers best-effort. Nav "Retractos"
+  en Ventas. Tests: +4 ciclo admin → **18 tests de retracto** (pure + integración).
+- **Correr integración fiable/rápido:** `DATABASE_URL="$DIRECT_URL" vitest` (evita el pooler).
+
+## Sesión — 2026-07-03 (Bloque F: cupones + reembolso admin + retracto backend + axe WCAG AA)
 
 **Bloque F3 — retracto backend (`7f9ce0e`, parte 1 de 2).** Fundamento del derecho de retracto
 (Ley 1480 art. 47 + Ley 2439/2024). Falta la UI.
