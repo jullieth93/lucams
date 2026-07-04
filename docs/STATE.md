@@ -48,6 +48,42 @@ de fases intermedias en el historial git + bitácora abajo.
 
 ---
 
+## ⏳ EN CURSO — 2026-07-04 (Fase 3 Estudio: validación del enfoque de plantillas)
+
+> **Checkpoint de continuidad** (si la sesión se corta, retomar desde aquí).
+
+**Tarea activa:** Lucy autorizó Fase 3 (Estudio de Personalización) con premisa calidad. Pidió
+PRIMERO validar con investigación en Internet si el enfoque de plantillas (lienzos prediseñados
+para personalizar) es el correcto — es el core del negocio.
+
+**1) Investigación profunda corriendo (workflow `deep-research`):**
+- Run ID: `wf_9c6d6ec3-28e` · Task ID: `wtdq9m96v`
+- Resultado (JSON con reporte citado) aterriza en:
+  `/tmp/claude-1000/-home-ansible-workspaces-lucams-shop/ad657217-ed3c-44c8-9922-0227e88b3b22/tasks/wtdq9m96v.output`
+- Transcript/journal: `~/.claude/projects/-home-ansible-workspaces-lucams-shop/ad657217-ed3c-44c8-9922-0227e88b3b22/subagents/workflows/wf_9c6d6ec3-28e/journal.jsonl`
+- ⚠️ `/tmp` NO sobrevive reboot de la VM; si se perdió, relanzar el workflow (la pregunta de
+  investigación completa está en el script:
+  `~/.claude/projects/.../workflows/scripts/deep-research-wf_9c6d6ec3-28e.js`).
+- Pregunta: ¿plantilla-first vs lienzo libre vs auto-fill (Mixtiles)? ¿cuántas plantillas y qué
+  ocasiones al lanzar (mercado CO: día madre, amor y amistad, Navidad, cumpleaños)? ¿UX móvil
+  (tráfico Instagram)? ¿el editor canvas es diferenciador real o sobre-ingeniería?
+
+**2) Diagnóstico del código YA hecho (no repetir):**
+- En DB hay **51 plantillas**, no 2: **8 activas** (fallbacks "libre-*" lienzo en blanco por kind +
+  1 premium `photo-pack-polaroid-instagram` product-specific) y **42 inactivas**.
+- Las 42 inactivas: seed original de 30+ con `canvasData` real (37 con capas, 5 stubs) pero
+  **previews placeholder de Unsplash** (no renders del canvas). **Lucy las rechazó** (ADR-037,
+  2026-05-14): solo `ig_post.svg` cumplió su estándar. Su pipeline manual ("Lucams SVG Designer"
+  Claude Project, una a una) se estancó en 1.
+- **Cuello de botella = producción de contenido con barra de calidad de Lucy, no código.**
+- NO existe admin CRUD de plantillas (email-templates no cuenta).
+- `listTemplatesForKind` filtra por aspect ratio del producto físico.
+
+**3) Al retomar:** (a) leer el resultado del research en el output file (o relanzar), (b) sintetizar
+recomendación (cuántas plantillas, qué ocasiones, template-first sí/no, UX móvil), (c) plan de
+producción: Claude produce canvasData + previews REALES (render del canvas, no Unsplash) con
+paleta kawaii → Lucy solo aprueba/rechaza; posible admin de plantillas para gestión no-técnica.
+
 ## Última sesión — 2026-07-03 (deploy + git flow + regresión visual + Bloque D + F + axe)
 
 **Deploy + flujo Git normalizado (`8be9f97`).** Se descubrió que **116 commits vivían solo en la VM**
