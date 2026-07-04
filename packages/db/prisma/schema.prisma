@@ -532,6 +532,9 @@ model Order {
   // crear 2 guías para la misma orden ya-PAID-sin-tracking. Se libera en fallo
   // y se re-clama si quedó stale (proceso crasheado) tras 10 min.
   shipmentClaimedAt     DateTime?
+  // Bloque F3 — fecha de entrega efectiva (webhook Aveonline DELIVERED). Ancla la
+  // ventana de 5 días hábiles del derecho de retracto (Ley 1480 art. 47).
+  deliveredAt           DateTime?
   // Legacy: venndeloShipmentId queda por compat. Nueva integración usa los campos Aveonline abajo.
   venndeloShipmentId    String?
   // PLAN_CATALOG_V2 4.10 — Aveonline + ShippingProvider interface (ADR-039).
@@ -608,6 +611,8 @@ model OrderItem {
   template       PersonalizationTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
   // PLAN_CATALOG_V2 — metadata flexible (futuro: gift wrap, notas, etc.).
   metadata       Json                     @default("{}")
+  // Bloque F3 — solicitud de retracto (Ley 2439). 1:1 opcional por item.
+  retractRequest RetractRequest?
 
   createdAt DateTime @default(now())
 
@@ -674,6 +679,41 @@ model CouponUsage {
 
   @@index([customerId, couponId])
   @@index([couponId, appliedAt])
+}
+
+// ──────────────────────── RETRACTO (Ley 2439) ────────────────────────
+// Bloque F3 — derecho de retracto (Ley 1480 art. 47 + Ley 2439/2024): 5 días
+// hábiles desde la entrega para devolver productos NO personalizados; reembolso
+// en máx. 15 días calendario. Ver docs/COMPLIANCE.md. La elegibilidad se calcula
+// al vuelo (item de catálogo estándar sin customDesign, dentro de la ventana).
+
+enum RetractStatus {
+  PENDING // solicitado, pendiente de aprobar
+  APPROVED // aprobado, esperando que el cliente devuelva el producto
+  RECEIVED // producto recibido de vuelta
+  REFUNDED // reembolso emitido (dinero Wompi manual)
+  REJECTED // rechazado (no elegible / fuera de ventana)
+}
+
+model RetractRequest {
+  id            String        @id @default(cuid())
+  orderItemId   String        @unique
+  orderItem     OrderItem     @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  status        RetractStatus @default(PENDING)
+  reason        String? // texto libre del cliente
+  rejectionNote String? // motivo si REJECTED
+  refundAmount  Int // línea del item al solicitar (COP centavos)
+  refundMethod  String? // "WOMPI_VOID" | "BANK_TRANSFER" — al reembolsar
+  requestedAt   DateTime      @default(now())
+  approvedAt    DateTime?
+  receivedAt    DateTime?
+  refundedAt    DateTime?
+  processedBy   String? // AdminUser.id que gestionó la solicitud
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, requestedAt])
 }
 
 // ──────────────────────── RESEÑAS ────────────────────────

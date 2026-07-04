@@ -378,6 +378,9 @@ export async function transitionOrder(
   // idempotente y no-op si NO hubo decremento previo (caso PENDING_PAYMENT →
   // CANCELLED por DECLINED). El UPDATE de Order y el revert son atómicos.
   const needsRevert = to === "CANCELLED" || to === "REFUNDED";
+  // F3 — al entregar, sellar deliveredAt (ancla la ventana de retracto). El caller
+  // puede sobreescribirlo vía extra si necesita una fecha específica.
+  const autoStamp: Prisma.OrderUpdateInput = to === "DELIVERED" ? { deliveredAt: new Date() } : {};
 
   if (needsRevert) {
     return prisma.$transaction(async (tx) => {
@@ -386,6 +389,7 @@ export async function transitionOrder(
         data: {
           status: to as Prisma.OrderUpdateInput["status"],
           updatedBy: options.actorAdminId ?? null,
+          ...autoStamp,
           ...options.extra,
         },
       });
@@ -410,6 +414,7 @@ export async function transitionOrder(
     data: {
       status: to as Prisma.OrderUpdateInput["status"],
       updatedBy: options.actorAdminId ?? null,
+      ...autoStamp,
       ...options.extra,
     },
   });
