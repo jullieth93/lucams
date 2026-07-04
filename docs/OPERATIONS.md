@@ -187,6 +187,20 @@ Para los 3 environments de Vercel: **Production**, **Preview**, **Development**.
 
 > **Verificación:** después de configurarlas, push cualquier commit. El log del deploy en Vercel debe mostrar `pnpm install` y `pnpm --filter web build` ejecutarse sin "Missing environment variable" warnings.
 
+### Estrategia de ramas y releases (2026-07-03)
+
+Dos ramas en `github.com/jullieth93/lucams`:
+
+| Rama         | Rol                          | Vercel                                              |
+| ------------ | ---------------------------- | --------------------------------------------------- |
+| `develop`    | Trabajo diario + staging     | Preview deploys (o Production hasta migrar el setup) |
+| `production` | Release / producción en vivo | **Production Branch objetivo**                      |
+
+- **NO hay `main`** — la rama de producción se llama `production` (decisión de Lucy).
+- **Flujo diario:** commitear en `develop` + `git push origin develop` al cerrar cada tanda (no acumular commits locales sin subir — pasó un atraso de 116).
+- **Release:** con OK explícito de Lucy, `git checkout production && git merge --ff-only develop && git push` → Vercel despliega producción. `production` solo avanza en releases.
+- **ACCIÓN HUMANA (Lucy):** en Vercel → Settings → Git, cambiar **Production Branch** de `develop` a `production`. Mientras siga en `develop`, cada push a develop actualiza el sitio en vivo.
+
 ### `vercel.json` del repo
 
 Vive en el root: [`vercel.json`](../vercel.json). Es **minimal por diseño** — solo declara el `ignoreCommand`. La configuración de framework/build/install/output viene del **Root Directory** del proyecto en Vercel UI (debe estar seteado a `apps/web`).
