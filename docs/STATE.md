@@ -48,7 +48,26 @@ de fases intermedias en el historial git + bitácora abajo.
 
 ---
 
-## Última sesión — 2026-07-03 (Bloque F1 cupones + F2 reembolso admin + axe WCAG AA)
+## Última sesión — 2026-07-03 (Bloque F: cupones + reembolso admin + retracto backend + axe WCAG AA)
+
+**Bloque F3 — retracto backend (`7f9ce0e`, parte 1 de 2).** Fundamento del derecho de retracto
+(Ley 1480 art. 47 + Ley 2439/2024). Falta la UI.
+- Schema: enum `RetractStatus` + modelo `RetractRequest` (1:1 por `OrderItem`) + `Order.deliveredAt`
+  (ancla la ventana de 5 días hábiles). Dos migraciones vía `migrate deploy` (la shadow DB de
+  `migrate dev` no tiene `pg_trgm`); **ojo:** `migrate diff` sugiere DROPs de objetos NO-Prisma
+  (índices trgm, `rate_limit_buckets`) → se quitaron a mano del SQL.
+- `transitionOrder` sella `deliveredAt` al pasar a DELIVERED.
+- `features/retract/service.ts`: `addBusinessDays`/`isWithinRetractWindow` (puros, Lun-Vie, sin
+  festivos CO — documentado; el admin aprueba cada solicitud), `isItemPersonalized` (customDesign/
+  designId → exceptuado), `getRetractableItems` (elegibilidad + motivo por item), `createRetractRequest`
+  (re-validación atómica; refundAmount = línea; `RetractError`).
+- Tests: 10 puros + 5 integración DB. **Dev server reiniciado** (cliente Prisma nuevo).
+- **PRÓXIMO (F3 parte 2):** UI cliente (botón "Solicitar retracto" en `/mi-cuenta/pedidos/[number]`
+  para items elegibles + acción) + gestión admin (`/admin/retractos`: aprobar/rechazar/recibir/
+  reembolsar, reusa `refundOrder`) + emails (solicitud recibida + instrucciones devolución +
+  reembolso).
+
+## Sesión — 2026-07-03 (Bloque F1 cupones + F2 reembolso admin + axe WCAG AA)
 
 **Bloque F2 — reembolso desde admin (`191f95f`).** La máquina de estados (PAID/DELIVERED →
 REFUNDED) + revert de stock atómico ya existían; se sumó el flujo admin encima. El dinero en
