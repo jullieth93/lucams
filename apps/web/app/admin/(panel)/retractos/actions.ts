@@ -16,6 +16,9 @@ type St = { error?: string; success?: string } | null;
 async function guard(): Promise<{ adminId: string } | { error: string }> {
   const s = await getCurrentAdmin();
   if (!s) return { error: "No autorizado" };
+  // La gestión de retractos (incluye reembolsos) es SUPERADMIN, igual que la page.
+  // Se valida acá porque las Server Actions son endpoints POST invocables directo.
+  if (s.admin.role !== "SUPERADMIN") return { error: "Solo un administrador principal." };
   return { adminId: s.admin.id };
 }
 

@@ -181,18 +181,38 @@ export async function processPaidOrder(
         // así que el CouponUsage (orderId @unique) se crea una sola vez y el
         // usedCount denormalizado no se doble-incrementa.
         if (order.couponId && order.discount > 0) {
-          await tx.couponUsage.create({
-            data: {
-              couponId: order.couponId,
-              customerId: order.customerId,
-              orderId: order.id,
-              amount: order.discount,
+          // Incremento ATÓMICO gateado: solo si aún hay cupo global. Sin esto, dos
+          // órdenes con el mismo cupón pagadas en paralelo leen usedCount=0 al crearse
+          // y ambas incrementan → usedCount > maxUses (contador corrupto + límite
+          // evadido). El UPDATE condicional (usedCount < maxUses) lo cierra atómicamente.
+          const inc = await tx.coupon.updateMany({
+            where: {
+              id: order.couponId,
+              OR: [{ maxUses: null }, { usedCount: { lt: prisma.coupon.fields.maxUses } }],
             },
-          });
-          await tx.coupon.update({
-            where: { id: order.couponId },
             data: { usedCount: { increment: 1 } },
           });
+          if (inc.count === 1) {
+            // Ganamos el cupo → registramos el uso (contador === nº de CouponUsage).
+            await tx.couponUsage.create({
+              data: {
+                couponId: order.couponId,
+                customerId: order.customerId,
+                orderId: order.id,
+                amount: order.discount,
+              },
+            });
+          } else {
+            // Cupón agotado entre crear la orden y pagar: no registramos uso (el
+            // descuento ya aplicado a ESTA orden se respeta; el contador no se corrompe).
+            // Residual conocido: maxUsesPerCustomer es best-effort (evadirlo exige
+            // pagar 2 veces en paralelo — riesgo bajo).
+            logger.warn({
+              event: "order.saga.coupon_exhausted_at_pay",
+              orderId: order.id,
+              couponId: order.couponId,
+            });
+          }
         }
         // #9/#16 (post-launch Bloque A) — Vaciar Cart DENTRO de la misma tx.
         // Atómico con el cambio a PAID: imposible que quede PAID con cart activo

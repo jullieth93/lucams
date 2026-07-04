@@ -404,6 +404,35 @@ describe.skipIf(!hasDb)("saga POST-PAID — integración DB (ruta de ingresos)",
       expect(finalCoupon?.usedCount).toBe(1);
     }, 30000);
 
+    it("F1 — al pagar con cupón AGOTADO (usedCount≥maxUses): no incrementa ni registra uso", async () => {
+      const coupon = await prisma.coupon.create({
+        data: {
+          code: `${RUN}-EXH`.toUpperCase(),
+          type: "FIXED",
+          value: 1000,
+          maxUses: 1,
+          usedCount: 1, // ya agotado
+          validFrom: new Date("2026-01-01"),
+          validTo: new Date("2027-01-01"),
+        },
+        select: { id: true },
+      });
+      const variantId = await makeVariant(10, "exh");
+      const orderId = await makePendingOrder([{ variantId, qty: 1, unitPrice: 5000 }], {
+        numberTag: "EXH",
+        couponId: coupon.id,
+        discount: 1000,
+      });
+      await processPaidOrder({ orderId, wompiTransactionId: "wompi-tx-exh" });
+
+      // El incremento gateado NO sube usedCount por encima de maxUses…
+      const c = await prisma.coupon.findUnique({ where: { id: coupon.id }, select: { usedCount: true } });
+      expect(c?.usedCount).toBe(1);
+      // …y no se registra CouponUsage (cupón ya agotado al pagar).
+      const usages = await prisma.couponUsage.count({ where: { couponId: coupon.id } });
+      expect(usages).toBe(0);
+    }, 30000);
+
     it("F2 — refundOrder: PAID→REFUNDED, revierte stock, audita y es idempotente", async () => {
       const variantId = await makeVariant(10, "rf");
       const orderId = await makePendingOrder([{ variantId, qty: 3, unitPrice: 5000 }], {

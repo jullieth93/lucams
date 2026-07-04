@@ -15,30 +15,40 @@
  */
 
 import "server-only";
-import { prisma } from "@/lib/db";
+import { prisma, Prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import type { RetractStatus } from "@lucams/db";
 import { sendRetractApproved, sendRetractRefunded } from "./emails";
 
 export const RETRACT_WINDOW_BUSINESS_DAYS = 5;
 
-/** Avanza `n` días hábiles (Lun-Vie) desde `from`. No considera festivos CO. */
+// Colombia es UTC-5 SIN horario de verano (fijo). El cómputo de días hábiles y el
+// cierre de ventana deben ser en hora colombiana (COT), no en la del servidor
+// (UTC en Vercel) — si no, la ventana se recorta ~5h y podría negar un retracto
+// legítimamente vigente. Trabajamos en "reloj de pared COT" restando el offset,
+// operando con métodos UTC, y volviendo al instante UTC real.
+const COT_OFFSET_MS = 5 * 60 * 60 * 1000;
+
+/**
+ * Avanza `n` días hábiles (Lun-Vie, en calendario colombiano) desde `from`. No
+ * descuenta festivos CO (raros; el admin aprueba cada solicitud).
+ */
 export function addBusinessDays(from: Date, n: number): Date {
-  const d = new Date(from);
+  const cot = new Date(from.getTime() - COT_OFFSET_MS); // reloj de pared COT
   let added = 0;
   while (added < n) {
-    d.setDate(d.getDate() + 1);
-    const day = d.getDay(); // 0=Dom … 6=Sáb
+    cot.setUTCDate(cot.getUTCDate() + 1);
+    const day = cot.getUTCDay(); // 0=Dom … 6=Sáb (en COT)
     if (day !== 0 && day !== 6) added++;
   }
-  return d;
+  return new Date(cot.getTime() + COT_OFFSET_MS); // instante UTC real
 }
 
-/** Fin de la ventana de retracto (hasta el final del último día hábil, inclusive). */
+/** Fin de la ventana: 23:59:59.999 hora Colombia del último día hábil, inclusive. */
 export function retractWindowEnd(deliveredAt: Date): Date {
-  const end = addBusinessDays(deliveredAt, RETRACT_WINDOW_BUSINESS_DAYS);
-  end.setHours(23, 59, 59, 999);
-  return end;
+  const endCot = new Date(addBusinessDays(deliveredAt, RETRACT_WINDOW_BUSINESS_DAYS).getTime() - COT_OFFSET_MS);
+  endCot.setUTCHours(23, 59, 59, 999); // fin del día en COT
+  return new Date(endCot.getTime() + COT_OFFSET_MS);
 }
 
 export function isWithinRetractWindow(deliveredAt: Date, now: Date): boolean {
@@ -99,7 +109,9 @@ export async function getRetractableItems(
     },
   });
   if (!order) return [];
-  if (opts.customerId && order.customerId && order.customerId !== opts.customerId) return [];
+  // Propiedad estricta: si hay cliente logueado, el pedido DEBE ser suyo. Un pedido
+  // con customerId null (invitado / cliente borrado) NO pertenece a nadie logueado.
+  if (opts.customerId != null && order.customerId !== opts.customerId) return [];
 
   const delivered = order.status === "DELIVERED" && !!order.deliveredAt;
   const withinWindow = order.deliveredAt ? isWithinRetractWindow(order.deliveredAt, now) : false;
@@ -151,7 +163,9 @@ export async function createRetractRequest(
     },
   });
   if (!item || item.order.deletedAt) throw new RetractError("NOT_FOUND");
-  if (opts.customerId && item.order.customerId && item.order.customerId !== opts.customerId) {
+  // Propiedad estricta: el pedido debe ser del cliente logueado. customerId null
+  // (invitado / cliente borrado) nunca pertenece a un cliente logueado → FORBIDDEN.
+  if (opts.customerId != null && item.order.customerId !== opts.customerId) {
     throw new RetractError("FORBIDDEN");
   }
   if (item.retractRequest) throw new RetractError("ALREADY_REQUESTED");
@@ -162,16 +176,25 @@ export async function createRetractRequest(
   if (isItemPersonalized(item)) throw new RetractError("PERSONALIZED");
 
   const refundAmount = item.unitPrice * item.qty;
-  const created = await prisma.retractRequest.create({
-    data: {
-      orderItemId,
-      reason: opts.reason?.trim() || null,
-      refundAmount,
-      status: "PENDING",
-    },
-    select: { id: true },
-  });
-  return { id: created.id, refundAmount };
+  try {
+    const created = await prisma.retractRequest.create({
+      data: {
+        orderItemId,
+        reason: opts.reason?.trim() || null,
+        refundAmount,
+        status: "PENDING",
+      },
+      select: { id: true },
+    });
+    return { id: created.id, refundAmount };
+  } catch (err) {
+    // Carrera: dos solicitudes del mismo item a la vez. El @unique(orderItemId)
+    // deja pasar solo una; la otra recibe P2002 → ya existe la solicitud.
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+      throw new RetractError("ALREADY_REQUESTED");
+    }
+    throw err;
+  }
 }
 
 // ───────────────────────── Gestión admin ─────────────────────────

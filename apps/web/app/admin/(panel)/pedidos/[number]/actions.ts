@@ -69,6 +69,11 @@ export async function transitionOrderAction(
   const orderId = String(formData.get("orderId") ?? "");
   const to = String(formData.get("to") ?? "");
   if (!orderId || !to) return { error: "Faltan parámetros" };
+  // REFUNDED debe pasar SIEMPRE por refundOrderAction (audita monto/quién/cuándo +
+  // avisa al cliente + exige SUPERADMIN). Bloquearlo acá evita un reembolso "mudo".
+  if (to === "REFUNDED") {
+    return { error: "Para reembolsar usa el botón Reembolsar (registra auditoría y avisa al cliente)." };
+  }
 
   try {
     await transitionOrder(orderId, to, { actorAdminId: session.admin.id });
@@ -105,6 +110,12 @@ export async function refundOrderAction(
 ): Promise<{ error?: string; success?: string }> {
   const session = await getCurrentAdmin();
   if (!session) return { error: "No autorizado" };
+  // El reembolso es una operación financiera → SUPERADMIN, igual que finanzas/
+  // cupones/retractos. La gate de rol vive acá porque las Server Actions son
+  // endpoints POST invocables directamente (la page no las protege).
+  if (session.admin.role !== "SUPERADMIN") {
+    return { error: "Solo un administrador principal puede emitir reembolsos." };
+  }
 
   const orderId = String(formData.get("orderId") ?? "");
   const reason = String(formData.get("reason") ?? "").trim();

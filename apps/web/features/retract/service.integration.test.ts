@@ -214,6 +214,20 @@ describe.skipIf(!hasDb)("retract/service — integración DB", { timeout: 30_000
     await expect(refundRetract(id, "admin-1", "WOMPI_VOID")).rejects.toThrow(RetractTransitionError);
   });
 
+  it("IDOR: un cliente logueado no puede retractar un pedido de invitado (customerId null)", async () => {
+    const order = await makeDeliveredOrder({
+      tag: "idor",
+      deliveredAt: new Date(),
+      items: [{ personalized: false }],
+    });
+    // El pedido no tiene customerId (invitado) → ningún cliente logueado es dueño.
+    await expect(
+      createRetractRequest(order.items[0]!.id, { customerId: "cust-intruso" }),
+    ).rejects.toMatchObject({ reason: "FORBIDDEN" });
+    const items = await getRetractableItems(order.id, { customerId: "cust-intruso" });
+    expect(items).toHaveLength(0);
+  });
+
   it("rechazo: PENDING → REJECTED con motivo", async () => {
     const order = await makeDeliveredOrder({
       tag: "reject",
