@@ -48,7 +48,22 @@ de fases intermedias en el historial git + bitácora abajo.
 
 ---
 
-## Última sesión — 2026-07-03 (Bloque F COMPLETO: cupones + reembolso + retracto + axe WCAG AA)
+## Última sesión — 2026-07-03 (Bloque D observabilidad + Bloque F completo + axe WCAG AA)
+
+**Bloque D — observabilidad sin Sentry (`35fe80a`, `118cd78`). Backend listo.**
+- **Captura de errores en DB (`ErrorLog`):** `instrumentation.ts` `onRequestError` (hook oficial de
+  Next 16, lo que usa Sentry) → `captureServerError` → `ErrorLog`. Best-effort. **Verificado
+  end-to-end:** una ruta que lanza 500 aparece en `ErrorLog` con routePath/routeType.
+- **Panel `/admin/observability` (salud técnica, SUPERADMIN):** tiles (rojo si errores/reconciliación
+  >0), top errores 7d, órdenes a reconciliar, reversas de stock, Web Vitals + link a /api/health/all.
+  `getTechHealth` agrega de ErrorLog/WebhookEvent/Order/InventoryLog/WebVital. Nav en Analítica.
+- **Alertas por email (`/api/cron/alerts`):** `evaluateAlerts` (pico 5xx ≥5/5min, órdenes a
+  reconciliar, webhooks atascados >1h — cada una con "qué se rompió + qué hacer") + `dispatchAlerts`
+  (dedup 30min vía `AlertState` + Resend a `ALERT_EMAIL`). Endpoint gateado por `CRON_SECRET`
+  (timing-safe, 401 fail-closed verificado). **ACCIÓN HUMANA:** agendar pg_cron + `CRON_SECRET`
+  (SQL en OPERATIONS.md). 4 tests integración. Falta: SLOs cuantitativos + resumen diario 8am.
+
+## Sesión — 2026-07-03 (Bloque F COMPLETO: cupones + reembolso + retracto + axe WCAG AA)
 
 **Bloque F3 — retracto UI + gestión admin (`567d53d`, parte 2 de 2). Bloque F cerrado.**
 - **Cliente:** `RetractControl` por item en `/mi-cuenta/pedidos/[number]` — "Solicitar retracto"
