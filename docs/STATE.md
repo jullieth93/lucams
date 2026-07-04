@@ -63,6 +63,26 @@ de fases intermedias en el historial git + bitácora abajo.
   en Ventas. Tests: +4 ciclo admin → **18 tests de retracto** (pure + integración).
 - **Correr integración fiable/rápido:** `DATABASE_URL="$DIRECT_URL" vitest` (evita el pooler).
 
+**Revisión adversarial de Bloque F (`c8cc069`).** Workflow multi-agente (5 dimensiones: matemática
+cupones · concurrencia · reembolso · elegibilidad legal · seguridad IDOR) con verificación
+adversarial por hallazgo → **8 bugs reales confirmados, 0 falsos positivos.** Arreglados 7:
+- **[HIGH legal]** ventana de retracto en UTC del servidor, no COT → recortaba ~5h. Ahora en hora
+  Colombia (UTC-5 fijo).
+- **[HIGH seguridad]** `refundOrderAction` + acciones `/admin/retractos` sin gate de rol (un
+  FULFILLMENT podía reembolsar). Server Actions son POST invocables directo → gate SUPERADMIN en
+  cada acción.
+- **[MED integridad]** `usedCount` de cupón sin incremento atómico → 2 pagos concurrentes lo
+  inflaban sobre `maxUses`. Ahora `updateMany` gateado (`usedCount < maxUses` vía field ref) gatea
+  incremento + `CouponUsage`.
+- **[MED]** `transitionOrderAction` permitía →REFUNDED saltando auditoría/email → bloqueado.
+- **[MED seguridad]** IDOR: `createRetractRequest`/`getRetractableItems` saltaban el chequeo de
+  dueño con `customerId` null (pedidos invitado) → ahora estricto.
+- **[LOW]** TOCTOU retracto → captura P2002. **[LOW aceptado]** oráculo de enumeración de cupones
+  (promo no es secreto + rate-limit + UX) — documentado.
+Tests: +COT-aware, +IDOR, +cupón-agotado. Todo verde (retract 19, saga 30). **Lección:** la
+revisión adversarial en un build largo con dinero/legal caza bugs que el typecheck+tests felices
+no ven.
+
 ## Sesión — 2026-07-03 (Bloque F: cupones + reembolso admin + retracto backend + axe WCAG AA)
 
 **Bloque F3 — retracto backend (`7f9ce0e`, parte 1 de 2).** Fundamento del derecho de retracto
