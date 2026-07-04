@@ -19,6 +19,8 @@ import { ChevronLeft, MapPin, Package, Star, Truck } from "lucide-react";
 import { prisma } from "@/lib/db";
 import { getCurrentCustomer } from "@/lib/auth";
 import { formatCOP } from "@/lib/format";
+import { getRetractableItems } from "@/features/retract/service";
+import { RetractControl } from "./retract-control";
 
 export const metadata: Metadata = {
   title: "Detalle de mi pedido",
@@ -102,6 +104,13 @@ export default async function CustomerPedidoDetallePage({
   });
   const progress = timelineProgress(order.status);
   const isCancelled = order.status === "CANCELLED" || order.status === "REFUNDED";
+
+  // F3 — elegibilidad de retracto por item (solo si el pedido fue entregado).
+  const retractable =
+    order.status === "DELIVERED"
+      ? await getRetractableItems(order.id, { customerId: session.customer.id })
+      : [];
+  const retractByItem = new Map(retractable.map((r) => [r.orderItemId, r]));
 
   return (
     <div className="bg-brand-cream flex min-h-screen flex-col">
@@ -198,6 +207,9 @@ export default async function CustomerPedidoDetallePage({
                       <div className="text-brand-muted text-xs">
                         {it.variant.name} · {it.qty} × {formatCOP(it.unitPrice)}
                       </div>
+                      {retractByItem.has(it.id) && (
+                        <RetractControl item={retractByItem.get(it.id)!} />
+                      )}
                     </div>
                     <div className="text-brand-purple-dark flex-shrink-0 text-right text-sm font-semibold tabular-nums">
                       {formatCOP(it.unitPrice * it.qty)}

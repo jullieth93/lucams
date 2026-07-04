@@ -3,9 +3,25 @@
  * contra órdenes reales. Aislamiento por RUN + cleanup SCOPED.
  */
 
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
+
+// Los emails de retracto son best-effort; los mockeamos para no pegar a Resend.
+vi.mock("./emails", () => ({
+  sendRetractApproved: async () => {},
+  sendRetractRefunded: async () => {},
+}));
+
 import { prisma } from "@/lib/db";
-import { getRetractableItems, createRetractRequest, RetractError } from "./service";
+import {
+  getRetractableItems,
+  createRetractRequest,
+  approveRetract,
+  markRetractReceived,
+  refundRetract,
+  rejectRetract,
+  RetractError,
+  RetractTransitionError,
+} from "./service";
 
 const hasDb = !!process.env.DATABASE_URL;
 const RUN = `rtr${Date.now()}${Math.floor(Math.random() * 1e6)}`.toLowerCase();
@@ -159,5 +175,55 @@ describe.skipIf(!hasDb)("retract/service — integración DB", { timeout: 30_000
     await expect(
       createRetractRequest(order.items[0]!.id, { customerId: null }),
     ).rejects.toMatchObject({ reason: "PERSONALIZED" });
+  });
+
+  it("ciclo admin: PENDING → APPROVED → RECEIVED → REFUNDED con auditoría", async () => {
+    const order = await makeDeliveredOrder({
+      tag: "life",
+      deliveredAt: new Date(),
+      items: [{ personalized: false }],
+    });
+    const { id } = await createRetractRequest(order.items[0]!.id, { customerId: null });
+
+    await approveRetract(id, "admin-1");
+    let rr = await prisma.retractRequest.findUnique({ where: { id } });
+    expect(rr?.status).toBe("APPROVED");
+    expect(rr?.approvedAt).not.toBeNull();
+    expect(rr?.processedBy).toBe("admin-1");
+
+    await markRetractReceived(id, "admin-1");
+    rr = await prisma.retractRequest.findUnique({ where: { id } });
+    expect(rr?.status).toBe("RECEIVED");
+    expect(rr?.receivedAt).not.toBeNull();
+
+    await refundRetract(id, "admin-2", "BANK_TRANSFER");
+    rr = await prisma.retractRequest.findUnique({ where: { id } });
+    expect(rr?.status).toBe("REFUNDED");
+    expect(rr?.refundedAt).not.toBeNull();
+    expect(rr?.refundMethod).toBe("BANK_TRANSFER");
+    expect(rr?.processedBy).toBe("admin-2");
+  });
+
+  it("transición ilegal (PENDING → REFUNDED directo) lanza RetractTransitionError", async () => {
+    const order = await makeDeliveredOrder({
+      tag: "illegal",
+      deliveredAt: new Date(),
+      items: [{ personalized: false }],
+    });
+    const { id } = await createRetractRequest(order.items[0]!.id, { customerId: null });
+    await expect(refundRetract(id, "admin-1", "WOMPI_VOID")).rejects.toThrow(RetractTransitionError);
+  });
+
+  it("rechazo: PENDING → REJECTED con motivo", async () => {
+    const order = await makeDeliveredOrder({
+      tag: "reject",
+      deliveredAt: new Date(),
+      items: [{ personalized: false }],
+    });
+    const { id } = await createRetractRequest(order.items[0]!.id, { customerId: null });
+    await rejectRetract(id, "admin-1", "Fuera de política");
+    const rr = await prisma.retractRequest.findUnique({ where: { id } });
+    expect(rr?.status).toBe("REJECTED");
+    expect(rr?.rejectionNote).toBe("Fuera de política");
   });
 });

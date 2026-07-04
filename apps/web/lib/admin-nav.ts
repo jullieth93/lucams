@@ -48,6 +48,7 @@ import {
   UserPlus,
   Plug,
   Mail,
+  Undo2,
 } from "lucide-react";
 
 /** Badge visual + filtro de estado. */
@@ -93,6 +94,13 @@ export const ADMIN_NAV: NavGroup[] = [
         icon: Box,
         description:
           "Tablero de pedidos con filtros por estado, detalle de cada orden, reintento de guía Aveonline y cambio de estado manual (SHIPPED/DELIVERED/CANCELLED).",
+      },
+      {
+        label: "Retractos",
+        href: "/admin/retractos",
+        icon: Undo2,
+        description:
+          "Solicitudes de retracto (Ley 1480/2439): aprobar, marcar devolución recibida y registrar el reembolso (el dinero se emite manualmente en Wompi/transferencia).",
       },
       {
         label: "Clientes",

@@ -16,6 +16,9 @@
 
 import "server-only";
 import { prisma } from "@/lib/db";
+import { logger } from "@/lib/logger";
+import type { RetractStatus } from "@lucams/db";
+import { sendRetractApproved, sendRetractRefunded } from "./emails";
 
 export const RETRACT_WINDOW_BUSINESS_DAYS = 5;
 
@@ -169,4 +172,148 @@ export async function createRetractRequest(
     select: { id: true },
   });
   return { id: created.id, refundAmount };
+}
+
+// ───────────────────────── Gestión admin ─────────────────────────
+
+/** Transiciones legales del ciclo de vida de una solicitud de retracto. */
+export const RETRACT_TRANSITIONS: Record<RetractStatus, readonly RetractStatus[]> = {
+  PENDING: ["APPROVED", "REJECTED"],
+  APPROVED: ["RECEIVED", "REJECTED"],
+  RECEIVED: ["REFUNDED"],
+  REFUNDED: [],
+  REJECTED: [],
+};
+
+export class RetractTransitionError extends Error {
+  constructor(
+    public readonly from: RetractStatus,
+    public readonly to: RetractStatus,
+  ) {
+    super(`Transición de retracto ilegal: ${from} → ${to}`);
+    this.name = "RetractTransitionError";
+  }
+}
+
+async function assertRetract(id: string): Promise<{ id: string; status: RetractStatus }> {
+  const rr = await prisma.retractRequest.findUnique({ where: { id }, select: { id: true, status: true } });
+  if (!rr) throw new RetractError("NOT_FOUND");
+  return rr;
+}
+
+/** PENDING → APPROVED. Envía instrucciones de devolución al cliente. */
+export async function approveRetract(id: string, adminId: string): Promise<void> {
+  const rr = await assertRetract(id);
+  if (!RETRACT_TRANSITIONS[rr.status].includes("APPROVED")) {
+    throw new RetractTransitionError(rr.status, "APPROVED");
+  }
+  await prisma.retractRequest.update({
+    where: { id },
+    data: { status: "APPROVED", approvedAt: new Date(), processedBy: adminId },
+  });
+  await sendRetractApproved(id);
+  logger.info({ event: "retract.approved", id, adminId });
+}
+
+/** PENDING/APPROVED → REJECTED, con motivo obligatorio. */
+export async function rejectRetract(id: string, adminId: string, note: string): Promise<void> {
+  const rr = await assertRetract(id);
+  if (!RETRACT_TRANSITIONS[rr.status].includes("REJECTED")) {
+    throw new RetractTransitionError(rr.status, "REJECTED");
+  }
+  await prisma.retractRequest.update({
+    where: { id },
+    data: { status: "REJECTED", rejectionNote: note.trim() || "Sin motivo especificado", processedBy: adminId },
+  });
+  logger.info({ event: "retract.rejected", id, adminId });
+}
+
+/** APPROVED → RECEIVED (el cliente devolvió el producto). */
+export async function markRetractReceived(id: string, adminId: string): Promise<void> {
+  const rr = await assertRetract(id);
+  if (!RETRACT_TRANSITIONS[rr.status].includes("RECEIVED")) {
+    throw new RetractTransitionError(rr.status, "RECEIVED");
+  }
+  await prisma.retractRequest.update({
+    where: { id },
+    data: { status: "RECEIVED", receivedAt: new Date(), processedBy: adminId },
+  });
+  logger.info({ event: "retract.received", id, adminId });
+}
+
+/**
+ * RECEIVED → REFUNDED. El dinero se emite MANUALMENTE en Wompi/transferencia; esto
+ * registra el método + fecha y avisa al cliente. NO restaura stock automáticamente
+ * (un producto devuelto puede no ser revendible; el admin ajusta inventario a mano)
+ * ni cambia el estado de la orden (fue entregada; el retracto es un evento aparte).
+ */
+export async function refundRetract(
+  id: string,
+  adminId: string,
+  method: "WOMPI_VOID" | "BANK_TRANSFER",
+): Promise<void> {
+  const rr = await assertRetract(id);
+  if (!RETRACT_TRANSITIONS[rr.status].includes("REFUNDED")) {
+    throw new RetractTransitionError(rr.status, "REFUNDED");
+  }
+  await prisma.retractRequest.update({
+    where: { id },
+    data: { status: "REFUNDED", refundedAt: new Date(), refundMethod: method, processedBy: adminId },
+  });
+  await sendRetractRefunded(id);
+  logger.info({ event: "retract.refunded", id, adminId, method });
+}
+
+export type AdminRetractRow = {
+  id: string;
+  status: RetractStatus;
+  reason: string | null;
+  rejectionNote: string | null;
+  refundAmount: number;
+  refundMethod: string | null;
+  requestedAt: Date;
+  orderNumber: string;
+  productName: string;
+  qty: number;
+  customerEmail: string;
+};
+
+/** Lista solicitudes para el panel admin, opcionalmente filtradas por estado. */
+export async function listRetractRequests(
+  opts: { status?: RetractStatus } = {},
+): Promise<AdminRetractRow[]> {
+  const rows = await prisma.retractRequest.findMany({
+    where: opts.status ? { status: opts.status } : {},
+    orderBy: { requestedAt: "desc" },
+    take: 200,
+    select: {
+      id: true,
+      status: true,
+      reason: true,
+      rejectionNote: true,
+      refundAmount: true,
+      refundMethod: true,
+      requestedAt: true,
+      orderItem: {
+        select: {
+          qty: true,
+          variant: { select: { product: { select: { name: true } } } },
+          order: { select: { number: true, email: true } },
+        },
+      },
+    },
+  });
+  return rows.map((r) => ({
+    id: r.id,
+    status: r.status,
+    reason: r.reason,
+    rejectionNote: r.rejectionNote,
+    refundAmount: r.refundAmount,
+    refundMethod: r.refundMethod,
+    requestedAt: r.requestedAt,
+    orderNumber: r.orderItem.order.number,
+    productName: r.orderItem.variant.product.name,
+    qty: r.orderItem.qty,
+    customerEmail: r.orderItem.order.email,
+  }));
 }
