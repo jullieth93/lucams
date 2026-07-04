@@ -99,6 +99,30 @@ curl -f http://localhost:3000/api/health/integrations
 curl -f http://localhost:3000/api/health && echo OK
 ```
 
+### Alertas por email (Bloque D) — agendamiento pg_cron
+
+Las alertas (errores 5xx en pico, órdenes a reconciliar, webhooks atascados) las
+evalúa `GET /api/cron/alerts`, protegido por `CRON_SECRET`. La lógica y el dedup
+(30 min anti-spam) viven en TypeScript (`features/observability/alerts.ts`); el
+disparador es **pg_cron en Supabase** (no Vercel Cron, mandato #11).
+
+**Env var nueva:** `CRON_SECRET` (generar con `openssl rand -hex 32`) — en `.env.local`
+y en Vercel. Sin ella el endpoint responde 401 (fail-closed).
+
+**ACCIÓN HUMANA REQUERIDA (Lucy, al configurar prod):** en el SQL editor de Supabase,
+habilitar `pg_cron` + `pg_net` y agendar (reemplaza `<CRON_SECRET>` por el valor real):
+
+```sql
+select cron.schedule(
+  'lucams-alerts',
+  '*/5 * * * *',                      -- cada 5 minutos
+  $$ select net.http_get('https://lucamsshop.co/api/cron/alerts?secret=<CRON_SECRET>') $$
+);
+```
+
+El destinatario del email se toma de la setting `ALERT_EMAIL` (default `hola@lucamsshop.co`).
+El resumen diario (8am) queda pendiente como mejora futura.
+
 ### Symlink de Supabase local con datos de prueba
 
 ```bash

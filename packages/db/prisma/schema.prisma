@@ -930,6 +930,16 @@ model ErrorLog {
   @@index([digest, createdAt])
 }
 
+// Bloque D — dedup de alertas por email. Guarda cuándo se envió por última vez
+// cada tipo de alerta (`key`) para no re-enviar la misma dentro de la ventana
+// anti-spam (30 min). Ver features/observability/alerts.ts.
+model AlertState {
+  key        String   @id
+  lastSentAt DateTime @default(now())
+  lastDetail String?
+  updatedAt  DateTime @updatedAt
+}
+
 // Eventos custom de funnel (add-to-cart, search, newsletter-signup,
 // product-view) — alternativa propia a Google Analytics. Solo se
 // escriben si el customer dió consentimiento ANALYTICS o MARKETING
