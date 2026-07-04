@@ -48,7 +48,24 @@ de fases intermedias en el historial git + bitácora abajo.
 
 ---
 
-## Última sesión — 2026-07-03 (Bloque D observabilidad + Bloque F completo + axe WCAG AA)
+## Última sesión — 2026-07-03 (deploy + git flow + regresión visual + Bloque D + F + axe)
+
+**Deploy + flujo Git normalizado (`8be9f97`).** Se descubrió que **116 commits vivían solo en la VM**
+(sin push) — el sitio en Vercel corría código viejo (por eso `/api/cron/alerts` daba 404). Se pusheó
+`develop` a GitHub, se creó la rama **`production`** (release/live; `main` no existe — decisión de Lucy),
+y Vercel redesplegó → **todo el trabajo quedó EN VIVO** (endpoint de alertas confirma `{"ok":true,...}`;
+la cron pg_cron ya recibe 200). Estrategia de ramas en OPERATIONS.md. **De aquí en más: push a develop
+al cerrar cada tanda** (memoria [[feedback_push_develop_regularly]]). ACCIÓN HUMANA opcional: cambiar
+Production Branch de Vercel a `production`.
+
+**Regresión visual (`b872b5d`).** Playwright `toHaveScreenshot` nativo (sin deps) sobre 4 páginas
+ESTÁTICAS (404, ayuda, legal/privacidad, legal/terminos) → baselines deterministas linux (verificado:
+re-run pasa en 17s). Overlays dinámicos enmascarados, animaciones off. **Clave:** `waitUntil: "load"`
+(NO `networkidle` — el reporter de Web Vitals mantiene conexiones → networkidle nunca resuelve, goto
+expira; con networkidle tardó 16min y falló 2/4; con load: 24s genera, 17s verifica). Regenerar tras
+cambio visual intencional: `playwright test visual --update-snapshots`.
+
+## Sesión — 2026-07-03 (Bloque D observabilidad + Bloque F completo + axe WCAG AA)
 
 **Bloque D — observabilidad sin Sentry (`35fe80a`, `118cd78`). Backend listo.**
 - **Captura de errores en DB (`ErrorLog`):** `instrumentation.ts` `onRequestError` (hook oficial de
