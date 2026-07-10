@@ -48,41 +48,33 @@ de fases intermedias en el historial git + bitácora abajo.
 
 ---
 
-## ⏳ EN CURSO — 2026-07-04 (Fase 3 Estudio: validación del enfoque de plantillas)
+## ⏳ EN CURSO — 2026-07-04 (Fase 3 Estudio: enfoque de plantillas VALIDADO, produciendo)
 
-> **Checkpoint de continuidad** (si la sesión se corta, retomar desde aquí).
+> **Checkpoint de continuidad.** Investigación TERMINADA; ahora en fase de producción.
 
-**Tarea activa:** Lucy autorizó Fase 3 (Estudio de Personalización) con premisa calidad. Pidió
-PRIMERO validar con investigación en Internet si el enfoque de plantillas (lienzos prediseñados
-para personalizar) es el correcto — es el core del negocio.
+**Investigación (workflow `deep-research` `wf_9c6d6ec3-28e`) — COMPLETADA.** 11 claims verificados
+adversarialmente (output: `/tmp/claude-1000/.../tasks/wtdq9m96v.output` — `/tmp` no sobrevive reboot).
+**Veredicto: plantilla-first es CORRECTO** (Customer's Canvas recomienda template > lienzo blanco;
+Shutterfly imanes es template/product-first, ~291 diseños por ocasión; academia "customization via
+starting solutions" gana a atributo-por-atributo). PERO 2 matices fuertes: (1) **móvil se simplifica
+radical** — la app de Snapfish es SOLO-FOTO (quitaron el editor en móvil); para imanes foto el patrón
+simple "sube tu foto → listo" convierte (Mixtiles/Snapfish-imanes). (2) **NO apuntar a 30 plantillas**:
+choice-overload es real y condicional — calidad > cantidad; leaders categorizan por OCASIÓN.
 
-**1) Investigación profunda corriendo (workflow `deep-research`):**
-- Run ID: `wf_9c6d6ec3-28e` · Task ID: `wtdq9m96v`
-- Resultado (JSON con reporte citado) aterriza en:
-  `/tmp/claude-1000/-home-ansible-workspaces-lucams-shop/ad657217-ed3c-44c8-9922-0227e88b3b22/tasks/wtdq9m96v.output`
-- Transcript/journal: `~/.claude/projects/-home-ansible-workspaces-lucams-shop/ad657217-ed3c-44c8-9922-0227e88b3b22/subagents/workflows/wf_9c6d6ec3-28e/journal.jsonl`
-- ⚠️ `/tmp` NO sobrevive reboot de la VM; si se perdió, relanzar el workflow (la pregunta de
-  investigación completa está en el script:
-  `~/.claude/projects/.../workflows/scripts/deep-research-wf_9c6d6ec3-28e.js`).
-- Pregunta: ¿plantilla-first vs lienzo libre vs auto-fill (Mixtiles)? ¿cuántas plantillas y qué
-  ocasiones al lanzar (mercado CO: día madre, amor y amistad, Navidad, cumpleaños)? ¿UX móvil
-  (tráfico Instagram)? ¿el editor canvas es diferenciador real o sobre-ingeniería?
+**Diagnóstico del código (hecho):** 51 plantillas en DB (8 activas: 7 "libre-*" lienzo blanco por kind
++ 1 premium; 42 inactivas con canvasData real pero **previews Unsplash placeholder** que Lucy rechazó,
+ADR-037). Cuello de botella = **producción de contenido con la barra de calidad de Lucy, no código**.
+NO hay admin CRUD de plantillas.
 
-**2) Diagnóstico del código YA hecho (no repetir):**
-- En DB hay **51 plantillas**, no 2: **8 activas** (fallbacks "libre-*" lienzo en blanco por kind +
-  1 premium `photo-pack-polaroid-instagram` product-specific) y **42 inactivas**.
-- Las 42 inactivas: seed original de 30+ con `canvasData` real (37 con capas, 5 stubs) pero
-  **previews placeholder de Unsplash** (no renders del canvas). **Lucy las rechazó** (ADR-037,
-  2026-05-14): solo `ig_post.svg` cumplió su estándar. Su pipeline manual ("Lucams SVG Designer"
-  Claude Project, una a una) se estancó en 1.
-- **Cuello de botella = producción de contenido con barra de calidad de Lucy, no código.**
-- NO existe admin CRUD de plantillas (email-templates no cuenta).
-- `listTemplatesForKind` filtra por aspect ratio del producto físico.
+**PLAN (en ejecución):**
+1. **Pipeline de previews REALES** — renderizar el thumbnail desde el `canvasData` (Konva headless /
+   server), no Unsplash. Es lo que faltaba para que Lucy pueda aprobar.
+2. **Set curado de lanzamiento por OCASIÓN** (~12-16, no 30): día de la madre, amor y amistad, Navidad,
+   cumpleaños, bebé, mascotas — cada una con preview real + paleta kawaii → Lucy aprueba/rechaza.
+3. **Móvil simplificado** en el Estudio: entrada "sube tu foto" + plantillas como tabs de ocasión.
+4. **Admin de plantillas** (gestión no-técnica).
 
-**3) Al retomar:** (a) leer el resultado del research en el output file (o relanzar), (b) sintetizar
-recomendación (cuántas plantillas, qué ocasiones, template-first sí/no, UX móvil), (c) plan de
-producción: Claude produce canvasData + previews REALES (render del canvas, no Unsplash) con
-paleta kawaii → Lucy solo aprueba/rechaza; posible admin de plantillas para gestión no-técnica.
+**Al retomar:** seguir por el paso del plan que quede pendiente (ver últimos commits `feat(studio)`).
 
 ## Última sesión — 2026-07-03 (deploy + git flow + regresión visual + Bloque D + F + axe)
 
