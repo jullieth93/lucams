@@ -25,32 +25,37 @@
  */
 
 import "server-only";
+import { cache } from "react";
 import { prisma } from "@/lib/db";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import type { AdminUser, Customer } from "@lucams/db";
 
-export async function getCurrentUser() {
+// `cache()` dedupe por-request: un mismo render (layout + page + acciones)
+// comparte una sola llamada a getUser()/query en vez de repetirla.
+export const getCurrentUser = cache(async () => {
   const supabase = await createSupabaseServerClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   return user;
-}
+});
 
-export async function getCurrentCustomer(): Promise<{
-  user: NonNullable<Awaited<ReturnType<typeof getCurrentUser>>>;
-  customer: Customer;
-} | null> {
-  const user = await getCurrentUser();
-  if (!user) return null;
+export const getCurrentCustomer = cache(
+  async (): Promise<{
+    user: NonNullable<Awaited<ReturnType<typeof getCurrentUser>>>;
+    customer: Customer;
+  } | null> => {
+    const user = await getCurrentUser();
+    if (!user) return null;
 
-  const customer = await prisma.customer.findFirst({
-    where: { supabaseUserId: user.id, deletedAt: null },
-  });
-  if (!customer) return null;
+    const customer = await prisma.customer.findFirst({
+      where: { supabaseUserId: user.id, deletedAt: null },
+    });
+    if (!customer) return null;
 
-  return { user, customer };
-}
+    return { user, customer };
+  },
+);
 
 /**
  * Devuelve el AdminUser asociado al user autenticado si existe Y está

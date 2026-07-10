@@ -1,30 +1,52 @@
 /*
- * Página de cuenta del cliente — /mi-cuenta.
+ * Resumen del área de cuenta — /mi-cuenta.
  *
- * Acceso restringido: redirige a /login si no hay sesión o si el user no
- * tiene fila en Customer (excluye admins puros sin perfil cliente).
- *
- * Versión inicial: solo muestra datos del perfil + logout. En siguientes
- * iteraciones se añaden secciones:
- *   - Mis órdenes (tabla con histórico)
- *   - Mis direcciones (CRUD)
- *   - Mis puntos Lucams (loyalty)
- *   - Cambiar contraseña
- *   - Borrar cuenta (Ley 1581 art. 8 — derecho de supresión)
+ * Hub: saludo + accesos a cada sección (Pedidos, Direcciones, Reseñas,
+ * Seguridad) + resumen del perfil con enlace a editar. El header/nav/logout
+ * los aporta el layout compartido. Guard redundante con el layout (barato por
+ * el cache() de getCurrentCustomer) para tener el customer sin prop-drilling.
  */
 
 import type { Metadata } from "next";
+import Link from "next/link";
 import { redirect } from "next/navigation";
-import { logoutAction } from "@/app/auth/logout/actions";
-import { BrandMark } from "@/components/brand-mark";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Package, MapPin, Star, ShieldCheck, Pencil, ChevronRight, Gift } from "lucide-react";
+import { prisma } from "@/lib/db";
 import { getCurrentCustomer } from "@/lib/auth";
 
 export const metadata: Metadata = {
   title: "Mi cuenta · Lucams_shop",
   description: "Gestiona tu cuenta Lucams_shop.",
 };
+
+export const dynamic = "force-dynamic";
+
+const SECTIONS = [
+  {
+    href: "/mi-cuenta/pedidos",
+    icon: Package,
+    title: "Mis pedidos",
+    desc: "Historial de compras y seguimiento de tus envíos.",
+  },
+  {
+    href: "/mi-cuenta/direcciones",
+    icon: MapPin,
+    title: "Mis direcciones",
+    desc: "Guárdalas para un checkout más rápido.",
+  },
+  {
+    href: "/mi-cuenta/resenas",
+    icon: Star,
+    title: "Mis reseñas",
+    desc: "Los productos que has calificado.",
+  },
+  {
+    href: "/mi-cuenta/seguridad",
+    icon: ShieldCheck,
+    title: "Seguridad",
+    desc: "Cambia tu contraseña o elimina tu cuenta.",
+  },
+] as const;
 
 export default async function MiCuentaPage() {
   const session = await getCurrentCustomer();
@@ -33,71 +55,88 @@ export default async function MiCuentaPage() {
   const { customer } = session;
   const displayName = customer.firstName ?? customer.email.split("@")[0] ?? "Lucamer";
 
+  // Conteo de pedidos para el resumen (barato, un count filtrado por cliente).
+  const ordersCount = await prisma.order.count({
+    where: { customerId: customer.id, deletedAt: null },
+  });
+
   return (
-    <div className="bg-brand-cream min-h-screen">
-      <header className="border-brand-purple/10 border-b bg-white px-6 py-6 sm:px-10">
-        <div className="mx-auto flex max-w-4xl items-center justify-between">
-          <BrandMark size="sm" animated />
-          <form action={logoutAction}>
-            <Button
-              type="submit"
-              variant="ghost"
-              className="text-brand-purple-dark hover:text-brand-purple"
+    <div className="mx-auto max-w-4xl space-y-8">
+      <div>
+        <h1 className="font-display text-brand-purple-dark text-3xl">Hola, {displayName} 👋</h1>
+        <p className="text-brand-muted mt-1">Bienvenida a tu espacio Lucams.</p>
+      </div>
+
+      {/* Accesos a secciones */}
+      <div className="grid gap-3 sm:grid-cols-2">
+        {SECTIONS.map((s) => {
+          const Icon = s.icon;
+          return (
+            <Link
+              key={s.href}
+              href={s.href}
+              className="group border-brand-purple/15 hover:border-brand-purple/40 flex items-start gap-3 rounded-2xl border bg-white p-4 shadow-sm transition-colors"
             >
-              Cerrar sesión
-            </Button>
-          </form>
-        </div>
-      </header>
+              <span className="bg-brand-purple/10 text-brand-purple flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full">
+                <Icon className="h-5 w-5" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="text-brand-purple-dark flex items-center gap-1 font-semibold">
+                  {s.title}
+                  {s.href === "/mi-cuenta/pedidos" && ordersCount > 0 && (
+                    <span className="bg-brand-purple/15 text-brand-purple-dark ml-1 rounded-full px-1.5 py-0.5 text-[10px] font-bold">
+                      {ordersCount}
+                    </span>
+                  )}
+                </span>
+                <span className="text-brand-muted mt-0.5 block text-sm">{s.desc}</span>
+              </span>
+              <ChevronRight className="text-brand-muted group-hover:text-brand-purple mt-1 h-4 w-4 flex-shrink-0" />
+            </Link>
+          );
+        })}
+      </div>
 
-      <main id="contenido" tabIndex={-1} className="px-4 py-10 sm:py-14">
-        <div className="mx-auto max-w-4xl space-y-6">
+      {/* Perfil */}
+      <section className="border-brand-purple/15 rounded-2xl border bg-white p-5 shadow-sm sm:p-6">
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="font-display text-brand-purple-dark text-xl">Tu perfil</h2>
+          <Link
+            href="/mi-cuenta/perfil"
+            className="text-brand-pink-ink hover:text-brand-coral-ink inline-flex items-center gap-1 text-sm font-semibold"
+          >
+            <Pencil className="h-3.5 w-3.5" />
+            Editar
+          </Link>
+        </div>
+        <dl className="space-y-1">
+          <ProfileRow label="Nombre">
+            {[customer.firstName, customer.lastName].filter(Boolean).join(" ") || "—"}
+          </ProfileRow>
+          <ProfileRow label="Correo">{customer.email}</ProfileRow>
+          <ProfileRow label="Teléfono">{customer.phone ?? "—"}</ProfileRow>
+        </dl>
+      </section>
+
+      {/* Lucams: puntos + referido */}
+      <section className="border-brand-purple/15 from-brand-pink/5 to-brand-purple/5 rounded-2xl border bg-gradient-to-br p-5 shadow-sm sm:p-6">
+        <div className="flex items-center gap-2">
+          <Gift className="text-brand-pink-ink h-5 w-5" />
+          <h2 className="font-display text-brand-purple-dark text-xl">Lucams</h2>
+        </div>
+        <div className="mt-3 flex flex-wrap items-center gap-6">
           <div>
-            <h1 className="font-display text-brand-purple-dark text-3xl">Hola, {displayName} 👋</h1>
-            <p className="text-muted-foreground mt-1">Bienvenida a tu espacio Lucams.</p>
+            <p className="text-brand-muted text-xs">Tus puntos</p>
+            <p className="text-brand-purple text-2xl font-bold">{customer.loyaltyPoints}</p>
           </div>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="font-display text-brand-purple-dark text-xl">
-                Tu perfil
-              </CardTitle>
-              <CardDescription>Esta es la información que tenemos de ti.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <ProfileRow label="Nombre">
-                {[customer.firstName, customer.lastName].filter(Boolean).join(" ") || "—"}
-              </ProfileRow>
-              <ProfileRow label="Correo">{customer.email}</ProfileRow>
-              <ProfileRow label="Teléfono">{customer.phone ?? "—"}</ProfileRow>
-              <ProfileRow label="Puntos Lucams">
-                <span className="text-brand-purple font-semibold">{customer.loyaltyPoints}</span>
-              </ProfileRow>
-              <ProfileRow label="Código de referido">
-                <code className="bg-brand-cream text-brand-purple-dark rounded px-2 py-1 font-mono text-sm">
-                  {customer.referralCode}
-                </code>
-              </ProfileRow>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="font-display text-brand-purple-dark text-xl">
-                Pronto aquí
-              </CardTitle>
-              <CardDescription>Estamos preparando estas secciones para ti.</CardDescription>
-            </CardHeader>
-            <CardContent className="text-muted-foreground space-y-2 text-sm">
-              <p>· Mis órdenes — histórico de compras + tracking.</p>
-              <p>· Mis direcciones — guardadas para checkout rápido.</p>
-              <p>· Mis reseñas — productos que has calificado.</p>
-              <p>· Cambiar contraseña.</p>
-              <p>· Borrar mi cuenta (Ley 1581).</p>
-            </CardContent>
-          </Card>
+          <div>
+            <p className="text-brand-muted text-xs">Tu código de referido</p>
+            <code className="bg-brand-cream text-brand-purple-dark mt-0.5 inline-block rounded px-2 py-1 font-mono text-sm font-semibold">
+              {customer.referralCode}
+            </code>
+          </div>
         </div>
-      </main>
+      </section>
     </div>
   );
 }
@@ -105,7 +144,7 @@ export default async function MiCuentaPage() {
 function ProfileRow({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div className="border-brand-purple/10 flex flex-col gap-1 border-b py-2 last:border-0 sm:flex-row sm:items-center sm:gap-4">
-      <dt className="text-muted-foreground text-sm sm:w-40">{label}</dt>
+      <dt className="text-brand-muted text-sm sm:w-32">{label}</dt>
       <dd className="text-foreground text-base">{children}</dd>
     </div>
   );

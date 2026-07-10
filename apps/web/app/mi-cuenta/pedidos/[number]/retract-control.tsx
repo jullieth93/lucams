@@ -32,7 +32,7 @@ export function RetractControl({ item }: { item: RetractItem }) {
 
   if (item.existingStatus) {
     return (
-      <p className="mt-1.5 inline-block rounded-md bg-brand-purple/5 px-2 py-1 text-[11px] font-medium text-brand-purple-dark">
+      <p className="bg-brand-purple/5 text-brand-purple-dark mt-1.5 inline-block rounded-md px-2 py-1 text-[11px] font-medium">
         {STATUS_LABEL[item.existingStatus] ?? item.existingStatus}
       </p>
     );
@@ -61,7 +61,10 @@ export function RetractControl({ item }: { item: RetractItem }) {
       </summary>
       <form action={action} className="mt-2 space-y-2">
         <input type="hidden" name="orderItemId" value={item.orderItemId} />
-        <label htmlFor={`retract-reason-${item.orderItemId}`} className="text-brand-muted block text-[11px]">
+        <label
+          htmlFor={`retract-reason-${item.orderItemId}`}
+          className="text-brand-muted block text-[11px]"
+        >
           ¿Por qué lo devuelves? (opcional)
         </label>
         <textarea

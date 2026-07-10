@@ -32,7 +32,10 @@ export async function requestRetractAction(
   try {
     await createRetractRequest(orderItemId, { customerId: session.customer.id, reason });
     revalidatePath("/mi-cuenta/pedidos/[number]", "page");
-    return { success: "¡Listo! Recibimos tu solicitud de retracto. Te escribiremos para coordinar la devolución." };
+    return {
+      success:
+        "¡Listo! Recibimos tu solicitud de retracto. Te escribiremos para coordinar la devolución.",
+    };
   } catch (err) {
     if (err instanceof RetractError) {
       return { error: REASON_MESSAGES[err.reason] ?? "No pudimos procesar tu solicitud." };

@@ -1662,3 +1662,36 @@ mejorar la UX bajo degradación (hoy el usuario podría esperar ~16s) es una mej
 Compute está habilitado** (default en proyectos nuevos) — así el default de 300s aplica y los `maxDuration=60/30`
 son honrados sin sorpresas. (2) Verificar que el plan al lanzar (Pro) permite `maxDuration ≥ 60` (Pro: hasta 800s).
 En Hobby sin fluid, un `maxDuration > 10` no se respeta → NO lanzar en esa combinación con pagos activos. [[ADR-045]] [[ADR-048]].
+
+## ADR-050 — Área de cuenta del cliente funcional (/mi-cuenta) (2026-07-10)
+
+**Contexto.** Lucy validó `/mi-cuenta` y la calificó "básica, poco funcional e incompleta": era un perfil de
+solo-lectura + una lista estática "Pronto aquí". El mapeo (workflow 6 subsistemas) reveló que **"Mis pedidos" YA
+existía y funcionaba** (`/mi-cuenta/pedidos` + detalle con tracking/retracto) pero **la landing no lo conectaba**;
+y que `Address`/`Review` tenían modelo pero sin UI, y no había cambio de contraseña ni eliminación de cuenta.
+
+**Decisión.** Construir el área completa reusando lo existente:
+- **Shell** (`app/mi-cuenta/layout.tsx` + `account-nav.tsx`): guard único (`getCurrentCustomer`, ahora memoizado
+  con `cache()` por-request), header+logout, tabs storefront. Overview (`page.tsx`) redISeñado como hub con
+  accesos a cada sección + perfil + puntos/referido. Se eliminó el "Pronto aquí".
+- **Perfil** editable (nombre/teléfono). **Direcciones** CRUD sobre el modelo `Address` plano, con invariante
+  transaccional "una sola default por cliente" (6 tests). **Reseñas**: `listReviewsByCustomer` con estado
+  Publicada/En revisión + borrar la propia. **Seguridad**: cambiar contraseña in-session con **re-autenticación**
+  (verifica la actual con signInWithPassword antes de updateUser) + HIBP + rate-limit + revocar otras sesiones.
+- **Eliminar cuenta (Ley 1581)**: enfoque **anonimizar + soft-delete** (NO borrado físico) para conciliar
+  supresión con **retención fiscal DIAN** — se conservan órdenes/facturas y consentimientos; se scrubbea PII del
+  Customer (email→placeholder, nombre/tel/documento→null, `supabaseUserId`→placeholder porque es NOT NULL @unique),
+  soft-delete de direcciones, reseñas desvinculadas + nombre anonimizado, y `admin.deleteUser` del auth. Confirmación
+  fuerte (escribir "ELIMINAR" + re-auth) + rate-limit. Política documentada en COMPLIANCE.md (antes no fijada).
+
+**Aislamiento.** No hay RLS en DB para Customer/Address/Review (Prisma usa rol privilegiado); TODA query nueva
+filtra por `session.customer.id` a nivel aplicación. Es el patrón establecido (ya lo usaba /mi-cuenta/pedidos).
+
+**Housekeeping incluido.** Labels/badges de OrderStatus extraídos a `features/orders/order-status-display.ts`
+(estaban triplicados). Corregido **voseo** en pedidos/[number] ("escribinos/respondé"→tuteo). Reconciliado el
+correo habeas-data (la page legal decía `hola@`, el resto `habeas-data@`) → `habeas-data@lucamsshop.co`. Login
+redirect estandarizado a `?next=`.
+
+**Verificación.** `next build` OK (8 rutas /mi-cuenta) + typecheck + eslint + 6 tests de direcciones + 57 de
+auth/checkout (cache() no rompe nada). **Pendiente: [VALIDACIÓN VISUAL Lucy]** — es su feature, revisar look+flujo.
+Mejora futura: integrar direcciones guardadas en el checkout (hoy checkout y Address están desconectados). [[ADR-046]].

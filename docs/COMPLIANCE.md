@@ -118,6 +118,27 @@ Tus derechos:
 Contacto: habeas-data@lucamsshop.co
 ```
 
+### Derecho de supresión — implementación self-service (2026-07-10)
+
+Además del canal manual (`habeas-data@lucamsshop.co`, respuesta en 15 días hábiles), el cliente puede
+ejercer el **derecho de supresión (art. 8 lit. e)** por sí mismo en `/mi-cuenta/seguridad → Eliminar mi
+cuenta` (`features/account/delete-service.ts`). El enfoque es **anonimizar + soft-delete**, NO borrado
+físico, para conciliar la supresión con la **retención fiscal de la DIAN**:
+
+| Dato | Acción al eliminar | Motivo |
+| --- | --- | --- |
+| Customer (nombre, teléfono, documento, email) | Scrub: nombre/tel/documento→null, email→placeholder único, `supabaseUserId`→placeholder, `deletedAt` | Supresión de PII |
+| Auth user (Supabase) | `admin.deleteUser` (best-effort) | Cortar acceso; sin él la fila queda inaccesible igual (`supabaseUserId` desvinculado) |
+| Direcciones | Soft-delete | Contienen PII |
+| Reseñas | `customerId`→null + `authorName`→"Cliente Lucams" | Conservar contenido público sin PII |
+| **Pedidos / facturas** | **SE CONSERVAN** (anonimizados vía el Customer) | **Retención fiscal DIAN** (facturación electrónica) prima sobre supresión |
+| **Consentimientos** | **SE CONSERVAN** | Prueba de cumplimiento Ley 1581 |
+
+**Confirmación fuerte:** escribir "ELIMINAR" + re-autenticación con contraseña + rate-limit
+(`ownerKey('delete-account')`, 5/15min). Casos con PII pesada fuera de este alcance (uploads del Estudio,
+tickets de soporte con texto libre) se atienden por el canal manual. La política de conservación fiscal vs.
+supresión queda así explícita (antes no estaba fijada).
+
 ---
 
 ## Ley 1480 de 2011 — Estatuto del Consumidor

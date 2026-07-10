@@ -104,6 +104,19 @@ NO hay admin CRUD de plantillas.
 **Al retomar:** (a) si Lucy no aprobó plantillas, recordarle abrir `/admin/plantillas`; (b) si dio
 su visión del flujo móvil, ejecutar paso 5; si no, proponérselo con opciones.
 
+## Última sesión — 2026-07-10 (Área de cuenta /mi-cuenta funcional — ADR-050)
+
+Lucy validó `/mi-cuenta` y la calificó "básica, poco funcional e incompleta". Se construyó el área COMPLETA
+(ADR-050). Hallazgo del mapeo: **"Mis pedidos" ya existía y funcionaba** pero la landing no lo conectaba (mostraba
+"Pronto aquí" estático). Ahora: **shell** (layout+nav+overview hub, guard con `getCurrentCustomer` memoizado) +
+**perfil** editable + **direcciones** CRUD (invariante 1-default, 6 tests) + **reseñas** (estado + borrar propia) +
+**seguridad** (cambiar contraseña con re-auth+HIBP+rate-limit) + **eliminar cuenta** (Ley 1581: anonimizar+soft-delete
+conservando órdenes por DIAN + borrar auth user; política en COMPLIANCE.md). Housekeeping: labels OrderStatus
+compartidos, **fix voseo** en pedidos/[number], correo habeas-data reconciliado (`habeas-data@`), login `?next=`.
+`next build` OK (8 rutas) + typecheck + eslint + tests. **PENDIENTE: validación visual de Lucy** (es su feature).
+Mejora futura: conectar direcciones guardadas al checkout. **Antes de esto**: se cazó y arregló una contaminación
+de test (`captureClientError` "message vacío" dejaba filas "unknown" en el panel real → fix + [[project_integration_tests_share_dev_db]]).
+
 ## Última sesión — 2026-07-09 (Resiliencia + open-redirect + errores cliente — ADR-045/046/047)
 
 **Qué se hizo.** Se implementó y **cableó** la capa de resiliencia que quedaba pendiente en la

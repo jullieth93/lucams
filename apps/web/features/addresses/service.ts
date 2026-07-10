@@ -1,0 +1,108 @@
+/*
+ * Service de direcciones del cliente (área /mi-cuenta/direcciones).
+ *
+ * TODAS las funciones scopean por customerId (aislamiento a nivel aplicación —
+ * no hay RLS en DB para Address; el cliente solo puede tocar lo suyo). Soft-delete
+ * vía deletedAt. Invariante: como máximo UNA dirección con isDefault=true por
+ * cliente, garantizada desmarcando el resto dentro de la misma transacción.
+ */
+
+import "server-only";
+import { prisma } from "@/lib/db";
+
+export type AddressInput = {
+  name: string;
+  line1: string;
+  line2?: string | null;
+  city: string;
+  department: string;
+  zip?: string | null;
+  phone: string;
+  isDefault?: boolean;
+};
+
+export class AddressNotFoundError extends Error {
+  constructor() {
+    super("Dirección no encontrada.");
+    this.name = "AddressNotFoundError";
+  }
+}
+
+export async function listAddresses(customerId: string) {
+  return prisma.address.findMany({
+    where: { customerId, deletedAt: null },
+    orderBy: [{ isDefault: "desc" }, { createdAt: "desc" }],
+  });
+}
+
+function toData(input: AddressInput) {
+  return {
+    name: input.name.trim(),
+    line1: input.line1.trim(),
+    line2: input.line2?.trim() || null,
+    city: input.city.trim(),
+    department: input.department.trim(),
+    zip: input.zip?.trim() || null,
+    phone: input.phone.trim(),
+  };
+}
+
+export async function createAddress(customerId: string, input: AddressInput) {
+  return prisma.$transaction(async (tx) => {
+    const count = await tx.address.count({ where: { customerId, deletedAt: null } });
+    // La primera dirección es default sí o sí; después, solo si el usuario lo pide.
+    const makeDefault = Boolean(input.isDefault) || count === 0;
+    if (makeDefault) {
+      await tx.address.updateMany({
+        where: { customerId, deletedAt: null },
+        data: { isDefault: false },
+      });
+    }
+    return tx.address.create({
+      data: { customerId, ...toData(input), isDefault: makeDefault, createdBy: customerId },
+    });
+  });
+}
+
+export async function updateAddress(customerId: string, id: string, input: AddressInput) {
+  return prisma.$transaction(async (tx) => {
+    const existing = await tx.address.findFirst({ where: { id, customerId, deletedAt: null } });
+    if (!existing) throw new AddressNotFoundError();
+    const makeDefault = Boolean(input.isDefault);
+    if (makeDefault) {
+      await tx.address.updateMany({
+        where: { customerId, deletedAt: null },
+        data: { isDefault: false },
+      });
+    }
+    return tx.address.update({
+      where: { id },
+      data: {
+        ...toData(input),
+        // Si ya era la default y no se desmarca explícito, se conserva.
+        isDefault: makeDefault || (existing.isDefault && input.isDefault === undefined),
+        updatedBy: customerId,
+      },
+    });
+  });
+}
+
+export async function deleteAddress(customerId: string, id: string) {
+  const res = await prisma.address.updateMany({
+    where: { id, customerId, deletedAt: null },
+    data: { deletedAt: new Date(), deletedBy: customerId, isDefault: false },
+  });
+  if (res.count === 0) throw new AddressNotFoundError();
+}
+
+export async function setDefaultAddress(customerId: string, id: string) {
+  return prisma.$transaction(async (tx) => {
+    const existing = await tx.address.findFirst({ where: { id, customerId, deletedAt: null } });
+    if (!existing) throw new AddressNotFoundError();
+    await tx.address.updateMany({
+      where: { customerId, deletedAt: null },
+      data: { isDefault: false },
+    });
+    await tx.address.update({ where: { id }, data: { isDefault: true, updatedBy: customerId } });
+  });
+}

@@ -19,7 +19,7 @@ const FALLBACK = `Como titular de datos personales, conforme a la **Ley 1581 de 
 
 ## Cómo ejercer tus derechos
 
-Escríbenos a **hola@lucamsshop.co** indicando:
+Escríbenos a **habeas-data@lucamsshop.co** indicando:
 
 1. Tu nombre completo y documento de identidad
 2. Email con el que te registraste
