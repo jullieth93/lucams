@@ -1,12 +1,21 @@
 /*
- * Admin — Salud técnica (Bloque D). Panel para Lucy/dev: errores del servidor,
- * webhooks, órdenes a reconciliar, reversas de stock y Web Vitals. Fuente única
- * para responder "¿está sano el sistema?" sin Sentry.
+ * Admin — Salud técnica (Bloque D). Panel para Lucy/dev: errores del servidor
+ * (ErrorLog) y del cliente (ErrorReport, deduplicado), webhooks, órdenes a
+ * reconciliar, reversas de stock y Web Vitals. Fuente única para responder
+ * "¿está sano el sistema?" sin Sentry.
  */
 
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Activity, AlertTriangle, Webhook, RotateCcw, Gauge, ExternalLink } from "lucide-react";
+import {
+  Activity,
+  AlertTriangle,
+  Webhook,
+  RotateCcw,
+  Gauge,
+  ExternalLink,
+  Bug,
+} from "lucide-react";
 import { requireRole } from "@/lib/admin-rbac-guard";
 import { getTechHealth } from "@/features/observability/service";
 import { AdminPage, AdminPageHeader, AdminPageBody } from "@/components/admin-page";
@@ -61,6 +70,13 @@ export default async function AdminObservabilityPage() {
             value={h.stockReverts7d}
             hint="cancelaciones + reembolsos"
           />
+          <Tile
+            icon={<Bug className="h-4 w-4" />}
+            label="Errores cliente"
+            value={h.clientErrors.openCount}
+            danger={h.clientErrors.openCount > 0}
+            hint="reportes del navegador sin resolver"
+          />
         </div>
 
         {/* Top errores */}
@@ -75,6 +91,29 @@ export default async function AdminObservabilityPage() {
                     <p className="text-brand-purple-dark truncate font-medium">{e.message}</p>
                     <p className="text-brand-muted text-xs">
                       {e.routePath ?? "—"} · últ. {dateFmt.format(e.lastAt)}
+                    </p>
+                  </div>
+                  <span className="flex-shrink-0 rounded-full bg-rose-100 px-2 py-0.5 text-xs font-bold text-rose-700">
+                    ×{e.count}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </Section>
+
+        {/* Errores del navegador (cliente) */}
+        <Section title="Errores del navegador (cliente)" icon={<Bug className="h-4 w-4" />}>
+          {h.clientErrors.top.length === 0 ? (
+            <Empty>Sin errores del cliente sin resolver. 🎉</Empty>
+          ) : (
+            <ul className="divide-brand-purple/10 divide-y text-sm">
+              {h.clientErrors.top.map((e) => (
+                <li key={e.id} className="flex items-start justify-between gap-3 py-2">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-brand-purple-dark truncate font-medium">{e.message}</p>
+                    <p className="text-brand-muted truncate text-xs">
+                      {e.url ?? "—"} · últ. {dateFmt.format(e.lastSeenAt)}
                     </p>
                   </div>
                   <span className="flex-shrink-0 rounded-full bg-rose-100 px-2 py-0.5 text-xs font-bold text-rose-700">
@@ -164,7 +203,9 @@ function Tile({
         {icon}
         {label}
       </div>
-      <div className={`mt-1 text-2xl font-bold ${danger ? "text-rose-700" : "text-brand-purple-dark"}`}>
+      <div
+        className={`mt-1 text-2xl font-bold ${danger ? "text-rose-700" : "text-brand-purple-dark"}`}
+      >
         {value}
       </div>
       {hint && <div className="text-brand-muted mt-0.5 text-[11px]">{hint}</div>}
@@ -196,7 +237,15 @@ function Empty({ children }: { children: React.ReactNode }) {
   return <p className="text-brand-muted py-4 text-center text-sm">{children}</p>;
 }
 
-function VitalPill({ label, value, tone }: { label: string; value: number; tone: "emerald" | "amber" | "rose" }) {
+function VitalPill({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: number;
+  tone: "emerald" | "amber" | "rose";
+}) {
   const cls = {
     emerald: "bg-emerald-100 text-emerald-800",
     amber: "bg-amber-100 text-amber-800",

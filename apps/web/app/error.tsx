@@ -23,10 +23,21 @@ export default function Error({
   reset: () => void;
 }) {
   useEffect(() => {
-    // Logueamos al cliente; el server-side ya tiene el detalle vía digest.
-    // En sub-bloque F esto se conectará a /api/log-error para registro
-    // estructurado con dedup en ErrorReport.
     console.error("[route-error]", { digest: error.digest, message: error.message });
+    // Reporte estructurado con dedup en ErrorReport (Bloque D). Best-effort:
+    // keepalive para sobrevivir navegación, y swallow de cualquier fallo de red.
+    void fetch("/api/log-error", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      keepalive: true,
+      body: JSON.stringify({
+        message: error.message,
+        stack: error.stack,
+        digest: error.digest,
+        url: typeof window !== "undefined" ? window.location.href : undefined,
+        source: "route-error",
+      }),
+    }).catch(() => {});
   }, [error]);
 
   return (

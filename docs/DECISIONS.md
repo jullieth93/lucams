@@ -1524,3 +1524,33 @@ path interno inofensivo.
 **Verificación.** 13 tests unitarios nuevos (`safe-redirect.test.ts`, todos los vectores) + los 2 tests
 `BUG:` del integration reescritos a **BLOQUEA** (verifican rechazo + no-persistencia) → 75/75 verde contra
 DB real. typecheck + eslint limpios. [[ADR-045]].
+
+## ADR-047 — Cierre del loop de errores del cliente → ErrorReport (Bloque D) (2026-07-09)
+
+**Contexto.** La observabilidad de Bloque D capturaba errores del **servidor** (`instrumentation.onRequestError`
+→ `ErrorLog`) pero los error boundaries del **cliente** (`app/error.tsx`, `app/global-error.tsx`) solo hacían
+`console.error` — los errores puramente client-side (render/hidratación/interacción en el navegador) se perdían,
+sin registro en backend. El modelo `ErrorReport` (dedup por fingerprint, `count`, `status` OPEN/RESOLVED/IGNORED,
+"alternativa propia a Sentry") ya existía en el schema **pero sin writer ni endpoint** — pieza diseñada, no
+construida. El propio comentario de `error.tsx` lo marcaba como pendiente ("se conectará a /api/log-error").
+
+**Decisión.** Cerrar el loop reusando el modelo existente, sin deps nuevas ni Sentry (mandato #7):
+1. **`lib/error-capture.captureClientError`** — upsert en `ErrorReport` por **fingerprint = SHA-1(message +
+   primeras 3 líneas del stack)**, calculado server-side (no se confía en el cliente). Mismo error recurrente →
+   `count++` + `lastSeenAt`, no filas nuevas. Best-effort (nunca lanza); race-safe ante P2002 (create concurrente
+   → reintenta como update).
+2. **`/api/log-error` (route handler)** — sink público endurecido: Zod + límites de tamaño (anti-bloat) +
+   **rate-limit por IP** (30/5min, reusa el rate-limit de Postgres) + nunca 5xx (200 `{ok:false}` para no gatillar
+   retry-spam). `dynamic="force-dynamic"` + `runtime="nodejs"` (patrón de `/api/vitals`, evita el fallo de pino en
+   build estático).
+3. **`error.tsx` + `global-error.tsx`** — `fetch("/api/log-error", {keepalive:true}).catch(()=>{})` con message,
+   stack, digest, url y `source`. Sin PII en la UI (solo el `digest` de referencia, como antes).
+4. **Panel `/admin/observability`** — nuevo tile "Errores cliente" (openCount, rojo si >0) + sección con los
+   reportes abiertos (message, url, ×count, últ. visto). Sin esto el sink sería write-only (invisible para Lucy).
+
+**Verificación.** 5 tests de integración nuevos (`error-capture.integration.test.ts`: dedup incrementa count,
+stacks distintos → fingerprints distintos, persiste url/UA/digest, no lanza con message vacío) + observability
+integration sigue verde con el nuevo `clientErrors`. typecheck + eslint limpios.
+
+**Pendiente (mejora).** UI admin de triage para `ErrorReport` (marcar RESOLVED/IGNORED, `resolvedBy`) — el
+modelo ya lo soporta; hoy solo se listan los OPEN. Reabrir automáticamente un reporte RESUELTO si recurre. [[ADR-045]].

@@ -15,6 +15,16 @@ export type TechHealth = {
     last7d: number;
     top: Array<{ message: string; routePath: string | null; count: number; lastAt: Date }>;
   };
+  clientErrors: {
+    openCount: number;
+    top: Array<{
+      id: string;
+      message: string;
+      url: string | null;
+      count: number;
+      lastSeenAt: Date;
+    }>;
+  };
   webhooks: { total7d: number; processed7d: number; pending: number };
   reconciliation: { count: number; orders: Array<{ number: string; reason: string | null }> };
   stockReverts7d: number;
@@ -33,6 +43,8 @@ export async function getTechHealth(): Promise<TechHealth> {
     reconOrders,
     stockReverts7d,
     vitalsRaw,
+    clientErrorsOpen,
+    clientErrorsTop,
   ] = await Promise.all([
     prisma.errorLog.count({ where: { createdAt: { gte: since(24) } } }),
     prisma.errorLog.count({ where: { createdAt: { gte: since(24 * 7) } } }),
@@ -67,6 +79,13 @@ export async function getTechHealth(): Promise<TechHealth> {
       where: { createdAt: { gte: since(24 * 7) } },
       _count: { _all: true },
     }),
+    prisma.errorReport.count({ where: { status: "OPEN" } }),
+    prisma.errorReport.findMany({
+      where: { status: "OPEN" },
+      orderBy: { lastSeenAt: "desc" },
+      take: 10,
+      select: { id: true, message: true, url: true, count: true, lastSeenAt: true },
+    }),
   ]);
 
   const ratingCount = (r: string) => vitalsRaw.find((v) => v.rating === r)?._count._all ?? 0;
@@ -81,6 +100,10 @@ export async function getTechHealth(): Promise<TechHealth> {
         count: e._count._all,
         lastAt: e._max.createdAt ?? new Date(0),
       })),
+    },
+    clientErrors: {
+      openCount: clientErrorsOpen,
+      top: clientErrorsTop,
     },
     webhooks: {
       total7d: webhookTotal7d,

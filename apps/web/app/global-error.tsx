@@ -22,6 +22,19 @@ export default function GlobalError({
 }) {
   useEffect(() => {
     console.error("[global-error]", { digest: error.digest, message: error.message });
+    // Reporte estructurado con dedup en ErrorReport (Bloque D), best-effort.
+    void fetch("/api/log-error", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      keepalive: true,
+      body: JSON.stringify({
+        message: error.message,
+        stack: error.stack,
+        digest: error.digest,
+        url: typeof window !== "undefined" ? window.location.href : undefined,
+        source: "global-error",
+      }),
+    }).catch(() => {});
   }, [error]);
 
   return (

@@ -104,7 +104,7 @@ NO hay admin CRUD de plantillas.
 **Al retomar:** (a) si Lucy no aprobó plantillas, recordarle abrir `/admin/plantillas`; (b) si dio
 su visión del flujo móvil, ejecutar paso 5; si no, proponérselo con opciones.
 
-## Última sesión — 2026-07-09 (Resiliencia proveedores + open-redirect — ADR-045/046)
+## Última sesión — 2026-07-09 (Resiliencia + open-redirect + errores cliente — ADR-045/046/047)
 
 **Qué se hizo.** Se implementó y **cableó** la capa de resiliencia que quedaba pendiente en la
 auditoría de productive-readiness. Tres helpers nuevos en `apps/web/lib/`:
@@ -136,6 +136,14 @@ Los tests ya lo **documentaban como `BUG:`**. Nuevo `lib/safe-redirect.ts`: `isS
 http(s) explícito, para el CMS). Cableado en `createRedirect`/`updateRedirect` (rechaza disfrazados,
 mantiene externos por diseño) y en **login** (ahora honra `?next=` sanitizado — antes iba a `/` fijo).
 13 tests unitarios nuevos + los 2 `BUG:` reescritos a "BLOQUEA" → **75/75 integration contra DB real**.
+
+**Observabilidad: loop de errores del cliente cerrado (ADR-047).** Bloque D capturaba errores del
+servidor (onRequestError→ErrorLog) pero los error boundaries del cliente solo hacían `console.error` →
+los errores client-side se perdían. El modelo `ErrorReport` (dedup por fingerprint) ya existía sin writer.
+Se cerró: `captureClientError` (upsert por SHA-1(message+stack[:3]), best-effort, race-safe) +
+`/api/log-error` (Zod + rate-limit IP + nunca 5xx) + `error.tsx`/`global-error.tsx` reportan con keepalive +
+panel `/admin/observability` con tile "Errores cliente" + sección de reportes abiertos (sin esto sería
+write-only). 5 tests integración nuevos. **Pendiente-mejora:** UI admin de triage (RESOLVED/IGNORED).
 
 **Nota de continuidad:** el bloque "🔴 PENDIENTE SERIO" (investigación profunda de plantillas) y el
 checkpoint "⏳ EN CURSO" de Fase 3 siguen vigentes/diferidos — no se tocaron esta sesión.
