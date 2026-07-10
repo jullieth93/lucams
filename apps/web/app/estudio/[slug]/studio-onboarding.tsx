@@ -34,18 +34,23 @@ const ONBOARD_VERSION = "v1";
 type OnboardingStep = {
   title: string;
   body: string;
+  /** Copy alternativo para MÓVIL: no hay "panel de la izquierda" ni drag (es touch);
+   *  el patrón en móvil es "toca y sube tu foto" (hallazgo de investigación Fase 3). */
+  bodyMobile?: string;
   cta: string;
 };
 
 const STEPS: OnboardingStep[] = [
   {
-    title: "Sube tus fotos",
+    title: "Sube tu foto",
     body: "Empieza por arrastrar fotos al panel de la izquierda. Aceptamos JPG, PNG, WebP y HEIC del celu.",
+    bodyMobile: "Toca un imán y súbele una foto desde tu celular. Aceptamos JPG, PNG, WebP y HEIC.",
     cta: "Siguiente",
   },
   {
     title: "Asigná a cada imán",
     body: "Toca un imán vacío y elige cuál foto quieres, o usa el botón mágico ‘Llenar slots con mis fotos’ para repartir todo de una.",
+    bodyMobile: "Toca cada imán para ponerle una foto. Con el botón ‘Editar’ (abajo) abres plantillas y más fotos.",
     cta: "Siguiente",
   },
   {
@@ -55,9 +60,24 @@ const STEPS: OnboardingStep[] = [
   },
 ];
 
+/** Detecta viewport móvil (< lg) de forma reactiva para elegir el copy correcto. */
+function useIsMobile(): boolean {
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    const mq = window.matchMedia("(max-width: 1023px)");
+    const update = () => setIsMobile(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+  return isMobile;
+}
+
 export function StudioOnboarding() {
   const [isOpen, setIsOpen] = useState(false);
   const [step, setStep] = useState(0);
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     // Solo mostrar en cliente — SSR evita el localStorage
@@ -150,7 +170,9 @@ export function StudioOnboarding() {
 
             {/* Body */}
             <div className="px-5 py-4">
-              <p className="text-brand-purple-dark/80 text-sm leading-relaxed">{current.body}</p>
+              <p className="text-brand-purple-dark/80 text-sm leading-relaxed">
+                {isMobile && current.bodyMobile ? current.bodyMobile : current.body}
+              </p>
 
               {/* Indicador de pasos (dots) */}
               <div className="mt-4 flex items-center justify-center gap-1.5">

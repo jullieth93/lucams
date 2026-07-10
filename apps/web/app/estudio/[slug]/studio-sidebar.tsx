@@ -240,8 +240,8 @@ export function StudioSidebar({
             hay fotos sin asignar: explicar que se pueden cambiar arrastrando. */}
         {assets.length > 0 && emptySlots === 0 && totalSlots > 0 && (
           <p className="text-brand-muted bg-brand-turquoise/10 mt-3 rounded-md px-2.5 py-2 text-xs">
-            ✨ Todos los imanes tienen foto. Arrastra cualquier foto encima de un imán para
-            cambiarla.
+            ✨ Todos los imanes tienen foto. Toca un imán para cambiarle la foto (o arrástrale otra
+            en computador).
           </p>
         )}
       </section>
