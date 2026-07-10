@@ -1608,3 +1608,24 @@ digest-separa, normalización-colapsa). Suite completa re-corrida verde. typeche
 serverless (1 conf/2 uncertain, no alcanzó el umbral; el happy-path es 1 llamada <5s, solo Wompi degradado
 reintenta; revisar si migran a Vercel Pro); redacción de PII en url/stack (refutado 2/1, inherente al error
 reporting); CB compartido quote/createShipment (refutado 3/0, refleja "¿Aveonline arriba?" globalmente). [[ADR-047]].
+
+**Ronda 2 — verificación adversarial de los propios arreglos (mismo día).** Se corrió un 2º workflow que
+ataca cada arreglo de arriba (6 dimensiones × panel de 2 escépticos): 10 hallazgos, **6 confirmados**. Refinados:
+- **[MED] `/api/log-error` — el backstop global cambiaba bloat por SUPRESIÓN DE OBSERVABILIDAD.** El bucket
+  contaba por REQUEST sobre una key constante → un bug ruidoso legítimo (que deduplica) agotaba los 600 tokens y
+  ocultaba los demás errores; y congelaba count/lastSeenAt del bug visible. **Rediseño:** el tope se movió a
+  `captureClientError` y aplica SOLO a la creación de filas NUEVAS (fingerprints no vistos, `error-report:new`
+  300/5min); los incrementos de dedup jamás se frenan. `captureClientError` pasó de `upsert` a `findUnique`-first:
+  incremento siempre + reopen solo si status===RESOLVED (esto además elimina el updateMany incondicional que corría
+  en cada captura). Del route se quitó el bucket global; queda el por-IP.
+- **[MED] preview gate — dejaba abiertos los PREVIEW deployments** (VERCEL_ENV='preview'), donde la misma
+  enumeración corre contra la BD de producción real. Endurecido a `if (process.env.VERCEL_ENV) notFound()` (cierra
+  production Y preview; dev local sigue abierto para el generador).
+- **[LOW] fingerprint — `/https?:\/\/\S+/g` greedy colapsaba la URL ENTERA** (path incluido) → dos errores en
+  endpoints distintos hacían falso-merge. Se quitó ese replace; ahora se normaliza solo lo volátil (query strings,
+  `:línea:col`, hex largos), preservando el path que identifica el origen.
+- **[LOW] circuit breaker — una `fn` que se cuelga en la prueba de half-open wedgearía el breaker** (probing=true
+  para siempre). Latente (los callers actuales ya envuelven en `fetchWithTimeout`); se documentó la precondición
+  dura en el JSDoc de `exec()`.
+Descartados en ronda 2 (refutados): digest re-introduce volatilidad (0/1), hex matchea decimales (1/1), 300/600 es
+número mágico (0/2), saga inline en webhook Wompi vs 20s (0/2). Suite completa re-corrida verde tras el rediseño.

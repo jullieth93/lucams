@@ -155,6 +155,13 @@ recurren, prueba única en half-open del circuit breaker, fingerprint incluye di
 tope global anti-bloat en /api/log-error, y **gate de producción en `/internal/plantilla-preview`** (era pública
 sin auth → enumeración de plantillas ocultas). Suite completa (1614 tests) verde antes y después.
 
+**Ronda 2 (verificación de los arreglos):** 2º workflow adversarial atacó cada arreglo → 6 confirmados, refinados.
+Los 2 MEDIUM: el backstop de /api/log-error cambiaba bloat por **supresión de observabilidad** (bucket por-request
+ocultaba otros bugs) → rediseñado a tope solo-filas-nuevas dentro de `captureClientError` (findUnique-first,
+incrementos nunca se frenan, reopen solo si RESUELTO); y el preview gate dejaba **preview deployments abiertos**
+contra la BD real → endurecido a `if (VERCEL_ENV) notFound()`. Más 4 LOW (regex de fingerprint sin colapsar URL
+entera, precondición del CB documentada). Suite completa verde. Ver ADR-048 §Ronda 2.
+
 **Nota de continuidad:** el bloque "🔴 PENDIENTE SERIO" (investigación profunda de plantillas) y el
 checkpoint "⏳ EN CURSO" de Fase 3 siguen vigentes/diferidos — no se tocaron esta sesión.
 

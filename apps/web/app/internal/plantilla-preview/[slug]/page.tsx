@@ -18,11 +18,14 @@ type Params = Promise<{ slug: string }>;
 
 export default async function PlantillaPreviewPage({ params }: { params: Params }) {
   // Ruta de TOOLING interno (el generador Playwright screenshotea el canvas en
-  // dev/preview). NUNCA debe existir en producción: renderiza cualquier plantilla
-  // por slug —incluidas ocultas (isActive=false) y descartadas (soft-deleted)—, lo
-  // que permitiría enumeración/disclosure a un visitante. En vivo los previews se
-  // sirven desde Storage (`previewUrl`), jamás desde esta ruta. Ver ADR-048.
-  if (process.env.VERCEL_ENV === "production") notFound();
+  // DEV LOCAL). NUNCA debe existir en ningún entorno desplegado en Vercel
+  // (production NI preview): renderiza cualquier plantilla por slug —incluidas
+  // ocultas (isActive=false) y descartadas (soft-deleted)—, lo que permitiría
+  // enumeración/disclosure a un visitante; además los preview deployments apuntan
+  // a la BD de producción real. En vivo los previews se sirven desde Storage
+  // (`previewUrl`), jamás desde esta ruta. `VERCEL_ENV` está definido en cualquier
+  // deploy Vercel y es undefined en dev local (donde el generador corre). Ver ADR-048.
+  if (process.env.VERCEL_ENV) notFound();
 
   const { slug } = await params;
   const tpl = await prisma.personalizationTemplate.findUnique({

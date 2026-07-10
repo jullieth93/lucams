@@ -40,6 +40,15 @@ export class CircuitBreaker {
     return this.state;
   }
 
+  /**
+   * PRECONDICIÓN DURA: `fn` DEBE settlear siempre (resolver o rechazar) en tiempo
+   * acotado — envolvé toda llamada de red en un timeout (p.ej. `fetchWithTimeout`).
+   * Una `fn` que se cuelga indefinidamente durante la prueba de half-open dejaría
+   * el flag `probing` en true para siempre → el breaker queda wedgeado (todo
+   * request futuro falla-rápido y la recuperación del proveedor nunca se detecta,
+   * hasta que el worker se recicle). Los callers actuales (wompi, aveonline) ya
+   * cumplen: pasan `fetchWithTimeout` con timeout obligatorio.
+   */
   async exec<T>(fn: () => Promise<T>): Promise<T> {
     if (this.state === "open") {
       if (this.now() - this.lastFailureAt > this.opts.resetMs) {

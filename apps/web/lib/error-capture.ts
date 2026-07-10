@@ -9,6 +9,7 @@
 import crypto from "node:crypto";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
+import { rateLimit } from "@/lib/rate-limit";
 
 export type CapturedError = {
   message: string;
@@ -55,14 +56,16 @@ export type ClientErrorReport = {
 /**
  * Normaliza tokens VOLÁTILES que cambian entre deploys/sesiones y romperían la
  * deduplicación si entraran crudos al fingerprint:
- *  - URLs (los chunks de Next llevan hash por build: `.../234-<hash>.js`)
+ *  - query strings volátiles (`?v=...`, cache-busters)
  *  - posiciones `:línea:columna` de los stack frames minificados
- *  - runs de hex largos (ids de chunk, hashes de build)
- * Así, recurrencias del MISMO error lógico mapean al mismo fingerprint.
+ *  - runs de hex largos (hashes de chunk/build, p.ej. `234-<hash>.js`)
+ * NO se colapsa la URL entera: el PATH identifica el archivo/endpoint de origen,
+ * así que dos errores en rutas distintas deben seguir siendo fingerprints
+ * distintos (evita falsos merges). Solo se normaliza la parte volátil.
  */
 function normalizeForFingerprint(s: string): string {
   return s
-    .replace(/https?:\/\/\S+/g, "URL")
+    .replace(/\?[^\s)'"]*/g, "")
     .replace(/:\d+:\d+/g, ":N:N")
     .replace(/\b[0-9a-f]{8,}\b/gi, "HASH");
 }
@@ -85,19 +88,55 @@ function fingerprintOf(message: string, stack?: string, digest?: string): string
   return crypto.createHash("sha1").update(basis).digest("hex");
 }
 
+// Backstop anti-bloat: SOLO filas NUEVAS (fingerprints no vistos) cuentan contra
+// este tope global. Los incrementos de dedup de un fingerprint existente jamás son
+// bloat y se permiten siempre → un bug ruidoso legítimo (que deduplica) nunca
+// agota el cupo ni oculta otros errores. Acota el peor caso de un atacante que
+// rota IPs + varía el message para generar fingerprints únicos. 300 filas
+// nuevas/5min es holgadísimo para tráfico real (los errores únicos son pocos).
+const NEW_ROW_LIMIT = 300;
+const NEW_ROW_WINDOW_S = 5 * 60;
+
 /**
  * Registra un error del CLIENTE en ErrorReport, deduplicado por fingerprint.
- * Best-effort (nunca lanza). Race-safe: si dos requests concurrentes con el
- * mismo fingerprint nuevo colisionan en el create (P2002), reintenta como update.
+ * Best-effort (nunca lanza). Flujo:
+ *  - fingerprint ya visto → incrementa count/lastSeenAt SIEMPRE (no es bloat) y
+ *    reabre si estaba RESUELTO (regresión visible; IGNORED se respeta).
+ *  - fingerprint nuevo → aplica el tope anti-bloat y crea la fila.
+ *  - race de create concurrente (P2002) → cae al catch y trata como incremento.
  */
 export async function captureClientError(e: ClientErrorReport): Promise<void> {
   const message = (e.message || "unknown").slice(0, 2000);
   const stack = e.stack ? e.stack.slice(0, 4000) : null;
   const fingerprint = fingerprintOf(message, e.stack, e.digest);
   try {
-    await prisma.errorReport.upsert({
+    const existing = await prisma.errorReport.findUnique({
       where: { fingerprint },
-      create: {
+      select: { id: true, status: true },
+    });
+    if (existing) {
+      // Incremento (siempre permitido). Reabrir SOLO si estaba RESUELTO — así la
+      // regresión vuelve a ser visible; `IGNORED` queda silenciado a propósito.
+      await prisma.errorReport.update({
+        where: { id: existing.id },
+        data: {
+          count: { increment: 1 },
+          lastSeenAt: new Date(),
+          ...(existing.status === "RESOLVED"
+            ? { status: "OPEN", resolvedAt: null, resolvedBy: null }
+            : {}),
+        },
+      });
+      return;
+    }
+    // Fila NUEVA: acá —y solo acá— aplica el tope anti-bloat.
+    const rl = await rateLimit("error-report:new", NEW_ROW_LIMIT, NEW_ROW_WINDOW_S);
+    if (!rl.allowed) {
+      logger.warn({ event: "observability.client_capture.new_row_capped" });
+      return;
+    }
+    await prisma.errorReport.create({
+      data: {
         fingerprint,
         message,
         stack,
@@ -106,11 +145,10 @@ export async function captureClientError(e: ClientErrorReport): Promise<void> {
         userId: e.userId ?? null,
         digest: e.digest ?? null,
       },
-      update: { count: { increment: 1 }, lastSeenAt: new Date() },
     });
   } catch (err) {
-    // Race de create concurrente (P2002 en el upsert): la fila ya existe →
-    // reintentar como update para no perder el incremento.
+    // Race: otro request creó la misma fila entre el findUnique y el create
+    // (P2002), o cualquier otro fallo → intentar incrementar (best-effort).
     try {
       await prisma.errorReport.update({
         where: { fingerprint },
@@ -121,18 +159,6 @@ export async function captureClientError(e: ClientErrorReport): Promise<void> {
         event: "observability.client_capture_fail",
         err: err instanceof Error ? err.message : String(err),
       });
-      return;
     }
   }
-
-  // Regresión: si el error estaba RESUELTO y vuelve a ocurrir, reabrirlo para que
-  // sea visible de nuevo en el panel (como hace Sentry). `IGNORED` se respeta
-  // (silenciado a propósito = ruido conocido). updateMany es atómico sobre el
-  // filtro → seguro ante concurrencia; best-effort (no rompe el flujo).
-  await prisma.errorReport
-    .updateMany({
-      where: { fingerprint, status: "RESOLVED" },
-      data: { status: "OPEN", resolvedAt: null, resolvedBy: null },
-    })
-    .catch(() => {});
 }
