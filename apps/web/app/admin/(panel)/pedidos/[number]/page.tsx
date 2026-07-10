@@ -25,6 +25,12 @@ import { OrderActions } from "./order-actions";
 
 export const metadata: Metadata = { title: "Detalle pedido" };
 
+// Esta ruta hostea la server action de reintento de guía (order-actions →
+// processPaidOrder → createShipment 20s no-idempotente + auth cold). Las server
+// actions heredan el maxDuration del segmento, así que debe contener ese
+// presupuesto para no matar createShipment a mitad → guía huérfana. Ver ADR-049.
+export const maxDuration = 60;
+
 const STATUS_LABEL: Record<string, string> = {
   PENDING_PAYMENT: "Esperando pago",
   PAID: "Pagado",
@@ -203,9 +209,7 @@ export default async function AdminPedidoDetallePage({
                 {ship.zip ? ` · ${ship.zip}` : ""}
               </div>
               {ship.notes && (
-                <div className="text-brand-muted mt-2 text-xs italic">
-                  Nota: {ship.notes}
-                </div>
+                <div className="text-brand-muted mt-2 text-xs italic">Nota: {ship.notes}</div>
               )}
             </Card>
           </div>

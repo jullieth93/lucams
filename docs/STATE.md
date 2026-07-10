@@ -155,6 +155,13 @@ recurren, prueba única en half-open del circuit breaker, fingerprint incluye di
 tope global anti-bloat en /api/log-error, y **gate de producción en `/internal/plantilla-preview`** (era pública
 sin auth → enumeración de plantillas ocultas). Suite completa (1614 tests) verde antes y después.
 
+**`maxDuration` explícito en el path de pago (ADR-049).** Investigando el descartado #5 de ronda 1 (retry budget
+vs límite serverless) se verificó en docs oficiales que Vercel con Fluid Compute da **300s** (Hobby y Pro), así que
+los presupuestos (15.7s retry, 20s createShipment) caben — PERO ninguna función lo declaraba. Se descubrió que
+**3 funciones corren createShipment** (webhook + `/checkout/gracias` fallback + admin retry), no 2. Las 3 → `maxDuration=60`;
+`/checkout/envio` (quote, lectura) → 30. Evita que la plataforma mate createShipment (no-idempotente) a mitad → guía
+huérfana. **ACCIÓN HUMANA (lanzar):** confirmar Fluid Compute ON + plan Pro honra maxDuration≥60.
+
 **Ronda 2 (verificación de los arreglos):** 2º workflow adversarial atacó cada arreglo → 6 confirmados, refinados.
 Los 2 MEDIUM: el backstop de /api/log-error cambiaba bloat por **supresión de observabilidad** (bucket por-request
 ocultaba otros bugs) → rediseñado a tope solo-filas-nuevas dentro de `captureClientError` (findUnique-first,

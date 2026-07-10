@@ -28,6 +28,12 @@ import { processPaidOrder, processFailedPaymentOrder } from "@/features/orders/s
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+// La función DEBE poder contener el presupuesto interno de processPaidOrder:
+// getAuthToken (cold, retry ~16s) + createShipment (timeout 20s, NO idempotente) +
+// escrituras de saga. Si el límite de plataforma matara la función a mitad de
+// createShipment, la guía quedaría huérfana → doble guía en el retry (ver ADR-049).
+// 60s cabe holgado en el default de Vercel (300s con fluid compute) y en Pro.
+export const maxDuration = 60;
 
 export async function POST(req: Request) {
   // 1) Leer raw body (string) — necesario para HMAC verify byte-exacto.
@@ -81,10 +87,7 @@ export async function POST(req: Request) {
       ageSec,
       windowSec: TIMESTAMP_WINDOW_SEC,
     });
-    return NextResponse.json(
-      { error: "timestamp out of window" },
-      { status: 401 },
-    );
+    return NextResponse.json({ error: "timestamp out of window" }, { status: 401 });
   }
 
   // Environment match: prod no debe procesar webhooks "test" y viceversa.
@@ -99,10 +102,7 @@ export async function POST(req: Request) {
       receivedEnv: event.environment,
       wompiEnv: process.env.WOMPI_ENV,
     });
-    return NextResponse.json(
-      { error: "environment mismatch" },
-      { status: 401 },
-    );
+    return NextResponse.json({ error: "environment mismatch" }, { status: 401 });
   }
 
   const transaction = event.data?.transaction;

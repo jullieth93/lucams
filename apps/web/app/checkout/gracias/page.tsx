@@ -39,6 +39,12 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
+// Esta page corre el FALLBACK processPaidOrder (getTransaction ~16s + createShipment
+// 20s no-idempotente) cuando el webhook se demoró. Igual que el webhook, la función
+// debe poder contener ese presupuesto para no matar createShipment a mitad → guía
+// huérfana. 60s (default Vercel 300s; ver ADR-049).
+export const maxDuration = 60;
+
 type SearchParams = Promise<{ id?: string; env?: string; status?: string }>;
 
 export default async function CheckoutGraciasPage({
@@ -315,9 +321,9 @@ function PaymentReceivedPage({ orderNumber, txId }: { orderNumber: string; txId:
         Recibimos tu pago, lo estamos confirmando ⏳
       </h1>
       <p className="text-brand-purple-dark/75 mx-auto mt-3 max-w-md text-sm sm:text-base">
-        Tu pago fue aprobado y lo estamos verificando para preparar tu pedido. En cuanto esté
-        todo listo te llega un correo con los detalles. Si en unas horas no recibes nada,
-        escríbenos y lo revisamos enseguida.
+        Tu pago fue aprobado y lo estamos verificando para preparar tu pedido. En cuanto esté todo
+        listo te llega un correo con los detalles. Si en unas horas no recibes nada, escríbenos y lo
+        revisamos enseguida.
       </p>
       <p className="text-brand-muted mt-4 text-xs">
         Pedido <code className="font-mono font-bold">{orderNumber}</code> · Wompi{" "}
@@ -325,7 +331,11 @@ function PaymentReceivedPage({ orderNumber, txId }: { orderNumber: string; txId:
       </p>
       <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
         <Link href="/contacto">
-          <Button size="lg" variant="outline" className="border-brand-purple/30 text-brand-purple-dark">
+          <Button
+            size="lg"
+            variant="outline"
+            className="border-brand-purple/30 text-brand-purple-dark"
+          >
             Contactar soporte
           </Button>
         </Link>

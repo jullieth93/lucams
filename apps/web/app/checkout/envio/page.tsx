@@ -20,6 +20,11 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
+// Corre quoteShipping (Aveonline quote, retry ~16s peor caso bajo degradación) +
+// auth. Es una LECTURA idempotente (un kill a mitad es inofensivo), pero acotamos
+// el techo para no dejar al usuario esperando ni pagar cómputo de más. Ver ADR-049.
+export const maxDuration = 30;
+
 export default async function CheckoutEnvioPage() {
   let ctx;
   try {

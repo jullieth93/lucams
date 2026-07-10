@@ -1629,3 +1629,36 @@ ataca cada arreglo de arriba (6 dimensiones × panel de 2 escépticos): 10 halla
   dura en el JSDoc de `exec()`.
 Descartados en ronda 2 (refutados): digest re-introduce volatilidad (0/1), hex matchea decimales (1/1), 300/600 es
 número mágico (0/2), saga inline en webhook Wompi vs 20s (0/2). Suite completa re-corrida verde tras el rediseño.
+
+## ADR-049 — `maxDuration` explícito en las funciones que corren createShipment (2026-07-10)
+
+**Contexto.** El descartado #5 de ronda 1 (retry budget vs límite de función serverless) no alcanzó el umbral de
+confirmación por INCERTIDUMBRE del entorno de despliegue. Resolverla es el trabajo. Los presupuestos internos que
+se cablearon esta sesión: getAuthToken/quote/tracking reintentan 3×5s ≈ 15.7s peor caso; createShipment tiene
+timeout 20s y es **no-idempotente/no-reintentable**. Ninguna función declaraba `maxDuration` → dependían del default.
+
+**Verificación oficial (Vercel docs `/docs/functions/configuring-functions/duration`, actualizado 2026-07-01,
+consultado 2026-07-10).** Con **fluid compute (habilitado por defecto)** el límite de duración es **300s (default y
+máx) en Hobby**, y **300s default / 800s máx (1800s extendido) en Pro**. Es decir: los presupuestos (15.7s, 20s)
+caben HOLGADOS bajo el default de 300s → el riesgo de "función matada a mitad de createShipment → guía huérfana"
+queda **refutado SI fluid compute está activo**. PERO no se puede verificar desde código si fluid está activo en el
+proyecto (es un ajuste de dashboard); si NO lo estuviera, Hobby volvería al límite legacy de 10s → createShipment
+(20s) sería matado a mitad → guía huérfana → doble guía en el retry de la saga.
+
+**Decisión.** Declarar `maxDuration` EXPLÍCITO (route segment config de App Router) en las funciones que corren
+createShipment, dimensionado para contener el presupuesto interno con margen. Correcto y honrado en Pro (plan de
+lanzamiento); documenta la intención; y protege el caso "fluid off". **Se descubrió en la investigación que son
+TRES funciones las que corren createShipment**, no dos: `/api/webhooks/wompi` (route), `/checkout/gracias` (page —
+corre el FALLBACK processPaidOrder cuando el webhook se demora, P0-012) y `/admin/(panel)/pedidos/[number]` (page —
+hostea la retry action; las server actions heredan el maxDuration del segmento). Las tres → **`maxDuration = 60`**.
+`/checkout/envio` corre quoteShipping (LECTURA idempotente, kill inofensivo) → **`maxDuration = 30`** para acotar
+latencia/costo bajo degradación.
+
+**Nota (no se tocaron los retry counts).** 3 intentos es estándar y el peor caso (~16s) cabe en 60s con margen para
+auth-cold + createShipment(20s) + escrituras de saga. Reducir intentos en las PAGES síncronas (envio/gracias) para
+mejorar la UX bajo degradación (hoy el usuario podría esperar ~16s) es una mejora futura opcional, no correctitud.
+
+**ACCIÓN HUMANA REQUERIDA (Lucy, al lanzar).** (1) Confirmar en Vercel → Project → Settings → Functions que **Fluid
+Compute está habilitado** (default en proyectos nuevos) — así el default de 300s aplica y los `maxDuration=60/30`
+son honrados sin sorpresas. (2) Verificar que el plan al lanzar (Pro) permite `maxDuration ≥ 60` (Pro: hasta 800s).
+En Hobby sin fluid, un `maxDuration > 10` no se respeta → NO lanzar en esa combinación con pagos activos. [[ADR-045]] [[ADR-048]].

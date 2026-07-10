@@ -105,7 +105,7 @@ Mitigaciones permanentes aplicadas: nueva sección en [`SECURITY.md` § Manipula
 
 Antes de iniciar la fase, citar fuente con fecha en `OPERATIONS.md` para:
 
-- [ ] Vercel Hobby: function timeout, bandwidth/mes, ToS uso comercial → `vercel.com/docs/limits` y `vercel.com/legal/terms`
+- [~] Vercel **function timeout VERIFICADO** (docs 2026-07-01, consultado 2026-07-10): con Fluid Compute (default) **300s en Hobby y Pro** (Pro máx 800s / 1800s ext). `maxDuration` explícito declarado en las 3 funciones que corren createShipment (webhook/gracias/admin pedido = 60s) + envio quote = 30s. Ver ADR-049. **Falta:** bandwidth/mes + ToS uso comercial
 - [ ] Supabase Free: límites DB/Storage/MAU/pausa → `supabase.com/pricing`
 - [ ] Resend Free: límites de envío y dominio → `resend.com/pricing`
 - [ ] Anthropic pricing del modelo elegido → `anthropic.com/pricing`
