@@ -104,7 +104,7 @@ NO hay admin CRUD de plantillas.
 **Al retomar:** (a) si Lucy no aprobó plantillas, recordarle abrir `/admin/plantillas`; (b) si dio
 su visión del flujo móvil, ejecutar paso 5; si no, proponérselo con opciones.
 
-## Última sesión — 2026-07-09 (Capa de resiliencia en proveedores externos — ADR-045)
+## Última sesión — 2026-07-09 (Resiliencia proveedores + open-redirect — ADR-045/046)
 
 **Qué se hizo.** Se implementó y **cableó** la capa de resiliencia que quedaba pendiente en la
 auditoría de productive-readiness. Tres helpers nuevos en `apps/web/lib/`:
@@ -127,6 +127,15 @@ y, abierto, `CircuitOpenError` (no reintentable) corta el loop de una.
 **Verificación:** 14 tests unitarios nuevos + 90/90 unit (wompi/payments) + **65/65 integration contra el
 path REAL de Aveonline demo** (saga + checkout, 174s) → el cableado NO rompe el happy path. typecheck limpio.
 **Falta:** cablear el cliente Anthropic (Studio IA) cuando se implemente (Fase 3).
+
+**Open-redirect cerrado + `safeRedirectTarget` (ADR-046).** Segundo hallazgo de seguridad abierto
+(ROADMAP:196). El CMS de redirects admin (`UrlRedirect`, servido por proxy.ts) aceptaba destinos
+disfrazados de internos (`//evil.com`, `/\evil.com`) que el navegador resuelve a host externo → phishing.
+Los tests ya lo **documentaban como `BUG:`**. Nuevo `lib/safe-redirect.ts`: `isSafeInternalPath`/
+`safeRedirectTarget` (solo interno, para `?next=`) + `isAllowedRedirectDestination` (interno o externo
+http(s) explícito, para el CMS). Cableado en `createRedirect`/`updateRedirect` (rechaza disfrazados,
+mantiene externos por diseño) y en **login** (ahora honra `?next=` sanitizado — antes iba a `/` fijo).
+13 tests unitarios nuevos + los 2 `BUG:` reescritos a "BLOQUEA" → **75/75 integration contra DB real**.
 
 **Nota de continuidad:** el bloque "🔴 PENDIENTE SERIO" (investigación profunda de plantillas) y el
 checkpoint "⏳ EN CURSO" de Fase 3 siguen vigentes/diferidos — no se tocaron esta sesión.

@@ -29,8 +29,9 @@
  *
  * El comportamiento esperado se verificó leyendo la fuente COMPLETA + proxy.ts y
  * probando la resolución de `new URL(toPath, base)` con vectores open-redirect
- * (//evil.com, /\evil.com → resuelven a host externo). normalizePath NO bloquea
- * esos vectores → se documentan como bug de seguridad (no se arregla la fuente).
+ * (//evil.com, /\evil.com → resuelven a host externo). Desde ADR-046,
+ * `assertAllowedToPath` (lib/safe-redirect) BLOQUEA esos vectores disfrazados en
+ * create/update; los tests de abajo verifican el bloqueo.
  */
 
 import { afterAll, describe, expect, it } from "vitest";
@@ -323,7 +324,10 @@ describe.skipIf(!hasDb)("redirects/service — integración DB (UrlRedirect admi
       expect(count).toBe(1);
 
       // Y ahora el lookup lo resuelve al destino nuevo.
-      expect(await lookupActiveRedirect(from)).toEqual({ toPath: "/destino-nuevo", statusCode: 301 });
+      expect(await lookupActiveRedirect(from)).toEqual({
+        toPath: "/destino-nuevo",
+        statusCode: 301,
+      });
     });
 
     it("la reactivación respeta isActive:false explícito (revive pausado)", async () => {
@@ -354,35 +358,25 @@ describe.skipIf(!hasDb)("redirects/service — integración DB (UrlRedirect admi
       expect((await lookupActiveRedirect(from))?.toPath).toBe("https://otra-empresa.com/landing");
     });
 
-    it("BUG: NO bloquea destino protocol-relative '//evil.com' (vector open-redirect)", async () => {
-      // '//evil.com' empieza con '/', NO matchea ^https?:// → normalizePath lo
-      // trata como path relativo y lo deja igual. Pero el proxy resuelve
-      // new URL('//evil.com', base) → https://evil.com (host EXTERNO).
-      // Confirmado: new URL("//evil.com/x","https://lucamsshop.co/p") === "https://evil.com/x".
+    it("BLOQUEA destino protocol-relative '//evil.com' (open-redirect) — ADR-046", async () => {
+      // '//evil.com' empieza con '/' pero el proxy lo resolvería a un host
+      // EXTERNO (new URL('//evil.com', base) → https://evil.com). assertAllowedToPath
+      // ahora lo rechaza antes de persistir.
       const from = nextPath();
-      const created = await createRedirect(
-        { fromPath: from, toPath: "//evil.com/phish", statusCode: 302 },
-        ACTOR,
-      );
-      // Comportamiento REAL: persiste el destino peligroso sin rechazarlo.
-      expect(created.toPath).toBe("//evil.com/phish");
-      // El proxy lo resolvería a un host externo → open redirect. Aserción que
-      // demuestra el vector (no es lo deseable, pero es lo que ocurre hoy).
-      const resolved = new URL(created.toPath, "https://lucamsshop.co/page");
-      expect(resolved.host).toBe("evil.com");
+      await expect(
+        createRedirect({ fromPath: from, toPath: "//evil.com/phish", statusCode: 302 }, ACTOR),
+      ).rejects.toBeInstanceOf(RedirectValidationError);
+      // Y NO se persistió ninguna fila con ese fromPath.
+      expect(await prisma.urlRedirect.findUnique({ where: { fromPath: from } })).toBeNull();
     });
 
-    it("BUG: NO bloquea destino con backslash '/\\evil.com' (vector open-redirect)", async () => {
-      // '/\evil.com' empieza con '/', se conserva. new URL lo normaliza a
-      // https://evil.com en navegadores y en la impl de URL de Node.
+    it("BLOQUEA destino con backslash '/\\evil.com' (open-redirect) — ADR-046", async () => {
+      // '/\evil.com' → el navegador normaliza '\' → '/' → //evil.com → host externo.
       const from = nextPath();
-      const created = await createRedirect(
-        { fromPath: from, toPath: "/\\evil.com", statusCode: 302 },
-        ACTOR,
-      );
-      expect(created.toPath).toBe("/\\evil.com");
-      const resolved = new URL(created.toPath, "https://lucamsshop.co/page");
-      expect(resolved.host).toBe("evil.com");
+      await expect(
+        createRedirect({ fromPath: from, toPath: "/\\evil.com", statusCode: 302 }, ACTOR),
+      ).rejects.toBeInstanceOf(RedirectValidationError);
+      expect(await prisma.urlRedirect.findUnique({ where: { fromPath: from } })).toBeNull();
     });
 
     it("un destino interno legítimo resuelve al MISMO host (no es open-redirect)", async () => {
@@ -507,10 +501,7 @@ describe.skipIf(!hasDb)("redirects/service — integración DB (UrlRedirect admi
 
     it("rechaza id inexistente con field=id", async () => {
       await expect(
-        updateRedirect(
-          { id: `${RUN}-no-such-id`, toPath: "/x", statusCode: 301 },
-          ACTOR,
-        ),
+        updateRedirect({ id: `${RUN}-no-such-id`, toPath: "/x", statusCode: 301 }, ACTOR),
       ).rejects.toMatchObject({ field: "id" });
     });
 
@@ -577,16 +568,14 @@ describe.skipIf(!hasDb)("redirects/service — integración DB (UrlRedirect admi
     });
 
     it("rechaza id inexistente con field=id", async () => {
-      await expect(
-        toggleRedirectActive(`${RUN}-ghost`, ACTOR),
-      ).rejects.toMatchObject({ field: "id" });
+      await expect(toggleRedirectActive(`${RUN}-ghost`, ACTOR)).rejects.toMatchObject({
+        field: "id",
+      });
     });
 
     it("rechaza togglear un redirect archivado (findFirst deletedAt:null) → field=id", async () => {
       const archived = await seedRedirect({ deletedAt: new Date() });
-      await expect(
-        toggleRedirectActive(archived.id, ACTOR),
-      ).rejects.toMatchObject({ field: "id" });
+      await expect(toggleRedirectActive(archived.id, ACTOR)).rejects.toMatchObject({ field: "id" });
     });
   });
 
@@ -780,7 +769,9 @@ describe.skipIf(!hasDb)("redirects/service — integración DB (UrlRedirect admi
       await seedRedirect({ fromPath: `/${token}/b` });
 
       const res = await listRedirects({ q: token, sort: "from", status: "all", pageSize: 100 });
-      const mine = res.items.filter((i) => i.fromPath.startsWith(`/${token}/`)).map((i) => i.fromPath);
+      const mine = res.items
+        .filter((i) => i.fromPath.startsWith(`/${token}/`))
+        .map((i) => i.fromPath);
       expect(mine).toEqual([`/${token}/a`, `/${token}/b`, `/${token}/c`]);
     });
 
@@ -879,7 +870,12 @@ describe.skipIf(!hasDb)("redirects/service — integración DB (UrlRedirect admi
 
     it("cada item expone el shape completo de RedirectListItem", async () => {
       const from = nextPath();
-      await seedRedirect({ fromPath: from, toPath: "/shape", statusCode: 302, description: `${RUN} d` });
+      await seedRedirect({
+        fromPath: from,
+        toPath: "/shape",
+        statusCode: 302,
+        description: `${RUN} d`,
+      });
 
       const res = await listRedirects({ q: from, status: "all", pageSize: 10 });
       const item = res.items.find((i) => i.fromPath === from);

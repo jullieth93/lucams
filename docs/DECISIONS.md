@@ -1487,3 +1487,40 @@ VENNDELO_WEBHOOK_SECRET=
 **Verificación.** 14 tests unitarios nuevos (retry/circuit-breaker/fetch-with-timeout) + 90/90 unit (wompi/payments incluidos) + **65/65 integration contra el path REAL de Aveonline demo** (saga + checkout) → el cableado no rompe el happy path. typecheck limpio, prettier aplicado.
 
 **Pendiente.** Cablear el cliente Anthropic (Studio IA, Fase 3) con `fetchWithTimeout` 30s + retry cuando se implemente. El estado del breaker es per-instancia (serverless) — si las métricas exigen coordinación global, migrar a Postgres/Redis (mandato #11). [[ADR-039]].
+
+## ADR-046 — Cierre de open-redirect en el CMS de redirects + `safeRedirectTarget` (2026-07-09)
+
+**Contexto.** El hallazgo `safeRedirectTarget` seguía abierto (ROADMAP:196) y los tests de
+`features/redirects/service.integration.test.ts` **documentaban dos bugs reales** de open-redirect
+(marcados `BUG:`): el CMS de redirects admin (`UrlRedirect`, 301/302 servidos por `proxy.ts`) aceptaba
+destinos que **parecen internos** (empiezan con `/`) pero el navegador resuelve a un host **externo**:
+- `//evil.com` (protocol-relative) → `https://evil.com`
+- `/\evil.com` (backslash, el navegador normaliza `\` → `/`) → `//evil.com` → `https://evil.com`
+
+`normalizePath` solo dejaba pasar `http(s)://` explícito y a todo lo demás le anteponía `/` — sin
+detectar los vectores disfrazados. Un redirect así habilita phishing con el dominio propio en la barra.
+
+**Decisión.** Nuevo helper `apps/web/lib/safe-redirect.ts` con dos políticas:
+- `isSafeInternalPath` / `safeRedirectTarget(input, fallback="/")` — **SOLO interno**: exige un único `/`
+  inicial (no `//`), sin `\`, sin caracteres de control, y que resuelva al **mismo origen** contra una base
+  arbitraria (`new URL` autoritativo, no heurística). Para consumir `?next=` de auth sin confiar en el valor.
+- `isAllowedRedirectDestination` — política del **CMS admin**: acepta interno seguro **O** externo
+  `http(s)://` **explícito** (por diseño: redirigir a partners), y rechaza los disfrazados.
+
+**Cableado:**
+1. `features/redirects/service.ts` — `assertAllowedToPath(toPath)` en `createRedirect` **y** `updateRedirect`
+   → lanza `RedirectValidationError` (mensaje en español llano para Lucy). Externos http(s) siguen permitidos;
+   `//evil.com` y `/\evil.com` ahora se rechazan antes de persistir.
+2. **Login honra `?next=` seguro** (antes redirigía a `/` hardcodeado, ignorando el `next` que ya ponía
+   `/mi-cuenta`): la page lee `sp.next`, el form lo pasa como hidden field, y el action redirige a
+   `safeRedirectTarget(next)`. Aunque el hidden field sea manipulable, la sanitización server-side garantiza
+   solo paths internos → arregla la UX (volver a donde venías) sin abrir un open-redirect.
+
+**Nota de scheme.** Se conservó el diseño previo (ADR sin número en el schema): el CMS permite `http://` y
+`https://` sin restricción de scheme para externos explícitos. No se restringió a https-only para no romper
+el caso de uso admin; los esquemas peligrosos (`javascript:`, `data:`) no matchean `http(s)://` y caen a
+path interno inofensivo.
+
+**Verificación.** 13 tests unitarios nuevos (`safe-redirect.test.ts`, todos los vectores) + los 2 tests
+`BUG:` del integration reescritos a **BLOQUEA** (verifican rechazo + no-persistencia) → 75/75 verde contra
+DB real. typecheck + eslint limpios. [[ADR-045]].

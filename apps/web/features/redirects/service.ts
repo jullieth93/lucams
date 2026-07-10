@@ -7,6 +7,7 @@
 
 import "server-only";
 import { prisma } from "@/lib/db";
+import { isAllowedRedirectDestination } from "@/lib/safe-redirect";
 
 const PAGE_SIZE = 20;
 
@@ -136,6 +137,22 @@ function normalizePath(input: string): string {
   return withSlash;
 }
 
+/**
+ * Valida que el DESTINO de un redirect no sea un vector open-redirect disfrazado.
+ * Se permite externo http(s):// EXPLÍCITO (por diseño, apuntar a partners) y
+ * paths internos seguros; se rechazan "//evil.com" y "/\evil.com" que parecen
+ * internos pero el navegador resuelve a un host externo (phishing). [[ADR-046]].
+ */
+function assertAllowedToPath(toPath: string): void {
+  if (!isAllowedRedirectDestination(toPath)) {
+    throw new RedirectValidationError(
+      "toPath",
+      "Destino no permitido. Usá una ruta interna que empiece con '/' " +
+        "(sin '//' ni '\\') o una URL externa completa (https://...).",
+    );
+  }
+}
+
 export type RedirectCreateInput = {
   fromPath: string;
   toPath: string;
@@ -147,6 +164,7 @@ export type RedirectCreateInput = {
 export async function createRedirect(input: RedirectCreateInput, actorAdminId: string) {
   const fromPath = normalizePath(input.fromPath);
   const toPath = normalizePath(input.toPath);
+  assertAllowedToPath(toPath);
 
   if (fromPath === toPath) {
     throw new RedirectValidationError("toPath", "Origen y destino no pueden ser iguales.");
@@ -199,6 +217,7 @@ export type RedirectUpdateInput = {
 
 export async function updateRedirect(input: RedirectUpdateInput, actorAdminId: string) {
   const toPath = normalizePath(input.toPath);
+  assertAllowedToPath(toPath);
   if (![301, 302].includes(input.statusCode)) {
     throw new RedirectValidationError("statusCode", "Código debe ser 301 o 302.");
   }

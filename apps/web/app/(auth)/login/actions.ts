@@ -25,6 +25,7 @@ import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { rateLimit } from "@/lib/rate-limit";
 import { emailKey, ipKey } from "@/lib/rate-limit-keys";
+import { safeRedirectTarget } from "@/lib/safe-redirect";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 const LoginSchema = z.object({
@@ -96,7 +97,11 @@ export async function loginAction(
   // un cart roto no debe impedir entrar a la cuenta.
   await mergeCartSafely(authData.user.id);
 
-  redirect("/");
+  // Volver a donde el usuario venía (`?next=`), pero SOLO si es un path interno
+  // seguro — `safeRedirectTarget` neutraliza open-redirect (//evil.com, etc.) y
+  // cae a "/" ante cualquier valor sospechoso o ausente.
+  const nextRaw = formData.get("next");
+  redirect(safeRedirectTarget(typeof nextRaw === "string" ? nextRaw : null));
 }
 
 async function mergeCartSafely(supabaseUserId: string): Promise<void> {

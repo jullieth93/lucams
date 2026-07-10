@@ -19,9 +19,11 @@ import { loginAction, type LoginActionState } from "./actions";
 export function LoginForm({
   initialError,
   initialSuccess,
+  next,
 }: {
   initialError?: string;
   initialSuccess?: string;
+  next?: string;
 }) {
   const [state, formAction, pending] = useActionState<LoginActionState | null, FormData>(
     loginAction,
@@ -63,6 +65,7 @@ export function LoginForm({
       )}
 
       <form action={formAction}>
+        {next && <input type="hidden" name="next" value={next} />}
         <CardContent className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="email">Correo electrónico</Label>

@@ -21,6 +21,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
   const sp = await searchParams;
   const errorParam = typeof sp.error === "string" ? sp.error : undefined;
   const resetParam = typeof sp.reset === "string" ? sp.reset : undefined;
+  const nextParam = typeof sp.next === "string" ? sp.next : undefined;
 
   const initialError = errorParam ? ERROR_MESSAGES[errorParam] : undefined;
   const initialSuccess = resetParam ? SUCCESS_MESSAGES[resetParam] : undefined;
@@ -29,6 +30,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
     <LoginForm
       {...(initialError && { initialError })}
       {...(initialSuccess && { initialSuccess })}
+      {...(nextParam && { next: nextParam })}
     />
   );
 }

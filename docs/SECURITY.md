@@ -1236,26 +1236,29 @@ export default async function Layout({ children }) {
   - **No tenemos endpoints que acepten URL del usuario** en el plan actual. Si llegan a aparecer (ej. importar imagen desde URL): allowlist de dominios o bloquear rangos `127.0.0.0/8`, `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`, `169.254.0.0/16`.
   - El Estudio de Personalización solo acepta uploads directos a Supabase Storage, no URLs.
 
-### Open redirects
+### Open redirects — IMPLEMENTADO (ADR-046)
 
-- **Riesgo:** un parámetro `?next=...` sin validar puede llevar al usuario a un dominio malicioso (phishing).
-- **Mitigación:**
-  - Solo permitir `next=` con paths relativos (`/cuenta`, `/orden/123`) o un allowlist de dominios propios.
-  - **Nunca** redirect a URL externa basada en input del usuario.
+- **Riesgo:** un parámetro `?next=...` o un destino de redirect admin sin validar puede llevar al usuario a
+  un dominio malicioso (phishing con el dominio propio en la barra). Vectores clave: `//evil.com`
+  (protocol-relative) y `/\evil.com` (backslash normalizado por el navegador) — **parecen internos** (empiezan
+  con `/`) pero `new URL` los resuelve a host externo.
+- **Implementación:** `apps/web/lib/safe-redirect.ts` con dos políticas (13 tests unitarios):
+  - **`safeRedirectTarget(input, fallback="/")` — SOLO interno.** Para `?next=` de auth y similares. Exige un
+    único `/` inicial (no `//`), sin `\`, sin control chars, y que resuelva al MISMO origen (`new URL`
+    autoritativo). Cableado en el **login** (honra `?next=` sanitizado).
+  - **`isAllowedRedirectDestination(input)` — interno O externo http(s):// EXPLÍCITO.** Para el **CMS de
+    redirects admin** (`features/redirects/service.ts`), que por diseño permite apuntar a partners externos.
+    Rechaza los disfrazados. Cableado en `createRedirect`/`updateRedirect` vía `assertAllowedToPath`.
+- **Regla:** **nunca** redirect al valor crudo de un parámetro/formulario. Todo destino de redirect pasa por
+  uno de estos dos validadores server-side (aunque el origen sea un hidden field manipulable).
 
 ```ts
-// lib/redirects.ts
-const ALLOWED_HOSTS = new Set(["lucamsshop.co"]);
-
-export function safeRedirectTarget(input: string | null, fallback = "/"): string {
-  if (!input) return fallback;
-  if (input.startsWith("/") && !input.startsWith("//")) return input; // relativo seguro
-  try {
-    const url = new URL(input);
-    if (ALLOWED_HOSTS.has(url.host)) return url.pathname + url.search;
-  } catch {}
-  return fallback;
+// lib/safe-redirect.ts (resumen — ver fuente para el detalle)
+export function safeRedirectTarget(input: string | null | undefined, fallback = "/"): string {
+  return isSafeInternalPath(input) ? input.trim() : fallback; // solo paths internos seguros
 }
+// CMS admin: acepta http(s):// explícito O path interno; rechaza //evil.com y /\evil.com.
+export function isAllowedRedirectDestination(input: unknown): input is string { /* ... */ }
 ```
 
 ### Honeypots en formularios públicos

@@ -193,7 +193,7 @@ Antes de iniciar la fase, citar fuente con fecha en `OPERATIONS.md` para:
 - [x] **Migration strategy** — Prisma migrations + supabase/migrations/\*.sql para SQL custom (RLS, rate-limit, etc.). Convención documentada
 - [x] **Indexing inicial** — schema Prisma incluye índices en deletedAt + columns de lookup + composite indexes
 - [x] **`fetchWithTimeout` + `withRetry` + `CircuitBreaker`** — `apps/web/lib/{fetch-with-timeout,retry,circuit-breaker}.ts` (14 tests). Cableado en Aveonline (auth/quote/carriers/agents/tracking con retry; generar-guía solo timeout+CB por NO idempotente) y Wompi `getTransaction` (retry+CB). Verificado contra path real (65/65 integration). Ver ADR-045. Falta cablear Anthropic (Fase 3 studio IA)
-- [ ] **`safeRedirectTarget`** — pendiente
+- [x] **`safeRedirectTarget`** — `apps/web/lib/safe-redirect.ts` (13 tests). Cierra open-redirect real del CMS de redirects (`//evil.com` / `/\evil.com` disfrazados de internos, ahora bloqueados en create/update; externos http(s) explícitos siguen permitidos por diseño) + honra `?next=` seguro en login. Ver ADR-046
 - [ ] **Tests RLS automatizados** — pendiente, criterio importante antes de tráfico real
 - [ ] **`@axe-core/react`** — pendiente a11y automation
 
