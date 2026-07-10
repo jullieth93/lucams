@@ -168,13 +168,13 @@ Antes de iniciar la fase, citar fuente con fecha en `OPERATIONS.md` para:
 - [x] **SiteHeader dinámico** (logged-in vs logged-out)
 - [x] Footer mínimo en /(auth) layout con link a WhatsApp
 - [ ] WhatsApp FAB global (todavía pendiente — solo está en footer de auth)
-- [ ] Página 404 con mascota
-- [ ] Página `error.tsx` global (sin filtrar PII)
+- [x] Página 404 con mascota (`app/not-found.tsx`)
+- [x] Página `error.tsx` + `global-error.tsx` (branded, sin filtrar PII — solo el `digest`; reportan a `ErrorReport` vía `/api/log-error`, ADR-047). Falta (opcional): boundary propio por route group admin (hoy heredan el global)
 - [ ] i18n routing es-CO/en con `next-intl` (diferido — pre-launch solo es-CO)
 
 #### CI/CD y observabilidad
 
-- [ ] CI en GitHub Actions: typecheck + lint + tests + secret scanning + dep audit
+- [x] **CI en GitHub Actions** (`.github/workflows/ci.yml`): typecheck + lint + build · vitest (Postgres service container, ~1.6k tests) · **gitleaks** secret scan · prettier format-check · **`pnpm audit --prod --audit-level=high`** dep audit. (Vulns transitivas vía Next hoy: postcss moderate + @babel/core low, ambas < umbral high → no bloquean; se resuelven al bumpear Next)
 - [ ] Pre-commit hook con `lint-staged` (formato + lint en archivos staged)
 - [ ] Vercel Logs como monitoreo básico
 - [ ] Vercel Preview deployment funcionando
