@@ -1482,7 +1482,9 @@ VENNDELO_WEBHOOK_SECRET=
 - **Aveonline** (`aveonlineFetch` helper + `aveonlineCB` compartido): auth/quote/carriers/agents/tracking/list-webhooks → `retry:true` (idempotentes). **`createShipment` (generar guía) → timeout(15s)+CB pero SIN retry** — reintentar tras timeout podría crear una **guía duplicada** (doble etiqueta/cobro). create/delete-webhook → sin retry.
 - **Wompi** (`wompiCB`): `getTransaction` (GET estado de pago, idempotente) → retry+CB. Se **bajó su timeout de 10s → 5s** alineándolo a la tabla CONVENTIONS: con 3 reintentos + backoff, 5s+retry es más robusto que un único 10s sin retry. Se adjunta `.status` al error 5xx para que `isRetryable` lo reintente.
 
-**Timeouts aplicados** (tabla CONVENTIONS): quote 5s, create-shipment 15s, auth/tracking/listados 5s, webhooks admin 8s, Wompi GET 5s.
+**Timeouts aplicados** (tabla CONVENTIONS): quote 5s, create-shipment **20s** (excepción a la tabla — endpoint
+más lento y no-reintentable; corregido de 15s→20s en ADR-048), auth/tracking/listados 5s, webhooks admin 8s,
+Wompi GET 5s.
 
 **Verificación.** 14 tests unitarios nuevos (retry/circuit-breaker/fetch-with-timeout) + 90/90 unit (wompi/payments incluidos) + **65/65 integration contra el path REAL de Aveonline demo** (saga + checkout) → el cableado no rompe el happy path. typecheck limpio, prettier aplicado.
 
@@ -1558,5 +1560,51 @@ integration sigue verde con el nuevo `clientErrors`. typecheck + eslint limpios.
 4 tests de integración cubren resolver→sale-de-abiertos y reabrir→limpia-sellos. Sin esto la lista sería
 read-only, inútil para Lucy (admin no-técnica).
 
-**Pendiente (mejora futura).** Reabrir automáticamente un reporte RESUELTO si el mismo fingerprint recurre
-(hoy `captureClientError` incrementa `count` pero no cambia `status`). [[ADR-045]].
+**Pendiente (mejora futura).** ~~Reabrir automáticamente un reporte RESUELTO si el mismo fingerprint recurre~~
+→ HECHO en ADR-048. [[ADR-045]].
+
+## ADR-048 — Arreglos de la revisión adversarial multi-agente de la sesión (2026-07-09)
+
+**Contexto.** Tras cerrar los frentes de la sesión (ADR-045/046/047 + RLS), se corrió un **workflow de revisión
+adversarial multi-agente** sobre todo el código nuevo (36 archivos, +1622/-132): 8 dimensiones de alto riesgo
+en paralelo, cada hallazgo verificado por un panel de 3 escépticos con lentes distintas (correctness / security /
+reproducibilidad), sobreviviendo solo lo confirmado por ≥2/3. Resultado: 14 hallazgos, **8 confirmados**
+(0 críticos), 6 correctamente refutados (body-size lo capa la plataforma, CB compartido quote/createShipment es
+deseable, PII-en-url refutado 2/1, getState lazy es correcto, etc.). La suite completa (1614 tests) seguía verde;
+estos son defectos que los tests no cubrían. Se arreglaron los 8:
+
+1. **[MED] `aveonline.ts` — timeout de createShipment restaurado 15s→20s.** ADR-045 lo bajó a 15s siguiendo la
+   tabla genérica de CONVENTIONS, pero `generarGuia2` es el endpoint más lento (guía+PDF+sticker) y la ÚNICA
+   llamada no-reintentable/no-idempotente; estrechar su margen sube la probabilidad de abortar una guía que
+   Aveonline SÍ completó server-side → queda huérfana (la DB no guardó trackingNumber) y un retry de la saga
+   generaría una 2ª guía (doble flete/recaudo). Se restaura el 20s previo probado (mandato #9: no bajar un número
+   sin evidencia del p99). Idempotencia real (query-by-dsreferencia antes de crear) queda como mejora.
+2. **[MED] `error-capture.ts` — reabrir reportes RESUELTOS que recurren.** Un error marcado RESOLVED que vuelve
+   a ocurrir solo incrementaba `count` → la regresión quedaba invisible en el panel (status seguía RESOLVED).
+   Ahora `captureClientError` hace un `updateMany({fingerprint, status:'RESOLVED'} → OPEN + limpia resolved*)`;
+   `IGNORED` se respeta (silencio intencional). updateMany atómico sobre el filtro → race-safe.
+3. **[LOW] `circuit-breaker.ts` — prueba única en half-open.** El half-open no limitaba a una llamada: N requests
+   concurrentes (Vercel sirve concurrencia en un worker) atravesaban el circuito hacia el proveedor caído. Se
+   agregó un flag `probing` (+ local `isProbe` para que solo la prueba lo limpie en el finally): concurrentes en
+   half-open reciben `CircuitOpenError` (fail-fast).
+4. **[LOW] `error-capture.ts` — fingerprint incluye `digest`.** En build de producción los errores de Server
+   Component llegan a los boundaries con un `message` genérico idéntico; sin el digest, bugs distintos colapsaban
+   en una fila. Ahora el fingerprint es SHA-1(message + stack[:3] + digest).
+5. **[LOW] `error-capture.ts` — normalización de tokens volátiles.** URLs (chunks con hash por build),
+   posiciones `:línea:columna` y hex largos se normalizan antes de hashear → recurrencias del mismo error lógico
+   (ChunkLoadError entre deploys) deduplican en una fila en vez de acumular casi-duplicados.
+6. **[LOW] `/api/log-error` — tope global anti-bloat.** Además del rate-limit por IP (30/5min), un bucket global
+   (600/5min) acota el peor caso de creación de filas ante un atacante que rota IPs + varía el message (cada
+   fingerprint único = fila). Los errores legítimos deduplican, así que 600/5min es holgado.
+7. **[LOW] `/internal/plantilla-preview/[slug]` — gate de producción.** La ruta interna era PÚBLICA sin auth y
+   renderizaba cualquier plantilla por slug, incluidas ocultas/soft-deleted → enumeración/disclosure. Ahora
+   `if (VERCEL_ENV === 'production') notFound()`: cerrada en vivo (los previews se sirven desde Storage, nunca
+   desde esta ruta), sin romper el generador Playwright que corre en dev/preview.
+
+**Verificación.** Tests nuevos: CB prueba-única concurrente + 5 de error-capture (reopen, ignored-se-respeta,
+digest-separa, normalización-colapsa). Suite completa re-corrida verde. typecheck + eslint + prettier limpios.
+
+**Descartados (no se tocaron, refutación correcta).** Wompi getTransaction 3×5s≈15.7s peor caso vs límite
+serverless (1 conf/2 uncertain, no alcanzó el umbral; el happy-path es 1 llamada <5s, solo Wompi degradado
+reintenta; revisar si migran a Vercel Pro); redacción de PII en url/stack (refutado 2/1, inherente al error
+reporting); CB compartido quote/createShipment (refutado 3/0, refleja "¿Aveonline arriba?" globalmente). [[ADR-047]].

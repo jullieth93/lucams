@@ -70,4 +70,65 @@ describe.skipIf(!hasDb)("captureClientError — dedup por fingerprint", () => {
   it("no lanza aunque el message venga vacío (best-effort)", async () => {
     await expect(captureClientError({ message: "" })).resolves.toBeUndefined();
   });
+
+  it("un error RESUELTO que RECURRE se reabre (status→OPEN, limpia resolvedAt/By)", async () => {
+    const message = `${RUN}-regresion`;
+    const stack = "at Reg (r.js:1)";
+    await captureClientError({ message, stack });
+    const before = await prisma.errorReport.findFirst({ where: { message } });
+    // Admin lo resuelve.
+    await prisma.errorReport.update({
+      where: { id: before!.id },
+      data: { status: "RESOLVED", resolvedAt: new Date(), resolvedBy: "admin-x" },
+    });
+    // El mismo error vuelve a ocurrir.
+    await captureClientError({ message, stack });
+    const after = await prisma.errorReport.findFirst({ where: { message } });
+    expect(after!.status).toBe("OPEN");
+    expect(after!.resolvedAt).toBeNull();
+    expect(after!.resolvedBy).toBeNull();
+    expect(after!.count).toBe(2); // incrementó, no creó fila nueva
+  });
+
+  it("un error IGNORED que recurre NO se reabre (silencio intencional)", async () => {
+    const message = `${RUN}-ignorado`;
+    const stack = "at Ign (i.js:1)";
+    await captureClientError({ message, stack });
+    const row = await prisma.errorReport.findFirst({ where: { message } });
+    await prisma.errorReport.update({
+      where: { id: row!.id },
+      data: { status: "IGNORED", resolvedAt: new Date(), resolvedBy: "admin-x" },
+    });
+    await captureClientError({ message, stack });
+    const after = await prisma.errorReport.findFirst({ where: { message } });
+    expect(after!.status).toBe("IGNORED"); // sigue silenciado
+    expect(after!.count).toBe(2);
+  });
+
+  it("mismo message+stack pero DISTINTO digest → filas distintas (server errors enmascarados en prod)", async () => {
+    const message = `${RUN}-masked`;
+    const stack = "at Server (server.js:1)";
+    await captureClientError({ message, stack, digest: "digestA" });
+    await captureClientError({ message, stack, digest: "digestB" });
+    const rows = await prisma.errorReport.findMany({ where: { message } });
+    expect(rows).toHaveLength(2);
+  });
+
+  it("normaliza tokens volátiles: mismo error con hash de chunk distinto → una fila", async () => {
+    const message = `${RUN}-chunk`;
+    // Dos deploys: la URL del chunk cambia de hash, el resto es idéntico.
+    await captureClientError({
+      message: `${message} Loading chunk failed`,
+      stack: "at t (https://x.co/_next/static/chunks/234-abcdef123456.js:9:100)",
+    });
+    await captureClientError({
+      message: `${message} Loading chunk failed`,
+      stack: "at t (https://x.co/_next/static/chunks/234-999888777666.js:9:100)",
+    });
+    const rows = await prisma.errorReport.findMany({
+      where: { message: { startsWith: `${message}` } },
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].count).toBe(2);
+  });
 });

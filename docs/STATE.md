@@ -146,6 +146,15 @@ panel `/admin/observability` con tile "Errores cliente" + sección de reportes a
 (botones Resolver/Ignorar → server actions SUPERADMIN + audit log). 9 tests integración nuevos.
 **Pendiente-mejora:** reabrir auto un reporte resuelto si el fingerprint recurre.
 
+**Revisión adversarial multi-agente + 8 arreglos (ADR-048).** Se sometió TODO el código de la sesión
+(36 archivos) a un workflow de revisión: 8 dimensiones de alto riesgo en paralelo, cada hallazgo verificado
+por 3 escépticos con lentes distintas (correctness/security/reproducibilidad), sobreviviendo solo ≥2/3.
+14 hallazgos → **8 confirmados** (0 críticos), 6 correctamente refutados. Arreglados los 8: timeout de
+createShipment restaurado 15s→**20s** (mandato #9, evita guía huérfana/doble), reabrir reportes RESUELTOS que
+recurren, prueba única en half-open del circuit breaker, fingerprint incluye digest + normaliza tokens volátiles,
+tope global anti-bloat en /api/log-error, y **gate de producción en `/internal/plantilla-preview`** (era pública
+sin auth → enumeración de plantillas ocultas). Suite completa (1614 tests) verde antes y después.
+
 **Nota de continuidad:** el bloque "🔴 PENDIENTE SERIO" (investigación profunda de plantillas) y el
 checkpoint "⏳ EN CURSO" de Fase 3 siguen vigentes/diferidos — no se tocaron esta sesión.
 

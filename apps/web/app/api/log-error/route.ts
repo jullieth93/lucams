@@ -36,10 +36,20 @@ export async function POST(request: Request) {
   try {
     const hdrs = await headers();
     const ip = hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
-    // 30 reportes / 5 min por IP: cómodo para un usuario real (varios boundaries
-    // en una sesión mala) pero corta el spam automatizado.
-    const rl = await rateLimit(ipKey("log-error", ip), 30, 5 * 60);
-    if (!rl.allowed) {
+    // Rate-limit en dos niveles:
+    //  1. Por IP: 30/5min — cómodo para un usuario real (varios boundaries en una
+    //     sesión mala) pero corta el spam automatizado desde una IP.
+    //  2. Global: 600/5min — backstop anti-bloat de ErrorReport ante un atacante
+    //     que rota IPs y varía el message para generar fingerprints únicos (cada
+    //     uno crea fila). Los errores legítimos deduplican por fingerprint, así que
+    //     600 filas nuevas/5min es holgado para tráfico real y acota el abuso.
+    const rlIp = await rateLimit(ipKey("log-error", ip), 30, 5 * 60);
+    if (!rlIp.allowed) {
+      return NextResponse.json({ ok: false }, { status: 429 });
+    }
+    const rlGlobal = await rateLimit("log-error:global", 600, 5 * 60);
+    if (!rlGlobal.allowed) {
+      logger.warn({ event: "observability.log_error.global_ratelimit" });
       return NextResponse.json({ ok: false }, { status: 429 });
     }
 

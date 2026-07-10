@@ -682,11 +682,19 @@ export class AveonlineProvider implements ShippingProvider {
 
     // Sin `retry`: generar guía NO es idempotente — un reintento tras timeout
     // podría crear una guía DUPLICADA (doble cobro/etiqueta). Solo timeout + CB.
+    //
+    // Timeout 20s (NO el 15s genérico de la tabla): generarGuia2 es el endpoint
+    // PHP más lento (genera guía + PDF + sticker) y es la ÚNICA llamada
+    // no-reintentable. Bajarlo aumenta la probabilidad de abortar una guía que
+    // Aveonline SÍ completó server-side → queda huérfana (nuestra DB no guardó el
+    // trackingNumber) y un retry posterior de la saga generaría una segunda guía.
+    // 20s era el valor previo probado; no se baja sin evidencia del p99 real
+    // (mandato #9). Ver ADR-045/048.
     const res = await aveonlineFetch(`${BASE_URL}/nal/v1.0/generarGuiaTransporteNacional.php`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
-      timeoutMs: 15_000,
+      timeoutMs: 20_000,
     });
 
     if (!res.ok) {

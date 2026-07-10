@@ -844,8 +844,8 @@ export async function fetchWithTimeout(
 | ------------------------------- | -------------------------- |
 | Wompi `/v1/transactions/<id>`   | 5 s                        |
 | Wompi `/v1/transactions` (POST) | 10 s                       |
-| Venndelo quote                  | 5 s                        |
-| Venndelo create shipment        | 15 s                       |
+| Aveonline quote (cotizarDoble)  | 5 s                        |
+| Aveonline create shipment       | 20 s (endpoint lento + no-reintentable; ADR-048) |
 | Anthropic `/v1/messages`        | 30 s (modelo puede tardar) |
 | Resend `/emails`                | 10 s                       |
 

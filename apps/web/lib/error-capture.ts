@@ -53,17 +53,36 @@ export type ClientErrorReport = {
 };
 
 /**
- * Fingerprint de deduplicación: SHA-1 de `message` + las primeras 3 líneas del
- * stack. Mismo error recurrente → mismo fingerprint → incrementa `count` en vez
- * de crear filas nuevas. Se calcula en el server (no se confía en el cliente).
+ * Normaliza tokens VOLÁTILES que cambian entre deploys/sesiones y romperían la
+ * deduplicación si entraran crudos al fingerprint:
+ *  - URLs (los chunks de Next llevan hash por build: `.../234-<hash>.js`)
+ *  - posiciones `:línea:columna` de los stack frames minificados
+ *  - runs de hex largos (ids de chunk, hashes de build)
+ * Así, recurrencias del MISMO error lógico mapean al mismo fingerprint.
  */
-function fingerprintOf(message: string, stack?: string): string {
+function normalizeForFingerprint(s: string): string {
+  return s
+    .replace(/https?:\/\/\S+/g, "URL")
+    .replace(/:\d+:\d+/g, ":N:N")
+    .replace(/\b[0-9a-f]{8,}\b/gi, "HASH");
+}
+
+/**
+ * Fingerprint de deduplicación: SHA-1 de `message` + las primeras 3 líneas del
+ * stack (ambos normalizados) + `digest`. Se incluye `digest` porque en un build
+ * de PRODUCCIÓN de Next los errores de Server Component llegan a los boundaries
+ * con un `message` GENÉRICO idéntico ("The specific message is omitted..."); sin
+ * el digest, bugs distintos colapsarían en una sola fila. Se calcula en el server
+ * (no se confía en el cliente).
+ */
+function fingerprintOf(message: string, stack?: string, digest?: string): string {
   const top3 = (stack ?? "")
     .split("\n")
     .slice(0, 3)
     .map((l) => l.trim())
     .join("\n");
-  return crypto.createHash("sha1").update(`${message}\n${top3}`).digest("hex");
+  const basis = `${normalizeForFingerprint(message)}\n${normalizeForFingerprint(top3)}\n${digest ?? ""}`;
+  return crypto.createHash("sha1").update(basis).digest("hex");
 }
 
 /**
@@ -74,7 +93,7 @@ function fingerprintOf(message: string, stack?: string): string {
 export async function captureClientError(e: ClientErrorReport): Promise<void> {
   const message = (e.message || "unknown").slice(0, 2000);
   const stack = e.stack ? e.stack.slice(0, 4000) : null;
-  const fingerprint = fingerprintOf(message, e.stack);
+  const fingerprint = fingerprintOf(message, e.stack, e.digest);
   try {
     await prisma.errorReport.upsert({
       where: { fingerprint },
@@ -102,6 +121,18 @@ export async function captureClientError(e: ClientErrorReport): Promise<void> {
         event: "observability.client_capture_fail",
         err: err instanceof Error ? err.message : String(err),
       });
+      return;
     }
   }
+
+  // Regresión: si el error estaba RESUELTO y vuelve a ocurrir, reabrirlo para que
+  // sea visible de nuevo en el panel (como hace Sentry). `IGNORED` se respeta
+  // (silenciado a propósito = ruido conocido). updateMany es atómico sobre el
+  // filtro → seguro ante concurrencia; best-effort (no rompe el flujo).
+  await prisma.errorReport
+    .updateMany({
+      where: { fingerprint, status: "RESOLVED" },
+      data: { status: "OPEN", resolvedAt: null, resolvedBy: null },
+    })
+    .catch(() => {});
 }
