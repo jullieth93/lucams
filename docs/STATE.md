@@ -74,11 +74,16 @@ NO hay admin CRUD de plantillas.
 2. ✅ **Galería admin `/admin/plantillas`** (`5078920`, grupo Catálogo, SUPERADMIN/MANAGER) — preview
    real por plantilla + estado 🟢/🟡/⚫ + aprobar (isActive+restore) / ocultar. Auditado.
 3. ⏳ **[ACCIÓN LUCY]** revisar `/admin/plantillas` y aprobar el set curado por ocasión (~12-16).
-4. ⏳ **Estudio móvil simplificado** (EN CURSO) — entrada "sube tu foto" + plantillas como tabs de
-   ocasión (hallazgo #1: Snapfish móvil = solo-foto). SIGUIENTE paso de código.
+4. ✅ **Copy móvil del Estudio device-aware** (`99d8664`) — el onboarding decía "arrastra al panel
+   de la izquierda" (no existe en móvil). Ahora `useIsMobile` → copy "toca y sube tu foto";
+   hint del sidebar device-neutral. Observado + verificado con screenshot a 390px. NO se tocó el
+   canvas (feature madura co-diseñada).
+5. ⏳ **[PROPONER a Lucy] rediseño mayor del flujo móvil** (tabs por ocasión, entrada radical
+   simple tipo Mixtiles/Snapfish) — toca su feature co-diseñada + depende de la curación de
+   plantillas por ocasión. Requiere su visión, no hacerlo a ciegas.
 
-**Al retomar:** si Lucy no ha aprobado plantillas aún, recordárselo (abrir `/admin/plantillas`).
-Continuar con el Estudio móvil simplificado (paso 4).
+**Al retomar:** (a) si Lucy no aprobó plantillas, recordarle abrir `/admin/plantillas`; (b) si dio
+su visión del flujo móvil, ejecutar paso 5; si no, proponérselo con opciones.
 
 ## Última sesión — 2026-07-03 (deploy + git flow + regresión visual + Bloque D + F + axe)
 
