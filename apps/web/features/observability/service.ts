@@ -122,3 +122,20 @@ export async function getTechHealth(): Promise<TechHealth> {
     },
   };
 }
+
+export type ErrorReportStatus = "OPEN" | "RESOLVED" | "IGNORED";
+
+/**
+ * Cambia el estado de triage de un ErrorReport (OPEN/RESOLVED/IGNORED).
+ * Al resolver/ignorar sella `resolvedAt` + `resolvedBy`; al reabrir los limpia.
+ */
+export async function setErrorReportStatus(id: string, status: ErrorReportStatus, adminId: string) {
+  return prisma.errorReport.update({
+    where: { id },
+    data: {
+      status,
+      resolvedAt: status === "OPEN" ? null : new Date(),
+      resolvedBy: status === "OPEN" ? null : adminId,
+    },
+  });
+}

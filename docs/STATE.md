@@ -142,8 +142,9 @@ servidor (onRequestError→ErrorLog) pero los error boundaries del cliente solo 
 los errores client-side se perdían. El modelo `ErrorReport` (dedup por fingerprint) ya existía sin writer.
 Se cerró: `captureClientError` (upsert por SHA-1(message+stack[:3]), best-effort, race-safe) +
 `/api/log-error` (Zod + rate-limit IP + nunca 5xx) + `error.tsx`/`global-error.tsx` reportan con keepalive +
-panel `/admin/observability` con tile "Errores cliente" + sección de reportes abiertos (sin esto sería
-write-only). 5 tests integración nuevos. **Pendiente-mejora:** UI admin de triage (RESOLVED/IGNORED).
+panel `/admin/observability` con tile "Errores cliente" + sección de reportes abiertos **accionable**
+(botones Resolver/Ignorar → server actions SUPERADMIN + audit log). 9 tests integración nuevos.
+**Pendiente-mejora:** reabrir auto un reporte resuelto si el fingerprint recurre.
 
 **Nota de continuidad:** el bloque "🔴 PENDIENTE SERIO" (investigación profunda de plantillas) y el
 checkpoint "⏳ EN CURSO" de Fase 3 siguen vigentes/diferidos — no se tocaron esta sesión.

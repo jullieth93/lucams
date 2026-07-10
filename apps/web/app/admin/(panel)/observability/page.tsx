@@ -19,6 +19,7 @@ import {
 import { requireRole } from "@/lib/admin-rbac-guard";
 import { getTechHealth } from "@/features/observability/service";
 import { AdminPage, AdminPageHeader, AdminPageBody } from "@/components/admin-page";
+import { ClientErrorActions } from "./client-error-actions";
 
 export const metadata: Metadata = { title: "Salud técnica" };
 
@@ -116,9 +117,12 @@ export default async function AdminObservabilityPage() {
                       {e.url ?? "—"} · últ. {dateFmt.format(e.lastSeenAt)}
                     </p>
                   </div>
-                  <span className="flex-shrink-0 rounded-full bg-rose-100 px-2 py-0.5 text-xs font-bold text-rose-700">
-                    ×{e.count}
-                  </span>
+                  <div className="flex flex-shrink-0 items-center gap-2">
+                    <span className="rounded-full bg-rose-100 px-2 py-0.5 text-xs font-bold text-rose-700">
+                      ×{e.count}
+                    </span>
+                    <ClientErrorActions id={e.id} />
+                  </div>
                 </li>
               ))}
             </ul>

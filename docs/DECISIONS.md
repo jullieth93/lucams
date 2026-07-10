@@ -1552,5 +1552,11 @@ construida. El propio comentario de `error.tsx` lo marcaba como pendiente ("se c
 stacks distintos → fingerprints distintos, persiste url/UA/digest, no lanza con message vacío) + observability
 integration sigue verde con el nuevo `clientErrors`. typecheck + eslint limpios.
 
-**Pendiente (mejora).** UI admin de triage para `ErrorReport` (marcar RESOLVED/IGNORED, `resolvedBy`) — el
-modelo ya lo soporta; hoy solo se listan los OPEN. Reabrir automáticamente un reporte RESUELTO si recurre. [[ADR-045]].
+**Triage admin (hecho en la misma sesión).** El panel es accionable: cada reporte OPEN tiene botones
+**Resolver** / **Ignorar** (server actions con gate SUPERADMIN + audit log `error_report.status_change` +
+`revalidatePath`); `setErrorReportStatus` sella `resolvedAt`/`resolvedBy` y al reabrir (OPEN) los limpia.
+4 tests de integración cubren resolver→sale-de-abiertos y reabrir→limpia-sellos. Sin esto la lista sería
+read-only, inútil para Lucy (admin no-técnica).
+
+**Pendiente (mejora futura).** Reabrir automáticamente un reporte RESUELTO si el mismo fingerprint recurre
+(hoy `captureClientError` incrementa `count` pero no cambia `status`). [[ADR-045]].
