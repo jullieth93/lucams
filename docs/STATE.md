@@ -66,15 +66,19 @@ choice-overload es real y condicional — calidad > cantidad; leaders categoriza
 ADR-037). Cuello de botella = **producción de contenido con la barra de calidad de Lucy, no código**.
 NO hay admin CRUD de plantillas.
 
-**PLAN (en ejecución):**
-1. **Pipeline de previews REALES** — renderizar el thumbnail desde el `canvasData` (Konva headless /
-   server), no Unsplash. Es lo que faltaba para que Lucy pueda aprobar.
-2. **Set curado de lanzamiento por OCASIÓN** (~12-16, no 30): día de la madre, amor y amistad, Navidad,
-   cumpleaños, bebé, mascotas — cada una con preview real + paleta kawaii → Lucy aprueba/rechaza.
-3. **Móvil simplificado** en el Estudio: entrada "sube tu foto" + plantillas como tabs de ocasión.
-4. **Admin de plantillas** (gestión no-técnica).
+**PLAN (progreso):**
+1. ✅ **Pipeline de previews REALES** (`6bd1a33`) — ruta interna `/internal/plantilla-preview/[slug]`
+   renderiza con el `StudioSlot` real (Konva) + foto de muestra (SVG data-URL); generador gateado
+   `GEN_PREVIEWS=1` screenshotea el `<canvas>` → Storage `product-images/template-previews/<slug>.png`
+   → `previewUrl`. **46/46 regeneradas, 0 fallos.** Incluye soft-deleted.
+2. ✅ **Galería admin `/admin/plantillas`** (`5078920`, grupo Catálogo, SUPERADMIN/MANAGER) — preview
+   real por plantilla + estado 🟢/🟡/⚫ + aprobar (isActive+restore) / ocultar. Auditado.
+3. ⏳ **[ACCIÓN LUCY]** revisar `/admin/plantillas` y aprobar el set curado por ocasión (~12-16).
+4. ⏳ **Estudio móvil simplificado** (EN CURSO) — entrada "sube tu foto" + plantillas como tabs de
+   ocasión (hallazgo #1: Snapfish móvil = solo-foto). SIGUIENTE paso de código.
 
-**Al retomar:** seguir por el paso del plan que quede pendiente (ver últimos commits `feat(studio)`).
+**Al retomar:** si Lucy no ha aprobado plantillas aún, recordárselo (abrir `/admin/plantillas`).
+Continuar con el Estudio móvil simplificado (paso 4).
 
 ## Última sesión — 2026-07-03 (deploy + git flow + regresión visual + Bloque D + F + axe)
 
