@@ -16,8 +16,15 @@ const RUN = `ITESTCLIENTERR${Date.now()}${Math.floor(Math.random() * 1e6)}`;
 
 describe.skipIf(!hasDb)("captureClientError — dedup por fingerprint", () => {
   afterAll(async () => {
+    // Limpia por prefijo RUN en message O en url. El caso "message vacío" produce
+    // message="unknown" (sin prefijo RUN) → se marca con una url RUN-prefijada para
+    // que ESTA limpieza lo borre y no contamine el panel real de observabilidad.
     await prisma.errorReport
-      .deleteMany({ where: { message: { startsWith: RUN } } })
+      .deleteMany({
+        where: {
+          OR: [{ message: { startsWith: RUN } }, { url: { startsWith: `itest://${RUN}` } }],
+        },
+      })
       .catch(() => {});
   });
 
@@ -68,7 +75,11 @@ describe.skipIf(!hasDb)("captureClientError — dedup por fingerprint", () => {
   });
 
   it("no lanza aunque el message venga vacío (best-effort)", async () => {
-    await expect(captureClientError({ message: "" })).resolves.toBeUndefined();
+    // url RUN-prefijada para que afterAll pueda borrar la fila "unknown" resultante
+    // (su message pierde el prefijo RUN al caer al fallback "unknown").
+    await expect(
+      captureClientError({ message: "", url: `itest://${RUN}/empty` }),
+    ).resolves.toBeUndefined();
   });
 
   it("un error RESUELTO que RECURRE se reabre (status→OPEN, limpia resolvedAt/By)", async () => {
