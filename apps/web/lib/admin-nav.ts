@@ -50,6 +50,7 @@ import {
   Mail,
   Undo2,
   HeartPulse,
+  Shapes,
 } from "lucide-react";
 
 /** Badge visual + filtro de estado. */
@@ -142,6 +143,13 @@ export const ADMIN_NAV: NavGroup[] = [
       },
       { label: "Categorías", href: "/admin/categorias", icon: Layers },
       { label: "Ocasiones", href: "/admin/ocasiones", icon: Tag },
+      {
+        label: "Plantillas del Estudio",
+        href: "/admin/plantillas",
+        icon: Shapes,
+        description:
+          "Revisa el preview REAL de cada plantilla del Estudio y apruébala (aparece para el cliente) u ocúltala. Aprobar una descartada la restaura.",
+      },
       // Lucy 2026-06-26 — Opción C — Entries placeholder eliminadas del sidebar:
       // - "Plantillas" (chocaba con /admin/email-templates y con PersonalizationTemplate
       //   ya seedeado en BD). Cuando se construya el editor de plantillas del Estudio,
