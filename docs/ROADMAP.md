@@ -194,7 +194,7 @@ Antes de iniciar la fase, citar fuente con fecha en `OPERATIONS.md` para:
 - [x] **Indexing inicial** — schema Prisma incluye índices en deletedAt + columns de lookup + composite indexes
 - [x] **`fetchWithTimeout` + `withRetry` + `CircuitBreaker`** — `apps/web/lib/{fetch-with-timeout,retry,circuit-breaker}.ts` (14 tests). Cableado en Aveonline (auth/quote/carriers/agents/tracking con retry; generar-guía solo timeout+CB por NO idempotente) y Wompi `getTransaction` (retry+CB). Verificado contra path real (65/65 integration). Ver ADR-045. Falta cablear Anthropic (Fase 3 studio IA)
 - [x] **`safeRedirectTarget`** — `apps/web/lib/safe-redirect.ts` (13 tests). Cierra open-redirect real del CMS de redirects (`//evil.com` / `/\evil.com` disfrazados de internos, ahora bloqueados en create/update; externos http(s) explícitos siguen permitidos por diseño) + honra `?next=` seguro en login. Ver ADR-046
-- [ ] **Tests RLS automatizados** — pendiente, criterio importante antes de tráfico real
+- [x] **Tests RLS automatizados** — DOS suites: `rls-coverage` (guard estructural: toda tabla pública tiene RLS habilitada) + `rls-matrix` (comportamental: anon/authenticated reciben permission-denied al LEER/INSERTAR/ACTUALIZAR/BORRAR ~20 tablas sensibles vía PostgREST; acceso legítimo solo vía Prisma service_role). 45/45 verde contra Supabase real
 - [ ] **`@axe-core/react`** — pendiente a11y automation
 
 ### Criterio de aceptación

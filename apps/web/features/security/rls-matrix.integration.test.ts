@@ -121,4 +121,16 @@ describe.skipIf(!canRun)("RLS matrix R3 — la API pública no filtra datos sens
     const res = await anon.from("Order").insert({ number: "EVIL-1", total: 1 });
     expect(res.error, "el INSERT anon en Order debería ser rechazado").not.toBeNull();
   });
+
+  // Además de leer/insertar, cerramos los verbos de escritura restantes: un
+  // impostor tampoco debe poder MUTAR ni BORRAR filas sensibles vía PostgREST.
+  it("anon NO puede actualizar Orders (manipular montos/estado)", async () => {
+    const res = await anon.from("Order").update({ total: 0 }).eq("number", "EVIL-1");
+    expect(res.error, "el UPDATE anon en Order debería ser rechazado").not.toBeNull();
+  });
+
+  it("anon NO puede borrar Customers (destrucción de datos)", async () => {
+    const res = await anon.from("Customer").delete().eq("email", "evil@example.com");
+    expect(res.error, "el DELETE anon en Customer debería ser rechazado").not.toBeNull();
+  });
 });
