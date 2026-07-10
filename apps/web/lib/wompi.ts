@@ -20,7 +20,18 @@
 
 import "server-only";
 import crypto from "node:crypto";
+import { CircuitBreaker } from "@/lib/circuit-breaker";
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { logger } from "@/lib/logger";
+import { withRetry } from "@/lib/retry";
+
+/**
+ * Circuit breaker para la API de Wompi (CONVENTIONS §Resiliencia, threshold 5 /
+ * resetMs 30 s). Protege el path de confirmación de pago: si Wompi está caído,
+ * falla-rápido en vez de colgar cada consulta de estado. Per-instancia en
+ * serverless (mandato #11).
+ */
+const wompiCB = new CircuitBreaker({ name: "wompi", threshold: 5, resetMs: 30_000 });
 
 const SANDBOX_API = "https://sandbox.wompi.co/v1";
 const PRODUCTION_API = "https://production.wompi.co/v1";
@@ -162,24 +173,34 @@ export type WompiTransaction = {
 export async function getTransaction(id: string): Promise<WompiTransaction> {
   const cfg = getWompiConfig();
   const url = `${cfg.apiUrl}/transactions/${encodeURIComponent(id)}`;
-  const res = await fetch(url, {
-    method: "GET",
-    headers: { Authorization: `Bearer ${cfg.privateKey}` },
-    cache: "no-store",
-    signal: AbortSignal.timeout(10_000),
-  });
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    logger.warn({
-      event: "wompi.get_transaction.fail",
-      status: res.status,
-      id,
-      body: body.slice(0, 200),
-    });
-    throw new Error(`Wompi getTransaction HTTP ${res.status}`);
-  }
-  const json = (await res.json()) as { data: WompiTransaction };
-  return json.data;
+  // GET idempotente (consulta de estado) → seguro reintentar. Retry por fuera del
+  // breaker: cada intento cuenta para el CB y, abierto, corta de una. Timeout 5 s
+  // (CONVENTIONS §Resiliencia) — con reintentos+backoff es más robusto que un
+  // único 10 s sin retry. 5xx se marca `.status` para que `isRetryable` reintente.
+  return withRetry(() =>
+    wompiCB.exec(async () => {
+      const res = await fetchWithTimeout(url, {
+        method: "GET",
+        headers: { Authorization: `Bearer ${cfg.privateKey}` },
+        cache: "no-store",
+        timeoutMs: 5000,
+      });
+      if (!res.ok) {
+        const body = await res.text().catch(() => "");
+        logger.warn({
+          event: "wompi.get_transaction.fail",
+          status: res.status,
+          id,
+          body: body.slice(0, 200),
+        });
+        throw Object.assign(new Error(`Wompi getTransaction HTTP ${res.status}`), {
+          status: res.status,
+        });
+      }
+      const json = (await res.json()) as { data: WompiTransaction };
+      return json.data;
+    }),
+  );
 }
 
 /**

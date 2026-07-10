@@ -1465,3 +1465,25 @@ VENNDELO_WEBHOOK_SECRET=
 **Verificación.** axe 9/9 con 0 violaciones (antes: contraste en las 9). Suite E2E completa verde (33 pass + 2 flaky tolerados). typecheck limpio. Ningún test unitario asertaba las clases cambiadas (37 de componentes verdes). Paleta (`--brand-*` de los 7 colores) sin cambios.
 
 **ACCIÓN HUMANA REQUERIDA (Lucy).** Revisar **visualmente** en el navegador que el look kawaii se conserva: el texto secundario quedó un poco más oscuro (más legible) y los badges/enlaces rosa pequeños usan un rosa más profundo. Mirar home, catálogo, PDP, carrito, contacto, registro/login y el Estudio. Si algún tono se ve "pesado", se ajusta el token (un solo lugar en `globals.css`). [[ADR-040]].
+
+## ADR-045 — Capa de resiliencia (timeout/retry/circuit-breaker) cableada en proveedores externos (2026-07-09)
+
+**Contexto.** La auditoría de productive-readiness dejó abierto el hallazgo `fetchWithTimeout` + `withRetry` + `CircuitBreaker` (ROADMAP:195). El riesgo concreto era Aveonline: **7 de sus 8 llamadas `fetch` NO tenían timeout** (auth, cotización, listados de agentes/transportadoras, tracking, webhooks CRUD). Solo `createShipment` tenía `AbortSignal.timeout(20_000)`. Una llamada colgada de Aveonline en el checkout síncrono cuelga al cliente; en la saga post-pago, deja la orden atascada. Wompi ya tenía timeouts pero sin retry ni breaker.
+
+**Decisión.** Se implementaron los 3 helpers en `apps/web/lib/` (spec CONVENTIONS §Resiliencia) y se cablearon:
+
+1. **`fetch-with-timeout.ts`** — `fetchWithTimeout(url, init & {timeoutMs=5000})` vía `AbortController` + `AbortSignal.any` (combina señal del caller); normaliza el abort por timeout a `FetchTimeoutError` (name `"TimeoutError"`).
+2. **`retry.ts`** — `withRetry` (attempts=3, backoff exponencial + jitter, `sleep` inyectable) que solo reintenta `isRetryable`: timeouts/aborts, error de red (`TypeError`), 5xx, 408, 429. **NUNCA 4xx** (excepto 408/429).
+3. **`circuit-breaker.ts`** — `CircuitBreaker` per-instancia (mandato #11: sin Redis inicial), `threshold:5 / resetMs:30_000`, estados closed/open/half-open, `now` inyectable.
+
+**Orden retry↔breaker: retry POR FUERA** (`withRetry(() => cb.exec(fetch))`). Así el breaker cuenta cada intento y, una vez abierto, `CircuitOpenError` (no reintentable) corta el loop de inmediato en vez de reintentar contra un proveedor caído.
+
+**Idempotencia = criterio para permitir retry:**
+- **Aveonline** (`aveonlineFetch` helper + `aveonlineCB` compartido): auth/quote/carriers/agents/tracking/list-webhooks → `retry:true` (idempotentes). **`createShipment` (generar guía) → timeout(15s)+CB pero SIN retry** — reintentar tras timeout podría crear una **guía duplicada** (doble etiqueta/cobro). create/delete-webhook → sin retry.
+- **Wompi** (`wompiCB`): `getTransaction` (GET estado de pago, idempotente) → retry+CB. Se **bajó su timeout de 10s → 5s** alineándolo a la tabla CONVENTIONS: con 3 reintentos + backoff, 5s+retry es más robusto que un único 10s sin retry. Se adjunta `.status` al error 5xx para que `isRetryable` lo reintente.
+
+**Timeouts aplicados** (tabla CONVENTIONS): quote 5s, create-shipment 15s, auth/tracking/listados 5s, webhooks admin 8s, Wompi GET 5s.
+
+**Verificación.** 14 tests unitarios nuevos (retry/circuit-breaker/fetch-with-timeout) + 90/90 unit (wompi/payments incluidos) + **65/65 integration contra el path REAL de Aveonline demo** (saga + checkout) → el cableado no rompe el happy path. typecheck limpio, prettier aplicado.
+
+**Pendiente.** Cablear el cliente Anthropic (Studio IA, Fase 3) con `fetchWithTimeout` 30s + retry cuando se implemente. El estado del breaker es per-instancia (serverless) — si las métricas exigen coordinación global, migrar a Postgres/Redis (mandato #11). [[ADR-039]].

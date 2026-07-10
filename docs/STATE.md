@@ -46,7 +46,26 @@ dominio Resend (ACCIÓN HUMANA DNS); en Bloque E falta a11y con axe (dep por apr
 envío/pago (deps externas), visual y load; o pasar a Bloque F (Reembolsos+Cupones).** Detalle
 de fases intermedias en el historial git + bitácora abajo.
 
+**Capa de resiliencia CABLEADA (2026-07-09, ADR-045).** Se cerró el hallazgo abierto de la
+auditoría (`fetchWithTimeout`+`withRetry`+`CircuitBreaker`, ROADMAP:195): Aveonline tenía **7/8
+llamadas fetch sin timeout** (riesgo real de colgar el checkout / atascar órdenes). Ahora todos los
+proveedores externos pasan por timeout obligatorio + circuit breaker per-instancia + retry con
+backoff SOLO en llamadas idempotentes (generar-guía NO reintenta: evita guía duplicada). Verificado:
+14 tests unitarios nuevos + 90/90 unit + **65/65 integration contra el path REAL de Aveonline demo**.
+
 ---
+
+## 🔴 PENDIENTE SERIO (Lucy 2026-07-04) — Investigación profunda de plantillas del Estudio
+
+Lucy validó `/admin/plantillas`: las plantillas están presentes pero **NO son realmente
+funcionales todavía**. Pidió, para **más adelante** (NO ahora), un **trabajo investigativo fuerte**:
+- ¿La tecnología es la correcta (react-konva) o conviene otro enfoque?
+- Que las plantillas sean **realmente utilizables** (no solo la interacción), bien enfocadas.
+- Filosofía: **menos cantidad, pero correctamente enfocadas y funcionales** (coincide con la
+  investigación: calidad > cantidad, ~12-16 por ocasión).
+- Los previews actuales usan relleno gradiente genérico → muestran estructura, no diseño final.
+**Decisión:** diferido; retomar como bloque dedicado (investigación tech + rediseño de plantillas).
+El pipeline de previews + galería admin YA están listos como infraestructura para cuando se retome.
 
 ## ⏳ EN CURSO — 2026-07-04 (Fase 3 Estudio: enfoque de plantillas VALIDADO, produciendo)
 
@@ -85,7 +104,34 @@ NO hay admin CRUD de plantillas.
 **Al retomar:** (a) si Lucy no aprobó plantillas, recordarle abrir `/admin/plantillas`; (b) si dio
 su visión del flujo móvil, ejecutar paso 5; si no, proponérselo con opciones.
 
-## Última sesión — 2026-07-03 (deploy + git flow + regresión visual + Bloque D + F + axe)
+## Última sesión — 2026-07-09 (Capa de resiliencia en proveedores externos — ADR-045)
+
+**Qué se hizo.** Se implementó y **cableó** la capa de resiliencia que quedaba pendiente en la
+auditoría de productive-readiness. Tres helpers nuevos en `apps/web/lib/`:
+- `fetch-with-timeout.ts` — `fetchWithTimeout(url, {timeoutMs})` con `AbortController` + `AbortSignal.any`
+  (respeta la señal del caller); timeout → `FetchTimeoutError` (name `TimeoutError`).
+- `retry.ts` — `withRetry` (3 intentos, backoff exp + jitter, `sleep` inyectable) sobre `isRetryable`
+  (timeouts/red/5xx/408/429; **nunca 4xx**).
+- `circuit-breaker.ts` — `CircuitBreaker` per-instancia (`threshold:5/resetMs:30s`), closed/open/half-open.
+
+**Cableado (criterio = idempotencia):**
+- **Aveonline** (helper `aveonlineFetch` + `aveonlineCB`): auth/quote/carriers/agents/tracking/list-webhooks
+  con `retry:true`; **`createShipment` con timeout(15s)+CB pero SIN retry** (generar guía NO es idempotente
+  → un reintento crearía guía duplicada). Antes 7/8 fetch NO tenían timeout — el hueco más grande.
+- **Wompi** (`wompiCB`): `getTransaction` (GET estado, idempotente) → retry+CB; su timeout bajó 10s→5s
+  (con retry+backoff es más robusto que 10s pelado).
+
+**Orden clave:** retry POR FUERA del breaker (`withRetry(() => cb.exec(fetch))`) → el CB ve cada intento
+y, abierto, `CircuitOpenError` (no reintentable) corta el loop de una.
+
+**Verificación:** 14 tests unitarios nuevos + 90/90 unit (wompi/payments) + **65/65 integration contra el
+path REAL de Aveonline demo** (saga + checkout, 174s) → el cableado NO rompe el happy path. typecheck limpio.
+**Falta:** cablear el cliente Anthropic (Studio IA) cuando se implemente (Fase 3).
+
+**Nota de continuidad:** el bloque "🔴 PENDIENTE SERIO" (investigación profunda de plantillas) y el
+checkpoint "⏳ EN CURSO" de Fase 3 siguen vigentes/diferidos — no se tocaron esta sesión.
+
+## Sesión — 2026-07-03 (deploy + git flow + regresión visual + Bloque D + F + axe)
 
 **Deploy + flujo Git normalizado (`8be9f97`).** Se descubrió que **116 commits vivían solo en la VM**
 (sin push) — el sitio en Vercel corría código viejo (por eso `/api/cron/alerts` daba 404). Se pusheó

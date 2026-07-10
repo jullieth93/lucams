@@ -14,8 +14,11 @@
  *   → Lucy edita los datos de recogida desde admin sin tocar código.
  */
 
+import { CircuitBreaker } from "@/lib/circuit-breaker";
 import { getSettingValue } from "@/lib/cms";
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { logger } from "@/lib/logger";
+import { withRetry } from "@/lib/retry";
 import type {
   PickupResult,
   ShipmentItem,
@@ -28,6 +31,34 @@ import type {
 } from "./provider";
 
 const BASE_URL = "https://app.aveonline.co/api";
+
+/**
+ * Circuit breaker compartido para TODAS las llamadas a Aveonline (CONVENTIONS
+ * §Resiliencia, threshold 5 / resetMs 30 s). El estado refleja "¿Aveonline está
+ * alcanzable?" — es global al proveedor, así que un mismo breaker cubre auth,
+ * cotización, generación de guía y tracking. Per-instancia en serverless
+ * (mandato #11: sin Redis inicial); suficiente para nuestra escala.
+ */
+const aveonlineCB = new CircuitBreaker({ name: "aveonline", threshold: 5, resetMs: 30_000 });
+
+/**
+ * Wrapper único de red para Aveonline: timeout obligatorio (mandato "nunca un
+ * fetch sin timeout") + circuit breaker + retry opcional con backoff.
+ *
+ * - `retry: true` SOLO para llamadas idempotentes (auth, cotización, listados,
+ *   tracking). NUNCA para generar guía: reintentar podría crear guías duplicadas
+ *   (llamada NO idempotente). El retry va POR FUERA del breaker
+ *   (`withRetry(() => cb.exec(fetch))`) para que el breaker vea cada intento y,
+ *   una vez abierto, `CircuitOpenError` (no reintentable) corte el loop de una.
+ */
+async function aveonlineFetch(
+  url: string,
+  init: RequestInit & { timeoutMs: number },
+  opts: { retry?: boolean } = {},
+): Promise<Response> {
+  const call = () => aveonlineCB.exec(() => fetchWithTimeout(url, init));
+  return opts.retry ? withRetry(call) : call();
+}
 
 /**
  * Valor declarado mínimo COP que Aveonline acepta (numbererror -5 si <10000).
@@ -117,11 +148,16 @@ async function listEnabledAgents() {
   const now = Date.now();
   if (agentsCache && agentsCache.expiresAt > now) return agentsCache.items;
   const { token, idempresa } = await getAuthToken();
-  const res = await fetch(`${BASE_URL}/comunes/v1.0/agentes.php`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ tipo: "listarAgentesPorEmpresaAuth", token, idempresa }),
-  });
+  const res = await aveonlineFetch(
+    `${BASE_URL}/comunes/v1.0/agentes.php`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tipo: "listarAgentesPorEmpresaAuth", token, idempresa }),
+      timeoutMs: 5000,
+    },
+    { retry: true },
+  );
   if (!res.ok) throw new Error(`Aveonline listarAgentes fail HTTP ${res.status}`);
   const data = (await res.json()) as {
     status?: string;
@@ -175,11 +211,16 @@ async function listEnabledCarriers(): Promise<Array<{ id: number; text: string }
     return carriersCache.items;
   }
   const { token, idempresa } = await getAuthToken();
-  const res = await fetch(`${BASE_URL}/box/v1.0/transportadora.php`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ tipo: "listarTransportadorasPorEmpresa", token, id: idempresa }),
-  });
+  const res = await aveonlineFetch(
+    `${BASE_URL}/box/v1.0/transportadora.php`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tipo: "listarTransportadorasPorEmpresa", token, id: idempresa }),
+      timeoutMs: 5000,
+    },
+    { retry: true },
+  );
   if (!res.ok) {
     throw new Error(`Aveonline listarTransportadorasPorEmpresa fail HTTP ${res.status}`);
   }
@@ -265,10 +306,11 @@ export async function createAveonlineWebhook(input: {
         body[`param${i + 2}_value`] = String(v).slice(0, 255);
       });
   }
-  const res = await fetch(`${AVECRM_BASE}/createWebhook.php`, {
+  const res = await aveonlineFetch(`${AVECRM_BASE}/createWebhook.php`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
+    timeoutMs: 8000,
   });
   if (!res.ok) {
     throw new Error(`Aveonline createWebhook HTTP ${res.status}`);
@@ -287,11 +329,16 @@ export async function listAveonlineWebhooks(): Promise<{
   raw: unknown;
 }> {
   const { idempresa } = await getAuthToken();
-  const res = await fetch(`${AVECRM_BASE}/listWebhook.php`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ tipo: "authave", empresa: idempresa }),
-  });
+  const res = await aveonlineFetch(
+    `${AVECRM_BASE}/listWebhook.php`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tipo: "authave", empresa: idempresa }),
+      timeoutMs: 8000,
+    },
+    { retry: true },
+  );
   if (!res.ok) return { items: [], raw: { error: `HTTP ${res.status}` } };
   const data = (await res.json()) as {
     webhooks?: Array<Record<string, unknown>>;
@@ -311,10 +358,11 @@ export async function deleteAveonlineWebhook(url: string): Promise<{
   message: string;
 }> {
   const { idempresa } = await getAuthToken();
-  const res = await fetch(`${AVECRM_BASE}/deleteWebhook.php`, {
+  const res = await aveonlineFetch(`${AVECRM_BASE}/deleteWebhook.php`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ tipo: "authave", empresa: idempresa, url }),
+    timeoutMs: 8000,
   });
   if (!res.ok) return { ok: false, message: `HTTP ${res.status}` };
   const data = (await res.json()) as { success?: boolean; messages?: string };
@@ -341,11 +389,16 @@ async function getAuthToken(): Promise<{ token: string; idempresa: number }> {
     );
   }
 
-  const res = await fetch(`${BASE_URL}/comunes/v1.0/autenticarusuario.php`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ tipo: "auth", usuario, clave }),
-  });
+  const res = await aveonlineFetch(
+    `${BASE_URL}/comunes/v1.0/autenticarusuario.php`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ tipo: "auth", usuario, clave }),
+      timeoutMs: 5000,
+    },
+    { retry: true },
+  );
   if (!res.ok) throw new Error(`Aveonline auth fail HTTP ${res.status}`);
   const data = (await res.json()) as {
     status: string;
@@ -401,25 +454,30 @@ export class AveonlineProvider implements ShippingProvider {
     const origenFmt = formatAveonlineCity(params.origin.city, params.origin.department);
     const destinoFmt = formatAveonlineCity(params.destination.city, params.destination.department);
 
-    const res = await fetch(`${BASE_URL}/nal/v1.0/generarGuiaTransporteNacional.php`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        tipo: "cotizarDoble",
-        access: "",
-        token,
-        idempresa,
-        origen: origenFmt,
-        destino: destinoFmt,
-        productos,
-        contraentrega: params.contraentrega ? 1 : 0,
-        contraentregaPayment: 0,
-        valorrecaudo: 0,
-        valorMinimo: 0,
-        idasumecosto: 0,
-        plugin: "lucamsshop",
-      }),
-    });
+    const res = await aveonlineFetch(
+      `${BASE_URL}/nal/v1.0/generarGuiaTransporteNacional.php`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tipo: "cotizarDoble",
+          access: "",
+          token,
+          idempresa,
+          origen: origenFmt,
+          destino: destinoFmt,
+          productos,
+          contraentrega: params.contraentrega ? 1 : 0,
+          contraentregaPayment: 0,
+          valorrecaudo: 0,
+          valorMinimo: 0,
+          idasumecosto: 0,
+          plugin: "lucamsshop",
+        }),
+        timeoutMs: 5000,
+      },
+      { retry: true },
+    );
     if (!res.ok) throw new Error(`Aveonline quote fail HTTP ${res.status}`);
 
     // Schema completo (Aveonline devuelve strings donde deberían ser numbers — parseo defensivo).
@@ -610,8 +668,7 @@ export class AveonlineProvider implements ShippingProvider {
       // genera cartera pendiente (vs cuenta demo donde "0" simulaba sin facturar).
       bloquegenerarguia:
         process.env.AVEONLINE_GENERATE_REAL === "true" &&
-        (process.env.NODE_ENV === "production" ||
-          process.env.AVEONLINE_FORCE_BILLING === "true")
+        (process.env.NODE_ENV === "production" || process.env.AVEONLINE_FORCE_BILLING === "true")
           ? "0"
           : "1",
       relacion_envios: "1",
@@ -623,11 +680,13 @@ export class AveonlineProvider implements ShippingProvider {
       plugin: "lucamsshop",
     };
 
-    const res = await fetch(`${BASE_URL}/nal/v1.0/generarGuiaTransporteNacional.php`, {
+    // Sin `retry`: generar guía NO es idempotente — un reintento tras timeout
+    // podría crear una guía DUPLICADA (doble cobro/etiqueta). Solo timeout + CB.
+    const res = await aveonlineFetch(`${BASE_URL}/nal/v1.0/generarGuiaTransporteNacional.php`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(20_000),
+      timeoutMs: 15_000,
     });
 
     if (!res.ok) {
@@ -707,16 +766,21 @@ export class AveonlineProvider implements ShippingProvider {
 
   async getTracking(trackingNumber: string): Promise<TrackingStatus> {
     const { token, idempresa } = await getAuthToken();
-    const res = await fetch(`${BASE_URL}/nal/v1.0/guia.php`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        tipo: "obtenerEstadoAuth",
-        token,
-        id: idempresa,
-        guia: trackingNumber,
-      }),
-    });
+    const res = await aveonlineFetch(
+      `${BASE_URL}/nal/v1.0/guia.php`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          tipo: "obtenerEstadoAuth",
+          token,
+          id: idempresa,
+          guia: trackingNumber,
+        }),
+        timeoutMs: 5000,
+      },
+      { retry: true },
+    );
     if (!res.ok) throw new Error(`Aveonline tracking fail HTTP ${res.status}`);
     const data = (await res.json()) as {
       guias?: Array<{
