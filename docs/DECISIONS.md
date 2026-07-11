@@ -1713,3 +1713,27 @@ otra dirección a default al borrar la default; **#10** índice parcial-único D
 (migración 009) + manejo P2002; **#11** robots noindex en overview; **#12** count real de pedidos; **#14** feedback
 de errores en acciones de dirección; **#15** voseo en email order-delivered. Verificado: 7 tests de direcciones
 (incl. promover-default) + typecheck + eslint + build.
+
+## ADR-051 — Unificar el modelo de direcciones cuenta ↔ checkout (2026-07-10)
+
+**Contexto.** Al conectar las direcciones guardadas al checkout, Lucy detectó que una dirección guardada NO se
+reusaba 100%: la cuenta guardaba un formato PLANO (calle en texto libre "Calle 3 sur # 70-84") mientras el checkout
+usa el formato ESTRUCTURADO colombiano (deptCode/cityCode DANE + urbano/rural + vía/cruce/complemento). La calle
+libre no se puede reconstruir en los campos vía/cruce → reuso parcial (solo depto/ciudad vía mapeo nombre→código).
+
+**Decisión.** Alinear ambos al MISMO formato estructurado, guardándolo tal cual:
+- **`Address.structured` (JSONB, migración 20260710120000):** la dirección en la forma del checkout (AddressInput).
+  Los campos planos (`line1`, `city`, `department`) quedan como DISPLAY derivado (para la lista, sin re-componer).
+- **`<StructuredAddressFields>` (`components/address/`):** componente CONTROLADO compartido con los mismos campos
+  DANE + urbano/rural + vía/cruce del checkout. El form de `/mi-cuenta/direcciones` lo usa (reemplaza el texto libre).
+- **`parseStructuredAddress` + `composeAddressLine` (`features/checkout/parse-address.ts`):** FUENTE ÚNICA de
+  parseo+validación (misma `AddressSchema` + cross-check DANE). El action del checkout se refactorizó para usarlo
+  (extracción fiel — 36 tests de checkout verdes lo garantizan). El action de la cuenta lo usa también.
+- **Reuso 100%:** el checkout `applySavedAddress` rellena TODOS los campos desde `structured`. Legacy (structured
+  null, direcciones del form viejo) → fallback depto/ciudad vía nombre→código; al re-guardar pasan a 100%.
+
+**Por qué NO se refactorizó el formulario inline del checkout** (solo el action): es revenue-crítico y validado; se
+comparte el shape de datos y el parseo, no el componente de UI. Puede adoptar `<StructuredAddressFields>` después
+sin cambiar datos (deuda técnica menor, aislada). **Verificación:** next build OK, 44 tests (direcciones+checkout),
+typecheck+eslint. **Pendiente-mejora:** hidratar el edit de direcciones legacy con depto/ciudad; "guardar dirección"
+durante el checkout. [[ADR-050]].
