@@ -39,8 +39,15 @@ import {
 } from "@/lib/colombia-validators";
 import { detectEmailTypo, isValidEmail, suggestEmails } from "@/lib/email-domains";
 import { VIA_TYPES } from "@/features/checkout/schemas";
+import type { CheckoutPrefillAddress } from "@/features/addresses/service";
 
-export function DatosForm({ initial }: { initial: CheckoutState }) {
+export function DatosForm({
+  initial,
+  savedAddresses = [],
+}: {
+  initial: CheckoutState;
+  savedAddresses?: CheckoutPrefillAddress[];
+}) {
   const [state, formAction, pending] = useActionState<DatosActionState | null, FormData>(
     saveDatosAction,
     null,
@@ -143,6 +150,17 @@ export function DatosForm({ initial }: { initial: CheckoutState }) {
 
   // ─── Handlers ───
 
+  // Pre-llena depto/ciudad/CP/teléfono desde una dirección guardada del cliente.
+  // La calle (vía/cruce) NO se mapea desde el modelo plano — el usuario la escribe.
+  function applySavedAddress(id: string) {
+    const a = savedAddresses.find((x) => x.id === id);
+    if (!a) return;
+    if (a.deptCode) setDeptCode(a.deptCode);
+    if (a.cityCode) setCityCode(a.cityCode);
+    if (a.zip) setZip(a.zip);
+    if (a.phone) setPhoneDisplay(formatPhone(a.phone));
+  }
+
   function handleNameBlur() {
     if (fullName.trim()) setFullName(capitalizeName(fullName));
   }
@@ -206,6 +224,32 @@ export function DatosForm({ initial }: { initial: CheckoutState }) {
 
   return (
     <form action={formAction} className="space-y-6">
+      {/* DIRECCIÓN GUARDADA (solo si el cliente tiene) — pre-llena depto/ciudad/CP/tel */}
+      {savedAddresses.length > 0 && (
+        <section className="border-brand-purple/20 bg-brand-purple/5 rounded-2xl border p-4">
+          <label htmlFor="saved-address" className="text-brand-purple-dark text-sm font-semibold">
+            ¿Enviar a una dirección guardada?
+          </label>
+          <select
+            id="saved-address"
+            defaultValue=""
+            onChange={(e) => e.target.value && applySavedAddress(e.target.value)}
+            className="border-brand-purple/25 focus:border-brand-purple mt-2 w-full rounded-lg border bg-white px-3 py-2 text-sm"
+          >
+            <option value="">Escribir una dirección nueva…</option>
+            {savedAddresses.map((a) => (
+              <option key={a.id} value={a.id}>
+                {a.label}
+                {a.isDefault ? " (predeterminada)" : ""} — {a.line1}
+              </option>
+            ))}
+          </select>
+          <p className="text-brand-muted mt-1.5 text-xs">
+            Pre-llenamos departamento, ciudad y teléfono. Revisa la calle antes de continuar.
+          </p>
+        </section>
+      )}
+
       {/* CONTACTO */}
       <section className="border-brand-purple/10 rounded-2xl border bg-white p-5 shadow-sm sm:p-6">
         <h2 className="text-brand-purple-dark font-display mb-4 text-lg font-bold">1. Contacto</h2>

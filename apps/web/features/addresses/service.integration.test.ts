@@ -14,6 +14,7 @@ import {
   updateAddress,
   deleteAddress,
   setDefaultAddress,
+  getSavedAddressesForCheckout,
   AddressNotFoundError,
 } from "./service";
 
@@ -91,6 +92,20 @@ describe.skipIf(!hasDb)("addresses/service — integración DB", () => {
     expect(after.some((x) => x.id === target.id)).toBe(false);
     const row = await prisma.address.findUnique({ where: { id: target.id } });
     expect(row?.deletedAt).not.toBeNull();
+  });
+
+  it("getSavedAddressesForCheckout mapea nombres DANE a códigos", async () => {
+    await createAddress(customerId, {
+      ...base,
+      name: "Medallo",
+      city: "Medellín",
+      department: "Antioquia",
+    });
+    const prefill = await getSavedAddressesForCheckout(customerId);
+    const m = prefill.find((p) => p.label === "Medallo");
+    expect(m).toBeDefined();
+    expect(m?.deptCode).toBe("05"); // Antioquia
+    expect(m?.cityCode).toBe("05001"); // Medellín
   });
 
   it("aislamiento: otro cliente NO puede tocar direcciones ajenas", async () => {

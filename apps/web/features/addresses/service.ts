@@ -10,6 +10,7 @@
 import "server-only";
 import type { Prisma } from "@lucams/db";
 import { prisma } from "@/lib/db";
+import { getDepartmentByName, getCityByDeptAndName } from "@/lib/dane-divipola";
 
 /**
  * Si tras una mutación el cliente quedó SIN dirección predeterminada pero le
@@ -51,6 +52,43 @@ export async function listAddresses(customerId: string) {
   return prisma.address.findMany({
     where: { customerId, deletedAt: null },
     orderBy: [{ isDefault: "desc" }, { createdAt: "desc" }],
+  });
+}
+
+/**
+ * Direcciones guardadas listas para pre-llenar el checkout: mapea los NOMBRES de
+ * departamento/ciudad (modelo plano) a los CÓDIGOS DANE que usa el formulario.
+ * `deptCode`/`cityCode` quedan null si el nombre no matchea el catálogo DANE (el
+ * checkout entonces solo pre-llena teléfono; el usuario elige depto/ciudad).
+ */
+export type CheckoutPrefillAddress = {
+  id: string;
+  label: string;
+  deptCode: string | null;
+  cityCode: string | null;
+  zip: string | null;
+  phone: string;
+  line1: string;
+  isDefault: boolean;
+};
+
+export async function getSavedAddressesForCheckout(
+  customerId: string,
+): Promise<CheckoutPrefillAddress[]> {
+  const rows = await listAddresses(customerId);
+  return rows.map((a) => {
+    const dept = getDepartmentByName(a.department);
+    const city = dept ? getCityByDeptAndName(dept.code, a.city) : null;
+    return {
+      id: a.id,
+      label: a.name,
+      deptCode: dept?.code ?? null,
+      cityCode: city?.code ?? null,
+      zip: a.zip,
+      phone: a.phone,
+      line1: a.line1,
+      isDefault: a.isDefault,
+    };
   });
 }
 

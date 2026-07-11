@@ -8,6 +8,7 @@ import { CheckoutStepper } from "../_components/stepper";
 import { OrderSummary } from "../_components/order-summary";
 import { DatosForm } from "./datos-form";
 import { loadCheckoutContext, CheckoutError } from "@/features/checkout/service";
+import { getSavedAddressesForCheckout } from "@/features/addresses/service";
 
 export const metadata: Metadata = {
   title: "Datos · Checkout",
@@ -24,13 +25,15 @@ export default async function CheckoutDatosPage() {
     throw err;
   }
 
+  const savedAddresses = ctx.customerId ? await getSavedAddressesForCheckout(ctx.customerId) : [];
+
   return (
     <div className="mx-auto max-w-6xl">
       <CheckoutStepper current={1} />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2">
-          <DatosForm initial={ctx.state} />
+          <DatosForm initial={ctx.state} savedAddresses={savedAddresses} />
         </div>
         <div className="lg:col-span-1">
           <OrderSummary cart={ctx.cart} />
