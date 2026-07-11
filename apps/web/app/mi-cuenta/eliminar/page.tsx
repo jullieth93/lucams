@@ -44,11 +44,14 @@ export default async function EliminarCuentaPage() {
         <p className="text-brand-purple-dark font-semibold">Qué pasa cuando eliminas tu cuenta:</p>
         <ul className="text-brand-muted mt-2 space-y-1.5">
           <li>· Borramos tu nombre, teléfono, documento y direcciones guardadas.</li>
+          <li>
+            · Borramos las <strong>fotos que subiste</strong> al Estudio de personalización.
+          </li>
           <li>· No podrás volver a iniciar sesión con este correo.</li>
           <li>· Tus reseñas se conservan, pero sin tu nombre.</li>
           <li>
-            · Por ley (facturación DIAN) debemos <strong>conservar tus pedidos</strong>, pero quedan
-            desligados de tus datos personales.
+            · Por ley (facturación DIAN) debemos <strong>conservar tus pedidos</strong>. Los datos
+            de envío se anonimizan una vez el pedido finaliza.
           </li>
         </ul>
         <p className="text-brand-muted mt-3 text-xs">

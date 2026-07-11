@@ -87,6 +87,14 @@ function AddressCard({
 }) {
   const [pending, startTransition] = useTransition();
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const run = (fn: () => Promise<{ ok: boolean }>) =>
+    startTransition(async () => {
+      setError(null);
+      const r = await fn();
+      if (!r.ok) setError("No pudimos actualizar la dirección. Recarga e intenta de nuevo.");
+    });
 
   return (
     <li
@@ -117,9 +125,7 @@ function AddressCard({
           <button
             type="button"
             disabled={pending}
-            onClick={() =>
-              startTransition(() => setDefaultAddressAction(address.id).then(() => {}))
-            }
+            onClick={() => run(() => setDefaultAddressAction(address.id))}
             className="text-brand-muted hover:text-brand-purple-dark inline-flex items-center gap-1 text-xs font-medium disabled:opacity-50"
           >
             <Check className="h-3.5 w-3.5" /> Hacer predeterminada
@@ -138,7 +144,7 @@ function AddressCard({
             <button
               type="button"
               disabled={pending}
-              onClick={() => startTransition(() => deleteAddressAction(address.id).then(() => {}))}
+              onClick={() => run(() => deleteAddressAction(address.id))}
               className="font-semibold text-rose-600 hover:text-rose-700 disabled:opacity-50"
             >
               Sí, eliminar
@@ -161,6 +167,7 @@ function AddressCard({
           </button>
         )}
       </div>
+      {error && <p className="mt-2 text-xs text-rose-600">{error}</p>}
     </li>
   );
 }

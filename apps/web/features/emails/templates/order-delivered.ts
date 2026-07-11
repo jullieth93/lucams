@@ -20,7 +20,7 @@ export async function orderDeliveredEmail(data: OrderDeliveredData) {
 <p>Hola ${escapeHtml(data.customerName)}, según la transportadora tu pedido <strong>${escapeHtml(data.orderNumber)}</strong> ya está en tus manos.</p>
 <p>Esperamos que te enamore tanto como a nosotros nos enamora hacerlo.</p>
 
-<p style="margin-top:18px;font-size:15px;"><strong>¿Nos contás cómo te fue?</strong></p>
+<p style="margin-top:18px;font-size:15px;"><strong>¿Nos cuentas cómo te fue?</strong></p>
 <p>Una reseña nos ayuda muchísimo y nos toma a vos solo 30 segundos.</p>
 
 ${ctaButton(
@@ -39,7 +39,7 @@ Hola ${data.customerName},
 
 Tu pedido ${data.orderNumber} ya está en tus manos según la transportadora.
 
-¿Nos contás cómo te fue? Una reseña nos ayuda mucho:
+¿Nos cuentas cómo te fue? Una reseña nos ayuda mucho:
 ${siteUrl}/mi-cuenta/pedidos
 
 ¿Algún inconveniente? Respondé este email o escríbenos por WhatsApp.`;
@@ -47,7 +47,7 @@ ${siteUrl}/mi-cuenta/pedidos
   return {
     subject: `¡Tu pedido ${data.orderNumber} llegó! 💜`,
     html: await renderEmailLayout({
-      preview: "¿Nos contás cómo te fue? Una reseña nos ayuda mucho.",
+      preview: "¿Nos cuentas cómo te fue? Una reseña nos ayuda mucho.",
       bodyHtml,
     }),
     text,

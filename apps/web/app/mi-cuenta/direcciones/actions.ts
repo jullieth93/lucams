@@ -74,6 +74,11 @@ export async function saveAddressAction(
     }
   } catch (err) {
     if (err instanceof AddressNotFoundError) return { error: "Esa dirección ya no existe." };
+    // Colisión del índice parcial-único de "una sola default" (carrera de creates
+    // concurrentes) → pedir reintento en vez de un 500.
+    if (typeof err === "object" && err !== null && (err as { code?: string }).code === "P2002") {
+      return { error: "Hubo un conflicto momentáneo. Intenta guardar de nuevo." };
+    }
     throw err;
   }
   revalidatePath("/mi-cuenta/direcciones");

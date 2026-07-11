@@ -1695,3 +1695,21 @@ redirect estandarizado a `?next=`.
 **Verificación.** `next build` OK (8 rutas /mi-cuenta) + typecheck + eslint + 6 tests de direcciones + 57 de
 auth/checkout (cache() no rompe nada). **Pendiente: [VALIDACIÓN VISUAL Lucy]** — es su feature, revisar look+flujo.
 Mejora futura: integrar direcciones guardadas en el checkout (hoy checkout y Address están desconectados). [[ADR-046]].
+
+### ADR-050 addendum — Revisión adversarial del área de cuenta (2026-07-10)
+
+Se sometió el área de cuenta a revisión adversarial multi-agente (6 dimensiones × panel de escépticos):
+**15 hallazgos confirmados, 0 falsos positivos**, todos arreglados. El clúster crítico fue **eliminar cuenta**:
+la implementación inicial solo tocaba Customer/Address/Review y dejaba PII sensible sin borrar:
+- **#1 [HIGH]** fotos subidas al Estudio (DesignAsset en customer-uploads = rostros) nunca se borraban.
+- **#2 [HIGH]** tickets de soporte (email/name/message/ip) sin anonimizar.
+- **#3 [HIGH]** soft-delete de Address dejaba las columnas PII intactas.
+- **#5 [MED]** snapshot `Order.shippingAddress` conservaba nombre/tel/dirección inline.
+- **#6 [LOW]** logs (RecommendationLog/LoyaltyTxn/CouponUsage) mantenían el vínculo.
+- **#4 [MED]** si `admin.deleteUser` fallaba, el user seguía pudiendo loguear (solo un log).
+`delete-service.ts` se reescribió para supresión exhaustiva (3 buckets de Storage + scrub de todas las tablas
+PII + fallback de baneo). Otros: **#7** mensaje de change-password honesto si signOut falla; **#9/#13** promover
+otra dirección a default al borrar la default; **#10** índice parcial-único DB `address_one_default_per_customer`
+(migración 009) + manejo P2002; **#11** robots noindex en overview; **#12** count real de pedidos; **#14** feedback
+de errores en acciones de dirección; **#15** voseo en email order-delivered. Verificado: 7 tests de direcciones
+(incl. promover-default) + typecheck + eslint + build.

@@ -102,4 +102,19 @@ describe.skipIf(!hasDb)("addresses/service — integración DB", () => {
     const still = await prisma.address.findUnique({ where: { id: mine.id } });
     expect(still?.deletedAt).toBeNull();
   });
+
+  it("borrar la dirección DEFAULT promueve otra viva a predeterminada", async () => {
+    // otherId arranca sin direcciones (los tests previos no le crearon ninguna).
+    const a = await createAddress(otherId, { ...base, name: "A" }); // primera → default
+    const b = await createAddress(otherId, { ...base, name: "B" }); // no default
+    expect(a.isDefault).toBe(true);
+    expect(b.isDefault).toBe(false);
+
+    await deleteAddress(otherId, a.id); // se borra la default
+
+    const list = await listAddresses(otherId);
+    expect(list).toHaveLength(1);
+    expect(list[0].id).toBe(b.id);
+    expect(list[0].isDefault).toBe(true); // B fue promovida
+  });
 });

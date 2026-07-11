@@ -16,7 +16,7 @@ import { getCurrentCustomer } from "@/lib/auth";
 
 export const metadata: Metadata = {
   title: "Mi cuenta · Lucams_shop",
-  description: "Gestiona tu cuenta Lucams_shop.",
+  robots: { index: false, follow: false },
 };
 
 export const dynamic = "force-dynamic";

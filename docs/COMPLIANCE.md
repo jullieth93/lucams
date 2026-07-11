@@ -128,16 +128,20 @@ físico, para conciliar la supresión con la **retención fiscal de la DIAN**:
 | Dato | Acción al eliminar | Motivo |
 | --- | --- | --- |
 | Customer (nombre, teléfono, documento, email) | Scrub: nombre/tel/documento→null, email→placeholder único, `supabaseUserId`→placeholder, `deletedAt` | Supresión de PII |
-| Auth user (Supabase) | `admin.deleteUser` (best-effort) | Cortar acceso; sin él la fila queda inaccesible igual (`supabaseUserId` desvinculado) |
-| Direcciones | Soft-delete | Contienen PII |
+| Auth user (Supabase) | `admin.deleteUser`; si falla → **baneo** (`ban_duration`) como fallback | Cortar acceso garantizado (no basta el best-effort) |
+| Direcciones | Scrub de columnas PII (nombre/dirección/teléfono) + soft-delete | Contienen PII |
 | Reseñas | `customerId`→null + `authorName`→"Cliente Lucams" | Conservar contenido público sin PII |
-| **Pedidos / facturas** | **SE CONSERVAN** (anonimizados vía el Customer) | **Retención fiscal DIAN** (facturación electrónica) prima sobre supresión |
+| **Fotos del Estudio** (DesignAsset, Design) | **Borran archivos** de Storage (customer-uploads / design-previews / production-assets) + filas/URLs limpiadas | La PII más sensible (rostros); ninguna retención lo justifica |
+| Tickets de soporte (SupportTicket) | Desvincular + scrub (email/name/ip/userAgent/message) | Texto libre con PII |
+| Snapshot de envío en órdenes | Scrub PII (nombre/tel/dirección) en órdenes YA finalizadas | Las en curso conservan la dirección por finalidad legítima (completar la entrega) |
+| Logs (RecommendationLog, LoyaltyTxn, CouponUsage) | `customerId`→null | Cortar el vínculo de perfilado con el titular |
+| **Pedidos / facturas** | **SE CONSERVAN** (anonimizados) | **Retención fiscal DIAN** (facturación electrónica) prima sobre supresión |
 | **Consentimientos** | **SE CONSERVAN** | Prueba de cumplimiento Ley 1581 |
 
 **Confirmación fuerte:** escribir "ELIMINAR" + re-autenticación con contraseña + rate-limit
-(`ownerKey('delete-account')`, 5/15min). Casos con PII pesada fuera de este alcance (uploads del Estudio,
-tickets de soporte con texto libre) se atienden por el canal manual. La política de conservación fiscal vs.
-supresión queda así explícita (antes no estaba fijada).
+(`ownerKey('delete-account')`, 5/15min). El alcance de supresión es **exhaustivo** (verificado por revisión
+adversarial 2026-07-10, hallazgos #1–#6): antes solo tocaba Customer/Address/Review y dejaba PII sensible
+(fotos, tickets, snapshots) atrás. La política de conservación fiscal vs. supresión queda explícita.
 
 ---
 

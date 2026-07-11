@@ -98,9 +98,32 @@ export async function changePasswordAction(
     return { error: "No pudimos cambiar la contraseña. Intenta de nuevo." };
   }
 
-  // 4) Revocar OTRAS sesiones (otros dispositivos) — la actual sigue viva.
-  await supabase.auth.signOut({ scope: "others" }).catch(() => {});
+  // 4) Revocar OTRAS sesiones (otros dispositivos) — la actual sigue viva. Se
+  //    verifica el resultado: si falla, NO afirmamos que se cerraron (mensaje honesto).
+  let othersClosed = true;
+  try {
+    const { error: signOutErr } = await supabase.auth.signOut({ scope: "others" });
+    if (signOutErr) {
+      othersClosed = false;
+      logger.warn({
+        event: "security.change_password.signout_others_fail",
+        customerId: session.customer.id,
+        err: signOutErr.message,
+      });
+    }
+  } catch (err) {
+    othersClosed = false;
+    logger.warn({
+      event: "security.change_password.signout_others_throw",
+      customerId: session.customer.id,
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
 
   logger.info({ event: "security.change_password.success", customerId: session.customer.id });
-  return { success: "Tu contraseña quedó actualizada. Cerramos tus otras sesiones por seguridad." };
+  return {
+    success: othersClosed
+      ? "Tu contraseña quedó actualizada. Cerramos tus otras sesiones por seguridad."
+      : "Tu contraseña quedó actualizada.",
+  };
 }

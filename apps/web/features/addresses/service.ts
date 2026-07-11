@@ -8,7 +8,26 @@
  */
 
 import "server-only";
+import type { Prisma } from "@lucams/db";
 import { prisma } from "@/lib/db";
+
+/**
+ * Si tras una mutación el cliente quedó SIN dirección predeterminada pero le
+ * quedan direcciones vivas, promueve la más reciente. Evita el estado "tengo
+ * direcciones pero ninguna default" (checkout sin pre-selección).
+ */
+async function ensureDefault(tx: Prisma.TransactionClient, customerId: string): Promise<void> {
+  const hasDefault = await tx.address.count({
+    where: { customerId, deletedAt: null, isDefault: true },
+  });
+  if (hasDefault > 0) return;
+  const next = await tx.address.findFirst({
+    where: { customerId, deletedAt: null },
+    orderBy: { createdAt: "desc" },
+    select: { id: true },
+  });
+  if (next) await tx.address.update({ where: { id: next.id }, data: { isDefault: true } });
+}
 
 export type AddressInput = {
   name: string;
@@ -75,7 +94,7 @@ export async function updateAddress(customerId: string, id: string, input: Addre
         data: { isDefault: false },
       });
     }
-    return tx.address.update({
+    const updated = await tx.address.update({
       where: { id },
       data: {
         ...toData(input),
@@ -84,15 +103,22 @@ export async function updateAddress(customerId: string, id: string, input: Addre
         updatedBy: customerId,
       },
     });
+    // Si el edit desmarcó la única default, promover otra.
+    await ensureDefault(tx, customerId);
+    return updated;
   });
 }
 
 export async function deleteAddress(customerId: string, id: string) {
-  const res = await prisma.address.updateMany({
-    where: { id, customerId, deletedAt: null },
-    data: { deletedAt: new Date(), deletedBy: customerId, isDefault: false },
+  return prisma.$transaction(async (tx) => {
+    const res = await tx.address.updateMany({
+      where: { id, customerId, deletedAt: null },
+      data: { deletedAt: new Date(), deletedBy: customerId, isDefault: false },
+    });
+    if (res.count === 0) throw new AddressNotFoundError();
+    // Si se borró la default, promover otra dirección viva a predeterminada.
+    await ensureDefault(tx, customerId);
   });
-  if (res.count === 0) throw new AddressNotFoundError();
 }
 
 export async function setDefaultAddress(customerId: string, id: string) {

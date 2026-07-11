@@ -27,10 +27,13 @@ export default async function MisPedidosPage() {
   const session = await getCurrentCustomer();
   if (!session) redirect("/login?next=/mi-cuenta/pedidos");
 
+  const PAGE_LIMIT = 50;
+  const where = { customerId: session.customer.id, deletedAt: null };
+  const total = await prisma.order.count({ where });
   const orders = await prisma.order.findMany({
-    where: { customerId: session.customer.id, deletedAt: null },
+    where,
     orderBy: { createdAt: "desc" },
-    take: 50,
+    take: PAGE_LIMIT,
     select: {
       id: true,
       number: true,
@@ -55,9 +58,10 @@ export default async function MisPedidosPage() {
         <h1 className="font-display text-brand-purple-dark text-3xl sm:text-4xl">
           <CmsText blockKey="account.orders.heading" fallback="Mis pedidos" />
         </h1>
-        {orders.length > 0 && (
+        {total > 0 && (
           <p className="text-brand-muted mt-1 text-sm">
-            {orders.length} {orders.length === 1 ? "pedido" : "pedidos"} en tu historial
+            {total} {total === 1 ? "pedido" : "pedidos"} en tu historial
+            {total > PAGE_LIMIT && ` · mostrando los ${PAGE_LIMIT} más recientes`}
           </p>
         )}
       </header>
