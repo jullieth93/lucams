@@ -1832,3 +1832,16 @@ declara **1 paquete** con peso y valor TOTALES (`unidades:1`, `peso = Σ(peso_un
 bounding box máximo por eje), consistente con el modelo "peso total" de la cotización. Verificado: la
 guía con el payload nuevo imprime "1 / 1". Los tests de la saga mockean el provider (no rompen); la
 verificación del payload real es contra la API demo.
+
+**Addendum 3 (2026-07-11) — `valorDeclarado` en CENTAVOS → err=999 en TODAS (bug que reabrió el step 2).**
+La dueña volvió a ver "error al cotizar". Diagnóstico en vivo: Aveonline espera PESOS en `valorDeclarado`
+/ `dsvalor_pedido` / `valorrecaudo`, pero mandábamos CENTAVOS (mandato del proyecto: montos internos en
+centavos). Un fotoimán de $45.000 (4.500.000 centavos) se declaraba como $4.500.000 (100× de más). Latente
+desde siempre (Aveonline lo toleraba para 1 unidad, aunque perdía algún carrier), pero el fix del Addendum 1
+(valorDeclarado × qty) lo empujó sobre el límite: 5 imanes → 22.500.000 → **numbererror=999 en las 11
+transportadoras** (verificado: 45.000→ok=4/10, 4.500.000→ok=4/9, 22.500.000→**ok=0/11**). Fix: `centsToPesos`
+(÷100) aplicado a `valorDeclarado` (cotización + guía), `dsvalor_pedido` y `valorrecaudo` (COD, hoy inactivo
+pero quedaría 100× al recaudar). Verificado en vivo con el producto real: 5 Fotoimanes ($45.000 c/u) →
+Bogotá→Bogotá ok=4/9, Bogotá→Medellín ok=4/9. Unit tests actualizados a pesos. **Nota:** hay 2 productos
+"E2E Simple" activos SIN dims (residuo de tests E2E) — si entran a un carrito rompen la cotización; conviene
+despublicarlos/borrarlos.

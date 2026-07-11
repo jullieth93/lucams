@@ -83,6 +83,15 @@ async function aveonlineFetch(
 const MIN_DECLARED_VALUE_COP = 10000;
 
 /**
+ * Aveonline maneja PESOS enteros en `valorDeclarado` / `dsvalor_pedido` / `valorrecaudo`.
+ * Nuestros montos internos son CENTAVOS COP (mandato del proyecto). Sin esta conversión
+ * declarábamos 100× el valor real (ej. un imán de $45.000 → 4.500.000) y, al multiplicar
+ * por la cantidad, superábamos el límite de Aveonline → numbererror=999 en TODAS las
+ * transportadoras (verificado 2026-07-11: valorDeclarado 22.500.000 → 0/11). Ver ADR-053.
+ */
+const centsToPesos = (cents: number) => Math.round(cents / 100);
+
+/**
  * Construye el array `productos` para la cotización a partir de los ítems del carrito.
  *
  * Aveonline **IGNORA el campo `unidades` al cotizar** — VERIFICADO contra la API real
@@ -105,7 +114,8 @@ export function buildCotizarProductos(items: ShipmentItem[]) {
     peso: Math.max(0.1, Math.round(((i.weightGrams * i.qty) / 1000) * 10) / 10),
     unidades: 1, // Aveonline lo ignora al cotizar; la cantidad ya viaja en `peso`.
     nombre: i.productSlug,
-    valorDeclarado: Math.max(MIN_DECLARED_VALUE_COP, i.declaredValueCop * i.qty),
+    // valorDeclarado en PESOS (no centavos) — total de la línea, mínimo $10.000.
+    valorDeclarado: Math.max(MIN_DECLARED_VALUE_COP, centsToPesos(i.declaredValueCop * i.qty)),
   }));
 }
 
@@ -673,8 +683,11 @@ export class AveonlineProvider implements ShippingProvider {
       );
     }
 
-    const valorRecaudo = params.contraentrega ? (params.valorRecaudoCop ?? 0) : 0;
-    const totalDeclarado = params.items.reduce((acc, i) => acc + i.declaredValueCop * i.qty, 0);
+    // Aveonline en PESOS (montos internos en centavos → centsToPesos).
+    const valorRecaudo = params.contraentrega ? centsToPesos(params.valorRecaudoCop ?? 0) : 0;
+    const totalDeclaradoPesos = centsToPesos(
+      params.items.reduce((acc, i) => acc + i.declaredValueCop * i.qty, 0),
+    );
 
     // El pedido se despacha como UN paquete físico (imanes: todo va en una caja).
     // Declaramos 1 bulto con el peso y el valor TOTALES. Antes mandábamos
@@ -700,7 +713,7 @@ export class AveonlineProvider implements ShippingProvider {
             .join(", ")
             .slice(0, 100) || "Pedido",
         ref: params.orderId,
-        valorDeclarado: String(Math.max(MIN_DECLARED_VALUE_COP, totalDeclarado)),
+        valorDeclarado: String(Math.max(MIN_DECLARED_VALUE_COP, totalDeclaradoPesos)),
       },
     ];
 
@@ -764,7 +777,7 @@ export class AveonlineProvider implements ShippingProvider {
       enviarcorreos: "1",
       cartaporte: "0",
       valorMinimo: 1, // 1 = aplicar valoración mínima (recomendado por dossier)
-      dsvalor_pedido: String(totalDeclarado),
+      dsvalor_pedido: String(totalDeclaradoPesos),
       dsreferencia: params.orderId, // tracking interno
       plugin: "lucamsshop",
     };

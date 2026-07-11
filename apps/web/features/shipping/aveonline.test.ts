@@ -23,19 +23,21 @@ const item = (over: Partial<ShipmentItem> = {}): ShipmentItem => ({
 });
 
 describe("buildCotizarProductos", () => {
-  it("qty=1: peso por unidad, unidades:1, valorDeclarado de la línea", () => {
-    const [p] = buildCotizarProductos([item()]);
+  it("qty=1: peso por unidad, unidades:1, valorDeclarado en PESOS (no centavos)", () => {
+    const [p] = buildCotizarProductos([item({ declaredValueCop: 4500000 })]); // $45.000 en centavos
     expect(p.peso).toBe(0.3); // 300g → 0.3 kg
     expect(p.unidades).toBe(1);
-    expect(p.valorDeclarado).toBe(30000);
+    expect(p.valorDeclarado).toBe(45000); // 4.500.000 centavos → 45.000 pesos (÷100)
     expect(p).toMatchObject({ alto: 10, ancho: 10, largo: 10, nombre: "iman-test" });
   });
 
-  it("qty=5: pliega la cantidad en el PESO y el valor (unidades sigue 1)", () => {
-    const [p] = buildCotizarProductos([item({ qty: 5 })]);
+  it("qty=5: pliega la cantidad en el PESO y el valor total en PESOS (unidades sigue 1)", () => {
+    const [p] = buildCotizarProductos([item({ declaredValueCop: 4500000, qty: 5 })]);
     expect(p.peso).toBe(1.5); // 300g × 5 = 1500g → 1.5 kg (NO 0.3)
     expect(p.unidades).toBe(1); // Aveonline lo ignora; la cantidad va en el peso
-    expect(p.valorDeclarado).toBe(150000); // 30.000 × 5
+    // 4.500.000 centavos × 5 = 22.500.000 centavos → 225.000 pesos (NO 22.500.000,
+    // que Aveonline rechaza con numbererror=999). Este es el bug que rompía el step 2.
+    expect(p.valorDeclarado).toBe(225000);
   });
 
   it("piso de peso 0.1 kg para ítems muy livianos", () => {
@@ -43,9 +45,9 @@ describe("buildCotizarProductos", () => {
     expect(p.peso).toBe(0.1); // 30g → 0.03 kg → piso 0.1
   });
 
-  it("valorDeclarado mínimo 10.000 COP (Aveonline rechaza menos con numbererror -5)", () => {
-    const [p] = buildCotizarProductos([item({ declaredValueCop: 2000, qty: 1 })]);
-    expect(p.valorDeclarado).toBe(10000);
+  it("valorDeclarado mínimo 10.000 PESOS (Aveonline rechaza menos con numbererror -5)", () => {
+    const [p] = buildCotizarProductos([item({ declaredValueCop: 200000, qty: 1 })]); // $2.000
+    expect(p.valorDeclarado).toBe(10000); // 200.000 centavos = 2.000 pesos → piso 10.000
   });
 
   it("varias líneas → una entrada por línea, cada una con su peso total", () => {
