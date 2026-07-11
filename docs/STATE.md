@@ -113,9 +113,28 @@ Lucy validó `/mi-cuenta` y la calificó "básica, poco funcional e incompleta".
 **seguridad** (cambiar contraseña con re-auth+HIBP+rate-limit) + **eliminar cuenta** (Ley 1581: anonimizar+soft-delete
 conservando órdenes por DIAN + borrar auth user; política en COMPLIANCE.md). Housekeeping: labels OrderStatus
 compartidos, **fix voseo** en pedidos/[number], correo habeas-data reconciliado (`habeas-data@`), login `?next=`.
-`next build` OK (8 rutas) + typecheck + eslint + tests. **PENDIENTE: validación visual de Lucy** (es su feature).
-Mejora futura: conectar direcciones guardadas al checkout. **Antes de esto**: se cazó y arregló una contaminación
-de test (`captureClientError` "message vacío" dejaba filas "unknown" en el panel real → fix + [[project_integration_tests_share_dev_db]]).
+`next build` OK (8 rutas) + typecheck + eslint + tests. Validación visual de Lucy: OK.
+
+**Revisión adversarial del área de cuenta (ADR-048-style) → 15 hallazgos confirmados, 0 falsos positivos, todos
+arreglados.** El clúster crítico fue **eliminar cuenta**: la implementación inicial dejaba PII sensible sin borrar
+(fotos del Estudio en customer-uploads = rostros, tickets de soporte, columnas PII de Address, snapshot
+Order.shippingAddress, logs). `delete-service.ts` se reescribió para supresión EXHAUSTIVA (3 buckets Storage +
+scrub de todas las tablas + fallback de baneo si deleteUser falla). Más: promover default al borrar, índice
+parcial-único DB one-default, robots noindex, count real de pedidos, voseo email delivered. Ver ADR-050 addendum.
+
+**Conexión cuenta ↔ checkout + UNIFICACIÓN de direcciones (ADR-051, validado por Lucy: reusa 100%).** (1) El
+checkout pre-llena el CONTACTO (nombre/correo/tel/documento) desde el perfil del cliente logueado. (2) "Usar una
+dirección guardada" en el checkout. (3) **Unificación**: la cuenta y el checkout ahora usan el MISMO formato
+estructurado (DANE + urbano/rural + vía/cruce) — `Address.structured` (JSONB, migración 20260710120000),
+componente compartido `components/address/structured-address-fields.tsx`, parseo/validación compartido
+`features/checkout/parse-address.ts` (el action del checkout se refactorizó para usarlo). Reuso 100% al pagar.
+Direcciones legacy (form viejo, structured null) → fallback depto/ciudad; al re-guardarlas pasan a 100%.
+**EN CURSO al momento de escribir:** suite completa + revisión adversarial de la unificación (commit 6cb6b65)
+corriendo — al terminar, arreglar hallazgos confirmados. Mejora futura: "guardar dirección" en el checkout;
+hidratar el edit de legacy; el form inline del checkout puede adoptar el componente compartido (deuda menor).
+
+**Antes de todo esto**: se cazó y arregló una contaminación de test (`captureClientError` "message vacío" dejaba
+filas "unknown" en el panel real → fix + [[project_integration_tests_share_dev_db]]).
 
 ## Última sesión — 2026-07-09 (Resiliencia + open-redirect + errores cliente — ADR-045/046/047)
 
