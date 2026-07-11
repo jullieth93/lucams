@@ -673,20 +673,36 @@ export class AveonlineProvider implements ShippingProvider {
       );
     }
 
-    // PR C — dims REALES de cada producto/variant (caller las pasó en ShipmentItem).
-    const productos = params.items.map((i) => ({
-      alto: String(i.heightCm),
-      ancho: String(i.widthCm),
-      largo: String(i.depthCm),
-      peso: String(Math.max(0.1, Math.round((i.weightGrams / 1000) * 10) / 10)), // kg, 1 decimal
-      unidades: i.qty,
-      nombre: i.productSlug,
-      ref: i.productSlug,
-      valorDeclarado: String(i.declaredValueCop),
-    }));
-
     const valorRecaudo = params.contraentrega ? (params.valorRecaudoCop ?? 0) : 0;
     const totalDeclarado = params.items.reduce((acc, i) => acc + i.declaredValueCop * i.qty, 0);
+
+    // El pedido se despacha como UN paquete físico (imanes: todo va en una caja).
+    // Declaramos 1 bulto con el peso y el valor TOTALES. Antes mandábamos
+    // `unidades = qty` → el rótulo decía "N bultos" (VERIFICADO 2026-07-11: guía con
+    // unidades:5 imprime "1 / 5") → el transportador esperaría N paquetes que no
+    // existen, con posible lío en la recogida. El peso total es el driver real del
+    // flete (imanes densos); dims = bounding box (máximo por eje). Ver ADR-053.
+    const totalWeightKg = Math.max(
+      0.1,
+      Math.round((params.items.reduce((a, i) => a + i.weightGrams * i.qty, 0) / 1000) * 10) / 10,
+    );
+    const maxDim = (pick: (i: ShipmentItem) => number) => Math.max(...params.items.map(pick));
+    const productos = [
+      {
+        alto: String(maxDim((i) => i.heightCm)),
+        ancho: String(maxDim((i) => i.widthCm)),
+        largo: String(maxDim((i) => i.depthCm)),
+        peso: String(totalWeightKg),
+        unidades: 1,
+        nombre:
+          params.items
+            .map((i) => i.productSlug)
+            .join(", ")
+            .slice(0, 100) || "Pedido",
+        ref: params.orderId,
+        valorDeclarado: String(Math.max(MIN_DECLARED_VALUE_COP, totalDeclarado)),
+      },
+    ];
 
     const body = {
       tipo: "generarGuia2",
@@ -720,7 +736,7 @@ export class AveonlineProvider implements ShippingProvider {
       dscorreop: params.delivery.email ?? "",
       idtransportador, // del quoteId (flow inmediato) o resuelto via resolveCarrierId
       idagente, // resuelto via resolveDefaultAgentId (cacheado 24h)
-      unidades: params.items.reduce((acc, i) => acc + i.qty, 0),
+      unidades: 1, // 1 paquete físico (el peso total ya va en productos[0].peso)
       productos,
       dscontenido: params.items
         .map((i) => i.productSlug)

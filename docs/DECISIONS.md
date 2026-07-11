@@ -1819,8 +1819,16 @@ imanes se cotizaba como 1 → **flete subcobrado** (lo perdía la dueña). Fix: 
 pliega la cantidad en el **peso total** (`peso = peso_unit × qty`, `unidades:1`, `valorDeclarado =
 valor_unit × qty`) — modelo "peso total" elegido por Lucy (imanes densos que se apilan; el peso es el
 costo real). Verificado: 5 imanes de 300g ahora cotizan $20.049 (kilos=2) vs $16.501. Unit test de
-regresión en `aveonline.test.ts`. **PENDIENTE-VERIFICAR:** `generarGuia2` (endpoint DISTINTO, con
-`unidades` top-level + por-producto) podría declarar peso por-unidad al courier → reweigh surcharge;
-requiere una guía de prueba bloqueada (no-facturable) para confirmar antes de tocar — NO se cambió a
-ciegas (mandato #9). Los 6 transportadores con `err=999` fallan igual con cualquier payload (problema
-de su lado en esta cuenta, no de nuestros datos).
+regresión en `aveonline.test.ts`. Los 6 transportadores con `err=999` fallan igual con cualquier
+payload (problema de su lado en esta cuenta, no de nuestros datos).
+
+**Addendum 2 (2026-07-11) — la GUÍA declaraba N bultos en vez de 1 caja.** Se verificó `generarGuia2`
+generando guías de PRUEBA bloqueadas (no-facturables) en la cuenta demo y extrayendo el peso del
+rótulo (PDF). Hallazgo: a diferencia de la cotización, la guía **SÍ usa `unidades`, pero como número
+de BULTOS físicos** — con `unidades:5` el rótulo imprime "1 / 5" (bulto 1 de 5). Como `createShipment`
+mandaba `unidades = Σqty` + `peso` por-unidad, un pedido de 5 imanes declaraba **5 bultos** al
+transportador (cuando en realidad es 1 caja) → riesgo de lío/rechazo en la recogida. Fix: la guía
+declara **1 paquete** con peso y valor TOTALES (`unidades:1`, `peso = Σ(peso_unit × qty)`, dims =
+bounding box máximo por eje), consistente con el modelo "peso total" de la cotización. Verificado: la
+guía con el payload nuevo imprime "1 / 1". Los tests de la saga mockean el provider (no rompen); la
+verificación del payload real es contra la API demo.
