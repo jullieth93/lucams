@@ -107,15 +107,17 @@ const centsToPesos = (cents: number) => Math.round(cents / 100);
  */
 export function buildCotizarProductos(items: ShipmentItem[]) {
   return items.map((i) => ({
-    alto: i.heightCm,
-    ancho: i.widthCm,
-    largo: i.depthCm,
+    // La doc tipa alto/ancho/largo/peso/valorDeclarado como String (el ejemplo oficial
+    // los manda entre comillas); createShipment ya los stringifica. Alineamos acá también.
+    alto: String(i.heightCm),
+    ancho: String(i.widthCm),
+    largo: String(i.depthCm),
     // Peso TOTAL de la línea (peso_unit × qty), redondeado a 1 decimal, piso 0.1 kg.
-    peso: Math.max(0.1, Math.round(((i.weightGrams * i.qty) / 1000) * 10) / 10),
+    peso: String(Math.max(0.1, Math.round(((i.weightGrams * i.qty) / 1000) * 10) / 10)),
     unidades: 1, // Aveonline lo ignora al cotizar; la cantidad ya viaja en `peso`.
     nombre: i.productSlug,
     // valorDeclarado en PESOS (no centavos) — total de la línea, mínimo $10.000.
-    valorDeclarado: Math.max(MIN_DECLARED_VALUE_COP, centsToPesos(i.declaredValueCop * i.qty)),
+    valorDeclarado: String(Math.max(MIN_DECLARED_VALUE_COP, centsToPesos(i.declaredValueCop * i.qty))),
   }));
 }
 
@@ -214,6 +216,7 @@ async function listEnabledAgents() {
   if (!res.ok) throw new Error(`Aveonline listarAgentes fail HTTP ${res.status}`);
   const data = (await res.json()) as {
     status?: string;
+    message?: string;
     agentes?: Array<{
       id?: number;
       nombre?: string;
@@ -221,11 +224,20 @@ async function listEnabledAgents() {
       principal?: string;
     }>;
   } | null;
-  const items = (data?.agentes ?? []).map((a) => ({
+  // La API legacy PHP responde HTTP 200 con status:"error" en cuerpo (token
+  // inválido → "credenciales incorrectas"). Sin este chequeo caía a agentes:[] y le
+  // decíamos a la admin "crea un agente" cuando el problema real es el token (audit
+  // Aveonline). NO cacheamos respuestas de error.
+  if (data?.status !== "ok") {
+    throw new Error(`Aveonline listarAgentes: ${data?.message ?? "respuesta inválida"}`);
+  }
+  const items = (data.agentes ?? []).map((a) => ({
     id: Number(a.id),
     nombre: String(a.nombre ?? ""),
     direccion: String(a.direccion ?? ""),
-    principal: (a.principal ?? "").toUpperCase() === "SI",
+    // La doc documenta "S"/"N"; la cuenta real devuelve "SI"/"NO" (verificado en vivo).
+    // Aceptamos ambos (+ "1") para no dejar la selección de agente-principal en código muerto.
+    principal: ["S", "SI", "1"].includes(String(a.principal ?? "").trim().toUpperCase()),
   }));
   agentsCache = { items, expiresAt: now + 24 * 60 * 60_000 };
   logger.info({
@@ -279,10 +291,26 @@ async function listEnabledCarriers(): Promise<Array<{ id: number; text: string }
   }
   const data = (await res.json()) as {
     status?: string;
+    message?: string;
     transportadoras?: Array<{ id: number; text: string }>;
   };
-  const items = data.transportadoras ?? [];
-  carriersCache = { items, expiresAt: now + 24 * 60 * 60_000 }; // 24h
+  // La API PHP responde HTTP 200 con status:"error" (token inválido → "credenciales
+  // incorrectas"; sin registros → "registros no encontrados"), SIN la clave
+  // `transportadoras`. Sin este chequeo, `?? []` cacheaba [] durante 24h y bloqueaba
+  // la generación de guía (resolveCarrierId → "no habilitado") de pedidos YA PAGADOS
+  // por un día entero, incluso tras recuperarse Aveonline (audit). NO cacheamos vacío/error.
+  if (data.status !== "ok" || !Array.isArray(data.transportadoras)) {
+    logger.warn({
+      event: "shipping.aveonline.carriers_refresh.error",
+      status: data.status ?? null,
+      message: data.message?.slice(0, 160) ?? null,
+    });
+    throw new Error(`Aveonline listarTransportadoras: ${data.message ?? "respuesta inválida"}`);
+  }
+  const items = data.transportadoras;
+  // Solo cacheamos una lista NO vacía (una vacía sería anómala en una cuenta con
+  // transportadoras habilitadas → no la fijamos 24h).
+  if (items.length > 0) carriersCache = { items, expiresAt: now + 24 * 60 * 60_000 };
   logger.info({
     event: "shipping.aveonline.carriers_refresh",
     count: items.length,
@@ -460,11 +488,18 @@ async function getAuthToken(): Promise<{ token: string; idempresa: number }> {
   if (!res.ok) throw new Error(`Aveonline auth fail HTTP ${res.status}`);
   const data = (await res.json()) as {
     status: string;
+    message?: string;
     token?: string;
     cuentas?: Array<{ usuarios: Array<{ id: number }> }>;
   };
+  // Credenciales inválidas: la doc muestra status:"ok" pero cuentas:[] ("la contraseña
+  // no coincide y NO se lista registro"). Distinguimos ese caso para que la admin sepa
+  // que el problema es la credencial (no un fallo genérico) — audit Aveonline.
+  if (data.status === "ok" && !data.cuentas?.[0]?.usuarios?.[0]) {
+    throw new Error("Aveonline auth: credenciales inválidas (revisar AVEONLINE_USUARIO/CLAVE)");
+  }
   if (data.status !== "ok" || !data.token || !data.cuentas?.[0]?.usuarios?.[0]) {
-    throw new Error("Aveonline auth: respuesta inválida");
+    throw new Error(`Aveonline auth: ${data.message ?? "respuesta inválida"}`);
   }
   const idempresa = data.cuentas[0].usuarios[0].id;
   tokenCache = {
@@ -527,7 +562,7 @@ export class AveonlineProvider implements ShippingProvider {
           valorrecaudo: 0,
           valorMinimo: 0,
           idasumecosto: 0,
-          plugin: "lucamsshop",
+          plugin: "apiave", // valor documentado por Aveonline ("Colocar apiave")
         }),
         timeoutMs: 15_000,
       },
@@ -776,10 +811,15 @@ export class AveonlineProvider implements ShippingProvider {
       relacion_envios: "1",
       enviarcorreos: "1",
       cartaporte: "0",
-      valorMinimo: 1, // 1 = aplicar valoración mínima (recomendado por dossier)
+      // valorMinimo=0: usar la SUMA de valores declarados reales (no la valoración fija
+      // de $10.000 que aplica el "1"). Con "1" la guía sub-aseguraba TODO envío a $10.000
+      // (el imán más barato ya vale $45.000) y contradecía el valor real que calcula
+      // ADR-053; además queda coherente con la cotización, que también usa 0. Verificado
+      // en vivo: la guía genera OK con valorMinimo=0 (audit Aveonline).
+      valorMinimo: 0,
       dsvalor_pedido: String(totalDeclaradoPesos),
       dsreferencia: params.orderId, // tracking interno
-      plugin: "lucamsshop",
+      plugin: "apiave", // valor documentado por Aveonline
     };
 
     // Sin `retry`: generar guía NO es idempotente — un reintento tras timeout
@@ -893,22 +933,33 @@ export class AveonlineProvider implements ShippingProvider {
     );
     if (!res.ok) throw new Error(`Aveonline tracking fail HTTP ${res.status}`);
     const data = (await res.json()) as {
+      status?: string;
+      message?: string;
       guias?: Array<{
         estado?: string;
-        historicos?: Array<{ fecha?: string; descripcion?: string; estado?: string }>;
+        // La doc del histórico usa `fechamostrar` (MM/DD/YYYY HH:mm:ss), NO `fecha`.
+        historicos?: Array<{ fechamostrar?: string; fecha?: string; descripcion?: string; estado?: string }>;
       }>;
     };
-    const guia = data.guias?.[0];
+    // status:"error" (HTTP 200) → "La guia no existe" / "autenticacion fallida". Sin
+    // este chequeo devolvíamos un PENDING falso enmascarando la causa real (audit).
+    if (data.status !== "ok" || !data.guias?.length) {
+      throw new Error(`Aveonline tracking: ${data.message ?? "guía no encontrada"}`);
+    }
+    const guia = data.guias[0];
     const status: TrackingStatus["status"] = mapAveonlineStatus(guia?.estado ?? "");
     return {
       trackingNumber,
       status,
       carrierStatusRaw: guia?.estado ?? "",
-      history: (guia?.historicos ?? []).map((h) => ({
-        status: h.estado ?? "",
-        description: h.descripcion ?? "",
-        timestamp: h.fecha ? new Date(h.fecha) : new Date(),
-      })),
+      history: (guia?.historicos ?? []).map((h) => {
+        const raw = h.fechamostrar ?? h.fecha; // real: fechamostrar; fecha = fallback defensivo
+        return {
+          status: h.estado ?? "",
+          description: h.descripcion ?? "",
+          timestamp: raw ? new Date(raw) : new Date(),
+        };
+      }),
     };
   }
 
@@ -936,10 +987,13 @@ export class AveonlineProvider implements ShippingProvider {
       fecha?: string;
     };
     const body = JSON.parse(rawBody) as {
-      guia?: string;
+      // La doc envía `guia` como NÚMERO (892349021). Sin String() se pasaba un number
+      // a Order.trackingNumber (columna String) → PrismaClientValidationError tragado
+      // en el route → la orden NUNCA pasaba a SHIPPED/DELIVERED ni salían los correos.
+      guia?: string | number;
       estado?: EstadoItem[] | EstadoItem;
     };
-    const trackingNumber = body.guia ?? "";
+    const trackingNumber = body.guia != null ? String(body.guia) : "";
     const estadoArr: EstadoItem[] = Array.isArray(body.estado)
       ? body.estado
       : body.estado
@@ -953,9 +1007,22 @@ export class AveonlineProvider implements ShippingProvider {
       trackingNumber,
       status,
       carrierStatusRaw: nombreRaw,
-      timestamp: tsRaw ? new Date(tsRaw) : new Date(),
+      timestamp: parseAveonlineDate(tsRaw),
     };
   }
+}
+
+/**
+ * Aveonline manda fechas SIN zona horaria, en hora local de Colombia (America/Bogota,
+ * UTC-5): "2020-12-11 11:04:43". `new Date(str)` las interpretaría en la TZ del servidor
+ * (UTC en Vercel) → ~5 h de desfase. Normalizamos ese formato a ISO con offset -05:00.
+ */
+function parseAveonlineDate(raw: string | undefined): Date {
+  if (!raw) return new Date();
+  const m = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}:\d{2}:\d{2})$/.exec(raw.trim());
+  if (m) return new Date(`${m[1]}T${m[2]}-05:00`);
+  const d = new Date(raw);
+  return Number.isNaN(d.getTime()) ? new Date() : d;
 }
 
 function mapAveonlineStatus(raw: string): TrackingStatus["status"] {

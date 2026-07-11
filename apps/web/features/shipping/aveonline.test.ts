@@ -1,14 +1,17 @@
 /*
- * Unit — buildCotizarProductos: cómo se arma el array `productos` para cotizar.
+ * Unit — buildCotizarProductos + handleWebhook.
  *
  * REGRESIÓN CRÍTICA (2026-07-11): Aveonline IGNORA `unidades` al cotizar (verificado
  * contra la API real: peso 0.3kg u1 == peso 0.3kg u5). Por eso la cantidad se pliega en
  * el PESO (modelo "peso total"). Estos tests fijan ese comportamiento para que un pedido
  * de varias unidades NUNCA vuelva a cotizarse como si fuera 1 (subcobro del flete).
+ *
+ * Aveonline tipa alto/ancho/largo/peso/valorDeclarado como String (doc oficial) → los
+ * mandamos stringificados. Y el webhook manda `guia` como NÚMERO → debe coercerse a String.
  */
 
 import { describe, expect, it } from "vitest";
-import { buildCotizarProductos } from "./aveonline";
+import { AveonlineProvider, buildCotizarProductos } from "./aveonline";
 import type { ShipmentItem } from "./provider";
 
 const item = (over: Partial<ShipmentItem> = {}): ShipmentItem => ({
@@ -23,31 +26,31 @@ const item = (over: Partial<ShipmentItem> = {}): ShipmentItem => ({
 });
 
 describe("buildCotizarProductos", () => {
-  it("qty=1: peso por unidad, unidades:1, valorDeclarado en PESOS (no centavos)", () => {
+  it("qty=1: peso por unidad, unidades:1, valorDeclarado en PESOS (no centavos), tipos String", () => {
     const [p] = buildCotizarProductos([item({ declaredValueCop: 4500000 })]); // $45.000 en centavos
-    expect(p.peso).toBe(0.3); // 300g → 0.3 kg
-    expect(p.unidades).toBe(1);
-    expect(p.valorDeclarado).toBe(45000); // 4.500.000 centavos → 45.000 pesos (÷100)
-    expect(p).toMatchObject({ alto: 10, ancho: 10, largo: 10, nombre: "iman-test" });
+    expect(p.peso).toBe("0.3"); // 300g → 0.3 kg (String, como pide la doc)
+    expect(p.unidades).toBe(1); // unidades es Number en la doc
+    expect(p.valorDeclarado).toBe("45000"); // 4.500.000 centavos → 45.000 pesos (÷100)
+    expect(p).toMatchObject({ alto: "10", ancho: "10", largo: "10", nombre: "iman-test" });
   });
 
   it("qty=5: pliega la cantidad en el PESO y el valor total en PESOS (unidades sigue 1)", () => {
     const [p] = buildCotizarProductos([item({ declaredValueCop: 4500000, qty: 5 })]);
-    expect(p.peso).toBe(1.5); // 300g × 5 = 1500g → 1.5 kg (NO 0.3)
+    expect(p.peso).toBe("1.5"); // 300g × 5 = 1500g → 1.5 kg (NO 0.3)
     expect(p.unidades).toBe(1); // Aveonline lo ignora; la cantidad va en el peso
     // 4.500.000 centavos × 5 = 22.500.000 centavos → 225.000 pesos (NO 22.500.000,
     // que Aveonline rechaza con numbererror=999). Este es el bug que rompía el step 2.
-    expect(p.valorDeclarado).toBe(225000);
+    expect(p.valorDeclarado).toBe("225000");
   });
 
   it("piso de peso 0.1 kg para ítems muy livianos", () => {
     const [p] = buildCotizarProductos([item({ weightGrams: 30, qty: 1 })]);
-    expect(p.peso).toBe(0.1); // 30g → 0.03 kg → piso 0.1
+    expect(p.peso).toBe("0.1"); // 30g → 0.03 kg → piso 0.1
   });
 
   it("valorDeclarado mínimo 10.000 PESOS (Aveonline rechaza menos con numbererror -5)", () => {
     const [p] = buildCotizarProductos([item({ declaredValueCop: 200000, qty: 1 })]); // $2.000
-    expect(p.valorDeclarado).toBe(10000); // 200.000 centavos = 2.000 pesos → piso 10.000
+    expect(p.valorDeclarado).toBe("10000"); // 200.000 centavos = 2.000 pesos → piso 10.000
   });
 
   it("varias líneas → una entrada por línea, cada una con su peso total", () => {
@@ -56,7 +59,43 @@ describe("buildCotizarProductos", () => {
       item({ productSlug: "b", weightGrams: 500, qty: 1 }),
     ]);
     expect(productos).toHaveLength(2);
-    expect(productos[0]).toMatchObject({ nombre: "a", peso: 0.6, unidades: 1 });
-    expect(productos[1]).toMatchObject({ nombre: "b", peso: 0.5, unidades: 1 });
+    expect(productos[0]).toMatchObject({ nombre: "a", peso: "0.6", unidades: 1 });
+    expect(productos[1]).toMatchObject({ nombre: "b", peso: "0.5", unidades: 1 });
+  });
+});
+
+describe("handleWebhook — parseo de la notificación de estado", () => {
+  const provider = new AveonlineProvider();
+
+  it("coacciona `guia` NUMÉRICO a String (sino la búsqueda de la orden por trackingNumber revienta)", async () => {
+    // La doc oficial manda guia como número: {"guia": 892349021, "estado":[...]}.
+    const ev = await provider.handleWebhook(
+      JSON.stringify({
+        guia: 892349021,
+        estado: [{ estado_id: 12, nombre_estado: "ENTREGADA", fecha: "2020-12-11 11:04:43" }],
+      }),
+      {},
+    );
+    expect(ev.trackingNumber).toBe("892349021");
+    expect(typeof ev.trackingNumber).toBe("string");
+    expect(ev.status).toBe("DELIVERED");
+  });
+
+  it("interpreta la fecha en hora de Colombia (UTC-5), no en la TZ del servidor", async () => {
+    const ev = await provider.handleWebhook(
+      JSON.stringify({ guia: 1, estado: [{ nombre_estado: "EN TRANSITO", fecha: "2020-12-11 11:04:43" }] }),
+      {},
+    );
+    // 11:04:43 en Bogotá (-05:00) == 16:04:43 UTC.
+    expect(ev.timestamp.toISOString()).toBe("2020-12-11T16:04:43.000Z");
+  });
+
+  it("acepta el shape AveCRM (estado como objeto único con `nombre`)", async () => {
+    const ev = await provider.handleWebhook(
+      JSON.stringify({ guia: "77", estado: { nombre: "DEVUELTO" } }),
+      {},
+    );
+    expect(ev.trackingNumber).toBe("77");
+    expect(ev.status).toBe("RETURNED");
   });
 });

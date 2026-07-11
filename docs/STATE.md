@@ -13,6 +13,16 @@
 
 ## Resumen actual
 
+**Integración Aveonline auditada 100% vs doc oficial (2026-07-11, ADR-054).** Auditoría multi-agente de
+las 7 áreas (auth/cotización/guía/agentes/transportadoras/tracking/webhooks) contra la doc oficial +
+ground-truth de las respuestas reales → 12 hallazgos confirmados, 11 arreglados. El más grave: el webhook
+mandaba `guia` como número y reventaba silenciosamente la búsqueda de la orden (String column) → ninguna
+orden pasaba a SHIPPED/DELIVERED ni salían correos; ahora se coacciona a String (+ test). También:
+cache-poisoning 24h de transportadoras (bloqueaba guías de pedidos pagados), `valorMinimo` que sub-aseguraba
+a $10.000, `fechamostrar` mal leído, `plugin` a "apiave", tipos String en productos, timezone Bogotá en
+webhooks. Verificado: tsc + build + unit 8/8 + live smoke 2/2 (código real vs API) + saga 30/30. Pendiente:
+confirmar keys de listWebhook/deleteWebhook (no documentados). Antes: fix del valorDeclarado en centavos.
+
 **Cotización de envío ARREGLADA + ruta endurecida (2026-07-11, ADR-053).** La dueña reportó "no
 pudo cotizar envío en el step 2". Causa raíz **medida** contra la cuenta Aveonline real: el endpoint
 `cotizarDoble` tarda 7–11 s (cotiza 10 transportadoras server-side) pero el timeout estaba en 5 s

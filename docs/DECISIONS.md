@@ -1845,3 +1845,45 @@ pero quedaría 100× al recaudar). Verificado en vivo con el producto real: 5 Fo
 Bogotá→Bogotá ok=4/9, Bogotá→Medellín ok=4/9. Unit tests actualizados a pesos. **Nota:** hay 2 productos
 "E2E Simple" activos SIN dims (residuo de tests E2E) — si entran a un carrito rompen la cotización; conviene
 despublicarlos/borrarlos.
+
+## ADR-054 — Auditoría integral de la integración Aveonline vs doc oficial (2026-07-11)
+
+**Contexto.** La dueña pidió validar que TODO el flujo Aveonline quedara 100% acorde a la documentación
+oficial vigente. Se auditaron las 7 áreas (auth, cotización, guía, agentes, transportadoras, tracking,
+webhooks) con un workflow multi-agente: cada agente trajo la doc oficial real (WebFetch), la comparó campo
+por campo con el código, y un panel escéptico verificó cada discrepancia. Además se capturó la **respuesta
+real** de cada endpoint contra la cuenta en vivo como ground-truth. Resultado: 17 hallazgos crudos → **12
+confirmados** (5 refutados, incl. el "gap de COD" que es feature diferida, no bug).
+
+**Fixes aplicados (11 de 12; todos en `features/shipping/aveonline.ts`).**
+- **[P1] Webhook `guia` numérico:** la doc manda `guia` como NÚMERO (892349021); lo pasábamos sin coercer
+  a `Order.trackingNumber` (columna String) → `PrismaClientValidationError` tragado en el route → la orden
+  **NUNCA** pasaba a SHIPPED/DELIVERED ni salían los correos. Fix: `String(body.guia)` + tipo `string|number`
+  + test de regresión con guia numérico. (El más grave — rompía el 100% de los webhooks reales en silencio.)
+- **[P1] Transportadoras — cache poisoning 24h:** ante una respuesta de error (HTTP 200 + `status:"error"`,
+  sin `transportadoras`) cacheábamos `[]` por 24h → bloqueaba la generación de guía de pedidos YA PAGADOS
+  por un día. Fix: chequear `status`, lanzar en error, y NO cachear listas vacías.
+- **[P2] Guía `valorMinimo` 1→0:** con `1` la guía declaraba $10.000 fijos (sub-aseguraba TODO envío);
+  con `0` usa la suma de valores declarados reales (coherente con la cotización y con ADR-053). Verificado
+  en vivo que la guía genera OK con `0`.
+- **[P2] Tracking:** leíamos `historicos[].fecha` (no existe; el real es `fechamostrar`) → todas las fechas
+  del histórico caían a "ahora". Y no validábamos `status` → una guía inexistente/token vencido se reportaba
+  como `PENDING` falso. Fix ambos. (getTracking hoy sin callers, pero se dejó correcto.)
+- **[P2] Agentes `principal`:** comparábamos contra "SI"; la doc dice "S". La cuenta real devuelve "SI"
+  (verificado en vivo) así que NO estaba roto, pero se hizo robusto (acepta S/SI/1) + chequeo de `status`
+  (distingue "credenciales incorrectas" de "sin agentes").
+- **[P3] Auth:** mensaje específico "credenciales inválidas" cuando `status:"ok"` pero `cuentas:[]`.
+- **[P3] Cotización `productos`:** la doc tipa alto/ancho/largo/peso/valorDeclarado como String (números
+  funcionaban por coerción PHP) → se stringifican, consistente con `createShipment`.
+- **[P3] `plugin`:** la doc pide "apiave"; mandábamos "lucamsshop". Verificado en vivo que "apiave" cotiza
+  igual → se usa el valor documentado (cotización + guía).
+- **[P3] Webhook timestamp:** Aveonline manda fecha sin TZ en hora de Colombia; `new Date()` la leía en UTC
+  (~5h de desfase). Fix: `parseAveonlineDate` normaliza a ISO con offset -05:00.
+
+**Pendiente (1).** `listWebhook.php` / `deleteWebhook.php` NO están en la doc oficial (solo `createWebhook`);
+las keys del response son suposiciones. Se dejan los fallbacks defensivos; **confirmar con una respuesta real**
+de esos endpoints antes de tocar (admin-only, no afecta el flujo de venta).
+
+**Verificación.** `tsc` limpio · `next build` OK · unit 8/8 (incl. webhook numérico) · live smoke 2/2 (código
+real contra API) · saga 30/30. Ground-truth capturado: id-space carrier consistente cotización↔lista;
+`valoracion` confirma valor en pesos con seguro 1%. [[ADR-053]] [[ADR-039]].
