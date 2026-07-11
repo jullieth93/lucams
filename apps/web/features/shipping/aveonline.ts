@@ -421,10 +421,16 @@ export async function listAveonlineWebhooks(): Promise<{
     { retry: true },
   );
   if (!res.ok) return { items: [], raw: { error: `HTTP ${res.status}` } };
-  const data = (await res.json()) as {
-    webhooks?: Array<Record<string, unknown>>;
-    data?: Array<Record<string, unknown>>;
-  };
+  // listWebhook.php NO está documentado y, verificado en vivo (2026-07-11), responde una
+  // página de LOGIN HTML (no JSON) → `res.json()` lanzaría y tumbaría la página admin.
+  // Degradamos con gracia: si no es JSON, lista vacía + warn (audit Aveonline, pendiente).
+  let data: { webhooks?: Array<Record<string, unknown>>; data?: Array<Record<string, unknown>> };
+  try {
+    data = await res.json();
+  } catch {
+    logger.warn({ event: "shipping.aveonline.list_webhooks.non_json" });
+    return { items: [], raw: { error: "respuesta no-JSON (endpoint no documentado)" } };
+  }
   const items = Array.isArray(data?.webhooks)
     ? data.webhooks
     : Array.isArray(data?.data)
@@ -446,7 +452,15 @@ export async function deleteAveonlineWebhook(url: string): Promise<{
     timeoutMs: 8000,
   });
   if (!res.ok) return { ok: false, message: `HTTP ${res.status}` };
-  const data = (await res.json()) as { success?: boolean; messages?: string };
+  // deleteWebhook.php tampoco está documentado (mismo caso que listWebhook). Si no
+  // responde JSON, degradamos con gracia en vez de lanzar.
+  let data: { success?: boolean; messages?: string };
+  try {
+    data = await res.json();
+  } catch {
+    logger.warn({ event: "shipping.aveonline.delete_webhook.non_json" });
+    return { ok: false, message: "respuesta no-JSON (endpoint no documentado)" };
+  }
   return { ok: Boolean(data.success), message: data.messages ?? "" };
 }
 
