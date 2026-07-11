@@ -39,6 +39,9 @@ export type AddressInput = {
   zip?: string | null;
   phone: string;
   isDefault?: boolean;
+  // Dirección estructurada del checkout (deptCode/cityCode/kind/vía/cruce…) para
+  // reuso 100% al pagar. Los campos de arriba son el "display" derivado.
+  structured: Prisma.InputJsonValue;
 };
 
 export class AddressNotFoundError extends Error {
@@ -64,12 +67,15 @@ export async function listAddresses(customerId: string) {
 export type CheckoutPrefillAddress = {
   id: string;
   label: string;
+  line1: string;
+  isDefault: boolean;
+  // Dirección estructurada completa → reuso 100% al pagar. null en direcciones
+  // legacy (form plano); en ese caso se usan deptCode/cityCode (mapeo nombre→código).
+  structured: Record<string, unknown> | null;
   deptCode: string | null;
   cityCode: string | null;
   zip: string | null;
   phone: string;
-  line1: string;
-  isDefault: boolean;
 };
 
 export async function getSavedAddressesForCheckout(
@@ -77,17 +83,20 @@ export async function getSavedAddressesForCheckout(
 ): Promise<CheckoutPrefillAddress[]> {
   const rows = await listAddresses(customerId);
   return rows.map((a) => {
-    const dept = getDepartmentByName(a.department);
+    const structured = (a.structured as Record<string, unknown> | null) ?? null;
+    // Fallback legacy (sin structured): mapear los nombres a códigos DANE.
+    const dept = structured ? null : getDepartmentByName(a.department);
     const city = dept ? getCityByDeptAndName(dept.code, a.city) : null;
     return {
       id: a.id,
       label: a.name,
-      deptCode: dept?.code ?? null,
-      cityCode: city?.code ?? null,
-      zip: a.zip,
-      phone: a.phone,
       line1: a.line1,
       isDefault: a.isDefault,
+      structured,
+      deptCode: (structured?.deptCode as string | undefined) ?? dept?.code ?? null,
+      cityCode: (structured?.cityCode as string | undefined) ?? city?.code ?? null,
+      zip: a.zip,
+      phone: a.phone,
     };
   });
 }
@@ -101,6 +110,7 @@ function toData(input: AddressInput) {
     department: input.department.trim(),
     zip: input.zip?.trim() || null,
     phone: input.phone.trim(),
+    structured: input.structured,
   };
 }
 

@@ -6,7 +6,11 @@ import { MapPin, Plus, Star, Pencil, Trash2, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { DEPARTMENTS, getCitiesByDeptCode, getDepartmentByName } from "@/lib/dane-divipola";
+import {
+  StructuredAddressFields,
+  EMPTY_STRUCTURED_ADDRESS,
+  type StructuredAddressValue,
+} from "@/components/address/structured-address-fields";
 import {
   saveAddressAction,
   deleteAddressAction,
@@ -18,12 +22,11 @@ export type AddressView = {
   id: string;
   name: string;
   line1: string;
-  line2: string | null;
   city: string;
   department: string;
-  zip: string | null;
   phone: string;
   isDefault: boolean;
+  structured: Record<string, unknown> | null;
 };
 
 export function AddressManager({ addresses }: { addresses: AddressView[] }) {
@@ -114,8 +117,7 @@ function AddressCard({
             )}
           </div>
           <p className="text-brand-muted mt-1 text-sm">
-            {address.line1}
-            {address.line2 ? `, ${address.line2}` : ""} · {address.city}, {address.department}
+            {address.line1} · {address.city}, {address.department}
           </p>
           <p className="text-brand-muted text-xs">Tel: {address.phone}</p>
         </div>
@@ -188,15 +190,13 @@ function AddressForm({ address, onDone }: { address: AddressView | null; onDone:
     if (state?.success) doneRef.current();
   }, [state?.success]);
 
-  // Departamento/Ciudad como desplegables DANE en cascada (el depto filtra las
-  // ciudades). Se guardan los NOMBRES (modelo plano) — canónicos DANE, así mapean
-  // limpio a los códigos del checkout. deptCode/cities son derivados.
-  const [deptName, setDeptName] = useState(address?.department ?? "");
-  const [cityName, setCityName] = useState(address?.city ?? "");
-  const deptCode = getDepartmentByName(deptName)?.code ?? "";
-  const cities = deptCode ? getCitiesByDeptCode(deptCode) : [];
-  const selectClass =
-    "border-brand-purple/25 focus:border-brand-purple w-full rounded-lg border bg-white px-3 py-2 text-sm disabled:opacity-60";
+  // Dirección ESTRUCTURADA (mismo formato que el checkout). En edición se hidrata
+  // desde `structured`; las legacy (sin structured) arrancan vacías.
+  const [addr, setAddr] = useState<StructuredAddressValue>(() =>
+    address?.structured
+      ? ({ ...EMPTY_STRUCTURED_ADDRESS, ...address.structured } as StructuredAddressValue)
+      : EMPTY_STRUCTURED_ADDRESS,
+  );
 
   return (
     <form
@@ -223,89 +223,23 @@ function AddressForm({ address, onDone }: { address: AddressView | null; onDone:
         err={state?.fieldErrors?.name}
         disabled={pending}
       />
-      <F
-        id="line1"
-        label="Dirección"
-        placeholder="Calle 123 # 45-67"
-        def={address?.line1}
-        err={state?.fieldErrors?.line1}
+
+      <StructuredAddressFields
+        value={addr}
+        onChange={(patch) => setAddr((prev) => ({ ...prev, ...patch }))}
+        errors={state?.fieldErrors}
         disabled={pending}
       />
+
       <F
-        id="line2"
-        label="Complemento (opcional)"
-        placeholder="Apto, torre, barrio"
-        def={address?.line2 ?? ""}
-        err={state?.fieldErrors?.line2}
+        id="phone"
+        label="Teléfono"
+        type="tel"
+        placeholder="300 000 0000"
+        def={address?.phone}
+        err={state?.fieldErrors?.phone}
         disabled={pending}
       />
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div className="space-y-1.5">
-          <Label htmlFor="department">Departamento</Label>
-          <select
-            id="department"
-            name="department"
-            value={deptName}
-            disabled={pending}
-            onChange={(e) => {
-              setDeptName(e.target.value);
-              setCityName(""); // resetear ciudad al cambiar de departamento
-            }}
-            aria-invalid={Boolean(state?.fieldErrors?.department)}
-            className={selectClass}
-          >
-            <option value="">Selecciona…</option>
-            {DEPARTMENTS.map((d) => (
-              <option key={d.code} value={d.name}>
-                {d.name}
-              </option>
-            ))}
-          </select>
-          {state?.fieldErrors?.department?.[0] && (
-            <p className="text-destructive text-sm">{state.fieldErrors.department[0]}</p>
-          )}
-        </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="city">Ciudad</Label>
-          <select
-            id="city"
-            name="city"
-            value={cityName}
-            disabled={pending || !deptCode}
-            onChange={(e) => setCityName(e.target.value)}
-            aria-invalid={Boolean(state?.fieldErrors?.city)}
-            className={selectClass}
-          >
-            <option value="">{deptCode ? "Selecciona…" : "Elige departamento primero"}</option>
-            {cities.map((c) => (
-              <option key={c.code} value={c.name}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-          {state?.fieldErrors?.city?.[0] && (
-            <p className="text-destructive text-sm">{state.fieldErrors.city[0]}</p>
-          )}
-        </div>
-      </div>
-      <div className="grid gap-4 sm:grid-cols-2">
-        <F
-          id="phone"
-          label="Teléfono"
-          type="tel"
-          placeholder="300 000 0000"
-          def={address?.phone}
-          err={state?.fieldErrors?.phone}
-          disabled={pending}
-        />
-        <F
-          id="zip"
-          label="Código postal (opcional)"
-          def={address?.zip ?? ""}
-          err={state?.fieldErrors?.zip}
-          disabled={pending}
-        />
-      </div>
 
       <label className="text-brand-purple-dark flex items-center gap-2 text-sm">
         <input

@@ -150,16 +150,37 @@ export function DatosForm({
 
   // ─── Handlers ───
 
-  // Pre-llena depto/ciudad/CP desde una dirección guardada del cliente (el contacto
-  // ya viene del perfil). La calle (vía/cruce) NO se mapea desde el modelo plano —
-  // el usuario la escribe. Si el nombre guardado no matchea DANE, deptCode viene
-  // null y no se pre-llena depto/ciudad (el usuario los elige).
+  // Rellena la dirección desde una guardada. Si tiene `structured` (form nuevo) →
+  // reuso 100% (depto/ciudad/vía/cruce/todo). Legacy (sin structured) → solo
+  // depto/ciudad/CP vía mapeo nombre→código.
   function applySavedAddress(id: string) {
     const a = savedAddresses.find((x) => x.id === id);
     if (!a) return;
-    if (a.deptCode) setDeptCode(a.deptCode);
-    if (a.cityCode) setCityCode(a.cityCode);
-    if (a.zip) setZip(a.zip);
+    const s = a.structured;
+    if (s) {
+      setDeptCode(String(s.deptCode ?? ""));
+      setCityCode(String(s.cityCode ?? ""));
+      setZip(String(s.zip ?? ""));
+      const kind = s.kind === "rural" ? "rural" : "urban";
+      setAddressKind(kind);
+      if (kind === "urban") {
+        setViaType((String(s.viaType ?? "Calle") as (typeof VIA_TYPES)[number]) || "Calle");
+        setViaNumber(String(s.viaNumber ?? ""));
+        setViaBis(Boolean(s.viaBis));
+        setViaCardinal(String(s.viaCardinal ?? ""));
+        setCruceNumber(String(s.cruceNumber ?? ""));
+        setCruceCardinal(String(s.cruceCardinal ?? ""));
+        setDetail(String(s.detail ?? ""));
+      } else {
+        setVereda(String(s.vereda ?? ""));
+        setFinca(String(s.finca ?? ""));
+        setReferencia(String(s.referencia ?? ""));
+      }
+    } else {
+      if (a.deptCode) setDeptCode(a.deptCode);
+      if (a.cityCode) setCityCode(a.cityCode);
+      if (a.zip) setZip(a.zip);
+    }
   }
 
   function handleNameBlur() {
@@ -426,7 +447,7 @@ export function DatosForm({
               ))}
             </select>
             <p className="text-brand-muted mt-1.5 text-xs">
-              Llenamos departamento y ciudad. Revisa/completa la calle antes de continuar.
+              Rellenamos toda la dirección. Solo revisa antes de continuar.
             </p>
           </div>
         )}

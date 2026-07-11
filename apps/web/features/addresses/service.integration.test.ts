@@ -27,9 +27,17 @@ let otherId = "";
 const base = {
   name: "Casa",
   line1: "Calle 1 # 2-3",
-  city: "Bogotá",
-  department: "Cundinamarca",
+  city: "Bogotá D.C.",
+  department: "Bogotá D.C.",
   phone: "3000000000",
+  structured: {
+    deptCode: "11",
+    cityCode: "11001",
+    kind: "urban",
+    viaType: "Calle",
+    viaNumber: "1",
+    cruceNumber: "2-3",
+  },
 };
 
 describe.skipIf(!hasDb)("addresses/service — integración DB", () => {
@@ -94,25 +102,37 @@ describe.skipIf(!hasDb)("addresses/service — integración DB", () => {
     expect(row?.deletedAt).not.toBeNull();
   });
 
-  it("getSavedAddressesForCheckout mapea nombres DANE a códigos", async () => {
+  it("getSavedAddressesForCheckout expone el structured (reuso 100%) + códigos DANE", async () => {
     await createAddress(customerId, {
       ...base,
       name: "Medallo",
       city: "Medellín",
       department: "Antioquia",
+      structured: {
+        deptCode: "05",
+        cityCode: "05001",
+        kind: "urban",
+        viaType: "Carrera",
+        viaNumber: "70",
+        cruceNumber: "45-11",
+      },
     });
     const prefill = await getSavedAddressesForCheckout(customerId);
     const m = prefill.find((p) => p.label === "Medallo");
     expect(m).toBeDefined();
-    expect(m?.deptCode).toBe("05"); // Antioquia
-    expect(m?.cityCode).toBe("05001"); // Medellín
+    expect(m?.deptCode).toBe("05"); // Antioquia (desde structured)
+    expect(m?.cityCode).toBe("05001"); // Medellín (desde structured)
+    // El structured completo viaja para reuso 100% en el checkout.
+    expect((m?.structured as Record<string, unknown>)?.viaType).toBe("Carrera");
   });
 
   it("aislamiento: otro cliente NO puede tocar direcciones ajenas", async () => {
     const mine = (await listAddresses(customerId))[0];
     await expect(setDefaultAddress(otherId, mine.id)).rejects.toBeInstanceOf(AddressNotFoundError);
     await expect(deleteAddress(otherId, mine.id)).rejects.toBeInstanceOf(AddressNotFoundError);
-    await expect(updateAddress(otherId, mine.id, base)).rejects.toBeInstanceOf(AddressNotFoundError);
+    await expect(updateAddress(otherId, mine.id, base)).rejects.toBeInstanceOf(
+      AddressNotFoundError,
+    );
     // La dirección sigue intacta.
     const still = await prisma.address.findUnique({ where: { id: mine.id } });
     expect(still?.deletedAt).toBeNull();

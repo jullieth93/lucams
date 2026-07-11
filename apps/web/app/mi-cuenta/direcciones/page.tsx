@@ -27,12 +27,11 @@ export default async function DireccionesPage() {
     id: a.id,
     name: a.name,
     line1: a.line1,
-    line2: a.line2,
     city: a.city,
     department: a.department,
-    zip: a.zip,
     phone: a.phone,
     isDefault: a.isDefault,
+    structured: (a.structured as Record<string, unknown> | null) ?? null,
   }));
 
   return (

@@ -3,9 +3,9 @@
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { logger } from "@/lib/logger";
-import { ContactSchema, AddressSchema, BillingSchema } from "@/features/checkout/schemas";
+import { ContactSchema, BillingSchema } from "@/features/checkout/schemas";
+import { parseStructuredAddress } from "@/features/checkout/parse-address";
 import { saveAddressStep, saveContactStep } from "@/features/checkout/service";
-import { getCityByCode, getDepartmentByCode } from "@/lib/dane-divipola";
 
 export type DatosActionState = {
   error?: string;
@@ -34,60 +34,10 @@ export async function saveDatosAction(
     };
   }
 
-  // ─── Dirección DANE + estructurada ───
-  const deptCode = String(formData.get("deptCode") ?? "");
-  const cityCode = String(formData.get("cityCode") ?? "");
-
-  // Cross-validate: cityCode debe pertenecer al deptCode + ambos existir
-  // en nuestro catálogo (anti-tamper si cliente manipula HTML).
-  const dept = getDepartmentByCode(deptCode);
-  const city = getCityByCode(cityCode);
-  if (!dept || !city || city.deptCode !== deptCode) {
-    return {
-      error: "Departamento o ciudad inválidos. Por favor selecciona de la lista.",
-      fieldErrors: { cityCode: ["Ciudad no válida"] },
-    };
-  }
-
-  const addressKind = (formData.get("addressKind") as string) === "rural" ? "rural" : "urban";
-  const baseFields = {
-    deptCode,
-    cityCode,
-    department: dept.name,
-    city: city.name,
-    zip: (formData.get("zip") as string)?.trim() || undefined,
-    notes: (formData.get("notes") as string)?.trim() || undefined,
-  };
-  const addressRaw =
-    addressKind === "urban"
-      ? {
-          ...baseFields,
-          kind: "urban" as const,
-          viaType: String(formData.get("viaType") ?? "Calle"),
-          viaNumber: String(formData.get("viaNumber") ?? "")
-            .trim()
-            .toUpperCase(),
-          viaBis: formData.get("viaBis") === "on",
-          viaCardinal: (formData.get("viaCardinal") as string) || "",
-          cruceNumber: String(formData.get("cruceNumber") ?? "")
-            .trim()
-            .toUpperCase(),
-          cruceCardinal: (formData.get("cruceCardinal") as string) || "",
-          detail: (formData.get("detail") as string)?.trim() || undefined,
-        }
-      : {
-          ...baseFields,
-          kind: "rural" as const,
-          vereda: String(formData.get("vereda") ?? "").trim(),
-          finca: (formData.get("finca") as string)?.trim() || undefined,
-          referencia: String(formData.get("referencia") ?? "").trim(),
-        };
-  const addressParsed = AddressSchema.safeParse(addressRaw);
-  if (!addressParsed.success) {
-    return {
-      error: "Revisa la dirección de envío",
-      fieldErrors: z.flattenError(addressParsed.error).fieldErrors as Record<string, string[]>,
-    };
+  // ─── Dirección DANE + estructurada (parseo compartido con /mi-cuenta) ───
+  const addressParsed = parseStructuredAddress(formData);
+  if (!addressParsed.ok) {
+    return { error: addressParsed.error, fieldErrors: addressParsed.fieldErrors };
   }
 
   // ─── Facturación opcional ───

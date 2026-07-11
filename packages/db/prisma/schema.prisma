@@ -203,6 +203,8 @@ model Address {
   customerId String
   customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
   name       String
+  // Campos "display" derivados para la lista (line1 = calle legible compuesta,
+  // city/department = nombres). La FUENTE DE VERDAD reusable es `structured`.
   line1      String
   line2      String?
   city       String
@@ -210,6 +212,11 @@ model Address {
   zip        String?
   phone      String
   isDefault  Boolean  @default(false)
+  // structured: la dirección en el MISMO formato estructurado del checkout
+  // (deptCode, cityCode, kind urban|rural, vía/cruce/detalle | vereda/finca/ref,
+  // zip). Permite reusar una dirección guardada al 100% en el checkout. Null en
+  // direcciones legacy (creadas con el form plano) → reuso parcial (depto/ciudad).
+  structured Json?
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt

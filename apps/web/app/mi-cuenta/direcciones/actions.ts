@@ -7,7 +7,9 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
+import type { Prisma } from "@lucams/db";
 import { getCurrentCustomer } from "@/lib/auth";
+import { parseStructuredAddress, composeAddressLine } from "@/features/checkout/parse-address";
 import {
   createAddress,
   updateAddress,
@@ -16,38 +18,23 @@ import {
   AddressNotFoundError,
 } from "@/features/addresses/service";
 
-const req = (label: string, max: number) =>
-  z.string().trim().min(1, `${label} es obligatorio.`).max(max, `Máximo ${max} caracteres.`);
-
-const AddressSchema = z.object({
-  name: req("El nombre", 60),
-  line1: req("La dirección", 120),
-  line2: z.string().trim().max(120).optional(),
-  city: req("La ciudad", 60),
-  department: req("El departamento", 60),
-  zip: z.string().trim().max(12).optional(),
-  phone: req("El teléfono", 20).regex(/^[+\d\s()-]+$/, "Teléfono inválido."),
-  isDefault: z.boolean().optional(),
+// Solo etiqueta + teléfono se validan acá; la dirección estructurada usa el mismo
+// parseStructuredAddress + AddressSchema que el checkout (fuente única).
+const LabelSchema = z.object({
+  name: z.string().trim().min(1, "La etiqueta es obligatoria.").max(60, "Máximo 60 caracteres."),
+  phone: z
+    .string()
+    .trim()
+    .min(1, "El teléfono es obligatorio.")
+    .max(20)
+    .regex(/^[+\d\s()-]+$/, "Teléfono inválido."),
 });
 
 export type AddressActionState = {
   error?: string;
   success?: string;
-  fieldErrors?: Partial<Record<keyof z.infer<typeof AddressSchema>, string[]>>;
+  fieldErrors?: Record<string, string[] | undefined>;
 };
-
-function parse(formData: FormData) {
-  return AddressSchema.safeParse({
-    name: String(formData.get("name") ?? ""),
-    line1: String(formData.get("line1") ?? ""),
-    line2: String(formData.get("line2") ?? ""),
-    city: String(formData.get("city") ?? ""),
-    department: String(formData.get("department") ?? ""),
-    zip: String(formData.get("zip") ?? ""),
-    phone: String(formData.get("phone") ?? ""),
-    isDefault: formData.get("isDefault") === "on",
-  });
-}
 
 export async function saveAddressAction(
   _prev: AddressActionState | null,
@@ -56,21 +43,41 @@ export async function saveAddressAction(
   const session = await getCurrentCustomer();
   if (!session) return { error: "Tu sesión expiró. Vuelve a iniciar sesión." };
 
-  const parsed = parse(formData);
-  if (!parsed.success) {
-    const flat = z.flattenError(parsed.error);
+  const label = LabelSchema.safeParse({
+    name: String(formData.get("name") ?? ""),
+    phone: String(formData.get("phone") ?? ""),
+  });
+  const addr = parseStructuredAddress(formData);
+  if (!label.success || !addr.ok) {
     return {
       error: "Revisa los datos.",
-      fieldErrors: flat.fieldErrors as AddressActionState["fieldErrors"],
+      fieldErrors: {
+        ...(label.success ? {} : z.flattenError(label.error).fieldErrors),
+        ...(addr.ok ? {} : addr.fieldErrors),
+      },
     };
   }
+
+  const structured = addr.data;
+  const input = {
+    name: label.data.name,
+    phone: label.data.phone,
+    isDefault: formData.get("isDefault") === "on",
+    line1: composeAddressLine(structured),
+    line2: structured.kind === "urban" ? (structured.detail ?? null) : (structured.finca ?? null),
+    city: addr.cityName,
+    department: addr.deptName,
+    zip: structured.zip ?? null,
+    // Se limpia undefined via round-trip JSON (Prisma.Json no acepta undefined).
+    structured: JSON.parse(JSON.stringify(structured)) as Prisma.InputJsonValue,
+  };
 
   const id = String(formData.get("id") ?? "").trim();
   try {
     if (id) {
-      await updateAddress(session.customer.id, id, parsed.data);
+      await updateAddress(session.customer.id, id, input);
     } else {
-      await createAddress(session.customer.id, parsed.data);
+      await createAddress(session.customer.id, input);
     }
   } catch (err) {
     if (err instanceof AddressNotFoundError) return { error: "Esa dirección ya no existe." };
