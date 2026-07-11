@@ -13,6 +13,16 @@
 
 ## Resumen actual
 
+**Direcciones: bucle de reuso 100% CERRADO en ambos sentidos (2026-07-11, ADR-051/052).** La cuenta
+y el checkout comparten el MISMO formato estructurado (DANE + urbano/rural + vía/cruce), guardado tal
+cual en `Address.structured`. Una dirección guardada se reusa 100% al pagar (`applySavedAddress` con
+reset previo, evita direcciones mezcladas) **y** ahora el checkout puede GUARDAR la dirección nueva en
+la cuenta (checkbox opt-in, solo logueados, idempotente por line1+city+department, no-fatal). Mapeo
+`structured→libro` centralizado en `buildAddressInput` (fuente única, line1 canónico = el del courier).
+Editar direcciones legacy pre-siembra depto/ciudad y avisa. Se cerraron **8 hallazgos** de la revisión
+adversarial del ADR-051. Verificado: build OK · tsc limpio · 38 unit + 45 integración verdes. Antes de
+esto, el área **/mi-cuenta** quedó funcional y completa (ADR-050).
+
 **Checkout/pagos CERTIFICADO + Compliance Bloque B cerrado (2026-06-27).** El flujo de
 checkout (Wompi + Aveonline + saga POST-PAID) pasó por una **certificación adversarial
 multi-agente** que encontró y cerró un P0 bloqueante (índice unique de InventoryLog sin
@@ -103,6 +113,30 @@ NO hay admin CRUD de plantillas.
 
 **Al retomar:** (a) si Lucy no aprobó plantillas, recordarle abrir `/admin/plantillas`; (b) si dio
 su visión del flujo móvil, ejecutar paso 5; si no, proponérselo con opciones.
+
+## Última sesión — 2026-07-11 (Direcciones: reuso bidireccional + guardar-al-pagar — ADR-051/052)
+
+Continuación del trabajo de unificación de direcciones (ADR-051). Se cerraron los **8 hallazgos** de su revisión
+adversarial (commit 9aa6f96) y luego se completó el bucle de reuso (ADR-052, commit siguiente).
+
+**Fixes de la revisión (9aa6f96):** #1 [HIGH] `applySavedAddress` ahora resetea TODOS los campos antes de aplicar la
+guardada → evita dirección MEZCLADA (ciudad nueva + calle vieja) que pasaba validación en silencio. #2/#5/#10 [MED]
+editar una dirección legacy pre-siembra depto/ciudad/CP desde los nombres planos (DANE por nombre) + aviso con la
+dirección anterior; ya no abre en blanco ni bloquea. #3/#4/#9 [LOW] la cuenta usa el `composeAddressLine` CANÓNICO
+(el del courier), `line2=null`; se eliminó el duplicado lossy de `parse-address.ts`. #6 [LOW] error de CP visible.
+#8 [LOW] copy honesto del selector.
+
+**Guardar-al-pagar (ADR-052):** `buildAddressInput` centraliza el mapeo `structured→libro` (fuente única, elimina la
+3ª copia). `saveCheckoutAddressToAccount` guarda opt-in desde el checkout, **idempotente** por line1+city+department,
+no hijackea la default, es **no-fatal** (si falla, se loguea y el pago sigue). UI: checkbox "💾 Guardar esta dirección"
+solo para logueados (`canSaveAddress`) + etiqueta opcional; el action re-verifica `getCurrentCustomer` (no confía en
+el form). Housekeeping: **fix voseo** en el action del checkout ("completa", "Reintenta", "avísanos").
+
+**Verificado:** `next build` OK · `tsc` limpio · **38 unit** (incl. `buildAddressInput`, urbano/rural/isDefault) +
+**45 integración** DB (direcciones+checkout, incl. idempotencia de guardado) verdes.
+
+**ACCIÓN HUMANA sugerida:** re-guardar la dirección legacy "Casa" con el form nuevo (pasa a reuso 100%); probar en el
+navegador el checkout logueado → marcar "Guardar esta dirección" → verificar que aparece en /mi-cuenta/direcciones.
 
 ## Última sesión — 2026-07-10 (Área de cuenta /mi-cuenta funcional — ADR-050)
 

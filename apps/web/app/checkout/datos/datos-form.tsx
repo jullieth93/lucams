@@ -44,9 +44,12 @@ import type { CheckoutPrefillAddress } from "@/features/addresses/service";
 export function DatosForm({
   initial,
   savedAddresses = [],
+  canSaveAddress = false,
 }: {
   initial: CheckoutState;
   savedAddresses?: CheckoutPrefillAddress[];
+  // true solo si hay cliente logueado → ofrecer "guardar esta dirección".
+  canSaveAddress?: boolean;
 }) {
   const [state, formAction, pending] = useActionState<DatosActionState | null, FormData>(
     saveDatosAction,
@@ -139,6 +142,10 @@ export function DatosForm({
 
   // Billing
   const [wantsInvoice, setWantsInvoice] = useState<boolean>(initial.billing?.wantsInvoice ?? false);
+
+  // "Guardar esta dirección en mi cuenta" (opt-in, solo clientes logueados).
+  const [saveToAccount, setSaveToAccount] = useState(false);
+  const [saveAddressLabel, setSaveAddressLabel] = useState("");
 
   // Cities filtradas por depto elegido
   const cities = useMemo<DaneCity[]>(
@@ -843,6 +850,40 @@ export function DatosForm({
             className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 w-full rounded-md border bg-white px-3 py-2 text-sm focus:ring-2 focus:outline-none"
           />
         </div>
+
+        {/* Guardar la dirección para la próxima (solo clientes logueados) */}
+        {canSaveAddress && (
+          <div className="border-brand-purple/10 mt-4 border-t pt-4">
+            <label className="text-brand-purple-dark flex cursor-pointer items-center gap-2 text-sm font-medium">
+              <input
+                type="checkbox"
+                name="saveToAccount"
+                checked={saveToAccount}
+                onChange={(e) => setSaveToAccount(e.target.checked)}
+                className="accent-brand-purple h-4 w-4 rounded"
+              />
+              💾 Guardar esta dirección en mi cuenta para la próxima
+            </label>
+            {saveToAccount && (
+              <div className="mt-2">
+                <Label
+                  htmlFor="saveAddressLabel"
+                  className="text-brand-muted mb-1 block text-xs font-semibold"
+                >
+                  Nombre para recordarla (opcional)
+                </Label>
+                <Input
+                  id="saveAddressLabel"
+                  name="saveAddressLabel"
+                  value={saveAddressLabel}
+                  onChange={(e) => setSaveAddressLabel(e.target.value.slice(0, 60))}
+                  placeholder="Ej. Casa, Oficina, Casa de mamá"
+                  maxLength={60}
+                />
+              </div>
+            )}
+          </div>
+        )}
       </section>
 
       {/* FACTURACIÓN */}

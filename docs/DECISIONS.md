@@ -1737,3 +1737,31 @@ comparte el shape de datos y el parseo, no el componente de UI. Puede adoptar `<
 sin cambiar datos (deuda técnica menor, aislada). **Verificación:** next build OK, 44 tests (direcciones+checkout),
 typecheck+eslint. **Pendiente-mejora:** hidratar el edit de direcciones legacy con depto/ciudad; "guardar dirección"
 durante el checkout. [[ADR-050]].
+
+## ADR-052 — Cerrar el bucle de reuso de direcciones: guardar-al-pagar + mapeo centralizado (2026-07-11)
+
+**Contexto.** El ADR-051 dejó dos pendientes-mejora: (1) editar una dirección legacy (sin `structured`) abría el
+form en blanco y bloqueaba el guardado (los campos vía/cruce requeridos quedaban vacíos); (2) el reuso era
+unidireccional — una dirección guardada se reusaba 100% al pagar, pero el checkout no podía GUARDAR una dirección
+nueva en la cuenta. Además, el mapeo `structured → AddressInput` (line1 canónico + line2=null + JSON) estaba
+duplicado en el action de la cuenta.
+
+**Decisión.**
+- **`buildAddressInput(structured, {name, phone, isDefault})` (`features/addresses/service.ts`):** FUENTE ÚNICA del
+  mapeo dirección-estructurada → registro del libro. `line1 = composeAddressLine` canónico (idéntico al del
+  courier), `line2 = null` (no duplicar detail/finca), `structured` intacto (reuso 100%). La usan el action de la
+  cuenta y el guardado-al-pagar. Elimina la 3ª copia del mapeo.
+- **`saveCheckoutAddressToAccount(customerId, structured, {name, phone})`:** guardado opt-in desde el checkout,
+  **idempotente** por `(line1 + city + department)` — no duplica si ya existe una viva idéntica (cubre re-pagar o
+  marcar "guardar" tras elegir una guardada). No hijackea la default (solo default si es la 1ª del cliente).
+- **UI checkout (`datos-form.tsx`):** checkbox "💾 Guardar esta dirección en mi cuenta" — renderizado SOLO si hay
+  cliente logueado (`canSaveAddress` desde `ctx.customerId`) + input de etiqueta opcional. El action re-verifica
+  `getCurrentCustomer` (defensa en profundidad: no confía en el form). El guardado es **no-fatal**: si falla, se
+  loguea y el pago continúa.
+- **Edit legacy (`address-manager.tsx`):** al editar una dirección sin `structured`, se pre-siembran depto/ciudad/CP
+  desde los nombres planos (DANE por nombre) + aviso visual con la dirección anterior como referencia para
+  recapturar la vía. Ya no abre en blanco ni bloquea.
+
+**Verificación.** `next build` OK · `tsc` limpio · 38 unit (incl. `buildAddressInput`) + 45 integración
+(direcciones+checkout, incl. idempotencia de guardado) verdes. Cierra 8 hallazgos de la revisión adversarial del
+ADR-051 (commit 9aa6f96). [[ADR-051]].

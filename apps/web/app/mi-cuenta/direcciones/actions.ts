@@ -7,13 +7,10 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import type { Prisma } from "@lucams/db";
 import { getCurrentCustomer } from "@/lib/auth";
 import { parseStructuredAddress } from "@/features/checkout/parse-address";
-// composeAddressLine CANÓNICO (mismo que usa Aveonline/el courier) — incluye
-// detail (urbano) y Ref (rural), a diferencia del duplicado lossy anterior.
-import { composeAddressLine } from "@/features/checkout/schemas";
 import {
+  buildAddressInput,
   createAddress,
   updateAddress,
   deleteAddress,
@@ -61,21 +58,12 @@ export async function saveAddressAction(
     };
   }
 
-  const structured = addr.data;
-  const input = {
+  // Mismo mapeo que usa "guardar al pagar" (fuente única en el servicio).
+  const input = buildAddressInput(addr.data, {
     name: label.data.name,
     phone: label.data.phone,
     isDefault: formData.get("isDefault") === "on",
-    // line1 canónico ya incluye detail (urbano) / finca+Ref (rural), así que line2
-    // queda null para no duplicar (revisión adversarial #3/#4/#9).
-    line1: composeAddressLine(structured),
-    line2: null,
-    city: addr.cityName,
-    department: addr.deptName,
-    zip: structured.zip ?? null,
-    // Se limpia undefined via round-trip JSON (Prisma.Json no acepta undefined).
-    structured: JSON.parse(JSON.stringify(structured)) as Prisma.InputJsonValue,
-  };
+  });
 
   const id = String(formData.get("id") ?? "").trim();
   try {

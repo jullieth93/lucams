@@ -11,6 +11,7 @@ import "server-only";
 import type { Prisma } from "@lucams/db";
 import { prisma } from "@/lib/db";
 import { getDepartmentByName, getCityByDeptAndName } from "@/lib/dane-divipola";
+import { composeAddressLine, type AddressInput as StructuredAddress } from "@/features/checkout/schemas";
 
 /**
  * Si tras una mutación el cliente quedó SIN dirección predeterminada pero le
@@ -99,6 +100,57 @@ export async function getSavedAddressesForCheckout(
       phone: a.phone,
     };
   });
+}
+
+/**
+ * Fuente ÚNICA del mapeo dirección-estructurada → AddressInput del libro. Usada
+ * por /mi-cuenta/direcciones y por "guardar al pagar" (checkout), así el display
+ * (line1) queda IDÉNTICO al que arma el courier y `structured` viaja intacto para
+ * reuso 100%. line2=null a propósito: line1 canónico ya incluye detail/finca+Ref.
+ */
+export function buildAddressInput(
+  structured: StructuredAddress,
+  meta: { name: string; phone: string; isDefault?: boolean },
+): AddressInput {
+  return {
+    name: meta.name,
+    phone: meta.phone,
+    isDefault: meta.isDefault,
+    line1: composeAddressLine(structured),
+    line2: null,
+    city: structured.city,
+    department: structured.department,
+    zip: structured.zip || null,
+    // JSON round-trip limpia undefined (Prisma.Json no los acepta).
+    structured: JSON.parse(JSON.stringify(structured)) as Prisma.InputJsonValue,
+  };
+}
+
+/**
+ * Guarda (opt-in) la dirección del checkout en el libro del cliente. Idempotente
+ * por (line1 + city + department): si ya existe una viva idéntica, NO duplica —
+ * cubre el caso de re-pagar con la misma dirección o marcar "guardar" tras haber
+ * elegido una guardada. Devuelve si creó una nueva.
+ */
+export async function saveCheckoutAddressToAccount(
+  customerId: string,
+  structured: StructuredAddress,
+  meta: { name: string; phone: string },
+): Promise<{ created: boolean }> {
+  const input = buildAddressInput(structured, { name: meta.name, phone: meta.phone });
+  const existing = await prisma.address.findFirst({
+    where: {
+      customerId,
+      deletedAt: null,
+      line1: input.line1,
+      city: input.city,
+      department: input.department,
+    },
+    select: { id: true },
+  });
+  if (existing) return { created: false };
+  await createAddress(customerId, input);
+  return { created: true };
 }
 
 function toData(input: AddressInput) {

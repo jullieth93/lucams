@@ -3,9 +3,11 @@
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { logger } from "@/lib/logger";
+import { getCurrentCustomer } from "@/lib/auth";
 import { ContactSchema, BillingSchema } from "@/features/checkout/schemas";
 import { parseStructuredAddress } from "@/features/checkout/parse-address";
 import { saveAddressStep, saveContactStep } from "@/features/checkout/service";
+import { saveCheckoutAddressToAccount } from "@/features/addresses/service";
 
 export type DatosActionState = {
   error?: string;
@@ -55,7 +57,7 @@ export async function saveDatosAction(
   const billingParsed = BillingSchema.safeParse(billingRaw);
   if (!billingParsed.success) {
     return {
-      error: "Si quieres factura electrónica, completá los datos de facturación",
+      error: "Si quieres factura electrónica, completa los datos de facturación",
       fieldErrors: z.flattenError(billingParsed.error).fieldErrors as Record<string, string[]>,
     };
   }
@@ -88,8 +90,33 @@ export async function saveDatosAction(
       stack: err instanceof Error ? err.stack : undefined,
     });
     return {
-      error: `Error al guardar tus datos (cod: ${errCode}). Reintentá o avisanos por WhatsApp.`,
+      error: `Error al guardar tus datos (cod: ${errCode}). Reintenta o avísanos por WhatsApp.`,
     };
+  }
+
+  // Guardar la dirección en el libro del cliente (opt-in, solo logueados). NUNCA
+  // debe romper el checkout: si falla, se loguea y el pago continúa igual.
+  if (formData.get("saveToAccount") === "on") {
+    try {
+      const session = await getCurrentCustomer();
+      if (session) {
+        const label = String(formData.get("saveAddressLabel") ?? "").trim();
+        const result = await saveCheckoutAddressToAccount(session.customer.id, addressParsed.data, {
+          name: label || `Mi dirección en ${addressParsed.data.city}`,
+          phone: contactParsed.data.phone,
+        });
+        logger.info({
+          event: "checkout.address.saved_to_account",
+          customerId: session.customer.id,
+          created: result.created,
+        });
+      }
+    } catch (err) {
+      logger.error({
+        event: "checkout.address.save_to_account_fail",
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   redirect("/checkout/envio");

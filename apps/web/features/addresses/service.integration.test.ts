@@ -15,8 +15,10 @@ import {
   deleteAddress,
   setDefaultAddress,
   getSavedAddressesForCheckout,
+  saveCheckoutAddressToAccount,
   AddressNotFoundError,
 } from "./service";
+import type { AddressInput as StructuredAddress } from "@/features/checkout/schemas";
 
 const hasDb = Boolean(process.env.DATABASE_URL);
 const RUN = `ITESTADDR${Date.now()}${Math.floor(Math.random() * 1e6)}`;
@@ -124,6 +126,32 @@ describe.skipIf(!hasDb)("addresses/service — integración DB", () => {
     expect(m?.cityCode).toBe("05001"); // Medellín (desde structured)
     // El structured completo viaja para reuso 100% en el checkout.
     expect((m?.structured as Record<string, unknown>)?.viaType).toBe("Carrera");
+  });
+
+  it("saveCheckoutAddressToAccount es idempotente (no duplica la misma dirección)", async () => {
+    const structured: StructuredAddress = {
+      deptCode: "76",
+      cityCode: "76001",
+      department: "Valle del Cauca",
+      city: "Cali",
+      kind: "urban",
+      viaType: "Calle",
+      viaNumber: "5",
+      cruceNumber: "38-25",
+    };
+    const meta = { name: "Cali", phone: "3007778888" };
+
+    const first = await saveCheckoutAddressToAccount(customerId, structured, meta);
+    expect(first.created).toBe(true);
+
+    // Reintentar con la MISMA dirección no crea otra fila.
+    const second = await saveCheckoutAddressToAccount(customerId, structured, meta);
+    expect(second.created).toBe(false);
+
+    const cali = (await listAddresses(customerId)).filter((a) => a.city === "Cali");
+    expect(cali).toHaveLength(1);
+    // line1 quedó en formato canónico (mismo que el courier).
+    expect(cali[0].line1).toBe("Calle 5 # 38-25");
   });
 
   it("aislamiento: otro cliente NO puede tocar direcciones ajenas", async () => {

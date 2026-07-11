@@ -33,7 +33,11 @@ export default async function CheckoutDatosPage() {
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2">
-          <DatosForm initial={ctx.state} savedAddresses={savedAddresses} />
+          <DatosForm
+            initial={ctx.state}
+            savedAddresses={savedAddresses}
+            canSaveAddress={Boolean(ctx.customerId)}
+          />
         </div>
         <div className="lg:col-span-1">
           <OrderSummary cart={ctx.cart} />
