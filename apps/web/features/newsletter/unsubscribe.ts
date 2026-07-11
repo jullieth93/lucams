@@ -16,6 +16,7 @@ import "server-only";
 import { createHash, timingSafeEqual } from "node:crypto";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 
 /**
  * Token de unsubscribe = SHA-256(email:CSRF_SECRET) truncado a 32 hex.
@@ -119,14 +120,19 @@ async function updateResendUnsubscribed(email: string): Promise<void> {
   }
   try {
     // PATCH por email (la API de Resend acepta el email como identificador).
-    const res = await fetch(`https://api.resend.com/contacts/${encodeURIComponent(email)}`, {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
+    const res = await fetchWithTimeout(
+      `https://api.resend.com/contacts/${encodeURIComponent(email)}`,
+      {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({ unsubscribed: true }),
+        // "nunca un fetch sin timeout" — evita colgar el flujo de baja (revisión #6).
+        timeoutMs: 10_000,
       },
-      body: JSON.stringify({ unsubscribed: true }),
-    });
+    );
     if (!res.ok && res.status !== 404) {
       logger.warn({
         event: "newsletter.unsubscribe.resend_fail",

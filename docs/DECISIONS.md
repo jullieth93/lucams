@@ -1765,3 +1765,47 @@ duplicado en el action de la cuenta.
 **Verificación.** `next build` OK · `tsc` limpio · 38 unit (incl. `buildAddressInput`) + 45 integración
 (direcciones+checkout, incl. idempotencia de guardado) verdes. Cierra 8 hallazgos de la revisión adversarial del
 ADR-051 (commit 9aa6f96). [[ADR-051]].
+
+## ADR-053 — Cotización de envío: timeout realista + hardening de la ruta (2026-07-11)
+
+**Contexto.** La dueña reportó "no pudo cotizar envío en el step 2". Diagnóstico **medido**
+contra la cuenta Aveonline real (idempresa 43581): el endpoint `cotizarDoble`
+(`generarGuiaTransporteNacional.php` con `tipo=cotizarDoble`, que cotiza las ~10 transportadoras
+server-side) tarda **7.0–11.3 s** (mediana 9.8 s; auth solo 0.33 s). El timeout estaba en **5000 ms**
+(uniformado por ADR-045), así que **todo intento expiraba** → cotización siempre fallida. El log lo
+confirmó: `Timeout tras 5000ms ... generarGuiaTransporteNacional.php`.
+
+**Decisión (fix del bug).**
+- **Timeout de `cotizarDoble` 5 s → 15 s** (~33% headroom sobre el máximo medido 11.3 s).
+- **Retry acotado a 2 intentos** (default era 3): cada intento cuesta ~10 s; 3×15 s excedería el techo.
+- **`maxDuration` del step 2: 30 → 45 s** — SUPERA el valor de [[ADR-049]] (que asumió 5 s×3 = 15 s;
+  con la latencia real, 30 s era insuficiente). El peor caso auth(2×5 s) + quote(2×15 s) + DB ≈ 42 s < 45.
+- Tabla de timeouts de CONVENTIONS actualizada.
+
+**Hardening adicional (revisión adversarial multi-agente, 9 hallazgos confirmados de 15).**
+- **P1 — dims faltantes:** un producto sin peso/dimensiones rompía la cotización de TODO el carrito y
+  además **filtraba el mensaje interno** ("Configúralos en /admin/productos") al cliente. Ahora:
+  (a) el banner del cliente es **genérico** (la causa real se loguea server-side), y (b) publicar
+  (`toggleProductActive` / `bulkUpdateProductsActive` con `isActive=true`) exige dims resolubles vía
+  `assertProductsQuotable` — bloquea con mensaje claro nombrando los productos faltantes. Desactivar
+  nunca se bloquea.
+- **P2 — retry de auth sin cap:** `getAuthToken` usaba el default 3 intentos que se sumaba ANTES del
+  quote y podía exceder los 45 s → 504 crudo en vez del fallback ámbar. Acotado a 2.
+- **P2 — breaker compartido:** un "quote-storm" (endpoint pesado/flaky) abría el breaker de TODO
+  Aveonline y bloqueaba `createShipment` de órdenes YA PAGADAS + tracking por 30 s. La cotización
+  ahora usa un **breaker separado** (`aveonline-quote`).
+- **P2 — error de selección invisible:** `selectShippingAction` redirige con `?error` pero la página no
+  lo leía → loop sin salida. Ahora se renderiza; además `quote()` **clampa `deliveryDays` a ≤30**,
+  descarta filas con `codTransportadora` vacío y coacciona `total` no-numérico (todos rompían
+  `ShippingSelectionSchema` en silencio al seleccionar).
+- **P2 — error top-level tragado:** `quote()` no chequeaba `data.status`; una respuesta de error sin
+  `cotizaciones` devolvía [] y el cliente veía "no hay cobertura" sin causa logueada. Ahora chequea
+  status + loguea `message` + lanza error distinto.
+- **P3 —** fetches de Resend (newsletter subscribe/unsubscribe) sin timeout → envueltos en
+  `fetchWithTimeout` (10 s); `loadCheckoutContext` corría 2× por render del step 2 → se pasa el `ctx`
+  ya cargado a `quoteShipping`; PICKUP_CITY/PICKUP_DEPARTMENT en blanco mandaba origen `()` → ahora
+  lanza misconfiguración clara.
+
+**Verificación.** `tsc` limpio · `next build` OK · tests de integración (direcciones/checkout/productos,
+incl. gate de publicación por dims) verdes. Refuta las alternativas "1 intento de 20 s" y "mover a
+client-side" (el panel escéptico las descartó 2/3). [[ADR-045]] [[ADR-048]] [[ADR-049]].

@@ -266,7 +266,16 @@ export async function toggleProductActiveAction(formData: FormData): Promise<voi
   const id = String(formData.get("id") ?? "");
   const isActive = formData.get("isActive") === "true";
   if (!id) return;
-  await toggleProductActive(id, isActive, session.admin.id);
+  try {
+    await toggleProductActive(id, isActive, session.admin.id);
+  } catch (err) {
+    // Publicar sin peso/dimensiones se bloquea: mostramos el mensaje claro en el
+    // banner de la lista en vez de un 500 (revisión adversarial #1).
+    if (err instanceof ProductValidationError) {
+      redirect(`/admin/productos?bulkError=${encodeURIComponent(err.message)}`);
+    }
+    throw err;
+  }
   logger.info({
     event: "admin.product.toggle_active",
     adminId: session.admin.id,

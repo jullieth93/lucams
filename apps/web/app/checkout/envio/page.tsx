@@ -14,18 +14,30 @@ import { CheckoutStepper } from "../_components/stepper";
 import { OrderSummary } from "../_components/order-summary";
 import { EnvioStep } from "./envio-step";
 import { CheckoutError, loadCheckoutContext, quoteShipping } from "@/features/checkout/service";
+import { logger } from "@/lib/logger";
 
 export const metadata: Metadata = {
   title: "Envío · Checkout",
   robots: { index: false, follow: false },
 };
 
-// Corre quoteShipping (Aveonline quote, retry ~16s peor caso bajo degradación) +
-// auth. Es una LECTURA idempotente (un kill a mitad es inofensivo), pero acotamos
-// el techo para no dejar al usuario esperando ni pagar cómputo de más. Ver ADR-049.
-export const maxDuration = 30;
+// Corre quoteShipping (Aveonline `cotizarDoble`, medido 7–11 s contra la cuenta
+// real; timeout 15 s × 2 intentos → peor caso ~30 s bajo degradación) + auth. Es
+// una LECTURA idempotente (un kill a mitad es inofensivo), pero acotamos el techo a
+// 45 s para no dejar al usuario esperando ni pagar cómputo de más. Ver ADR-049/053.
+export const maxDuration = 45;
 
-export default async function CheckoutEnvioPage() {
+export default async function CheckoutEnvioPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string }>;
+}) {
+  // Error de la selección de transportadora (selectShippingAction redirige acá con
+  // ?error=... cuando la opción elegida no valida). Sin leerlo, el usuario volvía a
+  // esta página con la MISMA lista y sin mensaje → callejón sin salida invisible
+  // (revisión adversarial #4).
+  const { error: selectionError } = await searchParams;
+
   let ctx;
   try {
     ctx = await loadCheckoutContext();
@@ -49,19 +61,32 @@ export default async function CheckoutEnvioPage() {
       destinationCity: ctx.state.address.city,
       destinationDepartment: ctx.state.address.department,
       contraentrega: false,
+      ctx, // ya cargado arriba → no re-consultar cart+customer (revisión #7)
     });
   } catch (err) {
-    quoteErrorMessage =
-      err instanceof CheckoutError
-        ? err.message
-        : err instanceof Error
-          ? err.message
-          : "Error inesperado cotizando envío";
+    // La causa real (dims faltantes, timeout, cobertura, pickup mal configurado) YA se
+    // loguea en el service con detalle. Al CLIENTE nunca le mostramos el mensaje interno
+    // — puede citar rutas /admin, nombres de settings, etc. — sino un banner genérico
+    // con salida por WhatsApp (revisión adversarial #1).
+    logger.warn({
+      event: "checkout.envio.quote_failed",
+      err: err instanceof Error ? err.message : String(err),
+    });
+    quoteErrorMessage = "No pudimos cotizar el envío en este momento.";
   }
 
   return (
     <div className="mx-auto max-w-6xl">
       <CheckoutStepper current={2} />
+
+      {selectionError && (
+        <div
+          role="alert"
+          className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+        >
+          {selectionError} — elige de nuevo tu transportadora.
+        </div>
+      )}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         {quoteErrorMessage || !quotes || quotes.length === 0 ? (

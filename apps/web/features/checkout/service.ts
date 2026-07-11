@@ -128,8 +128,12 @@ export async function quoteShipping(input: {
   destinationCity: string;
   destinationDepartment: string;
   contraentrega?: boolean;
+  // El caller (page.tsx del step 2) ya cargó el contexto para redirigir si falta
+  // contacto/dirección; se lo pasa para NO re-consultar cart+customer en el hot path
+  // justo antes de la llamada lenta a Aveonline (revisión adversarial #7).
+  ctx?: Awaited<ReturnType<typeof loadCheckoutContext>>;
 }): Promise<ShippingSelectionInput[]> {
-  const ctx = await loadCheckoutContext();
+  const ctx = input.ctx ?? (await loadCheckoutContext());
   const provider = await getShippingProvider();
 
   // PR C — leer peso/dimensiones REALES de cada producto+variant.
@@ -188,12 +192,21 @@ export async function quoteShipping(input: {
     getSettingValue("PICKUP_CITY", "Bogotá"),
     getSettingValue("PICKUP_DEPARTMENT", "Cundinamarca"),
   ]);
-  if (!pickupCity || !pickupDept) {
-    logger.warn({
+  // getSettingValue solo aplica el fallback si la fila NO existe; si el admin guardó
+  // el campo en BLANCO, devuelve "" y mandaríamos origen "()" a Aveonline → TODAS las
+  // transportadoras fallan y el cliente ve "no pudo cotizar" sin causa visible. Lo
+  // tratamos como misconfiguración dura, igual que createShipment (revisión #9).
+  if (!pickupCity?.trim() || !pickupDept?.trim()) {
+    logger.error({
       event: "checkout.quote_shipping.pickup_settings_missing",
       pickupCity,
       pickupDept,
     });
+    throw new CheckoutError(
+      "SHIPPING_QUOTE_FAILED",
+      "Falta configurar la ciudad/departamento de recogida (PICKUP_CITY / PICKUP_DEPARTMENT) " +
+        "en /admin/contenido/configuracion (categoría 'Negocio').",
+    );
   }
 
   try {

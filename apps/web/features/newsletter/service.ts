@@ -26,6 +26,7 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
+import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 
 const PRIVACY_VERSION = "v1-2026-05-12";
 
@@ -67,13 +68,16 @@ export async function subscribeNewsletter(opts: {
       body.segments = [{ id: segmentId }];
     }
 
-    const res = await fetch("https://api.resend.com/contacts", {
+    const res = await fetchWithTimeout("https://api.resend.com/contacts", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify(body),
+      // "nunca un fetch sin timeout" (CONVENTIONS §Resiliencia): sin esto un Resend
+      // colgado atascaría el server action de suscripción (revisión adversarial #6).
+      timeoutMs: 10_000,
     });
 
     if (res.status === 409 || res.status === 422) {

@@ -42,6 +42,16 @@ const BASE_URL = "https://app.aveonline.co/api";
 const aveonlineCB = new CircuitBreaker({ name: "aveonline", threshold: 5, resetMs: 30_000 });
 
 /**
+ * Breaker SEPARADO para la cotización (`cotizarDoble`). Es el endpoint más pesado
+ * y lento (7–11 s, ver quote()) y por tanto el más propenso a timeout. Aislarlo del
+ * breaker principal evita que una tormenta de cotizaciones lentas lo abra y bloquee
+ * — por 30 s — la generación de guía de órdenes YA PAGADAS y el tracking (que sí son
+ * críticos). Antes compartían breaker: un fallo de cotización contaminaba el fulfillment
+ * (revisión adversarial #3, 2026-07-11).
+ */
+const aveonlineQuoteCB = new CircuitBreaker({ name: "aveonline-quote", threshold: 5, resetMs: 30_000 });
+
+/**
  * Wrapper único de red para Aveonline: timeout obligatorio (mandato "nunca un
  * fetch sin timeout") + circuit breaker + retry opcional con backoff.
  *
@@ -50,14 +60,20 @@ const aveonlineCB = new CircuitBreaker({ name: "aveonline", threshold: 5, resetM
  *   (llamada NO idempotente). El retry va POR FUERA del breaker
  *   (`withRetry(() => cb.exec(fetch))`) para que el breaker vea cada intento y,
  *   una vez abierto, `CircuitOpenError` (no reintentable) corte el loop de una.
+ * - `retryAttempts` acota el nº de intentos (default 3). La cotización usa 2:
+ *   cada intento es caro (~10 s, ver quote()), así que 3×15 s excedería el
+ *   maxDuration del step 2. Con 2, el peor caso ≈ 30 s sigue bajo el techo.
  */
 async function aveonlineFetch(
   url: string,
   init: RequestInit & { timeoutMs: number },
-  opts: { retry?: boolean } = {},
+  opts: { retry?: boolean; retryAttempts?: number; breaker?: CircuitBreaker } = {},
 ): Promise<Response> {
-  const call = () => aveonlineCB.exec(() => fetchWithTimeout(url, init));
-  return opts.retry ? withRetry(call) : call();
+  const cb = opts.breaker ?? aveonlineCB;
+  const call = () => cb.exec(() => fetchWithTimeout(url, init));
+  return opts.retry
+    ? withRetry(call, opts.retryAttempts ? { attempts: opts.retryAttempts } : {})
+    : call();
 }
 
 /**
@@ -389,6 +405,11 @@ async function getAuthToken(): Promise<{ token: string; idempresa: number }> {
     );
   }
 
+  // retryAttempts:2 (no el default 3): auth corre ANTES del quote (2×15 s) dentro del
+  // mismo maxDuration=45 del step 2. Con el default 3×5 s el peor caso auth+quote
+  // excedía 45 s → Vercel mataba la función y el usuario veía un 504 crudo en vez del
+  // banner ámbar de fallback (revisión adversarial #2). Auth mide ~0.3 s, así que 2
+  // intentos sobran para tolerar un blip transitorio sin inflar el presupuesto.
   const res = await aveonlineFetch(
     `${BASE_URL}/comunes/v1.0/autenticarusuario.php`,
     {
@@ -397,7 +418,7 @@ async function getAuthToken(): Promise<{ token: string; idempresa: number }> {
       body: JSON.stringify({ tipo: "auth", usuario, clave }),
       timeoutMs: 5000,
     },
-    { retry: true },
+    { retry: true, retryAttempts: 2 },
   );
   if (!res.ok) throw new Error(`Aveonline auth fail HTTP ${res.status}`);
   const data = (await res.json()) as {
@@ -454,6 +475,12 @@ export class AveonlineProvider implements ShippingProvider {
     const origenFmt = formatAveonlineCity(params.origin.city, params.origin.department);
     const destinoFmt = formatAveonlineCity(params.destination.city, params.destination.department);
 
+    // Timeout 15 s (NO el 5 s genérico): `cotizarDoble` cotiza TODAS las
+    // transportadoras habilitadas server-side, así que es LENTO. Medido contra la
+    // cuenta real (idempresa 43581, 2026-07-11): 7.0–11.3 s (mediana ~9.8 s). El 5 s
+    // previo (ADR-045) hacía que TODO intento expirara → "no pudo cotizar envío"
+    // permanente. 15 s da ~33% de headroom sobre el max medido. Retry acotado a 2
+    // intentos (cada uno ~10 s) para no exceder el maxDuration=45 del step 2. Ver ADR-053.
     const res = await aveonlineFetch(
       `${BASE_URL}/nal/v1.0/generarGuiaTransporteNacional.php`,
       {
@@ -474,9 +501,9 @@ export class AveonlineProvider implements ShippingProvider {
           idasumecosto: 0,
           plugin: "lucamsshop",
         }),
-        timeoutMs: 5000,
+        timeoutMs: 15_000,
       },
-      { retry: true },
+      { retry: true, retryAttempts: 2, breaker: aveonlineQuoteCB },
     );
     if (!res.ok) throw new Error(`Aveonline quote fail HTTP ${res.status}`);
 
@@ -494,7 +521,27 @@ export class AveonlineProvider implements ShippingProvider {
       }>;
     };
 
-    const all = data.cotizaciones ?? [];
+    // Error TOP-LEVEL de Aveonline (token expirado a mitad, origen/destino malformado,
+    // error de cuenta/plugin): la respuesta llega con status != "ok" y SIN el array
+    // `cotizaciones`. Sin este chequeo caía a `?? []` y devolvía [] silenciosamente →
+    // el usuario veía "no encontramos transportadoras" (como si la ciudad no tuviera
+    // cobertura) y la causa real jamás se logueaba (revisión adversarial #5). Auth y
+    // createShipment sí chequean status; la cotización no lo hacía.
+    if (data.status !== "ok" || !Array.isArray(data.cotizaciones)) {
+      logger.warn({
+        event: "shipping.aveonline.quote.response_error",
+        origen: origenFmt,
+        destino: destinoFmt,
+        status: data.status ?? null,
+        message: data.message?.slice(0, 200) ?? null,
+      });
+      throw new Error(
+        `Aveonline no devolvió cotizaciones (status=${data.status ?? "?"}` +
+          `${data.message ? `: ${data.message.slice(0, 120)}` : ""}).`,
+      );
+    }
+
+    const all = data.cotizaciones;
     const ok = all.filter((c) => c.numbererror === "-0-");
     const failed = all.filter((c) => c.numbererror !== "-0-");
 
@@ -527,14 +574,22 @@ export class AveonlineProvider implements ShippingProvider {
       });
     }
 
-    return ok.map((c) => ({
-      carrier: (c.nombreTransportadora ?? "carrier").toLowerCase().replace(/\s+/g, "-"),
-      carrierName: c.nombreTransportadora ?? "Transportadora",
-      fleteCop: Math.round((c.total ?? 0) * 100), // pasamos a centavos
-      deliveryDays: Number(c.diasentrega) || 0,
-      contraentrega: params.contraentrega,
-      quoteId: c.codTransportadora ?? "",
-    }));
+    // Saneamos cada cotización al shape que ShippingSelectionSchema acepta, para que
+    // ninguna fila "OK" se muestre pero luego falle en silencio al seleccionarla
+    // (revisión adversarial #4). En concreto:
+    //  - codTransportadora vacío ⇒ quoteId="" (falla min(1)): descartamos esa fila.
+    //  - diasentrega puede venir >30 o no-entero (schema tope max(30)): clamp+round.
+    //  - total puede venir como string no-numérico ⇒ NaN (falla .int()): coerción a 0.
+    return ok
+      .filter((c) => (c.codTransportadora ?? "") !== "")
+      .map((c) => ({
+        carrier: (c.nombreTransportadora ?? "carrier").toLowerCase().replace(/\s+/g, "-"),
+        carrierName: c.nombreTransportadora ?? "Transportadora",
+        fleteCop: Math.round((Number(c.total) || 0) * 100), // pasamos a centavos
+        deliveryDays: Math.min(30, Math.max(0, Math.round(Number(c.diasentrega) || 0))),
+        contraentrega: params.contraentrega,
+        quoteId: c.codTransportadora ?? "",
+      }));
   }
 
   async createShipment(params: {

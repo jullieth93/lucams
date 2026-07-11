@@ -19,6 +19,7 @@ import { logger } from "@/lib/logger";
 import {
   bulkUpdateProductsActive,
   bulkUpdateProductsFeatured,
+  ProductValidationError,
 } from "@/features/products/service";
 
 const BulkIdsSchema = z
@@ -47,7 +48,17 @@ export async function bulkActivateProductsAction(formData: FormData): Promise<vo
   }
 
   const ids = parsed.data;
-  const result = await bulkUpdateProductsActive(ids, true, session.admin.id);
+  let result: { count: number };
+  try {
+    result = await bulkUpdateProductsActive(ids, true, session.admin.id);
+  } catch (err) {
+    // Si algún producto del lote no tiene dims, se bloquea TODO el lote con un
+    // mensaje que nombra los faltantes (revisión adversarial #1).
+    if (err instanceof ProductValidationError) {
+      redirect(`/admin/productos?bulkError=${encodeURIComponent(err.message)}`);
+    }
+    throw err;
+  }
 
   await recordAdminAction({
     actorId: session.admin.id,

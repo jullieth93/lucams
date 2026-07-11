@@ -12,6 +12,7 @@
 import "server-only";
 import { prisma, type Prisma } from "@/lib/db";
 import type { ProductCreateInput, ProductUpdateInput } from "./schemas";
+import { getEffectiveShippingDims } from "./shipping-schemas";
 
 export type ProductListItem = {
   id: string;
@@ -331,11 +332,50 @@ export async function restoreProduct(id: string, restoredBy: string | null) {
 }
 
 /** Toggle isActive de un producto (activa/desactiva sin archivar). */
+/**
+ * Verifica que cada producto (por id) sea COTIZABLE: para toda su variante viva,
+ * getEffectiveShippingDims (override de variante → dims base del producto) resuelve.
+ * Publicar un producto sin peso/dimensiones lo vuelve comprable pero rompe la
+ * cotización de TODO carrito que lo incluya, con un fallo silencioso al cliente
+ * (revisión adversarial #1, 2026-07-11). Se corre SOLO al activar (isActive=true);
+ * desactivar/archivar nunca se bloquea.
+ */
+async function assertProductsQuotable(ids: string[]): Promise<void> {
+  if (ids.length === 0) return;
+  const products = await prisma.product.findMany({
+    where: { id: { in: ids }, deletedAt: null },
+    select: {
+      name: true,
+      physicalSpecs: true,
+      variants: { where: { deletedAt: null }, select: { attributes: true } },
+    },
+  });
+  const missing = products.filter((p) => {
+    // Sin variantes vivas, evaluamos solo las dims base (una Default implícita).
+    const variants = p.variants.length > 0 ? p.variants : [{ attributes: {} }];
+    return variants.some((v) => getEffectiveShippingDims(p.physicalSpecs, v.attributes) === null);
+  });
+  if (missing.length > 0) {
+    const names = missing
+      .slice(0, 5)
+      .map((p) => `"${p.name}"`)
+      .join(", ");
+    throw new ProductValidationError(
+      "general",
+      `No puedes publicar ${
+        missing.length === 1 ? names : `${missing.length} productos (${names}${missing.length > 5 ? "…" : ""})`
+      } sin peso y dimensiones de envío. Complétalos en la sección "📦 Empaque para el envío" del producto antes de activarlo.`,
+    );
+  }
+}
+
 export async function toggleProductActive(
   id: string,
   isActive: boolean,
   actorAdminId: string | null,
 ) {
+  // Al PUBLICAR: exigir dims de envío (sino la cotización del cliente falla).
+  if (isActive) await assertProductsQuotable([id]);
   return prisma.product.update({
     where: { id },
     data: { isActive, ...(actorAdminId ? { updatedBy: actorAdminId } : {}) },
@@ -355,6 +395,8 @@ export async function bulkUpdateProductsActive(
   actorAdminId: string | null,
 ): Promise<{ count: number }> {
   if (ids.length === 0) return { count: 0 };
+  // Al PUBLICAR en lote: mismo gate de dims que el toggle individual.
+  if (isActive) await assertProductsQuotable(ids);
   const result = await prisma.product.updateMany({
     where: { id: { in: ids }, deletedAt: null },
     data: { isActive, ...(actorAdminId ? { updatedBy: actorAdminId } : {}) },

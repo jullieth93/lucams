@@ -41,7 +41,7 @@
  */
 
 import { afterAll, describe, expect, it } from "vitest";
-import { prisma } from "@/lib/db";
+import { prisma, type Prisma } from "@/lib/db";
 import {
   ProductValidationError,
   VariantValidationError,
@@ -118,6 +118,9 @@ async function makeProduct(data: {
   isFeatured?: boolean;
   deletedAt?: Date | null;
   images?: string[];
+  // Dims de envío base. Default: completas (para que el gate de publicación
+  // assertProductsQuotable pase). Pasa {} para simular un producto SIN dims.
+  physicalSpecs?: Prisma.InputJsonValue;
   variants?: Array<{
     name: string;
     skuSuffix: string;
@@ -141,6 +144,12 @@ async function makeProduct(data: {
       isFeatured: data.isFeatured ?? false,
       deletedAt: data.deletedAt ?? undefined,
       images: data.images ?? [],
+      physicalSpecs: data.physicalSpecs ?? {
+        weightGrams: 200,
+        widthCm: 10,
+        heightCm: 10,
+        depthCm: 10,
+      },
       variants: data.variants
         ? {
             create: data.variants.map((v) => ({
@@ -732,6 +741,26 @@ describe.skipIf(!hasDb)("products/service — integración DB", { timeout: T }, 
       const off = await toggleProductActive(p.id, false, null);
       expect(off.isActive).toBe(false);
     });
+
+    it("toggleProductActive BLOQUEA publicar un producto sin peso/dimensiones", async () => {
+      const cat = await makeCategory({ label: "tp-nodims" });
+      const p = await makeProduct({
+        categoryId: cat.id,
+        label: "tp-nodims",
+        isActive: false,
+        physicalSpecs: {}, // sin dims → no cotizable
+      });
+      await expect(toggleProductActive(p.id, true, "admin")).rejects.toBeInstanceOf(
+        ProductValidationError,
+      );
+      // Sigue inactivo (el update nunca corrió).
+      const row = await prisma.product.findUnique({ where: { id: p.id }, select: { isActive: true } });
+      expect(row!.isActive).toBe(false);
+      // Desactivar un sin-dims NO se bloquea (el gate es solo al activar).
+      await expect(toggleProductActive(p.id, false, null)).resolves.toMatchObject({
+        isActive: false,
+      });
+    });
   });
 
   // ════════════════════════════════════════════════════════════════════════
@@ -769,6 +798,26 @@ describe.skipIf(!hasDb)("products/service — integración DB", { timeout: T }, 
     it("bulkUpdateProductsActive con lista vacía es noop (count 0, sin query)", async () => {
       const res = await bulkUpdateProductsActive([], true, null);
       expect(res).toEqual({ count: 0 });
+    });
+
+    it("bulkUpdateProductsActive BLOQUEA si ALGÚN producto del lote no tiene dims", async () => {
+      const cat = await makeCategory({ label: "bulk-nodims" });
+      const ok = await makeProduct({ categoryId: cat.id, label: "bnd-ok", isActive: false });
+      const bad = await makeProduct({
+        categoryId: cat.id,
+        label: "bnd-bad",
+        isActive: false,
+        physicalSpecs: {},
+      });
+      await expect(bulkUpdateProductsActive([ok.id, bad.id], true, null)).rejects.toBeInstanceOf(
+        ProductValidationError,
+      );
+      // Nada se activó (el gate corre ANTES del updateMany).
+      const rows = await prisma.product.findMany({
+        where: { id: { in: [ok.id, bad.id] } },
+        select: { isActive: true },
+      });
+      expect(rows.every((r) => r.isActive === false)).toBe(true);
     });
 
     it("bulkUpdateProductsFeatured destaca N productos y devuelve el count", async () => {

@@ -13,6 +13,18 @@
 
 ## Resumen actual
 
+**Cotización de envío ARREGLADA + ruta endurecida (2026-07-11, ADR-053).** La dueña reportó "no
+pudo cotizar envío en el step 2". Causa raíz **medida** contra la cuenta Aveonline real: el endpoint
+`cotizarDoble` tarda 7–11 s (cotiza 10 transportadoras server-side) pero el timeout estaba en 5 s
+(uniformado por ADR-045) → todo intento expiraba. Fix: timeout 5→15 s, retry acotado a 2, maxDuration
+del step 30→45. Una **revisión adversarial multi-agente** (3 lentes × panel escéptico, 48 agentes)
+encontró 9 hallazgos confirmados más, todos arreglados: producto sin peso/dims rompía TODA la
+cotización y filtraba el mensaje admin al cliente (ahora banner genérico + gate de dims al publicar),
+breaker compartido que dejaba una tormenta de cotización bloquear la generación de guía de órdenes YA
+PAGADAS (breaker separado), error de selección invisible, respuesta de error top-level tragada, fetches
+de Resend sin timeout, PICKUP vacío mandando origen `()`, etc. Verificado: tsc + build + 904 unit + 100
+integración (productos/checkout, incl. gate de publicación) verdes.
+
 **Direcciones: bucle de reuso 100% CERRADO en ambos sentidos (2026-07-11, ADR-051/052).** La cuenta
 y el checkout comparten el MISMO formato estructurado (DANE + urbano/rural + vía/cruce), guardado tal
 cual en `Address.structured`. Una dirección guardada se reusa 100% al pagar (`applySavedAddress` con
