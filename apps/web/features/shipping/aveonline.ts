@@ -83,6 +83,33 @@ async function aveonlineFetch(
 const MIN_DECLARED_VALUE_COP = 10000;
 
 /**
+ * Construye el array `productos` para la cotización a partir de los ítems del carrito.
+ *
+ * Aveonline **IGNORA el campo `unidades` al cotizar** — VERIFICADO contra la API real
+ * (2026-07-11): `peso 0.3kg u1` y `peso 0.3kg u5` devuelven el MISMO flete (kilos=1). Si
+ * dejáramos qty solo en `unidades`, un pedido de 5 imanes se cobraría como 1 → flete
+ * subcobrado (la dueña pierde la diferencia). Por eso plegamos la cantidad en el PESO
+ * (modelo "peso total" elegido por Lucy 2026-07-11: los imanes son densos y se apilan,
+ * así que el peso es el costo real; el volumétrico casi nunca domina):
+ *   - `peso` = peso_unitario × qty (kg), `unidades` = 1
+ *   - `valorDeclarado` = valor_unitario × qty (el seguro cubre el valor TOTAL de la línea)
+ *   - dims: las del paquete unitario (para densos, el peso real supera al volumétrico)
+ * `valorDeclarado` mínimo 10.000 COP (sino Aveonline devuelve numbererror -5). Ver ADR-053.
+ */
+export function buildCotizarProductos(items: ShipmentItem[]) {
+  return items.map((i) => ({
+    alto: i.heightCm,
+    ancho: i.widthCm,
+    largo: i.depthCm,
+    // Peso TOTAL de la línea (peso_unit × qty), redondeado a 1 decimal, piso 0.1 kg.
+    peso: Math.max(0.1, Math.round(((i.weightGrams * i.qty) / 1000) * 10) / 10),
+    unidades: 1, // Aveonline lo ignora al cotizar; la cantidad ya viaja en `peso`.
+    nombre: i.productSlug,
+    valorDeclarado: Math.max(MIN_DECLARED_VALUE_COP, i.declaredValueCop * i.qty),
+  }));
+}
+
+/**
  * Credenciales de la cuenta DEMO pública que Aveonline documenta como ambiente
  * de pruebas (no existe sandbox dedicado — opera contra producción pero sin
  * facturar mientras `bloquegenerarguia=0`). Doc:
@@ -453,19 +480,10 @@ export class AveonlineProvider implements ShippingProvider {
     contraentrega: boolean;
   }): Promise<ShippingQuote[]> {
     const { token, idempresa } = await getAuthToken();
-    // PR C (Lucy 2026-05-21): peso + dims REALES del item.weightGrams/widthCm/etc.
-    // El caller (features/checkout/service.ts) los resuelve via
-    // getEffectiveShippingDims(product, variant) y lanza error si faltan.
-    // valorDeclarado forzado a mínimo Aveonline (10.000 COP) — sino devuelve numbererror -5.
-    const productos = params.items.map((i) => ({
-      alto: i.heightCm,
-      ancho: i.widthCm,
-      largo: i.depthCm,
-      peso: Math.max(0.1, Math.round((i.weightGrams / 1000) * 10) / 10), // kg, 1 decimal
-      unidades: i.qty,
-      nombre: i.productSlug,
-      valorDeclarado: Math.max(MIN_DECLARED_VALUE_COP, i.declaredValueCop),
-    }));
+    // PR C (Lucy 2026-05-21): peso + dims REALES del item (resueltos por el caller via
+    // getEffectiveShippingDims). La cantidad se pliega en el peso porque Aveonline ignora
+    // `unidades` al cotizar (ver buildCotizarProductos + ADR-053).
+    const productos = buildCotizarProductos(params.items);
 
     // Aveonline 2026-05-21: usar `cotizarDoble` (multi-carrier) en vez de `cotizar2`
     // (single-carrier). cotizar2 devolvía numbererror=999 cuando idtransportador no

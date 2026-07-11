@@ -1809,3 +1809,18 @@ confirmó: `Timeout tras 5000ms ... generarGuiaTransporteNacional.php`.
 **Verificación.** `tsc` limpio · `next build` OK · tests de integración (direcciones/checkout/productos,
 incl. gate de publicación por dims) verdes. Refuta las alternativas "1 intento de 20 s" y "mover a
 client-side" (el panel escéptico las descartó 2/3). [[ADR-045]] [[ADR-048]] [[ADR-049]].
+
+**Addendum (2026-07-11) — `unidades` ignorado al cotizar → subcobro de flete.** Ante la pregunta de la
+dueña ("¿el cálculo usa peso/dimensiones/factores que pide la API?"), se verificó **empíricamente**
+contra la cuenta real: peso ✓ (kg), dimensiones ✓ (volumétrico), valorDeclarado ✓ (mínimo $10.000).
+PERO **`cotizarDoble` ignora el campo `unidades`**: `peso 0.3kg u1` y `peso 0.3kg u5` devuelven el
+MISMO flete ($16.501, kilos=1). Como mapeábamos `peso=unitario` + `unidades=qty`, un pedido de 5
+imanes se cotizaba como 1 → **flete subcobrado** (lo perdía la dueña). Fix: `buildCotizarProductos`
+pliega la cantidad en el **peso total** (`peso = peso_unit × qty`, `unidades:1`, `valorDeclarado =
+valor_unit × qty`) — modelo "peso total" elegido por Lucy (imanes densos que se apilan; el peso es el
+costo real). Verificado: 5 imanes de 300g ahora cotizan $20.049 (kilos=2) vs $16.501. Unit test de
+regresión en `aveonline.test.ts`. **PENDIENTE-VERIFICAR:** `generarGuia2` (endpoint DISTINTO, con
+`unidades` top-level + por-producto) podría declarar peso por-unidad al courier → reweigh surcharge;
+requiere una guía de prueba bloqueada (no-facturable) para confirmar antes de tocar — NO se cambió a
+ciegas (mandato #9). Los 6 transportadores con `err=999` fallan igual con cualquier payload (problema
+de su lado en esta cuenta, no de nuestros datos).
