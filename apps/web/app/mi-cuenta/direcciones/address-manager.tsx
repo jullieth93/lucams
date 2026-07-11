@@ -6,6 +6,7 @@ import { MapPin, Plus, Star, Pencil, Trash2, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { DEPARTMENTS, getCitiesByDeptCode, getDepartmentByName } from "@/lib/dane-divipola";
 import {
   saveAddressAction,
   deleteAddressAction,
@@ -187,6 +188,16 @@ function AddressForm({ address, onDone }: { address: AddressView | null; onDone:
     if (state?.success) doneRef.current();
   }, [state?.success]);
 
+  // Departamento/Ciudad como desplegables DANE en cascada (el depto filtra las
+  // ciudades). Se guardan los NOMBRES (modelo plano) — canónicos DANE, así mapean
+  // limpio a los códigos del checkout. deptCode/cities son derivados.
+  const [deptName, setDeptName] = useState(address?.department ?? "");
+  const [cityName, setCityName] = useState(address?.city ?? "");
+  const deptCode = getDepartmentByName(deptName)?.code ?? "";
+  const cities = deptCode ? getCitiesByDeptCode(deptCode) : [];
+  const selectClass =
+    "border-brand-purple/25 focus:border-brand-purple w-full rounded-lg border bg-white px-3 py-2 text-sm disabled:opacity-60";
+
   return (
     <form
       action={formAction}
@@ -229,20 +240,53 @@ function AddressForm({ address, onDone }: { address: AddressView | null; onDone:
         disabled={pending}
       />
       <div className="grid gap-4 sm:grid-cols-2">
-        <F
-          id="city"
-          label="Ciudad"
-          def={address?.city}
-          err={state?.fieldErrors?.city}
-          disabled={pending}
-        />
-        <F
-          id="department"
-          label="Departamento"
-          def={address?.department}
-          err={state?.fieldErrors?.department}
-          disabled={pending}
-        />
+        <div className="space-y-1.5">
+          <Label htmlFor="department">Departamento</Label>
+          <select
+            id="department"
+            name="department"
+            value={deptName}
+            disabled={pending}
+            onChange={(e) => {
+              setDeptName(e.target.value);
+              setCityName(""); // resetear ciudad al cambiar de departamento
+            }}
+            aria-invalid={Boolean(state?.fieldErrors?.department)}
+            className={selectClass}
+          >
+            <option value="">Selecciona…</option>
+            {DEPARTMENTS.map((d) => (
+              <option key={d.code} value={d.name}>
+                {d.name}
+              </option>
+            ))}
+          </select>
+          {state?.fieldErrors?.department?.[0] && (
+            <p className="text-destructive text-sm">{state.fieldErrors.department[0]}</p>
+          )}
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="city">Ciudad</Label>
+          <select
+            id="city"
+            name="city"
+            value={cityName}
+            disabled={pending || !deptCode}
+            onChange={(e) => setCityName(e.target.value)}
+            aria-invalid={Boolean(state?.fieldErrors?.city)}
+            className={selectClass}
+          >
+            <option value="">{deptCode ? "Selecciona…" : "Elige departamento primero"}</option>
+            {cities.map((c) => (
+              <option key={c.code} value={c.name}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+          {state?.fieldErrors?.city?.[0] && (
+            <p className="text-destructive text-sm">{state.fieldErrors.city[0]}</p>
+          )}
+        </div>
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
         <F
