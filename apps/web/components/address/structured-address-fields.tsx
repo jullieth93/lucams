@@ -139,7 +139,9 @@ export function StructuredAddressFields({
             onChange={(e) => onChange({ zip: e.target.value.replace(/\D/g, "").slice(0, 6) })}
             placeholder="110111"
             inputMode="numeric"
+            aria-invalid={Boolean(err("zip"))}
           />
+          {err("zip") && <p className="text-destructive text-sm">{err("zip")}</p>}
         </div>
       </div>
 

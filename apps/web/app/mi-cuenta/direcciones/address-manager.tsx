@@ -11,6 +11,7 @@ import {
   EMPTY_STRUCTURED_ADDRESS,
   type StructuredAddressValue,
 } from "@/components/address/structured-address-fields";
+import { getDepartmentByName, getCityByDeptAndName } from "@/lib/dane-divipola";
 import {
   saveAddressAction,
   deleteAddressAction,
@@ -191,12 +192,28 @@ function AddressForm({ address, onDone }: { address: AddressView | null; onDone:
   }, [state?.success]);
 
   // Dirección ESTRUCTURADA (mismo formato que el checkout). En edición se hidrata
-  // desde `structured`; las legacy (sin structured) arrancan vacías.
-  const [addr, setAddr] = useState<StructuredAddressValue>(() =>
-    address?.structured
-      ? ({ ...EMPTY_STRUCTURED_ADDRESS, ...address.structured } as StructuredAddressValue)
-      : EMPTY_STRUCTURED_ADDRESS,
-  );
+  // desde `structured`. Las legacy (sin structured) NO arrancan del todo vacías:
+  // pre-sembramos depto/ciudad/CP desde los nombres flat (DANE por nombre) para que
+  // editar una dirección vieja no abra en blanco ni bloquee el guardado (rev. #2/#5/#10).
+  const [addr, setAddr] = useState<StructuredAddressValue>(() => {
+    if (address?.structured) {
+      return { ...EMPTY_STRUCTURED_ADDRESS, ...address.structured } as StructuredAddressValue;
+    }
+    if (address) {
+      const dept = getDepartmentByName(address.department);
+      const city = dept ? getCityByDeptAndName(dept.code, address.city) : null;
+      return {
+        ...EMPTY_STRUCTURED_ADDRESS,
+        deptCode: dept?.code ?? "",
+        cityCode: city?.code ?? "",
+        zip: city?.zip ?? "",
+      };
+    }
+    return EMPTY_STRUCTURED_ADDRESS;
+  });
+  // Una legacy solo trae depto/ciudad; el resto de la calle debe re-capturarse en el
+  // formato nuevo. Avisamos para que no parezca que "se perdieron" datos.
+  const isLegacyEdit = Boolean(address && !address.structured);
 
   return (
     <form
@@ -223,6 +240,19 @@ function AddressForm({ address, onDone }: { address: AddressView | null; onDone:
         err={state?.fieldErrors?.name}
         disabled={pending}
       />
+
+      {isLegacyEdit && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          <p className="font-semibold">Actualiza esta dirección al nuevo formato</p>
+          <p className="mt-0.5 text-amber-700">
+            Ya llenamos el departamento y la ciudad. Vuelve a escribir la vía (Calle/Carrera y
+            números) para que se reuse automáticamente en tu próximo pago.
+          </p>
+          {address?.line1 && (
+            <p className="mt-1 text-xs text-amber-600">Dirección anterior: {address.line1}</p>
+          )}
+        </div>
+      )}
 
       <StructuredAddressFields
         value={addr}

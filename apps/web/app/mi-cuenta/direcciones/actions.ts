@@ -9,7 +9,10 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import type { Prisma } from "@lucams/db";
 import { getCurrentCustomer } from "@/lib/auth";
-import { parseStructuredAddress, composeAddressLine } from "@/features/checkout/parse-address";
+import { parseStructuredAddress } from "@/features/checkout/parse-address";
+// composeAddressLine CANÓNICO (mismo que usa Aveonline/el courier) — incluye
+// detail (urbano) y Ref (rural), a diferencia del duplicado lossy anterior.
+import { composeAddressLine } from "@/features/checkout/schemas";
 import {
   createAddress,
   updateAddress,
@@ -63,8 +66,10 @@ export async function saveAddressAction(
     name: label.data.name,
     phone: label.data.phone,
     isDefault: formData.get("isDefault") === "on",
+    // line1 canónico ya incluye detail (urbano) / finca+Ref (rural), así que line2
+    // queda null para no duplicar (revisión adversarial #3/#4/#9).
     line1: composeAddressLine(structured),
-    line2: structured.kind === "urban" ? (structured.detail ?? null) : (structured.finca ?? null),
+    line2: null,
     city: addr.cityName,
     department: addr.deptName,
     zip: structured.zip ?? null,

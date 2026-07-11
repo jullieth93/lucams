@@ -150,12 +150,33 @@ export function DatosForm({
 
   // ─── Handlers ───
 
-  // Rellena la dirección desde una guardada. Si tiene `structured` (form nuevo) →
-  // reuso 100% (depto/ciudad/vía/cruce/todo). Legacy (sin structured) → solo
-  // depto/ciudad/CP vía mapeo nombre→código.
+  // Limpia TODOS los campos de dirección a un estado por defecto. Crítico antes de
+  // aplicar una guardada: si no, la calle/tipo previos (de otra selección o tipeo
+  // manual) quedan pegados y se enviaría una dirección MEZCLADA (ciudad nueva +
+  // calle vieja) que pasa validación silenciosamente (revisión adversarial #1).
+  function resetAddressFields() {
+    setDeptCode("");
+    setCityCode("");
+    setZip("");
+    setAddressKind("urban");
+    setViaType("Calle");
+    setViaNumber("");
+    setViaBis(false);
+    setViaCardinal("");
+    setCruceNumber("");
+    setCruceCardinal("");
+    setDetail("");
+    setVereda("");
+    setFinca("");
+    setReferencia("");
+  }
+
+  // Rellena la dirección desde una guardada. Reset primero (estado limpio), luego:
+  // structured (form nuevo) → reuso 100%; legacy (sin structured) → solo depto/ciudad/CP.
   function applySavedAddress(id: string) {
     const a = savedAddresses.find((x) => x.id === id);
     if (!a) return;
+    resetAddressFields();
     const s = a.structured;
     if (s) {
       setDeptCode(String(s.deptCode ?? ""));
@@ -447,7 +468,7 @@ export function DatosForm({
               ))}
             </select>
             <p className="text-brand-muted mt-1.5 text-xs">
-              Rellenamos toda la dirección. Solo revisa antes de continuar.
+              Rellenamos tu dirección guardada. Revisa que esté completa antes de continuar.
             </p>
           </div>
         )}

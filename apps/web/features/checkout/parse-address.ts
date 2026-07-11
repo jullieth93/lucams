@@ -73,20 +73,6 @@ export function parseStructuredAddress(formData: FormData): ParsedStructuredAddr
   return { ok: true, data: parsed.data, deptName: dept.name, cityName: city.name };
 }
 
-/**
- * Compone la calle legible (line1) a partir de la dirección estructurada — para
- * mostrarla en la lista de direcciones sin re-derivar cada vez.
- */
-export function composeAddressLine(a: AddressInput): string {
-  if (a.kind === "rural") {
-    const parts = [`Vereda ${a.vereda}`];
-    if (a.finca) parts.push(`Finca ${a.finca}`);
-    return parts.join(" · ");
-  }
-  const via = [a.viaType, a.viaNumber];
-  if (a.viaBis) via.push("Bis");
-  if (a.viaCardinal) via.push(a.viaCardinal);
-  const cruce = ["#", a.cruceNumber];
-  if (a.cruceCardinal) cruce.push(a.cruceCardinal);
-  return `${via.join(" ")} ${cruce.join(" ")}`;
-}
+// composeAddressLine (line1 legible) vive en features/checkout/schemas.ts — se
+// reusa esa versión canónica (la que arma la dirección para Aveonline) para que
+// el display de la cuenta coincida EXACTO con la dirección de envío.
