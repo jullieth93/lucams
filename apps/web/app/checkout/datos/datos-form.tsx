@@ -150,15 +150,16 @@ export function DatosForm({
 
   // ─── Handlers ───
 
-  // Pre-llena depto/ciudad/CP/teléfono desde una dirección guardada del cliente.
-  // La calle (vía/cruce) NO se mapea desde el modelo plano — el usuario la escribe.
+  // Pre-llena depto/ciudad/CP desde una dirección guardada del cliente (el contacto
+  // ya viene del perfil). La calle (vía/cruce) NO se mapea desde el modelo plano —
+  // el usuario la escribe. Si el nombre guardado no matchea DANE, deptCode viene
+  // null y no se pre-llena depto/ciudad (el usuario los elige).
   function applySavedAddress(id: string) {
     const a = savedAddresses.find((x) => x.id === id);
     if (!a) return;
     if (a.deptCode) setDeptCode(a.deptCode);
     if (a.cityCode) setCityCode(a.cityCode);
     if (a.zip) setZip(a.zip);
-    if (a.phone) setPhoneDisplay(formatPhone(a.phone));
   }
 
   function handleNameBlur() {
@@ -224,32 +225,6 @@ export function DatosForm({
 
   return (
     <form action={formAction} className="space-y-6">
-      {/* DIRECCIÓN GUARDADA (solo si el cliente tiene) — pre-llena depto/ciudad/CP/tel */}
-      {savedAddresses.length > 0 && (
-        <section className="border-brand-purple/20 bg-brand-purple/5 rounded-2xl border p-4">
-          <label htmlFor="saved-address" className="text-brand-purple-dark text-sm font-semibold">
-            ¿Enviar a una dirección guardada?
-          </label>
-          <select
-            id="saved-address"
-            defaultValue=""
-            onChange={(e) => e.target.value && applySavedAddress(e.target.value)}
-            className="border-brand-purple/25 focus:border-brand-purple mt-2 w-full rounded-lg border bg-white px-3 py-2 text-sm"
-          >
-            <option value="">Escribir una dirección nueva…</option>
-            {savedAddresses.map((a) => (
-              <option key={a.id} value={a.id}>
-                {a.label}
-                {a.isDefault ? " (predeterminada)" : ""} — {a.line1}
-              </option>
-            ))}
-          </select>
-          <p className="text-brand-muted mt-1.5 text-xs">
-            Pre-llenamos departamento, ciudad y teléfono. Revisa la calle antes de continuar.
-          </p>
-        </section>
-      )}
-
       {/* CONTACTO */}
       <section className="border-brand-purple/10 rounded-2xl border bg-white p-5 shadow-sm sm:p-6">
         <h2 className="text-brand-purple-dark font-display mb-4 text-lg font-bold">1. Contacto</h2>
@@ -427,6 +402,35 @@ export function DatosForm({
           2. Dirección de envío
         </h2>
 
+        {/* USAR DIRECCIÓN GUARDADA — solo si el cliente logueado tiene direcciones */}
+        {savedAddresses.length > 0 && (
+          <div className="border-brand-purple/25 bg-brand-purple/5 mb-4 rounded-xl border p-3">
+            <label
+              htmlFor="saved-address"
+              className="text-brand-purple-dark mb-1.5 block text-sm font-semibold"
+            >
+              📍 Usar una dirección guardada
+            </label>
+            <select
+              id="saved-address"
+              defaultValue=""
+              onChange={(e) => e.target.value && applySavedAddress(e.target.value)}
+              className="border-brand-purple/25 focus:border-brand-purple h-9 w-full rounded-md border bg-white px-2 text-sm"
+            >
+              <option value="">Escribir una dirección nueva…</option>
+              {savedAddresses.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.label}
+                  {a.isDefault ? " (predeterminada)" : ""} — {a.line1}
+                </option>
+              ))}
+            </select>
+            <p className="text-brand-muted mt-1.5 text-xs">
+              Llenamos departamento y ciudad. Revisa/completa la calle antes de continuar.
+            </p>
+          </div>
+        )}
+
         {/* Depto + Ciudad + CP */}
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-6">
           <div className="sm:col-span-3">
@@ -472,7 +476,9 @@ export function DatosForm({
               disabled={!deptCode}
               className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 h-9 w-full rounded-md border bg-white px-2 text-sm focus:ring-2 focus:outline-none disabled:bg-slate-50 disabled:text-slate-400"
             >
-              <option value="">{deptCode ? "Elige ciudad..." : "Primero elegí depto"}</option>
+              <option value="">
+                {deptCode ? "Elige ciudad..." : "Elige departamento primero"}
+              </option>
               {cities.map((c) => (
                 <option key={c.code} value={c.code}>
                   {c.name}

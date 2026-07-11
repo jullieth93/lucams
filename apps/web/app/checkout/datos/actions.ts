@@ -44,7 +44,7 @@ export async function saveDatosAction(
   const city = getCityByCode(cityCode);
   if (!dept || !city || city.deptCode !== deptCode) {
     return {
-      error: "Departamento o ciudad inválidos. Por favor seleccioná de la lista.",
+      error: "Departamento o ciudad inválidos. Por favor selecciona de la lista.",
       fieldErrors: { cityCode: ["Ciudad no válida"] },
     };
   }
