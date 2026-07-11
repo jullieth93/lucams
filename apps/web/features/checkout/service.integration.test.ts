@@ -584,6 +584,43 @@ describe.skipIf(!hasDb)("checkout/service — integración DB (ruta de ingresos)
       await prisma.cartItem.deleteMany({ where: { cartId: cart.id } });
       await prisma.cart.deleteMany({ where: { id: cart.id } });
     }, 30000);
+
+    it("pre-llena el contacto del checkout desde el perfil del cliente logueado", async () => {
+      const customer = await prisma.customer.create({
+        data: {
+          email: `${RUN}-prefill@lucams.test`,
+          firstName: "Ana",
+          lastName: "Ruiz",
+          phone: "3009998877",
+          documentType: "CC",
+          documentNumber: "1020304050",
+          supabaseUserId: `${RUN}-sub-pf`,
+          referralCode: `${RUN}-ref-pf`,
+        },
+      });
+      const sid = uuid();
+      const cart = await prisma.cart.create({
+        data: {
+          sessionId: sid,
+          items: { create: [{ variantId: variantWithDims, qty: 1, unitPrice: 50_000 }] },
+        },
+        select: { id: true },
+      });
+      setCartCookie(sid);
+      mockUser = { id: `${RUN}-sub-pf` };
+
+      const ctx = await loadCheckoutContext();
+      expect(ctx.customerId).toBe(customer.id);
+      // El contacto se pre-llenó desde el perfil (sin state de checkout previo).
+      expect(ctx.state.contact?.fullName).toBe("Ana Ruiz");
+      expect(ctx.state.contact?.email).toBe(`${RUN}-prefill@lucams.test`);
+      expect(ctx.state.contact?.phone).toBe("3009998877");
+      expect(ctx.state.contact?.documentType).toBe("CC");
+      expect(ctx.state.contact?.documentNumber).toBe("1020304050");
+
+      await prisma.cartItem.deleteMany({ where: { cartId: cart.id } });
+      await prisma.cart.deleteMany({ where: { id: cart.id } });
+    }, 30000);
   });
 
   // ───────────────────────── quoteShipping ─────────────────────────

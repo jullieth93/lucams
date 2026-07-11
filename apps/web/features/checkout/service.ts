@@ -79,17 +79,40 @@ export async function loadCheckoutContext(): Promise<CheckoutContext> {
   if (!cart) throw new CheckoutError("CART_NOT_FOUND");
   if (cart.items.length === 0) throw new CheckoutError("CART_EMPTY");
 
-  // Si user logueado, lookup Customer.id
-  let customerId: string | null = cart.customerId ?? null;
-  if (!customerId && user) {
-    const customer = await prisma.customer.findUnique({
-      where: { supabaseUserId: user.id },
-      select: { id: true },
-    });
-    customerId = customer?.id ?? null;
-  }
-
   const currentState: CheckoutState = state ?? { step: 1, updatedAt: Date.now() };
+
+  // Si hay user logueado, resolver el Customer (id + datos de contacto).
+  let customerId: string | null = cart.customerId ?? null;
+  if (user) {
+    const customer = await prisma.customer.findFirst({
+      where: cart.customerId
+        ? { id: cart.customerId, deletedAt: null }
+        : { supabaseUserId: user.id, deletedAt: null },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        email: true,
+        phone: true,
+        documentType: true,
+        documentNumber: true,
+      },
+    });
+    if (customer) {
+      customerId = customer.id;
+      // Pre-llenar el contacto desde el perfil si el checkout aún no lo tiene
+      // (un cliente logueado no debería retipear su nombre/correo/teléfono/documento).
+      if (!currentState.contact) {
+        currentState.contact = {
+          fullName: [customer.firstName, customer.lastName].filter(Boolean).join(" "),
+          email: customer.email ?? user.email ?? "",
+          phone: customer.phone ?? "",
+          ...(customer.documentType ? { documentType: customer.documentType } : {}),
+          ...(customer.documentNumber ? { documentNumber: customer.documentNumber } : {}),
+        };
+      }
+    }
+  }
 
   return { cart, customerId, state: currentState };
 }
