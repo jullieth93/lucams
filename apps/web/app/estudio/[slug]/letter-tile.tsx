@@ -23,20 +23,27 @@ export type NameTileTheme = {
 };
 
 export const NAME_TILE_THEMES: readonly NameTileTheme[] = [
-  { id: "arcoiris", label: "Arcoíris", emoji: "🌈", colors: TILE_BORDER_COLORS },
-  { id: "nina", label: "Niña", emoji: "💗", colors: ["#E85B9F", "#F58A6F", "#C86FB0", "#FF9EC9", "#7C6AAD"] },
-  { id: "nino", label: "Niño", emoji: "💙", colors: ["#5DD9D1", "#4A90D9", "#7C6AAD", "#3FB8AF", "#3D2E5C"] },
-  { id: "neutro", label: "Neutro", emoji: "🎨", colors: ["#7C6AAD", "#8B7BB8", "#6A5A99", "#9B8BC4", "#5A4A82"] },
+  { id: "arcoiris", label: "Arcoíris", emoji: "🌈", colors: ["#E85B9F", "#F58A6F", "#FFD93D", "#3FB8AF", "#4A90D9", "#9B5DE5"] },
+  { id: "vibrante", label: "Vibrante", emoji: "⚡", colors: ["#E63946", "#F4511E", "#FFC300", "#43AA8B", "#1D6FB8", "#9B5DE5"] },
+  { id: "nina", label: "Niña", emoji: "💗", colors: ["#E85B9F", "#F58A6F", "#C86FB0", "#FF3D7F", "#9B5DE5"] },
+  { id: "nino", label: "Niño", emoji: "💙", colors: ["#5DD9D1", "#4A90D9", "#1D6FB8", "#43AA8B", "#7C6AAD"] },
+  { id: "neutro", label: "Neutro", emoji: "🖤", colors: ["#3D2E5C", "#2B2D42", "#6B7280", "#8B5A2B", "#7C6AAD"] },
 ];
 
 export function getNameTileTheme(id: string | null | undefined): NameTileTheme {
   return NAME_TILE_THEMES.find((t) => t.id === id) ?? NAME_TILE_THEMES[0];
 }
 
-/** Colores curados (aptos para impresión) para elegir el color de cada letra. */
+/**
+ * Colores curados (aptos para impresión) para elegir el color de cada letra. Paleta
+ * amplia: rojos/naranjas/amarillos/verdes/azules/morados/rosas + neutros — no solo
+ * pastel (feedback de Lucy 2026-07-12).
+ */
 export const LETTER_SWATCHES = [
-  "#7C6AAD", "#5DD9D1", "#E85B9F", "#F58A6F", "#FFD93D",
-  "#4A90D9", "#3FB8AF", "#C86FB0", "#F5A623", "#3D2E5C",
+  "#E63946", "#F4511E", "#F58A6F", "#F5A623", "#FFC300", "#FFD93D",
+  "#8BC34A", "#43AA8B", "#2A9D8F", "#5DD9D1", "#4A90D9", "#1D6FB8",
+  "#9B5DE5", "#7C6AAD", "#C86FB0", "#E85B9F", "#FF3D7F", "#D81159",
+  "#8B5A2B", "#6B7280", "#3D2E5C", "#2B2D42",
 ] as const;
 
 export function LetterTile({
