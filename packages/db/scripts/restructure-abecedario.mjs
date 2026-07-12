@@ -107,9 +107,9 @@ async function main() {
   const completoId = await upsertProduct({
     slug: "abecedario-completo",
     sku: "ABC-COMPLETO",
-    name: "Abecedario Magnético Completo",
+    name: "Abecedario Completo",
     description:
-      "El abecedario completo con diseños de animales kawaii (A de Ave, B de Burro…). Español: 27 letras (incluye Ñ). Inglés: 26 letras. Ideal para aprender a leer y decorar la nevera. Elige idioma, tamaño y con o sin imán.",
+      "El abecedario completo con diseños de animales kawaii (A de Ave, B de Burro…). Español: 27 letras (incluye Ñ). Inglés: 26 letras. Ideal para aprender a leer y decorar. Elige idioma, tamaño y si lo quieres con o sin imán.",
     kind: "NONE",
     basePrice: completoPrices.clasica.mag * 100,
     isFeatured: true,
@@ -141,9 +141,9 @@ async function main() {
   const vocalesId = await upsertProduct({
     slug: "pack-vocales",
     sku: "PACK-VOCALES",
-    name: "Pack Vocales Magnéticas",
+    name: "Pack Vocales",
     description:
-      "Las 5 vocales (A E I O U) con animalitos kawaii. Perfecto para los más peques. Elige tamaño y con o sin imán.",
+      "Las 5 vocales (A E I O U) con animalitos kawaii. Perfecto para los más peques. Elige tamaño y si lo quieres con o sin imán.",
     kind: "NONE",
     basePrice: vocalesPrices.clasica.mag * 100,
     categoryId,
@@ -170,11 +170,11 @@ async function main() {
     grande: { mag: 35000, nomag: 32000 },
   };
   const nombreId = await upsertProduct({
-    slug: "nombre-magnetico",
-    sku: "NOMBRE-MAGNETICO",
-    name: "Nombre Magnético Personalizado",
+    slug: "nombre-personalizado",
+    sku: "NOMBRE-PERSONALIZADO",
+    name: "Nombre Personalizado",
     description:
-      "Escribe un nombre o palabra y recibe las fichas de letras kawaii que lo forman. Elige idioma, tamaño y con o sin imán, y personaliza los colores en el editor.",
+      "Escribe un nombre o palabra y recibe las fichas de letras kawaii que lo forman. Elige idioma, tamaño y si lo quieres con o sin imán, y personaliza los colores en el editor.",
     kind: "TEXT_ONLY",
     schema: { nameMaxLength: 10 },
     basePrice: nombrePrices.clasica.mag * 100,
@@ -207,7 +207,12 @@ async function main() {
 
   // ─────────── Archivar productos viejos ───────────
   console.log("Archivando productos viejos:");
-  const oldSlugs = ["abecedario-magnetico-espanol", "abecedario-magnetico-ingles", "abecedario-magnetico"];
+  const oldSlugs = [
+    "abecedario-magnetico-espanol",
+    "abecedario-magnetico-ingles",
+    "abecedario-magnetico",
+    "nombre-magnetico", // slug viejo → renombrado a nombre-personalizado (variantes re-parentadas por SKU)
+  ];
   for (const slug of oldSlugs) {
     const r = await prisma.product.updateMany({
       where: { slug },

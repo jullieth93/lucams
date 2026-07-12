@@ -83,6 +83,9 @@ export function NameEditor({ product, variantId, config, priceLabel }: NameEdito
   const router = useRouter();
   const [raw, setRaw] = useState("");
   const [themeId, setThemeId] = useState(NAME_TILE_THEMES[0].id);
+  // Orden de colores del tema activo. Inicial = orden del tema (determinista para SSR);
+  // cada clic en un tema lo BARAJA (Math.random solo en el handler → sin mismatch).
+  const [activeColors, setActiveColors] = useState<readonly string[]>(NAME_TILE_THEMES[0].colors);
   // Override de color por letra (índice → color). Vacío = usa el color del tema.
   const [letterColors, setLetterColors] = useState<Record<number, string>>({});
   const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
@@ -91,11 +94,10 @@ export function NameEditor({ product, variantId, config, priceLabel }: NameEdito
 
   const result = useMemo(() => normalizeName(raw, config), [raw, config]);
   const { letters, valid, tooShort, notices } = result;
-  const theme = getNameTileTheme(themeId);
 
   const effectiveColors = useMemo(
-    () => letters.map((_, i) => letterColors[i] ?? theme.colors[i % theme.colors.length]),
-    [letters, letterColors, theme],
+    () => letters.map((_, i) => letterColors[i] ?? activeColors[i % activeColors.length]),
+    [letters, letterColors, activeColors],
   );
 
   // Letras repetidas → transparencia sobre cuántas fichas iguales lleva.
@@ -109,8 +111,19 @@ export function NameEditor({ product, variantId, config, priceLabel }: NameEdito
 
   const examples = config.language === "es" ? ["Mía", "Mateo", "Amor"] : ["Mia", "Noah", "Love"];
 
+  /** Baraja Fisher-Yates. Solo se llama desde onClick (post-hidratación) → seguro. */
+  function shuffleColors(colors: readonly string[]): string[] {
+    const a = [...colors];
+    for (let i = a.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [a[i], a[j]] = [a[j], a[i]];
+    }
+    return a;
+  }
+
   function applyTheme(id: string) {
     setThemeId(id);
+    setActiveColors(shuffleColors(getNameTileTheme(id).colors)); // re-clic → otra combinación
     setLetterColors({}); // el tema es un punto de partida limpio
     setSelectedIndex(null);
   }
@@ -272,7 +285,7 @@ export function NameEditor({ product, variantId, config, priceLabel }: NameEdito
           <p className="text-brand-purple-dark mb-2 text-sm font-semibold">
             Elige los colores
             <span className="text-brand-muted ml-2 text-xs font-normal">
-              (o toca una letra para pintarla a tu gusto)
+              · toca un tema otra vez para barajar 🎲
             </span>
           </p>
           <div className="flex flex-wrap gap-2">
@@ -313,17 +326,27 @@ export function NameEditor({ product, variantId, config, priceLabel }: NameEdito
               Aquí verás tu nombre en fichas 🦝
             </p>
           ) : (
-            <div className="flex flex-wrap items-center justify-center gap-3">
-              {letters.map((ch, i) => (
-                <LetterTile
-                  key={`${ch}-${i}`}
-                  letter={ch}
-                  color={effectiveColors[i]}
-                  selected={selectedIndex === i}
-                  onClick={() => setSelectedIndex(selectedIndex === i ? null : i)}
-                />
-              ))}
-            </div>
+            <>
+              {/* Descubribilidad del color por letra: barra visible, no un texto perdido. */}
+              {selectedIndex === null && (
+                <p className="text-brand-purple-dark mb-3 flex items-center justify-center gap-1.5 text-center text-xs font-semibold">
+                  <span className="bg-brand-yellow/45 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5">
+                    👇 Toca una letra para darle el color que quieras
+                  </span>
+                </p>
+              )}
+              <div className="flex flex-wrap items-center justify-center gap-3">
+                {letters.map((ch, i) => (
+                  <LetterTile
+                    key={`${ch}-${i}`}
+                    letter={ch}
+                    color={effectiveColors[i]}
+                    selected={selectedIndex === i}
+                    onClick={() => setSelectedIndex(selectedIndex === i ? null : i)}
+                  />
+                ))}
+              </div>
+            </>
           )}
 
           {/* Fila de colores para la letra seleccionada */}
