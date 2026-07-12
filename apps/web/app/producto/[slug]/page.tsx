@@ -28,7 +28,9 @@ import { VariantSelector } from "./variant-selector";
 import { formatCOP } from "@/lib/format";
 import { buildWhatsAppUrl } from "@/lib/wa";
 import { addToCartAction } from "@/app/carrito/actions";
-import { selectableVariants } from "@/features/products/variant-schemas";
+import { selectableVariants, parseVariantAttributes } from "@/features/products/variant-schemas";
+import { getLetterTilesForLanguage, ALPHABET } from "@/features/personalization/letter-tiles";
+import { LetterSetPreview } from "@/components/product-detail/letter-set-preview";
 import {
   getStorefrontProductBySlug,
   listRelatedProducts,
@@ -96,6 +98,18 @@ export default async function ProductoDetallePage({
     selectedVariant?.images && selectedVariant.images.length > 0
       ? selectedVariant.images
       : product.images;
+
+  // ADR-057 — productos que SON un set de letras (Completo/Vocales): mostramos la
+  // biblioteca de fichas directo en la ficha (una sola fuente de verdad con el editor).
+  const letterSet = (product.personalizationSchema as { letterSet?: string } | null)?.letterSet;
+  let letterSetPreview: { letters: string[]; tiles: Awaited<ReturnType<typeof getLetterTilesForLanguage>> } | null =
+    null;
+  if (letterSet === "full" || letterSet === "vowels") {
+    const lang = parseVariantAttributes(selectedVariant?.attributes).language ?? "es";
+    const tiles = await getLetterTilesForLanguage(lang);
+    const letters = letterSet === "vowels" ? ["A", "E", "I", "O", "U"] : (ALPHABET[lang] ?? ALPHABET.es);
+    letterSetPreview = { letters, tiles };
+  }
 
   const related = await listRelatedProducts({
     productId: product.id,
@@ -280,6 +294,19 @@ export default async function ProductoDetallePage({
               </p>
             </div>
           </div>
+
+          {letterSetPreview && (
+            <LetterSetPreview
+              letters={letterSetPreview.letters}
+              tiles={letterSetPreview.tiles}
+              title="Esto recibes"
+              subtitle={
+                letterSet === "vowels"
+                  ? "Las 5 vocales con su animalito kawaii."
+                  : `Las ${letterSetPreview.letters.length} letras, cada una con su animalito kawaii.`
+              }
+            />
+          )}
 
           <TemplatesStrip productSlug={product.slug} isPersonalizable={product.isPersonalizable} />
 

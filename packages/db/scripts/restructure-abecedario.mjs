@@ -111,6 +111,8 @@ async function main() {
     description:
       "El abecedario completo con diseños de animales kawaii (A de Ave, B de Burro…). Español: 27 letras (incluye Ñ). Inglés: 26 letras. Ideal para aprender a leer y decorar. Elige idioma, tamaño y si lo quieres con o sin imán.",
     kind: "NONE",
+    // ADR-057 — marca de "set de letras": la ficha muestra la biblioteca de fichas.
+    schema: { letterSet: "full" },
     basePrice: completoPrices.clasica.mag * 100,
     isFeatured: true,
     categoryId,
@@ -145,6 +147,7 @@ async function main() {
     description:
       "Las 5 vocales (A E I O U) con animalitos kawaii. Perfecto para los más peques. Elige tamaño y si lo quieres con o sin imán.",
     kind: "NONE",
+    schema: { letterSet: "vowels" },
     basePrice: vocalesPrices.clasica.mag * 100,
     categoryId,
   });

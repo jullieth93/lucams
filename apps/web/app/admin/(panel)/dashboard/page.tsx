@@ -33,6 +33,7 @@ import {
   AlertTriangle,
   Star,
   Shapes,
+  LayoutTemplate,
 } from "lucide-react";
 import {
   AdminPage,
@@ -255,11 +256,26 @@ export default async function AdminDashboardPage() {
               label="Configuración general"
               description="Email, WhatsApp, horario, redes y datos del negocio."
             />
+          </div>
+        </section>
+
+        {/* ─────────────── Diseños del Estudio ─────────────── */}
+        <section>
+          <h2 className="text-brand-muted mb-3 text-xs font-bold tracking-widest uppercase">
+            Diseños del Estudio
+          </h2>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <QuickLink
+              href="/admin/plantillas"
+              icon={LayoutTemplate}
+              label="Plantillas"
+              description="Diseños base que el cliente personaliza en el Estudio (fotoimanes, marcos…)."
+            />
             <QuickLink
               href="/admin/fichas"
               icon={Shapes}
-              label="Sets de fichas"
-              description="Sube el dibujo de cada letra del abecedario para el editor de nombres."
+              label="Fichas del abecedario"
+              description="Los dibujos de cada letra (A de Avión…). Alimentan el editor de nombres y los sets."
             />
           </div>
         </section>
