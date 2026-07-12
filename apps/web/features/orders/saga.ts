@@ -614,6 +614,24 @@ export async function processTrackingUpdate(input: {
       });
     }
   } else if (input.status === "RETURNED" || input.status === "EXCEPTION") {
+    // Devolución / novedad. NO auto-transicionamos (requiere decisión humana: reponer
+    // stock, reembolsar si fue Wompi, o re-despachar). Pero la marcamos needsReconciliation
+    // para que la dueña la VEA en /admin/pedidos "Necesitan atención" + el resumen diario.
+    // Sin esto, una entrega COD rechazada queda en un estado 'pagado' para siempre →
+    // ingresos y stock inflados en silencio (revisión adversarial COD, mandato #7 sin Sentry).
+    await prisma.order
+      .update({
+        where: { id: order.id },
+        data: {
+          needsReconciliation: true,
+          reconciliationReason: `Envío ${
+            input.status === "RETURNED" ? "DEVUELTO" : "con novedad"
+          } (${input.carrierStatusRaw}) — revisar stock${
+            order.status === "DELIVERED" ? " y reembolso" : " / reenvío"
+          }`,
+        },
+      })
+      .catch(() => null);
     logger.warn({
       event: "order.saga.tracking.needs_attention",
       orderNumber: order.number,

@@ -77,7 +77,11 @@ export async function payCodAction(): Promise<void> {
   const hdrs = await headers();
   const ip = hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
   const isProd = process.env.VERCEL_ENV === "production";
-  const rl = await rateLimit(ipKey("checkout_pay", ip), isProd ? 20 : 100, 600);
+  // Bucket SEPARADO y más estricto que Wompi: cada COD permitido crea una orden REAL +
+  // una guía Aveonline (con costo potencial), a diferencia de Wompi que no tiene efecto
+  // hasta pagar. Anti-fraude/abuso (revisión adversarial COD). [Pendiente: tope por
+  // cliente/global diario si el volumen lo exige.]
+  const rl = await rateLimit(ipKey("checkout_cod", ip), isProd ? 6 : 50, 600);
   if (!rl.allowed) {
     logger.warn({ event: "checkout.pago.cod_rate_limited", ip, count: rl.count });
     redirect(
@@ -105,16 +109,20 @@ export async function payCodAction(): Promise<void> {
     redirect(result.checkoutUrl);
   } catch (err) {
     if (err instanceof Error && err.message === "NEXT_REDIRECT") throw err;
-    if (err instanceof InsufficientStockError) {
+    // Stock agotado (al crear la orden o en la carrera al confirmar COD) → al carrito.
+    if (
+      err instanceof InsufficientStockError ||
+      (err instanceof CheckoutError && err.code === "STOCK_UNAVAILABLE")
+    ) {
       logger.warn({
         event: "checkout.pago.cod_stock_unavailable",
-        variantId: err.variantId,
-        requested: err.requested,
-        available: err.available ?? null,
+        err: err instanceof Error ? err.message : String(err),
       });
       redirect(
         `/carrito?error=${encodeURIComponent(
-          "Uno de los productos ya no está disponible. Por favor revisa tu carrito.",
+          err instanceof CheckoutError
+            ? err.message
+            : "Uno de los productos ya no está disponible. Por favor revisa tu carrito.",
         )}`,
       );
     }

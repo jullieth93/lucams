@@ -11,6 +11,7 @@ const base: DailySummary = {
   windowHours: 24,
   ordersLast24h: 0,
   revenueLast24hCop: 0,
+  codToCollectCop: 0,
   paidOrdersLast24h: 0,
   pendingPayment: 0,
   toShip: 0,
@@ -65,5 +66,22 @@ describe("buildDailySummaryEmail", () => {
     const { html } = buildDailySummaryEmail({ ...base }, NOW);
     expect(html).toContain("Carritos abandon.");
     expect(html).not.toContain("NaN");
+  });
+
+  it("muestra 'COD por cobrar' aparte, sin mezclarlo con Ingresos", () => {
+    const { html, text } = buildDailySummaryEmail(
+      { ...base, revenueLast24hCop: 5000000, codToCollectCop: 9000000 },
+      NOW,
+    );
+    // Ingresos = solo lo cobrado ($50.000), NO incluye el COD por cobrar ($90.000).
+    expect(html).toContain("$50.000");
+    expect(html).toContain("por cobrar");
+    expect(html).toContain("$90.000");
+    expect(text).toContain("COD por cobrar (al entregar): $90.000");
+  });
+
+  it("sin COD por cobrar, no muestra esa línea", () => {
+    const { html } = buildDailySummaryEmail({ ...base, revenueLast24hCop: 5000000 }, NOW);
+    expect(html).not.toContain("por cobrar");
   });
 });

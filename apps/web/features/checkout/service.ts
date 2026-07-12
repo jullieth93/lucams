@@ -47,7 +47,8 @@ export class CheckoutError extends Error {
       | "MISSING_PAYMENT_METHOD"
       | "SHIPPING_QUOTE_FAILED"
       | "ORDER_CREATE_FAILED"
-      | "PAYMENT_INIT_FAILED",
+      | "PAYMENT_INIT_FAILED"
+      | "STOCK_UNAVAILABLE",
     message?: string,
   ) {
     super(message ?? code);
@@ -325,6 +326,18 @@ export async function finalizeCheckout(input: {
   //    una carrera rara, la orden queda visible en reconciliación admin (no bloqueamos
   //    al cliente: su pedido existe). Redirigimos a la vista pública por token (sin IDOR).
   if (state.paymentMethod === "COD") {
+    // [P0 revisión] createOrderFromCart puede REUSAR una orden PENDING_PAYMENT de un
+    // intento Wompi abandonado (idempotencia por cartId) con paymentMethod='WOMPI'. Si
+    // no la corregimos, processPaidOrder generaría una guía PREPAGADA (contraentrega=false,
+    // sin recaudo) y el mensajero entregaría SIN cobrar → pérdida total. Forzamos COD
+    // (solo mientras sigue PENDING_PAYMENT: si ya se pagó por Wompi, no la tocamos).
+    if (order.paymentMethod !== "COD") {
+      await prisma.order.updateMany({
+        where: { id: order.id, status: "PENDING_PAYMENT" },
+        data: { paymentMethod: "COD" },
+      });
+    }
+
     const saga = await processPaidOrder({ orderId: order.id });
     logger.info({
       event: "checkout.finalize.cod_confirmed",
@@ -333,6 +346,46 @@ export async function finalizeCheckout(input: {
       sagaStatus: saga.status,
       trackingNumber: saga.trackingNumber ?? null,
     });
+
+    // [P1 revisión] Reaccionar al resultado del saga — NO prometer una entrega que no
+    // ocurrió. Si processPaidOrder no confirmó (carrera de stock o guía fallida) NO
+    // devolvemos la página de éxito a ciegas.
+    if (saga.status !== "ok" && saga.status !== "already_processed") {
+      const fresh = await prisma.order.findUnique({
+        where: { id: order.id },
+        select: { status: true, trackingNumber: true },
+      });
+      if (fresh?.status === "PENDING_PAYMENT") {
+        // Carrera de stock: la orden NO se confirmó. Como es COD (sin dinero online), la
+        // cancelamos para no dejar basura + destrabar la reserva, y mandamos al carrito.
+        await prisma.order.updateMany({
+          where: { id: order.id, status: "PENDING_PAYMENT" },
+          data: { status: "CANCELLED", needsReconciliation: false },
+        });
+        throw new CheckoutError(
+          "STOCK_UNAVAILABLE",
+          "Uno de los productos se agotó mientras confirmábamos tu pedido. Revisa tu carrito.",
+        );
+      }
+      // La orden quedó PAID pero SIN guía (Aveonline falló). El pedido existe (stock
+      // comprometido); la marcamos para reconciliación admin y suavizamos el mensaje.
+      if (fresh && !fresh.trackingNumber) {
+        await prisma.order.update({
+          where: { id: order.id },
+          data: {
+            needsReconciliation: true,
+            reconciliationReason: `COD confirmado sin guía Aveonline: ${saga.reason ?? "createShipment falló"}`,
+          },
+        });
+        logger.warn({
+          event: "checkout.finalize.cod_no_shipment",
+          orderId: order.id,
+          orderNumber: order.number,
+          sagaStatus: saga.status,
+        });
+      }
+    }
+
     return {
       orderId: order.id,
       orderNumber: order.number,

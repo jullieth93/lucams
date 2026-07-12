@@ -23,7 +23,10 @@ const RESEND_GUARD_MS = 12 * 60 * 60 * 1000;
 export type DailySummary = {
   windowHours: number;
   ordersLast24h: number; // pedidos nuevos (no-DRAFT)
-  revenueLast24hCop: number; // ingresos en CENTAVOS (órdenes pagadas creadas en 24h)
+  // Ingresos = efectivo REALMENTE cobrado en 24h: Wompi capturado online + COD ENTREGADO.
+  // NO cuenta COD confirmado-pero-no-entregado (el efectivo aún no entró) — revisión adversarial.
+  revenueLast24hCop: number;
+  codToCollectCop: number; // COD confirmado en 24h, pendiente de cobrar al entregar
   paidOrdersLast24h: number;
   pendingPayment: number; // checkouts en pago sin completar
   toShip: number; // pagadas sin despachar (PAID + FULFILLING)
@@ -43,7 +46,9 @@ export async function getDailySummary(now: Date = new Date()): Promise<DailySumm
 
   const [
     ordersLast24h,
-    revenueAgg,
+    wompiRevenueAgg,
+    codDeliveredAgg,
+    codToCollectAgg,
     paidOrdersLast24h,
     pendingPayment,
     toShip,
@@ -58,9 +63,30 @@ export async function getDailySummary(now: Date = new Date()): Promise<DailySumm
     prisma.order.count({
       where: { createdAt: { gte: from }, deletedAt: null, status: { not: "DRAFT" } },
     }),
+    // Wompi: efectivo capturado online (aprox. al crear).
     prisma.order.aggregate({
       _sum: { total: true },
-      where: { createdAt: { gte: from }, deletedAt: null, status: { in: [...PAID_STATES] } },
+      where: {
+        createdAt: { gte: from },
+        deletedAt: null,
+        paymentMethod: "WOMPI",
+        status: { in: [...PAID_STATES] },
+      },
+    }),
+    // COD: efectivo cobrado SOLO al entregar (deliveredAt en la ventana).
+    prisma.order.aggregate({
+      _sum: { total: true },
+      where: { deletedAt: null, paymentMethod: "COD", status: "DELIVERED", deliveredAt: { gte: from } },
+    }),
+    // COD confirmado en 24h pero aún NO entregado → efectivo por cobrar.
+    prisma.order.aggregate({
+      _sum: { total: true },
+      where: {
+        createdAt: { gte: from },
+        deletedAt: null,
+        paymentMethod: "COD",
+        status: { in: ["PAID", "FULFILLING", "SHIPPED"] },
+      },
     }),
     prisma.order.count({
       where: { createdAt: { gte: from }, deletedAt: null, status: { in: [...PAID_STATES] } },
@@ -92,7 +118,8 @@ export async function getDailySummary(now: Date = new Date()): Promise<DailySumm
   return {
     windowHours: 24,
     ordersLast24h,
-    revenueLast24hCop: revenueAgg._sum.total ?? 0,
+    revenueLast24hCop: (wompiRevenueAgg._sum.total ?? 0) + (codDeliveredAgg._sum.total ?? 0),
+    codToCollectCop: codToCollectAgg._sum.total ?? 0,
     paidOrdersLast24h,
     pendingPayment,
     toShip,
@@ -164,6 +191,12 @@ export function buildDailySummaryEmail(
   </tr></table>
 
   ${
+    s.codToCollectCop > 0
+      ? `<p style="margin:4px 0 0;font-size:13px;color:#3D2E5C;">💵 <strong>${fmtCop(s.codToCollectCop)}</strong> en contra entrega <em>por cobrar</em> (efectivo, se recauda al entregar — no incluido en Ingresos).</p>`
+      : ""
+  }
+
+  ${
     attention.length > 0
       ? `<div style="margin-top:16px;"><div style="font-weight:700;color:#3D2E5C;margin-bottom:6px;">Necesitan tu atención</div>
     ${attention.map((a) => `<div style="font-size:14px;color:#3D2E5C;padding:4px 0;">${a}</div>`).join("")}</div>`
@@ -177,7 +210,8 @@ export function buildDailySummaryEmail(
     `Resumen Lucams — ${dateLabel} (últimas 24h)`,
     ``,
     `Pedidos nuevos: ${s.ordersLast24h}`,
-    `Ingresos: ${fmtCop(s.revenueLast24hCop)} (${s.paidOrdersLast24h} pagadas)`,
+    `Ingresos (cobrado): ${fmtCop(s.revenueLast24hCop)} (${s.paidOrdersLast24h} confirmadas)`,
+    s.codToCollectCop > 0 ? `COD por cobrar (al entregar): ${fmtCop(s.codToCollectCop)}` : null,
     `En pago (sin completar): ${s.pendingPayment}`,
     `Por despachar: ${s.toShip}`,
     `Carritos abandonados: ${s.abandonedCarts24h} (${recoveryPct}% recuperados)`,

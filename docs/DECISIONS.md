@@ -1887,3 +1887,42 @@ de esos endpoints antes de tocar (admin-only, no afecta el flujo de venta).
 **Verificación.** `tsc` limpio · `next build` OK · unit 8/8 (incl. webhook numérico) · live smoke 2/2 (código
 real contra API) · saga 30/30. Ground-truth capturado: id-space carrier consistente cotización↔lista;
 `valoracion` confirma valor en pesos con seguro 1%. [[ADR-053]] [[ADR-039]].
+
+## ADR-055 — Pago contra entrega (COD) + revisión adversarial (2026-07-11)
+
+**Contexto.** COD era requisito de lanzamiento (mandato #5 / datos clave) pero estaba stubbeado
+("F2.1 Wompi only"). Se implementó de punta a punta y pasó una **revisión adversarial multi-agente**
+(dinero real): 12 hallazgos crudos → **11 confirmados**, todos los P0/P1 y P2 arreglados.
+
+**Diseño.** COD reusa el saga battle-tested (`processPaidOrder`): la orden va PENDING_PAYMENT → PAID →
+FULFILLING con guía Aveonline `contraentrega=1` + `valorRecaudo=total` (el courier cobra el efectivo al
+entregar y remite). El cliente aterriza en `/pedido/<token>?nueva=1`. Se reusa toda la infra probada
+(idempotencia, carrera de stock, cupones, reconciliación).
+
+**Fixes de la revisión (commit siguiente a 766414e):**
+- **[P0]** COD sobre carrito con orden Wompi PENDING_PAYMENT abandonada reusaba esa orden (idempotencia
+  por cartId) con `paymentMethod='WOMPI'` → guía PREPAGADA sin recaudo → despacho gratis. Fix: forzar
+  `paymentMethod='COD'` (updateMany gateado a PENDING_PAYMENT) antes de `processPaidOrder`.
+- **[P1]** `finalizeCheckout` COD ignoraba `saga.status` → mostraba "¡Pedido confirmado!" aunque la
+  confirmación fallara. Fix: si la orden no llegó a PAID (carrera de stock) → CANCELAR + `STOCK_UNAVAILABLE`
+  → carrito; si quedó PAID sin guía → `needsReconciliation` + mensaje suave.
+- **[P1]** Una entrega RETURNED/EXCEPTION dejaba la orden atascada e invisible (ingresos/stock inflados).
+  Fix: `processTrackingUpdate` marca `needsReconciliation` en RETURNED/EXCEPTION → aparece en el resumen
+  diario + /admin/pedidos.
+- **[P2]** El resumen diario contaba COD como ingreso antes de cobrar. Fix: `revenueLast24hCop` = Wompi
+  capturado + COD ENTREGADO; nuevo `codToCollectCop` = COD confirmado por cobrar (mostrado aparte).
+- **[P2]** Rate-limit COD: bucket separado y más estricto (6/10min prod) — cada COD crea orden + guía real.
+- **[P2]** Botón admin "Cancelar" se rompía en PAID (transición ilegal). Fix: `PAID → CANCELLED` legal;
+  UI gateada por método (COD PAID → Cancelar; Wompi PAID → Reembolsar).
+
+**Diferidos (documentados, no bloqueantes):**
+- **[P2] Cotización vs guía contraentrega:** el envío se cotiza con `contraentrega=false` pero la guía
+  se genera con `=true`. Por decisión de Lucy ("sin recargo al cliente"), el cliente paga el mismo flete
+  y la tienda absorbe cualquier comisión COD de Aveonline. Verificar el recargo real de Aveonline y, si es
+  material, mover la elección de método antes del step de envío o re-cotizar. Aceptado como tradeoff.
+- **[P2] Confirmación COD síncrona:** `finalizeCheckout` corre el saga completo (~20s de guía) en el
+  request (maxDuration=60). Bajo Aveonline muy lento podría acercarse al techo. Mismo patrón que el
+  fallback de /checkout/gracias (Wompi). Mejora futura: mover a job durable `pgmq` (mandato #11).
+
+**Verificación.** `tsc` + `next build` OK · unit daily-summary 7/7 · order-transitions 8/8 · checkout
+integración 36/36 (incl. COD contraentrega + valorRecaudo) · saga 30/30 · email 84/84. [[ADR-053]] [[ADR-039]].

@@ -13,21 +13,32 @@ export function OrderActions({
   orderId,
   orderStatus,
   hasTracking,
+  paymentMethod,
 }: {
   orderId: string;
   orderStatus: string;
   hasTracking: boolean;
+  paymentMethod?: string;
 }) {
   const [retryState, retryAction, retryPending] = useActionState(retryShipmentAction, null);
   const [transState, transAction, transPending] = useActionState(transitionOrderAction, null);
   const [refundState, refundAction, refundPending] = useActionState(refundOrderAction, null);
+  const isCod = paymentMethod === "COD";
 
   const showRetry = orderStatus === "PAID" || (orderStatus === "FULFILLING" && !hasTracking);
   const showMarkShipped = orderStatus === "FULFILLING";
   const showMarkDelivered = orderStatus === "SHIPPED";
-  const canCancel = ["PENDING_PAYMENT", "PAID", "FULFILLING", "SHIPPED"].includes(orderStatus);
-  // F2 — solo PAID o DELIVERED pueden ir a REFUNDED (máquina de estados).
-  const canRefund = ["PAID", "DELIVERED"].includes(orderStatus);
+  // Cancelar (revierte stock, SIN reembolso). Para Wompi excluimos PAID: ahí el dinero
+  // SÍ se capturó, así que la vía correcta es "Reembolsar" (REFUNDED). Para COD, PAID es
+  // cancelable (efectivo nunca cobrado). (revisión adversarial COD)
+  const cancelStates = isCod
+    ? ["PENDING_PAYMENT", "PAID", "FULFILLING", "SHIPPED"]
+    : ["PENDING_PAYMENT", "FULFILLING", "SHIPPED"];
+  const canCancel = cancelStates.includes(orderStatus);
+  // Reembolso = devolver dinero. Solo tiene sentido con dinero capturado: Wompi PAID/
+  // DELIVERED, o COD DELIVERED (efectivo ya cobrado al entregar). COD no-entregado NO
+  // se "reembolsa" (nunca se cobró) → se cancela.
+  const canRefund = isCod ? orderStatus === "DELIVERED" : ["PAID", "DELIVERED"].includes(orderStatus);
 
   if (!showRetry && !showMarkShipped && !showMarkDelivered && !canCancel && !canRefund) {
     return (

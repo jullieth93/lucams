@@ -15,8 +15,13 @@ describe("ORDER_TRANSITIONS — legalidad asumida por processFailedPaymentOrder 
     expect(canTransition("PAID", "REFUNDED")).toBe(true);
   });
 
-  it("PAID → CANCELLED NO es legal (el bug: forzar CANCELLED se tragaba el error y no revertía stock)", () => {
-    expect(canTransition("PAID", "CANCELLED")).toBe(false);
+  it("PAID → CANCELLED es legal para COD (efectivo NUNCA cobrado → cancelar + revertir stock)", () => {
+    // Antes ilegal para forzar que processFailedPaymentOrder eligiera REFUNDED en Wompi.
+    // Con COD (dinero al entregar) una orden PAID sin cobrar debe poder CANCELARSE. El
+    // invariante real (Wompi VOIDED sobre PAID → REFUNDED, no CANCELLED) lo garantiza la
+    // LÓGICA de processFailedPaymentOrder + el UI (gateado por paymentMethod), no la
+    // tabla — cubierto en saga.integration ("VOIDED sobre PAID → REFUNDED").
+    expect(canTransition("PAID", "CANCELLED")).toBe(true);
   });
 
   it("DELIVERED → REFUNDED es legal", () => {

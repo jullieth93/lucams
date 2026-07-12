@@ -323,6 +323,7 @@ export default async function AdminPedidoDetallePage({
               orderId={order.id}
               orderStatus={order.status}
               hasTracking={!!order.trackingNumber}
+              paymentMethod={order.paymentMethod}
             />
           </div>
         </div>

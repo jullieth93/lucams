@@ -89,7 +89,10 @@ export const TERMINAL_ORDER_STATUSES = ["CANCELLED", "REFUNDED", "DELIVERED"] as
 export const ORDER_TRANSITIONS: Record<string, readonly string[]> = {
   DRAFT: ["PENDING_PAYMENT", "CANCELLED"],
   PENDING_PAYMENT: ["PAID", "CANCELLED"],
-  PAID: ["FULFILLING", "REFUNDED"],
+  // PAID → CANCELLED es legal para COD (efectivo NO cobrado → solo revertir stock, sin
+  // reembolso). Para Wompi (dinero capturado) el admin usa REFUNDED; el UI ofrece el
+  // botón correcto según paymentMethod (revisión adversarial COD).
+  PAID: ["FULFILLING", "REFUNDED", "CANCELLED"],
   FULFILLING: ["SHIPPED", "CANCELLED"],
   SHIPPED: ["DELIVERED", "CANCELLED"],
   DELIVERED: ["REFUNDED"],
