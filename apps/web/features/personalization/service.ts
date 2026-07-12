@@ -30,6 +30,7 @@ import { resolvePersonalizationSurface } from "./surface";
 import { normalizeName } from "./name-input";
 import { ALPHABET } from "./letter-tiles";
 import { mergeVariantOverProduct, parseVariantAttributes } from "@/features/products/variant-schemas";
+import { renderProductionSlots, RenderNeedsKonvaError, type LoadAssetBytes } from "./production-render";
 import type { CanvasData, CanvasDataV1, CanvasDataV2 } from "./schemas";
 import type { z } from "zod";
 import type { SlotStateSchema } from "./schemas";
@@ -37,6 +38,62 @@ type SlotState = z.infer<typeof SlotStateSchema>;
 
 const BUCKET_PREVIEWS = "design-previews";
 const BUCKET_PRODUCTION = "production-assets";
+const BUCKET_CUSTOMER_UPLOADS = "customer-uploads";
+
+/**
+ * ADR-057 Fase A1a — Intenta re-renderizar los PNG de producción EN EL SERVIDOR desde el
+ * canvasData (fuente de verdad: encuadre del usuario), en vez de confiar en el celular del
+ * cliente. Devuelve los buffers server-side, o `null` si la plantilla no es solo-foto
+ * (NEEDS_KONVA → Fase A1b) o si algo falla → el caller conserva los PNG del cliente (fallback).
+ */
+async function tryServerRenderProduction(
+  designId: string,
+  canvasData: CanvasDataV2,
+): Promise<Buffer[] | null> {
+  try {
+    const design = await prisma.design.findUnique({
+      where: { id: designId },
+      select: { product: { select: { personalizationSchema: true } } },
+    });
+    const shape = (design?.product?.personalizationSchema as { shape?: string } | null)?.shape;
+
+    const assets = await prisma.designAsset.findMany({
+      where: { designId },
+      select: { id: true, storageUrl: true },
+    });
+    const assetPaths = new Map(assets.map((a) => [a.id, a.storageUrl]));
+
+    const loadAsset: LoadAssetBytes = async (assetId) => {
+      const path = assetPaths.get(assetId);
+      if (!path) return null;
+      const { data, error } = await supabaseService.storage
+        .from(BUCKET_CUSTOMER_UPLOADS)
+        .download(path);
+      if (error || !data) return null;
+      return Buffer.from(await data.arrayBuffer());
+    };
+
+    return await renderProductionSlots({
+      unitTemplate: canvasData.unitTemplate as never,
+      slots: canvasData.slots as never,
+      shape,
+      loadAsset,
+    });
+  } catch (err) {
+    if (err instanceof RenderNeedsKonvaError) {
+      logger.info(
+        { event: "design.finalize.server_render_skip", designId, reason: "needs_konva" },
+        "Server render skipped (template con texto/marco) — usando PNG del cliente",
+      );
+    } else {
+      logger.warn(
+        { event: "design.finalize.server_render_error", designId, err: err instanceof Error ? err.message : String(err) },
+        "Server render falló — usando PNG del cliente como fallback",
+      );
+    }
+    return null;
+  }
+}
 
 // ──────────────────────────────────────────────────────────────────
 //  Ownership check
@@ -499,11 +556,26 @@ export async function finalizeDesign(opts: {
     data: { publicUrl: previewPublicUrl },
   } = supabase.storage.from(BUCKET_PREVIEWS).getPublicUrl(previewPath);
 
+  // ADR-057 A1a — Render de producción EN EL SERVIDOR (independiente del celular del cliente).
+  // Solo-foto → reemplaza los PNG del cliente por los server-side (calidad garantizada, sin
+  // adornos de realismo). Texto/marco (NEEDS_KONVA) o fallo → conserva los del cliente (fallback).
+  let productionBuffers = opts.productionBuffers;
+  if (canvasData.version === 2) {
+    const serverBuffers = await tryServerRenderProduction(design.id, canvasData as CanvasDataV2);
+    if (serverBuffers && serverBuffers.length === opts.productionBuffers.length) {
+      productionBuffers = serverBuffers;
+      logger.info(
+        { event: "design.finalize.server_render_ok", designId: design.id, slots: serverBuffers.length },
+        "Production renderizada en el servidor",
+      );
+    }
+  }
+
   // Subir N production PNGs (uno por imán físico)
   const productionPaths: string[] = [];
   let totalProductionBytes = 0;
-  for (let i = 0; i < opts.productionBuffers.length; i++) {
-    const buf = opts.productionBuffers[i]!;
+  for (let i = 0; i < productionBuffers.length; i++) {
+    const buf = productionBuffers[i]!;
     totalProductionBytes += buf.length;
     const path = `${design.id}/slot-${String(i + 1).padStart(2, "0")}.png`;
     const { error: prodErr } = await supabase.storage
