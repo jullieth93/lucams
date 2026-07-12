@@ -13,6 +13,20 @@
 
 ## Resumen actual
 
+**Compartir diseño COMPLETO + revisión adversarial (2026-07-12, ADR-056).** Se cableó la infra de
+`Design.shareToken` (existía sin usar) en un feature de punta a punta: **"Mis diseños"**
+(`/mi-cuenta/disenos`, pestaña nueva en la cuenta) con grilla de los diseños finalizados del cliente +
+preview + acciones Compartir (copia link) / WhatsApp / Ver / Archivar; y una **vista pública `/d/[token]`**
+(preview + producto + CTA "Crear el mío", `noindex`, OG image para miniatura al compartir en WhatsApp).
+Aislado por `customerId`, token de 16 bytes hex (sin IDOR). **Revisión adversarial** (4 dims × 3 escépticos):
+6/7 hallazgos confirmados y corregidos — toast de copiado honesto (antes mentía "copiado"), archivar REVOCA
+el link (shareToken=null), popup WhatsApp en el gesto (iOS Safari), `ensureDesignShareToken` atómico
+(concurrencia), `getSharedDesign` dedup con `cache()`. **Decisión diferida (ADR-056):** archivar NO borra
+el preview público porque las 3 vistas de pedido (cliente/confirmación/**producción admin**) leen
+`design.previewUrl` en vivo → retirar la imagen exige desacoplar pedido↔imagen (snapshot en OrderItem o
+bucket privado con signed URLs); **pendiente de decisión de Lucy**. Verificado: tsc + build OK · integración
+compartir 13/13 · suite completa 1666 passed.
+
 **Pago contra entrega (COD) COMPLETO + endurecido (2026-07-11, ADR-055).** El requisito de lanzamiento
 que faltaba (mandato #5): selector Wompi/COD en el checkout, guía Aveonline con contraentrega +
 valorRecaudo, banner y email de confirmación, reusando el saga battle-tested. Pasó revisión adversarial
@@ -1206,25 +1220,23 @@ sidebar fijo, Cancelar en cupones.
 
 ## Próximo paso
 
-**Fase 2 cierre + arranque Fase 3 — Catálogo completo (con imágenes + variantes) y checkout.**
+**Requiere a Lucy (decisiones / verificación):**
 
-Inmediato (cierre Fase 2):
+1. **Prueba visual del feature de compartir** (ver Bitácora 2026-07-12): `/mi-cuenta/disenos` con un
+   diseño finalizado → Compartir (copia link) / WhatsApp / Ver / Archivar; abrir `/d/<token>` en incógnito
+   (público) y comprobar la miniatura al pegar el link en WhatsApp. Requiere un diseño `READY`/`USED_IN_ORDER`.
+2. **Decisión ADR-056 — take-down real de la imagen.** Hoy archivar revoca el link pero la imagen pública
+   del preview sigue accesible en su URL directa. Retirarla exige desacoplar pedido↔imagen (snapshot del
+   preview en `OrderItem` al confirmar, luego borrar/rotar el preview al archivar; o bucket privado con
+   signed URLs — afecta las 3 vistas de pedido). ¿Se aborda ahora o se deja para el endurecimiento de
+   privacidad pre-lanzamiento? (Relevante Ley 1581 — fotos personales.)
+3. **🔴 PENDIENTE SERIO — plantillas del Estudio** (sección arriba, Lucy 2026-07-04): curaduría de
+   plantillas reales + visión del flujo móvil. Necesita input de Lucy antes de producir.
 
-1. **Prueba visual completa por Lucy** del flow guest end-to-end:
-   - Anon: producto → add → counter sube → /carrito → cambiar qty → remover.
-   - Login con cart anon poblado → merge funcionando.
-2. **Imágenes de productos vía Supabase Storage:**
-   - Bucket público `product-images` con RLS de write para `AdminUser`.
-   - Upload en `app/admin/productos/[id]/page.tsx` (file input multi).
-   - Render real en cards/detail/cart (reemplazar gradient placeholder).
-3. **Admin de variantes reales** (multi-variant products) — el "Default" pattern es bridge, no destino final.
-4. **Estudio de personalización en vivo** (react-konva) — diferenciador #1, central a la propuesta de valor.
+**Autónomo (candidatos, calidad-primero):**
 
-Después (Fase 3 — checkout):
-
-1. PaymentProvider adapter (Wompi primero, MercadoPago a futuro per CLAUDE.md mandato #4).
-2. Saga de checkout: reserva stock → crear Order → tokenizar pago Wompi → confirmar → crear envío Venndelo → DIAN factura electrónica (Fase 7).
-3. Address forms (Customer.addresses), shipping quote, contraentrega flag, coupon redemption.
+1. Otros pulidos de Fase 3 storefront/estudio que no dependan de la curaduría de plantillas.
+2. Barrido de coherencia de datos revenue/COD end-to-end si aparece señal.
 
 **Cuentas creadas just-in-time durante fases posteriores:**
 
@@ -1260,6 +1272,27 @@ Después (Fase 3 — checkout):
 ---
 
 ## Bitácora (append-only, más reciente arriba)
+
+### 2026-07-12 — Compartir diseño (Fase 3) + revisión adversarial (ADR-056)
+
+- **Feature completo** cableando `Design.shareToken` (existía sin usar): `/mi-cuenta/disenos` ("Mis
+  diseños", pestaña nueva) con grilla + preview + Compartir/WhatsApp/Ver/Archivar, y vista pública
+  `/d/[token]` (preview + producto + CTA "Crear el mío", noindex, OG image). Aislado por `customerId`,
+  token 16 bytes hex (sin IDOR). Nuevos: `app/mi-cuenta/disenos/{page,actions,design-grid}.tsx`,
+  `app/d/[token]/page.tsx`, 4 funciones en `features/personalization/service.ts`.
+- **Revisión adversarial** (workflow, 4 dims × 3 escépticos, 25 agentes): 7 crudos → **6 confirmados**,
+  todos arreglados. `handleCopy` mostraba "Link copiado" aunque `writeText` rechazara → ahora try/catch
+  con fallback que muestra el link. Archivar solo ocultaba la tarjeta → ahora anula `shareToken` (revoca
+  el link). `window.open` de WhatsApp tras el await → bloqueado en iOS Safari → abierto sincrónicamente
+  en el gesto. `ensureDesignShareToken` read-then-write no atómico → `updateMany where shareToken:null` +
+  re-lectura. `getSharedDesign` corría 2×/request → `cache()` de React.
+- **Diferido (ADR-056):** archivar NO borra el preview público — las 3 vistas de pedido (cliente,
+  confirmación, **producción admin**) leen `design.previewUrl` en vivo; borrarlo rompería esas imágenes
+  para `USED_IN_ORDER`. Take-down real = desacoplar pedido↔imagen (snapshot en OrderItem o bucket privado).
+  Pendiente de decisión de Lucy.
+- **Verificación:** tsc + build OK (rutas `/d/[token]` y `/mi-cuenta/disenos` registradas) · integración
+  compartir **13/13** (IDOR, idempotencia, revocación real, tokens malformados) · **suite completa 1666
+  passed** (confirmación definitiva pedida por Lucy) · commit `6b3b6f1` pushed a origin/develop.
 
 ### 2026-06-27 — Certificación Bloque A (checkout/pagos) + Bloque B (compliance)
 
