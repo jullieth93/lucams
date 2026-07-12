@@ -1,4 +1,4 @@
-.PHONY: help install build typecheck lint format migrate seed-products seed-templates seed-ocasiones seed-catalog-v2 seed-cms seed-abecedario seed-letter-sets consolidate-product-families fix-voseo-cms rename-family-base-slugs backfill-variant-prices cleanup-slugs audit-slugs test test-unit test-e2e test-rls test-load test-coverage clean
+.PHONY: help install build typecheck lint format migrate seed-products seed-templates seed-ocasiones seed-catalog-v2 seed-cms seed-abecedario seed-letter-sets cleanup-test-junk consolidate-product-families fix-voseo-cms rename-family-base-slugs backfill-variant-prices cleanup-slugs audit-slugs test test-unit test-e2e test-rls test-load test-coverage clean
 
 # Makefile en repo — targets primitivos para CI y devs locales.
 # El Makefile completo de runtime (con state/log/pid management,
@@ -69,6 +69,12 @@ seed-cms:
 # admin; archiva los productos viejos. Idempotente.
 seed-abecedario:
 	pnpm --filter @lucams/db exec node scripts/restructure-abecedario.mjs
+
+# Limpieza de fixtures de tests filtrados a la BD (categorías "Cat …" etc.). Dry-run por
+# defecto; APPLY=1 ejecuta. Seguro y scoped: nunca toca categorías reales; soft-delete si
+# hay órdenes de por medio.
+cleanup-test-junk:
+	pnpm --filter @lucams/db exec node scripts/cleanup-test-junk.mjs $(if $(APPLY),--apply,)
 
 # ADR-057 — Sets de fichas por defecto (es/en), vacíos y listos para subir en el admin.
 seed-letter-sets:
