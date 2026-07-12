@@ -1965,3 +1965,39 @@ de este feature. Relevante para Ley 1581 (fotos personales). [[ADR-055]].
 **Verificación.** `tsc` + `next build` OK (rutas `/d/[token]` y `/mi-cuenta/disenos` registradas) ·
 integración compartir 13/13 (IDOR, idempotencia, revocación real, tokens malformados) · suite completa
 1666 passed.
+
+## ADR-057 — Estrategia del Estudio: aumentar Konva (no refactorizar) + editor por tipo (2026-07-12)
+
+**Contexto.** Lucy pidió "pensar muy bien" el Estudio (core del negocio) antes de masificar: no solo
+visualmente perfecto y fácil de manejar, sino **funcional** (coherente con cada producto — su ejemplo: el
+"Abecedario Magnético" muestra una cajita de foto cuando debería ser "escribe un nombre → recibe las
+fichas"), y evaluar **desde cero la tecnología**, dispuesta a refactorizar el core si la evidencia lo pedía.
+
+**Investigación.** 3 workflows en paralelo con verificación adversarial (139 agentes), cruzados contra el
+código real: (1) estándares de calidad de impresión + UX (105 agentes, fuentes citadas), (2) taxonomía de
+personalización por tipo de producto, (3) evaluación de tecnología mantener/aumentar/refactorizar. Detalle
+completo en [ESTUDIO_STRATEGY.md](ESTUDIO_STRATEGY.md). Versión visual para Lucy: artifact en claude.ai.
+
+**Decisión.**
+1. **AUMENTAR, no refactorizar.** El motor Konva/react-konva (MIT/$0, self-host) es la fundación correcta —
+   verificado que Polotno (editor comercial tipo-Canva US$899/mo) se construye sobre el mismo Konva, mismo
+   autor. Descartadas todas las alternativas de pago (mandato #2) y las open-source de otro motor (migración
+   sin beneficio de motor). Konva se mantiene y se completa.
+2. **Gap #1 (arquitectura):** el archivo de impresión hoy se genera en el celular del cliente
+   (`finalizeDesign` solo valida cantidad + sube los PNG del navegador). Riesgo real de degradación/fallo
+   silencioso → devolución. Fix de máximo impacto/menor costo ($0, no toca el motor): **render de producción
+   en el servidor**. Es la Fase 0 junto con el enrutador.
+3. **Gap #2 (funcional):** el Estudio no ramifica por `PersonalizationKind` → aplana ~24 de ~30 productos
+   personalizables a "foto+texto"; 3 tipos rotos (TEXT_ONLY, EVENT_FAVOR, BUSINESS_LOGO). Fix: **enrutador
+   por tipo + forma de config + variante** hacia 5 superficies (nombre, frase, evento, logo, foto).
+4. **Calidad visual:** ya cumplimos/superamos el estándar (300 DPI, validación pre-pago, sangrado). CMYK/PDF
+   queda como post-paso server $0 **condicional** a que una imprenta local lo exija (el canal POD global pide
+   sRGB, no CMYK). 3D (model-viewer) = bolt-on opcional de baja prioridad.
+
+**Consecuencia.** Plan por fases $0 y sin lock-in (0 fundación → 1 sub-editores+plantillas → 2 CMYK
+condicional → 3 3D opcional). La Fase 0 incluye una migración de datos (el discriminador de variante hoy se
+descarta en `variant-schemas.ts`), un camino de carrito por variante, y extraer el núcleo del editor para
+guardar/finalizar cosas que no son foto. Decisiones de producto pendientes de Lucy (acentos en nombres, año
+de calendario, prioridad por ventas reales de IG, limpieza de catálogo) y acción humana: 53 ilustraciones de
+letras. **SUPERSEDES** la nota de `DECISIONS.md` que trataba el abecedario como NONE/404 (desactualizada).
+[[ADR-056]] [[ADR-013]] [[ADR-035]] [[ADR-037]].

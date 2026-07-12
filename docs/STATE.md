@@ -1273,6 +1273,28 @@ sidebar fijo, Cancelar en cupones.
 
 ## Bitácora (append-only, más reciente arriba)
 
+### 2026-07-12 — Estrategia del Estudio: aumentar Konva, no refactorizar (ADR-057)
+
+- **Origen:** Lucy pidió "pensar muy bien" el Estudio (core) antes de masificar — funcional (coherente con
+  cada producto, no talla única) + evaluar la tecnología desde cero, dispuesta a refactorizar si aplicaba.
+  Detonante: el "Abecedario Magnético" muestra una cajita de foto cuando debería ser "escribe un nombre".
+- **3 investigaciones en paralelo** (139 agentes, verificación adversarial, cruzadas contra el código):
+  calidad de impresión+UX (105 agentes, fuentes citadas), taxonomía de personalización por tipo, y
+  evaluación de tecnología. Entregables: [ESTUDIO_STRATEGY.md](ESTUDIO_STRATEGY.md) + [ADR-057] + artifact
+  visual para Lucy (claude.ai).
+- **Veredicto: AUMENTAR, no refactorizar.** Konva es la fundación correcta (mismo motor que Polotno
+  US$899/mo). Gaps reales: (1) el archivo de impresión se genera en el **celular del cliente** → mover al
+  servidor ($0, Fase 0); (2) el editor **no ramifica por tipo** → aplana ~24/30 productos a "foto+texto",
+  3 tipos rotos → **enrutador** por tipo+config+variante hacia 5 superficies. Calidad visual ya cumple el
+  estándar (300 DPI, validación pre-pago, sangrado); CMYK condicional a imprenta local; 3D opcional.
+- **Plan por fases $0** (0 fundación → 1 sub-editores+plantillas → 2 CMYK → 3 3D). Fase 0 = migración de
+  datos (el discriminador de variante hoy se descarta) + carrito por variante + extraer núcleo del editor.
+- **También en esta racha (antes):** feature de compartir diseño (ADR-056) + hardening de MIME por magic
+  bytes en la subida de fotos del cliente (commit `b9484d1`).
+- **Pendiente de Lucy:** decisiones de producto (acentos en nombres — la más urgente, año de calendario,
+  prioridad por ventas reales de IG, limpieza de catálogo) + acción humana: 53 ilustraciones de letras.
+  **Nada de código del Estudio se ha tocado aún** — esperando sus decisiones para arrancar la Fase 0.
+
 ### 2026-07-12 — Compartir diseño (Fase 3) + revisión adversarial (ADR-056)
 
 - **Feature completo** cableando `Design.shareToken` (existía sin usar): `/mi-cuenta/disenos` ("Mis
