@@ -2,7 +2,7 @@
 
 import { useActionState, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { Check, Mail, Phone, Globe, Hash, Edit3, Loader2 } from "lucide-react";
+import { Check, Mail, Phone, Globe, Hash, Edit3, Loader2, ToggleRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -26,7 +26,7 @@ const TYPE_ICON: Record<Setting["valueType"], typeof Mail> = {
   NUMBER: Hash,
   PHONE: Phone,
   COLOR: Hash,
-  BOOLEAN: Hash,
+  BOOLEAN: ToggleRight,
 };
 
 const TYPE_INPUT: Record<Setting["valueType"], string> = {
@@ -59,18 +59,56 @@ export function SettingRow({ setting }: { setting: Setting }) {
     }
   }, [state, setting.label]);
 
+  const labelBlock = (
+    <div className="min-w-0 flex-1">
+      <div className="flex items-center gap-1.5">
+        <Icon className="text-brand-muted h-3.5 w-3.5" />
+        <span className="text-brand-purple-dark text-sm font-semibold">{setting.label}</span>
+      </div>
+      <p className="text-brand-muted font-mono text-[10px]">{setting.key}</p>
+      {setting.description && <p className="text-brand-muted mt-1 text-xs">{setting.description}</p>}
+    </div>
+  );
+
+  // BOOLEAN: toggle directo (activar/desactivar con un clic) en vez de escribir texto.
+  if (setting.valueType === "BOOLEAN") {
+    const isOn = setting.value === "true";
+    return (
+      <li className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
+        {labelBlock}
+        <form action={formAction} className="flex items-center gap-3">
+          <input type="hidden" name="id" value={setting.id} />
+          <input type="hidden" name="value" value={isOn ? "false" : "true"} />
+          <span
+            className={`text-xs font-semibold ${isOn ? "text-emerald-700" : "text-brand-muted"}`}
+          >
+            {isOn ? "Activo" : "Inactivo"}
+          </span>
+          <button
+            type="submit"
+            role="switch"
+            aria-checked={isOn}
+            aria-label={`${isOn ? "Desactivar" : "Activar"} ${setting.label}`}
+            disabled={pending}
+            className={`focus-visible:ring-brand-purple/40 relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full transition-colors focus:outline-none focus-visible:ring-2 disabled:opacity-50 ${
+              isOn ? "bg-emerald-500" : "bg-slate-300"
+            }`}
+          >
+            <span
+              className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+                isOn ? "translate-x-6" : "translate-x-1"
+              }`}
+            />
+          </button>
+          {pending && <Loader2 className="text-brand-muted h-3.5 w-3.5 animate-spin" />}
+        </form>
+      </li>
+    );
+  }
+
   return (
     <li className="flex flex-col gap-3 p-4 sm:flex-row sm:items-start sm:justify-between">
-      <div className="min-w-0 flex-1">
-        <div className="flex items-center gap-1.5">
-          <Icon className="text-brand-muted h-3.5 w-3.5" />
-          <span className="text-brand-purple-dark text-sm font-semibold">{setting.label}</span>
-        </div>
-        <p className="text-brand-muted font-mono text-[10px]">{setting.key}</p>
-        {setting.description && (
-          <p className="text-brand-muted mt-1 text-xs">{setting.description}</p>
-        )}
-      </div>
+      {labelBlock}
 
       {editing ? (
         <form action={formAction} className="flex w-full max-w-md items-center gap-2">

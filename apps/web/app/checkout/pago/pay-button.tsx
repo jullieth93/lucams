@@ -93,31 +93,45 @@ function MethodCard({
  * Renderiza el botón + <form action> correcto según lo elegido. Sin JS igual funciona
  * el default (Wompi) porque es el estado inicial.
  */
-export function PaymentMethodChooser({ backHref }: { backHref: string }) {
+export function PaymentMethodChooser({
+  backHref,
+  codEnabled = true,
+}: {
+  backHref: string;
+  codEnabled?: boolean;
+}) {
+  // Si el negocio desactivó COD, el único método es Wompi (no mostramos selector).
   const [method, setMethod] = useState<Method>("WOMPI");
+  const activeMethod: Method = codEnabled ? method : "WOMPI";
 
   return (
     <div>
-      <div role="radiogroup" aria-label="Método de pago" className="mb-4 grid gap-3 sm:grid-cols-2">
-        <MethodCard
-          selected={method === "WOMPI"}
-          onSelect={() => setMethod("WOMPI")}
-          icon={<CreditCard className="h-6 w-6" />}
-          title="Pagar con Wompi"
-          desc="Tarjeta · PSE · Nequi · Bancolombia"
-        />
-        <MethodCard
-          selected={method === "COD"}
-          onSelect={() => setMethod("COD")}
-          icon={<Wallet className="h-6 w-6" />}
-          title="Pago contra entrega"
-          desc="Pagas en efectivo al recibir"
-        />
-      </div>
+      {codEnabled && (
+        <div
+          role="radiogroup"
+          aria-label="Método de pago"
+          className="mb-4 grid gap-3 sm:grid-cols-2"
+        >
+          <MethodCard
+            selected={method === "WOMPI"}
+            onSelect={() => setMethod("WOMPI")}
+            icon={<CreditCard className="h-6 w-6" />}
+            title="Pagar con Wompi"
+            desc="Tarjeta · PSE · Nequi · Bancolombia"
+          />
+          <MethodCard
+            selected={method === "COD"}
+            onSelect={() => setMethod("COD")}
+            icon={<Wallet className="h-6 w-6" />}
+            title="Pago contra entrega"
+            desc="Pagas en efectivo al recibir"
+          />
+        </div>
+      )}
 
       <div className="text-brand-muted mb-4 flex items-start gap-2 text-xs">
         <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-emerald-600" />
-        {method === "WOMPI" ? (
+        {activeMethod === "WOMPI" ? (
           <span>
             Al pagar serás redirigido a Wompi (Bancolombia). Tu información bancaria nunca pasa por
             Lucams.
@@ -137,8 +151,8 @@ export function PaymentMethodChooser({ backHref }: { backHref: string }) {
         >
           ← Cambiar envío
         </Link>
-        <form action={method === "WOMPI" ? payWompiAction : payCodAction}>
-          <SubmitButton method={method} />
+        <form action={activeMethod === "WOMPI" ? payWompiAction : payCodAction}>
+          <SubmitButton method={activeMethod} />
         </form>
       </div>
     </div>

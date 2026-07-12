@@ -96,15 +96,15 @@ export default async function AdminObservabilityPage() {
             hint="pago/stock inconsistente"
           />
         </div>
-        {ops.codToCollectCop > 0 && (
-          <p className="text-brand-muted mt-2 text-xs">
-            💵{" "}
-            <strong className="text-brand-purple-dark">
-              ${Math.round(ops.codToCollectCop / 100).toLocaleString("es-CO")}
-            </strong>{" "}
-            en contra entrega <em>por cobrar</em> (efectivo al entregar — no incluido en Ingresos).
-          </p>
-        )}
+        <p className="text-brand-muted mt-2 text-xs">
+          💵 Contra entrega <em>por cobrar</em>:{" "}
+          <strong className="text-brand-purple-dark">
+            ${Math.round(ops.codToCollectCop / 100).toLocaleString("es-CO")}
+          </strong>{" "}
+          {ops.codToCollectCop > 0
+            ? "(efectivo al entregar — no incluido en Ingresos)."
+            : "(sin pedidos contra entrega pendientes en 24h)."}
+        </p>
 
         {/* ─── Salud técnica (para dev) ─── */}
         <h2 className="text-brand-purple-dark mt-6 mb-2 flex items-center gap-2 text-sm font-bold">

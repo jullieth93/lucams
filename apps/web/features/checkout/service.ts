@@ -326,6 +326,15 @@ export async function finalizeCheckout(input: {
   //    una carrera rara, la orden queda visible en reconciliación admin (no bloqueamos
   //    al cliente: su pedido existe). Redirigimos a la vista pública por token (sin IDOR).
   if (state.paymentMethod === "COD") {
+    // Guard server-side: si el negocio desactivó COD (setting COD_ENABLED), rechazamos
+    // aunque llegue un request forjado que saltó el UI (defensa en profundidad).
+    const codEnabled = (await getSettingValue("COD_ENABLED", "true")) === "true";
+    if (!codEnabled) {
+      throw new CheckoutError(
+        "PAYMENT_INIT_FAILED",
+        "El pago contra entrega no está disponible en este momento.",
+      );
+    }
     // [P0 revisión] createOrderFromCart puede REUSAR una orden PENDING_PAYMENT de un
     // intento Wompi abandonado (idempotencia por cartId) con paymentMethod='WOMPI'. Si
     // no la corregimos, processPaidOrder generaría una guía PREPAGADA (contraentrega=false,

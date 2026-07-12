@@ -15,6 +15,7 @@ import { OrderSummary } from "../_components/order-summary";
 import { PaymentMethodChooser } from "./pay-button";
 import { CouponField } from "./coupon-field";
 import { CheckoutError, getAppliedCoupon, loadCheckoutContext } from "@/features/checkout/service";
+import { getSettingValue } from "@/lib/cms";
 
 export const metadata: Metadata = {
   title: "Pago · Checkout",
@@ -52,6 +53,9 @@ export default async function CheckoutPagoPage({ searchParams }: { searchParams:
 
   // F1 — cupón aplicado (si hay): descuento vigente + posible aviso si dejó de valer.
   const applied = await getAppliedCoupon();
+
+  // Toggle de negocio: ¿se ofrece contra entrega? (editable en /admin/contenido/configuracion)
+  const codEnabled = (await getSettingValue("COD_ENABLED", "true")) === "true";
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -144,7 +148,7 @@ export default async function CheckoutPagoPage({ searchParams }: { searchParams:
               Método de pago
             </h2>
 
-            <PaymentMethodChooser backHref="/checkout/envio" />
+            <PaymentMethodChooser backHref="/checkout/envio" codEnabled={codEnabled} />
           </section>
         </div>
 

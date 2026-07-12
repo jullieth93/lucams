@@ -728,6 +728,17 @@ const settings = [
     category: "BUSINESS",
   },
 
+  // COMMERCE — opciones del checkout.
+  {
+    key: "COD_ENABLED",
+    value: "true",
+    valueType: "BOOLEAN",
+    label: "Pago contra entrega (efectivo al recibir)",
+    description:
+      "Si está activo, en el checkout aparece la opción de pagar en efectivo al recibir (el courier cobra y te remite). Desactívalo para vender solo con pago online (Wompi).",
+    category: "COMMERCE",
+  },
+
   // SOCIAL
   {
     key: "SOCIAL_INSTAGRAM_URL",
