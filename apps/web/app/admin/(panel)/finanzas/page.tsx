@@ -39,33 +39,57 @@ export default async function AdminFinanzasPage() {
 
   // Probar contadores reales: si hay alguna orden pagada en DB ya, los
   // mostramos; si no, mantenemos los placeholders educativos.
-  const [totalPaidOrders, totalRevenue, totalRefunded, ordersThisMonth, dianPending] =
-    await Promise.all([
-      prisma.order.count({
-        where: { deletedAt: null, status: { in: ["PAID", "FULFILLING", "SHIPPED", "DELIVERED"] } },
-      }),
-      prisma.order
-        .aggregate({
-          where: {
-            deletedAt: null,
-            status: { in: ["PAID", "FULFILLING", "SHIPPED", "DELIVERED"] },
-          },
-          _sum: { total: true },
-        })
-        .then((r) => r._sum?.total ?? 0),
-      prisma.order.count({ where: { deletedAt: null, status: "REFUNDED" } }),
-      prisma.order.count({
+  const [
+    totalPaidOrders,
+    wompiRevenue,
+    codDeliveredRevenue,
+    codToCollect,
+    totalRefunded,
+    ordersThisMonth,
+    dianPending,
+  ] = await Promise.all([
+    prisma.order.count({
+      where: { deletedAt: null, status: { in: ["PAID", "FULFILLING", "SHIPPED", "DELIVERED"] } },
+    }),
+    // Ingresos = efectivo REALMENTE cobrado: Wompi capturado online + COD ENTREGADO
+    // (el efectivo del contraentrega solo entra al entregar). Revisión adversarial COD.
+    prisma.order
+      .aggregate({
         where: {
           deletedAt: null,
+          paymentMethod: "WOMPI",
           status: { in: ["PAID", "FULFILLING", "SHIPPED", "DELIVERED"] },
-          createdAt: { gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1) },
         },
-      }),
-      prisma.order.count({
-        where: { deletedAt: null, dianStatus: "PENDING" },
-      }),
-    ]);
+        _sum: { total: true },
+      })
+      .then((r) => r._sum?.total ?? 0),
+    prisma.order
+      .aggregate({
+        where: { deletedAt: null, paymentMethod: "COD", status: "DELIVERED" },
+        _sum: { total: true },
+      })
+      .then((r) => r._sum?.total ?? 0),
+    // COD confirmado pero NO entregado → efectivo por cobrar (no es ingreso todavía).
+    prisma.order
+      .aggregate({
+        where: { deletedAt: null, paymentMethod: "COD", status: { in: ["PAID", "FULFILLING", "SHIPPED"] } },
+        _sum: { total: true },
+      })
+      .then((r) => r._sum?.total ?? 0),
+    prisma.order.count({ where: { deletedAt: null, status: "REFUNDED" } }),
+    prisma.order.count({
+      where: {
+        deletedAt: null,
+        status: { in: ["PAID", "FULFILLING", "SHIPPED", "DELIVERED"] },
+        createdAt: { gte: new Date(new Date().getFullYear(), new Date().getMonth(), 1) },
+      },
+    }),
+    prisma.order.count({
+      where: { deletedAt: null, dianStatus: "PENDING" },
+    }),
+  ]);
 
+  const totalRevenue = wompiRevenue + codDeliveredRevenue;
   const hasRealData = totalPaidOrders > 0;
 
   return (
@@ -96,7 +120,11 @@ export default async function AdminFinanzasPage() {
             icon={<TrendingUp className="h-5 w-5" />}
             label="Ingresos totales"
             value={hasRealData ? formatCOP(totalRevenue) : "—"}
-            hint={hasRealData ? "Suma de pedidos pagados" : "Disponible cuando haya ventas"}
+            hint={
+              hasRealData
+                ? "Efectivo cobrado: Wompi + contra entrega ya entregado"
+                : "Disponible cuando haya ventas"
+            }
             highlight={hasRealData}
           />
           <Kpi
@@ -120,6 +148,14 @@ export default async function AdminFinanzasPage() {
             hint="Facturas electrónicas por emitir"
           />
         </div>
+
+        {codToCollect > 0 && (
+          <AdminNotice tone="info">
+            💵 <strong>{formatCOP(codToCollect)}</strong> en pedidos contra entrega{" "}
+            <strong>por cobrar</strong> — el efectivo entra cuando el mensajero los entregue.{" "}
+            <em>No está incluido en Ingresos totales</em> (se cuenta al entregar).
+          </AdminNotice>
+        )}
 
         {totalRefunded > 0 && (
           <AdminNotice tone="warning">
