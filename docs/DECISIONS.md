@@ -1926,3 +1926,42 @@ entregar y remite). El cliente aterriza en `/pedido/<token>?nueva=1`. Se reusa t
 
 **Verificación.** `tsc` + `next build` OK · unit daily-summary 7/7 · order-transitions 8/8 · checkout
 integración 36/36 (incl. COD contraentrega + valorRecaudo) · saga 30/30 · email 84/84. [[ADR-053]] [[ADR-039]].
+
+## ADR-056 — Compartir diseño (Fase 3) + revisión adversarial (2026-07-11)
+
+**Contexto.** El modelo `Design` ya tenía `shareToken String? @unique` sin cablear. Fase 3 del ROADMAP
+lista "compartir" como brecha. Se implementó de punta a punta: "Mis diseños" (`/mi-cuenta/disenos`) con
+grilla + preview + acciones Compartir / WhatsApp / Ver / Archivar, y una **vista pública** `/d/<token>`
+(preview + producto + CTA "Crear el mío", `noindex`, OG image para miniatura en WhatsApp). Aislamiento por
+`customerId`; token de 16 bytes hex (imposible de adivinar → sin IDOR). Aditivo, no toca el Estudio.
+
+**Revisión adversarial multi-agente** (4 dimensiones × 3 escépticos, ≥2/3 confirman): 7 hallazgos crudos
+→ **6 confirmados** → todos atendidos:
+- **[med]** `handleCopy` mostraba "Link copiado ✨" aunque `clipboard.writeText` rechazara (documento sin
+  foco / Safari / permiso negado) → toast que miente. Fix: `try/catch`; si falla, muestra el link para
+  copiar a mano en vez de afirmar éxito.
+- **[med/low]** "Archivar" no revocaba el link real. Fix: `archiveCustomerDesign` anula `shareToken`
+  (además del filtro `ARCHIVED` de `getSharedDesign`) → el `/d/<token>` compartido deja de resolver.
+- **[low]** `window.open` de WhatsApp corría **tras** el `await` del token → iOS Safari bloqueaba el popup
+  en el primer compartir. Fix: abrir la ventana **sincrónicamente** en el gesto (`about:blank`, `opener=null`)
+  y navegarla al resolver el token.
+- **[low]** Carrera en `ensureDesignShareToken` (read-then-write no atómico): dos pestañas generaban tokens
+  distintos y una quedaba muerta (link 404). Fix: `updateMany where shareToken:null` (atómico) + re-lectura
+  del valor efectivo si se pierde la carrera → idempotencia real.
+- **[low]** `getSharedDesign` corría 2×/request (`generateMetadata` + página) sin memoizar. Fix: envolver en
+  `cache()` de React en la página (Prisma no se auto-memoiza como `fetch` en Next 16).
+
+**Decisión diferida — imagen pública desacoplada del pedido.** El bucket `design-previews` es **público** y
+`Design.previewUrl` es una URL estable. Las 3 vistas de pedido (cliente, confirmación y **producción en
+admin**) leen `design.previewUrl` **en vivo**, así que **archivar NO borra la imagen del bucket** (rompería
+esas vistas para diseños `USED_IN_ORDER`). Consecuencia: tras archivar, la imagen sigue accesible en su URL
+directa para quien ya la tenga (destinatarios del link, caché OG de Meta). Retirar la imagen de verdad exige
+**desacoplar el pedido de la imagen del diseño** — snapshotear el preview dentro del `OrderItem` al confirmar
+(como ya se hace con `customDesign` = `canvasData`), y solo entonces borrar/rotar el preview del diseño al
+archivar; o mover el preview a un bucket privado con signed URLs (afecta también las vistas de pedido).
+Es una tarea arquitectónica con su propio alcance, **pendiente de decisión de Lucy** — no un parche dentro
+de este feature. Relevante para Ley 1581 (fotos personales). [[ADR-055]].
+
+**Verificación.** `tsc` + `next build` OK (rutas `/d/[token]` y `/mi-cuenta/disenos` registradas) ·
+integración compartir 13/13 (IDOR, idempotencia, revocación real, tokens malformados) · suite completa
+1666 passed.

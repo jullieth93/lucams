@@ -1,0 +1,196 @@
+/*
+ * Integración — compartir diseño (Fase 3). Cubre la superficie de SEGURIDAD del
+ * feature: aislamiento por customerId (nadie ve ni comparte ni archiva el diseño de
+ * otro), idempotencia del shareToken, y que la vista pública /d/<token> NO filtre
+ * diseños en DRAFT/ARCHIVED ni acepte tokens malformados.
+ *
+ * Comparte la Supabase de dev (DIRECT_URL). Todo fixture lleva prefijo RUN único y se
+ * borra en afterAll. Ver project_integration_tests_share_dev_db.
+ */
+
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { prisma } from "@/lib/db";
+import {
+  listCustomerDesigns,
+  ensureDesignShareToken,
+  archiveCustomerDesign,
+  getSharedDesign,
+} from "./service";
+
+const RUN = `perso${Date.now()}${Math.floor(Math.random() * 1e6)}`.toLowerCase();
+
+let categoryId = "";
+let productId = "";
+let ownerId = "";
+let strangerId = "";
+
+// Diseños del dueño en cada estado relevante.
+let readyId = "";
+let usedId = "";
+let draftId = "";
+let archivedFixtureId = "";
+
+async function makeCustomer(tag: string): Promise<string> {
+  const c = await prisma.customer.create({
+    data: {
+      email: `${RUN}-${tag}@lucams.test`,
+      supabaseUserId: `${RUN}-${tag}-sub`,
+      referralCode: `${RUN}-${tag}-ref`,
+    },
+    select: { id: true },
+  });
+  return c.id;
+}
+
+async function makeDesign(opts: {
+  customerId: string;
+  status: "READY" | "USED_IN_ORDER" | "DRAFT" | "ARCHIVED";
+  previewUrl?: string | null;
+}): Promise<string> {
+  const d = await prisma.design.create({
+    data: {
+      customerId: opts.customerId,
+      sessionId: `${RUN}-${Math.random().toString(36).slice(2)}`,
+      productId,
+      status: opts.status,
+      canvasData: {},
+      previewUrl: opts.previewUrl === undefined ? "https://cdn.lucams.test/p.png" : opts.previewUrl,
+    },
+    select: { id: true },
+  });
+  return d.id;
+}
+
+beforeAll(async () => {
+  const category = await prisma.category.create({
+    data: { slug: `${RUN}-cat`, name: `Cat ${RUN}` },
+    select: { id: true },
+  });
+  categoryId = category.id;
+
+  const product = await prisma.product.create({
+    data: {
+      slug: `${RUN}-prod`,
+      name: `Fotoimán ${RUN}`,
+      description: "fixture perso",
+      basePrice: 10_000,
+      sku: `${RUN}-PROD`.toUpperCase(),
+      categoryId,
+      isPersonalizable: true,
+      personalizationKind: "PHOTO_PACK",
+    },
+    select: { id: true },
+  });
+  productId = product.id;
+
+  ownerId = await makeCustomer("owner");
+  strangerId = await makeCustomer("stranger");
+
+  readyId = await makeDesign({ customerId: ownerId, status: "READY" });
+  usedId = await makeDesign({ customerId: ownerId, status: "USED_IN_ORDER" });
+  draftId = await makeDesign({ customerId: ownerId, status: "DRAFT" });
+  archivedFixtureId = await makeDesign({ customerId: ownerId, status: "ARCHIVED" });
+});
+
+afterAll(async () => {
+  const safe = (p: Promise<unknown>) => p.catch(() => {});
+  await safe(prisma.design.deleteMany({ where: { productId } }));
+  await safe(prisma.product.deleteMany({ where: { id: productId } }));
+  await safe(prisma.category.deleteMany({ where: { id: categoryId } }));
+  await safe(prisma.customer.deleteMany({ where: { email: { contains: RUN } } }));
+});
+
+describe("listCustomerDesigns", () => {
+  it("devuelve solo READY/USED_IN_ORDER con preview, del dueño", async () => {
+    const rows = await listCustomerDesigns(ownerId);
+    const ids = rows.map((r) => r.id);
+    expect(ids).toContain(readyId);
+    expect(ids).toContain(usedId);
+    expect(ids).not.toContain(draftId);
+    expect(ids).not.toContain(archivedFixtureId);
+  });
+
+  it("no filtra diseños de otro cliente", async () => {
+    const rows = await listCustomerDesigns(strangerId);
+    expect(rows).toHaveLength(0);
+  });
+
+  it("excluye diseños sin previewUrl", async () => {
+    const noPreview = await makeDesign({ customerId: ownerId, status: "READY", previewUrl: null });
+    const rows = await listCustomerDesigns(ownerId);
+    expect(rows.map((r) => r.id)).not.toContain(noPreview);
+  });
+});
+
+describe("ensureDesignShareToken", () => {
+  it("genera un token de 32 hex y es idempotente", async () => {
+    const t1 = await ensureDesignShareToken(readyId, ownerId);
+    expect(t1).toMatch(/^[a-f0-9]{32}$/);
+    const t2 = await ensureDesignShareToken(readyId, ownerId);
+    expect(t2).toBe(t1); // no regenera
+  });
+
+  it("comparte un USED_IN_ORDER", async () => {
+    const t = await ensureDesignShareToken(usedId, ownerId);
+    expect(t).toMatch(/^[a-f0-9]{32}$/);
+  });
+
+  it("rechaza el diseño de otro cliente (sin IDOR)", async () => {
+    expect(await ensureDesignShareToken(readyId, strangerId)).toBeNull();
+  });
+
+  it("no comparte un DRAFT", async () => {
+    expect(await ensureDesignShareToken(draftId, ownerId)).toBeNull();
+  });
+});
+
+describe("getSharedDesign (vista pública)", () => {
+  it("resuelve un token válido de un diseño compartible", async () => {
+    const token = await ensureDesignShareToken(readyId, ownerId);
+    const design = await getSharedDesign(token!);
+    expect(design).not.toBeNull();
+    expect(design!.previewUrl).toBeTruthy();
+    expect(design!.product.name).toContain(RUN);
+  });
+
+  it("rechaza token malformado sin tocar la DB", async () => {
+    expect(await getSharedDesign("no-hex")).toBeNull();
+    expect(await getSharedDesign("g".repeat(32))).toBeNull();
+    expect(await getSharedDesign("")).toBeNull();
+  });
+
+  it("no resuelve un token inexistente", async () => {
+    expect(await getSharedDesign("a".repeat(32))).toBeNull();
+  });
+
+  it("deja de resolver cuando el diseño se archiva", async () => {
+    const shareId = await makeDesign({ customerId: ownerId, status: "READY" });
+    const token = (await ensureDesignShareToken(shareId, ownerId))!;
+    expect(await getSharedDesign(token)).not.toBeNull();
+
+    const archived = await archiveCustomerDesign(shareId, ownerId);
+    expect(archived).toBe(true);
+    expect(await getSharedDesign(token)).toBeNull(); // link muerto tras archivar
+
+    // Revocación real: el shareToken se anula (no solo se apoya en el filtro ARCHIVED).
+    const row = await prisma.design.findUnique({
+      where: { id: shareId },
+      select: { shareToken: true, status: true },
+    });
+    expect(row!.status).toBe("ARCHIVED");
+    expect(row!.shareToken).toBeNull();
+  });
+});
+
+describe("archiveCustomerDesign", () => {
+  it("no permite archivar el diseño de otro cliente", async () => {
+    const victim = await makeDesign({ customerId: ownerId, status: "READY" });
+    expect(await archiveCustomerDesign(victim, strangerId)).toBe(false);
+    const row = await prisma.design.findUnique({ where: { id: victim }, select: { status: true } });
+    expect(row!.status).toBe("READY"); // intacto
+  });
+
+  it("devuelve false para un id inexistente", async () => {
+    expect(await archiveCustomerDesign("does-not-exist", ownerId)).toBe(false);
+  });
+});

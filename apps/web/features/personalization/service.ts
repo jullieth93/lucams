@@ -20,6 +20,7 @@
  */
 
 import "server-only";
+import crypto from "node:crypto";
 import { Prisma } from "@lucams/db";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
@@ -403,4 +404,103 @@ function templateAspectRatio(canvasData: unknown): number | null {
   const h = typeof cd.stage?.height === "number" ? cd.stage.height : null;
   if (w === null || h === null || h === 0) return null;
   return w / h;
+}
+
+// ──────────────────────────────────────────────────────────────────
+//  Mis diseños (cuenta) + compartir (Fase 3 — /mi-cuenta/disenos + /d/[token])
+// ──────────────────────────────────────────────────────────────────
+
+/** Lista los diseños finalizados del cliente (listos o ya comprados), con producto. */
+export async function listCustomerDesigns(customerId: string) {
+  return prisma.design.findMany({
+    where: {
+      customerId,
+      status: { in: ["READY", "USED_IN_ORDER"] },
+      previewUrl: { not: null },
+    },
+    orderBy: { updatedAt: "desc" },
+    take: 60,
+    select: {
+      id: true,
+      previewUrl: true,
+      status: true,
+      shareToken: true,
+      createdAt: true,
+      product: { select: { name: true, slug: true } },
+    },
+  });
+}
+
+/**
+ * Genera (o devuelve, idempotente) el shareToken de un diseño del cliente para
+ * compartirlo por link público /d/<token>. Solo el dueño (customerId). El token es
+ * imposible de adivinar (16 bytes hex) → sin IDOR.
+ */
+export async function ensureDesignShareToken(
+  designId: string,
+  customerId: string,
+): Promise<string | null> {
+  const design = await prisma.design.findFirst({
+    where: { id: designId, customerId, status: { in: ["READY", "USED_IN_ORDER"] } },
+    select: { id: true, shareToken: true },
+  });
+  if (!design) return null;
+  if (design.shareToken) return design.shareToken;
+  const token = crypto.randomBytes(16).toString("hex");
+  // Update atómico condicional (where shareToken:null): si dos llamadas concurrentes
+  // (misma cuenta en dos pestañas) generan tokens distintos, solo una gana; la que
+  // pierde re-lee el valor persistido en vez de devolver un token muerto (link 404).
+  const res = await prisma.design.updateMany({
+    where: { id: design.id, shareToken: null },
+    data: { shareToken: token },
+  });
+  if (res.count === 1) return token;
+  const fresh = await prisma.design.findUnique({
+    where: { id: design.id },
+    select: { shareToken: true },
+  });
+  return fresh?.shareToken ?? null;
+}
+
+/**
+ * Archiva un diseño del cliente (status ARCHIVED → sale de "Mis diseños") y REVOCA el
+ * link público (shareToken=null), reforzando el filtro ARCHIVED de getSharedDesign: el
+ * /d/<token> que la clienta compartió deja de resolver.
+ *
+ * NO borramos previewUrl ni el objeto del bucket: las vistas de pedido (cliente,
+ * confirmación y producción en admin) leen design.previewUrl en vivo para diseños
+ * USED_IN_ORDER; borrarlo dejaría imágenes rotas en esas vistas. La imagen sigue
+ * accesible en su URL pública directa para quien ya la tenga — retirarla del bucket
+ * requiere desacoplar el pedido de la imagen del diseño (ver docs/DECISIONS.md).
+ */
+export async function archiveCustomerDesign(
+  designId: string,
+  customerId: string,
+): Promise<boolean> {
+  const res = await prisma.design.updateMany({
+    where: { id: designId, customerId, status: { in: ["READY", "USED_IN_ORDER"] } },
+    data: { status: "ARCHIVED", shareToken: null },
+  });
+  return res.count > 0;
+}
+
+/**
+ * Vista PÚBLICA de un diseño compartido por token — sin PII, solo el preview + el
+ * producto. No expone diseños archivados/borrador. El cliente decide compartir
+ * (el preview puede incluir su foto); el token va solo a quien él se lo mande.
+ */
+export async function getSharedDesign(shareToken: string) {
+  if (!/^[a-f0-9]{32}$/.test(shareToken)) return null;
+  const design = await prisma.design.findUnique({
+    where: { shareToken },
+    select: {
+      previewUrl: true,
+      status: true,
+      product: { select: { name: true, slug: true } },
+    },
+  });
+  if (!design || design.status === "ARCHIVED" || design.status === "DRAFT" || !design.previewUrl) {
+    return null;
+  }
+  return design;
 }
