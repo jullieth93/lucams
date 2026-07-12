@@ -13,6 +13,14 @@
 
 ## Resumen actual
 
+**Webhooks críticos blindados con tests de route (2026-07-11).** El bug del webhook de Aveonline
+(guia numérica) pasó a producción con CI VERDE porque NINGÚN test ejercitaba el route real — solo los
+saga se testeaban directamente. Se cerró el hueco para AMBOS webhooks: `route.integration.test.ts` de
+Aveonline (path real POST→handleWebhook con guia numérica→transición de orden; probado que ATRAPA la
+regresión: revertir el fix → test falla) y de Wompi (firma HMAC real + anti-replay + validación de monto
++ idempotencia + ruteo por status, 9 casos, saga mockeado). Gate de regresión: **suite completa 1648/1648
+verde**. (Cleanup de test corregido: dejaba webhookEvents huérfanos en la DB compartida.)
+
 **Integración Aveonline auditada 100% vs doc oficial (2026-07-11, ADR-054).** Auditoría multi-agente de
 las 7 áreas (auth/cotización/guía/agentes/transportadoras/tracking/webhooks) contra la doc oficial +
 ground-truth de las respuestas reales → 12 hallazgos confirmados, 11 arreglados. El más grave: el webhook
