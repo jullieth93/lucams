@@ -217,6 +217,11 @@ const NameDesignInputSchema = z.object({
   variantId: z.string().min(1),
   name: z.string().min(1).max(60),
   themeId: z.string().max(40).optional(),
+  // Color por letra: hex de 6 dígitos, cap 50 (anti-inyección).
+  colors: z
+    .array(z.string().regex(/^#[0-9A-Fa-f]{6}$/))
+    .max(50)
+    .optional(),
 });
 
 export async function createNameDesignAction(

@@ -33,30 +33,43 @@ export function getNameTileTheme(id: string | null | undefined): NameTileTheme {
   return NAME_TILE_THEMES.find((t) => t.id === id) ?? NAME_TILE_THEMES[0];
 }
 
+/** Colores curados (aptos para impresión) para elegir el color de cada letra. */
+export const LETTER_SWATCHES = [
+  "#7C6AAD", "#5DD9D1", "#E85B9F", "#F58A6F", "#FFD93D",
+  "#4A90D9", "#3FB8AF", "#C86FB0", "#F5A623", "#3D2E5C",
+] as const;
+
 export function LetterTile({
   letter,
-  index,
+  color,
   imageUrl,
   size = 72,
-  colors = TILE_BORDER_COLORS,
+  selected = false,
+  onClick,
 }: {
   letter: string;
-  index: number;
+  color: string;
   imageUrl?: string | null;
   size?: number;
-  colors?: readonly string[];
+  selected?: boolean;
+  onClick?: () => void;
 }) {
-  const color = colors[index % colors.length];
+  const interactive = Boolean(onClick);
   return (
-    <div
-      className="relative flex flex-shrink-0 items-center justify-center rounded-2xl bg-white shadow-sm"
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={!interactive}
+      aria-label={interactive ? `Cambiar el color de la letra ${letter}` : undefined}
+      className={`relative flex flex-shrink-0 items-center justify-center rounded-2xl bg-white shadow-sm transition ${
+        interactive ? "cursor-pointer hover:-translate-y-0.5" : "cursor-default"
+      }`}
       style={{
         width: size,
         height: size * 1.18,
         border: `3px solid ${color}`,
-        boxShadow: `0 4px 14px ${color}22`,
+        boxShadow: selected ? `0 0 0 3px ${color}55, 0 4px 14px ${color}33` : `0 4px 14px ${color}22`,
       }}
-      aria-hidden="true"
     >
       {imageUrl ? (
         // eslint-disable-next-line @next/next/no-img-element — ficha desde bucket público
@@ -65,10 +78,11 @@ export function LetterTile({
         <span
           className="font-display leading-none font-extrabold select-none"
           style={{ color, fontSize: size * 0.56 }}
+          aria-hidden="true"
         >
           {letter}
         </span>
       )}
-    </div>
+    </button>
   );
 }

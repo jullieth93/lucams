@@ -18,7 +18,7 @@ import { ChevronLeft, Loader2, Sparkles } from "lucide-react";
 import { normalizeName, type NameLanguage } from "@/features/personalization/name-input";
 import { createNameDesignAction, finalizeDesignAction } from "@/features/personalization/actions";
 import { addPersonalizedToCartAction } from "@/app/carrito/actions";
-import { LetterTile, NAME_TILE_THEMES, getNameTileTheme } from "./letter-tile";
+import { LetterTile, NAME_TILE_THEMES, getNameTileTheme, LETTER_SWATCHES } from "./letter-tile";
 
 type NameEditorProps = {
   product: { id: string; slug: string; name: string };
@@ -82,12 +82,32 @@ export function NameEditor({ product, variantId, config, priceLabel }: NameEdito
   const router = useRouter();
   const [raw, setRaw] = useState("");
   const [themeId, setThemeId] = useState(NAME_TILE_THEMES[0].id);
+  // Override de color por letra (índice → color). Vacío = usa el color del tema.
+  const [letterColors, setLetterColors] = useState<Record<number, string>>({});
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const result = useMemo(() => normalizeName(raw, config), [raw, config]);
   const { letters, valid, tooShort, notices } = result;
   const theme = getNameTileTheme(themeId);
+
+  const effectiveColors = useMemo(
+    () => letters.map((_, i) => letterColors[i] ?? theme.colors[i % theme.colors.length]),
+    [letters, letterColors, theme],
+  );
+
+  function applyTheme(id: string) {
+    setThemeId(id);
+    setLetterColors({}); // el tema es un punto de partida limpio
+    setSelectedIndex(null);
+  }
+
+  function setColorForSelected(color: string) {
+    if (selectedIndex === null) return;
+    setLetterColors((prev) => ({ ...prev, [selectedIndex]: color }));
+    setSelectedIndex(null);
+  }
 
   async function handleAddToCart() {
     if (!valid || submitting) return;
@@ -99,6 +119,7 @@ export function NameEditor({ product, variantId, config, priceLabel }: NameEdito
         variantId,
         name: raw,
         themeId,
+        colors: effectiveColors,
       });
       if (!created.ok) {
         setError(created.message);
@@ -106,7 +127,7 @@ export function NameEditor({ product, variantId, config, priceLabel }: NameEdito
         return;
       }
 
-      const blob = await renderNameStripBlob(letters, theme.colors);
+      const blob = await renderNameStripBlob(letters, effectiveColors);
       const fd = new FormData();
       fd.set("designId", created.designId);
       fd.set("slotCount", "1");
@@ -206,15 +227,20 @@ export function NameEditor({ product, variantId, config, priceLabel }: NameEdito
 
         {/* Paleta de colores (tema de las fichas) */}
         <div className="mt-5">
-          <p className="text-brand-purple-dark mb-2 text-sm font-semibold">Elige los colores</p>
+          <p className="text-brand-purple-dark mb-2 text-sm font-semibold">
+            Elige los colores
+            <span className="text-brand-muted ml-2 text-xs font-normal">
+              (o toca una letra para pintarla a tu gusto)
+            </span>
+          </p>
           <div className="flex flex-wrap gap-2">
             {NAME_TILE_THEMES.map((t) => {
-              const active = t.id === themeId;
+              const active = t.id === themeId && Object.keys(letterColors).length === 0;
               return (
                 <button
                   key={t.id}
                   type="button"
-                  onClick={() => setThemeId(t.id)}
+                  onClick={() => applyTheme(t.id)}
                   aria-pressed={active}
                   className={`inline-flex items-center gap-2 rounded-full border-2 py-1.5 pr-3 pl-2 text-sm font-semibold transition ${
                     active
@@ -238,8 +264,8 @@ export function NameEditor({ product, variantId, config, priceLabel }: NameEdito
           </div>
         </div>
 
-        {/* Preview de la tira de fichas */}
-        <div className="bg-brand-cream/60 mt-5 min-h-[128px] rounded-2xl p-5">
+        {/* Preview de la tira de fichas (cada una seleccionable para pintarla) */}
+        <div className="bg-brand-cream/60 mt-5 rounded-2xl p-5">
           {letters.length === 0 ? (
             <p className="text-brand-muted flex h-[88px] items-center justify-center text-sm">
               Aquí verás tu nombre en fichas 🦝
@@ -247,8 +273,35 @@ export function NameEditor({ product, variantId, config, priceLabel }: NameEdito
           ) : (
             <div className="flex flex-wrap items-center justify-center gap-3">
               {letters.map((ch, i) => (
-                <LetterTile key={`${ch}-${i}`} letter={ch} index={i} colors={theme.colors} />
+                <LetterTile
+                  key={`${ch}-${i}`}
+                  letter={ch}
+                  color={effectiveColors[i]}
+                  selected={selectedIndex === i}
+                  onClick={() => setSelectedIndex(selectedIndex === i ? null : i)}
+                />
               ))}
+            </div>
+          )}
+
+          {/* Fila de colores para la letra seleccionada */}
+          {selectedIndex !== null && letters[selectedIndex] && (
+            <div className="border-brand-purple/15 mt-4 rounded-xl border bg-white p-3">
+              <p className="text-brand-purple-dark mb-2 text-center text-xs font-semibold">
+                Color de la letra <span className="font-display text-base">{letters[selectedIndex]}</span>
+              </p>
+              <div className="flex flex-wrap justify-center gap-2">
+                {LETTER_SWATCHES.map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => setColorForSelected(c)}
+                    aria-label={`Pintar de este color`}
+                    className="h-8 w-8 rounded-full ring-2 ring-black/5 transition hover:scale-110"
+                    style={{ backgroundColor: c }}
+                  />
+                ))}
+              </div>
             </div>
           )}
         </div>
