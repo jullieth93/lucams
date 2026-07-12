@@ -13,6 +13,18 @@
 
 ## Resumen actual
 
+**Pago contra entrega (COD) COMPLETO + endurecido (2026-07-11, ADR-055).** El requisito de lanzamiento
+que faltaba (mandato #5): selector Wompi/COD en el checkout, guía Aveonline con contraentrega +
+valorRecaudo, banner y email de confirmación, reusando el saga battle-tested. Pasó revisión adversarial
+(dinero real, 39 agentes) → 11 hallazgos confirmados, todos arreglados: el P0 (COD sobre carrito Wompi
+abandonado → guía prepagada sin recaudo → despacho gratis), P1s (banner engañoso si falla la guía/stock;
+devolución que deja la orden atascada e invisible), P2s (ingresos contaban COD antes de cobrar → ahora
+Wompi capturado + COD entregado, con "COD por cobrar" aparte en resumen + finanzas + panel; rate-limit COD
+propio; botón cancelar admin roto en PAID). **Toggle COD_ENABLED** (setting BOOLEAN con interruptor real en
+/admin/contenido/configuracion) para activar/desactivar contra entrega. También en esta racha: **Bloque D
+resumen diario de operación** (email 8am + panel /admin/observability + tests) y el blindaje de webhooks
+(tests de route Aveonline+Wompi). Verificado a lo largo: tsc + build + suites verdes.
+
 **Webhooks críticos blindados con tests de route (2026-07-11).** El bug del webhook de Aveonline
 (guia numérica) pasó a producción con CI VERDE porque NINGÚN test ejercitaba el route real — solo los
 saga se testeaban directamente. Se cerró el hueco para AMBOS webhooks: `route.integration.test.ts` de
