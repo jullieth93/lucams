@@ -14,7 +14,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ChevronLeft, Loader2, Sparkles } from "lucide-react";
+import { ChevronLeft, Loader2, Sparkles, Minus, Plus } from "lucide-react";
 import { normalizeName, type NameLanguage } from "@/features/personalization/name-input";
 import type { LetterStyle, LetterTileMap } from "@/features/personalization/letter-tiles";
 import { createNameDesignAction, finalizeDesignAction } from "@/features/personalization/actions";
@@ -140,6 +140,11 @@ export function NameEditor({
   const [raw, setRaw] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Cantidad de fichas (letras) elegida en la ficha. El editor se LIMITA a esta cantidad;
+  // el +/− la ajusta (min..max del producto). Es el nº de fichas que se cobra.
+  const [count, setCount] = useState(() =>
+    Math.min(config.max, Math.max(config.min, initialCount ?? config.min)),
+  );
   // Estilo elegido (null = "Solo letra"/Default). Arranca en el primer estilo ilustrado
   // disponible (muestra el diferenciador); si no hay ninguno, queda en Default.
   const [styleId, setStyleId] = useState<string | null>(styles[0]?.id ?? null);
@@ -148,8 +153,20 @@ export function NameEditor({
     [styleId, styles],
   );
 
-  const result = useMemo(() => normalizeName(raw, config), [raw, config]);
+  // El máximo efectivo es la cantidad elegida (count), no el max del producto → el campo
+  // queda limitado a esa cantidad (feedback de Lucy: no debe dejar escribir más).
+  const result = useMemo(
+    () => normalizeName(raw, { ...config, max: count }),
+    [raw, config, count],
+  );
   const { letters, valid, tooShort, notices } = result;
+
+  // Ajusta la cantidad de fichas (min..max) y recorta el texto si sobra.
+  function changeCount(delta: number) {
+    const nc = Math.min(config.max, Math.max(config.min, count + delta));
+    setCount(nc);
+    setRaw((r) => r.slice(0, nc));
+  }
 
   // Colores compartidos con el editor de Set de letras (tema + barajar + color por ficha).
   const {
@@ -230,12 +247,11 @@ export function NameEditor({
     }
   }
 
-  const counterOver = letters.length > config.max;
+  const counterOver = letters.length > count;
 
   // ADR-057 — precio en vivo POR FICHA. El total = nº de letras × precio-por-ficha, igual
   // que lo calcula el carrito (Design.metadata.letters.length × variant.price) → sin desajuste.
   const liveTotal = letters.length * pricePerTile;
-  const hintCount = Math.min(config.max, Math.max(config.min, initialCount ?? config.min));
 
   return (
     <div className="mx-auto w-full max-w-3xl px-5 py-8">
@@ -261,10 +277,36 @@ export function NameEditor({
       </header>
 
       <div className="border-brand-purple/12 rounded-3xl border bg-white p-6 shadow-sm sm:p-8">
-        {/* Input */}
-        <label htmlFor="name-input" className="text-brand-purple-dark block text-sm font-semibold">
-          Escribe el nombre o palabra
-        </label>
+        {/* Input + cantidad de fichas */}
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <label htmlFor="name-input" className="text-brand-purple-dark block text-sm font-semibold">
+            Escribe el nombre o palabra
+          </label>
+          {/* Stepper: cuántas letras (fichas). El campo queda limitado a esta cantidad. */}
+          <div className="border-brand-purple/20 flex items-center gap-1 rounded-full border bg-white p-1">
+            <button
+              type="button"
+              onClick={() => changeCount(-1)}
+              disabled={count <= config.min}
+              aria-label="Menos letras"
+              className="text-brand-purple hover:bg-brand-purple/10 flex h-7 w-7 items-center justify-center rounded-full transition disabled:opacity-30"
+            >
+              <Minus className="h-3.5 w-3.5" />
+            </button>
+            <span className="text-brand-purple-dark w-16 text-center text-xs font-semibold tabular-nums">
+              {count} {count === 1 ? "letra" : "letras"}
+            </span>
+            <button
+              type="button"
+              onClick={() => changeCount(1)}
+              disabled={count >= config.max}
+              aria-label="Más letras"
+              className="text-brand-purple hover:bg-brand-purple/10 flex h-7 w-7 items-center justify-center rounded-full transition disabled:opacity-30"
+            >
+              <Plus className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </div>
         <div className="mt-2 flex items-center gap-3">
           <input
             id="name-input"
@@ -272,7 +314,7 @@ export function NameEditor({
             inputMode="text"
             autoComplete="off"
             autoCapitalize="characters"
-            maxLength={config.max + 4}
+            maxLength={count}
             value={raw}
             onChange={(e) => setRaw(e.target.value)}
             placeholder={config.language === "es" ? "Ej: Mía" : "Ex: Mia"}
@@ -283,11 +325,11 @@ export function NameEditor({
               counterOver ? "text-rose-500" : "text-brand-muted"
             }`}
           >
-            {letters.length}/{config.max}
+            {letters.length}/{count}
           </span>
         </div>
         <p className="text-brand-muted mt-2 text-xs">
-          {config.min}–{config.max} letras ·{" "}
+          Ajusta la cantidad con − / + (de {config.min} a {config.max} letras) ·{" "}
           {config.language === "es" ? "incluye la Ñ" : "alfabeto en inglés (sin Ñ)"} · sin números ni
           símbolos
         </p>
@@ -300,7 +342,12 @@ export function NameEditor({
               <button
                 key={ex}
                 type="button"
-                onClick={() => setRaw(ex)}
+                onClick={() => {
+                  // Ajusta la cantidad al ejemplo para que quepa completo (no lo corta).
+                  const n = Math.min(config.max, Math.max(config.min, ex.length));
+                  setCount(n);
+                  setRaw(ex.slice(0, n));
+                }}
                 className="border-brand-purple/20 text-brand-purple-dark hover:bg-brand-purple/5 rounded-full border px-3 py-1 font-semibold"
               >
                 {ex}
@@ -353,7 +400,7 @@ export function NameEditor({
             <div className="flex flex-col items-center gap-3">
               {/* Casillas-hint: N fichas vacías según lo elegido en la ficha (nº de letras). */}
               <div className="flex flex-wrap items-center justify-center gap-3" aria-hidden="true">
-                {Array.from({ length: hintCount }).map((_, i) => (
+                {Array.from({ length: count }).map((_, i) => (
                   <div
                     key={i}
                     className="border-brand-purple/25 flex h-[72px] w-[62px] items-center justify-center rounded-xl border-2 border-dashed bg-white/60"
@@ -428,8 +475,8 @@ export function NameEditor({
             </span>
           ) : (
             <span className="text-brand-muted text-sm font-semibold tabular-nums">
-              {formatCOP(pricePerTile)} por ficha · {hintCount} letras ={" "}
-              {formatCOP(pricePerTile * hintCount)}
+              {formatCOP(pricePerTile)} por ficha · {count} letras ={" "}
+              {formatCOP(pricePerTile * count)}
             </span>
           )}
         </div>
