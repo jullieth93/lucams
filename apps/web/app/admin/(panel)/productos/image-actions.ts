@@ -47,61 +47,63 @@ export async function uploadProductImagesAction(formData: FormData): Promise<Act
     };
   }
 
+  // ADR-057 cert: si una foto del lote falla, NO abortamos todo dejando huérfanas las
+  // que sí subieron — persistimos las buenas y avisamos cuál falló (por nombre).
   const uploadedUrls: string[] = [];
+  let failure: { name: string; message: string } | null = null;
   for (const file of files) {
     if (!(file instanceof File)) continue;
     try {
       const { publicUrl } = await uploadProductImage({ productId: product.id, file });
       uploadedUrls.push(publicUrl);
     } catch (err) {
-      if (err instanceof StorageError) {
-        logger.warn(
-          {
-            event: "admin.product.image.upload_fail",
-            adminId: session.admin.id,
-            productId,
-            code: err.code,
-          },
-          err.message,
-        );
-        return { error: err.message };
-      }
-      logger.error(
+      const message = err instanceof StorageError ? err.message : "no se pudo procesar la imagen.";
+      failure = { name: file.name || "una foto", message };
+      logger.warn(
         {
           event: "admin.product.image.upload_fail",
           adminId: session.admin.id,
           productId,
-          err: err instanceof Error ? err.message : String(err),
+          file: file.name,
+          err: message,
         },
         "Failed to upload product image",
       );
-      return { error: "Error subiendo imágenes. Intenta de nuevo." };
+      break;
     }
   }
 
-  const newImages = [...product.images, ...uploadedUrls];
-  await prisma.product.update({
-    where: { id: product.id },
-    data: { images: newImages, updatedBy: session.admin.id },
-  });
+  if (uploadedUrls.length > 0) {
+    const newImages = [...product.images, ...uploadedUrls];
+    await prisma.product.update({
+      where: { id: product.id },
+      data: { images: newImages, updatedBy: session.admin.id },
+    });
+    await recordAdminAction({
+      actorId: session.admin.id,
+      action: "product.images.upload",
+      entityType: "Product",
+      entityId: product.id,
+      metadata: { count: uploadedUrls.length, totalAfter: newImages.length },
+    });
+    logger.info({
+      event: "admin.product.images.uploaded",
+      adminId: session.admin.id,
+      productId,
+      count: uploadedUrls.length,
+    });
+    revalidatePath(`/admin/productos/${product.id}`);
+    revalidatePath("/admin/productos");
+  }
 
-  await recordAdminAction({
-    actorId: session.admin.id,
-    action: "product.images.upload",
-    entityType: "Product",
-    entityId: product.id,
-    metadata: { count: uploadedUrls.length, totalAfter: newImages.length },
-  });
-
-  logger.info({
-    event: "admin.product.images.uploaded",
-    adminId: session.admin.id,
-    productId,
-    count: uploadedUrls.length,
-  });
-
-  revalidatePath(`/admin/productos/${product.id}`);
-  revalidatePath("/admin/productos");
+  if (failure) {
+    return {
+      error:
+        uploadedUrls.length > 0
+          ? `Subimos ${uploadedUrls.length} de ${files.length}. "${failure.name}": ${failure.message}`
+          : `"${failure.name}": ${failure.message}`,
+    };
+  }
   return {};
 }
 
@@ -127,10 +129,14 @@ export async function reorderProductImagesAction(formData: FormData): Promise<Ac
   });
   if (!product) return { error: "Producto no encontrado." };
 
-  // Validamos que el nuevo orden contenga exactamente las mismas URLs.
+  // Validamos como MULTICONJUNTO (no solo conjunto): misma longitud, sin duplicados,
+  // y cada URL debe existir en las actuales. Evita inflar/duplicar el array (ADR-057 cert).
   const oldSet = new Set(product.images);
-  const newSet = new Set(newOrder);
-  if (oldSet.size !== newSet.size || ![...oldSet].every((x) => newSet.has(x))) {
+  if (
+    newOrder.length !== product.images.length ||
+    new Set(newOrder).size !== newOrder.length ||
+    !newOrder.every((x) => oldSet.has(x))
+  ) {
     return { error: "El reordenamiento no coincide con las imágenes actuales." };
   }
 

@@ -83,7 +83,7 @@ export function VariantImages({
               ? `Si no subes ninguna, esta opción usa las ${productImageCount} foto${
                   productImageCount === 1 ? "" : "s"
                 } del producto. Sube fotos solo si esta opción se ve distinta.`
-              : "El cliente verá estas fotos al elegir esta opción. La primera es la portada."}
+              : `Al elegir esta opción, el cliente verá SOLO estas fotos (reemplazan las ${productImageCount} del producto). La primera es la portada.`}
           </p>
         </div>
         <div>

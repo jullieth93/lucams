@@ -28,6 +28,7 @@ import { VariantSelector } from "./variant-selector";
 import { formatCOP } from "@/lib/format";
 import { buildWhatsAppUrl } from "@/lib/wa";
 import { addToCartAction } from "@/app/carrito/actions";
+import { selectableVariants } from "@/features/products/variant-schemas";
 import {
   getStorefrontProductBySlug,
   listRelatedProducts,
@@ -78,11 +79,12 @@ export default async function ProductoDetallePage({
   if (!product) notFound();
 
   // M.3.b.CAT.3 — Variant seleccionado via ?variant=id (deep-link).
-  // Si no se pasa, default al primer variant. Si product.variants.length < 2
-  // tampoco mostrar selector (sigue siendo single-variant pero invisible).
+  // ADR-057 cert: derivar del MISMO conjunto que el VariantSelector (sin la variante
+  // "Default" vacía) para que galería/precio coincidan con el chip resaltado por defecto.
   const requestedVariantId = typeof sp.variant === "string" ? sp.variant : undefined;
+  const selectable = selectableVariants(product.variants);
   const selectedVariant =
-    product.variants.find((v) => v.id === requestedVariantId) ?? product.variants[0] ?? null;
+    selectable.find((v) => v.id === requestedVariantId) ?? selectable[0] ?? null;
   // Precio final: variant.price override o basePrice
   const displayPrice = selectedVariant?.price ?? product.basePrice;
 
@@ -222,8 +224,8 @@ export default async function ProductoDetallePage({
               </p>
 
               {/* M.3.b.CAT.3 — Selector de variants si product tiene 2+ */}
-              {product.variants.length > 1 && (
-                <VariantSelector productBasePrice={product.basePrice} variants={product.variants} />
+              {selectable.length > 1 && (
+                <VariantSelector productBasePrice={product.basePrice} variants={selectable} />
               )}
 
               <div className="space-y-2 pt-2">

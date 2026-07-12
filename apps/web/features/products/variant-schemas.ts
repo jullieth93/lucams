@@ -71,6 +71,19 @@ export const ProductVariantAttributesSchema = z.object({
 export type ProductVariantAttributes = z.infer<typeof ProductVariantAttributesSchema>;
 
 /**
+ * Variantes que el cliente puede ELEGIR: descarta la variante "Default"/"Única" vacía
+ * (sin attributes) que createProduct autocrea, cuando hay al menos una variante real.
+ * ADR-057 cert: la ficha y el VariantSelector DEBEN derivar de aquí para no
+ * desincronizarse (galería/precio vs chip resaltado).
+ */
+export function selectableVariants<T extends { attributes: unknown }>(variants: T[]): T[] {
+  const withAttrs = variants.filter(
+    (v) => Object.keys(parseVariantAttributes(v.attributes)).length > 0,
+  );
+  return withAttrs.length > 0 ? withAttrs : variants;
+}
+
+/**
  * Parsea attributes Json con default vacío si malformed. Backward-compat:
  * variants viejas con attributes={} retornan objeto vacío sin error.
  */

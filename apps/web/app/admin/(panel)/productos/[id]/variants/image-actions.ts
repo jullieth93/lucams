@@ -55,7 +55,10 @@ export async function uploadVariantImagesAction(formData: FormData): Promise<Act
     };
   }
 
+  // ADR-057 cert: persistimos las fotos que SÍ subieron aunque una falle (sin huérfanas)
+  // y avisamos cuál falló por nombre.
   const uploadedUrls: string[] = [];
+  let failure: { name: string; message: string } | null = null;
   for (const file of files) {
     if (!(file instanceof File)) continue;
     try {
@@ -63,41 +66,40 @@ export async function uploadVariantImagesAction(formData: FormData): Promise<Act
       const { publicUrl } = await uploadProductImage({ productId: variant.productId, file });
       uploadedUrls.push(publicUrl);
     } catch (err) {
-      if (err instanceof StorageError) {
-        logger.warn(
-          { event: "admin.variant.image.upload_fail", adminId: session.admin.id, variantId, code: err.code },
-          err.message,
-        );
-        return { error: err.message };
-      }
-      logger.error(
-        {
-          event: "admin.variant.image.upload_fail",
-          adminId: session.admin.id,
-          variantId,
-          err: err instanceof Error ? err.message : String(err),
-        },
+      const message = err instanceof StorageError ? err.message : "no se pudo procesar la foto.";
+      failure = { name: file.name || "una foto", message };
+      logger.warn(
+        { event: "admin.variant.image.upload_fail", adminId: session.admin.id, variantId, file: file.name, err: message },
         "Failed to upload variant image",
       );
-      return { error: "Error subiendo fotos. Intenta de nuevo." };
+      break;
     }
   }
 
-  const newImages = [...variant.images, ...uploadedUrls];
-  await prisma.productVariant.update({
-    where: { id: variant.id },
-    data: { images: newImages, updatedBy: session.admin.id },
-  });
+  if (uploadedUrls.length > 0) {
+    const newImages = [...variant.images, ...uploadedUrls];
+    await prisma.productVariant.update({
+      where: { id: variant.id },
+      data: { images: newImages, updatedBy: session.admin.id },
+    });
+    await recordAdminAction({
+      actorId: session.admin.id,
+      action: "variant.images.upload",
+      entityType: "ProductVariant",
+      entityId: variant.id,
+      metadata: { count: uploadedUrls.length, totalAfter: newImages.length },
+    });
+    revalidateVariant(variant.productId, variant.product.slug);
+  }
 
-  await recordAdminAction({
-    actorId: session.admin.id,
-    action: "variant.images.upload",
-    entityType: "ProductVariant",
-    entityId: variant.id,
-    metadata: { count: uploadedUrls.length, totalAfter: newImages.length },
-  });
-
-  revalidateVariant(variant.productId, variant.product.slug);
+  if (failure) {
+    return {
+      error:
+        uploadedUrls.length > 0
+          ? `Subimos ${uploadedUrls.length} de ${files.length}. "${failure.name}": ${failure.message}`
+          : `"${failure.name}": ${failure.message}`,
+    };
+  }
   return {};
 }
 
@@ -120,9 +122,13 @@ export async function reorderVariantImagesAction(formData: FormData): Promise<Ac
   const variant = await loadVariant(variantId);
   if (!variant) return { error: "Opción no encontrada." };
 
+  // Multiconjunto (ADR-057 cert): misma longitud, sin duplicados, todas existentes.
   const oldSet = new Set(variant.images);
-  const newSet = new Set(newOrder);
-  if (oldSet.size !== newSet.size || ![...oldSet].every((x) => newSet.has(x))) {
+  if (
+    newOrder.length !== variant.images.length ||
+    new Set(newOrder).size !== newOrder.length ||
+    !newOrder.every((x) => oldSet.has(x))
+  ) {
     return { error: "El reordenamiento no coincide con las fotos actuales." };
   }
 

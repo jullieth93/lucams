@@ -247,7 +247,7 @@ export async function listStorefrontProducts(
       isPersonalizable: true,
       images: true,
       category: { select: { slug: true, name: true } },
-      _count: { select: { variants: { where: { deletedAt: null } } } },
+      _count: { select: { variants: { where: { deletedAt: null, isActive: true } } } },
       variants: {
         where: { deletedAt: null, isActive: true },
         select: { price: true },
@@ -440,9 +440,10 @@ export async function getStorefrontProductBySlug(
       seoDescription: true,
       updatedAt: true,
       category: { select: { slug: true, name: true } },
-      // M.3.b.CAT — variants no-soft-deleted del producto
+      // M.3.b.CAT — variants activas y no-archivadas (ADR-057 cert: una opción
+      // "Pausada" (isActive=false) NO debe aparecer ni ser comprable en la ficha).
       variants: {
-        where: { deletedAt: null },
+        where: { deletedAt: null, isActive: true },
         select: {
           id: true,
           name: true,
@@ -523,7 +524,7 @@ export async function listRelatedProducts(opts: {
       categoryId: true,
       category: { select: { slug: true, name: true, parentId: true } },
       ocasionTags: { select: { ocasionTagId: true } },
-      _count: { select: { variants: { where: { deletedAt: null } } } },
+      _count: { select: { variants: { where: { deletedAt: null, isActive: true } } } },
     },
   });
 
@@ -573,7 +574,7 @@ export async function listRelatedProducts(opts: {
       isPersonalizable: true,
       images: true,
       category: { select: { slug: true, name: true } },
-      _count: { select: { variants: { where: { deletedAt: null } } } },
+      _count: { select: { variants: { where: { deletedAt: null, isActive: true } } } },
     },
   });
   const featured: StorefrontProductCard[] = featuredRaw.map(({ _count, ...p }) => ({

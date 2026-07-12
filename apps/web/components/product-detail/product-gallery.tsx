@@ -55,7 +55,8 @@ export function ProductGallery({ images, alt }: { images: string[]; alt: string 
         </button>
         {images.length > 1 && (
           <div className="grid grid-cols-5 gap-2">
-            {images.slice(0, 5).map((img, idx) => (
+            {/* ADR-057 cert: todas las miniaturas (admin permite hasta 8/10); la grilla envuelve. */}
+            {images.map((img, idx) => (
               <button
                 key={`${img}-${idx}`}
                 type="button"
