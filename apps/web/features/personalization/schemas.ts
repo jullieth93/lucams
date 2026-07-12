@@ -63,6 +63,15 @@ export type CanvasDataV1 = z.infer<typeof CanvasDataV1Schema>;
 
 export const PhotoFilterPresetSchema = z.enum(["vintage", "vivid", "bw", "pastel", "polaroid"]);
 
+// Override de un TextLayer editable por el usuario (indexado por TextLayer.id).
+export const TextOverrideSchema = z.object({
+  text: z.string().max(500).optional(),
+  fontFamily: z.string().max(80).optional(),
+  fontSize: z.number().min(1).max(4000).optional(),
+  fill: z.string().max(40).optional(),
+  fontWeight: z.string().max(20).optional(),
+});
+
 export const SlotStateSchema = z.object({
   slotIndex: z.number().int().min(0).max(99),
   assetId: z.string().nullable(),
@@ -78,6 +87,18 @@ export const SlotStateSchema = z.object({
   rotation: z.number().min(-180).max(180).optional(),
   filter: PhotoFilterPresetSchema.nullable().optional(),
   textOverride: z.string().max(500).optional(),
+  // ADR-057 Fase A — ENCUADRE del usuario (pan/zoom de la foto dentro del slot). ANTES no se
+  // persistía (Zod strip) → el encuadre manual se perdía al guardar/recargar (bug) y el servidor
+  // no podía reconstruir el render fiel. Ahora sobrevive; es la fuente de verdad del encuadre.
+  photoTransform: z
+    .object({
+      offsetX: z.number().min(-20000).max(20000),
+      offsetY: z.number().min(-20000).max(20000),
+      scale: z.number().min(0.05).max(20),
+    })
+    .optional(),
+  // ADR-057 Fase A — texto editado por el usuario, por TextLayer.id (Polaroid, plantillas).
+  textOverrides: z.record(z.string().max(80), TextOverrideSchema).optional(),
 });
 
 export const GridLayoutSchema = z.object({
