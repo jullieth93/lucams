@@ -64,6 +64,8 @@ export const ProductVariantAttributesSchema = z.object({
   size: z.string().optional(),
   /** ADR-057 — true = con imán (default), false = sin imán / adhesivo (más barato). */
   magnet: z.boolean().optional(),
+  /** ADR-057 — idioma del producto (ej. abecedario "es"/"en"). Dimensión "Idioma". */
+  language: z.string().optional(),
 });
 
 export type ProductVariantAttributes = z.infer<typeof ProductVariantAttributesSchema>;

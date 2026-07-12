@@ -53,6 +53,14 @@ const DIMENSION_LABELS: Record<string, string> = {
   shape: "Forma",
   color: "Color",
   finish: "Acabado",
+  language: "Idioma",
+  magnet: "¿Con imán?",
+};
+
+/** Orden preferido por dimensión no numérica (lo demás = alfabético). */
+const DIMENSION_VALUE_ORDER: Record<string, string[]> = {
+  language: ["es", "en"],
+  magnet: ["true", "false"],
 };
 
 function formatDimensionValue(key: string, value: unknown): string {
@@ -76,16 +84,23 @@ function formatDimensionValue(key: string, value: unknown): string {
     };
     return labels[String(value)] ?? String(value);
   }
+  if (key === "language") {
+    const labels: Record<string, string> = { es: "Español", en: "Inglés" };
+    return labels[String(value)] ?? String(value);
+  }
+  if (key === "magnet") return String(value) === "true" ? "🧲 Con imán" : "✨ Sin imán";
   return String(value);
 }
 
 const VISIBLE_DIMENSIONS: (keyof ProductVariantAttributes)[] = [
+  "language",
   "quantity",
   "photoSlots",
   "sizeCm",
   "shape",
   "color",
   "finish",
+  "magnet",
 ];
 
 export function VariantSelector({ productBasePrice, variants: rawVariants }: VariantSelectorProps) {
@@ -147,8 +162,19 @@ export function VariantSelector({ productBasePrice, variants: rawVariants }: Var
     }
     return VISIBLE_DIMENSIONS.filter((key) => dimMap[key] && dimMap[key].size > 1).map((key) => {
       const rawValues = Array.from(dimMap[key]);
-      const isNumeric = key === "quantity" || key === "photoSlots";
-      const values = isNumeric ? rawValues.sort((a, b) => Number(a) - Number(b)) : rawValues.sort();
+      const order = DIMENSION_VALUE_ORDER[key];
+      let values: string[];
+      if (order) {
+        // Orden fijo (idioma, imantado); valores fuera de la lista al final.
+        values = rawValues.sort(
+          (a, b) => (order.indexOf(a) + 1 || 99) - (order.indexOf(b) + 1 || 99),
+        );
+      } else if (key === "quantity" || key === "photoSlots" || key === "sizeCm") {
+        // Numérico por el primer número (sizeCm "10×14" no debe ir antes que "5×7").
+        values = rawValues.sort((a, b) => parseFloat(a) - parseFloat(b));
+      } else {
+        values = rawValues.sort();
+      }
       return { key, label: DIMENSION_LABELS[key] ?? key, values };
     });
   }, [variants]);

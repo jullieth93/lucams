@@ -28,6 +28,8 @@ export const AddToCartSchema = z.object({
     .max(500)
     .regex(/^\/[a-zA-Z0-9/_-]*$/, "Path inválido")
     .optional(),
+  /** Variante elegida en el selector de la ficha (ADR-057). Opcional (legacy usa -DEFAULT). */
+  variantId: z.string().min(1).max(40).optional(),
 });
 
 export type AddToCartInput = z.infer<typeof AddToCartSchema>;

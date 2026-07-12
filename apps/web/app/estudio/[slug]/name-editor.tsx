@@ -18,26 +18,15 @@ import { ChevronLeft, Loader2, Sparkles } from "lucide-react";
 import { normalizeName, type NameLanguage } from "@/features/personalization/name-input";
 import { createNameDesignAction, finalizeDesignAction } from "@/features/personalization/actions";
 import { addPersonalizedToCartAction } from "@/app/carrito/actions";
-import { formatCOP } from "@/lib/format";
 import { LetterTile, NAME_TILE_THEMES, getNameTileTheme, LETTER_SWATCHES } from "./letter-tile";
-
-type NameVariant = {
-  id: string;
-  priceCop: number;
-  size: string;
-  sizeCm: string;
-  magnet: boolean;
-};
 
 type NameEditorProps = {
   product: { id: string; slug: string; name: string };
-  variants: NameVariant[];
-  initialVariantId: string;
+  /** Variante ya elegida en la ficha (idioma/tamaño/imantado). El editor solo arma la palabra. */
+  variantId: string;
   config: { min: number; max: number; language: NameLanguage };
+  priceLabel: string;
 };
-
-const SIZE_ORDER = ["mini", "clasica", "grande"];
-const SIZE_LABELS: Record<string, string> = { mini: "Mini", clasica: "Clásica", grande: "Grande" };
 
 function roundRectPath(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
   ctx.beginPath();
@@ -90,12 +79,9 @@ async function renderNameStripBlob(letters: string[], colors: readonly string[])
   );
 }
 
-export function NameEditor({ product, variants, initialVariantId, config }: NameEditorProps) {
+export function NameEditor({ product, variantId, config, priceLabel }: NameEditorProps) {
   const router = useRouter();
-  const initial = variants.find((v) => v.id === initialVariantId) ?? variants[0];
   const [raw, setRaw] = useState("");
-  const [selectedSize, setSelectedSize] = useState(initial?.size ?? "clasica");
-  const [selectedMagnet, setSelectedMagnet] = useState(initial?.magnet ?? true);
   const [themeId, setThemeId] = useState(NAME_TILE_THEMES[0].id);
   // Override de color por letra (índice → color). Vacío = usa el color del tema.
   const [letterColors, setLetterColors] = useState<Record<number, string>>({});
@@ -123,24 +109,6 @@ export function NameEditor({ product, variants, initialVariantId, config }: Name
 
   const examples = config.language === "es" ? ["Mía", "Mateo", "Amor"] : ["Mia", "Noah", "Love"];
 
-  // Tamaños disponibles (ordenados) + si hay opción de imantado.
-  const sizes = useMemo(() => {
-    const seen = new Map<string, NameVariant>();
-    for (const v of variants) if (!seen.has(v.size)) seen.set(v.size, v);
-    return SIZE_ORDER.filter((s) => seen.has(s)).map((s) => ({ size: s, sizeCm: seen.get(s)!.sizeCm }));
-  }, [variants]);
-  const hasMagnetChoice = useMemo(() => new Set(variants.map((v) => v.magnet)).size > 1, [variants]);
-
-  // Variante resuelta desde (tamaño, imantado) → id + precio reales.
-  const currentVariant = useMemo(
-    () =>
-      variants.find((v) => v.size === selectedSize && v.magnet === selectedMagnet) ??
-      variants.find((v) => v.size === selectedSize) ??
-      initial,
-    [variants, selectedSize, selectedMagnet, initial],
-  );
-  const priceLabel = currentVariant ? formatCOP(currentVariant.priceCop) : "";
-
   function applyTheme(id: string) {
     setThemeId(id);
     setLetterColors({}); // el tema es un punto de partida limpio
@@ -154,13 +122,13 @@ export function NameEditor({ product, variants, initialVariantId, config }: Name
   }
 
   async function handleAddToCart() {
-    if (!valid || submitting || !currentVariant) return;
+    if (!valid || submitting) return;
     setSubmitting(true);
     setError(null);
     try {
       const created = await createNameDesignAction({
         productId: product.id,
-        variantId: currentVariant.id,
+        variantId,
         name: raw,
         themeId,
         colors: effectiveColors,
@@ -188,7 +156,7 @@ export function NameEditor({ product, variants, initialVariantId, config }: Name
       const added = await addPersonalizedToCartAction({
         designId: created.designId,
         qty: 1,
-        variantId: currentVariant.id,
+        variantId,
       });
       if (!added.ok) {
         setError(`Guardamos tu diseño pero no pudimos agregarlo al carrito: ${added.message}`);
@@ -384,65 +352,6 @@ export function NameEditor({ product, variants, initialVariantId, config }: Name
           <p className="text-brand-muted mt-3 text-center text-sm">
             Te faltan letras — mínimo {config.min}.
           </p>
-        )}
-
-        {/* Tamaño + imantado (variantes reales, precio dinámico) */}
-        {sizes.length > 1 && (
-          <div className="mt-6">
-            <p className="text-brand-purple-dark mb-2 text-sm font-semibold">Tamaño de cada ficha</p>
-            <div className="flex flex-wrap gap-2">
-              {sizes.map((s) => {
-                const active = s.size === selectedSize;
-                return (
-                  <button
-                    key={s.size}
-                    type="button"
-                    onClick={() => setSelectedSize(s.size)}
-                    aria-pressed={active}
-                    className={`rounded-xl border-2 px-4 py-2 text-sm font-semibold transition ${
-                      active
-                        ? "border-brand-purple text-brand-purple-dark bg-brand-purple/5"
-                        : "border-brand-purple/15 text-brand-muted hover:border-brand-purple/40"
-                    }`}
-                  >
-                    {SIZE_LABELS[s.size] ?? s.size}
-                    <span className="text-brand-muted ml-1.5 text-xs font-normal">{s.sizeCm} cm</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {hasMagnetChoice && (
-          <div className="mt-4">
-            <p className="text-brand-purple-dark mb-2 text-sm font-semibold">¿Con imán?</p>
-            <div className="flex gap-2">
-              {[
-                { on: true, label: "Con imán", hint: "para la nevera" },
-                { on: false, label: "Sin imán", hint: "adhesivo / decoración" },
-              ].map((opt) => {
-                const active = opt.on === selectedMagnet;
-                return (
-                  <button
-                    key={String(opt.on)}
-                    type="button"
-                    onClick={() => setSelectedMagnet(opt.on)}
-                    aria-pressed={active}
-                    className={`flex-1 rounded-xl border-2 px-4 py-2.5 text-sm font-semibold transition ${
-                      active
-                        ? "border-brand-turquoise text-brand-purple-dark bg-brand-turquoise/10"
-                        : "border-brand-purple/15 text-brand-muted hover:border-brand-purple/40"
-                    }`}
-                  >
-                    {opt.on ? "🧲 " : "✨ "}
-                    {opt.label}
-                    <span className="text-brand-muted ml-1 text-xs font-normal">· {opt.hint}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </div>
         )}
 
         {error && (

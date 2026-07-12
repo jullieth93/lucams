@@ -246,6 +246,10 @@ export default async function ProductoDetallePage({
                     <input type="hidden" name="slug" value={product.slug} />
                     <input type="hidden" name="qty" value={1} />
                     <input type="hidden" name="returnTo" value={`/producto/${product.slug}`} />
+                    {/* ADR-057 — variante elegida en el selector (tamaño/imantado/idioma). */}
+                    {selectedVariant && (
+                      <input type="hidden" name="variantId" value={selectedVariant.id} />
+                    )}
                     {/* SubmitButton: spinner + disabled al enviar → evita doble-clic
                         (compra duplicada). Lucy 2026-06-27. */}
                     <SubmitButton

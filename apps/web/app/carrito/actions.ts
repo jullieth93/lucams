@@ -48,6 +48,7 @@ export async function addToCartAction(formData: FormData): Promise<void> {
     slug: String(formData.get("slug") ?? ""),
     qty: Math.max(1, Number(formData.get("qty") ?? 1)),
     returnTo: (formData.get("returnTo") || undefined) as string | undefined,
+    variantId: (formData.get("variantId") || undefined) as string | undefined,
   });
 
   if (!parsed.success) {
@@ -57,7 +58,7 @@ export async function addToCartAction(formData: FormData): Promise<void> {
     redirect(`/carrito?error=${encodeURIComponent(firstError)}`);
   }
 
-  const { slug, qty, returnTo: returnToValidated } = parsed.data;
+  const { slug, qty, returnTo: returnToValidated, variantId } = parsed.data;
   const returnTo = returnToValidated ?? "/carrito";
 
   const sessionId = await getOrCreateCartSession();
@@ -69,6 +70,7 @@ export async function addToCartAction(formData: FormData): Promise<void> {
       customerId: customer?.customer.id ?? null,
       productSlug: slug,
       qty,
+      variantId,
     });
     logger.info({
       event: "cart.add.success",

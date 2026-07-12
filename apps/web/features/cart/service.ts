@@ -195,20 +195,28 @@ export async function addProductToCart(opts: {
   customerId: string | null;
   productSlug: string;
   qty: number;
+  /**
+   * Variante elegida en la ficha (selector). Si se pasa, se usa esa (validando
+   * que pertenezca al producto). Si no, cae al legacy `-DEFAULT` (productos sin
+   * selector). ADR-057 — productos NONE con opciones (tamaño/imantado/idioma).
+   */
+  variantId?: string;
 }): Promise<CartDetail> {
   if (opts.qty < 1 || opts.qty > MAX_QTY_PER_ITEM) {
     throw new CartError("QTY_INVALID");
   }
 
-  // Buscar producto + variante default. En el futuro habrá selector
-  // de variante en la UI; mientras tanto, default es el único path.
   const product = await prisma.product.findFirst({
     where: { slug: opts.productSlug, isActive: true, deletedAt: null },
     select: {
       id: true,
       basePrice: true,
       variants: {
-        where: { deletedAt: null, sku: { endsWith: "-DEFAULT" } },
+        // Con variantId: esa variante (scoping por producto valida ownership).
+        // Sin variantId: la variante legacy `-DEFAULT`.
+        where: opts.variantId
+          ? { id: opts.variantId, deletedAt: null, isActive: true }
+          : { deletedAt: null, sku: { endsWith: "-DEFAULT" } },
         select: { id: true, price: true },
         take: 1,
       },
