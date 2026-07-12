@@ -1,0 +1,39 @@
+/*
+ * Cron del resumen diario de operación (Bloque D). Envía a la dueña un email con lo
+ * de las últimas 24h. Protegido por CRON_SECRET (query `?secret=` o header `x-cron-secret`).
+ *
+ * Se agenda con pg_cron en Supabase (no Vercel Cron, mandato #11) — el SQL de
+ * agendamiento (8am America/Bogota = 13:00 UTC, vía net.http_get) está en docs/OPERATIONS.md.
+ */
+
+import type { NextRequest } from "next/server";
+import { timingSafeEqual } from "node:crypto";
+import { sendDailySummary } from "@/features/observability/daily-summary";
+import { logger } from "@/lib/logger";
+
+export const dynamic = "force-dynamic";
+
+function secretOk(provided: string | null): boolean {
+  const expected = process.env.CRON_SECRET?.trim();
+  if (!expected || !provided) return false;
+  const a = Buffer.from(provided);
+  const b = Buffer.from(expected);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+export async function GET(req: NextRequest) {
+  const provided = req.nextUrl.searchParams.get("secret") ?? req.headers.get("x-cron-secret");
+  if (!secretOk(provided)) {
+    return Response.json({ error: "unauthorized" }, { status: 401 });
+  }
+  try {
+    const result = await sendDailySummary();
+    return Response.json({ ok: true, sent: result.sent, skipped: result.skipped ?? null });
+  } catch (err) {
+    logger.error({
+      event: "cron.daily_summary.fail",
+      err: err instanceof Error ? err.message : String(err),
+    });
+    return Response.json({ ok: false, error: "internal" }, { status: 500 });
+  }
+}

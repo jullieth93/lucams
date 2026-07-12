@@ -121,7 +121,27 @@ select cron.schedule(
 ```
 
 El destinatario del email se toma de la setting `ALERT_EMAIL` (default `hola@lucamsshop.co`).
-El resumen diario (8am) queda pendiente como mejora futura.
+
+### Resumen diario de operación (Bloque D) — agendamiento pg_cron
+
+`GET /api/cron/daily-summary` (mismo `CRON_SECRET`) envía a la dueña un email cada mañana con
+lo de las últimas 24h: pedidos, ingresos, en pago, por despachar, carritos abandonados +
+sección "necesitan tu atención" (reconciliación, reseñas por aprobar, stock bajo, errores).
+Lógica en `features/observability/daily-summary.ts` (idempotente: no re-envía si ya se mandó
+hace < 12h). A diferencia de las alertas, se envía SIEMPRE una vez al día.
+
+**ACCIÓN HUMANA REQUERIDA (Lucy, al configurar prod):** agendar a las **8am hora Colombia**
+(= 13:00 UTC, pg_cron corre en UTC):
+
+```sql
+select cron.schedule(
+  'lucams-daily-summary',
+  '0 13 * * *',                       -- 08:00 America/Bogota (UTC-5)
+  $$ select net.http_get('https://lucamsshop.co/api/cron/daily-summary?secret=<CRON_SECRET>') $$
+);
+```
+
+El destinatario también sale de la setting `ALERT_EMAIL`.
 
 ### Symlink de Supabase local con datos de prueba
 
