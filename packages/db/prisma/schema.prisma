@@ -1256,6 +1256,48 @@ model PersonalizationTemplate {
   @@index([mode, isActive])
 }
 
+// ──────────────────────── ADR-057 — Sets de fichas del abecedario ────────────────────────
+//
+// Cada "Set de fichas" es una colección de ilustraciones kawaii por letra (A de Ave,
+// B de Burro…) que Lucy gestiona en el admin. El editor de nombre mapea cada letra
+// escrita a su ficha. Modular: varios sets por idioma (kawaii animales, pastel, navideño…).
+// Si falta la letra, el editor cae a un placeholder — nunca se rompe.
+
+model LetterTileSet {
+  id        String       @id @default(cuid())
+  name      String // "Kawaii Animales · Español"
+  language  String // "es" | "en" (el alfabeto es incluye Ñ; en no)
+  isActive  Boolean      @default(true)
+  isDefault Boolean      @default(false) // set por defecto para ese idioma
+  order     Int          @default(0)
+  tiles     LetterTile[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  createdBy String?
+  updatedBy String?
+  deletedAt DateTime?
+  deletedBy String?
+
+  @@index([language, isActive, isDefault])
+}
+
+model LetterTile {
+  id       String        @id @default(cuid())
+  setId    String
+  set      LetterTileSet @relation(fields: [setId], references: [id], onDelete: Cascade)
+  char     String // "A", "Ñ", … (mayúscula)
+  imageUrl String // ficha ilustrada (bucket público)
+  label    String? // nombre del animalito ("Ave")
+  order    Int           @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([setId, char])
+  @@index([setId, order])
+}
+
 // ──────────────────────── PLAN_CATALOG_V2 — TABLAS NUEVAS ────────────────────────
 
 // PLAN_CATALOG_V2 1.5 / 2.10 — tags transversales por ocasión que cruzan categorías.
