@@ -62,8 +62,15 @@ type ShippingAddrSnapshot = {
   notes?: string;
 };
 
-export default async function PublicOrderPage({ params }: { params: Promise<{ token: string }> }) {
+export default async function PublicOrderPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ token: string }>;
+  searchParams: Promise<{ nueva?: string }>;
+}) {
   const { token } = await params;
+  const { nueva } = await searchParams;
 
   // Validación token: debe ser 32 hex chars (anti-fuzzing, evita query DB con basura).
   if (!/^[a-f0-9]{32}$/.test(token)) notFound();
@@ -117,6 +124,24 @@ export default async function PublicOrderPage({ params }: { params: Promise<{ to
 
       <main id="contenido" tabIndex={-1} className="flex-1 px-6 py-10 sm:px-10">
         <div className="mx-auto max-w-3xl">
+          {nueva === "1" && !isCancelled && (
+            <div className="mb-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+              <p className="font-display text-lg font-bold text-emerald-900">
+                🎉 ¡Pedido confirmado!
+              </p>
+              <p className="mt-0.5 text-sm text-emerald-800">
+                {order.paymentMethod === "COD" ? (
+                  <>
+                    Pagas <strong>{formatCOP(order.total)}</strong> en efectivo cuando el mensajero
+                    te entregue el pedido. Te enviamos los detalles a tu correo.
+                  </>
+                ) : (
+                  <>Te enviamos los detalles y el seguimiento a tu correo. ¡Gracias por tu compra!</>
+                )}
+              </p>
+            </div>
+          )}
+
           <header className="mb-6">
             <p className="text-brand-muted text-xs tracking-wider uppercase">Tu pedido</p>
             <h1 className="font-display text-brand-purple-dark text-3xl sm:text-4xl">

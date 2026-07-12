@@ -68,6 +68,7 @@ export async function sendOrderConfirmation(orderId: string): Promise<boolean> {
       })),
       shippingAddress: formatAddressLine(ship),
       publicTrackingToken: order.publicAccessToken ?? null,
+      paymentMethod: order.paymentMethod,
     });
 
     const result = await sendEmail({

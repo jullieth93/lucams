@@ -19,6 +19,7 @@ import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { getSettingValue } from "@/lib/cms";
 import { createOrderFromCart } from "@/features/orders/service";
+import { processPaidOrder } from "@/features/orders/saga";
 import { priceCouponForCart } from "@/features/coupons/redemption";
 import { getPaymentProvider } from "@/features/payments/provider";
 import { getShippingProvider } from "@/features/shipping/provider";
@@ -316,11 +317,31 @@ export async function finalizeCheckout(input: {
     );
   }
 
-  // 2. Si pago es COD (contraentrega), no llamamos a Wompi —
-  //    la Order queda PENDING_PAYMENT (se pagará al recibir).
-  //    Por ahora: COD NO soportado en F2.1 (Wompi only).
+  // 2. Contraentrega (COD): no hay pago online. Confirmamos la orden AHORA reusando el
+  //    saga battle-tested (commit stock + guía Aveonline con contraentrega + valor a
+  //    recaudar + email). El courier cobra el total en efectivo al entregar y lo remite.
+  //    processPaidOrder es idempotente; la orden avanza a FULFILLING. El caso de stock
+  //    insuficiente REAL ya se atrapó arriba (createOrderFromCart). Si la guía falla por
+  //    una carrera rara, la orden queda visible en reconciliación admin (no bloqueamos
+  //    al cliente: su pedido existe). Redirigimos a la vista pública por token (sin IDOR).
   if (state.paymentMethod === "COD") {
-    throw new CheckoutError("PAYMENT_INIT_FAILED", "Contraentrega aún no implementado (Fase 2.x)");
+    const saga = await processPaidOrder({ orderId: order.id });
+    logger.info({
+      event: "checkout.finalize.cod_confirmed",
+      orderId: order.id,
+      orderNumber: order.number,
+      sagaStatus: saga.status,
+      trackingNumber: saga.trackingNumber ?? null,
+    });
+    return {
+      orderId: order.id,
+      orderNumber: order.number,
+      // Vista pública por token (sin IDOR). Defensivo: si faltara el token (no debería,
+      // createOrderFromCart siempre lo genera), mandamos a la cuenta.
+      checkoutUrl: order.publicAccessToken
+        ? `/pedido/${order.publicAccessToken}?nueva=1`
+        : "/mi-cuenta/pedidos",
+    };
   }
 
   // 3. Crear checkout en Wompi → devuelve URL hosted.

@@ -115,8 +115,21 @@ vi.mock("@/features/shipping/provider", () => ({
       if (shippingShouldThrow) throw shippingShouldThrow;
       return shippingQuoteResult;
     },
+    // COD: finalizeCheckout confirma la orden → processPaidOrder → createShipment.
+    // Capturamos contraentrega/valorRecaudo para asertar que la guía se pide bien.
+    createShipment: async (args: { contraentrega: boolean; valorRecaudoCop?: number; orderId: string }) => {
+      createShipmentCalls.push(args);
+      return {
+        trackingNumber: `COD-TRACK-${createShipmentCalls.length}`,
+        trackingUrl: "https://track.test/cod",
+        labelUrl: "https://label.test/cod.pdf",
+        carrier: "envia",
+        estimatedDeliveryAt: null,
+      };
+    },
   }),
 }));
+const createShipmentCalls: Array<{ contraentrega: boolean; valorRecaudoCop?: number; orderId: string }> = [];
 
 import { prisma } from "@/lib/db";
 import {
@@ -466,6 +479,9 @@ describe.skipIf(!hasDb)("checkout/service — integración DB (ruta de ingresos)
     // Orders de esta corrida (email contiene RUN) + sus items.
     await prisma.orderItem.deleteMany({ where: { order: { email: { contains: RUN } } } });
     await prisma.order.deleteMany({ where: { email: { contains: RUN } } });
+    // InventoryLog: una orden COD confirmada decrementa stock → crea logs con FK
+    // Restrict a la variante. Hay que borrarlos antes de las variantes (afterAll).
+    await prisma.inventoryLog.deleteMany({ where: { variantId: { in: fixtureVariants } } });
     // Carts que referencian las variantes-fixture (cubre los de sessionId UUID).
     const cartIds = (
       await prisma.cart.findMany({
@@ -850,26 +866,31 @@ describe.skipIf(!hasDb)("checkout/service — integración DB (ruta de ingresos)
       ).rejects.toMatchObject({ code: "MISSING_PAYMENT_METHOD" });
     }, 30000);
 
-    it("PAYMENT_INIT_FAILED para COD: la Order se crea pero COD aún no está soportado (Fase 2.x)", async () => {
+    it("COD: confirma la orden (guía contraentrega + valorRecaudo=total) sin llamar a Wompi", async () => {
       const sid = uuid();
       await createCartWithItem({ sessionId: sid });
       setCartCookie(sid);
       await seedFullState({ paymentMethod: "COD" });
+      createShipmentCalls.length = 0;
 
-      await expect(
-        finalizeCheckout({ redirectUrl: "https://x.test" }),
-      ).rejects.toMatchObject({
-        code: "PAYMENT_INIT_FAILED",
-        message: "Contraentrega aún no implementado (Fase 2.x)",
-      });
-      // La Order SÍ quedó creada (PENDING_PAYMENT) antes del throw de COD —
-      // comportamiento actual del service (la guarda COD va después del create).
-      const orders = await prisma.order.findMany({ where: { email: { contains: RUN } } });
-      expect(orders).toHaveLength(1);
-      expect(orders[0].paymentMethod).toBe("COD");
-      // Nunca llamó a Wompi (rama COD corta antes).
+      const result = await finalizeCheckout({ redirectUrl: "https://x.test" });
+
+      // Redirige a la vista pública por token (no a Wompi).
+      expect(result.checkoutUrl).toMatch(/^\/pedido\/[a-f0-9]{32}\?nueva=1$/);
+      // NUNCA llamó a Wompi.
       expect(paymentCalls).toHaveLength(0);
-    }, 30000);
+
+      // La orden se confirmó: FULFILLING + tracking (guía generada).
+      const order = await prisma.order.findFirst({ where: { email: { contains: RUN } } });
+      expect(order?.paymentMethod).toBe("COD");
+      expect(order?.status).toBe("FULFILLING");
+      expect(order?.trackingNumber).toMatch(/^COD-TRACK-/);
+
+      // La guía se pidió como CONTRAENTREGA con el total a recaudar (en centavos).
+      expect(createShipmentCalls).toHaveLength(1);
+      expect(createShipmentCalls[0].contraentrega).toBe(true);
+      expect(createShipmentCalls[0].valorRecaudoCop).toBe(order?.total);
+    }, 40000);
 
     it("PAYMENT_INIT_FAILED (envuelto) cuando Wompi lanza al crear checkout", async () => {
       const sid = uuid();

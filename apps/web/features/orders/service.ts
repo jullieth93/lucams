@@ -90,6 +90,8 @@ export type CreateOrderFromCartResult = {
   subtotal: number;
   shipping: number;
   discount: number;
+  publicAccessToken: string | null;
+  paymentMethod: "WOMPI" | "COD";
 };
 
 /**
@@ -121,7 +123,16 @@ export async function createOrderFromCart(
         const winner = await prisma.order.findFirst({
           where: { cartId: input.cartId, status: "PENDING_PAYMENT", deletedAt: null },
           orderBy: { createdAt: "desc" },
-          select: { id: true, number: true, total: true, subtotal: true, shipping: true, discount: true },
+          select: {
+            id: true,
+            number: true,
+            total: true,
+            subtotal: true,
+            shipping: true,
+            discount: true,
+            publicAccessToken: true,
+            paymentMethod: true,
+          },
         });
         if (winner) {
           logger.info({
@@ -239,6 +250,8 @@ async function createOrderFromCartTx(
         subtotal: existing.subtotal,
         shipping: existing.shipping,
         discount: existing.discount,
+        publicAccessToken: existing.publicAccessToken,
+        paymentMethod: existing.paymentMethod,
       };
     }
 
@@ -301,6 +314,8 @@ async function createOrderFromCartTx(
         subtotal: true,
         shipping: true,
         discount: true,
+        publicAccessToken: true,
+        paymentMethod: true,
       },
     });
 

@@ -20,6 +20,8 @@ export type OrderConfirmationData = {
   shippingAddress: string; // ya formateada
   /** Token público para vista guest /pedido/<token> sin login. */
   publicTrackingToken: string | null;
+  /** COD ⇒ el cliente paga en efectivo al recibir (no hubo pago online). */
+  paymentMethod?: "WOMPI" | "COD";
 };
 
 export async function orderConfirmationEmail(data: OrderConfirmationData) {
@@ -36,9 +38,23 @@ export async function orderConfirmationEmail(data: OrderConfirmationData) {
     )
     .join("");
 
+  const isCod = data.paymentMethod === "COD";
+  const codCallout = isCod
+    ? `
+<div style="margin:14px 0;padding:12px 14px;border:1px solid #FFD93D;background:#FFFBEA;border-radius:10px;">
+  <div style="font-weight:700;color:#3D2E5C;">💵 Pago contra entrega</div>
+  <div style="font-size:14px;color:#3D2E5C;">Pagas <strong>${formatCOP(data.total)}</strong> en efectivo cuando el mensajero te entregue el pedido.</div>
+</div>`
+    : "";
+
   const bodyHtml = `
 <h1 style="margin:0 0 12px 0;font-size:22px;color:#3D2E5C;">¡Tu pedido está confirmado! 🎉</h1>
-<p>Hola ${escapeHtml(data.customerName)}, recibimos tu pago para el pedido <strong>${escapeHtml(data.orderNumber)}</strong>.</p>
+<p>Hola ${escapeHtml(data.customerName)}, ${
+    isCod
+      ? `recibimos tu pedido <strong>${escapeHtml(data.orderNumber)}</strong>.`
+      : `recibimos tu pago para el pedido <strong>${escapeHtml(data.orderNumber)}</strong>.`
+  }</p>
+${codCallout}
 <p>Ya empezamos a preparar tu pedido. Te avisamos en cuanto salga para entrega.</p>
 
 <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:20px 0;border-collapse:collapse;">
@@ -73,7 +89,12 @@ ${ctaButton(
 
 Hola ${data.customerName},
 
-Recibimos tu pago para el pedido ${data.orderNumber}.
+${
+  isCod
+    ? `Recibimos tu pedido ${data.orderNumber}.
+💵 Pago contra entrega: pagas ${formatCOP(data.total)} en efectivo al recibir.`
+    : `Recibimos tu pago para el pedido ${data.orderNumber}.`
+}
 
 Items:
 ${data.items.map((it) => `  - ${it.name} ×${it.qty} → ${formatCOP(it.lineTotal)}`).join("\n")}

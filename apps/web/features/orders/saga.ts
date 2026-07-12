@@ -433,7 +433,10 @@ export async function processPaidOrder(
         email: ship.email,
       },
       items,
-      contraentrega: false, // F2.1: COD no implementado todavía
+      // COD (contraentrega): el courier cobra el total en efectivo al entregar y lo
+      // remite. valorRecaudoCop en centavos (createShipment lo pasa a pesos).
+      contraentrega: order.paymentMethod === "COD",
+      valorRecaudoCop: order.paymentMethod === "COD" ? order.total : undefined,
       orderId: order.id,
     });
   } catch (err) {

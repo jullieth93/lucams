@@ -9,10 +9,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { CheckCircle2, AlertCircle, CreditCard, MapPin, User, Receipt } from "lucide-react";
+import { AlertCircle, CreditCard, MapPin, User, Receipt } from "lucide-react";
 import { CheckoutStepper } from "../_components/stepper";
 import { OrderSummary } from "../_components/order-summary";
-import { PayWompiForm } from "./pay-button";
+import { PaymentMethodChooser } from "./pay-button";
 import { CouponField } from "./coupon-field";
 import { CheckoutError, getAppliedCoupon, loadCheckoutContext } from "@/features/checkout/service";
 
@@ -20,6 +20,11 @@ export const metadata: Metadata = {
   title: "Pago · Checkout",
   robots: { index: false, follow: false },
 };
+
+// El pago contraentrega confirma la orden AQUÍ (finalizeCheckout → processPaidOrder →
+// createShipment ~20s). La función debe contener ese presupuesto para no matar la
+// generación de guía a mitad. 60s cabe en el default de Vercel (300s). Ver ADR-049.
+export const maxDuration = 60;
 
 type SearchParams = Promise<{ error?: string }>;
 
@@ -139,33 +144,7 @@ export default async function CheckoutPagoPage({ searchParams }: { searchParams:
               Método de pago
             </h2>
 
-            <div className="border-brand-purple bg-brand-purple/5 mb-5 flex items-center gap-3 rounded-xl border-2 p-4">
-              <CheckCircle2 className="text-brand-purple h-6 w-6 flex-shrink-0" />
-              <div className="flex-1">
-                <div className="text-brand-purple-dark text-sm font-semibold">Pagar con Wompi</div>
-                <div className="text-brand-muted text-xs">
-                  Tarjeta crédito/débito · PSE · Nequi · Bancolombia
-                </div>
-              </div>
-            </div>
-
-            <div className="text-brand-muted mb-4 flex items-start gap-2 text-xs">
-              <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-emerald-600" />
-              <span>
-                Al pagar serás redirigido a Wompi (Bancolombia). Tu información bancaria nunca pasa
-                por Lucams.
-              </span>
-            </div>
-
-            <div className="flex flex-col items-end gap-2 sm:flex-row sm:justify-between">
-              <Link
-                href="/checkout/envio"
-                className="text-brand-purple-dark/70 hover:text-brand-purple-dark text-sm font-medium"
-              >
-                ← Cambiar envío
-              </Link>
-              <PayWompiForm />
-            </div>
+            <PaymentMethodChooser backHref="/checkout/envio" />
           </section>
         </div>
 
