@@ -97,6 +97,17 @@ export function NameEditor({ product, variantId, config, priceLabel }: NameEdito
     [letters, letterColors, theme],
   );
 
+  // Letras repetidas → transparencia sobre cuántas fichas iguales lleva.
+  const repeats = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const l of letters) counts[l] = (counts[l] ?? 0) + 1;
+    return Object.entries(counts)
+      .filter(([, n]) => n > 1)
+      .map(([l, n]) => `${l}×${n}`);
+  }, [letters]);
+
+  const examples = config.language === "es" ? ["Mía", "Mateo", "Amor"] : ["Mia", "Noah", "Love"];
+
   function applyTheme(id: string) {
     setThemeId(id);
     setLetterColors({}); // el tema es un punto de partida limpio
@@ -172,17 +183,18 @@ export function NameEditor({ product, variantId, config, priceLabel }: NameEdito
           Personalizar · {product.name}
         </p>
         <h1 className="font-display text-brand-purple-dark mt-1 text-3xl sm:text-4xl">
-          Arma tu nombre ✨
+          Arma tu palabra ✨
         </h1>
         <p className="text-brand-muted mx-auto mt-2 max-w-md text-sm">
-          Escribe el nombre y verás las fichas que vas a recibir — una por cada letra.
+          Escribe un nombre o palabra (MÍA, MATEO, AMOR…) y verás las fichas que vas a recibir —
+          una por cada letra.
         </p>
       </header>
 
       <div className="border-brand-purple/12 rounded-3xl border bg-white p-6 shadow-sm sm:p-8">
         {/* Input */}
         <label htmlFor="name-input" className="text-brand-purple-dark block text-sm font-semibold">
-          Escribe el nombre
+          Escribe el nombre o palabra
         </label>
         <div className="mt-2 flex items-center gap-3">
           <input
@@ -210,6 +222,31 @@ export function NameEditor({ product, variantId, config, priceLabel }: NameEdito
           {config.language === "es" ? "incluye la Ñ" : "alfabeto en inglés (sin Ñ)"} · sin números ni
           símbolos
         </p>
+
+        {/* Ejemplos de arranque (menos fricción) */}
+        {raw.trim() === "" && (
+          <div className="text-brand-muted mt-3 flex flex-wrap items-center gap-2 text-xs">
+            <span>Prueba:</span>
+            {examples.map((ex) => (
+              <button
+                key={ex}
+                type="button"
+                onClick={() => setRaw(ex)}
+                className="border-brand-purple/20 text-brand-purple-dark hover:bg-brand-purple/5 rounded-full border px-3 py-1 font-semibold"
+              >
+                {ex}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* Aviso de letras repetidas (transparencia) */}
+        {repeats.length > 0 && (
+          <p className="text-brand-muted mt-3 text-xs">
+            Se repiten fichas: <span className="text-brand-purple-dark font-semibold">{repeats.join(" · ")}</span>{" "}
+            (una ficha por cada letra).
+          </p>
+        )}
 
         {/* Avisos amables */}
         {notices.length > 0 && (
