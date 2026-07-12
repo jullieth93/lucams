@@ -695,15 +695,19 @@ describe.skipIf(!hasDb)("cart/service — integración DB", { timeout: T }, () =
       expect(detail.items[0].unitPrice).toBe(PERSO_VAR_A_PRICE);
     });
 
-    it("name design sin metadata.letters → fallback al precio por ficha unitario (nunca 0/NaN)", async () => {
-      const detail = await addPersonalizedToCart({
-        sessionId: sid("name"),
-        customerId: null,
-        designId: nameDesignNoLettersId,
-        variantId: nameVariantId,
-        qty: 1,
-      });
-      expect(detail.items[0].unitPrice).toBe(NAME_PER_TILE);
+    it("ANTI-TAMPER: variante por-ficha + diseño SIN letras → RECHAZA (nunca subcobra 1 ficha)", async () => {
+      // Un draft genérico (createDraftDesign) sobre el producto Nombre no pondría letters en
+      // metadata. Si el carrito se basara en metadata.surface, cobraría 1 ficha por el nombre
+      // completo. El gate por VARIANTE (pricePerTile) exige letras → sin ellas, rechaza.
+      await expect(
+        addPersonalizedToCart({
+          sessionId: sid("name"),
+          customerId: null,
+          designId: nameDesignNoLettersId,
+          variantId: nameVariantId,
+          qty: 1,
+        }),
+      ).rejects.toMatchObject({ code: "PRODUCT_NOT_FOUND" });
     });
   });
 

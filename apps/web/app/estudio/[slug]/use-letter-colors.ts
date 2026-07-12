@@ -20,7 +20,12 @@ export function useLetterColors(count: number) {
   const [activeColors, setActiveColors] = useState<readonly string[]>(NAME_TILE_THEMES[0].colors);
   // Override de color por ficha (índice → color). Vacío = usa el color del tema.
   const [letterColors, setLetterColors] = useState<Record<number, string>>({});
-  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const [selectedIndexRaw, setSelectedIndexRaw] = useState<number | null>(null);
+  // Índice SEGURO: si el nº de fichas baja (nombre más corto), un índice viejo queda fuera
+  // de rango. Lo derivamos a null en vez de dejar estado muerto (hint oculto + SwatchRow
+  // desaparecida + ninguna ficha marcada). No usa efecto → sin render transitorio erróneo.
+  const selectedIndex =
+    selectedIndexRaw !== null && selectedIndexRaw < Math.max(0, count) ? selectedIndexRaw : null;
 
   const effectiveColors = useMemo(
     () =>
@@ -45,17 +50,17 @@ export function useLetterColors(count: number) {
     setThemeId(id);
     setActiveColors(shuffleColors(getNameTileTheme(id).colors)); // re-clic → otra combinación
     setLetterColors({}); // el tema es un punto de partida limpio
-    setSelectedIndex(null);
+    setSelectedIndexRaw(null);
   }
 
   function setColorForSelected(color: string) {
     if (selectedIndex === null) return;
     setLetterColors((prev) => ({ ...prev, [selectedIndex]: color }));
-    setSelectedIndex(null);
+    setSelectedIndexRaw(null);
   }
 
   function toggleSelected(index: number) {
-    setSelectedIndex((cur) => (cur === index ? null : index));
+    setSelectedIndexRaw((cur) => (cur === index ? null : index));
   }
 
   // ¿El tema sigue "limpio" (sin overrides por ficha)? Para el aria-pressed del picker.
@@ -65,7 +70,6 @@ export function useLetterColors(count: number) {
     themeId,
     effectiveColors,
     selectedIndex,
-    setSelectedIndex,
     toggleSelected,
     applyTheme,
     setColorForSelected,

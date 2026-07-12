@@ -22,6 +22,7 @@
 
 import "server-only";
 import { prisma } from "@/lib/db";
+import { parseVariantAttributes } from "@/features/products/variant-schemas";
 
 export type CartLineItem = {
   itemId: string;
@@ -303,7 +304,7 @@ export async function addPersonalizedToCart(opts: {
           deletedAt: true,
           variants: {
             where: { deletedAt: null },
-            select: { id: true, price: true, sku: true },
+            select: { id: true, price: true, sku: true, attributes: true },
             orderBy: { createdAt: "asc" },
           },
         },
@@ -324,7 +325,7 @@ export async function addPersonalizedToCart(opts: {
   // pertenece al producto del Design. Si no se pasó, fallback histórico:
   // primera variant disponible (post-M.3.b.CAT la mayoría de productos
   // tienen al menos 1 variant; pre-consolidación había un "-DEFAULT").
-  let variant: { id: string; price: number | null } | undefined;
+  let variant: { id: string; price: number | null; attributes: unknown } | undefined;
   if (opts.variantId) {
     variant = design.product.variants.find((v) => v.id === opts.variantId);
     if (!variant) {
@@ -339,17 +340,26 @@ export async function addPersonalizedToCart(opts: {
   }
   if (!variant) throw new CartError("NO_DEFAULT_VARIANT");
 
-  // ADR-057 — precio POR FICHA para la superficie "nombre": cada letra es una ficha
-  // física, así que el unitPrice = precio-por-ficha (variant.price) × nº de letras del
-  // diseño. Las letras se guardan en Design.metadata (server-side, no manipulable por el
-  // cliente) al crear el diseño (createNameDesign), así que el conteo es de confianza.
-  // El resto de superficies (foto, set de letras) usan el precio de variante tal cual.
+  // ADR-057 — precio POR FICHA. El gate es la VARIANTE (verdad del servidor, anti-tamper),
+  // NO metadata.surface: un draft genérico (createDraftDesign) sobre el producto Nombre no
+  // pondría surface="name" y, si nos basáramos en metadata, cobraría 1 ficha por un nombre
+  // completo (subcobro). Si la variante es por-ficha, el diseño DEBE traer sus letras
+  // (server-side, vía createNameDesign): sin letras = diseño inválido para este producto →
+  // rechazamos (nunca cobramos de menos). El resto de productos usan el precio tal cual.
   const perUnitPrice = variant.price ?? design.product.basePrice;
-  const meta = (design.metadata ?? null) as { surface?: string; letters?: unknown } | null;
+  const attrs = parseVariantAttributes(variant.attributes);
+  const isPerTile = attrs.pricePerTile === true || attrs.variant === "name";
+  const meta = (design.metadata ?? null) as { letters?: unknown } | null;
   let unitPrice = perUnitPrice;
-  if (meta?.surface === "name" && Array.isArray(meta.letters) && meta.letters.length > 0) {
-    // Clamp defensivo (1..40) por si la metadata llegara corrupta — nunca precio 0 ni absurdo.
-    const letterCount = Math.min(40, Math.max(1, meta.letters.length));
+  if (isPerTile) {
+    const letters = Array.isArray(meta?.letters) ? meta.letters : null;
+    if (!letters || letters.length < 1) {
+      // Diseño sin letras sobre una variante por-ficha → inválido (posible tamper).
+      // Reusar PRODUCT_NOT_FOUND para no exponer el detalle interno al cliente.
+      throw new CartError("PRODUCT_NOT_FOUND");
+    }
+    // Clamp defensivo (1..40) — nunca precio 0 ni absurdo.
+    const letterCount = Math.min(40, Math.max(1, letters.length));
     unitPrice = perUnitPrice * letterCount;
   }
   const cart = await ensureCart(opts.sessionId, opts.customerId);
