@@ -30,7 +30,13 @@ import { refreshCustomerUploadSignedUrl } from "@/lib/storage";
 import type { CanvasData, StudioAsset } from "./types";
 
 type Params = Promise<{ slug: string }>;
-type SearchParams = Promise<{ designId?: string; template?: string; variant?: string }>;
+type SearchParams = Promise<{
+  designId?: string;
+  template?: string;
+  variant?: string;
+  /** ADR-057 — nº de letras pre-elegido en la ficha (Nombre por ficha). Hint inicial. */
+  letters?: string;
+}>;
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { slug } = await params;
@@ -101,7 +107,14 @@ export default async function EstudioPage({
   // Superficie "nombre": editor de nombre (solo palabra + colores). El tamaño, idioma e
   // imantado se eligen en la FICHA (VariantSelector) → llegan resueltos en selectedVariant.
   if (surface.surface === "name" && selectedVariant) {
-    const priceLabel = formatCOP(selectedVariant.price ?? product.basePrice);
+    // ADR-057 — precio POR FICHA: el price de la variante es el precio de UNA ficha; el
+    // editor muestra el total en vivo = nº de letras × precio-por-ficha.
+    const pricePerTile = selectedVariant.price ?? product.basePrice;
+    // Hint de cantidad pre-elegido en la ficha (?letters=N), acotado a [min, max].
+    const rawCount = Number.parseInt(sp.letters ?? "", 10);
+    const initialCount = Number.isFinite(rawCount)
+      ? Math.min(surface.config.max, Math.max(surface.config.min, rawCount))
+      : surface.config.min;
     // Fichas ilustradas del idioma (si Lucy ya las subió); si faltan, el editor usa placeholder.
     const tiles = await getLetterTilesForLanguage(surface.config.language);
     return (
@@ -112,7 +125,8 @@ export default async function EstudioPage({
             product={{ id: product.id, slug: product.slug, name: product.name }}
             variantId={selectedVariant.id}
             config={surface.config}
-            priceLabel={priceLabel}
+            pricePerTile={pricePerTile}
+            initialCount={initialCount}
             tiles={tiles}
           />
         </main>

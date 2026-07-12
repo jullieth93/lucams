@@ -29,8 +29,7 @@ import { formatCOP } from "@/lib/format";
 import { buildWhatsAppUrl } from "@/lib/wa";
 import { addToCartAction } from "@/app/carrito/actions";
 import { selectableVariants, parseVariantAttributes } from "@/features/products/variant-schemas";
-import { getLetterTilesForLanguage, ALPHABET } from "@/features/personalization/letter-tiles";
-import { LetterSetPreview } from "@/components/product-detail/letter-set-preview";
+import { NamePricePicker } from "./name-price-picker";
 import {
   getStorefrontProductBySlug,
   listRelatedProducts,
@@ -99,17 +98,19 @@ export default async function ProductoDetallePage({
       ? selectedVariant.images
       : product.images;
 
-  // ADR-057 — productos que SON un set de letras (Completo/Vocales): mostramos la
-  // biblioteca de fichas directo en la ficha (una sola fuente de verdad con el editor).
+  // ADR-057 — atributos de la variante elegida: guían el CTA y el modelo de precio.
+  const selectedAttrs = parseVariantAttributes(selectedVariant?.attributes);
+  // Set de letras (Completo/Vocales): abre el Estudio (color + estilo). El visual del set
+  // vive DENTRO del Estudio (no duplicamos "Esto recibes" en la ficha — Lucy 2026-07-12).
   const letterSet = (product.personalizationSchema as { letterSet?: string } | null)?.letterSet;
-  let letterSetPreview: { letters: string[]; tiles: Awaited<ReturnType<typeof getLetterTilesForLanguage>> } | null =
-    null;
-  if (letterSet === "full" || letterSet === "vowels") {
-    const lang = parseVariantAttributes(selectedVariant?.attributes).language ?? "es";
-    const tiles = await getLetterTilesForLanguage(lang);
-    const letters = letterSet === "vowels" ? ["A", "E", "I", "O", "U"] : (ALPHABET[lang] ?? ALPHABET.es);
-    letterSetPreview = { letters, tiles };
-  }
+  const isLetterSetProduct = letterSet === "full" || letterSet === "vowels";
+  // Nombre Personalizado: precio POR FICHA → selector de cantidad en la ficha.
+  const isNamePerTile = selectedAttrs.variant === "name";
+  const nameMin = selectedAttrs.letterCountMin ?? 3;
+  const nameMax = selectedAttrs.letterCountMax ?? 10;
+  // CTA adaptativo: "Sin imán" es un adhesivo, no un imán → no llamarlo "imán". (magnet
+  // undefined = con imán por defecto.)
+  const ctaNoun = selectedAttrs.magnet === false ? "tu adhesivo" : "tu imán";
 
   const related = await listRelatedProducts({
     productId: product.id,
@@ -222,14 +223,30 @@ export default async function ProductoDetallePage({
                 )}
               </div>
 
-              <div className="flex items-baseline gap-3">
-                <span className="text-brand-purple-dark text-3xl font-bold tabular-nums">
-                  {formatCOP(displayPrice)}
-                </span>
-                {hasDiscount && (
-                  <span className="text-brand-muted text-lg tabular-nums line-through">
-                    {formatCOP(displayCompareAt!)}
-                  </span>
+              <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+                {isNamePerTile ? (
+                  <>
+                    {/* Precio POR FICHA: el grande es "desde" (mínimo de letras); el exacto
+                        lo calcula el selector de cantidad abajo. */}
+                    <span className="text-brand-muted text-lg font-semibold">Desde</span>
+                    <span className="text-brand-purple-dark text-3xl font-bold tabular-nums">
+                      {formatCOP(displayPrice * nameMin)}
+                    </span>
+                    <span className="text-brand-muted text-sm">
+                      · {formatCOP(displayPrice)} por ficha
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-brand-purple-dark text-3xl font-bold tabular-nums">
+                      {formatCOP(displayPrice)}
+                    </span>
+                    {hasDiscount && (
+                      <span className="text-brand-muted text-lg tabular-nums line-through">
+                        {formatCOP(displayCompareAt!)}
+                      </span>
+                    )}
+                  </>
                 )}
               </div>
 
@@ -243,16 +260,27 @@ export default async function ProductoDetallePage({
               )}
 
               <div className="space-y-2 pt-2">
-                {requiresPersonalization || letterSetPreview ? (
+                {isNamePerTile ? (
+                  // Nombre Personalizado: precio POR FICHA → selector de cantidad + CTA al Estudio.
+                  <NamePricePicker
+                    slug={product.slug}
+                    variantId={selectedVariant?.id ?? null}
+                    perTilePrice={displayPrice}
+                    min={nameMin}
+                    max={nameMax}
+                    ctaNoun={ctaNoun}
+                  />
+                ) : requiresPersonalization || isLetterSetProduct ? (
                   <>
                     {/* CTA primaria: ir al Estudio con variant pre-seleccionado. Los sets de
-                        letras (Completo/Vocales) personalizan el color de marco dentro del Estudio. */}
+                        letras (Completo/Vocales) personalizan color + estilo dentro del Estudio.
+                        Sustantivo adaptativo: "tu imán" o "tu adhesivo" según la variante. */}
                     <Link
                       href={`/estudio/${product.slug}${selectedVariant ? `?variant=${selectedVariant.id}` : ""}`}
                       className="bg-brand-purple hover:bg-brand-purple-dark shadow-brand-purple/30 hover:shadow-brand-purple/40 inline-flex h-12 w-full items-center justify-center gap-2 rounded-md px-6 text-base font-semibold text-white shadow-lg transition-all hover:shadow-xl"
                     >
                       <Sparkles className="h-5 w-5" />
-                      Personalizar tu imán →
+                      Personalizar {ctaNoun} →
                     </Link>
                     <p className="text-brand-muted text-center text-xs">
                       Diseña en vivo • Vista previa al instante
@@ -295,19 +323,6 @@ export default async function ProductoDetallePage({
               </p>
             </div>
           </div>
-
-          {letterSetPreview && (
-            <LetterSetPreview
-              letters={letterSetPreview.letters}
-              tiles={letterSetPreview.tiles}
-              title="Esto recibes"
-              subtitle={
-                letterSet === "vowels"
-                  ? "Las 5 vocales con su animalito kawaii. Personaliza el color del marco en “Personalizar tu imán”."
-                  : `Las ${letterSetPreview.letters.length} letras, cada una con su animalito. Personaliza el color del marco en “Personalizar tu imán”.`
-              }
-            />
-          )}
 
           <TemplatesStrip productSlug={product.slug} isPersonalizable={product.isPersonalizable} />
 

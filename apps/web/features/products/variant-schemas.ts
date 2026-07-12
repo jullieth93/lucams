@@ -66,6 +66,12 @@ export const ProductVariantAttributesSchema = z.object({
   magnet: z.boolean().optional(),
   /** ADR-057 — idioma del producto (ej. abecedario "es"/"en"). Dimensión "Idioma". */
   language: z.string().optional(),
+  /**
+   * ADR-057 — precio POR FICHA (Nombre Personalizado): `price` de la variante es el
+   * precio de UNA ficha; el total = nº de letras × price. El gate canónico sigue siendo
+   * `variant === "name"`; esto documenta el modelo y evita que se strippee al parsear.
+   */
+  pricePerTile: z.boolean().optional(),
 });
 
 export type ProductVariantAttributes = z.infer<typeof ProductVariantAttributesSchema>;

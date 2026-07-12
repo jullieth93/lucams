@@ -19,14 +19,21 @@ import { normalizeName, type NameLanguage } from "@/features/personalization/nam
 import type { LetterTileMap } from "@/features/personalization/letter-tiles";
 import { createNameDesignAction, finalizeDesignAction } from "@/features/personalization/actions";
 import { addPersonalizedToCartAction } from "@/app/carrito/actions";
+import { formatCOP } from "@/lib/format";
 import { LetterTile, NAME_TILE_THEMES, getNameTileTheme, LETTER_SWATCHES } from "./letter-tile";
 
 type NameEditorProps = {
   product: { id: string; slug: string; name: string };
-  /** Variante ya elegida en la ficha (idioma/tamaño/imantado). El editor solo arma la palabra. */
+  /** Variante ya elegida en la ficha (tamaño/imantado). El editor solo arma la palabra. */
   variantId: string;
   config: { min: number; max: number; language: NameLanguage };
-  priceLabel: string;
+  /**
+   * ADR-057 — precio POR FICHA (centavos COP). El total mostrado y el del carrito =
+   * nº de letras × pricePerTile. WYSIWYG también en el precio: lo que ves es lo que pagas.
+   */
+  pricePerTile: number;
+  /** Nº de letras pre-elegido en la ficha (solo hint visual antes de escribir). */
+  initialCount?: number;
   /** Fichas ilustradas por letra (si Lucy ya las subió). Si falta una, se usa placeholder. */
   tiles: LetterTileMap;
 };
@@ -118,7 +125,14 @@ async function renderNameStripBlob(
   );
 }
 
-export function NameEditor({ product, variantId, config, priceLabel, tiles }: NameEditorProps) {
+export function NameEditor({
+  product,
+  variantId,
+  config,
+  pricePerTile,
+  initialCount,
+  tiles,
+}: NameEditorProps) {
   const router = useRouter();
   const [raw, setRaw] = useState("");
   const [themeId, setThemeId] = useState(NAME_TILE_THEMES[0].id);
@@ -230,6 +244,11 @@ export function NameEditor({ product, variantId, config, priceLabel, tiles }: Na
   }
 
   const counterOver = letters.length > config.max;
+
+  // ADR-057 — precio en vivo POR FICHA. El total = nº de letras × precio-por-ficha, igual
+  // que lo calcula el carrito (Design.metadata.letters.length × variant.price) → sin desajuste.
+  const liveTotal = letters.length * pricePerTile;
+  const hintCount = Math.min(config.max, Math.max(config.min, initialCount ?? config.min));
 
   return (
     <div className="mx-auto w-full max-w-3xl px-5 py-8">
@@ -367,9 +386,20 @@ export function NameEditor({ product, variantId, config, priceLabel, tiles }: Na
         {/* Preview de la tira de fichas (cada una seleccionable para pintarla) */}
         <div className="bg-brand-cream/60 mt-5 rounded-2xl p-5">
           {letters.length === 0 ? (
-            <p className="text-brand-muted flex h-[88px] items-center justify-center text-sm">
-              Aquí verás tu nombre en fichas 🦝
-            </p>
+            <div className="flex flex-col items-center gap-3">
+              {/* Casillas-hint: N fichas vacías según lo elegido en la ficha (nº de letras). */}
+              <div className="flex flex-wrap items-center justify-center gap-3" aria-hidden="true">
+                {Array.from({ length: hintCount }).map((_, i) => (
+                  <div
+                    key={i}
+                    className="border-brand-purple/25 flex h-[72px] w-[62px] items-center justify-center rounded-xl border-2 border-dashed bg-white/60"
+                  >
+                    <span className="text-brand-purple/30 font-display text-xl">?</span>
+                  </div>
+                ))}
+              </div>
+              <p className="text-brand-muted text-sm">Aquí verás tu nombre en fichas 🦝</p>
+            </div>
           ) : (
             <>
               {/* Descubribilidad del color por letra: barra visible, no un texto perdido. */}
@@ -442,7 +472,18 @@ export function NameEditor({ product, variantId, config, priceLabel, tiles }: Na
             )}
             {submitting ? "Agregando…" : "Agregar al carrito"}
           </button>
-          <span className="text-brand-muted text-sm font-semibold">{priceLabel}</span>
+          {/* Precio EN VIVO por ficha — lo que ves es lo que pagas (igual que el carrito). */}
+          {letters.length > 0 ? (
+            <span className="text-brand-purple-dark text-sm font-semibold tabular-nums">
+              {letters.length} {letters.length === 1 ? "ficha" : "fichas"} × {formatCOP(pricePerTile)}{" "}
+              = <span className="text-brand-purple">{formatCOP(liveTotal)}</span>
+            </span>
+          ) : (
+            <span className="text-brand-muted text-sm font-semibold tabular-nums">
+              {formatCOP(pricePerTile)} por ficha · {hintCount} letras ={" "}
+              {formatCOP(pricePerTile * hintCount)}
+            </span>
+          )}
         </div>
       </div>
     </div>

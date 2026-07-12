@@ -2,11 +2,13 @@
  * ADR-057 — Reestructura del abecedario a 3 PRODUCTOS (decisión de Lucy 2026-07-12):
  *   - Abecedario Completo  (NONE)      → idioma × tamaño × imantado (12 variantes)
  *   - Pack Vocales         (NONE)      → tamaño × imantado (6)
- *   - Nombre Personalizado (TEXT_ONLY) → idioma × tamaño × imantado (12), abre el editor
+ *   - Nombre Personalizado (TEXT_ONLY) → tamaño × imantado (6), PRECIO POR FICHA, abre el editor
  *
- * Patrón "ficha configura, editor personaliza": las opciones (idioma/tamaño/imantado)
- * viven en la ficha (VariantSelector); el editor de nombre solo arma la palabra + colores.
- * Idioma es una OPCIÓN dentro del producto (ya no hay productos -espanol/-ingles).
+ * Patrón "ficha configura, editor personaliza": las opciones (tamaño/imantado) viven en la
+ * ficha (VariantSelector); el editor de nombre arma la palabra + colores + nº de letras.
+ * Nombre: precio POR FICHA (nº letras × precio-por-ficha), sin idioma (el alfabeto con Ñ se
+ * resuelve en el editor). Completo/Vocales: idioma SÍ importa (es 27 vs en 26 = set físico
+ * distinto) → conserva la variante idioma.
  *
  * Archiva los productos viejos (abecedario-magnetico-espanol/-ingles/-magnetico).
  * Idempotente: upsert por slug/sku. En updates NO pisa el precio (respeta el admin).
@@ -166,46 +168,68 @@ async function main() {
   }
 
   // ─────────── 3) Nombre Personalizado (TEXT_ONLY) ───────────
-  console.log("Nombre Personalizado:");
-  const nombrePrices = {
-    mini: { mag: 18000, nomag: 15000 },
-    clasica: { mag: 25000, nomag: 22000 },
-    grande: { mag: 35000, nomag: 32000 },
+  // ADR-057 (2026-07-12) — PRECIO POR FICHA. Cada letra es una ficha física → cuesta.
+  // El precio de la variante es el PRECIO POR FICHA (no un plano por nombre). El total =
+  // nº de letras × precio-por-ficha, calculado en vivo en el editor y en el carrito.
+  // Idioma YA NO es variante: el alfabeto (con Ñ disponible) se resuelve en el editor;
+  // el cliente simplemente no usa la Ñ si escribe un nombre en inglés. Español e inglés
+  // comparten las mismas letras salvo la Ñ, así que la "variante idioma" no cambiaba el
+  // producto físico para un nombre. → 6 variantes (tamaño × imantado).
+  console.log("Nombre Personalizado (precio POR FICHA):");
+  const nombrePerTile = {
+    mini: { mag: 3500, nomag: 3000 },
+    clasica: { mag: 5000, nomag: 4500 },
+    grande: { mag: 7000, nomag: 6500 },
   };
   const nombreId = await upsertProduct({
     slug: "nombre-personalizado",
     sku: "NOMBRE-PERSONALIZADO",
     name: "Nombre Personalizado",
     description:
-      "Escribe un nombre o palabra y recibe las fichas de letras kawaii que lo forman. Elige idioma, tamaño y si lo quieres con o sin imán, y personaliza los colores en el editor.",
+      "Escribe un nombre o palabra y recibe las fichas de letras kawaii que lo forman. El precio es POR FICHA (por letra): eliges tamaño y si lo quieres con o sin imán, y en el editor armas la palabra y personalizas los colores. Ves el precio exacto según cuántas letras tenga.",
     kind: "TEXT_ONLY",
     schema: { nameMaxLength: 10 },
-    basePrice: nombrePrices.clasica.mag * 100,
+    // basePrice = precio por ficha de referencia (clásica con imán). El total real lo
+    // calcula el carrito multiplicando por el nº de letras del diseño.
+    basePrice: nombrePerTile.clasica.mag * 100,
     isFeatured: true,
     categoryId,
   });
-  for (const lang of LANGS) {
-    for (const s of SIZES) {
-      for (const magnet of [true, false]) {
-        const sku = `NOM-${lang.sku}-${sizeSku(s.size)}-${magnet ? "MAG" : "NOMAG"}`;
-        const name = `${lang.label} · ${s.sizeCm} cm · ${magnet ? "Con imán" : "Sin imán"}`;
-        await upsertVariant(
-          nombreId,
-          sku,
-          name,
-          {
-            variant: "name",
-            language: lang.language,
-            size: s.size,
-            sizeCm: s.sizeCm,
-            magnet,
-            letterCountMin: 3,
-            letterCountMax: 10,
-          },
-          magnet ? nombrePrices[s.size].mag : nombrePrices[s.size].nomag,
-        );
-      }
+  for (const s of SIZES) {
+    for (const magnet of [true, false]) {
+      const sku = `NOM-${sizeSku(s.size)}-${magnet ? "MAG" : "NOMAG"}`;
+      const name = `${s.sizeCm} cm · ${magnet ? "Con imán" : "Sin imán"}`;
+      await upsertVariant(
+        nombreId,
+        sku,
+        name,
+        {
+          variant: "name",
+          size: s.size,
+          sizeCm: s.sizeCm,
+          magnet,
+          letterCountMin: 3,
+          letterCountMax: 10,
+          // Marca de precio por ficha: el carrito multiplica variant.price × nº letras.
+          pricePerTile: true,
+        },
+        magnet ? nombrePerTile[s.size].mag : nombrePerTile[s.size].nomag,
+      );
     }
+  }
+  // Desactivar las 12 variantes viejas de Nombre (idioma × tamaño × imantado, precio plano).
+  // El modelo cambió (plano → por ficha) y el SKU ya no lleva idioma, así que las viejas
+  // (NOM-ES-* / NOM-EN-*) quedan huérfanas → soft-delete para que no aparezcan en la ficha.
+  const oldNameVariants = await prisma.productVariant.updateMany({
+    where: {
+      productId: nombreId,
+      deletedAt: null,
+      OR: [{ sku: { startsWith: "NOM-ES-" } }, { sku: { startsWith: "NOM-EN-" } }],
+    },
+    data: { isActive: false, deletedAt: new Date() },
+  });
+  if (oldNameVariants.count > 0) {
+    console.log(`    ~ ${oldNameVariants.count} variantes viejas (idioma) desactivadas`);
   }
 
   // ─────────── Archivar productos viejos ───────────

@@ -292,6 +292,9 @@ export async function addPersonalizedToCart(opts: {
     select: {
       id: true,
       status: true,
+      // ADR-057 — metadata.surface + metadata.letters: para Nombre (precio por ficha) el
+      // unitPrice = nº de letras × precio-por-ficha. Para el resto, es el precio de variante.
+      metadata: true,
       product: {
         select: {
           id: true,
@@ -336,7 +339,19 @@ export async function addPersonalizedToCart(opts: {
   }
   if (!variant) throw new CartError("NO_DEFAULT_VARIANT");
 
-  const unitPrice = variant.price ?? design.product.basePrice;
+  // ADR-057 — precio POR FICHA para la superficie "nombre": cada letra es una ficha
+  // física, así que el unitPrice = precio-por-ficha (variant.price) × nº de letras del
+  // diseño. Las letras se guardan en Design.metadata (server-side, no manipulable por el
+  // cliente) al crear el diseño (createNameDesign), así que el conteo es de confianza.
+  // El resto de superficies (foto, set de letras) usan el precio de variante tal cual.
+  const perUnitPrice = variant.price ?? design.product.basePrice;
+  const meta = (design.metadata ?? null) as { surface?: string; letters?: unknown } | null;
+  let unitPrice = perUnitPrice;
+  if (meta?.surface === "name" && Array.isArray(meta.letters) && meta.letters.length > 0) {
+    // Clamp defensivo (1..40) por si la metadata llegara corrupta — nunca precio 0 ni absurdo.
+    const letterCount = Math.min(40, Math.max(1, meta.letters.length));
+    unitPrice = perUnitPrice * letterCount;
+  }
   const cart = await ensureCart(opts.sessionId, opts.customerId);
 
   // Buscar si ya hay un CartItem para este designId — agregar al qty existente.
