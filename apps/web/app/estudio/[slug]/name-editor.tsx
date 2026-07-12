@@ -16,13 +16,14 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ChevronLeft, Loader2, Sparkles } from "lucide-react";
 import { normalizeName, type NameLanguage } from "@/features/personalization/name-input";
-import type { LetterTileMap } from "@/features/personalization/letter-tiles";
+import type { LetterStyle, LetterTileMap } from "@/features/personalization/letter-tiles";
 import { createNameDesignAction, finalizeDesignAction } from "@/features/personalization/actions";
 import { addPersonalizedToCartAction } from "@/app/carrito/actions";
 import { formatCOP } from "@/lib/format";
 import { LetterTile } from "./letter-tile";
 import { useLetterColors } from "./use-letter-colors";
 import { ThemePicker, SwatchRow } from "./letter-color-controls";
+import { LetterStylePicker } from "./letter-style-picker";
 
 type NameEditorProps = {
   product: { id: string; slug: string; name: string };
@@ -36,8 +37,8 @@ type NameEditorProps = {
   pricePerTile: number;
   /** Nº de letras pre-elegido en la ficha (solo hint visual antes de escribir). */
   initialCount?: number;
-  /** Fichas ilustradas por letra (si Lucy ya las subió). Si falta una, se usa placeholder. */
-  tiles: LetterTileMap;
+  /** Estilos ilustrados disponibles (Animales, Navidad…). Vacío = solo "Solo letra". */
+  styles: LetterStyle[];
 };
 
 function roundRectPath(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
@@ -133,12 +134,19 @@ export function NameEditor({
   config,
   pricePerTile,
   initialCount,
-  tiles,
+  styles,
 }: NameEditorProps) {
   const router = useRouter();
   const [raw, setRaw] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Estilo elegido (null = "Solo letra"/Default). Arranca en el primer estilo ilustrado
+  // disponible (muestra el diferenciador); si no hay ninguno, queda en Default.
+  const [styleId, setStyleId] = useState<string | null>(styles[0]?.id ?? null);
+  const activeTiles = useMemo(
+    () => (styleId ? (styles.find((s) => s.id === styleId)?.tiles ?? {}) : {}),
+    [styleId, styles],
+  );
 
   const result = useMemo(() => normalizeName(raw, config), [raw, config]);
   const { letters, valid, tooShort, notices } = result;
@@ -176,6 +184,7 @@ export function NameEditor({
         name: raw,
         themeId,
         colors: effectiveColors,
+        styleSetId: styleId,
       });
       if (!created.ok) {
         setError(created.message);
@@ -183,12 +192,12 @@ export function NameEditor({
         return;
       }
 
-      // Con fichas reales; si el canvas se contamina por CORS, cae a solo-letras.
+      // Con fichas del estilo elegido; si el canvas se contamina por CORS, cae a solo-letras.
       let blob: Blob;
       try {
-        blob = await renderNameStripBlob(letters, effectiveColors, tiles);
+        blob = await renderNameStripBlob(letters, effectiveColors, activeTiles);
       } catch {
-        blob = await renderNameStripBlob(letters, effectiveColors, tiles, false);
+        blob = await renderNameStripBlob(letters, effectiveColors, activeTiles, false);
       }
       const fd = new FormData();
       fd.set("designId", created.designId);
@@ -322,6 +331,17 @@ export function NameEditor({
           </ul>
         )}
 
+        {/* Selector de estilo (tema/ocasión de las ilustraciones) — antes del color */}
+        {styles.length > 0 && (
+          <div className="mt-5">
+            <LetterStylePicker
+              styles={styles.map((s) => ({ id: s.id, name: s.name }))}
+              selectedId={styleId}
+              onSelect={setStyleId}
+            />
+          </div>
+        )}
+
         {/* Paleta de colores (tema de las fichas) — control compartido con Set de letras */}
         <div className="mt-5">
           <ThemePicker themeId={themeId} customized={customized} onApply={applyTheme} />
@@ -360,7 +380,7 @@ export function NameEditor({
                     key={`${ch}-${i}`}
                     letter={ch}
                     color={effectiveColors[i]}
-                    imageUrl={tiles[ch]?.imageUrl}
+                    imageUrl={activeTiles[ch]?.imageUrl}
                     selected={selectedIndex === i}
                     onClick={() => toggleSelected(i)}
                   />

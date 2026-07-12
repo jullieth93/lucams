@@ -222,6 +222,8 @@ export async function createNameDesign(opts: {
   themeId?: string;
   /** Color efectivo por letra (hex), validado por el caller. Ej. ["#7C6AAD", ...]. */
   colors?: string[];
+  /** ADR-057 — estilo ilustrado elegido (LetterTileSet.id) o null = "Solo letra". */
+  styleSetId?: string | null;
   customerId: string | null;
   sessionId: string | null;
 }): Promise<{ id: string; display: string; letters: string[] }> {
@@ -285,6 +287,8 @@ export async function createNameDesign(opts: {
         variant: typeof merged.variant === "string" ? merged.variant : null,
         themeId: opts.themeId ?? "arcoiris",
         colors: Array.isArray(opts.colors) ? opts.colors.slice(0, norm.letters.length) : [],
+        // Estilo ilustrado elegido (para producción). null = "Solo letra".
+        styleSetId: opts.styleSetId ?? null,
       },
     },
   });
@@ -318,6 +322,8 @@ export async function createLetterSetDesign(opts: {
   frameTheme: string;
   /** ADR-057 — color efectivo por ficha (mismo patrón que createNameDesign). */
   colors?: string[];
+  /** ADR-057 — estilo ilustrado elegido (LetterTileSet.id) o null = "Solo letra". */
+  styleSetId?: string | null;
   customerId: string | null;
   sessionId: string | null;
 }): Promise<{ id: string; letters: string[]; language: string }> {
@@ -373,6 +379,8 @@ export async function createLetterSetDesign(opts: {
         letters,
         // Color efectivo por ficha (para producción). Acotado al nº de letras del set.
         colors: Array.isArray(opts.colors) ? opts.colors.slice(0, letters.length) : [],
+        // Estilo ilustrado elegido (para producción). null = "Solo letra".
+        styleSetId: opts.styleSetId ?? null,
       },
     },
   });

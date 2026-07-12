@@ -19,7 +19,7 @@ import { getStorefrontProductBySlug } from "@/features/products/public-service";
 import { listTemplatesForKind, getOwnedDesign } from "@/features/personalization/service";
 import { parsePhotoProductConfig } from "@/features/personalization/schemas";
 import { resolvePersonalizationSurface } from "@/features/personalization/surface";
-import { getLetterTilesForLanguage, ALPHABET } from "@/features/personalization/letter-tiles";
+import { listLetterStyles, ALPHABET } from "@/features/personalization/letter-tiles";
 import { formatCOP } from "@/lib/format";
 import { NameEditor } from "./name-editor";
 import { LetterSetEditor } from "./letter-set-editor";
@@ -115,8 +115,8 @@ export default async function EstudioPage({
     const initialCount = Number.isFinite(rawCount)
       ? Math.min(surface.config.max, Math.max(surface.config.min, rawCount))
       : surface.config.min;
-    // Fichas ilustradas del idioma (si Lucy ya las subió); si faltan, el editor usa placeholder.
-    const tiles = await getLetterTilesForLanguage(surface.config.language);
+    // Estilos ilustrados del idioma (Animales, Navidad…). Vacío = solo "Solo letra".
+    const styles = await listLetterStyles(surface.config.language);
     return (
       <div className="bg-brand-cream flex min-h-screen flex-col">
         <SiteHeader />
@@ -127,7 +127,7 @@ export default async function EstudioPage({
             config={surface.config}
             pricePerTile={pricePerTile}
             initialCount={initialCount}
-            tiles={tiles}
+            styles={styles}
           />
         </main>
       </div>
@@ -137,7 +137,7 @@ export default async function EstudioPage({
   // Superficie "letterset": Abecedario Completo / Pack Vocales → color de marco.
   if (surface.surface === "letterset" && selectedVariant) {
     const priceLabel = formatCOP(selectedVariant.price ?? product.basePrice);
-    const tiles = await getLetterTilesForLanguage(surface.config.language);
+    const styles = await listLetterStyles(surface.config.language);
     const letters =
       surface.config.letterSet === "vowels"
         ? ["A", "E", "I", "O", "U"]
@@ -150,7 +150,7 @@ export default async function EstudioPage({
             product={{ id: product.id, slug: product.slug, name: product.name }}
             variantId={selectedVariant.id}
             letters={letters}
-            tiles={tiles}
+            styles={styles}
             priceLabel={priceLabel}
             subtitle={
               surface.config.letterSet === "vowels"

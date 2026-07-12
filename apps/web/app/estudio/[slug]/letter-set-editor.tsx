@@ -12,11 +12,12 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ChevronLeft, Loader2, Sparkles } from "lucide-react";
-import type { LetterTileMap } from "@/features/personalization/letter-tiles";
+import type { LetterStyle, LetterTileMap } from "@/features/personalization/letter-tiles";
 import { createLetterSetDesignAction, finalizeDesignAction } from "@/features/personalization/actions";
 import { addPersonalizedToCartAction } from "@/app/carrito/actions";
 import { useLetterColors } from "./use-letter-colors";
 import { ThemePicker, SwatchRow } from "./letter-color-controls";
+import { LetterStylePicker } from "./letter-style-picker";
 
 function loadImage(url: string): Promise<HTMLImageElement | null> {
   return new Promise((resolve) => {
@@ -47,10 +48,11 @@ async function renderLetterSetBlob(
   const cols = Math.min(9, Math.max(5, Math.ceil(Math.sqrt(letters.length))));
   const rows = Math.ceil(letters.length / cols);
   const tileW = 120;
+  const tileH = 154; // ADR-057 — ficha VERTICAL (espeja el imán físico rectangular ~7×10)
   const gap = 14;
   const pad = 24;
   const w = pad * 2 + cols * tileW + (cols - 1) * gap;
-  const h = pad * 2 + rows * tileW + (rows - 1) * gap;
+  const h = pad * 2 + rows * tileH + (rows - 1) * gap;
   const scale = 3;
 
   const imgs = useTiles
@@ -68,9 +70,9 @@ async function renderLetterSetBlob(
 
   letters.forEach((ch, i) => {
     const x = pad + (i % cols) * (tileW + gap);
-    const y = pad + Math.floor(i / cols) * (tileW + gap);
+    const y = pad + Math.floor(i / cols) * (tileH + gap);
     const color = colors[i % colors.length];
-    roundRect(ctx, x, y, tileW, tileW, 18);
+    roundRect(ctx, x, y, tileW, tileH, 18);
     ctx.fillStyle = "#ffffff";
     ctx.fill();
     ctx.lineWidth = 6;
@@ -79,17 +81,17 @@ async function renderLetterSetBlob(
     const img = imgs[i];
     if (img) {
       ctx.save();
-      roundRect(ctx, x + 4, y + 4, tileW - 8, tileW - 8, 14);
+      roundRect(ctx, x + 4, y + 4, tileW - 8, tileH - 8, 14);
       ctx.clip();
-      const s = Math.min((tileW - 12) / img.width, (tileW - 12) / img.height);
-      ctx.drawImage(img, x + (tileW - img.width * s) / 2, y + (tileW - img.height * s) / 2, img.width * s, img.height * s);
+      const s = Math.min((tileW - 12) / img.width, (tileH - 12) / img.height);
+      ctx.drawImage(img, x + (tileW - img.width * s) / 2, y + (tileH - img.height * s) / 2, img.width * s, img.height * s);
       ctx.restore();
     } else {
       ctx.fillStyle = color;
       ctx.font = `800 ${Math.round(tileW * 0.5)}px "Baloo 2", "Fredoka", system-ui, sans-serif`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText(ch, x + tileW / 2, y + tileW / 2 + 2);
+      ctx.fillText(ch, x + tileW / 2, y + tileH / 2 + 2);
     }
   });
 
@@ -102,20 +104,25 @@ export function LetterSetEditor({
   product,
   variantId,
   letters,
-  tiles,
+  styles,
   priceLabel,
   subtitle,
 }: {
   product: { id: string; slug: string; name: string };
   variantId: string;
   letters: string[];
-  tiles: LetterTileMap;
+  styles: LetterStyle[];
   priceLabel: string;
   subtitle?: string;
 }) {
   const router = useRouter();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Estilo elegido (null = "Solo letra"/Default). Arranca en el primer estilo ilustrado.
+  const [styleId, setStyleId] = useState<string | null>(styles[0]?.id ?? null);
+  const activeTiles: LetterTileMap = styleId
+    ? (styles.find((s) => s.id === styleId)?.tiles ?? {})
+    : {};
 
   // Mismos controles de color que el editor de Nombre.
   const { themeId, effectiveColors, selectedIndex, toggleSelected, applyTheme, setColorForSelected, customized } =
@@ -131,6 +138,7 @@ export function LetterSetEditor({
         variantId,
         frameTheme: themeId,
         colors: effectiveColors,
+        styleSetId: styleId,
       });
       if (!created.ok) {
         setError(created.message);
@@ -139,9 +147,9 @@ export function LetterSetEditor({
       }
       let blob: Blob;
       try {
-        blob = await renderLetterSetBlob(letters, tiles, effectiveColors);
+        blob = await renderLetterSetBlob(letters, activeTiles, effectiveColors);
       } catch {
-        blob = await renderLetterSetBlob(letters, tiles, effectiveColors, false);
+        blob = await renderLetterSetBlob(letters, activeTiles, effectiveColors, false);
       }
       const fd = new FormData();
       fd.set("designId", created.designId);
@@ -188,12 +196,16 @@ export function LetterSetEditor({
       </header>
 
       <div className="border-brand-purple/12 rounded-3xl border bg-white p-6 shadow-sm sm:p-8">
-        {/* Estilo (ocasión). Hoy "Animales"; se suman más cuando Lucy los dibuje. */}
-        <div className="mb-5 flex items-center justify-center">
-          <span className="border-brand-purple/15 text-brand-purple-dark inline-flex items-center gap-1.5 rounded-full border bg-brand-cream/60 px-3 py-1.5 text-xs font-semibold">
-            🐾 Estilo: Animales
-          </span>
-        </div>
+        {/* Selector de estilo (tema/ocasión). Solo aparece si hay estilos ilustrados subidos. */}
+        {styles.length > 0 && (
+          <div className="mb-5">
+            <LetterStylePicker
+              styles={styles.map((s) => ({ id: s.id, name: s.name }))}
+              selectedId={styleId}
+              onSelect={setStyleId}
+            />
+          </div>
+        )}
 
         {/* Picker de tema de color — control compartido con Nombre (barajar al re-clic). */}
         <ThemePicker themeId={themeId} customized={customized} onApply={applyTheme} />
@@ -209,7 +221,7 @@ export function LetterSetEditor({
           )}
           <div className="grid grid-cols-4 gap-3 sm:grid-cols-6 md:grid-cols-9">
             {letters.map((ch, i) => {
-              const tile = tiles[ch];
+              const tile = activeTiles[ch];
               const color = effectiveColors[i];
               const isSel = selectedIndex === i;
               return (
@@ -223,8 +235,9 @@ export function LetterSetEditor({
                     isSel ? "ring-brand-purple scale-105 ring-2 ring-offset-2" : "hover:scale-105"
                   }`}
                 >
+                  {/* Ficha VERTICAL (aspect 5/6.5) — espeja el imán físico rectangular. */}
                   <div
-                    className="flex aspect-square w-full items-center justify-center overflow-hidden rounded-xl bg-white"
+                    className="flex aspect-[5/6.5] w-full items-center justify-center overflow-hidden rounded-xl bg-white"
                     style={{ border: `2px solid ${color}`, boxShadow: `0 3px 10px ${color}22` }}
                   >
                     {tile ? (

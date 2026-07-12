@@ -8,9 +8,18 @@ import { prisma } from "@/lib/db";
 
 export type LetterTileMap = Record<string, { imageUrl: string; label: string | null }>;
 
+/** ADR-057 — un ESTILO (tema/ocasión) del abecedario: un set de fichas ilustradas. */
+export type LetterStyle = { id: string; name: string; tiles: LetterTileMap };
+
+function tilesToMap(tiles: { char: string; imageUrl: string; label: string | null }[]): LetterTileMap {
+  const map: LetterTileMap = {};
+  for (const t of tiles) map[t.char.toUpperCase()] = { imageUrl: t.imageUrl, label: t.label };
+  return map;
+}
+
 /**
  * Fichas del set activo por defecto de un idioma, como mapa CHAR(mayúscula) → ficha.
- * Usado por el editor de nombre para renderizar la palabra con las ilustraciones reales.
+ * Usado como fallback / compat. El editor moderno usa listLetterStyles (multi-estilo).
  */
 export async function getLetterTilesForLanguage(language: string): Promise<LetterTileMap> {
   const set = await prisma.letterTileSet.findFirst({
@@ -18,11 +27,22 @@ export async function getLetterTilesForLanguage(language: string): Promise<Lette
     orderBy: [{ isDefault: "desc" }, { order: "asc" }],
     select: { tiles: { select: { char: true, imageUrl: true, label: true } } },
   });
-  const map: LetterTileMap = {};
-  if (set) {
-    for (const t of set.tiles) map[t.char.toUpperCase()] = { imageUrl: t.imageUrl, label: t.label };
-  }
-  return map;
+  return set ? tilesToMap(set.tiles) : {};
+}
+
+/**
+ * ADR-057 — ESTILOS ilustrados disponibles de un idioma (Animales, Navidad, …). Cada estilo
+ * es un set activo CON fichas subidas (los vacíos se omiten: renderizarían letra plana, que ya
+ * cubre el estilo "Default"/Solo-letra del editor). Ordenados: default primero, luego `order`.
+ * El editor los ofrece como chips; el cliente elige el tema y ve las fichas al instante (WYSIWYG).
+ */
+export async function listLetterStyles(language: string): Promise<LetterStyle[]> {
+  const sets = await prisma.letterTileSet.findMany({
+    where: { language, isActive: true, deletedAt: null, tiles: { some: {} } },
+    orderBy: [{ isDefault: "desc" }, { order: "asc" }],
+    select: { id: true, name: true, tiles: { select: { char: true, imageUrl: true, label: true } } },
+  });
+  return sets.map((s) => ({ id: s.id, name: s.name, tiles: tilesToMap(s.tiles) }));
 }
 
 // ──────────────────────── Admin ────────────────────────
@@ -46,6 +66,28 @@ export async function listLetterSets() {
       _count: { select: { tiles: true } },
     },
   });
+}
+
+/** ADR-057 — crea un ESTILO nuevo (set de fichas vacío) para empezar a subirle ilustraciones. */
+export async function createLetterSet(opts: {
+  name: string;
+  language: string;
+  adminId: string;
+}): Promise<{ id: string }> {
+  const count = await prisma.letterTileSet.count({ where: { language: opts.language, deletedAt: null } });
+  const set = await prisma.letterTileSet.create({
+    data: {
+      name: opts.name,
+      language: opts.language,
+      isActive: true,
+      isDefault: count === 0, // el primero del idioma queda como default
+      order: count,
+      createdBy: opts.adminId,
+      updatedBy: opts.adminId,
+    },
+    select: { id: true },
+  });
+  return set;
 }
 
 export async function getLetterSet(setId: string) {

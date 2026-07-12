@@ -6,6 +6,7 @@
 import type { Metadata } from "next";
 import { listLetterSets, getLetterSet, ALPHABET } from "@/features/personalization/letter-tiles";
 import { LetterGrid } from "./letter-grid";
+import { CreateSetForm } from "./create-set-form";
 
 export const metadata: Metadata = { title: "Fichas del abecedario" };
 export const dynamic = "force-dynamic";
@@ -19,14 +20,19 @@ export default async function FichasAdminPage() {
   return (
     <div className="mx-auto max-w-4xl">
       <header className="mb-6">
-        <h1 className="text-brand-purple-dark font-display text-2xl">Fichas del abecedario</h1>
+        <h1 className="text-brand-purple-dark font-display text-2xl">Estilos del abecedario</h1>
         <p className="text-brand-muted mt-1 text-sm">
-          La biblioteca de dibujos de cada letra (A de Avión, B de Boca…). Son diseños tuyos, no algo que el
-          cliente crea. Alimentan el editor de “Nombre Personalizado” (arma la palabra con estas fichas) y
-          los productos Abecedario Completo / Pack Vocales. Si falta una letra, se muestra un marcador
-          temporal. Recomendado: PNG con fondo transparente, cuadrado.
+          Cada <strong>estilo</strong> es un abecedario ilustrado completo con un tema (Animales, Navidad,
+          Dinos…). El cliente elige el estilo en el Estudio y ve las fichas de ese tema. Son diseños tuyos,
+          no algo que el cliente crea. Alimentan “Nombre Personalizado”, “Abecedario Completo” y “Pack
+          Vocales”. Si falta una letra, se muestra un marcador temporal. Recomendado: PNG con fondo
+          transparente, <strong>vertical</strong> (como el imán físico).
         </p>
       </header>
+
+      <div className="mb-6">
+        <CreateSetForm />
+      </div>
 
       {detailed.length === 0 ? (
         <div className="border-brand-purple/15 rounded-xl border border-dashed bg-white p-8 text-center">
