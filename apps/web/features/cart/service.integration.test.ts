@@ -80,6 +80,15 @@ let readyDesignId = "";
 let readyDesign2Id = "";
 let draftDesignId = "";
 
+// ADR-057 — Nombre por ficha: producto TEXT_ONLY con variante de precio POR FICHA +
+// designs "name" con distinto nº de letras en metadata.
+let namePerTileProductId = "";
+let nameVariantId = "";
+let nameDesign5Id = ""; // metadata.letters = 5 letras
+let nameDesign3Id = ""; // metadata.letters = 3 letras
+let nameDesignNoLettersId = ""; // surface name pero sin letters → fallback
+const NAME_PER_TILE = 5_000; // precio por ficha (centavos)
+
 // Variante "extra" sobre el producto simple, para merge tests con designId distintos.
 let extraVariantId = "";
 
@@ -297,7 +306,77 @@ describe.skipIf(!hasDb)("cart/service — integración DB", { timeout: T }, () =
       select: { id: true },
     });
     draftDesignId = draft.id;
-  });
+
+    // ─── ADR-057 — Nombre por ficha ───
+    const namePerTile = await prisma.product.create({
+      data: {
+        slug: `${RUN}-name`,
+        name: `Name ${RUN}`,
+        description: "fixture nombre por ficha",
+        basePrice: 999,
+        sku: `${RUN}-NAME`.toUpperCase(),
+        categoryId,
+        isPersonalizable: true,
+        personalizationKind: "TEXT_ONLY",
+        images: ["https://cdn.lucams.test/name-generic.png"],
+        variants: {
+          create: [
+            {
+              name: "Clásica con imán",
+              sku: `${RUN}-NAME-CLAS`.toUpperCase(),
+              price: NAME_PER_TILE, // precio POR FICHA
+              stock: 50,
+              attributes: { variant: "name", pricePerTile: true, letterCountMin: 3, letterCountMax: 10 },
+            },
+          ],
+        },
+      },
+      select: { id: true, variants: { select: { id: true } } },
+    });
+    namePerTileProductId = namePerTile.id;
+    nameVariantId = namePerTile.variants[0].id;
+
+    const nameDesign5 = await prisma.design.create({
+      data: {
+        sessionId: sid("name-design"),
+        productId: namePerTileProductId,
+        status: "READY",
+        canvasData: {},
+        previewUrl: "https://cdn.lucams.test/name-mateo.png",
+        metadata: { surface: "name", letters: ["M", "A", "T", "E", "O"], language: "es" },
+      },
+      select: { id: true },
+    });
+    nameDesign5Id = nameDesign5.id;
+
+    const nameDesign3 = await prisma.design.create({
+      data: {
+        sessionId: sid("name-design"),
+        productId: namePerTileProductId,
+        status: "READY",
+        canvasData: {},
+        previewUrl: "https://cdn.lucams.test/name-ana.png",
+        metadata: { surface: "name", letters: ["A", "N", "A"], language: "es" },
+      },
+      select: { id: true },
+    });
+    nameDesign3Id = nameDesign3.id;
+
+    // Diseño "name" con metadata SIN letters → el carrito debe caer al precio unitario
+    // por ficha (nunca 0 ni NaN). Defensa ante metadata corrupta.
+    const nameDesignNoLetters = await prisma.design.create({
+      data: {
+        sessionId: sid("name-design"),
+        productId: namePerTileProductId,
+        status: "READY",
+        canvasData: {},
+        previewUrl: "https://cdn.lucams.test/name-empty.png",
+        metadata: { surface: "name", language: "es" },
+      },
+      select: { id: true },
+    });
+    nameDesignNoLettersId = nameDesignNoLetters.id;
+  }, T); // timeout explícito del hook (el pooler es lento; el default de 10s no alcanza)
 
   // ───────────────────────── limpieza ─────────────────────────
   // Borra todo lo creado en tests (carts RUN-prefijados) tras cada test, para que
@@ -327,13 +406,16 @@ describe.skipIf(!hasDb)("cart/service — integración DB", { timeout: T }, () =
     // Designs antes que variantes/productos (Design.product es Restrict).
     await prisma.design.deleteMany({ where: { productId: { in: [persoProductId, simpleProductId].filter(Boolean) } } });
     await prisma.design.deleteMany({ where: { sessionId: { startsWith: RUN } } });
+    // Robustez: cualquier design que aún referencie un producto de esta categoría
+    // (ej. designs de Nombre por ficha) — evita FK violation en el delete de productos.
+    await prisma.design.deleteMany({ where: { product: { categoryId } } });
     // Customers de esta corrida (merge tests).
     await prisma.customer.deleteMany({ where: { email: { contains: RUN } } });
     // Variantes → productos → categoría (orden FK: CartItem.variant Restrict).
     await prisma.productVariant.deleteMany({ where: { product: { categoryId } } });
     await prisma.product.deleteMany({ where: { categoryId } });
     await prisma.category.deleteMany({ where: { id: categoryId } });
-  });
+  }, T);
 
   // ════════════════════════════════════════════════════════════════════════
   // addProductToCart
@@ -558,6 +640,70 @@ describe.skipIf(!hasDb)("cart/service — integración DB", { timeout: T }, () =
       await expect(
         addPersonalizedToCart({ sessionId: sid("perso"), customerId: null, designId: readyDesignId, qty: 0 }),
       ).rejects.toMatchObject({ code: "QTY_INVALID" });
+    });
+  });
+
+  // ════════════════════════════════════════════════════════════════════════
+  // addPersonalizedToCart — PRECIO POR FICHA (ADR-057)
+  // ════════════════════════════════════════════════════════════════════════
+
+  describe("addPersonalizedToCart — precio POR FICHA (Nombre)", () => {
+    it("nombre de 5 letras (MATEO): unitPrice = 5 × precio-por-ficha", async () => {
+      const detail = await addPersonalizedToCart({
+        sessionId: sid("name"),
+        customerId: null,
+        designId: nameDesign5Id,
+        variantId: nameVariantId,
+        qty: 1,
+      });
+      expect(detail.items[0].unitPrice).toBe(5 * NAME_PER_TILE);
+      expect(detail.subtotal).toBe(5 * NAME_PER_TILE);
+    });
+
+    it("nombre de 3 letras (ANA): unitPrice = 3 × precio-por-ficha (corto = más barato)", async () => {
+      const detail = await addPersonalizedToCart({
+        sessionId: sid("name"),
+        customerId: null,
+        designId: nameDesign3Id,
+        variantId: nameVariantId,
+        qty: 1,
+      });
+      expect(detail.items[0].unitPrice).toBe(3 * NAME_PER_TILE);
+    });
+
+    it("qty multiplica sobre el precio por ficha: 5 letras × 2 uds → lineTotal = 2 × (5 × ficha)", async () => {
+      const detail = await addPersonalizedToCart({
+        sessionId: sid("name"),
+        customerId: null,
+        designId: nameDesign5Id,
+        variantId: nameVariantId,
+        qty: 2,
+      });
+      expect(detail.items[0].unitPrice).toBe(5 * NAME_PER_TILE); // por unidad = 5 fichas
+      expect(detail.items[0].lineTotal).toBe(2 * 5 * NAME_PER_TILE);
+    });
+
+    it("surface != name (foto): NO multiplica — unitPrice = precio de variante tal cual", async () => {
+      // readyDesignId es un design de FOTO (sin metadata.surface="name") sobre perso var A.
+      const detail = await addPersonalizedToCart({
+        sessionId: sid("name"),
+        customerId: null,
+        designId: readyDesignId,
+        variantId: persoVariantAId,
+        qty: 1,
+      });
+      expect(detail.items[0].unitPrice).toBe(PERSO_VAR_A_PRICE);
+    });
+
+    it("name design sin metadata.letters → fallback al precio por ficha unitario (nunca 0/NaN)", async () => {
+      const detail = await addPersonalizedToCart({
+        sessionId: sid("name"),
+        customerId: null,
+        designId: nameDesignNoLettersId,
+        variantId: nameVariantId,
+        qty: 1,
+      });
+      expect(detail.items[0].unitPrice).toBe(NAME_PER_TILE);
     });
   });
 

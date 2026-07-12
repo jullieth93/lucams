@@ -2004,3 +2004,15 @@ guardar/finalizar cosas que no son foto. Decisiones de producto pendientes de Lu
 de calendario, prioridad por ventas reales de IG, limpieza de catálogo) y acción humana: 53 ilustraciones de
 letras. **SUPERSEDES** la nota de `DECISIONS.md` que trataba el abecedario como NONE/404 (desactualizada).
 [[ADR-056]] [[ADR-013]] [[ADR-035]] [[ADR-037]].
+
+### ADR-057 addendum — Cierre de "Juegos y Aprendizaje": precio por ficha + consistencia (2026-07-12)
+
+Lucy pidió cerrar la categoría del abecedario con mirada experta (no parchear comentario por comentario).
+
+1. **Precio POR FICHA (Nombre Personalizado).** Cada letra es una ficha física → cuesta. `variant.price` = precio de UNA ficha; total = nº de letras × precio-por-ficha. Descartado el plano por nombre (no protege margen: 10 letras costaría igual que 3). Descartado "unificar por ficha con Completo/Vocales" (27 × unitario ≈ $135k, absurdo): los sets van a **precio fijo de bulto**. Modelo **mixto** y correcto: Nombre à la carte por ficha; Completo/Vocales precio de set.
+   - El nº de letras se guarda server-side en `Design.metadata.letters` (no manipulable por el cliente); el carrito (`addPersonalizedToCart`) computa `unitPrice = variant.price × clamp(letters.length,1,40)` solo para `metadata.surface==="name"`. Editor y ficha muestran el precio en vivo con el MISMO cálculo → sin desajuste. Selector "¿cuántas letras?" en la ficha (preview + `?letters=N` hint); precio en vivo en el editor (fuente de verdad = letras reales, no el hint).
+   - Precios de arranque por ficha (ajustables en admin): mini $3.500/$3.000, clásica $5.000/$4.500, grande $7.000/$6.500 (con/sin imán).
+2. **Idioma fuera de Nombre; se queda en Completo.** Para un nombre, es/en comparten letras salvo Ñ (disponible siempre en el editor) → idioma no cambiaba el físico. Nombre: 6 variantes (tamaño × imantado), 12 viejas (idioma) desactivadas. Completo: idioma SÍ importa (es 27 con Ñ vs en 26) → conserva variante. Vocales: AEIOU igual → sin idioma.
+3. **CTA adaptativo imán/adhesivo.** "Sin imán" es un adhesivo → el CTA dice "Personalizar tu imán/tu adhesivo" según `magnet` (undefined = con imán). El resto de "imán" del sitio es lenguaje de marca intencional (la tienda ES de imanes) o de fotoimanes (que sí son imanes) → no se purga.
+4. **Completo/Vocales con los mismos controles de color que Nombre.** Hook compartido `useLetterColors` (tema + barajar + color por ficha) + `ThemePicker`/`SwatchRow` → editores unificados. Colores efectivos persistidos en `metadata.colors`. "Esto recibes" quitado de la ficha (el visual del set vive en el Estudio; la ficha usa su galería → ACCIÓN HUMANA: subir fotos de catálogo).
+5. **Estilo = ocasión.** El estilo de ilustración se modelará como ocasión (reusando OcasionTag). Arranca con "Animales" (set actual); Navidad, etc. se enchufan cuando Lucy dibuje ≥2 sets (ACCIÓN HUMANA). [[ADR-057]].
