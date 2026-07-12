@@ -32,6 +32,7 @@ import {
   AlertCircle,
   AlertTriangle,
   Star,
+  Shapes,
 } from "lucide-react";
 import {
   AdminPage,
@@ -253,6 +254,12 @@ export default async function AdminDashboardPage() {
               icon={Cog}
               label="Configuración general"
               description="Email, WhatsApp, horario, redes y datos del negocio."
+            />
+            <QuickLink
+              href="/admin/fichas"
+              icon={Shapes}
+              label="Sets de fichas"
+              description="Sube el dibujo de cada letra del abecedario para el editor de nombres."
             />
           </div>
         </section>

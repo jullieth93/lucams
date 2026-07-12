@@ -19,6 +19,7 @@ import { getStorefrontProductBySlug } from "@/features/products/public-service";
 import { listTemplatesForKind, getOwnedDesign } from "@/features/personalization/service";
 import { parsePhotoProductConfig } from "@/features/personalization/schemas";
 import { resolvePersonalizationSurface } from "@/features/personalization/surface";
+import { getLetterTilesForLanguage } from "@/features/personalization/letter-tiles";
 import { formatCOP } from "@/lib/format";
 import { NameEditor } from "./name-editor";
 import { peekCartSession } from "@/lib/cart-session";
@@ -98,6 +99,8 @@ export default async function EstudioPage({
   // imantado se eligen en la FICHA (VariantSelector) → llegan resueltos en selectedVariant.
   if (surface.surface === "name" && selectedVariant) {
     const priceLabel = formatCOP(selectedVariant.price ?? product.basePrice);
+    // Fichas ilustradas del idioma (si Lucy ya las subió); si faltan, el editor usa placeholder.
+    const tiles = await getLetterTilesForLanguage(surface.config.language);
     return (
       <div className="bg-brand-cream flex min-h-screen flex-col">
         <SiteHeader />
@@ -107,6 +110,7 @@ export default async function EstudioPage({
             variantId={selectedVariant.id}
             config={surface.config}
             priceLabel={priceLabel}
+            tiles={tiles}
           />
         </main>
       </div>

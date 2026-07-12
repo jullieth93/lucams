@@ -1,4 +1,4 @@
-.PHONY: help install build typecheck lint format migrate seed-products seed-templates seed-ocasiones seed-catalog-v2 seed-cms consolidate-product-families fix-voseo-cms rename-family-base-slugs backfill-variant-prices cleanup-slugs audit-slugs test test-unit test-e2e test-rls test-load test-coverage clean
+.PHONY: help install build typecheck lint format migrate seed-products seed-templates seed-ocasiones seed-catalog-v2 seed-cms seed-abecedario seed-letter-sets consolidate-product-families fix-voseo-cms rename-family-base-slugs backfill-variant-prices cleanup-slugs audit-slugs test test-unit test-e2e test-rls test-load test-coverage clean
 
 # Makefile en repo — targets primitivos para CI y devs locales.
 # El Makefile completo de runtime (con state/log/pid management,
@@ -19,6 +19,7 @@ help:
 	@echo "  make seed-ocasiones   Pobla 15 OcasionTag (PLAN_CATALOG_V2 1.5)"
 	@echo "  make seed-catalog-v2  Delta PLAN_CATALOG_V2 (sub-cats + placeholders + links)"
 	@echo "  make seed-cms         Pobla CmsBlocks + SiteSettings (J.1+)"
+	@echo "  make seed-abecedario  Abecedario a 3 productos (ADR-057, idempotente)"
 	@echo ""
 	@echo "  Tests (Vitest/Playwright se setean en sub-bloques siguientes):"
 	@echo "    make test         Todos los tests"
@@ -62,6 +63,16 @@ seed-catalog-v2:
 
 seed-cms:
 	pnpm --filter @lucams/db exec node scripts/seed-cms.mjs
+
+# ADR-057 — Abecedario a 3 productos (Completo / Pack Vocales / Nombre Personalizado)
+# con variantes idioma × tamaño × imantado. Reproducible; no pisa precios editados en
+# admin; archiva los productos viejos. Idempotente.
+seed-abecedario:
+	pnpm --filter @lucams/db exec node scripts/restructure-abecedario.mjs
+
+# ADR-057 — Sets de fichas por defecto (es/en), vacíos y listos para subir en el admin.
+seed-letter-sets:
+	pnpm --filter @lucams/db exec node scripts/seed-letter-sets.mjs
 
 # M.3.b.CAT.2 (2026-05-14): consolida familias de productos fragmentados
 # en variants del producto base. Soft-deletea hermanos + migra reviews +

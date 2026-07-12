@@ -16,6 +16,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ChevronLeft, Loader2, Sparkles } from "lucide-react";
 import { normalizeName, type NameLanguage } from "@/features/personalization/name-input";
+import type { LetterTileMap } from "@/features/personalization/letter-tiles";
 import { createNameDesignAction, finalizeDesignAction } from "@/features/personalization/actions";
 import { addPersonalizedToCartAction } from "@/app/carrito/actions";
 import { LetterTile, NAME_TILE_THEMES, getNameTileTheme, LETTER_SWATCHES } from "./letter-tile";
@@ -26,6 +27,8 @@ type NameEditorProps = {
   variantId: string;
   config: { min: number; max: number; language: NameLanguage };
   priceLabel: string;
+  /** Fichas ilustradas por letra (si Lucy ya las subió). Si falta una, se usa placeholder. */
+  tiles: LetterTileMap;
 };
 
 function roundRectPath(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
@@ -38,8 +41,27 @@ function roundRectPath(ctx: CanvasRenderingContext2D, x: number, y: number, w: n
   ctx.closePath();
 }
 
-/** Dibuja la tira de fichas en un canvas de alta resolución y devuelve el PNG. */
-async function renderNameStripBlob(letters: string[], colors: readonly string[]): Promise<Blob> {
+function loadImage(url: string): Promise<HTMLImageElement | null> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous"; // bucket público con CORS → canvas no se contamina
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = url;
+  });
+}
+
+/**
+ * Dibuja la tira de fichas en canvas y devuelve el PNG. Usa la ilustración real de cada
+ * letra si existe (tiles); si no, dibuja la letra en color. `useTiles=false` fuerza el
+ * fallback de solo-letras (si el toBlob se contaminara por CORS).
+ */
+async function renderNameStripBlob(
+  letters: string[],
+  colors: readonly string[],
+  tiles: LetterTileMap,
+  useTiles = true,
+): Promise<Blob> {
   const scale = 4;
   const tileW = 120;
   const tileH = 142;
@@ -47,6 +69,10 @@ async function renderNameStripBlob(letters: string[], colors: readonly string[])
   const pad = 22;
   const w = pad * 2 + letters.length * tileW + Math.max(0, letters.length - 1) * gap;
   const h = pad * 2 + tileH;
+
+  const imgs = useTiles
+    ? await Promise.all(letters.map((ch) => (tiles[ch]?.imageUrl ? loadImage(tiles[ch]!.imageUrl) : Promise.resolve(null))))
+    : letters.map(() => null);
 
   const canvas = document.createElement("canvas");
   canvas.width = Math.max(1, Math.round(w * scale));
@@ -67,11 +93,24 @@ async function renderNameStripBlob(letters: string[], colors: readonly string[])
     ctx.lineWidth = 6;
     ctx.strokeStyle = color;
     ctx.stroke();
-    ctx.fillStyle = color;
-    ctx.font = `800 ${Math.round(tileW * 0.56)}px "Baloo 2", "Fredoka", system-ui, sans-serif`;
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText(ch, x + tileW / 2, y + tileH / 2 + 2);
+    const img = imgs[i];
+    if (img) {
+      ctx.save();
+      roundRectPath(ctx, x + 4, y + 4, tileW - 8, tileH - 8, 16);
+      ctx.clip();
+      const box = { w: tileW - 12, h: tileH - 12 };
+      const s = Math.min(box.w / img.width, box.h / img.height);
+      const dw = img.width * s;
+      const dh = img.height * s;
+      ctx.drawImage(img, x + (tileW - dw) / 2, y + (tileH - dh) / 2, dw, dh);
+      ctx.restore();
+    } else {
+      ctx.fillStyle = color;
+      ctx.font = `800 ${Math.round(tileW * 0.56)}px "Baloo 2", "Fredoka", system-ui, sans-serif`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(ch, x + tileW / 2, y + tileH / 2 + 2);
+    }
   });
 
   return new Promise((resolve, reject) =>
@@ -79,7 +118,7 @@ async function renderNameStripBlob(letters: string[], colors: readonly string[])
   );
 }
 
-export function NameEditor({ product, variantId, config, priceLabel }: NameEditorProps) {
+export function NameEditor({ product, variantId, config, priceLabel, tiles }: NameEditorProps) {
   const router = useRouter();
   const [raw, setRaw] = useState("");
   const [themeId, setThemeId] = useState(NAME_TILE_THEMES[0].id);
@@ -152,7 +191,13 @@ export function NameEditor({ product, variantId, config, priceLabel }: NameEdito
         return;
       }
 
-      const blob = await renderNameStripBlob(letters, effectiveColors);
+      // Con fichas reales; si el canvas se contamina por CORS, cae a solo-letras.
+      let blob: Blob;
+      try {
+        blob = await renderNameStripBlob(letters, effectiveColors, tiles);
+      } catch {
+        blob = await renderNameStripBlob(letters, effectiveColors, tiles, false);
+      }
       const fd = new FormData();
       fd.set("designId", created.designId);
       fd.set("slotCount", "1");
@@ -341,6 +386,7 @@ export function NameEditor({ product, variantId, config, priceLabel }: NameEdito
                     key={`${ch}-${i}`}
                     letter={ch}
                     color={effectiveColors[i]}
+                    imageUrl={tiles[ch]?.imageUrl}
                     selected={selectedIndex === i}
                     onClick={() => setSelectedIndex(selectedIndex === i ? null : i)}
                   />
