@@ -13,6 +13,18 @@
 
 ## Resumen actual
 
+**Fase 3 EN EJECUCIÓN — Estudio fit-for-purpose por tipo de producto (2026-07-12, ADR-057).** Tras decidir
+"aumentar Konva, no refactorizar", se construyó el **primer editor a la medida** (Nombre Personalizado del
+abecedario: escribe una palabra → tira de fichas kawaii, con temas de color + color por letra + barajar) y
+se adoptó el patrón **"la ficha configura, el editor personaliza"** (opciones idioma/tamaño/imantado en la
+ficha vía VariantSelector; editor solo para lo creativo). El **abecedario se reestructuró a 3 productos**
+(Completo · Vocales · Nombre), idioma como opción, 30 variantes con precios editables en admin. Se **certificó
+el flujo de imágenes por variante** (prueba funcional real + 11 hallazgos, 8 corregidos, incl. un HIGH que
+afectaba todo producto creado en admin). Se construyó el **admin de "Sets de fichas"** (`/admin/fichas`) para
+que Lucy suba las 53 ilustraciones de letras; el editor ya las usa (placeholder si faltan). Todo verificado
+(tsc/build/tests + pruebas funcionales contra dev) y en `develop`. Pendiente de Lucy: subir las 53 fichas +
+ajustar precios + fotos por variante. Detalle en la bitácora 2026-07-12 (cont.).
+
 **Compartir diseño COMPLETO + revisión adversarial (2026-07-12, ADR-056).** Se cableó la infra de
 `Design.shareToken` (existía sin usar) en un feature de punta a punta: **"Mis diseños"**
 (`/mi-cuenta/disenos`, pestaña nueva en la cuenta) con grilla de los diseños finalizados del cliente +
@@ -1272,6 +1284,34 @@ sidebar fijo, Cancelar en cupones.
 ---
 
 ## Bitácora (append-only, más reciente arriba)
+
+### 2026-07-12 (cont.) — Fase 3 EJECUTADA: abecedario a 3 productos + editor de nombre + fichas + cert imágenes (ADR-057)
+
+Tras la estrategia (abajo), se construyó el primer editor fit-for-purpose end-to-end y se reestructuró
+el catálogo del abecedario, todo verificado (tsc/build/tests + pruebas funcionales reales contra dev).
+
+- **Enrutador de superficie** (`features/personalization/surface.ts`): el Estudio ramifica por
+  kind+config+variante → 5 superficies + carrito directo. Discriminador de variante ahora sobrevive
+  (`variant-schemas.ts`). 17 tests. (f9bdfa5)
+- **Editor de NOMBRE** (abecedario): escribe una palabra → tira de fichas en vivo. Lógica de normalización
+  (José→JOSE, Ñ solo es, sin números, 3-10, repetición) 15 tests. Paleta de temas + **color por letra** +
+  **re-clic baraja** + **22 colores vivos** (no pastel) + ejemplos + letras repetidas. Reutiliza
+  finalize/carrito (canvasData v1, datos en metadata). (b70a989, f95fffa, 8e2e258, 64a21da, 301146e, a39a178)
+- **Patrón "ficha configura, editor personaliza"** (decisión de Lucy sobre su Fotoimanes): opciones
+  (idioma/tamaño/imantado) en la FICHA (VariantSelector + dims Idioma/Imantado), editor solo para lo
+  creativo. **Abecedario → 3 productos**: Abecedario Completo · Pack Vocales · Nombre Personalizado (NONE/
+  TEXT_ONLY), idioma como opción, 30 variantes (`restructure-abecedario.mjs`, viejos archivados). Carrito
+  variant-aware. Nombres sin "Magnético". (d7ac4e1)
+- **Certificación de imágenes por variante** (workflow, 37 agentes): prueba funcional real (subida→variante→
+  storefront→swap) + 11 hallazgos, **8 corregidos** — el HIGH era la variante "Default" fantasma que
+  desincronizaba galería/precio en TODO producto creado desde el admin. (2511293)
+- **Sets de fichas** (ADR-057): modelos `LetterTileSet`+`LetterTile` (migración) + admin `/admin/fichas`
+  (grilla del abecedario, subir por letra, progreso 24/27) + editor usa fichas reales (placeholder si
+  faltan). Seed de 2 sets es/en. Prueba funcional real. (05af94e, cc46271)
+- **Reproducibilidad:** `make seed-abecedario` + `make seed-letter-sets`. (89e3d5c)
+- **PENDIENTE de Lucy:** subir las 53 ilustraciones en `/admin/fichas`; ajustar precios de variantes en
+  `/admin/productos`; subir portada + fotos por variante. **Diferido (pulido no bloqueante):** feedback
+  optimista en reorder de imágenes + swap de imagen atómico (hoy va con round-trip RSC).
 
 ### 2026-07-12 — Estrategia del Estudio: aumentar Konva, no refactorizar (ADR-057)
 
