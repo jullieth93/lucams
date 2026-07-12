@@ -19,7 +19,6 @@ import { getStorefrontProductBySlug } from "@/features/products/public-service";
 import { listTemplatesForKind, getOwnedDesign } from "@/features/personalization/service";
 import { parsePhotoProductConfig } from "@/features/personalization/schemas";
 import { resolvePersonalizationSurface } from "@/features/personalization/surface";
-import { formatCOP } from "@/lib/format";
 import { NameEditor } from "./name-editor";
 import { peekCartSession } from "@/lib/cart-session";
 import { getCurrentCustomer } from "@/lib/auth";
@@ -96,16 +95,38 @@ export default async function EstudioPage({
 
   // Superficie "nombre" (abecedario variante nombre): editor de nombre, sin foto.
   if (surface.surface === "name" && selectedVariant) {
-    const priceLabel = formatCOP(selectedVariant.price ?? product.basePrice);
+    // Todas las variantes que abren el editor de nombre (tamaño × imantado). El editor
+    // deja elegir tamaño + con/sin imán y resuelve la variante (y su precio) real.
+    const nameVariants = product.variants
+      .map((v) => {
+        const a = parseVariantAttributes(v.attributes);
+        const s = resolvePersonalizationSurface(
+          product.personalizationKind,
+          mergeVariantOverProduct(
+            (product.personalizationSchema ?? {}) as Record<string, unknown>,
+            a,
+          ),
+        );
+        return { v, a, isName: s.surface === "name" };
+      })
+      .filter((x) => x.isName)
+      .map(({ v, a }) => ({
+        id: v.id,
+        priceCop: v.price ?? product.basePrice,
+        size: typeof a.size === "string" ? a.size : "clasica",
+        sizeCm: typeof a.sizeCm === "string" ? a.sizeCm : "7×10",
+        magnet: a.magnet !== false,
+      }));
+
     return (
       <div className="bg-brand-cream flex min-h-screen flex-col">
         <SiteHeader />
         <main id="contenido" tabIndex={-1} className="flex flex-1 flex-col">
           <NameEditor
             product={{ id: product.id, slug: product.slug, name: product.name }}
-            variantId={selectedVariant.id}
+            variants={nameVariants}
+            initialVariantId={selectedVariant.id}
             config={surface.config}
-            priceLabel={priceLabel}
           />
         </main>
       </div>

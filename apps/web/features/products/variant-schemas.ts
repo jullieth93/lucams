@@ -57,6 +57,13 @@ export const ProductVariantAttributesSchema = z.object({
   letterCountMin: z.number().int().min(1).max(50).optional(),
   /** Máx. de letras para la variante "nombre" (ej. abecedario = 10). */
   letterCountMax: z.number().int().min(1).max(50).optional(),
+  /**
+   * ADR-057 — Nivel de tamaño (mini/clasica/grande) para agrupar variantes por
+   * tamaño en el editor. `sizeCm` sigue siendo la medida física; `size` es la etiqueta.
+   */
+  size: z.string().optional(),
+  /** ADR-057 — true = con imán (default), false = sin imán / adhesivo (más barato). */
+  magnet: z.boolean().optional(),
 });
 
 export type ProductVariantAttributes = z.infer<typeof ProductVariantAttributesSchema>;
