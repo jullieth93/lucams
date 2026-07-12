@@ -40,7 +40,6 @@ const RUN = `wompiroute${Date.now()}${Math.floor(Math.random() * 1e6)}`.toLowerC
 const EVENTS_SECRET = `${RUN}-events-secret`;
 
 const createdOrderIds: string[] = [];
-const createdRefs: string[] = [];
 
 async function makeOrder(reference: string, total: number, status = "PENDING_PAYMENT"): Promise<string> {
   const o = await prisma.order.create({
@@ -58,7 +57,6 @@ async function makeOrder(reference: string, total: number, status = "PENDING_PAY
     select: { id: true },
   });
   createdOrderIds.push(o.id);
-  createdRefs.push(reference);
   return o.id;
 }
 
@@ -129,11 +127,11 @@ describe.skipIf(!hasDb)("webhook Wompi ROUTE — portería con firma real", () =
       if (v === undefined) delete process.env[k];
       else process.env[k] = v;
     }
-    if (createdRefs.length > 0) {
-      await prisma.webhookEvent
-        .deleteMany({ where: { source: "WOMPI", OR: createdRefs.map((r) => ({ externalId: { contains: r } })) } })
-        .catch(() => {});
-    }
+    // El externalId del webhookEvent es `<txId>-<status>-<ts>` (usa el TX id, NO la
+    // reference), pero ambos llevan el prefijo RUN → limpiamos por RUN (bulletproof).
+    await prisma.webhookEvent
+      .deleteMany({ where: { source: "WOMPI", externalId: { contains: RUN } } })
+      .catch(() => {});
     await prisma.order.deleteMany({ where: { id: { in: createdOrderIds } } }).catch(() => {});
   });
 
@@ -199,7 +197,6 @@ describe.skipIf(!hasDb)("webhook Wompi ROUTE — portería con firma real", () =
 
   it("orden inexistente (reference sin match) → 200 ignorado, sin saga", async () => {
     const res = await POST(req(signedEvent({ txId: `${RUN}-tx7`, status: "APPROVED", amountInCents: 55000, reference: `${RUN}-NOPE` })));
-    createdRefs.push(`${RUN}-tx7`); // limpiar el webhookEvent
     expect(res.status).toBe(200);
     expect(sagaCalls).toHaveLength(0);
   });
