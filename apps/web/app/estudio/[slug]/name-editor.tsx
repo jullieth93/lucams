@@ -18,7 +18,7 @@ import { ChevronLeft, Loader2, Sparkles } from "lucide-react";
 import { normalizeName, type NameLanguage } from "@/features/personalization/name-input";
 import { createNameDesignAction, finalizeDesignAction } from "@/features/personalization/actions";
 import { addPersonalizedToCartAction } from "@/app/carrito/actions";
-import { LetterTile, TILE_BORDER_COLORS } from "./letter-tile";
+import { LetterTile, NAME_TILE_THEMES, getNameTileTheme } from "./letter-tile";
 
 type NameEditorProps = {
   product: { id: string; slug: string; name: string };
@@ -38,7 +38,7 @@ function roundRectPath(ctx: CanvasRenderingContext2D, x: number, y: number, w: n
 }
 
 /** Dibuja la tira de fichas en un canvas de alta resolución y devuelve el PNG. */
-async function renderNameStripBlob(letters: string[]): Promise<Blob> {
+async function renderNameStripBlob(letters: string[], colors: readonly string[]): Promise<Blob> {
   const scale = 4;
   const tileW = 120;
   const tileH = 142;
@@ -59,7 +59,7 @@ async function renderNameStripBlob(letters: string[]): Promise<Blob> {
   letters.forEach((ch, i) => {
     const x = pad + i * (tileW + gap);
     const y = pad;
-    const color = TILE_BORDER_COLORS[i % TILE_BORDER_COLORS.length];
+    const color = colors[i % colors.length];
     roundRectPath(ctx, x, y, tileW, tileH, 20);
     ctx.fillStyle = "#ffffff";
     ctx.fill();
@@ -81,25 +81,32 @@ async function renderNameStripBlob(letters: string[]): Promise<Blob> {
 export function NameEditor({ product, variantId, config, priceLabel }: NameEditorProps) {
   const router = useRouter();
   const [raw, setRaw] = useState("");
+  const [themeId, setThemeId] = useState(NAME_TILE_THEMES[0].id);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const result = useMemo(() => normalizeName(raw, config), [raw, config]);
   const { letters, valid, tooShort, notices } = result;
+  const theme = getNameTileTheme(themeId);
 
   async function handleAddToCart() {
     if (!valid || submitting) return;
     setSubmitting(true);
     setError(null);
     try {
-      const created = await createNameDesignAction({ productId: product.id, variantId, name: raw });
+      const created = await createNameDesignAction({
+        productId: product.id,
+        variantId,
+        name: raw,
+        themeId,
+      });
       if (!created.ok) {
         setError(created.message);
         setSubmitting(false);
         return;
       }
 
-      const blob = await renderNameStripBlob(letters);
+      const blob = await renderNameStripBlob(letters, theme.colors);
       const fd = new FormData();
       fd.set("designId", created.designId);
       fd.set("slotCount", "1");
@@ -197,8 +204,42 @@ export function NameEditor({ product, variantId, config, priceLabel }: NameEdito
           </ul>
         )}
 
+        {/* Paleta de colores (tema de las fichas) */}
+        <div className="mt-5">
+          <p className="text-brand-purple-dark mb-2 text-sm font-semibold">Elige los colores</p>
+          <div className="flex flex-wrap gap-2">
+            {NAME_TILE_THEMES.map((t) => {
+              const active = t.id === themeId;
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => setThemeId(t.id)}
+                  aria-pressed={active}
+                  className={`inline-flex items-center gap-2 rounded-full border-2 py-1.5 pr-3 pl-2 text-sm font-semibold transition ${
+                    active
+                      ? "border-brand-purple text-brand-purple-dark bg-brand-purple/5"
+                      : "border-brand-purple/15 text-brand-muted hover:border-brand-purple/40"
+                  }`}
+                >
+                  <span className="flex gap-0.5" aria-hidden="true">
+                    {t.colors.slice(0, 3).map((c, i) => (
+                      <span
+                        key={i}
+                        className="h-3.5 w-3.5 rounded-full ring-1 ring-black/5"
+                        style={{ backgroundColor: c }}
+                      />
+                    ))}
+                  </span>
+                  {t.emoji} {t.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         {/* Preview de la tira de fichas */}
-        <div className="bg-brand-cream/60 mt-6 min-h-[128px] rounded-2xl p-5">
+        <div className="bg-brand-cream/60 mt-5 min-h-[128px] rounded-2xl p-5">
           {letters.length === 0 ? (
             <p className="text-brand-muted flex h-[88px] items-center justify-center text-sm">
               Aquí verás tu nombre en fichas 🦝
@@ -206,7 +247,7 @@ export function NameEditor({ product, variantId, config, priceLabel }: NameEdito
           ) : (
             <div className="flex flex-wrap items-center justify-center gap-3">
               {letters.map((ch, i) => (
-                <LetterTile key={`${ch}-${i}`} letter={ch} index={i} />
+                <LetterTile key={`${ch}-${i}`} letter={ch} index={i} colors={theme.colors} />
               ))}
             </div>
           )}

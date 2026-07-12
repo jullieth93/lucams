@@ -217,6 +217,8 @@ export async function createNameDesign(opts: {
   productId: string;
   variantId: string;
   name: string;
+  /** Tema de color de las fichas (arcoiris/nina/nino/neutro). Se guarda en metadata. */
+  themeId?: string;
   customerId: string | null;
   sessionId: string | null;
 }): Promise<{ id: string; display: string; letters: string[] }> {
@@ -278,6 +280,7 @@ export async function createNameDesign(opts: {
         letters: norm.letters,
         language: surface.config.language,
         variant: typeof merged.variant === "string" ? merged.variant : null,
+        themeId: opts.themeId ?? "arcoiris",
       },
     },
   });

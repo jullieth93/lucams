@@ -216,6 +216,7 @@ const NameDesignInputSchema = z.object({
   productId: z.string().min(1),
   variantId: z.string().min(1),
   name: z.string().min(1).max(60),
+  themeId: z.string().max(40).optional(),
 });
 
 export async function createNameDesignAction(
