@@ -50,12 +50,19 @@ export type LogoSurfaceConfig = {
   requiresVectorFile: boolean;
 };
 
+export type LetterSetSurfaceConfig = {
+  /** "full" = todo el abecedario · "vowels" = A E I O U. */
+  letterSet: "full" | "vowels";
+  language: "es" | "en";
+};
+
 export type PersonalizationSurface =
   | { surface: "photo"; config: PhotoProductConfig }
   | { surface: "name"; config: NameSurfaceConfig }
   | { surface: "phrase"; config: PhraseSurfaceConfig }
   | { surface: "event"; config: EventSurfaceConfig }
   | { surface: "logo"; config: LogoSurfaceConfig }
+  | { surface: "letterset"; config: LetterSetSurfaceConfig }
   | { surface: "direct-cart"; reason: "fixed-variant" | "not-personalizable" };
 
 /** Kinds cuya edición es (parcial o totalmente) el editor de foto actual. */
@@ -85,6 +92,15 @@ export function resolvePersonalizationSurface(
   schema: Record<string, unknown> | null | undefined,
 ): PersonalizationSurface {
   const s = schema ?? {};
+
+  // Set de letras (Abecedario Completo / Pack Vocales): aunque el kind sea NONE, se
+  // personaliza el COLOR DEL MARCO en el Estudio. El marcador manda sobre el kind.
+  if (s.letterSet === "full" || s.letterSet === "vowels") {
+    return {
+      surface: "letterset",
+      config: { letterSet: s.letterSet, language: s.language === "en" ? "en" : "es" },
+    };
+  }
 
   if (kind === "NONE") {
     return { surface: "direct-cart", reason: "not-personalizable" };

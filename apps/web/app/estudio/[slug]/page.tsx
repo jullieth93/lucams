@@ -19,9 +19,10 @@ import { getStorefrontProductBySlug } from "@/features/products/public-service";
 import { listTemplatesForKind, getOwnedDesign } from "@/features/personalization/service";
 import { parsePhotoProductConfig } from "@/features/personalization/schemas";
 import { resolvePersonalizationSurface } from "@/features/personalization/surface";
-import { getLetterTilesForLanguage } from "@/features/personalization/letter-tiles";
+import { getLetterTilesForLanguage, ALPHABET } from "@/features/personalization/letter-tiles";
 import { formatCOP } from "@/lib/format";
 import { NameEditor } from "./name-editor";
+import { LetterSetEditor } from "./letter-set-editor";
 import { peekCartSession } from "@/lib/cart-session";
 import { getCurrentCustomer } from "@/lib/auth";
 import { prisma } from "@/lib/db";
@@ -66,7 +67,9 @@ export default async function EstudioPage({
   const [{ slug }, sp] = await Promise.all([params, searchParams]);
   const product = await getStorefrontProductBySlug(slug);
   if (!product) notFound();
-  if (product.personalizationKind === "NONE") notFound();
+  // Nota: NO bloqueamos por kind===NONE aquí. Un producto NONE con marcador `letterSet`
+  // (Abecedario Completo / Pack Vocales) SÍ abre el Estudio (color de marco). El
+  // enrutador de superficie decide: los NONE sin marcador caen a direct-cart → redirect.
 
   // M.3.b.CAT.4 — Si el query trae ?variant=id, mergear sus attributes
   // sobre el personalizationSchema base. Esto cambia photoSlots, sizeCm,
@@ -116,6 +119,39 @@ export default async function EstudioPage({
       </div>
     );
   }
+
+  // Superficie "letterset": Abecedario Completo / Pack Vocales → color de marco.
+  if (surface.surface === "letterset" && selectedVariant) {
+    const priceLabel = formatCOP(selectedVariant.price ?? product.basePrice);
+    const tiles = await getLetterTilesForLanguage(surface.config.language);
+    const letters =
+      surface.config.letterSet === "vowels"
+        ? ["A", "E", "I", "O", "U"]
+        : (ALPHABET[surface.config.language] ?? ALPHABET.es);
+    return (
+      <div className="bg-brand-cream flex min-h-screen flex-col">
+        <SiteHeader />
+        <main id="contenido" tabIndex={-1} className="flex flex-1 flex-col">
+          <LetterSetEditor
+            product={{ id: product.id, slug: product.slug, name: product.name }}
+            variantId={selectedVariant.id}
+            letters={letters}
+            tiles={tiles}
+            priceLabel={priceLabel}
+            subtitle={
+              surface.config.letterSet === "vowels"
+                ? "Las 5 vocales con su animalito. El marco será de este color al imprimir."
+                : `Las ${letters.length} letras. El marco será de este color al imprimir.`
+            }
+          />
+        </main>
+      </div>
+    );
+  }
+
+  // Llegados aquí, las superficies no-foto (name/letterset) ya retornaron y los NONE sin
+  // marcador cayeron a direct-cart (redirect). Lo que queda es la ruta de FOTO (kind ≠ NONE).
+  if (product.personalizationKind === "NONE") notFound();
 
   const photoConfig = parsePhotoProductConfig(mergedSchema);
 

@@ -121,7 +121,22 @@ describe("resolvePersonalizationSurface — otras superficies", () => {
     }
   });
 
-  it("NONE → carrito directo (no personalizable)", () => {
+  it("marcador letterSet 'full' → superficie letterset (aunque kind sea NONE)", () => {
+    const r = resolvePersonalizationSurface("NONE", { letterSet: "full", language: "es" });
+    expect(r.surface).toBe("letterset");
+    if (r.surface === "letterset") {
+      expect(r.config.letterSet).toBe("full");
+      expect(r.config.language).toBe("es");
+    }
+    expect(opensStudio("NONE", { letterSet: "full", language: "en" })).toBe(true);
+  });
+
+  it("marcador letterSet 'vowels' → letterset, idioma default es", () => {
+    const r = resolvePersonalizationSurface("NONE", { letterSet: "vowels" });
+    expect(r.surface === "letterset" && r.config.language).toBe("es");
+  });
+
+  it("NONE sin marcador → carrito directo (no personalizable)", () => {
     expect(resolvePersonalizationSurface("NONE", null)).toEqual({
       surface: "direct-cart",
       reason: "not-personalizable",

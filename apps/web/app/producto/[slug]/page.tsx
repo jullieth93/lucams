@@ -243,9 +243,10 @@ export default async function ProductoDetallePage({
               )}
 
               <div className="space-y-2 pt-2">
-                {requiresPersonalization ? (
+                {requiresPersonalization || letterSetPreview ? (
                   <>
-                    {/* CTA primaria: ir al Estudio con variant pre-seleccionado */}
+                    {/* CTA primaria: ir al Estudio con variant pre-seleccionado. Los sets de
+                        letras (Completo/Vocales) personalizan el color de marco dentro del Estudio. */}
                     <Link
                       href={`/estudio/${product.slug}${selectedVariant ? `?variant=${selectedVariant.id}` : ""}`}
                       className="bg-brand-purple hover:bg-brand-purple-dark shadow-brand-purple/30 hover:shadow-brand-purple/40 inline-flex h-12 w-full items-center justify-center gap-2 rounded-md px-6 text-base font-semibold text-white shadow-lg transition-all hover:shadow-xl"
@@ -302,8 +303,8 @@ export default async function ProductoDetallePage({
               title="Esto recibes"
               subtitle={
                 letterSet === "vowels"
-                  ? "Las 5 vocales con su animalito kawaii."
-                  : `Las ${letterSetPreview.letters.length} letras, cada una con su animalito kawaii.`
+                  ? "Las 5 vocales con su animalito kawaii. Personaliza el color del marco en “Personalizar tu imán”."
+                  : `Las ${letterSetPreview.letters.length} letras, cada una con su animalito. Personaliza el color del marco en “Personalizar tu imán”.`
               }
             />
           )}
