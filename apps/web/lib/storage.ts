@@ -62,6 +62,10 @@ function inferExtension(mime: string): string {
  * de confiar en file.type (que el cliente puede falsificar). Devuelve null si no
  * reconoce un formato de imagen permitido. Previene subir un .html/.svg/polyglot
  * con extensión .jpg.
+ *
+ * Reconoce jpeg/png/webp/avif y los contenedores ISOBMFF HEIC/HEIF (fotos de
+ * iPhone). El llamador filtra además contra SU allow-list (admin no acepta heic,
+ * cliente no acepta avif), así que este sniffer puede ser permisivo.
  */
 function sniffImageMime(buf: Buffer): string | null {
   if (buf.length < 12) return null;
@@ -82,10 +86,19 @@ function sniffImageMime(buf: Buffer): string | null {
   // WebP: "RIFF"...."WEBP"
   if (buf.toString("ascii", 0, 4) === "RIFF" && buf.toString("ascii", 8, 12) === "WEBP")
     return "image/webp";
-  // AVIF: ....ftyp + brand avif/avis
+  // Contenedores ISOBMFF: ....ftyp + major_brand.
   if (buf.toString("ascii", 4, 8) === "ftyp") {
     const brand = buf.toString("ascii", 8, 12);
     if (brand === "avif" || brand === "avis") return "image/avif";
+    // HEIC (fotos iPhone): heic/heix/heim/heis + secuencias hevc/hevx/hevm/hevs.
+    if (brand === "heic" || brand === "heix" || brand === "heim" || brand === "heis") {
+      return "image/heic";
+    }
+    if (brand === "hevc" || brand === "hevx" || brand === "hevm" || brand === "hevs") {
+      return "image/heic";
+    }
+    // HEIF genérico: brands mif1/msf1.
+    if (brand === "mif1" || brand === "msf1") return "image/heif";
   }
   return null;
 }
@@ -238,6 +251,18 @@ export async function uploadCustomerPhoto(opts: {
     );
   }
 
+  // Verifica el MIME REAL por magic bytes (no confiar en originalMimeType, que el
+  // cliente falsifica) — paridad con uploadProductImage. Rechaza polyglots
+  // (.html/.svg con extensión .jpg) ANTES de sharp, con error claro, y usa el
+  // formato real como fuente de verdad para la rama HEIC y el contentType final.
+  const realMime = sniffImageMime(opts.buffer);
+  if (!realMime || !CUSTOMER_UPLOAD_ALLOWED_MIME.has(realMime)) {
+    throw new StorageError(
+      "INVALID_TYPE",
+      "El archivo no es una imagen válida (jpg/png/webp/heic/heif).",
+    );
+  }
+
   // Strip EXIF + auto-orient + convert HEIC→JPEG via sharp.
   // sharp.rotate() respeta EXIF orientation y luego strip lo descarta.
   // .toBuffer() devuelve buffer optimizado.
@@ -248,7 +273,7 @@ export async function uploadCustomerPhoto(opts: {
   let height: number;
   try {
     const pipeline = sharp(opts.buffer).rotate(); // auto-orient + strip EXIF
-    const isHeic = opts.originalMimeType === "image/heic" || opts.originalMimeType === "image/heif";
+    const isHeic = realMime === "image/heic" || realMime === "image/heif";
     if (isHeic) {
       // HEIC requiere libvips compilado con heif (Vercel build incluye).
       // Si falla, sharp lanza error claro al cliente.
@@ -262,7 +287,7 @@ export async function uploadCustomerPhoto(opts: {
     } else {
       const out = await pipeline.toBuffer({ resolveWithObject: true });
       processed = out.data;
-      finalMime = opts.originalMimeType;
+      finalMime = realMime; // MIME REAL detectado por bytes, no el declarado
       width = out.info.width;
       height = out.info.height;
     }

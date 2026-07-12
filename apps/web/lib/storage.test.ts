@@ -122,9 +122,13 @@ const GIF_BYTES = pad(Buffer.from("GIF89a")); // GIF está fuera de la allow-lis
 const WAV_BYTES = pad(
   Buffer.concat([Buffer.from("RIFF"), Buffer.from([0x10, 0x00, 0x00, 0x00]), Buffer.from("WAVE")]),
 );
-/** ftyp con brand de video (isom) → NO es avif/avis → rechazado. */
+/** ftyp con brand de video (isom) → NO es avif/avis/heic → rechazado. */
 const MP4_BYTES = pad(
   Buffer.concat([Buffer.from([0x00, 0x00, 0x00, 0x20]), Buffer.from("ftyp"), Buffer.from("isom")]),
+);
+/** HEIC (foto iPhone): ftyp + brand "heic" → reconocido en customer-uploads. */
+const HEIC_BYTES = pad(
+  Buffer.concat([Buffer.from([0x00, 0x00, 0x00, 0x20]), Buffer.from("ftyp"), Buffer.from("heic")]),
 );
 
 function asFile(bytes: Buffer, type: string, name = "upload"): File {
@@ -458,10 +462,8 @@ describe("deleteProductImage — extracción de path y no-op para URLs ajenas", 
 // ─────────────────────────────────────────────────────────────────────────────
 // uploadCustomerPhoto — gate de tamaño + MIME declarado (pre-sharp)
 // ─────────────────────────────────────────────────────────────────────────────
-// NOTA: esta función NO hace sniff de magic bytes; valida el MIME DECLARADO y
-// delega el resto a sharp (que rechaza buffers no-imagen). Aquí cubrimos solo
-// las ramas de validación que corren ANTES de invocar sharp, para no depender
-// del binario nativo ni tocar Supabase.
+// Cubre las ramas que corren ANTES de sharp: tamaño y MIME DECLARADO. El gate de
+// magic bytes (MIME REAL) tiene su propio bloque más abajo.
 describe("uploadCustomerPhoto — gates previos a sharp", () => {
   const ownerId = "owner-123";
 
@@ -517,20 +519,93 @@ describe("uploadCustomerPhoto — gates previos a sharp", () => {
   });
 
   it("la allow-list de customer-uploads acepta heic/heif (no presentes en product-images)", async () => {
-    // No invocamos sharp (no llegamos tan lejos): forzamos un error de buffer
-    // inválido y verificamos que NO sea INVALID_TYPE (es decir, el MIME pasó el
-    // gate declarado). sharp rechazará el buffer dummy → UPLOAD_FAILED.
+    // HEIC con magic bytes reales: pasa el gate declarado Y el de magic bytes, y
+    // llega a sharp, que falla al decodificar el cuerpo dummy → UPLOAD_FAILED (NO
+    // INVALID_TYPE). Prueba que heic está reconocido y ruteado a sharp.
     const err = await expectStorageError(
       uploadCustomerPhoto({
-        buffer: Buffer.from("not-a-real-heic-image"),
+        buffer: Buffer.from(HEIC_BYTES),
         originalMimeType: "image/heic",
         ownerId,
         designId: null,
       }),
     );
-    // El MIME pasó el gate declarado; sharp falla al decodificar → UPLOAD_FAILED.
     expect(err.code).toBe("UPLOAD_FAILED");
     expect(err.code).not.toBe("INVALID_TYPE");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// uploadCustomerPhoto — gate de MIME REAL por magic bytes (SEGURIDAD, ruta pública)
+// ─────────────────────────────────────────────────────────────────────────────
+// La ruta del cliente es pública (usuarios anónimos suben con sessionId). Igual que
+// uploadProductImage, ahora verifica el MIME REAL por magic bytes ANTES de sharp:
+// rechaza polyglots (.html/.svg/GIF/WAV/MP4 disfrazados de imagen) con INVALID_TYPE,
+// y usa el formato real como contentType (no el declarado por el cliente).
+describe("uploadCustomerPhoto — mismatch declarado vs bytes reales (magic gate)", () => {
+  const ownerId = "owner-123";
+
+  it("RECHAZA HTML disfrazado de image/png (polyglot/XSS)", async () => {
+    const err = await expectStorageError(
+      uploadCustomerPhoto({
+        buffer: Buffer.from(HTML_BYTES),
+        originalMimeType: "image/png",
+        ownerId,
+        designId: null,
+      }),
+    );
+    expect(err.code).toBe("INVALID_TYPE");
+    expect(err.message).toContain("no es una imagen válida");
+    // Rechazado en el gate de bytes → nunca tocó Supabase.
+    expect(uploadMock).not.toHaveBeenCalled();
+  });
+
+  it("RECHAZA SVG disfrazado de image/webp (SVG fuera de la allow-list de bytes)", async () => {
+    const err = await expectStorageError(
+      uploadCustomerPhoto({
+        buffer: Buffer.from(SVG_BYTES),
+        originalMimeType: "image/webp",
+        ownerId,
+        designId: null,
+      }),
+    );
+    expect(err.code).toBe("INVALID_TYPE");
+  });
+
+  it("RECHAZA GIF disfrazado de image/png (GIF no es imagen permitida)", async () => {
+    const err = await expectStorageError(
+      uploadCustomerPhoto({
+        buffer: Buffer.from(GIF_BYTES),
+        originalMimeType: "image/png",
+        ownerId,
+        designId: null,
+      }),
+    );
+    expect(err.code).toBe("INVALID_TYPE");
+  });
+
+  it("RECHAZA WAV (RIFF pero NO WEBP) disfrazado de image/webp", async () => {
+    const err = await expectStorageError(
+      uploadCustomerPhoto({
+        buffer: Buffer.from(WAV_BYTES),
+        originalMimeType: "image/webp",
+        ownerId,
+        designId: null,
+      }),
+    );
+    expect(err.code).toBe("INVALID_TYPE");
+  });
+
+  it("RECHAZA MP4/video (ftyp brand isom) disfrazado de image/png", async () => {
+    const err = await expectStorageError(
+      uploadCustomerPhoto({
+        buffer: Buffer.from(MP4_BYTES),
+        originalMimeType: "image/png",
+        ownerId,
+        designId: null,
+      }),
+    );
+    expect(err.code).toBe("INVALID_TYPE");
   });
 });
 
@@ -669,10 +744,11 @@ describe("uploadCustomerPhoto — camino feliz + firma de URL", () => {
     expect(createSignedUrlMock).not.toHaveBeenCalled();
   });
 
-  it("conversión HEIC→JPEG: finalMime image/jpeg y ext .jpg (rama por MIME declarado)", async () => {
-    // Feedeamos un JPEG REAL declarándolo image/heic → dispara la rama HEIC→JPEG
-    // sin exigir soporte libheif en el binario nativo (la rama se decide por el
-    // MIME declarado). sharp decodifica el JPEG y re-encoda a JPEG.
+  it("el MIME REAL manda sobre el declarado: JPEG declarado image/heic se guarda como image/jpeg", async () => {
+    // El sniff de magic bytes gana: un JPEG real declarado image/heic se detecta
+    // como jpeg (no dispara la rama HEIC), y el contentType/mimeType/ext salen del
+    // formato REAL, no del declarado. Corrige el bug de metadata (antes guardaba el
+    // MIME declarado por el cliente).
     const result = await uploadCustomerPhoto({
       buffer: realJpeg,
       originalMimeType: "image/heic",
@@ -681,10 +757,23 @@ describe("uploadCustomerPhoto — camino feliz + firma de URL", () => {
     });
     expect(result.mimeType).toBe("image/jpeg");
     expect(result.path).toMatch(/^owner-123\/design-heic\/[0-9a-f-]{36}\.jpg$/);
-    // El contentType del upload se fuerza al MIME final (image/jpeg), no al heic.
     expect(uploadMock.mock.calls[0][2]).toMatchObject({ contentType: "image/jpeg" });
     expect(result.width).toBe(80);
     expect(result.height).toBe(60);
+  });
+
+  it("PNG real declarado image/webp se guarda como image/png (metadata correcta)", async () => {
+    // Mismatch benigno (imagen real, tipo declarado equivocado): se acepta usando el
+    // formato REAL. No rompemos subidas legítimas por un content-type mal etiquetado.
+    const result = await uploadCustomerPhoto({
+      buffer: realPng,
+      originalMimeType: "image/webp",
+      ownerId,
+      designId: "design-mismatch",
+    });
+    expect(result.mimeType).toBe("image/png");
+    expect(result.path).toMatch(/\.png$/);
+    expect(uploadMock.mock.calls[0][2]).toMatchObject({ contentType: "image/png" });
   });
 });
 
