@@ -316,6 +316,8 @@ export async function createLetterSetDesign(opts: {
   productId: string;
   variantId: string;
   frameTheme: string;
+  /** ADR-057 — color efectivo por ficha (mismo patrón que createNameDesign). */
+  colors?: string[];
   customerId: string | null;
   sessionId: string | null;
 }): Promise<{ id: string; letters: string[]; language: string }> {
@@ -369,6 +371,8 @@ export async function createLetterSetDesign(opts: {
         language,
         frameTheme: opts.frameTheme,
         letters,
+        // Color efectivo por ficha (para producción). Acotado al nº de letras del set.
+        colors: Array.isArray(opts.colors) ? opts.colors.slice(0, letters.length) : [],
       },
     },
   });

@@ -1,0 +1,84 @@
+"use client";
+
+/*
+ * ADR-057 (2026-07-12) — Controles de color COMPARTIDOS (Nombre + Set de letras): el picker
+ * de tema (con barajar al re-clic) y la fila de swatches para pintar una ficha puntual.
+ * Presentacionales puros; el estado vive en useLetterColors.
+ */
+
+import { NAME_TILE_THEMES, LETTER_SWATCHES } from "./letter-tile";
+
+/** Picker de tema de color. Re-clic al tema activo lo baraja (lo maneja applyTheme). */
+export function ThemePicker({
+  themeId,
+  customized,
+  onApply,
+}: {
+  themeId: string;
+  /** true = hay overrides por ficha → ningún tema se marca "activo". */
+  customized: boolean;
+  onApply: (id: string) => void;
+}) {
+  return (
+    <div>
+      <p className="text-brand-purple-dark mb-2 text-sm font-semibold">
+        Elige los colores
+        <span className="text-brand-muted ml-2 text-xs font-normal">
+          · toca un tema otra vez para barajar 🎲
+        </span>
+      </p>
+      <div className="flex flex-wrap gap-2">
+        {NAME_TILE_THEMES.map((t) => {
+          const active = t.id === themeId && !customized;
+          return (
+            <button
+              key={t.id}
+              type="button"
+              onClick={() => onApply(t.id)}
+              aria-pressed={active}
+              className={`inline-flex items-center gap-2 rounded-full border-2 py-1.5 pr-3 pl-2 text-sm font-semibold transition ${
+                active
+                  ? "border-brand-purple text-brand-purple-dark bg-brand-purple/5"
+                  : "border-brand-purple/15 text-brand-muted hover:border-brand-purple/40"
+              }`}
+            >
+              <span className="flex gap-0.5" aria-hidden="true">
+                {t.colors.slice(0, 3).map((c, i) => (
+                  <span
+                    key={i}
+                    className="h-3.5 w-3.5 rounded-full ring-1 ring-black/5"
+                    style={{ backgroundColor: c }}
+                  />
+                ))}
+              </span>
+              {t.emoji} {t.label}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/** Fila de swatches para pintar la ficha seleccionada a gusto. */
+export function SwatchRow({ letter, onPick }: { letter: string; onPick: (color: string) => void }) {
+  return (
+    <div className="border-brand-purple/15 mt-4 rounded-xl border bg-white p-3">
+      <p className="text-brand-purple-dark mb-2 text-center text-xs font-semibold">
+        Color de la letra <span className="font-display text-base">{letter}</span>
+      </p>
+      <div className="flex flex-wrap justify-center gap-2">
+        {LETTER_SWATCHES.map((c) => (
+          <button
+            key={c}
+            type="button"
+            onClick={() => onPick(c)}
+            aria-label="Pintar de este color"
+            className="h-8 w-8 rounded-full ring-2 ring-black/5 transition hover:scale-110"
+            style={{ backgroundColor: c }}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}

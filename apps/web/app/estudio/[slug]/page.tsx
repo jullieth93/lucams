@@ -154,8 +154,8 @@ export default async function EstudioPage({
             priceLabel={priceLabel}
             subtitle={
               surface.config.letterSet === "vowels"
-                ? "Las 5 vocales con su animalito. El marco será de este color al imprimir."
-                : `Las ${letters.length} letras. El marco será de este color al imprimir.`
+                ? "Las 5 vocales con su animalito. Pinta cada ficha del color que quieras — así se imprime."
+                : `Las ${letters.length} letras, cada una con su animalito. Pinta cada ficha del color que quieras — así se imprime.`
             }
           />
         </main>

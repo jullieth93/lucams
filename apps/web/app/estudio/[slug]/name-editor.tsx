@@ -20,7 +20,9 @@ import type { LetterTileMap } from "@/features/personalization/letter-tiles";
 import { createNameDesignAction, finalizeDesignAction } from "@/features/personalization/actions";
 import { addPersonalizedToCartAction } from "@/app/carrito/actions";
 import { formatCOP } from "@/lib/format";
-import { LetterTile, NAME_TILE_THEMES, getNameTileTheme, LETTER_SWATCHES } from "./letter-tile";
+import { LetterTile } from "./letter-tile";
+import { useLetterColors } from "./use-letter-colors";
+import { ThemePicker, SwatchRow } from "./letter-color-controls";
 
 type NameEditorProps = {
   product: { id: string; slug: string; name: string };
@@ -135,23 +137,22 @@ export function NameEditor({
 }: NameEditorProps) {
   const router = useRouter();
   const [raw, setRaw] = useState("");
-  const [themeId, setThemeId] = useState(NAME_TILE_THEMES[0].id);
-  // Orden de colores del tema activo. Inicial = orden del tema (determinista para SSR);
-  // cada clic en un tema lo BARAJA (Math.random solo en el handler → sin mismatch).
-  const [activeColors, setActiveColors] = useState<readonly string[]>(NAME_TILE_THEMES[0].colors);
-  // Override de color por letra (índice → color). Vacío = usa el color del tema.
-  const [letterColors, setLetterColors] = useState<Record<number, string>>({});
-  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const result = useMemo(() => normalizeName(raw, config), [raw, config]);
   const { letters, valid, tooShort, notices } = result;
 
-  const effectiveColors = useMemo(
-    () => letters.map((_, i) => letterColors[i] ?? activeColors[i % activeColors.length]),
-    [letters, letterColors, activeColors],
-  );
+  // Colores compartidos con el editor de Set de letras (tema + barajar + color por ficha).
+  const {
+    themeId,
+    effectiveColors,
+    selectedIndex,
+    toggleSelected,
+    applyTheme,
+    setColorForSelected,
+    customized,
+  } = useLetterColors(letters.length);
 
   // Letras repetidas → transparencia sobre cuántas fichas iguales lleva.
   const repeats = useMemo(() => {
@@ -163,29 +164,6 @@ export function NameEditor({
   }, [letters]);
 
   const examples = config.language === "es" ? ["Mía", "Mateo", "Amor"] : ["Mia", "Noah", "Love"];
-
-  /** Baraja Fisher-Yates. Solo se llama desde onClick (post-hidratación) → seguro. */
-  function shuffleColors(colors: readonly string[]): string[] {
-    const a = [...colors];
-    for (let i = a.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [a[i], a[j]] = [a[j], a[i]];
-    }
-    return a;
-  }
-
-  function applyTheme(id: string) {
-    setThemeId(id);
-    setActiveColors(shuffleColors(getNameTileTheme(id).colors)); // re-clic → otra combinación
-    setLetterColors({}); // el tema es un punto de partida limpio
-    setSelectedIndex(null);
-  }
-
-  function setColorForSelected(color: string) {
-    if (selectedIndex === null) return;
-    setLetterColors((prev) => ({ ...prev, [selectedIndex]: color }));
-    setSelectedIndex(null);
-  }
 
   async function handleAddToCart() {
     if (!valid || submitting) return;
@@ -344,43 +322,9 @@ export function NameEditor({
           </ul>
         )}
 
-        {/* Paleta de colores (tema de las fichas) */}
+        {/* Paleta de colores (tema de las fichas) — control compartido con Set de letras */}
         <div className="mt-5">
-          <p className="text-brand-purple-dark mb-2 text-sm font-semibold">
-            Elige los colores
-            <span className="text-brand-muted ml-2 text-xs font-normal">
-              · toca un tema otra vez para barajar 🎲
-            </span>
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {NAME_TILE_THEMES.map((t) => {
-              const active = t.id === themeId && Object.keys(letterColors).length === 0;
-              return (
-                <button
-                  key={t.id}
-                  type="button"
-                  onClick={() => applyTheme(t.id)}
-                  aria-pressed={active}
-                  className={`inline-flex items-center gap-2 rounded-full border-2 py-1.5 pr-3 pl-2 text-sm font-semibold transition ${
-                    active
-                      ? "border-brand-purple text-brand-purple-dark bg-brand-purple/5"
-                      : "border-brand-purple/15 text-brand-muted hover:border-brand-purple/40"
-                  }`}
-                >
-                  <span className="flex gap-0.5" aria-hidden="true">
-                    {t.colors.slice(0, 3).map((c, i) => (
-                      <span
-                        key={i}
-                        className="h-3.5 w-3.5 rounded-full ring-1 ring-black/5"
-                        style={{ backgroundColor: c }}
-                      />
-                    ))}
-                  </span>
-                  {t.emoji} {t.label}
-                </button>
-              );
-            })}
-          </div>
+          <ThemePicker themeId={themeId} customized={customized} onApply={applyTheme} />
         </div>
 
         {/* Preview de la tira de fichas (cada una seleccionable para pintarla) */}
@@ -418,32 +362,16 @@ export function NameEditor({
                     color={effectiveColors[i]}
                     imageUrl={tiles[ch]?.imageUrl}
                     selected={selectedIndex === i}
-                    onClick={() => setSelectedIndex(selectedIndex === i ? null : i)}
+                    onClick={() => toggleSelected(i)}
                   />
                 ))}
               </div>
             </>
           )}
 
-          {/* Fila de colores para la letra seleccionada */}
+          {/* Fila de colores para la letra seleccionada — control compartido */}
           {selectedIndex !== null && letters[selectedIndex] && (
-            <div className="border-brand-purple/15 mt-4 rounded-xl border bg-white p-3">
-              <p className="text-brand-purple-dark mb-2 text-center text-xs font-semibold">
-                Color de la letra <span className="font-display text-base">{letters[selectedIndex]}</span>
-              </p>
-              <div className="flex flex-wrap justify-center gap-2">
-                {LETTER_SWATCHES.map((c) => (
-                  <button
-                    key={c}
-                    type="button"
-                    onClick={() => setColorForSelected(c)}
-                    aria-label={`Pintar de este color`}
-                    className="h-8 w-8 rounded-full ring-2 ring-black/5 transition hover:scale-110"
-                    style={{ backgroundColor: c }}
-                  />
-                ))}
-              </div>
-            </div>
+            <SwatchRow letter={letters[selectedIndex]} onPick={setColorForSelected} />
           )}
         </div>
 

@@ -2,19 +2,21 @@
 
 /*
  * ADR-057 — Editor de SET DE LETRAS en el Estudio (Abecedario Completo / Pack Vocales).
- * Consistente con el resto: toda interacción del cliente vive dentro del Estudio. Lo
- * personalizable es el COLOR DEL MARCO (cambio físico real → WYSIWYG). Reutiliza
- * createLetterSetDesign + finalize + carrito.
+ * Consistente con el editor de Nombre: mismos controles de color (tema + barajar + color por
+ * ficha, vía useLetterColors) y misma estética. Lo personalizable es el COLOR de cada ficha /
+ * su marco — un cambio físico real → WYSIWYG. Reutiliza createLetterSetDesign + finalize +
+ * carrito. Estilo = ocasión disponible ("Animales" hoy; Navidad, etc. cuando Lucy los dibuje).
  */
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ChevronLeft, Loader2, Sparkles } from "lucide-react";
-import { NAME_TILE_THEMES, getNameTileTheme } from "./letter-tile";
 import type { LetterTileMap } from "@/features/personalization/letter-tiles";
 import { createLetterSetDesignAction, finalizeDesignAction } from "@/features/personalization/actions";
 import { addPersonalizedToCartAction } from "@/app/carrito/actions";
+import { useLetterColors } from "./use-letter-colors";
+import { ThemePicker, SwatchRow } from "./letter-color-controls";
 
 function loadImage(url: string): Promise<HTMLImageElement | null> {
   return new Promise((resolve) => {
@@ -112,22 +114,24 @@ export function LetterSetEditor({
   subtitle?: string;
 }) {
   const router = useRouter();
-  const [themeId, setThemeId] = useState(NAME_TILE_THEMES[0].id);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const theme = getNameTileTheme(themeId);
-  const frameColors = useMemo(
-    () => letters.map((_, i) => theme.colors[i % theme.colors.length]),
-    [letters, theme],
-  );
+  // Mismos controles de color que el editor de Nombre.
+  const { themeId, effectiveColors, selectedIndex, toggleSelected, applyTheme, setColorForSelected, customized } =
+    useLetterColors(letters.length);
 
   async function handleAddToCart() {
     if (submitting) return;
     setSubmitting(true);
     setError(null);
     try {
-      const created = await createLetterSetDesignAction({ productId: product.id, variantId, frameTheme: themeId });
+      const created = await createLetterSetDesignAction({
+        productId: product.id,
+        variantId,
+        frameTheme: themeId,
+        colors: effectiveColors,
+      });
       if (!created.ok) {
         setError(created.message);
         setSubmitting(false);
@@ -135,9 +139,9 @@ export function LetterSetEditor({
       }
       let blob: Blob;
       try {
-        blob = await renderLetterSetBlob(letters, tiles, theme.colors);
+        blob = await renderLetterSetBlob(letters, tiles, effectiveColors);
       } catch {
-        blob = await renderLetterSetBlob(letters, tiles, theme.colors, false);
+        blob = await renderLetterSetBlob(letters, tiles, effectiveColors, false);
       }
       const fd = new FormData();
       fd.set("designId", created.designId);
@@ -178,63 +182,70 @@ export function LetterSetEditor({
           Personalizar · {product.name}
         </p>
         <h1 className="font-display text-brand-purple-dark mt-1 text-3xl sm:text-4xl">
-          Elige el color del marco 🎨
+          Elige los colores 🎨
         </h1>
         {subtitle && <p className="text-brand-muted mx-auto mt-2 max-w-md text-sm">{subtitle}</p>}
       </header>
 
       <div className="border-brand-purple/12 rounded-3xl border bg-white p-6 shadow-sm sm:p-8">
-        {/* Selector de tema de marco */}
-        <div className="flex flex-wrap justify-center gap-2">
-          {NAME_TILE_THEMES.map((t) => {
-            const active = t.id === themeId;
-            return (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => setThemeId(t.id)}
-                aria-pressed={active}
-                className={`inline-flex items-center gap-2 rounded-full border-2 py-1.5 pr-3 pl-2 text-sm font-semibold transition ${
-                  active
-                    ? "border-brand-purple text-brand-purple-dark bg-brand-purple/5"
-                    : "border-brand-purple/15 text-brand-muted hover:border-brand-purple/40"
-                }`}
-              >
-                <span className="flex gap-0.5" aria-hidden="true">
-                  {t.colors.slice(0, 3).map((c, i) => (
-                    <span key={i} className="h-3.5 w-3.5 rounded-full ring-1 ring-black/5" style={{ backgroundColor: c }} />
-                  ))}
-                </span>
-                {t.emoji} {t.label}
-              </button>
-            );
-          })}
+        {/* Estilo (ocasión). Hoy "Animales"; se suman más cuando Lucy los dibuje. */}
+        <div className="mb-5 flex items-center justify-center">
+          <span className="border-brand-purple/15 text-brand-purple-dark inline-flex items-center gap-1.5 rounded-full border bg-brand-cream/60 px-3 py-1.5 text-xs font-semibold">
+            🐾 Estilo: Animales
+          </span>
         </div>
 
-        {/* Preview del set con el marco elegido (WYSIWYG) */}
-        <div className="bg-brand-cream/50 mt-5 grid grid-cols-4 gap-3 rounded-2xl p-5 sm:grid-cols-6 md:grid-cols-9">
-          {letters.map((ch, i) => {
-            const tile = tiles[ch];
-            const color = frameColors[i];
-            return (
-              <div key={ch} className="flex flex-col items-center">
-                <div
-                  className="flex aspect-square w-full items-center justify-center overflow-hidden rounded-xl bg-white"
-                  style={{ border: `2px solid ${color}`, boxShadow: `0 3px 10px ${color}22` }}
+        {/* Picker de tema de color — control compartido con Nombre (barajar al re-clic). */}
+        <ThemePicker themeId={themeId} customized={customized} onApply={applyTheme} />
+
+        {/* Preview del set (WYSIWYG) — cada ficha es seleccionable para pintarla a gusto. */}
+        <div className="bg-brand-cream/50 mt-5 rounded-2xl p-5">
+          {selectedIndex === null && (
+            <p className="text-brand-purple-dark mb-3 flex items-center justify-center text-center text-xs font-semibold">
+              <span className="bg-brand-yellow/45 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5">
+                👇 Toca una ficha para darle el color que quieras
+              </span>
+            </p>
+          )}
+          <div className="grid grid-cols-4 gap-3 sm:grid-cols-6 md:grid-cols-9">
+            {letters.map((ch, i) => {
+              const tile = tiles[ch];
+              const color = effectiveColors[i];
+              const isSel = selectedIndex === i;
+              return (
+                <button
+                  key={ch}
+                  type="button"
+                  onClick={() => toggleSelected(i)}
+                  aria-pressed={isSel}
+                  aria-label={`Pintar la ficha ${ch}`}
+                  className={`flex flex-col items-center rounded-xl transition ${
+                    isSel ? "ring-brand-purple scale-105 ring-2 ring-offset-2" : "hover:scale-105"
+                  }`}
                 >
-                  {tile ? (
-                    // eslint-disable-next-line @next/next/no-img-element — ficha del bucket público
-                    <img src={tile.imageUrl} alt={`Letra ${ch}`} className="h-full w-full object-contain p-1" />
-                  ) : (
-                    <span className="font-display text-base font-extrabold" style={{ color }}>
-                      {ch}
-                    </span>
-                  )}
-                </div>
-                <span className="text-brand-muted mt-1 text-[10px] font-semibold">{ch}</span>
-              </div>
-            );
-          })}
+                  <div
+                    className="flex aspect-square w-full items-center justify-center overflow-hidden rounded-xl bg-white"
+                    style={{ border: `2px solid ${color}`, boxShadow: `0 3px 10px ${color}22` }}
+                  >
+                    {tile ? (
+                      // eslint-disable-next-line @next/next/no-img-element -- ficha del bucket público
+                      <img src={tile.imageUrl} alt={`Letra ${ch}`} className="h-full w-full object-contain p-1" />
+                    ) : (
+                      <span className="font-display text-base font-extrabold" style={{ color }}>
+                        {ch}
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-brand-muted mt-1 text-[10px] font-semibold">{ch}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Fila de colores para la ficha seleccionada — control compartido */}
+          {selectedIndex !== null && letters[selectedIndex] && (
+            <SwatchRow letter={letters[selectedIndex]} onPick={setColorForSelected} />
+          )}
         </div>
 
         {error && (

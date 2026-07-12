@@ -262,6 +262,11 @@ const LetterSetDesignInputSchema = z.object({
   productId: z.string().min(1),
   variantId: z.string().min(1),
   frameTheme: z.string().min(1).max(40),
+  // ADR-057 — paridad con Nombre: color por ficha (hex 6 dígitos, cap 50 anti-inyección).
+  colors: z
+    .array(z.string().regex(/^#[0-9A-Fa-f]{6}$/))
+    .max(50)
+    .optional(),
 });
 
 export async function createLetterSetDesignAction(
