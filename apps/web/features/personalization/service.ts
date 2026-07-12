@@ -26,6 +26,9 @@ import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { supabaseService } from "@/lib/supabase/service";
 import { parsePhotoProductConfig } from "./schemas";
+import { resolvePersonalizationSurface } from "./surface";
+import { normalizeName } from "./name-input";
+import { mergeVariantOverProduct, parseVariantAttributes } from "@/features/products/variant-schemas";
 import type { CanvasData, CanvasDataV1, CanvasDataV2 } from "./schemas";
 import type { z } from "zod";
 import type { SlotStateSchema } from "./schemas";
@@ -199,6 +202,99 @@ export async function createDraftDesign(opts: {
   );
 
   return design;
+}
+
+// ──────────────────────────────────────────────────────────────────
+//  Draft de NOMBRE (superficie "name" del abecedario — ADR-057, Fase 0)
+// ──────────────────────────────────────────────────────────────────
+//
+// El nombre NO es una foto: se guarda la lista ordenada de fichas en `metadata`.
+// El canvasData es V1 (stage + fondo), así que finalizeDesign espera 1 production
+// PNG (la tira renderizada) y NO valida slots de foto → reutiliza la ruta del dinero
+// sin cambios. La validación del nombre corre EN EL SERVIDOR (no confiar en cliente).
+
+export async function createNameDesign(opts: {
+  productId: string;
+  variantId: string;
+  name: string;
+  customerId: string | null;
+  sessionId: string | null;
+}): Promise<{ id: string; display: string; letters: string[] }> {
+  if (!opts.customerId && !opts.sessionId) {
+    throw new Error("createNameDesign: requires customerId or sessionId");
+  }
+
+  const product = await prisma.product.findUnique({
+    where: { id: opts.productId },
+    select: {
+      id: true,
+      personalizationKind: true,
+      personalizationSchema: true,
+      variants: {
+        where: { id: opts.variantId, isActive: true, deletedAt: null },
+        select: { id: true, attributes: true },
+      },
+    },
+  });
+  if (!product) throw new Error(`createNameDesign: product ${opts.productId} not found`);
+  const variant = product.variants[0];
+  if (!variant) throw new Error("createNameDesign: variant not found");
+
+  // La superficie correcta debe ser "name" (defensa: no crear un name design
+  // sobre una variante de foto o un set fijo).
+  const merged = mergeVariantOverProduct(
+    (product.personalizationSchema ?? {}) as Record<string, unknown>,
+    parseVariantAttributes(variant.attributes),
+  );
+  const surface = resolvePersonalizationSurface(product.personalizationKind, merged);
+  if (surface.surface !== "name") throw new Error("NAME_SURFACE_REQUIRED");
+
+  const norm = normalizeName(opts.name, surface.config);
+  if (!norm.valid) {
+    throw new Error(
+      `INVALID_NAME: ${norm.tooShort ? "muy corto" : norm.tooLong ? "muy largo" : "inválido"}`,
+    );
+  }
+
+  const canvasData: CanvasDataV1 = {
+    version: 1,
+    stage: { width: 1080, height: 1080, dpiPreview: 90, dpiProduction: 300 },
+    layers: [{ id: "background", type: "background", color: "#FFFFFF" }],
+  };
+
+  const design = await prisma.design.create({
+    data: {
+      productId: opts.productId,
+      templateId: null,
+      customerId: opts.customerId,
+      sessionId: opts.sessionId,
+      status: "DRAFT",
+      canvasData: canvasData as unknown as Prisma.InputJsonValue,
+      metadata: {
+        kind: product.personalizationKind,
+        surface: "name",
+        schemaVersion: 2,
+        name: norm.display,
+        letters: norm.letters,
+        language: surface.config.language,
+        variant: typeof merged.variant === "string" ? merged.variant : null,
+      },
+    },
+  });
+
+  logger.info(
+    {
+      event: "design.create_name.success",
+      designId: design.id,
+      productId: opts.productId,
+      letterCount: norm.letters.length,
+      language: surface.config.language,
+      ownerType: opts.customerId ? "customer" : "session",
+    },
+    "Name design created",
+  );
+
+  return { id: design.id, display: norm.display, letters: norm.letters };
 }
 
 // ──────────────────────────────────────────────────────────────────

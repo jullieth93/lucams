@@ -13,11 +13,14 @@
 
 import type { Metadata } from "next";
 import dynamic from "next/dynamic";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { SiteHeader } from "@/components/site-header";
 import { getStorefrontProductBySlug } from "@/features/products/public-service";
 import { listTemplatesForKind, getOwnedDesign } from "@/features/personalization/service";
 import { parsePhotoProductConfig } from "@/features/personalization/schemas";
+import { resolvePersonalizationSurface } from "@/features/personalization/surface";
+import { formatCOP } from "@/lib/format";
+import { NameEditor } from "./name-editor";
 import { peekCartSession } from "@/lib/cart-session";
 import { getCurrentCustomer } from "@/lib/auth";
 import { prisma } from "@/lib/db";
@@ -78,6 +81,36 @@ export default async function EstudioPage({
         parseVariantAttributes(selectedVariant.attributes),
       )
     : (product.personalizationSchema as Record<string, unknown>);
+
+  // ADR-057 — Enrutador de superficie: cada tipo de producto (y variante) abre la
+  // experiencia correcta, no el editor de foto genérico.
+  const surface = resolvePersonalizationSurface(
+    product.personalizationKind,
+    mergedSchema as Record<string, unknown>,
+  );
+
+  // Set fijo (abecedario completo/vocales) o no personalizable → no abrir el Estudio.
+  if (surface.surface === "direct-cart") {
+    redirect(`/producto/${product.slug}`);
+  }
+
+  // Superficie "nombre" (abecedario variante nombre): editor de nombre, sin foto.
+  if (surface.surface === "name" && selectedVariant) {
+    const priceLabel = formatCOP(selectedVariant.price ?? product.basePrice);
+    return (
+      <div className="bg-brand-cream flex min-h-screen flex-col">
+        <SiteHeader />
+        <main id="contenido" tabIndex={-1} className="flex flex-1 flex-col">
+          <NameEditor
+            product={{ id: product.id, slug: product.slug, name: product.name }}
+            variantId={selectedVariant.id}
+            config={surface.config}
+            priceLabel={priceLabel}
+          />
+        </main>
+      </div>
+    );
+  }
 
   const photoConfig = parsePhotoProductConfig(mergedSchema);
 

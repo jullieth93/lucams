@@ -14,6 +14,7 @@
 
 "use server";
 
+import { z } from "zod";
 import { getCurrentCustomer } from "@/lib/auth";
 import { getOrCreateCartSession, peekCartSession } from "@/lib/cart-session";
 import { logger } from "@/lib/logger";
@@ -22,7 +23,7 @@ import { ownerKey } from "@/lib/rate-limit-keys";
 import { uploadCustomerPhoto } from "@/lib/storage";
 import { prisma } from "@/lib/db";
 import { CreateDraftDesignSchema, SaveCanvasSchema, UploadAssetMetadataSchema } from "./schemas";
-import { createDraftDesign, finalizeDesign, getOwnedDesign, saveCanvas } from "./service";
+import { createDraftDesign, createNameDesign, finalizeDesign, getOwnedDesign, saveCanvas } from "./service";
 
 // ──────────── Helpers ────────────
 
@@ -202,6 +203,43 @@ export async function finalizeDesignAction(
       : "INTERNAL";
     logger.warn({ event: "design.finalize.fail", code, err: msg }, "finalizeDesign failed");
     return { ok: false, code, message: msg };
+  }
+}
+
+// ──────────── Crear draft de NOMBRE (superficie "name", ADR-057) ────────────
+//
+// El editor de nombre crea el diseño con esta acción; luego renderiza la tira de
+// fichas a PNG y reutiliza finalizeDesignAction + addPersonalizedToCartAction (sin
+// cambios). La validación del nombre corre en el servidor (createNameDesign).
+
+const NameDesignInputSchema = z.object({
+  productId: z.string().min(1),
+  variantId: z.string().min(1),
+  name: z.string().min(1).max(60),
+});
+
+export async function createNameDesignAction(
+  input: unknown,
+): Promise<{ ok: true; designId: string; display: string } | { ok: false; message: string }> {
+  const parsed = NameDesignInputSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, message: "Datos inválidos." };
+
+  const { customerId, sessionId } = await resolveOwner();
+
+  // Rate-limit: bucket propio (crear diseño + fila DB). Menos estricto que checkout.
+  const rl = await rateLimit(ownerKey("create_name_design", customerId ?? sessionId ?? "anon"), 30, 600);
+  if (!rl.allowed) return { ok: false, message: "Demasiados intentos. Espera un momento." };
+
+  try {
+    const design = await createNameDesign({ ...parsed.data, customerId, sessionId });
+    return { ok: true, designId: design.id, display: design.display };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.warn({ event: "design.create_name.fail", err: msg }, "createNameDesign failed");
+    if (msg.startsWith("INVALID_NAME")) {
+      return { ok: false, message: "Revisa el nombre: solo letras, entre el mínimo y máximo permitidos." };
+    }
+    return { ok: false, message: "No pudimos crear el diseño. Intenta de nuevo." };
   }
 }
 
