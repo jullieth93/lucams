@@ -12,9 +12,11 @@
 
 ## TL;DR — el veredicto
 
-1. **Tecnología: AUMENTAR, no refactorizar.** El motor (Konva/react-konva, MIT/$0, self-host) es la
-   fundación correcta — es el mismo sobre el que se construye Polotno (editor comercial tipo-Canva de
-   US$899/mo, mismo autor). No es callejón sin salida. Verificado: `polotno.com/sdk/product/compare`.
+1. **Tecnología: AUMENTAR y CONSTRUIR lo nuestro, cero licencias.** El motor (Konva/react-konva, MIT/$0,
+   self-host) es la fundación correcta — es el mismo sobre el que se construye Polotno (editor comercial
+   tipo-Canva de US$899/mo, mismo autor). **Decisión de Lucy (2026-07-12): no pagar licencia; construir
+   nuestro propio editor sobre Konva hasta igualar o superar a Polotno** (viable a $0 porque partimos del
+   mismo motor). Verificado: `polotno.com/sdk/product/compare`.
 2. **Calidad visual: ya cumplimos o superamos el estándar** (300 DPI, validación pre-pago con banda
    blanda/dura, sangrado). Somos incluso más estrictos que los líderes móviles.
 3. **Los gaps reales son funcionales, no de motor:**
@@ -112,13 +114,32 @@ a 50%, y evaluar upscaling por IA para móvil.
 | Piezas server (sharp, ImageMagick+lcms2, resvg) | complemento | Apache/MIT/ISC, **$0** ✔ | **Sumar.** Render server + color imprenta. |
 | model-viewer (3D/AR) | complemento | Apache-2.0, **$0** ✔ | Opcional, baja prioridad (imán plano). |
 | Fabric.js | no | MIT, $0 | Descartar: sin binding React 1ª parte; migrar 8.7k LOC por SVG (se resuelve server-side). |
-| Polotno (editor sobre Konva) | **sí** | US$899/mo (verificado) | Futuro de menor migración; no hoy (mandato #2). |
+| Polotno (editor sobre Konva) | **sí** | US$899/mo (verificado) | **NO adoptar (decisión de Lucy 2026-07-12: cero licencias).** Sirve solo como **referencia** de lo que "listo" significa — es un editor sobre nuestro mismo Konva, así que su feature set es replicable a $0. |
 | img.ly CE.SDK | no | ~US$13k/año (Vendr, *pendiente*) | Descartar: motor distinto + caro. |
 | Zakeke/Customily/Kickflip | no | SaaS + fee/pedido | Descartar: lock-in, iframe daña Lighthouse/WCAG. |
 | Fancy Product Designer | no | en cierre 2026 ✔ | Evitar. |
 
 **Dato que cierra el debate:** Polotno (US$899/mo, tipo-Canva) está construido **sobre el mismo Konva**, por
 el mismo autor (Anton Lavrenov). El "upgrade" de pago usa nuestra misma base.
+
+### Meta "paridad-o-mejor que Polotno" (decisión de Lucy 2026-07-12: construir, $0, sin licencia)
+
+Polotno es "un editor pulido sobre Konva" — su feature set es replicable sobre nuestro mismo motor. Objetivo
+concreto de construcción (todo open-source/$0):
+
+**Paridad (lo que Polotno da y nosotros construimos):**
+- Editor multi-capa con texto rico, imágenes, formas, fondos, SVG (Konva ya lo soporta; falta pulir UI).
+- Sistema de **plantillas** editables + premade (ya existe el hook `listTemplatesForKind`; falta curar arte).
+- Panel de capas, alinear/distribuir, **snap a guías**, undo/redo (undo/redo ya existe).
+- **Export print-ready:** PNG/JPEG (tenemos) + **PDF/PDF-X con CMYK, bleed, crop marks** — Polotno lo hace con
+  `@polotno/pdf-export`+Ghostscript; nosotros con ImageMagick+lcms2 (+ Ghostscript para PDF/X, revisar AGPL).
+- **Render autoritativo** (el nuestro va en el servidor — Polotno exporta desde el cliente; aquí ya lo mejoramos).
+
+**Dónde lo SUPERAMOS (Polotno es genérico; nosotros a la medida del imán):**
+- **Editores por tipo de producto** (nombre→fichas, evento, logo B2B, calendario) — Polotno NO los trae.
+- Validación de calidad de foto pre-pago (300 DPI/blur/brillo) integrada — ya la tenemos.
+- Realismo del producto físico (bleed/safe area/glossy/formas) — ya lo tenemos.
+- Copy y flujo en español-Colombia, mobile-first, kawaii, WCAG AA.
 
 ### Qué NO tocar
 - El motor Konva/react-konva.
@@ -131,7 +152,7 @@ el mismo autor (Anton Lavrenov). El "upgrade" de pago usa nuestra misma base.
 | Fase | Qué | Esfuerzo | Notas |
 |---|---|---|---|
 | **0 — Fundación** | Render de producción en servidor + enrutador por tipo/variante + camino "añadir al carrito" por variante fija + extraer "esqueleto de diseño" agnóstico + limpieza de catálogo | **Medio-Alto** (incl. migración de datos) | No es plomería barata. Es LA fase. Ver prerrequisitos abajo. |
-| **1 — Sub-editores por tipo + plantillas reales** | Construir los flujos de los 2–3 tipos de mayor valor + curar ~12–16 plantillas por ocasión | **Alto**, iterativo | Orden por **ventas reales de IG**, no por conteo de productos. Compuerta: spike de Polotno en su trial gratis 60 días para decidir build-vs-buy con evidencia. |
+| **1 — Sub-editores por tipo + plantillas reales** | Construir los flujos de los 2–3 tipos de mayor valor + curar ~12–16 plantillas por ocasión | **Alto**, iterativo | Orden por **ventas reales de IG**, no por conteo de productos. **Decisión firme (Lucy 2026-07-12): construir, no comprar** — desarrollamos nuestro propio editor sobre Konva hasta igualar/superar a Polotno. Polotno solo como referencia visual de "listo", nunca como dependencia. |
 | **2 — Color CMYK/PDF** | Post-paso server, **solo si imprenta local lo exige** | ~3–5 días | ImageMagick+lcms2 (no sharp: issue #3129 revierte 300DPI+CMYK a RGB); PDF/X con Ghostscript → **revisar licencia AGPL antes**. |
 | **3 — Preview 3D "en tu nevera"** | model-viewer, carga diferida | opcional | ROI dudoso en imán plano vs mockup 2D. |
 

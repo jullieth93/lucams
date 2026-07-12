@@ -1979,10 +1979,13 @@ personalización por tipo de producto, (3) evaluación de tecnología mantener/a
 completo en [ESTUDIO_STRATEGY.md](ESTUDIO_STRATEGY.md). Versión visual para Lucy: artifact en claude.ai.
 
 **Decisión.**
-1. **AUMENTAR, no refactorizar.** El motor Konva/react-konva (MIT/$0, self-host) es la fundación correcta —
-   verificado que Polotno (editor comercial tipo-Canva US$899/mo) se construye sobre el mismo Konva, mismo
-   autor. Descartadas todas las alternativas de pago (mandato #2) y las open-source de otro motor (migración
-   sin beneficio de motor). Konva se mantiene y se completa.
+1. **AUMENTAR y CONSTRUIR lo nuestro — cero licencias.** El motor Konva/react-konva (MIT/$0, self-host) es la
+   fundación correcta — verificado que Polotno (editor comercial tipo-Canva US$899/mo) se construye sobre el
+   mismo Konva, mismo autor. Descartadas todas las alternativas de pago (mandato #2) y las open-source de otro
+   motor. **Directiva explícita de Lucy (2026-07-12): NO atarnos a pagar una licencia (inviable por costo) —
+   construir nuestra propia tecnología sobre Konva hasta tener algo igual o mejor que Polotno.** Polotno queda
+   solo como *referencia* de lo que "listo" significa (es replicable a $0 por ser el mismo motor); nunca como
+   dependencia ni opción de compra futura. Ver "Meta paridad-o-mejor que Polotno" en ESTUDIO_STRATEGY.md.
 2. **Gap #1 (arquitectura):** el archivo de impresión hoy se genera en el celular del cliente
    (`finalizeDesign` solo valida cantidad + sube los PNG del navegador). Riesgo real de degradación/fallo
    silencioso → devolución. Fix de máximo impacto/menor costo ($0, no toca el motor): **render de producción
