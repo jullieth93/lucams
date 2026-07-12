@@ -152,9 +152,13 @@ export default async function ProductoDetallePage({
 
   return (
     <div className="bg-brand-cream flex min-h-screen flex-col">
+      {/* suppressHydrationWarning: el navegador BORRA el nonce del DOM tras aplicar
+          la CSP (seguridad), así que el cliente ve nonce="" y no matchea el del
+          servidor. Es esperado — no es un bug de datos. */}
       <script
         type="application/ld+json"
         nonce={nonce}
+        suppressHydrationWarning
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
       <SiteHeader />
