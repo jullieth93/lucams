@@ -28,6 +28,7 @@ import { supabaseService } from "@/lib/supabase/service";
 import { parsePhotoProductConfig } from "./schemas";
 import { resolvePersonalizationSurface } from "./surface";
 import { normalizeName } from "./name-input";
+import { ALPHABET } from "./letter-tiles";
 import { mergeVariantOverProduct, parseVariantAttributes } from "@/features/products/variant-schemas";
 import type { CanvasData, CanvasDataV1, CanvasDataV2 } from "./schemas";
 import type { z } from "zod";
@@ -301,6 +302,89 @@ export async function createNameDesign(opts: {
   );
 
   return { id: design.id, display: norm.display, letters: norm.letters };
+}
+
+// ──────────────────────────────────────────────────────────────────
+//  Diseño de SET DE LETRAS (Completo/Vocales) con color de marco (ADR-057)
+// ──────────────────────────────────────────────────────────────────
+//
+// El producto es un set fijo (todas las letras); lo único que el cliente personaliza es
+// el COLOR DEL MARCO (un cambio físico real — WYSIWYG). Se guarda el tema + las letras en
+// metadata; canvasData v1 → reutiliza finalize/carrito. Valida el marcador letterSet.
+
+export async function createLetterSetDesign(opts: {
+  productId: string;
+  variantId: string;
+  frameTheme: string;
+  customerId: string | null;
+  sessionId: string | null;
+}): Promise<{ id: string; letters: string[]; language: string }> {
+  if (!opts.customerId && !opts.sessionId) {
+    throw new Error("createLetterSetDesign: requires customerId or sessionId");
+  }
+  const product = await prisma.product.findUnique({
+    where: { id: opts.productId },
+    select: {
+      id: true,
+      personalizationKind: true,
+      personalizationSchema: true,
+      variants: {
+        where: { id: opts.variantId, isActive: true, deletedAt: null },
+        select: { id: true, attributes: true },
+      },
+    },
+  });
+  if (!product) throw new Error(`createLetterSetDesign: product ${opts.productId} not found`);
+  const variant = product.variants[0];
+  if (!variant) throw new Error("createLetterSetDesign: variant not found");
+  const schema = (product.personalizationSchema ?? {}) as { letterSet?: string };
+  if (schema.letterSet !== "full" && schema.letterSet !== "vowels") {
+    throw new Error("LETTERSET_REQUIRED");
+  }
+
+  const attrs = parseVariantAttributes(variant.attributes);
+  const language = attrs.language === "en" ? "en" : "es";
+  const letters =
+    schema.letterSet === "vowels" ? ["A", "E", "I", "O", "U"] : (ALPHABET[language] ?? ALPHABET.es);
+
+  const canvasData: CanvasDataV1 = {
+    version: 1,
+    stage: { width: 1080, height: 1080, dpiPreview: 90, dpiProduction: 300 },
+    layers: [{ id: "background", type: "background", color: "#FFFFFF" }],
+  };
+
+  const design = await prisma.design.create({
+    data: {
+      productId: opts.productId,
+      templateId: null,
+      customerId: opts.customerId,
+      sessionId: opts.sessionId,
+      status: "DRAFT",
+      canvasData: canvasData as unknown as Prisma.InputJsonValue,
+      metadata: {
+        kind: product.personalizationKind,
+        surface: "letterset",
+        schemaVersion: 2,
+        letterSet: schema.letterSet,
+        language,
+        frameTheme: opts.frameTheme,
+        letters,
+      },
+    },
+  });
+
+  logger.info(
+    {
+      event: "design.create_letterset.success",
+      designId: design.id,
+      productId: opts.productId,
+      letterSet: schema.letterSet,
+      frameTheme: opts.frameTheme,
+    },
+    "Letter set design created",
+  );
+
+  return { id: design.id, letters, language };
 }
 
 // ──────────────────────────────────────────────────────────────────

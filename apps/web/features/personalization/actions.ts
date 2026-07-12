@@ -23,7 +23,14 @@ import { ownerKey } from "@/lib/rate-limit-keys";
 import { uploadCustomerPhoto } from "@/lib/storage";
 import { prisma } from "@/lib/db";
 import { CreateDraftDesignSchema, SaveCanvasSchema, UploadAssetMetadataSchema } from "./schemas";
-import { createDraftDesign, createNameDesign, finalizeDesign, getOwnedDesign, saveCanvas } from "./service";
+import {
+  createDraftDesign,
+  createNameDesign,
+  createLetterSetDesign,
+  finalizeDesign,
+  getOwnedDesign,
+  saveCanvas,
+} from "./service";
 
 // ──────────── Helpers ────────────
 
@@ -245,6 +252,34 @@ export async function createNameDesignAction(
     if (msg.startsWith("INVALID_NAME")) {
       return { ok: false, message: "Revisa el nombre: solo letras, entre el mínimo y máximo permitidos." };
     }
+    return { ok: false, message: "No pudimos crear el diseño. Intenta de nuevo." };
+  }
+}
+
+// ──────────── Crear diseño de SET DE LETRAS (color de marco, ADR-057) ────────────
+
+const LetterSetDesignInputSchema = z.object({
+  productId: z.string().min(1),
+  variantId: z.string().min(1),
+  frameTheme: z.string().min(1).max(40),
+});
+
+export async function createLetterSetDesignAction(
+  input: unknown,
+): Promise<{ ok: true; designId: string } | { ok: false; message: string }> {
+  const parsed = LetterSetDesignInputSchema.safeParse(input);
+  if (!parsed.success) return { ok: false, message: "Datos inválidos." };
+
+  const { customerId, sessionId } = await resolveOwner();
+  const rl = await rateLimit(ownerKey("create_letterset_design", customerId ?? sessionId ?? "anon"), 30, 600);
+  if (!rl.allowed) return { ok: false, message: "Demasiados intentos. Espera un momento." };
+
+  try {
+    const design = await createLetterSetDesign({ ...parsed.data, customerId, sessionId });
+    return { ok: true, designId: design.id };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.warn({ event: "design.create_letterset.fail", err: msg }, "createLetterSetDesign failed");
     return { ok: false, message: "No pudimos crear el diseño. Intenta de nuevo." };
   }
 }
