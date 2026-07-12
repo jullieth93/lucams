@@ -44,6 +44,18 @@ vi.mock("next/cache", () => ({
   updateTag: vi.fn(),
 }));
 
+// @/lib/cms → real, EXCEPTO getSettingValue("COD_ENABLED"): lo forzamos a "true" para
+// que el test de COD no dependa del toggle de negocio en la DB compartida (si Lucy lo
+// apaga desde el admin, el test seguiría verde). Los demás settings (PICKUP_*) reales.
+vi.mock("@/lib/cms", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("@/lib/cms")>();
+  return {
+    ...actual,
+    getSettingValue: async (key: string, fallback: string) =>
+      key === "COD_ENABLED" ? "true" : actual.getSettingValue(key, fallback),
+  };
+});
+
 // Jar de cookies en memoria — stateful entre get/set/delete dentro de un test.
 const cookieStore = new Map<string, string>();
 vi.mock("next/headers", () => ({
