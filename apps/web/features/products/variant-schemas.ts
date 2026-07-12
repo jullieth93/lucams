@@ -44,6 +44,19 @@ export const ProductVariantAttributesSchema = z.object({
   cornerRadiusPx: z.number().int().min(0).max(500).optional(),
   /** Aspect ratio (ej. "1:1", "4:5"). Override. */
   aspectRatio: z.string().optional(),
+  /**
+   * ADR-057 — Discriminador de sub-tipo dentro de la familia, para que el Estudio
+   * ramifique por variante hacia la superficie correcta (no solo "foto"). Ej. el
+   * Abecedario usa "full"/"vowels" (sets fijos → carrito directo) vs "name" (escribir
+   * un nombre → fichas). Antes se DESCARTABA en el merge → el editor no distinguía.
+   */
+  variant: z.string().optional(),
+  /** Cantidad fija de piezas/letras del set (ej. abecedario completo = 27). */
+  letterCount: z.number().int().min(1).max(50).optional(),
+  /** Mín. de letras para la variante "nombre" (ej. abecedario = 3). */
+  letterCountMin: z.number().int().min(1).max(50).optional(),
+  /** Máx. de letras para la variante "nombre" (ej. abecedario = 10). */
+  letterCountMax: z.number().int().min(1).max(50).optional(),
 });
 
 export type ProductVariantAttributes = z.infer<typeof ProductVariantAttributesSchema>;
