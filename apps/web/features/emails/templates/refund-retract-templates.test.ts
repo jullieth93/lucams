@@ -37,6 +37,7 @@ vi.mock("@/lib/cms", () => ({
 import { refundIssuedEmail } from "./refund-issued";
 import { retractApprovedEmail } from "./retract-approved";
 import { retractRefundedEmail } from "./retract-refunded";
+import { orderCancelledEmail } from "./order-cancelled";
 
 /** Regex de dinero tolerante al espacio duro U+00A0 que emite Intl es-CO. */
 function money(pesosWithDots: string): RegExp {
@@ -227,6 +228,55 @@ describe("retractRefundedEmail", () => {
 
   it("IDEMPOTENCIA: mismo input → misma salida", async () => {
     const [a, b] = await Promise.all([retractRefundedEmail(base), retractRefundedEmail(base)]);
+    expect(a).toEqual(b);
+  });
+});
+
+// =============================================================================
+// order-cancelled (cancelación manual del pedido)
+// =============================================================================
+describe("orderCancelledEmail", () => {
+  const base = { orderNumber: "LS-6001", customerName: "Lucía" };
+
+  it("envuelve el body en el layout compartido", async () => {
+    const r = await orderCancelledEmail(base);
+    expect(r.html.startsWith("<!doctype html>")).toBe(true);
+    expect(r.html).toContain("© 2026 Lucams_shop");
+  });
+
+  it("subject lleva el número de orden", async () => {
+    const r = await orderCancelledEmail({ ...base, orderNumber: "LS-6060" });
+    expect(r.subject).toBe("Tu pedido LS-6060 fue cancelado");
+  });
+
+  it("HTML y texto incluyen nombre, orden y mención al reembolso", async () => {
+    const r = await orderCancelledEmail(base);
+    expect(r.html).toContain("Lucía");
+    expect(r.html).toContain("LS-6001");
+    expect(r.html).toContain("te devolvemos el dinero");
+    expect(r.text).toContain("LS-6001");
+  });
+
+  it("con motivo lo muestra; sin motivo no agrega la línea", async () => {
+    const con = await orderCancelledEmail({ ...base, reason: "Dirección errada" });
+    expect(con.html).toContain("Motivo: Dirección errada");
+    const sin = await orderCancelledEmail(base);
+    expect(sin.html).not.toContain("Motivo:");
+  });
+
+  it("SEGURIDAD: escapa markup en nombre y motivo", async () => {
+    const r = await orderCancelledEmail({
+      ...base,
+      customerName: "Ana <b> & Co",
+      reason: "<script>alert(1)</script>",
+    });
+    expect(r.html).toContain("Ana &lt;b&gt; &amp; Co");
+    expect(r.html).toContain("&lt;script&gt;alert(1)&lt;/script&gt;");
+    expect(r.html).not.toContain("<script>alert(1)</script>");
+  });
+
+  it("IDEMPOTENCIA: mismo input → misma salida", async () => {
+    const [a, b] = await Promise.all([orderCancelledEmail(base), orderCancelledEmail(base)]);
     expect(a).toEqual(b);
   });
 });

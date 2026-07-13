@@ -6,6 +6,7 @@ import { getCurrentAdmin } from "@/lib/auth";
 import { recordAdminAction } from "@/lib/admin-audit";
 import { processPaidOrder } from "@/features/orders/saga";
 import { refundOrder, transitionOrder } from "@/features/orders/service";
+import { sendOrderShipped, sendOrderDelivered, sendOrderCancelled } from "@/features/orders/emails";
 import { formatCOP } from "@/lib/format";
 
 /**
@@ -80,6 +81,14 @@ export async function transitionOrderAction(
 
   try {
     await transitionOrder(orderId, to, { actorAdminId: session.admin.id });
+
+    // Auditoría 2026-07-13: el path manual también avisa al cliente (antes solo la saga
+    // del webhook lo hacía). Idempotente (idempotencyKey de Resend) y best-effort (un fallo
+    // de email nunca rompe la transición). CANCELLED aquí es siempre manual (no pago-rechazado).
+    if (to === "SHIPPED") await sendOrderShipped(orderId);
+    else if (to === "DELIVERED") await sendOrderDelivered(orderId);
+    else if (to === "CANCELLED") await sendOrderCancelled(orderId, reason || null);
+
     await recordAdminAction({
       actorId: session.admin.id,
       action: "order.transition",

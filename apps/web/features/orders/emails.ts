@@ -17,6 +17,7 @@ import { orderConfirmationEmail } from "@/features/emails/templates/order-confir
 import { orderShippedEmail } from "@/features/emails/templates/order-shipped";
 import { orderDeliveredEmail } from "@/features/emails/templates/order-delivered";
 import { orderPaymentFailedEmail } from "@/features/emails/templates/order-payment-failed";
+import { orderCancelledEmail } from "@/features/emails/templates/order-cancelled";
 import { refundIssuedEmail } from "@/features/emails/templates/refund-issued";
 
 type ShippingAddrSnapshot = {
@@ -291,6 +292,51 @@ export async function sendOrderDelivered(orderId: string): Promise<void> {
   } catch (err) {
     logger.error({
       event: "order.email.delivered.fail",
+      orderId,
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+/**
+ * Envia order-cancelled tras una cancelación MANUAL (admin). NO para cancelaciones por
+ * pago rechazado (esas usan sendOrderPaymentFailed). Best-effort + idempotente.
+ */
+export async function sendOrderCancelled(orderId: string, reason?: string | null): Promise<void> {
+  try {
+    const order = await prisma.order.findFirst({
+      where: { id: orderId, deletedAt: null },
+      select: { number: true, email: true, shippingAddress: true },
+    });
+    if (!order) return;
+
+    const ship = order.shippingAddress as ShippingAddrSnapshot;
+    const tpl = await orderCancelledEmail({
+      orderNumber: order.number,
+      customerName: ship.fullName ?? "Cliente",
+      reason: reason ?? null,
+    });
+
+    const result = await sendEmail({
+      to: order.email,
+      subject: tpl.subject,
+      html: tpl.html,
+      text: tpl.text,
+      idempotencyKey: `${order.number}-cancelled`,
+      tags: [
+        { name: "type", value: "order_cancelled" },
+        { name: "order_number", value: order.number },
+      ],
+    });
+    logger.info({
+      event: "order.email.cancelled.sent",
+      orderNumber: order.number,
+      to: order.email,
+      result: result.sent ? "ok" : `skip:${result.reason}`,
+    });
+  } catch (err) {
+    logger.error({
+      event: "order.email.cancelled.fail",
       orderId,
       err: err instanceof Error ? err.message : String(err),
     });
