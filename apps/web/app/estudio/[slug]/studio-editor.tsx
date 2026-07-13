@@ -46,6 +46,7 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/co
 import { Sparkles, Box, X } from "lucide-react";
 import nextDynamic from "next/dynamic";
 import type { Magnet3D } from "./fridge-3d-view";
+import { StudioAiPanel } from "./studio-ai-panel";
 
 // Vista 3D en nevera: se carga SOLO client-side (necesita WebGL/window) y diferida
 // (three.js es pesado) → no infla el bundle del editor hasta que el cliente la abre.
@@ -152,6 +153,10 @@ export function StudioEditor({
   // P1.4 — Vista 3D en nevera. null = cerrada; array = imanes texturizados a mostrar.
   const [fridge3D, setFridge3D] = useState<Magnet3D[] | null>(null);
   const [fridge3DCols, setFridge3DCols] = useState(1);
+  // P1.5 — Asistente IA de ideas (ADR-058).
+  const [aiOpen, setAiOpen] = useState(false);
+  const allowText =
+    (product.personalizationSchema as { allowText?: boolean })?.allowText === true;
 
   // M.3.b.A2.5 — Lee `sizeCm` del producto para badge visual en cada slot.
   // Producto config viene como JSON unknown, parsePhotoProductConfig hace
@@ -581,17 +586,37 @@ export function StudioEditor({
         </section>
       </div>
 
-      {/* P1.4 — Botón flotante "Ver en 3D" (diferenciador). Centro inferior para no chocar
+      {/* P1.4/P1.5 — Botones flotantes: Ideas (IA) + Ver en 3D. Centro inferior para no chocar
           con el FAB de Editar (izq) ni el de ¡Listo! (der) en mobile. */}
-      <button
-        type="button"
-        onClick={handleOpen3D}
-        aria-label="Ver tus imanes en una nevera 3D"
-        className="bg-brand-purple ring-brand-purple/25 fixed bottom-4 left-1/2 z-30 inline-flex h-12 -translate-x-1/2 items-center gap-2 rounded-full px-5 text-sm font-bold text-white shadow-xl ring-4 transition-transform hover:scale-105 active:scale-95"
-      >
-        <Box className="h-5 w-5" />
-        <span>Ver en 3D</span>
-      </button>
+      <div className="fixed bottom-4 left-1/2 z-30 flex -translate-x-1/2 items-center gap-2">
+        <button
+          type="button"
+          onClick={() => setAiOpen(true)}
+          aria-label="Pedir ideas al asistente"
+          className="bg-brand-pink ring-brand-pink/25 inline-flex h-12 items-center gap-2 rounded-full px-4 text-sm font-bold text-white shadow-xl ring-4 transition-transform hover:scale-105 active:scale-95"
+        >
+          <Sparkles className="h-5 w-5" />
+          <span>Ideas</span>
+        </button>
+        <button
+          type="button"
+          onClick={handleOpen3D}
+          aria-label="Ver tus imanes en una nevera 3D"
+          className="bg-brand-purple ring-brand-purple/25 inline-flex h-12 items-center gap-2 rounded-full px-4 text-sm font-bold text-white shadow-xl ring-4 transition-transform hover:scale-105 active:scale-95"
+        >
+          <Box className="h-5 w-5" />
+          <span>Ver en 3D</span>
+        </button>
+      </div>
+
+      {/* P1.5 — Panel del asistente IA de ideas */}
+      <StudioAiPanel
+        open={aiOpen}
+        onClose={() => setAiOpen(false)}
+        productName={product.name}
+        slotCount={photoSlots}
+        allowText={allowText}
+      />
 
       {/* P1.4 — Modal de la vista 3D en nevera (lazy, client-only). */}
       {fridge3D !== null && (

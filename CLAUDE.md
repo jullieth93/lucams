@@ -17,7 +17,7 @@ Este `CLAUDE.md` ya se carga automáticamente y te da la mayoría del contexto. 
 | -------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
 | Tocar UI, componentes, colores, tipografías, copy                                                                                            | `docs/BRANDING.md`                               |
 | Crear/editar schema Prisma, RLS, estructura de carpetas, `PaymentProvider`                                                                   | `docs/ARCHITECTURE.md`                           |
-| Implementar o depurar Wompi, Venndelo, Resend, Claude API, WhatsApp, DIAN, webhooks                                                          | `docs/INTEGRATIONS.md`                           |
+| Implementar o depurar Wompi, Venndelo, Resend, IA (Gemini / `AiProvider`), WhatsApp, DIAN, webhooks                                          | `docs/INTEGRATIONS.md`                           |
 | Tocar variables de entorno, despliegue, runbook, incidentes, costos, entorno de desarrollo, branching/releases, DR                           | `docs/OPERATIONS.md`                             |
 | Tocar autenticación, autorización, RLS, headers, CORS, rate limit, secrets, validación, RBAC, STRIDE, IRP                                    | `docs/SECURITY.md`                               |
 | **Patrones de código** (naming, error format RFC 7807, capa de servicio, saga, idempotency, audit fields, migrations, retry/circuit breaker) | `docs/CONVENTIONS.md`                            |
@@ -76,7 +76,7 @@ Si una tarea cruza varias áreas, lee los archivos relevantes en paralelo. Si no
 
 ## Diferenciador #1
 
-**Estudio de Personalización en vivo** (react-konva): editor canvas con plantillas, fotos, texto. Guarda JSON del diseño + PNG alta resolución para producción. Es el "plus" real frente a magneticas.cl. Acompañado de vista 3D en nevera (Three.js) y asistente IA (Claude API).
+**Estudio de Personalización en vivo** (react-konva): editor canvas con plantillas, fotos, texto. Guarda JSON del diseño + PNG alta resolución para producción. Es el "plus" real frente a magneticas.cl. Acompañado de vista 3D en nevera (Three.js) y **asistente IA de sugerencias de diseño** — detrás de un adaptador `AiProvider` (proveedor-agnóstico), con **Gemini** como proveedor elegido (nivel gratuito para dev, mandato #2) y **fallback entre modelos**. Ver ADR-058.
 
 ## Datos clave
 

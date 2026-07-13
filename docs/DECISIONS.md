@@ -2016,3 +2016,35 @@ Lucy pidió cerrar la categoría del abecedario con mirada experta (no parchear 
 3. **CTA adaptativo imán/adhesivo.** "Sin imán" es un adhesivo → el CTA dice "Personalizar tu imán/tu adhesivo" según `magnet` (undefined = con imán). El resto de "imán" del sitio es lenguaje de marca intencional (la tienda ES de imanes) o de fotoimanes (que sí son imanes) → no se purga.
 4. **Completo/Vocales con los mismos controles de color que Nombre.** Hook compartido `useLetterColors` (tema + barajar + color por ficha) + `ThemePicker`/`SwatchRow` → editores unificados. Colores efectivos persistidos en `metadata.colors`. "Esto recibes" quitado de la ficha (el visual del set vive en el Estudio; la ficha usa su galería → ACCIÓN HUMANA: subir fotos de catálogo).
 5. **Estilo = ocasión.** El estilo de ilustración se modelará como ocasión (reusando OcasionTag). Arranca con "Animales" (set actual); Navidad, etc. se enchufan cuando Lucy dibuje ≥2 sets (ACCIÓN HUMANA). [[ADR-057]].
+
+## ADR-058 — Asistente IA de sugerencias: proveedor-agnóstico + Gemini + fallback entre modelos (2026-07-13)
+
+**Contexto.** El "Diferenciador #1" (CLAUDE.md) prometía un asistente IA con *Claude API*. Al evaluar
+costo-beneficio de forma objetiva (a pedido de Lucy), para una tarea simple (sugerir una frase corta
+en es-CO + tema de color + composición, en JSON) el costo entre los niveles baratos es trivial
+(centavos/mes con caché) → NO es el factor decisivo. El diferenciador real para el mandato #2 ("free
+durante desarrollo") es que **Gemini Flash-Lite tiene nivel gratuito** (sin tarjeta), mientras Anthropic
+y OpenAI son pago-por-uso. Lucy ya tiene API key de Gemini.
+
+**Decisión.**
+1. **Adaptador `AiProvider`** (proveedor-agnóstico, patrón `PaymentProvider`): la lógica del asistente
+   no conoce al proveedor; cambiar de Gemini a otro es una config, no una reescritura.
+2. **Gemini** como proveedor elegido, vía **fetch server-side** a la API REST (`generateContent`,
+   header `x-goog-api-key`, `responseSchema` para JSON) — **sin dependencia npm nueva**, key
+   server-only, sin tocar la CSP del navegador (la llamada es servidor→Google). Verificado contra la
+   doc oficial de Google (2026-07-13).
+3. **Fallback entre modelos:** primario `gemini-2.5-flash-lite` → si falla (429/5xx/timeout/respuesta
+   inválida) cae a `gemini-2.5-flash`. Modelos configurables por env. El adaptador permite además
+   sumar un segundo PROVEEDOR después. Reusa `withRetry` + `CircuitBreaker` del proyecto.
+4. **Costo acotado:** rate-limit (Postgres) por sesión/IP + caché 24h por (ocasión, producto) → las
+   ocasiones comunes se pagan una sola vez. El asistente solo se llama cuando el cliente abre el panel.
+5. **Privacidad (Ley 1581):** al LLM solo se envía la *ocasión* que el cliente escribe — ni fotos ni
+   datos personales → exposición mínima. Gemini/Google queda como **subprocesador a listar** en
+   `/legal/subprocesadores` (ACCIÓN HUMANA legal). NO usar proveedores alojados en China para datos de
+   clientes.
+
+**Razón.** Gratis en dev (mandato #2), costo trivial en prod, sin lock-in (adaptador), sin dep nueva,
+y una tarea donde la calidad de todos los niveles baratos es equivalente. **ACCIÓN HUMANA:** setear
+`GEMINI_API_KEY` en `.env.local`/Vercel + confirmar los IDs de modelo disponibles en la consola de
+Google; la llamada real solo se puede verificar con la key (Claude construyó contra el contrato oficial
++ falla-seguro al estado "sin ideas" si algo no calza, nunca rompe el editor).
