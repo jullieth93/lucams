@@ -2048,3 +2048,38 @@ y una tarea donde la calidad de todos los niveles baratos es equivalente. **ACCI
 `GEMINI_API_KEY` en `.env.local`/Vercel + confirmar los IDs de modelo disponibles en la consola de
 Google; la llamada real solo se puede verificar con la key (Claude construyó contra el contrato oficial
 + falla-seguro al estado "sin ideas" si algo no calza, nunca rompe el editor).
+
+> **Estado (2026-07-13):** implementado y **verificado en vivo** con la `GEMINI_API_KEY` real de Lucy
+> (sugerencia real devuelta, color de marca resuelto, es-CO tuteo). En `develop`.
+
+## ADR-059 — Backup off-site de la DB a Cloudflare R2 (2026-07-13)
+
+**Contexto.** OPERATIONS.md ya preveía "export semanal a R2 (script en GitHub Actions)" como copia
+independiente del PITR de Supabase (DR drill #2 restaura desde R2). Faltaba implementarlo. Al medir el
+tooling se detectó que **el servidor Supabase es Postgres 17** y el `pg_dump` local/CI por defecto es
+menor → un `pg_dump` < 17 **rechaza** el volcado (mismatch de versión).
+
+**Decisión.**
+1. **Script Node** [`apps/web/scripts/backup-db-to-r2.mjs`](../apps/web/scripts/backup-db-to-r2.mjs):
+   `pg_dump` (plano, `--no-owner --no-privileges` → restaurable en cualquier proyecto Supabase de
+   testing) → gzip → sube a R2 con **`@aws-sdk/client-s3`** (R2 es S3-compatible; endpoint
+   `https://<accountId>.r2.cloudflarestorage.com`, region `auto`) → **poda** por retención. Helpers
+   puros (naming de llave UTC ordenable + selección de backups a podar) separados en `backup-lib.mjs`
+   y **unit-testeados** (9 tests, incl. salvaguarda "nunca vaciar el bucket" e "ignorar objetos que no
+   son backups").
+2. **Dependencia:** `@aws-sdk/client-s3` como **devDependency de `apps/web`** (aprobada por Lucy). No
+   la importa el runtime de Next → no engorda el bundle. Se eligió el SDK sobre el `aws` CLI para tener
+   un solo cliente (subida + listado + borrado) testeable y coherente entre local y CI.
+3. **Workflow** [`.github/workflows/backup.yml`](../.github/workflows/backup.yml): cron semanal (lunes
+   07:00 UTC) + `workflow_dispatch`. Instala `postgresql-client-17` (PGDG). Un job **`gate` salta el
+   backup limpio** (no falla) si faltan los secrets → sin correos de error mientras R2 no esté
+   provisionado. Retención `BACKUP_KEEP=8` (~2 meses semanales).
+4. **No es Vercel Cron** (mandato #11): es OPS en GitHub Actions, no un background job de la app.
+
+**Razón.** Copia off-site fuera de Supabase, restaurable de forma independiente; alineado con el diseño
+ya documentado. Egress gratis de R2 → restore sin costo (vs S3). **ACCIÓN HUMANA (carril humano,
+"Cloudflare con tu apoyo validamos"):** provisionar R2 (bucket `lucams-backups` + token de API) y
+configurar los secrets de GitHub (`BACKUP_DATABASE_URL` directa, `R2_*`). Los valores en `.env.local`
+son aún los placeholders de `.env.example` → la verificación en vivo del round-trip a R2 está pendiente
+de esa provisión (los helpers puros y el camino SDK están construidos y probados; el round-trip real se
+validará juntos al configurar R2).

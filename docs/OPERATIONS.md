@@ -619,7 +619,11 @@ supabase db dump --data-only > backup-$(date +%F).sql
 ### En producción (Supabase Pro)
 
 - **PITR 7 días** automático.
-- Export adicional semanal a Cloudflare R2 (script en GitHub Actions).
+- **Export adicional semanal a Cloudflare R2** (ADR-059) — implementado:
+  - Script: [`apps/web/scripts/backup-db-to-r2.mjs`](../apps/web/scripts/backup-db-to-r2.mjs) — `pg_dump` (plano, `--no-owner --no-privileges`) → gzip → sube a R2 (S3-compatible, `@aws-sdk/client-s3`) → poda backups viejos (conserva los últimos `BACKUP_KEEP`, default 8 ≈ 2 meses). Llaves `db/lucams-<UTC>.sql.gz` ordenables.
+  - Workflow: [`.github/workflows/backup.yml`](../.github/workflows/backup.yml) — cron semanal (lunes 07:00 UTC) + `workflow_dispatch`. Instala `postgresql-client-17` (el server Supabase es PG17; `pg_dump` < 17 rechaza el volcado). Un job `gate` **salta limpio** si faltan los secrets (sin correos de error hasta configurar).
+  - **ACCIÓN HUMANA (al provisionar R2):** crear el bucket `lucams-backups` + un token de API R2 en Cloudflare, y configurar los GitHub secrets `BACKUP_DATABASE_URL` (conexión DIRECTA, no pooler), `R2_ACCOUNT_ID`, `R2_BUCKET`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`. Luego disparar el workflow manualmente una vez para validar.
+  - Local: `pnpm --filter web db:backup` con el entorno cargado (requiere `pg_dump` 17 local).
 - Verificar restauración cada trimestre con un environment de testing.
 
 ---

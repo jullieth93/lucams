@@ -1,0 +1,96 @@
+name: Backup DB → R2
+
+# Backup off-site semanal de la base de datos a Cloudflare R2 (ADR-059, OPERATIONS.md).
+# Complementa el PITR de Supabase Pro con una copia independiente fuera de Supabase
+# (DR drill #2: restore desde R2). NO usa Vercel Cron (mandato #11): es una tarea de
+# OPS en GitHub Actions, no un background job de la app.
+on:
+  schedule:
+    # Lunes 07:00 UTC (~02:00 America/Bogotá). Los cron de GitHub corren en UTC.
+    - cron: "0 7 * * 1"
+  workflow_dispatch: {} # permite dispararlo manualmente desde la pestaña Actions
+
+# Least privilege: solo lectura del repo. Las credenciales viajan por secrets.
+permissions:
+  contents: read
+
+concurrency:
+  group: backup-db
+  cancel-in-progress: false # nunca cortar un backup a medias
+
+env:
+  NODE_VERSION: "22"
+  PNPM_VERSION: "11.0.9"
+
+jobs:
+  # Gate: si aún no están los secrets (R2 sin provisionar), el job de backup se SALTA
+  # limpio (no falla → sin correos de error semanales). Publica un aviso recordando
+  # configurar los secrets para activarlo.
+  gate:
+    name: ¿Secrets configurados?
+    runs-on: ubuntu-latest
+    outputs:
+      configured: ${{ steps.check.outputs.configured }}
+    steps:
+      - id: check
+        env:
+          HAS_DB: ${{ secrets.BACKUP_DATABASE_URL != '' }}
+          HAS_R2: ${{ secrets.R2_ACCOUNT_ID != '' && secrets.R2_ACCESS_KEY_ID != '' && secrets.R2_SECRET_ACCESS_KEY != '' }}
+        run: |
+          if [ "$HAS_DB" = "true" ] && [ "$HAS_R2" = "true" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Backup R2 inactivo: faltan secrets. Configura BACKUP_DATABASE_URL y R2_ACCOUNT_ID/R2_ACCESS_KEY_ID/R2_SECRET_ACCESS_KEY/R2_BUCKET en Settings → Secrets and variables → Actions para activar el backup semanal."
+          fi
+
+  backup:
+    name: pg_dump + subida a R2
+    needs: gate
+    if: needs.gate.outputs.configured == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      # El script sólo necesita @aws-sdk/client-s3 (devDep de apps/web). No hace falta
+      # build ni prisma generate; con las deps instaladas basta.
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # El servidor Supabase es Postgres 17 → se requiere pg_dump 17 (versiones menores
+      # rechazan el volcado). ubuntu-latest trae una versión anterior; instalamos la 17
+      # desde el repo oficial PGDG.
+      - name: Instalar pg_dump 17 (PGDG)
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+            | sudo gpg --dearmor -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-17
+          echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
+          /usr/lib/postgresql/17/bin/pg_dump --version
+
+      - name: Backup + subida a R2
+        run: node apps/web/scripts/backup-db-to-r2.mjs
+        env:
+          # Conexión DIRECTA (no pooler) a la DB de PRODUCCIÓN. Secret a configurar por Lucy.
+          BACKUP_DATABASE_URL: ${{ secrets.BACKUP_DATABASE_URL }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          BACKUP_KEEP: "8" # ~2 meses de backups semanales
