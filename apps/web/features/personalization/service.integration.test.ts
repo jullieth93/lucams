@@ -272,7 +272,7 @@ describe("finalizeDesign — render de producción server-side (ADR-057 A1a)", (
     expect(meta.height).toBe(1080 * 3);
   }, 30000);
 
-  it("plantilla con texto (NEEDS_KONVA): conserva el PNG del cliente (fallback A1b), sin romper", async () => {
+  it("plantilla con TEXTO (Polaroid): se renderiza en el servidor vía canvas A1b (3240px), no el 50px del cliente", async () => {
     const withText = [...photoOnlyLayers, { id: "t", type: "text", text: "Mi recuerdo" }];
     const designId = await setupDesign(withText, "withtext");
     await finalizeDesign({
@@ -286,6 +286,6 @@ describe("finalizeDesign — render de producción server-side (ADR-057 A1a)", (
     expect(row!.status).toBe("READY");
     const { data } = await supabaseService.storage.from("production-assets").download(row!.productionUrls[0]);
     const meta = await sharp(Buffer.from(await data!.arrayBuffer())).metadata();
-    expect(meta.width).toBe(50); // fallback → el PNG de 50px del cliente, intacto
+    expect(meta.width).toBe(1080 * 3); // 3240 → el tier canvas (A1b) renderizó el texto server-side
   }, 30000);
 });

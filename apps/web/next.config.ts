@@ -63,6 +63,18 @@ const nextConfig: NextConfig = {
       bodySizeLimit: "50mb",
     },
   },
+
+  // ADR-057 Fase A1b — @napi-rs/canvas es un módulo NATIVO (binario precompilado): debe
+  // resolverse en runtime, no bundlearse por el compilador.
+  serverExternalPackages: ["@napi-rs/canvas"],
+
+  // ADR-057 Fase A1b — el render de producción server-side (finalizeDesign) registra las
+  // fuentes de marca desde assets/fonts/ vía fs. Hay que incluirlas en el bundle serverless
+  // de Vercel para que estén disponibles en runtime (si faltan, el render cae al PNG del
+  // cliente por el fallback — no rompe, pero el texto no se renderiza server-side).
+  outputFileTracingIncludes: {
+    "/**": ["./assets/fonts/**"],
+  },
 };
 
 export default nextConfig;

@@ -31,6 +31,7 @@ import { normalizeName } from "./name-input";
 import { ALPHABET } from "./letter-tiles";
 import { mergeVariantOverProduct, parseVariantAttributes } from "@/features/products/variant-schemas";
 import { renderProductionSlots, RenderNeedsKonvaError, type LoadAssetBytes } from "./production-render";
+import { renderProductionSlotsCanvas } from "./production-render-canvas";
 import type { CanvasData, CanvasDataV1, CanvasDataV2 } from "./schemas";
 import type { z } from "zod";
 import type { SlotStateSchema } from "./schemas";
@@ -50,6 +51,9 @@ async function tryServerRenderProduction(
   designId: string,
   canvasData: CanvasDataV2,
 ): Promise<Buffer[] | null> {
+  // Cargar forma + assets + loader (compartido por ambos motores).
+  let shape: string | undefined;
+  let loadAsset: LoadAssetBytes;
   try {
     const design = await prisma.design.findUnique({
       where: { id: designId },
@@ -60,43 +64,63 @@ async function tryServerRenderProduction(
     // tamaño/cantidad, no forma) → esto coincide con lo que renderizó el cliente. Si algún día
     // una VARIANTE override la forma, habría que persistir la forma efectiva en el diseño (el
     // diseño no guarda su variantId en finalize). Latente: ningún producto lo usa hoy.
-    const shape = (design?.product?.personalizationSchema as { shape?: string } | null)?.shape;
+    shape = (design?.product?.personalizationSchema as { shape?: string } | null)?.shape;
 
     const assets = await prisma.designAsset.findMany({
       where: { designId },
       select: { id: true, storageUrl: true },
     });
     const assetPaths = new Map(assets.map((a) => [a.id, a.storageUrl]));
-
-    const loadAsset: LoadAssetBytes = async (assetId) => {
+    loadAsset = async (assetId) => {
       const path = assetPaths.get(assetId);
       if (!path) return null;
-      const { data, error } = await supabaseService.storage
-        .from(BUCKET_CUSTOMER_UPLOADS)
-        .download(path);
+      const { data, error } = await supabaseService.storage.from(BUCKET_CUSTOMER_UPLOADS).download(path);
       if (error || !data) return null;
       return Buffer.from(await data.arrayBuffer());
     };
-
-    return await renderProductionSlots({
-      unitTemplate: canvasData.unitTemplate as never,
-      slots: canvasData.slots as never,
-      shape,
-      loadAsset,
-    });
   } catch (err) {
-    if (err instanceof RenderNeedsKonvaError) {
-      logger.info(
-        { event: "design.finalize.server_render_skip", designId, reason: "needs_konva" },
-        "Server render skipped (template con texto/marco) — usando PNG del cliente",
-      );
-    } else {
-      logger.warn(
-        { event: "design.finalize.server_render_error", designId, err: err instanceof Error ? err.message : String(err) },
-        "Server render falló — usando PNG del cliente como fallback",
-      );
-    }
+    logger.warn(
+      { event: "design.finalize.server_render_error", designId, stage: "load", err: err instanceof Error ? err.message : String(err) },
+      "No se pudieron cargar assets para el render server — usando PNG del cliente",
+    );
     return null;
+  }
+
+  const args = { unitTemplate: canvasData.unitTemplate as never, slots: canvasData.slots as never, shape, loadAsset };
+
+  // Tier 1 — sharp (foto pura, rápido, sin deps nativas).
+  try {
+    return await renderProductionSlots(args);
+  } catch (err) {
+    if (!(err instanceof RenderNeedsKonvaError)) {
+      logger.warn(
+        { event: "design.finalize.server_render_error", designId, engine: "sharp", err: err instanceof Error ? err.message : String(err) },
+        "Render sharp falló — usando PNG del cliente",
+      );
+      return null;
+    }
+    // Tier 2 — canvas (@napi-rs/canvas): la plantilla trae texto/marco/esquinas que sharp no hace.
+    try {
+      const bufs = await renderProductionSlotsCanvas(args);
+      logger.info(
+        { event: "design.finalize.server_render_ok", designId, engine: "canvas", slots: bufs.length },
+        "Production renderizada en el servidor (canvas)",
+      );
+      return bufs;
+    } catch (err2) {
+      if (err2 instanceof RenderNeedsKonvaError) {
+        logger.info(
+          { event: "design.finalize.server_render_skip", designId, reason: err2.message },
+          "Server render omitido (filtro/fuente/etc.) — usando PNG del cliente",
+        );
+      } else {
+        logger.warn(
+          { event: "design.finalize.server_render_error", designId, engine: "canvas", err: err2 instanceof Error ? err2.message : String(err2) },
+          "Render canvas falló — usando PNG del cliente",
+        );
+      }
+      return null;
+    }
   }
 }
 
