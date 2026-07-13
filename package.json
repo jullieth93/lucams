@@ -20,7 +20,7 @@
     "format:check": "prettier --check \"**/*.{ts,tsx,md,json}\""
   },
   "devDependencies": {
-    "prettier": "^3.8.3",
+    "prettier": "^3.9.5",
     "prettier-plugin-tailwindcss": "^0.8.0"
   }
 }
