@@ -197,6 +197,7 @@ model Customer {
 
   @@index([deletedAt])
   @@index([documentType, documentNumber])
+  @@index([referredById])
 }
 
 model Address {
@@ -492,6 +493,7 @@ model CartItem {
   updatedAt DateTime @updatedAt
 
   @@index([cartId])
+  @@index([variantId])
   @@index([designId])
   @@index([templateId])
 }
@@ -592,6 +594,7 @@ model Order {
   @@index([dianStatus])
   @@index([trackingNumber])
   @@index([cartId, status])
+  @@index([couponId])
   @@index([needsReconciliation])
 }
 
@@ -627,6 +630,7 @@ model OrderItem {
   createdAt DateTime @default(now())
 
   @@index([orderId])
+  @@index([variantId])
   @@index([designId])
   @@index([templateId])
 }
@@ -886,6 +890,7 @@ model StockReservation {
 
   @@index([expiresAt])
   @@index([orderId])
+  @@index([variantId])
 }
 
 // ──────────────────────── AUDIT LOG ADMIN ────────────────────────
@@ -1234,6 +1239,7 @@ model Design {
   @@index([customerId, status])
   @@index([sessionId, status])
   @@index([productId])
+  @@index([templateId])
   @@index([status, updatedAt])
 }
 
