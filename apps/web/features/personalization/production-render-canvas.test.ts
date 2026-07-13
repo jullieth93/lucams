@@ -129,6 +129,13 @@ describe("renderProductionSlotsCanvas — texto + marco (ADR-057 Fase A1b)", () 
     );
   });
 
+  it("fuente no-marca (Georgia) → NEEDS_KONVA (fallback al cliente)", async () => {
+    const unit = { version: 1 as const, stage, layers: [{ id: "bg", type: "background", color: "#fff" }, photoLayer, { id: "t", type: "text", text: "Hola", fontFamily: "Georgia, serif", fontSize: 30 }] };
+    await expectFallback(
+      renderProductionSlotsCanvas({ unitTemplate: unit, slots: [{ slotIndex: 0, assetId: "a0", photoTransform: { offsetX: 0, offsetY: 0, scale: 1 } }], shape: "rectangle", loadAsset: async () => fakePhoto(800, 800) }),
+    );
+  });
+
   it("texto multilínea → NEEDS_KONVA (Konva envuelve; canvas no)", async () => {
     const unit = { version: 1 as const, stage, layers: [{ id: "bg", type: "background", color: "#fff" }, photoLayer, { id: "t", type: "text", text: "linea1\nlinea2", fontSize: 30 }] };
     await expectFallback(

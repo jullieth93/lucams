@@ -245,6 +245,18 @@ function renderTextLayer(
   const weight = override?.fontWeight ?? (typeof layer.fontWeight === "string" ? layer.fontWeight : "normal");
   const align = (layer.align as CanvasTextAlign) ?? "center";
 
+  // Solo fuentes de MARCA registradas (Fredoka/Inter). Cualquier otra familia (Georgia,
+  // Helvetica, mono…) renderizaría en un fallback distinto al del navegador → divergencia →
+  // fallback al cliente (hallazgo revisión A1b). Itálica: los TTF de marca no tienen cara
+  // itálica y @napi-rs no la sintetiza → también cae al cliente.
+  const famLc = family.toLowerCase();
+  if (!famLc.includes("fredoka") && !famLc.includes("inter")) {
+    throw new RenderNeedsKonvaError(`fuente no-marca (${family}) → cliente`);
+  }
+  if (`${weight} ${layer.fontStyle ?? ""}`.toLowerCase().includes("italic")) {
+    throw new RenderNeedsKonvaError("texto itálico → cliente");
+  }
+
   // Konva envuelve el texto center-align al ancho del stage y respeta \n. Este render dibuja UNA
   // línea → si envolvería (o trae saltos), cae al cliente (fiel). Corto de una línea = fiel.
   if (finalText.includes("\n")) throw new RenderNeedsKonvaError("texto multilínea → cliente");
