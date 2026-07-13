@@ -29,8 +29,29 @@ async function main() {
   // Alinear Polaroid a su plantilla (400×580).
   const tpl = await prisma.personalizationTemplate.findFirst({ where: { slug: "photo-pack-polaroid-instagram" }, select: { canvasData: true } });
   const st = tpl?.canvasData?.stage;
-  if (st?.width && st?.height) await setAspect("set-fotoimanes-polaroid", `${st.width}:${st.height}`);
+  const polaroidAspect = st?.width && st?.height ? `${st.width}:${st.height}` : null;
+  if (polaroidAspect) await setAspect("set-fotoimanes-polaroid", polaroidAspect);
   await setAspect("set-fotoimanes-corazon", "1:1");
+
+  // El marco Polaroid es una FORMA FIJA (foto + borde blanco inferior → 400×580 = 0.69),
+  // más alto que el aspecto físico del imán (7×9=0.78, 6×8=0.75, 4×5=0.80). Cada variante
+  // pisaba aspectRatio con su tamaño físico → el filtro |a-target|<=0.05 EXCLUÍA la única
+  // plantilla → "no hay plantillas" = editor roto para TODAS las variantes. Fix: las variantes
+  // heredan el aspecto de la plantilla (el tamaño físico se comunica por sizeCm, no por aspect).
+  if (polaroidAspect) {
+    const pol = await prisma.product.findFirst({ where: { slug: "set-fotoimanes-polaroid", deletedAt: null }, select: { id: true } });
+    if (pol) {
+      const vars = await prisma.productVariant.findMany({ where: { productId: pol.id, deletedAt: null }, select: { id: true, name: true, attributes: true } });
+      for (const v of vars) {
+        const attrs = { ...((v.attributes && typeof v.attributes === "object") ? v.attributes : {}) };
+        if (attrs.aspectRatio !== polaroidAspect) {
+          attrs.aspectRatio = polaroidAspect;
+          await prisma.productVariant.update({ where: { id: v.id }, data: { attributes: attrs } });
+          console.log(`  ~ variante "${v.name}" aspectRatio → ${polaroidAspect}`);
+        }
+      }
+    }
+  }
 
   // Corregir VOSEO en el texto de la plantilla global (memoria: es-CO tuteo, no voseo).
   const libre = await prisma.personalizationTemplate.findFirst({ where: { slug: "libre-photo-pack" }, select: { id: true, canvasData: true } });
