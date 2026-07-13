@@ -146,3 +146,6 @@ clean:
 
 seed-separadores:
 	pnpm --filter @lucams/db exec node scripts/restructure-separadores.mjs
+
+fix-fotoimanes:
+	pnpm --filter @lucams/db exec node scripts/fix-fotoimanes-aspects.mjs
