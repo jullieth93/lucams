@@ -71,7 +71,7 @@ export default async function SharedDesignPage({ params }: { params: Params }) {
           </h1>
 
           <div className="border-brand-purple/15 mx-auto mt-6 max-w-sm overflow-hidden rounded-2xl border bg-white p-3 shadow-sm">
-            {/* eslint-disable-next-line @next/next/no-img-element — preview público de Supabase */}
+            {/* eslint-disable-next-line @next/next/no-img-element -- preview público de Supabase */}
             <img
               src={design.previewUrl ?? ""}
               alt={`Diseño de ${design.product.name}`}

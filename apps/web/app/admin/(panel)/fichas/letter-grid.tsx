@@ -81,7 +81,7 @@ export function LetterGrid({
                 }`}
               >
                 {tile ? (
-                  // eslint-disable-next-line @next/next/no-img-element — preview admin
+                  // eslint-disable-next-line @next/next/no-img-element -- preview admin
                   <img src={tile.imageUrl} alt={`Ficha ${char}`} className="h-full w-full object-contain p-1" />
                 ) : (
                   <span className="font-display text-brand-purple/40 text-2xl font-extrabold">{char}</span>

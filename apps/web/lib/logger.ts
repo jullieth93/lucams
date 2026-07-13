@@ -16,7 +16,8 @@
  * Datos clasificados):
  *  - SIEMPRE pasar objeto estructurado: `logger.info({ event, ...campos })`.
  *  - NUNCA interpolar PII en el mensaje: `logger.info('user ' + email)` ❌.
- *  - Incluir `requestId: getRequestId()` en cada log de un request handler.
+ *  - Para correlacionar, el proxy setea el header `X-Request-Id`; un handler puede
+ *    loguearlo leyéndolo de los headers del request.
  *
  * Redact:
  *  - Por key name (case-insensitive): password, token, secret, key, cookie,

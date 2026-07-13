@@ -20,7 +20,7 @@
  */
 
 import { createHash } from "node:crypto";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/db";
 import {
   consumeRecoveryCode,

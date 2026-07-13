@@ -39,7 +39,7 @@
  *     -- node_modules/.bin/vitest run lib/auth.integration.test.ts
  */
 
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { prisma } from "@/lib/db";
 
 const hasDb = Boolean(process.env.DATABASE_URL);

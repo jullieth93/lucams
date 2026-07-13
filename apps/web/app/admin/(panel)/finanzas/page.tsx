@@ -35,7 +35,7 @@ export const metadata: Metadata = {
 export const dynamic = "force-dynamic";
 
 export default async function AdminFinanzasPage() {
-  const session = await requireRole(["SUPERADMIN"]);
+  const _session = await requireRole(["SUPERADMIN"]);
 
   // Probar contadores reales: si hay alguna orden pagada en DB ya, los
   // mostramos; si no, mantenemos los placeholders educativos.

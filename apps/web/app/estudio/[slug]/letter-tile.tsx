@@ -79,7 +79,7 @@ export function LetterTile({
       }}
     >
       {imageUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element — ficha desde bucket público
+        // eslint-disable-next-line @next/next/no-img-element -- ficha desde bucket público
         <img src={imageUrl} alt="" className="h-full w-full rounded-xl object-contain p-1" />
       ) : (
         <span

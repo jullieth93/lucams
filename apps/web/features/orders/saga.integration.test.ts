@@ -33,7 +33,7 @@
  *     -- node_modules/.bin/vitest run features/orders/saga.integration.test.ts
  */
 
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 // ───────────────────────── Mocks (antes de importar el SUT) ─────────────────────────
 

@@ -39,7 +39,7 @@ export type DailySummary = {
   needsReconciliation: number;
 };
 
-const since = (hours: number) => new Date(Date.now() - hours * 3600 * 1000);
+const _since = (hours: number) => new Date(Date.now() - hours * 3600 * 1000);
 
 export async function getDailySummary(now: Date = new Date()): Promise<DailySummary> {
   const from = new Date(now.getTime() - 24 * 3600 * 1000);

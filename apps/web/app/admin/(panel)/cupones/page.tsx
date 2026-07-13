@@ -25,7 +25,6 @@ import {
   AdminTableRow,
   AdminBadge,
   AdminEmpty,
-  AdminCard,
   SortableHeader,
 } from "@/components/admin-page";
 import { Input } from "@/components/ui/input";
@@ -45,7 +44,7 @@ function pickString(sp: Record<string, string | string[] | undefined>, key: stri
 }
 
 export default async function AdminCuponesPage({ searchParams }: { searchParams: SearchParams }) {
-  const session = await requireRole(["SUPERADMIN"]);
+  const _session = await requireRole(["SUPERADMIN"]);
 
   const sp = await searchParams;
   const q = pickString(sp, "q");

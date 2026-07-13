@@ -100,7 +100,7 @@ function DesignCard({ design }: { design: DesignCardData }) {
 
   return (
     <li className="border-brand-purple/12 overflow-hidden rounded-2xl border bg-white shadow-sm">
-      {/* eslint-disable-next-line @next/next/no-img-element — preview de Supabase (public bucket) */}
+      {/* eslint-disable-next-line @next/next/no-img-element -- preview de Supabase (public bucket) */}
       <img
         src={design.previewUrl}
         alt={`Diseño de ${design.productName}`}

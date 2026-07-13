@@ -31,8 +31,6 @@ import {
   Star,
   Layers,
   Tag,
-  Sparkles,
-  Wand2,
   Building2,
   ArrowRightLeft,
   Boxes,

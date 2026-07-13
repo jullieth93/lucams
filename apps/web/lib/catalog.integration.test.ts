@@ -89,7 +89,7 @@ let subB_Id = "";
 let subB_Slug = "";
 // Categoría hermana de la raíz (otro árbol top-level) para aislar filtros.
 let siblingCatId = "";
-let siblingCatSlug = "";
+let _siblingCatSlug = "";
 // Categoría soft-deleted (no debe aparecer en el árbol).
 let deletedCatSlug = "";
 
@@ -125,7 +125,7 @@ let p1Id = "";
 
 // ───────────────────────── helpers ─────────────────────────
 
-function uniq(): string {
+function _uniq(): string {
   return `${Date.now().toString(36)}${Math.floor(Math.random() * 1e9).toString(36)}`;
 }
 
@@ -156,7 +156,7 @@ describe.skipIf(!hasDb)("lib/catalog — integración DB", { timeout: T }, () =>
       data: { slug: `${RUN}-sibling`, name: `YY Sibling ${RUN}`, order: 1 },
     });
     siblingCatId = sibling.id;
-    siblingCatSlug = sibling.slug;
+    _siblingCatSlug = sibling.slug;
 
     // Sub-categoría soft-deleted bajo la raíz (no debe aparecer en el árbol).
     const deletedCat = await prisma.category.create({

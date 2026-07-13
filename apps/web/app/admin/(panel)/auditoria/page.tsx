@@ -47,7 +47,7 @@ function pickString(sp: Record<string, string | string[] | undefined>, key: stri
 }
 
 export default async function AuditoriaPage({ searchParams }: { searchParams: SearchParams }) {
-  const session = await requireRole(["SUPERADMIN"]);
+  const _session = await requireRole(["SUPERADMIN"]);
 
   const sp = await searchParams;
   const filterAdmin = pickString(sp, "admin");

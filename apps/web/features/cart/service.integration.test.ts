@@ -58,7 +58,7 @@ let simpleDefaultVariantId = "";
 const SIMPLE_PRICE = 12_000;
 
 // Producto "sin price en variante": variante default con price=null → usa basePrice.
-let noPriceProductId = "";
+let _noPriceProductId = "";
 let noPriceSlug = "";
 const NOPRICE_BASE = 8_500;
 
@@ -203,7 +203,7 @@ describe.skipIf(!hasDb)("cart/service — integración DB", { timeout: T }, () =
       },
       select: { id: true, slug: true },
     });
-    noPriceProductId = noPrice.id;
+    _noPriceProductId = noPrice.id;
     noPriceSlug = noPrice.slug;
 
     // Producto con variantes pero NINGUNA -DEFAULT.

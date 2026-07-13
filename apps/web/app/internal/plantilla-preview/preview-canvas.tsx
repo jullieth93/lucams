@@ -8,7 +8,7 @@
  * (muestra el DISEÑO — marco/fondo/decoración/texto — que es lo que Lucy aprueba).
  */
 
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 import { StudioSlot } from "@/app/estudio/[slug]/studio-slot";
 import type { CanvasDataV1, SlotState } from "@/app/estudio/[slug]/types";
 
@@ -46,8 +46,13 @@ export function PreviewCanvas({
 }) {
   // Konva necesita `window` → montar solo en cliente (evita romper el SSR sin
   // recurrir a dynamic(ssr:false), no permitido en Server Components en Next 16).
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  // Konva necesita `window` → renderizar solo tras hidratar en cliente. useSyncExternalStore
+  // devuelve false en SSR y true en cliente SIN setState-en-effect (react-compiler friendly).
+  const mounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false,
+  );
 
   const stage = canvasData.stage;
   const aspect = stage.height / stage.width; // alto/ancho

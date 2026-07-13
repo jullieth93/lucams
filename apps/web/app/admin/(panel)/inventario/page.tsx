@@ -90,15 +90,15 @@ export default async function InventarioPage({
   // de su producto (muestra nombre+categoría) o una continuación (opción del
   // mismo producto, con sangría). El tono de fondo alterna por grupo para que
   // las opciones de un producto se lean como un bloque conectado.
-  let groupCounter = -1;
-  let prevProductId = "";
-  const grouped = data.rows.map((row) => {
-    const isFirstOfProduct = row.productId !== prevProductId;
-    if (isFirstOfProduct) groupCounter += 1;
-    prevProductId = row.productId;
+  // Zebra por GRUPO de producto (filas ya vienen agrupadas por productId). El índice de
+  // grupo se deriva del índice de fila (sin mutar variables durante el render → react-compiler).
+  const grouped = data.rows.map((row, i) => {
+    const isFirstOfProduct = i === 0 || data.rows[i - 1].productId !== row.productId;
+    // Nº de productos distintos hasta esta fila (inclusive) → índice de grupo 0-based.
+    const groupIndex = new Set(data.rows.slice(0, i + 1).map((r) => r.productId)).size - 1;
     // Cuántas opciones tiene este producto en la página (para el "N opciones").
     const variantsInGroup = data.rows.filter((r) => r.productId === row.productId).length;
-    return { row, isFirstOfProduct, tinted: groupCounter % 2 === 1, variantsInGroup };
+    return { row, isFirstOfProduct, tinted: groupIndex % 2 === 1, variantsInGroup };
   });
 
   return (
