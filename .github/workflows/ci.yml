@@ -134,6 +134,100 @@ jobs:
       - name: Run vitest (unit + integración)
         run: pnpm --filter web test
 
+  e2e:
+    name: E2E + a11y (axe WCAG) — Playwright
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    # Gatea en CADA PR los flujos anónimos (antes existían pero NO corrían en CI → una
+    # regresión de compra, de contraste AA o de layout público pasaba sin detección).
+    # Corre contra el BUILD de producción (next start) + Postgres real, no `next dev`.
+    #
+    # Alcance del gate: smoke + a11y (invariantes) + axe (WCAG 2.1 A/AA) + compra (carrito→checkout).
+    # FUERA del gate (follow-up, corren local/preview): estudio (afirma el canvas Konva → requiere
+    # sembrar un producto de superficie foto, no el EVENT_FAVOR del seed base), regresión visual
+    # (snapshots por-píxel → requieren baseline en imagen pinneada) y admin-login/admin-mfa
+    # (requieren el stack Supabase real / GoTrue). Ver docs/TESTING.md.
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: lucams_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/lucams_test
+      DIRECT_URL: postgresql://postgres:postgres@localhost:5432/lucams_test
+      # Los flujos ANÓNIMOS del E2E no contactan Supabase (getUser sin cookie → null), así que los
+      # placeholders no-vacíos del env top-level bastan para que arranque next start (+ validación
+      # de env). Wompi dummy: compra.spec se detiene antes de pagar; el provider solo se construye.
+      WOMPI_ENV: sandbox
+      WOMPI_PUBLIC_KEY: pub_test_ci
+      WOMPI_PRIVATE_KEY: prv_test_ci
+      WOMPI_INTEGRITY_SECRET: test_integrity_ci
+      WOMPI_EVENTS_SECRET: test_events_ci
+      PORT: "4000"
+      # NO seteamos PLAYWRIGHT_BASE_URL → el webServer del config levanta `next start`
+      # (build prod) en :4000, espera a que responda, corre los tests y lo tumba.
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm --filter @lucams/db db:generate
+
+      - name: Compat de Supabase (roles + extensiones + stubs auth/storage)
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f .github/ci/supabase-compat.sql
+
+      - name: Aplicar migraciones Prisma (schema desde cero)
+        run: pnpm --filter @lucams/db exec prisma migrate deploy
+
+      - name: Aplicar migraciones SQL de Supabase (RLS, funciones)
+        run: |
+          for f in $(ls supabase/migrations/*.sql | sort); do
+            echo "→ $f"
+            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$f"
+          done
+
+      - name: Seed del catálogo (productos para PDP/carrito/estudio)
+        run: pnpm --filter @lucams/db exec node scripts/seed-catalog-v2.mjs
+
+      - name: Instalar navegador Playwright (chromium + deps)
+        run: pnpm --filter web exec playwright install --with-deps chromium
+
+      - name: Build de producción (necesario para el next start del webServer)
+        run: pnpm --filter web build
+
+      - name: Playwright (smoke + a11y + axe + compra)
+        # El webServer del config levanta `next start` en :4000 y lo gestiona.
+        run: pnpm --filter web exec playwright test smoke a11y axe compra --project=chromium
+
+      - name: Subir reporte Playwright (si falla)
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: apps/web/playwright-report/
+          retention-days: 7
+
   secrets-scan:
     name: Gitleaks secret scan
     runs-on: ubuntu-latest

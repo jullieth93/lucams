@@ -307,6 +307,24 @@ describe("RLS: Customer isolation", () => {
 
 ## Tests E2E (Playwright)
 
+> **⚠️ Estado real en CI (2026-07-13).** La tabla de "Flujos críticos" de abajo es el ESTADO
+> OBJETIVO; no todo corre en CI todavía. Lo que **sí se gatea en cada PR** hoy (job `e2e` en
+> `.github/workflows/ci.yml`, contra el build de producción + Postgres real):
+>
+> - **`smoke`** — páginas públicas cargan (home, /productos, /ayuda, /contacto, /legal, /status,
+>   health, sitemap, robots).
+> - **`a11y`** — invariantes por página (lang es-CO, `<main id=contenido>`, alt, ≥1 h1).
+> - **`axe`** — auditoría WCAG 2.1 A/AA (gate estricta: 0 serious/critical) en las páginas públicas.
+> - **`compra`** — núcleo del carrito → checkout de datos.
+>
+> **Fuera del gate por ahora (corren local / preview, follow-up):** `estudio` (afirma el canvas
+> Konva → requiere sembrar un producto de superficie foto, no el EVENT_FAVOR del seed base),
+> **regresión visual** (`visual.spec`, snapshots por-píxel → requieren baseline en imagen
+> pinneada para ser deterministas cross-máquina) y **`admin-login`/`admin-mfa`** (requieren el
+> stack Supabase real / GoTrue; se resolvería con `supabase start` en CI). El E2E de **compra
+> pagada real** (Wompi sandbox, redirect + retorno + webhook) sigue pendiente por fragilidad de
+> red — hoy el pago se valida a nivel de webhook en integración, no end-to-end en navegador.
+
 ### Flujos críticos cubiertos
 
 | Flujo                                 | Descripción                                                                          | Frecuencia                  |
@@ -601,7 +619,10 @@ jobs:
 | `components/`                   | 50% (rendering + a11y)  |
 | **Total proyecto**              | ≥ 70%                   |
 
-CI rompe si baja del threshold definido (`vitest.config.ts` → `coverage.thresholds`).
+La tabla de arriba son las METAS. **Estado real (2026-07-13):** `vitest.config.ts` aún NO
+define `coverage.thresholds` y el job de CI corre `vitest run` **sin** `--coverage`, así que la
+cobertura no se mide ni se enforza todavía (deuda P1.2). Para activarla sin romper CI hay que
+medir primero la cobertura actual y fijar el umbral por debajo (ratchet), luego subirlo.
 
 ---
 

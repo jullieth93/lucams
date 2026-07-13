@@ -3,9 +3,10 @@
  *
  * Estrategia:
  *  - Tests en `tests/e2e/*.spec.ts` (separados de unit tests vitest)
- *  - Levanta `next dev` automáticamente en localhost:3000 antes de
- *    correr (webServer config). En CI con `PLAYWRIGHT_BASE_URL` apunta
- *    a Vercel preview.
+ *  - Levanta el server automáticamente antes de correr (webServer config):
+ *    local → `next dev`; CI → `next start` sobre el build de producción
+ *    (más estable para mutaciones de carrito). Si se pasa `PLAYWRIGHT_BASE_URL`
+ *    (ej. una Vercel preview), NO levanta server y apunta ahí.
  *  - Chromium only por default (suficiente para smoke). Firefox/Safari
  *    se suman en sub-bloque L (QA exhaustivo cross-browser).
  *  - Retries 2 en CI, 0 local (debugging más claro).
@@ -55,7 +56,9 @@ export default defineConfig({
     ? {}
     : {
         webServer: {
-          command: "PORT=4000 pnpm dev",
+          // CI: build de producción ya generado → `next start` (estable bajo carga).
+          // Local: `next dev` con hot-reload. Ambos en el PORT configurado.
+          command: isCI ? `pnpm exec next start -p ${PORT}` : `PORT=${PORT} pnpm dev`,
           url: BASE_URL,
           reuseExistingServer: !isCI,
           timeout: 180_000,
