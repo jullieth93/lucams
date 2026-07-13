@@ -30,6 +30,7 @@ import { logger } from "@/lib/logger";
 import { getRequestOrigin } from "@/lib/origin";
 import { rateLimit } from "@/lib/rate-limit";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getClientIp } from "@/lib/client-ip";
 
 // OTP length: configurable en Supabase (Auth → Configuration → OTP).
 // Default histórico es 6, pero algunos proyectos están en 8. Aceptamos
@@ -63,7 +64,7 @@ export async function verifyOtpAction(
   }
 
   const hdrs = await headers();
-  const ip = hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  const ip = getClientIp(hdrs);
   const isProd = process.env.VERCEL_ENV === "production";
   const rl = await rateLimit(`verify-otp:${ip}`, isProd ? 10 : 30, 15 * 60);
   if (!rl.allowed) {
@@ -139,7 +140,7 @@ export async function resendCodeAction(
   }
 
   const hdrs = await headers();
-  const ip = hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  const ip = getClientIp(hdrs);
   const isProd = process.env.VERCEL_ENV === "production";
   const rl = await rateLimit(`resend-otp:${ip}`, isProd ? 3 : 10, 15 * 60);
   if (!rl.allowed) {

@@ -31,6 +31,7 @@ import { checkPwnedPassword } from "@/lib/pwned-passwords";
 import { rateLimit } from "@/lib/rate-limit";
 import { emailKey, ipKey } from "@/lib/rate-limit-keys";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getClientIp } from "@/lib/client-ip";
 
 const Schema = z
   .object({
@@ -69,7 +70,7 @@ export async function restablecerPasswordAction(
   }
 
   const hdrs = await headers();
-  const ip = hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  const ip = getClientIp(hdrs);
   const isProd = process.env.VERCEL_ENV === "production";
 
   // Rate-limit doble: por IP y por email. Mitiga brute-force del OTP.

@@ -13,10 +13,11 @@
 import "server-only";
 import { headers } from "next/headers";
 import { rateLimit } from "@/lib/rate-limit";
+import { getClientIp } from "@/lib/client-ip";
 
 export async function extractIp(): Promise<string> {
   const hdrs = await headers();
-  return hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  return getClientIp(hdrs);
 }
 
 const RATE_LIMIT = 30;

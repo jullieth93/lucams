@@ -23,6 +23,7 @@ import { rateLimit } from "@/lib/rate-limit";
 import { emailKey, ipKey } from "@/lib/rate-limit-keys";
 import { verifyTurnstileToken } from "@/lib/turnstile";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getClientIp } from "@/lib/client-ip";
 
 const ResetSchema = z.object({
   email: z.string().email("Email inválido"),
@@ -48,7 +49,7 @@ export async function recuperarPasswordAction(
   }
 
   const hdrs = await headers();
-  const ip = hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  const ip = getClientIp(hdrs);
   const isProd = process.env.VERCEL_ENV === "production";
 
   // Anti-bot (Bloque C / T3): reset es vector de email-bombing.

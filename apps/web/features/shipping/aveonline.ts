@@ -884,15 +884,12 @@ export class AveonlineProvider implements ShippingProvider {
         event: "shipping.aveonline.createshipment.fail",
         orderId: params.orderId,
         msg,
-        // Lucy 2026-05-22: log response completo + body sanitizado para diagnosticar
-        // errores genéricos tipo "No se puede generar la guia".
-        responseFull: data,
+        // Diagnóstico SIN PII (auditoría 2026-07-13): NO logueamos responseFull ni los
+        // datos personales del destinatario (dsdir=dirección, dsnit=cédula/NIT,
+        // dsnombrecompleto=nombre). Solo campos operativos y de configuración de la guía.
         requestBodySent: {
           origen: body.origen,
           destino: body.destino,
-          dsdir: body.dsdir,
-          dsnit: body.dsnit,
-          dsnombrecompleto: body.dsnombrecompleto,
           idtransportador: body.idtransportador,
           unidades: body.unidades,
           productosCount: body.productos.length,

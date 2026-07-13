@@ -33,6 +33,7 @@ import { verifyTurnstileToken } from "@/lib/turnstile";
 import { recordHabeasDataConsent } from "@/features/consent/service";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { supabaseService } from "@/lib/supabase/service";
+import { getClientIp } from "@/lib/client-ip";
 
 const SignupSchema = z
   .object({
@@ -81,7 +82,7 @@ export async function signupAction(
   }
 
   const hdrs = await headers();
-  const ip = hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  const ip = getClientIp(hdrs);
 
   // Anti-bot (Bloque C / T2): registro es un flujo de alto abuso.
   const turnstile = await verifyTurnstileToken(

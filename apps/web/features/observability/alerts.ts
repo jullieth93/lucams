@@ -117,6 +117,18 @@ export async function dispatchAlerts(
   const to = await getSettingValue("ALERT_EMAIL", "hola@lucamsshop.co");
   const { subject, html, text } = buildAlertEmail(toSend);
   const result = await sendEmail({ to, subject, html, text });
+
+  // Auditoría 2026-07-13: si el email NO se envió, NO marcamos lastSentAt → la alerta se
+  // reintenta en el próximo ciclo (antes se marcaba "enviada" pase lo que pase, silenciando
+  // la alerta 30 min justo cuando el sistema falla — punto ciego en el peor momento).
+  if (!result.sent) {
+    logger.error({
+      event: "alerts.email_failed",
+      keys: toSend.map((a) => a.key),
+      reason: result.reason ?? "unknown",
+    });
+    return { sent, skipped };
+  }
   logger.info({ event: "alerts.sent", keys: toSend.map((a) => a.key), emailed: result.sent });
 
   for (const a of toSend) {

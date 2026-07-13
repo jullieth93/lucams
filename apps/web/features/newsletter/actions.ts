@@ -18,6 +18,7 @@ import { verifyTurnstileToken } from "@/lib/turnstile";
 import { sendEmail } from "@/lib/resend";
 import { newsletterWelcomeEmail } from "@/features/emails/templates/newsletter-welcome";
 import { computeUnsubscribeToken } from "@/features/newsletter/unsubscribe";
+import { getClientIp } from "@/lib/client-ip";
 
 export type NewsletterFormState = {
   ok?: boolean;
@@ -42,7 +43,7 @@ export async function subscribeNewsletterAction(
   }
 
   const hdrs = await headers();
-  const ip = hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  const ip = getClientIp(hdrs);
   const ua = hdrs.get("user-agent") ?? null;
   const isProd = process.env.VERCEL_ENV === "production";
 

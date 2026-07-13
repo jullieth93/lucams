@@ -18,11 +18,12 @@
 import { NextResponse } from "next/server";
 import { listCatalogProducts, type ProductListFilters } from "@/lib/catalog";
 import { rateLimit } from "@/lib/rate-limit";
+import { getClientIp } from "@/lib/client-ip";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
-  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  const ip = getClientIp(req.headers);
   const { allowed } = await rateLimit(`catalog_products:${ip}`, 30, 60);
   if (!allowed) {
     return NextResponse.json(

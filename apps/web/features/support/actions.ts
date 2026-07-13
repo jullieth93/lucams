@@ -31,6 +31,7 @@ import { getSettingValue } from "@/lib/cms";
 import { supportTicketReceivedEmail } from "@/features/emails/templates/support-ticket-received";
 import { supportTicketInternalEmail } from "@/features/emails/templates/support-ticket-internal";
 import { SupportTicketSchema, type SupportTicketInput } from "./schemas";
+import { getClientIp } from "@/lib/client-ip";
 
 export type SupportActionState =
   | { ok: true; ticketId: string }
@@ -60,7 +61,7 @@ export async function submitContactAction(
   }
 
   const hdrs = await headers();
-  const ip = hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  const ip = getClientIp(hdrs);
   const userAgent = hdrs.get("user-agent") ?? null;
 
   // Turnstile: bloquea bots. En dev sin secret pasa automáticamente.

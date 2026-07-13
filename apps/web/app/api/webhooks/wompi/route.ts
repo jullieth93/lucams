@@ -173,6 +173,15 @@ export async function POST(req: Request) {
       expected: order.total,
       received: transaction.amount_in_cents,
     });
+    // Auditoría 2026-07-13: marcar la orden para reconciliación manual (antes solo se
+    // logueaba → quedaba invisible en el panel). Un humano debe revisar el desfase de monto.
+    await prisma.order.update({
+      where: { id: order.id },
+      data: {
+        needsReconciliation: true,
+        reconciliationReason: `Monto Wompi (${transaction.amount_in_cents}) ≠ total de la orden (${order.total}). Revisar antes de despachar.`,
+      },
+    });
     await prisma.webhookEvent.update({
       where: { id: webhookRow.id },
       data: { processedAt: new Date() },

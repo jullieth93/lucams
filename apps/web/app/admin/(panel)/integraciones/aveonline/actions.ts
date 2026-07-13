@@ -33,12 +33,15 @@ export async function registerAveonlineWebhookAction(
       secret,
       extra: { tenant: "lucams_shop" },
     });
+    // Auditoría 2026-07-13: NO persistir el secreto en el audit log. fullUrl lleva
+    // ?secret=<valor> → se redacta antes de guardarlo.
+    const redactedUrl = fullUrl.replace(/([?&]secret=)[^&]*/i, "$1***");
     await recordAdminAction({
       actorId: session.admin.id,
       action: "shipping.aveonline.webhook.register",
       entityType: "Integration",
       entityId: "aveonline",
-      metadata: { url: fullUrl, ok: result.ok, message: result.message },
+      metadata: { url: redactedUrl, ok: result.ok, message: result.message },
     });
     logger.info({
       event: "admin.aveonline.webhook.register",

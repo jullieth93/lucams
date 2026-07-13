@@ -6,6 +6,7 @@ import { rateLimit } from "@/lib/rate-limit";
 import { ipKey } from "@/lib/rate-limit-keys";
 import { DesignSuggestInputSchema, type DesignSuggestion } from "./schemas";
 import { getDesignSuggestion, AiUnavailableError } from "./service";
+import { getClientIp } from "@/lib/client-ip";
 
 type Result = { ok: true; suggestion: DesignSuggestion } | { ok: false; message: string };
 
@@ -21,7 +22,7 @@ export async function suggestDesignAction(raw: unknown): Promise<Result> {
   }
 
   const hdrs = await headers();
-  const ip = hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  const ip = getClientIp(hdrs);
   const isProd = process.env.VERCEL_ENV === "production";
   // 20 sugerencias/hora en prod (generoso para uso real, corta abuso). El asistente solo se
   // invoca cuando el cliente abre el panel, nunca automáticamente.

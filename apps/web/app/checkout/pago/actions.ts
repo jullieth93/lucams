@@ -16,13 +16,14 @@ import {
   savePaymentMethodStep,
 } from "@/features/checkout/service";
 import { InsufficientStockError } from "@/features/orders/errors";
+import { getClientIp } from "@/lib/client-ip";
 
 export async function payWompiAction(formData: FormData): Promise<void> {
   // T4 — rate-limit por IP: finalizeCheckout crea una orden + pega a Wompi, así
   // que limitamos el abuso (creación masiva de órdenes basura). Generoso para no
   // bloquear reintentos legítimos de un cliente con errores.
   const hdrs = await headers();
-  const ip = hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  const ip = getClientIp(hdrs);
 
   // Anti-bot: crear una orden + pegar a Wompi es un flujo de abuso (órdenes/intentos
   // basura). El registro ya tenía Turnstile; el checkout no — se cierra ese hueco.
@@ -92,7 +93,7 @@ export async function payWompiAction(formData: FormData): Promise<void> {
 
 export async function payCodAction(formData: FormData): Promise<void> {
   const hdrs = await headers();
-  const ip = hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  const ip = getClientIp(hdrs);
 
   // Anti-bot: COD es aún MÁS sensible que Wompi (crea orden REAL + guía Aveonline con costo).
   const turnstile = await verifyTurnstileToken(
@@ -186,7 +187,7 @@ export async function applyCouponAction(
   formData: FormData,
 ): Promise<CouponActionState> {
   const hdrs = await headers();
-  const ip = hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  const ip = getClientIp(hdrs);
   const isProd = process.env.VERCEL_ENV === "production";
   const rl = await rateLimit(ipKey("coupon_apply", ip), isProd ? 15 : 100, 600);
   if (!rl.allowed) {

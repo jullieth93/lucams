@@ -19,6 +19,7 @@ import { captureClientError } from "@/lib/error-capture";
 import { logger } from "@/lib/logger";
 import { rateLimit } from "@/lib/rate-limit";
 import { ipKey } from "@/lib/rate-limit-keys";
+import { getClientIp } from "@/lib/client-ip";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -35,7 +36,7 @@ const ReportSchema = z.object({
 export async function POST(request: Request) {
   try {
     const hdrs = await headers();
-    const ip = hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+    const ip = getClientIp(hdrs);
     // Rate-limit por IP: 30/5min — cómodo para un usuario real (varios boundaries
     // en una sesión mala) pero corta el spam automatizado desde una IP. El backstop
     // anti-bloat GLOBAL vive en captureClientError y aplica SOLO a la creación de
