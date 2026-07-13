@@ -1,14 +1,15 @@
 /*
  * ADR-057 Fase A1a — Render de producción server-side (sharp). Ejerce el pipeline REAL con una
- * foto sintética (sin DB ni storage): valida dimensiones de salida, la matemática de composición,
- * la detección "solo-foto" vs NEEDS_KONVA, filtros y el caso heart/circle (full-stage).
+ * foto sintética (sin DB ni storage): dimensiones, matemática de composición, y — tras la
+ * revisión adversarial — el comportamiento CONSERVADOR: solo renderiza los casos 100% fieles;
+ * filtro / rotación / cornerRadius / múltiples placeholders / stage gigante / foto que no carga
+ * → NEEDS_KONVA (fallback al PNG del cliente). Nunca produce un PNG en blanco silencioso.
  */
 
 import { describe, expect, it } from "vitest";
 import sharp from "sharp";
 import { renderProductionSlots, RenderNeedsKonvaError } from "./production-render";
 
-/** Foto sintética w×h (roja) → PNG Buffer, como si viniera de storage. */
 async function fakePhoto(w: number, h: number): Promise<Buffer> {
   return sharp({ create: { width: w, height: h, channels: 3, background: { r: 220, g: 40, b: 60 } } })
     .png()
@@ -16,20 +17,19 @@ async function fakePhoto(w: number, h: number): Promise<Buffer> {
 }
 
 const stage = { width: 1080, height: 1080, dpiPreview: 90, dpiProduction: 300 };
+// Plantilla solo-foto FIEL: rect plano, sin cornerRadius/rotación.
 const photoOnlyUnit = {
   version: 1 as const,
   stage,
   layers: [
     { id: "bg", type: "background", color: "#FFF8F0" },
-    { id: "ph", type: "image-placeholder", x: 90, y: 90, width: 900, height: 900, cornerRadius: 40 },
+    { id: "ph", type: "image-placeholder", x: 90, y: 90, width: 900, height: 900 },
   ],
 };
 
-async function pngMeta(buf: Buffer) {
-  return sharp(buf).metadata();
-}
+const pngMeta = (buf: Buffer) => sharp(buf).metadata();
 
-describe("renderProductionSlots — pack solo-foto (ADR-057 Fase A1a)", () => {
+describe("renderProductionSlots — pack solo-foto FIEL (ADR-057 Fase A1a)", () => {
   it("renderiza cada slot a stage × 3 px (paridad con pixelRatio 3 del cliente)", async () => {
     const photo = await fakePhoto(1200, 900);
     const bufs = await renderProductionSlots({
@@ -50,32 +50,10 @@ describe("renderProductionSlots — pack solo-foto (ADR-057 Fase A1a)", () => {
     }
   });
 
-  it("un slot sin foto (assetId null) produce solo el fondo, sin crashear", async () => {
-    const bufs = await renderProductionSlots({
-      unitTemplate: photoOnlyUnit,
-      slots: [{ slotIndex: 0, assetId: null }],
-      shape: "rectangle",
-      loadAsset: async () => null,
-    });
-    const m = await pngMeta(bufs[0]);
-    expect(m.width).toBe(3240);
-  });
-
-  it("aplica filtro sin romper (vivid)", async () => {
-    const photo = await fakePhoto(1000, 1000);
-    const bufs = await renderProductionSlots({
-      unitTemplate: photoOnlyUnit,
-      slots: [{ slotIndex: 0, assetId: "a0", filter: "vivid", photoTransform: { offsetX: 0, offsetY: 0, scale: 1 } }],
-      shape: "rectangle",
-      loadAsset: async () => photo,
-    });
-    expect((await pngMeta(bufs[0])).width).toBe(3240);
-  });
-
   it("heart/circle: la foto cubre todo el stage (no crashea con placeholder chico)", async () => {
     const photo = await fakePhoto(800, 1200);
     const bufs = await renderProductionSlots({
-      unitTemplate: photoOnlyUnit, // placeholder 900×900, pero shape circle → full stage
+      unitTemplate: photoOnlyUnit,
       slots: [{ slotIndex: 0, assetId: "a0", photoTransform: { offsetX: 200, offsetY: 0, scale: 1 } }],
       shape: "circle",
       loadAsset: async () => photo,
@@ -83,7 +61,7 @@ describe("renderProductionSlots — pack solo-foto (ADR-057 Fase A1a)", () => {
     expect((await pngMeta(bufs[0])).width).toBe(3240);
   });
 
-  it("zoom-out extremo (foto fuera del placeholder) no crashea, solo fondo visible", async () => {
+  it("zoom-out/drag extremo (foto fuera del placeholder): solo fondo (WYSIWYG), sin crashear", async () => {
     const photo = await fakePhoto(1000, 1000);
     const bufs = await renderProductionSlots({
       unitTemplate: photoOnlyUnit,
@@ -93,57 +71,90 @@ describe("renderProductionSlots — pack solo-foto (ADR-057 Fase A1a)", () => {
     });
     expect((await pngMeta(bufs[0])).width).toBe(3240);
   });
+});
 
-  it("plantilla con capa de TEXTO con contenido → NEEDS_KONVA (cae a A1b)", async () => {
-    const unitWithText = {
-      version: 1 as const,
-      stage,
-      layers: [
-        { id: "bg", type: "background", color: "#fff" },
-        { id: "ph", type: "image-placeholder", x: 60, y: 60, width: 600, height: 700 },
-        { id: "t", type: "text", text: "Mi recuerdo" },
-      ],
-    };
-    await expect(
+describe("renderProductionSlots — guards CONSERVADORES → NEEDS_KONVA (fallback al cliente)", () => {
+  const expectNeedsKonva = (p: Promise<unknown>) => expect(p).rejects.toBeInstanceOf(RenderNeedsKonvaError);
+
+  it("CRÍTICO: foto que no carga (loadAsset null) → THROW, nunca un PNG en blanco", async () => {
+    await expectNeedsKonva(
       renderProductionSlots({
-        unitTemplate: unitWithText,
+        unitTemplate: photoOnlyUnit,
         slots: [{ slotIndex: 0, assetId: "a0" }],
         shape: "rectangle",
-        loadAsset: async () => fakePhoto(800, 800),
+        loadAsset: async () => null, // simula download fallido / asset borrado
       }),
-    ).rejects.toBeInstanceOf(RenderNeedsKonvaError);
+    );
   });
 
-  it("plantilla con marco (asset) → NEEDS_KONVA", async () => {
-    const unitWithFrame = {
-      version: 1 as const,
-      stage,
-      layers: [
-        { id: "bg", type: "background", color: "#fff" },
-        { id: "ph", type: "image-placeholder", x: 60, y: 60, width: 600, height: 700 },
-        { id: "f", type: "asset", src: "/templates/frame.png" },
-      ],
-    };
-    await expect(
+  it("slot sin assetId → THROW (un pack de foto siempre trae foto)", async () => {
+    await expectNeedsKonva(
+      renderProductionSlots({ unitTemplate: photoOnlyUnit, slots: [{ slotIndex: 0, assetId: null }], shape: "rectangle", loadAsset: async () => null }),
+    );
+  });
+
+  it("slot con FILTRO → THROW (el cliente tiene el filtro exacto de Konva)", async () => {
+    await expectNeedsKonva(
       renderProductionSlots({
-        unitTemplate: unitWithFrame,
-        slots: [{ slotIndex: 0, assetId: "a0" }],
+        unitTemplate: photoOnlyUnit,
+        slots: [{ slotIndex: 0, assetId: "a0", filter: "vivid" }],
         shape: "rectangle",
-        loadAsset: async () => fakePhoto(800, 800),
+        loadAsset: async () => fakePhoto(1000, 1000),
       }),
-    ).rejects.toBeInstanceOf(RenderNeedsKonvaError);
+    );
   });
 
-  it("texto VACÍO no dispara NEEDS_KONVA (plantilla foto con placeholder de texto sin usar)", async () => {
+  it("placeholder con cornerRadius → THROW", async () => {
+    const unit = { ...photoOnlyUnit, layers: [photoOnlyUnit.layers[0], { ...photoOnlyUnit.layers[1], cornerRadius: 40 }] };
+    await expectNeedsKonva(
+      renderProductionSlots({ unitTemplate: unit, slots: [{ slotIndex: 0, assetId: "a0" }], shape: "rectangle", loadAsset: async () => fakePhoto(1000, 1000) }),
+    );
+  });
+
+  it("placeholder con rotación → THROW", async () => {
+    const unit = { ...photoOnlyUnit, layers: [photoOnlyUnit.layers[0], { ...photoOnlyUnit.layers[1], rotation: 15 }] };
+    await expectNeedsKonva(
+      renderProductionSlots({ unitTemplate: unit, slots: [{ slotIndex: 0, assetId: "a0" }], shape: "rectangle", loadAsset: async () => fakePhoto(1000, 1000) }),
+    );
+  });
+
+  it("múltiples image-placeholder → THROW", async () => {
     const unit = {
-      version: 1 as const,
-      stage,
+      ...photoOnlyUnit,
       layers: [
-        { id: "bg", type: "background", color: "#fff" },
-        { id: "ph", type: "image-placeholder", x: 60, y: 60, width: 600, height: 700 },
-        { id: "t", type: "text", text: "   " },
+        photoOnlyUnit.layers[0],
+        { id: "ph1", type: "image-placeholder", x: 0, y: 0, width: 500, height: 500 },
+        { id: "ph2", type: "image-placeholder", x: 500, y: 500, width: 500, height: 500 },
       ],
     };
+    await expectNeedsKonva(
+      renderProductionSlots({ unitTemplate: unit, slots: [{ slotIndex: 0, assetId: "a0" }], shape: "rectangle", loadAsset: async () => fakePhoto(1000, 1000) }),
+    );
+  });
+
+  it("stage gigante → THROW (anti-OOM)", async () => {
+    const unit = { ...photoOnlyUnit, stage: { ...stage, width: 5000, height: 5000 } };
+    await expectNeedsKonva(
+      renderProductionSlots({ unitTemplate: unit, slots: [{ slotIndex: 0, assetId: "a0" }], shape: "rectangle", loadAsset: async () => fakePhoto(1000, 1000) }),
+    );
+  });
+
+  it("plantilla con capa de TEXTO con contenido → THROW (A1b)", async () => {
+    const unit = { ...photoOnlyUnit, layers: [...photoOnlyUnit.layers, { id: "t", type: "text", text: "Mi recuerdo" }] };
+    await expectNeedsKonva(
+      renderProductionSlots({ unitTemplate: unit, slots: [{ slotIndex: 0, assetId: "a0" }], shape: "rectangle", loadAsset: async () => fakePhoto(800, 800) }),
+    );
+  });
+
+  it("plantilla con marco (asset) → THROW", async () => {
+    const unit = { ...photoOnlyUnit, layers: [...photoOnlyUnit.layers, { id: "f", type: "asset", src: "/templates/frame.png" }] };
+    await expectNeedsKonva(
+      renderProductionSlots({ unitTemplate: unit, slots: [{ slotIndex: 0, assetId: "a0" }], shape: "rectangle", loadAsset: async () => fakePhoto(800, 800) }),
+    );
+  });
+
+  it("texto VACÍO no dispara THROW (placeholder de texto sin usar)", async () => {
+    const unit = { ...photoOnlyUnit, layers: [...photoOnlyUnit.layers, { id: "t", type: "text", text: "   " }] };
     const bufs = await renderProductionSlots({
       unitTemplate: unit,
       slots: [{ slotIndex: 0, assetId: "a0", photoTransform: { offsetX: 0, offsetY: 0, scale: 1 } }],

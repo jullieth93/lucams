@@ -55,6 +55,11 @@ async function tryServerRenderProduction(
       where: { id: designId },
       select: { product: { select: { personalizationSchema: true } } },
     });
+    // Forma del schema del PRODUCTO. En el catálogo actual la forma es a nivel de producto
+    // (Fotoimanes Circular/Corazón/Cuadrado son productos distintos; sus variantes son
+    // tamaño/cantidad, no forma) → esto coincide con lo que renderizó el cliente. Si algún día
+    // una VARIANTE override la forma, habría que persistir la forma efectiva en el diseño (el
+    // diseño no guarda su variantId en finalize). Latente: ningún producto lo usa hoy.
     const shape = (design?.product?.personalizationSchema as { shape?: string } | null)?.shape;
 
     const assets = await prisma.designAsset.findMany({

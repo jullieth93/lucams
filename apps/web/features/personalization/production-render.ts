@@ -18,11 +18,14 @@
 
 import "server-only";
 import sharp from "sharp";
-import { FILTER_PRESETS } from "@/app/estudio/[slug]/lib/photo-filters";
 import type { PhotoFilterPreset } from "@/app/estudio/[slug]/types";
 
 /** Escala de salida = pixelRatio del cliente (stage.toDataURL({pixelRatio:3})) → paridad de px. */
 const PRODUCTION_SCALE = 3;
+/** Cota del stage lógico. Un stage sano es ~720–1080; > esto → cae al PNG del cliente (anti-OOM). */
+const MAX_STAGE_DIM = 3000;
+/** Cota de la foto redimensionada (evita el pixel-limit de sharp y OOM en zoom extremo). */
+const MAX_RESIZE_DIM = 12000;
 
 type Stage = { width: number; height: number };
 type PlaceholderLayer = {
@@ -68,41 +71,40 @@ function parseColor(color: string | undefined): { r: number; g: number; b: numbe
   };
 }
 
-/** Aproxima el preset de filtro de Konva con operaciones de sharp (paridad "look", no pixel). */
-function applyFilter(input: sharp.Sharp, filter: PhotoFilterPreset | null | undefined): sharp.Sharp {
-  if (!filter) return input;
-  const p = FILTER_PRESETS[filter];
-  if (!p) return input;
-  let out = input;
-  if (p.grayscale) out = out.grayscale();
-  const mod: { brightness?: number; saturation?: number; hue?: number } = {};
-  if (p.brightness !== 0) mod.brightness = 1 + p.brightness; // Konva Brighten (aditivo) ≈ multiplicativo
-  if (!p.grayscale && p.saturation !== 0) mod.saturation = 1 + p.saturation;
-  if (!p.grayscale && p.hue !== 0) mod.hue = p.hue;
-  if (Object.keys(mod).length > 0) out = out.modulate(mod);
-  if (p.contrast !== 0) {
-    const mult = Math.max(0, 1 + p.contrast / 100); // -100..100 → factor alrededor de 128
-    out = out.linear(mult, 128 * (1 - mult));
-  }
-  return out;
-}
-
 /**
- * Detecta si el unitTemplate es "solo-foto" (background + image-placeholder). Cualquier capa de
- * texto con contenido o marco (asset/shape) → requiere Konva-on-node (A1b).
+ * Guard conservador (post-revisión adversarial A1a): el render server-side SOLO corre en los
+ * casos que reproduce con FIDELIDAD 100% (foto simple sin adornos). Cualquier otra cosa lanza
+ * NEEDS_KONVA → el caller conserva el PNG del cliente (que para filtros ES el filtro exacto
+ * aprobado). Esto elimina las divergencias reales que la revisión encontró:
+ *   - filtros (sharp ≠ Konva Brighten/Contrast/HSL/Grayscale) → fallback al cliente.
+ *   - rotación / esquinas redondeadas / múltiples placeholders → fallback.
+ *   - texto/marco (asset/shape) → fallback (A1b, Konva-on-node).
+ *   - stage gigante → fallback (anti-OOM).
  */
-function assertPhotoOnly(layers: AnyLayer[]): void {
-  for (const l of layers) {
-    if (l.type === "background" || l.type === "image-placeholder") continue;
+function assertServerRenderable(unit: UnitTemplate, slots: Slot[]): void {
+  if (unit.stage.width > MAX_STAGE_DIM || unit.stage.height > MAX_STAGE_DIM) {
+    throw new RenderNeedsKonvaError(`stage ${unit.stage.width}×${unit.stage.height} > ${MAX_STAGE_DIM}`);
+  }
+  let placeholders = 0;
+  for (const l of unit.layers) {
+    if (l.type === "background") continue;
+    if (l.type === "image-placeholder") {
+      placeholders++;
+      const ph = l as unknown as PlaceholderLayer;
+      if (ph.rotation && ph.rotation !== 0) throw new RenderNeedsKonvaError("placeholder con rotación");
+      if (ph.cornerRadius && ph.cornerRadius > 0) throw new RenderNeedsKonvaError("placeholder con cornerRadius");
+      continue;
+    }
     if (l.type === "text") {
       const t = typeof l.text === "string" ? l.text.trim() : "";
       if (t.length > 0) throw new RenderNeedsKonvaError("text layer con contenido");
       continue; // texto vacío → ignorable
     }
-    if (l.type === "asset" || l.type === "shape") {
-      throw new RenderNeedsKonvaError(`capa ${l.type} (marco)`);
-    }
+    throw new RenderNeedsKonvaError(`capa ${l.type} (marco)`);
   }
+  if (placeholders > 1) throw new RenderNeedsKonvaError("múltiples image-placeholder");
+  // Cualquier slot con FILTRO → el cliente tiene el filtro exacto de Konva (fidelidad) → fallback.
+  if (slots.some((s) => s.filter)) throw new RenderNeedsKonvaError("slot con filtro (fidelidad → cliente)");
 }
 
 const clampInt = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, Math.round(v)));
@@ -117,93 +119,82 @@ async function renderSlot(
   shape: string | undefined,
   loadAsset: LoadAssetBytes,
 ): Promise<Buffer> {
-  assertPhotoOnly(unit.layers);
-
   const S = PRODUCTION_SCALE;
-  const outW = clampInt(unit.stage.width * S, 1, 100000);
-  const outH = clampInt(unit.stage.height * S, 1, 100000);
+  const outW = clampInt(unit.stage.width * S, 1, MAX_STAGE_DIM * S);
+  const outH = clampInt(unit.stage.height * S, 1, MAX_STAGE_DIM * S);
 
   const bgLayer = unit.layers.find((l) => l.type === "background") as BackgroundLayer | undefined;
   const base = sharp({
     create: { width: outW, height: outH, channels: 4, background: parseColor(bgLayer?.color) },
   });
 
-  const composites: sharp.OverlayOptions[] = [];
-
+  // FIX crítico (revisión A1a): un pack de foto DEBE tener placeholder + foto. Si falta cualquiera
+  // o la foto no se puede cargar, NO producir un PNG en blanco (pérdida de datos silenciosa):
+  // lanzar → el caller conserva el PNG del cliente (que sí trae la foto).
   const placeholderRaw = unit.layers.find((l) => l.type === "image-placeholder") as
     | PlaceholderLayer
     | undefined;
+  if (!placeholderRaw) throw new RenderNeedsKonvaError("sin image-placeholder");
+  if (!slot.assetId) throw new RenderNeedsKonvaError(`slot ${slot.slotIndex} sin assetId`);
+  const assetBytes = await loadAsset(slot.assetId);
+  if (!assetBytes) throw new RenderNeedsKonvaError(`no se pudo cargar la foto del slot ${slot.slotIndex}`);
 
-  if (placeholderRaw && slot.assetId) {
-    const assetBytes = await loadAsset(slot.assetId);
-    if (assetBytes) {
-      // heart/circle → la foto cubre TODO el stage (igual que el editor, useFullStage).
-      const useFullStage = shape === "heart" || shape === "circle";
-      const ph = useFullStage
-        ? { x: 0, y: 0, width: unit.stage.width, height: unit.stage.height }
-        : {
-            x: placeholderRaw.x,
-            y: placeholderRaw.y,
-            width: placeholderRaw.width,
-            height: placeholderRaw.height,
-          };
+  // heart/circle → la foto cubre TODO el stage (igual que el editor, useFullStage).
+  const useFullStage = shape === "heart" || shape === "circle";
+  const ph = useFullStage
+    ? { x: 0, y: 0, width: unit.stage.width, height: unit.stage.height }
+    : { x: placeholderRaw.x, y: placeholderRaw.y, width: placeholderRaw.width, height: placeholderRaw.height };
 
-      const meta = await sharp(assetBytes).metadata();
-      const imgW = meta.width ?? 0;
-      const imgH = meta.height ?? 0;
-      if (imgW > 0 && imgH > 0) {
-        // Matemática EXACTA del editor (studio-slot.tsx ImagePlaceholder).
-        const coverScaleBase = Math.max(ph.width / imgW, ph.height / imgH);
-        const userScale = slot.photoTransform?.scale ?? 1;
-        const effectiveScale = Math.max(0.5, Math.min(3, userScale));
-        const finalScale = coverScaleBase * effectiveScale;
-        const renderedW = imgW * finalScale;
-        const renderedH = imgH * finalScale;
-        const offX = slot.photoTransform?.offsetX ?? 0;
-        const offY = slot.photoTransform?.offsetY ?? 0;
-        // Centro de la imagen en coords del stage (× S para px de salida).
-        const cx = (ph.x + ph.width / 2 + offX) * S;
-        const cy = (ph.y + ph.height / 2 + offY) * S;
-        const IW = renderedW * S;
-        const IH = renderedH * S;
-        const IX = cx - IW / 2;
-        const IY = cy - IH / 2;
-        // Rect del placeholder en px de salida.
-        const PX = ph.x * S;
-        const PY = ph.y * S;
-        const PW = ph.width * S;
-        const PH = ph.height * S;
+  const meta = await sharp(assetBytes).metadata();
+  const imgW = meta.width ?? 0;
+  const imgH = meta.height ?? 0;
+  if (imgW <= 0 || imgH <= 0) throw new RenderNeedsKonvaError(`foto inválida en slot ${slot.slotIndex}`);
 
-        // Intersección imagen ∩ placeholder (clip).
-        const left = Math.max(PX, IX);
-        const top = Math.max(PY, IY);
-        const right = Math.min(PX + PW, IX + IW);
-        const bottom = Math.min(PY + PH, IY + IH);
+  // Matemática EXACTA del editor (studio-slot.tsx ImagePlaceholder).
+  const coverScaleBase = Math.max(ph.width / imgW, ph.height / imgH);
+  const userScale = slot.photoTransform?.scale ?? 1;
+  const effectiveScale = Math.max(0.5, Math.min(3, userScale));
+  const finalScale = coverScaleBase * effectiveScale;
+  const offX = slot.photoTransform?.offsetX ?? 0;
+  const offY = slot.photoTransform?.offsetY ?? 0;
+  const IW = imgW * finalScale * S;
+  const IH = imgH * finalScale * S;
+  // Anti-OOM: zoom extremo sobre foto de alta resolución → cae al PNG del cliente.
+  if (IW > MAX_RESIZE_DIM || IH > MAX_RESIZE_DIM) {
+    throw new RenderNeedsKonvaError(`resize ${Math.round(IW)}×${Math.round(IH)} > ${MAX_RESIZE_DIM}`);
+  }
+  // Centro de la imagen en coords del stage (× S para px de salida).
+  const cx = (ph.x + ph.width / 2 + offX) * S;
+  const cy = (ph.y + ph.height / 2 + offY) * S;
+  const IX = cx - IW / 2;
+  const IY = cy - IH / 2;
+  const PX = ph.x * S;
+  const PY = ph.y * S;
+  const PW = ph.width * S;
+  const PH = ph.height * S;
 
-        if (right > left && bottom > top) {
-          const resizedW = clampInt(IW, 1, 100000);
-          const resizedH = clampInt(IH, 1, 100000);
-          const resized = await applyFilter(
-            sharp(assetBytes, { failOn: "none" }).rotate(), // auto-orient defensivo
-            slot.filter,
-          )
-            .resize(resizedW, resizedH, { fit: "fill" })
-            .png()
-            .toBuffer();
+  // Intersección imagen ∩ placeholder (clip). Vacía = el usuario movió la foto fuera del slot
+  // (zoom-out/drag extremo) → solo fondo, que es EXACTO lo que vio en el preview (WYSIWYG).
+  const composites: sharp.OverlayOptions[] = [];
+  const left = Math.max(PX, IX);
+  const top = Math.max(PY, IY);
+  const right = Math.min(PX + PW, IX + IW);
+  const bottom = Math.min(PY + PH, IY + IH);
+  if (right > left && bottom > top) {
+    const resizedW = clampInt(IW, 1, MAX_RESIZE_DIM);
+    const resizedH = clampInt(IH, 1, MAX_RESIZE_DIM);
+    const resized = await sharp(assetBytes, { failOn: "none" })
+      .rotate() // auto-orient defensivo (las fotos ya vienen orientadas del upload)
+      .resize(resizedW, resizedH, { fit: "fill" })
+      .png()
+      .toBuffer();
 
-          // Región de la imagen redimensionada que cae dentro del placeholder.
-          const exLeft = clampInt(left - IX, 0, resizedW - 1);
-          const exTop = clampInt(top - IY, 0, resizedH - 1);
-          const exW = clampInt(right - left, 1, resizedW - exLeft);
-          const exH = clampInt(bottom - top, 1, resizedH - exTop);
-          const crop = await sharp(resized)
-            .extract({ left: exLeft, top: exTop, width: exW, height: exH })
-            .toBuffer();
-
-          composites.push({ input: crop, left: clampInt(left, 0, outW - 1), top: clampInt(top, 0, outH - 1) });
-        }
-      }
-    }
+    const exLeft = clampInt(left - IX, 0, resizedW - 1);
+    const exTop = clampInt(top - IY, 0, resizedH - 1);
+    const exW = clampInt(right - left, 1, resizedW - exLeft);
+    const exH = clampInt(bottom - top, 1, resizedH - exTop);
+    const crop = await sharp(resized).extract({ left: exLeft, top: exTop, width: exW, height: exH }).toBuffer();
+    composites.push({ input: crop, left: clampInt(left, 0, outW - 1), top: clampInt(top, 0, outH - 1) });
   }
 
   return base.composite(composites).png().toBuffer();
@@ -219,6 +210,10 @@ export async function renderProductionSlots(opts: {
   shape?: string;
   loadAsset: LoadAssetBytes;
 }): Promise<Buffer[]> {
+  // Guard conservador: solo renderizamos server-side los casos que reproducimos con fidelidad
+  // 100%. Cualquier otra cosa → NEEDS_KONVA → el caller conserva los PNG del cliente.
+  assertServerRenderable(opts.unitTemplate, opts.slots);
+
   const out: Buffer[] = [];
   // Orden por slotIndex (defensivo).
   const slots = [...opts.slots].sort((a, b) => a.slotIndex - b.slotIndex);
