@@ -84,6 +84,8 @@ type StudioEditorProps = {
    * "-DEFAULT" por producto, ahora hay N por size/qty.
    */
   variantId?: string;
+  /** ADR-057 B2 — diseños prediseñados aplicables por slot (galería). */
+  predesigned?: import("./studio-asset-picker-modal").PredesignedItem[];
 };
 
 export function StudioEditor({
@@ -94,6 +96,7 @@ export function StudioEditor({
   initialDesignAssets,
   photoSlots,
   variantId,
+  predesigned = [],
 }: StudioEditorProps) {
   const router = useRouter();
   const store = useMemo(() => createStudioStore(), []);
@@ -556,6 +559,7 @@ export function StudioEditor({
         totalSlots={photoSlots}
         assets={modalAssets}
         designId={modalDesignId}
+        predesigned={predesigned}
         onClose={() => setPickerSlotIndex(null)}
         onSelectAsset={handleAssetSelected}
         onAssetUploaded={handleAssetUploaded}

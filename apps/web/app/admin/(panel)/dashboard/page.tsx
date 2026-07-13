@@ -277,6 +277,12 @@ export default async function AdminDashboardPage() {
               label="Fichas del abecedario"
               description="Los dibujos de cada letra (A de Avión…). Alimentan el editor de nombres y los sets."
             />
+            <QuickLink
+              href="/admin/disenos"
+              icon={LayoutTemplate}
+              label="Diseños prediseñados"
+              description="Imágenes listas que el cliente aplica con un toque en el editor (separadores, fotoimanes)."
+            />
           </div>
         </section>
 

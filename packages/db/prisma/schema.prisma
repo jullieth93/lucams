@@ -1298,6 +1298,26 @@ model LetterTile {
   @@index([setId, order])
 }
 
+// ADR-057 Fase B2 — Galería de diseños PREDISEÑADOS (imágenes listas que el cliente puede
+// aplicar a un slot en el editor, en vez de subir su foto). Agrupados por `tag` (ej. "separadores")
+// para reusar el mismo modelo en otros productos (fotoimanes, etc.). Admin-gestionable.
+model DesignGalleryImage {
+  id       String  @id @default(cuid())
+  tag      String // agrupador: "separadores", "fotoimanes", …
+  name     String // nombre visible ("Flores", "Frase motivadora")
+  imageUrl String // imagen del diseño (bucket público product-images)
+  order    Int     @default(0)
+  isActive Boolean @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  createdBy String?
+  updatedBy String?
+  deletedAt DateTime?
+
+  @@index([tag, isActive, order])
+}
+
 // ──────────────────────── PLAN_CATALOG_V2 — TABLAS NUEVAS ────────────────────────
 
 // PLAN_CATALOG_V2 1.5 / 2.10 — tags transversales por ocasión que cruzan categorías.

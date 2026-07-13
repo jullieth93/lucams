@@ -20,6 +20,7 @@ import { listTemplatesForKind, getOwnedDesign } from "@/features/personalization
 import { parsePhotoProductConfig } from "@/features/personalization/schemas";
 import { resolvePersonalizationSurface } from "@/features/personalization/surface";
 import { listLetterStyles, ALPHABET } from "@/features/personalization/letter-tiles";
+import { listGalleryImages } from "@/features/personalization/design-gallery";
 import { formatCOP } from "@/lib/format";
 import { NameEditor } from "./name-editor";
 import { LetterSetEditor } from "./letter-set-editor";
@@ -169,6 +170,13 @@ export default async function EstudioPage({
 
   const photoConfig = parsePhotoProductConfig(mergedSchema);
 
+  // ADR-057 B2 — diseños prediseñados de la galería (si el producto define un galleryTag).
+  const galleryTag =
+    typeof (mergedSchema as { galleryTag?: unknown }).galleryTag === "string"
+      ? (mergedSchema as { galleryTag: string }).galleryTag
+      : null;
+  const predesigned = galleryTag ? await listGalleryImages(galleryTag) : [];
+
   // Cargar plantillas activas del kind (globales + product-specific).
   // Filtra por aspect ratio del producto físico — solo plantillas cuyo stage
   // matchee el aspect físico aparecen en el sidebar (M.3.b.B.4 aterrizado).
@@ -235,6 +243,7 @@ export default async function EstudioPage({
           initialDesignCanvas={initialDesignCanvas}
           initialDesignAssets={initialDesignAssets}
           photoSlots={photoConfig.photoSlots}
+          predesigned={predesigned}
         />
       </main>
     </div>

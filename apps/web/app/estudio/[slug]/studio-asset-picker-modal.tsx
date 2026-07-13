@@ -23,9 +23,12 @@
 
 import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Upload, X, Image as ImageIcon, Loader2 } from "lucide-react";
-import { uploadDesignAssetAction } from "@/features/personalization/actions";
+import { Upload, X, Image as ImageIcon, Loader2, Sparkles } from "lucide-react";
+import { uploadDesignAssetAction, assignPredesignedToDesignAction } from "@/features/personalization/actions";
 import type { StudioAsset } from "./types";
+
+/** Diseño prediseñado de la galería (ADR-057 B2). */
+export type PredesignedItem = { id: string; name: string; imageUrl: string };
 
 type StudioAssetPickerModalProps = {
   isOpen: boolean;
@@ -33,6 +36,8 @@ type StudioAssetPickerModalProps = {
   totalSlots: number;
   assets: StudioAsset[];
   designId: string | null;
+  /** Diseños prediseñados que el cliente puede aplicar al slot (vacío = solo subir foto). */
+  predesigned?: PredesignedItem[];
   onClose: () => void;
   onSelectAsset: (asset: StudioAsset) => void;
   onAssetUploaded: (asset: StudioAsset) => void;
@@ -44,6 +49,7 @@ export function StudioAssetPickerModal({
   totalSlots,
   assets,
   designId,
+  predesigned = [],
   onClose,
   onSelectAsset,
   onAssetUploaded,
@@ -52,7 +58,31 @@ export function StudioAssetPickerModal({
   const modalRef = useRef<HTMLDivElement>(null);
   const firstFocusableRef = useRef<HTMLButtonElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [applyingId, setApplyingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // ADR-057 B2 — aplicar un diseño prediseñado: lo subimos como asset del diseño y lo asignamos
+  // al slot (reusando el pipeline de foto: encuadre, finalize, render server-side).
+  const handleApplyPredesigned = async (item: PredesignedItem) => {
+    if (!designId || applyingId) return;
+    setApplyingId(item.id);
+    setError(null);
+    try {
+      const res = await assignPredesignedToDesignAction({ designId, galleryImageId: item.id });
+      if (!res.ok) {
+        setError(res.message);
+        return;
+      }
+      const asset: StudioAsset = { id: res.assetId, signedUrl: res.signedUrl, width: res.width, height: res.height };
+      onAssetUploaded(asset);
+      onSelectAsset(asset);
+      onClose();
+    } catch {
+      setError("No pudimos aplicar el diseño. Intenta de nuevo.");
+    } finally {
+      setApplyingId(null);
+    }
+  };
 
   // Esc cierra
   useEffect(() => {
@@ -212,6 +242,37 @@ export function StudioAssetPickerModal({
                       className="mt-3 rounded-md bg-red-50 px-3 py-2 text-xs text-red-700"
                     >
                       ⚠️ {error}
+                    </div>
+                  )}
+
+                  {/* ADR-057 B2 — Diseños prediseñados: aplica uno listo al slot */}
+                  {predesigned.length > 0 && (
+                    <div className="mt-5">
+                      <h3 className="text-brand-purple-dark mb-2 flex items-center gap-1.5 text-xs font-semibold tracking-wider uppercase">
+                        <Sparkles className="text-brand-purple h-3.5 w-3.5" />
+                        Diseños prediseñados
+                      </h3>
+                      <div className="grid grid-cols-3 gap-2">
+                        {predesigned.map((item) => (
+                          <button
+                            key={item.id}
+                            type="button"
+                            onClick={() => handleApplyPredesigned(item)}
+                            disabled={applyingId !== null}
+                            aria-label={`Aplicar el diseño ${item.name} al slot`}
+                            title={item.name}
+                            className="border-brand-purple/20 hover:border-brand-purple focus:border-brand-turquoise focus:ring-brand-turquoise relative aspect-square overflow-hidden rounded-md border-2 transition-all hover:scale-105 focus:ring-2 focus:outline-none disabled:opacity-50"
+                          >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img src={item.imageUrl} alt={item.name} className="h-full w-full object-cover" loading="lazy" />
+                            {applyingId === item.id && (
+                              <div className="bg-brand-purple-dark/40 absolute inset-0 flex items-center justify-center">
+                                <Loader2 className="h-5 w-5 animate-spin text-white" />
+                              </div>
+                            )}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                   )}
 

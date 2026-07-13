@@ -58,7 +58,8 @@ async function main() {
     name: "Separadores para Libros",
     description,
     personalizationKind: "PHOTO_PACK",
-    personalizationSchema: { allowText: false, photoSlots: 1, aspectRatio: "1:1", shape: "rectangle" },
+    // galleryTag: habilita la galería de diseños PREDISEÑADOS en el editor (Fase B2).
+    personalizationSchema: { allowText: false, photoSlots: 1, aspectRatio: "1:1", shape: "rectangle", galleryTag: "separadores" },
     physicalSpecs: basePhysicalSpecs,
     basePrice: 6000 * 100,
     cost: Math.round(6000 * 100 * 0.35),

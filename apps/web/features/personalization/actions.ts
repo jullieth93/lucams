@@ -21,6 +21,7 @@ import { logger } from "@/lib/logger";
 import { rateLimit } from "@/lib/rate-limit";
 import { ownerKey } from "@/lib/rate-limit-keys";
 import { uploadCustomerPhoto } from "@/lib/storage";
+import { getGalleryImageUrl } from "./design-gallery";
 import { prisma } from "@/lib/db";
 import { CreateDraftDesignSchema, SaveCanvasSchema, UploadAssetMetadataSchema } from "./schemas";
 import {
@@ -418,5 +419,83 @@ export async function uploadDesignAssetAction(formData: FormData) {
     const msg = err instanceof Error ? err.message : String(err);
     logger.warn({ event: "design.asset.upload.fail", err: msg }, "uploadCustomerPhoto failed");
     return { ok: false as const, code: "INTERNAL" as const, message: msg };
+  }
+}
+
+// ──────────── Fase B2 — aplicar un diseño PREDISEÑADO a un slot ────────────
+//
+// El cliente elige un diseño de la galería; lo "subimos" como asset del diseño (reusando
+// uploadCustomerPhoto) para que el slot lo trate como cualquier foto (encuadre, finalize, render).
+
+export async function assignPredesignedToDesignAction(input: {
+  designId: string;
+  galleryImageId: string;
+}): Promise<
+  | { ok: true; assetId: string; signedUrl: string; width: number; height: number }
+  | { ok: false; message: string }
+> {
+  const designId = typeof input?.designId === "string" ? input.designId : "";
+  const galleryImageId = typeof input?.galleryImageId === "string" ? input.galleryImageId : "";
+  if (!designId || !galleryImageId) return { ok: false, message: "Datos inválidos." };
+
+  const { customerId, sessionId: anonSession } = await resolveOwner();
+  const sessionId = anonSession ?? (await getOrCreateCartSession());
+  const ownerId = customerId ?? sessionId;
+
+  const rl = await rateLimit(ownerKey("upload_design_asset", ownerId), 30, 600);
+  if (!rl.allowed) return { ok: false, message: "Demasiados intentos. Espera un momento." };
+
+  const design = await getOwnedDesign(designId, { customerId, sessionId });
+  if (!design) return { ok: false, message: "Diseño no encontrado o no autorizado." };
+
+  const url = await getGalleryImageUrl(galleryImageId);
+  if (!url) return { ok: false, message: "Diseño no disponible." };
+
+  // Anti-SSRF: solo se permite bajar la imagen desde NUESTRO storage público (la galería la
+  // llena el admin vía uploadProductImage → bucket propio). Cualquier otra URL se rechaza.
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+  if (!supabaseUrl || !url.startsWith(`${supabaseUrl}/storage/v1/object/public/`)) {
+    return { ok: false, message: "Diseño no disponible." };
+  }
+
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`fetch ${res.status}`);
+    const buffer = Buffer.from(await res.arrayBuffer());
+    const mime = (res.headers.get("content-type") ?? "image/png").split(";")[0].trim();
+    const uploaded = await uploadCustomerPhoto({
+      buffer,
+      originalMimeType: mime,
+      ownerId,
+      designId,
+      productSizeCm: undefined,
+    });
+    const asset = await prisma.designAsset.create({
+      data: {
+        designId,
+        customerId,
+        sessionId,
+        storageUrl: uploaded.path,
+        mimeType: uploaded.mimeType,
+        sizeBytes: uploaded.sizeBytes,
+        width: uploaded.width,
+        height: uploaded.height,
+        exifStripped: uploaded.exifStripped,
+        malwareScanned: false,
+      },
+    });
+    return {
+      ok: true,
+      assetId: asset.id,
+      signedUrl: uploaded.signedUrl,
+      width: uploaded.width,
+      height: uploaded.height,
+    };
+  } catch (err) {
+    logger.warn(
+      { event: "design.predesigned.assign.fail", err: err instanceof Error ? err.message : String(err) },
+      "assignPredesigned failed",
+    );
+    return { ok: false, message: "No pudimos aplicar el diseño." };
   }
 }
