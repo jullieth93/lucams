@@ -230,7 +230,7 @@ export default async function AdminRedirectsPage({ searchParams }: { searchParam
             description={
               hasActiveFilters
                 ? "Prueba quitar algún filtro."
-                : "Usá el form de arriba para crear el primero."
+                : "Usa el formulario de arriba para crear el primero."
             }
           />
         ) : (
@@ -316,7 +316,7 @@ export default async function AdminRedirectsPage({ searchParams }: { searchParam
                           </form>
                           <ConfirmAction
                             action={archiveRedirectAction}
-                            message="¿Archivar este redirect? Dejará de aplicar. Podés restaurarlo después."
+                            message="¿Archivar este redirect? Dejará de aplicar. Puedes restaurarlo después."
                           >
                             <input type="hidden" name="id" value={r.id} />
                             <button

@@ -98,6 +98,8 @@ type StudioEditorProps = {
    * "-DEFAULT" por producto, ahora hay N por size/qty.
    */
   variantId?: string;
+  /** Precio (centavos COP) de la variante elegida — se muestra en la vista previa pre-carrito. */
+  unitPriceCents: number;
   /** ADR-057 B2 — diseños prediseñados aplicables por slot (galería). */
   predesigned?: import("./studio-asset-picker-modal").PredesignedItem[];
   /** ADR-057 Fase D — etiquetas por slot (meses del calendario). */
@@ -114,6 +116,7 @@ export function StudioEditor({
   initialDesignAssets,
   photoSlots,
   variantId,
+  unitPriceCents,
   predesigned = [],
   slotLabels,
   calendarYear,
@@ -714,7 +717,7 @@ export function StudioEditor({
         productName={product.name}
         slotCount={photoSlots}
         sizeCm={productConfig.sizeCm}
-        unitPrice={null /* TODO PR C: precio actual del variant elegido */}
+        unitPrice={unitPriceCents}
         isFinalizing={isFinalizingFlag}
         errorMessage={previewError}
         onEdit={handleClosePreviewModal}

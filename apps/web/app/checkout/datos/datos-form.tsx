@@ -892,7 +892,7 @@ export function DatosForm({
           3. Facturación electrónica
         </h2>
         <p className="text-brand-muted mb-4 text-sm">
-          Si necesitas factura DIAN, marcá la casilla. Si es compra personal, dejala sin marcar.
+          Si necesitas factura DIAN, marca la casilla. Si es compra personal, déjala sin marcar.
         </p>
 
         <label className="text-brand-purple-dark inline-flex items-center gap-2 text-sm font-medium">

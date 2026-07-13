@@ -61,6 +61,20 @@ jobs:
       - name: Lint
         run: pnpm -r lint
 
+      # Guard es-CO: el copy debe ser TUTEO, nunca voseo (mandato de idioma). Falla si
+      # aparece cualquier token de voseo en el código fuente (excluye tests y los scripts
+      # que justamente corrigen voseo).
+      - name: Lint de voseo (es-CO tuteo)
+        run: |
+          if grep -rniE '\b(para vos|a vos|con vos|tenés|podés|querés|hacés|elegí|contá|contanos|contás|usás|generá|creá|marcá|completá|dejala|registrate|corré|ingresá|revisá|configurá|seleccioná)\b' \
+               apps/web packages/db/scripts \
+               --include='*.ts' --include='*.tsx' --include='*.mjs' \
+             | grep -vE '\.test\.|\.integration\.|fix-voseo|check-voseo'; then
+            echo "::error::Se encontró VOSEO en el copy. El mandato es TUTEO es-CO (ej. 'elige' no 'elegí', 'para ti' no 'para vos')."
+            exit 1
+          fi
+          echo "OK: sin voseo."
+
       - name: Build
         run: pnpm --filter web build
 

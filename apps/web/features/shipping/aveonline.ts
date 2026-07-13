@@ -258,7 +258,7 @@ async function resolveDefaultAgentId(): Promise<string> {
   if (agents.length === 0) {
     throw new Error(
       "Aveonline: la cuenta NO tiene agentes (puntos de despacho) registrados. " +
-        "Creá uno en https://app.aveonline.co/ → menú Agentes/Puntos de despacho.",
+        "Crea uno en https://app.aveonline.co/ → menú Agentes/Puntos de despacho.",
     );
   }
   const principal = agents.find((a) => a.principal);

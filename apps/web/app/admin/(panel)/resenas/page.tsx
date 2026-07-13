@@ -414,7 +414,7 @@ export default async function AdminResenasPage({ searchParams }: { searchParams:
                           )}
                           <ConfirmAction
                             action={archiveReviewAction}
-                            message="¿Archivar esta reseña? Dejará de aparecer en la PDP y en home. Podés restaurarla después."
+                            message="¿Archivar esta reseña? Dejará de aparecer en la PDP y en home. Puedes restaurarla después."
                           >
                             <input type="hidden" name="id" value={r.id} />
                             <input type="hidden" name="productSlug" value={r.productSlug} />

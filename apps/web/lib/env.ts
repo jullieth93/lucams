@@ -36,6 +36,9 @@ const PROD_REQUIRED = [
   "WOMPI_INTEGRITY_SECRET",
   "AVEONLINE_USUARIO",
   "AVEONLINE_CLAVE",
+  // Sin este secreto el webhook de Aveonline responde 503 y las órdenes nunca auto-transicionan
+  // (SHIPPED/DELIVERED) ni disparan sus emails → fail-fast en prod para no romper el despacho en silencio.
+  "AVEONLINE_WEBHOOK_SECRET",
   "RESEND_API_KEY",
   "EMAIL_FROM",
   "TURNSTILE_SECRET_KEY",

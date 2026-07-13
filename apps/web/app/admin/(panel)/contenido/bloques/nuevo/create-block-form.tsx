@@ -170,7 +170,7 @@ export function CreateBlockForm({ defaultCategory }: { defaultCategory?: string 
           placeholder={`# Mi bloque\n\nEscribe el contenido aquí. Usa los botones de arriba para formato.\n\nPuedes editarlo después y ver una vista previa en el editor completo.`}
         />
         <p className="text-brand-muted text-xs">
-          Usá los botones del toolbar para dar formato. Puedes editarlo después y ver una vista
+          Usa los botones del toolbar para dar formato. Puedes editarlo después y ver una vista
           previa en el editor completo.
         </p>
         {state?.fieldErrors?.body && (

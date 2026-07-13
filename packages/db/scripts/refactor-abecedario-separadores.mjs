@@ -177,7 +177,7 @@ async function main() {
     slug: "separadores-predisenados",
     name: "Separadores Magnéticos Prediseñados",
     description:
-      "Separadores magnéticos con diseños listos: Van Gogh, paisajes, mandalas, florales, personajes kawaii y más. Tamaño 4×4.2 cm. Elegí los diseños que más te gusten al momento de comprar.",
+      "Separadores magnéticos con diseños listos: Van Gogh, paisajes, mandalas, florales, personajes kawaii y más. Tamaño 4×4.2 cm. Elige los diseños que más te gusten al momento de comprar.",
     personalizationKind: "NONE",
     personalizationSchema: null,
     physicalSpecs: physSpecsSep,

@@ -602,7 +602,7 @@ export function ProductForm({ categories, priceFrom, initialProduct, action, sub
             <Field
               id="premadeSurcharge"
               label="Recargo plantillas premium (%)"
-              hint="0 = sin recargo. Si usás diseños bajo licencia (ej. Disney), 10-15%."
+              hint="0 = sin recargo. Si usas diseños bajo licencia (ej. Disney), 10-15%."
             >
               <Input
                 id="premadeSurcharge"

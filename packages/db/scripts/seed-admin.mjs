@@ -53,8 +53,8 @@ if (desiredEmail) {
 if (users.length === 0) {
   console.error(
     desiredEmail
-      ? `No existe auth.user con email ${desiredEmail}. Primero registrate como cliente desde /registro, después corré este script.`
-      : "auth.users está vacía. Primero registrate como cliente desde /registro.",
+      ? `No existe auth.user con email ${desiredEmail}. Primero regístrate como cliente desde /registro, después corre este script.`
+      : "auth.users está vacía. Primero regístrate como cliente desde /registro.",
   );
   await prisma.$disconnect();
   process.exit(1);
@@ -105,7 +105,7 @@ if (existing) {
 }
 
 console.log("");
-console.log("Listo. Login en /admin/login con el mismo email + password que ya usás como cliente.");
+console.log("Listo. Login en /admin/login con el mismo email + password que ya usas como cliente.");
 
 await prisma.$disconnect();
 process.exit(0);

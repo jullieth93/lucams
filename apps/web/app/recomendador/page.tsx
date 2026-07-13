@@ -34,7 +34,7 @@ export default async function RecomendadorPage() {
             ¿Te ayudamos a elegir?
           </h1>
           <p className="text-brand-purple/80 mt-3 text-base">
-            4 preguntas rápidas y te recomendamos los productos perfectos para vos. Sin spam, sin
+            4 preguntas rápidas y te recomendamos los productos perfectos para ti. Sin spam, sin
             email. Solo magia kawaii ✨
           </p>
         </div>

@@ -680,7 +680,7 @@ const settings = [
     valueType: "TEXT",
     label: "NIT / CC del negocio (remitente)",
     description:
-      "Documento del remitente que Aveonline usa al generar la guía. Si sos persona natural usá tu CC; si tenés sociedad usá el NIT.",
+      "Documento del remitente que Aveonline usa al generar la guía. Si eres persona natural usa tu CC; si tienes sociedad usa el NIT.",
     category: "BUSINESS",
   },
 

@@ -21,7 +21,7 @@ export async function orderDeliveredEmail(data: OrderDeliveredData) {
 <p>Esperamos que te enamore tanto como a nosotros nos enamora hacerlo.</p>
 
 <p style="margin-top:18px;font-size:15px;"><strong>¿Nos cuentas cómo te fue?</strong></p>
-<p>Una reseña nos ayuda muchísimo y nos toma a vos solo 30 segundos.</p>
+<p>Una reseña nos ayuda muchísimo y te toma solo 30 segundos.</p>
 
 ${ctaButton(
   data.publicTrackingToken

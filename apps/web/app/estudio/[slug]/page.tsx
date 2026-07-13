@@ -254,6 +254,8 @@ export default async function EstudioPage({
           }}
           // M.3.b.CAT — variant elegido en PDP, propagado al cart al finalizar
           variantId={selectedVariant?.id}
+          // Precio de la variante elegida (o base) → vista previa pre-carrito.
+          unitPriceCents={selectedVariant?.price ?? product.basePrice}
           templates={templates}
           initialDesignId={initialDesignId}
           initialDesignCanvas={initialDesignCanvas}

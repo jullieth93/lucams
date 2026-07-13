@@ -41,7 +41,23 @@ type ResendEvent = {
   };
 };
 
-function verifySignature(rawBody: string, signatureHeader: string | null): boolean {
+// Tolerancia de reloj para el timestamp Svix (anti-replay). Svix recomienda 5 min.
+const SVIX_TOLERANCE_SEC = 5 * 60;
+
+/**
+ * Verifica la firma Svix de Resend (esquema oficial):
+ *  - secreto `whsec_<base64>` → la clave HMAC son los BYTES base64-decodificados tras el prefijo.
+ *  - contenido firmado = `${svix-id}.${svix-timestamp}.${rawBody}` (no solo el body).
+ *  - header `svix-signature` = lista separada por espacios de `v1,<base64>` (rotación).
+ *  - se rechaza si el timestamp está fuera de la ventana de tolerancia (anti-replay).
+ * Sin secreto: en prod rechaza (fail-closed); en dev permite para testing local con curl.
+ */
+function verifySvixSignature(
+  rawBody: string,
+  svixId: string | null,
+  svixTimestamp: string | null,
+  signatureHeader: string | null,
+): boolean {
   const secret = process.env.RESEND_WEBHOOK_SECRET;
   if (!secret) {
     if (process.env.NODE_ENV === "production") {
@@ -51,15 +67,27 @@ function verifySignature(rawBody: string, signatureHeader: string | null): boole
     // Dev: permitir sin verificación para testing manual con curl
     return true;
   }
-  if (!signatureHeader) return false;
+  if (!svixId || !svixTimestamp || !signatureHeader) return false;
 
-  // Resend usa Svix signature: "v1,<base64-hmac> v1,<base64-hmac>..."
-  // Múltiples firmas para rotación. Cualquiera válida → OK.
-  const expected = createHmac("sha256", secret).update(rawBody).digest("base64");
+  // Anti-replay: el timestamp (epoch segundos) debe estar dentro de la ventana.
+  const ts = Number(svixTimestamp);
+  if (!Number.isFinite(ts)) return false;
+  const nowSec = Math.floor(Date.now() / 1000);
+  if (Math.abs(nowSec - ts) > SVIX_TOLERANCE_SEC) return false;
+
+  // La clave son los bytes del secreto base64 tras `whsec_`.
+  const key = Buffer.from(secret.replace(/^whsec_/, ""), "base64");
+  const signedContent = `${svixId}.${svixTimestamp}.${rawBody}`;
+  const expected = createHmac("sha256", key).update(signedContent).digest("base64");
   const expectedBuf = Buffer.from(expected);
-  return signatureHeader.split(" ").some((sig) => {
-    const [version, value] = sig.split(",");
-    if (version !== "v1" || !value) return false;
+
+  // Cualquiera de las firmas `v1,<sig>` que coincida → válido (soporta rotación).
+  return signatureHeader.split(" ").some((part) => {
+    const comma = part.indexOf(",");
+    if (comma < 0) return false;
+    if (part.slice(0, comma) !== "v1") return false;
+    const value = part.slice(comma + 1);
+    if (!value) return false;
     const sigBuf = Buffer.from(value);
     return sigBuf.length === expectedBuf.length && timingSafeEqual(sigBuf, expectedBuf);
   });
@@ -69,7 +97,14 @@ export async function POST(req: Request): Promise<Response> {
   const rawBody = await req.text();
   const hdrs = await headers();
 
-  if (!verifySignature(rawBody, hdrs.get("svix-signature"))) {
+  if (
+    !verifySvixSignature(
+      rawBody,
+      hdrs.get("svix-id"),
+      hdrs.get("svix-timestamp"),
+      hdrs.get("svix-signature"),
+    )
+  ) {
     logger.warn({ event: "webhook.resend.invalid_signature" });
     return new Response("Invalid signature", { status: 401 });
   }

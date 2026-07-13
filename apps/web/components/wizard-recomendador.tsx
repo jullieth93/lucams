@@ -85,7 +85,7 @@ export function WizardRecomendador({ ocasiones }: { ocasiones: OcasionData[] }) 
               <p className="text-brand-purple text-sm font-semibold">Tu match</p>
               <h2 className="text-brand-purple-dark mt-1 text-xl font-bold">
                 {results.length > 0
-                  ? `Encontramos ${results.length} ${results.length === 1 ? "producto" : "productos"} para vos`
+                  ? `Encontramos ${results.length} ${results.length === 1 ? "producto" : "productos"} para ti`
                   : "No encontramos un match exacto"}
               </h2>
               {results.length === 0 && (

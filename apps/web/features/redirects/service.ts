@@ -147,7 +147,7 @@ function assertAllowedToPath(toPath: string): void {
   if (!isAllowedRedirectDestination(toPath)) {
     throw new RedirectValidationError(
       "toPath",
-      "Destino no permitido. Usá una ruta interna que empiece con '/' " +
+      "Destino no permitido. Usa una ruta interna que empiece con '/' " +
         "(sin '//' ni '\\') o una URL externa completa (https://...).",
     );
   }

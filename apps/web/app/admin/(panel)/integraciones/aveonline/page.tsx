@@ -78,7 +78,7 @@ export default async function AveonlineIntegrationPage({
 
         {!hasSecret && (
           <AdminNotice tone="warning">
-            <strong>AVEONLINE_WEBHOOK_SECRET no configurado.</strong> Generá uno con{" "}
+            <strong>AVEONLINE_WEBHOOK_SECRET no configurado.</strong> Genera uno con{" "}
             <code className="rounded bg-amber-100 px-1.5 py-0.5">openssl rand -hex 32</code> y
             agregalo a <code>apps/web/.env.local</code> antes de registrar el webhook.
           </AdminNotice>

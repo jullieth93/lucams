@@ -157,7 +157,7 @@ export const BillingSchema = z
       return true;
     },
     {
-      message: "Si querés factura, completá tipo de documento, número y razón social",
+      message: "Si quieres factura, completa tipo de documento, número y razón social",
       path: ["wantsInvoice"],
     },
   );

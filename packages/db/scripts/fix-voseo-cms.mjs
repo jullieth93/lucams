@@ -17,7 +17,7 @@
  *     para que la próxima request reciba el texto limpio (vía caché o
  *     no, según unstable_cache + tag invalidation).
  *   - Recordá invalidar caché tras correr: `updateTag("cms")` ya lo
- *     hace cualquier acción admin, pero si querés forzar, reinicia el
+ *     hace cualquier acción admin, pero si quieres forzar, reinicia el
  *     dev server o publicá cualquier bloque para que dispare el tag.
  */
 

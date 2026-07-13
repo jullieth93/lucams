@@ -145,7 +145,7 @@ export type PaginatedStorefrontProducts = {
  * Usa `listStorefrontProducts` (que ya soporta skip+take con page/pageSize)
  * + un `count` separado para calcular totalPages.
  *
- * Si querés un array plano sin paginar (home featured, related), llamá
+ * Si quieres un array plano sin paginar (home featured, related), llama
  * directo a `listStorefrontProducts` con `limit`.
  */
 export async function listStorefrontProductsPaginated(
