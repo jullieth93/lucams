@@ -86,6 +86,10 @@ type StudioEditorProps = {
   variantId?: string;
   /** ADR-057 B2 — diseños prediseñados aplicables por slot (galería). */
   predesigned?: import("./studio-asset-picker-modal").PredesignedItem[];
+  /** ADR-057 Fase D — etiquetas por slot (meses del calendario). */
+  slotLabels?: string[];
+  /** ADR-057 Fase D — año del calendario (para el badge del editor). */
+  calendarYear?: number;
 };
 
 export function StudioEditor({
@@ -97,6 +101,8 @@ export function StudioEditor({
   photoSlots,
   variantId,
   predesigned = [],
+  slotLabels,
+  calendarYear,
 }: StudioEditorProps) {
   const router = useRouter();
   const store = useMemo(() => createStudioStore(), []);
@@ -502,6 +508,12 @@ export function StudioEditor({
         </aside>
 
         <section className="flex flex-1 items-start justify-center p-4 pb-24 lg:p-8 lg:pb-8">
+          {/* ADR-057 Fase D — banner de calendario: año + una foto por mes. */}
+          {calendarYear && (
+            <div className="border-brand-purple/15 bg-brand-cream/60 text-brand-purple-dark mb-3 flex flex-wrap items-center justify-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold">
+              📅 Calendario {calendarYear} · una foto por mes (toca cada mes para elegir tu foto)
+            </div>
+          )}
           <StudioCanvasGrid
             store={store}
             sizeCm={productConfig.sizeCm}
@@ -509,6 +521,7 @@ export function StudioEditor({
             finish={productConfig.finish}
             cornerRadiusPx={productConfig.cornerRadiusPx}
             showRealismGuides={showRealismGuides}
+            slotLabels={slotLabels}
             onSlotClick={handleSlotClick}
             onSlotAdjust={(slotIndex) => setAdjustSlotIndex(slotIndex)}
             onTextEdit={(slotIndex, textLayerId) => setTextEditTarget({ slotIndex, textLayerId })}

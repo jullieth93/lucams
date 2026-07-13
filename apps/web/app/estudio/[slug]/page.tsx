@@ -177,6 +177,22 @@ export default async function EstudioPage({
       : null;
   const predesigned = galleryTag ? await listGalleryImages(galleryTag) : [];
 
+  // ADR-057 Fase D — Calendario: slots etiquetados por mes (Ene…Dic) + año, para que el cliente
+  // sepa qué foto va en qué mes (hoy son 12 fotos sueltas sin etiqueta).
+  const MONTHS_ES = [
+    "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
+    "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
+  ];
+  const isCalendarMonth = product.personalizationKind === "CALENDAR_PHOTO_MONTH";
+  const slotLabels =
+    isCalendarMonth && (mergedSchema as { monthLabels?: boolean }).monthLabels
+      ? MONTHS_ES.slice(0, photoConfig.photoSlots)
+      : undefined;
+  const calendarYear =
+    isCalendarMonth && typeof (mergedSchema as { year?: unknown }).year === "number"
+      ? (mergedSchema as { year: number }).year
+      : undefined;
+
   // Cargar plantillas activas del kind (globales + product-specific).
   // Filtra por aspect ratio del producto físico — solo plantillas cuyo stage
   // matchee el aspect físico aparecen en el sidebar (M.3.b.B.4 aterrizado).
@@ -244,6 +260,8 @@ export default async function EstudioPage({
           initialDesignAssets={initialDesignAssets}
           photoSlots={photoConfig.photoSlots}
           predesigned={predesigned}
+          slotLabels={slotLabels}
+          calendarYear={calendarYear}
         />
       </main>
     </div>

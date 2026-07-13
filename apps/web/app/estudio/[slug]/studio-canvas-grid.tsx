@@ -47,6 +47,8 @@ type StudioCanvasGridProps = {
   cornerRadiusPx?: number;
   /** M.3.b.B.1 — toggle global para bleed + safe guides. */
   showRealismGuides?: boolean;
+  /** ADR-057 Fase D — etiquetas por slot (ej. meses del calendario). */
+  slotLabels?: string[];
   onSlotClick: (slotIndex: number) => void;
   /** M.3.b.B.3 — abrir modal ajustar foto (filtros) para un slot lleno. */
   onSlotAdjust?: (slotIndex: number) => void;
@@ -62,6 +64,7 @@ export function StudioCanvasGrid({
   finish,
   cornerRadiusPx,
   showRealismGuides,
+  slotLabels,
   onSlotClick,
   onSlotAdjust,
   onTextEdit,
@@ -216,6 +219,7 @@ export function StudioCanvasGrid({
                 displayHeight={slotHeight}
                 isSelected={selectedSlotIndex === slot.slotIndex}
                 totalSlots={canvasData.slotCount}
+                slotLabel={slotLabels?.[slot.slotIndex]}
                 sizeCm={sizeCm}
                 shape={shape}
                 finish={finish}

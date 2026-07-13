@@ -69,6 +69,9 @@ type StudioSlotProps = {
   displayHeight?: number;
   isSelected: boolean;
   totalSlots: number;
+  /** ADR-057 Fase D — etiqueta del slot (ej. "Enero" para calendarios). Si se pasa, reemplaza
+   * "Imán #N" para que el cliente sepa qué foto va en qué mes. */
+  slotLabel?: string;
   /** M.3.b.A2.5 — Tamaño físico del imán (ej "5×5 cm") leído del product.personalizationSchema.sizeCm. */
   sizeCm?: string;
   /** M.3.b.B.1 — forma física del imán para overlay realismo. */
@@ -108,6 +111,7 @@ function StudioSlotImpl({
   displayHeight,
   isSelected,
   totalSlots,
+  slotLabel,
   sizeCm,
   shape,
   finish,
@@ -552,9 +556,9 @@ function StudioSlotImpl({
                 {isDropping ? "¡Soltala acá! 💜" : "Pasame una foto"}
               </span>
 
-              {/* Indicador del slot (sutil, sin gritar) */}
+              {/* Indicador del slot: mes (calendario) o "Imán #N". */}
               <span className="text-brand-muted text-[9px] font-medium tracking-wider uppercase">
-                Imán #{slotState.slotIndex + 1}
+                {slotLabel ?? `Imán #${slotState.slotIndex + 1}`}
               </span>
             </motion.div>
           )}
@@ -568,13 +572,13 @@ function StudioSlotImpl({
           />
         )}
 
-        {/* Número del slot top-left chiquito (badge mínimo, NO tapa la foto) */}
+        {/* Badge top-left: mes (calendario, abreviado) o número de slot. NO tapa la foto. */}
         {slotState.assetUrl && (
           <div
-            className="bg-brand-purple/80 absolute top-1.5 left-1.5 flex h-5 min-w-[1.25rem] items-center justify-center rounded-full px-1 text-[10px] font-bold text-white shadow-sm"
+            className="bg-brand-purple/80 absolute top-1.5 left-1.5 flex h-5 min-w-[1.25rem] items-center justify-center rounded-full px-1.5 text-[10px] font-bold text-white shadow-sm"
             aria-hidden
           >
-            {slotState.slotIndex + 1}
+            {slotLabel ? slotLabel.slice(0, 3) : slotState.slotIndex + 1}
           </div>
         )}
 
