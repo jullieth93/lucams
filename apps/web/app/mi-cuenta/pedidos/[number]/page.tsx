@@ -20,8 +20,10 @@ import { prisma } from "@/lib/db";
 import { getCurrentCustomer } from "@/lib/auth";
 import { formatCOP } from "@/lib/format";
 import { getRetractableItems } from "@/features/retract/service";
+import { getWarrantyItems } from "@/features/warranty/service";
 import { orderStatusLabel } from "@/features/orders/order-status-display";
 import { RetractControl } from "./retract-control";
+import { WarrantyControl } from "./warranty-control";
 
 export const metadata: Metadata = {
   title: "Detalle de mi pedido",
@@ -102,6 +104,13 @@ export default async function CustomerPedidoDetallePage({
       ? await getRetractableItems(order.id, { customerId: session.customer.id })
       : [];
   const retractByItem = new Map(retractable.map((r) => [r.orderItemId, r]));
+
+  // Garantía (Ley 1480) — elegibilidad por item (solo si el pedido fue entregado).
+  const warrantyItems =
+    order.status === "DELIVERED"
+      ? await getWarrantyItems(order.id, session.customer.id)
+      : [];
+  const warrantyByItem = new Map(warrantyItems.map((w) => [w.orderItemId, w]));
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -194,6 +203,9 @@ export default async function CustomerPedidoDetallePage({
                     {it.variant.name} · {it.qty} × {formatCOP(it.unitPrice)}
                   </div>
                   {retractByItem.has(it.id) && <RetractControl item={retractByItem.get(it.id)!} />}
+                  {warrantyByItem.has(it.id) && (
+                    <WarrantyControl item={warrantyByItem.get(it.id)!} />
+                  )}
                 </div>
                 <div className="text-brand-purple-dark flex-shrink-0 text-right text-sm font-semibold tabular-nums">
                   {formatCOP(it.unitPrice * it.qty)}

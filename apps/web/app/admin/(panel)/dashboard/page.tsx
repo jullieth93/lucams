@@ -33,6 +33,7 @@ import {
   AlertTriangle,
   Star,
   LifeBuoy,
+  ShieldCheck,
   Shapes,
   LayoutTemplate,
 } from "lucide-react";
@@ -48,6 +49,7 @@ import { getCurrentAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { getInventorySummary } from "@/features/products/inventory-service";
 import { countOpenSupportTickets } from "@/features/support/admin-service";
+import { countOpenWarrantyClaims } from "@/features/warranty/service";
 
 export const metadata: Metadata = {
   title: "Dashboard",
@@ -75,6 +77,7 @@ export default async function AdminDashboardPage() {
     subCategoryCount,
     inventorySummary,
     openTickets,
+    openWarranty,
   ] = await Promise.all([
     prisma.customer.count({ where: { deletedAt: null } }),
     prisma.order.count({ where: pendingOrdersWhere }),
@@ -94,6 +97,7 @@ export default async function AdminDashboardPage() {
     // los hardcoded `0` que mentían sobre stock y reclamos.
     getInventorySummary(),
     countOpenSupportTickets(),
+    countOpenWarrantyClaims(),
   ]);
 
   // Lucy 2026-06-26 hotfix #2 P0-12: el saludo antes mostraba "Hola, crittan01"
@@ -106,7 +110,7 @@ export default async function AdminDashboardPage() {
   // pedidos pendientes pago + variants agotadas + reseñas sin moderar.
   // hasAlerts dispara el chip "Atención" en el hero.
   const opsAlerts =
-    pendingOrderCount + inventorySummary.outCount + pendingReviews + openTickets;
+    pendingOrderCount + inventorySummary.outCount + pendingReviews + openTickets + openWarranty;
   const hasAlerts = opsAlerts > 0;
 
   return (
@@ -210,6 +214,15 @@ export default async function AdminDashboardPage() {
               description={openTickets > 0 ? "Clientes esperan respuesta" : "Sin tickets abiertos"}
               tone="turquoise"
               urgent={openTickets > 0}
+            />
+            <OpsCard
+              href="/admin/garantias"
+              icon={ShieldCheck}
+              label="Reclamos de garantía"
+              value={openWarranty}
+              description={openWarranty > 0 ? "Requieren diagnóstico" : "Sin reclamos activos"}
+              tone="purple"
+              urgent={openWarranty > 0}
             />
           </div>
         </section>
