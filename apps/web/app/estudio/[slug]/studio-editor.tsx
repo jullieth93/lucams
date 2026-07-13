@@ -43,7 +43,20 @@ import { StudioPhotoAdjustModal } from "./studio-photo-adjust-modal";
 import { StudioPreviewModal } from "./studio-preview-modal";
 import { StudioTextEditorModal } from "./studio-text-editor-modal";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { Sparkles } from "lucide-react";
+import { Sparkles, Box, X } from "lucide-react";
+import nextDynamic from "next/dynamic";
+import type { Magnet3D } from "./fridge-3d-view";
+
+// Vista 3D en nevera: se carga SOLO client-side (necesita WebGL/window) y diferida
+// (three.js es pesado) → no infla el bundle del editor hasta que el cliente la abre.
+const FridgeView3D = nextDynamic(() => import("./fridge-3d-view"), {
+  ssr: false,
+  loading: () => (
+    <div className="text-brand-muted flex h-full items-center justify-center text-sm">
+      Cargando la nevera 3D…
+    </div>
+  ),
+});
 import { createStudioStore } from "./lib/store";
 import type { CanvasData, CanvasDataV2, StudioAsset, StudioProduct, StudioTemplate } from "./types";
 import { ensureCanvasV2 } from "./lib/canvas-migrate";
@@ -136,6 +149,9 @@ export function StudioEditor({
     textLayerId: string;
   } | null>(null);
   const slotStagesRef = useRef<Map<number, Konva.Stage | null>>(new Map());
+  // P1.4 — Vista 3D en nevera. null = cerrada; array = imanes texturizados a mostrar.
+  const [fridge3D, setFridge3D] = useState<Magnet3D[] | null>(null);
+  const [fridge3DCols, setFridge3DCols] = useState(1);
 
   // M.3.b.A2.5 — Lee `sizeCm` del producto para badge visual en cada slot.
   // Producto config viene como JSON unknown, parsePhotoProductConfig hace
@@ -309,6 +325,39 @@ export function StudioEditor({
       });
     }
   }, [store, productConfig.shape]);
+
+  // P1.4 — Abrir la vista 3D: captura un snapshot por slot recortado a la silueta física
+  // (transparente afuera) y lo pasa como textura a la nevera 3D. Si la captura falla, no
+  // rompemos el Estudio — solo no abrimos el 3D.
+  const handleOpen3D = useCallback(async () => {
+    const state = store.getState();
+    if (!state.canvasData) return;
+    try {
+      const textures = await buildMagnetTextures(
+        state.canvasData,
+        slotStagesRef.current,
+        productConfig.shape,
+      );
+      setFridge3DCols(state.canvasData.gridLayout.cols);
+      setFridge3D(textures);
+    } catch (err) {
+      state.setAutoSaveStatus({
+        kind: "error",
+        message: "No pudimos abrir la vista 3D. Intenta de nuevo.",
+      });
+      void err;
+    }
+  }, [store, productConfig.shape]);
+
+  // Cerrar la vista 3D con Escape (a11y).
+  useEffect(() => {
+    if (fridge3D === null) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setFridge3D(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [fridge3D]);
 
   // ──────────── Step 2: Confirmar → upload + add to cart + redirect ────────────
   //
@@ -531,6 +580,47 @@ export function StudioEditor({
           />
         </section>
       </div>
+
+      {/* P1.4 — Botón flotante "Ver en 3D" (diferenciador). Centro inferior para no chocar
+          con el FAB de Editar (izq) ni el de ¡Listo! (der) en mobile. */}
+      <button
+        type="button"
+        onClick={handleOpen3D}
+        aria-label="Ver tus imanes en una nevera 3D"
+        className="bg-brand-purple ring-brand-purple/25 fixed bottom-4 left-1/2 z-30 inline-flex h-12 -translate-x-1/2 items-center gap-2 rounded-full px-5 text-sm font-bold text-white shadow-xl ring-4 transition-transform hover:scale-105 active:scale-95"
+      >
+        <Box className="h-5 w-5" />
+        <span>Ver en 3D</span>
+      </button>
+
+      {/* P1.4 — Modal de la vista 3D en nevera (lazy, client-only). */}
+      {fridge3D !== null && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Vista 3D de tus imanes en la nevera"
+          className="bg-brand-purple-dark/85 fixed inset-0 z-50 flex flex-col backdrop-blur-sm"
+        >
+          <div className="flex items-center justify-between px-4 py-3 text-white sm:px-6">
+            <span className="font-display text-lg font-bold">🧊 Tus imanes en la nevera</span>
+            <button
+              type="button"
+              onClick={() => setFridge3D(null)}
+              aria-label="Cerrar vista 3D"
+              autoFocus
+              className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/15 text-white transition-colors hover:bg-white/25 focus:ring-2 focus:ring-white focus:outline-none"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+          <div className="relative flex-1">
+            <FridgeView3D magnets={fridge3D} cols={fridge3DCols} />
+            <p className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-black/40 px-3 py-1.5 text-center text-xs text-white">
+              Arrastra para girar · rueda o pellizca para acercar
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* A2.8 — FAB mobile + Sheet drawer bottom para la sidebar */}
       <Sheet open={mobileSheetOpen} onOpenChange={setMobileSheetOpen}>
@@ -875,6 +965,57 @@ async function buildCompositedPreview(
   }
 
   return compositeCanvas.toDataURL("image/png");
+}
+
+// P1.4 — Genera una textura PNG por slot para la vista 3D: el snapshot del imán recortado a su
+// silueta física (transparente afuera), para que en la nevera 3D cada imán tenga su forma real
+// (rectángulo/corazón/círculo) y no un rectángulo. Reusa buildShapePath (misma silueta que el
+// preview 2D). Devuelve, además, la proporción física para escalar el plano en la escena.
+async function buildMagnetTextures(
+  canvasData: CanvasDataV2,
+  stages: Map<number, Konva.Stage | null>,
+  shape?: "rectangle" | "circle" | "heart" | "custom",
+): Promise<Magnet3D[]> {
+  const { unitTemplate, slots } = canvasData;
+  const texW = 512;
+  const texH = Math.max(
+    64,
+    Math.round(512 * (unitTemplate.stage.height / unitTemplate.stage.width)),
+  );
+  const out: Magnet3D[] = [];
+  for (const slot of slots) {
+    const stage = stages.get(slot.slotIndex);
+    if (!stage) continue;
+    const slotDataUrl = stage.toDataURL({ pixelRatio: 1, mimeType: "image/png" });
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        const c = document.createElement("canvas");
+        c.width = texW;
+        c.height = texH;
+        const ctx = c.getContext("2d");
+        if (!ctx) {
+          reject(new Error("No se pudo crear contexto canvas para textura 3D"));
+          return;
+        }
+        // Recorte a la silueta física → transparencia fuera (sin fondo).
+        const path = buildShapePath(shape, 0, 0, texW, texH);
+        ctx.save();
+        ctx.clip(path);
+        ctx.drawImage(img, 0, 0, texW, texH);
+        ctx.restore();
+        resolve(c.toDataURL("image/png"));
+      };
+      img.onerror = () => reject(new Error("No se pudo cargar snapshot del slot para 3D"));
+      img.src = slotDataUrl;
+    });
+    out.push({
+      dataUrl,
+      wRatio: unitTemplate.stage.width,
+      hRatio: unitTemplate.stage.height,
+    });
+  }
+  return out;
 }
 
 // ──────────────────────────────────────────────────────────────────
