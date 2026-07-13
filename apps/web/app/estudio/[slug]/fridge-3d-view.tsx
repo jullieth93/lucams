@@ -4,15 +4,21 @@
  * FridgeView3D — vista previa 3D del pack de imanes pegados en una nevera (ADR-057 · P1.4).
  *
  * El "Diferenciador #1" prometido en CLAUDE.md: además del editor 2D, el cliente ve su diseño
- * como imanes REALES sobre una nevera kawaii, que puede girar/acercar. La textura de cada imán
- * es el snapshot del slot correspondiente (dataURL PNG con transparencia → respeta la silueta
- * física: rectángulo/corazón/círculo).
+ * como imanes REALES sobre una nevera, que puede girar/acercar. La textura de cada imán es el
+ * snapshot del slot correspondiente (dataURL PNG con transparencia → respeta la silueta física:
+ * rectángulo/corazón/círculo).
+ *
+ * Realismo (Lucy 2026-07-13 "una nevera más real, más grande"):
+ *  - Nevera GRANDE de dos puertas (freezer arriba + refrigerador abajo), proporción alta y
+ *    realista, cuerpo redondeado con leve brillo de electrodoméstico, manijas verticales y patas.
+ *  - Los imanes son PEQUEÑOS y se agrupan en la puerta (como imanes de verdad), no cubren toda
+ *    la superficie. La nevera es de tamaño fijo (no crece con la cantidad de imanes).
  *
  * Restricciones respetadas:
  *  - CSP estricta: CERO assets externos (nada de Environment/HDR/GLTF/fuentes de CDN de drei).
- *    Solo luces + geometría procedural + texturas dataURL inline. Todo self-contained.
- *  - Se monta SOLO client-side (necesita WebGL/window) → se importa con dynamic ssr:false.
- *  - Si el navegador no soporta WebGL, cae a un mensaje amable (no rompe el Estudio).
+ *    Solo luces + geometría procedural + texturas dataURL inline.
+ *  - Se monta SOLO client-side (WebGL/window) → se importa con dynamic ssr:false.
+ *  - Sin WebGL → mensaje amable (no rompe el Estudio).
  */
 
 import { Suspense, useMemo } from "react";
@@ -33,6 +39,17 @@ type FridgeView3DProps = {
   magnets: Magnet3D[];
   cols: number;
 };
+
+// ── Nevera de tamaño FIJO (no depende de la cantidad de imanes) ──
+const FRIDGE_W = 4.2;
+const FRIDGE_H = 7.4;
+const FRIDGE_D = 1.35;
+const FREEZER_FRAC = 0.3; // 30% superior = freezer
+const DOOR_Z = FRIDGE_D / 2; // frente del cuerpo
+// Región de la puerta del refrigerador (abajo) donde se agrupan los imanes.
+const MAGNET_REGION_W = 2.9;
+const MAGNET_REGION_H = 3.0;
+const MAGNET_REGION_CY = -FRIDGE_H * 0.06; // centro vertical del clúster (parte alta de la puerta)
 
 /** Un imán: plano texturizado con alphaTest para bordes nítidos según la silueta. */
 function Magnet({
@@ -58,7 +75,7 @@ function Magnet({
         map-anisotropy={8}
         transparent
         alphaTest={0.5}
-        roughness={0.55}
+        roughness={0.5}
         metalness={0}
         side={THREE.FrontSide}
       />
@@ -66,100 +83,161 @@ function Magnet({
   );
 }
 
-/** La nevera: cuerpo redondeado color crema + manija + una línea de puerta. */
-function Fridge({ width, height }: { width: number; height: number }) {
-  const depth = 1.1;
+/** Una puerta: panel ligeramente saliente + manija vertical. */
+function Door({
+  width,
+  height,
+  centerY,
+  handleTop,
+}: {
+  width: number;
+  height: number;
+  centerY: number;
+  handleTop: boolean;
+}) {
+  const handleH = height * 0.62;
+  const handleY = handleTop ? centerY - height * 0.12 : centerY + height * 0.1;
+  return (
+    <group>
+      {/* Panel de la puerta, apenas saliente del cuerpo */}
+      <RoundedBox
+        args={[width, height, 0.12]}
+        radius={0.08}
+        smoothness={5}
+        position={[0, centerY, DOOR_Z + 0.02]}
+        castShadow
+        receiveShadow
+      >
+        <meshStandardMaterial color="#FDFAF6" roughness={0.28} metalness={0.16} />
+      </RoundedBox>
+      {/* Manija vertical (lado derecho de la puerta) */}
+      <RoundedBox
+        args={[0.11, handleH, 0.11]}
+        radius={0.05}
+        smoothness={4}
+        position={[width / 2 - 0.34, handleY, DOOR_Z + 0.14]}
+        castShadow
+      >
+        <meshStandardMaterial color="#B9A6DE" roughness={0.25} metalness={0.5} />
+      </RoundedBox>
+    </group>
+  );
+}
+
+/** La nevera de dos puertas: cuerpo + freezer + refrigerador + patas. */
+function Fridge() {
+  const freezerH = FRIDGE_H * FREEZER_FRAC;
+  const fridgeH = FRIDGE_H * (1 - FREEZER_FRAC) - 0.06; // -gap
+  const gapY = FRIDGE_H / 2 - freezerH - 0.03;
+  const freezerCY = FRIDGE_H / 2 - freezerH / 2;
+  const fridgeCY = -FRIDGE_H / 2 + fridgeH / 2;
+  const doorW = FRIDGE_W * 0.94;
   return (
     <group>
       {/* Cuerpo */}
-      <RoundedBox args={[width, height, depth]} radius={0.18} smoothness={6} receiveShadow castShadow>
-        <meshStandardMaterial color="#FBF3EA" roughness={0.35} metalness={0.08} />
+      <RoundedBox
+        args={[FRIDGE_W, FRIDGE_H, FRIDGE_D]}
+        radius={0.22}
+        smoothness={6}
+        castShadow
+        receiveShadow
+      >
+        <meshStandardMaterial color="#F3ECF6" roughness={0.35} metalness={0.1} />
       </RoundedBox>
-      {/* Línea de la puerta (freezer arriba) */}
-      <mesh position={[0, height * 0.28, depth / 2 + 0.001]}>
-        <planeGeometry args={[width * 0.98, 0.03]} />
-        <meshStandardMaterial color="#E6DAF0" roughness={0.6} />
+      {/* Línea/sombra de separación entre puertas */}
+      <mesh position={[0, gapY, DOOR_Z + 0.015]}>
+        <planeGeometry args={[doorW, 0.06]} />
+        <meshStandardMaterial color="#D8C9EA" roughness={0.7} />
       </mesh>
-      {/* Manijas */}
-      {[height * 0.02, height * 0.42].map((y, i) => (
-        <RoundedBox
-          key={i}
-          args={[0.09, i === 0 ? height * 0.34 : height * 0.16, 0.09]}
-          radius={0.04}
-          smoothness={4}
-          position={[-width / 2 + 0.28, i === 0 ? -y : y, depth / 2 + 0.06]}
-          castShadow
-        >
-          <meshStandardMaterial color="#C9B8E6" roughness={0.3} metalness={0.3} />
-        </RoundedBox>
+      {/* Freezer (arriba, manija abajo) */}
+      <Door width={doorW} height={freezerH - 0.08} centerY={freezerCY} handleTop />
+      {/* Refrigerador (abajo, manija arriba) */}
+      <Door width={doorW} height={fridgeH - 0.08} centerY={fridgeCY} handleTop={false} />
+      {/* Patas */}
+      {[-FRIDGE_W / 2 + 0.3, FRIDGE_W / 2 - 0.3].map((x, i) => (
+        <mesh key={i} position={[x, -FRIDGE_H / 2 - 0.12, 0]} castShadow>
+          <cylinderGeometry args={[0.12, 0.12, 0.24, 16]} />
+          <meshStandardMaterial color="#4A445A" roughness={0.6} metalness={0.3} />
+        </mesh>
       ))}
     </group>
   );
 }
 
-function Scene({ magnets, cols }: FridgeView3DProps) {
-  // Layout: cada imán escala a un ancho base; alto según su aspect. Grid centrado.
-  const layout = useMemo(() => {
+function Magnets({ magnets, cols }: FridgeView3DProps) {
+  const items = useMemo(() => {
     const rows = Math.max(1, Math.ceil(magnets.length / cols));
-    const baseW = 0.62; // ancho de un imán en unidades de escena
-    const gap = 0.14;
-    const items = magnets.map((m, i) => {
-      const w = baseW;
-      const h = baseW * (m.hRatio / m.wRatio);
+    // Tamaño de celda para que TODO el clúster entre en la región de la puerta.
+    const cellW = MAGNET_REGION_W / cols;
+    const cellH = MAGNET_REGION_H / rows;
+    const gap = 0.06;
+    return magnets.map((m, i) => {
+      const aspect = m.hRatio / m.wRatio;
+      // El imán entra en la celda respetando su proporción física.
+      let w = cellW - gap;
+      let h = w * aspect;
+      if (h > cellH - gap) {
+        h = cellH - gap;
+        w = h / aspect;
+      }
       const col = i % cols;
       const row = Math.floor(i / cols);
-      return { m, w, h, col, row };
+      const x = (col - (cols - 1) / 2) * cellW;
+      const y = MAGNET_REGION_CY + ((rows - 1) / 2 - row) * cellH;
+      return { m, w, h, x, y };
     });
-    const maxH = Math.max(...items.map((it) => it.h), baseW);
-    const gridW = cols * baseW + (cols - 1) * gap;
-    const gridH = rows * maxH + (rows - 1) * gap;
-    return { items, rows, baseW, gap, maxH, gridW, gridH };
   }, [magnets, cols]);
-
-  // La nevera envuelve la grilla con margen.
-  const fridgeW = Math.max(3.2, layout.gridW + 1.4);
-  const fridgeH = Math.max(4.2, layout.gridH + 1.8);
-  const zFront = 1.1 / 2 + 0.03; // frente de la nevera + pelín
 
   return (
     <>
-      <ambientLight intensity={0.75} />
+      {items.map(({ m, w, h, x, y }, i) => (
+        <Magnet
+          key={i}
+          dataUrl={m.dataUrl}
+          width={w}
+          height={h}
+          position={[x, y, DOOR_Z + 0.11]}
+        />
+      ))}
+    </>
+  );
+}
+
+function Scene({ magnets, cols }: FridgeView3DProps) {
+  return (
+    <>
+      <ambientLight intensity={0.72} />
       <directionalLight
-        position={[3, 5, 6]}
+        position={[4, 7, 8]}
         intensity={1.5}
         castShadow
-        shadow-mapSize={[1024, 1024]}
+        shadow-mapSize={[2048, 2048]}
       />
-      <directionalLight position={[-4, 2, 3]} intensity={0.4} color="#E85B9F" />
+      <directionalLight position={[-5, 3, 4]} intensity={0.35} color="#E85B9F" />
 
       <Center>
         <group>
-          <Fridge width={fridgeW} height={fridgeH} />
-          {layout.items.map(({ m, w, h, col, row }, i) => {
-            const x = (col - (cols - 1) / 2) * (layout.baseW + layout.gap);
-            const y = ((layout.rows - 1) / 2 - row) * (layout.maxH + layout.gap);
-            return (
-              <Magnet
-                key={i}
-                dataUrl={m.dataUrl}
-                width={w}
-                height={h}
-                position={[x, y, zFront]}
-              />
-            );
-          })}
+          <Fridge />
+          <Magnets magnets={magnets} cols={cols} />
         </group>
       </Center>
 
-      <ContactShadows position={[0, -fridgeH / 2 - 0.05, 0]} opacity={0.35} blur={2.2} scale={12} far={5} />
+      <ContactShadows
+        position={[0, -FRIDGE_H / 2 - 0.36, 0]}
+        opacity={0.4}
+        blur={2.4}
+        scale={16}
+        far={6}
+      />
       <OrbitControls
         enablePan={false}
         autoRotate
-        autoRotateSpeed={0.9}
-        minPolarAngle={Math.PI / 4}
-        maxPolarAngle={Math.PI / 1.8}
-        minDistance={4}
-        maxDistance={14}
+        autoRotateSpeed={0.8}
+        minPolarAngle={Math.PI / 5}
+        maxPolarAngle={Math.PI / 1.9}
+        minDistance={6}
+        maxDistance={22}
+        target={[0, 0, 0]}
       />
     </>
   );
@@ -177,7 +255,7 @@ export default function FridgeView3D({ magnets, cols }: FridgeView3DProps) {
     <Canvas
       shadows
       dpr={[1, 2]}
-      camera={{ position: [0, 0.5, 9], fov: 42 }}
+      camera={{ position: [0, 0.4, 13.5], fov: 40 }}
       gl={{ preserveDrawingBuffer: false, antialias: true }}
       style={{ width: "100%", height: "100%" }}
     >
