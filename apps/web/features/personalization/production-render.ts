@@ -47,6 +47,7 @@ type Slot = {
   assetId: string | null;
   photoTransform?: PhotoTransform;
   filter?: PhotoFilterPreset | null;
+  textOverrides?: Record<string, { text?: string }>;
 };
 
 export class RenderNeedsKonvaError extends Error {
@@ -96,9 +97,12 @@ function assertServerRenderable(unit: UnitTemplate, slots: Slot[]): void {
       continue;
     }
     if (l.type === "text") {
-      const t = typeof l.text === "string" ? l.text.trim() : "";
-      if (t.length > 0) throw new RenderNeedsKonvaError("text layer con contenido");
-      continue; // texto vacío → ignorable
+      const base = typeof l.text === "string" ? l.text.trim() : "";
+      // Un texto-base vacío PERO con override del cliente (caption editado) SÍ tiene contenido →
+      // no es "solo-foto" (evita que sharp lo dibuje sin el caption; hallazgo revisión A1b).
+      const overridden = slots.some((s) => (s.textOverrides?.[l.id]?.text ?? "").trim().length > 0);
+      if (base.length > 0 || overridden) throw new RenderNeedsKonvaError("text layer con contenido");
+      continue; // texto vacío y sin override → ignorable
     }
     throw new RenderNeedsKonvaError(`capa ${l.type} (marco)`);
   }

@@ -115,6 +115,27 @@ describe("renderProductionSlotsCanvas — texto + marco (ADR-057 Fase A1b)", () 
     );
   });
 
+  it("marco SVG (fuentes horneadas) → NEEDS_KONVA (cliente rasteriza fiel)", async () => {
+    const unit = { ...baseUnit, layers: [...baseUnit.layers, { id: "f", type: "asset", src: "/templates/ig_post.svg" }] };
+    await expectFallback(
+      renderProductionSlotsCanvas({ unitTemplate: unit, slots: [{ slotIndex: 0, assetId: "a0" }], shape: "rectangle", loadAsset: async () => fakePhoto(800, 800) }),
+    );
+  });
+
+  it("capa no soportada (shape) → NEEDS_KONVA (no dibuja de menos)", async () => {
+    const unit = { ...baseUnit, layers: [...baseUnit.layers, { id: "s", type: "shape", shape: "star" }] };
+    await expectFallback(
+      renderProductionSlotsCanvas({ unitTemplate: unit, slots: [{ slotIndex: 0, assetId: "a0" }], shape: "rectangle", loadAsset: async () => fakePhoto(800, 800) }),
+    );
+  });
+
+  it("texto multilínea → NEEDS_KONVA (Konva envuelve; canvas no)", async () => {
+    const unit = { version: 1 as const, stage, layers: [{ id: "bg", type: "background", color: "#fff" }, photoLayer, { id: "t", type: "text", text: "linea1\nlinea2", fontSize: 30 }] };
+    await expectFallback(
+      renderProductionSlotsCanvas({ unitTemplate: unit, slots: [{ slotIndex: 0, assetId: "a0", photoTransform: { offsetX: 0, offsetY: 0, scale: 1 } }], shape: "rectangle", loadAsset: async () => fakePhoto(800, 800) }),
+    );
+  });
+
   it("heart/circle: cubre el stage y OMITE el texto (igual que el editor)", async () => {
     const unit = { version: 1 as const, stage, layers: [{ id: "bg", type: "background", color: "#fff" }, photoLayer, { id: "cap", type: "text", text: "no debe salir" }] };
     const bufs = await renderProductionSlotsCanvas({

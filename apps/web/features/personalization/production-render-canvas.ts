@@ -15,21 +15,37 @@
 import "server-only";
 import path from "node:path";
 import fs from "node:fs";
-import { createCanvas, GlobalFonts, Image, type SKRSContext2D } from "@napi-rs/canvas";
+import type { SKRSContext2D } from "@napi-rs/canvas";
 import { RenderNeedsKonvaError, type LoadAssetBytes } from "./production-render";
 
 const PRODUCTION_SCALE = 3;
 const MAX_STAGE_DIM = 3000;
 
+// ── @napi-rs/canvas se carga LAZY (revisión A1b) ────────────────────────────
+// Es un módulo NATIVO. Importarlo en el top haría que un binario de plataforma faltante (ej. en
+// un runtime de Vercel inesperado) tumbe TODO el módulo — y con él el Estudio. Cargándolo dentro
+// del render, un fallo se convierte en RenderNeedsKonvaError → fallback al PNG del cliente.
+type CanvasMod = typeof import("@napi-rs/canvas");
+let _mod: CanvasMod | null = null;
+async function loadCanvas(): Promise<CanvasMod> {
+  if (_mod) return _mod;
+  try {
+    _mod = await import("@napi-rs/canvas");
+    return _mod;
+  } catch {
+    throw new RenderNeedsKonvaError("@napi-rs/canvas no disponible en runtime");
+  }
+}
+
 // ── Fuentes de marca (una vez por proceso) ──────────────────────────────────
 let fontsReady: boolean | null = null;
-function ensureFonts(): boolean {
+function ensureFonts(mod: CanvasMod): boolean {
   if (fontsReady !== null) return fontsReady;
   try {
     const dir = path.join(process.cwd(), "assets", "fonts");
     const ok =
-      GlobalFonts.registerFromPath(path.join(dir, "Fredoka.ttf"), "Fredoka") &&
-      GlobalFonts.registerFromPath(path.join(dir, "Inter.ttf"), "Inter");
+      mod.GlobalFonts.registerFromPath(path.join(dir, "Fredoka.ttf"), "Fredoka") &&
+      mod.GlobalFonts.registerFromPath(path.join(dir, "Inter.ttf"), "Inter");
     fontsReady = Boolean(ok);
   } catch {
     fontsReady = false;
@@ -64,17 +80,20 @@ function roundRectPath(ctx: SKRSContext2D, x: number, y: number, w: number, h: n
   ctx.closePath();
 }
 
-async function decodeImage(bytes: Buffer): Promise<Image> {
-  const img = new Image();
+function decodeImage(mod: CanvasMod, bytes: Buffer): InstanceType<CanvasMod["Image"]> {
+  const img = new mod.Image();
   img.src = bytes;
   return img;
 }
 
-/** Carga un asset de marco desde /public (asset layer src = "/templates/..."). */
+/** Carga un asset de marco desde /public (asset layer src = "/templates/..."). Con contención
+ *  de path: el resultado DEBE quedar dentro de /public (anti path-traversal). */
 function loadPublicAsset(src: string): Buffer | null {
   if (!src.startsWith("/")) return null;
   try {
-    const p = path.join(process.cwd(), "public", src.replace(/^\//, ""));
+    const root = path.join(process.cwd(), "public");
+    const p = path.normalize(path.join(root, src.replace(/^\//, "")));
+    if (p !== root && !p.startsWith(root + path.sep)) return null; // fuera de /public → rechazar
     return fs.existsSync(p) ? fs.readFileSync(p) : null;
   } catch {
     return null;
@@ -86,6 +105,7 @@ function loadPublicAsset(src: string): Buffer | null {
  * no puede (fuente/asset/foto). El caller conserva el PNG del cliente en ese caso.
  */
 async function renderSlotCanvas(
+  mod: CanvasMod,
   unit: UnitTemplate,
   slot: Slot,
   shape: string | undefined,
@@ -97,7 +117,17 @@ async function renderSlotCanvas(
   // Filtro → el cliente tiene el exacto de Konva (no divergimos).
   if (slot.filter) throw new RenderNeedsKonvaError("slot con filtro (fidelidad → cliente)");
 
-  // Guards conservadores (como A1a): rotación del placeholder + múltiples placeholders → fallback.
+  // Guards conservadores: solo capas conocidas + un placeholder sin rotación. Capas raras
+  // (shape/otras) → fallback al cliente, igual que A1a (no dibujar de menos silenciosamente).
+  const KNOWN = new Set(["background", "image-placeholder", "text", "asset"]);
+  for (const l of unit.layers) {
+    if (!KNOWN.has(l.type)) throw new RenderNeedsKonvaError(`capa no soportada: ${l.type}`);
+    // Marcos SVG con texto horneado (ej. Polaroid Instagram, Arial) → resvg divergiría en fuentes
+    // → fallback al cliente (que rasteriza el SVG fiel en el navegador).
+    if (l.type === "asset" && typeof l.src === "string" && /\.svg(\?|$)/i.test(l.src)) {
+      throw new RenderNeedsKonvaError("marco SVG (fuentes horneadas → cliente)");
+    }
+  }
   const placeholders = unit.layers.filter((l) => l.type === "image-placeholder");
   if (placeholders.length > 1) throw new RenderNeedsKonvaError("múltiples image-placeholder");
   if (placeholders[0] && Number(placeholders[0].rotation) !== 0 && placeholders[0].rotation != null) {
@@ -107,14 +137,14 @@ async function renderSlotCanvas(
   const hasText = unit.layers.some(
     (l) => l.type === "text" && ((typeof l.text === "string" && l.text.trim()) || slot.textOverrides?.[l.id]?.text),
   );
-  if (hasText && !ensureFonts()) {
+  if (hasText && !ensureFonts(mod)) {
     throw new RenderNeedsKonvaError("fuentes no disponibles server-side");
   }
 
   const S = PRODUCTION_SCALE;
   const W = clampInt(unit.stage.width * S, 1, MAX_STAGE_DIM * S);
   const H = clampInt(unit.stage.height * S, 1, MAX_STAGE_DIM * S);
-  const canvas = createCanvas(W, H);
+  const canvas = mod.createCanvas(W, H);
   const ctx = canvas.getContext("2d");
   ctx.scale(S, S); // trabajar en coords lógicas del stage; el canvas es ×S
 
@@ -128,7 +158,7 @@ async function renderSlotCanvas(
       if (!slot.assetId) throw new RenderNeedsKonvaError(`slot ${slot.slotIndex} sin assetId`);
       const bytes = await loadAsset(slot.assetId);
       if (!bytes) throw new RenderNeedsKonvaError(`no se pudo cargar la foto del slot ${slot.slotIndex}`);
-      const img = await decodeImage(bytes);
+      const img = decodeImage(mod, bytes);
       const imgW = img.width;
       const imgH = img.height;
       if (!imgW || !imgH) throw new RenderNeedsKonvaError(`foto inválida slot ${slot.slotIndex}`);
@@ -166,11 +196,12 @@ async function renderSlotCanvas(
       ctx.drawImage(img, cx - renderedW / 2, cy - renderedH / 2, renderedW, renderedH);
       ctx.restore();
     } else if (layer.type === "asset") {
-      // Marco desde /public/templates.
+      // Marco (PNG) desde /public/templates.
       const src = typeof layer.src === "string" ? layer.src : "";
       const bytes = loadPublicAsset(src);
       if (!bytes) throw new RenderNeedsKonvaError(`marco no encontrado: ${src}`);
-      const frame = await decodeImage(bytes);
+      const frame = decodeImage(mod, bytes);
+      if (!frame.width || !frame.height) throw new RenderNeedsKonvaError(`marco inválido: ${src}`);
       ctx.save();
       ctx.globalAlpha = Number(layer.opacity ?? 1);
       const fx = Number(layer.x) || 0;
@@ -179,9 +210,10 @@ async function renderSlotCanvas(
       const fh = Number(layer.height) || unit.stage.height;
       const rot = Number(layer.rotation) || 0;
       if (rot !== 0) {
-        ctx.translate(fx + fw / 2, fy + fh / 2);
+        // Konva rota alrededor del ORIGEN del nodo (x,y = top-left), no del centro.
+        ctx.translate(fx, fy);
         ctx.rotate((rot * Math.PI) / 180);
-        ctx.drawImage(frame, -fw / 2, -fh / 2, fw, fh);
+        ctx.drawImage(frame, 0, 0, fw, fh);
       } else {
         ctx.drawImage(frame, fx, fy, fw, fh);
       }
@@ -209,24 +241,31 @@ function renderTextLayer(
   const fontSize = override?.fontSize ?? (Number(layer.fontSize) || 48);
   const family = override?.fontFamily ?? (typeof layer.fontFamily === "string" ? layer.fontFamily : "Fredoka, Inter, sans-serif");
   const fill = override?.fill ?? (typeof layer.fill === "string" ? layer.fill : "#3D2E5C");
-  const weight = override?.fontWeight ?? (typeof layer.fontWeight === "string" ? layer.fontWeight : "600");
+  // Konva default fontStyle = "normal" (400) cuando el layer no lo especifica (NO 600).
+  const weight = override?.fontWeight ?? (typeof layer.fontWeight === "string" ? layer.fontWeight : "normal");
   const align = (layer.align as CanvasTextAlign) ?? "center";
+
+  // Konva envuelve el texto center-align al ancho del stage y respeta \n. Este render dibuja UNA
+  // línea → si envolvería (o trae saltos), cae al cliente (fiel). Corto de una línea = fiel.
+  if (finalText.includes("\n")) throw new RenderNeedsKonvaError("texto multilínea → cliente");
 
   ctx.save();
   ctx.font = `${weight} ${fontSize}px ${family}`;
   ctx.textBaseline = "top";
-  ctx.textAlign = align === "center" ? "center" : align === "right" ? "right" : "left";
+  // Solo center o left: Konva right-align (sin width) extiende a la derecha desde x = left.
+  ctx.textAlign = align === "center" ? "center" : "left";
+  if (align === "center" && ctx.measureText(finalText).width > stage.width) {
+    ctx.restore();
+    throw new RenderNeedsKonvaError("texto que envolvería (ancho > stage) → cliente");
+  }
+  // Konva right-align sobre un Text sin width extiende hacia la DERECHA desde x (el editor lo usa
+  // como no-op); replicarlo con textAlign "right" invertiría. Para center usamos el centro del
+  // stage (Konva width=stage.width). Para left/right anclamos en layer.x con align left.
   const x = align === "center" ? stage.width / 2 : Number(layer.x) || 0;
   const y = (Number(layer.y) || 0) - fontSize / 2; // Konva textY = layer.y - fontSize/2
 
-  // Legibilidad sobre foto: stroke blanco + shadow (igual que onPhoto del editor).
-  ctx.shadowColor = "rgba(0,0,0,0.55)";
-  ctx.shadowBlur = 6;
-  ctx.shadowOffsetY = 2;
-  ctx.lineWidth = Math.max(2, fontSize * 0.08);
-  ctx.strokeStyle = "rgba(255,255,255,0.92)";
-  ctx.strokeText(finalText, x, y);
-  ctx.shadowColor = "transparent"; // el fill no lleva shadow (Konva: fillAfterStroke)
+  // El editor renderiza el texto de slot PLANO (renderText onPhoto=false, único call-site).
+  // NADA de stroke/shadow — eso divergía del preview aprobado (hallazgo revisión A1b).
   ctx.fillStyle = fill;
   ctx.fillText(finalText, x, y);
   ctx.restore();
@@ -243,10 +282,11 @@ export async function renderProductionSlotsCanvas(opts: {
   shape?: string;
   loadAsset: LoadAssetBytes;
 }): Promise<Buffer[]> {
+  const mod = await loadCanvas(); // lazy: un binario faltante → NEEDS_KONVA (fallback), no crash.
   const out: Buffer[] = [];
   const slots = [...opts.slots].sort((a, b) => a.slotIndex - b.slotIndex);
   for (const slot of slots) {
-    out.push(await renderSlotCanvas(opts.unitTemplate, slot, opts.shape, opts.loadAsset));
+    out.push(await renderSlotCanvas(mod, opts.unitTemplate, slot, opts.shape, opts.loadAsset));
   }
   return out;
 }
