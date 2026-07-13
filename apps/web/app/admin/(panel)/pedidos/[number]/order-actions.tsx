@@ -133,20 +133,39 @@ export function OrderActions({
       )}
 
       {canCancel && (
-        <form action={transAction}>
-          <input type="hidden" name="orderId" value={orderId} />
-          <input type="hidden" name="to" value="CANCELLED" />
-          <Button
-            type="submit"
-            size="sm"
-            disabled={transPending}
-            variant="outline"
-            className="w-full text-rose-700 hover:bg-rose-50"
-          >
-            <X className="mr-2 h-3.5 w-3.5" />
-            Cancelar pedido
-          </Button>
-        </form>
+        <details className="rounded-md border border-rose-200">
+          <summary className="cursor-pointer list-none rounded-md px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-50">
+            <X className="mr-1.5 inline h-3.5 w-3.5" />
+            Cancelar pedido…
+          </summary>
+          <form action={transAction} className="space-y-2 border-t border-rose-100 p-3">
+            <input type="hidden" name="orderId" value={orderId} />
+            <input type="hidden" name="to" value="CANCELLED" />
+            <label htmlFor="cancel-reason" className="text-brand-muted block text-[11px]">
+              Motivo (opcional — queda en la auditoría)
+            </label>
+            <textarea
+              id="cancel-reason"
+              name="reason"
+              rows={2}
+              maxLength={300}
+              placeholder="Ej. cliente canceló, dirección errada, sin stock…"
+              className="border-brand-purple/20 focus:ring-brand-purple/30 w-full rounded-md border px-2 py-1.5 text-xs focus:ring-2 focus:outline-none"
+            />
+            <p className="text-[11px] text-rose-800">
+              Revierte el stock y marca la orden como <strong>CANCELADA</strong> (sin reembolso de
+              dinero).
+            </p>
+            <Button
+              type="submit"
+              size="sm"
+              disabled={transPending}
+              className="w-full bg-rose-600 text-white hover:bg-rose-700"
+            >
+              {transPending ? "Cancelando…" : "Confirmar cancelación"}
+            </Button>
+          </form>
+        </details>
       )}
 
       {canRefund && (

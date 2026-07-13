@@ -68,6 +68,9 @@ export async function transitionOrderAction(
 
   const orderId = String(formData.get("orderId") ?? "");
   const to = String(formData.get("to") ?? "");
+  // Motivo opcional de la transición (ej. "cliente canceló", "dirección errada"). Queda en el
+  // audit trail para saber POR QUÉ cambió el estado, no solo A QUÉ estado.
+  const reason = String(formData.get("reason") ?? "").trim().slice(0, 300);
   if (!orderId || !to) return { error: "Faltan parámetros" };
   // REFUNDED debe pasar SIEMPRE por refundOrderAction (audita monto/quién/cuándo +
   // avisa al cliente + exige SUPERADMIN). Bloquearlo acá evita un reembolso "mudo".
@@ -82,7 +85,7 @@ export async function transitionOrderAction(
       action: "order.transition",
       entityType: "Order",
       entityId: orderId,
-      metadata: { to },
+      metadata: reason ? { to, reason } : { to },
     });
     revalidatePath("/admin/pedidos");
     revalidatePath(`/admin/pedidos/[number]`, "page");
