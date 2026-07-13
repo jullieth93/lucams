@@ -1,4 +1,4 @@
-.PHONY: help install build typecheck lint format migrate seed-products seed-templates seed-ocasiones seed-catalog-v2 seed-cms seed-abecedario seed-letter-sets cleanup-test-junk consolidate-product-families fix-voseo-cms rename-family-base-slugs backfill-variant-prices cleanup-slugs audit-slugs test test-unit test-e2e test-rls test-load test-coverage clean
+.PHONY: help install build typecheck lint format migrate seed-products seed-templates seed-ocasiones seed-catalog-v2 seed-cms seed-abecedario seed-letter-sets cleanup-test-junk seed-separadores consolidate-product-families fix-voseo-cms rename-family-base-slugs backfill-variant-prices cleanup-slugs audit-slugs test test-unit test-e2e test-rls test-load test-coverage clean
 
 # Makefile en repo — targets primitivos para CI y devs locales.
 # El Makefile completo de runtime (con state/log/pid management,
@@ -143,3 +143,6 @@ test-load:
 
 clean:
 	rm -rf apps/web/.next apps/web/node_modules/.cache
+
+seed-separadores:
+	pnpm --filter @lucams/db exec node scripts/restructure-separadores.mjs
