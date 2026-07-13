@@ -108,6 +108,42 @@ async function main() {
     }
   }
 
+  // Plantillas dedicadas por FORMA (solo [fondo, foto], sin texto). El editor filtra por
+  // aspectRatio de la variante → la rectangular rutea a su stage tall (WYSIWYG del separador).
+  const TEMPLATES = [
+    { slug: "sep-cuadrado", name: "Separador cuadrado", stage: { width: 600, height: 600 } },
+    { slug: "sep-rectangular", name: "Separador rectangular", stage: { width: 500, height: 1400 } },
+  ];
+  for (const t of TEMPLATES) {
+    const canvasData = {
+      version: 1,
+      stage: { width: t.stage.width, height: t.stage.height, dpiPreview: 90, dpiProduction: 300 },
+      layers: [
+        { id: "bg", type: "background", color: "#FFFFFF" },
+        { id: "photo", type: "image-placeholder", x: 0, y: 0, width: t.stage.width, height: t.stage.height, cornerRadius: 0 },
+      ],
+    };
+    const found = await prisma.personalizationTemplate.findFirst({ where: { slug: t.slug } });
+    const tdata = {
+      productId,
+      kind: "PHOTO_PACK",
+      name: t.name,
+      description: "Separador para libros — tu foto a todo el separador.",
+      previewUrl: "/brand/lucams-logo.png",
+      canvasData,
+      isActive: true,
+      order: -10, // gana el desempate vs plantilla global
+      deletedAt: null,
+    };
+    if (found) {
+      await prisma.personalizationTemplate.update({ where: { id: found.id }, data: tdata });
+      console.log(`  ~ plantilla ${t.slug} (${t.stage.width}×${t.stage.height})`);
+    } else {
+      await prisma.personalizationTemplate.create({ data: { slug: t.slug, ...tdata } });
+      console.log(`  + plantilla ${t.slug} (${t.stage.width}×${t.stage.height})`);
+    }
+  }
+
   // Archivar los 2 productos viejos (inactivos): personalizables + prediseñados.
   const oldSlugs = ["separadores-personalizables", "separadores-predisenados"];
   for (const os of oldSlugs) {
