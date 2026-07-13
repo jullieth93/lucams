@@ -32,6 +32,7 @@ import {
   AlertCircle,
   AlertTriangle,
   Star,
+  LifeBuoy,
   Shapes,
   LayoutTemplate,
 } from "lucide-react";
@@ -46,6 +47,7 @@ import {
 import { getCurrentAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { getInventorySummary } from "@/features/products/inventory-service";
+import { countOpenSupportTickets } from "@/features/support/admin-service";
 
 export const metadata: Metadata = {
   title: "Dashboard",
@@ -72,6 +74,7 @@ export default async function AdminDashboardPage() {
     activeCouponCount,
     subCategoryCount,
     inventorySummary,
+    openTickets,
   ] = await Promise.all([
     prisma.customer.count({ where: { deletedAt: null } }),
     prisma.order.count({ where: pendingOrdersWhere }),
@@ -90,6 +93,7 @@ export default async function AdminDashboardPage() {
     // Lucy 2026-06-26 — Opción C Sprint 1: KPI real de inventario reemplaza
     // los hardcoded `0` que mentían sobre stock y reclamos.
     getInventorySummary(),
+    countOpenSupportTickets(),
   ]);
 
   // Lucy 2026-06-26 hotfix #2 P0-12: el saludo antes mostraba "Hola, crittan01"
@@ -102,7 +106,7 @@ export default async function AdminDashboardPage() {
   // pedidos pendientes pago + variants agotadas + reseñas sin moderar.
   // hasAlerts dispara el chip "Atención" en el hero.
   const opsAlerts =
-    pendingOrderCount + inventorySummary.outCount + pendingReviews;
+    pendingOrderCount + inventorySummary.outCount + pendingReviews + openTickets;
   const hasAlerts = opsAlerts > 0;
 
   return (
@@ -197,6 +201,15 @@ export default async function AdminDashboardPage() {
               description={pendingReviews > 0 ? "Requieren tu visto bueno" : "Todo aprobado"}
               tone="pink"
               urgent={pendingReviews > 0}
+            />
+            <OpsCard
+              href="/admin/soporte"
+              icon={LifeBuoy}
+              label="Tickets de soporte"
+              value={openTickets}
+              description={openTickets > 0 ? "Clientes esperan respuesta" : "Sin tickets abiertos"}
+              tone="turquoise"
+              urgent={openTickets > 0}
             />
           </div>
         </section>
