@@ -2083,3 +2083,39 @@ configurar los secrets de GitHub (`BACKUP_DATABASE_URL` directa, `R2_*`). Los va
 son aún los placeholders de `.env.example` → la verificación en vivo del round-trip a R2 está pendiente
 de esa provisión (los helpers puros y el camino SDK están construidos y probados; el round-trip real se
 validará juntos al configurar R2).
+
+## ADR-060 — Auditoría de producción fullstack + ejecución de fixes (2026-07-13)
+
+**Contexto.** Lucy pidió una auditoría end-to-end (admin + cliente + seguridad + DB + código
+muerto + faltantes) con score de producción y ejecución/certificación de cada ítem. Se corrió un
+**Workflow multi-agente**: 13 auditores paralelos por dimensión + verificación adversarial de los
+hallazgos críticos/altos + síntesis (20 agentes, ~1.64M tokens). Informe navegable publicado como
+Artifact.
+
+**Resultado.** Score **72/100 · "no-lanzar"**. 80 hallazgos (2 altos + 26 medios + 43 bajos + 9
+info) tras filtro adversarial, 111 aspectos bien hechos, 6 bloqueadores. Base muy sólida
+(arquitectura, seguridad de fondo, resiliencia, compliance de alto rigor); el "no-lanzar" lo fijan
+pocos bloqueadores concretos, no calidad baja general.
+
+**Fixes ejecutados y certificados (tsc + lint + tests + build):**
+- **P0** — env fail-fast de `AVEONLINE_WEBHOOK_SECRET`; **RLS sweep** idempotente (mandato #12);
+  **RBAC server-side** (guard central en el layout vía `x-pathname` del proxy + gate de rol en
+  acciones SUPERADMIN-only); **emails** de envío/entrega/**cancelación** en transiciones manuales;
+  **voseo→tuteo** en todo el copy + lint de voseo en CI; `unitPrice` real en el Estudio; **firma
+  Svix** correcta del webhook Resend.
+- **P1** — índices en FKs de alto tráfico; **getClientIp()** anti-spoofing (x-vercel-forwarded-for)
+  en 22 sitios de rate-limit/auth; **PII** del destinatario y `?secret=` fuera de logs/audit;
+  AlertState solo marca enviado si el email salió; `needsReconciliation` en amount_mismatch de Wompi.
+- **P3** — **lint RED→GREEN** (6 errores pre-existentes que rompían CI: 4 directivas disable con
+  em-dash, 2 de react-compiler) + gate estricto `--max-warnings 0`; sobrantes eliminados (.v1.bak,
+  deps `diff`, `lib/request-id.ts` muerto).
+
+**Diferido a Lucy (carril humano / no autónomo):** identidad legal (persona natural vs S.A.S. — con
+abogado), decisión DIAN (contador + resolución de numeración o ajustar el copy de la FAQ), y el DROP
+de modelos muertos (Referral/BlogPost/SiteEvent — destructivo). **Pendiente autónomo (siguiente):**
+stock "Agotado" + validación en checkout + JSON-LD, editar-diseño→DRAFT, cache de `public-service`,
+pg_cron versionado, SEO de categorías, gap de RLS en CI, tests de proxy/E2E admin.
+
+**Razón.** La auditoría con verificación adversarial evita falsos positivos; los fixes autónomos se
+ejecutaron en orden de prioridad, certificando cada uno. Los 2 bloqueadores restantes son decisiones
+de negocio/legales, no de código.
