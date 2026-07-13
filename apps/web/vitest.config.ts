@@ -27,8 +27,29 @@ export default defineConfig({
     exclude: ["**/node_modules/**", "**/.next/**", "**/tests/e2e/**"],
     coverage: {
       provider: "v8",
-      reporter: ["text", "html"],
-      exclude: ["**/node_modules/**", "**/.next/**", "**/*.config.*", "**/tests/**"],
+      reporter: ["text-summary", "html"],
+      exclude: [
+        "**/node_modules/**",
+        "**/.next/**",
+        "**/*.config.*",
+        "**/tests/**",
+        // Superficie sin lógica ejecutable útil de cubrir con unit/integration:
+        "**/*.test.{ts,tsx}",
+        "**/*.d.ts",
+        "app/**/{layout,loading,not-found,error,global-error}.tsx",
+      ],
+      // Gate de regresión (ratchet). Baseline local medido 2026-07-13:
+      // lines 79.0% · statements 77.7% · functions 78.1% · branches 69.1%.
+      // Los umbrales van con margen BAJO el baseline porque en CI algunos tests que
+      // exigen Supabase real (rls-matrix) se saltan → cobertura de CI algo menor que la
+      // local. Piso conservador para el primer ratchet; APRETAR estos números una vez
+      // el primer run verde de CI revele la cobertura real de ese entorno.
+      thresholds: {
+        lines: 72,
+        statements: 70,
+        functions: 70,
+        branches: 62,
+      },
     },
   },
   resolve: {

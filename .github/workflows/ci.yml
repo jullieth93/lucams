@@ -67,7 +67,8 @@ jobs:
   unit-tests:
     name: Vitest tests (unit + integración con Postgres)
     runs-on: ubuntu-latest
-    timeout-minutes: 12
+    # 15 min: la instrumentación de cobertura (v8) añade overhead sobre el run normal.
+    timeout-minutes: 15
     # Postgres real (service container) → los ~1.400 tests, incl. integración con DB,
     # corren y se ENFORCEAN en CI. Conexión directa (sin pooler) → rápido y sin flakiness.
     services:
@@ -131,8 +132,11 @@ jobs:
             psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$f"
           done
 
-      - name: Run vitest (unit + integración)
-        run: pnpm --filter web test
+      - name: Run vitest (unit + integración) + gate de cobertura
+        # test:coverage = vitest run --coverage. Los thresholds de vitest.config.ts
+        # (lines/statements/functions/branches) fallan el job si la cobertura cae por
+        # debajo del piso → gate de regresión. text-summary imprime el % en el log.
+        run: pnpm --filter web test:coverage
 
   e2e:
     name: E2E + a11y (axe WCAG) — Playwright
