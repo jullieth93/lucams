@@ -16,7 +16,13 @@ const CATALOG_PATHS = [
   "/admin/resenas",
   "/admin/clientes",
 ];
-const SHARED_PATHS = ["/admin/dashboard", "/admin/pedidos", "/admin/reclamos"];
+// "Reclamos" son las rutas reales garantias + retractos (todos los roles operativos).
+const SHARED_PATHS = [
+  "/admin/dashboard",
+  "/admin/pedidos",
+  "/admin/garantias",
+  "/admin/retractos",
+];
 // Rutas NO listadas → deny-by-default (solo SUPERADMIN).
 const SUPERADMIN_ONLY_PATHS = [
   "/admin/finanzas",
@@ -59,7 +65,7 @@ describe("canAccessAdminPath — MANAGER", () => {
     }
   });
 
-  it("permite pedidos, reclamos y dashboard (compartidas con todos)", () => {
+  it("permite pedidos, garantías y dashboard (compartidas con todos)", () => {
     for (const p of SHARED_PATHS) {
       expect(canAccessAdminPath("MANAGER", p)).toBe(true);
     }
@@ -79,7 +85,7 @@ describe("canAccessAdminPath — MANAGER", () => {
 });
 
 describe("canAccessAdminPath — FULFILLMENT", () => {
-  it("permite SOLO pedidos, reclamos y dashboard", () => {
+  it("permite SOLO pedidos, garantías y dashboard", () => {
     for (const p of SHARED_PATHS) {
       expect(canAccessAdminPath("FULFILLMENT", p)).toBe(true);
     }
@@ -103,7 +109,9 @@ describe("canAccessAdminPath — matriz completa rol × ruta representativa", ()
   const matrix: Array<[string, boolean, boolean, boolean]> = [
     ["/admin/dashboard", true, true, true],
     ["/admin/pedidos", true, true, true],
-    ["/admin/reclamos", true, true, true],
+    ["/admin/garantias", true, true, true],
+    ["/admin/retractos", true, true, true],
+    ["/admin/soporte", true, true, false],
     ["/admin/productos", true, true, false],
     ["/admin/inventario", true, true, false],
     ["/admin/categorias", true, true, false],
@@ -153,7 +161,7 @@ describe("canAccessAdminPath — bordes y entradas que NO deben coincidir", () =
     // '/admin/pedidosX' NO debe heredar permisos de '/admin/pedidos'.
     expect(canAccessAdminPath("FULFILLMENT", "/admin/pedidosX")).toBe(false);
     expect(canAccessAdminPath("MANAGER", "/admin/pedidos-archivados")).toBe(false);
-    expect(canAccessAdminPath("FULFILLMENT", "/admin/reclamos2")).toBe(false);
+    expect(canAccessAdminPath("FULFILLMENT", "/admin/garantias2")).toBe(false);
     expect(canAccessAdminPath("MANAGER", "/admin/productosX")).toBe(false);
   });
 
@@ -186,12 +194,12 @@ function buildNav(): NavGroup[] {
   return [
     // Link directo (sin items).
     { label: "Dashboard", href: "/admin/dashboard" },
-    // Grupo mixto: pedidos+reclamos (todos) y catálogo (solo manager).
+    // Grupo mixto: pedidos+garantías (todos) y catálogo (solo manager).
     {
       label: "Operación",
       items: [
         { label: "Pedidos", href: "/admin/pedidos" },
-        { label: "Reclamos", href: "/admin/reclamos" },
+        { label: "Garantías", href: "/admin/garantias" },
         { label: "Productos", href: "/admin/productos" },
         { label: "Clientes", href: "/admin/clientes" },
       ],
@@ -240,7 +248,7 @@ describe("filterNavByRole — MANAGER", () => {
     const operacion = out.find((g) => g.label === "Operación");
     expect(operacion?.items?.map((i) => i.href)).toEqual([
       "/admin/pedidos",
-      "/admin/reclamos",
+      "/admin/garantias",
       "/admin/productos",
       "/admin/clientes",
     ]);
@@ -260,17 +268,17 @@ describe("filterNavByRole — MANAGER", () => {
 });
 
 describe("filterNavByRole — FULFILLMENT", () => {
-  it("conserva solo dashboard y operación (con pedidos+reclamos), descarta lo demás", () => {
+  it("conserva solo dashboard y operación (con pedidos+garantías), descarta lo demás", () => {
     const out = filterNavByRole(buildNav(), "FULFILLMENT");
     expect(out.map((g) => g.label)).toEqual(["Dashboard", "Operación"]);
   });
 
-  it("filtra Operación a SOLO pedidos y reclamos (sin catálogo)", () => {
+  it("filtra Operación a SOLO pedidos y garantías (sin catálogo)", () => {
     const out = filterNavByRole(buildNav(), "FULFILLMENT");
     const operacion = out.find((g) => g.label === "Operación");
     expect(operacion?.items?.map((i) => i.href)).toEqual([
       "/admin/pedidos",
-      "/admin/reclamos",
+      "/admin/garantias",
     ]);
   });
 

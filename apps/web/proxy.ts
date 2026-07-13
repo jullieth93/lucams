@@ -148,6 +148,10 @@ export async function proxy(request: NextRequest) {
     const headers = new Headers(request.headers);
     headers.set("x-nonce", nonce);
     headers.set("content-security-policy", cspValue);
+    // Pathname autoritativo para los server components (el layout admin lo usa para el
+    // guard RBAC canAccessAdminPath). Se SETea desde el servidor → sobrescribe cualquier
+    // x-pathname que envíe el cliente (no spoofeable).
+    headers.set("x-pathname", path);
     return NextResponse.next({ request: { headers } });
   };
 

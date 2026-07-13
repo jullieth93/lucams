@@ -47,6 +47,7 @@ export async function createCmsBlockAction(
 ): Promise<CmsActionState> {
   const session = await getCurrentAdmin();
   if (!session) return { error: "Tu sesión expiró. Vuelve a iniciar sesión." };
+  if (session.admin.role !== "SUPERADMIN") return { error: "Solo un administrador principal puede gestionar el contenido." };
 
   const parsed = CmsBlockCreateSchema.safeParse({
     key: String(formData.get("key") ?? "").trim(),
@@ -98,6 +99,7 @@ export async function saveCmsBlockDraftAction(
 ): Promise<CmsActionState> {
   const session = await getCurrentAdmin();
   if (!session) return { error: "Tu sesión expiró. Vuelve a iniciar sesión." };
+  if (session.admin.role !== "SUPERADMIN") return { error: "Solo un administrador principal puede gestionar el contenido." };
 
   const parsed = CmsBlockUpdateSchema.safeParse({
     id: String(formData.get("id") ?? ""),
@@ -142,6 +144,7 @@ export async function saveCmsBlockDraftAction(
 export async function publishCmsBlockVersionAction(formData: FormData): Promise<void> {
   const session = await getCurrentAdmin();
   if (!session) redirect("/admin/login");
+  if (session.admin.role !== "SUPERADMIN") redirect("/admin/dashboard?denied=1");
 
   const blockId = String(formData.get("blockId") ?? "");
   const versionId = String(formData.get("versionId") ?? "");
@@ -175,6 +178,7 @@ export async function publishCmsBlockVersionAction(formData: FormData): Promise<
 export async function unpublishCmsBlockAction(formData: FormData): Promise<void> {
   const session = await getCurrentAdmin();
   if (!session) redirect("/admin/login");
+  if (session.admin.role !== "SUPERADMIN") redirect("/admin/dashboard?denied=1");
 
   const blockId = String(formData.get("blockId") ?? "");
   if (!blockId) redirect("/admin/contenido");
@@ -194,6 +198,7 @@ export async function unpublishCmsBlockAction(formData: FormData): Promise<void>
 export async function deleteCmsBlockAction(formData: FormData): Promise<void> {
   const session = await getCurrentAdmin();
   if (!session) redirect("/admin/login");
+  if (session.admin.role !== "SUPERADMIN") redirect("/admin/dashboard?denied=1");
 
   const blockId = String(formData.get("blockId") ?? "");
   if (!blockId) redirect("/admin/contenido");
@@ -223,6 +228,7 @@ export async function createSiteSettingAction(
 ): Promise<SiteSettingActionState> {
   const session = await getCurrentAdmin();
   if (!session) return { error: "Tu sesión expiró." };
+  if (session.admin.role !== "SUPERADMIN") return { error: "Solo un administrador principal puede cambiar la configuración." };
 
   const parsed = SiteSettingCreateSchema.safeParse({
     key: String(formData.get("key") ?? "")
@@ -264,6 +270,7 @@ export async function updateSiteSettingAction(
 ): Promise<SiteSettingActionState> {
   const session = await getCurrentAdmin();
   if (!session) return { error: "Tu sesión expiró." };
+  if (session.admin.role !== "SUPERADMIN") return { error: "Solo un administrador principal puede cambiar la configuración." };
 
   const parsed = SiteSettingUpdateSchema.safeParse({
     id: String(formData.get("id") ?? ""),

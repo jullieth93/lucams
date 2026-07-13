@@ -22,6 +22,7 @@ async function unenrollAllTotp(): Promise<void> {
 export async function disableMfaAction(): Promise<void> {
   const session = await getCurrentAdmin();
   if (!session) return;
+  if (session.admin.role !== "SUPERADMIN") return;
 
   await unenrollAllTotp();
   await prismaDeleteRecoveryCodes(session.admin.id);
@@ -44,6 +45,7 @@ export async function disableMfaAction(): Promise<void> {
 export async function changeMfaDeviceAction(): Promise<void> {
   const session = await getCurrentAdmin();
   if (!session) return;
+  if (session.admin.role !== "SUPERADMIN") return;
 
   await unenrollAllTotp();
   logger.info({ event: "security.admin_mfa_device_change", adminId: session.admin.id });
@@ -63,6 +65,7 @@ export type RecoveryCodesState = { codes?: string[]; error?: string };
 export async function generateRecoveryCodesAction(): Promise<RecoveryCodesState> {
   const session = await getCurrentAdmin();
   if (!session) return { error: "Sesión expirada." };
+  if (session.admin.role !== "SUPERADMIN") return { error: "Solo un administrador principal." };
 
   const codes = await generateRecoveryCodes(session.admin.id);
   logger.info({ event: "security.admin_mfa_recovery_generated", adminId: session.admin.id });

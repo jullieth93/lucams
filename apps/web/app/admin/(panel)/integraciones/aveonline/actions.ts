@@ -15,6 +15,7 @@ export async function registerAveonlineWebhookAction(
 ): Promise<ActionState> {
   const session = await getCurrentAdmin();
   if (!session) redirect("/admin/login");
+  if (session.admin.role !== "SUPERADMIN") redirect("/admin/dashboard?denied=1");
 
   const baseUrl = String(formData.get("baseUrl") ?? "").trim();
   if (!baseUrl || !baseUrl.startsWith("https://")) {
@@ -60,6 +61,7 @@ export async function registerAveonlineWebhookAction(
 export async function deleteAveonlineWebhookAction(formData: FormData): Promise<void> {
   const session = await getCurrentAdmin();
   if (!session) redirect("/admin/login");
+  if (session.admin.role !== "SUPERADMIN") redirect("/admin/dashboard?denied=1");
   const url = String(formData.get("url") ?? "");
   if (!url) return;
   const result = await deleteAveonlineWebhook(url);

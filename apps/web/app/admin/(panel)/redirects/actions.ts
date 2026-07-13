@@ -30,6 +30,7 @@ export async function createRedirectAction(
 ): Promise<RedirectActionState> {
   const session = await getCurrentAdmin();
   if (!session) return { error: "Sesión expirada." };
+  if (session.admin.role !== "SUPERADMIN") return { error: "Solo un administrador principal." };
 
   const fromPath = String(formData.get("fromPath") ?? "").trim();
   const toPath = String(formData.get("toPath") ?? "").trim();
@@ -79,6 +80,7 @@ export async function updateRedirectAction(
 ): Promise<RedirectActionState> {
   const session = await getCurrentAdmin();
   if (!session) return { error: "Sesión expirada." };
+  if (session.admin.role !== "SUPERADMIN") return { error: "Solo un administrador principal." };
 
   const id = String(formData.get("id") ?? "");
   const toPath = String(formData.get("toPath") ?? "").trim();
@@ -115,6 +117,7 @@ export async function updateRedirectAction(
 export async function toggleRedirectActiveAction(formData: FormData): Promise<void> {
   const session = await getCurrentAdmin();
   if (!session) redirect("/admin/login");
+  if (session.admin.role !== "SUPERADMIN") redirect("/admin/dashboard?denied=1");
   const id = String(formData.get("id") ?? "");
   try {
     const updated = await toggleRedirectActive(id, session.admin.id);
@@ -136,6 +139,7 @@ export async function toggleRedirectActiveAction(formData: FormData): Promise<vo
 export async function archiveRedirectAction(formData: FormData): Promise<void> {
   const session = await getCurrentAdmin();
   if (!session) redirect("/admin/login");
+  if (session.admin.role !== "SUPERADMIN") redirect("/admin/dashboard?denied=1");
   const id = String(formData.get("id") ?? "");
   await archiveRedirect(id, session.admin.id);
   await recordAdminAction({
@@ -151,6 +155,7 @@ export async function archiveRedirectAction(formData: FormData): Promise<void> {
 export async function restoreRedirectAction(formData: FormData): Promise<void> {
   const session = await getCurrentAdmin();
   if (!session) redirect("/admin/login");
+  if (session.admin.role !== "SUPERADMIN") redirect("/admin/dashboard?denied=1");
   const id = String(formData.get("id") ?? "");
   await restoreRedirect(id, session.admin.id);
   await recordAdminAction({

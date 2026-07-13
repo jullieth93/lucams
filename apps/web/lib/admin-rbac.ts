@@ -20,7 +20,11 @@ const CATALOG: AdminRole[] = ["SUPERADMIN", "MANAGER"];
 const ROUTE_ROLES: Array<{ prefix: string; roles: AdminRole[] }> = [
   { prefix: "/admin/dashboard", roles: ALL },
   { prefix: "/admin/pedidos", roles: ALL },
-  { prefix: "/admin/reclamos", roles: ALL },
+  // "Reclamos" son las rutas reales garantias + retractos (antes apuntaba a /admin/reclamos
+  // inexistente). FULFILLMENT/MANAGER gestionan estados; el resto es SUPERADMIN.
+  { prefix: "/admin/garantias", roles: ALL },
+  { prefix: "/admin/retractos", roles: ALL },
+  { prefix: "/admin/soporte", roles: CATALOG },
   { prefix: "/admin/productos", roles: CATALOG },
   { prefix: "/admin/inventario", roles: CATALOG },
   { prefix: "/admin/categorias", roles: CATALOG },
