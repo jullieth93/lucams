@@ -517,15 +517,48 @@ function StudioSlotImpl({
               ].join(" ")}
               aria-hidden="true"
             >
-              {/* Borde punteado interno — animado al drop */}
-              <motion.div
-                animate={{
-                  borderColor: isDropping ? "rgb(93, 217, 209)" : "rgba(124, 106, 173, 0.25)",
-                  scale: isDropping ? 1.02 : 1,
-                }}
-                transition={{ duration: 0.2 }}
-                className="pointer-events-none absolute inset-2 rounded-md border-2 border-dashed"
-              />
+              {/* Borde punteado interno con la FORMA FÍSICA del imán (WYSIWYG, Lucy
+                2026-07-13): corazón/círculo trazan su silueta punteada + relleno sutil;
+                el rectángulo mantiene el rect redondeado. Así el slot VACÍO ya "se ve"
+                como el producto real, no como un cuadrado genérico. */}
+              {shape === "heart" || shape === "circle" ? (
+                <svg
+                  className="pointer-events-none absolute inset-0 h-full w-full"
+                  viewBox="0 0 100 100"
+                  preserveAspectRatio="xMidYMid meet"
+                  aria-hidden
+                >
+                  {shape === "heart" ? (
+                    <path
+                      d={HEART_PATH_DATA}
+                      fill={isDropping ? "rgba(93, 217, 209, 0.14)" : "rgba(232, 91, 159, 0.07)"}
+                      stroke={isDropping ? "rgb(93, 217, 209)" : "rgba(124, 106, 173, 0.55)"}
+                      strokeWidth={2.5}
+                      strokeDasharray="5 3"
+                      strokeLinejoin="round"
+                    />
+                  ) : (
+                    <circle
+                      cx="50"
+                      cy="50"
+                      r="45"
+                      fill={isDropping ? "rgba(93, 217, 209, 0.14)" : "rgba(124, 106, 173, 0.05)"}
+                      stroke={isDropping ? "rgb(93, 217, 209)" : "rgba(124, 106, 173, 0.55)"}
+                      strokeWidth={2.5}
+                      strokeDasharray="5 3"
+                    />
+                  )}
+                </svg>
+              ) : (
+                <motion.div
+                  animate={{
+                    borderColor: isDropping ? "rgb(93, 217, 209)" : "rgba(124, 106, 173, 0.25)",
+                    scale: isDropping ? 1.02 : 1,
+                  }}
+                  transition={{ duration: 0.2 }}
+                  className="pointer-events-none absolute inset-2 rounded-md border-2 border-dashed"
+                />
+              )}
 
               {/* Mascote Lucams bobbing — invita al cliente.
                 Al drop: bounce + wiggle excitado. */}
