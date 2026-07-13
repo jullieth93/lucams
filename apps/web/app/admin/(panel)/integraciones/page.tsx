@@ -149,7 +149,7 @@ export default async function AdminIntegracionesPage() {
     "WOMPI_PRIVATE_KEY",
     "WOMPI_EVENTS_SECRET",
   ]);
-  const venndeloConfigured = envConfigured(["VENNDELO_API_KEY", "VENNDELO_API_URL"]);
+  const aveonlineConfigured = envConfigured(["AVEONLINE_USUARIO", "AVEONLINE_CLAVE"]);
   const resendConfigured = envConfigured(["RESEND_API_KEY", "EMAIL_FROM"]);
   const turnstileConfigured = envConfigured([
     "NEXT_PUBLIC_TURNSTILE_SITE_KEY",
@@ -207,21 +207,22 @@ export default async function AdminIntegracionesPage() {
       name: "Aveonline — Envíos Colombia",
       group: "envio",
       description: "Coordina envíos Coordinadora/Servientrega + impresión etiquetas + tracking.",
+      // Credenciales por env; la dirección de ORIGEN (recogida) vive en SiteSettings
+      // (PICKUP_* + BUSINESS_NIT), editable desde /admin, no en env.
       envVarsRequired: [
-        "VENNDELO_API_KEY",
-        "VENNDELO_API_URL",
-        "VENNDELO_PICKUP_ADDRESS_LINE",
-        "VENNDELO_PICKUP_CITY_CODE",
-        "VENNDELO_PICKUP_CONTACT_NAME",
-        "VENNDELO_PICKUP_CONTACT_PHONE",
+        "AVEONLINE_USUARIO",
+        "AVEONLINE_CLAVE",
+        "AVEONLINE_ENV",
+        "AVEONLINE_GENERATE_REAL",
       ],
-      isConfigured: venndeloConfigured,
-      healthStatus: venndeloConfigured ? "warn" : "not-configured",
-      healthDetail: venndeloConfigured
-        ? "Healthcheck activo se cablea en Fase 2 (Checkout)."
-        : "Pendiente: activar cuenta + cargar API key.",
+      isConfigured: aveonlineConfigured,
+      healthStatus: aveonlineConfigured ? "warn" : "not-configured",
+      healthDetail: aveonlineConfigured
+        ? "Cableado en checkout (cotización + guía contraentrega + tracking)."
+        : "Pendiente: activar cuenta comercial + cargar usuario/clave.",
       dashboardUrl: "https://app.aveonline.co",
-      acciones: "ACCIÓN HUMANA: activar Aveonline + cargar API key + dirección de origen",
+      acciones:
+        "ACCIÓN HUMANA: cuenta comercial + AVEONLINE_USUARIO/CLAVE + AVEONLINE_ENV=production + AVEONLINE_GENERATE_REAL=true + SiteSettings de origen (PICKUP_* + BUSINESS_NIT)",
     },
     {
       name: "Resend — Email transaccional",

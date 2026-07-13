@@ -13,6 +13,18 @@ import type { Instrumentation } from "next";
 import { captureServerError } from "@/lib/error-capture";
 import { logger } from "@/lib/logger";
 
+/**
+ * register() corre UNA vez al iniciar el servidor. Validamos las variables de entorno
+ * acá (fail-fast) para no descubrir en una request que faltó un secreto en producción.
+ * Solo en runtime Node: el edge no necesita estos secretos y no soporta pino/zod igual.
+ */
+export async function register() {
+  if (process.env.NEXT_RUNTIME === "nodejs") {
+    const { validateEnv } = await import("@/lib/env");
+    validateEnv();
+  }
+}
+
 export const onRequestError: Instrumentation.onRequestError = async (err, request, context) => {
   const e = err as { digest?: string } & Error;
   logger.error({

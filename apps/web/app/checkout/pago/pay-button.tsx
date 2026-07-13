@@ -5,6 +5,7 @@ import { useFormStatus } from "react-dom";
 import Link from "next/link";
 import { Loader2, Lock, Wallet, CreditCard, CheckCircle2, Banknote } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { TurnstileWidget } from "@/components/turnstile-widget";
 import { payWompiAction, payCodAction } from "./actions";
 
 type Method = "WOMPI" | "COD";
@@ -152,6 +153,9 @@ export function PaymentMethodChooser({
           ← Cambiar envío
         </Link>
         <form action={activeMethod === "WOMPI" ? payWompiAction : payCodAction}>
+          {/* Anti-bot: el widget inyecta el input cf-turnstile-response dentro del form;
+              el server action lo verifica. En dev sin keys es un input vacío (fail-open). */}
+          <TurnstileWidget size="flexible" />
           <SubmitButton method={activeMethod} />
         </form>
       </div>

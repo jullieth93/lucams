@@ -41,3 +41,30 @@ export async function recordCookieConsent(input: {
 
   await prisma.consent.createMany({ data: rows });
 }
+
+/**
+ * Registra la autorización de tratamiento de datos personales (habeas data, Ley 1581)
+ * que el titular otorga al crear su cuenta. Sin esta fila, el "Al crear tu cuenta aceptas…"
+ * del formulario es solo texto: no habría prueba auditable de "autorización previa, expresa
+ * e informada" ante la SIC. Se registra UNA fila scope=HABEAS_DATA accepted=true, con la
+ * versión vigente del aviso de privacidad + IP/UA para el audit trail.
+ */
+export async function recordHabeasDataConsent(input: {
+  customerId: string;
+  email: string;
+  ip?: string | null;
+  userAgent?: string | null;
+}) {
+  const version = await getSettingValue("PRIVACY_POLICY_VERSION", "v1");
+  await prisma.consent.create({
+    data: {
+      scope: "HABEAS_DATA",
+      accepted: true,
+      version,
+      ipAddress: input.ip ?? null,
+      userAgent: input.userAgent ?? null,
+      customerId: input.customerId,
+      email: input.email,
+    },
+  });
+}

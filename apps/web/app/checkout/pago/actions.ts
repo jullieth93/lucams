@@ -6,6 +6,7 @@ import { revalidatePath } from "next/cache";
 import { logger } from "@/lib/logger";
 import { rateLimit } from "@/lib/rate-limit";
 import { ipKey } from "@/lib/rate-limit-keys";
+import { verifyTurnstileToken } from "@/lib/turnstile";
 import {
   applyCoupon,
   CheckoutError,
@@ -16,12 +17,28 @@ import {
 } from "@/features/checkout/service";
 import { InsufficientStockError } from "@/features/orders/errors";
 
-export async function payWompiAction(): Promise<void> {
+export async function payWompiAction(formData: FormData): Promise<void> {
   // T4 — rate-limit por IP: finalizeCheckout crea una orden + pega a Wompi, así
   // que limitamos el abuso (creación masiva de órdenes basura). Generoso para no
   // bloquear reintentos legítimos de un cliente con errores.
   const hdrs = await headers();
   const ip = hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+
+  // Anti-bot: crear una orden + pegar a Wompi es un flujo de abuso (órdenes/intentos
+  // basura). El registro ya tenía Turnstile; el checkout no — se cierra ese hueco.
+  const turnstile = await verifyTurnstileToken(
+    String(formData.get("cf-turnstile-response") ?? ""),
+    ip,
+  );
+  if (!turnstile.success) {
+    logger.warn({ event: "checkout.pago.turnstile_fail", ip });
+    redirect(
+      `/checkout/pago?error=${encodeURIComponent(
+        "No pudimos verificar que no eres un robot. Recarga la página e intenta de nuevo.",
+      )}`,
+    );
+  }
+
   const isProd = process.env.VERCEL_ENV === "production";
   const rl = await rateLimit(ipKey("checkout_pay", ip), isProd ? 20 : 100, 600);
   if (!rl.allowed) {
@@ -73,9 +90,24 @@ export async function payWompiAction(): Promise<void> {
   }
 }
 
-export async function payCodAction(): Promise<void> {
+export async function payCodAction(formData: FormData): Promise<void> {
   const hdrs = await headers();
   const ip = hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+
+  // Anti-bot: COD es aún MÁS sensible que Wompi (crea orden REAL + guía Aveonline con costo).
+  const turnstile = await verifyTurnstileToken(
+    String(formData.get("cf-turnstile-response") ?? ""),
+    ip,
+  );
+  if (!turnstile.success) {
+    logger.warn({ event: "checkout.pago.cod_turnstile_fail", ip });
+    redirect(
+      `/checkout/pago?error=${encodeURIComponent(
+        "No pudimos verificar que no eres un robot. Recarga la página e intenta de nuevo.",
+      )}`,
+    );
+  }
+
   const isProd = process.env.VERCEL_ENV === "production";
   // Bucket SEPARADO y más estricto que Wompi: cada COD permitido crea una orden REAL +
   // una guía Aveonline (con costo potencial), a diferencia de Wompi que no tiene efecto

@@ -68,7 +68,7 @@ const FALLBACK_FAQS: { slug: string; question: string; answer: string }[] = [
     slug: "factura-dian",
     question: "¿Me hacen factura electrónica DIAN?",
     answer:
-      "Sí, emitimos factura electrónica DIAN si nos pasás los datos de facturación (CC/NIT, razón social, email). Te llega por correo en máximo 24h tras el despacho.",
+      "Sí. Cuéntanos tus datos de facturación (CC/NIT, razón social y correo) al hacer el pedido o luego por WhatsApp, y te enviamos la factura a tu correo una vez despachado tu pedido.",
   },
   {
     slug: "datos-personales",

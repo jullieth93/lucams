@@ -10,7 +10,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Package, MapPin, Star, ShieldCheck, Pencil, ChevronRight, Gift } from "lucide-react";
+import { Package, MapPin, Star, ShieldCheck, Pencil, ChevronRight } from "lucide-react";
 import { prisma } from "@/lib/db";
 import { getCurrentCustomer } from "@/lib/auth";
 
@@ -118,25 +118,12 @@ export default async function MiCuentaPage() {
         </dl>
       </section>
 
-      {/* Lucams: puntos + referido */}
-      <section className="border-brand-purple/15 from-brand-pink/5 to-brand-purple/5 rounded-2xl border bg-gradient-to-br p-5 shadow-sm sm:p-6">
-        <div className="flex items-center gap-2">
-          <Gift className="text-brand-pink-ink h-5 w-5" />
-          <h2 className="font-display text-brand-purple-dark text-xl">Lucams</h2>
-        </div>
-        <div className="mt-3 flex flex-wrap items-center gap-6">
-          <div>
-            <p className="text-brand-muted text-xs">Tus puntos</p>
-            <p className="text-brand-purple text-2xl font-bold">{customer.loyaltyPoints}</p>
-          </div>
-          <div>
-            <p className="text-brand-muted text-xs">Tu código de referido</p>
-            <code className="bg-brand-cream text-brand-purple-dark mt-0.5 inline-block rounded px-2 py-1 font-mono text-sm font-semibold">
-              {customer.referralCode}
-            </code>
-          </div>
-        </div>
-      </section>
+      {/* Puntos + referido: OCULTO a propósito hasta que existan los programas (Fase 5).
+          Hoy loyaltyPoints es siempre 0 (nada los gana) y referralCode no sirve (el registro no
+          acepta código entrante ni hay recompensa). Mostrar UI muerta contradice el mandato #1
+          (nacer 100% productivo). Se re-activa cuando se implementen fidelidad + referidos.
+          Ver docs/ROADMAP.md Fase 5. Los campos customer.loyaltyPoints/referralCode siguen en el
+          modelo, solo no se pintan. */}
     </div>
   );
 }

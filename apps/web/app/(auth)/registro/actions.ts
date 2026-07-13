@@ -30,6 +30,7 @@ import { checkPwnedPassword } from "@/lib/pwned-passwords";
 import { rateLimit } from "@/lib/rate-limit";
 import { emailKey, ipKey } from "@/lib/rate-limit-keys";
 import { verifyTurnstileToken } from "@/lib/turnstile";
+import { recordHabeasDataConsent } from "@/features/consent/service";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { supabaseService } from "@/lib/supabase/service";
 
@@ -188,7 +189,7 @@ export async function signupAction(
   const userId = authData.user.id;
 
   try {
-    await prisma.customer.create({
+    const customer = await prisma.customer.create({
       data: {
         email: parsed.data.email,
         firstName: parsed.data.firstName,
@@ -198,6 +199,29 @@ export async function signupAction(
         createdBy: userId,
       },
     });
+
+    // Audit trail Ley 1581: persistir la autorización de tratamiento de datos (habeas data)
+    // que el titular otorgó al aceptar los términos en el formulario. Best-effort: si la
+    // escritura de auditoría falla NO abortamos el registro (el consentimiento ya se dio),
+    // solo lo logueamos. Va en un try anidado para no disparar el rollback del auth user.
+    try {
+      await recordHabeasDataConsent({
+        customerId: customer.id,
+        email: parsed.data.email,
+        ip,
+        userAgent: hdrs.get("user-agent"),
+      });
+    } catch (consentErr) {
+      logger.error(
+        {
+          event: "auth.signup.consent_record_fail",
+          ip,
+          userId,
+          err: consentErr instanceof Error ? consentErr.message : String(consentErr),
+        },
+        "Habeas data consent row failed to persist (signup continued)",
+      );
+    }
   } catch (err) {
     // Detección específica del caso "huérfano en Customer":
     // P2002 = Prisma unique constraint violation. La causa más probable
