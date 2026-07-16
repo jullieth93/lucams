@@ -99,6 +99,16 @@ curl -f http://localhost:3000/api/health/integrations
 curl -f http://localhost:3000/api/health && echo OK
 ```
 
+### Jobs de limpieza pg_cron — VERSIONADOS (auditoría 2026-07-13)
+
+Los jobs de limpieza internos (solo SQL, sin secret) están versionados en
+`supabase/migrations/00000000000012_pgcron_cleanup_jobs.sql`: **`rate_limit_cleanup`** (borra
+buckets viejos, cada 15 min) y **`stock_reservation_cleanup`** (libera reservas expiradas, cada
+minuto). La migración es GUARDADA (se salta limpio si pg_cron no está instalado, ej. el Postgres
+de CI) e IDEMPOTENTE (re-agenda por nombre). Al habilitar `pg_cron` en el dashboard de Supabase,
+re-aplicar la migración agenda los jobs. Los jobs que llaman por HTTP (alertas, resumen diario)
+NO se versionan porque requieren el `CRON_SECRET` real → siguen como ACCIÓN HUMANA (abajo).
+
 ### Alertas por email (Bloque D) — agendamiento pg_cron
 
 Las alertas (errores 5xx en pico, órdenes a reconciliar, webhooks atascados) las
