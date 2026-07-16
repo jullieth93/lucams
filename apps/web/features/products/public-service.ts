@@ -8,12 +8,15 @@
  *   - isActive: true    (admin-toggled visible)
  *   - category.isActive: true + category.deletedAt: null
  *
- * Si el catálogo crece y se vuelve lento, acá es donde se mete cache
- * con unstable_cache + revalidateTag('products') en createProduct/
- * updateProduct/softDeleteProduct.
+ * Cache (auditoría 2026-07-13): getStorefrontProductBySlug usa React cache() → dedup por
+ * request (la PDP lo llama en generateMetadata + render). NO se usa unstable_cache (data cache
+ * cross-request) en los listados a propósito: exponen `inStock`, que cambia en CADA venta
+ * (decremento de stock en la saga) → cachearlo mostraría "Agotado" stale. El listado se apoya
+ * en el route cache (revalidatePath("/productos") en las mutaciones admin).
  */
 
 import "server-only";
+import { cache } from "react";
 import type { Prisma } from "@lucams/db";
 import { prisma } from "@/lib/db";
 
@@ -429,7 +432,10 @@ function mapRow(r: {
   };
 }
 
-export async function getStorefrontProductBySlug(
+// React cache(): dedup por request. La PDP llama a getStorefrontProductBySlug tanto en
+// generateMetadata como en el render de la página → sin esto son 2 queries idénticas; con
+// cache() es una sola por request. Sin staleness cross-request (no es un data cache).
+export const getStorefrontProductBySlug = cache(async function getStorefrontProductBySlug(
   slug: string,
 ): Promise<StorefrontProductDetail | null> {
   const p = await prisma.product.findFirst({
@@ -473,7 +479,7 @@ export async function getStorefrontProductBySlug(
   if (!p) return null;
   // inStock del producto = alguna opción con stock > 0 (auditoría 2026-07-13).
   return { ...p, inStock: p.variants.some((v) => v.stock > 0) };
-}
+});
 
 /**
  * Productos relacionados: misma categoría que el producto actual,
