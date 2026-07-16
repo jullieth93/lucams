@@ -810,6 +810,8 @@ model AbandonedCart {
   cartId             String    @unique
   cart               Cart      @relation(fields: [cartId], references: [id], onDelete: Cascade)
   email              String
+  // Token del link de recuperación (email → restaura la sesión del carrito anónimo). Único.
+  recoverToken       String?   @unique
   lastReminderSentAt DateTime?
   recoveredAt        DateTime?
 

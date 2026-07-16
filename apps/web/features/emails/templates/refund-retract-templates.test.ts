@@ -39,6 +39,7 @@ import { retractApprovedEmail } from "./retract-approved";
 import { retractRefundedEmail } from "./retract-refunded";
 import { orderCancelledEmail } from "./order-cancelled";
 import { reviewRequestEmail } from "./review-request";
+import { cartRecoveryEmail } from "./cart-recovery";
 
 /** Regex de dinero tolerante al espacio duro U+00A0 que emite Intl es-CO. */
 function money(pesosWithDots: string): RegExp {
@@ -322,6 +323,47 @@ describe("reviewRequestEmail", () => {
 
   it("IDEMPOTENCIA: mismo input → misma salida", async () => {
     const [a, b] = await Promise.all([reviewRequestEmail(base), reviewRequestEmail(base)]);
+    expect(a).toEqual(b);
+  });
+});
+
+// =============================================================================
+// cart-recovery (recuperación de carrito abandonado, palanca de ingreso)
+// =============================================================================
+describe("cartRecoveryEmail", () => {
+  const base = {
+    recoverToken: "tok_ABC123",
+    items: [
+      { name: "Fotoimanes Cuadrados", qty: 2 },
+      { name: "Set Corazón", qty: 1 },
+    ],
+  };
+
+  it("el CTA apunta a la ruta de recuperación con el token (encodeURIComponent)", async () => {
+    const r = await cartRecoveryEmail(base);
+    expect(r.html).toContain(`${SITE_URL}/carrito/recuperar/tok_ABC123`);
+    expect(r.text).toContain(`${SITE_URL}/carrito/recuperar/tok_ABC123`);
+  });
+
+  it("lista los items con su cantidad", async () => {
+    const r = await cartRecoveryEmail(base);
+    expect(r.html).toContain("Fotoimanes Cuadrados ×2");
+    expect(r.html).toContain("Set Corazón ×1");
+    expect(r.text).toContain("Fotoimanes Cuadrados ×2");
+  });
+
+  it("SEGURIDAD: escapa markup en nombres de item y token en la URL", async () => {
+    const r = await cartRecoveryEmail({
+      recoverToken: "a/b c",
+      items: [{ name: "Set <script> & co", qty: 1 }],
+    });
+    expect(r.html).toContain("Set &lt;script&gt; &amp; co");
+    expect(r.html).toContain("recuperar/a%2Fb%20c"); // token URL-encoded
+    expect(r.html).not.toContain("<script> & co");
+  });
+
+  it("IDEMPOTENCIA: mismo input → misma salida", async () => {
+    const [a, b] = await Promise.all([cartRecoveryEmail(base), cartRecoveryEmail(base)]);
     expect(a).toEqual(b);
   });
 });

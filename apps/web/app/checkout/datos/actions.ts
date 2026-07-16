@@ -8,6 +8,7 @@ import { ContactSchema, BillingSchema } from "@/features/checkout/schemas";
 import { parseStructuredAddress } from "@/features/checkout/parse-address";
 import { saveAddressStep, saveContactStep } from "@/features/checkout/service";
 import { saveCheckoutAddressToAccount } from "@/features/addresses/service";
+import { recordAbandonedCartEmail } from "@/features/cart/recovery-service";
 
 export type DatosActionState = {
   error?: string;
@@ -65,6 +66,9 @@ export async function saveDatosAction(
   try {
     await saveContactStep(contactParsed.data);
     await saveAddressStep(addressParsed.data, billingParsed.data);
+    // Palanca de recuperación de carrito (auditoría 2026-07-13): registra el email + genera token
+    // de recuperación. Best-effort (tiene su propio try/catch) → nunca rompe el checkout.
+    await recordAbandonedCartEmail(contactParsed.data.email);
     logger.info({
       event: "checkout.step.datos.saved",
       email: contactParsed.data.email,

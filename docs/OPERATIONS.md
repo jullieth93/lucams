@@ -168,6 +168,23 @@ select cron.schedule(
 );
 ```
 
+### Recuperación de carrito abandonado (palanca de ingreso) — agendamiento pg_cron
+
+`GET /api/cron/cart-recovery` (mismo `CRON_SECRET`) envía UN recordatorio a los carritos con email
+(capturado en checkout) inactivos ≥4h que no se completaron, con un link que RESTAURA la sesión del
+carrito (`/carrito/recuperar/<token>`, funciona para anónimos). Detecta conversión (el saga
+soft-deletea el cart tras PAID → `recoveredAt`). Lógica en `features/cart/recovery-service.ts`.
+
+**ACCIÓN HUMANA REQUERIDA (Lucy, al configurar prod):** agendar cada hora (o cada 30 min):
+
+```sql
+select cron.schedule(
+  'lucams-cart-recovery',
+  '0 * * * *',                        -- cada hora en punto
+  $$ select net.http_get('https://lucamsshop.co/api/cron/cart-recovery?secret=<CRON_SECRET>') $$
+);
+```
+
 El destinatario también sale de la setting `ALERT_EMAIL`.
 
 ### Symlink de Supabase local con datos de prueba
