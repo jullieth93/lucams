@@ -282,6 +282,12 @@ export async function addPersonalizedToCart(opts: {
    * Si se pasa, se valida que pertenece a design.product.id (anti-tamper).
    */
   variantId?: string;
+  /**
+   * Edición desde el carrito (auditoría 2026-07-13): si el diseño viene de "Editar" un item del
+   * carrito (el original se clonó a este DRAFT→READY), reemplazamos EN SITIO el item que apuntaba
+   * al diseño original en vez de crear uno nuevo (no duplicar).
+   */
+  replaceDesignId?: string;
 }): Promise<CartDetail> {
   if (opts.qty < 1 || opts.qty > MAX_QTY_PER_ITEM) {
     throw new CartError("QTY_INVALID");
@@ -364,26 +370,39 @@ export async function addPersonalizedToCart(opts: {
   }
   const cart = await ensureCart(opts.sessionId, opts.customerId);
 
-  // Buscar si ya hay un CartItem para este designId — agregar al qty existente.
-  // Caso de re-entrar al editor: el cliente personaliza Design X, lo agrega
-  // al cart, vuelve al estudio, hace cambios, "¡Listo!" otra vez → mismo
-  // designId, debe sumar al qty existente (mejora UX vs duplicar).
-  const existing = cart.items.find((i) => i.designId === opts.designId);
-  if (existing) {
+  // Edición desde el carrito: el diseño original se clonó a este (opts.designId). Reemplazamos EN
+  // SITIO el item que apuntaba al original — misma cantidad/posición, sin duplicar. Si el item
+  // original ya no está (el cliente lo quitó), caemos al alta normal.
+  const replacing = opts.replaceDesignId
+    ? cart.items.find((i) => i.designId === opts.replaceDesignId)
+    : undefined;
+  if (replacing) {
     await prisma.cartItem.update({
-      where: { id: existing.id },
-      data: { qty: Math.min(MAX_QTY_PER_ITEM, existing.qty + opts.qty) },
+      where: { id: replacing.id },
+      data: { designId: opts.designId, variantId: variant.id, unitPrice },
     });
   } else {
-    await prisma.cartItem.create({
-      data: {
-        cartId: cart.id,
-        variantId: variant.id,
-        designId: opts.designId,
-        qty: opts.qty,
-        unitPrice,
-      },
-    });
+    // Buscar si ya hay un CartItem para este designId — agregar al qty existente.
+    // Caso de re-entrar al editor: el cliente personaliza Design X, lo agrega
+    // al cart, vuelve al estudio, hace cambios, "¡Listo!" otra vez → mismo
+    // designId, debe sumar al qty existente (mejora UX vs duplicar).
+    const existing = cart.items.find((i) => i.designId === opts.designId);
+    if (existing) {
+      await prisma.cartItem.update({
+        where: { id: existing.id },
+        data: { qty: Math.min(MAX_QTY_PER_ITEM, existing.qty + opts.qty) },
+      });
+    } else {
+      await prisma.cartItem.create({
+        data: {
+          cartId: cart.id,
+          variantId: variant.id,
+          designId: opts.designId,
+          qty: opts.qty,
+          unitPrice,
+        },
+      });
+    }
   }
 
   const reloaded = await findCartBySession(opts.sessionId);

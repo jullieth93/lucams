@@ -28,6 +28,7 @@ import { supabaseService } from "@/lib/supabase/service";
 import { parsePhotoProductConfig } from "./schemas";
 import { resolvePersonalizationSurface } from "./surface";
 import { normalizeName } from "./name-input";
+import { remapCanvasAssetIds } from "./canvas-remap";
 import { ALPHABET } from "./letter-tiles";
 import { mergeVariantOverProduct, parseVariantAttributes } from "@/features/products/variant-schemas";
 import { renderProductionSlots, RenderNeedsKonvaError, type LoadAssetBytes } from "./production-render";
@@ -139,6 +140,67 @@ export async function getOwnedDesign(
   if (design.customerId && design.customerId === owner.customerId) return design;
   if (design.sessionId && design.sessionId === owner.sessionId) return design;
   return null;
+}
+
+/**
+ * Clona un diseño READY a un DRAFT editable (edición desde el carrito, auditoría 2026-07-13).
+ * Copia canvasData + metadata + assets (filas NUEVAS con mismo storageUrl) y remapea los assetId
+ * del canvas a los ids nuevos. El diseño ORIGINAL queda INTACTO → si el cliente abandona la
+ * edición, el item del carrito (que apunta al original READY) sigue válido. Devuelve el id del
+ * clon, o null si el diseño no es del owner o no está READY.
+ */
+export async function cloneDesignForEdit(
+  originalId: string,
+  owner: { customerId: string | null; sessionId: string | null },
+): Promise<{ id: string } | null> {
+  const original = await getOwnedDesign(originalId, owner);
+  if (!original || original.status !== "READY") return null;
+  const assets = await prisma.designAsset.findMany({ where: { designId: original.id } });
+
+  return prisma.$transaction(async (tx) => {
+    const clone = await tx.design.create({
+      data: {
+        productId: original.productId,
+        templateId: original.templateId,
+        customerId: original.customerId,
+        sessionId: original.sessionId,
+        status: "DRAFT",
+        canvasData: (original.canvasData ?? {}) as Prisma.InputJsonValue,
+        metadata: (original.metadata ?? {}) as Prisma.InputJsonValue,
+        createdBy: owner.customerId ?? owner.sessionId ?? null,
+      },
+      select: { id: true },
+    });
+
+    const idMap = new Map<string, string>();
+    for (const a of assets) {
+      const copy = await tx.designAsset.create({
+        data: {
+          designId: clone.id,
+          customerId: a.customerId,
+          sessionId: a.sessionId,
+          storageUrl: a.storageUrl,
+          mimeType: a.mimeType,
+          sizeBytes: a.sizeBytes,
+          width: a.width,
+          height: a.height,
+          exifStripped: a.exifStripped,
+          malwareScanned: a.malwareScanned,
+        },
+        select: { id: true },
+      });
+      idMap.set(a.id, copy.id);
+    }
+
+    if (idMap.size > 0) {
+      const remapped = remapCanvasAssetIds(original.canvasData, idMap);
+      await tx.design.update({
+        where: { id: clone.id },
+        data: { canvasData: remapped as Prisma.InputJsonValue },
+      });
+    }
+    return { id: clone.id };
+  });
 }
 
 // ──────────────────────────────────────────────────────────────────

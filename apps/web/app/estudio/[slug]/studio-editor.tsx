@@ -100,6 +100,8 @@ type StudioEditorProps = {
   variantId?: string;
   /** Precio (centavos COP) de la variante elegida — se muestra en la vista previa pre-carrito. */
   unitPriceCents: number;
+  /** Edición desde el carrito: id del diseño original a reemplazar al finalizar (no duplicar). */
+  replacesCartDesignId?: string | null;
   /** ADR-057 B2 — diseños prediseñados aplicables por slot (galería). */
   predesigned?: import("./studio-asset-picker-modal").PredesignedItem[];
   /** ADR-057 Fase D — etiquetas por slot (meses del calendario). */
@@ -117,6 +119,7 @@ export function StudioEditor({
   photoSlots,
   variantId,
   unitPriceCents,
+  replacesCartDesignId,
   predesigned = [],
   slotLabels,
   calendarYear,
@@ -405,11 +408,13 @@ export function StudioEditor({
         return;
       }
 
-      // Add to cart — pasamos variantId del PDP (consolidación familias M.3.b.CAT)
+      // Add to cart — pasamos variantId del PDP (consolidación familias M.3.b.CAT).
+      // replacesCartDesignId: si venimos de "Editar" desde el carrito, reemplaza el item original.
       const addResult = await addPersonalizedToCartAction({
         designId: state.designId,
         qty: 1,
         variantId,
+        replaceDesignId: replacesCartDesignId ?? undefined,
       });
       if (!addResult.ok) {
         state.setIsFinalizing(false);
@@ -426,7 +431,7 @@ export function StudioEditor({
       state.setIsFinalizing(false);
       setPreviewError(err instanceof Error ? err.message : String(err));
     }
-  }, [router, store, variantId, previewDataUrl]);
+  }, [router, store, variantId, previewDataUrl, replacesCartDesignId]);
 
   // Cerrar modal "Volver a editar": libera estado para no acumular preview
   // viejo si edita y vuelve a "Listo!".

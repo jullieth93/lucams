@@ -144,6 +144,9 @@ const AddPersonalizedSchema = z.object({
   // variantId elegido en PDP → Estudio (M.3.b.CAT consolidación familias).
   // Service valida que pertenece a design.product.id (anti-tamper).
   variantId: z.string().min(1).optional(),
+  // Edición desde el carrito: id del diseño original a reemplazar en sitio (no duplicar).
+  // Solo puede matchear un item del carrito PROPIO del caller → seguro sin validación extra.
+  replaceDesignId: z.string().min(1).optional(),
 });
 
 export type AddPersonalizedResult =
@@ -158,11 +161,13 @@ export async function addPersonalizedToCartAction(input: {
   designId: string;
   qty?: number;
   variantId?: string;
+  replaceDesignId?: string;
 }): Promise<AddPersonalizedResult> {
   const parsed = AddPersonalizedSchema.safeParse({
     designId: input.designId,
     qty: input.qty ?? 1,
     variantId: input.variantId,
+    replaceDesignId: input.replaceDesignId,
   });
   if (!parsed.success) {
     return { ok: false, code: "VALIDATION", message: parsed.error.message };
@@ -192,6 +197,7 @@ export async function addPersonalizedToCartAction(input: {
       designId: parsed.data.designId,
       qty: parsed.data.qty,
       variantId: parsed.data.variantId,
+      replaceDesignId: parsed.data.replaceDesignId,
     });
     logger.info({
       event: "cart.add_personalized.success",

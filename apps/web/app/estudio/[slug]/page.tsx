@@ -16,7 +16,11 @@ import dynamic from "next/dynamic";
 import { notFound, redirect } from "next/navigation";
 import { SiteHeader } from "@/components/site-header";
 import { getStorefrontProductBySlug } from "@/features/products/public-service";
-import { listTemplatesForKind, getOwnedDesign } from "@/features/personalization/service";
+import {
+  listTemplatesForKind,
+  getOwnedDesign,
+  cloneDesignForEdit,
+} from "@/features/personalization/service";
 import { parsePhotoProductConfig } from "@/features/personalization/schemas";
 import { resolvePersonalizationSurface } from "@/features/personalization/surface";
 import { listLetterStyles, ALPHABET } from "@/features/personalization/letter-tiles";
@@ -209,14 +213,25 @@ export default async function EstudioPage({
   let initialDesignId: string | null = null;
   let initialDesignCanvas: CanvasData | null = null;
   let initialDesignAssets: StudioAsset[] = [];
+  // Edición desde el carrito (auditoría 2026-07-13): id del diseño original a reemplazar en el
+  // carrito al finalizar (evita duplicar el item).
+  let replacesCartDesignId: string | null = null;
 
   if (sp.designId) {
     const customer = await getCurrentCustomer();
     const sessionId = customer ? null : await peekCartSession();
-    const design = await getOwnedDesign(sp.designId, {
-      customerId: customer?.customer.id ?? null,
-      sessionId,
-    });
+    const owner = { customerId: customer?.customer.id ?? null, sessionId };
+    let design = await getOwnedDesign(sp.designId, owner);
+    // Los diseños que están en el carrito son READY. "Editar" desde el carrito → clonamos a un
+    // DRAFT editable (el original queda intacto: si el cliente abandona, el item del carrito
+    // sigue válido) y al finalizar reemplazamos el item (no duplicar).
+    if (design && design.status === "READY") {
+      const clone = await cloneDesignForEdit(sp.designId, owner);
+      if (clone) {
+        replacesCartDesignId = sp.designId;
+        design = await getOwnedDesign(clone.id, owner);
+      }
+    }
     if (design && design.status === "DRAFT") {
       initialDesignId = design.id;
       initialDesignCanvas = design.canvasData as unknown as CanvasData;
@@ -256,6 +271,8 @@ export default async function EstudioPage({
           variantId={selectedVariant?.id}
           // Precio de la variante elegida (o base) → vista previa pre-carrito.
           unitPriceCents={selectedVariant?.price ?? product.basePrice}
+          // Edición desde el carrito: reemplazar el item original al finalizar (no duplicar).
+          replacesCartDesignId={replacesCartDesignId}
           templates={templates}
           initialDesignId={initialDesignId}
           initialDesignCanvas={initialDesignCanvas}
