@@ -38,6 +38,7 @@ import { refundIssuedEmail } from "./refund-issued";
 import { retractApprovedEmail } from "./retract-approved";
 import { retractRefundedEmail } from "./retract-refunded";
 import { orderCancelledEmail } from "./order-cancelled";
+import { reviewRequestEmail } from "./review-request";
 
 /** Regex de dinero tolerante al espacio duro U+00A0 que emite Intl es-CO. */
 function money(pesosWithDots: string): RegExp {
@@ -277,6 +278,50 @@ describe("orderCancelledEmail", () => {
 
   it("IDEMPOTENCIA: mismo input → misma salida", async () => {
     const [a, b] = await Promise.all([orderCancelledEmail(base), orderCancelledEmail(base)]);
+    expect(a).toEqual(b);
+  });
+});
+
+// =============================================================================
+// review-request (solicitud de reseña post-entrega, palanca de ingreso)
+// =============================================================================
+describe("reviewRequestEmail", () => {
+  const base = {
+    orderNumber: "LS-5001",
+    customerName: "Lucía",
+    products: [
+      { name: "Fotoimanes Cuadrados", slug: "fotoimanes-cuadrados" },
+      { name: "Set Corazón", slug: "set-corazon" },
+    ],
+  };
+
+  it("subject personaliza con el nombre", async () => {
+    const r = await reviewRequestEmail(base);
+    expect(r.subject).toBe("Lucía, ¿nos dejas tu reseña? ⭐");
+  });
+
+  it("HTML lista cada producto con link a su ficha (encodeURIComponent del slug)", async () => {
+    const r = await reviewRequestEmail(base);
+    expect(r.html).toContain(`${SITE_URL}/producto/fotoimanes-cuadrados`);
+    expect(r.html).toContain(`${SITE_URL}/producto/set-corazon`);
+    expect(r.html).toContain("Fotoimanes Cuadrados");
+    expect(r.html).toContain("Set Corazón");
+    expect(r.text).toContain("LS-5001");
+  });
+
+  it("SEGURIDAD: escapa markup en nombre y nombres de producto", async () => {
+    const r = await reviewRequestEmail({
+      ...base,
+      customerName: "Ana <b>",
+      products: [{ name: "Set <script> & co", slug: "x" }],
+    });
+    expect(r.html).toContain("Ana &lt;b&gt;");
+    expect(r.html).toContain("Set &lt;script&gt; &amp; co");
+    expect(r.html).not.toContain("<script> & co");
+  });
+
+  it("IDEMPOTENCIA: mismo input → misma salida", async () => {
+    const [a, b] = await Promise.all([reviewRequestEmail(base), reviewRequestEmail(base)]);
     expect(a).toEqual(b);
   });
 });

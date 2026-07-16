@@ -30,7 +30,7 @@ export async function supportTicketInternalEmail(data: SupportTicketInternalData
 </table>
 <hr style="border:none;border-top:1px solid #F0EAF7;margin:18px 0;">
 <p style="background:#FFF8F0;padding:14px 16px;border-radius:8px;font-size:14px;white-space:pre-wrap;line-height:1.6;">${escapeHtml(data.message)}</p>
-<p style="margin-top:18px;font-size:13px;color:#3D2E5C;opacity:0.75;">Respondé directo (Reply-To está configurado al email del cliente).</p>
+<p style="margin-top:18px;font-size:13px;color:#3D2E5C;opacity:0.75;">Responde directo (Reply-To está configurado al email del cliente).</p>
 `;
 
   const text = `Nuevo ticket #${ticketShort}

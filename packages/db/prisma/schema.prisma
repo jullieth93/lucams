@@ -545,6 +545,9 @@ model Order {
   // Bloque F3 — fecha de entrega efectiva (webhook Aveonline DELIVERED). Ancla la
   // ventana de 5 días hábiles del derecho de retracto (Ley 1480 art. 47).
   deliveredAt           DateTime?
+  // Palanca de reseñas (auditoría 2026-07-13): timestamp del email de solicitud de reseña
+  // (post-entrega, demorado). Null = aún no enviado → el cron lo considera elegible.
+  reviewRequestedAt     DateTime?
   // Legacy: venndeloShipmentId queda por compat. Nueva integración usa los campos Aveonline abajo.
   venndeloShipmentId    String?
   // PLAN_CATALOG_V2 4.10 — Aveonline + ShippingProvider interface (ADR-039).

@@ -66,7 +66,7 @@ jobs:
       # que justamente corrigen voseo).
       - name: Lint de voseo (es-CO tuteo)
         run: |
-          if grep -rniE '\b(para vos|a vos|con vos|tenés|podés|querés|hacés|elegí|contá|contanos|contás|usás|generá|creá|marcá|completá|dejala|registrate|corré|ingresá|revisá|configurá|seleccioná)\b' \
+          if grep -rniE '\b(para vos|a vos|con vos|tenés|podés|querés|hacés|respondé|escribinos|mandanos|elegí|contá|contanos|contás|usás|generá|creá|marcá|completá|dejala|registrate|corré|ingresá|revisá|configurá|seleccioná)\b' \
                apps/web packages/db/scripts \
                --include='*.ts' --include='*.tsx' --include='*.mjs' \
              | grep -vE '\.test\.|\.integration\.|fix-voseo|check-voseo'; then

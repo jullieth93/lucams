@@ -30,7 +30,7 @@ ${ctaButton(
   "Dejar una reseña ⭐",
 )}
 
-<p style="font-size:13px;color:#3D2E5C;opacity:0.65;margin-top:18px;">¿Algún inconveniente con el pedido? Respondé este email o escríbenos por WhatsApp. Tenemos 5 días hábiles de retracto Ley 1480.</p>
+<p style="font-size:13px;color:#3D2E5C;opacity:0.65;margin-top:18px;">¿Algún inconveniente con el pedido? Responde este correo o escríbenos por WhatsApp. Tenemos 5 días hábiles de retracto Ley 1480.</p>
 `;
 
   const text = `¡Tu pedido llegó!
@@ -42,7 +42,7 @@ Tu pedido ${data.orderNumber} ya está en tus manos según la transportadora.
 ¿Nos cuentas cómo te fue? Una reseña nos ayuda mucho:
 ${siteUrl}/mi-cuenta/pedidos
 
-¿Algún inconveniente? Respondé este email o escríbenos por WhatsApp.`;
+¿Algún inconveniente? Responde este correo o escríbenos por WhatsApp.`;
 
   return {
     subject: `¡Tu pedido ${data.orderNumber} llegó! 💜`,

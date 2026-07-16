@@ -151,6 +151,23 @@ select cron.schedule(
 );
 ```
 
+### Solicitud de reseña post-entrega (palanca de ingreso) — agendamiento pg_cron
+
+`GET /api/cron/review-request` (mismo `CRON_SECRET`) envía un follow-up gentil a los pedidos
+entregados hace **7–30 días** que aún no la recibieron (dedup vía `Order.reviewRequestedAt` +
+idempotencyKey de Resend). Lógica en `features/reviews/review-request-service.ts`. Batch de 100 por
+corrida; con una corrida diaria alcanza. Distinto del email `order-delivered` inmediato.
+
+**ACCIÓN HUMANA REQUERIDA (Lucy, al configurar prod):** agendar 1×/día (ej. mediodía Colombia):
+
+```sql
+select cron.schedule(
+  'lucams-review-request',
+  '0 17 * * *',                       -- 12:00 America/Bogota (UTC-5)
+  $$ select net.http_get('https://lucamsshop.co/api/cron/review-request?secret=<CRON_SECRET>') $$
+);
+```
+
 El destinatario también sale de la setting `ALERT_EMAIL`.
 
 ### Symlink de Supabase local con datos de prueba
