@@ -45,16 +45,16 @@ type FridgeView3DProps = {
 };
 
 // ── Nevera de tamaño FIJO (no depende de la cantidad de imanes) ──
-// Proporción de nevera convencional real (alta y esbelta): H/W ≈ 2.3.
-const FRIDGE_W = 3.7;
-const FRIDGE_H = 8.5;
-const FRIDGE_D = 1.55;
-const FREEZER_FRAC = 0.32; // ~1/3 superior = freezer
+// Proporción de nevera convencional real (alta y esbelta): H/W ≈ 2.5.
+const FRIDGE_W = 3.5;
+const FRIDGE_H = 8.8;
+const FRIDGE_D = 1.5;
+const FREEZER_FRAC = 0.31; // ~1/3 superior = freezer
 const DOOR_Z = FRIDGE_D / 2; // frente del cuerpo
 
 // Layout del frente (puertas casi cubren la cara, con margen y una junta central).
-const M = 0.16; // margen del panel frontal respecto al borde del cuerpo
-const DOOR_GAP = 0.13; // junta oscura entre freezer y refrigerador
+const M = 0.15; // margen del panel frontal respecto al borde del cuerpo
+const DOOR_GAP = 0.12; // junta oscura entre freezer y refrigerador
 const AVAIL_H = FRIDGE_H - 2 * M;
 const FREEZER_DOOR_H = FREEZER_FRAC * AVAIL_H - DOOR_GAP / 2;
 const FRIDGE_DOOR_H = (1 - FREEZER_FRAC) * AVAIL_H - DOOR_GAP / 2;
@@ -62,21 +62,23 @@ const DOOR_W = FRIDGE_W - 2 * M;
 const FREEZER_CY = FRIDGE_H / 2 - M - FREEZER_DOOR_H / 2;
 const FRIDGE_CY = -FRIDGE_H / 2 + M + FRIDGE_DOOR_H / 2;
 const GAP_CY = FRIDGE_H / 2 - M - FREEZER_DOOR_H - DOOR_GAP / 2;
-const DOOR_T = 0.16; // grosor del panel de puerta (sobresale del cuerpo)
+const DOOR_T = 0.14; // grosor del panel de puerta (sobresale del cuerpo)
 const DOOR_FACE_Z = DOOR_Z + DOOR_T / 2; // cara frontal de la puerta
 
-// Clúster de imanes en la parte ALTA de la puerta del refrigerador.
-const MAGNET_REGION_W = DOOR_W * 0.82;
-const MAGNET_REGION_H = FRIDGE_DOOR_H * 0.5;
-const MAGNET_REGION_CY = FRIDGE_CY + FRIDGE_DOOR_H * 0.16;
-const MAGNET_Z = DOOR_FACE_Z + 0.03;
+// Clúster de imanes: PEQUEÑO respecto a la puerta (como imanes reales en una nevera grande),
+// agrupado en la parte alta-centro de la puerta del refrigerador.
+const MAGNET_REGION_W = DOOR_W * 0.46;
+const MAGNET_REGION_H = FRIDGE_DOOR_H * 0.28;
+const MAGNET_REGION_CY = FRIDGE_CY + FRIDGE_DOOR_H * 0.22;
+const MAGNET_Z = DOOR_FACE_Z + 0.06; // claramente sobre el panel biselado
 
 // Materiales (gris satinado de electrodoméstico; metalness baja para verse bien sin env-map).
-const BODY_COLOR = "#9BA0A6";
-const DOOR_COLOR = "#A7ACB2";
-const SEAM_COLOR = "#3A3D42";
-const HANDLE_COLOR = "#D2D6DB";
-const FOOT_COLOR = "#26262B";
+const BODY_COLOR = "#9297A0";
+const DOOR_COLOR = "#A0A5AE";
+const PANEL_COLOR = "#989DA6"; // panel biselado interno (un pelo más oscuro)
+const SEAM_COLOR = "#34373D";
+const HANDLE_COLOR = "#C9CDD4";
+const FOOT_COLOR = "#212227";
 
 /** Un imán: plano texturizado con alphaTest para bordes nítidos según la silueta. */
 function Magnet({
@@ -110,49 +112,61 @@ function Magnet({
   );
 }
 
-/** Manija vertical sobre el borde izquierdo de una puerta: rebaje oscuro + barra cromada satinada. */
+/** Manija vertical sobre el borde izquierdo: canal oscuro embutido + grip fino satinado. */
 function Handle({ doorW, centerY, handleH }: { doorW: number; centerY: number; handleH: number }) {
-  const x = -doorW / 2 + 0.24;
+  const x = -doorW / 2 + 0.22;
   return (
     <group>
-      {/* Rebaje (sombra donde se agarra) */}
+      {/* Canal embutido (rebaje oscuro donde entran los dedos) */}
       <RoundedBox
-        args={[0.18, handleH + 0.12, 0.05]}
-        radius={0.025}
+        args={[0.13, handleH + 0.16, 0.05]}
+        radius={0.02}
         smoothness={3}
-        position={[x, centerY, DOOR_FACE_Z + 0.008]}
+        position={[x, centerY, DOOR_FACE_Z - 0.005]}
       >
-        <meshStandardMaterial color="#6C7075" roughness={0.6} metalness={0.2} />
+        <meshStandardMaterial color="#5A5E64" roughness={0.75} metalness={0.15} />
       </RoundedBox>
-      {/* Barra de la manija (sobresale) */}
+      {/* Grip fino cromado (sobresale poco → integrado, no un tirador grueso) */}
       <RoundedBox
-        args={[0.1, handleH, 0.11]}
-        radius={0.045}
+        args={[0.055, handleH, 0.075]}
+        radius={0.025}
         smoothness={4}
-        position={[x, centerY, DOOR_FACE_Z + 0.1]}
+        position={[x, centerY, DOOR_FACE_Z + 0.055]}
         castShadow
       >
-        <meshStandardMaterial color={HANDLE_COLOR} roughness={0.28} metalness={0.55} />
+        <meshStandardMaterial color={HANDLE_COLOR} roughness={0.22} metalness={0.65} />
       </RoundedBox>
     </group>
   );
 }
 
-/** Una puerta: panel saliente con canto redondeado + manija vertical a la izquierda. */
+/** Una puerta: cuerpo saliente + panel biselado interno (borde con groove) + manija. */
 function Door({ width, height, centerY }: { width: number; height: number; centerY: number }) {
   return (
     <group>
+      {/* Cuerpo de la puerta */}
       <RoundedBox
         args={[width, height, DOOR_T]}
-        radius={0.1}
+        radius={0.08}
         smoothness={5}
         position={[0, centerY, DOOR_Z]}
         castShadow
         receiveShadow
       >
-        <meshStandardMaterial color={DOOR_COLOR} roughness={0.34} metalness={0.32} />
+        <meshStandardMaterial color={DOOR_COLOR} roughness={0.36} metalness={0.34} />
       </RoundedBox>
-      <Handle doorW={width} centerY={centerY} handleH={height * 0.66} />
+      {/* Panel interno con bisel: apenas proud + un pelo más oscuro → el escalón lee como un
+          groove perimetral (detalle de nevera real, sin texturas). */}
+      <RoundedBox
+        args={[width - 0.36, height - 0.36, 0.03]}
+        radius={0.06}
+        smoothness={4}
+        position={[0, centerY, DOOR_FACE_Z + 0.012]}
+        receiveShadow
+      >
+        <meshStandardMaterial color={PANEL_COLOR} roughness={0.42} metalness={0.3} />
+      </RoundedBox>
+      <Handle doorW={width} centerY={centerY} handleH={height * 0.7} />
     </group>
   );
 }
