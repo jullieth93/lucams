@@ -33,6 +33,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { PRODUCT_REDIRECTS } from "@/lib/product-redirects";
+import { buildCsp, isOriginAllowed, SECURITY_HEADERS } from "@/lib/security-headers";
 import { incrementRedirectHit, lookupActiveRedirect } from "@/features/redirects/service";
 
 // Cache in-memory para UrlRedirect lookups: evita hit DB en cada request.
@@ -58,31 +59,14 @@ async function getRedirectWithCache(
   return result;
 }
 
-const SECURITY_HEADERS: Record<string, string> = {
-  "Strict-Transport-Security": "max-age=63072000; includeSubDomains; preload",
-  "X-Frame-Options": "DENY",
-  "X-Content-Type-Options": "nosniff",
-  "Referrer-Policy": "strict-origin-when-cross-origin",
-  // Permissions-Policy: deny capacidades por default. /estudio/* (Fase 3
-  // editor canvas) podrá necesitar camera — se override allí.
-  "Permissions-Policy":
-    "camera=(), microphone=(), geolocation=(), payment=(), usb=(), magnetometer=(), accelerometer=(), gyroscope=()",
-  "X-DNS-Prefetch-Control": "on",
-  // Cross-Origin isolation: COOP same-origin protege contra cross-window
-  // attacks (window.opener exploits). CORP same-site previene cross-origin
-  // resource leak. COEP credentialless permite imágenes Unsplash sin
-  // crossorigin attr (vs require-corp que rompería el catálogo de fotos
-  // hot-linked).
-  "Cross-Origin-Opener-Policy": "same-origin",
-  "Cross-Origin-Resource-Policy": "same-site",
-};
+// SECURITY_HEADERS, buildCsp e isOriginAllowed viven en lib/security-headers.ts (puros, testeados).
 
-// `upgrade-insecure-requests` solo en producción/preview (donde Vercel
-// sirve HTTPS). En dev local servimos por HTTP plano (localhost o IP
-// LAN de la VM) — incluirlo rompería todos los recursos CSS/JS/font al
-// forzar al browser a promoverlos a HTTPS que no existe.
+// `upgrade-insecure-requests` (dentro de buildCsp) solo en prod/preview (Vercel sirve HTTPS). En
+// dev local servimos por HTTP plano → incluirlo rompería los recursos. isDev alimenta la allowlist
+// CORS (localhost solo en dev).
 const IS_PROD_DEPLOY =
   process.env.VERCEL_ENV === "production" || process.env.VERCEL_ENV === "preview";
+const IS_DEV = process.env.NODE_ENV === "development";
 
 // Idle-timeout admin (Lucy 2026-06-27, Bloque C / A7): 30 min sin actividad →
 // cierre de sesión. Ventana deslizante: cada request admin renueva la marca.
@@ -96,41 +80,6 @@ const ADMIN_ACTIVITY_COOKIE = "admin_last_activity";
 // (el nonce solo aplica a elementos <style>/<script>) y removerlo rompería toda
 // la UI. 'unsafe-eval' solo en dev (HMR + stacks de React); en prod no se usa.
 // Guía oficial: node_modules/next/.../guides/content-security-policy.md
-function buildCsp(nonce: string): string {
-  // Solo prod/preview usan nonce + strict-dynamic. En dev mantenemos el CSP
-  // permisivo de siempre ('unsafe-inline'/'unsafe-eval') porque el dev server de
-  // Next inyecta scripts de HMR/overlay que con nonce se romperían — y el nonce
-  // se valida de verdad en un deploy prod-like, no en dev. El nonce token solo
-  // aparece en prod, así que en dev Next no encuentra nonce y usa 'unsafe-inline'.
-  const scriptSrc = IS_PROD_DEPLOY
-    ? `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' https://challenges.cloudflare.com https://checkout.wompi.co`
-    : "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com https://checkout.wompi.co";
-  return [
-    "default-src 'self'",
-    scriptSrc,
-    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-    "img-src 'self' data: blob: https://*.supabase.co https://*.coordinadora.com",
-    "font-src 'self' https://fonts.gstatic.com",
-    "connect-src 'self' https://*.supabase.co https://api.venndelo.com https://api.anthropic.com https://api.wompi.co",
-    "frame-src 'self' https://challenges.cloudflare.com https://checkout.wompi.co",
-    "form-action 'self' https://checkout.wompi.co",
-    "base-uri 'self'",
-    "object-src 'none'",
-    ...(IS_PROD_DEPLOY ? ["upgrade-insecure-requests"] : []),
-  ].join("; ");
-}
-
-const ALLOWED_ORIGINS: (string | RegExp)[] = [
-  "https://lucamsshop.co",
-  "https://www.lucamsshop.co",
-  /^https:\/\/lucams-shop(-[a-z0-9]+)?(-jullieth93s-projects)?\.vercel\.app$/,
-  ...(process.env.NODE_ENV === "development" ? ["http://localhost:3000"] : []),
-];
-
-function isOriginAllowed(origin: string): boolean {
-  return ALLOWED_ORIGINS.some((o) => (typeof o === "string" ? o === origin : o.test(origin)));
-}
-
 export async function proxy(request: NextRequest) {
   const requestId = crypto.randomUUID();
   const path = request.nextUrl.pathname;
@@ -143,7 +92,7 @@ export async function proxy(request: NextRequest) {
   // clona los headers ACTUALES del request (incluye cookies ya refrescadas por
   // Supabase) + agrega el nonce.
   const nonce = Buffer.from(crypto.randomUUID()).toString("base64");
-  const cspValue = buildCsp(nonce);
+  const cspValue = buildCsp(nonce, IS_PROD_DEPLOY);
   const nextWithNonce = () => {
     const headers = new Headers(request.headers);
     headers.set("x-nonce", nonce);
@@ -205,7 +154,7 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(new URL("/maintenance", request.url));
   }
 
-  if (isApi && origin && !isOriginAllowed(origin)) {
+  if (isApi && origin && !isOriginAllowed(origin, IS_DEV)) {
     return new NextResponse("Forbidden", {
       status: 403,
       headers: { "X-Request-Id": requestId },
@@ -283,7 +232,7 @@ export async function proxy(request: NextRequest) {
   }
   response.headers.set("Content-Security-Policy", cspValue);
 
-  if (isApi && origin && isOriginAllowed(origin)) {
+  if (isApi && origin && isOriginAllowed(origin, IS_DEV)) {
     response.headers.set("Access-Control-Allow-Origin", origin);
     response.headers.set("Access-Control-Allow-Credentials", "true");
     response.headers.set("Vary", "Origin");

@@ -258,6 +258,15 @@ describe("createOrder (integration)", () => {
 
 > **Críticos.** Sin estos tests, RLS solo es un papel.
 
+> **Gap conocido de CI (auditoría 2026-07-13, riesgo aceptado).** En CI se ENFORCEA que *toda tabla
+> tenga RLS habilitada*: la migración `..._10_rls_sweep_new_tables.sql` incluye un `RAISE EXCEPTION`
+> si queda alguna tabla pública sin RLS, así que un `CREATE TABLE` nuevo sin candado rompe la
+> migración en CI. Lo que CI **no** valida es el COMPORTAMIENTO de las políticas (que un anon no lea
+> filas de otro): `features/security/rls-matrix.integration.test.ts` requiere PostgREST/GoTrue reales
+> y se **salta** en CI (Postgres pelado). Mitigación: correr `rls-matrix` contra la Supabase de dev
+> antes de cada release; una `USING(true)` permisiva pasaría el gate de "RLS habilitada" pero fallaría
+> aquí. TODO futuro: levantar un stack Supabase mínimo en un job schedule.
+
 ```ts
 // __tests__/rls.test.ts
 import { describe, it, expect } from "vitest";
