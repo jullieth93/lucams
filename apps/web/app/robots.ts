@@ -34,8 +34,10 @@ export default async function robots(): Promise<MetadataRoute.Robots> {
           "/mi-cuenta/",
           "/_next/",
           "/maintenance",
-          // Evita duplicado de listing con search params
-          "/productos?*",
+          // Nota (auditoría 2026-07-13): antes se bloqueaba "/productos?*", pero eso bloqueaba
+          // también las páginas de categoría (?categoria=X) que el sitemap SÍ lista → se
+          // contradecían. Ahora se permiten y el duplicate content de filtros/orden se maneja
+          // con la URL canónica de /productos (generateMetadata canoniza a la categoría).
         ],
       },
     ],

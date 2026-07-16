@@ -32,13 +32,27 @@ import {
 import { listOcasiones } from "@/lib/catalog";
 import { OcasionFilterStrip } from "@/components/ocasion-filter-strip";
 
-export const metadata: Metadata = {
-  title: "Tienda",
-  description:
-    "Imanes magnéticos personalizados, fotoimanes, recuerdos para eventos y más. Hechos a mano en Colombia.",
-};
-
 type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
+
+// SEO (auditoría 2026-07-13): canonical que PRESERVA `categoria` (página de categoría real,
+// indexable) pero DESCARTA filtros/orden/paginación (sort, precio, page, personalizable…) →
+// evita duplicate content de cada combinación sin bloquear las categorías (antes robots
+// bloqueaba /productos?* y el sitemap las listaba: se contradecían).
+export async function generateMetadata({
+  searchParams,
+}: {
+  searchParams: SearchParams;
+}): Promise<Metadata> {
+  const sp = await searchParams;
+  const categoria = typeof sp.categoria === "string" ? sp.categoria : undefined;
+  const canonical = categoria ? `/productos?categoria=${categoria}` : "/productos";
+  return {
+    title: "Tienda",
+    description:
+      "Imanes magnéticos personalizados, fotoimanes, recuerdos para eventos y más. Hechos a mano en Colombia.",
+    alternates: { canonical },
+  };
+}
 
 function pickString(sp: Record<string, string | string[] | undefined>, key: string) {
   const v = sp[key];
