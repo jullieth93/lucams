@@ -161,10 +161,11 @@ jobs:
     # Corre contra el BUILD de producción (next start) + Postgres real, no `next dev`.
     #
     # Alcance del gate: smoke + a11y (invariantes) + axe (WCAG 2.1 A/AA) + compra (carrito→checkout).
-    # FUERA del gate (follow-up, corren local/preview): estudio (afirma el canvas Konva → requiere
-    # sembrar un producto de superficie foto, no el EVENT_FAVOR del seed base), regresión visual
-    # (snapshots por-píxel → requieren baseline en imagen pinneada) y admin-login/admin-mfa
-    # (requieren el stack Supabase real / GoTrue). Ver docs/TESTING.md.
+    # FUERA del gate por-PR: estudio (canvas Konva → producto de superficie foto), admin-login/
+    # admin-mfa (crean usuarios vía service role → necesitan GoTrue real) → estos corren en
+    # `.github/workflows/nightly-full.yml` (scheduled + on-demand, contra una Supabase real vía
+    # secrets STAGING_*). La regresión visual (snapshots por-píxel) sigue local/preview.
+    # Ver docs/TESTING.md.
     services:
       postgres:
         image: postgres:15

@@ -1,0 +1,119 @@
+name: Nightly — tests que necesitan Supabase real
+
+# Auditoría 2026-07-13: los tests que exigen un stack Supabase REAL (GoTrue + PostgREST) se saltan
+# en el CI por-PR (Postgres pelado): rls-matrix de COMPORTAMIENTO (¿una policy aísla datos de
+# verdad?) y los E2E de admin-login/MFA/Estudio (crean usuarios vía service role → necesitan
+# GoTrue). Este workflow los corre contra una Supabase real (staging/dev) de forma NOCTURNA +
+# on-demand. NO es per-PR a propósito: no bloquea PRs, complementa el gate por-PR.
+#
+# Un job `gate` lo SALTA limpio si faltan los secrets → sin correos de error hasta configurarlos.
+on:
+  schedule:
+    - cron: "0 6 * * *" # 06:00 UTC (~01:00 America/Bogotá)
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "22"
+  PNPM_VERSION: "11.0.9"
+
+jobs:
+  gate:
+    name: ¿Secrets de staging configurados?
+    runs-on: ubuntu-latest
+    outputs:
+      configured: ${{ steps.check.outputs.configured }}
+    steps:
+      - id: check
+        env:
+          HAS: ${{ secrets.STAGING_DATABASE_URL != '' && secrets.STAGING_SUPABASE_URL != '' && secrets.STAGING_SUPABASE_SERVICE != '' }}
+        run: |
+          if [ "$HAS" = "true" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Nightly inactivo: faltan secrets. Configura STAGING_DATABASE_URL, STAGING_DIRECT_URL, STAGING_SUPABASE_URL, STAGING_SUPABASE_ANON, STAGING_SUPABASE_SERVICE (apuntando a una Supabase de STAGING/dev, NUNCA producción) para activar rls-matrix + E2E admin."
+          fi
+
+  # Los tests de integración que exigen Supabase real (rls-matrix de comportamiento) — el resto
+  # del suite ya corre en el gate por-PR contra Postgres. Acá el env apunta a la Supabase real.
+  vitest-supabase-real:
+    name: Vitest contra Supabase real (rls-matrix de comportamiento)
+    needs: gate
+    if: needs.gate.outputs.configured == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+      DIRECT_URL: ${{ secrets.STAGING_DIRECT_URL }}
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.STAGING_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.STAGING_SUPABASE_ANON }}
+      SUPABASE_SECRET_KEY: ${{ secrets.STAGING_SUPABASE_SERVICE }}
+      CSRF_SECRET: nightly-csrf-secret-32-chars-minimo
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @lucams/db db:generate
+      # La Supabase de staging ya está migrada (mismo schema que prod). Corre TODO el vitest: con
+      # las llaves reales, rls-matrix (que se salta en el gate) ahora SÍ ejecuta.
+      - name: Vitest (incl. rls-matrix de comportamiento)
+        run: pnpm --filter web test
+
+  e2e-supabase-real:
+    name: E2E completo (admin-login + MFA + Estudio) contra Supabase real
+    needs: gate
+    if: needs.gate.outputs.configured == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+      DIRECT_URL: ${{ secrets.STAGING_DIRECT_URL }}
+      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.STAGING_SUPABASE_URL }}
+      NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ secrets.STAGING_SUPABASE_ANON }}
+      SUPABASE_SECRET_KEY: ${{ secrets.STAGING_SUPABASE_SERVICE }}
+      NEXT_PUBLIC_SITE_URL: http://localhost:3000
+      NEXT_PUBLIC_WA_NUMBER: "573208873826"
+      CSRF_SECRET: nightly-csrf-secret-32-chars-minimo
+      WOMPI_ENV: sandbox
+      WOMPI_PUBLIC_KEY: pub_test_ci
+      WOMPI_PRIVATE_KEY: prv_test_ci
+      WOMPI_INTEGRITY_SECRET: test_integrity_ci
+      WOMPI_EVENTS_SECRET: test_events_ci
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @lucams/db db:generate
+      - name: Seed del catálogo (productos para PDP/carrito/estudio)
+        run: pnpm --filter @lucams/db exec node scripts/seed-catalog-v2.mjs
+      - name: Instalar navegador Playwright
+        run: pnpm --filter web exec playwright install --with-deps chromium
+      - name: Build de producción (next start del webServer)
+        run: pnpm --filter web build
+      # Suite COMPLETA: incluye admin-login + admin-mfa + estudio (los que necesitan GoTrue real y
+      # por eso NO corren en el gate por-PR). Excluye 'visual' (baselines por-píxel).
+      - name: Playwright (completo, incl. admin/MFA/Estudio)
+        run: pnpm --filter web exec playwright test smoke a11y axe compra admin-login admin-mfa estudio --project=chromium
+      - name: Subir reporte Playwright (si falla)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report-nightly
+          path: apps/web/playwright-report/
