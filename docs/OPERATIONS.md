@@ -185,6 +185,22 @@ select cron.schedule(
 );
 ```
 
+### "Avísame cuando vuelva" (palanca de ingreso) — agendamiento pg_cron
+
+`GET /api/cron/back-in-stock` (mismo `CRON_SECRET`) notifica a las suscripciones cuyos productos
+volvieron a tener stock (`notifiedAt` se marca; no re-notifica). Suscripción vía el botón "Avísame"
+del PDP agotado (anónimo o logueado). Lógica en `features/back-in-stock/service.ts`.
+
+**ACCIÓN HUMANA REQUERIDA (Lucy, al configurar prod):** agendar cada 30 min:
+
+```sql
+select cron.schedule(
+  'lucams-back-in-stock',
+  '*/30 * * * *',                     -- cada 30 min
+  $$ select net.http_get('https://lucamsshop.co/api/cron/back-in-stock?secret=<CRON_SECRET>') $$
+);
+```
+
 El destinatario también sale de la setting `ALERT_EMAIL`.
 
 ### Symlink de Supabase local con datos de prueba

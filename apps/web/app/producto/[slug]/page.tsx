@@ -19,6 +19,10 @@ import { notFound } from "next/navigation";
 import { ChevronRight, MessageCircle, Sparkles } from "lucide-react";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
+import { WishlistButton } from "@/components/wishlist-button";
+import { BackInStockButton } from "@/components/back-in-stock-button";
+import { getCurrentCustomer } from "@/lib/auth";
+import { getWishlistedProductIds } from "@/features/wishlist/service";
 import { SubmitButton } from "@/components/admin/submit-button";
 import { ProductGallery } from "@/components/product-detail/product-gallery";
 import { RelatedProducts } from "@/components/product-detail/related-products";
@@ -128,6 +132,14 @@ export default async function ProductoDetallePage({
     sku: product.sku,
   });
 
+  // Wishlist + "avísame cuando vuelva" (palancas, auditoría 2026-07-13): estado del corazón para el
+  // cliente logueado + su email (prellenar el aviso de reposición).
+  const customer = await getCurrentCustomer();
+  const initialWishlisted = customer
+    ? (await getWishlistedProductIds(customer.customer.id, [product.id])).has(product.id)
+    : false;
+  const customerEmail = customer?.customer.email ?? "";
+
   // M.2 — "Personalizar primero": si el producto requiere personalización,
   // la CTA primaria es ir al Estudio. "Añadir al carrito" se oculta hasta
   // que haya un Design READY (M.4 cablea ese flow). Si kind=NONE, mantiene
@@ -225,9 +237,16 @@ export default async function ProductoDetallePage({
                 <p className="text-brand-muted text-xs font-medium tracking-wider uppercase">
                   {product.category.name}
                 </p>
-                <h1 className="font-display text-brand-purple-dark mt-1 text-3xl sm:text-4xl">
-                  {product.name}
-                </h1>
+                <div className="mt-1 flex items-start justify-between gap-3">
+                  <h1 className="font-display text-brand-purple-dark text-3xl sm:text-4xl">
+                    {product.name}
+                  </h1>
+                  <WishlistButton
+                    productId={product.id}
+                    initialWishlisted={initialWishlisted}
+                    className="hover:bg-brand-pink/10 mt-1 flex-shrink-0 p-2"
+                  />
+                </div>
                 {product.isPersonalizable && (
                   <span className="bg-brand-purple mt-2 inline-block rounded-full px-3 py-1 text-xs font-semibold tracking-wider text-white uppercase">
                     ✨ Personalizable
@@ -273,11 +292,11 @@ export default async function ProductoDetallePage({
 
               <div className="space-y-2 pt-2">
                 {outOfStock ? (
-                  <div className="rounded-md border border-rose-200 bg-rose-50 px-4 py-3 text-center">
-                    <p className="text-sm font-semibold text-rose-800">Producto agotado 😢</p>
-                    <p className="mt-0.5 text-xs text-rose-700">
-                      Escríbenos por WhatsApp y te avisamos apenas vuelva.
+                  <div className="space-y-3 rounded-md border border-rose-200 bg-rose-50 px-4 py-3">
+                    <p className="text-center text-sm font-semibold text-rose-800">
+                      Producto agotado 😢
                     </p>
+                    <BackInStockButton productId={product.id} defaultEmail={customerEmail} />
                   </div>
                 ) : isNamePerTile ? (
                   // Nombre Personalizado: precio POR FICHA → selector de cantidad + CTA al Estudio.

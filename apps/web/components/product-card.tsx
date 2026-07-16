@@ -10,9 +10,17 @@ import Image from "next/image";
 import Link from "next/link";
 import { Sparkles } from "lucide-react";
 import { formatCOP } from "@/lib/format";
+import { WishlistButton } from "@/components/wishlist-button";
 import type { StorefrontProductCard } from "@/features/products/public-service";
 
-export function ProductCard({ product }: { product: StorefrontProductCard }) {
+export function ProductCard({
+  product,
+  wishlisted,
+}: {
+  product: StorefrontProductCard;
+  /** Si se pasa (cliente logueado), muestra el corazón de favoritos con este estado inicial. */
+  wishlisted?: boolean;
+}) {
   const hasDiscount = product.compareAtPrice != null && product.compareAtPrice > product.basePrice;
   const discountPct = hasDiscount
     ? Math.round(((product.compareAtPrice! - product.basePrice) / product.compareAtPrice!) * 100)
@@ -54,8 +62,18 @@ export function ProductCard({ product }: { product: StorefrontProductCard }) {
             Personalizable
           </span>
         )}
+        {wishlisted !== undefined && (
+          <div className="absolute top-1.5 right-1.5">
+            <WishlistButton
+              productId={product.id}
+              initialWishlisted={wishlisted}
+              size="sm"
+              className="bg-white/85 p-1.5 shadow-sm backdrop-blur-sm hover:bg-white"
+            />
+          </div>
+        )}
         {hasDiscount && (
-          <span className="bg-brand-pink-ink absolute top-2 right-2 rounded-full px-2 py-0.5 text-[10px] font-semibold tracking-wider text-white uppercase">
+          <span className="bg-brand-pink-ink absolute right-2 bottom-2 rounded-full px-2 py-0.5 text-[10px] font-semibold tracking-wider text-white uppercase">
             -{discountPct}%
           </span>
         )}

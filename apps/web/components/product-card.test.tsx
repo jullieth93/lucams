@@ -29,6 +29,11 @@ vi.mock("next/image", () => ({
   // eslint-disable-next-line @next/next/no-img-element, jsx-a11y/alt-text
   default: (props: Record<string, unknown>) => <img {...(props as Record<string, string>)} />,
 }));
+// WishlistButton usa useRouter + la server action → se mockean para el render en jsdom.
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn() }) }));
+vi.mock("@/features/wishlist/actions", () => ({
+  toggleWishlistAction: vi.fn(async () => ({ ok: true, wishlisted: true })),
+}));
 
 function makeCard(over: Partial<StorefrontProductCard> = {}): StorefrontProductCard {
   return {
@@ -55,6 +60,24 @@ describe("ProductCard", () => {
     cleanup();
     render(<ProductCard product={makeCard()} />); // inStock undefined → tratado como disponible
     expect(screen.queryByText("Agotado")).not.toBeInTheDocument();
+  });
+
+  it("muestra el corazón de favoritos solo cuando se pasa la prop wishlisted", () => {
+    // Sin prop → sin corazón (páginas anónimas / sin dato).
+    render(<ProductCard product={makeCard()} />);
+    expect(screen.queryByRole("button", { name: /favoritos/i })).not.toBeInTheDocument();
+    cleanup();
+    // wishlisted=true → corazón activo (aria-pressed).
+    render(<ProductCard product={makeCard()} wishlisted={true} />);
+    const btn = screen.getByRole("button", { name: /quitar de favoritos/i });
+    expect(btn).toHaveAttribute("aria-pressed", "true");
+    cleanup();
+    // wishlisted=false → corazón inactivo.
+    render(<ProductCard product={makeCard()} wishlisted={false} />);
+    expect(screen.getByRole("button", { name: /guardar en favoritos/i })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
   });
 
   it("renderiza nombre, categoría y link accesible a la PDP", () => {

@@ -40,6 +40,7 @@ import { retractRefundedEmail } from "./retract-refunded";
 import { orderCancelledEmail } from "./order-cancelled";
 import { reviewRequestEmail } from "./review-request";
 import { cartRecoveryEmail } from "./cart-recovery";
+import { backInStockEmail } from "./back-in-stock";
 
 /** Regex de dinero tolerante al espacio duro U+00A0 que emite Intl es-CO. */
 function money(pesosWithDots: string): RegExp {
@@ -364,6 +365,32 @@ describe("cartRecoveryEmail", () => {
 
   it("IDEMPOTENCIA: mismo input → misma salida", async () => {
     const [a, b] = await Promise.all([cartRecoveryEmail(base), cartRecoveryEmail(base)]);
+    expect(a).toEqual(b);
+  });
+});
+
+// =============================================================================
+// back-in-stock ("¡Volvió!", palanca de ingreso)
+// =============================================================================
+describe("backInStockEmail", () => {
+  const base = { productName: "Fotoimanes Cuadrados", productSlug: "fotoimanes-cuadrados" };
+
+  it("subject y CTA con el producto + link a su ficha (encodeURIComponent)", async () => {
+    const r = await backInStockEmail(base);
+    expect(r.subject).toBe("¡Volvió! Fotoimanes Cuadrados está disponible 🎉");
+    expect(r.html).toContain(`${SITE_URL}/producto/fotoimanes-cuadrados`);
+    expect(r.text).toContain(`${SITE_URL}/producto/fotoimanes-cuadrados`);
+  });
+
+  it("SEGURIDAD: escapa markup en el nombre y encodea el slug", async () => {
+    const r = await backInStockEmail({ productName: "Set <script> & co", productSlug: "a b/c" });
+    expect(r.html).toContain("Set &lt;script&gt; &amp; co");
+    expect(r.html).toContain("producto/a%20b%2Fc");
+    expect(r.html).not.toContain("<script> & co");
+  });
+
+  it("IDEMPOTENCIA: mismo input → misma salida", async () => {
+    const [a, b] = await Promise.all([backInStockEmail(base), backInStockEmail(base)]);
     expect(a).toEqual(b);
   });
 });

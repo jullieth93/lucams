@@ -183,6 +183,8 @@ model Customer {
   // Sub-bloque M — Estudio de Personalización (diferenciador #1)
   designs            Design[]
   designAssets       DesignAsset[]
+  wishlist           WishlistItem[]
+  backInStockSubs    BackInStockSubscription[]
   // PLAN_CATALOG_V2 3.9 — tracking de cupones usados.
   couponUsages       CouponUsage[]
   // PLAN_CATALOG_V2 6.10 — logs de recomendaciones consumidas (CTR + conversión).
@@ -362,6 +364,8 @@ model Product {
   category              Category                  @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   variants              ProductVariant[]
   reviews               Review[]
+  wishlistedBy          WishlistItem[]
+  backInStockSubs       BackInStockSubscription[]
   designs               Design[]
   templates             PersonalizationTemplate[]
   // PLAN_CATALOG_V2 1.5 / 2.10 — tags transversales por ocasión (matrimonio, día madre, etc.).
@@ -1486,4 +1490,34 @@ model UrlRedirect {
 
   @@index([fromPath, isActive, deletedAt])
   @@index([deletedAt])
+}
+
+// Wishlist / favoritos (palanca de ingreso, auditoría 2026-07-13). Un cliente logueado guarda
+// productos para después.
+model WishlistItem {
+  id         String   @id @default(cuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  productId  String
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@unique([customerId, productId])
+  @@index([customerId, createdAt])
+}
+
+// "Avísame cuando vuelva" (palanca de ingreso). Suscripción por email a un producto agotado; el
+// cron notifica al reponerse el stock. Funciona para anónimos (email) y logueados.
+model BackInStockSubscription {
+  id         String    @id @default(cuid())
+  productId  String
+  product    Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  email      String
+  customerId String?
+  customer   Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  notifiedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@unique([productId, email])
+  @@index([productId, notifiedAt])
 }

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Package, Palette, MapPin, Star, ShieldCheck } from "lucide-react";
+import { LayoutDashboard, Package, Palette, Heart, MapPin, Star, ShieldCheck } from "lucide-react";
 
 /**
  * Navegación del área de cuenta (storefront, NO admin). Barra de pestañas
@@ -14,6 +14,7 @@ const TABS = [
   { href: "/mi-cuenta", label: "Resumen", icon: LayoutDashboard, exact: true },
   { href: "/mi-cuenta/pedidos", label: "Pedidos", icon: Package },
   { href: "/mi-cuenta/disenos", label: "Mis diseños", icon: Palette },
+  { href: "/mi-cuenta/favoritos", label: "Favoritos", icon: Heart },
   { href: "/mi-cuenta/direcciones", label: "Direcciones", icon: MapPin },
   { href: "/mi-cuenta/resenas", label: "Reseñas", icon: Star },
   { href: "/mi-cuenta/seguridad", label: "Seguridad", icon: ShieldCheck },

@@ -19,6 +19,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Sparkles } from "lucide-react";
 import { ProductCard } from "@/components/product-card";
+import { getCurrentCustomer } from "@/lib/auth";
+import { getWishlistedProductIds } from "@/features/wishlist/service";
 import { ActiveFilterChips, ProductsFilters } from "@/components/products-filters";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
@@ -147,6 +149,16 @@ export default async function ProductosPage({ searchParams }: { searchParams: Se
 
   const activeCategory = categoria ? categories.find((c) => c.slug === categoria) : null;
 
+  // Wishlist (palanca, auditoría 2026-07-13): para el cliente logueado, qué productos de la página
+  // están en favoritos → pinta el corazón. Anónimo → sin corazón.
+  const customer = await getCurrentCustomer();
+  const wishlistedIds = customer
+    ? await getWishlistedProductIds(
+        customer.customer.id,
+        products.map((p) => p.id),
+      )
+    : null;
+
   return (
     <div className="bg-brand-cream flex min-h-screen flex-col">
       <SiteHeader />
@@ -201,7 +213,11 @@ export default async function ProductosPage({ searchParams }: { searchParams: Se
                 <>
                   <div className="grid grid-cols-2 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
                     {products.map((p) => (
-                      <ProductCard key={p.id} product={p} />
+                      <ProductCard
+                        key={p.id}
+                        product={p}
+                        wishlisted={wishlistedIds ? wishlistedIds.has(p.id) : undefined}
+                      />
                     ))}
                   </div>
                   {totalPages > 1 && (
