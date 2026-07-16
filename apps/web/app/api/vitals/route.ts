@@ -16,6 +16,8 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
+import { rateLimit } from "@/lib/rate-limit";
+import { getClientIp } from "@/lib/client-ip";
 
 // Endpoint dinámico (no pre-renderizable). En Next 16 con turbopack, los
 // route handlers que importan transitivamente pino fallaban al "collect
@@ -43,6 +45,11 @@ const VitalSchema = z.object({
 
 export async function POST(request: Request) {
   try {
+    // Rate-limit por IP (auditoría 2026-07-13): endpoint público que escribe WebVital →
+    // sin límite era un vector de inflado de la tabla. 120/min es holgado para RUM real.
+    const { allowed } = await rateLimit(`vitals:${getClientIp(request.headers)}`, 120, 60);
+    if (!allowed) return NextResponse.json({ ok: false }, { status: 429 });
+
     const body = await request.json();
     const parsed = VitalSchema.safeParse(body);
     if (!parsed.success) {

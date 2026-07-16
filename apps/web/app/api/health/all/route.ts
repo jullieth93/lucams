@@ -10,6 +10,8 @@
  */
 
 import { logger } from "@/lib/logger";
+import { rateLimit } from "@/lib/rate-limit";
+import { getClientIp } from "@/lib/client-ip";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -48,6 +50,16 @@ async function probe(name: string, path: string, baseUrl: string): Promise<Check
 }
 
 export async function GET(req: Request): Promise<Response> {
+  // Rate-limit por IP (auditoría 2026-07-13): endpoint público que dispara 3 sub-probes →
+  // sin límite era amplificable. 30/min es holgado para un uptime monitor (típico cada 30-60s).
+  const { allowed } = await rateLimit(`health_all:${getClientIp(req.headers)}`, 30, 60);
+  if (!allowed) {
+    return new Response(JSON.stringify({ status: "rate_limited" }), {
+      status: 429,
+      headers: { "content-type": "application/json", "Retry-After": "60" },
+    });
+  }
+
   const url = new URL(req.url);
   const baseUrl = `${url.protocol}//${url.host}`;
   const start = Date.now();
