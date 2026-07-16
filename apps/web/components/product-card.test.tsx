@@ -46,6 +46,17 @@ function makeCard(over: Partial<StorefrontProductCard> = {}): StorefrontProductC
 }
 
 describe("ProductCard", () => {
+  it("muestra badge 'Agotado' cuando inStock=false; no lo muestra si está disponible o sin dato", () => {
+    render(<ProductCard product={makeCard({ inStock: false, images: ["/x.jpg"] })} />);
+    expect(screen.getByText("Agotado")).toBeInTheDocument();
+    cleanup();
+    render(<ProductCard product={makeCard({ inStock: true })} />);
+    expect(screen.queryByText("Agotado")).not.toBeInTheDocument();
+    cleanup();
+    render(<ProductCard product={makeCard()} />); // inStock undefined → tratado como disponible
+    expect(screen.queryByText("Agotado")).not.toBeInTheDocument();
+  });
+
   it("renderiza nombre, categoría y link accesible a la PDP", () => {
     render(<ProductCard product={makeCard()} />);
     const link = screen.getByRole("link", { name: "Imán Corazón" });

@@ -35,6 +35,9 @@ export type StorefrontProductCard = {
    *  matchea basePrice. Cuando variantCount > 1 y minVariantPrice <
    *  basePrice, el card muestra "desde $X". */
   minVariantPrice?: number;
+  /** Auditoría 2026-07-13: ¿hay al menos una opción activa con stock > 0? undefined = tratar
+   *  como disponible (paths que no consultan stock). false → badge "Agotado" + CTA deshabilitada. */
+  inStock?: boolean;
 };
 
 export type StorefrontProductDetail = StorefrontProductCard & {
@@ -57,6 +60,8 @@ export type StorefrontProductDetail = StorefrontProductCard & {
     attributes: unknown;
     /** D1: fotos propias de la opción. Vacío = el PDP usa las del producto. */
     images: string[];
+    /** Auditoría 2026-07-13: stock de la opción → deshabilitar la opción/CTA si es 0. */
+    stock: number;
   }>;
 };
 
@@ -250,7 +255,7 @@ export async function listStorefrontProducts(
       _count: { select: { variants: { where: { deletedAt: null, isActive: true } } } },
       variants: {
         where: { deletedAt: null, isActive: true },
-        select: { price: true },
+        select: { price: true, stock: true },
       },
     },
   });
@@ -262,7 +267,12 @@ export async function listStorefrontProducts(
       overridePrices.length > 0 ? Math.min(p.basePrice, ...overridePrices) : p.basePrice;
     // p.compareAtPrice está denormalizado = promo de la opción más barata
     // (syncProductBasePrice), así que la card muestra el descuento correcto.
-    return { ...p, variantCount: _count.variants, minVariantPrice };
+    return {
+      ...p,
+      variantCount: _count.variants,
+      minVariantPrice,
+      inStock: variants.some((v) => v.stock > 0),
+    };
   });
 }
 
@@ -422,7 +432,7 @@ function mapRow(r: {
 export async function getStorefrontProductBySlug(
   slug: string,
 ): Promise<StorefrontProductDetail | null> {
-  return prisma.product.findFirst({
+  const p = await prisma.product.findFirst({
     where: { ...STOREFRONT_WHERE, slug },
     select: {
       id: true,
@@ -454,11 +464,15 @@ export async function getStorefrontProductBySlug(
           attributes: true,
           // D1: fotos propias de la opción. Vacío = el PDP usa las del producto.
           images: true,
+          stock: true,
         },
         orderBy: { createdAt: "asc" },
       },
     },
   });
+  if (!p) return null;
+  // inStock del producto = alguna opción con stock > 0 (auditoría 2026-07-13).
+  return { ...p, inStock: p.variants.some((v) => v.stock > 0) };
 }
 
 /**

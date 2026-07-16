@@ -142,6 +142,8 @@ export default async function ProductoDetallePage({
   const priceValidUntil = new Date(product.updatedAt.getTime() + oneYearMs)
     .toISOString()
     .slice(0, 10);
+  // Agotado = ninguna opción activa con stock (auditoría 2026-07-13).
+  const outOfStock = product.inStock === false;
   const jsonLd = {
     "@context": "https://schema.org/",
     "@type": "Product",
@@ -157,11 +159,21 @@ export default async function ProductoDetallePage({
       priceCurrency: "COP",
       price: (product.basePrice / 100).toFixed(0),
       priceValidUntil,
-      availability: "https://schema.org/InStock",
+      availability:
+        product.inStock === false
+          ? "https://schema.org/OutOfStock"
+          : "https://schema.org/InStock",
       itemCondition: "https://schema.org/NewCondition",
       seller: { "@type": "Organization", name: "Lucams_shop" },
     },
   };
+
+  // Auditoría 2026-07-13: escapar <, >, & del JSON embebido → un nombre/descripción con
+  // "</script>" o "<" no puede romper el tag ni inyectar (XSS). JSON.stringify no los escapa.
+  const jsonLdSafe = JSON.stringify(jsonLd)
+    .replace(/</g, "\\u003c")
+    .replace(/>/g, "\\u003e")
+    .replace(/&/g, "\\u0026");
 
   // CSP por nonce (C3): el JSON-LD es un bloque de datos (exento de script-src),
   // pero le pasamos el nonce por robustez ante navegadores estrictos.
@@ -176,7 +188,7 @@ export default async function ProductoDetallePage({
         type="application/ld+json"
         nonce={nonce}
         suppressHydrationWarning
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        dangerouslySetInnerHTML={{ __html: jsonLdSafe }}
       />
       <SiteHeader />
 
@@ -260,7 +272,14 @@ export default async function ProductoDetallePage({
               )}
 
               <div className="space-y-2 pt-2">
-                {isNamePerTile ? (
+                {outOfStock ? (
+                  <div className="rounded-md border border-rose-200 bg-rose-50 px-4 py-3 text-center">
+                    <p className="text-sm font-semibold text-rose-800">Producto agotado 😢</p>
+                    <p className="mt-0.5 text-xs text-rose-700">
+                      Escríbenos por WhatsApp y te avisamos apenas vuelva.
+                    </p>
+                  </div>
+                ) : isNamePerTile ? (
                   // Nombre Personalizado: precio POR FICHA → selector de cantidad + CTA al Estudio.
                   <NamePricePicker
                     slug={product.slug}

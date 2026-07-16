@@ -17,6 +17,8 @@ export function ProductCard({ product }: { product: StorefrontProductCard }) {
   const discountPct = hasDiscount
     ? Math.round(((product.compareAtPrice! - product.basePrice) / product.compareAtPrice!) * 100)
     : 0;
+  // inStock === false → agotado (undefined = paths sin dato de stock → se trata como disponible).
+  const outOfStock = product.inStock === false;
 
   return (
     <Link
@@ -32,7 +34,9 @@ export function ProductCard({ product }: { product: StorefrontProductCard }) {
             fill
             sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
             loading="lazy"
-            className="object-cover transition-transform duration-300 group-hover:scale-105"
+            className={`object-cover transition-transform duration-300 group-hover:scale-105 ${
+              outOfStock ? "opacity-50 grayscale" : ""
+            }`}
           />
         ) : (
           <div className="flex h-full w-full items-center justify-center">
@@ -40,6 +44,11 @@ export function ProductCard({ product }: { product: StorefrontProductCard }) {
           </div>
         )}
 
+        {outOfStock && (
+          <span className="absolute inset-x-0 top-1/2 -translate-y-1/2 bg-black/45 py-1 text-center text-xs font-bold tracking-wider text-white uppercase backdrop-blur-[1px]">
+            Agotado
+          </span>
+        )}
         {product.isPersonalizable && (
           <span className="bg-brand-purple absolute top-2 left-2 rounded-full px-2 py-0.5 text-[10px] font-semibold tracking-wider text-white uppercase">
             Personalizable
