@@ -66,9 +66,9 @@ const FALLBACK_FAQS: { slug: string; question: string; answer: string }[] = [
   },
   {
     slug: "factura-dian",
-    question: "¿Me hacen factura electrónica DIAN?",
+    question: "¿Puedo pedir factura de mi compra?",
     answer:
-      "Sí. Cuéntanos tus datos de facturación (CC/NIT, razón social y correo) al hacer el pedido o luego por WhatsApp, y te enviamos la factura a tu correo una vez despachado tu pedido.",
+      "Claro. Cuéntanos tus datos de facturación (CC/NIT o cédula, razón social y correo) al hacer el pedido o luego por WhatsApp y coordinamos el envío de tu factura a tu correo. Si necesitas **factura electrónica DIAN**, escríbenos y te confirmamos cómo gestionarla.",
   },
   {
     slug: "datos-personales",

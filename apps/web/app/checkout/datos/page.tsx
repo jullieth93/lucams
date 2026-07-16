@@ -7,8 +7,15 @@ import { redirect } from "next/navigation";
 import { CheckoutStepper } from "../_components/stepper";
 import { OrderSummary } from "../_components/order-summary";
 import { DatosForm } from "./datos-form";
-import { loadCheckoutContext, CheckoutError } from "@/features/checkout/service";
+import {
+  loadCheckoutContext,
+  assertCheckoutAvailability,
+  CheckoutError,
+} from "@/features/checkout/service";
 import { getSavedAddressesForCheckout } from "@/features/addresses/service";
+
+// Mensaje único cuando un item se agotó mientras estaba en el carrito (auditoría 2026-07-16).
+const STOCK_GONE_MSG = "Uno de los productos ya no está disponible. Por favor revisa tu carrito.";
 
 export const metadata: Metadata = {
   title: "Datos · Checkout",
@@ -19,9 +26,13 @@ export default async function CheckoutDatosPage() {
   let ctx;
   try {
     ctx = await loadCheckoutContext();
+    await assertCheckoutAvailability(ctx);
   } catch (err) {
     if (err instanceof CheckoutError && err.code === "CART_EMPTY") redirect("/carrito");
     if (err instanceof CheckoutError && err.code === "CART_NOT_FOUND") redirect("/carrito");
+    if (err instanceof CheckoutError && err.code === "STOCK_UNAVAILABLE") {
+      redirect(`/carrito?error=${encodeURIComponent(STOCK_GONE_MSG)}`);
+    }
     throw err;
   }
 

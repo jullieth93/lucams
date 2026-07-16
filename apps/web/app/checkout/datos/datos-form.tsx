@@ -889,10 +889,11 @@ export function DatosForm({
       {/* FACTURACIÓN */}
       <section className="border-brand-purple/10 rounded-2xl border bg-white p-5 shadow-sm sm:p-6">
         <h2 className="text-brand-purple-dark font-display mb-2 text-lg font-bold">
-          3. Facturación electrónica
+          3. Facturación
         </h2>
         <p className="text-brand-muted mb-4 text-sm">
-          Si necesitas factura DIAN, marca la casilla. Si es compra personal, déjala sin marcar.
+          Si necesitas factura, marca la casilla y déjanos tus datos: coordinamos el envío a tu
+          correo. Si es compra personal, déjala sin marcar.
         </p>
 
         <label className="text-brand-purple-dark inline-flex items-center gap-2 text-sm font-medium">
@@ -903,7 +904,7 @@ export function DatosForm({
             onChange={(e) => setWantsInvoice(e.target.checked)}
             className="accent-brand-purple h-4 w-4"
           />
-          Quiero factura electrónica
+          Quiero factura
         </label>
 
         {wantsInvoice && (

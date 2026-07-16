@@ -58,7 +58,7 @@ export async function saveDatosAction(
   const billingParsed = BillingSchema.safeParse(billingRaw);
   if (!billingParsed.success) {
     return {
-      error: "Si quieres factura electrónica, completa los datos de facturación",
+      error: "Si quieres factura, completa los datos de facturación",
       fieldErrors: z.flattenError(billingParsed.error).fieldErrors as Record<string, string[]>,
     };
   }

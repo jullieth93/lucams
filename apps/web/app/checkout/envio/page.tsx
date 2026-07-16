@@ -13,8 +13,15 @@ import { Truck, AlertCircle } from "lucide-react";
 import { CheckoutStepper } from "../_components/stepper";
 import { OrderSummary } from "../_components/order-summary";
 import { EnvioStep } from "./envio-step";
-import { CheckoutError, loadCheckoutContext, quoteShipping } from "@/features/checkout/service";
+import {
+  CheckoutError,
+  loadCheckoutContext,
+  assertCheckoutAvailability,
+  quoteShipping,
+} from "@/features/checkout/service";
 import { logger } from "@/lib/logger";
+
+const STOCK_GONE_MSG = "Uno de los productos ya no está disponible. Por favor revisa tu carrito.";
 
 export const metadata: Metadata = {
   title: "Envío · Checkout",
@@ -41,9 +48,13 @@ export default async function CheckoutEnvioPage({
   let ctx;
   try {
     ctx = await loadCheckoutContext();
+    await assertCheckoutAvailability(ctx);
   } catch (err) {
     if (err instanceof CheckoutError) {
       if (err.code === "CART_EMPTY" || err.code === "CART_NOT_FOUND") redirect("/carrito");
+      if (err.code === "STOCK_UNAVAILABLE") {
+        redirect(`/carrito?error=${encodeURIComponent(STOCK_GONE_MSG)}`);
+      }
     }
     throw err;
   }

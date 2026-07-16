@@ -3,10 +3,12 @@
 import { headers } from "next/headers";
 import { logger } from "@/lib/logger";
 import { rateLimit } from "@/lib/rate-limit";
-import { ipKey } from "@/lib/rate-limit-keys";
+import { ipKey, ownerKey } from "@/lib/rate-limit-keys";
 import { DesignSuggestInputSchema, type DesignSuggestion } from "./schemas";
 import { getDesignSuggestion, AiUnavailableError } from "./service";
 import { getClientIp } from "@/lib/client-ip";
+import { getCurrentCustomer } from "@/lib/auth";
+import { peekCartSession } from "@/lib/cart-session";
 
 type Result = { ok: true; suggestion: DesignSuggestion } | { ok: false; message: string };
 
@@ -24,11 +26,30 @@ export async function suggestDesignAction(raw: unknown): Promise<Result> {
   const hdrs = await headers();
   const ip = getClientIp(hdrs);
   const isProd = process.env.VERCEL_ENV === "production";
-  // 20 sugerencias/hora en prod (generoso para uso real, corta abuso). El asistente solo se
-  // invoca cuando el cliente abre el panel, nunca automáticamente.
-  const rl = await rateLimit(ipKey("ai_suggest", ip), isProd ? 20 : 100, 3600);
-  if (!rl.allowed) {
-    return { ok: false, message: "¡Muchas ideas seguidas! 😅 Espera un momento e intenta de nuevo." };
+  const hourlyCap = isProd ? 20 : 100;
+  const tooMany = {
+    ok: false as const,
+    message: "¡Muchas ideas seguidas! 😅 Espera un momento e intenta de nuevo.",
+  };
+  // Capa 1 — por IP: 20 sugerencias/hora en prod (generoso para uso real, corta abuso). El
+  // asistente solo se invoca cuando el cliente abre el panel, nunca automáticamente.
+  const rlIp = await rateLimit(ipKey("ai_suggest", ip), hourlyCap, 3600);
+  if (!rlIp.allowed) return tooMany;
+
+  // Capa 2 — por identidad (auditoría 2026-07-16): defensa en profundidad contra rotación de
+  // IP. Cliente logueado → key por customerId (identidad fuerte, no spoofeable como el IP);
+  // anónimo → key por la cookie de sesión del carrito si existe. Sin identidad, la capa 1 cubre.
+  const customer = await getCurrentCustomer();
+  let identityKey: string | null = null;
+  if (customer) {
+    identityKey = ownerKey("ai_suggest", customer.customer.id);
+  } else {
+    const sessionId = await peekCartSession();
+    if (sessionId) identityKey = ownerKey("ai_suggest_sess", sessionId);
+  }
+  if (identityKey) {
+    const rlId = await rateLimit(identityKey, hourlyCap, 3600);
+    if (!rlId.allowed) return tooMany;
   }
 
   try {

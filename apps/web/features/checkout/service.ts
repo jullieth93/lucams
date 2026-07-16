@@ -20,6 +20,8 @@ import { logger } from "@/lib/logger";
 import { getSettingValue } from "@/lib/cms";
 import { createOrderFromCart } from "@/features/orders/service";
 import { processPaidOrder } from "@/features/orders/saga";
+import { assertStockAvailable } from "@/features/orders/stock";
+import { InsufficientStockError } from "@/features/orders/errors";
 import { priceCouponForCart } from "@/features/coupons/redemption";
 import { getPaymentProvider } from "@/features/payments/provider";
 import { getShippingProvider } from "@/features/shipping/provider";
@@ -117,6 +119,28 @@ export async function loadCheckoutContext(): Promise<CheckoutContext> {
   }
 
   return { cart, customerId, state: currentState };
+}
+
+/**
+ * Valida disponibilidad de stock al ENTRAR a un paso del checkout (auditoría 2026-07-16).
+ * Antes la disponibilidad solo se validaba al pagar (createOrderFromCart), así que el cliente
+ * podía llenar contacto + envío para toparse con "agotado" recién al pagar. Esto lo filtra al
+ * entrar a cada paso. Lectura pura; la defensa real contra concurrencia sigue siendo el UPDATE
+ * atómico en decrementStockForOrder. Traduce InsufficientStockError → STOCK_UNAVAILABLE para que
+ * la página redirija a /carrito con un mensaje claro.
+ */
+export async function assertCheckoutAvailability(ctx: CheckoutContext): Promise<void> {
+  try {
+    await assertStockAvailable(
+      prisma,
+      ctx.cart.items.map((it) => ({ variantId: it.variantId, qty: it.qty })),
+    );
+  } catch (err) {
+    if (err instanceof InsufficientStockError) {
+      throw new CheckoutError("STOCK_UNAVAILABLE", err.message);
+    }
+    throw err;
+  }
 }
 
 /**

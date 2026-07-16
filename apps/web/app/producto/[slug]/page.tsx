@@ -38,6 +38,7 @@ import {
   getStorefrontProductBySlug,
   listRelatedProducts,
 } from "@/features/products/public-service";
+import { getProductRatingAggregate } from "@/features/reviews/public-service";
 
 type Params = Promise<{ slug: string }>;
 type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
@@ -116,11 +117,15 @@ export default async function ProductoDetallePage({
   // undefined = con imán por defecto.)
   const ctaNoun = selectedAttrs.magnet === false ? "tu adhesivo" : "tu imán";
 
-  const related = await listRelatedProducts({
-    productId: product.id,
-    categorySlug: product.category.slug,
-    limit: 4,
-  });
+  const [related, ratingAggregate] = await Promise.all([
+    listRelatedProducts({
+      productId: product.id,
+      categorySlug: product.category.slug,
+      limit: 4,
+    }),
+    // Rating real para el JSON-LD (auditoría 2026-07-16). null si no hay reseñas.
+    getProductRatingAggregate(product.id),
+  ]);
 
   // Precio tachado (promo) de la OPCIÓN elegida (Lucy 2026-06-27). Solo se
   // muestra si es estrictamente mayor al precio actual → nunca descuento negativo.
@@ -165,6 +170,17 @@ export default async function ProductoDetallePage({
     image: product.images.length > 0 ? product.images : ["/brand/lucams-logo.png"],
     category: product.category.name,
     brand: { "@type": "Brand", name: "Lucams_shop" },
+    // aggregateRating solo si hay reseñas reales aprobadas (Google rechaza rating vacío/inventado).
+    // El valor es visible en la página (sección Reseñas) — requisito de la política de rich results.
+    ...(ratingAggregate
+      ? {
+          aggregateRating: {
+            "@type": "AggregateRating",
+            ratingValue: ratingAggregate.ratingValue.toFixed(1),
+            reviewCount: ratingAggregate.reviewCount,
+          },
+        }
+      : {}),
     offers: {
       "@type": "Offer",
       url: `https://lucamsshop.co/producto/${product.slug}`,

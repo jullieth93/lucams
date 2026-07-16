@@ -14,8 +14,15 @@ import { CheckoutStepper } from "../_components/stepper";
 import { OrderSummary } from "../_components/order-summary";
 import { PaymentMethodChooser } from "./pay-button";
 import { CouponField } from "./coupon-field";
-import { CheckoutError, getAppliedCoupon, loadCheckoutContext } from "@/features/checkout/service";
+import {
+  CheckoutError,
+  getAppliedCoupon,
+  loadCheckoutContext,
+  assertCheckoutAvailability,
+} from "@/features/checkout/service";
 import { getSettingValue } from "@/lib/cms";
+
+const STOCK_GONE_MSG = "Uno de los productos ya no está disponible. Por favor revisa tu carrito.";
 
 export const metadata: Metadata = {
   title: "Pago · Checkout",
@@ -33,12 +40,16 @@ export default async function CheckoutPagoPage({ searchParams }: { searchParams:
   let ctx;
   try {
     ctx = await loadCheckoutContext();
+    await assertCheckoutAvailability(ctx);
   } catch (err) {
     if (
       err instanceof CheckoutError &&
       (err.code === "CART_EMPTY" || err.code === "CART_NOT_FOUND")
     ) {
       redirect("/carrito");
+    }
+    if (err instanceof CheckoutError && err.code === "STOCK_UNAVAILABLE") {
+      redirect(`/carrito?error=${encodeURIComponent(STOCK_GONE_MSG)}`);
     }
     throw err;
   }
@@ -128,7 +139,7 @@ export default async function CheckoutPagoPage({ searchParams }: { searchParams:
           {billing?.wantsInvoice && (
             <ReviewCard
               icon={<Receipt className="h-4 w-4" />}
-              title="Facturación electrónica"
+              title="Facturación"
               href="/checkout/datos"
             >
               <p className="text-brand-purple-dark text-sm">{billing.name}</p>
@@ -136,7 +147,7 @@ export default async function CheckoutPagoPage({ searchParams }: { searchParams:
                 {billing.documentType} {billing.documentNumber}
               </p>
               <p className="text-brand-muted mt-1 text-xs">
-                Recibirás la factura DIAN a {contact.email}
+                Coordinaremos tu factura al correo {contact.email}
               </p>
             </ReviewCard>
           )}

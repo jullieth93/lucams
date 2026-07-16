@@ -2119,3 +2119,59 @@ pg_cron versionado, SEO de categorías, gap de RLS en CI, tests de proxy/E2E adm
 **Razón.** La auditoría con verificación adversarial evita falsos positivos; los fixes autónomos se
 ejecutaron en orden de prioridad, certificando cada uno. Los 2 bloqueadores restantes son decisiones
 de negocio/legales, no de código.
+
+## ADR-061 — Cierre de sub-ítems del plan de auditoría + 3 decisiones diferidas (2026-07-16)
+
+Tras ADR-060, quedaban sub-partes de ítems autónomos sin cerrar. Se completaron y se resolvieron
+explícitamente las 3 decisiones que ADR-060 había dejado abiertas.
+
+**Sub-ítems cerrados (tsc + lint + tests + build):**
+- **Copy DIAN.** La FAQ (`/ayuda`), el checkout (`/checkout/datos`) y el resumen (`/checkout/pago`)
+  prometían "factura electrónica DIAN" automática al despachar — que hoy NO se puede emitir (sin
+  contador ni resolución de numeración). Copy suavizado a lenguaje veraz: se recogen los datos y se
+  **coordina** la factura; sin prometer emisión electrónica automática. Alinea con el mandato #9.
+- **aggregateRating.** El JSON-LD del PDP ahora incluye `aggregateRating` (nuevo agregado real
+  `getProductRatingAggregate` sobre reseñas aprobadas). Se omite por completo si el producto no
+  tiene reseñas — schema.org/Google rechazan rating vacío o inventado. El valor es visible en la
+  sección Reseñas (requisito de la política de rich results).
+- **2ª capa de rate-limit en el asistente IA.** Además del límite por IP, `suggestDesignAction`
+  ahora limita por **identidad**: cliente logueado → key por `customerId` (no spoofeable como la IP);
+  anónimo → key por la cookie de sesión del carrito si existe. Defensa en profundidad contra rotación
+  de IP. Se descartó Cloudflare Turnstile por ahora (dependería de cuenta/keys externas — mandato #2
+  y "aprender manual antes de automatizar"); reconsiderar si se observa abuso real.
+- **Validación de stock al ENTRAR al checkout.** Antes solo se validaba al pagar
+  (`createOrderFromCart`), así el cliente llenaba contacto + envío para toparse con "agotado" recién
+  al pagar. Nuevo `assertCheckoutAvailability` (reusa `assertStockAvailable`, lectura pura) cableado
+  en los 3 renders (datos/envío/pago) → redirige a `/carrito` con mensaje. La defensa real contra
+  concurrencia sigue siendo el UPDATE atómico en `decrementStockForOrder`.
+- **Tests del middleware `proxy()`.** 13 tests que ejercen el comportamiento REAL (Supabase +
+  redirects mockeados): gate anónimo `/admin`, idle-timeout 30 min (+ limpieza de cookies sb-*), y
+  la **precedencia** product-redirect → UrlRedirect dinámico → mantenimiento, + CORS 403/ACAO.
+
+**Decisión 1 — Reintento de guía Aveonline: sin cola pgmq.** ADR-060 dejó "decidir e implementar o
+desmarcar la cola pgmq de reintento de guía". **Decisión: NO cola pgmq durable por ahora.** El flujo
+actual —reintentos inline en la saga + flag `needsReconciliation` + alerta fail-safe + botón de
+**reintento manual** en `/admin/pedidos/[number]`— cubre el volumen de lanzamiento sin infra extra.
+Una guía fallida no pierde dinero (la orden ya está PAID y el stock decrementado); solo requiere
+acción de Lucy, que la alerta dispara. Reconsiderar pgmq si el volumen hace inviable la resolución
+manual (métrica: >5 reconciliaciones/día sostenidas). Coherente con mandato #11 (migrar solo si las
+métricas lo exigen).
+
+**Decisión 2 — Modelos `Referral`/`BlogPost`/`SiteEvent`: conservar, no dropear.** Confirmado que no
+tienen consumidores (`prisma.referral/blogPost/siteEvent` = 0 usos). **Decisión: conservarlos.** Son
+features de roadmap (programa de referidos —ya hay `Customer.referredById`—, blog de contenido, y
+eventos de analítica propia), no basura accidental. El costo de mantenerlos es nulo (están bajo RLS
+deny-by-default del sweep) y dropear+recrear luego es churn. El DROP destructivo queda como acción
+humana explícita si Lucy decide descartar esas features (mandato: no borro lo que no creé sin OK).
+
+**Decisión 3 — Cache de catálogo: `React cache()`, no `unstable_cache`.** ADR-060 planteó envolver
+`public-service` en `unstable_cache` con tag `products`. **Decisión: solo `React cache()`
+(dedup por request) en `getStorefrontProductBySlug`; NO cache cross-request en los listados.** Los
+listados exponen `inStock`, que cambia en CADA venta; un cache de 60 s+ mostraría "disponible" un
+producto ya agotado → sobreventa y mala UX. La ganancia de `unstable_cache` no compensa el riesgo de
+staleness en el dato más sensible del storefront. Reconsiderar con un esquema de invalidación por
+`revalidateTag` disparado desde TODAS las mutaciones de stock (venta, reserva, ajuste admin) si el
+tráfico lo exige.
+
+**Razón.** Cerrar los sub-ítems evita "hecho a medias"; documentar las 3 decisiones convierte
+deuda abierta en elecciones argumentadas y trazables (mandato #9), no en omisiones silenciosas.
