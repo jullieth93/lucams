@@ -16,6 +16,7 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
+import { headers } from "next/headers";
 import { LucamsLogo } from "@/components/lucams-logo";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
@@ -52,8 +53,33 @@ export default async function Home() {
     buildWhatsAppUrl({ kind: "support" }),
   ]);
 
+  // Structured data del sitio (auditoría 2026-07-13): Organization (knowledge panel) + WebSite
+  // (nombre para sitelinks). Escapado anti-XSS + nonce, como el JSON-LD del PDP.
+  const siteJsonLd = [
+    {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      name: "Lucams_shop",
+      url: "https://lucamsshop.co",
+      logo: "https://lucamsshop.co/brand/lucams-logo.png",
+      sameAs: ["https://www.instagram.com/lucams_shop"],
+    },
+    { "@context": "https://schema.org", "@type": "WebSite", name: "Lucams_shop", url: "https://lucamsshop.co" },
+  ];
+  const siteJsonLdSafe = JSON.stringify(siteJsonLd)
+    .replace(/</g, "\\u003c")
+    .replace(/>/g, "\\u003e")
+    .replace(/&/g, "\\u0026");
+  const nonce = (await headers()).get("x-nonce") ?? undefined;
+
   return (
     <div className="flex min-h-screen flex-col">
+      <script
+        type="application/ld+json"
+        nonce={nonce}
+        suppressHydrationWarning
+        dangerouslySetInnerHTML={{ __html: siteJsonLdSafe }}
+      />
       <SiteHeader />
       <main id="contenido" tabIndex={-1} className="bg-brand-cream flex-1">
         {/* Hero */}

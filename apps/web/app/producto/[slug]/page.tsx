@@ -180,9 +180,30 @@ export default async function ProductoDetallePage({
     },
   };
 
+  // BreadcrumbList (auditoría 2026-07-13): Tienda → Categoría → Producto → migas en Google.
+  const breadcrumbJsonLd = {
+    "@context": "https://schema.org/",
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      { "@type": "ListItem", position: 1, name: "Tienda", item: "https://lucamsshop.co/productos" },
+      {
+        "@type": "ListItem",
+        position: 2,
+        name: product.category.name,
+        item: `https://lucamsshop.co/productos?categoria=${product.category.slug}`,
+      },
+      {
+        "@type": "ListItem",
+        position: 3,
+        name: product.name,
+        item: `https://lucamsshop.co/producto/${product.slug}`,
+      },
+    ],
+  };
+
   // Auditoría 2026-07-13: escapar <, >, & del JSON embebido → un nombre/descripción con
   // "</script>" o "<" no puede romper el tag ni inyectar (XSS). JSON.stringify no los escapa.
-  const jsonLdSafe = JSON.stringify(jsonLd)
+  const jsonLdSafe = JSON.stringify([jsonLd, breadcrumbJsonLd])
     .replace(/</g, "\\u003c")
     .replace(/>/g, "\\u003e")
     .replace(/&/g, "\\u0026");
