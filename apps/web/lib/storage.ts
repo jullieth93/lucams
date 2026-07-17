@@ -377,3 +377,27 @@ export async function refreshCustomerUploadSignedUrl(path: string): Promise<stri
   }
   return data.signedUrl;
 }
+
+const PRODUCTION_ASSETS_BUCKET = "production-assets";
+
+/**
+ * Firma en lote los paths de PNGs de producción (bucket PRIVADO production-assets) para que el
+ * admin los descargue e imprima (ADR-063 T1). Antes el admin no tenía acceso a estos archivos
+ * desde la UI (getOrder no traía productionUrls[] y el detalle apuntaba a un campo legacy). TTL
+ * configurable; devuelve un Map path→signedUrl. Los paths que no se puedan firmar se omiten.
+ */
+export async function getProductionAssetSignedUrls(
+  paths: string[],
+  ttlSeconds = 3600,
+): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  if (paths.length === 0) return out;
+  const { data, error } = await supabaseService.storage
+    .from(PRODUCTION_ASSETS_BUCKET)
+    .createSignedUrls(paths, ttlSeconds);
+  if (error || !data) return out;
+  for (const row of data) {
+    if (row.signedUrl && row.path) out.set(row.path, row.signedUrl);
+  }
+  return out;
+}

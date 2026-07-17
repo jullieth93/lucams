@@ -20,6 +20,7 @@ import { Box, User, MapPin, CreditCard, Truck, Package, Undo2 } from "lucide-rea
 import { AdminPage, AdminPageHeader, AdminPageBody, AdminBadge } from "@/components/admin-page";
 import { getCurrentAdmin } from "@/lib/auth";
 import { getOrder } from "@/features/orders/service";
+import { getProductionAssetSignedUrls } from "@/lib/storage";
 import { formatCOP } from "@/lib/format";
 import { OrderActions } from "./order-actions";
 
@@ -78,6 +79,11 @@ export default async function AdminPedidoDetallePage({
   const { number } = await params;
   const order = await getOrder(decodeURIComponent(number));
   if (!order) notFound();
+
+  // ADR-063 T1 — firmar todos los PNGs de producción (bucket privado) para que el admin los
+  // descargue e imprima. Antes esto era imposible desde la UI. TTL 1h → refrescar la página si expira.
+  const productionPaths = order.items.flatMap((it) => it.design?.productionUrls ?? []);
+  const signedProduction = await getProductionAssetSignedUrls(productionPaths);
 
   const ship = order.shippingAddress as ShippingAddrSnapshot;
   const dateFmt = new Intl.DateTimeFormat("es-CO", {
@@ -146,16 +152,44 @@ export default async function AdminPedidoDetallePage({
                         <div className="text-brand-muted text-xs">
                           {formatCOP(it.unitPrice)} c/u · qty {it.qty}
                         </div>
-                        {it.designAssetUrl && (
-                          <a
-                            href={it.designAssetUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-brand-purple-dark hover:text-brand-purple mt-1 inline-block text-xs underline"
-                          >
-                            Descargar PNG producción
-                          </a>
-                        )}
+                        {it.design?.productionUrls && it.design.productionUrls.length > 0 ? (
+                          <div className="mt-1.5">
+                            <div className="text-brand-muted mb-1 flex items-center gap-1.5 text-[11px] font-semibold">
+                              Archivos de impresión · {it.design.productionUrls.length} PNG (300 DPI)
+                              {it.design.moderationStatus !== "APPROVED" && (
+                                <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">
+                                  {it.design.moderationStatus === "REJECTED"
+                                    ? "diseño rechazado"
+                                    : "sin aprobar en Moderación"}
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex flex-wrap gap-1.5">
+                              {it.design.productionUrls.map((path, i) => {
+                                const url = signedProduction.get(path);
+                                const label = `slot-${String(i + 1).padStart(2, "0")}`;
+                                return url ? (
+                                  <a
+                                    key={path}
+                                    href={url}
+                                    download={`${order.number}-${label}.png`}
+                                    className="border-brand-purple/20 text-brand-purple-dark hover:bg-brand-purple/5 inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-semibold"
+                                  >
+                                    ⬇ {label}
+                                  </a>
+                                ) : (
+                                  <span key={path} className="text-brand-muted text-[11px]">
+                                    {label} (no disponible)
+                                  </span>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ) : it.design ? (
+                          <div className="text-brand-muted mt-1 text-[11px]">
+                            Sin archivos de producción todavía (el diseño no está finalizado).
+                          </div>
+                        ) : null}
                       </div>
                       <div className="text-brand-purple-dark flex-shrink-0 text-right text-sm font-semibold tabular-nums">
                         {formatCOP(it.unitPrice * it.qty)}

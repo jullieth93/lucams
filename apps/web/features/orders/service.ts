@@ -505,7 +505,18 @@ export async function getOrder(idOrNumber: string) {
       items: {
         include: {
           variant: { select: { id: true, sku: true, productId: true, price: true } },
-          design: { select: { id: true, status: true, previewUrl: true } },
+          // productionUrls: paths de los PNGs 300 DPI para imprenta (ADR-063 T1). El admin los
+          // descarga desde el detalle del pedido vía signed URLs. moderationStatus: para no
+          // producir diseños sin aprobar (ADR-062 P0-2).
+          design: {
+            select: {
+              id: true,
+              status: true,
+              previewUrl: true,
+              productionUrls: true,
+              moderationStatus: true,
+            },
+          },
         },
       },
       customer: { select: { id: true, email: true, firstName: true, lastName: true } },
