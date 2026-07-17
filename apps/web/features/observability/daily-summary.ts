@@ -15,6 +15,7 @@ import { sendEmail } from "@/lib/resend";
 import { getSettingValue } from "@/lib/cms";
 import { logger } from "@/lib/logger";
 import { getCodReconciliationTotals } from "@/features/orders/cod-reconciliation";
+import { getSloStatus } from "./slos";
 
 // Estados en los que el dinero YA entró (para contar ingresos).
 const PAID_STATES = ["PAID", "FULFILLING", "SHIPPED", "DELIVERED"] as const;
@@ -43,6 +44,8 @@ export type DailySummary = {
   errors24h: number;
   topErrorRoute: string | null;
   needsReconciliation: number;
+  // ADR-066 — SLOs incumplidos (con datos suficientes) para alertar en el resumen.
+  breachedSlos: string[];
 };
 
 const _since = (hours: number) => new Date(Date.now() - hours * 3600 * 1000);
@@ -66,6 +69,7 @@ export async function getDailySummary(now: Date = new Date()): Promise<DailySumm
     topErrorRaw,
     needsReconciliation,
     codRecon,
+    slos,
   ] = await Promise.all([
     prisma.order.count({
       where: { createdAt: { gte: from }, deletedAt: null, status: { not: "DRAFT" } },
@@ -127,6 +131,8 @@ export async function getDailySummary(now: Date = new Date()): Promise<DailySumm
     prisma.order.count({ where: { needsReconciliation: true, deletedAt: null } }),
     // ADR-064 — fuente ÚNICA de los KPIs de conciliación COD (evita divergencia con /admin/finanzas).
     getCodReconciliationTotals(),
+    // ADR-066 — SLOs incumplidos con datos suficientes.
+    getSloStatus(),
   ]);
 
   return {
@@ -147,6 +153,7 @@ export async function getDailySummary(now: Date = new Date()): Promise<DailySumm
     errors24h,
     topErrorRoute: topErrorRaw[0]?.routePath ?? null,
     needsReconciliation,
+    breachedSlos: slos.filter((s) => s.status === "breached").map((s) => s.label),
   };
 }
 
@@ -172,6 +179,8 @@ export function buildDailySummaryEmail(
     attention.push(
       `🔴 <strong>${s.needsReconciliation}</strong> orden(es) necesitan reconciliación — /admin/pedidos (filtro "Necesitan atención")`,
     );
+  for (const slo of s.breachedSlos)
+    attention.push(`📉 SLO incumplido: <strong>${escapeHtml(slo)}</strong> — /admin/observability`);
   if (s.codDiscrepancies > 0)
     attention.push(
       `💸 <strong>${s.codDiscrepancies}</strong> discrepancia(s) de efectivo contra entrega${s.codShortfallCop > 0 ? ` (${fmtCop(s.codShortfallCop)} que no llegó)` : ""} — /admin/finanzas/conciliacion`,

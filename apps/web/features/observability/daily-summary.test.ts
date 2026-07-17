@@ -25,6 +25,7 @@ const base: DailySummary = {
   errors24h: 0,
   topErrorRoute: null,
   needsReconciliation: 0,
+  breachedSlos: [],
 };
 
 // Fecha fija para asertar el label sin depender del reloj.
@@ -100,6 +101,15 @@ describe("buildDailySummaryEmail", () => {
   it("sin COD por cobrar, no muestra esa línea", () => {
     const { html } = buildDailySummaryEmail({ ...base, revenueLast24hCop: 5000000 }, NOW);
     expect(html).not.toContain("por cobrar");
+  });
+
+  it("ADR-066 — avisa de cada SLO incumplido", () => {
+    const { html } = buildDailySummaryEmail(
+      { ...base, breachedSlos: ["Éxito de checkout (llegan a pago)", "Procesamiento de webhooks"] },
+      NOW,
+    );
+    expect(html).toContain("SLO incumplido: <strong>Éxito de checkout");
+    expect(html).toContain("SLO incumplido: <strong>Procesamiento de webhooks");
   });
 
   it("ADR-064 — avisa del COD por remitir y las discrepancias de caja (con faltante en pesos)", () => {

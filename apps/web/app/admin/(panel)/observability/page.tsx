@@ -26,6 +26,7 @@ import {
 import { requireRole } from "@/lib/admin-rbac-guard";
 import { getTechHealth } from "@/features/observability/service";
 import { getDailySummary } from "@/features/observability/daily-summary";
+import { getSloStatus, type SloResult } from "@/features/observability/slos";
 import { AdminPage, AdminPageHeader, AdminPageBody } from "@/components/admin-page";
 import { ClientErrorActions } from "./client-error-actions";
 
@@ -40,7 +41,7 @@ const dateFmt = new Intl.DateTimeFormat("es-CO", {
 
 export default async function AdminObservabilityPage() {
   await requireRole(["SUPERADMIN"]);
-  const [h, ops] = await Promise.all([getTechHealth(), getDailySummary()]);
+  const [h, ops, slos] = await Promise.all([getTechHealth(), getDailySummary(), getSloStatus()]);
   const revenue = `$${Math.round(ops.revenueLast24hCop / 100).toLocaleString("es-CO")}`;
   const recoveryPct =
     ops.abandonedCarts24h > 0
@@ -121,6 +122,20 @@ export default async function AdminObservabilityPage() {
           {ops.codToCollectCop > 0
             ? "(efectivo al entregar — no incluido en Ingresos)."
             : "(sin pedidos contra entrega pendientes en 24h)."}
+        </p>
+
+        {/* ─── SLOs (objetivos de nivel de servicio, de datos reales) ─── */}
+        <h2 className="text-brand-purple-dark mt-6 mb-2 flex items-center gap-2 text-sm font-bold">
+          <Gauge className="h-4 w-4" /> Objetivos de servicio (SLOs)
+        </h2>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+          {slos.map((s) => (
+            <SloCard key={s.key} slo={s} />
+          ))}
+        </div>
+        <p className="text-brand-muted mt-2 text-xs">
+          Disponibilidad y latencia por ruta se miden con el monitor externo + tráfico real tras el
+          lanzamiento (OBSERVABILITY.md).
         </p>
 
         {/* ─── Salud técnica (para dev) ─── */}
@@ -298,6 +313,55 @@ function Tile({
       </div>
       <div className={`mt-1 text-2xl font-bold ${valueColor}`}>{value}</div>
       {hint && <div className="text-brand-muted mt-0.5 text-[11px]">{hint}</div>}
+    </div>
+  );
+}
+
+const SLO_META: Record<
+  SloResult["status"],
+  { box: string; label: string; text: string; badge: string }
+> = {
+  met: {
+    box: "border-emerald-200 bg-emerald-50",
+    label: "Cumplido",
+    text: "text-emerald-800",
+    badge: "bg-emerald-100 text-emerald-700",
+  },
+  at_risk: {
+    box: "border-amber-200 bg-amber-50",
+    label: "En riesgo",
+    text: "text-amber-800",
+    badge: "bg-amber-100 text-amber-700",
+  },
+  breached: {
+    box: "border-rose-200 bg-rose-50",
+    label: "Incumplido",
+    text: "text-rose-800",
+    badge: "bg-rose-100 text-rose-700",
+  },
+  insufficient_data: {
+    box: "border-brand-purple/10 bg-white",
+    label: "Sin datos aún",
+    text: "text-brand-purple-dark",
+    badge: "bg-brand-purple/10 text-brand-purple-dark",
+  },
+};
+
+function SloCard({ slo }: { slo: SloResult }) {
+  const m = SLO_META[slo.status];
+  return (
+    <div className={`rounded-xl border p-4 shadow-sm ${m.box}`}>
+      <div className="flex items-start justify-between gap-2">
+        <div className="text-brand-muted text-xs font-semibold">{slo.label}</div>
+        <span className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${m.badge}`}>{m.label}</span>
+      </div>
+      <div className={`mt-1 text-2xl font-bold tabular-nums ${m.text}`}>
+        {slo.sliPct === null ? "—" : `${slo.sliPct.toFixed(1)}%`}
+      </div>
+      <div className="text-brand-muted mt-0.5 text-[11px]">
+        objetivo ≥ {slo.targetPct}% · {slo.windowLabel} · {slo.sampleSize} evento
+        {slo.sampleSize === 1 ? "" : "s"}
+      </div>
     </div>
   );
 }

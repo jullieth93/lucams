@@ -2402,3 +2402,29 @@ Un tope por identidad ataca el patrón de abuso real (spam desde muchas IPs) sin
 cliente legítimo (que casi nunca pide 4 COD en un día ni $400k a puerta la primera vez). 6 tests de
 integración (permitido + 4 bloqueos + cliente-conocido-alto-valor-permitido). Constantes tunables a
 futuro vía settings si el volumen real lo exige.
+
+## ADR-066 — SLOs cuantitativos de datos reales (2026-07-17)
+
+Tercer ítem del plan maestro (ADR-062). OBSERVABILITY.md documentaba SLOs (targets + SLIs + un
+dashboard `/admin/observability/slos`) pero estaban **0% implementados**: no había cómputo ni panel.
+
+**Realidad pre-lanzamiento.** Los SLOs de INFRA del doc (disponibilidad, latencia p95 por ruta)
+necesitan tráfico real + un monitor externo (que es el diseño previsto de `/api/health/all`, para
+UptimeRobot/BetterStack gratis) o instrumentación por-request — no medibles hoy sin tráfico. Lo que SÍ
+es medible desde la DB, sin dependencias ni cron nuevo, son tres SLIs de negocio/experiencia:
+
+1. **Web Vitals "good" ≥ 75%** (7d) — rendimiento REAL de usuario, ya capturado en `WebVital`.
+2. **Éxito de checkout ≥ 90%** (30d) — órdenes que llegaron a pago sobre las que lo intentaron
+   (excluye las "en curso" < 1h para no contarlas como fallidas).
+3. **Procesamiento de webhooks ≥ 99%** (30d) — `processedAt` sobre recibidos.
+
+**Decisión.** `features/observability/slos.ts`: `evaluateSlo` (PURA, testeable) clasifica cada SLO en
+cumplido / en riesgo (dentro de 2pp, salvo el 100% que siempre es cumplido) / incumplido / **sin datos
+suficientes** (muestra < mínimo → no se miente con % de 2 eventos). `getSloStatus` calcula los tres de
+la DB. Panel "Objetivos de servicio (SLOs)" en `/admin/observability` (tarjetas por estado) + nota
+honesta de que disponibilidad/latencia van con monitor externo post-lanzamiento. Un SLO **incumplido**
+(con datos) genera una línea de atención en el **resumen diario** (mandato #7, sin Sentry).
+
+**Razón.** "Si no se mide, no existe" (OBSERVABILITY.md). En vez de fingir SLOs de infra sin tráfico,
+implemento los medibles de verdad hoy y dejo el andamiaje honesto para los de infra. 5 unit
+(`evaluateSlo`) + 1 unit (alerta en el email). Fuente única (`getSloStatus`) para panel y resumen.
