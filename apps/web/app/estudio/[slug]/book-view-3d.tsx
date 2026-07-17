@@ -102,9 +102,7 @@ function Bookmarks({ items }: { items: Magnet3D[] }) {
         const spread = BOOK_W * 0.5;
         const x = n === 1 ? 0 : (i / (n - 1) - 0.5) * spread;
         const tilt = n === 1 ? 0 : (i / (n - 1) - 0.5) * 0.18;
-        return (
-          <Bookmark key={i} tex={list[i]!} width={width} height={height} x={x} tilt={tilt} />
-        );
+        return <Bookmark key={i} tex={list[i]!} width={width} height={height} x={x} tilt={tilt} />;
       })}
     </>
   );

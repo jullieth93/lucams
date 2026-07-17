@@ -43,11 +43,12 @@ import { StudioPhotoAdjustModal } from "./studio-photo-adjust-modal";
 import { StudioPreviewModal } from "./studio-preview-modal";
 import { StudioTextEditorModal } from "./studio-text-editor-modal";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { Sparkles, Box, X, CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
+import { Sparkles, Box, X, CalendarDays, ChevronLeft, ChevronRight, Gift } from "lucide-react";
 import nextDynamic from "next/dynamic";
 import type { Magnet3D } from "./fridge-3d-view";
 import { StudioAiPanel } from "./studio-ai-panel";
 import { composeCalendarPages } from "./lib/compose-calendar-page";
+import { composeGiftFlatlay } from "./lib/compose-gift-flatlay";
 import { MONTH_NAMES_ES } from "@/features/personalization/calendar-grid";
 
 // Vista 3D en nevera: se carga SOLO client-side (necesita WebGL/window) y diferida
@@ -208,6 +209,9 @@ export function StudioEditor({
   const [calendarBuilding, setCalendarBuilding] = useState(false);
   // SEP1 — preview inmersivo de separadores en un libro. null = cerrado; array = texturas de marcador.
   const [book3D, setBook3D] = useState<Magnet3D[] | null>(null);
+  // FOTO3 — flat-lay de regalo (compositor 2D). null = cerrado; dataURL = imagen compuesta.
+  const [giftFlatlay, setGiftFlatlay] = useState<string | null>(null);
+  const [giftBuilding, setGiftBuilding] = useState(false);
   // P1.5 — Asistente IA de ideas (ADR-058).
   const [aiOpen, setAiOpen] = useState(false);
   const allowText = (product.personalizationSchema as { allowText?: boolean })?.allowText === true;
@@ -227,6 +231,8 @@ export function StudioEditor({
   // SEP1 — separadores (galleryTag "separadores"): su vista inmersiva es un LIBRO, no la nevera.
   const isBookmark =
     (product.personalizationSchema as { galleryTag?: string } | null)?.galleryTag === "separadores";
+  // FOTO3 — flat-lay de regalo: para fotoimanes (no calendario, no separador).
+  const showGift = !isCalendarMonth && !isBookmark;
   const defaultCalendarYear = calendarYear ?? new Date().getFullYear() + 1;
   const [selectedYear, setSelectedYear] = useState(defaultCalendarYear);
   const yearOptions = useMemo(() => {
@@ -446,6 +452,30 @@ export function StudioEditor({
     }
   }, [store, productConfig.shape, ensureAllStagesMounted, isBookmark]);
 
+  // FOTO3 — arma el flat-lay de regalo (compositor 2D) con la(s) pieza(s) recortadas a su silueta.
+  const handleOpenGift = useCallback(async () => {
+    const state = store.getState();
+    if (!state.canvasData || giftBuilding) return;
+    setGiftBuilding(true);
+    try {
+      await ensureAllStagesMounted();
+      const textures = await buildMagnetTextures(
+        state.canvasData,
+        slotStagesRef.current,
+        productConfig.shape,
+      );
+      setGiftFlatlay(await composeGiftFlatlay(textures));
+    } catch (err) {
+      state.setAutoSaveStatus({
+        kind: "error",
+        message: "No pudimos armar el regalo. Intenta de nuevo.",
+      });
+      void err;
+    } finally {
+      setGiftBuilding(false);
+    }
+  }, [store, productConfig.shape, ensureAllStagesMounted, giftBuilding]);
+
   // CAL4 — Abrir el calendario 3D: compone cada página de mes (foto + mes + año + grilla) con el
   // MISMO dibujo que producción (WYSIWYG) y las muestra en un calendario de pared navegable. Usa la
   // foto ORIGINAL + encuadre de cada slot (no Konva) → no depende del montaje de stages.
@@ -479,17 +509,19 @@ export function StudioEditor({
 
   // Cerrar las vistas 3D con Escape (a11y).
   useEffect(() => {
-    if (fridge3D === null && calendarPages === null && book3D === null) return;
+    if (fridge3D === null && calendarPages === null && book3D === null && giftFlatlay === null)
+      return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         setFridge3D(null);
         setCalendarPages(null);
         setBook3D(null);
+        setGiftFlatlay(null);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [fridge3D, calendarPages, book3D]);
+  }, [fridge3D, calendarPages, book3D, giftFlatlay]);
 
   // ──────────── Step 2: Confirmar → upload + add to cart + redirect ────────────
   //
@@ -796,6 +828,18 @@ export function StudioEditor({
             <span>{isBookmark ? "Ver en un libro" : "Ver en 3D"}</span>
           </button>
         )}
+        {showGift && (
+          <button
+            type="button"
+            onClick={handleOpenGift}
+            disabled={giftBuilding}
+            aria-label="Ver tu diseño como un regalo"
+            className="bg-brand-pink ring-brand-pink/25 inline-flex h-12 items-center gap-2 rounded-full px-4 text-sm font-bold text-white shadow-xl ring-4 transition-transform hover:scale-105 active:scale-95 disabled:opacity-60"
+          >
+            <Gift className="h-5 w-5" />
+            <span>{giftBuilding ? "Armando…" : "Como regalo"}</span>
+          </button>
+        )}
       </div>
 
       {/* P1.5 — Panel del asistente IA de ideas */}
@@ -862,6 +906,40 @@ export function StudioEditor({
               Arrastra para girar · rueda o pellizca para acercar
             </p>
           </div>
+        </div>
+      )}
+
+      {/* FOTO3 — Modal del flat-lay de regalo (imagen 2D compuesta). */}
+      {giftFlatlay !== null && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Tu diseño como regalo"
+          className="bg-brand-purple-dark/85 fixed inset-0 z-50 flex flex-col backdrop-blur-sm"
+        >
+          <div className="flex items-center justify-between px-4 py-3 text-white sm:px-6">
+            <span className="font-display text-lg font-bold">🎁 Tu diseño como regalo</span>
+            <button
+              type="button"
+              onClick={() => setGiftFlatlay(null)}
+              aria-label="Cerrar"
+              autoFocus
+              className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/15 text-white transition-colors hover:bg-white/25 focus:ring-2 focus:ring-white focus:outline-none"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+          <div className="flex flex-1 items-center justify-center p-4">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={giftFlatlay}
+              alt="Tu diseño presentado como un regalo"
+              className="max-h-full max-w-full rounded-2xl object-contain shadow-2xl"
+            />
+          </div>
+          <p className="pointer-events-none pb-4 text-center text-xs text-white/80">
+            Mantén presionada la imagen para guardarla o compartirla 💛
+          </p>
         </div>
       )}
 
