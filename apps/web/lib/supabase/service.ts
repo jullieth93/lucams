@@ -21,15 +21,31 @@
  */
 
 import "server-only";
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 
-export const supabaseService = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SECRET_KEY!,
-  {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-    },
+// Inicialización PEREZOSA (lazy). Antes el cliente se creaba al importar el módulo, así que
+// cualquier import de este archivo con NEXT_PUBLIC_SUPABASE_URL vacía/ausente reventaba con
+// "supabaseUrl is required" — rompía el job de tests de CI (env Supabase vacía a propósito para
+// saltar los tests que exigen Supabase real) y cualquier build/contexto sin esa var. Con lazy, el
+// cliente se crea recién en el primer USO real; importar el módulo es siempre seguro.
+let _client: SupabaseClient | null = null;
+function getClient(): SupabaseClient {
+  if (!_client) {
+    _client = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SECRET_KEY!,
+      { auth: { persistSession: false, autoRefreshToken: false } },
+    );
+  }
+  return _client;
+}
+
+// Proxy que difiere la creación al primer acceso de propiedad, manteniendo la API idéntica
+// (`supabaseService.storage.from(...)`, `.auth.admin...`, `.from(...)`) sin tocar los call sites.
+export const supabaseService: SupabaseClient = new Proxy({} as SupabaseClient, {
+  get(_target, prop) {
+    const client = getClient();
+    const value = Reflect.get(client, prop, client);
+    return typeof value === "function" ? value.bind(client) : value;
   },
-);
+});

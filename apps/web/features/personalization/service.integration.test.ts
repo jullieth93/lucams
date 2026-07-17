@@ -22,6 +22,15 @@ import {
 
 const RUN = `perso${Date.now()}${Math.floor(Math.random() * 1e6)}`.toLowerCase();
 
+// Los tests de finalizeDesign suben/descargan de Supabase Storage REAL (bucket
+// production-assets). Sin llaves Supabase (p.ej. el job unit-tests de CI, que las deja vacías
+// para saltar los tests que exigen Supabase real) → skipIf. Los demás describes de este archivo
+// usan solo Prisma (Postgres) y sí corren siempre.
+const strip = (v: string | undefined) => v?.replace(/^["']|["']$/g, "");
+const canRunStorage = Boolean(
+  strip(process.env.NEXT_PUBLIC_SUPABASE_URL) && strip(process.env.SUPABASE_SECRET_KEY),
+);
+
 // Objetos de storage creados por los tests de finalize → limpiar en afterAll.
 const storageCleanup: { bucket: string; paths: string[] }[] = [];
 
@@ -210,7 +219,7 @@ describe("archiveCustomerDesign", () => {
 // ADR-057 Fase A1a — finalizeDesign renderiza la producción EN EL SERVIDOR
 // ════════════════════════════════════════════════════════════════════════
 
-describe("finalizeDesign — render de producción server-side (ADR-057 A1a)", () => {
+describe.skipIf(!canRunStorage)("finalizeDesign — render de producción server-side (ADR-057 A1a)", () => {
   const STAGE = { width: 1080, height: 1080, dpiPreview: 90, dpiProduction: 300 };
   const photoOnlyLayers = [
     { id: "bg", type: "background", color: "#FFF8F0" },

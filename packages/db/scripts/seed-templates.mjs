@@ -147,7 +147,7 @@ const polaroidProduct = await prisma.product.findUnique({
 });
 if (!polaroidProduct) {
   console.error(`✗ Producto base Fotoimanes Polaroid (SKU=${FOTOIMANES_POLAROID_SKU}) no existe.`);
-  console.error("  Corré primero: make seed-products");
+  console.error("  Ejecuta primero: make seed-products");
   await prisma.$disconnect();
   process.exit(1);
 }
