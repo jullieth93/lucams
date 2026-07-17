@@ -155,7 +155,8 @@ export default async function AdminPedidoDetallePage({
                         {it.design?.productionUrls && it.design.productionUrls.length > 0 ? (
                           <div className="mt-1.5">
                             <div className="text-brand-muted mb-1 flex items-center gap-1.5 text-[11px] font-semibold">
-                              Archivos de impresión · {it.design.productionUrls.length} PNG (300 DPI)
+                              Archivos de impresión · {it.design.productionUrls.length} PNG (300
+                              DPI)
                               {it.design.moderationStatus !== "APPROVED" && (
                                 <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">
                                   {it.design.moderationStatus === "REJECTED"
