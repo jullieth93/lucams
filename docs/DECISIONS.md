@@ -2254,3 +2254,48 @@ PARALELO al carril de la dueña (abogado + contador + provisión de cuentas prod
 **Razón.** Un lanzamiento con miras a producción exige el lente más duro (mandato #1 = 100% productivo
 día 1). La verificación adversarial evita falsos positivos; separar carril código vs legal/negocio
 permite avanzar en paralelo sin bloquear todo tras las decisiones de la dueña.
+
+## ADR-063 — Análisis profundo del Estudio por categoría + plan de UX "fantástica" (2026-07-16)
+
+Lucy pidió (adicional al plan maestro) un análisis profundo del Estudio de Personalización
+categoría por categoría, para que cada lienzo tenga la tecnología acorde a la necesidad del
+producto —creación, plantillas, WYSIWYG, **recepción del admin/producción**, mapeo de tecnología
+y **visualización inmersiva** (UX fantástica; ej. calendario 3D si aporta valor)— y elegir
+**análisis + ejecución directa** sobre **todas** las categorías personalizables.
+
+Workflow multi-agente (8 agentes, ~1.06M tokens, 0 errores) que leyó el código real: 4 por
+categoría (Calendarios, Fotoimanes ×4 formas, Nombre/abecedario, Separadores) + 3 transversales
+(render de producción + recepción admin, visualización inmersiva, fit de tecnología). Informe
+navegable: Artifact `03cdb758-ee2e-41dd-94dc-945bcb2594d0`.
+
+**Hallazgo central (2 verdades incómodas):**
+
+1. **Transversal (P0):** el admin NO puede descargar los PNGs de producción — `getOrder` no trae
+   `productionUrls[]` y el detalle de pedido usa el campo legacy `designAssetUrl` (0 escrituras en
+   V2). HOY ningún pedido personalizado se puede imprimir sin tocar la DB/Storage a mano, y la
+   moderación se hace sobre un thumbnail de ~40px (a ciegas).
+2. **Por categoría (P0):** el "calendario" se produce como 12 FOTOS DESNUDAS — mes, año y grilla
+   son overlays DOM que NO entran al PNG 300 DPI. No es un calendario. Además corazón/círculo se
+   exportan como cuadrados sin línea de corte, y los slots con filtro hornean un borde decorativo.
+   Rompe el mandato WYSIWYG.
+
+**Decisión:** ejecutar el plan de 22 ítems de corrido, certificando cada uno (tsc+lint+test+build
++CI verde), en orden: **P0** (descarga de producción con ZIP + hoja de armado; calendario real con
+mes+año+grilla horneados) → **P1** (fidelidad y robustez: snapshot limpio, corte corazón/círculo,
+moderación con zoom, blindar el boot del editor, lazy-mount, superficies fantasma phrase/event/logo)
+→ **P2** (apuestas inmersivas: mockup navegable de la página del mes = prueba WYSIWYG + emoción; y
+flat-lay de regalo para corazón; mantener la nevera 3D solo para fotoimanes) → **P3** (contenido).
+
+**Carriles:** la mayoría es código autónomo; lo que depende de Lucy es CONTENIDO (arte de meses,
+marcos temáticos, tamaños, fichas) — y ese contenido solo rinde después de que el código deje de
+romperse al curar plantillas reales (por eso primero el código).
+
+**Decisiones de limpieza incluidas:** superficies `phrase`/`event`/`logo` declaradas pero sin branch
+en page.tsx (caen al editor de foto) → implementar o eliminar; kinds seeded sin editor (EVENT_FAVOR,
+BUSINESS_LOGO, CALENDAR_PHOTO_HERO, CUSTOM_DECOR, PHOTO_GRID) → archivar o agendar; `designAssetUrl`
+legacy → deprecar tras el fix de descarga; texto en inglés horneado en `ig_post.svg` → corregir.
+
+**Razón.** El andamiaje del Estudio es sólido (router de superficie, ruteo por aspecto, render
+server-side, nevera 3D CSP-safe), pero el pipeline se corta justo antes de volverse un producto
+físico correcto y entregable. Cerrar eso —y sumar dos previews inmersivos— es lo que lo lleva de
+"funciona" a "fantástico" (diferenciador #1, mandato WYSIWYG).
