@@ -106,102 +106,43 @@ Los jobs de limpieza internos (solo SQL, sin secret) están versionados en
 buckets viejos, cada 15 min) y **`stock_reservation_cleanup`** (libera reservas expiradas, cada
 minuto). La migración es GUARDADA (se salta limpio si pg_cron no está instalado, ej. el Postgres
 de CI) e IDEMPOTENTE (re-agenda por nombre). Al habilitar `pg_cron` en el dashboard de Supabase,
-re-aplicar la migración agenda los jobs. Los jobs que llaman por HTTP (alertas, resumen diario)
-NO se versionan porque requieren el `CRON_SECRET` real → siguen como ACCIÓN HUMANA (abajo).
+re-aplicar la migración agenda los jobs.
 
-### Alertas por email (Bloque D) — agendamiento pg_cron
+### Jobs HTTP pg_cron — VERSIONADOS vía Vault (auditoría 2026-07-17)
 
-Las alertas (errores 5xx en pico, órdenes a reconciliar, webhooks atascados) las
-evalúa `GET /api/cron/alerts`, protegido por `CRON_SECRET`. La lógica y el dedup
-(30 min anti-spam) viven en TypeScript (`features/observability/alerts.ts`); el
-disparador es **pg_cron en Supabase** (no Vercel Cron, mandato #11).
+Los 6 jobs que llaman a `GET /api/cron/*` (protegidos por `CRON_SECRET`, mandato #11 — no Vercel
+Cron) **también están versionados** en `supabase/migrations/00000000000015_pgcron_http_jobs.sql`.
+Antes vivían solo como comandos manuales aquí → en un `db reset`, proyecto nuevo o DR se perdían
+silenciosamente (alertas, resumen diario, palancas de ingreso, purga de retención). La migración es
+GUARDADA (pg_cron + pg_net) e IDEMPOTENTE.
 
-**Env var nueva:** `CRON_SECRET` (generar con `openssl rand -hex 32`) — en `.env.local`
-y en Vercel. Sin ella el endpoint responde 401 (fail-closed).
+**Sin secreto en el SQL (mandato #12):** el comando de cada job lee en runtime la base URL y el
+`CRON_SECRET` desde **Supabase Vault** (`vault.decrypted_secrets`) y manda el secreto por el header
+`x-cron-secret` (no en la URL). El texto versionado solo contiene la BÚSQUEDA en el vault.
 
-**ACCIÓN HUMANA REQUERIDA (Lucy, al configurar prod):** en el SQL editor de Supabase,
-habilitar `pg_cron` + `pg_net` y agendar (reemplaza `<CRON_SECRET>` por el valor real):
+| Job                         | Schedule (UTC) | Endpoint                       | Qué hace                                           |
+| --------------------------- | -------------- | ------------------------------ | -------------------------------------------------- |
+| `lucams-alerts`             | `*/5 * * * *`  | `/api/cron/alerts`             | Alertas (5xx en pico, reconciliación, webhooks)    |
+| `lucams-daily-summary`      | `0 13 * * *`   | `/api/cron/daily-summary`      | Resumen diario 8am Colombia                        |
+| `lucams-review-request`     | `0 17 * * *`   | `/api/cron/review-request`     | Solicitud de reseña 7–30 días post-entrega         |
+| `lucams-cart-recovery`      | `0 * * * *`    | `/api/cron/cart-recovery`      | Recordatorio de carrito abandonado (≥4h)           |
+| `lucams-back-in-stock`      | `*/30 * * * *` | `/api/cron/back-in-stock`      | "Avísame cuando vuelva"                            |
+| `lucams-purge-anon-designs` | `0 8 * * *`    | `/api/cron/purge-anon-designs` | Retención: purga diseños DRAFT anónimos (Ley 1581) |
 
-```sql
-select cron.schedule(
-  'lucams-alerts',
-  '*/5 * * * *',                      -- cada 5 minutos
-  $$ select net.http_get('https://lucamsshop.co/api/cron/alerts?secret=<CRON_SECRET>') $$
-);
-```
+**Env var:** `CRON_SECRET` (generar con `openssl rand -hex 32`) — en `.env.local` y en Vercel. Sin
+ella los endpoints responden 401 (fail-closed). El destinatario de alertas/resumen sale de la setting
+`ALERT_EMAIL` (default `hola@lucamsshop.co`).
 
-El destinatario del email se toma de la setting `ALERT_EMAIL` (default `hola@lucamsshop.co`).
-
-### Resumen diario de operación (Bloque D) — agendamiento pg_cron
-
-`GET /api/cron/daily-summary` (mismo `CRON_SECRET`) envía a la dueña un email cada mañana con
-lo de las últimas 24h: pedidos, ingresos, en pago, por despachar, carritos abandonados +
-sección "necesitan tu atención" (reconciliación, reseñas por aprobar, stock bajo, errores).
-Lógica en `features/observability/daily-summary.ts` (idempotente: no re-envía si ya se mandó
-hace < 12h). A diferencia de las alertas, se envía SIEMPRE una vez al día.
-
-**ACCIÓN HUMANA REQUERIDA (Lucy, al configurar prod):** agendar a las **8am hora Colombia**
-(= 13:00 UTC, pg_cron corre en UTC):
+**ACCIÓN HUMANA REQUERIDA (Lucy, al configurar prod — UNA sola vez):** habilitar `pg_cron` + `pg_net`
+en el dashboard, y crear los 2 secretos del Vault (así el SQL versionado nunca contiene el valor):
 
 ```sql
-select cron.schedule(
-  'lucams-daily-summary',
-  '0 13 * * *',                       -- 08:00 America/Bogota (UTC-5)
-  $$ select net.http_get('https://lucamsshop.co/api/cron/daily-summary?secret=<CRON_SECRET>') $$
-);
+select vault.create_secret('https://lucamsshop.co', 'cron_base_url');
+select vault.create_secret('<CRON_SECRET real>',    'cron_secret');
 ```
 
-### Solicitud de reseña post-entrega (palanca de ingreso) — agendamiento pg_cron
-
-`GET /api/cron/review-request` (mismo `CRON_SECRET`) envía un follow-up gentil a los pedidos
-entregados hace **7–30 días** que aún no la recibieron (dedup vía `Order.reviewRequestedAt` +
-idempotencyKey de Resend). Lógica en `features/reviews/review-request-service.ts`. Batch de 100 por
-corrida; con una corrida diaria alcanza. Distinto del email `order-delivered` inmediato.
-
-**ACCIÓN HUMANA REQUERIDA (Lucy, al configurar prod):** agendar 1×/día (ej. mediodía Colombia):
-
-```sql
-select cron.schedule(
-  'lucams-review-request',
-  '0 17 * * *',                       -- 12:00 America/Bogota (UTC-5)
-  $$ select net.http_get('https://lucamsshop.co/api/cron/review-request?secret=<CRON_SECRET>') $$
-);
-```
-
-### Recuperación de carrito abandonado (palanca de ingreso) — agendamiento pg_cron
-
-`GET /api/cron/cart-recovery` (mismo `CRON_SECRET`) envía UN recordatorio a los carritos con email
-(capturado en checkout) inactivos ≥4h que no se completaron, con un link que RESTAURA la sesión del
-carrito (`/carrito/recuperar/<token>`, funciona para anónimos). Detecta conversión (el saga
-soft-deletea el cart tras PAID → `recoveredAt`). Lógica en `features/cart/recovery-service.ts`.
-
-**ACCIÓN HUMANA REQUERIDA (Lucy, al configurar prod):** agendar cada hora (o cada 30 min):
-
-```sql
-select cron.schedule(
-  'lucams-cart-recovery',
-  '0 * * * *',                        -- cada hora en punto
-  $$ select net.http_get('https://lucamsshop.co/api/cron/cart-recovery?secret=<CRON_SECRET>') $$
-);
-```
-
-### "Avísame cuando vuelva" (palanca de ingreso) — agendamiento pg_cron
-
-`GET /api/cron/back-in-stock` (mismo `CRON_SECRET`) notifica a las suscripciones cuyos productos
-volvieron a tener stock (`notifiedAt` se marca; no re-notifica). Suscripción vía el botón "Avísame"
-del PDP agotado (anónimo o logueado). Lógica en `features/back-in-stock/service.ts`.
-
-**ACCIÓN HUMANA REQUERIDA (Lucy, al configurar prod):** agendar cada 30 min:
-
-```sql
-select cron.schedule(
-  'lucams-back-in-stock',
-  '*/30 * * * *',                     -- cada 30 min
-  $$ select net.http_get('https://lucamsshop.co/api/cron/back-in-stock?secret=<CRON_SECRET>') $$
-);
-```
-
-El destinatario también sale de la setting `ALERT_EMAIL`.
+Luego re-aplicar la migración 15 (agenda los 6 jobs). Para rotar el secreto: `vault.update_secret`.
+Sin los secretos, los jobs quedan agendados pero fallan en runtime hasta setearlos.
 
 ### Symlink de Supabase local con datos de prueba
 
