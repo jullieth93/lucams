@@ -12,6 +12,8 @@ const base: DailySummary = {
   ordersLast24h: 0,
   revenueLast24hCop: 0,
   codToCollectCop: 0,
+  codPendingRemitCop: 0,
+  codDiscrepancies: 0,
   paidOrdersLast24h: 0,
   pendingPayment: 0,
   toShip: 0,
@@ -97,5 +99,21 @@ describe("buildDailySummaryEmail", () => {
   it("sin COD por cobrar, no muestra esa línea", () => {
     const { html } = buildDailySummaryEmail({ ...base, revenueLast24hCop: 5000000 }, NOW);
     expect(html).not.toContain("por cobrar");
+  });
+
+  it("ADR-064 — avisa del COD por remitir y las discrepancias de caja", () => {
+    const { html } = buildDailySummaryEmail(
+      { ...base, codPendingRemitCop: 12000000, codDiscrepancies: 2 },
+      NOW,
+    );
+    expect(html).toContain("$120.000</strong> de contra entrega por remitir");
+    expect(html).toContain("2</strong> discrepancia(s) de efectivo");
+    expect(html).toContain("/admin/finanzas/conciliacion");
+  });
+
+  it("sin COD pendiente de remitir ni discrepancias, no muestra esas filas", () => {
+    const { html } = buildDailySummaryEmail({ ...base, ordersLast24h: 1 }, NOW);
+    expect(html).not.toContain("por remitir");
+    expect(html).not.toContain("discrepancia(s) de efectivo");
   });
 });

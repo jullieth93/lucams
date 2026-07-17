@@ -21,6 +21,7 @@ import {
   Factory,
   Globe,
   DollarSign,
+  Wallet,
   BrainCircuit,
   BarChart2,
   Settings,
@@ -228,9 +229,22 @@ export const ADMIN_NAV: NavGroup[] = [
   {
     title: "Finanzas",
     icon: DollarSign,
-    href: "/admin/finanzas",
-    description:
-      "Dashboard financiero: KPIs ingresos + DIAN + breakdown método pago. Marco preparado; datos reales llegan con Fase 2 (Checkout).",
+    items: [
+      {
+        label: "Resumen",
+        href: "/admin/finanzas",
+        icon: DollarSign,
+        description:
+          "Dashboard financiero: KPIs ingresos + DIAN + breakdown método pago. Marco preparado; datos reales llegan con Fase 2 (Checkout).",
+      },
+      {
+        label: "Conciliación contra entrega",
+        href: "/admin/finanzas/conciliacion",
+        icon: Wallet,
+        description:
+          "Efectivo de los pedidos contra entrega ya entregados: marca qué remesó el mensajero, cuánto falta y las discrepancias (antifraude).",
+      },
+    ],
   },
   {
     title: "IA y Conocimiento",

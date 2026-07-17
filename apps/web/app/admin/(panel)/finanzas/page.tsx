@@ -26,6 +26,7 @@ import {
 import { requireRole } from "@/lib/admin-rbac-guard";
 import { prisma } from "@/lib/db";
 import { formatCOP } from "@/lib/format";
+import { getCodReconciliationTotals } from "@/features/orders/cod-reconciliation";
 
 export const metadata: Metadata = {
   title: "Finanzas",
@@ -92,6 +93,9 @@ export default async function AdminFinanzasPage() {
       where: { deletedAt: null, dianStatus: "PENDING" },
     }),
   ]);
+
+  // ADR-064 — efectivo COD entregado pendiente de remesa del mensajero + discrepancias.
+  const codRecon = await getCodReconciliationTotals();
 
   const totalRevenue = wompiRevenue + codDeliveredRevenue;
   const hasRealData = totalPaidOrders > 0;
@@ -162,6 +166,23 @@ export default async function AdminFinanzasPage() {
             💵 <strong>{formatCOP(codToCollect)}</strong> en pedidos contra entrega{" "}
             <strong>por cobrar</strong> — el efectivo entra cuando el mensajero los entregue.{" "}
             <em>No está incluido en Ingresos totales</em> (se cuenta al entregar).
+          </AdminNotice>
+        )}
+
+        {/* ADR-064 — conciliación del efectivo contra entrega ya cobrado por el mensajero */}
+        {(codRecon.pendingCop > 0 || codRecon.discrepancyCount > 0) && (
+          <AdminNotice tone={codRecon.discrepancyCount > 0 ? "warning" : "info"}>
+            🚚 <strong>{formatCOP(codRecon.pendingCop)}</strong> de pedidos entregados están{" "}
+            <strong>por remitir</strong> (el mensajero ya cobró y aún no te deposita).
+            {codRecon.discrepancyCount > 0 && (
+              <>
+                {" "}
+                Hay <strong>{codRecon.discrepancyCount}</strong> con discrepancia.
+              </>
+            )}{" "}
+            <Link href="/admin/finanzas/conciliacion" className="font-semibold underline">
+              Conciliar contra entrega
+            </Link>
           </AdminNotice>
         )}
 

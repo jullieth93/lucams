@@ -52,6 +52,15 @@ enum PaymentMethod {
   COD
 }
 
+// ADR-064 — Conciliación del efectivo contraentrega (COD). El courier cobra el efectivo al entregar
+// y luego lo remite a la tienda; Aveonline no expone datos de liquidación, así que Lucy concilia a
+// mano cuando ve el depósito. El estado "por remitir" NO se guarda: se DERIVA de las órdenes COD
+// DELIVERED sin entrada REMITTED. Solo se persisten las RESOLUCIONES.
+enum CodReconciliationStatus {
+  REMITTED // el courier ya remitió el efectivo a la tienda → conciliado ✓
+  DISCREPANCY // el efectivo recibido no cuadra o no llegó → requiere atención
+}
+
 enum CouponType {
   PERCENT
   FIXED
@@ -157,22 +166,22 @@ enum SettingCategory {
 // ──────────────────────── IDENTIDAD ────────────────────────
 
 model Customer {
-  id                 String              @id @default(cuid())
-  email              String              @unique
+  id                 String                    @id @default(cuid())
+  email              String                    @unique
   phone              String?
   firstName          String?
   lastName           String?
-  supabaseUserId     String              @unique
+  supabaseUserId     String                    @unique
   // Datos tributarios DIAN — opcionales en perfil, obligatorios en
   // checkout cuando se emite factura electrónica (Fase 7).
   documentType       DocumentType?
   documentNumber     String? // nullable porque se completa en checkout
   taxResponsibility  TaxResponsibility?
-  loyaltyPoints      Int                 @default(0)
-  referralCode       String              @unique
+  loyaltyPoints      Int                       @default(0)
+  referralCode       String                    @unique
   referredById       String?
-  referredBy         Customer?           @relation("Referrals", fields: [referredById], references: [id], onDelete: SetNull)
-  referrals          Customer[]          @relation("Referrals")
+  referredBy         Customer?                 @relation("Referrals", fields: [referredById], references: [id], onDelete: SetNull)
+  referrals          Customer[]                @relation("Referrals")
   addresses          Address[]
   orders             Order[]
   reviews            Review[]
@@ -389,31 +398,31 @@ model Product {
 }
 
 model ProductVariant {
-  id            String             @id @default(cuid())
-  productId     String
-  product       Product            @relation(fields: [productId], references: [id], onDelete: Cascade)
-  name          String
+  id             String             @id @default(cuid())
+  productId      String
+  product        Product            @relation(fields: [productId], references: [id], onDelete: Cascade)
+  name           String
   // PLAN_CATALOG_V2 2.10 — "¿por qué elegir esta variante vs otra?".
   // Bot AI lo usa para sugerir variant correcto. Ej: "Set 12 ideal para baby shower
   // con muchos invitados; Set 4 perfecto si solo querés un detalle simbólico".
-  description   String?
-  sku           String             @unique
-  price         Int?
+  description    String?
+  sku            String             @unique
+  price          Int?
   // Lucy 2026-06-27: "precio tachado" (promoción) POR OPCIÓN. Antes vivía en
   // Product.compareAtPrice, pero el precio real es por opción → el descuento
   // podía salir negativo en la tienda. Centavos COP. Null = sin promo.
   compareAtPrice Int?
-  stock         Int                @default(0)
+  stock          Int                @default(0)
   // D1 (Lucy 2026-06-27): fotos propias de la opción. Vacío = hereda
   // Product.images (espeja la herencia de `price`). El PDP cambia la galería
   // al elegir la opción; el admin las sube desde el editor de la opción.
-  images        String[]           @default([])
-  attributes    Json
-  inventoryLogs InventoryLog[]
-  cartItems     CartItem[]
-  orderItems    OrderItem[]
-  reservations  StockReservation[]
-  isActive      Boolean            @default(true)
+  images         String[]           @default([])
+  attributes     Json
+  inventoryLogs  InventoryLog[]
+  cartItems      CartItem[]
+  orderItems     OrderItem[]
+  reservations   StockReservation[]
+  isActive       Boolean            @default(true)
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -436,8 +445,6 @@ model InventoryLog {
   orderId   String?
   createdAt DateTime       @default(now())
   createdBy String?
-
-  @@index([variantId, createdAt])
   // NOTA: existe un UNIQUE INDEX PARCIAL que Prisma no puede expresar (índices
   // condicionales con WHERE no son soportados por @@unique). Vive en la migración
   // 20260626224910_fix_inventory_log_unique_per_variant:
@@ -446,6 +453,8 @@ model InventoryLog {
   // Garantiza idempotencia física del ledger (no se decrementa/revierte el mismo
   // variant 2x para el mismo order+reason) permitiendo múltiples variants por orden.
   // Si tocás este modelo, NO regeneres una migración que dropee este índice parcial.
+
+  @@index([variantId, createdAt])
 }
 
 // ──────────────────────── CARRITO Y ÓRDENES ────────────────────────
@@ -503,95 +512,97 @@ model CartItem {
 }
 
 model Order {
-  id                    String        @id @default(cuid())
-  number                String        @unique
-  customerId            String?
-  customer              Customer?     @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  email                 String
-  phone                 String
-  shippingAddress       Json
-  subtotal              Int
-  discount              Int           @default(0)
-  shipping              Int
-  tax                   Int           @default(0)
-  total                 Int
-  currency              String        @default("COP")
-  status                OrderStatus   @default(DRAFT)
-  paymentMethod         PaymentMethod
-  wompiTransactionId    String?
+  id                      String             @id @default(cuid())
+  number                  String             @unique
+  customerId              String?
+  customer                Customer?          @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  email                   String
+  phone                   String
+  shippingAddress         Json
+  subtotal                Int
+  discount                Int                @default(0)
+  shipping                Int
+  tax                     Int                @default(0)
+  total                   Int
+  currency                String             @default("COP")
+  status                  OrderStatus        @default(DRAFT)
+  paymentMethod           PaymentMethod
+  wompiTransactionId      String?
   // #6 (certificación Bloque A 2026-06-26) — caso patológico: Wompi cobró pero
   // el stock se agotó entre PENDING_PAYMENT y PAID (carrera sobre última unidad).
   // La orden queda PENDING_PAYMENT y se marca acá para que sea VISIBLE en
   // /admin/pedidos (filtro "Necesitan atención") en vez de morir en un log que
   // nadie ve (mandato #7 sin Sentry). ACCIÓN HUMANA: refund o producir stock.
-  needsReconciliation   Boolean       @default(false)
-  reconciliationReason  String?
+  needsReconciliation     Boolean            @default(false)
+  reconciliationReason    String?
   // Bloque F2 — auditoría del reembolso desde admin. El movimiento de dinero en
   // Wompi es MANUAL (contraentrega + preferencia de operar la pasarela a mano);
   // estos campos registran quién marcó la orden REFUNDED, cuándo, por qué y el
   // monto (= total para reembolso completo). refundedBy = AdminUser.id.
-  refundedAt            DateTime?
-  refundedBy            String?
-  refundReason          String?
-  refundAmount          Int?
+  refundedAt              DateTime?
+  refundedBy              String?
+  refundReason            String?
+  refundAmount            Int?
   // #2 (post-launch Bloque A) — timestamp de envío del email de confirmación.
   // Hace el envío idempotente Y recuperable: si la saga crashea entre el commit
   // de PAID y el envío del email, un reintento de processPaidOrder lo manda
   // (confirmationSentAt sigue null) sin duplicar (se setea al enviar).
-  confirmationSentAt    DateTime?
+  confirmationSentAt      DateTime?
   // #11-P1 (verificación post-launch Bloque A) — claim atómico de creación de
   // guía. processPaidOrder hace un updateMany condicional (WHERE trackingNumber
   // null AND (shipmentClaimedAt null OR stale)) ANTES de llamar a Aveonline:
   // solo un proceso concurrente gana el claim, el resto se saltea → imposible
   // crear 2 guías para la misma orden ya-PAID-sin-tracking. Se libera en fallo
   // y se re-clama si quedó stale (proceso crasheado) tras 10 min.
-  shipmentClaimedAt     DateTime?
+  shipmentClaimedAt       DateTime?
   // Bloque F3 — fecha de entrega efectiva (webhook Aveonline DELIVERED). Ancla la
   // ventana de 5 días hábiles del derecho de retracto (Ley 1480 art. 47).
-  deliveredAt           DateTime?
+  deliveredAt             DateTime?
   // Palanca de reseñas (auditoría 2026-07-13): timestamp del email de solicitud de reseña
   // (post-entrega, demorado). Null = aún no enviado → el cron lo considera elegible.
-  reviewRequestedAt     DateTime?
+  reviewRequestedAt       DateTime?
   // Consentimiento de derechos de imagen (ADR-062 P0-2, Ley 1581). Al confirmar el pedido el
   // cliente acepta las condiciones —que incluyen declarar que tiene derecho a usar las imágenes
   // subidas y autorizar su impresión—. Se sella al crear la Order (baja fricción, sin checkbox
   // extra); es la evidencia con fecha del consentimiento.
   contentRightsAcceptedAt DateTime?
   // Legacy: venndeloShipmentId queda por compat. Nueva integración usa los campos Aveonline abajo.
-  venndeloShipmentId    String?
+  venndeloShipmentId      String?
   // PLAN_CATALOG_V2 4.10 — Aveonline + ShippingProvider interface (ADR-039).
   // shippingCarrier: qué carrier eligió el cliente ("envia", "tcc", "coordinadora", etc.).
-  shippingCarrier       String?
+  shippingCarrier         String?
   // PLAN_CATALOG_V2 4.10 — número de guía del carrier.
-  trackingNumber        String?
-  trackingUrl           String?
+  trackingNumber          String?
+  trackingUrl             String?
   // PLAN_CATALOG_V2 4.10 — URL de impresión etiqueta (rutaimpresion en Aveonline).
-  labelUrl              String?
-  couponId              String?
-  coupon                Coupon?       @relation(fields: [couponId], references: [id], onDelete: SetNull)
+  labelUrl                String?
+  couponId                String?
+  coupon                  Coupon?            @relation(fields: [couponId], references: [id], onDelete: SetNull)
   // PLAN_CATALOG_V2 3.9 — tracking del uso de cupón (incluye monto descontado).
-  couponUsage           CouponUsage?
-  notes                 String?
-  items                 OrderItem[]
+  couponUsage             CouponUsage?
+  // ADR-064 — conciliación del efectivo contraentrega (0..1 por orden; solo existe al resolver).
+  codReconciliation       CodReconciliation?
+  notes                   String?
+  items                   OrderItem[]
   // DIAN factura electrónica (Fase 7 implementa el envío; aquí el
   // schema queda ready para no remigrar después).
-  billingDocumentType   DocumentType?
-  billingDocumentNumber String?
-  billingName           String?
-  dianStatus            DianStatus    @default(NOT_REQUIRED)
-  dianCufe              String? // CUFE devuelto por la DIAN
-  dianXmlUrl            String? // URL del XML firmado
+  billingDocumentType     DocumentType?
+  billingDocumentNumber   String?
+  billingName             String?
+  dianStatus              DianStatus         @default(NOT_REQUIRED)
+  dianCufe                String? // CUFE devuelto por la DIAN
+  dianXmlUrl              String? // URL del XML firmado
   // Token único para vista pública /pedido/[token] — guest checkout sin
   // cuenta accede a su pedido sin login con este link (Lucy 2026-05-22).
   // 32 chars hex generados con crypto.randomBytes(16).toString("hex").
-  publicAccessToken     String?       @unique
+  publicAccessToken       String?            @unique
 
   // P0-020 (Lucy 2026-06-26) — Cart de origen para idempotency cart→order.
   // NO FK (el Cart se soft-deletea al transicionar a PAID; la referencia
   // debe sobrevivir). Lookup como string nullable para Orders pre-existentes.
   // Permite que createOrderFromCart sea idempotente: si un cart ya tiene
   // Order PENDING_PAYMENT activa, retornamos esa en vez de crear otra.
-  cartId                String?
+  cartId String?
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -608,6 +619,30 @@ model Order {
   @@index([cartId, status])
   @@index([couponId])
   @@index([needsReconciliation])
+}
+
+// ADR-064 — Ledger de conciliación del efectivo contraentrega (COD). UNA fila por orden, creada solo
+// cuando Lucy RESUELVE la conciliación (marca remitido o discrepancia) desde /admin/finanzas. El
+// estado "por remitir" no se guarda: se deriva de órdenes COD DELIVERED sin fila REMITTED. No hay
+// integración con la saga (bajo riesgo) ni datos de liquidación de Aveonline (remesa = acto manual).
+// Idempotente por orderId @unique. Dinero en centavos COP (nunca float). Solo admin/service la tocan
+// (RLS deny-by-default vía el event trigger, sin políticas → invisible para anon).
+model CodReconciliation {
+  id                String                  @id @default(cuid())
+  orderId           String                  @unique
+  order             Order                   @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  status            CodReconciliationStatus
+  expectedAmount    Int // COP centavos — recaudo esperado (= Order.total al momento de conciliar)
+  remittedAmount    Int? // COP centavos — efectivo que la tienda realmente recibió del courier
+  remittedAt        DateTime? // cuándo se recibió/registró la remesa
+  remittedBy        String? // AdminUser.id que registró la remesa (sin FK, patrón refundedBy)
+  carrierRef        String? // referencia del depósito/liquidación del courier
+  discrepancyReason String? // por qué no cuadra (si status = DISCREPANCY)
+  note              String? // nota libre de la conciliación
+  createdAt         DateTime                @default(now())
+  updatedAt         DateTime                @updatedAt
+
+  @@index([status, updatedAt])
 }
 
 model OrderItem {
@@ -1221,45 +1256,45 @@ enum ModerationStatus {
 }
 
 model Design {
-  id             String                   @id @default(cuid())
-  customerId     String?
-  customer       Customer?                @relation(fields: [customerId], references: [id], onDelete: SetNull)
-  sessionId      String? // anon flow, matches cart_session cookie
-  productId      String
-  product        Product                  @relation(fields: [productId], references: [id], onDelete: Restrict)
-  templateId     String?
-  template       PersonalizationTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
-  status         DesignStatus             @default(DRAFT)
+  id               String                   @id @default(cuid())
+  customerId       String?
+  customer         Customer?                @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  sessionId        String? // anon flow, matches cart_session cookie
+  productId        String
+  product          Product                  @relation(fields: [productId], references: [id], onDelete: Restrict)
+  templateId       String?
+  template         PersonalizationTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  status           DesignStatus             @default(DRAFT)
   // Moderación de contenido (ADR-062 P0-2). Todo diseño nace PENDING; Lucy lo aprueba/
   // rechaza en /admin/moderacion antes de que su pedido pueda marcarse SHIPPED.
-  moderationStatus ModerationStatus       @default(PENDING)
+  moderationStatus ModerationStatus         @default(PENDING)
   moderationReason String? // motivo del rechazo (visible al cliente en el email)
   moderatedAt      DateTime?
   moderatedById    String? // AdminUser.id que moderó (sin relación, como Order.refundedBy)
   // canvasData: Konva stage serialization. Estructura validada por features/
   // personalization/schemas.ts con Zod en cada save.
-  canvasData     Json
+  canvasData       Json
   // previewUrl: snapshot compositado del grid completo (PNG público, bucket
   // design-previews). Visible en cart/order display al cliente. En V1
   // (legacy M.3) es snapshot 1080×1080 single. En V2 (M.3.b multi-slot) es
   // mosaico del grid completo.
-  previewUrl     String?
+  previewUrl       String?
   // productionUrl: V1 legacy single PNG 300 DPI privado. Para V2 está null
   // y la info de producción vive en productionUrls[]. Mantener nullable
   // por retrocompat — designs M.3 existentes siguen siendo descargables.
-  productionUrl  String?
+  productionUrl    String?
   // productionUrls: V2 (M.3.b) — N paths privados en bucket production-assets,
   // uno por imán físico del pack. Admin descarga el ZIP de N PNGs 300 DPI
   // para imprenta. Empty array hasta status=READY o USED_IN_ORDER.
-  productionUrls String[]                 @default([])
+  productionUrls   String[]                 @default([])
   // metadata: selección plantilla + marco + color + ajustes filtros foto-edit.
-  metadata       Json                     @default("{}")
+  metadata         Json                     @default("{}")
   // shareToken: link público read-only para colaboración (sub-bloque K+M
   // futuro: "compartí con tu pareja antes de comprar"). Genera en cliente.
-  shareToken     String?                  @unique
-  assets         DesignAsset[]
-  cartItems      CartItem[]
-  orderItems     OrderItem[]
+  shareToken       String?                  @unique
+  assets           DesignAsset[]
+  cartItems        CartItem[]
+  orderItems       OrderItem[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1488,20 +1523,20 @@ model RecommendationLog {
 // Lookup se hace en proxy.ts (Node runtime, Prisma directo) con cache
 // in-memory de 60s para no martillear DB en cada request.
 model UrlRedirect {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   // Ruta de origen (sin host, sin query string). Ej: "/garantia",
   // "/blog/promocion-mama-2025". UNIQUE para evitar conflictos.
-  fromPath    String   @unique
+  fromPath    String    @unique
   // Destino: ruta interna ("/legal/garantias") o URL externa
   // ("https://otra.com/x"). Sin restricciones de scheme.
   toPath      String
   // 301 (permanent, SEO transfer) o 302 (temporary). Default 301.
-  statusCode  Int      @default(301)
+  statusCode  Int       @default(301)
   // Opcional: descripción interna para Lucy (no se expone al cliente).
   description String?
-  isActive    Boolean  @default(true)
+  isActive    Boolean   @default(true)
   // Contador de hits — útil para detectar redirects obsoletos.
-  hitCount    Int      @default(0)
+  hitCount    Int       @default(0)
   lastHitAt   DateTime?
 
   createdAt DateTime  @default(now())

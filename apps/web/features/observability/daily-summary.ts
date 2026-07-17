@@ -27,6 +27,10 @@ export type DailySummary = {
   // NO cuenta COD confirmado-pero-no-entregado (el efectivo aún no entró) — revisión adversarial.
   revenueLast24hCop: number;
   codToCollectCop: number; // COD confirmado en 24h, pendiente de cobrar al entregar
+  // ADR-064 — COD ENTREGADO cuyo efectivo el mensajero ya cobró pero aún no remitió a la tienda
+  // (saldo pendiente, todo el histórico, no solo 24h) + discrepancias abiertas de caja.
+  codPendingRemitCop: number;
+  codDiscrepancies: number;
   paidOrdersLast24h: number;
   pendingPayment: number; // checkouts en pago sin completar
   toShip: number; // pagadas sin despachar (PAID + FULFILLING)
@@ -59,6 +63,8 @@ export async function getDailySummary(now: Date = new Date()): Promise<DailySumm
     errors24h,
     topErrorRaw,
     needsReconciliation,
+    codPendingRemitAgg,
+    codDiscrepancies,
   ] = await Promise.all([
     prisma.order.count({
       where: { createdAt: { gte: from }, deletedAt: null, status: { not: "DRAFT" } },
@@ -118,6 +124,17 @@ export async function getDailySummary(now: Date = new Date()): Promise<DailySumm
       take: 1,
     }),
     prisma.order.count({ where: { needsReconciliation: true, deletedAt: null } }),
+    // ADR-064 — COD entregado sin fila de conciliación REMITTED → efectivo que el mensajero debe.
+    prisma.order.aggregate({
+      _sum: { total: true },
+      where: {
+        deletedAt: null,
+        paymentMethod: "COD",
+        status: "DELIVERED",
+        codReconciliation: { is: null },
+      },
+    }),
+    prisma.codReconciliation.count({ where: { status: "DISCREPANCY" } }),
   ]);
 
   return {
@@ -125,6 +142,8 @@ export async function getDailySummary(now: Date = new Date()): Promise<DailySumm
     ordersLast24h,
     revenueLast24hCop: (wompiRevenueAgg._sum.total ?? 0) + (codDeliveredAgg._sum.total ?? 0),
     codToCollectCop: codToCollectAgg._sum.total ?? 0,
+    codPendingRemitCop: codPendingRemitAgg._sum.total ?? 0,
+    codDiscrepancies,
     paidOrdersLast24h,
     pendingPayment,
     toShip,
@@ -159,6 +178,14 @@ export function buildDailySummaryEmail(
   if (s.needsReconciliation > 0)
     attention.push(
       `🔴 <strong>${s.needsReconciliation}</strong> orden(es) necesitan reconciliación — /admin/pedidos (filtro "Necesitan atención")`,
+    );
+  if (s.codDiscrepancies > 0)
+    attention.push(
+      `💸 <strong>${s.codDiscrepancies}</strong> discrepancia(s) de efectivo contra entrega — /admin/finanzas/conciliacion`,
+    );
+  if (s.codPendingRemitCop > 0)
+    attention.push(
+      `🚚 <strong>${fmtCop(s.codPendingRemitCop)}</strong> de contra entrega por remitir (el mensajero ya cobró) — /admin/finanzas/conciliacion`,
     );
   if (s.toShip > 0)
     attention.push(`📦 <strong>${s.toShip}</strong> pagada(s) por despachar — /admin/pedidos`);

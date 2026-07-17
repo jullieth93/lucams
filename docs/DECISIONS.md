@@ -2299,3 +2299,51 @@ legacy → deprecar tras el fix de descarga; texto en inglés horneado en `ig_po
 server-side, nevera 3D CSP-safe), pero el pipeline se corta justo antes de volverse un producto
 físico correcto y entregable. Cerrar eso —y sumar dos previews inmersivos— es lo que lo lleva de
 "funciona" a "fantástico" (diferenciador #1, mandato WYSIWYG).
+
+## ADR-064 — Ledger de conciliación del efectivo contra entrega (COD) (2026-07-17)
+
+Cierra la dimensión más débil del plan maestro de producción (ADR-062: "COD antifraude+conciliación
+55" · HIGH del crítico). Antes, el flujo COD asumía **entregado = dinero en caja**: al entregar
+(webhook Aveonline DELIVERED) el efectivo se contaba como ingreso, pero la **remesa real** del
+mensajero a la tienda no se modelaba en ningún lado — imposible saber qué efectivo llegó, qué falta,
+o si hubo una diferencia (fraude/pérdida). El único registro financiero era `Order.status + total`.
+
+**Fase de comprensión.** Workflow multi-agente (5 lectores en paralelo, ~490k tokens, 0 errores)
+mapeó: flujo de dinero COD, convenciones Prisma/RLS, superficie admin, patrones de service/tests, y
+si Aveonline expone datos de liquidación. Hallazgo clave: **Aveonline NO devuelve datos de remesa**
+(la respuesta de la guía solo trae numguia/label; el webhook solo trae estado de entrega). → la
+remesa es un **acto manual** que Lucy concilia cuando ve el depósito del courier.
+
+**Decisión de diseño.** Modelo `CodReconciliation` (patrón operacional, 1 fila por orden) que se crea
+**solo al RESOLVER** (Lucy marca remitido o discrepancia). El estado "por remitir" NO se persiste:
+se **deriva** de las órdenes COD `DELIVERED` sin fila `REMITTED`. Ventajas: cero cambios en la saga
+(bajo riesgo sobre el flujo de compra), idempotente por `orderId @unique`, sin backfill de históricos
+(la lista sale de `Order LEFT JOIN CodReconciliation`). Enum `CodReconciliationStatus {REMITTED,
+DISCREPANCY}`; el tercer estado "PENDING_REMIT" es derivado. Dinero en centavos COP. Actor admin como
+`remittedBy String?` sin FK (patrón `refundedBy`). RLS deny-by-default automática vía el event trigger
+(migración 14) — tabla admin/service-only, invisible para anon (verificado `relrowsecurity=true`).
+
+**Implementado.**
+
+- **Schema + migración** (`20260717140000_add_cod_reconciliation`, escrita a mano para evitar los
+  DROP de drift de `migrate diff`) + `prisma generate` + `make restart`.
+- **Service** `features/orders/cod-reconciliation.ts`: `listCodReconciliation` (derivada + filtros +
+  paginación), `getCodReconciliationTotals` (KPIs), `markCodRemitted` (upsert idempotente, monto por
+  defecto = total, admite monto distinto), `flagCodDiscrepancy` (upsert + prende `needsReconciliation`
+  con motivo `COD:` para visibilidad en /admin/pedidos; remitir OK lo limpia). Errores tipados.
+- **Admin UI** `/admin/finanzas/conciliacion` (SUPERADMIN): KPIs (por remitir / remitido /
+  discrepancias) + lista + acciones por fila (registrar remesa / discrepancia, montos en pesos).
+  Server actions SUPER+MFA con `recordAdminAction`. Sidebar: "Finanzas" pasó de leaf a grupo
+  (Resumen + Conciliación).
+- **Integración**: aviso + enlace en /admin/finanzas; `codPendingRemitCop` + `codDiscrepancies` en el
+  resumen diario (email 8am) con filas de atención.
+- **Tests**: 2 unit nuevos (email COD) + 6 de integración (remitir/idempotencia/discrepancia/guards/
+  derivada/totales), cleanup scoped por prefijo RUN.
+
+**Antifraude.** El KPI "por remitir" hace VISIBLE el efectivo que el mensajero ya cobró y aún debe;
+"discrepancias" marca las diferencias. Si Aveonline algún día expone liquidación, puede auto-alimentar
+`REMITTED` sin cambiar el modelo.
+
+**Razón.** Un negocio con COD dominante (mandato #5) no puede lanzar sin saber cuánto efectivo le
+deben los mensajeros ni detectar faltantes. El ledger convierte "entregado = plata mágica" en un
+registro contable auditable, sin acoplar la saga ni depender de datos que el courier no da hoy.
