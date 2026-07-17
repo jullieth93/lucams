@@ -182,14 +182,18 @@ export default async function ProductosPage({ searchParams }: { searchParams: Se
               <OcasionFilterStrip ocasiones={ocasiones} />
               <ActiveFilterChips categories={categories} />
 
-              <div className="text-brand-purple-dark/70 mb-4 text-sm">
-                {total} {total === 1 ? "producto encontrado" : "productos encontrados"}
-                {totalPages > 1 && (
-                  <span className="text-brand-muted ml-1.5">
-                    · página {page} de {totalPages}
-                  </span>
-                )}
-              </div>
+              {/* Cuando total=0 se oculta este conteo: sería un redundante "0 productos
+                  encontrados" junto al empty state "No encontramos productos". */}
+              {total > 0 && (
+                <div className="text-brand-purple-dark/70 mb-4 text-sm">
+                  {total} {total === 1 ? "producto encontrado" : "productos encontrados"}
+                  {totalPages > 1 && (
+                    <span className="text-brand-muted ml-1.5">
+                      · página {page} de {totalPages}
+                    </span>
+                  )}
+                </div>
+              )}
 
               {products.length === 0 ? (
                 <div className="border-brand-purple/10 rounded-xl border bg-white px-6 py-16 text-center">
