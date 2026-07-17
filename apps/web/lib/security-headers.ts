@@ -47,7 +47,12 @@ export function getAllowedOrigins(isDev: boolean): (string | RegExp)[] {
   return [
     "https://lucamsshop.co",
     "https://www.lucamsshop.co",
-    /^https:\/\/lucams-shop(-[a-z0-9]+)?(-jullieth93s-projects)?\.vercel\.app$/,
+    // Deployments de Vercel de ESTE equipo (ADR-062). El sufijo del scope del equipo
+    // (`-jullieth93s-projects`) es OBLIGATORIO en las URLs de preview: antes era opcional, así que
+    // `lucams-shop-<algo>.vercel.app` (sin scope) matcheaba → cualquiera podía registrar un proyecto
+    // Vercel con ese nombre y recibir ACAO. El alias de producción `lucams-shop.vercel.app` (sin
+    // scope) sigue permitido porque solo lo puede reclamar el dueño del proyecto.
+    /^https:\/\/lucams-shop(-[a-z0-9][a-z0-9-]*-jullieth93s-projects)?\.vercel\.app$/,
     ...(isDev ? ["http://localhost:3000"] : []),
   ];
 }

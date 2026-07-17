@@ -50,9 +50,26 @@ describe("isOriginAllowed — CORS allowlist", () => {
     expect(isOriginAllowed("https://www.lucamsshop.co", false)).toBe(true);
   });
 
-  it("permite previews de Vercel del proyecto (regex)", () => {
-    expect(isOriginAllowed("https://lucams-shop-abc123.vercel.app", false)).toBe(true);
+  it("permite el alias de producción y previews CON el scope del equipo (ADR-062)", () => {
+    // Alias de producción del proyecto (sin scope) → solo lo reclama el dueño.
     expect(isOriginAllowed("https://lucams-shop.vercel.app", false)).toBe(true);
+    // Previews del equipo → exigen el sufijo del scope `-jullieth93s-projects`.
+    expect(
+      isOriginAllowed("https://lucams-shop-abc123-jullieth93s-projects.vercel.app", false),
+    ).toBe(true);
+    expect(
+      isOriginAllowed("https://lucams-shop-git-develop-jullieth93s-projects.vercel.app", false),
+    ).toBe(true);
+  });
+
+  it("RECHAZA previews de Vercel SIN el scope del equipo (squatting) — ADR-062", () => {
+    // Antes matcheaba (scope opcional) → cualquiera podía registrar este proyecto y recibir ACAO.
+    expect(isOriginAllowed("https://lucams-shop-abc123.vercel.app", false)).toBe(false);
+    expect(isOriginAllowed("https://lucams-shop-evil.vercel.app", false)).toBe(false);
+    // Scope de OTRO equipo tampoco.
+    expect(
+      isOriginAllowed("https://lucams-shop-abc-otra-empresa.vercel.app", false),
+    ).toBe(false);
   });
 
   it("RECHAZA orígenes ajenos (incl. dominios que solo contienen el nombre)", () => {

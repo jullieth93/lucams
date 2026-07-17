@@ -12,6 +12,7 @@
 import { logger } from "@/lib/logger";
 import { rateLimit } from "@/lib/rate-limit";
 import { getClientIp } from "@/lib/client-ip";
+import { getTrustedSelfBaseUrl } from "@/lib/origin";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -60,8 +61,9 @@ export async function GET(req: Request): Promise<Response> {
     });
   }
 
-  const url = new URL(req.url);
-  const baseUrl = `${url.protocol}//${url.host}`;
+  // ADR-062 — baseUrl de fuente CONFIABLE (env del propio deployment), NO del header Host del
+  // request (spoofable → self-fetch a un host arbitrario = SSRF / reporte falso).
+  const baseUrl = getTrustedSelfBaseUrl();
   const start = Date.now();
 
   const [db, storage, resend] = await Promise.all([

@@ -33,13 +33,13 @@ export async function GET(req: Request) {
 
   const coupons = await listPublicCoupons();
 
+  // ADR-062 — NO hard-codear `Access-Control-Allow-Origin: *`. El proxy ya gobierna CORS de forma
+  // central: 403ea orígenes de navegador no-allowlisted y firma ACAO=origin (+credentials) a los
+  // permitidos. Un `*` acá es engañoso (los consumidores reales del bot son server-side, sin
+  // header Origin → ni pasan por CORS) y además `*` + credentials es una combinación inválida que
+  // el navegador rechaza. Se retira el header; la política central decide.
   return NextResponse.json(
     { coupons, count: coupons.length, generatedAt: new Date().toISOString() },
-    {
-      headers: {
-        "Cache-Control": "public, max-age=600, s-maxage=600",
-        "Access-Control-Allow-Origin": "*",
-      },
-    },
+    { headers: { "Cache-Control": "public, max-age=600, s-maxage=600" } },
   );
 }
