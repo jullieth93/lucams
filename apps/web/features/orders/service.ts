@@ -22,6 +22,8 @@ import { prisma, Prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { canTransition, type ShippingAddressInput } from "./schemas";
 import { assertStockAvailable, revertStockForOrder } from "./stock";
+import { OrderAmountTooLargeError } from "./errors";
+import { fitsMoneyInt4 } from "@/lib/money";
 import { priceCouponForCart } from "@/features/coupons/redemption";
 import { sendOrderRefunded } from "./emails";
 
@@ -249,6 +251,14 @@ async function createOrderFromCartTx(
     const tax = 0; // IVA incluido en precios (Colombia); DIAN reporting en F2.4.
     const total = subtotal + shippingCost - discount + tax;
 
+    // Guard de overflow INT4: las columnas de dinero (subtotal/total/…) son Int (máx
+    // MAX_MONEY_CENTS). Un pedido caro × cantidad alta puede superarlo y reventar el INSERT con un
+    // "integer out of range" crudo. Lo atajamos ANTES con un mensaje claro (el checkout lo mapea a
+    // UX; la máquina de estados sigue montos válidos). Basta validar subtotal y total (los mayores).
+    if (!fitsMoneyInt4(subtotal) || !fitsMoneyInt4(total)) {
+      throw new OrderAmountTooLargeError(Math.max(subtotal, total));
+    }
+
     if (existing && existing.total === total && existing.email === input.shipping.email) {
       // Devolvemos la order existente como si la hubiéramos creado ahora.
       return {
@@ -431,6 +441,25 @@ export async function transitionOrder(
       if (orderWithItems) {
         const revertReason = to === "REFUNDED" ? "ORDER_REFUNDED" : "ORDER_CANCELLED";
         await revertStockForOrder(tx, orderWithItems, revertReason);
+      }
+
+      // F2 — al CANCELAR/REEMBOLSAR, liberar el cupón consumido: borrar el CouponUsage y decrementar
+      // el usedCount denormalizado, SIMÉTRICO a la saga PAID (saga.ts). Sin esto, un cupón de un solo
+      // uso queda "quemado" por una orden reembolsada → el cliente no puede reusarlo y el cupo global
+      // se pierde. La EXISTENCIA del CouponUsage (orderId @unique) es la verdad: la saga solo lo crea
+      // si ganó el cupo e incrementó (no en el caso "agotado al pagar"), así el revert nunca
+      // decrementa de más. Idempotente (transitionOrder ya es no-op si el estado no cambia) y el
+      // guard atómico usedCount>0 evita bajar de cero.
+      const usage = await tx.couponUsage.findUnique({
+        where: { orderId },
+        select: { couponId: true },
+      });
+      if (usage) {
+        await tx.couponUsage.delete({ where: { orderId } });
+        await tx.coupon.updateMany({
+          where: { id: usage.couponId, usedCount: { gt: 0 } },
+          data: { usedCount: { decrement: 1 } },
+        });
       }
       return updated;
     });

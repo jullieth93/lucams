@@ -285,6 +285,8 @@ describe.skipIf(!hasDb)("orders/service — integración DB (ciclo de vida)", { 
       }
     };
     await safe(() => cleanupOrdersAndCarts({ respectKeepAlive: false }));
+    // Cupones sembrados por los tests de revert (CouponUsage cascada al borrar orders arriba).
+    await safe(() => prisma.coupon.deleteMany({ where: { code: { startsWith: RUN } } }));
     await safe(() => prisma.customer.deleteMany({ where: { email: { contains: RUN } } }));
     // Designs de esta corrida (Design.product es Restrict → antes que producto).
     await safe(() => prisma.design.deleteMany({ where: { productId } }));
@@ -1083,6 +1085,66 @@ describe.skipIf(!hasDb)("orders/service — integración DB (ciclo de vida)", { 
       const order = await seedPending();
       await transitionOrder(order.id, "CANCELLED");
       await expect(transitionOrder(order.id, "PAID")).rejects.toBeInstanceOf(OrderTransitionError);
+    });
+
+    // F2 — revert de cupón al cancelar/reembolsar: simétrico a la saga PAID.
+    describe("revert de cupón consumido", () => {
+      // Reproduce el estado post-PAID que deja la saga: coupon.usedCount=1 + CouponUsage(orderId) +
+      // order.couponId. Devuelve los ids para asertar el revert.
+      async function seedPaidWithConsumedCoupon(maxUses: number | null) {
+        const order = await seedPending();
+        await transitionOrder(order.id, "PAID");
+        const now = Date.now();
+        const coupon = await prisma.coupon.create({
+          data: {
+            code: `${RUN}-CUP-${Math.random().toString(36).slice(2, 8)}`,
+            type: "PERCENT",
+            value: 10,
+            maxUses,
+            usedCount: 1,
+            validFrom: new Date(now - 86_400_000),
+            validTo: new Date(now + 86_400_000),
+          },
+          select: { id: true },
+        });
+        await prisma.order.update({
+          where: { id: order.id },
+          data: { couponId: coupon.id, discount: 500 },
+        });
+        await prisma.couponUsage.create({
+          data: { couponId: coupon.id, orderId: order.id, amount: 500 },
+        });
+        return { orderId: order.id, couponId: coupon.id };
+      }
+
+      it("REFUNDED libera el cupón: borra CouponUsage y decrementa usedCount (single-use reutilizable)", async () => {
+        const { orderId, couponId } = await seedPaidWithConsumedCoupon(1);
+        await transitionOrder(orderId, "REFUNDED", { actorAdminId: "admin-refund" });
+        expect(await prisma.couponUsage.findUnique({ where: { orderId } })).toBeNull();
+        const coupon = await prisma.coupon.findUnique({
+          where: { id: couponId },
+          select: { usedCount: true },
+        });
+        expect(coupon!.usedCount).toBe(0);
+      });
+
+      it("CANCELLED libera el cupón igual que REFUNDED (misma rama needsRevert)", async () => {
+        const { orderId, couponId } = await seedPaidWithConsumedCoupon(5);
+        await transitionOrder(orderId, "CANCELLED", { actorAdminId: "admin-cancel" });
+        expect(await prisma.couponUsage.findUnique({ where: { orderId } })).toBeNull();
+        const coupon = await prisma.coupon.findUnique({
+          where: { id: couponId },
+          select: { usedCount: true },
+        });
+        expect(coupon!.usedCount).toBe(0);
+      });
+
+      it("orden sin cupón consumido: el revert es no-op y no revienta", async () => {
+        const order = await seedPending();
+        await transitionOrder(order.id, "PAID");
+        const updated = await transitionOrder(order.id, "REFUNDED", { actorAdminId: "admin-x" });
+        expect(updated.status).toBe("REFUNDED");
+      });
     });
   });
 
