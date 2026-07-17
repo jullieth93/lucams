@@ -524,6 +524,56 @@ export async function getOrder(idOrNumber: string) {
   });
 }
 
+/**
+ * ADR-063 T7 — datos ricos para el ZIP de impresión: nombre/kind del producto + año del calendario
+ * (design.metadata) para nombrar cada pieza (meses del calendario, o "pieza-NN"). Solo items con
+ * diseño finalizado (productionUrls no vacío). Server-only (rol privilegiado).
+ */
+export async function getOrderProductionBundle(idOrNumber: string) {
+  const order = await prisma.order.findFirst({
+    where: { deletedAt: null, OR: [{ id: idOrNumber }, { number: idOrNumber }] },
+    select: {
+      id: true,
+      number: true,
+      createdAt: true,
+      items: {
+        select: {
+          id: true,
+          variant: { select: { sku: true } },
+          design: {
+            select: {
+              productionUrls: true,
+              moderationStatus: true,
+              metadata: true,
+              product: {
+                select: { name: true, personalizationKind: true, personalizationSchema: true },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+  if (!order) return null;
+  const items = order.items
+    .filter((it) => (it.design?.productionUrls?.length ?? 0) > 0)
+    .map((it) => {
+      const d = it.design!;
+      const schema = (d.product?.personalizationSchema as { startMonth?: number } | null) ?? null;
+      const meta = (d.metadata as { calendarYear?: number } | null) ?? null;
+      return {
+        sku: it.variant.sku,
+        productName: d.product?.name ?? it.variant.sku,
+        personalizationKind: d.product?.personalizationKind ?? "NONE",
+        startMonth: typeof schema?.startMonth === "number" ? schema.startMonth : 0,
+        calendarYear: typeof meta?.calendarYear === "number" ? meta.calendarYear : undefined,
+        productionUrls: d.productionUrls,
+        moderationStatus: d.moderationStatus,
+      };
+    });
+  return { id: order.id, number: order.number, createdAt: order.createdAt, items };
+}
+
 export type OrderListOpts = {
   q?: string;
   status?:

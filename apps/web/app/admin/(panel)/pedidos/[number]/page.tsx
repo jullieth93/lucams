@@ -84,6 +84,12 @@ export default async function AdminPedidoDetallePage({
   // descargue e imprima. Antes esto era imposible desde la UI. TTL 1h → refrescar la página si expira.
   const productionPaths = order.items.flatMap((it) => it.design?.productionUrls ?? []);
   const signedProduction = await getProductionAssetSignedUrls(productionPaths);
+  // ADR-063 T7 — ¿hay piezas finalizadas? → ofrecer el ZIP completo (piezas + hoja de armado).
+  const hasProduction = productionPaths.length > 0;
+  const hasUnapproved = order.items.some(
+    (it) =>
+      (it.design?.productionUrls?.length ?? 0) > 0 && it.design?.moderationStatus !== "APPROVED",
+  );
 
   const ship = order.shippingAddress as ShippingAddrSnapshot;
   const dateFmt = new Intl.DateTimeFormat("es-CO", {
@@ -121,6 +127,29 @@ export default async function AdminPedidoDetallePage({
           <div className="space-y-4 lg:col-span-2">
             {/* Items */}
             <Card icon={<Package className="h-4 w-4" />} title={`Items (${order.items.length})`}>
+              {hasProduction && (
+                <div className="border-brand-purple/10 bg-brand-cream/40 mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2">
+                  <div className="min-w-0">
+                    <div className="text-brand-purple-dark text-xs font-bold">
+                      Archivos de impresión
+                    </div>
+                    <div className="text-brand-muted text-[11px]">
+                      ZIP con todas las piezas (300 DPI) + hoja de armado
+                      {hasUnapproved && (
+                        <span className="ml-1 font-semibold text-amber-700">
+                          · ⚠️ hay diseños sin aprobar
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <a
+                    href={`/admin/pedidos/${encodeURIComponent(order.number)}/produccion`}
+                    className="bg-brand-purple hover:bg-brand-purple-dark inline-flex flex-shrink-0 items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold text-white transition-colors"
+                  >
+                    ⬇ Descargar todo (ZIP)
+                  </a>
+                </div>
+              )}
               <ul className="divide-brand-purple/10 divide-y">
                 {order.items.map((it) => {
                   const previewUrl = it.design?.previewUrl ?? null;

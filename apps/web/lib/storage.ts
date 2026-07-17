@@ -401,3 +401,15 @@ export async function getProductionAssetSignedUrls(
   }
   return out;
 }
+
+/**
+ * Descarga los bytes de un PNG de producción (bucket PRIVADO, service role). Para armar el ZIP de
+ * impresión (ADR-063 T7) server-side. Devuelve null si el path no existe o falla la descarga.
+ */
+export async function downloadProductionAsset(path: string): Promise<Buffer | null> {
+  const { data, error } = await supabaseService.storage
+    .from(PRODUCTION_ASSETS_BUCKET)
+    .download(path);
+  if (error || !data) return null;
+  return Buffer.from(await data.arrayBuffer());
+}
