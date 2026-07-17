@@ -15,6 +15,7 @@ import type { Metadata } from "next";
 import dynamic from "next/dynamic";
 import { notFound, redirect } from "next/navigation";
 import { SiteHeader } from "@/components/site-header";
+import { buildWhatsAppUrl } from "@/lib/wa";
 import { getStorefrontProductBySlug } from "@/features/products/public-service";
 import {
   listTemplatesForKind,
@@ -168,8 +169,47 @@ export default async function EstudioPage({
     );
   }
 
-  // Llegados aquí, las superficies no-foto (name/letterset) ya retornaron y los NONE sin
-  // marcador cayeron a direct-cart (redirect). Lo que queda es la ruta de FOTO (kind ≠ NONE).
+  // D1 (ADR-063) — superficies declaradas en surface.ts pero SIN editor propio (phrase/event/logo).
+  // Ningún producto activo las usa hoy; si se activa una, gateamos con un aviso claro + cotización
+  // por WhatsApp en vez de cargar silenciosamente el editor de FOTO (producto equivocado, landmine).
+  if (surface.surface === "phrase" || surface.surface === "event" || surface.surface === "logo") {
+    const waUrl = await buildWhatsAppUrl({
+      kind: "product",
+      productName: product.name,
+      sku: product.sku,
+    });
+    return (
+      <div className="bg-brand-cream flex min-h-screen flex-col">
+        <SiteHeader />
+        <main
+          id="contenido"
+          tabIndex={-1}
+          className="flex flex-1 items-center justify-center px-6 py-16"
+        >
+          <div className="max-w-md text-center">
+            <h1 className="font-display text-brand-purple-dark text-2xl">
+              Este producto lo hacemos a medida
+            </h1>
+            <p className="text-brand-purple-dark/70 mt-3">
+              Para <strong>{product.name}</strong> preparamos tu diseño contigo por WhatsApp — así
+              queda justo como lo imaginas.
+            </p>
+            <a
+              href={waUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="bg-brand-purple-dark hover:bg-brand-purple mt-6 inline-block rounded-full px-6 py-3 text-sm font-semibold text-white transition-colors"
+            >
+              Escríbenos por WhatsApp
+            </a>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  // Llegados aquí, las superficies no-foto (name/letterset/phrase/event/logo) ya retornaron y los
+  // NONE sin marcador cayeron a direct-cart (redirect). Lo que queda es la ruta de FOTO (kind ≠ NONE).
   if (product.personalizationKind === "NONE") notFound();
 
   const photoConfig = parsePhotoProductConfig(mergedSchema);
