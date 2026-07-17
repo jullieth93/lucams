@@ -47,9 +47,15 @@ número de guía para que hagas seguimiento.
 
 ## Personalización
 
-Al subir fotos o textos al Estudio de Personalización, declaras que tienes derecho
-a usarlos y que no infringen derechos de terceros. Usamos esas imágenes únicamente
+Al subir fotos o textos al Estudio de Personalización, y al confirmar tu pedido,
+declaras que tienes derecho a usarlos, que cuentas con la autorización de las
+personas que aparezcan en las imágenes (Ley 1581 de 2012) y que no infringen
+derechos de terceros. Autorizas a Lucams_shop a imprimir ese contenido únicamente
 para producir tu pedido.
+
+Revisamos el contenido de cada pedido antes de imprimirlo. Nos reservamos el derecho
+de **no producir** —y de cancelar y reembolsar— pedidos cuyo contenido sea ilegal,
+ofensivo o que infrinja derechos de terceros. Si eso ocurre, te avisamos con el motivo.
 
 ## Propiedad intelectual
 

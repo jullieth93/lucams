@@ -277,6 +277,10 @@ async function createOrderFromCartTx(
         customerId: input.customerId,
         cartId: input.cartId, // P0-020 idempotency
         couponId, // F1 — null si no hubo cupón válido
+        // Consentimiento de derechos de imagen (ADR-062 P0-2, Ley 1581): confirmar el pedido
+        // implica aceptar las condiciones —incluida la declaración de titularidad/uso de las
+        // imágenes subidas y su autorización de impresión—. Evidencia con fecha, sin fricción extra.
+        contentRightsAcceptedAt: new Date(),
         email: input.shipping.email,
         phone: input.shipping.phone,
         shippingAddress: input.shipping as unknown as Prisma.InputJsonValue,

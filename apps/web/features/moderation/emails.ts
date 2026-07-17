@@ -1,0 +1,53 @@
+/*
+ * Envío del email de "diseño rechazado" (ADR-062 P0-2). Best-effort: un fallo de correo nunca
+ * rompe la acción de moderación. Idempotente por (pedido, diseño) vía idempotencyKey de Resend.
+ */
+
+import "server-only";
+import { prisma } from "@/lib/db";
+import { logger } from "@/lib/logger";
+import { sendEmail } from "@/lib/resend";
+import { designRejectedEmail } from "@/features/emails/templates/design-rejected";
+import type { RejectResult } from "./service";
+
+type ShippingAddrSnapshot = { fullName?: string };
+
+/** Avisa a cada pedido afectado que su diseño fue rechazado, con el motivo. */
+export async function sendDesignRejectedEmails(
+  designId: string,
+  result: RejectResult,
+  reason: string,
+): Promise<void> {
+  for (const o of result.orders) {
+    try {
+      const order = await prisma.order.findFirst({
+        where: { number: o.number, deletedAt: null },
+        select: { shippingAddress: true },
+      });
+      const name = (order?.shippingAddress as ShippingAddrSnapshot | null)?.fullName ?? "Cliente";
+      const tpl = await designRejectedEmail({
+        orderNumber: o.number,
+        customerName: name,
+        productName: result.productName,
+        reason,
+      });
+      await sendEmail({
+        to: o.email,
+        subject: tpl.subject,
+        html: tpl.html,
+        text: tpl.text,
+        idempotencyKey: `${o.number}-design-rejected-${designId}`,
+        tags: [
+          { name: "type", value: "design_rejected" },
+          { name: "order_number", value: o.number },
+        ],
+      });
+    } catch (err) {
+      logger.warn({
+        event: "moderation.design_rejected_email_fail",
+        orderNumber: o.number,
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
+}

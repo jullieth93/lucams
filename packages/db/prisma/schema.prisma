@@ -552,6 +552,11 @@ model Order {
   // Palanca de reseñas (auditoría 2026-07-13): timestamp del email de solicitud de reseña
   // (post-entrega, demorado). Null = aún no enviado → el cron lo considera elegible.
   reviewRequestedAt     DateTime?
+  // Consentimiento de derechos de imagen (ADR-062 P0-2, Ley 1581). Al confirmar el pedido el
+  // cliente acepta las condiciones —que incluyen declarar que tiene derecho a usar las imágenes
+  // subidas y autorizar su impresión—. Se sella al crear la Order (baja fricción, sin checkbox
+  // extra); es la evidencia con fecha del consentimiento.
+  contentRightsAcceptedAt DateTime?
   // Legacy: venndeloShipmentId queda por compat. Nueva integración usa los campos Aveonline abajo.
   venndeloShipmentId    String?
   // PLAN_CATALOG_V2 4.10 — Aveonline + ShippingProvider interface (ADR-039).
@@ -1205,6 +1210,16 @@ enum DesignStatus {
   ARCHIVED // soft-deleted por el customer (mi-cuenta → mis diseños)
 }
 
+// Moderación de contenido del diseño (ADR-062 P0-2). Print-on-demand: cada diseño
+// personalizado se imprime y despacha físicamente, así que Lucy revisa TODOS antes de
+// producir (evita imprimir contenido ilegal / que infrinja derechos). El gate bloquea
+// el envío (SHIPPED) hasta APPROVED.
+enum ModerationStatus {
+  PENDING // sin revisar — estado inicial de todo diseño personalizado
+  APPROVED // Lucy lo revisó y autorizó a producción
+  REJECTED // contenido no apto para imprimir; se avisa al cliente con el motivo
+}
+
 model Design {
   id             String                   @id @default(cuid())
   customerId     String?
@@ -1215,6 +1230,12 @@ model Design {
   templateId     String?
   template       PersonalizationTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
   status         DesignStatus             @default(DRAFT)
+  // Moderación de contenido (ADR-062 P0-2). Todo diseño nace PENDING; Lucy lo aprueba/
+  // rechaza en /admin/moderacion antes de que su pedido pueda marcarse SHIPPED.
+  moderationStatus ModerationStatus       @default(PENDING)
+  moderationReason String? // motivo del rechazo (visible al cliente en el email)
+  moderatedAt      DateTime?
+  moderatedById    String? // AdminUser.id que moderó (sin relación, como Order.refundedBy)
   // canvasData: Konva stage serialization. Estructura validada por features/
   // personalization/schemas.ts con Zod en cada save.
   canvasData     Json
@@ -1250,6 +1271,8 @@ model Design {
   @@index([productId])
   @@index([templateId])
   @@index([status, updatedAt])
+  // Cola de moderación: diseños pendientes ordenados por antigüedad.
+  @@index([moderationStatus, createdAt])
 }
 
 model DesignAsset {

@@ -28,6 +28,7 @@ import {
   Box,
   Users,
   AlertCircle,
+  ShieldAlert,
   Star,
   Layers,
   Tag,
@@ -94,6 +95,13 @@ export const ADMIN_NAV: NavGroup[] = [
         icon: Box,
         description:
           "Tablero de pedidos con filtros por estado, detalle de cada orden, reintento de guía Aveonline y cambio de estado manual (SHIPPED/DELIVERED/CANCELLED).",
+      },
+      {
+        label: "Moderación",
+        href: "/admin/moderacion",
+        icon: ShieldAlert,
+        description:
+          "Revisa el contenido de cada diseño personalizado antes de imprimirlo. Aprueba para producir o rechaza (avisamos al cliente). Un pedido no se puede marcar enviado con diseños sin aprobar.",
       },
       {
         label: "Retractos",

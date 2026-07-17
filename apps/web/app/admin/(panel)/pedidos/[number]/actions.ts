@@ -8,6 +8,7 @@ import { recordAdminAction } from "@/lib/admin-audit";
 import { processPaidOrder } from "@/features/orders/saga";
 import { refundOrder, transitionOrder } from "@/features/orders/service";
 import { sendOrderShipped, sendOrderDelivered, sendOrderCancelled } from "@/features/orders/emails";
+import { orderHasUnmoderatedDesigns } from "@/features/moderation/service";
 import { formatCOP } from "@/lib/format";
 
 /**
@@ -79,6 +80,14 @@ export async function transitionOrderAction(
   if (to === "REFUNDED") {
     return {
       error: "Para reembolsar usa el botón Reembolsar (registra auditoría y avisa al cliente).",
+    };
+  }
+  // Gate de moderación (ADR-062 P0-2): marcar SHIPPED implica que ya se imprimió y despachó.
+  // Print-on-demand → no se despacha nada con diseños sin aprobar. Revisa /admin/moderacion.
+  if (to === "SHIPPED" && (await orderHasUnmoderatedDesigns(orderId))) {
+    return {
+      error:
+        "Este pedido tiene diseños sin aprobar en Moderación. Apruébalos antes de marcarlo como enviado.",
     };
   }
 

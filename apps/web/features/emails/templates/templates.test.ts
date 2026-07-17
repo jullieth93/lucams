@@ -66,6 +66,7 @@ import { orderPaymentFailedEmail } from "./order-payment-failed";
 import { newsletterWelcomeEmail } from "./newsletter-welcome";
 import { supportTicketInternalEmail } from "./support-ticket-internal";
 import { supportTicketReceivedEmail } from "./support-ticket-received";
+import { designRejectedEmail } from "./design-rejected";
 
 // =============================================================================
 // Helpers de fábrica: input mínimo válido por template, con overrides.
@@ -765,6 +766,45 @@ describe("supportTicketReceivedEmail", () => {
       supportTicketReceivedEmail(data),
       supportTicketReceivedEmail(data),
     ]);
+    expect(a).toEqual(b);
+  });
+});
+
+describe("designRejectedEmail (moderación P0-2)", () => {
+  const data = {
+    orderNumber: "LM-0007",
+    customerName: "Ana",
+    productName: "Fotoimán cuadrado",
+    reason: "La foto contiene contenido de terceros",
+  };
+
+  it("subject lleva el número de pedido", async () => {
+    const t = await designRejectedEmail(data);
+    expect(t.subject).toContain("LM-0007");
+  });
+
+  it("HTML incluye nombre, producto, número de pedido y motivo", async () => {
+    const t = await designRejectedEmail(data);
+    expect(t.html).toContain("Ana");
+    expect(t.html).toContain("Fotoimán cuadrado");
+    expect(t.html).toContain("LM-0007");
+    expect(t.html).toContain("La foto contiene contenido de terceros");
+  });
+
+  it("SEGURIDAD: escapa < > & en el motivo (viene del admin, va al email)", async () => {
+    const t = await designRejectedEmail({ ...data, reason: '<script>alert("x")</script> & más' });
+    expect(t.html).toContain("&lt;script&gt;");
+    expect(t.html).not.toContain("<script>alert");
+  });
+
+  it("el texto plano refleja motivo y producto", async () => {
+    const t = await designRejectedEmail(data);
+    expect(t.text).toContain("Fotoimán cuadrado");
+    expect(t.text).toContain("La foto contiene contenido de terceros");
+  });
+
+  it("IDEMPOTENCIA: mismo input → misma salida", async () => {
+    const [a, b] = await Promise.all([designRejectedEmail(data), designRejectedEmail(data)]);
     expect(a).toEqual(b);
   });
 });

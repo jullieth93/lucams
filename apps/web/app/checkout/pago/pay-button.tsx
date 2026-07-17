@@ -145,6 +145,16 @@ export function PaymentMethodChooser({
         )}
       </div>
 
+      {/* Consentimiento de baja fricción (ADR-062 P0-2): al confirmar, el cliente acepta los
+          términos —que incluyen la declaración de derechos de imagen— sin checkbox extra. */}
+      <p className="text-brand-muted mb-4 text-[11px] leading-relaxed">
+        Al confirmar tu pedido aceptas los{" "}
+        <Link href="/legal/terminos" className="hover:text-brand-purple-dark underline">
+          Términos y Condiciones
+        </Link>{" "}
+        y declaras que tienes derecho a usar las imágenes que subiste y autorizas su impresión.
+      </p>
+
       <div className="flex flex-col items-end gap-2 sm:flex-row sm:justify-between">
         <Link
           href={backHref}
