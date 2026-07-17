@@ -113,7 +113,7 @@ jobs:
         run: pnpm --filter web exec playwright test smoke a11y axe compra admin-login admin-mfa estudio --project=chromium
       - name: Subir reporte Playwright (si falla)
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-report-nightly
           path: apps/web/playwright-report/
