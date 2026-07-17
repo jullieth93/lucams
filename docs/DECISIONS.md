@@ -2372,3 +2372,33 @@ corregí todos salvo dos fuera de alcance. Cambios v2:
   TOTP del SUPERADMIN); copy pre-existente de `/admin/finanzas` ("Mientras tanto" duplicado).
 - **+4 tests de integración** (reembolsado-sigue-vigilado, discrepancia-parcial-en-pesos, overflow,
   motivo-ajeno-no-pisado). 10 integración + 2 unit, todo verde.
+
+## ADR-065 — Anti-abuso del pago contra entrega (COD) por identidad (2026-07-17)
+
+Segundo ítem del plan maestro (ADR-062: "COD antifraude+conciliación 55"). El ledger (ADR-064) hace
+VISIBLE el fraude después; esto lo PREVIENE antes. Cada pedido COD genera una guía Aveonline real
+(flete + comisión de recaudo) y despacha mercancía que se cobra recién al entregar → un abusador puede
+spamear pedidos COD con datos falsos / sin intención de recibir y hacer que la tienda pague el flete de
+paquetes devueltos. El único guard previo era un **rate-limit por IP** (6/10min) + el on/off global
+`COD_ENABLED` — débil: los abusadores rotan IPs.
+
+**Decisión.** `assessCodRisk(orderId)` (`features/checkout/cod-risk.ts`) evalúa el riesgo por
+**IDENTIDAD** (teléfono O email), no por IP, dentro de `finalizeCheckout` ANTES de generar la guía.
+Cuatro señales (constantes conservadoras, documentadas):
+
+1. **Velocidad:** > 3 pedidos COD de la misma identidad en 24h.
+2. **En vuelo:** ≥ 3 COD confirmados sin entregar (exposición de flete acumulada).
+3. **Cliente nuevo de alto valor:** sin ninguna entrega previa (cualquier método) y total > $300.000.
+4. **Devolución previa:** un COD de esa identidad que el courier ya devolvió (RETURNED/EXCEPTION).
+
+Si dispara, se **bloquea el COD** (no se cancela la orden → queda PENDING_PAYMENT reusable): el cliente
+ve un mensaje amable y puede **pagar en línea** (Wompi). Nunca se revela la regla exacta (no darle el
+mapa al abusador; el detalle va al log `checkout.cod_risk.blocked`). **Fail-open:** si la evaluación
+falla (DB), NO bloquea (no castigar a un cliente legítimo por un hipo de infra; quedan el rate-limit
+por IP + COD_ENABLED).
+
+**Razón.** COD es el método dominante en Colombia (mandato #5) y el de mayor riesgo para la tienda.
+Un tope por identidad ataca el patrón de abuso real (spam desde muchas IPs) sin fricción para el
+cliente legítimo (que casi nunca pide 4 COD en un día ni $400k a puerta la primera vez). 6 tests de
+integración (permitido + 4 bloqueos + cliente-conocido-alto-valor-permitido). Constantes tunables a
+futuro vía settings si el volumen real lo exige.

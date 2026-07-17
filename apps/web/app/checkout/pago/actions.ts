@@ -112,8 +112,10 @@ export async function payCodAction(formData: FormData): Promise<void> {
   const isProd = process.env.VERCEL_ENV === "production";
   // Bucket SEPARADO y más estricto que Wompi: cada COD permitido crea una orden REAL +
   // una guía Aveonline (con costo potencial), a diferencia de Wompi que no tiene efecto
-  // hasta pagar. Anti-fraude/abuso (revisión adversarial COD). [Pendiente: tope por
-  // cliente/global diario si el volumen lo exige.]
+  // hasta pagar. Anti-fraude/abuso (revisión adversarial COD). El tope POR IDENTIDAD
+  // (teléfono/email: velocidad, en-vuelo, devoluciones previas, tope cliente nuevo) lo
+  // aplica assessCodRisk dentro de finalizeCheckout (ADR-065) — este rate-limit es la
+  // primera capa por IP.
   const rl = await rateLimit(ipKey("checkout_cod", ip), isProd ? 6 : 50, 600);
   if (!rl.allowed) {
     logger.warn({ event: "checkout.pago.cod_rate_limited", ip, count: rl.count });

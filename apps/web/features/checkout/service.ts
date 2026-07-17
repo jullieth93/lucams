@@ -37,6 +37,7 @@ import {
   type CheckoutState,
 } from "@/lib/checkout-session";
 import { composeAddressLine, type ShippingSelectionInput } from "./schemas";
+import { assessCodRisk } from "./cod-risk";
 
 export class CheckoutError extends Error {
   constructor(
@@ -50,7 +51,8 @@ export class CheckoutError extends Error {
       | "SHIPPING_QUOTE_FAILED"
       | "ORDER_CREATE_FAILED"
       | "PAYMENT_INIT_FAILED"
-      | "STOCK_UNAVAILABLE",
+      | "STOCK_UNAVAILABLE"
+      | "COD_NOT_ALLOWED",
     message?: string,
   ) {
     super(message ?? code);
@@ -358,6 +360,14 @@ export async function finalizeCheckout(input: {
         "PAYMENT_INIT_FAILED",
         "El pago contra entrega no está disponible en este momento.",
       );
+    }
+
+    // Anti-abuso COD (ADR-065): evalúa el riesgo por IDENTIDAD (teléfono/email) antes de generar la
+    // guía real. Si dispara, se bloquea el COD; la orden queda PENDING_PAYMENT para que el cliente
+    // la complete pagando EN LÍNEA (no la cancelamos → reusable por Wompi vía idempotencia de cartId).
+    const codRisk = await assessCodRisk(order.id);
+    if (!codRisk.allowed) {
+      throw new CheckoutError("COD_NOT_ALLOWED", codRisk.message);
     }
     // [P0 revisión] createOrderFromCart puede REUSAR una orden PENDING_PAYMENT de un
     // intento Wompi abandonado (idempotencia por cartId) con paymentMethod='WOMPI'. Si
