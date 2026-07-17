@@ -51,6 +51,14 @@ export class OrderNotFoundError extends Error {
  * caller debe reintentar (raro: las orders en checkout no son concurrentes).
  */
 async function generateOrderNumber(tx: Prisma.TransactionClient): Promise<string> {
+  // Serializa la numeración concurrente con un advisory lock TRANSACCIONAL (ADR-062):
+  // count()+1 no es concurrency-safe — dos transacciones simultáneas ven el mismo count (la
+  // orden de la otra aún no commiteó) y generan el MISMO Order.number → P2002. El lock
+  // (scope de transacción → se libera solo al commit/rollback) hace que las creaciones de orden
+  // concurrentes tomen turnos: la siguiente ya ve la orden ganadora y avanza el número. Elimina
+  // el race de raíz; el retry de createOrderFromCart queda como backstop. La creación de orden
+  // es de baja frecuencia (nunca en el hot path de render) → serializarla es inocuo.
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(918273)`;
   const year = new Date().getFullYear();
   const yearStart = new Date(year, 0, 1);
   const yearEnd = new Date(year + 1, 0, 1);
