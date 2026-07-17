@@ -1,0 +1,84 @@
+/*
+ * ADR-063 CAL4 — compositor CLIENTE de las páginas del calendario para el preview inmersivo.
+ *
+ * Usa el MISMO `drawCalendarPage` que el compositor de producción server-side → lo que el cliente
+ * ve en 3D es exactamente lo que se imprime (WYSIWYG). Toma la foto ORIGINAL de cada mes (assetUrl)
+ * + su encuadre (photoTransform) y compone la página completa (foto + mes + año + grilla de días).
+ * No pasa por Konva: replica la misma entrada que el server (asset crudo + transform).
+ */
+
+import { drawCalendarPage } from "@/features/personalization/calendar-draw";
+import { CALENDAR_PAGE } from "@/features/personalization/calendar-layout";
+
+// Escala del preview: 1080×1520 → ~810×1140. Nítido como textura 3D sin ser pesado.
+const PREVIEW_SCALE = 0.75;
+
+export type CalendarPageInput = {
+  assetUrl?: string | null;
+  photoTransform?: { offsetX: number; offsetY: number; scale: number } | null;
+  /** Mes 0..11 que corresponde a esta página. */
+  monthIndex0: number;
+};
+
+function loadImage(url: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = "anonymous"; // el bucket sirve CORS (igual que Konva) → canvas no se "tainta"
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("No se pudo cargar la foto del calendario"));
+    img.src = url;
+  });
+}
+
+/**
+ * Compone las páginas (en el orden dado) → dataURLs PNG. Espera a que las fuentes de marca estén
+ * listas para que el título/días salgan con Fredoka/Inter (no un fallback).
+ */
+export async function composeCalendarPages(
+  pages: CalendarPageInput[],
+  year: number,
+): Promise<string[]> {
+  // Asegurar fuentes de marca cargadas antes de dibujar texto en el canvas.
+  if (typeof document !== "undefined" && document.fonts) {
+    try {
+      await Promise.all([
+        document.fonts.load("700 62px Fredoka"),
+        document.fonts.load("400 30px Inter"),
+        document.fonts.load("700 30px Inter"),
+      ]);
+      await document.fonts.ready;
+    } catch {
+      // si falla la carga, drawCalendarPage cae a sans-serif (fontsOk=true igual dibuja).
+    }
+  }
+
+  const S = PREVIEW_SCALE;
+  const out: string[] = [];
+  for (const p of pages) {
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(CALENDAR_PAGE.width * S);
+    canvas.height = Math.round(CALENDAR_PAGE.height * S);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("No se pudo crear el contexto 2D para el calendario");
+    ctx.scale(S, S);
+
+    let photo: HTMLImageElement | null = null;
+    if (p.assetUrl) {
+      try {
+        photo = await loadImage(p.assetUrl);
+      } catch {
+        photo = null; // foto ilegible → recuadro suave (el helper lo maneja).
+      }
+    }
+
+    drawCalendarPage(ctx, {
+      photo,
+      photoTransform: p.photoTransform,
+      year,
+      monthIndex0: p.monthIndex0,
+      fontsOk: true,
+    });
+    out.push(canvas.toDataURL("image/png"));
+  }
+  return out;
+}

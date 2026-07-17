@@ -43,10 +43,12 @@ import { StudioPhotoAdjustModal } from "./studio-photo-adjust-modal";
 import { StudioPreviewModal } from "./studio-preview-modal";
 import { StudioTextEditorModal } from "./studio-text-editor-modal";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { Sparkles, Box, X } from "lucide-react";
+import { Sparkles, Box, X, CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 import nextDynamic from "next/dynamic";
 import type { Magnet3D } from "./fridge-3d-view";
 import { StudioAiPanel } from "./studio-ai-panel";
+import { composeCalendarPages } from "./lib/compose-calendar-page";
+import { MONTH_NAMES_ES } from "@/features/personalization/calendar-grid";
 
 // Vista 3D en nevera: se carga SOLO client-side (necesita WebGL/window) y diferida
 // (three.js es pesado) → no infla el bundle del editor hasta que el cliente la abre.
@@ -55,6 +57,15 @@ const FridgeView3D = nextDynamic(() => import("./fridge-3d-view"), {
   loading: () => (
     <div className="text-brand-muted flex h-full items-center justify-center text-sm">
       Cargando la nevera 3D…
+    </div>
+  ),
+});
+// CAL4 — preview inmersivo del calendario (client-only, diferido igual que la nevera).
+const CalendarView3D = nextDynamic(() => import("./calendar-view-3d"), {
+  ssr: false,
+  loading: () => (
+    <div className="text-brand-muted flex h-full items-center justify-center text-sm">
+      Cargando tu calendario 3D…
     </div>
   ),
 });
@@ -181,6 +192,10 @@ export function StudioEditor({
   // P1.4 — Vista 3D en nevera. null = cerrada; array = imanes texturizados a mostrar.
   const [fridge3D, setFridge3D] = useState<Magnet3D[] | null>(null);
   const [fridge3DCols, setFridge3DCols] = useState(1);
+  // CAL4 — preview inmersivo del calendario. null = cerrado; array = páginas de mes compuestas.
+  const [calendarPages, setCalendarPages] = useState<string[] | null>(null);
+  const [calendarMonthIndex, setCalendarMonthIndex] = useState(0);
+  const [calendarBuilding, setCalendarBuilding] = useState(false);
   // P1.5 — Asistente IA de ideas (ADR-058).
   const [aiOpen, setAiOpen] = useState(false);
   const allowText = (product.personalizationSchema as { allowText?: boolean })?.allowText === true;
@@ -411,15 +426,49 @@ export function StudioEditor({
     }
   }, [store, productConfig.shape, ensureAllStagesMounted]);
 
-  // Cerrar la vista 3D con Escape (a11y).
+  // CAL4 — Abrir el calendario 3D: compone cada página de mes (foto + mes + año + grilla) con el
+  // MISMO dibujo que producción (WYSIWYG) y las muestra en un calendario de pared navegable. Usa la
+  // foto ORIGINAL + encuadre de cada slot (no Konva) → no depende del montaje de stages.
+  const handleOpenCalendar3D = useCallback(async () => {
+    const state = store.getState();
+    if (!state.canvasData || calendarBuilding) return;
+    setCalendarBuilding(true);
+    try {
+      const startMonth =
+        (product.personalizationSchema as { startMonth?: number })?.startMonth ?? 0;
+      const inputs = [...state.canvasData.slots]
+        .sort((a, b) => a.slotIndex - b.slotIndex)
+        .map((s) => ({
+          assetUrl: s.assetUrl,
+          photoTransform: s.photoTransform,
+          monthIndex0: (((startMonth + s.slotIndex) % 12) + 12) % 12,
+        }));
+      const pages = await composeCalendarPages(inputs, selectedYear);
+      setCalendarMonthIndex(0);
+      setCalendarPages(pages);
+    } catch (err) {
+      state.setAutoSaveStatus({
+        kind: "error",
+        message: "No pudimos armar tu calendario. Intenta de nuevo.",
+      });
+      void err;
+    } finally {
+      setCalendarBuilding(false);
+    }
+  }, [store, product.personalizationSchema, selectedYear, calendarBuilding]);
+
+  // Cerrar las vistas 3D con Escape (a11y).
   useEffect(() => {
-    if (fridge3D === null) return;
+    if (fridge3D === null && calendarPages === null) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setFridge3D(null);
+      if (e.key === "Escape") {
+        setFridge3D(null);
+        setCalendarPages(null);
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [fridge3D]);
+  }, [fridge3D, calendarPages]);
 
   // ──────────── Step 2: Confirmar → upload + add to cart + redirect ────────────
   //
@@ -702,15 +751,28 @@ export function StudioEditor({
           <Sparkles className="h-5 w-5" />
           <span>Ideas</span>
         </button>
-        <button
-          type="button"
-          onClick={handleOpen3D}
-          aria-label="Ver tus imanes en una nevera 3D"
-          className="bg-brand-purple ring-brand-purple/25 inline-flex h-12 items-center gap-2 rounded-full px-4 text-sm font-bold text-white shadow-xl ring-4 transition-transform hover:scale-105 active:scale-95"
-        >
-          <Box className="h-5 w-5" />
-          <span>Ver en 3D</span>
-        </button>
+        {isCalendarMonth ? (
+          <button
+            type="button"
+            onClick={handleOpenCalendar3D}
+            disabled={calendarBuilding}
+            aria-label="Ver tu calendario en 3D"
+            className="bg-brand-purple ring-brand-purple/25 inline-flex h-12 items-center gap-2 rounded-full px-4 text-sm font-bold text-white shadow-xl ring-4 transition-transform hover:scale-105 active:scale-95 disabled:opacity-60"
+          >
+            <CalendarDays className="h-5 w-5" />
+            <span>{calendarBuilding ? "Armando…" : "Ver mi calendario"}</span>
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={handleOpen3D}
+            aria-label="Ver tus imanes en una nevera 3D"
+            className="bg-brand-purple ring-brand-purple/25 inline-flex h-12 items-center gap-2 rounded-full px-4 text-sm font-bold text-white shadow-xl ring-4 transition-transform hover:scale-105 active:scale-95"
+          >
+            <Box className="h-5 w-5" />
+            <span>Ver en 3D</span>
+          </button>
+        )}
       </div>
 
       {/* P1.5 — Panel del asistente IA de ideas */}
@@ -747,6 +809,65 @@ export function StudioEditor({
             <p className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-black/40 px-3 py-1.5 text-center text-xs text-white">
               Arrastra para girar · rueda o pellizca para acercar
             </p>
+          </div>
+        </div>
+      )}
+
+      {/* CAL4 — Modal del calendario 3D navegable (lazy, client-only). */}
+      {calendarPages !== null && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Vista 3D de tu calendario"
+          className="bg-brand-purple-dark/85 fixed inset-0 z-50 flex flex-col backdrop-blur-sm"
+        >
+          <div className="flex items-center justify-between px-4 py-3 text-white sm:px-6">
+            <span className="font-display text-lg font-bold">📅 Tu calendario {selectedYear}</span>
+            <button
+              type="button"
+              onClick={() => setCalendarPages(null)}
+              aria-label="Cerrar calendario 3D"
+              autoFocus
+              className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/15 text-white transition-colors hover:bg-white/25 focus:ring-2 focus:ring-white focus:outline-none"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+          <div className="relative flex-1">
+            <CalendarView3D pages={calendarPages} index={calendarMonthIndex} />
+            {/* Navegación mes a mes */}
+            <div className="pointer-events-none absolute inset-x-0 bottom-4 flex items-center justify-center gap-3">
+              <button
+                type="button"
+                onClick={() =>
+                  setCalendarMonthIndex(
+                    (i) => (i - 1 + calendarPages.length) % calendarPages.length,
+                  )
+                }
+                aria-label="Mes anterior"
+                className="pointer-events-auto inline-flex h-11 w-11 items-center justify-center rounded-full bg-white/20 text-white transition-colors hover:bg-white/35 focus:ring-2 focus:ring-white focus:outline-none"
+              >
+                <ChevronLeft className="h-6 w-6" />
+              </button>
+              <span className="pointer-events-none min-w-40 rounded-full bg-black/45 px-4 py-2 text-center text-sm font-semibold text-white">
+                {MONTH_NAMES_ES[
+                  (((((product.personalizationSchema as { startMonth?: number })?.startMonth ?? 0) +
+                    calendarMonthIndex) %
+                    12) +
+                    12) %
+                    12
+                ] ?? ""}{" "}
+                {selectedYear}
+              </span>
+              <button
+                type="button"
+                onClick={() => setCalendarMonthIndex((i) => (i + 1) % calendarPages.length)}
+                aria-label="Mes siguiente"
+                className="pointer-events-auto inline-flex h-11 w-11 items-center justify-center rounded-full bg-white/20 text-white transition-colors hover:bg-white/35 focus:ring-2 focus:ring-white focus:outline-none"
+              >
+                <ChevronRight className="h-6 w-6" />
+              </button>
+            </div>
           </div>
         </div>
       )}
