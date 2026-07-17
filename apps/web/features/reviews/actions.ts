@@ -20,6 +20,7 @@ import { getCurrentCustomer } from "@/lib/auth";
 import { verifyTurnstileToken } from "@/lib/turnstile";
 import { rateLimit } from "@/lib/rate-limit";
 import { ipKey } from "@/lib/rate-limit-keys";
+import { getClientIp } from "@/lib/client-ip";
 import { logger } from "@/lib/logger";
 
 const ReviewSchema = z.object({
@@ -61,7 +62,8 @@ export async function submitReviewAction(
     };
   }
 
-  const ip = (await headers()).get("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+  // getClientIp prefiere x-vercel-forwarded-for (no spoofeable) para el rate-limit (ADR-062 P1).
+  const ip = getClientIp(await headers());
 
   // Anti-bot.
   const turnstileToken = String(formData.get("cf-turnstile-response") ?? "");

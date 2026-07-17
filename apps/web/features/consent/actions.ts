@@ -14,13 +14,16 @@
 import { headers } from "next/headers";
 import { logger } from "@/lib/logger";
 import { getCurrentCustomer } from "@/lib/auth";
+import { getClientIp } from "@/lib/client-ip";
 import { recordCookieConsent } from "./service";
 import type { CookiePreferences } from "@/lib/cookie-consent";
 
 export async function persistCookieConsentAction(prefs: CookiePreferences): Promise<void> {
   try {
     const hdrs = await headers();
-    const ip = hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
+    // getClientIp prefiere x-vercel-forwarded-for (no spoofeable) — la IP es prueba de
+    // consentimiento (Ley 1581), no puede depender de un header que el cliente falsea (ADR-062 P1).
+    const ip = getClientIp(hdrs);
     const userAgent = hdrs.get("user-agent") ?? null;
     const session = await getCurrentCustomer();
 

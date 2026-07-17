@@ -74,4 +74,14 @@ export function validateEnv(): void {
       "Variables de producción ausentes (OK en dev/preview, obligatorias al lanzar)",
     );
   }
+
+  // WOMPI_DISABLE_TIMESTAMP_CHECK apaga el anti-replay (ventana de timestamp) del webhook de
+  // Wompi — es un flag SOLO para debugging local. En producción DEBE estar apagado; si quedó
+  // en "true" el webhook aceptaría eventos re-enviados/forjados. Fail-fast (ADR-062 P1).
+  if (isProd && process.env.WOMPI_DISABLE_TIMESTAMP_CHECK === "true") {
+    throw new Error(
+      "[env] WOMPI_DISABLE_TIMESTAMP_CHECK=true en producción: apaga el anti-replay del webhook " +
+        "de Wompi. Quítalo o ponlo en false antes de arrancar.",
+    );
+  }
 }

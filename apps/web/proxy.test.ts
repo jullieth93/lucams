@@ -107,6 +107,14 @@ describe("proxy · idle-timeout admin (30 min)", () => {
     expect(res.status).toBe(200);
     expect(res.cookies.get("admin_last_activity")?.value).toBeTruthy();
   });
+
+  it("entrar a /admin/login borra la marca (sesión nueva no hereda timestamp viejo)", async () => {
+    const res = await proxy(
+      makeReq("/admin/login", { cookies: { admin_last_activity: String(Date.now()) } }),
+    );
+    // delete() emite un Set-Cookie que vacía el valor → una sesión nueva arranca el reloj limpio.
+    expect(res.cookies.get("admin_last_activity")?.value ?? "").toBe("");
+  });
 });
 
 describe("proxy · precedencia de redirects", () => {

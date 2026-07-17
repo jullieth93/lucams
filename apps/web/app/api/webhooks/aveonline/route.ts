@@ -18,6 +18,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
+import { secureEquals } from "@/lib/timing-safe";
 import { getShippingProvider } from "@/features/shipping/provider";
 import { processTrackingUpdate } from "@/features/orders/saga";
 
@@ -39,13 +40,22 @@ export async function POST(req: Request) {
     const url = new URL(req.url);
     const providedQ = url.searchParams.get("secret");
     const providedH = req.headers.get("x-aveonline-secret");
-    if (providedQ !== expected && providedH !== expected) {
+    // Comparación en tiempo constante (ADR-062 P1): `!==` filtraba bytes correctos por timing.
+    const okH = providedH != null && secureEquals(providedH, expected);
+    const okQ = providedQ != null && secureEquals(providedQ, expected);
+    if (!okH && !okQ) {
       logger.warn({
         event: "webhook.aveonline.invalid_secret",
         gotQ: !!providedQ,
         gotH: !!providedH,
       });
       return NextResponse.json({ error: "invalid secret" }, { status: 401 });
+    }
+    // El secreto por query-string viaja en logs de CDN/proxy y en el Referer → preferir el
+    // header x-aveonline-secret. ACCIÓN HUMANA: reconfigurar el webhook en Aveonline para que
+    // mande el header en vez de ?secret=. Se registra para dar visibilidad al pendiente.
+    if (okQ && !okH) {
+      logger.warn({ event: "webhook.aveonline.secret_via_query_string" });
     }
   }
 

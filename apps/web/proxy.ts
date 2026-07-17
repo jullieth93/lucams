@@ -72,6 +72,13 @@ const IS_DEV = process.env.NODE_ENV === "development";
 // cierre de sesión. Ventana deslizante: cada request admin renueva la marca.
 const ADMIN_IDLE_LIMIT_MS = 30 * 60 * 1000;
 const ADMIN_ACTIVITY_COOKIE = "admin_last_activity";
+// La cookie marcadora DEBE sobrevivir mucho más que la ventana de inactividad (ADR-062 P1).
+// Si su maxAge fuese <= el límite, un admin inactivo por más que ese maxAge llegaría con la
+// cookie ya EXPIRADA → last=0 → el gate lo trataría como "primera visita" y NO cerraría la
+// sesión (zona muerta que evade el idle-timeout). Con un maxAge >> límite, el timestamp viejo
+// siempre está disponible para detectar la inactividad. La contraparte está en el borrado de la
+// marca al entrar a /admin/login (abajo): así una sesión NUEVA no hereda un timestamp viejo.
+const ADMIN_ACTIVITY_COOKIE_MAX_AGE_S = 60 * 60 * 24 * 30; // 30 días >> 30 min
 
 // CSP por nonce (C3, Lucy 2026-06-27). script-src usa nonce + strict-dynamic: los
 // scripts de Next llevan el nonce automáticamente y los que ellos cargan
@@ -222,7 +229,7 @@ export async function proxy(request: NextRequest) {
       sameSite: "lax",
       secure: IS_PROD_DEPLOY,
       path: "/admin",
-      maxAge: 60 * 60,
+      maxAge: ADMIN_ACTIVITY_COOKIE_MAX_AGE_S,
     });
   }
 
@@ -236,6 +243,13 @@ export async function proxy(request: NextRequest) {
     response.headers.set("Access-Control-Allow-Origin", origin);
     response.headers.set("Access-Control-Allow-Credentials", "true");
     response.headers.set("Vary", "Origin");
+  }
+
+  // Reinicia el reloj de inactividad al entrar a /admin/login: borra la marca para que una
+  // sesión NUEVA no herede el timestamp de una sesión previa (que la expiraría al instante).
+  // Contraparte del maxAge largo de ADMIN_ACTIVITY_COOKIE (ADR-062 P1).
+  if (path.startsWith("/admin/login")) {
+    response.cookies.delete(ADMIN_ACTIVITY_COOKIE);
   }
 
   return response;

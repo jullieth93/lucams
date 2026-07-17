@@ -34,6 +34,7 @@ import "server-only";
 import { headers } from "next/headers";
 import { prisma, type Prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
+import { getClientIp } from "@/lib/client-ip";
 
 export type AdminAuditEntry = {
   actorId: string;
@@ -46,7 +47,9 @@ export type AdminAuditEntry = {
 export async function recordAdminAction(entry: AdminAuditEntry): Promise<void> {
   try {
     const hdrs = await headers();
-    const ip = hdrs.get("x-forwarded-for")?.split(",")[0]?.trim() ?? null;
+    // getClientIp prefiere x-vercel-forwarded-for (no spoofeable) — el IP es rastro forense
+    // del audit trail, no puede depender de un header falsificable por el cliente (ADR-062 P1).
+    const ip = getClientIp(hdrs);
     const userAgent = hdrs.get("user-agent") ?? null;
     await prisma.adminActionLog.create({
       data: {
