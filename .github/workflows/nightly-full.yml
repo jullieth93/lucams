@@ -84,11 +84,14 @@ jobs:
       NEXT_PUBLIC_SITE_URL: http://localhost:3000
       NEXT_PUBLIC_WA_NUMBER: "573208873826"
       CSRF_SECRET: nightly-csrf-secret-32-chars-minimo
+      # Smoke LIVE de Wompi (ADR-067): si se cargan los WOMPI_* SANDBOX como GitHub Secrets, el
+      # nightly los usa y corre el smoke contra la API real de sandbox; si no, cae al dummy y el
+      # smoke se salta (skipIf). Los tests mockeados pasan en ambos casos. NUNCA usar keys de prod.
       WOMPI_ENV: sandbox
-      WOMPI_PUBLIC_KEY: pub_test_ci
-      WOMPI_PRIVATE_KEY: prv_test_ci
-      WOMPI_INTEGRITY_SECRET: test_integrity_ci
-      WOMPI_EVENTS_SECRET: test_events_ci
+      WOMPI_PUBLIC_KEY: ${{ secrets.WOMPI_PUBLIC_KEY || 'pub_test_ci' }}
+      WOMPI_PRIVATE_KEY: ${{ secrets.WOMPI_PRIVATE_KEY || 'prv_test_ci' }}
+      WOMPI_INTEGRITY_SECRET: ${{ secrets.WOMPI_INTEGRITY_SECRET || 'test_integrity_ci' }}
+      WOMPI_EVENTS_SECRET: ${{ secrets.WOMPI_EVENTS_SECRET || 'test_events_ci' }}
       NEXT_TELEMETRY_DISABLED: "1"
     steps:
       - uses: actions/checkout@v4

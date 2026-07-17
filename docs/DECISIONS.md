@@ -2428,3 +2428,31 @@ honesta de que disponibilidad/latencia van con monitor externo post-lanzamiento.
 **Razón.** "Si no se mide, no existe" (OBSERVABILITY.md). En vez de fingir SLOs de infra sin tráfico,
 implemento los medibles de verdad hoy y dejo el andamiaje honesto para los de infra. 5 unit
 (`evaluateSlo`) + 1 unit (alerta en el email). Fuente única (`getSloStatus`) para panel y resumen.
+
+## ADR-067 — Smoke LIVE de pago Wompi contra sandbox + gate Lighthouse (2026-07-17)
+
+Cuarto y quinto ítem del plan maestro (ADR-062): E2E de pago + Lighthouse.
+
+**Lighthouse.** Lucy aprobó `@lhci/cli`. Gate de CI sobre el storefront público (home + `/productos`)
+con build de producción + Postgres seedeado (igual que E2E). Accesibilidad y SEO como **error** (≥0.9,
+deterministas → estables entre local y CI); performance y best-practices como **warn** (el perf en
+runners de CI varía). Calibrado localmente con el Chromium de Playwright (scores reales: home
+85/97/92/96, /productos 87/100/100/96 en perf/a11y/seo/bp) — pasa con margen. `lighthouserc.json` +
+job `lighthouse` en `ci.yml`.
+
+**E2E de pago — reframe honesto.** El Web Checkout de Wompi es un **redirect hosted** (dominio de
+Wompi, con anti-bot) → **no es automatizable** completar el pago con Playwright. El camino del dinero
+de NUESTRO lado (webhook firmado → orden PAID → saga) ya está cubierto por integración (saga 30/30,
+webhook). Lo que faltaba era probar que la integración **habla de verdad con Wompi** (no solo mocks):
+`lib/wompi.live.test.ts` — smoke LIVE **no-destructivo** contra la API de SANDBOX (fetch del
+merchant/acceptance token = public key válida + conectividad; `getTransaction` de un id inexistente =
+endpoint autenticado responde). **Gate de seguridad estricto:** corre SOLO con credenciales de sandbox
+REALES (`pub_test_…` larga, no el dummy `pub_test_ci`) y `WOMPI_ENV=sandbox` — **jamás producción**, ni
+en CI sin secrets (skipIf). Local: sourceando `.env.local` (2/2 verde contra sandbox real). Nightly:
+los `WOMPI_*` de `nightly-full.yml` referencian GitHub Secrets con fallback al dummy — el smoke se
+activa cuando Lucy cargue los secrets, sin romper los tests mockeados si no.
+
+**Razón.** Un browser E2E del pago hosted daría falsa confianza (no completa el flujo real y flakea);
+un smoke live no-destructivo prueba lo que importa (keys válidas + API viva) sin crear cobros ni tocar
+producción. Con esto, el carril AUTÓNOMO del plan maestro queda cerrado; el live-smoke en nightly y un
+posible smoke live de Aveonline quedan como activación por-secret.
