@@ -27,12 +27,14 @@ import { useLetterColors } from "./use-letter-colors";
 import { ThemePicker, SwatchRow } from "./letter-color-controls";
 import { LetterStylePicker } from "./letter-style-picker";
 
-// NOM2 — nevera 3D (WebGL, client-only), diferida como en el editor de foto.
-const FridgeView3D = nextDynamic(() => import("./fridge-3d-view"), {
+// NOM2 — tablero magnético 3D en un cuarto (WebGL, client-only), diferido. El nombre son imanes de
+// letras → viven en un tablero decorativo de una habitación (su propia escena), no en la nevera de
+// la cocina (que es el hogar de los fotoimanes). Sigue siendo superficie magnética real (WYSIWYG).
+const RoomBoardView3D = nextDynamic(() => import("./room-board-view-3d"), {
   ssr: false,
   loading: () => (
     <div className="text-brand-muted flex h-full items-center justify-center text-sm">
-      Cargando la nevera 3D…
+      Cargando tu tablero 3D…
     </div>
   ),
 });
@@ -208,8 +210,8 @@ export function NameEditor({
   const [raw, setRaw] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // NOM2 — vista 3D del nombre en la nevera. null = cerrada.
-  const [fridge3D, setFridge3D] = useState<Magnet3D[] | null>(null);
+  // NOM2 — vista 3D del nombre en un tablero magnético de un cuarto. null = cerrada.
+  const [board3D, setBoard3D] = useState<Magnet3D[] | null>(null);
   const [building3D, setBuilding3D] = useState(false);
   // Cantidad de fichas (letras) elegida en la ficha. El editor se LIMITA a esta cantidad;
   // el +/− la ajusta (min..max del producto). Es el nº de fichas que se cobra.
@@ -315,7 +317,7 @@ export function NameEditor({
     }
   }
 
-  // NOM2 — arma una textura por ficha y abre la nevera 3D (el nombre deletreado con imanes).
+  // NOM2 — arma una textura por ficha y abre el tablero 3D (el nombre deletreado con imanes).
   const handleOpen3D = useCallback(async () => {
     if (letters.length === 0 || building3D) return;
     setBuilding3D(true);
@@ -326,7 +328,7 @@ export function NameEditor({
       } catch {
         magnets = await renderLetterMagnets(letters, effectiveColors, activeTiles, false);
       }
-      setFridge3D(magnets);
+      setBoard3D(magnets);
     } catch {
       setError("No pudimos abrir la vista 3D. Intenta de nuevo.");
     } finally {
@@ -335,13 +337,13 @@ export function NameEditor({
   }, [letters, effectiveColors, activeTiles, building3D]);
 
   useEffect(() => {
-    if (fridge3D === null) return;
+    if (board3D === null) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setFridge3D(null);
+      if (e.key === "Escape") setBoard3D(null);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [fridge3D]);
+  }, [board3D]);
 
   const counterOver = letters.length > count;
 
@@ -556,7 +558,7 @@ export function NameEditor({
 
         {/* CTA */}
         <div className="mt-6 flex flex-col items-center gap-2">
-          {/* NOM2 — ver el nombre deletreado con imanes en la nevera 3D */}
+          {/* NOM2 — ver el nombre deletreado con imanes en un tablero magnético 3D */}
           {letters.length > 0 && (
             <button
               type="button"
@@ -565,7 +567,7 @@ export function NameEditor({
               className="border-brand-purple/25 text-brand-purple-dark hover:bg-brand-purple/5 mb-1 inline-flex items-center gap-2 rounded-full border px-5 py-2 text-sm font-semibold transition disabled:opacity-60"
             >
               <Box className="h-4 w-4" />
-              {building3D ? "Armando…" : "Ver en la nevera 3D"}
+              {building3D ? "Armando…" : "Ver en un tablero 3D"}
             </button>
           )}
           <button
@@ -597,19 +599,19 @@ export function NameEditor({
         </div>
       </div>
 
-      {/* NOM2 — Modal de la nevera 3D con el nombre deletreado (lazy, client-only). */}
-      {fridge3D !== null && (
+      {/* NOM2 — Modal del tablero magnético 3D con el nombre deletreado (lazy, client-only). */}
+      {board3D !== null && (
         <div
           role="dialog"
           aria-modal="true"
-          aria-label="Vista 3D de tu nombre en la nevera"
+          aria-label="Vista 3D de tu nombre en un tablero magnético"
           className="bg-brand-purple-dark/85 fixed inset-0 z-50 flex flex-col backdrop-blur-sm"
         >
           <div className="flex items-center justify-between px-4 py-3 text-white sm:px-6">
-            <span className="font-display text-lg font-bold">🧊 Tu nombre en la nevera</span>
+            <span className="font-display text-lg font-bold">🖼️ Tu nombre en el tablero</span>
             <button
               type="button"
-              onClick={() => setFridge3D(null)}
+              onClick={() => setBoard3D(null)}
               aria-label="Cerrar vista 3D"
               autoFocus
               className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/15 text-white transition-colors hover:bg-white/25 focus:ring-2 focus:ring-white focus:outline-none"
@@ -618,7 +620,7 @@ export function NameEditor({
             </button>
           </div>
           <div className="relative flex-1">
-            <FridgeView3D magnets={fridge3D} cols={fridge3D.length} />
+            <RoomBoardView3D magnets={board3D} cols={board3D.length} style="memo" />
             <p className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-black/40 px-3 py-1.5 text-center text-xs text-white">
               Arrastra para girar · rueda o pellizca para acercar
             </p>

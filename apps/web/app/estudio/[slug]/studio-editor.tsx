@@ -43,25 +43,18 @@ import { StudioPhotoAdjustModal } from "./studio-photo-adjust-modal";
 import { StudioPreviewModal } from "./studio-preview-modal";
 import { StudioTextEditorModal } from "./studio-text-editor-modal";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { Sparkles, Box, X, CalendarDays, ChevronLeft, ChevronRight, Gift } from "lucide-react";
+import { Sparkles, Box, X, CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 import nextDynamic from "next/dynamic";
 import type { Magnet3D } from "./fridge-3d-view";
 import { StudioAiPanel } from "./studio-ai-panel";
 import { composeCalendarPages } from "./lib/compose-calendar-page";
-import { composeGiftFlatlay } from "./lib/compose-gift-flatlay";
+import { SceneGallery } from "./scene-gallery";
 import { MONTH_NAMES_ES } from "@/features/personalization/calendar-grid";
 
-// Vista 3D en nevera: se carga SOLO client-side (necesita WebGL/window) y diferida
-// (three.js es pesado) → no infla el bundle del editor hasta que el cliente la abre.
-const FridgeView3D = nextDynamic(() => import("./fridge-3d-view"), {
-  ssr: false,
-  loading: () => (
-    <div className="text-brand-muted flex h-full items-center justify-center text-sm">
-      Cargando la nevera 3D…
-    </div>
-  ),
-});
-// CAL4 — preview inmersivo del calendario (client-only, diferido igual que la nevera).
+// FOTO4 — la galería de escenas del fotoimán (nevera/mural/repisa/regalo). Las vistas 3D pesadas
+// (three.js) van diferidas DENTRO de SceneGallery, así que este import estático no infla el bundle
+// del editor con WebGL.
+// CAL4 — preview inmersivo del calendario (client-only, diferido igual que las vistas 3D).
 const CalendarView3D = nextDynamic(() => import("./calendar-view-3d"), {
   ssr: false,
   loading: () => (
@@ -200,18 +193,18 @@ export function StudioEditor({
       requestAnimationFrame(tick);
     });
   }, [store]);
-  // P1.4 — Vista 3D en nevera. null = cerrada; array = imanes texturizados a mostrar.
-  const [fridge3D, setFridge3D] = useState<Magnet3D[] | null>(null);
-  const [fridge3DCols, setFridge3DCols] = useState(1);
+  // FOTO4 — galería de escenas del fotoimán (nevera/mural/repisa/regalo). null = cerrada; objeto =
+  // texturas por imán + columnas del grid (se calculan una vez al abrir).
+  const [sceneMagnets, setSceneMagnets] = useState<{ magnets: Magnet3D[]; cols: number } | null>(
+    null,
+  );
+  const [sceneBuilding, setSceneBuilding] = useState(false);
   // CAL4 — preview inmersivo del calendario. null = cerrado; array = páginas de mes compuestas.
   const [calendarPages, setCalendarPages] = useState<string[] | null>(null);
   const [calendarMonthIndex, setCalendarMonthIndex] = useState(0);
   const [calendarBuilding, setCalendarBuilding] = useState(false);
   // SEP1 — preview inmersivo de separadores en un libro. null = cerrado; array = texturas de marcador.
   const [book3D, setBook3D] = useState<Magnet3D[] | null>(null);
-  // FOTO3 — flat-lay de regalo (compositor 2D). null = cerrado; dataURL = imagen compuesta.
-  const [giftFlatlay, setGiftFlatlay] = useState<string | null>(null);
-  const [giftBuilding, setGiftBuilding] = useState(false);
   // P1.5 — Asistente IA de ideas (ADR-058).
   const [aiOpen, setAiOpen] = useState(false);
   const allowText = (product.personalizationSchema as { allowText?: boolean })?.allowText === true;
@@ -231,8 +224,8 @@ export function StudioEditor({
   // SEP1 — separadores (galleryTag "separadores"): su vista inmersiva es un LIBRO, no la nevera.
   const isBookmark =
     (product.personalizationSchema as { galleryTag?: string } | null)?.galleryTag === "separadores";
-  // FOTO3 — flat-lay de regalo: para fotoimanes (no calendario, no separador).
-  const showGift = !isCalendarMonth && !isBookmark;
+  // FOTO4 — la galería de escenas "en tu espacio" (nevera/mural/repisa/regalo) es la vista por
+  // defecto del fotoimán: se muestra cuando NO es calendario ni separador (el `else` del botón).
   const defaultCalendarYear = calendarYear ?? new Date().getFullYear() + 1;
   const [selectedYear, setSelectedYear] = useState(defaultCalendarYear);
   const yearOptions = useMemo(() => {
@@ -423,9 +416,9 @@ export function StudioEditor({
     }
   }, [store, productConfig.shape, ensureAllStagesMounted]);
 
-  // P1.4 — Abrir la vista 3D: captura un snapshot por slot recortado a la silueta física
-  // (transparente afuera) y lo pasa como textura a la nevera 3D. Si la captura falla, no
-  // rompemos el Estudio — solo no abrimos el 3D.
+  // SEP1 — Abrir el libro 3D del separador: captura un snapshot recortado a la silueta física
+  // (transparente afuera) y lo pasa como textura. Solo para separadores (no son imanes → su hogar es
+  // un libro, no la nevera). Si la captura falla, no rompemos el Estudio — solo no abrimos el 3D.
   const handleOpen3D = useCallback(async () => {
     const state = store.getState();
     if (!state.canvasData) return;
@@ -436,13 +429,7 @@ export function StudioEditor({
         slotStagesRef.current,
         productConfig.shape,
       );
-      if (isBookmark) {
-        // SEP1 — separadores → libro (no nevera; no son imanes).
-        setBook3D(textures);
-      } else {
-        setFridge3DCols(state.canvasData.gridLayout.cols);
-        setFridge3D(textures);
-      }
+      setBook3D(textures);
     } catch (err) {
       state.setAutoSaveStatus({
         kind: "error",
@@ -450,31 +437,33 @@ export function StudioEditor({
       });
       void err;
     }
-  }, [store, productConfig.shape, ensureAllStagesMounted, isBookmark]);
+  }, [store, productConfig.shape, ensureAllStagesMounted]);
 
-  // FOTO3 — arma el flat-lay de regalo (compositor 2D) con la(s) pieza(s) recortadas a su silueta.
-  const handleOpenGift = useCallback(async () => {
+  // FOTO4 — Abrir la galería de escenas "en tu espacio" (nevera/mural/repisa/regalo). Calcula UNA vez
+  // la textura por imán (recortada a su silueta) y la pasa a la galería, que arma cada escena bajo
+  // demanda. Si la captura falla, no rompemos el Estudio — solo no abrimos la galería.
+  const handleOpenScene = useCallback(async () => {
     const state = store.getState();
-    if (!state.canvasData || giftBuilding) return;
-    setGiftBuilding(true);
+    if (!state.canvasData || sceneBuilding) return;
+    setSceneBuilding(true);
     try {
-      await ensureAllStagesMounted();
+      await ensureAllStagesMounted(); // T5: la galería necesita la textura de TODOS los slots
       const textures = await buildMagnetTextures(
         state.canvasData,
         slotStagesRef.current,
         productConfig.shape,
       );
-      setGiftFlatlay(await composeGiftFlatlay(textures));
+      setSceneMagnets({ magnets: textures, cols: state.canvasData.gridLayout.cols });
     } catch (err) {
       state.setAutoSaveStatus({
         kind: "error",
-        message: "No pudimos armar el regalo. Intenta de nuevo.",
+        message: "No pudimos abrir la vista de tu espacio. Intenta de nuevo.",
       });
       void err;
     } finally {
-      setGiftBuilding(false);
+      setSceneBuilding(false);
     }
-  }, [store, productConfig.shape, ensureAllStagesMounted, giftBuilding]);
+  }, [store, productConfig.shape, ensureAllStagesMounted, sceneBuilding]);
 
   // CAL4 — Abrir el calendario 3D: compone cada página de mes (foto + mes + año + grilla) con el
   // MISMO dibujo que producción (WYSIWYG) y las muestra en un calendario de pared navegable. Usa la
@@ -507,21 +496,19 @@ export function StudioEditor({
     }
   }, [store, product.personalizationSchema, selectedYear, calendarBuilding]);
 
-  // Cerrar las vistas 3D con Escape (a11y).
+  // Cerrar el calendario y el libro 3D con Escape (a11y). La galería de escenas maneja su propio
+  // Escape internamente.
   useEffect(() => {
-    if (fridge3D === null && calendarPages === null && book3D === null && giftFlatlay === null)
-      return;
+    if (calendarPages === null && book3D === null) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
-        setFridge3D(null);
         setCalendarPages(null);
         setBook3D(null);
-        setGiftFlatlay(null);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [fridge3D, calendarPages, book3D, giftFlatlay]);
+  }, [calendarPages, book3D]);
 
   // ──────────── Step 2: Confirmar → upload + add to cart + redirect ────────────
   //
@@ -815,29 +802,27 @@ export function StudioEditor({
             <CalendarDays className="h-5 w-5" />
             <span>{calendarBuilding ? "Armando…" : "Ver mi calendario"}</span>
           </button>
-        ) : (
+        ) : isBookmark ? (
           <button
             type="button"
             onClick={handleOpen3D}
-            aria-label={
-              isBookmark ? "Ver tu separador en un libro 3D" : "Ver tus imanes en una nevera 3D"
-            }
+            aria-label="Ver tu separador en un libro 3D"
             className="bg-brand-purple ring-brand-purple/25 inline-flex h-12 items-center gap-2 rounded-full px-4 text-sm font-bold text-white shadow-xl ring-4 transition-transform hover:scale-105 active:scale-95"
           >
             <Box className="h-5 w-5" />
-            <span>{isBookmark ? "Ver en un libro" : "Ver en 3D"}</span>
+            <span>Ver en un libro</span>
           </button>
-        )}
-        {showGift && (
+        ) : (
+          // FOTO4 — un solo botón abre la galería con TODAS las escenas (nevera/mural/repisa/regalo).
           <button
             type="button"
-            onClick={handleOpenGift}
-            disabled={giftBuilding}
-            aria-label="Ver tu diseño como un regalo"
-            className="bg-brand-pink ring-brand-pink/25 inline-flex h-12 items-center gap-2 rounded-full px-4 text-sm font-bold text-white shadow-xl ring-4 transition-transform hover:scale-105 active:scale-95 disabled:opacity-60"
+            onClick={handleOpenScene}
+            disabled={sceneBuilding}
+            aria-label="Míralo en tu espacio: nevera, mural, repisa o regalo"
+            className="bg-brand-purple ring-brand-purple/25 inline-flex h-12 items-center gap-2 rounded-full px-4 text-sm font-bold text-white shadow-xl ring-4 transition-transform hover:scale-105 active:scale-95 disabled:opacity-60"
           >
-            <Gift className="h-5 w-5" />
-            <span>{giftBuilding ? "Armando…" : "Como regalo"}</span>
+            <Box className="h-5 w-5" />
+            <span>{sceneBuilding ? "Armando…" : "Ver en tu espacio"}</span>
           </button>
         )}
       </div>
@@ -851,33 +836,13 @@ export function StudioEditor({
         allowText={allowText}
       />
 
-      {/* P1.4 — Modal de la vista 3D en nevera (lazy, client-only). */}
-      {fridge3D !== null && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label="Vista 3D de tus imanes en la nevera"
-          className="bg-brand-purple-dark/85 fixed inset-0 z-50 flex flex-col backdrop-blur-sm"
-        >
-          <div className="flex items-center justify-between px-4 py-3 text-white sm:px-6">
-            <span className="font-display text-lg font-bold">🧊 Tus imanes en la nevera</span>
-            <button
-              type="button"
-              onClick={() => setFridge3D(null)}
-              aria-label="Cerrar vista 3D"
-              autoFocus
-              className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/15 text-white transition-colors hover:bg-white/25 focus:ring-2 focus:ring-white focus:outline-none"
-            >
-              <X className="h-5 w-5" />
-            </button>
-          </div>
-          <div className="relative flex-1">
-            <FridgeView3D magnets={fridge3D} cols={fridge3DCols} />
-            <p className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-black/40 px-3 py-1.5 text-center text-xs text-white">
-              Arrastra para girar · rueda o pellizca para acercar
-            </p>
-          </div>
-        </div>
+      {/* FOTO4 — Galería de escenas del fotoimán (nevera/mural/repisa/regalo) en un solo modal. */}
+      {sceneMagnets !== null && (
+        <SceneGallery
+          magnets={sceneMagnets.magnets}
+          cols={sceneMagnets.cols}
+          onClose={() => setSceneMagnets(null)}
+        />
       )}
 
       {/* SEP1 — Modal del separador en un libro 3D (lazy, client-only). */}
@@ -906,40 +871,6 @@ export function StudioEditor({
               Arrastra para girar · rueda o pellizca para acercar
             </p>
           </div>
-        </div>
-      )}
-
-      {/* FOTO3 — Modal del flat-lay de regalo (imagen 2D compuesta). */}
-      {giftFlatlay !== null && (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-label="Tu diseño como regalo"
-          className="bg-brand-purple-dark/85 fixed inset-0 z-50 flex flex-col backdrop-blur-sm"
-        >
-          <div className="flex items-center justify-between px-4 py-3 text-white sm:px-6">
-            <span className="font-display text-lg font-bold">🎁 Tu diseño como regalo</span>
-            <button
-              type="button"
-              onClick={() => setGiftFlatlay(null)}
-              aria-label="Cerrar"
-              autoFocus
-              className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/15 text-white transition-colors hover:bg-white/25 focus:ring-2 focus:ring-white focus:outline-none"
-            >
-              <X className="h-5 w-5" />
-            </button>
-          </div>
-          <div className="flex flex-1 items-center justify-center p-4">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={giftFlatlay}
-              alt="Tu diseño presentado como un regalo"
-              className="max-h-full max-w-full rounded-2xl object-contain shadow-2xl"
-            />
-          </div>
-          <p className="pointer-events-none pb-4 text-center text-xs text-white/80">
-            Mantén presionada la imagen para guardarla o compartirla 💛
-          </p>
         </div>
       )}
 
