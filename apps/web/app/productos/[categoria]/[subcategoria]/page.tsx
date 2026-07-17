@@ -11,13 +11,15 @@ import { notFound } from "next/navigation";
 import { Sparkles } from "lucide-react";
 import { getCategoryBySlug, listCatalogProducts } from "@/lib/catalog";
 import { ProductFromCatalogCard } from "@/components/product-from-catalog-card";
+import { JsonLd } from "@/components/json-ld";
+import { breadcrumbList, collectionPage } from "@/lib/seo/structured-data";
 
 export async function generateMetadata({
   params,
 }: {
   params: Promise<{ categoria: string; subcategoria: string }>;
 }): Promise<Metadata> {
-  const { subcategoria } = await params;
+  const { categoria, subcategoria } = await params;
   const cat = await getCategoryBySlug(subcategoria);
   if (!cat) return { title: "Categoría no encontrada" };
   return {
@@ -26,6 +28,9 @@ export async function generateMetadata({
       cat.richDescription?.slice(0, 160) ??
       cat.description ??
       `Imanes magnéticos personalizados — ${cat.name} Colombia`,
+    // Canonical self-referencial (auditoría 2026-07-17): sin esto, accesos con utm_*/fbclid podían
+    // indexarse como variantes duplicadas.
+    alternates: { canonical: `/productos/${categoria}/${subcategoria}` },
     openGraph: {
       title: `Lucams · ${cat.name}`,
       description: cat.richDescription?.slice(0, 200) ?? cat.description ?? cat.name,
@@ -52,8 +57,30 @@ export default async function SubCategoryPage({
     limit: 48,
   });
 
+  // JSON-LD (auditoría 2026-07-17): BreadcrumbList (Inicio→Productos→[categoría]→subcategoría) +
+  // CollectionPage/ItemList de los productos visibles.
+  const subPath = `/productos/${categoria}/${subcategoria}`;
+  const crumbs = [
+    { name: "Inicio", path: "/" },
+    { name: "Productos", path: "/productos" },
+    ...(parentCat
+      ? [{ name: parentCat.name, path: `/productos?categoria=${parentCat.slug}` }]
+      : []),
+    { name: subCat.name, path: subPath },
+  ];
+  const jsonLdData = [
+    breadcrumbList(crumbs),
+    collectionPage({
+      name: subCat.name,
+      path: subPath,
+      description: subCat.description ?? undefined,
+      products: products.map((p) => ({ name: p.name, slug: p.slug })),
+    }),
+  ];
+
   return (
     <div className="min-h-screen">
+      <JsonLd data={jsonLdData} />
       <section className="from-brand-cream to-brand-pink/5 bg-gradient-to-br py-8 md:py-12">
         <div className="mx-auto max-w-6xl px-6">
           <nav aria-label="Breadcrumb" className="mb-4 text-sm text-slate-600">
@@ -98,7 +125,7 @@ export default async function SubCategoryPage({
                 Pronto tendremos productos en {subCat.name}.
               </p>
               <p className="mt-1 text-sm text-slate-500">
-                Mientras tanto, explorá{" "}
+                Mientras tanto, explora{" "}
                 <Link href="/productos" className="text-brand-purple underline">
                   todo el catálogo
                 </Link>

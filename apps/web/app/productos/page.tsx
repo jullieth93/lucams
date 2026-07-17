@@ -33,6 +33,8 @@ import {
 } from "@/features/products/public-service";
 import { listOcasiones } from "@/lib/catalog";
 import { OcasionFilterStrip } from "@/components/ocasion-filter-strip";
+import { JsonLd } from "@/components/json-ld";
+import { breadcrumbList, collectionPage } from "@/lib/seo/structured-data";
 
 type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
 
@@ -48,11 +50,29 @@ export async function generateMetadata({
   const sp = await searchParams;
   const categoria = typeof sp.categoria === "string" ? sp.categoria : undefined;
   const canonical = categoria ? `/productos?categoria=${categoria}` : "/productos";
+  // Metadata ESPECÍFICA de la categoría (antes todas las categorías compartían <title>Tienda</title>
+  // + misma description → títulos/descripciones duplicados y sin señal del término). + OpenGraph.
+  if (categoria) {
+    const cat = (await listStorefrontCategories()).find((c) => c.slug === categoria);
+    if (cat) {
+      const description =
+        cat.description ??
+        `${cat.name}: imanes magnéticos personalizados hechos a mano en Colombia.`;
+      return {
+        title: cat.name,
+        description,
+        alternates: { canonical },
+        openGraph: { title: `${cat.name} · Lucams_shop`, description, type: "website" },
+      };
+    }
+  }
+  const description =
+    "Imanes magnéticos personalizados, fotoimanes, recuerdos para eventos y más. Hechos a mano en Colombia.";
   return {
     title: "Tienda",
-    description:
-      "Imanes magnéticos personalizados, fotoimanes, recuerdos para eventos y más. Hechos a mano en Colombia.",
+    description,
     alternates: { canonical },
+    openGraph: { title: "Tienda · Lucams_shop", description, type: "website" },
   };
 }
 
@@ -149,6 +169,24 @@ export default async function ProductosPage({ searchParams }: { searchParams: Se
 
   const activeCategory = categoria ? categories.find((c) => c.slug === categoria) : null;
 
+  // JSON-LD (auditoría 2026-07-17): las páginas de listado no emitían structured data. CollectionPage
+  // + ItemList (los productos visibles) + BreadcrumbList → Google entiende la colección y las migas.
+  const pagePath = categoria ? `/productos?categoria=${categoria}` : "/productos";
+  const crumbs = [
+    { name: "Inicio", path: "/" },
+    { name: "Tienda", path: "/productos" },
+  ];
+  if (activeCategory) crumbs.push({ name: activeCategory.name, path: pagePath });
+  const jsonLdData = [
+    breadcrumbList(crumbs),
+    collectionPage({
+      name: activeCategory ? activeCategory.name : "Tienda Lucams",
+      path: pagePath,
+      description: activeCategory?.description ?? undefined,
+      products: products.map((p) => ({ name: p.name, slug: p.slug })),
+    }),
+  ];
+
   // Wishlist (palanca, auditoría 2026-07-13): para el cliente logueado, qué productos de la página
   // están en favoritos → pinta el corazón. Anónimo → sin corazón.
   const customer = await getCurrentCustomer();
@@ -161,6 +199,7 @@ export default async function ProductosPage({ searchParams }: { searchParams: Se
 
   return (
     <div className="bg-brand-cream flex min-h-screen flex-col">
+      <JsonLd data={jsonLdData} />
       <SiteHeader />
 
       <main id="contenido" tabIndex={-1} className="flex-1 px-6 py-10 sm:px-10">

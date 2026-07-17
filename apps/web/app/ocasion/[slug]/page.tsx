@@ -15,6 +15,8 @@ import { notFound } from "next/navigation";
 import { Sparkles, Users, Calendar } from "lucide-react";
 import { getOcasionBySlug, listCatalogProducts } from "@/lib/catalog";
 import { ProductFromCatalogCard } from "@/components/product-from-catalog-card";
+import { JsonLd } from "@/components/json-ld";
+import { breadcrumbList, collectionPage } from "@/lib/seo/structured-data";
 
 const MONTH_NAMES: Record<number, string> = {
   1: "Enero",
@@ -44,6 +46,8 @@ export async function generateMetadata({
   return {
     title: `Lucams_shop · ${ocasion.name}`,
     description,
+    // Canonical self-referencial (auditoría 2026-07-17): evita indexar variantes con utm_*/fbclid.
+    alternates: { canonical: `/ocasion/${slug}` },
     openGraph: {
       title: `Imanes para ${ocasion.name}`,
       description,
@@ -59,8 +63,26 @@ export default async function OcasionPage({ params }: { params: Promise<{ slug: 
 
   const products = await listCatalogProducts({ ocasionSlug: slug, limit: 24 });
 
+  // JSON-LD (auditoría 2026-07-17): BreadcrumbList + CollectionPage/ItemList de los productos de la
+  // ocasión.
+  const ocasionPath = `/ocasion/${slug}`;
+  const jsonLdData = [
+    breadcrumbList([
+      { name: "Inicio", path: "/" },
+      { name: "Tienda", path: "/productos" },
+      { name: ocasion.name, path: ocasionPath },
+    ]),
+    collectionPage({
+      name: `Imanes para ${ocasion.name}`,
+      path: ocasionPath,
+      description: ocasion.description.slice(0, 300),
+      products: products.map((p) => ({ name: p.name, slug: p.slug })),
+    }),
+  ];
+
   return (
     <div className="min-h-screen">
+      <JsonLd data={jsonLdData} />
       {/* Hero */}
       <section className="from-brand-pink/10 via-brand-cream to-brand-turquoise/10 bg-gradient-to-br py-12 md:py-16">
         <div className="mx-auto max-w-6xl px-6">
@@ -136,7 +158,7 @@ export default async function OcasionPage({ params }: { params: Promise<{ slug: 
                 Pronto tendremos productos especialmente para {ocasion.name}.
               </p>
               <p className="mt-1 text-sm text-slate-500">
-                Mientras tanto, explorá nuestro{" "}
+                Mientras tanto, explora nuestro{" "}
                 <Link href="/productos" className="text-brand-purple underline">
                   catálogo completo
                 </Link>{" "}

@@ -13,7 +13,8 @@
  */
 
 import type { Metadata } from "next";
-import { headers } from "next/headers";
+import { JsonLd } from "@/components/json-ld";
+import { breadcrumbList } from "@/lib/seo/structured-data";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ChevronRight, MessageCircle, Sparkles } from "lucide-react";
@@ -195,48 +196,16 @@ export default async function ProductoDetallePage({
   };
 
   // BreadcrumbList (auditoría 2026-07-13): Tienda → Categoría → Producto → migas en Google.
-  const breadcrumbJsonLd = {
-    "@context": "https://schema.org/",
-    "@type": "BreadcrumbList",
-    itemListElement: [
-      { "@type": "ListItem", position: 1, name: "Tienda", item: "https://lucamsshop.co/productos" },
-      {
-        "@type": "ListItem",
-        position: 2,
-        name: product.category.name,
-        item: `https://lucamsshop.co/productos?categoria=${product.category.slug}`,
-      },
-      {
-        "@type": "ListItem",
-        position: 3,
-        name: product.name,
-        item: `https://lucamsshop.co/producto/${product.slug}`,
-      },
-    ],
-  };
-
-  // Auditoría 2026-07-13: escapar <, >, & del JSON embebido → un nombre/descripción con
-  // "</script>" o "<" no puede romper el tag ni inyectar (XSS). JSON.stringify no los escapa.
-  const jsonLdSafe = JSON.stringify([jsonLd, breadcrumbJsonLd])
-    .replace(/</g, "\\u003c")
-    .replace(/>/g, "\\u003e")
-    .replace(/&/g, "\\u0026");
-
-  // CSP por nonce (C3): el JSON-LD es un bloque de datos (exento de script-src),
-  // pero le pasamos el nonce por robustez ante navegadores estrictos.
-  const nonce = (await headers()).get("x-nonce") ?? undefined;
+  // Escape XSS + nonce CSP + render los maneja <JsonLd> (helper compartido con los listados).
+  const breadcrumbJsonLd = breadcrumbList([
+    { name: "Tienda", path: "/productos" },
+    { name: product.category.name, path: `/productos?categoria=${product.category.slug}` },
+    { name: product.name, path: `/producto/${product.slug}` },
+  ]);
 
   return (
     <div className="bg-brand-cream flex min-h-screen flex-col">
-      {/* suppressHydrationWarning: el navegador BORRA el nonce del DOM tras aplicar
-          la CSP (seguridad), así que el cliente ve nonce="" y no matchea el del
-          servidor. Es esperado — no es un bug de datos. */}
-      <script
-        type="application/ld+json"
-        nonce={nonce}
-        suppressHydrationWarning
-        dangerouslySetInnerHTML={{ __html: jsonLdSafe }}
-      />
+      <JsonLd data={[jsonLd, breadcrumbJsonLd]} />
       <SiteHeader />
 
       <main id="contenido" tabIndex={-1} className="flex-1 px-6 py-8 sm:px-10">
