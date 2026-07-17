@@ -171,6 +171,18 @@ export function StudioEditor({
     [product.personalizationSchema],
   );
 
+  // ADR-063 CAL2 — el año del calendario lo ELIGE el cliente (antes era un badge fijo del schema
+  // del producto, y podía venir vacío). Default = año del producto → próximo año. Se ofrece un
+  // rango seguro (nunca un año pasado) y se persiste por-diseño en el finalize.
+  const isCalendarMonth = product.personalizationKind === "CALENDAR_PHOTO_MONTH";
+  const defaultCalendarYear = calendarYear ?? new Date().getFullYear() + 1;
+  const [selectedYear, setSelectedYear] = useState(defaultCalendarYear);
+  const yearOptions = useMemo(() => {
+    const now = new Date().getFullYear();
+    const set = new Set<number>([now, now + 1, now + 2, defaultCalendarYear]);
+    return [...set].filter((y) => y >= now).sort((a, b) => a - b);
+  }, [defaultCalendarYear]);
+
   // Subscribir reactivamente al modal — assets/designId del store, no snapshot
   const modalAssets = useStore(store, (s) => s.assets);
   const modalDesignId = useStore(store, (s) => s.designId);
@@ -424,6 +436,9 @@ export function StudioEditor({
       const fd = new FormData();
       fd.set("designId", state.designId);
       fd.set("slotCount", String(productionDataUrls.length));
+      // ADR-063 CAL2 — para calendarios mes-a-mes, el año elegido viaja al server (que lo hornea en
+      // cada página del mes y lo persiste por-diseño).
+      if (isCalendarMonth) fd.set("calendarYear", String(selectedYear));
       fd.set("preview", dataURLtoBlob(previewDataUrl), "preview.png");
       productionDataUrls.forEach((url, i) => {
         fd.set(`production_${i}`, dataURLtoBlob(url), `slot-${i + 1}.png`);
@@ -459,7 +474,16 @@ export function StudioEditor({
       state.setIsFinalizing(false);
       setPreviewError(err instanceof Error ? err.message : String(err));
     }
-  }, [router, store, variantId, previewDataUrl, replacesCartDesignId, productConfig.shape]);
+  }, [
+    router,
+    store,
+    variantId,
+    previewDataUrl,
+    replacesCartDesignId,
+    productConfig.shape,
+    isCalendarMonth,
+    selectedYear,
+  ]);
 
   // Cerrar modal "Volver a editar": libera estado para no acumular preview
   // viejo si edita y vuelve a "Listo!".
@@ -598,10 +622,27 @@ export function StudioEditor({
         </aside>
 
         <section className="flex flex-1 items-start justify-center p-4 pb-24 lg:p-8 lg:pb-8">
-          {/* ADR-057 Fase D — banner de calendario: año + una foto por mes. */}
-          {calendarYear && (
+          {/* ADR-057 Fase D + CAL2 — banner de calendario: el cliente elige el AÑO (selector) y
+              pone una foto por mes. */}
+          {isCalendarMonth && (
             <div className="border-brand-purple/15 bg-brand-cream/60 text-brand-purple-dark mb-3 flex flex-wrap items-center justify-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold">
-              📅 Calendario {calendarYear} · una foto por mes (toca cada mes para elegir tu foto)
+              <span>📅 Calendario</span>
+              <label className="flex items-center gap-1.5">
+                <span className="sr-only">Año del calendario</span>
+                <select
+                  value={selectedYear}
+                  onChange={(e) => setSelectedYear(Number(e.target.value))}
+                  className="border-brand-purple/30 focus-visible:ring-brand-purple/40 rounded-lg border bg-white px-2 py-1 text-sm font-bold focus-visible:ring-2 focus-visible:outline-none"
+                  aria-label="Año del calendario"
+                >
+                  {yearOptions.map((y) => (
+                    <option key={y} value={y}>
+                      {y}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <span>· una foto por mes (toca cada mes para elegir tu foto)</span>
             </div>
           )}
           <StudioCanvasGrid

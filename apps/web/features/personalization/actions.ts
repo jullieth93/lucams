@@ -189,6 +189,12 @@ export async function finalizeDesignAction(
 
   const previewBuffer = Buffer.from(await previewBlob.arrayBuffer());
 
+  // ADR-063 CAL2 — año elegido por el cliente para un calendario mes-a-mes (opcional; solo lo envía
+  // el editor de ese kind). Se valida el rango antes de confiar en él para el render server-side.
+  const yearRaw = Number(formData.get("calendarYear") ?? NaN);
+  const calendarYear =
+    Number.isInteger(yearRaw) && yearRaw >= 2020 && yearRaw <= 2100 ? yearRaw : undefined;
+
   const { customerId, sessionId } = await resolveOwner();
   try {
     const design = await finalizeDesign({
@@ -197,6 +203,7 @@ export async function finalizeDesignAction(
       productionBuffers,
       customerId,
       sessionId,
+      calendarYear,
     });
     return {
       ok: true,

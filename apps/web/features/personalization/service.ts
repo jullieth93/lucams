@@ -61,6 +61,7 @@ const BUCKET_CUSTOMER_UPLOADS = "customer-uploads";
 async function tryServerRenderProduction(
   designId: string,
   canvasData: CanvasDataV2,
+  overrides?: { calendarYear?: number },
 ): Promise<Buffer[] | null> {
   // Cargar forma + assets + loader (compartido por ambos motores).
   let shape: string | undefined;
@@ -116,7 +117,9 @@ async function tryServerRenderProduction(
   // trae la grilla, así que no hay fallback útil; si el compositor falla, cae a los PNG del cliente.
   if (personalizationKind === "CALENDAR_PHOTO_MONTH") {
     try {
-      const yearRaw = productSchema?.year;
+      // ADR-063 CAL2 — el año lo elige el CLIENTE en el editor (persistido por-diseño). Prioridad:
+      // elección del cliente → default del producto (personalizationSchema.year) → próximo año.
+      const yearRaw = overrides?.calendarYear ?? productSchema?.year;
       const year =
         typeof yearRaw === "number" && yearRaw >= 2020 && yearRaw <= 2100
           ? yearRaw
@@ -701,6 +704,8 @@ export async function finalizeDesign(opts: {
   productionBuffers: Buffer[];
   customerId: string | null;
   sessionId: string | null;
+  /** ADR-063 CAL2 — año elegido por el cliente para un calendario mes-a-mes (opcional). */
+  calendarYear?: number;
 }) {
   const design = await getOwnedDesign(opts.designId, opts);
   if (!design) {
@@ -751,7 +756,9 @@ export async function finalizeDesign(opts: {
   // adornos de realismo). Texto/marco (NEEDS_KONVA) o fallo → conserva los del cliente (fallback).
   let productionBuffers = opts.productionBuffers;
   if (canvasData.version === 2) {
-    const serverBuffers = await tryServerRenderProduction(design.id, canvasData as CanvasDataV2);
+    const serverBuffers = await tryServerRenderProduction(design.id, canvasData as CanvasDataV2, {
+      calendarYear: opts.calendarYear,
+    });
     if (serverBuffers && serverBuffers.length === opts.productionBuffers.length) {
       productionBuffers = serverBuffers;
       logger.info(
@@ -785,6 +792,16 @@ export async function finalizeDesign(opts: {
     productionPaths.push(path);
   }
 
+  // ADR-063 CAL2 — registrar el año del calendario en metadata (fuente para re-render/admin;
+  // el PNG ya lo trae horneado). Merge para no pisar el resto de metadata (kind, schemaVersion…).
+  const mergedMetadata =
+    typeof opts.calendarYear === "number"
+      ? {
+          ...((design.metadata as Record<string, unknown> | null) ?? {}),
+          calendarYear: opts.calendarYear,
+        }
+      : undefined;
+
   const updated = await prisma.design.update({
     where: { id: design.id },
     data: {
@@ -793,6 +810,7 @@ export async function finalizeDesign(opts: {
       productionUrls: productionPaths,
       // Legacy field: en V2 dejamos null (el array es source-of-truth).
       productionUrl: null,
+      ...(mergedMetadata ? { metadata: mergedMetadata as Prisma.InputJsonValue } : {}),
     },
   });
 
