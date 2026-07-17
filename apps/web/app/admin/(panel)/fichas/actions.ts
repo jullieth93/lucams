@@ -8,7 +8,8 @@
 
 import { revalidatePath } from "next/cache";
 import { recordAdminAction } from "@/lib/admin-audit";
-import { getCurrentAdmin } from "@/lib/auth";
+import { requireAdminAction } from "@/lib/admin-rbac-guard";
+import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { logger } from "@/lib/logger";
 import { StorageError, uploadProductImage } from "@/lib/storage";
 import { upsertLetterTile, deleteLetterTile, createLetterSet } from "@/features/personalization/letter-tiles";
@@ -17,8 +18,7 @@ type ActionResult = { error?: string };
 
 /** ADR-057 — crea un ESTILO nuevo (Animales, Navidad…) para empezar a subirle fichas. */
 export async function createLetterSetAction(formData: FormData): Promise<ActionResult> {
-  const session = await getCurrentAdmin();
-  if (!session) return { error: "Sesión expirada." };
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
 
   const name = String(formData.get("name") ?? "").trim();
   const language = String(formData.get("language") ?? "");
@@ -47,8 +47,7 @@ export async function createLetterSetAction(formData: FormData): Promise<ActionR
 }
 
 export async function uploadLetterTileAction(formData: FormData): Promise<ActionResult> {
-  const session = await getCurrentAdmin();
-  if (!session) return { error: "Sesión expirada." };
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
 
   const setId = String(formData.get("setId") ?? "");
   const char = String(formData.get("char") ?? "").toUpperCase();
@@ -81,8 +80,7 @@ export async function uploadLetterTileAction(formData: FormData): Promise<Action
 }
 
 export async function deleteLetterTileAction(formData: FormData): Promise<ActionResult> {
-  const session = await getCurrentAdmin();
-  if (!session) return { error: "Sesión expirada." };
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
 
   const setId = String(formData.get("setId") ?? "");
   const char = String(formData.get("char") ?? "");

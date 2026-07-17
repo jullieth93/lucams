@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { recordAdminAction } from "@/lib/admin-audit";
-import { getCurrentAdmin } from "@/lib/auth";
+import { requireAdminAction } from "@/lib/admin-rbac-guard";
+import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { prisma } from "@/lib/db";
 import {
   OcasionValidationError,
@@ -55,8 +56,7 @@ export async function createOcasionAction(
   _prev: OcasionActionState | null,
   formData: FormData,
 ): Promise<OcasionActionState> {
-  const session = await getCurrentAdmin();
-  if (!session) return { error: "Sesión expirada." };
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
 
   const parsed = OcasionCreateSchema.safeParse(parsePayload(formData));
   if (!parsed.success) {
@@ -107,8 +107,7 @@ export async function updateOcasionAction(
   _prev: OcasionActionState | null,
   formData: FormData,
 ): Promise<OcasionActionState> {
-  const session = await getCurrentAdmin();
-  if (!session) return { error: "Sesión expirada." };
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
 
   const id = String(formData.get("id") ?? "");
   const payload = parsePayload(formData);
@@ -143,8 +142,7 @@ export async function updateOcasionAction(
  * `toggleCategoryActiveAction`. Activa = visible al cliente.
  */
 export async function toggleOcasionActiveAction(formData: FormData): Promise<void> {
-  const session = await getCurrentAdmin();
-  if (!session) redirect("/admin/login");
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
   const id = String(formData.get("id") ?? "");
   const next = formData.get("next") === "true";
   if (!id) return;
@@ -161,8 +159,7 @@ export async function toggleOcasionActiveAction(formData: FormData): Promise<voi
 }
 
 export async function deleteOcasionAction(formData: FormData): Promise<void> {
-  const session = await getCurrentAdmin();
-  if (!session) redirect("/admin/login");
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
 
   const id = String(formData.get("id") ?? "");
   await softDeleteOcasionTag(id, session.admin.id);
@@ -177,8 +174,7 @@ export async function deleteOcasionAction(formData: FormData): Promise<void> {
 }
 
 export async function linkProductOcasionAction(formData: FormData): Promise<void> {
-  const session = await getCurrentAdmin();
-  if (!session) redirect("/admin/login");
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
 
   const productId = String(formData.get("productId") ?? "");
   const ocasionTagId = String(formData.get("ocasionTagId") ?? "");
@@ -196,8 +192,7 @@ export async function linkProductOcasionAction(formData: FormData): Promise<void
 }
 
 export async function unlinkProductOcasionAction(formData: FormData): Promise<void> {
-  const session = await getCurrentAdmin();
-  if (!session) redirect("/admin/login");
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
 
   const productId = String(formData.get("productId") ?? "");
   const ocasionTagId = String(formData.get("ocasionTagId") ?? "");

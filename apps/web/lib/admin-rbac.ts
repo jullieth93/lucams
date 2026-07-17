@@ -17,6 +17,21 @@ import type { AdminRole } from "@lucams/db";
 const ALL: AdminRole[] = ["SUPERADMIN", "MANAGER", "FULFILLMENT"];
 const CATALOG: AdminRole[] = ["SUPERADMIN", "MANAGER"];
 
+/**
+ * Conjuntos de rol nombrados para declarar la autorización de cada Server Action
+ * de forma uniforme (ADR-062 P0-1). Los consume `requireAdminAction` en el guard:
+ *   - ALL         → pedidos, garantías, retractos (transiciones de estado).
+ *   - MANAGER_UP  → catálogo (productos/variantes/categorías/ocasiones/reseñas/
+ *                   fichas/plantillas/galería), soporte, garantías.
+ *   - SUPER       → finanzas, cupones, usuarios, contenido, redirects, seguridad,
+ *                   integraciones, observability, reembolsos.
+ */
+export const ADMIN_ROLE_SETS = {
+  ALL: ["SUPERADMIN", "MANAGER", "FULFILLMENT"] as const,
+  MANAGER_UP: ["SUPERADMIN", "MANAGER"] as const,
+  SUPER: ["SUPERADMIN"] as const,
+} satisfies Record<string, readonly AdminRole[]>;
+
 const ROUTE_ROLES: Array<{ prefix: string; roles: AdminRole[] }> = [
   { prefix: "/admin/dashboard", roles: ALL },
   { prefix: "/admin/pedidos", roles: ALL },

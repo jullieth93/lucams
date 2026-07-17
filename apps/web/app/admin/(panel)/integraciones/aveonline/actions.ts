@@ -1,8 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
-import { getCurrentAdmin } from "@/lib/auth";
+import { requireAdminAction } from "@/lib/admin-rbac-guard";
+import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { recordAdminAction } from "@/lib/admin-audit";
 import { logger } from "@/lib/logger";
 import { createAveonlineWebhook, deleteAveonlineWebhook } from "@/features/shipping/aveonline";
@@ -13,9 +13,7 @@ export async function registerAveonlineWebhookAction(
   _prev: ActionState | null,
   formData: FormData,
 ): Promise<ActionState> {
-  const session = await getCurrentAdmin();
-  if (!session) redirect("/admin/login");
-  if (session.admin.role !== "SUPERADMIN") redirect("/admin/dashboard?denied=1");
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
 
   const baseUrl = String(formData.get("baseUrl") ?? "").trim();
   if (!baseUrl || !baseUrl.startsWith("https://")) {
@@ -62,9 +60,7 @@ export async function registerAveonlineWebhookAction(
 }
 
 export async function deleteAveonlineWebhookAction(formData: FormData): Promise<void> {
-  const session = await getCurrentAdmin();
-  if (!session) redirect("/admin/login");
-  if (session.admin.role !== "SUPERADMIN") redirect("/admin/dashboard?denied=1");
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
   const url = String(formData.get("url") ?? "");
   if (!url) return;
   const result = await deleteAveonlineWebhook(url);

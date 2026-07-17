@@ -8,7 +8,8 @@
 
 import { revalidatePath } from "next/cache";
 import { recordAdminAction } from "@/lib/admin-audit";
-import { getCurrentAdmin } from "@/lib/auth";
+import { requireAdminAction } from "@/lib/admin-rbac-guard";
+import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { logger } from "@/lib/logger";
 import { StorageError, uploadProductImage } from "@/lib/storage";
 import { createGalleryImage, deleteGalleryImage } from "@/features/personalization/design-gallery";
@@ -18,8 +19,7 @@ type ActionResult = { error?: string };
 const ALLOWED_TAGS = new Set(["separadores", "fotoimanes"]);
 
 export async function uploadGalleryImageAction(formData: FormData): Promise<ActionResult> {
-  const session = await getCurrentAdmin();
-  if (!session) return { error: "Sesión expirada." };
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
 
   const tag = String(formData.get("tag") ?? "");
   const name = String(formData.get("name") ?? "").trim();
@@ -51,8 +51,7 @@ export async function uploadGalleryImageAction(formData: FormData): Promise<Acti
 }
 
 export async function deleteGalleryImageAction(formData: FormData): Promise<ActionResult> {
-  const session = await getCurrentAdmin();
-  if (!session) return { error: "Sesión expirada." };
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
 
   const id = String(formData.get("id") ?? "");
   if (!id) return { error: "Datos inválidos." };

@@ -2,7 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { logger } from "@/lib/logger";
-import { getCurrentAdmin } from "@/lib/auth";
+import { requireAdminAction } from "@/lib/admin-rbac-guard";
+import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { recordAdminAction } from "@/lib/admin-audit";
 import {
   reviewWarrantyClaim,
@@ -17,11 +18,9 @@ import { notifyWarrantyResolved } from "@/features/warranty/notify";
 type St = { error?: string; success?: string } | null;
 
 async function guard(): Promise<{ adminId: string } | { error: string }> {
-  const s = await getCurrentAdmin();
-  if (!s) return { error: "No autorizado" };
-  if (s.admin.role !== "SUPERADMIN" && s.admin.role !== "MANAGER") {
-    return { error: "Solo administrador o manager." };
-  }
+  // Sesión + MFA aal2 + rol (SUPERADMIN|MANAGER) server-side (ADR-062 P0-1). El guard
+  // redirige ante fallo; la rama {error} se conserva por tipo para los callers.
+  const s = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
   return { adminId: s.admin.id };
 }
 

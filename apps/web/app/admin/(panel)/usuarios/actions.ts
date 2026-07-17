@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { AdminRole } from "@lucams/db";
 import { recordAdminAction } from "@/lib/admin-audit";
-import { getCurrentAdmin } from "@/lib/auth";
+import { requireAdminAction } from "@/lib/admin-rbac-guard";
+import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import {
   AdminUserValidationError,
   changeAdminRole,
@@ -15,15 +16,6 @@ import { logger } from "@/lib/logger";
 
 const ROLES: readonly AdminRole[] = ["SUPERADMIN", "MANAGER", "FULFILLMENT"];
 
-function ensureSuperadmin<T>(session: T, role?: AdminRole) {
-  if (!session) redirect("/admin/login");
-  if (role !== "SUPERADMIN") {
-    redirect(
-      `/admin/usuarios?error=${encodeURIComponent("Solo SUPERADMIN puede gestionar usuarios.")}`,
-    );
-  }
-}
-
 export type PromoteAdminState = {
   error?: string;
   fieldErrors?: Partial<Record<"email" | "role", string[]>>;
@@ -33,11 +25,7 @@ export async function promoteAdminAction(
   _prev: PromoteAdminState | null,
   formData: FormData,
 ): Promise<PromoteAdminState> {
-  const session = await getCurrentAdmin();
-  if (!session) return { error: "Sesión expirada." };
-  if (session.admin.role !== "SUPERADMIN") {
-    return { error: "Solo SUPERADMIN puede promover admins." };
-  }
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
 
   const email = String(formData.get("email") ?? "").trim();
   const roleRaw = String(formData.get("role") ?? "");
@@ -81,9 +69,7 @@ export async function promoteAdminAction(
 }
 
 export async function changeAdminRoleAction(formData: FormData): Promise<void> {
-  const session = await getCurrentAdmin();
-  ensureSuperadmin(session, session?.admin.role);
-  if (!session) return;
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
 
   const id = String(formData.get("id") ?? "");
   const newRole = String(formData.get("role") ?? "") as AdminRole;
@@ -110,9 +96,7 @@ export async function changeAdminRoleAction(formData: FormData): Promise<void> {
 }
 
 export async function toggleAdminActiveAction(formData: FormData): Promise<void> {
-  const session = await getCurrentAdmin();
-  ensureSuperadmin(session, session?.admin.role);
-  if (!session) return;
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
 
   const id = String(formData.get("id") ?? "");
   try {

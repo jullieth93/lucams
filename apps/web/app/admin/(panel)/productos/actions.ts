@@ -12,7 +12,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { recordAdminAction } from "@/lib/admin-audit";
-import { getCurrentAdmin } from "@/lib/auth";
+import { requireAdminAction } from "@/lib/admin-rbac-guard";
+import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { logger } from "@/lib/logger";
 import {
   createProduct,
@@ -97,10 +98,7 @@ export async function createProductAction(
   _prev: ProductActionState | null,
   formData: FormData,
 ): Promise<ProductActionState> {
-  const session = await getCurrentAdmin();
-  if (!session) {
-    return { error: "Sesión expirada. Vuelve a iniciar sesión." };
-  }
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
 
   const parsed = ProductCreateSchema.safeParse(parsePayload(formData));
   if (!parsed.success) {
@@ -157,10 +155,7 @@ export async function updateProductAction(
   _prev: ProductActionState | null,
   formData: FormData,
 ): Promise<ProductActionState> {
-  const session = await getCurrentAdmin();
-  if (!session) {
-    return { error: "Sesión expirada. Vuelve a iniciar sesión." };
-  }
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
 
   const id = String(formData.get("id") ?? "");
   const payload = { id, ...parsePayload(formData) };
@@ -214,8 +209,7 @@ export async function updateProductAction(
 }
 
 export async function deleteProductAction(formData: FormData): Promise<void> {
-  const session = await getCurrentAdmin();
-  if (!session) redirect("/admin/login");
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
 
   const id = String(formData.get("id") ?? "");
   if (!id) return;
@@ -241,8 +235,7 @@ export async function deleteProductAction(formData: FormData): Promise<void> {
 /** Restaura un producto archivado (deletedAt → null). Queda isActive=false
  * por seguridad — admin lo activa explícito desde la fila después. */
 export async function restoreProductAction(formData: FormData): Promise<void> {
-  const session = await getCurrentAdmin();
-  if (!session) redirect("/admin/login");
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
   const id = String(formData.get("id") ?? "");
   if (!id) return;
   await restoreProduct(id, session.admin.id);
@@ -261,8 +254,7 @@ export async function restoreProductAction(formData: FormData): Promise<void> {
 
 /** Toggle isActive (activa o desactiva sin archivar). Reflejo inmediato en storefront. */
 export async function toggleProductActiveAction(formData: FormData): Promise<void> {
-  const session = await getCurrentAdmin();
-  if (!session) redirect("/admin/login");
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
   const id = String(formData.get("id") ?? "");
   const isActive = formData.get("isActive") === "true";
   if (!id) return;

@@ -2,11 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 import { logger } from "@/lib/logger";
-import { getCurrentAdmin } from "@/lib/auth";
+import { requireAdminAction } from "@/lib/admin-rbac-guard";
+import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { recordAdminAction } from "@/lib/admin-audit";
 import { setTemplateApproval } from "@/features/personalization/admin-templates";
-
-const CATALOG_ROLES = new Set(["SUPERADMIN", "MANAGER"]);
 
 type St = { error?: string; success?: string } | null;
 
@@ -15,11 +14,7 @@ type St = { error?: string; success?: string } | null;
  * SUPERADMIN o MANAGER. `formData.approved` = "1" para aprobar, otro para ocultar.
  */
 export async function setTemplateApprovalAction(_prev: St, formData: FormData): Promise<St> {
-  const session = await getCurrentAdmin();
-  if (!session) return { error: "No autorizado" };
-  if (!CATALOG_ROLES.has(session.admin.role)) {
-    return { error: "Sin permiso para gestionar el catálogo." };
-  }
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
 
   const id = String(formData.get("id") ?? "");
   const approved = String(formData.get("approved") ?? "") === "1";

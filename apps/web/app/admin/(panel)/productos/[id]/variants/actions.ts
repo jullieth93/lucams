@@ -10,7 +10,8 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { recordAdminAction } from "@/lib/admin-audit";
-import { getCurrentAdmin } from "@/lib/auth";
+import { requireAdminAction } from "@/lib/admin-rbac-guard";
+import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { logger } from "@/lib/logger";
 import {
   createVariant,
@@ -71,8 +72,7 @@ export async function createVariantAction(
   _prev: VariantActionState | null,
   formData: FormData,
 ): Promise<VariantActionState | null> {
-  const session = await getCurrentAdmin();
-  if (!session) return { error: "No autorizado" };
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
 
   const productId = String(formData.get("productId") ?? "");
   const priceStr = String(formData.get("price") ?? "").trim();
@@ -130,8 +130,7 @@ export async function updateVariantAction(
   _prev: VariantActionState | null,
   formData: FormData,
 ): Promise<VariantActionState | null> {
-  const session = await getCurrentAdmin();
-  if (!session) return { error: "No autorizado" };
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
 
   const productId = String(formData.get("productId") ?? "");
   const priceStr = String(formData.get("price") ?? "").trim();
@@ -188,8 +187,7 @@ export async function updateVariantAction(
 // ─────────────────── ARCHIVE ───────────────────
 
 export async function archiveVariantAction(formData: FormData) {
-  const session = await getCurrentAdmin();
-  if (!session) throw new Error("No autorizado");
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
   const id = String(formData.get("id") ?? "");
   const productId = String(formData.get("productId") ?? "");
   try {

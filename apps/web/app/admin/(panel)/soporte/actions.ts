@@ -2,7 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { logger } from "@/lib/logger";
-import { getCurrentAdmin } from "@/lib/auth";
+import { requireAdminAction } from "@/lib/admin-rbac-guard";
+import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { recordAdminAction } from "@/lib/admin-audit";
 import {
   setSupportTicketStatus,
@@ -13,12 +14,8 @@ import {
 type St = { error?: string; success?: string } | null;
 
 export async function setTicketStatusAction(_p: St, fd: FormData): Promise<St> {
-  const s = await getCurrentAdmin();
-  if (!s) return { error: "No autorizado" };
   // Soporte al cliente: SUPERADMIN o MANAGER (no es dinero, no exige SUPERADMIN).
-  if (s.admin.role !== "SUPERADMIN" && s.admin.role !== "MANAGER") {
-    return { error: "Solo administrador o manager." };
-  }
+  const s = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
   const id = String(fd.get("id") ?? "");
   const status = String(fd.get("status") ?? "") as SupportTicketStatus;
   if (!id) return { error: "Falta id" };

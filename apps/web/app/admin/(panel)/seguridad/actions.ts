@@ -3,7 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { recordAdminAction } from "@/lib/admin-audit";
-import { getCurrentAdmin } from "@/lib/auth";
+import { requireAdminAction } from "@/lib/admin-rbac-guard";
+import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { logger } from "@/lib/logger";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { generateRecoveryCodes } from "@/features/admin-mfa/recovery-codes";
@@ -20,9 +21,7 @@ async function unenrollAllTotp(): Promise<void> {
 
 /** Desactiva (unenroll) los factores TOTP del admin actual + borra recovery codes. */
 export async function disableMfaAction(): Promise<void> {
-  const session = await getCurrentAdmin();
-  if (!session) return;
-  if (session.admin.role !== "SUPERADMIN") return;
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
 
   await unenrollAllTotp();
   await prismaDeleteRecoveryCodes(session.admin.id);
@@ -43,9 +42,7 @@ export async function disableMfaAction(): Promise<void> {
  * verificado, la sesión es aal1 = aal1 (nextLevel baja a aal1).
  */
 export async function changeMfaDeviceAction(): Promise<void> {
-  const session = await getCurrentAdmin();
-  if (!session) return;
-  if (session.admin.role !== "SUPERADMIN") return;
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
 
   await unenrollAllTotp();
   logger.info({ event: "security.admin_mfa_device_change", adminId: session.admin.id });
@@ -63,9 +60,7 @@ export type RecoveryCodesState = { codes?: string[]; error?: string };
 
 /** Genera (o regenera) los códigos de respaldo y los devuelve para mostrarlos una vez. */
 export async function generateRecoveryCodesAction(): Promise<RecoveryCodesState> {
-  const session = await getCurrentAdmin();
-  if (!session) return { error: "Sesión expirada." };
-  if (session.admin.role !== "SUPERADMIN") return { error: "Solo un administrador principal." };
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
 
   const codes = await generateRecoveryCodes(session.admin.id);
   logger.info({ event: "security.admin_mfa_recovery_generated", adminId: session.admin.id });

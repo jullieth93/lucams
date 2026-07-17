@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { recordAdminAction } from "@/lib/admin-audit";
-import { getCurrentAdmin } from "@/lib/auth";
+import { requireAdminAction } from "@/lib/admin-rbac-guard";
+import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import {
   CouponValidationError,
   archiveCoupon,
@@ -59,9 +60,7 @@ export async function createCouponAction(
   _prev: CouponActionState | null,
   formData: FormData,
 ): Promise<CouponActionState> {
-  const session = await getCurrentAdmin();
-  if (!session) return { error: "Sesión expirada." };
-  if (session.admin.role !== "SUPERADMIN") return { error: "No tienes permiso para gestionar cupones." };
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
 
   const parsed = CouponCreateSchema.safeParse(parsePayload(formData));
   if (!parsed.success) {
@@ -113,9 +112,7 @@ export async function updateCouponAction(
   _prev: CouponActionState | null,
   formData: FormData,
 ): Promise<CouponActionState> {
-  const session = await getCurrentAdmin();
-  if (!session) return { error: "Sesión expirada." };
-  if (session.admin.role !== "SUPERADMIN") return { error: "No tienes permiso para gestionar cupones." };
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
 
   const id = String(formData.get("id") ?? "");
   const payload = parsePayload(formData);
@@ -146,9 +143,7 @@ export async function updateCouponAction(
 }
 
 export async function pauseCouponAction(formData: FormData): Promise<void> {
-  const session = await getCurrentAdmin();
-  if (!session) redirect("/admin/login");
-  if (session.admin.role !== "SUPERADMIN") redirect("/admin/dashboard?denied=1");
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
   const id = String(formData.get("id") ?? "");
   await pauseCoupon(id, session.admin.id);
   await recordAdminAction({
@@ -163,9 +158,7 @@ export async function pauseCouponAction(formData: FormData): Promise<void> {
 }
 
 export async function resumeCouponAction(formData: FormData): Promise<void> {
-  const session = await getCurrentAdmin();
-  if (!session) redirect("/admin/login");
-  if (session.admin.role !== "SUPERADMIN") redirect("/admin/dashboard?denied=1");
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
   const id = String(formData.get("id") ?? "");
   await resumeCoupon(id, session.admin.id);
   await recordAdminAction({
@@ -180,9 +173,7 @@ export async function resumeCouponAction(formData: FormData): Promise<void> {
 }
 
 export async function archiveCouponAction(formData: FormData): Promise<void> {
-  const session = await getCurrentAdmin();
-  if (!session) redirect("/admin/login");
-  if (session.admin.role !== "SUPERADMIN") redirect("/admin/dashboard?denied=1");
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
   const id = String(formData.get("id") ?? "");
   await archiveCoupon(id, session.admin.id);
   await recordAdminAction({

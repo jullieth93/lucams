@@ -2,7 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { logger } from "@/lib/logger";
-import { getCurrentAdmin } from "@/lib/auth";
+import { requireAdminAction } from "@/lib/admin-rbac-guard";
+import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { recordAdminAction } from "@/lib/admin-audit";
 import { processPaidOrder } from "@/features/orders/saga";
 import { refundOrder, transitionOrder } from "@/features/orders/service";
@@ -21,8 +22,7 @@ export async function retryShipmentAction(
   _prev: { error?: string; success?: string } | null,
   formData: FormData,
 ): Promise<{ error?: string; success?: string }> {
-  const session = await getCurrentAdmin();
-  if (!session) return { error: "No autorizado" };
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.ALL });
 
   const orderId = String(formData.get("orderId") ?? "");
   if (!orderId) return { error: "Falta orderId" };
@@ -64,8 +64,7 @@ export async function transitionOrderAction(
   _prev: { error?: string; success?: string } | null,
   formData: FormData,
 ): Promise<{ error?: string; success?: string }> {
-  const session = await getCurrentAdmin();
-  if (!session) return { error: "No autorizado" };
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.ALL });
 
   const orderId = String(formData.get("orderId") ?? "");
   const to = String(formData.get("to") ?? "");
@@ -120,14 +119,9 @@ export async function refundOrderAction(
   _prev: { error?: string; success?: string } | null,
   formData: FormData,
 ): Promise<{ error?: string; success?: string }> {
-  const session = await getCurrentAdmin();
-  if (!session) return { error: "No autorizado" };
-  // El reembolso es una operación financiera → SUPERADMIN, igual que finanzas/
-  // cupones/retractos. La gate de rol vive acá porque las Server Actions son
-  // endpoints POST invocables directamente (la page no las protege).
-  if (session.admin.role !== "SUPERADMIN") {
-    return { error: "Solo un administrador principal puede emitir reembolsos." };
-  }
+  // El reembolso es una operación financiera → SUPERADMIN + MFA aal2 (ADR-062 P0-1).
+  // El guard vive acá porque las Server Actions son endpoints POST invocables directo.
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
 
   const orderId = String(formData.get("orderId") ?? "");
   const reason = String(formData.get("reason") ?? "").trim();

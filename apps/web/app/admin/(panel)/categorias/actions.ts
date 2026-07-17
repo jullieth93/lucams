@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { recordAdminAction } from "@/lib/admin-audit";
-import { getCurrentAdmin } from "@/lib/auth";
+import { requireAdminAction } from "@/lib/admin-rbac-guard";
+import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import {
   CategoryValidationError,
   createCategory,
@@ -40,8 +41,7 @@ export async function createCategoryAction(
   _prev: CategoryActionState | null,
   formData: FormData,
 ): Promise<CategoryActionState> {
-  const session = await getCurrentAdmin();
-  if (!session) return { error: "Sesión expirada." };
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
 
   const parsed = CategoryCreateSchema.safeParse(parsePayload(formData));
   if (!parsed.success) {
@@ -92,8 +92,7 @@ export async function updateCategoryAction(
   _prev: CategoryActionState | null,
   formData: FormData,
 ): Promise<CategoryActionState> {
-  const session = await getCurrentAdmin();
-  if (!session) return { error: "Sesión expirada." };
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
 
   const id = String(formData.get("id") ?? "");
   if (!id) return { error: "ID inválido." };
@@ -143,8 +142,7 @@ export async function updateCategoryAction(
  * si está inactiva, vuelve a activa.
  */
 export async function toggleCategoryActiveAction(formData: FormData): Promise<void> {
-  const session = await getCurrentAdmin();
-  if (!session) redirect("/admin/login");
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
 
   const id = String(formData.get("id") ?? "");
   const next = formData.get("next") === "true"; // estado deseado
@@ -178,8 +176,7 @@ export async function toggleCategoryActiveAction(formData: FormData): Promise<vo
  * D3 (Lucy 2026-06-27): reemplaza el campo manual "número de orden".
  */
 export async function moveCategoryAction(formData: FormData): Promise<void> {
-  const session = await getCurrentAdmin();
-  if (!session) redirect("/admin/login");
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
 
   const id = String(formData.get("id") ?? "");
   const direction = formData.get("direction") === "up" ? "up" : "down";
@@ -212,8 +209,7 @@ export async function moveCategoryAction(formData: FormData): Promise<void> {
 /** Restaura una categoría archivada (deletedAt → null). Queda inactiva
  * por seguridad — admin la activa después si quiere mostrarla. */
 export async function restoreCategoryAction(formData: FormData): Promise<void> {
-  const session = await getCurrentAdmin();
-  if (!session) redirect("/admin/login");
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
   const id = String(formData.get("id") ?? "");
   if (!id) return;
   await restoreCategory(id, session.admin.id);
@@ -235,8 +231,7 @@ export async function restoreCategoryAction(formData: FormData): Promise<void> {
 }
 
 export async function deleteCategoryAction(formData: FormData): Promise<void> {
-  const session = await getCurrentAdmin();
-  if (!session) redirect("/admin/login");
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
 
   const id = String(formData.get("id") ?? "");
   if (!id) return;

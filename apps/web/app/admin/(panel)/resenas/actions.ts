@@ -4,7 +4,8 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { recordAdminAction } from "@/lib/admin-audit";
-import { getCurrentAdmin } from "@/lib/auth";
+import { requireAdminAction } from "@/lib/admin-rbac-guard";
+import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import {
   approveReview,
   archiveReview,
@@ -33,8 +34,7 @@ function revalidateForReview(productSlug: string | null) {
 }
 
 export async function approveReviewAction(formData: FormData): Promise<void> {
-  const session = await getCurrentAdmin();
-  if (!session) redirect("/admin/login");
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
   const id = getId(formData);
   const productSlug = (formData.get("productSlug") as string | null) ?? null;
 
@@ -52,8 +52,7 @@ export async function approveReviewAction(formData: FormData): Promise<void> {
 }
 
 export async function rejectReviewAction(formData: FormData): Promise<void> {
-  const session = await getCurrentAdmin();
-  if (!session) redirect("/admin/login");
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
   const id = getId(formData);
   const productSlug = (formData.get("productSlug") as string | null) ?? null;
 
@@ -71,8 +70,7 @@ export async function rejectReviewAction(formData: FormData): Promise<void> {
 }
 
 export async function toggleFeaturedReviewAction(formData: FormData): Promise<void> {
-  const session = await getCurrentAdmin();
-  if (!session) redirect("/admin/login");
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
   const id = getId(formData);
   const productSlug = (formData.get("productSlug") as string | null) ?? null;
 
@@ -94,8 +92,7 @@ export async function toggleFeaturedReviewAction(formData: FormData): Promise<vo
 }
 
 export async function archiveReviewAction(formData: FormData): Promise<void> {
-  const session = await getCurrentAdmin();
-  if (!session) redirect("/admin/login");
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
   const id = getId(formData);
   const productSlug = (formData.get("productSlug") as string | null) ?? null;
 
@@ -113,8 +110,7 @@ export async function archiveReviewAction(formData: FormData): Promise<void> {
 }
 
 export async function restoreReviewAction(formData: FormData): Promise<void> {
-  const session = await getCurrentAdmin();
-  if (!session) redirect("/admin/login");
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
   const id = getId(formData);
   const productSlug = (formData.get("productSlug") as string | null) ?? null;
 
@@ -144,8 +140,7 @@ function getReviewIds(formData: FormData): string[] {
 }
 
 export async function bulkApproveReviewsAction(formData: FormData): Promise<void> {
-  const session = await getCurrentAdmin();
-  if (!session) redirect("/admin/login");
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
 
   const parsed = BulkReviewIdsSchema.safeParse(getReviewIds(formData));
   if (!parsed.success) {
@@ -178,8 +173,7 @@ export async function bulkApproveReviewsAction(formData: FormData): Promise<void
 }
 
 export async function bulkArchiveReviewsAction(formData: FormData): Promise<void> {
-  const session = await getCurrentAdmin();
-  if (!session) redirect("/admin/login");
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
 
   const parsed = BulkReviewIdsSchema.safeParse(getReviewIds(formData));
   if (!parsed.success) {

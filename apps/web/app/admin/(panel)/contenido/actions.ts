@@ -13,7 +13,8 @@ import { revalidatePath, updateTag } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { recordAdminAction } from "@/lib/admin-audit";
-import { getCurrentAdmin } from "@/lib/auth";
+import { requireAdminAction } from "@/lib/admin-rbac-guard";
+import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { logger } from "@/lib/logger";
 import {
   CmsBlockCreateSchema,
@@ -45,9 +46,7 @@ export async function createCmsBlockAction(
   _prev: CmsActionState | null,
   formData: FormData,
 ): Promise<CmsActionState> {
-  const session = await getCurrentAdmin();
-  if (!session) return { error: "Tu sesión expiró. Vuelve a iniciar sesión." };
-  if (session.admin.role !== "SUPERADMIN") return { error: "Solo un administrador principal puede gestionar el contenido." };
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
 
   const parsed = CmsBlockCreateSchema.safeParse({
     key: String(formData.get("key") ?? "").trim(),
@@ -97,9 +96,7 @@ export async function saveCmsBlockDraftAction(
   _prev: CmsActionState | null,
   formData: FormData,
 ): Promise<CmsActionState> {
-  const session = await getCurrentAdmin();
-  if (!session) return { error: "Tu sesión expiró. Vuelve a iniciar sesión." };
-  if (session.admin.role !== "SUPERADMIN") return { error: "Solo un administrador principal puede gestionar el contenido." };
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
 
   const parsed = CmsBlockUpdateSchema.safeParse({
     id: String(formData.get("id") ?? ""),
@@ -142,9 +139,7 @@ export async function saveCmsBlockDraftAction(
 }
 
 export async function publishCmsBlockVersionAction(formData: FormData): Promise<void> {
-  const session = await getCurrentAdmin();
-  if (!session) redirect("/admin/login");
-  if (session.admin.role !== "SUPERADMIN") redirect("/admin/dashboard?denied=1");
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
 
   const blockId = String(formData.get("blockId") ?? "");
   const versionId = String(formData.get("versionId") ?? "");
@@ -176,9 +171,7 @@ export async function publishCmsBlockVersionAction(formData: FormData): Promise<
 }
 
 export async function unpublishCmsBlockAction(formData: FormData): Promise<void> {
-  const session = await getCurrentAdmin();
-  if (!session) redirect("/admin/login");
-  if (session.admin.role !== "SUPERADMIN") redirect("/admin/dashboard?denied=1");
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
 
   const blockId = String(formData.get("blockId") ?? "");
   if (!blockId) redirect("/admin/contenido");
@@ -196,9 +189,7 @@ export async function unpublishCmsBlockAction(formData: FormData): Promise<void>
 }
 
 export async function deleteCmsBlockAction(formData: FormData): Promise<void> {
-  const session = await getCurrentAdmin();
-  if (!session) redirect("/admin/login");
-  if (session.admin.role !== "SUPERADMIN") redirect("/admin/dashboard?denied=1");
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
 
   const blockId = String(formData.get("blockId") ?? "");
   if (!blockId) redirect("/admin/contenido");
@@ -226,9 +217,7 @@ export async function createSiteSettingAction(
   _prev: SiteSettingActionState | null,
   formData: FormData,
 ): Promise<SiteSettingActionState> {
-  const session = await getCurrentAdmin();
-  if (!session) return { error: "Tu sesión expiró." };
-  if (session.admin.role !== "SUPERADMIN") return { error: "Solo un administrador principal puede cambiar la configuración." };
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
 
   const parsed = SiteSettingCreateSchema.safeParse({
     key: String(formData.get("key") ?? "")
@@ -268,9 +257,7 @@ export async function updateSiteSettingAction(
   _prev: SiteSettingActionState | null,
   formData: FormData,
 ): Promise<SiteSettingActionState> {
-  const session = await getCurrentAdmin();
-  if (!session) return { error: "Tu sesión expiró." };
-  if (session.admin.role !== "SUPERADMIN") return { error: "Solo un administrador principal puede cambiar la configuración." };
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
 
   const parsed = SiteSettingUpdateSchema.safeParse({
     id: String(formData.get("id") ?? ""),
