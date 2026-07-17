@@ -324,7 +324,7 @@ describe("orderConfirmationEmail", () => {
     expect(r.html).toMatch(money("50.000"));
   });
 
-  it("SEGURIDAD: escapa <, >, & y \" en nombre, ítems y dirección en el HTML", async () => {
+  it('SEGURIDAD: escapa <, >, & y " en nombre, ítems y dirección en el HTML', async () => {
     const r = await orderConfirmationEmail(
       ocData({
         customerName: 'Ana <b>"x"</b> & Co',
@@ -353,10 +353,7 @@ describe("orderConfirmationEmail", () => {
 
   it("IDEMPOTENCIA: mismo input → misma salida byte a byte", async () => {
     const data = ocData();
-    const [a, b] = await Promise.all([
-      orderConfirmationEmail(data),
-      orderConfirmationEmail(data),
-    ]);
+    const [a, b] = await Promise.all([orderConfirmationEmail(data), orderConfirmationEmail(data)]);
     expect(a).toEqual(b);
   });
 });
@@ -642,7 +639,7 @@ describe("supportTicketInternalEmail", () => {
       }),
     );
     expect(r.html).toContain("Elena Ríos");
-    expect(r.html).toContain('mailto:elena@example.com');
+    expect(r.html).toContain("mailto:elena@example.com");
     expect(r.html).toContain("Garantía o devolución");
     expect(r.html).toContain("200.1.2.3");
     // El ticketId completo va en la tabla de metadatos.
@@ -683,11 +680,9 @@ describe("supportTicketInternalEmail", () => {
   });
 
   it("SEGURIDAD: el email del cliente se escapa dentro del href mailto y del texto visible", async () => {
-    const r = await supportTicketInternalEmail(
-      stiData({ customerEmail: 'evil"@x.co' }),
-    );
+    const r = await supportTicketInternalEmail(stiData({ customerEmail: 'evil"@x.co' }));
     // La comilla doble del email se escapa a &quot; en el HTML.
-    expect(r.html).toContain('evil&quot;@x.co');
+    expect(r.html).toContain("evil&quot;@x.co");
   });
 
   it("preview del layout nombra al cliente", async () => {

@@ -42,10 +42,7 @@ import {
   type InventoryStatusFilter,
   type InventorySortKey,
 } from "@/features/products/inventory-service";
-import {
-  getStockEmoji,
-  getStockLabel,
-} from "@/features/products/stock-constants";
+import { getStockEmoji, getStockLabel } from "@/features/products/stock-constants";
 import { CompactStockEditor } from "@/components/admin/compact-stock-editor";
 
 export const metadata: Metadata = {
@@ -57,11 +54,7 @@ type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
 const VALID_STATUS: InventoryStatusFilter[] = ["all", "out", "low", "ok"];
 const VALID_SORT: InventorySortKey[] = ["stock-asc", "stock-desc", "product-asc", "recent"];
 
-export default async function InventarioPage({
-  searchParams,
-}: {
-  searchParams: SearchParams;
-}) {
+export default async function InventarioPage({ searchParams }: { searchParams: SearchParams }) {
   const session = await getCurrentAdmin();
   if (!session) redirect("/admin/login");
 
@@ -193,82 +186,82 @@ export default async function InventarioPage({
                 <th className="px-4 py-3 text-right font-semibold">Ajustar</th>
               </tr>
             </AdminTableHead>
-              <AdminTableBody>
-                {grouped.map(({ row, isFirstOfProduct, tinted, variantsInGroup }) => (
-                  <AdminTableRow
-                    key={row.variantId}
-                    className={
-                      // Fondo de grupo + línea superior al empezar un producto nuevo,
-                      // para que las opciones de un mismo producto se lean juntas.
-                      (tinted ? "bg-brand-purple/[0.025] " : "") +
-                      (isFirstOfProduct ? "border-brand-purple/15 border-t-2" : "")
-                    }
-                  >
-                    <td className="px-4 py-3 align-top">
-                      {isFirstOfProduct ? (
-                        <>
-                          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                            <Link
-                              href={`/admin/productos/${row.productId}`}
-                              className="text-brand-purple-dark hover:text-brand-purple inline-flex items-center gap-1 text-sm font-semibold"
+            <AdminTableBody>
+              {grouped.map(({ row, isFirstOfProduct, tinted, variantsInGroup }) => (
+                <AdminTableRow
+                  key={row.variantId}
+                  className={
+                    // Fondo de grupo + línea superior al empezar un producto nuevo,
+                    // para que las opciones de un mismo producto se lean juntas.
+                    (tinted ? "bg-brand-purple/[0.025] " : "") +
+                    (isFirstOfProduct ? "border-brand-purple/15 border-t-2" : "")
+                  }
+                >
+                  <td className="px-4 py-3 align-top">
+                    {isFirstOfProduct ? (
+                      <>
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                          <Link
+                            href={`/admin/productos/${row.productId}`}
+                            className="text-brand-purple-dark hover:text-brand-purple inline-flex items-center gap-1 text-sm font-semibold"
+                          >
+                            {row.productName}
+                            <ExternalLink className="h-3 w-3 opacity-50" aria-hidden />
+                          </Link>
+                          {!row.isProductActive && (
+                            <span
+                              className="inline-block rounded bg-amber-100 px-1.5 py-0.5 text-xs font-semibold text-amber-900"
+                              title="Producto pausado — no visible en la tienda"
                             >
-                              {row.productName}
-                              <ExternalLink className="h-3 w-3 opacity-50" aria-hidden />
-                            </Link>
-                            {!row.isProductActive && (
-                              <span
-                                className="inline-block rounded bg-amber-100 px-1.5 py-0.5 text-xs font-semibold text-amber-900"
-                                title="Producto pausado — no visible en la tienda"
-                              >
-                                Pausado
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-brand-muted mt-0.5 text-xs">
-                            {row.categoryName}
-                            {variantsInGroup > 1 && (
-                              <span className="text-brand-muted">
-                                {" · "}
-                                {variantsInGroup} opciones
-                              </span>
-                            )}
-                          </p>
-                        </>
-                      ) : (
-                        // Continuación: misma familia. Sangría + guion para conectar
-                        // visualmente con el producto de arriba (no repetimos el nombre).
-                        <span
-                          className="text-brand-purple-dark/35 pl-3 text-xs"
-                          aria-label={`Otra opción de ${row.productName}`}
-                        >
-                          ↳ misma familia
-                        </span>
-                      )}
-                    </td>
-                    <td className="text-brand-purple-dark/80 px-4 py-3 align-top text-sm">
-                      {row.variantName === "Default" ? "Única" : row.variantName}
-                    </td>
-                    <td className="text-brand-muted px-4 py-3 align-top font-mono text-xs">
-                      {row.variantSku}
-                    </td>
-                    <td className="px-4 py-3 align-top">
-                      <StatusChip status={row.status} stock={row.stock} />
-                    </td>
-                    <td className="text-brand-purple-dark px-4 py-3 text-right align-top text-sm font-bold tabular-nums">
-                      {row.stock.toLocaleString("es-CO")}
-                    </td>
-                    <td className="px-4 py-3 align-top">
-                      <InlineStockEditor
-                        variantId={row.variantId}
-                        productId={row.productId}
-                        currentStock={row.stock}
-                      />
-                    </td>
-                  </AdminTableRow>
-                ))}
-              </AdminTableBody>
-            </AdminTable>
-          )}
+                              Pausado
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-brand-muted mt-0.5 text-xs">
+                          {row.categoryName}
+                          {variantsInGroup > 1 && (
+                            <span className="text-brand-muted">
+                              {" · "}
+                              {variantsInGroup} opciones
+                            </span>
+                          )}
+                        </p>
+                      </>
+                    ) : (
+                      // Continuación: misma familia. Sangría + guion para conectar
+                      // visualmente con el producto de arriba (no repetimos el nombre).
+                      <span
+                        className="text-brand-purple-dark/35 pl-3 text-xs"
+                        aria-label={`Otra opción de ${row.productName}`}
+                      >
+                        ↳ misma familia
+                      </span>
+                    )}
+                  </td>
+                  <td className="text-brand-purple-dark/80 px-4 py-3 align-top text-sm">
+                    {row.variantName === "Default" ? "Única" : row.variantName}
+                  </td>
+                  <td className="text-brand-muted px-4 py-3 align-top font-mono text-xs">
+                    {row.variantSku}
+                  </td>
+                  <td className="px-4 py-3 align-top">
+                    <StatusChip status={row.status} stock={row.stock} />
+                  </td>
+                  <td className="text-brand-purple-dark px-4 py-3 text-right align-top text-sm font-bold tabular-nums">
+                    {row.stock.toLocaleString("es-CO")}
+                  </td>
+                  <td className="px-4 py-3 align-top">
+                    <InlineStockEditor
+                      variantId={row.variantId}
+                      productId={row.productId}
+                      currentStock={row.stock}
+                    />
+                  </td>
+                </AdminTableRow>
+              ))}
+            </AdminTableBody>
+          </AdminTable>
+        )}
 
         {/* Paginación */}
         {data.totalPages > 1 && (
@@ -355,7 +348,7 @@ function KpiTile({
           </span>
           <p className="text-brand-muted mt-1 text-[11px] leading-snug">{hint}</p>
         </div>
-        <span className="text-brand-purple-dark shrink-0 text-3xl font-bold tabular-nums leading-none">
+        <span className="text-brand-purple-dark shrink-0 text-3xl leading-none font-bold tabular-nums">
           {value.toLocaleString("es-CO")}
         </span>
       </div>
@@ -365,13 +358,7 @@ function KpiTile({
   return href ? <Link href={href}>{content}</Link> : content;
 }
 
-function StatusChip({
-  status,
-  stock,
-}: {
-  status: "out" | "low" | "ok";
-  stock: number;
-}) {
+function StatusChip({ status, stock }: { status: "out" | "low" | "ok"; stock: number }) {
   const cls =
     status === "out"
       ? "bg-red-50 text-red-800 border border-red-200"
@@ -401,11 +388,7 @@ function InlineStockEditor({
   // celda de tabla. Reusa setVariantStockAction (audit InventoryLog + audit
   // log admin). Botón disabled si no hay cambios.
   return (
-    <CompactStockEditor
-      variantId={variantId}
-      productId={productId}
-      currentStock={currentStock}
-    />
+    <CompactStockEditor variantId={variantId} productId={productId} currentStock={currentStock} />
   );
 }
 
@@ -528,10 +511,7 @@ function Pagination({
   };
 
   return (
-    <nav
-      className="flex items-center justify-between gap-3 text-sm"
-      aria-label="Paginación"
-    >
+    <nav className="flex items-center justify-between gap-3 text-sm" aria-label="Paginación">
       <p className="text-brand-muted">
         Página {page} de {totalPages} · {total.toLocaleString("es-CO")} opciones
       </p>

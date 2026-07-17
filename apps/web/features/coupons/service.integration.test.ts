@@ -120,10 +120,7 @@ describe.skipIf(!hasDb)("coupons/service — integración DB (PLAN_CATALOG_V2 3.
 
     it("crea un cupón FIXED (value = COP centavos, sin tope de %)", async () => {
       const code = `${RUN}-FIXED-OK`;
-      const created = await createCoupon(
-        baseInput({ code, type: "FIXED", value: 500_000 }),
-        ACTOR,
-      );
+      const created = await createCoupon(baseInput({ code, type: "FIXED", value: 500_000 }), ACTOR);
       expect(created.type).toBe("FIXED");
       expect(created.value).toBe(500_000);
     });
@@ -164,10 +161,7 @@ describe.skipIf(!hasDb)("coupons/service — integración DB (PLAN_CATALOG_V2 3.
     it("rechaza validTo <= validFrom (validTo igual a validFrom)", async () => {
       const same = daysFromNow(5);
       await expect(
-        createCoupon(
-          baseInput({ code: `${RUN}-EQDATE`, validFrom: same, validTo: same }),
-          ACTOR,
-        ),
+        createCoupon(baseInput({ code: `${RUN}-EQDATE`, validFrom: same, validTo: same }), ACTOR),
       ).rejects.toMatchObject({
         name: "CouponValidationError",
         field: "validTo",
@@ -312,9 +306,7 @@ describe.skipIf(!hasDb)("coupons/service — integración DB (PLAN_CATALOG_V2 3.
     it("status=all (default) incluye todos los no-borrados", async () => {
       const rows = await listCoupons({ status: "all" });
       const ids = rows.map((r) => r.id);
-      expect(ids).toEqual(
-        expect.arrayContaining([activeId, expiredId, scheduledId, pausedId]),
-      );
+      expect(ids).toEqual(expect.arrayContaining([activeId, expiredId, scheduledId, pausedId]));
     });
 
     it("filtra por q en code (case-insensitive)", async () => {
@@ -419,10 +411,7 @@ describe.skipIf(!hasDb)("coupons/service — integración DB (PLAN_CATALOG_V2 3.
 
   describe("getCouponMetrics — usedCount / maxUses / totalDiscounted / uniqueCustomers", () => {
     it("cupón sin usos: usedCount=0, totalDiscounted=0, uniqueCustomers=0", async () => {
-      const c = await createCoupon(
-        baseInput({ code: `${RUN}-MTR-EMPTY`, maxUses: 50 }),
-        ACTOR,
-      );
+      const c = await createCoupon(baseInput({ code: `${RUN}-MTR-EMPTY`, maxUses: 50 }), ACTOR);
       const m = await getCouponMetrics(c.id);
       expect(m.usedCount).toBe(0);
       expect(m.maxUses).toBe(50);
@@ -431,10 +420,7 @@ describe.skipIf(!hasDb)("coupons/service — integración DB (PLAN_CATALOG_V2 3.
     });
 
     it("agrega totalDiscounted (suma de amount) y cuenta clientes distintos", async () => {
-      const c = await createCoupon(
-        baseInput({ code: `${RUN}-MTR-USAGE`, maxUses: 10 }),
-        ACTOR,
-      );
+      const c = await createCoupon(baseInput({ code: `${RUN}-MTR-USAGE`, maxUses: 10 }), ACTOR);
 
       // Dos clientes distintos (supabaseUserId y referralCode son @unique).
       const cust1 = await prisma.customer.create({
@@ -501,10 +487,7 @@ describe.skipIf(!hasDb)("coupons/service — integración DB (PLAN_CATALOG_V2 3.
     }, 30000);
 
     it("maxUses=null se refleja como null en métricas (uso ilimitado)", async () => {
-      const c = await createCoupon(
-        baseInput({ code: `${RUN}-MTR-UNLIM`, maxUses: null }),
-        ACTOR,
-      );
+      const c = await createCoupon(baseInput({ code: `${RUN}-MTR-UNLIM`, maxUses: null }), ACTOR);
       const m = await getCouponMetrics(c.id);
       expect(m.maxUses).toBeNull();
     });

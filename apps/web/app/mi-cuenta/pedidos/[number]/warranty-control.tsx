@@ -27,7 +27,11 @@ const STATUS_LABEL: Record<string, string> = {
   REJECTED: "❌ Garantía rechazada",
 };
 
-const dateFmt = new Intl.DateTimeFormat("es-CO", { day: "2-digit", month: "short", year: "numeric" });
+const dateFmt = new Intl.DateTimeFormat("es-CO", {
+  day: "2-digit",
+  month: "short",
+  year: "numeric",
+});
 
 export function WarrantyControl({ item }: { item: WarrantyItem }) {
   const [state, action, pending] = useActionState(requestWarrantyAction, null);

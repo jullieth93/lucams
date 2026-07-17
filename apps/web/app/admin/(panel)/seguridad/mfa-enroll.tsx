@@ -67,7 +67,9 @@ export function MfaEnroll() {
     });
     setPending(false);
     if (verifyErr) {
-      setError("Código incorrecto o vencido. Revisa el código actual en tu app e intenta de nuevo.");
+      setError(
+        "Código incorrecto o vencido. Revisa el código actual en tu app e intenta de nuevo.",
+      );
       return;
     }
     setStep("done");
@@ -110,7 +112,10 @@ export function MfaEnroll() {
         </div>
         <form onSubmit={verify} className="flex flex-wrap items-end gap-2">
           <div>
-            <label htmlFor="mfa-code" className="text-brand-purple-dark mb-1 block text-xs font-semibold">
+            <label
+              htmlFor="mfa-code"
+              className="text-brand-purple-dark mb-1 block text-xs font-semibold"
+            >
               Código de 6 dígitos
             </label>
             <input

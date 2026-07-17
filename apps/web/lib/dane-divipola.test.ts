@@ -324,9 +324,7 @@ describe("isCityValid", () => {
 
 describe("cityToAveonlineFormat", () => {
   it("construye 'CIUDAD(DEPARTAMENTO)' en mayúsculas sin acentos", () => {
-    expect(cityToAveonlineFormat("Bogotá D.C.", "Cundinamarca")).toBe(
-      "BOGOTA D.C.(CUNDINAMARCA)",
-    );
+    expect(cityToAveonlineFormat("Bogotá D.C.", "Cundinamarca")).toBe("BOGOTA D.C.(CUNDINAMARCA)");
   });
 
   it("convierte ciudad y depto acentuados a mayúsculas sin tildes", () => {
@@ -339,9 +337,7 @@ describe("cityToAveonlineFormat", () => {
   });
 
   it("preserva espacios internos del nombre", () => {
-    expect(cityToAveonlineFormat("Villa de Leyva", "Boyacá")).toBe(
-      "VILLA DE LEYVA(BOYACA)",
-    );
+    expect(cityToAveonlineFormat("Villa de Leyva", "Boyacá")).toBe("VILLA DE LEYVA(BOYACA)");
   });
 
   it("maneja entradas vacías sin lanzar excepción", () => {
@@ -351,9 +347,7 @@ describe("cityToAveonlineFormat", () => {
   it("el output de una ciudad real del catálogo es round-trippeable a mayúsculas", () => {
     const city = getCityByCode("76001"); // Cali
     const dept = getDepartmentByCode("76"); // Valle del Cauca
-    expect(cityToAveonlineFormat(city!.name, dept!.name)).toBe(
-      "CALI(VALLE DEL CAUCA)",
-    );
+    expect(cityToAveonlineFormat(city!.name, dept!.name)).toBe("CALI(VALLE DEL CAUCA)");
   });
 });
 
@@ -392,9 +386,7 @@ describe("integridad del catálogo DIVIPOLA", () => {
   });
 
   it("cada departamento tiene al menos una ciudad (capital incluida)", () => {
-    const withoutCity = DEPARTMENTS.filter(
-      (d) => getCitiesByDeptCode(d.code).length === 0,
-    );
+    const withoutCity = DEPARTMENTS.filter((d) => getCitiesByDeptCode(d.code).length === 0);
     expect(withoutCity).toEqual([]);
   });
 

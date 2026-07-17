@@ -90,7 +90,9 @@ export async function signupAction(
     ip,
   );
   if (!turnstile.success) {
-    return { error: "No pudimos verificar que no eres un robot. Recarga la página e intenta de nuevo." };
+    return {
+      error: "No pudimos verificar que no eres un robot. Recarga la página e intenta de nuevo.",
+    };
   }
 
   // Límites: pre-launch intermedios (Lucy testeando sin tropezar pero

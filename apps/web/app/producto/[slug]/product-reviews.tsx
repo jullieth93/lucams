@@ -25,7 +25,11 @@ export async function ProductReviews({ productId, slug }: { productId: string; s
     reviews.length > 0
       ? Math.round((reviews.reduce((s, r) => s + r.rating, 0) / reviews.length) * 10) / 10
       : null;
-  const dateFmt = new Intl.DateTimeFormat("es-CO", { day: "numeric", month: "long", year: "numeric" });
+  const dateFmt = new Intl.DateTimeFormat("es-CO", {
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+  });
 
   return (
     <section id="resenas" className="border-brand-purple/10 border-t pt-8">

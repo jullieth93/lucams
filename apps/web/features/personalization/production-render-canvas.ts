@@ -58,7 +58,13 @@ type Stage = { width: number; height: number };
 type AnyLayer = { id: string; type: string; [k: string]: unknown };
 type UnitTemplate = { version: 1; stage: Stage; layers: AnyLayer[] };
 type PhotoTransform = { offsetX: number; offsetY: number; scale: number };
-type TextOverride = { text?: string; fontFamily?: string; fontSize?: number; fill?: string; fontWeight?: string };
+type TextOverride = {
+  text?: string;
+  fontFamily?: string;
+  fontSize?: number;
+  fill?: string;
+  fontWeight?: string;
+};
 type Slot = {
   slotIndex: number;
   assetId: string | null;
@@ -112,7 +118,9 @@ async function renderSlotCanvas(
   loadAsset: LoadAssetBytes,
 ): Promise<Buffer> {
   if (unit.stage.width > MAX_STAGE_DIM || unit.stage.height > MAX_STAGE_DIM) {
-    throw new RenderNeedsKonvaError(`stage ${unit.stage.width}×${unit.stage.height} > ${MAX_STAGE_DIM}`);
+    throw new RenderNeedsKonvaError(
+      `stage ${unit.stage.width}×${unit.stage.height} > ${MAX_STAGE_DIM}`,
+    );
   }
   // Filtro → el cliente tiene el exacto de Konva (no divergimos).
   if (slot.filter) throw new RenderNeedsKonvaError("slot con filtro (fidelidad → cliente)");
@@ -130,12 +138,18 @@ async function renderSlotCanvas(
   }
   const placeholders = unit.layers.filter((l) => l.type === "image-placeholder");
   if (placeholders.length > 1) throw new RenderNeedsKonvaError("múltiples image-placeholder");
-  if (placeholders[0] && Number(placeholders[0].rotation) !== 0 && placeholders[0].rotation != null) {
+  if (
+    placeholders[0] &&
+    Number(placeholders[0].rotation) !== 0 &&
+    placeholders[0].rotation != null
+  ) {
     throw new RenderNeedsKonvaError("placeholder con rotación");
   }
 
   const hasText = unit.layers.some(
-    (l) => l.type === "text" && ((typeof l.text === "string" && l.text.trim()) || slot.textOverrides?.[l.id]?.text),
+    (l) =>
+      l.type === "text" &&
+      ((typeof l.text === "string" && l.text.trim()) || slot.textOverrides?.[l.id]?.text),
   );
   if (hasText && !ensureFonts(mod)) {
     throw new RenderNeedsKonvaError("fuentes no disponibles server-side");
@@ -157,7 +171,8 @@ async function renderSlotCanvas(
     } else if (layer.type === "image-placeholder") {
       if (!slot.assetId) throw new RenderNeedsKonvaError(`slot ${slot.slotIndex} sin assetId`);
       const bytes = await loadAsset(slot.assetId);
-      if (!bytes) throw new RenderNeedsKonvaError(`no se pudo cargar la foto del slot ${slot.slotIndex}`);
+      if (!bytes)
+        throw new RenderNeedsKonvaError(`no se pudo cargar la foto del slot ${slot.slotIndex}`);
       const img = decodeImage(mod, bytes);
       const imgW = img.width;
       const imgH = img.height;
@@ -239,10 +254,13 @@ function renderTextLayer(
   const finalText = override?.text ?? (typeof layer.text === "string" ? layer.text : "");
   if (!finalText.trim()) return;
   const fontSize = override?.fontSize ?? (Number(layer.fontSize) || 48);
-  const family = override?.fontFamily ?? (typeof layer.fontFamily === "string" ? layer.fontFamily : "Fredoka, Inter, sans-serif");
+  const family =
+    override?.fontFamily ??
+    (typeof layer.fontFamily === "string" ? layer.fontFamily : "Fredoka, Inter, sans-serif");
   const fill = override?.fill ?? (typeof layer.fill === "string" ? layer.fill : "#3D2E5C");
   // Konva default fontStyle = "normal" (400) cuando el layer no lo especifica (NO 600).
-  const weight = override?.fontWeight ?? (typeof layer.fontWeight === "string" ? layer.fontWeight : "normal");
+  const weight =
+    override?.fontWeight ?? (typeof layer.fontWeight === "string" ? layer.fontWeight : "normal");
   const align = (layer.align as CanvasTextAlign) ?? "center";
 
   // Solo fuentes de MARCA registradas (Fredoka/Inter). Cualquier otra familia (Georgia,

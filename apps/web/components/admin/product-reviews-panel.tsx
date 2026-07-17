@@ -28,11 +28,7 @@ import {
   XCircle,
   MessageSquare,
 } from "lucide-react";
-import {
-  AdminCard,
-  AdminEmpty,
-  AdminBadge,
-} from "@/components/admin-page";
+import { AdminCard, AdminEmpty, AdminBadge } from "@/components/admin-page";
 import { listReviewsAdmin } from "@/features/reviews/admin-service";
 import {
   approveReviewAction,
@@ -96,11 +92,7 @@ export async function ProductReviewsPanel({
 
       {/* Sub-tabs por estado */}
       {totalAllStatuses > 0 && (
-        <div
-          role="tablist"
-          aria-label="Estado de reseñas"
-          className="flex gap-1 overflow-x-auto"
-        >
+        <div role="tablist" aria-label="Estado de reseñas" className="flex gap-1 overflow-x-auto">
           <SubTab
             label="Pendientes"
             count={pendingTotal}
@@ -197,11 +189,17 @@ function SubTab({
   })();
 
   return (
-    <Link href={href} aria-current={active ? "page" : undefined} className={`${base} ${activeClass}`}>
+    <Link
+      href={href}
+      aria-current={active ? "page" : undefined}
+      className={`${base} ${activeClass}`}
+    >
       <span>{label}</span>
       {/* Hotfix P2-7: omitir badge cuando count=0 (consistente con ProductSectionNav). */}
       {count > 0 && (
-        <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums ${badgeClass}`}>
+        <span
+          className={`rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums ${badgeClass}`}
+        >
           {count}
         </span>
       )}
@@ -240,8 +238,7 @@ function ReviewCard({
     month: "long",
     year: "numeric",
   });
-  const author =
-    review.authorName ?? "Cliente anónimo";
+  const author = review.authorName ?? "Cliente anónimo";
   const city = review.authorCity ? ` · ${review.authorCity}` : "";
 
   return (
@@ -273,9 +270,7 @@ function ReviewCard({
               </span>
             )}
           </div>
-          <p className="text-brand-purple-dark/85 mt-2 text-sm leading-relaxed">
-            {review.comment}
-          </p>
+          <p className="text-brand-purple-dark/85 mt-2 text-sm leading-relaxed">{review.comment}</p>
         </div>
 
         <div className="flex shrink-0 flex-wrap items-center gap-2">
@@ -366,10 +361,7 @@ function ReviewCard({
 
 function Stars({ rating }: { rating: number }) {
   return (
-    <span
-      aria-label={`${rating} de 5 estrellas`}
-      className="inline-flex items-center gap-0.5"
-    >
+    <span aria-label={`${rating} de 5 estrellas`} className="inline-flex items-center gap-0.5">
       {[1, 2, 3, 4, 5].map((n) => (
         <Star
           key={n}

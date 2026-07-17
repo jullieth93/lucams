@@ -65,7 +65,9 @@ export async function sendCartRecoveryReminders(
       cart: {
         select: {
           deletedAt: true,
-          items: { select: { qty: true, variant: { select: { product: { select: { name: true } } } } } },
+          items: {
+            select: { qty: true, variant: { select: { product: { select: { name: true } } } } },
+          },
         },
       },
     },
@@ -84,7 +86,10 @@ export async function sendCartRecoveryReminders(
       const items = row.cart.items.map((i) => ({ name: i.variant.product.name, qty: i.qty }));
       // Carrito vaciado o sin token → marcar reminder para no reconsiderarlo cada corrida.
       if (items.length === 0 || !row.recoverToken) {
-        await prisma.abandonedCart.update({ where: { id: row.id }, data: { lastReminderSentAt: now } });
+        await prisma.abandonedCart.update({
+          where: { id: row.id },
+          data: { lastReminderSentAt: now },
+        });
         continue;
       }
       const tpl = await cartRecoveryEmail({ recoverToken: row.recoverToken, items });
@@ -97,7 +102,10 @@ export async function sendCartRecoveryReminders(
         tags: [{ name: "type", value: "cart_recovery" }],
       });
       if (result.sent || result.skipped) {
-        await prisma.abandonedCart.update({ where: { id: row.id }, data: { lastReminderSentAt: now } });
+        await prisma.abandonedCart.update({
+          where: { id: row.id },
+          data: { lastReminderSentAt: now },
+        });
         if (result.sent) sent++;
       }
       // Fallo REAL (no skipped) → dejar lastReminderSentAt=null → reintenta el próximo ciclo.

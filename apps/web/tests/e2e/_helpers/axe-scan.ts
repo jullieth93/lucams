@@ -38,7 +38,12 @@ export function formatViolations(label: string, violations: Result[]): string {
       lines.push(`      TARGET ${n.target.join(" ")}`);
       // Datos del check (color-contrast trae fg/bg/ratio; otros, contexto).
       const data = n.any?.[0]?.data as
-        | { fgColor?: string; bgColor?: string; contrastRatio?: number; expectedContrastRatio?: string }
+        | {
+            fgColor?: string;
+            bgColor?: string;
+            contrastRatio?: number;
+            expectedContrastRatio?: string;
+          }
         | undefined;
       if (data?.contrastRatio != null) {
         lines.push(

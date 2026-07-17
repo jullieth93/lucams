@@ -107,9 +107,7 @@ export default async function CustomerPedidoDetallePage({
 
   // Garantía (Ley 1480) — elegibilidad por item (solo si el pedido fue entregado).
   const warrantyItems =
-    order.status === "DELIVERED"
-      ? await getWarrantyItems(order.id, session.customer.id)
-      : [];
+    order.status === "DELIVERED" ? await getWarrantyItems(order.id, session.customer.id) : [];
   const warrantyByItem = new Map(warrantyItems.map((w) => [w.orderItemId, w]));
 
   return (

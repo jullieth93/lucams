@@ -24,7 +24,10 @@
 import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Upload, X, Image as ImageIcon, Loader2, Sparkles } from "lucide-react";
-import { uploadDesignAssetAction, assignPredesignedToDesignAction } from "@/features/personalization/actions";
+import {
+  uploadDesignAssetAction,
+  assignPredesignedToDesignAction,
+} from "@/features/personalization/actions";
 import type { StudioAsset } from "./types";
 
 /** Diseño prediseñado de la galería (ADR-057 B2). */
@@ -73,7 +76,12 @@ export function StudioAssetPickerModal({
         setError(res.message);
         return;
       }
-      const asset: StudioAsset = { id: res.assetId, signedUrl: res.signedUrl, width: res.width, height: res.height };
+      const asset: StudioAsset = {
+        id: res.assetId,
+        signedUrl: res.signedUrl,
+        width: res.width,
+        height: res.height,
+      };
       onAssetUploaded(asset);
       onSelectAsset(asset);
       onClose();
@@ -264,7 +272,12 @@ export function StudioAssetPickerModal({
                             className="border-brand-purple/20 hover:border-brand-purple focus:border-brand-turquoise focus:ring-brand-turquoise relative aspect-square overflow-hidden rounded-md border-2 transition-all hover:scale-105 focus:ring-2 focus:outline-none disabled:opacity-50"
                           >
                             {/* eslint-disable-next-line @next/next/no-img-element */}
-                            <img src={item.imageUrl} alt={item.name} className="h-full w-full object-cover" loading="lazy" />
+                            <img
+                              src={item.imageUrl}
+                              alt={item.name}
+                              className="h-full w-full object-cover"
+                              loading="lazy"
+                            />
                             {applyingId === item.id && (
                               <div className="bg-brand-purple-dark/40 absolute inset-0 flex items-center justify-center">
                                 <Loader2 className="h-5 w-5 animate-spin text-white" />

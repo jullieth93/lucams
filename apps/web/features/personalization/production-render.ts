@@ -84,7 +84,9 @@ function parseColor(color: string | undefined): { r: number; g: number; b: numbe
  */
 function assertServerRenderable(unit: UnitTemplate, slots: Slot[]): void {
   if (unit.stage.width > MAX_STAGE_DIM || unit.stage.height > MAX_STAGE_DIM) {
-    throw new RenderNeedsKonvaError(`stage ${unit.stage.width}×${unit.stage.height} > ${MAX_STAGE_DIM}`);
+    throw new RenderNeedsKonvaError(
+      `stage ${unit.stage.width}×${unit.stage.height} > ${MAX_STAGE_DIM}`,
+    );
   }
   let placeholders = 0;
   for (const l of unit.layers) {
@@ -92,8 +94,10 @@ function assertServerRenderable(unit: UnitTemplate, slots: Slot[]): void {
     if (l.type === "image-placeholder") {
       placeholders++;
       const ph = l as unknown as PlaceholderLayer;
-      if (ph.rotation && ph.rotation !== 0) throw new RenderNeedsKonvaError("placeholder con rotación");
-      if (ph.cornerRadius && ph.cornerRadius > 0) throw new RenderNeedsKonvaError("placeholder con cornerRadius");
+      if (ph.rotation && ph.rotation !== 0)
+        throw new RenderNeedsKonvaError("placeholder con rotación");
+      if (ph.cornerRadius && ph.cornerRadius > 0)
+        throw new RenderNeedsKonvaError("placeholder con cornerRadius");
       continue;
     }
     if (l.type === "text") {
@@ -101,14 +105,16 @@ function assertServerRenderable(unit: UnitTemplate, slots: Slot[]): void {
       // Un texto-base vacío PERO con override del cliente (caption editado) SÍ tiene contenido →
       // no es "solo-foto" (evita que sharp lo dibuje sin el caption; hallazgo revisión A1b).
       const overridden = slots.some((s) => (s.textOverrides?.[l.id]?.text ?? "").trim().length > 0);
-      if (base.length > 0 || overridden) throw new RenderNeedsKonvaError("text layer con contenido");
+      if (base.length > 0 || overridden)
+        throw new RenderNeedsKonvaError("text layer con contenido");
       continue; // texto vacío y sin override → ignorable
     }
     throw new RenderNeedsKonvaError(`capa ${l.type} (marco)`);
   }
   if (placeholders > 1) throw new RenderNeedsKonvaError("múltiples image-placeholder");
   // Cualquier slot con FILTRO → el cliente tiene el filtro exacto de Konva (fidelidad) → fallback.
-  if (slots.some((s) => s.filter)) throw new RenderNeedsKonvaError("slot con filtro (fidelidad → cliente)");
+  if (slots.some((s) => s.filter))
+    throw new RenderNeedsKonvaError("slot con filtro (fidelidad → cliente)");
 }
 
 const clampInt = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, Math.round(v)));
@@ -141,18 +147,25 @@ async function renderSlot(
   if (!placeholderRaw) throw new RenderNeedsKonvaError("sin image-placeholder");
   if (!slot.assetId) throw new RenderNeedsKonvaError(`slot ${slot.slotIndex} sin assetId`);
   const assetBytes = await loadAsset(slot.assetId);
-  if (!assetBytes) throw new RenderNeedsKonvaError(`no se pudo cargar la foto del slot ${slot.slotIndex}`);
+  if (!assetBytes)
+    throw new RenderNeedsKonvaError(`no se pudo cargar la foto del slot ${slot.slotIndex}`);
 
   // heart/circle → la foto cubre TODO el stage (igual que el editor, useFullStage).
   const useFullStage = shape === "heart" || shape === "circle";
   const ph = useFullStage
     ? { x: 0, y: 0, width: unit.stage.width, height: unit.stage.height }
-    : { x: placeholderRaw.x, y: placeholderRaw.y, width: placeholderRaw.width, height: placeholderRaw.height };
+    : {
+        x: placeholderRaw.x,
+        y: placeholderRaw.y,
+        width: placeholderRaw.width,
+        height: placeholderRaw.height,
+      };
 
   const meta = await sharp(assetBytes).metadata();
   const imgW = meta.width ?? 0;
   const imgH = meta.height ?? 0;
-  if (imgW <= 0 || imgH <= 0) throw new RenderNeedsKonvaError(`foto inválida en slot ${slot.slotIndex}`);
+  if (imgW <= 0 || imgH <= 0)
+    throw new RenderNeedsKonvaError(`foto inválida en slot ${slot.slotIndex}`);
 
   // Matemática EXACTA del editor (studio-slot.tsx ImagePlaceholder).
   const coverScaleBase = Math.max(ph.width / imgW, ph.height / imgH);
@@ -165,7 +178,9 @@ async function renderSlot(
   const IH = imgH * finalScale * S;
   // Anti-OOM: zoom extremo sobre foto de alta resolución → cae al PNG del cliente.
   if (IW > MAX_RESIZE_DIM || IH > MAX_RESIZE_DIM) {
-    throw new RenderNeedsKonvaError(`resize ${Math.round(IW)}×${Math.round(IH)} > ${MAX_RESIZE_DIM}`);
+    throw new RenderNeedsKonvaError(
+      `resize ${Math.round(IW)}×${Math.round(IH)} > ${MAX_RESIZE_DIM}`,
+    );
   }
   // Centro de la imagen en coords del stage (× S para px de salida).
   const cx = (ph.x + ph.width / 2 + offX) * S;
@@ -197,8 +212,14 @@ async function renderSlot(
     const exTop = clampInt(top - IY, 0, resizedH - 1);
     const exW = clampInt(right - left, 1, resizedW - exLeft);
     const exH = clampInt(bottom - top, 1, resizedH - exTop);
-    const crop = await sharp(resized).extract({ left: exLeft, top: exTop, width: exW, height: exH }).toBuffer();
-    composites.push({ input: crop, left: clampInt(left, 0, outW - 1), top: clampInt(top, 0, outH - 1) });
+    const crop = await sharp(resized)
+      .extract({ left: exLeft, top: exTop, width: exW, height: exH })
+      .toBuffer();
+    composites.push({
+      input: crop,
+      left: clampInt(left, 0, outW - 1),
+      top: clampInt(top, 0, outH - 1),
+    });
   }
 
   return base.composite(composites).png().toBuffer();

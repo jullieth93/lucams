@@ -52,7 +52,9 @@ export default async function SharedDesignPage({ params }: { params: Params }) {
         <div className="mx-auto flex max-w-2xl items-center justify-between px-6 py-3">
           <Link href="/" className="flex items-center gap-2">
             <LucamsLogo variant="full" size={36} />
-            <span className="text-brand-purple-dark font-display text-lg font-bold">Lucams_shop</span>
+            <span className="text-brand-purple-dark font-display text-lg font-bold">
+              Lucams_shop
+            </span>
           </Link>
           <Link
             href="/productos"
@@ -80,8 +82,9 @@ export default async function SharedDesignPage({ params }: { params: Params }) {
           </div>
 
           <p className="text-brand-muted mt-6 text-sm">
-            Hecho en el <strong className="text-brand-purple-dark">Estudio de Personalización</strong>{" "}
-            de Lucams_shop. Sube tus fotos y crea el tuyo en minutos.
+            Hecho en el{" "}
+            <strong className="text-brand-purple-dark">Estudio de Personalización</strong> de
+            Lucams_shop. Sube tus fotos y crea el tuyo en minutos.
           </p>
 
           <Link

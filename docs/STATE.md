@@ -16,6 +16,7 @@
 **🏭 AUDITORÍA DE PRODUCCIÓN 18-DIM + EJECUCIÓN DEL PLAN (2026-07-16, ADR-062).** Lucy pidió subir el nivel: auditoría con lente de producción cuyo entregable es el plan de go-live. Workflow multi-agente **18 dimensiones** (las 13 previas + dinero end-to-end, resiliencia órdenes, emails, ops de lanzamiento, observabilidad, ciclo-de-vida-de-datos, todo-cableado), verificación adversarial + crítico de completitud (**135 agentes, 0 errores, ~7.5M tokens**) → **score 71/100 "no-lanzar"** (baseline 72, plano — el lente más duro relocalizó el riesgo de vago a específico). [Informe (Artifact)](https://claude.ai/code/artifact/00dd8c48-9ca0-4524-b691-7a7b70723956). Núcleo de comercio ~90% listo (Pagos 85, Checkout 82, Compliance 84); el "no-lanzar" lo fijan **4 compuertas**: MFA en Server Actions (código), moderación de contenido print-on-demand (código+proceso), identidad legal + DIAN (carril de Lucy). El crítico destapó 3 gaps nuevos valiosos: moderación de imágenes, cero prueba de carga pre-Instagram, antifraude+conciliación COD.
 
 **⏳ EN CURSO — ejecución del carril autónomo del plan (orden severidad).** Certificados y en `origin/develop`:
+
 - **P0-1 MFA/RBAC en Server Actions** ✅ (`b79e38d`) — guard central `requireAdminAction({roles,aal2})` (`lib/admin-rbac-guard.ts`) aplicado a las **72 Server Actions** de los 19 módulos admin. Cierra el blocker: el MFA solo se validaba en el render del layout, no en las acciones (endpoints POST directos) → contraseña robada bastaba para reembolsar/auto-promoverse a SUPERADMIN. Unifica RBAC: catálogo→MANAGER_UP (antes sin chequeo), finanzas/usuarios→SUPER, pedidos→ALL/refund→SUPER. `ADMIN_ROLE_SETS`. 7 tests.
 - **Lote endurecimiento P1** ✅ (`533bdf4`) — env fail-fast si `WOMPI_DISABLE_TIMESTAMP_CHECK=true` en prod; `getClientIp` anti-spoof en consent/admin-audit/reviews; idle-timeout admin (cookie maxAge 30d >> límite 30min + limpieza en /admin/login, cierra zona muerta); migración 13 DROP 3 policies TO authenticated de `customer-uploads` (INSERT sin scoping = DoS cuota; app usa service_role); webhook Aveonline timing-safe (`lib/timing-safe`) + preferir header. +1 test proxy.
 - **RLS event trigger** ✅ (`63c5803`, migración 14) — cierra el gap de deploy incremental: event trigger `ddl_command_end` auto-habilita RLS en toda tabla nueva de public. Verificado: postgres (no-superuser) puede crearlo en Supabase + tabla de prueba auto-obtiene rowsecurity=t.
@@ -24,7 +25,7 @@
 
 ---
 
-**🚀 RUTA A PRODUCCIÓN — auditoría verificada + P0 launch-readiness (2026-07-13).** Lucy pidió retomar el plan maestro hacia producción con evidencia real de código. Se corrió una **auditoría multi-agente** (8 subagentes en paralelo, 514K tokens, 0 errores) que verificó cada área CONTRA EL CÓDIGO (no contra los docs). Hallazgo central: **6/8 áreas sin bloqueadores de lanzamiento**; lo que bloquea vender el día 1 **casi no es código** sino legal + cuentas de producción. Los 2 diferenciadores estrella (vista 3D en nevera + asistente IA Claude) **NO existen en código** (solo Konva). Ruta priorizada en artifact (dashboard 2 carriles). Se ejecutó **P0 · Launch-readiness (8/8, commit `11a6be0`)**: links legales 404 en registro→/legal/*, Turnstile en checkout (Wompi+COD), consentimiento habeas data persistido (fila Consent scope=HABEAS_DATA), copy FAQ DIAN suavizada (riesgo Ley 1480) + voseo, UI muerta de puntos/referido oculta, validación central de env al arranque (`lib/env.ts`+register), panel /admin/integraciones Venndelo→Aveonline, y security.txt (RFC 9116). tsc+lint+build exit 0.
+**🚀 RUTA A PRODUCCIÓN — auditoría verificada + P0 launch-readiness (2026-07-13).** Lucy pidió retomar el plan maestro hacia producción con evidencia real de código. Se corrió una **auditoría multi-agente** (8 subagentes en paralelo, 514K tokens, 0 errores) que verificó cada área CONTRA EL CÓDIGO (no contra los docs). Hallazgo central: **6/8 áreas sin bloqueadores de lanzamiento**; lo que bloquea vender el día 1 **casi no es código** sino legal + cuentas de producción. Los 2 diferenciadores estrella (vista 3D en nevera + asistente IA Claude) **NO existen en código** (solo Konva). Ruta priorizada en artifact (dashboard 2 carriles). Se ejecutó **P0 · Launch-readiness (8/8, commit `11a6be0`)**: links legales 404 en registro→/legal/\*, Turnstile en checkout (Wompi+COD), consentimiento habeas data persistido (fila Consent scope=HABEAS_DATA), copy FAQ DIAN suavizada (riesgo Ley 1480) + voseo, UI muerta de puntos/referido oculta, validación central de env al arranque (`lib/env.ts`+register), panel /admin/integraciones Venndelo→Aveonline, y security.txt (RFC 9116). tsc+lint+build exit 0.
 
 **Investigación legal colombiana (2026-07-13, fuentes oficiales — orientación, no asesoría):** (1) **NO se requiere S.A.S.** para arrancar — persona natural comerciante + **matrícula mercantil** (Cámara de Comercio, renovar ene–mar) + **RUT** basta; la S.A.S. es opcional (limita responsabilidad patrimonial). (2) **Habeas Data / RNBD:** personas naturales y pymes con activos ≤ **100.000 UVT** (≈$5.000M COP) están **EXENTAS de registrar bases de datos ante la SIC**; igual deben CUMPLIR la Ley 1581 (política, consentimiento, derechos, seguridad — ya en código). (3) **Factura electrónica DIAN sí** aplica a persona natural comerciante obligada a facturar (Res. 000165/2023 mod. 000202/2025) → necesita contador + resolución de numeración. **Implicación de código pendiente:** las páginas legales dicen "S.A.S. · NIT en trámite"; cuando Lucy+abogado definan figura+NIT, actualizar a persona natural. Cuentas prod: Wompi ✅ Aveonline ✅ (según Lucy); Cloudflare + Resend → Claude la guía; dominio lucamsshop.co pendiente.
 
@@ -36,7 +37,7 @@
 
 **P1.2 Gate de cobertura + 60 tests** ✅ (`34523b2`): baseline medido (suite completa, 1830 tests) = lines 79.0% · stmts 77.7% · funcs 78.1% · branches 69.1%. `vitest.config.ts` con **thresholds** (lines 72 / stmts 70 / funcs 70 / branches 62 — margen bajo el baseline porque CI cubre algo menos: rls-matrix real-Supabase se salta; comentado para apretar tras ver el nº real de CI) → gate de regresión. CI corre `test:coverage` → se enforza en cada PR (timeout 12→15). +60 tests: 23 render de plantillas que estaban al 0% (refund-issued, retract-approved, retract-refunded, offline con mock de `@/lib/cms`) + 37 de la máquina de estados de garantía (guards review/approve/resolve/reject + validación createWarrantyClaim + elegibilidad getWarrantyItems, mock de `@/lib/db` con vi.hoisted). Tras los tests: lines 80.9% · stmts 79.6% · funcs 80.2% · branches 70.9% (gate verde verificado). Nota: `pg_dump` local es 13, el server Supabase es **PG17** (relevante abajo).
 
-**P2 Backup off-site DB → R2** ✅ (`c92d99e`, ADR-059): copia independiente del PITR (DR drill #2). `apps/web/scripts/backup-db-to-r2.mjs` (pg_dump plano → gzip → sube a R2 con `@aws-sdk/client-s3` → poda por retención `BACKUP_KEEP=8`) + `backup-lib.mjs` (helpers puros, **9 tests**, salvaguardas anti-vaciado) + workflow `.github/workflows/backup.yml` (cron semanal + instala `postgresql-client-17` porque el server es PG17; job `gate` que **salta limpio si faltan secrets** → sin correos de error). `@aws-sdk/client-s3` como devDep de apps/web (no toca el bundle). **NO verificado en vivo:** las `R2_*` en `.env.local` son aún los **placeholders** de `.env.example` (R2 sin provisionar) → el round-trip real espera la provisión. ACCIÓN HUMANA (carril "Cloudflare"): crear bucket `lucams-backups` + token R2, setear GitHub secrets (`BACKUP_DATABASE_URL` directa + `R2_*`), disparar el workflow una vez.
+**P2 Backup off-site DB → R2** ✅ (`c92d99e`, ADR-059): copia independiente del PITR (DR drill #2). `apps/web/scripts/backup-db-to-r2.mjs` (pg*dump plano → gzip → sube a R2 con `@aws-sdk/client-s3` → poda por retención `BACKUP_KEEP=8`) + `backup-lib.mjs` (helpers puros, **9 tests**, salvaguardas anti-vaciado) + workflow `.github/workflows/backup.yml` (cron semanal + instala `postgresql-client-17` porque el server es PG17; job `gate` que **salta limpio si faltan secrets** → sin correos de error). `@aws-sdk/client-s3` como devDep de apps/web (no toca el bundle). **NO verificado en vivo:** las `R2*_`en`.env.local`son aún los **placeholders** de`.env.example`(R2 sin provisionar) → el round-trip real espera la provisión. ACCIÓN HUMANA (carril "Cloudflare"): crear bucket`lucams-backups` + token R2, setear GitHub secrets (`BACKUP*DATABASE_URL`directa +`R2*_`), disparar el workflow una vez.
 
 **Nevera 3D realista** ✅ (`d4c1873`, ADR-057): rediseño a electrodoméstico convencional (gris satinado, top-freezer, manijas verticales izquierda, patas) — feedback de Lucy con foto de referencia; verificado en navegador (Chromium+WebGL).
 
@@ -46,7 +47,7 @@
 
 **Editar diseño desde el carrito** ✅ (`7238279`): "Editar" un diseño READY del carrito clonaba mal (arrancaba en blanco + duplicaba el item). Solución: `cloneDesignForEdit` clona READY→DRAFT (copia canvas+metadata+assets con ids nuevos, **remapea los assetId** del canvas vía helper puro `canvas-remap.ts`; original INTACTO → sin riesgo de abandono) + `replaceDesignId` en `addPersonalizedToCart` reemplaza el item EN SITIO (no duplica). 5 tests unit (remap) + 4 de integración (clon + reemplazo, cleanup verificado). ACCIÓN HUMANA: prueba GUI del flujo editar-desde-carrito.
 
-**Tercera tanda — cierre del plan (2026-07-14, commits 67e6054→…):** **Infra de tests** (`67e6054`) — workflow nocturno `nightly-full.yml` (scheduled+dispatch) que corre rls-matrix de comportamiento + E2E admin-login/MFA/Estudio contra Supabase real (gate salta si faltan secrets STAGING_*); rls-matrix verificado local 45/45. **Palancas de ingreso (P3) — TODAS hechas:** email de reseña post-entrega (`549ecda`, cron review-request), **recuperación de carrito abandonado** (`4fd7660`, logueados+anónimos: hook en checkout + token de recuperación que restaura la sesión + cron), **wishlist + "avísame cuando vuelva"** (modelos WishlistItem+BackInStockSubscription, corazón en PDP/cards/favoritos, botón avísame en PDP agotado, crons). Cada palanca con tests + migración + doc pg_cron. **ACCIÓN HUMANA:** agendar los nuevos crons (review-request, cart-recovery, back-in-stock) en pg_cron + probar wishlist en navegador (UI nueva).
+**Tercera tanda — cierre del plan (2026-07-14, commits 67e6054→…):** **Infra de tests** (`67e6054`) — workflow nocturno `nightly-full.yml` (scheduled+dispatch) que corre rls-matrix de comportamiento + E2E admin-login/MFA/Estudio contra Supabase real (gate salta si faltan secrets STAGING\_\*); rls-matrix verificado local 45/45. **Palancas de ingreso (P3) — TODAS hechas:** email de reseña post-entrega (`549ecda`, cron review-request), **recuperación de carrito abandonado** (`4fd7660`, logueados+anónimos: hook en checkout + token de recuperación que restaura la sesión + cron), **wishlist + "avísame cuando vuelva"** (modelos WishlistItem+BackInStockSubscription, corazón en PDP/cards/favoritos, botón avísame en PDP agotado, crons). Cada palanca con tests + migración + doc pg_cron. **ACCIÓN HUMANA:** agendar los nuevos crons (review-request, cart-recovery, back-in-stock) en pg_cron + probar wishlist en navegador (UI nueva).
 
 **Diferido con razón (menor):** JSON-LD de categoría enriquecido (BreadcrumbList/Organization) — SEO polish. Anon cart-recovery + wishlist ya cubren lo grande.
 
@@ -59,6 +60,7 @@
 ---
 
 **✅ COMPLETO — Plan de las 3 categorías del Estudio + render server-side (2026-07-13, ADR-057).** Lucy pidió ejecutar TODO el plan ([PLAN_CATEGORIAS_ESTUDIO.md](PLAN_CATEGORIAS_ESTUDIO.md)) y certificar cada fase. Las 4 fases entregadas, verificadas y en `develop`:
+
 - **Fase A (render server-side) — COMPLETA y certificada.** A0 (`bd7aa90`, persistir encuadre), A1a (`edff931`+`768a5bd`, sharp para foto pura), A1b (`01bfc0a`+`c566c9a`, @napi-rs/canvas para texto/marcos). Cada una con revisión adversarial (workflow) y fixes conservadores. Tier en finalizeDesign: sharp→canvas→cliente, con fallback seguro (nunca rompe producción). Filtros siguen en fallback al cliente (filtro exacto de Konva).
 - **Fase B (Separadores) — COMPLETA.** Unificados los 2 productos inactivos en UNO vendible "Separadores para Libros" (`separadores-libros`, `a8c12d9`): PHOTO_PACK, variantes forma (cuadrado 1:1 / rectangular 5:14) × cantidad (1/3/5). Plantillas dedicadas por forma (`2bbfbff`) → el rectangular renderiza tall (WYSIWYG); ruteo por aspecto certificado. **B2** — galería de diseños PREDISEÑADOS: modelo `DesignGalleryImage` + `/admin/disenos` (Lucy sube diseños) + sección "Diseños prediseñados" en el modal del editor con anti-SSRF; `assignPredesignedToDesignAction` reusa el pipeline de subida testeado. La visión de Lucy (prediseñados + subir imagen por cantidad) queda cubierta.
 - **Fase C (Fotoimanes) — COMPLETA.** Ruteo por aspecto arreglado: Polaroid alineado a su plantilla 400×580 (antes el filtro la excluía → "no hay plantillas" = roto), Corazón `aspectRatio "1:1"`, Cuadrado con plantilla dedicada SIN texto, voseo "Escribí"→"Escribe" corregido. `make fix-fotoimanes`.
@@ -115,8 +117,9 @@ resumen diario de operación** (email 8am + panel /admin/observability + tests) 
 saga se testeaban directamente. Se cerró el hueco para AMBOS webhooks: `route.integration.test.ts` de
 Aveonline (path real POST→handleWebhook con guia numérica→transición de orden; probado que ATRAPA la
 regresión: revertir el fix → test falla) y de Wompi (firma HMAC real + anti-replay + validación de monto
-+ idempotencia + ruteo por status, 9 casos, saga mockeado). Gate de regresión: **suite completa 1648/1648
-verde**. (Cleanup de test corregido: dejaba webhookEvents huérfanos en la DB compartida.)
+
+- idempotencia + ruteo por status, 9 casos, saga mockeado). Gate de regresión: **suite completa 1648/1648
+  verde**. (Cleanup de test corregido: dejaba webhookEvents huérfanos en la DB compartida.)
 
 **Integración Aveonline auditada 100% vs doc oficial (2026-07-11, ADR-054).** Auditoría multi-agente de
 las 7 áreas (auth/cotización/guía/agentes/transportadoras/tracking/webhooks) contra la doc oficial +
@@ -156,32 +159,33 @@ multi-agente** que encontró y cerró un P0 bloqueante (índice unique de Invent
 variantId rompía toda orden multi-ítem, reproducido contra DB) + 4 fixes pre-launch + 5
 post-launch + un P1 de doble-guía concurrente hallado en la verificación. Garantías ahora
 en el código: idempotencia física del ledger (índice parcial `(orderId, reason, variantId)`
-+ manejo P2002), claim atómico de guía (`Order.shipmentClaimedAt`), clearCart dentro de la
-tx PAID, email de confirmación idempotente/recuperable (`confirmationSentAt`),
-VOIDED→REFUNDED con revert de stock, retry de colisión de `Order.number`, unique parcial de
-`Order.cartId`, anti-replay + env-match en webhook, reconciliación visible
-(`needsReconciliation` + banner en /admin/pedidos). **48 tests de orders (integración DB
-real) verdes.** **Bloque B compliance:** `/unsubscribe` (Ley 1581), textos legales reales
-(privacidad/términos/devoluciones/subprocesadores Aveonline), retracto verificado contra
-Ley 2439/2024 (reembolso 15 días calendario), voseo→tuteo en emails. **Admin restructurado
-(Opción C):** /admin/inventario, sub-nav del producto (Editar/Versiones/Reseñas), bulk
-actions, sidebar reagrupado. **Pulido UX admin "amigable" (2026-06-27):** auditoría
-multi-agente de ~18 comentarios de Lucy → 3 bugs cerrados (precio opción en pesos, orden
-categorías determinista, sidebar sticky) + sprint "Admin amigable" + sub-categorías +
-flechas reorden + precio base auto-derivado + ordenar por clic en columnas + **fotos por
-opción (D1: migración `ProductVariant.images` + uploader admin + galería reactiva en el
-PDP)**. Los 6 bloques del feedback cerrados (7 commits). **Bloque C Seguridad CERRADO
-(7/7, 2026-06-29):** P0 (rate-limit, RLS 17 tablas, CI) + MFA admin completo (enroll/QR +
-reto + **códigos de respaldo** + cambiar dispositivo) + Reseñas + Turnstile registro/reset +
-RBAC por rol + logout global + idle-timeout 30min + rate-limit checkout/upload + **CSP por
-nonce en prod** (ADR-042/043). **Bloque E Testing a fondo (2026-07-03):** ~1.529 tests vitest
-(servicio/lib + 83 de UI con revisión adversarial) + **CI-DB LISTO** (Postgres real en cada PR)
-+ **E2E Playwright 17/17** — smoke, compra, login admin, **reto MFA (TOTP RFC 6238 propio +
-código de respaldo)** y **Estudio Konva**; runner local serial (next dev + pooler no toleran
-concurrencia). **Próximo: validar C3 (CSP) en deploy preview de Vercel + P0-004 verificar
-dominio Resend (ACCIÓN HUMANA DNS); en Bloque E falta a11y con axe (dep por aprobar), E2E
-envío/pago (deps externas), visual y load; o pasar a Bloque F (Reembolsos+Cupones).** Detalle
-de fases intermedias en el historial git + bitácora abajo.
+
+- manejo P2002), claim atómico de guía (`Order.shipmentClaimedAt`), clearCart dentro de la
+  tx PAID, email de confirmación idempotente/recuperable (`confirmationSentAt`),
+  VOIDED→REFUNDED con revert de stock, retry de colisión de `Order.number`, unique parcial de
+  `Order.cartId`, anti-replay + env-match en webhook, reconciliación visible
+  (`needsReconciliation` + banner en /admin/pedidos). **48 tests de orders (integración DB
+  real) verdes.** **Bloque B compliance:** `/unsubscribe` (Ley 1581), textos legales reales
+  (privacidad/términos/devoluciones/subprocesadores Aveonline), retracto verificado contra
+  Ley 2439/2024 (reembolso 15 días calendario), voseo→tuteo en emails. **Admin restructurado
+  (Opción C):** /admin/inventario, sub-nav del producto (Editar/Versiones/Reseñas), bulk
+  actions, sidebar reagrupado. **Pulido UX admin "amigable" (2026-06-27):** auditoría
+  multi-agente de ~18 comentarios de Lucy → 3 bugs cerrados (precio opción en pesos, orden
+  categorías determinista, sidebar sticky) + sprint "Admin amigable" + sub-categorías +
+  flechas reorden + precio base auto-derivado + ordenar por clic en columnas + **fotos por
+  opción (D1: migración `ProductVariant.images` + uploader admin + galería reactiva en el
+  PDP)**. Los 6 bloques del feedback cerrados (7 commits). **Bloque C Seguridad CERRADO
+  (7/7, 2026-06-29):** P0 (rate-limit, RLS 17 tablas, CI) + MFA admin completo (enroll/QR +
+  reto + **códigos de respaldo** + cambiar dispositivo) + Reseñas + Turnstile registro/reset +
+  RBAC por rol + logout global + idle-timeout 30min + rate-limit checkout/upload + **CSP por
+  nonce en prod** (ADR-042/043). **Bloque E Testing a fondo (2026-07-03):** ~1.529 tests vitest
+  (servicio/lib + 83 de UI con revisión adversarial) + **CI-DB LISTO** (Postgres real en cada PR)
+- **E2E Playwright 17/17** — smoke, compra, login admin, **reto MFA (TOTP RFC 6238 propio +
+  código de respaldo)** y **Estudio Konva**; runner local serial (next dev + pooler no toleran
+  concurrencia). **Próximo: validar C3 (CSP) en deploy preview de Vercel + P0-004 verificar
+  dominio Resend (ACCIÓN HUMANA DNS); en Bloque E falta a11y con axe (dep por aprobar), E2E
+  envío/pago (deps externas), visual y load; o pasar a Bloque F (Reembolsos+Cupones).** Detalle
+  de fases intermedias en el historial git + bitácora abajo.
 
 **Capa de resiliencia CABLEADA (2026-07-09, ADR-045).** Se cerró el hallazgo abierto de la
 auditoría (`fetchWithTimeout`+`withRetry`+`CircuitBreaker`, ROADMAP:195): Aveonline tenía **7/8
@@ -196,13 +200,14 @@ backoff SOLO en llamadas idempotentes (generar-guía NO reintenta: evita guía d
 
 Lucy validó `/admin/plantillas`: las plantillas están presentes pero **NO son realmente
 funcionales todavía**. Pidió, para **más adelante** (NO ahora), un **trabajo investigativo fuerte**:
+
 - ¿La tecnología es la correcta (react-konva) o conviene otro enfoque?
 - Que las plantillas sean **realmente utilizables** (no solo la interacción), bien enfocadas.
 - Filosofía: **menos cantidad, pero correctamente enfocadas y funcionales** (coincide con la
   investigación: calidad > cantidad, ~12-16 por ocasión).
 - Los previews actuales usan relleno gradiente genérico → muestran estructura, no diseño final.
-**Decisión:** diferido; retomar como bloque dedicado (investigación tech + rediseño de plantillas).
-El pipeline de previews + galería admin YA están listos como infraestructura para cuando se retome.
+  **Decisión:** diferido; retomar como bloque dedicado (investigación tech + rediseño de plantillas).
+  El pipeline de previews + galería admin YA están listos como infraestructura para cuando se retome.
 
 ## ⏳ EN CURSO — 2026-07-04 (Fase 3 Estudio: enfoque de plantillas VALIDADO, produciendo)
 
@@ -217,12 +222,14 @@ radical** — la app de Snapfish es SOLO-FOTO (quitaron el editor en móvil); pa
 simple "sube tu foto → listo" convierte (Mixtiles/Snapfish-imanes). (2) **NO apuntar a 30 plantillas**:
 choice-overload es real y condicional — calidad > cantidad; leaders categorizan por OCASIÓN.
 
-**Diagnóstico del código (hecho):** 51 plantillas en DB (8 activas: 7 "libre-*" lienzo blanco por kind
-+ 1 premium; 42 inactivas con canvasData real pero **previews Unsplash placeholder** que Lucy rechazó,
-ADR-037). Cuello de botella = **producción de contenido con la barra de calidad de Lucy, no código**.
-NO hay admin CRUD de plantillas.
+**Diagnóstico del código (hecho):** 51 plantillas en DB (8 activas: 7 "libre-\*" lienzo blanco por kind
+
+- 1 premium; 42 inactivas con canvasData real pero **previews Unsplash placeholder** que Lucy rechazó,
+  ADR-037). Cuello de botella = **producción de contenido con la barra de calidad de Lucy, no código**.
+  NO hay admin CRUD de plantillas.
 
 **PLAN (progreso):**
+
 1. ✅ **Pipeline de previews REALES** (`6bd1a33`) — ruta interna `/internal/plantilla-preview/[slug]`
    renderiza con el `StudioSlot` real (Konva) + foto de muestra (SVG data-URL); generador gateado
    `GEN_PREVIEWS=1` screenshotea el `<canvas>` → Storage `product-images/template-previews/<slug>.png`
@@ -301,6 +308,7 @@ filas "unknown" en el panel real → fix + [[project_integration_tests_share_dev
 
 **Qué se hizo.** Se implementó y **cableó** la capa de resiliencia que quedaba pendiente en la
 auditoría de productive-readiness. Tres helpers nuevos en `apps/web/lib/`:
+
 - `fetch-with-timeout.ts` — `fetchWithTimeout(url, {timeoutMs})` con `AbortController` + `AbortSignal.any`
   (respeta la señal del caller); timeout → `FetchTimeoutError` (name `TimeoutError`).
 - `retry.ts` — `withRetry` (3 intentos, backoff exp + jitter, `sleep` inyectable) sobre `isRetryable`
@@ -308,6 +316,7 @@ auditoría de productive-readiness. Tres helpers nuevos en `apps/web/lib/`:
 - `circuit-breaker.ts` — `CircuitBreaker` per-instancia (`threshold:5/resetMs:30s`), closed/open/half-open.
 
 **Cableado (criterio = idempotencia):**
+
 - **Aveonline** (helper `aveonlineFetch` + `aveonlineCB`): auth/quote/carriers/agents/tracking/list-webhooks
   con `retry:true`; **`createShipment` con timeout(15s)+CB pero SIN retry** (generar guía NO es idempotente
   → un reintento crearía guía duplicada). Antes 7/8 fetch NO tenían timeout — el hueco más grande.
@@ -385,12 +394,13 @@ cambio visual intencional: `playwright test visual --update-snapshots`.
 ## Sesión — 2026-07-03 (Bloque D observabilidad + Bloque F completo + axe WCAG AA)
 
 **Bloque D — observabilidad sin Sentry (`35fe80a`, `118cd78`). Backend listo.**
+
 - **Captura de errores en DB (`ErrorLog`):** `instrumentation.ts` `onRequestError` (hook oficial de
   Next 16, lo que usa Sentry) → `captureServerError` → `ErrorLog`. Best-effort. **Verificado
   end-to-end:** una ruta que lanza 500 aparece en `ErrorLog` con routePath/routeType.
 - **Panel `/admin/observability` (salud técnica, SUPERADMIN):** tiles (rojo si errores/reconciliación
-  >0), top errores 7d, órdenes a reconciliar, reversas de stock, Web Vitals + link a /api/health/all.
-  `getTechHealth` agrega de ErrorLog/WebhookEvent/Order/InventoryLog/WebVital. Nav en Analítica.
+  > 0), top errores 7d, órdenes a reconciliar, reversas de stock, Web Vitals + link a /api/health/all.
+  > `getTechHealth` agrega de ErrorLog/WebhookEvent/Order/InventoryLog/WebVital. Nav en Analítica.
 - **Alertas por email (`/api/cron/alerts`):** `evaluateAlerts` (pico 5xx ≥5/5min, órdenes a
   reconciliar, webhooks atascados >1h — cada una con "qué se rompió + qué hacer") + `dispatchAlerts`
   (dedup 30min vía `AlertState` + Resend a `ALERT_EMAIL`). Endpoint gateado por `CRON_SECRET`
@@ -400,6 +410,7 @@ cambio visual intencional: `playwright test visual --update-snapshots`.
 ## Sesión — 2026-07-03 (Bloque F COMPLETO: cupones + reembolso + retracto + axe WCAG AA)
 
 **Bloque F3 — retracto UI + gestión admin (`567d53d`, parte 2 de 2). Bloque F cerrado.**
+
 - **Cliente:** `RetractControl` por item en `/mi-cuenta/pedidos/[number]` — "Solicitar retracto"
   con motivo si el item es elegible, badge de estado si ya hay solicitud, nota "personalizado →
   sin retracto" si aplica; `requestRetractAction` re-valida.
@@ -415,6 +426,7 @@ cambio visual intencional: `playwright test visual --update-snapshots`.
 **Revisión adversarial de Bloque F (`c8cc069`).** Workflow multi-agente (5 dimensiones: matemática
 cupones · concurrencia · reembolso · elegibilidad legal · seguridad IDOR) con verificación
 adversarial por hallazgo → **8 bugs reales confirmados, 0 falsos positivos.** Arreglados 7:
+
 - **[HIGH legal]** ventana de retracto en UTC del servidor, no COT → recortaba ~5h. Ahora en hora
   Colombia (UTC-5 fijo).
 - **[HIGH seguridad]** `refundOrderAction` + acciones `/admin/retractos` sin gate de rol (un
@@ -428,14 +440,15 @@ adversarial por hallazgo → **8 bugs reales confirmados, 0 falsos positivos.** 
   dueño con `customerId` null (pedidos invitado) → ahora estricto.
 - **[LOW]** TOCTOU retracto → captura P2002. **[LOW aceptado]** oráculo de enumeración de cupones
   (promo no es secreto + rate-limit + UX) — documentado.
-Tests: +COT-aware, +IDOR, +cupón-agotado. Todo verde (retract 19, saga 30). **Lección:** la
-revisión adversarial en un build largo con dinero/legal caza bugs que el typecheck+tests felices
-no ven.
+  Tests: +COT-aware, +IDOR, +cupón-agotado. Todo verde (retract 19, saga 30). **Lección:** la
+  revisión adversarial en un build largo con dinero/legal caza bugs que el typecheck+tests felices
+  no ven.
 
 ## Sesión — 2026-07-03 (Bloque F: cupones + reembolso admin + retracto backend + axe WCAG AA)
 
 **Bloque F3 — retracto backend (`7f9ce0e`, parte 1 de 2).** Fundamento del derecho de retracto
 (Ley 1480 art. 47 + Ley 2439/2024). Falta la UI.
+
 - Schema: enum `RetractStatus` + modelo `RetractRequest` (1:1 por `OrderItem`) + `Order.deliveredAt`
   (ancla la ventana de 5 días hábiles). Dos migraciones vía `migrate deploy` (la shadow DB de
   `migrate dev` no tiene `pg_trgm`); **ojo:** `migrate diff` sugiere DROPs de objetos NO-Prisma
@@ -456,6 +469,7 @@ no ven.
 **Bloque F2 — reembolso desde admin (`191f95f`).** La máquina de estados (PAID/DELIVERED →
 REFUNDED) + revert de stock atómico ya existían; se sumó el flujo admin encima. El dinero en
 Wompi se mueve **MANUAL** (contraentrega + preferencia de operar la pasarela a mano).
+
 - Migración `20260703120000_order_refund_audit_fields`: Order gana `refundedAt`/`refundedBy`/
   `refundReason`/`refundAmount`. (Aplicada con `migrate deploy` — `migrate dev` falla por la
   shadow DB sin `pg_trgm`, mismo issue del CI-DB; se creó el SQL a mano.)
@@ -475,6 +489,7 @@ Wompi se mueve **MANUAL** (contraentrega + preferencia de operar la pasarela a m
 
 **Bloque F1 — cupones en checkout (`1ccc5e4`).** La infra de cupones (modelos, admin CRUD,
 service) ya existía; faltaba APLICARLOS al pagar. Implementado punta a punta:
+
 - `features/coupons/redemption.ts`: `priceCouponPure` (núcleo puro — valida TODAS las reglas del
   modelo: activo, vigencia, usos globales + por-cliente, minOrder, requiresMinQuantity,
   restricción por categoría/producto; calcula descuento PERCENT/FIXED/FREE_SHIPPING sobre el
@@ -497,6 +512,7 @@ service) ya existía; faltaba APLICARLOS al pagar. Implementado punta a punta:
 **axe-core WCAG 2.1 AA + remediación de contraste (`032bf85`, `b8d4d8e`).** Lucy aprobó la dep
 `@axe-core/playwright`. Integrado (`axe.spec.ts` + `_helpers/axe-scan.ts`): auditoría de 9 páginas
 clave con gate ESTRICTA (0 serious/critical). axe halló 3 tipos de violación real:
+
 - **select-name** (crítico): el `<select>` de ordenar del catálogo tenía label visible pero sin
   asociar → `htmlFor`/`id`.
 - **link-in-text-block** (serio): enlaces privacidad/términos en contacto/registro distinguidos
@@ -518,16 +534,15 @@ clave con gate ESTRICTA (0 serious/critical). axe halló 3 tipos de violación r
 (WCAG 2.4.1 Bypass Blocks) en todo el sitio. Agregado en el layout raíz como primer
 elemento enfocable (oculto con `sr-only`, visible con `focus:not-sr-only`, salta a
 `#contenido`), con `id="contenido" tabIndex={-1}` en los **19 `<main>`** del storefront/cuenta
-+ el `<main>` del `AdminShell`. `a11y.spec.ts` (Playwright nativo, sin `@axe-core`) guarda los
-invariantes — `lang="es-CO"`, un solo `main#contenido`, ninguna `<img>` sin `alt`, ≥1 `h1` —
-en 5 páginas públicas + una PDP real, conduce el skip-link de punta a punta (Tab lo enfoca →
-Enter mueve el foco a `main#contenido` + ancla la URL), y verifica que **todos los campos de
-`/login` y `/registro` tienen nombre accesible** (WCAG 4.1.2/3.3.2 — pasan; los forms ya usan
-`<Label htmlFor>` + `<Input id>`). **9/9 a11y verdes. Suite E2E total: 26, 0 flaky (2.9 min).**
-**ACCIÓN HUMANA REQUERIDA (opcional):** para la capa AUTOMATIZADA de reglas WCAG falta aprobar
-la dependencia dev `@axe-core/playwright` (no instalada — mandato de no instalar deps sin OK).
 
-
+- el `<main>` del `AdminShell`. `a11y.spec.ts` (Playwright nativo, sin `@axe-core`) guarda los
+  invariantes — `lang="es-CO"`, un solo `main#contenido`, ninguna `<img>` sin `alt`, ≥1 `h1` —
+  en 5 páginas públicas + una PDP real, conduce el skip-link de punta a punta (Tab lo enfoca →
+  Enter mueve el foco a `main#contenido` + ancla la URL), y verifica que **todos los campos de
+  `/login` y `/registro` tienen nombre accesible** (WCAG 4.1.2/3.3.2 — pasan; los forms ya usan
+  `<Label htmlFor>` + `<Input id>`). **9/9 a11y verdes. Suite E2E total: 26, 0 flaky (2.9 min).**
+  **ACCIÓN HUMANA REQUERIDA (opcional):** para la capa AUTOMATIZADA de reglas WCAG falta aprobar
+  la dependencia dev `@axe-core/playwright` (no instalada — mandato de no instalar deps sin OK).
 
 **Reto MFA E2E (`95967e8`):** el flujo completo de control de acceso admin con MFA.
 `tests/e2e/_helpers/totp.ts` implementa **TOTP RFC 6238 con Node crypto** (no hay lib de TOTP
@@ -548,11 +563,12 @@ contra el build prod de CI). Un slug inexistente → 404 (la ruta no es un aguje
 
 **Runner E2E estabilizado (mismo `95967e8`):** la suite completa flakeaba bajo concurrencia.
 Causa raíz **verificada** (no fue lag transitorio): dos add-to-cart en paralelo contra `next dev`
-+ el pooler hacen que uno **pierda su redirect `?added=1`** (serial pasa 2/2, paralelo flakea).
-Fixes: `compra.spec.ts addToCart` ahora espera el redirect `?added=1` (señal fiable del write)
-en vez del conteo del header (read de una sola vez por el pooler, stale bajo carga sin retry);
-`playwright.config.ts` → **local workers=1** (CI 2 contra build prod), test timeout 60s (headroom
-addToCart + toPass), retries 2. **Suite E2E 17/17, 0 flaky (2.5 min serial).**
+
+- el pooler hacen que uno **pierda su redirect `?added=1`** (serial pasa 2/2, paralelo flakea).
+  Fixes: `compra.spec.ts addToCart` ahora espera el redirect `?added=1` (señal fiable del write)
+  en vez del conteo del header (read de una sola vez por el pooler, stale bajo carga sin retry);
+  `playwright.config.ts` → **local workers=1** (CI 2 contra build prod), test timeout 60s (headroom
+  addToCart + toPass), retries 2. **Suite E2E 17/17, 0 flaky (2.5 min serial).**
 
 **Correr E2E:** `PLAYWRIGHT_BASE_URL=http://localhost:4000 dotenv -e ../../.env.local -- playwright test`
 desde `apps/web` (necesita el dev server en :4000 + DATABASE_URL/llaves Supabase; sin ellas los
@@ -585,13 +601,14 @@ Y authenticated reciben 42501 en TODAS las tablas, PostgREST cerrado). + 368 uni
 8 módulos sin cobertura vía workflow de 8 agentes auto-verificados (`628b9e8`): wompi (firma
 integridad+webhook), admin-rbac, validadores Colombia, DIVIPOLA, password-strength, cupones,
 recovery-codes, wa. **Lote 2 (`7e25f45`, 332 tests)** con pipeline write→revisión adversarial
-+ refuerzo: checkout/service, cart/service, customers/service, rate-limit (incl. concurrencia
-atómica), turnstile + pwned-passwords (fetch mockeado), storage (MIME magic bytes + upload
-happy path), photo-validation, cart-session, checkout-session. La revisión adversarial halló y
-reforzó 1 weak (storage: happy path no se ejercitaba por mock incompleto). **Suite 56 → 805
-tests, todos verdes.** Fixes derivados: filterNavByRole descarta grupos vacíos;
-validatePhone/stripPhone toleran +57 (`4f601fe`); `retry:2` en vitest para el flake del pooler
-de Supabase bajo concurrencia (`714e814`). Caveats benignos documentados.
+
+- refuerzo: checkout/service, cart/service, customers/service, rate-limit (incl. concurrencia
+  atómica), turnstile + pwned-passwords (fetch mockeado), storage (MIME magic bytes + upload
+  happy path), photo-validation, cart-session, checkout-session. La revisión adversarial halló y
+  reforzó 1 weak (storage: happy path no se ejercitaba por mock incompleto). **Suite 56 → 805
+  tests, todos verdes.** Fixes derivados: filterNavByRole descarta grupos vacíos;
+  validatePhone/stripPhone toleran +57 (`4f601fe`); `retry:2` en vitest para el flake del pooler
+  de Supabase bajo concurrencia (`714e814`). Caveats benignos documentados.
 
 **E2E Playwright arrancado (`2a176d2`/`68d984d`):** arreglado el config (default :4000, reusa el
 dev server de make) + 1er flujo de compra (`compra.spec.ts`, 2 tests): como el catálogo real es
@@ -644,17 +661,17 @@ DATABASE_URL placeholder → los ~1.400 de integración NO protegían nada (solo
 job levanta un **service container postgres:15** y arma el schema desde cero: `.github/ci/
 supabase-compat.sql` (stub de lo que Supabase provee y las migraciones necesitan en un PG pelado
 — extensiones pg_trgm/unaccent/pgcrypto/uuid-ossp, roles anon/authenticated/service_role, auth
-+ auth.uid(), stubs storage) → `prisma migrate deploy` → las 7 SQL de supabase/migrations → vitest.
-Conexión DIRECTA (sin pooler) → **rápido y sin flakiness**. NEXT_PUBLIC_SUPABASE_URL vacío → R3
-(rls-matrix, que exige PostgREST/GoTrue real) salta limpio; R3 refactorizado a clientes lazy para
-saltar sin romper la colección. **VALIDADO localmente** montando un Postgres real (mismo flujo +
-env del CI): **1403 pasan, 43 saltan, 0 fallan en ~21s** (vs ~15 min con el pooler). Cada PR ahora
-enforza la suite. (Bonus: el Postgres local en :5433 sirve para correr los tests localmente en
-segundos en vez de minutos.)
+
+- auth.uid(), stubs storage) → `prisma migrate deploy` → las 7 SQL de supabase/migrations → vitest.
+  Conexión DIRECTA (sin pooler) → **rápido y sin flakiness**. NEXT_PUBLIC_SUPABASE_URL vacío → R3
+  (rls-matrix, que exige PostgREST/GoTrue real) salta limpio; R3 refactorizado a clientes lazy para
+  saltar sin romper la colección. **VALIDADO localmente** montando un Postgres real (mismo flujo +
+  env del CI): **1403 pasan, 43 saltan, 0 fallan en ~21s** (vs ~15 min con el pooler). Cada PR ahora
+  enforza la suite. (Bonus: el Postgres local en :5433 sirve para correr los tests localmente en
+  segundos en vez de minutos.)
 
 **Capa de UI cubierta (`bc2a2cf`/`75e9831`) — antes 0%:** 83 tests de componentes con
-@testing-library + jsdom + queries ACCESIBLES (getByRole/getByLabelText). ProductCard (plantilla,
-8) + batch de 6 con pipeline write→revisión adversarial (5 sólidos + global-search): cookies-banner
+@testing-library + jsdom + queries ACCESIBLES (getByRole/getByLabelText). ProductCard (plantilla, 8) + batch de 6 con pipeline write→revisión adversarial (5 sólidos + global-search): cookies-banner
 (consent Ley 1581), products-filters (URL/router, atrapa un bug de closure ya documentado),
 password-input, email-input, ocasion-filter-strip, global-search. Gotchas documentados:
 afterEach(cleanup) manual (globals:false), alt="" decorativo, nbsp de Intl en formatCOP, mocks de
@@ -1429,10 +1446,10 @@ el catálogo del abecedario, todo verificado (tsc/build/tests + pruebas funciona
   rollback → Order atascada PENDING_PAYMENT pese a Wompi APPROVED. Reportes en
   `docs/audits/2026-06-26-certify-bloque-a/`.
 - **Pre-launch (commit 900a0e0):** índice corregido a `(orderId, reason, variantId)`
-  + manejo P2002 (`StockAlreadyAppliedError`); `/gracias` no miente (ramifica por
-  order.status); `Order.needsReconciliation` visible en /admin/pedidos; unique
-  parcial `Order.cartId` + catch P2002; env-match del webhook desde `WOMPI_ENV`.
-  + regression tests (integración DB real).
+  - manejo P2002 (`StockAlreadyAppliedError`); `/gracias` no miente (ramifica por
+    order.status); `Order.needsReconciliation` visible en /admin/pedidos; unique
+    parcial `Order.cartId` + catch P2002; env-match del webhook desde `WOMPI_ENV`.
+  - regression tests (integración DB real).
 - **Post-launch + P1 (commit siguiente):** persistir trackingNumber + **claim
   atómico `Order.shipmentClaimedAt`** (cierra el P1 de doble-guía concurrente que
   la verificación adversarial encontró); clearCart dentro de la tx PAID; email

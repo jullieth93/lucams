@@ -257,9 +257,7 @@ export function StudioSidebar({
         >
           <Sparkles className="text-brand-purple h-4 w-4" />
           Plantillas
-          <span className="text-brand-muted text-xs font-normal">
-            ({templates.length})
-          </span>
+          <span className="text-brand-muted text-xs font-normal">({templates.length})</span>
         </div>
 
         {templates.length === 0 ? (

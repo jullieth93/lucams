@@ -301,9 +301,7 @@ export default async function AdminUsuariosPage({ searchParams }: { searchParams
                   <AdminTableRow key={a.id}>
                     <td className="text-brand-purple-dark px-4 py-3 text-xs font-medium">
                       {a.email}
-                      {isSelf && (
-                        <span className="text-brand-muted ml-2 text-[10px]">(tú)</span>
-                      )}
+                      {isSelf && <span className="text-brand-muted ml-2 text-[10px]">(tú)</span>}
                     </td>
                     <td className="px-4 py-3">
                       <AdminBadge tone={ROLE_TONE[a.role] ?? "slate"}>

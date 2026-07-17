@@ -142,9 +142,7 @@ export default async function BloquesListPage({ searchParams }: { searchParams: 
                             {b.title ?? b.key}
                           </Link>
                           {b.description && (
-                            <p className="text-brand-muted line-clamp-1 text-xs">
-                              {b.description}
-                            </p>
+                            <p className="text-brand-muted line-clamp-1 text-xs">{b.description}</p>
                           )}
                         </td>
                         <td className="text-brand-purple-dark/75 px-4 py-3 font-mono text-xs">

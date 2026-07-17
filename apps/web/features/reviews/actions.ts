@@ -70,7 +70,9 @@ export async function submitReviewAction(
   const turnstile = await verifyTurnstileToken(turnstileToken, ip);
   if (!turnstile.success) {
     logger.warn({ event: "review.turnstile_failed", ip, reason: turnstile.reason });
-    return { error: "No pudimos verificar que no eres un robot. Recarga la página e intenta de nuevo." };
+    return {
+      error: "No pudimos verificar que no eres un robot. Recarga la página e intenta de nuevo.",
+    };
   }
 
   // Anti-abuso.
@@ -106,9 +108,13 @@ export async function submitReviewAction(
     return { error: "Ya dejaste una reseña para este producto. ¡Gracias!" };
   }
 
-  const comment = parsed.data.comment.replace(/\p{Cc}/gu, " ").replace(/\s+/g, " ").trim();
+  const comment = parsed.data.comment
+    .replace(/\p{Cc}/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
   const authorName =
-    [session.customer.firstName, session.customer.lastName].filter(Boolean).join(" ").trim() || null;
+    [session.customer.firstName, session.customer.lastName].filter(Boolean).join(" ").trim() ||
+    null;
 
   await prisma.review.create({
     data: {

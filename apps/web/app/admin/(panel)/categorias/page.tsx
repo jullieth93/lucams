@@ -13,7 +13,15 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { ArrowDown, ArrowUp, CornerDownRight, Edit3, Layers, RotateCcw, Trash2 } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowUp,
+  CornerDownRight,
+  Edit3,
+  Layers,
+  RotateCcw,
+  Trash2,
+} from "lucide-react";
 import {
   AdminPage,
   AdminPageHeader,
@@ -135,7 +143,8 @@ export default async function AdminCategoriasPage({
         {justDeleted && <AdminNotice tone="warning">Categoría archivada.</AdminNotice>}
         {sp.restored === "1" && (
           <AdminNotice tone="success">
-            Categoría restaurada. Queda pausada — clic en el chip de estado para mostrarla en tu tienda.
+            Categoría restaurada. Queda pausada — clic en el chip de estado para mostrarla en tu
+            tienda.
           </AdminNotice>
         )}
         {errorMsg && <AdminNotice tone="error">{errorMsg}</AdminNotice>}

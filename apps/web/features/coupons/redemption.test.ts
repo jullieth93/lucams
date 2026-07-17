@@ -43,7 +43,10 @@ const ctx = (over: Partial<Parameters<typeof priceCouponPure>[1]> = {}) => ({
 
 describe("priceCouponPure — cálculo de descuento", () => {
   it("PERCENT: descuenta el % del subtotal elegible (floor)", () => {
-    const r = priceCouponPure(coupon({ type: "PERCENT", value: 15 }), ctx({ subtotal: 33_333, items: [item({ lineTotal: 33_333 })] }));
+    const r = priceCouponPure(
+      coupon({ type: "PERCENT", value: 15 }),
+      ctx({ subtotal: 33_333, items: [item({ lineTotal: 33_333 })] }),
+    );
     expect(r.ok).toBe(true);
     if (r.ok) expect(r.discount).toBe(Math.floor(33_333 * 0.15)); // 4999
   });
@@ -52,12 +55,18 @@ describe("priceCouponPure — cálculo de descuento", () => {
     const big = priceCouponPure(coupon({ type: "FIXED", value: 5_000 }), ctx());
     expect(big.ok && big.discount).toBe(5_000);
     // valor fijo mayor que el subtotal → capa al subtotal
-    const capped = priceCouponPure(coupon({ type: "FIXED", value: 999_999 }), ctx({ subtotal: 20_000 }));
+    const capped = priceCouponPure(
+      coupon({ type: "FIXED", value: 999_999 }),
+      ctx({ subtotal: 20_000 }),
+    );
     expect(capped.ok && capped.discount).toBe(20_000);
   });
 
   it("FREE_SHIPPING: descuento = costo de envío", () => {
-    const r = priceCouponPure(coupon({ type: "FREE_SHIPPING", value: 0 }), ctx({ shippingCost: 12_000 }));
+    const r = priceCouponPure(
+      coupon({ type: "FREE_SHIPPING", value: 0 }),
+      ctx({ shippingCost: 12_000 }),
+    );
     expect(r.ok && r.discount).toBe(12_000);
   });
 
@@ -108,7 +117,10 @@ describe("priceCouponPure — mínimos", () => {
     expect(!r.ok && r.reason).toBe("MIN_ORDER_NOT_MET");
   });
   it("MIN_QUANTITY_NOT_MET si totalQty < requiresMinQuantity", () => {
-    const r = priceCouponPure(coupon({ requiresMinQuantity: 6 }), ctx({ items: [item({ qty: 3 })] }));
+    const r = priceCouponPure(
+      coupon({ requiresMinQuantity: 6 }),
+      ctx({ items: [item({ qty: 3 })] }),
+    );
     expect(!r.ok && r.reason).toBe("MIN_QUANTITY_NOT_MET");
   });
   it("cumple mínimo justo en el borde", () => {

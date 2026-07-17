@@ -64,9 +64,17 @@ export async function sendRetractApproved(id: string): Promise<void> {
         { name: "order_number", value: d.orderNumber },
       ],
     });
-    logger.info({ event: "retract.email.approved.sent", id, result: result.sent ? "ok" : `skip:${result.reason}` });
+    logger.info({
+      event: "retract.email.approved.sent",
+      id,
+      result: result.sent ? "ok" : `skip:${result.reason}`,
+    });
   } catch (err) {
-    logger.error({ event: "retract.email.approved.fail", id, err: err instanceof Error ? err.message : String(err) });
+    logger.error({
+      event: "retract.email.approved.fail",
+      id,
+      err: err instanceof Error ? err.message : String(err),
+    });
   }
 }
 
@@ -92,8 +100,16 @@ export async function sendRetractRefunded(id: string): Promise<void> {
         { name: "order_number", value: d.orderNumber },
       ],
     });
-    logger.info({ event: "retract.email.refunded.sent", id, result: result.sent ? "ok" : `skip:${result.reason}` });
+    logger.info({
+      event: "retract.email.refunded.sent",
+      id,
+      result: result.sent ? "ok" : `skip:${result.reason}`,
+    });
   } catch (err) {
-    logger.error({ event: "retract.email.refunded.fail", id, err: err instanceof Error ? err.message : String(err) });
+    logger.error({
+      event: "retract.email.refunded.fail",
+      id,
+      err: err instanceof Error ? err.message : String(err),
+    });
   }
 }

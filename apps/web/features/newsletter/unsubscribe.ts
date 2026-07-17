@@ -63,7 +63,10 @@ export async function unsubscribeNewsletter(
 ): Promise<UnsubscribeResult> {
   const normalized = email.trim().toLowerCase();
   if (!verifyUnsubscribeToken(normalized, token)) {
-    logger.warn({ event: "newsletter.unsubscribe.invalid_token", emailHash: hashEmail(normalized) });
+    logger.warn({
+      event: "newsletter.unsubscribe.invalid_token",
+      emailHash: hashEmail(normalized),
+    });
     return { ok: false, reason: "invalid_token" };
   }
 

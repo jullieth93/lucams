@@ -16,10 +16,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { CheckCircle2, Archive, X, Loader2 } from "lucide-react";
-import {
-  bulkApproveReviewsAction,
-  bulkArchiveReviewsAction,
-} from "./actions";
+import { bulkApproveReviewsAction, bulkArchiveReviewsAction } from "./actions";
 
 export function BulkReviewBar() {
   const [count, setCount] = useState(0);
@@ -70,7 +67,7 @@ export function BulkReviewBar() {
     <div
       role="region"
       aria-label="Acciones masivas de reseñas"
-      className="fixed inset-x-0 bottom-0 z-30 px-3 pb-4 pt-2 sm:px-6"
+      className="fixed inset-x-0 bottom-0 z-30 px-3 pt-2 pb-4 sm:px-6"
     >
       <div className="border-brand-purple/20 bg-brand-purple-dark/95 mx-auto flex max-w-5xl flex-wrap items-center gap-3 rounded-xl border px-4 py-3 text-white shadow-xl backdrop-blur">
         <div className="flex flex-1 items-center gap-2">
@@ -145,9 +142,7 @@ function BulkSubmit({
     <form
       action={(fd: FormData) => {
         document
-          .querySelectorAll<HTMLInputElement>(
-            'input[type="checkbox"][name="reviewIds"]:checked',
-          )
+          .querySelectorAll<HTMLInputElement>('input[type="checkbox"][name="reviewIds"]:checked')
           .forEach((c) => fd.append("reviewIds", c.value));
         if (onSubmit) onSubmit();
         return action(fd);
@@ -183,7 +178,7 @@ export function BulkSelectAllReviewsCheckbox() {
       data-bulk-select-all-reviews
       onChange={onChange}
       aria-label="Seleccionar todas las reseñas visibles"
-      className="text-brand-purple focus:ring-brand-purple/40 h-4 w-4 cursor-pointer rounded border-brand-purple/30"
+      className="text-brand-purple focus:ring-brand-purple/40 border-brand-purple/30 h-4 w-4 cursor-pointer rounded"
     />
   );
 }

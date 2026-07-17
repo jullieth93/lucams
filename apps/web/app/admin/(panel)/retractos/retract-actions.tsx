@@ -17,9 +17,15 @@ import {
 type St = { error?: string; success?: string } | null;
 
 export function RetractActions({ id, status }: { id: string; status: string }) {
-  const [approveSt, approve, approvePending] = useActionState<St, FormData>(approveRetractAction, null);
+  const [approveSt, approve, approvePending] = useActionState<St, FormData>(
+    approveRetractAction,
+    null,
+  );
   const [rejectSt, reject, rejectPending] = useActionState<St, FormData>(rejectRetractAction, null);
-  const [receiveSt, receive, receivePending] = useActionState<St, FormData>(receiveRetractAction, null);
+  const [receiveSt, receive, receivePending] = useActionState<St, FormData>(
+    receiveRetractAction,
+    null,
+  );
   const [refundSt, refund, refundPending] = useActionState<St, FormData>(refundRetractAction, null);
 
   const msg = approveSt ?? rejectSt ?? receiveSt ?? refundSt;

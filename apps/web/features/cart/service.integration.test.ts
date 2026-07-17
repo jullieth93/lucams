@@ -217,7 +217,13 @@ describe.skipIf(!hasDb)("cart/service — integración DB", { timeout: T }, () =
         categoryId,
         variants: {
           create: [
-            { name: "Solo", sku: `${RUN}-NODEFAULT-SOLO`.toUpperCase(), price: 7_000, stock: 5, attributes: {} },
+            {
+              name: "Solo",
+              sku: `${RUN}-NODEFAULT-SOLO`.toUpperCase(),
+              price: 7_000,
+              stock: 5,
+              attributes: {},
+            },
           ],
         },
       },
@@ -237,7 +243,13 @@ describe.skipIf(!hasDb)("cart/service — integración DB", { timeout: T }, () =
         isActive: false,
         variants: {
           create: [
-            { name: "Default", sku: `${RUN}-INACTIVE-DEFAULT`.toUpperCase(), price: 3_000, stock: 10, attributes: {} },
+            {
+              name: "Default",
+              sku: `${RUN}-INACTIVE-DEFAULT`.toUpperCase(),
+              price: 3_000,
+              stock: 10,
+              attributes: {},
+            },
           ],
         },
       },
@@ -259,12 +271,27 @@ describe.skipIf(!hasDb)("cart/service — integración DB", { timeout: T }, () =
         images: ["https://cdn.lucams.test/perso-generic.png"],
         variants: {
           create: [
-            { name: "Set 6", sku: `${RUN}-PERSO-A`.toUpperCase(), price: PERSO_VAR_A_PRICE, stock: 50, attributes: {} },
-            { name: "Set 12", sku: `${RUN}-PERSO-B`.toUpperCase(), price: PERSO_VAR_B_PRICE, stock: 50, attributes: {} },
+            {
+              name: "Set 6",
+              sku: `${RUN}-PERSO-A`.toUpperCase(),
+              price: PERSO_VAR_A_PRICE,
+              stock: 50,
+              attributes: {},
+            },
+            {
+              name: "Set 12",
+              sku: `${RUN}-PERSO-B`.toUpperCase(),
+              price: PERSO_VAR_B_PRICE,
+              stock: 50,
+              attributes: {},
+            },
           ],
         },
       },
-      select: { id: true, variants: { select: { id: true, sku: true }, orderBy: { createdAt: "asc" } } },
+      select: {
+        id: true,
+        variants: { select: { id: true, sku: true }, orderBy: { createdAt: "asc" } },
+      },
     });
     persoProductId = perso.id;
     persoVariantAId = perso.variants.find((v) => v.sku.endsWith("-PERSO-A"))!.id;
@@ -326,7 +353,12 @@ describe.skipIf(!hasDb)("cart/service — integración DB", { timeout: T }, () =
               sku: `${RUN}-NAME-CLAS`.toUpperCase(),
               price: NAME_PER_TILE, // precio POR FICHA
               stock: 50,
-              attributes: { variant: "name", pricePerTile: true, letterCountMin: 3, letterCountMax: 10 },
+              attributes: {
+                variant: "name",
+                pricePerTile: true,
+                letterCountMin: 3,
+                letterCountMax: 10,
+              },
             },
           ],
         },
@@ -404,7 +436,9 @@ describe.skipIf(!hasDb)("cart/service — integración DB", { timeout: T }, () =
   afterAll(async () => {
     await cleanupCarts();
     // Designs antes que variantes/productos (Design.product es Restrict).
-    await prisma.design.deleteMany({ where: { productId: { in: [persoProductId, simpleProductId].filter(Boolean) } } });
+    await prisma.design.deleteMany({
+      where: { productId: { in: [persoProductId, simpleProductId].filter(Boolean) } },
+    });
     await prisma.design.deleteMany({ where: { sessionId: { startsWith: RUN } } });
     // Robustez: cualquier design que aún referencie un producto de esta categoría
     // (ej. designs de Nombre por ficha) — evita FK violation en el delete de productos.
@@ -457,7 +491,12 @@ describe.skipIf(!hasDb)("cart/service — integración DB", { timeout: T }, () =
     it("agregar la misma variante 2 veces SUMA qty en el item existente (no duplica)", async () => {
       const sessionId = sid("add");
       await addProductToCart({ sessionId, customerId: null, productSlug: simpleSlug, qty: 2 });
-      const detail = await addProductToCart({ sessionId, customerId: null, productSlug: simpleSlug, qty: 3 });
+      const detail = await addProductToCart({
+        sessionId,
+        customerId: null,
+        productSlug: simpleSlug,
+        qty: 3,
+      });
       expect(detail.items).toHaveLength(1);
       expect(detail.items[0].qty).toBe(5);
       expect(detail.itemCount).toBe(5);
@@ -466,7 +505,12 @@ describe.skipIf(!hasDb)("cart/service — integración DB", { timeout: T }, () =
     it("clamp: sumar qty que excede MAX_QTY_PER_ITEM (99) se topa en 99", async () => {
       const sessionId = sid("add");
       await addProductToCart({ sessionId, customerId: null, productSlug: simpleSlug, qty: 90 });
-      const detail = await addProductToCart({ sessionId, customerId: null, productSlug: simpleSlug, qty: 50 });
+      const detail = await addProductToCart({
+        sessionId,
+        customerId: null,
+        productSlug: simpleSlug,
+        qty: 50,
+      });
       // 90 + 50 = 140 → clamp a 99.
       expect(detail.items[0].qty).toBe(99);
     });
@@ -540,19 +584,34 @@ describe.skipIf(!hasDb)("cart/service — integración DB", { timeout: T }, () =
 
     it("slug inexistente lanza PRODUCT_NOT_FOUND", async () => {
       await expect(
-        addProductToCart({ sessionId: sid("add"), customerId: null, productSlug: `${RUN}-ghost`, qty: 1 }),
+        addProductToCart({
+          sessionId: sid("add"),
+          customerId: null,
+          productSlug: `${RUN}-ghost`,
+          qty: 1,
+        }),
       ).rejects.toMatchObject({ code: "PRODUCT_NOT_FOUND" });
     });
 
     it("producto inactivo lanza PRODUCT_NOT_FOUND (isActive=false no es comprable)", async () => {
       await expect(
-        addProductToCart({ sessionId: sid("add"), customerId: null, productSlug: inactiveSlug, qty: 1 }),
+        addProductToCart({
+          sessionId: sid("add"),
+          customerId: null,
+          productSlug: inactiveSlug,
+          qty: 1,
+        }),
       ).rejects.toMatchObject({ code: "PRODUCT_NOT_FOUND" });
     });
 
     it("producto sin variante -DEFAULT lanza NO_DEFAULT_VARIANT", async () => {
       await expect(
-        addProductToCart({ sessionId: sid("add"), customerId: null, productSlug: noDefaultSlug, qty: 1 }),
+        addProductToCart({
+          sessionId: sid("add"),
+          customerId: null,
+          productSlug: noDefaultSlug,
+          qty: 1,
+        }),
       ).rejects.toMatchObject({ code: "NO_DEFAULT_VARIANT" });
     });
   });
@@ -597,15 +656,32 @@ describe.skipIf(!hasDb)("cart/service — integración DB", { timeout: T }, () =
     it("re-agregar el MISMO designId suma qty al item existente (no duplica el diseño)", async () => {
       const sessionId = sid("perso");
       await addPersonalizedToCart({ sessionId, customerId: null, designId: readyDesignId, qty: 1 });
-      const detail = await addPersonalizedToCart({ sessionId, customerId: null, designId: readyDesignId, qty: 2 });
+      const detail = await addPersonalizedToCart({
+        sessionId,
+        customerId: null,
+        designId: readyDesignId,
+        qty: 2,
+      });
       expect(detail.items).toHaveLength(1);
       expect(detail.items[0].qty).toBe(3);
     });
 
     it("dos designIds DISTINTOS son dos items separados (aunque compartan variant)", async () => {
       const sessionId = sid("perso");
-      await addPersonalizedToCart({ sessionId, customerId: null, designId: readyDesignId, variantId: persoVariantAId, qty: 1 });
-      const detail = await addPersonalizedToCart({ sessionId, customerId: null, designId: readyDesign2Id, variantId: persoVariantAId, qty: 1 });
+      await addPersonalizedToCart({
+        sessionId,
+        customerId: null,
+        designId: readyDesignId,
+        variantId: persoVariantAId,
+        qty: 1,
+      });
+      const detail = await addPersonalizedToCart({
+        sessionId,
+        customerId: null,
+        designId: readyDesign2Id,
+        variantId: persoVariantAId,
+        qty: 1,
+      });
       expect(detail.items).toHaveLength(2);
       const designIds = detail.items.map((i) => i.designId).sort();
       expect(designIds).toEqual([readyDesignId, readyDesign2Id].sort());
@@ -613,13 +689,23 @@ describe.skipIf(!hasDb)("cart/service — integración DB", { timeout: T }, () =
 
     it("design en DRAFT lanza PRODUCT_NOT_FOUND (no surface de detalles internos)", async () => {
       await expect(
-        addPersonalizedToCart({ sessionId: sid("perso"), customerId: null, designId: draftDesignId, qty: 1 }),
+        addPersonalizedToCart({
+          sessionId: sid("perso"),
+          customerId: null,
+          designId: draftDesignId,
+          qty: 1,
+        }),
       ).rejects.toMatchObject({ code: "PRODUCT_NOT_FOUND" });
     });
 
     it("designId inexistente lanza PRODUCT_NOT_FOUND", async () => {
       await expect(
-        addPersonalizedToCart({ sessionId: sid("perso"), customerId: null, designId: `${RUN}-no-design`, qty: 1 }),
+        addPersonalizedToCart({
+          sessionId: sid("perso"),
+          customerId: null,
+          designId: `${RUN}-no-design`,
+          qty: 1,
+        }),
       ).rejects.toMatchObject({ code: "PRODUCT_NOT_FOUND" });
     });
 
@@ -638,7 +724,12 @@ describe.skipIf(!hasDb)("cart/service — integración DB", { timeout: T }, () =
 
     it("qty inválida (0) lanza QTY_INVALID", async () => {
       await expect(
-        addPersonalizedToCart({ sessionId: sid("perso"), customerId: null, designId: readyDesignId, qty: 0 }),
+        addPersonalizedToCart({
+          sessionId: sid("perso"),
+          customerId: null,
+          designId: readyDesignId,
+          qty: 0,
+        }),
       ).rejects.toMatchObject({ code: "QTY_INVALID" });
     });
   });
@@ -718,7 +809,12 @@ describe.skipIf(!hasDb)("cart/service — integración DB", { timeout: T }, () =
   describe("updateCartItemQty / removeCartItem", () => {
     async function seedOneItemCart() {
       const sessionId = sid("upd");
-      const detail = await addProductToCart({ sessionId, customerId: null, productSlug: simpleSlug, qty: 4 });
+      const detail = await addProductToCart({
+        sessionId,
+        customerId: null,
+        productSlug: simpleSlug,
+        qty: 4,
+      });
       // CartLineItem expone el id del CartItem como `itemId` (no `.id`).
       return { sessionId, itemId: detail.items[0].itemId };
     }
@@ -748,14 +844,21 @@ describe.skipIf(!hasDb)("cart/service — integración DB", { timeout: T }, () =
 
     it("qty negativa lanza QTY_INVALID y NO modifica el item", async () => {
       const { sessionId, itemId } = await seedOneItemCart();
-      await expect(updateCartItemQty(sessionId, itemId, -1)).rejects.toMatchObject({ code: "QTY_INVALID" });
-      const item = await prisma.cartItem.findUnique({ where: { id: itemId }, select: { qty: true } });
+      await expect(updateCartItemQty(sessionId, itemId, -1)).rejects.toMatchObject({
+        code: "QTY_INVALID",
+      });
+      const item = await prisma.cartItem.findUnique({
+        where: { id: itemId },
+        select: { qty: true },
+      });
       expect(item!.qty).toBe(4);
     });
 
     it("qty > MAX (100) lanza QTY_INVALID", async () => {
       const { sessionId, itemId } = await seedOneItemCart();
-      await expect(updateCartItemQty(sessionId, itemId, 100)).rejects.toMatchObject({ code: "QTY_INVALID" });
+      await expect(updateCartItemQty(sessionId, itemId, 100)).rejects.toMatchObject({
+        code: "QTY_INVALID",
+      });
     });
 
     it("qty exactamente MAX (99) es válido", async () => {
@@ -782,12 +885,20 @@ describe.skipIf(!hasDb)("cart/service — integración DB", { timeout: T }, () =
       // usando el sessionId de B debe fallar (el item no está en el cart de B).
       const a = await seedOneItemCart();
       const bSession = sid("upd-b");
-      await addProductToCart({ sessionId: bSession, customerId: null, productSlug: simpleSlug, qty: 1 });
+      await addProductToCart({
+        sessionId: bSession,
+        customerId: null,
+        productSlug: simpleSlug,
+        qty: 1,
+      });
       await expect(updateCartItemQty(bSession, a.itemId, 9)).rejects.toMatchObject({
         code: "ITEM_NOT_FOUND",
       });
       // El item de A no cambió.
-      const item = await prisma.cartItem.findUnique({ where: { id: a.itemId }, select: { qty: true } });
+      const item = await prisma.cartItem.findUnique({
+        where: { id: a.itemId },
+        select: { qty: true },
+      });
       expect(item!.qty).toBe(4);
     });
   });
@@ -808,7 +919,13 @@ describe.skipIf(!hasDb)("cart/service — integración DB", { timeout: T }, () =
     it("subtotal e itemCount agregan TODAS las líneas", async () => {
       const sessionId = sid("detail");
       await addProductToCart({ sessionId, customerId: null, productSlug: simpleSlug, qty: 2 }); // 2 * 12000
-      await addPersonalizedToCart({ sessionId, customerId: null, designId: readyDesignId, variantId: persoVariantAId, qty: 3 }); // 3 * 20000
+      await addPersonalizedToCart({
+        sessionId,
+        customerId: null,
+        designId: readyDesignId,
+        variantId: persoVariantAId,
+        qty: 3,
+      }); // 3 * 20000
 
       const detail = await getCartDetail(sessionId);
       expect(detail!.items).toHaveLength(2);
@@ -831,7 +948,13 @@ describe.skipIf(!hasDb)("cart/service — integración DB", { timeout: T }, () =
           categoryId,
           variants: {
             create: [
-              { name: "Default", sku: `${RUN}-ARCHIVABLE-DEFAULT`.toUpperCase(), price: 4_000, stock: 9, attributes: {} },
+              {
+                name: "Default",
+                sku: `${RUN}-ARCHIVABLE-DEFAULT`.toUpperCase(),
+                price: 4_000,
+                stock: 9,
+                attributes: {},
+              },
             ],
           },
         },
@@ -880,7 +1003,13 @@ describe.skipIf(!hasDb)("cart/service — integración DB", { timeout: T }, () =
           categoryId,
           variants: {
             create: [
-              { name: "Default", sku: `${RUN}-DEACTIVABLE-DEFAULT`.toUpperCase(), price: 6_000, stock: 9, attributes: {} },
+              {
+                name: "Default",
+                sku: `${RUN}-DEACTIVABLE-DEFAULT`.toUpperCase(),
+                price: 6_000,
+                stock: 9,
+                attributes: {},
+              },
             ],
           },
         },
@@ -936,7 +1065,13 @@ describe.skipIf(!hasDb)("cart/service — integración DB", { timeout: T }, () =
           categoryId,
           variants: {
             create: [
-              { name: "Default", sku: `${RUN}-SNAP-DEFAULT`.toUpperCase(), price: ORIGINAL_PRICE, stock: 30, attributes: {} },
+              {
+                name: "Default",
+                sku: `${RUN}-SNAP-DEFAULT`.toUpperCase(),
+                price: ORIGINAL_PRICE,
+                stock: 30,
+                attributes: {},
+              },
             ],
           },
         },
@@ -945,7 +1080,12 @@ describe.skipIf(!hasDb)("cart/service — integración DB", { timeout: T }, () =
       const variantId = tmp.variants[0].id;
 
       const sessionId = sid("detail");
-      const added = await addProductToCart({ sessionId, customerId: null, productSlug: tmpSlug, qty: 2 });
+      const added = await addProductToCart({
+        sessionId,
+        customerId: null,
+        productSlug: tmpSlug,
+        qty: 2,
+      });
       // Snapshot tomado de variant.price al momento del add.
       expect(added.items[0].unitPrice).toBe(ORIGINAL_PRICE);
       const itemId = added.items[0].itemId;
@@ -1000,14 +1140,22 @@ describe.skipIf(!hasDb)("cart/service — integración DB", { timeout: T }, () =
       const empty = await makeEmptyCart();
       const result = await mergeAnonCartIntoCustomer(empty.sessionId, customer.id);
       expect(result).toBe(empty.sessionId);
-      const cart = await prisma.cart.findUnique({ where: { id: empty.id }, select: { customerId: true } });
+      const cart = await prisma.cart.findUnique({
+        where: { id: empty.id },
+        select: { customerId: true },
+      });
       expect(cart!.customerId).toBe(customer.id);
     });
 
     it("rama: customer SIN cart previo → el anon pasa a ser suyo (mismo sessionId, ahora con customerId)", async () => {
       const customer = await makeCustomer();
       const anonSession = sid("m3-anon");
-      await addProductToCart({ sessionId: anonSession, customerId: null, productSlug: simpleSlug, qty: 2 });
+      await addProductToCart({
+        sessionId: anonSession,
+        customerId: null,
+        productSlug: simpleSlug,
+        qty: 2,
+      });
 
       const result = await mergeAnonCartIntoCustomer(anonSession, customer.id);
       expect(result).toBe(anonSession);
@@ -1025,14 +1173,27 @@ describe.skipIf(!hasDb)("cart/service — integración DB", { timeout: T }, () =
 
       // Cart del customer (previo) con 1 unidad de la variante default del simple.
       const custSession = sid("m4-cust");
-      await addProductToCart({ sessionId: custSession, customerId: customer.id, productSlug: simpleSlug, qty: 1 });
+      await addProductToCart({
+        sessionId: custSession,
+        customerId: customer.id,
+        productSlug: simpleSlug,
+        qty: 1,
+      });
 
       // Cart anon con 3 unidades de la MISMA variante (default) + 2 de la variante extra
       // (que el anon obtiene vía addPersonalizedToCart? no — simple solo agrega default).
       // Para tener 2 variantes en el anon, sembramos manualmente el item extra.
       const anonSession = sid("m4-anon");
-      await addProductToCart({ sessionId: anonSession, customerId: null, productSlug: simpleSlug, qty: 3 });
-      const anonCart = await prisma.cart.findFirst({ where: { sessionId: anonSession }, select: { id: true } });
+      await addProductToCart({
+        sessionId: anonSession,
+        customerId: null,
+        productSlug: simpleSlug,
+        qty: 3,
+      });
+      const anonCart = await prisma.cart.findFirst({
+        where: { sessionId: anonSession },
+        select: { id: true },
+      });
       await prisma.cartItem.create({
         data: { cartId: anonCart!.id, variantId: extraVariantId, qty: 2, unitPrice: 5_000 },
       });
@@ -1055,9 +1216,19 @@ describe.skipIf(!hasDb)("cart/service — integración DB", { timeout: T }, () =
     it("merge clampa la suma de qty a MAX_QTY_PER_ITEM (99)", async () => {
       const customer = await makeCustomer();
       const custSession = sid("m5-cust");
-      await addProductToCart({ sessionId: custSession, customerId: customer.id, productSlug: simpleSlug, qty: 60 });
+      await addProductToCart({
+        sessionId: custSession,
+        customerId: customer.id,
+        productSlug: simpleSlug,
+        qty: 60,
+      });
       const anonSession = sid("m5-anon");
-      await addProductToCart({ sessionId: anonSession, customerId: null, productSlug: simpleSlug, qty: 60 });
+      await addProductToCart({
+        sessionId: anonSession,
+        customerId: null,
+        productSlug: simpleSlug,
+        qty: 60,
+      });
 
       await mergeAnonCartIntoCustomer(anonSession, customer.id);
       const merged = await getCartDetail(custSession);
@@ -1100,7 +1271,12 @@ describe.skipIf(!hasDb)("cart/service — integración DB", { timeout: T }, () =
       // Un cart que ya pertenece al customer Y cuyo sessionId pasamos como 'anon'.
       const customer = await makeCustomer();
       const session = sid("m7");
-      await addProductToCart({ sessionId: session, customerId: customer.id, productSlug: simpleSlug, qty: 2 });
+      await addProductToCart({
+        sessionId: session,
+        customerId: customer.id,
+        productSlug: simpleSlug,
+        qty: 2,
+      });
 
       const result = await mergeAnonCartIntoCustomer(session, customer.id);
       expect(result).toBe(session);

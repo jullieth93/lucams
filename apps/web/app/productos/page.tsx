@@ -296,11 +296,7 @@ function Pagination({
         <div className="hidden items-center gap-1 sm:flex">
           {window.map((p, idx) =>
             p === "..." ? (
-              <span
-                key={`gap-${idx}`}
-                className="text-brand-muted px-2 text-xs"
-                aria-hidden
-              >
+              <span key={`gap-${idx}`} className="text-brand-muted px-2 text-xs" aria-hidden>
                 …
               </span>
             ) : p === currentPage ? (

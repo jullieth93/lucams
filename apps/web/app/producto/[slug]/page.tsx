@@ -188,9 +188,7 @@ export default async function ProductoDetallePage({
       price: (product.basePrice / 100).toFixed(0),
       priceValidUntil,
       availability:
-        product.inStock === false
-          ? "https://schema.org/OutOfStock"
-          : "https://schema.org/InStock",
+        product.inStock === false ? "https://schema.org/OutOfStock" : "https://schema.org/InStock",
       itemCondition: "https://schema.org/NewCondition",
       seller: { "@type": "Organization", name: "Lucams_shop" },
     },

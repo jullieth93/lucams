@@ -64,9 +64,7 @@ export type InventorySummary = {
  * Búsqueda: matchea name producto, SKU producto, name variant, SKU variant
  * — todo case-insensitive.
  */
-export async function listVariantsAcrossProducts(
-  opts: InventoryListOpts = {},
-): Promise<{
+export async function listVariantsAcrossProducts(opts: InventoryListOpts = {}): Promise<{
   rows: InventoryRow[];
   total: number;
   page: number;

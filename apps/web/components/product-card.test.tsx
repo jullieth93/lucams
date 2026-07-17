@@ -118,7 +118,8 @@ describe("ProductCard", () => {
   it("chip 'X opciones' + 'desde' solo con variantCount>1 y minVariantPrice<base", () => {
     render(
       <ProductCard
-        product={makeCard({ variantCount: 3, minVariantPrice: 15_000, basePrice: 20_000 })} />,
+        product={makeCard({ variantCount: 3, minVariantPrice: 15_000, basePrice: 20_000 })}
+      />,
     );
     expect(screen.getByText(/3 opciones/)).toBeInTheDocument();
     expect(screen.getByText(/desde/i)).toBeInTheDocument();
@@ -133,7 +134,9 @@ describe("ProductCard", () => {
   it("renderiza <img> cuando hay imágenes (rama con next/image)", () => {
     // alt="" hace la imagen decorativa (role presentation), por eso la buscamos
     // por el DOM y no por getByRole('img').
-    const { container } = render(<ProductCard product={makeCard({ images: ["https://x/img.jpg"] })} />);
+    const { container } = render(
+      <ProductCard product={makeCard({ images: ["https://x/img.jpg"] })} />,
+    );
     expect(container.querySelector("img")).toHaveAttribute("src", "https://x/img.jpg");
   });
 });

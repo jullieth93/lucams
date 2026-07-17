@@ -12,7 +12,11 @@ import { requireAdminAction } from "@/lib/admin-rbac-guard";
 import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { logger } from "@/lib/logger";
 import { StorageError, uploadProductImage } from "@/lib/storage";
-import { upsertLetterTile, deleteLetterTile, createLetterSet } from "@/features/personalization/letter-tiles";
+import {
+  upsertLetterTile,
+  deleteLetterTile,
+  createLetterSet,
+} from "@/features/personalization/letter-tiles";
 
 type ActionResult = { error?: string };
 
@@ -22,7 +26,8 @@ export async function createLetterSetAction(formData: FormData): Promise<ActionR
 
   const name = String(formData.get("name") ?? "").trim();
   const language = String(formData.get("language") ?? "");
-  if (name.length < 2 || name.length > 60) return { error: "El nombre del estilo debe tener 2–60 caracteres." };
+  if (name.length < 2 || name.length > 60)
+    return { error: "El nombre del estilo debe tener 2–60 caracteres." };
   if (language !== "es" && language !== "en") return { error: "Idioma inválido." };
 
   try {
@@ -39,7 +44,13 @@ export async function createLetterSetAction(formData: FormData): Promise<ActionR
   } catch (err) {
     const message = err instanceof Error ? err.message : "No se pudo crear el estilo.";
     logger.warn(
-      { event: "admin.letter_set.create_fail", adminId: session.admin.id, name, language, err: message },
+      {
+        event: "admin.letter_set.create_fail",
+        adminId: session.admin.id,
+        name,
+        language,
+        err: message,
+      },
       "Failed to create letter set",
     );
     return { error: "No se pudo crear el estilo." };
@@ -72,7 +83,13 @@ export async function uploadLetterTileAction(formData: FormData): Promise<Action
   } catch (err) {
     const message = err instanceof StorageError ? err.message : "No se pudo subir la ficha.";
     logger.warn(
-      { event: "admin.letter_tile.upload_fail", adminId: session.admin.id, setId, char, err: message },
+      {
+        event: "admin.letter_tile.upload_fail",
+        adminId: session.admin.id,
+        setId,
+        char,
+        err: message,
+      },
       "Failed to upload letter tile",
     );
     return { error: message };

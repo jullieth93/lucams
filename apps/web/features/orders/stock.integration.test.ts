@@ -16,11 +16,7 @@
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/db";
-import {
-  decrementStockForOrder,
-  revertStockForOrder,
-  INVENTORY_REASON,
-} from "./stock";
+import { decrementStockForOrder, revertStockForOrder, INVENTORY_REASON } from "./stock";
 import { StockAlreadyAppliedError } from "./errors";
 
 const hasDb = Boolean(process.env.DATABASE_URL);
@@ -215,12 +211,24 @@ describe.skipIf(!hasDb)("stock ledger — integración DB (certificación Bloque
   it("el mismo (orderId, ORDER_PAID) con DISTINTO variant SÍ se permite (lo que el índice viejo rompía)", async () => {
     const orderId = `${run}-order-twovariants`;
     await prisma.inventoryLog.create({
-      data: { variantId: variantA, delta: -1, reason: INVENTORY_REASON.ORDER_PAID, orderId, createdBy: "test" },
+      data: {
+        variantId: variantA,
+        delta: -1,
+        reason: INVENTORY_REASON.ORDER_PAID,
+        orderId,
+        createdBy: "test",
+      },
     });
     // Distinto variant, mismo orderId+reason → NO debe lanzar.
     await expect(
       prisma.inventoryLog.create({
-        data: { variantId: variantB, delta: -1, reason: INVENTORY_REASON.ORDER_PAID, orderId, createdBy: "test" },
+        data: {
+          variantId: variantB,
+          delta: -1,
+          reason: INVENTORY_REASON.ORDER_PAID,
+          orderId,
+          createdBy: "test",
+        },
       }),
     ).resolves.toBeTruthy();
   }, 30000);

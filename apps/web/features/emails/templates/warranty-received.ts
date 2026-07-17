@@ -41,7 +41,10 @@ El equipo de Lucams_shop`;
 
   return {
     subject: `Recibimos tu garantía — #${short}`,
-    html: await renderEmailLayout({ preview: `Reclamo de garantía #${short} registrado.`, bodyHtml }),
+    html: await renderEmailLayout({
+      preview: `Reclamo de garantía #${short} registrado.`,
+      bodyHtml,
+    }),
     text,
   };
 }

@@ -258,8 +258,8 @@ describe("createOrder (integration)", () => {
 
 > **Críticos.** Sin estos tests, RLS solo es un papel.
 
-> **Cobertura de CI (auditoría 2026-07-13).** El gate por-PR ENFORCEA que *toda tabla tenga RLS
-> habilitada* (la migración `..._10_rls_sweep_new_tables.sql` hace `RAISE EXCEPTION` si queda alguna
+> **Cobertura de CI (auditoría 2026-07-13).** El gate por-PR ENFORCEA que _toda tabla tenga RLS
+> habilitada_ (la migración `..._10_rls_sweep_new_tables.sql` hace `RAISE EXCEPTION` si queda alguna
 > destapada → un `CREATE TABLE` nuevo sin candado rompe la migración). El COMPORTAMIENTO de las
 > políticas (que un anon no lea filas de otro) lo valida `rls-matrix.integration.test.ts`, que
 > requiere PostgREST/GoTrue reales y se salta en el gate por-PR (Postgres pelado) → ahora corre en

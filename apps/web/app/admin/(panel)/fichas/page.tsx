@@ -22,11 +22,12 @@ export default async function FichasAdminPage() {
       <header className="mb-6">
         <h1 className="text-brand-purple-dark font-display text-2xl">Estilos del abecedario</h1>
         <p className="text-brand-muted mt-1 text-sm">
-          Cada <strong>estilo</strong> es un abecedario ilustrado completo con un tema (Animales, Navidad,
-          Dinos…). El cliente elige el estilo en el Estudio y ve las fichas de ese tema. Son diseños tuyos,
-          no algo que el cliente crea. Alimentan “Nombre Personalizado”, “Abecedario Completo” y “Pack
-          Vocales”. Si falta una letra, se muestra un marcador temporal. Recomendado: PNG con fondo
-          transparente, <strong>vertical</strong> (como el imán físico).
+          Cada <strong>estilo</strong> es un abecedario ilustrado completo con un tema (Animales,
+          Navidad, Dinos…). El cliente elige el estilo en el Estudio y ve las fichas de ese tema.
+          Son diseños tuyos, no algo que el cliente crea. Alimentan “Nombre Personalizado”,
+          “Abecedario Completo” y “Pack Vocales”. Si falta una letra, se muestra un marcador
+          temporal. Recomendado: PNG con fondo transparente, <strong>vertical</strong> (como el imán
+          físico).
         </p>
       </header>
 
@@ -38,8 +39,8 @@ export default async function FichasAdminPage() {
         <div className="border-brand-purple/15 rounded-xl border border-dashed bg-white p-8 text-center">
           <p className="text-brand-purple-dark font-semibold">Aún no hay sets</p>
           <p className="text-brand-muted mt-1 text-sm">
-            Corre <code className="bg-brand-cream rounded px-1">make seed-letter-sets</code> para crear los
-            sets Español e Inglés.
+            Corre <code className="bg-brand-cream rounded px-1">make seed-letter-sets</code> para
+            crear los sets Español e Inglés.
           </p>
         </div>
       ) : (
@@ -47,7 +48,8 @@ export default async function FichasAdminPage() {
           {detailed.map((set) => {
             const alphabet = ALPHABET[set.language] ?? ALPHABET.en;
             const byChar: Record<string, { imageUrl: string; label: string | null }> = {};
-            for (const t of set.tiles) byChar[t.char.toUpperCase()] = { imageUrl: t.imageUrl, label: t.label };
+            for (const t of set.tiles)
+              byChar[t.char.toUpperCase()] = { imageUrl: t.imageUrl, label: t.label };
             const done = alphabet.filter((c) => byChar[c]).length;
             const pct = Math.round((done / alphabet.length) * 100);
             return (
@@ -68,7 +70,10 @@ export default async function FichasAdminPage() {
                       {done}/{alphabet.length}
                     </div>
                     <div className="bg-brand-cream mt-1 h-1.5 w-28 overflow-hidden rounded-full">
-                      <div className="bg-brand-turquoise h-full rounded-full" style={{ width: `${pct}%` }} />
+                      <div
+                        className="bg-brand-turquoise h-full rounded-full"
+                        style={{ width: `${pct}%` }}
+                      />
                     </div>
                   </div>
                 </div>

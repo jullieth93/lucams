@@ -17,12 +17,7 @@ const CATALOG_PATHS = [
   "/admin/clientes",
 ];
 // "Reclamos" son las rutas reales garantias + retractos (todos los roles operativos).
-const SHARED_PATHS = [
-  "/admin/dashboard",
-  "/admin/pedidos",
-  "/admin/garantias",
-  "/admin/retractos",
-];
+const SHARED_PATHS = ["/admin/dashboard", "/admin/pedidos", "/admin/garantias", "/admin/retractos"];
 // Rutas NO listadas → deny-by-default (solo SUPERADMIN).
 const SUPERADMIN_ONLY_PATHS = [
   "/admin/finanzas",
@@ -125,14 +120,11 @@ describe("canAccessAdminPath — matriz completa rol × ruta representativa", ()
     ["/admin/auditoria", true, false, false],
   ];
 
-  it.each(matrix)(
-    "%s → SA=%s MGR=%s FUL=%s",
-    (path, sa, mgr, ful) => {
-      expect(canAccessAdminPath("SUPERADMIN", path)).toBe(sa);
-      expect(canAccessAdminPath("MANAGER", path)).toBe(mgr);
-      expect(canAccessAdminPath("FULFILLMENT", path)).toBe(ful);
-    },
-  );
+  it.each(matrix)("%s → SA=%s MGR=%s FUL=%s", (path, sa, mgr, ful) => {
+    expect(canAccessAdminPath("SUPERADMIN", path)).toBe(sa);
+    expect(canAccessAdminPath("MANAGER", path)).toBe(mgr);
+    expect(canAccessAdminPath("FULFILLMENT", path)).toBe(ful);
+  });
 });
 
 describe("canAccessAdminPath — coincidencia de prefijo (subrutas)", () => {
@@ -276,10 +268,7 @@ describe("filterNavByRole — FULFILLMENT", () => {
   it("filtra Operación a SOLO pedidos y garantías (sin catálogo)", () => {
     const out = filterNavByRole(buildNav(), "FULFILLMENT");
     const operacion = out.find((g) => g.label === "Operación");
-    expect(operacion?.items?.map((i) => i.href)).toEqual([
-      "/admin/pedidos",
-      "/admin/garantias",
-    ]);
+    expect(operacion?.items?.map((i) => i.href)).toEqual(["/admin/pedidos", "/admin/garantias"]);
   });
 
   it("descarta el grupo Catálogo completo (queda vacío)", () => {
@@ -351,9 +340,7 @@ describe("integridad de tipos (sanity de roles del enum AdminRole)", () => {
       // pedidos: accesible para los tres.
       expect(canAccessAdminPath(role, "/admin/pedidos")).toBe(true);
       // seguridad: solo SUPERADMIN.
-      expect(canAccessAdminPath(role, "/admin/seguridad")).toBe(
-        role === "SUPERADMIN",
-      );
+      expect(canAccessAdminPath(role, "/admin/seguridad")).toBe(role === "SUPERADMIN");
     }
   });
 });

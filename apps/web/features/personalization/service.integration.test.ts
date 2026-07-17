@@ -219,82 +219,124 @@ describe("archiveCustomerDesign", () => {
 // ADR-057 Fase A1a — finalizeDesign renderiza la producción EN EL SERVIDOR
 // ════════════════════════════════════════════════════════════════════════
 
-describe.skipIf(!canRunStorage)("finalizeDesign — render de producción server-side (ADR-057 A1a)", () => {
-  const STAGE = { width: 1080, height: 1080, dpiPreview: 90, dpiProduction: 300 };
-  const photoOnlyLayers = [
-    { id: "bg", type: "background", color: "#FFF8F0" },
-    { id: "ph", type: "image-placeholder", x: 90, y: 90, width: 900, height: 900 },
-  ];
+describe.skipIf(!canRunStorage)(
+  "finalizeDesign — render de producción server-side (ADR-057 A1a)",
+  () => {
+    const STAGE = { width: 1080, height: 1080, dpiPreview: 90, dpiProduction: 300 };
+    const photoOnlyLayers = [
+      { id: "bg", type: "background", color: "#FFF8F0" },
+      { id: "ph", type: "image-placeholder", x: 90, y: 90, width: 900, height: 900 },
+    ];
 
-  async function tinyPng(w: number, h: number): Promise<Buffer> {
-    return sharp({ create: { width: w, height: h, channels: 3, background: { r: 10, g: 20, b: 30 } } })
-      .png()
-      .toBuffer();
-  }
+    async function tinyPng(w: number, h: number): Promise<Buffer> {
+      return sharp({
+        create: { width: w, height: h, channels: 3, background: { r: 10, g: 20, b: 30 } },
+      })
+        .png()
+        .toBuffer();
+    }
 
-  async function setupDesign(layers: unknown[], tag: string) {
-    // Foto sintética → customer-uploads (path RUN-prefijado).
-    const photo = await sharp({ create: { width: 1200, height: 900, channels: 3, background: { r: 80, g: 160, b: 220 } } })
-      .png()
-      .toBuffer();
-    const photoPath = `${RUN}/${tag}.png`;
-    await supabaseService.storage.from("customer-uploads").upload(photoPath, photo, { contentType: "image/png", upsert: true });
-    storageCleanup.push({ bucket: "customer-uploads", paths: [photoPath] });
+    async function setupDesign(layers: unknown[], tag: string) {
+      // Foto sintética → customer-uploads (path RUN-prefijado).
+      const photo = await sharp({
+        create: { width: 1200, height: 900, channels: 3, background: { r: 80, g: 160, b: 220 } },
+      })
+        .png()
+        .toBuffer();
+      const photoPath = `${RUN}/${tag}.png`;
+      await supabaseService.storage
+        .from("customer-uploads")
+        .upload(photoPath, photo, { contentType: "image/png", upsert: true });
+      storageCleanup.push({ bucket: "customer-uploads", paths: [photoPath] });
 
-    const design = await prisma.design.create({
-      data: { customerId: ownerId, sessionId: `${RUN}-${tag}`, productId, status: "DRAFT", canvasData: {} },
-      select: { id: true },
-    });
-    const asset = await prisma.designAsset.create({
-      data: { designId: design.id, storageUrl: photoPath, width: 1200, height: 900, sizeBytes: photo.length, mimeType: "image/png" },
-      select: { id: true },
-    });
-    const canvasData = {
-      version: 2,
-      unitTemplate: { version: 1, stage: STAGE, layers },
-      slotCount: 1,
-      slots: [{ slotIndex: 0, assetId: asset.id, assetUrl: "https://cdn.lucams.test/a.png", photoTransform: { offsetX: 0, offsetY: 0, scale: 1 } }],
-      gridLayout: { cols: 1, rows: 1, gap: 0 },
-    };
-    await prisma.design.update({ where: { id: design.id }, data: { canvasData: canvasData as never } });
-    storageCleanup.push({ bucket: "production-assets", paths: [`${design.id}/slot-01.png`] });
-    storageCleanup.push({ bucket: "design-previews", paths: [`${design.id}/preview.png`] });
-    return design.id;
-  }
+      const design = await prisma.design.create({
+        data: {
+          customerId: ownerId,
+          sessionId: `${RUN}-${tag}`,
+          productId,
+          status: "DRAFT",
+          canvasData: {},
+        },
+        select: { id: true },
+      });
+      const asset = await prisma.designAsset.create({
+        data: {
+          designId: design.id,
+          storageUrl: photoPath,
+          width: 1200,
+          height: 900,
+          sizeBytes: photo.length,
+          mimeType: "image/png",
+        },
+        select: { id: true },
+      });
+      const canvasData = {
+        version: 2,
+        unitTemplate: { version: 1, stage: STAGE, layers },
+        slotCount: 1,
+        slots: [
+          {
+            slotIndex: 0,
+            assetId: asset.id,
+            assetUrl: "https://cdn.lucams.test/a.png",
+            photoTransform: { offsetX: 0, offsetY: 0, scale: 1 },
+          },
+        ],
+        gridLayout: { cols: 1, rows: 1, gap: 0 },
+      };
+      await prisma.design.update({
+        where: { id: design.id },
+        data: { canvasData: canvasData as never },
+      });
+      storageCleanup.push({ bucket: "production-assets", paths: [`${design.id}/slot-01.png`] });
+      storageCleanup.push({ bucket: "design-previews", paths: [`${design.id}/preview.png`] });
+      return design.id;
+    }
 
-  it("pack solo-foto: la producción se renderiza en el servidor (3240px), NO el PNG de 50px del cliente", async () => {
-    const designId = await setupDesign(photoOnlyLayers, "photoonly");
-    // Cliente manda un PNG minúsculo (50px) — si el resultado es 3240px, corrió el servidor.
-    await finalizeDesign({
-      designId,
-      previewBuffer: await tinyPng(100, 100),
-      productionBuffers: [await tinyPng(50, 50)],
-      customerId: ownerId,
-      sessionId: null,
-    });
-    const row = await prisma.design.findUnique({ where: { id: designId }, select: { status: true, productionUrls: true } });
-    expect(row!.status).toBe("READY");
-    expect(row!.productionUrls).toHaveLength(1);
-    const { data } = await supabaseService.storage.from("production-assets").download(row!.productionUrls[0]);
-    const meta = await sharp(Buffer.from(await data!.arrayBuffer())).metadata();
-    expect(meta.width).toBe(1080 * 3); // 3240 → server render corrió y reemplazó el del cliente
-    expect(meta.height).toBe(1080 * 3);
-  }, 30000);
+    it("pack solo-foto: la producción se renderiza en el servidor (3240px), NO el PNG de 50px del cliente", async () => {
+      const designId = await setupDesign(photoOnlyLayers, "photoonly");
+      // Cliente manda un PNG minúsculo (50px) — si el resultado es 3240px, corrió el servidor.
+      await finalizeDesign({
+        designId,
+        previewBuffer: await tinyPng(100, 100),
+        productionBuffers: [await tinyPng(50, 50)],
+        customerId: ownerId,
+        sessionId: null,
+      });
+      const row = await prisma.design.findUnique({
+        where: { id: designId },
+        select: { status: true, productionUrls: true },
+      });
+      expect(row!.status).toBe("READY");
+      expect(row!.productionUrls).toHaveLength(1);
+      const { data } = await supabaseService.storage
+        .from("production-assets")
+        .download(row!.productionUrls[0]);
+      const meta = await sharp(Buffer.from(await data!.arrayBuffer())).metadata();
+      expect(meta.width).toBe(1080 * 3); // 3240 → server render corrió y reemplazó el del cliente
+      expect(meta.height).toBe(1080 * 3);
+    }, 30000);
 
-  it("plantilla con TEXTO (Polaroid): se renderiza en el servidor vía canvas A1b (3240px), no el 50px del cliente", async () => {
-    const withText = [...photoOnlyLayers, { id: "t", type: "text", text: "Mi recuerdo" }];
-    const designId = await setupDesign(withText, "withtext");
-    await finalizeDesign({
-      designId,
-      previewBuffer: await tinyPng(100, 100),
-      productionBuffers: [await tinyPng(50, 50)],
-      customerId: ownerId,
-      sessionId: null,
-    });
-    const row = await prisma.design.findUnique({ where: { id: designId }, select: { status: true, productionUrls: true } });
-    expect(row!.status).toBe("READY");
-    const { data } = await supabaseService.storage.from("production-assets").download(row!.productionUrls[0]);
-    const meta = await sharp(Buffer.from(await data!.arrayBuffer())).metadata();
-    expect(meta.width).toBe(1080 * 3); // 3240 → el tier canvas (A1b) renderizó el texto server-side
-  }, 30000);
-});
+    it("plantilla con TEXTO (Polaroid): se renderiza en el servidor vía canvas A1b (3240px), no el 50px del cliente", async () => {
+      const withText = [...photoOnlyLayers, { id: "t", type: "text", text: "Mi recuerdo" }];
+      const designId = await setupDesign(withText, "withtext");
+      await finalizeDesign({
+        designId,
+        previewBuffer: await tinyPng(100, 100),
+        productionBuffers: [await tinyPng(50, 50)],
+        customerId: ownerId,
+        sessionId: null,
+      });
+      const row = await prisma.design.findUnique({
+        where: { id: designId },
+        select: { status: true, productionUrls: true },
+      });
+      expect(row!.status).toBe("READY");
+      const { data } = await supabaseService.storage
+        .from("production-assets")
+        .download(row!.productionUrls[0]);
+      const meta = await sharp(Buffer.from(await data!.arrayBuffer())).metadata();
+      expect(meta.width).toBe(1080 * 3); // 3240 → el tier canvas (A1b) renderizó el texto server-side
+    }, 30000);
+  },
+);

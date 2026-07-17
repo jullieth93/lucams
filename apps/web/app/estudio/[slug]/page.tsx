@@ -184,8 +184,18 @@ export default async function EstudioPage({
   // ADR-057 Fase D — Calendario: slots etiquetados por mes (Ene…Dic) + año, para que el cliente
   // sepa qué foto va en qué mes (hoy son 12 fotos sueltas sin etiqueta).
   const MONTHS_ES = [
-    "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
-    "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
+    "Enero",
+    "Febrero",
+    "Marzo",
+    "Abril",
+    "Mayo",
+    "Junio",
+    "Julio",
+    "Agosto",
+    "Septiembre",
+    "Octubre",
+    "Noviembre",
+    "Diciembre",
   ];
   const isCalendarMonth = product.personalizationKind === "CALENDAR_PHOTO_MONTH";
   const slotLabels =

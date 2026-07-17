@@ -7,10 +7,7 @@ import { createHmac } from "node:crypto";
 
 function base32Decode(s: string): Buffer {
   const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
-  const clean = s
-    .replace(/=+$/, "")
-    .toUpperCase()
-    .replace(/\s/g, "");
+  const clean = s.replace(/=+$/, "").toUpperCase().replace(/\s/g, "");
   let bits = 0;
   let value = 0;
   const out: number[] = [];

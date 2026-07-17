@@ -22,9 +22,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock del borde CMS. Por defecto: setting ausente → devuelve el fallback.
-const getSettingValue = vi.fn(
-  async (_key: string, fallback: string): Promise<string> => fallback,
-);
+const getSettingValue = vi.fn(async (_key: string, fallback: string): Promise<string> => fallback);
 vi.mock("@/lib/cms", () => ({
   getSettingValue: (key: string, fallback: string) => getSettingValue(key, fallback),
 }));
@@ -144,9 +142,7 @@ describe("buildWhatsAppMessage — plantillas fallback (setting ausente)", () =>
 describe("buildWhatsAppMessage — override desde CMS", () => {
   it("usa la plantilla configurada en DB e interpola sobre ella", async () => {
     getSettingValue.mockImplementation(async (key: string, fallback: string) =>
-      key === "WA_MSG_PRODUCT"
-        ? "Hey! Me interesa {productName} ({sku}) 🛒"
-        : fallback,
+      key === "WA_MSG_PRODUCT" ? "Hey! Me interesa {productName} ({sku}) 🛒" : fallback,
     );
     const msg = await buildWhatsAppMessage({
       kind: "product",
@@ -321,9 +317,12 @@ describe("buildWhatsAppUrl — cobertura de todos los kinds (round-trip decode)"
     { ctx: { kind: "custom", text: "libre" }, expectedDecoded: "libre" },
   ];
 
-  it.each(cases)("kind=$ctx.kind → text decodificado coincide", async ({ ctx, expectedDecoded }) => {
-    const url = await buildWhatsAppUrl(ctx);
-    const text = url.slice(url.indexOf("?text=") + "?text=".length);
-    expect(decodeURIComponent(text)).toBe(expectedDecoded);
-  });
+  it.each(cases)(
+    "kind=$ctx.kind → text decodificado coincide",
+    async ({ ctx, expectedDecoded }) => {
+      const url = await buildWhatsAppUrl(ctx);
+      const text = url.slice(url.indexOf("?text=") + "?text=".length);
+      expect(decodeURIComponent(text)).toBe(expectedDecoded);
+    },
+  );
 });

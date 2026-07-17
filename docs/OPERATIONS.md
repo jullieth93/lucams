@@ -271,10 +271,10 @@ Para los 3 environments de Vercel: **Production**, **Preview**, **Development**.
 
 Dos ramas en `github.com/jullieth93/lucams`:
 
-| Rama         | Rol                          | Vercel                                              |
-| ------------ | ---------------------------- | --------------------------------------------------- |
+| Rama         | Rol                          | Vercel                                               |
+| ------------ | ---------------------------- | ---------------------------------------------------- |
 | `develop`    | Trabajo diario + staging     | Preview deploys (o Production hasta migrar el setup) |
-| `production` | Release / producción en vivo | **Production Branch objetivo**                      |
+| `production` | Release / producción en vivo | **Production Branch objetivo**                       |
 
 - **NO hay `main`** — la rama de producción se llama `production` (decisión de Lucy).
 - **Flujo diario:** commitear en `develop` + `git push origin develop` al cerrar cada tanda (no acumular commits locales sin subir — pasó un atraso de 116).

@@ -23,12 +23,27 @@ async function guard(): Promise<{ adminId: string } | { error: string }> {
 }
 
 function fail(action: string, id: string, err: unknown): St {
-  logger.warn({ event: `admin.retract.${action}_fail`, id, err: err instanceof Error ? err.message : String(err) });
+  logger.warn({
+    event: `admin.retract.${action}_fail`,
+    id,
+    err: err instanceof Error ? err.message : String(err),
+  });
   return { error: err instanceof Error ? err.message : "Error inesperado" };
 }
 
-async function audit(adminId: string, action: string, id: string, metadata?: Record<string, unknown>) {
-  await recordAdminAction({ actorId: adminId, action, entityType: "RetractRequest", entityId: id, metadata });
+async function audit(
+  adminId: string,
+  action: string,
+  id: string,
+  metadata?: Record<string, unknown>,
+) {
+  await recordAdminAction({
+    actorId: adminId,
+    action,
+    entityType: "RetractRequest",
+    entityId: id,
+    metadata,
+  });
   revalidatePath("/admin/retractos");
 }
 

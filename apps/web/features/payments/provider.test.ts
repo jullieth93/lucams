@@ -329,9 +329,7 @@ describe("WompiPaymentProvider.getPaymentDetails — shape PaymentDetails + mape
   });
 
   it("coerciona created_at (string ISO) a instancia Date con el timestamp correcto", async () => {
-    wompiMocks.getTransaction.mockResolvedValue(
-      makeTx({ created_at: "2026-06-30T12:00:00.000Z" }),
-    );
+    wompiMocks.getTransaction.mockResolvedValue(makeTx({ created_at: "2026-06-30T12:00:00.000Z" }));
     const provider = new WompiPaymentProvider();
     const details = await provider.getPaymentDetails("txn_ABC123");
     expect(details.createdAt).toBeInstanceOf(Date);

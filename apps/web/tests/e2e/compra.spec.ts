@@ -108,5 +108,4 @@ test.describe("compra — núcleo del carrito", () => {
     }).toPass({ timeout: 30_000 });
     await expect(page.locator('input[name="email"]')).toBeVisible();
   });
-
 });

@@ -28,7 +28,9 @@ export async function evaluateAlerts(now: Date = new Date()): Promise<FiringAler
   const firing: FiringAlert[] = [];
 
   const [errs5m, recon, stuck] = await Promise.all([
-    prisma.errorLog.count({ where: { createdAt: { gte: new Date(now.getTime() - 5 * 60 * 1000) } } }),
+    prisma.errorLog.count({
+      where: { createdAt: { gte: new Date(now.getTime() - 5 * 60 * 1000) } },
+    }),
     prisma.order.count({ where: { needsReconciliation: true, deletedAt: null } }),
     prisma.webhookEvent.count({
       where: { processedAt: null, createdAt: { lt: new Date(now.getTime() - 60 * 60 * 1000) } },
@@ -50,7 +52,8 @@ export async function evaluateAlerts(now: Date = new Date()): Promise<FiringAler
       key: "reconciliation",
       severity: "crítica",
       title: `${recon} orden(es) necesitan reconciliación`,
-      detail: "Un pago quedó inconsistente con el stock (p.ej. Wompi cobró pero se agotó la unidad).",
+      detail:
+        "Un pago quedó inconsistente con el stock (p.ej. Wompi cobró pero se agotó la unidad).",
       action:
         "Abre /admin/pedidos (filtro 'Necesitan atención'): reembolsa o repón stock según el caso.",
     });

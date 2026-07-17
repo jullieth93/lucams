@@ -20,7 +20,9 @@ let productId = "";
 let variantId = "";
 
 beforeAll(async () => {
-  categoryId = (await prisma.category.create({ data: { slug: `${RUN}-c`, name: "c" }, select: { id: true } })).id;
+  categoryId = (
+    await prisma.category.create({ data: { slug: `${RUN}-c`, name: "c" }, select: { id: true } })
+  ).id;
   productId = (
     await prisma.product.create({
       data: {
@@ -38,7 +40,14 @@ beforeAll(async () => {
   // Variante AGOTADA (stock 0).
   variantId = (
     await prisma.productVariant.create({
-      data: { productId, name: "u", sku: `${RUN}-V`.toUpperCase(), price: 1000, stock: 0, attributes: {} },
+      data: {
+        productId,
+        name: "u",
+        sku: `${RUN}-V`.toUpperCase(),
+        price: 1000,
+        stock: 0,
+        attributes: {},
+      },
       select: { id: true },
     })
   ).id;

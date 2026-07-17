@@ -296,7 +296,7 @@ export default async function AdminResenasPage({ searchParams }: { searchParams:
                         name="reviewIds"
                         value={r.id}
                         aria-label={`Seleccionar reseña de ${r.authorName ?? "anónimo"}`}
-                        className="text-brand-purple focus:ring-brand-purple/40 h-4 w-4 cursor-pointer rounded border-brand-purple/30"
+                        className="text-brand-purple focus:ring-brand-purple/40 border-brand-purple/30 h-4 w-4 cursor-pointer rounded"
                       />
                     )}
                   </td>

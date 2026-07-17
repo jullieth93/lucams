@@ -163,12 +163,9 @@ export default async function CheckoutPagoPage({ searchParams }: { searchParams:
           </section>
         </div>
 
-        <div className="lg:col-span-1 space-y-4">
+        <div className="space-y-4 lg:col-span-1">
           <div className="border-brand-purple/10 rounded-2xl border bg-white p-4 shadow-sm">
-            <CouponField
-              appliedCode={applied?.code}
-              appliedError={applied?.error}
-            />
+            <CouponField appliedCode={applied?.code} appliedError={applied?.error} />
           </div>
           <OrderSummary
             cart={ctx.cart}

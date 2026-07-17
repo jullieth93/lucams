@@ -45,7 +45,10 @@ export async function useRecoveryCodeAction(
     }
   } catch (err) {
     logger.error(
-      { event: "security.admin_recovery_unenroll_fail", err: err instanceof Error ? err.message : String(err) },
+      {
+        event: "security.admin_recovery_unenroll_fail",
+        err: err instanceof Error ? err.message : String(err),
+      },
       "Failed to unenroll TOTP via recovery code",
     );
     return { error: "No pudimos completar el acceso de emergencia. Intenta de nuevo." };

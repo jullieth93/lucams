@@ -49,7 +49,11 @@ const aveonlineCB = new CircuitBreaker({ name: "aveonline", threshold: 5, resetM
  * críticos). Antes compartían breaker: un fallo de cotización contaminaba el fulfillment
  * (revisión adversarial #3, 2026-07-11).
  */
-const aveonlineQuoteCB = new CircuitBreaker({ name: "aveonline-quote", threshold: 5, resetMs: 30_000 });
+const aveonlineQuoteCB = new CircuitBreaker({
+  name: "aveonline-quote",
+  threshold: 5,
+  resetMs: 30_000,
+});
 
 /**
  * Wrapper único de red para Aveonline: timeout obligatorio (mandato "nunca un
@@ -117,7 +121,9 @@ export function buildCotizarProductos(items: ShipmentItem[]) {
     unidades: 1, // Aveonline lo ignora al cotizar; la cantidad ya viaja en `peso`.
     nombre: i.productSlug,
     // valorDeclarado en PESOS (no centavos) — total de la línea, mínimo $10.000.
-    valorDeclarado: String(Math.max(MIN_DECLARED_VALUE_COP, centsToPesos(i.declaredValueCop * i.qty))),
+    valorDeclarado: String(
+      Math.max(MIN_DECLARED_VALUE_COP, centsToPesos(i.declaredValueCop * i.qty)),
+    ),
   }));
 }
 
@@ -237,7 +243,11 @@ async function listEnabledAgents() {
     direccion: String(a.direccion ?? ""),
     // La doc documenta "S"/"N"; la cuenta real devuelve "SI"/"NO" (verificado en vivo).
     // Aceptamos ambos (+ "1") para no dejar la selección de agente-principal en código muerto.
-    principal: ["S", "SI", "1"].includes(String(a.principal ?? "").trim().toUpperCase()),
+    principal: ["S", "SI", "1"].includes(
+      String(a.principal ?? "")
+        .trim()
+        .toUpperCase(),
+    ),
   }));
   agentsCache = { items, expiresAt: now + 24 * 60 * 60_000 };
   logger.info({
@@ -949,7 +959,12 @@ export class AveonlineProvider implements ShippingProvider {
       guias?: Array<{
         estado?: string;
         // La doc del histórico usa `fechamostrar` (MM/DD/YYYY HH:mm:ss), NO `fecha`.
-        historicos?: Array<{ fechamostrar?: string; fecha?: string; descripcion?: string; estado?: string }>;
+        historicos?: Array<{
+          fechamostrar?: string;
+          fecha?: string;
+          descripcion?: string;
+          estado?: string;
+        }>;
       }>;
     };
     // status:"error" (HTTP 200) → "La guia no existe" / "autenticacion fallida". Sin

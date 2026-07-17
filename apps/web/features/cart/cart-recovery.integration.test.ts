@@ -68,7 +68,10 @@ const ONE_H_AGO = new Date(NOW.getTime() - 1 * HOUR);
 
 beforeAll(async () => {
   categoryId = (
-    await prisma.category.create({ data: { slug: `${RUN}-cat`, name: `Cat ${RUN}` }, select: { id: true } })
+    await prisma.category.create({
+      data: { slug: `${RUN}-cat`, name: `Cat ${RUN}` },
+      select: { id: true },
+    })
   ).id;
   productId = (
     await prisma.product.create({
@@ -86,7 +89,14 @@ beforeAll(async () => {
   ).id;
   variantId = (
     await prisma.productVariant.create({
-      data: { productId, name: "Único", sku: `${RUN}-V`.toUpperCase(), price: 10_000, stock: 10, attributes: {} },
+      data: {
+        productId,
+        name: "Único",
+        sku: `${RUN}-V`.toUpperCase(),
+        price: 10_000,
+        stock: 10,
+        attributes: {},
+      },
       select: { id: true },
     })
   ).id;
@@ -94,9 +104,14 @@ beforeAll(async () => {
   // Elegible: activo + item + abandonado hace 5h, sin recordatorio.
   await makeAbandoned("eligible", await makeCartWithItem("eligible"), { createdAt: FIVE_H_AGO });
   // Convertido: cart soft-deleted (el saga lo borra tras PAID).
-  await makeAbandoned("converted", await makeCartWithItem("converted", { deleted: true }), { createdAt: FIVE_H_AGO });
+  await makeAbandoned("converted", await makeCartWithItem("converted", { deleted: true }), {
+    createdAt: FIVE_H_AGO,
+  });
   // Ya recordado: no debe reprocesarse.
-  await makeAbandoned("reminded", await makeCartWithItem("reminded"), { createdAt: FIVE_H_AGO, lastReminderSentAt: FIVE_H_AGO });
+  await makeAbandoned("reminded", await makeCartWithItem("reminded"), {
+    createdAt: FIVE_H_AGO,
+    lastReminderSentAt: FIVE_H_AGO,
+  });
   // Muy nuevo (< 4h): aún no molestar.
   await makeAbandoned("fresh", await makeCartWithItem("fresh"), { createdAt: ONE_H_AGO });
 });

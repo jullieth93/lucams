@@ -78,7 +78,15 @@ describe.skipIf(!hasDb)("retract/service — integración DB", { timeout: 30_000
         sku: `${RUN}-PROD`.toUpperCase(),
         categoryId,
         variants: {
-          create: [{ name: "Default", sku: `${RUN}-V`.toUpperCase(), price: 20_000, stock: 100, attributes: {} }],
+          create: [
+            {
+              name: "Default",
+              sku: `${RUN}-V`.toUpperCase(),
+              price: 20_000,
+              stock: 100,
+              attributes: {},
+            },
+          ],
         },
       },
       select: { id: true, variants: { select: { id: true } } },
@@ -211,7 +219,9 @@ describe.skipIf(!hasDb)("retract/service — integración DB", { timeout: 30_000
       items: [{ personalized: false }],
     });
     const { id } = await createRetractRequest(order.items[0]!.id, { customerId: null });
-    await expect(refundRetract(id, "admin-1", "WOMPI_VOID")).rejects.toThrow(RetractTransitionError);
+    await expect(refundRetract(id, "admin-1", "WOMPI_VOID")).rejects.toThrow(
+      RetractTransitionError,
+    );
   });
 
   it("IDOR: un cliente logueado no puede retractar un pedido de invitado (customerId null)", async () => {

@@ -58,7 +58,9 @@ export async function recuperarPasswordAction(
     ip,
   );
   if (!turnstile.success) {
-    return { error: "No pudimos verificar que no eres un robot. Recarga la página e intenta de nuevo." };
+    return {
+      error: "No pudimos verificar que no eres un robot. Recarga la página e intenta de nuevo.",
+    };
   }
 
   // Rate-limit doble: por IP y por email. Reset es un vector común

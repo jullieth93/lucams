@@ -27,11 +27,7 @@ export const metadata: Metadata = {
 
 type SearchParams = Promise<{ email?: string; token?: string }>;
 
-export default async function UnsubscribePage({
-  searchParams,
-}: {
-  searchParams: SearchParams;
-}) {
+export default async function UnsubscribePage({ searchParams }: { searchParams: SearchParams }) {
   const sp = await searchParams;
   const email = typeof sp.email === "string" ? sp.email : "";
   const token = typeof sp.token === "string" ? sp.token : "";
@@ -50,7 +46,11 @@ export default async function UnsubscribePage({
   return (
     <div className="flex min-h-screen flex-col">
       <SiteHeader />
-      <main id="contenido" tabIndex={-1} className="bg-brand-cream flex flex-1 items-center justify-center px-6 py-16">
+      <main
+        id="contenido"
+        tabIndex={-1}
+        className="bg-brand-cream flex flex-1 items-center justify-center px-6 py-16"
+      >
         <div className="mx-auto max-w-md text-center">
           <div
             className={

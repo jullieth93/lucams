@@ -25,7 +25,9 @@ function geminiPayload(obj: object) {
 
 describe("IA — validación de entrada", () => {
   it("rechaza ocasión demasiado corta", () => {
-    expect(DesignSuggestInputSchema.safeParse({ ...VALID_INPUT, occasion: "x" }).success).toBe(false);
+    expect(DesignSuggestInputSchema.safeParse({ ...VALID_INPUT, occasion: "x" }).success).toBe(
+      false,
+    );
   });
   it("acepta entrada válida", () => {
     expect(DesignSuggestInputSchema.safeParse(VALID_INPUT).success).toBe(true);
@@ -44,7 +46,11 @@ describe("IA — Gemini con fallback entre modelos", () => {
   });
 
   it("si el modelo primario falla (500), usa el de respaldo", async () => {
-    const suggestion = { colorName: "morado", layout: "Foto grande al centro.", tip: "Usa fotos claras." };
+    const suggestion = {
+      colorName: "morado",
+      layout: "Foto grande al centro.",
+      tip: "Usa fotos claras.",
+    };
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce(errResponse(500)) // primario falla
@@ -63,7 +69,9 @@ describe("IA — Gemini con fallback entre modelos", () => {
   it("si AMBOS modelos fallan, lanza AiUnavailableError", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(errResponse(503)));
     const { geminiProvider } = await import("./gemini-provider");
-    await expect(geminiProvider.suggestDesign(VALID_INPUT)).rejects.toBeInstanceOf(AiUnavailableError);
+    await expect(geminiProvider.suggestDesign(VALID_INPUT)).rejects.toBeInstanceOf(
+      AiUnavailableError,
+    );
   });
 
   it("sin GEMINI_API_KEY → AiUnavailableError sin llamar a la red", async () => {
@@ -71,7 +79,9 @@ describe("IA — Gemini con fallback entre modelos", () => {
     const fetchMock = vi.fn();
     vi.stubGlobal("fetch", fetchMock);
     const { geminiProvider } = await import("./gemini-provider");
-    await expect(geminiProvider.suggestDesign(VALID_INPUT)).rejects.toBeInstanceOf(AiUnavailableError);
+    await expect(geminiProvider.suggestDesign(VALID_INPUT)).rejects.toBeInstanceOf(
+      AiUnavailableError,
+    );
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });
@@ -88,7 +98,12 @@ describe("IA — service resuelve color de marca", () => {
       "fetch",
       vi.fn().mockResolvedValue(
         okResponse(
-          geminiPayload({ phrase: "¡Feliz cumple! 💜", colorName: "turquesa", layout: "L", tip: "T" }),
+          geminiPayload({
+            phrase: "¡Feliz cumple! 💜",
+            colorName: "turquesa",
+            layout: "L",
+            tip: "T",
+          }),
         ),
       ),
     );

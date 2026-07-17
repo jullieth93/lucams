@@ -139,8 +139,8 @@ export function PaymentMethodChooser({
           </span>
         ) : (
           <span>
-            Confirmamos tu pedido de una vez y el mensajero te lo entrega. Pagas el total en efectivo
-            al recibir — sin tarjeta.
+            Confirmamos tu pedido de una vez y el mensajero te lo entrega. Pagas el total en
+            efectivo al recibir — sin tarjeta.
           </span>
         )}
       </div>

@@ -598,10 +598,9 @@ describe("checkPwnedPassword — limpieza del timer (clearTimeout en finally)", 
     const fetchFn = vi.fn(async (_url: string, init: RequestInit) => {
       captured = init.signal as AbortSignal;
       // Solo vecinos: el sufijo de "password" no está → pwned:false.
-      return new Response(
-        rangeBody([["0018A45C4D1DEF81644B54AB7F969B88D65", 10]]),
-        { status: 200 },
-      );
+      return new Response(rangeBody([["0018A45C4D1DEF81644B54AB7F969B88D65", 10]]), {
+        status: 200,
+      });
     });
     vi.stubGlobal("fetch", fetchFn);
 

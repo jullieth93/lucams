@@ -62,8 +62,8 @@ export function MfaChallenge({ factorId }: { factorId: string }) {
             className="border-brand-purple/25 focus:border-brand-purple focus:ring-brand-purple/20 h-12 w-full rounded-md border bg-white px-3 text-center font-mono text-lg tracking-widest uppercase focus:ring-2 focus:outline-none"
           />
           <p className="text-brand-muted mt-1 text-xs">
-            Es uno de los códigos que guardaste al activar la verificación. Tras usarlo,
-            reconfigura la verificación en 2 pasos.
+            Es uno de los códigos que guardaste al activar la verificación. Tras usarlo, reconfigura
+            la verificación en 2 pasos.
           </p>
         </div>
         {recoveryState?.error && <p className="text-sm text-rose-600">{recoveryState.error}</p>}
@@ -72,7 +72,11 @@ export function MfaChallenge({ factorId }: { factorId: string }) {
           disabled={recoveryPending}
           className="bg-gradient-brand inline-flex h-11 w-full items-center justify-center gap-1.5 rounded-md text-sm font-semibold text-white disabled:opacity-50"
         >
-          {recoveryPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
+          {recoveryPending ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <KeyRound className="h-4 w-4" />
+          )}
           Entrar con código de respaldo
         </button>
         <button
@@ -110,7 +114,11 @@ export function MfaChallenge({ factorId }: { factorId: string }) {
         disabled={pending || code.length !== 6}
         className="bg-gradient-brand inline-flex h-11 w-full items-center justify-center gap-1.5 rounded-md text-sm font-semibold text-white disabled:opacity-50"
       >
-        {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+        {pending ? (
+          <Loader2 className="h-4 w-4 animate-spin" />
+        ) : (
+          <ShieldCheck className="h-4 w-4" />
+        )}
         Verificar y entrar
       </button>
       <button

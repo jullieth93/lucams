@@ -39,7 +39,11 @@ describe("withRetry", () => {
 
   it("reintenta errores reintentables hasta lograrlo", async () => {
     const err = Object.assign(new Error("boom"), { status: 503 });
-    const fn = vi.fn().mockRejectedValueOnce(err).mockRejectedValueOnce(err).mockResolvedValue("ok");
+    const fn = vi
+      .fn()
+      .mockRejectedValueOnce(err)
+      .mockRejectedValueOnce(err)
+      .mockResolvedValue("ok");
     expect(await withRetry(fn, { attempts: 3, sleep: noSleep })).toBe("ok");
     expect(fn).toHaveBeenCalledTimes(3);
   });

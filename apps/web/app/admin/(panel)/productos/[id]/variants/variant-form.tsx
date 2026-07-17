@@ -140,7 +140,9 @@ export function VariantForm({
 
       {/* Características de la opción — lenguaje llano (Lucy 2026-06-27). */}
       <div className="border-brand-purple/10 rounded-lg border bg-white/60 p-4">
-        <h4 className="text-brand-purple-dark text-sm font-bold">¿En qué se diferencia esta opción?</h4>
+        <h4 className="text-brand-purple-dark text-sm font-bold">
+          ¿En qué se diferencia esta opción?
+        </h4>
         <p className="text-brand-muted mt-0.5 mb-3 text-xs">
           Llena solo lo que aplique. Con esto armamos la sugerencia de nombre y, en productos
           personalizables, sabemos cuántas fotos pedirle al cliente.
@@ -296,7 +298,10 @@ function Field({
             required={required}
             className={`${baseClass} ${prefix ? "pl-7" : ""}`}
             {...(controlled
-              ? { value, onChange: (e: React.ChangeEvent<HTMLInputElement>) => onChange!(e.target.value) }
+              ? {
+                  value,
+                  onChange: (e: React.ChangeEvent<HTMLInputElement>) => onChange!(e.target.value),
+                }
               : { defaultValue })}
           />
         </div>

@@ -126,7 +126,11 @@ function DesignCard({ design }: { design: DesignCardData }) {
             disabled={pending}
             className="bg-brand-purple hover:bg-brand-purple-dark inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-60"
           >
-            {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Share2 className="h-3.5 w-3.5" />}
+            {pending ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Share2 className="h-3.5 w-3.5" />
+            )}
             Compartir
           </button>
           <button
@@ -143,7 +147,7 @@ function DesignCard({ design }: { design: DesignCardData }) {
               href={`/d/${token}`}
               target="_blank"
               rel="noopener"
-              className="text-brand-purple-dark hover:bg-brand-purple/8 inline-flex items-center gap-1 rounded-full border border-brand-purple/20 px-2.5 py-1.5 text-xs font-semibold"
+              className="text-brand-purple-dark hover:bg-brand-purple/8 border-brand-purple/20 inline-flex items-center gap-1 rounded-full border px-2.5 py-1.5 text-xs font-semibold"
             >
               <ExternalLink className="h-3.5 w-3.5" /> Ver
             </a>
@@ -160,7 +164,11 @@ function DesignCard({ design }: { design: DesignCardData }) {
               >
                 Sí
               </button>
-              <button type="button" onClick={() => setConfirmArchive(false)} className="text-brand-muted">
+              <button
+                type="button"
+                onClick={() => setConfirmArchive(false)}
+                className="text-brand-muted"
+              >
                 No
               </button>
             </span>
@@ -169,7 +177,7 @@ function DesignCard({ design }: { design: DesignCardData }) {
               type="button"
               onClick={() => setConfirmArchive(true)}
               aria-label="Archivar diseño"
-              className="text-brand-muted hover:text-rose-600 ml-auto inline-flex items-center rounded-full p-1.5"
+              className="text-brand-muted ml-auto inline-flex items-center rounded-full p-1.5 hover:text-rose-600"
             >
               <Archive className="h-3.5 w-3.5" />
             </button>

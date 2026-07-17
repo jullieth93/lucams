@@ -26,7 +26,13 @@ type ActionResult = { error?: string };
 async function loadVariant(variantId: string) {
   return prisma.productVariant.findFirst({
     where: { id: variantId, deletedAt: null },
-    select: { id: true, productId: true, images: true, name: true, product: { select: { slug: true } } },
+    select: {
+      id: true,
+      productId: true,
+      images: true,
+      name: true,
+      product: { select: { slug: true } },
+    },
   });
 }
 
@@ -69,7 +75,13 @@ export async function uploadVariantImagesAction(formData: FormData): Promise<Act
       const message = err instanceof StorageError ? err.message : "no se pudo procesar la foto.";
       failure = { name: file.name || "una foto", message };
       logger.warn(
-        { event: "admin.variant.image.upload_fail", adminId: session.admin.id, variantId, file: file.name, err: message },
+        {
+          event: "admin.variant.image.upload_fail",
+          adminId: session.admin.id,
+          variantId,
+          file: file.name,
+          err: message,
+        },
         "Failed to upload variant image",
       );
       break;

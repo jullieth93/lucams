@@ -33,7 +33,9 @@ let totpSecret = "";
 
 // Mismo hash que features/admin-mfa/recovery-codes.ts (sha256 del código normalizado).
 function hashCode(code: string): string {
-  return createHash("sha256").update(code.toUpperCase().replace(/[^A-Z0-9]/g, "")).digest("hex");
+  return createHash("sha256")
+    .update(code.toUpperCase().replace(/[^A-Z0-9]/g, ""))
+    .digest("hex");
 }
 
 test.beforeAll(async () => {
@@ -42,7 +44,8 @@ test.beforeAll(async () => {
     password: PASSWORD,
     email_confirm: true,
   });
-  if (error || !data.user) throw new Error(`E2E MFA: no se pudo crear auth user: ${error?.message}`);
+  if (error || !data.user)
+    throw new Error(`E2E MFA: no se pudo crear auth user: ${error?.message}`);
   supabaseUserId = data.user.id;
   const admin = await prisma.adminUser.create({
     data: { supabaseUserId, email: EMAIL, role: "SUPERADMIN", isActive: true },
@@ -69,7 +72,8 @@ test.beforeAll(async () => {
 });
 
 test.afterAll(async () => {
-  if (adminId) await prisma.adminRecoveryCode.deleteMany({ where: { adminUserId: adminId } }).catch(() => {});
+  if (adminId)
+    await prisma.adminRecoveryCode.deleteMany({ where: { adminUserId: adminId } }).catch(() => {});
   if (adminId) await prisma.adminUser.deleteMany({ where: { id: adminId } }).catch(() => {});
   if (supabaseUserId) await service.auth.admin.deleteUser(supabaseUserId).catch(() => {});
   await prisma.$disconnect();
@@ -93,7 +97,9 @@ test.describe.serial("admin — reto MFA", () => {
     await expect(page).toHaveURL(/\/admin\/dashboard/);
   });
 
-  test("con un código de respaldo entra y va a reconfigurar (desactiva el MFA)", async ({ page }) => {
+  test("con un código de respaldo entra y va a reconfigurar (desactiva el MFA)", async ({
+    page,
+  }) => {
     await loginToMfa(page);
     await page.getByRole("button", { name: /usar un código de respaldo/i }).click();
     await page.getByPlaceholder("XXXXX-XXXXX").fill(RECOVERY_CODE);

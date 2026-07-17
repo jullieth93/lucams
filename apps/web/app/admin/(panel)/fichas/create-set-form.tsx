@@ -72,7 +72,9 @@ export function CreateSetForm() {
         <label htmlFor="set-lang" className="text-brand-purple-dark block text-sm font-semibold">
           Idioma del abecedario
         </label>
-        <p className="text-brand-muted mb-1 text-xs">Español incluye la Ñ (27 letras); Inglés no (26).</p>
+        <p className="text-brand-muted mb-1 text-xs">
+          Español incluye la Ñ (27 letras); Inglés no (26).
+        </p>
         <select
           id="set-lang"
           value={language}

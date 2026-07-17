@@ -16,10 +16,22 @@ import {
 type St = { error?: string; success?: string } | null;
 
 export function WarrantyActions({ id, status }: { id: string; status: string }) {
-  const [reviewSt, review, reviewPending] = useActionState<St, FormData>(reviewWarrantyAction, null);
-  const [approveSt, approve, approvePending] = useActionState<St, FormData>(approveWarrantyAction, null);
-  const [resolveSt, resolve, resolvePending] = useActionState<St, FormData>(resolveWarrantyAction, null);
-  const [rejectSt, reject, rejectPending] = useActionState<St, FormData>(rejectWarrantyAction, null);
+  const [reviewSt, review, reviewPending] = useActionState<St, FormData>(
+    reviewWarrantyAction,
+    null,
+  );
+  const [approveSt, approve, approvePending] = useActionState<St, FormData>(
+    approveWarrantyAction,
+    null,
+  );
+  const [resolveSt, resolve, resolvePending] = useActionState<St, FormData>(
+    resolveWarrantyAction,
+    null,
+  );
+  const [rejectSt, reject, rejectPending] = useActionState<St, FormData>(
+    rejectWarrantyAction,
+    null,
+  );
   const msg = reviewSt ?? approveSt ?? resolveSt ?? rejectSt;
 
   return (

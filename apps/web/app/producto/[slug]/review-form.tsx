@@ -35,7 +35,9 @@ export function ReviewForm({ productId, slug }: { productId: string; slug: strin
       <input type="hidden" name="rating" value={rating} />
 
       <div>
-        <span className="text-brand-purple-dark mb-1 block text-sm font-semibold">Tu calificación</span>
+        <span className="text-brand-purple-dark mb-1 block text-sm font-semibold">
+          Tu calificación
+        </span>
         <div className="flex gap-1" role="radiogroup" aria-label="Calificación">
           {[1, 2, 3, 4, 5].map((n) => (
             <button
@@ -65,7 +67,10 @@ export function ReviewForm({ productId, slug }: { productId: string; slug: strin
       </div>
 
       <div>
-        <label htmlFor="comment" className="text-brand-purple-dark mb-1 block text-sm font-semibold">
+        <label
+          htmlFor="comment"
+          className="text-brand-purple-dark mb-1 block text-sm font-semibold"
+        >
           Tu reseña
         </label>
         <textarea

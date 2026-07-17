@@ -69,19 +69,19 @@ test.describe("a11y — invariantes en páginas clave", () => {
       test.slow();
       await page.goto(path);
       const sinNombre = await page
-        .locator(
-          "input:not([type=hidden]):not([type=submit]):not([type=button]), textarea, select",
-        )
+        .locator("input:not([type=hidden]):not([type=submit]):not([type=button]), textarea, select")
         .evaluateAll((els) =>
           els
             .filter((el) => {
               const id = (el as HTMLElement).id;
               const byFor = !!id && !!document.querySelector(`label[for="${CSS.escape(id)}"]`);
               const wrapped = !!el.closest("label");
-              const ariaLabel = ((el.getAttribute("aria-label") ?? "").trim().length > 0);
+              const ariaLabel = (el.getAttribute("aria-label") ?? "").trim().length > 0;
               const lb = el.getAttribute("aria-labelledby");
-              const byLabelledby = lb ? lb.split(/\s+/).some((i) => !!document.getElementById(i)) : false;
-              const title = ((el.getAttribute("title") ?? "").trim().length > 0);
+              const byLabelledby = lb
+                ? lb.split(/\s+/).some((i) => !!document.getElementById(i))
+                : false;
+              const title = (el.getAttribute("title") ?? "").trim().length > 0;
               return !(byFor || wrapped || ariaLabel || byLabelledby || title);
             })
             .map((el) => el.getAttribute("name") || (el as HTMLElement).id || el.tagName),
@@ -90,9 +90,7 @@ test.describe("a11y — invariantes en páginas clave", () => {
     });
   }
 
-  test("skip-link (WCAG 2.4.1): primer foco por teclado y salta al contenido", async ({
-    page,
-  }) => {
+  test("skip-link (WCAG 2.4.1): primer foco por teclado y salta al contenido", async ({ page }) => {
     await page.goto("/");
     const skip = page.getByRole("link", { name: /saltar al contenido/i });
     await expect(skip).toHaveAttribute("href", "#contenido");

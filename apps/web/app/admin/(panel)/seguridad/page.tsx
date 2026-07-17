@@ -23,11 +23,7 @@ export const metadata: Metadata = { title: "Seguridad" };
 
 type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
 
-export default async function AdminSeguridadPage({
-  searchParams,
-}: {
-  searchParams: SearchParams;
-}) {
+export default async function AdminSeguridadPage({ searchParams }: { searchParams: SearchParams }) {
   const session = await requireRole(["SUPERADMIN"]);
   const sp = await searchParams;
 
@@ -45,10 +41,7 @@ export default async function AdminSeguridadPage({
         icon={<KeyRound className="h-5 w-5" />}
         title="Seguridad de tu cuenta"
         subtitle="Verificación en 2 pasos para proteger el acceso al panel."
-        breadcrumbs={[
-          { label: "Admin", href: "/admin/dashboard" },
-          { label: "Seguridad" },
-        ]}
+        breadcrumbs={[{ label: "Admin", href: "/admin/dashboard" }, { label: "Seguridad" }]}
       />
 
       <AdminPageBody>
@@ -99,8 +92,8 @@ export default async function AdminSeguridadPage({
               <div className="border-brand-purple/10 border-t pt-5">
                 <h3 className="text-brand-purple-dark mb-1 font-semibold">Desactivar</h3>
                 <p className="text-brand-purple-dark/70 mb-3 text-sm">
-                  Quita la verificación en 2 pasos (también borra tus códigos de respaldo). Tu cuenta
-                  quedará protegida solo con la contraseña.
+                  Quita la verificación en 2 pasos (también borra tus códigos de respaldo). Tu
+                  cuenta quedará protegida solo con la contraseña.
                 </p>
                 <form action={disableMfaAction}>
                   <button
@@ -122,9 +115,9 @@ export default async function AdminSeguridadPage({
               )}
               <p className="text-brand-purple-dark/75 text-sm">
                 Tu panel ve finanzas y datos de clientes. La verificación en 2 pasos agrega una capa
-                extra: además de tu contraseña, pediremos un código que cambia cada 30 segundos en tu
-                celular. Necesitas una app gratuita como{" "}
-                <strong>Google Authenticator</strong>, <strong>Authy</strong> o 1Password.
+                extra: además de tu contraseña, pediremos un código que cambia cada 30 segundos en
+                tu celular. Necesitas una app gratuita como <strong>Google Authenticator</strong>,{" "}
+                <strong>Authy</strong> o 1Password.
               </p>
               <MfaEnroll />
             </div>

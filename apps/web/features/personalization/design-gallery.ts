@@ -44,7 +44,9 @@ export async function createGalleryImage(opts: {
   imageUrl: string;
   adminId: string;
 }): Promise<{ id: string }> {
-  const count = await prisma.designGalleryImage.count({ where: { tag: opts.tag, deletedAt: null } });
+  const count = await prisma.designGalleryImage.count({
+    where: { tag: opts.tag, deletedAt: null },
+  });
   const row = await prisma.designGalleryImage.create({
     data: {
       tag: opts.tag,

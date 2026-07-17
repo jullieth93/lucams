@@ -155,9 +155,7 @@ export function BlockEditorForm({ block }: { block: BlockEditorBlock }) {
             <Label htmlFor="body" className="text-brand-purple-dark text-base font-semibold">
               Contenido
             </Label>
-            <span className="text-brand-muted text-xs">
-              Lo que escribas se ve a la derecha →
-            </span>
+            <span className="text-brand-muted text-xs">Lo que escribas se ve a la derecha →</span>
           </div>
           <MarkdownEditor
             key={editorKey}
@@ -222,9 +220,7 @@ export function BlockEditorForm({ block }: { block: BlockEditorBlock }) {
                 {body}
               </ReactMarkdown>
             ) : (
-              <p className="text-brand-muted italic">
-                Empieza a escribir a la izquierda...
-              </p>
+              <p className="text-brand-muted italic">Empieza a escribir a la izquierda...</p>
             )}
           </div>
         </div>

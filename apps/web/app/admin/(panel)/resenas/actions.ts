@@ -200,7 +200,5 @@ export async function bulkArchiveReviewsAction(formData: FormData): Promise<void
   revalidatePath("/admin/resenas");
   revalidatePath("/admin/dashboard");
   revalidatePath("/");
-  redirect(
-    `/admin/resenas?bulkOk=${encodeURIComponent(`${result.count} reseñas archivadas.`)}`,
-  );
+  redirect(`/admin/resenas?bulkOk=${encodeURIComponent(`${result.count} reseñas archivadas.`)}`);
 }

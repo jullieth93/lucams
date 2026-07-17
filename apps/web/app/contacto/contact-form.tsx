@@ -39,9 +39,7 @@ export function ContactForm() {
           Te respondemos a tu email en menos de 24h. Tu ticket es{" "}
           <span className="font-mono text-xs">{state.ticketId.slice(0, 8).toUpperCase()}</span>.
         </p>
-        <p className="text-brand-muted mt-3 text-xs">
-          Si es urgente, escríbenos por WhatsApp.
-        </p>
+        <p className="text-brand-muted mt-3 text-xs">Si es urgente, escríbenos por WhatsApp.</p>
       </div>
     );
   }

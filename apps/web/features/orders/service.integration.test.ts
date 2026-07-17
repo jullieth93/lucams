@@ -183,9 +183,27 @@ describe.skipIf(!hasDb)("orders/service — integración DB (ciclo de vida)", { 
         personalizationKind: "PHOTO_PACK",
         variants: {
           create: [
-            { name: "Var A", sku: `${RUN}-VA`.toUpperCase(), price: PRICE_A, stock: 1000, attributes: {} },
-            { name: "Var B", sku: `${RUN}-VB`.toUpperCase(), price: PRICE_B, stock: 1000, attributes: {} },
-            { name: "Low", sku: `${RUN}-LOW`.toUpperCase(), price: 5_000, stock: LOW_STOCK, attributes: {} },
+            {
+              name: "Var A",
+              sku: `${RUN}-VA`.toUpperCase(),
+              price: PRICE_A,
+              stock: 1000,
+              attributes: {},
+            },
+            {
+              name: "Var B",
+              sku: `${RUN}-VB`.toUpperCase(),
+              price: PRICE_B,
+              stock: 1000,
+              attributes: {},
+            },
+            {
+              name: "Low",
+              sku: `${RUN}-LOW`.toUpperCase(),
+              price: 5_000,
+              stock: LOW_STOCK,
+              attributes: {},
+            },
           ],
         },
       },
@@ -206,7 +224,9 @@ describe.skipIf(!hasDb)("orders/service — integración DB (ciclo de vida)", { 
 
   // Borra lo creado por tests, scoped al prefijo RUN, respetando keep-alive.
   // Orden FK: InventoryLog → OrderItem → Order → CartItem → Cart → Customer.
-  async function cleanupOrdersAndCarts(opts: { respectKeepAlive: boolean } = { respectKeepAlive: true }) {
+  async function cleanupOrdersAndCarts(
+    opts: { respectKeepAlive: boolean } = { respectKeepAlive: true },
+  ) {
     // NOTA: Order.cartId es un string plano SIN relación FK (schema: "NO FK"),
     // por eso NO se puede filtrar por `cart: {...}`. Identificamos las orders de
     // test por email/number RUN-prefijados y por los cartId de los carts RUN.
@@ -321,14 +341,18 @@ describe.skipIf(!hasDb)("orders/service — integración DB (ciclo de vida)", { 
     it("total respeta el unitPrice SNAPSHOT del cart, no el price actual de la variante", async () => {
       // El cart congela unitPrice distinto al price vigente de la variante.
       const SNAP = 9_999; // != PRICE_A
-      const { cartId } = await makeCartWithItems([{ variantId: variantAId, qty: 3, unitPrice: SNAP }]);
+      const { cartId } = await makeCartWithItems([
+        { variantId: variantAId, qty: 3, unitPrice: SNAP },
+      ]);
       const result = await createOrderFromCart(baseInput(cartId));
       expect(result.subtotal).toBe(3 * SNAP);
       expect(result.total).toBe(3 * SNAP + 15_000);
     });
 
     it("flete 0 (envío gratis): total == subtotal", async () => {
-      const { cartId } = await makeCartWithItems([{ variantId: variantAId, qty: 1, unitPrice: PRICE_A }]);
+      const { cartId } = await makeCartWithItems([
+        { variantId: variantAId, qty: 1, unitPrice: PRICE_A },
+      ]);
       const result = await createOrderFromCart(
         baseInput(cartId, {
           shippingSelection: {
@@ -346,7 +370,9 @@ describe.skipIf(!hasDb)("orders/service — integración DB (ciclo de vida)", { 
     });
 
     it("Order.number tiene formato LCM-YYYY-NNNN con el año actual", async () => {
-      const { cartId } = await makeCartWithItems([{ variantId: variantAId, qty: 1, unitPrice: PRICE_A }]);
+      const { cartId } = await makeCartWithItems([
+        { variantId: variantAId, qty: 1, unitPrice: PRICE_A },
+      ]);
       const result = await createOrderFromCart(baseInput(cartId));
       const year = new Date().getFullYear();
       expect(result.number).toMatch(new RegExp(`^LCM-${year}-\\d{4}$`));
@@ -382,7 +408,10 @@ describe.skipIf(!hasDb)("orders/service — integración DB (ciclo de vida)", { 
 
       const result = await createOrderFromCart(baseInput(cartId));
 
-      const after = await prisma.design.findUnique({ where: { id: design.id }, select: { status: true } });
+      const after = await prisma.design.findUnique({
+        where: { id: design.id },
+        select: { status: true },
+      });
       expect(after!.status).toBe("USED_IN_ORDER");
 
       // El OrderItem quedó vinculado al mismo designId (snapshot).
@@ -395,15 +424,27 @@ describe.skipIf(!hasDb)("orders/service — integración DB (ciclo de vida)", { 
 
     it("billing.wantsInvoice=true → dianStatus PENDING + copia documento y nombre; false → NOT_REQUIRED", async () => {
       // Con factura.
-      const withInvoice = await makeCartWithItems([{ variantId: variantAId, qty: 1, unitPrice: PRICE_A }]);
+      const withInvoice = await makeCartWithItems([
+        { variantId: variantAId, qty: 1, unitPrice: PRICE_A },
+      ]);
       const r1 = await createOrderFromCart(
         baseInput(withInvoice.cartId, {
-          billing: { wantsInvoice: true, documentType: "CC", documentNumber: "1020304050", name: "Ana Pérez" },
+          billing: {
+            wantsInvoice: true,
+            documentType: "CC",
+            documentNumber: "1020304050",
+            name: "Ana Pérez",
+          },
         }),
       );
       const o1 = await prisma.order.findUnique({
         where: { id: r1.id },
-        select: { dianStatus: true, billingDocumentType: true, billingDocumentNumber: true, billingName: true },
+        select: {
+          dianStatus: true,
+          billingDocumentType: true,
+          billingDocumentNumber: true,
+          billingName: true,
+        },
       });
       expect(o1!.dianStatus).toBe("PENDING");
       expect(o1!.billingDocumentType).toBe("CC");
@@ -411,16 +452,28 @@ describe.skipIf(!hasDb)("orders/service — integración DB (ciclo de vida)", { 
       expect(o1!.billingName).toBe("Ana Pérez");
 
       // Sin factura.
-      const noInvoice = await makeCartWithItems([{ variantId: variantAId, qty: 1, unitPrice: PRICE_A }]);
-      const r2 = await createOrderFromCart(baseInput(noInvoice.cartId, { billing: { wantsInvoice: false } }));
-      const o2 = await prisma.order.findUnique({ where: { id: r2.id }, select: { dianStatus: true } });
+      const noInvoice = await makeCartWithItems([
+        { variantId: variantAId, qty: 1, unitPrice: PRICE_A },
+      ]);
+      const r2 = await createOrderFromCart(
+        baseInput(noInvoice.cartId, { billing: { wantsInvoice: false } }),
+      );
+      const o2 = await prisma.order.findUnique({
+        where: { id: r2.id },
+        select: { dianStatus: true },
+      });
       expect(o2!.dianStatus).toBe("NOT_REQUIRED");
     });
 
     it("paymentMethod COD se persiste tal cual", async () => {
-      const { cartId } = await makeCartWithItems([{ variantId: variantAId, qty: 1, unitPrice: PRICE_A }]);
+      const { cartId } = await makeCartWithItems([
+        { variantId: variantAId, qty: 1, unitPrice: PRICE_A },
+      ]);
       const result = await createOrderFromCart(baseInput(cartId, { paymentMethod: "COD" }));
-      const row = await prisma.order.findUnique({ where: { id: result.id }, select: { paymentMethod: true } });
+      const row = await prisma.order.findUnique({
+        where: { id: result.id },
+        select: { paymentMethod: true },
+      });
       expect(row!.paymentMethod).toBe("COD");
     });
 
@@ -431,17 +484,27 @@ describe.skipIf(!hasDb)("orders/service — integración DB (ciclo de vida)", { 
         { customerId: customer.id },
       );
       const result = await createOrderFromCart(baseInput(cartId, { customerId: customer.id }));
-      const row = await prisma.order.findUnique({ where: { id: result.id }, select: { customerId: true } });
+      const row = await prisma.order.findUnique({
+        where: { id: result.id },
+        select: { customerId: true },
+      });
       expect(row!.customerId).toBe(customer.id);
     });
 
     it("guarda la shippingAddress como snapshot JSON con los campos del checkout", async () => {
-      const { cartId } = await makeCartWithItems([{ variantId: variantAId, qty: 1, unitPrice: PRICE_A }]);
+      const { cartId } = await makeCartWithItems([
+        { variantId: variantAId, qty: 1, unitPrice: PRICE_A },
+      ]);
       const shipEmail = email("addr");
       const result = await createOrderFromCart(
-        baseInput(cartId, { shipping: { email: shipEmail, city: "Medellín", department: "Antioquia" } }),
+        baseInput(cartId, {
+          shipping: { email: shipEmail, city: "Medellín", department: "Antioquia" },
+        }),
       );
-      const row = await prisma.order.findUnique({ where: { id: result.id }, select: { shippingAddress: true, phone: true } });
+      const row = await prisma.order.findUnique({
+        where: { id: result.id },
+        select: { shippingAddress: true, phone: true },
+      });
       const addr = row!.shippingAddress as Record<string, unknown>;
       expect(addr.city).toBe("Medellín");
       expect(addr.department).toBe("Antioquia");
@@ -452,7 +515,9 @@ describe.skipIf(!hasDb)("orders/service — integración DB (ciclo de vida)", { 
     // ── Idempotency por cartId ──────────────────────────────────────────────
 
     it("IDEMPOTENCIA: reintentar el MISMO cart (mismo total + email) devuelve la Order existente, no crea otra", async () => {
-      const { cartId } = await makeCartWithItems([{ variantId: variantAId, qty: 2, unitPrice: PRICE_A }]);
+      const { cartId } = await makeCartWithItems([
+        { variantId: variantAId, qty: 2, unitPrice: PRICE_A },
+      ]);
       const shipEmail = email("idem");
       const input = baseInput(cartId, { shipping: { email: shipEmail } });
 
@@ -462,7 +527,9 @@ describe.skipIf(!hasDb)("orders/service — integración DB (ciclo de vida)", { 
       // Misma Order devuelta (mismo id y number) — NO se creó una segunda.
       expect(second.id).toBe(first.id);
       expect(second.number).toBe(first.number);
-      const count = await prisma.order.count({ where: { cartId, status: "PENDING_PAYMENT", deletedAt: null } });
+      const count = await prisma.order.count({
+        where: { cartId, status: "PENDING_PAYMENT", deletedAt: null },
+      });
       expect(count).toBe(1);
     });
 
@@ -473,13 +540,20 @@ describe.skipIf(!hasDb)("orders/service — integración DB (ciclo de vida)", { 
       // `Order_cartId_pending_unique` → P2002 → createOrderFromCart lo captura
       // (isCartPendingUniqueViolation) y devuelve la Order ganadora ya existente.
       // Garantía dura: 1 cart = 1 Order activa = 1 cobro, sin importar re-cotización.
-      const { cartId } = await makeCartWithItems([{ variantId: variantAId, qty: 1, unitPrice: PRICE_A }]);
+      const { cartId } = await makeCartWithItems([
+        { variantId: variantAId, qty: 1, unitPrice: PRICE_A },
+      ]);
       const shipEmail = email("diff");
       const first = await createOrderFromCart(
         baseInput(cartId, {
           shipping: { email: shipEmail },
           shippingSelection: {
-            carrier: "a", carrierName: "A", fleteCop: 10_000, deliveryDays: 2, contraentrega: false, quoteId: `${RUN}-a`,
+            carrier: "a",
+            carrierName: "A",
+            fleteCop: 10_000,
+            deliveryDays: 2,
+            contraentrega: false,
+            quoteId: `${RUN}-a`,
           },
         }),
       );
@@ -487,7 +561,12 @@ describe.skipIf(!hasDb)("orders/service — integración DB (ciclo de vida)", { 
         baseInput(cartId, {
           shipping: { email: shipEmail },
           shippingSelection: {
-            carrier: "b", carrierName: "B", fleteCop: 30_000, deliveryDays: 5, contraentrega: false, quoteId: `${RUN}-b`,
+            carrier: "b",
+            carrierName: "B",
+            fleteCop: 30_000,
+            deliveryDays: 5,
+            contraentrega: false,
+            quoteId: `${RUN}-b`,
           },
         }),
       );
@@ -496,7 +575,9 @@ describe.skipIf(!hasDb)("orders/service — integración DB (ciclo de vida)", { 
       expect(second.total).toBe(first.total);
       expect(first.total).toBe(PRICE_A + 10_000);
       // Sigue habiendo exactamente 1 Order PENDING_PAYMENT para el cart.
-      const count = await prisma.order.count({ where: { cartId, status: "PENDING_PAYMENT", deletedAt: null } });
+      const count = await prisma.order.count({
+        where: { cartId, status: "PENDING_PAYMENT", deletedAt: null },
+      });
       expect(count).toBe(1);
     });
 
@@ -509,31 +590,48 @@ describe.skipIf(!hasDb)("orders/service — integración DB (ciclo de vida)", { 
     });
 
     it("cart inexistente lanza 'Cart no encontrado'", async () => {
-      await expect(createOrderFromCart(baseInput(`${RUN}-ghost-cart`))).rejects.toThrow(/Cart no encontrado/);
+      await expect(createOrderFromCart(baseInput(`${RUN}-ghost-cart`))).rejects.toThrow(
+        /Cart no encontrado/,
+      );
     });
 
     it("cart soft-deleted (deletedAt) se trata como inexistente", async () => {
-      const { cartId } = await makeCartWithItems([{ variantId: variantAId, qty: 1, unitPrice: PRICE_A }]);
-      await prisma.cart.update({ where: { id: cartId }, data: { deletedAt: new Date(), deletedBy: "test" } });
+      const { cartId } = await makeCartWithItems([
+        { variantId: variantAId, qty: 1, unitPrice: PRICE_A },
+      ]);
+      await prisma.cart.update({
+        where: { id: cartId },
+        data: { deletedAt: new Date(), deletedBy: "test" },
+      });
       await expect(createOrderFromCart(baseInput(cartId))).rejects.toThrow(/Cart no encontrado/);
     });
 
     it("stock insuficiente en una variante bloquea la creación (assertStockAvailable) y NO crea Order", async () => {
       // lowStockVariant tiene stock=2; pedimos 5.
-      const { cartId } = await makeCartWithItems([{ variantId: lowStockVariantId, qty: LOW_STOCK + 3, unitPrice: 5_000 }]);
+      const { cartId } = await makeCartWithItems([
+        { variantId: lowStockVariantId, qty: LOW_STOCK + 3, unitPrice: 5_000 },
+      ]);
       await expect(createOrderFromCart(baseInput(cartId))).rejects.toThrow();
       expect(await prisma.order.count({ where: { cartId } })).toBe(0);
       // El stock NO se tocó (la validación es lectura; el decremento es post-PAID).
-      const v = await prisma.productVariant.findUnique({ where: { id: lowStockVariantId }, select: { stock: true } });
+      const v = await prisma.productVariant.findUnique({
+        where: { id: lowStockVariantId },
+        select: { stock: true },
+      });
       expect(v!.stock).toBe(LOW_STOCK);
     });
 
     it("stock exactamente igual a la cantidad pedida SÍ permite crear (>= qty)", async () => {
-      const { cartId } = await makeCartWithItems([{ variantId: lowStockVariantId, qty: LOW_STOCK, unitPrice: 5_000 }]);
+      const { cartId } = await makeCartWithItems([
+        { variantId: lowStockVariantId, qty: LOW_STOCK, unitPrice: 5_000 },
+      ]);
       const result = await createOrderFromCart(baseInput(cartId));
       expect(result.id).toBeTruthy();
       // Stock intacto: el decremento ocurre recién en PAID, no en creación.
-      const v = await prisma.productVariant.findUnique({ where: { id: lowStockVariantId }, select: { stock: true } });
+      const v = await prisma.productVariant.findUnique({
+        where: { id: lowStockVariantId },
+        select: { stock: true },
+      });
       expect(v!.stock).toBe(LOW_STOCK);
     });
   });
@@ -544,7 +642,9 @@ describe.skipIf(!hasDb)("orders/service — integración DB (ciclo de vida)", { 
 
   describe("getOrder", () => {
     async function seedOrder() {
-      const { cartId } = await makeCartWithItems([{ variantId: variantAId, qty: 1, unitPrice: PRICE_A }]);
+      const { cartId } = await makeCartWithItems([
+        { variantId: variantAId, qty: 1, unitPrice: PRICE_A },
+      ]);
       return createOrderFromCart(baseInput(cartId, { shipping: { email: email("get") } }));
     }
 
@@ -571,7 +671,10 @@ describe.skipIf(!hasDb)("orders/service — integración DB (ciclo de vida)", { 
 
     it("no devuelve órdenes soft-deleted (deletedAt)", async () => {
       const created = await seedOrder();
-      await prisma.order.update({ where: { id: created.id }, data: { deletedAt: new Date(), deletedBy: "test" } });
+      await prisma.order.update({
+        where: { id: created.id },
+        data: { deletedAt: new Date(), deletedBy: "test" },
+      });
       expect(await getOrder(created.id)).toBeNull();
       expect(await getOrder(created.number)).toBeNull();
     });
@@ -651,7 +754,10 @@ describe.skipIf(!hasDb)("orders/service — integración DB (ciclo de vida)", { 
     });
 
     it("busca por number exacto (q) → 1 resultado", async () => {
-      const target = await prisma.order.findUnique({ where: { id: orderPaidId }, select: { number: true } });
+      const target = await prisma.order.findUnique({
+        where: { id: orderPaidId },
+        select: { number: true },
+      });
       const res = await listOrders({ q: target!.number });
       expect(res.items.some((o) => o.id === orderPaidId)).toBe(true);
       // El number es único → contiene exactamente esa order.
@@ -709,7 +815,10 @@ describe.skipIf(!hasDb)("orders/service — integración DB (ciclo de vida)", { 
         { customerId: customer.id },
       );
       await createOrderFromCart(
-        baseInput(cartId, { customerId: customer.id, shipping: { email: `${custToken}@lucams.test` } }),
+        baseInput(cartId, {
+          customerId: customer.id,
+          shipping: { email: `${custToken}@lucams.test` },
+        }),
       );
       // Buscar por nombre del customer (q pega también contra customer.firstName).
       const res = await listOrders({ q: "Sara" });
@@ -721,12 +830,18 @@ describe.skipIf(!hasDb)("orders/service — integración DB (ciclo de vida)", { 
     it("excluye órdenes soft-deleted del listado y del total", async () => {
       const del = await listOrders({ q: seededEmailToken });
       expect(del.total).toBe(3);
-      await prisma.order.update({ where: { id: orderPendingId }, data: { deletedAt: new Date(), deletedBy: "test" } });
+      await prisma.order.update({
+        where: { id: orderPendingId },
+        data: { deletedAt: new Date(), deletedBy: "test" },
+      });
       const after = await listOrders({ q: seededEmailToken });
       expect(after.total).toBe(2);
       expect(after.items.some((o) => o.id === orderPendingId)).toBe(false);
       // Restaurar para no romper otros asserts del describe (aunque afterEach limpia todo).
-      await prisma.order.update({ where: { id: orderPendingId }, data: { deletedAt: null, deletedBy: null } });
+      await prisma.order.update({
+        where: { id: orderPendingId },
+        data: { deletedAt: null, deletedBy: null },
+      });
     });
 
     it("q sin coincidencias → lista vacía, total 0, totalPages mínimo 1", async () => {
@@ -756,19 +871,29 @@ describe.skipIf(!hasDb)("orders/service — integración DB (ciclo de vida)", { 
       // test pueden flaggear órdenes en paralelo. Por eso NO aseveramos igualdad
       // exacta (frágil) sino la DIRECCIÓN del cambio que causa NUESTRA mutación,
       // con lecturas contiguas para minimizar la ventana de ruido concurrente.
-      const { cartId } = await makeCartWithItems([{ variantId: variantAId, qty: 1, unitPrice: PRICE_A }]);
-      const created = await createOrderFromCart(baseInput(cartId, { shipping: { email: email("recon") } }));
+      const { cartId } = await makeCartWithItems([
+        { variantId: variantAId, qty: 1, unitPrice: PRICE_A },
+      ]);
+      const created = await createOrderFromCart(
+        baseInput(cartId, { shipping: { email: email("recon") } }),
+      );
 
       const beforeFlag = await countOrdersNeedingReconciliation();
       await prisma.order.update({
         where: { id: created.id },
-        data: { needsReconciliation: true, reconciliationReason: "stock agotado post-cobro (test)" },
+        data: {
+          needsReconciliation: true,
+          reconciliationReason: "stock agotado post-cobro (test)",
+        },
       });
       const afterFlag = await countOrdersNeedingReconciliation();
       expect(afterFlag).toBeGreaterThan(beforeFlag); // nuestra flagged suma al conteo
 
       // Soft-delete la excluye del conteo.
-      await prisma.order.update({ where: { id: created.id }, data: { deletedAt: new Date(), deletedBy: "test" } });
+      await prisma.order.update({
+        where: { id: created.id },
+        data: { deletedAt: new Date(), deletedBy: "test" },
+      });
       const afterDelete = await countOrdersNeedingReconciliation();
       expect(afterDelete).toBeLessThan(afterFlag); // nuestra soft-deleted deja de contarse
     });
@@ -777,9 +902,13 @@ describe.skipIf(!hasDb)("orders/service — integración DB (ciclo de vida)", { 
       const token = `${RUN}recon${uniq()}`;
       // Una flagged y una no-flagged, mismo token de email.
       const c1 = await makeCartWithItems([{ variantId: variantAId, qty: 1, unitPrice: PRICE_A }]);
-      const flagged = await createOrderFromCart(baseInput(c1.cartId, { shipping: { email: `${token}@lucams.test` } }));
+      const flagged = await createOrderFromCart(
+        baseInput(c1.cartId, { shipping: { email: `${token}@lucams.test` } }),
+      );
       const c2 = await makeCartWithItems([{ variantId: variantBId, qty: 1, unitPrice: PRICE_B }]);
-      await createOrderFromCart(baseInput(c2.cartId, { shipping: { email: `${token}@lucams.test` } }));
+      await createOrderFromCart(
+        baseInput(c2.cartId, { shipping: { email: `${token}@lucams.test` } }),
+      );
 
       await prisma.order.update({ where: { id: flagged.id }, data: { needsReconciliation: true } });
 
@@ -795,9 +924,14 @@ describe.skipIf(!hasDb)("orders/service — integración DB (ciclo de vida)", { 
 
   describe("clearCartAfterPaid", () => {
     it("soft-deletea el cart (deletedAt + deletedBy=saga:order-paid)", async () => {
-      const { cartId } = await makeCartWithItems([{ variantId: variantAId, qty: 1, unitPrice: PRICE_A }]);
+      const { cartId } = await makeCartWithItems([
+        { variantId: variantAId, qty: 1, unitPrice: PRICE_A },
+      ]);
       await clearCartAfterPaid(cartId);
-      const cart = await prisma.cart.findUnique({ where: { id: cartId }, select: { deletedAt: true, deletedBy: true } });
+      const cart = await prisma.cart.findUnique({
+        where: { id: cartId },
+        select: { deletedAt: true, deletedBy: true },
+      });
       expect(cart!.deletedAt).not.toBeNull();
       expect(cart!.deletedBy).toBe("saga:order-paid");
     });
@@ -812,11 +946,19 @@ describe.skipIf(!hasDb)("orders/service — integración DB (ciclo de vida)", { 
     });
 
     it("es idempotente: llamarlo 2 veces no cambia el deletedAt del primer clear", async () => {
-      const { cartId } = await makeCartWithItems([{ variantId: variantAId, qty: 1, unitPrice: PRICE_A }]);
+      const { cartId } = await makeCartWithItems([
+        { variantId: variantAId, qty: 1, unitPrice: PRICE_A },
+      ]);
       await clearCartAfterPaid(cartId);
-      const first = await prisma.cart.findUnique({ where: { id: cartId }, select: { deletedAt: true } });
+      const first = await prisma.cart.findUnique({
+        where: { id: cartId },
+        select: { deletedAt: true },
+      });
       await clearCartAfterPaid(cartId);
-      const second = await prisma.cart.findUnique({ where: { id: cartId }, select: { deletedAt: true } });
+      const second = await prisma.cart.findUnique({
+        where: { id: cartId },
+        select: { deletedAt: true },
+      });
       // El updateMany filtra deletedAt:null → la 2da vez es no-op, el timestamp no cambia.
       expect(second!.deletedAt!.getTime()).toBe(first!.deletedAt!.getTime());
     });
@@ -832,7 +974,9 @@ describe.skipIf(!hasDb)("orders/service — integración DB (ciclo de vida)", { 
 
   describe("transitionOrder", () => {
     async function seedPending() {
-      const { cartId } = await makeCartWithItems([{ variantId: variantAId, qty: 1, unitPrice: PRICE_A }]);
+      const { cartId } = await makeCartWithItems([
+        { variantId: variantAId, qty: 1, unitPrice: PRICE_A },
+      ]);
       return createOrderFromCart(baseInput(cartId, { shipping: { email: email("trans") } }));
     }
 
@@ -840,15 +984,23 @@ describe.skipIf(!hasDb)("orders/service — integración DB (ciclo de vida)", { 
       const order = await seedPending();
       const updated = await transitionOrder(order.id, "PAID", { actorAdminId: "admin-42" });
       expect(updated.status).toBe("PAID");
-      const row = await prisma.order.findUnique({ where: { id: order.id }, select: { status: true, updatedBy: true } });
+      const row = await prisma.order.findUnique({
+        where: { id: order.id },
+        select: { status: true, updatedBy: true },
+      });
       expect(row!.status).toBe("PAID");
       expect(row!.updatedBy).toBe("admin-42");
     });
 
     it("transición ilegal PENDING_PAYMENT → SHIPPED lanza OrderTransitionError y NO cambia el status", async () => {
       const order = await seedPending();
-      await expect(transitionOrder(order.id, "SHIPPED")).rejects.toBeInstanceOf(OrderTransitionError);
-      const row = await prisma.order.findUnique({ where: { id: order.id }, select: { status: true } });
+      await expect(transitionOrder(order.id, "SHIPPED")).rejects.toBeInstanceOf(
+        OrderTransitionError,
+      );
+      const row = await prisma.order.findUnique({
+        where: { id: order.id },
+        select: { status: true },
+      });
       expect(row!.status).toBe("PENDING_PAYMENT");
     });
 
@@ -857,17 +1009,25 @@ describe.skipIf(!hasDb)("orders/service — integración DB (ciclo de vida)", { 
       const res = await transitionOrder(order.id, "PENDING_PAYMENT", { actorAdminId: "admin-x" });
       expect(res.status).toBe("PENDING_PAYMENT");
       // Idempotente → NO escribió updatedBy (early return antes del update).
-      const row = await prisma.order.findUnique({ where: { id: order.id }, select: { updatedBy: true } });
+      const row = await prisma.order.findUnique({
+        where: { id: order.id },
+        select: { updatedBy: true },
+      });
       expect(row!.updatedBy).toBeNull();
     });
 
     it("order inexistente lanza OrderNotFoundError", async () => {
-      await expect(transitionOrder(`${RUN}-ghost-order`, "PAID")).rejects.toBeInstanceOf(OrderNotFoundError);
+      await expect(transitionOrder(`${RUN}-ghost-order`, "PAID")).rejects.toBeInstanceOf(
+        OrderNotFoundError,
+      );
     });
 
     it("order soft-deleted se trata como inexistente (OrderNotFoundError)", async () => {
       const order = await seedPending();
-      await prisma.order.update({ where: { id: order.id }, data: { deletedAt: new Date(), deletedBy: "test" } });
+      await prisma.order.update({
+        where: { id: order.id },
+        data: { deletedAt: new Date(), deletedBy: "test" },
+      });
       await expect(transitionOrder(order.id, "PAID")).rejects.toBeInstanceOf(OrderNotFoundError);
     });
 
@@ -892,17 +1052,28 @@ describe.skipIf(!hasDb)("orders/service — integración DB (ciclo de vida)", { 
       // No hubo InventoryLog ORDER_PAID (nunca se pagó), así que revertStockForOrder
       // detecta "no prior decrement" y no toca stock. La transición SÍ ocurre.
       const order = await seedPending();
-      const stockBefore = (await prisma.productVariant.findUnique({ where: { id: variantAId }, select: { stock: true } }))!.stock;
+      const stockBefore = (await prisma.productVariant.findUnique({
+        where: { id: variantAId },
+        select: { stock: true },
+      }))!.stock;
 
-      const updated = await transitionOrder(order.id, "CANCELLED", { actorAdminId: "admin-cancel" });
+      const updated = await transitionOrder(order.id, "CANCELLED", {
+        actorAdminId: "admin-cancel",
+      });
       expect(updated.status).toBe("CANCELLED");
 
-      const row = await prisma.order.findUnique({ where: { id: order.id }, select: { status: true, updatedBy: true } });
+      const row = await prisma.order.findUnique({
+        where: { id: order.id },
+        select: { status: true, updatedBy: true },
+      });
       expect(row!.status).toBe("CANCELLED");
       expect(row!.updatedBy).toBe("admin-cancel");
 
       // Stock intacto (no había decremento que revertir) y sin InventoryLog de cancel.
-      const stockAfter = (await prisma.productVariant.findUnique({ where: { id: variantAId }, select: { stock: true } }))!.stock;
+      const stockAfter = (await prisma.productVariant.findUnique({
+        where: { id: variantAId },
+        select: { stock: true },
+      }))!.stock;
       expect(stockAfter).toBe(stockBefore);
       const cancelLog = await prisma.inventoryLog.findFirst({ where: { orderId: order.id } });
       expect(cancelLog).toBeNull();

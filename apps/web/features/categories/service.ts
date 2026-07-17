@@ -206,11 +206,7 @@ export async function updateCategory(
  * grupo a 0..n para ser robusto ante `order` duplicados (datos legacy en 0).
  * D3 (Lucy 2026-06-27): reemplaza el campo manual "número de orden".
  */
-export async function moveCategory(
-  id: string,
-  direction: "up" | "down",
-  actorId: string | null,
-) {
+export async function moveCategory(id: string, direction: "up" | "down", actorId: string | null) {
   const cat = await prisma.category.findUnique({
     where: { id },
     select: { parentId: true },

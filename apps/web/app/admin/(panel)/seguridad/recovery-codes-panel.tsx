@@ -31,8 +31,7 @@ export function RecoveryCodesPanel({ unusedCount }: { unusedCount: number }) {
         <h3 className="text-brand-purple-dark font-semibold">Códigos de respaldo</h3>
       </div>
       <p className="text-brand-purple-dark/70 text-sm">
-        Son códigos de un solo uso para entrar si pierdes el teléfono. Guárdalos en un lugar
-        seguro.{" "}
+        Son códigos de un solo uso para entrar si pierdes el teléfono. Guárdalos en un lugar seguro.{" "}
         {hasCodes ? (
           <span className="font-semibold">Te quedan {unusedCount} sin usar.</span>
         ) : (
@@ -66,7 +65,11 @@ export function RecoveryCodesPanel({ unusedCount }: { unusedCount: number }) {
             onClick={() => copyAll(state.codes!)}
             className="border-brand-purple/25 text-brand-purple-dark hover:bg-brand-purple/10 mt-3 inline-flex items-center gap-1.5 rounded-md border bg-white px-3 py-1.5 text-xs font-semibold"
           >
-            {copied ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
+            {copied ? (
+              <Check className="h-3.5 w-3.5 text-emerald-600" />
+            ) : (
+              <Copy className="h-3.5 w-3.5" />
+            )}
             {copied ? "¡Copiados!" : "Copiar todos"}
           </button>
         </div>

@@ -82,7 +82,7 @@ export function BulkActionBar() {
     <div
       role="region"
       aria-label="Acciones masivas"
-      className="fixed inset-x-0 bottom-0 z-30 px-3 pb-4 pt-2 sm:px-6"
+      className="fixed inset-x-0 bottom-0 z-30 px-3 pt-2 pb-4 sm:px-6"
     >
       <div className="border-brand-purple/20 bg-brand-purple-dark/95 mx-auto flex max-w-5xl flex-wrap items-center gap-3 rounded-xl border px-4 py-3 text-white shadow-xl backdrop-blur">
         <div className="flex flex-1 items-center gap-2">
@@ -186,9 +186,7 @@ function BulkSubmitButton({
         // Copiar los productIds seleccionados del documento al FormData (el form
         // del bulk-action-bar no envuelve los checkboxes — viven en la tabla).
         document
-          .querySelectorAll<HTMLInputElement>(
-            'input[type="checkbox"][name="productIds"]:checked',
-          )
+          .querySelectorAll<HTMLInputElement>('input[type="checkbox"][name="productIds"]:checked')
           .forEach((c) => fd.append("productIds", c.value));
         if (onSubmit) onSubmit();
         return action(fd);
@@ -229,7 +227,7 @@ export function BulkSelectAllCheckbox() {
       data-bulk-select-all
       onChange={onChange}
       aria-label="Seleccionar todos los productos visibles"
-      className="text-brand-purple focus:ring-brand-purple/40 h-4 w-4 cursor-pointer rounded border-brand-purple/30"
+      className="text-brand-purple focus:ring-brand-purple/40 border-brand-purple/30 h-4 w-4 cursor-pointer rounded"
     />
   );
 }

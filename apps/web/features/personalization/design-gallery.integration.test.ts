@@ -22,8 +22,18 @@ afterAll(async () => {
 
 describe.skipIf(!hasDb)("design-gallery — integración", { timeout: 30000 }, () => {
   it("create → list → get → delete (con filtro por tag/activo)", async () => {
-    const a = await createGalleryImage({ tag: TAG, name: "Flores", imageUrl: "https://x/1.png", adminId: "admin_test" });
-    const b = await createGalleryImage({ tag: TAG, name: "Corazón", imageUrl: "https://x/2.png", adminId: "admin_test" });
+    const a = await createGalleryImage({
+      tag: TAG,
+      name: "Flores",
+      imageUrl: "https://x/1.png",
+      adminId: "admin_test",
+    });
+    const b = await createGalleryImage({
+      tag: TAG,
+      name: "Corazón",
+      imageUrl: "https://x/2.png",
+      adminId: "admin_test",
+    });
 
     // list público: ambos, ordenados por order (0,1)
     const list = await listGalleryImages(TAG);
@@ -44,7 +54,12 @@ describe.skipIf(!hasDb)("design-gallery — integración", { timeout: 30000 }, (
   });
 
   it("no filtra diseños de otro tag", async () => {
-    await createGalleryImage({ tag: `${TAG}-x`, name: "Ajeno", imageUrl: "https://x/z.png", adminId: "admin_test" });
+    await createGalleryImage({
+      tag: `${TAG}-x`,
+      name: "Ajeno",
+      imageUrl: "https://x/z.png",
+      adminId: "admin_test",
+    });
     const list = await listGalleryImages(TAG);
     expect(list.every((i) => i.name !== "Ajeno")).toBe(true);
     await prisma.designGalleryImage.deleteMany({ where: { tag: `${TAG}-x` } });

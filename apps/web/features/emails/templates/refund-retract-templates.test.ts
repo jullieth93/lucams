@@ -88,7 +88,7 @@ describe("refundIssuedEmail", () => {
     expect(rUndef.html).not.toContain("Motivo:");
   });
 
-  it("SEGURIDAD: escapa <, >, & y \" en nombre y motivo; no filtra markup crudo", async () => {
+  it('SEGURIDAD: escapa <, >, & y " en nombre y motivo; no filtra markup crudo', async () => {
     const r = await refundIssuedEmail({
       ...base,
       customerName: 'Ana <b>"x"</b> & Co',

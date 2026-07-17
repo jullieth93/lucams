@@ -64,7 +64,12 @@ export default async function Home() {
       logo: "https://lucamsshop.co/brand/lucams-logo.png",
       sameAs: ["https://www.instagram.com/lucams_shop"],
     },
-    { "@context": "https://schema.org", "@type": "WebSite", name: "Lucams_shop", url: "https://lucamsshop.co" },
+    {
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      name: "Lucams_shop",
+      url: "https://lucamsshop.co",
+    },
   ];
   const siteJsonLdSafe = JSON.stringify(siteJsonLd)
     .replace(/</g, "\\u003c")

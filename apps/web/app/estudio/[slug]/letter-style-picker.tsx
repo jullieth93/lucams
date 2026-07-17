@@ -37,14 +37,20 @@ export function LetterStylePicker({
   const options: { id: string | null; label: string; emoji: string }[] = [
     { id: null, label: "Solo letra", emoji: "✏️" },
     // Nombre corto para el chip: el set seed es "Kawaii Animales · Español" → "Kawaii Animales".
-    ...styles.map((s) => ({ id: s.id, label: s.name.split("·")[0].trim() || s.name, emoji: styleEmoji(s.name) })),
+    ...styles.map((s) => ({
+      id: s.id,
+      label: s.name.split("·")[0].trim() || s.name,
+      emoji: styleEmoji(s.name),
+    })),
   ];
 
   return (
     <div>
       <p className="text-brand-purple-dark mb-2 text-sm font-semibold">
         Elige el estilo
-        <span className="text-brand-muted ml-2 text-xs font-normal">· el dibujo de cada ficha 🎨</span>
+        <span className="text-brand-muted ml-2 text-xs font-normal">
+          · el dibujo de cada ficha 🎨
+        </span>
       </p>
       <div className="flex flex-wrap gap-2">
         {options.map((o) => {

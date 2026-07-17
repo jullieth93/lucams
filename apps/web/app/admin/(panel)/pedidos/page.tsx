@@ -302,7 +302,9 @@ export default async function AdminPedidosPage({ searchParams }: { searchParams:
                         {o.needsReconciliation && (
                           <span
                             className="inline-flex items-center gap-1 rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-[10px] font-bold text-red-800"
-                            title={o.reconciliationReason ?? "Pago cobrado sin stock — requiere atención"}
+                            title={
+                              o.reconciliationReason ?? "Pago cobrado sin stock — requiere atención"
+                            }
                           >
                             🔴 Reconciliar
                           </span>
@@ -320,9 +322,7 @@ export default async function AdminPedidosPage({ searchParams }: { searchParams:
                           </div>
                         </div>
                       ) : (
-                        <span className="text-brand-muted text-xs">
-                          {o.shippingCarrier ?? "—"}
-                        </span>
+                        <span className="text-brand-muted text-xs">{o.shippingCarrier ?? "—"}</span>
                       )}
                     </td>
                     <td className="text-brand-muted px-4 py-3 text-xs">

@@ -99,7 +99,7 @@ export function VariantImages({
           <Button
             type="button"
             size="sm"
-            className="bg-brand-purple text-white hover:bg-brand-purple-dark"
+            className="bg-brand-purple hover:bg-brand-purple-dark text-white"
             disabled={pending}
             onClick={() => fileInputRef.current?.click()}
           >
@@ -134,8 +134,10 @@ export function VariantImages({
           {images.map((url, idx) => (
             <li
               key={url}
-              className={`group relative overflow-hidden rounded-md border bg-brand-purple/5 ${
-                idx === 0 ? "border-brand-purple ring-2 ring-brand-purple/30" : "border-brand-purple/15"
+              className={`group bg-brand-purple/5 relative overflow-hidden rounded-md border ${
+                idx === 0
+                  ? "border-brand-purple ring-brand-purple/30 ring-2"
+                  : "border-brand-purple/15"
               }`}
             >
               <div className="aspect-square w-full">

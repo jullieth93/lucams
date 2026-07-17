@@ -192,9 +192,7 @@ export default async function ClienteDetailPage({ params }: { params: RouteParam
           <h2 className="text-brand-purple-dark font-display mb-3 flex items-center gap-2 text-lg font-bold">
             <ShoppingBag className="h-5 w-5" />
             Pedidos
-            <span className="text-brand-muted text-sm font-normal">
-              ({customer._count.orders})
-            </span>
+            <span className="text-brand-muted text-sm font-normal">({customer._count.orders})</span>
           </h2>
           {customer.orders.length === 0 ? (
             <AdminEmpty
@@ -319,9 +317,7 @@ export default async function ClienteDetailPage({ params }: { params: RouteParam
                     {addr.city}, {addr.department}
                     {addr.zip && ` · ${addr.zip}`}
                   </div>
-                  <div className="text-brand-muted mt-1 text-[11px]">
-                    Tel: {addr.phone}
-                  </div>
+                  <div className="text-brand-muted mt-1 text-[11px]">Tel: {addr.phone}</div>
                 </AdminCard>
               ))}
             </div>

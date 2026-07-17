@@ -29,16 +29,34 @@ describe("SlotStateSchema — encuadre + texto del usuario sobreviven (ADR-057 F
         date: { text: "Dic 2026" },
       },
     });
-    expect(parsed.textOverrides?.caption).toEqual({ text: "Mi recuerdo", fill: "#E85B9F", fontSize: 48 });
+    expect(parsed.textOverrides?.caption).toEqual({
+      text: "Mi recuerdo",
+      fill: "#E85B9F",
+      fontSize: 48,
+    });
     expect(parsed.textOverrides?.date?.text).toBe("Dic 2026");
   });
 
   it("rechaza scale fuera de rango (anti-tamper del render)", () => {
-    expect(SlotStateSchema.safeParse({ slotIndex: 0, assetId: null, assetUrl: null, photoTransform: { offsetX: 0, offsetY: 0, scale: 999 } }).success).toBe(false);
+    expect(
+      SlotStateSchema.safeParse({
+        slotIndex: 0,
+        assetId: null,
+        assetUrl: null,
+        photoTransform: { offsetX: 0, offsetY: 0, scale: 999 },
+      }).success,
+    ).toBe(false);
   });
 
   it("rechaza offset absurdo (anti-tamper)", () => {
-    expect(SlotStateSchema.safeParse({ slotIndex: 0, assetId: null, assetUrl: null, photoTransform: { offsetX: 999999, offsetY: 0, scale: 1 } }).success).toBe(false);
+    expect(
+      SlotStateSchema.safeParse({
+        slotIndex: 0,
+        assetId: null,
+        assetUrl: null,
+        photoTransform: { offsetX: 999999, offsetY: 0, scale: 1 },
+      }).success,
+    ).toBe(false);
   });
 
   it("photoTransform es opcional (slot sin encuadre manual sigue siendo válido)", () => {
@@ -56,7 +74,12 @@ describe("SlotStateSchema — encuadre + texto del usuario sobreviven (ADR-057 F
       },
       slotCount: 2,
       slots: [
-        { slotIndex: 0, assetId: "a0", assetUrl: "u0", photoTransform: { offsetX: 10, offsetY: -5, scale: 1.2 } },
+        {
+          slotIndex: 0,
+          assetId: "a0",
+          assetUrl: "u0",
+          photoTransform: { offsetX: 10, offsetY: -5, scale: 1.2 },
+        },
         { slotIndex: 1, assetId: "a1", assetUrl: "u1", filter: "vivid" as const },
       ],
       gridLayout: { cols: 2, rows: 1, gap: 8 },

@@ -113,9 +113,9 @@ export default async function AdminCuponesPage({ searchParams }: { searchParams:
       <AdminPageBody>
         <AdminNotice tone="info">
           <strong>¿Cómo funcionan?</strong> Crea códigos de descuento que el cliente escribe en el
-          carrito (o se aplican con un enlace especial). Los marcados como{" "}
-          <strong>Públicos</strong> se pueden mostrar abiertamente (ej. en una promoción o, más
-          adelante, en el bot de WhatsApp); los no públicos solo funcionan si el cliente sabe el código.
+          carrito (o se aplican con un enlace especial). Los marcados como <strong>Públicos</strong>{" "}
+          se pueden mostrar abiertamente (ej. en una promoción o, más adelante, en el bot de
+          WhatsApp); los no públicos solo funcionan si el cliente sabe el código.
         </AdminNotice>
 
         {sp.created === "1" && <AdminNotice tone="success">Cupón creado.</AdminNotice>}

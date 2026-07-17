@@ -66,7 +66,9 @@ export function SettingRow({ setting }: { setting: Setting }) {
         <span className="text-brand-purple-dark text-sm font-semibold">{setting.label}</span>
       </div>
       <p className="text-brand-muted font-mono text-[10px]">{setting.key}</p>
-      {setting.description && <p className="text-brand-muted mt-1 text-xs">{setting.description}</p>}
+      {setting.description && (
+        <p className="text-brand-muted mt-1 text-xs">{setting.description}</p>
+      )}
     </div>
   );
 

@@ -52,7 +52,7 @@ Render es excelente para apps Rails/Django o servicios con estado en memoria. **
 | DNS + CDN           | **Cloudflare**         | Free                                     | Free                                 | $0        | $0                                                             |
 | Dominio             | `lucamsshop.co`        | — (`*.vercel.app`)                       | **mi.com.co**                        | $0        | ~$3-5 (~$50.000 COP/año)                                       |
 | Pasarela            | **Wompi**              | Sandbox                                  | Producción                           | $0        | 2.65% + $700 + IVA por trx (plan Avanzado, frecuencia mensual) |
-| Logística           | **Aveonline**           | Sandbox                                  | Producción                           | $0        | Costo de envío (0% comisión)                                   |
+| Logística           | **Aveonline**          | Sandbox                                  | Producción                           | $0        | Costo de envío (0% comisión)                                   |
 | Monitoreo errores   | _Fuera del plan_       | —                                        | —                                    | $0        | $0                                                             |
 
 **Costo durante desarrollo: $0/mes.**
@@ -276,7 +276,7 @@ WebhookEvent (source: WOMPI|VENNDELO, externalId UNIQUE)
 | Hosting Vercel (Free dev → Pro prod)                                               | 002      | ✅     |
 | DB Supabase (Free dev → Pro prod)                                                  | 003      | ✅     |
 | Pasarela Wompi (con adaptador para sumar MP)                                       | 004      | ✅     |
-| Logística Aveonline + COD día 1                                                     | 005, 009 | ✅     |
+| Logística Aveonline + COD día 1                                                    | 005, 009 | ✅     |
 | WhatsApp `wa.me` (sin Twilio API)                                                  | 006      | ✅     |
 | Catálogo seed: 30+ productos espejo de magneticas.cl con placeholders              | 010      | ✅     |
 | Branding: paleta kawaii con mascota mapache                                        | —        | ✅     |

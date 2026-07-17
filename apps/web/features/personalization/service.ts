@@ -30,8 +30,15 @@ import { resolvePersonalizationSurface } from "./surface";
 import { normalizeName } from "./name-input";
 import { remapCanvasAssetIds } from "./canvas-remap";
 import { ALPHABET } from "./letter-tiles";
-import { mergeVariantOverProduct, parseVariantAttributes } from "@/features/products/variant-schemas";
-import { renderProductionSlots, RenderNeedsKonvaError, type LoadAssetBytes } from "./production-render";
+import {
+  mergeVariantOverProduct,
+  parseVariantAttributes,
+} from "@/features/products/variant-schemas";
+import {
+  renderProductionSlots,
+  RenderNeedsKonvaError,
+  type LoadAssetBytes,
+} from "./production-render";
 import { renderProductionSlotsCanvas } from "./production-render-canvas";
 import type { CanvasData, CanvasDataV1, CanvasDataV2 } from "./schemas";
 import type { z } from "zod";
@@ -75,19 +82,31 @@ async function tryServerRenderProduction(
     loadAsset = async (assetId) => {
       const path = assetPaths.get(assetId);
       if (!path) return null;
-      const { data, error } = await supabaseService.storage.from(BUCKET_CUSTOMER_UPLOADS).download(path);
+      const { data, error } = await supabaseService.storage
+        .from(BUCKET_CUSTOMER_UPLOADS)
+        .download(path);
       if (error || !data) return null;
       return Buffer.from(await data.arrayBuffer());
     };
   } catch (err) {
     logger.warn(
-      { event: "design.finalize.server_render_error", designId, stage: "load", err: err instanceof Error ? err.message : String(err) },
+      {
+        event: "design.finalize.server_render_error",
+        designId,
+        stage: "load",
+        err: err instanceof Error ? err.message : String(err),
+      },
       "No se pudieron cargar assets para el render server — usando PNG del cliente",
     );
     return null;
   }
 
-  const args = { unitTemplate: canvasData.unitTemplate as never, slots: canvasData.slots as never, shape, loadAsset };
+  const args = {
+    unitTemplate: canvasData.unitTemplate as never,
+    slots: canvasData.slots as never,
+    shape,
+    loadAsset,
+  };
 
   // Tier 1 — sharp (foto pura, rápido, sin deps nativas).
   try {
@@ -95,7 +114,12 @@ async function tryServerRenderProduction(
   } catch (err) {
     if (!(err instanceof RenderNeedsKonvaError)) {
       logger.warn(
-        { event: "design.finalize.server_render_error", designId, engine: "sharp", err: err instanceof Error ? err.message : String(err) },
+        {
+          event: "design.finalize.server_render_error",
+          designId,
+          engine: "sharp",
+          err: err instanceof Error ? err.message : String(err),
+        },
         "Render sharp falló — usando PNG del cliente",
       );
       return null;
@@ -104,7 +128,12 @@ async function tryServerRenderProduction(
     try {
       const bufs = await renderProductionSlotsCanvas(args);
       logger.info(
-        { event: "design.finalize.server_render_ok", designId, engine: "canvas", slots: bufs.length },
+        {
+          event: "design.finalize.server_render_ok",
+          designId,
+          engine: "canvas",
+          slots: bufs.length,
+        },
         "Production renderizada en el servidor (canvas)",
       );
       return bufs;
@@ -116,7 +145,12 @@ async function tryServerRenderProduction(
         );
       } else {
         logger.warn(
-          { event: "design.finalize.server_render_error", designId, engine: "canvas", err: err2 instanceof Error ? err2.message : String(err2) },
+          {
+            event: "design.finalize.server_render_error",
+            designId,
+            engine: "canvas",
+            err: err2 instanceof Error ? err2.message : String(err2),
+          },
           "Render canvas falló — usando PNG del cliente",
         );
       }
@@ -656,7 +690,11 @@ export async function finalizeDesign(opts: {
     if (serverBuffers && serverBuffers.length === opts.productionBuffers.length) {
       productionBuffers = serverBuffers;
       logger.info(
-        { event: "design.finalize.server_render_ok", designId: design.id, slots: serverBuffers.length },
+        {
+          event: "design.finalize.server_render_ok",
+          designId: design.id,
+          slots: serverBuffers.length,
+        },
         "Production renderizada en el servidor",
       );
     }

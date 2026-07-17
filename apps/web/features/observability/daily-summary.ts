@@ -76,7 +76,12 @@ export async function getDailySummary(now: Date = new Date()): Promise<DailySumm
     // COD: efectivo cobrado SOLO al entregar (deliveredAt en la ventana).
     prisma.order.aggregate({
       _sum: { total: true },
-      where: { deletedAt: null, paymentMethod: "COD", status: "DELIVERED", deliveredAt: { gte: from } },
+      where: {
+        deletedAt: null,
+        paymentMethod: "COD",
+        status: "DELIVERED",
+        deliveredAt: { gte: from },
+      },
     }),
     // COD confirmado en 24h pero aún NO entregado → efectivo por cobrar.
     prisma.order.aggregate({
@@ -158,9 +163,13 @@ export function buildDailySummaryEmail(
   if (s.toShip > 0)
     attention.push(`📦 <strong>${s.toShip}</strong> pagada(s) por despachar — /admin/pedidos`);
   if (s.pendingReviews > 0)
-    attention.push(`💬 <strong>${s.pendingReviews}</strong> reseña(s) por aprobar — /admin/resenas`);
+    attention.push(
+      `💬 <strong>${s.pendingReviews}</strong> reseña(s) por aprobar — /admin/resenas`,
+    );
   if (s.lowStock > 0)
-    attention.push(`📉 <strong>${s.lowStock}</strong> variante(s) con stock bajo (≤5) — /admin/inventario`);
+    attention.push(
+      `📉 <strong>${s.lowStock}</strong> variante(s) con stock bajo (≤5) — /admin/inventario`,
+    );
   if (s.errors24h > 0)
     attention.push(
       `⚠️ <strong>${s.errors24h}</strong> error(es) del servidor en 24h${s.topErrorRoute ? ` (top: ${escapeHtml(s.topErrorRoute)})` : ""} — /admin/observability`,
@@ -220,7 +229,9 @@ export function buildDailySummaryEmail(
     s.needsReconciliation > 0 ? `- ${s.needsReconciliation} orden(es) a reconciliar` : null,
     s.pendingReviews > 0 ? `- ${s.pendingReviews} reseña(s) por aprobar` : null,
     s.lowStock > 0 ? `- ${s.lowStock} variante(s) con stock bajo (<=5)` : null,
-    s.errors24h > 0 ? `- ${s.errors24h} error(es) del servidor${s.topErrorRoute ? ` (top: ${s.topErrorRoute})` : ""}` : null,
+    s.errors24h > 0
+      ? `- ${s.errors24h} error(es) del servidor${s.topErrorRoute ? ` (top: ${s.topErrorRoute})` : ""}`
+      : null,
     attention.length === 0 ? `- Nada pendiente ✅` : null,
   ].filter((l): l is string => l !== null);
 

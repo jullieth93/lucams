@@ -125,18 +125,18 @@ ejercer el **derecho de supresión (art. 8 lit. e)** por sí mismo en `/mi-cuent
 cuenta` (`features/account/delete-service.ts`). El enfoque es **anonimizar + soft-delete**, NO borrado
 físico, para conciliar la supresión con la **retención fiscal de la DIAN**:
 
-| Dato | Acción al eliminar | Motivo |
-| --- | --- | --- |
-| Customer (nombre, teléfono, documento, email) | Scrub: nombre/tel/documento→null, email→placeholder único, `supabaseUserId`→placeholder, `deletedAt` | Supresión de PII |
-| Auth user (Supabase) | `admin.deleteUser`; si falla → **baneo** (`ban_duration`) como fallback | Cortar acceso garantizado (no basta el best-effort) |
-| Direcciones | Scrub de columnas PII (nombre/dirección/teléfono) + soft-delete | Contienen PII |
-| Reseñas | `customerId`→null + `authorName`→"Cliente Lucams" | Conservar contenido público sin PII |
-| **Fotos del Estudio** (DesignAsset, Design) | **Borran archivos** de Storage (customer-uploads / design-previews / production-assets) + filas/URLs limpiadas | La PII más sensible (rostros); ninguna retención lo justifica |
-| Tickets de soporte (SupportTicket) | Desvincular + scrub (email/name/ip/userAgent/message) | Texto libre con PII |
-| Snapshot de envío en órdenes | Scrub PII (nombre/tel/dirección) en órdenes YA finalizadas | Las en curso conservan la dirección por finalidad legítima (completar la entrega) |
-| Logs (RecommendationLog, LoyaltyTxn, CouponUsage) | `customerId`→null | Cortar el vínculo de perfilado con el titular |
-| **Pedidos / facturas** | **SE CONSERVAN** (anonimizados) | **Retención fiscal DIAN** (facturación electrónica) prima sobre supresión |
-| **Consentimientos** | **SE CONSERVAN** | Prueba de cumplimiento Ley 1581 |
+| Dato                                              | Acción al eliminar                                                                                             | Motivo                                                                            |
+| ------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| Customer (nombre, teléfono, documento, email)     | Scrub: nombre/tel/documento→null, email→placeholder único, `supabaseUserId`→placeholder, `deletedAt`           | Supresión de PII                                                                  |
+| Auth user (Supabase)                              | `admin.deleteUser`; si falla → **baneo** (`ban_duration`) como fallback                                        | Cortar acceso garantizado (no basta el best-effort)                               |
+| Direcciones                                       | Scrub de columnas PII (nombre/dirección/teléfono) + soft-delete                                                | Contienen PII                                                                     |
+| Reseñas                                           | `customerId`→null + `authorName`→"Cliente Lucams"                                                              | Conservar contenido público sin PII                                               |
+| **Fotos del Estudio** (DesignAsset, Design)       | **Borran archivos** de Storage (customer-uploads / design-previews / production-assets) + filas/URLs limpiadas | La PII más sensible (rostros); ninguna retención lo justifica                     |
+| Tickets de soporte (SupportTicket)                | Desvincular + scrub (email/name/ip/userAgent/message)                                                          | Texto libre con PII                                                               |
+| Snapshot de envío en órdenes                      | Scrub PII (nombre/tel/dirección) en órdenes YA finalizadas                                                     | Las en curso conservan la dirección por finalidad legítima (completar la entrega) |
+| Logs (RecommendationLog, LoyaltyTxn, CouponUsage) | `customerId`→null                                                                                              | Cortar el vínculo de perfilado con el titular                                     |
+| **Pedidos / facturas**                            | **SE CONSERVAN** (anonimizados)                                                                                | **Retención fiscal DIAN** (facturación electrónica) prima sobre supresión         |
+| **Consentimientos**                               | **SE CONSERVAN**                                                                                               | Prueba de cumplimiento Ley 1581                                                   |
 
 **Confirmación fuerte:** escribir "ELIMINAR" + re-autenticación con contraseña + rate-limit
 (`ownerKey('delete-account')`, 5/15min). El alcance de supresión es **exhaustivo** (verificado por revisión

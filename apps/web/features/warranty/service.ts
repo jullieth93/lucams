@@ -43,7 +43,10 @@ export type WarrantyItem = {
 };
 
 /** Items de una orden del cliente con su elegibilidad de garantía. */
-export async function getWarrantyItems(orderId: string, customerId: string): Promise<WarrantyItem[]> {
+export async function getWarrantyItems(
+  orderId: string,
+  customerId: string,
+): Promise<WarrantyItem[]> {
   const order = await prisma.order.findFirst({
     where: { id: orderId, customerId, deletedAt: null },
     select: {
@@ -194,7 +197,8 @@ export async function listWarrantyClaims(filter?: {
     requestedAt: r.requestedAt,
     resolvedAt: r.resolvedAt,
     customerEmail: r.customer?.email ?? "—",
-    customerName: [r.customer?.firstName, r.customer?.lastName].filter(Boolean).join(" ") || "Cliente",
+    customerName:
+      [r.customer?.firstName, r.customer?.lastName].filter(Boolean).join(" ") || "Cliente",
     orderNumber: r.orderItem.order.number,
     productName: r.orderItem.variant.product.name,
     qty: r.orderItem.qty,
@@ -265,7 +269,11 @@ export async function resolveWarrantyClaim(
 }
 
 /** {PENDING, IN_REVIEW} → REJECTED (no procede; motivo obligatorio). */
-export async function rejectWarrantyClaim(id: string, adminId: string, note: string): Promise<void> {
+export async function rejectWarrantyClaim(
+  id: string,
+  adminId: string,
+  note: string,
+): Promise<void> {
   const { status } = await loadClaim(id);
   if (status !== "PENDING" && status !== "IN_REVIEW") {
     throw new WarrantyTransitionError(status, "REJECTED");

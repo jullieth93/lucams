@@ -13,7 +13,10 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { ChevronLeft, Loader2, Sparkles } from "lucide-react";
 import type { LetterStyle, LetterTileMap } from "@/features/personalization/letter-tiles";
-import { createLetterSetDesignAction, finalizeDesignAction } from "@/features/personalization/actions";
+import {
+  createLetterSetDesignAction,
+  finalizeDesignAction,
+} from "@/features/personalization/actions";
 import { addPersonalizedToCartAction } from "@/app/carrito/actions";
 import { useLetterColors } from "./use-letter-colors";
 import { ThemePicker, SwatchRow } from "./letter-color-controls";
@@ -29,7 +32,14 @@ function loadImage(url: string): Promise<HTMLImageElement | null> {
   });
 }
 
-function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+function roundRect(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number,
+) {
   ctx.beginPath();
   ctx.moveTo(x + r, y);
   ctx.arcTo(x + w, y, x + w, y + h, r);
@@ -56,7 +66,11 @@ async function renderLetterSetBlob(
   const scale = 3;
 
   const imgs = useTiles
-    ? await Promise.all(letters.map((ch) => (tiles[ch]?.imageUrl ? loadImage(tiles[ch]!.imageUrl) : Promise.resolve(null))))
+    ? await Promise.all(
+        letters.map((ch) =>
+          tiles[ch]?.imageUrl ? loadImage(tiles[ch]!.imageUrl) : Promise.resolve(null),
+        ),
+      )
     : letters.map(() => null);
 
   const canvas = document.createElement("canvas");
@@ -84,7 +98,13 @@ async function renderLetterSetBlob(
       roundRect(ctx, x + 4, y + 4, tileW - 8, tileH - 8, 14);
       ctx.clip();
       const s = Math.min((tileW - 12) / img.width, (tileH - 12) / img.height);
-      ctx.drawImage(img, x + (tileW - img.width * s) / 2, y + (tileH - img.height * s) / 2, img.width * s, img.height * s);
+      ctx.drawImage(
+        img,
+        x + (tileW - img.width * s) / 2,
+        y + (tileH - img.height * s) / 2,
+        img.width * s,
+        img.height * s,
+      );
       ctx.restore();
     } else {
       ctx.fillStyle = color;
@@ -96,7 +116,10 @@ async function renderLetterSetBlob(
   });
 
   return new Promise((resolve, reject) =>
-    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("No se pudo generar la imagen"))), "image/png"),
+    canvas.toBlob(
+      (b) => (b ? resolve(b) : reject(new Error("No se pudo generar la imagen"))),
+      "image/png",
+    ),
   );
 }
 
@@ -125,8 +148,15 @@ export function LetterSetEditor({
     : {};
 
   // Mismos controles de color que el editor de Nombre.
-  const { themeId, effectiveColors, selectedIndex, toggleSelected, applyTheme, setColorForSelected, customized } =
-    useLetterColors(letters.length);
+  const {
+    themeId,
+    effectiveColors,
+    selectedIndex,
+    toggleSelected,
+    applyTheme,
+    setColorForSelected,
+    customized,
+  } = useLetterColors(letters.length);
 
   async function handleAddToCart() {
     if (submitting) return;
@@ -162,7 +192,11 @@ export function LetterSetEditor({
         setSubmitting(false);
         return;
       }
-      const added = await addPersonalizedToCartAction({ designId: created.designId, qty: 1, variantId });
+      const added = await addPersonalizedToCartAction({
+        designId: created.designId,
+        qty: 1,
+        variantId,
+      });
       if (!added.ok) {
         setError(`Guardamos el diseño pero no pudimos agregarlo al carrito: ${added.message}`);
         setSubmitting(false);
@@ -242,7 +276,11 @@ export function LetterSetEditor({
                   >
                     {tile ? (
                       // eslint-disable-next-line @next/next/no-img-element -- ficha del bucket público
-                      <img src={tile.imageUrl} alt={`Letra ${ch}`} className="h-full w-full object-contain p-1" />
+                      <img
+                        src={tile.imageUrl}
+                        alt={`Letra ${ch}`}
+                        className="h-full w-full object-contain p-1"
+                      />
                     ) : (
                       <span className="font-display text-base font-extrabold" style={{ color }}>
                         {ch}
@@ -262,7 +300,9 @@ export function LetterSetEditor({
         </div>
 
         {error && (
-          <p className="mt-4 rounded-xl bg-rose-50 px-4 py-3 text-center text-sm text-rose-700">{error}</p>
+          <p className="mt-4 rounded-xl bg-rose-50 px-4 py-3 text-center text-sm text-rose-700">
+            {error}
+          </p>
         )}
 
         <div className="mt-6 flex flex-col items-center gap-2">
@@ -272,7 +312,11 @@ export function LetterSetEditor({
             disabled={submitting}
             className="bg-gradient-brand inline-flex items-center gap-2 rounded-full px-8 py-3.5 text-base font-bold text-white shadow-md transition hover:brightness-110 disabled:opacity-60"
           >
-            {submitting ? <Loader2 className="h-5 w-5 animate-spin" /> : <Sparkles className="h-5 w-5" />}
+            {submitting ? (
+              <Loader2 className="h-5 w-5 animate-spin" />
+            ) : (
+              <Sparkles className="h-5 w-5" />
+            )}
             {submitting ? "Agregando…" : "Añadir al carrito"}
           </button>
           <span className="text-brand-muted text-sm font-semibold">{priceLabel}</span>

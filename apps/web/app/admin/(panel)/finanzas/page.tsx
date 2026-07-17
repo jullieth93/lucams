@@ -72,7 +72,11 @@ export default async function AdminFinanzasPage() {
     // COD confirmado pero NO entregado → efectivo por cobrar (no es ingreso todavía).
     prisma.order
       .aggregate({
-        where: { deletedAt: null, paymentMethod: "COD", status: { in: ["PAID", "FULFILLING", "SHIPPED"] } },
+        where: {
+          deletedAt: null,
+          paymentMethod: "COD",
+          status: { in: ["PAID", "FULFILLING", "SHIPPED"] },
+        },
         _sum: { total: true },
       })
       .then((r) => r._sum?.total ?? 0),
@@ -139,7 +143,11 @@ export default async function AdminFinanzasPage() {
             icon={<CreditCard className="h-5 w-5" />}
             label="Este mes"
             value={hasRealData ? ordersThisMonth.toLocaleString("es-CO") : "0"}
-            hint={hasRealData ? "Pedidos confirmados del mes corriente" : "Disponible cuando haya ventas"}
+            hint={
+              hasRealData
+                ? "Pedidos confirmados del mes corriente"
+                : "Disponible cuando haya ventas"
+            }
           />
           <Kpi
             icon={<FileText className="h-5 w-5" />}

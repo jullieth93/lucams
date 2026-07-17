@@ -25,10 +25,7 @@ import { ProductCouponsWidget } from "@/components/admin/product-coupons-widget"
 import { getCurrentAdmin } from "@/lib/auth";
 import { getProductById, listCategoriesForSelect } from "@/features/products/service";
 import { parsePhysicalSpecs } from "@/features/products/shipping-schemas";
-import {
-  getStockEmoji,
-  summarizeStock,
-} from "@/features/products/stock-constants";
+import { getStockEmoji, summarizeStock } from "@/features/products/stock-constants";
 import { prisma } from "@/lib/db";
 import { formatCOP } from "@/lib/format";
 import { deleteProductAction, updateProductAction } from "../actions";
@@ -147,8 +144,8 @@ export default async function ProductoDetallePage({
           <>
             {justCreated && (
               <AdminNotice tone="success">
-                Producto creado. Ahora puedes ajustar el stock, subir imágenes y revisar el resto
-                de los detalles.
+                Producto creado. Ahora puedes ajustar el stock, subir imágenes y revisar el resto de
+                los detalles.
               </AdminNotice>
             )}
 

@@ -26,7 +26,12 @@ export function isRetryable(err: unknown): boolean {
 
 export async function withRetry<T>(
   fn: () => Promise<T>,
-  opts: { attempts?: number; baseMs?: number; maxMs?: number; sleep?: (ms: number) => Promise<void> } = {},
+  opts: {
+    attempts?: number;
+    baseMs?: number;
+    maxMs?: number;
+    sleep?: (ms: number) => Promise<void>;
+  } = {},
 ): Promise<T> {
   const { attempts = 3, baseMs = 200, maxMs = 5000 } = opts;
   const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));

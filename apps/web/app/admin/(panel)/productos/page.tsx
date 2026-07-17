@@ -313,7 +313,7 @@ export default async function AdminProductosPage({ searchParams }: { searchParam
                           name="productIds"
                           value={p.id}
                           aria-label={`Seleccionar ${p.name}`}
-                          className="text-brand-purple focus:ring-brand-purple/40 h-4 w-4 cursor-pointer rounded border-brand-purple/30"
+                          className="text-brand-purple focus:ring-brand-purple/40 border-brand-purple/30 h-4 w-4 cursor-pointer rounded"
                         />
                       )}
                     </td>
@@ -327,9 +327,7 @@ export default async function AdminProductosPage({ searchParams }: { searchParam
                   <td className="text-brand-purple-dark px-4 py-3 text-right font-semibold tabular-nums">
                     {/* "desde $X" cuando hay varias opciones con precios distintos */}
                     {p.variantsCount > 1 && (
-                      <span className="text-brand-muted mr-1 text-[10px] font-normal">
-                        desde
-                      </span>
+                      <span className="text-brand-muted mr-1 text-[10px] font-normal">desde</span>
                     )}
                     {formatCOP(p.priceFrom)}
                   </td>

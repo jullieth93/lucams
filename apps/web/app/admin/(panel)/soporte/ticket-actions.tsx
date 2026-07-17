@@ -76,13 +76,34 @@ export function TicketActions({
           ✉️ Responder
         </a>
         {status === "OPEN" && (
-          <StatusButton id={id} status="IN_PROGRESS" action={run} pending={pending} label="Tomar" tone="purple" />
+          <StatusButton
+            id={id}
+            status="IN_PROGRESS"
+            action={run}
+            pending={pending}
+            label="Tomar"
+            tone="purple"
+          />
         )}
         {(status === "OPEN" || status === "IN_PROGRESS") && (
-          <StatusButton id={id} status="CLOSED" action={run} pending={pending} label="Cerrar" tone="emerald" />
+          <StatusButton
+            id={id}
+            status="CLOSED"
+            action={run}
+            pending={pending}
+            label="Cerrar"
+            tone="emerald"
+          />
         )}
         {status === "CLOSED" && (
-          <StatusButton id={id} status="OPEN" action={run} pending={pending} label="Reabrir" tone="slate" />
+          <StatusButton
+            id={id}
+            status="OPEN"
+            action={run}
+            pending={pending}
+            label="Reabrir"
+            tone="slate"
+          />
         )}
       </div>
     </div>

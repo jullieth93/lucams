@@ -199,7 +199,12 @@ export async function applyCouponAction(
     const res = await applyCoupon(code);
     if (!res.ok) return { ok: false, message: res.message };
     revalidatePath("/checkout/pago");
-    return { ok: true, code: res.code, discount: res.discount, message: `Cupón ${res.code} aplicado ✨` };
+    return {
+      ok: true,
+      code: res.code,
+      discount: res.discount,
+      message: `Cupón ${res.code} aplicado ✨`,
+    };
   } catch (err) {
     logger.warn({
       event: "checkout.coupon.apply_fail",

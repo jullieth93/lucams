@@ -66,10 +66,7 @@ export async function setVariantStockAdmin(input: {
 }): Promise<SetVariantStockResult> {
   // Validación de rango ANTES de tx (evita pegar a DB con valores inválidos).
   if (!Number.isInteger(input.newStock)) {
-    throw new VariantStockError(
-      "out_of_range",
-      "Stock debe ser un número entero (sin decimales)",
-    );
+    throw new VariantStockError("out_of_range", "Stock debe ser un número entero (sin decimales)");
   }
   if (input.newStock < 0) {
     throw new VariantStockError("out_of_range", "Stock no puede ser negativo");

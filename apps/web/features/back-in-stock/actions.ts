@@ -47,7 +47,8 @@ export async function subscribeBackInStockAction(input: {
   if (!res.ok) {
     return {
       ok: false,
-      message: res.reason === "in_stock" ? "¡Ya está disponible!" : "No pudimos registrar tu aviso.",
+      message:
+        res.reason === "in_stock" ? "¡Ya está disponible!" : "No pudimos registrar tu aviso.",
     };
   }
   return { ok: true };

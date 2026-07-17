@@ -170,7 +170,10 @@ async function makeProduct(data: {
 }
 
 /** Input válido mínimo para createProduct, con overrides. */
-function productInput(categoryId: string, over: Partial<ProductCreateInput> = {}): ProductCreateInput {
+function productInput(
+  categoryId: string,
+  over: Partial<ProductCreateInput> = {},
+): ProductCreateInput {
   const u = uniq();
   return {
     name: over.name ?? `Created ${RUN} ${u}`,
@@ -223,7 +226,11 @@ describe.skipIf(!hasDb)("products/service — integración DB", { timeout: T }, 
       const cat = await makeCategory({ label: "lp-search" });
       const token = `zxq${uniq()}`; // token improbable, único
       // name match
-      const byName = await makeProduct({ categoryId: cat.id, label: "lp-n", name: `Imán ${token} bonito` });
+      const byName = await makeProduct({
+        categoryId: cat.id,
+        label: "lp-n",
+        name: `Imán ${token} bonito`,
+      });
       // sku match (token va en el sku)
       const bySku = await prisma.product.create({
         data: {
@@ -262,7 +269,12 @@ describe.skipIf(!hasDb)("products/service — integración DB", { timeout: T }, 
       const cat = await makeCategory({ label: "lp-active" });
       const active = await makeProduct({ categoryId: cat.id, label: "act", isActive: true });
       await makeProduct({ categoryId: cat.id, label: "ina", isActive: false });
-      await makeProduct({ categoryId: cat.id, label: "arch", isActive: true, deletedAt: new Date() });
+      await makeProduct({
+        categoryId: cat.id,
+        label: "arch",
+        isActive: true,
+        deletedAt: new Date(),
+      });
 
       const res = await listProducts({ categoryId: cat.id, status: "active" });
       expect(res.items.map((i) => i.id)).toEqual([active.id]);
@@ -275,7 +287,12 @@ describe.skipIf(!hasDb)("products/service — integración DB", { timeout: T }, 
       await makeProduct({ categoryId: cat.id, label: "act2", isActive: true });
       const inactive = await makeProduct({ categoryId: cat.id, label: "ina2", isActive: false });
       // archivado que TAMBIÉN está inactivo: no debe aparecer (deletedAt != null lo excluye)
-      await makeProduct({ categoryId: cat.id, label: "archina", isActive: false, deletedAt: new Date() });
+      await makeProduct({
+        categoryId: cat.id,
+        label: "archina",
+        isActive: false,
+        deletedAt: new Date(),
+      });
 
       const res = await listProducts({ categoryId: cat.id, status: "inactive" });
       expect(res.items.map((i) => i.id)).toEqual([inactive.id]);
@@ -284,8 +301,18 @@ describe.skipIf(!hasDb)("products/service — integración DB", { timeout: T }, 
     it("status='archived' → solo deletedAt != null (ignora isActive)", async () => {
       const cat = await makeCategory({ label: "lp-archived" });
       await makeProduct({ categoryId: cat.id, label: "live", isActive: true });
-      const arch1 = await makeProduct({ categoryId: cat.id, label: "ar1", isActive: false, deletedAt: new Date() });
-      const arch2 = await makeProduct({ categoryId: cat.id, label: "ar2", isActive: true, deletedAt: new Date() });
+      const arch1 = await makeProduct({
+        categoryId: cat.id,
+        label: "ar1",
+        isActive: false,
+        deletedAt: new Date(),
+      });
+      const arch2 = await makeProduct({
+        categoryId: cat.id,
+        label: "ar2",
+        isActive: true,
+        deletedAt: new Date(),
+      });
 
       const res = await listProducts({ categoryId: cat.id, status: "archived" });
       expect(res.items.map((i) => i.id).sort()).toEqual([arch1.id, arch2.id].sort());
@@ -294,10 +321,31 @@ describe.skipIf(!hasDb)("products/service — integración DB", { timeout: T }, 
 
     it("status='featured' → isActive && isFeatured && deletedAt=null", async () => {
       const cat = await makeCategory({ label: "lp-featured" });
-      const feat = await makeProduct({ categoryId: cat.id, label: "feat", isActive: true, isFeatured: true });
-      await makeProduct({ categoryId: cat.id, label: "featina", isActive: false, isFeatured: true }); // inactivo
-      await makeProduct({ categoryId: cat.id, label: "notfeat", isActive: true, isFeatured: false }); // no featured
-      await makeProduct({ categoryId: cat.id, label: "featarch", isActive: true, isFeatured: true, deletedAt: new Date() }); // archivado
+      const feat = await makeProduct({
+        categoryId: cat.id,
+        label: "feat",
+        isActive: true,
+        isFeatured: true,
+      });
+      await makeProduct({
+        categoryId: cat.id,
+        label: "featina",
+        isActive: false,
+        isFeatured: true,
+      }); // inactivo
+      await makeProduct({
+        categoryId: cat.id,
+        label: "notfeat",
+        isActive: true,
+        isFeatured: false,
+      }); // no featured
+      await makeProduct({
+        categoryId: cat.id,
+        label: "featarch",
+        isActive: true,
+        isFeatured: true,
+        deletedAt: new Date(),
+      }); // archivado
 
       const res = await listProducts({ categoryId: cat.id, status: "featured" });
       expect(res.items.map((i) => i.id)).toEqual([feat.id]);
@@ -339,12 +387,18 @@ describe.skipIf(!hasDb)("products/service — integración DB", { timeout: T }, 
       await makeProduct({ categoryId: cat.id, label: "nm-b", name: `${RUN}-NameB` });
 
       const byName = await listProducts({ categoryId: cat.id, sort: "name" });
-      expect(byName.items.map((i) => i.name)).toEqual([`${RUN}-NameA`, `${RUN}-NameB`, `${RUN}-NameC`]);
+      expect(byName.items.map((i) => i.name)).toEqual([
+        `${RUN}-NameA`,
+        `${RUN}-NameB`,
+        `${RUN}-NameC`,
+      ]);
 
       const skuAsc = await listProducts({ categoryId: cat.id, sort: "sku-asc" });
       const skuDesc = await listProducts({ categoryId: cat.id, sort: "sku-desc" });
       // sku-desc es el reverse exacto de sku-asc
-      expect(skuDesc.items.map((i) => i.sku)).toEqual([...skuAsc.items.map((i) => i.sku)].reverse());
+      expect(skuDesc.items.map((i) => i.sku)).toEqual(
+        [...skuAsc.items.map((i) => i.sku)].reverse(),
+      );
     });
 
     it("orden category-asc / category-desc ordena por nombre de la categoría", async () => {
@@ -370,7 +424,10 @@ describe.skipIf(!hasDb)("products/service — integración DB", { timeout: T }, 
       const second = await makeProduct({ categoryId: cat.id, label: "rec-2" });
       // Forzar updatedAt distinto y conocido: tocar 'first' después → queda más reciente.
       await new Promise((r) => setTimeout(r, 10));
-      await prisma.product.update({ where: { id: first.id }, data: { name: `${first.name} touched` } });
+      await prisma.product.update({
+        where: { id: first.id },
+        data: { name: `${first.name} touched` },
+      });
 
       const res = await listProducts({ categoryId: cat.id }); // sin sort → recent
       expect(res.items.map((i) => i.id)).toEqual([first.id, second.id]);
@@ -522,7 +579,11 @@ describe.skipIf(!hasDb)("products/service — integración DB", { timeout: T }, 
 
     it("encuentra incluso productos archivados (admin edita todo)", async () => {
       const cat = await makeCategory({ label: "gp-arch" });
-      const p = await makeProduct({ categoryId: cat.id, label: "gp-archived", deletedAt: new Date() });
+      const p = await makeProduct({
+        categoryId: cat.id,
+        label: "gp-archived",
+        deletedAt: new Date(),
+      });
       const found = await getProductById(p.id);
       expect(found).not.toBeNull();
       expect(found!.deletedAt).not.toBeNull();
@@ -619,7 +680,11 @@ describe.skipIf(!hasDb)("products/service — integración DB", { timeout: T }, 
       // Asimetría con updateProduct (que SÍ filtra deletedAt=null). El unique de DB
       // sigue ocupado por el soft-deleted, así que createProduct lo detecta.
       const cat = await makeCategory({ label: "cp-delslug" });
-      const ghost = await makeProduct({ categoryId: cat.id, label: "cp-ghost", deletedAt: new Date() });
+      const ghost = await makeProduct({
+        categoryId: cat.id,
+        label: "cp-ghost",
+        deletedAt: new Date(),
+      });
       const input = productInput(cat.id, { slug: ghost.slug });
       await expect(createProduct(input, null)).rejects.toMatchObject({ field: "slug" });
     });
@@ -633,7 +698,10 @@ describe.skipIf(!hasDb)("products/service — integración DB", { timeout: T }, 
     it("actualiza campos simples y setea updatedBy", async () => {
       const cat = await makeCategory({ label: "up" });
       const p = await makeProduct({ categoryId: cat.id, label: "up-prod", basePrice: 1_000 });
-      const updated = await updateProduct({ id: p.id, name: "Nuevo nombre", basePrice: 2_000 }, "admin-X");
+      const updated = await updateProduct(
+        { id: p.id, name: "Nuevo nombre", basePrice: 2_000 },
+        "admin-X",
+      );
       expect(updated.name).toBe("Nuevo nombre");
       expect(updated.basePrice).toBe(2_000);
       expect(updated.updatedBy).toBe("admin-X");
@@ -643,7 +711,10 @@ describe.skipIf(!hasDb)("products/service — integración DB", { timeout: T }, 
       const cat = await makeCategory({ label: "up-self" });
       const p = await makeProduct({ categoryId: cat.id, label: "up-self-prod" });
       // Pasar el slug/sku actual no debe disparar conflicto.
-      const updated = await updateProduct({ id: p.id, slug: p.slug, sku: p.sku, name: "renombrado" }, null);
+      const updated = await updateProduct(
+        { id: p.id, slug: p.slug, sku: p.sku, name: "renombrado" },
+        null,
+      );
       expect(updated.name).toBe("renombrado");
     });
 
@@ -670,7 +741,11 @@ describe.skipIf(!hasDb)("products/service — integración DB", { timeout: T }, 
       // soft-deleted en su pre-check; pero el unique de DB sigue ocupado → Prisma
       // lanzaría P2002 al persistir. Verificamos AMBOS hechos.
       const cat = await makeCategory({ label: "up-delslug" });
-      const ghost = await makeProduct({ categoryId: cat.id, label: "up-ghost", deletedAt: new Date() });
+      const ghost = await makeProduct({
+        categoryId: cat.id,
+        label: "up-ghost",
+        deletedAt: new Date(),
+      });
       const live = await makeProduct({ categoryId: cat.id, label: "up-live" });
 
       // El pre-check NO lanza ProductValidationError (no es nuestro error de dominio)...
@@ -698,7 +773,10 @@ describe.skipIf(!hasDb)("products/service — integración DB", { timeout: T }, 
     it("idealFor (Json) se actualiza correctamente", async () => {
       const cat = await makeCategory({ label: "up-idealfor" });
       const p = await makeProduct({ categoryId: cat.id, label: "up-if-prod" });
-      const updated = await updateProduct({ id: p.id, idealFor: ["baby shower", "matrimonio"] }, null);
+      const updated = await updateProduct(
+        { id: p.id, idealFor: ["baby shower", "matrimonio"] },
+        null,
+      );
       expect(updated.idealFor).toEqual(["baby shower", "matrimonio"]);
     });
   });
@@ -721,7 +799,12 @@ describe.skipIf(!hasDb)("products/service — integración DB", { timeout: T }, 
 
     it("restoreProduct limpia deletedAt/deletedBy pero deja isActive=false (revisión manual)", async () => {
       const cat = await makeCategory({ label: "rp" });
-      const p = await makeProduct({ categoryId: cat.id, label: "rp-prod", isActive: true, deletedAt: new Date() });
+      const p = await makeProduct({
+        categoryId: cat.id,
+        label: "rp-prod",
+        isActive: true,
+        deletedAt: new Date(),
+      });
       await prisma.product.update({ where: { id: p.id }, data: { deletedBy: "someone" } });
       const restored = await restoreProduct(p.id, "admin-restore");
       expect(restored.deletedAt).toBeNull();
@@ -754,7 +837,10 @@ describe.skipIf(!hasDb)("products/service — integración DB", { timeout: T }, 
         ProductValidationError,
       );
       // Sigue inactivo (el update nunca corrió).
-      const row = await prisma.product.findUnique({ where: { id: p.id }, select: { isActive: true } });
+      const row = await prisma.product.findUnique({
+        where: { id: p.id },
+        select: { isActive: true },
+      });
       expect(row!.isActive).toBe(false);
       // Desactivar un sin-dims NO se bloquea (el gate es solo al activar).
       await expect(toggleProductActive(p.id, false, null)).resolves.toMatchObject({
@@ -785,7 +871,12 @@ describe.skipIf(!hasDb)("products/service — integración DB", { timeout: T }, 
     it("bulkUpdateProductsActive EXCLUYE soft-deleted del update (no los toca, no los cuenta)", async () => {
       const cat = await makeCategory({ label: "bulk-actdel" });
       const live = await makeProduct({ categoryId: cat.id, label: "bad-live", isActive: false });
-      const archived = await makeProduct({ categoryId: cat.id, label: "bad-arch", isActive: false, deletedAt: new Date() });
+      const archived = await makeProduct({
+        categoryId: cat.id,
+        label: "bad-arch",
+        isActive: false,
+        deletedAt: new Date(),
+      });
       const res = await bulkUpdateProductsActive([live.id, archived.id], true, null);
       expect(res.count).toBe(1); // solo el vivo
       const archivedRow = await prisma.product.findUnique({
@@ -845,11 +936,33 @@ describe.skipIf(!hasDb)("products/service — integración DB", { timeout: T }, 
   describe("listCategoriesForSelect", () => {
     it("ordena padre primero y luego sus hijos indentados (isSub), excluye inactivas/archivadas", async () => {
       // Padre con 2 hijas; una categoría inactiva y una archivada (deben excluirse).
-      const parent = await makeCategory({ label: "lcs-parent", name: `${RUN}-ParentCat`, order: 0 });
-      const childB = await makeCategory({ label: "lcs-childb", name: `${RUN}-ChildB`, parentId: parent.id, order: 2 });
-      const childA = await makeCategory({ label: "lcs-childa", name: `${RUN}-ChildA`, parentId: parent.id, order: 1 });
-      const inactive = await makeCategory({ label: "lcs-inactive", name: `${RUN}-InactiveCat`, isActive: false });
-      const archived = await makeCategory({ label: "lcs-archived", name: `${RUN}-ArchivedCat`, deletedAt: new Date() });
+      const parent = await makeCategory({
+        label: "lcs-parent",
+        name: `${RUN}-ParentCat`,
+        order: 0,
+      });
+      const childB = await makeCategory({
+        label: "lcs-childb",
+        name: `${RUN}-ChildB`,
+        parentId: parent.id,
+        order: 2,
+      });
+      const childA = await makeCategory({
+        label: "lcs-childa",
+        name: `${RUN}-ChildA`,
+        parentId: parent.id,
+        order: 1,
+      });
+      const inactive = await makeCategory({
+        label: "lcs-inactive",
+        name: `${RUN}-InactiveCat`,
+        isActive: false,
+      });
+      const archived = await makeCategory({
+        label: "lcs-archived",
+        name: `${RUN}-ArchivedCat`,
+        deletedAt: new Date(),
+      });
 
       const list = await listCategoriesForSelect();
       const ours = list.filter((c) => c.name.startsWith(RUN));
@@ -875,7 +988,11 @@ describe.skipIf(!hasDb)("products/service — integración DB", { timeout: T }, 
 
     it("sub-categoría huérfana (padre archivado) cae al final como isSub=true", async () => {
       // Padre archivado (no aparece en raw) + hija activa cuyo parentId apunta a él.
-      const orphanParent = await makeCategory({ label: "lcs-oparent", name: `${RUN}-OrphanParent`, deletedAt: new Date() });
+      const orphanParent = await makeCategory({
+        label: "lcs-oparent",
+        name: `${RUN}-OrphanParent`,
+        deletedAt: new Date(),
+      });
       const orphanChild = await makeCategory({
         label: "lcs-ochild",
         name: `${RUN}-OrphanChild`,
@@ -957,7 +1074,10 @@ describe.skipIf(!hasDb)("products/service — integración DB", { timeout: T }, 
         ],
       });
       await syncProductBasePrice(p.id);
-      const row = await prisma.product.findUnique({ where: { id: p.id }, select: { basePrice: true } });
+      const row = await prisma.product.findUnique({
+        where: { id: p.id },
+        select: { basePrice: true },
+      });
       expect(row!.basePrice).toBe(3_000);
     });
 
@@ -970,11 +1090,20 @@ describe.skipIf(!hasDb)("products/service — integración DB", { timeout: T }, 
         variants: [
           { name: "Active", skuSuffix: "ACT", price: 8_000, isActive: true },
           { name: "InactiveCheaper", skuSuffix: "INA", price: 2_000, isActive: false },
-          { name: "ArchivedCheapest", skuSuffix: "ARCH", price: 500, isActive: true, deletedAt: new Date() },
+          {
+            name: "ArchivedCheapest",
+            skuSuffix: "ARCH",
+            price: 500,
+            isActive: true,
+            deletedAt: new Date(),
+          },
         ],
       });
       await syncProductBasePrice(p.id);
-      const row = await prisma.product.findUnique({ where: { id: p.id }, select: { basePrice: true } });
+      const row = await prisma.product.findUnique({
+        where: { id: p.id },
+        select: { basePrice: true },
+      });
       // Solo la activa-no-archivada (8000) cuenta. Ignora 2000 (inactiva) y 500 (archivada).
       expect(row!.basePrice).toBe(8_000);
     });
@@ -988,7 +1117,10 @@ describe.skipIf(!hasDb)("products/service — integración DB", { timeout: T }, 
         variants: [{ name: "Default", skuSuffix: "DEFAULT", price: null, isActive: true }],
       });
       await syncProductBasePrice(p.id);
-      const row = await prisma.product.findUnique({ where: { id: p.id }, select: { basePrice: true } });
+      const row = await prisma.product.findUnique({
+        where: { id: p.id },
+        select: { basePrice: true },
+      });
       expect(row!.basePrice).toBe(12_345); // fallback: no se toca
     });
 
@@ -998,7 +1130,15 @@ describe.skipIf(!hasDb)("products/service — integración DB", { timeout: T }, 
         categoryId: cat.id,
         label: "sync-cmp-prod",
         basePrice: 99_999,
-        variants: [{ name: "Promo", skuSuffix: "PROMO", price: 6_000, compareAtPrice: 10_000, isActive: true }],
+        variants: [
+          {
+            name: "Promo",
+            skuSuffix: "PROMO",
+            price: 6_000,
+            compareAtPrice: 10_000,
+            isActive: true,
+          },
+        ],
       });
       await syncProductBasePrice(p.id);
       const row = await prisma.product.findUnique({
@@ -1015,12 +1155,23 @@ describe.skipIf(!hasDb)("products/service — integración DB", { timeout: T }, 
         categoryId: cat.id,
         label: "sync-cmpinv-prod",
         basePrice: 99_999,
-        variants: [{ name: "BadPromo", skuSuffix: "BAD", price: 6_000, compareAtPrice: 5_000, isActive: true }],
+        variants: [
+          {
+            name: "BadPromo",
+            skuSuffix: "BAD",
+            price: 6_000,
+            compareAtPrice: 5_000,
+            isActive: true,
+          },
+        ],
       });
       // Sembrar un compareAtPrice previo para confirmar que se limpia.
       await prisma.product.update({ where: { id: p.id }, data: { compareAtPrice: 20_000 } });
       await syncProductBasePrice(p.id);
-      const row = await prisma.product.findUnique({ where: { id: p.id }, select: { compareAtPrice: true } });
+      const row = await prisma.product.findUnique({
+        where: { id: p.id },
+        select: { compareAtPrice: true },
+      });
       expect(row!.compareAtPrice).toBeNull(); // 5000 <= 6000 → no es promo → null
     });
 
@@ -1034,7 +1185,10 @@ describe.skipIf(!hasDb)("products/service — integración DB", { timeout: T }, 
       });
       await syncProductBasePrice(p.id);
       await syncProductBasePrice(p.id);
-      const row = await prisma.product.findUnique({ where: { id: p.id }, select: { basePrice: true } });
+      const row = await prisma.product.findUnique({
+        where: { id: p.id },
+        select: { basePrice: true },
+      });
       expect(row!.basePrice).toBe(4_500);
     });
   });
@@ -1071,7 +1225,10 @@ describe.skipIf(!hasDb)("products/service — integración DB", { timeout: T }, 
       expect(created.price).toBe(4_000);
       expect(created.createdBy).toBe("admin-cv");
 
-      const row = await prisma.product.findUnique({ where: { id: p.id }, select: { basePrice: true } });
+      const row = await prisma.product.findUnique({
+        where: { id: p.id },
+        select: { basePrice: true },
+      });
       expect(row!.basePrice).toBe(4_000); // sync corrió
     });
 
@@ -1112,7 +1269,10 @@ describe.skipIf(!hasDb)("products/service — integración DB", { timeout: T }, 
       const updated = await updateVariant({ id: variant.id, price: 2_500 }, "admin-uv");
       expect(updated.price).toBe(2_500);
       expect(updated.updatedBy).toBe("admin-uv");
-      const row = await prisma.product.findUnique({ where: { id: p.id }, select: { basePrice: true } });
+      const row = await prisma.product.findUnique({
+        where: { id: p.id },
+        select: { basePrice: true },
+      });
       expect(row!.basePrice).toBe(2_500); // sync corrió tras update
     });
 
@@ -1128,7 +1288,9 @@ describe.skipIf(!hasDb)("products/service — integración DB", { timeout: T }, 
       });
       const a = p.variants.find((v) => v.name === "A")!;
       const b = p.variants.find((v) => v.name === "B")!;
-      await expect(updateVariant({ id: b.id, sku: a.sku }, null)).rejects.toMatchObject({ field: "sku" });
+      await expect(updateVariant({ id: b.id, sku: a.sku }, null)).rejects.toMatchObject({
+        field: "sku",
+      });
     });
   });
 
@@ -1157,7 +1319,10 @@ describe.skipIf(!hasDb)("products/service — integración DB", { timeout: T }, 
       expect(deleted.deletedBy).toBe("admin-sdv");
 
       // Tras archivar la barata, sync recalcula basePrice = mín de las vivas = 9000.
-      const row = await prisma.product.findUnique({ where: { id: p.id }, select: { basePrice: true } });
+      const row = await prisma.product.findUnique({
+        where: { id: p.id },
+        select: { basePrice: true },
+      });
       expect(row!.basePrice).toBe(9_000);
 
       // Sigue existiendo (soft).
@@ -1178,7 +1343,10 @@ describe.skipIf(!hasDb)("products/service — integración DB", { timeout: T }, 
         field: "general",
       });
       // No se archivó.
-      const row = await prisma.productVariant.findUnique({ where: { id: only.id }, select: { deletedAt: true } });
+      const row = await prisma.productVariant.findUnique({
+        where: { id: only.id },
+        select: { deletedAt: true },
+      });
       expect(row!.deletedAt).toBeNull();
     });
 

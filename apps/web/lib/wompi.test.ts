@@ -47,22 +47,14 @@ function extractByPath(data: unknown, path: string): string {
   return cur === null || cur === undefined ? "" : String(cur);
 }
 
-function expectedWebhookChecksum(
-  data: unknown,
-  properties: string[],
-  timestamp: number,
-): string {
+function expectedWebhookChecksum(data: unknown, properties: string[], timestamp: number): string {
   const concat =
     properties.map((p) => extractByPath(data, p)).join("") + String(timestamp) + EVENTS_SECRET;
   return crypto.createHash("sha256").update(concat).digest("hex");
 }
 
 // --- Builder de body de webhook válido (firmado con EVENTS_SECRET) ------------
-const DEFAULT_PROPS = [
-  "transaction.id",
-  "transaction.status",
-  "transaction.amount_in_cents",
-];
+const DEFAULT_PROPS = ["transaction.id", "transaction.status", "transaction.amount_in_cents"];
 
 function buildWebhookBody(opts?: {
   data?: Record<string, unknown>;
@@ -168,14 +160,30 @@ describe("generateIntegritySignature (firma de integridad de transacción)", () 
   });
 
   it("cambia si cambia la reference", () => {
-    const a = generateIntegritySignature({ reference: "REF-A", amountInCents: 1000, currency: "COP" });
-    const b = generateIntegritySignature({ reference: "REF-B", amountInCents: 1000, currency: "COP" });
+    const a = generateIntegritySignature({
+      reference: "REF-A",
+      amountInCents: 1000,
+      currency: "COP",
+    });
+    const b = generateIntegritySignature({
+      reference: "REF-B",
+      amountInCents: 1000,
+      currency: "COP",
+    });
     expect(a).not.toBe(b);
   });
 
   it("cambia si cambia la moneda", () => {
-    const cop = generateIntegritySignature({ reference: "REF", amountInCents: 1000, currency: "COP" });
-    const usd = generateIntegritySignature({ reference: "REF", amountInCents: 1000, currency: "USD" });
+    const cop = generateIntegritySignature({
+      reference: "REF",
+      amountInCents: 1000,
+      currency: "COP",
+    });
+    const usd = generateIntegritySignature({
+      reference: "REF",
+      amountInCents: 1000,
+      currency: "USD",
+    });
     expect(cop).not.toBe(usd);
   });
 
@@ -336,7 +344,11 @@ describe("verifyWebhookSignature — firma inválida/manipulada rechaza", () => 
       .createHash("sha256")
       .update("tAPPROVED1" + "1700000000" + "test_events_ATTACKER")
       .digest("hex");
-    const body = buildWebhookBody({ data, checksum: wrongSecretChecksum, timestamp: 1_700_000_000 });
+    const body = buildWebhookBody({
+      data,
+      checksum: wrongSecretChecksum,
+      timestamp: 1_700_000_000,
+    });
     expect(verifyWebhookSignature(body).valid).toBe(false);
   });
 
@@ -359,7 +371,12 @@ describe("verifyWebhookSignature — firma inválida/manipulada rechaza", () => 
     const data = { transaction: { id: "t", status: "APPROVED", amount_in_cents: 1 } };
     const checksum = expectedWebhookChecksum(data, DEFAULT_PROPS, 1_700_000_000);
     const reordered = ["transaction.status", "transaction.id", "transaction.amount_in_cents"];
-    const body = buildWebhookBody({ data, properties: reordered, checksum, timestamp: 1_700_000_000 });
+    const body = buildWebhookBody({
+      data,
+      properties: reordered,
+      checksum,
+      timestamp: 1_700_000_000,
+    });
     expect(verifyWebhookSignature(body).valid).toBe(false);
   });
 });

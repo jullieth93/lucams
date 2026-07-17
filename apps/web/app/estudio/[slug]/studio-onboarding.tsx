@@ -50,7 +50,8 @@ const STEPS: OnboardingStep[] = [
   {
     title: "Asigná a cada imán",
     body: "Toca un imán vacío y elige cuál foto quieres, o usa el botón mágico ‘Llenar slots con mis fotos’ para repartir todo de una.",
-    bodyMobile: "Toca cada imán para ponerle una foto. Con el botón ‘Editar’ (abajo) abres plantillas y más fotos.",
+    bodyMobile:
+      "Toca cada imán para ponerle una foto. Con el botón ‘Editar’ (abajo) abres plantillas y más fotos.",
     cta: "Siguiente",
   },
   {

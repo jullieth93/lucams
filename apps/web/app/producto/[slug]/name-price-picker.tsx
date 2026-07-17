@@ -68,7 +68,7 @@ export function NamePricePicker({
         </div>
       </div>
 
-      <div className="flex items-baseline justify-between border-t border-dashed border-brand-purple/15 pt-3">
+      <div className="border-brand-purple/15 flex items-baseline justify-between border-t border-dashed pt-3">
         <span className="text-brand-muted text-xs">
           {count} × {formatCOP(perTilePrice)}
         </span>

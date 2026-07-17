@@ -455,11 +455,7 @@ function CategoryRow({
     >
       <span className="flex-1 truncate">{name}</span>
       {count !== undefined && (
-        <span
-          className={
-            isActive ? "text-brand-muted text-xs" : "text-brand-muted text-xs"
-          }
-        >
+        <span className={isActive ? "text-brand-muted text-xs" : "text-brand-muted text-xs"}>
           {count}
         </span>
       )}

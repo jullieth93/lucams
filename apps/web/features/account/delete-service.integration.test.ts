@@ -35,7 +35,9 @@ describe.skipIf(!hasDb)("deleteCustomerAccount — supresión Ley 1581", { timeo
 
   afterAll(async () => {
     if (ids.customerId) {
-      await prisma.supportTicket.deleteMany({ where: { customerId: ids.customerId } }).catch(() => {});
+      await prisma.supportTicket
+        .deleteMany({ where: { customerId: ids.customerId } })
+        .catch(() => {});
       // Los tickets fueron desvinculados (customerId null) — borrar por email placeholder.
       await prisma.supportTicket
         .deleteMany({ where: { email: `deleted-${ids.customerId}@deleted.lucamsshop.co` } })

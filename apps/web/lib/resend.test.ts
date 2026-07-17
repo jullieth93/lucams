@@ -251,10 +251,7 @@ describe("sendEmail — envío exitoso", () => {
     const fetchFn = mockFetchJson({ id: "em_1" });
 
     const send = await loadFresh();
-    await runDrained(
-      send,
-      baseInput({ to: "a@b.co", subject: "S", html: "<p>H</p>", text: "T" }),
-    );
+    await runDrained(send, baseInput({ to: "a@b.co", subject: "S", html: "<p>H</p>", text: "T" }));
 
     const [, init] = fetchFn.mock.calls[0] as [string, RequestInit];
     const body = JSON.parse(init.body as string);
@@ -529,9 +526,7 @@ describe("sendEmail — errores transient (retry)", () => {
   });
 
   it("timeout (AbortError) → transient → 4 intentos, reason con el mensaje del abort", async () => {
-    const fetchFn = mockFetchThrows(
-      new DOMException("The operation was aborted", "AbortError"),
-    );
+    const fetchFn = mockFetchThrows(new DOMException("The operation was aborted", "AbortError"));
 
     const send = await loadFresh();
     const result = await runDrained(send, baseInput());

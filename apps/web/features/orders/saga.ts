@@ -170,9 +170,7 @@ export async function processPaidOrder(
           where: { id: order.id },
           data: {
             status: "PAID",
-            ...(input.wompiTransactionId
-              ? { wompiTransactionId: input.wompiTransactionId }
-              : {}),
+            ...(input.wompiTransactionId ? { wompiTransactionId: input.wompiTransactionId } : {}),
           },
         });
         // F1 — registrar el uso del cupón AL PAGAR (no al crear la orden: una
@@ -715,7 +713,11 @@ export async function processFailedPaymentOrder(input: {
       // nunca se capturó (DECLINED sobre PENDING_PAYMENT/DRAFT). Para REFUNDED
       // (era PAID) sería contradictorio. El email de reembolso/cancelación
       // post-pago llega con Bloque B (plantillas de correo).
-      if (target === "CANCELLED" && current.status !== "FULFILLING" && current.status !== "SHIPPED") {
+      if (
+        target === "CANCELLED" &&
+        current.status !== "FULFILLING" &&
+        current.status !== "SHIPPED"
+      ) {
         await sendOrderPaymentFailed(input.orderId, input.reason);
       }
       return; // éxito

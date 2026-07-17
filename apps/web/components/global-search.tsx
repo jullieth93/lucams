@@ -129,9 +129,7 @@ export function GlobalSearch() {
                     <span className="text-brand-purple-dark truncate text-sm font-medium">
                       {p.name}
                     </span>
-                    <span className="text-brand-muted truncate text-xs">
-                      {p.category.name}
-                    </span>
+                    <span className="text-brand-muted truncate text-xs">{p.category.name}</span>
                   </div>
                   <span className="text-brand-purple-dark text-sm font-bold tabular-nums">
                     {formatCOP(p.basePrice)}

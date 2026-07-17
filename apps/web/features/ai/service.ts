@@ -16,7 +16,7 @@ export async function getDesignSuggestion(input: DesignSuggestInput): Promise<De
   const raw = await provider.suggestDesign(input);
   const color = BRAND_COLORS[raw.colorName];
   // La frase solo aplica si el producto lleva texto; el color siempre se resuelve a un hex de marca.
-  const phrase = input.allowText ? (raw.phrase?.trim() || null) : null;
+  const phrase = input.allowText ? raw.phrase?.trim() || null : null;
   return {
     phrase,
     colorName: raw.colorName,

@@ -165,9 +165,7 @@ export default async function AdminDashboardPage() {
               icon={Box}
               label="Pedidos pendientes pago"
               value={pendingOrderCount}
-              description={
-                pendingOrderCount > 0 ? "Esperan completar pago" : "Sin pendientes"
-              }
+              description={pendingOrderCount > 0 ? "Esperan completar pago" : "Sin pendientes"}
               tone="purple"
               urgent={pendingOrderCount > 0}
             />
@@ -190,9 +188,7 @@ export default async function AdminDashboardPage() {
               label="Stock bajo"
               value={inventorySummary.lowCount}
               description={
-                inventorySummary.lowCount > 0
-                  ? "5 unidades o menos"
-                  : "Sin alertas de stock bajo"
+                inventorySummary.lowCount > 0 ? "5 unidades o menos" : "Sin alertas de stock bajo"
               }
               tone="coral"
               urgent={inventorySummary.lowCount > 0}

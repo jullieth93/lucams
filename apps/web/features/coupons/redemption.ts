@@ -94,7 +94,8 @@ export function priceCouponPure(
   if (!coupon.isActive) return reject("INACTIVE");
   if (ctx.now < coupon.validFrom) return reject("NOT_STARTED");
   if (ctx.now > coupon.validTo) return reject("EXPIRED");
-  if (coupon.maxUses != null && coupon.usedCount >= coupon.maxUses) return reject("MAX_USES_REACHED");
+  if (coupon.maxUses != null && coupon.usedCount >= coupon.maxUses)
+    return reject("MAX_USES_REACHED");
   if (coupon.maxUsesPerCustomer != null && ctx.perCustomerUses >= coupon.maxUsesPerCustomer) {
     return reject("PER_CUSTOMER_LIMIT");
   }
@@ -107,7 +108,8 @@ export function priceCouponPure(
 
   // Items elegibles: si el cupón restringe por categoría o producto, solo esos
   // items reciben el descuento; sin restricción, todo el carrito es elegible.
-  const hasFilter = coupon.appliesToCategories.length > 0 || coupon.appliesToProductSlugs.length > 0;
+  const hasFilter =
+    coupon.appliesToCategories.length > 0 || coupon.appliesToProductSlugs.length > 0;
   const eligible = hasFilter
     ? ctx.items.filter(
         (it) =>
@@ -138,7 +140,13 @@ export function priceCouponPure(
  * para FREE_SHIPPING; 0 si aún no se eligió envío.
  */
 export async function priceCouponForCart(
-  input: { code: string; cartId: string; shippingCost: number; customerId: string | null; now?: Date },
+  input: {
+    code: string;
+    cartId: string;
+    shippingCost: number;
+    customerId: string | null;
+    now?: Date;
+  },
   client: Prisma.TransactionClient | typeof prisma = prisma,
 ): Promise<PriceCouponResult> {
   const code = input.code.trim();

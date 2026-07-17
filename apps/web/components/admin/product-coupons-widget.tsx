@@ -56,19 +56,21 @@ export async function ProductCouponsWidget({
   // Filtro aplicabilidad en aplicación (no SQL — array contains queries
   // requieren raw o lateral filter complicado, y el set de cupones activos
   // es muy chico: <50 típico).
-  const applicable = candidates.filter((c) => {
-    // Cupón sin restricciones aplica a todos.
-    if (c.appliesToProductSlugs.length === 0 && c.appliesToCategories.length === 0) {
-      return true;
-    }
-    if (c.appliesToProductSlugs.includes(productSlug)) return true;
-    if (categorySlug && c.appliesToCategories.includes(categorySlug)) return true;
-    return false;
-  }).filter((c) => {
-    // Filtrar agotados por maxUses.
-    if (c.maxUses === null) return true;
-    return c.usedCount < c.maxUses;
-  });
+  const applicable = candidates
+    .filter((c) => {
+      // Cupón sin restricciones aplica a todos.
+      if (c.appliesToProductSlugs.length === 0 && c.appliesToCategories.length === 0) {
+        return true;
+      }
+      if (c.appliesToProductSlugs.includes(productSlug)) return true;
+      if (categorySlug && c.appliesToCategories.includes(categorySlug)) return true;
+      return false;
+    })
+    .filter((c) => {
+      // Filtrar agotados por maxUses.
+      if (c.maxUses === null) return true;
+      return c.usedCount < c.maxUses;
+    });
 
   if (applicable.length === 0) {
     return (

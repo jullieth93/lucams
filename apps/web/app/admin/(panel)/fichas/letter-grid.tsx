@@ -76,15 +76,21 @@ export function LetterGrid({
                 aria-label={tile ? `Cambiar ficha ${char}` : `Subir ficha ${char}`}
                 className={`relative flex aspect-square w-full items-center justify-center overflow-hidden rounded-xl border-2 transition disabled:opacity-60 ${
                   tile
-                    ? "border-brand-turquoise/50 bg-white hover:border-brand-turquoise"
+                    ? "border-brand-turquoise/50 hover:border-brand-turquoise bg-white"
                     : "border-brand-purple/20 bg-brand-cream/50 hover:border-brand-purple/50 border-dashed"
                 }`}
               >
                 {tile ? (
                   // eslint-disable-next-line @next/next/no-img-element -- preview admin
-                  <img src={tile.imageUrl} alt={`Ficha ${char}`} className="h-full w-full object-contain p-1" />
+                  <img
+                    src={tile.imageUrl}
+                    alt={`Ficha ${char}`}
+                    className="h-full w-full object-contain p-1"
+                  />
                 ) : (
-                  <span className="font-display text-brand-purple/40 text-2xl font-extrabold">{char}</span>
+                  <span className="font-display text-brand-purple/40 text-2xl font-extrabold">
+                    {char}
+                  </span>
                 )}
                 {busy && (
                   <span className="absolute inset-0 flex items-center justify-center bg-white/70">

@@ -330,9 +330,7 @@ export function AdminEmpty({
         {icon ?? <Sparkles className="h-5 w-5" />}
       </div>
       <p className="text-brand-purple-dark font-display text-lg font-semibold">{title}</p>
-      {description && (
-        <p className="text-brand-muted mt-1 max-w-md text-sm">{description}</p>
-      )}
+      {description && <p className="text-brand-muted mt-1 max-w-md text-sm">{description}</p>}
       {action && <div className="mt-4">{action}</div>}
     </div>
   );
@@ -409,9 +407,7 @@ export function KpiCard({
     trend === "up" ? "text-emerald-600" : trend === "down" ? "text-rose-600" : "text-slate-500";
   return (
     <div className="border-brand-purple/10 rounded-xl border bg-white p-5 shadow-sm">
-      <p className="text-brand-muted text-xs font-semibold tracking-wider uppercase">
-        {label}
-      </p>
+      <p className="text-brand-muted text-xs font-semibold tracking-wider uppercase">{label}</p>
       <p className="text-brand-purple-dark font-display mt-2 text-3xl font-bold tabular-nums">
         {value}
       </p>
@@ -450,9 +446,7 @@ export function QuickLink({
         <ArrowRight className="text-brand-muted h-3.5 w-3.5 opacity-0 transition-all group-hover:translate-x-0.5 group-hover:opacity-100" />
       </div>
       <p className="text-brand-purple-dark text-sm font-semibold">{label}</p>
-      <p className="text-brand-muted mt-0.5 line-clamp-2 text-xs leading-snug">
-        {description}
-      </p>
+      <p className="text-brand-muted mt-0.5 line-clamp-2 text-xs leading-snug">{description}</p>
       {badge && (
         <div className="mt-2.5">
           <AdminBadge tone={badge.tone}>{badge.text}</AdminBadge>

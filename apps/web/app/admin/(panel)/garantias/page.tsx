@@ -47,7 +47,11 @@ const FILTERS: Array<{ key: string; label: string }> = [
   { key: "all", label: "Todos" },
 ];
 
-const dateFmt = new Intl.DateTimeFormat("es-CO", { day: "2-digit", month: "short", year: "numeric" });
+const dateFmt = new Intl.DateTimeFormat("es-CO", {
+  day: "2-digit",
+  month: "short",
+  year: "numeric",
+});
 
 export default async function AdminGarantiasPage({ searchParams }: { searchParams: SearchParams }) {
   await requireRole(["SUPERADMIN", "MANAGER"]);

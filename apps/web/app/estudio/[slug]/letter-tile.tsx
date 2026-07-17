@@ -23,11 +23,36 @@ export type NameTileTheme = {
 };
 
 export const NAME_TILE_THEMES: readonly NameTileTheme[] = [
-  { id: "arcoiris", label: "Arcoíris", emoji: "🌈", colors: ["#E85B9F", "#F58A6F", "#FFD93D", "#3FB8AF", "#4A90D9", "#9B5DE5"] },
-  { id: "vibrante", label: "Vibrante", emoji: "⚡", colors: ["#E63946", "#F4511E", "#FFC300", "#43AA8B", "#1D6FB8", "#9B5DE5"] },
-  { id: "nina", label: "Niña", emoji: "💗", colors: ["#E85B9F", "#F58A6F", "#C86FB0", "#FF3D7F", "#9B5DE5"] },
-  { id: "nino", label: "Niño", emoji: "💙", colors: ["#5DD9D1", "#4A90D9", "#1D6FB8", "#43AA8B", "#7C6AAD"] },
-  { id: "neutro", label: "Neutro", emoji: "🖤", colors: ["#3D2E5C", "#2B2D42", "#6B7280", "#8B5A2B", "#7C6AAD"] },
+  {
+    id: "arcoiris",
+    label: "Arcoíris",
+    emoji: "🌈",
+    colors: ["#E85B9F", "#F58A6F", "#FFD93D", "#3FB8AF", "#4A90D9", "#9B5DE5"],
+  },
+  {
+    id: "vibrante",
+    label: "Vibrante",
+    emoji: "⚡",
+    colors: ["#E63946", "#F4511E", "#FFC300", "#43AA8B", "#1D6FB8", "#9B5DE5"],
+  },
+  {
+    id: "nina",
+    label: "Niña",
+    emoji: "💗",
+    colors: ["#E85B9F", "#F58A6F", "#C86FB0", "#FF3D7F", "#9B5DE5"],
+  },
+  {
+    id: "nino",
+    label: "Niño",
+    emoji: "💙",
+    colors: ["#5DD9D1", "#4A90D9", "#1D6FB8", "#43AA8B", "#7C6AAD"],
+  },
+  {
+    id: "neutro",
+    label: "Neutro",
+    emoji: "🖤",
+    colors: ["#3D2E5C", "#2B2D42", "#6B7280", "#8B5A2B", "#7C6AAD"],
+  },
 ];
 
 export function getNameTileTheme(id: string | null | undefined): NameTileTheme {
@@ -40,10 +65,28 @@ export function getNameTileTheme(id: string | null | undefined): NameTileTheme {
  * pastel (feedback de Lucy 2026-07-12).
  */
 export const LETTER_SWATCHES = [
-  "#E63946", "#F4511E", "#F58A6F", "#F5A623", "#FFC300", "#FFD93D",
-  "#8BC34A", "#43AA8B", "#2A9D8F", "#5DD9D1", "#4A90D9", "#1D6FB8",
-  "#9B5DE5", "#7C6AAD", "#C86FB0", "#E85B9F", "#FF3D7F", "#D81159",
-  "#8B5A2B", "#6B7280", "#3D2E5C", "#2B2D42",
+  "#E63946",
+  "#F4511E",
+  "#F58A6F",
+  "#F5A623",
+  "#FFC300",
+  "#FFD93D",
+  "#8BC34A",
+  "#43AA8B",
+  "#2A9D8F",
+  "#5DD9D1",
+  "#4A90D9",
+  "#1D6FB8",
+  "#9B5DE5",
+  "#7C6AAD",
+  "#C86FB0",
+  "#E85B9F",
+  "#FF3D7F",
+  "#D81159",
+  "#8B5A2B",
+  "#6B7280",
+  "#3D2E5C",
+  "#2B2D42",
 ] as const;
 
 export function LetterTile({
@@ -75,7 +118,9 @@ export function LetterTile({
         width: size,
         height: size * 1.18,
         border: `3px solid ${color}`,
-        boxShadow: selected ? `0 0 0 3px ${color}55, 0 4px 14px ${color}33` : `0 4px 14px ${color}22`,
+        boxShadow: selected
+          ? `0 0 0 3px ${color}55, 0 4px 14px ${color}33`
+          : `0 4px 14px ${color}22`,
       }}
     >
       {imageUrl ? (

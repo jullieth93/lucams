@@ -19,7 +19,12 @@ const COT = 5 * 60 * 60 * 1000;
 /** Partes de fecha en hora Colombia. */
 function cot(d: Date) {
   const c = new Date(d.getTime() - COT);
-  return { date: c.getUTCDate(), month: c.getUTCMonth(), day: c.getUTCDay(), hours: c.getUTCHours() };
+  return {
+    date: c.getUTCDate(),
+    month: c.getUTCMonth(),
+    day: c.getUTCDay(),
+    hours: c.getUTCHours(),
+  };
 }
 
 // Lunes 2024-01-01, 10:00 COT (= 15:00 UTC). 2024-01-01 es lunes.

@@ -88,7 +88,13 @@ describe.skipIf(!hasDb)("coupons/redemption — integración DB", { timeout: 30_
         categoryId,
         variants: {
           create: [
-            { name: "Default", sku: `${RUN}-V`.toUpperCase(), price: variantPrice, stock: 100, attributes: {} },
+            {
+              name: "Default",
+              sku: `${RUN}-V`.toUpperCase(),
+              price: variantPrice,
+              stock: 100,
+              attributes: {},
+            },
           ],
         },
       },
@@ -107,11 +113,17 @@ describe.skipIf(!hasDb)("coupons/redemption — integración DB", { timeout: 30_
       }
     };
     await safe(() =>
-      prisma.couponUsage.deleteMany({ where: { coupon: { code: { startsWith: RUN.toUpperCase() } } } }),
+      prisma.couponUsage.deleteMany({
+        where: { coupon: { code: { startsWith: RUN.toUpperCase() } } },
+      }),
     );
     await safe(() => prisma.order.deleteMany({ where: { email: `${RUN}-buyer@lucams.test` } }));
-    await safe(() => prisma.cart.deleteMany({ where: { sessionId: { startsWith: `${RUN}-cart` } } }));
-    await safe(() => prisma.coupon.deleteMany({ where: { code: { startsWith: RUN.toUpperCase() } } }));
+    await safe(() =>
+      prisma.cart.deleteMany({ where: { sessionId: { startsWith: `${RUN}-cart` } } }),
+    );
+    await safe(() =>
+      prisma.coupon.deleteMany({ where: { code: { startsWith: RUN.toUpperCase() } } }),
+    );
     await safe(() => prisma.productVariant.deleteMany({ where: { productId } }));
     await safe(() => prisma.product.deleteMany({ where: { id: productId } }));
     await safe(() => prisma.category.deleteMany({ where: { id: categoryId } }));
@@ -140,12 +152,34 @@ describe.skipIf(!hasDb)("coupons/redemption — integración DB", { timeout: 30_
     const cartId = await makeCart([{ variantId, qty: 1, unitPrice: variantPrice }]);
     const okCode = `${RUN}-CATOK`.toUpperCase();
     const noCode = `${RUN}-CATNO`.toUpperCase();
-    await mkCoupon({ code: okCode, type: "PERCENT", value: 20, appliesToCategories: [`${RUN}-cat`], ...VALID });
-    await mkCoupon({ code: noCode, type: "PERCENT", value: 20, appliesToCategories: ["otra-categoria"], ...VALID });
-    const ok = await priceCouponForCart({ code: okCode, cartId, shippingCost: 0, customerId: null });
+    await mkCoupon({
+      code: okCode,
+      type: "PERCENT",
+      value: 20,
+      appliesToCategories: [`${RUN}-cat`],
+      ...VALID,
+    });
+    await mkCoupon({
+      code: noCode,
+      type: "PERCENT",
+      value: 20,
+      appliesToCategories: ["otra-categoria"],
+      ...VALID,
+    });
+    const ok = await priceCouponForCart({
+      code: okCode,
+      cartId,
+      shippingCost: 0,
+      customerId: null,
+    });
     expect(ok.ok).toBe(true);
     if (ok.ok) expect(ok.discount).toBe(4_000); // 20% de 20.000
-    const no = await priceCouponForCart({ code: noCode, cartId, shippingCost: 0, customerId: null });
+    const no = await priceCouponForCart({
+      code: noCode,
+      cartId,
+      shippingCost: 0,
+      customerId: null,
+    });
     expect(no.ok).toBe(false);
     if (!no.ok) expect(no.reason).toBe("NOT_APPLICABLE");
   });
@@ -158,7 +192,10 @@ describe.skipIf(!hasDb)("coupons/redemption — integración DB", { timeout: 30_
     expect(order.discount).toBe(8_000);
     expect(order.subtotal).toBe(40_000);
     expect(order.total).toBe(40_000 + 12_000 - 8_000); // subtotal + envío − descuento
-    const persisted = await prisma.order.findUnique({ where: { id: order.id }, select: { couponId: true } });
+    const persisted = await prisma.order.findUnique({
+      where: { id: order.id },
+      select: { couponId: true },
+    });
     expect(persisted?.couponId).toBe(coupon.id);
   });
 
@@ -174,7 +211,10 @@ describe.skipIf(!hasDb)("coupons/redemption — integración DB", { timeout: 30_
     });
     const order = await createOrderFromCart(orderInput(cartId, code));
     expect(order.discount).toBe(0);
-    const persisted = await prisma.order.findUnique({ where: { id: order.id }, select: { couponId: true } });
+    const persisted = await prisma.order.findUnique({
+      where: { id: order.id },
+      select: { couponId: true },
+    });
     expect(persisted?.couponId).toBeNull();
   });
 });

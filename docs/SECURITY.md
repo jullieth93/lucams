@@ -1258,7 +1258,9 @@ export function safeRedirectTarget(input: string | null | undefined, fallback = 
   return isSafeInternalPath(input) ? input.trim() : fallback; // solo paths internos seguros
 }
 // CMS admin: acepta http(s):// explícito O path interno; rechaza //evil.com y /\evil.com.
-export function isAllowedRedirectDestination(input: unknown): input is string { /* ... */ }
+export function isAllowedRedirectDestination(input: unknown): input is string {
+  /* ... */
+}
 ```
 
 ### Honeypots en formularios públicos

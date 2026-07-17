@@ -238,8 +238,20 @@ describe.skipIf(!hasDb)("lib/catalog — integración DB", { timeout: T }, () =>
         productionDays: 3,
         variants: {
           create: [
-            { name: "Set 6", sku: `${RUN}-P1-A`.toUpperCase(), price: P1_VAR_MIN, stock: 50, attributes: {} },
-            { name: "Set 12", sku: `${RUN}-P1-B`.toUpperCase(), price: P1_VAR_MAX, stock: 50, attributes: {} },
+            {
+              name: "Set 6",
+              sku: `${RUN}-P1-A`.toUpperCase(),
+              price: P1_VAR_MIN,
+              stock: 50,
+              attributes: {},
+            },
+            {
+              name: "Set 12",
+              sku: `${RUN}-P1-B`.toUpperCase(),
+              price: P1_VAR_MAX,
+              stock: 50,
+              attributes: {},
+            },
           ],
         },
         ocasionTags: {
@@ -266,7 +278,13 @@ describe.skipIf(!hasDb)("lib/catalog — integración DB", { timeout: T }, () =>
         // Variante sin price → cae a basePrice en la agregación.
         variants: {
           create: [
-            { name: "Único", sku: `${RUN}-P2-A`.toUpperCase(), price: null, stock: 10, attributes: {} },
+            {
+              name: "Único",
+              sku: `${RUN}-P2-A`.toUpperCase(),
+              price: null,
+              stock: 10,
+              attributes: {},
+            },
           ],
         },
       },
@@ -456,8 +474,12 @@ describe.skipIf(!hasDb)("lib/catalog — integración DB", { timeout: T }, () =>
     // Orden FK: pivots → templates → variants → products → coupons → ocasiones → categorías.
     // Todo scoped al RUN (categorías de la corrida + slugs prefijados).
     const catIds = [rootCatId, subA_Id, subB_Id, siblingCatId].filter(Boolean);
-    await prisma.productOcasionTag.deleteMany({ where: { product: { categoryId: { in: catIds } } } });
-    await prisma.personalizationTemplate.deleteMany({ where: { product: { categoryId: { in: catIds } } } });
+    await prisma.productOcasionTag.deleteMany({
+      where: { product: { categoryId: { in: catIds } } },
+    });
+    await prisma.personalizationTemplate.deleteMany({
+      where: { product: { categoryId: { in: catIds } } },
+    });
     await prisma.productVariant.deleteMany({ where: { product: { categoryId: { in: catIds } } } });
     await prisma.product.deleteMany({ where: { categoryId: { in: catIds } } });
     await prisma.coupon.deleteMany({ where: { code: { startsWith: RUN.toUpperCase() } } });
@@ -626,7 +648,11 @@ describe.skipIf(!hasDb)("lib/catalog — integración DB", { timeout: T }, () =>
     });
 
     it("filtra por personalización=true (personalizationKind != NONE)", async () => {
-      const list = await listCatalogProducts({ categorySlug: rootCatSlug, isPersonalizable: true, limit: 50 });
+      const list = await listCatalogProducts({
+        categorySlug: rootCatSlug,
+        isPersonalizable: true,
+        limit: 50,
+      });
       const slugs = list.map((p) => p.slug);
       expect(slugs).toContain(p1Slug); // PHOTO_PACK
       expect(slugs).toContain(p3Slug); // CUSTOM_DECOR
@@ -634,7 +660,11 @@ describe.skipIf(!hasDb)("lib/catalog — integración DB", { timeout: T }, () =>
     });
 
     it("filtra por personalización=false (personalizationKind == NONE)", async () => {
-      const list = await listCatalogProducts({ categorySlug: rootCatSlug, isPersonalizable: false, limit: 50 });
+      const list = await listCatalogProducts({
+        categorySlug: rootCatSlug,
+        isPersonalizable: false,
+        limit: 50,
+      });
       const slugs = list.map((p) => p.slug);
       expect(slugs).toContain(p2Slug); // NONE
       expect(slugs).not.toContain(p1Slug);
@@ -653,7 +683,11 @@ describe.skipIf(!hasDb)("lib/catalog — integración DB", { timeout: T }, () =>
 
     it("filtro de precio (priceMin/priceMax) opera POST-fetch sobre minPrice", async () => {
       // priceMin 9000 excluye p1 (minPrice 8000) pero incluye p2 (30000) y p3 (50000).
-      const list = await listCatalogProducts({ categorySlug: rootCatSlug, priceMin: 9_000, limit: 50 });
+      const list = await listCatalogProducts({
+        categorySlug: rootCatSlug,
+        priceMin: 9_000,
+        limit: 50,
+      });
       const slugs = list.map((p) => p.slug);
       expect(slugs).not.toContain(p1Slug); // minPrice 8000 < 9000
       expect(slugs).toContain(p2Slug);
@@ -662,7 +696,11 @@ describe.skipIf(!hasDb)("lib/catalog — integración DB", { timeout: T }, () =>
 
     it("priceMax filtra por minPrice <= max", async () => {
       // priceMax 9000 incluye solo p1 (minPrice 8000); excluye p2 (30000) y p3 (50000).
-      const list = await listCatalogProducts({ categorySlug: rootCatSlug, priceMax: 9_000, limit: 50 });
+      const list = await listCatalogProducts({
+        categorySlug: rootCatSlug,
+        priceMax: 9_000,
+        limit: 50,
+      });
       const slugs = list.map((p) => p.slug);
       expect(slugs).toContain(p1Slug);
       expect(slugs).not.toContain(p2Slug);
@@ -670,7 +708,11 @@ describe.skipIf(!hasDb)("lib/catalog — integración DB", { timeout: T }, () =>
     });
 
     it("sort=price_asc ordena por basePrice ascendente", async () => {
-      const list = await listCatalogProducts({ categorySlug: rootCatSlug, sort: "price_asc", limit: 50 });
+      const list = await listCatalogProducts({
+        categorySlug: rootCatSlug,
+        sort: "price_asc",
+        limit: 50,
+      });
       const ours = list.filter((p) => [p1Slug, p2Slug, p3Slug].includes(p.slug));
       const prices = ours.map((p) => p.basePrice);
       // Orden por basePrice asc: p1(10000) < p2(30000) < p3(50000).
@@ -679,13 +721,21 @@ describe.skipIf(!hasDb)("lib/catalog — integración DB", { timeout: T }, () =>
     });
 
     it("sort=price_desc ordena por basePrice descendente", async () => {
-      const list = await listCatalogProducts({ categorySlug: rootCatSlug, sort: "price_desc", limit: 50 });
+      const list = await listCatalogProducts({
+        categorySlug: rootCatSlug,
+        sort: "price_desc",
+        limit: 50,
+      });
       const ours = list.filter((p) => [p1Slug, p2Slug, p3Slug].includes(p.slug));
       expect(ours[0].slug).toBe(p3Slug); // 50000 primero
     });
 
     it("sort=featured pone los productos isFeatured primero", async () => {
-      const list = await listCatalogProducts({ categorySlug: rootCatSlug, sort: "featured", limit: 50 });
+      const list = await listCatalogProducts({
+        categorySlug: rootCatSlug,
+        sort: "featured",
+        limit: 50,
+      });
       const ours = list.filter((p) => [p1Slug, p2Slug, p3Slug].includes(p.slug));
       // p1 es el único featured → debe ir primero entre los nuestros.
       expect(ours[0].slug).toBe(p1Slug);
@@ -698,8 +748,18 @@ describe.skipIf(!hasDb)("lib/catalog — integración DB", { timeout: T }, () =>
     });
 
     it("paginación: offset salta resultados (página 2 distinta de página 1)", async () => {
-      const page1 = await listCatalogProducts({ categorySlug: rootCatSlug, sort: "price_asc", limit: 1, offset: 0 });
-      const page2 = await listCatalogProducts({ categorySlug: rootCatSlug, sort: "price_asc", limit: 1, offset: 1 });
+      const page1 = await listCatalogProducts({
+        categorySlug: rootCatSlug,
+        sort: "price_asc",
+        limit: 1,
+        offset: 0,
+      });
+      const page2 = await listCatalogProducts({
+        categorySlug: rootCatSlug,
+        sort: "price_asc",
+        limit: 1,
+        offset: 1,
+      });
       expect(page1).toHaveLength(1);
       expect(page2).toHaveLength(1);
       expect(page1[0].slug).not.toBe(page2[0].slug);

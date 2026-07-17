@@ -1408,25 +1408,29 @@ VENNDELO_WEBHOOK_SECRET=
 **Contexto:** Auditoría de seguridad pre-launch (`docs/audits/2026-06-27-security-bloque-c/`). La autenticación de `/admin/*` ya era sólida; los huecos eran RLS incompleta, rate-limit roto, RBAC decorativo, MFA ausente.
 
 **Cerrado y verificado (P0):**
+
 - **Rate-limit del catálogo roto** (`const allowed = await rateLimit()` sobre un objeto → `!allowed` siempre false → nunca frenaba). Fix en 10 rutas. Verificado: 29×200 → 6×429. Commit `96ea33d`.
 - **RLS deny-by-default** en las 17 tablas públicas sin candado (PII de clientes expuesta vía PostgREST). Migración `00000000000007`, aplicada al dev DB (autorizado por Lucy). La app no se rompe (lee vía Prisma/service_role). Commit `bcdc6c2`.
 - **CI hardening:** `pnpm audit --prod` bloqueante + dependabot + permisos mínimos; `shadcn` (CLI) movido a devDeps (eliminó un high de producción). Commit `0d35c00`.
 
 **Decisiones de Lucy:**
+
 - **MFA admin (TOTP): SÍ, para su cuenta SUPERADMIN desde el día 1.** Yo construyo la pantalla de enrolamiento (QR + verificar + códigos de recuperación); ella escanea con su app. _Pendiente de implementar._
 - **RLS: autorizó escribir Y aplicar** a la DB de desarrollo. Hecho.
 - **Reseñas: implementar el flujo para el launch** (form + Turnstile + verificación de compra + moderación, que ya existe en admin). _Pendiente._
 - **Registro: dejar el mensaje claro** ("este correo ya tiene cuenta") — mejor UX; el abuso se acota con rate-limit por IP. _Decisión registrada aquí; T9 no se cambia._
 
 **Implementado después (commits del mismo día):**
+
 - **MFA admin (A6)** `7583d58` — enroll/QR + reto al entrar + candado en layout + break-glass `make admin-mfa-reset`.
 - **Reseñas (T10)** `02a2988` — flujo cliente con verificación de compra + Turnstile + moderación.
 - **Turnstile registro/reset (T2/T3) + MIME real por magic bytes (F1)** `8777e28`.
 - **Guard anti-reincidencia RLS (R4)** `fb2af0e` — test que falla si una tabla pública queda sin candado.
 
-**Pendiente del bloque (backend, no testeable por Lucy / menor / riesgo):** RBAC por rol (A5 — solo aplica al agregar empleados; Lucy es SUPERADMIN = ve todo), Turnstile + rate-limit en checkout (T4), idle-timeout 30min (A7, toca proxy), logout global admin (A8), CSP por nonce (C3, requiere validación visual), rate-limit en upload (F2), matriz completa de tests RLS (R3). **CORS `*` en /api/catalog/* se deja A PROPÓSITO:** son APIs públicas read-only sin credenciales (consumo público intencional, ej. bot futuro) → `*` no es vulnerabilidad ahí.
+**Pendiente del bloque (backend, no testeable por Lucy / menor / riesgo):** RBAC por rol (A5 — solo aplica al agregar empleados; Lucy es SUPERADMIN = ve todo), Turnstile + rate-limit en checkout (T4), idle-timeout 30min (A7, toca proxy), logout global admin (A8), CSP por nonce (C3, requiere validación visual), rate-limit en upload (F2), matriz completa de tests RLS (R3). **CORS `*` en /api/catalog/\* se deja A PROPÓSITO:** son APIs públicas read-only sin credenciales (consumo público intencional, ej. bot futuro) → `*` no es vulnerabilidad ahí.
 
 **ACCIÓN HUMANA REQUERIDA (verificaciones de Lucy):**
+
 - **Turnstile en producción:** confirmar que `NEXT_PUBLIC_TURNSTILE_SITE_KEY` y `TURNSTILE_SECRET_KEY` están en Vercel prod (si falta el secret, contacto/newsletter se bloquean por diseño fail-closed).
 - **Branch protection en GitHub** (`main`/`develop`): PR obligatorio + reviews + status checks requeridos + no force-push. Si falta, todos los gates de CI son evadibles (P0 efectivo).
 
@@ -1437,6 +1441,7 @@ VENNDELO_WEBHOOK_SECRET=
 **Contexto.** ADR-042 dejó 6 items de hardening pendientes ("backend, no testeable / menor / riesgo"). Lucy pidió cerrar el bloque. Todos implementados, certificados y commiteados.
 
 **Implementado:**
+
 - **A5 · RBAC por rol** `08f9cd4` — matriz ruta→roles (`lib/admin-rbac.ts` puro + `lib/admin-rbac-guard.ts` server). Menú lateral filtrado por rol + `requireRole(["SUPERADMIN"])` en finanzas/seguridad/auditoría/cupones (bloquea acceso directo por URL). Hoy solo existe SUPERADMIN → no afecta a Lucy; prepara empleados.
 - **A8 · Logout global** + **A7 · Idle-timeout 30min** + **A9 · Cookie flags** `4e2fc3e` — `adminLogoutAction` con `signOut({scope:"global"})`; el proxy marca actividad (cookie `admin_last_activity` httpOnly+sameSite+secure-prod) y a los 30min sin actividad limpia las cookies `sb-*` y manda a `/admin/login?expired=1` (ventana deslizante).
 - **T4 · Rate-limit checkout** + **F2 · Rate-limit upload estudio** `d35b899` — `payWompiAction` (IP, prod 20/10min) y `uploadDesignAssetAction` (por dueño, prod 30/10min). Turnstile en checkout se omite a propósito (fricción al pago). Nuevo helper `ownerKey()`.
@@ -1455,6 +1460,7 @@ VENNDELO_WEBHOOK_SECRET=
 **Contexto.** Se integró `@axe-core/playwright` (auditoría automatizada WCAG 2.1 A/AA sobre 9 páginas clave) y encontró 3 tipos de violación reales: `select-name` (crítico), `link-in-text-block` (serio) y `color-contrast` sistémico (serio, en las 9 páginas). El contraste es la tensión clásica: la paleta kawaii pastel (purple `#7c6aad`, pink `#e85b9f`, coral `#f58a6f`) sobre crema/blanco no alcanza el 4.5:1 de AA en **texto pequeño/secundario** (ratios 2.5–4.4). Lucy aprobó abordarlo priorizando calidad, con el mandato de **no modificar la paleta** sin decisión documentada.
 
 **Decisión.** Cumplir AA **conservando intactos los 7 colores de la paleta**. Los colores kawaii se mantienen para fondos, decoración, íconos, mascota, títulos grandes y botones; para el **texto** donde el pastel no da contraste, se introdujeron **tonos derivados AA** como tokens nuevos (no reemplazan la paleta):
+
 - `--brand-muted: #6b6280` (`text-brand-muted`) — texto secundario, ~5.5:1 sobre blanco/crema. Reemplazó a `text-brand-purple-dark/{40–65}` y `text-brand-purple/{40–70}` (299 usos en ~90 archivos).
 - `--brand-pink-ink: #c42b76` (`text/bg-brand-pink-ink`) — texto/enlace/badge rosa pequeño (blanco sobre él ≥4.5:1). Reemplazó `text-brand-pink` en enlaces (auth) y `bg-brand-pink` en badges de descuento.
 - `--brand-coral-ink: #b0492e` — hover de enlaces coral.
@@ -1479,6 +1485,7 @@ VENNDELO_WEBHOOK_SECRET=
 **Orden retry↔breaker: retry POR FUERA** (`withRetry(() => cb.exec(fetch))`). Así el breaker cuenta cada intento y, una vez abierto, `CircuitOpenError` (no reintentable) corta el loop de inmediato en vez de reintentar contra un proveedor caído.
 
 **Idempotencia = criterio para permitir retry:**
+
 - **Aveonline** (`aveonlineFetch` helper + `aveonlineCB` compartido): auth/quote/carriers/agents/tracking/list-webhooks → `retry:true` (idempotentes). **`createShipment` (generar guía) → timeout(15s)+CB pero SIN retry** — reintentar tras timeout podría crear una **guía duplicada** (doble etiqueta/cobro). create/delete-webhook → sin retry.
 - **Wompi** (`wompiCB`): `getTransaction` (GET estado de pago, idempotente) → retry+CB. Se **bajó su timeout de 10s → 5s** alineándolo a la tabla CONVENTIONS: con 3 reintentos + backoff, 5s+retry es más robusto que un único 10s sin retry. Se adjunta `.status` al error 5xx para que `isRetryable` lo reintente.
 
@@ -1496,6 +1503,7 @@ Wompi GET 5s.
 `features/redirects/service.integration.test.ts` **documentaban dos bugs reales** de open-redirect
 (marcados `BUG:`): el CMS de redirects admin (`UrlRedirect`, 301/302 servidos por `proxy.ts`) aceptaba
 destinos que **parecen internos** (empiezan con `/`) pero el navegador resuelve a un host **externo**:
+
 - `//evil.com` (protocol-relative) → `https://evil.com`
 - `/\evil.com` (backslash, el navegador normaliza `\` → `/`) → `//evil.com` → `https://evil.com`
 
@@ -1503,6 +1511,7 @@ destinos que **parecen internos** (empiezan con `/`) pero el navegador resuelve 
 detectar los vectores disfrazados. Un redirect así habilita phishing con el dominio propio en la barra.
 
 **Decisión.** Nuevo helper `apps/web/lib/safe-redirect.ts` con dos políticas:
+
 - `isSafeInternalPath` / `safeRedirectTarget(input, fallback="/")` — **SOLO interno**: exige un único `/`
   inicial (no `//`), sin `\`, sin caracteres de control, y que resuelva al **mismo origen** contra una base
   arbitraria (`new URL` autoritativo, no heurística). Para consumir `?next=` de auth sin confiar en el valor.
@@ -1510,6 +1519,7 @@ detectar los vectores disfrazados. Un redirect así habilita phishing con el dom
   `http(s)://` **explícito** (por diseño: redirigir a partners), y rechaza los disfrazados.
 
 **Cableado:**
+
 1. `features/redirects/service.ts` — `assertAllowedToPath(toPath)` en `createRedirect` **y** `updateRedirect`
    → lanza `RedirectValidationError` (mensaje en español llano para Lucy). Externos http(s) siguen permitidos;
    `//evil.com` y `/\evil.com` ahora se rechazan antes de persistir.
@@ -1537,6 +1547,7 @@ sin registro en backend. El modelo `ErrorReport` (dedup por fingerprint, `count`
 construida. El propio comentario de `error.tsx` lo marcaba como pendiente ("se conectará a /api/log-error").
 
 **Decisión.** Cerrar el loop reusando el modelo existente, sin deps nuevas ni Sentry (mandato #7):
+
 1. **`lib/error-capture.captureClientError`** — upsert en `ErrorReport` por **fingerprint = SHA-1(message +
    primeras 3 líneas del stack)**, calculado server-side (no se confía en el cliente). Mismo error recurrente →
    `count++` + `lastSeenAt`, no filas nuevas. Best-effort (nunca lanza); race-safe ante P2002 (create concurrente
@@ -1611,6 +1622,7 @@ reporting); CB compartido quote/createShipment (refutado 3/0, refleja "¿Aveonli
 
 **Ronda 2 — verificación adversarial de los propios arreglos (mismo día).** Se corrió un 2º workflow que
 ataca cada arreglo de arriba (6 dimensiones × panel de 2 escépticos): 10 hallazgos, **6 confirmados**. Refinados:
+
 - **[MED] `/api/log-error` — el backstop global cambiaba bloat por SUPRESIÓN DE OBSERVABILIDAD.** El bucket
   contaba por REQUEST sobre una key constante → un bug ruidoso legítimo (que deduplica) agotaba los 600 tokens y
   ocultaba los demás errores; y congelaba count/lastSeenAt del bug visible. **Rediseño:** el tope se movió a
@@ -1627,8 +1639,8 @@ ataca cada arreglo de arriba (6 dimensiones × panel de 2 escépticos): 10 halla
 - **[LOW] circuit breaker — una `fn` que se cuelga en la prueba de half-open wedgearía el breaker** (probing=true
   para siempre). Latente (los callers actuales ya envuelven en `fetchWithTimeout`); se documentó la precondición
   dura en el JSDoc de `exec()`.
-Descartados en ronda 2 (refutados): digest re-introduce volatilidad (0/1), hex matchea decimales (1/1), 300/600 es
-número mágico (0/2), saga inline en webhook Wompi vs 20s (0/2). Suite completa re-corrida verde tras el rediseño.
+  Descartados en ronda 2 (refutados): digest re-introduce volatilidad (0/1), hex matchea decimales (1/1), 300/600 es
+  número mágico (0/2), saga inline en webhook Wompi vs 20s (0/2). Suite completa re-corrida verde tras el rediseño.
 
 ## ADR-049 — `maxDuration` explícito en las funciones que corren createShipment (2026-07-10)
 
@@ -1671,6 +1683,7 @@ existía y funcionaba** (`/mi-cuenta/pedidos` + detalle con tracking/retracto) p
 y que `Address`/`Review` tenían modelo pero sin UI, y no había cambio de contraseña ni eliminación de cuenta.
 
 **Decisión.** Construir el área completa reusando lo existente:
+
 - **Shell** (`app/mi-cuenta/layout.tsx` + `account-nav.tsx`): guard único (`getCurrentCustomer`, ahora memoizado
   con `cache()` por-request), header+logout, tabs storefront. Overview (`page.tsx`) redISeñado como hub con
   accesos a cada sección + perfil + puntos/referido. Se eliminó el "Pronto aquí".
@@ -1701,18 +1714,19 @@ Mejora futura: integrar direcciones guardadas en el checkout (hoy checkout y Add
 Se sometió el área de cuenta a revisión adversarial multi-agente (6 dimensiones × panel de escépticos):
 **15 hallazgos confirmados, 0 falsos positivos**, todos arreglados. El clúster crítico fue **eliminar cuenta**:
 la implementación inicial solo tocaba Customer/Address/Review y dejaba PII sensible sin borrar:
+
 - **#1 [HIGH]** fotos subidas al Estudio (DesignAsset en customer-uploads = rostros) nunca se borraban.
 - **#2 [HIGH]** tickets de soporte (email/name/message/ip) sin anonimizar.
 - **#3 [HIGH]** soft-delete de Address dejaba las columnas PII intactas.
 - **#5 [MED]** snapshot `Order.shippingAddress` conservaba nombre/tel/dirección inline.
 - **#6 [LOW]** logs (RecommendationLog/LoyaltyTxn/CouponUsage) mantenían el vínculo.
 - **#4 [MED]** si `admin.deleteUser` fallaba, el user seguía pudiendo loguear (solo un log).
-`delete-service.ts` se reescribió para supresión exhaustiva (3 buckets de Storage + scrub de todas las tablas
-PII + fallback de baneo). Otros: **#7** mensaje de change-password honesto si signOut falla; **#9/#13** promover
-otra dirección a default al borrar la default; **#10** índice parcial-único DB `address_one_default_per_customer`
-(migración 009) + manejo P2002; **#11** robots noindex en overview; **#12** count real de pedidos; **#14** feedback
-de errores en acciones de dirección; **#15** voseo en email order-delivered. Verificado: 7 tests de direcciones
-(incl. promover-default) + typecheck + eslint + build.
+  `delete-service.ts` se reescribió para supresión exhaustiva (3 buckets de Storage + scrub de todas las tablas
+  PII + fallback de baneo). Otros: **#7** mensaje de change-password honesto si signOut falla; **#9/#13** promover
+  otra dirección a default al borrar la default; **#10** índice parcial-único DB `address_one_default_per_customer`
+  (migración 009) + manejo P2002; **#11** robots noindex en overview; **#12** count real de pedidos; **#14** feedback
+  de errores en acciones de dirección; **#15** voseo en email order-delivered. Verificado: 7 tests de direcciones
+  (incl. promover-default) + typecheck + eslint + build.
 
 ## ADR-051 — Unificar el modelo de direcciones cuenta ↔ checkout (2026-07-10)
 
@@ -1722,6 +1736,7 @@ usa el formato ESTRUCTURADO colombiano (deptCode/cityCode DANE + urbano/rural + 
 libre no se puede reconstruir en los campos vía/cruce → reuso parcial (solo depto/ciudad vía mapeo nombre→código).
 
 **Decisión.** Alinear ambos al MISMO formato estructurado, guardándolo tal cual:
+
 - **`Address.structured` (JSONB, migración 20260710120000):** la dirección en la forma del checkout (AddressInput).
   Los campos planos (`line1`, `city`, `department`) quedan como DISPLAY derivado (para la lista, sin re-componer).
 - **`<StructuredAddressFields>` (`components/address/`):** componente CONTROLADO compartido con los mismos campos
@@ -1747,6 +1762,7 @@ nueva en la cuenta. Además, el mapeo `structured → AddressInput` (line1 canó
 duplicado en el action de la cuenta.
 
 **Decisión.**
+
 - **`buildAddressInput(structured, {name, phone, isDefault})` (`features/addresses/service.ts`):** FUENTE ÚNICA del
   mapeo dirección-estructurada → registro del libro. `line1 = composeAddressLine` canónico (idéntico al del
   courier), `line2 = null` (no duplicar detail/finca), `structured` intacto (reuso 100%). La usan el action de la
@@ -1776,6 +1792,7 @@ server-side) tarda **7.0–11.3 s** (mediana 9.8 s; auth solo 0.33 s). El timeou
 confirmó: `Timeout tras 5000ms ... generarGuiaTransporteNacional.php`.
 
 **Decisión (fix del bug).**
+
 - **Timeout de `cotizarDoble` 5 s → 15 s** (~33% headroom sobre el máximo medido 11.3 s).
 - **Retry acotado a 2 intentos** (default era 3): cada intento cuesta ~10 s; 3×15 s excedería el techo.
 - **`maxDuration` del step 2: 30 → 45 s** — SUPERA el valor de [[ADR-049]] (que asumió 5 s×3 = 15 s;
@@ -1783,6 +1800,7 @@ confirmó: `Timeout tras 5000ms ... generarGuiaTransporteNacional.php`.
 - Tabla de timeouts de CONVENTIONS actualizada.
 
 **Hardening adicional (revisión adversarial multi-agente, 9 hallazgos confirmados de 15).**
+
 - **P1 — dims faltantes:** un producto sin peso/dimensiones rompía la cotización de TODO el carrito y
   además **filtraba el mensaje interno** ("Configúralos en /admin/productos") al cliente. Ahora:
   (a) el banner del cliente es **genérico** (la causa real se loguea server-side), y (b) publicar
@@ -1856,10 +1874,11 @@ real** de cada endpoint contra la cuenta en vivo como ground-truth. Resultado: 1
 confirmados** (5 refutados, incl. el "gap de COD" que es feature diferida, no bug).
 
 **Fixes aplicados (11 de 12; todos en `features/shipping/aveonline.ts`).**
+
 - **[P1] Webhook `guia` numérico:** la doc manda `guia` como NÚMERO (892349021); lo pasábamos sin coercer
   a `Order.trackingNumber` (columna String) → `PrismaClientValidationError` tragado en el route → la orden
   **NUNCA** pasaba a SHIPPED/DELIVERED ni salían los correos. Fix: `String(body.guia)` + tipo `string|number`
-  + test de regresión con guia numérico. (El más grave — rompía el 100% de los webhooks reales en silencio.)
+  - test de regresión con guia numérico. (El más grave — rompía el 100% de los webhooks reales en silencio.)
 - **[P1] Transportadoras — cache poisoning 24h:** ante una respuesta de error (HTTP 200 + `status:"error"`,
   sin `transportadoras`) cacheábamos `[]` por 24h → bloqueaba la generación de guía de pedidos YA PAGADOS
   por un día. Fix: chequear `status`, lanzar en error, y NO cachear listas vacías.
@@ -1900,6 +1919,7 @@ entregar y remite). El cliente aterriza en `/pedido/<token>?nueva=1`. Se reusa t
 (idempotencia, carrera de stock, cupones, reconciliación).
 
 **Fixes de la revisión (commit siguiente a 766414e):**
+
 - **[P0]** COD sobre carrito con orden Wompi PENDING_PAYMENT abandonada reusaba esa orden (idempotencia
   por cartId) con `paymentMethod='WOMPI'` → guía PREPAGADA sin recaudo → despacho gratis. Fix: forzar
   `paymentMethod='COD'` (updateMany gateado a PENDING_PAYMENT) antes de `processPaidOrder`.
@@ -1916,6 +1936,7 @@ entregar y remite). El cliente aterriza en `/pedido/<token>?nueva=1`. Se reusa t
   UI gateada por método (COD PAID → Cancelar; Wompi PAID → Reembolsar).
 
 **Diferidos (documentados, no bloqueantes):**
+
 - **[P2] Cotización vs guía contraentrega:** el envío se cotiza con `contraentrega=false` pero la guía
   se genera con `=true`. Por decisión de Lucy ("sin recargo al cliente"), el cliente paga el mismo flete
   y la tienda absorbe cualquier comisión COD de Aveonline. Verificar el recargo real de Aveonline y, si es
@@ -1937,6 +1958,7 @@ grilla + preview + acciones Compartir / WhatsApp / Ver / Archivar, y una **vista
 
 **Revisión adversarial multi-agente** (4 dimensiones × 3 escépticos, ≥2/3 confirman): 7 hallazgos crudos
 → **6 confirmados** → todos atendidos:
+
 - **[med]** `handleCopy` mostraba "Link copiado ✨" aunque `clipboard.writeText` rechazara (documento sin
   foco / Safari / permiso negado) → toast que miente. Fix: `try/catch`; si falla, muestra el link para
   copiar a mano en vez de afirmar éxito.
@@ -1979,12 +2001,13 @@ personalización por tipo de producto, (3) evaluación de tecnología mantener/a
 completo en [ESTUDIO_STRATEGY.md](ESTUDIO_STRATEGY.md). Versión visual para Lucy: artifact en claude.ai.
 
 **Decisión.**
+
 1. **AUMENTAR y CONSTRUIR lo nuestro — cero licencias.** El motor Konva/react-konva (MIT/$0, self-host) es la
    fundación correcta — verificado que Polotno (editor comercial tipo-Canva US$899/mo) se construye sobre el
    mismo Konva, mismo autor. Descartadas todas las alternativas de pago (mandato #2) y las open-source de otro
    motor. **Directiva explícita de Lucy (2026-07-12): NO atarnos a pagar una licencia (inviable por costo) —
    construir nuestra propia tecnología sobre Konva hasta tener algo igual o mejor que Polotno.** Polotno queda
-   solo como *referencia* de lo que "listo" significa (es replicable a $0 por ser el mismo motor); nunca como
+   solo como _referencia_ de lo que "listo" significa (es replicable a $0 por ser el mismo motor); nunca como
    dependencia ni opción de compra futura. Ver "Meta paridad-o-mejor que Polotno" en ESTUDIO_STRATEGY.md.
 2. **Gap #1 (arquitectura):** el archivo de impresión hoy se genera en el celular del cliente
    (`finalizeDesign` solo valida cantidad + sube los PNG del navegador). Riesgo real de degradación/fallo
@@ -2019,7 +2042,7 @@ Lucy pidió cerrar la categoría del abecedario con mirada experta (no parchear 
 
 ## ADR-058 — Asistente IA de sugerencias: proveedor-agnóstico + Gemini + fallback entre modelos (2026-07-13)
 
-**Contexto.** El "Diferenciador #1" (CLAUDE.md) prometía un asistente IA con *Claude API*. Al evaluar
+**Contexto.** El "Diferenciador #1" (CLAUDE.md) prometía un asistente IA con _Claude API_. Al evaluar
 costo-beneficio de forma objetiva (a pedido de Lucy), para una tarea simple (sugerir una frase corta
 en es-CO + tema de color + composición, en JSON) el costo entre los niveles baratos es trivial
 (centavos/mes con caché) → NO es el factor decisivo. El diferenciador real para el mandato #2 ("free
@@ -2027,6 +2050,7 @@ durante desarrollo") es que **Gemini Flash-Lite tiene nivel gratuito** (sin tarj
 y OpenAI son pago-por-uso. Lucy ya tiene API key de Gemini.
 
 **Decisión.**
+
 1. **Adaptador `AiProvider`** (proveedor-agnóstico, patrón `PaymentProvider`): la lógica del asistente
    no conoce al proveedor; cambiar de Gemini a otro es una config, no una reescritura.
 2. **Gemini** como proveedor elegido, vía **fetch server-side** a la API REST (`generateContent`,
@@ -2038,7 +2062,7 @@ y OpenAI son pago-por-uso. Lucy ya tiene API key de Gemini.
    sumar un segundo PROVEEDOR después. Reusa `withRetry` + `CircuitBreaker` del proyecto.
 4. **Costo acotado:** rate-limit (Postgres) por sesión/IP + caché 24h por (ocasión, producto) → las
    ocasiones comunes se pagan una sola vez. El asistente solo se llama cuando el cliente abre el panel.
-5. **Privacidad (Ley 1581):** al LLM solo se envía la *ocasión* que el cliente escribe — ni fotos ni
+5. **Privacidad (Ley 1581):** al LLM solo se envía la _ocasión_ que el cliente escribe — ni fotos ni
    datos personales → exposición mínima. Gemini/Google queda como **subprocesador a listar** en
    `/legal/subprocesadores` (ACCIÓN HUMANA legal). NO usar proveedores alojados en China para datos de
    clientes.
@@ -2047,7 +2071,8 @@ y OpenAI son pago-por-uso. Lucy ya tiene API key de Gemini.
 y una tarea donde la calidad de todos los niveles baratos es equivalente. **ACCIÓN HUMANA:** setear
 `GEMINI_API_KEY` en `.env.local`/Vercel + confirmar los IDs de modelo disponibles en la consola de
 Google; la llamada real solo se puede verificar con la key (Claude construyó contra el contrato oficial
-+ falla-seguro al estado "sin ideas" si algo no calza, nunca rompe el editor).
+
+- falla-seguro al estado "sin ideas" si algo no calza, nunca rompe el editor).
 
 > **Estado (2026-07-13):** implementado y **verificado en vivo** con la `GEMINI_API_KEY` real de Lucy
 > (sugerencia real devuelta, color de marca resuelto, es-CO tuteo). En `develop`.
@@ -2060,6 +2085,7 @@ tooling se detectó que **el servidor Supabase es Postgres 17** y el `pg_dump` l
 menor → un `pg_dump` < 17 **rechaza** el volcado (mismatch de versión).
 
 **Decisión.**
+
 1. **Script Node** [`apps/web/scripts/backup-db-to-r2.mjs`](../apps/web/scripts/backup-db-to-r2.mjs):
    `pg_dump` (plano, `--no-owner --no-privileges` → restaurable en cualquier proyecto Supabase de
    testing) → gzip → sube a R2 con **`@aws-sdk/client-s3`** (R2 es S3-compatible; endpoint
@@ -2098,6 +2124,7 @@ info) tras filtro adversarial, 111 aspectos bien hechos, 6 bloqueadores. Base mu
 pocos bloqueadores concretos, no calidad baja general.
 
 **Fixes ejecutados y certificados (tsc + lint + tests + build):**
+
 - **P0** — env fail-fast de `AVEONLINE_WEBHOOK_SECRET`; **RLS sweep** idempotente (mandato #12);
   **RBAC server-side** (guard central en el layout vía `x-pathname` del proxy + gate de rol en
   acciones SUPERADMIN-only); **emails** de envío/entrega/**cancelación** en transiciones manuales;
@@ -2126,6 +2153,7 @@ Tras ADR-060, quedaban sub-partes de ítems autónomos sin cerrar. Se completaro
 explícitamente las 3 decisiones que ADR-060 había dejado abiertas.
 
 **Sub-ítems cerrados (tsc + lint + tests + build):**
+
 - **Copy DIAN.** La FAQ (`/ayuda`), el checkout (`/checkout/datos`) y el resumen (`/checkout/pago`)
   prometían "factura electrónica DIAN" automática al despachar — que hoy NO se puede emitir (sin
   contador ni resolución de numeración). Copy suavizado a lenguaje veraz: se recogen los datos y se
@@ -2145,7 +2173,7 @@ explícitamente las 3 decisiones que ADR-060 había dejado abiertas.
   en los 3 renders (datos/envío/pago) → redirige a `/carrito` con mensaje. La defensa real contra
   concurrencia sigue siendo el UPDATE atómico en `decrementStockForOrder`.
 - **Tests del middleware `proxy()`.** 13 tests que ejercen el comportamiento REAL (Supabase +
-  redirects mockeados): gate anónimo `/admin`, idle-timeout 30 min (+ limpieza de cookies sb-*), y
+  redirects mockeados): gate anónimo `/admin`, idle-timeout 30 min (+ limpieza de cookies sb-\*), y
   la **precedencia** product-redirect → UrlRedirect dinámico → mantenimiento, + CORS 403/ACAO.
 
 **Decisión 1 — Reintento de guía Aveonline: sin cola pgmq.** ADR-060 dejó "decidir e implementar o
@@ -2194,6 +2222,7 @@ Informe visual: Artifact `00dd8c48-9ca0-4524-b691-7a7b70723956`.
 "no-lanzar" lo fijan **4 compuertas (launchGate)**, no calidad baja general.
 
 **Los 4 bloqueadores (P0):**
+
 1. **[CÓDIGO · autónomo]** MFA aal2 no se valida en NINGUNA Server Action (solo en `layout.tsx:27`,
    que gatea el render). Como las acciones son endpoints POST por action-id, una contraseña de admin
    robada (sesión aal1) permite `disableMfaAction` + `promoteAdminAction` → toma de cuenta PERSISTENTE
@@ -2219,7 +2248,8 @@ de efectivo del contraentrega (HIGH), DR-restore sin probar (medium), retención
 
 **Plan:** 27 ítems (4 P0 / 13 P1 / 9 P2 / 1 P3), 14 con launchGate. Carril autónomo (código) corre en
 PARALELO al carril de la dueña (abogado + contador + provisión de cuentas prod). Con las 4 compuertas
-+ el checklist de go-live cerrados → "lanzar-con-reservas" → "lanzar".
+
+- el checklist de go-live cerrados → "lanzar-con-reservas" → "lanzar".
 
 **Razón.** Un lanzamiento con miras a producción exige el lente más duro (mandato #1 = 100% productivo
 día 1). La verificación adversarial evita falsos positivos; separar carril código vs legal/negocio

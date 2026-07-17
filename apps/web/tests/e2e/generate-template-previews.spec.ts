@@ -36,7 +36,9 @@ test.describe("generar previews de plantillas", () => {
       { auth: { persistSession: false } },
     );
 
-    const only = process.env.GEN_SLUGS?.split(",").map((s) => s.trim()).filter(Boolean);
+    const only = process.env.GEN_SLUGS?.split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
     // Incluye soft-deleted a propósito: las 42 rechazadas (ADR-037) son justo las
     // que necesitan un preview REAL para que Lucy las re-evalúe y restaure las buenas.
     const raw = await prisma.personalizationTemplate.findMany({
@@ -49,7 +51,9 @@ test.describe("generar previews de plantillas", () => {
       const layers = (t.canvasData as { layers?: unknown[] } | null)?.layers;
       return Array.isArray(layers) && layers.length > 0;
     });
-    console.log(`Plantillas a procesar: ${templates.length} (de ${raw.length}; ${raw.length - templates.length} stubs vacíos saltados)`);
+    console.log(
+      `Plantillas a procesar: ${templates.length} (de ${raw.length}; ${raw.length - templates.length} stubs vacíos saltados)`,
+    );
 
     let ok = 0;
     let fail = 0;

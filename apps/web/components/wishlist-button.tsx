@@ -35,7 +35,8 @@ export function WishlistButton({
       const res = await toggleWishlistAction({ productId });
       if (!res.ok) {
         setWishlisted(!next); // revertir
-        if (res.code === "AUTH") router.push("/login?next=" + encodeURIComponent(location.pathname));
+        if (res.code === "AUTH")
+          router.push("/login?next=" + encodeURIComponent(location.pathname));
       } else {
         setWishlisted(res.wishlisted);
       }

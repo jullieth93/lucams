@@ -32,7 +32,11 @@ describe("fetchWithTimeout", () => {
   it("propaga método/headers del init al fetch", async () => {
     const spy = vi.fn().mockResolvedValue(new Response("{}"));
     globalThis.fetch = spy as unknown as typeof fetch;
-    await fetchWithTimeout("https://x.test", { method: "POST", headers: { A: "1" }, timeoutMs: 500 });
+    await fetchWithTimeout("https://x.test", {
+      method: "POST",
+      headers: { A: "1" },
+      timeoutMs: 500,
+    });
     const [, init] = spy.mock.calls[0];
     expect(init.method).toBe("POST");
     expect(init.headers).toMatchObject({ A: "1" });

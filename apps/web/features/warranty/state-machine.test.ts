@@ -215,19 +215,31 @@ describe("createWarrantyClaim — validaciones", () => {
 
   it("orden borrada (deletedAt) → NOT_FOUND", async () => {
     prismaMock.orderItem.findUnique.mockResolvedValue(
-      mockItem({ order: { customerId: "cust-1", status: "DELIVERED", deliveredAt: RECENT, deletedAt: new Date() } }),
+      mockItem({
+        order: {
+          customerId: "cust-1",
+          status: "DELIVERED",
+          deliveredAt: RECENT,
+          deletedAt: new Date(),
+        },
+      }),
     );
     await expectWarrantyError(createWarrantyClaim(validInput), "NOT_FOUND");
   });
 
   it("otro cliente → FORBIDDEN", async () => {
     prismaMock.orderItem.findUnique.mockResolvedValue(mockItem());
-    await expectWarrantyError(createWarrantyClaim({ ...validInput, customerId: "otro" }), "FORBIDDEN");
+    await expectWarrantyError(
+      createWarrantyClaim({ ...validInput, customerId: "otro" }),
+      "FORBIDDEN",
+    );
   });
 
   it("orden no entregada → NOT_DELIVERED", async () => {
     prismaMock.orderItem.findUnique.mockResolvedValue(
-      mockItem({ order: { customerId: "cust-1", status: "SHIPPED", deliveredAt: null, deletedAt: null } }),
+      mockItem({
+        order: { customerId: "cust-1", status: "SHIPPED", deliveredAt: null, deletedAt: null },
+      }),
     );
     await expectWarrantyError(createWarrantyClaim(validInput), "NOT_DELIVERED");
   });
@@ -235,19 +247,26 @@ describe("createWarrantyClaim — validaciones", () => {
   it("fuera de la ventana de garantía → OUT_OF_WARRANTY", async () => {
     const old = new Date("2020-01-01T00:00:00Z");
     prismaMock.orderItem.findUnique.mockResolvedValue(
-      mockItem({ order: { customerId: "cust-1", status: "DELIVERED", deliveredAt: old, deletedAt: null } }),
+      mockItem({
+        order: { customerId: "cust-1", status: "DELIVERED", deliveredAt: old, deletedAt: null },
+      }),
     );
     await expectWarrantyError(createWarrantyClaim(validInput), "OUT_OF_WARRANTY");
   });
 
   it("ya existe un reclamo activo → ACTIVE_CLAIM", async () => {
-    prismaMock.orderItem.findUnique.mockResolvedValue(mockItem({ warrantyClaims: [{ id: "prev" }] }));
+    prismaMock.orderItem.findUnique.mockResolvedValue(
+      mockItem({ warrantyClaims: [{ id: "prev" }] }),
+    );
     await expectWarrantyError(createWarrantyClaim(validInput), "ACTIVE_CLAIM");
   });
 
   it("descripción demasiado corta (<10) → INVALID", async () => {
     prismaMock.orderItem.findUnique.mockResolvedValue(mockItem());
-    await expectWarrantyError(createWarrantyClaim({ ...validInput, description: "corta" }), "INVALID");
+    await expectWarrantyError(
+      createWarrantyClaim({ ...validInput, description: "corta" }),
+      "INVALID",
+    );
   });
 
   it("válido → crea PENDING, trunca descripción (2000) y evidencias (5)", async () => {
@@ -301,7 +320,9 @@ describe("getWarrantyItems — elegibilidad", () => {
   });
 
   it("no entregado → reason NOT_DELIVERED", async () => {
-    prismaMock.order.findFirst.mockResolvedValue(mockOrder({ status: "PROCESSING", deliveredAt: null }));
+    prismaMock.order.findFirst.mockResolvedValue(
+      mockOrder({ status: "PROCESSING", deliveredAt: null }),
+    );
     const [it] = await getWarrantyItems("o1", "cust-1");
     expect(it.eligible).toBe(false);
     expect(it.reason).toBe("NOT_DELIVERED");

@@ -295,15 +295,7 @@ describe("calculatePasswordStrength — conteo de clases (variedad)", () => {
 describe("calculatePasswordStrength — el tipo PasswordScore es un literal válido", () => {
   it("score siempre es uno de los 5 valores enumerados", () => {
     const allowed: PasswordScore[] = [0, 1, 2, 3, 4];
-    const samples = [
-      "",
-      "x",
-      "lmnopqrs",
-      "Ab1!wxyz",
-      "Abxywxyz12",
-      "ZqWpLrVtNk!1",
-      "Password123!",
-    ];
+    const samples = ["", "x", "lmnopqrs", "Ab1!wxyz", "Abxywxyz12", "ZqWpLrVtNk!1", "Password123!"];
     for (const s of samples) {
       expect(allowed).toContain(calculatePasswordStrength(s).score);
     }

@@ -161,8 +161,7 @@ export function StudioEditor({
   const [fridge3DCols, setFridge3DCols] = useState(1);
   // P1.5 — Asistente IA de ideas (ADR-058).
   const [aiOpen, setAiOpen] = useState(false);
-  const allowText =
-    (product.personalizationSchema as { allowText?: boolean })?.allowText === true;
+  const allowText = (product.personalizationSchema as { allowText?: boolean })?.allowText === true;
 
   // M.3.b.A2.5 — Lee `sizeCm` del producto para badge visual en cada slot.
   // Producto config viene como JSON unknown, parsePhotoProductConfig hace

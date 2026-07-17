@@ -111,7 +111,10 @@ describe.skipIf(!hasDb)("webhook Aveonline ROUTE — path real con guia numéric
     if (createdGuias.length > 0) {
       await prisma.webhookEvent
         .deleteMany({
-          where: { source: "AVEONLINE", OR: createdGuias.map((g) => ({ externalId: { startsWith: `${g}-` } })) },
+          where: {
+            source: "AVEONLINE",
+            OR: createdGuias.map((g) => ({ externalId: { startsWith: `${g}-` } })),
+          },
         })
         .catch(() => {});
     }
@@ -135,7 +138,10 @@ describe.skipIf(!hasDb)("webhook Aveonline ROUTE — path real con guia numéric
     );
     expect(res.status).toBe(200);
 
-    const order = await prisma.order.findUnique({ where: { id: orderId }, select: { status: true } });
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      select: { status: true },
+    });
     expect(order?.status).toBe("SHIPPED"); // ← con el bug (number sin coercer) quedaba en FULFILLING
     expect(emailCalls.filter((e) => e.fn === "sendOrderShipped")).toHaveLength(1);
 
@@ -151,10 +157,18 @@ describe.skipIf(!hasDb)("webhook Aveonline ROUTE — path real con guia numéric
     const orderId = await makeFulfillingOrder(String(guia));
 
     await POST(
-      webhookRequest({ status: "ok", guia, estado: [{ nombre_estado: "EN TRANSITO", fecha: "2026-07-11 10:00:00" }] }),
+      webhookRequest({
+        status: "ok",
+        guia,
+        estado: [{ nombre_estado: "EN TRANSITO", fecha: "2026-07-11 10:00:00" }],
+      }),
     );
     const res = await POST(
-      webhookRequest({ status: "ok", guia, estado: [{ nombre_estado: "ENTREGADA", fecha: "2026-07-11 15:00:00" }] }),
+      webhookRequest({
+        status: "ok",
+        guia,
+        estado: [{ nombre_estado: "ENTREGADA", fecha: "2026-07-11 15:00:00" }],
+      }),
     );
     expect(res.status).toBe(200);
 
@@ -170,7 +184,11 @@ describe.skipIf(!hasDb)("webhook Aveonline ROUTE — path real con guia numéric
   it("idempotente: el MISMO webhook 2 veces no re-transiciona ni re-envía email (dedup por externalId)", async () => {
     const guia = freshGuia();
     const orderId = await makeFulfillingOrder(String(guia));
-    const payload = { status: "ok", guia, estado: [{ nombre_estado: "EN TRANSITO", fecha: "2026-07-11 10:00:00" }] };
+    const payload = {
+      status: "ok",
+      guia,
+      estado: [{ nombre_estado: "EN TRANSITO", fecha: "2026-07-11 10:00:00" }],
+    };
 
     await POST(webhookRequest(payload));
     emailCalls.length = 0;
@@ -178,7 +196,10 @@ describe.skipIf(!hasDb)("webhook Aveonline ROUTE — path real con guia numéric
     expect(res2.status).toBe(200);
 
     expect(emailCalls).toHaveLength(0); // no re-envía
-    const order = await prisma.order.findUnique({ where: { id: orderId }, select: { status: true } });
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      select: { status: true },
+    });
     expect(order?.status).toBe("SHIPPED");
   });
 
@@ -188,13 +209,20 @@ describe.skipIf(!hasDb)("webhook Aveonline ROUTE — path real con guia numéric
 
     const res = await POST(
       webhookRequest(
-        { status: "ok", guia, estado: [{ nombre_estado: "EN TRANSITO", fecha: "2026-07-11 10:00:00" }] },
+        {
+          status: "ok",
+          guia,
+          estado: [{ nombre_estado: "EN TRANSITO", fecha: "2026-07-11 10:00:00" }],
+        },
         "secret-equivocado",
       ),
     );
     expect(res.status).toBe(401);
 
-    const order = await prisma.order.findUnique({ where: { id: orderId }, select: { status: true } });
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      select: { status: true },
+    });
     expect(order?.status).toBe("FULFILLING");
     expect(emailCalls).toHaveLength(0);
   });
@@ -203,7 +231,11 @@ describe.skipIf(!hasDb)("webhook Aveonline ROUTE — path real con guia numéric
     const guia = freshGuia(); // sin orden asociada
     createdGuias.push(String(guia)); // para limpiar el webhookEvent creado
     const res = await POST(
-      webhookRequest({ status: "ok", guia, estado: [{ nombre_estado: "EN TRANSITO", fecha: "2026-07-11 10:00:00" }] }),
+      webhookRequest({
+        status: "ok",
+        guia,
+        estado: [{ nombre_estado: "EN TRANSITO", fecha: "2026-07-11 10:00:00" }],
+      }),
     );
     expect(res.status).toBe(200);
   });

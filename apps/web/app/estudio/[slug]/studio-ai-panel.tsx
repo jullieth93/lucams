@@ -112,7 +112,11 @@ export function StudioAiPanel({
             disabled={loading || occasion.trim().length < 3}
             className="bg-brand-purple hover:bg-brand-purple-dark inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
           >
-            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+            {loading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Sparkles className="h-4 w-4" />
+            )}
             {loading ? "Pensando ideas…" : "Dame ideas"}
           </button>
         </form>
@@ -123,9 +127,13 @@ export function StudioAiPanel({
           <div className="mt-4 space-y-3">
             {suggestion.phrase && (
               <div className="bg-brand-cream rounded-xl p-3">
-                <p className="text-brand-muted text-[11px] font-semibold uppercase">Frase sugerida</p>
+                <p className="text-brand-muted text-[11px] font-semibold uppercase">
+                  Frase sugerida
+                </p>
                 <div className="mt-1 flex items-center justify-between gap-2">
-                  <p className="text-brand-purple-dark text-sm font-semibold">{suggestion.phrase}</p>
+                  <p className="text-brand-purple-dark text-sm font-semibold">
+                    {suggestion.phrase}
+                  </p>
                   <button
                     type="button"
                     onClick={() => copyPhrase(suggestion.phrase!)}

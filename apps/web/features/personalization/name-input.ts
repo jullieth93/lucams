@@ -88,7 +88,8 @@ export function normalizeName(raw: string, opts: NameNormalizeOptions): NameNorm
   const tooShort = letters.length < min;
 
   const notices: string[] = [];
-  if (hadAccents) notices.push("Cambiamos los acentos por su letra base — las fichas van sin tilde.");
+  if (hadAccents)
+    notices.push("Cambiamos los acentos por su letra base — las fichas van sin tilde.");
   if (droppedNonLetters) notices.push("Solo se pueden armar letras (sin números ni símbolos).");
   if (tooLong) notices.push(`Máximo ${max} letras.`);
 

@@ -16,7 +16,12 @@ import crypto from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Saga stub — registra llamadas SIN ejecutar processPaidOrder real (createShipment/Resend).
-const sagaCalls: Array<{ fn: string; orderId: string; wompiTransactionId: string; reason?: string }> = [];
+const sagaCalls: Array<{
+  fn: string;
+  orderId: string;
+  wompiTransactionId: string;
+  reason?: string;
+}> = [];
 vi.mock("@/features/orders/saga", () => ({
   processPaidOrder: async (args: { orderId: string; wompiTransactionId: string }) => {
     sagaCalls.push({ fn: "processPaidOrder", ...args });
@@ -41,7 +46,11 @@ const EVENTS_SECRET = `${RUN}-events-secret`;
 
 const createdOrderIds: string[] = [];
 
-async function makeOrder(reference: string, total: number, status = "PENDING_PAYMENT"): Promise<string> {
+async function makeOrder(
+  reference: string,
+  total: number,
+  status = "PENDING_PAYMENT",
+): Promise<string> {
   const o = await prisma.order.create({
     data: {
       number: reference,
@@ -81,7 +90,11 @@ function signedEvent(opts: {
     status_message: opts.statusMessage ?? null,
   };
   const concat =
-    String(transaction.id) + String(transaction.status) + String(transaction.amount_in_cents) + String(timestamp) + EVENTS_SECRET;
+    String(transaction.id) +
+    String(transaction.status) +
+    String(transaction.amount_in_cents) +
+    String(timestamp) +
+    EVENTS_SECRET;
   let checksum = crypto.createHash("sha256").update(concat).digest("hex");
   if (opts.tamperChecksum) checksum = checksum.replace(/.$/, (c) => (c === "0" ? "1" : "0"));
   return {
@@ -142,21 +155,48 @@ describe.skipIf(!hasDb)("webhook Wompi ROUTE — portería con firma real", () =
   it("APPROVED con firma y monto válidos → processPaidOrder + 200 + webhookEvent procesado", async () => {
     const ref = `${RUN}-LCM-APR`;
     const orderId = await makeOrder(ref, 55000);
-    const res = await POST(req(signedEvent({ txId: `${RUN}-tx1`, status: "APPROVED", amountInCents: 55000, reference: ref })));
+    const res = await POST(
+      req(
+        signedEvent({
+          txId: `${RUN}-tx1`,
+          status: "APPROVED",
+          amountInCents: 55000,
+          reference: ref,
+        }),
+      ),
+    );
     expect(res.status).toBe(200);
     expect(sagaCalls).toHaveLength(1);
-    expect(sagaCalls[0]).toMatchObject({ fn: "processPaidOrder", orderId, wompiTransactionId: `${RUN}-tx1` });
-    const ev = await prisma.webhookEvent.findFirst({ where: { source: "WOMPI", externalId: { contains: `${RUN}-tx1` } } });
+    expect(sagaCalls[0]).toMatchObject({
+      fn: "processPaidOrder",
+      orderId,
+      wompiTransactionId: `${RUN}-tx1`,
+    });
+    const ev = await prisma.webhookEvent.findFirst({
+      where: { source: "WOMPI", externalId: { contains: `${RUN}-tx1` } },
+    });
     expect(ev?.processedAt).not.toBeNull();
   });
 
   it("firma INVÁLIDA → 401 y NO procesa (ni saga ni webhookEvent)", async () => {
     const ref = `${RUN}-LCM-BADSIG`;
     await makeOrder(ref, 55000);
-    const res = await POST(req(signedEvent({ txId: `${RUN}-tx2`, status: "APPROVED", amountInCents: 55000, reference: ref, tamperChecksum: true })));
+    const res = await POST(
+      req(
+        signedEvent({
+          txId: `${RUN}-tx2`,
+          status: "APPROVED",
+          amountInCents: 55000,
+          reference: ref,
+          tamperChecksum: true,
+        }),
+      ),
+    );
     expect(res.status).toBe(401);
     expect(sagaCalls).toHaveLength(0);
-    const ev = await prisma.webhookEvent.findFirst({ where: { source: "WOMPI", externalId: { contains: `${RUN}-tx2` } } });
+    const ev = await prisma.webhookEvent.findFirst({
+      where: { source: "WOMPI", externalId: { contains: `${RUN}-tx2` } },
+    });
     expect(ev).toBeNull();
   });
 
@@ -164,7 +204,17 @@ describe.skipIf(!hasDb)("webhook Wompi ROUTE — portería con firma real", () =
     const ref = `${RUN}-LCM-REPLAY`;
     await makeOrder(ref, 55000);
     const oldTs = Math.floor(Date.now() / 1000) - 3600; // 1h atrás
-    const res = await POST(req(signedEvent({ txId: `${RUN}-tx3`, status: "APPROVED", amountInCents: 55000, reference: ref, timestamp: oldTs })));
+    const res = await POST(
+      req(
+        signedEvent({
+          txId: `${RUN}-tx3`,
+          status: "APPROVED",
+          amountInCents: 55000,
+          reference: ref,
+          timestamp: oldTs,
+        }),
+      ),
+    );
     expect(res.status).toBe(401);
     expect(sagaCalls).toHaveLength(0);
   });
@@ -172,7 +222,17 @@ describe.skipIf(!hasDb)("webhook Wompi ROUTE — portería con firma real", () =
   it("environment mismatch (prod vs test esperado) → 401", async () => {
     const ref = `${RUN}-LCM-ENV`;
     await makeOrder(ref, 55000);
-    const res = await POST(req(signedEvent({ txId: `${RUN}-tx4`, status: "APPROVED", amountInCents: 55000, reference: ref, environment: "prod" })));
+    const res = await POST(
+      req(
+        signedEvent({
+          txId: `${RUN}-tx4`,
+          status: "APPROVED",
+          amountInCents: 55000,
+          reference: ref,
+          environment: "prod",
+        }),
+      ),
+    );
     expect(res.status).toBe(401);
     expect(sagaCalls).toHaveLength(0);
   });
@@ -180,7 +240,12 @@ describe.skipIf(!hasDb)("webhook Wompi ROUTE — portería con firma real", () =
   it("idempotente: el MISMO evento 2 veces → processPaidOrder una sola vez", async () => {
     const ref = `${RUN}-LCM-IDEM`;
     await makeOrder(ref, 55000);
-    const ev = signedEvent({ txId: `${RUN}-tx5`, status: "APPROVED", amountInCents: 55000, reference: ref });
+    const ev = signedEvent({
+      txId: `${RUN}-tx5`,
+      status: "APPROVED",
+      amountInCents: 55000,
+      reference: ref,
+    });
     await POST(req(ev));
     const res2 = await POST(req(ev));
     expect(res2.status).toBe(200);
@@ -190,13 +255,31 @@ describe.skipIf(!hasDb)("webhook Wompi ROUTE — portería con firma real", () =
   it("monto que NO coincide con order.total → 200 sin procesar (revisión manual)", async () => {
     const ref = `${RUN}-LCM-AMT`;
     await makeOrder(ref, 55000);
-    const res = await POST(req(signedEvent({ txId: `${RUN}-tx6`, status: "APPROVED", amountInCents: 99000, reference: ref })));
+    const res = await POST(
+      req(
+        signedEvent({
+          txId: `${RUN}-tx6`,
+          status: "APPROVED",
+          amountInCents: 99000,
+          reference: ref,
+        }),
+      ),
+    );
     expect(res.status).toBe(200);
     expect(sagaCalls).toHaveLength(0); // NO se procesa un monto adulterado
   });
 
   it("orden inexistente (reference sin match) → 200 ignorado, sin saga", async () => {
-    const res = await POST(req(signedEvent({ txId: `${RUN}-tx7`, status: "APPROVED", amountInCents: 55000, reference: `${RUN}-NOPE` })));
+    const res = await POST(
+      req(
+        signedEvent({
+          txId: `${RUN}-tx7`,
+          status: "APPROVED",
+          amountInCents: 55000,
+          reference: `${RUN}-NOPE`,
+        }),
+      ),
+    );
     expect(res.status).toBe(200);
     expect(sagaCalls).toHaveLength(0);
   });
@@ -204,16 +287,39 @@ describe.skipIf(!hasDb)("webhook Wompi ROUTE — portería con firma real", () =
   it("DECLINED → processFailedPaymentOrder", async () => {
     const ref = `${RUN}-LCM-DECL`;
     const orderId = await makeOrder(ref, 55000);
-    const res = await POST(req(signedEvent({ txId: `${RUN}-tx8`, status: "DECLINED", amountInCents: 55000, reference: ref, statusMessage: "Fondos insuficientes" })));
+    const res = await POST(
+      req(
+        signedEvent({
+          txId: `${RUN}-tx8`,
+          status: "DECLINED",
+          amountInCents: 55000,
+          reference: ref,
+          statusMessage: "Fondos insuficientes",
+        }),
+      ),
+    );
     expect(res.status).toBe(200);
     expect(sagaCalls).toHaveLength(1);
-    expect(sagaCalls[0]).toMatchObject({ fn: "processFailedPaymentOrder", orderId, reason: "Fondos insuficientes" });
+    expect(sagaCalls[0]).toMatchObject({
+      fn: "processFailedPaymentOrder",
+      orderId,
+      reason: "Fondos insuficientes",
+    });
   });
 
   it("PENDING → noop (espera próximo evento), sin saga", async () => {
     const ref = `${RUN}-LCM-PEND`;
     await makeOrder(ref, 55000);
-    const res = await POST(req(signedEvent({ txId: `${RUN}-tx9`, status: "PENDING", amountInCents: 55000, reference: ref })));
+    const res = await POST(
+      req(
+        signedEvent({
+          txId: `${RUN}-tx9`,
+          status: "PENDING",
+          amountInCents: 55000,
+          reference: ref,
+        }),
+      ),
+    );
     expect(res.status).toBe(200);
     expect(sagaCalls).toHaveLength(0);
   });

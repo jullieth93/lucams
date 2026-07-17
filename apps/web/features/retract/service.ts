@@ -46,7 +46,9 @@ export function addBusinessDays(from: Date, n: number): Date {
 
 /** Fin de la ventana: 23:59:59.999 hora Colombia del último día hábil, inclusive. */
 export function retractWindowEnd(deliveredAt: Date): Date {
-  const endCot = new Date(addBusinessDays(deliveredAt, RETRACT_WINDOW_BUSINESS_DAYS).getTime() - COT_OFFSET_MS);
+  const endCot = new Date(
+    addBusinessDays(deliveredAt, RETRACT_WINDOW_BUSINESS_DAYS).getTime() - COT_OFFSET_MS,
+  );
   endCot.setUTCHours(23, 59, 59, 999); // fin del día en COT
   return new Date(endCot.getTime() + COT_OFFSET_MS);
 }
@@ -219,7 +221,10 @@ export class RetractTransitionError extends Error {
 }
 
 async function assertRetract(id: string): Promise<{ id: string; status: RetractStatus }> {
-  const rr = await prisma.retractRequest.findUnique({ where: { id }, select: { id: true, status: true } });
+  const rr = await prisma.retractRequest.findUnique({
+    where: { id },
+    select: { id: true, status: true },
+  });
   if (!rr) throw new RetractError("NOT_FOUND");
   return rr;
 }
@@ -246,7 +251,11 @@ export async function rejectRetract(id: string, adminId: string, note: string): 
   }
   await prisma.retractRequest.update({
     where: { id },
-    data: { status: "REJECTED", rejectionNote: note.trim() || "Sin motivo especificado", processedBy: adminId },
+    data: {
+      status: "REJECTED",
+      rejectionNote: note.trim() || "Sin motivo especificado",
+      processedBy: adminId,
+    },
   });
   logger.info({ event: "retract.rejected", id, adminId });
 }
@@ -281,7 +290,12 @@ export async function refundRetract(
   }
   await prisma.retractRequest.update({
     where: { id },
-    data: { status: "REFUNDED", refundedAt: new Date(), refundMethod: method, processedBy: adminId },
+    data: {
+      status: "REFUNDED",
+      refundedAt: new Date(),
+      refundMethod: method,
+      processedBy: adminId,
+    },
   });
   await sendRetractRefunded(id);
   logger.info({ event: "retract.refunded", id, adminId, method });

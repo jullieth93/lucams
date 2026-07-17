@@ -33,11 +33,7 @@
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/db";
-import {
-  getCustomerDetail,
-  getCustomerTotalSpent,
-  listCustomers,
-} from "./service";
+import { getCustomerDetail, getCustomerTotalSpent, listCustomers } from "./service";
 
 const hasDb = Boolean(process.env.DATABASE_URL);
 
@@ -451,9 +447,7 @@ describe.skipIf(!hasDb)("customers/service — integración DB (Customer 360, PI
       await makeCustomer({ firstName: `${token}-Beto`, lastName: "M" });
 
       const res = await listCustomers({ q: token, sort: "name", pageSize: 50 });
-      const names = res.items
-        .filter((i) => i.fullName.startsWith(token))
-        .map((i) => i.fullName);
+      const names = res.items.filter((i) => i.fullName.startsWith(token)).map((i) => i.fullName);
       // Orden esperado alfabético por firstName: Ana < Beto < Carlos.
       expect(names).toEqual([`${token}-Ana A`, `${token}-Beto M`, `${token}-Carlos Z`]);
     });

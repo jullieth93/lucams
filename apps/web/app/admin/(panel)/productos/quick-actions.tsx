@@ -19,7 +19,12 @@ function ActionButton({
 }) {
   const { pending } = useFormStatus();
   return (
-    <button type="submit" disabled={pending} className={`${className} disabled:opacity-60`} title={title}>
+    <button
+      type="submit"
+      disabled={pending}
+      className={`${className} disabled:opacity-60`}
+      title={title}
+    >
       {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : icon}
       {label}
     </button>
@@ -64,7 +69,7 @@ export function ProductQuickActions({
       <ActionButton
         className={
           isActive
-            ? "inline-flex h-9 items-center gap-1.5 rounded-md border border-brand-purple/20 bg-white px-3 text-xs font-semibold text-brand-purple-dark/80 hover:bg-brand-purple/5"
+            ? "border-brand-purple/20 text-brand-purple-dark/80 hover:bg-brand-purple/5 inline-flex h-9 items-center gap-1.5 rounded-md border bg-white px-3 text-xs font-semibold"
             : "inline-flex h-9 items-center gap-1.5 rounded-md border border-emerald-200 bg-emerald-50 px-3 text-xs font-semibold text-emerald-900 hover:bg-emerald-100"
         }
         title={isActive ? "Ocultar de tu tienda" : "Mostrar en tu tienda"}

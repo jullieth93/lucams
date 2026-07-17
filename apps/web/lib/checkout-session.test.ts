@@ -333,7 +333,9 @@ describe("setCheckoutState", () => {
 
   it("defaults to step 1 and a fresh updatedAt when no prior cookie exists", async () => {
     const before = Date.now();
-    const written = await setCheckoutState({ contact: { fullName: "C", email: "c@x.co", phone: "3" } });
+    const written = await setCheckoutState({
+      contact: { fullName: "C", email: "c@x.co", phone: "3" },
+    });
     expect(written.step).toBe(1);
     expect(written.updatedAt).toBeGreaterThanOrEqual(before);
     expect(written.updatedAt).toBeLessThanOrEqual(Date.now());

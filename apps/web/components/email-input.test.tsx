@@ -36,10 +36,7 @@ describe("EmailInput — accesibilidad y atributos", () => {
     expect(input).toHaveAttribute("type", "email");
     expect(input).toHaveAttribute("autocomplete", "email");
     // pattern: exige punto en dominio + TLD 2-24 chars (más estricto que HTML5).
-    expect(input).toHaveAttribute(
-      "pattern",
-      "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,24}$",
-    );
+    expect(input).toHaveAttribute("pattern", "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,24}$");
   });
 
   it("permite override de autoComplete", () => {

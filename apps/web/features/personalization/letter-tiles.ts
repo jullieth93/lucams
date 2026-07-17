@@ -11,7 +11,9 @@ export type LetterTileMap = Record<string, { imageUrl: string; label: string | n
 /** ADR-057 — un ESTILO (tema/ocasión) del abecedario: un set de fichas ilustradas. */
 export type LetterStyle = { id: string; name: string; tiles: LetterTileMap };
 
-function tilesToMap(tiles: { char: string; imageUrl: string; label: string | null }[]): LetterTileMap {
+function tilesToMap(
+  tiles: { char: string; imageUrl: string; label: string | null }[],
+): LetterTileMap {
   const map: LetterTileMap = {};
   for (const t of tiles) map[t.char.toUpperCase()] = { imageUrl: t.imageUrl, label: t.label };
   return map;
@@ -40,7 +42,11 @@ export async function listLetterStyles(language: string): Promise<LetterStyle[]>
   const sets = await prisma.letterTileSet.findMany({
     where: { language, isActive: true, deletedAt: null, tiles: { some: {} } },
     orderBy: [{ isDefault: "desc" }, { order: "asc" }],
-    select: { id: true, name: true, tiles: { select: { char: true, imageUrl: true, label: true } } },
+    select: {
+      id: true,
+      name: true,
+      tiles: { select: { char: true, imageUrl: true, label: true } },
+    },
   });
   return sets.map((s) => ({ id: s.id, name: s.name, tiles: tilesToMap(s.tiles) }));
 }
@@ -74,7 +80,9 @@ export async function createLetterSet(opts: {
   language: string;
   adminId: string;
 }): Promise<{ id: string }> {
-  const count = await prisma.letterTileSet.count({ where: { language: opts.language, deletedAt: null } });
+  const count = await prisma.letterTileSet.count({
+    where: { language: opts.language, deletedAt: null },
+  });
   const set = await prisma.letterTileSet.create({
     data: {
       name: opts.name,
@@ -99,7 +107,10 @@ export async function getLetterSet(setId: string) {
       language: true,
       isActive: true,
       isDefault: true,
-      tiles: { select: { id: true, char: true, imageUrl: true, label: true }, orderBy: { order: "asc" } },
+      tiles: {
+        select: { id: true, char: true, imageUrl: true, label: true },
+        orderBy: { order: "asc" },
+      },
     },
   });
 }
@@ -116,7 +127,13 @@ export async function upsertLetterTile(opts: {
   const idx = Math.max(0, "ABCDEFGHIJKLMNÑOPQRSTUVWXYZ".indexOf(char));
   await prisma.letterTile.upsert({
     where: { setId_char: { setId: opts.setId, char } },
-    create: { setId: opts.setId, char, imageUrl: opts.imageUrl, label: opts.label ?? null, order: idx },
+    create: {
+      setId: opts.setId,
+      char,
+      imageUrl: opts.imageUrl,
+      label: opts.label ?? null,
+      order: idx,
+    },
     update: { imageUrl: opts.imageUrl, label: opts.label ?? undefined },
   });
   await prisma.letterTileSet.update({

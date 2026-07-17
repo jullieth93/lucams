@@ -53,7 +53,9 @@ export default async function DisenosPage() {
       {designs.length === 0 ? (
         <div className="border-brand-purple/15 rounded-2xl border border-dashed bg-white p-10 text-center">
           <Palette className="text-brand-purple/60 mx-auto h-8 w-8" />
-          <p className="text-brand-purple-dark mt-3 font-semibold">Aún no tienes diseños guardados</p>
+          <p className="text-brand-purple-dark mt-3 font-semibold">
+            Aún no tienes diseños guardados
+          </p>
           <p className="text-brand-muted mx-auto mt-1 max-w-sm text-sm">
             Crea un fotoimán en el Estudio de Personalización y aparecerá aquí para compartirlo o
             pedirlo otra vez.

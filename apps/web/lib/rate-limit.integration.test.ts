@@ -182,9 +182,7 @@ describe.skipIf(!hasDb)("rateLimit() — integración DB (ADR-016)", () => {
       // deben caer dentro de la misma ventana (window de 60s >> latencia).
       const limit = 1000;
 
-      const results = await Promise.all(
-        Array.from({ length: N }, () => rateLimit(key, limit, 60)),
-      );
+      const results = await Promise.all(Array.from({ length: N }, () => rateLimit(key, limit, 60)));
 
       // Cada count devuelto es único y cubre exactamente el rango 1..N. Un
       // increment perdido produciría un duplicado (dos calls con el mismo count)
@@ -213,9 +211,7 @@ describe.skipIf(!hasDb)("rateLimit() — integración DB (ADR-016)", () => {
       const N = 20;
       const limit = 8;
 
-      const results = await Promise.all(
-        Array.from({ length: N }, () => rateLimit(key, limit, 60)),
-      );
+      const results = await Promise.all(Array.from({ length: N }, () => rateLimit(key, limit, 60)));
 
       // allowed == (count <= limit). Con counts 1..N únicos y atómicos, deben
       // resultar EXACTAMENTE `limit` permitidos (counts 1..8) y N-limit
@@ -377,9 +373,7 @@ describe("rateLimit() — fail-open cuando la fila no llega (UNIT, prisma mockea
 
     // Mock SOLO esta invocación: $queryRaw devuelve un array vacío, simulando el
     // caso imposible-pero-defendido en que la función SQL no retorna fila.
-    const spy = vi
-      .spyOn(prisma, "$queryRaw")
-      .mockResolvedValueOnce([] as never);
+    const spy = vi.spyOn(prisma, "$queryRaw").mockResolvedValueOnce([] as never);
 
     const res = await rateLimit("failopen:any", 5, windowSeconds);
     const after = Date.now();

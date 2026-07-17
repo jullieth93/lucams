@@ -46,15 +46,8 @@ vi.mock("@/features/consent/actions", () => ({
 
 // La lib @/lib/cookie-consent NO se mockea: es lógica client pura (read/write
 // de document.cookie) que corre en jsdom. Así testeamos la persistencia REAL.
-import {
-  CookiesBanner,
-  CookiesReopenLink,
-  openCookiesPreferences,
-} from "./cookies-banner";
-import {
-  COOKIE_CONSENT_NAME,
-  readClientCookiePreferences,
-} from "@/lib/cookie-consent";
+import { CookiesBanner, CookiesReopenLink, openCookiesPreferences } from "./cookies-banner";
+import { COOKIE_CONSENT_NAME, readClientCookiePreferences } from "@/lib/cookie-consent";
 
 // --- Helpers -----------------------------------------------------------------
 
@@ -114,7 +107,9 @@ describe("CookiesBanner", () => {
     });
     // Un microtask más para dejar correr el efecto del componente.
     await Promise.resolve();
-    expect(screen.queryByRole("dialog", { name: /Cookies en Lucams_shop/i })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("dialog", { name: /Cookies en Lucams_shop/i }),
+    ).not.toBeInTheDocument();
   });
 
   it("'Aceptar todas' persiste opt-in completo, cierra el banner y llama a la audit action", async () => {

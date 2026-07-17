@@ -112,9 +112,7 @@ export async function bulkDeactivateProductsAction(formData: FormData): Promise<
 
   revalidatePath("/admin/productos");
   revalidatePath("/admin/dashboard");
-  redirect(
-    `/admin/productos?bulkOk=${encodeURIComponent(`${result.count} productos pausados.`)}`,
-  );
+  redirect(`/admin/productos?bulkOk=${encodeURIComponent(`${result.count} productos pausados.`)}`);
 }
 
 /**

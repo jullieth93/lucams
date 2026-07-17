@@ -123,10 +123,7 @@ export function ProductForm({ categories, priceFrom, initialProduct, action, sub
 
       {/* ─────── TAB: LO BÁSICO (lo esencial — 90% de las ediciones) ─────── */}
       <AdminTabPanel value="basico" active={activeTab}>
-        <SectionCard
-          title="Identidad"
-          description="Lo que el cliente ve primero."
-        >
+        <SectionCard title="Identidad" description="Lo que el cliente ve primero.">
           <Field id="name" label="Nombre del producto" error={state?.fieldErrors?.name?.[0]}>
             <Input
               id="name"
@@ -226,10 +223,7 @@ export function ProductForm({ categories, priceFrom, initialProduct, action, sub
           </SectionCard>
         )}
 
-        <SectionCard
-          title="Visibilidad"
-          description="Quién ve este producto en la tienda."
-        >
+        <SectionCard title="Visibilidad" description="Quién ve este producto en la tienda.">
           <Checkbox
             name="isActive"
             label="🟢 Visible en la tienda"
@@ -263,72 +257,72 @@ export function ProductForm({ categories, priceFrom, initialProduct, action, sub
          */}
         <CollapsibleDetails summary="📝 Textos extra (opcional — para el bot de WhatsApp, que llega más adelante)">
           <p className="text-brand-muted mb-3 text-xs">
-            No hacen falta para vender. Estos textos alimentarán al bot de WhatsApp
-            cuando exista (Fase 5). Por ahora puedes dejarlos vacíos.
+            No hacen falta para vender. Estos textos alimentarán al bot de WhatsApp cuando exista
+            (Fase 5). Por ahora puedes dejarlos vacíos.
           </p>
           <SectionCard
             title="Descripción larga (opcional)"
             description="Contexto extenso. Solo lo usará el bot; el cliente ve la Descripción de Lo básico."
           >
-          <Field
-            id="richDescription"
-            label="Descripción rica (300-800 palabras)"
-            hint="Para quién, cómo se usa, qué tiene de especial. Soporta markdown."
-          >
-            <Textarea
+            <Field
               id="richDescription"
-              name="richDescription"
-              rows={8}
-              maxLength={5000}
-              defaultValue={initialProduct?.richDescription ?? ""}
-              placeholder="ej. Los Fotoimanes Polaroid Lucams están pensados para esos recuerdos chiquitos pero significativos…"
-              disabled={pending}
-            />
-          </Field>
-        </SectionCard>
+              label="Descripción rica (300-800 palabras)"
+              hint="Para quién, cómo se usa, qué tiene de especial. Soporta markdown."
+            >
+              <Textarea
+                id="richDescription"
+                name="richDescription"
+                rows={8}
+                maxLength={5000}
+                defaultValue={initialProduct?.richDescription ?? ""}
+                placeholder="ej. Los Fotoimanes Polaroid Lucams están pensados para esos recuerdos chiquitos pero significativos…"
+                disabled={pending}
+              />
+            </Field>
+          </SectionCard>
 
-        <SectionCard
-          title="Para el bot de WhatsApp"
-          description="El bot usa estos textos cuando un cliente pregunta por este producto."
-        >
-          <Field
-            id="whyChooseThis"
-            label="¿Por qué elegir este producto?"
-            hint="Una línea por bullet. El bot los enumera al recomendar."
+          <SectionCard
+            title="Para el bot de WhatsApp"
+            description="El bot usa estos textos cuando un cliente pregunta por este producto."
           >
-            <Textarea
+            <Field
               id="whyChooseThis"
-              name="whyChooseThis"
-              rows={4}
-              maxLength={2000}
-              defaultValue={initialProduct?.whyChooseThis ?? ""}
-              placeholder={
-                "ej.\n- Acabado mate premium que no se decolora\n- 3mm de grosor, resistente\n- Hecho a mano en Bogotá"
-              }
-              disabled={pending}
-            />
-          </Field>
+              label="¿Por qué elegir este producto?"
+              hint="Una línea por bullet. El bot los enumera al recomendar."
+            >
+              <Textarea
+                id="whyChooseThis"
+                name="whyChooseThis"
+                rows={4}
+                maxLength={2000}
+                defaultValue={initialProduct?.whyChooseThis ?? ""}
+                placeholder={
+                  "ej.\n- Acabado mate premium que no se decolora\n- 3mm de grosor, resistente\n- Hecho a mano en Bogotá"
+                }
+                disabled={pending}
+              />
+            </Field>
 
-          <Field
-            id="idealFor"
-            label="Escenarios ideales"
-            hint="Un escenario por línea. El bot matchea consultas con estos textos."
-          >
-            <Textarea
+            <Field
               id="idealFor"
-              name="idealFor"
-              rows={4}
-              defaultValue={
-                Array.isArray(initialProduct?.idealFor)
-                  ? (initialProduct?.idealFor as string[]).join("\n")
-                  : ""
-              }
-              placeholder={
-                "ej.\nregalo aniversario novia\ndecoración cuarto adolescente\nrecordatorio cumpleaños infantil"
-              }
-              disabled={pending}
-            />
-          </Field>
+              label="Escenarios ideales"
+              hint="Un escenario por línea. El bot matchea consultas con estos textos."
+            >
+              <Textarea
+                id="idealFor"
+                name="idealFor"
+                rows={4}
+                defaultValue={
+                  Array.isArray(initialProduct?.idealFor)
+                    ? (initialProduct?.idealFor as string[]).join("\n")
+                    : ""
+                }
+                placeholder={
+                  "ej.\nregalo aniversario novia\ndecoración cuarto adolescente\nrecordatorio cumpleaños infantil"
+                }
+                disabled={pending}
+              />
+            </Field>
           </SectionCard>
         </CollapsibleDetails>
 
@@ -422,7 +416,7 @@ export function ProductForm({ categories, priceFrom, initialProduct, action, sub
                 defaultValue={initialProduct?.weightGrams ?? ""}
                 placeholder="500"
               />
-              <p className="mt-1 text-xs text-brand-muted">50 – 50.000 g</p>
+              <p className="text-brand-muted mt-1 text-xs">50 – 50.000 g</p>
             </div>
             <div>
               <Label htmlFor="widthCm">Ancho (cm)</Label>
@@ -464,9 +458,9 @@ export function ProductForm({ categories, priceFrom, initialProduct, action, sub
               />
             </div>
           </div>
-          <p className="text-xs text-brand-muted">
-            💡 Estos son los datos del <strong>paquete final</strong>, no del producto suelto. Si una
-            variante (Set 12 vs Set 6) tiene peso o dimensiones distintos, configúralos desde
+          <p className="text-brand-muted text-xs">
+            💡 Estos son los datos del <strong>paquete final</strong>, no del producto suelto. Si
+            una variante (Set 12 vs Set 6) tiene peso o dimensiones distintos, configúralos desde
             Variantes con un valor específico.
           </p>
         </SectionCard>
@@ -480,37 +474,37 @@ export function ProductForm({ categories, priceFrom, initialProduct, action, sub
             title="Personalizar el texto de Google"
             description="Si dejas los campos vacíos, usamos el nombre y la descripción del producto."
           >
-          <Field
-            id="seoTitle"
-            label="Título para Google"
-            hint="Lo que aparece como link azul en los resultados. Máx 70 caracteres."
-            error={state?.fieldErrors?.seoTitle?.[0]}
-          >
-            <Input
+            <Field
               id="seoTitle"
-              name="seoTitle"
-              maxLength={70}
-              defaultValue={initialProduct?.seoTitle ?? ""}
-              placeholder="Imán de foto personalizado — Lucams_shop"
-              disabled={pending}
-            />
-          </Field>
-          <Field
-            id="seoDescription"
-            label="Descripción para Google"
-            hint="Texto debajo del link en los resultados. Máx 160 caracteres."
-            error={state?.fieldErrors?.seoDescription?.[0]}
-          >
-            <Textarea
+              label="Título para Google"
+              hint="Lo que aparece como link azul en los resultados. Máx 70 caracteres."
+              error={state?.fieldErrors?.seoTitle?.[0]}
+            >
+              <Input
+                id="seoTitle"
+                name="seoTitle"
+                maxLength={70}
+                defaultValue={initialProduct?.seoTitle ?? ""}
+                placeholder="Imán de foto personalizado — Lucams_shop"
+                disabled={pending}
+              />
+            </Field>
+            <Field
               id="seoDescription"
-              name="seoDescription"
-              rows={3}
-              maxLength={160}
-              defaultValue={initialProduct?.seoDescription ?? ""}
-              placeholder="Descripción para resultados de Google."
-              disabled={pending}
-            />
-          </Field>
+              label="Descripción para Google"
+              hint="Texto debajo del link en los resultados. Máx 160 caracteres."
+              error={state?.fieldErrors?.seoDescription?.[0]}
+            >
+              <Textarea
+                id="seoDescription"
+                name="seoDescription"
+                rows={3}
+                maxLength={160}
+                defaultValue={initialProduct?.seoDescription ?? ""}
+                placeholder="Descripción para resultados de Google."
+                disabled={pending}
+              />
+            </Field>
           </SectionCard>
         </CollapsibleDetails>
       </AdminTabPanel>
@@ -580,8 +574,8 @@ export function ProductForm({ categories, priceFrom, initialProduct, action, sub
             />
             <p className="text-brand-muted text-sm">
               💡 El precio (y su promoción) vive en cada <strong>opción</strong>. Ve a la pestaña{" "}
-              <strong>Opciones</strong> para ajustarlos. El precio base del producto se calcula solo,
-              a partir de la opción más barata.
+              <strong>Opciones</strong> para ajustarlos. El precio base del producto se calcula
+              solo, a partir de la opción más barata.
             </p>
           </SectionCard>
         )}
@@ -638,19 +632,17 @@ export function ProductForm({ categories, priceFrom, initialProduct, action, sub
        * como "el modelo a seguir" del admin. z-20 para quedar encima del tab bar
        * pero por debajo de modales (z-50).
        */}
-      <div
-        className="border-brand-purple/15 sticky bottom-0 z-20 -mx-4 -mb-4 mt-6 flex items-center justify-between gap-3 border-t bg-white/95 px-4 py-3 backdrop-blur sm:-mx-0 sm:-mb-0 sm:rounded-b-xl sm:px-5"
-      >
+      <div className="border-brand-purple/15 sticky bottom-0 z-20 -mx-4 mt-6 -mb-4 flex items-center justify-between gap-3 border-t bg-white/95 px-4 py-3 backdrop-blur sm:-mx-0 sm:-mb-0 sm:rounded-b-xl sm:px-5">
         <Link
           href="/admin/productos"
-          className="text-sm font-medium text-brand-muted hover:text-brand-purple-dark"
+          className="text-brand-muted hover:text-brand-purple-dark text-sm font-medium"
         >
           ← Cancelar
         </Link>
         <Button
           type="submit"
           size="lg"
-          className="bg-brand-purple font-semibold text-white shadow-sm hover:bg-brand-purple-dark disabled:opacity-60"
+          className="bg-brand-purple hover:bg-brand-purple-dark font-semibold text-white shadow-sm disabled:opacity-60"
           disabled={pending}
         >
           {pending ? (
@@ -679,10 +671,10 @@ function SectionCard({
   children: React.ReactNode;
 }) {
   return (
-    <section className="space-y-4 rounded-xl border border-brand-purple/15 bg-white p-5">
+    <section className="border-brand-purple/15 space-y-4 rounded-xl border bg-white p-5">
       <header className="space-y-1">
-        <h2 className="text-base font-semibold text-brand-purple-dark">{title}</h2>
-        {description && <p className="text-xs text-brand-muted">{description}</p>}
+        <h2 className="text-brand-purple-dark text-base font-semibold">{title}</h2>
+        {description && <p className="text-brand-muted text-xs">{description}</p>}
       </header>
       <div className="space-y-4">{children}</div>
     </section>
@@ -694,13 +686,7 @@ function SectionCard({
  * la vista por defecto. Lucy 2026-06-27: esconde bot/SEO/descripción larga.
  * Los campos siguen en el form (se envían), solo arrancan plegados.
  */
-function CollapsibleDetails({
-  summary,
-  children,
-}: {
-  summary: string;
-  children: React.ReactNode;
-}) {
+function CollapsibleDetails({ summary, children }: { summary: string; children: React.ReactNode }) {
   return (
     <details className="border-brand-purple/15 group rounded-xl border bg-white">
       <summary className="text-brand-purple-dark hover:bg-brand-purple/5 flex cursor-pointer list-none items-center justify-between rounded-xl px-5 py-3.5 text-sm font-semibold select-none">
@@ -733,7 +719,7 @@ function Field({
         {label}
       </Label>
       {children}
-      {hint && !error && <p className="text-xs text-brand-muted">{hint}</p>}
+      {hint && !error && <p className="text-brand-muted text-xs">{hint}</p>}
       {error && <p className="text-xs text-red-600">{error}</p>}
     </div>
   );
@@ -761,7 +747,9 @@ function PriceField({
   return (
     <Field id={id} label={label} hint={hint} error={error}>
       <div className="relative">
-        <span className="absolute top-1/2 left-2.5 -translate-y-1/2 text-sm text-brand-muted">$</span>
+        <span className="text-brand-muted absolute top-1/2 left-2.5 -translate-y-1/2 text-sm">
+          $
+        </span>
         <Input
           id={`${id}__display`}
           type="number"
@@ -794,17 +782,17 @@ function Checkbox({
   disabled: boolean;
 }) {
   return (
-    <label className="flex cursor-pointer items-start gap-3 rounded-lg border border-transparent p-2 text-sm text-brand-purple-dark/80 hover:bg-brand-purple/5">
+    <label className="text-brand-purple-dark/80 hover:bg-brand-purple/5 flex cursor-pointer items-start gap-3 rounded-lg border border-transparent p-2 text-sm">
       <input
         type="checkbox"
         name={name}
         defaultChecked={defaultChecked}
         disabled={disabled}
-        className="mt-0.5 h-5 w-5 rounded border-brand-purple/25 text-brand-purple-dark focus:ring-brand-purple/50"
+        className="border-brand-purple/25 text-brand-purple-dark focus:ring-brand-purple/50 mt-0.5 h-5 w-5 rounded"
       />
       <span className="flex-1">
-        <span className="block font-medium text-brand-purple-dark">{label}</span>
-        {hint && <span className="mt-0.5 block text-xs text-brand-muted">{hint}</span>}
+        <span className="text-brand-purple-dark block font-medium">{label}</span>
+        {hint && <span className="text-brand-muted mt-0.5 block text-xs">{hint}</span>}
       </span>
     </label>
   );

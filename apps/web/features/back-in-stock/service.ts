@@ -53,7 +53,10 @@ export async function sendBackInStockNotifications(
   let sent = 0;
   for (const s of subs) {
     try {
-      const tpl = await backInStockEmail({ productName: s.product.name, productSlug: s.product.slug });
+      const tpl = await backInStockEmail({
+        productName: s.product.name,
+        productSlug: s.product.slug,
+      });
       const result = await sendEmail({
         to: s.email,
         subject: tpl.subject,
@@ -63,7 +66,10 @@ export async function sendBackInStockNotifications(
         tags: [{ name: "type", value: "back_in_stock" }],
       });
       if (result.sent || result.skipped) {
-        await prisma.backInStockSubscription.update({ where: { id: s.id }, data: { notifiedAt: now } });
+        await prisma.backInStockSubscription.update({
+          where: { id: s.id },
+          data: { notifiedAt: now },
+        });
         if (result.sent) sent++;
       }
     } catch (err) {

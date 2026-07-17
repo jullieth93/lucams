@@ -22,11 +22,11 @@ Del cierre del abecedario extraemos la receta que repetimos en cada categoría:
 
 ## Estado actual (verificado en BD dev, 2026-07-12)
 
-| Categoría | Productos activos | kind | Estado |
-|---|---|---|---|
-| **Fotoimanes** | 4 (Circular, Corazón, Cuadrado, Polaroid) | `PHOTO_PACK` | Editor de foto **funciona** (línea base). Falta pulido + render server. |
-| **Calendarios** | 1 (Foto-Mes) | `CALENDAR_PHOTO_MONTH` | **Se aplana a pack de 12 fotos** — sin UX de calendario. Gap grande. |
-| **Separadores** | 2, **ambos inactivos** | `PHOTO_PACK` + `NONE` | No vendible hoy. Hay que unificar según la visión de Lucy. |
+| Categoría       | Productos activos                         | kind                   | Estado                                                                  |
+| --------------- | ----------------------------------------- | ---------------------- | ----------------------------------------------------------------------- |
+| **Fotoimanes**  | 4 (Circular, Corazón, Cuadrado, Polaroid) | `PHOTO_PACK`           | Editor de foto **funciona** (línea base). Falta pulido + render server. |
+| **Calendarios** | 1 (Foto-Mes)                              | `CALENDAR_PHOTO_MONTH` | **Se aplana a pack de 12 fotos** — sin UX de calendario. Gap grande.    |
+| **Separadores** | 2, **ambos inactivos**                    | `PHOTO_PACK` + `NONE`  | No vendible hoy. Hay que unificar según la visión de Lucy.              |
 
 ## Gap transversal #1 (del research): render de producción en el servidor
 
@@ -45,7 +45,7 @@ luego se enchufa el color de imprenta (CMYK) si aparece una imprenta local.
 - **A2. Endurecer la ruta foto (dinero + imágenes)** con el mismo test de integración + revisión adversarial
   que usamos en el abecedario (ya se certificó el flujo de imágenes por variante; falta el gate de dinero foto).
 
-## Fase B — Separadores magnéticos (activar + visión de Lucy)  ·  *quick win, hoy no vendible*
+## Fase B — Separadores magnéticos (activar + visión de Lucy) · _quick win, hoy no vendible_
 
 **Visión (Lucy 2026-07-12):** separadores de libros (para marcar la página al leer). Un producto con **2 formas
 (cuadrado / rectangular)**, **diseños prediseñados** disponibles, y personalización donde el cliente **sube su
@@ -62,7 +62,7 @@ imagen según la cantidad deseada**.
     validación de resolución que ya existe.
 - **B4. Activar** el producto + fotos de catálogo (ACCIÓN HUMANA) + revisión adversarial.
 
-## Fase C — Fotoimanes (pulir fit-for-purpose)  ·  *flagship, ya funciona*
+## Fase C — Fotoimanes (pulir fit-for-purpose) · _flagship, ya funciona_
 
 - **C1. WYSIWYG por forma** (círculo/corazón/cuadrado/polaroid) — el overlay de realismo ya existe; certificar
   cada forma + sangrado.
@@ -71,7 +71,7 @@ imagen según la cantidad deseada**.
 - **C4. (Opcional) Biblioteca de diseños prediseñados** de fotoimán (mismo patrón que Separadores).
 - Gate de dinero + revisión adversarial (parte en Fase A2).
 
-## Fase D — Calendarios magnéticos (editor a medida)  ·  *mayor esfuerzo, estacional*
+## Fase D — Calendarios magnéticos (editor a medida) · _mayor esfuerzo, estacional_
 
 - **D1. Nueva superficie "calendar"** en el enrutador (hoy cae a foto).
 - **D2. Editor de calendario:** **12 slots etiquetados Ene…Dic** (uno por mes) + **selector de año**

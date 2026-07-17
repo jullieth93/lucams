@@ -67,7 +67,11 @@ describe("normalizeName — descarte de no-letras", () => {
     const r = normalizeName("A1B!", ES);
     expect(r.letters).toEqual(["A", "B"]);
     expect(r.droppedNonLetters).toBe(true);
-    expect(r.notices.some((n) => n.toLowerCase().includes("números") || n.toLowerCase().includes("letras"))).toBe(true);
+    expect(
+      r.notices.some(
+        (n) => n.toLowerCase().includes("números") || n.toLowerCase().includes("letras"),
+      ),
+    ).toBe(true);
   });
 
   it("espacios se descartan (un solo nombre): AN A → ANA", () => {

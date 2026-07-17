@@ -129,7 +129,11 @@ vi.mock("@/features/shipping/provider", () => ({
     },
     // COD: finalizeCheckout confirma la orden → processPaidOrder → createShipment.
     // Capturamos contraentrega/valorRecaudo para asertar que la guía se pide bien.
-    createShipment: async (args: { contraentrega: boolean; valorRecaudoCop?: number; orderId: string }) => {
+    createShipment: async (args: {
+      contraentrega: boolean;
+      valorRecaudoCop?: number;
+      orderId: string;
+    }) => {
       createShipmentCalls.push(args);
       return {
         trackingNumber: `COD-TRACK-${createShipmentCalls.length}`,
@@ -141,7 +145,11 @@ vi.mock("@/features/shipping/provider", () => ({
     },
   }),
 }));
-const createShipmentCalls: Array<{ contraentrega: boolean; valorRecaudoCop?: number; orderId: string }> = [];
+const createShipmentCalls: Array<{
+  contraentrega: boolean;
+  valorRecaudoCop?: number;
+  orderId: string;
+}> = [];
 
 import { prisma } from "@/lib/db";
 import {
@@ -804,7 +812,9 @@ describe.skipIf(!hasDb)("checkout/service — integración DB (ruta de ingresos)
       setCartCookie(sid);
       await seedFullState();
 
-      const result = await finalizeCheckout({ redirectUrl: "https://lucamsshop.co/checkout/gracias" });
+      const result = await finalizeCheckout({
+        redirectUrl: "https://lucamsshop.co/checkout/gracias",
+      });
 
       // Order creada en DB con total correcto: subtotal(100k) + flete(15k) = 115k.
       expect(result.orderNumber).toMatch(/^LCM-\d{4}-\d{4}$/);
@@ -840,9 +850,9 @@ describe.skipIf(!hasDb)("checkout/service — integración DB (ruta de ingresos)
       setCartCookie(sid);
       await seedFullState({ skipContact: true });
 
-      await expect(
-        finalizeCheckout({ redirectUrl: "https://x.test" }),
-      ).rejects.toMatchObject({ code: "MISSING_CONTACT" });
+      await expect(finalizeCheckout({ redirectUrl: "https://x.test" })).rejects.toMatchObject({
+        code: "MISSING_CONTACT",
+      });
       // No creó Order ni llamó a Wompi.
       expect(paymentCalls).toHaveLength(0);
       expect(await prisma.order.count({ where: { email: { contains: RUN } } })).toBe(0);
@@ -853,9 +863,9 @@ describe.skipIf(!hasDb)("checkout/service — integración DB (ruta de ingresos)
       await createCartWithItem({ sessionId: sid });
       setCartCookie(sid);
       await seedFullState({ skipAddress: true });
-      await expect(
-        finalizeCheckout({ redirectUrl: "https://x.test" }),
-      ).rejects.toMatchObject({ code: "MISSING_ADDRESS" });
+      await expect(finalizeCheckout({ redirectUrl: "https://x.test" })).rejects.toMatchObject({
+        code: "MISSING_ADDRESS",
+      });
     }, 30000);
 
     it("MISSING_SHIPPING_SELECTION cuando falta la cotización elegida", async () => {
@@ -863,9 +873,9 @@ describe.skipIf(!hasDb)("checkout/service — integración DB (ruta de ingresos)
       await createCartWithItem({ sessionId: sid });
       setCartCookie(sid);
       await seedFullState({ skipShipping: true });
-      await expect(
-        finalizeCheckout({ redirectUrl: "https://x.test" }),
-      ).rejects.toMatchObject({ code: "MISSING_SHIPPING_SELECTION" });
+      await expect(finalizeCheckout({ redirectUrl: "https://x.test" })).rejects.toMatchObject({
+        code: "MISSING_SHIPPING_SELECTION",
+      });
     }, 30000);
 
     it("MISSING_PAYMENT_METHOD cuando no se eligió método de pago", async () => {
@@ -873,9 +883,9 @@ describe.skipIf(!hasDb)("checkout/service — integración DB (ruta de ingresos)
       await createCartWithItem({ sessionId: sid });
       setCartCookie(sid);
       await seedFullState({ skipPayment: true });
-      await expect(
-        finalizeCheckout({ redirectUrl: "https://x.test" }),
-      ).rejects.toMatchObject({ code: "MISSING_PAYMENT_METHOD" });
+      await expect(finalizeCheckout({ redirectUrl: "https://x.test" })).rejects.toMatchObject({
+        code: "MISSING_PAYMENT_METHOD",
+      });
     }, 30000);
 
     it("COD: confirma la orden (guía contraentrega + valorRecaudo=total) sin llamar a Wompi", async () => {
@@ -911,9 +921,7 @@ describe.skipIf(!hasDb)("checkout/service — integración DB (ruta de ingresos)
       await seedFullState();
       paymentShouldThrow = new Error("Wompi gateway timeout");
 
-      await expect(
-        finalizeCheckout({ redirectUrl: "https://x.test" }),
-      ).rejects.toMatchObject({
+      await expect(finalizeCheckout({ redirectUrl: "https://x.test" })).rejects.toMatchObject({
         code: "PAYMENT_INIT_FAILED",
         message: "Wompi gateway timeout",
       });
@@ -992,9 +1000,7 @@ describe.skipIf(!hasDb)("checkout/service — integración DB (ruta de ingresos)
       setCartCookie(sid);
       await seedFullState();
 
-      await expect(
-        finalizeCheckout({ redirectUrl: "https://x.test" }),
-      ).rejects.toMatchObject({
+      await expect(finalizeCheckout({ redirectUrl: "https://x.test" })).rejects.toMatchObject({
         name: "CheckoutError",
         code: "ORDER_CREATE_FAILED",
         // El mensaje real propaga el de InsufficientStockError (no es genérico).

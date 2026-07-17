@@ -41,7 +41,14 @@ type NameEditorProps = {
   styles: LetterStyle[];
 };
 
-function roundRectPath(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+function roundRectPath(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number,
+) {
   ctx.beginPath();
   ctx.moveTo(x + r, y);
   ctx.arcTo(x + w, y, x + w, y + h, r);
@@ -81,7 +88,11 @@ async function renderNameStripBlob(
   const h = pad * 2 + tileH;
 
   const imgs = useTiles
-    ? await Promise.all(letters.map((ch) => (tiles[ch]?.imageUrl ? loadImage(tiles[ch]!.imageUrl) : Promise.resolve(null))))
+    ? await Promise.all(
+        letters.map((ch) =>
+          tiles[ch]?.imageUrl ? loadImage(tiles[ch]!.imageUrl) : Promise.resolve(null),
+        ),
+      )
     : letters.map(() => null);
 
   const canvas = document.createElement("canvas");
@@ -124,7 +135,10 @@ async function renderNameStripBlob(
   });
 
   return new Promise((resolve, reject) =>
-    canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("No se pudo generar la imagen"))), "image/png"),
+    canvas.toBlob(
+      (b) => (b ? resolve(b) : reject(new Error("No se pudo generar la imagen"))),
+      "image/png",
+    ),
   );
 }
 
@@ -155,10 +169,7 @@ export function NameEditor({
 
   // El máximo efectivo es la cantidad elegida (count), no el max del producto → el campo
   // queda limitado a esa cantidad (feedback de Lucy: no debe dejar escribir más).
-  const result = useMemo(
-    () => normalizeName(raw, { ...config, max: count }),
-    [raw, config, count],
-  );
+  const result = useMemo(() => normalizeName(raw, { ...config, max: count }), [raw, config, count]);
   const { letters, valid, tooShort, notices } = result;
 
   // Ajusta la cantidad de fichas (min..max) y recorta el texto si sobra.
@@ -271,15 +282,18 @@ export function NameEditor({
           Arma tu palabra ✨
         </h1>
         <p className="text-brand-muted mx-auto mt-2 max-w-md text-sm">
-          Escribe un nombre o palabra (MÍA, MATEO, AMOR…) y verás las fichas que vas a recibir —
-          una por cada letra.
+          Escribe un nombre o palabra (MÍA, MATEO, AMOR…) y verás las fichas que vas a recibir — una
+          por cada letra.
         </p>
       </header>
 
       <div className="border-brand-purple/12 rounded-3xl border bg-white p-6 shadow-sm sm:p-8">
         {/* Input + cantidad de fichas */}
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <label htmlFor="name-input" className="text-brand-purple-dark block text-sm font-semibold">
+          <label
+            htmlFor="name-input"
+            className="text-brand-purple-dark block text-sm font-semibold"
+          >
             Escribe el nombre o palabra
           </label>
           {/* Stepper: cuántas letras (fichas). El campo queda limitado a esta cantidad. */}
@@ -330,8 +344,8 @@ export function NameEditor({
         </div>
         <p className="text-brand-muted mt-2 text-xs">
           Ajusta la cantidad con − / + (de {config.min} a {config.max} letras) ·{" "}
-          {config.language === "es" ? "incluye la Ñ" : "alfabeto en inglés (sin Ñ)"} · sin números ni
-          símbolos
+          {config.language === "es" ? "incluye la Ñ" : "alfabeto en inglés (sin Ñ)"} · sin números
+          ni símbolos
         </p>
 
         {/* Ejemplos de arranque (menos fricción) */}
@@ -359,8 +373,9 @@ export function NameEditor({
         {/* Aviso de letras repetidas (transparencia) */}
         {repeats.length > 0 && (
           <p className="text-brand-muted mt-3 text-xs">
-            Se repiten fichas: <span className="text-brand-purple-dark font-semibold">{repeats.join(" · ")}</span>{" "}
-            (una ficha por cada letra).
+            Se repiten fichas:{" "}
+            <span className="text-brand-purple-dark font-semibold">{repeats.join(" · ")}</span> (una
+            ficha por cada letra).
           </p>
         )}
 
@@ -449,7 +464,9 @@ export function NameEditor({
         )}
 
         {error && (
-          <p className="mt-4 rounded-xl bg-rose-50 px-4 py-3 text-center text-sm text-rose-700">{error}</p>
+          <p className="mt-4 rounded-xl bg-rose-50 px-4 py-3 text-center text-sm text-rose-700">
+            {error}
+          </p>
         )}
 
         {/* CTA */}
@@ -470,8 +487,9 @@ export function NameEditor({
           {/* Precio EN VIVO por ficha — lo que ves es lo que pagas (igual que el carrito). */}
           {letters.length > 0 ? (
             <span className="text-brand-purple-dark text-sm font-semibold tabular-nums">
-              {letters.length} {letters.length === 1 ? "ficha" : "fichas"} × {formatCOP(pricePerTile)}{" "}
-              = <span className="text-brand-purple">{formatCOP(liveTotal)}</span>
+              {letters.length} {letters.length === 1 ? "ficha" : "fichas"} ×{" "}
+              {formatCOP(pricePerTile)} ={" "}
+              <span className="text-brand-purple">{formatCOP(liveTotal)}</span>
             </span>
           ) : (
             <span className="text-brand-muted text-sm font-semibold tabular-nums">

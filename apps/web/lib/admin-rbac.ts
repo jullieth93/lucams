@@ -72,9 +72,10 @@ export function canAccessAdminPath(role: AdminRole, pathname: string): boolean {
  * Filtra grupos/items del menú según lo que el rol puede ver. Un grupo puede ser
  * link directo (href, sin items, ej. dashboard) o un grupo con sub-items.
  */
-export function filterNavByRole<
-  T extends { items?: Array<{ href: string }>; href?: string },
->(groups: T[], role: AdminRole): T[] {
+export function filterNavByRole<T extends { items?: Array<{ href: string }>; href?: string }>(
+  groups: T[],
+  role: AdminRole,
+): T[] {
   if (role === "SUPERADMIN") return groups;
   const out: T[] = [];
   for (const g of groups) {

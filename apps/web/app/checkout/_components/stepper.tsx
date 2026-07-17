@@ -39,9 +39,7 @@ export function CheckoutStepper({ current }: { current: 1 | 2 | 3 }) {
                 <span
                   className={
                     "text-sm font-semibold whitespace-nowrap transition-colors " +
-                    (isCompleted || isCurrent
-                      ? "text-brand-purple-dark"
-                      : "text-brand-muted")
+                    (isCompleted || isCurrent ? "text-brand-purple-dark" : "text-brand-muted")
                   }
                 >
                   {step.label}

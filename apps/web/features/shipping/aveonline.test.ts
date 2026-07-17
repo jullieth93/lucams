@@ -83,7 +83,10 @@ describe("handleWebhook — parseo de la notificación de estado", () => {
 
   it("interpreta la fecha en hora de Colombia (UTC-5), no en la TZ del servidor", async () => {
     const ev = await provider.handleWebhook(
-      JSON.stringify({ guia: 1, estado: [{ nombre_estado: "EN TRANSITO", fecha: "2020-12-11 11:04:43" }] }),
+      JSON.stringify({
+        guia: 1,
+        estado: [{ nombre_estado: "EN TRANSITO", fecha: "2020-12-11 11:04:43" }],
+      }),
       {},
     );
     // 11:04:43 en Bogotá (-05:00) == 16:04:43 UTC.

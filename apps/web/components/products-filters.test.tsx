@@ -120,9 +120,7 @@ describe("ProductsFilters — push de parámetros a la URL", () => {
     fireEvent.click(screen.getByRole("checkbox", { name: "Destacados" }));
     flush();
     // El último push refleja el estado acumulado de los tres flags.
-    expect(push).toHaveBeenLastCalledWith(
-      "/productos?personalizable=1&descuento=1&destacados=1",
-    );
+    expect(push).toHaveBeenLastCalledWith("/productos?personalizable=1&descuento=1&destacados=1");
   });
 
   it("'Aplicar' re-empuja el estado actual conservando la categoría preseleccionada", () => {

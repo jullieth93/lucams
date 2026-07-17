@@ -84,17 +84,11 @@ function SectionLink({
     if (badgeTone === "amber") {
       return "bg-amber-100 text-amber-900";
     }
-    return active
-      ? "bg-white/25 text-white"
-      : "bg-brand-purple/15 text-brand-purple-dark";
+    return active ? "bg-white/25 text-white" : "bg-brand-purple/15 text-brand-purple-dark";
   })();
 
   return (
-    <Link
-      href={href}
-      aria-current={active ? "page" : undefined}
-      className={`${base} ${tone}`}
-    >
+    <Link href={href} aria-current={active ? "page" : undefined} className={`${base} ${tone}`}>
       <span>{label}</span>
       {badge !== undefined && (
         <span

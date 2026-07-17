@@ -33,8 +33,19 @@ function fail(action: string, id: string, err: unknown): St {
   return { error: err instanceof Error ? err.message : "Error inesperado" };
 }
 
-async function audit(adminId: string, action: string, id: string, metadata?: Record<string, unknown>) {
-  await recordAdminAction({ actorId: adminId, action, entityType: "WarrantyClaim", entityId: id, metadata });
+async function audit(
+  adminId: string,
+  action: string,
+  id: string,
+  metadata?: Record<string, unknown>,
+) {
+  await recordAdminAction({
+    actorId: adminId,
+    action,
+    entityType: "WarrantyClaim",
+    entityId: id,
+    metadata,
+  });
   revalidatePath("/admin/garantias");
 }
 

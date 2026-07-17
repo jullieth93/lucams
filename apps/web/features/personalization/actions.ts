@@ -243,7 +243,11 @@ export async function createNameDesignAction(
   const { customerId, sessionId } = await resolveOwner();
 
   // Rate-limit: bucket propio (crear diseño + fila DB). Menos estricto que checkout.
-  const rl = await rateLimit(ownerKey("create_name_design", customerId ?? sessionId ?? "anon"), 30, 600);
+  const rl = await rateLimit(
+    ownerKey("create_name_design", customerId ?? sessionId ?? "anon"),
+    30,
+    600,
+  );
   if (!rl.allowed) return { ok: false, message: "Demasiados intentos. Espera un momento." };
 
   try {
@@ -253,7 +257,10 @@ export async function createNameDesignAction(
     const msg = err instanceof Error ? err.message : String(err);
     logger.warn({ event: "design.create_name.fail", err: msg }, "createNameDesign failed");
     if (msg.startsWith("INVALID_NAME")) {
-      return { ok: false, message: "Revisa el nombre: solo letras, entre el mínimo y máximo permitidos." };
+      return {
+        ok: false,
+        message: "Revisa el nombre: solo letras, entre el mínimo y máximo permitidos.",
+      };
     }
     return { ok: false, message: "No pudimos crear el diseño. Intenta de nuevo." };
   }
@@ -281,7 +288,11 @@ export async function createLetterSetDesignAction(
   if (!parsed.success) return { ok: false, message: "Datos inválidos." };
 
   const { customerId, sessionId } = await resolveOwner();
-  const rl = await rateLimit(ownerKey("create_letterset_design", customerId ?? sessionId ?? "anon"), 30, 600);
+  const rl = await rateLimit(
+    ownerKey("create_letterset_design", customerId ?? sessionId ?? "anon"),
+    30,
+    600,
+  );
   if (!rl.allowed) return { ok: false, message: "Demasiados intentos. Espera un momento." };
 
   try {
@@ -289,7 +300,10 @@ export async function createLetterSetDesignAction(
     return { ok: true, designId: design.id };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    logger.warn({ event: "design.create_letterset.fail", err: msg }, "createLetterSetDesign failed");
+    logger.warn(
+      { event: "design.create_letterset.fail", err: msg },
+      "createLetterSetDesign failed",
+    );
     return { ok: false, message: "No pudimos crear el diseño. Intenta de nuevo." };
   }
 }
@@ -334,7 +348,8 @@ export async function uploadDesignAssetAction(formData: FormData) {
     return {
       ok: false as const,
       code: "RATE_LIMIT" as const,
-      message: "Has subido muchas imágenes en poco tiempo. Espera unos minutos e inténtalo de nuevo.",
+      message:
+        "Has subido muchas imágenes en poco tiempo. Espera unos minutos e inténtalo de nuevo.",
     };
   }
 
@@ -493,7 +508,10 @@ export async function assignPredesignedToDesignAction(input: {
     };
   } catch (err) {
     logger.warn(
-      { event: "design.predesigned.assign.fail", err: err instanceof Error ? err.message : String(err) },
+      {
+        event: "design.predesigned.assign.fail",
+        err: err instanceof Error ? err.message : String(err),
+      },
       "assignPredesigned failed",
     );
     return { ok: false, message: "No pudimos aplicar el diseño." };

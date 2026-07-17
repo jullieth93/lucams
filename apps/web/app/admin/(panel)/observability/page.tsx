@@ -43,7 +43,9 @@ export default async function AdminObservabilityPage() {
   const [h, ops] = await Promise.all([getTechHealth(), getDailySummary()]);
   const revenue = `$${Math.round(ops.revenueLast24hCop / 100).toLocaleString("es-CO")}`;
   const recoveryPct =
-    ops.abandonedCarts24h > 0 ? Math.round((ops.recoveredCarts24h / ops.abandonedCarts24h) * 100) : 0;
+    ops.abandonedCarts24h > 0
+      ? Math.round((ops.recoveredCarts24h / ops.abandonedCarts24h) * 100)
+      : 0;
 
   return (
     <AdminPage>
@@ -58,8 +60,18 @@ export default async function AdminObservabilityPage() {
           <ShoppingBag className="h-4 w-4" /> Operación · últimas 24h
         </h2>
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <Tile icon={<ShoppingBag className="h-4 w-4" />} label="Pedidos" value={ops.ordersLast24h} hint="nuevos (24h)" />
-          <Tile icon={<Wallet className="h-4 w-4" />} label="Ingresos" value={revenue} hint={`${ops.paidOrdersLast24h} pagadas`} />
+          <Tile
+            icon={<ShoppingBag className="h-4 w-4" />}
+            label="Pedidos"
+            value={ops.ordersLast24h}
+            hint="nuevos (24h)"
+          />
+          <Tile
+            icon={<Wallet className="h-4 w-4" />}
+            label="Ingresos"
+            value={revenue}
+            hint={`${ops.paidOrdersLast24h} pagadas`}
+          />
           <Tile
             icon={<Package className="h-4 w-4" />}
             label="Por despachar"
@@ -67,7 +79,12 @@ export default async function AdminObservabilityPage() {
             attention={ops.toShip > 0}
             hint="pagadas sin enviar"
           />
-          <Tile icon={<Clock className="h-4 w-4" />} label="En pago" value={ops.pendingPayment} hint="checkouts sin completar" />
+          <Tile
+            icon={<Clock className="h-4 w-4" />}
+            label="En pago"
+            value={ops.pendingPayment}
+            hint="checkouts sin completar"
+          />
           <Tile
             icon={<PackageX className="h-4 w-4" />}
             label="Stock bajo"

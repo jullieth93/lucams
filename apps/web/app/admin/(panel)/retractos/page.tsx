@@ -40,7 +40,11 @@ const FILTERS: Array<{ key: string; label: string }> = [
   { key: "all", label: "Todos" },
 ];
 
-const dateFmt = new Intl.DateTimeFormat("es-CO", { day: "2-digit", month: "short", year: "numeric" });
+const dateFmt = new Intl.DateTimeFormat("es-CO", {
+  day: "2-digit",
+  month: "short",
+  year: "numeric",
+});
 
 export default async function AdminRetractosPage({ searchParams }: { searchParams: SearchParams }) {
   await requireRole(["SUPERADMIN"]);
@@ -63,7 +67,10 @@ export default async function AdminRetractosPage({ searchParams }: { searchParam
       <AdminPageBody>
         <div className="mb-4 flex flex-wrap gap-2">
           {FILTERS.map((f) => {
-            const active = (f.key === "all" ? statusRaw === "all" : (validStatus ?? "PENDING") === f.key && statusRaw !== "all");
+            const active =
+              f.key === "all"
+                ? statusRaw === "all"
+                : (validStatus ?? "PENDING") === f.key && statusRaw !== "all";
             return (
               <Link
                 key={f.key}
@@ -81,7 +88,7 @@ export default async function AdminRetractosPage({ searchParams }: { searchParam
         </div>
 
         {rows.length === 0 ? (
-          <p className="text-brand-muted rounded-xl border border-brand-purple/10 bg-white p-8 text-center text-sm">
+          <p className="text-brand-muted border-brand-purple/10 rounded-xl border bg-white p-8 text-center text-sm">
             No hay solicitudes en este estado. 🦝
           </p>
         ) : (
@@ -102,7 +109,8 @@ export default async function AdminRetractosPage({ searchParams }: { searchParam
                     <AdminBadge tone={STATUS_TONE[r.status]}>{STATUS_LABEL[r.status]}</AdminBadge>
                   </div>
                   <p className="text-brand-purple-dark mt-1 text-sm">
-                    {r.qty}× {r.productName} · <span className="font-semibold">{formatCOP(r.refundAmount)}</span>
+                    {r.qty}× {r.productName} ·{" "}
+                    <span className="font-semibold">{formatCOP(r.refundAmount)}</span>
                   </p>
                   <p className="text-brand-muted text-xs">
                     {r.customerEmail} · solicitado {dateFmt.format(r.requestedAt)}
@@ -115,7 +123,8 @@ export default async function AdminRetractosPage({ searchParams }: { searchParam
                   )}
                   {r.refundMethod && (
                     <p className="mt-1 text-xs text-emerald-700">
-                      Reembolsado vía {r.refundMethod === "BANK_TRANSFER" ? "transferencia" : "Wompi"}
+                      Reembolsado vía{" "}
+                      {r.refundMethod === "BANK_TRANSFER" ? "transferencia" : "Wompi"}
                     </p>
                   )}
                 </div>

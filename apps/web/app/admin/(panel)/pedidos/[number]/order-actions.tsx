@@ -38,15 +38,15 @@ export function OrderActions({
   // Reembolso = devolver dinero. Solo tiene sentido con dinero capturado: Wompi PAID/
   // DELIVERED, o COD DELIVERED (efectivo ya cobrado al entregar). COD no-entregado NO
   // se "reembolsa" (nunca se cobró) → se cancela.
-  const canRefund = isCod ? orderStatus === "DELIVERED" : ["PAID", "DELIVERED"].includes(orderStatus);
+  const canRefund = isCod
+    ? orderStatus === "DELIVERED"
+    : ["PAID", "DELIVERED"].includes(orderStatus);
 
   if (!showRetry && !showMarkShipped && !showMarkDelivered && !canCancel && !canRefund) {
     return (
       <section className="border-brand-purple/10 rounded-xl border bg-white p-5 shadow-sm">
         <h2 className="text-brand-purple-dark mb-2 text-sm font-bold">Acciones</h2>
-        <p className="text-brand-muted text-xs">
-          Sin acciones disponibles para este estado.
-        </p>
+        <p className="text-brand-muted text-xs">Sin acciones disponibles para este estado.</p>
       </section>
     );
   }

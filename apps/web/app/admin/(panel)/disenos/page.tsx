@@ -17,9 +17,9 @@ export default async function DisenosAdminPage() {
       <header className="mb-6">
         <h1 className="text-brand-purple-dark font-display text-2xl">Diseños prediseñados</h1>
         <p className="text-brand-muted mt-1 text-sm">
-          Imágenes de diseño listas que el cliente puede aplicar con un toque en el editor (en vez de
-          subir su propia foto). Agrúpalas por producto. Ideal para “Separadores para Libros”: sube tus
-          diseños y aparecen en el editor para elegir o combinar con foto propia.
+          Imágenes de diseño listas que el cliente puede aplicar con un toque en el editor (en vez
+          de subir su propia foto). Agrúpalas por producto. Ideal para “Separadores para Libros”:
+          sube tus diseños y aparecen en el editor para elegir o combinar con foto propia.
         </p>
       </header>
       <GalleryManager items={items} />

@@ -11,7 +11,9 @@ import sharp from "sharp";
 import { renderProductionSlots, RenderNeedsKonvaError } from "./production-render";
 
 async function fakePhoto(w: number, h: number): Promise<Buffer> {
-  return sharp({ create: { width: w, height: h, channels: 3, background: { r: 220, g: 40, b: 60 } } })
+  return sharp({
+    create: { width: w, height: h, channels: 3, background: { r: 220, g: 40, b: 60 } },
+  })
     .png()
     .toBuffer();
 }
@@ -54,7 +56,9 @@ describe("renderProductionSlots — pack solo-foto FIEL (ADR-057 Fase A1a)", () 
     const photo = await fakePhoto(800, 1200);
     const bufs = await renderProductionSlots({
       unitTemplate: photoOnlyUnit,
-      slots: [{ slotIndex: 0, assetId: "a0", photoTransform: { offsetX: 200, offsetY: 0, scale: 1 } }],
+      slots: [
+        { slotIndex: 0, assetId: "a0", photoTransform: { offsetX: 200, offsetY: 0, scale: 1 } },
+      ],
       shape: "circle",
       loadAsset: async () => photo,
     });
@@ -65,7 +69,13 @@ describe("renderProductionSlots — pack solo-foto FIEL (ADR-057 Fase A1a)", () 
     const photo = await fakePhoto(1000, 1000);
     const bufs = await renderProductionSlots({
       unitTemplate: photoOnlyUnit,
-      slots: [{ slotIndex: 0, assetId: "a0", photoTransform: { offsetX: 5000, offsetY: 5000, scale: 0.5 } }],
+      slots: [
+        {
+          slotIndex: 0,
+          assetId: "a0",
+          photoTransform: { offsetX: 5000, offsetY: 5000, scale: 0.5 },
+        },
+      ],
       shape: "rectangle",
       loadAsset: async () => photo,
     });
@@ -74,7 +84,8 @@ describe("renderProductionSlots — pack solo-foto FIEL (ADR-057 Fase A1a)", () 
 });
 
 describe("renderProductionSlots — guards CONSERVADORES → NEEDS_KONVA (fallback al cliente)", () => {
-  const expectNeedsKonva = (p: Promise<unknown>) => expect(p).rejects.toBeInstanceOf(RenderNeedsKonvaError);
+  const expectNeedsKonva = (p: Promise<unknown>) =>
+    expect(p).rejects.toBeInstanceOf(RenderNeedsKonvaError);
 
   it("CRÍTICO: foto que no carga (loadAsset null) → THROW, nunca un PNG en blanco", async () => {
     await expectNeedsKonva(
@@ -89,7 +100,12 @@ describe("renderProductionSlots — guards CONSERVADORES → NEEDS_KONVA (fallba
 
   it("slot sin assetId → THROW (un pack de foto siempre trae foto)", async () => {
     await expectNeedsKonva(
-      renderProductionSlots({ unitTemplate: photoOnlyUnit, slots: [{ slotIndex: 0, assetId: null }], shape: "rectangle", loadAsset: async () => null }),
+      renderProductionSlots({
+        unitTemplate: photoOnlyUnit,
+        slots: [{ slotIndex: 0, assetId: null }],
+        shape: "rectangle",
+        loadAsset: async () => null,
+      }),
     );
   });
 
@@ -105,16 +121,32 @@ describe("renderProductionSlots — guards CONSERVADORES → NEEDS_KONVA (fallba
   });
 
   it("placeholder con cornerRadius → THROW", async () => {
-    const unit = { ...photoOnlyUnit, layers: [photoOnlyUnit.layers[0], { ...photoOnlyUnit.layers[1], cornerRadius: 40 }] };
+    const unit = {
+      ...photoOnlyUnit,
+      layers: [photoOnlyUnit.layers[0], { ...photoOnlyUnit.layers[1], cornerRadius: 40 }],
+    };
     await expectNeedsKonva(
-      renderProductionSlots({ unitTemplate: unit, slots: [{ slotIndex: 0, assetId: "a0" }], shape: "rectangle", loadAsset: async () => fakePhoto(1000, 1000) }),
+      renderProductionSlots({
+        unitTemplate: unit,
+        slots: [{ slotIndex: 0, assetId: "a0" }],
+        shape: "rectangle",
+        loadAsset: async () => fakePhoto(1000, 1000),
+      }),
     );
   });
 
   it("placeholder con rotación → THROW", async () => {
-    const unit = { ...photoOnlyUnit, layers: [photoOnlyUnit.layers[0], { ...photoOnlyUnit.layers[1], rotation: 15 }] };
+    const unit = {
+      ...photoOnlyUnit,
+      layers: [photoOnlyUnit.layers[0], { ...photoOnlyUnit.layers[1], rotation: 15 }],
+    };
     await expectNeedsKonva(
-      renderProductionSlots({ unitTemplate: unit, slots: [{ slotIndex: 0, assetId: "a0" }], shape: "rectangle", loadAsset: async () => fakePhoto(1000, 1000) }),
+      renderProductionSlots({
+        unitTemplate: unit,
+        slots: [{ slotIndex: 0, assetId: "a0" }],
+        shape: "rectangle",
+        loadAsset: async () => fakePhoto(1000, 1000),
+      }),
     );
   });
 
@@ -128,36 +160,67 @@ describe("renderProductionSlots — guards CONSERVADORES → NEEDS_KONVA (fallba
       ],
     };
     await expectNeedsKonva(
-      renderProductionSlots({ unitTemplate: unit, slots: [{ slotIndex: 0, assetId: "a0" }], shape: "rectangle", loadAsset: async () => fakePhoto(1000, 1000) }),
+      renderProductionSlots({
+        unitTemplate: unit,
+        slots: [{ slotIndex: 0, assetId: "a0" }],
+        shape: "rectangle",
+        loadAsset: async () => fakePhoto(1000, 1000),
+      }),
     );
   });
 
   it("stage gigante → THROW (anti-OOM)", async () => {
     const unit = { ...photoOnlyUnit, stage: { ...stage, width: 5000, height: 5000 } };
     await expectNeedsKonva(
-      renderProductionSlots({ unitTemplate: unit, slots: [{ slotIndex: 0, assetId: "a0" }], shape: "rectangle", loadAsset: async () => fakePhoto(1000, 1000) }),
+      renderProductionSlots({
+        unitTemplate: unit,
+        slots: [{ slotIndex: 0, assetId: "a0" }],
+        shape: "rectangle",
+        loadAsset: async () => fakePhoto(1000, 1000),
+      }),
     );
   });
 
   it("plantilla con capa de TEXTO con contenido → THROW (A1b)", async () => {
-    const unit = { ...photoOnlyUnit, layers: [...photoOnlyUnit.layers, { id: "t", type: "text", text: "Mi recuerdo" }] };
+    const unit = {
+      ...photoOnlyUnit,
+      layers: [...photoOnlyUnit.layers, { id: "t", type: "text", text: "Mi recuerdo" }],
+    };
     await expectNeedsKonva(
-      renderProductionSlots({ unitTemplate: unit, slots: [{ slotIndex: 0, assetId: "a0" }], shape: "rectangle", loadAsset: async () => fakePhoto(800, 800) }),
+      renderProductionSlots({
+        unitTemplate: unit,
+        slots: [{ slotIndex: 0, assetId: "a0" }],
+        shape: "rectangle",
+        loadAsset: async () => fakePhoto(800, 800),
+      }),
     );
   });
 
   it("plantilla con marco (asset) → THROW", async () => {
-    const unit = { ...photoOnlyUnit, layers: [...photoOnlyUnit.layers, { id: "f", type: "asset", src: "/templates/frame.png" }] };
+    const unit = {
+      ...photoOnlyUnit,
+      layers: [...photoOnlyUnit.layers, { id: "f", type: "asset", src: "/templates/frame.png" }],
+    };
     await expectNeedsKonva(
-      renderProductionSlots({ unitTemplate: unit, slots: [{ slotIndex: 0, assetId: "a0" }], shape: "rectangle", loadAsset: async () => fakePhoto(800, 800) }),
+      renderProductionSlots({
+        unitTemplate: unit,
+        slots: [{ slotIndex: 0, assetId: "a0" }],
+        shape: "rectangle",
+        loadAsset: async () => fakePhoto(800, 800),
+      }),
     );
   });
 
   it("texto VACÍO no dispara THROW (placeholder de texto sin usar)", async () => {
-    const unit = { ...photoOnlyUnit, layers: [...photoOnlyUnit.layers, { id: "t", type: "text", text: "   " }] };
+    const unit = {
+      ...photoOnlyUnit,
+      layers: [...photoOnlyUnit.layers, { id: "t", type: "text", text: "   " }],
+    };
     const bufs = await renderProductionSlots({
       unitTemplate: unit,
-      slots: [{ slotIndex: 0, assetId: "a0", photoTransform: { offsetX: 0, offsetY: 0, scale: 1 } }],
+      slots: [
+        { slotIndex: 0, assetId: "a0", photoTransform: { offsetX: 0, offsetY: 0, scale: 1 } },
+      ],
       shape: "rectangle",
       loadAsset: async () => fakePhoto(800, 800),
     });

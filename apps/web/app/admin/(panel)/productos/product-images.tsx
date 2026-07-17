@@ -73,14 +73,14 @@ export function ProductImages({ productId, images }: { productId: string; images
   };
 
   return (
-    <section className="rounded-lg border border-brand-purple/15 bg-white p-5">
+    <section className="border-brand-purple/15 rounded-lg border bg-white p-5">
       <div className="mb-4 flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-base font-semibold text-brand-purple-dark">Fotos del producto</h2>
-          <p className="mt-0.5 text-xs text-brand-muted">
+          <h2 className="text-brand-purple-dark text-base font-semibold">Fotos del producto</h2>
+          <p className="text-brand-muted mt-0.5 text-xs">
             La <strong className="text-brand-purple-dark/75">⭐ portada</strong> es la que se ve en
-            el catálogo. Para cambiarla, usa <em>“Hacer portada”</em> en cualquier foto. JPG/PNG/WebP
-            · máx 5 MB c/u.
+            el catálogo. Para cambiarla, usa <em>“Hacer portada”</em> en cualquier foto.
+            JPG/PNG/WebP · máx 5 MB c/u.
           </p>
         </div>
         <div>
@@ -96,7 +96,7 @@ export function ProductImages({ productId, images }: { productId: string; images
           <Button
             type="button"
             size="sm"
-            className="bg-brand-purple text-white hover:bg-brand-purple-dark"
+            className="bg-brand-purple hover:bg-brand-purple-dark text-white"
             disabled={pending}
             onClick={() => fileInputRef.current?.click()}
           >
@@ -117,11 +117,11 @@ export function ProductImages({ productId, images }: { productId: string; images
       )}
 
       {images.length === 0 ? (
-        <div className="rounded-md border border-dashed border-brand-purple/25 px-4 py-10 text-center">
-          <p className="text-sm font-medium text-brand-purple-dark/80">
+        <div className="border-brand-purple/25 rounded-md border border-dashed px-4 py-10 text-center">
+          <p className="text-brand-purple-dark/80 text-sm font-medium">
             Aún no hay imágenes para este producto.
           </p>
-          <p className="mt-1 text-xs text-brand-muted">
+          <p className="text-brand-muted mt-1 text-xs">
             Sube 1-5 fotos. La primera será la portada en el catálogo (luego la puedes cambiar).
           </p>
         </div>
@@ -130,9 +130,9 @@ export function ProductImages({ productId, images }: { productId: string; images
           {images.map((url, idx) => (
             <li
               key={url}
-              className={`group relative overflow-hidden rounded-md border bg-brand-purple/5 ${
+              className={`group bg-brand-purple/5 relative overflow-hidden rounded-md border ${
                 idx === 0
-                  ? "border-brand-purple ring-2 ring-brand-purple/30"
+                  ? "border-brand-purple ring-brand-purple/30 ring-2"
                   : "border-brand-purple/15"
               }`}
             >
@@ -160,7 +160,7 @@ export function ProductImages({ productId, images }: { productId: string; images
               <div className="absolute right-1.5 bottom-1.5 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
                 <button
                   type="button"
-                  className="rounded bg-white/95 p-1.5 text-brand-purple-dark/80 hover:bg-white disabled:opacity-40"
+                  className="text-brand-purple-dark/80 rounded bg-white/95 p-1.5 hover:bg-white disabled:opacity-40"
                   onClick={() => handleReorder(idx, idx - 1)}
                   disabled={pending || idx === 0}
                   aria-label="Mover arriba"
@@ -170,7 +170,7 @@ export function ProductImages({ productId, images }: { productId: string; images
                 </button>
                 <button
                   type="button"
-                  className="rounded bg-white/95 p-1.5 text-brand-purple-dark/80 hover:bg-white disabled:opacity-40"
+                  className="text-brand-purple-dark/80 rounded bg-white/95 p-1.5 hover:bg-white disabled:opacity-40"
                   onClick={() => handleReorder(idx, idx + 1)}
                   disabled={pending || idx === images.length - 1}
                   aria-label="Mover abajo"

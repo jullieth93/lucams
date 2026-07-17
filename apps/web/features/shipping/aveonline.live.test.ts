@@ -37,7 +37,9 @@ describe.skipIf(!live)("AveonlineProvider.quote — EN VIVO (API real)", () => {
     });
     console.log(
       "Cotizaciones Bogotá→Medellín (5 imanes):",
-      quotes.map((q) => `${q.carrierName}=$${(q.fleteCop / 100).toLocaleString("es-CO")}`).join(" · "),
+      quotes
+        .map((q) => `${q.carrierName}=$${(q.fleteCop / 100).toLocaleString("es-CO")}`)
+        .join(" · "),
     );
     expect(quotes.length).toBeGreaterThan(0);
     for (const q of quotes) {
@@ -57,7 +59,9 @@ describe.skipIf(!live)("AveonlineProvider.quote — EN VIVO (API real)", () => {
     });
     console.log(
       "Cotizaciones Bogotá→Bogotá (5 imanes):",
-      quotes.map((q) => `${q.carrierName}=$${(q.fleteCop / 100).toLocaleString("es-CO")}`).join(" · "),
+      quotes
+        .map((q) => `${q.carrierName}=$${(q.fleteCop / 100).toLocaleString("es-CO")}`)
+        .join(" · "),
     );
     expect(quotes.length).toBeGreaterThan(0);
   }, 40_000);

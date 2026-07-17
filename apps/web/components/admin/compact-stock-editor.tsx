@@ -75,7 +75,7 @@ export function CompactStockEditor({
                 ? `Agregar ${delta} unidades`
                 : `Quitar ${Math.abs(delta)} unidades`
           }
-          className="bg-brand-purple hover:bg-brand-purple-dark inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-white shadow-sm transition-colors disabled:bg-brand-purple/30 disabled:cursor-not-allowed"
+          className="bg-brand-purple hover:bg-brand-purple-dark disabled:bg-brand-purple/30 inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md text-white shadow-sm transition-colors disabled:cursor-not-allowed"
         >
           {pending ? (
             <span className="inline-block h-3 w-3 animate-spin rounded-full border-2 border-white/40 border-t-white" />

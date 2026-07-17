@@ -180,7 +180,13 @@ async function makeVariant(stock: number, tag: string): Promise<string> {
  */
 async function makePendingOrder(
   items: Array<{ variantId: string; qty: number; unitPrice: number }>,
-  opts: { cartId?: string; numberTag: string; couponId?: string; discount?: number; customerId?: string },
+  opts: {
+    cartId?: string;
+    numberTag: string;
+    couponId?: string;
+    discount?: number;
+    customerId?: string;
+  },
 ): Promise<string> {
   const subtotal = items.reduce((a, it) => a + it.unitPrice * it.qty, 0);
   const discount = opts.discount ?? 0;
@@ -312,10 +318,9 @@ describe.skipIf(!hasDb)("saga POST-PAID — integración DB (ruta de ingresos)",
   describe("processPaidOrder — happy path", () => {
     it("marca PAID, decrementa stock, crea guía, persiste tracking, transiciona a FULFILLING y envía email", async () => {
       const variantId = await makeVariant(10, "hp");
-      const orderId = await makePendingOrder(
-        [{ variantId, qty: 3, unitPrice: 5000 }],
-        { numberTag: "HP1" },
-      );
+      const orderId = await makePendingOrder([{ variantId, qty: 3, unitPrice: 5000 }], {
+        numberTag: "HP1",
+      });
       shipmentResult = {
         trackingNumber: `${RUN}-GUIA-HP1`,
         trackingUrl: "https://track.test/hp1",
@@ -426,7 +431,10 @@ describe.skipIf(!hasDb)("saga POST-PAID — integración DB (ruta de ingresos)",
       await processPaidOrder({ orderId, wompiTransactionId: "wompi-tx-exh" });
 
       // El incremento gateado NO sube usedCount por encima de maxUses…
-      const c = await prisma.coupon.findUnique({ where: { id: coupon.id }, select: { usedCount: true } });
+      const c = await prisma.coupon.findUnique({
+        where: { id: coupon.id },
+        select: { usedCount: true },
+      });
       expect(c?.usedCount).toBe(1);
       // …y no se registra CouponUsage (cupón ya agotado al pagar).
       const usages = await prisma.couponUsage.count({ where: { couponId: coupon.id } });
@@ -443,16 +451,28 @@ describe.skipIf(!hasDb)("saga POST-PAID — integración DB (ruta de ingresos)",
       shipmentShouldThrow = new Error("Aveonline caído (test)");
       await processPaidOrder({ orderId, wompiTransactionId: "wompi-tx-rf1" });
       expect(await stockOf(variantId)).toBe(7);
-      const paid = await prisma.order.findUnique({ where: { id: orderId }, select: { status: true } });
+      const paid = await prisma.order.findUnique({
+        where: { id: orderId },
+        select: { status: true },
+      });
       expect(paid?.status).toBe("PAID");
 
-      const res = await refundOrder(orderId, { adminId: "admin-rf", reason: "producto defectuoso" });
+      const res = await refundOrder(orderId, {
+        adminId: "admin-rf",
+        reason: "producto defectuoso",
+      });
       expect(res.status).toBe("refunded");
       expect(res.amount).toBe(15_000); // total (subtotal, envío 0)
 
       const o = await prisma.order.findUnique({
         where: { id: orderId },
-        select: { status: true, refundedAt: true, refundedBy: true, refundReason: true, refundAmount: true },
+        select: {
+          status: true,
+          refundedAt: true,
+          refundedBy: true,
+          refundReason: true,
+          refundAmount: true,
+        },
       });
       expect(o?.status).toBe("REFUNDED");
       expect(o?.refundedBy).toBe("admin-rf");
@@ -468,7 +488,10 @@ describe.skipIf(!hasDb)("saga POST-PAID — integración DB (ruta de ingresos)",
       // Idempotencia: re-refund → already_refunded, sin sobrescribir ni doble-revertir.
       const again = await refundOrder(orderId, { adminId: "otro-admin", reason: "otra" });
       expect(again.status).toBe("already_refunded");
-      const o2 = await prisma.order.findUnique({ where: { id: orderId }, select: { refundedBy: true } });
+      const o2 = await prisma.order.findUnique({
+        where: { id: orderId },
+        select: { refundedBy: true },
+      });
       expect(o2?.refundedBy).toBe("admin-rf");
       expect(await stockOf(variantId)).toBe(10);
     }, 30000);
@@ -513,10 +536,10 @@ describe.skipIf(!hasDb)("saga POST-PAID — integración DB (ruta de ingresos)",
         data: { id: `${RUN}-cart-1`, sessionId: `${RUN}-sess-1`, currency: "COP" },
         select: { id: true },
       });
-      const orderId = await makePendingOrder(
-        [{ variantId, qty: 1, unitPrice: 5000 }],
-        { cartId: cart.id, numberTag: "CART1" },
-      );
+      const orderId = await makePendingOrder([{ variantId, qty: 1, unitPrice: 5000 }], {
+        cartId: cart.id,
+        numberTag: "CART1",
+      });
 
       await processPaidOrder({ orderId });
 
@@ -534,10 +557,9 @@ describe.skipIf(!hasDb)("saga POST-PAID — integración DB (ruta de ingresos)",
   describe("processPaidOrder — idempotencia de reentrada", () => {
     it("segunda invocación sobre orden ya procesada NO decrementa stock ni crea guía nueva", async () => {
       const variantId = await makeVariant(10, "idem");
-      const orderId = await makePendingOrder(
-        [{ variantId, qty: 2, unitPrice: 5000 }],
-        { numberTag: "IDEM1" },
-      );
+      const orderId = await makePendingOrder([{ variantId, qty: 2, unitPrice: 5000 }], {
+        numberTag: "IDEM1",
+      });
       shipmentResult = {
         trackingNumber: `${RUN}-GUIA-IDEM`,
         trackingUrl: "https://track.test/idem",
@@ -570,10 +592,9 @@ describe.skipIf(!hasDb)("saga POST-PAID — integración DB (ruta de ingresos)",
     it("orden ya PAID con tracking null (guía falló antes) — reintento crea la guía sin re-decrementar", async () => {
       // Simula: 1ra pasada transicionó a PAID + decrementó, pero Aveonline falló.
       const variantId = await makeVariant(10, "retry");
-      const orderId = await makePendingOrder(
-        [{ variantId, qty: 4, unitPrice: 2000 }],
-        { numberTag: "RETRY1" },
-      );
+      const orderId = await makePendingOrder([{ variantId, qty: 4, unitPrice: 2000 }], {
+        numberTag: "RETRY1",
+      });
 
       shipmentShouldThrow = new Error("Aveonline 503");
       const failed = await processPaidOrder({ orderId, wompiTransactionId: "tx-retry" });
@@ -613,10 +634,9 @@ describe.skipIf(!hasDb)("saga POST-PAID — integración DB (ruta de ingresos)",
 
     it("no re-envía el email de confirmación si ya se envió (confirmationSentAt seteado)", async () => {
       const variantId = await makeVariant(10, "email");
-      const orderId = await makePendingOrder(
-        [{ variantId, qty: 1, unitPrice: 5000 }],
-        { numberTag: "EMAIL1" },
-      );
+      const orderId = await makePendingOrder([{ variantId, qty: 1, unitPrice: 5000 }], {
+        numberTag: "EMAIL1",
+      });
 
       await processPaidOrder({ orderId });
       const firstSentAt = (await getOrder(orderId))?.confirmationSentAt;
@@ -636,10 +656,9 @@ describe.skipIf(!hasDb)("saga POST-PAID — integración DB (ruta de ingresos)",
     it("Wompi APROBADO pero stock agotado entre PENDING_PAYMENT y PAID → flag needsReconciliation, queda PENDING_PAYMENT, sin guía", async () => {
       // Variant con stock 1 pero la orden pide 3 (otro comprador ganó la carrera).
       const variantId = await makeVariant(1, "nostock");
-      const orderId = await makePendingOrder(
-        [{ variantId, qty: 3, unitPrice: 5000 }],
-        { numberTag: "NOSTOCK1" },
-      );
+      const orderId = await makePendingOrder([{ variantId, qty: 3, unitPrice: 5000 }], {
+        numberTag: "NOSTOCK1",
+      });
 
       const res = await processPaidOrder({ orderId, wompiTransactionId: "tx-nostock" });
 
@@ -673,10 +692,9 @@ describe.skipIf(!hasDb)("saga POST-PAID — integración DB (ruta de ingresos)",
 
     it("orden soft-deleted (deletedAt) es invisible → transition_failed", async () => {
       const variantId = await makeVariant(5, "deleted");
-      const orderId = await makePendingOrder(
-        [{ variantId, qty: 1, unitPrice: 5000 }],
-        { numberTag: "DELETED1" },
-      );
+      const orderId = await makePendingOrder([{ variantId, qty: 1, unitPrice: 5000 }], {
+        numberTag: "DELETED1",
+      });
       await prisma.order.update({
         where: { id: orderId },
         data: { deletedAt: new Date(), deletedBy: "test" },
@@ -691,10 +709,9 @@ describe.skipIf(!hasDb)("saga POST-PAID — integración DB (ruta de ingresos)",
 
     it("orden en estado no arrancable (CANCELLED) → transition_failed, sin efectos", async () => {
       const variantId = await makeVariant(5, "cancelled");
-      const orderId = await makePendingOrder(
-        [{ variantId, qty: 1, unitPrice: 5000 }],
-        { numberTag: "CANCEL1" },
-      );
+      const orderId = await makePendingOrder([{ variantId, qty: 1, unitPrice: 5000 }], {
+        numberTag: "CANCEL1",
+      });
       await prisma.order.update({ where: { id: orderId }, data: { status: "CANCELLED" } });
 
       const res = await processPaidOrder({ orderId });
@@ -719,7 +736,13 @@ describe.skipIf(!hasDb)("saga POST-PAID — integración DB (ruta de ingresos)",
         select: { id: true },
       });
       const bareVariant = await prisma.productVariant.create({
-        data: { productId: bareProduct.id, name: "sin dims", sku: `${RUN}-BAREV`.toUpperCase(), stock: 5, attributes: {} },
+        data: {
+          productId: bareProduct.id,
+          name: "sin dims",
+          sku: `${RUN}-BAREV`.toUpperCase(),
+          stock: 5,
+          attributes: {},
+        },
         select: { id: true },
       });
       const orderId = await makePendingOrder(
@@ -747,10 +770,9 @@ describe.skipIf(!hasDb)("saga POST-PAID — integración DB (ruta de ingresos)",
 
     it("Aveonline falla → shipment_failed, orden PAID sin tracking, claim liberado para retry", async () => {
       const variantId = await makeVariant(10, "avefail");
-      const orderId = await makePendingOrder(
-        [{ variantId, qty: 2, unitPrice: 5000 }],
-        { numberTag: "AVEFAIL1" },
-      );
+      const orderId = await makePendingOrder([{ variantId, qty: 2, unitPrice: 5000 }], {
+        numberTag: "AVEFAIL1",
+      });
       shipmentShouldThrow = new Error("No se pudo generar la guia");
 
       const res = await processPaidOrder({ orderId });
@@ -769,10 +791,9 @@ describe.skipIf(!hasDb)("saga POST-PAID — integración DB (ruta de ingresos)",
       // Orden PAID, tracking null, shipmentClaimedAt ahora (otro proceso está
       // creando la guía). Esta invocación NO debe ganar el claim.
       const variantId = await makeVariant(10, "claimtaken");
-      const orderId = await makePendingOrder(
-        [{ variantId, qty: 1, unitPrice: 5000 }],
-        { numberTag: "CLAIM1" },
-      );
+      const orderId = await makePendingOrder([{ variantId, qty: 1, unitPrice: 5000 }], {
+        numberTag: "CLAIM1",
+      });
       // Llevar a PAID + decremento (1ra pasada con guía OK) NO — necesitamos
       // PAID sin tracking. Forzamos el estado directamente.
       await prisma.order.update({
@@ -792,10 +813,9 @@ describe.skipIf(!hasDb)("saga POST-PAID — integración DB (ruta de ingresos)",
   describe("processFailedPaymentOrder — VOID/DECLINED", () => {
     it("DECLINED sobre PENDING_PAYMENT → CANCELLED, sin revert (no hubo decremento), envía email payment-failed", async () => {
       const variantId = await makeVariant(5, "declined");
-      const orderId = await makePendingOrder(
-        [{ variantId, qty: 1, unitPrice: 5000 }],
-        { numberTag: "DECLINED1" },
-      );
+      const orderId = await makePendingOrder([{ variantId, qty: 1, unitPrice: 5000 }], {
+        numberTag: "DECLINED1",
+      });
 
       await processFailedPaymentOrder({
         orderId,
@@ -818,10 +838,9 @@ describe.skipIf(!hasDb)("saga POST-PAID — integración DB (ruta de ingresos)",
 
     it("VOIDED sobre orden en FULFILLING → CANCELLED (legal desde FULFILLING) y revierte el stock", async () => {
       const variantId = await makeVariant(10, "void");
-      const orderId = await makePendingOrder(
-        [{ variantId, qty: 3, unitPrice: 5000 }],
-        { numberTag: "VOID1" },
-      );
+      const orderId = await makePendingOrder([{ variantId, qty: 3, unitPrice: 5000 }], {
+        numberTag: "VOID1",
+      });
       // Llevar a PAID con decremento real vía la saga (efecto combinado real).
       await processPaidOrder({ orderId });
       expect((await getOrder(orderId))?.status).toBe("FULFILLING"); // guía OK → FULFILLING
@@ -849,10 +868,9 @@ describe.skipIf(!hasDb)("saga POST-PAID — integración DB (ruta de ingresos)",
 
     it("VOIDED sobre orden en estado PAID puro (sin FULFILLING) → REFUNDED y revierte stock", async () => {
       const variantId = await makeVariant(10, "paidpure");
-      const orderId = await makePendingOrder(
-        [{ variantId, qty: 2, unitPrice: 5000 }],
-        { numberTag: "PAIDPURE1" },
-      );
+      const orderId = await makePendingOrder([{ variantId, qty: 2, unitPrice: 5000 }], {
+        numberTag: "PAIDPURE1",
+      });
       // Llevar a PAID + decremento pero fallando la guía → queda PAID (no FULFILLING).
       shipmentShouldThrow = new Error("Aveonline down");
       await processPaidOrder({ orderId });
@@ -872,10 +890,9 @@ describe.skipIf(!hasDb)("saga POST-PAID — integración DB (ruta de ingresos)",
 
     it("es idempotente: segunda invocación sobre orden ya terminal es no-op", async () => {
       const variantId = await makeVariant(5, "termidem");
-      const orderId = await makePendingOrder(
-        [{ variantId, qty: 1, unitPrice: 5000 }],
-        { numberTag: "TERMIDEM1" },
-      );
+      const orderId = await makePendingOrder([{ variantId, qty: 1, unitPrice: 5000 }], {
+        numberTag: "TERMIDEM1",
+      });
       await processFailedPaymentOrder({ orderId, reason: "DECLINED" });
       expect((await getOrder(orderId))?.status).toBe("CANCELLED");
       emailCalls.length = 0;
@@ -899,10 +916,9 @@ describe.skipIf(!hasDb)("saga POST-PAID — integración DB (ruta de ingresos)",
     /** Crea una orden FULFILLING con tracking (post-saga) lista para tracking updates. */
     async function makeFulfillingOrder(tag: string, trackingNumber: string): Promise<string> {
       const variantId = await makeVariant(10, `trk${tag}`);
-      const orderId = await makePendingOrder(
-        [{ variantId, qty: 1, unitPrice: 5000 }],
-        { numberTag: `TRK${tag}` },
-      );
+      const orderId = await makePendingOrder([{ variantId, qty: 1, unitPrice: 5000 }], {
+        numberTag: `TRK${tag}`,
+      });
       shipmentResult = {
         trackingNumber,
         trackingUrl: `https://track.test/${trackingNumber}`,
@@ -954,7 +970,11 @@ describe.skipIf(!hasDb)("saga POST-PAID — integración DB (ruta de ingresos)",
       const tracking = `${RUN}-TRK-C`;
       const orderId = await makeFulfillingOrder("C", tracking);
       // Primero a SHIPPED.
-      await processTrackingUpdate({ trackingNumber: tracking, status: "IN_TRANSIT", carrierStatusRaw: "EN TRANSITO" });
+      await processTrackingUpdate({
+        trackingNumber: tracking,
+        status: "IN_TRANSIT",
+        carrierStatusRaw: "EN TRANSITO",
+      });
       emailCalls.length = 0;
 
       const res = await processTrackingUpdate({
@@ -1014,7 +1034,11 @@ describe.skipIf(!hasDb)("saga POST-PAID — integración DB (ruta de ingresos)",
       const tracking = `${RUN}-TRK-F`;
       const orderId = await makeFulfillingOrder("F", tracking);
       // Llevar a DELIVERED.
-      await processTrackingUpdate({ trackingNumber: tracking, status: "DELIVERED", carrierStatusRaw: "ENTREGADA" });
+      await processTrackingUpdate({
+        trackingNumber: tracking,
+        status: "DELIVERED",
+        carrierStatusRaw: "ENTREGADA",
+      });
       expect((await getOrder(orderId))?.status).toBe("DELIVERED");
       emailCalls.length = 0;
 
@@ -1032,7 +1056,11 @@ describe.skipIf(!hasDb)("saga POST-PAID — integración DB (ruta de ingresos)",
     it("DELIVERED reentrante sobre orden ya DELIVERED → idempotente (sigue DELIVERED)", async () => {
       const tracking = `${RUN}-TRK-G`;
       const orderId = await makeFulfillingOrder("G", tracking);
-      await processTrackingUpdate({ trackingNumber: tracking, status: "DELIVERED", carrierStatusRaw: "ENTREGADA" });
+      await processTrackingUpdate({
+        trackingNumber: tracking,
+        status: "DELIVERED",
+        carrierStatusRaw: "ENTREGADA",
+      });
       expect((await getOrder(orderId))?.status).toBe("DELIVERED");
 
       // Reentrada del mismo webhook DELIVERED. current.status ya es DELIVERED:

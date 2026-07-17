@@ -31,7 +31,11 @@ export async function setTicketStatusAction(_p: St, fd: FormData): Promise<St> {
     });
     revalidatePath("/admin/soporte");
     const label =
-      status === "CLOSED" ? "cerrado" : status === "IN_PROGRESS" ? "marcado en progreso" : "reabierto";
+      status === "CLOSED"
+        ? "cerrado"
+        : status === "IN_PROGRESS"
+          ? "marcado en progreso"
+          : "reabierto";
     return { success: `Ticket ${label}.` };
   } catch (err) {
     logger.warn({

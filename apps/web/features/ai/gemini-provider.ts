@@ -50,7 +50,11 @@ function buildUserPrompt(input: DesignSuggestInput): string {
   return lines.join("\n");
 }
 
-async function callModel(model: string, input: DesignSuggestInput, apiKey: string): Promise<RawSuggestion> {
+async function callModel(
+  model: string,
+  input: DesignSuggestInput,
+  apiKey: string,
+): Promise<RawSuggestion> {
   const res = await fetchWithTimeout(`${API_BASE}/${model}:generateContent`, {
     method: "POST",
     timeoutMs: 12000,

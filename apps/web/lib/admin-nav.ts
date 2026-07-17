@@ -278,8 +278,7 @@ export const ADMIN_NAV: NavGroup[] = [
         label: "Seguridad (2 pasos)",
         href: "/admin/seguridad",
         icon: ShieldCheck,
-        description:
-          "Verificación en 2 pasos (MFA/TOTP) de tu cuenta admin: activar, desactivar.",
+        description: "Verificación en 2 pasos (MFA/TOTP) de tu cuenta admin: activar, desactivar.",
       },
       {
         label: "Usuarios y acceso",

@@ -39,7 +39,15 @@ describe("buildDailySummaryEmail", () => {
 
   it("lista SOLO las filas de atención que aplican, con la acción", () => {
     const { html, text } = buildDailySummaryEmail(
-      { ...base, needsReconciliation: 2, toShip: 4, pendingReviews: 1, lowStock: 3, errors24h: 7, topErrorRoute: "/checkout/envio" },
+      {
+        ...base,
+        needsReconciliation: 2,
+        toShip: 4,
+        pendingReviews: 1,
+        lowStock: 3,
+        errors24h: 7,
+        topErrorRoute: "/checkout/envio",
+      },
       NOW,
     );
     expect(html).toContain("2</strong> orden(es) necesitan reconciliación");
@@ -52,13 +60,19 @@ describe("buildDailySummaryEmail", () => {
   });
 
   it("cuando NO hay nada pendiente, muestra el mensaje verde", () => {
-    const { html } = buildDailySummaryEmail({ ...base, ordersLast24h: 5, revenueLast24hCop: 25000000 }, NOW);
+    const { html } = buildDailySummaryEmail(
+      { ...base, ordersLast24h: 5, revenueLast24hCop: 25000000 },
+      NOW,
+    );
     expect(html).toContain("Nada pendiente de atención");
     expect(html).not.toContain("necesitan reconciliación");
   });
 
   it("calcula el % de recuperación de carritos", () => {
-    const { html } = buildDailySummaryEmail({ ...base, abandonedCarts24h: 4, recoveredCarts24h: 1 }, NOW);
+    const { html } = buildDailySummaryEmail(
+      { ...base, abandonedCarts24h: 4, recoveredCarts24h: 1 },
+      NOW,
+    );
     expect(html).toContain("25% rec."); // 1/4
   });
 

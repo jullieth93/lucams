@@ -363,7 +363,9 @@ async function assertProductsQuotable(ids: string[]): Promise<void> {
     throw new ProductValidationError(
       "general",
       `No puedes publicar ${
-        missing.length === 1 ? names : `${missing.length} productos (${names}${missing.length > 5 ? "…" : ""})`
+        missing.length === 1
+          ? names
+          : `${missing.length} productos (${names}${missing.length > 5 ? "…" : ""})`
       } sin peso y dimensiones de envío. Complétalos en la sección "📦 Empaque para el envío" del producto antes de activarlo.`,
     );
   }

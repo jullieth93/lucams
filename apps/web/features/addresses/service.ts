@@ -11,7 +11,10 @@ import "server-only";
 import type { Prisma } from "@lucams/db";
 import { prisma } from "@/lib/db";
 import { getDepartmentByName, getCityByDeptAndName } from "@/lib/dane-divipola";
-import { composeAddressLine, type AddressInput as StructuredAddress } from "@/features/checkout/schemas";
+import {
+  composeAddressLine,
+  type AddressInput as StructuredAddress,
+} from "@/features/checkout/schemas";
 
 /**
  * Si tras una mutación el cliente quedó SIN dirección predeterminada pero le

@@ -29,7 +29,8 @@ test.beforeAll(async () => {
     password: PASSWORD,
     email_confirm: true,
   });
-  if (error || !data.user) throw new Error(`E2E admin: no se pudo crear auth user: ${error?.message}`);
+  if (error || !data.user)
+    throw new Error(`E2E admin: no se pudo crear auth user: ${error?.message}`);
   supabaseUserId = data.user.id;
   const admin = await prisma.adminUser.create({
     data: { supabaseUserId, email: EMAIL, role: "SUPERADMIN", isActive: true },

@@ -136,7 +136,9 @@ export default async function PublicOrderPage({
                     te entregue el pedido. Te enviamos los detalles a tu correo.
                   </>
                 ) : (
-                  <>Te enviamos los detalles y el seguimiento a tu correo. ¡Gracias por tu compra!</>
+                  <>
+                    Te enviamos los detalles y el seguimiento a tu correo. ¡Gracias por tu compra!
+                  </>
                 )}
               </p>
             </div>
