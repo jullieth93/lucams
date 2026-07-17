@@ -143,6 +143,26 @@ físico, para conciliar la supresión con la **retención fiscal de la DIAN**:
 adversarial 2026-07-10, hallazgos #1–#6): antes solo tocaba Customer/Address/Review y dejaba PII sensible
 (fotos, tickets, snapshots) atrás. La política de conservación fiscal vs. supresión queda explícita.
 
+### Retención por temporalidad — purga de fotos anónimas (art. 4 lit. f) (2026-07-17)
+
+El derecho de supresión (arriba) es **a pedido del titular** y filtra por `customerId` → NO alcanza a
+quien **nunca creó cuenta**. El Estudio permite personalizar de forma **anónima** (sin login): esas fotos
+crudas (a veces rostros) quedan en `customer-uploads` ligadas a un diseño DRAFT con `customerId=null`. Sin
+una política de temporalidad se acumularían **indefinidamente** sin finalidad vigente — contrario al
+principio de **temporalidad/minimización (Ley 1581, art. 4 lit. f)**: los datos se conservan solo el tiempo
+necesario para la finalidad (armar el diseño y comprarlo), no para siempre.
+
+**Política:** un diseño **DRAFT anónimo abandonado** (sin actividad ≥ **30 días** y sin carrito ni pedido
+vivo) se **purga automáticamente**: se borran sus fotos de `customer-uploads` + los previews/artefactos +
+las filas `DesignAsset`/`Design`. Igual para los `DesignAsset` anónimos **huérfanos** (subidos y nunca
+usados). Implementación: `features/personalization/retention-service.ts` (`purgeAbandonedAnonymousDesigns`)
+vía el cron `/api/cron/purge-anon-designs` (agendado por `pg_cron`, ver [OPERATIONS.md](OPERATIONS.md)).
+
+**Qué NO toca:** diseños de clientes **logueados** (los rige el ciclo de vida de la cuenta / supresión a
+pedido), ni `READY`/`USED_IN_ORDER`/`ARCHIVED`, ni nada referenciado por un carrito o pedido (esos tienen
+finalidad vigente). El borrado de bytes es **best-effort con reintento**: si la remoción del bucket falla,
+las filas NO se borran → el siguiente ciclo reintenta (nunca deja bytes sin registro en DB).
+
 ---
 
 ## Ley 1480 de 2011 — Estatuto del Consumidor
