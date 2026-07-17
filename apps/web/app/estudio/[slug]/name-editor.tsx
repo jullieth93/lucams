@@ -11,11 +11,13 @@
  * el PNG es el preview que ven carrito/orden/producción.
  */
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ChevronLeft, Loader2, Sparkles, Minus, Plus } from "lucide-react";
+import nextDynamic from "next/dynamic";
+import { ChevronLeft, Loader2, Sparkles, Minus, Plus, Box, X } from "lucide-react";
 import { normalizeName, type NameLanguage } from "@/features/personalization/name-input";
+import type { Magnet3D } from "./fridge-3d-view";
 import type { LetterStyle, LetterTileMap } from "@/features/personalization/letter-tiles";
 import { createNameDesignAction, finalizeDesignAction } from "@/features/personalization/actions";
 import { addPersonalizedToCartAction } from "@/app/carrito/actions";
@@ -24,6 +26,16 @@ import { LetterTile } from "./letter-tile";
 import { useLetterColors } from "./use-letter-colors";
 import { ThemePicker, SwatchRow } from "./letter-color-controls";
 import { LetterStylePicker } from "./letter-style-picker";
+
+// NOM2 — nevera 3D (WebGL, client-only), diferida como en el editor de foto.
+const FridgeView3D = nextDynamic(() => import("./fridge-3d-view"), {
+  ssr: false,
+  loading: () => (
+    <div className="text-brand-muted flex h-full items-center justify-center text-sm">
+      Cargando la nevera 3D…
+    </div>
+  ),
+});
 
 type NameEditorProps = {
   product: { id: string; slug: string; name: string };
@@ -68,6 +80,43 @@ function loadImage(url: string): Promise<HTMLImageElement | null> {
   });
 }
 
+const TILE_W = 120;
+const TILE_H = 142;
+
+/** Dibuja UNA ficha kawaii (recuadro blanco + borde de color + ilustración o letra) en (x,y). */
+function drawLetterTile(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  ch: string,
+  color: string,
+  img: HTMLImageElement | null,
+) {
+  roundRectPath(ctx, x, y, TILE_W, TILE_H, 20);
+  ctx.fillStyle = "#ffffff";
+  ctx.fill();
+  ctx.lineWidth = 6;
+  ctx.strokeStyle = color;
+  ctx.stroke();
+  if (img) {
+    ctx.save();
+    roundRectPath(ctx, x + 4, y + 4, TILE_W - 8, TILE_H - 8, 16);
+    ctx.clip();
+    const box = { w: TILE_W - 12, h: TILE_H - 12 };
+    const s = Math.min(box.w / img.width, box.h / img.height);
+    const dw = img.width * s;
+    const dh = img.height * s;
+    ctx.drawImage(img, x + (TILE_W - dw) / 2, y + (TILE_H - dh) / 2, dw, dh);
+    ctx.restore();
+  } else {
+    ctx.fillStyle = color;
+    ctx.font = `800 ${Math.round(TILE_W * 0.56)}px "Baloo 2", "Fredoka", system-ui, sans-serif`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(ch, x + TILE_W / 2, y + TILE_H / 2 + 2);
+  }
+}
+
 /**
  * Dibuja la tira de fichas en canvas y devuelve el PNG. Usa la ilustración real de cada
  * letra si existe (tiles); si no, dibuja la letra en color. `useTiles=false` fuerza el
@@ -80,12 +129,10 @@ async function renderNameStripBlob(
   useTiles = true,
 ): Promise<Blob> {
   const scale = 4;
-  const tileW = 120;
-  const tileH = 142;
   const gap = 16;
   const pad = 22;
-  const w = pad * 2 + letters.length * tileW + Math.max(0, letters.length - 1) * gap;
-  const h = pad * 2 + tileH;
+  const w = pad * 2 + letters.length * TILE_W + Math.max(0, letters.length - 1) * gap;
+  const h = pad * 2 + TILE_H;
 
   const imgs = useTiles
     ? await Promise.all(
@@ -105,33 +152,7 @@ async function renderNameStripBlob(
   ctx.fillRect(0, 0, w, h);
 
   letters.forEach((ch, i) => {
-    const x = pad + i * (tileW + gap);
-    const y = pad;
-    const color = colors[i % colors.length];
-    roundRectPath(ctx, x, y, tileW, tileH, 20);
-    ctx.fillStyle = "#ffffff";
-    ctx.fill();
-    ctx.lineWidth = 6;
-    ctx.strokeStyle = color;
-    ctx.stroke();
-    const img = imgs[i];
-    if (img) {
-      ctx.save();
-      roundRectPath(ctx, x + 4, y + 4, tileW - 8, tileH - 8, 16);
-      ctx.clip();
-      const box = { w: tileW - 12, h: tileH - 12 };
-      const s = Math.min(box.w / img.width, box.h / img.height);
-      const dw = img.width * s;
-      const dh = img.height * s;
-      ctx.drawImage(img, x + (tileW - dw) / 2, y + (tileH - dh) / 2, dw, dh);
-      ctx.restore();
-    } else {
-      ctx.fillStyle = color;
-      ctx.font = `800 ${Math.round(tileW * 0.56)}px "Baloo 2", "Fredoka", system-ui, sans-serif`;
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      ctx.fillText(ch, x + tileW / 2, y + tileH / 2 + 2);
-    }
+    drawLetterTile(ctx, pad + i * (TILE_W + gap), pad, ch, colors[i % colors.length], imgs[i]);
   });
 
   return new Promise((resolve, reject) =>
@@ -140,6 +161,39 @@ async function renderNameStripBlob(
       "image/png",
     ),
   );
+}
+
+/**
+ * NOM2 (ADR-063) — una textura POR ficha (fondo transparente afuera del recuadro) para la nevera 3D:
+ * cada letra es un imán y el nombre se ve deletreado sobre la nevera. Reúsa el mismo dibujo de ficha
+ * que la tira (WYSIWYG). Si el canvas se contamina por CORS, cae a solo-letras (sin ilustración).
+ */
+async function renderLetterMagnets(
+  letters: string[],
+  colors: readonly string[],
+  tiles: LetterTileMap,
+  useTiles = true,
+): Promise<Magnet3D[]> {
+  const scale = 4;
+  const imgs = useTiles
+    ? await Promise.all(
+        letters.map((ch) =>
+          tiles[ch]?.imageUrl ? loadImage(tiles[ch]!.imageUrl) : Promise.resolve(null),
+        ),
+      )
+    : letters.map(() => null);
+
+  return letters.map((ch, i) => {
+    const canvas = document.createElement("canvas");
+    canvas.width = TILE_W * scale;
+    canvas.height = TILE_H * scale;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("canvas 2d no disponible");
+    ctx.scale(scale, scale);
+    // Sin fillRect → fondo transparente (la nevera se ve alrededor del imán).
+    drawLetterTile(ctx, 0, 0, ch, colors[i % colors.length], imgs[i]);
+    return { dataUrl: canvas.toDataURL("image/png"), wRatio: TILE_W, hRatio: TILE_H };
+  });
 }
 
 export function NameEditor({
@@ -154,6 +208,9 @@ export function NameEditor({
   const [raw, setRaw] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // NOM2 — vista 3D del nombre en la nevera. null = cerrada.
+  const [fridge3D, setFridge3D] = useState<Magnet3D[] | null>(null);
+  const [building3D, setBuilding3D] = useState(false);
   // Cantidad de fichas (letras) elegida en la ficha. El editor se LIMITA a esta cantidad;
   // el +/− la ajusta (min..max del producto). Es el nº de fichas que se cobra.
   const [count, setCount] = useState(() =>
@@ -257,6 +314,34 @@ export function NameEditor({
       setSubmitting(false);
     }
   }
+
+  // NOM2 — arma una textura por ficha y abre la nevera 3D (el nombre deletreado con imanes).
+  const handleOpen3D = useCallback(async () => {
+    if (letters.length === 0 || building3D) return;
+    setBuilding3D(true);
+    try {
+      let magnets: Magnet3D[];
+      try {
+        magnets = await renderLetterMagnets(letters, effectiveColors, activeTiles);
+      } catch {
+        magnets = await renderLetterMagnets(letters, effectiveColors, activeTiles, false);
+      }
+      setFridge3D(magnets);
+    } catch {
+      setError("No pudimos abrir la vista 3D. Intenta de nuevo.");
+    } finally {
+      setBuilding3D(false);
+    }
+  }, [letters, effectiveColors, activeTiles, building3D]);
+
+  useEffect(() => {
+    if (fridge3D === null) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setFridge3D(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [fridge3D]);
 
   const counterOver = letters.length > count;
 
@@ -471,6 +556,18 @@ export function NameEditor({
 
         {/* CTA */}
         <div className="mt-6 flex flex-col items-center gap-2">
+          {/* NOM2 — ver el nombre deletreado con imanes en la nevera 3D */}
+          {letters.length > 0 && (
+            <button
+              type="button"
+              onClick={handleOpen3D}
+              disabled={building3D}
+              className="border-brand-purple/25 text-brand-purple-dark hover:bg-brand-purple/5 mb-1 inline-flex items-center gap-2 rounded-full border px-5 py-2 text-sm font-semibold transition disabled:opacity-60"
+            >
+              <Box className="h-4 w-4" />
+              {building3D ? "Armando…" : "Ver en la nevera 3D"}
+            </button>
+          )}
           <button
             type="button"
             onClick={handleAddToCart}
@@ -499,6 +596,35 @@ export function NameEditor({
           )}
         </div>
       </div>
+
+      {/* NOM2 — Modal de la nevera 3D con el nombre deletreado (lazy, client-only). */}
+      {fridge3D !== null && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Vista 3D de tu nombre en la nevera"
+          className="bg-brand-purple-dark/85 fixed inset-0 z-50 flex flex-col backdrop-blur-sm"
+        >
+          <div className="flex items-center justify-between px-4 py-3 text-white sm:px-6">
+            <span className="font-display text-lg font-bold">🧊 Tu nombre en la nevera</span>
+            <button
+              type="button"
+              onClick={() => setFridge3D(null)}
+              aria-label="Cerrar vista 3D"
+              autoFocus
+              className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/15 text-white transition-colors hover:bg-white/25 focus:ring-2 focus:ring-white focus:outline-none"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+          <div className="relative flex-1">
+            <FridgeView3D magnets={fridge3D} cols={fridge3D.length} />
+            <p className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-black/40 px-3 py-1.5 text-center text-xs text-white">
+              Arrastra para girar · rueda o pellizca para acercar
+            </p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
