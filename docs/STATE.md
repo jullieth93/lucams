@@ -13,7 +13,7 @@
 
 ## Resumen actual
 
-**🎨 ⏳ EN CURSO — WORKSTREAM ESTUDIO (2026-07-16, ADR-063).** Lucy pidió (adicional al plan maestro) un análisis profundo del Estudio por categoría con **ejecución directa**: cada lienzo con la tecnología acorde a la necesidad, cubriendo creación, WYSIWYG, **recepción del admin/producción**, mapeo de tech y **visualización inmersiva** (UX fantástica). Workflow multi-agente (8 agentes) → **plan de 22 ítems** en [Artifact `03cdb758`](https://claude.ai/code/artifact/03cdb758-ee2e-41dd-94dc-945bcb2594d0) + ADR-063.
+**🎨 ✅ WORKSTREAM ESTUDIO — P1 + P2 INMERSIVO COMPLETOS (2026-07-17, ADR-063).** Lucy pidió (adicional al plan maestro) un análisis profundo del Estudio por categoría con **ejecución directa**: cada lienzo con la tecnología acorde a la necesidad, cubriendo creación, WYSIWYG, **recepción del admin/producción**, mapeo de tech y **visualización inmersiva** (UX fantástica). Workflow multi-agente (8 agentes) → **plan de 22 ítems** en [Artifact `03cdb758`](https://claude.ai/code/artifact/03cdb758-ee2e-41dd-94dc-945bcb2594d0) + ADR-063. **El bloque P2 inmersivo quedó cerrado con variedad de escenas del hogar (feedback de Lucy: "no solo neveras").**
 
 - **Hallazgo central (2 P0):** (T1) el admin NO podía descargar los PNGs de producción — `getOrder` no traía `productionUrls[]` y usaba el campo legacy `designAssetUrl`; (CAL1) el "calendario" se produce como **12 fotos desnudas** (mes/año/grilla son overlays DOM que no entran al PNG). Rompe WYSIWYG.
 - **✅ BLOQUE P1 AUTÓNOMO COMPLETO — todo en `origin/develop`, cada ítem certificado (tsc+lint+prettier+tests+build):**
@@ -29,7 +29,11 @@
   - **T5** (`fdf400b`) — lazy-mount de stages Konva (>6 slots; IntersectionObserver) + `ensureAllStagesMounted()` blindando preview/producción/3D.
   - **CAL4** (`4943888`) — 🎉 **calendario 3D inmersivo navegable** (lo que Lucy pidió). Arquitectura WYSIWYG: `calendar-draw.ts` (dibujo compartido cliente=servidor), compositor cliente (`lib/compose-calendar-page.ts`), escena r3f CSP-safe (`calendar-view-3d.tsx`) con espiral + página que voltea + navegación mes a mes (año = el de CAL2). Verificado build + página cliente (Diciembre 2027).
   - **T7** (`5d20bd0`) — **ZIP de producción + hoja de armado** (Lucy aprobó `jszip`). `/admin/pedidos/[number]/produccion` → .zip con piezas nombradas por mes/pieza + `armado.png` (miniaturas + estado moderación, verificada visual) + LEEME. `downloadProductionAsset`, `getOrderProductionBundle`, `composeAssemblySheet`.
-- **⏭️ Estudio restante:** P2 inmersivo **FOTO3** (flat-lay regalo), **FOTO4**, **NOM2**, **SEP1** — poco especificados, **esperan que Lucy precise la experiencia** de cada uno. Contenido (lane de Lucy): **CAL3** (arte de meses) + rediseño del marco Polaroid (FOTO2).
+- **✅ BLOQUE P2 INMERSIVO COMPLETO — cada producto estrena su PROPIA escena del hogar (no todo en la nevera). Todo en `origin/develop`, CI verde, cada ítem certificado:**
+  - **SEP1** (`1894fcd`) — separador en un **libro** abierto (r3f, marcador asomando entre páginas). No son imanes → su hogar es un libro.
+  - **FOTO3** (`d4d2586`) — fotoimán en un **flat-lay de regalo** (compositor 2D procedural: papel cálido + cinta turquesa + moño + etiqueta "Para ti"). Verificado headless.
+  - **FOTO4 + NOM2 re-skin** (`4414b35`) — **galería consolidada "Ver en tu espacio"** (`scene-gallery.tsx`): UN botón abre un modal con chips 🧊 Nevera · 🖼️ Mural · 📚 Repisa · 🎁 Regalo (evita la barra de 5 botones que se desborda en móvil). Escenas nuevas: `RoomBoardView3D` (tablero magnético enmarcado en un cuarto, estilo memo/cork, r3f CSP-safe) + `compose-shelf-flatlay` (REPISA — piezas apoyadas en un estante, **asentado por alfa**: detecta el borde inferior real de la silueta y la posa sobre la madera; un corazón descansa su punta, no flota; verificado headless n=1 y n=3). **NOM2 re-skin:** el nombre (imanes de letras) pasa de la nevera a su propio tablero magnético en un cuarto (`RoomBoardView3D` memo). Las texturas por imán se calculan una vez; los compositores 2D se arman perezosamente por chip y se cachean.
+- **⏭️ Estudio restante (carril de Lucy, contenido/brand):** **CAL3** (arte de meses) + rediseño del marco Polaroid (FOTO2 — doble-texto SVG+capas). **Prueba GUI pendiente (WebGL no renderiza headless):** vistas 3D de tablero/mural + libro + galería de escenas en el navegador.
 
 **🏭 PLAN MAESTRO (ADR-062) — carril autónomo en curso.** Lucy pidió priorizar los launch-blockers verificables. Hecho:
 
@@ -40,7 +44,7 @@
   - **SLOs cuantitativos** (ADR-066, `6d699c0`) — `evaluateSlo` + panel en /admin/observability (Web Vitals, éxito de checkout, webhooks) + alerta en resumen diario. Los de infra (disponibilidad/latencia) → monitor externo post-lanzamiento.
   - **Lighthouse gate** (ADR-066, `d03a1fd`) — CI sobre home+/productos; a11y/SEO error ≥0.9 (deterministas), perf/bp warn. Calibrado con Chromium de Playwright (home 85/97/92/96, /productos 87/100/100/96).
   - **Wompi E2E sandbox** (ADR-067, `cbe0b1e`) — smoke LIVE no-destructivo contra la API sandbox real (merchant/acceptance + getTransaction), gate estricto sandbox-only (jamás prod), skipIf sin creds. 2/2 verde local; activable en nightly vía GitHub Secrets.
-- **⏭️ Queda (dependen de Lucy):** cargar `WOMPI_*` sandbox como GitHub Secrets → activa el live-smoke en nightly; smoke live de Aveonline (mismo patrón). **P2 inmersivo del Estudio** (FOTO3/4, NOM2, SEP1) → precisar alcance con Lucy.
+- **⏭️ Queda (dependen de Lucy):** cargar `WOMPI_*` sandbox como GitHub Secrets → activa el live-smoke en nightly; smoke live de Aveonline (mismo patrón). (P2 inmersivo del Estudio ✅ completo — ver bloque Estudio arriba.)
 - **Deuda de pruebas GUI (Lucy, navegador):** panel SLOs en /admin/observability, descarga producción + ZIP en /admin/pedidos, grid por-slot en /admin/moderacion, selector de año, lazy-mount, **calendario 3D**. (Conciliación COD ✅ validada.)
 - **Carril de Lucy (contenido):** arte de meses (CAL3), rediseño del marco Polaroid (FOTO2), marcos temáticos, tamaños, fichas de letras.
 - **Deuda de pruebas GUI (Lucy, navegador):** /admin/pedidos descarga producción (T1), /admin/moderacion grid por-slot (T2), editor de calendario selector de año (CAL2), lazy-mount + finalize con muchos slots (T5).
@@ -290,6 +294,29 @@ choice-overload es real y condicional — calidad > cantidad; leaders categoriza
 
 **Al retomar:** (a) si Lucy no aprobó plantillas, recordarle abrir `/admin/plantillas`; (b) si dio
 su visión del flujo móvil, ejecutar paso 5; si no, proponérselo con opciones.
+
+## Última sesión — 2026-07-17 (Estudio P2 inmersivo + variedad de escenas del hogar — ADR-063)
+
+Cierre del bloque **P2 inmersivo** del Estudio (el detalle vive en el "Resumen actual" arriba). Lo
+distintivo de la sesión fue el feedback creativo de Lucy: **"¿solo neveras? ¿no planteas otros
+escenarios de un hogar?"** → cada producto estrena su PROPIA escena, y el fotoimán suma varias:
+
+- **SEP1** (`1894fcd`) — separador en un **libro** (r3f). **FOTO3** (`d4d2586`) — fotoimán en un
+  **flat-lay de regalo** (2D procedural). Ambos verificados headless.
+- **FOTO4 + NOM2 re-skin** (`4414b35`) — decisión de UX: en vez de sumar botones sueltos (5 se
+  desbordan en móvil), **una galería única `scene-gallery.tsx`** con chips: 🧊 Nevera · 🖼️ Mural ·
+  📚 Repisa · 🎁 Regalo. Escenas nuevas: `RoomBoardView3D` (tablero magnético en un cuarto, r3f
+  CSP-safe, memo/cork) + `compose-shelf-flatlay` (repisa con **asentado por alfa** — la silueta real
+  posa sobre la madera, no la caja; corazón no flota). **NOM2:** el nombre pasa de la nevera a su
+  propio tablero magnético (escena distinta a la de los fotoimanes).
+- Patrón de verificación reforzado: los compositores 2D se verifican **headless** con un harness
+  napi-canvas que replica el dibujo; las vistas 3D (WebGL) no renderizan headless → quedan marcadas
+  para **prueba GUI de Lucy**. Todo certificado (tsc+lint+prettier repo incl. md+build) y **CI verde**.
+
+**Al retomar:** el Estudio (P1 + P2 inmersivo) está completo del lado de código. Lo que queda es
+**carril de Lucy**: contenido (CAL3 arte de meses, rediseño marco Polaroid FOTO2) y **pruebas GUI**
+en navegador de las escenas 3D (tablero/mural/libro/calendario) + galería de escenas. Si Lucy pide
+más, la conversación abierta era si darle también a los separadores/otros su propia variedad.
 
 ## Última sesión — 2026-07-11 (Direcciones: reuso bidireccional + guardar-al-pagar — ADR-051/052)
 
