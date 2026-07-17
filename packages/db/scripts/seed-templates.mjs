@@ -229,7 +229,7 @@ const templatesData = [
           id: "likes_count",
           x: 30,
           y: 475,
-          text: "362 likes",
+          text: "362 me gusta",
           fontFamily: "Inter",
           fontSize: 18,
           fill: "#262626",
