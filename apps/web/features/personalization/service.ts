@@ -39,7 +39,10 @@ import {
   RenderNeedsKonvaError,
   type LoadAssetBytes,
 } from "./production-render";
-import { renderProductionSlotsCanvas } from "./production-render-canvas";
+import {
+  renderProductionSlotsCanvas,
+  renderCalendarMonthPagesCanvas,
+} from "./production-render-canvas";
 import type { CanvasData, CanvasDataV1, CanvasDataV2 } from "./schemas";
 import type { z } from "zod";
 import type { SlotStateSchema } from "./schemas";
@@ -62,10 +65,14 @@ async function tryServerRenderProduction(
   // Cargar forma + assets + loader (compartido por ambos motores).
   let shape: string | undefined;
   let loadAsset: LoadAssetBytes;
+  let personalizationKind: string | undefined;
+  let productSchema: Record<string, unknown> | undefined;
   try {
     const design = await prisma.design.findUnique({
       where: { id: designId },
-      select: { product: { select: { personalizationSchema: true } } },
+      select: {
+        product: { select: { personalizationSchema: true, personalizationKind: true } },
+      },
     });
     // Forma del schema del PRODUCTO. En el catálogo actual la forma es a nivel de producto
     // (Fotoimanes Circular/Corazón/Cuadrado son productos distintos; sus variantes son
@@ -73,6 +80,9 @@ async function tryServerRenderProduction(
     // una VARIANTE override la forma, habría que persistir la forma efectiva en el diseño (el
     // diseño no guarda su variantId en finalize). Latente: ningún producto lo usa hoy.
     shape = (design?.product?.personalizationSchema as { shape?: string } | null)?.shape;
+    personalizationKind = design?.product?.personalizationKind;
+    productSchema =
+      (design?.product?.personalizationSchema as Record<string, unknown> | null) ?? undefined;
 
     const assets = await prisma.designAsset.findMany({
       where: { designId },
@@ -99,6 +109,48 @@ async function tryServerRenderProduction(
       "No se pudieron cargar assets para el render server — usando PNG del cliente",
     );
     return null;
+  }
+
+  // ADR-063 CAL1 — Calendario mes-a-mes: compone la PÁGINA de cada mes (foto + mes + año + grilla),
+  // no la foto desnuda. Reemplaza los dos tiers genéricos para este kind — el PNG del cliente no
+  // trae la grilla, así que no hay fallback útil; si el compositor falla, cae a los PNG del cliente.
+  if (personalizationKind === "CALENDAR_PHOTO_MONTH") {
+    try {
+      const yearRaw = productSchema?.year;
+      const year =
+        typeof yearRaw === "number" && yearRaw >= 2020 && yearRaw <= 2100
+          ? yearRaw
+          : new Date().getFullYear() + 1;
+      const startRaw = productSchema?.startMonth;
+      const startMonth = typeof startRaw === "number" ? startRaw : 0;
+      const slots = canvasData.slots.map((s) => ({
+        slotIndex: s.slotIndex,
+        assetId: s.assetId,
+        photoTransform: s.photoTransform,
+      }));
+      const bufs = await renderCalendarMonthPagesCanvas({ slots, loadAsset, year, startMonth });
+      logger.info(
+        {
+          event: "design.finalize.server_render_ok",
+          designId,
+          engine: "calendar",
+          slots: bufs.length,
+        },
+        "Calendario renderizado en el servidor (páginas de mes)",
+      );
+      return bufs;
+    } catch (err) {
+      logger.warn(
+        {
+          event: "design.finalize.server_render_error",
+          designId,
+          engine: "calendar",
+          err: err instanceof Error ? err.message : String(err),
+        },
+        "Render de calendario falló — usando PNG del cliente",
+      );
+      return null;
+    }
   }
 
   const args = {

@@ -17,6 +17,8 @@ import path from "node:path";
 import fs from "node:fs";
 import type { SKRSContext2D } from "@napi-rs/canvas";
 import { RenderNeedsKonvaError, type LoadAssetBytes } from "./production-render";
+import { calendarMonthGrid, MONTH_NAMES_ES, WEEKDAY_HEADERS_ES } from "./calendar-grid";
+import { CALENDAR_PAGE, CALENDAR_PHOTO, CALENDAR_LAYOUT } from "./calendar-layout";
 
 const PRODUCTION_SCALE = 3;
 const MAX_STAGE_DIM = 3000;
@@ -317,6 +319,145 @@ export async function renderProductionSlotsCanvas(opts: {
   const slots = [...opts.slots].sort((a, b) => a.slotIndex - b.slotIndex);
   for (const slot of slots) {
     out.push(await renderSlotCanvas(mod, opts.unitTemplate, slot, opts.shape, opts.loadAsset));
+  }
+  return out;
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// ADR-063 CAL1 — Compositor de la PÁGINA de un mes del calendario.
+// Antes el calendario se producía como 12 FOTOS DESNUDAS (mes/año/grilla eran overlays DOM que
+// NO entraban al PNG). Este compositor hornea, sobre la foto del cliente, el título mes+año, los
+// encabezados de día y la grilla real (calendar-grid). La región de foto = CALENDAR_PHOTO
+// (1080×1080 top), idéntica al slot del editor → el encuadre del cliente mapea 1:1 (WYSIWYG).
+// A diferencia del render genérico, NO cae al cliente: compone la página completa siempre.
+// ════════════════════════════════════════════════════════════════════════════
+
+export type CalendarSlotInput = {
+  slotIndex: number;
+  assetId: string | null;
+  photoTransform?: PhotoTransform;
+};
+
+async function renderCalendarPage(
+  mod: CanvasMod,
+  slot: CalendarSlotInput,
+  monthIndex0: number,
+  year: number,
+  fontsOk: boolean,
+  loadAsset: LoadAssetBytes,
+): Promise<Buffer> {
+  const S = PRODUCTION_SCALE;
+  const W = clampInt(CALENDAR_PAGE.width * S, 1, MAX_STAGE_DIM * S);
+  const H = clampInt(CALENDAR_PAGE.height * S, 1, MAX_STAGE_DIM * S);
+  const canvas = mod.createCanvas(W, H);
+  const ctx = canvas.getContext("2d");
+  ctx.scale(S, S);
+
+  // Fondo blanco.
+  ctx.fillStyle = "#FFFFFF";
+  ctx.fillRect(0, 0, CALENDAR_PAGE.width, CALENDAR_PAGE.height);
+
+  // Foto del mes (cover + encuadre del cliente, misma matemática que renderSlotCanvas).
+  // loadImage (no `img.src=`) porque necesitamos los PÍXELES decodificados antes del drawImage —
+  // `img.src=buffer` da las dimensiones sync pero decodifica los píxeles async → dibujaría vacío.
+  const ph = CALENDAR_PHOTO;
+  const bytes = slot.assetId ? await loadAsset(slot.assetId) : null;
+  let photoDrawn = false;
+  if (bytes) {
+    try {
+      const img = await mod.loadImage(bytes);
+      if (img.width && img.height) {
+        const coverBase = Math.max(ph.width / img.width, ph.height / img.height);
+        const eff = Math.max(0.5, Math.min(3, slot.photoTransform?.scale ?? 1));
+        const finalScale = coverBase * eff;
+        const rw = img.width * finalScale;
+        const rh = img.height * finalScale;
+        const offX = slot.photoTransform?.offsetX ?? 0;
+        const offY = slot.photoTransform?.offsetY ?? 0;
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(ph.x, ph.y, ph.width, ph.height);
+        ctx.clip();
+        const cx = ph.x + ph.width / 2 + offX;
+        const cy = ph.y + ph.height / 2 + offY;
+        ctx.drawImage(img, cx - rw / 2, cy - rh / 2, rw, rh);
+        ctx.restore();
+        photoDrawn = true;
+      }
+    } catch {
+      // decode falló → recuadro suave abajo.
+    }
+  }
+  if (!photoDrawn) {
+    // Mes sin foto (o foto ilegible) → recuadro suave. Un calendario finalizado debería tener las 12.
+    ctx.fillStyle = "#F3EFEA";
+    ctx.fillRect(ph.x, ph.y, ph.width, ph.height);
+  }
+
+  const titleFont = fontsOk ? "Fredoka" : "sans-serif";
+  const bodyFont = fontsOk ? "Inter" : "sans-serif";
+  const L = CALENDAR_LAYOUT;
+
+  // Título: "Enero 2027".
+  ctx.fillStyle = "#3D2E5C";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "alphabetic";
+  ctx.font = `700 ${L.titleFontSize}px ${titleFont}`;
+  ctx.fillText(`${MONTH_NAMES_ES[monthIndex0] ?? ""} ${year}`, CALENDAR_PAGE.width / 2, L.titleY);
+
+  // Encabezados de día (D L M M J V S).
+  const gridW = L.gridRight - L.gridLeft;
+  const colW = gridW / 7;
+  ctx.font = `700 ${L.weekdayFontSize}px ${bodyFont}`;
+  ctx.fillStyle = "#7C6AAD";
+  for (let c = 0; c < 7; c++) {
+    ctx.fillText(WEEKDAY_HEADERS_ES[c]!, L.gridLeft + colW * c + colW / 2, L.weekdayY);
+  }
+
+  // Grilla de días.
+  const weeks = calendarMonthGrid(year, monthIndex0);
+  const rows = Math.max(1, weeks.length);
+  const rowH = (L.gridBottom - L.gridTop) / rows;
+  const daySize = Math.min(32, rowH * 0.5);
+  ctx.strokeStyle = "#E7DFD3";
+  ctx.lineWidth = 1;
+  ctx.textBaseline = "middle";
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < 7; c++) {
+      const x = L.gridLeft + colW * c;
+      const y = L.gridTop + rowH * r;
+      ctx.strokeRect(x, y, colW, rowH);
+      const day = weeks[r]?.[c];
+      if (day != null) {
+        ctx.fillStyle = "#2A2140";
+        ctx.font = `400 ${daySize}px ${bodyFont}`;
+        ctx.fillText(String(day), x + colW / 2, y + rowH / 2);
+      }
+    }
+  }
+
+  return canvas.toBuffer("image/png");
+}
+
+/**
+ * Renderiza las N páginas de mes de un calendario. slotIndex 0 → startMonth (default Enero=0).
+ * NO lanza RenderNeedsKonvaError: compone la página completa siempre (el PNG del cliente no tiene
+ * la grilla). Si @napi-rs/canvas no está disponible, sí propaga (el caller decide el fallback).
+ */
+export async function renderCalendarMonthPagesCanvas(opts: {
+  slots: CalendarSlotInput[];
+  loadAsset: LoadAssetBytes;
+  year: number;
+  startMonth?: number;
+}): Promise<Buffer[]> {
+  const mod = await loadCanvas();
+  const fontsOk = ensureFonts(mod);
+  const start = opts.startMonth ?? 0;
+  const out: Buffer[] = [];
+  const slots = [...opts.slots].sort((a, b) => a.slotIndex - b.slotIndex);
+  for (const slot of slots) {
+    const monthIndex0 = (((start + slot.slotIndex) % 12) + 12) % 12;
+    out.push(await renderCalendarPage(mod, slot, monthIndex0, opts.year, fontsOk, opts.loadAsset));
   }
   return out;
 }
