@@ -48,11 +48,12 @@ export function CodRowActions({
         <form action={remitAction} className="bg-brand-cream/40 mt-1.5 space-y-1.5 rounded-md p-2">
           <input type="hidden" name="orderId" value={orderId} />
           <label className="text-brand-muted block text-[11px]">
-            Monto recibido (pesos)
+            Monto recibido (pesos) · esperado {formatCOP(expectedAmount)}
             <input
               type="text"
               inputMode="numeric"
               name="remittedAmountPesos"
+              aria-label="Monto recibido en pesos"
               placeholder={`${expectedPesos} (esperado)`}
               className="border-brand-purple/25 mt-0.5 w-full rounded border px-2 py-1 text-xs"
             />
@@ -61,12 +62,14 @@ export function CodRowActions({
           <input
             type="text"
             name="carrierRef"
+            aria-label="Referencia del depósito"
             placeholder="Referencia del depósito (opcional)"
             className="border-brand-purple/25 w-full rounded border px-2 py-1 text-xs"
           />
           <input
             type="text"
             name="note"
+            aria-label="Nota de la remesa"
             placeholder="Nota (opcional)"
             className="border-brand-purple/25 w-full rounded border px-2 py-1 text-xs"
           />
@@ -75,54 +78,60 @@ export function CodRowActions({
             disabled={remitPending}
             className="bg-brand-purple hover:bg-brand-purple-dark w-full rounded px-2 py-1 text-[11px] font-bold text-white disabled:opacity-60"
           >
-            {remitPending ? "Guardando…" : `Confirmar remesa (${formatCOP(expectedAmount)})`}
+            {remitPending ? "Guardando…" : "Confirmar remesa"}
           </button>
           <Notice state={remitState} />
         </form>
       </details>
 
-      {/* Registrar discrepancia (no cuadra / no llegó) */}
-      {status !== "REMITTED" && (
-        <details className="group">
-          <summary className="cursor-pointer list-none rounded-md border border-amber-300 px-2 py-1 text-[11px] font-semibold text-amber-700 hover:bg-amber-50">
-            {status === "DISCREPANCY" ? "⚠️ Discrepancia · editar" : "Registrar discrepancia"}
-          </summary>
-          <form action={discAction} className="mt-1.5 space-y-1.5 rounded-md bg-amber-50/60 p-2">
-            <input type="hidden" name="orderId" value={orderId} />
+      {/* Registrar discrepancia (no cuadra / no llegó). Disponible incluso si ya está REMITTED: un
+          depósito puede rebotar o descubrirse corto después → antifraude siempre alcanzable (#9). */}
+      <details className="group">
+        <summary className="cursor-pointer list-none rounded-md border border-amber-300 px-2 py-1 text-[11px] font-semibold text-amber-700 hover:bg-amber-50">
+          {status === "DISCREPANCY"
+            ? "⚠️ Discrepancia · editar"
+            : status === "REMITTED"
+              ? "Reabrir como discrepancia"
+              : "Registrar discrepancia"}
+        </summary>
+        <form action={discAction} className="mt-1.5 space-y-1.5 rounded-md bg-amber-50/60 p-2">
+          <input type="hidden" name="orderId" value={orderId} />
+          <input
+            type="text"
+            name="discrepancyReason"
+            required
+            aria-label="Motivo de la discrepancia"
+            placeholder="Motivo (ej. no llegó, llegó corto)"
+            className="w-full rounded border border-amber-300 px-2 py-1 text-xs"
+          />
+          <label className="text-brand-muted block text-[11px]">
+            Monto recibido (pesos, opcional)
             <input
               type="text"
-              name="discrepancyReason"
-              required
-              placeholder="Motivo (ej. no llegó, llegó corto)"
-              className="w-full rounded border border-amber-300 px-2 py-1 text-xs"
+              inputMode="numeric"
+              name="remittedAmountPesos"
+              aria-label="Monto recibido en pesos"
+              placeholder="0 si no llegó nada"
+              className="mt-0.5 w-full rounded border border-amber-300 px-2 py-1 text-xs"
             />
-            <label className="text-brand-muted block text-[11px]">
-              Monto recibido (pesos, opcional)
-              <input
-                type="text"
-                inputMode="numeric"
-                name="remittedAmountPesos"
-                placeholder="0 si no llegó nada"
-                className="mt-0.5 w-full rounded border border-amber-300 px-2 py-1 text-xs"
-              />
-            </label>
-            <input
-              type="text"
-              name="note"
-              placeholder="Nota (opcional)"
-              className="w-full rounded border border-amber-300 px-2 py-1 text-xs"
-            />
-            <button
-              type="submit"
-              disabled={discPending}
-              className="w-full rounded bg-amber-600 px-2 py-1 text-[11px] font-bold text-white hover:bg-amber-700 disabled:opacity-60"
-            >
-              {discPending ? "Guardando…" : "Marcar discrepancia"}
-            </button>
-            <Notice state={discState} />
-          </form>
-        </details>
-      )}
+          </label>
+          <input
+            type="text"
+            name="note"
+            aria-label="Nota de la discrepancia"
+            placeholder="Nota (opcional)"
+            className="w-full rounded border border-amber-300 px-2 py-1 text-xs"
+          />
+          <button
+            type="submit"
+            disabled={discPending}
+            className="w-full rounded bg-amber-600 px-2 py-1 text-[11px] font-bold text-white hover:bg-amber-700 disabled:opacity-60"
+          >
+            {discPending ? "Guardando…" : "Marcar discrepancia"}
+          </button>
+          <Notice state={discState} />
+        </form>
+      </details>
     </div>
   );
 }

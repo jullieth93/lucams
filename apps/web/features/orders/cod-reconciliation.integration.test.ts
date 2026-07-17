@@ -29,8 +29,11 @@ const ADMIN = `${RUN}-admin`;
 async function makeOrder(opts: {
   suffix: string;
   paymentMethod: "COD" | "WOMPI";
-  status: "PENDING_PAYMENT" | "PAID" | "SHIPPED" | "DELIVERED";
+  status: "PENDING_PAYMENT" | "PAID" | "SHIPPED" | "DELIVERED" | "REFUNDED";
   total: number;
+  /** Fuerza deliveredAt (para probar entregado-luego-reembolsado). Default: now si status=DELIVERED. */
+  delivered?: boolean;
+  reconciliationReason?: string;
 }): Promise<string> {
   const o = await prisma.order.create({
     data: {
@@ -43,7 +46,9 @@ async function makeOrder(opts: {
       total: opts.total,
       paymentMethod: opts.paymentMethod,
       status: opts.status,
-      deliveredAt: opts.status === "DELIVERED" ? new Date() : null,
+      deliveredAt: (opts.delivered ?? opts.status === "DELIVERED") ? new Date() : null,
+      needsReconciliation: Boolean(opts.reconciliationReason),
+      reconciliationReason: opts.reconciliationReason ?? null,
     },
     select: { id: true },
   });
@@ -171,5 +176,74 @@ describe.skipIf(!hasDb)("cod-reconciliation (integración DB)", { timeout: T }, 
     expect(totals.pendingCop).toBeGreaterThanOrEqual(15_000_00);
     expect(totals.remittedCount).toBeGreaterThanOrEqual(1);
     expect(totals.discrepancyCount).toBeGreaterThanOrEqual(0);
+  });
+
+  it("#2 review: un COD entregado y luego REEMBOLSADO sigue vigilado (deuda del mensajero, no status)", async () => {
+    const orderId = await makeOrder({
+      suffix: "refunded",
+      paymentMethod: "COD",
+      status: "REFUNDED",
+      delivered: true, // se entregó (el mensajero cobró) y DESPUÉS se reembolsó al cliente
+      total: 70_000_00,
+    });
+    // Sigue apareciendo como PENDING_REMIT (el mensajero aún debe el efectivo).
+    const pending = await listCodReconciliation({ filter: "pending", pageSize: 200 });
+    expect(pending.items.find((r) => r.orderId === orderId)?.status).toBe("PENDING_REMIT");
+    // Y se puede registrar la remesa aunque el status ya no sea DELIVERED.
+    const res = await markCodRemitted(orderId, { adminId: ADMIN });
+    expect(res.remittedAmount).toBe(70_000_00);
+  });
+
+  it("#1 review: una discrepancia parcial expone recibido + faltante en pesos (no solo un conteo)", async () => {
+    const before = await getCodReconciliationTotals();
+    const orderId = await makeOrder({
+      suffix: "short",
+      paymentMethod: "COD",
+      status: "DELIVERED",
+      total: 100_000_00,
+    });
+    await flagCodDiscrepancy(orderId, {
+      adminId: ADMIN,
+      discrepancyReason: "llegó corto",
+      remittedAmount: 60_000_00,
+    });
+    const after = await getCodReconciliationTotals();
+    // Recibido sube 60k; faltante sube 40k (esperado 100k − recibido 60k).
+    expect(after.receivedCop - before.receivedCop).toBe(60_000_00);
+    expect(after.shortfallCop - before.shortfallCop).toBe(40_000_00);
+  });
+
+  it("#8 review: rechaza un monto absurdo (overflow INT4) con error de monto, no un crash de Postgres", async () => {
+    const orderId = await makeOrder({
+      suffix: "big",
+      paymentMethod: "COD",
+      status: "DELIVERED",
+      total: 50_000_00,
+    });
+    // 25.000.000 pesos * 100 = 2.5e9 cents > INT4 max.
+    await expect(
+      markCodRemitted(orderId, { adminId: ADMIN, remittedAmount: 2_500_000_000 }),
+    ).rejects.toMatchObject({ code: "INVALID_AMOUNT" });
+  });
+
+  it("#5/#6 review: flagCodDiscrepancy NO pisa un reconciliationReason de otro flujo", async () => {
+    const foreign = "Envío DEVUELTO (novedad) — revisar stock y reembolso";
+    const orderId = await makeOrder({
+      suffix: "foreign",
+      paymentMethod: "COD",
+      status: "DELIVERED",
+      total: 40_000_00,
+      reconciliationReason: foreign,
+    });
+    await flagCodDiscrepancy(orderId, { adminId: ADMIN, discrepancyReason: "faltó plata" });
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      select: { needsReconciliation: true, reconciliationReason: true },
+    });
+    // El motivo de envío se preserva (no lo pisa "COD: ..."); el detalle COD vive en la fila.
+    expect(order?.needsReconciliation).toBe(true);
+    expect(order?.reconciliationReason).toBe(foreign);
+    const recon = await prisma.codReconciliation.findUnique({ where: { orderId } });
+    expect(recon?.discrepancyReason).toContain("faltó plata");
   });
 });

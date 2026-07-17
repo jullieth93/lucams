@@ -2347,3 +2347,28 @@ DISCREPANCY}`; el tercer estado "PENDING_REMIT" es derivado. Dinero en centavos 
 **Razón.** Un negocio con COD dominante (mandato #5) no puede lanzar sin saber cuánto efectivo le
 deben los mensajeros ni detectar faltantes. El ledger convierte "entregado = plata mágica" en un
 registro contable auditable, sin acoplar la saga ni depender de datos que el courier no da hoy.
+
+**Review adversarial (mismo día, 26 agentes, 19 hallazgos confirmados → v2).** Un workflow de review
+por dimensiones + verificación escéptica destapó defectos reales de semántica financiera; los
+corregí todos salvo dos fuera de alcance. Cambios v2:
+
+- **[HIGH] Universo anclado a `deliveredAt`, no al `status` vivo.** Reembolsar (DELIVERED→REFUNDED)
+  una orden COD entregada YA no borra la deuda de efectivo del mensajero del ledger — el reembolso al
+  cliente es un flujo de dinero distinto. `markCodRemitted`/`flagCodDiscrepancy` operan por
+  `deliveredAt`, no por status.
+- **[HIGH] El efectivo de las discrepancias entra en pesos.** `getCodReconciliationTotals` ahora
+  expone `receivedCop` (remesas OK + parciales de discrepancia) y `shortfallCop` (faltante = esperado
+  − recibido). Antes una discrepancia salía de `pendingCop` y no entraba en ningún total → el faltante
+  era invisible. KPI/finanzas/email actualizados.
+- **[HIGH] "Ingresos totales" resta el faltante confirmado** (efectivo perdido ya no se cuenta como
+  caja real).
+- **[MED] Agregados scopeados al mismo universo** (KPI ↔ drill-down cuadran); **atomicidad** (upsert +
+  flag en `$transaction`); **cota superior INT4** de montos (mensaje claro, no crash de Postgres);
+  **`flagCodDiscrepancy` no pisa un `reconciliationReason` de otro flujo** (ej. "Envío DEVUELTO");
+  **REMITTED se puede reabrir como discrepancia** desde la UI (depósito que rebota).
+- **[LOW] snapshot `expectedAmount` en la lista, a11y (aria-labels), paginación clamp, avisos.**
+- **Diferidos (fuera de alcance del ledger):** MFA adaptativo (un SUPERADMIN sin TOTP enrolado usa
+  aal1 — es diseño global de `requireAdminAction`, no de este módulo; se cierra forzando enrolamiento
+  TOTP del SUPERADMIN); copy pre-existente de `/admin/finanzas` ("Mientras tanto" duplicado).
+- **+4 tests de integración** (reembolsado-sigue-vigilado, discrepancia-parcial-en-pesos, overflow,
+  motivo-ajeno-no-pisado). 10 integración + 2 unit, todo verde.

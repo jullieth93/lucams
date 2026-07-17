@@ -97,7 +97,9 @@ export default async function AdminFinanzasPage() {
   // ADR-064 — efectivo COD entregado pendiente de remesa del mensajero + discrepancias.
   const codRecon = await getCodReconciliationTotals();
 
-  const totalRevenue = wompiRevenue + codDeliveredRevenue;
+  // El COD entregado se reconoce como cobrado, PERO el faltante confirmado por discrepancias (efectivo
+  // que el mensajero no remitió / se perdió) NO es caja real → se resta de "Ingresos" (review ADR-064).
+  const totalRevenue = wompiRevenue + codDeliveredRevenue - codRecon.shortfallCop;
   const hasRealData = totalPaidOrders > 0;
 
   return (
@@ -172,14 +174,25 @@ export default async function AdminFinanzasPage() {
         {/* ADR-064 — conciliación del efectivo contra entrega ya cobrado por el mensajero */}
         {(codRecon.pendingCop > 0 || codRecon.discrepancyCount > 0) && (
           <AdminNotice tone={codRecon.discrepancyCount > 0 ? "warning" : "info"}>
-            🚚 <strong>{formatCOP(codRecon.pendingCop)}</strong> de pedidos entregados están{" "}
-            <strong>por remitir</strong> (el mensajero ya cobró y aún no te deposita).
+            🚚{" "}
+            {codRecon.pendingCop > 0 && (
+              <>
+                <strong>{formatCOP(codRecon.pendingCop)}</strong> de pedidos entregados están{" "}
+                <strong>por remitir</strong> (el mensajero ya cobró y aún no te deposita).{" "}
+              </>
+            )}
             {codRecon.discrepancyCount > 0 && (
               <>
-                {" "}
-                Hay <strong>{codRecon.discrepancyCount}</strong> con discrepancia.
+                Hay <strong>{codRecon.discrepancyCount}</strong> con discrepancia
+                {codRecon.shortfallCop > 0 ? (
+                  <>
+                    {" "}
+                    (<strong>{formatCOP(codRecon.shortfallCop)}</strong> que no llegó)
+                  </>
+                ) : null}
+                .{" "}
               </>
-            )}{" "}
+            )}
             <Link href="/admin/finanzas/conciliacion" className="font-semibold underline">
               Conciliar contra entrega
             </Link>

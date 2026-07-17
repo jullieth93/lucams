@@ -14,6 +14,7 @@ import { prisma } from "@/lib/db";
 import { sendEmail } from "@/lib/resend";
 import { getSettingValue } from "@/lib/cms";
 import { logger } from "@/lib/logger";
+import { getCodReconciliationTotals } from "@/features/orders/cod-reconciliation";
 
 // Estados en los que el dinero YA entró (para contar ingresos).
 const PAID_STATES = ["PAID", "FULFILLING", "SHIPPED", "DELIVERED"] as const;
@@ -28,9 +29,10 @@ export type DailySummary = {
   revenueLast24hCop: number;
   codToCollectCop: number; // COD confirmado en 24h, pendiente de cobrar al entregar
   // ADR-064 — COD ENTREGADO cuyo efectivo el mensajero ya cobró pero aún no remitió a la tienda
-  // (saldo pendiente, todo el histórico, no solo 24h) + discrepancias abiertas de caja.
+  // (saldo pendiente, todo el histórico) + discrepancias abiertas + faltante confirmado en pesos.
   codPendingRemitCop: number;
   codDiscrepancies: number;
+  codShortfallCop: number;
   paidOrdersLast24h: number;
   pendingPayment: number; // checkouts en pago sin completar
   toShip: number; // pagadas sin despachar (PAID + FULFILLING)
@@ -63,8 +65,7 @@ export async function getDailySummary(now: Date = new Date()): Promise<DailySumm
     errors24h,
     topErrorRaw,
     needsReconciliation,
-    codPendingRemitAgg,
-    codDiscrepancies,
+    codRecon,
   ] = await Promise.all([
     prisma.order.count({
       where: { createdAt: { gte: from }, deletedAt: null, status: { not: "DRAFT" } },
@@ -124,17 +125,8 @@ export async function getDailySummary(now: Date = new Date()): Promise<DailySumm
       take: 1,
     }),
     prisma.order.count({ where: { needsReconciliation: true, deletedAt: null } }),
-    // ADR-064 — COD entregado sin fila de conciliación REMITTED → efectivo que el mensajero debe.
-    prisma.order.aggregate({
-      _sum: { total: true },
-      where: {
-        deletedAt: null,
-        paymentMethod: "COD",
-        status: "DELIVERED",
-        codReconciliation: { is: null },
-      },
-    }),
-    prisma.codReconciliation.count({ where: { status: "DISCREPANCY" } }),
+    // ADR-064 — fuente ÚNICA de los KPIs de conciliación COD (evita divergencia con /admin/finanzas).
+    getCodReconciliationTotals(),
   ]);
 
   return {
@@ -142,8 +134,9 @@ export async function getDailySummary(now: Date = new Date()): Promise<DailySumm
     ordersLast24h,
     revenueLast24hCop: (wompiRevenueAgg._sum.total ?? 0) + (codDeliveredAgg._sum.total ?? 0),
     codToCollectCop: codToCollectAgg._sum.total ?? 0,
-    codPendingRemitCop: codPendingRemitAgg._sum.total ?? 0,
-    codDiscrepancies,
+    codPendingRemitCop: codRecon.pendingCop,
+    codDiscrepancies: codRecon.discrepancyCount,
+    codShortfallCop: codRecon.shortfallCop,
     paidOrdersLast24h,
     pendingPayment,
     toShip,
@@ -181,7 +174,7 @@ export function buildDailySummaryEmail(
     );
   if (s.codDiscrepancies > 0)
     attention.push(
-      `💸 <strong>${s.codDiscrepancies}</strong> discrepancia(s) de efectivo contra entrega — /admin/finanzas/conciliacion`,
+      `💸 <strong>${s.codDiscrepancies}</strong> discrepancia(s) de efectivo contra entrega${s.codShortfallCop > 0 ? ` (${fmtCop(s.codShortfallCop)} que no llegó)` : ""} — /admin/finanzas/conciliacion`,
     );
   if (s.codPendingRemitCop > 0)
     attention.push(

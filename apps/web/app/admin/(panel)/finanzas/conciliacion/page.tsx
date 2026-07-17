@@ -117,13 +117,14 @@ export default async function ConciliacionCodPage({
           </AdminCard>
           <AdminCard className="p-4">
             <div className="text-brand-muted mb-1 text-xs font-semibold tracking-wide uppercase">
-              Remitido
+              Recibido
             </div>
             <div className="text-brand-purple-dark font-display text-2xl font-bold tabular-nums">
-              {formatCOP(totals.remittedCop)}
+              {formatCOP(totals.receivedCop)}
             </div>
             <p className="text-brand-muted mt-1 text-xs">
-              {totals.remittedCount} pedido{totals.remittedCount === 1 ? "" : "s"} ya en tu cuenta
+              {totals.remittedCount} remesa{totals.remittedCount === 1 ? "" : "s"} ya en tu cuenta
+              {totals.shortfallCop > 0 ? " (incluye parciales de discrepancias)" : ""}
             </p>
           </AdminCard>
           <AdminCard className="p-4">
@@ -135,9 +136,13 @@ export default async function ConciliacionCodPage({
                 totals.discrepancyCount > 0 ? "text-rose-700" : "text-brand-purple-dark/85"
               }`}
             >
-              {totals.discrepancyCount}
+              {totals.discrepancyCount > 0 ? formatCOP(totals.shortfallCop) : "0"}
             </div>
-            <p className="text-brand-muted mt-1 text-xs">Pedidos con efectivo que no cuadra</p>
+            <p className="text-brand-muted mt-1 text-xs">
+              {totals.discrepancyCount > 0
+                ? `${totals.discrepancyCount} pedido${totals.discrepancyCount === 1 ? "" : "s"} · faltante que no llegó`
+                : "Sin efectivo que no cuadre"}
+            </p>
           </AdminCard>
         </div>
 
@@ -280,11 +285,12 @@ export default async function ConciliacionCodPage({
         {totalPages > 1 && (
           <div className="text-brand-purple-dark/70 flex items-center justify-between text-sm">
             <span>
-              {total} pedido{total === 1 ? "" : "s"} · página {page} de {totalPages}
+              {total} pedido{total === 1 ? "" : "s"} · página {Math.min(page, totalPages)} de{" "}
+              {totalPages}
             </span>
             <div className="flex gap-1">
               {page > 1 && (
-                <PageLink filter={filter} page={page - 1}>
+                <PageLink filter={filter} page={Math.min(page, totalPages + 1) - 1}>
                   ← Anterior
                 </PageLink>
               )}

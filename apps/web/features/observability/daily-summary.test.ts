@@ -14,6 +14,7 @@ const base: DailySummary = {
   codToCollectCop: 0,
   codPendingRemitCop: 0,
   codDiscrepancies: 0,
+  codShortfallCop: 0,
   paidOrdersLast24h: 0,
   pendingPayment: 0,
   toShip: 0,
@@ -101,13 +102,14 @@ describe("buildDailySummaryEmail", () => {
     expect(html).not.toContain("por cobrar");
   });
 
-  it("ADR-064 — avisa del COD por remitir y las discrepancias de caja", () => {
+  it("ADR-064 — avisa del COD por remitir y las discrepancias de caja (con faltante en pesos)", () => {
     const { html } = buildDailySummaryEmail(
-      { ...base, codPendingRemitCop: 12000000, codDiscrepancies: 2 },
+      { ...base, codPendingRemitCop: 12000000, codDiscrepancies: 2, codShortfallCop: 4000000 },
       NOW,
     );
     expect(html).toContain("$120.000</strong> de contra entrega por remitir");
     expect(html).toContain("2</strong> discrepancia(s) de efectivo");
+    expect(html).toContain("$40.000 que no llegó"); // faltante confirmado
     expect(html).toContain("/admin/finanzas/conciliacion");
   });
 
