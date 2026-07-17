@@ -152,6 +152,10 @@ async function renderSlot(
 
   // heart/circle → la foto cubre TODO el stage (igual que el editor, useFullStage).
   const useFullStage = shape === "heart" || shape === "circle";
+  // FOTO1 (ADR-063): heart/circle necesitan CLIP a la silueta (transparente FUERA de la forma →
+  // la imprenta troquela por el borde que el cliente vio en el editor). sharp no hace clip de path
+  // arbitrario → delegamos al renderer de canvas (renderSlotCanvas), que sí clipa a la silueta.
+  if (useFullStage) throw new RenderNeedsKonvaError("heart/circle → clip de silueta (canvas)");
   const ph = useFullStage
     ? { x: 0, y: 0, width: unit.stage.width, height: unit.stage.height }
     : {

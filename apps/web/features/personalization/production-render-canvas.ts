@@ -98,6 +98,30 @@ async function decodeImage(
   return (await mod.loadImage(bytes)) as InstanceType<CanvasMod["Image"]>;
 }
 
+/**
+ * FOTO1 (ADR-063) — traza la SILUETA de la forma (heart/círculo) en coords del stage, para clipear
+ * la foto de producción de modo que quede transparente FUERA de la forma (la imprenta troquela por
+ * el borde visible = lo que el cliente encuadró). El path del corazón es el mismo que el editor
+ * (studio-slot.tsx, normalizado 0..1) escalado al stage.
+ */
+function shapeSilhouettePath(ctx: SKRSContext2D, shape: string, w: number, h: number) {
+  ctx.beginPath();
+  if (shape === "circle") {
+    ctx.ellipse(w / 2, h / 2, w / 2, h / 2, 0, 0, Math.PI * 2);
+  } else {
+    const x = (v: number) => v * w;
+    const y = (v: number) => v * h;
+    ctx.moveTo(x(0.5), y(0.82));
+    ctx.bezierCurveTo(x(0.28), y(0.68), x(0.06), y(0.52), x(0.06), y(0.32));
+    ctx.bezierCurveTo(x(0.06), y(0.18), x(0.16), y(0.08), x(0.28), y(0.08));
+    ctx.bezierCurveTo(x(0.38), y(0.08), x(0.44), y(0.12), x(0.5), y(0.22));
+    ctx.bezierCurveTo(x(0.56), y(0.12), x(0.62), y(0.08), x(0.72), y(0.08));
+    ctx.bezierCurveTo(x(0.84), y(0.08), x(0.94), y(0.18), x(0.94), y(0.32));
+    ctx.bezierCurveTo(x(0.94), y(0.52), x(0.72), y(0.68), x(0.5), y(0.82));
+  }
+  ctx.closePath();
+}
+
 /** Carga un asset de marco desde /public (asset layer src = "/templates/..."). Con contención
  *  de path: el resultado DEBE quedar dentro de /public (anti path-traversal). */
 function loadPublicAsset(src: string): Buffer | null {
@@ -172,6 +196,8 @@ async function renderSlotCanvas(
 
   for (const layer of unit.layers) {
     if (layer.type === "background") {
+      // FOTO1: heart/circle NO pintan fondo → queda transparente FUERA de la silueta (troquel).
+      if (useFullStage) continue;
       ctx.fillStyle = typeof layer.color === "string" ? layer.color : "#FFFFFF";
       ctx.fillRect(0, 0, unit.stage.width, unit.stage.height);
     } else if (layer.type === "image-placeholder") {
@@ -208,10 +234,14 @@ async function renderSlotCanvas(
       const offY = slot.photoTransform?.offsetY ?? 0;
 
       ctx.save();
-      // Clip al rect del placeholder (o rounded-rect). Para heart/circle el troquel lo hace la
-      // imprenta → clip al rect completo (limpio).
-      if (ph.cornerRadius > 0) roundRectPath(ctx, ph.x, ph.y, ph.width, ph.height, ph.cornerRadius);
-      else {
+      // FOTO1 (ADR-063): heart/circle → clip a la SILUETA (elipse/corazón), transparente fuera →
+      // la imprenta troquela por ese borde (idéntico a lo que el cliente encuadró en el editor).
+      // Resto de formas → clip al rect del placeholder (o rounded-rect).
+      if (useFullStage) {
+        shapeSilhouettePath(ctx, shape, unit.stage.width, unit.stage.height);
+      } else if (ph.cornerRadius > 0) {
+        roundRectPath(ctx, ph.x, ph.y, ph.width, ph.height, ph.cornerRadius);
+      } else {
         ctx.beginPath();
         ctx.rect(ph.x, ph.y, ph.width, ph.height);
       }
