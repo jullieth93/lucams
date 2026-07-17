@@ -26,9 +26,7 @@ describe("getTrustedSelfBaseUrl", () => {
     clear();
     process.env.VERCEL_URL = "lucams-shop-abc-jullieth93s-projects.vercel.app";
     process.env.NEXT_PUBLIC_SITE_URL = "https://lucamsshop.co";
-    expect(getTrustedSelfBaseUrl()).toBe(
-      "https://lucams-shop-abc-jullieth93s-projects.vercel.app",
-    );
+    expect(getTrustedSelfBaseUrl()).toBe("https://lucams-shop-abc-jullieth93s-projects.vercel.app");
   });
 
   it("respeta VERCEL_URL que ya trae protocolo", () => {

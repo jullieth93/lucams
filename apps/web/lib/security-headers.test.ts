@@ -67,9 +67,7 @@ describe("isOriginAllowed — CORS allowlist", () => {
     expect(isOriginAllowed("https://lucams-shop-abc123.vercel.app", false)).toBe(false);
     expect(isOriginAllowed("https://lucams-shop-evil.vercel.app", false)).toBe(false);
     // Scope de OTRO equipo tampoco.
-    expect(
-      isOriginAllowed("https://lucams-shop-abc-otra-empresa.vercel.app", false),
-    ).toBe(false);
+    expect(isOriginAllowed("https://lucams-shop-abc-otra-empresa.vercel.app", false)).toBe(false);
   });
 
   it("RECHAZA orígenes ajenos (incl. dominios que solo contienen el nombre)", () => {
