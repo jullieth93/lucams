@@ -69,6 +69,16 @@ const CalendarView3D = nextDynamic(() => import("./calendar-view-3d"), {
     </div>
   ),
 });
+// SEP1 — preview inmersivo de separadores en un libro (los separadores no son imanes → su hogar es
+// un libro, no la nevera). Client-only, diferido.
+const BookView3D = nextDynamic(() => import("./book-view-3d"), {
+  ssr: false,
+  loading: () => (
+    <div className="text-brand-muted flex h-full items-center justify-center text-sm">
+      Cargando tu libro 3D…
+    </div>
+  ),
+});
 import { createStudioStore } from "./lib/store";
 import type { CanvasData, CanvasDataV2, StudioAsset, StudioProduct, StudioTemplate } from "./types";
 import { ensureCanvasV2 } from "./lib/canvas-migrate";
@@ -196,6 +206,8 @@ export function StudioEditor({
   const [calendarPages, setCalendarPages] = useState<string[] | null>(null);
   const [calendarMonthIndex, setCalendarMonthIndex] = useState(0);
   const [calendarBuilding, setCalendarBuilding] = useState(false);
+  // SEP1 — preview inmersivo de separadores en un libro. null = cerrado; array = texturas de marcador.
+  const [book3D, setBook3D] = useState<Magnet3D[] | null>(null);
   // P1.5 — Asistente IA de ideas (ADR-058).
   const [aiOpen, setAiOpen] = useState(false);
   const allowText = (product.personalizationSchema as { allowText?: boolean })?.allowText === true;
@@ -212,6 +224,9 @@ export function StudioEditor({
   // del producto, y podía venir vacío). Default = año del producto → próximo año. Se ofrece un
   // rango seguro (nunca un año pasado) y se persiste por-diseño en el finalize.
   const isCalendarMonth = product.personalizationKind === "CALENDAR_PHOTO_MONTH";
+  // SEP1 — separadores (galleryTag "separadores"): su vista inmersiva es un LIBRO, no la nevera.
+  const isBookmark =
+    (product.personalizationSchema as { galleryTag?: string } | null)?.galleryTag === "separadores";
   const defaultCalendarYear = calendarYear ?? new Date().getFullYear() + 1;
   const [selectedYear, setSelectedYear] = useState(defaultCalendarYear);
   const yearOptions = useMemo(() => {
@@ -409,14 +424,19 @@ export function StudioEditor({
     const state = store.getState();
     if (!state.canvasData) return;
     try {
-      await ensureAllStagesMounted(); // T5: la nevera 3D necesita la textura de TODOS los imanes
+      await ensureAllStagesMounted(); // T5: la vista 3D necesita la textura de TODOS los slots
       const textures = await buildMagnetTextures(
         state.canvasData,
         slotStagesRef.current,
         productConfig.shape,
       );
-      setFridge3DCols(state.canvasData.gridLayout.cols);
-      setFridge3D(textures);
+      if (isBookmark) {
+        // SEP1 — separadores → libro (no nevera; no son imanes).
+        setBook3D(textures);
+      } else {
+        setFridge3DCols(state.canvasData.gridLayout.cols);
+        setFridge3D(textures);
+      }
     } catch (err) {
       state.setAutoSaveStatus({
         kind: "error",
@@ -424,7 +444,7 @@ export function StudioEditor({
       });
       void err;
     }
-  }, [store, productConfig.shape, ensureAllStagesMounted]);
+  }, [store, productConfig.shape, ensureAllStagesMounted, isBookmark]);
 
   // CAL4 — Abrir el calendario 3D: compone cada página de mes (foto + mes + año + grilla) con el
   // MISMO dibujo que producción (WYSIWYG) y las muestra en un calendario de pared navegable. Usa la
@@ -459,16 +479,17 @@ export function StudioEditor({
 
   // Cerrar las vistas 3D con Escape (a11y).
   useEffect(() => {
-    if (fridge3D === null && calendarPages === null) return;
+    if (fridge3D === null && calendarPages === null && book3D === null) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         setFridge3D(null);
         setCalendarPages(null);
+        setBook3D(null);
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [fridge3D, calendarPages]);
+  }, [fridge3D, calendarPages, book3D]);
 
   // ──────────── Step 2: Confirmar → upload + add to cart + redirect ────────────
   //
@@ -766,11 +787,13 @@ export function StudioEditor({
           <button
             type="button"
             onClick={handleOpen3D}
-            aria-label="Ver tus imanes en una nevera 3D"
+            aria-label={
+              isBookmark ? "Ver tu separador en un libro 3D" : "Ver tus imanes en una nevera 3D"
+            }
             className="bg-brand-purple ring-brand-purple/25 inline-flex h-12 items-center gap-2 rounded-full px-4 text-sm font-bold text-white shadow-xl ring-4 transition-transform hover:scale-105 active:scale-95"
           >
             <Box className="h-5 w-5" />
-            <span>Ver en 3D</span>
+            <span>{isBookmark ? "Ver en un libro" : "Ver en 3D"}</span>
           </button>
         )}
       </div>
@@ -806,6 +829,35 @@ export function StudioEditor({
           </div>
           <div className="relative flex-1">
             <FridgeView3D magnets={fridge3D} cols={fridge3DCols} />
+            <p className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-black/40 px-3 py-1.5 text-center text-xs text-white">
+              Arrastra para girar · rueda o pellizca para acercar
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* SEP1 — Modal del separador en un libro 3D (lazy, client-only). */}
+      {book3D !== null && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Vista 3D de tu separador en un libro"
+          className="bg-brand-purple-dark/85 fixed inset-0 z-50 flex flex-col backdrop-blur-sm"
+        >
+          <div className="flex items-center justify-between px-4 py-3 text-white sm:px-6">
+            <span className="font-display text-lg font-bold">📖 Tu separador en un libro</span>
+            <button
+              type="button"
+              onClick={() => setBook3D(null)}
+              aria-label="Cerrar vista 3D"
+              autoFocus
+              className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/15 text-white transition-colors hover:bg-white/25 focus:ring-2 focus:ring-white focus:outline-none"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+          <div className="relative flex-1">
+            <BookView3D bookmarks={book3D} />
             <p className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-black/40 px-3 py-1.5 text-center text-xs text-white">
               Arrastra para girar · rueda o pellizca para acercar
             </p>
