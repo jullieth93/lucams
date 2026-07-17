@@ -86,7 +86,7 @@ export default async function ConciliacionCodPage({
       <AdminPageHeader
         icon={<Wallet className="h-5 w-5" />}
         title="Conciliación contra entrega"
-        subtitle="Efectivo de los pedidos COD entregados: qué remesó el mensajero y qué falta"
+        subtitle="Efectivo de los pedidos contra entrega ya entregados: qué remesó el mensajero y qué falta"
         breadcrumbs={[
           { label: "Admin", href: "/admin/dashboard" },
           { label: "Finanzas", href: "/admin/finanzas" },
