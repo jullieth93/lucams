@@ -14,7 +14,6 @@
  */
 
 import type {
-  PickupResult,
   ShipmentItem,
   ShippingAddress,
   ShippingProvider,
@@ -51,13 +50,6 @@ export class VenndeloProvider implements ShippingProvider {
   }
 
   async getTracking(_trackingNumber: string): Promise<TrackingStatus> {
-    throw new Error(NOT_IMPLEMENTED);
-  }
-
-  async requestPickup(_params: {
-    trackingNumbers: string[];
-    comments?: string;
-  }): Promise<PickupResult> {
     throw new Error(NOT_IMPLEMENTED);
   }
 

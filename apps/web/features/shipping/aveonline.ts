@@ -20,7 +20,6 @@ import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { logger } from "@/lib/logger";
 import { withRetry } from "@/lib/retry";
 import type {
-  PickupResult,
   ShipmentItem,
   ShippingAddress,
   ShippingProvider,
@@ -987,14 +986,6 @@ export class AveonlineProvider implements ShippingProvider {
         };
       }),
     };
-  }
-
-  async requestPickup(_params: {
-    trackingNumbers: string[];
-    comments?: string;
-  }): Promise<PickupResult> {
-    // STUB. RESTRICCIÓN documentada: recogidas hasta 11:00 AM del día.
-    throw new Error("AveonlineProvider.requestPickup no implementado (stub).");
   }
 
   async handleWebhook(rawBody: string, _headers: Record<string, string>): Promise<WebhookEvent> {

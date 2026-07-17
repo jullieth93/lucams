@@ -38,19 +38,19 @@ const FALLBACK_FAQS: { slug: string; question: string; answer: string }[] = [
     slug: "como-personalizo",
     question: "¿Cómo personalizo un imán?",
     answer:
-      "Elige el producto, haz click en **Personalizar** y te abre WhatsApp para mandarnos fotos y referencias. Pronto vas a poder diseñarlo en vivo desde el sitio.",
+      "Elige el producto, haz clic en **Personalizar** y lo diseñas en vivo en nuestro Estudio: subes tus fotos, agregas texto y plantillas, y lo ves con vista previa 3D. Al terminar, lo agregas al carrito.",
   },
   {
     slug: "cuanto-demora",
     question: "¿Cuánto demora mi pedido?",
     answer:
-      "Fabricación: **2-4 días hábiles**. Envío: **2-5 días hábiles** dentro de Colombia según destino. Total: 4-9 días hábiles desde que confirmás.",
+      "Fabricación: **2-4 días hábiles**. Envío: **2-5 días hábiles** dentro de Colombia según destino. Total: 4-9 días hábiles desde que confirmas.",
   },
   {
     slug: "metodos-pago",
     question: "¿Qué métodos de pago aceptan?",
     answer:
-      "Tarjetas de crédito y débito, PSE (cuentas bancarias), Nequi, Bancolombia transferencia y Daviplata. Todos los pagos los procesa Wompi de forma segura (pasarela certificada). _Próximamente pago contraentrega._",
+      "Tarjetas de crédito y débito, PSE (cuentas bancarias), Nequi, Bancolombia transferencia y Daviplata. Todos los pagos los procesa Wompi de forma segura (pasarela certificada). También aceptamos **pago contraentrega**: pagas en efectivo al recibir tu pedido.",
   },
   {
     slug: "envios-cobertura",

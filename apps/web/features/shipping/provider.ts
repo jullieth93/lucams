@@ -70,12 +70,6 @@ export type WebhookEvent = {
   timestamp: Date;
 };
 
-export type PickupResult = {
-  pickupId: string;
-  scheduledFor: Date;
-  carrier: string;
-};
-
 export interface ShippingProvider {
   /** Cotiza envío. En Aveonline retorna lista multi-carrier; en Venndelo solo Coordinadora. */
   quote(params: {
@@ -100,8 +94,9 @@ export interface ShippingProvider {
   /** Consulta estado actual de una guía. */
   getTracking(trackingNumber: string): Promise<TrackingStatus>;
 
-  /** Solicita recogida en pickup address. */
-  requestPickup(params: { trackingNumbers: string[]; comments?: string }): Promise<PickupResult>;
+  // Nota: la solicitud de recogida (pickup) es MANUAL por ahora (se coordina en el panel de
+  // Aveonline). No forma parte del contrato hasta que exista una necesidad real con credenciales
+  // del endpoint de recogidas (auditoría 2026-07-17: se retiró el stub que solo lanzaba).
 
   /** Procesa webhook entrante (verificación firma + parse). */
   handleWebhook(rawBody: string, headers: Record<string, string>): Promise<WebhookEvent>;
