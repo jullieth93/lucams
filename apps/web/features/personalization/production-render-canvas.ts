@@ -88,10 +88,14 @@ function roundRectPath(ctx: SKRSContext2D, x: number, y: number, w: number, h: n
   ctx.closePath();
 }
 
-function decodeImage(mod: CanvasMod, bytes: Buffer): InstanceType<CanvasMod["Image"]> {
-  const img = new mod.Image();
-  img.src = bytes;
-  return img;
+// loadImage (async) decodifica los PÍXELES antes de devolver — necesario para drawImage. `new
+// Image(); img.src=buffer` daba dimensiones sync pero decodifica píxeles async → drawImage dibujaría
+// vacío (bug real: fotos en blanco en el render server-side, ej. Polaroid). ADR-063 FOTO2.
+async function decodeImage(
+  mod: CanvasMod,
+  bytes: Buffer,
+): Promise<InstanceType<CanvasMod["Image"]>> {
+  return (await mod.loadImage(bytes)) as InstanceType<CanvasMod["Image"]>;
 }
 
 /** Carga un asset de marco desde /public (asset layer src = "/templates/..."). Con contención
@@ -175,7 +179,12 @@ async function renderSlotCanvas(
       const bytes = await loadAsset(slot.assetId);
       if (!bytes)
         throw new RenderNeedsKonvaError(`no se pudo cargar la foto del slot ${slot.slotIndex}`);
-      const img = decodeImage(mod, bytes);
+      let img: InstanceType<CanvasMod["Image"]>;
+      try {
+        img = await decodeImage(mod, bytes);
+      } catch {
+        throw new RenderNeedsKonvaError(`foto ilegible slot ${slot.slotIndex}`);
+      }
       const imgW = img.width;
       const imgH = img.height;
       if (!imgW || !imgH) throw new RenderNeedsKonvaError(`foto inválida slot ${slot.slotIndex}`);
@@ -217,7 +226,12 @@ async function renderSlotCanvas(
       const src = typeof layer.src === "string" ? layer.src : "";
       const bytes = loadPublicAsset(src);
       if (!bytes) throw new RenderNeedsKonvaError(`marco no encontrado: ${src}`);
-      const frame = decodeImage(mod, bytes);
+      let frame: InstanceType<CanvasMod["Image"]>;
+      try {
+        frame = await decodeImage(mod, bytes);
+      } catch {
+        throw new RenderNeedsKonvaError(`marco ilegible: ${src}`);
+      }
       if (!frame.width || !frame.height) throw new RenderNeedsKonvaError(`marco inválido: ${src}`);
       ctx.save();
       ctx.globalAlpha = Number(layer.opacity ?? 1);

@@ -201,20 +201,36 @@ export function StudioEditor({
           // server-side con V2, asumimos shape correcto.
           // Para evitar un round-trip extra, reconstruimos el shape esperado:
           const firstTemplate = templates[0];
-          if (!firstTemplate) {
-            throw new Error("No hay plantillas disponibles para este producto");
-          }
-          templateId = firstTemplate.id;
+          // ADR-063 T4 — sin plantillas curadas, degradar a un template por defecto (mismo que el
+          // server arma en createDraftDesign) en vez de crashear el editor. Boot funcional para
+          // cualquier producto; la foto tiene un placeholder full-stage donde ubicarse.
+          const unitTemplate = firstTemplate?.canvasData ?? {
+            version: 1 as const,
+            stage: { width: 1080, height: 1080, dpiPreview: 90, dpiProduction: 300 },
+            layers: [
+              { id: "background", type: "background", color: "#FFF8F0" },
+              {
+                id: "photo",
+                type: "image-placeholder",
+                x: 0,
+                y: 0,
+                width: 1080,
+                height: 1080,
+                cornerRadius: 0,
+              },
+            ],
+          };
+          templateId = firstTemplate?.id ?? null;
           canvasData = {
             version: 2,
-            unitTemplate: firstTemplate.canvasData,
+            unitTemplate,
             slotCount: photoSlots,
             slots: Array.from({ length: photoSlots }, (_, idx) => ({
               slotIndex: idx,
               assetId: null,
               assetUrl: null,
             })),
-            gridLayout: defaultGridFor(photoSlots, firstTemplate.canvasData.stage),
+            gridLayout: defaultGridFor(photoSlots, unitTemplate.stage),
           };
         }
 

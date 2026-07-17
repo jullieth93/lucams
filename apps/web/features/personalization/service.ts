@@ -388,11 +388,24 @@ export async function createDraftDesign(opts: {
       unitTemplate = tpl.canvasData as unknown as CanvasDataV1;
       templateIdToUse = tpl.id;
     } else {
-      // Fallback: stage 1080×1080 vacío
+      // Fallback (ADR-063 T4): stage 1080×1080 con placeholder de foto full-stage. Antes solo
+      // traía `background` (sin image-placeholder) → la foto no tenía dónde ubicarse. Con el
+      // placeholder el editor bootea funcional aunque el producto no tenga plantillas curadas.
       unitTemplate = {
         version: 1,
         stage: { width: 1080, height: 1080, dpiPreview: 90, dpiProduction: 300 },
-        layers: [{ id: "background", type: "background", color: "#FFFFFF" }],
+        layers: [
+          { id: "background", type: "background", color: "#FFF8F0" },
+          {
+            id: "photo",
+            type: "image-placeholder",
+            x: 0,
+            y: 0,
+            width: 1080,
+            height: 1080,
+            cornerRadius: 0,
+          },
+        ],
       };
     }
   }
