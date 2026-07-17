@@ -247,6 +247,84 @@ jobs:
           path: apps/web/playwright-report/
           retention-days: 7
 
+  lighthouse:
+    name: Lighthouse (perf/a11y/SEO) — ADR-066
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Gate de calidad del STOREFRONT público (home + catálogo): accesibilidad y SEO como error
+    # (deterministas), performance y best-practices como warn (el score de perf en CI es variable).
+    # Corre contra el BUILD de producción (next start) + Postgres con catálogo seedeado, igual que E2E.
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: lucams_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/lucams_test
+      DIRECT_URL: postgresql://postgres:postgres@localhost:5432/lucams_test
+      WOMPI_ENV: sandbox
+      WOMPI_PUBLIC_KEY: pub_test_ci
+      WOMPI_PRIVATE_KEY: prv_test_ci
+      WOMPI_INTEGRITY_SECRET: test_integrity_ci
+      WOMPI_EVENTS_SECRET: test_events_ci
+      PORT: "4000"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Generate Prisma client
+        run: pnpm --filter @lucams/db db:generate
+
+      - name: Compat de Supabase (roles + extensiones + stubs auth/storage)
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f .github/ci/supabase-compat.sql
+
+      - name: Aplicar migraciones Prisma (schema desde cero)
+        run: pnpm --filter @lucams/db exec prisma migrate deploy
+
+      - name: Aplicar migraciones SQL de Supabase (RLS, funciones)
+        run: |
+          for f in $(ls supabase/migrations/*.sql | sort); do
+            psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f "$f"
+          done
+
+      - name: Seed del catálogo (para /productos)
+        run: pnpm --filter @lucams/db exec node scripts/seed-catalog-v2.mjs
+
+      - name: Build de producción
+        run: pnpm --filter web build
+
+      - name: Lighthouse CI (autorun — levanta next start :4000)
+        run: pnpm lhci
+
+      - name: Subir reportes Lighthouse (si falla)
+        if: ${{ failure() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: lighthouse-report
+          path: .lighthouseci/
+          retention-days: 7
+
   secrets-scan:
     name: Gitleaks secret scan
     runs-on: ubuntu-latest
