@@ -28,6 +28,13 @@ import { selectUnitImagePlaceholder, type StudioStoreState } from "./lib/store";
 
 const MAX_VIEWPORT_WIDTH = 720; // px lógicos máximo del grid en desktop
 
+// ADR-063 T5 — lazy-mount de stages Konva. Cada StudioSlot monta un Konva Stage (varios <canvas>
+// + capas de realismo). Con muchos slots (calendario = 12) eso es pesado en móvil. Por encima de
+// este umbral, montamos solo los slots cercanos al viewport (IntersectionObserver); el resto muestra
+// un placeholder liviano hasta que se acerca. Nunca se desmonta un slot ya montado (no perder el
+// stage registrado para el snapshot). Packs chicos (≤ umbral, incluye heart/circle) siguen eager.
+const LAZY_MOUNT_THRESHOLD = 6;
+
 // M.3.b.UX.7 — Responsive progresivo. 4 breakpoints en vez de 1.
 // Min slot displaySize 120px (slot chico pero acciones tappeables ≥44px).
 const BP_NARROW = 380; // <380px → 1 columna (slot fullwidth)
@@ -55,6 +62,8 @@ type StudioCanvasGridProps = {
   /** M.3.b.D — abrir editor de texto inline al click sobre text layer editable. */
   onTextEdit?: (slotIndex: number, textLayerId: string) => void;
   registerSlotStages: (stages: Map<number, Konva.Stage | null>) => void;
+  /** ADR-063 T5 — forzar el montaje de TODOS los slots (antes de snapshot/preview/3D). */
+  forceMountAll?: boolean;
 };
 
 export function StudioCanvasGrid({
@@ -69,10 +78,14 @@ export function StudioCanvasGrid({
   onSlotAdjust,
   onTextEdit,
   registerSlotStages,
+  forceMountAll = false,
 }: StudioCanvasGridProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [containerWidth, setContainerWidth] = useState(MAX_VIEWPORT_WIDTH);
   const stagesRef = useRef<Map<number, Konva.Stage | null>>(new Map());
+  // ADR-063 T5 — slots ya montados (una vez montados, permanecen; el store es la fuente de verdad,
+  // así que re-montar desde slotState no pierde nada).
+  const [mountedSlots, setMountedSlots] = useState<Set<number>>(() => new Set());
 
   // Selectores zustand: solo re-render al cambiar slices específicos.
   const canvasData = useStore(store, (s) => s.canvasData);
@@ -133,6 +146,42 @@ export function StudioCanvasGrid({
       return () => window.clearTimeout(t);
     }
   }, [canvasData?.unitTemplate]);
+
+  // ADR-063 T5 — ¿virtualizar? Solo con muchos slots. Con pocos (o sin soporte de IO) → eager.
+  const lazy =
+    (canvasData?.slotCount ?? 0) > LAZY_MOUNT_THRESHOLD &&
+    typeof IntersectionObserver !== "undefined";
+
+  // IntersectionObserver: monta los slots que se acercan al viewport (prefetch 400px). Una vez
+  // vistos, quedan en `mountedSlots` para siempre (no se re-observan ni se desmontan).
+  useEffect(() => {
+    if (!lazy || forceMountAll) return;
+    const root = containerRef.current;
+    if (!root) return;
+    const obs = new IntersectionObserver(
+      (entries) => {
+        const seen: number[] = [];
+        for (const e of entries) {
+          if (e.isIntersecting) {
+            seen.push(Number((e.target as HTMLElement).dataset.slotObserve));
+            obs.unobserve(e.target);
+          }
+        }
+        if (seen.length) {
+          setMountedSlots((prev) => {
+            const next = new Set(prev);
+            seen.forEach((i) => next.add(i));
+            return next;
+          });
+        }
+      },
+      { rootMargin: "400px 0px" },
+    );
+    root.querySelectorAll<HTMLElement>("[data-slot-observe]").forEach((el) => {
+      if (!mountedSlots.has(Number(el.dataset.slotObserve))) obs.observe(el);
+    });
+    return () => obs.disconnect();
+  }, [lazy, forceMountAll, mountedSlots]);
 
   if (!canvasData || !layout) {
     return (
@@ -199,51 +248,73 @@ export function StudioCanvasGrid({
         transition={{ duration: 0.3, ease: "easeOut" }}
       >
         <AnimatePresence>
-          {canvasData.slots.map((slot) => (
-            <motion.div
-              key={slot.slotIndex}
-              className="flex items-center justify-center"
-              style={{ height: slotHeight }}
-              initial={{ opacity: 0, scale: 0.85 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{
-                duration: 0.25,
-                ease: "easeOut",
-                delay: slot.slotIndex * 0.04, // stagger 40ms entre slots
-              }}
-            >
-              <StudioSlot
-                slotState={slot}
-                unitTemplate={canvasData.unitTemplate}
-                displaySize={slotDisplaySize}
-                displayHeight={slotHeight}
-                isSelected={selectedSlotIndex === slot.slotIndex}
-                totalSlots={canvasData.slotCount}
-                slotLabel={slotLabels?.[slot.slotIndex]}
-                sizeCm={sizeCm}
-                shape={shape}
-                finish={finish}
-                cornerRadiusPx={cornerRadiusPx}
-                showRealismGuides={showRealismGuides}
-                onClick={() => {
-                  selectSlot(slot.slotIndex);
-                  onSlotClick(slot.slotIndex);
+          {canvasData.slots.map((slot) => {
+            const mounted = !lazy || forceMountAll || mountedSlots.has(slot.slotIndex);
+            return (
+              <motion.div
+                key={slot.slotIndex}
+                data-slot-observe={slot.slotIndex}
+                className="flex items-center justify-center"
+                style={{ height: slotHeight }}
+                initial={{ opacity: 0, scale: 0.85 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{
+                  duration: 0.25,
+                  ease: "easeOut",
+                  delay: mounted ? Math.min(slot.slotIndex, 8) * 0.04 : 0, // stagger acotado
                 }}
-                onClear={() => clearSlot(slot.slotIndex)}
-                onAdjust={onSlotAdjust ? () => onSlotAdjust(slot.slotIndex) : undefined}
-                onTextEdit={
-                  onTextEdit ? (textLayerId) => onTextEdit(slot.slotIndex, textLayerId) : undefined
-                }
-                onPhotoTransformChange={(transform) =>
-                  setSlotPhotoTransform(slot.slotIndex, transform)
-                }
-                onCenterPhoto={() => setSlotPhotoTransform(slot.slotIndex, null)}
-                onAssetDrop={(asset: StudioAsset) => assignAssetToSlot(slot.slotIndex, asset)}
-                onKeyboardNav={(dir) => handleKeyboardNav(slot.slotIndex, dir)}
-                onRegisterStage={registerStage(slot.slotIndex)}
-              />
-            </motion.div>
-          ))}
+              >
+                {mounted ? (
+                  <StudioSlot
+                    slotState={slot}
+                    unitTemplate={canvasData.unitTemplate}
+                    displaySize={slotDisplaySize}
+                    displayHeight={slotHeight}
+                    isSelected={selectedSlotIndex === slot.slotIndex}
+                    totalSlots={canvasData.slotCount}
+                    slotLabel={slotLabels?.[slot.slotIndex]}
+                    sizeCm={sizeCm}
+                    shape={shape}
+                    finish={finish}
+                    cornerRadiusPx={cornerRadiusPx}
+                    showRealismGuides={showRealismGuides}
+                    onClick={() => {
+                      selectSlot(slot.slotIndex);
+                      onSlotClick(slot.slotIndex);
+                    }}
+                    onClear={() => clearSlot(slot.slotIndex)}
+                    onAdjust={onSlotAdjust ? () => onSlotAdjust(slot.slotIndex) : undefined}
+                    onTextEdit={
+                      onTextEdit
+                        ? (textLayerId) => onTextEdit(slot.slotIndex, textLayerId)
+                        : undefined
+                    }
+                    onPhotoTransformChange={(transform) =>
+                      setSlotPhotoTransform(slot.slotIndex, transform)
+                    }
+                    onCenterPhoto={() => setSlotPhotoTransform(slot.slotIndex, null)}
+                    onAssetDrop={(asset: StudioAsset) => assignAssetToSlot(slot.slotIndex, asset)}
+                    onKeyboardNav={(dir) => handleKeyboardNav(slot.slotIndex, dir)}
+                    onRegisterStage={registerStage(slot.slotIndex)}
+                  />
+                ) : (
+                  <LazySlotPlaceholder
+                    assetUrl={slot.assetUrl}
+                    displaySize={slotDisplaySize}
+                    displayHeight={slotHeight}
+                    shape={shape}
+                    label={slotLabels?.[slot.slotIndex]}
+                    onClick={() => {
+                      // Montar de inmediato + seleccionar + abrir el picker (igual que un slot real).
+                      setMountedSlots((prev) => new Set(prev).add(slot.slotIndex));
+                      selectSlot(slot.slotIndex);
+                      onSlotClick(slot.slotIndex);
+                    }}
+                  />
+                )}
+              </motion.div>
+            );
+          })}
         </AnimatePresence>
       </motion.div>
 
@@ -261,6 +332,57 @@ export function StudioCanvasGrid({
         )}
       </AnimatePresence>
     </div>
+  );
+}
+
+// ADR-063 T5 — placeholder liviano mientras el slot no está montado (sin Konva). Muestra la foto ya
+// elegida (si la hay) o un recuadro invitando a tocar. Al tocar/enfocar, el grid monta el StudioSlot
+// real. Mantiene las dimensiones y la silueta (circle) para que el montaje no "salte".
+function LazySlotPlaceholder({
+  assetUrl,
+  displaySize,
+  displayHeight,
+  shape,
+  label,
+  onClick,
+}: {
+  assetUrl?: string | null;
+  displaySize: number;
+  displayHeight: number;
+  shape?: "rectangle" | "circle" | "heart" | "custom";
+  label?: string;
+  onClick: () => void;
+}) {
+  const isCircle = shape === "circle";
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label ? `Editar ${label}` : "Editar este espacio"}
+      className="group border-brand-purple/15 bg-brand-cream/40 focus-visible:ring-brand-turquoise relative cursor-pointer overflow-hidden border bg-white outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+      style={{
+        width: displaySize,
+        height: displayHeight,
+        borderRadius: isCircle ? "9999px" : 8,
+        clipPath: isCircle ? "circle(50% at 50% 50%)" : undefined,
+      }}
+    >
+      {assetUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={assetUrl}
+          alt={label ?? "Tu foto"}
+          className="h-full w-full object-cover"
+          loading="lazy"
+          draggable={false}
+        />
+      ) : (
+        <span className="text-brand-muted absolute inset-0 flex flex-col items-center justify-center gap-1 text-center text-xs font-semibold">
+          {label ? <span className="text-brand-purple-dark">{label}</span> : null}
+          <span>Toca para elegir</span>
+        </span>
+      )}
+    </button>
   );
 }
 

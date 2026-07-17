@@ -156,6 +156,28 @@ export function StudioEditor({
     textLayerId: string;
   } | null>(null);
   const slotStagesRef = useRef<Map<number, Konva.Stage | null>>(new Map());
+  // ADR-063 T5 — cuando hay muchos slots, el grid monta solo los cercanos al viewport (lazy). Antes
+  // de CUALQUIER snapshot (preview, producción, 3D) forzamos el montaje de todos y esperamos a que
+  // Konva registre sus stages, para no snapshotear un slot vacío.
+  const [forceMountAll, setForceMountAll] = useState(false);
+  const ensureAllStagesMounted = useCallback(async () => {
+    const expected = store.getState().canvasData?.slotCount ?? 0;
+    const allPresent = () => {
+      if (expected <= 0) return true;
+      for (let i = 0; i < expected; i++) if (!slotStagesRef.current.get(i)) return false;
+      return true;
+    };
+    if (allPresent()) return;
+    setForceMountAll(true);
+    await new Promise<void>((resolve) => {
+      const deadline = performance.now() + 2000;
+      const tick = () => {
+        if (allPresent() || performance.now() > deadline) resolve();
+        else requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+  }, [store]);
   // P1.4 — Vista 3D en nevera. null = cerrada; array = imanes texturizados a mostrar.
   const [fridge3D, setFridge3D] = useState<Magnet3D[] | null>(null);
   const [fridge3DCols, setFridge3DCols] = useState(1);
@@ -346,6 +368,7 @@ export function StudioEditor({
     if (!state.designId || !state.canvasData || state.isFinalizing) return;
     setPreviewError(null);
     try {
+      await ensureAllStagesMounted(); // T5: montar todos los slots antes del snapshot compositado
       // Pasar shape del producto para que el preview compositado respete
       // la silueta real (corazón, círculo, etc.) y no se vea un rectángulo
       // Lucy 2026-05-21 feedback: "se ve completa, no como corazón".
@@ -362,7 +385,7 @@ export function StudioEditor({
         message: err instanceof Error ? err.message : String(err),
       });
     }
-  }, [store, productConfig.shape]);
+  }, [store, productConfig.shape, ensureAllStagesMounted]);
 
   // P1.4 — Abrir la vista 3D: captura un snapshot por slot recortado a la silueta física
   // (transparente afuera) y lo pasa como textura a la nevera 3D. Si la captura falla, no
@@ -371,6 +394,7 @@ export function StudioEditor({
     const state = store.getState();
     if (!state.canvasData) return;
     try {
+      await ensureAllStagesMounted(); // T5: la nevera 3D necesita la textura de TODOS los imanes
       const textures = await buildMagnetTextures(
         state.canvasData,
         slotStagesRef.current,
@@ -385,7 +409,7 @@ export function StudioEditor({
       });
       void err;
     }
-  }, [store, productConfig.shape]);
+  }, [store, productConfig.shape, ensureAllStagesMounted]);
 
   // Cerrar la vista 3D con Escape (a11y).
   useEffect(() => {
@@ -407,6 +431,7 @@ export function StudioEditor({
     state.setIsFinalizing(true);
     setPreviewError(null);
     try {
+      await ensureAllStagesMounted(); // T5: garantizar los N stages antes de snapshotear producción
       // Generar productionDataUrls (uno por slot, pixelRatio 3 para 300 DPI aprox)
       const productionDataUrls: string[] = [];
       for (const slot of state.canvasData.slots) {
@@ -483,6 +508,7 @@ export function StudioEditor({
     productConfig.shape,
     isCalendarMonth,
     selectedYear,
+    ensureAllStagesMounted,
   ]);
 
   // Cerrar modal "Volver a editar": libera estado para no acumular preview
@@ -659,6 +685,7 @@ export function StudioEditor({
             registerSlotStages={(stages) => {
               slotStagesRef.current = stages;
             }}
+            forceMountAll={forceMountAll}
           />
         </section>
       </div>
