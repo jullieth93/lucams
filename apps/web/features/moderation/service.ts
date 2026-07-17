@@ -25,6 +25,7 @@ function dedupeOrders(rows: { order: OrderRef }[]): OrderRef[] {
 export type PendingModerationDesign = {
   designId: string;
   previewUrl: string | null;
+  productionUrls: string[];
   productName: string;
   createdAt: Date;
   orders: OrderRef[];
@@ -43,6 +44,7 @@ export async function listPendingModeration(): Promise<PendingModerationDesign[]
     select: {
       id: true,
       previewUrl: true,
+      productionUrls: true,
       createdAt: true,
       product: { select: { name: true } },
       orderItems: {
@@ -54,6 +56,7 @@ export async function listPendingModeration(): Promise<PendingModerationDesign[]
   return designs.map((d) => ({
     designId: d.id,
     previewUrl: d.previewUrl,
+    productionUrls: d.productionUrls,
     productName: d.product.name,
     createdAt: d.createdAt,
     orders: dedupeOrders(d.orderItems),

@@ -10,6 +10,7 @@ import Link from "next/link";
 import { ShieldAlert } from "lucide-react";
 import { requireRole } from "@/lib/admin-rbac-guard";
 import { listPendingModeration } from "@/features/moderation/service";
+import { getProductionAssetSignedUrls } from "@/lib/storage";
 import { AdminPage, AdminPageHeader, AdminPageBody, AdminNotice } from "@/components/admin-page";
 import { ModerationActions } from "./moderation-actions";
 
@@ -31,6 +32,9 @@ export default async function AdminModeracionPage({
   await requireRole(["SUPERADMIN", "MANAGER"]);
   const sp = await searchParams;
   const rows = await listPendingModeration();
+  // ADR-063 T2 — firmar los PNGs de producción por-slot para revisar cada pieza real (no un
+  // thumbnail de 40px a ciegas). Antes solo se veía previewUrl compositado.
+  const signed = await getProductionAssetSignedUrls(rows.flatMap((r) => r.productionUrls));
 
   return (
     <AdminPage>
@@ -69,17 +73,58 @@ export default async function AdminModeracionPage({
                 key={d.designId}
                 className="border-brand-purple/10 flex flex-col gap-4 rounded-xl border bg-white p-4 shadow-sm sm:flex-row sm:items-start"
               >
-                <div className="bg-brand-cream/40 border-brand-purple/10 relative aspect-square overflow-hidden rounded-lg border sm:w-40 sm:flex-shrink-0">
-                  {d.previewUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={d.previewUrl}
-                      alt={`Diseño de ${d.productName}`}
-                      className="h-full w-full object-contain p-1"
-                      loading="lazy"
-                    />
+                <div className="sm:w-64 sm:flex-shrink-0">
+                  {d.productionUrls.length > 0 ? (
+                    <>
+                      <div className="grid grid-cols-3 gap-1.5">
+                        {d.productionUrls.map((path, i) => {
+                          const url = signed.get(path);
+                          return url ? (
+                            <a
+                              key={path}
+                              href={url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              title={`Pieza ${i + 1} — abrir en grande`}
+                              className="bg-brand-cream/40 border-brand-purple/10 hover:ring-brand-purple/40 relative block aspect-square overflow-hidden rounded-md border hover:ring-2"
+                            >
+                              {/* eslint-disable-next-line @next/next/no-img-element */}
+                              <img
+                                src={url}
+                                alt={`Pieza ${i + 1}`}
+                                className="h-full w-full object-cover"
+                                loading="lazy"
+                              />
+                              <span className="bg-brand-purple-dark/80 absolute right-0 bottom-0 px-1 text-[9px] font-bold text-white">
+                                {i + 1}
+                              </span>
+                            </a>
+                          ) : (
+                            <div
+                              key={path}
+                              className="bg-brand-cream/40 text-brand-muted flex aspect-square items-center justify-center rounded-md text-[9px]"
+                            >
+                              {i + 1}
+                            </div>
+                          );
+                        })}
+                      </div>
+                      <p className="text-brand-muted mt-1 text-[10px]">
+                        Toca una pieza para verla en grande
+                      </p>
+                    </>
+                  ) : d.previewUrl ? (
+                    <div className="bg-brand-cream/40 border-brand-purple/10 relative aspect-square w-40 overflow-hidden rounded-lg border">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={d.previewUrl}
+                        alt={`Diseño de ${d.productName}`}
+                        className="h-full w-full object-contain p-1"
+                        loading="lazy"
+                      />
+                    </div>
                   ) : (
-                    <div className="text-brand-muted flex h-full items-center justify-center text-xs">
+                    <div className="text-brand-muted border-brand-purple/10 flex aspect-square w-40 items-center justify-center rounded-lg border text-xs">
                       Sin vista previa
                     </div>
                   )}
