@@ -402,7 +402,20 @@ export function StudioEditor({
         if (!stage) {
           throw new Error(`No se pudo encontrar el slot ${slot.slotIndex + 1} para snapshot`);
         }
-        const dataUrl = stage.toDataURL({ pixelRatio: 3, mimeType: "image/png" });
+        // ADR-063 T3 — archivo de imprenta LIMPIO: la sombra, el velo glossy y el edge stroke
+        // (capas `name="realism"`) son adornos de PANTALLA para que el cliente vea el imán físico;
+        // NO deben hornearse en el PNG de producción 300 DPI. Se ocultan solo durante el snapshot y
+        // se restauran de inmediato (el preview compositado sí conserva el realismo). WYSIWYG.
+        const realism = stage.find(".realism");
+        realism.forEach((l) => l.hide());
+        let dataUrl: string;
+        try {
+          dataUrl = stage.toDataURL({ pixelRatio: 3, mimeType: "image/png" });
+        } finally {
+          realism.forEach((l) => l.show());
+        }
+        // FOTO1 (fallback de cliente): heart/circle → recortar a la silueta (transparente afuera).
+        dataUrl = await clipProductionSnapshotToShape(dataUrl, productConfig.shape);
         productionDataUrls.push(dataUrl);
       }
 
@@ -446,7 +459,7 @@ export function StudioEditor({
       state.setIsFinalizing(false);
       setPreviewError(err instanceof Error ? err.message : String(err));
     }
-  }, [router, store, variantId, previewDataUrl, replacesCartDesignId]);
+  }, [router, store, variantId, previewDataUrl, replacesCartDesignId, productConfig.shape]);
 
   // Cerrar modal "Volver a editar": libera estado para no acumular preview
   // viejo si edita y vuelve a "Listo!".
@@ -950,6 +963,40 @@ function buildShapePath(
   path.bezierCurveTo(sx(0.94), sy(0.52), sx(0.72), sy(0.68), sx(0.5), sy(0.82));
   path.closePath();
   return path;
+}
+
+/**
+ * ADR-063 FOTO1/T3 — recorta un snapshot de producción (ya limpio, sin realismo) a la SILUETA
+ * física para heart/circle, dejando transparente afuera → la imprenta troquela por ese borde.
+ * Rectángulo/custom no se tocan (el corte lo da el propio borde del PNG). Se usa en el fallback de
+ * cliente (slots con filtro, que el render server-side no reproduce): así un corazón con filtro
+ * imprime como corazón, igual que el corazón sin filtro (que sí pasa por el compositor canvas).
+ */
+async function clipProductionSnapshotToShape(
+  dataUrl: string,
+  shape: "rectangle" | "circle" | "heart" | "custom" | undefined,
+): Promise<string> {
+  if (!shape || shape === "rectangle" || shape === "custom") return dataUrl;
+  return new Promise<string>((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => {
+      const c = document.createElement("canvas");
+      c.width = img.naturalWidth;
+      c.height = img.naturalHeight;
+      const ctx = c.getContext("2d");
+      if (!ctx) {
+        reject(new Error("No se pudo crear contexto canvas para recorte de silueta"));
+        return;
+      }
+      ctx.save();
+      ctx.clip(buildShapePath(shape, 0, 0, c.width, c.height));
+      ctx.drawImage(img, 0, 0, c.width, c.height);
+      ctx.restore();
+      resolve(c.toDataURL("image/png"));
+    };
+    img.onerror = () => reject(new Error("No se pudo cargar snapshot para recorte de silueta"));
+    img.src = dataUrl;
+  });
 }
 
 async function buildCompositedPreview(

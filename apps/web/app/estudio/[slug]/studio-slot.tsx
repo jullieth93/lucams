@@ -469,7 +469,7 @@ function StudioSlotImpl({
             shape={shape}
             cornerRadiusPx={cornerRadiusPx}
           />
-          <Layer>
+          <Layer name="content">
             {/* M.3.b.UX.v13 (Lucy 2026-05-15) — Layer único sin Group clipFunc.
               El CSS clip-path del wrapper HTML recorta visualmente al shape
               físico del imán (heart/circle/rect). La sombra Konva + edge stroke

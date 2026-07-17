@@ -52,17 +52,23 @@ describe("renderProductionSlots — pack solo-foto FIEL (ADR-057 Fase A1a)", () 
     }
   });
 
-  it("heart/circle: la foto cubre todo el stage (no crashea con placeholder chico)", async () => {
+  it("heart/circle: delega al renderer canvas (NEEDS_KONVA) para recortar a la silueta (FOTO1)", async () => {
+    // ADR-063 FOTO1 — sharp no puede clipear un path arbitrario; heart/circle exigen recorte a la
+    // silueta (transparente afuera → troquel). El renderer sharp lanza NEEDS_KONVA → el service lo
+    // enruta al tier canvas (renderProductionSlotsCanvas), que sí clipa a la forma.
     const photo = await fakePhoto(800, 1200);
-    const bufs = await renderProductionSlots({
-      unitTemplate: photoOnlyUnit,
-      slots: [
-        { slotIndex: 0, assetId: "a0", photoTransform: { offsetX: 200, offsetY: 0, scale: 1 } },
-      ],
-      shape: "circle",
-      loadAsset: async () => photo,
-    });
-    expect((await pngMeta(bufs[0])).width).toBe(3240);
+    for (const shape of ["circle", "heart"] as const) {
+      await expect(
+        renderProductionSlots({
+          unitTemplate: photoOnlyUnit,
+          slots: [
+            { slotIndex: 0, assetId: "a0", photoTransform: { offsetX: 0, offsetY: 0, scale: 1 } },
+          ],
+          shape,
+          loadAsset: async () => photo,
+        }),
+      ).rejects.toBeInstanceOf(RenderNeedsKonvaError);
+    }
   });
 
   it("zoom-out/drag extremo (foto fuera del placeholder): solo fondo (WYSIWYG), sin crashear", async () => {

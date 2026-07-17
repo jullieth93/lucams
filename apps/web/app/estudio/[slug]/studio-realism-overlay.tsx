@@ -95,7 +95,7 @@ export function RealismShadowLayer({
 
   if (shape === "circle") {
     return (
-      <Layer listening={false}>
+      <Layer name="realism" listening={false}>
         <Circle
           x={stage.width / 2}
           y={stage.height / 2}
@@ -108,7 +108,7 @@ export function RealismShadowLayer({
 
   if (shape === "heart") {
     return (
-      <Layer listening={false}>
+      <Layer name="realism" listening={false}>
         <Path
           data={HEART_PATH_DATA}
           x={0}
@@ -122,7 +122,7 @@ export function RealismShadowLayer({
   }
 
   return (
-    <Layer listening={false}>
+    <Layer name="realism" listening={false}>
       <Rect
         x={0}
         y={0}
@@ -194,7 +194,7 @@ export function RealismOverlayLayer({
   const isHeart = shape === "heart";
 
   return (
-    <Layer listening={false}>
+    <Layer name="realism" listening={false}>
       {/* Acabado glossy (si aplica) — usa shape del producto */}
       {glossyGradient && isCircle && (
         <Circle

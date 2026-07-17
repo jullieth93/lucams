@@ -5,9 +5,18 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { createCanvas } from "@napi-rs/canvas";
+import { createCanvas, loadImage } from "@napi-rs/canvas";
 import { renderProductionSlotsCanvas } from "./production-render-canvas";
 import { RenderNeedsKonvaError } from "./production-render";
+
+/** Alpha (0..255) de un pixel del PNG, decodificándolo con @napi-rs/canvas. */
+async function alphaAt(png: Buffer, x: number, y: number): Promise<number> {
+  const img = await loadImage(png);
+  const c = createCanvas(img.width, img.height);
+  const ctx = c.getContext("2d");
+  ctx.drawImage(img, 0, 0);
+  return ctx.getImageData(x, y, 1, 1).data[3];
+}
 
 function fakePhoto(w: number, h: number): Buffer {
   const c = createCanvas(w, h);
@@ -251,7 +260,10 @@ describe("renderProductionSlotsCanvas — texto + marco (ADR-057 Fase A1b)", () 
     );
   });
 
-  it("heart/circle: cubre el stage y OMITE el texto (igual que el editor)", async () => {
+  it("heart/circle: cubre el stage, OMITE el texto y RECORTA a la silueta (FOTO1)", async () => {
+    // ADR-063 FOTO1 — heart/circle imprimen recortados a su silueta física (transparente afuera →
+    // troquel), sin fondo blanco y sin el texto del template (igual que el editor). Verificamos que
+    // las esquinas quedan transparentes (alpha 0) y el centro opaco.
     const unit = {
       version: 1 as const,
       stage,
@@ -261,14 +273,22 @@ describe("renderProductionSlotsCanvas — texto + marco (ADR-057 Fase A1b)", () 
         { id: "cap", type: "text", text: "no debe salir" },
       ],
     };
-    const bufs = await renderProductionSlotsCanvas({
-      unitTemplate: unit,
-      slots: [
-        { slotIndex: 0, assetId: "a0", photoTransform: { offsetX: 0, offsetY: 0, scale: 1 } },
-      ],
-      shape: "heart",
-      loadAsset: async () => fakePhoto(800, 1000),
-    });
-    expect((await pngSize(bufs[0])).w).toBe(720 * 3);
+    for (const shape of ["heart", "circle"] as const) {
+      const bufs = await renderProductionSlotsCanvas({
+        unitTemplate: unit,
+        slots: [
+          { slotIndex: 0, assetId: "a0", photoTransform: { offsetX: 0, offsetY: 0, scale: 1 } },
+        ],
+        shape,
+        loadAsset: async () => fakePhoto(800, 1000),
+      });
+      const png = bufs[0];
+      const { w, h } = await pngSize(png);
+      expect(w).toBe(720 * 3);
+      // Esquina superior-izquierda → FUERA de la silueta → transparente.
+      expect(await alphaAt(png, 3, 3)).toBe(0);
+      // Centro → DENTRO → opaco.
+      expect(await alphaAt(png, Math.floor(w / 2), Math.floor(h / 2))).toBeGreaterThan(200);
+    }
   });
 });
