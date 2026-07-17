@@ -2175,3 +2175,52 @@ tráfico lo exige.
 
 **Razón.** Cerrar los sub-ítems evita "hecho a medias"; documentar las 3 decisiones convierte
 deuda abierta en elecciones argumentadas y trazables (mandato #9), no en omisiones silenciosas.
+
+## ADR-062 — Auditoría de preparación para producción (18 dimensiones) + plan de go-live (2026-07-16)
+
+Auditoría multi-agente con lente de PRODUCCIÓN (135 agentes, verificación adversarial de cada
+hallazgo blocker/high/medium leyendo el código real + crítico de completitud). Amplía las 13
+dimensiones de ADR-060 a **18**, sumando 5 propias de lanzamiento: integridad del dinero, resiliencia
+de órdenes, emails transaccionales, ops de lanzamiento/observabilidad, y ciclo de vida de datos; más
+un crítico que destapó concerns que la revisión estándar no mira.
+
+**Score: 71/100 · "no-lanzar"** (baseline ADR-060 = 72; esencialmente plano — la ronda no "empeoró",
+RELOCALIZÓ el riesgo de vago a específico y el lente más duro destapó gaps de lanzamiento reales).
+Informe visual: Artifact `00dd8c48-9ca0-4524-b691-7a7b70723956`.
+
+**Lectura clave:** el CÓDIGO del núcleo de comercio está ~90% listo y verificado contra el código real
+(no contra docs): checkout, pagos Wompi+saga+idempotencia (85), flujos cliente (82), compliance 1581/
+1480 (84), SEO/a11y (84), RLS (78), ambos diferenciadores (77), ~1830 tests con gates en CI. El
+"no-lanzar" lo fijan **4 compuertas (launchGate)**, no calidad baja general.
+
+**Los 4 bloqueadores (P0):**
+1. **[CÓDIGO · autónomo]** MFA aal2 no se valida en NINGUNA Server Action (solo en `layout.tsx:27`,
+   que gatea el render). Como las acciones son endpoints POST por action-id, una contraseña de admin
+   robada (sesión aal1) permite `disableMfaAction` + `promoteAdminAction` → toma de cuenta PERSISTENTE
+   del único SUPERADMIN. Explotable el día 1. Fix: guard `requireAdminAction({aal2})` al inicio de
+   toda acción mutante. **Es el primer fix a ejecutar.**
+2. **[CÓDIGO+PROCESO · mixto]** Cero moderación del contenido subido por clientes en un negocio
+   print-on-demand: sin screening de contenido ilegal, sin consentimiento de derecho de imagen (Ley
+   1581), sin flujo de rechazo-a-imprimir. `photo-validation.ts` solo mide calidad. Producir una
+   imagen ilegal/infractora = exposición legal/reputacional. Mínimo: consentimiento + gate de revisión
+   manual antes del render de producción.
+3. **[LEGAL/NEGOCIO · dueña + abogado]** Identidad legal indefinida (páginas legales dicen "S.A.S. en
+   trámite"; falta figura + matrícula mercantil + NIT).
+4. **[LEGAL/NEGOCIO · dueña + contador]** Facturación electrónica DIAN no operativa (copy ya suavizado
+   en ADR-061, pero la obligación tributaria sigue).
+
+**Dimensiones más débiles (nuevas):** identidad legal 35, moderación de contenido 40, DIAN 40,
+performance/carga 50 (cero evidencia de carga hoy), COD antifraude+conciliación 55.
+
+**Brechas del crítico de completitud (nuevas, valiosas):** moderación/derechos de imagen (HIGH),
+validación de carga/capacidad antes del pico de Instagram del día 1 (HIGH), antifraude + conciliación
+de efectivo del contraentrega (HIGH), DR-restore sin probar (medium), retención de fotos anónimas en
+`customer-uploads` (medium), matriz de dispositivos reales para el Estudio/3D (low).
+
+**Plan:** 27 ítems (4 P0 / 13 P1 / 9 P2 / 1 P3), 14 con launchGate. Carril autónomo (código) corre en
+PARALELO al carril de la dueña (abogado + contador + provisión de cuentas prod). Con las 4 compuertas
++ el checklist de go-live cerrados → "lanzar-con-reservas" → "lanzar".
+
+**Razón.** Un lanzamiento con miras a producción exige el lente más duro (mandato #1 = 100% productivo
+día 1). La verificación adversarial evita falsos positivos; separar carril código vs legal/negocio
+permite avanzar en paralelo sin bloquear todo tras las decisiones de la dueña.
