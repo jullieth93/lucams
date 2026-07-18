@@ -13,6 +13,19 @@
 
 ## Resumen actual
 
+**🛡️ ✅ BACKLOG AUDITORÍA v3 — TANDA 1 (robustez operativa, 2026-07-18).** Lucy eligió seguir barriendo el backlog de la auditoría v3 (197 restantes: 116 medium + 81 low) por tandas de afinidad. **Tanda 1 = "fallar en silencio" en dinero/saga/concurrencia/observabilidad** (19 hallazgos). Workflow de validación (20 agentes) re-validó cada uno contra el código actual: **18 vigentes + 1 obsoleto** (#1 ya lo resolví con COUPON_INVALIDATED). Implementados en 5 batches, cada uno certificado (tsc + lint + prettier + build + tests) y pusheado:
+
+- **Batch 1** (`7af9cf0`) observabilidad: #16 captureServerError en los 6 crons, #17 resumen diario no sella si el email falla, #18 batches de email no marcan en circuit-open, #9 alerta de orden Wompi PENDING >2h, #13 back-in-stock topa por stock (FIFO), #19 SLI de checkout no supera 100%, #10 mensaje de retry de guía.
+- **Batch 2** (`21f09ae`) atomicidad: #11 transitionOrder gateado por status (anti-TOCTOU cancel vs webhook PAID), #12 stock admin con CAS.
+- **Batch 3** (`6f942d2`) saga/webhooks: #5 timeout de guía no libera el claim (evita guía duplicada), #6 stale-reclaim excluye reconciliación, #7 self-heal PAID→FULFILLING, #8 transición fallida se superficia + webhook Aveonline no sella processedAt ante excepción, #14 webhook Wompi marca reconciliación + no sella processedAt.
+- **Batch 4** (`6ca5d7a`) dinero: #2 retracto prorratea el descuento del cupón (+test), #3 cupones admin en PESOS con preview live.
+- **Batch 5** (`222b2a6`) #15 dead-man switch de pg_cron (heartbeat + alerta interna + `/api/health/crons` + tile).
+- **Diferido**: #4 (cron de conciliación que CONSULTA Wompi por referencia) — requiere verificar el endpoint contra la doc Wompi (mandato #9) + agendar pg_cron; la visibilidad ya la cubren #9 (alerta) y #14 (reconciliación en el catch).
+- **Certificación**: integración combinada orders/saga/checkout/cupones/retracto **136/136** + alertas 2/2. (El test daily-summary queda flaky en la DB compartida por la clave global AlertState — pre-existente, pasa en CI.)
+- **ACCIÓN HUMANA (#15)**: cablear un monitor de uptime externo a `GET /api/health/crons` tras el lanzamiento.
+
+**Quedan 6 tandas del backlog** (~178): privacidad/enlaces, emails/errores, estudio, UX storefront, descubrimiento (SEO/recomendador/reseñas), cuenta/nav/copy, a11y/admin/perf/tests.
+
 **🎟️ ✅ FLUJO DE CUPONES — fluido + efectivo (2026-07-18, ADR-069).** Lucy pidió (tras resolver el retracto: **el cliente asume el costo**, ADR-068) asegurar que el flujo de cupones fuera fluido y efectivo. Auditoría adversarial dedicada (25 agentes, 6 facetas, verificación por refutación) → **17 confirmados**. Veredicto: el **motor monetario ya era correcto** (nunca cobra mal, invariante `usedCount==count(CouponUsage)` bajo concurrencia); las debilidades reales eran de **fluidez** (cupón-inválido = callejón sin salida) y **efectividad** (timezone, tope invitado). Se remediaron los **9 fixes**, certificados (tsc+lint+prettier+build+tests):
 
 - **#1 HIGH** — cupones con fecha expiraban ~29 h antes en hora Colombia (validTo a medianoche UTC). Nuevo `features/coupons/dates.ts` ancla la vigencia al día COT completo (−05:00 fijo) en la ingesta. Sin backfill (no hay cupones reales pre-lanzamiento). +tests.
