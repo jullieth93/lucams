@@ -12,6 +12,7 @@ import { timingSafeEqual } from "node:crypto";
 import { purgeAbandonedAnonymousDesigns } from "@/features/personalization/retention-service";
 import { logger } from "@/lib/logger";
 import { captureServerError } from "@/lib/error-capture";
+import { recordCronHeartbeat } from "@/features/observability/cron-heartbeat";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +31,7 @@ export async function GET(req: NextRequest) {
   }
   try {
     const result = await purgeAbandonedAnonymousDesigns();
+    await recordCronHeartbeat("purge-anon-designs"); // #15 dead-man switch (solo en éxito)
     return Response.json({ ok: true, ...result });
   } catch (err) {
     logger.error({

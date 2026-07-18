@@ -9,6 +9,7 @@ import { timingSafeEqual } from "node:crypto";
 import { sendBackInStockNotifications } from "@/features/back-in-stock/service";
 import { logger } from "@/lib/logger";
 import { captureServerError } from "@/lib/error-capture";
+import { recordCronHeartbeat } from "@/features/observability/cron-heartbeat";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +28,7 @@ export async function GET(req: NextRequest) {
   }
   try {
     const result = await sendBackInStockNotifications();
+    await recordCronHeartbeat("back-in-stock"); // #15 dead-man switch (solo en éxito)
     return Response.json({ ok: true, ...result });
   } catch (err) {
     logger.error({

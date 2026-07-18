@@ -11,6 +11,7 @@ import { timingSafeEqual } from "node:crypto";
 import { sendCartRecoveryReminders } from "@/features/cart/recovery-service";
 import { logger } from "@/lib/logger";
 import { captureServerError } from "@/lib/error-capture";
+import { recordCronHeartbeat } from "@/features/observability/cron-heartbeat";
 
 export const dynamic = "force-dynamic";
 
@@ -29,6 +30,7 @@ export async function GET(req: NextRequest) {
   }
   try {
     const result = await sendCartRecoveryReminders();
+    await recordCronHeartbeat("cart-recovery"); // #15 dead-man switch (solo en éxito)
     return Response.json({ ok: true, ...result });
   } catch (err) {
     logger.error({

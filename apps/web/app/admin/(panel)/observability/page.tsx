@@ -27,6 +27,7 @@ import { requireRole } from "@/lib/admin-rbac-guard";
 import { getTechHealth } from "@/features/observability/service";
 import { getDailySummary } from "@/features/observability/daily-summary";
 import { getSloStatus, type SloResult } from "@/features/observability/slos";
+import { getCronHealth } from "@/features/observability/cron-heartbeat";
 import { AdminPage, AdminPageHeader, AdminPageBody } from "@/components/admin-page";
 import { ClientErrorActions } from "./client-error-actions";
 
@@ -41,7 +42,12 @@ const dateFmt = new Intl.DateTimeFormat("es-CO", {
 
 export default async function AdminObservabilityPage() {
   await requireRole(["SUPERADMIN"]);
-  const [h, ops, slos] = await Promise.all([getTechHealth(), getDailySummary(), getSloStatus()]);
+  const [h, ops, slos, crons] = await Promise.all([
+    getTechHealth(),
+    getDailySummary(),
+    getSloStatus(),
+    getCronHealth(),
+  ]);
   const revenue = `$${Math.round(ops.revenueLast24hCop / 100).toLocaleString("es-CO")}`;
   const recoveryPct =
     ops.abandonedCarts24h > 0
@@ -177,6 +183,25 @@ export default async function AdminObservabilityPage() {
             danger={h.clientErrors.openCount > 0}
             hint="reportes del navegador sin resolver"
           />
+        </div>
+
+        {/* ─── Crons (dead-man switch, #15) ─── */}
+        <h2 className="text-brand-purple-dark mt-6 mb-2 flex items-center gap-2 text-sm font-bold">
+          <Clock className="h-4 w-4" /> Trabajos automáticos (crons)
+        </h2>
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+          {crons.map((c) => (
+            <Tile
+              key={c.job}
+              icon={<Clock className="h-4 w-4" />}
+              label={c.label}
+              value={c.overdue ? "Sin correr" : "Al día"}
+              danger={c.overdue}
+              hint={
+                c.lastRunAt ? `últ. ${dateFmt.format(c.lastRunAt)}` : "sin registro de ejecución"
+              }
+            />
+          ))}
         </div>
 
         {/* Top errores */}

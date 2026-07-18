@@ -10,6 +10,7 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { sendEmail } from "@/lib/resend";
+import { getCronHealth } from "./cron-heartbeat";
 import { getSettingValue } from "@/lib/cms";
 import { logger } from "@/lib/logger";
 
@@ -88,6 +89,26 @@ export async function evaluateAlerts(now: Date = new Date()): Promise<FiringAler
       action:
         "Abre /admin/pedidos (PENDING_PAYMENT) y verifica en el panel Wompi por la referencia (número de orden): si el cobro aparece APPROVED, confirma/produce; si no, cancela.",
     });
+  }
+
+  // #15 — dead-man switch (capa interna): un cron que no corre en 2× su intervalo probablemente dejó
+  // de ejecutarse (CRON_SECRET rotado, dominio cambiado, secreto de Vault ausente). Detecta 5 de los
+  // 6 crons; la caída del PROPIO cron de alertas la cubre el monitor externo vía /api/health/crons.
+  const cronHealth = await getCronHealth(now);
+  for (const c of cronHealth) {
+    if (c.job === "alerts") continue; // el cron de alertas no puede detectar su propia caída
+    if (c.overdue) {
+      firing.push({
+        key: `cron_stale_${c.job}`,
+        severity: "media",
+        title: `El cron "${c.label}" no se ha ejecutado en su ventana`,
+        detail: c.lastRunAt
+          ? `Última ejecución: ${c.lastRunAt.toISOString()}. Debería correr cada ${Math.round(c.intervalMs / 60000)} min.`
+          : "No hay registro de ninguna ejecución.",
+        action:
+          "Revisa que pg_cron esté agendado y que CRON_SECRET + la URL base estén en el Vault de Supabase (docs/OPERATIONS.md). Consulta cron.job_run_details / net._http_response.",
+      });
+    }
   }
 
   return firing;
