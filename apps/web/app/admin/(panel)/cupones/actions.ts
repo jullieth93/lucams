@@ -31,18 +31,25 @@ function parsePayload(formData: FormData) {
   const maxUsesPerCustomerRaw = formData.get("maxUsesPerCustomer");
   const requiresMinQuantityRaw = formData.get("requiresMinQuantity");
 
+  // #3 — el admin digita PESOS (como piensa cualquier colombiana); el sistema guarda CENTAVOS. Para
+  // FIXED convertimos ×100; para PERCENT el valor es un porcentaje (NO se multiplica); FREE_SHIPPING
+  // ignora el valor. minOrder también es dinero → ×100. Math.round evita floats (0.1*100). maxUses y
+  // cantidades NO son dinero → sin conversión. Aplica a create y update (parsePayload es compartido).
+  const type = String(formData.get("type") ?? "PERCENT") as "PERCENT" | "FIXED" | "FREE_SHIPPING";
+  const rawValue = Number(formData.get("value") ?? 0);
+
   return {
     code: String(formData.get("code") ?? "")
       .trim()
       .toUpperCase(),
-    type: String(formData.get("type") ?? "PERCENT") as "PERCENT" | "FIXED" | "FREE_SHIPPING",
-    value: Number(formData.get("value") ?? 0),
+    type,
+    value: type === "FIXED" ? Math.round(rawValue * 100) : rawValue,
     description: (formData.get("description") as string | null) || null,
     isPublic: formData.get("isPublic") === "on",
     isActive: formData.get("isActive") === "on",
     validFrom: cotStartOfDay(String(formData.get("validFrom") ?? "")),
     validTo: cotEndOfDay(String(formData.get("validTo") ?? "")),
-    minOrder: minOrderRaw ? Number(minOrderRaw) : null,
+    minOrder: minOrderRaw ? Math.round(Number(minOrderRaw) * 100) : null,
     maxUses: maxUsesRaw ? Number(maxUsesRaw) : null,
     maxUsesPerCustomer: maxUsesPerCustomerRaw ? Number(maxUsesPerCustomerRaw) : null,
     requiresMinQuantity: requiresMinQuantityRaw ? Number(requiresMinQuantityRaw) : null,

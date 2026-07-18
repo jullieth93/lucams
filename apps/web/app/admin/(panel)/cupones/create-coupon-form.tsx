@@ -2,6 +2,7 @@
 
 import { useActionState, useState } from "react";
 import { createCouponAction, type CouponActionState } from "./actions";
+import { formatCOP } from "@/lib/format";
 
 export function CreateCouponForm() {
   const [state, formAction, isPending] = useActionState<CouponActionState | null, FormData>(
@@ -9,6 +10,9 @@ export function CreateCouponForm() {
     null,
   );
   const [type, setType] = useState<"PERCENT" | "FIXED" | "FREE_SHIPPING">("PERCENT");
+  // #3 — el admin digita en PESOS; el preview live confirma el monto y el server convierte a centavos.
+  const [valueStr, setValueStr] = useState("");
+  const [minOrderStr, setMinOrderStr] = useState("");
 
   // Defaults en hora Colombia (en-CA da formato YYYY-MM-DD): cerca de medianoche COT, el UTC de
   // toISOString() saltaría un día. El server ancla la vigencia al día COT completo (ver parsePayload).
@@ -55,7 +59,7 @@ export function CreateCouponForm() {
           <label className="mb-1 block text-sm font-medium text-slate-700">
             Valor
             {type === "PERCENT" && <span className="text-xs text-slate-500"> (1-100)</span>}
-            {type === "FIXED" && <span className="text-xs text-slate-500"> (COP centavos)</span>}
+            {type === "FIXED" && <span className="text-xs text-slate-500"> (pesos)</span>}
             {type === "FREE_SHIPPING" && <span className="text-xs text-slate-500"> (n/a)</span>}
           </label>
           <input
@@ -64,11 +68,20 @@ export function CreateCouponForm() {
             min={type === "PERCENT" ? 1 : 0}
             max={type === "PERCENT" ? 100 : undefined}
             required
-            defaultValue={type === "FREE_SHIPPING" ? 0 : ""}
+            value={type === "FREE_SHIPPING" ? "0" : valueStr}
+            onChange={(e) => setValueStr(e.target.value)}
             disabled={type === "FREE_SHIPPING"}
-            placeholder={type === "PERCENT" ? "15" : type === "FIXED" ? "500000" : "—"}
+            placeholder={type === "PERCENT" ? "15" : type === "FIXED" ? "5000" : "—"}
             className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm disabled:bg-slate-100"
           />
+          {type === "FIXED" && Number(valueStr) > 0 && (
+            <p className="mt-1 text-xs text-slate-500">
+              = {formatCOP(Math.round(Number(valueStr) * 100))} de descuento
+            </p>
+          )}
+          {type === "PERCENT" && Number(valueStr) > 0 && (
+            <p className="mt-1 text-xs text-slate-500">= {valueStr}% de descuento</p>
+          )}
         </div>
       </div>
 
@@ -117,14 +130,21 @@ export function CreateCouponForm() {
         </legend>
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           <div>
-            <label className="mb-1 block text-xs text-slate-600">Mínimo orden (COP)</label>
+            <label className="mb-1 block text-xs text-slate-600">Mínimo orden (pesos)</label>
             <input
               name="minOrder"
               type="number"
               min="0"
-              placeholder="ej. 5000000"
+              value={minOrderStr}
+              onChange={(e) => setMinOrderStr(e.target.value)}
+              placeholder="ej. 50000"
               className="w-full rounded border border-slate-300 px-2 py-1 text-sm"
             />
+            {Number(minOrderStr) > 0 && (
+              <p className="mt-1 text-xs text-slate-500">
+                = {formatCOP(Math.round(Number(minOrderStr) * 100))}
+              </p>
+            )}
           </div>
           <div>
             <label className="mb-1 block text-xs text-slate-600">Mínimo cantidad unidades</label>

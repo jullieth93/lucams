@@ -161,7 +161,18 @@ export async function createRetractRequest(
       customDesign: true,
       designId: true,
       retractRequest: { select: { id: true } },
-      order: { select: { customerId: true, status: true, deliveredAt: true, deletedAt: true } },
+      order: {
+        select: {
+          customerId: true,
+          status: true,
+          deliveredAt: true,
+          deletedAt: true,
+          // #2 — para prorratear el descuento del cupón en el reembolso (ver más abajo).
+          subtotal: true,
+          discount: true,
+          coupon: { select: { type: true } },
+        },
+      },
     },
   });
   if (!item || item.order.deletedAt) throw new RetractError("NOT_FOUND");
@@ -177,7 +188,17 @@ export async function createRetractRequest(
   if (!isWithinRetractWindow(item.order.deliveredAt, now)) throw new RetractError("OUT_OF_WINDOW");
   if (isItemPersonalized(item)) throw new RetractError("PERSONALIZED");
 
-  const refundAmount = item.unitPrice * item.qty;
+  // #2 — el reembolso NO puede ser el precio de lista si la orden llevaba cupón: el cliente pagó
+  // menos por ese item. Prorrateamos el descuento del cupón por línea. FREE_SHIPPING descuenta el
+  // flete (no el precio de los items) → no se prorratea. Aritmética entera en centavos COP.
+  const lineTotal = item.unitPrice * item.qty;
+  const ord = item.order;
+  const subtotalDiscount = ord.coupon?.type === "FREE_SHIPPING" ? 0 : ord.discount;
+  const discountShare =
+    subtotalDiscount > 0 && ord.subtotal > 0
+      ? Math.round((subtotalDiscount * lineTotal) / ord.subtotal)
+      : 0;
+  const refundAmount = lineTotal - discountShare;
   try {
     const created = await prisma.retractRequest.create({
       data: {

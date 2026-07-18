@@ -35,16 +35,20 @@ async function makeDeliveredOrder(opts: {
   deliveredAt: Date | null;
   status?: string;
   items: Array<{ personalized: boolean }>;
+  discount?: number;
 }) {
+  const subtotal = 20_000 * opts.items.length;
+  const discount = opts.discount ?? 0;
   const order = await prisma.order.create({
     data: {
       number: `RTR-${RUN}-${opts.tag}`.toUpperCase(),
       email: `${RUN}-${opts.tag}@lucams.test`,
       phone: "+573001112233",
       shippingAddress: { city: "Bogotá" },
-      subtotal: 20_000 * opts.items.length,
+      subtotal,
       shipping: 0,
-      total: 20_000 * opts.items.length,
+      discount,
+      total: subtotal - discount,
       currency: "COP",
       paymentMethod: "WOMPI",
       status: (opts.status ?? "DELIVERED") as never,
@@ -172,6 +176,20 @@ describe.skipIf(!hasDb)("retract/service — integración DB", { timeout: 30_000
     expect(rr?.reason).toBe("no me gustó");
 
     await expect(createRetractRequest(itemId, { customerId: null })).rejects.toThrow(RetractError);
+  });
+
+  it("createRetractRequest prorratea el descuento del cupón en el refundAmount (#2)", async () => {
+    // 2 items (subtotal 40.000), cupón que descontó 8.000 (20%). Retractar 1 item:
+    // refund = 20.000 − round(8.000 × 20.000 / 40.000) = 20.000 − 4.000 = 16.000 (lo que pagó).
+    const order = await makeDeliveredOrder({
+      tag: "prorate",
+      deliveredAt: new Date(),
+      items: [{ personalized: false }, { personalized: false }],
+      discount: 8_000,
+    });
+    const itemId = order.items[0]!.id;
+    const res = await createRetractRequest(itemId, { customerId: null });
+    expect(res.refundAmount).toBe(16_000);
   });
 
   it("createRetractRequest rechaza un item personalizado (PERSONALIZED)", async () => {
