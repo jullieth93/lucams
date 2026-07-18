@@ -12,23 +12,24 @@ import { useState } from "react";
 import Link from "next/link";
 import { Minus, Plus, Sparkles } from "lucide-react";
 import { formatCOP } from "@/lib/format";
+import { useSelectedVariant } from "./variant-actions";
 
 export function NamePricePicker({
   slug,
-  variantId,
   perTilePrice,
   min,
   max,
   ctaNoun,
 }: {
   slug: string;
-  variantId: string | null;
   perTilePrice: number;
   min: number;
   max: number;
   /** "tu imán" o "tu adhesivo" según la variante (con/sin imán). */
   ctaNoun: string;
 }) {
+  // H12 — variante del Context compartido (en sync instantáneo con el selector).
+  const { selectedId: variantId } = useSelectedVariant();
   // Arranca en un ejemplo cómodo (5 letras) acotado a [min, max].
   const [count, setCount] = useState(() => Math.min(max, Math.max(min, 5)));
   const total = count * perTilePrice;

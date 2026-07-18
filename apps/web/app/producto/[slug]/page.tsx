@@ -17,7 +17,7 @@ import { JsonLd } from "@/components/json-ld";
 import { breadcrumbList } from "@/lib/seo/structured-data";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ChevronRight, MessageCircle, Sparkles } from "lucide-react";
+import { ChevronRight, MessageCircle } from "lucide-react";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { WishlistButton } from "@/components/wishlist-button";
@@ -30,6 +30,7 @@ import { RelatedProducts } from "@/components/product-detail/related-products";
 import { ProductReviews } from "./product-reviews";
 import { TemplatesStrip } from "@/components/product-detail/templates-strip";
 import { VariantSelector } from "./variant-selector";
+import { SelectedVariantProvider, EstudioCtaLink, CartVariantIdInput } from "./variant-actions";
 import { formatCOP } from "@/lib/format";
 import { buildWhatsAppUrl } from "@/lib/wa";
 import { addToCartAction } from "@/app/carrito/actions";
@@ -94,6 +95,10 @@ export default async function ProductoDetallePage({
     selectable.find((v) => v.id === requestedVariantId) ?? selectable[0] ?? null;
   // Precio final: variant.price override o basePrice
   const displayPrice = selectedVariant?.price ?? product.basePrice;
+  // H12 (auditoría v3) — ids para las acciones reactivas a la URL (CTA Estudio + variantId del
+  // carrito), que reaccionan al selector SIN esperar el re-render del RSC.
+  const variantIds = selectable.map((v) => v.id);
+  const firstVariantId = selectedVariant?.id ?? null;
 
   // D1 (Lucy 2026-06-27): la galería muestra las fotos de la OPCIÓN elegida si
   // tiene propias; si no, hereda las del producto (espeja la herencia de price).
@@ -289,76 +294,64 @@ export default async function ProductoDetallePage({
                 {product.description}
               </p>
 
-              {/* M.3.b.CAT.3 — Selector de variants si product tiene 2+ */}
-              {selectable.length > 1 && (
-                <VariantSelector productBasePrice={product.basePrice} variants={selectable} />
-              )}
+              {/* H12 — el selector y las acciones comparten la variante elegida vía Context (sync
+                  instantáneo), sin depender del re-render del RSC ni de la URL. */}
+              <SelectedVariantProvider variantIds={variantIds} initialId={firstVariantId}>
+                {/* M.3.b.CAT.3 — Selector de variants si product tiene 2+ */}
+                {selectable.length > 1 && (
+                  <VariantSelector productBasePrice={product.basePrice} variants={selectable} />
+                )}
 
-              <div className="space-y-2 pt-2">
-                {outOfStock ? (
-                  <div className="space-y-3 rounded-md border border-rose-200 bg-rose-50 px-4 py-3">
-                    <p className="text-center text-sm font-semibold text-rose-800">
-                      Producto agotado 😢
-                    </p>
-                    <BackInStockButton productId={product.id} defaultEmail={customerEmail} />
-                  </div>
-                ) : isNamePerTile ? (
-                  // Nombre Personalizado: precio POR FICHA → selector de cantidad + CTA al Estudio.
-                  <NamePricePicker
-                    slug={product.slug}
-                    variantId={selectedVariant?.id ?? null}
-                    perTilePrice={displayPrice}
-                    min={nameMin}
-                    max={nameMax}
-                    ctaNoun={ctaNoun}
-                  />
-                ) : requiresPersonalization || isLetterSetProduct ? (
-                  <>
-                    {/* CTA primaria: ir al Estudio con variant pre-seleccionado. Los sets de
-                        letras (Completo/Vocales) personalizan color + estilo dentro del Estudio.
-                        Sustantivo adaptativo: "tu imán" o "tu adhesivo" según la variante. */}
-                    <Link
-                      href={`/estudio/${product.slug}${selectedVariant ? `?variant=${selectedVariant.id}` : ""}`}
-                      className="bg-brand-purple hover:bg-brand-purple-dark shadow-brand-purple/30 hover:shadow-brand-purple/40 inline-flex h-12 w-full items-center justify-center gap-2 rounded-md px-6 text-base font-semibold text-white shadow-lg transition-all hover:shadow-xl"
-                    >
-                      <Sparkles className="h-5 w-5" />
-                      Personalizar {ctaNoun} →
-                    </Link>
-                    <p className="text-brand-muted text-center text-xs">
-                      Diseña en vivo • Vista previa al instante
-                    </p>
-                  </>
-                ) : (
-                  <form action={addToCartAction}>
-                    <input type="hidden" name="slug" value={product.slug} />
-                    <input type="hidden" name="qty" value={1} />
-                    <input type="hidden" name="returnTo" value={`/producto/${product.slug}`} />
-                    {/* ADR-057 — variante elegida en el selector (tamaño/imantado/idioma). */}
-                    {selectedVariant && (
-                      <input type="hidden" name="variantId" value={selectedVariant.id} />
-                    )}
-                    {/* SubmitButton: spinner + disabled al enviar → evita doble-clic
-                        (compra duplicada). Lucy 2026-06-27. */}
-                    <SubmitButton
-                      label="Añadir al carrito"
-                      pendingLabel="Añadiendo…"
-                      size="lg"
-                      className="bg-brand-purple hover:bg-brand-purple-dark w-full text-white"
+                <div className="space-y-2 pt-2">
+                  {outOfStock ? (
+                    <div className="space-y-3 rounded-md border border-rose-200 bg-rose-50 px-4 py-3">
+                      <p className="text-center text-sm font-semibold text-rose-800">
+                        Producto agotado 😢
+                      </p>
+                      <BackInStockButton productId={product.id} defaultEmail={customerEmail} />
+                    </div>
+                  ) : isNamePerTile ? (
+                    // Nombre Personalizado: precio POR FICHA → selector de cantidad + CTA al Estudio.
+                    <NamePricePicker
+                      slug={product.slug}
+                      perTilePrice={displayPrice}
+                      min={nameMin}
+                      max={nameMax}
+                      ctaNoun={ctaNoun}
                     />
-                  </form>
-                )}
-                {waHref && (
-                  <a
-                    href={waHref}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="border-brand-turquoise bg-brand-turquoise/10 text-brand-purple-dark hover:bg-brand-turquoise/20 inline-flex w-full items-center justify-center gap-2 rounded-md border px-4 py-2.5 text-sm font-semibold"
-                  >
-                    <MessageCircle className="h-4 w-4" />
-                    Consultar por WhatsApp
-                  </a>
-                )}
-              </div>
+                  ) : requiresPersonalization || isLetterSetProduct ? (
+                    // CTA primaria al Estudio, reactiva a la variante del selector (H12).
+                    <EstudioCtaLink slug={product.slug} ctaNoun={ctaNoun} />
+                  ) : (
+                    <form action={addToCartAction}>
+                      <input type="hidden" name="slug" value={product.slug} />
+                      <input type="hidden" name="qty" value={1} />
+                      <input type="hidden" name="returnTo" value={`/producto/${product.slug}`} />
+                      {/* ADR-057 — variante elegida en el selector (H12: sync vía Context). */}
+                      <CartVariantIdInput />
+                      {/* SubmitButton: spinner + disabled al enviar → evita doble-clic
+                          (compra duplicada). Lucy 2026-06-27. */}
+                      <SubmitButton
+                        label="Añadir al carrito"
+                        pendingLabel="Añadiendo…"
+                        size="lg"
+                        className="bg-brand-purple hover:bg-brand-purple-dark w-full text-white"
+                      />
+                    </form>
+                  )}
+                  {waHref && (
+                    <a
+                      href={waHref}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="border-brand-turquoise bg-brand-turquoise/10 text-brand-purple-dark hover:bg-brand-turquoise/20 inline-flex w-full items-center justify-center gap-2 rounded-md border px-4 py-2.5 text-sm font-semibold"
+                    >
+                      <MessageCircle className="h-4 w-4" />
+                      Consultar por WhatsApp
+                    </a>
+                  )}
+                </div>
+              </SelectedVariantProvider>
 
               <p className="text-brand-muted pt-2 text-xs">
                 SKU: <span className="font-mono">{product.sku}</span>

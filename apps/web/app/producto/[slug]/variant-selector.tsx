@@ -23,10 +23,10 @@
  * Modo multi-dim: chips por dimensión + card de Precio prominente.
  */
 
-import { useRouter, useSearchParams } from "next/navigation";
-import { useMemo, useState, useTransition } from "react";
+import { useMemo } from "react";
 import { Check } from "lucide-react";
 import { formatCOP } from "@/lib/format";
+import { useSelectedVariant } from "./variant-actions";
 import {
   parseVariantAttributes,
   generateVariantLabel,
@@ -104,8 +104,11 @@ const VISIBLE_DIMENSIONS: (keyof ProductVariantAttributes)[] = [
 ];
 
 export function VariantSelector({ productBasePrice, variants: rawVariants }: VariantSelectorProps) {
-  const router = useRouter();
-  const searchParams = useSearchParams();
+  // ──── SINGLE SOURCE OF TRUTH: el Context del buy-box (H12) ────
+  // Antes el estado vivía LOCAL acá + router.replace; las acciones (CTA/carrito/precio) no se
+  // enteraban al instante. Ahora el estado es compartido: el selector lo escribe y las acciones lo
+  // leen → todo cambia en el mismo paint. La URL se sincroniza como side-effect dentro del provider.
+  const { selectedId, setSelectedId } = useSelectedVariant();
 
   // Filtrar la variant "Default" vacía si hay otras con attributes reales.
   const variants = useMemo(() => {
@@ -116,31 +119,11 @@ export function VariantSelector({ productBasePrice, variants: rawVariants }: Var
     return withAttrs.length > 0 ? withAttrs : rawVariants;
   }, [rawVariants]);
 
-  // ──── SINGLE SOURCE OF TRUTH ────
-  // Inicializar con URL (deep-link) si trae variant válido, sino primer variant.
-  // useState con función ejecuta UNA SOLA VEZ en mount — la URL no resetea el
-  // state después; cualquier cambio de variant después del mount viene del
-  // click, NO de la URL.
-  const [selectedId, setSelectedId] = useState<string | null>(() => {
-    const fromUrl = searchParams.get("variant");
-    if (fromUrl && variants.some((v) => v.id === fromUrl)) return fromUrl;
-    return variants[0]?.id ?? null;
-  });
-
-  // Transition para que router.replace no bloquee paint del chip.
-  const [, startTransition] = useTransition();
-
   const selectedVariant = variants.find((v) => v.id === selectedId);
 
-  // Click handler: urgent state update + URL sync en transition.
   function selectVariant(id: string) {
     if (id === selectedId) return; // mismo variant, nada que hacer
     setSelectedId(id);
-    const params = new URLSearchParams(searchParams.toString());
-    params.set("variant", id);
-    startTransition(() => {
-      router.replace(`?${params.toString()}`, { scroll: false });
-    });
   }
 
   // Detectar dimensiones presentes con >1 valor distinto.
