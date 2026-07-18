@@ -6,8 +6,18 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { sendEmail } from "@/lib/resend";
+import { getSettingValue } from "@/lib/cms";
+import { retractReceivedEmail } from "@/features/emails/templates/retract-received";
 import { retractApprovedEmail } from "@/features/emails/templates/retract-approved";
 import { retractRefundedEmail } from "@/features/emails/templates/retract-refunded";
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
 
 type Loaded = {
   orderNumber: string;
@@ -42,6 +52,56 @@ async function loadRetract(id: string): Promise<Loaded | null> {
     refundAmount: rr.refundAmount,
     refundMethod: rr.refundMethod,
   };
+}
+
+/**
+ * H7 (auditoría v3) — al CREAR la solicitud: acuse al cliente (comprobante legal) + aviso interno a
+ * Lucy (el reloj de 15 días corre desde ya). Best-effort: captura sus errores; no bloquea la acción.
+ */
+export async function sendRetractRequested(id: string): Promise<void> {
+  try {
+    const d = await loadRetract(id);
+    if (!d) return;
+    // 1) Acuse al cliente.
+    const tpl = await retractReceivedEmail({
+      orderNumber: d.orderNumber,
+      customerName: d.customerName,
+      productName: d.productName,
+    });
+    const rCustomer = await sendEmail({
+      to: d.email,
+      subject: tpl.subject,
+      html: tpl.html,
+      text: tpl.text,
+      idempotencyKey: `retract-${id}-received`,
+      tags: [
+        { name: "type", value: "retract_received" },
+        { name: "order_number", value: d.orderNumber },
+      ],
+    });
+    // 2) Aviso interno a Lucy con Reply-To al cliente (HTML escapado — el nombre viene del cliente).
+    const contactEmail = await getSettingValue("CONTACT_EMAIL", "hola@lucamsshop.co");
+    await sendEmail({
+      to: contactEmail,
+      replyTo: d.email,
+      subject: `⏱️ Nueva solicitud de retracto — pedido ${d.orderNumber} (reembolso ≤15 días)`,
+      html: `<p>Nueva solicitud de retracto de <strong>${escapeHtml(d.customerName)}</strong> (${escapeHtml(d.email)}) — pedido <strong>${escapeHtml(d.orderNumber)}</strong>, producto <strong>${escapeHtml(d.productName)}</strong>.</p><p><strong>El reembolso vence en 15 días calendario (Ley 2439/2024).</strong> Gestiónalo en /admin/retractos.</p>`,
+      text: `Nueva solicitud de retracto de ${d.customerName} (${d.email}) — pedido ${d.orderNumber}, producto ${d.productName}.\n\nEl reembolso vence en 15 días calendario (Ley 2439/2024). Gestiónalo en /admin/retractos.`,
+      idempotencyKey: `retract-${id}-internal`,
+      tags: [{ name: "type", value: "retract_internal" }],
+    });
+    logger.info({
+      event: "retract.email.requested.sent",
+      id,
+      customer: rCustomer.sent ? "ok" : `skip:${rCustomer.reason}`,
+    });
+  } catch (err) {
+    logger.error({
+      event: "retract.email.requested.fail",
+      id,
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
 }
 
 export async function sendRetractApproved(id: string): Promise<void> {

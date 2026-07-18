@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { logger } from "@/lib/logger";
 import { getCurrentCustomer } from "@/lib/auth";
 import { createRetractRequest, RetractError } from "@/features/retract/service";
+import { sendRetractRequested } from "@/features/retract/emails";
 import { createWarrantyClaim, WarrantyError } from "@/features/warranty/service";
 import { notifyWarrantyClaimCreated } from "@/features/warranty/notify";
 
@@ -32,11 +33,16 @@ export async function requestRetractAction(
   if (!orderItemId) return { error: "Falta el producto." };
 
   try {
-    await createRetractRequest(orderItemId, { customerId: session.customer.id, reason });
+    const { id } = await createRetractRequest(orderItemId, {
+      customerId: session.customer.id,
+      reason,
+    });
+    // H7 — acuse al cliente (comprobante legal) + aviso interno a Lucy (best-effort, no bloquea).
+    await sendRetractRequested(id);
     revalidatePath("/mi-cuenta/pedidos/[number]", "page");
     return {
       success:
-        "¡Listo! Recibimos tu solicitud de retracto. Te escribiremos para coordinar la devolución.",
+        "¡Listo! Recibimos tu solicitud de retracto. Te enviamos un correo de confirmación y te escribiremos para coordinar la devolución.",
     };
   } catch (err) {
     if (err instanceof RetractError) {

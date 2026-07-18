@@ -12,6 +12,14 @@ import { getSettingValue } from "@/lib/cms";
 import { warrantyReceivedEmail } from "@/features/emails/templates/warranty-received";
 import { warrantyResolvedEmail } from "@/features/emails/templates/warranty-resolved";
 
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
 type Loaded = {
   orderNumber: string;
   email: string;
@@ -79,7 +87,9 @@ export async function notifyWarrantyClaimCreated(id: string): Promise<void> {
       to: contactEmail,
       replyTo: d.email,
       subject: `⚠️ Nuevo reclamo de garantía — pedido ${d.orderNumber}`,
-      html: `<p>Nuevo reclamo de garantía de <strong>${d.customerName}</strong> (${d.email}) — pedido <strong>${d.orderNumber}</strong>, producto <strong>${d.productName}</strong>.</p><p style="white-space:pre-wrap">${d.description}</p><p>Gestiónalo en /admin/garantias.</p>`,
+      // Quick win auditoría v3: escapar el texto del cliente (nombre/descripción) — es entrada libre
+      // que iba directo al HTML del buzón de Lucy (inyección de HTML en el correo interno).
+      html: `<p>Nuevo reclamo de garantía de <strong>${escapeHtml(d.customerName)}</strong> (${escapeHtml(d.email)}) — pedido <strong>${escapeHtml(d.orderNumber)}</strong>, producto <strong>${escapeHtml(d.productName)}</strong>.</p><p style="white-space:pre-wrap">${escapeHtml(d.description)}</p><p>Gestiónalo en /admin/garantias.</p>`,
       text: `Nuevo reclamo de garantía de ${d.customerName} (${d.email}) — pedido ${d.orderNumber}, producto ${d.productName}.\n\n${d.description}\n\nGestiónalo en /admin/garantias.`,
       idempotencyKey: `warranty-${id}-internal`,
       tags: [{ name: "type", value: "warranty_internal" }],

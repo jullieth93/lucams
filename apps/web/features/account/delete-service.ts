@@ -88,8 +88,8 @@ export async function deleteCustomerAccount(
 ): Promise<void> {
   const now = new Date();
 
-  // 0) Recolectar rutas de Storage ANTES de limpiar las URLs en DB.
-  const [assets, designs, terminalOrders] = await Promise.all([
+  // 0) Recolectar rutas de Storage + el email actual (para desuscribir) ANTES de limpiar la DB.
+  const [assets, designs, terminalOrders, custRow] = await Promise.all([
     prisma.designAsset.findMany({ where: { customerId }, select: { storageUrl: true } }),
     prisma.design.findMany({
       where: { customerId },
@@ -99,7 +99,11 @@ export async function deleteCustomerAccount(
       where: { customerId, status: { in: TERMINAL_ORDER_STATUS } },
       select: { id: true, shippingAddress: true },
     }),
+    prisma.customer.findUnique({ where: { id: customerId }, select: { email: true } }),
   ]);
+  const customerEmail = custRow?.email ?? null;
+  // Placeholder de supresión para las columnas de contacto (Order.email/phone, tickets, etc.).
+  const deletedEmail = `deleted-${customerId}@deleted.lucamsshop.co`;
 
   const uploadPaths = assets.map((a) => a.storageUrl).filter(Boolean);
   const previewPaths = designs
@@ -171,13 +175,18 @@ export async function deleteCustomerAccount(
     // Assets (subidas crudas): borrar las filas (punteros de PII pura).
     await tx.designAsset.deleteMany({ where: { customerId } });
 
-    // Snapshot de dirección en órdenes YA finalizadas: scrub de PII identificable
-    // (las en curso conservan la dirección para completar la entrega).
+    // Snapshot de dirección + columnas de contacto en órdenes YA finalizadas: scrub de PII
+    // identificable (las en curso conservan la dirección para completar la entrega). H8 (auditoría
+    // v3): antes solo se scrubbeaba shippingAddress → Order.email/phone (columnas propias) seguían
+    // identificando al titular, y la vista /pedido/<token> mostraba el email. La factura DIAN vive en
+    // los campos billing + número de orden, no requiere el email de contacto.
     for (const o of terminalOrders) {
       const snap = (o.shippingAddress ?? {}) as AddrSnapshot;
       await tx.order.update({
         where: { id: o.id },
         data: {
+          email: deletedEmail,
+          phone: "",
           shippingAddress: {
             ...snap,
             fullName: null,
@@ -188,6 +197,18 @@ export async function deleteCustomerAccount(
           },
         },
       });
+    }
+
+    // H8 — cortar las suscripciones por email para que los crons (recuperación de carrito,
+    // "avísame cuando vuelva") NO le sigan escribiendo al titular borrado. Se borran (no hay
+    // retención legal que las justifique). Match por email (cubre anon + logueado) + por customerId.
+    if (customerEmail) {
+      await tx.abandonedCart.deleteMany({ where: { email: customerEmail } });
+      await tx.backInStockSubscription.deleteMany({
+        where: { OR: [{ email: customerEmail }, { customerId }] },
+      });
+    } else {
+      await tx.backInStockSubscription.deleteMany({ where: { customerId } });
     }
 
     // Logs de comportamiento/lealtad: desvincular del titular.

@@ -39,6 +39,7 @@ export type DailySummary = {
   toShip: number; // pagadas sin despachar (PAID + FULFILLING)
   lowStock: number; // variantes activas con stock <= 5
   pendingReviews: number; // reseñas sin aprobar
+  retractsPending: number; // solicitudes de retracto PENDING (reloj legal de 15 días corriendo)
   abandonedCarts24h: number;
   recoveredCarts24h: number;
   errors24h: number;
@@ -63,6 +64,7 @@ export async function getDailySummary(now: Date = new Date()): Promise<DailySumm
     toShip,
     lowStock,
     pendingReviews,
+    retractsPending,
     abandonedCarts24h,
     recoveredCarts24h,
     errors24h,
@@ -118,6 +120,8 @@ export async function getDailySummary(now: Date = new Date()): Promise<DailySumm
       },
     }),
     prisma.review.count({ where: { isApproved: false, deletedAt: null } }),
+    // H7 (auditoría v3) — retractos PENDING: el reembolso legal vence a los 15 días calendario.
+    prisma.retractRequest.count({ where: { status: "PENDING" } }),
     prisma.abandonedCart.count({ where: { createdAt: { gte: from } } }),
     prisma.abandonedCart.count({ where: { createdAt: { gte: from }, recoveredAt: { not: null } } }),
     prisma.errorLog.count({ where: { createdAt: { gte: from } } }),
@@ -148,6 +152,7 @@ export async function getDailySummary(now: Date = new Date()): Promise<DailySumm
     toShip,
     lowStock,
     pendingReviews,
+    retractsPending,
     abandonedCarts24h,
     recoveredCarts24h,
     errors24h,
@@ -194,6 +199,10 @@ export function buildDailySummaryEmail(
   if (s.pendingReviews > 0)
     attention.push(
       `💬 <strong>${s.pendingReviews}</strong> reseña(s) por aprobar — /admin/resenas`,
+    );
+  if (s.retractsPending > 0)
+    attention.push(
+      `⏱️ <strong>${s.retractsPending}</strong> retracto(s) por gestionar (reembolso ≤15 días) — /admin/retractos`,
     );
   if (s.lowStock > 0)
     attention.push(

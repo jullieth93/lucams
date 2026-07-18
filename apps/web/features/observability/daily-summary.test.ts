@@ -20,6 +20,7 @@ const base: DailySummary = {
   toShip: 0,
   lowStock: 0,
   pendingReviews: 0,
+  retractsPending: 0,
   abandonedCarts24h: 0,
   recoveredCarts24h: 0,
   errors24h: 0,
@@ -48,6 +49,7 @@ describe("buildDailySummaryEmail", () => {
         needsReconciliation: 2,
         toShip: 4,
         pendingReviews: 1,
+        retractsPending: 2,
         lowStock: 3,
         errors24h: 7,
         topErrorRoute: "/checkout/envio",
@@ -57,6 +59,7 @@ describe("buildDailySummaryEmail", () => {
     expect(html).toContain("2</strong> orden(es) necesitan reconciliación");
     expect(html).toContain("4</strong> pagada(s) por despachar");
     expect(html).toContain("1</strong> reseña(s) por aprobar");
+    expect(html).toContain("2</strong> retracto(s) por gestionar");
     expect(html).toContain("3</strong> variante(s) con stock bajo");
     expect(html).toContain("7</strong> error(es) del servidor");
     expect(html).toContain("/checkout/envio");
