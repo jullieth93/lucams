@@ -1417,6 +1417,13 @@ if (legacyCats.length > 0) {
   console.log("");
 }
 
+// Auditoría v3 · H11 — los productos PERSONALIZABLES son "hechos a pedido": no llevan inventario de
+// unidades terminadas (se fabrican por orden). Antes el seed los creaba con stock 0 → salían
+// "Agotado" y perdían el CTA del Estudio. Se les da un stock made-to-order amplio (así están siempre
+// disponibles y la saga descuenta de un buffer holgado). Si Lucy quiere limitar una edición, ajusta
+// el stock desde el admin.
+const MADE_TO_ORDER_STOCK = 100_000;
+
 console.log("Creando/actualizando productos...");
 const productIdsBySlug = {};
 for (const p of productsData) {
@@ -1468,10 +1475,18 @@ for (const p of productsData) {
           name: v.name,
           sku: v.sku,
           price: v.price ?? null,
-          stock: 0,
+          stock: p.isPersonalizable ? MADE_TO_ORDER_STOCK : 0,
           attributes: v.attributes ?? {},
         },
       });
+      // H11 — normaliza variants YA existentes (creados antes con stock 0) de productos
+      // personalizables SIN pisar un stock deliberado (>0): solo sube los que están en 0.
+      if (p.isPersonalizable) {
+        await prisma.productVariant.updateMany({
+          where: { sku: v.sku, stock: 0 },
+          data: { stock: MADE_TO_ORDER_STOCK },
+        });
+      }
     }
     // Archivar variants huérfanos (Default legacy o variants ya no listados).
     const orphans = await prisma.productVariant.findMany({
@@ -1499,10 +1514,17 @@ for (const p of productsData) {
         name: "Default",
         sku: variantSku,
         price: null,
-        stock: 0,
+        stock: p.isPersonalizable ? MADE_TO_ORDER_STOCK : 0,
         attributes: {},
       },
     });
+    // H11 — normaliza el Default existente de un personalizable si quedó en stock 0.
+    if (p.isPersonalizable) {
+      await prisma.productVariant.updateMany({
+        where: { sku: variantSku, stock: 0 },
+        data: { stock: MADE_TO_ORDER_STOCK },
+      });
+    }
   }
 
   const variantBadge = declaredVariants?.length ? ` · ${declaredVariants.length} variants` : "";
