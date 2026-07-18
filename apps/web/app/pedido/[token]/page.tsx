@@ -21,7 +21,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { MapPin, Package, Truck } from "lucide-react";
 import { prisma } from "@/lib/db";
-import { formatCOP } from "@/lib/format";
+import { formatCOP, maskEmail } from "@/lib/format";
 import { LucamsLogo } from "@/components/lucams-logo";
 
 export const metadata: Metadata = {
@@ -252,16 +252,15 @@ export default async function PublicOrderPage({
           </Card>
 
           <Card icon={<MapPin className="h-4 w-4" />} title="Dirección de envío">
+            {/* #16 — esta vista es pública por token (link reenviable). Minimización PII (Ley 1581):
+                mostramos nombre + ciudad/departamento y ENMASCARAMOS la calle exacta. Basta para
+                reconocer el pedido; el cliente ya conoce su dirección completa (decisión Lucy). */}
             <p className="text-brand-purple-dark text-sm">
               {ship.fullName ?? ""}
               {ship.fullName && <br />}
-              {ship.addressLine1}
-              {ship.addressLine2 && ` · ${ship.addressLine2}`}
-            </p>
-            <p className="text-brand-muted mt-1 text-xs">
               {ship.city}, {ship.department}
-              {ship.zip ? ` · ${ship.zip}` : ""}
             </p>
+            <p className="text-brand-muted mt-1 text-xs">Dirección exacta oculta por privacidad</p>
           </Card>
 
           {order.trackingNumber && (
@@ -293,11 +292,13 @@ export default async function PublicOrderPage({
               ¿Quieres ver todos tus pedidos?
             </p>
             <p className="text-brand-muted mt-1 text-xs">
-              Crea una cuenta con el email <strong>{order.email}</strong> y vas a tener historial,
-              direcciones guardadas y descuentos exclusivos.
+              {/* #13/#16 — email ENMASCARADO (link público reenviable) y NO viaja en el href del CTA
+                  (antes ?email= lo dejaba en claro en la URL/HTML). Ley 1581. */}
+              Crea una cuenta con el email <strong>{maskEmail(order.email)}</strong> y vas a tener
+              historial, direcciones guardadas y descuentos exclusivos.
             </p>
             <Link
-              href={`/registro?email=${encodeURIComponent(order.email)}`}
+              href="/registro"
               className="bg-brand-purple hover:bg-brand-purple-dark mt-3 inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold text-white shadow-sm"
             >
               Crear cuenta

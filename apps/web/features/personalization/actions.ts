@@ -15,11 +15,13 @@
 "use server";
 
 import { z } from "zod";
+import { headers } from "next/headers";
 import { getCurrentCustomer } from "@/lib/auth";
+import { getClientIp } from "@/lib/client-ip";
 import { getOrCreateCartSession, peekCartSession } from "@/lib/cart-session";
 import { logger } from "@/lib/logger";
 import { rateLimit } from "@/lib/rate-limit";
-import { ownerKey } from "@/lib/rate-limit-keys";
+import { ownerKey, ipKey } from "@/lib/rate-limit-keys";
 import { uploadCustomerPhoto } from "@/lib/storage";
 import { getGalleryImageUrl } from "./design-gallery";
 import { prisma } from "@/lib/db";
@@ -48,6 +50,22 @@ export async function createDraftDesignAction(input: { productId: string; templa
   const parsed = CreateDraftDesignSchema.safeParse(input);
   if (!parsed.success) {
     return { ok: false as const, code: "VALIDATION" as const, message: parsed.error.message };
+  }
+
+  // #2 — rate-limit por IP: un bot sin cookie obtiene un sessionId fresco por request, así que
+  // ownerKey no lo frena; ipKey sí. Generoso para no romper el uso legítimo del Estudio.
+  const draftRl = await rateLimit(
+    ipKey("create_draft_design", getClientIp(await headers())),
+    process.env.VERCEL_ENV === "production" ? 40 : 200,
+    600,
+  );
+  if (!draftRl.allowed) {
+    logger.warn({ event: "design.create_draft.rate_limited", count: draftRl.count });
+    return {
+      ok: false as const,
+      code: "INTERNAL" as const,
+      message: "Demasiados intentos. Espera un momento.",
+    };
   }
 
   const { customerId, sessionId: existingSession } = await resolveOwner();
@@ -94,6 +112,21 @@ export async function saveCanvasAction(input: { designId: string; canvasData: un
       code: "VALIDATION" as const,
       message:
         "No pudimos guardar tu diseño. Refresca la página; si sigue, escríbenos por WhatsApp.",
+    };
+  }
+  // #2 — rate-limit por IP MUY generoso (el cliente auto-guarda debounced cada 2s → cientos de saves
+  // por sesión legítima; solo frena un bot en bucle).
+  const saveRl = await rateLimit(
+    ipKey("save_canvas", getClientIp(await headers())),
+    process.env.VERCEL_ENV === "production" ? 600 : 2000,
+    600,
+  );
+  if (!saveRl.allowed) {
+    logger.warn({ event: "design.save_canvas.rate_limited", count: saveRl.count });
+    return {
+      ok: false as const,
+      code: "INTERNAL" as const,
+      message: "Estás guardando muy rápido. Espera un momento.",
     };
   }
   // Telemetry M.3.b.fix — tracking payload size para early-detect regresiones
@@ -152,6 +185,18 @@ export async function finalizeDesignAction(
   const designId = String(formData.get("designId") ?? "").trim();
   if (!designId) {
     return { ok: false, code: "VALIDATION", message: "designId requerido" };
+  }
+
+  // #2 — rate-limit por IP: finalizar escribe N PNGs de producción a Storage (lo más caro del flujo);
+  // lo blindamos contra abuso en caliente. Generoso para no romper un cliente que reintenta.
+  const finalizeRl = await rateLimit(
+    ipKey("finalize_design", getClientIp(await headers())),
+    process.env.VERCEL_ENV === "production" ? 20 : 100,
+    600,
+  );
+  if (!finalizeRl.allowed) {
+    logger.warn({ event: "design.finalize.rate_limited", count: finalizeRl.count });
+    return { ok: false, code: "INTERNAL", message: "Demasiados intentos. Espera un momento." };
   }
 
   const slotCountRaw = Number(formData.get("slotCount") ?? 0);

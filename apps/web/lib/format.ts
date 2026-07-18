@@ -14,3 +14,17 @@ const copFormatter = new Intl.NumberFormat("es-CO", {
 export function formatCOP(centavos: number): string {
   return copFormatter.format(centavos / 100);
 }
+
+/**
+ * Enmascara un email para vistas públicas/compartibles (minimización PII, Ley 1581).
+ * "lucia.perez@gmail.com" → "lu•••@gmail.com". Conserva 1-2 letras del local-part + el dominio.
+ * Si no hay "@" o el local-part es muy corto, enmascara de forma segura sin romper.
+ */
+export function maskEmail(email: string): string {
+  const at = email.lastIndexOf("@");
+  if (at <= 0) return "•••";
+  const local = email.slice(0, at);
+  const domain = email.slice(at);
+  const keep = local.length <= 2 ? 1 : 2;
+  return `${local.slice(0, keep)}•••${domain}`;
+}
