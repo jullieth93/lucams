@@ -203,7 +203,9 @@ export async function createRetractRequest(
     const created = await prisma.retractRequest.create({
       data: {
         orderItemId,
-        reason: opts.reason?.trim() || null,
+        // #5 — cap de 500 chars (defensa en profundidad, igual que warranty): protege a TODOS los
+        // callers de un reason gigante (fila enorme / abuso), sin depender de la validación del form.
+        reason: opts.reason?.trim().slice(0, 500) || null,
         refundAmount,
         status: "PENDING",
       },

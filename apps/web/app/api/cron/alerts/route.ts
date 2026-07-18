@@ -1,6 +1,6 @@
 /*
  * Cron de alertas (Bloque D). Evalúa las reglas y envía email si algo se rompió.
- * Protegido por CRON_SECRET (query `?secret=` o header `x-cron-secret`).
+ * Protegido por CRON_SECRET (header `x-cron-secret` — nunca en la URL, para no filtrarlo en logs).
  *
  * Se agenda con pg_cron en Supabase (no Vercel Cron, mandato #11) — el SQL exacto
  * de agendamiento (cada 5 min, vía net.http_get) está en docs/OPERATIONS.md.
@@ -24,7 +24,7 @@ function secretOk(provided: string | null): boolean {
 }
 
 export async function GET(req: NextRequest) {
-  const provided = req.nextUrl.searchParams.get("secret") ?? req.headers.get("x-cron-secret");
+  const provided = req.headers.get("x-cron-secret"); // #14 solo header (?secret= queda en logs)
   if (!secretOk(provided)) {
     return Response.json({ error: "unauthorized" }, { status: 401 });
   }

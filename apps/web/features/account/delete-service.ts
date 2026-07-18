@@ -211,6 +211,14 @@ export async function deleteCustomerAccount(
       await tx.backInStockSubscription.deleteMany({ where: { customerId } });
     }
 
+    // #6 — marcar las órdenes del titular como "reseña ya solicitada" para que el cron de
+    // review-request (que filtra reviewRequestedAt:null) NUNCA las considere. El order.email ya se
+    // anonimizó arriba, pero esto evita incluso el intento de envío a la dirección deleted-* (Ley 1581).
+    await tx.order.updateMany({
+      where: { customerId, reviewRequestedAt: null },
+      data: { reviewRequestedAt: now },
+    });
+
     // Logs de comportamiento/lealtad: desvincular del titular.
     await tx.recommendationLog.updateMany({ where: { customerId }, data: { customerId: null } });
     await tx.loyaltyTxn.updateMany({ where: { customerId }, data: { customerId: null } });

@@ -1,6 +1,6 @@
 /*
  * Cron del resumen diario de operación (Bloque D). Envía a la dueña un email con lo
- * de las últimas 24h. Protegido por CRON_SECRET (query `?secret=` o header `x-cron-secret`).
+ * de las últimas 24h. Protegido por CRON_SECRET (header `x-cron-secret` — nunca en la URL, para no filtrarlo en logs).
  *
  * Se agenda con pg_cron en Supabase (no Vercel Cron, mandato #11) — el SQL de
  * agendamiento (8am America/Bogota = 13:00 UTC, vía net.http_get) está en docs/OPERATIONS.md.
@@ -24,7 +24,7 @@ function secretOk(provided: string | null): boolean {
 }
 
 export async function GET(req: NextRequest) {
-  const provided = req.nextUrl.searchParams.get("secret") ?? req.headers.get("x-cron-secret");
+  const provided = req.headers.get("x-cron-secret"); // #14 solo header (?secret= queda en logs)
   if (!secretOk(provided)) {
     return Response.json({ error: "unauthorized" }, { status: 401 });
   }

@@ -63,13 +63,17 @@ const REDACT_KEYS = new Set([
   "email",
   "phone",
   "documentnumber",
+  // #7 — 'to' es el destinatario de un email (dato personal); varios logger.info({to}) lo dejaban en
+  // claro en los logs de Vercel (Ley 1581). Tradeoff: un 'to' que fuera una URL también se enmascara.
+  "to",
 ]);
 
 function shouldRedactKey(key: string): boolean {
   const k = key.toLowerCase();
   if (REDACT_KEYS.has(k)) return true;
-  // Match suffixes like *Secret, *Token, *Key
-  return /(secret|token|key|password|cookie|authorization)$/i.test(k);
+  // Match suffixes like *Secret, *Token, *Key — y *Email/*Phone (#12: targetEmail, customerEmail,
+  // customerPhone esquivaban la redacción por no estar en la lista exacta).
+  return /(secret|token|key|password|cookie|authorization|email|phone)$/i.test(k);
 }
 
 function redact(value: unknown, depth = 0): unknown {

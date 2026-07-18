@@ -1,7 +1,7 @@
 /*
  * Cron de retención: purga los diseños DRAFT ANÓNIMOS abandonados y sus fotos del bucket privado
  * customer-uploads (Ley 1581, temporalidad/minimización — ver retention-service.ts y COMPLIANCE.md).
- * Protegido por CRON_SECRET (query `?secret=` o header `x-cron-secret`), como los demás crons.
+ * Protegido por CRON_SECRET (header `x-cron-secret` — nunca en la URL, para no filtrarlo en logs). como los demás crons.
  *
  * Se agenda con pg_cron en Supabase (mandato #11) — SQL versionado en la migración de crons HTTP y
  * documentado en docs/OPERATIONS.md.
@@ -25,7 +25,7 @@ function secretOk(provided: string | null): boolean {
 }
 
 export async function GET(req: NextRequest) {
-  const provided = req.nextUrl.searchParams.get("secret") ?? req.headers.get("x-cron-secret");
+  const provided = req.headers.get("x-cron-secret"); // #14 solo header (?secret= queda en logs)
   if (!secretOk(provided)) {
     return Response.json({ error: "unauthorized" }, { status: 401 });
   }
