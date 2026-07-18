@@ -23,7 +23,7 @@ import { MAX_STOCK_VALUE } from "./stock-constants";
 
 export class VariantStockError extends Error {
   constructor(
-    public code: "not_found" | "out_of_range" | "deleted",
+    public code: "not_found" | "out_of_range" | "deleted" | "conflict",
     message: string,
   ) {
     super(message);
@@ -114,10 +114,19 @@ export async function setVariantStockAdmin(input: {
       };
     }
 
-    await tx.productVariant.update({
-      where: { id: current.id },
+    // #12 (CAS) — UPDATE gateado por el stock LEÍDO: si una venta concurrente (webhook PAID) decrementó
+    // el stock entre la lectura y este set absoluto, el count!==1 aborta la tx (rollback del update y
+    // sin log fantasma) en vez de pisar el decremento → nada de oversell ni ledger desalineado.
+    const res = await tx.productVariant.updateMany({
+      where: { id: current.id, stock: previousStock },
       data: { stock: input.newStock },
     });
+    if (res.count !== 1) {
+      throw new VariantStockError(
+        "conflict",
+        "El stock cambió mientras editabas (quizá entró una venta). Vuelve a cargar la página y ajusta de nuevo.",
+      );
+    }
 
     await tx.inventoryLog.create({
       data: {

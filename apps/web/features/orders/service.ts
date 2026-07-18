@@ -489,19 +489,32 @@ export async function transitionOrder(
   const needsRevert = to === "CANCELLED" || to === "REFUNDED";
   // F3 — al entregar, sellar deliveredAt (ancla la ventana de retracto). El caller
   // puede sobreescribirlo vía extra si necesita una fecha específica.
-  const autoStamp: Prisma.OrderUpdateInput = to === "DELIVERED" ? { deliveredAt: new Date() } : {};
+  const autoStamp: Prisma.OrderUpdateManyMutationInput =
+    to === "DELIVERED" ? { deliveredAt: new Date() } : {};
 
   if (needsRevert) {
     return prisma.$transaction(async (tx) => {
-      const updated = await tx.order.update({
-        where: { id: orderId },
+      // #11 (TOCTOU) — gatear el UPDATE por el estado LEÍDO: si otro proceso cambió el estado entre
+      // la lectura (arriba, fuera de la tx) y este punto (p.ej. el webhook Wompi commiteó PAID justo
+      // cuando Lucy cancelaba), NO pisamos el estado nuevo ni revertimos stock/cupón sobre él.
+      const gated = await tx.order.updateMany({
+        where: { id: orderId, status: current.status },
         data: {
-          status: to as Prisma.OrderUpdateInput["status"],
+          status: to as Prisma.OrderUpdateManyMutationInput["status"],
           updatedBy: options.actorAdminId ?? null,
           ...autoStamp,
-          ...options.extra,
+          ...(options.extra as Prisma.OrderUpdateManyMutationInput),
         },
       });
+      if (gated.count === 0) {
+        const fresh = await tx.order.findFirst({
+          where: { id: orderId, deletedAt: null },
+          select: { id: true, status: true, number: true },
+        });
+        if (fresh?.status === to) return fresh; // ya movido a `to` por otro proceso → idempotente
+        throw new OrderTransitionError(fresh?.status ?? current.status, to); // aborta la tx (rollback)
+      }
+      const updated = await tx.order.findFirstOrThrow({ where: { id: orderId } });
       const orderWithItems = await tx.order.findFirst({
         where: { id: orderId },
         select: {
@@ -537,15 +550,25 @@ export async function transitionOrder(
     });
   }
 
-  return prisma.order.update({
-    where: { id: orderId },
+  // #11 (TOCTOU) — mismo guard atómico para la rama sin revert.
+  const res = await prisma.order.updateMany({
+    where: { id: orderId, status: current.status },
     data: {
-      status: to as Prisma.OrderUpdateInput["status"],
+      status: to as Prisma.OrderUpdateManyMutationInput["status"],
       updatedBy: options.actorAdminId ?? null,
       ...autoStamp,
-      ...options.extra,
+      ...(options.extra as Prisma.OrderUpdateManyMutationInput),
     },
   });
+  if (res.count === 0) {
+    const fresh = await prisma.order.findFirst({
+      where: { id: orderId, deletedAt: null },
+      select: { id: true, status: true, number: true },
+    });
+    if (fresh?.status === to) return fresh; // otro proceso ya aplicó la misma transición → idempotente
+    throw new OrderTransitionError(fresh?.status ?? current.status, to); // no pisar el estado nuevo
+  }
+  return prisma.order.findFirstOrThrow({ where: { id: orderId } });
 }
 
 /**
