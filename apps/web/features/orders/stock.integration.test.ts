@@ -105,6 +105,66 @@ describe.skipIf(!hasDb)("stock ledger — integración DB (certificación Bloque
     expect(logs.map((l) => l.delta).sort((x, y) => x - y)).toEqual([-3, -2]);
   }, 30000);
 
+  it("auditoría v3 · B3: 2 ítems del MISMO variant se agregan (1 UPDATE + 1 InventoryLog, sin P2002)", async () => {
+    // Caso cotidiano del Estudio: dos diseños del mismo producto/tamaño → 2 OrderItems con el mismo
+    // variantId. Antes el 2º InventoryLog.create violaba el índice único (orderId, reason, variantId)
+    // → StockAlreadyAppliedError → orden atascada con el dinero cobrado. Ahora se suma por variant.
+    const orderId = `${run}-order-samevariant`;
+    const before = (await prisma.productVariant.findUnique({
+      where: { id: variantA },
+      select: { stock: true },
+    }))!.stock;
+
+    const result = await prisma.$transaction((tx) =>
+      decrementStockForOrder(tx, {
+        id: orderId,
+        number: "LCM-TEST-SAMEVAR",
+        items: [
+          { variantId: variantA, qty: 2 },
+          { variantId: variantA, qty: 3 },
+        ],
+      }),
+    );
+
+    // Un solo variant afectado (agregado), sin excepción.
+    expect(result.alreadyApplied).toBe(false);
+    expect(result.decrementedVariants).toEqual([variantA]);
+
+    const after = (await prisma.productVariant.findUnique({
+      where: { id: variantA },
+      select: { stock: true },
+    }))!.stock;
+    expect(after).toBe(before - 5); // 2 + 3 sumados
+
+    // EXACTAMENTE 1 InventoryLog (delta -5), no dos: la agregación evita el choque del índice.
+    const logs = await prisma.inventoryLog.findMany({
+      where: { orderId, reason: INVENTORY_REASON.ORDER_PAID },
+    });
+    expect(logs).toHaveLength(1);
+    expect(logs[0]!.delta).toBe(-5);
+
+    // Revert simétrico: también agrega → restaura las 5 unidades con 1 log.
+    await prisma.$transaction((tx) =>
+      revertStockForOrder(
+        tx,
+        {
+          id: orderId,
+          number: "LCM-TEST-SAMEVAR",
+          items: [
+            { variantId: variantA, qty: 2 },
+            { variantId: variantA, qty: 3 },
+          ],
+        },
+        "ORDER_CANCELLED",
+      ),
+    );
+    const restored = (await prisma.productVariant.findUnique({
+      where: { id: variantA },
+      select: { stock: true },
+    }))!.stock;
+    expect(restored).toBe(before);
+  }, 30000);
+
   it("revierte una orden multi-ítem (ORDER_CANCELLED) restaurando el stock de todas", async () => {
     const orderId = `${run}-order-revert`;
     // Primero decrementar.

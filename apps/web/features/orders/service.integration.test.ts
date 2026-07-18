@@ -535,13 +535,11 @@ describe.skipIf(!hasDb)("orders/service — integración DB (ciclo de vida)", { 
       expect(count).toBe(1);
     });
 
-    it("mismo cart con total distinto (flete distinto) NO crea 2da Order: el índice parcial unique(cartId) devuelve la ganadora", async () => {
-      // Comportamiento real: aunque el branch de reuse `existing.total === total`
-      // NO matchea (flete distinto), el intento de crear una 2da Order
-      // PENDING_PAYMENT para el mismo cart viola el índice parcial unique
-      // `Order_cartId_pending_unique` → P2002 → createOrderFromCart lo captura
-      // (isCartPendingUniqueViolation) y devuelve la Order ganadora ya existente.
-      // Garantía dura: 1 cart = 1 Order activa = 1 cobro, sin importar re-cotización.
+    it("mismo cart con total distinto (flete distinto) RECONCILIA la MISMA Order con datos frescos (auditoría v3 · H1/H3)", async () => {
+      // Comportamiento correcto: NO se crea una 2da Order (1 cart = 1 Order activa), pero si el
+      // cliente cambia algo entre "ir a pagar" y "pagar" (acá, la transportadora → flete distinto)
+      // la orden PENDING existente se ACTUALIZA en el sitio con el total/flete/carrier frescos, en
+      // vez de devolver el total VIEJO (que cobraría distinto a lo que muestra el resumen).
       const { cartId } = await makeCartWithItems([
         { variantId: variantAId, qty: 1, unitPrice: PRICE_A },
       ]);
@@ -572,15 +570,47 @@ describe.skipIf(!hasDb)("orders/service — integración DB (ciclo de vida)", { 
           },
         }),
       );
-      // La 2da llamada devuelve la MISMA order (la ganadora), con el total ORIGINAL.
+      // Misma order (mismo id/number) PERO con el total y la transportadora ACTUALIZADOS.
       expect(second.id).toBe(first.id);
-      expect(second.total).toBe(first.total);
+      expect(second.number).toBe(first.number);
       expect(first.total).toBe(PRICE_A + 10_000);
+      expect(second.total).toBe(PRICE_A + 30_000);
+      const row = await prisma.order.findUnique({
+        where: { id: first.id },
+        select: { total: true, shipping: true, shippingCarrier: true },
+      });
+      expect(row!.total).toBe(PRICE_A + 30_000);
+      expect(row!.shipping).toBe(30_000);
+      expect(row!.shippingCarrier).toBe("b");
       // Sigue habiendo exactamente 1 Order PENDING_PAYMENT para el cart.
       const count = await prisma.order.count({
         where: { cartId, status: "PENDING_PAYMENT", deletedAt: null },
       });
       expect(count).toBe(1);
+    });
+
+    it("reconcilia el paymentMethod al reusar una orden COD para pagar por Wompi (auditoría v3 · B1)", async () => {
+      // Escenario del blocker: el cliente arma la orden como COD, se le bloquea (anti-abuso) y
+      // reintenta por Wompi. createOrderFromCart debe DEVOLVER la orden con paymentMethod=WOMPI (no
+      // COD), para que la saga jamás genere una guía contraentrega sobre un pago en línea.
+      const { cartId } = await makeCartWithItems([
+        { variantId: variantAId, qty: 1, unitPrice: PRICE_A },
+      ]);
+      const shipEmail = email("codwompi");
+      const asCod = await createOrderFromCart(
+        baseInput(cartId, { shipping: { email: shipEmail }, paymentMethod: "COD" }),
+      );
+      expect(asCod.paymentMethod).toBe("COD");
+      const asWompi = await createOrderFromCart(
+        baseInput(cartId, { shipping: { email: shipEmail }, paymentMethod: "WOMPI" }),
+      );
+      expect(asWompi.id).toBe(asCod.id);
+      expect(asWompi.paymentMethod).toBe("WOMPI");
+      const row = await prisma.order.findUnique({
+        where: { id: asCod.id },
+        select: { paymentMethod: true },
+      });
+      expect(row!.paymentMethod).toBe("WOMPI");
     });
 
     // ── Errores / bordes ────────────────────────────────────────────────────

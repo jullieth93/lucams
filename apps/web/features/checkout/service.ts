@@ -441,6 +441,16 @@ export async function finalizeCheckout(input: {
   }
 
   // 3. Crear checkout en Wompi → devuelve URL hosted.
+  // Espejo del guard COD (auditoría v3 · B1): createOrderFromCart pudo reusar/reconciliar una orden
+  // que venía marcada COD (ej. COD bloqueado por anti-abuso → el cliente reintenta por Wompi). La
+  // reconciliación ya normaliza el método, pero forzamos WOMPI acá también (solo mientras siga
+  // PENDING_PAYMENT) para que la saga jamás genere una guía contraentrega sobre un pago en línea.
+  if (order.paymentMethod !== "WOMPI") {
+    await prisma.order.updateMany({
+      where: { id: order.id, status: "PENDING_PAYMENT" },
+      data: { paymentMethod: "WOMPI" },
+    });
+  }
   try {
     const provider = getPaymentProvider();
     const result = await provider.createCheckout({

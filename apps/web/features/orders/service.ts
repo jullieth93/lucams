@@ -211,10 +211,11 @@ async function createOrderFromCartTx(
     }
 
     // P0-020 (Lucy 2026-06-26) — Idempotency real por cartId.
-    // Si este Cart ya tiene una Order PENDING_PAYMENT activa, retornamos
-    // esa misma en vez de crear duplicada. Esto cierra el caso "cliente
-    // refresca /checkout/pago" → no genera 2 Orders. Antes era heurística
-    // best-effort por customerId + last30min, ahora es exacta por cartId.
+    // Si este Cart ya tiene una Order PENDING_PAYMENT activa, NO creamos otra (el unique parcial lo
+    // impide igual). Antes la devolvíamos TAL CUAL: si el cliente cambiaba algo entre "ir a pagar" y
+    // "pagar" (items, cupón, envío, o el MÉTODO tras un COD bloqueado → Wompi) se cobraba lo viejo
+    // (auditoría v3 · B1/H1/H3). Ahora: si nada cambió, refresh idempotente; si cambió, la
+    // reconciliamos en el sitio con los datos frescos (mismo id/token/número).
     const existing = await tx.order.findFirst({
       where: {
         cartId: input.cartId,
@@ -222,6 +223,17 @@ async function createOrderFromCartTx(
         deletedAt: null,
       },
       orderBy: { createdAt: "desc" },
+      select: {
+        id: true,
+        number: true,
+        total: true,
+        publicAccessToken: true,
+        paymentMethod: true,
+        email: true,
+        shippingCarrier: true,
+        couponId: true,
+        items: { select: { variantId: true, qty: true, designId: true, unitPrice: true } },
+      },
     });
 
     const subtotal = cart.items.reduce((acc, it) => acc + it.unitPrice * it.qty, 0);
@@ -259,97 +271,148 @@ async function createOrderFromCartTx(
       throw new OrderAmountTooLargeError(Math.max(subtotal, total));
     }
 
-    if (existing && existing.total === total && existing.email === input.shipping.email) {
-      // Devolvemos la order existente como si la hubiéramos creado ahora.
-      return {
-        id: existing.id,
-        number: existing.number,
-        total: existing.total,
-        subtotal: existing.subtotal,
-        shipping: existing.shipping,
-        discount: existing.discount,
-        publicAccessToken: existing.publicAccessToken,
-        paymentMethod: existing.paymentMethod,
-      };
-    }
+    // Firma de items (independiente del orden) para detectar si el carrito cambió respecto a la
+    // orden PENDING existente. Incluye designId + unitPrice para captar re-personalizaciones.
+    const itemSignature = (
+      list: ReadonlyArray<{
+        variantId: string;
+        qty: number;
+        designId: string | null;
+        unitPrice: number;
+      }>,
+    ) =>
+      list
+        .map((it) => `${it.variantId}:${it.qty}:${it.designId ?? ""}:${it.unitPrice}`)
+        .sort()
+        .join("|");
+    const cartSig = itemSignature(cart.items);
 
-    // P0-002 (Lucy 2026-06-26) — Validar stock disponible antes de crear Order.
-    // Lectura solamente; el decremento real ocurre en saga POST-PAID (evita
-    // "secuestrar" stock por carritos abandonados ~30-40% en Wompi).
-    // Esta validación filtra el caso obvio "ya no hay" antes de invitar al
-    // cliente al checkout; la defensa real contra concurrencia es el UPDATE
-    // atómico en decrementStockForOrder.
+    // Data de items para crear/recrear los OrderItem (snapshot inmutable del cart).
+    const orderItemsCreate = cart.items.map((ci) => ({
+      variantId: ci.variantId,
+      qty: ci.qty,
+      unitPrice: ci.unitPrice,
+      designId: ci.designId,
+      customDesign: ci.customDesign ?? Prisma.JsonNull,
+      templateId: ci.templateId,
+      metadata: ci.metadata ?? {},
+    }));
+
+    // Campos escalares comunes a crear y reconciliar (dependen del cart/checkout). `dianStatus` va en
+    // un const aparte para que TS conserve el tipo literal del enum (no lo ensanche a string).
+    const dianStatus = input.billing.wantsInvoice
+      ? ("PENDING" as const)
+      : ("NOT_REQUIRED" as const);
+    const orderScalars = {
+      couponId, // F1 — null si no hubo cupón válido
+      // Consentimiento de derechos de imagen (ADR-062 P0-2, Ley 1581): confirmar el pedido implica
+      // aceptar las condiciones (titularidad/uso de las imágenes + autorización de impresión).
+      contentRightsAcceptedAt: new Date(),
+      email: input.shipping.email,
+      phone: input.shipping.phone,
+      shippingAddress: input.shipping as unknown as Prisma.InputJsonValue,
+      subtotal,
+      discount,
+      shipping: shippingCost,
+      tax,
+      total,
+      paymentMethod: input.paymentMethod,
+      shippingCarrier: input.shippingSelection.carrier,
+      billingDocumentType: input.billing.documentType,
+      billingDocumentNumber: input.billing.documentNumber,
+      billingName: input.billing.name,
+      dianStatus,
+      notes: input.notes,
+    };
+
+    const returnSelect = {
+      id: true,
+      number: true,
+      total: true,
+      subtotal: true,
+      shipping: true,
+      discount: true,
+      publicAccessToken: true,
+      paymentMethod: true,
+    } as const;
+
+    // Marcar Designs vinculados como USED_IN_ORDER (immutable post-checkout).
+    const designIds = cart.items.map((ci) => ci.designId).filter((id): id is string => !!id);
+    const markDesignsUsed = async () => {
+      if (designIds.length > 0) {
+        await tx.design.updateMany({
+          where: { id: { in: designIds } },
+          data: { status: "USED_IN_ORDER" },
+        });
+      }
+    };
+
+    // P0-002 — Validar stock disponible antes de crear/reconciliar (lectura; el decremento real
+    // ocurre en la saga POST-PAID). La defensa real contra concurrencia es el UPDATE atómico de
+    // decrementStockForOrder; esto filtra el caso obvio "ya no hay".
     await assertStockAvailable(
       tx,
       cart.items.map((it) => ({ variantId: it.variantId, qty: it.qty })),
     );
 
-    const number = await generateOrderNumber(tx);
+    if (existing) {
+      const identical =
+        existing.total === total &&
+        existing.email === input.shipping.email &&
+        existing.paymentMethod === input.paymentMethod &&
+        existing.shippingCarrier === input.shippingSelection.carrier &&
+        (existing.couponId ?? null) === (couponId ?? null) &&
+        itemSignature(existing.items) === cartSig;
+      if (identical) {
+        // Refresh idempotente (reload de /checkout/pago sin cambios) → misma orden.
+        return {
+          id: existing.id,
+          number: existing.number,
+          total,
+          subtotal,
+          shipping: shippingCost,
+          discount,
+          publicAccessToken: existing.publicAccessToken,
+          paymentMethod: existing.paymentMethod,
+        };
+      }
+      // RECONCILIAR (auditoría v3 · B1/H1/H3): el cliente cambió items/cupón/envío/método entre "ir a
+      // pagar" y "pagar". Actualizamos la MISMA orden (mismo id/token/número) con datos frescos, en
+      // vez de devolver la vieja — que cobraría el total, los items o el MÉTODO obsoletos.
+      await tx.orderItem.deleteMany({ where: { orderId: existing.id } });
+      const reconciled = await tx.order.update({
+        where: { id: existing.id },
+        data: { ...orderScalars, items: { create: orderItemsCreate } },
+        select: returnSelect,
+      });
+      await markDesignsUsed();
+      logger.info({
+        event: "order.create.reconciled_pending",
+        cartId: input.cartId,
+        orderId: existing.id,
+        orderNumber: existing.number,
+      });
+      return reconciled;
+    }
 
+    // No hay orden PENDING para este cart → crear una nueva.
+    const number = await generateOrderNumber(tx);
     // Token público para vista guest /pedido/<token> sin login.
     const publicAccessToken = crypto.randomBytes(16).toString("hex");
-
     const order = await tx.order.create({
       data: {
         number,
         customerId: input.customerId,
         cartId: input.cartId, // P0-020 idempotency
-        couponId, // F1 — null si no hubo cupón válido
-        // Consentimiento de derechos de imagen (ADR-062 P0-2, Ley 1581): confirmar el pedido
-        // implica aceptar las condiciones —incluida la declaración de titularidad/uso de las
-        // imágenes subidas y su autorización de impresión—. Evidencia con fecha, sin fricción extra.
-        contentRightsAcceptedAt: new Date(),
-        email: input.shipping.email,
-        phone: input.shipping.phone,
-        shippingAddress: input.shipping as unknown as Prisma.InputJsonValue,
-        subtotal,
-        discount,
-        shipping: shippingCost,
-        tax,
-        total,
+        ...orderScalars,
         currency: cart.currency,
         status: "PENDING_PAYMENT",
-        paymentMethod: input.paymentMethod,
         publicAccessToken,
-        shippingCarrier: input.shippingSelection.carrier,
-        billingDocumentType: input.billing.documentType,
-        billingDocumentNumber: input.billing.documentNumber,
-        billingName: input.billing.name,
-        dianStatus: input.billing.wantsInvoice ? "PENDING" : "NOT_REQUIRED",
-        notes: input.notes,
-        items: {
-          create: cart.items.map((ci) => ({
-            variantId: ci.variantId,
-            qty: ci.qty,
-            unitPrice: ci.unitPrice,
-            designId: ci.designId,
-            customDesign: ci.customDesign ?? Prisma.JsonNull,
-            templateId: ci.templateId,
-            metadata: ci.metadata ?? {},
-          })),
-        },
+        items: { create: orderItemsCreate },
       },
-      select: {
-        id: true,
-        number: true,
-        total: true,
-        subtotal: true,
-        shipping: true,
-        discount: true,
-        publicAccessToken: true,
-        paymentMethod: true,
-      },
+      select: returnSelect,
     });
-
-    // Marcar Designs vinculados como USED_IN_ORDER (immutable post-checkout).
-    const designIds = cart.items.map((ci) => ci.designId).filter((id): id is string => !!id);
-    if (designIds.length > 0) {
-      await tx.design.updateMany({
-        where: { id: { in: designIds } },
-        data: { status: "USED_IN_ORDER" },
-      });
-    }
-
+    await markDesignsUsed();
     return order;
   });
 }

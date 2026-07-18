@@ -841,12 +841,13 @@ describe.skipIf(!hasDb)("saga POST-PAID — integración DB (ruta de ingresos)",
       const orderId = await makePendingOrder([{ variantId, qty: 3, unitPrice: 5000 }], {
         numberTag: "VOID1",
       });
-      // Llevar a PAID con decremento real vía la saga (efecto combinado real).
-      await processPaidOrder({ orderId });
+      // Llevar a PAID con decremento real vía la saga (efecto combinado real). El wompiTransactionId
+      // debe coincidir con el del VOIDED (B2: un fallo solo actúa sobre SU propia transacción).
+      await processPaidOrder({ orderId, wompiTransactionId: "tx-void" });
       expect((await getOrder(orderId))?.status).toBe("FULFILLING"); // guía OK → FULFILLING
       expect(await stockOf(variantId)).toBe(7);
 
-      // VOIDED llega.
+      // VOIDED de LA MISMA transacción que pagó llega.
       await processFailedPaymentOrder({
         orderId,
         wompiTransactionId: "tx-void",
@@ -873,12 +874,17 @@ describe.skipIf(!hasDb)("saga POST-PAID — integración DB (ruta de ingresos)",
       });
       // Llevar a PAID + decremento pero fallando la guía → queda PAID (no FULFILLING).
       shipmentShouldThrow = new Error("Aveonline down");
-      await processPaidOrder({ orderId });
+      await processPaidOrder({ orderId, wompiTransactionId: "tx-paidpure" });
       expect((await getOrder(orderId))?.status).toBe("PAID");
       expect(await stockOf(variantId)).toBe(8);
       shipmentShouldThrow = null;
 
-      await processFailedPaymentOrder({ orderId, reason: "VOIDED" });
+      // VOIDED de LA MISMA transacción → refund legítimo.
+      await processFailedPaymentOrder({
+        orderId,
+        wompiTransactionId: "tx-paidpure",
+        reason: "VOIDED",
+      });
 
       const o = await getOrder(orderId);
       expect(o?.status).toBe("REFUNDED"); // PAID → REFUNDED (legal, revierte)
@@ -907,6 +913,34 @@ describe.skipIf(!hasDb)("saga POST-PAID — integración DB (ruta de ingresos)",
       await expect(
         processFailedPaymentOrder({ orderId: `${RUN}-ghost`, reason: "x" }),
       ).resolves.toBeUndefined();
+    }, 30000);
+
+    it("auditoría v3 · B2: DECLINED de una transacción AJENA/vieja NO reembolsa una orden ya pagada", async () => {
+      // Una reference admite varios intentos Wompi. La orden se pagó con tx-B (APPROVED). Después
+      // llega el DECLINED de tx-A (un intento viejo). Antes esto convertía PAID→REFUNDED con la plata
+      // aún capturada. Ahora: como el tx del evento ≠ el tx que pagó, se IGNORA (la orden sigue PAID).
+      const variantId = await makeVariant(10, "b2foreign");
+      const orderId = await makePendingOrder([{ variantId, qty: 2, unitPrice: 5000 }], {
+        numberTag: "B2FOREIGN1",
+      });
+      shipmentShouldThrow = new Error("Aveonline down"); // queda PAID puro (no FULFILLING)
+      await processPaidOrder({ orderId, wompiTransactionId: "tx-B-aprobada" });
+      shipmentShouldThrow = null;
+      expect((await getOrder(orderId))?.status).toBe("PAID");
+      expect(await stockOf(variantId)).toBe(8);
+
+      // Llega el DECLINED de un intento DISTINTO (tx-A).
+      await processFailedPaymentOrder({
+        orderId,
+        wompiTransactionId: "tx-A-vieja",
+        reason: "DECLINED",
+      });
+
+      const o = await getOrder(orderId);
+      expect(o?.status).toBe("PAID"); // NO se reembolsó
+      expect(o?.wompiTransactionId).toBe("tx-B-aprobada"); // conserva la tx que pagó
+      expect(await stockOf(variantId)).toBe(8); // stock intacto (no revirtió)
+      expect(await logsFor(orderId, INVENTORY_REASON.ORDER_REFUNDED)).toHaveLength(0);
     }, 30000);
   });
 

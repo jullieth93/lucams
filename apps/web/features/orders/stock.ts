@@ -65,6 +65,25 @@ type StockItem = {
 };
 
 /**
+ * Suma las cantidades por `variantId`. Dos OrderItems del MISMO variant (caso cotidiano: dos
+ * diseños distintos del Estudio del mismo producto/tamaño → cada diseño es un CartItem propio con
+ * el mismo variantId) deben tratarse como UN solo decremento/revert/validación. Sin esto:
+ *  - el ledger tiene UNIQUE(orderId, reason, variantId) → el 2º InventoryLog.create de ese variant
+ *    lanza P2002 → la saga lo trata como "ya aplicado" y la orden queda atascada en PENDING_PAYMENT
+ *    con el dinero ya cobrado (blocker de auditoría v3 · B3);
+ *  - assertStockAvailable validaría por-item (2×qty3 con stock 4 pasan ambos) en vez de por el
+ *    total real (6 > 4).
+ */
+function aggregateByVariant(items: ReadonlyArray<StockItem>): StockItem[] {
+  const totals = new Map<string, number>();
+  for (const it of items) {
+    if (it.qty <= 0) continue;
+    totals.set(it.variantId, (totals.get(it.variantId) ?? 0) + it.qty);
+  }
+  return [...totals].map(([variantId, qty]) => ({ variantId, qty }));
+}
+
+/**
  * Verifica que cada item tiene stock suficiente — lectura, NO escritura.
  *
  * Llamado por:
@@ -83,8 +102,9 @@ export async function assertStockAvailable(
   tx: Prisma.TransactionClient,
   items: StockItem[],
 ): Promise<void> {
-  for (const it of items) {
-    if (it.qty <= 0) continue;
+  // Agregado por variant: valida contra el total pedido de cada variant, no item-a-item (dos
+  // líneas del mismo variant deben sumar antes de comparar con el stock disponible).
+  for (const it of aggregateByVariant(items)) {
     const v = await tx.productVariant.findUnique({
       where: { id: it.variantId },
       select: { id: true, stock: true },
@@ -132,16 +152,9 @@ export async function decrementStockForOrder(
   }
 
   const decremented: string[] = [];
-  for (const item of order.items) {
-    if (item.qty <= 0) {
-      logger.warn({
-        event: "stock.decrement.invalid_qty",
-        orderId: order.id,
-        variantId: item.variantId,
-        qty: item.qty,
-      });
-      continue;
-    }
+  // Agregado por variant: un solo UPDATE + un solo InventoryLog por variant, aunque la orden tenga
+  // varias líneas del mismo variant (ver aggregateByVariant — evita el P2002 del índice único).
+  for (const item of aggregateByVariant(order.items)) {
     // Optimistic atómico: UPDATE … WHERE id=$1 AND stock>=$2
     const res = await tx.productVariant.updateMany({
       where: { id: item.variantId, stock: { gte: item.qty } },
@@ -243,10 +256,9 @@ export async function revertStockForOrder(
     return { revertedVariants: [], skipped: true };
   }
 
-  // 3. Incrementar + log.
+  // 3. Incrementar + log (agregado por variant, simétrico al decremento).
   const reverted: string[] = [];
-  for (const item of order.items) {
-    if (item.qty <= 0) continue;
+  for (const item of aggregateByVariant(order.items)) {
     await tx.productVariant.update({
       where: { id: item.variantId },
       data: { stock: { increment: item.qty } },

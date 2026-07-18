@@ -75,6 +75,25 @@ export type ProcessPaidOrderResult = {
  *
  * TODO Bloque B: cuando Resend esté verificado, disparar email de alerta a Lucy.
  */
+async function markNeedsReconciliation(orderId: string, reason: string): Promise<void> {
+  // Write SEPARADO e idempotente, best-effort: si falla, ya quedó el logger del caller; no
+  // propagamos (no queremos que Wompi reintente en loop por un fallo de marcado). No pisa un
+  // motivo previo si ya estaba marcada (evita perder el contexto de la primera anomalía).
+  try {
+    await prisma.order.updateMany({
+      where: { id: orderId, needsReconciliation: false },
+      data: { needsReconciliation: true, reconciliationReason: reason },
+    });
+    logger.warn({ event: "order.saga.flagged_reconciliation", orderId, reason });
+  } catch (flagErr) {
+    logger.error({
+      event: "order.saga.flag_reconciliation_failed",
+      orderId,
+      err: flagErr instanceof Error ? flagErr.message : String(flagErr),
+    });
+  }
+}
+
 async function flagOrderNeedsReconciliation(
   orderId: string,
   wompiTransactionId: string | null,
@@ -84,24 +103,7 @@ async function flagOrderNeedsReconciliation(
     `Pago Wompi APROBADO pero stock agotado al confirmar (variant ${err.variantId}, ` +
     `pedía ${err.requested}${err.available !== undefined ? `, había ${err.available}` : ""}). ` +
     `Tx Wompi: ${wompiTransactionId ?? "—"}. Decidir reembolso o producir stock.`;
-  try {
-    await prisma.order.update({
-      where: { id: orderId },
-      data: { needsReconciliation: true, reconciliationReason: reason },
-    });
-    logger.warn({
-      event: "order.saga.paid.flagged_reconciliation",
-      orderId,
-      wompiTransactionId,
-    });
-  } catch (flagErr) {
-    // No propagamos — el logger.error del caller ya dejó rastro.
-    logger.error({
-      event: "order.saga.paid.flag_reconciliation_failed",
-      orderId,
-      err: flagErr instanceof Error ? flagErr.message : String(flagErr),
-    });
-  }
+  await markNeedsReconciliation(orderId, reason);
 }
 
 /**
@@ -138,6 +140,16 @@ export async function processPaidOrder(
 
   // 2) Si ya tiene tracking, fue procesada — idempotente.
   if (order.trackingNumber) {
+    // H2 (auditoría v3): si llega un pago Wompi APROBADO sobre una orden que YA se confirmó como
+    // CONTRAENTREGA (guía con recaudo, sin wompiTransactionId), es un DOBLE COBRO real (paga online
+    // y el mensajero cobra en efectivo). No se puede resolver solo: lo marcamos para reconciliación.
+    if (input.wompiTransactionId && order.paymentMethod === "COD" && !order.wompiTransactionId) {
+      await markNeedsReconciliation(
+        order.id,
+        `Pago Wompi (tx ${input.wompiTransactionId}) sobre una orden YA confirmada como contraentrega ` +
+          `(guía ${order.trackingNumber}). Doble cobro: reembolsar el pago en línea o convertir la guía a prepagada.`,
+      );
+    }
     logger.info({
       event: "order.saga.paid.already_processed",
       orderId: order.id,
@@ -289,6 +301,16 @@ export async function processPaidOrder(
       orderId: order.id,
       status: order.status,
     });
+    // H2 (auditoría v3): un pago Wompi APROBADO sobre una orden CANCELLED/REFUNDED/terminal es un
+    // cobro que capturó dinero sobre una orden que ya no se va a cumplir → invisible sin este flag.
+    // Lo hacemos VISIBLE para que Lucy reembolse (antes solo caía en un logger.warn).
+    if (input.wompiTransactionId) {
+      await markNeedsReconciliation(
+        order.id,
+        `Pago Wompi (tx ${input.wompiTransactionId}) APROBADO sobre una orden en estado ${order.status} ` +
+          `(no PENDING_PAYMENT). El dinero se capturó pero la orden no se cumplirá: reembolsar.`,
+      );
+    }
     return {
       status: "transition_failed",
       reason: `Order en estado ${order.status}, no PENDING_PAYMENT`,
@@ -396,6 +418,11 @@ export async function processPaidOrder(
     };
   }
 
+  // ¿Es realmente contraentrega? SOLO si el método es COD Y no hay pago Wompi asociado. Si la orden
+  // tiene wompiTransactionId, ya se cobró en línea → la guía va PREPAGADA (sin recaudo), pase lo que
+  // pase con el paymentMethod (auditoría v3 · B1: evita que el mensajero cobre un total ya pagado).
+  const isCod = order.paymentMethod === "COD" && !order.wompiTransactionId;
+
   // 7) Llamar provider.createShipment. Siempre real ahora — el provider
   //    Aveonline maneja credenciales según AVEONLINE_ENV y flag de facturación
   //    según AVEONLINE_GENERATE_REAL. Default seguro: simulación documentada
@@ -433,8 +460,11 @@ export async function processPaidOrder(
       items,
       // COD (contraentrega): el courier cobra el total en efectivo al entregar y lo
       // remite. valorRecaudoCop en centavos (createShipment lo pasa a pesos).
-      contraentrega: order.paymentMethod === "COD",
-      valorRecaudoCop: order.paymentMethod === "COD" ? order.total : undefined,
+      // Backstop anti-doble-cobro (auditoría v3 · B1): si la orden tiene wompiTransactionId
+      // significa que YA se pagó en línea → JAMÁS generamos guía contraentrega (el mensajero NO
+      // debe volver a cobrar), aunque el paymentMethod hubiera quedado 'COD' por un reuso.
+      contraentrega: isCod,
+      valorRecaudoCop: isCod ? order.total : undefined,
       orderId: order.id,
     });
   } catch (err) {
@@ -673,7 +703,7 @@ export async function processFailedPaymentOrder(input: {
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     const current = await prisma.order.findFirst({
       where: { id: input.orderId, deletedAt: null },
-      select: { status: true, number: true },
+      select: { status: true, number: true, wompiTransactionId: true },
     });
     if (!current) {
       logger.warn({ event: "order.saga.payment_failed.not_found", orderId: input.orderId });
@@ -688,6 +718,30 @@ export async function processFailedPaymentOrder(input: {
         status: current.status,
       });
       return;
+    }
+
+    // B2 (auditoría v3) — un evento de FALLO (DECLINED/VOIDED/ERROR) solo puede tumbar una orden que
+    // ya CAPTURÓ dinero si pertenece a LA MISMA transacción que la pagó. Una reference admite varios
+    // intentos Wompi: un DECLINED de un intento viejo NO debe reembolsar/cancelar una orden que otra
+    // transacción pagó después (antes esto convertía PAID→REFUNDED con la plata aún capturada).
+    const captured =
+      current.status === "PAID" ||
+      current.status === "DELIVERED" ||
+      current.status === "FULFILLING" ||
+      current.status === "SHIPPED";
+    if (captured) {
+      const sameTx =
+        !!input.wompiTransactionId && input.wompiTransactionId === current.wompiTransactionId;
+      if (!sameTx) {
+        logger.warn({
+          event: "order.saga.payment_failed.foreign_or_stale_tx_ignored",
+          orderId: input.orderId,
+          status: current.status,
+          eventTx: input.wompiTransactionId ?? null,
+          orderTx: current.wompiTransactionId ?? null,
+        });
+        return; // no tocamos una orden pagada por otra transacción
+      }
     }
 
     // Si el dinero ya estaba capturado (PAID/DELIVERED), un VOIDED/refund se
