@@ -87,7 +87,14 @@ export async function saveCanvasAction(input: { designId: string; canvasData: un
       },
       "saveCanvas validation rejected",
     );
-    return { ok: false as const, code: "VALIDATION" as const, message: parsed.error.message };
+    // Auditoría v3 · B5: NO exponer el JSON crudo de Zod al cliente (se veía en el header del
+    // editor). El detalle ya quedó en el log; al cliente le damos un mensaje claro y accionable.
+    return {
+      ok: false as const,
+      code: "VALIDATION" as const,
+      message:
+        "No pudimos guardar tu diseño. Refresca la página; si sigue, escríbenos por WhatsApp.",
+    };
   }
   // Telemetry M.3.b.fix — tracking payload size para early-detect regresiones
   const payloadSize = JSON.stringify(parsed.data.canvasData).length;

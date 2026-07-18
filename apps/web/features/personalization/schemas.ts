@@ -25,7 +25,10 @@ export const StageSchema = z.object({
 // M.3.b.A2 — Layer asset: regex valida que src sea path local del repo
 // (`/templates/<slug>.svg|png|jpg`) y NO URLs externas. Esto previene
 // inyección de assets remotos en el editor (XSS via SVG malicioso).
-const ASSET_SRC_RE = /^\/templates\/[a-z0-9-]+\.(svg|png|jpg|jpeg|webp)$/;
+// Auditoría v3 · B5: se permite '_' — el asset del Polaroid es `ig_post.svg`; sin el guion bajo el
+// regex rechazaba CADA auto-save del Polaroid → canvasData nunca persistía y el editor mostraba el
+// error crudo de Zod. Sigue siendo un path local restringido (sin `..`, sin `/` extra, sin URLs).
+const ASSET_SRC_RE = /^\/templates\/[a-z0-9_-]+\.(svg|png|jpg|jpeg|webp)$/;
 
 export const CanvasLayerSchema = z
   .object({

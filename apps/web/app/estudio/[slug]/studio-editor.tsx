@@ -521,24 +521,31 @@ export function StudioEditor({
     setPreviewError(null);
     try {
       await ensureAllStagesMounted(); // T5: garantizar los N stages antes de snapshotear producción
-      // Generar productionDataUrls (uno por slot, pixelRatio 3 para 300 DPI aprox)
+      // Generar productionDataUrls (uno por slot). H5 (auditoría v3): el pixelRatio va RELATIVO al
+      // tamaño LÓGICO del stage, no al display responsive — así el PNG de imprenta sale a resolución
+      // FIJA (ancho lógico × 3, = los 3240px del render server para 1080) igual en móvil y en desktop
+      // (antes toDataURL({pixelRatio:3}) sobre un slot de ~171px móvil daba ~186 DPI, borroso).
+      const logicalStageW = state.canvasData.unitTemplate.stage.width;
       const productionDataUrls: string[] = [];
       for (const slot of state.canvasData.slots) {
         const stage = slotStagesRef.current.get(slot.slotIndex);
         if (!stage) {
           throw new Error(`No se pudo encontrar el slot ${slot.slotIndex + 1} para snapshot`);
         }
-        // ADR-063 T3 — archivo de imprenta LIMPIO: la sombra, el velo glossy y el edge stroke
-        // (capas `name="realism"`) son adornos de PANTALLA para que el cliente vea el imán físico;
-        // NO deben hornearse en el PNG de producción 300 DPI. Se ocultan solo durante el snapshot y
-        // se restauran de inmediato (el preview compositado sí conserva el realismo). WYSIWYG.
-        const realism = stage.find(".realism");
-        realism.forEach((l) => l.hide());
+        // ADR-063 T3 + H6 — archivo de imprenta LIMPIO: la sombra/glossy/edge (`name="realism"`) y los
+        // indicadores de edición (recuadro punteado + dot, `name="edit-indicator"`) son adornos de
+        // PANTALLA; NO deben hornearse en el PNG 300 DPI. Se ocultan solo durante el snapshot y se
+        // restauran de inmediato. (El preview compositado conserva el realismo, pero NO los
+        // indicadores — se ocultan también allá.)
+        const hiddenForSnapshot = [...stage.find(".realism"), ...stage.find(".edit-indicator")];
+        hiddenForSnapshot.forEach((l) => l.hide());
         let dataUrl: string;
         try {
-          dataUrl = stage.toDataURL({ pixelRatio: 3, mimeType: "image/png" });
+          const displayW = stage.width() || logicalStageW;
+          const pixelRatio = (logicalStageW * 3) / displayW;
+          dataUrl = stage.toDataURL({ pixelRatio, mimeType: "image/png" });
         } finally {
-          realism.forEach((l) => l.show());
+          hiddenForSnapshot.forEach((l) => l.show());
         }
         // FOTO1 (fallback de cliente): heart/circle → recortar a la silueta (transparente afuera).
         dataUrl = await clipProductionSnapshotToShape(dataUrl, productConfig.shape);
@@ -979,10 +986,12 @@ export function StudioEditor({
         onAssetUploaded={handleAssetUploaded}
       />
 
-      {/* M.3.b.B.3 — Modal de ajustar foto (filtros) */}
+      {/* M.3.b.B.3 — Modal de ajustar foto (encuadre + filtros). H4: en calendarios se oculta la
+          sección de filtros (no llegan al PNG del calendario → romperían WYSIWYG); el encuadre sí. */}
       <PhotoAdjustModalWrapper
         store={store}
         slotIndex={adjustSlotIndex}
+        allowFilters={!isCalendarMonth}
         onClose={() => setAdjustSlotIndex(null)}
       />
 
@@ -1089,10 +1098,12 @@ function PhotoAdjustModalWrapper({
   store,
   slotIndex,
   onClose,
+  allowFilters = true,
 }: {
   store: ReturnType<typeof createStudioStore>;
   slotIndex: number | null;
   onClose: () => void;
+  allowFilters?: boolean;
 }) {
   // Selectores ATÓMICOS primitivos — evita el re-render infinito que daba
   // selector compuesto `s.canvasData?.slots ?? []` (array literal nuevo cada
@@ -1116,6 +1127,7 @@ function PhotoAdjustModalWrapper({
       photoUrl={slotAssetUrl}
       currentFilter={slotFilter}
       slotIndex={slotIndex}
+      allowFilters={allowFilters}
       onClose={onClose}
       onApply={(filter) => {
         if (slotIndex !== null) setSlotFilter(slotIndex, filter);
@@ -1279,7 +1291,17 @@ async function buildCompositedPreview(
   for (const slot of slots) {
     const stage = stages.get(slot.slotIndex);
     if (!stage) continue;
-    const slotDataUrl = stage.toDataURL({ pixelRatio: 1, mimeType: "image/png" });
+    // H6 (auditoría v3): ocultar los indicadores de edición (recuadro punteado + dot) en el preview
+    // de confirmación — el cliente debe ver el producto final, no los hints de edición. El realismo
+    // (sombra/glossy) SÍ se conserva acá (hace ver el imán físico).
+    const indicators = stage.find(".edit-indicator");
+    indicators.forEach((l) => l.hide());
+    let slotDataUrl: string;
+    try {
+      slotDataUrl = stage.toDataURL({ pixelRatio: 1, mimeType: "image/png" });
+    } finally {
+      indicators.forEach((l) => l.show());
+    }
     await new Promise<void>((resolve, reject) => {
       const img = new Image();
       img.onload = () => {
@@ -1331,7 +1353,15 @@ async function buildMagnetTextures(
   for (const slot of slots) {
     const stage = stages.get(slot.slotIndex);
     if (!stage) continue;
-    const slotDataUrl = stage.toDataURL({ pixelRatio: 1, mimeType: "image/png" });
+    // H6: sin indicadores de edición en las texturas 3D (nevera/mural/etc.) — muestran el producto.
+    const indicators = stage.find(".edit-indicator");
+    indicators.forEach((l) => l.hide());
+    let slotDataUrl: string;
+    try {
+      slotDataUrl = stage.toDataURL({ pixelRatio: 1, mimeType: "image/png" });
+    } finally {
+      indicators.forEach((l) => l.show());
+    }
     const dataUrl = await new Promise<string>((resolve, reject) => {
       const img = new Image();
       img.onload = () => {

@@ -39,6 +39,13 @@ type StudioPhotoAdjustModalProps = {
   onApply: (filter: PhotoFilterPreset | null) => void;
   /** Reset transform: vuelve la foto al centro con scale=1. */
   onResetTransform: () => void;
+  /**
+   * Muestra la sección de filtros. Se desactiva para calendarios (auditoría v3 · H4): los filtros
+   * Konva NO llegan al compositor del calendario ni al PNG de producción → se verían B&N en pantalla
+   * pero imprimirían a color (rompe WYSIWYG). El encuadre (zoom/pan) SÍ se propaga, así que se
+   * conserva. Volver a habilitar cuando el compositor del calendario replique los filtros.
+   */
+  allowFilters?: boolean;
 };
 
 // CSS filter equivalents para preview (no idéntico a Konva, suficiente para
@@ -59,6 +66,7 @@ export function StudioPhotoAdjustModal({
   onClose,
   onApply,
   onResetTransform,
+  allowFilters = true,
 }: StudioPhotoAdjustModalProps) {
   if (!photoUrl) return null;
 
@@ -85,8 +93,8 @@ export function StudioPhotoAdjustModal({
           Ajustar foto del imán {slotIndex !== null ? slotIndex + 1 : ""}
         </DialogTitle>
         <DialogDescription className="text-brand-muted text-sm">
-          Arrastra la foto en el canvas para encuadrar · Scroll del mouse (o pellizco) para zoom ·
-          Elige un filtro abajo
+          Arrastra la foto en el canvas para encuadrar · Scroll del mouse (o pellizco) para zoom
+          {allowFilters ? " · Elige un filtro abajo" : ""}
         </DialogDescription>
 
         {/* Reset transform — vuelve scale=1 + offset=0 */}
@@ -103,37 +111,39 @@ export function StudioPhotoAdjustModal({
           </Button>
         </div>
 
-        <div className="mt-3">
-          <h3 className="text-brand-purple-dark mb-2 text-sm font-semibold">Filtros</h3>
-          {/* Grid de presets: 6 cards (sin filtro + 5 presets) */}
-          <div
-            role="radiogroup"
-            aria-label="Filtros disponibles"
-            className="grid grid-cols-2 gap-3 sm:grid-cols-3"
-          >
-            {/* Sin filtro */}
-            <FilterCard
-              isSelected={currentFilter === null}
-              previewUrl={photoUrl}
-              cssFilter="none"
-              label="Sin filtro"
-              description="Foto original sin ajustes"
-              onClick={() => handleSelectFilter(null)}
-            />
-
-            {FILTER_ORDER.map((preset) => (
+        {allowFilters && (
+          <div className="mt-3">
+            <h3 className="text-brand-purple-dark mb-2 text-sm font-semibold">Filtros</h3>
+            {/* Grid de presets: 6 cards (sin filtro + 5 presets) */}
+            <div
+              role="radiogroup"
+              aria-label="Filtros disponibles"
+              className="grid grid-cols-2 gap-3 sm:grid-cols-3"
+            >
+              {/* Sin filtro */}
               <FilterCard
-                key={preset}
-                isSelected={currentFilter === preset}
+                isSelected={currentFilter === null}
                 previewUrl={photoUrl}
-                cssFilter={CSS_FILTER_BY_PRESET[preset]}
-                label={FILTER_LABELS[preset]}
-                description={FILTER_DESCRIPTIONS[preset]}
-                onClick={() => handleSelectFilter(preset)}
+                cssFilter="none"
+                label="Sin filtro"
+                description="Foto original sin ajustes"
+                onClick={() => handleSelectFilter(null)}
               />
-            ))}
+
+              {FILTER_ORDER.map((preset) => (
+                <FilterCard
+                  key={preset}
+                  isSelected={currentFilter === preset}
+                  previewUrl={photoUrl}
+                  cssFilter={CSS_FILTER_BY_PRESET[preset]}
+                  label={FILTER_LABELS[preset]}
+                  description={FILTER_DESCRIPTIONS[preset]}
+                  onClick={() => handleSelectFilter(preset)}
+                />
+              ))}
+            </div>
           </div>
-        </div>
+        )}
 
         <div className="border-brand-purple/10 mt-5 flex justify-end border-t pt-4">
           <Button

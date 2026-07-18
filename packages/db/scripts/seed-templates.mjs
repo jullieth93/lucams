@@ -203,7 +203,9 @@ const templatesData = [
       stage: stage(400, 580),
       layers: [
         background("#FFFFFF"),
-        photoSlot({ id: "p1", x: 20, y: 50, width: 360, height: 380, label: "Tu foto" }),
+        // Ventana de foto ALINEADA con la ventana transparente del marco ig_post.svg (x20 y80
+        // 360×360). Antes p1 estaba en y50 h380 y no coincidía con el marco (auditoría v3 · B4).
+        photoSlot({ id: "p1", x: 20, y: 80, width: 360, height: 360, label: "Tu foto" }),
         asset({
           id: "frame",
           src: "/templates/ig_post.svg",
@@ -212,14 +214,15 @@ const templatesData = [
           width: 400,
           height: 580,
         }),
-        // 4 textos editables — replicando estructura ig_post.svg
+        // 4 textos EDITABLES (Konva) — el marco SVG ya NO los hornea (evita doble-texto). Ubicados
+        // en el chrome del marco: usuario en la cabecera, likes/título/hashtags bajo la foto.
         text({
           id: "user_name",
-          x: 50,
-          y: 25,
+          x: 75,
+          y: 34,
           text: "@tu_usuario",
           fontFamily: "Inter",
-          fontSize: 20,
+          fontSize: 19,
           fill: "#262626",
           fontWeight: "bold",
           align: "left",
@@ -227,11 +230,11 @@ const templatesData = [
         }),
         text({
           id: "likes_count",
-          x: 30,
-          y: 475,
+          x: 25,
+          y: 484,
           text: "362 me gusta",
           fontFamily: "Inter",
-          fontSize: 18,
+          fontSize: 17,
           fill: "#262626",
           fontWeight: "bold",
           align: "left",
@@ -239,11 +242,11 @@ const templatesData = [
         }),
         text({
           id: "caption",
-          x: 15,
+          x: 22,
           y: 510,
           text: "Tu título acá",
           fontFamily: "Inter",
-          fontSize: 20,
+          fontSize: 19,
           fill: "#262626",
           fontWeight: "bold",
           align: "left",
@@ -251,11 +254,11 @@ const templatesData = [
         }),
         text({
           id: "hashtags",
-          x: 15,
-          y: 545,
+          x: 22,
+          y: 540,
           text: "#mirecuerdo #lucamsshop",
           fontFamily: "Inter",
-          fontSize: 16,
+          fontSize: 15,
           fill: "#00376B",
           align: "left",
           editable: true,

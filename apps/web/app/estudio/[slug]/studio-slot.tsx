@@ -995,9 +995,14 @@ function renderText(
   // Si editable, envolver con un Group y agregar Rect dashed visible ALREDEDOR
   // que indica al cliente "este texto se puede editar" + dot turquoise en corner
   // como hint visual extra. M.3.b.UX.3 — más visible que la versión inicial.
+  // Auditoría v3 · H6 — el recuadro punteado + el dot son HINTS DE PANTALLA ("este texto se edita").
+  // Van marcados `name="edit-indicator"` para ocultarlos en el snapshot de PRODUCCIÓN y en el preview
+  // compositado (antes se horneaban en el PNG de imprenta y en la vista de confirmación). Es distinto
+  // de `name="realism"` (sombra/glossy), que SÍ se conserva en el preview.
   return (
     <Group key={layer.id} listening={true}>
       <Rect
+        name="edit-indicator"
         x={textX - padding}
         y={textY - padding}
         width={estWidth + padding * 2}
@@ -1013,6 +1018,7 @@ function renderText(
       {/* Dot turquesa en corner top-right indicando "editable" — diferenciador
           visual evidente vs textos no editables del template */}
       <Circle
+        name="edit-indicator"
         x={textX + estWidth + padding - 2}
         y={textY - padding + 2}
         radius={3.5}
