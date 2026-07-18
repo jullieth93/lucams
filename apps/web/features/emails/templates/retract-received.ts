@@ -26,7 +26,7 @@ export async function retractReceivedEmail(data: RetractReceivedData) {
 <p style="margin-top:14px;"><strong>¿Qué sigue?</strong></p>
 <ol style="padding-left:18px;color:#3D2E5C;">
   <li>Revisamos tu solicitud y te confirmamos la <strong>aprobación</strong> muy pronto.</li>
-  <li>Coordinamos contigo la devolución del producto.</li>
+  <li>Coordinamos contigo la devolución del producto. El costo del envío de la devolución corre por tu cuenta, salvo que el producto haya llegado defectuoso o equivocado.</li>
   <li>El reembolso se hace en <strong>máximo 15 días calendario</strong> desde hoy (Ley 2439/2024).</li>
 </ol>
 <p style="margin-top:14px;">¿Dudas? Escríbenos por WhatsApp:</p>
@@ -42,7 +42,7 @@ Registramos tu solicitud de retracto de "${data.productName}" (pedido ${data.ord
 
 Qué sigue:
 1. Revisamos tu solicitud y te confirmamos la aprobación pronto.
-2. Coordinamos la devolución del producto.
+2. Coordinamos la devolución del producto (el costo del envío corre por tu cuenta, salvo que llegara defectuoso o equivocado).
 3. Reembolso en máximo 15 días calendario desde hoy (Ley 2439/2024).
 
 ¿Dudas? Escríbenos por WhatsApp: ${waLink}`;

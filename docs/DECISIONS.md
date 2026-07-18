@@ -2473,9 +2473,12 @@ alto `ba70918`/`4b3ab4b`/`87e46a7`/`4a986b5`), E (quick wins).
 
 **Dos decisiones de política diferidas a Lucy (no las tomo unilateralmente):**
 
-1. **Quién paga la devolución en un retracto.** El copy de UI/emails contradecía a
-   `/legal/devoluciones`. Resuelto haciendo el copy **neutral** (remite a la política legal) en vez de
-   elegir una postura. Lucy define si el negocio cubre o no el costo, y ahí se unifica el texto.
+1. **Quién paga la devolución en un retracto.** ~~El copy de UI/emails contradecía a
+   `/legal/devoluciones`. Resuelto haciendo el copy **neutral** (remite a la política legal).~~
+   **RESUELTO (2026-07-18, Lucy): el cliente asume el costo del envío de la devolución** — salvo que
+   el producto llegara defectuoso o equivocado (ahí aplica Garantías, no retracto). Es lo que ya decía
+   `/legal/devoluciones`; se unificó el copy de UI (`retract-control.tsx`) y de los 2 emails de
+   retracto (`retract-received`, `retract-approved`) con esa postura + el matiz legal.
 2. **Cupón invalidado en el último paso del checkout (`#8`).** Antes se **descartaba en silencio** y se
    cobraba el total SIN el descuento que el cliente vio. Nueva política: la tx aborta con
    `CouponInvalidatedError` → el checkout limpia el cupón del estado y devuelve
