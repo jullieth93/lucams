@@ -142,6 +142,11 @@ export async function POST(req: Request) {
       event: "webhook.aveonline.saga_unexpected_error",
       err: err instanceof Error ? err.message : String(err),
     });
+    // #8 — ante excepción inesperada de la saga (p.ej. blip de DB), NO sellar processedAt y devolver
+    // acá: el evento queda sin procesar → Aveonline reintenta el mismo externalId (ya no se descarta
+    // como duplicado) y la alerta webhooks_stuck lo levanta a la hora. Un DELIVERED perdido dejaría
+    // de ser irrecuperable. processTrackingUpdate resuelve la orden por trackingNumber internamente.
+    return NextResponse.json({ ok: true, note: "saga error, left unprocessed for retry" });
   }
 
   await prisma.webhookEvent.update({

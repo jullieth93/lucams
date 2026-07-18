@@ -230,6 +230,19 @@ export async function POST(req: Request) {
       err: err instanceof Error ? err.message : String(err),
       stack: err instanceof Error ? err.stack : undefined,
     });
+    // #14 — la saga reventó procesando un webhook APPROVED: el pago PUDO capturarse y la orden queda
+    // sin confirmar. Marcamos needsReconciliation (dispara la alerta crítica YA, sin esperar 1h) y
+    // devolvemos ANTES de sellar processedAt → el evento queda sin procesar para que la alerta
+    // webhooks_stuck y el SLO reflejen la realidad y el retry admin sea visible. Guard para no pisar
+    // un motivo previo. Se sigue devolviendo 200 (no gatillar los 3 reintentos ciegos de Wompi).
+    await prisma.order.updateMany({
+      where: { id: order.id, needsReconciliation: false },
+      data: {
+        needsReconciliation: true,
+        reconciliationReason: `El webhook de Wompi (tx ${transaction.id}, estado ${transaction.status}) falló al procesarse: ${err instanceof Error ? err.message : String(err)}. El pago pudo capturarse; revisar y reintentar desde el pedido.`,
+      },
+    });
+    return NextResponse.json({ ok: true, note: "saga error, flagged for reconciliation" });
   }
 
   // 7) Marcar webhook procesado.

@@ -25,6 +25,7 @@ import { getShippingProvider } from "@/features/shipping/provider";
 import { getEffectiveShippingDims } from "@/features/products/shipping-schemas";
 import { getSettingValue } from "@/lib/cms";
 import { transitionOrder, clearCartAfterPaid, OrderTransitionError } from "./service";
+import { FetchTimeoutError } from "@/lib/fetch-with-timeout";
 import { decrementStockForOrder } from "./stock";
 import { InsufficientStockError, StockAlreadyAppliedError } from "./errors";
 import type { ShippingAddressInput } from "./schemas";
@@ -149,6 +150,13 @@ export async function processPaidOrder(
         `Pago Wompi (tx ${input.wompiTransactionId}) sobre una orden YA confirmada como contraentrega ` +
           `(guía ${order.trackingNumber}). Doble cobro: reembolsar el pago en línea o convertir la guía a prepagada.`,
       );
+    }
+    // #7 — self-heal: una orden PAID con guía cuya transición a FULFILLING falló en la saga queda
+    // atascada (los webhooks de tracking solo avanzan desde FULFILLING → serían noop para siempre,
+    // sin SHIPPED/DELIVERED ni deliveredAt, el ancla del retracto). Un reintento del webhook Wompi
+    // cae acá: reintentamos la transición atascada. Idempotente (no-op si otro proceso ya avanzó).
+    if (order.status === "PAID") {
+      await transitionOrder(order.id, "FULFILLING").catch(() => null);
     }
     logger.info({
       event: "order.saga.paid.already_processed",
@@ -408,7 +416,16 @@ export async function processPaidOrder(
     where: {
       id: order.id,
       trackingNumber: null,
-      OR: [{ shipmentClaimedAt: null }, { shipmentClaimedAt: { lt: staleCutoff } }],
+      // #6 — el stale-reclaim (>10min) solo aplica a claims de procesos que CRASHEARON sin guía
+      // conocida. Si la orden está en reconciliación (needsReconciliation=true) — p.ej. la guía SÍ se
+      // creó pero falló el persist del tracking (#5/timeout, tracking_persist_failed) — el claim debe
+      // quedar RETENIDO: reclamarlo re-crearía la guía que el reconciliationReason pide asociar a
+      // mano. La rama fresh (shipmentClaimedAt=null) NO se gatea → el caso "cupón agotado" (que marca
+      // needsReconciliation ANTES del claim) sigue generando su guía en el primer pase.
+      OR: [
+        { shipmentClaimedAt: null },
+        { AND: [{ shipmentClaimedAt: { lt: staleCutoff } }, { needsReconciliation: false }] },
+      ],
     },
     data: { shipmentClaimedAt: new Date() },
   });
@@ -487,7 +504,27 @@ export async function processPaidOrder(
       orderNumber: order.number,
       err: err instanceof Error ? err.message : String(err),
     });
-    // #11-P1 — Liberar el claim para que un reintento legítimo (admin o webhook
+    // #5 — Timeout (>20s) = resultado DESCONOCIDO: Aveonline PUDO crear la guía server-side aunque
+    // el fetch abortara. Liberar el claim aquí dejaría que un reintento (admin/webhook) generara una
+    // guía DUPLICADA (doble flete y, en COD, doble recaudo). Ante timeout NO liberamos el claim y
+    // marcamos needsReconciliation para que un humano verifique en el panel Aveonline antes de
+    // reintentar. Solo liberamos el claim cuando Aveonline respondió con un error EXPLÍCITO (o el
+    // request nunca salió: circuit-open), donde es seguro reintentar.
+    const isTimeout =
+      err instanceof FetchTimeoutError || (err instanceof Error && err.name === "TimeoutError");
+    if (isTimeout) {
+      await markNeedsReconciliation(
+        order.id,
+        `Timeout (>20s) generando la guía Aveonline (pedido ${order.number}). La guía PUDO crearse ` +
+          `en Aveonline; verifica en su panel por la referencia del pedido ANTES de reintentar: si ` +
+          `existe, copia el tracking manualmente; si no existe, reintenta la guía desde el pedido.`,
+      );
+      return {
+        status: "shipment_failed",
+        reason: "Timeout generando guía — requiere verificación manual antes de reintentar",
+      };
+    }
+    // #11-P1 — Error explícito: liberar el claim para que un reintento legítimo (admin o webhook
     // posterior) pueda volver a intentar la guía. Solo si seguimos sin tracking.
     await prisma.order
       .updateMany({
@@ -619,12 +656,26 @@ export async function processTrackingUpdate(input: {
     carrierRaw: input.carrierStatusRaw,
   });
 
+  // #7 — la orden se halló por trackingNumber (la guía existe), así que FULFILLING es el estado
+  // correcto. Si quedó atascada en PAID (la transición a FULFILLING falló en la saga), promoverla
+  // acá para que los eventos de tracking (SHIPPED/DELIVERED) puedan avanzar en vez de hacer noop
+  // para siempre (sin deliveredAt, el ancla del retracto). PAID no puede ir directo a SHIPPED.
+  let currentStatus: string = order.status;
+  if (currentStatus === "PAID") {
+    try {
+      await transitionOrder(order.id, "FULFILLING");
+      currentStatus = "FULFILLING";
+    } catch {
+      // otro proceso pudo avanzarla; seguimos con el estado que haya quedado
+    }
+  }
+
   // Mapeo estados Aveonline → transiciones Order.
   if (input.status === "DELIVERED") {
-    if (order.status === "FULFILLING") {
+    if (currentStatus === "FULFILLING") {
       await transitionOrder(order.id, "SHIPPED").catch(() => null);
     }
-    if (order.status === "SHIPPED" || order.status === "FULFILLING") {
+    if (currentStatus === "SHIPPED" || currentStatus === "FULFILLING") {
       try {
         await transitionOrder(order.id, "DELIVERED");
         await sendOrderDelivered(order.id);
@@ -636,11 +687,19 @@ export async function processTrackingUpdate(input: {
           to: "DELIVERED",
           err: err instanceof Error ? err.message : String(err),
         });
+        // #8 — que una transición fallida a DELIVERED deje de ser noop silencioso: la marcamos para
+        // que aparezca en /admin/pedidos "Necesitan atención" (si no, sin deliveredAt ni email de
+        // entrega, y con processedAt marcado el webhook no reintenta → pérdida irrecuperable).
+        await markNeedsReconciliation(
+          order.id,
+          `Webhook Aveonline: no se pudo transicionar a DELIVERED (${input.carrierStatusRaw}) — ` +
+            `revisar y marcar la entrega manualmente desde el pedido.`,
+        );
       }
     }
   } else if (
     (input.status === "IN_TRANSIT" || input.status === "DISPATCHED") &&
-    order.status === "FULFILLING"
+    currentStatus === "FULFILLING"
   ) {
     try {
       await transitionOrder(order.id, "SHIPPED");
@@ -653,6 +712,12 @@ export async function processTrackingUpdate(input: {
         to: "SHIPPED",
         err: err instanceof Error ? err.message : String(err),
       });
+      // #8 — superficiar la transición fallida a SHIPPED (ver DELIVERED arriba).
+      await markNeedsReconciliation(
+        order.id,
+        `Webhook Aveonline: no se pudo transicionar a SHIPPED (${input.carrierStatusRaw}) — ` +
+          `revisar y avanzar el pedido manualmente.`,
+      );
     }
   } else if (input.status === "RETURNED" || input.status === "EXCEPTION") {
     // Devolución / novedad. NO auto-transicionamos (requiere decisión humana: reponer
