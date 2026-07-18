@@ -10,6 +10,7 @@ import type { NextRequest } from "next/server";
 import { timingSafeEqual } from "node:crypto";
 import { sendCartRecoveryReminders } from "@/features/cart/recovery-service";
 import { logger } from "@/lib/logger";
+import { captureServerError } from "@/lib/error-capture";
 
 export const dynamic = "force-dynamic";
 
@@ -33,6 +34,14 @@ export async function GET(req: NextRequest) {
     logger.error({
       event: "cron.cart_recovery.fail",
       err: err instanceof Error ? err.message : String(err),
+    });
+    // #16 — que el error del cron caiga en ErrorLog (alimenta errors_spike, resumen y panel);
+    // sin esto un cron que revienta a diario respondía 500 en silencio. Best-effort (no lanza).
+    await captureServerError({
+      message: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack : undefined,
+      routePath: "/api/cron/cart-recovery",
+      routeType: "cron",
     });
     return Response.json({ ok: false, error: "internal" }, { status: 500 });
   }

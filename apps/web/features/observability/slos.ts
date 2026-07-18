@@ -69,7 +69,9 @@ export async function getSloStatus(): Promise<SloResult[]> {
       prisma.webVital.count({ where: { createdAt: { gte: vitalsWindow } } }),
       prisma.order.count({
         where: {
-          createdAt: { gte: bizWindow },
+          // #19 — mismo settleCutoff que el denominador: sin esto los pagos de la última hora inflan
+          // el numerador y el SLI podía superar 100% ocultando un SLO incumplido con muestra chica.
+          createdAt: { gte: bizWindow, lt: settleCutoff },
           deletedAt: null,
           status: { in: [...CHECKOUT_SUCCEEDED] },
         },

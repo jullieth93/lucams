@@ -296,6 +296,13 @@ export async function sendDailySummary(
   const { subject, html, text } = buildDailySummaryEmail(summary, now);
   const result = await sendEmail({ to, subject, html, text });
 
+  // #17 — si el email NO se envió (Resend caído a las 8am), NO sellar lastSentAt → el próximo ciclo
+  // del cron reintenta en vez de quedar bloqueado 12h por RESEND_GUARD_MS. Mismo patrón que alerts.ts.
+  if (!result.sent) {
+    logger.error({ event: "daily_summary.email_failed", reason: result.reason ?? "unknown" });
+    return { sent: false, summary };
+  }
+
   await prisma.alertState.upsert({
     where: { key: "daily_summary" },
     create: { key: "daily_summary", lastSentAt: now, lastDetail: subject },

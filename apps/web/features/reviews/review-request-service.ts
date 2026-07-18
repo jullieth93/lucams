@@ -76,6 +76,10 @@ export async function sendReviewRequests(
         ],
       });
 
+      // #18 — breaker de Resend abierto (skipped:'circuit-open') = fallo transitorio: NO marcar (la
+      // solicitud de reseña es one-shot) y cortar el batch. El marcado-sin-envío queda solo para el
+      // stub de dev ('no-api-key').
+      if (!result.sent && result.skipped && result.reason === "circuit-open") break;
       if (result.sent) {
         await prisma.order.update({ where: { id: order.id }, data: { reviewRequestedAt: now } });
         sent++;

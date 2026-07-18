@@ -101,6 +101,10 @@ export async function sendCartRecoveryReminders(
         idempotencyKey: `cart-recovery-${row.id}`,
         tags: [{ name: "type", value: "cart_recovery" }],
       });
+      // #18 — el breaker de Resend abierto devuelve skipped:'circuit-open' (fallo TRANSITORIO): NO
+      // marcar (el recordatorio es one-shot; se perdería) y cortar el batch (el resto también caería
+      // en circuit-open). El marcado-sin-envío queda solo para el stub de dev (reason 'no-api-key').
+      if (!result.sent && result.skipped && result.reason === "circuit-open") break;
       if (result.sent || result.skipped) {
         await prisma.abandonedCart.update({
           where: { id: row.id },

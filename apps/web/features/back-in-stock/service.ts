@@ -46,12 +46,39 @@ export async function sendBackInStockNotifications(
         variants: { some: { deletedAt: null, isActive: true, stock: { gt: 0 } } },
       },
     },
+    orderBy: { createdAt: "asc" }, // FIFO: primero los que llevan más esperando
     take: 200,
-    select: { id: true, email: true, product: { select: { name: true, slug: true } } },
+    select: {
+      id: true,
+      email: true,
+      product: {
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          variants: { where: { deletedAt: null, isActive: true }, select: { stock: true } },
+        },
+      },
+    },
   });
 
-  let sent = 0;
+  // #13 — topar los avisos por producto al stock REALMENTE disponible (FIFO). Si Lucy repone 2
+  // unidades y hay 50 suscriptores, avisamos solo a los 2 primeros; el resto queda notifiedAt=null
+  // para una reposición futura → nadie llega a una PDP agotada por un aviso "¡volvió!".
+  const byProduct = new Map<string, typeof subs>();
   for (const s of subs) {
+    const list = byProduct.get(s.product.id) ?? [];
+    list.push(s);
+    byProduct.set(s.product.id, list);
+  }
+  const eligible: typeof subs = [];
+  for (const list of byProduct.values()) {
+    const available = list[0].product.variants.reduce((a, v) => a + v.stock, 0);
+    eligible.push(...list.slice(0, Math.max(0, available)));
+  }
+
+  let sent = 0;
+  for (const s of eligible) {
     try {
       const tpl = await backInStockEmail({
         productName: s.product.name,
@@ -65,6 +92,9 @@ export async function sendBackInStockNotifications(
         idempotencyKey: `back-in-stock-${s.id}`,
         tags: [{ name: "type", value: "back_in_stock" }],
       });
+      // #18 — breaker abierto (skipped:'circuit-open') = fallo transitorio: NO marcar (aviso one-shot)
+      // y cortar el batch; el marcado-sin-envío queda solo para el stub de dev ('no-api-key').
+      if (!result.sent && result.skipped && result.reason === "circuit-open") break;
       if (result.sent || result.skipped) {
         await prisma.backInStockSubscription.update({
           where: { id: s.id },
@@ -80,6 +110,11 @@ export async function sendBackInStockNotifications(
       });
     }
   }
-  logger.info({ event: "back_in_stock.batch", considered: subs.length, sent });
+  logger.info({
+    event: "back_in_stock.batch",
+    considered: subs.length,
+    notified: eligible.length,
+    sent,
+  });
   return { sent, considered: subs.length };
 }

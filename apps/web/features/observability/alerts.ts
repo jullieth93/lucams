@@ -27,13 +27,24 @@ export type FiringAlert = {
 export async function evaluateAlerts(now: Date = new Date()): Promise<FiringAlert[]> {
   const firing: FiringAlert[] = [];
 
-  const [errs5m, recon, stuck] = await Promise.all([
+  const [errs5m, recon, stuck, stalePendingWompi] = await Promise.all([
     prisma.errorLog.count({
       where: { createdAt: { gte: new Date(now.getTime() - 5 * 60 * 1000) } },
     }),
     prisma.order.count({ where: { needsReconciliation: true, deletedAt: null } }),
     prisma.webhookEvent.count({
       where: { processedAt: null, createdAt: { lt: new Date(now.getTime() - 60 * 60 * 1000) } },
+    }),
+    // #9 — backstop: orden Wompi que lleva >2h en PENDING_PAYMENT. El pago PUDO capturarse en Wompi
+    // pero ni el webhook ni el redirect confirmaron la orden. Gateado en WOMPI (no COD, que queda
+    // legítimamente PENDING_PAYMENT). Cubre el caso en que ni siquiera existe fila WebhookEvent.
+    prisma.order.count({
+      where: {
+        status: "PENDING_PAYMENT",
+        paymentMethod: "WOMPI",
+        deletedAt: null,
+        createdAt: { lt: new Date(now.getTime() - 2 * 60 * 60 * 1000) },
+      },
     }),
   ]);
 
@@ -65,6 +76,17 @@ export async function evaluateAlerts(now: Date = new Date()): Promise<FiringAler
       title: `${stuck} webhook(s) sin procesar hace más de 1 hora`,
       detail: "Eventos de Wompi/Aveonline encolados sin resolverse.",
       action: "Verifica el consumer de webhooks y el estado de Wompi/Aveonline.",
+    });
+  }
+  if (stalePendingWompi > 0) {
+    firing.push({
+      key: "pending_payment_wompi_stale",
+      severity: "crítica",
+      title: `${stalePendingWompi} orden(es) Wompi llevan >2h sin confirmarse`,
+      detail:
+        "El pago pudo cobrarse en Wompi pero el webhook y el redirect no confirmaron la orden.",
+      action:
+        "Abre /admin/pedidos (PENDING_PAYMENT) y verifica en el panel Wompi por la referencia (número de orden): si el cobro aparece APPROVED, confirma/produce; si no, cancela.",
     });
   }
 

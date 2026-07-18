@@ -238,10 +238,10 @@ async function createOrderFromCartTx(
 
     const subtotal = cart.items.reduce((acc, it) => acc + it.unitPrice * it.qty, 0);
     const shippingCost = input.shippingSelection.fleteCop;
-    // F1 — aplicar cupón con re-validación atómica DENTRO de la tx: si el código
-    // dejó de ser válido (venció, se agotó, tope por cliente) entre que el cliente
-    // lo aplicó y pagó, se ignora en silencio (orden sin descuento) en vez de
-    // reventar el checkout. Sin couponId → la saga PAID no crea CouponUsage.
+    // F1 — aplicar cupón con re-validación atómica DENTRO de la tx: si el código dejó de ser válido
+    // (venció, se agotó, tope por cliente) entre que el cliente lo aplicó y pagó, se ABORTA la tx con
+    // CouponInvalidatedError (más abajo) para que el checkout limpie el cupón y el cliente re-confirme
+    // viendo el total real — nunca se cobra en silencio un total sin el descuento que vio (v3 · #8).
     let discount = 0;
     let couponId: string | null = null;
     if (input.couponCode) {

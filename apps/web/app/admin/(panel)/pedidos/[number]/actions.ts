@@ -43,7 +43,11 @@ export async function retryShipmentAction(
       return { success: `Guía generada: ${result.trackingNumber}` };
     }
     if (result.status === "already_processed") {
-      return { success: `Ya tenía tracking: ${result.trackingNumber}` };
+      // #10 — si el claim lo tiene otro proceso y aún no escribió la guía, trackingNumber es
+      // undefined; no interpolarlo (Lucy leería "Ya tenía tracking: undefined" como un error).
+      return result.trackingNumber
+        ? { success: `Ya tenía tracking: ${result.trackingNumber}` }
+        : { success: "La guía se está generando en otro proceso; espera unos minutos y recarga." };
     }
     return { error: result.reason ?? "Falló crear guía" };
   } catch (err) {
