@@ -13,6 +13,8 @@ import { getCategoryBySlug, listCatalogProducts } from "@/lib/catalog";
 import { ProductFromCatalogCard } from "@/components/product-from-catalog-card";
 import { JsonLd } from "@/components/json-ld";
 import { breadcrumbList, collectionPage } from "@/lib/seo/structured-data";
+import { SiteHeader } from "@/components/site-header";
+import { SiteFooter } from "@/components/site-footer";
 
 export async function generateMetadata({
   params,
@@ -79,80 +81,85 @@ export default async function SubCategoryPage({
   ];
 
   return (
-    <div className="min-h-screen">
+    <div className="bg-brand-cream flex min-h-screen flex-col">
       <JsonLd data={jsonLdData} />
-      <section className="from-brand-cream to-brand-pink/5 bg-gradient-to-br py-8 md:py-12">
-        <div className="mx-auto max-w-6xl px-6">
-          <nav aria-label="Breadcrumb" className="mb-4 text-sm text-slate-600">
-            <Link href="/" className="hover:underline">
-              Inicio
-            </Link>
-            <span className="mx-2">›</span>
-            <Link href="/productos" className="hover:underline">
-              Productos
-            </Link>
-            {parentCat && (
-              <>
-                <span className="mx-2">›</span>
-                <Link href={`/productos?categoria=${parentCat.slug}`} className="hover:underline">
-                  {parentCat.name}
-                </Link>
-              </>
+      <SiteHeader />
+      <main id="contenido" tabIndex={-1} className="flex-1">
+        <section className="from-brand-cream to-brand-pink/5 bg-gradient-to-br py-8 md:py-12">
+          <div className="mx-auto max-w-6xl px-6">
+            <nav aria-label="Breadcrumb" className="mb-4 text-sm text-slate-600">
+              <Link href="/" className="hover:underline">
+                Inicio
+              </Link>
+              <span className="mx-2">›</span>
+              <Link href="/productos" className="hover:underline">
+                Productos
+              </Link>
+              {parentCat && (
+                <>
+                  <span className="mx-2">›</span>
+                  <Link href={`/productos?categoria=${parentCat.slug}`} className="hover:underline">
+                    {parentCat.name}
+                  </Link>
+                </>
+              )}
+              <span className="mx-2">›</span>
+              <span className="font-semibold">{subCat.name}</span>
+            </nav>
+
+            <h1 className="text-brand-purple-dark text-3xl font-bold md:text-4xl">{subCat.name}</h1>
+            {subCat.description && (
+              <p className="text-brand-purple/80 mt-2 max-w-3xl text-base">{subCat.description}</p>
             )}
-            <span className="mx-2">›</span>
-            <span className="font-semibold">{subCat.name}</span>
-          </nav>
-
-          <h1 className="text-brand-purple-dark text-3xl font-bold md:text-4xl">{subCat.name}</h1>
-          {subCat.description && (
-            <p className="text-brand-purple/80 mt-2 max-w-3xl text-base">{subCat.description}</p>
-          )}
-          {subCat.useCase && (
-            <p className="text-brand-muted mt-1 max-w-3xl text-sm italic">{subCat.useCase}</p>
-          )}
-          <p className="mt-3 text-sm text-slate-500">
-            {subCat.productCount} {subCat.productCount === 1 ? "producto" : "productos"} disponibles
-          </p>
-        </div>
-      </section>
-
-      <section className="py-10">
-        <div className="mx-auto max-w-6xl px-6">
-          {products.length === 0 ? (
-            <div className="rounded-lg border border-dashed border-slate-300 bg-white px-6 py-12 text-center">
-              <Sparkles className="mx-auto h-10 w-10 text-slate-300" />
-              <p className="mt-3 font-medium text-slate-700">
-                Pronto tendremos productos en {subCat.name}.
-              </p>
-              <p className="mt-1 text-sm text-slate-500">
-                Mientras tanto, explora{" "}
-                <Link href="/productos" className="text-brand-purple underline">
-                  todo el catálogo
-                </Link>
-                .
-              </p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-              {products.map((p) => (
-                <ProductFromCatalogCard key={p.slug} product={p} />
-              ))}
-            </div>
-          )}
-        </div>
-      </section>
-
-      {/* Descripción rica como SEO + bot context */}
-      {subCat.richDescription && (
-        <section className="border-t border-slate-200 bg-white py-10">
-          <div className="mx-auto max-w-3xl px-6">
-            <h2 className="text-brand-purple-dark mb-3 text-lg font-bold">Sobre {subCat.name}</h2>
-            <div className="text-sm leading-relaxed whitespace-pre-line text-slate-600">
-              {subCat.richDescription}
-            </div>
+            {subCat.useCase && (
+              <p className="text-brand-muted mt-1 max-w-3xl text-sm italic">{subCat.useCase}</p>
+            )}
+            <p className="mt-3 text-sm text-slate-500">
+              {subCat.productCount} {subCat.productCount === 1 ? "producto" : "productos"}{" "}
+              disponibles
+            </p>
           </div>
         </section>
-      )}
+
+        <section className="py-10">
+          <div className="mx-auto max-w-6xl px-6">
+            {products.length === 0 ? (
+              <div className="rounded-lg border border-dashed border-slate-300 bg-white px-6 py-12 text-center">
+                <Sparkles className="mx-auto h-10 w-10 text-slate-300" />
+                <p className="mt-3 font-medium text-slate-700">
+                  Pronto tendremos productos en {subCat.name}.
+                </p>
+                <p className="mt-1 text-sm text-slate-500">
+                  Mientras tanto, explora{" "}
+                  <Link href="/productos" className="text-brand-purple underline">
+                    todo el catálogo
+                  </Link>
+                  .
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {products.map((p) => (
+                  <ProductFromCatalogCard key={p.slug} product={p} />
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* Descripción rica como SEO + bot context */}
+        {subCat.richDescription && (
+          <section className="border-t border-slate-200 bg-white py-10">
+            <div className="mx-auto max-w-3xl px-6">
+              <h2 className="text-brand-purple-dark mb-3 text-lg font-bold">Sobre {subCat.name}</h2>
+              <div className="text-sm leading-relaxed whitespace-pre-line text-slate-600">
+                {subCat.richDescription}
+              </div>
+            </div>
+          </section>
+        )}
+      </main>
+      <SiteFooter />
     </div>
   );
 }

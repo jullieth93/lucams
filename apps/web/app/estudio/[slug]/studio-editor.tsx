@@ -743,7 +743,10 @@ export function StudioEditor({
           />
         </aside>
 
-        <section className="flex flex-1 items-start justify-center p-4 pb-24 lg:p-8 lg:pb-8">
+        {/* Auditoría v3 · H15: flex-COL para que el banner del calendario quede ARRIBA del grid (antes
+            era flex-row → banner y grid en fila → overflow horizontal y slots sangrando). El banner ya
+            trae mb-3, pensado para apilado. */}
+        <section className="flex flex-1 flex-col items-center p-4 pb-24 lg:p-8 lg:pb-8">
           {/* ADR-057 Fase D + CAL2 — banner de calendario: el cliente elige el AÑO (selector) y
               pone una foto por mes. */}
           {isCalendarMonth && (
@@ -786,9 +789,11 @@ export function StudioEditor({
         </section>
       </div>
 
-      {/* P1.4/P1.5 — Botones flotantes: Ideas (IA) + Ver en 3D. Centro inferior para no chocar
-          con el FAB de Editar (izq) ni el de ¡Listo! (der) en mobile. */}
-      <div className="fixed bottom-4 left-1/2 z-30 flex -translate-x-1/2 items-center gap-2">
+      {/* P1.4/P1.5 — Botones flotantes: Ideas (IA) + Ver en 3D/tu espacio. Auditoría v3 · H14: en
+          pantallas chicas el grupo central chocaba con el FAB de Editar (izq) y el de ¡Listo! (der).
+          Se sube a una FILA PROPIA por encima (bottom-24) en móvil; en sm+ hay ancho de sobra y baja
+          a bottom-4. flex-wrap por si el texto es largo. */}
+      <div className="fixed bottom-24 left-1/2 z-30 flex -translate-x-1/2 flex-wrap items-center justify-center gap-2 sm:bottom-4">
         <button
           type="button"
           onClick={() => setAiOpen(true)}
