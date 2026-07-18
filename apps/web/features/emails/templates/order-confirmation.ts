@@ -15,6 +15,8 @@ export type OrderConfirmationData = {
   total: number; // centavos COP
   subtotal: number;
   shipping: number;
+  /** Descuento por cupón (centavos COP, positivo). 0/undefined ⇒ no se muestra la fila. */
+  discount?: number;
   shippingCarrier: string | null;
   items: Array<{ name: string; qty: number; lineTotal: number }>;
   shippingAddress: string; // ya formateada
@@ -37,6 +39,16 @@ export async function orderConfirmationEmail(data: OrderConfirmationData) {
 </tr>`,
     )
     .join("");
+
+  const discount = data.discount ?? 0;
+  const discountRowHtml =
+    discount > 0
+      ? `
+  <tr>
+    <td style="padding:4px 0;color:#1a7a4f;font-size:13px;">Descuento</td>
+    <td style="padding:4px 0;text-align:right;color:#1a7a4f;font-size:13px;">−${formatCOP(discount)}</td>
+  </tr>`
+      : "";
 
   const isCod = data.paymentMethod === "COD";
   const codCallout = isCod
@@ -66,7 +78,7 @@ ${codCallout}
   <tr>
     <td style="padding:4px 0;color:#3D2E5C;opacity:0.7;font-size:13px;">Envío${data.shippingCarrier ? ` (${escapeHtml(data.shippingCarrier)})` : ""}</td>
     <td style="padding:4px 0;text-align:right;color:#3D2E5C;font-size:13px;">${formatCOP(data.shipping)}</td>
-  </tr>
+  </tr>${discountRowHtml}
   <tr>
     <td style="padding:12px 0 4px 0;color:#3D2E5C;font-size:16px;font-weight:700;border-top:2px solid #3D2E5C;">Total</td>
     <td style="padding:12px 0 4px 0;text-align:right;color:#3D2E5C;font-size:16px;font-weight:700;border-top:2px solid #3D2E5C;">${formatCOP(data.total)}</td>
@@ -100,7 +112,7 @@ Items:
 ${data.items.map((it) => `  - ${it.name} ×${it.qty} → ${formatCOP(it.lineTotal)}`).join("\n")}
 
 Subtotal: ${formatCOP(data.subtotal)}
-Envío${data.shippingCarrier ? ` (${data.shippingCarrier})` : ""}: ${formatCOP(data.shipping)}
+Envío${data.shippingCarrier ? ` (${data.shippingCarrier})` : ""}: ${formatCOP(data.shipping)}${discount > 0 ? `\nDescuento: −${formatCOP(discount)}` : ""}
 Total: ${formatCOP(data.total)}
 
 Enviamos a: ${data.shippingAddress}

@@ -49,8 +49,8 @@ export async function GET(req: Request) {
     priceMax: sp.get("priceMax") ? parseInt(sp.get("priceMax") as string, 10) : undefined,
     isPersonalizable: sp.get("isPersonalizable") ? sp.get("isPersonalizable") === "1" : undefined,
     sort,
-    limit: Math.min(100, parseInt(sp.get("limit") ?? "24", 10) || 24),
-    offset: parseInt(sp.get("offset") ?? "0", 10) || 0,
+    limit: Math.max(1, Math.min(100, parseInt(sp.get("limit") ?? "24", 10) || 24)),
+    offset: Math.max(0, parseInt(sp.get("offset") ?? "0", 10) || 0),
   };
 
   const products = await listCatalogProducts(filters);

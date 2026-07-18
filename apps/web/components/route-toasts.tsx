@@ -79,7 +79,10 @@ export function RouteToasts() {
     if (error) {
       // Si matchea un key conocido, usar mensaje pretty; sino mostrar raw
       const conf = SUCCESS_MESSAGES[error];
-      toast.error(conf ? conf.msg : decodeURIComponent(error));
+      // Auditoría v3 (quick win): searchParams ya viene DECODIFICADO. Un decodeURIComponent extra
+      // sobre un valor con '%' literal (ej. "50% off") lanza URIError y tumba la página al error
+      // boundary. Se usa el valor tal cual.
+      toast.error(conf ? conf.msg : error);
       handled.push("error");
     }
 

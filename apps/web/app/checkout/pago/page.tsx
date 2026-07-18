@@ -79,7 +79,9 @@ export default async function CheckoutPagoPage({ searchParams }: { searchParams:
               <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-rose-700" />
               <div>
                 <h3 className="text-sm font-semibold text-rose-900">No pudimos procesar el pago</h3>
-                <p className="mt-1 text-xs text-rose-800">{decodeURIComponent(errorMsg)}</p>
+                {/* searchParams ya viene decodificado; un decodeURIComponent extra con '%' literal
+                    lanzaría URIError y tumbaría la página (auditoría v3, quick win). */}
+                <p className="mt-1 text-xs text-rose-800">{errorMsg}</p>
               </div>
             </div>
           )}

@@ -586,7 +586,7 @@ function StudioSlotImpl({
                   isDropping ? "text-brand-turquoise" : "text-brand-purple-dark/75",
                 ].join(" ")}
               >
-                {isDropping ? "¡Soltala acá! 💜" : "Pasame una foto"}
+                {isDropping ? "¡Suéltala acá! 💜" : "Pásame una foto"}
               </span>
 
               {/* Indicador del slot: mes (calendario) o "Imán #N". */}

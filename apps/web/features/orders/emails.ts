@@ -59,6 +59,7 @@ export async function sendOrderConfirmation(orderId: string): Promise<boolean> {
       total: order.total,
       subtotal: order.subtotal,
       shipping: order.shipping,
+      discount: order.discount,
       shippingCarrier: order.shippingCarrier
         ? order.shippingCarrier.toUpperCase().replace(/-/g, " ")
         : null,

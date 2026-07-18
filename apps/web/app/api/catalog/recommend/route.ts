@@ -51,7 +51,7 @@ export async function GET(req: Request) {
     priceMax: sp.get("precioMax") ? parseInt(sp.get("precioMax") as string, 10) : undefined,
     personalizationPreference,
     excludeSlugs: excludeSlugs.length > 0 ? excludeSlugs : undefined,
-    limit: Math.min(30, parseInt(sp.get("limit") ?? "12", 10) || 12),
+    limit: Math.max(1, Math.min(30, parseInt(sp.get("limit") ?? "12", 10) || 12)),
   });
 
   return NextResponse.json(

@@ -19,6 +19,7 @@
  */
 
 import { headers } from "next/headers";
+import { after } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
 import { rateLimit } from "@/lib/rate-limit";
@@ -121,7 +122,10 @@ export async function submitContactAction(
     // Emails fire-and-forget (no bloquean response). 2 templates:
     //   - received: confirmación al cliente con su mensaje
     //   - internal: notificación a hola@lucamsshop.co con Reply-To
-    void (async () => {
+    // after(): en Vercel la función serverless puede congelarse al devolver la respuesta y matar un
+    // `void (async …)()` antes de que corra. after() difiere el trabajo para DESPUÉS de responder,
+    // garantizando que ambos correos salgan (auditoría v3 · #14).
+    after(async () => {
       const contactEmail = await getSettingValue("CONTACT_EMAIL", "hola@lucamsshop.co");
       const [received, internal] = await Promise.all([
         supportTicketReceivedEmail({
@@ -158,7 +162,7 @@ export async function submitContactAction(
           tags: [{ name: "kind", value: "support-internal" }],
         }),
       ]);
-    })();
+    });
 
     return { ok: true, ticketId: ticket.id };
   } catch (err) {

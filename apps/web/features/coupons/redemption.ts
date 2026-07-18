@@ -70,6 +70,23 @@ export type PriceCouponResult =
   | { ok: true; couponId: string; code: string; type: CouponType; discount: number }
   | { ok: false; reason: CouponRejectReason; message: string };
 
+/**
+ * El cliente aplicó un cupón que dejó de ser válido entre el carrito y la creación de la orden
+ * (se agotó, venció, dejó de alcanzar el mínimo, alguien más lo usó…). Se lanza DENTRO de la tx de
+ * `createOrderFromCart` para abortar la creación y NO cobrar en silencio un total sin el descuento
+ * que el cliente vio. El checkout lo captura, limpia el cupón del estado y deja que el cliente
+ * re-confirme con el total real (auditoría v3 · #8). `message` ya viene en español (tuteo).
+ */
+export class CouponInvalidatedError extends Error {
+  constructor(
+    message: string,
+    public readonly reason: CouponRejectReason,
+  ) {
+    super(message);
+    this.name = "CouponInvalidatedError";
+  }
+}
+
 const reject = (reason: CouponRejectReason): PriceCouponResult => ({
   ok: false,
   reason,

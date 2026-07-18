@@ -215,6 +215,12 @@ export default async function CustomerPedidoDetallePage({
         <dl className="border-brand-purple/10 mt-3 space-y-1 border-t pt-3 text-sm">
           <Row label="Subtotal" value={formatCOP(order.subtotal)} />
           <Row label="Envío" value={formatCOP(order.shipping)} />
+          {order.discount > 0 && (
+            <Row
+              label="Descuento"
+              value={<span className="text-emerald-700">−{formatCOP(order.discount)}</span>}
+            />
+          )}
           <div className="border-brand-purple/10 mt-2 flex justify-between border-t pt-2">
             <dt className="text-brand-purple-dark font-bold">Total</dt>
             <dd className="text-brand-purple-dark font-bold tabular-nums">

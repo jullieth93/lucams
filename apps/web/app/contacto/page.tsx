@@ -70,7 +70,7 @@ export default async function ContactoPage() {
                   className="mt-4 inline-flex items-center gap-2 rounded-full bg-emerald-700 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-emerald-800"
                 >
                   <MessageCircle className="h-4 w-4" />
-                  Hablanos por WhatsApp →
+                  Háblanos por WhatsApp →
                 </a>
               </div>
 

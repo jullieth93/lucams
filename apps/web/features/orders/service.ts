@@ -24,7 +24,7 @@ import { canTransition, type ShippingAddressInput } from "./schemas";
 import { assertStockAvailable, revertStockForOrder } from "./stock";
 import { OrderAmountTooLargeError } from "./errors";
 import { fitsMoneyInt4 } from "@/lib/money";
-import { priceCouponForCart } from "@/features/coupons/redemption";
+import { priceCouponForCart, CouponInvalidatedError } from "@/features/coupons/redemption";
 import { sendOrderRefunded } from "./emails";
 
 const ORDER_PAGE_SIZE = 20;
@@ -258,6 +258,12 @@ async function createOrderFromCartTx(
       if (priced.ok) {
         discount = priced.discount;
         couponId = priced.couponId;
+      } else {
+        // El cupón que el cliente aplicó dejó de ser válido entre el carrito y este punto (se
+        // agotó, venció, dejó de alcanzar el mínimo, alguien más lo usó…). NO creamos la orden a
+        // precio lleno en silencio: abortamos la tx. El checkout captura esto, limpia el cupón del
+        // estado y deja que el cliente re-confirme viendo el total real (auditoría v3 · #8).
+        throw new CouponInvalidatedError(priced.message, priced.reason);
       }
     }
     const tax = 0; // IVA incluido en precios (Colombia); DIAN reporting en F2.4.

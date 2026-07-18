@@ -19,7 +19,7 @@ let fontsReady: boolean | null = null;
 function ensureFonts(mod: CanvasMod): boolean {
   if (fontsReady !== null) return fontsReady;
   try {
-    const dir = path.join(process.cwd(), "public", "fonts");
+    const dir = path.join(process.cwd(), "assets", "fonts");
     const ok =
       mod.GlobalFonts.registerFromPath(path.join(dir, "Fredoka.ttf"), "Fredoka") &&
       mod.GlobalFonts.registerFromPath(path.join(dir, "Inter.ttf"), "Inter");

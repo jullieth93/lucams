@@ -236,6 +236,12 @@ export default async function PublicOrderPage({
             <dl className="border-brand-purple/10 mt-3 space-y-1 border-t pt-3 text-sm">
               <Row label="Subtotal" value={formatCOP(order.subtotal)} />
               <Row label="Envío" value={formatCOP(order.shipping)} />
+              {order.discount > 0 && (
+                <Row
+                  label="Descuento"
+                  value={<span className="text-emerald-700">−{formatCOP(order.discount)}</span>}
+                />
+              )}
               <div className="border-brand-purple/10 mt-2 flex justify-between border-t pt-2">
                 <dt className="text-brand-purple-dark font-bold">Total</dt>
                 <dd className="text-brand-purple-dark font-bold tabular-nums">
@@ -291,7 +297,7 @@ export default async function PublicOrderPage({
               direcciones guardadas y descuentos exclusivos.
             </p>
             <Link
-              href={`/signup?email=${encodeURIComponent(order.email)}`}
+              href={`/registro?email=${encodeURIComponent(order.email)}`}
               className="bg-brand-purple hover:bg-brand-purple-dark mt-3 inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold text-white shadow-sm"
             >
               Crear cuenta

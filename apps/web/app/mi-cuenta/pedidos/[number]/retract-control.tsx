@@ -76,7 +76,12 @@ export function RetractControl({ item }: { item: RetractItem }) {
           className="border-brand-purple/20 focus:ring-brand-purple/30 w-full rounded-md border px-2 py-1.5 text-xs focus:ring-2 focus:outline-none"
         />
         <p className="text-brand-muted text-[10px]">
-          Tienes 5 días hábiles desde la entrega. Cubrimos el costo de la devolución.
+          Tienes 5 días hábiles desde la entrega. Coordinamos la devolución contigo; los costos se
+          rigen por nuestra{" "}
+          <a href="/legal/devoluciones" className="underline">
+            política de devoluciones
+          </a>
+          .
         </p>
         {state?.error && <p className="text-[11px] text-red-700">{state.error}</p>}
         <button

@@ -167,8 +167,8 @@ export default async function AdminUsuariosPage({ searchParams }: { searchParams
         <AdminNotice tone="info">
           <strong>¿Cómo funciona?</strong> Para sumar un admin nuevo: la persona se registra primero
           como cliente en{" "}
-          <Link href="/signup" className="underline" target="_blank">
-            /signup
+          <Link href="/registro" className="underline" target="_blank">
+            /registro
           </Link>{" "}
           y luego usa el form de abajo para promoverla. Roles: <strong>Superadmin</strong> (control
           total), <strong>Manager</strong> (operación + contenido), <strong>Fulfillment</strong>{" "}

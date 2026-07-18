@@ -2456,3 +2456,33 @@ activa cuando Lucy cargue los secrets, sin romper los tests mockeados si no.
 un smoke live no-destructivo prueba lo que importa (keys válidas + API viva) sin crear cobros ni tocar
 producción. Con esto, el carril AUTÓNOMO del plan maestro queda cerrado; el live-smoke en nightly y un
 posible smoke live de Aveonline quedan como activación por-secret.
+
+## ADR-068 — Verificación adversarial v3 (código real, UX/UI web+móvil) + remediación blocker/high/quick-win (2026-07-18)
+
+Lucy pidió una **nueva verificación adversarial multi-agente sobre el código real** con miras a
+producción, con rigor máximo en **UX/UI web y móvil**, y libertad para tomar los roles necesarios.
+Pipeline: finders por 7 dimensiones → **paneles de verificación adversarial** (jueces que intentan
+refutar cada hallazgo) → crítico de completitud → síntesis. ~253 agentes, 183 crudos → **218
+confirmados** (5 blocker · 16 high · 116 medium · 81 low). **Score de entrada 47/100 — NO LANZAR.**
+
+**Decisión: remediar de corrido los 5 blockers + 16 highs + 14 quick wins, cada uno certificado**
+(tsc + eslint `--max-warnings 0` + prettier + tests + build) y con push a `develop`. Detalle
+completo en [`docs/audits/2026-07-18-adversarial-v3.md`](audits/2026-07-18-adversarial-v3.md).
+Tandas: A (dinero `8aa29b8`), B (Estudio WYSIWYG `618c293`), C (legal/Ley 1581 `e86be2c`), D (UX
+alto `ba70918`/`4b3ab4b`/`87e46a7`/`4a986b5`), E (quick wins).
+
+**Dos decisiones de política diferidas a Lucy (no las tomo unilateralmente):**
+
+1. **Quién paga la devolución en un retracto.** El copy de UI/emails contradecía a
+   `/legal/devoluciones`. Resuelto haciendo el copy **neutral** (remite a la política legal) en vez de
+   elegir una postura. Lucy define si el negocio cubre o no el costo, y ahí se unifica el texto.
+2. **Cupón invalidado en el último paso del checkout (`#8`).** Antes se **descartaba en silencio** y se
+   cobraba el total SIN el descuento que el cliente vio. Nueva política: la tx aborta con
+   `CouponInvalidatedError` → el checkout limpia el cupón del estado y devuelve
+   `CheckoutError('COUPON_INVALIDATED')` para que el cliente **re-confirme viendo el total real**.
+   Prioriza consentimiento sobre completar la venta a un precio no visto.
+
+**Razón.** El veredicto NO-LANZAR lo sostenían cosas concretas y verificadas (doble cobro, Estudio
+roto, contradicciones legales), no ruido: por eso se remediaron primero blocker+high+quick-win, se
+presentó el resultado, y solo entonces se ejecutó. El backlog **116 medium + 81 low** queda documentado
+para ronda(s) siguiente(s); el patrón operativo a atacar es **«fallar en silencio»** (webhooks/crons).

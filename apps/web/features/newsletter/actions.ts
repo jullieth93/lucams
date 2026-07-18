@@ -8,6 +8,7 @@
 "use server";
 
 import { headers } from "next/headers";
+import { after } from "next/server";
 import { z } from "zod";
 import { SubscribeSchema } from "@/features/newsletter/schemas";
 import { subscribeNewsletter } from "@/features/newsletter/service";
@@ -91,7 +92,10 @@ export async function subscribeNewsletterAction(
   if (!result.alreadySubscribed) {
     const email = parsed.data.email;
     const unsubscribeToken = computeUnsubscribeToken(email);
-    void (async () => {
+    // after(): en Vercel la función serverless puede congelarse apenas se devuelve la respuesta,
+    // matando un `void (async …)()` antes de que corra. after() difiere el trabajo para DESPUÉS de
+    // enviar la respuesta, garantizando que el correo de bienvenida se envíe (auditoría v3 · #14).
+    after(async () => {
       const tpl = await newsletterWelcomeEmail({ email, unsubscribeToken });
       await sendEmail({
         to: email,
@@ -101,7 +105,7 @@ export async function subscribeNewsletterAction(
         idempotencyKey: `newsletter:welcome:${unsubscribeToken}`,
         tags: [{ name: "kind", value: "newsletter-welcome" }],
       });
-    })();
+    });
   }
 
   return {

@@ -22,7 +22,7 @@ import { createOrderFromCart } from "@/features/orders/service";
 import { processPaidOrder } from "@/features/orders/saga";
 import { assertStockAvailable } from "@/features/orders/stock";
 import { InsufficientStockError } from "@/features/orders/errors";
-import { priceCouponForCart } from "@/features/coupons/redemption";
+import { priceCouponForCart, CouponInvalidatedError } from "@/features/coupons/redemption";
 import { getPaymentProvider } from "@/features/payments/provider";
 import { getShippingProvider } from "@/features/shipping/provider";
 import {
@@ -52,6 +52,7 @@ export class CheckoutError extends Error {
       | "ORDER_CREATE_FAILED"
       | "PAYMENT_INIT_FAILED"
       | "STOCK_UNAVAILABLE"
+      | "COUPON_INVALIDATED"
       | "COD_NOT_ALLOWED",
     message?: string,
   ) {
@@ -334,6 +335,18 @@ export async function finalizeCheckout(input: {
       notes: state.address.notes,
     });
   } catch (err) {
+    // #8 — El cupón aplicado dejó de ser válido durante la creación de la orden. Limpiamos el cupón
+    // del estado de checkout (para que la vista de pago re-renderice el total REAL, sin descuento) y
+    // devolvemos un código propio: el cliente re-confirma en vez de pagar en silencio un total que
+    // no vio. No lo tratamos como ORDER_CREATE_FAILED genérico.
+    if (err instanceof CouponInvalidatedError) {
+      await setCheckoutState({ couponCode: undefined });
+      logger.warn({ event: "checkout.finalize.coupon_invalidated", reason: err.reason });
+      throw new CheckoutError(
+        "COUPON_INVALIDATED",
+        `${err.message} Actualizamos el total de tu pedido; revísalo y confirma de nuevo.`,
+      );
+    }
     logger.error({
       event: "checkout.finalize.order_create_fail",
       err: err instanceof Error ? err.message : String(err),

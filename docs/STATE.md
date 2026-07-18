@@ -13,6 +13,16 @@
 
 ## Resumen actual
 
+**🛡️ ✅ AUDITORÍA ADVERSARIAL v3 (2026-07-18) — 5 blockers + 16 highs + 14 quick wins remediados y certificados (ADR-068).** Lucy pidió una **verificación adversarial multi-agente sobre el código real** con miras a producción y **rigor máximo en UX/UI web + móvil**. Pipeline: finders por 7 dimensiones → paneles de verificación adversarial (jueces que intentan refutar) → crítico de completitud → síntesis. **~253 agentes · 183 crudos → 218 confirmados** (5 blocker · 16 high · 116 medium · 81 low). **Score de entrada 47/100 — NO LANZAR.** Se presentó el resultado a Lucy y, autorizado (opción a), se remediaron de corrido blocker+high+quick-win, cada uno certificado (tsc + eslint `--max-warnings 0` + prettier + tests + build) y con push a `develop`. Informe completo: [`docs/audits/2026-07-18-adversarial-v3.md`](audits/2026-07-18-adversarial-v3.md).
+
+- **Tanda A — Dinero** (`8aa29b8`): 3 blockers + 3 high del camino del dinero. Doble cobro COD→Wompi (normaliza `paymentMethod`), webhook DECLINED que verificaba mal la transacción, orden con 2 items del mismo variant atascada por P2002 (`aggregateByVariant`), reuso de orden PENDING con total viejo (reconcilia en sitio), APPROVED sobre orden terminal/COD (marca `needsReconciliation`).
+- **Tanda B — Estudio WYSIWYG** (`618c293`): Polaroid invendible (marco SVG opaco + autosave que reventaba por regex sin `_`), filtro de calendario que no llegaba al PNG, fallback que exportaba a resolución de pantalla (→ 300 DPI reales), indicadores de edición horneados en el PNG.
+- **Tanda C — Legal/privacidad** (`e86be2c`): acuse+alerta de retracto (reloj legal ya no corre en silencio), supresión Ley 1581 que ahora anonimiza `Order.email`/`phone`.
+- **Tanda D — UX alto** (`ba70918` + `4b3ab4b` + `87e46a7` + `4a986b5`): header/footer en `/ocasion` y `/productos/[cat]/[subcat]`, personalizables hechos a pedido (5/9 dejaban de figurar «agotados»), buy-box en sync instantáneo (`SelectedVariantProvider`), loading de envío, FABs y banner del Estudio en móvil, reseñas fabricadas fuera del rating/JSON-LD, home ya no niega el Estudio.
+- **Tanda E — Quick wins** (este commit): #4 `/signup`→`/registro`, #5 `decodeURIComponent` doble, #6 voseo (8 en UI; DB verificada 0/54 plantillas), #8 `COUPON_INVALIDATED` (no cobrar en silencio un total sin el descuento visto), #9 clamp de `limit`/`offset`, #10 fila «Descuento» en email + 2 vistas de pedido (+test), #12 fuente de la hoja de armado (`assets/fonts`), #13 copy de retracto alineado con `/legal/devoluciones`, #14 `after()` en emails de soporte+newsletter.
+- **2 políticas diferidas a Lucy** (ADR-068): (1) **quién paga la devolución** en retracto — copy neutralizado hasta que Lucy decida; (2) **cupón invalidado en checkout** — nueva política de re-confirmar en vez de cobrar en silencio.
+- **Backlog**: 116 medium + 81 low documentados en `audit-v3-final.json` para ronda(s) siguiente(s); patrón a atacar: **«fallar en silencio»** (webhooks/crons).
+
 **🔧 ✅ TANDA DE GAPS AUTÓNOMOS DEL AUDIT (2026-07-17) — 10/10 cerrados, CI verde.** Con los tracks maestros cerrados, un **workflow de auditoría** (7 áreas × lectura de código real + verificación adversarial, 17 agentes) mapeó los gaps que SEGUÍAN abiertos (autónomos + verificables) para no rehacer lo hecho ni perseguir falsos positivos. Los 10 confirmados, ejecutados de corrido y certificados (tsc+lint+prettier+tests+build+CI):
 
 - **Dinero** (`466e344`): (1) reembolso/cancelación **liberaba stock pero NO el cupón** → un cupón single-use quedaba quemado por una orden reembolsada; ahora `transitionOrder` borra el `CouponUsage` + decrementa `usedCount` en la misma tx, simétrico a la saga (la existencia del usage es la verdad → no decrementa de más). (2) **overflow INT4** en el total (pedido caro × cantidad alta) reventaba el INSERT crudo → `lib/money.ts` (MAX_MONEY_CENTS + fitsMoneyInt4) + `OrderAmountTooLargeError` antes del INSERT. +3 integración +3 unit.
@@ -1438,6 +1448,10 @@ sidebar fijo, Cancelar en cupones.
 ---
 
 ## Bitácora (append-only, más reciente arriba)
+
+### 2026-07-18 — Auditoría adversarial v3 sobre código real (UX/UI web+móvil) + remediación blocker/high/quick-win (ADR-068)
+
+Verificación adversarial multi-agente (~253 agentes, 7 dimensiones, paneles que intentan refutar cada hallazgo) → **218 confirmados** (5 blocker · 16 high · 116 medium · 81 low), score de entrada **47/100 NO-LANZAR**. Se presentó el resultado a Lucy; autorizada la opción (a), se remediaron **de corrido** los 5 blockers + 16 highs + 14 quick wins, cada uno certificado (tsc+lint+prettier+tests+build) con push a `develop`. Tandas A (dinero `8aa29b8`), B (Estudio `618c293`), C (legal/Ley 1581 `e86be2c`), D (UX alto `ba70918`/`4b3ab4b`/`87e46a7`/`4a986b5`), E (quick wins). **2 políticas diferidas a Lucy**: quién paga la devolución (retracto) y política de cupón invalidado en checkout (`COUPON_INVALIDATED`). Informe: `docs/audits/2026-07-18-adversarial-v3.md`. Backlog 116 medium + 81 low para siguiente ronda (patrón: «fallar en silencio»).
 
 ### 2026-07-12 (cont.) — Fase 3 EJECUTADA: abecedario a 3 productos + editor de nombre + fichas + cert imágenes (ADR-057)
 

@@ -271,6 +271,23 @@ describe("orderConfirmationEmail", () => {
     expect(r.html).toContain("Coordinadora");
   });
 
+  it("con cupón muestra la fila 'Descuento −$X' y el desglose cuadra (auditoría v3 · #10)", async () => {
+    // subtotal 45.000 + envío 5.000 − descuento 8.000 = total 42.000.
+    const r = await orderConfirmationEmail(
+      ocData({ subtotal: 4_500_000, shipping: 500_000, discount: 800_000, total: 4_200_000 }),
+    );
+    expect(r.html).toContain("Descuento");
+    expect(r.html).toMatch(money("8.000")); // descuento formateado
+    expect(r.html).toContain("−"); // signo menos (U+2212)
+    expect(r.text).toContain("Descuento: −");
+  });
+
+  it("sin descuento NO muestra la fila de descuento", async () => {
+    const r = await orderConfirmationEmail(ocData({ discount: 0 }));
+    expect(r.html).not.toContain("Descuento");
+    expect(r.text).not.toContain("Descuento");
+  });
+
   it("con publicTrackingToken el CTA apunta a la vista guest /pedido/<token>", async () => {
     const r = await orderConfirmationEmail(ocData({ publicTrackingToken: "TOKENGUEST" }));
     expect(r.html).toContain(`${SITE_URL}/pedido/TOKENGUEST`);
