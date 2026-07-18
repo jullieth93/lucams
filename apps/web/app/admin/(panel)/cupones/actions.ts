@@ -15,6 +15,7 @@ import {
   updateCoupon,
 } from "@/features/coupons/service";
 import { CouponCreateSchema, CouponUpdateSchema } from "@/features/coupons/schemas";
+import { cotStartOfDay, cotEndOfDay } from "@/features/coupons/dates";
 import { logger } from "@/lib/logger";
 
 export type CouponActionState = {
@@ -39,8 +40,8 @@ function parsePayload(formData: FormData) {
     description: (formData.get("description") as string | null) || null,
     isPublic: formData.get("isPublic") === "on",
     isActive: formData.get("isActive") === "on",
-    validFrom: String(formData.get("validFrom") ?? ""),
-    validTo: String(formData.get("validTo") ?? ""),
+    validFrom: cotStartOfDay(String(formData.get("validFrom") ?? "")),
+    validTo: cotEndOfDay(String(formData.get("validTo") ?? "")),
     minOrder: minOrderRaw ? Number(minOrderRaw) : null,
     maxUses: maxUsesRaw ? Number(maxUsesRaw) : null,
     maxUsesPerCustomer: maxUsesPerCustomerRaw ? Number(maxUsesPerCustomerRaw) : null,
@@ -137,8 +138,22 @@ export async function updateCouponAction(
     revalidatePath("/carrito");
     redirect("/admin/cupones?updated=1");
   } catch (err) {
+    if (err instanceof CouponValidationError) {
+      return {
+        error: err.message,
+        fieldErrors: { [err.field]: [err.message] } as CouponActionState["fieldErrors"],
+      };
+    }
     if (err instanceof Error && err.message === "NEXT_REDIRECT") throw err;
-    return { error: "Error al actualizar cupón." };
+    logger.error(
+      {
+        event: "admin.coupon.update_fail",
+        adminId: session.admin.id,
+        err: err instanceof Error ? err.message : String(err),
+      },
+      "Failed to update coupon",
+    );
+    return { error: "Error al actualizar cupón. Reintenta." };
   }
 }
 

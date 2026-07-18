@@ -117,12 +117,6 @@ export function priceCouponPure(
     return reject("PER_CUSTOMER_LIMIT");
   }
 
-  const totalQty = ctx.items.reduce((a, it) => a + it.qty, 0);
-  if (coupon.requiresMinQuantity != null && totalQty < coupon.requiresMinQuantity) {
-    return reject("MIN_QUANTITY_NOT_MET");
-  }
-  if (coupon.minOrder != null && ctx.subtotal < coupon.minOrder) return reject("MIN_ORDER_NOT_MET");
-
   // Items elegibles: si el cupón restringe por categoría o producto, solo esos
   // items reciben el descuento; sin restricción, todo el carrito es elegible.
   const hasFilter =
@@ -135,6 +129,17 @@ export function priceCouponPure(
       )
     : ctx.items;
   if (hasFilter && eligible.length === 0) return reject("NOT_APPLICABLE");
+
+  // requiresMinQuantity se mide sobre las unidades ELEGIBLES cuando el cupón filtra por
+  // categoría/producto: "lleva 3 imanes de la categoría X" no debe cumplirse con 3 productos que no
+  // son de X (#8). Sin filtro, eligible == carrito completo, así que el comportamiento no cambia.
+  const eligibleQty = eligible.reduce((a, it) => a + it.qty, 0);
+  if (coupon.requiresMinQuantity != null && eligibleQty < coupon.requiresMinQuantity) {
+    return reject("MIN_QUANTITY_NOT_MET");
+  }
+  // minOrder se mantiene sobre el subtotal del carrito COMPLETO (semántica 'en cart' del schema).
+  if (coupon.minOrder != null && ctx.subtotal < coupon.minOrder) return reject("MIN_ORDER_NOT_MET");
+
   const eligibleSubtotal = eligible.reduce((a, it) => a + it.lineTotal, 0);
 
   let discount = 0;
@@ -162,6 +167,8 @@ export async function priceCouponForCart(
     cartId: string;
     shippingCost: number;
     customerId: string | null;
+    /** Email del contacto/pedido: ancla maxUsesPerCustomer también para invitados (#4). */
+    email?: string | null;
     now?: Date;
   },
   client: Prisma.TransactionClient | typeof prisma = prisma,
@@ -213,10 +220,20 @@ export async function priceCouponForCart(
   const subtotal = items.reduce((a, it) => a + it.lineTotal, 0);
 
   let perCustomerUses = 0;
-  if (coupon.maxUsesPerCustomer != null && input.customerId) {
-    perCustomerUses = await client.couponUsage.count({
-      where: { couponId: coupon.id, customerId: input.customerId },
-    });
+  if (coupon.maxUsesPerCustomer != null) {
+    // Contamos usos previos por IDENTIDAD: customerId O email normalizado. Cierra la evasión del
+    // invitado (customerId null) y la de logueado→invitado con el mismo correo (#4). CouponUsage
+    // solo existe para pedidos PAID (no PENDING/abandonados), así que no hay auto-conteo del pedido
+    // en curso durante la re-validación en tx. Best-effort: evadible con correos distintos.
+    const email = input.email ? input.email.trim().toLowerCase() : null;
+    const identity: Prisma.CouponUsageWhereInput[] = [];
+    if (input.customerId) identity.push({ customerId: input.customerId });
+    if (email) identity.push({ email });
+    if (identity.length > 0) {
+      perCustomerUses = await client.couponUsage.count({
+        where: { couponId: coupon.id, OR: identity },
+      });
+    }
   }
 
   return priceCouponPure(coupon, {

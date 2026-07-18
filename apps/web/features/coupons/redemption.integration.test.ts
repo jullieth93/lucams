@@ -9,7 +9,7 @@
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/db";
-import { priceCouponForCart } from "./redemption";
+import { priceCouponForCart, CouponInvalidatedError } from "./redemption";
 import { createOrderFromCart } from "@/features/orders/service";
 
 const hasDb = !!process.env.DATABASE_URL;
@@ -199,7 +199,10 @@ describe.skipIf(!hasDb)("coupons/redemption — integración DB", { timeout: 30_
     expect(persisted?.couponId).toBe(coupon.id);
   });
 
-  it("createOrderFromCart ignora un cupón vencido (discount 0, couponId null)", async () => {
+  it("createOrderFromCart aborta con CouponInvalidatedError si el cupón dejó de valer (#8)", async () => {
+    // Antes se ignoraba en SILENCIO (orden creada a precio lleno, discount 0). Ahora la tx aborta
+    // para que el checkout limpie el cupón y el cliente re-confirme viendo el total real — nunca se
+    // cobra en silencio un total sin el descuento que vio (auditoría v3 · #8).
     const cartId = await makeCart([{ variantId, qty: 1, unitPrice: variantPrice }]);
     const code = `${RUN}-EXP`.toUpperCase();
     await mkCoupon({
@@ -209,12 +212,10 @@ describe.skipIf(!hasDb)("coupons/redemption — integración DB", { timeout: 30_
       validFrom: new Date("2025-01-01"),
       validTo: new Date("2025-02-01"),
     });
-    const order = await createOrderFromCart(orderInput(cartId, code));
-    expect(order.discount).toBe(0);
-    const persisted = await prisma.order.findUnique({
-      where: { id: order.id },
-      select: { couponId: true },
-    });
-    expect(persisted?.couponId).toBeNull();
+    await expect(createOrderFromCart(orderInput(cartId, code))).rejects.toBeInstanceOf(
+      CouponInvalidatedError,
+    );
+    // La tx abortó → no quedó ninguna orden para ese cart.
+    expect(await prisma.order.count({ where: { cartId } })).toBe(0);
   });
 });

@@ -82,19 +82,33 @@ export async function getCoupon(id: string) {
   });
 }
 
-export async function createCoupon(input: CouponCreateInput, actorId: string) {
-  if (input.validTo <= input.validFrom) {
+/**
+ * Reglas de negocio comunes a crear y editar (fuente única, auditoría flujo de cupones · #7).
+ * Tolera entrada parcial (update): cada regla solo dispara si sus campos están presentes. Así el
+ * tope 1-100 del PERCENT y el orden de fechas se validan IGUAL en creación y en edición.
+ */
+function validateCouponBusinessRules(input: {
+  type?: "PERCENT" | "FIXED" | "FREE_SHIPPING";
+  value?: number | null;
+  validFrom?: Date;
+  validTo?: Date;
+}) {
+  if (input.validFrom && input.validTo && input.validTo <= input.validFrom) {
     throw new CouponValidationError(
       "validTo",
       "La fecha de fin debe ser posterior a la de inicio.",
     );
   }
-  if (input.type === "PERCENT" && (input.value < 1 || input.value > 100)) {
+  if (input.type === "PERCENT" && input.value != null && (input.value < 1 || input.value > 100)) {
     throw new CouponValidationError(
       "value",
       "Para descuento %, el valor debe estar entre 1 y 100.",
     );
   }
+}
+
+export async function createCoupon(input: CouponCreateInput, actorId: string) {
+  validateCouponBusinessRules(input);
 
   const existing = await prisma.coupon.findUnique({ where: { code: input.code } });
   if (existing) {
@@ -111,6 +125,7 @@ export async function createCoupon(input: CouponCreateInput, actorId: string) {
 
 export async function updateCoupon(input: CouponUpdateInput, actorId: string) {
   const { id, ...data } = input;
+  validateCouponBusinessRules(data);
   const updated = await prisma.coupon.update({
     where: { id },
     data: { ...data, updatedBy: actorId },

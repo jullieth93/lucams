@@ -3,15 +3,41 @@
 /*
  * F1 — Campo de cupón en el checkout (paso de pago).
  *
- * Si hay un cupón aplicado y vigente, muestra la caja "aplicado" con opción de
- * quitarlo. Si no, muestra el input para escribir un código. El descuento real se
- * refleja en el <OrderSummary> (server) tras revalidar; acá solo damos feedback
- * inmediato del intento (useActionState).
+ * Tres estados (auditoría de flujo de cupones, 2026-07-18):
+ *  1. Cupón aplicado y vigente  → caja verde con botón "quitar".
+ *  2. Cupón aplicado pero INVÁLIDO (venció, se agotó, el carrito bajó del mínimo…)
+ *     → caja ámbar que NOMBRA el cupón + la razón + botón "quitar". Antes esto caía
+ *     al form vacío con un error rojo huérfano: callejón sin salida. Si el carrito
+ *     vuelve a calificar, getAppliedCoupon deja de devolver error y reaparece la
+ *     caja verde sola (recuperación automática).
+ *  3. Sin cupón → input para escribir un código.
+ *
+ * El descuento real se refleja en el <OrderSummary> (server) tras revalidar; acá
+ * solo damos feedback inmediato del intento (useActionState).
  */
 
-import { useActionState } from "react";
-import { Ticket, X, Loader2, Check } from "lucide-react";
+import { useActionState, useEffect, useRef } from "react";
+import { useFormStatus } from "react-dom";
+import { Ticket, X, Loader2, Check, AlertTriangle } from "lucide-react";
 import { applyCouponAction, removeCouponAction, type CouponActionState } from "./actions";
+
+/**
+ * Botón "quitar cupón" con estado de carga propio (useFormStatus lee el <form>
+ * contenedor). Evita el doble clic y da feedback mientras el server procesa.
+ */
+function RemoveButton({ code }: { code: string }) {
+  const { pending } = useFormStatus();
+  return (
+    <button
+      type="submit"
+      disabled={pending}
+      aria-label={`Quitar cupón ${code}`}
+      className="rounded-md p-1 transition-colors hover:bg-black/5 disabled:opacity-60"
+    >
+      {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <X className="h-4 w-4" />}
+    </button>
+  );
+}
 
 export function CouponField({
   appliedCode,
@@ -25,28 +51,56 @@ export function CouponField({
     null,
   );
 
-  // Cupón aplicado y vigente → caja con opción de quitar.
+  // Foco: cuando el cupón pasa de aplicado (verde/ámbar) → sin cupón (el cliente lo
+  // quitó), el input reaparece y devolvemos el foco ahí para reintentar. Solo en la
+  // transición real; nunca en el mount inicial (no robamos el foco al abrir la página
+  // con un cupón ya aplicado). El hook corre ANTES de cualquier early return.
+  const inputRef = useRef<HTMLInputElement>(null);
+  const prevAppliedRef = useRef<string | undefined>(appliedCode);
+  useEffect(() => {
+    const wasApplied = Boolean(prevAppliedRef.current);
+    const isApplied = Boolean(appliedCode);
+    if (wasApplied && !isApplied) inputRef.current?.focus();
+    prevAppliedRef.current = appliedCode;
+  }, [appliedCode]);
+
+  // Estado 1 — cupón aplicado y vigente → caja verde con "quitar".
   if (appliedCode && !appliedError) {
     return (
-      <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5">
+      <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-emerald-800">
         <Check className="h-4 w-4 flex-shrink-0 text-emerald-700" />
-        <span className="text-sm text-emerald-800">
+        <span className="text-sm">
           Cupón <span className="font-bold">{appliedCode}</span> aplicado
         </span>
-        <form action={removeCouponAction} className="ml-auto">
-          <button
-            type="submit"
-            aria-label={`Quitar cupón ${appliedCode}`}
-            className="rounded-md p-1 text-emerald-700 transition-colors hover:bg-emerald-100"
-          >
-            <X className="h-4 w-4" />
-          </button>
+        <form action={removeCouponAction} className="ml-auto text-emerald-700">
+          <RemoveButton code={appliedCode} />
         </form>
       </div>
     );
   }
 
-  const errorMsg = appliedError ?? (state && !state.ok ? state.message : undefined);
+  // Estado 2 — cupón aplicado pero ya no válido → caja ámbar que lo nombra + razón + "quitar".
+  if (appliedCode && appliedError) {
+    return (
+      <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-amber-900">
+        <div className="flex items-start gap-2">
+          <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600" />
+          <div className="flex-1 text-sm">
+            <p role="alert">
+              El cupón <span className="font-bold">{appliedCode}</span> ya no aplica: {appliedError}
+            </p>
+            <p className="mt-0.5 text-xs text-amber-800">Quítalo para continuar con el pago.</p>
+          </div>
+          <form action={removeCouponAction} className="text-amber-700">
+            <RemoveButton code={appliedCode} />
+          </form>
+        </div>
+      </div>
+    );
+  }
+
+  // Estado 3 — sin cupón → input. `errorMsg` es el feedback del último intento de aplicar.
+  const errorMsg = state && !state.ok ? state.message : undefined;
 
   return (
     <form action={action} className="space-y-1.5">
@@ -56,12 +110,16 @@ export function CouponField({
       </label>
       <div className="flex gap-2">
         <input
+          ref={inputRef}
           id="coupon-code"
           name="code"
           type="text"
+          required
           autoCapitalize="characters"
           placeholder="Escribe tu código"
-          className="border-brand-purple/20 focus:ring-brand-purple/30 min-w-0 flex-1 rounded-md border bg-white px-3 py-2 text-sm uppercase focus:ring-2 focus:outline-none"
+          aria-invalid={!!errorMsg}
+          aria-describedby={errorMsg ? "coupon-error" : undefined}
+          className="border-brand-purple/20 focus:ring-brand-purple/30 min-w-0 flex-1 rounded-md border bg-white px-3 py-2 text-sm uppercase placeholder:normal-case focus:ring-2 focus:outline-none"
         />
         <button
           type="submit"
@@ -71,7 +129,11 @@ export function CouponField({
           {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Aplicar"}
         </button>
       </div>
-      {errorMsg && <p className="text-xs text-red-700">{errorMsg}</p>}
+      {errorMsg && (
+        <p id="coupon-error" role="alert" className="text-xs text-red-700">
+          {errorMsg}
+        </p>
+      )}
     </form>
   );
 }

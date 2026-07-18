@@ -34,7 +34,7 @@ export const metadata: Metadata = {
 // generación de guía a mitad. 60s cabe en el default de Vercel (300s). Ver ADR-049.
 export const maxDuration = 60;
 
-type SearchParams = Promise<{ error?: string }>;
+type SearchParams = Promise<{ error?: string; couponNotice?: string }>;
 
 export default async function CheckoutPagoPage({ searchParams }: { searchParams: SearchParams }) {
   let ctx;
@@ -56,6 +56,9 @@ export default async function CheckoutPagoPage({ searchParams }: { searchParams:
 
   const sp = await searchParams;
   const errorMsg = sp.error;
+  // Aviso de cupón invalidado: NO es un fallo de pago (la tarjeta nunca se tocó). Se muestra como
+  // aviso suave, con param propio, para no alarmar al cliente con "No pudimos procesar el pago".
+  const couponNotice = sp.couponNotice;
 
   if (!ctx.state.contact || !ctx.state.address) redirect("/checkout/datos");
   if (!ctx.state.shippingSelection) redirect("/checkout/envio");
@@ -82,6 +85,18 @@ export default async function CheckoutPagoPage({ searchParams }: { searchParams:
                 {/* searchParams ya viene decodificado; un decodeURIComponent extra con '%' literal
                     lanzaría URIError y tumbaría la página (auditoría v3, quick win). */}
                 <p className="mt-1 text-xs text-rose-800">{errorMsg}</p>
+              </div>
+            </div>
+          )}
+
+          {couponNotice && (
+            <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4">
+              <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-600" />
+              <div>
+                <h3 className="text-sm font-semibold text-amber-900">
+                  Revisa tu pedido antes de pagar
+                </h3>
+                <p className="mt-1 text-xs text-amber-800">{couponNotice}</p>
               </div>
             </div>
           )}
@@ -161,7 +176,11 @@ export default async function CheckoutPagoPage({ searchParams }: { searchParams:
               Método de pago
             </h2>
 
-            <PaymentMethodChooser backHref="/checkout/envio" codEnabled={codEnabled} />
+            <PaymentMethodChooser
+              backHref="/checkout/envio"
+              codEnabled={codEnabled}
+              couponInvalidAtRender={Boolean(applied?.error)}
+            />
           </section>
         </div>
 

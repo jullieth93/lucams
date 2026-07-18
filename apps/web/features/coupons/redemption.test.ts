@@ -159,4 +159,78 @@ describe("priceCouponPure — restricción por categoría/producto", () => {
     );
     expect(!r.ok && r.reason).toBe("NOT_APPLICABLE");
   });
+
+  it("requiresMinQuantity se mide sobre unidades ELEGIBLES, no todo el carrito (#8)", () => {
+    // Cupón "lleva 3 de temporada"; carrito = 1 de temporada + 5 de clásicos (relleno no elegible).
+    // totalQty=6 pasaría el mínimo global, pero eligibleQty=1 no → MIN_QUANTITY_NOT_MET.
+    const r = priceCouponPure(
+      coupon({ appliesToCategories: ["temporada"], requiresMinQuantity: 3 }),
+      ctx({
+        items: [
+          item({ categorySlug: "temporada", qty: 1, lineTotal: 30_000 }),
+          item({ categorySlug: "clasicos", qty: 5, lineTotal: 50_000 }),
+        ],
+        subtotal: 80_000,
+      }),
+    );
+    expect(!r.ok && r.reason).toBe("MIN_QUANTITY_NOT_MET");
+  });
+
+  it("requiresMinQuantity se cumple con suficientes unidades elegibles (#8)", () => {
+    const r = priceCouponPure(
+      coupon({
+        type: "PERCENT",
+        value: 10,
+        appliesToCategories: ["temporada"],
+        requiresMinQuantity: 3,
+      }),
+      ctx({
+        items: [
+          item({ categorySlug: "temporada", qty: 3, lineTotal: 90_000 }),
+          item({ categorySlug: "clasicos", qty: 1, lineTotal: 10_000 }),
+        ],
+        subtotal: 100_000,
+      }),
+    );
+    expect(r.ok && r.discount).toBe(9_000); // 10% de 90.000 (solo temporada)
+  });
+});
+
+describe("priceCouponPure — borde de vigencia en hora Colombia (COT, #1)", () => {
+  // Un cupón "válido hasta el 18 de julio" se almacena con validTo = fin de día COT =
+  // 2026-07-19T04:59:59.999Z, y validFrom = inicio de día COT = 2026-07-18T05:00:00Z.
+  const validFrom = new Date("2026-07-18T05:00:00.000Z");
+  const validTo = new Date("2026-07-19T04:59:59.999Z");
+
+  it("válido a las 23:59:59.999 COT del último día (justo en el corte, no expirado)", () => {
+    const r = priceCouponPure(
+      coupon({ validFrom, validTo }),
+      ctx({ now: new Date("2026-07-19T04:59:59.999Z") }),
+    );
+    expect(r.ok).toBe(true);
+  });
+
+  it("EXPIRED apenas cruza medianoche COT (05:00:00Z del día siguiente)", () => {
+    const r = priceCouponPure(
+      coupon({ validFrom, validTo }),
+      ctx({ now: new Date("2026-07-19T05:00:00.000Z") }),
+    );
+    expect(!r.ok && r.reason).toBe("EXPIRED");
+  });
+
+  it("NOT_STARTED justo antes del inicio del día COT", () => {
+    const r = priceCouponPure(
+      coupon({ validFrom, validTo }),
+      ctx({ now: new Date("2026-07-18T04:59:59.999Z") }),
+    );
+    expect(!r.ok && r.reason).toBe("NOT_STARTED");
+  });
+
+  it("vigente al inicio del día COT (05:00:00Z)", () => {
+    const r = priceCouponPure(
+      coupon({ validFrom, validTo }),
+      ctx({ now: new Date("2026-07-18T05:00:00.000Z") }),
+    );
+    expect(r.ok).toBe(true);
+  });
 });

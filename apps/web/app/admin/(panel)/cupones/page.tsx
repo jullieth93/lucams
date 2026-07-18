@@ -300,8 +300,8 @@ export default async function AdminCuponesPage({ searchParams }: { searchParams:
                       )}
                     </td>
                     <td className="text-brand-muted px-4 py-3 text-xs">
-                      {c.validFrom.toLocaleDateString("es-CO")} →{" "}
-                      {c.validTo.toLocaleDateString("es-CO")}
+                      {c.validFrom.toLocaleDateString("es-CO", { timeZone: "America/Bogota" })} →{" "}
+                      {c.validTo.toLocaleDateString("es-CO", { timeZone: "America/Bogota" })}
                     </td>
                     <td className="text-brand-purple-dark/85 px-4 py-3 text-center text-sm tabular-nums">
                       {c.usedCount}

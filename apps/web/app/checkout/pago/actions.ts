@@ -53,6 +53,13 @@ export async function payWompiAction(formData: FormData): Promise<void> {
 
   await savePaymentMethodStep("WOMPI");
 
+  // #3 caso A — el cupón guardado ya estaba inválido al renderizar la página (el resumen mostró
+  // precio LLENO). Lo quitamos ANTES de finalizar para no rebotar por un cupón que ya no cuenta:
+  // el cliente ya vio el total real. Quitar un cupón solo puede subir el total al valor correcto,
+  // nunca cobrar de menos. La carrera (cupón válido al render, inválido al pagar) NO trae el flag →
+  // el backstop atómico la rebota con aviso (nunca cobramos en silencio un total no visto).
+  if (formData.get("couponInvalidAtRender") === "1") await removeCoupon();
+
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:4000";
   const redirectUrl = `${siteUrl}/checkout/gracias`;
 
@@ -81,6 +88,13 @@ export async function payWompiAction(formData: FormData): Promise<void> {
           "Uno de los productos ya no está disponible. Por favor revisa tu carrito.",
         )}`,
       );
+    }
+    // #3 caso B — el cupón se invalidó en carrera (válido al render, inválido al pagar). finalize ya
+    // limpió el cupón del state; avisamos con un aviso SUAVE (couponNotice) — no es un fallo de pago,
+    // la tarjeta nunca se tocó. El cliente re-confirma viendo el total real (nunca cobro silencioso).
+    if (err instanceof CheckoutError && err.code === "COUPON_INVALIDATED") {
+      logger.info({ event: "checkout.pago.coupon_invalidated_bounce", method: "WOMPI" });
+      redirect(`/checkout/pago?couponNotice=${encodeURIComponent(err.message)}`);
     }
     const msg = err instanceof CheckoutError ? err.message : "Error iniciando pago";
     logger.error({
@@ -128,6 +142,9 @@ export async function payCodAction(formData: FormData): Promise<void> {
 
   await savePaymentMethodStep("COD");
 
+  // #3 caso A — ver payWompiAction: cupón ya inválido al render → quitarlo antes de finalizar.
+  if (formData.get("couponInvalidAtRender") === "1") await removeCoupon();
+
   // finalizeCheckout exige un redirectUrl (lo usa Wompi); en COD no se usa.
   const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:4000";
 
@@ -160,6 +177,11 @@ export async function payCodAction(formData: FormData): Promise<void> {
             : "Uno de los productos ya no está disponible. Por favor revisa tu carrito.",
         )}`,
       );
+    }
+    // #3 caso B — cupón invalidado en carrera: aviso suave, no fallo de pago (ver payWompiAction).
+    if (err instanceof CheckoutError && err.code === "COUPON_INVALIDATED") {
+      logger.info({ event: "checkout.pago.coupon_invalidated_bounce", method: "COD" });
+      redirect(`/checkout/pago?couponNotice=${encodeURIComponent(err.message)}`);
     }
     const msg = err instanceof CheckoutError ? err.message : "Error confirmando tu pedido";
     logger.error({

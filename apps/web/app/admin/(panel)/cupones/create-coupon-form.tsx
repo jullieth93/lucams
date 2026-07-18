@@ -10,10 +10,12 @@ export function CreateCouponForm() {
   );
   const [type, setType] = useState<"PERCENT" | "FIXED" | "FREE_SHIPPING">("PERCENT");
 
-  const today = new Date().toISOString().slice(0, 10);
+  // Defaults en hora Colombia (en-CA da formato YYYY-MM-DD): cerca de medianoche COT, el UTC de
+  // toISOString() saltaría un día. El server ancla la vigencia al día COT completo (ver parsePayload).
+  const today = new Date().toLocaleDateString("en-CA", { timeZone: "America/Bogota" });
   const nextMonth = new Date();
   nextMonth.setMonth(nextMonth.getMonth() + 1);
-  const nextMonthStr = nextMonth.toISOString().slice(0, 10);
+  const nextMonthStr = nextMonth.toLocaleDateString("en-CA", { timeZone: "America/Bogota" });
 
   return (
     <form action={formAction} className="space-y-4">

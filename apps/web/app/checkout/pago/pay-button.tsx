@@ -97,9 +97,17 @@ function MethodCard({
 export function PaymentMethodChooser({
   backHref,
   codEnabled = true,
+  couponInvalidAtRender = false,
 }: {
   backHref: string;
   codEnabled?: boolean;
+  /**
+   * El cupón guardado ya estaba inválido al renderizar la página (el resumen mostró precio LLENO).
+   * En ese caso el pago debe quitar el cupón obsoleto antes de finalizar y proceder sin rebotar (el
+   * cliente ya vio el total real). Si el cupón se invalida en carrera DESPUÉS del render, este flag
+   * es false y el backstop atómico lo rebota con aviso (nunca cobramos en silencio un total no visto).
+   */
+  couponInvalidAtRender?: boolean;
 }) {
   // Si el negocio desactivó COD, el único método es Wompi (no mostramos selector).
   const [method, setMethod] = useState<Method>("WOMPI");
@@ -166,6 +174,7 @@ export function PaymentMethodChooser({
           {/* Anti-bot: el widget inyecta el input cf-turnstile-response dentro del form;
               el server action lo verifica. En dev sin keys es un input vacío (fail-open). */}
           <TurnstileWidget size="flexible" />
+          {couponInvalidAtRender && <input type="hidden" name="couponInvalidAtRender" value="1" />}
           <SubmitButton method={activeMethod} />
         </form>
       </div>

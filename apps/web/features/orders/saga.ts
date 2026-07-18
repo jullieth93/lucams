@@ -208,6 +208,8 @@ export async function processPaidOrder(
               data: {
                 couponId: order.couponId,
                 customerId: order.customerId,
+                // Email normalizado del pedido: ancla el tope por-cliente también para invitados (#4).
+                email: order.email ? order.email.trim().toLowerCase() : null,
                 orderId: order.id,
                 amount: order.discount,
               },
@@ -221,6 +223,17 @@ export async function processPaidOrder(
               event: "order.saga.coupon_exhausted_at_pay",
               orderId: order.id,
               couponId: order.couponId,
+            });
+            // #5 — el descuento SÍ se otorgó (el total ya se cobró/autorizó) por encima del cupo
+            // global. NO re-cobramos (el dinero ya se capturó); marcamos la orden para que Lucy lo
+            // VEA y decida. En la MISMA tx (atómico con PAID) — no vía markNeedsReconciliation, que
+            // es un write separado. Guard needsReconciliation:false para no pisar un motivo previo.
+            await tx.order.updateMany({
+              where: { id: order.id, needsReconciliation: false },
+              data: {
+                needsReconciliation: true,
+                reconciliationReason: `Cupón agotado al pagar: se otorgó un descuento de ${order.discount} centavos por encima del cupo global (maxUses). El total ya se cobró/autorizó con el descuento — revisa y decide.`,
+              },
             });
           }
         }

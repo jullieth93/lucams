@@ -537,6 +537,7 @@ export async function applyCoupon(
     cartId: ctx.cart.cartId,
     shippingCost,
     customerId: ctx.customerId,
+    email: ctx.state.contact?.email ?? null,
   });
   if (!priced.ok) return { ok: false, message: priced.message };
   await setCheckoutState({ couponCode: priced.code });
@@ -567,6 +568,7 @@ export async function getAppliedCoupon(): Promise<{
     cartId: ctx.cart.cartId,
     shippingCost,
     customerId: ctx.customerId,
+    email: ctx.state.contact?.email ?? null,
   });
   if (priced.ok) return { code, discount: priced.discount };
   return { code, discount: 0, error: priced.message };

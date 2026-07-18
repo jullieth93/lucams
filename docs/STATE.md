@@ -13,6 +13,14 @@
 
 ## Resumen actual
 
+**🎟️ ✅ FLUJO DE CUPONES — fluido + efectivo (2026-07-18, ADR-069).** Lucy pidió (tras resolver el retracto: **el cliente asume el costo**, ADR-068) asegurar que el flujo de cupones fuera fluido y efectivo. Auditoría adversarial dedicada (25 agentes, 6 facetas, verificación por refutación) → **17 confirmados**. Veredicto: el **motor monetario ya era correcto** (nunca cobra mal, invariante `usedCount==count(CouponUsage)` bajo concurrencia); las debilidades reales eran de **fluidez** (cupón-inválido = callejón sin salida) y **efectividad** (timezone, tope invitado). Se remediaron los **9 fixes**, certificados (tsc+lint+prettier+build+tests):
+
+- **#1 HIGH** — cupones con fecha expiraban ~29 h antes en hora Colombia (validTo a medianoche UTC). Nuevo `features/coupons/dates.ts` ancla la vigencia al día COT completo (−05:00 fijo) en la ingesta. Sin backfill (no hay cupones reales pre-lanzamiento). +tests.
+- **#2 HIGH** — cupón inválido = callejón sin salida; `CouponField` ahora tiene 3er estado ámbar que nombra el cupón + razón + botón quitar.
+- **#4 HIGH** — `maxUsesPerCustomer` evadible por invitados; columna `CouponUsage.email` + conteo por (customerId OR email). Migración `20260718120000_coupon_usage_email` aplicada.
+- **#3/#5/#6/#7/#8/#9** — banner suave (no «pago fallido») + evitar round-trip; `needsReconciliation` en la misma tx cuando maxUses se excede; a11y del error; guard PERCENT 1-100 en edición; `requiresMinQuantity` sobre elegibles; pulido (spinner/foco/required/placeholder).
+- Copy de **retracto** alineado a «el cliente asume el costo» (UI + 2 emails), commit `f45efad`.
+
 **🛡️ ✅ AUDITORÍA ADVERSARIAL v3 (2026-07-18) — 5 blockers + 16 highs + 14 quick wins remediados y certificados (ADR-068).** Lucy pidió una **verificación adversarial multi-agente sobre el código real** con miras a producción y **rigor máximo en UX/UI web + móvil**. Pipeline: finders por 7 dimensiones → paneles de verificación adversarial (jueces que intentan refutar) → crítico de completitud → síntesis. **~253 agentes · 183 crudos → 218 confirmados** (5 blocker · 16 high · 116 medium · 81 low). **Score de entrada 47/100 — NO LANZAR.** Se presentó el resultado a Lucy y, autorizado (opción a), se remediaron de corrido blocker+high+quick-win, cada uno certificado (tsc + eslint `--max-warnings 0` + prettier + tests + build) y con push a `develop`. Informe completo: [`docs/audits/2026-07-18-adversarial-v3.md`](audits/2026-07-18-adversarial-v3.md).
 
 - **Tanda A — Dinero** (`8aa29b8`): 3 blockers + 3 high del camino del dinero. Doble cobro COD→Wompi (normaliza `paymentMethod`), webhook DECLINED que verificaba mal la transacción, orden con 2 items del mismo variant atascada por P2002 (`aggregateByVariant`), reuso de orden PENDING con total viejo (reconcilia en sitio), APPROVED sobre orden terminal/COD (marca `needsReconciliation`).
@@ -1448,6 +1456,10 @@ sidebar fijo, Cancelar en cupones.
 ---
 
 ## Bitácora (append-only, más reciente arriba)
+
+### 2026-07-18 (cont.) — Retracto (cliente asume costo) + flujo de cupones fluido/efectivo (ADR-068 #1 resuelto, ADR-069)
+
+Lucy resolvió la decisión diferida del retracto: **el cliente asume el costo del envío de la devolución** (salvo defecto/error → Garantías). Copy alineado en UI + 2 emails (`f45efad`). Luego pidió asegurar el **flujo de cupones fluido y efectivo** → auditoría adversarial dedicada (25 agentes, 6 facetas) → 17 confirmados. El motor monetario ya era correcto; se cerraron 9 huecos de fluidez (cupón-inválido: 3er estado ámbar, banner suave, sin round-trip, a11y, pulido) y efectividad (timezone COT en la ingesta, tope por-cliente por email para invitados con nueva columna `CouponUsage.email`, `needsReconciliation` atómico, guards de config). Migración `20260718120000_coupon_usage_email`. Certificado + push. Informe: `docs/audits/2026-07-18-coupon-flow.md`, ADR-069.
 
 ### 2026-07-18 — Auditoría adversarial v3 sobre código real (UX/UI web+móvil) + remediación blocker/high/quick-win (ADR-068)
 

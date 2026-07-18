@@ -1013,16 +1013,13 @@ describe.skipIf(!hasDb)("checkout/service — integración DB (ruta de ingresos)
       expect(paymentCalls).toHaveLength(0);
     }, 30000);
 
-    it("IDEMPOTENCIA con state divergente: el 2º finalize (email/total cambiados) NO crea otra Order — reusa la del cart", async () => {
-      // Verificado empíricamente (no asumido): el índice parcial unique
-      // Order_cartId_pending_unique (cartId WHERE status=PENDING_PAYMENT) hace
-      // que un 2º finalize sobre el MISMO cart NO pueda crear otra Order, aunque
-      // el state divergente (email/total nuevos en la cookie) evite el fast-path
-      // de idempotencia (existing.total===total && existing.email===email). El
-      // tx.order.create choca P2002(cartId) → isCartPendingUniqueViolation →
-      // devuelve la Order existente SIN tocarla. El state divergente se DESCARTA
-      // silenciosamente (ver bugsFound). Resultado: 1 sola Order, con los datos
-      // del PRIMER finalize.
+    it("IDEMPOTENCIA con state divergente: el 2º finalize (email/total cambiados) RECONCILIA la MISMA Order con los datos frescos", async () => {
+      // El índice parcial unique Order_cartId_pending_unique (cartId WHERE status=PENDING_PAYMENT)
+      // garantiza UNA sola Order por cart. Cuando el 2º finalize llega con state divergente
+      // (email/flete nuevos), createOrderFromCart encuentra la PENDING existente y la RECONCILIA en
+      // sitio (mismo id/número/token, datos frescos) en vez de devolver la vieja — que cobraría el
+      // total/flete OBSOLETOS que el cliente ya no ve (auditoría v3 · B1/H1/H3). Resultado: 1 sola
+      // Order, con el email y el total del SEGUNDO finalize, y Wompi cobra ese total fresco.
       const sid = uuid();
       await createCartWithItem({ sessionId: sid, qty: 2, unitPrice: 50_000 });
       setCartCookie(sid);
@@ -1039,30 +1036,28 @@ describe.skipIf(!hasDb)("checkout/service — integración DB (ruta de ingresos)
       });
       const second = await finalizeCheckout({ redirectUrl: "https://x.test" });
 
-      // Misma Order: el cart ya tenía una PENDING_PAYMENT; el unique parcial la
-      // protege. No se creó una segunda.
+      // Misma Order (mismo id/número): el unique parcial garantiza que no se cree una segunda; se
+      // reconcilia la existente.
       expect(second.orderId).toBe(first.orderId);
       expect(second.orderNumber).toBe(first.orderNumber);
-      // Solo este cart pertenece a este test (afterEach limpia entre tests) →
-      // exactamente 1 Order para el RUN, ninguna segunda fila pese al divergente.
+      // Exactamente 1 Order para el RUN (el email reconciliado sigue conteniendo el RUN).
       const count = await prisma.order.count({ where: { email: { contains: RUN } } });
       expect(count).toBe(1);
 
-      // La Order conserva los datos del PRIMER finalize — el state divergente NO
-      // sobreescribió email ni total (subtotal 100k + flete original 15k = 115k).
+      // La Order quedó RECONCILIADA con los datos del SEGUNDO finalize: subtotal 100k (2×50k) +
+      // flete nuevo 99k = 199k, y el email cambiado. NO conserva los datos obsoletos del primero.
       const order = await prisma.order.findUnique({ where: { id: first.orderId } });
-      expect(order!.email).toBe(validContact.email);
-      expect(order!.email).not.toBe(`${RUN}-changed@lucams.test`);
-      expect(order!.total).toBe(115_000);
-      expect(order!.shipping).toBe(15_000);
+      expect(order!.email).toBe(`${RUN}-changed@lucams.test`);
+      expect(order!.total).toBe(199_000);
+      expect(order!.shipping).toBe(99_000);
 
-      // El 2º finalize SÍ vuelve a invocar Wompi (la idempotencia es sobre la
-      // Order, no sobre el gateway) — ambas llamadas con la MISMA referencia.
+      // El 2º finalize vuelve a invocar Wompi con la MISMA referencia (número de orden) pero con el
+      // monto FRESCO (199k) — el cliente paga lo que vio, no el total obsoleto del primer intento.
       expect(paymentCalls).toHaveLength(2);
       expect(paymentCalls[0].reference).toBe(paymentCalls[1].reference);
       expect(paymentCalls[1].reference).toBe(first.orderNumber);
-      // El monto cobrado en ambas es el original (115k), no el divergente.
-      expect(paymentCalls[1].amountInCents).toBe(115_000);
+      expect(paymentCalls[0].amountInCents).toBe(115_000);
+      expect(paymentCalls[1].amountInCents).toBe(199_000);
     }, 30000);
   });
 });

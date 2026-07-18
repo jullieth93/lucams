@@ -2489,3 +2489,39 @@ alto `ba70918`/`4b3ab4b`/`87e46a7`/`4a986b5`), E (quick wins).
 roto, contradicciones legales), no ruido: por eso se remediaron primero blocker+high+quick-win, se
 presentó el resultado, y solo entonces se ejecutó. El backlog **116 medium + 81 low** queda documentado
 para ronda(s) siguiente(s); el patrón operativo a atacar es **«fallar en silencio»** (webhooks/crons).
+
+## ADR-069 — Flujo de cupones: fluido + efectivo (auditoría adversarial dedicada) (2026-07-18)
+
+Lucy pidió, tras cerrar el retracto, que **el flujo de cupones fuera fluido y efectivo**. Auditoría
+adversarial multi-agente dedicada (25 agentes, 6 facetas, verificación por refutación) sobre el
+código real → **17 hallazgos confirmados**. Veredicto: el **motor monetario ya era correcto** (nunca
+cobra mal, invariante `usedCount == count(CouponUsage)` bajo concurrencia); las debilidades reales
+estaban en fluidez (cupón-inválido = callejón sin salida) y efectividad (timezone, tope invitado).
+Se remediaron los **9 fixes** priorizados, certificados. Informe:
+[`docs/audits/2026-07-18-coupon-flow.md`](audits/2026-07-18-coupon-flow.md).
+
+**Decisiones de diseño registradas:**
+
+1. **Vigencia de cupones en hora Colombia (COT −05:00 fijo).** Los inputs `type="date"` (date-only)
+   se interpretaban como medianoche UTC → un cupón «hasta el 18» moría a las 7pm del 17 (~29 h antes).
+   Se ancla la vigencia al día COT completo en la capa de ingesta (`features/coupons/dates.ts` →
+   `parsePayload`), no en el schema. Colombia no tiene horario de verano → offset fijo es correcto y
+   estable. **Sin backfill**: no hay cupones reales (pre-lanzamiento) y el fix se despliega antes de
+   que se cree ninguno.
+2. **`maxUsesPerCustomer` por identidad (customerId OR email), no solo customerId.** Nueva columna
+   `CouponUsage.email` (normalizada). Cierra la evasión del invitado (`customerId` null) y la de
+   logueado→invitado con el mismo correo. Se cuenta contando pedidos PAID (no PENDING/abandonados),
+   así que no hay auto-conteo en la re-validación atómica. **Best-effort documentado**: evadible con
+   correos distintos — aceptable para el lanzamiento (subir a verificación de identidad fuerte sería
+   fricción desproporcionada para el volumen esperado).
+3. **Cupón inválido ≠ fallo de pago.** El rebote por cupón invalidado usa un aviso **ámbar suave**
+   (`?couponNotice=`) con título neutro, NO el banner rojo «No pudimos procesar el pago» (la tarjeta
+   nunca se toca). Cuando el cupón ya estaba inválido al renderizar (el cliente vio precio lleno), el
+   pago lo quita antes de finalizar y procede **sin rebotar**; solo la carrera real (válido al render,
+   inválido al pagar) rebota — nunca se cobra en silencio un total que el cliente no vio.
+4. **`maxUses` global excedido bajo concurrencia → visibilidad, no re-cobro.** Si el cupón se agota
+   entre crear la orden y pagar, el descuento ya se otorgó y el dinero ya se capturó: la saga marca
+   `needsReconciliation` **en la misma tx** (atómico) para que Lucy lo vea y decida, sin re-cobrar.
+5. **`requiresMinQuantity` sobre unidades elegibles** cuando el cupón filtra por categoría/producto
+   («lleva 3 de X» no se cumple con 3 productos que no son X); `minOrder` se mantiene sobre el carrito
+   completo (semántica «en cart» del schema).

@@ -251,6 +251,9 @@ async function createOrderFromCartTx(
           cartId: input.cartId,
           shippingCost,
           customerId: input.customerId,
+          // #4 — mismo email del pedido que la saga guardará en CouponUsage: la re-validación atómica
+          // aplica el tope por-cliente por identidad (customerId O email) también para invitados.
+          email: input.shipping.email,
           now: new Date(),
         },
         tx,
