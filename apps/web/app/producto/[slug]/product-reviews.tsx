@@ -13,7 +13,9 @@ import { ReviewForm } from "./review-form";
 export async function ProductReviews({ productId, slug }: { productId: string; slug: string }) {
   const [reviews, session] = await Promise.all([
     prisma.review.findMany({
-      where: { productId, isApproved: true, deletedAt: null },
+      // H16 (auditoría v3) — solo reseñas de clientes REALES (customerId presente): las
+      // fabricadas/demo (customerId=null) no se muestran como reales en el PDP.
+      where: { productId, isApproved: true, deletedAt: null, customerId: { not: null } },
       orderBy: [{ featured: "desc" }, { createdAt: "desc" }],
       take: 20,
       select: { id: true, rating: true, comment: true, authorName: true, createdAt: true },

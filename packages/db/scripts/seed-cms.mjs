@@ -434,7 +434,7 @@ Archivo machine-readable disponible en [/.well-known/security.txt](/.well-known/
     title: "Paso 2 — Descripción",
     category: "HOME",
     format: "TEXT",
-    body: "Subes tus fotos o nos cuentas tu idea por WhatsApp. Pronto vas a poder diseñarlo en vivo aquí mismo.",
+    body: "Diseñas tu imán en vivo en nuestro Estudio: subes fotos, agregas texto y plantillas, y lo ves con vista previa 3D. ¡Sin salir del sitio!",
   },
   {
     key: "home.howitworks.step3.title",

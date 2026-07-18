@@ -32,7 +32,11 @@ export async function getProductRatingAggregate(
   productId: string,
 ): Promise<ProductRatingAggregate | null> {
   const agg = await prisma.review.aggregate({
-    where: { productId, isApproved: true, deletedAt: null },
+    // Auditoría v3 · H16 — `customerId: { not: null }`: SOLO cuentan reseñas de clientes REALES
+    // (la acción de crear reseña exige login → customerId siempre presente en las genuinas). Las
+    // fabricadas/demo tienen customerId=null → NO deben alimentar el aggregateRating de Google
+    // (reseñas falsas = violación de políticas + riesgo legal).
+    where: { productId, isApproved: true, deletedAt: null, customerId: { not: null } },
     _avg: { rating: true },
     _count: { _all: true },
   });
@@ -47,6 +51,8 @@ export async function listFeaturedReviews(limit = 8): Promise<StorefrontReview[]
       isApproved: true,
       featured: true,
       deletedAt: null,
+      // H16 — solo reseñas de clientes reales (nunca fabricadas/demo con customerId=null).
+      customerId: { not: null },
       product: { deletedAt: null, isActive: true },
     },
     orderBy: { createdAt: "desc" },

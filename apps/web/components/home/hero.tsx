@@ -73,7 +73,7 @@ export async function HomeHero() {
           </div>
           <div className="flex flex-wrap items-center justify-center gap-2 pt-2 text-xs font-medium md:justify-start">
             <span className="bg-brand-turquoise/20 text-brand-purple-dark rounded-full px-3 py-1">
-              <CmsText blockKey="home.hero.chip-studio" fallback="Estudio en vivo (pronto)" />
+              <CmsText blockKey="home.hero.chip-studio" fallback="Estudio de diseño en vivo ✨" />
             </span>
             <span className="bg-brand-coral/20 text-brand-purple-dark rounded-full px-3 py-1">
               <CmsText blockKey="home.hero.chip-cod" fallback="Pago en línea seguro" />

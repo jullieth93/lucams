@@ -23,7 +23,7 @@ const STEPS = [
     titleFallback: "Personalizas",
     descKey: "home.howitworks.step2.description",
     descFallback:
-      "Subes tus fotos o nos cuentas tu idea por WhatsApp. Pronto vas a poder diseñarlo en vivo aquí mismo.",
+      "Diseñas tu imán en vivo en nuestro Estudio: subes fotos, agregas texto y plantillas, y lo ves con vista previa 3D. ¡Sin salir del sitio!",
   },
   {
     icon: Package,
