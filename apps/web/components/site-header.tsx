@@ -38,7 +38,7 @@ export async function SiteHeader() {
         <BrandMark size="sm" animated />
 
         <nav className="flex items-center gap-1 sm:gap-3">
-          <ShopMegaMenu tree={categoryTree} />
+          <ShopMegaMenu tree={categoryTree} isLoggedIn={!!session} />
 
           <Link
             href="/productos"

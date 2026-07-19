@@ -61,7 +61,7 @@ const TOP_OCASIONES = [
   { slug: "empresarial", label: "Empresarial" },
 ];
 
-export function ShopMegaMenu({ tree }: { tree: CategoryNode[] }) {
+export function ShopMegaMenu({ tree, isLoggedIn }: { tree: CategoryNode[]; isLoggedIn: boolean }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const visibleCategories = tree.filter((c) => c.isActive);
 
@@ -223,6 +223,45 @@ export function ShopMegaMenu({ tree }: { tree: CategoryNode[] }) {
             >
               Ver todo el catálogo
             </Link>
+
+            {/* #10 — entrada a cuenta/ayuda en el drawer móvil (antes no existía en móvil). */}
+            <div className="border-brand-purple/10 mt-4 border-t pt-3">
+              <p className="text-brand-muted mb-2 px-2 text-[10px] font-bold tracking-wider uppercase">
+                Tu cuenta
+              </p>
+              <div className="flex flex-col">
+                <Link
+                  href={isLoggedIn ? "/mi-cuenta" : "/login"}
+                  onClick={() => setMobileOpen(false)}
+                  className="text-brand-purple-dark hover:bg-brand-purple/5 rounded-md px-2 py-2 text-sm font-medium"
+                >
+                  {isLoggedIn ? "Mi cuenta" : "Ingresar"}
+                </Link>
+                {!isLoggedIn && (
+                  <Link
+                    href="/registro"
+                    onClick={() => setMobileOpen(false)}
+                    className="text-brand-purple-dark hover:bg-brand-purple/5 rounded-md px-2 py-2 text-sm font-medium"
+                  >
+                    Crear cuenta
+                  </Link>
+                )}
+                <Link
+                  href="/ayuda"
+                  onClick={() => setMobileOpen(false)}
+                  className="text-brand-purple-dark hover:bg-brand-purple/5 rounded-md px-2 py-2 text-sm font-medium"
+                >
+                  Centro de ayuda
+                </Link>
+                <Link
+                  href="/contacto"
+                  onClick={() => setMobileOpen(false)}
+                  className="text-brand-purple-dark hover:bg-brand-purple/5 rounded-md px-2 py-2 text-sm font-medium"
+                >
+                  Contacto
+                </Link>
+              </div>
+            </div>
           </nav>
         </SheetContent>
       </Sheet>

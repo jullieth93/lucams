@@ -22,6 +22,7 @@ import { notFound } from "next/navigation";
 import { MapPin, Package, Truck, Wallet } from "lucide-react";
 import { prisma } from "@/lib/db";
 import { formatCOP, maskEmail } from "@/lib/format";
+import { buildWhatsAppUrl } from "@/lib/wa";
 import { LucamsLogo } from "@/components/lucams-logo";
 
 export const metadata: Metadata = {
@@ -108,6 +109,12 @@ export default async function PublicOrderPage({
   const statusText =
     isCod && order.status === "PAID" ? "Confirmado" : (STATUS_LABEL[order.status] ?? order.status);
   const showCodBanner = isCod && !isCancelled && order.status !== "DELIVERED";
+  // #5 — PENDING_PAYMENT no es un callejón sin salida: en vez del timeline gris mudo, un banner
+  // ámbar que explica ("estamos confirmando tu pago") + salida a WhatsApp para resolver.
+  const isPending = order.status === "PENDING_PAYMENT";
+  const waUrl = isPending
+    ? await buildWhatsAppUrl({ kind: "order", orderNumber: order.number })
+    : null;
 
   return (
     <div className="bg-brand-cream flex min-h-screen flex-col">
@@ -142,6 +149,28 @@ export default async function PublicOrderPage({
             </div>
           )}
 
+          {/* #5 — pago en verificación (PSE/transferencia async, o webhook demorado): explica y da
+            salida a WhatsApp, en vez de dejar el timeline gris mudo. */}
+          {isPending && (
+            <div role="note" className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-4">
+              <p className="text-sm font-semibold text-amber-900">Estamos confirmando tu pago</p>
+              <p className="mt-1 text-xs text-amber-800">
+                Esto puede tardar unos minutos (algunos métodos como PSE o transferencia son así).
+                Cuando lo confirmemos te llega un correo y aquí verás el avance. ¿Tienes dudas?
+              </p>
+              {waUrl && (
+                <a
+                  href={waUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-amber-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-amber-700"
+                >
+                  Escríbenos por WhatsApp
+                </a>
+              )}
+            </div>
+          )}
+
           {/* #2 — aviso de contraentrega persistente (no depende de ?nueva=1): recuerda que el pago
             es en efectivo al recibir, para no confundir "Confirmado" con "ya pagado". */}
           {showCodBanner && (
@@ -167,7 +196,7 @@ export default async function PublicOrderPage({
             </p>
           </header>
 
-          {!isCancelled && (
+          {!isCancelled && !isPending && (
             <div className="border-brand-purple/15 mb-6 rounded-2xl border bg-white p-5 shadow-sm">
               <h2 className="text-brand-purple-dark mb-4 text-sm font-bold">Estado de tu pedido</h2>
               <ol className="flex justify-between">
