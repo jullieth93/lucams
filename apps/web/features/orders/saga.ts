@@ -34,6 +34,8 @@ import {
   sendOrderShipped,
   sendOrderDelivered,
   sendOrderPaymentFailed,
+  sendOrderCancelled,
+  sendOrderRefunded,
 } from "./emails";
 
 /**
@@ -841,15 +843,19 @@ export async function processFailedPaymentOrder(input: {
         to: target,
         reason: input.reason,
       });
-      // P3 — el email "tu pago no se completó" SOLO tiene sentido cuando el pago
-      // nunca se capturó (DECLINED sobre PENDING_PAYMENT/DRAFT). Para REFUNDED
-      // (era PAID) sería contradictorio. El email de reembolso/cancelación
-      // post-pago llega con Bloque B (plantillas de correo).
-      if (
+      // #1 — notificar SIEMPRE al cliente según el tipo de transición (los 3 senders son best-effort
+      // e idempotentes por idempotencyKey):
+      //  - REFUNDED (era PAID/DELIVERED): el dinero capturado se devuelve → email de reembolso.
+      //  - CANCELLED post-pago (venía FULFILLING/SHIPPED): cancelación de un pedido ya pagado.
+      //  - CANCELLED pre-pago (DRAFT/PENDING_PAYMENT): "tu pago no se completó" (comportamiento previo).
+      if (target === "REFUNDED") {
+        await sendOrderRefunded(input.orderId);
+      } else if (
         target === "CANCELLED" &&
-        current.status !== "FULFILLING" &&
-        current.status !== "SHIPPED"
+        (current.status === "FULFILLING" || current.status === "SHIPPED")
       ) {
+        await sendOrderCancelled(input.orderId, input.reason);
+      } else if (target === "CANCELLED") {
         await sendOrderPaymentFailed(input.orderId, input.reason);
       }
       return; // éxito

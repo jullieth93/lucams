@@ -5,6 +5,7 @@
  */
 
 import { renderEmailLayout } from "../layout";
+import { getSettingValue } from "@/lib/cms";
 
 export type DesignRejectedData = {
   orderNumber: string;
@@ -14,12 +15,13 @@ export type DesignRejectedData = {
 };
 
 export async function designRejectedEmail(data: DesignRejectedData) {
+  const siteUrl = await getSettingValue("SITE_URL", "https://lucamsshop.co");
   const bodyHtml = `
 <h1 style="margin:0 0 12px 0;font-size:22px;color:#3D2E5C;">Necesitamos ajustar tu diseño</h1>
 <p>Hola ${escapeHtml(data.customerName)}, revisamos el diseño de <strong>${escapeHtml(data.productName)}</strong> de tu pedido <strong>${escapeHtml(data.orderNumber)}</strong> y no podemos imprimirlo tal como está.</p>
 <p style="font-size:14px;color:#3D2E5C;opacity:0.85;margin-top:12px;">Motivo: ${escapeHtml(data.reason)}</p>
 <p style="margin-top:14px;">Escríbenos por WhatsApp o respóndenos este correo y te ayudamos a ajustarlo. Si prefieres, <strong>te devolvemos el dinero</strong> de ese producto sin problema. 💜</p>
-<p><a href="https://lucamsshop.co/mi-cuenta/pedidos" style="color:#C42B76;font-weight:600;">Ver mi pedido →</a></p>
+<p><a href="${siteUrl}/mi-cuenta/pedidos" style="color:#C42B76;font-weight:600;">Ver mi pedido →</a></p>
 `;
 
   const text = `Necesitamos ajustar tu diseño
@@ -32,7 +34,7 @@ Motivo: ${data.reason}
 
 Escríbenos por WhatsApp o respóndenos este correo y te ayudamos a ajustarlo. Si prefieres, te devolvemos el dinero de ese producto sin problema.
 
-Ver mi pedido: https://lucamsshop.co/mi-cuenta/pedidos`;
+Ver mi pedido: ${siteUrl}/mi-cuenta/pedidos`;
 
   return {
     subject: `Necesitamos ajustar tu diseño — pedido ${data.orderNumber}`,

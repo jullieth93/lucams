@@ -5,6 +5,7 @@
  */
 
 import { renderEmailLayout } from "../layout";
+import { getSettingValue } from "@/lib/cms";
 
 export type OrderCancelledData = {
   orderNumber: string;
@@ -13,6 +14,7 @@ export type OrderCancelledData = {
 };
 
 export async function orderCancelledEmail(data: OrderCancelledData) {
+  const siteUrl = await getSettingValue("SITE_URL", "https://lucamsshop.co");
   const reasonHtml = data.reason
     ? `<p style="font-size:14px;color:#3D2E5C;opacity:0.8;">Motivo: ${escapeHtml(data.reason)}</p>`
     : "";
@@ -24,7 +26,7 @@ export async function orderCancelledEmail(data: OrderCancelledData) {
 ${reasonHtml}
 <p style="margin-top:14px;">Si ya habías pagado, <strong>te devolvemos el dinero</strong>: puede tardar unos días hábiles en reflejarse según tu medio de pago. Si era contraentrega, no te cobramos nada.</p>
 <p style="margin-top:14px;">¿Fue un error o quieres retomar tu compra? Escríbenos por WhatsApp o respóndenos este correo y te ayudamos. 💜</p>
-<p><a href="https://lucamsshop.co/productos" style="color:#C42B76;font-weight:600;">Ver el catálogo →</a></p>
+<p><a href="${siteUrl}/productos" style="color:#C42B76;font-weight:600;">Ver el catálogo →</a></p>
 `;
 
   const text = `Cancelamos tu pedido
@@ -37,7 +39,7 @@ Si ya habías pagado, te devolvemos el dinero (puede tardar unos días hábiles 
 
 ¿Fue un error o quieres retomar tu compra? Escríbenos por WhatsApp o respóndenos este correo.
 
-Ver el catálogo: https://lucamsshop.co/productos`;
+Ver el catálogo: ${siteUrl}/productos`;
 
   return {
     subject: `Tu pedido ${data.orderNumber} fue cancelado`,

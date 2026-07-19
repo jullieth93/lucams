@@ -595,31 +595,30 @@ describe("newsletterWelcomeEmail", () => {
     expect(r.html).toContain("mira el catálogo");
   });
 
-  it("el unsubscribe URL codifica email y token con encodeURIComponent", async () => {
-    const r = await newsletterWelcomeEmail(
-      nwData({ email: "a+b@x.co", unsubscribeToken: "tok/with space&more" }),
-    );
-    const expectedUrl =
-      `${SITE_URL}/unsubscribe?email=${encodeURIComponent("a+b@x.co")}` +
-      `&token=${encodeURIComponent("tok/with space&more")}`;
-    // "a+b@x.co" → a%2Bb%40x.co ; el token con / espacio & → %2F%20%26.
-    expect(expectedUrl).toContain("a%2Bb%40x.co");
-    expect(expectedUrl).toContain("tok%2Fwith%20space%26more");
-    expect(r.text).toContain(expectedUrl);
+  it("el unsubscribe URL usa el parámetro opaco ?u= (email NO viaja en claro) (v3 · #8)", async () => {
+    const email = "a+b@x.co";
+    const r = await newsletterWelcomeEmail(nwData({ email, unsubscribeToken: "abc123def" }));
+    const u = `${Buffer.from(email).toString("base64url")}.abc123def`;
+    expect(r.text).toContain(`${SITE_URL}/unsubscribe?u=${u}`);
+    // El email ya NO aparece legible en la URL (ni el param ?email=).
+    expect(r.text).not.toContain("/unsubscribe?email=");
+    expect(r.text).not.toContain("a%2Bb%40x.co");
   });
 
   it("el link de baja aparece en el footer del HTML (Ley 1581)", async () => {
     const r = await newsletterWelcomeEmail(nwData());
     expect(r.html).toContain("Cancelar suscripción");
     expect(r.html).toContain("Ley 1581 de 2012");
-    // El href del unsubscribe también viaja en el HTML.
-    expect(r.html).toContain("/unsubscribe?email=");
+    // El href del unsubscribe usa el param opaco.
+    expect(r.html).toContain("/unsubscribe?u=");
   });
 
-  it("el texto plano termina con el link de baja", async () => {
-    const r = await newsletterWelcomeEmail(nwData({ email: "x@y.co", unsubscribeToken: "t1" }));
+  it("el texto plano termina con el link de baja (param opaco ?u=)", async () => {
+    const email = "x@y.co";
+    const r = await newsletterWelcomeEmail(nwData({ email, unsubscribeToken: "t1" }));
     const lastLine = r.text.trim().split("\n").pop();
-    expect(lastLine).toBe(`Cancelar suscripción: ${SITE_URL}/unsubscribe?email=x%40y.co&token=t1`);
+    const u = `${Buffer.from(email).toString("base64url")}.t1`;
+    expect(lastLine).toBe(`Cancelar suscripción: ${SITE_URL}/unsubscribe?u=${u}`);
   });
 
   it("IDEMPOTENCIA: mismo input → misma salida", async () => {
