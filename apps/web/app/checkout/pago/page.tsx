@@ -175,7 +175,8 @@ export default async function CheckoutPagoPage({ searchParams }: { searchParams:
                 {billing.documentType} {billing.documentNumber}
               </p>
               <p className="text-brand-muted mt-1 text-xs">
-                Coordinaremos tu factura al correo {contact.email}
+                Coordinamos tu documento de venta (cuenta de cobro o factura, según corresponda) al
+                correo {contact.email}
               </p>
             </ReviewCard>
           )}
@@ -192,6 +193,37 @@ export default async function CheckoutPagoPage({ searchParams }: { searchParams:
               codEnabled={codEnabled}
               couponInvalidAtRender={Boolean(applied?.error)}
             />
+          </section>
+
+          {/* Aviso legal en el punto de venta (Ley 1480 art. 23/47/7-16): antes de pagar el
+              consumidor debe conocer el retracto y la garantía. */}
+          <section
+            aria-label="Retracto y garantía"
+            className="border-brand-purple/10 text-brand-purple-dark/80 rounded-2xl border bg-white p-4 text-xs sm:p-5"
+          >
+            <p>
+              <strong className="text-brand-purple-dark">Retracto:</strong> tienes 5 días hábiles
+              desde que recibes para retractarte de productos del catálogo estándar; te devolvemos
+              el dinero en máximo 15 días calendario. Los productos personalizados en el Estudio
+              (con tu foto o tu texto) no tienen retracto por ser hechos a tu medida (Ley 1480, art.
+              47).
+            </p>
+            <p className="mt-2">
+              <strong className="text-brand-purple-dark">Garantía:</strong> todos los productos
+              tienen garantía legal de 1 año por defectos de fabricación; puedes pedir reparación,
+              cambio o devolución del dinero.
+            </p>
+            <p className="mt-2">
+              Más en{" "}
+              <Link href="/legal/devoluciones" className="text-brand-purple underline">
+                Devoluciones y Retracto
+              </Link>{" "}
+              y{" "}
+              <Link href="/legal/garantias" className="text-brand-purple underline">
+                Garantías
+              </Link>
+              .
+            </p>
           </section>
         </div>
 

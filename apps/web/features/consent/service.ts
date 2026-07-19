@@ -68,3 +68,29 @@ export async function recordHabeasDataConsent(input: {
     },
   });
 }
+
+/**
+ * Registra la autorización de tratamiento de datos que el comprador otorga en el checkout
+ * (paso "Datos"), ANTES de que persistamos su PII. A diferencia del registro, aquí el titular
+ * puede ser INVITADO (sin cuenta) → customerId opcional; la prueba se ancla al email + IP/UA.
+ * Requisito Ley 1581: autorización previa, expresa, informada y verificable, también para guests.
+ */
+export async function recordCheckoutDataConsent(input: {
+  email: string;
+  customerId?: string | null;
+  ip?: string | null;
+  userAgent?: string | null;
+}) {
+  const version = await getSettingValue("PRIVACY_POLICY_VERSION", "v1");
+  await prisma.consent.create({
+    data: {
+      scope: "HABEAS_DATA",
+      accepted: true,
+      version,
+      ipAddress: input.ip ?? null,
+      userAgent: input.userAgent ?? null,
+      customerId: input.customerId ?? null,
+      email: input.email,
+    },
+  });
+}

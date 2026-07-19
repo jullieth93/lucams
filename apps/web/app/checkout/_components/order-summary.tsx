@@ -106,7 +106,9 @@ export function OrderSummary({
             {formatCOP(total)}
           </dd>
         </div>
-        <p className="text-brand-muted mt-1 text-[10px]">IVA incluido (Colombia)</p>
+        <p className="text-brand-muted mt-1 text-[10px]">
+          Precios en pesos colombianos (COP) · el total es el valor final que pagas
+        </p>
       </dl>
     </aside>
   );

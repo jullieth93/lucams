@@ -148,6 +148,8 @@ export function DatosForm({
 
   // Billing
   const [wantsInvoice, setWantsInvoice] = useState<boolean>(initial.billing?.wantsInvoice ?? false);
+  // Autorización de tratamiento de datos (Ley 1581) — obligatoria antes de guardar la PII.
+  const [dataConsent, setDataConsent] = useState<boolean>(false);
 
   // "Guardar esta dirección en mi cuenta" (opt-in, solo clientes logueados).
   const [saveToAccount, setSaveToAccount] = useState(false);
@@ -912,8 +914,9 @@ export function DatosForm({
           3. Facturación
         </h2>
         <p className="text-brand-muted mb-4 text-sm">
-          Si necesitas factura, marca la casilla y déjanos tus datos: coordinamos el envío a tu
-          correo. Si es compra personal, déjala sin marcar.
+          Si necesitas un documento de venta (cuenta de cobro o factura, según corresponda), marca
+          la casilla y déjanos tus datos: lo coordinamos a tu correo. Si es compra personal, déjala
+          sin marcar.
         </p>
 
         <label className="text-brand-purple-dark inline-flex items-center gap-2 text-sm font-medium">
@@ -924,7 +927,7 @@ export function DatosForm({
             onChange={(e) => setWantsInvoice(e.target.checked)}
             className="accent-brand-purple h-4 w-4"
           />
-          Quiero factura
+          Quiero documento tributario (cuenta de cobro o factura)
         </label>
 
         {wantsInvoice && (
@@ -977,7 +980,7 @@ export function DatosForm({
                 name="billingName"
                 required={wantsInvoice}
                 defaultValue={initial.billing?.name ?? ""}
-                placeholder="Lucams S.A.S."
+                placeholder="Ej. Tu nombre o el de tu empresa"
                 className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
               />
               <FieldHint clientError={null} serverError={err("billingName")} />
@@ -985,6 +988,45 @@ export function DatosForm({
           </div>
         )}
         {err("wantsInvoice") && <p className="mt-2 text-xs text-rose-600">{err("wantsInvoice")}</p>}
+      </section>
+
+      {/* AUTORIZACIÓN DE TRATAMIENTO DE DATOS (Ley 1581) — previa y expresa, también para invitados.
+          Sin la casilla marcada, la acción no guarda la PII ni continúa. */}
+      <section className="border-brand-purple/10 rounded-2xl border bg-white p-5 shadow-sm sm:p-6">
+        <label className="flex items-start gap-3 text-sm">
+          <input
+            type="checkbox"
+            name="dataConsent"
+            required
+            checked={dataConsent}
+            onChange={(e) => setDataConsent(e.target.checked)}
+            className="accent-brand-purple mt-0.5 h-4 w-4 flex-shrink-0"
+          />
+          <span className="text-brand-purple-dark/90 leading-relaxed">
+            Autorizo el <strong>tratamiento de mis datos personales</strong> para procesar y enviar
+            mi pedido, conforme a la{" "}
+            <a
+              href="/legal/privacidad"
+              target="_blank"
+              rel="noreferrer"
+              className="text-brand-purple underline"
+            >
+              Política de Privacidad
+            </a>{" "}
+            y la{" "}
+            <a
+              href="/legal/habeas-data"
+              target="_blank"
+              rel="noreferrer"
+              className="text-brand-purple underline"
+            >
+              Política de Tratamiento de Datos
+            </a>
+            . Responsable: Lucy Jullieth Hurtado Rodríguez (persona natural), Bogotá D.C. Algunos
+            proveedores (alojamiento y correo) están en EE. UU.
+          </span>
+        </label>
+        {err("dataConsent") && <p className="mt-2 text-xs text-rose-600">{err("dataConsent")}</p>}
       </section>
 
       {state?.error && (

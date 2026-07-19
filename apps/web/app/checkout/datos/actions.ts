@@ -1,13 +1,16 @@
 "use server";
 
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { logger } from "@/lib/logger";
+import { getClientIp } from "@/lib/client-ip";
 import { getCurrentCustomer } from "@/lib/auth";
 import { ContactSchema, BillingSchema } from "@/features/checkout/schemas";
 import { parseStructuredAddress } from "@/features/checkout/parse-address";
 import { saveAddressStep, saveContactStep } from "@/features/checkout/service";
 import { saveCheckoutAddressToAccount } from "@/features/addresses/service";
+import { recordCheckoutDataConsent } from "@/features/consent/service";
 import { recordAbandonedCartEmail } from "@/features/cart/recovery-service";
 
 export type DatosActionState = {
@@ -34,6 +37,18 @@ export async function saveDatosAction(
     return {
       error: "Revisa los datos de contacto",
       fieldErrors: z.flattenError(contactParsed.error).fieldErrors as Record<string, string[]>,
+    };
+  }
+
+  // ─── Autorización de tratamiento de datos (Ley 1581) ───
+  // Debe ser PREVIA a persistir la PII: sin la casilla marcada no guardamos ni continuamos.
+  // Aplica también a invitados (sin cuenta), que de otro modo nunca autorizarían.
+  if (formData.get("dataConsent") !== "on") {
+    return {
+      error: "Para continuar debes autorizar el tratamiento de tus datos personales.",
+      fieldErrors: {
+        dataConsent: ["Autoriza el tratamiento de tus datos para continuar con tu pedido."],
+      },
     };
   }
 
@@ -66,6 +81,24 @@ export async function saveDatosAction(
   try {
     await saveContactStep(contactParsed.data);
     await saveAddressStep(addressParsed.data, billingParsed.data);
+    // Audit trail Ley 1581: persistir la autorización de tratamiento que el titular marcó arriba.
+    // Best-effort: si la escritura de auditoría falla NO rompemos el checkout (la autorización ya
+    // se dio, la casilla es la prueba visible) — solo lo logueamos.
+    try {
+      const hdrs = await headers();
+      const session = await getCurrentCustomer();
+      await recordCheckoutDataConsent({
+        email: contactParsed.data.email,
+        customerId: session?.customer.id ?? null,
+        ip: getClientIp(hdrs),
+        userAgent: hdrs.get("user-agent"),
+      });
+    } catch (consentErr) {
+      logger.error({
+        event: "checkout.step.datos.consent_record_fail",
+        err: consentErr instanceof Error ? consentErr.message : String(consentErr),
+      });
+    }
     // Palanca de recuperación de carrito (auditoría 2026-07-13): registra el email + genera token
     // de recuperación. Best-effort (tiene su propio try/catch) → nunca rompe el checkout.
     await recordAbandonedCartEmail(contactParsed.data.email);
