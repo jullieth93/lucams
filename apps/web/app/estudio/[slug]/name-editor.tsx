@@ -213,8 +213,9 @@ export function NameEditor({
   // NOM2 — vista 3D del nombre en un tablero magnético de un cuarto. null = cerrada.
   const [board3D, setBoard3D] = useState<Magnet3D[] | null>(null);
   const [building3D, setBuilding3D] = useState(false);
-  // Cantidad de fichas (letras) elegida en la ficha. El editor se LIMITA a esta cantidad;
-  // el +/− la ajusta (min..max del producto). Es el nº de fichas que se cobra.
+  // Cantidad de fichas (letras). Arranca en el pick inicial; el +/− la ajusta (min..max del
+  // producto) y al TECLEAR crece sola hasta config.max (#11) — nunca se traga letras en silencio.
+  // Es el nº de fichas que se cobra.
   const [count, setCount] = useState(() =>
     Math.min(config.max, Math.max(config.min, initialCount ?? config.min)),
   );
@@ -226,8 +227,8 @@ export function NameEditor({
     [styleId, styles],
   );
 
-  // El máximo efectivo es la cantidad elegida (count), no el max del producto → el campo
-  // queda limitado a esa cantidad (feedback de Lucy: no debe dejar escribir más).
+  // La normalización usa count como tope (que ya sigue a lo tecleado, ver onChange del input): así
+  // el − que reduce fichas recorta el texto sobrante, pero teclear no pierde letras (crece count).
   const result = useMemo(() => normalizeName(raw, { ...config, max: count }), [raw, config, count]);
   const { letters, valid, tooShort, notices } = result;
 
@@ -417,9 +418,17 @@ export function NameEditor({
             inputMode="text"
             autoComplete="off"
             autoCapitalize="characters"
-            maxLength={count}
+            maxLength={config.max}
             value={raw}
-            onChange={(e) => setRaw(e.target.value)}
+            onChange={(e) => {
+              const next = e.target.value;
+              setRaw(next);
+              // #11 — antes maxLength={count} tragaba letras en silencio ("MATEO"→"MAT" sin aviso).
+              // Ahora el tope duro es el máximo REAL del producto y la cantidad de fichas CRECE sola
+              // hasta ahí a medida que se escribe (nunca encoge → contador y precio quedan en sync).
+              const typed = normalizeName(next, { ...config, max: config.max }).letters.length;
+              setCount((c) => Math.min(config.max, Math.max(config.min, Math.max(c, typed))));
+            }}
             placeholder={config.language === "es" ? "Ej: Mía" : "Ex: Mia"}
             className="border-brand-purple/25 focus:border-brand-purple focus:ring-brand-turquoise/40 font-display text-brand-purple-dark w-full rounded-2xl border-2 bg-white px-4 py-3 text-2xl tracking-wide uppercase outline-none focus:ring-4"
           />

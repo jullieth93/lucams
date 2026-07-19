@@ -6,7 +6,7 @@
  * Presentacionales puros; el estado vive en useLetterColors.
  */
 
-import { NAME_TILE_THEMES, LETTER_SWATCHES } from "./letter-tile";
+import { NAME_TILE_THEMES, LETTER_SWATCHES, LETTER_SWATCH_LABELS } from "./letter-tile";
 
 /** Picker de tema de color. Re-clic al tema activo lo baraja (lo maneja applyTheme). */
 export function ThemePicker({
@@ -73,8 +73,10 @@ export function SwatchRow({ letter, onPick }: { letter: string; onPick: (color: 
             key={c}
             type="button"
             onClick={() => onPick(c)}
-            aria-label="Pintar de este color"
-            className="h-8 w-8 rounded-full ring-2 ring-black/5 transition hover:scale-110"
+            // #16 — aria-label con el nombre del color (no "este color" idéntico ×22) + área táctil
+            // de 40px (antes 32px, bajo el mínimo recomendado) → menos toques al color vecino.
+            aria-label={`Pintar de ${LETTER_SWATCH_LABELS[c] ?? "este color"}`}
+            className="h-10 w-10 rounded-full ring-2 ring-black/5 transition hover:scale-110"
             style={{ backgroundColor: c }}
           />
         ))}

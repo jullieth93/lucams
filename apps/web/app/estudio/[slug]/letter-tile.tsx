@@ -89,6 +89,37 @@ export const LETTER_SWATCHES = [
   "#2B2D42",
 ] as const;
 
+/**
+ * #16 — nombre es-CO de cada swatch para el aria-label ("Pintar de rojo"…). Sin esto los 22 botones
+ * anunciaban idéntico "Pintar de este color" a un lector de pantalla → imposible elegir color. Los
+ * nombres distinguen tonos vecinos (dos naranjas, dos morados, dos rosas). Mismo patrón que
+ * TEXT_COLOR_PRESETS en lib/fonts.ts.
+ */
+export const LETTER_SWATCH_LABELS: Record<string, string> = {
+  "#E63946": "rojo",
+  "#F4511E": "naranja intenso",
+  "#F58A6F": "coral",
+  "#F5A623": "ámbar",
+  "#FFC300": "amarillo dorado",
+  "#FFD93D": "amarillo",
+  "#8BC34A": "verde lima",
+  "#43AA8B": "verde",
+  "#2A9D8F": "verde azulado",
+  "#5DD9D1": "turquesa",
+  "#4A90D9": "azul",
+  "#1D6FB8": "azul oscuro",
+  "#9B5DE5": "violeta",
+  "#7C6AAD": "morado",
+  "#C86FB0": "malva",
+  "#E85B9F": "rosa",
+  "#FF3D7F": "rosa fucsia",
+  "#D81159": "magenta",
+  "#8B5A2B": "café",
+  "#6B7280": "gris",
+  "#3D2E5C": "morado oscuro",
+  "#2B2D42": "azul noche",
+};
+
 export function LetterTile({
   letter,
   color,

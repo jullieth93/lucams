@@ -159,9 +159,17 @@ export default async function EstudioPage({
             styles={styles}
             priceLabel={priceLabel}
             subtitle={
+              // #15 — la promesa "cada una con su animalito" solo es veraz si HAY estilos ilustrados
+              // subidos (styles.length>0). Sin estilos, las fichas salen como letra de color: prometer
+              // un dibujo sería publicidad engañosa (Ley 1480). "dibujito" (no "animalito") porque el
+              // estilo puede ser Navidad/Espacio/etc., no solo animales.
               surface.config.letterSet === "vowels"
-                ? "Las 5 vocales con su animalito. Pinta cada ficha del color que quieras — así se imprime."
-                : `Las ${letters.length} letras, cada una con su animalito. Pinta cada ficha del color que quieras — así se imprime.`
+                ? styles.length > 0
+                  ? "Las 5 vocales, cada una con su dibujito. Pinta cada ficha del color que quieras — así se imprime."
+                  : "Las 5 vocales. Pinta cada ficha del color que quieras — así se imprime."
+                : styles.length > 0
+                  ? `Las ${letters.length} letras, cada una con su dibujito. Pinta cada ficha del color que quieras — así se imprime.`
+                  : `Las ${letters.length} letras. Pinta cada ficha del color que quieras — así se imprime.`
             }
           />
         </main>

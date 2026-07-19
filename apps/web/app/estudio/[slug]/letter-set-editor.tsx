@@ -319,7 +319,7 @@ export function LetterSetEditor({
             ) : (
               <Sparkles className="h-5 w-5" />
             )}
-            {submitting ? "Agregando…" : "Añadir al carrito"}
+            {submitting ? "Agregando…" : "Agregar al carrito"}
           </button>
           <span className="text-brand-muted text-sm font-semibold">{priceLabel}</span>
         </div>
