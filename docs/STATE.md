@@ -13,6 +13,16 @@
 
 ## Resumen actual
 
+**✅ PIEZAS MAYORES + DECISIONES DE LUCY (2026-07-19, cont.).** Tras cerrar Tanda 8, se resolvieron los 4 frentes que Lucy autorizó:
+
+- **Wompi validado por API** (`GET /v1/merchants`): la cuenta soporta Tarjeta/PSE/Nequi/**Daviplata**/Bancolombia. **ACCIÓN HUMANA:** hoy es sandbox de otro comercio ("KAIU") → Lucy debe crear su propia cuenta y poner llaves de producción. Cerró **#31** (lista canónica de medios de pago con Daviplata, `lib/payment-methods.ts`).
+- **Pieza mayor #1** (`ADR-070`, commit tras `fa1e883`): `OrderItem` guarda un **snapshot autocontenido del diseño** (`designAssetUrl` + `metadata.designSnapshot`) al crear la orden → producción no depende de que el `Design` sobreviva. Vistas de pedido resuelven `designAssetUrl ?? design.previewUrl ?? foto`. **Visual en el checkout**: `/checkout/gracias` muestra miniaturas con badge "Tu diseño". Checkout 36/36 verde.
+- **`/rastrear`** (#14): página pública de rastreo (número + correo → `/pedido/<token>`), anti-enumeración + rate-limit, enlace en footer + sitemap. Verificada (miss→error, match→303).
+- **Figura jurídica: persona natural** (`ADR-071`, #15/#16): Lucy Jullieth Hurtado Rodríguez, persona natural, Bogotá D.C. Corregidos los fallbacks de código (S.A.S.→persona natural) Y el **contenido CMS** (dev DB) de términos/privacidad/hábeas-data. **Exposición mínima (elección de Lucy):** público = nombre + Bogotá + correo/WhatsApp; **cédula y dirección exacta NO se publican** (a solicitud), y NO viven en git. **ACCIÓN HUMANA:** (a) revisión de abogado; (b) régimen tributario con contador; (c) el contenido CMS se editó en la BD de DEV → replicar en el CMS de PROD al lanzar; (d) al tener dominio, cuadrar correos + evaluar dirección de notificación alterna.
+- **Higiene dev:** barridas 4 categorías de test que ensuciaban el footer de dev.
+
+---
+
 **✅ BACKLOG AUDITORÍA v3 — TANDA 8 COMPLETA + PLAN DE VALIDACIÓN GUI (2026-07-19).** Los 31 findings de descubrimiento (recomendador, reseñas, SEO/OG, redirects) se re-validaron por workflow (25 VALID + 2 PARTIALLY_FIXED + 3 ALREADY_FIXED + 1 agente fallido recuperado a mano). **Los 27 accionables implementados, certificados (tsc+lint+prettier+tests) y pusheados** en 7 batches por afinidad:
 
 - **Batch A** (`aca912d`) recomendador lógica: #1 presupuesto = filtro duro (overlap del rango completo), #2 destinatario por token (no substring, sin falso positivo "mi"⊂"familiar", etiquetas legibles), #3 ocasiones vacías ocultas, #5 agotados despriorizados, #9 CTA "Personalízalo" en cards, #11 pool determinista. +tests recommend 7/7. Verificado por API.
