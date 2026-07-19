@@ -430,7 +430,11 @@ export default async function ProductoDetallePage({
 
           <TemplatesStrip productSlug={product.slug} isPersonalizable={product.isPersonalizable} />
 
-          <ProductReviews productId={product.id} slug={product.slug} />
+          <ProductReviews
+            productId={product.id}
+            slug={product.slug}
+            ratingAggregate={ratingAggregate}
+          />
 
           <RelatedProducts products={related} />
         </div>

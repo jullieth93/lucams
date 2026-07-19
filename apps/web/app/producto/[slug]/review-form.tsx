@@ -18,6 +18,10 @@ export function ReviewForm({ productId, slug }: { productId: string; slug: strin
   );
   const [rating, setRating] = useState(0);
   const [hover, setHover] = useState(0);
+  // #12 — textarea CONTROLADO (mismo patrón que rating): el auto-reset del form de React 19 no
+  // vacía el estado de React, así que el comentario sobrevive a cualquier error de la action
+  // (Turnstile expirado, rate limit, "solo reseñas lo que compraste", duplicado).
+  const [comment, setComment] = useState("");
 
   if (state?.success) {
     return (
@@ -79,6 +83,8 @@ export function ReviewForm({ productId, slug }: { productId: string; slug: strin
           rows={4}
           maxLength={2000}
           required
+          value={comment}
+          onChange={(e) => setComment(e.target.value)}
           placeholder="¿Qué te pareció el producto? ¿Cómo llegó? ¿Lo recomiendas?"
           className="border-brand-purple/25 focus:border-brand-purple focus:ring-brand-purple/20 w-full rounded-md border bg-white px-3 py-2 text-sm focus:ring-2 focus:outline-none"
         />

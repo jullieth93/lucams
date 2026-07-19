@@ -22,6 +22,7 @@ import { rateLimit } from "@/lib/rate-limit";
 import { ipKey } from "@/lib/rate-limit-keys";
 import { getClientIp } from "@/lib/client-ip";
 import { logger } from "@/lib/logger";
+import { REVIEWABLE_ORDER_STATUSES } from "./constants";
 
 const ReviewSchema = z.object({
   productId: z.string().cuid(),
@@ -86,7 +87,7 @@ export async function submitReviewAction(
     where: {
       customerId: session.customer.id,
       deletedAt: null,
-      status: { in: ["PAID", "FULFILLING", "SHIPPED", "DELIVERED"] },
+      status: { in: REVIEWABLE_ORDER_STATUSES },
       items: { some: { variant: { productId: parsed.data.productId } } },
     },
     select: { id: true },
