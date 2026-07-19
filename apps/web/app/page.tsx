@@ -53,6 +53,14 @@ export default async function Home() {
     buildWhatsAppUrl({ kind: "support" }),
   ]);
 
+  // #2 — despriorizar agotados en el carrusel destacado: disponibles primero, agotados al final
+  // (sin filtrarlos → siguen visibles con su badge "Agotado"). Sort estable (ES2019) → entre los
+  // disponibles se conserva el orden isFeatured/createdAt. La home es force-dynamic (sin caché de
+  // stock), así que ordenar por request es correcto.
+  const featuredSorted = [...featured].sort(
+    (a, b) => Number(b.inStock ?? true) - Number(a.inStock ?? true),
+  );
+
   // Structured data del sitio (auditoría 2026-07-13): Organization (knowledge panel) + WebSite
   // (nombre para sitelinks). Escapado anti-XSS + nonce, como el JSON-LD del PDP.
   const siteJsonLd = [
@@ -155,8 +163,8 @@ export default async function Home() {
               Ver todo →
             </Link>
           </header>
-          {featured.length > 0 ? (
-            <FeaturedCarousel products={featured} />
+          {featuredSorted.length > 0 ? (
+            <FeaturedCarousel products={featuredSorted} />
           ) : (
             <div className="border-brand-purple/10 rounded-xl border bg-white px-6 py-12 text-center">
               <p className="text-brand-purple-dark/70">

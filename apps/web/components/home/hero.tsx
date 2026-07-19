@@ -11,10 +11,11 @@
 import Link from "next/link";
 import { LucamsLogo } from "@/components/lucams-logo";
 import { CmsText } from "@/components/cms/cms-text";
-import { buildWhatsAppUrl } from "@/lib/wa";
+import { getSettingValue } from "@/lib/cms";
 
 export async function HomeHero() {
-  const waSupportUrl = await buildWhatsAppUrl({ kind: "support" });
+  // #3 — mismo toggle que usa el checkout: el chip solo promete contraentrega si COD está activo.
+  const codEnabled = (await getSettingValue("COD_ENABLED", "true")) === "true";
 
   return (
     <section className="relative overflow-hidden">
@@ -62,21 +63,26 @@ export async function HomeHero() {
             >
               <CmsText blockKey="home.hero.cta-primary" fallback="Ver catálogo →" />
             </Link>
-            <a
-              href={waSupportUrl}
-              target="_blank"
-              rel="noopener noreferrer"
+            {/* #1 — antes salía a WhatsApp; ahora entra al catálogo de productos PERSONALIZABLES
+              (cuyos PDP abren el Estudio en vivo). La home ya no saca al cliente del flujo. */}
+            <Link
+              href="/productos?personalizable=1"
               className="border-brand-purple/30 text-brand-purple-dark hover:bg-brand-purple/5 inline-block rounded-full border bg-white px-5 py-2.5 text-sm font-semibold transition-colors sm:px-6 sm:py-3 sm:text-base"
             >
               <CmsText blockKey="home.hero.cta-secondary" fallback="Personalizar el mío" />
-            </a>
+            </Link>
           </div>
           <div className="flex flex-wrap items-center justify-center gap-2 pt-2 text-xs font-medium md:justify-start">
             <span className="bg-brand-turquoise/20 text-brand-purple-dark rounded-full px-3 py-1">
               <CmsText blockKey="home.hero.chip-studio" fallback="Estudio de diseño en vivo ✨" />
             </span>
             <span className="bg-brand-coral/20 text-brand-purple-dark rounded-full px-3 py-1">
-              <CmsText blockKey="home.hero.chip-cod" fallback="Pago en línea seguro" />
+              {/* #3 — el chip promete contraentrega solo si está activa (ADR-055); si Lucy la apaga,
+                cae a "Pago en línea seguro". Veraz en ambos casos. */}
+              <CmsText
+                blockKey="home.hero.chip-cod"
+                fallback={codEnabled ? "Pago contraentrega disponible" : "Pago en línea seguro"}
+              />
             </span>
             <span className="bg-brand-yellow/30 text-brand-purple-dark rounded-full px-3 py-1">
               <CmsText blockKey="home.hero.chip-eta" fallback="5-7 días hábiles" />
