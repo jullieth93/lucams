@@ -184,11 +184,17 @@ export async function getCartDetail(sessionId: string): Promise<CartDetail | nul
 }
 
 export async function getCartItemCount(sessionId: string): Promise<number> {
-  const cart = await findCartBySession(sessionId);
-  if (!cart) return 0;
-  return cart.items
-    .filter((i) => i.variant.product.isActive && i.variant.product.deletedAt === null)
-    .reduce((sum, i) => sum + i.qty, 0);
+  // #3 — el badge del header corre en CADA página: sumamos qty en la DB en vez de traer el cart
+  // completo (imágenes, nombre, preview del diseño). Mismo filtro que toDetail: solo items con
+  // producto activo y no borrado. _sum.qty es null sin filas → 0 (idéntico al early-return previo).
+  const { _sum } = await prisma.cartItem.aggregate({
+    where: {
+      cart: { sessionId, deletedAt: null },
+      variant: { product: { isActive: true, deletedAt: null } },
+    },
+    _sum: { qty: true },
+  });
+  return _sum.qty ?? 0;
 }
 
 export async function addProductToCart(opts: {

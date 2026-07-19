@@ -111,10 +111,13 @@ export default async function ProductosPage({ searchParams }: { searchParams: Se
   const page = Math.max(1, pickInt(sp, "page") ?? 1);
   const PAGE_SIZE = 12;
 
-  const [categories, priceRange, ocasiones] = await Promise.all([
+  // #4 — arrancar getCurrentCustomer() en paralelo con las queries de facetas para solaparlas
+  // (es cache()-eado, así que solo adelanta el inicio; el uso real es la wishlist, más abajo).
+  const [categories, priceRange, ocasiones, customer] = await Promise.all([
     listStorefrontCategories(),
     getStorefrontPriceRange(),
     listOcasiones(),
+    getCurrentCustomer(),
   ]);
 
   // Si hay query de búsqueda, usar searchStorefrontProducts (fuzzy).
@@ -200,8 +203,7 @@ export default async function ProductosPage({ searchParams }: { searchParams: Se
   ];
 
   // Wishlist (palanca, auditoría 2026-07-13): para el cliente logueado, qué productos de la página
-  // están en favoritos → pinta el corazón. Anónimo → sin corazón.
-  const customer = await getCurrentCustomer();
+  // están en favoritos → pinta el corazón. Anónimo → sin corazón. (customer ya resuelto arriba, #4.)
   const wishlistedIds = customer
     ? await getWishlistedProductIds(
         customer.customer.id,

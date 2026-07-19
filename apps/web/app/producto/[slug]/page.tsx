@@ -123,7 +123,9 @@ export default async function ProductoDetallePage({
   // undefined = con imán por defecto.)
   const ctaNoun = selectedAttrs.magnet === false ? "tu adhesivo" : "tu imán";
 
-  const [related, ratingAggregate] = await Promise.all([
+  // #4 — cuatro operaciones INDEPENDIENTES en paralelo (antes eran awaits secuenciales); solo la
+  // wishlist depende del customer, así que se encadena después.
+  const [related, ratingAggregate, waHref, customer] = await Promise.all([
     listRelatedProducts({
       productId: product.id,
       categorySlug: product.category.slug,
@@ -131,21 +133,16 @@ export default async function ProductoDetallePage({
     }),
     // Rating real para el JSON-LD (auditoría 2026-07-16). null si no hay reseñas.
     getProductRatingAggregate(product.id),
+    buildWhatsAppUrl({ kind: "product", productName: product.name, sku: product.sku }),
+    // Wishlist + "avísame cuando vuelva": cliente logueado para el estado del corazón + su email.
+    getCurrentCustomer(),
   ]);
 
   // Precio tachado (promo) de la OPCIÓN elegida (Lucy 2026-06-27). Solo se
   // muestra si es estrictamente mayor al precio actual → nunca descuento negativo.
   const displayCompareAt = selectedVariant?.compareAtPrice ?? null;
   const hasDiscount = displayCompareAt != null && displayCompareAt > displayPrice;
-  const waHref = await buildWhatsAppUrl({
-    kind: "product",
-    productName: product.name,
-    sku: product.sku,
-  });
 
-  // Wishlist + "avísame cuando vuelva" (palancas, auditoría 2026-07-13): estado del corazón para el
-  // cliente logueado + su email (prellenar el aviso de reposición).
-  const customer = await getCurrentCustomer();
   const initialWishlisted = customer
     ? (await getWishlistedProductIds(customer.customer.id, [product.id])).has(product.id)
     : false;
