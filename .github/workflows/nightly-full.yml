@@ -29,11 +29,20 @@ jobs:
       - id: check
         env:
           HAS: ${{ secrets.STAGING_DATABASE_URL != '' && secrets.STAGING_SUPABASE_URL != '' && secrets.STAGING_SUPABASE_SERVICE != '' }}
+          EVENT: ${{ github.event_name }}
         run: |
           if [ "$HAS" = "true" ]; then
             echo "configured=true" >> "$GITHUB_OUTPUT"
           else
             echo "configured=false" >> "$GITHUB_OUTPUT"
+            # #6 — en un run PROGRAMADO, faltar los secrets significa que el nightly está
+            # SILENCIOSAMENTE inactivo (la cobertura diferida no corre). Fallar el job (rojo, visible
+            # en Actions) rompe la ilusión de "verde eterno". En workflow_dispatch (disparo manual en
+            # una máquina sin secrets) solo avisamos y salimos limpio.
+            if [ "$EVENT" = "schedule" ]; then
+              echo "::error::Nightly inactivo en un run PROGRAMADO: faltan secrets STAGING_*. La cobertura diferida (rls-matrix de comportamiento, E2E admin/MFA) NO corrió. Configura STAGING_DATABASE_URL, STAGING_DIRECT_URL, STAGING_SUPABASE_URL, STAGING_SUPABASE_ANON, STAGING_SUPABASE_SERVICE (Supabase de STAGING/dev, NUNCA producción)."
+              exit 1
+            fi
             echo "::warning::Nightly inactivo: faltan secrets. Configura STAGING_DATABASE_URL, STAGING_DIRECT_URL, STAGING_SUPABASE_URL, STAGING_SUPABASE_ANON, STAGING_SUPABASE_SERVICE (apuntando a una Supabase de STAGING/dev, NUNCA producción) para activar rls-matrix + E2E admin."
           fi
 

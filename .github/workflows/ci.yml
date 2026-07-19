@@ -160,12 +160,12 @@ jobs:
     # regresión de compra, de contraste AA o de layout público pasaba sin detección).
     # Corre contra el BUILD de producción (next start) + Postgres real, no `next dev`.
     #
-    # Alcance del gate: smoke + a11y (invariantes) + axe (WCAG 2.1 A/AA) + compra (carrito→checkout).
-    # FUERA del gate por-PR: estudio (canvas Konva → producto de superficie foto), admin-login/
-    # admin-mfa (crean usuarios vía service role → necesitan GoTrue real) → estos corren en
-    # `.github/workflows/nightly-full.yml` (scheduled + on-demand, contra una Supabase real vía
-    # secrets STAGING_*). La regresión visual (snapshots por-píxel) sigue local/preview.
-    # Ver docs/TESTING.md.
+    # Alcance del gate: smoke + a11y + axe (WCAG 2.1 A/AA) + compra (carrito→checkout) + estudio
+    # (#5 — el diferenciador #1 ya tiene gate por-PR: la spec navega anónima y solo usa Prisma, NO
+    # necesita GoTrue). FUERA del gate por-PR: admin-login/admin-mfa (crean usuarios vía service role
+    # → necesitan GoTrue real) → corren en `.github/workflows/nightly-full.yml` (scheduled +
+    # on-demand, contra una Supabase real vía secrets STAGING_*). La regresión visual (snapshots
+    # por-píxel) sigue local/preview. Ver docs/TESTING.md.
     services:
       postgres:
         image: postgres:15
@@ -237,7 +237,7 @@ jobs:
 
       - name: Playwright (smoke + a11y + axe + compra)
         # El webServer del config levanta `next start` en :4000 y lo gestiona.
-        run: pnpm --filter web exec playwright test smoke a11y axe compra --project=chromium
+        run: pnpm --filter web exec playwright test smoke a11y axe compra estudio --project=chromium
 
       - name: Subir reporte Playwright (si falla)
         if: ${{ failure() }}
