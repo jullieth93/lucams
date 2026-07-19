@@ -17,7 +17,7 @@ import { JsonLd } from "@/components/json-ld";
 import { breadcrumbList } from "@/lib/seo/structured-data";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ChevronRight, MessageCircle } from "lucide-react";
+import { ChevronRight, MessageCircle, Truck, Wallet, ShieldCheck } from "lucide-react";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { WishlistButton } from "@/components/wishlist-button";
@@ -377,6 +377,46 @@ export default async function ProductoDetallePage({
                   )}
                 </div>
               </SelectedVariantProvider>
+
+              {/* #15 — strip de confianza: tiempo de producción/entrega + pago + garantía. Datos que
+                ya viven en el producto; el costo de envío NO se inventa (cotización dinámica). */}
+              <section
+                aria-label="Envío, pago y garantía"
+                className="border-brand-purple/10 space-y-2 rounded-xl border bg-white/60 p-4"
+              >
+                <ul className="text-brand-purple-dark/90 space-y-2 text-sm">
+                  <li className="flex items-start gap-2.5">
+                    <Truck className="text-brand-purple mt-0.5 h-4 w-4 flex-shrink-0" aria-hidden />
+                    <span>
+                      Hecho a pedido: se produce en{" "}
+                      <strong>{product.productionDays} días hábiles</strong> + envío{" "}
+                      {product.shippingDaysMin}–{product.shippingDaysMax} días con Coordinadora.
+                    </span>
+                  </li>
+                  <li className="flex items-start gap-2.5">
+                    <Wallet
+                      className="text-brand-purple mt-0.5 h-4 w-4 flex-shrink-0"
+                      aria-hidden
+                    />
+                    <span>Paga al recibir (contraentrega) o en línea con Wompi.</span>
+                  </li>
+                  <li className="flex items-start gap-2.5">
+                    <ShieldCheck
+                      className="text-brand-purple mt-0.5 h-4 w-4 flex-shrink-0"
+                      aria-hidden
+                    />
+                    <span>El costo de envío se calcula al finalizar según tu ciudad.</span>
+                  </li>
+                </ul>
+                <div className="text-brand-muted flex flex-wrap gap-x-4 gap-y-1 pt-1 text-xs">
+                  <Link href="/legal/devoluciones" className="hover:text-brand-purple underline">
+                    Devoluciones y Retracto
+                  </Link>
+                  <Link href="/legal/garantias" className="hover:text-brand-purple underline">
+                    Garantías ({product.warrantyMonths} meses)
+                  </Link>
+                </div>
+              </section>
 
               <p className="text-brand-muted pt-2 text-xs">
                 SKU: <span className="font-mono">{product.sku}</span>

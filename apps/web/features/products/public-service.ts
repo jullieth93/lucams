@@ -49,6 +49,11 @@ export type StorefrontProductDetail = StorefrontProductCard & {
   seoTitle: string | null;
   seoDescription: string | null;
   updatedAt: Date;
+  /** #15 — strip de confianza de la PDP (tiempo de producción/envío + garantía). */
+  productionDays: number;
+  shippingDaysMin: number;
+  shippingDaysMax: number;
+  warrantyMonths: number;
   personalizationKind: PersonalizationKind;
   personalizationSchema: unknown; // Json libre — Estudio M.3 lo interpreta según kind
   /** M.3.b.CAT — variants del producto (cantidad/tamaño/color/etc).
@@ -460,6 +465,11 @@ export const getStorefrontProductBySlug = cache(async function getStorefrontProd
       seoTitle: true,
       seoDescription: true,
       updatedAt: true,
+      // #15 — strip de confianza en la PDP (tiempo de producción, envío, garantía).
+      productionDays: true,
+      shippingDaysMin: true,
+      shippingDaysMax: true,
+      warrantyMonths: true,
       category: { select: { slug: true, name: true } },
       // M.3.b.CAT — variants activas y no-archivadas (ADR-057 cert: una opción
       // "Pausada" (isActive=false) NO debe aparecer ni ser comprable en la ficha).
