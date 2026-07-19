@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { Share2, Archive, ExternalLink, MessageCircle, Loader2 } from "lucide-react";
 import { toast } from "sonner";
-import { shareDesignAction, archiveDesignAction } from "./actions";
+import { shareDesignAction, archiveDesignAction, revokeShareAction } from "./actions";
 
 export type DesignCardData = {
   id: string;
@@ -98,6 +98,18 @@ function DesignCard({ design }: { design: DesignCardData }) {
     });
   }
 
+  function handleRevoke() {
+    startTransition(async () => {
+      const r = await revokeShareAction(design.id);
+      if (r.ok) {
+        setToken(null);
+        toast.success("Dejaste de compartir. El link anterior ya no funciona.");
+      } else {
+        toast.error("No pudimos revocar el link.");
+      }
+    });
+  }
+
   return (
     <li className="border-brand-purple/12 overflow-hidden rounded-2xl border bg-white shadow-sm">
       {/* eslint-disable-next-line @next/next/no-img-element -- preview de Supabase (public bucket) */}
@@ -143,14 +155,25 @@ function DesignCard({ design }: { design: DesignCardData }) {
             <MessageCircle className="h-3.5 w-3.5" />
           </button>
           {token && (
-            <a
-              href={`/d/${token}`}
-              target="_blank"
-              rel="noopener"
-              className="text-brand-purple-dark hover:bg-brand-purple/8 border-brand-purple/20 inline-flex items-center gap-1 rounded-full border px-2.5 py-1.5 text-xs font-semibold"
-            >
-              <ExternalLink className="h-3.5 w-3.5" /> Ver
-            </a>
+            <>
+              <a
+                href={`/d/${token}`}
+                target="_blank"
+                rel="noopener"
+                className="text-brand-purple-dark hover:bg-brand-purple/8 border-brand-purple/20 inline-flex items-center gap-1 rounded-full border px-2.5 py-1.5 text-xs font-semibold"
+              >
+                <ExternalLink className="h-3.5 w-3.5" /> Ver
+              </a>
+              {/* #17 — dejar de compartir sin archivar: revoca el link /d/<token> y conserva el diseño. */}
+              <button
+                type="button"
+                onClick={handleRevoke}
+                disabled={pending}
+                className="text-brand-muted hover:text-brand-purple-dark inline-flex items-center gap-1 rounded-full px-2 py-1.5 text-xs font-medium disabled:opacity-60"
+              >
+                Dejar de compartir
+              </button>
+            </>
           )}
 
           {confirmArchive ? (

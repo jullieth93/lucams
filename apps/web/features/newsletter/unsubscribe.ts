@@ -31,6 +31,32 @@ export function computeUnsubscribeToken(email: string): string {
     .slice(0, 32);
 }
 
+/**
+ * #8 — Parámetro opaco AUTO-CONTENIDO para el link de baja: base64url(email) + "." + token. Evita que
+ * el email viaje en CLARO en el query string (quedaba en access logs, historial, referers). La
+ * verificación sigue siendo stateless (mismo token SHA-256, timing-safe) — sin migración.
+ */
+export function encodeUnsubscribeParam(email: string): string {
+  const normalized = email.trim().toLowerCase();
+  const b64 = Buffer.from(normalized, "utf-8").toString("base64url");
+  return `${b64}.${computeUnsubscribeToken(normalized)}`;
+}
+
+/** Decodifica el parámetro `u` y verifica la firma. Devuelve el email o null si es inválido. */
+export function decodeUnsubscribeParam(u: string): { email: string; token: string } | null {
+  const dot = u.lastIndexOf(".");
+  if (dot <= 0) return null;
+  const token = u.slice(dot + 1);
+  let email: string;
+  try {
+    email = Buffer.from(u.slice(0, dot), "base64url").toString("utf-8");
+  } catch {
+    return null;
+  }
+  if (!email.includes("@") || !verifyUnsubscribeToken(email, token)) return null;
+  return { email, token };
+}
+
 /** Verificación timing-safe del token contra el email. */
 export function verifyUnsubscribeToken(email: string, token: string): boolean {
   const expected = computeUnsubscribeToken(email);

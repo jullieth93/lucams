@@ -16,9 +16,9 @@ export type NewsletterWelcomeData = {
 
 export async function newsletterWelcomeEmail(data: NewsletterWelcomeData) {
   const siteUrl = await getSettingValue("SITE_URL", "https://lucamsshop.co");
-  const unsubscribeUrl =
-    `${siteUrl}/unsubscribe?email=${encodeURIComponent(data.email)}` +
-    `&token=${encodeURIComponent(data.unsubscribeToken)}`;
+  // #8 — parámetro opaco `u` (base64url(email).token): el email ya NO viaja en claro en la URL.
+  const u = `${Buffer.from(data.email.trim().toLowerCase(), "utf-8").toString("base64url")}.${data.unsubscribeToken}`;
+  const unsubscribeUrl = `${siteUrl}/unsubscribe?u=${u}`;
 
   const bodyHtml = `
 <h1 style="margin:0 0 12px 0;font-size:22px;color:#3D2E5C;">¡Estás dentro! 💜</h1>

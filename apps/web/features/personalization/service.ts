@@ -967,6 +967,23 @@ export async function archiveCustomerDesign(
 }
 
 /**
+ * #17 — Dejar de compartir un diseño SIN archivarlo: mata el /d/<token> viejo (getSharedDesign
+ * resuelve por shareToken) pero conserva el diseño en "Mis diseños". Antes revocar el link exigía
+ * archivar, que es irreversible. Reusa la semántica shareToken=null (sin columna ni migración nueva);
+ * volver a compartir regenera el token con ensureDesignShareToken.
+ */
+export async function revokeDesignShareToken(
+  designId: string,
+  customerId: string,
+): Promise<boolean> {
+  const res = await prisma.design.updateMany({
+    where: { id: designId, customerId, status: { in: ["READY", "USED_IN_ORDER"] } },
+    data: { shareToken: null },
+  });
+  return res.count > 0;
+}
+
+/**
  * Vista PÚBLICA de un diseño compartido por token — sin PII, solo el preview + el
  * producto. No expone diseños archivados/borrador. El cliente decide compartir
  * (el preview puede incluir su foto); el token va solo a quien él se lo mande.

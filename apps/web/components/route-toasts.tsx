@@ -49,6 +49,10 @@ const SUCCESS_MESSAGES: Record<string, { msg: string; href?: string; cta?: strin
   published: { msg: "Publicado ✨ Cambio visible en el sitio." },
   "link-invalido": { msg: "El link ya no es válido. Pide uno nuevo." },
   "link-expirado": { msg: "El link expiró. Pide uno nuevo." },
+  // #19 — resultado de /carrito/recuperar/[token]
+  "cart-recuperado": { msg: "💜 Recuperamos tu carrito. Lo juntamos con lo que ya tenías." },
+  "cart-ya-comprado": { msg: "Ese carrito ya se convirtió en un pedido. ¡Gracias por tu compra!" },
+  "cart-link-invalido": { msg: "Ese link de carrito ya no es válido." },
 };
 
 export function RouteToasts() {

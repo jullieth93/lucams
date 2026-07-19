@@ -2,7 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 import { getCurrentCustomer } from "@/lib/auth";
-import { ensureDesignShareToken, archiveCustomerDesign } from "@/features/personalization/service";
+import {
+  ensureDesignShareToken,
+  archiveCustomerDesign,
+  revokeDesignShareToken,
+} from "@/features/personalization/service";
 
 /**
  * Genera (o devuelve) el token público del diseño para compartirlo. El cliente arma
@@ -23,6 +27,15 @@ export async function archiveDesignAction(designId: string): Promise<{ ok: boole
   const session = await getCurrentCustomer();
   if (!session) return { ok: false };
   const ok = await archiveCustomerDesign(designId, session.customer.id);
+  if (ok) revalidatePath("/mi-cuenta/disenos");
+  return { ok };
+}
+
+/** #17 — Deja de compartir un diseño (revoca el link /d/<token>) SIN archivarlo. */
+export async function revokeShareAction(designId: string): Promise<{ ok: boolean }> {
+  const session = await getCurrentCustomer();
+  if (!session) return { ok: false };
+  const ok = await revokeDesignShareToken(designId, session.customer.id);
   if (ok) revalidatePath("/mi-cuenta/disenos");
   return { ok };
 }

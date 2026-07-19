@@ -521,3 +521,48 @@ export async function mergeAnonCartIntoCustomer(
 
   return customerCart.sessionId;
 }
+
+/**
+ * #18 — Adopta el carrito `source` DENTRO del `target` (fold de items, SIN pérdida) y borra el source.
+ * Se usa al recuperar un carrito abandonado por link: se folda el carrito ACTUAL (source) en el
+ * recuperado (target) para NO pisar lo que el cliente ya tenía. Mismo fold que mergeAnonCartIntoCustomer
+ * (agrupa por variantId + mismo designId, cap MAX_QTY_PER_ITEM). Se folda hacia el target para preservar
+ * el FK AbandonedCart.cartId del carrito recuperado.
+ */
+export async function mergeCartsAdopt(
+  sourceSessionId: string,
+  targetSessionId: string,
+): Promise<void> {
+  if (sourceSessionId === targetSessionId) return;
+  const [source, target] = await Promise.all([
+    findCartBySession(sourceSessionId),
+    findCartBySession(targetSessionId),
+  ]);
+  if (!target || !source || source.items.length === 0 || source.id === target.id) return;
+  await prisma.$transaction(async (tx) => {
+    for (const it of source.items) {
+      const dup = target.items.find(
+        (t) => t.variantId === it.variantId && (t.designId ?? null) === (it.designId ?? null),
+      );
+      if (dup) {
+        await tx.cartItem.update({
+          where: { id: dup.id },
+          data: { qty: Math.min(MAX_QTY_PER_ITEM, dup.qty + it.qty) },
+        });
+      } else {
+        await tx.cartItem.create({
+          data: {
+            cartId: target.id,
+            variantId: it.variantId,
+            qty: it.qty,
+            unitPrice: it.unitPrice,
+            customDesign: it.customDesign ?? undefined,
+            designId: it.designId ?? undefined,
+          },
+        });
+      }
+    }
+    await tx.cartItem.deleteMany({ where: { cartId: source.id } });
+    await tx.cart.delete({ where: { id: source.id } });
+  });
+}

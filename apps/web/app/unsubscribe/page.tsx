@@ -18,19 +18,31 @@ import { CheckCircle2, XCircle } from "lucide-react";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { Button } from "@/components/ui/button";
-import { unsubscribeNewsletter } from "@/features/newsletter/unsubscribe";
+import { unsubscribeNewsletter, decodeUnsubscribeParam } from "@/features/newsletter/unsubscribe";
 
 export const metadata: Metadata = {
   title: "Cancelar suscripción",
   robots: { index: false, follow: false },
 };
 
-type SearchParams = Promise<{ email?: string; token?: string }>;
+type SearchParams = Promise<{ u?: string; email?: string; token?: string }>;
 
 export default async function UnsubscribePage({ searchParams }: { searchParams: SearchParams }) {
   const sp = await searchParams;
-  const email = typeof sp.email === "string" ? sp.email : "";
-  const token = typeof sp.token === "string" ? sp.token : "";
+  // #8 — nuevo parámetro opaco `u` (el email ya no viaja en claro). Fallback legacy ?email=&token=
+  // para los links de bienvenida ya enviados (ventana de deprecación).
+  let email = "";
+  let token = "";
+  if (typeof sp.u === "string" && sp.u) {
+    const decoded = decodeUnsubscribeParam(sp.u);
+    if (decoded) {
+      email = decoded.email;
+      token = decoded.token;
+    }
+  } else {
+    email = typeof sp.email === "string" ? sp.email : "";
+    token = typeof sp.token === "string" ? sp.token : "";
+  }
 
   let outcome: "ok" | "already" | "invalid" | "missing";
   if (!email || !token) {
