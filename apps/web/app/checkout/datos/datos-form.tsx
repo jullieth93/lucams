@@ -67,6 +67,12 @@ export function DatosForm({
   const [docType, setDocType] = useState<DocumentType | "">(initial.contact?.documentType ?? "");
   const [docNumber, setDocNumber] = useState(initial.contact?.documentNumber ?? "");
 
+  // #26 — "reward early, punish late": el error de validación cliente aparece solo tras el primer
+  // blur del campo (touched) y se oculta al reeditar. Evita el rojo prematuro mientras se escribe.
+  const [touched, setTouched] = useState<Record<string, boolean>>({});
+  const markTouched = (f: string) => setTouched((t) => ({ ...t, [f]: true }));
+  const clearTouched = (f: string) => setTouched((t) => (t[f] ? { ...t, [f]: false } : t));
+
   // Address DANE
   const [deptCode, setDeptCode] = useState(initial.address?.deptCode ?? "");
   const [cityCode, setCityCode] = useState(initial.address?.cityCode ?? "");
@@ -213,11 +219,13 @@ export function DatosForm({
 
   function handleNameBlur() {
     if (fullName.trim()) setFullName(capitalizeName(fullName));
+    markTouched("fullName");
   }
 
   function handleEmailChange(value: string) {
     setEmail(value);
     setEmailTypoFix(null);
+    clearTouched("email");
     if (value.includes("@") && !value.includes(" ")) {
       const dotIdx = value.indexOf("@") + 1;
       const domainPart = value.slice(dotIdx);
@@ -233,6 +241,7 @@ export function DatosForm({
 
   function handleEmailBlur() {
     setEmailSuggestions([]);
+    markTouched("email");
     if (email.trim()) {
       const typo = detectEmailTypo(email.trim().toLowerCase());
       setEmailTypoFix(typo);
@@ -241,6 +250,7 @@ export function DatosForm({
 
   function handlePhoneChange(value: string) {
     setPhoneDisplay(formatPhone(value));
+    clearTouched("phone");
   }
 
   function handleDeptChange(newCode: string) {
@@ -292,13 +302,16 @@ export function DatosForm({
               required
               placeholder="Ej. Lucy Hurtado"
               value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
+              onChange={(e) => {
+                setFullName(e.target.value);
+                clearTouched("fullName");
+              }}
               onBlur={handleNameBlur}
               className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
             />
             <FieldHint
               clientError={
-                fullName.length > 0 && !isNameValid
+                fullName.length > 0 && !isNameValid && touched.fullName
                   ? "Solo letras, espacios y acentos (sin números)"
                   : null
               }
@@ -347,7 +360,9 @@ export function DatosForm({
               </ul>
             )}
             <FieldHint
-              clientError={email.length > 0 && !isEmailValid ? "Email inválido" : null}
+              clientError={
+                email.length > 0 && !isEmailValid && touched.email ? "Email inválido" : null
+              }
               serverError={err("email")}
               hint="Aquí te enviamos la confirmación + tracking"
             />
@@ -385,6 +400,7 @@ export function DatosForm({
               placeholder="300 887 3826"
               value={phoneDisplay}
               onChange={(e) => handlePhoneChange(e.target.value)}
+              onBlur={() => markTouched("phone")}
               maxLength={12} // 10 dígitos + 2 espacios
               className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
               autoComplete="tel-national"
@@ -394,7 +410,7 @@ export function DatosForm({
             <input type="hidden" name="phone" value={stripPhone(phoneDisplay)} />
             <FieldHint
               clientError={
-                phoneDisplay.length > 0 && !isPhoneValid
+                phoneDisplay.length > 0 && !isPhoneValid && touched.phone
                   ? "Móvil colombiano: 10 dígitos empezando con 3"
                   : null
               }
@@ -426,7 +442,11 @@ export function DatosForm({
                 id="contactDocumentNumber"
                 name="contactDocumentNumber"
                 value={docNumber}
-                onChange={(e) => setDocNumber(e.target.value)}
+                onChange={(e) => {
+                  setDocNumber(e.target.value);
+                  clearTouched("documentNumber");
+                }}
+                onBlur={() => markTouched("documentNumber")}
                 disabled={!docType}
                 placeholder={docType ? "1234567890" : "Elige tipo primero"}
                 className="border-brand-purple/20 focus-visible:ring-brand-purple/30 col-span-2"
@@ -434,7 +454,7 @@ export function DatosForm({
             </div>
             <FieldHint
               clientError={
-                docType && docNumber.length > 0 && !isDocValid
+                docType && docNumber.length > 0 && !isDocValid && touched.documentNumber
                   ? `Formato inválido. ${getDocumentHelp(docType as DocumentType)}`
                   : null
               }

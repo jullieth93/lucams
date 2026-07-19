@@ -77,31 +77,40 @@ export default async function CheckoutPagoPage({ searchParams }: { searchParams:
       <CheckoutStepper current={3} />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <div className="space-y-4 lg:col-span-2">
-          {errorMsg && (
-            <div className="flex items-start gap-3 rounded-lg border border-rose-200 bg-rose-50 p-4">
-              <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-rose-700" />
-              <div>
-                <h3 className="text-sm font-semibold text-rose-900">No pudimos procesar el pago</h3>
-                {/* searchParams ya viene decodificado; un decodeURIComponent extra con '%' literal
-                    lanzaría URIError y tumbaría la página (auditoría v3, quick win). */}
-                <p className="mt-1 text-xs text-rose-800">{errorMsg}</p>
+        {/* #22 — en móvil: avisos full-width arriba, luego el resumen+total (order-1, sidebar) y por
+            último las tarjetas de revisión + botón de pago (order-2). En lg+ se restaura el layout de
+            dos columnas (lg:order-none). Así el total deja de aparecer DESPUÉS del botón de pago. */}
+        {(errorMsg || couponNotice) && (
+          <div className="space-y-4 lg:col-span-3">
+            {errorMsg && (
+              <div className="flex items-start gap-3 rounded-lg border border-rose-200 bg-rose-50 p-4">
+                <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-rose-700" />
+                <div>
+                  <h3 className="text-sm font-semibold text-rose-900">
+                    No pudimos procesar el pago
+                  </h3>
+                  {/* searchParams ya viene decodificado; un decodeURIComponent extra con '%' literal
+                      lanzaría URIError y tumbaría la página (auditoría v3, quick win). */}
+                  <p className="mt-1 text-xs text-rose-800">{errorMsg}</p>
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {couponNotice && (
-            <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4">
-              <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-600" />
-              <div>
-                <h3 className="text-sm font-semibold text-amber-900">
-                  Revisa tu pedido antes de pagar
-                </h3>
-                <p className="mt-1 text-xs text-amber-800">{couponNotice}</p>
+            {couponNotice && (
+              <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4">
+                <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-600" />
+                <div>
+                  <h3 className="text-sm font-semibold text-amber-900">
+                    Revisa tu pedido antes de pagar
+                  </h3>
+                  <p className="mt-1 text-xs text-amber-800">{couponNotice}</p>
+                </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
+        )}
 
+        <div className="order-2 space-y-4 lg:order-none lg:col-span-2">
           {/* Resumen de contacto */}
           <ReviewCard icon={<User className="h-4 w-4" />} title="Contacto" href="/checkout/datos">
             <p className="text-brand-purple-dark text-sm font-semibold">{contact.fullName}</p>
@@ -186,7 +195,7 @@ export default async function CheckoutPagoPage({ searchParams }: { searchParams:
           </section>
         </div>
 
-        <div className="space-y-4 lg:col-span-1">
+        <div className="order-1 space-y-4 lg:order-none lg:col-span-1">
           <div className="border-brand-purple/10 rounded-2xl border bg-white p-4 shadow-sm">
             <CouponField appliedCode={applied?.code} appliedError={applied?.error} />
           </div>

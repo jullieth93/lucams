@@ -263,8 +263,12 @@ export default async function ProductoDetallePage({
               alt={product.name}
             />
 
-            <div className="space-y-5">
-              <div>
+            {/* #16 — en móvil el buy-box (CTA) sube por encima de la descripción larga para
+                acercarlo al fold; en md+ se mantiene el orden natural (descripción → CTA). Todos los
+                hijos llevan order-* explícito porque el default order-0 los mezclaría. CSS-only, sin
+                tocar la lógica de compra. */}
+            <div className="flex flex-col gap-5">
+              <div className="order-1">
                 <p className="text-brand-muted text-xs font-medium tracking-wider uppercase">
                   {product.category.name}
                 </p>
@@ -285,7 +289,7 @@ export default async function ProductoDetallePage({
                 )}
               </div>
 
-              <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+              <div className="order-2 flex flex-wrap items-baseline gap-x-3 gap-y-1">
                 {isNamePerTile ? (
                   <>
                     {/* Precio POR FICHA: el grande es "desde" (mínimo de letras); el exacto
@@ -312,78 +316,84 @@ export default async function ProductoDetallePage({
                 )}
               </div>
 
-              <p className="text-brand-purple-dark/80 text-base leading-relaxed whitespace-pre-line">
+              <p className="text-brand-purple-dark/80 order-4 text-base leading-relaxed whitespace-pre-line md:order-3">
                 {product.description}
               </p>
 
-              {/* H12 — el selector y las acciones comparten la variante elegida vía Context (sync
+              {/* #16 — wrapper flex para mover el buy-box como una unidad (order-3 md:order-4): en
+                  móvil sube por encima de la descripción; en md+ vuelve a su sitio. El
+                  SelectedVariantProvider no renderiza nodo DOM, por eso hace falta este contenedor;
+                  su flex-col gap-5 preserva la separación entre selector y acciones. */}
+              <div className="order-3 flex flex-col gap-5 md:order-4">
+                {/* H12 — el selector y las acciones comparten la variante elegida vía Context (sync
                   instantáneo), sin depender del re-render del RSC ni de la URL. */}
-              <SelectedVariantProvider variantIds={variantIds} initialId={firstVariantId}>
-                {/* M.3.b.CAT.3 — Selector de variants si product tiene 2+ */}
-                {selectable.length > 1 && (
-                  <VariantSelector
-                    productBasePrice={product.basePrice}
-                    variants={selectable}
-                    perTile={isNamePerTile}
-                  />
-                )}
-
-                <div className="space-y-2 pt-2">
-                  {outOfStock ? (
-                    <div className="space-y-3 rounded-md border border-rose-200 bg-rose-50 px-4 py-3">
-                      <p className="text-center text-sm font-semibold text-rose-800">
-                        Producto agotado 😢
-                      </p>
-                      <BackInStockButton productId={product.id} defaultEmail={customerEmail} />
-                    </div>
-                  ) : isNamePerTile ? (
-                    // Nombre Personalizado: precio POR FICHA → selector de cantidad + CTA al Estudio.
-                    <NamePricePicker
-                      slug={product.slug}
-                      perTilePrice={displayPrice}
-                      min={nameMin}
-                      max={nameMax}
-                      ctaNoun={ctaNoun}
+                <SelectedVariantProvider variantIds={variantIds} initialId={firstVariantId}>
+                  {/* M.3.b.CAT.3 — Selector de variants si product tiene 2+ */}
+                  {selectable.length > 1 && (
+                    <VariantSelector
+                      productBasePrice={product.basePrice}
+                      variants={selectable}
+                      perTile={isNamePerTile}
                     />
-                  ) : requiresPersonalization || isLetterSetProduct ? (
-                    // CTA primaria al Estudio, reactiva a la variante del selector (H12).
-                    <EstudioCtaLink slug={product.slug} ctaNoun={ctaNoun} />
-                  ) : (
-                    <form action={addToCartAction}>
-                      <input type="hidden" name="slug" value={product.slug} />
-                      <input type="hidden" name="qty" value={1} />
-                      <input type="hidden" name="returnTo" value={`/producto/${product.slug}`} />
-                      {/* ADR-057 — variante elegida en el selector (H12: sync vía Context). */}
-                      <CartVariantIdInput />
-                      {/* SubmitButton: spinner + disabled al enviar → evita doble-clic
-                          (compra duplicada). Lucy 2026-06-27. */}
-                      <SubmitButton
-                        label="Añadir al carrito"
-                        pendingLabel="Añadiendo…"
-                        size="lg"
-                        className="bg-brand-purple hover:bg-brand-purple-dark w-full text-white"
+                  )}
+
+                  <div className="space-y-2 pt-2">
+                    {outOfStock ? (
+                      <div className="space-y-3 rounded-md border border-rose-200 bg-rose-50 px-4 py-3">
+                        <p className="text-center text-sm font-semibold text-rose-800">
+                          Producto agotado 😢
+                        </p>
+                        <BackInStockButton productId={product.id} defaultEmail={customerEmail} />
+                      </div>
+                    ) : isNamePerTile ? (
+                      // Nombre Personalizado: precio POR FICHA → selector de cantidad + CTA al Estudio.
+                      <NamePricePicker
+                        slug={product.slug}
+                        perTilePrice={displayPrice}
+                        min={nameMin}
+                        max={nameMax}
+                        ctaNoun={ctaNoun}
                       />
-                    </form>
-                  )}
-                  {waHref && (
-                    <a
-                      href={waHref}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="border-brand-turquoise bg-brand-turquoise/10 text-brand-purple-dark hover:bg-brand-turquoise/20 inline-flex w-full items-center justify-center gap-2 rounded-md border px-4 py-2.5 text-sm font-semibold"
-                    >
-                      <MessageCircle className="h-4 w-4" />
-                      Consultar por WhatsApp
-                    </a>
-                  )}
-                </div>
-              </SelectedVariantProvider>
+                    ) : requiresPersonalization || isLetterSetProduct ? (
+                      // CTA primaria al Estudio, reactiva a la variante del selector (H12).
+                      <EstudioCtaLink slug={product.slug} ctaNoun={ctaNoun} />
+                    ) : (
+                      <form action={addToCartAction}>
+                        <input type="hidden" name="slug" value={product.slug} />
+                        <input type="hidden" name="qty" value={1} />
+                        <input type="hidden" name="returnTo" value={`/producto/${product.slug}`} />
+                        {/* ADR-057 — variante elegida en el selector (H12: sync vía Context). */}
+                        <CartVariantIdInput />
+                        {/* SubmitButton: spinner + disabled al enviar → evita doble-clic
+                          (compra duplicada). Lucy 2026-06-27. */}
+                        <SubmitButton
+                          label="Añadir al carrito"
+                          pendingLabel="Añadiendo…"
+                          size="lg"
+                          className="bg-brand-purple hover:bg-brand-purple-dark w-full text-white"
+                        />
+                      </form>
+                    )}
+                    {waHref && (
+                      <a
+                        href={waHref}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="border-brand-turquoise bg-brand-turquoise/10 text-brand-purple-dark hover:bg-brand-turquoise/20 inline-flex w-full items-center justify-center gap-2 rounded-md border px-4 py-2.5 text-sm font-semibold"
+                      >
+                        <MessageCircle className="h-4 w-4" />
+                        Consultar por WhatsApp
+                      </a>
+                    )}
+                  </div>
+                </SelectedVariantProvider>
+              </div>
 
               {/* #15 — strip de confianza: tiempo de producción/entrega + pago + garantía. Datos que
                 ya viven en el producto; el costo de envío NO se inventa (cotización dinámica). */}
               <section
                 aria-label="Envío, pago y garantía"
-                className="border-brand-purple/10 space-y-2 rounded-xl border bg-white/60 p-4"
+                className="border-brand-purple/10 order-5 space-y-2 rounded-xl border bg-white/60 p-4"
               >
                 <ul className="text-brand-purple-dark/90 space-y-2 text-sm">
                   <li className="flex items-start gap-2.5">
@@ -419,7 +429,7 @@ export default async function ProductoDetallePage({
                 </div>
               </section>
 
-              <p className="text-brand-muted pt-2 text-xs">
+              <p className="text-brand-muted order-6 pt-2 text-xs">
                 SKU: <span className="font-mono">{product.sku}</span>
               </p>
             </div>
