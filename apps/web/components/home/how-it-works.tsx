@@ -7,6 +7,7 @@
 
 import { MousePointerClick, Sparkles, Package } from "lucide-react";
 import { CmsText } from "@/components/cms/cms-text";
+import { WOMPI_METHODS_PROSE } from "@/lib/payment-methods";
 
 const STEPS = [
   {
@@ -30,8 +31,7 @@ const STEPS = [
     titleKey: "home.howitworks.step3.title",
     titleFallback: "Llega a tu nevera",
     descKey: "home.howitworks.step3.description",
-    descFallback:
-      "Lo fabricamos a mano y te llega en 4-9 días hábiles. Pago en línea seguro con Wompi (tarjeta, PSE, Nequi, Bancolombia).",
+    descFallback: `Lo fabricamos a mano y te llega en 4-9 días hábiles. Pago en línea seguro con Wompi (${WOMPI_METHODS_PROSE}).`,
   },
 ];
 

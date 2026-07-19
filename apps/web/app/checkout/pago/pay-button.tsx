@@ -6,6 +6,7 @@ import Link from "next/link";
 import { Loader2, Lock, Wallet, CreditCard, CheckCircle2, Banknote } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TurnstileWidget } from "@/components/turnstile-widget";
+import { WOMPI_METHODS_SHORT } from "@/lib/payment-methods";
 import { payWompiAction, payCodAction } from "./actions";
 
 type Method = "WOMPI" | "COD";
@@ -126,7 +127,7 @@ export function PaymentMethodChooser({
             onSelect={() => setMethod("WOMPI")}
             icon={<CreditCard className="h-6 w-6" />}
             title="Pagar con Wompi"
-            desc="Tarjeta · PSE · Nequi · Bancolombia"
+            desc={WOMPI_METHODS_SHORT}
           />
           <MethodCard
             selected={method === "COD"}
