@@ -21,6 +21,7 @@ import {
 } from "@/features/checkout/service";
 import { logger } from "@/lib/logger";
 import { formatCityDept } from "@/lib/format";
+import { RetryQuoteButton } from "./retry-quote-button";
 
 const STOCK_GONE_MSG = "Uno de los productos ya no está disponible. Por favor revisa tu carrito.";
 
@@ -156,7 +157,14 @@ function QuoteError({ message }: { message: string }) {
         <div className="flex-1">
           <h3 className="text-sm font-semibold text-amber-900">No pudimos cotizar el envío</h3>
           <p className="mt-1 text-xs text-amber-800">{message}</p>
-          <div className="mt-3 flex flex-wrap gap-2">
+          <p className="mt-1 text-xs text-amber-700">
+            Suele resolverse reintentando en unos segundos.
+          </p>
+          {/* #25 — acción PRIMARIA: re-cotizar sin recargar la página. */}
+          <div className="mt-3">
+            <RetryQuoteButton />
+          </div>
+          <div className="mt-2 flex flex-wrap gap-2">
             <Link
               href="/checkout/datos"
               className="text-xs font-semibold text-amber-900 underline hover:text-amber-950"

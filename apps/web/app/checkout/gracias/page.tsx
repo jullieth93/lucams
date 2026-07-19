@@ -33,6 +33,7 @@ import { finishCheckoutSession } from "@/features/checkout/service";
 import { processPaidOrder } from "@/features/orders/saga";
 import { prisma } from "@/lib/db";
 import { formatCOP } from "@/lib/format";
+import { getCurrentCustomer } from "@/lib/auth";
 
 export const metadata: Metadata = {
   title: "¡Gracias! · Checkout",
@@ -84,6 +85,7 @@ export default async function CheckoutGraciasPage({
       email: true,
       shippingCarrier: true,
       shippingAddress: true,
+      publicAccessToken: true, // #24 — link a /pedido/<token> para invitados (sin login)
     },
   });
 
@@ -145,6 +147,7 @@ export default async function CheckoutGraciasPage({
             email: true,
             shippingCarrier: true,
             shippingAddress: true,
+            publicAccessToken: true, // #24
           },
         });
       } catch (err) {
@@ -172,7 +175,10 @@ export default async function CheckoutGraciasPage({
       order?.status === "SHIPPED" ||
       order?.status === "DELIVERED";
     if (confirmed) {
-      return <ApprovedPage order={order} txId={tx.id} />;
+      // #24 — el invitado no tiene cuenta; su CTA debe ir a la vista pública por token, no a
+      // /mi-cuenta (muro de login). getCurrentCustomer está memoizado (cache()).
+      const session = await getCurrentCustomer();
+      return <ApprovedPage order={order} txId={tx.id} isGuest={!session} />;
     }
     return <PaymentReceivedPage orderNumber={order?.number ?? tx.reference} txId={tx.id} />;
   }
@@ -188,6 +194,7 @@ export default async function CheckoutGraciasPage({
 function ApprovedPage({
   order,
   txId,
+  isGuest,
 }: {
   order: {
     id: string;
@@ -197,9 +204,17 @@ function ApprovedPage({
     email: string;
     shippingCarrier: string | null;
     shippingAddress: unknown;
+    publicAccessToken: string | null;
   } | null;
   txId: string;
+  isGuest: boolean;
 }) {
+  // #24 — invitado con token → vista pública del pedido; con cuenta → histórico.
+  const orderUrl =
+    isGuest && order?.publicAccessToken
+      ? `/pedido/${order.publicAccessToken}`
+      : "/mi-cuenta/pedidos";
+  const orderCtaLabel = isGuest && order?.publicAccessToken ? "Ver mi pedido" : "Ver mis pedidos";
   const addr = order?.shippingAddress as
     | { fullName?: string; addressLine1?: string; city?: string; department?: string }
     | undefined;
@@ -269,11 +284,9 @@ function ApprovedPage({
             Seguir comprando
           </Button>
         </Link>
-        <Link href="/mi-cuenta/pedidos">
-          <Button size="lg" className="bg-gradient-brand text-white hover:brightness-110">
-            Ver mis pedidos
-          </Button>
-        </Link>
+        <Button asChild size="lg" className="bg-gradient-brand text-white hover:brightness-110">
+          <Link href={orderUrl}>{orderCtaLabel}</Link>
+        </Button>
       </div>
     </div>
   );
