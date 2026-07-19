@@ -36,6 +36,7 @@ export function WizardRecomendador({ ocasiones }: { ocasiones: OcasionData[] }) 
   const [pers, setPers] = useState<string>("any");
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState<RecommendationResult[] | null>(null);
+  const [error, setError] = useState(false); // #17 — distinguir fallo del API de "sin resultados"
 
   function toggleOcasion(slug: string) {
     setOcasionSlugs((prev) =>
@@ -46,6 +47,7 @@ export function WizardRecomendador({ ocasiones }: { ocasiones: OcasionData[] }) 
   async function fetchResults() {
     setLoading(true);
     setResults(null);
+    setError(false);
     const params = new URLSearchParams();
     for (const slug of ocasionSlugs) params.append("ocasion", slug);
     if (destinatario) params.set("destinatario", destinatario);
@@ -58,12 +60,16 @@ export function WizardRecomendador({ ocasiones }: { ocasiones: OcasionData[] }) 
 
     try {
       const res = await fetch(`/api/catalog/recommend?${params.toString()}`);
+      if (!res.ok) throw new Error(`recommend ${res.status}`);
       const json = await res.json();
       setResults(json.results ?? []);
     } catch {
-      setResults([]);
+      // #17 — fallo del API ≠ "sin resultados": mostramos un estado de error con reintento, no un
+      // "No encontramos" que haría creer al cliente que no hay nada para él.
+      setError(true);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }
 
   function reset() {
@@ -73,6 +79,25 @@ export function WizardRecomendador({ ocasiones }: { ocasiones: OcasionData[] }) 
     setPriceRange(null);
     setPers("any");
     setResults(null);
+    setError(false);
+  }
+
+  // ───────── Error del recomendador (#17) ─────────
+  if (error) {
+    return (
+      <div className="rounded-xl bg-white p-6 text-center shadow-sm">
+        <h2 className="text-brand-purple-dark text-xl font-bold">Algo falló al buscar</h2>
+        <p className="text-brand-muted mx-auto mt-2 max-w-md text-sm">
+          No pudimos traer tus recomendaciones. Revisa tu conexión e inténtalo de nuevo.
+        </p>
+        <button
+          onClick={fetchResults}
+          className="bg-brand-purple hover:bg-brand-purple-dark mt-5 rounded-full px-5 py-2 text-sm font-semibold text-white"
+        >
+          Reintentar
+        </button>
+      </div>
+    );
   }
 
   // ───────── Resultados ─────────

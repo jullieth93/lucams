@@ -315,7 +315,9 @@ export function StudioEditor({
         setBooting(false);
       } catch (err) {
         if (cancelled) return;
-        setBootError(err instanceof Error ? err.message : String(err));
+        // #14 — el detalle técnico (inglés/stack) va al log; al cliente un mensaje claro es-CO.
+        console.error("[studio.boot]", err);
+        setBootError("No pudimos abrir el Estudio. Recarga la página o escríbenos por WhatsApp.");
         setBooting(false);
       }
     };
@@ -409,9 +411,11 @@ export function StudioEditor({
       setPreviewDataUrl(previewUrl);
       setPreviewModalOpen(true);
     } catch (err) {
+      // #14 — detalle técnico al log; al cliente un mensaje claro es-CO.
+      console.error("[studio.preview]", err);
       state.setAutoSaveStatus({
         kind: "error",
-        message: err instanceof Error ? err.message : String(err),
+        message: "No pudimos preparar la vista previa. Intenta de nuevo en un momento.",
       });
     }
   }, [store, productConfig.shape, ensureAllStagesMounted]);

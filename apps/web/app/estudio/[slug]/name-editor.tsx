@@ -312,7 +312,9 @@ export function NameEditor({
 
       router.push("/carrito?personalized=1");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Algo salió mal. Intenta de nuevo.");
+      // #14 — detalle técnico al log; mensaje claro es-CO al cliente.
+      console.error("[studio.name]", err);
+      setError("Algo salió mal. Intenta de nuevo en un momento.");
       setSubmitting(false);
     }
   }

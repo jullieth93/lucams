@@ -61,6 +61,13 @@ export function SceneGallery({
   const [shelfUrl, setShelfUrl] = useState<string | null>(null);
   const [giftUrl, setGiftUrl] = useState<string | null>(null);
   const [building, setBuilding] = useState(false);
+  // #18 — escenas cuyo compositor falló: mostramos un fallback claro en vez de un panel colgado.
+  const [failed, setFailed] = useState<Record<Scene, boolean>>({
+    fridge: false,
+    board: false,
+    shelf: false,
+    gift: false,
+  });
 
   // Cerrar con Escape (a11y).
   useEffect(() => {
@@ -79,6 +86,7 @@ export function SceneGallery({
         (scene === "shelf" && shelfUrl === null) || (scene === "gift" && giftUrl === null);
       if (!need) return;
       setBuilding(true);
+      if (!cancelled) setFailed((f) => (f[scene] ? { ...f, [scene]: false } : f)); // #18 limpiar al reintentar
       try {
         if (scene === "shelf") {
           const url = await composeShelfFlatlay(magnets);
@@ -88,8 +96,9 @@ export function SceneGallery({
           if (!cancelled) setGiftUrl(url);
         }
       } catch {
-        // Silencioso: si falla el compositor, la escena queda en su estado de carga; el cliente
-        // puede cambiar a otra escena. No rompemos el editor.
+        // #18 — marcar la escena como fallida (fallback visible) en vez de dejarla colgada en carga.
+        // No rompemos el editor: el cliente puede cambiar de escena o reintentar.
+        if (!cancelled) setFailed((f) => ({ ...f, [scene]: true }));
       } finally {
         if (!cancelled) setBuilding(false);
       }
@@ -161,6 +170,11 @@ export function SceneGallery({
         ) : building && !flatUrl ? (
           <div className="text-brand-cream/90 flex h-full items-center justify-center text-sm">
             Armando la escena…
+          </div>
+        ) : failed[scene] ? (
+          <div className="text-brand-cream/90 flex h-full flex-col items-center justify-center gap-2 p-6 text-center text-sm">
+            <p>No pudimos armar esta escena en este momento.</p>
+            <p className="text-brand-cream/70 text-xs">Prueba otra escena o vuelve al editor.</p>
           </div>
         ) : flatUrl ? (
           <div className="flex h-full items-center justify-center p-4">

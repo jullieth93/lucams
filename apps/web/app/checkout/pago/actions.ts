@@ -18,6 +18,27 @@ import {
 import { InsufficientStockError } from "@/features/orders/errors";
 import { getClientIp } from "@/lib/client-ip";
 
+// #12 — códigos de CheckoutError cuyos mensajes son copy es-CO DELIBERADAMENTE seguro para mostrar al
+// cliente. Los demás (ORDER_CREATE_FAILED, PAYMENT_INIT_FAILED…) envuelven detalle interno crudo
+// (Prisma, nombres de env de Wompi, IDs de variante) → se muestran con un mensaje genérico y el
+// detalle queda solo en el log.
+const CUSTOMER_SAFE_CHECKOUT_CODES = new Set([
+  "COUPON_INVALIDATED",
+  "STOCK_UNAVAILABLE",
+  "COD_NOT_ALLOWED",
+  "CART_EMPTY",
+  "CART_NOT_FOUND",
+  "MISSING_CONTACT",
+  "MISSING_ADDRESS",
+  "MISSING_SHIPPING_SELECTION",
+  "MISSING_PAYMENT_METHOD",
+]);
+function safeCheckoutMessage(err: unknown, fallback: string): string {
+  if (err instanceof CheckoutError && CUSTOMER_SAFE_CHECKOUT_CODES.has(err.code))
+    return err.message;
+  return fallback;
+}
+
 export async function payWompiAction(formData: FormData): Promise<void> {
   // T4 — rate-limit por IP: finalizeCheckout crea una orden + pega a Wompi, así
   // que limitamos el abuso (creación masiva de órdenes basura). Generoso para no
@@ -96,7 +117,10 @@ export async function payWompiAction(formData: FormData): Promise<void> {
       logger.info({ event: "checkout.pago.coupon_invalidated_bounce", method: "WOMPI" });
       redirect(`/checkout/pago?couponNotice=${encodeURIComponent(err.message)}`);
     }
-    const msg = err instanceof CheckoutError ? err.message : "Error iniciando pago";
+    const msg = safeCheckoutMessage(
+      err,
+      "No pudimos iniciar el pago en este momento. Inténtalo de nuevo en unos minutos.",
+    );
     logger.error({
       event: "checkout.pago.finalize_fail",
       err: err instanceof Error ? err.message : String(err),
@@ -183,7 +207,10 @@ export async function payCodAction(formData: FormData): Promise<void> {
       logger.info({ event: "checkout.pago.coupon_invalidated_bounce", method: "COD" });
       redirect(`/checkout/pago?couponNotice=${encodeURIComponent(err.message)}`);
     }
-    const msg = err instanceof CheckoutError ? err.message : "Error confirmando tu pedido";
+    const msg = safeCheckoutMessage(
+      err,
+      "No pudimos crear tu pedido. Revisa tu carrito e inténtalo de nuevo.",
+    );
     logger.error({
       event: "checkout.pago.cod_fail",
       err: err instanceof Error ? err.message : String(err),
