@@ -40,6 +40,7 @@ import { StudioOnboarding } from "./studio-onboarding";
 import { StudioGesturesHint, GESTURES_HINT_STORAGE_KEY } from "./studio-gestures-hint";
 import { StudioAssetPickerModal } from "./studio-asset-picker-modal";
 import { StudioPhotoAdjustModal } from "./studio-photo-adjust-modal";
+import { StudioSlotFocus } from "./studio-slot-focus";
 import { StudioPreviewModal } from "./studio-preview-modal";
 import { StudioTextEditorModal } from "./studio-text-editor-modal";
 import {
@@ -156,6 +157,8 @@ export function StudioEditor({
   const [pickerSlotIndex, setPickerSlotIndex] = useState<number | null>(null);
   // M.3.b.B.3 — Slot index del modal de ajustar foto (filtros).
   const [adjustSlotIndex, setAdjustSlotIndex] = useState<number | null>(null);
+  // FB4 — slot abierto en el editor a pantalla completa (solo táctil: ahí se hace pan/zoom + filtros).
+  const [focusSlotIndex, setFocusSlotIndex] = useState<number | null>(null);
   // M.3.b.UX.v12 (Lucy 2026-05-15) — Banner de gestos: open controlado +
   // flag persistent (no auto-dismiss cuando se abre manualmente con "?").
   const [gesturesHintOpen, setGesturesHintOpen] = useState(false);
@@ -386,9 +389,18 @@ export function StudioEditor({
   }, [store]);
 
   // ──────────── Click slot → abrir asset picker ────────────
-  const handleSlotClick = useCallback((slotIndex: number) => {
-    setPickerSlotIndex(slotIndex);
-  }, []);
+  const handleSlotClick = useCallback(
+    (slotIndex: number) => {
+      // FB4 — en táctil, tocar un slot YA LLENO abre el editor a pantalla completa (pan/zoom/filtros),
+      // no el picker; un slot vacío siempre abre el picker para subir la foto. En desktop, tocar abre
+      // el picker como siempre (el pan/zoom es inline con el mouse).
+      const filled = !!store.getState().canvasData?.slots?.find((s) => s.slotIndex === slotIndex)
+        ?.assetUrl;
+      if (isTouch && filled) setFocusSlotIndex(slotIndex);
+      else setPickerSlotIndex(slotIndex);
+    },
+    [isTouch, store],
+  );
 
   const handleAssetSelected = useCallback(
     (asset: StudioAsset) => {
@@ -812,8 +824,11 @@ export function StudioEditor({
             showRealismGuides={showRealismGuides}
             slotLabels={slotLabels}
             slotNoun={slotNoun}
+            interactiveSlots={!isTouch}
             onSlotClick={handleSlotClick}
-            onSlotAdjust={(slotIndex) => setAdjustSlotIndex(slotIndex)}
+            onSlotAdjust={(slotIndex) =>
+              isTouch ? setFocusSlotIndex(slotIndex) : setAdjustSlotIndex(slotIndex)
+            }
             onTextEdit={(slotIndex, textLayerId) => setTextEditTarget({ slotIndex, textLayerId })}
             registerSlotStages={(stages) => {
               slotStagesRef.current = stages;
@@ -1047,6 +1062,19 @@ export function StudioEditor({
         slotIndex={adjustSlotIndex}
         allowFilters={!isCalendarMonth}
         onClose={() => setAdjustSlotIndex(null)}
+      />
+
+      {/* FB4 — editor de foto a PANTALLA COMPLETA (táctil): pan/zoom + filtros sin atrapar el scroll
+          de la grilla. Solo se abre en táctil (focusSlotIndex); en desktop se usa el panel flotante. */}
+      <StudioSlotFocus
+        store={store}
+        slotIndex={focusSlotIndex}
+        shape={productConfig.shape}
+        finish={productConfig.finish}
+        cornerRadiusPx={productConfig.cornerRadiusPx}
+        sizeCm={productConfig.sizeCm}
+        allowFilters={!isCalendarMonth}
+        onClose={() => setFocusSlotIndex(null)}
       />
 
       {/* M.3.b.D — Modal editor de texto inline */}

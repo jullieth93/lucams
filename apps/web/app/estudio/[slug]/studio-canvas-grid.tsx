@@ -58,6 +58,12 @@ type StudioCanvasGridProps = {
   slotLabels?: string[];
   /** #14 — sustantivo del slot ("imán" | "separador") para el fallback y aria de cada StudioSlot. */
   slotNoun?: string;
+  /**
+   * FB4 — si false (táctil), los slots de la grilla NO capturan gestos (drag/pinch/wheel) → el dedo
+   * scrollea la página; el pan/zoom se hace en el editor a pantalla completa (tocar = abrir). En
+   * desktop (true) se conserva el inline drag/rueda.
+   */
+  interactiveSlots?: boolean;
   onSlotClick: (slotIndex: number) => void;
   /** M.3.b.B.3 — abrir modal ajustar foto (filtros) para un slot lleno. */
   onSlotAdjust?: (slotIndex: number) => void;
@@ -77,6 +83,7 @@ export function StudioCanvasGrid({
   showRealismGuides,
   slotLabels,
   slotNoun,
+  interactiveSlots = true,
   onSlotClick,
   onSlotAdjust,
   onTextEdit,
@@ -293,10 +300,18 @@ export function StudioCanvasGrid({
                         ? (textLayerId) => onTextEdit(slot.slotIndex, textLayerId)
                         : undefined
                     }
-                    onPhotoTransformChange={(transform) =>
-                      setSlotPhotoTransform(slot.slotIndex, transform)
+                    onPhotoTransformChange={
+                      // FB4 — en táctil se omiten (grilla sin gestos → scroll libre; pan/zoom va al
+                      // editor a pantalla completa). En desktop se conserva el inline.
+                      interactiveSlots
+                        ? (transform) => setSlotPhotoTransform(slot.slotIndex, transform)
+                        : undefined
                     }
-                    onCenterPhoto={() => setSlotPhotoTransform(slot.slotIndex, null)}
+                    onCenterPhoto={
+                      interactiveSlots
+                        ? () => setSlotPhotoTransform(slot.slotIndex, null)
+                        : undefined
+                    }
                     onAssetDrop={(asset: StudioAsset) => assignAssetToSlot(slot.slotIndex, asset)}
                     onKeyboardNav={(dir) => handleKeyboardNav(slot.slotIndex, dir)}
                     onRegisterStage={registerStage(slot.slotIndex)}
