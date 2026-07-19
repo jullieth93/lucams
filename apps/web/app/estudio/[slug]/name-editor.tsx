@@ -395,7 +395,7 @@ export function NameEditor({
               onClick={() => changeCount(-1)}
               disabled={count <= config.min}
               aria-label="Menos letras"
-              className="text-brand-purple hover:bg-brand-purple/10 flex h-7 w-7 items-center justify-center rounded-full transition disabled:opacity-30"
+              className="text-brand-purple hover:bg-brand-purple/10 relative flex h-7 w-7 items-center justify-center rounded-full transition before:absolute before:-inset-2 before:content-[''] disabled:opacity-30"
             >
               <Minus className="h-3.5 w-3.5" />
             </button>
@@ -407,7 +407,7 @@ export function NameEditor({
               onClick={() => changeCount(1)}
               disabled={count >= config.max}
               aria-label="Más letras"
-              className="text-brand-purple hover:bg-brand-purple/10 flex h-7 w-7 items-center justify-center rounded-full transition disabled:opacity-30"
+              className="text-brand-purple hover:bg-brand-purple/10 relative flex h-7 w-7 items-center justify-center rounded-full transition before:absolute before:-inset-2 before:content-[''] disabled:opacity-30"
             >
               <Plus className="h-3.5 w-3.5" />
             </button>

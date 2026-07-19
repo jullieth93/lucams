@@ -26,6 +26,7 @@
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { LucamsLogo } from "@/components/lucams-logo";
+import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
 import { ArrowRight, Sparkles, X } from "lucide-react";
 
 const ONBOARD_KEY = "lucams_studio_onboarded";
@@ -79,6 +80,7 @@ function useIsMobile(): boolean {
 }
 
 export function StudioOnboarding({ slotNoun = "imán" }: { slotNoun?: string }) {
+  const reduced = usePrefersReducedMotion();
   const [isOpen, setIsOpen] = useState(false);
   const [step, setStep] = useState(0);
   const isMobile = useIsMobile();
@@ -146,8 +148,9 @@ export function StudioOnboarding({ slotNoun = "imán" }: { slotNoun?: string }) 
             {/* Header con mascote + skip button */}
             <div className="from-brand-cream to-brand-pink/15 relative flex items-start gap-3 bg-gradient-to-br px-5 pt-5 pb-4">
               <motion.div
-                animate={{ y: [0, -4, 0], rotate: [0, -3, 3, 0] }}
-                transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+                // #16 — sin bobbing infinito si el usuario pide reducir movimiento (WCAG 2.2.2).
+                animate={reduced ? { y: 0, rotate: 0 } : { y: [0, -4, 0], rotate: [0, -3, 3, 0] }}
+                transition={{ duration: 3, repeat: reduced ? 0 : Infinity, ease: "easeInOut" }}
               >
                 <LucamsLogo variant="mascot" size={56} />
               </motion.div>

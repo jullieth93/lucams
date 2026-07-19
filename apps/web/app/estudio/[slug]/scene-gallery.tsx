@@ -134,9 +134,11 @@ export function SceneGallery({
         </button>
       </div>
 
-      {/* Chips de escena */}
+      {/* Chips de escena — #22: botones de alternancia (aria-pressed), no tabs. Un role=tablist
+        exige flechas + roving tabindex + tabpanel (WAI-ARIA APG); acá la interacción real es de
+        toggle, así que group + aria-pressed evita la disonancia semántica. */}
       <div
-        role="tablist"
+        role="group"
         aria-label="Escenas"
         className="flex flex-wrap items-center justify-center gap-2 px-4 pb-2"
       >
@@ -146,8 +148,7 @@ export function SceneGallery({
             <button
               key={s.key}
               type="button"
-              role="tab"
-              aria-selected={active}
+              aria-pressed={active}
               onClick={() => setScene(s.key)}
               className={`inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-bold transition-colors focus:ring-2 focus:ring-white focus:outline-none ${
                 active

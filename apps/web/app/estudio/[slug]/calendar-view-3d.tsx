@@ -16,6 +16,7 @@
 
 import { Suspense, useEffect, useMemo, useRef } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
+import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
 import { OrbitControls, RoundedBox, ContactShadows, useTexture, Center } from "@react-three/drei";
 import * as THREE from "three";
 import { CALENDAR_PAGE } from "@/features/personalization/calendar-layout";
@@ -109,8 +110,15 @@ function Board({ texture }: { texture: THREE.Texture }) {
 /** Vaivén suave para que el calendario "respire" (no estático), sin marear. */
 function Floating({ children }: { children: React.ReactNode }) {
   const g = useRef<THREE.Group>(null);
+  const reduced = usePrefersReducedMotion();
   useFrame((state) => {
     if (!g.current) return;
+    // #16 — respetar prefers-reduced-motion: dejar el grupo estático (cubre el toggle en vivo).
+    if (reduced) {
+      g.current.rotation.y = 0;
+      g.current.position.y = 0;
+      return;
+    }
     const t = state.clock.elapsedTime;
     g.current.rotation.y = Math.sin(t * 0.5) * 0.08;
     g.current.position.y = Math.sin(t * 0.9) * 0.06;

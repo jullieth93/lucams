@@ -13,6 +13,7 @@
 
 import { Suspense, useMemo, useRef } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
+import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
 import { OrbitControls, RoundedBox, ContactShadows, useTexture, Center } from "@react-three/drei";
 import { FitCamera } from "./fit-camera";
 import { StudioEnvironment, StudioBackdrop } from "./studio-3d-environment";
@@ -112,8 +113,15 @@ function Bookmarks({ items }: { items: Magnet3D[] }) {
 
 function Floating({ children }: { children: React.ReactNode }) {
   const g = useRef<THREE.Group>(null);
+  const reduced = usePrefersReducedMotion();
   useFrame((state) => {
     if (!g.current) return;
+    // #16 — respetar prefers-reduced-motion: dejar el grupo estático (cubre el toggle en vivo).
+    if (reduced) {
+      g.current.rotation.y = 0;
+      g.current.position.y = 0;
+      return;
+    }
     const t = state.clock.elapsedTime;
     g.current.rotation.y = Math.sin(t * 0.45) * 0.12;
     g.current.position.y = Math.sin(t * 0.9) * 0.05;

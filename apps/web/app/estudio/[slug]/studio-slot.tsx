@@ -229,6 +229,22 @@ function StudioSlotImpl({
             onClear();
           }
           break;
+        // #17 — atajos scoped-al-foco (WCAG 2.1.4 excepción "component focus") para las acciones
+        // que antes solo tenían botón con tabIndex={-1}: A = Ajustar (encuadre), C = Centrar.
+        case "a":
+        case "A":
+          if (slotState.assetUrl && onAdjust) {
+            e.preventDefault();
+            onAdjust();
+          }
+          break;
+        case "c":
+        case "C":
+          if (slotState.assetUrl && onCenterPhoto && slotState.photoTransform) {
+            e.preventDefault();
+            onCenterPhoto();
+          }
+          break;
         case "ArrowUp":
           e.preventDefault();
           onKeyboardNav("up");
@@ -247,7 +263,15 @@ function StudioSlotImpl({
           break;
       }
     },
-    [onClick, onClear, onKeyboardNav, slotState.assetUrl],
+    [
+      onClick,
+      onClear,
+      onKeyboardNav,
+      slotState.assetUrl,
+      onAdjust,
+      onCenterPhoto,
+      slotState.photoTransform,
+    ],
   );
 
   // ──────────── Photo drag flag (M.3.b.UX.v5) ────────────
@@ -367,8 +391,12 @@ function StudioSlotImpl({
   // #14 — "Imán" era fijo; ahora deriva del producto (imán/separador). Capitalizado para inicio de
   // frase; el slotLabel explícito (calendario, ej. "Enero") sigue mandando en el badge visible.
   const nounCap = slotNoun.charAt(0).toUpperCase() + slotNoun.slice(1);
+  // #17 — anunciar solo los atajos que existen para este slot (honesto).
+  const filledHints = ["Enter para cambiar foto", "Delete para quitar"];
+  if (onAdjust) filledHints.push("A para ajustar el encuadre");
+  if (onCenterPhoto && slotState.photoTransform) filledHints.push("C para centrar");
   const ariaLabel = slotState.assetUrl
-    ? `${nounCap} ${slotState.slotIndex + 1} de ${totalSlots}, con foto cargada. Enter para cambiar foto, Delete para quitar.`
+    ? `${nounCap} ${slotState.slotIndex + 1} de ${totalSlots}, con foto cargada. ${filledHints.join(", ")}.`
     : `${nounCap} ${slotState.slotIndex + 1} de ${totalSlots}, vacío. Enter para subir foto.`;
 
   return (
@@ -694,7 +722,7 @@ function StudioSlotImpl({
               M.3.b.UX.2 — Action buttons 50% más grandes (h-6 → h-8, icons h-3 → h-4)
               Tap target compliant Material/HIG con wrapper padding. */}
           {slotState.assetUrl && (
-            <div className="ml-auto flex items-center gap-1.5">
+            <div className="ml-auto flex items-center gap-2">
               {/* M.3.b.UX.v6 — Botón Centrar: visible solo si transform aplicado.
                 Resetea offsetX/Y a 0 + scale a 1 (cover overscan default). */}
               {onCenterPhoto && slotState.photoTransform && (
@@ -708,7 +736,7 @@ function StudioSlotImpl({
                   }}
                   aria-label={`Centrar la foto del imán ${slotState.slotIndex + 1}`}
                   title="Volver al centro y resetear zoom"
-                  className="text-brand-purple-dark/70 ring-brand-purple/15 hover:bg-brand-purple/5 hover:text-brand-purple-dark focus:ring-brand-turquoise hover:ring-brand-purple/30 flex h-8 w-8 items-center justify-center rounded-md bg-white shadow-sm ring-1 focus:ring-2 focus:outline-none"
+                  className="text-brand-purple-dark/70 ring-brand-purple/15 hover:bg-brand-purple/5 hover:text-brand-purple-dark focus:ring-brand-turquoise hover:ring-brand-purple/30 relative flex h-9 w-9 items-center justify-center rounded-md bg-white shadow-sm ring-1 before:absolute before:-inset-1 before:content-[''] focus:ring-2 focus:outline-none"
                   tabIndex={-1}
                 >
                   <RotateCcw className="h-4 w-4" />
@@ -725,7 +753,7 @@ function StudioSlotImpl({
                   }}
                   aria-label={`Ajustar foto del imán ${slotState.slotIndex + 1} (zoom y filtros)`}
                   title="Aplicar zoom y filtros a esta foto"
-                  className="text-brand-purple ring-brand-purple/20 hover:bg-brand-purple/5 focus:ring-brand-turquoise hover:ring-brand-purple/40 flex h-8 w-8 items-center justify-center rounded-md bg-white shadow-sm ring-1 focus:ring-2 focus:outline-none"
+                  className="text-brand-purple ring-brand-purple/20 hover:bg-brand-purple/5 focus:ring-brand-turquoise hover:ring-brand-purple/40 relative flex h-9 w-9 items-center justify-center rounded-md bg-white shadow-sm ring-1 before:absolute before:-inset-1 before:content-[''] focus:ring-2 focus:outline-none"
                   tabIndex={-1}
                 >
                   <Wand2 className="h-4 w-4" />
@@ -741,7 +769,7 @@ function StudioSlotImpl({
                 }}
                 aria-label={`Quitar foto del imán ${slotState.slotIndex + 1}`}
                 title="Quitar esta foto"
-                className="flex h-8 w-8 items-center justify-center rounded-md bg-white text-red-600 shadow-sm ring-1 ring-red-200 hover:bg-red-50 hover:ring-red-400 focus:ring-2 focus:ring-red-500 focus:outline-none"
+                className="relative flex h-9 w-9 items-center justify-center rounded-md bg-white text-red-600 shadow-sm ring-1 ring-red-200 before:absolute before:-inset-1 before:content-[''] hover:bg-red-50 hover:ring-red-400 focus:ring-2 focus:ring-red-500 focus:outline-none"
                 tabIndex={-1}
               >
                 <Trash2 className="h-4 w-4" />

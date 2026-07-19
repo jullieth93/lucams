@@ -29,6 +29,7 @@ import { Suspense, useMemo } from "react";
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls, RoundedBox, ContactShadows, useTexture, Center } from "@react-three/drei";
 import { FitCamera } from "./fit-camera";
+import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
 import { StudioEnvironment, StudioBackdrop } from "./studio-3d-environment";
 import * as THREE from "three";
 
@@ -270,6 +271,8 @@ function Magnets({ magnets, cols }: FridgeView3DProps) {
 }
 
 function Scene({ magnets, cols }: FridgeView3DProps) {
+  // #16 — no autorrotar si el usuario pide reducir movimiento.
+  const reduced = usePrefersReducedMotion();
   return (
     <>
       {/* FB5 — env-map procedural (reflejos PBR reales) + backdrop de estudio (contexto/asiento). La
@@ -306,7 +309,7 @@ function Scene({ magnets, cols }: FridgeView3DProps) {
       <OrbitControls
         makeDefault
         enablePan={false}
-        autoRotate
+        autoRotate={!reduced}
         autoRotateSpeed={0.8}
         minPolarAngle={Math.PI / 5}
         maxPolarAngle={Math.PI / 1.9}
