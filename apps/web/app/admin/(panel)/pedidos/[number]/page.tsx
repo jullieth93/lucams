@@ -152,7 +152,7 @@ export default async function AdminPedidoDetallePage({
               )}
               <ul className="divide-brand-purple/10 divide-y">
                 {order.items.map((it) => {
-                  const previewUrl = it.design?.previewUrl ?? null;
+                  const previewUrl = it.designAssetUrl ?? it.design?.previewUrl ?? null; // ADR-070 — snapshot primero
                   return (
                     <li key={it.id} className="flex items-start gap-3 py-3">
                       <div className="bg-brand-purple/5 relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-lg">

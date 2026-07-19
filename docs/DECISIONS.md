@@ -2525,3 +2525,42 @@ Se remediaron los **9 fixes** priorizados, certificados. Informe:
 5. **`requiresMinQuantity` sobre unidades elegibles** cuando el cupón filtra por categoría/producto
    («lleva 3 de X» no se cumple con 3 productos que no son X); `minOrder` se mantiene sobre el carrito
    completo (semántica «en cart» del schema).
+
+## ADR-070 — Snapshot autocontenido del diseño en OrderItem (pieza mayor #1) (2026-07-19)
+
+Lucy pidió abordar la "pieza mayor #1" del backlog: que el pedido guarde una **copia
+autocontenida** del diseño personalizado, y que **esa visual también se vea en el checkout**.
+
+**Problema.** `OrderItem` solo guardaba `designId` (FK a `Design`, `onDelete: SetNull`) y no poblaba
+el campo `designAssetUrl` que ya existía en el schema. La imagen del diseño (`Design.previewUrl` /
+`productionUrl`) solo era alcanzable a través de esa FK. Aunque el `Design` se marca
+`USED_IN_ORDER` (protegido de la purga de anónimos), sigue habiendo caminos que lo eliminan o
+desvinculan —borrado de cuenta / solicitud de datos (Ley 1581), acción manual de admin, un
+`SetNull` futuro— tras los cuales **producción se queda sin la imagen para fabricar** un pedido ya
+pagado. Un pedido debe ser un registro histórico inmutable y autosuficiente.
+
+**Decisión.**
+
+1. **Snapshot al crear la orden.** En `createOrderFromCartTx` (features/orders/service.ts) el cart
+   ahora incluye `design { previewUrl, productionUrl, productionUrls }`, y cada `OrderItem` se crea
+   con `designAssetUrl = design.previewUrl` + un `metadata.designSnapshot` con las URLs de
+   producción. Aplica tanto al alta como a la reconciliación (ambas usan `orderItemsCreate`). El
+   pedido queda autosuficiente: aunque el `Design` desaparezca, la imagen sobrevive en el OrderItem.
+2. **Resiliencia en lectura.** Las vistas de pedido (gracias, /pedido/[token], mi-cuenta, admin)
+   resuelven la imagen como `designAssetUrl ?? design?.previewUrl ?? imagen del producto`: prefieren
+   el snapshot; si por algún motivo no está, caen al `Design` vivo, y por último a la foto del
+   producto. Nunca rompen.
+3. **Visual en el checkout (pedido de Lucy).** La página `/checkout/gracias` ahora muestra la
+   miniatura del diseño de cada ítem (antes no mostraba imágenes). El resumen lateral del checkout ya
+   la mostraba; se mantiene.
+
+**Por qué el `previewUrl` y no re-render.** El `previewUrl` es el PNG público 1080×1080 que ya se
+genera al guardar el diseño (fuente de verdad visual). Copiar la URL es barato e inmutable; no
+re-renderizamos nada en el checkout. Las URLs de producción (alta resolución) se guardan también en
+`metadata.designSnapshot` para el flujo de fabricación. Precios siempre en centavos COP enteros; sin
+impacto en el motor monetario ni en la saga de stock.
+
+**Alcance dejado fuera (deuda consciente).** No se copia el PNG a un bucket "de pedidos" separado
+(las URLs de Storage siguen apuntando al asset del diseño). Si más adelante se quiere blindar contra
+el borrado del asset físico en Storage (no solo del row `Design`), se agenda una copia a un prefijo
+`orders/` inmutable — fuera del alcance de esta pieza.

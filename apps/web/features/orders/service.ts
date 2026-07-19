@@ -201,6 +201,10 @@ async function createOrderFromCartTx(
             variant: {
               select: { id: true, productId: true, price: true, sku: true },
             },
+            // ADR-070 (pieza #1) — snapshot autocontenido del diseño en el pedido.
+            design: {
+              select: { previewUrl: true, productionUrl: true, productionUrls: true },
+            },
           },
         },
       },
@@ -297,15 +301,35 @@ async function createOrderFromCartTx(
     const cartSig = itemSignature(cart.items);
 
     // Data de items para crear/recrear los OrderItem (snapshot inmutable del cart).
-    const orderItemsCreate = cart.items.map((ci) => ({
-      variantId: ci.variantId,
-      qty: ci.qty,
-      unitPrice: ci.unitPrice,
-      designId: ci.designId,
-      customDesign: ci.customDesign ?? Prisma.JsonNull,
-      templateId: ci.templateId,
-      metadata: ci.metadata ?? {},
-    }));
+    const orderItemsCreate = cart.items.map((ci) => {
+      // ADR-070 (pieza #1) — snapshot autocontenido del diseño: si el Design se borra luego
+      // (borrado de cuenta, solicitud de datos Ley 1581, purga), el pedido conserva la imagen para
+      // producción. designAssetUrl = preview público; las URLs de alta resolución van en metadata.
+      const baseMeta =
+        ci.metadata && typeof ci.metadata === "object" && !Array.isArray(ci.metadata)
+          ? (ci.metadata as Record<string, unknown>)
+          : {};
+      const metadata: Prisma.InputJsonValue = ci.design
+        ? {
+            ...baseMeta,
+            designSnapshot: {
+              previewUrl: ci.design.previewUrl,
+              productionUrl: ci.design.productionUrl,
+              productionUrls: ci.design.productionUrls,
+            },
+          }
+        : (baseMeta as Prisma.InputJsonValue);
+      return {
+        variantId: ci.variantId,
+        qty: ci.qty,
+        unitPrice: ci.unitPrice,
+        designId: ci.designId,
+        customDesign: ci.customDesign ?? Prisma.JsonNull,
+        templateId: ci.templateId,
+        designAssetUrl: ci.design?.previewUrl ?? null,
+        metadata,
+      };
+    });
 
     // Campos escalares comunes a crear y reconciliar (dependen del cart/checkout). `dianStatus` va en
     // un const aparte para que TS conserve el tipo literal del enum (no lo ensanche a string).

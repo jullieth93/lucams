@@ -214,7 +214,7 @@ export default async function PublicOrderPage({
           >
             <ul className="divide-brand-purple/10 divide-y">
               {order.items.map((it) => {
-                const previewUrl = it.design?.previewUrl ?? null;
+                const previewUrl = it.designAssetUrl ?? it.design?.previewUrl ?? null; // ADR-070 — snapshot primero
                 return (
                   <li key={it.id} className="flex items-start gap-3 py-3">
                     <div className="bg-brand-purple/5 relative h-14 w-14 flex-shrink-0 overflow-hidden rounded-lg">

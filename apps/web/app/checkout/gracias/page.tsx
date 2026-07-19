@@ -22,9 +22,10 @@
  */
 
 import type { Metadata } from "next";
+import Image from "next/image";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { CheckCircle2, Clock, XCircle, MapPin, Mail, Package } from "lucide-react";
+import { CheckCircle2, Clock, XCircle, MapPin, Mail, Package, Sparkles } from "lucide-react";
 import { LucamsLogo } from "@/components/lucams-logo";
 import { Button } from "@/components/ui/button";
 import { getTransaction } from "@/lib/wompi";
@@ -86,6 +87,16 @@ export default async function CheckoutGraciasPage({
       shippingCarrier: true,
       shippingAddress: true,
       publicAccessToken: true, // #24 — link a /pedido/<token> para invitados (sin login)
+      // ADR-070 (pieza #1) — miniaturas de lo que pediste; el diseño usa su snapshot autocontenido.
+      items: {
+        select: {
+          id: true,
+          qty: true,
+          designAssetUrl: true,
+          variant: { select: { product: { select: { name: true, images: true } } } },
+          design: { select: { previewUrl: true } },
+        },
+      },
     },
   });
 
@@ -148,6 +159,15 @@ export default async function CheckoutGraciasPage({
             shippingCarrier: true,
             shippingAddress: true,
             publicAccessToken: true, // #24
+            items: {
+              select: {
+                id: true,
+                qty: true,
+                designAssetUrl: true,
+                variant: { select: { product: { select: { name: true, images: true } } } },
+                design: { select: { previewUrl: true } },
+              },
+            },
           },
         });
       } catch (err) {
@@ -205,6 +225,14 @@ function ApprovedPage({
     shippingCarrier: string | null;
     shippingAddress: unknown;
     publicAccessToken: string | null;
+    // ADR-070 (pieza #1) — miniaturas del pedido (snapshot del diseño autocontenido).
+    items: {
+      id: string;
+      qty: number;
+      designAssetUrl: string | null;
+      variant: { product: { name: string; images: string[] } };
+      design: { previewUrl: string | null } | null;
+    }[];
   } | null;
   txId: string;
   isGuest: boolean;
@@ -239,6 +267,53 @@ function ApprovedPage({
           {order?.number ?? "—"}
         </code>
       </div>
+
+      {/* ADR-070 (pieza #1) — miniaturas de lo que pediste; el diseño personalizado se ve con su
+        snapshot autocontenido (sobrevive aunque el diseño original se borre luego). */}
+      {order?.items && order.items.length > 0 && (
+        <div className="mt-7">
+          <p className="text-brand-muted mb-2 text-xs font-medium">Esto es lo que pediste</p>
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            {order.items.map((it) => {
+              const img =
+                it.designAssetUrl ?? it.design?.previewUrl ?? it.variant.product.images[0] ?? null;
+              const personalized = Boolean(it.designAssetUrl ?? it.design?.previewUrl);
+              return (
+                <div
+                  key={it.id}
+                  className="border-brand-purple/10 relative h-16 w-16 flex-shrink-0 overflow-hidden rounded-xl border bg-white"
+                  title={it.variant.product.name}
+                >
+                  {img ? (
+                    <Image
+                      src={img}
+                      alt={it.variant.product.name}
+                      fill
+                      sizes="64px"
+                      className="object-cover"
+                      unoptimized
+                    />
+                  ) : (
+                    <div className="flex h-full w-full items-center justify-center">
+                      <Sparkles className="text-brand-muted h-6 w-6" />
+                    </div>
+                  )}
+                  {it.qty > 1 && (
+                    <span className="bg-brand-purple-dark/85 absolute top-0 right-0 inline-flex h-4 min-w-4 items-center justify-center rounded-bl-md px-1 text-[9px] font-bold text-white">
+                      {it.qty}
+                    </span>
+                  )}
+                  {personalized && (
+                    <span className="bg-brand-purple/90 absolute inset-x-0 bottom-0 text-center text-[8px] font-bold tracking-wide text-white">
+                      Tu diseño
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <div className="mx-auto mt-8 max-w-md space-y-3 text-left">
         <DetailRow icon={<Mail className="h-4 w-4" />} label="Confirmación enviada a">
