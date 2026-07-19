@@ -13,6 +13,17 @@
 
 ## Resumen actual
 
+**🛍️ 🔄 BACKLOG AUDITORÍA v3 — TANDA 5 (UX storefront, 2026-07-19).** Workflow de validación (31 agentes) → **26 vigentes + 4 ya-arreglados** (#10 basePrice=minVariantPrice, #19 reseñas [DEMO], #23 whitelist checkout, #27 decodeURIComponent). ~21 implementados y pusheados, cada uno certificado (tsc+lint+prettier) y verificado con Chromium donde aplica:
+
+- **Home** (`3b81b59`): #1 CTA "Personalizar el mío" → /productos?personalizable=1 (no a WhatsApp), #2 agotados al final del carrusel destacado (sort estable), #3 chip del hero condicionado a COD_ENABLED ("Pago contraentrega disponible").
+- **Filtros** (`6010ac9`): #4 ocasión persistente, #7 chips de precio en COP formateado, #8 búsqueda honra Destacados/Ordenar (isFeatured en searchStorefrontProducts), #9 drawer móvil se cierra + "Ver N productos", #11 precio de URL acotado/normalizado.
+- **Cards** (`2d80a88`): #5 badge "Agotado" en ProductFromCatalogCard (inStock propagado), #6 conteo de /ocasion solo productos activos, #12 grid 2-col en móvil, #13 related strip con minVariantPrice+inStock.
+- **PDP** (`03b2992` + `97fd84f`): #17 JSON-LD con precio efectivo (Offer/AggregateOffer), #18 a11y del selector (role=group + toggles), #20 precio que envuelve, #15 **strip de confianza** (producción/envío/pago/garantía).
+- **Contenido** (`b13d220`): #21 reemplazado el placeholder inapropiado (foto de paciente hospitalizado) en 8 productos — seed + UPDATE quirúrgico en BD dev.
+- **Checkout parte 1** (`674f1c1`): #28 Spanglish, #29 tuteo, #30 helper formatCityDept (Bogotá D.C. sin duplicar), #31 botón válido en el carrito.
+- **⏳ Restante de T5**: PDP #14 (precio por-ficha más claro, PARTIALLY) + #16 (orden del CTA en móvil, layout); Checkout parte 2 #22/#24/#25/#26 (orden del botón de pago móvil, CTA invitado, reintento de cotización, validación diferida). Luego **Tandas 6-8** (~92: cuenta/nav/copy, a11y/admin/perf/tests, descubrimiento) + **pieza mayor #1** (snapshot OrderItem, ADR propio).
+- **🔎 Verificación**: harness Chromium (`scratchpad/shots.mjs`) — verificados visualmente chip COD, chips de precio, conteo de ocasión, strip de confianza del PDP, imagen del calendario corregida.
+
 **🎨 ✅ TANDA 4 (Estudio) + FEEDBACK DE LUCY (2026-07-18).** Barrido de los 17 findings de Estudio del backlog v3 (workflow de validación: 14 vigentes + 3 ya-arreglados #4/#8/#10) en 5 batches certificados y pusheados, MÁS 4 comentarios de producto de Lucy evaluados críticamente. Además se armó una **galería de preview de correos** dev-only (`/internal/correos`, `8754e8a`) con los 19 transaccionales.
 
 - **Batch A** (`b2c7cab`) copy/i18n: voseo→tuteo en onboarding/hints (#7/#13) + término correcto de slot "separador" vs "imán" en separadores (#14, prop `slotNoun`).
