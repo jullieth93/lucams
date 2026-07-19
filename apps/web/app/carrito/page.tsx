@@ -143,15 +143,17 @@ export default async function CarritoPage() {
                     el carrito luce vacío — p.ej. read-after-write tras agregar) → "Ir
                     a pagar" rebotaría. Sin prefetch, el clic siempre evalúa fresco.
                     Investigado con E2E (Lucy 2026-06-29). */}
-                <Link href="/checkout/datos" prefetch={false} className="block">
-                  <Button
-                    type="button"
-                    className="bg-gradient-brand w-full text-white hover:brightness-110"
-                    size="lg"
-                  >
+                {/* #31 — un solo interactivo: Button asChild renderiza el <a> (evita <button> dentro
+                  de <a>, HTML inválido). */}
+                <Button
+                  asChild
+                  className="bg-gradient-brand w-full text-white hover:brightness-110"
+                  size="lg"
+                >
+                  <Link href="/checkout/datos" prefetch={false}>
                     Ir a pagar →
-                  </Button>
-                </Link>
+                  </Link>
+                </Button>
                 <Link
                   href="/productos"
                   className="text-brand-purple-dark/70 hover:text-brand-purple block text-center text-sm"

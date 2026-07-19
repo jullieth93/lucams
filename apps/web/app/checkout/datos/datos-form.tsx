@@ -539,7 +539,7 @@ export function DatosForm({
               serverError={err("cityCode")}
               hint={
                 deptCode && cities.length === 0
-                  ? "No tenemos esa ciudad en el catálogo. Contactanos por WhatsApp."
+                  ? "No tenemos esa ciudad en el catálogo. Contáctanos por WhatsApp."
                   : undefined
               }
             />

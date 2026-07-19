@@ -16,6 +16,24 @@ export function formatCOP(centavos: number): string {
 }
 
 /**
+ * #30 — Ciudad + departamento sin repetición. En Colombia, Bogotá D.C. es a la vez ciudad (DANE
+ * 11001) y departamento (DANE 11) con el mismo nombre → "{city}, {department}" daba "Bogotá D.C.,
+ * Bogotá D.C.". Cuando coinciden (sin distinguir mayúsculas ni tildes) devolvemos solo la ciudad.
+ */
+export function formatCityDept(city: string, department: string): string {
+  const norm = (s: string) =>
+    s
+      .trim()
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "");
+  const c = (city ?? "").trim();
+  const d = (department ?? "").trim();
+  if (!d || norm(c) === norm(d)) return c;
+  return `${c}, ${d}`;
+}
+
+/**
  * Enmascara un email para vistas públicas/compartibles (minimización PII, Ley 1581).
  * "lucia.perez@gmail.com" → "lu•••@gmail.com". Conserva 1-2 letras del local-part + el dominio.
  * Si no hay "@" o el local-part es muy corto, enmascara de forma segura sin romper.

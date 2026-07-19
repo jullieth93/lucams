@@ -15,6 +15,7 @@ import { useState } from "react";
 import { Truck } from "lucide-react";
 import { QuoteList } from "./quote-list";
 import { OrderSummary } from "../_components/order-summary";
+import { formatCityDept } from "@/lib/format";
 import type { ShippingSelectionInput } from "@/features/checkout/schemas";
 import type { CartDetail } from "@/features/cart/service";
 
@@ -46,11 +47,9 @@ export function EnvioStep({
             Elige cómo te lo enviamos
           </h2>
           <p className="text-brand-muted mb-5 text-sm">
+            {/* #30 — sin duplicar "Bogotá D.C., Bogotá D.C." (ciudad=departamento). */}
             Cotizamos con Aveonline para{" "}
-            <strong>
-              {destinationCity}, {destinationDepartment}
-            </strong>
-            .
+            <strong>{formatCityDept(destinationCity, destinationDepartment)}</strong>.
           </p>
           <QuoteList
             quotes={quotes}

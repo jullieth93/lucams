@@ -21,6 +21,7 @@ import {
   assertCheckoutAvailability,
 } from "@/features/checkout/service";
 import { getSettingValue } from "@/lib/cms";
+import { formatCityDept } from "@/lib/format";
 
 const STOCK_GONE_MSG = "Uno de los productos ya no está disponible. Por favor revisa tu carrito.";
 
@@ -139,7 +140,8 @@ export default async function CheckoutPagoPage({ searchParams }: { searchParams:
               <p className="text-brand-purple-dark/70 text-xs italic">Ref: {address.referencia}</p>
             )}
             <p className="text-brand-purple-dark/70 text-xs">
-              {address.city}, {address.department}
+              {/* #30 — sin duplicar ciudad/departamento (Bogotá D.C.). */}
+              {formatCityDept(address.city, address.department)}
               {address.zip && ` · ${address.zip}`}
             </p>
             {address.notes && (

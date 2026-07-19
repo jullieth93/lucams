@@ -20,6 +20,7 @@ import {
   quoteShipping,
 } from "@/features/checkout/service";
 import { logger } from "@/lib/logger";
+import { formatCityDept } from "@/lib/format";
 
 const STOCK_GONE_MSG = "Uno de los productos ya no está disponible. Por favor revisa tu carrito.";
 
@@ -109,9 +110,10 @@ export default async function CheckoutEnvioPage({
                   Elige cómo te lo enviamos
                 </h2>
                 <p className="text-brand-muted mb-5 text-sm">
+                  {/* #30 — sin duplicar ciudad/departamento (Bogotá D.C.). */}
                   Cotizamos con Aveonline para{" "}
                   <strong>
-                    {ctx.state.address.city}, {ctx.state.address.department}
+                    {formatCityDept(ctx.state.address.city, ctx.state.address.department)}
                   </strong>
                   .
                 </p>
@@ -166,7 +168,7 @@ function QuoteError({ message }: { message: string }) {
               href="/contacto"
               className="text-xs font-semibold text-amber-900 underline hover:text-amber-950"
             >
-              Contactanos por WhatsApp
+              Contáctanos por WhatsApp
             </Link>
           </div>
         </div>

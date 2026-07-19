@@ -74,7 +74,7 @@ export function OrderSummary({
           <dt className="text-brand-purple-dark/70">Envío</dt>
           <dd className="text-brand-purple-dark/85 text-right tabular-nums">
             {shipping === null ? (
-              <span className="text-brand-muted text-xs italic">Calculado en step 2</span>
+              <span className="text-brand-muted text-xs italic">Se calcula al elegir envío</span>
             ) : shipping === 0 ? (
               <span className="font-semibold text-emerald-700">Gratis</span>
             ) : (
