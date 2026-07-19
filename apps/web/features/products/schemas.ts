@@ -50,8 +50,9 @@ export const ProductCreateSchema = z.object({
   richDescription: z.string().max(5000).optional().nullable(),
   whyChooseThis: z.string().max(2000).optional().nullable(),
   idealFor: z.array(z.string().max(120)).max(20).optional(),
-  // PLAN_CATALOG_V2 4.2 — garantía + tiempos
-  warrantyMonths: z.number().int().min(0).max(120).optional(),
+  // PLAN_CATALOG_V2 4.2 — garantía + tiempos. Piso legal 12 meses: la garantía legal (Ley 1480
+  // art. 7-8) es de mínimo 1 año e irrenunciable → el admin no puede anunciar menos.
+  warrantyMonths: z.number().int().min(12).max(120).optional(),
   productionDays: z.number().int().min(1).max(60).optional(),
   shippingDaysMin: z.number().int().min(0).max(30).optional(),
   shippingDaysMax: z.number().int().min(0).max(60).optional(),

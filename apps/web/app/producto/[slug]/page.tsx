@@ -17,7 +17,7 @@ import { JsonLd } from "@/components/json-ld";
 import { breadcrumbList } from "@/lib/seo/structured-data";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ChevronRight, MessageCircle, Truck, Wallet, ShieldCheck } from "lucide-react";
+import { ChevronRight, MessageCircle, RotateCcw, Truck, Wallet, ShieldCheck } from "lucide-react";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { WishlistButton } from "@/components/wishlist-button";
@@ -153,6 +153,13 @@ export default async function ProductoDetallePage({
   // que haya un Design READY (M.4 cablea ese flow). Si kind=NONE, mantiene
   // el flujo clásico de añadir al carrito directo.
   const requiresPersonalization = product.personalizationKind !== "NONE";
+  // #retracto (Ley 1480 art. 47) — SOLO los productos SIEMPRE a medida (foto/texto/nombre del
+  // cliente) están exceptuados del retracto. `isPersonalizable` (personalización OPCIONAL) NO basta:
+  // comprado sin diseño custom, conserva el retracto (verificación adversarial).
+  const alwaysCustom = requiresPersonalization || isLetterSetProduct || isNamePerTile;
+  // Garantía legal irrenunciable: nunca anunciar menos del mínimo de 1 año (art. 7-8), aunque un
+  // dato legado traiga < 12.
+  const warrantyMonths = Math.max(product.warrantyMonths ?? 12, 12);
 
   // JSON-LD Product structured data — Google rich results.
   // basePrice está en centavos COP → dividir por 100 para schema.org.
@@ -401,7 +408,8 @@ export default async function ProductoDetallePage({
                     <span>
                       Hecho a pedido: se produce en{" "}
                       <strong>{product.productionDays} días hábiles</strong> + envío{" "}
-                      {product.shippingDaysMin}–{product.shippingDaysMax} días con Coordinadora.
+                      {product.shippingDaysMin}–{product.shippingDaysMax} días con nuestras
+                      transportadoras aliadas según tu ciudad.
                     </span>
                   </li>
                   <li className="flex items-start gap-2.5">
@@ -409,7 +417,10 @@ export default async function ProductoDetallePage({
                       className="text-brand-purple mt-0.5 h-4 w-4 flex-shrink-0"
                       aria-hidden
                     />
-                    <span>Paga al recibir (contraentrega) o en línea con Wompi.</span>
+                    <span>
+                      Paga al recibir (contraentrega) o en línea con Wompi. Precios en pesos
+                      colombianos (COP): es el valor final que pagas.
+                    </span>
                   </li>
                   <li className="flex items-start gap-2.5">
                     <ShieldCheck
@@ -418,13 +429,35 @@ export default async function ProductoDetallePage({
                     />
                     <span>El costo de envío se calcula al finalizar según tu ciudad.</span>
                   </li>
+                  {/* Retracto por producto (Ley 1480 art. 47): informarlo en la ficha, distinto según
+                      sea a medida o de catálogo estándar. */}
+                  <li className="flex items-start gap-2.5">
+                    <RotateCcw
+                      className="text-brand-purple mt-0.5 h-4 w-4 flex-shrink-0"
+                      aria-hidden
+                    />
+                    <span>
+                      {alwaysCustom ? (
+                        <>
+                          Producto personalizado: por ser hecho a tu medida no aplica el derecho de
+                          retracto (Ley 1480, art. 47). La garantía por defectos de fabricación sí
+                          te cubre.
+                        </>
+                      ) : (
+                        <>
+                          Tienes 5 días hábiles desde que recibes para retractarte sin dar razones
+                          (Ley 1480, art. 47); te devolvemos el dinero en máximo 15 días calendario.
+                        </>
+                      )}
+                    </span>
+                  </li>
                 </ul>
                 <div className="text-brand-muted flex flex-wrap gap-x-4 gap-y-1 pt-1 text-xs">
                   <Link href="/legal/devoluciones" className="hover:text-brand-purple underline">
                     Devoluciones y Retracto
                   </Link>
                   <Link href="/legal/garantias" className="hover:text-brand-purple underline">
-                    Garantías ({product.warrantyMonths} meses)
+                    Garantías ({warrantyMonths} meses)
                   </Link>
                 </div>
               </section>
