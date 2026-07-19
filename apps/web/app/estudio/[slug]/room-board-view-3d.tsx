@@ -13,6 +13,7 @@
 import { Suspense, useMemo, useRef } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { OrbitControls, RoundedBox, ContactShadows, useTexture, Center } from "@react-three/drei";
+import { FitCamera } from "./fit-camera";
 import * as THREE from "three";
 import type { Magnet3D } from "./fridge-3d-view";
 
@@ -163,12 +164,15 @@ function Scene({ magnets, cols, style }: { magnets: Magnet3D[]; cols: number; st
         scale={16}
         far={5}
       />
+      {/* #12 — encuadra el tablero al aspecto del viewport (fit-to-width en móvil vertical). */}
+      <FitCamera halfW={BOARD_W / 2} halfH={BOARD_H / 2} margin={1.12} camY={0.3} />
       <OrbitControls
+        makeDefault
         enablePan={false}
         minPolarAngle={Math.PI / 3.5}
         maxPolarAngle={Math.PI / 1.9}
         minDistance={7}
-        maxDistance={18}
+        maxDistance={24}
         target={[0, 0, 0]}
       />
     </>

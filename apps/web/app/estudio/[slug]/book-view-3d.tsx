@@ -14,6 +14,7 @@
 import { Suspense, useMemo, useRef } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { OrbitControls, RoundedBox, ContactShadows, useTexture, Center } from "@react-three/drei";
+import { FitCamera } from "./fit-camera";
 import * as THREE from "three";
 import type { Magnet3D } from "./fridge-3d-view";
 
@@ -149,12 +150,15 @@ function Scene({ bookmarks }: { bookmarks: Magnet3D[] }) {
         scale={16}
         far={6}
       />
+      {/* #12 — encuadra el libro (alto + marcadores asomando) al aspecto del viewport. */}
+      <FitCamera halfW={BOOK_W / 2 + 0.6} halfH={5.6} margin={1.1} camY={1} />
       <OrbitControls
+        makeDefault
         enablePan={false}
         minPolarAngle={Math.PI / 4}
         maxPolarAngle={Math.PI / 1.9}
         minDistance={8}
-        maxDistance={20}
+        maxDistance={24}
         target={[0, 0, 0]}
       />
     </>

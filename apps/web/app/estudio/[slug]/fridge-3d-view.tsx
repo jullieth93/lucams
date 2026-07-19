@@ -28,6 +28,7 @@
 import { Suspense, useMemo } from "react";
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls, RoundedBox, ContactShadows, useTexture, Center } from "@react-three/drei";
+import { FitCamera } from "./fit-camera";
 import * as THREE from "three";
 
 export type Magnet3D = {
@@ -276,7 +277,10 @@ function Scene({ magnets, cols }: FridgeView3DProps) {
         scale={16}
         far={6}
       />
+      {/* #12 — encuadra la nevera (alta y angosta) al aspecto del viewport (fit-to-height). */}
+      <FitCamera halfW={FRIDGE_W / 2} halfH={FRIDGE_H / 2} margin={1.12} camY={0.4} />
       <OrbitControls
+        makeDefault
         enablePan={false}
         autoRotate
         autoRotateSpeed={0.8}
