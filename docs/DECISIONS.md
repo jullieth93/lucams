@@ -2589,3 +2589,59 @@ es suficiente para su caso, o si debe publicar la dirección de notificación; (
 (c) cuando tenga **dominio propio**, cuadrar los correos (`hola@`, `habeas-data@`) y, si consigue una
 **dirección alterna** (oficina virtual/apartado), usarla como dirección de notificación en vez de su
 casa.
+
+---
+
+## ADR-072 — Barrido legal integral contra la ley colombiana (2026-07-19)
+
+Ampliando ADR-071, Lucy pidió un **barrido TOTAL de todos los textos, BD y copy** ajustados a la ley
+colombiana. Se auditó TODO el texto legal/comercial con un workflow multi-agente (25 agentes,
+auditar → redactar → verificar adversarial → consolidar consistencia) contra **Ley 1581/2012 +
+Decreto 1377/2013** (Habeas Data), **Ley 1480/2011 + Ley 2439/2024** (Consumidor) y régimen
+tributario. Resultado de entrada: **11 blockers / 23 high / 37 medium / 26 low**, concentrados en que
+el contenido PUBLICADO (CmsBlock, que gana sobre el fallback de código) estaba en estado placeholder.
+
+**Hallazgo estructural.** `getCmsBlock` renderiza `publishedVersion.body`; los fallbacks compliant del
+código NO se veían porque la BD publicada era vieja/placeholder. Por eso la remediación toca AMBAS
+capas y, sobre todo, republica la BD.
+
+**Decisiones aplicadas.**
+
+1. **8 documentos legales** reescritos y consistentes: persona natural; IVA **régimen-agnóstico**
+   ("valor final que pagas" + "documento que corresponda", sin prometer factura DIAN); retracto 5
+   días hábiles + reembolso **15 días calendario desde el ejercicio** (Ley 2439/2024) + excepción de
+   personalizados (art. 47); **reversión del pago** (art. 51, 21 días calendario); garantía 1 año con
+   **elección del consumidor** (arts. 7-8/11); PQR 10/15 días hábiles; SIC + jurisdicción; versión 2.
+   Contenido canónico en `packages/db/legal-content/*.md` + script reproducible
+   `seed-legal-content-2026-07.mjs` (`make seed-legal-2026-07`) para **replicar a PROD** al lanzar.
+2. **Subprocesadores reales:** Aveonline (no Venndelo), **Google/Gemini** (no Anthropic), tabla en
+   Markdown (el HTML crudo no renderizaba). Se corrigen CSP (se retiran `api.venndelo.com` y
+   `api.anthropic.com`, muertos y server-side), settings DPA (`DPA_VENNDELO_URL`→`DPA_AVEONLINE_URL`,
+   `DPA_ANTHROPIC_URL`→`DPA_GOOGLE_URL`) y la tabla de `COMPLIANCE.md`.
+3. **Checkout:** autorización de tratamiento **previa** (casilla obligatoria + Consent, también para
+   invitados) antes de recolectar PII; aviso de retracto/garantía en el punto de venta; IVA/factura
+   régimen-agnóstico; placeholder "S.A.S." corregido.
+4. **Correos:** identidad del responsable en los 20 (layout `LEGAL_ENTITY_LINE`); retracto/garantía +
+   COP en confirmación; garantía como elección del consumidor; unsubscribe visible + One-Click en los
+   comerciales (back-in-stock cerraba sin ninguno).
+5. **PDP:** retracto por producto (solo los SIEMPRE a medida se exceptúan; `isPersonalizable` opcional
+   conserva retracto); garantía mínima 12 meses irrenunciable (schema + clamp); "Coordinadora" →
+   "transportadoras aliadas"; línea de precio total COP.
+6. **Footer:** línea de identidad (`BUSINESS_LEGAL_NAME`) + enlace visible a la **SIC** (protección al
+   consumidor, art. 50).
+
+**Los drafts son una BASE compliant, NO reemplazan la revisión de un abogado colombiano antes del
+lanzamiento (ADR-020).** Decisiones que requieren humano (consolidadas para Lucy):
+
+- **CONTADOR** — régimen de IVA (¿responsable o no? umbral 3.500 UVT) y documento tributario a emitir;
+  de ahí depende el copy definitivo de precios/factura (ADR-025).
+- **ABOGADO** — (a) tensión art. 50: ¿basta "datos a solicitud" o hay que publicar dirección de
+  notificación / identificador tributario?; (b) clasificación de las fotos del Estudio como dato
+  sensible/biométrico; (c) base de legitimación de la transferencia internacional a EE.UU.; (d) RNBD
+  ante la SIC; (e) newsletter single vs. double opt-in; (f) quién asume el flete de devolución por
+  retracto (los correos dicen "cliente" per ADR-068, COMPLIANCE dice "proveedor" — reconciliar).
+- **OPERACIÓN** — provisionar y monitorear `habeas-data@`, `retracto@`, `security@` antes de lanzar
+  (hoy varios textos los citan; el canal operativo confirmado es `hola@`); replicar el CMS legal a
+  PROD; renovar `Expires` de `security.txt` antes de 2027-07-01.
+- **DOC** — CLAUDE.md mandato #5 aún dice "Venndelo" mientras el código usa **Aveonline** (ADR-039):
+  confirmar el nombre contractual y actualizar el mandato si corresponde.

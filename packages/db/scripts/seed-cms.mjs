@@ -849,10 +849,10 @@ const settings = [
     category: "EXTERNAL",
   },
   {
-    key: "DPA_VENNDELO_URL",
-    value: "https://venndelo.com/legal",
+    key: "DPA_AVEONLINE_URL",
+    value: "https://www.aveonline.co/",
     valueType: "URL",
-    label: "DPA Venndelo / Coordinadora",
+    label: "DPA Aveonline / Coordinadora",
     category: "EXTERNAL",
   },
   {
@@ -863,10 +863,10 @@ const settings = [
     category: "EXTERNAL",
   },
   {
-    key: "DPA_ANTHROPIC_URL",
-    value: "https://www.anthropic.com/legal/dpa",
+    key: "DPA_GOOGLE_URL",
+    value: "https://cloud.google.com/terms/data-processing-addendum",
     valueType: "URL",
-    label: "DPA Anthropic",
+    label: "DPA Google (Gemini)",
     category: "EXTERNAL",
   },
   {
@@ -876,6 +876,27 @@ const settings = [
     label: "URL de la SIC (gobierno)",
     description: "Aparece en /legal/habeas-data para reclamos.",
     category: "EXTERNAL",
+  },
+  // Identidad del proveedor (persona natural) — Ley 1480 art. 23/50 + Ley 1581 art. 12. Sin cédula
+  // ni dirección exacta (Opción 1). BUSINESS_LEGAL_NAME → footer del sitio; LEGAL_ENTITY_LINE → pie
+  // de los 20 correos transaccionales.
+  {
+    key: "BUSINESS_LEGAL_NAME",
+    value:
+      "Lucams_shop es una marca operada por Lucy Jullieth Hurtado Rodríguez · Persona natural · Bogotá D.C., Colombia",
+    valueType: "TEXT",
+    label: "Identidad del proveedor (footer)",
+    description: "Línea de identidad en el footer. NO incluir cédula ni dirección exacta.",
+    category: "COPYRIGHT",
+  },
+  {
+    key: "LEGAL_ENTITY_LINE",
+    value:
+      "Lucams_shop es una marca operada por Lucy Jullieth Hurtado Rodríguez · Persona natural · Bogotá D.C., Colombia",
+    valueType: "TEXT",
+    label: "Identidad del proveedor (correos)",
+    description: "Línea de identidad al pie de los correos. NO incluir cédula ni dirección exacta.",
+    category: "COPYRIGHT",
   },
 
   // WHATSAPP — Plantillas de mensajes pre-armados

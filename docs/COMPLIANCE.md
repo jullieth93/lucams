@@ -92,9 +92,12 @@ model Consent {
 
 > Texto inicial sugerido. **Revisar con abogado antes del lanzamiento.**
 
+> **Actualizado 2026-07-19 (ADR-072):** la figura jurídica es **persona natural** (Lucy Jullieth Hurtado Rodríguez, Bogotá D.C.), NO S.A.S. El texto legal publicado vive en `packages/db/legal-content/*.md` + los CmsBlock `legal.*`. La cédula y la dirección exacta NO se publican (se dan a solicitud — Opción 1). El texto base histórico de abajo queda solo como referencia de estructura.
+
 ```
-Lucams_shop S.A.S. (NIT: pendiente), responsable del tratamiento de tus datos
-personales, recolecta:
+Lucy Jullieth Hurtado Rodríguez (persona natural), titular de la marca Lucams_shop,
+con domicilio en Bogotá D.C., responsable del tratamiento de tus datos personales,
+recolecta:
 - Identificación: nombre, email, teléfono.
 - Contacto: dirección de envío.
 - Pago: información mínima de la transacción (Wompi maneja los datos sensibles).
@@ -508,9 +511,9 @@ Aunque la Ley 1581 colombiana no exige banner de cookies tan estricto como GDPR,
 | **Supabase**                                    | DB, Auth, Storage                  | EE.UU. (AWS us-east-1 o sa-east-1) | Todos los datos del cliente (RLS aplicado)                   | Consentimiento + ejecución del contrato |
 | **Vercel**                                      | Hosting de la app                  | EE.UU. (edge global)               | Datos en tránsito durante la sesión + logs                   | Idem                                    |
 | **Wompi**                                       | Procesamiento de pagos             | Colombia                           | Datos de la transacción + datos del cliente para anti-fraude | Necesidad contractual                   |
-| **Venndelo / Coordinadora**                     | Logística                          | Colombia                           | Nombre, dirección, teléfono                                  | Necesidad contractual                   |
+| **Aveonline** (agregador) + Coordinadora/otras  | Logística                          | Colombia                           | Nombre, dirección, teléfono                                  | Necesidad contractual                   |
 | **Resend**                                      | Email transaccional                | EE.UU.                             | Email + contenido del mensaje                                | Necesidad contractual                   |
-| **Anthropic**                                   | Asistente IA del estudio           | EE.UU.                             | Prompt del estudio (sin PII directa)                         | Consentimiento explícito                |
+| **Google (Gemini API)**                         | Asistente IA del estudio           | EE.UU.                             | Prompt del estudio (sin PII directa)                         | Consentimiento explícito                |
 | **Cloudflare**                                  | DNS + CDN + Turnstile + R2 backups | Global                             | Datos en tránsito + IP + backups encriptados                 | Idem                                    |
 | **Mi.com.co**                                   | Registrador de dominio             | Colombia                           | Datos del registrante (operador, no cliente)                 | Necesidad contractual                   |
 | **GitHub**                                      | Repositorio de código              | EE.UU.                             | No procesa datos de clientes                                 | —                                       |

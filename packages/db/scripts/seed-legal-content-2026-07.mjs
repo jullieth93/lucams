@@ -122,8 +122,12 @@ if (pv) {
 
 console.log(`\nResumen: ${updated} bloques legales publicados, ${notfound} no encontrados.`);
 console.log("\n⚠️ El caché de Next (unstable_cache tag 'cms') puede servir el body viejo hasta");
-console.log("   revalidateTag('cms') (admin CMS) o purge/redeploy. En dev: make down + rm -rf apps/web/.next + make start-web.");
-console.log("⚠️ Los drafts son base compliant — requieren visto bueno de abogado antes del lanzamiento (ADR-020/072).\n");
+console.log(
+  "   revalidateTag('cms') (admin CMS) o purge/redeploy. En dev: make down + rm -rf apps/web/.next + make start-web.",
+);
+console.log(
+  "⚠️ Los drafts son base compliant — requieren visto bueno de abogado antes del lanzamiento (ADR-020/072).\n",
+);
 
 await prisma.$disconnect();
 process.exit(0);

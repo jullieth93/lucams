@@ -250,13 +250,32 @@ export async function SiteFooter() {
           </div>
         </div>
 
-        {/* Copyright */}
-        <div className="mt-12 flex flex-col items-center justify-between gap-3 border-t border-white/10 pt-6 text-xs text-white/60 md:flex-row">
-          <p>
-            © <CmsSetting settingKey="COPYRIGHT_YEAR" fallback="2026" /> Lucams_shop ·{" "}
-            <CmsSetting settingKey="COPYRIGHT_TAGLINE" fallback="Hecho con 💜 en Bogotá" />
+        {/* Copyright + identidad del proveedor (Ley 1480 art. 23/50) + autoridad de consumidor (SIC) */}
+        <div className="mt-12 border-t border-white/10 pt-6 text-xs text-white/60">
+          {/* Identidad de la persona natural, sin exponer cédula ni dirección exacta (Opción 1).
+              Editable en admin vía BUSINESS_LEGAL_NAME. */}
+          <p className="mb-3 text-center text-[11px] text-white/50 md:text-left">
+            <CmsSetting
+              settingKey="BUSINESS_LEGAL_NAME"
+              fallback="Lucams_shop es una marca operada por Lucy Jullieth Hurtado Rodríguez · Persona natural · Bogotá D.C., Colombia"
+            />
+            {" · "}
+            <a
+              href="https://www.sic.gov.co/"
+              target="_blank"
+              rel="noreferrer"
+              className="underline hover:text-white/80"
+            >
+              SIC (protección al consumidor)
+            </a>
           </p>
-          <p className="font-mono text-[10px] text-white/40">v{buildVersion.slice(0, 7)}</p>
+          <div className="flex flex-col items-center justify-between gap-3 md:flex-row">
+            <p>
+              © <CmsSetting settingKey="COPYRIGHT_YEAR" fallback="2026" /> Lucams_shop ·{" "}
+              <CmsSetting settingKey="COPYRIGHT_TAGLINE" fallback="Hecho con 💜 en Bogotá" />
+            </p>
+            <p className="font-mono text-[10px] text-white/40">v{buildVersion.slice(0, 7)}</p>
+          </div>
         </div>
       </div>
     </footer>
