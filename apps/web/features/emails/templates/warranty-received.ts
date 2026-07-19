@@ -22,7 +22,7 @@ export async function warrantyReceivedEmail(data: WarrantyReceivedData) {
   <strong>Lo que nos contaste:</strong><br>
   <span style="white-space:pre-wrap;color:#3D2E5C;opacity:0.85;">${escapeHtml(data.description)}</span>
 </p>
-<p>Vamos a revisarlo y te escribimos con la solución que corresponda (reparación, cambio o devolución del dinero).</p>
+<p>Lo revisamos y definimos <strong>contigo</strong> la solución —reparación, cambio o devolución del dinero— según lo que prefieras y lo que corresponda por ley (Ley 1480, art. 11).</p>
 <p>Un abrazo,<br>El equipo de Lucams_shop</p>
 `;
   const text = `Recibimos tu reclamo de garantía
@@ -34,7 +34,7 @@ Registramos tu reclamo de garantía para ${data.productName} (pedido ${data.orde
 Lo que nos contaste:
 ${data.description}
 
-Lo revisamos y te escribimos con la solución.
+Lo revisamos y definimos contigo la solución: reparación, cambio o devolución del dinero, según lo que prefieras y lo que corresponda por ley (Ley 1480, art. 11).
 
 Un abrazo,
 El equipo de Lucams_shop`;

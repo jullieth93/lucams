@@ -3,7 +3,10 @@ import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { sendEmail } from "@/lib/resend";
 import { getSettingValue } from "@/lib/cms";
-import { buildCommercialEmailHeaders } from "@/features/newsletter/unsubscribe";
+import {
+  buildCommercialEmailHeaders,
+  encodeUnsubscribeParam,
+} from "@/features/newsletter/unsubscribe";
 import { reviewRequestEmail } from "@/features/emails/templates/review-request";
 
 /*
@@ -73,6 +76,7 @@ export async function sendReviewRequests(
         products,
         // #10 — link a la vista pública por token (invitados sin login); null → /mi-cuenta.
         publicTrackingToken: order.publicAccessToken ?? null,
+        unsubscribeUrl: `${siteUrl}/unsubscribe?u=${encodeUnsubscribeParam(order.email)}`,
       });
       const result = await sendEmail({
         to: order.email,

@@ -5,7 +5,10 @@ import { logger } from "@/lib/logger";
 import { sendEmail } from "@/lib/resend";
 import { getSettingValue } from "@/lib/cms";
 import { peekCartSession } from "@/lib/cart-session";
-import { buildCommercialEmailHeaders } from "@/features/newsletter/unsubscribe";
+import {
+  buildCommercialEmailHeaders,
+  encodeUnsubscribeParam,
+} from "@/features/newsletter/unsubscribe";
 import { cartRecoveryEmail } from "@/features/emails/templates/cart-recovery";
 
 /*
@@ -96,7 +99,11 @@ export async function sendCartRecoveryReminders(
         });
         continue;
       }
-      const tpl = await cartRecoveryEmail({ recoverToken: row.recoverToken, items });
+      const tpl = await cartRecoveryEmail({
+        recoverToken: row.recoverToken,
+        items,
+        unsubscribeUrl: `${siteUrl}/unsubscribe?u=${encodeUnsubscribeParam(row.email)}`,
+      });
       const result = await sendEmail({
         to: row.email,
         subject: tpl.subject,

@@ -9,6 +9,8 @@ import { getSettingValue } from "@/lib/cms";
 export type BackInStockData = {
   productName: string;
   productSlug: string;
+  /** Enlace de baja visible (correo comercial — RFC 8058 + Ley 1581). */
+  unsubscribeUrl?: string;
 };
 
 export async function backInStockEmail(data: BackInStockData) {
@@ -34,6 +36,7 @@ Recibes este correo porque pediste que te avisáramos.`;
     subject: `¡Volvió! ${data.productName} está disponible 🎉`,
     html: await renderEmailLayout({
       preview: `${data.productName} volvió — corre antes de que se agote otra vez.`,
+      unsubscribeUrl: data.unsubscribeUrl,
       bodyHtml,
     }),
     text,

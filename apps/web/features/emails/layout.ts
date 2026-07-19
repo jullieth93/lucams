@@ -28,10 +28,16 @@ const BRAND_CREAM = "#FFF8F0";
 const BRAND_PINK = "#E85B9F";
 
 export async function renderEmailLayout(opts: EmailLayoutOptions): Promise<string> {
-  const [contactEmail, copyrightYear, footerTagline] = await Promise.all([
+  const [contactEmail, copyrightYear, footerTagline, legalEntityLine] = await Promise.all([
     getSettingValue("CONTACT_EMAIL", "hola@lucamsshop.co"),
     getSettingValue("COPYRIGHT_YEAR", String(new Date().getFullYear())),
     getSettingValue("COPYRIGHT_TAGLINE", "Hecho con 💜 en Bogotá"),
+    // Identidad del responsable (Ley 1581 art. 12 / Ley 1480 art. 50) en los 20 correos, sin
+    // exponer cédula ni dirección exacta (Opción 1). Editable en admin.
+    getSettingValue(
+      "LEGAL_ENTITY_LINE",
+      "Lucams_shop es una marca operada por Lucy Jullieth Hurtado Rodríguez · Persona natural · Bogotá D.C., Colombia",
+    ),
   ]);
 
   const previewHtml = opts.preview
@@ -61,6 +67,7 @@ ${opts.bodyHtml}
       <tr><td style="padding:18px 28px;background:${BRAND_CREAM};font-size:12px;line-height:1.5;color:${BRAND_PURPLE_DARK};opacity:0.7;">
         <p style="margin:0 0 6px 0;">¿Dudas? Escríbenos a <a href="mailto:${contactEmail}" style="color:${BRAND_PURPLE};text-decoration:none;">${contactEmail}</a></p>
         <p style="margin:0;">© ${escapeHtml(copyrightYear)} Lucams_shop · ${escapeHtml(footerTagline)}</p>
+        <p style="margin:6px 0 0 0;font-size:11px;">${escapeHtml(legalEntityLine)}</p>
         ${
           opts.unsubscribeUrl
             ? `<p style="margin:6px 0 0 0;font-size:11px;"><a href="${escapeHtml(opts.unsubscribeUrl)}" style="color:${BRAND_PURPLE};text-decoration:underline;">Cancelar suscripción</a> · Ley 1581 de 2012</p>`

@@ -4,6 +4,10 @@ import { logger } from "@/lib/logger";
 import { sendEmail } from "@/lib/resend";
 import { getSettingValue } from "@/lib/cms";
 import { backInStockEmail } from "@/features/emails/templates/back-in-stock";
+import {
+  buildCommercialEmailHeaders,
+  encodeUnsubscribeParam,
+} from "@/features/newsletter/unsubscribe";
 
 /*
  * "Avísame cuando vuelva" (palanca de ingreso, auditoría 2026-07-13). Suscripción por email a un
@@ -101,12 +105,18 @@ export async function sendBackInStockNotifications(
     eligible.push(...list.slice(0, Math.max(0, available)));
   }
 
+  // Correo comercial: aunque es one-shot (solicitado por el titular), Gmail/Yahoo exigen a
+  // remitentes masivos List-Unsubscribe One-Click (RFC 8058) y refuerza el art. 8 lit. e) de la
+  // Ley 1581 (revocación). Header + enlace visible, igual que cart-recovery/review-request.
+  const siteUrl = await getSettingValue("SITE_URL", "https://lucamsshop.co");
   let sent = 0;
   for (const s of eligible) {
     try {
+      const unsubscribeUrl = `${siteUrl}/unsubscribe?u=${encodeUnsubscribeParam(s.email)}`;
       const tpl = await backInStockEmail({
         productName: s.product.name,
         productSlug: s.product.slug,
+        unsubscribeUrl,
       });
       const result = await sendEmail({
         to: s.email,
@@ -114,6 +124,8 @@ export async function sendBackInStockNotifications(
         html: tpl.html,
         text: tpl.text,
         idempotencyKey: `back-in-stock-${s.id}`,
+        commercial: true,
+        headers: buildCommercialEmailHeaders(s.email, siteUrl),
         tags: [{ name: "type", value: "back_in_stock" }],
       });
       // #18 — breaker abierto (skipped:'circuit-open') = fallo transitorio: NO marcar (aviso one-shot)

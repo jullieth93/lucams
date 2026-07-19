@@ -17,6 +17,8 @@ export type ReviewRequestData = {
    * /pedido/<token>; sin token (cliente con cuenta), caemos al histórico de la cuenta.
    */
   publicTrackingToken: string | null;
+  /** Enlace de baja visible (correo comercial). */
+  unsubscribeUrl?: string;
 };
 
 export async function reviewRequestEmail(data: ReviewRequestData) {
@@ -62,6 +64,7 @@ O desde tu pedido: ${orderUrl}
     subject: `${data.customerName}, ¿nos dejas tu reseña? ⭐`,
     html: await renderEmailLayout({
       preview: "Tu opinión nos ayuda un montón — y te toma menos de un minuto.",
+      unsubscribeUrl: data.unsubscribeUrl,
       bodyHtml,
     }),
     text,

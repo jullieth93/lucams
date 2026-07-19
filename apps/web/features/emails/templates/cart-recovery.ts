@@ -10,6 +10,8 @@ import { getSettingValue } from "@/lib/cms";
 export type CartRecoveryData = {
   recoverToken: string;
   items: Array<{ name: string; qty: number }>;
+  /** Enlace de baja visible (correo comercial). */
+  unsubscribeUrl?: string;
 };
 
 export async function cartRecoveryEmail(data: CartRecoveryData) {
@@ -43,6 +45,7 @@ Retoma tu compra: ${recoverUrl}
     subject: "¿Se te quedó algo en el carrito? 🛒",
     html: await renderEmailLayout({
       preview: "Tus imanes todavía te esperan — retoma tu compra en un clic.",
+      unsubscribeUrl: data.unsubscribeUrl,
       bodyHtml,
     }),
     text,
