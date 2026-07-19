@@ -132,7 +132,7 @@ export function PaymentMethodChooser({
             selected={method === "COD"}
             onSelect={() => setMethod("COD")}
             icon={<Wallet className="h-6 w-6" />}
-            title="Pago contra entrega"
+            title="Pago contraentrega"
             desc="Pagas en efectivo al recibir"
           />
         </div>

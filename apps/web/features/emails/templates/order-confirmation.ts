@@ -54,7 +54,7 @@ export async function orderConfirmationEmail(data: OrderConfirmationData) {
   const codCallout = isCod
     ? `
 <div style="margin:14px 0;padding:12px 14px;border:1px solid #FFD93D;background:#FFFBEA;border-radius:10px;">
-  <div style="font-weight:700;color:#3D2E5C;">💵 Pago contra entrega</div>
+  <div style="font-weight:700;color:#3D2E5C;">💵 Pago contraentrega</div>
   <div style="font-size:14px;color:#3D2E5C;">Pagas <strong>${formatCOP(data.total)}</strong> en efectivo cuando el mensajero te entregue el pedido.</div>
 </div>`
     : "";
@@ -104,7 +104,7 @@ Hola ${data.customerName},
 ${
   isCod
     ? `Recibimos tu pedido ${data.orderNumber}.
-💵 Pago contra entrega: pagas ${formatCOP(data.total)} en efectivo al recibir.`
+💵 Pago contraentrega: pagas ${formatCOP(data.total)} en efectivo al recibir.`
     : `Recibimos tu pago para el pedido ${data.orderNumber}.`
 }
 

@@ -196,7 +196,7 @@ Tienes **5 días hábiles** desde la entrega para retractarte sin justificación
 
 Conforme al **artículo 47 numeral 1 de la Ley 1480**, no se acepta retracto sobre productos personalizados conforme a tus especificaciones:
 
-- Foto-imanes con tus fotos
+- Fotoimanes con tus fotos
 - Calendarios con tus 12 fotos
 - Recordatorios de eventos con datos personalizados (cumpleaños, bautizo, matrimonio, etc.)
 - Imanes publicitarios con tu logo o información empresarial
@@ -356,7 +356,7 @@ Archivo machine-readable disponible en [/.well-known/security.txt](/.well-known/
     category: "HOME",
     format: "TEXT",
     description: "Texto descriptivo bajo el título principal del home.",
-    body: "Foto-imanes, recuerdos para eventos, calendarios y planners magnéticos personalizables. Entrega a 1.100+ destinos de Colombia.",
+    body: "Fotoimanes, recuerdos para eventos, calendarios y planners magnéticos personalizables. Entrega a 1.100+ destinos de Colombia.",
   },
   {
     key: "home.hero.cta-primary",
@@ -448,7 +448,7 @@ Archivo machine-readable disponible en [/.well-known/security.txt](/.well-known/
     title: "Paso 3 — Descripción",
     category: "HOME",
     format: "TEXT",
-    body: "Lo fabricamos a mano y te llega en 5-7 días hábiles. Pago contraentrega disponible en 1.100+ destinos.",
+    body: "Lo fabricamos a mano y te llega en 4-9 días hábiles. Pago contraentrega disponible en 1.100+ destinos.",
   },
   {
     key: "home.featured.heading",
@@ -733,7 +733,7 @@ const settings = [
     key: "COD_ENABLED",
     value: "true",
     valueType: "BOOLEAN",
-    label: "Pago contra entrega (efectivo al recibir)",
+    label: "Pago contraentrega (efectivo al recibir)",
     description:
       "Si está activo, en el checkout aparece la opción de pagar en efectivo al recibir (el courier cobra y te remite). Desactívalo para vender solo con pago online (Wompi).",
     category: "COMMERCE",
@@ -803,7 +803,7 @@ const settings = [
   // COMMERCE
   {
     key: "MANUFACTURING_DAYS_RANGE",
-    value: "5-7 días hábiles",
+    value: "4-9 días hábiles",
     valueType: "TEXT",
     label: "Tiempo de fabricación",
     description: "Tiempo que tardan los productos personalizados en fabricarse antes de envío.",
