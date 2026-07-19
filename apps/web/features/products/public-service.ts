@@ -550,6 +550,11 @@ export async function listRelatedProducts(opts: {
       category: { select: { slug: true, name: true, parentId: true } },
       ocasionTags: { select: { ocasionTagId: true } },
       _count: { select: { variants: { where: { deletedAt: null, isActive: true } } } },
+      // #13 — para calcular minVariantPrice + inStock igual que el listado principal.
+      variants: {
+        where: { deletedAt: null, isActive: true },
+        select: { price: true, stock: true },
+      },
     },
   });
 
@@ -575,6 +580,7 @@ export async function listRelatedProducts(opts: {
     images: p.images,
     category: { slug: p.category.slug, name: p.category.name },
     variantCount: p._count.variants,
+    ...relatedCardPricing(p.basePrice, p.variants), // #13 — minVariantPrice + inStock
   }));
 
   if (top.length >= take) return top;
@@ -600,11 +606,31 @@ export async function listRelatedProducts(opts: {
       images: true,
       category: { select: { slug: true, name: true } },
       _count: { select: { variants: { where: { deletedAt: null, isActive: true } } } },
+      variants: {
+        where: { deletedAt: null, isActive: true },
+        select: { price: true, stock: true },
+      },
     },
   });
-  const featured: StorefrontProductCard[] = featuredRaw.map(({ _count, ...p }) => ({
+  const featured: StorefrontProductCard[] = featuredRaw.map(({ _count, variants, ...p }) => ({
     ...p,
     variantCount: _count.variants,
+    ...relatedCardPricing(p.basePrice, variants), // #13
   }));
   return [...top, ...featured];
+}
+
+/** #13 — minVariantPrice + inStock para las cards del strip de relacionados (mismo cómputo que el
+ * listado principal): la card mostraba el precio/estado equivocado por no traer las variantes. */
+function relatedCardPricing(
+  basePrice: number,
+  variants: Array<{ price: number | null; stock: number }>,
+): { minVariantPrice: number; inStock: boolean } {
+  const overridePrices = variants
+    .map((v) => v.price)
+    .filter((price): price is number => price !== null && price > 0);
+  return {
+    minVariantPrice: overridePrices.length > 0 ? Math.min(basePrice, ...overridePrices) : basePrice,
+    inStock: variants.some((v) => v.stock > 0),
+  };
 }

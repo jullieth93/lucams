@@ -60,6 +60,8 @@ export type CatalogProductSummary = {
   maximumQuantity: number | null;
   premadeSurcharge: number;
   variantCount: number;
+  /** #5 — hay al menos una variante activa con stock > 0 (para el badge "Agotado" en las cards). */
+  inStock: boolean;
   minPrice: number;
   maxPrice: number;
   ocasionSlugs: string[];
@@ -278,6 +280,7 @@ function summarizeProduct(p: ProductWithIncludes): CatalogProductSummary {
     maximumQuantity: p.maximumQuantity,
     premadeSurcharge: p.premadeSurcharge,
     variantCount: p.variants.filter((v) => v.isActive && !v.deletedAt).length,
+    inStock: p.variants.some((v) => v.isActive && !v.deletedAt && v.stock > 0), // #5
     minPrice: Math.min(...allPrices),
     maxPrice: Math.max(...allPrices),
     ocasionSlugs: p.ocasionTags.map((t) => t.ocasionTag.slug),
@@ -286,7 +289,12 @@ function summarizeProduct(p: ProductWithIncludes): CatalogProductSummary {
 
 type ProductWithIncludes = Awaited<ReturnType<typeof prisma.product.findFirst>> & {
   category: { slug: string; name: string; parent: { slug: string; name: string } | null };
-  variants: Array<{ price: number | null; isActive: boolean; deletedAt: Date | null }>;
+  variants: Array<{
+    price: number | null;
+    stock: number;
+    isActive: boolean;
+    deletedAt: Date | null;
+  }>;
   ocasionTags: Array<{ ocasionTag: { slug: string } }>;
 };
 
@@ -339,7 +347,7 @@ export const listCatalogProducts = unstable_cache(
         skip: filters.offset ?? 0,
         include: {
           category: { include: { parent: true } },
-          variants: { select: { price: true, isActive: true, deletedAt: true } },
+          variants: { select: { price: true, stock: true, isActive: true, deletedAt: true } },
           ocasionTags: { include: { ocasionTag: { select: { slug: true } } } },
         },
       });
@@ -381,6 +389,7 @@ export const getCatalogProductDetail = unstable_cache(
               name: true,
               description: true,
               price: true,
+              stock: true, // #5 — para inStock consistente en summarizeProduct
               attributes: true,
               isActive: true,
             },
@@ -459,7 +468,11 @@ export const listOcasiones = unstable_cache(
         where: { isActive: true, deletedAt: null },
         orderBy: { order: "asc" },
         include: {
-          _count: { select: { products: true } },
+          // #6 — contar solo productos ACTIVOS no borrados (vía el pivot product), igual que el grid
+          // y que los conteos de categoría; antes contaba todo el pivot y descuadraba con el grid.
+          _count: {
+            select: { products: { where: { product: { isActive: true, deletedAt: null } } } },
+          },
         },
       });
       return ocasiones.map((o) => ({
@@ -484,7 +497,12 @@ export const getOcasionBySlug = unstable_cache(
     try {
       const o = await prisma.ocasionTag.findUnique({
         where: { slug },
-        include: { _count: { select: { products: true } } },
+        // #6 — ver listOcasiones: contar solo productos activos no borrados vía el pivot.
+        include: {
+          _count: {
+            select: { products: { where: { product: { isActive: true, deletedAt: null } } } },
+          },
+        },
       });
       if (!o || o.deletedAt || !o.isActive) return null;
       return {
@@ -560,7 +578,7 @@ export async function recommendProducts(input: RecommendInput): Promise<Recommen
       where,
       include: {
         category: { include: { parent: true } },
-        variants: { select: { price: true, isActive: true, deletedAt: true } },
+        variants: { select: { price: true, stock: true, isActive: true, deletedAt: true } },
         ocasionTags: {
           include: { ocasionTag: { select: { slug: true, name: true } } },
         },
@@ -657,7 +675,7 @@ export const getCatalogFilters = unstable_cache(
         where,
         include: {
           category: { include: { parent: true } },
-          variants: { select: { price: true, isActive: true, deletedAt: true } },
+          variants: { select: { price: true, stock: true, isActive: true, deletedAt: true } },
           ocasionTags: {
             include: { ocasionTag: { select: { slug: true, name: true } } },
           },
@@ -778,7 +796,7 @@ export async function searchCatalog(query: string, limit = 20): Promise<CatalogS
       where: { id: { in: rows.map((r) => r.id) } },
       include: {
         category: { include: { parent: true } },
-        variants: { select: { price: true, isActive: true, deletedAt: true } },
+        variants: { select: { price: true, stock: true, isActive: true, deletedAt: true } },
         ocasionTags: { include: { ocasionTag: { select: { slug: true } } } },
       },
     });
@@ -936,7 +954,7 @@ export async function getRelatedProducts(
       take: 30,
       include: {
         category: { include: { parent: true } },
-        variants: { select: { price: true, isActive: true, deletedAt: true } },
+        variants: { select: { price: true, stock: true, isActive: true, deletedAt: true } },
         ocasionTags: {
           include: { ocasionTag: { select: { slug: true, name: true } } },
         },

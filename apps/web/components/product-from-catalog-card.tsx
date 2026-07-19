@@ -27,6 +27,7 @@ export function ProductFromCatalogCard({
     product.minPrice === product.maxPrice
       ? formatCOP(product.minPrice)
       : `${formatCOP(product.minPrice)} – ${formatCOP(product.maxPrice)}`;
+  const outOfStock = !product.inStock; // #5 — misma señal de agotado que ProductCard
 
   return (
     <Link
@@ -42,12 +43,21 @@ export function ProductFromCatalogCard({
             fill
             sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
             loading="lazy"
-            className="object-cover transition-transform duration-300 group-hover:scale-105"
+            className={`object-cover transition-transform duration-300 group-hover:scale-105 ${
+              outOfStock ? "opacity-50 grayscale" : ""
+            }`}
           />
         ) : (
           <div className="flex h-full w-full items-center justify-center">
             <Sparkles className="text-brand-muted h-12 w-12" />
           </div>
+        )}
+
+        {/* #5 — overlay "Agotado" idéntico al ProductCard. */}
+        {outOfStock && (
+          <span className="absolute inset-x-0 top-1/2 -translate-y-1/2 bg-black/45 py-1 text-center text-xs font-bold tracking-wider text-white uppercase backdrop-blur-[1px]">
+            Agotado
+          </span>
         )}
 
         {product.isPersonalizable && (
