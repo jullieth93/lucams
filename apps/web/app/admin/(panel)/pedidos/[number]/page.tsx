@@ -175,11 +175,14 @@ export default async function AdminPedidoDetallePage({
                         </span>
                       </div>
                       <div className="min-w-0 flex-1">
+                        {/* #26 — nombre del producto (+ variante) legible; el SKU pasa a subtítulo. */}
                         <div className="text-brand-purple-dark text-sm font-semibold">
-                          {it.variant.sku}
+                          {it.variant.product.name}
+                          <span className="text-brand-muted font-normal"> · {it.variant.name}</span>
                         </div>
                         <div className="text-brand-muted text-xs">
-                          {formatCOP(it.unitPrice)} c/u · qty {it.qty}
+                          {formatCOP(it.unitPrice)} c/u · qty {it.qty} ·{" "}
+                          <span className="font-mono">{it.variant.sku}</span>
                         </div>
                         {it.design?.productionUrls && it.design.productionUrls.length > 0 ? (
                           <div className="mt-1.5">

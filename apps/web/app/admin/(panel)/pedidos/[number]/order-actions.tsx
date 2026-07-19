@@ -189,7 +189,15 @@ export function OrderActions({
             />
             <p className="text-[11px] text-rose-800">
               ⚠️ Marca la orden como <strong>REFUNDED</strong> y revierte el stock.{" "}
-              <strong>El dinero se emite manualmente en Wompi.</strong>
+              {/* #24 — en contraentrega no hay transacción Wompi; el reembolso es por transferencia. */}
+              {isCod ? (
+                <strong>
+                  Devuélvele el dinero al cliente por transferencia bancaria (pagó en efectivo al
+                  mensajero — no hay transacción en Wompi).
+                </strong>
+              ) : (
+                <strong>El dinero se emite manualmente en Wompi.</strong>
+              )}
             </p>
             <Button
               type="submit"

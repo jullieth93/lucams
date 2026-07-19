@@ -628,7 +628,17 @@ export async function getOrder(idOrNumber: string) {
     include: {
       items: {
         include: {
-          variant: { select: { id: true, sku: true, productId: true, price: true } },
+          variant: {
+            // #26 — nombre de producto + variante para titular el item (antes solo el SKU crudo).
+            select: {
+              id: true,
+              sku: true,
+              name: true,
+              productId: true,
+              price: true,
+              product: { select: { name: true } },
+            },
+          },
           // productionUrls: paths de los PNGs 300 DPI para imprenta (ADR-063 T1). El admin los
           // descarga desde el detalle del pedido vía signed URLs. moderationStatus: para no
           // producir diseños sin aprobar (ADR-062 P0-2).

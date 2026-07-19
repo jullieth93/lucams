@@ -7,6 +7,7 @@ import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { recordAdminAction } from "@/lib/admin-audit";
 import { processPaidOrder } from "@/features/orders/saga";
 import { refundOrder, transitionOrder } from "@/features/orders/service";
+import { orderStatusLabel } from "@/features/orders/order-status-display";
 import { sendOrderShipped, sendOrderDelivered, sendOrderCancelled } from "@/features/orders/emails";
 import { orderHasUnmoderatedDesigns } from "@/features/moderation/service";
 import { formatCOP } from "@/lib/format";
@@ -114,7 +115,8 @@ export async function transitionOrderAction(
     });
     revalidatePath("/admin/pedidos");
     revalidatePath(`/admin/pedidos/[number]`, "page");
-    return { success: `Estado cambiado a ${to}` };
+    // #29 — mostrar la etiqueta en español ("Entregado"), no el enum crudo ("DELIVERED").
+    return { success: `Estado cambiado a ${orderStatusLabel(to)}` };
   } catch (err) {
     logger.warn({
       event: "admin.order.transition_fail",
