@@ -11,6 +11,7 @@
  */
 
 import { redirect } from "next/navigation";
+import { headers } from "next/headers";
 import { logoutAction } from "@/app/auth/logout/actions";
 import { BrandMark } from "@/components/brand-mark";
 import { Button } from "@/components/ui/button";
@@ -19,7 +20,12 @@ import { AccountNav } from "./account-nav";
 
 export default async function MiCuentaLayout({ children }: { children: React.ReactNode }) {
   const session = await getCurrentCustomer();
-  if (!session) redirect("/login?next=/mi-cuenta");
+  if (!session) {
+    // #4 — preservar el deep link COMPLETO (ej. /mi-cuenta/pedidos/LC-1001) tras el login, no
+    // siempre /mi-cuenta. Mismo patrón que el guard del admin (x-pathname lo pone el middleware).
+    const path = (await headers()).get("x-pathname") ?? "/mi-cuenta";
+    redirect(`/login?next=${encodeURIComponent(path)}`);
+  }
 
   return (
     <div className="bg-brand-cream flex min-h-screen flex-col">
