@@ -13,6 +13,22 @@
 
 ## Resumen actual
 
+**✅ BACKLOG AUDITORÍA v3 — TANDA 8 COMPLETA + PLAN DE VALIDACIÓN GUI (2026-07-19).** Los 31 findings de descubrimiento (recomendador, reseñas, SEO/OG, redirects) se re-validaron por workflow (25 VALID + 2 PARTIALLY_FIXED + 3 ALREADY_FIXED + 1 agente fallido recuperado a mano). **Los 27 accionables implementados, certificados (tsc+lint+prettier+tests) y pusheados** en 7 batches por afinidad:
+
+- **Batch A** (`aca912d`) recomendador lógica: #1 presupuesto = filtro duro (overlap del rango completo), #2 destinatario por token (no substring, sin falso positivo "mi"⊂"familiar", etiquetas legibles), #3 ocasiones vacías ocultas, #5 agotados despriorizados, #9 CTA "Personalízalo" en cards, #11 pool determinista. +tests recommend 7/7. Verificado por API.
+- **Batch B** (`1bbf186`) wizard UX/estado: #6 a11y (foco, aria-pressed, live regions), #7 empty state kawaii con 3 salidas reales, #10 estado en la URL (deep-link + rehidratación). Extraído `lib/recomendador-options.ts`. **Verificado en Chromium** (empty state con mascota, sync de URL, deep-link a paso 2, CTA Estudio).
+- **Batch C** (`eac02d8`) reseñas storefront: #12 textarea controlado (no pierde el comentario al fallar), #16 encabezado usa el agregado real (== JSON-LD), #19 gate de compra visible (4 estados). Shared const `REVIEWABLE_ORDER_STATUSES`.
+- **Batch D** (`2531d37`) reseñas admin: #13 `?productId=` honrado (filtro pegajoso + chip), #14 botón "Rechazar" no-op retirado (sin schema).
+- **Batch E** (`3c2450c`) reseñas datos/tests: #17 índice único parcial (migración aplicada) + captura P2002, #18 cron excluye soft-borrados, #20 17 AdminUser residuales barridos + cleanup endurecido, #21 **2 suites de integración nuevas** (service 11 + actions 5 = 16 tests verdes).
+- **Batch F** (`03c16f6`) SEO/OG: #22 sitemap completo, #23 canonical de subcategoría (padre real + redirect + noindex), #25 og:image en landings (patrón `parent`), #26 **OG real 1200×630 con next/og** (reemplaza copia 468px), #27 títulos sin marca duplicada, #28 URL base única (`getCanonicalSiteUrl`), #31 **3 íconos PWA reales** (192/512/maskable). Verificado por curl + Chromium.
+- **Batch G** (`fa1e883`) redirects: #24 anti-bucle/cadena + anti-colisión con rutas vivas, #29 fromPath case-insensitive (write+read), #30 preserva UTM en el redirect. +proxy 18/18, +redirects 69/69.
+
+**📋 Entregable final:** `docs/audits/2026-07-19-plan-validacion-gui.md` — checklist en tuteo para que Lucy valide visualmente Tandas 4-8 + FB1-FB5, por bloques con prioridad 🔴🟡🟢 y marca 📱 donde aplica.
+
+**⏳ Pendiente (depende de decisiones de Lucy):** figura jurídica (legales T6 #15/#16), Daviplata en Wompi (#31), página `/rastrear` (#14), pieza mayor #1 (snapshot OrderItem + ADR). Además el pulido menor de T5 (#16/#22/#26) y el tail de a11y/tests de T7.
+
+---
+
 **🧹 🔄 BACKLOG AUDITORÍA v3 — TANDAS 6 y 7 EN CURSO (2026-07-19).** Validadas por workflow (Tanda 6: 21 vigentes de 31; Tanda 7: 28 de 29). Implementado y pusheado, cada uno certificado (tsc+lint+prettier):
 
 - **Tanda 6 (cuenta/nav/copy)** — 9 de 21: **#2** contraentrega ya no dice "Pagado" (dice "Confirmado" + aviso persistente de efectivo, en guest + mi-cuenta) · **#9** transportadora legible (`aff6b7f`) · **#12/#22** entrega unificada a "4-9 días" · **#28** "Fotoimanes" · **#26** "contraentrega" (`8f99644`) · **#6** copy de recuperación en futuro + código · **#7** saludos sin género · **#18** breadcrumbs de marca (`6eca16c`).
