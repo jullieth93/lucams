@@ -14,6 +14,7 @@ import { Suspense, useMemo, useRef } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { OrbitControls, RoundedBox, ContactShadows, useTexture, Center } from "@react-three/drei";
 import { FitCamera } from "./fit-camera";
+import { StudioEnvironment } from "./studio-3d-environment";
 import * as THREE from "three";
 import type { Magnet3D } from "./fridge-3d-view";
 
@@ -140,15 +141,18 @@ function Scene({ magnets, cols, style }: { magnets: Magnet3D[]; cols: number; st
         <meshStandardMaterial color={WALL_COLOR} roughness={1} metalness={0} />
       </mesh>
 
-      <hemisphereLight args={["#fff6ea", "#e5dccd", 0.6]} />
-      <ambientLight intensity={0.42} />
+      {/* FB5 — env-map procedural para reflejos PBR (marco del tablero, fichas). Baja el ambiente
+        directo porque el entorno ya aporta. */}
+      <StudioEnvironment intensity={0.9} />
+      <hemisphereLight args={["#fff6ea", "#e5dccd", 0.35]} />
+      <ambientLight intensity={0.24} />
       <directionalLight
         position={[4, 6, 8]}
-        intensity={1.25}
+        intensity={1.0}
         castShadow
         shadow-mapSize={[2048, 2048]}
       />
-      <directionalLight position={[-5, 2, 5]} intensity={0.4} />
+      <directionalLight position={[-5, 2, 5]} intensity={0.3} />
 
       <Center>
         <Floating>

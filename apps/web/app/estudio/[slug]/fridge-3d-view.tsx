@@ -29,6 +29,7 @@ import { Suspense, useMemo } from "react";
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls, RoundedBox, ContactShadows, useTexture, Center } from "@react-three/drei";
 import { FitCamera } from "./fit-camera";
+import { StudioEnvironment, StudioBackdrop } from "./studio-3d-environment";
 import * as THREE from "three";
 
 export type Magnet3D = {
@@ -135,7 +136,12 @@ function Handle({ doorW, centerY, handleH }: { doorW: number; centerY: number; h
         position={[x, centerY, DOOR_FACE_Z + 0.055]}
         castShadow
       >
-        <meshStandardMaterial color={HANDLE_COLOR} roughness={0.22} metalness={0.65} />
+        <meshStandardMaterial
+          color={HANDLE_COLOR}
+          roughness={0.2}
+          metalness={0.7}
+          envMapIntensity={1.9}
+        />
       </RoundedBox>
     </group>
   );
@@ -154,7 +160,12 @@ function Door({ width, height, centerY }: { width: number; height: number; cente
         castShadow
         receiveShadow
       >
-        <meshStandardMaterial color={DOOR_COLOR} roughness={0.36} metalness={0.34} />
+        <meshStandardMaterial
+          color={DOOR_COLOR}
+          roughness={0.28}
+          metalness={0.42}
+          envMapIntensity={1.5}
+        />
       </RoundedBox>
       {/* Panel interno con bisel: apenas proud + un pelo más oscuro → el escalón lee como un
           groove perimetral (detalle de nevera real, sin texturas). */}
@@ -165,7 +176,12 @@ function Door({ width, height, centerY }: { width: number; height: number; cente
         position={[0, centerY, DOOR_FACE_Z + 0.012]}
         receiveShadow
       >
-        <meshStandardMaterial color={PANEL_COLOR} roughness={0.42} metalness={0.3} />
+        <meshStandardMaterial
+          color={PANEL_COLOR}
+          roughness={0.36}
+          metalness={0.34}
+          envMapIntensity={1.4}
+        />
       </RoundedBox>
       <Handle doorW={width} centerY={centerY} handleH={height * 0.7} />
     </group>
@@ -186,7 +202,12 @@ function Fridge() {
         castShadow
         receiveShadow
       >
-        <meshStandardMaterial color={BODY_COLOR} roughness={0.4} metalness={0.28} />
+        <meshStandardMaterial
+          color={BODY_COLOR}
+          roughness={0.34}
+          metalness={0.34}
+          envMapIntensity={1.4}
+        />
       </RoundedBox>
 
       {/* Junta/sello oscuro entre freezer y refrigerador */}
@@ -251,17 +272,20 @@ function Magnets({ magnets, cols }: FridgeView3DProps) {
 function Scene({ magnets, cols }: FridgeView3DProps) {
   return (
     <>
-      {/* Iluminación procedural para metal satinado sin env-map (CSP): hemisphere + key + fill + rim. */}
-      <hemisphereLight args={["#ffffff", "#cfc9c2", 0.55]} />
-      <ambientLight intensity={0.35} />
+      {/* FB5 — env-map procedural (reflejos PBR reales) + backdrop de estudio (contexto/asiento). La
+        iluminación directa baja porque el entorno ya aporta ambiente; el key mantiene el brillo y la
+        sombra proyectada. */}
+      <StudioEnvironment intensity={1} />
+      <StudioBackdrop position={[0, -FRIDGE_H / 2 - 0.34, -5]} scale={[42, 24, 9]} />
+      <hemisphereLight args={["#ffffff", "#cfc9c2", 0.28]} />
+      <ambientLight intensity={0.18} />
       <directionalLight
         position={[5, 8, 7]}
-        intensity={1.5}
+        intensity={1.15}
         castShadow
         shadow-mapSize={[2048, 2048]}
       />
-      <directionalLight position={[-6, 3, 4]} intensity={0.5} />
-      <directionalLight position={[0, 2, -6]} intensity={0.35} />
+      <directionalLight position={[-6, 3, 4]} intensity={0.3} />
 
       <Center>
         <group>
@@ -272,8 +296,8 @@ function Scene({ magnets, cols }: FridgeView3DProps) {
 
       <ContactShadows
         position={[0, -FRIDGE_H / 2 - 0.34, 0]}
-        opacity={0.42}
-        blur={2.4}
+        opacity={0.5}
+        blur={2.8}
         scale={16}
         far={6}
       />

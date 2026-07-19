@@ -15,6 +15,7 @@ import { Suspense, useMemo, useRef } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { OrbitControls, RoundedBox, ContactShadows, useTexture, Center } from "@react-three/drei";
 import { FitCamera } from "./fit-camera";
+import { StudioEnvironment, StudioBackdrop } from "./studio-3d-environment";
 import * as THREE from "three";
 import type { Magnet3D } from "./fridge-3d-view";
 
@@ -123,15 +124,18 @@ function Floating({ children }: { children: React.ReactNode }) {
 function Scene({ bookmarks }: { bookmarks: Magnet3D[] }) {
   return (
     <>
-      <hemisphereLight args={["#fff6e8", "#d8cbb8", 0.6]} />
-      <ambientLight intensity={0.4} />
+      {/* FB5 — env-map procedural (reflejos en tapa/marcadores) + backdrop de estudio (contexto). */}
+      <StudioEnvironment intensity={0.95} />
+      <StudioBackdrop position={[0, -BOOK_H / 2 - 0.3, -5]} scale={[40, 22, 8]} />
+      <hemisphereLight args={["#fff6e8", "#d8cbb8", 0.32]} />
+      <ambientLight intensity={0.22} />
       <directionalLight
         position={[4, 7, 8]}
-        intensity={1.35}
+        intensity={1.05}
         castShadow
         shadow-mapSize={[2048, 2048]}
       />
-      <directionalLight position={[-5, 3, 4]} intensity={0.4} />
+      <directionalLight position={[-5, 3, 4]} intensity={0.3} />
 
       <Center>
         <Floating>
