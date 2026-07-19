@@ -17,8 +17,12 @@ import { rateLimit } from "@/lib/rate-limit";
 import { emailKey, ipKey } from "@/lib/rate-limit-keys";
 import { verifyTurnstileToken } from "@/lib/turnstile";
 import { sendEmail } from "@/lib/resend";
+import { getSettingValue } from "@/lib/cms";
 import { newsletterWelcomeEmail } from "@/features/emails/templates/newsletter-welcome";
-import { computeUnsubscribeToken } from "@/features/newsletter/unsubscribe";
+import {
+  buildCommercialEmailHeaders,
+  computeUnsubscribeToken,
+} from "@/features/newsletter/unsubscribe";
 import { getClientIp } from "@/lib/client-ip";
 
 export type NewsletterFormState = {
@@ -97,6 +101,7 @@ export async function subscribeNewsletterAction(
     // enviar la respuesta, garantizando que el correo de bienvenida se envíe (auditoría v3 · #14).
     after(async () => {
       const tpl = await newsletterWelcomeEmail({ email, unsubscribeToken });
+      const siteUrl = await getSettingValue("SITE_URL", "https://lucamsshop.co");
       await sendEmail({
         to: email,
         subject: tpl.subject,
@@ -104,6 +109,9 @@ export async function subscribeNewsletterAction(
         text: tpl.text,
         idempotencyKey: `newsletter:welcome:${unsubscribeToken}`,
         tags: [{ name: "kind", value: "newsletter-welcome" }],
+        // #7/#8 — newsletter COMERCIAL: One-Click unsubscribe en header + supresión de rebotados.
+        commercial: true,
+        headers: buildCommercialEmailHeaders(email, siteUrl),
       });
     });
   }

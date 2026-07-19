@@ -18,7 +18,7 @@ import "server-only";
 import { prisma, Prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import type { RetractStatus } from "@lucams/db";
-import { sendRetractApproved, sendRetractRefunded } from "./emails";
+import { sendRetractApproved, sendRetractRejected, sendRetractRefunded } from "./emails";
 
 export const RETRACT_WINDOW_BUSINESS_DAYS = 5;
 
@@ -280,6 +280,8 @@ export async function rejectRetract(id: string, adminId: string, note: string): 
       processedBy: adminId,
     },
   });
+  // #2 — avisar al cliente con el motivo (antes pasaba a REJECTED en silencio).
+  await sendRetractRejected(id);
   logger.info({ event: "retract.rejected", id, adminId });
 }
 

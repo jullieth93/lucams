@@ -792,11 +792,25 @@ describe("designRejectedEmail (moderación P0-2)", () => {
     customerName: "Ana",
     productName: "Fotoimán cuadrado",
     reason: "La foto contiene contenido de terceros",
+    publicTrackingToken: null,
   };
 
   it("subject lleva el número de pedido", async () => {
     const t = await designRejectedEmail(data);
     expect(t.subject).toContain("LM-0007");
+  });
+
+  it("#10 con publicTrackingToken el link apunta a la vista guest /pedido/<token>", async () => {
+    const t = await designRejectedEmail({ ...data, publicTrackingToken: "GUESTTOK" });
+    expect(t.html).toContain(`${SITE_URL}/pedido/GUESTTOK`);
+    expect(t.text).toContain(`${SITE_URL}/pedido/GUESTTOK`);
+    expect(t.html).not.toContain("/mi-cuenta/pedidos");
+  });
+
+  it("#10 sin token cae a /mi-cuenta/pedidos (cliente con cuenta)", async () => {
+    const t = await designRejectedEmail(data);
+    expect(t.html).toContain(`${SITE_URL}/mi-cuenta/pedidos`);
+    expect(t.html).not.toContain("/pedido/");
   });
 
   it("HTML incluye nombre, producto, número de pedido y motivo", async () => {

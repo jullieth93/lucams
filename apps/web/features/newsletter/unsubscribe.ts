@@ -57,6 +57,23 @@ export function decodeUnsubscribeParam(u: string): { email: string; token: strin
   return { email, token };
 }
 
+/**
+ * #7 — headers List-Unsubscribe / List-Unsubscribe-Post (RFC 2369 + RFC 8058) para emails COMERCIALES.
+ * Gmail/Yahoo exigen One-Click a quien envía en volumen: el cliente de correo hace POST al endpoint
+ * con `List-Unsubscribe=One-Click` y damos de baja sin más pasos. El link https apunta al endpoint
+ * POST /api/unsubscribe con el param opaco `u` (email no en claro).
+ */
+export function buildCommercialEmailHeaders(
+  email: string,
+  siteUrl: string,
+): Record<string, string> {
+  const u = encodeUnsubscribeParam(email);
+  return {
+    "List-Unsubscribe": `<${siteUrl}/api/unsubscribe?u=${u}>`,
+    "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+  };
+}
+
 /** Verificación timing-safe del token contra el email. */
 export function verifyUnsubscribeToken(email: string, token: string): boolean {
   const expected = computeUnsubscribeToken(email);

@@ -11,10 +11,19 @@ export type ReviewRequestData = {
   orderNumber: string;
   customerName: string;
   products: Array<{ name: string; slug: string }>;
+  /**
+   * #10 — token de acceso público del pedido. Un pedido de INVITADO no tiene login → el link a
+   * /mi-cuenta/pedidos moriría en el muro de autenticación. Con token, apuntamos a la vista pública
+   * /pedido/<token>; sin token (cliente con cuenta), caemos al histórico de la cuenta.
+   */
+  publicTrackingToken: string | null;
 };
 
 export async function reviewRequestEmail(data: ReviewRequestData) {
   const siteUrl = await getSettingValue("SITE_URL", "https://lucamsshop.co");
+  const orderUrl = data.publicTrackingToken
+    ? `${siteUrl}/pedido/${data.publicTrackingToken}`
+    : `${siteUrl}/mi-cuenta/pedidos`;
 
   // Lista de productos con link directo a su ficha (donde está el formulario de reseña).
   const productList = data.products
@@ -32,7 +41,7 @@ export async function reviewRequestEmail(data: ReviewRequestData) {
 <p>Hola ${escapeHtml(data.customerName)}, ya pasó una semanita desde que te llegó tu pedido <strong>${escapeHtml(data.orderNumber)}</strong>. ¡Esperamos que te encanten!</p>
 <p style="margin-top:14px;"><strong>Tu opinión nos ayuda un montón</strong> — y a otras personas a decidir. Te toma menos de un minuto:</p>
 <ul style="padding-left:18px;color:#3D2E5C;">${productList}</ul>
-${ctaButton(`${siteUrl}/mi-cuenta/pedidos`, "Dejar mi reseña ⭐")}
+${ctaButton(orderUrl, "Dejar mi reseña ⭐")}
 <p style="font-size:13px;color:#3D2E5C;opacity:0.65;margin-top:18px;">¿Algo no salió como esperabas? Responde este correo o escríbenos por WhatsApp y lo resolvemos. 💜</p>
 `;
 
@@ -45,7 +54,7 @@ Ya pasó una semana desde que te llegó tu pedido ${data.orderNumber}. ¡Esperam
 Tu opinión nos ayuda un montón (y a otras personas a decidir). Déjanos tu reseña:
 ${productListText}
 
-O desde tus pedidos: ${siteUrl}/mi-cuenta/pedidos
+O desde tu pedido: ${orderUrl}
 
 ¿Algo no salió como esperabas? Responde este correo o escríbenos por WhatsApp.`;
 

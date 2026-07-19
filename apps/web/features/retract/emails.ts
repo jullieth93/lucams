@@ -9,6 +9,7 @@ import { sendEmail } from "@/lib/resend";
 import { getSettingValue } from "@/lib/cms";
 import { retractReceivedEmail } from "@/features/emails/templates/retract-received";
 import { retractApprovedEmail } from "@/features/emails/templates/retract-approved";
+import { retractRejectedEmail } from "@/features/emails/templates/retract-rejected";
 import { retractRefundedEmail } from "@/features/emails/templates/retract-refunded";
 
 function escapeHtml(s: string): string {
@@ -26,6 +27,7 @@ type Loaded = {
   productName: string;
   refundAmount: number;
   refundMethod: string | null;
+  rejectionNote: string | null;
 };
 
 async function loadRetract(id: string): Promise<Loaded | null> {
@@ -34,6 +36,7 @@ async function loadRetract(id: string): Promise<Loaded | null> {
     select: {
       refundAmount: true,
       refundMethod: true,
+      rejectionNote: true,
       orderItem: {
         select: {
           variant: { select: { product: { select: { name: true } } } },
@@ -51,6 +54,7 @@ async function loadRetract(id: string): Promise<Loaded | null> {
     productName: rr.orderItem.variant.product.name,
     refundAmount: rr.refundAmount,
     refundMethod: rr.refundMethod,
+    rejectionNote: rr.rejectionNote,
   };
 }
 
@@ -132,6 +136,48 @@ export async function sendRetractApproved(id: string): Promise<void> {
   } catch (err) {
     logger.error({
       event: "retract.email.approved.fail",
+      id,
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
+
+/**
+ * #2 (auditoría v3) — al RECHAZAR: avisar al cliente con el motivo. Antes pasaba a REJECTED en
+ * silencio y solo se enteraba entrando a mi-cuenta. Best-effort: captura sus errores; no bloquea la
+ * acción del admin.
+ */
+export async function sendRetractRejected(id: string): Promise<void> {
+  try {
+    const d = await loadRetract(id);
+    if (!d) return;
+    const tpl = await retractRejectedEmail({
+      orderNumber: d.orderNumber,
+      customerName: d.customerName,
+      productName: d.productName,
+      // El motivo es obligatorio al rechazar (rejectRetract exige note); fallback defensivo por si
+      // algún registro antiguo lo tuviera null.
+      rejectionNote: d.rejectionNote ?? "No cumple las condiciones del derecho de retracto.",
+    });
+    const result = await sendEmail({
+      to: d.email,
+      subject: tpl.subject,
+      html: tpl.html,
+      text: tpl.text,
+      idempotencyKey: `retract-${id}-rejected`,
+      tags: [
+        { name: "type", value: "retract_rejected" },
+        { name: "order_number", value: d.orderNumber },
+      ],
+    });
+    logger.info({
+      event: "retract.email.rejected.sent",
+      id,
+      result: result.sent ? "ok" : `skip:${result.reason}`,
+    });
+  } catch (err) {
+    logger.error({
+      event: "retract.email.rejected.fail",
       id,
       err: err instanceof Error ? err.message : String(err),
     });

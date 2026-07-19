@@ -3,7 +3,9 @@ import crypto from "node:crypto";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { sendEmail } from "@/lib/resend";
+import { getSettingValue } from "@/lib/cms";
 import { peekCartSession } from "@/lib/cart-session";
+import { buildCommercialEmailHeaders } from "@/features/newsletter/unsubscribe";
 import { cartRecoveryEmail } from "@/features/emails/templates/cart-recovery";
 
 /*
@@ -73,6 +75,8 @@ export async function sendCartRecoveryReminders(
     },
   });
 
+  // #7 — base para el link de baja del header List-Unsubscribe (una vez por corrida, cacheado).
+  const siteUrl = await getSettingValue("SITE_URL", "https://lucamsshop.co");
   let sent = 0;
   let recovered = 0;
   for (const row of rows) {
@@ -100,6 +104,9 @@ export async function sendCartRecoveryReminders(
         text: tpl.text,
         idempotencyKey: `cart-recovery-${row.id}`,
         tags: [{ name: "type", value: "cart_recovery" }],
+        // #7/#8 — recordatorio COMERCIAL: se suprime si rebotó/quejó + lleva One-Click unsubscribe.
+        commercial: true,
+        headers: buildCommercialEmailHeaders(row.email, siteUrl),
       });
       // #18 — el breaker de Resend abierto devuelve skipped:'circuit-open' (fallo TRANSITORIO): NO
       // marcar (el recordatorio es one-shot; se perdería) y cortar el batch (el resto también caería

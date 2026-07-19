@@ -36,6 +36,7 @@ vi.mock("@/lib/cms", () => ({
 
 import { refundIssuedEmail } from "./refund-issued";
 import { retractApprovedEmail } from "./retract-approved";
+import { retractRejectedEmail } from "./retract-rejected";
 import { retractRefundedEmail } from "./retract-refunded";
 import { orderCancelledEmail } from "./order-cancelled";
 import { reviewRequestEmail } from "./review-request";
@@ -172,6 +173,57 @@ describe("retractApprovedEmail", () => {
 });
 
 // =============================================================================
+// retract-rejected (retracto rechazado — auditoría v3 · #2)
+// =============================================================================
+describe("retractRejectedEmail", () => {
+  const base = {
+    orderNumber: "LS-9001",
+    customerName: "Camila",
+    productName: "Set personalizado",
+    rejectionNote: "El producto es personalizado y no aplica retracto por ley.",
+  };
+
+  it("subject lleva el número de pedido", async () => {
+    const r = await retractRejectedEmail({ ...base, orderNumber: "LS-9090" });
+    expect(r.subject).toBe("Sobre tu solicitud de retracto — pedido LS-9090");
+  });
+
+  it("HTML incluye nombre, producto, pedido y el motivo del rechazo", async () => {
+    const r = await retractRejectedEmail(base);
+    expect(r.html).toContain("Camila");
+    expect(r.html).toContain("Set personalizado");
+    expect(r.html).toContain("LS-9001");
+    expect(r.html).toContain("El producto es personalizado y no aplica retracto por ley.");
+  });
+
+  it("arma el link de WhatsApp con solo los dígitos del WA_NUMBER (setting)", async () => {
+    const r = await retractRejectedEmail(base);
+    expect(r.html).toContain("https://wa.me/573208873826");
+    expect(r.text).toContain("https://wa.me/573208873826");
+  });
+
+  it("SEGURIDAD: escapa markup en el motivo (viene del panel admin)", async () => {
+    const r = await retractRejectedEmail({
+      ...base,
+      rejectionNote: '<script>alert("x")</script> & fuera de plazo',
+    });
+    expect(r.html).toContain("&lt;script&gt;");
+    expect(r.html).not.toContain('<script>alert("x")');
+  });
+
+  it("NO lleva link de baja (es transaccional, no comercial)", async () => {
+    const r = await retractRejectedEmail(base);
+    expect(r.html).not.toContain("List-Unsubscribe");
+    expect(r.html.toLowerCase()).not.toContain("darte de baja");
+  });
+
+  it("IDEMPOTENCIA: mismo input → misma salida", async () => {
+    const [a, b] = await Promise.all([retractRejectedEmail(base), retractRejectedEmail(base)]);
+    expect(a).toEqual(b);
+  });
+});
+
+// =============================================================================
 // retract-refunded (reembolso de retracto procesado)
 // =============================================================================
 describe("retractRefundedEmail", () => {
@@ -295,11 +347,25 @@ describe("reviewRequestEmail", () => {
       { name: "Fotoimanes Cuadrados", slug: "fotoimanes-cuadrados" },
       { name: "Set Corazón", slug: "set-corazon" },
     ],
+    publicTrackingToken: null,
   };
 
   it("subject personaliza con el nombre", async () => {
     const r = await reviewRequestEmail(base);
     expect(r.subject).toBe("Lucía, ¿nos dejas tu reseña? ⭐");
+  });
+
+  it("#10 con publicTrackingToken el CTA de reseña apunta a la vista guest /pedido/<token>", async () => {
+    const r = await reviewRequestEmail({ ...base, publicTrackingToken: "REVTOK" });
+    expect(r.html).toContain(`${SITE_URL}/pedido/REVTOK`);
+    expect(r.text).toContain(`${SITE_URL}/pedido/REVTOK`);
+    expect(r.html).not.toContain("/mi-cuenta/pedidos");
+  });
+
+  it("#10 sin token el CTA cae a /mi-cuenta/pedidos (cliente con cuenta)", async () => {
+    const r = await reviewRequestEmail(base);
+    expect(r.html).toContain(`${SITE_URL}/mi-cuenta/pedidos`);
+    expect(r.html).not.toContain("/pedido/");
   });
 
   it("HTML lista cada producto con link a su ficha (encodeURIComponent del slug)", async () => {

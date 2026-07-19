@@ -30,6 +30,7 @@
 
 import "server-only";
 import { logger } from "@/lib/logger";
+import { prisma } from "@/lib/db";
 
 const RESEND_URL = "https://api.resend.com/emails";
 const RESEND_TIMEOUT_MS = 15_000;
@@ -64,6 +65,14 @@ export type SendEmailInput = {
   replyTo?: string;
   idempotencyKey?: string;
   tags?: Array<{ name: string; value: string }>;
+  /** #7 — headers extra (List-Unsubscribe / List-Unsubscribe-Post en emails comerciales). */
+  headers?: Record<string, string>;
+  /**
+   * #8 — email COMERCIAL (carrito/reseñas/newsletter). Si el destinatario tiene un rebote duro o
+   * queja de spam registrada, se SUPRIME (no se envía) para no dañar la reputación del dominio. Los
+   * transaccionales (confirmación, guía, reembolso) NO llevan este flag → siempre se intentan.
+   */
+  commercial?: boolean;
 };
 
 export type SendEmailResult =
@@ -131,6 +140,22 @@ export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult>
     return { sent: false, reason: "circuit-open", skipped: true };
   }
 
+  // #8 — supresión de rebotes/quejas SOLO para comerciales (decisión Lucy): no seguir escribiendo a
+  // direcciones que rebotaron duro o marcaron spam. Los transaccionales siempre se intentan.
+  if (input.commercial) {
+    const recipients = Array.isArray(input.to) ? input.to : [input.to];
+    const suppressed = await prisma.emailEvent
+      .findFirst({
+        where: { to: { in: recipients }, type: { in: ["email.bounced", "email.complained"] } },
+        select: { to: true, type: true },
+      })
+      .catch(() => null);
+    if (suppressed) {
+      logger.warn({ event: "email.send.suppressed_commercial", reason: suppressed.type });
+      return { sent: false, reason: "suppressed", skipped: true };
+    }
+  }
+
   const payload: Record<string, unknown> = {
     from,
     to: input.to,
@@ -139,6 +164,7 @@ export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult>
     text: input.text,
     ...(input.replyTo ? { reply_to: input.replyTo } : {}),
     ...(input.tags ? { tags: input.tags } : {}),
+    ...(input.headers ? { headers: input.headers } : {}),
   };
 
   const backoffMs = [0, 1000, 2000, 4000];

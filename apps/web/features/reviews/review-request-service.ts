@@ -2,6 +2,8 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { sendEmail } from "@/lib/resend";
+import { getSettingValue } from "@/lib/cms";
+import { buildCommercialEmailHeaders } from "@/features/newsletter/unsubscribe";
 import { reviewRequestEmail } from "@/features/emails/templates/review-request";
 
 /*
@@ -32,12 +34,15 @@ export async function sendReviewRequests(
       number: true,
       email: true,
       shippingAddress: true,
+      publicAccessToken: true,
       items: {
         select: { variant: { select: { product: { select: { name: true, slug: true } } } } },
       },
     },
   });
 
+  // #7 — base para el link de baja del header List-Unsubscribe (una vez por corrida, cacheado).
+  const siteUrl = await getSettingValue("SITE_URL", "https://lucamsshop.co");
   let sent = 0;
   for (const order of orders) {
     try {
@@ -63,6 +68,8 @@ export async function sendReviewRequests(
         orderNumber: order.number,
         customerName: ship.fullName ?? "Cliente",
         products,
+        // #10 — link a la vista pública por token (invitados sin login); null → /mi-cuenta.
+        publicTrackingToken: order.publicAccessToken ?? null,
       });
       const result = await sendEmail({
         to: order.email,
@@ -74,6 +81,9 @@ export async function sendReviewRequests(
           { name: "type", value: "review_request" },
           { name: "order_number", value: order.number },
         ],
+        // #7/#8 — solicitud COMERCIAL: se suprime si rebotó/quejó + lleva One-Click unsubscribe.
+        commercial: true,
+        headers: buildCommercialEmailHeaders(order.email, siteUrl),
       });
 
       // #18 — breaker de Resend abierto (skipped:'circuit-open') = fallo transitorio: NO marcar (la

@@ -54,6 +54,13 @@ vi.mock("@/lib/logger", () => ({
   },
 }));
 
+// #8 — prisma.emailEvent.findFirst mockeado para la supresión de comerciales (rebote/queja).
+// Referencia ESTABLE vía vi.hoisted para que sobreviva a los resetModules() de loadFresh(): la
+// factory re-corre en cada import dinámico pero devuelve siempre la misma fn. Las suites que no
+// pasan `commercial` nunca la invocan → mock inerte, no altera los tests existentes.
+const { emailEventFindFirst } = vi.hoisted(() => ({ emailEventFindFirst: vi.fn() }));
+vi.mock("@/lib/db", () => ({ prisma: { emailEvent: { findFirst: emailEventFindFirst } } }));
+
 import { logger } from "@/lib/logger";
 import type { SendEmailInput, SendEmailResult } from "./resend";
 
@@ -684,6 +691,67 @@ describe("sendEmail — circuit breaker", () => {
 });
 
 // =============================================================================
+// #8 — supresión de emails COMERCIALES a direcciones con rebote duro / queja
+// =============================================================================
+describe("sendEmail — supresión comercial (#8)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    withApiKey();
+    // Implementación limpia por test (clearAllMocks global solo borra calls, no la impl).
+    emailEventFindFirst.mockReset();
+  });
+
+  it("commercial:true a un destinatario rebotado/quejado → { sent:false, reason:'suppressed', skipped:true } SIN fetch", async () => {
+    emailEventFindFirst.mockResolvedValue({ to: "bounced@x.co", type: "email.bounced" });
+    const fetchFn = vi.fn();
+    vi.stubGlobal("fetch", fetchFn);
+
+    const send = await loadFresh();
+    const result = await send(baseInput({ to: "bounced@x.co", commercial: true }));
+
+    expect(result).toEqual({ sent: false, reason: "suppressed", skipped: true });
+    // Se suprime ANTES de la red: proteger la reputación del dominio.
+    expect(fetchFn).not.toHaveBeenCalled();
+    expect(emailEventFindFirst).toHaveBeenCalledTimes(1);
+  });
+
+  it("commercial:true sin rebote/queja (findFirst → null) → envía normal", async () => {
+    emailEventFindFirst.mockResolvedValue(null);
+    const fetchFn = mockFetchJson({ id: "em_ok" });
+
+    const send = await loadFresh();
+    const result = await runDrained(send, baseInput({ to: "clean@x.co", commercial: true }));
+
+    expect(result).toEqual({ sent: true, id: "em_ok" });
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+  });
+
+  it("email TRANSACCIONAL (sin commercial) NUNCA consulta EmailEvent y siempre intenta", async () => {
+    const fetchFn = mockFetchJson({ id: "em_tx" });
+
+    const send = await loadFresh();
+    // Aun escribiendo a una dirección que rebotó, un transaccional (confirmación, guía) se intenta.
+    const result = await runDrained(send, baseInput({ to: "bounced@x.co" }));
+
+    expect(result).toEqual({ sent: true, id: "em_tx" });
+    expect(emailEventFindFirst).not.toHaveBeenCalled();
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+  });
+
+  it("un error consultando EmailEvent NO bloquea el envío comercial (best-effort, catch→null)", async () => {
+    emailEventFindFirst.mockRejectedValue(new Error("db down"));
+    const fetchFn = mockFetchJson({ id: "em_resilient" });
+
+    const send = await loadFresh();
+    const result = await runDrained(send, baseInput({ to: "x@x.co", commercial: true }));
+
+    // Ante una caída de DB preferimos ENVIAR (no perder el correo) a bloquear por precaución.
+    expect(result).toEqual({ sent: true, id: "em_resilient" });
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+  });
+});
+
+// =============================================================================
 // Bordes / invariantes transversales
 // =============================================================================
 describe("sendEmail — bordes e invariantes", () => {
@@ -730,6 +798,37 @@ describe("sendEmail — bordes e invariantes", () => {
     const body = JSON.parse((fetchFn.mock.calls[0][1] as RequestInit).body as string);
     expect(body.html).toBe(html);
     expect(body.text).toBe(text);
+  });
+
+  it("#7 headers (List-Unsubscribe) se incluyen en el body SOLO cuando se pasan", async () => {
+    const fetchFn = mockFetchJson({ id: "em_1" });
+
+    const send = await loadFresh();
+    await runDrained(
+      send,
+      baseInput({
+        headers: {
+          "List-Unsubscribe": "<https://lucamsshop.co/api/unsubscribe?u=abc>",
+          "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+        },
+      }),
+    );
+
+    const body = JSON.parse((fetchFn.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.headers).toEqual({
+      "List-Unsubscribe": "<https://lucamsshop.co/api/unsubscribe?u=abc>",
+      "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+    });
+  });
+
+  it("sin headers el body NO lleva la clave headers", async () => {
+    const fetchFn = mockFetchJson({ id: "em_1" });
+
+    const send = await loadFresh();
+    await runDrained(send, baseInput());
+
+    const body = JSON.parse((fetchFn.mock.calls[0][1] as RequestInit).body as string);
+    expect(body).not.toHaveProperty("headers");
   });
 
   it("subject con caracteres especiales (acentos/emoji) se serializa correctamente en el JSON", async () => {
