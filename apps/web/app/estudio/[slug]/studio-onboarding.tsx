@@ -23,10 +23,11 @@
  *   - Mascote LucamsLogo en cada paso para reforzar brand.
  */
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { LucamsLogo } from "@/components/lucams-logo";
 import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
+import { useDialogA11y } from "./use-dialog-a11y";
 import { ArrowRight, Sparkles, X } from "lucide-react";
 
 const ONBOARD_KEY = "lucams_studio_onboarded";
@@ -82,6 +83,7 @@ function useIsMobile(): boolean {
 export function StudioOnboarding({ slotNoun = "imán" }: { slotNoun?: string }) {
   const reduced = usePrefersReducedMotion();
   const [isOpen, setIsOpen] = useState(false);
+  const dialogRef = useRef<HTMLDivElement>(null);
   const [step, setStep] = useState(0);
   const isMobile = useIsMobile();
   const STEPS = buildSteps(slotNoun);
@@ -101,14 +103,17 @@ export function StudioOnboarding({ slotNoun = "imán" }: { slotNoun?: string }) 
     }
   }, []);
 
-  const close = () => {
+  const close = useCallback(() => {
     setIsOpen(false);
     try {
       window.localStorage.setItem(ONBOARD_KEY, ONBOARD_VERSION);
     } catch {
       // ignore
     }
-  };
+  }, []);
+
+  // #15 — foco inicial + trap + Escape + retorno de foco del onboarding.
+  useDialogA11y(dialogRef, { onClose: close, active: isOpen });
 
   const skip = () => {
     close();
@@ -129,14 +134,16 @@ export function StudioOnboarding({ slotNoun = "imán" }: { slotNoun?: string }) 
     <AnimatePresence>
       {isOpen && (
         <motion.div
+          ref={dialogRef}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.25 }}
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm outline-none"
           role="dialog"
           aria-modal="true"
           aria-labelledby="onboarding-title"
+          tabIndex={-1}
         >
           <motion.div
             initial={{ scale: 0.92, y: 10 }}

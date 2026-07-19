@@ -13,6 +13,7 @@
  */
 
 import { useRef, useState } from "react";
+import { useDialogA11y } from "./use-dialog-a11y";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Upload,
@@ -627,6 +628,9 @@ function PhotoQualityModal({
   const isSoft = asset.validationLevel === "warning-soft";
   const message =
     asset.validationMessage ?? "La foto tiene un detalle de calidad que vale la pena revisar.";
+  // #15 — foco inicial + trap + Escape + retorno de foco.
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useDialogA11y(dialogRef, { onClose, active: open });
 
   return (
     <AnimatePresence>
@@ -645,9 +649,11 @@ function PhotoQualityModal({
           />
           {/* Modal */}
           <motion.div
+            ref={dialogRef}
             role="dialog"
             aria-modal="true"
             aria-labelledby="photo-quality-title"
+            tabIndex={-1}
             initial={{ opacity: 0, scale: 0.94, y: 8 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.94, y: 8 }}

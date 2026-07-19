@@ -6,7 +6,8 @@
  * Falla-seguro: si el asistente no está disponible, muestra un mensaje amable y no rompe nada.
  */
 
-import { useEffect, useState } from "react";
+import { useRef, useState } from "react";
+import { useDialogA11y } from "./use-dialog-a11y";
 import { Sparkles, X, Loader2, Copy, Check } from "lucide-react";
 import { suggestDesignAction } from "@/features/ai/actions";
 import type { DesignSuggestion } from "@/features/ai/schemas";
@@ -30,14 +31,9 @@ export function StudioAiPanel({
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+  // #15 — foco inicial + trap + Escape + retorno de foco (activo solo cuando el panel está abierto).
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useDialogA11y(dialogRef, { onClose, active: open });
 
   if (!open) return null;
 
@@ -70,10 +66,12 @@ export function StudioAiPanel({
 
   return (
     <div
+      ref={dialogRef}
       role="dialog"
       aria-modal="true"
       aria-label="Asistente de ideas"
-      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 backdrop-blur-sm sm:items-center"
+      tabIndex={-1}
+      className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 backdrop-blur-sm outline-none sm:items-center"
       onClick={onClose}
     >
       <div

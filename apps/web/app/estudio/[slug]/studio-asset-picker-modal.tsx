@@ -22,6 +22,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
+import { useDialogA11y } from "./use-dialog-a11y";
 import { motion, AnimatePresence } from "framer-motion";
 import { Upload, X, Image as ImageIcon, Loader2, Sparkles } from "lucide-react";
 import {
@@ -92,18 +93,8 @@ export function StudioAssetPickerModal({
     }
   };
 
-  // Esc cierra
-  useEffect(() => {
-    if (!isOpen) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        e.preventDefault();
-        onClose();
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [isOpen, onClose]);
+  // #15 — foco inicial + trap + Escape + retorno de foco (reutiliza modalRef; activo si isOpen).
+  useDialogA11y(modalRef, { onClose, active: isOpen });
 
   // Focus inicial cuando abre
   useEffect(() => {
@@ -186,6 +177,7 @@ export function StudioAssetPickerModal({
                 ref={modalRef}
                 role="dialog"
                 aria-modal="true"
+                tabIndex={-1}
                 aria-labelledby={titleId}
                 aria-describedby={descId}
                 initial={{ opacity: 0, scale: 0.95, y: 12 }}

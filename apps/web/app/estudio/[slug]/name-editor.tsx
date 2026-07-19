@@ -11,7 +11,8 @@
  * el PNG es el preview que ven carrito/orden/producción.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
+import { useDialogA11y } from "./use-dialog-a11y";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import nextDynamic from "next/dynamic";
@@ -214,6 +215,10 @@ export function NameEditor({
   const isTouch = useIsTouch(); // #9 — copy del gesto de zoom del tablero 3D según táctil vs mouse.
   // NOM2 — vista 3D del nombre en un tablero magnético de un cuarto. null = cerrada.
   const [board3D, setBoard3D] = useState<Magnet3D[] | null>(null);
+  // #15 — a11y del overlay 3D (foco inicial + trap + Escape + retorno); onClose estable.
+  const board3DRef = useRef<HTMLDivElement>(null);
+  const closeBoard3D = useCallback(() => setBoard3D(null), []);
+  useDialogA11y(board3DRef, { onClose: closeBoard3D, active: board3D !== null });
   const [building3D, setBuilding3D] = useState(false);
   // Cantidad de fichas (letras). Arranca en el pick inicial; el +/− la ajusta (min..max del
   // producto) y al TECLEAR crece sola hasta config.max (#11) — nunca se traga letras en silencio.
@@ -341,14 +346,7 @@ export function NameEditor({
     }
   }, [letters, effectiveColors, activeTiles, building3D]);
 
-  useEffect(() => {
-    if (board3D === null) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setBoard3D(null);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [board3D]);
+  // El Escape del overlay 3D lo maneja useDialogA11y (#15, arriba).
 
   const counterOver = letters.length > count;
 
@@ -615,18 +613,19 @@ export function NameEditor({
       {/* NOM2 — Modal del tablero magnético 3D con el nombre deletreado (lazy, client-only). */}
       {board3D !== null && (
         <div
+          ref={board3DRef}
           role="dialog"
           aria-modal="true"
           aria-label="Vista 3D de tu nombre en un tablero magnético"
-          className="bg-brand-purple-dark/85 fixed inset-0 z-50 flex flex-col backdrop-blur-sm"
+          tabIndex={-1}
+          className="bg-brand-purple-dark/85 fixed inset-0 z-50 flex flex-col backdrop-blur-sm outline-none"
         >
           <div className="flex items-center justify-between px-4 py-3 text-white sm:px-6">
             <span className="font-display text-lg font-bold">🖼️ Tu nombre en el tablero</span>
             <button
               type="button"
-              onClick={() => setBoard3D(null)}
+              onClick={closeBoard3D}
               aria-label="Cerrar vista 3D"
-              autoFocus
               className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/15 text-white transition-colors hover:bg-white/25 focus:ring-2 focus:ring-white focus:outline-none"
             >
               <X className="h-5 w-5" />

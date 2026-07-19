@@ -14,9 +14,10 @@
  * cachean. Las vistas 3D se importan diferidas (WebGL, client-only).
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import nextDynamic from "next/dynamic";
 import { X } from "lucide-react";
+import { useDialogA11y } from "./use-dialog-a11y";
 import type { Magnet3D } from "./fridge-3d-view";
 import { composeGiftFlatlay } from "./lib/compose-gift-flatlay";
 import { composeShelfFlatlay } from "./lib/compose-shelf-flatlay";
@@ -71,14 +72,9 @@ export function SceneGallery({
     gift: false,
   });
 
-  // Cerrar con Escape (a11y).
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
+  // #15 — foco inicial + trap + Escape + retorno de foco (centraliza el effect de Escape previo).
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useDialogA11y(dialogRef, { onClose });
 
   // Armar el compositor 2D de la escena activa (una sola vez por escena).
   useEffect(() => {
@@ -116,10 +112,12 @@ export function SceneGallery({
 
   return (
     <div
+      ref={dialogRef}
       role="dialog"
       aria-modal="true"
       aria-label="Mira tu diseño en tu espacio"
-      className="bg-brand-purple-dark/85 fixed inset-0 z-50 flex flex-col backdrop-blur-sm"
+      tabIndex={-1}
+      className="bg-brand-purple-dark/85 fixed inset-0 z-50 flex flex-col backdrop-blur-sm outline-none"
     >
       <div className="flex items-center justify-between px-4 py-3 text-white sm:px-6">
         <span className="font-display text-lg font-bold">✨ Míralo en tu espacio</span>
@@ -127,7 +125,6 @@ export function SceneGallery({
           type="button"
           onClick={onClose}
           aria-label="Cerrar"
-          autoFocus
           className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/15 text-white transition-colors hover:bg-white/25 focus:ring-2 focus:ring-white focus:outline-none"
         >
           <X className="h-5 w-5" />

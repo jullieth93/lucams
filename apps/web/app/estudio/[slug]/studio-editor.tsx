@@ -23,6 +23,7 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useDialogA11y } from "./use-dialog-a11y";
 import { useRouter } from "next/navigation";
 import { useStore } from "zustand";
 import type Konva from "konva";
@@ -220,6 +221,14 @@ export function StudioEditor({
   const [calendarBuilding, setCalendarBuilding] = useState(false);
   // SEP1 — preview inmersivo de separadores en un libro. null = cerrado; array = texturas de marcador.
   const [book3D, setBook3D] = useState<Magnet3D[] | null>(null);
+  // #15 — a11y de los dos overlays 3D (foco inicial + trap + Escape + retorno). onClose estable
+  // (useCallback) para no re-armar el trap en cada render.
+  const book3DRef = useRef<HTMLDivElement>(null);
+  const calendarRef = useRef<HTMLDivElement>(null);
+  const closeBook3D = useCallback(() => setBook3D(null), []);
+  const closeCalendar = useCallback(() => setCalendarPages(null), []);
+  useDialogA11y(book3DRef, { onClose: closeBook3D, active: book3D !== null });
+  useDialogA11y(calendarRef, { onClose: closeCalendar, active: calendarPages !== null });
   // P1.5 — Asistente IA de ideas (ADR-058).
   const [aiOpen, setAiOpen] = useState(false);
   const allowText = (product.personalizationSchema as { allowText?: boolean })?.allowText === true;
@@ -541,19 +550,8 @@ export function StudioEditor({
     }
   }, [store, product.personalizationSchema, selectedYear, calendarBuilding]);
 
-  // Cerrar el calendario y el libro 3D con Escape (a11y). La galería de escenas maneja su propio
-  // Escape internamente.
-  useEffect(() => {
-    if (calendarPages === null && book3D === null) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setCalendarPages(null);
-        setBook3D(null);
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [calendarPages, book3D]);
+  // El Escape de ambos overlays 3D lo maneja ahora useDialogA11y (#15, arriba); la galería de
+  // escenas maneja el suyo internamente.
 
   // ──────────── Step 2: Confirmar → upload + add to cart + redirect ────────────
   //
@@ -909,18 +907,19 @@ export function StudioEditor({
       {/* SEP1 — Modal del separador en un libro 3D (lazy, client-only). */}
       {book3D !== null && (
         <div
+          ref={book3DRef}
           role="dialog"
           aria-modal="true"
           aria-label="Vista 3D de tu separador en un libro"
-          className="bg-brand-purple-dark/85 fixed inset-0 z-50 flex flex-col backdrop-blur-sm"
+          tabIndex={-1}
+          className="bg-brand-purple-dark/85 fixed inset-0 z-50 flex flex-col backdrop-blur-sm outline-none"
         >
           <div className="flex items-center justify-between px-4 py-3 text-white sm:px-6">
             <span className="font-display text-lg font-bold">📖 Tu separador en un libro</span>
             <button
               type="button"
-              onClick={() => setBook3D(null)}
+              onClick={closeBook3D}
               aria-label="Cerrar vista 3D"
-              autoFocus
               className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/15 text-white transition-colors hover:bg-white/25 focus:ring-2 focus:ring-white focus:outline-none"
             >
               <X className="h-5 w-5" />
@@ -940,18 +939,19 @@ export function StudioEditor({
       {/* CAL4 — Modal del calendario 3D navegable (lazy, client-only). */}
       {calendarPages !== null && (
         <div
+          ref={calendarRef}
           role="dialog"
           aria-modal="true"
           aria-label="Vista 3D de tu calendario"
-          className="bg-brand-purple-dark/85 fixed inset-0 z-50 flex flex-col backdrop-blur-sm"
+          tabIndex={-1}
+          className="bg-brand-purple-dark/85 fixed inset-0 z-50 flex flex-col backdrop-blur-sm outline-none"
         >
           <div className="flex items-center justify-between px-4 py-3 text-white sm:px-6">
             <span className="font-display text-lg font-bold">📅 Tu calendario {selectedYear}</span>
             <button
               type="button"
-              onClick={() => setCalendarPages(null)}
+              onClick={closeCalendar}
               aria-label="Cerrar calendario 3D"
-              autoFocus
               className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/15 text-white transition-colors hover:bg-white/25 focus:ring-2 focus:ring-white focus:outline-none"
             >
               <X className="h-5 w-5" />
