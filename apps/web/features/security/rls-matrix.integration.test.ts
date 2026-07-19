@@ -53,6 +53,13 @@ const SENSITIVE = [
   "WebhookEvent",
   "EmailEvent",
   "ErrorReport",
+  // #11 — tablas nuevas con PII/datos sensibles que faltaban en la matriz (audit v3).
+  "CodReconciliation",
+  "RetractRequest",
+  "WarrantyClaim",
+  "WishlistItem",
+  "BackInStockSubscription",
+  "StockReservation",
 ] as const;
 
 describe.skipIf(!canRun)("RLS matrix R3 — la API pública no filtra datos sensibles", () => {

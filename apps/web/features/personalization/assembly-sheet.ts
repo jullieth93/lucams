@@ -41,7 +41,8 @@ export type AssemblyPiece = {
   png: Buffer;
 };
 
-const STATUS_META: Record<string, { color: string; text: string }> = {
+// #14 — exportado para poder aseverar el mapeo de estado sin OCR en los tests. No cambia comportamiento.
+export const STATUS_META: Record<string, { color: string; text: string }> = {
   APPROVED: { color: "#2E8B57", text: "aprobado" },
   PENDING: { color: "#C98A1E", text: "SIN APROBAR" },
   REJECTED: { color: "#C0392B", text: "RECHAZADO — no imprimir" },
