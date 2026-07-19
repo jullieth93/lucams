@@ -12,7 +12,7 @@
  */
 
 import Link from "next/link";
-import { ShoppingBag, Sparkles } from "lucide-react";
+import { ShoppingBag, Sparkles, User } from "lucide-react";
 import { logoutAction } from "@/app/auth/logout/actions";
 import { BrandMark } from "@/components/brand-mark";
 import { GlobalSearch } from "@/components/global-search";
@@ -68,6 +68,18 @@ export async function SiteHeader() {
                 {cartCount > 99 ? "99+" : cartCount}
               </span>
             )}
+          </Link>
+
+          {/* FB1 (feedback Lucy) — acceso a la cuenta VISIBLE en móvil: los enlaces de texto de
+            abajo son solo sm+, así que en el teléfono no había forma de llegar a login/mi-cuenta.
+            El ícono lleva a la cuenta si hay sesión, o a login si no. En desktop se oculta (ya están
+            los enlaces de texto). */}
+          <Link
+            href={session ? "/mi-cuenta" : "/login"}
+            className="text-brand-purple-dark hover:text-brand-purple inline-flex items-center p-1.5 sm:hidden"
+            aria-label={session ? "Mi cuenta" : "Ingresar a mi cuenta"}
+          >
+            <User className="h-5 w-5" />
           </Link>
 
           {admin && (

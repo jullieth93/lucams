@@ -85,13 +85,17 @@ export function StudioToolbar({
       className="border-brand-purple/10 sticky top-0 z-10 border-b bg-white backdrop-blur"
     >
       <div className="flex items-center justify-between gap-4 px-4 py-3 sm:px-6">
+        {/* FB2 (feedback Lucy) — la salida del estudio no se veía en móvil (solo el ícono, sepultado
+          bajo el header del sitio). Ahora es un botón con etiqueta "Salir" siempre visible, con
+          fondo suave para que se lea como control tocable. Vuelve a la ficha del producto (el
+          borrador se autoguarda, no se pierde nada). */}
         <Link
           href={`/producto/${productSlug}`}
-          aria-label={`Volver al producto ${productName}`}
-          className="text-brand-purple-dark/70 hover:text-brand-purple focus:ring-brand-purple flex items-center gap-1.5 rounded text-sm focus:ring-2 focus:outline-none"
+          aria-label={`Salir del estudio y volver al producto ${productName}`}
+          className="text-brand-purple-dark/80 hover:text-brand-purple-dark bg-brand-purple/8 hover:bg-brand-purple/15 focus:ring-brand-purple inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold transition-colors focus:ring-2 focus:outline-none"
         >
           <ArrowLeft className="h-4 w-4" />
-          <span className="hidden sm:inline">Volver</span>
+          <span>Salir</span>
         </Link>
 
         {/* A1.1 — Hero del estudio: avatar producto + nombre + medidas físicas grandes */}
