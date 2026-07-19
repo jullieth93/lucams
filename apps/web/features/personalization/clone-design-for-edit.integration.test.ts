@@ -127,6 +127,29 @@ afterAll(async () => {
 });
 
 describe("cloneDesignForEdit", () => {
+  it("#10 — un clon de un diseño APPROVED nace PENDING (re-moderación al reeditar)", async () => {
+    // Diseño APPROVED propio (no reusar readyId compartido, que arrastraría estado a otros tests).
+    const approved = await prisma.design.create({
+      data: {
+        customerId: ownerId,
+        productId,
+        status: "READY",
+        moderationStatus: "APPROVED",
+        canvasData: {},
+      },
+      select: { id: true },
+    });
+    const clone = await cloneDesignForEdit(approved.id, { customerId: ownerId, sessionId: null });
+    expect(clone).not.toBeNull();
+    const cloned = await prisma.design.findUnique({
+      where: { id: clone!.id },
+      select: { moderationStatus: true, status: true },
+    });
+    // El clon NO hereda la aprobación: vuelve a moderarse al reeditar (invariante anti-abuso).
+    expect(cloned!.moderationStatus).toBe("PENDING");
+    expect(cloned!.status).toBe("DRAFT");
+  });
+
   it("clona READY→DRAFT: assets nuevos (mismo storageUrl), canvas remapeado, original intacto", async () => {
     const clone = await cloneDesignForEdit(readyId, { customerId: ownerId, sessionId: null });
     expect(clone).not.toBeNull();

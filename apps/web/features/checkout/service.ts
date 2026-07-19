@@ -21,7 +21,7 @@ import { getSettingValue } from "@/lib/cms";
 import { createOrderFromCart } from "@/features/orders/service";
 import { processPaidOrder } from "@/features/orders/saga";
 import { assertStockAvailable } from "@/features/orders/stock";
-import { InsufficientStockError } from "@/features/orders/errors";
+import { InsufficientStockError, OrderAmountTooLargeError } from "@/features/orders/errors";
 import { priceCouponForCart, CouponInvalidatedError } from "@/features/coupons/redemption";
 import { getPaymentProvider } from "@/features/payments/provider";
 import { getShippingProvider } from "@/features/shipping/provider";
@@ -50,6 +50,7 @@ export class CheckoutError extends Error {
       | "MISSING_PAYMENT_METHOD"
       | "SHIPPING_QUOTE_FAILED"
       | "ORDER_CREATE_FAILED"
+      | "ORDER_AMOUNT_TOO_LARGE"
       | "PAYMENT_INIT_FAILED"
       | "STOCK_UNAVAILABLE"
       | "COUPON_INVALIDATED"
@@ -346,6 +347,13 @@ export async function finalizeCheckout(input: {
         "COUPON_INVALIDATED",
         `${err.message} Actualizamos el total de tu pedido; revísalo y confirma de nuevo.`,
       );
+    }
+    // #9 — el pedido supera el máximo representable (guard INT4). El copy de OrderAmountTooLargeError
+    // es customer-safe (tuteo, "escríbenos y te lo cotizamos") → código propio para que llegue al
+    // cliente, no como ORDER_CREATE_FAILED genérico (que se muestra como error interno).
+    if (err instanceof OrderAmountTooLargeError) {
+      logger.warn({ event: "checkout.finalize.amount_too_large" });
+      throw new CheckoutError("ORDER_AMOUNT_TOO_LARGE", err.message);
     }
     logger.error({
       event: "checkout.finalize.order_create_fail",

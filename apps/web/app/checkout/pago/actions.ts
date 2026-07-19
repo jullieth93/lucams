@@ -26,6 +26,7 @@ const CUSTOMER_SAFE_CHECKOUT_CODES = new Set([
   "COUPON_INVALIDATED",
   "STOCK_UNAVAILABLE",
   "COD_NOT_ALLOWED",
+  "ORDER_AMOUNT_TOO_LARGE", // #9 — copy customer-safe ("escríbenos y te lo cotizamos")
   "CART_EMPTY",
   "CART_NOT_FOUND",
   "MISSING_CONTACT",

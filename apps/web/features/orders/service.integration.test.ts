@@ -653,6 +653,18 @@ describe.skipIf(!hasDb)("orders/service — integración DB (ciclo de vida)", { 
       expect(v!.stock).toBe(LOW_STOCK);
     });
 
+    it("#9 — total > MAX_MONEY_CENTS lanza OrderAmountTooLargeError y NO crea Order (guard INT4)", async () => {
+      // variantA tiene stock=1000; el guard de overflow INT4 corre ANTES de assertStockAvailable.
+      // unitPrice 300_000_000 centavos ($3.000.000) × 8 = 2.4e9 > MAX_MONEY_CENTS (2_147_483_647).
+      const { cartId } = await makeCartWithItems([
+        { variantId: variantAId, qty: 8, unitPrice: 300_000_000 },
+      ]);
+      await expect(createOrderFromCart(baseInput(cartId))).rejects.toMatchObject({
+        name: "OrderAmountTooLargeError",
+      });
+      expect(await prisma.order.count({ where: { cartId } })).toBe(0);
+    });
+
     it("stock exactamente igual a la cantidad pedida SÍ permite crear (>= qty)", async () => {
       const { cartId } = await makeCartWithItems([
         { variantId: lowStockVariantId, qty: LOW_STOCK, unitPrice: 5_000 },
