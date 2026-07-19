@@ -9,9 +9,12 @@ export const metadata: Metadata = {
 
 // P0-006 (Bloque B 2026-06-27) — texto sustantivo basado en docs/COMPLIANCE.md
 // (texto base aviso de privacidad) + Ley 1581 de 2012 + Decreto 1377 de 2013.
-// Sigue sujeto a revisión de abogado antes del lanzamiento (NIT pendiente).
-const FALLBACK = `**Lucams_shop S.A.S.** es responsable del tratamiento de tus datos personales,
-conforme a la **Ley 1581 de 2012** y el **Decreto 1377 de 2013** de Colombia.
+// Persona natural; la identificación completa (CC + dirección) vive en el CMS, no en git (PII).
+// Sigue sujeto a revisión de abogado antes del lanzamiento.
+const FALLBACK = `**Lucy Jullieth Hurtado Rodríguez** (persona natural), titular de la marca **Lucams_shop**,
+es responsable del tratamiento de tus datos personales, conforme a la **Ley 1581 de 2012** y el
+**Decreto 1377 de 2013** de Colombia. Sus datos de identificación y contacto para ejercer tus
+derechos figuran en la sección de **Hábeas Data**.
 
 ## Qué datos recolectamos
 

@@ -8,16 +8,19 @@ export const metadata: Metadata = {
 
 // P0-006 (Bloque B 2026-06-27) — texto sustantivo basado en las obligaciones de
 // información del art. 23 y ss. de la Ley 1480 de 2011 (Estatuto del Consumidor),
-// documentadas en docs/COMPLIANCE.md. Sujeto a revisión de abogado (NIT pendiente).
+// documentadas en docs/COMPLIANCE.md. Figura jurídica: persona natural (ADR pendiente de abogado).
+// La identificación completa (CC + dirección de notificación) vive en el CMS, no en git (PII).
 const FALLBACK = `Al comprar en **lucamsshop.co** aceptas estos Términos y Condiciones. Toda venta
 se rige por la legislación colombiana, en particular la **Ley 1480 de 2011**
 (Estatuto del Consumidor).
 
 ## Quiénes somos
 
-**Lucams_shop S.A.S.** (NIT en trámite), tienda de productos magnéticos
-personalizados en Colombia. Contacto: **hola@lucamsshop.co** · WhatsApp disponible
-en el sitio.
+**Lucams_shop** es una marca de productos magnéticos personalizados en Colombia,
+operada por **Lucy Jullieth Hurtado Rodríguez** como **persona natural**, con
+domicilio en **Bogotá D.C.** Los datos completos de identificación y la dirección
+de notificación se relacionan en la sección de contacto / Hábeas Data. Contacto:
+**hola@lucamsshop.co** · WhatsApp disponible en el sitio.
 
 ## Los productos
 
