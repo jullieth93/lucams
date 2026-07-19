@@ -66,11 +66,13 @@ export function QuoteList({
                   </div>
                   <div className="text-brand-muted mt-0.5 flex items-center gap-2 text-xs">
                     <Clock className="h-3 w-3" />
+                    {/* #25 — es tiempo de TRÁNSITO, no de entrega total; nunca "Entrega hoy" a secas
+                      (falta la fabricación). Ver la nota bajo la lista. */}
                     {q.deliveryDays === 0
-                      ? "Entrega hoy"
+                      ? "Envío el mismo día tras el despacho"
                       : q.deliveryDays === 1
-                        ? "1 día hábil"
-                        : `${q.deliveryDays} días hábiles`}
+                        ? "1 día hábil tras el despacho"
+                        : `${q.deliveryDays} días hábiles tras el despacho`}
                     {q.contraentrega && (
                       <span className="bg-brand-yellow/30 ml-2 rounded px-1.5 py-0.5 text-[10px] font-semibold text-amber-900">
                         Contraentrega
@@ -90,6 +92,15 @@ export function QuoteList({
           );
         })}
       </ul>
+
+      {/* #25 — aclara que los tiempos de arriba son solo transporte; antes fabricamos a mano. */}
+      <p className="text-brand-muted mt-3 flex items-start gap-1.5 text-xs">
+        <Clock className="mt-0.5 h-3 w-3 flex-shrink-0" aria-hidden />
+        <span>
+          Son tiempos de transporte. Antes fabricamos tu pedido a mano: suma{" "}
+          <strong>2-4 días hábiles de fabricación</strong> antes del despacho.
+        </span>
+      </p>
 
       {/* Hidden fields del seleccionado */}
       {chosen && (
