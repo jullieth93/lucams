@@ -217,6 +217,14 @@ export async function SiteFooter() {
                   Contacto →
                 </Link>
               </li>
+              <li>
+                <Link
+                  href="/rastrear"
+                  className="text-brand-pink hover:text-brand-coral font-semibold transition-colors"
+                >
+                  Rastrear pedido →
+                </Link>
+              </li>
             </ul>
           </div>
         </div>
