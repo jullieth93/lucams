@@ -81,6 +81,11 @@ export default async function AdminResenasPage({ searchParams }: { searchParams:
     : "recent";
   const ratingRaw = pickString(sp, "rating");
   const rating = ratingRaw && /^[1-5]$/.test(ratingRaw) ? Number(ratingRaw) : undefined;
+  // #13 — filtro por producto (los enlaces del panel de producto pasan ?productId=). Product.id
+  // es @default(cuid()) (schema.prisma) → cuid v1 = "c" + 24 alfanuméricos; validamos el formato
+  // para descartar valores malformados (degradan a la bandeja global, no rompen la query).
+  const productIdRaw = pickString(sp, "productId");
+  const productId = productIdRaw && /^c[a-z0-9]{24}$/.test(productIdRaw) ? productIdRaw : undefined;
   const page = Number(sp.page) || 1;
 
   const { items, total, totalPages, pendingCount } = await listReviewsAdmin({
@@ -89,8 +94,14 @@ export default async function AdminResenasPage({ searchParams }: { searchParams:
     sort,
     rating,
     page,
+    productId,
   });
-  const hasActiveFilters = !!q || status !== "pending" || sort !== "recent" || rating !== undefined;
+  const hasActiveFilters =
+    !!q ||
+    status !== "pending" ||
+    sort !== "recent" ||
+    rating !== undefined ||
+    productId !== undefined;
 
   const dateFmt = new Intl.DateTimeFormat("es-CO", {
     day: "2-digit",
@@ -153,6 +164,8 @@ export default async function AdminResenasPage({ searchParams }: { searchParams:
           method="GET"
           className="border-brand-purple/10 grid grid-cols-1 gap-3 rounded-xl border bg-white p-4 shadow-sm sm:grid-cols-12"
         >
+          {/* #13 — preserva el filtro por producto al reenviar el form (método GET). */}
+          {productId && <input type="hidden" name="productId" value={productId} />}
           <div className="sm:col-span-4">
             <label
               htmlFor="f-q"
@@ -250,6 +263,16 @@ export default async function AdminResenasPage({ searchParams }: { searchParams:
             </div>
           )}
         </form>
+
+        {/* #13 — contexto visible cuando se filtra por un producto (desde el panel del producto). */}
+        {productId && (
+          <p className="text-brand-purple-dark/80 text-xs">
+            Filtrando reseñas de <strong>{items[0]?.productName ?? "este producto"}</strong>.{" "}
+            <Link href="/admin/resenas" className="text-brand-purple font-semibold underline">
+              Quitar filtro
+            </Link>
+          </p>
+        )}
 
         {items.length === 0 ? (
           <AdminEmpty
@@ -442,12 +465,26 @@ export default async function AdminResenasPage({ searchParams }: { searchParams:
             </span>
             <div className="flex gap-1">
               {page > 1 && (
-                <PaginationLink page={page - 1} q={q} status={status} sort={sort} rating={rating}>
+                <PaginationLink
+                  page={page - 1}
+                  q={q}
+                  status={status}
+                  sort={sort}
+                  rating={rating}
+                  productId={productId}
+                >
                   ← Anterior
                 </PaginationLink>
               )}
               {page < totalPages && (
-                <PaginationLink page={page + 1} q={q} status={status} sort={sort} rating={rating}>
+                <PaginationLink
+                  page={page + 1}
+                  q={q}
+                  status={status}
+                  sort={sort}
+                  rating={rating}
+                  productId={productId}
+                >
                   Siguiente →
                 </PaginationLink>
               )}
@@ -468,6 +505,7 @@ function PaginationLink({
   status,
   sort,
   rating,
+  productId,
   children,
 }: {
   page: number;
@@ -475,6 +513,7 @@ function PaginationLink({
   status?: string;
   sort?: string;
   rating?: number;
+  productId?: string;
   children: React.ReactNode;
 }) {
   const params = new URLSearchParams();
@@ -483,6 +522,7 @@ function PaginationLink({
   if (status && status !== "pending") params.set("status", status);
   if (sort && sort !== "recent") params.set("sort", sort);
   if (rating !== undefined) params.set("rating", String(rating));
+  if (productId) params.set("productId", productId);
   return (
     <Link
       href={`/admin/resenas?${params.toString()}`}

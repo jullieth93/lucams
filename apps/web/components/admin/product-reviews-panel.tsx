@@ -19,20 +19,11 @@
  */
 
 import Link from "next/link";
-import {
-  Star,
-  CheckCircle2,
-  Archive,
-  StarOff,
-  RotateCcw,
-  XCircle,
-  MessageSquare,
-} from "lucide-react";
+import { Star, CheckCircle2, Archive, StarOff, RotateCcw, MessageSquare } from "lucide-react";
 import { AdminCard, AdminEmpty, AdminBadge } from "@/components/admin-page";
 import { listReviewsAdmin } from "@/features/reviews/admin-service";
 import {
   approveReviewAction,
-  rejectReviewAction,
   toggleFeaturedReviewAction,
   archiveReviewAction,
 } from "@/app/admin/(panel)/resenas/actions";
@@ -82,7 +73,7 @@ export async function ProductReviewsPanel({
             </p>
           </div>
           <Link
-            href={`/admin/resenas?productId=${productId}`}
+            href={`/admin/resenas?productId=${productId}&status=all`}
             className="border-brand-purple/25 text-brand-purple-dark hover:bg-brand-purple/10 inline-flex h-9 items-center gap-1.5 rounded-md border bg-white px-3 text-xs font-semibold"
           >
             Ver todas en el moderador →
@@ -288,18 +279,10 @@ function ReviewCard({
                   Aprobar
                 </button>
               </form>
-              <form action={rejectReviewAction}>
-                <input type="hidden" name="id" value={review.id} />
-                <input type="hidden" name="productSlug" value={productSlug} />
-                <button
-                  type="submit"
-                  className="inline-flex h-9 items-center gap-1 rounded-md border border-rose-200 bg-white px-3 text-xs font-semibold text-rose-700 hover:bg-rose-50"
-                  title="Rechazar (no se publica)"
-                >
-                  <XCircle className="h-3.5 w-3.5" />
-                  Rechazar
-                </button>
-              </form>
+              {/* #14 — se retira "Rechazar": sobre una reseña pendiente era un no-op (isApproved
+                y featured ya son false). La salida reversible correcta para spam/ofensivo es
+                "Archivar" (se renderiza abajo en el tab Pendientes), coherente con /admin/resenas
+                que nunca ofrece "Rechazar" sobre una reseña no aprobada. */}
             </>
           )}
           {showFeatureToggle && (
@@ -342,10 +325,11 @@ function ReviewCard({
           {showRestoreAction && (
             // Hotfix P0-6: el href ANTES era ?productId=${review.id} (id de
             // la reseña — bug que llevaba a un filtro vacío). Ahora usa el
-            // productId real del producto, abriendo el listado global filtrado
-            // a este producto donde Lucy puede restaurar.
+            // productId real del producto + status=archived (#13), abriendo el
+            // moderador global directamente en el tab donde la reseña archivada
+            // es visible y restaurable.
             <Link
-              href={`/admin/resenas?productId=${productId}`}
+              href={`/admin/resenas?productId=${productId}&status=archived`}
               className="border-brand-purple/25 text-brand-purple-dark hover:bg-brand-purple/10 inline-flex h-9 items-center gap-1 rounded-md border bg-white px-3 text-xs font-semibold"
               title="Ir al moderador global para restaurar"
             >
