@@ -77,7 +77,7 @@ export function StudioGesturesHint({ open, onClose, persistent = false }: Props)
                     <li className="flex items-center gap-2">
                       <ZoomIn className="text-brand-turquoise h-3.5 w-3.5" aria-hidden />
                       <span>
-                        <strong>Pellizcá con 2 dedos</strong> para zoom
+                        <strong>Pellizca con 2 dedos</strong> para zoom
                       </span>
                     </li>
                     <li className="flex items-center gap-2">

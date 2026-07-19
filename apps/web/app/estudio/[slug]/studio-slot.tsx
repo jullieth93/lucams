@@ -72,6 +72,10 @@ type StudioSlotProps = {
   /** ADR-057 Fase D — etiqueta del slot (ej. "Enero" para calendarios). Si se pasa, reemplaza
    * "Imán #N" para que el cliente sepa qué foto va en qué mes. */
   slotLabel?: string;
+  /** #14 — sustantivo del slot según el producto: "imán" por defecto, "separador" en separadores de
+   * libros (pantalla=físico). Solo aplica al fallback "{Noun} #N" y al aria-label; el slotLabel
+   * explícito (calendario) manda sobre él. */
+  slotNoun?: string;
   /** M.3.b.A2.5 — Tamaño físico del imán (ej "5×5 cm") leído del product.personalizationSchema.sizeCm. */
   sizeCm?: string;
   /** M.3.b.B.1 — forma física del imán para overlay realismo. */
@@ -112,6 +116,7 @@ function StudioSlotImpl({
   isSelected,
   totalSlots,
   slotLabel,
+  slotNoun = "imán",
   sizeCm,
   shape,
   finish,
@@ -359,9 +364,12 @@ function StudioSlotImpl({
   }, [slotState.assetUrl, onCenterPhoto]);
 
   // ──────────── ARIA label ────────────
+  // #14 — "Imán" era fijo; ahora deriva del producto (imán/separador). Capitalizado para inicio de
+  // frase; el slotLabel explícito (calendario, ej. "Enero") sigue mandando en el badge visible.
+  const nounCap = slotNoun.charAt(0).toUpperCase() + slotNoun.slice(1);
   const ariaLabel = slotState.assetUrl
-    ? `Imán ${slotState.slotIndex + 1} de ${totalSlots}, con foto cargada. Enter para cambiar foto, Delete para quitar.`
-    : `Imán ${slotState.slotIndex + 1} de ${totalSlots}, vacío. Enter para subir foto.`;
+    ? `${nounCap} ${slotState.slotIndex + 1} de ${totalSlots}, con foto cargada. Enter para cambiar foto, Delete para quitar.`
+    : `${nounCap} ${slotState.slotIndex + 1} de ${totalSlots}, vacío. Enter para subir foto.`;
 
   return (
     <div className="group/wrapper flex flex-col items-center gap-1.5">
@@ -586,12 +594,12 @@ function StudioSlotImpl({
                   isDropping ? "text-brand-turquoise" : "text-brand-purple-dark/75",
                 ].join(" ")}
               >
-                {isDropping ? "¡Suéltala acá! 💜" : "Pásame una foto"}
+                {isDropping ? "¡Suéltala aquí! 💜" : "Pásame una foto"}
               </span>
 
               {/* Indicador del slot: mes (calendario) o "Imán #N". */}
               <span className="text-brand-muted text-[9px] font-medium tracking-wider uppercase">
-                {slotLabel ?? `Imán #${slotState.slotIndex + 1}`}
+                {slotLabel ?? `${nounCap} #${slotState.slotIndex + 1}`}
               </span>
             </motion.div>
           )}

@@ -224,6 +224,9 @@ export function StudioEditor({
   // SEP1 — separadores (galleryTag "separadores"): su vista inmersiva es un LIBRO, no la nevera.
   const isBookmark =
     (product.personalizationSchema as { galleryTag?: string } | null)?.galleryTag === "separadores";
+  // #14 — sustantivo del slot: en separadores el producto NO es un imán → "separador" en los labels,
+  // aria y onboarding (pantalla=físico). Deriva de isBookmark; el calendario usa slotLabels propios.
+  const slotNoun = isBookmark ? "separador" : "imán";
   // FOTO4 — la galería de escenas "en tu espacio" (nevera/mural/repisa/regalo) es la vista por
   // defecto del fotoimán: se muestra cuando NO es calendario ni separador (el `else` del botón).
   const defaultCalendarYear = calendarYear ?? new Date().getFullYear() + 1;
@@ -782,6 +785,7 @@ export function StudioEditor({
             cornerRadiusPx={productConfig.cornerRadiusPx}
             showRealismGuides={showRealismGuides}
             slotLabels={slotLabels}
+            slotNoun={slotNoun}
             onSlotClick={handleSlotClick}
             onSlotAdjust={(slotIndex) => setAdjustSlotIndex(slotIndex)}
             onTextEdit={(slotIndex, textLayerId) => setTextEditTarget({ slotIndex, textLayerId })}
@@ -1008,6 +1012,7 @@ export function StudioEditor({
       <TextEditorModalWrapper
         store={store}
         target={textEditTarget}
+        slotNoun={slotNoun}
         onClose={() => setTextEditTarget(null)}
       />
 
@@ -1030,7 +1035,7 @@ export function StudioEditor({
 
       {/* M.3.b.UX.5 — Onboarding tutorial primera vez. Se auto-detecta via
           localStorage; si ya se onboardeó (key="v1"), no muestra nada. */}
-      <StudioOnboarding />
+      <StudioOnboarding slotNoun={slotNoun} />
 
       {/* M.3.b.UX.v11/v12 — Banner de gestos. Auto-trigger 1ª vez cuando hay
         foto + abierto manualmente desde botón "?" del toolbar. */}
@@ -1410,10 +1415,12 @@ async function buildMagnetTextures(
 function TextEditorModalWrapper({
   store,
   target,
+  slotNoun = "imán",
   onClose,
 }: {
   store: ReturnType<typeof createStudioStore>;
   target: { slotIndex: number; textLayerId: string } | null;
+  slotNoun?: string;
   onClose: () => void;
 }) {
   // Selectores ATÓMICOS — retornan primitivos para evitar re-render loops
@@ -1445,7 +1452,11 @@ function TextEditorModalWrapper({
       isOpen={target !== null && layer !== null}
       layer={layer}
       currentOverride={currentOverride}
-      slotLabel={target ? `Imán ${target.slotIndex + 1} de ${slotCount}` : undefined}
+      slotLabel={
+        target
+          ? `${slotNoun.charAt(0).toUpperCase()}${slotNoun.slice(1)} ${target.slotIndex + 1} de ${slotCount}`
+          : undefined
+      }
       onClose={onClose}
       onApply={(override) => {
         if (target) setSlotTextOverride(target.slotIndex, target.textLayerId, override);

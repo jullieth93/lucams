@@ -40,26 +40,29 @@ type OnboardingStep = {
   cta: string;
 };
 
-const STEPS: OnboardingStep[] = [
-  {
-    title: "Sube tu foto",
-    body: "Empieza por arrastrar fotos al panel de la izquierda. Aceptamos JPG, PNG, WebP y HEIC del celu.",
-    bodyMobile: "Toca un imán y súbele una foto desde tu celular. Aceptamos JPG, PNG, WebP y HEIC.",
-    cta: "Siguiente",
-  },
-  {
-    title: "Asigná a cada imán",
-    body: "Toca un imán vacío y elige cuál foto quieres, o usa el botón mágico ‘Llenar slots con mis fotos’ para repartir todo de una.",
-    bodyMobile:
-      "Toca cada imán para ponerle una foto. Con el botón ‘Editar’ (abajo) abres plantillas y más fotos.",
-    cta: "Siguiente",
-  },
-  {
-    title: "Personaliza los textos",
-    body: "Si la plantilla tiene textos editables (los marcados con punto turquesa), tocalos para cambiar el contenido, color y tipografía.",
-    cta: "¡Empezar!",
-  },
-];
+// #14 — el sustantivo del slot se parametriza por producto: en /estudio/separadores-libros los slots
+// son "separador", no "imán" (pantalla=físico). #7/#13 — copy en es-CO tuteo (sin voseo).
+function buildSteps(noun: string): OnboardingStep[] {
+  return [
+    {
+      title: "Sube tu foto",
+      body: "Empieza por arrastrar fotos al panel de la izquierda. Aceptamos JPG, PNG, WebP y HEIC del celular.",
+      bodyMobile: `Toca un ${noun} y súbele una foto desde tu celular. Aceptamos JPG, PNG, WebP y HEIC.`,
+      cta: "Siguiente",
+    },
+    {
+      title: `Asigna a cada ${noun}`,
+      body: `Toca un ${noun} vacío y elige cuál foto quieres, o usa el botón mágico ‘Llenar slots con mis fotos’ para repartir todo de una.`,
+      bodyMobile: `Toca cada ${noun} para ponerle una foto. Con el botón ‘Editar’ (abajo) abres plantillas y más fotos.`,
+      cta: "Siguiente",
+    },
+    {
+      title: "Personaliza los textos",
+      body: "Si la plantilla tiene textos editables (los marcados con punto turquesa), tócalos para cambiar el contenido, color y tipografía.",
+      cta: "¡Empezar!",
+    },
+  ];
+}
 
 /** Detecta viewport móvil (< lg) de forma reactiva para elegir el copy correcto. */
 function useIsMobile(): boolean {
@@ -75,10 +78,11 @@ function useIsMobile(): boolean {
   return isMobile;
 }
 
-export function StudioOnboarding() {
+export function StudioOnboarding({ slotNoun = "imán" }: { slotNoun?: string }) {
   const [isOpen, setIsOpen] = useState(false);
   const [step, setStep] = useState(0);
   const isMobile = useIsMobile();
+  const STEPS = buildSteps(slotNoun);
 
   useEffect(() => {
     // Solo mostrar en cliente — SSR evita el localStorage
