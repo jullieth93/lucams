@@ -30,7 +30,7 @@ ${ctaButton(
   "Dejar una reseña ⭐",
 )}
 
-<p style="font-size:13px;color:#3D2E5C;opacity:0.65;margin-top:18px;">¿Algún inconveniente con el pedido? Responde este correo o escríbenos por WhatsApp. Tenemos 5 días hábiles de retracto Ley 1480.</p>
+<p style="font-size:13px;color:#3D2E5C;opacity:0.65;margin-top:18px;">¿Algún inconveniente con el pedido? Responde este correo o escríbenos por WhatsApp. Los productos sin personalizar tienen 5 días hábiles de retracto (Ley 1480); los personalizados con tu foto/texto están excluidos por ley.</p>
 `;
 
   const text = `¡Tu pedido llegó!

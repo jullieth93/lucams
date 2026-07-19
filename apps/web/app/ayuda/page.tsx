@@ -56,7 +56,7 @@ const FALLBACK_FAQS: { slug: string; question: string; answer: string }[] = [
     slug: "envios-cobertura",
     question: "¿Hacen envíos a mi ciudad?",
     answer:
-      "Llegamos a **1.100+ destinos** en Colombia vía Coordinadora. Al hacer el pedido te calculamos automáticamente el costo y el tiempo estimado.",
+      "Llegamos a **1.100+ destinos** en Colombia a través de transportadoras aliadas (Coordinadora, Servientrega, Envía y más). Al hacer el pedido calculamos automáticamente el costo, el tiempo estimado y qué transportadora llega a tu ciudad.",
   },
   {
     slug: "cambios-devoluciones",
@@ -86,7 +86,7 @@ const FALLBACK_FAQS: { slug: string; question: string; answer: string }[] = [
     slug: "newsletter-unsuscripcion",
     question: "¿Cómo me suscribo o desuscribo del newsletter?",
     answer:
-      "Suscripción: form en el footer. Desuscripción: link **Unsubscribe** al final de cada email que te enviemos, o escríbenos a hola@lucamsshop.co.",
+      "Suscripción: form en el footer. Desuscripción: link **Cancelar suscripción** al final de cada email que te enviemos, o escríbenos a hola@lucamsshop.co.",
   },
   {
     slug: "regalos-eventos",

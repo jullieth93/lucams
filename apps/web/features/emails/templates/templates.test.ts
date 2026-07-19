@@ -491,9 +491,11 @@ describe("orderDeliveredEmail", () => {
     expect(r.html).not.toContain("/pedido/");
   });
 
-  it("menciona el derecho de retracto Ley 1480 (5 días hábiles)", async () => {
+  it("#23 — retracto 5 días solo para NO personalizados (Ley 1480), personalizados excluidos", async () => {
     const r = await orderDeliveredEmail(dlData());
-    expect(r.html).toContain("5 días hábiles de retracto Ley 1480");
+    expect(r.html).toContain("sin personalizar tienen 5 días hábiles de retracto");
+    expect(r.html).toContain("personalizados");
+    expect(r.html).toContain("excluidos");
   });
 
   it("SEGURIDAD: escapa el nombre con markup en el HTML", async () => {
