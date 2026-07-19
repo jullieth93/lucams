@@ -20,9 +20,12 @@ export const CALENDAR_LAYOUT = {
   // Encabezados de día (D L M M J V S) — baseline.
   weekdayY: 1268,
   weekdayFontSize: 30,
-  // Grilla de días.
+  // Grilla de días. gridBottom deja una franja abajo para la leyenda de festivos (FB3).
   gridTop: 1290,
-  gridBottom: 1500,
+  gridBottom: 1448,
   gridLeft: 30,
   gridRight: 1050, // ancho útil 1020 → 7 columnas de ~145.7
+  // FB3 — franja de leyenda de festivos colombianos, bajo la grilla (baseline + tamaño).
+  legendY: 1486,
+  legendFontSize: 24,
 } as const;

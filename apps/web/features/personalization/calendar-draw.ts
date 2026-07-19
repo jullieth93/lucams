@@ -12,6 +12,7 @@
 
 import { CALENDAR_PAGE, CALENDAR_PHOTO, CALENDAR_LAYOUT } from "./calendar-layout";
 import { calendarMonthGrid, MONTH_NAMES_ES, WEEKDAY_HEADERS_ES } from "./calendar-grid";
+import { holidaysForMonth } from "./colombian-holidays";
 
 /** Imagen decodificada mínima (napi Image y HTMLImageElement la satisfacen). */
 export type DrawableImage = { width: number; height: number };
@@ -137,25 +138,48 @@ export function drawCalendarPage(
     ctx.fillText(WEEKDAY_HEADERS_ES[c]!, L.gridLeft + colW * c + colW / 2, L.weekdayY);
   }
 
+  // FB3 (feedback Lucy) — festivos colombianos del mes: día marcado en color + leyenda al pie.
+  const holidays = holidaysForMonth(year, monthIndex0);
+  const holidayDays = new Map(holidays.map((h) => [h.day, h.short]));
+  const HOLIDAY_CELL = "#FDECEF"; // rosa muy suave (fondo de la celda festiva)
+  const HOLIDAY_INK = "#D81159"; // magenta de marca (número del día festivo)
+
   // Grilla de días.
   const weeks = calendarMonthGrid(year, monthIndex0);
   const rows = Math.max(1, weeks.length);
   const rowH = (L.gridBottom - L.gridTop) / rows;
   const daySize = Math.min(32, rowH * 0.5);
-  ctx.strokeStyle = "#E7DFD3";
   ctx.lineWidth = 1;
-  ctx.textBaseline = "middle";
   for (let r = 0; r < rows; r++) {
     for (let c = 0; c < 7; c++) {
       const x = L.gridLeft + colW * c;
       const y = L.gridTop + rowH * r;
-      ctx.strokeRect(x, y, colW, rowH);
       const day = weeks[r]?.[c];
+      const isHoliday = day != null && holidayDays.has(day);
+      // Fondo de la celda: festivo → rosa suave; resto → sin relleno.
+      if (isHoliday) {
+        ctx.fillStyle = HOLIDAY_CELL;
+        ctx.fillRect(x, y, colW, rowH);
+      }
+      ctx.strokeStyle = "#E7DFD3";
+      ctx.strokeRect(x, y, colW, rowH);
       if (day != null) {
-        ctx.fillStyle = "#2A2140";
-        setBrandFont(ctx, 400, daySize, bodyFont, fontsOk);
+        ctx.fillStyle = isHoliday ? HOLIDAY_INK : "#2A2140";
+        setBrandFont(ctx, isHoliday ? 700 : 400, daySize, bodyFont, fontsOk);
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
         ctx.fillText(String(day), x + colW / 2, y + rowH / 2);
       }
     }
+  }
+
+  // Leyenda de festivos al pie (una línea compacta: "6 Reyes · 12 Raza"). Solo si hay festivos.
+  if (holidays.length > 0) {
+    const legend = holidays.map((h) => `${h.day} ${h.short}`).join("   ·   ");
+    ctx.fillStyle = HOLIDAY_INK;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "alphabetic";
+    setBrandFont(ctx, 600, L.legendFontSize, bodyFont, fontsOk);
+    ctx.fillText(legend, CALENDAR_PAGE.width / 2, L.legendY);
   }
 }
