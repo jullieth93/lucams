@@ -9,6 +9,12 @@
 import type { Metadata } from "next";
 import { Sparkles } from "lucide-react";
 import { listOcasiones } from "@/lib/catalog";
+import {
+  DESTINATARIOS,
+  PERSONALIZATION,
+  PRICE_RANGES,
+  type WizardInitial,
+} from "@/lib/recomendador-options";
 import { WizardRecomendador } from "@/components/wizard-recomendador";
 
 export const metadata: Metadata = {
@@ -20,8 +26,39 @@ export const metadata: Metadata = {
 // CSP por nonce (C3): requiere render dinámico (los scripts necesitan el nonce).
 export const dynamic = "force-dynamic";
 
-export default async function RecomendadorPage() {
+// #10 — rehidrata el wizard desde searchParams (deep-link / refresh). En Next 16 searchParams es
+// un Promise que se debe await (Async Request APIs). Toda entrada se valida contra la whitelist
+// compartida en lib/recomendador-options.ts; los precios se mantienen en centavos COP enteros.
+export default async function RecomendadorPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const ocasiones = await listOcasiones();
+  const sp = await searchParams;
+
+  const validOcasionSlugs = new Set(ocasiones.filter((o) => o.productCount > 0).map((o) => o.slug));
+  const rawOcasion = sp.ocasion;
+  const ocasionArr = Array.isArray(rawOcasion) ? rawOcasion : rawOcasion ? [rawOcasion] : [];
+  const ocasionSlugs = ocasionArr.filter((s) => validOcasionSlugs.has(s));
+
+  const destRaw = typeof sp.destinatario === "string" ? sp.destinatario : null;
+  const destinatario = DESTINATARIOS.some((d) => d.value === destRaw) ? destRaw : null;
+
+  const minRaw = typeof sp.precioMin === "string" ? sp.precioMin : "";
+  const maxRaw = typeof sp.precioMax === "string" ? sp.precioMax : "";
+  const range = PRICE_RANGES.find((r) => String(r.min) === minRaw && String(r.max) === maxRaw);
+  const priceRange = range ? { min: range.min, max: range.max } : null;
+
+  const persRaw = typeof sp.personalizable === "string" ? sp.personalizable : "any";
+  const pers = PERSONALIZATION.some((p) => p.value === persRaw) ? persRaw : "any";
+
+  const view = sp.vista === "resultados" ? "results" : null;
+
+  const pasoRaw = typeof sp.paso === "string" ? parseInt(sp.paso, 10) : NaN;
+  const step = Number.isInteger(pasoRaw) && pasoRaw >= 1 && pasoRaw <= 4 ? pasoRaw : 1;
+
+  const initial: WizardInitial = { step, ocasionSlugs, destinatario, priceRange, pers, view };
 
   return (
     <div className="min-h-screen">
@@ -42,7 +79,7 @@ export default async function RecomendadorPage() {
 
       <section className="py-12">
         <div className="mx-auto max-w-3xl px-6">
-          <WizardRecomendador ocasiones={ocasiones} />
+          <WizardRecomendador ocasiones={ocasiones} initial={initial} />
         </div>
       </section>
     </div>
