@@ -13,6 +13,16 @@
 
 ## Resumen actual
 
+**🔐 ✅ BACKLOG AUDITORÍA v3 — TANDA 2 (privacidad Ley 1581 + enlaces/tokens, 2026-07-18).** Workflow de validación (20 agentes) → **3 obsoletos** (ya cerrados: validación de cupones, clamp de límite, /signup) + **~15 implementados** en 4 batches, cada uno certificado (tsc+lint+prettier+tests) y pusheado. Lucy resolvió 4 decisiones de política: retirar imágenes = **opción A** (snapshot en OrderItem), retención PII = **180 días**, dirección guest = **enmascarar calle**, consentimiento back-in-stock **aprobado**.
+
+- **Batch A** (`b2ca97a`): redacción de email/teléfono en logs (`to`/`*Email`/`*Phone`), supresión marca órdenes para el cron de reseñas, tope al `reason` del retracto, secreto de cron solo por header.
+- **Batch B** (`826d1af`): rate-limit por IP en las 3 acciones del Estudio, PII enmascarada en `/pedido/[token]` (email `lu•••@`, calle oculta).
+- **Batch C** (`4c2a1e2`): "Dejar de compartir" un diseño sin archivar (`revokeShareAction`), merge de carrito al recuperar (sin pisar el actual, `mergeCartsAdopt`), unsubscribe con param opaco firmado (`?u=`, email fuera de la URL), rate-limit en `/carrito/recuperar/[token]`.
+- **Batch D** (`bf5431f`): purga de EmailEvent/WebhookEvent a **180d** (`purgeExpiredEventLogs` + cron + migración pg_cron 016 + heartbeat), consentimiento **BACK_IN_STOCK** (nuevo ConsentScope + migración Prisma + aviso en UI), y safe slice de #1 (borra el preview público de diseños READY sin pedido al archivar).
+- **PENDIENTE #1 opción A completa**: el snapshot del preview dentro de `OrderItem` (para retirar la foto pública de diseños USED_IN_ORDER al archivar) es una pieza mayor con ADR propio — el safe slice ya cubre los diseños sin pedido.
+- **ACCIONES HUMANAS**: agendar/verificar el cron `lucams-purge-event-logs` en Supabase (migración 016); + la de Tanda 1 (#15, monitor de uptime externo a `/api/health/crons`).
+- **Quedan ~158 del backlog** en 6 tandas: emails/errores, estudio, UX storefront, descubrimiento, cuenta/nav/copy, a11y/admin/perf/tests.
+
 **🛡️ ✅ BACKLOG AUDITORÍA v3 — TANDA 1 (robustez operativa, 2026-07-18).** Lucy eligió seguir barriendo el backlog de la auditoría v3 (197 restantes: 116 medium + 81 low) por tandas de afinidad. **Tanda 1 = "fallar en silencio" en dinero/saga/concurrencia/observabilidad** (19 hallazgos). Workflow de validación (20 agentes) re-validó cada uno contra el código actual: **18 vigentes + 1 obsoleto** (#1 ya lo resolví con COUPON_INVALIDATED). Implementados en 5 batches, cada uno certificado (tsc + lint + prettier + build + tests) y pusheado:
 
 - **Batch 1** (`7af9cf0`) observabilidad: #16 captureServerError en los 6 crons, #17 resumen diario no sella si el email falla, #18 batches de email no marcan en circuit-open, #9 alerta de orden Wompi PENDING >2h, #13 back-in-stock topa por stock (FIFO), #19 SLI de checkout no supera 100%, #10 mensaje de retry de guía.
