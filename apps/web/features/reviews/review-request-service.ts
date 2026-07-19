@@ -25,6 +25,9 @@ export async function sendReviewRequests(
     where: {
       status: "DELIVERED",
       reviewRequestedAt: null,
+      // #18 — excluir pedidos soft-borrados: un pedido con deletedAt no debería recibir la
+      // solicitud (ni podría reseñarse — el gate de compra de actions.ts ya filtra deletedAt).
+      deletedAt: null,
       deliveredAt: { gte: notOlderThan, lte: atLeastSince },
     },
     orderBy: { deliveredAt: "asc" },

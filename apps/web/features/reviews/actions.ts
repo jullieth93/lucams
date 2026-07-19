@@ -15,7 +15,7 @@
 import { headers } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { prisma } from "@/lib/db";
+import { prisma, Prisma } from "@/lib/db";
 import { getCurrentCustomer } from "@/lib/auth";
 import { verifyTurnstileToken } from "@/lib/turnstile";
 import { rateLimit } from "@/lib/rate-limit";
@@ -117,16 +117,27 @@ export async function submitReviewAction(
     [session.customer.firstName, session.customer.lastName].filter(Boolean).join(" ").trim() ||
     null;
 
-  await prisma.review.create({
-    data: {
-      productId: parsed.data.productId,
-      customerId: session.customer.id,
-      rating: parsed.data.rating,
-      comment,
-      authorName,
-      isApproved: false, // moderación en /admin/resenas
-    },
-  });
+  // #17 — el findFirst de arriba es un pre-check amigable, pero dos submits concurrentes
+  // (doble-click / dos pestañas / reintento) podían crear 2 reseñas. El índice único parcial
+  // Review_productId_customerId_active_unique lo hace imposible; capturamos su P2002 y
+  // devolvemos el MISMO mensaje que el pre-check (mismo patrón que registro/stock).
+  try {
+    await prisma.review.create({
+      data: {
+        productId: parsed.data.productId,
+        customerId: session.customer.id,
+        rating: parsed.data.rating,
+        comment,
+        authorName,
+        isApproved: false, // moderación en /admin/resenas
+      },
+    });
+  } catch (err) {
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+      return { error: "Ya dejaste una reseña para este producto. ¡Gracias!" };
+    }
+    throw err;
+  }
 
   logger.info({
     event: "review.submitted",

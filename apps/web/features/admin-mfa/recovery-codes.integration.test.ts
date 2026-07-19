@@ -65,9 +65,17 @@ describe.skipIf(!hasDb)(
   { timeout: 30_000 },
   () => {
     afterAll(async () => {
-      // Borrar los AdminUser de esta corrida; AdminRecoveryCode cae por Cascade.
+      // #20 — barrer TODO el namespace de este test (no solo `${RUN}`), así una corrida
+      // interrumpida no deja AdminUser SUPERADMIN residuales en la BD compartida. Este archivo
+      // es el único que crea el prefijo `mfaitest_` / dominio `@lucams.test`. AdminRecoveryCode
+      // cae por Cascade.
       await prisma.adminUser.deleteMany({
-        where: { supabaseUserId: { startsWith: `${RUN}_sup_` } },
+        where: {
+          OR: [
+            { supabaseUserId: { startsWith: "mfaitest_" } },
+            { email: { endsWith: "@lucams.test" } },
+          ],
+        },
       });
     });
 

@@ -252,6 +252,15 @@ describe("createOrder (integration)", () => {
 });
 ```
 
+> **Cobertura del ciclo de reseñas (auditoría v3 · #21, 2026-07-19).** `features/reviews/` tiene
+> dos suites de integración contra la BD real (prefijo `RUN` + `afterAll` scoped):
+> `service.integration.test.ts` cubre `getProductRatingAggregate` (solo aprobadas de clientes
+> reales, ignora demo `customerId=null`), `listFeaturedReviews` (featured + producto activo, orden
+> y límite), `listReviewsAdmin` (estado/rating/productId/`pendingCount`) y las transiciones
+> approve/reject/toggleFeatured/archive/restore + bulk; `actions.integration.test.ts` cubre
+> `submitReviewAction` (gate de sesión, gate de compra, validación, creación pendiente y unicidad
+> por cliente/producto — respaldada por el índice único parcial `Review_productId_customerId_active_unique`).
+
 ---
 
 ## Tests de RLS
