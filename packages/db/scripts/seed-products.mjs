@@ -688,7 +688,7 @@ const productsData = [
     isFeatured: true,
     personalizationKind: "CALENDAR_PHOTO_MONTH",
     personalizationSchema: { photoSlots: 12, year: 2026, monthLabels: true },
-    images: [UNSPLASH("1606166187734-a4cb74079037")],
+    images: [UNSPLASH("1577563908411-5077b6dc7624")],
   },
   {
     slug: "calendario-foto-hero-planner",
@@ -713,7 +713,7 @@ const productsData = [
     categorySlug: "calendarios",
     isPersonalizable: false,
     personalizationKind: "NONE",
-    images: [UNSPLASH("1606166187734-a4cb74079037")],
+    images: [UNSPLASH("1577563908411-5077b6dc7624")],
   },
   {
     slug: "mini-calendarios-x10",
@@ -725,7 +725,7 @@ const productsData = [
     categorySlug: "calendarios",
     isPersonalizable: false,
     personalizationKind: "NONE",
-    images: [UNSPLASH("1606166187734-a4cb74079037")],
+    images: [UNSPLASH("1577563908411-5077b6dc7624")],
     variants: [
       { sku: "CAL-MINI-10-V1", name: "x10 unidades", price: 700000, attributes: { quantity: 10 } },
       { sku: "CAL-MINI-10-V2", name: "x20 unidades", price: 1300000, attributes: { quantity: 20 } },
@@ -751,7 +751,7 @@ const productsData = [
       minQuantity: 50,
       fields: ["logo", "phone", "email", "website"],
     },
-    images: [UNSPLASH("1606166187734-a4cb74079037")],
+    images: [UNSPLASH("1577563908411-5077b6dc7624")],
     variants: [
       {
         sku: "B2B-REC-7x5-V1",
@@ -789,7 +789,7 @@ const productsData = [
       minQuantity: 50,
       fields: ["logo", "tagline"],
     },
-    images: [UNSPLASH("1606166187734-a4cb74079037")],
+    images: [UNSPLASH("1577563908411-5077b6dc7624")],
     variants: [
       {
         sku: "B2B-CIRC-6-V1",
@@ -822,7 +822,7 @@ const productsData = [
     isPersonalizable: true,
     personalizationKind: "BUSINESS_LOGO",
     personalizationSchema: { shape: "custom", minQuantity: 50, requiresVectorFile: true },
-    images: [UNSPLASH("1606166187734-a4cb74079037")],
+    images: [UNSPLASH("1577563908411-5077b6dc7624")],
   },
   {
     slug: "iman-tarjeta-presentacion",
@@ -840,7 +840,7 @@ const productsData = [
       minQuantity: 100,
       fields: ["name", "title", "phone", "email", "company"],
     },
-    images: [UNSPLASH("1606166187734-a4cb74079037")],
+    images: [UNSPLASH("1577563908411-5077b6dc7624")],
   },
   {
     slug: "pack-empresarial-mixto-100",
@@ -857,7 +857,7 @@ const productsData = [
       mix: ["rect-7x5", "circle-6"],
       fields: ["logo", "phone", "social"],
     },
-    images: [UNSPLASH("1606166187734-a4cb74079037")],
+    images: [UNSPLASH("1577563908411-5077b6dc7624")],
     variants: [
       {
         sku: "B2B-MIX-100-V1",
