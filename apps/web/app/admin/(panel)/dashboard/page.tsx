@@ -41,6 +41,7 @@ import {
   AdminPage,
   AdminPageHeader,
   AdminPageBody,
+  AdminNotice,
   OpsCard,
   KpiCard,
   QuickLink,
@@ -55,9 +56,15 @@ export const metadata: Metadata = {
   title: "Dashboard",
 };
 
-export default async function AdminDashboardPage() {
+export default async function AdminDashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ denied?: string }>;
+}) {
   const session = await getCurrentAdmin();
   if (!session) redirect("/admin/login");
+  // #28 — el guard RBAC redirige aquí con ?denied=1; hasta ahora nada explicaba el porqué.
+  const denied = (await searchParams).denied === "1";
 
   // Pedidos pendientes = Orders en PENDING_PAYMENT (esperando pago Wompi).
   // No incluyo PAID/FULFILLING porque esos ya están en producción.
@@ -154,6 +161,13 @@ export default async function AdminDashboardPage() {
       />
 
       <AdminPageBody>
+        {/* #28 — explica el redirect del guard RBAC (antes ?denied=1 no mostraba nada). */}
+        {denied && (
+          <AdminNotice tone="warning">
+            No tienes permiso para esa sección. Si crees que es un error, pídele acceso a un
+            administrador.
+          </AdminNotice>
+        )}
         {/* ─────────────── Operaciones ─────────────── */}
         <section>
           <h2 className="text-brand-muted mb-3 text-xs font-bold tracking-widest uppercase">

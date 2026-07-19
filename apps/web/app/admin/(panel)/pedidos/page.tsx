@@ -351,12 +351,24 @@ export default async function AdminPedidosPage({ searchParams }: { searchParams:
             </span>
             <div className="flex gap-1">
               {page > 1 && (
-                <PaginationLink page={page - 1} q={q} status={status} sort={sort}>
+                <PaginationLink
+                  page={page - 1}
+                  q={q}
+                  status={status}
+                  sort={sort}
+                  atencion={needsReconFilter}
+                >
                   ← Anterior
                 </PaginationLink>
               )}
               {page < totalPages && (
-                <PaginationLink page={page + 1} q={q} status={status} sort={sort}>
+                <PaginationLink
+                  page={page + 1}
+                  q={q}
+                  status={status}
+                  sort={sort}
+                  atencion={needsReconFilter}
+                >
                   Siguiente →
                 </PaginationLink>
               )}
@@ -373,12 +385,14 @@ function PaginationLink({
   q,
   status,
   sort,
+  atencion,
   children,
 }: {
   page: number;
   q?: string;
   status?: string;
   sort?: string;
+  atencion?: boolean;
   children: React.ReactNode;
 }) {
   const params = new URLSearchParams();
@@ -386,6 +400,7 @@ function PaginationLink({
   if (q) params.set("q", q);
   if (status && status !== "all") params.set("status", status);
   if (sort && sort !== "recent") params.set("sort", sort);
+  if (atencion) params.set("atencion", "1"); // #27 — no perder el filtro al paginar
   return (
     <Link
       href={`/admin/pedidos?${params.toString()}`}
