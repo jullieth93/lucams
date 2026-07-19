@@ -13,6 +13,17 @@
 
 ## Resumen actual
 
+**🎨 ✅ TANDA 4 (Estudio) + FEEDBACK DE LUCY (2026-07-18).** Barrido de los 17 findings de Estudio del backlog v3 (workflow de validación: 14 vigentes + 3 ya-arreglados #4/#8/#10) en 5 batches certificados y pusheados, MÁS 4 comentarios de producto de Lucy evaluados críticamente. Además se armó una **galería de preview de correos** dev-only (`/internal/correos`, `8754e8a`) con los 19 transaccionales.
+
+- **Batch A** (`b2c7cab`) copy/i18n: voseo→tuteo en onboarding/hints (#7/#13) + término correcto de slot "separador" vs "imán" en separadores (#14, prop `slotNoun`).
+- **Batch B** (`12d0fa9`) editores: #11 el nombre ya no traga letras (auto-crece `count`, maxLength al máximo real), #15 subtítulo veraz (solo promete "dibujito" si hay estilos), #16 a11y de swatches (aria por color + 40px), #17 CTA unificado.
+- **Batch C** (`8657609`) UX móvil: #5 ancho del tip de gestos, #6 X del sheet visible+44px, #9 copy táctil de los 3 hints 3D (hook `useIsTouch`).
+- **Batch D** (`efb8938`) 3D: #12 helper `FitCamera` (encuadre por aspecto) en las 3 vistas (nombre/libro/nevera) + `makeDefault`/maxDistance.
+- **Batch E** (`78afcb0` #1/#2 + `b5edd43` #3): #1 fondo heart/circle recortado a la silueta; #2 `setBrandFont` fuerza el eje `wght` de las fuentes variables (@napi-rs ignoraba el peso); #3 el preview del calendario muestra las páginas reales (mes/grilla/festivos), no fotos sueltas.
+- **Feedback de Lucy** (evaluado en [[feedback_lucy_ux_2026_07_18]]): **FB1** ícono de cuenta visible en móvil + **FB2** botón "Salir" claro del estudio (`8047ade`); **FB3** festivos colombianos en el calendario (color+nombre+leyenda, computus + Ley Emiliani, módulo `colombian-holidays` con 11 tests) (`b62d643`). **Build completo verde.**
+- **⏳ PENDIENTE de Lucy (decisiones ya tomadas, implementación necesita verificación visual/táctil):** **FB4** scroll atrapado en el Estudio → el modal de "Ajustar foto" es hoy un panel FLOTANTE (`modal=false`, el pan/zoom ocurre en el slot de la grilla detrás); la decisión (pan/zoom solo en modal a pantalla completa + grilla = tocar abre) exige un rework del editor, no un one-liner → hacerlo con device real. **FB5** pase completo de realismo 3D (PBR + entorno + contexto + sombras en las 4 escenas) → esfuerzo visual iterativo, requiere GPU + ojo de Lucy.
+- **GUI test pendiente de Lucy:** ver checklist en la bitácora de esta sesión.
+
 **✉️ ✅ BACKLOG AUDITORÍA v3 — TANDA 3 (emails + estados de error, 2026-07-18).** Workflow de validación (agentes por hallazgo) sobre los 18 findings de la tanda → **6 ya-arreglados** (obsoletos: fila de descuento, escape del nombre, `after()` en emails de soporte, circuit-open ya cubierto por Tanda 1 #18, `decodeURIComponent` doble, `loading.tsx` de envío ya existía) + **12 vigentes** implementados en 3 batches, cada uno certificado (tsc + eslint + prettier + tests) y pusheado. Lucy resolvió 4 decisiones: **One-Click POST** para el unsubscribe, supresión **solo comerciales**, y aprobó el copy de retracto-rechazado y los mensajes de error de checkout.
 
 - **Batch A** (`43e82b9`): #1 saga notifica el email correcto por transición post-pago (REFUNDED→refunded, CANCELLED post-pago→cancelled, pre-pago→payment-failed), #9 URLs dinámicas (`SITE_URL`) en order-cancelled/design-rejected, #15 `loading.tsx` del Estudio, #16 `error.tsx` del panel admin.
