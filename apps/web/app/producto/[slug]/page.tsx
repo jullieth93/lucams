@@ -167,6 +167,41 @@ export default async function ProductoDetallePage({
     .slice(0, 10);
   // Agotado = ninguna opción activa con stock (auditoría 2026-07-13).
   const outOfStock = product.inStock === false;
+  // #17 — precios efectivos comprables (centavos), mismo criterio que el precio VISIBLE del header y
+  // el VariantSelector (override de la variante o basePrice). Para "Nombre Personalizado" (precio por
+  // ficha) el mínimo comprable son nameMin fichas → el JSON-LD coincide con el "Desde …" mostrado.
+  const perTileFactor = isNamePerTile ? nameMin : 1;
+  const effectivePrices = (
+    selectable.length > 0
+      ? selectable.map((v) => v.price ?? product.basePrice)
+      : [product.basePrice]
+  ).map((p) => p * perTileFactor);
+  const lowPrice = Math.min(...effectivePrices);
+  const highPrice = Math.max(...effectivePrices);
+  const availability = outOfStock ? "https://schema.org/OutOfStock" : "https://schema.org/InStock";
+  const offers =
+    lowPrice === highPrice
+      ? {
+          "@type": "Offer",
+          url: `https://lucamsshop.co/producto/${product.slug}`,
+          priceCurrency: "COP",
+          price: (lowPrice / 100).toFixed(0),
+          priceValidUntil,
+          availability,
+          itemCondition: "https://schema.org/NewCondition",
+          seller: { "@type": "Organization", name: "Lucams_shop" },
+        }
+      : {
+          "@type": "AggregateOffer",
+          url: `https://lucamsshop.co/producto/${product.slug}`,
+          priceCurrency: "COP",
+          lowPrice: (lowPrice / 100).toFixed(0),
+          highPrice: (highPrice / 100).toFixed(0),
+          priceValidUntil,
+          availability,
+          itemCondition: "https://schema.org/NewCondition",
+          seller: { "@type": "Organization", name: "Lucams_shop" },
+        };
   const jsonLd = {
     "@context": "https://schema.org/",
     "@type": "Product",
@@ -187,17 +222,7 @@ export default async function ProductoDetallePage({
           },
         }
       : {}),
-    offers: {
-      "@type": "Offer",
-      url: `https://lucamsshop.co/producto/${product.slug}`,
-      priceCurrency: "COP",
-      price: (product.basePrice / 100).toFixed(0),
-      priceValidUntil,
-      availability:
-        product.inStock === false ? "https://schema.org/OutOfStock" : "https://schema.org/InStock",
-      itemCondition: "https://schema.org/NewCondition",
-      seller: { "@type": "Organization", name: "Lucams_shop" },
-    },
+    offers, // #17 — Offer (precio único) o AggregateOffer (rango) coincidente con el precio visible
   };
 
   // BreadcrumbList (auditoría 2026-07-13): Tienda → Categoría → Producto → migas en Google.

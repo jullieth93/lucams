@@ -21,9 +21,12 @@ export function ProductCard({
   /** Si se pasa (cliente logueado), muestra el corazón de favoritos con este estado inicial. */
   wishlisted?: boolean;
 }) {
-  const hasDiscount = product.compareAtPrice != null && product.compareAtPrice > product.basePrice;
+  // #20 — el descuento se basa en el precio REALMENTE mostrado (minVariantPrice si aplica), no en el
+  // basePrice, para que el tachado y el % coincidan con la cifra visible.
+  const displayPrice = product.minVariantPrice ?? product.basePrice;
+  const hasDiscount = product.compareAtPrice != null && product.compareAtPrice > displayPrice;
   const discountPct = hasDiscount
-    ? Math.round(((product.compareAtPrice! - product.basePrice) / product.compareAtPrice!) * 100)
+    ? Math.round(((product.compareAtPrice! - displayPrice) / product.compareAtPrice!) * 100)
     : 0;
   // inStock === false → agotado (undefined = paths sin dato de stock → se trata como disponible).
   const outOfStock = product.inStock === false;
@@ -96,7 +99,8 @@ export function ProductCard({
         <h3 className="text-brand-purple-dark group-hover:text-brand-purple line-clamp-2 font-semibold">
           {product.name}
         </h3>
-        <div className="mt-auto flex items-baseline gap-2 pt-2">
+        {/* #20 — flex-wrap: en cards angostas (2-col móvil) el tachado ya no se corta. */}
+        <div className="mt-auto flex flex-wrap items-baseline gap-x-2 gap-y-0.5 pt-2">
           {product.variantCount != null &&
             product.variantCount > 1 &&
             product.minVariantPrice != null &&

@@ -231,7 +231,7 @@ export function VariantSelector({ productBasePrice, variants: rawVariants }: Var
         <p className="text-brand-purple-dark/70 mb-2 text-xs font-bold tracking-wider uppercase">
           Elige tu opción
         </p>
-        <div role="radiogroup" aria-label="Variantes del producto" className="flex flex-col gap-2">
+        <div role="group" aria-label="Variantes del producto" className="flex flex-col gap-2">
           {variants.map((v) => {
             const attrs = parseVariantAttributes(v.attributes);
             const fallbackLabel = generateVariantLabel(attrs);
@@ -242,8 +242,7 @@ export function VariantSelector({ productBasePrice, variants: rawVariants }: Var
               <button
                 key={v.id}
                 type="button"
-                role="radio"
-                aria-checked={isSelected}
+                aria-pressed={isSelected}
                 onClick={() => selectVariant(v.id)}
                 className={[
                   "focus:ring-brand-turquoise flex w-full cursor-pointer items-center justify-between rounded-lg p-3 text-left transition-all focus:ring-2 focus:outline-none",
@@ -304,7 +303,7 @@ export function VariantSelector({ productBasePrice, variants: rawVariants }: Var
           <p className="text-brand-purple-dark/70 mb-2 text-xs font-bold tracking-wider uppercase">
             {dim.label}
           </p>
-          <div role="radiogroup" aria-label={dim.label} className="flex flex-wrap gap-2">
+          <div role="group" aria-label={dim.label} className="flex flex-wrap gap-2">
             {dim.values.map((value) => {
               const isSelected = currentValues[dim.key] === value;
               const available = isSelected || isCombinationAvailable(dim.key, value);
@@ -312,8 +311,7 @@ export function VariantSelector({ productBasePrice, variants: rawVariants }: Var
                 <button
                   key={value}
                   type="button"
-                  role="radio"
-                  aria-checked={isSelected}
+                  aria-pressed={isSelected}
                   aria-disabled={!available}
                   disabled={!available}
                   onClick={() => available && handleSelectValue(dim.key, value)}
