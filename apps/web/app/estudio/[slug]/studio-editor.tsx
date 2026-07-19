@@ -55,7 +55,11 @@ import { Sparkles, Box, X, CalendarDays, ChevronLeft, ChevronRight } from "lucid
 import nextDynamic from "next/dynamic";
 import type { Magnet3D } from "./fridge-3d-view";
 import { StudioAiPanel } from "./studio-ai-panel";
-import { composeCalendarPages } from "./lib/compose-calendar-page";
+import {
+  composeCalendarPages,
+  buildCalendarPageInputs,
+  buildCalendarPreviewMontage,
+} from "./lib/compose-calendar-page";
 import { SceneGallery } from "./scene-gallery";
 import { MONTH_NAMES_ES } from "@/features/personalization/calendar-grid";
 
@@ -411,6 +415,18 @@ export function StudioEditor({
     if (!state.designId || !state.canvasData || state.isFinalizing) return;
     setPreviewError(null);
     try {
+      // #3 (auditoría v3) — CALENDARIO: el preview de confirmación debe mostrar las PÁGINAS reales
+      // (mes + grilla + festivos), no las fotos sueltas rotuladas "imanes". Reusa composeCalendarPages
+      // (mismas páginas WYSIWYG que producción/3D) y las apila en un montaje. No usa Konva/stages.
+      if (isCalendarMonth) {
+        const startMonth =
+          (product.personalizationSchema as { startMonth?: number })?.startMonth ?? 0;
+        const inputs = buildCalendarPageInputs(state.canvasData.slots, startMonth);
+        const pages = await composeCalendarPages(inputs, selectedYear);
+        setPreviewDataUrl(await buildCalendarPreviewMontage(pages));
+        setPreviewModalOpen(true);
+        return;
+      }
       await ensureAllStagesMounted(); // T5: montar todos los slots antes del snapshot compositado
       // Pasar shape del producto para que el preview compositado respete
       // la silueta real (corazón, círculo, etc.) y no se vea un rectángulo
@@ -430,7 +446,14 @@ export function StudioEditor({
         message: "No pudimos preparar la vista previa. Intenta de nuevo en un momento.",
       });
     }
-  }, [store, productConfig.shape, ensureAllStagesMounted]);
+  }, [
+    store,
+    productConfig.shape,
+    ensureAllStagesMounted,
+    isCalendarMonth,
+    selectedYear,
+    product.personalizationSchema,
+  ]);
 
   // SEP1 — Abrir el libro 3D del separador: captura un snapshot recortado a la silueta física
   // (transparente afuera) y lo pasa como textura. Solo para separadores (no son imanes → su hogar es
@@ -491,13 +514,7 @@ export function StudioEditor({
     try {
       const startMonth =
         (product.personalizationSchema as { startMonth?: number })?.startMonth ?? 0;
-      const inputs = [...state.canvasData.slots]
-        .sort((a, b) => a.slotIndex - b.slotIndex)
-        .map((s) => ({
-          assetUrl: s.assetUrl,
-          photoTransform: s.photoTransform,
-          monthIndex0: (((startMonth + s.slotIndex) % 12) + 12) % 12,
-        }));
+      const inputs = buildCalendarPageInputs(state.canvasData.slots, startMonth);
       const pages = await composeCalendarPages(inputs, selectedYear);
       setCalendarMonthIndex(0);
       setCalendarPages(pages);
@@ -1050,6 +1067,8 @@ export function StudioEditor({
         unitPrice={unitPriceCents}
         isFinalizing={isFinalizingFlag}
         errorMessage={previewError}
+        productKind={isCalendarMonth ? "calendar" : "magnets"}
+        calendarYear={selectedYear}
         onEdit={handleClosePreviewModal}
         onConfirm={handleConfirmFinalize}
       />

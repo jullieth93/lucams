@@ -35,6 +35,10 @@ type StudioPreviewModalProps = {
   unitPrice: number | null; // precio en centavos COP de la variant elegida
   isFinalizing: boolean;
   errorMessage: string | null;
+  /** #3 — tipo de producto: el calendario se describe en "páginas", no "imanes". */
+  productKind?: "magnets" | "calendar";
+  /** Año del calendario (solo cuando productKind==="calendar"). */
+  calendarYear?: number;
   onEdit: () => void;
   onConfirm: () => void;
 };
@@ -48,10 +52,16 @@ export function StudioPreviewModal({
   unitPrice,
   isFinalizing,
   errorMessage,
+  productKind = "magnets",
+  calendarYear,
   onEdit,
   onConfirm,
 }: StudioPreviewModalProps) {
   if (!previewUrl) return null;
+
+  // #3 — el calendario habla de "páginas" (concordancia femenina: "las"/"Revísalas"); los imanes,
+  // de "imanes". Copy separado para no romper el WYSIWYG conceptual (pantalla = físico).
+  const isCalendar = productKind === "calendar";
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && !isFinalizing && onEdit()}>
@@ -68,17 +78,33 @@ export function StudioPreviewModal({
       >
         <DialogTitle className="text-brand-purple-dark font-display flex items-center gap-2 text-xl font-bold">
           <Sparkles className="text-brand-pink h-5 w-5" />
-          Así se verá tu pedido
+          {isCalendar ? "Así se verá tu calendario" : "Así se verá tu pedido"}
         </DialogTitle>
         <DialogDescription className="text-brand-purple-dark/70 text-sm">
-          Esta es la vista previa de los {slotCount} imanes que vas a recibir.
-          {sizeCm && (
+          {isCalendar ? (
             <>
-              {" "}
-              Cada imán mide <strong>{sizeCm}</strong>.
+              Esta es la vista previa de las {slotCount} páginas de tu calendario
+              {calendarYear ? ` ${calendarYear}` : ""}.
+              {sizeCm && (
+                <>
+                  {" "}
+                  Cada página mide <strong>{sizeCm}</strong>.
+                </>
+              )}{" "}
+              Revísalas antes de continuar.
             </>
-          )}{" "}
-          Revísalos antes de continuar.
+          ) : (
+            <>
+              Esta es la vista previa de los {slotCount} imanes que vas a recibir.
+              {sizeCm && (
+                <>
+                  {" "}
+                  Cada imán mide <strong>{sizeCm}</strong>.
+                </>
+              )}{" "}
+              Revísalos antes de continuar.
+            </>
+          )}
         </DialogDescription>
 
         {/* Preview compositado del grid */}
@@ -86,7 +112,11 @@ export function StudioPreviewModal({
           <div className="relative mx-auto aspect-square max-w-md">
             <Image
               src={previewUrl}
-              alt={`Vista previa de ${slotCount} imanes`}
+              alt={
+                isCalendar
+                  ? `Vista previa de las ${slotCount} páginas de tu calendario${calendarYear ? ` ${calendarYear}` : ""}`
+                  : `Vista previa de ${slotCount} imanes`
+              }
               fill
               sizes="(max-width: 640px) 90vw, 480px"
               className="object-contain drop-shadow-lg"
@@ -101,11 +131,16 @@ export function StudioPreviewModal({
             <div className="min-w-0 flex-1">
               <p className="text-brand-purple-dark font-semibold">{productName}</p>
               <p className="text-brand-muted text-xs">
-                {slotCount} {slotCount === 1 ? "imán personalizado" : "imanes personalizados"}
+                {isCalendar
+                  ? `Calendario personalizado · ${slotCount} páginas`
+                  : `${slotCount} ${slotCount === 1 ? "imán personalizado" : "imanes personalizados"}`}
                 {sizeCm && (
                   <>
                     {" · "}
-                    <span className="text-brand-purple font-semibold">📐 {sizeCm} c/u</span>
+                    <span className="text-brand-purple font-semibold">
+                      📐 {sizeCm}
+                      {isCalendar ? "" : " c/u"}
+                    </span>
                   </>
                 )}
               </p>

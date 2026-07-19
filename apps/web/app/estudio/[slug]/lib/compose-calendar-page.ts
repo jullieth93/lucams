@@ -20,6 +20,60 @@ export type CalendarPageInput = {
   monthIndex0: number;
 };
 
+/**
+ * Construye las entradas de página (una por slot) a partir del canvasData del calendario. Compartido
+ * por el preview de confirmación (#3) y la vista 3D — misma matemática de mes: monthIndex0 =
+ * (startMonth + slotIndex) mod 12.
+ */
+export function buildCalendarPageInputs(
+  slots: ReadonlyArray<{
+    slotIndex: number;
+    assetUrl?: string | null;
+    photoTransform?: { offsetX: number; offsetY: number; scale: number } | null;
+  }>,
+  startMonth: number,
+): CalendarPageInput[] {
+  return [...slots]
+    .sort((a, b) => a.slotIndex - b.slotIndex)
+    .map((s) => ({
+      assetUrl: s.assetUrl,
+      photoTransform: s.photoTransform,
+      monthIndex0: (((startMonth + s.slotIndex) % 12) + 12) % 12,
+    }));
+}
+
+/**
+ * #3 (auditoría v3) — apila las páginas ya compuestas (mes + grilla + festivos) en UN PNG en grid,
+ * para el modal de confirmación: el cliente ve las páginas REALES que se imprimen, no las fotos
+ * sueltas. Espejo estructural de buildCompositedPreview pero sobre páginas de calendario.
+ */
+export async function buildCalendarPreviewMontage(pages: string[]): Promise<string> {
+  const cols = Math.min(4, Math.max(1, pages.length));
+  const rows = Math.ceil(pages.length / cols);
+  const cellW = 200;
+  const cellH = Math.round(cellW * (CALENDAR_PAGE.height / CALENDAR_PAGE.width)); // ~281
+  const gap = 14;
+  const pad = 18;
+  const w = pad * 2 + cols * cellW + (cols - 1) * gap;
+  const h = pad * 2 + rows * cellH + (rows - 1) * gap;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("No se pudo crear el contexto 2D del montaje del calendario");
+  ctx.fillStyle = "#FFF8F0"; // brand-cream
+  ctx.fillRect(0, 0, w, h);
+
+  const imgs = await Promise.all(pages.map((url) => loadImage(url)));
+  imgs.forEach((img, i) => {
+    const x = pad + (i % cols) * (cellW + gap);
+    const y = pad + Math.floor(i / cols) * (cellH + gap);
+    ctx.drawImage(img, x, y, cellW, cellH);
+  });
+  return canvas.toDataURL("image/png");
+}
+
 function loadImage(url: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
