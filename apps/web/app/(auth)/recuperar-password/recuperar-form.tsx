@@ -29,7 +29,7 @@ export function RecuperarForm() {
           Recupera tu contraseña
         </CardTitle>
         <CardDescription className="text-base">
-          Te enviamos un correo con instrucciones para crear una nueva.
+          Escribe tu correo y te enviaremos un código para crear una contraseña nueva.
         </CardDescription>
       </CardHeader>
 
@@ -91,7 +91,7 @@ export function RecuperarForm() {
                   <SpinnerIcon /> Enviando...
                 </span>
               ) : (
-                "Enviar instrucciones"
+                "Enviar código"
               )}
             </Button>
             <p className="text-muted-foreground text-center text-sm">

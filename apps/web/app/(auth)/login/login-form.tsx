@@ -34,7 +34,7 @@ export function LoginForm({
     <Card className="border-brand-purple/10 animate-in fade-in slide-in-from-bottom-3 shadow-xl duration-500">
       <CardHeader className="space-y-2">
         <CardTitle className="font-display text-brand-purple-dark text-2xl">
-          Bienvenida de vuelta
+          ¡Qué alegría verte de nuevo!
         </CardTitle>
         <CardDescription className="text-base">
           Entra a tu cuenta para seguir personalizando tus imanes.

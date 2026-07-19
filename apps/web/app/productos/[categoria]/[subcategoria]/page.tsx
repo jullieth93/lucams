@@ -87,18 +87,21 @@ export default async function SubCategoryPage({
       <main id="contenido" tabIndex={-1} className="flex-1">
         <section className="from-brand-cream to-brand-pink/5 bg-gradient-to-br py-8 md:py-12">
           <div className="mx-auto max-w-6xl px-6">
-            <nav aria-label="Breadcrumb" className="mb-4 text-sm text-slate-600">
-              <Link href="/" className="hover:underline">
+            <nav aria-label="Breadcrumb" className="text-brand-muted mb-4 text-sm">
+              <Link href="/" className="hover:text-brand-purple">
                 Inicio
               </Link>
               <span className="mx-2">›</span>
-              <Link href="/productos" className="hover:underline">
+              <Link href="/productos" className="hover:text-brand-purple">
                 Productos
               </Link>
               {parentCat && (
                 <>
                   <span className="mx-2">›</span>
-                  <Link href={`/productos?categoria=${parentCat.slug}`} className="hover:underline">
+                  <Link
+                    href={`/productos?categoria=${parentCat.slug}`}
+                    className="hover:text-brand-purple"
+                  >
                     {parentCat.name}
                   </Link>
                 </>

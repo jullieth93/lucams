@@ -64,7 +64,7 @@ export default async function MiCuentaPage() {
     <div className="mx-auto max-w-4xl space-y-8">
       <div>
         <h1 className="font-display text-brand-purple-dark text-3xl">Hola, {displayName} 👋</h1>
-        <p className="text-brand-muted mt-1">Bienvenida a tu espacio Lucams.</p>
+        <p className="text-brand-muted mt-1">Este es tu espacio Lucams.</p>
       </div>
 
       {/* Accesos a secciones */}

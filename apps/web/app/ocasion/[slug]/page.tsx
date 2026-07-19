@@ -90,8 +90,8 @@ export default async function OcasionPage({ params }: { params: Promise<{ slug: 
         {/* Hero */}
         <section className="from-brand-pink/10 via-brand-cream to-brand-turquoise/10 bg-gradient-to-br py-12 md:py-16">
           <div className="mx-auto max-w-6xl px-6">
-            <nav aria-label="Breadcrumb" className="mb-4 text-sm text-slate-600">
-              <Link href="/" className="hover:underline">
+            <nav aria-label="Breadcrumb" className="text-brand-muted mb-4 text-sm">
+              <Link href="/" className="hover:text-brand-purple">
                 Inicio
               </Link>
               <span className="mx-2">›</span>
