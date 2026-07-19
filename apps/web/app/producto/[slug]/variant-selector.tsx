@@ -44,6 +44,10 @@ type Variant = {
 type VariantSelectorProps = {
   productBasePrice: number;
   variants: Variant[];
+  /** #14 — en productos por-ficha (Nombre) el total lo lleva el NamePricePicker ("$X por ficha ·
+   * count × price = total"); ocultamos el card "Precio" pelado del selector (confunde: parece el
+   * total pero es el precio de UNA ficha). */
+  perTile?: boolean;
 };
 
 const DIMENSION_LABELS: Record<string, string> = {
@@ -103,7 +107,11 @@ const VISIBLE_DIMENSIONS: (keyof ProductVariantAttributes)[] = [
   "magnet",
 ];
 
-export function VariantSelector({ productBasePrice, variants: rawVariants }: VariantSelectorProps) {
+export function VariantSelector({
+  productBasePrice,
+  variants: rawVariants,
+  perTile = false,
+}: VariantSelectorProps) {
   // ──── SINGLE SOURCE OF TRUTH: el Context del buy-box (H12) ────
   // Antes el estado vivía LOCAL acá + router.replace; las acciones (CTA/carrito/precio) no se
   // enteraban al instante. Ahora el estado es compartido: el selector lo escribe y las acciones lo
@@ -348,15 +356,18 @@ export function VariantSelector({ productBasePrice, variants: rawVariants }: Var
 
       {/* Precio del variant seleccionado, prominente. Refleja inmediato
           porque depende de selectedVariant (local). El router.replace
-          en background sincroniza la URL y el RSC silenciosamente. */}
-      <div className="from-brand-turquoise/8 to-brand-purple/8 ring-brand-purple/15 flex items-center justify-between rounded-lg bg-gradient-to-br p-3 ring-1">
-        <span className="text-brand-purple-dark/70 text-xs font-bold tracking-wider uppercase">
-          Precio
-        </span>
-        <span className="text-brand-purple-dark text-xl font-bold tabular-nums">
-          {formatCOP(currentPrice)}
-        </span>
-      </div>
+          en background sincroniza la URL y el RSC silenciosamente.
+          #14 — se oculta en por-ficha: el total lo muestra el NamePricePicker. */}
+      {!perTile && (
+        <div className="from-brand-turquoise/8 to-brand-purple/8 ring-brand-purple/15 flex items-center justify-between rounded-lg bg-gradient-to-br p-3 ring-1">
+          <span className="text-brand-purple-dark/70 text-xs font-bold tracking-wider uppercase">
+            Precio
+          </span>
+          <span className="text-brand-purple-dark text-xl font-bold tabular-nums">
+            {formatCOP(currentPrice)}
+          </span>
+        </div>
+      )}
     </div>
   );
 }

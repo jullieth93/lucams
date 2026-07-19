@@ -324,7 +324,11 @@ export default async function ProductoDetallePage({
               <SelectedVariantProvider variantIds={variantIds} initialId={firstVariantId}>
                 {/* M.3.b.CAT.3 — Selector de variants si product tiene 2+ */}
                 {selectable.length > 1 && (
-                  <VariantSelector productBasePrice={product.basePrice} variants={selectable} />
+                  <VariantSelector
+                    productBasePrice={product.basePrice}
+                    variants={selectable}
+                    perTile={isNamePerTile}
+                  />
                 )}
 
                 <div className="space-y-2 pt-2">
