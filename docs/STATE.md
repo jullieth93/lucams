@@ -13,7 +13,15 @@
 
 ## Resumen actual
 
-**🛍️ 🔄 BACKLOG AUDITORÍA v3 — TANDA 5 (UX storefront, 2026-07-19).** Workflow de validación (31 agentes) → **26 vigentes + 4 ya-arreglados** (#10 basePrice=minVariantPrice, #19 reseñas [DEMO], #23 whitelist checkout, #27 decodeURIComponent). ~21 implementados y pusheados, cada uno certificado (tsc+lint+prettier) y verificado con Chromium donde aplica:
+**🧹 🔄 BACKLOG AUDITORÍA v3 — TANDAS 6 y 7 EN CURSO (2026-07-19).** Validadas por workflow (Tanda 6: 21 vigentes de 31; Tanda 7: 28 de 29). Implementado y pusheado, cada uno certificado (tsc+lint+prettier):
+
+- **Tanda 6 (cuenta/nav/copy)** — 9 de 21: **#2** contraentrega ya no dice "Pagado" (dice "Confirmado" + aviso persistente de efectivo, en guest + mi-cuenta) · **#9** transportadora legible (`aff6b7f`) · **#12/#22** entrega unificada a "4-9 días" · **#28** "Fotoimanes" · **#26** "contraentrega" (`8f99644`) · **#6** copy de recuperación en futuro + código · **#7** saludos sin género · **#18** breadcrumbs de marca (`6eca16c`).
+- **Tanda 7 (a11y/admin/perf/tests)** — 5 de 28: **#1** búsqueda ya no truncada a 8 (LIMIT parametrizado; el conteo/filtros de /productos operan sobre el set completo) · **#2** `listStorefrontCategories` con React cache() per-request (`b23854d`) · **#24** copy de reembolso COD (transferencia, no Wompi) · **#26** títulos de item con nombre de producto (no SKU) · **#29** estado en español (`3e15ea9`).
+- **⏳ Restante T6 (12)**: legales (#15/#16/#20), seguimiento (#5 PENDING sin salida, #14 página /rastrear), nav móvil (#10 drawer), transaccional (#23/#24/#25/#29/#31), deep-link (#4). **Restante T7 (23)**: a11y WCAG (#15-#22), backfill de tests (#7-#14, 8 findings), CI gates (#5/#6), admin UX/guards (#23/#25/#27/#28), perf (#3/#4).
+- **Pendiente**: **Tanda 8** (descubrimiento, 38 — validando) + **pieza mayor #1** (snapshot OrderItem, ADR propio) + **T5 pulido** (#16/#22/#26) + **plan de validación GUI** final.
+- **Herramientas**: harness Chromium + rutas dev `/internal/correos` y `/internal/3d-preview`; validación por workflow reutilizable (`scriptPath` con args {file,count}).
+
+**🛍️ ✅ BACKLOG AUDITORÍA v3 — TANDA 5 (UX storefront, 2026-07-19).** Workflow de validación (31 agentes) → **26 vigentes + 4 ya-arreglados** (#10 basePrice=minVariantPrice, #19 reseñas [DEMO], #23 whitelist checkout, #27 decodeURIComponent). ~21 implementados y pusheados, cada uno certificado (tsc+lint+prettier) y verificado con Chromium donde aplica:
 
 - **Home** (`3b81b59`): #1 CTA "Personalizar el mío" → /productos?personalizable=1 (no a WhatsApp), #2 agotados al final del carrusel destacado (sort estable), #3 chip del hero condicionado a COD_ENABLED ("Pago contraentrega disponible").
 - **Filtros** (`6010ac9`): #4 ocasión persistente, #7 chips de precio en COP formateado, #8 búsqueda honra Destacados/Ordenar (isFeatured en searchStorefrontProducts), #9 drawer móvil se cierra + "Ver N productos", #11 precio de URL acotado/normalizado.
