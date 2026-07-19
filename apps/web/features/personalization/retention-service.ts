@@ -22,7 +22,7 @@ import { supabaseService } from "@/lib/supabase/service";
 import { logger } from "@/lib/logger";
 
 const CUSTOMER_UPLOADS_BUCKET = "customer-uploads";
-const PREVIEWS_BUCKET = "design-previews";
+export const PREVIEWS_BUCKET = "design-previews";
 const PRODUCTION_BUCKET = "production-assets";
 
 /** Un diseño DRAFT anónimo sin actividad por este tiempo se considera abandonado y se purga. */
@@ -31,7 +31,7 @@ export const PURGE_ANON_DESIGN_AFTER_DAYS = 30;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** Extrae el path de storage de una URL pública (previews). Si ya es un path, lo devuelve tal cual. */
-function pathFromPublicUrl(url: string, bucket: string): string | null {
+export function pathFromPublicUrl(url: string, bucket: string): string | null {
   const marker = `/storage/v1/object/public/${bucket}/`;
   const i = url.indexOf(marker);
   if (i >= 0) return url.slice(i + marker.length);
@@ -43,7 +43,7 @@ function pathFromPublicUrl(url: string, bucket: string): string | null {
  * filas y el próximo ciclo reintente → evita huérfanos de bytes sin registro en DB). Resiliente a que
  * el service client no esté disponible (no revienta el job).
  */
-async function removeStorage(bucket: string, paths: string[]): Promise<boolean> {
+export async function removeStorage(bucket: string, paths: string[]): Promise<boolean> {
   const clean = paths.filter(Boolean);
   if (clean.length === 0) return true;
   try {

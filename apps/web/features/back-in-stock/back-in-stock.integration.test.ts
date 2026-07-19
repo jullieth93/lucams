@@ -10,6 +10,17 @@ vi.mock("@/lib/resend", () => ({ sendEmail: vi.fn(async () => ({ sent: true, id:
 vi.mock("@/features/emails/templates/back-in-stock", () => ({
   backInStockEmail: vi.fn(async () => ({ subject: "s", html: "h", text: "t" })),
 }));
+// #9 — subscribeBackInStock lee PRIVACY_POLICY_VERSION vía getSettingValue (unstable_cache); en el
+// runner no hay incrementalCache → passthrough del cache (patrón de daily-summary.integration).
+vi.mock("next/cache", () => ({
+  unstable_cache:
+    (fn: (...a: unknown[]) => unknown) =>
+    (...a: unknown[]) =>
+      fn(...a),
+  revalidateTag: vi.fn(),
+  revalidatePath: vi.fn(),
+  updateTag: vi.fn(),
+}));
 
 import { prisma } from "@/lib/db";
 import { subscribeBackInStock, sendBackInStockNotifications } from "./service";
@@ -56,6 +67,8 @@ beforeAll(async () => {
 afterAll(async () => {
   const safe = (p: Promise<unknown>) => p.catch(() => {});
   await safe(prisma.backInStockSubscription.deleteMany({ where: { productId } }));
+  // #9 — limpiar los Consent BACK_IN_STOCK creados por el test (email RUN-prefijado).
+  await safe(prisma.consent.deleteMany({ where: { email: { contains: RUN } } }));
   await safe(prisma.productVariant.deleteMany({ where: { productId } }));
   await safe(prisma.product.deleteMany({ where: { id: productId } }));
   await safe(prisma.category.deleteMany({ where: { id: categoryId } }));

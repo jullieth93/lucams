@@ -2,6 +2,7 @@ import "server-only";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { sendEmail } from "@/lib/resend";
+import { getSettingValue } from "@/lib/cms";
 import { backInStockEmail } from "@/features/emails/templates/back-in-stock";
 
 /*
@@ -13,6 +14,7 @@ export async function subscribeBackInStock(
   productId: string,
   email: string,
   customerId: string | null,
+  meta?: { ipAddress?: string | null; userAgent?: string | null },
 ): Promise<{ ok: boolean; reason?: "not_found" | "in_stock" }> {
   const product = await prisma.product.findFirst({
     where: { id: productId, isActive: true, deletedAt: null },
@@ -25,11 +27,33 @@ export async function subscribeBackInStock(
   // Solo tiene sentido suscribirse a algo AGOTADO (anti-abuso + evita subs inútiles).
   if (product.variants.some((v) => v.stock > 0)) return { ok: false, reason: "in_stock" };
 
+  const normalizedEmail = email.trim().toLowerCase();
   await prisma.backInStockSubscription.upsert({
     where: { productId_email: { productId, email } },
     create: { productId, email, customerId },
     update: { notifiedAt: null, customerId }, // re-suscribir resetea el flag de notificado
   });
+
+  // #9 — registrar la base de legitimación (Ley 1581). Es una notificación TRANSACCIONAL pedida por
+  // el titular, así que basta consentimiento informado (aviso en UI). Idempotente por versión.
+  const version = await getSettingValue("PRIVACY_POLICY_VERSION", "v1");
+  const existing = await prisma.consent.findFirst({
+    where: { email: normalizedEmail, scope: "BACK_IN_STOCK", accepted: true, version },
+    orderBy: { acceptedAt: "desc" },
+  });
+  if (!existing) {
+    await prisma.consent.create({
+      data: {
+        email: normalizedEmail,
+        scope: "BACK_IN_STOCK",
+        accepted: true,
+        version,
+        customerId,
+        ipAddress: meta?.ipAddress ?? null,
+        userAgent: meta?.userAgent ?? null,
+      },
+    });
+  }
   return { ok: true };
 }
 

@@ -27,7 +27,8 @@ export async function subscribeBackInStockAction(input: {
     return { ok: false, message: "Datos inválidos." };
   }
 
-  const ip = getClientIp(await headers());
+  const hdrs = await headers();
+  const ip = getClientIp(hdrs);
   const { allowed } = await rateLimit(`back_in_stock:${ip}`, 20, 3600); // 20/hora por IP
   if (!allowed) {
     return { ok: false, message: "Demasiadas solicitudes. Intenta más tarde." };
@@ -43,6 +44,8 @@ export async function subscribeBackInStockAction(input: {
     parsed.data.productId,
     email,
     customer?.customer.id ?? null,
+    // #9 — evidencia del consentimiento (Ley 1581).
+    { ipAddress: ip, userAgent: hdrs.get("user-agent") },
   );
   if (!res.ok) {
     return {

@@ -65,6 +65,20 @@ export function BackInStockButton({
         </button>
       </div>
       {error && <p className="text-xs text-rose-700">{error}</p>}
+      {/* #9 — aviso de tratamiento (Ley 1581, minimización): uso declarado estricto + link a la política. */}
+      <p className="text-brand-muted text-[11px] leading-snug">
+        Usaremos tu correo solo para avisarte cuando este producto vuelva. Consulta cómo tratamos
+        tus datos en nuestra{" "}
+        <a
+          href="/legal/privacidad"
+          target="_blank"
+          rel="noopener"
+          className="hover:text-brand-purple-dark underline"
+        >
+          Política de Privacidad
+        </a>
+        .
+      </p>
     </form>
   );
 }

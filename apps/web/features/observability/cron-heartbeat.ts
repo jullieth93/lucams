@@ -21,7 +21,8 @@ export const CRON_JOBS: Record<string, { intervalMs: number; label: string }> = 
   "review-request": { intervalMs: 24 * 60 * 60 * 1000, label: "Solicitud de reseñas" },
   "cart-recovery": { intervalMs: 60 * 60 * 1000, label: "Recuperación de carritos" },
   "back-in-stock": { intervalMs: 30 * 60 * 1000, label: "Aviso de reposición" },
-  "purge-anon-designs": { intervalMs: 24 * 60 * 60 * 1000, label: "Purga Ley 1581" },
+  "purge-anon-designs": { intervalMs: 24 * 60 * 60 * 1000, label: "Purga diseños anónimos" },
+  "purge-event-logs": { intervalMs: 24 * 60 * 60 * 1000, label: "Purga logs con PII (180d)" },
 };
 
 const KEY_PREFIX = "cron:";

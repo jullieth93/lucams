@@ -24,6 +24,11 @@ import crypto from "node:crypto";
 import { Prisma } from "@lucams/db";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
+import {
+  pathFromPublicUrl,
+  removeStorage,
+  PREVIEWS_BUCKET,
+} from "@/features/personalization/retention-service";
 import { supabaseService } from "@/lib/supabase/service";
 import { parsePhotoProductConfig } from "./schemas";
 import { resolvePersonalizationSurface } from "./surface";
@@ -959,11 +964,34 @@ export async function archiveCustomerDesign(
   designId: string,
   customerId: string,
 ): Promise<boolean> {
-  const res = await prisma.design.updateMany({
+  const design = await prisma.design.findFirst({
     where: { id: designId, customerId, status: { in: ["READY", "USED_IN_ORDER"] } },
+    select: {
+      id: true,
+      status: true,
+      previewUrl: true,
+      orderItems: { select: { id: true }, take: 1 },
+    },
+  });
+  if (!design) return false;
+
+  await prisma.design.update({
+    where: { id: design.id },
     data: { status: "ARCHIVED", shareToken: null },
   });
-  return res.count > 0;
+
+  // #1 (safe slice) — un diseño READY SIN pedido no lo referencia ninguna vista: al archivar borramos
+  // su preview del bucket PÚBLICO (design-previews) para no dejar la foto del cliente de por vida
+  // (minimización Ley 1581). El caso USED_IN_ORDER se conserva (las 3 vistas de pedido leen el preview
+  // en vivo) hasta implementar el snapshot del preview en OrderItem (ADR-056, opción A elegida por Lucy).
+  const usedInOrder = design.status === "USED_IN_ORDER" || design.orderItems.length > 0;
+  if (!usedInOrder && design.previewUrl) {
+    const path = pathFromPublicUrl(design.previewUrl, PREVIEWS_BUCKET);
+    if (path && (await removeStorage(PREVIEWS_BUCKET, [path]))) {
+      await prisma.design.update({ where: { id: design.id }, data: { previewUrl: null } });
+    }
+  }
+  return true;
 }
 
 /**

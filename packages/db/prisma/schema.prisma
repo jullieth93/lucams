@@ -108,6 +108,7 @@ enum ConsentScope {
   COOKIES_ANALYTICS
   COOKIES_MARKETING
   NEWSLETTER
+  BACK_IN_STOCK // "avísame cuando vuelva" — notificación transaccional pedida por el titular (#9)
   MARKETING_PROFILING // perfilamiento (segmentación, recomendaciones)
   HABEAS_DATA // autorización general tratamiento de datos personales
 }
