@@ -1,12 +1,3 @@
-import type { Metadata } from "next";
-import { CmsMarkdown } from "@/components/cms/cms-markdown";
-import { LegalPageHeader } from "@/components/legal/legal-page-header";
-
-export const metadata: Metadata = {
-  title: "Seguridad",
-};
-
-const FALLBACK = `
 ## Divulgación responsable de vulnerabilidades
 
 En Lucams_shop cuidamos tus datos con el mismo cariño con el que armamos cada imán. Si encontraste una vulnerabilidad de seguridad en nuestro sitio, te agradecemos de corazón que nos la cuentes **antes** de divulgarla públicamente, para poder arreglarla y proteger a quienes compran con nosotros.
@@ -53,7 +44,7 @@ Para que tu investigación cuente como "de buena fe":
 
 ## Alcance
 
-**En alcance:** \`lucamsshop.co\` y sus subdominios.
+**En alcance:** `lucamsshop.co` y sus subdominios.
 
 **Fuera de alcance:**
 
@@ -68,13 +59,3 @@ El archivo legible por máquina con nuestra información de contacto de segurida
 ---
 
 _Versión 1 · vigente desde 2026-07-19 · en revisión por asesoría legal antes del lanzamiento_
-`;
-
-export default function Page() {
-  return (
-    <>
-      <LegalPageHeader blockKey="legal.security.heading" defaultTitle="Seguridad" />
-      <CmsMarkdown blockKey="legal.security" fallback={FALLBACK} className="mt-6" />
-    </>
-  );
-}

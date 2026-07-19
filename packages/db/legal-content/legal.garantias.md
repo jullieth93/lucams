@@ -1,12 +1,3 @@
-import type { Metadata } from "next";
-import { CmsMarkdown } from "@/components/cms/cms-markdown";
-import { LegalPageHeader } from "@/components/legal/legal-page-header";
-
-export const metadata: Metadata = {
-  title: "Garantías",
-};
-
-const FALLBACK = `
 En Lucams_shop respondemos por lo que hacemos. Todos nuestros productos tienen **garantía legal** — la que te da la ley colombiana (Ley 1480 de 2011, Estatuto del Consumidor). Aquí te contamos cómo funciona, sin letra pequeña y sin trucos.
 
 ## Quién responde por tu garantía
@@ -69,13 +60,3 @@ Queremos resolverlo directamente contigo, de la mejor manera. Pero si no quedas 
 ---
 
 _Versión 2 · vigente desde 2026-07-19 · en revisión por asesoría legal antes del lanzamiento_
-`;
-
-export default function Page() {
-  return (
-    <>
-      <LegalPageHeader blockKey="legal.garantias.heading" defaultTitle="Garantías" />
-      <CmsMarkdown blockKey="legal.garantias" fallback={FALLBACK} className="mt-6" />
-    </>
-  );
-}

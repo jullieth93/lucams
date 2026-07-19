@@ -1,12 +1,3 @@
-import type { Metadata } from "next";
-import { CmsMarkdown } from "@/components/cms/cms-markdown";
-import { LegalPageHeader } from "@/components/legal/legal-page-header";
-
-export const metadata: Metadata = {
-  title: "Hábeas Data",
-};
-
-const FALLBACK = `
 Aquí te contamos, sin letra chiquita imposible, qué hacemos con tus datos y cómo los controlas. Esta es la **Política de Tratamiento de Datos Personales** de Lucams_shop, conforme a la **Ley 1581 de 2012** y su **Decreto reglamentario 1377 de 2013**. Léela con confianza: tú mandas sobre tu información. 🦝
 
 ## Responsable del tratamiento
@@ -118,13 +109,3 @@ Esta política rige desde su fecha de entrada en vigencia y se mantiene mientras
 ---
 
 _Versión 2 · vigente desde 2026-07-19 · en revisión por asesoría legal antes del lanzamiento_
-`;
-
-export default function Page() {
-  return (
-    <>
-      <LegalPageHeader blockKey="legal.habeas-data.heading" defaultTitle="Hábeas Data" />
-      <CmsMarkdown blockKey="legal.habeas-data" fallback={FALLBACK} className="mt-6" />
-    </>
-  );
-}

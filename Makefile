@@ -92,6 +92,12 @@ consolidate-product-families:
 update-legal-ley-2439:
 	pnpm --filter @lucams/db exec node scripts/update-legal-ley-2439.mjs
 
+# Barrido legal 2026-07 (ADR-072): publica los 8 bloques legal.* compliant desde
+# packages/db/legal-content/*.md (persona natural, Ley 1581/1480/2439, IVA régimen-agnóstico,
+# subprocesadores reales). Reproducible: correr contra la BD de PROD al lanzar.
+seed-legal-2026-07:
+	pnpm --filter @lucams/db exec node scripts/seed-legal-content-2026-07.mjs
+
 # ONE-SHOT (2026-05-18): elimina voseo (argentino/uruguayo) de CmsBlock,
 # CmsBlockVersion, SiteSetting, Product.description y OcasionTag.description.
 # Idempotente — si no hay voseo, no escribe nada. Aplica word-boundary

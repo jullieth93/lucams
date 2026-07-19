@@ -1,16 +1,3 @@
-import type { Metadata } from "next";
-import { CmsMarkdown } from "@/components/cms/cms-markdown";
-import { LegalPageHeader } from "@/components/legal/legal-page-header";
-
-export const metadata: Metadata = {
-  title: "Términos y Condiciones",
-};
-
-// P0-006 (Bloque B 2026-06-27) — texto sustantivo basado en las obligaciones de
-// información del art. 23 y ss. de la Ley 1480 de 2011 (Estatuto del Consumidor),
-// documentadas en docs/COMPLIANCE.md. Figura jurídica: persona natural (ADR pendiente de abogado).
-// La identificación completa (CC + dirección de notificación) vive en el CMS, no en git (PII).
-const FALLBACK = `
 Al comprar en **lucamsshop.co** aceptas estos Términos y Condiciones. Léelos con calma: aquí te contamos quiénes somos, cómo funciona la compra y cuáles son tus derechos. Toda venta se rige por la legislación colombiana, en especial la **Ley 1480 de 2011 (Estatuto del Consumidor)** y la **Ley 1581 de 2012 (Protección de Datos Personales)**.
 
 ## Quiénes somos
@@ -113,13 +100,3 @@ Podemos actualizar estos Términos para reflejar cambios legales o de nuestro se
 ---
 
 _Versión 2 · vigente desde 2026-07-19 · en revisión por asesoría legal antes del lanzamiento_
-`;
-
-export default function Page() {
-  return (
-    <>
-      <LegalPageHeader blockKey="legal.terminos.heading" defaultTitle="Términos y Condiciones" />
-      <CmsMarkdown blockKey="legal.terminos" fallback={FALLBACK} className="mt-6" />
-    </>
-  );
-}

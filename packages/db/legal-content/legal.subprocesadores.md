@@ -1,16 +1,3 @@
-import type { Metadata } from "next";
-import { CmsMarkdown } from "@/components/cms/cms-markdown";
-import { LegalPageHeader } from "@/components/legal/legal-page-header";
-
-export const metadata: Metadata = {
-  title: "Subprocesadores",
-};
-
-// P0-008 (Bloque B 2026-06-27) — actualizado de Venndelo a Aveonline (ADR-039).
-// Aveonline es un agregador logístico que rutea cada envío por una de varias
-// transportadoras colombianas; esas transportadoras reciben los datos de entrega
-// (nombre, dirección, teléfono) para hacer la entrega, por eso se listan.
-const FALLBACK = `
 Para armar tus imanes, cobrarte de forma segura y llevarte el pedido hasta la puerta, un pequeño equipo de proveedores de confianza nos ayuda entre bambalinas. A esos proveedores la ley los llama **encargados del tratamiento**: tratan tus datos personales **por cuenta nuestra**, solo para lo necesario y bajo un contrato que les exige cuidarlos.
 
 El **responsable del tratamiento** de tus datos es **Lucy Jullieth Hurtado Rodríguez** (persona natural), con domicilio en **Bogotá D.C., Colombia**. Puedes escribirnos a **hola@lucamsshop.co** o por **WhatsApp** (el número está en el pie de página del sitio). La cédula y la dirección exacta las entregamos directamente a quien lo solicite por estos mismos canales.
@@ -71,13 +58,3 @@ Si vamos a **agregar o cambiar** un subprocesador, avisaremos por correo a los c
 ---
 
 _Versión 2 · vigente desde 2026-07-19 · en revisión por asesoría legal antes del lanzamiento_
-`;
-
-export default function Page() {
-  return (
-    <>
-      <LegalPageHeader blockKey="legal.subprocesadores.heading" defaultTitle="Subprocesadores" />
-      <CmsMarkdown blockKey="legal.subprocesadores" fallback={FALLBACK} className="mt-6" />
-    </>
-  );
-}

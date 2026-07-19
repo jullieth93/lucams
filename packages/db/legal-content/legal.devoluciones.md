@@ -1,17 +1,3 @@
-import type { Metadata } from "next";
-import { CmsMarkdown } from "@/components/cms/cms-markdown";
-import { LegalPageHeader } from "@/components/legal/legal-page-header";
-
-export const metadata: Metadata = {
-  title: "Devoluciones y Retracto",
-};
-
-// P0-007 (Bloque B 2026-06-27) — texto verificado contra Ley 1480 art. 47 +
-// Ley 2439 de 2024. El retracto sigue siendo 5 días hábiles; lo que la Ley 2439
-// cambió es el plazo de reembolso para comercio electrónico: de 30 días hábiles
-// a 15 días CALENDARIO desde que ejerces el retracto. Ver memoria
-// reference_retracto_ley_2439_2024 + docs/COMPLIANCE.md.
-const FALLBACK = `
 ## Devoluciones y Retracto
 
 En **Lucams_shop** queremos que ames lo que recibes. Aquí te contamos, en cristiano, cómo funciona el **derecho de retracto**, cuándo puedes devolver un producto y cómo te regresamos tu dinero. Nuestro mapache está pendiente de que todo salga bien.
@@ -75,16 +61,3 @@ Estamos para ayudarte. Escríbenos a **retracto@lucamsshop.co**, a **hola@lucams
 ---
 
 _Versión 2 · vigente desde 2026-07-19 · en revisión por asesoría legal antes del lanzamiento_
-`;
-
-export default function Page() {
-  return (
-    <>
-      <LegalPageHeader
-        blockKey="legal.devoluciones.heading"
-        defaultTitle="Devoluciones y Retracto"
-      />
-      <CmsMarkdown blockKey="legal.devoluciones" fallback={FALLBACK} className="mt-6" />
-    </>
-  );
-}

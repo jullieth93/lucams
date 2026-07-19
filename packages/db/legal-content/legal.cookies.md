@@ -1,13 +1,3 @@
-import type { Metadata } from "next";
-import { CmsMarkdown } from "@/components/cms/cms-markdown";
-import { LegalPageHeader } from "@/components/legal/legal-page-header";
-import { CookiesReopenLink } from "@/components/cookies-banner";
-
-export const metadata: Metadata = {
-  title: "Política de Cookies",
-};
-
-const FALLBACK = `
 Las **cookies** son archivos pequeñitos que tu navegador guarda cuando visitas un sitio. Nos sirven para que **Lucams_shop** funcione (que puedas iniciar sesión y que tu carrito no se pierda) y, si tú lo autorizas, para mejorar tu experiencia. Aquí te contamos, sin letra menuda, qué cookies usamos, para qué, cuánto duran y cómo las controlas.
 
 Responsable del tratamiento: **Lucy Jullieth Hurtado Rodríguez** (persona natural), titular de la marca **Lucams_shop**, con domicilio en **Bogotá D.C., Colombia**. Tratamos tus datos conforme a la **Ley 1581 de 2012** y el **Decreto 1377 de 2013**. Para dudas o para ejercer tus derechos, escríbenos a **habeas-data@lucamsshop.co** (encuentras el detalle en el **Aviso de Privacidad** y en **Hábeas Data**).
@@ -29,13 +19,13 @@ Las tres categorías opcionales están **desactivadas por defecto** y solo se ac
 
 | Cookie | Para qué sirve | Categoría | Duración | Responsable |
 |---|---|---|---|---|
-| \`sb-<proyecto>-auth-token\` | Mantiene tu sesión iniciada (Supabase Auth) | Necesaria | ~7 días | Supabase (EE.UU.) |
-| \`cart_session\` | Identifica tu carrito antes y después de iniciar sesión | Necesaria | 30 días | Lucams_shop |
-| \`checkout_state\` | Guarda temporalmente el avance de tu compra | Necesaria | 60 minutos | Lucams_shop |
-| \`cookie_consent_v1\` | Recuerda qué cookies aceptaste | Necesaria | 1 año | Lucams_shop |
-| \`__cf_bm\` | Seguridad y detección de bots | Necesaria | ~30 min _[pendiente verificación]_ | Cloudflare (global) |
+| `sb-<proyecto>-auth-token` | Mantiene tu sesión iniciada (Supabase Auth) | Necesaria | ~7 días | Supabase (EE.UU.) |
+| `cart_session` | Identifica tu carrito antes y después de iniciar sesión | Necesaria | 30 días | Lucams_shop |
+| `checkout_state` | Guarda temporalmente el avance de tu compra | Necesaria | 60 minutos | Lucams_shop |
+| `cookie_consent_v1` | Recuerda qué cookies aceptaste | Necesaria | 1 año | Lucams_shop |
+| `__cf_bm` | Seguridad y detección de bots | Necesaria | ~30 min _[pendiente verificación]_ | Cloudflare (global) |
 
-Las cookies de tu carrito y de tu checkout (\`cart_session\` y \`checkout_state\`) son \`HttpOnly\`: viven solo en tu navegador y ningún script de terceros puede leerlas. Cuando resuelves un reto anti-bot (por ejemplo, al registrarte), Cloudflare puede añadir cookies de seguridad adicionales; las usamos únicamente para protegerte del fraude.
+Las cookies de tu carrito y de tu checkout (`cart_session` y `checkout_state`) son `HttpOnly`: viven solo en tu navegador y ningún script de terceros puede leerlas. Cuando resuelves un reto anti-bot (por ejemplo, al registrarte), Cloudflare puede añadir cookies de seguridad adicionales; las usamos únicamente para protegerte del fraude.
 
 ## Cookies de terceros y transferencia internacional
 
@@ -66,19 +56,3 @@ Si actualizamos nuestras cookies o esta política, publicaremos la nueva versió
 
 ---
 _Versión 2 · vigente desde 2026-07-19 · en revisión por asesoría legal antes del lanzamiento_
-`;
-
-export default function Page() {
-  return (
-    <>
-      <LegalPageHeader blockKey="legal.cookies.heading" defaultTitle="Política de Cookies" />
-      <CmsMarkdown blockKey="legal.cookies" fallback={FALLBACK} className="mt-6" />
-      <div className="border-brand-purple/15 from-brand-purple/5 to-brand-pink/5 mt-8 rounded-2xl border bg-gradient-to-br p-5">
-        <p className="text-brand-purple-dark/80 text-sm">
-          ¿Quieres cambiar qué cookies aceptas?{" "}
-          <CookiesReopenLink>Abrir preferencias</CookiesReopenLink>
-        </p>
-      </div>
-    </>
-  );
-}

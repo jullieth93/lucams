@@ -1,17 +1,3 @@
-import type { Metadata } from "next";
-import { CmsMarkdown } from "@/components/cms/cms-markdown";
-import { LegalPageHeader } from "@/components/legal/legal-page-header";
-
-export const metadata: Metadata = {
-  title: "Aviso de Privacidad",
-  description: "Política de tratamiento de datos personales · Ley 1581 de 2012 (Colombia).",
-};
-
-// P0-006 (Bloque B 2026-06-27) — texto sustantivo basado en docs/COMPLIANCE.md
-// (texto base aviso de privacidad) + Ley 1581 de 2012 + Decreto 1377 de 2013.
-// Persona natural; la identificación completa (CC + dirección) vive en el CMS, no en git (PII).
-// Sigue sujeto a revisión de abogado antes del lanzamiento.
-const FALLBACK = `
 En **Lucams_shop** cuidamos tus datos personales con el mismo cariño con el que hacemos tus imanes. Este Aviso de Privacidad te explica, en cristiano, quién es responsable de tus datos, qué recolectamos, para qué, cuáles son tus derechos y cómo ejercerlos, conforme a la **Ley 1581 de 2012** y el **Decreto 1377 de 2013** de Colombia.
 
 Este aviso es un resumen. El documento vinculante y completo es nuestra **Política de Tratamiento de Datos Personales**, que puedes consultar en cualquier momento (ver más abajo).
@@ -99,13 +85,3 @@ Si cambiamos este aviso de forma sustancial, te lo informaremos y actualizaremos
 ---
 
 _Versión 2 · vigente desde 2026-07-19 · en revisión por asesoría legal antes del lanzamiento._
-`;
-
-export default function Page() {
-  return (
-    <>
-      <LegalPageHeader blockKey="legal.privacidad.heading" defaultTitle="Aviso de Privacidad" />
-      <CmsMarkdown blockKey="legal.privacidad" fallback={FALLBACK} className="mt-6" />
-    </>
-  );
-}
