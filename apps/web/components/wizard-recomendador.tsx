@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { ArrowRight, Check, Loader2, RotateCcw, Sparkles } from "lucide-react";
 import type { OcasionData, RecommendationResult } from "@/lib/catalog";
 import { ProductFromCatalogCard } from "./product-from-catalog-card";
@@ -29,6 +30,10 @@ const PERSONALIZATION = [
 ];
 
 export function WizardRecomendador({ ocasiones }: { ocasiones: OcasionData[] }) {
+  // #3 — solo ocasiones con productos activos: una ocasión vacía (ej. Halloween) era
+  // seleccionable y garantizaba "no encontramos match" — callejón sin salida.
+  const availableOcasiones = ocasiones.filter((o) => o.productCount > 0);
+
   const [step, setStep] = useState(1);
   const [ocasionSlugs, setOcasionSlugs] = useState<string[]>([]);
   const [destinatario, setDestinatario] = useState<string | null>(null);
@@ -156,33 +161,53 @@ export function WizardRecomendador({ ocasiones }: { ocasiones: OcasionData[] }) 
       {step === 1 && (
         <div>
           <h2 className="text-brand-purple-dark mb-2 text-xl font-bold">¿Para qué ocasión es?</h2>
-          <p className="mb-5 text-sm text-slate-600">Elige una o varias.</p>
-          <div className="flex flex-wrap gap-2">
-            {ocasiones.map((o) => {
-              const selected = ocasionSlugs.includes(o.slug);
-              return (
-                <button
-                  key={o.slug}
-                  onClick={() => toggleOcasion(o.slug)}
-                  className={`rounded-full px-4 py-2 text-sm transition-colors ${
-                    selected
-                      ? "bg-brand-purple text-white"
-                      : "border-brand-purple/30 text-brand-purple-dark hover:bg-brand-purple/10 border bg-white"
-                  }`}
-                >
-                  {selected && <Check className="mr-1 inline h-3.5 w-3.5" />}
-                  {o.name}
-                </button>
-              );
-            })}
-          </div>
-          <button
-            onClick={() => setStep(2)}
-            disabled={ocasionSlugs.length === 0}
-            className="bg-brand-purple mt-6 inline-flex items-center gap-2 rounded-full px-6 py-2 text-sm font-bold text-white hover:opacity-90 disabled:opacity-40"
-          >
-            Siguiente <ArrowRight className="h-4 w-4" />
-          </button>
+          {availableOcasiones.length === 0 ? (
+            // #3 — caso borde: catálogo sin ocasiones con stock → no dejar un paso 1 muerto.
+            <div className="border-brand-purple/15 bg-brand-purple/5 mt-2 rounded-xl border p-6 text-center">
+              <p className="text-brand-purple-dark text-sm font-semibold">
+                Aún no tenemos ocasiones con productos listos ✨
+              </p>
+              <p className="text-brand-muted mt-1 text-sm">
+                Mientras tanto, echa un vistazo a todo el catálogo.
+              </p>
+              <Link
+                href="/productos"
+                className="bg-brand-purple hover:bg-brand-purple-dark mt-4 inline-block rounded-full px-5 py-2 text-sm font-semibold text-white"
+              >
+                Ver todo →
+              </Link>
+            </div>
+          ) : (
+            <>
+              <p className="mb-5 text-sm text-slate-600">Elige una o varias.</p>
+              <div className="flex flex-wrap gap-2">
+                {availableOcasiones.map((o) => {
+                  const selected = ocasionSlugs.includes(o.slug);
+                  return (
+                    <button
+                      key={o.slug}
+                      onClick={() => toggleOcasion(o.slug)}
+                      className={`rounded-full px-4 py-2 text-sm transition-colors ${
+                        selected
+                          ? "bg-brand-purple text-white"
+                          : "border-brand-purple/30 text-brand-purple-dark hover:bg-brand-purple/10 border bg-white"
+                      }`}
+                    >
+                      {selected && <Check className="mr-1 inline h-3.5 w-3.5" />}
+                      {o.name}
+                    </button>
+                  );
+                })}
+              </div>
+              <button
+                onClick={() => setStep(2)}
+                disabled={ocasionSlugs.length === 0}
+                className="bg-brand-purple mt-6 inline-flex items-center gap-2 rounded-full px-6 py-2 text-sm font-bold text-white hover:opacity-90 disabled:opacity-40"
+              >
+                Siguiente <ArrowRight className="h-4 w-4" />
+              </button>
+            </>
+          )}
         </div>
       )}
 

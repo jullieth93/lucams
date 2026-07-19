@@ -28,12 +28,18 @@ export function ProductFromCatalogCard({
       ? formatCOP(product.minPrice)
       : `${formatCOP(product.minPrice)} – ${formatCOP(product.maxPrice)}`;
   const outOfStock = !product.inStock; // #5 — misma señal de agotado que ProductCard
+  // #9 — en el recomendador (showReason), quien pidió "personalizable" merece un atajo directo
+  // al Estudio (diferenciador #1) sin pasar por el PDP. CTA secundaria; el link principal sigue
+  // al PDP. Se renderiza fuera del <Link> del PDP para no anidar <a> dentro de <a> (HTML inválido).
+  const showStudioCta = Boolean(showReason && product.isPersonalizable);
 
-  return (
+  const card = (
     <Link
       href={`/producto/${product.slug}`}
       aria-label={product.name}
-      className="group border-brand-purple/10 flex flex-col overflow-hidden rounded-xl border bg-white transition-shadow hover:shadow-lg"
+      className={`group border-brand-purple/10 flex flex-1 flex-col overflow-hidden border bg-white transition-shadow hover:shadow-lg ${
+        showStudioCta ? "rounded-t-xl border-b-0" : "rounded-xl"
+      }`}
     >
       <div className="from-brand-turquoise/15 via-brand-cream to-brand-pink/15 relative aspect-square w-full overflow-hidden bg-gradient-to-br">
         {product.images.length > 0 ? (
@@ -107,5 +113,19 @@ export function ProductFromCatalogCard({
         )}
       </div>
     </Link>
+  );
+
+  if (!showStudioCta) return card;
+
+  return (
+    <div className="flex h-full flex-col">
+      {card}
+      <Link
+        href={`/estudio/${product.slug}`}
+        className="bg-brand-purple/10 text-brand-purple-dark hover:bg-brand-purple border-brand-purple/10 flex items-center justify-center gap-1 rounded-b-xl border border-t-0 px-3 py-2 text-xs font-bold transition-colors hover:text-white"
+      >
+        <Sparkles className="h-3.5 w-3.5" /> Personalízalo
+      </Link>
+    </div>
   );
 }

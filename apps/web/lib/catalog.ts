@@ -539,6 +539,34 @@ export type RecommendationResult = CatalogProductSummary & {
   reasons: string[];
 };
 
+// #2 — normaliza a minúsculas sin tildes (mismo patrón que lib/format.ts:formatCityDept).
+// Estándar ECMAScript/Unicode (String.prototype.normalize("NFD") + strip de combining marks).
+const stripAccents = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+
+// #2 — vocabulario controlado: value del destinatario (wizard) → tokens (sin acentos) que
+// aparecen en Product.idealFor (ver packages/db/scripts/seed-catalog-v2.mjs). Mantener alineado
+// con DESTINATARIOS del wizard y con el idealFor que Lucy captura en el admin.
+const DESTINATARIO_KEYWORDS: Record<string, string[]> = {
+  mi: ["personal", "coleccionable"],
+  pareja: ["pareja", "romantico", "aniversario"],
+  familia: ["familiar", "familia", "hogar"],
+  amigo: ["amigo", "amistad"],
+  empresa: ["empresarial", "corporativo", "empresa", "negocio"],
+  nino: ["nino", "infantil", "bebe"],
+  adolescente: ["adolescente", "joven"],
+};
+
+// #2 — etiqueta legible es-CO (tuteo) para la razón visible; nunca el value crudo ("mi" → "ti").
+const DESTINATARIO_LABELS: Record<string, string> = {
+  mi: "ti",
+  pareja: "tu pareja",
+  familia: "la familia",
+  amigo: "un amigo/a",
+  empresa: "tus clientes",
+  nino: "un niño/a",
+  adolescente: "un/a adolescente",
+};
+
 /**
  * Scoring sin ML (PLAN_CATALOG_V2 decisión 6.2):
  *   +3 por match de ocasión
@@ -583,6 +611,11 @@ export async function recommendProducts(input: RecommendInput): Promise<Recommen
           include: { ocasionTag: { select: { slug: true, name: true } } },
         },
       },
+      // #11 — pool determinista: cuando el catálogo supere 50 productos que cumplan el where,
+      // tomamos "destacados primero, luego más recientes" en vez de un slice arbitrario de
+      // Postgres. Respaldado por @@index([isActive, isFeatured]). Los empates de score luego
+      // conservan este orden (sort estable, ES2019).
+      orderBy: [{ isFeatured: "desc" }, { createdAt: "desc" }],
       take: 50, // pool inicial, después filtramos por score
     });
 
@@ -603,25 +636,41 @@ export async function recommendProducts(input: RecommendInput): Promise<Recommen
         }
       }
 
-      // +2 por match destinatario en idealFor (búsqueda fuzzy en string)
+      // +2 por match destinatario en idealFor — token exacto sobre vocabulario controlado
+      // (no substring). Antes `includes("mi")` daba falso positivo en "faMIliar" y la razón
+      // mostraba el enum crudo sin tilde ("Ideal para mi"). Ahora tokeniza idealFor sin acentos
+      // y compara contra DESTINATARIO_KEYWORDS; la razón usa la etiqueta legible en tuteo.
       if (input.destinatario && Array.isArray(p.idealFor)) {
-        const dest = input.destinatario.toLowerCase();
-        const matched = (p.idealFor as string[]).some((s) => s.toLowerCase().includes(dest));
-        if (matched) {
-          score += 2;
-          reasons.push(`Ideal para ${dest}`);
+        const keywords = DESTINATARIO_KEYWORDS[input.destinatario] ?? [];
+        if (keywords.length > 0) {
+          const tokens = new Set(
+            (p.idealFor as string[]).flatMap((s) =>
+              stripAccents(s)
+                .split(/[^a-z0-9]+/)
+                .filter(Boolean),
+            ),
+          );
+          if (keywords.some((k) => tokens.has(stripAccents(k)))) {
+            score += 2;
+            reasons.push(
+              `Ideal para ${DESTINATARIO_LABELS[input.destinatario] ?? input.destinatario}`,
+            );
+          }
         }
       }
 
-      // +1 por rango precio
+      // #1 — presupuesto = filtro DURO (respeta el paso 3 del wizard, respuesta explícita del
+      // cliente). Overlap sobre el rango COMPLETO de variantes: el producto cabe si alguna
+      // variante entra en [priceMin, priceMax]. Antes solo miraba minPrice y era un +1 blando:
+      // dejaba fuera productos con variantes económicas del bucket "Más de $200k" y colaba
+      // productos sobre presupuesto vía el +3 de ocasión. El `continue` descarta antes del cutoff.
       if (input.priceMin !== undefined || input.priceMax !== undefined) {
-        const inRange =
-          (input.priceMin === undefined || summary.minPrice >= input.priceMin) &&
-          (input.priceMax === undefined || summary.minPrice <= input.priceMax);
-        if (inRange) {
-          score += 1;
-          reasons.push("Match de presupuesto");
-        }
+        const min = input.priceMin ?? 0;
+        const max = input.priceMax ?? Number.MAX_SAFE_INTEGER;
+        const overlaps = summary.minPrice <= max && summary.maxPrice >= min;
+        if (!overlaps) continue; // fuera de presupuesto → no se recomienda
+        score += 1;
+        reasons.push("Dentro de tu presupuesto");
       }
 
       // +1 por match preferencia
@@ -644,8 +693,10 @@ export async function recommendProducts(input: RecommendInput): Promise<Recommen
       }
     }
 
-    // Ordenar por score desc, tie-breaker fecha
-    scored.sort((a, b) => b.score - a.score);
+    // #5 — comprables primero (nunca un agotado como "Tu match" #1), luego score desc.
+    // #11 — empates de score → orden del pool preservado (isFeatured desc, createdAt desc) por
+    // el sort estable (ES2019). Los agotados siguen VISIBLES con su badge, solo despriorizados.
+    scored.sort((a, b) => Number(b.inStock) - Number(a.inStock) || b.score - a.score);
 
     return scored.slice(0, input.limit ?? 12);
   } catch {

@@ -908,8 +908,10 @@ describe.skipIf(!hasDb)("lib/catalog — integración DB", { timeout: T }, () =>
       expect(p1!.reasons).toContain("Personalizable");
     });
 
-    it("destinatario matchea idealFor (búsqueda fuzzy substring) sumando +2", async () => {
-      // p1.idealFor incluye "regalo pareja aniversario" → destinatario "pareja" matchea.
+    it("destinatario matchea idealFor por token exacto (no substring) sumando +2", async () => {
+      // #2 — p1.idealFor incluye "regalo pareja aniversario" → token "pareja" matchea el
+      // vocabulario de destinatario "pareja". La razón usa la etiqueta legible en tuteo
+      // ("tu pareja"), no el value crudo ("pareja").
       const recs = await recommendProducts({
         ocasionSlugs: [ocasionMatrimonioSlug],
         destinatario: "pareja",
@@ -918,7 +920,28 @@ describe.skipIf(!hasDb)("lib/catalog — integración DB", { timeout: T }, () =>
       expect(p1).toBeDefined();
       // ocasión 3 + destinatario 2 + featured 0.5 = 5.5.
       expect(p1!.score).toBeGreaterThanOrEqual(5);
-      expect(p1!.reasons.some((r) => r.toLowerCase().includes("pareja"))).toBe(true);
+      expect(p1!.reasons).toContain("Ideal para tu pareja");
+    });
+
+    it("destinatario: token exacto matchea y no-token no suma (#2)", async () => {
+      // p3.idealFor = ["regalo cumpleaños amigo"]. destinatario "amigo" → token "amigo" matchea.
+      const conAmigo = await recommendProducts({
+        ocasionSlugs: [ocasionCumpleSlug],
+        destinatario: "amigo",
+      });
+      const p3amigo = conAmigo.find((r) => r.slug === p3Slug);
+      expect(p3amigo).toBeDefined();
+      expect(p3amigo!.reasons).toContain("Ideal para un amigo/a");
+
+      // destinatario "familia" NO tiene ningún token (familiar/familia/hogar) en ese idealFor →
+      // no suma +2 ni añade razón (antes un substring hubiera podido colar falsos positivos).
+      const conFamilia = await recommendProducts({
+        ocasionSlugs: [ocasionCumpleSlug],
+        destinatario: "familia",
+      });
+      const p3fam = conFamilia.find((r) => r.slug === p3Slug);
+      expect(p3fam).toBeDefined();
+      expect(p3fam!.reasons.some((r) => r.includes("Ideal para"))).toBe(false);
     });
 
     it("excludeSlugs quita productos del pool", async () => {
