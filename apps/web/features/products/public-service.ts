@@ -103,12 +103,19 @@ const STOREFRONT_WHERE = {
  * para footer y mega-menú principal, evita "desbordar" la UI con
  * sub-categorías.
  */
-export async function listStorefrontCategories(opts: { topLevelOnly?: boolean } = {}) {
+// #2 (perf) — dedup por request con React cache(). Se renderiza en TODAS las páginas (footer + body
+// + metadata) → 2-3 queries idénticas con _count agregado por visita. Normalizamos a un booleano
+// porque cache() compara args por referencia (Object.is) y cada call site pasa un objeto literal
+// distinto ({topLevelOnly:true}) → no deduparían. Request-scoped (misma garantía que
+// getStorefrontProductBySlug), sin staleness cross-request.
+const listStorefrontCategoriesCached = cache(async function listStorefrontCategoriesCached(
+  topLevelOnly: boolean,
+) {
   return prisma.category.findMany({
     where: {
       deletedAt: null,
       isActive: true,
-      ...(opts.topLevelOnly ? { parentId: null } : {}),
+      ...(topLevelOnly ? { parentId: null } : {}),
     },
     orderBy: [{ order: "asc" }, { name: "asc" }],
     select: {
@@ -124,6 +131,10 @@ export async function listStorefrontCategories(opts: { topLevelOnly?: boolean } 
       },
     },
   });
+});
+
+export function listStorefrontCategories(opts: { topLevelOnly?: boolean } = {}) {
+  return listStorefrontCategoriesCached(opts.topLevelOnly ?? false);
 }
 
 export type StorefrontFilters = {
@@ -328,7 +339,14 @@ export type SearchResult = StorefrontProductCard & {
   isFeatured: boolean;
 };
 
-export async function searchStorefrontProducts(rawQuery: string): Promise<SearchResult[]> {
+export async function searchStorefrontProducts(
+  rawQuery: string,
+  opts?: { limit?: number },
+): Promise<SearchResult[]> {
+  // #1 (perf/correctitud) — límite parametrizado. Default 8 (dropdown del header, sin cambios); en
+  // /productos se pide 100 para traer TODO el set matcheado ANTES de filtrar/paginar (antes el LIMIT
+  // 8 hacía mentir el conteo y un filtro daba "0 productos" falso). Bind param entero en $queryRaw.
+  const take = Math.min(Math.max(1, opts?.limit ?? 8), 100);
   const q = rawQuery.trim().slice(0, 80);
   if (q.length < 2) return [];
 
@@ -387,7 +405,7 @@ export async function searchStorefrontProducts(rawQuery: string): Promise<Search
         OR similarity(immutable_unaccent(p.name), immutable_unaccent(${safe})) > 0.25
       )
     ORDER BY score DESC, p."isFeatured" DESC, p."createdAt" DESC
-    LIMIT 8
+    LIMIT ${take}
   `;
 
   if (rows.length > 0) {

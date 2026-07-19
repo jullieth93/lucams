@@ -126,7 +126,9 @@ export default async function ProductosPage({ searchParams }: { searchParams: Se
   let totalPages: number;
 
   if (q && q.length >= 2) {
-    const results = await searchStorefrontProducts(q);
+    // #1 — traer hasta 100 (cubre el catálogo activo) para que el filtro/orden/paginación operen
+    // sobre TODO el set matcheado, no sobre un LIMIT 8 truncado (conteo real + sin "0 productos" falso).
+    const results = await searchStorefrontProducts(q, { limit: 100 });
     // #8 — filtrar y ordenar sobre los results (que ahora traen isFeatured) ANTES de mapear a cards:
     // con búsqueda activa, "Destacados" y "Ordenar por" antes se ignoraban en silencio.
     const filtered = results.filter((r) => {
