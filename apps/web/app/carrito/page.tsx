@@ -206,7 +206,7 @@ function QtyControls({ itemId, qty }: { itemId: string; qty: number }) {
         <input type="hidden" name="qty" value={qty - 1} />
         <button
           type="submit"
-          className="text-brand-purple-dark hover:bg-brand-purple/10 flex h-8 w-8 items-center justify-center disabled:opacity-40"
+          className="text-brand-purple-dark hover:bg-brand-purple/10 flex h-11 w-11 items-center justify-center disabled:opacity-40"
           aria-label="Disminuir cantidad"
           disabled={qty <= 1}
         >
@@ -221,7 +221,7 @@ function QtyControls({ itemId, qty }: { itemId: string; qty: number }) {
         <input type="hidden" name="qty" value={qty + 1} />
         <button
           type="submit"
-          className="text-brand-purple-dark hover:bg-brand-purple/10 flex h-8 w-8 items-center justify-center disabled:opacity-40"
+          className="text-brand-purple-dark hover:bg-brand-purple/10 flex h-11 w-11 items-center justify-center disabled:opacity-40"
           aria-label="Aumentar cantidad"
           disabled={qty >= 99}
         >
