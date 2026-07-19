@@ -98,38 +98,58 @@ export function OrderActions({
         </form>
       )}
 
+      {/* #25 — ENVIADO/ENTREGADO avisan al cliente por correo y no se deshacen: se piden con
+        confirmación (mismo patrón <details> que Cancelar/Reembolsar), en acento morado (avance,
+        no peligro), para no marcarlos de un clic por accidente. */}
       {showMarkShipped && (
-        <form action={transAction}>
-          <input type="hidden" name="orderId" value={orderId} />
-          <input type="hidden" name="to" value="SHIPPED" />
-          <Button
-            type="submit"
-            size="sm"
-            disabled={transPending}
-            variant="outline"
-            className="w-full"
-          >
-            <ArrowRight className="mr-2 h-3.5 w-3.5" />
-            Marcar como ENVIADO
-          </Button>
-        </form>
+        <details className="border-brand-purple/20 rounded-md border">
+          <summary className="text-brand-purple-dark hover:bg-brand-purple/5 cursor-pointer list-none rounded-md px-3 py-2 text-xs font-semibold">
+            <ArrowRight className="mr-1.5 inline h-3.5 w-3.5" />
+            Marcar como ENVIADO…
+          </summary>
+          <form action={transAction} className="border-brand-purple/10 space-y-2 border-t p-3">
+            <input type="hidden" name="orderId" value={orderId} />
+            <input type="hidden" name="to" value="SHIPPED" />
+            <p className="text-brand-muted text-[11px]">
+              Se le avisará al cliente por correo que su pedido va en camino. No se puede deshacer.
+            </p>
+            <Button
+              type="submit"
+              size="sm"
+              disabled={transPending}
+              variant="outline"
+              className="w-full"
+            >
+              {transPending ? "Marcando…" : "Confirmar envío"}
+            </Button>
+          </form>
+        </details>
       )}
 
       {showMarkDelivered && (
-        <form action={transAction}>
-          <input type="hidden" name="orderId" value={orderId} />
-          <input type="hidden" name="to" value="DELIVERED" />
-          <Button
-            type="submit"
-            size="sm"
-            disabled={transPending}
-            variant="outline"
-            className="w-full"
-          >
-            <ArrowRight className="mr-2 h-3.5 w-3.5" />
-            Marcar como ENTREGADO
-          </Button>
-        </form>
+        <details className="border-brand-purple/20 rounded-md border">
+          <summary className="text-brand-purple-dark hover:bg-brand-purple/5 cursor-pointer list-none rounded-md px-3 py-2 text-xs font-semibold">
+            <ArrowRight className="mr-1.5 inline h-3.5 w-3.5" />
+            Marcar como ENTREGADO…
+          </summary>
+          <form action={transAction} className="border-brand-purple/10 space-y-2 border-t p-3">
+            <input type="hidden" name="orderId" value={orderId} />
+            <input type="hidden" name="to" value="DELIVERED" />
+            <p className="text-brand-muted text-[11px]">
+              Confirma que el cliente ya recibió su pedido. Se le enviará el correo de entrega y no
+              se puede deshacer.
+            </p>
+            <Button
+              type="submit"
+              size="sm"
+              disabled={transPending}
+              variant="outline"
+              className="w-full"
+            >
+              {transPending ? "Marcando…" : "Confirmar entrega"}
+            </Button>
+          </form>
+        </details>
       )}
 
       {canCancel && (

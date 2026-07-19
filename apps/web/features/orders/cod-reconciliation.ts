@@ -258,6 +258,17 @@ export async function markCodRemitted(
   const remittedAmount = input.remittedAmount ?? order.total;
   assertValidAmount(remittedAmount);
 
+  // #23 — "Registrar remesa" es SOLO para efectivo COMPLETO. Una remesa corta cerraba el pedido
+  // como REMITTED y perdía el faltante en silencio (riesgo de fraude/pérdida). Se empuja al camino
+  // de discrepancia (botón ámbar), donde shortfallCop captura expected−recibido. Campo vacío →
+  // remittedAmount = order.total → no dispara.
+  if (remittedAmount < order.total) {
+    throw new CodReconciliationError(
+      "INVALID_AMOUNT",
+      "Recibiste menos de lo esperado. Regístralo como discrepancia (botón ámbar) para no perder el faltante.",
+    );
+  }
+
   const data = {
     status: "REMITTED" as const,
     expectedAmount: order.total,

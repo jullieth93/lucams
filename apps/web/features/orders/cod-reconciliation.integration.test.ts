@@ -82,7 +82,7 @@ describe.skipIf(!hasDb)("cod-reconciliation (integración DB)", { timeout: T }, 
     expect(row?.remittedAt).toBeTruthy();
   });
 
-  it("markCodRemitted: idempotente + permite corregir el monto (upsert)", async () => {
+  it("markCodRemitted: idempotente (upsert, no duplica) al re-marcar monto completo", async () => {
     const orderId = await makeOrder({
       suffix: "idem",
       paymentMethod: "COD",
@@ -90,11 +90,30 @@ describe.skipIf(!hasDb)("cod-reconciliation (integración DB)", { timeout: T }, 
       total: 30_000_00,
     });
     await markCodRemitted(orderId, { adminId: ADMIN });
-    // Re-marcar con un monto distinto (llegó corto) → actualiza, no duplica.
-    const res = await markCodRemitted(orderId, { adminId: ADMIN, remittedAmount: 28_000_00 });
-    expect(res.remittedAmount).toBe(28_000_00);
+    // Re-marcar (ej. corregir la referencia de la transportadora) con el monto COMPLETO → actualiza,
+    // no duplica. (Un monto corto ahora se rechaza — ver el test siguiente #23.)
+    const res = await markCodRemitted(orderId, {
+      adminId: ADMIN,
+      remittedAmount: 30_000_00,
+      carrierRef: "REF-CORRIGE",
+    });
+    expect(res.remittedAmount).toBe(30_000_00);
     const count = await prisma.codReconciliation.count({ where: { orderId } });
     expect(count).toBe(1);
+  });
+
+  it("markCodRemitted: rechaza una remesa CORTA (< total) y no crea fila (#23)", async () => {
+    const orderId = await makeOrder({
+      suffix: "short",
+      paymentMethod: "COD",
+      status: "DELIVERED",
+      total: 50_000_00,
+    });
+    // Registrar remesa es solo para efectivo completo → el faltante debe ir por discrepancia.
+    await expect(
+      markCodRemitted(orderId, { adminId: ADMIN, remittedAmount: 40_000_00 }),
+    ).rejects.toBeInstanceOf(CodReconciliationError);
+    expect(await prisma.codReconciliation.count({ where: { orderId } })).toBe(0);
   });
 
   it("flagCodDiscrepancy: marca DISCREPANCY y prende needsReconciliation en la orden", async () => {
