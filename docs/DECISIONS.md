@@ -2564,3 +2564,28 @@ impacto en el motor monetario ni en la saga de stock.
 (las URLs de Storage siguen apuntando al asset del diseño). Si más adelante se quiere blindar contra
 el borrado del asset físico en Storage (no solo del row `Design`), se agenda una copia a un prefijo
 `orders/` inmutable — fuera del alcance de esta pieza.
+
+## ADR-071 — Figura jurídica: persona natural + exposición mínima de datos (2026-07-19)
+
+Lucy confirmó que opera como **persona natural** (no S.A.S.). Los textos legales decían
+"Lucams_shop S.A.S. (NIT en trámite)" (términos + aviso de privacidad) → incorrecto (#15/#16).
+
+**Decisiones.**
+
+1. **Persona natural.** El responsable / proveedor es **Lucy Jullieth Hurtado Rodríguez**, persona
+   natural titular de la marca **Lucams_shop**, domicilio Bogotá D.C. Se corrigieron los fallbacks
+   de `terminos` y `privacidad`, y se agregó el bloque "Responsable del tratamiento" a `habeas-data`.
+2. **Exposición mínima de PII (elección de Lucy).** Público: nombre + persona natural + Bogotá +
+   correo (`habeas-data@lucamsshop.co`) + WhatsApp como canal para ejercer derechos. La **cédula** y
+   la **dirección física de notificación** NO se publican: quedan "**disponibles a solicitud**". Menor
+   exposición para una emprendedora que trabaja desde casa; equilibra Ley 1480/1581 con su seguridad.
+3. **PII fuera de git.** La cédula y la dirección exacta NO viven en el repositorio. Si en el futuro
+   se requiere la versión legal completa (p. ej. exigencia expresa de dirección de notificación para
+   e-commerce), va en el **CMS** (editable por Lucy, no versionado), no en los fallbacks del código.
+
+**Pendiente (ACCIÓN HUMANA / deuda):** (a) revisión de un abogado — confirmar que "datos a solicitud"
+es suficiente para su caso, o si debe publicar la dirección de notificación; (b) confirmar el
+**régimen tributario** con un contador (persona natural comercial suele requerir RUT; define IVA);
+(c) cuando tenga **dominio propio**, cuadrar los correos (`hola@`, `habeas-data@`) y, si consigue una
+**dirección alterna** (oficina virtual/apartado), usarla como dirección de notificación en vez de su
+casa.

@@ -8,6 +8,15 @@ export const metadata: Metadata = {
 
 const FALLBACK = `Como titular de datos personales, conforme a la **Ley 1581 de 2012** tienes los siguientes derechos sobre la información que Lucams_shop ha recolectado de ti.
 
+## Responsable del tratamiento
+
+**Lucy Jullieth Hurtado Rodríguez**, quien actúa como **persona natural** titular de la marca **Lucams_shop**, con domicilio en **Bogotá D.C., Colombia**.
+
+- **Correo de contacto:** habeas-data@lucamsshop.co
+- **WhatsApp:** disponible en el sitio.
+
+Su documento de identificación y la dirección física de notificación están **disponibles a solicitud** escrita al correo anterior.
+
 ## Tus derechos
 
 - **Acceso:** conocer qué datos tuyos tenemos.
