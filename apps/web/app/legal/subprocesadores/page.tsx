@@ -17,10 +17,10 @@ const FALLBACK = `Lucams_shop usa los siguientes proveedores que pueden tratar d
 | Supabase | US / EU | Base de datos PostgreSQL, autenticación, almacenamiento de archivos | [Ver](https://supabase.com/legal/dpa) |
 | Vercel | US | Hosting, despliegue y CDN del sitio web | [Ver](https://vercel.com/legal/dpa) |
 | Resend | US | Envío de correos transaccionales y newsletter | [Ver](https://resend.com/legal/dpa) |
-| Wompi | Colombia | Procesamiento de pagos (tarjetas, PSE y contraentrega) | [Ver](https://wompi.com/legal) |
-| Aveonline | Colombia | Agregador de logística: cotiza y genera las guías de envío | [Ver](https://www.aveonline.co/) |
+| Wompi | Colombia | Procesamiento de pagos en línea (tarjetas y PSE) | [Ver](https://wompi.com/legal) |
+| Aveonline | Colombia | Agregador de logística: cotiza y genera las guías de envío, y gestiona el recaudo del pago contraentrega | [Ver](https://www.aveonline.co/) |
 | Cloudflare | US | Anti-bot (Turnstile) y protección DDoS | [Ver](https://www.cloudflare.com/cloudflare-customer-dpa/) |
-| Anthropic (Claude API) | US | Asistente IA para personalización de productos (futuro) | [Ver](https://www.anthropic.com/legal/dpa) |
+| Google (Gemini API) | US | Asistente de IA que sugiere ideas de diseño en el Estudio | [Ver](https://cloud.google.com/terms/data-processing-addendum) |
 
 ### Transportadoras
 
