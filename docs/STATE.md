@@ -13,6 +13,16 @@
 
 ## Resumen actual
 
+**✅ BACKLOG AUDITORÍA v3 — COLA DE CALIDAD CERRADA (2026-07-19, cont.).** Con las 4 decisiones de Lucy resueltas, se barrió el **tail de calidad** de las Tandas 5-7 que quedaba pendiente. Todo certificado (tsc + eslint + prettier + tests donde aplica) y pusheado a `origin/develop`:
+
+- **T5 pulido** (`T5 #16/#22/#26`): **#16** en móvil el buy-box del PDP (selector + CTA) sube por encima de la descripción larga (flex + `order-*` en los 6 hijos, CSS-only; md+ conserva el orden natural). **#22** en `/checkout/pago` móvil el resumen+total va ANTES del botón de pagar (order-1/order-2, avisos full-width; lg+ restaura 2 columnas). **#26** validación inline "reward early, punish late" en `/checkout/datos`: el error rojo del cliente aparece solo tras el primer blur (`touched`) y se oculta al reeditar (nombre/email/teléfono/documento).
+- **T6 restante** (`T6 #5/#10`): **#5** `/pedido/[token]` en `PENDING_PAYMENT` ya no es un callejón sin salida (banner ámbar "Estamos confirmando tu pago" + salida a WhatsApp; el timeline se oculta mientras se confirma). **#10** el drawer móvil del mega-menú ahora tiene sección "Tu cuenta" session-aware (Ingresar/Crear cuenta o Mi cuenta + ayuda + contacto).
+- **T7 último test** (`#7`): cobertura **por-PR** de la orquestación de `finalizeDesign` (nuevo `finalize-design.orchestration.integration.test.ts`, 7 tests verdes) — mockea solo el I/O de Storage (`supabaseService`, `vi.mock` hoisted) y usa Prisma real → corre en el gate por-PR (antes solo el nightly la tocaba). Cubre camino feliz (render server-side 3240px reemplaza el PNG del cliente), fallback (slot con **filtro** fuerza NEEDS_KONVA en ambos motores → conserva el PNG del cliente; se corrigió la premisa del hallazgo: una capa de **texto** NO cae a fallback, el tier canvas la renderiza), los 4 guards y `calendarYear` en metadata.
+
+**Con esto el backlog de auditoría v3 (Tandas 1-8 + FB1-FB5 + piezas mayores) queda 100% barrido en código.** Lo que resta para producción es **verificación GUI de Lucy** (`docs/audits/2026-07-19-plan-validacion-gui.md`) + los ítems de **ACCIÓN HUMANA** (cuenta Wompi propia, abogado/contador, replicar CMS legal a prod, dominio+correos).
+
+---
+
 **✅ PIEZAS MAYORES + DECISIONES DE LUCY (2026-07-19, cont.).** Tras cerrar Tanda 8, se resolvieron los 4 frentes que Lucy autorizó:
 
 - **Wompi validado por API** (`GET /v1/merchants`): la cuenta soporta Tarjeta/PSE/Nequi/**Daviplata**/Bancolombia. **ACCIÓN HUMANA:** hoy es sandbox de otro comercio ("KAIU") → Lucy debe crear su propia cuenta y poner llaves de producción. Cerró **#31** (lista canónica de medios de pago con Daviplata, `lib/payment-methods.ts`).
@@ -1506,8 +1516,9 @@ sidebar fijo, Cancelar en cupones.
 
 **Autónomo (candidatos, calidad-primero):**
 
-1. Otros pulidos de Fase 3 storefront/estudio que no dependan de la curaduría de plantillas.
-2. Barrido de coherencia de datos revenue/COD end-to-end si aparece señal.
+1. **Backlog auditoría v3: 100% barrido en código** (Tandas 1-8 + FB1-FB5 + piezas mayores + tail de calidad T5/T6/T7). No queda deuda de auditoría accionable sin decisión/verificación de Lucy.
+2. Otros pulidos de Fase 3 storefront/estudio que no dependan de la curaduría de plantillas.
+3. Barrido de coherencia de datos revenue/COD end-to-end si aparece señal.
 
 **Cuentas creadas just-in-time durante fases posteriores:**
 
@@ -1543,6 +1554,16 @@ sidebar fijo, Cancelar en cupones.
 ---
 
 ## Bitácora (append-only, más reciente arriba)
+
+### 2026-07-19 (cont.) — Cierre del tail de calidad v3 (T5/T6/T7) + orquestación de finalizeDesign por-PR
+
+Cerrada la cola de calidad autorizada por Lucy ("procede en el orden que consideres… calidad de implementación, sin importar el tiempo de esfuerzo"). Tres commits pusheados a `develop`, cada uno certificado (tsc+eslint+prettier, y test verde donde aplica):
+
+- **T5 pulido** — **#16** buy-box del PDP sobre el fold en móvil (flex + `order-*` en los 6 hijos de la columna derecha, CSS-only; wrapper para el `SelectedVariantProvider` que no emite nodo DOM); **#22** `/checkout/pago` móvil con resumen+total antes del botón de pagar (order-1/2, avisos full-width, lg+ restaura 2 col); **#26** validación diferida "reward early, punish late" (`touched` por campo: error solo tras blur, se oculta al reeditar) en nombre/email/teléfono/documento.
+- **T6 restante** — **#5** salida de `PENDING_PAYMENT` en `/pedido/[token]` (banner ámbar + WhatsApp, timeline oculto mientras confirma); **#10** sección "Tu cuenta" session-aware en el drawer móvil (antes no había entrada a la cuenta en móvil desde el mega-menú).
+- **T7 último test (#7)** — `finalize-design.orchestration.integration.test.ts` (7 tests): mockea solo el I/O de Storage (`supabaseService` vía `vi.mock` hoisted) + Prisma real → corre en el gate por-PR (antes la orquestación de `finalizeDesign` solo la cubría el nightly con Storage real). Verifica render server-side (3240px reemplaza el PNG del cliente), **fallback** por slot con filtro (NEEDS_KONVA en sharp Y canvas → conserva el PNG del cliente), los 4 guards (only DRAFT / INCOMPLETE_SLOTS ×2 / not owned) y `calendarYear` en metadata. **Corrección al hallazgo original:** una capa de TEXTO no cae a fallback (el tier canvas la renderiza); el disparador real de fallback es el FILTRO — verificado contra `production-render.ts:116` y `production-render-canvas.ts:156`.
+
+**Estado:** backlog de auditoría v3 100% barrido en código. Lo que sigue es verificación GUI de Lucy + ACCIÓN HUMANA (Wompi propio, abogado/contador, CMS legal a prod, dominio/correos).
 
 ### 2026-07-18 (cont.) — Retracto (cliente asume costo) + flujo de cupones fluido/efectivo (ADR-068 #1 resuelto, ADR-069)
 
