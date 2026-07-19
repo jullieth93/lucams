@@ -1203,6 +1203,24 @@ function PhotoAdjustModalWrapper({
       ? (s.canvasData?.slots?.find((sl) => sl.slotIndex === slotIndex)?.filter ?? null)
       : null,
   );
+  // #18 — selectores ATÓMICOS del transform (no un objeto compuesto → evita el loop de re-render).
+  const slotScale = useStore(store, (s) =>
+    slotIndex !== null
+      ? (s.canvasData?.slots?.find((sl) => sl.slotIndex === slotIndex)?.photoTransform?.scale ?? 1)
+      : 1,
+  );
+  const slotOffsetX = useStore(store, (s) =>
+    slotIndex !== null
+      ? (s.canvasData?.slots?.find((sl) => sl.slotIndex === slotIndex)?.photoTransform?.offsetX ??
+        0)
+      : 0,
+  );
+  const slotOffsetY = useStore(store, (s) =>
+    slotIndex !== null
+      ? (s.canvasData?.slots?.find((sl) => sl.slotIndex === slotIndex)?.photoTransform?.offsetY ??
+        0)
+      : 0,
+  );
   const setSlotFilter = useStore(store, (s) => s.setSlotFilter);
   const setSlotPhotoTransform = useStore(store, (s) => s.setSlotPhotoTransform);
 
@@ -1219,6 +1237,18 @@ function PhotoAdjustModalWrapper({
       }}
       onResetTransform={() => {
         if (slotIndex !== null) setSlotPhotoTransform(slotIndex, null);
+      }}
+      photoTransform={{ offsetX: slotOffsetX, offsetY: slotOffsetY, scale: slotScale }}
+      onZoomChange={(percent) => {
+        if (slotIndex !== null)
+          setSlotPhotoTransform(slotIndex, { scale: Math.max(0.5, Math.min(3, percent / 100)) });
+      }}
+      onNudge={(dx, dy) => {
+        if (slotIndex !== null)
+          setSlotPhotoTransform(slotIndex, {
+            offsetX: slotOffsetX + dx,
+            offsetY: slotOffsetY + dy,
+          });
       }}
     />
   );

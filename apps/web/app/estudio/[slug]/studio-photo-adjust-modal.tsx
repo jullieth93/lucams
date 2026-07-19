@@ -25,7 +25,7 @@
  */
 
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { Check, RotateCcw } from "lucide-react";
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FILTER_LABELS, FILTER_DESCRIPTIONS, FILTER_ORDER } from "./lib/photo-filters";
 import type { PhotoFilterPreset } from "./types";
@@ -39,6 +39,12 @@ type StudioPhotoAdjustModalProps = {
   onApply: (filter: PhotoFilterPreset | null) => void;
   /** Reset transform: vuelve la foto al centro con scale=1. */
   onResetTransform: () => void;
+  /** #18 — encuadre por teclado/controles: estado actual del transform del slot (null = sin ajuste). */
+  photoTransform: { offsetX: number; offsetY: number; scale: number } | null;
+  /** #18 — zoom por slider (porcentaje 50-300). */
+  onZoomChange: (scalePercent: number) => void;
+  /** #18 — desplazar la foto (dx/dy en px del stage). */
+  onNudge: (dx: number, dy: number) => void;
   /**
    * Muestra la sección de filtros. Se desactiva para calendarios (auditoría v3 · H4): los filtros
    * Konva NO llegan al compositor del calendario ni al PNG de producción → se verían B&N en pantalla
@@ -66,6 +72,9 @@ export function StudioPhotoAdjustModal({
   onClose,
   onApply,
   onResetTransform,
+  photoTransform,
+  onZoomChange,
+  onNudge,
   allowFilters = true,
 }: StudioPhotoAdjustModalProps) {
   if (!photoUrl) return null;
@@ -73,6 +82,10 @@ export function StudioPhotoAdjustModal({
   const handleSelectFilter = (filter: PhotoFilterPreset | null) => {
     onApply(filter);
   };
+
+  // #18 — paso de desplazamiento por pulsación (px del stage), y % de zoom actual.
+  const NUDGE = 12;
+  const zoomPct = Math.round((photoTransform?.scale ?? 1) * 100);
 
   return (
     // modal={false} — el contenido detrás (canvas Konva) sigue recibiendo
@@ -93,7 +106,8 @@ export function StudioPhotoAdjustModal({
           Ajustar foto del imán {slotIndex !== null ? slotIndex + 1 : ""}
         </DialogTitle>
         <DialogDescription className="text-brand-muted text-sm">
-          Arrastra la foto en el canvas para encuadrar · Scroll del mouse (o pellizco) para zoom
+          Arrastra la foto en el canvas para encuadrar · Scroll del mouse (o pellizco) para zoom · o
+          usa el zoom y las flechas de abajo para encuadrar con el teclado
           {allowFilters ? " · Elige un filtro abajo" : ""}
         </DialogDescription>
 
@@ -109,6 +123,51 @@ export function StudioPhotoAdjustModal({
             <RotateCcw className="h-3.5 w-3.5" />
             Centrar y resetear zoom
           </Button>
+        </div>
+
+        {/* #18 — encuadre accesible: zoom por slider + cruceta de 4 flechas (equivalente de teclado
+          a los gestos de pan/zoom). Aplica también a calendarios (el encuadre sí se propaga). */}
+        <div className="border-brand-purple/10 mt-3 flex flex-wrap items-end gap-x-6 gap-y-3 rounded-lg border p-3">
+          <div className="flex-1">
+            <label
+              htmlFor="pa-zoom"
+              className="text-brand-purple-dark mb-1 block text-xs font-semibold"
+            >
+              Zoom: {zoomPct}%
+            </label>
+            <input
+              id="pa-zoom"
+              type="range"
+              min={50}
+              max={300}
+              step={5}
+              value={zoomPct}
+              onChange={(e) => onZoomChange(Number(e.target.value))}
+              aria-label={`Zoom ${zoomPct} por ciento`}
+              aria-valuetext={`${zoomPct}%`}
+              className="accent-brand-purple w-full"
+            />
+          </div>
+
+          <div className="flex flex-col items-center">
+            <span className="text-brand-purple-dark mb-1 text-xs font-semibold">Mover</span>
+            <div className="grid grid-cols-3 grid-rows-2 gap-1">
+              <span />
+              <NudgeButton label="Mover la foto hacia arriba" onClick={() => onNudge(0, -NUDGE)}>
+                <ArrowUp className="h-4 w-4" />
+              </NudgeButton>
+              <span />
+              <NudgeButton label="Mover la foto a la izquierda" onClick={() => onNudge(-NUDGE, 0)}>
+                <ArrowLeft className="h-4 w-4" />
+              </NudgeButton>
+              <NudgeButton label="Mover la foto hacia abajo" onClick={() => onNudge(0, NUDGE)}>
+                <ArrowDown className="h-4 w-4" />
+              </NudgeButton>
+              <NudgeButton label="Mover la foto a la derecha" onClick={() => onNudge(NUDGE, 0)}>
+                <ArrowRight className="h-4 w-4" />
+              </NudgeButton>
+            </div>
+          </div>
         </div>
 
         {allowFilters && (
@@ -211,6 +270,28 @@ function FilterCard({
         <p className="text-brand-purple-dark text-xs font-bold">{label}</p>
         <p className="text-brand-muted hidden text-[10px] sm:block">{description}</p>
       </div>
+    </button>
+  );
+}
+
+// #18 — botón de la cruceta de encuadre: ≥44px táctil con foco visible.
+function NudgeButton({
+  label,
+  onClick,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      className="border-brand-purple/20 text-brand-purple-dark hover:bg-brand-purple/10 focus-visible:ring-brand-purple flex h-11 w-11 items-center justify-center rounded-md border bg-white transition-colors focus-visible:ring-2 focus-visible:outline-none"
+    >
+      {children}
     </button>
   );
 }
