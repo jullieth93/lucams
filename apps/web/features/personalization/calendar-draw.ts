@@ -23,6 +23,11 @@ export interface CalendarDrawCtx {
   strokeStyle: string | CanvasGradient | CanvasPattern;
   lineWidth: number;
   font: string;
+  /** #2 — @napi-rs/canvas ignora el eje `wght` del font-string en fuentes VARIABLES (Fredoka/Inter),
+   * usando la instancia default (Fredoka=300, Inter=400). Forzamos el eje aquí para igualar el bold
+   * que ve el cliente (next/font sirve caras estáticas por peso). Opcional: el ctx del navegador que
+   * no lo tenga sigue satisfaciendo la interfaz y el helper lo omite (ya usa la cara correcta). */
+  fontVariationSettings?: string;
   textAlign: CanvasTextAlign;
   textBaseline: CanvasTextBaseline;
   save(): void;
@@ -45,6 +50,25 @@ export interface CalendarDrawCtx {
 }
 
 export type CalendarPhotoTransform = { offsetX: number; offsetY: number; scale: number };
+
+/**
+ * #2 — fija el font-string Y el eje `wght` de la fuente variable juntos. En el servidor (@napi-rs/
+ * canvas) el font-string por sí solo no aplica el peso en fuentes variables → se fuerza
+ * fontVariationSettings. En el navegador la propiedad puede no existir (guard → no-op: el cliente ya
+ * rasteriza la cara correcta por peso vía next/font).
+ */
+function setBrandFont(
+  ctx: CalendarDrawCtx,
+  weight: 400 | 500 | 600 | 700,
+  sizePx: number,
+  family: string,
+  fontsOk: boolean,
+): void {
+  ctx.font = `${weight} ${sizePx}px ${family}`;
+  if (fontsOk && "fontVariationSettings" in ctx) {
+    ctx.fontVariationSettings = `'wght' ${weight}`;
+  }
+}
 
 /**
  * Dibuja una página de mes en `ctx` (que debe estar en coords lógicas de CALENDAR_PAGE: 1080×1520).
@@ -101,13 +125,13 @@ export function drawCalendarPage(
   ctx.fillStyle = "#3D2E5C";
   ctx.textAlign = "center";
   ctx.textBaseline = "alphabetic";
-  ctx.font = `700 ${L.titleFontSize}px ${titleFont}`;
+  setBrandFont(ctx, 700, L.titleFontSize, titleFont, fontsOk);
   ctx.fillText(`${MONTH_NAMES_ES[monthIndex0] ?? ""} ${year}`, CALENDAR_PAGE.width / 2, L.titleY);
 
   // Encabezados de día (D L M M J V S).
   const gridW = L.gridRight - L.gridLeft;
   const colW = gridW / 7;
-  ctx.font = `700 ${L.weekdayFontSize}px ${bodyFont}`;
+  setBrandFont(ctx, 700, L.weekdayFontSize, bodyFont, fontsOk);
   ctx.fillStyle = "#7C6AAD";
   for (let c = 0; c < 7; c++) {
     ctx.fillText(WEEKDAY_HEADERS_ES[c]!, L.gridLeft + colW * c + colW / 2, L.weekdayY);
@@ -129,7 +153,7 @@ export function drawCalendarPage(
       const day = weeks[r]?.[c];
       if (day != null) {
         ctx.fillStyle = "#2A2140";
-        ctx.font = `400 ${daySize}px ${bodyFont}`;
+        setBrandFont(ctx, 400, daySize, bodyFont, fontsOk);
         ctx.fillText(String(day), x + colW / 2, y + rowH / 2);
       }
     }

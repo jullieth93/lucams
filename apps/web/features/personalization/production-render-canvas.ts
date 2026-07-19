@@ -196,9 +196,22 @@ async function renderSlotCanvas(
 
   for (const layer of unit.layers) {
     if (layer.type === "background") {
-      // FOTO1: heart/circle NO pintan fondo → queda transparente FUERA de la silueta (troquel).
-      if (useFullStage) continue;
-      ctx.fillStyle = typeof layer.color === "string" ? layer.color : "#FFFFFF";
+      const bgColor = typeof layer.color === "string" ? layer.color : "#FFFFFF";
+      if (useFullStage) {
+        // #1 (FOTO1) — heart/circle pintan el fondo SOLO dentro de la silueta (troquel), transparente
+        // afuera. Omitirlo por completo dejaba los huecos DENTRO del corazón (foto con zoom-out o pan)
+        // transparentes = blanco al imprimir, divergiendo del editor y del fallback con filtro que sí
+        // hornean el crema. Clip a la silueta = WYSIWYG; la foto se dibuja encima y solo asoma el
+        // fondo en los huecos.
+        ctx.save();
+        shapeSilhouettePath(ctx, shape, unit.stage.width, unit.stage.height);
+        ctx.clip();
+        ctx.fillStyle = bgColor;
+        ctx.fillRect(0, 0, unit.stage.width, unit.stage.height);
+        ctx.restore();
+        continue;
+      }
+      ctx.fillStyle = bgColor;
       ctx.fillRect(0, 0, unit.stage.width, unit.stage.height);
     } else if (layer.type === "image-placeholder") {
       if (!slot.assetId) throw new RenderNeedsKonvaError(`slot ${slot.slotIndex} sin assetId`);
@@ -327,6 +340,13 @@ function renderTextLayer(
 
   ctx.save();
   ctx.font = `${weight} ${fontSize}px ${family}`;
+  // #2 — @napi-rs/canvas ignora el eje `wght` del font-string en las fuentes variables de marca
+  // (Fredoka/Inter) → usaría la instancia default y divergiría del bold/regular que ve el cliente.
+  // Forzamos el eje (Konva: normal→400, bold→700, numérico→tal cual). Antes del measureText para que
+  // la decisión de envolver use métricas del peso real.
+  const numericWeight =
+    weight === "bold" ? 700 : weight === "normal" ? 400 : Number.parseInt(weight, 10) || 400;
+  ctx.fontVariationSettings = `'wght' ${numericWeight}`;
   ctx.textBaseline = "top";
   // Solo center o left: Konva right-align (sin width) extiende a la derecha desde x = left.
   ctx.textAlign = align === "center" ? "center" : "left";

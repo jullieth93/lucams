@@ -18,6 +18,19 @@ async function alphaAt(png: Buffer, x: number, y: number): Promise<number> {
   return ctx.getImageData(x, y, 1, 1).data[3];
 }
 
+async function rgbaAt(
+  png: Buffer,
+  x: number,
+  y: number,
+): Promise<[number, number, number, number]> {
+  const img = await loadImage(png);
+  const c = createCanvas(img.width, img.height);
+  const ctx = c.getContext("2d");
+  ctx.drawImage(img, 0, 0);
+  const d = ctx.getImageData(x, y, 1, 1).data;
+  return [d[0], d[1], d[2], d[3]];
+}
+
 function fakePhoto(w: number, h: number): Buffer {
   const c = createCanvas(w, h);
   const ctx = c.getContext("2d");
@@ -262,8 +275,8 @@ describe("renderProductionSlotsCanvas — texto + marco (ADR-057 Fase A1b)", () 
 
   it("heart/circle: cubre el stage, OMITE el texto y RECORTA a la silueta (FOTO1)", async () => {
     // ADR-063 FOTO1 — heart/circle imprimen recortados a su silueta física (transparente afuera →
-    // troquel), sin fondo blanco y sin el texto del template (igual que el editor). Verificamos que
-    // las esquinas quedan transparentes (alpha 0) y el centro opaco.
+    // troquel), sin el texto del template (igual que el editor). El FONDO se pinta DENTRO de la
+    // silueta (#1). Verificamos que las esquinas quedan transparentes (alpha 0) y el centro opaco.
     const unit = {
       version: 1 as const,
       stage,
@@ -290,5 +303,38 @@ describe("renderProductionSlotsCanvas — texto + marco (ADR-057 Fase A1b)", () 
       // Centro → DENTRO → opaco.
       expect(await alphaAt(png, Math.floor(w / 2), Math.floor(h / 2))).toBeGreaterThan(200);
     }
+  });
+
+  it("#1 circle con foto encogida: el hueco DENTRO de la silueta imprime el fondo, no transparente", async () => {
+    // Antes el fondo se OMITÍA en heart/circle → un zoom-out dejaba huecos transparentes = blanco al
+    // imprimir (divergía del editor, que muestra crema). Ahora el fondo se pinta recortado a la
+    // silueta: los huecos salen del color del fondo, y fuera del troquel sigue transparente.
+    const unit = {
+      version: 1 as const,
+      stage,
+      layers: [
+        { id: "bg", type: "background", color: "#FFF8F0" }, // crema del template default
+        photoLayer,
+      ],
+    };
+    const bufs = await renderProductionSlotsCanvas({
+      unitTemplate: unit,
+      slots: [
+        // scale 0.5 → la foto (cover×0.5) no llena la silueta → quedan huecos arriba/abajo.
+        { slotIndex: 0, assetId: "a0", photoTransform: { offsetX: 0, offsetY: 0, scale: 0.5 } },
+      ],
+      shape: "circle",
+      loadAsset: async () => fakePhoto(800, 1000),
+    });
+    const png = bufs[0];
+    // Punto lógico (360,100): DENTRO de la elipse (centro 360,460 · radios 360,460) pero ARRIBA de la
+    // foto encogida (y∈[230,690]) → debe ser el crema del fondo (r alto), no transparente ni el azul.
+    const [r, g, b, a] = await rgbaAt(png, 360 * 3, 100 * 3);
+    expect(a).toBeGreaterThan(200); // fondo pintado (antes: 0 = transparente)
+    expect(r).toBeGreaterThan(240); // crema (#FFF8F0), no el azul de la foto (r≈58)
+    expect(g).toBeGreaterThan(230);
+    void b;
+    // La esquina sigue FUERA de la silueta → transparente (el fondo se recorta al troquel).
+    expect(await alphaAt(png, 9, 9)).toBe(0);
   });
 });
