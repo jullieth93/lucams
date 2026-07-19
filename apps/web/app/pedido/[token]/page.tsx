@@ -19,7 +19,7 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { MapPin, Package, Truck } from "lucide-react";
+import { MapPin, Package, Truck, Wallet } from "lucide-react";
 import { prisma } from "@/lib/db";
 import { formatCOP, maskEmail } from "@/lib/format";
 import { LucamsLogo } from "@/components/lucams-logo";
@@ -102,6 +102,12 @@ export default async function PublicOrderPage({
   });
   const progress = timelineProgress(order.status);
   const isCancelled = order.status === "CANCELLED" || order.status === "REFUNDED";
+  // #2 — contraentrega: el cliente aún NO ha pagado (paga en efectivo al recibir). No mostrar
+  // "Pagado"; usar "Confirmado" + un aviso persistente del monto a pagar hasta que se entregue.
+  const isCod = order.paymentMethod === "COD";
+  const statusText =
+    isCod && order.status === "PAID" ? "Confirmado" : (STATUS_LABEL[order.status] ?? order.status);
+  const showCodBanner = isCod && !isCancelled && order.status !== "DELIVERED";
 
   return (
     <div className="bg-brand-cream flex min-h-screen flex-col">
@@ -130,16 +136,23 @@ export default async function PublicOrderPage({
                 🎉 ¡Pedido confirmado!
               </p>
               <p className="mt-0.5 text-sm text-emerald-800">
-                {order.paymentMethod === "COD" ? (
-                  <>
-                    Pagas <strong>{formatCOP(order.total)}</strong> en efectivo cuando el mensajero
-                    te entregue el pedido. Te enviamos los detalles a tu correo.
-                  </>
-                ) : (
-                  <>
-                    Te enviamos los detalles y el seguimiento a tu correo. ¡Gracias por tu compra!
-                  </>
-                )}
+                {/* #2 — el detalle COD lo lleva el aviso persistente de abajo; aquí solo el saludo. */}
+                Te enviamos los detalles y el seguimiento a tu correo. ¡Gracias por tu compra!
+              </p>
+            </div>
+          )}
+
+          {/* #2 — aviso de contraentrega persistente (no depende de ?nueva=1): recuerda que el pago
+            es en efectivo al recibir, para no confundir "Confirmado" con "ya pagado". */}
+          {showCodBanner && (
+            <div
+              role="note"
+              className="mb-6 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4"
+            >
+              <Wallet className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-700" aria-hidden />
+              <p className="text-sm text-amber-900">
+                Pagas <strong>{formatCOP(order.total)}</strong> en efectivo cuando el mensajero te
+                entregue el pedido.
               </p>
             </div>
           )}
@@ -150,7 +163,7 @@ export default async function PublicOrderPage({
               {order.number}
             </h1>
             <p className="text-brand-muted mt-1 text-sm">
-              {dateFmt.format(order.createdAt)} · {STATUS_LABEL[order.status] ?? order.status}
+              {dateFmt.format(order.createdAt)} · {statusText}
             </p>
           </header>
 
@@ -161,6 +174,8 @@ export default async function PublicOrderPage({
                 {TIMELINE_STEPS.map((s, i) => {
                   const done = progress >= i;
                   const active = progress === i;
+                  // #2 — en COD el primer paso es "Confirmado" (no "Pagado": aún no pagó).
+                  const label = i === 0 && isCod ? "Confirmado" : s.label;
                   return (
                     <li key={s.key} className="flex flex-1 flex-col items-center">
                       <div
@@ -175,7 +190,7 @@ export default async function PublicOrderPage({
                           done ? "text-brand-purple-dark" : "text-brand-muted"
                         }`}
                       >
-                        {s.label}
+                        {label}
                       </span>
                     </li>
                   );

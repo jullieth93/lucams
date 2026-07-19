@@ -15,7 +15,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import Image from "next/image";
 import { notFound, redirect } from "next/navigation";
-import { ChevronLeft, MapPin, Package, Star, Truck } from "lucide-react";
+import { ChevronLeft, MapPin, Package, Star, Truck, Wallet } from "lucide-react";
 import { prisma } from "@/lib/db";
 import { getCurrentCustomer } from "@/lib/auth";
 import { formatCOP } from "@/lib/format";
@@ -97,6 +97,18 @@ export default async function CustomerPedidoDetallePage({
   });
   const progress = timelineProgress(order.status);
   const isCancelled = order.status === "CANCELLED" || order.status === "REFUNDED";
+  // #2 — contraentrega: no mostrar "Pagado" (aún no paga); "Confirmado" + aviso del monto en efectivo.
+  const isCod = order.paymentMethod === "COD";
+  const statusText =
+    isCod && order.status === "PAID" ? "Confirmado" : orderStatusLabel(order.status);
+  const showCodBanner = isCod && !isCancelled && order.status !== "DELIVERED";
+  // #9 — transportadora legible (title-case) en vez del slug crudo ("tcc-sa" → "Tcc Sa").
+  const carrierLabel = order.shippingCarrier
+    ? order.shippingCarrier
+        .split("-")
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(" ")
+    : "—";
 
   // F3 — elegibilidad de retracto por item (solo si el pedido fue entregado).
   const retractable =
@@ -124,9 +136,23 @@ export default async function CustomerPedidoDetallePage({
           Pedido {order.number}
         </h1>
         <p className="text-brand-muted mt-1 text-sm">
-          {dateFmt.format(order.createdAt)} · {orderStatusLabel(order.status)}
+          {dateFmt.format(order.createdAt)} · {statusText}
         </p>
       </header>
+
+      {/* #2 — aviso de contraentrega persistente (paga en efectivo al recibir). */}
+      {showCodBanner && (
+        <div
+          role="note"
+          className="mb-6 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4"
+        >
+          <Wallet className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-700" aria-hidden />
+          <p className="text-sm text-amber-900">
+            Pagas <strong>{formatCOP(order.total)}</strong> en efectivo cuando el mensajero te
+            entregue el pedido.
+          </p>
+        </div>
+      )}
 
       {/* Timeline */}
       {!isCancelled && (
@@ -136,6 +162,7 @@ export default async function CustomerPedidoDetallePage({
             {TIMELINE_STEPS.map((s, i) => {
               const done = progress >= i;
               const active = progress === i;
+              const label = i === 0 && isCod ? "Confirmado" : s.label; // #2
               return (
                 <li key={s.key} className="flex flex-1 flex-col items-center">
                   <div
@@ -150,7 +177,7 @@ export default async function CustomerPedidoDetallePage({
                       done ? "text-brand-purple-dark" : "text-brand-muted"
                     }`}
                   >
-                    {s.label}
+                    {label}
                   </span>
                 </li>
               );
@@ -248,7 +275,7 @@ export default async function CustomerPedidoDetallePage({
       {/* Envío */}
       {order.trackingNumber && (
         <Card icon={<Truck className="h-4 w-4" />} title="Envío">
-          <Row label="Transportadora" value={order.shippingCarrier ?? "—"} />
+          <Row label="Transportadora" value={carrierLabel} />
           <Row
             label="Número de guía"
             value={
