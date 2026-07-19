@@ -39,10 +39,16 @@ type Category = {
 export function ProductsFilters({
   categories,
   priceRange,
+  total,
 }: {
   categories: Category[];
   priceRange: { min: number; max: number };
+  /** #9 — total de resultados actuales, para el botón "Ver N productos" del drawer móvil. */
+  total?: number;
 }) {
+  // #9 — Sheet CONTROLADO para poder cerrarlo al aplicar (antes el drawer quedaba abierto tapando
+  // los resultados y no había feedback del conteo).
+  const [open, setOpen] = useState(false);
   return (
     <>
       {/* Sidebar desktop */}
@@ -52,7 +58,7 @@ export function ProductsFilters({
 
       {/* Drawer móvil */}
       <div className="mb-4 lg:hidden">
-        <Sheet>
+        <Sheet open={open} onOpenChange={setOpen}>
           <SheetTrigger asChild>
             <Button
               variant="outline"
@@ -67,7 +73,12 @@ export function ProductsFilters({
               <SheetTitle className="font-display text-brand-purple-dark">Filtros</SheetTitle>
             </SheetHeader>
             <div className="px-4 pb-6">
-              <FiltersForm categories={categories} priceRange={priceRange} />
+              <FiltersForm
+                categories={categories}
+                priceRange={priceRange}
+                total={total}
+                onApplied={() => setOpen(false)}
+              />
             </div>
           </SheetContent>
         </Sheet>
@@ -79,9 +90,15 @@ export function ProductsFilters({
 function FiltersForm({
   categories,
   priceRange,
+  total,
+  onApplied,
 }: {
   categories: Category[];
   priceRange: { min: number; max: number };
+  /** #9 — total de resultados, para el botón "Ver N productos" en el drawer móvil. */
+  total?: number;
+  /** #9 — se llama al aplicar en el drawer móvil para cerrarlo. undefined = sidebar desktop. */
+  onApplied?: () => void;
 }) {
   const router = useRouter();
   const sp = useSearchParams();
@@ -90,10 +107,23 @@ function FiltersForm({
   const minBound = priceRange.min;
   const maxBound = priceRange.max > priceRange.min ? priceRange.max : priceRange.min + 1;
 
+  // #11 — lee el precio de la URL ACOTADO a [minBound, maxBound] y normaliza si viene invertido:
+  // un minPrice fuera de rango dejaba el slider en un estado imposible (thumb pegado / sin arrastre).
+  const clampPrice = (raw: string | null, fallback: number) => {
+    const n = Number(raw);
+    if (!n || Number.isNaN(n)) return fallback;
+    return Math.min(Math.max(n, minBound), maxBound);
+  };
+  const readPriceRange = (): [number, number] => {
+    const mn = clampPrice(sp.get("minPrice"), minBound);
+    const mx = clampPrice(sp.get("maxPrice"), maxBound);
+    return mn <= mx ? [mn, mx] : [mx, mn];
+  };
+
   const [q, setQ] = useState(sp.get("q") ?? "");
   const [categoria, setCategoria] = useState(sp.get("categoria") ?? "");
-  const [minPrice, setMinPrice] = useState(Number(sp.get("minPrice")) || minBound);
-  const [maxPrice, setMaxPrice] = useState(Number(sp.get("maxPrice")) || maxBound);
+  const [minPrice, setMinPrice] = useState(() => readPriceRange()[0]);
+  const [maxPrice, setMaxPrice] = useState(() => readPriceRange()[1]);
   const [personalizable, setPersonalizable] = useState(sp.get("personalizable") === "1");
   const [descuento, setDescuento] = useState(sp.get("descuento") === "1");
   const [destacados, setDestacados] = useState(sp.get("destacados") === "1");
@@ -107,13 +137,17 @@ function FiltersForm({
     queueMicrotask(() => {
       setQ(sp.get("q") ?? "");
       setCategoria(sp.get("categoria") ?? "");
-      setMinPrice(Number(sp.get("minPrice")) || minBound);
-      setMaxPrice(Number(sp.get("maxPrice")) || maxBound);
+      const [mn, mx] = readPriceRange(); // #11 — acotado + normalizado
+      setMinPrice(mn);
+      setMaxPrice(mx);
       setPersonalizable(sp.get("personalizable") === "1");
       setDescuento(sp.get("descuento") === "1");
       setDestacados(sp.get("destacados") === "1");
       setOrden(sp.get("orden") ?? "recent");
     });
+    // readPriceRange deriva solo de sp/minBound/maxBound (ya en deps); incluirla haría correr el
+    // effect en cada render (se recrea por render).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sp, minBound, maxBound]);
 
   const applyTimer = useRef<number | null>(null);
@@ -153,6 +187,10 @@ function FiltersForm({
       if (_descuento) params.set("descuento", "1");
       if (_destacados) params.set("destacados", "1");
       if (_orden !== "recent") params.set("orden", _orden);
+      // #4 — preservar la ocasión activa (vive en su propio strip, con su X aparte): tocar un filtro
+      // del panel NO debe descartarla en silencio.
+      const ocasion = sp.get("ocasion");
+      if (ocasion) params.set("ocasion", ocasion);
       const qs = params.toString();
       startTransition(() => {
         router.push(qs ? `/productos?${qs}` : "/productos");
@@ -170,7 +208,11 @@ function FiltersForm({
     setDescuento(false);
     setDestacados(false);
     setOrden("recent");
-    startTransition(() => router.push("/productos"));
+    // #4 — "Reiniciar" resetea solo los filtros del panel; la ocasión (strip aparte, con su X) queda.
+    const ocasion = sp.get("ocasion");
+    startTransition(() =>
+      router.push(ocasion ? `/productos?ocasion=${encodeURIComponent(ocasion)}` : "/productos"),
+    );
   }
 
   const hasActive =
@@ -301,10 +343,16 @@ function FiltersForm({
       <div className="border-brand-purple/10 flex gap-2 border-t pt-4">
         <Button
           type="button"
-          onClick={() => apply(0)}
+          onClick={() => {
+            apply(0);
+            onApplied?.(); // #9 — en el drawer móvil, cerrar tras aplicar
+          }}
           className="bg-brand-purple hover:bg-brand-purple-dark flex-1 text-white"
         >
-          Aplicar
+          {/* #9 — en móvil el botón muestra el conteo y cierra el drawer (patrón e-commerce). */}
+          {onApplied
+            ? `Ver ${total ?? 0} ${(total ?? 0) === 1 ? "producto" : "productos"}`
+            : "Aplicar"}
         </Button>
         <Button
           type="button"
@@ -494,8 +542,14 @@ export function ActiveFilterChips({
     chips.push({ key: "personalizable", label: "Personalizable" });
   if (sp.get("descuento") === "1") chips.push({ key: "descuento", label: "Con descuento" });
   if (sp.get("destacados") === "1") chips.push({ key: "destacados", label: "Destacados" });
-  if (sp.get("minPrice")) chips.push({ key: "minPrice", label: `Desde ${sp.get("minPrice")}` });
-  if (sp.get("maxPrice")) chips.push({ key: "maxPrice", label: `Hasta ${sp.get("maxPrice")}` });
+  // #7 — precios formateados en COP (antes mostraban los centavos crudos, ej. "Desde 1000000").
+  // Guard NaN para params numéricos manipulados a mano en la URL.
+  const minP = sp.get("minPrice");
+  if (minP && Number.isFinite(Number(minP)))
+    chips.push({ key: "minPrice", label: `Desde ${formatCOP(Number(minP))}` });
+  const maxP = sp.get("maxPrice");
+  if (maxP && Number.isFinite(Number(maxP)))
+    chips.push({ key: "maxPrice", label: `Hasta ${formatCOP(Number(maxP))}` });
 
   if (chips.length === 0) return null;
 

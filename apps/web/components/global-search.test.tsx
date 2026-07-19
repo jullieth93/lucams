@@ -79,6 +79,7 @@ function makeResult(over: Partial<SearchResult> = {}): SearchResult {
     images: [],
     category: { slug: "fotoimanes", name: "Fotoimanes" },
     variantCount: 1,
+    isFeatured: false,
     score: 1,
     ...over,
   };

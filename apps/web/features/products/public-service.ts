@@ -319,6 +319,8 @@ export async function getStorefrontPriceRange(): Promise<{ min: number; max: num
 export type SearchResult = StorefrontProductCard & {
   score: number;
   isSuggestion?: boolean;
+  /** #8 — para que la búsqueda pueda honrar el filtro "Destacados" y el orden "featured". */
+  isFeatured: boolean;
 };
 
 export async function searchStorefrontProducts(rawQuery: string): Promise<SearchResult[]> {
@@ -339,6 +341,7 @@ export async function searchStorefrontProducts(rawQuery: string): Promise<Search
     images: string[];
     categoryName: string;
     categorySlug: string;
+    isFeatured: boolean;
     score: number;
   };
 
@@ -355,7 +358,7 @@ export async function searchStorefrontProducts(rawQuery: string): Promise<Search
   const rows = await prisma.$queryRaw<Row[]>`
     SELECT
       p.id, p.slug, p.name, p."basePrice", p."compareAtPrice",
-      p."isPersonalizable", p.images,
+      p."isPersonalizable", p.images, p."isFeatured",
       c.name AS "categoryName", c.slug AS "categorySlug",
       GREATEST(
         CASE WHEN immutable_unaccent(LOWER(p.name)) = immutable_unaccent(LOWER(${safe})) THEN 3.0 ELSE 0 END,
@@ -391,7 +394,7 @@ export async function searchStorefrontProducts(rawQuery: string): Promise<Search
   const suggestions = await prisma.$queryRaw<Row[]>`
     SELECT
       p.id, p.slug, p.name, p."basePrice", p."compareAtPrice",
-      p."isPersonalizable", p.images,
+      p."isPersonalizable", p.images, p."isFeatured",
       c.name AS "categoryName", c.slug AS "categorySlug",
       similarity(immutable_unaccent(p.name), immutable_unaccent(${safe})) AS score
     FROM "Product" p
@@ -417,6 +420,7 @@ function mapRow(r: {
   images: string[];
   categoryName: string;
   categorySlug: string;
+  isFeatured: boolean;
   score: number;
 }): SearchResult {
   return {
@@ -428,6 +432,7 @@ function mapRow(r: {
     isPersonalizable: r.isPersonalizable,
     images: r.images,
     category: { slug: r.categorySlug, name: r.categoryName },
+    isFeatured: r.isFeatured,
     score: Number(r.score),
   };
 }

@@ -127,7 +127,26 @@ export default async function ProductosPage({ searchParams }: { searchParams: Se
 
   if (q && q.length >= 2) {
     const results = await searchStorefrontProducts(q);
-    const allCards: StorefrontProductCard[] = results.map((r) => ({
+    // #8 — filtrar y ordenar sobre los results (que ahora traen isFeatured) ANTES de mapear a cards:
+    // con búsqueda activa, "Destacados" y "Ordenar por" antes se ignoraban en silencio.
+    const filtered = results.filter((r) => {
+      if (categoria && r.category.slug !== categoria) return false;
+      if (personalizable && !r.isPersonalizable) return false;
+      if (descuento && r.compareAtPrice == null) return false;
+      if (destacados && !r.isFeatured) return false; // ← filtro que faltaba
+      if (minPrice != null && r.basePrice < minPrice) return false;
+      if (maxPrice != null && r.basePrice > maxPrice) return false;
+      return true;
+    });
+    // "recent" (default) preserva el orden de relevancia (score) de la búsqueda. Los demás reordenan
+    // el set filtrado; Array.prototype.sort es estable desde ES2019 → "featured" conserva la
+    // relevancia como desempate. Mismo criterio que el listado sin búsqueda (public-service).
+    if (orden === "price-asc") filtered.sort((a, b) => a.basePrice - b.basePrice);
+    else if (orden === "price-desc") filtered.sort((a, b) => b.basePrice - a.basePrice);
+    else if (orden === "name") filtered.sort((a, b) => a.name.localeCompare(b.name, "es"));
+    else if (orden === "featured")
+      filtered.sort((a, b) => Number(b.isFeatured) - Number(a.isFeatured));
+    const allCards: StorefrontProductCard[] = filtered.map((r) => ({
       id: r.id,
       slug: r.slug,
       name: r.name,
@@ -137,18 +156,9 @@ export default async function ProductosPage({ searchParams }: { searchParams: Se
       images: r.images,
       category: r.category,
     }));
-    // Aplicar filtros estructurados sobre los results de búsqueda
-    const filtered = allCards.filter((p) => {
-      if (categoria && p.category.slug !== categoria) return false;
-      if (personalizable && !p.isPersonalizable) return false;
-      if (descuento && p.compareAtPrice == null) return false;
-      if (minPrice != null && p.basePrice < minPrice) return false;
-      if (maxPrice != null && p.basePrice > maxPrice) return false;
-      return true;
-    });
-    total = filtered.length;
+    total = allCards.length;
     totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-    products = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+    products = allCards.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
   } else {
     const paginated = await listStorefrontProductsPaginated({
       categorySlug: categoria,
@@ -215,7 +225,7 @@ export default async function ProductosPage({ searchParams }: { searchParams: Se
           </header>
 
           <div className="flex flex-col gap-6 lg:flex-row">
-            <ProductsFilters categories={categories} priceRange={priceRange} />
+            <ProductsFilters categories={categories} priceRange={priceRange} total={total} />
 
             <div className="flex-1">
               <OcasionFilterStrip ocasiones={ocasiones} />
