@@ -16,6 +16,7 @@ const { state } = vi.hoisted(() => ({
   state: {
     user: null as { id: string } | null,
     redirect: null as { toPath: string; statusCode: number } | null,
+    lastLookupPath: null as string | null, // #29 — captura la llave con que el proxy consulta
   },
 }));
 
@@ -25,7 +26,10 @@ vi.mock("@supabase/ssr", () => ({
   }),
 }));
 vi.mock("@/features/redirects/service", () => ({
-  lookupActiveRedirect: async () => state.redirect,
+  lookupActiveRedirect: async (p: string) => {
+    state.lastLookupPath = p;
+    return state.redirect;
+  },
   incrementRedirectHit: async () => {},
 }));
 vi.mock("@/lib/product-redirects", () => ({
@@ -52,6 +56,7 @@ function makeReq(
 beforeEach(() => {
   state.user = null;
   state.redirect = null;
+  state.lastLookupPath = null;
   vi.unstubAllEnvs();
 });
 
@@ -153,6 +158,38 @@ describe("proxy · precedencia de redirects", () => {
     state.redirect = { toPath: "/destino", statusCode: 301 };
     const res = await proxy(makeReq("/admin/contenido"));
     expect(res.headers.get("location") ?? "").not.toContain("/destino");
+  });
+
+  // #30 — preservación de query entrante (UTM de campañas)
+  it("#30 PRODUCT_REDIRECTS preserva los UTM entrantes", async () => {
+    const res = await proxy(makeReq("/producto/old-magnet?utm_source=ig&utm_campaign=bio"));
+    const loc = res.headers.get("location") ?? "";
+    expect(loc).toContain("variant=v_123");
+    expect(loc).toContain("utm_source=ig");
+    expect(loc).toContain("utm_campaign=bio");
+  });
+
+  it("#30 el query del destino gana sobre el entrante (variant no se pisa)", async () => {
+    const res = await proxy(makeReq("/producto/old-magnet?variant=zzz"));
+    const loc = res.headers.get("location") ?? "";
+    expect(loc).toContain("variant=v_123");
+    expect(loc).not.toContain("variant=zzz");
+  });
+
+  it("#30 UrlRedirect relativo preserva los UTM entrantes", async () => {
+    state.redirect = { toPath: "/destino", statusCode: 301 };
+    const res = await proxy(makeReq("/promo-vieja?utm_source=ig"));
+    const loc = res.headers.get("location") ?? "";
+    expect(loc).toContain("/destino");
+    expect(loc).toContain("utm_source=ig");
+  });
+
+  // #29 — el proxy consulta el UrlRedirect con la llave en minúsculas. Path único para evitar el
+  // cache in-memory (60s) que persiste entre tests → un path ya cacheado no volvería a hacer lookup.
+  it("#29 normaliza fromPath a minúsculas para el lookup", async () => {
+    state.redirect = { toPath: "/destino", statusCode: 301 };
+    await proxy(makeReq("/CamelCase-Unico-29"));
+    expect(state.lastLookupPath).toBe("/camelcase-unico-29");
   });
 });
 

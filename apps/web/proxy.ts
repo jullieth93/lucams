@@ -59,6 +59,17 @@ async function getRedirectWithCache(
   return result;
 }
 
+// #30 — preserva el query entrante (UTM de campañas: link viejo de la bio de Instagram) al
+// redirigir. Las claves que el destino YA define ganan (p. ej. el ?variant= de PRODUCT_REDIRECTS).
+// Solo se aplica a destinos internos/relativos (no filtramos UTM internos a hosts externos).
+function preserveIncomingQuery(target: URL, incoming: URLSearchParams): URL {
+  const owned = new Set(target.searchParams.keys());
+  incoming.forEach((value, key) => {
+    if (!owned.has(key)) target.searchParams.append(key, value);
+  });
+  return target;
+}
+
 // SECURITY_HEADERS, buildCsp e isOriginAllowed viven en lib/security-headers.ts (puros, testeados).
 
 // `upgrade-insecure-requests` (dentro de buildCsp) solo en prod/preview (Vercel sirve HTTPS). En
@@ -118,8 +129,11 @@ export async function proxy(request: NextRequest) {
     const slug = path.slice("/producto/".length).split("/")[0];
     const target = PRODUCT_REDIRECTS[slug];
     if (target) {
-      // target ya viene como "base-slug?variant=v_id"
-      const targetUrl = new URL(`/producto/${target}`, request.url);
+      // target ya viene como "base-slug?variant=v_id"; #30 preserva UTM entrantes.
+      const targetUrl = preserveIncomingQuery(
+        new URL(`/producto/${target}`, request.url),
+        request.nextUrl.searchParams,
+      );
       return NextResponse.redirect(targetUrl, 301);
     }
   }
@@ -133,14 +147,21 @@ export async function proxy(request: NextRequest) {
     !path.startsWith("/admin/") &&
     request.method === "GET"
   ) {
-    const dynamicRedirect = await getRedirectWithCache(path);
+    // #29 — el match de fromPath es case-insensitive: se normaliza a minúsculas en la escritura
+    // (createRedirect), así que la llave del lookup y del hit también se normaliza acá.
+    const redirectPath = path.toLowerCase();
+    const dynamicRedirect = await getRedirectWithCache(redirectPath);
     if (dynamicRedirect) {
       // Incremento de hit count en background (no espera). Si falla, se ignora.
-      void incrementRedirectHit(path);
+      void incrementRedirectHit(redirectPath);
       const isAbsolute = /^https?:\/\//i.test(dynamicRedirect.toPath);
       const targetUrl = isAbsolute
         ? dynamicRedirect.toPath
-        : new URL(dynamicRedirect.toPath, request.url);
+        : // #30 — preserva UTM entrantes solo para destinos internos.
+          preserveIncomingQuery(
+            new URL(dynamicRedirect.toPath, request.url),
+            request.nextUrl.searchParams,
+          );
       return NextResponse.redirect(targetUrl, dynamicRedirect.statusCode);
     }
   }

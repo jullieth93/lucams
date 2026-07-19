@@ -8,6 +8,8 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { isAllowedRedirectDestination } from "@/lib/safe-redirect";
+import { getStorefrontProductBySlug } from "@/features/products/public-service";
+import { getCategoryBySlug, getOcasionBySlug } from "@/lib/catalog";
 
 const PAGE_SIZE = 20;
 
@@ -132,9 +134,90 @@ function normalizePath(input: string): string {
   if (!trimmed) throw new RedirectValidationError("fromPath", "La ruta no puede estar vacía.");
   // Si es URL externa (http/https), dejar tal cual.
   if (/^https?:\/\//i.test(trimmed)) return trimmed;
-  // Si no empieza con /, agregarlo. Lower-case el path (case-insensitive matches).
+  // Si no empieza con /, agregarlo. (El lowercase del fromPath lo hace normalizeFromPath — #29.)
   const withSlash = trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
   return withSlash;
+}
+
+// #29 — el fromPath es SIEMPRE una ruta interna nuestra y el match del proxy es case-insensitive.
+// Lo normalizamos a minúsculas al ESCRIBIR (y el proxy al LEER), así "/Foo" y "/foo" son la misma
+// llave. NUNCA se aplica al toPath: los destinos externos pueden tener paths case-sensitive.
+function normalizeFromPath(input: string): string {
+  const p = normalizePath(input);
+  return /^https?:\/\//i.test(p) ? p : p.toLowerCase();
+}
+
+// #24 — rutas VIVAS estáticas del storefront: un redirect con fromPath en una de ellas la ocultaría.
+const LIVE_STATIC_PATHS = new Set([
+  "/",
+  "/productos",
+  "/recomendador",
+  "/carrito",
+  "/ayuda",
+  "/contacto",
+  "/mi-cuenta",
+  "/login",
+  "/registro",
+  "/legal/privacidad",
+  "/legal/terminos",
+  "/legal/cookies",
+  "/legal/devoluciones",
+  "/legal/garantias",
+  "/legal/habeas-data",
+  "/legal/subprocesadores",
+  "/legal/security",
+]);
+
+/**
+ * #24 — rechaza si fromPath colisiona con una página REAL viva (estática o dinámica activa).
+ * Los getters dinámicos solo devuelven contenido activo/publicado, así que los slugs LEGACY
+ * archivados devuelven null → PASAN (ese es el caso de uso legítimo del redirect). fromPath ya
+ * viene normalizado a minúsculas (los slugs del catálogo son kebab-case ASCII).
+ */
+async function assertFromPathNotLive(fromPath: string): Promise<void> {
+  const reject = () => {
+    throw new RedirectValidationError(
+      "fromPath",
+      "Esa ruta ya es una página real de la tienda. Si creas un redirect ahí, esa página dejaría " +
+        "de verse para tus clientes. Elige otra ruta de origen (o edita/archiva la página).",
+    );
+  };
+
+  if (LIVE_STATIC_PATHS.has(fromPath)) reject();
+
+  const productMatch = fromPath.match(/^\/producto\/([^/?#]+)$/);
+  if (productMatch && (await getStorefrontProductBySlug(productMatch[1]))) reject();
+
+  const ocasionMatch = fromPath.match(/^\/ocasion\/([^/?#]+)$/);
+  if (ocasionMatch && (await getOcasionBySlug(ocasionMatch[1]))) reject();
+
+  const categoriaMatch = fromPath.match(/^\/productos\/([^/?#]+)$/);
+  if (categoriaMatch && (await getCategoryBySlug(categoriaMatch[1]))) reject();
+}
+
+/**
+ * #24 — evita bucles/cadenas: si el toPath (interno) YA es el fromPath de otro redirect activo,
+ * crearlo formaría A→B→C o A→B→A. `selfFromPath` excluye el propio row en updateRedirect.
+ */
+async function assertNoRedirectChain(toPath: string, selfFromPath?: string): Promise<void> {
+  if (/^https?:\/\//i.test(toPath)) return; // destino externo → no hay cadena interna
+  const targetPath = new URL(toPath, "http://x").pathname.toLowerCase();
+  const chained = await prisma.urlRedirect.findFirst({
+    where: {
+      fromPath: targetPath,
+      isActive: true,
+      deletedAt: null,
+      ...(selfFromPath ? { NOT: { fromPath: selfFromPath } } : {}),
+    },
+    select: { id: true },
+  });
+  if (chained) {
+    throw new RedirectValidationError(
+      "toPath",
+      "El destino ya es el origen de otro redirect activo: se formaría un bucle. Elige un destino " +
+        "que sea una página real, no otra redirección.",
+    );
+  }
 }
 
 /**
@@ -162,17 +245,22 @@ export type RedirectCreateInput = {
 };
 
 export async function createRedirect(input: RedirectCreateInput, actorAdminId: string) {
-  const fromPath = normalizePath(input.fromPath);
+  const fromPath = normalizeFromPath(input.fromPath); // #29 — llave case-insensitive
   const toPath = normalizePath(input.toPath);
   assertAllowedToPath(toPath);
 
-  if (fromPath === toPath) {
+  // #29 — self-loop case-insensitive: "/foo → /Foo" también haría bucle en el proxy.
+  if (fromPath === toPath.toLowerCase()) {
     throw new RedirectValidationError("toPath", "Origen y destino no pueden ser iguales.");
   }
 
   if (![301, 302].includes(input.statusCode)) {
     throw new RedirectValidationError("statusCode", "Código debe ser 301 o 302.");
   }
+
+  // #24 — no ocultar una página viva ni formar bucles/cadenas.
+  await assertFromPathNotLive(fromPath);
+  await assertNoRedirectChain(toPath, fromPath);
 
   const existing = await prisma.urlRedirect.findUnique({ where: { fromPath } });
   if (existing && !existing.deletedAt) {
@@ -227,9 +315,14 @@ export async function updateRedirect(input: RedirectUpdateInput, actorAdminId: s
   });
   if (!existing) throw new RedirectValidationError("id", "Redirect no encontrado.");
 
-  if (existing.fromPath === toPath) {
+  // #29 — self-loop case-insensitive (existing.fromPath ya está en minúsculas si se creó tras el fix).
+  if (existing.fromPath === toPath.toLowerCase()) {
     throw new RedirectValidationError("toPath", "Origen y destino no pueden ser iguales.");
   }
+
+  // #24 — el nuevo destino no puede ser el origen de otra redirección activa (bucle/cadena).
+  // fromPath es inmutable en update, así que no re-chequeamos assertFromPathNotLive.
+  await assertNoRedirectChain(toPath, existing.fromPath);
 
   return prisma.urlRedirect.update({
     where: { id: input.id },
