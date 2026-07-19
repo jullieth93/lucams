@@ -58,11 +58,14 @@ export function StudioGesturesHint({ open, onClose, persistent = false }: Props)
           animate={{ y: 0, opacity: 1 }}
           exit={{ y: 60, opacity: 0 }}
           transition={{ duration: 0.35, ease: "easeOut" }}
-          className="fixed bottom-4 left-1/2 z-40 -translate-x-1/2 px-4 sm:bottom-6"
+          // #5 — sin ancho definido, el elemento fixed con left-1/2 colapsaba al shrink-to-fit
+          // (~50vw) → tarjeta estrujada con el texto quebrado en móvil. w-full acotado por max-w
+          // fija el ancho: llena el viewport (−px-4) en móvil y es un pill centrado en desktop.
+          className="fixed bottom-4 left-1/2 z-40 w-full max-w-md -translate-x-1/2 px-4 sm:bottom-6 sm:max-w-lg"
           role="status"
           aria-live="polite"
         >
-          <div className="border-brand-purple/20 bg-brand-purple-dark/95 flex max-w-md items-start gap-3 rounded-2xl border px-4 py-3 text-white shadow-2xl backdrop-blur sm:max-w-lg">
+          <div className="border-brand-purple/20 bg-brand-purple-dark/95 flex items-start gap-3 rounded-2xl border px-4 py-3 text-white shadow-2xl backdrop-blur">
             <div className="flex-1">
               <p className="text-sm font-bold">¡Tip! Cómo editar tu foto:</p>
               <ul className="mt-1.5 space-y-1 text-[12px]">

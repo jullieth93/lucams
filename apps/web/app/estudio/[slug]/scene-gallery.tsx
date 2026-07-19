@@ -20,6 +20,7 @@ import { X } from "lucide-react";
 import type { Magnet3D } from "./fridge-3d-view";
 import { composeGiftFlatlay } from "./lib/compose-gift-flatlay";
 import { composeShelfFlatlay } from "./lib/compose-shelf-flatlay";
+import { useIsTouch } from "./use-is-touch";
 
 const FridgeView3D = nextDynamic(() => import("./fridge-3d-view"), {
   ssr: false,
@@ -57,6 +58,7 @@ export function SceneGallery({
   onClose: () => void;
 }) {
   const [scene, setScene] = useState<Scene>("fridge");
+  const isTouch = useIsTouch(); // #9 — copy del gesto de zoom según táctil vs mouse.
   // Compositores 2D: se arman perezosamente al abrir su chip y se cachean.
   const [shelfUrl, setShelfUrl] = useState<string | null>(null);
   const [giftUrl, setGiftUrl] = useState<string | null>(null);
@@ -191,7 +193,9 @@ export function SceneGallery({
 
         <p className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-black/40 px-3 py-1.5 text-center text-xs text-white">
           {is3D
-            ? "Arrastra para girar · rueda o pellizca para acercar"
+            ? isTouch
+              ? "Arrastra para girar · pellizca con 2 dedos para acercar"
+              : "Arrastra para girar · rueda o pellizca para acercar"
             : "Mantén presionada la imagen para guardarla o compartirla 💛"}
         </p>
       </div>

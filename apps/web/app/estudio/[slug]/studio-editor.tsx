@@ -42,7 +42,15 @@ import { StudioAssetPickerModal } from "./studio-asset-picker-modal";
 import { StudioPhotoAdjustModal } from "./studio-photo-adjust-modal";
 import { StudioPreviewModal } from "./studio-preview-modal";
 import { StudioTextEditorModal } from "./studio-text-editor-modal";
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import {
+  Sheet,
+  SheetClose,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
+import { useIsTouch } from "./use-is-touch";
 import { Sparkles, Box, X, CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
 import nextDynamic from "next/dynamic";
 import type { Magnet3D } from "./fridge-3d-view";
@@ -227,6 +235,7 @@ export function StudioEditor({
   // #14 — sustantivo del slot: en separadores el producto NO es un imán → "separador" en los labels,
   // aria y onboarding (pantalla=físico). Deriva de isBookmark; el calendario usa slotLabels propios.
   const slotNoun = isBookmark ? "separador" : "imán";
+  const isTouch = useIsTouch(); // #9 — copy del gesto de zoom del libro 3D según táctil vs mouse.
   // FOTO4 — la galería de escenas "en tu espacio" (nevera/mural/repisa/regalo) es la vista por
   // defecto del fotoimán: se muestra cuando NO es calendario ni separador (el `else` del botón).
   const defaultCalendarYear = calendarYear ?? new Date().getFullYear() + 1;
@@ -888,7 +897,9 @@ export function StudioEditor({
           <div className="relative flex-1">
             <BookView3D bookmarks={book3D} />
             <p className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-black/40 px-3 py-1.5 text-center text-xs text-white">
-              Arrastra para girar · rueda o pellizca para acercar
+              {isTouch
+                ? "Arrastra para girar · pellizca con 2 dedos para acercar"
+                : "Arrastra para girar · rueda o pellizca para acercar"}
             </p>
           </div>
         </div>
@@ -967,12 +978,25 @@ export function StudioEditor({
         </SheetTrigger>
         <SheetContent
           side="bottom"
+          // #6 — la X por defecto del sheet queda ENTERRADA bajo este header sticky (sin z-index) →
+          // invisible e intappable en móvil. La suprimimos y ponemos una propia DENTRO del header,
+          // en el mismo contexto de apilamiento, con target de 44px (antes 28px, bajo el mínimo táctil).
+          showCloseButton={false}
           className="border-brand-purple/10 max-h-[88vh] overflow-y-auto rounded-t-2xl border-t bg-white p-0 lg:hidden"
         >
-          <SheetHeader className="border-brand-purple/10 sticky top-0 z-10 border-b bg-white/95 px-4 py-3 backdrop-blur">
+          <SheetHeader className="border-brand-purple/10 sticky top-0 z-10 flex-row items-center justify-between border-b bg-white/95 px-4 py-3 backdrop-blur">
             <SheetTitle className="text-brand-purple-dark text-base font-bold">
               Personalizar
             </SheetTitle>
+            <SheetClose asChild>
+              <button
+                type="button"
+                aria-label="Cerrar personalización"
+                className="text-brand-purple-dark/70 hover:bg-brand-purple/10 hover:text-brand-purple-dark -mr-2 inline-flex size-11 shrink-0 items-center justify-center rounded-full transition-colors"
+              >
+                <X className="size-5" aria-hidden />
+              </button>
+            </SheetClose>
           </SheetHeader>
           {/* Reusa el mismo StudioSidebar — no se duplica el código */}
           <div className="pb-6">

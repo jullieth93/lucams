@@ -26,6 +26,7 @@ import { LetterTile } from "./letter-tile";
 import { useLetterColors } from "./use-letter-colors";
 import { ThemePicker, SwatchRow } from "./letter-color-controls";
 import { LetterStylePicker } from "./letter-style-picker";
+import { useIsTouch } from "./use-is-touch";
 
 // NOM2 — tablero magnético 3D en un cuarto (WebGL, client-only), diferido. El nombre son imanes de
 // letras → viven en un tablero decorativo de una habitación (su propia escena), no en la nevera de
@@ -210,6 +211,7 @@ export function NameEditor({
   const [raw, setRaw] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const isTouch = useIsTouch(); // #9 — copy del gesto de zoom del tablero 3D según táctil vs mouse.
   // NOM2 — vista 3D del nombre en un tablero magnético de un cuarto. null = cerrada.
   const [board3D, setBoard3D] = useState<Magnet3D[] | null>(null);
   const [building3D, setBuilding3D] = useState(false);
@@ -633,7 +635,9 @@ export function NameEditor({
           <div className="relative flex-1">
             <RoomBoardView3D magnets={board3D} cols={board3D.length} style="memo" />
             <p className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-black/40 px-3 py-1.5 text-center text-xs text-white">
-              Arrastra para girar · rueda o pellizca para acercar
+              {isTouch
+                ? "Arrastra para girar · pellizca con 2 dedos para acercar"
+                : "Arrastra para girar · rueda o pellizca para acercar"}
             </p>
           </div>
         </div>
