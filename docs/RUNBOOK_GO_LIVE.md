@@ -90,12 +90,30 @@ anti-robots del checkout) y **R2** (los backups). Es la decisión de [ADR-011](D
 
 1. Entra a [cloudflare.com](https://cloudflare.com) → **Sign up** (gratis) o inicia sesión.
 2. **Add a site** → escribe `lucamsshop.com` → selecciona el plan **Free** → **Continue**.
-3. Cloudflare escanea y te muestra dos **nameservers**, algo como
-   `xxxx.ns.cloudflare.com` y `yyyy.ns.cloudflare.com`. **Cópialos.**
-4. Entra a **mi.com.co** → tu cuenta → tus dominios → `lucamsshop.com` → busca **"Servidores DNS"**,
-   **"Nameservers"** o **"DNS personalizados"**.
-5. **Reemplaza** los nameservers que estén ahí por los DOS de Cloudflare. Guarda.
-6. Vuelve a Cloudflare → **Done, check nameservers**.
+
+### 1.b — Pantalla "Connect your domain" (qué seleccionar y por qué)
+
+Cloudflare muestra una pantalla con políticas de bots de IA. Esto es lo que aplica a una **tienda
+sin anuncios** como la tuya. Las tres categorías significan cosas distintas
+([Cloudflare — Manage AI crawlers](https://developers.cloudflare.com/ai-crawl-control/features/manage-ai-crawlers/)):
+
+| Opción                           | Qué elegir                          | Por qué                                                                                                                                                                                                                                                                                                    |
+| -------------------------------- | ----------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Search**                       | **Allow** (deja el recomendado)     | Son los buscadores (Google). Bloquearlos = desaparecer de Google. **No negociable para una tienda.**                                                                                                                                                                                                       |
+| **Agent**                        | **Allow** (deja el recomendado)     | Bots que actúan **en tiempo real por una persona** (alguien le pide a ChatGPT "dónde compro imanes personalizados en Colombia" y el bot entra a tu sitio). Son clientes potenciales.                                                                                                                       |
+| **Training**                     | **Block** (cambia el recomendado)   | ⚠️ El recomendado es _"Block on pages with ads"_ — **está pensado para medios que monetizan con anuncios. Tu sitio NO tiene anuncios, así que esa opción no bloquea nada.** Bloquear entrenamiento protege tus fotos y diseños y **no cuesta nada de SEO** (Search es categoría aparte y sigue permitida). |
+| **Block training in robots.txt** | **Déjalo encendido**                | Es una señal adicional (educada) para los bots. **Verificado: Cloudflare NO reemplaza tu `robots.txt`, lo antepone al tuyo** — tu `Sitemap:` y tus reglas siguen intactas ([doc](https://developers.cloudflare.com/bots/additional-configurations/managed-robots-txt/)).                                   |
+| **Import DNS records**           | **Automatic** (deja el recomendado) | Copia los registros que ya existan en mi.com.co para no perder nada. **Ver la advertencia de abajo.**                                                                                                                                                                                                      |
+
+> 🚨 **Advertencia crítica sobre el import de DNS.** Cuando termine el escaneo, **revisa la lista de
+> registros importados y BORRA cualquier `A` o `CNAME` de `@` (el dominio raíz) o de `www` que apunte a
+> mi.com.co** (suelen ser páginas de "parqueo" del registrador). Si los dejas, **chocan con el registro
+> de Vercel que vas a crear en la FASE 2** y el sitio no abre o abre la página del registrador.
+> Los registros de correo (**MX**, **TXT**) sí se conservan.
+
+**Ninguna de estas opciones es permanente:** todas se cambian después en el panel de Cloudflare. 3. Cloudflare escanea y te muestra dos **nameservers**, algo como
+`xxxx.ns.cloudflare.com` y `yyyy.ns.cloudflare.com`. **Cópialos.** 4. Entra a **mi.com.co** → tu cuenta → tus dominios → `lucamsshop.com` → busca **"Servidores DNS"**,
+**"Nameservers"** o **"DNS personalizados"**. 5. **Reemplaza** los nameservers que estén ahí por los DOS de Cloudflare. Guarda. 6. Vuelve a Cloudflare → **Done, check nameservers**.
 
 > 💡 Si no encuentras dónde cambiar los nameservers en mi.com.co, escríbeles a soporte: _"Necesito
 > apuntar los nameservers de lucamsshop.com a Cloudflare"_ y les pasas los dos.
