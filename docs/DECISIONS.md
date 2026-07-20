@@ -2681,3 +2681,64 @@ patch estable de Next que lo corrija, o (c) probar `next build --experimental-bu
 (experimental; puede no producir un build desplegable). Recomendación: monitorear los issues y aplicar
 el primer patch estable; mientras tanto los arreglos del punto 1 quedan mergeados. **Ojo:** hasta
 resolver esto, el sitio en producción NO se actualiza con lo nuevo de `develop`.
+
+> **⚠️ CORREGIDO por [ADR-074].** El punto 2 era un **falso positivo**: `/_global-error` con
+> `useContext null` era un artefacto del build LOCAL, no la causa de la falla de Vercel/CI. La falla
+> real era un **export sin commitear** (`getCanonicalSiteUrl` en `sitemap.ts`), arreglado en `d86e923`.
+> El build es **verde en Next 16.2.6 estable** — **NO** hizo falta subir a 16.3-preview ni ningún
+> workaround. El punto 1 (admin `force-dynamic`) sí era real y sigue vigente.
+
+---
+
+## ADR-074 — CI verde tras Next 16: `unstable_cache` E469, Button `asChild` #143 y tests desincronizados (2026-07-19)
+
+Tras el bump a Next 16 (16.2.6 estable) el CI quedó rojo en **Vitest** y **E2E**. Se leyó el log completo
+de CI (los 7 jobs) y se diagnosticó cada fallo por su causa raíz —investigando antes de tocar, no por
+prueba y error— en vez de asumir flakiness. Resultado: **1 regresión sistémica de Next 16 + un bug de
+prod real + varios tests desincronizados con cambios recientes**. Los 7 jobs quedaron verdes en `efa455e`.
+
+**1. SISTÉMICO — `unstable_cache` lanza `incrementalCache missing` (E469) fuera de un request (Next 16
+breaking vs 15).** En Next 15, llamar a un `unstable_cache` sin contexto de request/render (vitest, seeds,
+workers de `pg_cron` standalone) ejecutaba la función sin caché. En Next 16 **lanza el invariante E469**.
+Eso rompía todo camino que lee CMS: `getSettingValue`→`getSiteSetting` (usado por `features/emails/layout`
+—o sea los 20 correos—, `saga`, `lib/wa`, plantillas de email). Manifestaciones: `cart-recovery` (llamada
+directa) y, en cascada por `retry:2`, P2002/P2003 en otros tests de integración.
+**Decisión:** wrapper `cachedCms(fn, keyParts, opts)` en `lib/cms.ts` que envuelve `unstable_cache` y, al
+capturar **exclusivamente** ese invariante (`__NEXT_ERROR_CODE === "E469"` o mensaje `incrementalCache`),
+cae a ejecución cruda (sin caché); cualquier otro error se re-lanza. Aplicado a los 6 lectores CMS. En
+producción (siempre dentro de un request) el fallback nunca dispara → comportamiento cacheado idéntico.
+Además endurece prod: un worker de cron o un script standalone que lea CMS ya no revienta.
+
+**2. BUG DE PROD — Button `asChild` lanzaba `React.Children.only` (React #143) en `/carrito`.** Con
+`asChild`, `Button` monta un `Slot` de Radix, que corre `React.Children.only` sobre sus hijos. La
+implementación renderizaba SIEMPRE el hermano `{showSpinner && <Loader2/>}` —que con `asChild` vale
+`false`— antes de `{children}` → `[false, child]` (count 2) → _"React.Children.only expected to receive a
+single React element child"_. Reventaba el render en **prod** de `/carrito` (E2E `compra.spec`) y
+`/checkout/gracias` (ambos `<Button asChild><Link/></Button>`). **Decisión:** con `asChild` pasar SOLO el
+hijo único; el spinner (ya deshabilitado con `asChild`) va en el `Fragment` del `<button>` real. Regresión
+fijada en `components/ui/button.test.tsx` (**probado**: contra el código previo el test lanza el #143 exacto).
+
+**3. Tests desincronizados con cambios recientes (fallos genuinos, no flakiness):**
+
+- `products-filters`: el chip de precio ahora muestra COP formateado (`$ 50`), no centavos crudos (`5000`).
+- `customers` (reviewsCount): 2 reseñas ACTIVAS del mismo producto violan el índice parcial nuevo
+  `Review_productId_customerId_active_unique` (`WHERE deletedAt IS NULL`) → la 2ª va soft-deleted.
+- `cod-reconciliation`: `suffix:"short"` reusado en 2 tests → mismo `number` → P2002 (renombrado).
+- `stock #10`: el guard B2 (un VOIDED solo tumba una orden PAID si es LA MISMA transacción Wompi que la
+  pagó) ignoraba el evento porque el test no pasaba `wompiTransactionId`. Se modela la transacción real;
+  el `afterAll` además barre OrderItems/Orders que referencian la variante antes de borrarla (FK Restrict).
+- `saga`/`aveonline`: los mocks de `./emails` no cubrían `sendOrderCancelled` → _"No export is defined on
+  the mock"_ y la transición se saltaba en silencio. Completados con todos los exports reales.
+- `estudio` 404 (E2E): `notFound()` DESPUÉS de un await, con el `loading.tsx` del segmento ya streameado,
+  produce un **soft 404** en Next 16 (HTTP 200 + contenido not-found + noindex), no un 404 duro. `/estudio/*`
+  es noindex por diseño → el 200 no tiene costo SEO. El test verifica lo que importa: el Estudio NO se
+  expone (sin canvas ni toolbar) y se resuelve en la 404.
+
+**4. Corrección a ADR-073.** El build NO estaba roto por un bug de framework en `/_global-error` (ese
+`useContext null` era un artefacto del build LOCAL, un red herring). La falla real de Vercel/CI era el
+export `getCanonicalSiteUrl` **sin commitear** en `sitemap.ts` (arreglado en `d86e923`). El build es verde
+en **Next 16.2.6 estable**: no hizo falta subir a 16.3-preview ni ningún workaround.
+
+**Certificación:** tsc 0, eslint 0 (`--max-warnings 0`), prettier ok, todos los archivos tocados en verde
+local, y los **7 jobs de CI** verdes en `efa455e` (Vitest, E2E+a11y, Typecheck+Lint+Build, Lighthouse,
+Gitleaks, Prettier, Dependency audit). Commits `6bbb753` (vitest), `41e311e` (E2E) y `efa455e` (chore).
