@@ -13,7 +13,8 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { getCurrentAdmin } from "@/lib/auth";
+import { requireAdminAction } from "@/lib/admin-rbac-guard";
+import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { recordAdminAction } from "@/lib/admin-audit";
 import { logger } from "@/lib/logger";
 import {
@@ -35,8 +36,7 @@ function getIds(formData: FormData): string[] {
  * bulkActivateProductsAction — activa N productos (visibles en la tienda).
  */
 export async function bulkActivateProductsAction(formData: FormData): Promise<void> {
-  const session = await getCurrentAdmin();
-  if (!session) redirect("/admin/login");
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
 
   const parsed = BulkIdsSchema.safeParse(getIds(formData));
   if (!parsed.success) {
@@ -82,8 +82,7 @@ export async function bulkActivateProductsAction(formData: FormData): Promise<vo
  * bulkDeactivateProductsAction — pausa N productos (ocultos de la tienda).
  */
 export async function bulkDeactivateProductsAction(formData: FormData): Promise<void> {
-  const session = await getCurrentAdmin();
-  if (!session) redirect("/admin/login");
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
 
   const parsed = BulkIdsSchema.safeParse(getIds(formData));
   if (!parsed.success) {
@@ -119,8 +118,7 @@ export async function bulkDeactivateProductsAction(formData: FormData): Promise<
  * bulkFeatureProductsAction — destaca N productos (aparecen en home).
  */
 export async function bulkFeatureProductsAction(formData: FormData): Promise<void> {
-  const session = await getCurrentAdmin();
-  if (!session) redirect("/admin/login");
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
 
   const parsed = BulkIdsSchema.safeParse(getIds(formData));
   if (!parsed.success) {
@@ -158,8 +156,7 @@ export async function bulkFeatureProductsAction(formData: FormData): Promise<voi
  * bulkUnfeatureProductsAction — quita el destacado de N productos.
  */
 export async function bulkUnfeatureProductsAction(formData: FormData): Promise<void> {
-  const session = await getCurrentAdmin();
-  if (!session) redirect("/admin/login");
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
 
   const parsed = BulkIdsSchema.safeParse(getIds(formData));
   if (!parsed.success) {

@@ -15,7 +15,8 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { getCurrentAdmin } from "@/lib/auth";
+import { requireAdminAction } from "@/lib/admin-rbac-guard";
+import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { recordAdminAction } from "@/lib/admin-audit";
 import { logger } from "@/lib/logger";
 import { setVariantStockAdmin, VariantStockError } from "@/features/products/stock-admin";
@@ -48,10 +49,7 @@ export async function setVariantStockAction(
   _prev: StockActionState | null,
   formData: FormData,
 ): Promise<StockActionState> {
-  const session = await getCurrentAdmin();
-  if (!session) {
-    return { error: "Sesión expirada. Vuelve a iniciar sesión." };
-  }
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
 
   // Parse + Zod validation
   const variantId = String(formData.get("variantId") ?? "").trim();

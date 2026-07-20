@@ -5,7 +5,8 @@
  * archivos no infle la lógica de edit/create del producto.
  *
  * Cada acción:
- *   - Verifica getCurrentAdmin (defense in depth — proxy.ts ya bloquea).
+ *   - requireAdminAction({roles: MANAGER_UP}) — sesión + MFA aal2 + rol (defense in
+ *     depth sobre proxy.ts; cierra el bypass de mutar imágenes con sesión aal1).
  *   - Llama a lib/storage para upload/delete.
  *   - Actualiza Product.images array.
  *   - Registra AdminActionLog.
@@ -16,7 +17,8 @@
 
 import { revalidatePath } from "next/cache";
 import { recordAdminAction } from "@/lib/admin-audit";
-import { getCurrentAdmin } from "@/lib/auth";
+import { requireAdminAction } from "@/lib/admin-rbac-guard";
+import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { deleteProductImage, StorageError, uploadProductImage } from "@/lib/storage";
@@ -26,8 +28,7 @@ const MAX_IMAGES_PER_PRODUCT = 10;
 type ActionResult = { error?: string };
 
 export async function uploadProductImagesAction(formData: FormData): Promise<ActionResult> {
-  const session = await getCurrentAdmin();
-  if (!session) return { error: "Sesión expirada." };
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
 
   const productId = String(formData.get("productId") ?? "");
   if (!productId) return { error: "Producto inválido." };
@@ -108,8 +109,7 @@ export async function uploadProductImagesAction(formData: FormData): Promise<Act
 }
 
 export async function reorderProductImagesAction(formData: FormData): Promise<ActionResult> {
-  const session = await getCurrentAdmin();
-  if (!session) return { error: "Sesión expirada." };
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
 
   const productId = String(formData.get("productId") ?? "");
   const orderStr = String(formData.get("order") ?? "[]");
@@ -158,8 +158,7 @@ export async function reorderProductImagesAction(formData: FormData): Promise<Ac
 }
 
 export async function deleteProductImageAction(formData: FormData): Promise<ActionResult> {
-  const session = await getCurrentAdmin();
-  if (!session) return { error: "Sesión expirada." };
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
 
   const productId = String(formData.get("productId") ?? "");
   const url = String(formData.get("url") ?? "");

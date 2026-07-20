@@ -14,7 +14,8 @@
 
 import { revalidatePath } from "next/cache";
 import { recordAdminAction } from "@/lib/admin-audit";
-import { getCurrentAdmin } from "@/lib/auth";
+import { requireAdminAction } from "@/lib/admin-rbac-guard";
+import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { deleteProductImage, StorageError, uploadProductImage } from "@/lib/storage";
@@ -43,8 +44,7 @@ function revalidateVariant(productId: string, productSlug: string) {
 }
 
 export async function uploadVariantImagesAction(formData: FormData): Promise<ActionResult> {
-  const session = await getCurrentAdmin();
-  if (!session) return { error: "Sesión expirada." };
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
 
   const variantId = String(formData.get("variantId") ?? "");
   if (!variantId) return { error: "Opción inválida." };
@@ -116,8 +116,7 @@ export async function uploadVariantImagesAction(formData: FormData): Promise<Act
 }
 
 export async function reorderVariantImagesAction(formData: FormData): Promise<ActionResult> {
-  const session = await getCurrentAdmin();
-  if (!session) return { error: "Sesión expirada." };
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
 
   const variantId = String(formData.get("variantId") ?? "");
   const orderStr = String(formData.get("order") ?? "[]");
@@ -161,8 +160,7 @@ export async function reorderVariantImagesAction(formData: FormData): Promise<Ac
 }
 
 export async function deleteVariantImageAction(formData: FormData): Promise<ActionResult> {
-  const session = await getCurrentAdmin();
-  if (!session) return { error: "Sesión expirada." };
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
 
   const variantId = String(formData.get("variantId") ?? "");
   const url = String(formData.get("url") ?? "");
