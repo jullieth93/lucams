@@ -10,12 +10,12 @@ De acuerdo con la **Ley 1480 de 2011 (art. 47)**, tienes **5 días hábiles** co
 
 ## ¿Qué productos tienen retracto?
 
-| Producto | ¿Aplica retracto? |
-| --- | --- |
+| Producto                                                                       | ¿Aplica retracto?                           |
+| ------------------------------------------------------------------------------ | ------------------------------------------- |
 | **Catálogo estándar** (imanes y diseños pre-armados, sin personalización tuya) | ✅ **Sí** — 5 días hábiles desde la entrega |
-| **Productos del Estudio de Personalización** (con tu foto o tu texto) | ❌ **No** — la ley los exceptúa |
-| **Combos del catálogo estándar** | ✅ **Sí** |
-| **Combos que incluyen al menos un producto personalizado** | ❌ **No** |
+| **Productos del Estudio de Personalización** (con tu foto o tu texto)          | ❌ **No** — la ley los exceptúa             |
+| **Combos del catálogo estándar**                                               | ✅ **Sí**                                   |
+| **Combos que incluyen al menos un producto personalizado**                     | ❌ **No**                                   |
 
 Los productos personalizados quedan por fuera del retracto porque la ley exceptúa los bienes _"confeccionados conforme a las especificaciones del consumidor o claramente personalizados"_ (Ley 1480, art. 47). Como los hacemos con tu foto o tu texto, no podemos revenderlos: por eso no tienen retracto. Esto también te lo avisamos en la página de cada producto antes de comprar.
 

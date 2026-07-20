@@ -8,15 +8,15 @@ Es un tercero (una empresa proveedora) que trata algunos de tus datos **en nuest
 
 ## Proveedores que tratan tus datos
 
-| Proveedor | País | Qué hace | Qué datos tuyos trata | DPA |
-|---|---|---|---|---|
-| **Supabase** | EE.UU. (con opción de región EU) | Base de datos, autenticación y almacenamiento de archivos | Casi todos los datos de tu cuenta y pedidos (protegidos con RLS) y las fotos que subes al Estudio | [Ver](https://supabase.com/legal/dpa) |
-| **Vercel** | EE.UU. | Hosting, despliegue y CDN del sitio | Datos en tránsito durante tu visita y registros técnicos (incluida tu IP) | [Ver](https://vercel.com/legal/dpa) |
-| **Resend** | EE.UU. | Envío de correos transaccionales y del boletín | Tu correo electrónico y el contenido del mensaje | [Ver](https://resend.com/legal/dpa) |
-| **Google (Gemini API)** | EE.UU. | Asistente de IA que sugiere ideas de diseño en el Estudio | El texto de tu solicitud de diseño (sin datos de identificación directa) | [Ver](https://cloud.google.com/terms/data-processing-addendum) |
-| **Cloudflare** | EE.UU. / global | Anti-bot (Turnstile) y protección contra ataques | Tu dirección IP y datos en tránsito | [Ver](https://www.cloudflare.com/cloudflare-customer-dpa/) |
-| **Wompi** | Colombia | Procesamiento de pagos en línea (tarjetas y PSE) | Datos de la transacción y datos para prevención de fraude | [Ver](https://wompi.com/legal) |
-| **Aveonline** | Colombia | Agregador de logística: cotiza el envío, genera la guía y gestiona el recaudo del pago contraentrega | Nombre, dirección y teléfono de entrega | [Ver](https://www.aveonline.co/) |
+| Proveedor               | País                             | Qué hace                                                                                             | Qué datos tuyos trata                                                                             | DPA                                                            |
+| ----------------------- | -------------------------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| **Supabase**            | EE.UU. (con opción de región EU) | Base de datos, autenticación y almacenamiento de archivos                                            | Casi todos los datos de tu cuenta y pedidos (protegidos con RLS) y las fotos que subes al Estudio | [Ver](https://supabase.com/legal/dpa)                          |
+| **Vercel**              | EE.UU.                           | Hosting, despliegue y CDN del sitio                                                                  | Datos en tránsito durante tu visita y registros técnicos (incluida tu IP)                         | [Ver](https://vercel.com/legal/dpa)                            |
+| **Resend**              | EE.UU.                           | Envío de correos transaccionales y del boletín                                                       | Tu correo electrónico y el contenido del mensaje                                                  | [Ver](https://resend.com/legal/dpa)                            |
+| **Google (Gemini API)** | EE.UU.                           | Asistente de IA que sugiere ideas de diseño en el Estudio                                            | El texto de tu solicitud de diseño (sin datos de identificación directa)                          | [Ver](https://cloud.google.com/terms/data-processing-addendum) |
+| **Cloudflare**          | EE.UU. / global                  | Anti-bot (Turnstile) y protección contra ataques                                                     | Tu dirección IP y datos en tránsito                                                               | [Ver](https://www.cloudflare.com/cloudflare-customer-dpa/)     |
+| **Wompi**               | Colombia                         | Procesamiento de pagos en línea (tarjetas y PSE)                                                     | Datos de la transacción y datos para prevención de fraude                                         | [Ver](https://wompi.com/legal)                                 |
+| **Aveonline**           | Colombia                         | Agregador de logística: cotiza el envío, genera la guía y gestiona el recaudo del pago contraentrega | Nombre, dirección y teléfono de entrega                                                           | [Ver](https://www.aveonline.co/)                               |
 
 ### Transportadoras
 

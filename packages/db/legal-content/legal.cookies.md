@@ -17,13 +17,13 @@ Las tres categorías opcionales están **desactivadas por defecto** y solo se ac
 
 ## Cookies que usamos hoy
 
-| Cookie | Para qué sirve | Categoría | Duración | Responsable |
-|---|---|---|---|---|
-| `sb-<proyecto>-auth-token` | Mantiene tu sesión iniciada (Supabase Auth) | Necesaria | ~7 días | Supabase (EE.UU.) |
-| `cart_session` | Identifica tu carrito antes y después de iniciar sesión | Necesaria | 30 días | Lucams_shop |
-| `checkout_state` | Guarda temporalmente el avance de tu compra | Necesaria | 60 minutos | Lucams_shop |
-| `cookie_consent_v1` | Recuerda qué cookies aceptaste | Necesaria | 1 año | Lucams_shop |
-| `__cf_bm` | Seguridad y detección de bots | Necesaria | ~30 min _[pendiente verificación]_ | Cloudflare (global) |
+| Cookie                     | Para qué sirve                                          | Categoría | Duración                           | Responsable         |
+| -------------------------- | ------------------------------------------------------- | --------- | ---------------------------------- | ------------------- |
+| `sb-<proyecto>-auth-token` | Mantiene tu sesión iniciada (Supabase Auth)             | Necesaria | ~7 días                            | Supabase (EE.UU.)   |
+| `cart_session`             | Identifica tu carrito antes y después de iniciar sesión | Necesaria | 30 días                            | Lucams_shop         |
+| `checkout_state`           | Guarda temporalmente el avance de tu compra             | Necesaria | 60 minutos                         | Lucams_shop         |
+| `cookie_consent_v1`        | Recuerda qué cookies aceptaste                          | Necesaria | 1 año                              | Lucams_shop         |
+| `__cf_bm`                  | Seguridad y detección de bots                           | Necesaria | ~30 min _[pendiente verificación]_ | Cloudflare (global) |
 
 Las cookies de tu carrito y de tu checkout (`cart_session` y `checkout_state`) son `HttpOnly`: viven solo en tu navegador y ningún script de terceros puede leerlas. Cuando resuelves un reto anti-bot (por ejemplo, al registrarte), Cloudflare puede añadir cookies de seguridad adicionales; las usamos únicamente para protegerte del fraude.
 
@@ -55,4 +55,5 @@ Como titular de tus datos puedes conocer, actualizar, rectificar y suprimir tu i
 Si actualizamos nuestras cookies o esta política, publicaremos la nueva versión aquí con su fecha de vigencia. Si el cambio es sustancial, te lo avisaremos.
 
 ---
+
 _Versión 2 · vigente desde 2026-07-19 · en revisión por asesoría legal antes del lanzamiento_

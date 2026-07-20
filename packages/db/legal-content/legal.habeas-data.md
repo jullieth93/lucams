@@ -45,15 +45,15 @@ Nuestra tienda no está dirigida a menores de edad. Si eres madre, padre o repre
 
 Para operar la tienda usamos proveedores de tecnología ("encargados del tratamiento"). Algunos están **fuera de Colombia**, por lo que tus datos pueden almacenarse o procesarse en el exterior:
 
-| Proveedor | Para qué | País |
-| --- | --- | --- |
-| Supabase | Base de datos, cuentas y almacenamiento | EE.UU. / UE |
-| Vercel | Hospedaje de la tienda | EE.UU. |
-| Resend | Correos transaccionales | EE.UU. |
-| Google (Gemini API) | Asistente de diseño con IA (sin datos de contacto directos) | EE.UU. |
-| Cloudflare | Seguridad anti-bot y protección contra ataques | EE.UU. |
-| Wompi | Procesamiento de pagos | Colombia |
-| Aveonline / Coordinadora | Logística y envíos | Colombia |
+| Proveedor                | Para qué                                                    | País        |
+| ------------------------ | ----------------------------------------------------------- | ----------- |
+| Supabase                 | Base de datos, cuentas y almacenamiento                     | EE.UU. / UE |
+| Vercel                   | Hospedaje de la tienda                                      | EE.UU.      |
+| Resend                   | Correos transaccionales                                     | EE.UU.      |
+| Google (Gemini API)      | Asistente de diseño con IA (sin datos de contacto directos) | EE.UU.      |
+| Cloudflare               | Seguridad anti-bot y protección contra ataques              | EE.UU.      |
+| Wompi                    | Procesamiento de pagos                                      | Colombia    |
+| Aveonline / Coordinadora | Logística y envíos                                          | Colombia    |
 
 **Base de legitimación:** estas transferencias y transmisiones se realizan con **tu autorización** y porque son **necesarias para ejecutar tu compra**, con acuerdos de tratamiento (DPA) y medidas de seguridad (cifrado en tránsito y en reposo) con cada proveedor. La lista completa y actualizada vive en [Subprocesadores](/legal/subprocesadores).
 
