@@ -70,8 +70,21 @@ function Button({
       className={cn(buttonVariants({ variant, size, className }))}
       {...props}
     >
-      {showSpinner && <Loader2 className="size-4 animate-spin" />}
-      {children}
+      {/* Con asChild, Comp es un Slot de Radix que corre React.Children.only sobre
+          sus hijos: pasarle el hermano `{showSpinner && …}` (que con asChild vale
+          `false`) produce [false, child] → count 2 → "React.Children.only expected
+          to receive a single React element child" (React #143), que reventaba el
+          render de /carrito y /checkout/gracias en prod. Con asChild pasamos SOLO
+          el hijo único; el spinner (ya deshabilitado con asChild) va en el Fragment
+          del botón real. */}
+      {asChild ? (
+        children
+      ) : (
+        <>
+          {showSpinner && <Loader2 className="size-4 animate-spin" />}
+          {children}
+        </>
+      )}
     </Comp>
   );
 }

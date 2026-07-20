@@ -67,10 +67,22 @@ test.describe("estudio de personalización — el diferenciador", () => {
     await expect(page.getByLabel("Subir foto desde el dispositivo")).toBeAttached();
   });
 
-  test("un producto NO personalizable no expone el Estudio (404)", async ({ page }) => {
-    // El Estudio hace notFound() si personalizationKind === NONE. Un slug
-    // inexistente también → 404. Verificamos que la ruta no es un agujero abierto.
+  test("un producto NO personalizable / inexistente no expone el Estudio", async ({ page }) => {
+    // El Estudio hace notFound() si el producto no existe (o redirige si no es
+    // personalizable). En Next 16 —breaking change vs 15— un notFound() DESPUÉS de
+    // un await, con el loading.tsx del segmento ya streameado, produce un SOFT 404
+    // (HTTP 200 + contenido not-found + noindex), NO un 404 duro. /estudio/* es
+    // noindex por diseño (generateMetadata + not-found con robots:index:false), así
+    // que el 200 no tiene costo SEO. Lo que importa —y verificamos— es que la ruta
+    // NO es un agujero abierto: el Estudio no se expone y se ve la página 404.
     const res = await page.goto("/estudio/__no-existe-jamas__");
-    expect(res?.status()).toBe(404);
+    expect(res).not.toBeNull();
+
+    // El lienzo (Konva <canvas>) y el chrome del editor NO deben renderizarse.
+    await expect(page.locator("canvas")).toHaveCount(0);
+    await expect(page.locator('aside[aria-label="Herramientas del Estudio"]')).toHaveCount(0);
+
+    // Y se resuelve en la página 404 (CTA estable, texto no-CMS).
+    await expect(page.getByRole("link", { name: "Volver al inicio" })).toBeVisible();
   });
 });
