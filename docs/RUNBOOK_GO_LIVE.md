@@ -332,6 +332,33 @@ Vercel → Settings → **Environment Variables** → cada una con ambiente **Pr
 | `CRON_SECRET`                    | Lo inventas tú (texto largo aleatorio)   |
 | `NEXT_PUBLIC_WA_NUMBER`          | `573208873826`                           |
 
+### 🧹 Depuración de las env de Vercel (auditado 2026-07-20)
+
+Al comparar lo que hay en Vercel contra lo que el **código realmente lee**
+(`grep process.env` sobre `apps/web` + `packages`), aparecieron tres cosas:
+
+**🗑️ MUERTAS — borrar (9).** El proyecto migró de Venndelo a **Aveonline** ([ADR-039](DECISIONS.md)).
+`features/shipping/venndelo.ts` quedó como Plan B dormido y **no lee ninguna env var** (solo las
+menciona en comentarios); además la dirección de recolección se movió a los **ajustes del admin**
+(`PICKUP_CITY`, `PICKUP_ADDRESS`… vía CMS), no a variables:
+
+`VENNDELO_ENV`, `VENNDELO_API_URL`, `VENNDELO_API_KEY`, `VENNDELO_PICKUP_ADDRESS_LINE`,
+`VENNDELO_PICKUP_CITY_CODE`, `VENNDELO_PICKUP_SUBDIVISION_CODE`, `VENNDELO_PICKUP_COUNTRY_CODE`,
+`VENNDELO_PICKUP_CONTACT_NAME`, `VENNDELO_PICKUP_CONTACT_PHONE`
+
+**❌ FALTAN — el envío no está configurado en producción:** `AVEONLINE_USUARIO`, `AVEONLINE_CLAVE`,
+`AVEONLINE_WEBHOOK_SECRET` (las 3 son obligatorias en prod) y `AVEONLINE_ENV`. Verificar también que
+exista `CSRF_SECRET` (es CORE: sin ella la app no arranca en ningún entorno).
+
+**🔴 ROTA — `RESEND_API_KEY` devuelve HTTP 401.** Verificado contra el sitio en vivo:
+`GET /api/health/resend` → `"Resend devolvió HTTP 401"`. **Ningún correo sale** (confirmación de
+compra, envío, entrega). Hay que regenerar la llave en Resend y reemplazarla.
+
+> ℹ️ **Falsa alarma conocida:** `/api/health/all` reporta `postgres` y `storage` como caídos, pero es
+> el bug de ese endpoint (deriva la URL base del host del request). Verificado uno por uno:
+> `/api/health/db` → **ok**, `/api/health/storage` → **ok**, y el catálogo lista productos reales.
+> No hay problema de base de datos.
+
 ### Grupo C — Opcionales
 
 `GEMINI_API_KEY` (asistente de diseño; si falta, esa función se apaga sola), `R2_*` (backups, FASE 10),
