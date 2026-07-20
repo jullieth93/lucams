@@ -9,8 +9,16 @@
  */
 
 import { useSyncExternalStore } from "react";
-import { StudioSlot } from "@/app/estudio/[slug]/studio-slot";
+import nextDynamic from "next/dynamic";
 import type { CanvasDataV1, SlotState } from "@/app/estudio/[slug]/types";
+
+// StudioSlot arrastra react-konva. Importado ESTÁTICAMENTE, su módulo se evalúa en el build del
+// servidor y corrompe las internals de React (rompe /_global-error, ADR-073). Este componente ES
+// cliente, así que sí puede usar dynamic(ssr:false) → react-konva queda fuera del bundle del servidor.
+const StudioSlot = nextDynamic(
+  () => import("@/app/estudio/[slug]/studio-slot").then((m) => ({ default: m.StudioSlot })),
+  { ssr: false },
+);
 
 const noop = () => {};
 

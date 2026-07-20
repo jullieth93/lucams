@@ -113,7 +113,7 @@ function dataURLtoBlob(dataUrl: string): Blob {
   return new Blob([bytes], { type: mime });
 }
 
-type StudioEditorProps = {
+export type StudioEditorProps = {
   product: StudioProduct;
   templates: StudioTemplate[];
   initialDesignId: string | null;

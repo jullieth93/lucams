@@ -12,7 +12,7 @@
  */
 
 import type { Metadata } from "next";
-import dynamic from "next/dynamic";
+import { StudioEditorLoader } from "./studio-editor-loader";
 import { notFound, redirect } from "next/navigation";
 import { SiteHeader } from "@/components/site-header";
 import { buildWhatsAppUrl } from "@/lib/wa";
@@ -55,19 +55,8 @@ export async function generateMetadata({ params }: { params: Params }): Promise<
   };
 }
 
-const StudioEditor = dynamic(
-  () => import("./studio-editor").then((mod) => ({ default: mod.StudioEditor })),
-  {
-    loading: () => (
-      <div className="flex flex-1 items-center justify-center p-12">
-        <div className="text-brand-muted flex items-center gap-3">
-          <div className="border-brand-purple/30 border-t-brand-purple h-6 w-6 animate-spin rounded-full border-2" />
-          <span>Cargando estudio...</span>
-        </div>
-      </div>
-    ),
-  },
-);
+// StudioEditor (react-konva) se carga vía <StudioEditorLoader> — frontera CLIENTE con ssr:false, para
+// que react-konva NO se evalúe en el build del servidor (rompía /_global-error, ADR-073).
 
 export default async function EstudioPage({
   params,
@@ -314,7 +303,7 @@ export default async function EstudioPage({
       <SiteHeader />
 
       <main id="contenido" tabIndex={-1} className="flex flex-1 flex-col">
-        <StudioEditor
+        <StudioEditorLoader
           product={{
             id: product.id,
             slug: product.slug,

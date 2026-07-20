@@ -10,7 +10,6 @@
  */
 
 import type { Instrumentation } from "next";
-import { captureServerError } from "@/lib/error-capture";
 import { logger } from "@/lib/logger";
 
 /**
@@ -35,13 +34,19 @@ export const onRequestError: Instrumentation.onRequestError = async (err, reques
     routePath: context.routePath,
     routeType: context.routeType,
   });
-  await captureServerError({
-    message: e.message,
-    digest: e.digest,
-    stack: e.stack,
-    requestPath: request.path,
-    method: request.method,
-    routePath: context.routePath,
-    routeType: context.routeType,
-  });
+  // error-capture usa prisma + node:crypto → es NODE-only. Import perezoso GUARDADO por runtime:
+  // si se importa estáticamente, Turbopack lo arrastra al bundle Edge de instrumentation (donde
+  // node:crypto no existe) → "Ecmascript file had an error". Mismo patrón que register() con validateEnv.
+  if (process.env.NEXT_RUNTIME === "nodejs") {
+    const { captureServerError } = await import("@/lib/error-capture");
+    await captureServerError({
+      message: e.message,
+      digest: e.digest,
+      stack: e.stack,
+      requestPath: request.path,
+      method: request.method,
+      routePath: context.routePath,
+      routeType: context.routeType,
+    });
+  }
 };
