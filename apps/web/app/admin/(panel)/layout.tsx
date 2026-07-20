@@ -17,6 +17,12 @@ import { getCurrentAdmin } from "@/lib/auth";
 import { canAccessAdminPath } from "@/lib/admin-rbac";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
+// Todo el panel admin es SIEMPRE dinámico: exige sesión + datos vivos de la BD, nunca debe
+// prerenderizarse en el build. Además evita el bug de prerender estático de Next 16 (useContext
+// null en generación estática) que afloraba en /admin/contenido/bloques y /admin/usuarios. Ver
+// ADR-073.
+export const dynamic = "force-dynamic";
+
 export default async function AdminPanelLayout({ children }: { children: ReactNode }) {
   const session = await getCurrentAdmin();
   if (!session) redirect("/admin/login");

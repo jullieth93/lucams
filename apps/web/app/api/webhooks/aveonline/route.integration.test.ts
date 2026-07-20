@@ -18,6 +18,12 @@
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
+// El setup (makeFulfillingOrder = varias escrituras) corre contra la Supabase de dev por red;
+// el default de 5s es demasiado ajustado y da timeouts flaky bajo carga del suite completo. Subimos
+// el timeout de este archivo de integración para que la latencia no lo tumbe (en CI, con Postgres
+// local, sobra de todos modos).
+vi.setConfig({ testTimeout: 20_000, hookTimeout: 30_000 });
+
 // next/cache → passthrough (transitionOrder / getSettingValue pueden usarlo).
 vi.mock("next/cache", () => ({
   unstable_cache:

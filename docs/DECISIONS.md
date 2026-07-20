@@ -2645,3 +2645,39 @@ lanzamiento (ADR-020).** Decisiones que requieren humano (consolidadas para Lucy
   PROD; renovar `Expires` de `security.txt` antes de 2027-07-01.
 - **DOC** — CLAUDE.md mandato #5 aún dice "Venndelo" mientras el código usa **Aveonline** (ADR-039):
   confirmar el nombre contractual y actualizar el mandato si corresponde.
+
+---
+
+## ADR-073 — Panel admin siempre dinámico + bug de build de Next 16 (`/_global-error`) (2026-07-19)
+
+Al correr el build de paridad-Vercel como quality gate se descubrió que **el build de producción está
+roto en TODOS los entornos** (local + CI + Vercel) desde el 2026-07-19 ~15:24 (último deploy verde:
+`5ebbf6e4`). CI lleva rojo desde antes; los deploys de Vercel de `develop` fallan → **el sitio quedó
+congelado** en el estado de `5ebbf6e4` (sin `/rastrear` ni el barrido legal).
+
+**Dos causas, una arreglada:**
+
+1. **Panel admin prerenderizado en el build (ARREGLADO).** El build intentaba generar estáticamente
+   `/admin/contenido/bloques` y `/admin/usuarios` (y potencialmente más), que revientan porque
+   necesitan sesión + BD viva. Se añadió `export const dynamic = "force-dynamic"` al layout
+   `app/admin/(panel)/layout.tsx` → **todo el panel admin es dinámico** (correcto: nunca debe ser
+   estático). También se subió el `testTimeout` del test de integración del webhook de Aveonline
+   (5s→20s) por flakiness de latencia contra la BD dev.
+
+2. **Bug de framework de Next 16 en `/_global-error` (PENDIENTE — decisión).** El build falla
+   prerenderizando la ruta interna `/_global-error` con `TypeError: Cannot read properties of null
+(reading 'useContext')`. **Verificado que NO es código nuestro:** falla igual con Turbopack y con
+   `--webpack`, y **aún borrando nuestro `global-error.tsx`**. Es un bug conocido y abierto de Next 16
+   (regresión desde 15.5.7): issues [#86178](https://github.com/vercel/next.js/issues/86178),
+   [#85668](https://github.com/vercel/next.js/issues/85668),
+   [#87719](https://github.com/vercel/next.js/issues/87719). **No hay parche estable que lo corrija:**
+   los patches 16.2.7–16.2.10 son releases de infraestructura sin cambios; 16.3 solo existe como
+   preview/canary. Los workarounds reportados (`force-dynamic` global, `output: standalone`,
+   `dynamicIO`, quitar hooks) fallan de forma inconsistente.
+
+**DECISIÓN PENDIENTE (Lucy):** para desbloquear los deploys hay que (a) subir a **Next 16.3-preview**
+(no estable — riesgo de otras roturas; contradice el "Next 16 estable" del mandato #3), (b) esperar un
+patch estable de Next que lo corrija, o (c) probar `next build --experimental-build-mode=compile`
+(experimental; puede no producir un build desplegable). Recomendación: monitorear los issues y aplicar
+el primer patch estable; mientras tanto los arreglos del punto 1 quedan mergeados. **Ojo:** hasta
+resolver esto, el sitio en producción NO se actualiza con lo nuevo de `develop`.
