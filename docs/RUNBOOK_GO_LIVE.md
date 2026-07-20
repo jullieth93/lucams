@@ -88,6 +88,31 @@ electrónicamente o no.
 (las llaves DKIM del correo son larguísimas). Además ya usas Cloudflare para **Turnstile** (el
 anti-robots del checkout) y **R2** (los backups). Es la decisión de [ADR-011](DECISIONS.md).
 
+### ¿Y por qué no dejar que **Vercel** maneje el DNS? (Vercel lo ofrece y lo recomienda)
+
+Vercel ofrece sus propios nameservers (`ns1/ns2.vercel-dns.com`) y **para un dominio que solo apunta a
+un sitio, sería más simple** (auto-configura los registros, sin el paso manual del CNAME). Pero este
+dominio tiene que hacer **tres** trabajos, no uno:
+
+| Trabajo del dominio                                                      | Vercel DNS     | Cloudflare DNS |
+| ------------------------------------------------------------------------ | -------------- | -------------- |
+| Apuntar el sitio a Vercel                                                | ✅ (más fácil) | ✅             |
+| **Enviar** correos (Resend: MX/SPF/DKIM/DMARC)                           | ✅             | ✅             |
+| **RECIBIR** correos en `hola@`, `habeas-data@`, `retracto@`, `security@` | ❌             | ✅ **gratis**  |
+
+**El factor decisivo es recibir correo.** `habeas-data@lucamsshop.com` es una **obligación legal**
+(Ley 1581) y tiene que llegar a algún lado. **Cloudflare Email Routing lo reenvía gratis** a un Gmail —
+pero su documentación es explícita: _"You must be using Cloudflare DNS to use Email Service"_
+([doc](https://developers.cloudflare.com/email-routing/get-started/enable-email-routing/)).
+
+Con DNS en Vercel habría que pagar buzones (Google Workspace ≈ USD 6–7/usuario/mes ≈ $25.000–30.000
+COP/mes) solo para poder recibir esos 4 correos.
+
+**Otro punto:** con el DNS en Cloudflare, el dominio no queda atado al hosting. Si algún día se cambia
+Vercel por otra cosa, se toca **un registro**, no se migra el DNS entero.
+
+**Lo único que "cuesta" Cloudflare:** crear el CNAME de Vercel a mano, una sola vez (2 minutos).
+
 ### 1.a — ANTES de tocar Cloudflare: revisar mi.com.co 🙋
 
 > No es opcional: dos de estos puntos pueden **tumbar la tienda** meses después si se saltan.
