@@ -58,14 +58,24 @@ describe.skipIf(!hasDb)("stock ledger — integración DB (certificación Bloque
   });
 
   afterAll(async () => {
-    // Orden de borrado respeta FKs (InventoryLog → ProductVariant → Product → Category).
+    // Orden de borrado respeta FKs (OrderItem → ProductVariant → Product → Category).
     if (variantA || variantB) {
-      await prisma.inventoryLog.deleteMany({
-        where: { variantId: { in: [variantA, variantB].filter(Boolean) } },
+      const variantIds = [variantA, variantB].filter(Boolean);
+      // Defensa: si un test creó una Order REAL con OrderItems (p.ej. #10) y su cleanup
+      // inline no corrió (una aserción falló antes), esos OrderItems referencian la variante
+      // vía FK (Restrict) → borrar la variante violaría OrderItem_variantId_fkey. Los barremos
+      // primero, junto con sus Orders, para no dejar basura ni romper el teardown.
+      const refItems = await prisma.orderItem.findMany({
+        where: { variantId: { in: variantIds } },
+        select: { orderId: true },
       });
-      await prisma.productVariant.deleteMany({
-        where: { id: { in: [variantA, variantB].filter(Boolean) } },
-      });
+      const refOrderIds = [...new Set(refItems.map((i) => i.orderId))];
+      await prisma.orderItem.deleteMany({ where: { variantId: { in: variantIds } } });
+      if (refOrderIds.length) {
+        await prisma.order.deleteMany({ where: { id: { in: refOrderIds } } });
+      }
+      await prisma.inventoryLog.deleteMany({ where: { variantId: { in: variantIds } } });
+      await prisma.productVariant.deleteMany({ where: { id: { in: variantIds } } });
     }
     if (productId) await prisma.product.deleteMany({ where: { id: productId } });
     if (categoryId) await prisma.category.deleteMany({ where: { id: categoryId } });
@@ -344,6 +354,11 @@ describe.skipIf(!hasDb)("stock ledger — integración DB (certificación Bloque
       select: { stock: true },
     }))!.stock;
 
+    // B2 (auditoría v3): un evento de fallo (VOIDED/DECLINED) solo tumba una orden que ya
+    // CAPTURÓ dinero si pertenece a LA MISMA transacción Wompi que la pagó. La orden guarda su
+    // wompiTransactionId y el VOIDED llega con el mismo → sameTx=true → PAID→REFUNDED. Sin esto
+    // el guard lo ignora como "foreign/stale tx" y la orden se queda PAID (era el bug del test).
+    const wompiTransactionId = `txn-void-${Date.now()}`;
     const order = await prisma.order.create({
       data: {
         number: `LCM-TEST-VOID-${Date.now()}`,
@@ -354,6 +369,7 @@ describe.skipIf(!hasDb)("stock ledger — integración DB (certificación Bloque
         shipping: 0,
         total: 1000,
         paymentMethod: "WOMPI",
+        wompiTransactionId,
         status: "PAID",
         items: { create: [{ variantId: variantA, qty: 1, unitPrice: 1000 }] },
       },
@@ -373,6 +389,7 @@ describe.skipIf(!hasDb)("stock ledger — integración DB (certificación Bloque
     const { processFailedPaymentOrder } = await import("./saga");
     await processFailedPaymentOrder({
       orderId: order.id,
+      wompiTransactionId,
       reason: "VOIDED por Wompi (test)",
     });
 

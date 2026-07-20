@@ -219,8 +219,11 @@ describe("ActiveFilterChips", () => {
   it("chips de precio muestran 'Desde'/'Hasta' con el valor de minPrice/maxPrice", () => {
     currentParams = new URLSearchParams("minPrice=5000&maxPrice=90000");
     render(<ActiveFilterChips categories={categories} />);
-    expect(screen.getByRole("button", { name: /Desde 5000/ })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Hasta 90000/ })).toBeInTheDocument();
+    // #7 — los chips muestran el precio formateado en COP ($ 50 / $ 900), no los
+    // centavos crudos (5000/90000). El valor en la URL sigue en centavos:
+    // 5000 centavos = $ 50, 90000 centavos = $ 900.
+    expect(screen.getByRole("button", { name: /Desde\s*\$\s*50\b/ })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Hasta\s*\$\s*900\b/ })).toBeInTheDocument();
   });
 
   it("click en un chip remueve SOLO ese param y conserva el resto", () => {

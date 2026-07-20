@@ -61,6 +61,35 @@ export type SiteSettingData = {
 };
 
 /**
+ * `unstable_cache` con degradación grácil cuando NO hay `incrementalCache` de
+ * Next disponible (fuera de un request/render: vitest, scripts de seed, workers
+ * de pg_cron ejecutados standalone). En Next 16 —breaking change vs 15— llamar a
+ * un `unstable_cache` sin ese contexto ya NO ejecuta sin caché: lanza el
+ * invariante `incrementalCache missing` (E469). Capturamos EXCLUSIVAMENTE ese
+ * invariante y ejecutamos la función cruda (sin caché); cualquier otro error se
+ * re-lanza. En producción (siempre dentro de un request de Next) el fallback
+ * nunca se dispara → el comportamiento cacheado es idéntico.
+ */
+function cachedCms<A extends unknown[], R>(
+  fn: (...args: A) => Promise<R>,
+  keyParts: string[],
+  options: { tags: string[]; revalidate: number },
+): (...args: A) => Promise<R> {
+  const cached = unstable_cache(fn, keyParts, options);
+  return async (...args: A): Promise<R> => {
+    try {
+      return await cached(...args);
+    } catch (err) {
+      const code = (err as { __NEXT_ERROR_CODE?: string } | null)?.__NEXT_ERROR_CODE;
+      const missingCache =
+        code === "E469" || (err instanceof Error && err.message.includes("incrementalCache"));
+      if (missingCache) return fn(...args);
+      throw err;
+    }
+  };
+}
+
+/**
  * Lee un bloque CMS por su key. Devuelve `null` si no existe o no
  * está publicado — el componente caller debería usar fallback
  * hardcoded en ese caso.
@@ -68,7 +97,7 @@ export type SiteSettingData = {
  * Cache TTL 1h en background revalidate. Invalidación inmediata
  * cuando el admin publica via `revalidateTag("cms")`.
  */
-export const getCmsBlock = unstable_cache(
+export const getCmsBlock = cachedCms(
   async (key: string): Promise<CmsBlockData | null> => {
     try {
       const block = await prisma.cmsBlock.findFirst({
@@ -101,7 +130,7 @@ export const getCmsBlock = unstable_cache(
  * endpoint /api/cms/blocks?category=legal y por páginas que renderean
  * listas (ej. /ayuda mostrando todas las FAQ).
  */
-export const getCmsBlocksByCategory = unstable_cache(
+export const getCmsBlocksByCategory = cachedCms(
   async (category: string): Promise<CmsBlockData[]> => {
     try {
       const blocks = await prisma.cmsBlock.findMany({
@@ -147,7 +176,7 @@ export const getCmsBlocksByCategory = unstable_cache(
  * Lee un setting atómico por su key. Devuelve `fallback` si no existe.
  * Pattern: `await getSiteSetting("CONTACT_EMAIL", "hola@lucamsshop.co")`.
  */
-export const getSiteSetting = unstable_cache(
+export const getSiteSetting = cachedCms(
   async (key: string): Promise<SiteSettingData | null> => {
     try {
       const setting = await prisma.siteSetting.findUnique({
@@ -174,7 +203,7 @@ export const getSiteSetting = unstable_cache(
  * Lee todos los settings agrupados por categoría. Usado por
  * /admin/contenido/configuracion + endpoint /api/cms/settings.
  */
-export const getAllSiteSettings = unstable_cache(
+export const getAllSiteSettings = cachedCms(
   async (): Promise<SiteSettingData[]> => {
     try {
       const settings = await prisma.siteSetting.findMany({
@@ -210,7 +239,7 @@ export async function getSettingValue(key: string, fallback: string): Promise<st
  * Lee settings filtrados por categoría. Usado por endpoint
  * GET /api/cms/settings?category=contact.
  */
-export const getSettingsByCategory = unstable_cache(
+export const getSettingsByCategory = cachedCms(
   async (category: string): Promise<SiteSettingData[]> => {
     try {
       const settings = await prisma.siteSetting.findMany({
@@ -239,7 +268,7 @@ export const getSettingsByCategory = unstable_cache(
  * Lista TODOS los bloques publicados (sin filtro). Usado por
  * GET /api/cms/blocks sin querystring.
  */
-export const getAllCmsBlocks = unstable_cache(
+export const getAllCmsBlocks = cachedCms(
   async (): Promise<CmsBlockData[]> => {
     try {
       const blocks = await prisma.cmsBlock.findMany({

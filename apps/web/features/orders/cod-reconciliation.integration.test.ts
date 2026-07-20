@@ -216,7 +216,9 @@ describe.skipIf(!hasDb)("cod-reconciliation (integración DB)", { timeout: T }, 
   it("#1 review: una discrepancia parcial expone recibido + faltante en pesos (no solo un conteo)", async () => {
     const before = await getCodReconciliationTotals();
     const orderId = await makeOrder({
-      suffix: "short",
+      // suffix único (no reusar "short": ya lo usa el test #23 de remesa corta →
+      // mismo `number` ${RUN}-SHORT → P2002 al colisionar entre ambos tests).
+      suffix: "shortrev",
       paymentMethod: "COD",
       status: "DELIVERED",
       total: 100_000_00,

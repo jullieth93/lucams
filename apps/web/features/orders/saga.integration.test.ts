@@ -112,6 +112,17 @@ vi.mock("./emails", async () => {
     sendOrderRefunded: async (orderId: string) => {
       emailCalls.push({ fn: "sendOrderRefunded", orderId });
     },
+    // El mock reemplaza el módulo entero: debe cubrir CADA export real de ./emails
+    // que el saga importe, o al invocar uno no-mockeado (p.ej. sendOrderCancelled en
+    // la ruta CANCELLED post-pago FULFILLING/SHIPPED) el módulo lanza
+    // "No export is defined on the mock" → la transición se salta silenciosamente.
+    sendOrderCancelled: async (orderId: string, reason: string) => {
+      emailCalls.push({ fn: "sendOrderCancelled", orderId, extra: reason });
+    },
+    sendOrderConfirmation: async (orderId: string) => {
+      emailCalls.push({ fn: "sendOrderConfirmation", orderId });
+      return true;
+    },
   };
 });
 

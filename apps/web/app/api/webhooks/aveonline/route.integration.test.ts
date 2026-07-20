@@ -48,6 +48,10 @@ vi.mock("@/features/orders/emails", () => ({
   },
   sendOrderPaymentFailed: async () => {},
   sendOrderRefunded: async () => {},
+  // Cubrir CADA export real de ./emails: un webhook de novedad puede tumbar la
+  // orden (CANCELLED) → sendOrderCancelled. Sin el stub, el módulo mockeado lanza
+  // "No export is defined on the mock" al invocarlo.
+  sendOrderCancelled: async () => {},
 }));
 
 import { prisma } from "@/lib/db";

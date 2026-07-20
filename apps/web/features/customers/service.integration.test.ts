@@ -408,8 +408,12 @@ describe.skipIf(!hasDb)("customers/service — integración DB (Customer 360, PI
     it("reviewsCount cuenta reviews y refleja loyaltyPoints persistidos", async () => {
       const token = nextId();
       const cust = await makeCustomer({ firstName: `Loyal${token}`, loyaltyPoints: 1234 });
+      // Unicidad a nivel DB (índice parcial Review_productId_customerId_active_unique,
+      // WHERE deletedAt IS NULL): un cliente no puede tener 2 reseñas ACTIVAS del
+      // mismo producto. La 2ª va soft-deleted → no choca el índice, y _count.reviews
+      // (que NO filtra deletedAt, igual que ordersCount) sigue contando las 2.
       await makeReview(cust.id);
-      await makeReview(cust.id);
+      await makeReview(cust.id, { deletedAt: new Date() });
 
       const res = await listCustomers({ q: `Loyal${token}`, pageSize: 50 });
       const item = res.items.find((i) => i.id === cust.id);
