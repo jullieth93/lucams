@@ -22,7 +22,9 @@
 
 **Ya estaban hechos (verificado, la auditoría estaba vieja):** policies `TO authenticated` de `customer-uploads` (dropeadas en migr 13, ADR-062), `env.ts` fail-fast de `WOMPI_DISABLE_TIMESTAMP_CHECK`, y el **ledger financiero COD** (modelo `CodReconciliation` + admin `/finanzas/conciliacion`).
 
-**⏳ Restante autónomo (1 item, el más grande):** completar el **anti-abuso COD** — (a) velocity por dirección, (b) **block-list persistente** (nuevo modelo + admin CRUD → conviene input de UX admin de Lucy), (c) marca de **no-show**. El core del anti-abuso (velocity por identidad + prior-return, ADR-065) YA funciona; esto son mejoras. Plan detallado en ADR-075.
+**✅ Anti-abuso COD COMPLETADO (2026-07-20) — ADR-065 extendido (`e5eb3e8`).** Se cerraron las 3 brechas: (a) **velocity por dirección** (`Order.shippingAddressKey` normalizada + `features/checkout/address-key.ts`, sumada al OR de identidad); (b) **block-list persistente** (`BlockedIdentity` + admin CRUD `/admin/finanzas/bloqueos` SUPERADMIN + chequeo en `assessCodRisk`); (c) **no-show** (`Order.noShowAt` + acción admin "Marcar como NO recibido" en el detalle del pedido + señal `prior_noshow`). Prioridad: `blocklist > prior_noshow > prior_return > velocity > outstanding > new_high_value`. Migración `20260720010000`. Certificado (tsc 0, eslint 0, prettier; address-key 4/4, cod-risk 9/9). **Con esto, TODOS los items autónomos del plan de producción quedan cerrados** — lo restante es carril humano (abajo) + tu validación GUI.
+
+**GUI a probar del COD:** `/admin/finanzas/bloqueos` (agregar/retirar un teléfono/email) y el detalle de un pedido **contra entrega** ("Marcar como NO recibido" + "Bloquear esta dirección"). Dev ya reiniciado con el client nuevo.
 
 **GUI a probar (Lucy):** casilla de consentimiento en el Estudio — subir foto en el sidebar y en el modal "Elegir foto"; el botón de subir queda deshabilitado hasta marcarla; confirmar que subir funciona tras aceptar (dev ya reiniciado con el client nuevo).
 
