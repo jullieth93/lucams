@@ -84,6 +84,7 @@ backups/
 # definición. Si en el futuro queremos compartir un baseline, creamos
 # .claude/settings.example.json y lo permitimos explícitamente.
 .claude/
+.codex/
 
 # ──────────────── OS ────────────────
 .DS_Store
