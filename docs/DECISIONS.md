@@ -1732,7 +1732,7 @@ la implementación inicial solo tocaba Customer/Address/Review y dejaba PII sens
 ## ADR-051 — Unificar el modelo de direcciones cuenta ↔ checkout (2026-07-10)
 
 **Contexto.** Al conectar las direcciones guardadas al checkout, Lucy detectó que una dirección guardada NO se
-reusaba 100%: la cuenta guardaba un formato PLANO (calle en texto libre "Calle 3 sur # 70-84") mientras el checkout
+reusaba 100%: la cuenta guardaba un formato PLANO (calle en texto libre "Calle 45 sur # 12-34") mientras el checkout
 usa el formato ESTRUCTURADO colombiano (deptCode/cityCode DANE + urbano/rural + vía/cruce/complemento). La calle
 libre no se puede reconstruir en los campos vía/cruce → reuso parcial (solo depto/ciudad vía mapeo nombre→código).
 
