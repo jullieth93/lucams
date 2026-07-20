@@ -2742,3 +2742,61 @@ en **Next 16.2.6 estable**: no hizo falta subir a 16.3-preview ni ningún workar
 **Certificación:** tsc 0, eslint 0 (`--max-warnings 0`), prettier ok, todos los archivos tocados en verde
 local, y los **7 jobs de CI** verdes en `efa455e` (Vitest, E2E+a11y, Typecheck+Lint+Build, Lighthouse,
 Gitleaks, Prettier, Dependency audit). Commits `6bbb753` (vitest), `41e311e` (E2E) y `efa455e` (chore).
+
+---
+
+## ADR-075 — Ejecución de los gates autónomos del plan de producción (2026-07-20)
+
+Con el artifact **"Auditoría de Producción — Lucams_shop"** (71/100, 27 items, 4 blockers) como guía,
+Lucy pidió "terminar el roadmap con miras de producción". La auditoría era del 2026-07-17 y desde entonces
+se cerró mucho (barrido legal, backlog v3, CI), así que **primero se verificó el estado ACTUAL** de cada
+item autónomo con un workflow de 7 agentes (investigar antes de tocar, no reimplementar a ciegas).
+
+**Resultado de la verificación:** 3 de 7 items ya estaban hechos —
+(1) las policies `TO authenticated` de `customer-uploads` estaban dropeadas (migr 13, ADR-062);
+(2) `env.ts` ya hace fail-fast de `WOMPI_DISABLE_TIMESTAMP_CHECK` en prod;
+(3) el ledger financiero COD (`CodReconciliation` + admin `/finanzas/conciliacion`) ya existía.
+
+**Gates de lanzamiento cerrados (código puro, cada uno certificado + CI verde):**
+
+1. **MFA aal2 en Server Actions mutantes (P0 seguridad).** El guard `requireAdminAction` (ADR-062) ya
+   cubría casi todo, pero 11 acciones de catálogo seguían usando `getCurrentAdmin()` (no valida el 2º
+   factor): `productos/{image,stock,bulk}-actions.ts` + `productos/[id]/variants/image-actions.ts`. Con
+   sesión aal1 (contraseña robada) se podía mutar `Product.images`/`ProductVariant.images`/stock/active/
+   featured saltándose el MFA. Migradas a `requireAdminAction({roles: MANAGER_UP})` (cierra además la
+   divergencia RBAC: FULFILLMENT ya no muta catálogo). Test de regresión que invoca las 11 acciones reales
+   con sesión aal1 y verifica el redirect a `/admin/login/mfa` — probado que contra el código previo falla.
+
+2. **Lint guard anti-x-forwarded-for (P1).** Los 3 sitios ya habían migrado a `getClientIp`; se agregó una
+   regla `no-restricted-syntax` que prohíbe `.get("x-forwarded-for"|"x-real-ip"|"x-vercel-forwarded-for")`
+   fuera de `lib/client-ip.ts`, para que no se reintroduzca (envenena evidencia legal/forense).
+
+3. **Idle-timeout: marca ausente = stale (P1).** El gate `if (last && …)` trataba una marca ausente como
+   "primera visita" → borrar la cookie `admin_last_activity` evadía el timeout. Ahora la acción de login
+   SELLA la marca al autenticarse (mismo mecanismo que las cookies sb-\*), así una marca ausente en un path
+   admin autenticado es manipulada/vencida; el gate pasa a `if (!last || …)`. Fuente única Edge-safe en
+   `lib/admin-activity.ts`.
+
+4. **Moderación (a): consentimiento por-subida de derechos de imagen (P0 legal, Ley 1581).** El gate de
+   revisión manual admin (antes del render de producción) y el takedown ya existían (ADR-062 P0-2); faltaba
+   que quien sube DECLARE tener derecho a usar la imagen. `DesignAsset += rightsAcceptedAt +
+rightsPolicyVersion`; `UploadAssetMetadataSchema` exige `rightsAccepted===true` (validación server-side,
+   no solo UI); casilla obligatoria en los 2 puntos de subida del Estudio. Las imágenes de galería propias
+   no pasan por el gate (no son subidas del cliente).
+
+**Restante autónomo — anti-abuso COD (mejora, no blocker; el core ADR-065 ya funciona).** Plan para el
+próximo pase:
+
+- **(a) Velocity por dirección:** `Order.shippingAddressKey String? @index` (clave normalizada calle+
+  ciudad+cp, poblada en `createOrderFromCart` porque `shippingAddress` es Json y no filtra eficiente) +
+  sumarla al OR de identidad en `cod-risk.ts`.
+- **(b) Block-list persistente:** modelo `BlockedIdentity { kind (PHONE|EMAIL|ADDRESS), value, reason,
+createdBy, createdAt }` + admin CRUD (labels en español llano + confirmación antes de bloquear, mandato
+  admin-UX) + chequeo en `assessCodRisk` (fail-open, sin revelar la regla). **Conviene input de UX de Lucy.**
+- **(c) No-show:** `Order.noShowAt DateTime?` + acción admin "Marcar no-recibido" en el detalle del pedido +
+  señal propia en `assessCodRisk` (hoy solo se infiere de `DEVUELTO`). Extender ADR-065.
+
+**Carril humano (no código, del artifact):** figura legal + matrícula mercantil + RUT/NIT (persona natural
+ya decidida, ADR-071); DIAN + contador; cuentas prod (Wompi propia — hoy sandbox de "KAIU" —, Aveonline,
+Vercel Pro, Supabase Pro, dominio); agendar pg_cron + `CRON_SECRET`; DNS de correo `mail.lucamsshop.co`
+(SPF/DKIM/DMARC); provisionar R2 + DR drill; aprobar `k6` para el smoke de carga.

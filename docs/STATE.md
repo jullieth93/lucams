@@ -13,6 +13,21 @@
 
 ## Resumen actual
 
+**✅ PLAN DE PRODUCCIÓN — GATES AUTÓNOMOS EJECUTADOS (2026-07-20) — ADR-075.** Con el artifact **"Auditoría de Producción — Lucams_shop"** (71/100, 27 items) como guía, se verificó el estado ACTUAL de cada item autónomo mediante un **workflow de 7 agentes** (la auditoría del 17-jul estaba desactualizada: **3/7 ya hechos**) y se cerraron los gates de lanzamiento que son código puro. Cada tanda certificada (tsc/eslint/prettier/tests) + pusheada, **CI verde**:
+
+- **P0 seguridad — MFA aal2** en las **11 acciones mutantes de catálogo** que aún usaban `getCurrentAdmin()` (imágenes/stock/bulk/imágenes-de-variante) → `requireAdminAction({MANAGER_UP})`. Una sesión aal1 (contraseña robada) ya no muta el catálogo saltándose el 2º factor; test de regresión **probado** (contra el código previo falla). También cierra la divergencia RBAC (FULFILLMENT ya no muta catálogo). (`bc7bebc`)
+- **P1 seguridad — x-forwarded-for**: lint guard anti-regresión (`no-restricted-syntax`) que prohíbe leer el header crudo fuera de `lib/client-ip.ts` (los 3 sitios ya habían migrado a `getClientIp`). (`9401ff3`)
+- **P1 seguridad — idle-timeout**: la marca de actividad AUSENTE ahora es stale (la SELLA la acción de login), así que borrar la cookie `admin_last_activity` ya no evade el timeout. Fuente única en `lib/admin-activity.ts`. (`0251c05`)
+- **P0 legal — moderación (a)**: consentimiento **por-subida** de derechos de imagen (Ley 1581) — casilla obligatoria en los 2 puntos de subida del Estudio (sidebar + modal) + evidencia por-asset (`DesignAsset.rightsAcceptedAt`/`rightsPolicyVersion`) + validación server-side (`rightsAccepted===true`). El gate de revisión manual + takedown ya existían. Migración `20260720000000` aplicada (vía `migrate deploy`; `migrate dev` falla por el shadow DB sin `pg_trgm` — issue histórico ajeno). `make restart` hecho. (`a45fa07`)
+
+**Ya estaban hechos (verificado, la auditoría estaba vieja):** policies `TO authenticated` de `customer-uploads` (dropeadas en migr 13, ADR-062), `env.ts` fail-fast de `WOMPI_DISABLE_TIMESTAMP_CHECK`, y el **ledger financiero COD** (modelo `CodReconciliation` + admin `/finanzas/conciliacion`).
+
+**⏳ Restante autónomo (1 item, el más grande):** completar el **anti-abuso COD** — (a) velocity por dirección, (b) **block-list persistente** (nuevo modelo + admin CRUD → conviene input de UX admin de Lucy), (c) marca de **no-show**. El core del anti-abuso (velocity por identidad + prior-return, ADR-065) YA funciona; esto son mejoras. Plan detallado en ADR-075.
+
+**GUI a probar (Lucy):** casilla de consentimiento en el Estudio — subir foto en el sidebar y en el modal "Elegir foto"; el botón de subir queda deshabilitado hasta marcarla; confirmar que subir funciona tras aceptar (dev ya reiniciado con el client nuevo).
+
+---
+
 **✅ CI 100% VERDE — VITEST + E2E ESTABILIZADOS TRAS NEXT 16 (2026-07-19, cont.) — ADR-074.** Primera corrida totalmente verde de la sesión (los **7 jobs** de `efa455e`). Se leyó el log completo de CI y se diagnosticó **1 regresión sistémica de Next 16 + varios fallos genuinos** (nada de arreglar a ciegas):
 
 - **SISTÉMICO (Vitest):** Next 16 —breaking vs 15— hace que `unstable_cache` **lance** `incrementalCache missing` (E469) fuera de un request/render (vitest, seeds, workers de pg_cron standalone) en vez de correr sin caché. Rompía todo lo que lee CMS (`getSettingValue`→`getSiteSetting`, usado por `features/emails/layout`, saga, `lib/wa`, plantillas). **Fix:** wrapper `cachedCms` en `lib/cms.ts` que captura SOLO ese invariante y cae a ejecución cruda; en prod (siempre en un request) es no-op.
