@@ -1,7 +1,7 @@
 /*
  * Helpers compartidos por endpoints /api/cms/*.
  *
- * - extractIp: lee x-forwarded-for o cae a "unknown".
+ * - extractIp: IP del cliente vía getClientIp(headers) (@/lib/client-ip).
  * - applyRateLimit: 30 reqs/min por IP — wrapper sobre rateLimit con
  *   key "api-cms:ip:<ip>". Devuelve null si pasa, o Response 429 con
  *   problem details si excede.

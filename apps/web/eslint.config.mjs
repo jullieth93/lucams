@@ -31,6 +31,25 @@ const eslintConfig = defineConfig([
       ],
     },
   },
+  // Anti-regresión IP-spoofing (plan de producción · P1): leer el token izquierdo
+  // crudo de x-forwarded-for / x-real-ip es spoofeable y envenena evidencia legal
+  // (consentimiento Ley 1581) y forense (admin-audit). La única fuente permitida es
+  // getClientIp() de lib/client-ip.ts, que ya prioriza x-vercel-forwarded-for.
+  {
+    files: ["**/*.ts", "**/*.tsx"],
+    ignores: ["lib/client-ip.ts"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector:
+            "CallExpression[callee.property.name='get'][arguments.0.value=/^(x-forwarded-for|x-real-ip|x-vercel-forwarded-for)$/i]",
+          message:
+            "No leas x-forwarded-for / x-real-ip crudos (spoofeables): usa getClientIp(headers) de @/lib/client-ip.",
+        },
+      ],
+    },
+  },
 ]);
 
 export default eslintConfig;
