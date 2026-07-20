@@ -25,6 +25,7 @@ import { assertStockAvailable, revertStockForOrder } from "./stock";
 import { OrderAmountTooLargeError } from "./errors";
 import { fitsMoneyInt4 } from "@/lib/money";
 import { priceCouponForCart, CouponInvalidatedError } from "@/features/coupons/redemption";
+import { computeShippingAddressKey } from "@/features/checkout/address-key";
 import { sendOrderRefunded } from "./emails";
 
 const ORDER_PAGE_SIZE = 20;
@@ -344,6 +345,8 @@ async function createOrderFromCartTx(
       email: input.shipping.email,
       phone: input.shipping.phone,
       shippingAddress: input.shipping as unknown as Prisma.InputJsonValue,
+      // Anti-abuso COD (ADR-065): clave normalizada de la dirección para velocity por dirección.
+      shippingAddressKey: computeShippingAddressKey(input.shipping),
       subtotal,
       discount,
       shipping: shippingCost,

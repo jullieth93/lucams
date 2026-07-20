@@ -520,6 +520,10 @@ model Order {
   email                   String
   phone                   String
   shippingAddress         Json
+  // Anti-abuso COD (ADR-065): clave normalizada de la dirección (depto|ciudad|línea|zip, sin tildes ni
+  // no-alfanuméricos) para detectar velocidad por DIRECCIÓN aunque roten teléfono/email. La puebla
+  // createOrderFromCart (shippingAddress es Json y no filtra eficiente). Null si faltan datos.
+  shippingAddressKey      String?
   subtotal                Int
   discount                Int                @default(0)
   shipping                Int
@@ -536,6 +540,10 @@ model Order {
   // nadie ve (mandato #7 sin Sentry). ACCIÓN HUMANA: refund o producir stock.
   needsReconciliation     Boolean            @default(false)
   reconciliationReason    String?
+  // Anti-abuso COD (ADR-065): el admin marca un pedido como NO RECIBIDO (no-show) — señal explícita de
+  // abuso, distinta del RETURNED del courier. Alimenta assessCodRisk para vetar futuros COD de la identidad.
+  noShowAt                DateTime?
+  noShowBy                String?
   // Bloque F2 — auditoría del reembolso desde admin. El movimiento de dinero en
   // Wompi es MANUAL (contraentrega + preferencia de operar la pasarela a mano);
   // estos campos registran quién marcó la orden REFUNDED, cuándo, por qué y el
@@ -620,6 +628,29 @@ model Order {
   @@index([cartId, status])
   @@index([couponId])
   @@index([needsReconciliation])
+  @@index([shippingAddressKey])
+}
+
+// Anti-abuso COD (ADR-065): lista de bloqueo persistente. Lucy puede vetar a mano un teléfono, email o
+// dirección (clave normalizada) que abusó del contraentrega. assessCodRisk lo consulta (fail-open) y
+// bloquea el COD sin revelar la regla. Solo admin/service la tocan (RLS deny-by-default).
+model BlockedIdentity {
+  id        String              @id @default(cuid())
+  kind      BlockedIdentityKind
+  // Valor normalizado según el kind: phone tal cual, email en minúsculas, address = shippingAddressKey.
+  value     String
+  reason    String
+  createdBy String // AdminUser.id que lo bloqueó
+  createdAt DateTime            @default(now())
+
+  @@unique([kind, value])
+  @@index([kind, value])
+}
+
+enum BlockedIdentityKind {
+  PHONE
+  EMAIL
+  ADDRESS
 }
 
 // ADR-064 — Ledger de conciliación del efectivo contraentrega (COD). UNA fila por orden, creada solo

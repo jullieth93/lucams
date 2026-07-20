@@ -391,6 +391,8 @@ export default async function AdminPedidoDetallePage({
               orderStatus={order.status}
               hasTracking={!!order.trackingNumber}
               paymentMethod={order.paymentMethod}
+              isNoShow={!!order.noShowAt}
+              hasAddressKey={!!order.shippingAddressKey}
             />
           </div>
         </div>

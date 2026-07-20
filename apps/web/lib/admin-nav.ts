@@ -22,6 +22,7 @@ import {
   Globe,
   DollarSign,
   Wallet,
+  ShieldBan,
   BrainCircuit,
   BarChart2,
   Settings,
@@ -243,6 +244,13 @@ export const ADMIN_NAV: NavGroup[] = [
         icon: Wallet,
         description:
           "Efectivo de los pedidos contra entrega ya entregados: marca qué remesó el mensajero, cuánto falta y las discrepancias (antifraude).",
+      },
+      {
+        label: "Bloqueos contra entrega",
+        href: "/admin/finanzas/bloqueos",
+        icon: ShieldBan,
+        description:
+          "Teléfonos, emails y direcciones vetados que no pueden pagar contra entrega (anti-abuso COD). Pueden pagar en línea.",
       },
     ],
   },

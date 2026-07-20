@@ -1,6 +1,6 @@
 /*
  * Integración — Anti-abuso COD (ADR-065). Ejerce assessCodRisk contra la DB real: caso permitido y
- * las 4 señales de bloqueo (velocidad, en-vuelo, cliente nuevo de alto valor, devolución previa).
+ * las 7 señales (velocidad por identidad Y por dirección, en-vuelo, cliente nuevo de alto valor, devolución previa, no-show, block-list).
  *
  * Requiere DATABASE_URL (skipIf). Aislamiento: cada identidad lleva el prefijo RUN; cleanup SCOPED
  * por prefijo. La identidad se comparte por-test (mismo phone/email) para que el historial matchee.
@@ -21,6 +21,8 @@ type Mk = {
   total?: number;
   ageHours?: number; // antigüedad de createdAt (para separar velocidad de en-vuelo)
   returnedReason?: string;
+  addressKey?: string; // shippingAddressKey (velocity por DIRECCIÓN aunque roten phone/email)
+  noShow?: boolean; // marca noShowAt (señal no-show del admin)
 };
 
 async function makeOrder(m: Mk): Promise<string> {
@@ -31,6 +33,7 @@ async function makeOrder(m: Mk): Promise<string> {
       email: `${RUN}-${m.ident}@test.local`,
       phone: `${RUN}-${m.ident}`,
       shippingAddress: { city: "Cali", department: "Valle" },
+      shippingAddressKey: m.addressKey ?? null,
       subtotal: m.total ?? 50_000_00,
       shipping: 0,
       total: m.total ?? 50_000_00,
@@ -39,6 +42,7 @@ async function makeOrder(m: Mk): Promise<string> {
       createdAt,
       needsReconciliation: Boolean(m.returnedReason),
       reconciliationReason: m.returnedReason ?? null,
+      noShowAt: m.noShow ? new Date() : null,
     },
     select: { id: true },
   });
@@ -47,6 +51,7 @@ async function makeOrder(m: Mk): Promise<string> {
 
 async function cleanup() {
   await prisma.order.deleteMany({ where: { email: { startsWith: RUN } } });
+  await prisma.blockedIdentity.deleteMany({ where: { value: { startsWith: RUN } } });
 }
 
 describe.skipIf(!hasDb)("assessCodRisk — anti-abuso COD (integración)", { timeout: T }, () => {
@@ -100,5 +105,34 @@ describe.skipIf(!hasDb)("assessCodRisk — anti-abuso COD (integración)", { tim
     const res = await assessCodRisk(id);
     expect(res.allowed).toBe(false);
     if (!res.allowed) expect(res.code).toBe("prior_return");
+  });
+
+  it("(a) bloquea por VELOCIDAD DE DIRECCIÓN (mismo domicilio, teléfonos/emails distintos)", async () => {
+    // 3 COD recientes que comparten la MISMA dirección pero con identidades DISTINTAS (rotan
+    // phone/email). El 4º, con otra identidad pero misma dirección, supera el tope vía addressKey.
+    const addr = `${RUN}addrvel`;
+    for (let i = 0; i < 3; i++) await makeOrder({ ident: `av${i}`, addressKey: addr, ageHours: 1 });
+    const current = await makeOrder({ ident: "avcur", addressKey: addr });
+    const res = await assessCodRisk(current);
+    expect(res.allowed).toBe(false);
+    if (!res.allowed) expect(res.code).toBe("velocity");
+  });
+
+  it("(b) bloquea una identidad en el BLOCK-LIST (teléfono vetado a mano)", async () => {
+    const id = await makeOrder({ ident: "blk" });
+    await prisma.blockedIdentity.create({
+      data: { kind: "PHONE", value: `${RUN}-blk`, reason: "test abuso", createdBy: "admin-test" },
+    });
+    const res = await assessCodRisk(id);
+    expect(res.allowed).toBe(false);
+    if (!res.allowed) expect(res.code).toBe("blocklist");
+  });
+
+  it("(c) bloquea si la identidad tuvo un NO-SHOW previo (marcado por admin)", async () => {
+    await makeOrder({ ident: "nos", status: "SHIPPED", ageHours: 100, noShow: true });
+    const id = await makeOrder({ ident: "nos" });
+    const res = await assessCodRisk(id);
+    expect(res.allowed).toBe(false);
+    if (!res.allowed) expect(res.code).toBe("prior_noshow");
   });
 });

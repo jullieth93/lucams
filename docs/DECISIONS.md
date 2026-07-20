@@ -2403,6 +2403,28 @@ cliente legítimo (que casi nunca pide 4 COD en un día ni $400k a puerta la pri
 integración (permitido + 4 bloqueos + cliente-conocido-alto-valor-permitido). Constantes tunables a
 futuro vía settings si el volumen real lo exige.
 
+**Extensión (2026-07-20) — dirección + block-list + no-show.** Al completar el plan de producción se
+cerraron las 3 brechas que la auditoría marcó PARTIAL sobre este anti-abuso (el ledger financiero ya
+existía en ADR-064):
+
+- **(a) Velocity por DIRECCIÓN.** `Order.shippingAddressKey` (clave normalizada depto|ciudad|línea|zip,
+  sin tildes ni no-alfanuméricos; `features/checkout/address-key.ts`), poblada en `createOrderFromCart`
+  (indexada porque `shippingAddress` es Json y no filtra eficiente). `assessCodRisk` la agrega al OR de
+  identidad → detecta al abusador que reusa la MISMA dirección aunque rote teléfono/email.
+- **(b) Block-list persistente.** Modelo `BlockedIdentity(kind PHONE|EMAIL|ADDRESS, value, reason,
+createdBy)` con `@@unique([kind, value])`. `assessCodRisk` la consulta (fail-open) → código `blocklist`
+  (máxima prioridad). Admin CRUD en `/admin/finanzas/bloqueos` (SUPERADMIN): agregar teléfono/email a
+  mano; las direcciones se bloquean desde el detalle del pedido ("Bloquear esta dirección", que tiene la
+  clave normalizada). Retirar con confirmación.
+- **(c) No-show.** `Order.noShowAt`/`noShowBy` + acción admin "Marcar como NO recibido" en el detalle del
+  pedido (MANAGER_UP) → señal explícita (distinta del RETURNED del courier) que veta futuros COD de la
+  identidad (código `prior_noshow`).
+
+Prioridad de señales: `blocklist` > `prior_noshow` > `prior_return` > `velocity` (identidad **o**
+dirección) > `outstanding` > `new_high_value`. Todas siguen el mismo contrato (bloqueo amable +
+fail-open + no revelar la regla). Migración `20260720010000_cod_antiabuse`. Tests: `address-key` (4) +
+`cod-risk.integration` ampliado a **9** (6 originales + dirección + block-list + no-show).
+
 ## ADR-066 — SLOs cuantitativos de datos reales (2026-07-17)
 
 Tercer ítem del plan maestro (ADR-062). OBSERVABILITY.md documentaba SLOs (targets + SLIs + un

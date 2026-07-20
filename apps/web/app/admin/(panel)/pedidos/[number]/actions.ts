@@ -1,10 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { requireAdminAction } from "@/lib/admin-rbac-guard";
 import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { recordAdminAction } from "@/lib/admin-audit";
+import { addBlockedIdentity, BlocklistError } from "@/features/anti-abuse/blocklist-service";
 import { processPaidOrder } from "@/features/orders/saga";
 import { refundOrder, transitionOrder } from "@/features/orders/service";
 import { orderStatusLabel } from "@/features/orders/order-status-display";
@@ -174,4 +176,86 @@ export async function refundOrderAction(
     });
     return { error: err instanceof Error ? err.message : "Error al reembolsar" };
   }
+}
+
+/**
+ * Anti-abuso COD (ADR-065): marca un pedido contra entrega como NO RECIBIDO (no-show). Señal explícita
+ * —distinta del RETURNED del courier— que assessCodRisk usa para vetar futuros COD de la identidad.
+ */
+export async function markOrderNoShowAction(
+  _prev: { error?: string; success?: string } | null,
+  formData: FormData,
+): Promise<{ error?: string; success?: string }> {
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
+
+  const orderId = String(formData.get("orderId") ?? "");
+  if (!orderId) return { error: "Falta el pedido." };
+
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    select: { id: true, paymentMethod: true, noShowAt: true },
+  });
+  if (!order) return { error: "Pedido no encontrado." };
+  if (order.paymentMethod !== "COD") return { error: "Solo aplica a pedidos contra entrega." };
+  if (order.noShowAt) return { success: "Ya estaba marcado como no recibido." };
+
+  await prisma.order.update({
+    where: { id: orderId },
+    data: { noShowAt: new Date(), noShowBy: session.admin.id },
+  });
+  await recordAdminAction({
+    actorId: session.admin.id,
+    action: "order.mark_no_show",
+    entityType: "Order",
+    entityId: orderId,
+  });
+  logger.info({ event: "admin.order.no_show", adminId: session.admin.id, orderId });
+  revalidatePath("/admin/pedidos");
+  revalidatePath(`/admin/pedidos/[number]`, "page");
+  return {
+    success: "Marcado como no recibido. El contra entrega de esta identidad quedará bloqueado.",
+  };
+}
+
+/**
+ * Anti-abuso COD (ADR-065): bloquea la DIRECCIÓN de este pedido (clave normalizada) en el block-list —
+ * el punto de entrada de UX para la key ADDRESS, que no se teclea. SUPERADMIN (veto de pago, como refund).
+ */
+export async function blockOrderAddressAction(
+  _prev: { error?: string; success?: string } | null,
+  formData: FormData,
+): Promise<{ error?: string; success?: string }> {
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
+
+  const orderId = String(formData.get("orderId") ?? "");
+  if (!orderId) return { error: "Falta el pedido." };
+
+  const order = await prisma.order.findUnique({
+    where: { id: orderId },
+    select: { number: true, shippingAddressKey: true },
+  });
+  if (!order?.shippingAddressKey) {
+    return { error: "Este pedido no tiene una dirección normalizada para bloquear." };
+  }
+
+  try {
+    await addBlockedIdentity({
+      kind: "ADDRESS",
+      value: order.shippingAddressKey,
+      reason: `Dirección del pedido ${order.number}`,
+      createdBy: session.admin.id,
+    });
+  } catch (err) {
+    if (err instanceof BlocklistError) return { error: err.message };
+    throw err;
+  }
+  await recordAdminAction({
+    actorId: session.admin.id,
+    action: "cod.blocklist.add_address",
+    entityType: "Order",
+    entityId: orderId,
+  });
+  logger.info({ event: "admin.cod_blocklist.add_address", adminId: session.admin.id, orderId });
+  revalidatePath("/admin/finanzas/bloqueos");
+  return { success: "Dirección bloqueada para contra entrega." };
 }

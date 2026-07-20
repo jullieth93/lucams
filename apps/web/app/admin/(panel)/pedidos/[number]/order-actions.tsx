@@ -1,9 +1,15 @@
 "use client";
 
 import { useActionState } from "react";
-import { RefreshCw, ArrowRight, X, Undo2 } from "lucide-react";
+import { RefreshCw, ArrowRight, X, Undo2, Ban, PackageX } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { refundOrderAction, retryShipmentAction, transitionOrderAction } from "./actions";
+import {
+  blockOrderAddressAction,
+  markOrderNoShowAction,
+  refundOrderAction,
+  retryShipmentAction,
+  transitionOrderAction,
+} from "./actions";
 
 /**
  * Panel de acciones admin sobre una Order. Visibilidad de botones depende
@@ -14,16 +20,28 @@ export function OrderActions({
   orderStatus,
   hasTracking,
   paymentMethod,
+  isNoShow = false,
+  hasAddressKey = false,
 }: {
   orderId: string;
   orderStatus: string;
   hasTracking: boolean;
   paymentMethod?: string;
+  /** Anti-abuso COD (ADR-065): ya marcado como no recibido. */
+  isNoShow?: boolean;
+  /** Anti-abuso COD (ADR-065): el pedido tiene dirección normalizada bloqueable. */
+  hasAddressKey?: boolean;
 }) {
   const [retryState, retryAction, retryPending] = useActionState(retryShipmentAction, null);
   const [transState, transAction, transPending] = useActionState(transitionOrderAction, null);
   const [refundState, refundAction, refundPending] = useActionState(refundOrderAction, null);
+  const [noShowState, noShowAction, noShowPending] = useActionState(markOrderNoShowAction, null);
+  const [blockState, blockAction, blockPending] = useActionState(blockOrderAddressAction, null);
   const isCod = paymentMethod === "COD";
+  // Anti-abuso COD: no-show para pedidos COD no entregados; bloquear dirección si hay clave.
+  const showNoShow = isCod && !isNoShow && orderStatus !== "DELIVERED";
+  const showBlockAddr = isCod && hasAddressKey;
+  const showAntiAbuse = isCod && (showNoShow || showBlockAddr || isNoShow);
 
   const showRetry = orderStatus === "PAID" || (orderStatus === "FULFILLING" && !hasTracking);
   const showMarkShipped = orderStatus === "FULFILLING";
@@ -42,7 +60,14 @@ export function OrderActions({
     ? orderStatus === "DELIVERED"
     : ["PAID", "DELIVERED"].includes(orderStatus);
 
-  if (!showRetry && !showMarkShipped && !showMarkDelivered && !canCancel && !canRefund) {
+  if (
+    !showRetry &&
+    !showMarkShipped &&
+    !showMarkDelivered &&
+    !canCancel &&
+    !canRefund &&
+    !showAntiAbuse
+  ) {
     return (
       <section className="border-brand-purple/10 rounded-xl border bg-white p-5 shadow-sm">
         <h2 className="text-brand-purple-dark mb-2 text-sm font-bold">Acciones</h2>
@@ -229,6 +254,99 @@ export function OrderActions({
             </Button>
           </form>
         </details>
+      )}
+
+      {/* Anti-abuso contra entrega (ADR-065) */}
+      {(noShowState?.success || noShowState?.error) && (
+        <div
+          className={`rounded-md p-2 text-xs ${
+            noShowState.success ? "bg-emerald-50 text-emerald-800" : "bg-rose-50 text-rose-800"
+          }`}
+        >
+          {noShowState.success ?? noShowState.error}
+        </div>
+      )}
+      {(blockState?.success || blockState?.error) && (
+        <div
+          className={`rounded-md p-2 text-xs ${
+            blockState.success ? "bg-emerald-50 text-emerald-800" : "bg-rose-50 text-rose-800"
+          }`}
+        >
+          {blockState.success ?? blockState.error}
+        </div>
+      )}
+
+      {showAntiAbuse && (
+        <div className="border-brand-purple/10 mt-1 space-y-2 border-t pt-3">
+          <p className="text-brand-muted text-[11px] font-semibold tracking-wide uppercase">
+            Anti-abuso contra entrega
+          </p>
+          {isNoShow && (
+            <p className="rounded-md bg-amber-50 px-2 py-1.5 text-[11px] text-amber-800">
+              Marcado como <strong>no recibido</strong>. El contra entrega de esta identidad queda
+              bloqueado.
+            </p>
+          )}
+          {showNoShow && (
+            <details className="rounded-md border border-amber-200">
+              <summary className="cursor-pointer list-none rounded-md px-3 py-2 text-xs font-semibold text-amber-800 hover:bg-amber-50">
+                <PackageX className="mr-1.5 inline h-3.5 w-3.5" />
+                Marcar como NO recibido…
+              </summary>
+              <form action={noShowAction} className="space-y-2 border-t border-amber-100 p-3">
+                <input type="hidden" name="orderId" value={orderId} />
+                <p className="text-[11px] text-amber-800">
+                  Úsalo si el cliente no recibió el paquete (contra entrega devuelto / plantón).
+                  Cuenta como señal de abuso: sus próximos pedidos tendrán que pagarse en línea.
+                </p>
+                <Button
+                  type="submit"
+                  size="sm"
+                  disabled={noShowPending}
+                  variant="outline"
+                  className="w-full"
+                >
+                  {noShowPending ? "Marcando…" : "Confirmar no recibido"}
+                </Button>
+              </form>
+            </details>
+          )}
+          {showBlockAddr && (
+            <details className="rounded-md border border-rose-200">
+              <summary className="cursor-pointer list-none rounded-md px-3 py-2 text-xs font-semibold text-rose-700 hover:bg-rose-50">
+                <Ban className="mr-1.5 inline h-3.5 w-3.5" />
+                Bloquear esta dirección…
+              </summary>
+              <form
+                action={blockAction}
+                className="space-y-2 border-t border-rose-100 p-3"
+                onSubmit={(e) => {
+                  if (
+                    !confirm(
+                      "¿Bloquear la dirección de este pedido para contra entrega? Cualquier pedido a esta dirección tendrá que pagarse en línea.",
+                    )
+                  ) {
+                    e.preventDefault();
+                  }
+                }}
+              >
+                <input type="hidden" name="orderId" value={orderId} />
+                <p className="text-[11px] text-rose-800">
+                  Ningún pedido futuro a esta dirección podrá pagar contra entrega (sí en línea). Se
+                  gestiona en Finanzas → Bloqueos.
+                </p>
+                <Button
+                  type="submit"
+                  size="sm"
+                  disabled={blockPending}
+                  className="w-full bg-rose-600 text-white hover:bg-rose-700"
+                >
+                  {blockPending ? "Bloqueando…" : "Confirmar bloqueo de dirección"}
+                </Button>
+              </form>
+            </details>
+          )}
+        </div>
       )}
     </section>
   );
