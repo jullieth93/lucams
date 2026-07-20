@@ -13,6 +13,18 @@
 
 ## Resumen actual
 
+**✅ BARRIDO LEGAL-COLOMBIA COMPLETO (2026-07-19, cont.) — ADR-072.** Lucy pidió un barrido TOTAL de todos los textos/BD/copy ajustados a la ley colombiana. Se auditó TODO con un **workflow multi-agente (25 agentes**: auditar→redactar→verificar adversarial→consolidar) contra Ley 1581/2012, Ley 1480/2011 + Ley 2439/2024 y régimen tributario → 11 blockers / 23 high / 37 medium / 26 low. Hallazgo clave: el contenido PUBLICADO en BD (que gana sobre el fallback de código) estaba en estado placeholder. Remediado en **5 batches certificados (tsc+lint+prettier+166 tests) y pusheados**, y **verificado en el navegador** (nuke `.next` + restart):
+
+- **Batch 1 — 8 documentos legales** reescritos y consistentes: persona natural (no S.A.S.); IVA régimen-agnóstico (sin prometer factura DIAN); retracto 5 días háb. + reembolso 15 días calendario desde el ejercicio (Ley 2439) + excepción de personalizados (art. 47); reversión del pago (art. 51); garantía 1 año con elección del consumidor (arts. 7-8/11); PQR 10/15 días háb.; SIC + jurisdicción; Versión 2. Subprocesadores reales (**Aveonline** no Venndelo, **Google/Gemini** no Anthropic), tabla Markdown (antes HTML crudo que no renderizaba). Contenido canónico en `packages/db/legal-content/*.md` + script reproducible `make seed-legal-2026-07` (para **replicar a PROD** al lanzar). Aplicado a BD dev + fallbacks de código.
+- **Batch 2 — checkout:** autorización de tratamiento **previa** (casilla obligatoria + Consent, también invitados) antes de recolectar PII [blocker]; aviso de retracto/garantía en el punto de venta [blocker]; IVA/factura régimen-agnóstico; placeholder "S.A.S." corregido.
+- **Batch 3 — correos:** identidad del responsable en los 20 (layout `LEGAL_ENTITY_LINE`); retracto/garantía + COP en confirmación; garantía como elección del consumidor; unsubscribe visible + One-Click en los comerciales (back-in-stock no tenía ninguno).
+- **Batch 4 — PDP:** retracto por producto (solo los SIEMPRE a medida se exceptúan; `isPersonalizable` opcional conserva retracto); garantía mínima 12 meses irrenunciable (schema + clamp); "Coordinadora" → "transportadoras aliadas"; línea de precio total COP.
+- **Batch 5 — config/docs:** CSP sin `api.venndelo.com`/`api.anthropic.com` (muertos, server-side); settings DPA reales; footer con identidad + enlace SIC (art. 50); COMPLIANCE.md corregido; ADR-072 con la lista consolidada de ACCIÓN HUMANA.
+
+**⚠️ Los drafts son base compliant — NO reemplazan la revisión de un abogado colombiano antes del lanzamiento (ADR-020).** ACCIÓN HUMANA consolidada en ADR-072: **contador** (régimen IVA / documento tributario), **abogado** (tensión art. 50 identificación, fotos como dato sensible, base de transferencia internacional, RNBD, opt-in newsletter, flete de devolución), **operación** (provisionar `habeas-data@`/`retracto@`/`security@`, replicar CMS legal a prod, `security.txt` Expires), **doc** (CLAUDE.md #5 dice "Venndelo" vs. código Aveonline).
+
+---
+
 **✅ BACKLOG AUDITORÍA v3 — COLA DE CALIDAD CERRADA (2026-07-19, cont.).** Con las 4 decisiones de Lucy resueltas, se barrió el **tail de calidad** de las Tandas 5-7 que quedaba pendiente. Todo certificado (tsc + eslint + prettier + tests donde aplica) y pusheado a `origin/develop`:
 
 - **T5 pulido** (`T5 #16/#22/#26`): **#16** en móvil el buy-box del PDP (selector + CTA) sube por encima de la descripción larga (flex + `order-*` en los 6 hijos, CSS-only; md+ conserva el orden natural). **#22** en `/checkout/pago` móvil el resumen+total va ANTES del botón de pagar (order-1/order-2, avisos full-width; lg+ restaura 2 columnas). **#26** validación inline "reward early, punish late" en `/checkout/datos`: el error rojo del cliente aparece solo tras el primer blur (`touched`) y se oculta al reeditar (nombre/email/teléfono/documento).
@@ -1554,6 +1566,14 @@ sidebar fijo, Cancelar en cupones.
 ---
 
 ## Bitácora (append-only, más reciente arriba)
+
+### 2026-07-19 (cont.) — Barrido legal-Colombia integral (ADR-072)
+
+Lucy: "barrido TOTAL de todos los textos, db, etc… ajustados a la ley colombiana". Se mapeó dónde vive todo el texto legal (8 páginas `legal.*` con doble capa código-fallback/BD-CmsBlock, footer, checkout, 20 correos, PDP, settings) y se corrió un **workflow multi-agente (25 agentes, ~47 min, 1.36M tokens)**: cada superficie auditada + redactada contra la ley y verificada adversarialmente (citas de artículo, hechos inventados, voseo, exposición PII, IVA-régimen), + crítico de consistencia transversal. Salida: 11 blockers / 23 high / 37 medium / 26 low + 8 drafts verificados + 21 needsHuman.
+
+Hallazgo raíz: `getCmsBlock` renderiza `publishedVersion.body`; los fallbacks compliant del código no se veían porque la BD publicada era placeholder ("en revisión legal, próximamente"), sin identidad del responsable, con retracto mal (30 días/recepción), subprocesadores equivocados (Venndelo/Anthropic) y HTML crudo que react-markdown no renderiza.
+
+Remediado en 5 batches (Batch 1 legales · 2 checkout · 3 correos · 4 PDP · 5 config/docs), cada uno certificado (tsc+lint+prettier) y pusheado; 166 tests verdes (consent/back-in-stock/emails/reviews). El contenido legal canónico quedó committed en `packages/db/legal-content/*.md` + `seed-legal-content-2026-07.mjs` (reproducible a PROD). **Verificado en el navegador** tras nuke `.next`: persona natural, retracto 15 días calendario, reversión del pago, Aveonline+Gemini, tabla renderiza, Versión 2, footer con identidad+SIC, PDP con retracto/COP/transportadoras — sin fugas de cédula/dirección/S.A.S. Decisiones humanas (contador/abogado/operación) consolidadas en ADR-072. Base compliant; requiere visto bueno de abogado antes del lanzamiento (ADR-020).
 
 ### 2026-07-19 (cont.) — Cierre del tail de calidad v3 (T5/T6/T7) + orquestación de finalizeDesign por-PR
 
