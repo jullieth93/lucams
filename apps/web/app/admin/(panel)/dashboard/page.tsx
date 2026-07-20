@@ -352,7 +352,7 @@ export default async function AdminDashboardPage({
  * un campo displayName explícito).
  *
  *  crittan01@gmail.com  → "Crittan"
- *  lucy@lucamsshop.co   → "Lucy"
+ *  lucy@lucamsshop.com   → "Lucy"
  *  r.julliethhr@...     → "R Julliethhr"
  *  abc@…                → null  (muy corto → fallback "Hola 👋")
  *

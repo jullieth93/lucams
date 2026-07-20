@@ -82,7 +82,7 @@ export async function notifyWarrantyClaimCreated(id: string): Promise<void> {
       ],
     });
     // 2) Aviso interno a Lucy (para que sepa que llegó un reclamo), con Reply-To al cliente.
-    const contactEmail = await getSettingValue("CONTACT_EMAIL", "hola@lucamsshop.co");
+    const contactEmail = await getSettingValue("CONTACT_EMAIL", "hola@lucamsshop.com");
     await sendEmail({
       to: contactEmail,
       replyTo: d.email,

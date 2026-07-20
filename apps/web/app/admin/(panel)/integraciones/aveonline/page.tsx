@@ -46,7 +46,7 @@ export default async function AveonlineIntegrationPage({
   // Default sugerido del input — toma SITE_URL pero el admin puede sobreescribir
   // (útil cuando se usa ngrok en dev: pega ngrok URL + click registrar).
   const defaultBaseUrl =
-    process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/+$/, "") ?? "https://lucamsshop.co";
+    process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/+$/, "") ?? "https://lucamsshop.com";
   const hasSecret = !!process.env.AVEONLINE_WEBHOOK_SECRET?.trim();
 
   // Listar webhooks actuales
@@ -163,7 +163,7 @@ export default async function AveonlineIntegrationPage({
             </li>
             <li>
               En producción usa tu dominio real (
-              <code>https://lucamsshop.co/api/webhooks/aveonline</code>).
+              <code>https://lucamsshop.com/api/webhooks/aveonline</code>).
             </li>
             <li>
               Aveonline incluirá el <code>secret</code> en cada request — nuestro endpoint lo valida

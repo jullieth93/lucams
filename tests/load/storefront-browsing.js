@@ -14,7 +14,7 @@
  * Uso:
  *   # Instalar k6 (una vez): https://k6.io/docs/get-started/installation/
  *   k6 run tests/load/storefront-browsing.js
- *   k6 run -e BASE_URL=https://lucamsshop.co tests/load/storefront-browsing.js
+ *   k6 run -e BASE_URL=https://lucamsshop.com tests/load/storefront-browsing.js
  *
  * Output:
  *   - Métricas en stdout

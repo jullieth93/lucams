@@ -275,25 +275,25 @@ describe("sendEmail — envío exitoso", () => {
   });
 
   it("respeta EMAIL_FROM como remitente por defecto cuando está configurado", async () => {
-    vi.stubEnv("EMAIL_FROM", "Tienda <hola@lucamsshop.co>");
+    vi.stubEnv("EMAIL_FROM", "Tienda <hola@lucamsshop.com>");
     const fetchFn = mockFetchJson({ id: "em_1" });
 
     const send = await loadFresh();
     await runDrained(send, baseInput());
 
     const body = JSON.parse((fetchFn.mock.calls[0][1] as RequestInit).body as string);
-    expect(body.from).toBe("Tienda <hola@lucamsshop.co>");
+    expect(body.from).toBe("Tienda <hola@lucamsshop.com>");
   });
 
   it("input.from override gana sobre EMAIL_FROM y sobre el default", async () => {
-    vi.stubEnv("EMAIL_FROM", "Tienda <hola@lucamsshop.co>");
+    vi.stubEnv("EMAIL_FROM", "Tienda <hola@lucamsshop.com>");
     const fetchFn = mockFetchJson({ id: "em_1" });
 
     const send = await loadFresh();
-    await runDrained(send, baseInput({ from: "Soporte <soporte@lucamsshop.co>" }));
+    await runDrained(send, baseInput({ from: "Soporte <soporte@lucamsshop.com>" }));
 
     const body = JSON.parse((fetchFn.mock.calls[0][1] as RequestInit).body as string);
-    expect(body.from).toBe("Soporte <soporte@lucamsshop.co>");
+    expect(body.from).toBe("Soporte <soporte@lucamsshop.com>");
   });
 
   it("to como array se reenvía tal cual (array) en el body — sin aplanar", async () => {
@@ -808,7 +808,7 @@ describe("sendEmail — bordes e invariantes", () => {
       send,
       baseInput({
         headers: {
-          "List-Unsubscribe": "<https://lucamsshop.co/api/unsubscribe?u=abc>",
+          "List-Unsubscribe": "<https://lucamsshop.com/api/unsubscribe?u=abc>",
           "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
         },
       }),
@@ -816,7 +816,7 @@ describe("sendEmail — bordes e invariantes", () => {
 
     const body = JSON.parse((fetchFn.mock.calls[0][1] as RequestInit).body as string);
     expect(body.headers).toEqual({
-      "List-Unsubscribe": "<https://lucamsshop.co/api/unsubscribe?u=abc>",
+      "List-Unsubscribe": "<https://lucamsshop.com/api/unsubscribe?u=abc>",
       "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
     });
   });

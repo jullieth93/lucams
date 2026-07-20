@@ -797,7 +797,7 @@ model CouponUsage {
   - Tarjeta de agradecimiento Lucams kawaii.
   - QR a `/garantia?orderId=X` (futuro Fase 4) para ejercer garantía.
   - Sticker exclusivo Lucams (uno random de la línea Coleccionables).
-  - Microcopy: "Si algo no te llegó perfecto, te respondemos en hola@lucamsshop.co · WhatsApp X".
+  - Microcopy: "Si algo no te llegó perfecto, te respondemos en hola@lucamsshop.com · WhatsApp X".
 - **Rationale**: experiencia de unboxing diferencial. Trust building + retención. Sticker random fomenta colección.
 - **Implica**: NO es schema. Es proceso operativo. Documentar en `docs/OPERATIONS.md` sección "Empaque y unboxing".
 - **Admin**: configura microcopy y QR base desde `/admin/contenido/configuracion` (CmsSetting nuevo: `UNBOXING_MICROCOPY`).

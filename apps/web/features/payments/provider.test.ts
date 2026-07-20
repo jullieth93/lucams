@@ -266,7 +266,7 @@ describe("WompiPaymentProvider.createCheckout — shape CreateCheckoutResult", (
     amountInCents: 4_500_000,
     currency: "COP",
     customerEmail: "cliente@example.co",
-    redirectUrl: "https://lucamsshop.co/checkout/return",
+    redirectUrl: "https://lucamsshop.com/checkout/return",
   };
 
   it("devuelve exactamente { checkoutUrl, reference } y nada más", async () => {
@@ -288,7 +288,7 @@ describe("WompiPaymentProvider.createCheckout — shape CreateCheckoutResult", (
       amountInCents: 4_500_000,
       currency: "COP",
       customerEmail: "cliente@example.co",
-      redirectUrl: "https://lucamsshop.co/checkout/return",
+      redirectUrl: "https://lucamsshop.com/checkout/return",
     });
   });
 

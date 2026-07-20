@@ -18,7 +18,7 @@ export type OrderPaymentFailedData = {
 };
 
 export async function orderPaymentFailedEmail(data: OrderPaymentFailedData) {
-  const siteUrl = await getSettingValue("SITE_URL", "https://lucamsshop.co");
+  const siteUrl = await getSettingValue("SITE_URL", "https://lucamsshop.com");
 
   // Razones técnicas → mensaje amigable
   const friendlyReason = (() => {

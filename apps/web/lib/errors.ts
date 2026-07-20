@@ -10,7 +10,7 @@
  *  - La capa HTTP (route handlers, server actions) captura `AppError` y
  *    lo convierte a `Response` con `problemResponse(err, requestId)`.
  *
- * Cada `type` apunta a `https://lucamsshop.co/problems/<slug>`. Esos URIs
+ * Cada `type` apunta a `https://lucamsshop.com/problems/<slug>`. Esos URIs
  * deben ser dereferenceables — su contenido se sirve desde
  * `app/(legal)/problems/[slug]/page.tsx` (pendiente).
  *
@@ -41,7 +41,7 @@ export type ProblemDetails = {
   errors?: Record<string, string[]>;
 };
 
-const TYPE_BASE = "https://lucamsshop.co/problems";
+const TYPE_BASE = "https://lucamsshop.com/problems";
 
 export class AppError extends Error {
   constructor(

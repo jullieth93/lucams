@@ -43,9 +43,9 @@ const blocks = [
 
 Datos de contacto del responsable:
 
-- Email: **hola@lucamsshop.co**
+- Email: **hola@lucamsshop.com**
 - WhatsApp: +57 320 887 3826
-- Sitio web: [lucamsshop.co](https://lucamsshop.co)
+- Sitio web: [lucamsshop.com](https://lucamsshop.com)
 
 ## Datos personales que tratamos
 
@@ -113,7 +113,7 @@ Si consideras que vulneramos tus derechos, puedes presentar queja ante la **Supe
     category: "LEGAL",
     format: "MARKDOWN",
     description: "Aparece en /legal/terminos y en el link del footer.",
-    body: `Al usar **lucamsshop.co** aceptas estos Términos y Condiciones de uso y compra. Los productos vendidos están sujetos a la legislación colombiana, en particular la **Ley 1480 de 2011** (Estatuto del Consumidor) y la **Ley 2439 de 2024** que modifica disposiciones de comercio electrónico.
+    body: `Al usar **lucamsshop.com** aceptas estos Términos y Condiciones de uso y compra. Los productos vendidos están sujetos a la legislación colombiana, en particular la **Ley 1480 de 2011** (Estatuto del Consumidor) y la **Ley 2439 de 2024** que modifica disposiciones de comercio electrónico.
 
 ## Precios y pagos
 
@@ -206,7 +206,7 @@ Esta excepción está claramente identificada en el catálogo: cualquier product
 
 ## Cómo retractarte (productos NO personalizados)
 
-1. **Escríbenos** a **hola@lucamsshop.co** o por WhatsApp dentro de los 5 días hábiles desde que recibiste el producto.
+1. **Escríbenos** a **hola@lucamsshop.com** o por WhatsApp dentro de los 5 días hábiles desde que recibiste el producto.
 2. **Indica el medio de devolución** elegido (el mismo medio de pago original o cuenta bancaria).
 3. **Devuelve el producto** en su empaque original sin uso (el costo del envío de devolución lo asume el consumidor según Ley 1480 art. 47).
 4. **Reembolso** dentro de **15 días calendario** desde el momento en que cumpliste los requisitos (informaste el medio + devolviste el producto), conforme a la **Ley 2439 de 2024**.
@@ -246,7 +246,7 @@ Todos los productos Lucams_shop tienen garantía legal de **1 año** desde la fe
 
 ## Cómo ejercerla
 
-Escribe a **hola@lucamsshop.co** con tu número de pedido y fotos del defecto. Respondemos en 2 días hábiles. Reparación, reposición o devolución según corresponda dentro de los 30 días siguientes a la verificación.`,
+Escribe a **hola@lucamsshop.com** con tu número de pedido y fotos del defecto. Respondemos en 2 días hábiles. Reparación, reposición o devolución según corresponda dentro de los 30 días siguientes a la verificación.`,
   },
   {
     key: "legal.habeas-data",
@@ -267,7 +267,7 @@ Escribe a **hola@lucamsshop.co** con tu número de pedido y fotos del defecto. R
 
 ## Cómo ejercer tus derechos
 
-Escríbenos a **hola@lucamsshop.co** indicando:
+Escríbenos a **hola@lucamsshop.com** indicando:
 
 1. Tu nombre completo y documento de identidad
 2. Email con el que te registraste
@@ -318,7 +318,7 @@ Si no estás conforme con nuestra respuesta puedes acudir a la Superintendencia 
     description: "Aparece en /legal/security. Responsible disclosure.",
     body: `## Divulgación responsable
 
-Si encontraste una vulnerabilidad de seguridad en Lucams_shop, te agradecemos reportarla antes de divulgarla públicamente. Escríbenos a **security@lucamsshop.co** con:
+Si encontraste una vulnerabilidad de seguridad en Lucams_shop, te agradecemos reportarla antes de divulgarla públicamente. Escríbenos a **security@lucamsshop.com** con:
 
 - Descripción del problema
 - Pasos para reproducir
@@ -334,7 +334,7 @@ Nos comprometemos a:
 
 ## Alcance
 
-En scope: lucamsshop.co y sus subdominios. Fuera de scope: vulnerabilidades sociales (phishing a empleados), DoS volumétricos, problemas en proveedores de terceros (reportarlos a su programa).
+En scope: lucamsshop.com y sus subdominios. Fuera de scope: vulnerabilidades sociales (phishing a empleados), DoS volumétricos, problemas en proveedores de terceros (reportarlos a su programa).
 
 ## security.txt
 
@@ -642,7 +642,7 @@ const settings = [
   // CONTACT
   {
     key: "CONTACT_EMAIL",
-    value: "hola@lucamsshop.co",
+    value: "hola@lucamsshop.com",
     valueType: "EMAIL",
     label: "Email de contacto público",
     description: "Aparece en footer, páginas legales y formulario de contacto.",
@@ -650,7 +650,7 @@ const settings = [
   },
   {
     key: "SECURITY_EMAIL",
-    value: "security@lucamsshop.co",
+    value: "security@lucamsshop.com",
     valueType: "EMAIL",
     label: "Email de seguridad",
     description: "Para reportes de vulnerabilidad. Aparece en /legal/security.",

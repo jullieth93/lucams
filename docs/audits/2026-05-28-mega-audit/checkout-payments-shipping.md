@@ -60,7 +60,7 @@ El flow de 3 pasos (datos → envío → pago) está cableado contra Wompi Web C
 - **Impacto**: bloqueante para validar saga end‑to‑end en sandbox sin intervención manual; en producción se asume Wompi sí permite registrar URL.
 - **Recomendación**: opcional para desbloquear sandbox: en `/checkout/gracias` cuando `tx.status === "APPROVED"` y order está aún `PENDING_PAYMENT`, ejecutar `processPaidOrder` como fallback idempotente (la saga ya es idempotente por `trackingNumber`). Esto cubre also producción si webhook llega tarde. Documentar como "best-effort sync fallback".
 - **Horas estimadas**: 2
-- **Acción humana Lucy**: en dashboard productivo Wompi registrar URL `https://lucamsshop.co/api/webhooks/wompi`.
+- **Acción humana Lucy**: en dashboard productivo Wompi registrar URL `https://lucamsshop.com/api/webhooks/wompi`.
 
 ### [P1] CW-05 — Cupones: CRUD admin sin redención en checkout
 

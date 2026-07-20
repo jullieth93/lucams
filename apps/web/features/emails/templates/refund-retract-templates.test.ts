@@ -14,14 +14,14 @@
 
 import { describe, expect, it, vi } from "vitest";
 
-const SITE_URL = "https://lucamsshop.co";
+const SITE_URL = "https://lucamsshop.com";
 vi.mock("@/lib/cms", () => ({
   getSettingValue: vi.fn(async (key: string, fallback: string) => {
     switch (key) {
       case "SITE_URL":
         return SITE_URL;
       case "CONTACT_EMAIL":
-        return "hola@lucamsshop.co";
+        return "hola@lucamsshop.com";
       case "COPYRIGHT_YEAR":
         return "2026";
       case "COPYRIGHT_TAGLINE":
@@ -58,7 +58,7 @@ describe("refundIssuedEmail", () => {
     const r = await refundIssuedEmail(base);
     expect(r.html.startsWith("<!doctype html>")).toBe(true);
     expect(r.html).toContain('lang="es-CO"');
-    expect(r.html).toContain("hola@lucamsshop.co");
+    expect(r.html).toContain("hola@lucamsshop.com");
     expect(r.html).toContain("© 2026 Lucams_shop");
   });
 

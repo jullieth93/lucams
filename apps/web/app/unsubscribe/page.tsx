@@ -90,9 +90,9 @@ export default async function UnsubscribePage({ searchParams }: { searchParams: 
             {outcome === "already" &&
               "Tu correo no está en nuestra lista de novedades. No tienes que hacer nada más."}
             {outcome === "invalid" &&
-              "El enlace no es válido o ya expiró. Si quieres dejar de recibir nuestros correos, escríbenos a hola@lucamsshop.co y lo hacemos enseguida."}
+              "El enlace no es válido o ya expiró. Si quieres dejar de recibir nuestros correos, escríbenos a hola@lucamsshop.com y lo hacemos enseguida."}
             {outcome === "missing" &&
-              "Abre el enlace completo desde el correo que te enviamos, o escríbenos a hola@lucamsshop.co para darte de baja."}
+              "Abre el enlace completo desde el correo que te enviamos, o escríbenos a hola@lucamsshop.com para darte de baja."}
           </p>
 
           <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">

@@ -21,7 +21,7 @@ export type DesignRejectedData = {
 };
 
 export async function designRejectedEmail(data: DesignRejectedData) {
-  const siteUrl = await getSettingValue("SITE_URL", "https://lucamsshop.co");
+  const siteUrl = await getSettingValue("SITE_URL", "https://lucamsshop.com");
   const orderUrl = data.publicTrackingToken
     ? `${siteUrl}/pedido/${data.publicTrackingToken}`
     : `${siteUrl}/mi-cuenta/pedidos`;

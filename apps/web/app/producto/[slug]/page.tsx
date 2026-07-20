@@ -187,7 +187,7 @@ export default async function ProductoDetallePage({
     lowPrice === highPrice
       ? {
           "@type": "Offer",
-          url: `https://lucamsshop.co/producto/${product.slug}`,
+          url: `https://lucamsshop.com/producto/${product.slug}`,
           priceCurrency: "COP",
           price: (lowPrice / 100).toFixed(0),
           priceValidUntil,
@@ -197,7 +197,7 @@ export default async function ProductoDetallePage({
         }
       : {
           "@type": "AggregateOffer",
-          url: `https://lucamsshop.co/producto/${product.slug}`,
+          url: `https://lucamsshop.com/producto/${product.slug}`,
           priceCurrency: "COP",
           lowPrice: (lowPrice / 100).toFixed(0),
           highPrice: (highPrice / 100).toFixed(0),

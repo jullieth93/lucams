@@ -133,7 +133,7 @@ Panel para el dev/Claude:
 
 ### Canal
 
-- **Pre-Sentry (Fase 0–6):** email vía Resend al operador (`alertas@lucamsshop.co`).
+- **Pre-Sentry (Fase 0–6):** email vía Resend al operador (`alertas@lucamsshop.com`).
 - **Post-lanzamiento:** evaluar Discord webhook o Telegram bot — más inmediato que email.
 
 ### Reglas de alerta iniciales

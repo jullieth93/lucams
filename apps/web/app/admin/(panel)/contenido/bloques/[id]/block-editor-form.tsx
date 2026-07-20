@@ -304,4 +304,4 @@ Acá va el contenido del bloque. Puedes usar **negrita** o *cursiva*.
 - Con varios elementos
 - Como esta
 
-También puedes poner [un enlace](https://lucamsshop.co) y deja una línea vacía para separar párrafos.`;
+También puedes poner [un enlace](https://lucamsshop.com) y deja una línea vacía para separar párrafos.`;

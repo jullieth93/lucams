@@ -15,10 +15,10 @@ El tratamiento de tus datos está a cargo de:
 
 - **Responsable:** Lucy Jullieth Hurtado Rodríguez, quien actúa como **persona natural** titular de la marca **Lucams_shop**.
 - **Domicilio:** Bogotá D.C., Colombia.
-- **Correo de contacto:** hola@lucamsshop.co
+- **Correo de contacto:** hola@lucamsshop.com
 - **WhatsApp:** disponible en el sitio (botón de WhatsApp).
 
-El número de documento de identidad y la dirección física de notificación de la responsable **están disponibles a solicitud**, escribiendo a hola@lucamsshop.co. No los publicamos abiertamente por seguridad, pero te los entregamos cuando los necesites para un trámite legal.
+El número de documento de identidad y la dirección física de notificación de la responsable **están disponibles a solicitud**, escribiendo a hola@lucamsshop.com. No los publicamos abiertamente por seguridad, pero te los entregamos cuando los necesites para un trámite legal.
 
 ## Qué datos tratamos
 
@@ -85,7 +85,7 @@ Como titular de tus datos personales, la Ley 1581 (art. 8) te garantiza:
 
 La atención de peticiones, consultas y reclamos sobre tus datos está a cargo del **canal de Protección de Datos de Lucams_shop**:
 
-- **Correo:** hola@lucamsshop.co
+- **Correo:** hola@lucamsshop.com
 - **WhatsApp:** botón disponible en el sitio.
 
 Es el punto único al que puedes escribir para ejercer cualquiera de tus derechos.
@@ -95,7 +95,7 @@ Es el punto único al que puedes escribir para ejercer cualquiera de tus derecho
 Tienes dos caminos:
 
 1. **Tú mismo, al instante:** puedes eliminar tu cuenta y tus datos desde [Mi cuenta → Seguridad](/mi-cuenta/seguridad). Para dejar de recibir correos de marketing, usa el enlace **"Cancelar suscripción"** al final de cualquier correo nuestro.
-2. **Escribiéndonos:** manda tu solicitud a **hola@lucamsshop.co** o por WhatsApp, indicando:
+2. **Escribiéndonos:** manda tu solicitud a **hola@lucamsshop.com** o por WhatsApp, indicando:
    - Tu nombre completo y documento de identidad.
    - El correo con el que te registraste.
    - El derecho que quieres ejercer.

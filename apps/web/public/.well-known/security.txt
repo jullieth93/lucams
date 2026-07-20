@@ -1,9 +1,9 @@
-# Política de divulgación responsable de Lucams_shop — https://lucamsshop.co/legal/security
+# Política de divulgación responsable de Lucams_shop — https://lucamsshop.com/legal/security
 # Formato: RFC 9116 (https://www.rfc-editor.org/rfc/rfc9116)
 # Nota (ACCIÓN HUMANA): renovar el campo Expires cada año antes de que venza.
 
-Contact: mailto:security@lucamsshop.co
+Contact: mailto:security@lucamsshop.com
 Expires: 2027-07-01T00:00:00.000Z
 Preferred-Languages: es, en
-Canonical: https://lucamsshop.co/.well-known/security.txt
-Policy: https://lucamsshop.co/legal/security
+Canonical: https://lucamsshop.com/.well-known/security.txt
+Policy: https://lucamsshop.com/legal/security

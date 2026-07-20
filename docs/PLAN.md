@@ -22,7 +22,7 @@
 - Despliegue en **Vercel** (decisión justificada abajo).
 - Pasarela: **Wompi** (en gestión por el usuario).
 - Logística: **Aveonline** (Coordinadora + contraentrega + API pública). _Venndelo = Plan B (ADR-039)._
-- Dominio: `lucamsshop.co` registrado en **mi.com.co** (al lanzar).
+- Dominio: `lucamsshop.com` registrado en **mi.com.co** (al lanzar).
 
 ---
 
@@ -50,7 +50,7 @@ Render es excelente para apps Rails/Django o servicios con estado en memoria. **
 | Email transaccional | **Resend**             | Free (3k emails/mes, dominio resend.dev) | Pro (50k emails/mes, dominio propio) | $0        | $20                                                            |
 | WhatsApp            | `wa.me` link (sin API) | —                                        | —                                    | $0        | $0                                                             |
 | DNS + CDN           | **Cloudflare**         | Free                                     | Free                                 | $0        | $0                                                             |
-| Dominio             | `lucamsshop.co`        | — (`*.vercel.app`)                       | **mi.com.co**                        | $0        | ~$3-5 (~$50.000 COP/año)                                       |
+| Dominio             | `lucamsshop.com`       | — (`*.vercel.app`)                       | **mi.com.co**                        | $0        | ~$3-5 (~$50.000 COP/año)                                       |
 | Pasarela            | **Wompi**              | Sandbox                                  | Producción                           | $0        | 2.65% + $700 + IVA por trx (plan Avanzado, frecuencia mensual) |
 | Logística           | **Aveonline**          | Sandbox                                  | Producción                           | $0        | Costo de envío (0% comisión)                                   |
 | Monitoreo errores   | _Fuera del plan_       | —                                        | —                                    | $0        | $0                                                             |
@@ -69,12 +69,12 @@ Render es excelente para apps Rails/Django o servicios con estado en memoria. **
 
 ### Hitos de upgrade
 
-| Trigger                                         | Servicio a migrar                             |
-| ----------------------------------------------- | --------------------------------------------- |
-| Primera transacción real (sandbox → prod Wompi) | Vercel → Pro, Supabase → Pro                  |
-| Verificación de dominio para email              | Resend → Pro, configurar `mail.lucamsshop.co` |
-| Compra del dominio                              | mi.com.co (`lucamsshop.co`)                   |
-| Volumen >1k visitas/día                         | Evaluar monitoreo (Sentry Free u otro)        |
+| Trigger                                         | Servicio a migrar                              |
+| ----------------------------------------------- | ---------------------------------------------- |
+| Primera transacción real (sandbox → prod Wompi) | Vercel → Pro, Supabase → Pro                   |
+| Verificación de dominio para email              | Resend → Pro, configurar `mail.lucamsshop.com` |
+| Compra del dominio                              | mi.com.co (`lucamsshop.com`)                   |
+| Volumen >1k visitas/día                         | Evaluar monitoreo (Sentry Free u otro)         |
 
 ---
 
@@ -280,7 +280,7 @@ WebhookEvent (source: WOMPI|VENNDELO, externalId UNIQUE)
 | WhatsApp `wa.me` (sin Twilio API)                                                  | 006      | ✅     |
 | Catálogo seed: 30+ productos espejo de magneticas.cl con placeholders              | 010      | ✅     |
 | Branding: paleta kawaii con mascota mapache                                        | —        | ✅     |
-| Dominio `lucamsshop.co` en mi.com.co (al lanzar)                                   | 011      | ✅     |
+| Dominio `lucamsshop.com` en mi.com.co (al lanzar)                                  | 011      | ✅     |
 | Sentry/monitoreo: fuera del alcance hasta Fase 7                                   | 008      | ✅     |
 | WhatsApp temporal `+57 320 887 3826`                                               | —        | ✅     |
 | **Stock**: reserva al `PENDING_PAYMENT` (TTL 15 min) + descuento al `PAID`         | 014      | ✅     |

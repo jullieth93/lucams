@@ -85,7 +85,7 @@ model Consent {
 #### Página `/legal/habeas-data`
 
 - Formulario para PQR formales.
-- Email destino: `habeas-data@lucamsshop.co`.
+- Email destino: `habeas-data@lucamsshop.com`.
 - SLA: respuesta inicial 5 días hábiles, resolución 15 días hábiles.
 
 ### Aviso de Privacidad — texto base
@@ -118,12 +118,12 @@ Tus derechos:
 - Revocar la autorización y/o solicitar la supresión de tus datos.
 - Acceder gratuitamente a tus datos.
 
-Contacto: habeas-data@lucamsshop.co
+Contacto: habeas-data@lucamsshop.com
 ```
 
 ### Derecho de supresión — implementación self-service (2026-07-10)
 
-Además del canal manual (`habeas-data@lucamsshop.co`, respuesta en 15 días hábiles), el cliente puede
+Además del canal manual (`habeas-data@lucamsshop.com`, respuesta en 15 días hábiles), el cliente puede
 ejercer el **derecho de supresión (art. 8 lit. e)** por sí mismo en `/mi-cuenta/seguridad → Eliminar mi
 cuenta` (`features/account/delete-service.ts`). El enfoque es **anonimizar + soft-delete**, NO borrado
 físico, para conciliar la supresión con la **retención fiscal de la DIAN**:
@@ -223,7 +223,7 @@ model OrderItem {
 
 #### Flujo de retracto
 
-1. Cliente solicita retracto vía `/cuenta/orden/:id/retractar` o email a `retracto@lucamsshop.co`.
+1. Cliente solicita retracto vía `/cuenta/orden/:id/retractar` o email a `retracto@lucamsshop.com`.
 2. Validar elegibilidad:
    - ¿Está dentro de los 5 días hábiles desde la entrega?
    - ¿El item tiene `retractEligible = true`?
@@ -448,18 +448,18 @@ export function calculateTax(subtotalCents: number): { iva: number; total: numbe
 
 ## Documentos legales requeridos en el sitio
 
-| Documento                                                   | URL                                    | Origen                                   | Verificación                   |
-| ----------------------------------------------------------- | -------------------------------------- | ---------------------------------------- | ------------------------------ |
-| **Política de Privacidad** (Habeas Data)                    | `/legal/privacidad`                    | Plantilla CO + revisión legal            | Versión y fecha visibles       |
-| **Términos y Condiciones**                                  | `/legal/terminos`                      | Idem                                     | Idem                           |
-| **Política de Cookies**                                     | `/legal/cookies`                       | Idem                                     | Idem                           |
-| **Política de Devoluciones y Retracto**                     | `/legal/devoluciones`                  | Idem                                     | Idem                           |
-| **Política de Garantía**                                    | `/legal/garantias`                     | Idem                                     | Idem                           |
-| **Política de Tratamiento de Datos Personales**             | `/legal/tratamiento-datos`             | Plantilla SIC + revisión legal           | Idem                           |
-| **Aviso de Privacidad**                                     | Modal al primer contacto + footer link | Idem                                     | Idem                           |
-| **Habeas Data — formulario PQR**                            | `/legal/habeas-data`                   | Form + email `habeas-data@lucamsshop.co` | —                              |
-| **Lista de subprocesadores**                                | `/legal/subprocesadores`               | Generada de `docs/COMPLIANCE.md`         | Actualización al cambiar stack |
-| **Política de seguridad / divulgación de vulnerabilidades** | `/legal/security`                      | Texto interno                            | —                              |
+| Documento                                                   | URL                                    | Origen                                    | Verificación                   |
+| ----------------------------------------------------------- | -------------------------------------- | ----------------------------------------- | ------------------------------ |
+| **Política de Privacidad** (Habeas Data)                    | `/legal/privacidad`                    | Plantilla CO + revisión legal             | Versión y fecha visibles       |
+| **Términos y Condiciones**                                  | `/legal/terminos`                      | Idem                                      | Idem                           |
+| **Política de Cookies**                                     | `/legal/cookies`                       | Idem                                      | Idem                           |
+| **Política de Devoluciones y Retracto**                     | `/legal/devoluciones`                  | Idem                                      | Idem                           |
+| **Política de Garantía**                                    | `/legal/garantias`                     | Idem                                      | Idem                           |
+| **Política de Tratamiento de Datos Personales**             | `/legal/tratamiento-datos`             | Plantilla SIC + revisión legal            | Idem                           |
+| **Aviso de Privacidad**                                     | Modal al primer contacto + footer link | Idem                                      | Idem                           |
+| **Habeas Data — formulario PQR**                            | `/legal/habeas-data`                   | Form + email `habeas-data@lucamsshop.com` | —                              |
+| **Lista de subprocesadores**                                | `/legal/subprocesadores`               | Generada de `docs/COMPLIANCE.md`          | Actualización al cambiar stack |
+| **Política de seguridad / divulgación de vulnerabilidades** | `/legal/security`                      | Texto interno                             | —                              |
 
 > Cada documento tiene **versionado**: header `Versión X.Y — vigente desde YYYY-MM-DD`. Cambios mayores requieren re-aceptación del usuario activo.
 
@@ -547,8 +547,8 @@ Aunque la Ley 1581 colombiana no exige banner de cookies tan estricto como GDPR,
 | Banner de consentimiento de cookies funcional               | Antes de Fase 7            | ✅ Sí           |
 | Habilitación de proveedor DIAN (si software propio)         | N/A (usamos PT autorizado) | —               |
 | Registro Nacional de Bases de Datos (RNBD) si aplica        | Confirmar con abogado      | Posible         |
-| Email `habeas-data@lucamsshop.co` operativo + SLA de PQR    | Lanzamiento                | ✅ Sí           |
-| Email `retracto@lucamsshop.co` operativo                    | Lanzamiento                | ✅ Sí           |
+| Email `habeas-data@lucamsshop.com` operativo + SLA de PQR   | Lanzamiento                | ✅ Sí           |
+| Email `retracto@lucamsshop.com` operativo                   | Lanzamiento                | ✅ Sí           |
 | Tabla `Consent` registrando cada autorización               | Fase 1                     | ✅ Sí           |
 | Endpoint `/api/me/data-export`                              | Fase 1                     | ✅ Sí           |
 | Endpoint `DELETE /api/me/account` con flujo 30 días         | Fase 1                     | ✅ Sí           |

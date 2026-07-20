@@ -813,7 +813,7 @@ describe.skipIf(!hasDb)("checkout/service — integración DB (ruta de ingresos)
       await seedFullState();
 
       const result = await finalizeCheckout({
-        redirectUrl: "https://lucamsshop.co/checkout/gracias",
+        redirectUrl: "https://lucamsshop.com/checkout/gracias",
       });
 
       // Order creada en DB con total correcto: subtotal(100k) + flete(15k) = 115k.
@@ -839,7 +839,7 @@ describe.skipIf(!hasDb)("checkout/service — integración DB (ruta de ingresos)
         amountInCents: 115_000,
         currency: "COP",
         customerEmail: validContact.email,
-        redirectUrl: "https://lucamsshop.co/checkout/gracias",
+        redirectUrl: "https://lucamsshop.com/checkout/gracias",
       });
       expect(result.checkoutUrl).toBe(`https://checkout.wompi.test/p/${order!.number}`);
     }, 30000);

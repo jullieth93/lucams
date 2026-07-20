@@ -108,7 +108,7 @@ export async function sendBackInStockNotifications(
   // Correo comercial: aunque es one-shot (solicitado por el titular), Gmail/Yahoo exigen a
   // remitentes masivos List-Unsubscribe One-Click (RFC 8058) y refuerza el art. 8 lit. e) de la
   // Ley 1581 (revocación). Header + enlace visible, igual que cart-recovery/review-request.
-  const siteUrl = await getSettingValue("SITE_URL", "https://lucamsshop.co");
+  const siteUrl = await getSettingValue("SITE_URL", "https://lucamsshop.com");
   let sent = 0;
   for (const s of eligible) {
     try {

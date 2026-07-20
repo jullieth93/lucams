@@ -879,7 +879,7 @@ El switch toma efecto en el siguiente request (no requiere redeploy si se cambia
 | 5   | **Webhook handler sin HMAC ni IP whitelist**          | `aveonline.ts:352-373`          | 🟡 ALTO. Sin esto el endpoint sería vulnerable                     |
 | 6   | **Route handler `/api/webhooks/aveonline` no existe** | —                               | 🟡 Bloqueante para tracking automático                             |
 | 7   | **`createShipment` no se invoca desde la app**        | —                               | 🟡 Falta cron/edge function al transicionar Order PAID             |
-| 8   | **Email regex `/<(.+?)>/` puede fallar**              | `aveonline.ts:216`              | 🟢 Bajo. Tiene fallback `hola@lucamsshop.co`                       |
+| 8   | **Email regex `/<(.+?)>/` puede fallar**              | `aveonline.ts:216`              | 🟢 Bajo. Tiene fallback `hola@lucamsshop.com`                      |
 | 9   | **Race condition tokenCache**                         | `aveonline.ts:39-41`            | 🟢 Bajo. Solo desperdicia auth call                                |
 | 10  | **No valida `valorDeclarado >= 10000`**               | `checkout/service.ts:146`       | 🟡 Importante. Productos baratos generan numbererror -5            |
 | 11  | **Catch genérico `Error al guardar. Reintentá`**      | `checkout/datos/actions.ts:127` | 🟡 Mediano. No expone causa real. Log existe pero buffering oculta |

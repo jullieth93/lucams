@@ -80,7 +80,7 @@ Si una tarea cruza varias áreas, lee los archivos relevantes en paralelo. Si no
 
 ## Datos clave
 
-- **Dominio:** `lucamsshop.co` en mi.com.co (al lanzar).
+- **Dominio:** `lucamsshop.com` — adquirido y entregado por Lucy el 2026-07-20. (Antes el plan citaba `lucamsshop.com`; quedó descartado.) Todo el repo, los textos legales y el CMS usan `.com`.
 - **WhatsApp temporal:** +57 320 887 3826 (centralizado en `NEXT_PUBLIC_WA_NUMBER`).
 - **Productos iniciales:** 30+ espejo de magneticas.cl con placeholders (cliente reemplaza fotos/precios).
 - **Pago contraentrega:** activo desde el lanzamiento.

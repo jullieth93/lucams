@@ -52,5 +52,5 @@ export function getTrustedSelfBaseUrl(): string {
  * de importar desde el layout.
  */
 export function getCanonicalSiteUrl(): string {
-  return (process.env.NEXT_PUBLIC_SITE_URL ?? "https://lucamsshop.co").replace(/\/+$/, "");
+  return (process.env.NEXT_PUBLIC_SITE_URL ?? "https://lucamsshop.com").replace(/\/+$/, "");
 }

@@ -102,7 +102,7 @@
 - [ ] Toast success con Ticket ID corto
 - [ ] Rate-limit: 5/día IP + 3/día email
 - [ ] Email "received" llega al cliente con su mensaje
-- [ ] Email "internal" llega a hola@lucamsshop.co con Reply-To al cliente
+- [ ] Email "internal" llega a hola@lucamsshop.com con Reply-To al cliente
 - [ ] Turnstile widget cargado
 - [ ] WhatsApp CTA prominente como alternativa
 - [ ] Email + horario visible en columna izquierda
@@ -218,8 +218,8 @@
 
 - [ ] `npm audit --production` cero high/critical
 - [ ] gitleaks --redact --no-banner detect → cero secrets en historial
-- [ ] securityheaders.com en lucamsshop.co → A+
-- [ ] SSL Labs en lucamsshop.co → A+ (HSTS preload + TLS 1.3 only)
+- [ ] securityheaders.com en lucamsshop.com → A+
+- [ ] SSL Labs en lucamsshop.com → A+ (HSTS preload + TLS 1.3 only)
 - [ ] CSP estricta sin 'unsafe-inline' donde sea posible
 - [ ] Pentest manual: SQLi en search bar
 - [ ] Pentest manual: XSS reflected en query params

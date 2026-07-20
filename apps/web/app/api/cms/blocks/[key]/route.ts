@@ -27,7 +27,7 @@ export async function GET(
   if (!key) {
     return Response.json(
       {
-        type: "https://lucamsshop.co/errors/missing-key",
+        type: "https://lucamsshop.com/errors/missing-key",
         title: "Key requerida",
         status: 400,
         detail: "El path debe incluir la key del bloque.",
@@ -40,7 +40,7 @@ export async function GET(
   if (!block) {
     return Response.json(
       {
-        type: "https://lucamsshop.co/errors/cms-block-not-found",
+        type: "https://lucamsshop.com/errors/cms-block-not-found",
         title: "Bloque no encontrado",
         status: 404,
         detail: `No existe un bloque publicado con key "${key}".`,

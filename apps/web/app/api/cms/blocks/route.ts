@@ -49,7 +49,7 @@ export async function GET(req: Request): Promise<Response> {
     if (!VALID_CATEGORIES.includes(upper as CmsBlockCategory)) {
       return Response.json(
         {
-          type: "https://lucamsshop.co/errors/invalid-category",
+          type: "https://lucamsshop.com/errors/invalid-category",
           title: "Categoría inválida",
           status: 400,
           detail: `Categoría desconocida: ${rawCategory}. Válidas: ${VALID_CATEGORIES.join(", ")}.`,

@@ -25,7 +25,7 @@ describe("getTrustedSelfBaseUrl", () => {
   it("prioriza VERCEL_URL (hostname del propio deployment) con https", () => {
     clear();
     process.env.VERCEL_URL = "lucams-shop-abc-jullieth93s-projects.vercel.app";
-    process.env.NEXT_PUBLIC_SITE_URL = "https://lucamsshop.co";
+    process.env.NEXT_PUBLIC_SITE_URL = "https://lucamsshop.com";
     expect(getTrustedSelfBaseUrl()).toBe("https://lucams-shop-abc-jullieth93s-projects.vercel.app");
   });
 
@@ -37,8 +37,8 @@ describe("getTrustedSelfBaseUrl", () => {
 
   it("usa NEXT_PUBLIC_SITE_URL (sin trailing slash) si no hay VERCEL_URL", () => {
     clear();
-    process.env.NEXT_PUBLIC_SITE_URL = "https://lucamsshop.co/";
-    expect(getTrustedSelfBaseUrl()).toBe("https://lucamsshop.co");
+    process.env.NEXT_PUBLIC_SITE_URL = "https://lucamsshop.com/";
+    expect(getTrustedSelfBaseUrl()).toBe("https://lucamsshop.com");
   });
 
   it("cae a localhost:PORT en dev sin envs", () => {

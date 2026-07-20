@@ -29,7 +29,7 @@ const BRAND_PINK = "#E85B9F";
 
 export async function renderEmailLayout(opts: EmailLayoutOptions): Promise<string> {
   const [contactEmail, copyrightYear, footerTagline, legalEntityLine] = await Promise.all([
-    getSettingValue("CONTACT_EMAIL", "hola@lucamsshop.co"),
+    getSettingValue("CONTACT_EMAIL", "hola@lucamsshop.com"),
     getSettingValue("COPYRIGHT_YEAR", String(new Date().getFullYear())),
     getSettingValue("COPYRIGHT_TAGLINE", "Hecho con 💜 en Bogotá"),
     // Identidad del responsable (Ley 1581 art. 12 / Ley 1480 art. 50) en los 20 correos, sin

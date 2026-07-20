@@ -64,12 +64,12 @@ describe.skipIf(!hasDb)("captureClientError — dedup por fingerprint", () => {
     await captureClientError({
       message,
       stack: "at M (m.js:1)",
-      url: "https://lucamsshop.co/estudio/algo",
+      url: "https://lucamsshop.com/estudio/algo",
       userAgent: "Mozilla/5.0 test",
       digest: "digest-123",
     });
     const row = await prisma.errorReport.findFirst({ where: { message } });
-    expect(row?.url).toBe("https://lucamsshop.co/estudio/algo");
+    expect(row?.url).toBe("https://lucamsshop.com/estudio/algo");
     expect(row?.userAgent).toBe("Mozilla/5.0 test");
     expect(row?.digest).toBe("digest-123");
   });

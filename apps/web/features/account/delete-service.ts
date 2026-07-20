@@ -103,7 +103,7 @@ export async function deleteCustomerAccount(
   ]);
   const customerEmail = custRow?.email ?? null;
   // Placeholder de supresión para las columnas de contacto (Order.email/phone, tickets, etc.).
-  const deletedEmail = `deleted-${customerId}@deleted.lucamsshop.co`;
+  const deletedEmail = `deleted-${customerId}@deleted.lucamsshop.com`;
 
   const uploadPaths = assets.map((a) => a.storageUrl).filter(Boolean);
   const previewPaths = designs
@@ -119,7 +119,7 @@ export async function deleteCustomerAccount(
     await tx.customer.update({
       where: { id: customerId },
       data: {
-        email: `deleted-${customerId}@deleted.lucamsshop.co`,
+        email: `deleted-${customerId}@deleted.lucamsshop.com`,
         firstName: null,
         lastName: null,
         phone: null,
@@ -159,7 +159,7 @@ export async function deleteCustomerAccount(
       where: { customerId },
       data: {
         customerId: null,
-        email: `deleted-${customerId}@deleted.lucamsshop.co`,
+        email: `deleted-${customerId}@deleted.lucamsshop.com`,
         name: "Cliente eliminado",
         message: "[Contenido eliminado a solicitud del titular]",
         ip: null,

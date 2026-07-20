@@ -2,7 +2,7 @@
 
 E-commerce colombiano de productos magnéticos personalizados. Inspirado en [magneticas.cl](https://www.magneticas.cl) pero con valor agregado fuerte (estudio de personalización en vivo, vista 3D, IA, contraentrega).
 
-- **Sitio en producción:** _(pendiente, dominio `lucamsshop.co` se compra al lanzar)_
+- **Sitio en producción:** _(pendiente, dominio `lucamsshop.com` se compra al lanzar)_
 - **Instagram:** [@lucams_shop](https://www.instagram.com/lucams_shop)
 - **Linktree actual:** [linktr.ee/Lucams_shop](https://linktr.ee/Lucams_shop)
 - **WhatsApp (temporal):** +57 320 887 3826
@@ -24,7 +24,7 @@ E-commerce colombiano de productos magnéticos personalizados. Inspirado en [mag
 - **Email**: Resend
 - **CAPTCHA**: Cloudflare Turnstile (en checkout y registro)
 - **Hosting**: Vercel (Hobby/Free durante dev → Pro al lanzar)
-- **Dominio**: mi.com.co (al lanzar)
+- **Dominio**: `lucamsshop.com` (adquirido 2026-07-20; registrador por confirmar — ADR-076)
 
 ## Documentación
 

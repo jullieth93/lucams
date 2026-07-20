@@ -46,8 +46,8 @@ describe("buildCsp — dev (permisivo para HMR)", () => {
 
 describe("isOriginAllowed — CORS allowlist", () => {
   it("permite el dominio productivo (con y sin www)", () => {
-    expect(isOriginAllowed("https://lucamsshop.co", false)).toBe(true);
-    expect(isOriginAllowed("https://www.lucamsshop.co", false)).toBe(true);
+    expect(isOriginAllowed("https://lucamsshop.com", false)).toBe(true);
+    expect(isOriginAllowed("https://www.lucamsshop.com", false)).toBe(true);
   });
 
   it("permite el alias de producción y previews CON el scope del equipo (ADR-062)", () => {
@@ -72,9 +72,9 @@ describe("isOriginAllowed — CORS allowlist", () => {
 
   it("RECHAZA orígenes ajenos (incl. dominios que solo contienen el nombre)", () => {
     expect(isOriginAllowed("https://evil.com", false)).toBe(false);
-    expect(isOriginAllowed("https://lucamsshop.co.evil.com", false)).toBe(false);
+    expect(isOriginAllowed("https://lucamsshop.com.evil.com", false)).toBe(false);
     expect(isOriginAllowed("https://otra-app.vercel.app", false)).toBe(false);
-    expect(isOriginAllowed("http://lucamsshop.co", false)).toBe(false); // http, no https
+    expect(isOriginAllowed("http://lucamsshop.com", false)).toBe(false); // http, no https
   });
 
   it("localhost solo se permite en dev", () => {

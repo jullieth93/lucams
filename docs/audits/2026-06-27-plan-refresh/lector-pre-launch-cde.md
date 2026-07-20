@@ -71,7 +71,7 @@ El doc es **mayoritariamente spec**, no implementación. Esfuerzo: **M**.
 
 - Logs estructurados (`pino` + `requestId` propagado vía AsyncLocalStorage).
 - Vercel Logs como única vista + Supabase dashboard para DB.
-- **Alertas vía Resend** (`alertas@lucamsshop.co`) con reglas: 5+ errores 500/5min, webhook fallando >3x, saga compensation fallida, `/api/health` 503 >3min, stock oversold, firma webhook inválida 3+/5min, Resend bounce >5%, DB >80%, pgmq lag >30min, etc. Con dedup (<30min) + resumen diario 8am.
+- **Alertas vía Resend** (`alertas@lucamsshop.com`) con reglas: 5+ errores 500/5min, webhook fallando >3x, saga compensation fallida, `/api/health` 503 >3min, stock oversold, firma webhook inválida 3+/5min, Resend bounce >5%, DB >80%, pgmq lag >30min, etc. Con dedup (<30min) + resumen diario 8am.
 - **Healthchecks** `/api/health/*`.
 - **Dashboards en `/admin/observability`** (queries SQL contra logs y tablas): "Operación diaria", "Salud técnica", "SLOs".
 - **SLOs/SLIs** definidos con error budgets; cron mensual (`pg_cron`) que calcula budgets y publica en `/admin/observability/slos`.
@@ -93,7 +93,7 @@ El doc es **mayoritariamente spec**, no implementación. Esfuerzo: **M**.
 
 ### 3. Dependencias y alternativa gratuita
 - **Sin Sentry** (mandato #7): la alternativa pre-launch definida es **Vercel Logs + Supabase dashboard + alertas Resend + `/admin/observability`**. Decisión definitiva de error-monitoring diferida a **ADR-022 (Fase 7)**; tracing a **ADR-024**.
-- Las alertas dependen de Resend configurado (`alertas@lucamsshop.co` — acción humana: verificar dominio/DNS).
+- Las alertas dependen de Resend configurado (`alertas@lucamsshop.com` — acción humana: verificar dominio/DNS).
 - SLOs de saga/webhook/oversold dependen de tablas del Bloque A (ya certificadas: `SagaLog`, `WebhookEvent`, `InventoryLog`).
 - Cron de error budgets depende de `pg_cron`.
 

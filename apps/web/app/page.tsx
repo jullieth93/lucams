@@ -68,15 +68,15 @@ export default async function Home() {
       "@context": "https://schema.org",
       "@type": "Organization",
       name: "Lucams_shop",
-      url: "https://lucamsshop.co",
-      logo: "https://lucamsshop.co/brand/lucams-logo.png",
+      url: "https://lucamsshop.com",
+      logo: "https://lucamsshop.com/brand/lucams-logo.png",
       sameAs: ["https://www.instagram.com/lucams_shop"],
     },
     {
       "@context": "https://schema.org",
       "@type": "WebSite",
       name: "Lucams_shop",
-      url: "https://lucamsshop.co",
+      url: "https://lucamsshop.com",
     },
   ];
   const siteJsonLdSafe = JSON.stringify(siteJsonLd)

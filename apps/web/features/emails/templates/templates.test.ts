@@ -40,14 +40,14 @@ import { describe, expect, it, vi } from "vitest";
 
 // El único acoplamiento externo de las plantillas (y del layout) es getSettingValue.
 // Lo mockeamos con constantes → render determinista y sin DB.
-const SITE_URL = "https://lucamsshop.co";
+const SITE_URL = "https://lucamsshop.com";
 vi.mock("@/lib/cms", () => ({
   getSettingValue: vi.fn(async (key: string, fallback: string) => {
     switch (key) {
       case "SITE_URL":
         return SITE_URL;
       case "CONTACT_EMAIL":
-        return "hola@lucamsshop.co";
+        return "hola@lucamsshop.com";
       case "COPYRIGHT_YEAR":
         return "2026";
       case "COPYRIGHT_TAGLINE":
@@ -194,7 +194,7 @@ describe("layout compartido — invariantes en las 7 plantillas", () => {
       // Marca en el header.
       expect(r.html).toContain("Lucams");
       // Footer con email de contacto y copyright (settings mockeadas).
-      expect(r.html).toContain("hola@lucamsshop.co");
+      expect(r.html).toContain("hola@lucamsshop.com");
       expect(r.html).toContain("© 2026 Lucams_shop");
       // subject/text siempre presentes y no vacíos.
       expect(r.subject.length).toBeGreaterThan(0);
@@ -219,7 +219,7 @@ describe("layout compartido — invariantes en las 7 plantillas", () => {
     }
   });
 
-  it("cuando el setting SITE_URL no existe, cae al default 'https://lucamsshop.co' del template", async () => {
+  it("cuando el setting SITE_URL no existe, cae al default 'https://lucamsshop.com' del template", async () => {
     // Simula DB sin el setting: getSettingValue devuelve el fallback que le pasa
     // cada template (segundo argumento). El link absoluto debe usar ese default.
     // Sustituimos la implementación temporalmente y la restauramos en finally
@@ -229,9 +229,9 @@ describe("layout compartido — invariantes en las 7 plantillas", () => {
     mock.mockImplementation(async (_key: string, fallback: string) => fallback);
     try {
       const r = await orderConfirmationEmail(ocData({ publicTrackingToken: "T1" }));
-      expect(r.html).toContain("https://lucamsshop.co/pedido/T1");
-      // El footer también usa el fallback del contacto (hola@lucamsshop.co).
-      expect(r.html).toContain("hola@lucamsshop.co");
+      expect(r.html).toContain("https://lucamsshop.com/pedido/T1");
+      // El footer también usa el fallback del contacto (hola@lucamsshop.com).
+      expect(r.html).toContain("hola@lucamsshop.com");
     } finally {
       mock.mockImplementation(original!);
     }

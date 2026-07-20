@@ -479,8 +479,8 @@ describe.skipIf(!hasDb)(
           { fromPath: from, toPath: "/legal/garantias", statusCode: 301 },
           ACTOR,
         );
-        const resolved = new URL(created.toPath, "https://lucamsshop.co/page");
-        expect(resolved.host).toBe("lucamsshop.co");
+        const resolved = new URL(created.toPath, "https://lucamsshop.com/page");
+        expect(resolved.host).toBe("lucamsshop.com");
       });
     });
 

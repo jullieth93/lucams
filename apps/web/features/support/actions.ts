@@ -11,7 +11,7 @@
  *  3. Crea SupportTicket en DB (status=OPEN)
  *  4. Loguea evento support.ticket.created
  *
- * Email a hola@lucamsshop.co se difiere a sub-bloque G (lib/resend.ts
+ * Email a hola@lucamsshop.com se difiere a sub-bloque G (lib/resend.ts
  * + templates react-email). Por ahora solo persiste en DB.
  *
  * Turnstile: validación pendiente para sub-bloque F (cuando se cablée
@@ -121,12 +121,12 @@ export async function submitContactAction(
 
     // Emails fire-and-forget (no bloquean response). 2 templates:
     //   - received: confirmación al cliente con su mensaje
-    //   - internal: notificación a hola@lucamsshop.co con Reply-To
+    //   - internal: notificación a hola@lucamsshop.com con Reply-To
     // after(): en Vercel la función serverless puede congelarse al devolver la respuesta y matar un
     // `void (async …)()` antes de que corra. after() difiere el trabajo para DESPUÉS de responder,
     // garantizando que ambos correos salgan (auditoría v3 · #14).
     after(async () => {
-      const contactEmail = await getSettingValue("CONTACT_EMAIL", "hola@lucamsshop.co");
+      const contactEmail = await getSettingValue("CONTACT_EMAIL", "hola@lucamsshop.com");
       const [received, internal] = await Promise.all([
         supportTicketReceivedEmail({
           customerName: parsed.data.name,

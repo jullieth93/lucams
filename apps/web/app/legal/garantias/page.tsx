@@ -13,7 +13,7 @@ En Lucams_shop respondemos por lo que hacemos. Todos nuestros productos tienen *
 
 Lucams_shop es la marca de **Lucy Jullieth Hurtado Rodríguez** (persona natural), con domicilio en **Bogotá D.C., Colombia**. Somos quienes respondemos directamente por la garantía de todo lo que compras aquí.
 
-- Correo: **hola@lucamsshop.co**
+- Correo: **hola@lucamsshop.com**
 - WhatsApp: el número que ves en nuestro sitio.
 
 Si necesitas nuestros datos completos de identificación, te los damos con gusto por estos mismos canales.
@@ -55,7 +55,7 @@ Si tu producto sale con defecto dentro del año de garantía:
 
 ## Cómo la haces efectiva
 
-1. Escríbenos a **hola@lucamsshop.co** (o por WhatsApp) con:
+1. Escríbenos a **hola@lucamsshop.com** (o por WhatsApp) con:
    - tu número de pedido,
    - una foto o un video del defecto,
    - una breve descripción de qué pasó.

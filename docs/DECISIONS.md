@@ -204,7 +204,7 @@ Tras 12 preguntas a soporte Venndelo + pruebas reales con `POST /orders/quotatio
 
 - **Vercel Hobby:** sin Web Analytics, function timeout 60s, ToS no permite uso comercial. Migrar a Pro al recibir el primer pago real.
 - **Supabase Free:** se pausa tras 1 semana de inactividad. Migrar a Pro antes de lanzar.
-- **Resend Free:** 3k emails/mes, solo subdominio `resend.dev`. Migrar a Pro y verificar `mail.lucamsshop.co` al lanzar.
+- **Resend Free:** 3k emails/mes, solo subdominio `resend.dev`. Migrar a Pro y verificar `mail.lucamsshop.com` al lanzar.
 - Costo dev: $0/mes. Costo prod: ~$68/mes.
 
 ---
@@ -275,7 +275,8 @@ Tras 12 preguntas a soporte Venndelo + pruebas reales con `POST /orders/quotatio
 ## ADR-011 — Dominio `lucamsshop.co` en mi.com.co
 
 **Fecha:** 2026-05-09
-**Estado:** ✅ Aceptada (decisión del usuario)
+**Estado:** ⛔ **SUPERSEDIDA por ADR-076** (2026-07-20): el dominio finalmente adquirido fue
+`lucamsshop.com`, no el `.co`. Se conserva el texto original como registro histórico.
 
 **Contexto:** Inicialmente se sugirió Cloudflare Registrar para registrar el dominio. El usuario propone mi.com.co (registrador colombiano).
 
@@ -881,7 +882,7 @@ El chatbot futuro consumirá `/api/cms/search?q=<pregunta>` para hacer RAG: embe
 **Decisión.** Los dos flujos coexisten con roles complementarios:
 
 1. **Visual In-Place Editor** = flujo del 90% del tiempo
-   - Lucy navega `lucamsshop.co` (o preview Vercel), ve algo a cambiar, hover sobre el texto, click, edita en popover, publica. Sin abrir admin, sin navegar.
+   - Lucy navega `lucamsshop.com` (o preview Vercel), ve algo a cambiar, hover sobre el texto, click, edita en popover, publica. Sin abrir admin, sin navegar.
    - Cada `<CmsText>`/`<CmsSetting>`/`<CmsMarkdown>` lleva `data-cms-key` invisible; en modo edición el CSS inyectado les dibuja un lapicito ✏️ persistente + outline punteado. Hover → outline más fuerte. Click → modal.
    - Bloques aún no creados se auto-crean al primer publicar (categoría derivada del prefijo del key — `home.*` → HOME, `legal.*` → LEGAL, etc.).
    - Solo se monta para `getCurrentAdmin()` truthy. Cero JS extra para visitantes anónimos.
@@ -1702,7 +1703,7 @@ filtra por `session.customer.id` a nivel aplicación. Es el patrón establecido 
 
 **Housekeeping incluido.** Labels/badges de OrderStatus extraídos a `features/orders/order-status-display.ts`
 (estaban triplicados). Corregido **voseo** en pedidos/[number] ("escribinos/respondé"→tuteo). Reconciliado el
-correo habeas-data (la page legal decía `hola@`, el resto `habeas-data@`) → `habeas-data@lucamsshop.co`. Login
+correo habeas-data (la page legal decía `hola@`, el resto `habeas-data@`) → `habeas-data@lucamsshop.com`. Login
 redirect estandarizado a `?next=`.
 
 **Verificación.** `next build` OK (8 rutas /mi-cuenta) + typecheck + eslint + 6 tests de direcciones + 57 de
@@ -2598,7 +2599,7 @@ Lucy confirmó que opera como **persona natural** (no S.A.S.). Los textos legale
    natural titular de la marca **Lucams_shop**, domicilio Bogotá D.C. Se corrigieron los fallbacks
    de `terminos` y `privacidad`, y se agregó el bloque "Responsable del tratamiento" a `habeas-data`.
 2. **Exposición mínima de PII (elección de Lucy).** Público: nombre + persona natural + Bogotá +
-   correo (`habeas-data@lucamsshop.co`) + WhatsApp como canal para ejercer derechos. La **cédula** y
+   correo (`habeas-data@lucamsshop.com`) + WhatsApp como canal para ejercer derechos. La **cédula** y
    la **dirección física de notificación** NO se publican: quedan "**disponibles a solicitud**". Menor
    exposición para una emprendedora que trabaja desde casa; equilibra Ley 1480/1581 con su seguridad.
 3. **PII fuera de git.** La cédula y la dirección exacta NO viven en el repositorio. Si en el futuro
@@ -2820,5 +2821,37 @@ createdBy, createdAt }` + admin CRUD (labels en español llano + confirmación a
 
 **Carril humano (no código, del artifact):** figura legal + matrícula mercantil + RUT/NIT (persona natural
 ya decidida, ADR-071); DIAN + contador; cuentas prod (Wompi propia — hoy sandbox de "KAIU" —, Aveonline,
-Vercel Pro, Supabase Pro, dominio); agendar pg_cron + `CRON_SECRET`; DNS de correo `mail.lucamsshop.co`
+Vercel Pro, Supabase Pro, dominio); agendar pg_cron + `CRON_SECRET`; DNS de correo `mail.lucamsshop.com`
 (SPF/DKIM/DMARC); provisionar R2 + DR drill; aprobar `k6` para el smoke de carga.
+
+---
+
+## ADR-076 — Dominio definitivo: `lucamsshop.com` (2026-07-20)
+
+Lucy adquirió y entregó el dominio **`lucamsshop.com`**. Supersede a [ADR-011], que planeaba
+`lucamsshop.co` en mi.com.co (ese `.co` queda descartado).
+
+**Alcance del cambio (una sola pasada, idempotente `s/lucamsshop\.co(?!m)/lucamsshop.com/`):**
+
+- **Repo (105 archivos, 272 ocurrencias):** dominio, correos (`hola@`, `habeas-data@`, `retracto@`,
+  `security@`, `alertas@`…), subdominio de envío `mail.`, `www.`, el pseudo-dominio `deleted.` del
+  scrub de PII, el default del canonical (`lib/origin.ts`), la allowlist de CORS/CSP
+  (`lib/security-headers.ts`), textos legales de `packages/db/legal-content/`, seeds, tests y docs.
+- **Base de datos (el contenido publicado GANA sobre los fallbacks de código):** 2 `SiteSetting`
+  (`CONTACT_EMAIL`, `SECURITY_EMAIL`), 33 `CmsBlockVersion` de los 8 bloques legales (incluida la
+  versión publicada de cada uno) y 8 `CmsBlock.body` legacy. Script reproducible:
+  `packages/db/scripts/update-domain-to-com.mjs` (idempotente por el lookahead `(?!m)`).
+- **NO se tocó:** `dian.gov.co`, `sic.gov.co` ni `mi.com.co` (dominios ajenos); tampoco la versión de
+  la política de privacidad — cambiar el dominio de contacto **no** es un cambio material del
+  tratamiento de datos, así que no fuerza re-consentimiento (sí se actualiza la fecha de vigencia).
+
+**Registrador: `[pendiente confirmar con Lucy]`.** ADR-011 justificaba mi.com.co como registrador
+colombiano para `.co`/`.com.co`; un `.com` es gTLD y pudo comprarse en otro lado. No se asume (mandato
+#9): las menciones a mi.com.co en docs operativos quedaron marcadas como por confirmar hasta que Lucy
+indique dónde está el registro (importa para DNS y renovación).
+
+**Pendiente de ACCIÓN HUMANA para que el dominio quede vivo:** apuntar DNS al proyecto de Vercel y
+agregar el dominio allí; `NEXT_PUBLIC_SITE_URL=https://lucamsshop.com` en las env de Vercel (la local
+apunta a localhost y no cambia); verificar el dominio de envío `mail.lucamsshop.com` en Resend con
+SPF/DKIM/DMARC; actualizar las Redirect/Site URLs de Supabase Auth; y revisar las URLs de webhook
+registradas en Wompi y Aveonline.

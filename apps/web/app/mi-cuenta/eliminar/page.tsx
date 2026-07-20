@@ -56,8 +56,8 @@ export default async function EliminarCuentaPage() {
         </ul>
         <p className="text-brand-muted mt-3 text-xs">
           ¿Prefieres que lo hagamos por ti o tienes dudas? Escríbenos a{" "}
-          <a href="mailto:habeas-data@lucamsshop.co" className="text-brand-pink-ink font-medium">
-            habeas-data@lucamsshop.co
+          <a href="mailto:habeas-data@lucamsshop.com" className="text-brand-pink-ink font-medium">
+            habeas-data@lucamsshop.com
           </a>
           .
         </p>

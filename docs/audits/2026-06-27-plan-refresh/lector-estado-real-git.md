@@ -49,7 +49,7 @@ Lo que está **CERTIFICADO / hecho** hoy (2026-06-27):
 | **Bloque D** — Observabilidad | ⏳ pendiente | sin commits — `[pendiente verificación]` (no aparece detallado en STATE/ROADMAP como bloque formal) |
 | **Bloque E** — Testing | ⏳ pendiente | sin commits |
 | **Bloque F** — Refund/Cupones | ⏳ pendiente | CRUD cupones figura en Fase 5 ROADMAP ⏸️ |
-| ACCIÓN HUMANA: verificar dominio `mail.lucamsshop.co` en Resend (DNS SPF/DKIM/DMARC) | ⏳ pendiente | P0-004, bitácora línea 713 |
+| ACCIÓN HUMANA: verificar dominio `mail.lucamsshop.com` en Resend (DNS SPF/DKIM/DMARC) | ⏳ pendiente | P0-004, bitácora línea 713 |
 
 Audits que respaldan la evidencia (en `docs/audits/`): `2026-06-26-certify-bloque-a/`, `2026-06-27-admin-ux-feedback/`, `2026-06-26-admin-ux-redesign/`, `2026-06-26-admin-visual-audit/`, `2026-06-26-catalogo-restructure/`, `2026-05-28-mega-audit/`.
 

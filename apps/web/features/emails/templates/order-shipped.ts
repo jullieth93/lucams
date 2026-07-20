@@ -16,7 +16,7 @@ export type OrderShippedData = {
 };
 
 export async function orderShippedEmail(data: OrderShippedData) {
-  const siteUrl = await getSettingValue("SITE_URL", "https://lucamsshop.co");
+  const siteUrl = await getSettingValue("SITE_URL", "https://lucamsshop.com");
   const etaText = data.estimatedDays
     ? `<p>Estimado de entrega: <strong>${data.estimatedDays} día${data.estimatedDays === 1 ? "" : "s"} hábil${data.estimatedDays === 1 ? "" : "es"}</strong>.</p>`
     : "";

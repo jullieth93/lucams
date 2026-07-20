@@ -16,7 +16,7 @@ Tengo suficiente para producir el reporte. Resumen rápido del scan:
 - Empty states sin folder dedicado pero patrón mascote+CMS está aplicado consistentemente
 - `prefers-reduced-motion` respetado en brand-mark, hero, reveal-on-scroll
 - Voseo en CmsBlock fallback en seed-cms.mjs probablemente también
-- No hay verificación dominio mail.lucamsshop.co (todo en sandbox `resend.dev` con límite 3K/mo y `onboarding@resend.dev`)
+- No hay verificación dominio mail.lucamsshop.com (todo en sandbox `resend.dev` con límite 3K/mo y `onboarding@resend.dev`)
 
 # Dimensión: EMAILS + LEGAL + COMPLIANCE + FRONTEND UX + MOBILE
 
@@ -39,7 +39,7 @@ El cliente Resend (`apps/web/lib/resend.ts:1-173`) está bien implementado (retr
 
 ## Debilidades
 
-- **EMAIL_FROM en sandbox `onboarding@resend.dev`** sin dominio `mail.lucamsshop.co` verificado → Resend solo permite enviar al owner de la cuenta o domain verified; clientes externos NO reciben emails (confirmado en INTEGRATIONS.md:313).
+- **EMAIL_FROM en sandbox `onboarding@resend.dev`** sin dominio `mail.lucamsshop.com` verificado → Resend solo permite enviar al owner de la cuenta o domain verified; clientes externos NO reciben emails (confirmado en INTEGRATIONS.md:313).
 - Ruta `/unsubscribe?token=...` linkeada en `newsletter-welcome.ts:18` y en footer de emails con unsubscribeUrl NO existe — link roto. **Ley 1581 violación**: el titular no puede revocar consentimiento por el medio prometido.
 - Voseo extensivo en code paths user-facing (debería ser tuteo según memory): `ayuda/page.tsx:47,71` ("desde que confirmás", "nos pasás"), `order-delivered.ts:23,24,33` ("nos contás", "a vos", "Respondé"), `contacto/page.tsx:73` ("Hablanos"), `contact-form.tsx:128` ("Contanos"), `mi-cuenta/pedidos/[number]/page.tsx:163` ("tenés", "escribinos", "respondé"), `checkout/gracias/page.tsx:225` ("Podés", "querés").
 - Fallback hardcoded de `legal/privacidad/page.tsx:10-14` y `legal/terminos/page.tsx:9-11` dice **"Documento en revisión legal — versión final próximamente"**: si el seed CMS no se corrió en prod, los visitantes ven texto stub legalmente insuficiente.
@@ -61,9 +61,9 @@ El cliente Resend (`apps/web/lib/resend.ts:1-173`) está bien implementado (retr
 - **Categoría**: bug
 - **Evidencia**: `apps/web/lib/resend.ts:112` (`const fromDefault = process.env.EMAIL_FROM ?? "Lucams_shop <onboarding@resend.dev>"`), `docs/INTEGRATIONS.md:313` documenta que Resend sandbox solo envía a owner de la cuenta.
 - **Impacto**: ningún cliente recibe email transaccional (confirmación pago, despacho, entrega, payment-failed) — todos los flujos post-checkout fallan silenciosamente. La saga sigue funcionando pero el cliente queda a ciegas.
-- **Recomendación**: verificar `mail.lucamsshop.co` en Resend (SPF + DKIM + DMARC según `INTEGRATIONS.md:323`), setear `EMAIL_FROM=Lucams_shop <hola@mail.lucamsshop.co>` en Vercel prod env, validar con mail-tester.com ≥ 9/10. Mientras tanto NO lanzar.
+- **Recomendación**: verificar `mail.lucamsshop.com` en Resend (SPF + DKIM + DMARC según `INTEGRATIONS.md:323`), setear `EMAIL_FROM=Lucams_shop <hola@mail.lucamsshop.com>` en Vercel prod env, validar con mail-tester.com ≥ 9/10. Mientras tanto NO lanzar.
 - **Horas estimadas**: 2
-- **Acción humana Lucy**: **ACCIÓN HUMANA REQUERIDA:** comprar/configurar subdominio `mail.lucamsshop.co`, agregar registros DNS (SPF/DKIM/DMARC), verificar dominio en dashboard Resend, setear `EMAIL_FROM` en Vercel env prod.
+- **Acción humana Lucy**: **ACCIÓN HUMANA REQUERIDA:** comprar/configurar subdominio `mail.lucamsshop.com`, agregar registros DNS (SPF/DKIM/DMARC), verificar dominio en dashboard Resend, setear `EMAIL_FROM` en Vercel env prod.
 
 ### [P0] EMAIL-002 — Ruta `/unsubscribe` no existe pero el welcome email la enlaza (viola Ley 1581)
 - **Categoría**: bug
@@ -173,7 +173,7 @@ El cliente Resend (`apps/web/lib/resend.ts:1-173`) está bien implementado (retr
 - **Categoría**: gap
 - **Evidencia**: `apps/web/app/legal/security/page.tsx:33` linkea `/.well-known/security.txt`. `find apps/web/public -name "security.txt"` → vacío.
 - **Impacto**: link 404 desde la página de seguridad; investigadores que sigan RFC 9116 no encuentran contacto formal. Imagen de seriedad de seguridad afectada.
-- **Recomendación**: crear `apps/web/public/.well-known/security.txt` con `Contact: mailto:security@lucamsshop.co`, `Expires: 2027-01-01T00:00:00.000Z`, `Preferred-Languages: es, en`.
+- **Recomendación**: crear `apps/web/public/.well-known/security.txt` con `Contact: mailto:security@lucamsshop.com`, `Expires: 2027-01-01T00:00:00.000Z`, `Preferred-Languages: es, en`.
 - **Horas estimadas**: 0.25
 - **Acción humana Lucy**: ninguna
 

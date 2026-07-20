@@ -2,7 +2,7 @@
  * Template: Confirmación de recepción de ticket de soporte.
  *
  * Se envía al cliente cuando llena el form /contacto. NO va a
- * hola@lucamsshop.co (eso es otro template aparte).
+ * hola@lucamsshop.com (eso es otro template aparte).
  */
 
 import { renderEmailLayout, escapeHtml } from "../layout";

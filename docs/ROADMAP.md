@@ -79,7 +79,7 @@ El trabajo reciente se nombró por **bloques**; equivalen a:
 - [x] **GitHub** repositorio `jullieth93/lucams` creado, branch `develop`, 7 commits pusheados, integrado con Vercel.
 - [x] **Supabase** proyecto `zxkucphbsfygakgxcnik` Free, región `sa-east-1` (São Paulo), Postgres standard. GitHub linked. Auto-RLS ON, Auto-expose tables OFF, Data API ON. Extensiones habilitadas: `pgmq`, `pg_cron`, `pgcrypto`, `pg_stat_statements`. Connection test OK.
 - [x] **Vercel** Hobby (cuenta `jullieth93`) conectado al repo. Proyecto `lucams-shop` deployado (build vacío esperado, sirve 404 hasta que llegue código en Fase 1). Webhook GitHub→Vercel funcionando.
-- [x] **Resend** Free. API key con scope "Sending access" (least privilege). Dominio default `resend.dev` mientras no tengamos `mail.lucamsshop.co`.
+- [x] **Resend** Free. API key con scope "Sending access" (least privilege). Dominio default `resend.dev` mientras no tengamos `mail.lucamsshop.com`.
 
 ### Movidas a fases posteriores (con justificación)
 
@@ -345,7 +345,7 @@ Antes de iniciar la fase, citar fuente con fecha en `OPERATIONS.md` para:
 - [ ] **Schema `RetractRequest`** (Ley 1480 art. 47) + flujo end-to-end
 - [ ] **Schema `Chargeback`** para tracking de reversiones de pago (Ley 1480 art. 51, plazo 21 días calendario para responder)
 - [ ] **Cookie consent banner** funcional con tabla `Consent` + carga condicional de scripts
-- [ ] **Email `retracto@lucamsshop.co`** operativo
+- [ ] **Email `retracto@lucamsshop.com`** operativo
 - [ ] **Página `/cuenta/orden/:id/retractar`** con validación de elegibilidad (5 días hábiles + retractEligible flag)
 - [ ] **Email transaccional** "tu factura electrónica" cuando DIAN emite (Fase 7 si DIAN no se integra antes)
 - [ ] **Tests E2E:** flujo de retracto completo (solicitar → aprobar → recibir → reembolsar)
@@ -508,10 +508,10 @@ Antes de iniciar la fase, citar fuente con fecha en `OPERATIONS.md` para:
 - [ ] **Vercel Pro** activado
 - [ ] **Supabase Pro** activado (verificar PITR de 7 días)
 - [ ] **Resend Pro** activado
-- [ ] Compra de dominio `lucamsshop.co` en **mi.com.co**
+- [x] Compra de dominio `lucamsshop.com` (adquirido 2026-07-20; registrador por confirmar — ADR-076)
 - [ ] DNS configurado en Cloudflare
 - [ ] Dominio conectado a Vercel
-- [ ] DNS de email `mail.lucamsshop.co` configurado en Resend (SPF/DKIM/DMARC)
+- [ ] DNS de email `mail.lucamsshop.com` configurado en Resend (SPF/DKIM/DMARC)
 - [ ] Wompi en producción (cuentas reales)
 - [ ] Venndelo en producción
 - [ ] Cambio de número WhatsApp temporal por el definitivo
@@ -528,7 +528,7 @@ Antes de iniciar la fase, citar fuente con fecha en `OPERATIONS.md` para:
 ### Criterio de aceptación
 
 - Una compra real con tarjeta real procesa correctamente.
-- El cliente recibe email desde `hola@mail.lucamsshop.co`.
+- El cliente recibe email desde `hola@mail.lucamsshop.com`.
 - El envío llega al destino vía Coordinadora/Venndelo.
 - No hay errores 500 en Vercel Logs durante 24h continuas.
 - Todas las páginas críticas con Lighthouse ≥ 95.

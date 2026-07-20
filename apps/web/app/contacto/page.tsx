@@ -2,7 +2,7 @@
  * /contacto — Formulario de soporte + WhatsApp CTA prominente.
  *
  * Form server-action driven (ContactForm client component). El email
- * de notificación a hola@lucamsshop.co se difiere a sub-bloque G
+ * de notificación a hola@lucamsshop.com se difiere a sub-bloque G
  * (cuando esté lib/resend.ts centralizado).
  */
 
@@ -28,7 +28,7 @@ export const dynamic = "force-dynamic";
 export default async function ContactoPage() {
   const [waSupportUrl, contactEmail] = await Promise.all([
     buildWhatsAppUrl({ kind: "support" }),
-    getSettingValue("CONTACT_EMAIL", "hola@lucamsshop.co"),
+    getSettingValue("CONTACT_EMAIL", "hola@lucamsshop.com"),
   ]);
 
   return (
@@ -83,11 +83,11 @@ export default async function ContactoPage() {
                   href={`mailto:${contactEmail}`}
                   className="text-brand-purple-dark hover:text-brand-purple mt-2 inline-block text-sm font-medium"
                 >
-                  <CmsSetting settingKey="CONTACT_EMAIL" fallback="hola@lucamsshop.co" />
+                  <CmsSetting settingKey="CONTACT_EMAIL" fallback="hola@lucamsshop.com" />
                 </a>
                 <p className="text-brand-muted mt-2 text-xs">
                   Para temas legales:{" "}
-                  <CmsSetting settingKey="SECURITY_EMAIL" fallback="security@lucamsshop.co" />
+                  <CmsSetting settingKey="SECURITY_EMAIL" fallback="security@lucamsshop.com" />
                 </p>
               </div>
 

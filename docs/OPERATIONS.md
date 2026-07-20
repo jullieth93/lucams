@@ -131,13 +131,13 @@ GUARDADA (pg_cron + pg_net) e IDEMPOTENTE.
 
 **Env var:** `CRON_SECRET` (generar con `openssl rand -hex 32`) — en `.env.local` y en Vercel. Sin
 ella los endpoints responden 401 (fail-closed). El destinatario de alertas/resumen sale de la setting
-`ALERT_EMAIL` (default `hola@lucamsshop.co`).
+`ALERT_EMAIL` (default `hola@lucamsshop.com`).
 
 **ACCIÓN HUMANA REQUERIDA (Lucy, al configurar prod — UNA sola vez):** habilitar `pg_cron` + `pg_net`
 en el dashboard, y crear los 2 secretos del Vault (así el SQL versionado nunca contiene el valor):
 
 ```sql
-select vault.create_secret('https://lucamsshop.co', 'cron_base_url');
+select vault.create_secret('https://lucamsshop.com', 'cron_base_url');
 select vault.create_secret('<CRON_SECRET real>',    'cron_secret');
 ```
 
@@ -190,19 +190,19 @@ supabase db dump --local > backups/local-$(date +%F-%H%M).sql
 
 Para los 3 environments de Vercel: **Production**, **Preview**, **Development**.
 
-| Variable                               | Pública (visible al cliente) | Notas                                                                                                                                                                                                                                                                                                                                 |
-| -------------------------------------- | ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `NEXT_PUBLIC_SITE_URL`                 | ✅                           | Cambia entre local (`http://localhost:3000`) y prod (`https://lucamsshop.co` cuando se compre). **Fuente ÚNICA de la URL canónica** (audit v3 #28): `lib/origin.ts:getCanonicalSiteUrl()` la lee para sitemap, robots, canonicals, OG y `metadataBase`. NO usar el setting CMS `SITE_URL` para esas superficies (causaba split-brain) |
-| `NEXT_PUBLIC_SUPABASE_URL`             | ✅                           | Igual en todos los entornos                                                                                                                                                                                                                                                                                                           |
-| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | ✅                           | Igual en todos los entornos                                                                                                                                                                                                                                                                                                           |
-| `SUPABASE_SECRET_KEY`                  | ❌ Solo server               | **Marcar como Encrypted en Vercel**                                                                                                                                                                                                                                                                                                   |
-| `DATABASE_URL`                         | ❌                           | Pooler (puerto 6543), reemplazar `[YOUR-PASSWORD]` con la db password                                                                                                                                                                                                                                                                 |
-| `DIRECT_URL`                           | ❌                           | Direct (puerto 5432), idem                                                                                                                                                                                                                                                                                                            |
-| `RESEND_API_KEY`                       | ❌ Solo server               | Encrypted                                                                                                                                                                                                                                                                                                                             |
-| `EMAIL_FROM`                           | ❌                           | Texto plano (`Lucams_shop <onboarding@resend.dev>`)                                                                                                                                                                                                                                                                                   |
-| `NEXT_PUBLIC_WA_NUMBER`                | ✅                           | `573208873826`                                                                                                                                                                                                                                                                                                                        |
-| `NODE_ENV`                             | ❌                           | `production` en Vercel (no se setea manual; Vercel lo maneja)                                                                                                                                                                                                                                                                         |
-| `NEXT_TELEMETRY_DISABLED`              | ❌                           | `1`                                                                                                                                                                                                                                                                                                                                   |
+| Variable                               | Pública (visible al cliente) | Notas                                                                                                                                                                                                                                                                                                                                  |
+| -------------------------------------- | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `NEXT_PUBLIC_SITE_URL`                 | ✅                           | Cambia entre local (`http://localhost:3000`) y prod (`https://lucamsshop.com` cuando se compre). **Fuente ÚNICA de la URL canónica** (audit v3 #28): `lib/origin.ts:getCanonicalSiteUrl()` la lee para sitemap, robots, canonicals, OG y `metadataBase`. NO usar el setting CMS `SITE_URL` para esas superficies (causaba split-brain) |
+| `NEXT_PUBLIC_SUPABASE_URL`             | ✅                           | Igual en todos los entornos                                                                                                                                                                                                                                                                                                            |
+| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | ✅                           | Igual en todos los entornos                                                                                                                                                                                                                                                                                                            |
+| `SUPABASE_SECRET_KEY`                  | ❌ Solo server               | **Marcar como Encrypted en Vercel**                                                                                                                                                                                                                                                                                                    |
+| `DATABASE_URL`                         | ❌                           | Pooler (puerto 6543), reemplazar `[YOUR-PASSWORD]` con la db password                                                                                                                                                                                                                                                                  |
+| `DIRECT_URL`                           | ❌                           | Direct (puerto 5432), idem                                                                                                                                                                                                                                                                                                             |
+| `RESEND_API_KEY`                       | ❌ Solo server               | Encrypted                                                                                                                                                                                                                                                                                                                              |
+| `EMAIL_FROM`                           | ❌                           | Texto plano (`Lucams_shop <onboarding@resend.dev>`)                                                                                                                                                                                                                                                                                    |
+| `NEXT_PUBLIC_WA_NUMBER`                | ✅                           | `573208873826`                                                                                                                                                                                                                                                                                                                         |
+| `NODE_ENV`                             | ❌                           | `production` en Vercel (no se setea manual; Vercel lo maneja)                                                                                                                                                                                                                                                                          |
+| `NEXT_TELEMETRY_DISABLED`              | ❌                           | `1`                                                                                                                                                                                                                                                                                                                                    |
 
 > **Cómo agregarlas:** Vercel Dashboard → Project `lucams-shop` → Settings → Environment Variables → "Add New". Para cada var, marcar los 3 entornos (Production, Preview, Development) salvo que el valor difiera. Las que tienen `*_KEY`, `*_SECRET`, `DATABASE_*` deben marcarse como **Encrypted** (default checkbox).
 
@@ -317,7 +317,7 @@ cd /home/ansible/workspaces/lucams-shop-local && make help
 ```bash
 # ─── App ───
 NEXT_PUBLIC_SITE_URL=http://localhost:3000        # dev
-# NEXT_PUBLIC_SITE_URL=https://lucamsshop.co       # prod
+# NEXT_PUBLIC_SITE_URL=https://lucamsshop.com       # prod
 
 NEXT_PUBLIC_WA_NUMBER=573208873826                # WhatsApp temporal del usuario
 
@@ -347,7 +347,7 @@ VENNDELO_ORIGIN_DEPARTMENT=Cundinamarca            # Departamento de recolecció
 # ─── Resend ───
 RESEND_API_KEY=re_xxxxxxxxxxxxxx
 EMAIL_FROM=Lucams_shop <onboarding@resend.dev>     # dev
-# EMAIL_FROM=Lucams_shop <hola@mail.lucamsshop.co>  # prod
+# EMAIL_FROM=Lucams_shop <hola@mail.lucamsshop.com>  # prod
 
 # ─── Claude API ───
 ANTHROPIC_API_KEY=sk-ant-xxxxxxxxxxxxxx
@@ -667,7 +667,7 @@ Cuando se rompan estos límites, abrir issue automático:
 | Anthropic      | Variable        | —                     | Alerta si > $30/mes                                                                                                                                        |
 | Wompi          | Por trx         | —                     | 2.65% + $700 + IVA (plan Avanzado, frecuencia mensual). [Verificado: wompi.com/es/co/planes-tarifas a 2026-05-09](https://wompi.com/es/co/planes-tarifas/) |
 | Venndelo       | Por envío       | —                     | 0% comisión                                                                                                                                                |
-| Dominio        | $50.000 COP/año | —                     | mi.com.co                                                                                                                                                  |
+| Dominio        | $50.000 COP/año | —                     | registrador por confirmar (ADR-076)                                                                                                                        |
 | **Total fijo** |                 | **~$272.000 COP/mes** |                                                                                                                                                            |
 
 ---
@@ -905,12 +905,12 @@ if (await isFeatureEnabled("ai-design-suggest", user?.id)) {
 
 ### Resend Free — [resend.com/pricing](https://resend.com/pricing)
 
-| Item                | Valor verificado                                     |
-| ------------------- | ---------------------------------------------------- |
-| Emails por mes      | 3.000                                                |
-| Emails por día      | 100                                                  |
-| Dominios custom     | 1 (verificable cuando tengamos `mail.lucamsshop.co`) |
-| Retención de emails | 30 días                                              |
+| Item                | Valor verificado                                      |
+| ------------------- | ----------------------------------------------------- |
+| Emails por mes      | 3.000                                                 |
+| Emails por día      | 100                                                   |
+| Dominios custom     | 1 (verificable cuando tengamos `mail.lucamsshop.com`) |
+| Retención de emails | 30 días                                               |
 
 > **Implicación:** suficiente para dev y soft launch. 100 emails/día cubren ~30 órdenes/día con 3 emails por orden (confirmación + envío + entrega). Migrar a Pro al activar dominio propio en Fase 7 (ya planeado).
 
@@ -969,4 +969,4 @@ if (await isFeatureEnabled("ai-design-suggest", user?.id)) {
 - **2026-05-09** — Cierre de Fase 0a. Auditoría de coherencia aplicada (21 hallazgos resueltos). 6 ADRs nuevos (014–019). Variables de entorno expandidas con Turnstile (`TURNSTILE_*`), R2 (`R2_*`), `VENNDELO_ORIGIN_DEPARTMENT`. Política de stock cerrada (reserva al `PENDING_PAYMENT` + descuento al `PAID`). Background jobs migran de Vercel Cron a `pgmq` + `pg_cron`. Rate-limit y cache se mueven a Postgres. Documento `SECURITY.md` creado como fuente única de seguridad.
 - **2026-05-09** — Documento creado en Fase 0a.
 
-> **Estado pg_cron (verificado 2026-07-18 con la key de la DB).** Los 7 jobs HTTP (`lucams-*`) quedaron **agendados y corriendo** en el proyecto Supabase de dev: se crearon los secretos `cron_base_url` (= URL ngrok fija de dev) y `cron_secret` (= `CRON_SECRET`) en el Vault, y se aplicaron las migraciones `supabase/migrations/015` + `016`. Confirmado end-to-end: el endpoint responde 200 con el header `x-cron-secret` y 401 sin él; `cron.job_run_details` + los heartbeats (`AlertState cron:*`, dead-man switch #15) muestran ejecuciones reales. **Para producción:** actualizar el secreto `cron_base_url` del Vault a `https://lucamsshop.co` cuando el dominio esté vivo (`select vault.update_secret((select id from vault.secrets where name='cron_base_url'), 'https://lucamsshop.co');`).
+> **Estado pg_cron (verificado 2026-07-18 con la key de la DB).** Los 7 jobs HTTP (`lucams-*`) quedaron **agendados y corriendo** en el proyecto Supabase de dev: se crearon los secretos `cron_base_url` (= URL ngrok fija de dev) y `cron_secret` (= `CRON_SECRET`) en el Vault, y se aplicaron las migraciones `supabase/migrations/015` + `016`. Confirmado end-to-end: el endpoint responde 200 con el header `x-cron-secret` y 401 sin él; `cron.job_run_details` + los heartbeats (`AlertState cron:*`, dead-man switch #15) muestran ejecuciones reales. **Para producción:** actualizar el secreto `cron_base_url` del Vault a `https://lucamsshop.com` cuando el dominio esté vivo (`select vault.update_secret((select id from vault.secrets where name='cron_base_url'), 'https://lucamsshop.com');`).

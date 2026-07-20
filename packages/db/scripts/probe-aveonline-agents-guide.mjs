@@ -94,11 +94,7 @@ if (agente && token && idempresa) {
       .replace(/[̀-ͯ]/g, "")
       .replace(/\s*D\.?\s*C\.?\s*/gi, "")
       .trim()
-      .toUpperCase()}(${d
-      .normalize("NFD")
-      .replace(/[̀-ͯ]/g, "")
-      .trim()
-      .toUpperCase()})`;
+      .toUpperCase()}(${d.normalize("NFD").replace(/[̀-ͯ]/g, "").trim().toUpperCase()})`;
 
   const body = {
     tipo: "generarGuia2",
@@ -113,7 +109,7 @@ if (agente && token && idempresa) {
     dsnombre: get("PICKUP_CONTACT_NAME"),
     dstelre: get("PICKUP_PHONE"),
     dscelularre: get("PICKUP_PHONE"),
-    dscorreopre: "hola@lucamsshop.co",
+    dscorreopre: "hola@lucamsshop.com",
     destino: fmtCity("Medellín", "Antioquia"),
     dsdir: "Cra 50 # 30-20",
     dsbarrio: "",
@@ -122,7 +118,7 @@ if (agente && token && idempresa) {
     dsnombrecompleto: "Cliente Probe Lucams",
     dstel: "3001234567",
     dscelular: "3001234567",
-    dscorreop: "probe@lucamsshop.co",
+    dscorreop: "probe@lucamsshop.com",
     idtransportador: "1009", // Coordinadora
     idagente: String(agente.id), // ← Agente Lucams Shop recién creado
     unidades: 1,

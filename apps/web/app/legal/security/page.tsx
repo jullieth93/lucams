@@ -15,7 +15,7 @@ Lucams_shop es operado por **Lucy Jullieth Hurtado Rodríguez** (persona natural
 
 ## Cómo reportar
 
-Escríbenos a **security@lucamsshop.co** e incluye, si puedes:
+Escríbenos a **security@lucamsshop.com** e incluye, si puedes:
 
 - Descripción del problema.
 - Pasos para reproducirlo.
@@ -53,7 +53,7 @@ Para que tu investigación cuente como "de buena fe":
 
 ## Alcance
 
-**En alcance:** \`lucamsshop.co\` y sus subdominios.
+**En alcance:** \`lucamsshop.com\` y sus subdominios.
 
 **Fuera de alcance:**
 

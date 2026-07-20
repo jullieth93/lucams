@@ -9,7 +9,7 @@
 -- en el vault, nunca el valor → seguro de commitear.
 --
 -- ACCIÓN HUMANA (Lucy, al configurar prod): crear los dos secretos en el Vault (una sola vez):
---   select vault.create_secret('https://lucamsshop.co', 'cron_base_url');
+--   select vault.create_secret('https://lucamsshop.com', 'cron_base_url');
 --   select vault.create_secret('<CRON_SECRET real>',    'cron_secret');
 -- (ver docs/OPERATIONS.md). Sin ellos los jobs quedan agendados pero fallan en runtime hasta setearlos.
 --

@@ -10,7 +10,7 @@ export const metadata: Metadata = {
 const FALLBACK = `
 Las **cookies** son archivos pequeñitos que tu navegador guarda cuando visitas un sitio. Nos sirven para que **Lucams_shop** funcione (que puedas iniciar sesión y que tu carrito no se pierda) y, si tú lo autorizas, para mejorar tu experiencia. Aquí te contamos, sin letra menuda, qué cookies usamos, para qué, cuánto duran y cómo las controlas.
 
-Responsable del tratamiento: **Lucy Jullieth Hurtado Rodríguez** (persona natural), titular de la marca **Lucams_shop**, con domicilio en **Bogotá D.C., Colombia**. Tratamos tus datos conforme a la **Ley 1581 de 2012** y el **Decreto 1377 de 2013**. Para dudas o para ejercer tus derechos, escríbenos a **habeas-data@lucamsshop.co** (encuentras el detalle en el **Aviso de Privacidad** y en **Hábeas Data**).
+Responsable del tratamiento: **Lucy Jullieth Hurtado Rodríguez** (persona natural), titular de la marca **Lucams_shop**, con domicilio en **Bogotá D.C., Colombia**. Tratamos tus datos conforme a la **Ley 1581 de 2012** y el **Decreto 1377 de 2013**. Para dudas o para ejercer tus derechos, escríbenos a **habeas-data@lucamsshop.com** (encuentras el detalle en el **Aviso de Privacidad** y en **Hábeas Data**).
 
 ## Cómo clasificamos las cookies
 

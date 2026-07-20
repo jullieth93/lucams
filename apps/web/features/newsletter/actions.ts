@@ -101,7 +101,7 @@ export async function subscribeNewsletterAction(
     // enviar la respuesta, garantizando que el correo de bienvenida se envíe (auditoría v3 · #14).
     after(async () => {
       const tpl = await newsletterWelcomeEmail({ email, unsubscribeToken });
-      const siteUrl = await getSettingValue("SITE_URL", "https://lucamsshop.co");
+      const siteUrl = await getSettingValue("SITE_URL", "https://lucamsshop.com");
       await sendEmail({
         to: email,
         subject: tpl.subject,

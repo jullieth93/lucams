@@ -79,7 +79,7 @@ export async function sendCartRecoveryReminders(
   });
 
   // #7 — base para el link de baja del header List-Unsubscribe (una vez por corrida, cacheado).
-  const siteUrl = await getSettingValue("SITE_URL", "https://lucamsshop.co");
+  const siteUrl = await getSettingValue("SITE_URL", "https://lucamsshop.com");
   let sent = 0;
   let recovered = 0;
   for (const row of rows) {

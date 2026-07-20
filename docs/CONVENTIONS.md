@@ -215,7 +215,7 @@ export function CheckoutForm() {
     const result = await createOrder(values);
     if (!result.ok) {
       // Mapear errores de servidor a campos del form si aplica
-      if (result.problem.type === "https://lucamsshop.co/problems/invalid-coupon") {
+      if (result.problem.type === "https://lucamsshop.com/problems/invalid-coupon") {
         form.setError("couponCode", { message: result.problem.detail });
       }
       return;
@@ -350,7 +350,7 @@ export async function createOrder(
 ```ts
 // lib/errors.ts
 export type ProblemDetails = {
-  type: string; // URI identificador del tipo: https://lucamsshop.co/problems/<slug>
+  type: string; // URI identificador del tipo: https://lucamsshop.com/problems/<slug>
   title: string; // Título legible corto
   status: number; // Código HTTP
   detail?: string; // Detalle específico de esta ocurrencia (sin PII)
@@ -362,7 +362,7 @@ export type ProblemDetails = {
 export const problem = {
   validation(zodErr: ZodError, requestId: string): ProblemDetails {
     return {
-      type: "https://lucamsshop.co/problems/validation",
+      type: "https://lucamsshop.com/problems/validation",
       title: "Datos de entrada inválidos",
       status: 400,
       detail: "Uno o más campos no cumplen el formato requerido.",
@@ -372,7 +372,7 @@ export const problem = {
   },
   notFound(resource: string, requestId: string): ProblemDetails {
     return {
-      type: "https://lucamsshop.co/problems/not-found",
+      type: "https://lucamsshop.com/problems/not-found",
       title: "Recurso no encontrado",
       status: 404,
       detail: `No se encontró ${resource}.`,
@@ -381,7 +381,7 @@ export const problem = {
   },
   tooManyRequests(requestId: string): ProblemDetails {
     return {
-      type: "https://lucamsshop.co/problems/too-many-requests",
+      type: "https://lucamsshop.com/problems/too-many-requests",
       title: "Demasiadas solicitudes",
       status: 429,
       detail: "Por favor espera unos momentos antes de reintentar.",
@@ -402,7 +402,7 @@ export function problemResponse(p: ProblemDetails): Response {
 }
 ```
 
-### Catálogo de tipos `https://lucamsshop.co/problems/<slug>`
+### Catálogo de tipos `https://lucamsshop.com/problems/<slug>`
 
 > Cada tipo se documenta en `app/(legal)/problems/[slug]/page.tsx` para que los URIs sean dereferenceables (per RFC 7807).
 

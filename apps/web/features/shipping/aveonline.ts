@@ -789,7 +789,7 @@ export class AveonlineProvider implements ShippingProvider {
       dsnombre: pickupContact,
       dstelre: pickupPhone,
       dscelularre: pickupPhone,
-      dscorreopre: process.env.EMAIL_FROM?.match(/<(.+?)>/)?.[1] ?? "hola@lucamsshop.co",
+      dscorreopre: process.env.EMAIL_FROM?.match(/<(.+?)>/)?.[1] ?? "hola@lucamsshop.com",
       // Destino (destinatario = cliente). Lucy 2026-05-21:
       // - destino con formato `CIUDAD(DEPTO)` UPPERCASE igual que cotización.
       // - dsnit del cliente (Aveonline exige ≥6 dígitos numéricos). Si el cliente

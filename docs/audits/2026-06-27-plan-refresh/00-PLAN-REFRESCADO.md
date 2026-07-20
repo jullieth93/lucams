@@ -81,7 +81,7 @@ Verificar el **dominio de correo en Resend (DNS)** — P0-004. Desbloquea los em
 ## 4. Acciones humanas pendientes (de Lucy)
 
 **ACCIÓN HUMANA REQUERIDA — bloqueante inmediato (P0-004):**
-Verificar el dominio `mail.lucamsshop.co` en **Resend** creando en Cloudflare DNS los 4 records que Resend genere (SPF, DKIM, DMARC con política inicial `quarantine`, y MX). Luego activar Resend **Pro** y cambiar el remitente a `hola@mail.lucamsshop.co`.
+Verificar el dominio `mail.lucamsshop.com` en **Resend** creando en Cloudflare DNS los 4 records que Resend genere (SPF, DKIM, DMARC con política inicial `quarantine`, y MX). Luego activar Resend **Pro** y cambiar el remitente a `hola@mail.lucamsshop.com`.
 
 **ACCIÓN HUMANA REQUERIDA — probar el admin en navegador:**
 El pulido UX de hoy está cerrado en código pero **no verificado visualmente**. Probar en navegador las 6 mejoras (sub-categorías, flechas de reorden, precio base auto, ordenar por clic, fotos por opción, los 3 bugs).

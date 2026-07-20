@@ -2,7 +2,7 @@
 
 En **Lucams_shop** queremos que ames lo que recibes. Aquí te contamos, en cristiano, cómo funciona el **derecho de retracto**, cuándo puedes devolver un producto y cómo te regresamos tu dinero. Nuestro mapache está pendiente de que todo salga bien.
 
-> Esta política aplica a compras hechas en **lucamsshop.co**. Para defectos de fabricación revisa además nuestra [Política de Garantía](/legal/garantias).
+> Esta política aplica a compras hechas en **lucamsshop.com**. Para defectos de fabricación revisa además nuestra [Política de Garantía](/legal/garantias).
 
 ## Tu derecho de retracto
 
@@ -23,7 +23,7 @@ Los productos personalizados quedan por fuera del retracto porque la ley except�
 
 Es sencillo, y estamos para ayudarte en cada paso:
 
-1. **Escríbenos dentro de los 5 días hábiles** siguientes a la entrega, a **retracto@lucamsshop.co** o por **WhatsApp**. Cuéntanos tu número de pedido.
+1. **Escríbenos dentro de los 5 días hábiles** siguientes a la entrega, a **retracto@lucamsshop.com** o por **WhatsApp**. Cuéntanos tu número de pedido.
 2. Te confirmamos que tu retracto aplica y te damos las instrucciones para la **devolución del producto**.
 3. **Devuelves el producto** en las mismas condiciones en que lo recibiste (sin uso, con su empaque original y lo que venía incluido).
 4. Nos indicas los datos para hacerte el **reembolso**.
@@ -52,11 +52,11 @@ Si pagaste con **medios electrónicos** (tarjeta, PSE, botón de pago), la **Ley
 - el producto entregado **no corresponde** a lo que pediste, o
 - el producto resultó **defectuoso**.
 
-Para pedirla, avísanos a **retracto@lucamsshop.co** (o al canal de contacto) y solicita la reversión ante la entidad que emitió tu medio de pago. La reversión debe atenderse dentro de los **21 días calendario** siguientes a la solicitud.
+Para pedirla, avísanos a **retracto@lucamsshop.com** (o al canal de contacto) y solicita la reversión ante la entidad que emitió tu medio de pago. La reversión debe atenderse dentro de los **21 días calendario** siguientes a la solicitud.
 
 ## ¿Dudas?
 
-Estamos para ayudarte. Escríbenos a **retracto@lucamsshop.co**, a **hola@lucamsshop.co** o por **WhatsApp**, y con gusto te acompañamos en el proceso. También puedes conocer más sobre tus derechos en la [Superintendencia de Industria y Comercio (SIC)](https://www.sic.gov.co).
+Estamos para ayudarte. Escríbenos a **retracto@lucamsshop.com**, a **hola@lucamsshop.com** o por **WhatsApp**, y con gusto te acompañamos en el proceso. También puedes conocer más sobre tus derechos en la [Superintendencia de Industria y Comercio (SIC)](https://www.sic.gov.co).
 
 ---
 

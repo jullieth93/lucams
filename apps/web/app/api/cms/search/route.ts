@@ -30,7 +30,7 @@ export async function GET(req: Request): Promise<Response> {
   if (q.length < 2) {
     return Response.json(
       {
-        type: "https://lucamsshop.co/errors/invalid-query",
+        type: "https://lucamsshop.com/errors/invalid-query",
         title: "Query inválida",
         status: 400,
         detail: "El parámetro q es obligatorio y debe tener al menos 2 caracteres.",

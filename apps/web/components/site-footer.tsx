@@ -69,7 +69,7 @@ export async function SiteFooter() {
   const [categories, waSupportUrl, contactEmail, instagramUrl, tiktokUrl] = await Promise.all([
     listStorefrontCategories({ topLevelOnly: true }),
     buildWhatsAppUrl({ kind: "support" }),
-    getSettingValue("CONTACT_EMAIL", "hola@lucamsshop.co"),
+    getSettingValue("CONTACT_EMAIL", "hola@lucamsshop.com"),
     getSettingValue("SOCIAL_INSTAGRAM_URL", "https://www.instagram.com/lucams_shop"),
     getSettingValue("SOCIAL_TIKTOK_URL", "https://www.tiktok.com/@lucams_shop"),
   ]);
@@ -195,7 +195,7 @@ export async function SiteFooter() {
                   className="inline-flex items-center gap-1.5 transition-colors hover:text-white"
                 >
                   <Mail className="h-4 w-4" />
-                  <CmsSetting settingKey="CONTACT_EMAIL" fallback="hola@lucamsshop.co" />
+                  <CmsSetting settingKey="CONTACT_EMAIL" fallback="hola@lucamsshop.com" />
                 </a>
               </li>
               <li className="text-xs text-white/60">

@@ -28,7 +28,7 @@ export async function applyRateLimit(ip: string): Promise<Response | null> {
   if (result.allowed) return null;
   return Response.json(
     {
-      type: "https://lucamsshop.co/errors/rate-limit-exceeded",
+      type: "https://lucamsshop.com/errors/rate-limit-exceeded",
       title: "Demasiadas solicitudes",
       status: 429,
       detail: `Excediste el límite de ${RATE_LIMIT} solicitudes por minuto.`,

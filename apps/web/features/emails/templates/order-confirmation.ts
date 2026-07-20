@@ -27,7 +27,7 @@ export type OrderConfirmationData = {
 };
 
 export async function orderConfirmationEmail(data: OrderConfirmationData) {
-  const siteUrl = await getSettingValue("SITE_URL", "https://lucamsshop.co");
+  const siteUrl = await getSettingValue("SITE_URL", "https://lucamsshop.com");
   const itemsRows = data.items
     .map(
       (it) => `

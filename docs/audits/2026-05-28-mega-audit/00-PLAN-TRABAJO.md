@@ -39,7 +39,7 @@ Lucams_shop tiene un esqueleto sorprendentemente sólido para pre-launch: catál
 | P0-001 | Cart se vacía tras Order PAID (saga clearCart) | 2 | - | no |
 | P0-002 | Decremento de stock en createOrderFromCart + revert en CANCELLED | 6 | - | no |
 | P0-003 | Aveonline `bloquegenerarguia` default `1` + gate doble flag prod | 1.5 | - | sí (anular guías probe) |
-| P0-004 | Verificar dominio `mail.lucamsshop.co` en Resend + `EMAIL_FROM` prod | 2 | acción Lucy DNS | sí (SPF/DKIM/DMARC) |
+| P0-004 | Verificar dominio `mail.lucamsshop.com` en Resend + `EMAIL_FROM` prod | 2 | acción Lucy DNS | sí (SPF/DKIM/DMARC) |
 | P0-005 | Crear ruta `/unsubscribe?token=...` (Ley 1581 revocación) | 3 | - | no |
 | P0-006 | Reemplazar fallbacks `/legal/privacidad` y `/legal/terminos` por texto real del seed | 2 | - | sí (validación abogada) |
 | P0-007 | Actualizar plazo retracto Ley 2439/2024 (15 días calendario) en fallbacks `/legal/devoluciones`, `/ayuda` y 6 otros | 1 | - | no |
@@ -177,7 +177,7 @@ Lucams_shop tiene un esqueleto sorprendentemente sólido para pre-launch: catál
 
 ## Acciones Humanas Requeridas (Lucy)
 
-1. **Configurar dominio `mail.lucamsshop.co` + verificar SPF/DKIM/DMARC en Resend** — `EMAIL_FROM` en sandbox bloquea TODOS los emails al cliente. Bloquea Fase 4 cierre.
+1. **Configurar dominio `mail.lucamsshop.com` + verificar SPF/DKIM/DMARC en Resend** — `EMAIL_FROM` en sandbox bloquea TODOS los emails al cliente. Bloquea Fase 4 cierre.
 2. **Anular las 2 guías probe Aveonline (86732744650, 535738810) en dashboard** — cartera real pendiente; bloquea launch.
 3. **Registrar webhook Wompi sandbox URL en dashboard** — sin esto la saga no cierra automáticamente; bloquea testing E2E sin workaround.
 4. **Crear sitio Cloudflare Turnstile + setear keys en Vercel (prod+preview) y `.env.local`** — bloquea P0-009 (Turnstile en flujos auth).
@@ -230,7 +230,7 @@ Lucams_shop tiene un esqueleto sorprendentemente sólido para pre-launch: catál
 ## Acciones Humanas para Hoy / Esta Semana
 
 1. **Lucy hoy mismo**: Entrar a dashboard Aveonline y anular guías 86732744650 + 535738810 antes de que generen factura. Confirmar a soporte Aveonline que no se facturen. (5 minutos, evita cartera.)
-2. **Lucy esta semana**: Comprar/configurar subdominio `mail.lucamsshop.co` en proveedor DNS, agregar registros SPF + DKIM + DMARC siguiendo el wizard de Resend dashboard, esperar verificación (~24-48h propagación). Sin esto el cliente NO recibe ningún email. (1h trabajo + espera DNS.)
+2. **Lucy esta semana**: Comprar/configurar subdominio `mail.lucamsshop.com` en proveedor DNS, agregar registros SPF + DKIM + DMARC siguiendo el wizard de Resend dashboard, esperar verificación (~24-48h propagación). Sin esto el cliente NO recibe ningún email. (1h trabajo + espera DNS.)
 3. **Lucy esta semana**: Crear sitio Turnstile en Cloudflare (Free tier), copiar site key + secret key, setear en Vercel env (prod + preview). Bloquea P0-009 que es ~4h de trabajo Claude. (15 minutos.)
 4. **Lucy esta semana**: Habilitar MFA factors en Supabase Auth → Providers (toggle), enrollar TOTP en su propia cuenta admin con Google Authenticator/Authy. Bloquea P1-008. (10 minutos.)
 5. **Lucy esta semana**: Subir las fotos faltantes de los 4 productos (abecedario-magnetico-espanol, abecedario-magnetico-ingles, separadores-predisenados, y definir variantes del calendario). Mientras tanto Claude no puede cerrar Fase 2 madurez. (1-2h.)

@@ -92,7 +92,7 @@ No lo leí en esta auditoría (no estaba en los archivos abiertos), pero el come
 
 **💡 Recomendaciones**
 - Cambiar `Producto archivado (soft-delete).` → `Producto archivado. Sigue en tu papelera por 30 días — puedes restaurarlo cuando quieras.`
-- Ocultar `/{slug}` debajo del nombre, o reemplazar con badge "URL: lucamsshop.co/producto/{slug}" solo en hover/tooltip.
+- Ocultar `/{slug}` debajo del nombre, o reemplazar con badge "URL: lucamsshop.com/producto/{slug}" solo en hover/tooltip.
 - Cambiar placeholder buscar: `"Por nombre, SKU o slug…"` → `"Buscar por nombre o código…"`.
 - Cambiar empty state: `"Crea el primero o usa make seed-products para poblar el catálogo demo."` → `"Crea tu primer producto con el botón de arriba a la derecha."` (sin comando).
 - Agregar emojis a badges: 🟢 Activo / 🟡 Inactivo / ⚫ Archivado / ⭐ Destacado.
@@ -161,7 +161,7 @@ No lo leí en esta auditoría (no estaba en los archivos abiertos), pero el come
    - Tab 5: SEO — colapsado por defecto
    - Tab 6: Avanzado (slug, SKU manual, surcharge premade) — colapsado
 2. **Renombrar todos los labels técnicos**:
-   - "Slug (URL)" → "Dirección web del producto" + hint "Ej: lucamsshop.co/producto/**iman-foto-a4**"
+   - "Slug (URL)" → "Dirección web del producto" + hint "Ej: lucamsshop.com/producto/**iman-foto-a4**"
    - "SKU" → "Código interno" (con hint "Lo usas tú para inventario")
    - "SEO Title" → "Título para Google"
    - "SEO Description" → "Descripción para Google"
@@ -325,7 +325,7 @@ Strings UI admin con jerga técnica innecesaria, en orden de severidad:
 |---|---|---|---|
 | 1 | `productos/page.tsx:102` | `"Producto archivado (soft-delete)."` | `"Producto archivado. Sigue en tu papelera por 30 días — puedes restaurarlo cuando quieras."` |
 | 2 | `productos/product-form.tsx:112` | `"Slug (URL)"` | `"Dirección web del producto"` |
-| 3 | `productos/product-form.tsx:113` | `"solo minúsculas, números y guiones — aparece en la URL del producto"` | `"Ej: lucamsshop.co/producto/iman-foto-a4. Solo letras minúsculas, números y guiones."` |
+| 3 | `productos/product-form.tsx:113` | `"solo minúsculas, números y guiones — aparece en la URL del producto"` | `"Ej: lucamsshop.com/producto/iman-foto-a4. Solo letras minúsculas, números y guiones."` |
 | 4 | `productos/product-form.tsx:127` | placeholder `"Por nombre, SKU o slug…"` | `"Buscar por nombre o código…"` |
 | 5 | `productos/product-form.tsx:146-147` | `"SKU"` con hint `"código interno — mayúsculas, números, guiones"` | `"Código interno (SKU)"` con hint `"Lo usas tú para inventario."` |
 | 6 | `productos/product-form.tsx:193` | `"Precio (en pesos COP)"` con desc `"Se guarda internamente en centavos. Aquí se digita en pesos enteros (sin decimales)."` | `"Precio (en pesos COP)"` desc `"Escribe el precio en pesos enteros — sin decimales."` (quitar el "centavos internamente") |
@@ -342,7 +342,7 @@ Strings UI admin con jerga técnica innecesaria, en orden de severidad:
 | 17 | `productos/product-form.tsx:433-435` | `"Surcharge templates PREMADE (%)"` hint `"0 = mismo precio. Universos con licencia: 10-15%."` | `"Recargo por plantillas premium (%)"` hint `"0 = mismo precio. Plantillas con licencia (Marvel, Disney, etc): 10-15%."` |
 | 18 | `productos/product-form.tsx:182-183` | `"No hay categorías. Crea una primero o corre make seed-products."` | `"No hay categorías todavía. Crea la primera desde Categorías."` |
 | 19 | `productos/page.tsx:198-199` | `"Crea el primero o usa make seed-products para poblar el catálogo demo."` | `"Crea tu primer producto con el botón de arriba a la derecha."` |
-| 20 | `productos/page.tsx:226` | mostrar `/{slug}` debajo del nombre | esconder o tooltip "URL: lucamsshop.co/producto/{slug}" |
+| 20 | `productos/page.tsx:226` | mostrar `/{slug}` debajo del nombre | esconder o tooltip "URL: lucamsshop.com/producto/{slug}" |
 | 21 | `productos/quick-actions.tsx:46` | `title="Ocultar del storefront"` / `"Mostrar en storefront"` | `"Ocultar de la tienda"` / `"Mostrar en la tienda"` |
 | 22 | `productos/[id]/page.tsx:48` | subtitle `"SKU: {sku} · slug: {slug}"` | `"Código: {sku} · URL: /producto/{slug} · Editado hace 2 días"` |
 | 23 | `pedidos/page.tsx:216` | columna `"Items"` | `"Productos"` o `"Cant."` |

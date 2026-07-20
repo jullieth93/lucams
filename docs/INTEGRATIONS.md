@@ -292,7 +292,7 @@ RESEND_API_KEY=re_xxxxxxxxxxxxxx
 # Dev (Free tier)
 EMAIL_FROM=Lucams_shop <onboarding@resend.dev>
 # Producción (Pro)
-# EMAIL_FROM=Lucams_shop <hola@mail.lucamsshop.co>
+# EMAIL_FROM=Lucams_shop <hola@mail.lucamsshop.com>
 ```
 
 ### Plantillas a crear (`lib/email/templates/`)
@@ -310,27 +310,27 @@ EMAIL_FROM=Lucams_shop <onboarding@resend.dev>
 ### Limitaciones Free a recordar
 
 - **3.000 emails/mes**, **100/día**. Suficiente para dev y soft launch.
-- Solo desde `*.resend.dev` (no dominio propio). Al lanzar, configurar DNS de `mail.lucamsshop.co` con SPF/DKIM/DMARC y migrar a Pro.
+- Solo desde `*.resend.dev` (no dominio propio). Al lanzar, configurar DNS de `mail.lucamsshop.com` con SPF/DKIM/DMARC y migrar a Pro.
 
 > **Pendiente de verificación (mandato #9):** confirmar cifras del Free tier contra `resend.com/pricing` antes de Fase 0b.
 
-### DNS records al pasar a producción (subdomain `mail.lucamsshop.co`)
+### DNS records al pasar a producción (subdomain `mail.lucamsshop.com`)
 
 Resend genera estos valores en el panel cuando se agrega el dominio. Configurarlos en Cloudflare DNS:
 
-| Tipo  | Nombre                   | Valor (ejemplo, Resend genera el real)                                 | Propósito                                                       |
-| ----- | ------------------------ | ---------------------------------------------------------------------- | --------------------------------------------------------------- |
-| `TXT` | `mail`                   | `v=spf1 include:amazonses.com ~all`                                    | SPF — autoriza a Resend a enviar como `@mail.lucamsshop.co`     |
-| `TXT` | `resend._domainkey.mail` | `p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQ...`                          | DKIM — firma criptográfica de los emails                        |
-| `TXT` | `_dmarc.mail`            | `v=DMARC1; p=quarantine; rua=mailto:dmarc@mail.lucamsshop.co; pct=100` | DMARC — política de tratamiento de mensajes que fallen SPF/DKIM |
-| `MX`  | `mail`                   | `feedback-smtp.us-east-1.amazonses.com` (priority 10)                  | Bounces y feedback                                              |
+| Tipo  | Nombre                   | Valor (ejemplo, Resend genera el real)                                  | Propósito                                                       |
+| ----- | ------------------------ | ----------------------------------------------------------------------- | --------------------------------------------------------------- |
+| `TXT` | `mail`                   | `v=spf1 include:amazonses.com ~all`                                     | SPF — autoriza a Resend a enviar como `@mail.lucamsshop.com`    |
+| `TXT` | `resend._domainkey.mail` | `p=MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQ...`                           | DKIM — firma criptográfica de los emails                        |
+| `TXT` | `_dmarc.mail`            | `v=DMARC1; p=quarantine; rua=mailto:dmarc@mail.lucamsshop.com; pct=100` | DMARC — política de tratamiento de mensajes que fallen SPF/DKIM |
+| `MX`  | `mail`                   | `feedback-smtp.us-east-1.amazonses.com` (priority 10)                   | Bounces y feedback                                              |
 
 > **Política DMARC inicial:** `quarantine` (los falsificados van a SPAM). A los 30 días sin problemas, subir a `reject` (los falsificados se descartan).
 
 ### Anti-phishing y reputación de IP
 
-- **Subdominio dedicado** (`mail.lucamsshop.co`) — un envío masivo fallido no afecta la reputación del dominio raíz.
-- **Reply-To diferente del From** si queremos que las respuestas lleguen a un buzón humano (`hola@lucamsshop.co`).
+- **Subdominio dedicado** (`mail.lucamsshop.com`) — un envío masivo fallido no afecta la reputación del dominio raíz.
+- **Reply-To diferente del From** si queremos que las respuestas lleguen a un buzón humano (`hola@lucamsshop.com`).
 - **List-Unsubscribe header** en emails de marketing (carrito abandonado, reactivación).
 - **Resend dashboard** muestra bounce rate, complaint rate, open/click rate. Alertar si bounce > 5%.
 
@@ -561,7 +561,7 @@ export async function externalFetch(url: string, init: RequestInit & { timeoutMs
     headers: {
       ...init.headers,
       "X-Lucams-Request-Id": requestId,
-      "User-Agent": `Lucams_shop/1.0 (+https://lucamsshop.co)`,
+      "User-Agent": `Lucams_shop/1.0 (+https://lucamsshop.com)`,
     },
   });
 }
@@ -701,7 +701,7 @@ SELECT pgmq.metrics('email_send');
 
 Endpoints públicos sin auth que exponen el contenido CMS publicado del sitio para consumo programático (integraciones externas, futuro chatbot Claude con RAG).
 
-**Base URL.** `https://lucamsshop.co/api/cms/*` (prod) o `http://localhost:3000/api/cms/*` (dev).
+**Base URL.** `https://lucamsshop.com/api/cms/*` (prod) o `http://localhost:3000/api/cms/*` (dev).
 
 **Auth.** Ninguna — el contenido publicado ya es público en el sitio. Si se agregan settings con info sensible en el futuro, filtrar en `/api/cms/settings/route.ts` antes de responder.
 
@@ -716,7 +716,7 @@ Endpoints públicos sin auth que exponen el contenido CMS publicado del sitio pa
 Lista todos los bloques publicados. Opcional `?category=X`.
 
 ```bash
-curl https://lucamsshop.co/api/cms/blocks?category=legal
+curl https://lucamsshop.com/api/cms/blocks?category=legal
 ```
 
 ```json
@@ -745,7 +745,7 @@ Categorías válidas: `LEGAL`, `HOME`, `FOOTER`, `EMPTY_STATE`, `COOKIES`, `FAQ`
 Bloque individual por key. `404` si no existe o no está publicado.
 
 ```bash
-curl https://lucamsshop.co/api/cms/blocks/legal.privacidad
+curl https://lucamsshop.com/api/cms/blocks/legal.privacidad
 ```
 
 #### GET `/api/cms/settings`
@@ -755,7 +755,7 @@ Lista todos los SiteSetting. Opcional `?category=X`.
 Categorías válidas: `CONTACT`, `BUSINESS`, `LEGAL`, `COMMERCE`, `SOCIAL`, `EXTERNAL`, `WHATSAPP`, `COPYRIGHT`, `SEO`.
 
 ```bash
-curl https://lucamsshop.co/api/cms/settings?category=contact
+curl https://lucamsshop.com/api/cms/settings?category=contact
 ```
 
 ```json
@@ -765,7 +765,7 @@ curl https://lucamsshop.co/api/cms/settings?category=contact
   "settings": [
     {
       "key": "CONTACT_EMAIL",
-      "value": "hola@lucamsshop.co",
+      "value": "hola@lucamsshop.com",
       "valueType": "EMAIL",
       "category": "CONTACT",
       "label": "Email de contacto público",
@@ -780,7 +780,7 @@ curl https://lucamsshop.co/api/cms/settings?category=contact
 Búsqueda full-text con `pg_trgm` + `unaccent`. Tolerante a typos y acentos. Top 20 ordenados por similarity DESC.
 
 ```bash
-curl "https://lucamsshop.co/api/cms/search?q=garanti"
+curl "https://lucamsshop.com/api/cms/search?q=garanti"
 # matchea "Garantías", "garantía"
 ```
 
@@ -847,7 +847,7 @@ const answer = await anthropic.messages.create({
 
 - [ ] Cuenta de comercio aprobada (`comercios.wompi.co`)
 - [ ] Llaves de producción configuradas en Vercel
-- [ ] Webhook configurado en panel Wompi apuntando a `https://lucamsshop.co/api/wompi/webhook`
+- [ ] Webhook configurado en panel Wompi apuntando a `https://lucamsshop.com/api/wompi/webhook`
 - [ ] Probar compra real con valor mínimo
 - [ ] Cambiar `WOMPI_ENV=production`
 
@@ -861,7 +861,7 @@ const answer = await anthropic.messages.create({
 
 ### Resend
 
-- [ ] DNS de `mail.lucamsshop.co` configurado (SPF, DKIM, DMARC)
+- [ ] DNS de `mail.lucamsshop.com` configurado (SPF, DKIM, DMARC)
 - [ ] Dominio verificado en Resend
 - [ ] Plan Pro activado
 - [ ] `EMAIL_FROM` actualizado a dominio propio

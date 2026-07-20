@@ -25,7 +25,7 @@ export function WebhookRegistrationForm({
           name="baseUrl"
           type="url"
           defaultValue={defaultBaseUrl}
-          placeholder="https://lucamsshop.co"
+          placeholder="https://lucamsshop.com"
           required
           disabled={disabled}
           className="flex-1 font-mono text-xs"

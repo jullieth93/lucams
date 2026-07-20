@@ -43,7 +43,7 @@ function makeReq(
   path: string,
   opts: { method?: string; cookies?: Record<string, string>; origin?: string } = {},
 ): NextRequest {
-  const req = new NextRequest(new URL(`https://lucamsshop.co${path}`), {
+  const req = new NextRequest(new URL(`https://lucamsshop.com${path}`), {
     method: opts.method ?? "GET",
     headers: opts.origin ? { origin: opts.origin } : {},
   });
@@ -208,7 +208,7 @@ describe("proxy · CORS /api", () => {
   });
 
   it("un origen permitido recibe Access-Control-Allow-Origin", async () => {
-    const res = await proxy(makeReq("/api/algo", { origin: "https://lucamsshop.co" }));
-    expect(res.headers.get("access-control-allow-origin")).toBe("https://lucamsshop.co");
+    const res = await proxy(makeReq("/api/algo", { origin: "https://lucamsshop.com" }));
+    expect(res.headers.get("access-control-allow-origin")).toBe("https://lucamsshop.com");
   });
 });

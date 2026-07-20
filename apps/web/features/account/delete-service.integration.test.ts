@@ -40,7 +40,7 @@ describe.skipIf(!hasDb)("deleteCustomerAccount — supresión Ley 1581", { timeo
       // Los tickets fueron desvinculados (customerId null) — borrar por email placeholder.
       await safe(
         prisma.supportTicket.deleteMany({
-          where: { email: `deleted-${ids.customerId}@deleted.lucamsshop.co` },
+          where: { email: `deleted-${ids.customerId}@deleted.lucamsshop.com` },
         }),
       );
       await safe(prisma.abandonedCart.deleteMany({ where: { email: { contains: RUN } } }));
@@ -62,7 +62,7 @@ describe.skipIf(!hasDb)("deleteCustomerAccount — supresión Ley 1581", { timeo
     if (ids.customerId)
       await safe(
         prisma.customer.deleteMany({
-          where: { email: `deleted-${ids.customerId}@deleted.lucamsshop.co` },
+          where: { email: `deleted-${ids.customerId}@deleted.lucamsshop.com` },
         }),
       );
   });
@@ -157,7 +157,7 @@ describe.skipIf(!hasDb)("deleteCustomerAccount — supresión Ley 1581", { timeo
 
     // Customer anonimizado.
     const c = await prisma.customer.findUnique({ where: { id: customer.id } });
-    expect(c?.email).toBe(`deleted-${customer.id}@deleted.lucamsshop.co`);
+    expect(c?.email).toBe(`deleted-${customer.id}@deleted.lucamsshop.com`);
     expect(c?.firstName).toBeNull();
     expect(c?.lastName).toBeNull();
     expect(c?.phone).toBeNull();
@@ -173,7 +173,7 @@ describe.skipIf(!hasDb)("deleteCustomerAccount — supresión Ley 1581", { timeo
 
     // SupportTicket desvinculado + scrubbeado.
     const ticket = await prisma.supportTicket.findFirst({
-      where: { email: `deleted-${customer.id}@deleted.lucamsshop.co` },
+      where: { email: `deleted-${customer.id}@deleted.lucamsshop.com` },
     });
     expect(ticket?.customerId).toBeNull();
     expect(ticket?.name).toBe("Cliente eliminado");
@@ -184,7 +184,7 @@ describe.skipIf(!hasDb)("deleteCustomerAccount — supresión Ley 1581", { timeo
 
     // H8 — el pedido conservado ya NO identifica al titular: email/phone scrubbeados.
     const order = await prisma.order.findFirst({ where: { number: `${RUN}-ORD` } });
-    expect(order?.email).toBe(`deleted-${customer.id}@deleted.lucamsshop.co`);
+    expect(order?.email).toBe(`deleted-${customer.id}@deleted.lucamsshop.com`);
     expect(order?.phone).toBe("");
 
     // H8 — suscripciones cortadas: los crons ya no le escriben al titular borrado.

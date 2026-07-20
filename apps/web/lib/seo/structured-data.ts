@@ -6,7 +6,7 @@
  */
 
 /** URL canónica pública del sitio (sin trailing slash). Coincide con robots/sitemap/canonicals. */
-export const SITE_URL = "https://lucamsshop.co";
+export const SITE_URL = "https://lucamsshop.com";
 
 /**
  * Escapa `<`, `>`, `&` del JSON embebido en un `<script type="application/ld+json">`. Sin esto, un

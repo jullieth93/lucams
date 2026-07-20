@@ -2,7 +2,7 @@
  * /pedido/[token] — Vista pública de un pedido sin requerir login.
  *
  * Usado por guest checkout: el email transaccional incluye un link
- * https://lucamsshop.co/pedido/<token> con un token único de 32 hex chars
+ * https://lucamsshop.com/pedido/<token> con un token único de 32 hex chars
  * (Order.publicAccessToken). El cliente entra y ve timeline + tracking
  * sin autenticarse.
  *

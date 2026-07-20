@@ -15,7 +15,7 @@ export type CartRecoveryData = {
 };
 
 export async function cartRecoveryEmail(data: CartRecoveryData) {
-  const siteUrl = await getSettingValue("SITE_URL", "https://lucamsshop.co");
+  const siteUrl = await getSettingValue("SITE_URL", "https://lucamsshop.com");
   const recoverUrl = `${siteUrl}/carrito/recuperar/${encodeURIComponent(data.recoverToken)}`;
 
   const itemsHtml = data.items

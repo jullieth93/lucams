@@ -174,7 +174,7 @@ export const getCmsBlocksByCategory = cachedCms(
 
 /**
  * Lee un setting atómico por su key. Devuelve `fallback` si no existe.
- * Pattern: `await getSiteSetting("CONTACT_EMAIL", "hola@lucamsshop.co")`.
+ * Pattern: `await getSiteSetting("CONTACT_EMAIL", "hola@lucamsshop.com")`.
  */
 export const getSiteSetting = cachedCms(
   async (key: string): Promise<SiteSettingData | null> => {
@@ -228,7 +228,7 @@ export const getAllSiteSettings = cachedCms(
 /**
  * Helper directo para obtener el valor de un setting como string,
  * con fallback. Lo más común en componentes:
- *   const email = await getSettingValue("CONTACT_EMAIL", "hola@lucamsshop.co");
+ *   const email = await getSettingValue("CONTACT_EMAIL", "hola@lucamsshop.com");
  */
 export async function getSettingValue(key: string, fallback: string): Promise<string> {
   const setting = await getSiteSetting(key);

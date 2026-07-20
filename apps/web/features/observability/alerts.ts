@@ -160,7 +160,7 @@ export async function dispatchAlerts(
   }
   if (toSend.length === 0) return { sent, skipped };
 
-  const to = await getSettingValue("ALERT_EMAIL", "hola@lucamsshop.co");
+  const to = await getSettingValue("ALERT_EMAIL", "hola@lucamsshop.com");
   const { subject, html, text } = buildAlertEmail(toSend);
   const result = await sendEmail({ to, subject, html, text });
 

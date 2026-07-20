@@ -80,13 +80,13 @@ const FALLBACK_FAQS: { slug: string; question: string; answer: string }[] = [
     slug: "borrar-mis-datos",
     question: "¿Cómo borro mi cuenta y mis datos?",
     answer:
-      "Escríbenos a **hola@lucamsshop.co** desde el email registrado. Procesamos la supresión dentro de **10 días hábiles**. Más info en [Hábeas Data](/legal/habeas-data).",
+      "Escríbenos a **hola@lucamsshop.com** desde el email registrado. Procesamos la supresión dentro de **10 días hábiles**. Más info en [Hábeas Data](/legal/habeas-data).",
   },
   {
     slug: "newsletter-unsuscripcion",
     question: "¿Cómo me suscribo o desuscribo del newsletter?",
     answer:
-      "Suscripción: form en el footer. Desuscripción: link **Cancelar suscripción** al final de cada email que te enviemos, o escríbenos a hola@lucamsshop.co.",
+      "Suscripción: form en el footer. Desuscripción: link **Cancelar suscripción** al final de cada email que te enviemos, o escríbenos a hola@lucamsshop.com.",
   },
   {
     slug: "regalos-eventos",
@@ -100,7 +100,7 @@ export default async function AyudaPage() {
   const [faqs, waSupportUrl, contactEmail] = await Promise.all([
     getCmsBlocksByCategory("FAQ"),
     buildWhatsAppUrl({ kind: "support" }),
-    getSettingValue("CONTACT_EMAIL", "hola@lucamsshop.co"),
+    getSettingValue("CONTACT_EMAIL", "hola@lucamsshop.com"),
   ]);
 
   // Si hay FAQs en CMS, las usamos. Si no, fallback editorial.

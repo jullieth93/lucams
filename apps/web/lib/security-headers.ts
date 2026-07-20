@@ -48,8 +48,8 @@ export function buildCsp(nonce: string, isProd: boolean): string {
 /** Allowlist de orígenes para CORS de las rutas API. */
 export function getAllowedOrigins(isDev: boolean): (string | RegExp)[] {
   return [
-    "https://lucamsshop.co",
-    "https://www.lucamsshop.co",
+    "https://lucamsshop.com",
+    "https://www.lucamsshop.com",
     // Deployments de Vercel de ESTE equipo (ADR-062). El sufijo del scope del equipo
     // (`-jullieth93s-projects`) es OBLIGATORIO en las URLs de preview: antes era opcional, así que
     // `lucams-shop-<algo>.vercel.app` (sin scope) matcheaba → cualquiera podía registrar un proyecto

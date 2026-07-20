@@ -14,7 +14,7 @@ export type BackInStockData = {
 };
 
 export async function backInStockEmail(data: BackInStockData) {
-  const siteUrl = await getSettingValue("SITE_URL", "https://lucamsshop.co");
+  const siteUrl = await getSettingValue("SITE_URL", "https://lucamsshop.com");
   const url = `${siteUrl}/producto/${encodeURIComponent(data.productSlug)}`;
 
   const bodyHtml = `

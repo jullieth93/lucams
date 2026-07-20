@@ -71,7 +71,7 @@ Esta excepción está claramente identificada en el catálogo: cualquier product
 
 ## Cómo retractarte (productos NO personalizados)
 
-1. **Escríbenos** a **hola@lucamsshop.co** o por WhatsApp dentro de los 5 días hábiles desde que recibiste el producto.
+1. **Escríbenos** a **hola@lucamsshop.com** o por WhatsApp dentro de los 5 días hábiles desde que recibiste el producto.
 2. **Indica el medio de devolución** elegido (el mismo medio de pago original o cuenta bancaria).
 3. **Devuelve el producto** en su empaque original sin uso (el costo del envío de devolución lo asume el consumidor según Ley 1480 art. 47).
 4. **Reembolso** dentro de **15 días calendario** desde el momento en que cumpliste los requisitos (informaste el medio + devolviste el producto), conforme a la **Ley 2439 de 2024**.
@@ -93,7 +93,7 @@ Si no quedas conforme con nuestra respuesta puedes acudir a la Superintendencia 
     detectOld: (body) =>
       body.includes("*Documento en revisión legal — versión final próximamente.*") ||
       !body.includes("Ley 2439"),
-    newBody: `Al usar **lucamsshop.co** aceptas estos Términos y Condiciones de uso y compra. Los productos vendidos están sujetos a la legislación colombiana, en particular la **Ley 1480 de 2011** (Estatuto del Consumidor) y la **Ley 2439 de 2024** que modifica disposiciones de comercio electrónico.
+    newBody: `Al usar **lucamsshop.com** aceptas estos Términos y Condiciones de uso y compra. Los productos vendidos están sujetos a la legislación colombiana, en particular la **Ley 1480 de 2011** (Estatuto del Consumidor) y la **Ley 2439 de 2024** que modifica disposiciones de comercio electrónico.
 
 ## Precios y pagos
 
@@ -138,9 +138,9 @@ Si tu reclamo no se resuelve, puedes acudir a la Superintendencia de Industria y
 
 Datos de contacto del responsable:
 
-- Email: **hola@lucamsshop.co**
+- Email: **hola@lucamsshop.com**
 - WhatsApp: +57 320 887 3826
-- Sitio web: [lucamsshop.co](https://lucamsshop.co)
+- Sitio web: [lucamsshop.com](https://lucamsshop.com)
 
 ## Datos personales que tratamos
 
@@ -274,7 +274,7 @@ console.log("");
 
 if (updated > 0) {
   console.log("⚠️ Reminder: el caché de Next.js puede tener el body viejo cacheado.");
-  console.log("    Lucy: refresca lucamsshop.co/legal/* y verificá que se vea el texto nuevo.");
+  console.log("    Lucy: refresca lucamsshop.com/legal/* y verificá que se vea el texto nuevo.");
   console.log("    Si tarda, hacer purge desde Vercel Dashboard.");
 }
 

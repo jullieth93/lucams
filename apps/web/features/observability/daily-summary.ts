@@ -292,7 +292,7 @@ export async function sendDailySummary(
     return { sent: false, skipped: "already_sent", summary };
   }
 
-  const to = await getSettingValue("ALERT_EMAIL", "hola@lucamsshop.co");
+  const to = await getSettingValue("ALERT_EMAIL", "hola@lucamsshop.com");
   const { subject, html, text } = buildDailySummaryEmail(summary, now);
   const result = await sendEmail({ to, subject, html, text });
 

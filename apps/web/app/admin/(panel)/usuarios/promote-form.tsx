@@ -24,7 +24,7 @@ export function PromoteForm() {
             name="email"
             type="email"
             required
-            placeholder="ej. operaciones@lucamsshop.co"
+            placeholder="ej. operaciones@lucamsshop.com"
             className="border-brand-purple/25 focus:border-brand-purple focus:ring-brand-purple/20 w-full rounded-md border bg-white px-3 py-2 text-sm focus:ring-2 focus:outline-none"
           />
           {state?.fieldErrors?.email && (

@@ -1,5 +1,5 @@
 /*
- * Template: Notificación INTERNA de ticket nuevo a hola@lucamsshop.co.
+ * Template: Notificación INTERNA de ticket nuevo a hola@lucamsshop.com.
  *
  * Diferente del template "received" (que va al cliente). Este lleva
  * todo el contexto: nombre, email, asunto, mensaje, IP, ticket id.

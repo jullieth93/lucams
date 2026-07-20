@@ -84,7 +84,7 @@ export async function sendRetractRequested(id: string): Promise<void> {
       ],
     });
     // 2) Aviso interno a Lucy con Reply-To al cliente (HTML escapado — el nombre viene del cliente).
-    const contactEmail = await getSettingValue("CONTACT_EMAIL", "hola@lucamsshop.co");
+    const contactEmail = await getSettingValue("CONTACT_EMAIL", "hola@lucamsshop.com");
     await sendEmail({
       to: contactEmail,
       replyTo: d.email,

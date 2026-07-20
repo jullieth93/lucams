@@ -1,13 +1,13 @@
-Al comprar en **lucamsshop.co** aceptas estos Términos y Condiciones. Léelos con calma: aquí te contamos quiénes somos, cómo funciona la compra y cuáles son tus derechos. Toda venta se rige por la legislación colombiana, en especial la **Ley 1480 de 2011 (Estatuto del Consumidor)** y la **Ley 1581 de 2012 (Protección de Datos Personales)**.
+Al comprar en **lucamsshop.com** aceptas estos Términos y Condiciones. Léelos con calma: aquí te contamos quiénes somos, cómo funciona la compra y cuáles son tus derechos. Toda venta se rige por la legislación colombiana, en especial la **Ley 1480 de 2011 (Estatuto del Consumidor)** y la **Ley 1581 de 2012 (Protección de Datos Personales)**.
 
 ## Quiénes somos
 
 **Lucams_shop** es una marca de productos magnéticos personalizados en Colombia, operada por **Lucy Jullieth Hurtado Rodríguez** como **persona natural**, con domicilio en **Bogotá D.C., Colombia**.
 
-- Correo de contacto: **hola@lucamsshop.co**
+- Correo de contacto: **hola@lucamsshop.com**
 - WhatsApp: disponible en el sitio (botón de contacto).
-- Peticiones de datos personales (Hábeas Data): **habeas-data@lucamsshop.co**
-- Retracto y devoluciones: **retracto@lucamsshop.co**
+- Peticiones de datos personales (Hábeas Data): **habeas-data@lucamsshop.com**
+- Retracto y devoluciones: **retracto@lucamsshop.com**
 
 Los datos completos de identificación (documento de identidad) y la dirección de notificación se entregan **a solicitud** por cualquiera de los canales de contacto o de Hábeas Data indicados arriba.
 
@@ -50,7 +50,7 @@ Cuando ejerces el retracto, te **devolvemos el dinero en un máximo de quince (1
 
 **Excepción — productos personalizados:** conforme al mismo art. 47, los productos **claramente personalizados o confeccionados según tus especificaciones** —los que llevan tu foto, tu texto o tu diseño hecho en el Estudio— **no admiten retracto**, porque se elaboran solo para ti. Los productos del **catálogo estándar** (sin personalización tuya) **sí tienen retracto**.
 
-Para ejercerlo, escríbenos a **retracto@lucamsshop.co** o por WhatsApp. Más detalle en [Devoluciones y Retracto](/legal/devoluciones).
+Para ejercerlo, escríbenos a **retracto@lucamsshop.com** o por WhatsApp. Más detalle en [Devoluciones y Retracto](/legal/devoluciones).
 
 ## Garantía legal
 
@@ -84,7 +84,7 @@ Algunos de nuestros proveedores tecnológicos están fuera de Colombia (por ejem
 
 ## PQR y atención al cliente
 
-Estamos para ayudarte. Escríbenos a **hola@lucamsshop.co**, por WhatsApp, o —para temas de datos— a **habeas-data@lucamsshop.co**.
+Estamos para ayudarte. Escríbenos a **hola@lucamsshop.com**, por WhatsApp, o —para temas de datos— a **habeas-data@lucamsshop.com**.
 
 - Respondemos tus **consultas** en máximo **diez (10) días hábiles**.
 - Respondemos tus **reclamos** en máximo **quince (15) días hábiles** (Ley 1581 de 2012, arts. 14 y 15).

@@ -14,7 +14,7 @@ export type OrderCancelledData = {
 };
 
 export async function orderCancelledEmail(data: OrderCancelledData) {
-  const siteUrl = await getSettingValue("SITE_URL", "https://lucamsshop.co");
+  const siteUrl = await getSettingValue("SITE_URL", "https://lucamsshop.com");
   const reasonHtml = data.reason
     ? `<p style="font-size:14px;color:#3D2E5C;opacity:0.8;">Motivo: ${escapeHtml(data.reason)}</p>`
     : "";

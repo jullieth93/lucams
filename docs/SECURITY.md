@@ -179,7 +179,7 @@ describe('RLS', () => {
 1. **Las API keys nunca viven en el front-end.** Las únicas vars expuestas al navegador son las que empiezan con `NEXT_PUBLIC_*` y deben ser **diseñadas para ser públicas** (publishable key de Supabase, public key de Wompi, site key de Turnstile).
 2. **Las llaves "públicas" se protegen con reglas de dominio:**
    - **Supabase publishable key (`sb_publishable_*`):** mapea al rol Postgres `anon`; sus permisos están limitados por RLS. Aunque sea visible, sin RLS rota no puede leer datos privados. Reemplaza la legacy `anon` JWT key (deprecada para proyectos creados después del 2025-11-01).
-   - **Wompi public key:** Wompi valida que las transacciones se generen desde dominios autorizados en su panel. Configurar `lucamsshop.co` y `*.vercel.app` en Wompi.
+   - **Wompi public key:** Wompi valida que las transacciones se generen desde dominios autorizados en su panel. Configurar `lucamsshop.com` y `*.vercel.app` en Wompi.
    - **Turnstile site key:** Cloudflare valida site key contra dominio. Configurar dominios permitidos en panel.
    - **Anthropic API key:** **NUNCA es pública.** Solo server-side. Llamar a `/api/ai/*` desde el cliente, nunca el cliente al endpoint de Anthropic directo.
 3. **Las llaves privadas viven en `.env.local` (dev) y en Vercel env vars (prod).** Nunca commiteadas.
@@ -251,7 +251,7 @@ describe('RLS', () => {
 
 ## Headers HTTP de seguridad
 
-> Configurados en `apps/web/next.config.mjs` o middleware. Verificar después con `curl -I https://lucamsshop.co | grep -i 'security\|content-security\|frame'`.
+> Configurados en `apps/web/next.config.mjs` o middleware. Verificar después con `curl -I https://lucamsshop.com | grep -i 'security\|content-security\|frame'`.
 
 ### Set base (Fase 1)
 
@@ -299,7 +299,7 @@ upgrade-insecure-requests;
 ### Verificación
 
 ```bash
-curl -I https://lucamsshop.co
+curl -I https://lucamsshop.com
 # Esperado: ver todos los headers anteriores
 ```
 
@@ -329,7 +329,7 @@ test("security headers present", async ({ request }) => {
 ```ts
 // apps/web/middleware.ts (fragmento)
 const ALLOWED_ORIGINS = [
-  "https://lucamsshop.co",
+  "https://lucamsshop.com",
   /^https:\/\/.*\.vercel\.app$/, // Previews
   ...(process.env.NODE_ENV === "development" ? ["http://localhost:3000"] : []),
 ];
@@ -917,7 +917,7 @@ Decisión definitiva de observabilidad de errores: ADR-022 abierto en Fase 7.
 #### 2. Detección (cómo me entero)
 
 - Alertas automatizadas (`OBSERVABILITY.md` § Alertas).
-- Reporte externo: `seguridad@lucamsshop.co` o `/legal/security`.
+- Reporte externo: `seguridad@lucamsshop.com` o `/legal/security`.
 - Dashboard `/admin/observability` con anomalías.
 
 #### 3. Contención
@@ -1324,7 +1324,7 @@ export function isAllowedRedirectDestination(input: unknown): input is string {
 
 ## Política de divulgación de vulnerabilidades
 
-- Página pública `/legal/security` con email `seguridad@lucamsshop.co` (configurar en Resend al lanzar).
+- Página pública `/legal/security` con email `seguridad@lucamsshop.com` (configurar en Resend al lanzar).
 - **SLA inicial:** acuse de recibo en 72 h, fix de severidad alta en 7 días.
 - **No bug bounty monetario** mientras el proyecto sea pequeño; sí reconocimiento público en `/legal/security/hall-of-fame`.
 
@@ -1334,17 +1334,17 @@ export function isAllowedRedirectDestination(input: unknown): input is string {
 
 ```bash
 # Headers de seguridad presentes
-curl -I https://lucamsshop.co | grep -i 'strict-transport\|x-frame\|content-security'
+curl -I https://lucamsshop.com | grep -i 'strict-transport\|x-frame\|content-security'
 
 # RLS verificada con cliente impostor
 pnpm test:rls
 
 # Rate limit funciona
-for i in {1..30}; do curl -X POST https://lucamsshop.co/api/ai/design-suggest; done
+for i in {1..30}; do curl -X POST https://lucamsshop.com/api/ai/design-suggest; done
 # El intento ~21 debe devolver 429
 
 # Webhook con firma inválida es rechazado
-curl -X POST https://lucamsshop.co/api/wompi/webhook -d '{"fake":"payload"}' \
+curl -X POST https://lucamsshop.com/api/wompi/webhook -d '{"fake":"payload"}' \
   -H "Content-Type: application/json"
 # Esperado: 401
 
