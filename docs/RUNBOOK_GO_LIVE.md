@@ -92,36 +92,36 @@ anti-robots del checkout) y **R2** (los backups). Es la decisión de [ADR-011](D
 
 > No es opcional: dos de estos puntos pueden **tumbar la tienda** meses después si se saltan.
 
-1. **📸 Inventaria el DNS actual (lo primero).** mi.com.co → tu dominio → **DNS**. Toma captura de
-   TODOS los registros que existan hoy — sobre todo **MX** y **TXT**.
-   **Por qué:** al cambiar los nameservers a Cloudflare, los registros de mi.com.co **dejan de usarse**.
-   Cloudflare intentará importarlos solo, pero si algo no lo detecta y tú no tienes la captura, no
-   sabrás qué se perdió. Si tienes correo con mi.com.co, perder el **MX** = quedarte sin recibir correo.
+1. **📸 Menú `DNS`: verifica que esté vacío.** Si dice **"No hay registros DNS configurados"** (caso
+   de `lucamsshop.com`, verificado 2026-07-20), **no hagas nada ahí** — NO uses el formulario "Agregar
+   registro". Los registros se crearán en Cloudflare. Si en cambio SÍ hubiera registros (sobre todo
+   **MX** de correo), toma captura antes de migrar: al cambiar los nameservers dejan de usarse.
 
-2. **🔒 Activa el bloqueo de transferencia** (menú **Seguridad**). Hoy el dominio aparece como
-   **"Sin protección"** 🔓 — es decir, sin candado anti-robo. Con el candado activo nadie puede
-   transferir el dominio a otro registrador sin tu autorización.
-   **Importante:** el candado bloquea **transferencias**, NO el cambio de nameservers — la propia guía
-   de mi.com.co para cambiar DNS no pide desbloquear nada
-   ([guía](https://soporte.mi.com.co/cambiar-los-servidores-dns/)). Así que puedes dejarlo activado.
+2. **🔒 Menú `Seguridad` → sección PROTECCIONES: enciende DOS interruptores** (quedan azules):
 
-   > Si en **Seguridad** eso resulta ser un producto de pago, evalúa: perder el dominio es perder la
-   > tienda, la marca y los correos. Es el activo más difícil de recuperar.
+   | Interruptor              | Acción                    | Por qué                                                                                                                                    |
+   | ------------------------ | ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+   | **Auto-renovación**      | Ya viene **encendido** ✅ | No lo toques. Si se apaga, el dominio vence y la tienda muere.                                                                             |
+   | **WHOIS Privacy**        | **ENCIÉNDELO**            | Oculta tu **nombre, dirección y teléfono** del WHOIS público. Coherente con [ADR-071](DECISIONS.md) (en los legales publicamos lo mínimo). |
+   | **Protección anti-robo** | **ENCIÉNDELO**            | Es el candado: "bloquea transferencias no autorizadas". Es lo que hace que arriba diga 🔓 **"Sin protección"**.                            |
 
-3. **📧 Verifica el correo de contacto** (menú **Contactos**). Debe ser un correo tuyo, real y que
-   revises. **ICANN obliga a que el correo del titular esté verificado; si no lo está, el dominio se
-   puede SUSPENDER** (la tienda se cae sin previo aviso).
+   **El candado NO estorba el cambio de nameservers** — bloquea _transferencias_ a otro registrador,
+   no la configuración. La guía oficial de mi.com.co para cambiar DNS no pide desbloquear nada
+   ([guía](https://soporte.mi.com.co/cambiar-los-servidores-dns/)).
 
-4. **💳 Auto-renovación** — ya aparece **Activa** ✅. Solo confirma que haya un **medio de pago
-   vigente**. Vence **19/07/2027**: si la tarjeta falla ese día, la tienda se cae.
+   > **"Código de autorización: No disponible"** en esa misma pantalla es normal y **no hay que
+   > hacer nada**: es el código EPP, que solo sirve para MUDAR el dominio a otro registrador. No lo
+   > vas a usar.
+   >
+   > Si al encender alguno te manda a **pagar**, detente y consúltalo antes.
 
-5. **🕵️ Privacidad WHOIS** — revisa si mi.com.co ofrece ocultar los datos del titular. Sin esto, tu
-   **nombre, dirección y teléfono personales** quedan públicos en el WHOIS y cualquiera los consulta.
-   Esto es coherente con la decisión de exponer lo mínimo en los legales ([ADR-071](DECISIONS.md)):
-   ahí publicamos solo nombre + ciudad + correo, no tu dirección. No tiene sentido protegerlo en el
-   sitio y dejarlo abierto en el WHOIS.
+3. **📧 Menú `Contactos`: verifica que el correo del titular sea tuyo y esté verificado.**
+   **ICANN puede SUSPENDER el dominio si ese correo no está verificado** (la tienda se cae sin aviso).
 
-6. **↪️ Redirección** — si tienes activa alguna redirección o página de "parqueo" en mi.com.co,
+4. **💳 Medio de pago vigente.** La auto-renovación ya está activa, pero vence **19/07/2027**: si ese
+   día la tarjeta falla, la tienda se cae.
+
+5. **↪️ Redirección** — si tienes activa alguna redirección o página de "parqueo" en mi.com.co,
    déjala anotada. Al pasar el DNS a Cloudflare deja de aplicar, y su registro `A`/`CNAME` es
    justamente el que hay que borrar (ver la advertencia del import más abajo).
 
