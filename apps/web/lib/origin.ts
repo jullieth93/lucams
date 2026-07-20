@@ -40,3 +40,17 @@ export function getTrustedSelfBaseUrl(): string {
   if (site) return site.replace(/\/+$/, "");
   return `http://localhost:${process.env.PORT ?? "3000"}`;
 }
+
+/**
+ * URL canónica PÚBLICA del sitio (dominio de cara al cliente). #28 — ÚNICA fuente de verdad para
+ * sitemap, robots, canonicals y OG: la misma env `NEXT_PUBLIC_SITE_URL` que alimenta metadataBase
+ * en app/layout.tsx. Antes sitemap/robots leían `SITE_URL` del CMS mientras canonicals/OG leían la
+ * env → split-brain (dos dominios distintos según la superficie).
+ *
+ * NO usar VERCEL_URL aquí: es el host del deployment/preview, no el dominio canónico. Se strippea
+ * el trailing slash porque el sitemap arma `${baseUrl}/${path}`. No llama a next/headers → seguro
+ * de importar desde el layout.
+ */
+export function getCanonicalSiteUrl(): string {
+  return (process.env.NEXT_PUBLIC_SITE_URL ?? "https://lucamsshop.co").replace(/\/+$/, "");
+}
