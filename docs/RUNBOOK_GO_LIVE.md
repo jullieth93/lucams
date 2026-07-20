@@ -210,8 +210,22 @@ panel el dominio aparece **Active** (no "Pending"). Puede tardar de minutos a 24
 1. Vercel → tu proyecto **lucams-shop** → **Settings** → **Domains** → **Add Domain**.
 2. Escribe `lucamsshop.com` → **Add**. Vercel te va a ofrecer agregar también `www.lucamsshop.com`:
    **acéptalo** (Vercel recomienda usar www y redirigir).
-3. Vercel te mostrará **los registros exactos que debes crear**: un registro **A** para el dominio raíz
-   y un **CNAME** para el `www`.
+3. Vercel te mostrará **los registros exactos que debes crear**, en la pestaña **DNS Records**.
+   En `lucamsshop.com` (2026-07-20) Vercel entregó un **CNAME en la raíz (`@`)**, no un registro A:
+
+   | Type      | Name | Value                           | Proxy              |
+   | --------- | ---- | ------------------------------- | ------------------ |
+   | **CNAME** | `@`  | `<id-único>.vercel-dns-017.com` | **Disabled** ← ojo |
+   - Vercel avisa: _"We're expanding our IP range… the legacy records `cname.vercel-dns.com` y
+     `76.76.21.21` will continue to work"_ → **no uses los viejos**, usa el que te muestre tu panel.
+   - Un CNAME en la raíz normalmente no es válido en DNS, pero **Cloudflare lo permite** porque aplana
+     el CNAME de la raíz automáticamente (CNAME flattening). Por eso funciona.
+   - **El propio Vercel marca `Proxy: Disabled`** — es exactamente la nube **gris** de Cloudflare.
+   - ⛔ **Ignora la pestaña "Vercel DNS"** (la que ofrece `ns1/ns2.vercel-dns.com`): eso es para quien
+     quiere que Vercel maneje el DNS. Nosotros usamos Cloudflare.
+
+   > 🔴 Mientras el registro no exista, Vercel muestra **"Invalid Configuration"** en rojo. **Es normal
+   > y esperado**, no es un fallo: desaparece al crear el registro y darle **Refresh**.
 
    > ⚠️ **Copia los valores TAL CUAL te los muestre tu panel de Vercel.** No los saques de un tutorial de
    > internet: hoy Vercel asigna un **CNAME único por proyecto** (del estilo
