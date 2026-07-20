@@ -88,10 +88,54 @@ electrónicamente o no.
 (las llaves DKIM del correo son larguísimas). Además ya usas Cloudflare para **Turnstile** (el
 anti-robots del checkout) y **R2** (los backups). Es la decisión de [ADR-011](DECISIONS.md).
 
+### 1.a — ANTES de tocar Cloudflare: revisar mi.com.co 🙋
+
+> No es opcional: dos de estos puntos pueden **tumbar la tienda** meses después si se saltan.
+
+1. **📸 Inventaria el DNS actual (lo primero).** mi.com.co → tu dominio → **DNS**. Toma captura de
+   TODOS los registros que existan hoy — sobre todo **MX** y **TXT**.
+   **Por qué:** al cambiar los nameservers a Cloudflare, los registros de mi.com.co **dejan de usarse**.
+   Cloudflare intentará importarlos solo, pero si algo no lo detecta y tú no tienes la captura, no
+   sabrás qué se perdió. Si tienes correo con mi.com.co, perder el **MX** = quedarte sin recibir correo.
+
+2. **🔒 Activa el bloqueo de transferencia** (menú **Seguridad**). Hoy el dominio aparece como
+   **"Sin protección"** 🔓 — es decir, sin candado anti-robo. Con el candado activo nadie puede
+   transferir el dominio a otro registrador sin tu autorización.
+   **Importante:** el candado bloquea **transferencias**, NO el cambio de nameservers — la propia guía
+   de mi.com.co para cambiar DNS no pide desbloquear nada
+   ([guía](https://soporte.mi.com.co/cambiar-los-servidores-dns/)). Así que puedes dejarlo activado.
+
+   > Si en **Seguridad** eso resulta ser un producto de pago, evalúa: perder el dominio es perder la
+   > tienda, la marca y los correos. Es el activo más difícil de recuperar.
+
+3. **📧 Verifica el correo de contacto** (menú **Contactos**). Debe ser un correo tuyo, real y que
+   revises. **ICANN obliga a que el correo del titular esté verificado; si no lo está, el dominio se
+   puede SUSPENDER** (la tienda se cae sin previo aviso).
+
+4. **💳 Auto-renovación** — ya aparece **Activa** ✅. Solo confirma que haya un **medio de pago
+   vigente**. Vence **19/07/2027**: si la tarjeta falla ese día, la tienda se cae.
+
+5. **🕵️ Privacidad WHOIS** — revisa si mi.com.co ofrece ocultar los datos del titular. Sin esto, tu
+   **nombre, dirección y teléfono personales** quedan públicos en el WHOIS y cualquiera los consulta.
+   Esto es coherente con la decisión de exponer lo mínimo en los legales ([ADR-071](DECISIONS.md)):
+   ahí publicamos solo nombre + ciudad + correo, no tu dirección. No tiene sentido protegerlo en el
+   sitio y dejarlo abierto en el WHOIS.
+
+6. **↪️ Redirección** — si tienes activa alguna redirección o página de "parqueo" en mi.com.co,
+   déjala anotada. Al pasar el DNS a Cloudflare deja de aplicar, y su registro `A`/`CNAME` es
+   justamente el que hay que borrar (ver la advertencia del import más abajo).
+
+✅ **Listo para seguir cuando:** tienes la captura del DNS actual, el candado activado, el correo de
+contacto verificado y la auto-renovación con medio de pago vigente.
+
+---
+
+### 1.b — Crear el sitio en Cloudflare
+
 1. Entra a [cloudflare.com](https://cloudflare.com) → **Sign up** (gratis) o inicia sesión.
 2. **Add a site** → escribe `lucamsshop.com` → selecciona el plan **Free** → **Continue**.
 
-### 1.b — Pantalla "Connect your domain" (qué seleccionar y por qué)
+### 1.c — Pantalla "Connect your domain" (qué seleccionar y por qué)
 
 Cloudflare muestra una pantalla con políticas de bots de IA. Esto es lo que aplica a una **tienda
 sin anuncios** como la tuya. Las tres categorías significan cosas distintas
@@ -111,12 +155,23 @@ sin anuncios** como la tuya. Las tres categorías significan cosas distintas
 > de Vercel que vas a crear en la FASE 2** y el sitio no abre o abre la página del registrador.
 > Los registros de correo (**MX**, **TXT**) sí se conservan.
 
-**Ninguna de estas opciones es permanente:** todas se cambian después en el panel de Cloudflare. 3. Cloudflare escanea y te muestra dos **nameservers**, algo como
-`xxxx.ns.cloudflare.com` y `yyyy.ns.cloudflare.com`. **Cópialos.** 4. Entra a **mi.com.co** → tu cuenta → tus dominios → `lucamsshop.com` → busca **"Servidores DNS"**,
-**"Nameservers"** o **"DNS personalizados"**. 5. **Reemplaza** los nameservers que estén ahí por los DOS de Cloudflare. Guarda. 6. Vuelve a Cloudflare → **Done, check nameservers**.
+**Ninguna de estas opciones es permanente:** todas se cambian después en el panel de Cloudflare.
 
-> 💡 Si no encuentras dónde cambiar los nameservers en mi.com.co, escríbeles a soporte: _"Necesito
-> apuntar los nameservers de lucamsshop.com a Cloudflare"_ y les pasas los dos.
+### 1.d — Cambiar los nameservers en mi.com.co
+
+1. Cloudflare te mostrará **dos nameservers**, del estilo `xxxx.ns.cloudflare.com` y
+   `yyyy.ns.cloudflare.com`. **Cópialos.**
+2. Entra a **mi.com.co** → tu dominio `lucamsshop.com` → menú lateral **Nameservers**.
+3. **Reemplaza** los dos que estén ahí por los DOS de Cloudflare → **Guardar cambios**.
+4. Vuelve a Cloudflare → **Done, check nameservers**.
+
+> ⏱️ **mi.com.co indica 12 a 24 horas de propagación** y sugiere verificar en
+> [dnslookup.es](https://dnslookup.es/)
+> ([guía oficial](https://soporte.mi.com.co/cambiar-los-servidores-dns/)). Mientras propaga, puede
+> seguir apareciendo la página vieja o de parqueo: **es normal, no lo toques**.
+
+> 💡 Si no encuentras dónde cambiarlos, escríbele a soporte de mi.com.co: _"Necesito apuntar los
+> nameservers de lucamsshop.com a Cloudflare"_ y les pasas los dos.
 
 ✅ **Cómo sabes que quedó bien:** Cloudflare te manda un correo _"lucamsshop.com is now active"_ y en su
 panel el dominio aparece **Active** (no "Pending"). Puede tardar de minutos a 24h.
