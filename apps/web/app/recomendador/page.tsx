@@ -18,7 +18,8 @@ import {
 import { WizardRecomendador } from "@/components/wizard-recomendador";
 
 export const metadata: Metadata = {
-  title: "Lucams · Recomendador",
+  // #27 — el template global añade "· Lucams_shop"; keyword al frente.
+  title: "Recomendador de imanes",
   description:
     "¿No sabes qué elegir? Te ayudamos en 4 preguntas a encontrar el imán perfecto para tu ocasión.",
 };

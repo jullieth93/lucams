@@ -15,7 +15,7 @@ import { prisma } from "@/lib/db";
 import { getCurrentCustomer } from "@/lib/auth";
 
 export const metadata: Metadata = {
-  title: "Mi cuenta · Lucams_shop",
+  title: "Mi cuenta",
   robots: { index: false, follow: false },
 };
 

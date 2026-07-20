@@ -35,6 +35,9 @@ export type CategoryNode = {
   visibleFilters: string[];
   featuredProductSlug: string | null;
   productCount: number;
+  /** #23 — slug del padre (null si es raíz). Se popula en getCategoryBySlug; opcional para no
+   *  obligar a getCategoryTree a rellenarlo. */
+  parentSlug?: string | null;
   children: CategoryNode[];
 };
 
@@ -187,6 +190,7 @@ export const getCategoryBySlug = unstable_cache(
       const cat = await prisma.category.findUnique({
         where: { slug },
         include: {
+          parent: { select: { slug: true } }, // #23 — para validar la ruta padre/hijo
           children: {
             where: { deletedAt: null, isActive: true },
             orderBy: [{ order: "asc" }, { name: "asc" }],
@@ -215,6 +219,7 @@ export const getCategoryBySlug = unstable_cache(
         visibleFilters: cat.visibleFilters,
         featuredProductSlug: cat.featuredProductSlug,
         productCount: cat._count.products,
+        parentSlug: cat.parent?.slug ?? null,
         children: cat.children.map((c) => ({
           slug: c.slug,
           name: c.name,

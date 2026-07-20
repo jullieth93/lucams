@@ -28,9 +28,9 @@ const loadSharedDesign = cache(getSharedDesign);
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { token } = await params;
   const design = await loadSharedDesign(token);
-  if (!design) return { title: "Diseño no encontrado · Lucams", robots: { index: false } };
+  if (!design) return { title: "Diseño no encontrado", robots: { index: false } };
   return {
-    title: `Un ${design.product.name} personalizado · Lucams_shop`,
+    title: `Un ${design.product.name} personalizado`,
     description: `Mira este ${design.product.name} hecho en el Estudio de Lucams_shop. Crea el tuyo con tus fotos.`,
     robots: { index: false, follow: false },
     openGraph: {

@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { RestablecerForm } from "./restablecer-form";
 
 export const metadata: Metadata = {
-  title: "Restablecer contraseña · Lucams_shop",
+  title: "Restablecer contraseña",
   description: "Ingresa el código que te enviamos por correo y tu nueva contraseña.",
 };
 

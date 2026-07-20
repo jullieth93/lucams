@@ -15,12 +15,13 @@
  */
 
 import type { MetadataRoute } from "next";
-import { getSettingValue } from "@/lib/cms";
+import { getCanonicalSiteUrl } from "@/lib/origin";
 
 export const dynamic = "force-dynamic";
 
 export default async function robots(): Promise<MetadataRoute.Robots> {
-  const baseUrl = await getSettingValue("SITE_URL", "https://lucamsshop.co");
+  // #28 — misma URL canónica que sitemap/canonicals/OG (antes SITE_URL del CMS → split-brain).
+  const baseUrl = getCanonicalSiteUrl();
 
   return {
     rules: [

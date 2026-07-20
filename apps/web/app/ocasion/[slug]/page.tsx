@@ -9,7 +9,7 @@
  * Bot AI Fase 5+ puede recomendar esta URL al cliente.
  */
 
-import type { Metadata } from "next";
+import type { Metadata, ResolvingMetadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Sparkles, Users, Calendar } from "lucide-react";
@@ -35,18 +35,20 @@ const MONTH_NAMES: Record<number, string> = {
   12: "Diciembre",
 };
 
-export async function generateMetadata({
-  params,
-}: {
-  params: Promise<{ slug: string }>;
-}): Promise<Metadata> {
+export async function generateMetadata(
+  { params }: { params: Promise<{ slug: string }> },
+  parent: ResolvingMetadata,
+): Promise<Metadata> {
   const { slug } = await params;
   const ocasion = await getOcasionBySlug(slug);
   if (!ocasion) return { title: "Ocasión no encontrada" };
 
   const description = ocasion.description.slice(0, 160);
+  // #25 — heredar las imágenes OG del layout (el merge shallow de Next las borraría).
+  const previousImages = (await parent).openGraph?.images ?? [];
   return {
-    title: `Lucams_shop · ${ocasion.name}`,
+    // #27 — solo el nombre; el template global añade "· Lucams_shop" una vez (evita duplicarla).
+    title: ocasion.name,
     description,
     // Canonical self-referencial (auditoría 2026-07-17): evita indexar variantes con utm_*/fbclid.
     alternates: { canonical: `/ocasion/${slug}` },
@@ -54,6 +56,9 @@ export async function generateMetadata({
       title: `Imanes para ${ocasion.name}`,
       description,
       type: "website",
+      siteName: "Lucams_shop",
+      locale: "es_CO",
+      images: previousImages,
     },
   };
 }

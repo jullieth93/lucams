@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/sonner";
 import { WebVitalsReporter } from "@/components/web-vitals";
 import { CookiesBanner } from "@/components/cookies-banner";
 import { RouteToasts } from "@/components/route-toasts";
+import { getCanonicalSiteUrl } from "@/lib/origin";
 import "./globals.css";
 
 /*
@@ -28,7 +29,8 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "https://lucamsshop.co"),
+  // #28 — misma fuente que sitemap/robots/canonicals (getCanonicalSiteUrl); consolida la URL base.
+  metadataBase: new URL(getCanonicalSiteUrl()),
   title: {
     default: "Lucams_shop — Tus recuerdos en imán",
     template: "%s · Lucams_shop",
@@ -45,6 +47,8 @@ export const metadata: Metadata = {
     telephone: false,
   },
   // OpenGraph para previews al compartir en WhatsApp, Instagram, Facebook.
+  // #26 — las imágenes las provee el convention app/opengraph-image.tsx (PNG 1200×630 real). NO
+  // declarar `images` aquí: coexistirían con el convention → etiquetas og:image duplicadas.
   openGraph: {
     type: "website",
     locale: "es_CO",
@@ -52,20 +56,12 @@ export const metadata: Metadata = {
     title: "Lucams_shop — Tus recuerdos en imán",
     description:
       "Imanes magnéticos personalizados hechos en Colombia. Diseña el tuyo en vivo o elige entre nuestros packs kawaii.",
-    images: [
-      {
-        url: "/og-image.png",
-        width: 1200,
-        height: 630,
-        alt: "Lucams_shop — Tus recuerdos en imán",
-      },
-    ],
   },
   twitter: {
+    // #26 — imagen vía app/twitter-image.tsx (convention). Sin `images` aquí para no duplicar.
     card: "summary_large_image",
     title: "Lucams_shop — Tus recuerdos en imán",
     description: "Imanes magnéticos personalizados hechos en Colombia.",
-    images: ["/og-image.png"],
   },
 };
 

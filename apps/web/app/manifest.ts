@@ -23,22 +23,25 @@ export default function manifest(): MetadataRoute.Manifest {
     theme_color: "#7C6AAD",
     lang: "es-CO",
     orientation: "portrait",
+    // #31 — íconos con dimensiones REALES (antes el mismo PNG 468×468 se declaraba como 192 y 512).
+    // La variante maskable lleva el logo a ~80% centrado sobre lavanda #7C6AAD (safe-zone) para que
+    // Android no recorte la insignia al aplicar la máscara.
     icons: [
       {
-        src: "/brand/lucams-logo.png",
+        src: "/icons/lucams-icon-192.png",
         sizes: "192x192",
         type: "image/png",
         purpose: "any",
       },
       {
-        src: "/brand/lucams-logo.png",
+        src: "/icons/lucams-icon-512.png",
         sizes: "512x512",
         type: "image/png",
         purpose: "any",
       },
       {
-        src: "/brand/lucams-logo.png",
-        sizes: "192x192",
+        src: "/icons/lucams-icon-maskable-512.png",
+        sizes: "512x512",
         type: "image/png",
         purpose: "maskable",
       },

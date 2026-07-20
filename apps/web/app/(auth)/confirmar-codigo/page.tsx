@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { ConfirmarForm } from "./confirmar-form";
 
 export const metadata: Metadata = {
-  title: "Confirma tu cuenta · Lucams_shop",
+  title: "Confirma tu cuenta",
   description: "Ingresa el código de 6 dígitos que te enviamos por correo.",
 };
 

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { LoginForm } from "./login-form";
 
 export const metadata: Metadata = {
-  title: "Iniciar sesión · Lucams_shop",
+  title: "Iniciar sesión",
   description: "Accede a tu cuenta de Lucams_shop.",
 };
 
