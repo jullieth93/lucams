@@ -6,8 +6,13 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 // Los emails de retracto son best-effort; los mockeamos para no pegar a Resend.
+// Mock TODOS los envíos de emails/* — deben cubrir cada export real de ./emails, o al llamar uno
+// no-mockeado (p.ej. sendRetractRejected, agregado después) el módulo mockeado lanza
+// "No export is defined on the mock" y el test falla (rompía CI: rejectRetract → sendRetractRejected).
 vi.mock("./emails", () => ({
+  sendRetractRequested: async () => {},
   sendRetractApproved: async () => {},
+  sendRetractRejected: async () => {},
   sendRetractRefunded: async () => {},
 }));
 
