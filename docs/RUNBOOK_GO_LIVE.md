@@ -185,6 +185,18 @@ sin anuncios** como la tuya. Las tres categorías significan cosas distintas
 > ([guía oficial](https://soporte.mi.com.co/cambiar-los-servidores-dns/)). Mientras propaga, puede
 > seguir apareciendo la página vieja o de parqueo: **es normal, no lo toques**.
 
+**Dos avisos de la pantalla "Update your nameservers" de Cloudflare:**
+
+- ⚠️ **DNSSEC debe estar APAGADO.** Si el registrador tiene DNSSEC activo y cambias los nameservers,
+  el dominio **deja de resolver por completo** (el sitio queda inalcanzable, no es un simple retraso).
+  En el panel de mi.com.co de `lucamsshop.com` la sección **Seguridad** solo ofrece Auto-renovación,
+  WHOIS Privacy y Protección anti-robo — **no hay DNSSEC**, así que está apagado y no hay nada que
+  hacer. Si algún día aparece, apágalo ANTES de tocar nameservers.
+- ⛔ **IGNORA "Only allow Cloudflare IP addresses at your origin".** Esa recomendación es para quien
+  sirve el sitio desde su propio servidor detrás del proxy de Cloudflare. **Aquí el origen es Vercel y
+  usamos Cloudflare solo-DNS (nube gris)**, así que el tráfico NO llega desde IPs de Cloudflare:
+  aplicar ese bloqueo **tumbaría el sitio**.
+
 > 💡 Si no encuentras dónde cambiarlos, escríbele a soporte de mi.com.co: _"Necesito apuntar los
 > nameservers de lucamsshop.com a Cloudflare"_ y les pasas los dos.
 
