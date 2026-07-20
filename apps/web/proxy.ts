@@ -33,6 +33,11 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { PRODUCT_REDIRECTS } from "@/lib/product-redirects";
+import {
+  ADMIN_ACTIVITY_COOKIE,
+  ADMIN_IDLE_LIMIT_MS,
+  adminActivityCookieOptions,
+} from "@/lib/admin-activity";
 import { buildCsp, isOriginAllowed, SECURITY_HEADERS } from "@/lib/security-headers";
 import { incrementRedirectHit, lookupActiveRedirect } from "@/features/redirects/service";
 
@@ -78,18 +83,6 @@ function preserveIncomingQuery(target: URL, incoming: URLSearchParams): URL {
 const IS_PROD_DEPLOY =
   process.env.VERCEL_ENV === "production" || process.env.VERCEL_ENV === "preview";
 const IS_DEV = process.env.NODE_ENV === "development";
-
-// Idle-timeout admin (Lucy 2026-06-27, Bloque C / A7): 30 min sin actividad →
-// cierre de sesión. Ventana deslizante: cada request admin renueva la marca.
-const ADMIN_IDLE_LIMIT_MS = 30 * 60 * 1000;
-const ADMIN_ACTIVITY_COOKIE = "admin_last_activity";
-// La cookie marcadora DEBE sobrevivir mucho más que la ventana de inactividad (ADR-062 P1).
-// Si su maxAge fuese <= el límite, un admin inactivo por más que ese maxAge llegaría con la
-// cookie ya EXPIRADA → last=0 → el gate lo trataría como "primera visita" y NO cerraría la
-// sesión (zona muerta que evade el idle-timeout). Con un maxAge >> límite, el timestamp viejo
-// siempre está disponible para detectar la inactividad. La contraparte está en el borrado de la
-// marca al entrar a /admin/login (abajo): así una sesión NUEVA no hereda un timestamp viejo.
-const ADMIN_ACTIVITY_COOKIE_MAX_AGE_S = 60 * 60 * 24 * 30; // 30 días >> 30 min
 
 // CSP por nonce (C3, Lucy 2026-06-27). script-src usa nonce + strict-dynamic: los
 // scripts de Next llevan el nonce automáticamente y los que ellos cargan
@@ -229,13 +222,17 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(redirectUrl);
   }
 
-  // Idle-timeout admin (A7): si pasaron >30 min sin actividad, limpiamos las
-  // cookies de sesión Supabase (sb-*) + la marca y forzamos re-login. Ventana
-  // deslizante: en cada request admin renovamos la marca de actividad.
+  // Idle-timeout admin (A7 · ADR-062 P1 · plan de producción): si pasaron >30 min
+  // sin actividad —O la marca está AUSENTE— limpiamos las cookies de sesión Supabase
+  // (sb-*) + la marca y forzamos re-login. La marca la SELLA la acción de login al
+  // autenticarse (lib/admin-activity), así que una request admin autenticada sin
+  // marca es manipulada/vencida → se trata como stale (cierra el hueco de "ausente =
+  // primera visita" que evadía el timeout borrando la cookie). Ventana deslizante:
+  // en cada request admin renovamos la marca.
   if (isAdminPath && user) {
     const last = Number(request.cookies.get(ADMIN_ACTIVITY_COOKIE)?.value ?? 0);
     const now = Date.now();
-    if (last && now - last > ADMIN_IDLE_LIMIT_MS) {
+    if (!last || now - last > ADMIN_IDLE_LIMIT_MS) {
       const url = new URL("/admin/login", request.url);
       url.searchParams.set("expired", "1");
       const expired = NextResponse.redirect(url);
@@ -245,13 +242,7 @@ export async function proxy(request: NextRequest) {
       expired.cookies.delete(ADMIN_ACTIVITY_COOKIE);
       return expired;
     }
-    response.cookies.set(ADMIN_ACTIVITY_COOKIE, String(now), {
-      httpOnly: true,
-      sameSite: "lax",
-      secure: IS_PROD_DEPLOY,
-      path: "/admin",
-      maxAge: ADMIN_ACTIVITY_COOKIE_MAX_AGE_S,
-    });
+    response.cookies.set(ADMIN_ACTIVITY_COOKIE, String(now), adminActivityCookieOptions());
   }
 
   response.headers.set("X-Request-Id", requestId);
@@ -266,12 +257,10 @@ export async function proxy(request: NextRequest) {
     response.headers.set("Vary", "Origin");
   }
 
-  // Reinicia el reloj de inactividad al entrar a /admin/login: borra la marca para que una
-  // sesión NUEVA no herede el timestamp de una sesión previa (que la expiraría al instante).
-  // Contraparte del maxAge largo de ADMIN_ACTIVITY_COOKIE (ADR-062 P1).
-  if (path.startsWith("/admin/login")) {
-    response.cookies.delete(ADMIN_ACTIVITY_COOKIE);
-  }
+  // Nota: ya NO borramos la marca al entrar a /admin/login. La marca la sella la
+  // acción de login (seg. abajo), que sobrescribe cualquier valor viejo con `now` —
+  // así una sesión nueva arranca fresca sin heredar un timestamp previo, y una marca
+  // ausente en un path admin autenticado se interpreta como manipulada (no "nueva").
 
   return response;
 }

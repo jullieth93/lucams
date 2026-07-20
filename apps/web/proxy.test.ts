@@ -73,9 +73,12 @@ describe("proxy · gate /admin para anónimos", () => {
     expect(res.headers.get("location")).toBeNull();
   });
 
-  it("con sesión NO redirige a login", async () => {
+  it("con sesión (y marca fresca) NO redirige a login", async () => {
     state.user = { id: "u1" };
-    const res = await proxy(makeReq("/admin/pedidos"));
+    // Marca fresca: aísla el gate anónimo del idle-timeout (una request admin
+    // autenticada SIN marca ahora expira — ver 'marca AUSENTE' abajo).
+    const fresh = String(Date.now() - 60 * 1000);
+    const res = await proxy(makeReq("/admin/pedidos", { cookies: { admin_last_activity: fresh } }));
     expect(res.status).toBe(200);
     expect(res.headers.get("location") ?? "").not.toContain("/admin/login");
   });
@@ -106,19 +109,24 @@ describe("proxy · idle-timeout admin (30 min)", () => {
     expect(res.headers.get("location") ?? "").not.toContain("expired");
   });
 
-  it("sin cookie de actividad no expira (primera visita) y sella la marca", async () => {
+  it("marca AUSENTE en path admin autenticado → EXPIRA (manipulada/vencida, no 'primera visita')", async () => {
+    // La acción de login sella la marca al autenticarse, así que una request admin
+    // autenticada sin marca solo ocurre si la borraron (evasión del idle-timeout).
     state.user = { id: "u1" };
-    const res = await proxy(makeReq("/admin/pedidos"));
-    expect(res.status).toBe(200);
-    expect(res.cookies.get("admin_last_activity")?.value).toBeTruthy();
+    const res = await proxy(makeReq("/admin/pedidos", { cookies: { "sb-access-token": "tok" } }));
+    expect(res.status).toBe(307);
+    const loc = res.headers.get("location") ?? "";
+    expect(loc).toContain("/admin/login");
+    expect(loc).toContain("expired=1");
+    expect(res.cookies.get("sb-access-token")?.value ?? "").toBe("");
   });
 
-  it("entrar a /admin/login borra la marca (sesión nueva no hereda timestamp viejo)", async () => {
+  it("/admin/login NO borra la marca (la sella la acción de login, no el proxy)", async () => {
     const res = await proxy(
       makeReq("/admin/login", { cookies: { admin_last_activity: String(Date.now()) } }),
     );
-    // delete() emite un Set-Cookie que vacía el valor → una sesión nueva arranca el reloj limpio.
-    expect(res.cookies.get("admin_last_activity")?.value ?? "").toBe("");
+    // El proxy ya no toca la marca en /admin/login; la acción de login la sobrescribe con `now`.
+    expect(res.cookies.get("admin_last_activity")).toBeUndefined();
   });
 });
 

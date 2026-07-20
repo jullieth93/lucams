@@ -21,9 +21,10 @@
 
 "use server";
 
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
+import { ADMIN_ACTIVITY_COOKIE, adminActivityCookieOptions } from "@/lib/admin-activity";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { rateLimit } from "@/lib/rate-limit";
@@ -125,5 +126,11 @@ export async function adminLoginAction(
     adminId: admin.id,
     role: admin.role,
   });
+  // Sella la marca de actividad al autenticarse: así la primera request admin ya
+  // llega con marca fresca (no la borra el proxy), y una request admin autenticada
+  // SIN marca es inequívocamente manipulada/vencida → el idle-timeout la cierra
+  // (cierra el hueco "marca ausente = primera visita"). Mismo mecanismo que las
+  // cookies sb-*: se propaga a la request de destino tras el redirect.
+  (await cookies()).set(ADMIN_ACTIVITY_COOKIE, String(Date.now()), adminActivityCookieOptions());
   redirect("/admin/dashboard");
 }
