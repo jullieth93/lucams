@@ -88,22 +88,23 @@ Si una tarea cruza varias áreas, lee los archivos relevantes en paralelo. Si no
 
 ## Cómo navegar la documentación
 
-| Si necesitas...                                                                | Lee...                                         |
-| ------------------------------------------------------------------------------ | ---------------------------------------------- |
-| El plan completo                                                               | [docs/PLAN.md](docs/PLAN.md)                   |
-| Paleta, logo, mascota, tipografías                                             | [docs/BRANDING.md](docs/BRANDING.md)           |
-| Estructura de carpetas, modelo Prisma, RLS                                     | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)   |
-| Cómo se integran Wompi/Venndelo/Claude/Resend                                  | [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md)   |
-| Fases con checklist y criterios de aceptación                                  | [docs/ROADMAP.md](docs/ROADMAP.md)             |
-| Por qué se tomó tal decisión                                                   | [docs/DECISIONS.md](docs/DECISIONS.md)         |
-| Variables de entorno, despliegue, runbook, dev local, DevOps, DR               | [docs/OPERATIONS.md](docs/OPERATIONS.md)       |
-| Estado actual + bitácora inter-sesión                                          | [docs/STATE.md](docs/STATE.md)                 |
-| Seguridad (RLS, CORS, headers, rate limit, RBAC, CSP, validación, STRIDE, IRP) | [docs/SECURITY.md](docs/SECURITY.md)           |
-| Patrones de código (naming, errores RFC 7807, saga, idempotency, audit fields) | [docs/CONVENTIONS.md](docs/CONVENTIONS.md)     |
-| Observabilidad (SLOs, dashboards, alertas, postmortem)                         | [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md) |
-| Compliance Colombia (Ley 1581, Ley 1480, DIAN, retracto, garantías)            | [docs/COMPLIANCE.md](docs/COMPLIANCE.md)       |
-| Estrategia de testing (pirámide, RLS, E2E, load)                               | [docs/TESTING.md](docs/TESTING.md)             |
-| Auditorías históricas                                                          | [docs/audits/](docs/audits/)                   |
+| Si necesitas...                                                                | Lee...                                             |
+| ------------------------------------------------------------------------------ | -------------------------------------------------- |
+| El plan completo                                                               | [docs/PLAN.md](docs/PLAN.md)                       |
+| Paleta, logo, mascota, tipografías                                             | [docs/BRANDING.md](docs/BRANDING.md)               |
+| Estructura de carpetas, modelo Prisma, RLS                                     | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)       |
+| Cómo se integran Wompi/Venndelo/Claude/Resend                                  | [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md)       |
+| Fases con checklist y criterios de aceptación                                  | [docs/ROADMAP.md](docs/ROADMAP.md)                 |
+| Por qué se tomó tal decisión                                                   | [docs/DECISIONS.md](docs/DECISIONS.md)             |
+| Variables de entorno, despliegue, runbook, dev local, DevOps, DR               | [docs/OPERATIONS.md](docs/OPERATIONS.md)           |
+| Pasos para poner la tienda en vivo (dominio, DNS, Vercel, correo, pagos)       | [docs/RUNBOOK_GO_LIVE.md](docs/RUNBOOK_GO_LIVE.md) |
+| Estado actual + bitácora inter-sesión                                          | [docs/STATE.md](docs/STATE.md)                     |
+| Seguridad (RLS, CORS, headers, rate limit, RBAC, CSP, validación, STRIDE, IRP) | [docs/SECURITY.md](docs/SECURITY.md)               |
+| Patrones de código (naming, errores RFC 7807, saga, idempotency, audit fields) | [docs/CONVENTIONS.md](docs/CONVENTIONS.md)         |
+| Observabilidad (SLOs, dashboards, alertas, postmortem)                         | [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md)     |
+| Compliance Colombia (Ley 1581, Ley 1480, DIAN, retracto, garantías)            | [docs/COMPLIANCE.md](docs/COMPLIANCE.md)           |
+| Estrategia de testing (pirámide, RLS, E2E, load)                               | [docs/TESTING.md](docs/TESTING.md)                 |
+| Auditorías históricas                                                          | [docs/audits/](docs/audits/)                       |
 
 ## Estado actual
 

@@ -2845,7 +2845,7 @@ Lucy adquirió y entregó el dominio **`lucamsshop.com`**. Supersede a [ADR-011]
   la política de privacidad — cambiar el dominio de contacto **no** es un cambio material del
   tratamiento de datos, así que no fuerza re-consentimiento (sí se actualiza la fecha de vigencia).
 
-**Registrador: `[pendiente confirmar con Lucy]`.** ADR-011 justificaba mi.com.co como registrador
+**Registrador: mi.com.co** (confirmado por Lucy 2026-07-20). ADR-011 justificaba mi.com.co como registrador
 colombiano para `.co`/`.com.co`; un `.com` es gTLD y pudo comprarse en otro lado. No se asume (mandato
 #9): las menciones a mi.com.co en docs operativos quedaron marcadas como por confirmar hasta que Lucy
 indique dónde está el registro (importa para DNS y renovación).

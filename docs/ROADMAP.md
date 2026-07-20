@@ -508,7 +508,7 @@ Antes de iniciar la fase, citar fuente con fecha en `OPERATIONS.md` para:
 - [ ] **Vercel Pro** activado
 - [ ] **Supabase Pro** activado (verificar PITR de 7 días)
 - [ ] **Resend Pro** activado
-- [x] Compra de dominio `lucamsshop.com` (adquirido 2026-07-20; registrador por confirmar — ADR-076)
+- [x] Compra de dominio `lucamsshop.com` (adquirido 2026-07-20, registrado en **mi.com.co** — ADR-076)
 - [ ] DNS configurado en Cloudflare
 - [ ] Dominio conectado a Vercel
 - [ ] DNS de email `mail.lucamsshop.com` configurado en Resend (SPF/DKIM/DMARC)

@@ -2,7 +2,7 @@
 
 E-commerce colombiano de productos magnéticos personalizados. Inspirado en [magneticas.cl](https://www.magneticas.cl) pero con valor agregado fuerte (estudio de personalización en vivo, vista 3D, IA, contraentrega).
 
-- **Sitio en producción:** _(pendiente, dominio `lucamsshop.com` se compra al lanzar)_
+- **Sitio en producción:** _(pendiente de apuntar DNS — dominio `lucamsshop.com` ya adquirido en mi.com.co, ver [docs/RUNBOOK_GO_LIVE.md](docs/RUNBOOK_GO_LIVE.md))_
 - **Instagram:** [@lucams_shop](https://www.instagram.com/lucams_shop)
 - **Linktree actual:** [linktr.ee/Lucams_shop](https://linktr.ee/Lucams_shop)
 - **WhatsApp (temporal):** +57 320 887 3826
@@ -24,7 +24,7 @@ E-commerce colombiano de productos magnéticos personalizados. Inspirado en [mag
 - **Email**: Resend
 - **CAPTCHA**: Cloudflare Turnstile (en checkout y registro)
 - **Hosting**: Vercel (Hobby/Free durante dev → Pro al lanzar)
-- **Dominio**: `lucamsshop.com` (adquirido 2026-07-20; registrador por confirmar — ADR-076)
+- **Dominio**: `lucamsshop.com` (adquirido 2026-07-20, registrado en **mi.com.co** — ADR-076)
 
 ## Documentación
 
@@ -38,6 +38,7 @@ E-commerce colombiano de productos magnéticos personalizados. Inspirado en [mag
 | [docs/ROADMAP.md](docs/ROADMAP.md)                           | Fases de implementación con checklist                                                      |
 | [docs/DECISIONS.md](docs/DECISIONS.md)                       | Log cronológico de decisiones (ADRs)                                                       |
 | [docs/OPERATIONS.md](docs/OPERATIONS.md)                     | Variables de entorno, despliegue, runbook, entorno de desarrollo VM (símil Vercel local)   |
+| [docs/RUNBOOK_GO_LIVE.md](docs/RUNBOOK_GO_LIVE.md)           | Runbook de go-live paso a paso (dominio, DNS, Vercel, correo, pagos, envíos)               |
 | [docs/STATE.md](docs/STATE.md)                               | Estado actual + bitácora inter-sesión (índice narrativo)                                   |
 | [docs/CATALOG_SEED.md](docs/CATALOG_SEED.md)                 | Catálogo seed (37 productos paritarios con magneticas.cl, adaptados a Lucams)              |
 | [docs/COMPETITIVE_ANALYSIS.md](docs/COMPETITIVE_ANALYSIS.md) | Análisis competitivo vs magneticas.cl (qué copiamos, mejoramos, descartamos)               |
