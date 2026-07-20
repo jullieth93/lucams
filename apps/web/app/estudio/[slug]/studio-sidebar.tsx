@@ -56,6 +56,8 @@ export function StudioSidebar({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(0);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  // Consentimiento de derechos de imagen (Ley 1581): obligatorio antes de subir.
+  const [rightsAccepted, setRightsAccepted] = useState(false);
   // P0.2 — Toggle "ocultar usadas" tipo Mixbook Hide Used.
   const [hideUsed, setHideUsed] = useState(false);
 
@@ -80,6 +82,7 @@ export function StudioSidebar({
         const formData = new FormData();
         formData.append("file", file);
         if (designId) formData.append("designId", designId);
+        formData.append("rightsAccepted", rightsAccepted ? "true" : "false");
         const result = await uploadDesignAssetAction(formData);
         if (result.ok) {
           addAsset({
@@ -163,10 +166,31 @@ export function StudioSidebar({
           )}
         </div>
 
+        <label className="text-brand-purple-dark/80 mb-2 flex items-start gap-2 text-xs leading-snug">
+          <input
+            type="checkbox"
+            checked={rightsAccepted}
+            onChange={(e) => setRightsAccepted(e.target.checked)}
+            className="accent-brand-purple mt-0.5 h-4 w-4 flex-shrink-0"
+          />
+          <span>
+            Tengo derecho a usar esta foto y autorizo imprimirla (
+            <a
+              href="/legal/privacidad"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline"
+            >
+              Ley 1581
+            </a>
+            ).
+          </span>
+        </label>
+
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
-          disabled={uploading > 0}
+          disabled={uploading > 0 || !rightsAccepted}
           aria-label="Subir foto desde el dispositivo"
           className="border-brand-purple/30 bg-brand-purple/5 text-brand-purple hover:bg-brand-purple/10 focus:ring-brand-purple flex w-full items-center justify-center gap-2 rounded-md border-2 border-dashed py-4 text-sm font-medium transition-colors focus:ring-2 focus:outline-none disabled:opacity-60"
         >

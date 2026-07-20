@@ -209,6 +209,11 @@ export type FinalizeDesignInput = z.infer<typeof FinalizeDesignSchema>;
 
 const ALLOWED_MIME = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"] as const;
 
+// Versión de la política de derechos de imagen aceptada al subir (Ley 1581 + plan de
+// producción). Se persiste por asset junto con rightsAcceptedAt como evidencia. Subir
+// la versión cuando cambie el texto de la declaración obliga a re-aceptar en futuras subidas.
+export const IMAGE_RIGHTS_POLICY_VERSION = "2026-07";
+
 export const UploadAssetMetadataSchema = z.object({
   designId: z.string().min(1).optional(),
   mimeType: z.enum(ALLOWED_MIME),
@@ -217,6 +222,12 @@ export const UploadAssetMetadataSchema = z.object({
     .int()
     .min(1)
     .max(10 * 1024 * 1024),
+  // Consentimiento OBLIGATORIO por-subida: el que sube declara tener derecho a usar la
+  // imagen y autoriza su impresión (transfiere la responsabilidad + derecho a la propia
+  // imagen, Ley 1581). Sin true, la subida se rechaza con VALIDATION.
+  rightsAccepted: z.literal(true, {
+    error: "Confirma que tienes derecho a usar la imagen que subes.",
+  }),
 });
 export type UploadAssetMetadata = z.infer<typeof UploadAssetMetadataSchema>;
 

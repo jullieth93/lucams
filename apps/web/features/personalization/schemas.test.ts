@@ -6,7 +6,7 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { SlotStateSchema, CanvasDataV2Schema } from "./schemas";
+import { SlotStateSchema, CanvasDataV2Schema, UploadAssetMetadataSchema } from "./schemas";
 
 describe("SlotStateSchema — encuadre + texto del usuario sobreviven (ADR-057 Fase A)", () => {
   it("conserva photoTransform (offsetX/offsetY/scale) — antes se descartaba", () => {
@@ -87,5 +87,25 @@ describe("SlotStateSchema — encuadre + texto del usuario sobreviven (ADR-057 F
     const parsed = CanvasDataV2Schema.parse(canvas);
     expect(parsed.slots[0].photoTransform).toEqual({ offsetX: 10, offsetY: -5, scale: 1.2 });
     expect(parsed.slots[1].filter).toBe("vivid");
+  });
+});
+
+describe("UploadAssetMetadataSchema — consentimiento de derechos de imagen (Ley 1581 · plan de producción)", () => {
+  const base = { mimeType: "image/jpeg" as const, sizeBytes: 1000 };
+
+  it("acepta la subida cuando rightsAccepted === true", () => {
+    const r = UploadAssetMetadataSchema.safeParse({ ...base, rightsAccepted: true });
+    expect(r.success).toBe(true);
+  });
+
+  it("rechaza rightsAccepted === false con mensaje sobre el derecho", () => {
+    const r = UploadAssetMetadataSchema.safeParse({ ...base, rightsAccepted: false });
+    expect(r.success).toBe(false);
+    if (!r.success) expect(r.error.issues[0]?.message).toContain("derecho");
+  });
+
+  it("rechaza la subida sin declaración (rightsAccepted ausente = no se sube)", () => {
+    const r = UploadAssetMetadataSchema.safeParse(base);
+    expect(r.success).toBe(false);
   });
 });

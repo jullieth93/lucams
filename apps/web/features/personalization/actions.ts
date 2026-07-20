@@ -25,7 +25,12 @@ import { ownerKey, ipKey } from "@/lib/rate-limit-keys";
 import { uploadCustomerPhoto } from "@/lib/storage";
 import { getGalleryImageUrl } from "./design-gallery";
 import { prisma } from "@/lib/db";
-import { CreateDraftDesignSchema, SaveCanvasSchema, UploadAssetMetadataSchema } from "./schemas";
+import {
+  CreateDraftDesignSchema,
+  IMAGE_RIGHTS_POLICY_VERSION,
+  SaveCanvasSchema,
+  UploadAssetMetadataSchema,
+} from "./schemas";
 import {
   createDraftDesign,
   createNameDesign,
@@ -384,6 +389,7 @@ export async function uploadDesignAssetAction(formData: FormData) {
     designId: typeof designId === "string" && designId.length > 0 ? designId : undefined,
     mimeType: file.type,
     sizeBytes: file.size,
+    rightsAccepted: formData.get("rightsAccepted") === "true",
   });
   if (!metaParsed.success) {
     return {
@@ -463,6 +469,10 @@ export async function uploadDesignAssetAction(formData: FormData) {
         height: uploaded.height,
         exifStripped: uploaded.exifStripped,
         malwareScanned: false, // V1 sin scanner; M.8 evalúa
+        // Evidencia de consentimiento de derechos de imagen (Ley 1581). El schema ya
+        // garantizó rightsAccepted===true, así que sellamos el momento + la versión.
+        rightsAcceptedAt: new Date(),
+        rightsPolicyVersion: IMAGE_RIGHTS_POLICY_VERSION,
       },
     });
 

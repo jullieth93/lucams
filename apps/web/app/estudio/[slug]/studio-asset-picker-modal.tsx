@@ -60,10 +60,12 @@ export function StudioAssetPickerModal({
 }: StudioAssetPickerModalProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const modalRef = useRef<HTMLDivElement>(null);
-  const firstFocusableRef = useRef<HTMLButtonElement>(null);
+  const firstFocusableRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [applyingId, setApplyingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Consentimiento de derechos de imagen (Ley 1581): obligatorio antes de subir.
+  const [rightsAccepted, setRightsAccepted] = useState(false);
 
   // ADR-057 B2 — aplicar un diseño prediseñado: lo subimos como asset del diseño y lo asignamos
   // al slot (reusando el pipeline de foto: encuadre, finalize, render server-side).
@@ -121,6 +123,7 @@ export function StudioAssetPickerModal({
         const formData = new FormData();
         formData.append("file", file);
         if (designId) formData.append("designId", designId);
+        formData.append("rightsAccepted", rightsAccepted ? "true" : "false");
         const result = await uploadDesignAssetAction(formData);
         if (result.ok) {
           const asset: StudioAsset = {
@@ -208,12 +211,35 @@ export function StudioAssetPickerModal({
 
                 {/* Body */}
                 <div className="max-h-[60vh] overflow-y-auto px-5 py-4">
+                  {/* Consentimiento de derechos de imagen (Ley 1581): obligatorio
+                      antes de subir. Foco inicial acá (primera acción requerida). */}
+                  <label className="text-brand-purple-dark/80 mb-3 flex items-start gap-2 text-xs leading-snug">
+                    <input
+                      ref={firstFocusableRef}
+                      type="checkbox"
+                      checked={rightsAccepted}
+                      onChange={(e) => setRightsAccepted(e.target.checked)}
+                      className="accent-brand-purple mt-0.5 h-4 w-4 flex-shrink-0"
+                    />
+                    <span>
+                      Tengo derecho a usar esta foto y autorizo imprimirla (
+                      <a
+                        href="/legal/privacidad"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="underline"
+                      >
+                        Ley 1581
+                      </a>
+                      ).
+                    </span>
+                  </label>
+
                   {/* Tab: Subir nueva (primary action mobile-friendly) */}
                   <button
-                    ref={firstFocusableRef}
                     type="button"
                     onClick={() => fileInputRef.current?.click()}
-                    disabled={uploading}
+                    disabled={uploading || !rightsAccepted}
                     className="border-brand-purple/30 bg-brand-purple/5 text-brand-purple hover:bg-brand-purple/10 focus:ring-brand-purple flex w-full items-center justify-center gap-2 rounded-md border-2 border-dashed py-5 text-sm font-medium transition-colors focus:ring-2 focus:outline-none disabled:opacity-60"
                   >
                     {uploading ? (

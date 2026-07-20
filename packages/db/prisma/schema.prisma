@@ -1333,6 +1333,13 @@ model DesignAsset {
   exifStripped   Boolean   @default(false)
   malwareScanned Boolean   @default(false)
 
+  // Consentimiento por-subida de derechos de imagen (Ley 1581 + plan de producción):
+  // evidencia de que quien sube DECLARÓ tener derecho a usar la foto y autorizó su
+  // impresión. Nullable → los assets previos a esta política quedan sin sellar (no se
+  // reimprimen sin pasar por el gate de moderación manual, que sí existe).
+  rightsAcceptedAt    DateTime?
+  rightsPolicyVersion String?
+
   createdAt DateTime @default(now())
 
   @@index([designId])
