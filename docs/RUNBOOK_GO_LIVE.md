@@ -48,7 +48,7 @@ FASE 1  DNS: mi.com.co → Cloudflare
    ↓
 FASE 2  Dominio en Vercel (+ registros en Cloudflare)
    ↓
-FASE 3  Vercel Pro + configuración del proyecto
+FASE 3  Configuración del proyecto en Vercel (gratis)
    ↓
 FASE 4  Variables de entorno de producción   ← sin esto el sitio NO ARRANCA
    ↓
@@ -57,6 +57,8 @@ FASE 5  Correo (Resend)          FASE 6  Supabase producción
 FASE 7  Wompi producción         FASE 8  Aveonline producción
    ↓
 FASE 9  Crons (pg_cron)  →  FASE 10  Backups R2  →  FASE 11  Turnstile
+   ↓
+FASE 11.b  Pagar Vercel Pro + Supabase Pro  ← el ÚNICO paso que cuesta
    ↓
 FASE 12  Verificación final (compra de prueba real)
 ```
@@ -276,19 +278,20 @@ panel el dominio aparece **Active** (no "Pending"). Puede tardar de minutos a 24
 
 ---
 
-## FASE 3 — Vercel Pro + configuración del proyecto 🙋
+## FASE 3 — Configuración del proyecto en Vercel (gratis) 🙋
 
-1. **Sube a Pro.** Vercel → Settings → Billing → **Upgrade to Pro**.
-   > **Esto no es opcional:** los Términos de Servicio de Vercel **prohíben el uso comercial en el plan
-   > Hobby**. Vender en Hobby te expone a que te tumben el proyecto. (Verificado en `OPERATIONS.md §
-Verificación de tiers Free`.)
-2. Settings → **General** → confirma:
+> 💰 **Los pagos NO van aquí.** El upgrade a Vercel Pro y Supabase Pro se movió al FINAL (FASE 11.b),
+> justo antes de abrir la tienda. Todo lo demás se configura **sin pagar nada**, y no tiene sentido
+> quemar meses de suscripción mientras aún estás armando. Mientras no cobres dinero real, Hobby
+> alcanza para trabajar (su límite de 60s de función es justo el que necesita el render 300 DPI).
+
+1. Settings → **General** → confirma:
    - **Root Directory** = `apps/web` ← **crítico**: sin esto el deploy falla con _"No Next.js version detected"_.
    - **Node.js Version** = `22.x`.
-3. Settings → **Functions**: confirma que **Fluid Compute** esté activo (el render de las fotos en alta
+2. Settings → **Functions**: confirma que **Fluid Compute** esté activo (el render de las fotos en alta
    resolución necesita hasta 60s de ejecución).
 
-✅ **Cómo sabes que quedó bien:** el último deploy en Vercel dice **Ready** y la factura muestra plan Pro.
+✅ **Cómo sabes que quedó bien:** el último deploy en Vercel dice **Ready**.
 
 ---
 
@@ -461,6 +464,24 @@ placeholders).
 2. Copia **Site Key** y **Secret Key** → Vercel (`NEXT_PUBLIC_TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY`).
 
 ✅ **Cómo sabes que quedó bien:** completas un checkout en `lucamsshop.com` sin que te bloquee.
+
+---
+
+## FASE 11.b — Pagos de infraestructura (justo antes de abrir) 🙋
+
+> Se dejan para el final **a propósito**: configurar todo lo anterior es gratis. Estos dos se pagan
+> cuando la tienda va a recibir dinero real — ni antes.
+
+1. **Vercel Pro.** Settings → Billing → **Upgrade to Pro**.
+   > **No es opcional para vender:** los Términos de Servicio de Vercel **prohíben el uso comercial en
+   > el plan Hobby** (verificado en `OPERATIONS.md § Verificación de tiers Free`). Mientras solo
+   > configuras y pruebas con sandbox, Hobby está bien; el día que cobres de verdad, ya debes estar en Pro.
+2. **Supabase Pro.** Settings → Billing.
+   > El plan Free **pausa el proyecto por inactividad** — la tienda se caería sola — y no tiene
+   > _Point-in-Time Recovery_ (recuperar la base a un momento exacto). Con dinero y pedidos reales de
+   > por medio, eso no es aceptable.
+
+✅ **Cómo sabes que quedó bien:** ambas cuentas muestran plan de pago activo y el sitio sigue **Ready**.
 
 ---
 
