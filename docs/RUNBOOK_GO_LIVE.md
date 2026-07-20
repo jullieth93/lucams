@@ -115,8 +115,23 @@ anti-robots del checkout) y **R2** (los backups). Es la decisión de [ADR-011](D
    >
    > Si al encender alguno te manda a **pagar**, detente y consúltalo antes.
 
-3. **📧 Menú `Contactos`: verifica que el correo del titular sea tuyo y esté verificado.**
-   **ICANN puede SUSPENDER el dominio si ese correo no está verificado** (la tienda se cae sin aviso).
+3. **📧 Menú `Contactos` → BUSCA EL CORREO DE VERIFICACIÓN DE ICANN EN TU BANDEJA.**
+   Los 4 contactos (Registrant / Admin / Tech / Billing) deben tener un correo tuyo, real y accesible.
+   Al registrar un dominio, ICANN obliga a **verificar el correo del titular**: el registrador manda un
+   correo con un enlace. **Si no se hace clic en ese enlace, el dominio se SUSPENDE** (típicamente a
+   los ~15 días) y la tienda se cae sin aviso.
+   - Revisa la bandeja **y la carpeta de spam** del correo del titular, busca el mensaje de mi.com.co
+     o del registro, y haz clic en el enlace de verificación.
+   - `lucamsshop.com` se registró el **19/07/2026**, así que ese correo debe ser reciente.
+
+   > ✅ **Correcto y a propósito:** el correo del titular es un **Gmail personal**, NO
+   > `hola@lucamsshop.com`. Debe seguir así. Si pusieras un correo del propio dominio y el dominio se
+   > cae o vence, perderías el acceso al correo que necesitas justamente para recuperarlo (dependencia
+   > circular). El contacto del dominio siempre va en un correo **independiente**.
+
+   > 🛡️ Con **WHOIS Privacy** activo, esos datos personales (dirección, teléfono) **ya no salen** en el
+   > WHOIS público: el registro muestra los del registrador. Los datos reales siguen guardados en el
+   > panel, que es lo correcto.
 
 4. **💳 Medio de pago vigente.** La auto-renovación ya está activa, pero vence **19/07/2027**: si ese
    día la tarjeta falla, la tienda se cae.
