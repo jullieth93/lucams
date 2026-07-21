@@ -378,28 +378,89 @@ del deploy dice exactamente cuál: _"Faltan variables de PRODUCCIÓN: …"_.
 aislar la reputación de envío — si algo sale mal con los correos, no se quema el dominio principal.
 (Fuente: [Resend — Domains](https://resend.com/docs/dashboard/domains/introduction))
 
-1. Resend → **Domains** → **Add Domain** → escribe `mail.lucamsshop.com`.
-2. Resend te mostrará varios registros: **MX** (para rebotes), **TXT de SPF**, **TXT de DKIM** y
-   guía de **DMARC**. **Cópialos tal cual** (el DKIM es larguísimo: cópialo completo, sin espacios).
-3. Cloudflare → DNS → **Add record** → crea cada uno. (Estos son de correo: la nubecita gris/naranja
-   no aplica a MX/TXT.)
-4. Vuelve a Resend → **Verify**.
-5. Cuando quede verificado, pon en Vercel `EMAIL_FROM=Lucams_shop <hola@mail.lucamsshop.com>`.
+> **Estado: ✅ COMPLETADA (2026-07-20).** Todo lo de abajo está ejecutado y verificado desde fuera.
 
-### Buzones que debes poder RECIBIR
+### 5.a — Enviar: dominio `mail.lucamsshop.com` en Resend ✅
 
-Tus textos legales publican estas direcciones — deben existir y que alguien las lea:
+1. Resend → **Domains** → **Add Domain** → `mail.lucamsshop.com`.
+2. **Región: `sa-east-1` (São Paulo)** — la más cercana a Colombia, y Brasil tiene LGPD, lo que
+   sustenta mejor la transferencia internacional del art. 26 Ley 1581 que EE.UU.
+   La doc de Resend **no dice** si la región se puede cambiar después → se eligió deliberadamente al crear.
+   (Fuente: [Resend — Create domain](https://resend.com/docs/api-reference/domains/create-domain), verificado 2026-07-20.)
+3. **DNS Records → `Auto configure`** (integración con Cloudflare). Es una autorización **de una sola
+   vez**: crea los registros y no queda con acceso al DNS. Se prefirió sobre `Manual setup` porque el
+   DKIM es una cadena de ~400 caracteres y transcribirla mal falla **en silencio**.
+4. Registros creados (todos `DNS only` — Cloudflare no proxea MX/TXT):
 
-- [ ] `hola@lucamsshop.com` — contacto general
-- [ ] `habeas-data@lucamsshop.com` — derechos de datos personales (Ley 1581) ← **obligatorio por ley**
-- [ ] `retracto@lucamsshop.com` — derecho de retracto (Ley 1480)
-- [ ] `security@lucamsshop.com` — reporte de vulnerabilidades
+   | Tipo | Nombre                   | Contenido                                    |
+   | ---- | ------------------------ | -------------------------------------------- |
+   | MX   | `send.mail`              | `feedback-smtp.sa-east-1.amazonses.com` (10) |
+   | TXT  | `resend._domainkey.mail` | DKIM (`p=MIGf…IDAQAB`)                       |
+   | TXT  | `send.mail`              | `v=spf1 include:amazonses.com ~all`          |
 
-> 💡 Enviar (Resend) y recibir son cosas distintas. Para RECIBIR necesitas un buzón: lo más simple es
-> Google Workspace o Zoho Mail, o **reenvío gratuito** con Cloudflare Email Routing hacia tu Gmail.
+⚠️ **Si Resend vuelve a ofrecer `Authorize` cuando los registros ya existen, dale `Cancel`.** Esa
+pantalla **borra y recrea** los mismos registros (lo advierte: _"may result in downtime"_) sin ganancia.
 
-✅ **Cómo sabes que quedó bien:** Resend muestra el dominio **Verified**, y una compra de prueba (FASE 12)
-te llega **a la bandeja de entrada, no a spam**.
+### 5.b — Recibir: Cloudflare Email Routing ✅
+
+Enviar y recibir son cosas distintas. Se descartó el toggle **Enable Receiving** de Resend (es para
+procesar correo por programación, no para tener buzones) a favor de **Cloudflare Email Routing**, que
+reenvía gratis a Gmail. Requiere que el dominio use **Cloudflare DNS** — se cumple.
+
+1. Cloudflare → **Compute** → **Email Service** → **Email Routing** → **Onboard Domain** → `lucamsshop.com`.
+2. **Activate** (crea 3 MX `route1/2/3.mx.cloudflare.net`, el DKIM `cf2024-1._domainkey` y el SPF del
+   apex). **No chocan con Resend**: los de Resend viven en `send.mail` / `resend._domainkey.mail`.
+3. **Destination Addresses** → `lucamsshop@gmail.com` → verificar desde el correo que llega.
+4. **Routing Rules** → una regla por dirección, acción `Send to an email`.
+
+⚠️ **Catch-all apagado a propósito:** los spammers barren direcciones al azar (`info@`, `admin@`) y
+llenarían el buzón. Con reglas explícitas, lo demás rebota — que es lo correcto.
+
+**Buzones creados** (todos reenvían a `lucamsshop@gmail.com`):
+
+- [x] `hola@lucamsshop.com` — contacto general (Privacidad, Términos, Garantías)
+- [x] `habeas-data@lucamsshop.com` — derechos de datos (Ley 1581) ← **obligatorio por ley**
+- [x] `retracto@lucamsshop.com` — derecho de retracto (Ley 1480) ← **obligatorio por ley**
+- [x] `security@lucamsshop.com` — vulnerabilidades (publicado en `/.well-known/security.txt`)
+- [x] `dmarc@lucamsshop.com` — reportes DMARC
+
+### 5.c — DMARC ✅
+
+```
+TXT  _dmarc.lucamsshop.com   v=DMARC1; p=none; rua=mailto:dmarc@lucamsshop.com;
+```
+
+Va en el **dominio organizacional** (`lucamsshop.com`), no en `mail.`: por
+[RFC 7489 §6.6.3](https://www.rfc-editor.org/rfc/rfc7489.html), si no hay DMARC en el dominio exacto
+el receptor consulta el organizacional — **un solo registro cubre el apex y todos los subdominios**.
+Ponerlo en `_dmarc.mail` habría dejado `hola@lucamsshop.com` suplantable.
+
+**Endurecimiento pendiente (~3 semanas de observación):** `p=none` → `p=quarantine` → `p=reject`.
+No saltar directo a `reject`: si un emisor legítimo quedó sin configurar, sus correos desaparecen sin aviso.
+
+### 5.d — Reply-To (código) ✅
+
+El From vive en `mail.lucamsshop.com`, que **no recibe**: sin `Reply-To`, cada "Responder" de un
+cliente se perdía en silencio. `sendEmail` toma `EMAIL_REPLY_TO` como default (commit `b8e8b40`);
+la var es **PROD_REQUIRED** — producción no debe arrancar con el canal de respuesta muerto.
+
+Variables en Vercel:
+
+```
+EMAIL_FROM      = Lucams_shop <hola@mail.lucamsshop.com>
+EMAIL_REPLY_TO  = hola@lucamsshop.com
+```
+
+> ⚠️ En Vercel se pega el valor **pelado, sin comillas**. En `.env.local` sí van comillas: el arranque
+> sourcea el archivo con bash y `<` sin comillar es una redirección (rompe `make up`).
+
+✅ **Cómo sabes que quedó bien** (verificado 2026-07-20):
+
+- Resend muestra el dominio **Verified** y `Enable Sending` en verde.
+- Correo de prueba real → **bandeja de entrada, no spam**, entregado en 0 s.
+  Gmail → _Mostrar original_: `SPF: PASS` · `DKIM: 'PASS' con el dominio mail.lucamsshop.com`.
+- El DKIM publicado se descifra con `openssl pkey -pubin` como llave **RSA de 1024 bits** válida
+  (un solo carácter mal y no parsearía) y coincide byte a byte con el que Resend espera.
 
 ---
 
