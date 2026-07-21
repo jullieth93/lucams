@@ -130,3 +130,4 @@ gitleaks-report.json
 .direnv/
 
 lucams_shop.code-workspace
+.vercel

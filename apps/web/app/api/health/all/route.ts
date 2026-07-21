@@ -19,7 +19,7 @@ export const runtime = "nodejs";
 
 type CheckResult = {
   service: string;
-  status: "ok" | "fail" | "skipped";
+  status: "ok" | "warn" | "fail" | "skipped";
   latencyMs?: number;
   detail?: string;
 };
@@ -35,9 +35,23 @@ async function probe(name: string, path: string, baseUrl: string): Promise<Check
     if (!r.ok) {
       return { service: name, status: "fail", latencyMs, detail: `HTTP ${r.status}` };
     }
-    const data = (await r.json()) as { status?: string; latencyMs?: number };
+    const data = (await r.json()) as {
+      status?: string;
+      latencyMs?: number;
+      sender?: { detail?: string };
+    };
     if (data.status === "skipped") {
       return { service: name, status: "skipped", latencyMs, detail: "no configurado" };
+    }
+    // "warn" = el servicio responde pero está mal configurado (p.ej. EMAIL_FROM apuntando a un
+    // dominio sin verificar). No tumba el health global, pero NO puede reportarse como "ok".
+    if (data.status === "warn") {
+      return {
+        service: name,
+        status: "warn",
+        latencyMs: data.latencyMs ?? latencyMs,
+        detail: data.sender?.detail ?? "configuración incompleta",
+      };
     }
     return { service: name, status: "ok", latencyMs: data.latencyMs ?? latencyMs };
   } catch (err) {

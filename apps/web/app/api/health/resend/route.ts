@@ -1,11 +1,20 @@
 /*
- * GET /api/health/resend — chequea Resend API.
+ * GET /api/health/resend — chequea Resend API Y la coherencia del remitente.
  *
- * Hit liviano a GET /domains que retorna 401 si la key es inválida,
- * 200 si todo bien. No envía emails (sería caro y produciría spam).
+ * Hit liviano a GET /domains que retorna 401 si la key es inválida, 200 si todo bien.
+ * No envía emails (sería caro y produciría spam).
  *
- * Si RESEND_API_KEY no está seteada (entorno dev sin keys), devolvemos
- * 200 con detail="not configured" — no es un fallo crítico en dev.
+ * Además de la key, valida que el dominio de EMAIL_FROM esté REGISTRADO Y VERIFICADO en
+ * la cuenta: una key válida apuntando a un dominio sin verificar (o al sandbox
+ * `onboarding@resend.dev`) daba "ok" y sin embargo ningún correo salía con la marca de la
+ * tienda. También reporta EMAIL_REPLY_TO, porque el From vive en el subdominio de envío
+ * (mail.lucamsshop.com) que NO recibe: sin Reply-To las respuestas de clientes se pierden.
+ *
+ * `from`/`replyTo` no son secretos — viajan en la cabecera de cada correo enviado y están
+ * publicados en las páginas legales.
+ *
+ * Si RESEND_API_KEY no está seteada (entorno dev sin keys), devolvemos 200 con
+ * status="skipped" — no es un fallo crítico en dev.
  */
 
 import { logger } from "@/lib/logger";
@@ -13,6 +22,78 @@ import { InternalError, problemResponse } from "@/lib/errors";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+
+type ResendDomain = { name?: string; status?: string; region?: string };
+
+/** Extrae el dominio de un remitente en formato `Nombre <buzon@dominio>` o `buzon@dominio`. */
+export function senderDomainOf(from: string | undefined): string | null {
+  if (!from) return null;
+  const angle = from.match(/<([^>]+)>/);
+  const address = (angle ? angle[1] : from).trim();
+  const at = address.lastIndexOf("@");
+  if (at < 1 || at === address.length - 1) return null;
+  return address.slice(at + 1).toLowerCase();
+}
+
+type SenderReport = {
+  from: string | null;
+  replyTo: string | null;
+  domain: string | null;
+  domainStatus: string | null;
+  region: string | null;
+  ok: boolean;
+  detail?: string;
+};
+
+/** Contrasta EMAIL_FROM/EMAIL_REPLY_TO contra los dominios reales de la cuenta. */
+export function buildSenderReport(domains: ResendDomain[]): SenderReport {
+  const from = process.env.EMAIL_FROM ?? null;
+  const replyTo = process.env.EMAIL_REPLY_TO ?? null;
+  const domain = senderDomainOf(from ?? undefined);
+  const base: SenderReport = {
+    from,
+    replyTo,
+    domain,
+    domainStatus: null,
+    region: null,
+    ok: false,
+  };
+
+  if (!from)
+    return { ...base, detail: "EMAIL_FROM no configurada: se usaría el sandbox de Resend." };
+  if (!domain) return { ...base, detail: `EMAIL_FROM no tiene un correo válido: "${from}".` };
+
+  const match = domains.find((d) => d.name?.toLowerCase() === domain);
+  if (!match) {
+    return {
+      ...base,
+      detail: `El dominio "${domain}" no está registrado en esta cuenta de Resend.`,
+    };
+  }
+
+  const domainStatus = match.status ?? null;
+  const region = match.region ?? null;
+  if (domainStatus !== "verified") {
+    return {
+      ...base,
+      domainStatus,
+      region,
+      detail: `El dominio "${domain}" está en estado "${domainStatus}", no "verified".`,
+    };
+  }
+
+  if (!replyTo) {
+    return {
+      ...base,
+      domainStatus,
+      region,
+      detail:
+        "EMAIL_REPLY_TO no configurada: las respuestas de clientes irían al subdominio de envío, que no recibe.",
+    };
+  }
+
+  return { ...base, domainStatus, region, ok: true };
+}
 
 export async function GET(): Promise<Response> {
   const start = Date.now();
@@ -39,10 +120,18 @@ export async function GET(): Promise<Response> {
       logger.warn({ event: "health.resend.http_fail", status: r.status, latencyMs });
       return problemResponse(new InternalError(`Resend devolvió HTTP ${r.status}.`));
     }
+
+    const payload = (await r.json()) as { data?: ResendDomain[] };
+    const sender = buildSenderReport(payload.data ?? []);
+    if (!sender.ok) {
+      logger.warn({ event: "health.resend.sender_misconfigured", detail: sender.detail });
+    }
+
     return Response.json({
-      status: "ok",
+      status: sender.ok ? "ok" : "warn",
       service: "resend",
-      check: "list-domains",
+      check: "list-domains+sender",
+      sender,
       latencyMs,
       timestamp: new Date().toISOString(),
     });
