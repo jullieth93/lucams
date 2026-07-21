@@ -29,14 +29,22 @@ export async function getRequestOrigin(): Promise<string> {
  * spoofable). Para self-fetch server-side (ej. /api/health/all agregando sub-probes): con un Host
  * falsificado, un baseUrl derivado del request haría que el server fetchee un host arbitrario
  * (SSRF / reporte falso). ADR-062. Prioridad:
- *   1. VERCEL_URL — hostname del propio deployment que setea Vercel (siempre correcto, confiable).
- *   2. NEXT_PUBLIC_SITE_URL — URL canónica configurada.
- *   3. localhost:PORT — dev.
+ *   1. En producción, NEXT_PUBLIC_SITE_URL — el dominio canónico, público.
+ *   2. VERCEL_URL — hostname del propio deployment que setea Vercel (preview/dev en Vercel).
+ *   3. NEXT_PUBLIC_SITE_URL — URL canónica configurada.
+ *   4. localhost:PORT — dev.
+ *
+ * Por qué el dominio canónico va PRIMERO en producción (2026-07-20): con **Deployment Protection**
+ * activa, la URL de deployment (`VERCEL_URL`) responde `302` hacia el login de Vercel, no el JSON
+ * del sub-probe → /api/health/all parseaba HTML y reportaba los 3 servicios `fail` estando sanos.
+ * Un monitor externo lo habría leído como caída total. El dominio canónico no está protegido.
+ * La propiedad de ADR-062 se mantiene: sigue saliendo SOLO de env, nunca del request.
  */
 export function getTrustedSelfBaseUrl(): string {
+  const site = process.env.NEXT_PUBLIC_SITE_URL;
+  if (process.env.VERCEL_ENV === "production" && site) return site.replace(/\/+$/, "");
   const vercel = process.env.VERCEL_URL;
   if (vercel) return vercel.startsWith("http") ? vercel : `https://${vercel}`;
-  const site = process.env.NEXT_PUBLIC_SITE_URL;
   if (site) return site.replace(/\/+$/, "");
   return `http://localhost:${process.env.PORT ?? "3000"}`;
 }

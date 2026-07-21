@@ -29,11 +29,32 @@ async function probe(name: string, path: string, baseUrl: string): Promise<Check
   try {
     const r = await fetch(`${baseUrl}${path}`, {
       cache: "no-store",
+      // `manual`: un 3xx aquí NO es el sub-probe, es una interposición (Deployment Protection,
+      // portal cautivo). Siguiéndolo se parseaba el HTML del login y salía un críptico
+      // "Unexpected token '<'" en vez de decir qué pasó realmente.
+      redirect: "manual",
       signal: AbortSignal.timeout(6000),
     });
     const latencyMs = Date.now() - start;
+    if (r.status >= 300 && r.status < 400) {
+      return {
+        service: name,
+        status: "fail",
+        latencyMs,
+        detail: `HTTP ${r.status} — el sub-probe está detrás de una redirección (¿Deployment Protection?)`,
+      };
+    }
     if (!r.ok) {
       return { service: name, status: "fail", latencyMs, detail: `HTTP ${r.status}` };
+    }
+    const contentType = r.headers.get("content-type") ?? "";
+    if (!contentType.includes("json")) {
+      return {
+        service: name,
+        status: "fail",
+        latencyMs,
+        detail: `respuesta no-JSON (content-type: ${contentType.split(";")[0] || "desconocido"})`,
+      };
     }
     const data = (await r.json()) as {
       status?: string;
