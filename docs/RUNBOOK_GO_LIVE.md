@@ -424,6 +424,44 @@ llenarían el buzón. Con reglas explícitas, lo demás rebota — que es lo cor
 - [x] `security@lucamsshop.com` — vulnerabilidades (publicado en `/.well-known/security.txt`)
 - [x] `dmarc@lucamsshop.com` — reportes DMARC
 
+> ⚠️ **El paso 4 es el que se olvida.** Activar el dominio y verificar el Gmail de destino **no crea
+> ninguna dirección**: hasta que existan las Routing Rules, el MX de Cloudflare responde
+> `550 5.1.1 Address does not exist` a TODO. El panel entretanto muestra dominio activo ✅, DNS ✅ y
+> destino verificado ✅ — por eso esto solo se detecta probando, no mirando la UI.
+
+#### Cómo comprobar los buzones sin depender de ningún panel
+
+Preguntarle directo al servidor de correo de Cloudflare (incluir una dirección inexistente para
+confirmar que la prueba discrimina y que el catch-all está apagado):
+
+```python
+import smtplib
+s = smtplib.SMTP("route3.mx.cloudflare.net", 25, timeout=15); s.ehlo("lucamsshop.com")
+for a in ["hola@lucamsshop.com", "noexiste@lucamsshop.com"]:
+    s.mail("probe@mail.lucamsshop.com"); print(a, s.rcpt(a)); s.rset()
+```
+
+`250 2.1.0 Ok` = el buzón existe · `550 5.1.1` = falta la regla.
+
+⚠️ **Ese probe NO sirve para verificar el reenvío completo**: Cloudflare rechaza con
+`550 5.7.26 Cannot forward emails that are not authenticated` cualquier mensaje que no llegue con
+SPF/DKIM válidos (bien: nadie puede colar correo falso en el buzón). El reenvío de punta a punta
+solo se prueba con un envío real desde Resend.
+
+#### 🪤 Trampa: la lista de supresión de Resend
+
+Si se prueba **antes** de crear las Routing Rules, los correos rebotan y Resend mete esas direcciones
+en su **lista de supresión** — después ni las intenta, y `last_event` pasa de `bounced` a `suppressed`
+aunque los buzones ya funcionen. Se quita en el panel: **Emails** → clic en el correo → pasar el mouse
+sobre la etiqueta `Suppressed` → **See Details** → **Remove from Suppression List**.
+
+La [Suppressions API](https://resend.com/docs/api-reference/suppressions/remove-suppression) existe
+pero está en **beta privada** (`404` en esta cuenta) → hoy es solo por UI. Y la lista es **por región**:
+una supresión en `sa-east-1` aplica a todos los dominios de esa región
+([doc](https://resend.com/docs/dashboard/emails/email-suppressions), verificado 2026-07-20).
+
+**Orden correcto:** crear las Routing Rules → probar. Nunca al revés.
+
 ### 5.c — DMARC ✅
 
 ```
