@@ -40,6 +40,8 @@ const ROUTE_ROLES: Array<{ prefix: string; roles: AdminRole[] }> = [
   { prefix: "/admin/garantias", roles: ALL },
   { prefix: "/admin/retractos", roles: ALL },
   { prefix: "/admin/soporte", roles: CATALOG },
+  // Cotizaciones (Etapa 1): las mutaciones del service exigen MANAGER_UP.
+  { prefix: "/admin/cotizaciones", roles: CATALOG },
   { prefix: "/admin/moderacion", roles: CATALOG },
   { prefix: "/admin/productos", roles: CATALOG },
   { prefix: "/admin/inventario", roles: CATALOG },

@@ -1,11 +1,16 @@
 /*
  * Resumen del pedido — sticky sidebar visible en todos los steps.
  * Muestra items + subtotal + envío (si ya se eligió) + total.
+ *
+ * Etapa 1 (modo catálogo): no hay envío calculado ni cupones — la línea de
+ * envío avisa que se coordina por WhatsApp y el total es el subtotal de
+ * productos (la cotización se concreta en la conversación).
  */
 
 import Image from "next/image";
 import { ShoppingBag } from "lucide-react";
 import { formatCOP } from "@/lib/format";
+import { isCatalogMode } from "@/lib/store-mode";
 import type { CartDetail } from "@/features/cart/service";
 
 export function OrderSummary({
@@ -25,6 +30,7 @@ export function OrderSummary({
   const shipping = shippingCost ?? null;
   const appliedDiscount = discount ?? 0;
   const total = Math.max(0, subtotal + (shipping ?? 0) - appliedDiscount);
+  const catalog = isCatalogMode();
 
   return (
     <aside className="border-brand-purple/15 sticky top-24 rounded-2xl border bg-white p-5 shadow-sm">
@@ -73,7 +79,9 @@ export function OrderSummary({
         <div className="flex justify-between">
           <dt className="text-brand-purple-dark/70">Envío</dt>
           <dd className="text-brand-purple-dark/85 text-right tabular-nums">
-            {shipping === null ? (
+            {catalog ? (
+              <span className="text-brand-muted text-xs italic">Se coordina por WhatsApp</span>
+            ) : shipping === null ? (
               <span className="text-brand-muted text-xs italic">Se calcula al elegir envío</span>
             ) : shipping === 0 ? (
               <span className="font-semibold text-emerald-700">Gratis</span>
@@ -107,7 +115,9 @@ export function OrderSummary({
           </dd>
         </div>
         <p className="text-brand-muted mt-1 text-[10px]">
-          Precios en pesos colombianos (COP) · el total es el valor final que pagas
+          {catalog
+            ? "Precios en pesos colombianos (COP) · el envío se coordina por WhatsApp al confirmar tu cotización"
+            : "Precios en pesos colombianos (COP) · el total es el valor final que pagas"}
         </p>
       </dl>
     </aside>

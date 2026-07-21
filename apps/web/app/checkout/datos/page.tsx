@@ -1,12 +1,18 @@
 /*
  * Step 1 — Datos del cliente: contacto + dirección de envío + facturación opcional.
+ *
+ * Etapa 1 (modo catálogo): este paso ES todo el checkout — en vez del formulario
+ * completo se renderiza <QuoteForm> (cotización de 1 paso, cierra por WhatsApp)
+ * y el stepper se oculta (no hay pasos 2 ni 3: envio/pago redirigen acá).
  */
 
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
+import { isCatalogMode } from "@/lib/store-mode";
 import { CheckoutStepper } from "../_components/stepper";
 import { OrderSummary } from "../_components/order-summary";
 import { DatosForm } from "./datos-form";
+import { QuoteForm } from "./quote-form";
 import {
   loadCheckoutContext,
   assertCheckoutAvailability,
@@ -36,19 +42,26 @@ export default async function CheckoutDatosPage() {
     throw err;
   }
 
-  const savedAddresses = ctx.customerId ? await getSavedAddressesForCheckout(ctx.customerId) : [];
+  const catalog = isCatalogMode();
+  // Las direcciones guardadas solo las usa el formulario full (DatosForm).
+  const savedAddresses =
+    !catalog && ctx.customerId ? await getSavedAddressesForCheckout(ctx.customerId) : [];
 
   return (
     <div className="mx-auto max-w-6xl">
-      <CheckoutStepper current={1} />
+      {!catalog && <CheckoutStepper current={1} />}
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2">
-          <DatosForm
-            initial={ctx.state}
-            savedAddresses={savedAddresses}
-            canSaveAddress={Boolean(ctx.customerId)}
-          />
+          {catalog ? (
+            <QuoteForm />
+          ) : (
+            <DatosForm
+              initial={ctx.state}
+              savedAddresses={savedAddresses}
+              canSaveAddress={Boolean(ctx.customerId)}
+            />
+          )}
         </div>
         <div className="lg:col-span-1">
           <OrderSummary cart={ctx.cart} />

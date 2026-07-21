@@ -57,6 +57,7 @@ import { Sparkles, Box, X, CalendarDays, ChevronLeft, ChevronRight } from "lucid
 import nextDynamic from "next/dynamic";
 import type { Magnet3D } from "./fridge-3d-view";
 import { StudioAiPanel } from "./studio-ai-panel";
+import { isCatalogMode } from "@/lib/store-mode";
 import {
   composeCalendarPages,
   buildCalendarPageInputs,
@@ -231,6 +232,9 @@ export function StudioEditor({
   useDialogA11y(calendarRef, { onClose: closeCalendar, active: calendarPages !== null });
   // P1.5 — Asistente IA de ideas (ADR-058).
   const [aiOpen, setAiOpen] = useState(false);
+  // Etapa 1 (modo catálogo): el asistente IA queda APAGADO — ni el botón
+  // "Ideas" ni el panel se renderizan; el resto del Estudio sigue intacto.
+  const aiEnabled = !isCatalogMode();
   const allowText = (product.personalizationSchema as { allowText?: boolean })?.allowText === true;
 
   // M.3.b.A2.5 — Lee `sizeCm` del producto para badge visual en cada slot.
@@ -841,15 +845,17 @@ export function StudioEditor({
           Se sube a una FILA PROPIA por encima (bottom-24) en móvil; en sm+ hay ancho de sobra y baja
           a bottom-4. flex-wrap por si el texto es largo. */}
       <div className="fixed bottom-24 left-1/2 z-30 flex -translate-x-1/2 flex-wrap items-center justify-center gap-2 sm:bottom-4">
-        <button
-          type="button"
-          onClick={() => setAiOpen(true)}
-          aria-label="Pedir ideas al asistente"
-          className="bg-brand-pink ring-brand-pink/25 inline-flex h-12 items-center gap-2 rounded-full px-4 text-sm font-bold text-white shadow-xl ring-4 transition-transform hover:scale-105 active:scale-95"
-        >
-          <Sparkles className="h-5 w-5" />
-          <span>Ideas</span>
-        </button>
+        {aiEnabled && (
+          <button
+            type="button"
+            onClick={() => setAiOpen(true)}
+            aria-label="Pedir ideas al asistente"
+            className="bg-brand-pink ring-brand-pink/25 inline-flex h-12 items-center gap-2 rounded-full px-4 text-sm font-bold text-white shadow-xl ring-4 transition-transform hover:scale-105 active:scale-95"
+          >
+            <Sparkles className="h-5 w-5" />
+            <span>Ideas</span>
+          </button>
+        )}
         {isCalendarMonth ? (
           <button
             type="button"
@@ -886,14 +892,16 @@ export function StudioEditor({
         )}
       </div>
 
-      {/* P1.5 — Panel del asistente IA de ideas */}
-      <StudioAiPanel
-        open={aiOpen}
-        onClose={() => setAiOpen(false)}
-        productName={product.name}
-        slotCount={photoSlots}
-        allowText={allowText}
-      />
+      {/* P1.5 — Panel del asistente IA de ideas (apagado en modo catálogo) */}
+      {aiEnabled && (
+        <StudioAiPanel
+          open={aiOpen}
+          onClose={() => setAiOpen(false)}
+          productName={product.name}
+          slotCount={photoSlots}
+          allowText={allowText}
+        />
+      )}
 
       {/* FOTO4 — Galería de escenas del fotoimán (nevera/mural/repisa/regalo) en un solo modal. */}
       {sceneMagnets !== null && (

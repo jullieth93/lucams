@@ -10,6 +10,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Truck, AlertCircle } from "lucide-react";
+import { isCatalogMode } from "@/lib/store-mode";
 import { CheckoutStepper } from "../_components/stepper";
 import { OrderSummary } from "../_components/order-summary";
 import { EnvioStep } from "./envio-step";
@@ -41,6 +42,10 @@ export default async function CheckoutEnvioPage({
 }: {
   searchParams: Promise<{ error?: string }>;
 }) {
+  // Etapa 1 (modo catálogo): no hay envíos integrados — el checkout es solo
+  // el formulario de cotización de 1 paso en /checkout/datos.
+  if (isCatalogMode()) redirect("/checkout/datos");
+
   // Error de la selección de transportadora (selectShippingAction redirige acá con
   // ?error=... cuando la opción elegida no valida). Sin leerlo, el usuario volvía a
   // esta página con la MISMA lista y sin mensaje → callejón sin salida invisible

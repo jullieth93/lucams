@@ -3,7 +3,8 @@
  *
  * Lista los items del cart anon (o del cart del customer si está
  * logueado). Controles: editar qty (form con +/-/input), remover ítem.
- * CTA "Ir a pagar" → /checkout/datos (F2.1 — Fase 2 checkout).
+ * CTA principal → /checkout/datos: "Ir a pagar" en modo full; "Cotizar
+ * por WhatsApp" en modo catálogo (Etapa 1 — features/quotes).
  *
  * Si no hay cart o está vacío → empty state.
  */
@@ -19,6 +20,7 @@ import { getCartDetail } from "@/features/cart/service";
 import { CartCrossSell } from "@/components/cart-cross-sell";
 import { CmsText } from "@/components/cms/cms-text";
 import { formatCOP } from "@/lib/format";
+import { isCatalogMode } from "@/lib/store-mode";
 import { peekCartSession } from "@/lib/cart-session";
 import { removeItemAction, updateQtyAction } from "./actions";
 
@@ -31,6 +33,9 @@ export default async function CarritoPage() {
   // toast sonner, así que acá ya no rendereamos los banners inline.
   const sessionId = await peekCartSession();
   const cart = sessionId ? await getCartDetail(sessionId) : null;
+  // Etapa 1 (modo catálogo): el CTA principal pide cotización por WhatsApp
+  // (misma ruta /checkout/datos, que en este modo es el form de cotización).
+  const catalog = isCatalogMode();
 
   return (
     <div className="bg-brand-cream flex min-h-screen flex-col">
@@ -130,7 +135,7 @@ export default async function CarritoPage() {
                   </div>
                   <div className="text-brand-muted flex justify-between">
                     <span>Envío</span>
-                    <span>Calculado en checkout</span>
+                    <span>{catalog ? "Se coordina por WhatsApp" : "Calculado en checkout"}</span>
                   </div>
                 </div>
                 <div className="border-brand-purple/10 text-brand-purple-dark flex justify-between border-t pt-3 text-lg font-bold">
@@ -147,11 +152,15 @@ export default async function CarritoPage() {
                   de <a>, HTML inválido). */}
                 <Button
                   asChild
-                  className="bg-gradient-brand w-full text-white hover:brightness-110"
+                  className={
+                    catalog
+                      ? "w-full bg-emerald-600 text-white hover:bg-emerald-700"
+                      : "bg-gradient-brand w-full text-white hover:brightness-110"
+                  }
                   size="lg"
                 >
                   <Link href="/checkout/datos" prefetch={false}>
-                    Ir a pagar →
+                    {catalog ? "Cotizar por WhatsApp →" : "Ir a pagar →"}
                   </Link>
                 </Button>
                 <Link

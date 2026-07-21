@@ -52,7 +52,11 @@ import {
   Undo2,
   HeartPulse,
   Shapes,
+  BadgeCheck,
+  LifeBuoy,
+  FileText,
 } from "lucide-react";
+import { isCatalogMode } from "@/lib/store-mode";
 
 /** Badge visual + filtro de estado. */
 export type NavBadge = {
@@ -92,6 +96,15 @@ export const ADMIN_NAV: NavGroup[] = [
     defaultOpen: true,
     items: [
       {
+        // Etapa 1 (modo catálogo): canal principal de venta. En modo full queda
+        // como histórico de las cotizaciones creadas en Etapa 1.
+        label: "Cotizaciones",
+        href: "/admin/cotizaciones",
+        icon: FileText,
+        description:
+          "Cotizaciones que llegan del catálogo (Etapa 1): contactar por WhatsApp, cambiar estado y notas internas.",
+      },
+      {
         label: "Pedidos",
         href: "/admin/pedidos",
         icon: Box,
@@ -111,6 +124,20 @@ export const ADMIN_NAV: NavGroup[] = [
         icon: Undo2,
         description:
           "Solicitudes de retracto (Ley 1480/2439): aprobar, marcar devolución recibida y registrar el reembolso (el dinero se emite manualmente en Wompi/transferencia).",
+      },
+      {
+        label: "Garantías",
+        href: "/admin/garantias",
+        icon: BadgeCheck,
+        description:
+          "Reclamos de garantía legal (1 año, Ley 1480): recibir, evaluar, resolver (reparación/reposición/devolución) y notificar al cliente en cada paso.",
+      },
+      {
+        label: "Soporte",
+        href: "/admin/soporte",
+        icon: LifeBuoy,
+        description:
+          "Tickets de soporte que llegan desde /contacto: responder por email, asignar estado y cerrar. La respuesta sale con la plantilla de correo configurada.",
       },
       {
         label: "Clientes",
@@ -350,6 +377,27 @@ export const ADMIN_NAV: NavGroup[] = [
       "Inbox unificado de WhatsApp + emails de soporte (cuando se cablee). Hoy opcional, no bloquea operación.",
   },
 ];
+
+/**
+ * NAV efectivo según el modo de tienda (Etapa 1/2 — lib/store-mode).
+ *
+ * En modo catálogo (Etapa 1) no hay pagos en línea ni envíos integrados, así
+ * que el sidebar oculta lo que no aplica:
+ *   - el grupo "Finanzas" completo (resumen, conciliación y bloqueos COD),
+ *   - "Integraciones" dentro de "Configuración" (Wompi/Aveonline apagadas).
+ *
+ * ADMIN_NAV se mantiene exportado e intacto: lo usa el catch-all placeholder
+ * (findNavItem) para mostrar info contextual de módulos "Próximo". El consumidor
+ * del sidebar (admin-shell.tsx) usa ESTA función.
+ */
+export function getAdminNav(): NavGroup[] {
+  if (!isCatalogMode()) return ADMIN_NAV;
+  return ADMIN_NAV.filter((group) => group.title !== "Finanzas").map((group) =>
+    group.title === "Configuración" && group.items
+      ? { ...group, items: group.items.filter((it) => it.href !== "/admin/integraciones") }
+      : group,
+  );
+}
 
 /**
  * Busca un item en el NAV por href (full path o prefix). Útil para el

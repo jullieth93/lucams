@@ -32,6 +32,7 @@ import { TemplatesStrip } from "@/components/product-detail/templates-strip";
 import { VariantSelector } from "./variant-selector";
 import { SelectedVariantProvider, EstudioCtaLink, CartVariantIdInput } from "./variant-actions";
 import { formatCOP } from "@/lib/format";
+import { isCatalogMode } from "@/lib/store-mode";
 import { buildWhatsAppUrl } from "@/lib/wa";
 import { addToCartAction } from "@/app/carrito/actions";
 import { selectableVariants, parseVariantAttributes } from "@/features/products/variant-schemas";
@@ -122,6 +123,9 @@ export default async function ProductoDetallePage({
   // CTA adaptativo: "Sin imán" es un adhesivo, no un imán → no llamarlo "imán". (magnet
   // undefined = con imán por defecto.)
   const ctaNoun = selectedAttrs.magnet === false ? "tu adhesivo" : "tu imán";
+  // Etapa 1 (modo catálogo): el strip de confianza NO promete pago en línea ni
+  // envío calculado — la compra se cierra por WhatsApp tras la cotización.
+  const catalog = isCatalogMode();
 
   // #4 — cuatro operaciones INDEPENDIENTES en paralelo (antes eran awaits secuenciales); solo la
   // wishlist depende del customer, así que se encadena después.
@@ -418,8 +422,9 @@ export default async function ProductoDetallePage({
                       aria-hidden
                     />
                     <span>
-                      Paga al recibir (contraentrega) o en línea con Wompi. Precios en pesos
-                      colombianos (COP): es el valor final que pagas.
+                      {catalog
+                        ? "Cierras la compra por WhatsApp: pides tu cotización y coordinamos pago y entrega contigo. Precios en pesos colombianos (COP)."
+                        : "Paga al recibir (contraentrega) o en línea con Wompi. Precios en pesos colombianos (COP): es el valor final que pagas."}
                     </span>
                   </li>
                   <li className="flex items-start gap-2.5">
@@ -427,7 +432,11 @@ export default async function ProductoDetallePage({
                       className="text-brand-purple mt-0.5 h-4 w-4 flex-shrink-0"
                       aria-hidden
                     />
-                    <span>El costo de envío se calcula al finalizar según tu ciudad.</span>
+                    <span>
+                      {catalog
+                        ? "El envío se coordina por WhatsApp al confirmar tu cotización."
+                        : "El costo de envío se calcula al finalizar según tu ciudad."}
+                    </span>
                   </li>
                   {/* Retracto por producto (Ley 1480 art. 47): informarlo en la ficha, distinto según
                       sea a medida o de catálogo estándar. */}

@@ -35,7 +35,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { adminLogoutAction } from "@/app/auth/logout/actions";
-import { ADMIN_NAV, type NavBadge, type NavGroup } from "@/lib/admin-nav";
+import { getAdminNav, type NavBadge, type NavGroup } from "@/lib/admin-nav";
 import { filterNavByRole } from "@/lib/admin-rbac";
 import type { AdminRole } from "@lucams/db";
 
@@ -44,10 +44,11 @@ type AdminInfo = {
   role: string;
 };
 
-// NAV se importa de @/lib/admin-nav (compartido con la página catch-all
-// [...placeholder]/page.tsx para mostrar info contextual cuando el
-// cliente clickea un módulo "Próximo").
-const NAV = ADMIN_NAV;
+// NAV efectivo según el modo de tienda: getAdminNav() filtra "Finanzas" e
+// "Integraciones" en modo catálogo (Etapa 1 — lib/store-mode). La data base
+// vive en @/lib/admin-nav (compartida con la página catch-all [...placeholder],
+// que sigue usando ADMIN_NAV completo para info contextual de módulos "Próximo").
+const NAV = getAdminNav();
 // Alias local para compatibilidad con el código que usaba `Badge`.
 type Badge = NavBadge;
 

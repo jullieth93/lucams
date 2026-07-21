@@ -7,8 +7,9 @@
  */
 
 import Link from "next/link";
-import { ArrowLeft, Lock } from "lucide-react";
+import { ArrowLeft, Lock, MessageCircle } from "lucide-react";
 import { LucamsLogo } from "@/components/lucams-logo";
+import { isCatalogMode } from "@/lib/store-mode";
 
 export default function CheckoutLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -51,8 +52,17 @@ export default function CheckoutLayout({ children }: { children: React.ReactNode
       <footer className="border-brand-purple/10 mt-auto border-t bg-white/60 py-5 backdrop-blur-sm">
         <div className="text-brand-muted mx-auto flex max-w-6xl flex-wrap items-center justify-center gap-x-6 gap-y-2 px-4 text-xs sm:justify-between sm:px-6">
           <div className="flex items-center gap-1.5">
-            <Lock className="h-3 w-3" />
-            Pago seguro Wompi · Envío Aveonline
+            {isCatalogMode() ? (
+              <>
+                <MessageCircle className="h-3 w-3" />
+                Cotización sin pago en línea · coordinamos por WhatsApp
+              </>
+            ) : (
+              <>
+                <Lock className="h-3 w-3" />
+                Pago seguro Wompi · Envío Aveonline
+              </>
+            )}
           </div>
           <div className="flex gap-4">
             <Link href="/legal/terminos" className="hover:text-brand-purple-dark">
