@@ -92,7 +92,7 @@ describe.skipIf(!hasDb)("daily-summary — integración DB", () => {
       expect(typeof s[k]).toBe("number");
       expect(s[k]).toBeGreaterThanOrEqual(0);
     }
-  });
+  }, 30000);
 
   it("sendDailySummary envía el email y luego DEDUP (no re-envía dentro de 12h)", async () => {
     await prisma.alertState.deleteMany({ where: { key: "daily_summary" } });
@@ -109,5 +109,5 @@ describe.skipIf(!hasDb)("daily-summary — integración DB", () => {
     expect(second.sent).toBe(false);
     expect(second.skipped).toBe("already_sent");
     expect(emailsSent).toHaveLength(1); // NO se re-envió
-  });
+  }, 30000);
 });

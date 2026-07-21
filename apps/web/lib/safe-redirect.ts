@@ -63,15 +63,19 @@ export function safeRedirectTarget(input: string | null | undefined, fallback = 
 
 /**
  * Política del CMS de redirects (admin): acepta un destino si es
- *  - una URL absoluta http(s):// EXPLÍCITA (externo intencional, por diseño), o
+ *  - una URL absoluta https:// EXPLÍCITA (externo intencional, por diseño), o
  *  - un path interno seguro (`isSafeInternalPath`).
  * Rechaza los vectores disfrazados ("//evil.com", "/\evil.com") que parecen
  * internos pero escapan al host propio.
+ *
+ * Solo https:// (auditoría 2026-07-21, SEC-03): un destino http:// mandaría el
+ * tráfico redirigido en claro y habilita downgrade si una cuenta admin se
+ * compromete. No hay caso de uso legítimo de redirect externo sin TLS.
  */
 export function isAllowedRedirectDestination(input: unknown): input is string {
   if (typeof input !== "string") return false;
   const s = input.trim();
-  if (/^https?:\/\//i.test(s)) {
+  if (/^https:\/\//i.test(s)) {
     try {
       return new URL(s).host.length > 0; // externo explícito válido
     } catch {

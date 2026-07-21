@@ -95,10 +95,23 @@ export function MfaEnroll() {
           <li>Escribe abajo el código de 6 dígitos que te muestra la app.</li>
         </ol>
         <div className="flex flex-col items-center gap-3 sm:flex-row sm:items-start">
-          {/* qr_code es un SVG (data URI o markup). Lo mostramos. */}
-          <div
+          {/* SEC-01 (auditoría 2026-07-21): el QR se renderiza como <img> con
+              data URI — una imagen NO ejecuta markup/script. Antes se inyectaba
+              el SVG crudo con dangerouslySetInnerHTML: si la respuesta del Auth
+              server se manipulaba, un SVG con <script> corría en contexto admin.
+              Supabase devuelve `qr_code` como markup SVG o como data URI según
+              versión; se soportan ambos. */}
+          {/* eslint-disable-next-line @next/next/no-img-element -- data URI dinámico del enroll TOTP; next/image no aplica */}
+          <img
+            src={
+              qrSvg.startsWith("data:")
+                ? qrSvg
+                : `data:image/svg+xml;utf8,${encodeURIComponent(qrSvg)}`
+            }
+            alt="Código QR para enrolar tu app de autenticación"
             className="border-brand-purple/15 rounded-lg border bg-white p-2"
-            dangerouslySetInnerHTML={{ __html: qrSvg }}
+            width={192}
+            height={192}
           />
           {secret && (
             <div className="text-brand-purple-dark/70 text-xs">

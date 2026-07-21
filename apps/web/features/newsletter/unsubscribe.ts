@@ -23,12 +23,20 @@ import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
  * Compartido entre la generación (newsletter/actions al suscribir) y la
  * verificación (endpoint /unsubscribe). NO es secreto criptográfico fuerte;
  * solo evita el abuso de dar de baja a terceros con su email crudo.
+ *
+ * SEC-02 (auditoría 2026-07-21): sin fallback `?? "dev"` — firmar con una clave
+ * pública conocida invalida la protección. CSRF_SECRET es CORE-obligatorio
+ * (lib/env.ts lo valida al arranque), así que aquí simplemente se EXIGE.
  */
 export function computeUnsubscribeToken(email: string): string {
-  return createHash("sha256")
-    .update(`${email.trim().toLowerCase()}:${process.env.CSRF_SECRET ?? "dev"}`)
-    .digest("hex")
-    .slice(0, 32);
+  const secret = process.env.CSRF_SECRET?.trim();
+  if (!secret) {
+    throw new Error(
+      "CSRF_SECRET no configurado (usado para firmar el token de unsubscribe). " +
+        "Defínelo en .env.local / Vercel env vars.",
+    );
+  }
+  return createHash("sha256").update(`${email.trim().toLowerCase()}:${secret}`).digest("hex").slice(0, 32);
 }
 
 /**
