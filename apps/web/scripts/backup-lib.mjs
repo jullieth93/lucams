@@ -9,6 +9,33 @@
 export const BACKUP_KEY_RE = /(^|\/)lucams-\d{4}-\d{2}-\d{2}T\d{6}Z\.sql\.gz$/;
 
 /**
+ * Normaliza R2_ACCOUNT_ID a la etiqueta DNS que va delante de `.r2.cloudflarestorage.com`.
+ *
+ * Motivo (2026-07-21): pegar el ENDPOINT COMPLETO en vez del Account ID producía un host
+ * inválido y el SDK moría con `SSL alert number 40 (handshake failure)` — un error de OpenSSL
+ * que no insinúa por ningún lado que el problema es una variable mal copiada. Se tolera el
+ * endpoint completo (se extrae el id) y se rechaza cualquier cosa que no pueda ser una etiqueta
+ * DNS, con un mensaje que diga qué hacer.
+ */
+export function normalizeR2AccountId(raw) {
+  const value = String(raw ?? "").trim();
+  if (!value) throw new Error("R2_ACCOUNT_ID está vacío.");
+
+  const asUrl = value.match(/^https?:\/\/([^/.]+)\.r2\.cloudflarestorage\.com\/*$/i);
+  const id = asUrl ? asUrl[1] : value;
+
+  if (!/^[A-Za-z0-9-]+$/.test(id)) {
+    throw new Error(
+      `R2_ACCOUNT_ID no parece un Account ID de Cloudflare (recibido ${id.length} caracteres con ` +
+        `símbolos no válidos en un nombre de host). Debe ser SOLO el identificador — por ejemplo ` +
+        `"a1b2c3…", no "https://a1b2c3….r2.cloudflarestorage.com" ni el Access Key ID ni el Token value. ` +
+        `Se encuentra en el panel de R2, en Account Details → Account ID.`,
+    );
+  }
+  return id;
+}
+
+/**
  * Construye la llave del objeto en R2 para un backup en `date` (UTC).
  * Ej: buildBackupKey(new Date("2026-07-13T14:05:01Z")) → "db/lucams-2026-07-13T140501Z.sql.gz"
  */

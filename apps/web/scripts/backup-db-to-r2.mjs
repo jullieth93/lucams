@@ -30,14 +30,16 @@ import {
   ListObjectsV2Command,
   DeleteObjectsCommand,
 } from "@aws-sdk/client-s3";
-import { buildBackupKey, selectStaleKeys } from "./backup-lib.mjs";
+import { buildBackupKey, selectStaleKeys, normalizeR2AccountId } from "./backup-lib.mjs";
 
 function requireEnv(name, ...fallbacks) {
   for (const key of [name, ...fallbacks]) {
     const v = process.env[key];
     if (v && v.trim()) return v.trim();
   }
-  throw new Error(`Falta la variable de entorno ${name}${fallbacks.length ? ` (o ${fallbacks.join("/")})` : ""}`);
+  throw new Error(
+    `Falta la variable de entorno ${name}${fallbacks.length ? ` (o ${fallbacks.join("/")})` : ""}`,
+  );
 }
 
 /** Corre pg_dump y comprime su salida con gzip, devolviendo el .sql.gz en un Buffer. */
@@ -76,12 +78,18 @@ async function dumpAndGzip(connectionString) {
 
 async function main() {
   const conn = requireEnv("BACKUP_DATABASE_URL", "DIRECT_URL");
-  const accountId = requireEnv("R2_ACCOUNT_ID");
+  const accountId = normalizeR2AccountId(requireEnv("R2_ACCOUNT_ID"));
   const bucket = requireEnv("R2_BUCKET");
   const accessKeyId = requireEnv("R2_ACCESS_KEY_ID");
   const secretAccessKey = requireEnv("R2_SECRET_ACCESS_KEY");
   const prefix = (process.env.BACKUP_PREFIX || "db").trim();
   const keep = Number.parseInt(process.env.BACKUP_KEEP || "8", 10);
+
+  // Sin exponer el id (GitHub lo enmascara igual): basta la FORMA para diagnosticar un valor mal
+  // copiado sin tener que leer el secreto.
+  console.log(
+    `→ endpoint R2: <account-id de ${accountId.length} caracteres>.r2.cloudflarestorage.com`,
+  );
 
   const client = new S3Client({
     region: "auto",
@@ -127,8 +135,7 @@ async function main() {
 }
 
 // Sólo ejecuta si se invoca directamente (no al importarlo en tests).
-const invokedDirectly =
-  process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+const invokedDirectly = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (invokedDirectly) {
   main().catch((err) => {
     console.error(`✗ backup falló: ${err.message}`);
