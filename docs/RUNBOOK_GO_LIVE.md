@@ -528,6 +528,58 @@ printf 'https://lucamsshop.com' | vercel env add NEXT_PUBLIC_SITE_URL production
 ⚠️ **Requiere despliegue, no basta guardar la variable:** las `NEXT_PUBLIC_*` se **incrustan en el
 bundle al construir**. Hasta que no se reconstruya, el sitio sigue sirviendo la URL vieja.
 
+### 6.c — SMTP propio en Supabase 🙋 🔴 BLOQUEANTE
+
+> **Detectado 2026-07-20 probando el registro en producción.** El formulario devolvía
+> _"No pudimos crear tu cuenta"_ con el widget de Turnstile en **Success**, así que el fallo no era
+> anti-bot. Reproducido contra la API de Supabase:
+>
+> ```json
+> { "code": 500, "error_code": "unexpected_failure", "msg": "Error sending confirmation email" }
+> ```
+
+**Causa raíz**, en palabras de la propia documentación de Supabase
+([Auth SMTP](https://supabase.com/docs/guides/auth/auth-smtp), verificado 2026-07-20):
+
+> _"Unless you configure a custom SMTP server for your project, Supabase Auth will **refuse to
+> deliver messages to addresses that are not part of the project's team**."_
+
+O sea: con el servicio de correo por defecto, Supabase **solo** escribe a los miembros del proyecto.
+Un cliente real nunca recibe su correo de confirmación → **nadie puede registrarse**. Y además:
+
+- _"Currently this value is set to **2 messages per hour**"_ — 2 correos por hora en total.
+- _"intended for the following **non-production** use cases"_ · _"We urge all customers to set up
+  custom SMTP server for all other use cases."_
+
+**No es un ajuste opcional de calidad: sin esto la tienda no puede registrar clientes.**
+
+### Arreglo — conectar Supabase a Resend por SMTP
+
+Resend ya está verificado (FASE 5), así que es reusar lo que existe.
+Datos oficiales ([Resend — SMTP](https://resend.com/docs/send-with-smtp), verificado 2026-07-20):
+
+| Campo        | Valor                               |
+| ------------ | ----------------------------------- |
+| Host         | `smtp.resend.com`                   |
+| Port         | `465` (SSL/TLS implícito)           |
+| Username     | `resend` ← literalmente esa palabra |
+| Password     | una API key de Resend               |
+| Sender email | `hola@mail.lucamsshop.com`          |
+| Sender name  | `Lucams_shop`                       |
+
+> ✅ Comprobado desde esta VM que la llave autentica contra `smtp.resend.com:465`.
+>
+> 🔐 **Genera una API key NUEVA en Resend solo para Supabase**, no reutilices la de la app: si
+> alguna vez hay que rotar una, se revoca sin tumbar la otra.
+
+1. Supabase → **Project Settings** → **Authentication** → **SMTP Settings**.
+2. Activa **Enable Custom SMTP** y llena la tabla de arriba.
+3. Guarda y **prueba registrando un correo que NO sea de un miembro del proyecto** (ese es justo el
+   caso que fallaba).
+
+✅ **Cómo sabes que quedó bien:** un registro con un Gmail cualquiera se completa y llega el correo
+de confirmación desde `hola@mail.lucamsshop.com`.
+
 ### 6.b — URLs de Auth en Supabase 🙋
 
 Supabase guarda su **propia** copia de la URL base — cambiar la de Vercel no la toca.
