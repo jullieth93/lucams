@@ -378,6 +378,7 @@ model Product {
   backInStockSubs       BackInStockSubscription[]
   designs               Design[]
   templates             PersonalizationTemplate[]
+  quoteItems            QuoteItem[]
   // PLAN_CATALOG_V2 1.5 / 2.10 — tags transversales por ocasión (matrimonio, día madre, etc.).
   ocasionTags           ProductOcasionTag[]
   isActive              Boolean                   @default(true)
@@ -422,6 +423,7 @@ model ProductVariant {
   inventoryLogs  InventoryLog[]
   cartItems      CartItem[]
   orderItems     OrderItem[]
+  quoteItems     QuoteItem[]
   reservations   StockReservation[]
   isActive       Boolean            @default(true)
 
@@ -1332,6 +1334,7 @@ model Design {
   assets           DesignAsset[]
   cartItems        CartItem[]
   orderItems       OrderItem[]
+  quoteItems       QuoteItem[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1622,4 +1625,80 @@ model BackInStockSubscription {
 
   @@unique([productId, email])
   @@index([productId, notifiedAt])
+}
+
+// ──────────────────────── COTIZACIONES (Etapa 1 — catálogo + WhatsApp) ────────────────────────
+// Modo catálogo (NEXT_PUBLIC_STORE_MODE=catalog, docs/PLAN_SALIDA_PRODUCCION.md):
+// el checkout se convierte en "cotización de 1 paso" — el cliente arma el carrito,
+// deja sus datos y cierra por WhatsApp. SIN pagos en línea ni envíos integrados.
+// Feature: apps/web/features/quotes.
+
+// Ciclo de vida de la cotización (valores en inglés, convención del repo).
+enum QuoteStatus {
+  PENDING // recién creada desde el storefront, Lucy aún no contacta
+  CONTACTED // Lucy ya habló con el cliente por WhatsApp
+  CLOSED // venta concretada (cerrada por fuera de la tienda)
+  DISCARDED // no prosperó (spam, sin respuesta, el cliente desistió)
+}
+
+model Quote {
+  id                String      @id @default(cuid())
+  // Número humano "COT-XXXXXX" (6 chars alfanuméricos sin ambiguos, generado en
+  // app — ver features/quotes/service.ts). Único; el create reintenta ante P2002.
+  number            String      @unique
+  status            QuoteStatus @default(PENDING)
+  customerName      String
+  // Móvil colombiano normalizado a 10 dígitos (sin +57 ni espacios).
+  customerWhatsapp  String
+  customerEmail     String?
+  city              String
+  department        String
+  notes             String? // notas DEL CLIENTE (formulario público)
+  // Notas internas del admin — NUNCA exponer en la vista pública por token
+  // (getQuoteByToken las excluye con select explícito).
+  internalNotes     String?
+  // Centavos COP (mandato CLAUDE.md — nunca float). En Etapa 1 total == subtotal:
+  // no hay envío calculado, cupones ni impuestos en la cotización.
+  subtotal          Int
+  total             Int
+  // Token para vista pública /cotizacion/[token] (guest sin login, mismo patrón
+  // que Order.publicAccessToken): 32 chars hex = crypto.randomBytes(16).
+  publicAccessToken String      @unique
+  items             QuoteItem[]
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  createdBy String?
+  updatedBy String?
+  deletedAt DateTime?
+  deletedBy String?
+
+  @@index([status, createdAt])
+  @@index([deletedAt])
+}
+
+// Snapshot de cada línea del carrito al cotizar. Los FKs son SetNull para que
+// archivar/borrar un producto, variante o diseño NO rompa el histórico de la
+// cotización (los nombres/precios quedan snapshoteados como texto, igual que
+// OrderItem preserva customDesign tras borrar el Design).
+model QuoteItem {
+  id          String          @id @default(cuid())
+  quoteId     String
+  quote       Quote           @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+  productId   String?
+  product     Product?        @relation(fields: [productId], references: [id], onDelete: SetNull)
+  variantId   String?
+  variant     ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  designId    String?
+  design      Design?         @relation(fields: [designId], references: [id], onDelete: SetNull)
+  productName String // snapshot — sobrevive aunque el producto se archive
+  variantName String?
+  unitPrice   Int // centavos COP, snapshot del cart al cotizar
+  quantity    Int
+  // Preview del Design personalizado (PNG público) si la línea es personalizada.
+  previewUrl  String?
+
+  createdAt DateTime @default(now())
+
+  @@index([quoteId])
 }

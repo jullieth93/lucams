@@ -1,0 +1,111 @@
+"use server";
+
+/*
+ * Server action — crear cotización desde el carrito (Etapa 1, modo catálogo).
+ *
+ * Pipeline (mismo patrón que features/support/actions.ts):
+ *  1. Valida con Zod (QuoteFormSchema).
+ *  2. Turnstile anti-bot (en dev sin secret pasa automáticamente).
+ *  3. Rate-limit: 5/día por IP + 3/día por WhatsApp — mitiga spam de
+ *     cotizaciones sin friccionar al cliente legítimo.
+ *  4. Crea la Quote desde el carrito de la sesión anónima (el service lo
+ *     vacía) y devuelve { number, token } para la página de confirmación
+ *     (botón "Enviar por WhatsApp" + vista pública /cotizacion/[token]).
+ */
+
+import { headers } from "next/headers";
+import { z } from "zod";
+import { rateLimit } from "@/lib/rate-limit";
+import { ipKey, phoneKey } from "@/lib/rate-limit-keys";
+import { logger } from "@/lib/logger";
+import { getClientIp } from "@/lib/client-ip";
+import { verifyTurnstileToken } from "@/lib/turnstile";
+import { getOrCreateCartSession } from "@/lib/cart-session";
+import { QuoteFormSchema, type QuoteFormInput } from "./schemas";
+import { QuoteError, createQuoteFromCart } from "./service";
+
+export type QuoteActionState =
+  | { ok: true; token: string; number: string }
+  | { ok: false; error: string; fieldErrors?: Partial<Record<keyof QuoteFormInput, string[]>> }
+  | null;
+
+export async function createQuoteAction(
+  _prev: QuoteActionState,
+  formData: FormData,
+): Promise<QuoteActionState> {
+  const parsed = QuoteFormSchema.safeParse({
+    customerName: String(formData.get("customerName") ?? "").trim(),
+    customerWhatsapp: String(formData.get("customerWhatsapp") ?? "").trim(),
+    customerEmail: String(formData.get("customerEmail") ?? "").trim(),
+    city: String(formData.get("city") ?? "").trim(),
+    department: String(formData.get("department") ?? "").trim(),
+    notes: String(formData.get("notes") ?? "").trim(),
+  });
+
+  if (!parsed.success) {
+    const flat = z.flattenError(parsed.error);
+    return {
+      ok: false,
+      error: "Revisa los campos marcados.",
+      fieldErrors: flat.fieldErrors as Partial<Record<keyof QuoteFormInput, string[]>>,
+    };
+  }
+
+  const hdrs = await headers();
+  const ip = getClientIp(hdrs);
+
+  // Turnstile: bloquea bots. En dev sin secret pasa automáticamente.
+  const turnstileToken = String(formData.get("cf-turnstile-response") ?? "");
+  const turnstile = await verifyTurnstileToken(turnstileToken, ip);
+  if (!turnstile.success) {
+    logger.warn({ event: "quote.create.turnstile_failed", ip, reason: turnstile.reason });
+    return {
+      ok: false,
+      error: "Validación anti-bot falló. Recarga la página e intenta de nuevo.",
+    };
+  }
+
+  // Rate-limit: 5/día por IP + 3/día por número de WhatsApp (24h window,
+  // misma filosofía que contacto: cubre botnet y atacante único).
+  const [byIp, byPhone] = await Promise.all([
+    rateLimit(ipKey("quote", ip), 5, 24 * 60 * 60),
+    rateLimit(phoneKey("quote", parsed.data.customerWhatsapp), 3, 24 * 60 * 60),
+  ]);
+  if (!byIp.allowed || !byPhone.allowed) {
+    logger.warn({
+      event: "quote.create.rate_limited",
+      ip,
+      byIpAllowed: byIp.allowed,
+      byPhoneAllowed: byPhone.allowed,
+    });
+    return {
+      ok: false,
+      error:
+        "Recibimos varias cotizaciones tuyas hoy. Si es urgente, escríbenos directo por WhatsApp.",
+    };
+  }
+
+  try {
+    const sessionId = await getOrCreateCartSession();
+    const { number, token } = await createQuoteFromCart(parsed.data, sessionId);
+    logger.info({ event: "quote.create.success", number, ip });
+    return { ok: true, token, number };
+  } catch (err) {
+    if (err instanceof QuoteError && (err.code === "EMPTY_CART" || err.code === "CART_NOT_FOUND")) {
+      return {
+        ok: false,
+        error: "Tu carrito está vacío. Agrega productos antes de pedir la cotización.",
+      };
+    }
+    logger.error({
+      event: "quote.create.failed",
+      ip,
+      err: err instanceof Error ? err.message : String(err),
+    });
+    return {
+      ok: false,
+      error:
+        "No pudimos crear tu cotización. Prueba de nuevo en unos minutos o escríbenos por WhatsApp.",
+    };
+  }
+}

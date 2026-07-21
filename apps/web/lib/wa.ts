@@ -28,6 +28,13 @@ export type WhatsAppContext =
   | { kind: "personalize"; productName: string; sku: string }
   | { kind: "support"; subject?: string }
   | { kind: "order"; orderNumber: string }
+  | {
+      kind: "quote";
+      quoteNumber: string;
+      customerName: string;
+      itemsSummary: string;
+      total: string;
+    }
   | { kind: "wholesale" }
   | { kind: "custom"; text: string };
 
@@ -40,6 +47,11 @@ const FALLBACK_TEMPLATES = {
   support: "Hola Lucams 👋 Tengo una consulta y quería hablar por aquí.",
   support_subject: "Hola Lucams 👋 Tengo una consulta sobre: {subject}",
   order: "Hola Lucams 👋 Quiero consultar el estado de mi pedido {orderNumber}.",
+  // Etapa 1 (modo catálogo): mensaje de la cotización con número, items con
+  // cantidades, total formateado COP y nombre del cliente. itemsSummary llega
+  // pre-armado (una línea por item) desde features/quotes/service.ts.
+  quote:
+    "Hola Lucams 👋 Soy {customerName}. Acabo de hacer la cotización {quoteNumber} en la tienda:\n{itemsSummary}\nTotal: {total}\nQuedo atento/a para concretar 🙌",
   wholesale:
     "Hola Lucams 👋 Estoy interesado/a en pedido al por mayor / corporativo. ¿Me puedes contar?",
 } as const;
@@ -75,6 +87,15 @@ export async function buildWhatsAppMessage(ctx: WhatsAppContext): Promise<string
     case "order": {
       const tpl = await getSettingValue("WA_MSG_ORDER", FALLBACK_TEMPLATES.order);
       return interpolate(tpl, { orderNumber: ctx.orderNumber });
+    }
+    case "quote": {
+      const tpl = await getSettingValue("WA_MSG_QUOTE", FALLBACK_TEMPLATES.quote);
+      return interpolate(tpl, {
+        quoteNumber: ctx.quoteNumber,
+        customerName: ctx.customerName,
+        itemsSummary: ctx.itemsSummary,
+        total: ctx.total,
+      });
     }
     case "wholesale":
       return await getSettingValue("WA_MSG_WHOLESALE", FALLBACK_TEMPLATES.wholesale);

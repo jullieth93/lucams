@@ -474,12 +474,15 @@ async function createOrderFromCartTx(
 export async function clearCartAfterPaid(
   cartId: string,
   client: Prisma.TransactionClient | typeof prisma = prisma,
+  // Etapa 1 (modo catálogo): features/quotes lo reusa para vaciar el cart al
+  // crear la cotización, con su propia marca de auditoría ("quote:create").
+  deletedBy = "saga:order-paid",
 ): Promise<void> {
   await client.cart.updateMany({
     where: { id: cartId, deletedAt: null },
     data: {
       deletedAt: new Date(),
-      deletedBy: "saga:order-paid",
+      deletedBy,
     },
   });
 }

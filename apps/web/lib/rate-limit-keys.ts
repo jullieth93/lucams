@@ -33,6 +33,11 @@ export function emailKey(scope: string, email: string): string {
   return `${scope}:email:${hashEmail(email)}`;
 }
 
+/** Key por teléfono — hasheado igual que el email (PII fuera de la tabla/logs). */
+export function phoneKey(scope: string, phone: string): string {
+  return `${scope}:phone:${hashEmail(phone)}`;
+}
+
 /** Key por dueño (customerId o sessionId anónima) — para abuso por sesión. */
 export function ownerKey(scope: string, ownerId: string): string {
   return `${scope}:owner:${ownerId}`;

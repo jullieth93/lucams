@@ -6,7 +6,11 @@
  * `register()` (instrumentation.ts) llama validateEnv() al iniciar el servidor:
  *   - CORE ausente (cualquier entorno) → throw: la config está rota, no arranques.
  *   - PROD_REQUIRED ausente en producción → throw: el sitio no debe vender sin
- *     pago/envío/email/anti-bot/crons configurados.
+ *     email/anti-bot/crons configurados.
+ *   - FULL_MODE_REQUIRED (Wompi/Aveonline/Gemini) ausente en producción → throw
+ *     SOLO en modo tienda full. En modo catálogo (NEXT_PUBLIC_STORE_MODE=catalog,
+ *     Etapa 1) no aplican: la tienda vende por cotización WhatsApp, sin pago en
+ *     línea, sin envíos integrados y sin IA.
  *   - PROD_REQUIRED ausente en dev/preview → solo warn (no bloquea el desarrollo).
  *
  * Se salta durante el build (NEXT_PHASE) para no romper CI/preview builds sin secretos:
@@ -15,6 +19,7 @@
 
 import { z } from "zod";
 import { logger } from "@/lib/logger";
+import { isCatalogMode } from "@/lib/store-mode";
 
 // Vars que la app necesita SIEMPRE (dev, preview, prod). Sin ellas nada funciona.
 const CoreEnv = z.object({
@@ -26,19 +31,10 @@ const CoreEnv = z.object({
   CSRF_SECRET: z.string().min(1),
 });
 
-// Vars que SOLO son críticas en producción real (pago, envío, email, anti-bot, crons).
+// Vars que SOLO son críticas en producción real (email, anti-bot, crons, WhatsApp).
 // En dev/preview su ausencia es aceptable (se avisa, no se bloquea).
 const PROD_REQUIRED = [
   "NEXT_PUBLIC_SITE_URL",
-  "WOMPI_PUBLIC_KEY",
-  "WOMPI_PRIVATE_KEY",
-  "WOMPI_EVENTS_SECRET",
-  "WOMPI_INTEGRITY_SECRET",
-  "AVEONLINE_USUARIO",
-  "AVEONLINE_CLAVE",
-  // Sin este secreto el webhook de Aveonline responde 503 y las órdenes nunca auto-transicionan
-  // (SHIPPED/DELIVERED) ni disparan sus emails → fail-fast en prod para no romper el despacho en silencio.
-  "AVEONLINE_WEBHOOK_SECRET",
   "RESEND_API_KEY",
   "EMAIL_FROM",
   // El From vive en mail.lucamsshop.com (subdominio de envío, sin buzón). Sin Reply-To al dominio
@@ -48,6 +44,24 @@ const PROD_REQUIRED = [
   "NEXT_PUBLIC_TURNSTILE_SITE_KEY",
   "CRON_SECRET",
   "NEXT_PUBLIC_WA_NUMBER",
+] as const;
+
+// Vars que SOLO aplican en modo tienda FULL (Etapa 2): pasarela Wompi, courier
+// Aveonline e IA Gemini. En modo catálogo (NEXT_PUBLIC_STORE_MODE=catalog) la
+// tienda sale SIN pagos en línea, SIN envíos integrados y SIN IA
+// (docs/PLAN_SALIDA_PRODUCCION.md) → exigirlas bloquearía el arranque de prod
+// de la Etapa 1 sin necesidad.
+const FULL_MODE_REQUIRED = [
+  "WOMPI_PUBLIC_KEY",
+  "WOMPI_PRIVATE_KEY",
+  "WOMPI_EVENTS_SECRET",
+  "WOMPI_INTEGRITY_SECRET",
+  "AVEONLINE_USUARIO",
+  "AVEONLINE_CLAVE",
+  // Sin este secreto el webhook de Aveonline responde 503 y las órdenes nunca auto-transicionan
+  // (SHIPPED/DELIVERED) ni disparan sus emails → fail-fast en prod para no romper el despacho en silencio.
+  "AVEONLINE_WEBHOOK_SECRET",
+  "GEMINI_API_KEY",
 ] as const;
 
 export function validateEnv(): void {
@@ -64,12 +78,18 @@ export function validateEnv(): void {
   }
 
   const isProd = process.env.VERCEL_ENV === "production";
-  const missingProd = PROD_REQUIRED.filter((k) => !(process.env[k] && process.env[k]!.length > 0));
+  // Modo catálogo (Etapa 1): NO se exigen las vars de pago/envío/IA — la tienda
+  // vende por cotización WhatsApp sin Wompi/Aveonline/Gemini. El resto (email,
+  // Turnstile, crons, WA) sigue siendo obligatorio en prod.
+  const required = isCatalogMode() ? PROD_REQUIRED : [...PROD_REQUIRED, ...FULL_MODE_REQUIRED];
+  const missingProd = required.filter((k) => !(process.env[k] && process.env[k]!.length > 0));
   if (missingProd.length > 0) {
     if (isProd) {
       throw new Error(
         `[env] Faltan variables de PRODUCCIÓN: ${missingProd.join(", ")}. ` +
-          `El sitio no debe arrancar en producción sin pago/envío/email/anti-bot/crons configurados.`,
+          (isCatalogMode()
+            ? `El sitio (modo catálogo) no debe arrancar en producción sin email/anti-bot/crons/WhatsApp configurados.`
+            : `El sitio no debe arrancar en producción sin pago/envío/email/anti-bot/crons configurados.`),
       );
     }
     logger.warn(
