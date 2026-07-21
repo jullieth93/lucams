@@ -538,6 +538,69 @@ async function getAuthToken(): Promise<{ token: string; idempresa: number }> {
   return { token: data.token, idempresa };
 }
 
+/** `idempresa` de la cuenta DEMO pública. Ver DEMO_CREDENTIALS. */
+export const AVEONLINE_DEMO_IDEMPRESA = 15289;
+
+export type AveonlineHealth = {
+  /** Modo declarado por AVEONLINE_ENV. En `test` NO se generan guías reales. */
+  mode: "production" | "test";
+  authenticated: boolean;
+  idempresa: number | null;
+  /** true si la cuenta autenticada es la DEMO pública. En modo production es un ERROR. */
+  isDemoAccount: boolean;
+  ok: boolean;
+  detail?: string;
+};
+
+/**
+ * Diagnóstico de la integración de envíos, sin generar ninguna guía.
+ *
+ * Existe porque las credenciales viven cifradas en Vercel y no se pueden auditar leyéndolas: la
+ * única forma de saber si `AVEONLINE_USUARIO`/`AVEONLINE_CLAVE` son de la cuenta real o quedaron
+ * apuntando a la demo es autenticarse y mirar qué `idempresa` devuelve. Con `AVEONLINE_ENV` en
+ * `production` la app genera guías REALES y factura (`bloquegenerarguia=1`), así que confundir
+ * ambas cuentas es un error caro y silencioso.
+ *
+ * NO se agrega a /api/health/all a propósito: cada llamada gasta una autenticación contra un
+ * proveedor externo, y un monitor haría cientos al día.
+ */
+export async function probeAveonlineHealth(): Promise<AveonlineHealth> {
+  const mode = isProductionEnv() ? "production" : "test";
+  const base: AveonlineHealth = {
+    mode,
+    authenticated: false,
+    idempresa: null,
+    isDemoAccount: false,
+    ok: false,
+  };
+
+  if (mode === "production") {
+    const missing = ["AVEONLINE_USUARIO", "AVEONLINE_CLAVE"].filter((k) => !process.env[k]);
+    if (missing.length > 0) {
+      return { ...base, detail: `Modo production sin credenciales: falta ${missing.join(", ")}.` };
+    }
+  }
+
+  try {
+    const { idempresa } = await getAuthToken();
+    const isDemoAccount = idempresa === AVEONLINE_DEMO_IDEMPRESA;
+    if (mode === "production" && isDemoAccount) {
+      return {
+        ...base,
+        authenticated: true,
+        idempresa,
+        isDemoAccount,
+        detail:
+          "AVEONLINE_ENV=production pero las credenciales son las de la cuenta DEMO pública: " +
+          "la tienda cree que genera guías reales y no es así.",
+      };
+    }
+    return { ...base, authenticated: true, idempresa, isDemoAccount, ok: true };
+  } catch (err) {
+    return { ...base, detail: err instanceof Error ? err.message : "fallo de autenticación" };
+  }
+}
+
 export class AveonlineProvider implements ShippingProvider {
   readonly name = "aveonline" as const;
 
