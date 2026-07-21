@@ -13,6 +13,75 @@
 
 ## Resumen actual
 
+**✅ GO-LIVE — FASES 5, 6, 9 y 11 CERRADAS (2026-07-21).** El dominio `lucamsshop.com` sirve la
+tienda y esta tanda cerró correo, canonización, anti-bot y crons. **Patrón de la sesión: todo lo que
+falló era invisible desde los paneles** — Vercel decía "Ready", Cloudflare decía "Active", Supabase
+decía "OK", y sin embargo la tienda no podía tomar un pedido. Cada hallazgo salió de probar de verdad.
+
+**Los dos bloqueantes que habrían matado el lanzamiento:**
+
+- **🔴 Turnstile rechazaba a TODOS los visitantes** (`TurnstileError 110200`, "Domain not
+  authorized"). La lista de hostnames del widget tenía `lucamsshop.co` — el dominio del plan
+  original ([ADR-011](DECISIONS.md)), descartado al comprar el `.com`. **Una letra.** No era solo el
+  checkout: registro, recuperar-contraseña y el pago exigen los tres un token válido. Detectado con
+  un navegador real (Playwright); `curl` servía el HTML igual. Se agregó el dominio bueno y se
+  **retiró** el `.co` (no es propio: quien lo registrara podría usar la Site Key). (`79dff77`, `9d97b42`)
+- **🔴 Supabase se negaba a enviar el correo de confirmación** a cualquiera que no fuera miembro del
+  proyecto — doc oficial: _"will refuse to deliver messages to addresses that are not part of the
+  project's team"_, 2 correos/hora, declarado no apto para producción. **Ningún cliente podía crear
+  cuenta.** Resuelto conectando Supabase a Resend por SMTP (ya verificado en FASE 5). (`09bc87c`)
+
+**Y dos fallos silenciosos de configuración amarrada al dominio viejo:**
+
+- **`NEXT_PUBLIC_SITE_URL` seguía en `vercel.app`** (`f6fc4f7`): alimentaba el `redirectUrl` de
+  **Wompi**, así que un cliente que pagara caía en `…vercel.app/checkout/gracias` — otro dominio,
+  sin sus cookies. Más sitemap/robots/OG canónicos al dominio equivocado.
+- **`/api/health/all` reportaba caída total estando todo sano** (`7466077`): con Deployment
+  Protection, `VERCEL_URL` responde 302 al login de Vercel; el agregador parseaba ese HTML. Un
+  monitor externo lo habría leído como caída permanente.
+
+**Correo de punta a punta (FASE 5).** Envío por `mail.lucamsshop.com` (Resend, `sa-east-1`/São Paulo
+— Brasil tiene LGPD, mejor sustento del art. 26 Ley 1581). Recepción por **Cloudflare Email Routing**
+con los 5 buzones (`hola@`, `habeas-data@`, `retracto@`, `security@`, `dmarc@`), catch-all apagado.
+**DMARC** en el dominio organizacional (RFC 7489 §6.6.3 → un registro cubre apex y subdominios).
+`EMAIL_REPLY_TO` en código y **PROD_REQUIRED**: el From vive en un subdominio que no recibe, así que
+sin Reply-To cada "Responder" de un cliente se perdía en silencio (`b8e8b40`).
+
+**Healthchecks con dientes.** `/api/health/resend` decía `ok` validando solo la API key — con
+`EMAIL_FROM` en el sandbox seguía diciendo `ok`. Ahora contrasta el dominio del remitente contra los
+dominios reales de la cuenta (`afe7a54`). Nuevo `/api/health/aveonline` (`f86d09d`): las credenciales
+viven cifradas en Vercel, así que la única forma de saber en qué modo está la tienda es autenticar y
+mirar el `idempresa`. **Ambos endpoints fueron lo que permitió auditar producción sin leer secretos.**
+
+**Verificado en producción al cerrar** (commit `596c351`):
+
+```
+health/all: ok | postgres=ok, storage=ok, resend=ok
+resend:     ok | from Lucams_shop <hola@mail.lucamsshop.com> | dominio verified
+aveonline:  ok | modo test | demo True      ← correcto: el switch va con la FASE 12
+crons:      ok | atrasados: 0 | jobs: 7
+```
+
+**🟡 FASE 10 (backups R2) — EN CURSO, retomar por aquí.** El workflow corrió de verdad por primera
+vez y se arreglaron 3 fallos (`fe66a19`, `7fdd2e8`, `e5c7d34`, `596c351`). **El respaldo ya se genera
+bien (0.65 MB); falta entregarlo:** el endpoint `<id>.r2.cloudflarestorage.com` rechaza el handshake
+TLS (`alert 40`) con el Account ID REAL, desde dos redes, con TLS 1.2 y 1.3 — o sea, R2 no está
+aprovisionado en la cuenta. **Comprobación pendiente de Lucy:** ¿aparece el bucket en R2 → Overview,
+o sigue el botón `Add R2 subscription`? Detalle en [RUNBOOK_GO_LIVE.md § FASE 10](RUNBOOK_GO_LIVE.md).
+
+**⚠️ Decisión de Lucy (2026-07-21): dev y producción comparten UN solo proyecto Supabase**
+(`zxkucphbsfygakgxcnik`) y **no se separan por ahora** — "lo discutimos más adelante". Se comprobó
+sin querer: una cuenta creada en `lucamsshop.com` se borró con las credenciales de `.env.local`.
+Implica que migraciones, seeds y tests de integración escriben en la tienda en vivo. No reabrir el
+tema sin que ella lo pida, pero avisar antes de cualquier cosa que escriba en la base.
+
+**Bloqueado por terceros:** FASE 7 (Wompi) espera el **NIT** — se marcó `[pendiente verificación]`
+la afirmación "te pedirán RUT/NIT", porque ni `docs.wompi.co` ni `soporte.wompi.co` publican los
+requisitos (mandato #9). FASE 8 (Aveonline real) va junto con la FASE 12: con
+`AVEONLINE_ENV=production` cada prueba de checkout genera una guía real y facturable.
+
+---
+
 **✅ GO-LIVE FASES 5 y 6 CERRADAS (2026-07-20) — correo del dominio + canonización.** El dominio
 `lucamsshop.com` ya sirve la tienda; esta tanda cerró el correo completo y descubrió que **apuntar el
 DNS no canoniza el sitio**. Todo verificado **desde fuera**, nunca contra un panel.

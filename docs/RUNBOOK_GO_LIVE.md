@@ -711,19 +711,49 @@ abandonado. Trabajas a ciegas.
 
 ---
 
-## FASE 10 — Backups fuera de Supabase (R2) 🙋
+## FASE 10 — Backups fuera de Supabase (R2) 🟡 EN CURSO
 
-El código de backup ya existe y está probado, pero **nunca se ha corrido de verdad** (las llaves son
-placeholders).
+> **Estado 2026-07-21: falta un solo eslabón — el endpoint S3 de R2.** El workflow se ejecutó de
+> verdad por primera vez (6 corridas) y se arreglaron tres fallos reales en el camino. **El respaldo
+> de la base ya se genera correctamente (0.65 MB); lo único que falta es entregarlo.**
 
-1. Cloudflare → **R2** → crea el bucket `lucams-backups`.
-2. Crea un **API Token** de R2 y guarda: `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`,
-   `R2_BUCKET`.
-3. Ponlos como **GitHub Secrets** (el backup corre por GitHub Actions) y dispara el workflow **una vez a
-   mano** para comprobar que el archivo llega al bucket.
-4. Haz el **simulacro de restauración** (DR drill) al menos una vez antes de manejar plata real.
+### Lo ya resuelto (no repetir)
+
+| Fallo                                                                         | Causa                                                                                                                                                                    | Commit    |
+| ----------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | --------- |
+| El gate daba luz verde sin `R2_BUCKET`                                        | La condición no lo miraba y el script sí lo exige → job roto cada lunes                                                                                                  | `fe66a19` |
+| `pg_dump 17` no instalaba: `gpg: cannot open '/dev/tty'`                      | `gpg --dearmor` bajo sudo sin terminal. Se pasó a llave armada `.asc` (método oficial de postgresql.org)                                                                 | `7fdd2e8` |
+| `pg_dump: invalid URI query parameter: "pgbouncer"` y luego `password failed` | Se usó la cadena del pooler transaccional (`6543`); y después un error MÍO al extraer el valor con `cut`/`tr`, que borra comillas y arrastra comentarios de fin de línea | —         |
+
+⚠️ **La cadena correcta es la de `DIRECT_URL`** — pooler de **sesión**, puerto `5432`, sin
+`?pgbouncer=true`. La de `6543` no sirve: `pg_dump` necesita una sesión larga.
+Para copiar un valor de `.env.local` a un secret, **sourcear el archivo** y `printf '%s' "$VAR" |
+gh secret set …` — nunca `cut`/`tr`, que corrompen el valor en silencio.
+
+### 🔴 Lo pendiente: el endpoint S3 no está servido
+
+```
+✗ write EPROTO … ssl/tls alert handshake failure … SSL alert number 40
+```
+
+Verificado que **no** es el Account ID (se probó el real de la cuenta,
+`dash.cloudflare.com/<id>/r2/overview`): el handshake falla igual con TLS 1.2 y 1.3, con y sin ALPN,
+desde dos redes distintas (esta VM y los runners de GitHub). El DNS resuelve por comodín, así que
+Cloudflare rechaza por **SNI**: no hay endpoint S3 servido para esa cuenta.
+
+**Hipótesis viva:** R2 no quedó aprovisionado — el **API Token se puede crear sin R2 activo**, pero
+el bucket no. **Comprobación pendiente (🙋 Lucy):** entrar a **R2 → Overview** y ver si aparece
+`lucams-backups` o si sigue el botón **`Add R2 subscription to my account`**.
+
+### Cuando el endpoint responda
+
+1. `gh workflow run backup.yml --repo jullieth93/lucams --ref develop`
+2. Debe imprimir `✓ backup listo: db/lucams-…sql.gz`.
+3. Verificar el objeto **dentro del bucket**, no solo el log verde.
+4. **Simulacro de restauración** (DR drill) antes de manejar plata real.
 
 ✅ **Cómo sabes que quedó bien:** ves el archivo de backup dentro del bucket R2, con fecha de hoy.
+Un backup que nunca se restauró no cuenta como backup.
 
 ---
 
