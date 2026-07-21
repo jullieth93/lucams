@@ -321,6 +321,12 @@ NEXT_PUBLIC_SITE_URL=http://localhost:3000        # dev
 
 NEXT_PUBLIC_WA_NUMBER=573208873826                # WhatsApp temporal del usuario
 
+# STORE_MODE (ADR pendiente, plan de salida 2026-07-21): "catalog" = tienda
+# catálogo + cotización por WhatsApp (Etapa 1, sin pagos/envíos/IA);
+# "full" (default si falta) = tienda completa. En "catalog" las vars de
+# Wompi/Aveonline/Gemini NO se exigen en producción.
+# NEXT_PUBLIC_STORE_MODE=catalog
+
 # ─── Supabase ───
 NEXT_PUBLIC_SUPABASE_URL=https://xxxxx.supabase.co
 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=eyJxxxxx
@@ -328,7 +334,7 @@ SUPABASE_SECRET_KEY=eyJxxxxx                # Server-only, NUNCA al cliente
 DATABASE_URL=postgresql://postgres:[pwd]@xxx.pooler.supabase.com:6543/postgres?pgbouncer=true
 DIRECT_URL=postgresql://postgres:[pwd]@xxx.supabase.com:5432/postgres
 
-# ─── Wompi ───
+# ─── Wompi (Etapa 2 — requerido en prod solo en modo "full") ───
 WOMPI_ENV=sandbox                                  # sandbox | production
 WOMPI_PUBLIC_KEY=pub_test_xxxxxxxxxxxxxx
 WOMPI_PRIVATE_KEY=prv_test_xxxxxxxxxxxxxx
@@ -336,7 +342,13 @@ WOMPI_INTEGRITY_SECRET=test_integrity_xxxxxxxxxxxxxx
 WOMPI_EVENTS_SECRET=test_events_xxxxxxxxxxxxxx
 NEXT_PUBLIC_WOMPI_PUBLIC_KEY=$WOMPI_PUBLIC_KEY    # Para widget en cliente
 
-# ─── Venndelo ───
+# ─── Aveonline (Etapa 2 — requerido en prod solo en modo "full") ───
+AVEONLINE_USUARIO=xxxxxxxxxxxxxx
+AVEONLINE_CLAVE=xxxxxxxxxxxxxx
+AVEONLINE_WEBHOOK_SECRET=xxxxxxxxxxxxxx
+AVEONLINE_ENV=test                                 # test | production
+
+# ─── Venndelo (Plan B de envíos — stub en código, NO configurar hoy) ───
 VENNDELO_ENV=sandbox
 VENNDELO_API_URL=https://api.venndelo.com/v1
 VENNDELO_API_KEY=xxxxxxxxxxxxxx
@@ -348,10 +360,12 @@ VENNDELO_ORIGIN_DEPARTMENT=Cundinamarca            # Departamento de recolecció
 RESEND_API_KEY=re_xxxxxxxxxxxxxx
 EMAIL_FROM=Lucams_shop <onboarding@resend.dev>     # dev
 # EMAIL_FROM=Lucams_shop <hola@mail.lucamsshop.com>  # prod
+EMAIL_REPLY_TO=hola@mail.lucamsshop.com            # prod (respuestas de clientes)
 
-# ─── Claude API ───
-ANTHROPIC_API_KEY=sk-ant-xxxxxxxxxxxxxx
-ANTHROPIC_MODEL=claude-sonnet-4-6
+# ─── Gemini (IA del Estudio — proveedor elegido ADR-058; modo "full" o dev) ───
+GEMINI_API_KEY=xxxxxxxxxxxxxx
+GEMINI_MODEL_PRIMARY=gemini-2.5-flash              # verificar nombre vigente en doc oficial
+GEMINI_MODEL_FALLBACK=gemini-2.0-flash             # idem
 
 # ─── Cloudflare Turnstile (CAPTCHA invisible en checkout y registro) ───
 NEXT_PUBLIC_TURNSTILE_SITE_KEY=0x4AAAAAAAxxxxxxxxx  # Para widget en cliente
@@ -363,7 +377,11 @@ R2_ACCESS_KEY_ID=xxxxxxxxxxxxxx
 R2_SECRET_ACCESS_KEY=xxxxxxxxxxxxxx
 R2_BUCKET=lucams-backups
 
+# ─── Crons (pg_cron → /api/cron/* — OBLIGATORIO en prod) ───
+CRON_SECRET=GENERATE_WITH_OPENSSL_RAND_HEX_32
+
 # ─── Misc ───
+CSRF_SECRET=GENERATE_WITH_OPENSSL_RAND_HEX_32      # firma HMAC de cookies de sesión (carrito/checkout)
 NODE_ENV=development                               # development | production
 LOG_LEVEL=info                                     # debug | info | warn | error
 NEXT_TELEMETRY_DISABLED=1                          # Anonymous telemetry de Next.js apagada

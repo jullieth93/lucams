@@ -2855,3 +2855,31 @@ agregar el dominio allí; `NEXT_PUBLIC_SITE_URL=https://lucamsshop.com` en las e
 apunta a localhost y no cambia); verificar el dominio de envío `mail.lucamsshop.com` en Resend con
 SPF/DKIM/DMARC; actualizar las Redirect/Site URLs de Supabase Auth; y revisar las URLs de webhook
 registradas en Wompi y Aveonline.
+
+---
+
+## ADR-077 — Salida a producción en 2 etapas + `STORE_MODE` por flag (2026-07-21)
+
+**Contexto.** La tienda full está técnicamente lista (auditoría 2026-07-21: `docs/audits/2026-07-21-fullstack-prelaunch-audit.md`), pero los bloqueantes para cobrar en línea son trámites humanos: NIT/RUT (FASE 7 Wompi prod lo espera), abogado y DIAN. Mientras tanto el negocio ya vende por Instagram/WhatsApp con un Linktree — sin catálogo real, sin estudio de personalización visible, sin panel admin.
+
+**Decisión.** Salir en 2 etapas:
+
+1. **Etapa 1 — catálogo + cotización por WhatsApp (rama `catalogo-whatsapp` → producción YA).** Storefront completo + Estudio de personalización + carrito → **cotización de 1 paso** que persiste un `Quote` en DB y termina en wa.me con mensaje pre-armado. Admin gana el módulo `/admin/cotizaciones`. **Sin** Wompi, **sin** Aveonline, **sin** panel IA (Gemini). No requiere NIT ni pasarela.
+2. **Etapa 2 — tienda full.** Cuando los trámites estén, se quita el flag y se despliega `develop` (FASES 7/8/11.b/12 del runbook).
+
+**Mecanismo: flag, no borrado.** `NEXT_PUBLIC_STORE_MODE=catalog` (default `full`) apaga las integraciones en UI y servidor (`lib/store-mode.ts`, `lib/env.ts` relaja las PROD_REQUIRED de Wompi/Aveonline/Gemini en modo catalog). Se eligió flag sobre borrar código en la rama porque:
+
+- El merge-back de `catalogo-whatsapp` → `develop` queda limpio (Etapa 2 hereda todo el trabajo: cotizaciones, admin, fixes).
+- Una sola base de código que soporta ambos modos → la Etapa 2 se activa cambiando UNA env var en Vercel, sin redeploy de emergencia ni ramas divergentes de por vida.
+- Los providers (Wompi/Aveonline/Gemini) siguen en código, testeados, sin bit-rot.
+
+**Cotizaciones persistidas (no solo wa.me client-side).** Se evaluó armar el mensaje de WhatsApp 100% en el navegador sin guardar nada; se descartó porque elimina la trazabilidad comercial y la capa admin (el usuario exigió admin funcional). `Quote`/`QuoteItem` siguen las convenciones del schema (centavos Int, audit fields, soft delete, RLS deny-by-default, escritura vía service_role).
+
+**Alcance del Estudio en Etapa 1.** Se mantiene completo (editor Konva + 3D + render de producción): funciona sin APIs externas. Solo se oculta el panel de sugerencias IA (Gemini) en modo catalog.
+
+**Consecuencias.**
+
+- Vercel producción apunta a la rama/merge con `NEXT_PUBLIC_STORE_MODE=catalog`; las llaves de Wompi/Aveonline/Gemini pueden quedar configuradas pero no se exigen ni se usan.
+- Cupones fuera del flujo de cotización de Etapa 1 (simplicidad del formulario de 1 paso); vuelven en Etapa 2 con el checkout completo.
+- Los webhooks de Wompi/Aveonline quedan desplegados pero sin tráfico (fail-closed: sin eventos, sin efecto).
+- Riesgo aceptado ya registrado: Supabase compartida dev/prod (Lucy, 2026-07-21) — la migración de `Quote` es aditiva y no afecta la tienda en vivo.

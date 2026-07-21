@@ -13,6 +13,31 @@
 
 ## Resumen actual
 
+**✅ ETAPA 1 CONSTRUIDA Y VALIDADA EN LA RAMA `catalogo-whatsapp` (2026-07-21) — salida en 2 etapas, ADR-077.** La decisión del día: publicar YA como **catálogo + cotización por WhatsApp** (no necesita NIT ni pasarela) y activar la tienda full (Wompi/Aveonline reales) después, cambiando UNA env var. Documentos guía: [PLAN_SALIDA_PRODUCCION.md](PLAN_SALIDA_PRODUCCION.md) + [auditoría fullstack 2026-07-21](audits/2026-07-21-fullstack-prelaunch-audit.md).
+
+**Qué se hizo (todo en la rama, sin commitear aún — esperando autorización de Lucy para commit/push/deploy):**
+
+- **Auditoría fullstack completa** con verificación real: typecheck/lint/build verdes, suite 2.145+ tests, `pnpm audit` (2 vulns menores build-time). Veredicto: seguridad madura; los bloqueantes de la tienda full son trámites (NIT, abogado, DIAN) + backups R2 (FASE 10).
+- **Modo catálogo por flag** `NEXT_PUBLIC_STORE_MODE=catalog` (default `full`): `lib/store-mode.ts`, `env.ts` deja de exigir Wompi/Aveonline/Gemini en prod-catalog.
+- **Cotizaciones persistidas:** modelos `Quote`/`QuoteItem` (migración `20260721120000_quotes` ADITIVA aplicada a la DB compartida + RLS deny-by-default en `00000000000017`), `features/quotes/` (crear desde carrito con Zod + Turnstile + rate-limit 5/día IP + 3/día WhatsApp, token público 128-bit, mensaje wa.me pre-armado, vacía carrito en transacción).
+- **UI modo catálogo:** checkout de 1 paso "Pide tu cotización" (envio/pago → redirect a datos), confirmación `/cotizacion/[token]` con CTA verde "Enviar cotización por WhatsApp", CTAs "Cotizar por WhatsApp" en carrito, copy "El envío se coordina por WhatsApp" (PDP, resumen, footer checkout), Estudio intacto salvo panel IA (Gemini) oculto.
+- **Admin:** `/admin/cotizaciones` (lista con filtros + detalle con estados/notas-internas/botón "Abrir WhatsApp" al cliente), NAV "Cotizaciones" primero en Ventas; en catalog se ocultan Finanzas e Integraciones (`getAdminNav()`); RBAC SUPERADMIN/MANAGER.
+- **Fixes de la auditoría (ya aplicados):** QR de MFA como `<img>` data-URI (adiós `dangerouslySetInnerHTML`), unsubscribe sin fallback `?? "dev"`, redirects admin solo `https:`, Soporte y Garantías agregados al NAV (estaban huérfanos), timeout de 30s en daily-summary.integration (era el único test rojo: 5s default vs pooler remoto).
+- **Deuda documental cerrada:** CLAUDE.md (ya no dice "sin código"; mandato logístico Venndelo→Aveonline), README (estado real + Next 16), OPERATIONS.md (env vars: `CRON_SECRET`, `EMAIL_REPLY_TO`, Gemini en vez de Anthropic, `STORE_MODE`, Venndelo=Plan B), ROADMAP (fases E1/E2), ADR-077.
+- **Validación de la rama:** suite Vitest 2.181+36 verdes (única falla = flake de red del pooler, re-corrió verde); build verde en AMBOS modos; E2E `catalog-mode.spec` 2/2 (flujo público + admin) y smoke full-mode 9/9 (sin regresión); capturas visuales del flujo completo (home→PDP→carrito→form→confirmación→admin) revisadas una a una (`tests/e2e/catalog-visual-shots.spec.ts`, se corre con `VISUAL_SHOTS=1`).
+
+**🟡 PRÓXIMO PASO — despliegue de Etapa 1 (requiere autorización de Lucy, en este orden):**
+
+1. **P0-5: upgrades Vercel Pro + Supabase Pro** (FASE 11.b — Vercel Hobby prohíbe uso comercial; ~1h, tarjeta).
+2. Commits de la rama + push + merge a `production` (con confirmación en cada paso).
+3. `NEXT_PUBLIC_STORE_MODE=catalog` en Vercel (Production) + redeploy.
+4. Verificación en vivo: cotización real de punta a punta al WhatsApp del negocio, admin cotizaciones, `/api/health/all`, y regresión (cero rastro de pagos/envíos/IA en la UI pública).
+5. **Pendiente pre-deploy: limpieza de categorías-basura de tests** visibles en el footer de la tienda ("Cat test-…", "Cat clone-…" — residuos de integración en la DB compartida; el dry-run de `cleanup-test-junk` no las detecta todas → ampliar criterios o limpieza manual supervisada).
+
+**Etapa 2 (después del NIT):** FASE 7 Wompi prod → FASE 8+12 Aveonline real + compra E2E → quitar `STORE_MODE=catalog`. Lo humano puede empezar ya en paralelo: NIT/RUT + Cámara de Comercio, abogado para los 8 legales, contador para régimen DIAN, y revisar el bucket R2 (FASE 10, el handshake TLS sigue roto).
+
+---
+
 **✅ GO-LIVE — FASES 5, 6, 9 y 11 CERRADAS (2026-07-21).** El dominio `lucamsshop.com` sirve la
 tienda y esta tanda cerró correo, canonización, anti-bot y crons. **Patrón de la sesión: todo lo que
 falló era invisible desde los paneles** — Vercel decía "Ready", Cloudflare decía "Active", Supabase

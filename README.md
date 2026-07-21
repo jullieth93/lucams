@@ -9,18 +9,18 @@ E-commerce colombiano de productos magnéticos personalizados. Inspirado en [mag
 
 ## Estado del proyecto
 
-**Fase 0a completada (2026-05-09).** Documentación auditada y reforzada con base de seguridad/traceability/entorno de desarrollo. **Aún no hay código.** El estado actual y la bitácora siempre están en [docs/STATE.md](docs/STATE.md). Las fases siguientes (cuentas externas, scaffolding, etc.) están definidas en [docs/ROADMAP.md](docs/ROADMAP.md).
+**Salida en 2 etapas (2026-07-21).** La aplicación está construida y desplegada en `lucamsshop.com`. **Etapa 1 (en curso):** modo catálogo + cotización por WhatsApp (rama `catalogo-whatsapp`, sin pagos en línea ni envíos integrados). **Etapa 2:** tienda full con Wompi + Aveonline reales — espera trámites (NIT, abogado, DIAN). El estado detallado y la bitácora siempre están en [docs/STATE.md](docs/STATE.md), el plan de salida en [docs/PLAN_SALIDA_PRODUCCION.md](docs/PLAN_SALIDA_PRODUCCION.md) y la auditoría fullstack en [docs/audits/2026-07-21-fullstack-prelaunch-audit.md](docs/audits/2026-07-21-fullstack-prelaunch-audit.md).
 
-## Stack (cuando se implemente)
+## Stack
 
-- **Repo**: monorepo `pnpm` con `apps/web` + `packages/db` + `packages/ui`
-- **Frontend / Backend**: Next.js 15 (App Router) + TypeScript + **Tailwind v4** + shadcn/ui (style `new-york`)
-- **DB / Auth / Storage**: Supabase (Postgres + Auth + Storage + Realtime + `pgmq` + `pg_cron`)
+- **Repo**: monorepo `pnpm` con `apps/web` + `packages/db`
+- **Frontend / Backend**: Next.js 16 (App Router) + TypeScript + **Tailwind v4** + shadcn/ui
+- **DB / Auth / Storage**: Supabase (Postgres + Auth + Storage + `pgmq` + `pg_cron`)
 - **ORM**: Prisma
 - **Background jobs**: Supabase Queues (`pgmq`) + `pg_cron` (no Vercel Cron — ADR-017)
 - **Rate limit + cache**: Postgres + `pg_cron` (no Redis externo — ADR-016)
-- **Pasarela de pago**: Wompi (con adaptador `PaymentProvider` para sumar Mercado Pago después)
-- **Logística**: Venndelo (Coordinadora + contraentrega + 1.100+ destinos)
+- **Pasarela de pago**: Wompi (Etapa 2; con adaptador `PaymentProvider` para sumar Mercado Pago después)
+- **Logística**: Aveonline (Etapa 2, ADR-039; Venndelo queda como Plan B)
 - **Email**: Resend
 - **CAPTCHA**: Cloudflare Turnstile (en checkout y registro)
 - **Hosting**: Vercel (Hobby/Free durante dev → Pro al lanzar)

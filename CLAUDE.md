@@ -55,7 +55,7 @@ Si una tarea cruza varias áreas, lee los archivos relevantes en paralelo. Si no
 2. **Free durante desarrollo, Pro al lanzar.** Nunca activar tiers de pago hasta el lanzamiento productivo.
 3. **Stack fijo:** Next.js **16** (App Router, RSC, Server Actions, Turbopack default) + TypeScript + **Tailwind v4** + shadcn/ui (style `radix-nova`) sobre **monorepo pnpm** (`apps/web` + `packages/db` + `packages/ui`), Supabase (DB+Auth+Storage+Realtime), Vercel. **Next.js 16 tiene breaking changes vs 15** — ver `apps/web/AGENTS.md` y la guía local `apps/web/node_modules/next/dist/docs/01-app/02-guides/upgrading/version-16.md` antes de escribir código nuevo.
 4. **Pasarela:** Wompi (con adaptador `PaymentProvider` que permite sumar Mercado Pago después).
-5. **Logística:** Venndelo (Coordinadora + contraentrega activa desde día 1).
+5. **Logística:** Aveonline (multi-carrier colombiano, ADR-039). Venndelo queda como Plan B documentado (stub en código; swap estimado 8-12h).
 6. **WhatsApp:** solo `wa.me` con mensaje pre-armado contextual; sin Twilio API por ahora.
 7. **Sin Sentry** ni monitoreo de errores en el plan actual; se decide alternativa gratuita en Fase 7.
 8. **Documentación dentro del repo.** Nada de archivos en `~/.claude/plans/` (auditorías en `docs/audits/`, decisiones en `docs/DECISIONS.md`).
@@ -108,11 +108,12 @@ Si una tarea cruza varias áreas, lee los archivos relevantes en paralelo. Si no
 
 ## Estado actual
 
-**Fase 0a completada (2026-05-09) — productive readiness baseline.** Dos auditorías ejecutadas (coherencia + productive readiness, 21 + 43 hallazgos). 4 docs nuevos: `CONVENTIONS.md`, `OBSERVABILITY.md`, `COMPLIANCE.md`, `TESTING.md`. Compliance colombiano operativizado (Ley 1581, Ley 1480 retracto + garantías, DIAN facturación electrónica). Threat model STRIDE por flujo. IRP con runbooks. SLOs cuantitativos. DR drills cuatrimestrales programados. Esperando autorización del usuario para Fase 0b (cuentas externas en Free).
+**Salida en 2 etapas (decisión 2026-07-21).** La app está completa y desplegada: storefront (catálogo, PDP, carrito, checkout), Estudio de personalización, panel admin (~25 módulos), integraciones Wompi/Aveonline/Resend/Turnstile/Gemini cableadas. Detalle siempre en [docs/STATE.md](docs/STATE.md) y en el plan de salida [docs/PLAN_SALIDA_PRODUCCION.md](docs/PLAN_SALIDA_PRODUCCION.md).
 
-**Sigue sin haber código.** No intentar `npm install`, `npx create-next-app`, `pnpm create`, ni similares hasta que el usuario apruebe explícitamente la Fase 0b/1.
-
-> Detalle siempre en [docs/STATE.md](docs/STATE.md) — fuente narrativa de la última sesión.
+- **Etapa 1 (en curso, rama `catalogo-whatsapp`):** modo `NEXT_PUBLIC_STORE_MODE=catalog` — catálogo + Estudio + **cotización por WhatsApp** (sin pagos en línea, sin envíos integrados, sin panel IA). Va a producción en `lucamsshop.com` sin necesidad de NIT.
+- **Etapa 2 (bloqueada por trámites humanos):** tienda full (Wompi prod + Aveonline real). Espera NIT/RUT, abogado y DIAN; después FASES 7/8/11.b/12 del runbook de go-live.
+- **Auditoría fullstack 2026-07-21:** `docs/audits/2026-07-21-fullstack-prelaunch-audit.md` — seguridad madura, bloqueantes son trámites y backups R2 (FASE 10).
+- **Riesgo aceptado (Lucy, 2026-07-21):** dev y prod comparten un solo proyecto Supabase; los tests de integración escriben en la tienda en vivo (fixtures con prefijo RUN + cleanup). Separar antes de Etapa 2.
 
 ## Convenciones
 
