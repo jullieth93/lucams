@@ -675,13 +675,69 @@ placeholders).
 
 ---
 
-## FASE 11 — Turnstile para el dominio nuevo 🙋
+## FASE 11 — Turnstile para el dominio nuevo 🙋 🔴 BLOQUEANTE
 
-1. Cloudflare → **Turnstile** → tu widget → agrega `lucamsshop.com` a los **dominios permitidos**
-   (si el widget se creó para otro dominio, el checkout puede rechazar clientes legítimos).
-2. Copia **Site Key** y **Secret Key** → Vercel (`NEXT_PUBLIC_TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY`).
+> **CONFIRMADO 2026-07-20 con un navegador real contra producción: el widget está RECHAZANDO
+> `lucamsshop.com`.** No es un riesgo teórico, está pasando ahora.
 
-✅ **Cómo sabes que quedó bien:** completas un checkout en `lucamsshop.com` sin que te bloquee.
+```
+Uncaught TurnstileError: [Cloudflare Turnstile] Error: 110200
+TOKEN RESUELTO: NO
+```
+
+`110200` = **"Domain not authorized"**, con fix documentado _"Add current domain in Hostname
+Management"_
+([Cloudflare — client-side error codes](https://developers.cloudflare.com/turnstile/troubleshooting/client-side-errors/error-codes/),
+verificado 2026-07-20). El widget se creó cuando el sitio vivía en `vercel.app`, así que el dominio
+nuevo no está en su lista.
+
+### Por qué es bloqueante: son 3 flujos, no solo el checkout
+
+Las tres acciones de servidor exigen un token válido y **devuelven error si no lo hay**:
+
+| Superficie            | Archivo                                    | Efecto hoy                  |
+| --------------------- | ------------------------------------------ | --------------------------- |
+| Registro de clientes  | `app/(auth)/registro/actions.ts`           | ❌ nadie puede crear cuenta |
+| Recuperar contraseña  | `app/(auth)/recuperar-password/actions.ts` | ❌ nadie puede recuperarla  |
+| **Pago del checkout** | `app/checkout/pago/actions.ts`             | ❌ **nadie puede comprar**  |
+
+Con el dominio ya publicado, **la tienda no puede tomar un solo pedido.**
+
+### Arreglo
+
+1. Cloudflare → **Turnstile** → tu widget → **Hostname Management**: agrega **`lucamsshop.com`** y
+   **`www.lucamsshop.com`**. La doc no aclara si un hostname cubre sus subdominios, así que se
+   agregan ambos explícitamente en vez de asumirlo.
+2. Verifica que la **Site Key** y la **Secret Key** en Vercel sean las de ESE widget
+   (`NEXT_PUBLIC_TURNSTILE_SITE_KEY`, `TURNSTILE_SECRET_KEY`).
+
+### ✅ Cómo saber que quedó bien — sin abrir el navegador a mano
+
+El probe que detectó el fallo, reproducible:
+
+```js
+// apps/web/.tmp-turnstile-probe.mjs — node .tmp-turnstile-probe.mjs
+import { chromium } from "@playwright/test";
+const browser = await chromium.launch();
+const page = await browser.newPage();
+page.on("pageerror", (e) => console.log("pageerror:", String(e).slice(0, 160)));
+await page.goto("https://lucamsshop.com/registro", { waitUntil: "domcontentloaded" });
+let token = null;
+for (let i = 0; i < 25 && !token; i++) {
+  token = await page.evaluate(
+    () => document.querySelector('input[name="cf-turnstile-response"]')?.value || null,
+  );
+  await page.waitForTimeout(1000);
+}
+console.log("TOKEN:", token ? `SI (${token.length})` : "NO");
+await browser.close();
+```
+
+Debe imprimir `TOKEN: SI (…)` y **ningún** `TurnstileError`. Ojo: `waitUntil: "networkidle"` NO
+sirve — Turnstile mantiene conexiones abiertas y el goto expira.
+
+> 💡 **Lección:** este fallo es invisible desde los paneles y desde `curl` (el HTML se sirve igual,
+> el widget falla en el navegador del cliente). Solo aparece ejecutando un navegador de verdad.
 
 ---
 
