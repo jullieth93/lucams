@@ -502,7 +502,35 @@ EMAIL_REPLY_TO  = hola@lucamsshop.com
 
 ---
 
-## FASE 6 — Supabase producción 🙋
+## FASE 6 — Canonizar el dominio nuevo 🤖🙋
+
+> **Hallazgo 2026-07-20:** con el dominio ya en vivo, `NEXT_PUBLIC_SITE_URL` seguía valiendo
+> `https://lucams-shop.vercel.app`. Detectado desde fuera — el sitemap servía `<loc>` del dominio
+> viejo. **Apuntar el DNS no canoniza el sitio**: hay dos lugares más que guardan la URL base.
+
+### 6.a — `NEXT_PUBLIC_SITE_URL` en Vercel 🤖 (hecho)
+
+Alimenta tres cosas, y las tres estaban mal:
+
+| Consumidor                                                                                    | Síntoma con la URL vieja                                                                                |
+| --------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| `sitemap.xml`, `robots.txt`, `og:image`, canonicals                                           | Google indexa `lucams-shop.vercel.app` → contenido duplicado, la marca no posiciona                     |
+| `redirectUrl` de Wompi ([checkout/pago/actions.ts](../apps/web/app/checkout/pago/actions.ts)) | Al pagar, el cliente cae en `…vercel.app/checkout/gracias`: **otro dominio, sin sus cookies de sesión** |
+| Panel de integraciones                                                                        | Muestra URLs de webhook equivocadas para copiar en Wompi/Aveonline                                      |
+
+Corregida solo en **Production** (Preview conserva su URL propia, que es lo correcto):
+
+```bash
+vercel env rm  NEXT_PUBLIC_SITE_URL production --yes
+printf 'https://lucamsshop.com' | vercel env add NEXT_PUBLIC_SITE_URL production
+```
+
+⚠️ **Requiere despliegue, no basta guardar la variable:** las `NEXT_PUBLIC_*` se **incrustan en el
+bundle al construir**. Hasta que no se reconstruya, el sitio sigue sirviendo la URL vieja.
+
+### 6.b — URLs de Auth en Supabase 🙋
+
+Supabase guarda su **propia** copia de la URL base — cambiar la de Vercel no la toca.
 
 1. Supabase → tu proyecto → **Authentication** → **URL Configuration**:
    - **Site URL** = `https://lucamsshop.com`
@@ -510,11 +538,18 @@ EMAIL_REPLY_TO  = hola@lucamsshop.com
      > **Si no haces esto**, los correos de confirmación y de "recuperar contraseña" mandarán a tus
      > clientes al dominio viejo/localhost y no van a poder entrar.
      > (Fuente: [Supabase — Redirect URLs](https://supabase.com/docs/guides/auth/redirect-urls))
-2. **Sube a Plan Pro** (Settings → Billing): el Free **pausa el proyecto por inactividad** (tu tienda se
-   caería sola) y no tiene _Point-in-Time Recovery_.
+2. **Sube a Plan Pro** → se difiere a la [FASE 11.b](#fase-11b--pagos-de-infraestructura-justo-antes-de-abrir)
+   junto con el resto de pagos.
 
-✅ **Cómo sabes que quedó bien:** creas una cuenta de cliente de prueba en el sitio y el correo de
-confirmación te lleva a `https://lucamsshop.com`, no a localhost.
+✅ **Cómo sabes que quedó bien:**
+
+```bash
+curl -s https://lucamsshop.com/sitemap.xml | head -5     # <loc> debe decir lucamsshop.com
+curl -s https://lucamsshop.com/robots.txt  | tail -3     # Host: y Sitemap: idem
+```
+
+Y creas una cuenta de cliente de prueba en el sitio: el correo de confirmación debe llevarte a
+`https://lucamsshop.com`, no a `vercel.app` ni a localhost.
 
 ---
 
