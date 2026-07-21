@@ -13,6 +13,44 @@
 
 ## Resumen actual
 
+**✅ GO-LIVE FASES 5 y 6 CERRADAS (2026-07-20) — correo del dominio + canonización.** El dominio
+`lucamsshop.com` ya sirve la tienda; esta tanda cerró el correo completo y descubrió que **apuntar el
+DNS no canoniza el sitio**. Todo verificado **desde fuera**, nunca contra un panel.
+
+- **FASE 5 — correo de punta a punta.** Envío: `mail.lucamsshop.com` verificado en Resend (región
+  `sa-east-1`/São Paulo — más cerca de Colombia y Brasil tiene LGPD, mejor sustento del art. 26 de la
+  Ley 1581). Recepción: **Cloudflare Email Routing** con los 5 buzones (`hola@`, `habeas-data@`,
+  `retracto@`, `security@`, `dmarc@`) reenviando a `lucamsshop@gmail.com`, catch-all apagado. **DMARC**
+  en el dominio organizacional (RFC 7489 §6.6.3 → un registro cubre apex y subdominios). Prueba real:
+  bandeja de entrada, `SPF: PASS` · `DKIM: PASS`; el DKIM publicado se descifra con `openssl` como
+  llave RSA válida. (`93fb4fe`, `ea05f51`)
+- **`EMAIL_REPLY_TO` (código, `b8e8b40`).** El From vive en el subdominio de envío, que **no recibe**:
+  sin Reply-To cada "Responder" de un cliente se perdía en silencio. Ahora `sendEmail` lo aplica por
+  defecto y la var es **PROD_REQUIRED**.
+- **Healthcheck de Resend con dientes (`afe7a54`).** Decía `ok` con solo validar la API key: con
+  `EMAIL_FROM` en el sandbox `onboarding@resend.dev` seguía diciendo `ok`. Ahora contrasta el dominio
+  del remitente contra los dominios reales de la cuenta (registrado + `verified`) y exige
+  `EMAIL_REPLY_TO`. **Es lo que permitió auditar la config real de producción**, que Vercel devuelve
+  cifrada.
+- **🔴 FASE 6 — `NEXT_PUBLIC_SITE_URL` seguía en `vercel.app` (`f6fc4f7`).** Detectado porque el
+  sitemap servía `<loc>` del dominio viejo. No era cosmético: alimentaba el `redirectUrl` que se le
+  pasa a **Wompi**, así que un cliente que pagara de verdad caía en `…vercel.app/checkout/gracias` —
+  otro dominio, sin sus cookies de sesión. Más SEO (sitemap/robots/OG canónicos al dominio equivocado)
+  y las URLs de webhook del panel de integraciones. Corregida solo en Production.
+- **🔴 `/api/health/all` reportaba caída total estando todo sano (`7466077`).** Con Deployment
+  Protection, `VERCEL_URL` responde 302 al login de Vercel; el agregador seguía la redirección,
+  parseaba el HTML y devolvía los 3 servicios en `fail`. Un monitor externo lo habría leído como caída
+  permanente. En producción el self-probe va al dominio canónico (sigue saliendo solo de env → ADR-062
+  intacto) y el probe usa `redirect: "manual"` + validación de content-type.
+
+**Verificado en producción ahora:** `/api/health/all` → `ok` (postgres/storage/resend), sitemap y
+robots en `lucamsshop.com`, `sender.ok = true` con `from = Lucams_shop <hola@mail.lucamsshop.com>`.
+
+**Falta de esta fase (🙋 Lucy):** las **Redirect URLs de Supabase** (guarda su propia copia de la URL
+base — cambiar la de Vercel no la toca). Detalle en [RUNBOOK_GO_LIVE.md § FASE 6.b](RUNBOOK_GO_LIVE.md).
+
+---
+
 **✅ PLAN DE PRODUCCIÓN — GATES AUTÓNOMOS EJECUTADOS (2026-07-20) — ADR-075.** Con el artifact **"Auditoría de Producción — Lucams_shop"** (71/100, 27 items) como guía, se verificó el estado ACTUAL de cada item autónomo mediante un **workflow de 7 agentes** (la auditoría del 17-jul estaba desactualizada: **3/7 ya hechos**) y se cerraron los gates de lanzamiento que son código puro. Cada tanda certificada (tsc/eslint/prettier/tests) + pusheada, **CI verde**:
 
 - **P0 seguridad — MFA aal2** en las **11 acciones mutantes de catálogo** que aún usaban `getCurrentAdmin()` (imágenes/stock/bulk/imágenes-de-variante) → `requireAdminAction({MANAGER_UP})`. Una sesión aal1 (contraseña robada) ya no muta el catálogo saltándose el 2º factor; test de regresión **probado** (contra el código previo falla). También cierra la divergencia RBAC (FULFILLMENT ya no muta catálogo). (`bc7bebc`)
