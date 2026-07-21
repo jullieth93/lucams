@@ -35,7 +35,10 @@ jobs:
       - id: check
         env:
           HAS_DB: ${{ secrets.BACKUP_DATABASE_URL != '' }}
-          HAS_R2: ${{ secrets.R2_ACCOUNT_ID != '' && secrets.R2_ACCESS_KEY_ID != '' && secrets.R2_SECRET_ACCESS_KEY != '' }}
+          # R2_BUCKET va incluido: `backup-db-to-r2.mjs` lo exige con requireEnv, así que sin él el
+          # job pasaba el gate y reventaba en runtime cada lunes — justo el correo de error semanal
+          # que este gate existe para evitar.
+          HAS_R2: ${{ secrets.R2_ACCOUNT_ID != '' && secrets.R2_ACCESS_KEY_ID != '' && secrets.R2_SECRET_ACCESS_KEY != '' && secrets.R2_BUCKET != '' }}
         run: |
           if [ "$HAS_DB" = "true" ] && [ "$HAS_R2" = "true" ]; then
             echo "configured=true" >> "$GITHUB_OUTPUT"
