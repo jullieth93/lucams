@@ -75,12 +75,17 @@ jobs:
       # El servidor Supabase es Postgres 17 → se requiere pg_dump 17 (versiones menores
       # rechazan el volcado). ubuntu-latest trae una versión anterior; instalamos la 17
       # desde el repo oficial PGDG.
+      # La llave se guarda ARMADA (.asc), sin `gpg --dearmor`: bajo sudo y sin terminal, gpg
+      # abortaba con "cannot open '/dev/tty'" y arrastraba a curl ("Failure writing output to
+      # destination"). Es el método manual que documenta hoy postgresql.org, y apt acepta
+      # keyrings armados en `signed-by=`. Nunca se había ejecutado porque el gate saltaba el
+      # job mientras faltaban los secrets.
       - name: Instalar pg_dump 17 (PGDG)
         run: |
           sudo install -d /usr/share/postgresql-common/pgdg
-          curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
-            | sudo gpg --dearmor -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg
-          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.gpg] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+          sudo curl -fsSL --output /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
             | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
           sudo apt-get update
           sudo apt-get install -y postgresql-client-17
