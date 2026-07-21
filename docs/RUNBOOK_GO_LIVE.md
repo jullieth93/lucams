@@ -677,8 +677,16 @@ placeholders).
 
 ## FASE 11 — Turnstile para el dominio nuevo 🙋 🔴 BLOQUEANTE
 
-> **CONFIRMADO 2026-07-20 con un navegador real contra producción: el widget está RECHAZANDO
-> `lucamsshop.com`.** No es un riesgo teórico, está pasando ahora.
+> **✅ RESUELTO 2026-07-20.** Se documenta completo porque la causa raíz es instructiva y el fallo
+> era invisible desde los paneles.
+>
+> **Causa raíz:** la lista de hostnames del widget tenía `localhost`, `lucams-shop.vercel.app` y
+> **`lucamsshop.co`** — el dominio del plan original ([ADR-011](DECISIONS.md)), que quedó descartado
+> al comprar `lucamsshop.**com**`. El widget nunca supo del dominio real. `lucamsshop.co` además se
+> **retiró**: no es un dominio propio, y tenerlo autorizado significaba que quien lo registrara
+> podría usar esta Site Key.
+>
+> **Síntoma original** (navegador real contra producción):
 
 ```
 Uncaught TurnstileError: [Cloudflare Turnstile] Error: 110200
@@ -738,6 +746,18 @@ sirve — Turnstile mantiene conexiones abiertas y el goto expira.
 
 > 💡 **Lección:** este fallo es invisible desde los paneles y desde `curl` (el HTML se sirve igual,
 > el widget falla en el navegador del cliente). Solo aparece ejecutando un navegador de verdad.
+
+⚠️ **Límite del probe automatizado — importante para no sacar conclusiones falsas.** Tras el arreglo,
+el probe deja de mostrar `110200` y las respuestas de `challenges.cloudflare.com` pasan de `400` a
+`200`: eso **prueba que el dominio ya está autorizado**. Pero el probe **sigue sin obtener token**, y
+eso NO es un fallo: en modo `Managed` Turnstile detecta el navegador automatizado y le exige un reto
+interactivo que el script no resuelve (se intentó también neutralizando `navigator.webdriver` y con
+user-agent realista). **La confirmación final de este paso es humana**: abrir `/registro` en un
+navegador normal y completar el formulario.
+
+**Verificado además** (2026-07-20): la Site Key que usa producción es `0x4AAAAAADOdq3N9MtPzt89-`,
+la misma del widget `Lucams_shop` del panel — no hay desalineación entre las llaves de Vercel y el
+widget cuyos hostnames se editaron.
 
 ---
 
