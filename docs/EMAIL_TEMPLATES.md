@@ -6,7 +6,7 @@
 
 ## Convención visual (válida para todos)
 
-- **Logo:** `https://lucams-shop.vercel.app/brand/lucams-logo.png` (URL
+- **Logo:** `https://lucamsshop.com/brand/lucams-logo.png` (URL
   absoluta — los clientes de email bloquean rutas relativas).
 - **Fondo card:** `#FFFFFF` con border `#E6E2EC` y radius `20px`.
 - **Fondo external:** `#FFF8F0` (brand-cream) para dar respiro.
@@ -54,8 +54,16 @@
 - Al cambiar variables del template (ej. migrar de link a OTP), dejar
   registro en la columna "Estado" con commit SHA + fecha.
 - Al agregar dominio custom o cambiar el dominio de imágenes, revisar
-  que todas las URLs `https://lucams-shop.vercel.app/brand/*` en los
+  que todas las URLs `https://lucamsshop.com/brand/*` en los
   templates apunten al dominio nuevo.
+
+> 🙋 **ACCIÓN HUMANA PENDIENTE (2026-07-20).** Los 3 templates ya personalizados
+> (**Confirm signup**, **Reset password**, **Password changed**) se pegaron a mano en Supabase
+> cuando el sitio vivía en `lucams-shop.vercel.app`, así que **siguen cargando el logo desde el
+> dominio viejo**. No están rotos (el alias resuelve y el logo devuelve 200 en ambos dominios),
+> pero dependen de un alias de Vercel que puede cambiar. Editar los 3 en
+> **Supabase → Authentication → Emails** y reemplazar `lucams-shop.vercel.app` por
+> `lucamsshop.com`.
 
 ## Cómo customizar un template (paso a paso)
 

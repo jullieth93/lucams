@@ -56,7 +56,11 @@ export function getAllowedOrigins(isDev: boolean): (string | RegExp)[] {
     // Vercel con ese nombre y recibir ACAO. El alias de producción `lucams-shop.vercel.app` (sin
     // scope) sigue permitido porque solo lo puede reclamar el dueño del proyecto.
     /^https:\/\/lucams-shop(-[a-z0-9][a-z0-9-]*-jullieth93s-projects)?\.vercel\.app$/,
-    ...(isDev ? ["http://localhost:3000"] : []),
+    // Dev: cualquier puerto de localhost. Estaba fijo en :3000, pero el dev server de este repo
+    // corre en :4000 (Makefile) → el origen real de desarrollo NO estaba en la allowlist. Fijar un
+    // puerto es una trampa recurrente; en dev el host ya es la garantía, el puerto no aporta nada.
+    // NUNCA en producción: ahí `isDev` es false y localhost queda fuera (cubierto por test).
+    ...(isDev ? [/^http:\/\/localhost:\d{1,5}$/] : []),
   ];
 }
 

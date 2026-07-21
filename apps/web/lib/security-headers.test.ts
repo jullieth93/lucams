@@ -82,6 +82,20 @@ describe("isOriginAllowed — CORS allowlist", () => {
     expect(isOriginAllowed("http://localhost:3000", false)).toBe(false);
     expect(getAllowedOrigins(false)).not.toContain("http://localhost:3000");
   });
+
+  // El dev server de este repo corre en :4000, no en :3000 (que era el único permitido).
+  it("en dev acepta CUALQUIER puerto de localhost, no solo :3000", () => {
+    expect(isOriginAllowed("http://localhost:4000", true)).toBe(true);
+    expect(isOriginAllowed("http://localhost:5173", true)).toBe(true);
+    expect(isOriginAllowed("http://localhost:4000", false)).toBe(false);
+  });
+
+  it("el comodín de localhost no abre la puerta a otros hosts ni a https falsos", () => {
+    expect(isOriginAllowed("http://localhost.evil.com:4000", true)).toBe(false);
+    expect(isOriginAllowed("http://notlocalhost:4000", true)).toBe(false);
+    expect(isOriginAllowed("http://localhost:4000.evil.com", true)).toBe(false);
+    expect(isOriginAllowed("http://localhost", true)).toBe(false); // sin puerto explícito
+  });
 });
 
 describe("SECURITY_HEADERS", () => {
