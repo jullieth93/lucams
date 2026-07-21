@@ -255,6 +255,7 @@ describe("sendEmail — envío exitoso", () => {
   });
 
   it("el body lleva exactamente from/to/subject/html/text (default from cuando EMAIL_FROM unset)", async () => {
+    vi.stubEnv("EMAIL_REPLY_TO", "");
     const fetchFn = mockFetchJson({ id: "em_1" });
 
     const send = await loadFresh();
@@ -327,6 +328,28 @@ describe("sendEmail — envío exitoso", () => {
       { name: "category", value: "welcome" },
       { name: "lang", value: "es" },
     ]);
+  });
+
+  it("EMAIL_REPLY_TO se usa como reply_to por defecto (el From vive en un subdominio sin buzón)", async () => {
+    vi.stubEnv("EMAIL_REPLY_TO", "hola@lucamsshop.com");
+    const fetchFn = mockFetchJson({ id: "em_1" });
+
+    const send = await loadFresh();
+    await runDrained(send, baseInput());
+
+    const body = JSON.parse((fetchFn.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.reply_to).toBe("hola@lucamsshop.com");
+  });
+
+  it("input.replyTo gana sobre EMAIL_REPLY_TO", async () => {
+    vi.stubEnv("EMAIL_REPLY_TO", "hola@lucamsshop.com");
+    const fetchFn = mockFetchJson({ id: "em_1" });
+
+    const send = await loadFresh();
+    await runDrained(send, baseInput({ replyTo: "retracto@lucamsshop.com" }));
+
+    const body = JSON.parse((fetchFn.mock.calls[0][1] as RequestInit).body as string);
+    expect(body.reply_to).toBe("retracto@lucamsshop.com");
   });
 
   it("idempotencyKey viaja como header Idempotency-Key (dedupe en Resend)", async () => {

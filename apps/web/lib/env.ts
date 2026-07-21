@@ -41,6 +41,9 @@ const PROD_REQUIRED = [
   "AVEONLINE_WEBHOOK_SECRET",
   "RESEND_API_KEY",
   "EMAIL_FROM",
+  // El From vive en mail.lucamsshop.com (subdominio de envío, sin buzón). Sin Reply-To al dominio
+  // principal, toda respuesta de un cliente a un correo transaccional se pierde → fail-fast en prod.
+  "EMAIL_REPLY_TO",
   "TURNSTILE_SECRET_KEY",
   "NEXT_PUBLIC_TURNSTILE_SITE_KEY",
   "CRON_SECRET",

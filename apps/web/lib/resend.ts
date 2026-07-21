@@ -156,13 +156,18 @@ export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult>
     }
   }
 
+  // El remitente vive en el subdominio de envío (mail.lucamsshop.com), que NO recibe correo: sin
+  // Reply-To, cada "Responder" de un cliente rebota en silencio. EMAIL_REPLY_TO apunta al buzón real
+  // del dominio principal (hola@lucamsshop.com, vía Cloudflare Email Routing).
+  const replyTo = input.replyTo ?? process.env.EMAIL_REPLY_TO;
+
   const payload: Record<string, unknown> = {
     from,
     to: input.to,
     subject: input.subject,
     html: input.html,
     text: input.text,
-    ...(input.replyTo ? { reply_to: input.replyTo } : {}),
+    ...(replyTo ? { reply_to: replyTo } : {}),
     ...(input.tags ? { tags: input.tags } : {}),
     ...(input.headers ? { headers: input.headers } : {}),
   };
