@@ -10,6 +10,7 @@ import {
   selectStaleKeys,
   BACKUP_KEY_RE,
   normalizeR2AccountId,
+  explainR2ConnectError,
 } from "./backup-lib.mjs";
 
 describe("buildBackupKey", () => {
@@ -117,5 +118,22 @@ describe("normalizeR2AccountId", () => {
   it("rechaza vacío o ausente", () => {
     expect(() => normalizeR2AccountId("")).toThrow(/vacío/);
     expect(() => normalizeR2AccountId(undefined)).toThrow(/vacío/);
+  });
+});
+
+describe("explainR2ConnectError", () => {
+  it("traduce el handshake fallido en la causa real (Account ID desconocido)", () => {
+    const raw = new Error(
+      "write EPROTO C0DC:error:0A000410:SSL routines:ssl3_read_bytes:ssl/tls alert handshake failure",
+    );
+    const out = explainR2ConnectError(raw, "a".repeat(32));
+    expect(out.message).toMatch(/R2_ACCOUNT_ID/);
+    expect(out.message).toMatch(/Access Key ID/); // nombra la confusión concreta
+    expect(out.message).toMatch(/dash\.cloudflare\.com/); // dice dónde encontrarlo
+  });
+
+  it("no disfraza errores de otra naturaleza", () => {
+    const raw = new Error("Access Denied");
+    expect(explainR2ConnectError(raw, "a".repeat(32))).toBe(raw);
   });
 });

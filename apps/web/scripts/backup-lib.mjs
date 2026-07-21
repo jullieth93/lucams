@@ -36,6 +36,28 @@ export function normalizeR2AccountId(raw) {
 }
 
 /**
+ * Traduce el fallo de TLS que devuelve R2 cuando el Account ID no existe.
+ *
+ * Comprobado (2026-07-21): un account id con forma válida pero desconocido hace que
+ * `<id>.r2.cloudflarestorage.com` corte el handshake con `SSL alert number 40`, idéntico al que
+ * produce un id inventado — mientras que el host base sí negocia TLS. Cloudflare rechaza por SNI.
+ * El error crudo de OpenSSL no insinúa la causa, y el sospechoso natural es el par Access Key ID /
+ * Account ID: ambos son 32 caracteres hexadecimales e indistinguibles a simple vista.
+ */
+export function explainR2ConnectError(err, accountId) {
+  const text = `${err?.code ?? ""} ${err?.message ?? ""}`;
+  const isHandshake = /EPROTO|handshake failure|alert number 40|ERR_TLS/i.test(text);
+  if (!isHandshake) return err;
+  return new Error(
+    `R2 rechazó la conexión TLS: el R2_ACCOUNT_ID configurado (${accountId.length} caracteres) no ` +
+      `corresponde a ninguna cuenta de Cloudflare. Ojo: el Account ID y el Access Key ID son ambos ` +
+      `de 32 caracteres hexadecimales y se confunden fácil. El Account ID correcto aparece en la ` +
+      `propia URL del panel: dash.cloudflare.com/<ACCOUNT_ID>/r2/... — y también en R2 → Account ` +
+      `Details → Account ID. (causa original: ${err?.message ?? err})`,
+  );
+}
+
+/**
  * Construye la llave del objeto en R2 para un backup en `date` (UTC).
  * Ej: buildBackupKey(new Date("2026-07-13T14:05:01Z")) → "db/lucams-2026-07-13T140501Z.sql.gz"
  */

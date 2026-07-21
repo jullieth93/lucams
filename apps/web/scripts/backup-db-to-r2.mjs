@@ -30,7 +30,12 @@ import {
   ListObjectsV2Command,
   DeleteObjectsCommand,
 } from "@aws-sdk/client-s3";
-import { buildBackupKey, selectStaleKeys, normalizeR2AccountId } from "./backup-lib.mjs";
+import {
+  buildBackupKey,
+  selectStaleKeys,
+  normalizeR2AccountId,
+  explainR2ConnectError,
+} from "./backup-lib.mjs";
 
 function requireEnv(name, ...fallbacks) {
   for (const key of [name, ...fallbacks]) {
@@ -105,14 +110,18 @@ async function main() {
 
   // 3. Subir.
   console.log(`→ subiendo ${key} (${mb} MB) a r2://${bucket}…`);
-  await client.send(
-    new PutObjectCommand({
-      Bucket: bucket,
-      Key: key,
-      Body: body,
-      ContentType: "application/gzip",
-    }),
-  );
+  try {
+    await client.send(
+      new PutObjectCommand({
+        Bucket: bucket,
+        Key: key,
+        Body: body,
+        ContentType: "application/gzip",
+      }),
+    );
+  } catch (err) {
+    throw explainR2ConnectError(err, accountId);
+  }
 
   // 4. Podar backups viejos (retención).
   const listed = await client.send(
