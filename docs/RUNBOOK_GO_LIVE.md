@@ -558,8 +558,32 @@ Y creas una cuenta de cliente de prueba en el sitio: el correo de confirmación 
 > ⚠️ **Hoy el sitio usa un sandbox que NO es tuyo** (aparece el comercio "KAIU"). Con eso **no puedes
 > recibir plata**.
 
-1. Crea/activa **tu propia cuenta** de comercio en Wompi y completa la validación (te pedirán RUT/NIT →
-   por eso la FASE 0 importa).
+### ¿Por qué esta fase depende del NIT?
+
+**Honestidad primero:** la lista exacta de documentos que pide Wompi **no está en su documentación
+pública** — se consultó `docs.wompi.co` y `soporte.wompi.co` el 2026-07-20 y ninguno la detalla.
+Así que "te pedirán RUT/NIT" queda **[pendiente verificación]** hasta confirmarlo con ellos.
+
+Lo que **sí** es firme, y es la razón real de la dependencia:
+
+1. **Wompi liquida a una cuenta bancaria a nombre de un titular identificado.** Es una pasarela de
+   Bancolombia: hay validación de identidad del comercio antes de habilitar el cobro. No existe la
+   figura de "cobrar sin identificarse".
+2. **Vender de forma habitual te hace comerciante** (Código de Comercio) → matrícula mercantil + RUT.
+   El RUT es lo que te asigna el NIT.
+3. **Sin RUT no puedes manejar el IVA ni emitir el documento de venta** que la DIAN espera. Aunque
+   Wompi te habilitara, quedarías vendiendo sin poder facturar.
+
+O sea: el NIT no es un capricho técnico de Wompi, es el eslabón que convierte "una persona
+recibiendo transferencias" en "un comercio que puede cobrar y facturar".
+
+**Para salir de la duda sin adivinar:** escríbele a Wompi por WhatsApp al **+57 322 280 4391**
+(canal publicado en `soporte.wompi.co`) y pregunta qué documentos piden para **persona natural
+comerciante**. Con esa respuesta se actualiza este runbook y se quita el `[pendiente verificación]`.
+
+### Pasos
+
+1. Crea/activa **tu propia cuenta** de comercio en Wompi y completa la validación.
 2. Wompi → **Desarrolladores** → copia las llaves de **producción**: pública, privada, _integrity_ y
    _events_.
 3. Ponlas en Vercel (FASE 4, grupo B) y **Redeploy**.
@@ -574,17 +598,50 @@ Luego te reembolsas.
 
 ## FASE 8 — Aveonline producción (envíos reales) 🙋
 
+### Estado auditado (2026-07-20) — la tienda está en modo PRUEBA
+
+Las 4 variables `AVEONLINE_*` ya existen en Vercel, pero eso **no** significa que estén en uso.
+`curl https://lucamsshop.com/api/health/aveonline` responde:
+
+```json
+{ "mode": "test", "idempresa": 15289, "isDemoAccount": true, "ok": true }
+```
+
+`idempresa: 15289` es la **cuenta demo pública** de Aveonline. O sea: `AVEONLINE_ENV` no vale
+`production`, así que `AVEONLINE_USUARIO`/`AVEONLINE_CLAVE` **no se están usando** y no se generan
+guías reales. Es el estado correcto mientras no se venda de verdad — pero hay que saberlo.
+
+> 💡 Este endpoint existe porque las credenciales viven cifradas en Vercel: no se pueden auditar
+> leyéndolas. Autentica sin generar ninguna guía y delata el caso caro —
+> `AVEONLINE_ENV=production` con las credenciales demo, donde la tienda **cree** que despacha.
+
+### Cuándo hacer el cambio
+
+⚠️ **Con `AVEONLINE_ENV=production` cada pedido genera una guía REAL y facturable**
+(`bloquegenerarguia=1`). Por eso este switch va **junto con la [FASE 12](#fase-12--verificación-final-una-compra-real-de-punta-a-punta)**,
+no antes: si se activa ahora, cada prueba de checkout cuesta plata.
+
+### Pasos
+
 1. Activa tu cuenta de producción en Aveonline y pide usuario/clave de producción.
-2. Ponlos en Vercel: `AVEONLINE_USUARIO`, `AVEONLINE_CLAVE`, `AVEONLINE_ENV=production`.
+2. Ponlos en Vercel: `AVEONLINE_USUARIO`, `AVEONLINE_CLAVE`, y **`AVEONLINE_ENV=production`**
+   (esta última es la que enciende el modo real).
 3. Inventa un texto largo aleatorio para `AVEONLINE_WEBHOOK_SECRET` y **el mismo** configúralo en
    Aveonline junto con la URL del webhook: `https://lucamsshop.com/api/webhooks/aveonline`
+4. Redeploy y verifica: `/api/health/aveonline` debe decir `"mode": "production"` con
+   `"isDemoAccount": false`.
 
 ✅ **Cómo sabes que quedó bien:** el pedido de prueba de la FASE 7 genera **guía real** y aparece el
 número de rastreo en el detalle del pedido.
 
 ---
 
-## FASE 9 — Crons (que la operación no arranque ciega) 🙋
+## FASE 9 — Crons (que la operación no arranque ciega) ✅
+
+> **Validado en producción 2026-07-20** con `curl https://lucamsshop.com/api/health/crons`:
+> `status: ok`, `overdue: []`, los **7 jobs** con `lastRunAt` reciente (`alerts`, `daily-summary`,
+> `review-request`, `cart-recovery`, `back-in-stock`, `purge-anon-designs`, `purge-event-logs`).
+> `pg_cron` ya estaba agendado y corriendo; no hubo que crear nada.
 
 Sin esto **no corren** las alertas ni el resumen diario de las 8am, ni los recordatorios de carrito
 abandonado. Trabajas a ciegas.
