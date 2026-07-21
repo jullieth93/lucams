@@ -36,24 +36,28 @@ export function normalizeR2AccountId(raw) {
 }
 
 /**
- * Traduce el fallo de TLS que devuelve R2 cuando el Account ID no existe.
+ * Traduce el fallo de TLS del endpoint S3 de R2 a algo accionable.
  *
- * Comprobado (2026-07-21): un account id con forma válida pero desconocido hace que
- * `<id>.r2.cloudflarestorage.com` corte el handshake con `SSL alert number 40`, idéntico al que
- * produce un id inventado — mientras que el host base sí negocia TLS. Cloudflare rechaza por SNI.
- * El error crudo de OpenSSL no insinúa la causa, y el sospechoso natural es el par Access Key ID /
- * Account ID: ambos son 32 caracteres hexadecimales e indistinguibles a simple vista.
+ * Comprobado (2026-07-21): `<id>.r2.cloudflarestorage.com` corta el handshake con
+ * `SSL alert number 40` — desde dos redes distintas, con TLS 1.2 y 1.3, con y sin ALPN — cuando
+ * el endpoint no está servido para esa cuenta. El DNS resuelve igual (comodín), así que el rechazo
+ * ocurre por SNI y NO distingue "id equivocado" de "R2 sin aprovisionar": el síntoma es idéntico
+ * con un id inventado y con uno real de una cuenta sin R2 activo. Por eso el mensaje enumera las
+ * dos causas en vez de afirmar una — una versión previa culpaba solo al id y era incorrecta.
  */
 export function explainR2ConnectError(err, accountId) {
   const text = `${err?.code ?? ""} ${err?.message ?? ""}`;
   const isHandshake = /EPROTO|handshake failure|alert number 40|ERR_TLS/i.test(text);
   if (!isHandshake) return err;
   return new Error(
-    `R2 rechazó la conexión TLS: el R2_ACCOUNT_ID configurado (${accountId.length} caracteres) no ` +
-      `corresponde a ninguna cuenta de Cloudflare. Ojo: el Account ID y el Access Key ID son ambos ` +
-      `de 32 caracteres hexadecimales y se confunden fácil. El Account ID correcto aparece en la ` +
-      `propia URL del panel: dash.cloudflare.com/<ACCOUNT_ID>/r2/... — y también en R2 → Account ` +
-      `Details → Account ID. (causa original: ${err?.message ?? err})`,
+    `R2 rechazó el handshake TLS: no hay endpoint S3 servido para el R2_ACCOUNT_ID configurado ` +
+      `(${accountId.length} caracteres). Dos causas posibles, indistinguibles por el error:\n` +
+      `  1) R2 no está aprovisionado en esa cuenta (falta activar la suscripción de R2, o el ` +
+      `aprovisionamiento aún no terminó). Comprobación: ¿aparece el bucket en R2 → Overview?\n` +
+      `  2) El R2_ACCOUNT_ID no es el de esa cuenta. Ojo: el Account ID y el Access Key ID son ` +
+      `ambos de 32 caracteres hexadecimales. El correcto está en la URL del panel: ` +
+      `dash.cloudflare.com/<ACCOUNT_ID>/r2/...\n` +
+      `(causa original: ${err?.message ?? err})`,
   );
 }
 

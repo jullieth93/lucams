@@ -122,13 +122,15 @@ describe("normalizeR2AccountId", () => {
 });
 
 describe("explainR2ConnectError", () => {
-  it("traduce el handshake fallido en la causa real (Account ID desconocido)", () => {
+  it("traduce el handshake fallido enumerando las dos causas posibles", () => {
     const raw = new Error(
       "write EPROTO C0DC:error:0A000410:SSL routines:ssl3_read_bytes:ssl/tls alert handshake failure",
     );
     const out = explainR2ConnectError(raw, "a".repeat(32));
     expect(out.message).toMatch(/R2_ACCOUNT_ID/);
-    expect(out.message).toMatch(/Access Key ID/); // nombra la confusión concreta
+    // Enumera LAS DOS causas: el error TLS no las distingue (verificado 2026-07-21).
+    expect(out.message).toMatch(/aprovisionado/);
+    expect(out.message).toMatch(/Access Key ID/);
     expect(out.message).toMatch(/dash\.cloudflare\.com/); // dice dónde encontrarlo
   });
 
