@@ -6,7 +6,13 @@
  */
 
 import { describe, expect, it } from "vitest";
-import { SlotStateSchema, CanvasDataV2Schema, UploadAssetMetadataSchema } from "./schemas";
+import {
+  SlotStateSchema,
+  CanvasDataV2Schema,
+  UploadAssetMetadataSchema,
+  PhotoProductConfigSchema,
+  parsePhotoProductConfig,
+} from "./schemas";
 
 describe("SlotStateSchema — encuadre + texto del usuario sobreviven (ADR-057 Fase A)", () => {
   it("conserva photoTransform (offsetX/offsetY/scale) — antes se descartaba", () => {
@@ -107,5 +113,38 @@ describe("UploadAssetMetadataSchema — consentimiento de derechos de imagen (Le
   it("rechaza la subida sin declaración (rightsAccepted ausente = no se sube)", () => {
     const r = UploadAssetMetadataSchema.safeParse(base);
     expect(r.success).toBe(false);
+  });
+});
+
+describe("PhotoProductConfigSchema — flags Ola 3 (allowText / facesPerUnit)", () => {
+  it("acepta allowText (texto del producto) y facesPerUnit (caras por unidad)", () => {
+    const parsed = PhotoProductConfigSchema.parse({
+      photoSlots: 3,
+      allowText: true,
+      facesPerUnit: 2,
+    });
+    expect(parsed.allowText).toBe(true);
+    expect(parsed.facesPerUnit).toBe(2);
+  });
+
+  it("son opcionales: un schema de foto normal sigue parseando sin ellos", () => {
+    const parsed = PhotoProductConfigSchema.parse({ photoSlots: 6 });
+    expect(parsed.allowText).toBeUndefined();
+    expect(parsed.facesPerUnit).toBeUndefined();
+  });
+
+  it("facesPerUnit solo admite 1 o 2 (3+ indicaría config corrupta)", () => {
+    expect(PhotoProductConfigSchema.safeParse({ photoSlots: 1, facesPerUnit: 3 }).success).toBe(
+      false,
+    );
+    expect(PhotoProductConfigSchema.safeParse({ photoSlots: 1, facesPerUnit: 0 }).success).toBe(
+      false,
+    );
+  });
+
+  it("parsePhotoProductConfig degrada con seguridad cuando el schema no matchea", () => {
+    expect(parsePhotoProductConfig(null)).toEqual({ photoSlots: 1 });
+    expect(parsePhotoProductConfig({ photoSlots: 99 })).toEqual({ photoSlots: 1 }); // >50 inválido
+    expect(parsePhotoProductConfig({ photoSlots: 2, facesPerUnit: 2 }).facesPerUnit).toBe(2);
   });
 });

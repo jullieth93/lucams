@@ -25,6 +25,8 @@ import { useStore } from "zustand";
 import { StudioSlot } from "./studio-slot";
 import type { CanvasDataV2, StudioAsset } from "./types";
 import { selectUnitImagePlaceholder, type StudioStoreState } from "./lib/store";
+import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
+import { unitIndexOfSlot } from "./lib/faces";
 
 const MAX_VIEWPORT_WIDTH = 720; // px lógicos máximo del grid en desktop
 
@@ -64,6 +66,14 @@ type StudioCanvasGridProps = {
   slotLabels?: string[];
   /** #14 — sustantivo del slot ("imán" | "separador") para el fallback y aria de cada StudioSlot. */
   slotNoun?: string;
+  /** Ola 3 — ¿el producto admite texto editable? false oculta las capas de texto (Cuadrados). */
+  allowText?: boolean;
+  /**
+   * Ola 3 — caras de diseño por unidad física (separadores de libros: 2). Con 2, la
+   * grilla AGRUPA los slots en tarjetas-unidad: "Separador N" con sus 2 caras lado a
+   * lado (cara A | cara B), la tira desplegada que luego va a producción.
+   */
+  facesPerUnit?: number;
   /**
    * FB4 — si false (táctil), los slots de la grilla NO capturan gestos (drag/pinch/wheel) → el dedo
    * scrollea la página; el pan/zoom se hace en el editor a pantalla completa (tocar = abrir). En
@@ -89,6 +99,8 @@ export function StudioCanvasGrid({
   showRealismGuides,
   slotLabels,
   slotNoun,
+  allowText = false,
+  facesPerUnit = 1,
   interactiveSlots = true,
   onSlotClick,
   onSlotAdjust,
@@ -99,6 +111,8 @@ export function StudioCanvasGrid({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [containerWidth, setContainerWidth] = useState(MAX_VIEWPORT_WIDTH);
   const stagesRef = useRef<Map<number, Konva.Stage | null>>(new Map());
+  // #16 — respeta "reducir movimiento": las entradas escalonadas del grid se apagan.
+  const reducedMotion = usePrefersReducedMotion();
   // ADR-063 T5 — slots ya montados (una vez montados, permanecen; el store es la fuente de verdad,
   // así que re-montar desde slotState no pierde nada).
   const [mountedSlots, setMountedSlots] = useState<Set<number>>(() => new Set());
@@ -210,8 +224,28 @@ export function StudioCanvasGrid({
   // Calcular tamaño de cada slot para que el grid completo entre en
   // `containerWidth`. Mantenemos el aspect ratio del unitTemplate.
   const slotAspect = canvasData.unitTemplate.stage.height / canvasData.unitTemplate.stage.width;
+
+  // Ola 3 (separadores 2 caras) — modo AGRUPADO: los slots se renderizan en
+  // tarjetas-unidad ("Separador N") con las 2 caras lado a lado (la tira
+  // desplegada física). unitCols: 1 en móvil; en desktop 2 unidades por fila,
+  // salvo caras muy anchas (rectangular 6:2 → tira 6:1, 1 por fila).
+  const grouped = facesPerUnit === 2 && canvasData.slotCount % 2 === 0;
+  const unitCount = grouped ? canvasData.slotCount / 2 : canvasData.slotCount;
+  const stripAspect = grouped
+    ? (canvasData.unitTemplate.stage.width * 2) / canvasData.unitTemplate.stage.height
+    : 0;
+  const unitCols = grouped ? (containerWidth < BP_MOBILE || stripAspect >= 3 ? 1 : 2) : 0;
+  // Columnas VISUALES de slots para la navegación por teclado (flechas).
+  const navCols = grouped ? unitCols * 2 : layout.cols;
+
   const availableW = containerWidth - layout.gap * (layout.cols - 1);
-  const slotDisplaySize = Math.max(MIN_SLOT_SIZE, Math.floor(availableW / layout.cols));
+  const slotDisplaySize = grouped
+    ? // Ancho de cara dentro de la tarjeta: (tarjeta − padding − separación) / 2.
+      Math.max(
+        MIN_SLOT_SIZE,
+        Math.floor(((containerWidth - layout.gap * (unitCols - 1)) / unitCols - 16 - 8) / 2),
+      )
+    : Math.max(MIN_SLOT_SIZE, Math.floor(availableW / layout.cols));
   const slotHeight = slotDisplaySize * slotAspect;
 
   // Keyboard navigation entre slots
@@ -219,15 +253,16 @@ export function StudioCanvasGrid({
     fromSlotIndex: number,
     direction: "up" | "down" | "left" | "right",
   ) => {
-    const col = fromSlotIndex % layout.cols;
-    const row = Math.floor(fromSlotIndex / layout.cols);
+    const navRows = Math.ceil(canvasData.slotCount / navCols);
+    const col = fromSlotIndex % navCols;
+    const row = Math.floor(fromSlotIndex / navCols);
     let targetCol = col;
     let targetRow = row;
     if (direction === "up") targetRow = Math.max(0, row - 1);
-    if (direction === "down") targetRow = Math.min(layout.rows - 1, row + 1);
+    if (direction === "down") targetRow = Math.min(navRows - 1, row + 1);
     if (direction === "left") targetCol = Math.max(0, col - 1);
-    if (direction === "right") targetCol = Math.min(layout.cols - 1, col + 1);
-    const targetIndex = targetRow * layout.cols + targetCol;
+    if (direction === "right") targetCol = Math.min(navCols - 1, col + 1);
+    const targetIndex = targetRow * navCols + targetCol;
     if (targetIndex >= 0 && targetIndex < canvasData.slotCount && targetIndex !== fromSlotIndex) {
       selectSlot(targetIndex);
       // Focus DOM next tick
@@ -246,6 +281,83 @@ export function StudioCanvasGrid({
     registerSlotStages(stagesRef.current);
   };
 
+  // Celda de un slot (montaje perezoso + StudioSlot o placeholder). Compartida por el
+  // grid plano y por las tarjetas-unidad del modo agrupado (separadores 2 caras).
+  const renderSlotCell = (slot: CanvasDataV2["slots"][number]) => {
+    const mounted = !lazy || forceMountAll || mountedSlots.has(slot.slotIndex);
+    return (
+      <motion.div
+        key={slot.slotIndex}
+        data-slot-observe={slot.slotIndex}
+        className="flex items-start justify-center"
+        style={{ height: slotHeight + ACTION_BAR_RESERVE }}
+        initial={reducedMotion ? false : { opacity: 0, scale: 0.85 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{
+          duration: reducedMotion ? 0 : 0.25,
+          ease: "easeOut",
+          delay: mounted && !reducedMotion ? Math.min(slot.slotIndex, 8) * 0.04 : 0, // stagger acotado
+        }}
+      >
+        {mounted ? (
+          <StudioSlot
+            slotState={slot}
+            unitTemplate={canvasData.unitTemplate}
+            displaySize={slotDisplaySize}
+            displayHeight={slotHeight}
+            isSelected={selectedSlotIndex === slot.slotIndex}
+            totalSlots={canvasData.slotCount}
+            slotLabel={slotLabels?.[slot.slotIndex]}
+            slotNoun={slotNoun}
+            sizeCm={sizeCm}
+            shape={shape}
+            finish={finish}
+            cornerRadiusPx={cornerRadiusPx}
+            showRealismGuides={showRealismGuides}
+            borderColor={canvasData.borderColor ?? null}
+            allowText={allowText}
+            onClick={() => {
+              selectSlot(slot.slotIndex);
+              onSlotClick(slot.slotIndex);
+            }}
+            onClear={() => clearSlot(slot.slotIndex)}
+            onAdjust={onSlotAdjust ? () => onSlotAdjust(slot.slotIndex) : undefined}
+            onTextEdit={
+              onTextEdit ? (textLayerId) => onTextEdit(slot.slotIndex, textLayerId) : undefined
+            }
+            onPhotoTransformChange={
+              // FB4 — en táctil se omiten (grilla sin gestos → scroll libre; pan/zoom va al
+              // editor a pantalla completa). En desktop se conserva el inline.
+              interactiveSlots
+                ? (transform) => setSlotPhotoTransform(slot.slotIndex, transform)
+                : undefined
+            }
+            onCenterPhoto={
+              interactiveSlots ? () => setSlotPhotoTransform(slot.slotIndex, null) : undefined
+            }
+            onAssetDrop={(asset: StudioAsset) => assignAssetToSlot(slot.slotIndex, asset)}
+            onKeyboardNav={(dir) => handleKeyboardNav(slot.slotIndex, dir)}
+            onRegisterStage={registerStage(slot.slotIndex)}
+          />
+        ) : (
+          <LazySlotPlaceholder
+            assetUrl={slot.assetUrl}
+            displaySize={slotDisplaySize}
+            displayHeight={slotHeight}
+            shape={shape}
+            label={slotLabels?.[slot.slotIndex]}
+            onClick={() => {
+              // Montar de inmediato + seleccionar + abrir el picker (igual que un slot real).
+              setMountedSlots((prev) => new Set(prev).add(slot.slotIndex));
+              selectSlot(slot.slotIndex);
+              onSlotClick(slot.slotIndex);
+            }}
+          />
+        )}
+      </motion.div>
+    );
+  };
+
   return (
     <div
       ref={containerRef}
@@ -256,97 +368,56 @@ export function StudioCanvasGrid({
       <motion.div
         className="grid"
         style={{
-          gridTemplateColumns: `repeat(${layout.cols}, 1fr)`,
+          gridTemplateColumns: `repeat(${grouped ? unitCols : layout.cols}, 1fr)`,
           gap: layout.gap,
         }}
-        initial={{ opacity: 0, y: 12 }}
+        initial={reducedMotion ? false : { opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.3, ease: "easeOut" }}
+        transition={{ duration: reducedMotion ? 0 : 0.3, ease: "easeOut" }}
       >
         <AnimatePresence>
-          {canvasData.slots.map((slot) => {
-            const mounted = !lazy || forceMountAll || mountedSlots.has(slot.slotIndex);
-            return (
-              <motion.div
-                key={slot.slotIndex}
-                data-slot-observe={slot.slotIndex}
-                className="flex items-start justify-center"
-                style={{ height: slotHeight + ACTION_BAR_RESERVE }}
-                initial={{ opacity: 0, scale: 0.85 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{
-                  duration: 0.25,
-                  ease: "easeOut",
-                  delay: mounted ? Math.min(slot.slotIndex, 8) * 0.04 : 0, // stagger acotado
-                }}
-              >
-                {mounted ? (
-                  <StudioSlot
-                    slotState={slot}
-                    unitTemplate={canvasData.unitTemplate}
-                    displaySize={slotDisplaySize}
-                    displayHeight={slotHeight}
-                    isSelected={selectedSlotIndex === slot.slotIndex}
-                    totalSlots={canvasData.slotCount}
-                    slotLabel={slotLabels?.[slot.slotIndex]}
-                    slotNoun={slotNoun}
-                    sizeCm={sizeCm}
-                    shape={shape}
-                    finish={finish}
-                    cornerRadiusPx={cornerRadiusPx}
-                    showRealismGuides={showRealismGuides}
-                    borderColor={canvasData.borderColor ?? null}
-                    onClick={() => {
-                      selectSlot(slot.slotIndex);
-                      onSlotClick(slot.slotIndex);
-                    }}
-                    onClear={() => clearSlot(slot.slotIndex)}
-                    onAdjust={onSlotAdjust ? () => onSlotAdjust(slot.slotIndex) : undefined}
-                    onTextEdit={
-                      onTextEdit
-                        ? (textLayerId) => onTextEdit(slot.slotIndex, textLayerId)
-                        : undefined
-                    }
-                    onPhotoTransformChange={
-                      // FB4 — en táctil se omiten (grilla sin gestos → scroll libre; pan/zoom va al
-                      // editor a pantalla completa). En desktop se conserva el inline.
-                      interactiveSlots
-                        ? (transform) => setSlotPhotoTransform(slot.slotIndex, transform)
-                        : undefined
-                    }
-                    onCenterPhoto={
-                      interactiveSlots
-                        ? () => setSlotPhotoTransform(slot.slotIndex, null)
-                        : undefined
-                    }
-                    onAssetDrop={(asset: StudioAsset) => assignAssetToSlot(slot.slotIndex, asset)}
-                    onKeyboardNav={(dir) => handleKeyboardNav(slot.slotIndex, dir)}
-                    onRegisterStage={registerStage(slot.slotIndex)}
-                  />
-                ) : (
-                  <LazySlotPlaceholder
-                    assetUrl={slot.assetUrl}
-                    displaySize={slotDisplaySize}
-                    displayHeight={slotHeight}
-                    shape={shape}
-                    label={slotLabels?.[slot.slotIndex]}
-                    onClick={() => {
-                      // Montar de inmediato + seleccionar + abrir el picker (igual que un slot real).
-                      setMountedSlots((prev) => new Set(prev).add(slot.slotIndex));
-                      selectSlot(slot.slotIndex);
-                      onSlotClick(slot.slotIndex);
-                    }}
-                  />
-                )}
-              </motion.div>
-            );
-          })}
+          {grouped
+            ? // Ola 3 — tarjeta por UNIDAD física: "Separador N" con cara A | cara B
+              // lado a lado (la tira desplegada que se imprime). El filete central
+              // punteado sugiere el doblez de la tira.
+              Array.from({ length: unitCount }, (_, unitIndex) => (
+                <div
+                  key={unitIndex}
+                  role="group"
+                  aria-label={`Separador ${unitIndex + 1} de ${unitCount}`}
+                  className="border-brand-purple/15 flex flex-col items-center gap-1.5 rounded-2xl border bg-white/70 p-2 shadow-sm"
+                >
+                  <span className="text-brand-purple-dark text-xs font-bold">
+                    Separador {unitIndex + 1}
+                  </span>
+                  <div className="flex items-start justify-center gap-2">
+                    {canvasData.slots
+                      .filter((slot) => unitIndexOfSlot(slot.slotIndex, 2) === unitIndex)
+                      .map((slot, i) => (
+                        <div
+                          key={slot.slotIndex}
+                          className={
+                            i === 0
+                              ? "border-brand-purple/25 flex flex-col items-center gap-1 border-r border-dashed pr-2"
+                              : "flex flex-col items-center gap-1"
+                          }
+                        >
+                          <span className="text-brand-muted text-[10px] font-semibold tracking-wide uppercase">
+                            Cara {i === 0 ? "A" : "B"}
+                          </span>
+                          {renderSlotCell(slot)}
+                        </div>
+                      ))}
+                  </div>
+                </div>
+              ))
+            : canvasData.slots.map((slot) => renderSlotCell(slot))}
         </AnimatePresence>
       </motion.div>
 
       {/* A2.6 — Overlay de transición al cambiar plantilla */}
       <AnimatePresence>
-        {transitioning && (
+        {transitioning && !reducedMotion && (
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: [0, 0.7, 0] }}

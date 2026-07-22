@@ -48,6 +48,21 @@ export function isValidFrameHex(value: unknown): value is string {
 }
 
 /**
+ * Ola 3 — ¿el color de la tarjeta/marco es OSCURO? (Polaroid Clásica con borde negro:
+ * el texto por defecto debe salir CLARO para que se lea). Luminancia relativa simple
+ * (Rec. 601) — umbral 0.5: el negro de marca (#221E25) y la lavanda (#7C6AAD) cuentan
+ * como oscuros; los pasteles y el blanco, como claros. Módulo puro → mismo criterio en
+ * el editor (Konva) y en el render de producción (WYSIWYG).
+ */
+export function isDarkColor(hex: string): boolean {
+  if (!isValidFrameHex(hex)) return false;
+  const r = parseInt(hex.slice(1, 3), 16) / 255;
+  const g = parseInt(hex.slice(3, 5), 16) / 255;
+  const b = parseInt(hex.slice(5, 7), 16) / 255;
+  return 0.299 * r + 0.587 * g + 0.114 * b < 0.5;
+}
+
+/**
  * Marco inicial del Estudio según la variante que venía elegida de la PDP (schema ya
  * mergeado). La dimensión ya no se muestra en la PDP, pero la variante sigue trayendo
  * el dato → el Estudio PRESELECCIONA el marco equivalente y el cliente lo puede cambiar.

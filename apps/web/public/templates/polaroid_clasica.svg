@@ -1,0 +1,26 @@
+<svg width="450" height="600" viewBox="0 0 450 600" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!--
+    Preview de la plantilla "Polaroid Clásica" (Ola 3, Lucy 2026-07-22) — SOLO se usa
+    como miniatura (previewUrl) en el selector de plantillas del Estudio; la plantilla
+    real se dibuja con capas nativas del canvas (frame-card + foto + texto), NO con
+    este asset. Formato físico 7.5×10 cm (3:4): foto arriba, franja inferior gruesa
+    para el mensaje manuscrito del cliente.
+  -->
+  <!-- Tarjeta blanca con borde suave -->
+  <rect x="1" y="1" width="448" height="598" rx="18" fill="#FFFFFF" stroke="#E4DCF3" stroke-width="2"/>
+  <!-- Ventana de foto (placeholder pastel) -->
+  <rect x="28" y="28" width="394" height="394" fill="#F4ECFF"/>
+  <rect x="28" y="28" width="394" height="394" fill="url(#g)"/>
+  <defs>
+    <linearGradient id="g" x1="28" y1="28" x2="422" y2="422" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F4ECFF"/>
+      <stop offset="0.35" stop-color="#FFE5EC"/>
+      <stop offset="0.7" stop-color="#FFF2D9"/>
+      <stop offset="1" stop-color="#DDF5F3"/>
+    </linearGradient>
+  </defs>
+  <!-- Corazoncito Lucams centrado en la foto -->
+  <path d="M225 270 C205 252 180 238 180 210 C180 192 193 180 208 180 C217 180 222 184 225 192 C228 184 233 180 242 180 C257 180 270 192 270 210 C270 238 245 252 225 270 Z" fill="#E85B9F" opacity="0.55"/>
+  <!-- Mensaje manuscrito en la franja inferior (placeholder del texto editable) -->
+  <text x="225" y="522" font-family="'Comic Sans MS','Segoe Script',cursive" font-size="34" fill="#3D2E5C" text-anchor="middle">Escribe tu mensaje</text>
+</svg>

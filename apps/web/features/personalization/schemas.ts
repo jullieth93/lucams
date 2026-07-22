@@ -254,6 +254,21 @@ export const PhotoProductConfigSchema = z.object({
   cornerRadiusPx: z.number().int().min(0).max(500).optional(),
   // Ola 2A — ids de marco de color ofrecidos en el Estudio (paleta frame-palette).
   frameOptions: z.array(z.string().max(24)).max(12).optional(),
+  /**
+   * Ola 3 (Lucy 2026-07-22) — ¿el producto admite TEXTO editable en el Estudio?
+   * Default false: solo los productos que lo declaran (Polaroid) muestran/editan
+   * capas de texto. Fotoimanes Cuadrados NO llevan texto (feedback Lucy: el texto
+   * es de la Polaroid). El render de producción respeta el mismo flag (WYSIWYG).
+   */
+  allowText: z.boolean().optional(),
+  /**
+   * Ola 3 (Lucy 2026-07-22) — caras de diseño por unidad física. Separadores de
+   * libros: la pieza real es una tira doblada con 2 caras (cara A / cara B, cada
+   * una con su imagen). `2` → el Estudio crea 2 slots por unidad (slotCount=2N,
+   * slots 2k=cara A y 2k+1=cara B) y producción compone la tira desplegada.
+   * Default 1 (productos normales, 1 slot = 1 pieza).
+   */
+  facesPerUnit: z.number().int().min(1).max(2).optional(),
 });
 export type PhotoProductConfig = z.infer<typeof PhotoProductConfigSchema>;
 

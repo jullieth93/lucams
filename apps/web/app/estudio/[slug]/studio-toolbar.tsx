@@ -39,8 +39,11 @@ type StudioToolbarProps = {
   productImageUrl?: string;
   /** A1.1 — Tamaño físico del imán, ej "5×5 cm". */
   productSizeCm?: string;
-  /** A1.1 — Cantidad total de imanes del pack (ej 6, 12). */
+  /** A1.1 — Cantidad total de unidades del pack (ej 6, 12). En separadores 2 caras
+   *  es la cantidad de UNIDADES físicas (cada una con 2 caras de diseño). */
   productSlotCount?: number;
+  /** Ola 3 — sustantivo de la unidad ("imán" default, "separador" en separadores). */
+  slotNoun?: string;
   /** M.3.b.B.1 — toggle bleed + safe area overlay guides. */
   showRealismGuides?: boolean;
   /** M.3.b.B.1 — callback al cambiar el toggle. */
@@ -60,6 +63,7 @@ export function StudioToolbar({
   productImageUrl,
   productSizeCm,
   productSlotCount,
+  slotNoun = "imán",
   showRealismGuides,
   onToggleRealismGuides: _onToggleRealismGuides,
   onOpenGesturesHint,
@@ -110,7 +114,15 @@ export function StudioToolbar({
                 {productSizeCm && <SizeChipWithComparator sizeCm={productSizeCm} />}
                 {productSlotCount && (
                   <span className="text-brand-muted">
-                    · {productSlotCount} {productSlotCount === 1 ? "imán" : "imanes"}
+                    · {productSlotCount}{" "}
+                    {productSlotCount === 1
+                      ? slotNoun
+                      : // Plural es-CO: "imán"→"imanes", "separador"→"separadores".
+                        slotNoun === "imán"
+                        ? "imanes"
+                        : slotNoun === "separador"
+                          ? "separadores"
+                          : `${slotNoun}s`}
                   </span>
                 )}
               </p>

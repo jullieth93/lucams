@@ -232,4 +232,24 @@ describe("renderProductionSlots — guards CONSERVADORES → NEEDS_KONVA (fallba
     });
     expect((await pngMeta(bufs[0])).width).toBe(3240);
   });
+
+  it("Ola 3 — includeText=false: la capa de texto se IGNORA y sharp renderiza (producto sin texto)", async () => {
+    // Fotoimanes Cuadrados con la plantilla "libre" (trae texto editable): el editor la oculta
+    // (allowText=false) → producción también; además el slot puede quedarse en el tier sharp
+    // en vez de caer al tier canvas solo por el texto de la plantilla.
+    const unit = {
+      ...photoOnlyUnit,
+      layers: [...photoOnlyUnit.layers, { id: "t", type: "text", text: "Escribe tu mensaje" }],
+    };
+    const bufs = await renderProductionSlots({
+      unitTemplate: unit,
+      slots: [
+        { slotIndex: 0, assetId: "a0", photoTransform: { offsetX: 0, offsetY: 0, scale: 1 } },
+      ],
+      shape: "rectangle",
+      loadAsset: async () => fakePhoto(800, 800),
+      includeText: false,
+    });
+    expect((await pngMeta(bufs[0])).width).toBe(3240);
+  });
 });

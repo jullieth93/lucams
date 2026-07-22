@@ -55,6 +55,12 @@ type NameEditorProps = {
   initialCount?: number;
   /** Estilos ilustrados disponibles (Animales, Navidad…). Vacío = solo "Solo letra". */
   styles: LetterStyle[];
+  /**
+   * Opciones de tema INCLUYENDO sets vacíos (tileCount=0). Si viene, el selector
+   * de tema se muestra siempre; los vacíos muestran el hint de subir ilustraciones
+   * en /admin/fichas y degradan a letra estándar (mismo criterio que letter-set-editor).
+   */
+  themeOptions?: { id: string; name: string; tileCount: number }[];
 };
 
 function roundRectPath(
@@ -207,6 +213,7 @@ export function NameEditor({
   pricePerTile,
   initialCount,
   styles,
+  themeOptions,
 }: NameEditorProps) {
   const router = useRouter();
   const [raw, setRaw] = useState("");
@@ -491,14 +498,24 @@ export function NameEditor({
           </ul>
         )}
 
-        {/* Selector de estilo (tema/ocasión de las ilustraciones) — antes del color */}
-        {styles.length > 0 && (
+        {/* Selector de estilo (tema/ocasión de las ilustraciones) — antes del color.
+            Siempre visible: con themeOptions muestra también los sets vacíos (0 fichas)
+            con el hint de /admin/fichas; sin themeOptions, cae a los estilos con fichas. */}
+        {(themeOptions ?? styles).length > 0 && (
           <div className="mt-5">
             <LetterStylePicker
-              styles={styles.map((s) => ({ id: s.id, name: s.name }))}
+              styles={(themeOptions ?? styles).map((s) => ({ id: s.id, name: s.name }))}
               selectedId={styleId}
               onSelect={setStyleId}
             />
+            {themeOptions &&
+              styleId &&
+              (themeOptions.find((t) => t.id === styleId)?.tileCount ?? 0) === 0 && (
+                <p className="text-brand-purple-dark/70 mt-2 text-xs">
+                  Este tema aún no tiene ilustraciones — se imprime como letra de color.
+                  Sube las ilustraciones en /admin/fichas para activarlo.
+                </p>
+              )}
           </div>
         )}
 

@@ -114,7 +114,13 @@ export default async function EstudioPage({
       ? Math.min(surface.config.max, Math.max(surface.config.min, rawCount))
       : surface.config.min;
     // Estilos ilustrados del idioma (Animales, Navidad…). Vacío = solo "Solo letra".
-    const styles = await listLetterStyles(surface.config.language);
+    // themeOptions incluye los sets AÚN VACÍOS (0 fichas) para que el selector de tema
+    // se vea siempre con su hint de "sube las ilustraciones en /admin/fichas"
+    // (el gate styles.length>0 lo escondía por completo — feedback Lucy 2026-07-22).
+    const [styles, themeOptions] = await Promise.all([
+      listLetterStyles(surface.config.language),
+      listLetterThemeOptions(surface.config.language),
+    ]);
     return (
       <div className="bg-brand-cream flex min-h-screen flex-col">
         <SiteHeader />
@@ -126,6 +132,7 @@ export default async function EstudioPage({
             pricePerTile={pricePerTile}
             initialCount={initialCount}
             styles={styles}
+            themeOptions={themeOptions}
           />
         </main>
       </div>

@@ -48,6 +48,7 @@ import {
   renderProductionSlotsCanvas,
   renderCalendarMonthPagesCanvas,
 } from "./production-render-canvas";
+import { composeFaceStrips } from "./bookmark-strips";
 import type { CanvasData, CanvasDataV1, CanvasDataV2 } from "./schemas";
 import type { z } from "zod";
 import type { SlotStateSchema } from "./schemas";
@@ -174,12 +175,20 @@ async function tryServerRenderProduction(
     typeof (canvasData as { borderColor?: unknown }).borderColor === "string"
       ? ((canvasData as { borderColor?: string }).borderColor ?? null)
       : null;
+  // Ola 3 — ¿el producto admite texto? (Fotoimanes Cuadrados NO: el texto es de la
+  // Polaroid). El editor oculta las capas de texto → producción también (WYSIWYG);
+  // si no, el PNG de imprenta saldría con el "Escribe tu mensaje" de la plantilla.
+  // Schema no cargado → default legacy true (no esconder texto por un fallo de lectura).
+  const includeText = productSchema
+    ? parsePhotoProductConfig(productSchema).allowText === true
+    : true;
   const args = {
     unitTemplate: canvasData.unitTemplate as never,
     slots: canvasData.slots as never,
     shape,
     loadAsset,
     borderColor,
+    includeText,
   };
 
   // Tier 1 — sharp (foto pura, rápido, sin deps nativas). Solo SIN marco.
@@ -853,13 +862,60 @@ export async function finalizeDesign(opts: {
     }
   }
 
-  // Subir N production PNGs (uno por imán físico)
+  // Ola 3 (Lucy 2026-07-22) — SEPARADORES 2 CARAS: la pieza física es una tira doblada;
+  // la imprenta recibe la tira DESPLEGADA con las 2 caras lado a lado (8×4.2 / 12×2 cm).
+  // El cliente sube 2N snapshots (uno por slot cara A/B, espejo del canvas); acá se componen
+  // N tiras (slot 2k = cara A izquierda, slot 2k+1 = cara B derecha) con las esquinas
+  // exteriores redondeadas del troquel. Aplica igual a buffers server-side o del cliente.
+  let facesComposed = false;
+  if (canvasData.version === 2) {
+    const product = await prisma.product.findUnique({
+      where: { id: design.productId },
+      select: { personalizationSchema: true },
+    });
+    const productConfig = parsePhotoProductConfig(product?.personalizationSchema);
+    if (productConfig.facesPerUnit === 2 && productionBuffers.length % 2 === 0) {
+      try {
+        // cornerRadiusPx del schema es en px LÓGICOS del stage de la cara; los buffers
+        // están a escala de producción (×3, mismo factor que el snapshot del cliente).
+        productionBuffers = await composeFaceStrips(productionBuffers, {
+          cornerRadiusPx: (productConfig.cornerRadiusPx ?? 0) * 3,
+        });
+        facesComposed = true;
+        logger.info(
+          {
+            event: "design.finalize.face_strips_ok",
+            designId: design.id,
+            strips: productionBuffers.length,
+          },
+          "Tiras desplegadas 2-caras compuestas para producción",
+        );
+      } catch (err) {
+        // No rompemos el finalize: si la composición falla, se suben las caras sueltas
+        // (mejor que perder el pedido; el log deja el rastro para revisión manual).
+        logger.warn(
+          {
+            event: "design.finalize.face_strips_error",
+            designId: design.id,
+            err: err instanceof Error ? err.message : String(err),
+          },
+          "No se pudieron componer las tiras 2-caras — se suben las caras sueltas",
+        );
+      }
+    }
+  }
+
+  // Subir N production PNGs (uno por imán físico; en separadores 2-caras, uno por TIRA)
   const productionPaths: string[] = [];
   let totalProductionBytes = 0;
   for (let i = 0; i < productionBuffers.length; i++) {
     const buf = productionBuffers[i]!;
     totalProductionBytes += buf.length;
-    const path = `${design.id}/slot-${String(i + 1).padStart(2, "0")}.png`;
+    // Ola 3 — con tiras compuestas (separadores 2 caras) el archivo es la TIRA desplegada
+    // de la unidad (cara A + cara B), no una cara suelta: nombre explícito para imprenta.
+    const path = facesComposed
+      ? `${design.id}/tira-${String(i + 1).padStart(2, "0")}.png`
+      : `${design.id}/slot-${String(i + 1).padStart(2, "0")}.png`;
     const { error: prodErr } = await supabase.storage
       .from(BUCKET_PRODUCTION)
       .upload(path, buf, { contentType: "image/png", upsert: true });
@@ -875,11 +931,16 @@ export async function finalizeDesign(opts: {
 
   // ADR-063 CAL2 — registrar el año del calendario en metadata (fuente para re-render/admin;
   // el PNG ya lo trae horneado). Merge para no pisar el resto de metadata (kind, schemaVersion…).
+  // Ola 3 — también se registra cuando el diseño salió como TIRAS 2-caras compuestas
+  // (separadores): el admin/imprenta sabe que cada PNG es una unidad desplegada A|B.
   const mergedMetadata =
-    typeof opts.calendarYear === "number"
+    typeof opts.calendarYear === "number" || facesComposed
       ? {
           ...((design.metadata as Record<string, unknown> | null) ?? {}),
-          calendarYear: opts.calendarYear,
+          ...(typeof opts.calendarYear === "number" ? { calendarYear: opts.calendarYear } : {}),
+          ...(facesComposed
+            ? { faceStrips: { facesPerUnit: 2, strips: productionPaths.length } }
+            : {}),
         }
       : undefined;
 
@@ -934,6 +995,8 @@ export async function listTemplatesForKind(
       name: true,
       previewUrl: true,
       canvasData: true,
+      // Ola 3 — necesario para la red de seguridad de plantillas específicas del producto.
+      productId: true,
     },
   });
 
@@ -943,11 +1006,22 @@ export async function listTemplatesForKind(
   if (!opts?.productAspectRatio) return templates;
   const target = parseAspectRatio(opts.productAspectRatio);
   if (target === null) return templates;
-  return templates.filter((t) => {
+  const filtered = templates.filter((t) => {
     const a = templateAspectRatio(t.canvasData);
     if (a === null) return true; // template sin stage parseable → permitir
     return Math.abs(a - target) <= 0.05;
   });
+  // Ola 3 (bug texto Polaroid, Lucy 2026-07-22) — red de seguridad: si el filtro deja
+  // el producto SIN plantillas pero existen plantillas ESPECÍFICAS curadas para él
+  // (productId = este producto), se muestran igual aunque su aspect no matchee. Sin
+  // esto, una variante con aspect distinto al de la plantilla (ej. Polaroid 3:4 vs
+  // marco 400:580) dejaba el Estudio sin plantilla → sin capas de texto → "no deja
+  // escribir el texto". Las plantillas GLOBALES que no matchean sí se siguen ocultando
+  // (evita looks estirados en productos ajenos).
+  if (filtered.length === 0 && opts?.productId) {
+    return templates.filter((t) => t.productId === opts.productId);
+  }
+  return filtered;
 }
 
 /** Parsea "1:1", "4:5", "7:9" → ratio numérico width/height. */

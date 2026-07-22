@@ -47,10 +47,12 @@ import { HSL } from "konva/lib/filters/HSL";
 import type {
   CanvasDataV1,
   CanvasLayer,
+  FrameCardLayer,
   ImagePlaceholderLayer,
   SlotState,
   StudioAsset,
 } from "./types";
+import { isDarkColor } from "@/features/personalization/frame-palette";
 import { RealismShadowLayer, RealismOverlayLayer } from "./studio-realism-overlay";
 import { getFilterParams } from "./lib/photo-filters";
 import { analyzeSmartCrop, checkPhotoQuality } from "./lib/smart-crop";
@@ -88,6 +90,13 @@ type StudioSlotProps = {
   showRealismGuides?: boolean;
   /** Ola 2A — color del marco alrededor de la foto (hex #RRGGBB). null = sin marco. */
   borderColor?: string | null;
+  /**
+   * Ola 3 — ¿el producto admite texto editable? Default false (el texto es de la
+   * Polaroid; Fotoimanes Cuadrados y separadores no llevan). Cuando es false, las
+   * capas de texto de la plantilla NO se dibujan (el render de producción hace lo
+   * mismo vía includeText → WYSIWYG).
+   */
+  allowText?: boolean;
   onClick: () => void;
   onClear: () => void;
   /** M.3.b.B.3 — Abrir modal de ajustar foto (filtros). Solo se llama si slot lleno. */
@@ -125,6 +134,7 @@ function StudioSlotImpl({
   cornerRadiusPx,
   showRealismGuides,
   borderColor,
+  allowText = false,
   onClick,
   onClear,
   onAdjust,
@@ -197,8 +207,13 @@ function StudioSlotImpl({
   // viaja en canvasData.borderColor). Se dibuja como un Rect de stroke ancho centrado en
   // el borde de la ventana de foto → queda mitad dentro de la foto y mitad sobre el fondo,
   // como el marco impreso del imán físico. Heart/circle no llevan marco (la silueta manda).
+  // Ola 3 — con capa "frame-card" (Polaroid Clásica) tampoco: la tarjeta entera ES el marco.
+  const hasFrameCard = useMemo(
+    () => unitTemplate.layers.some((l) => l.type === "frame-card"),
+    [unitTemplate],
+  );
   const frameStyle = useMemo(() => {
-    if (!borderColor || shape === "heart" || shape === "circle") return null;
+    if (!borderColor || shape === "heart" || shape === "circle" || hasFrameCard) return null;
     const ph = unitTemplate.layers.find((l) => l.type === "image-placeholder") as
       | ImagePlaceholderLayer
       | undefined;
@@ -213,7 +228,7 @@ function StudioSlotImpl({
       cornerRadius: Math.max(0, (ph.cornerRadius ?? 0) - w / 2),
       color: borderColor,
     };
-  }, [borderColor, shape, unitTemplate]);
+  }, [borderColor, shape, unitTemplate, hasFrameCard]);
 
   // ──────────── Drag & drop nativo ────────────
   const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
@@ -418,15 +433,17 @@ function StudioSlotImpl({
 
   // ──────────── ARIA label ────────────
   // #14 — "Imán" era fijo; ahora deriva del producto (imán/separador). Capitalizado para inicio de
-  // frase; el slotLabel explícito (calendario, ej. "Enero") sigue mandando en el badge visible.
+  // frase. Ola 3 — el slotLabel explícito (calendario: "Enero"; separadores 2-caras: "1A"/"1B")
+  // manda en el aria cuando existe (la unidad "Separador N" la anuncia la tarjeta del grid).
   const nounCap = slotNoun.charAt(0).toUpperCase() + slotNoun.slice(1);
+  const slotName = slotLabel ?? `${nounCap} ${slotState.slotIndex + 1} de ${totalSlots}`;
   // #17 — anunciar solo los atajos que existen para este slot (honesto).
   const filledHints = ["Enter para cambiar foto", "Delete para quitar"];
   if (onAdjust) filledHints.push("A para ajustar el encuadre");
   if (onCenterPhoto && slotState.photoTransform) filledHints.push("C para centrar");
   const ariaLabel = slotState.assetUrl
-    ? `${nounCap} ${slotState.slotIndex + 1} de ${totalSlots}, con foto cargada. ${filledHints.join(", ")}.`
-    : `${nounCap} ${slotState.slotIndex + 1} de ${totalSlots}, vacío. Enter para subir foto.`;
+    ? `${slotName}, con foto cargada. ${filledHints.join(", ")}.`
+    : `${slotName}, vacío. Enter para subir foto.`;
 
   return (
     <div className="group/wrapper flex flex-col items-center gap-1.5">
@@ -485,7 +502,10 @@ function StudioSlotImpl({
           // M.3.b.UX.v13 — borderRadius solo aplica si shape rectangle.
           // Para heart/circle, el clipPath define la silueta y borderRadius
           // sería ignorado igualmente.
-          borderRadius: slotClipPath ? 0 : 8,
+          // Ola 3 — si el producto declara cornerRadiusPx (separadores: troquel
+          // REDONDO real), la silueta en pantalla usa ese radio escalado al
+          // tamaño del slot en vez del 8px genérico (WYSIWYG con el troquel).
+          borderRadius: slotClipPath ? 0 : cornerRadiusPx ? Math.max(2, cornerRadiusPx * scale) : 8,
           clipPath: slotClipPath,
           // Pinch-zoom (WCAG 1.4.4): la página NUNCA bloquea el zoom a nivel viewport;
           // solo el canvas INTERACTIVO captura el gesto (touch-action:none) para que el
@@ -557,6 +577,9 @@ function StudioSlotImpl({
                 onPhotoTransformChange,
                 handlePhotoDragStart,
                 handlePhotoDragEnd,
+                // Ola 3 — color del borde (tarjeta frame-card + texto claro si es
+                // oscura) y bandera de texto del producto (Cuadrados: sin texto).
+                { borderColor: borderColor ?? null, allowText, hasFrameCard },
               ),
             )}
             {/* Ola 2A — marco de color: ENCIMA de la foto (stroke centrado en el borde de la
@@ -862,7 +885,8 @@ export const StudioSlot = memo(StudioSlotImpl, (prev, next) => {
     prev.finish === next.finish &&
     prev.cornerRadiusPx === next.cornerRadiusPx &&
     prev.showRealismGuides === next.showRealismGuides &&
-    prev.borderColor === next.borderColor
+    prev.borderColor === next.borderColor &&
+    prev.allowText === next.allowText
   );
 });
 StudioSlot.displayName = "StudioSlot";
@@ -883,7 +907,18 @@ export function renderLayer(
   ) => void,
   onPhotoDragStart?: () => void,
   onPhotoDragEnd?: () => void,
+  /**
+   * Ola 3 — contexto de estilo del producto:
+   *  - borderColor: color del borde elegido (la tarjeta frame-card lo toma; si la
+   *    tarjeta es oscura, el texto por defecto sale claro).
+   *  - allowText: false → las capas de texto NO se dibujan (Cuadrados/separadores).
+   *  - hasFrameCard: la plantilla trae tarjeta de color (Polaroid Clásica).
+   */
+  opts?: { borderColor?: string | null; allowText?: boolean; hasFrameCard?: boolean },
 ) {
+  const borderColor = opts?.borderColor ?? null;
+  const allowText = opts?.allowText ?? false;
+  const hasFrameCard = opts?.hasFrameCard ?? false;
   switch (layer.type) {
     case "background":
       return (
@@ -896,6 +931,26 @@ export function renderLayer(
           fill={(layer as { color: string }).color}
         />
       );
+    case "frame-card": {
+      // Ola 3 — TARJETA de color de la Polaroid Clásica: rect redondeado a todo el
+      // stage relleno del color de borde elegido (blanco/negro/pasteles de la paleta
+      // frame-palette). Va debajo de la foto y del texto (orden de capas de la
+      // plantilla). El marco-stroke de Ola 2A se omite en estas plantillas (la
+      // tarjeta ES el marco). Mismo dibujo en production-render-canvas (WYSIWYG).
+      const card = layer as FrameCardLayer;
+      return (
+        <Rect
+          key={layer.id}
+          x={0}
+          y={0}
+          width={stage.width}
+          height={stage.height}
+          cornerRadius={card.cornerRadius ?? 0}
+          fill={borderColor ?? card.fill ?? "#FFFFFF"}
+          listening={false}
+        />
+      );
+    }
     case "image-placeholder": {
       // M.3.b.UX.v13 (Lucy 2026-05-15) — Para products heart/circle, el image
       // cubre TODO el stage. El stage para products heart/circle es cuadrado
@@ -931,10 +986,16 @@ export function renderLayer(
       // texto. Por lo tanto omitimos el render de text layers en heart/circle.
       // Si la plantilla tiene textos (como Polaroid Instagram), aplican solo
       // a products rectangulares.
+      // Ola 3 — además: si el producto NO admite texto (allowText=false, ej.
+      // Fotoimanes Cuadrados — "el texto es de la Polaroid"), la capa no se dibuja.
       if (shape === "heart" || shape === "circle") return null;
+      if (!allowText) return null;
       const textLayer = layer as TextLayerData;
       const override = slotState.textOverrides?.[textLayer.id];
-      return renderText(textLayer, stage, override, onTextEdit, false);
+      // Ola 3 — tarjeta de borde oscura (Polaroid Clásica negro/lavanda): el texto
+      // por defecto sale CLARO para que se lea; el override del cliente manda.
+      const darkCard = hasFrameCard && borderColor !== null && isDarkColor(borderColor);
+      return renderText(textLayer, stage, override, onTextEdit, false, darkCard);
     }
     case "shape":
       return renderShape(layer as never);
@@ -1011,13 +1072,16 @@ function renderText(
   // heart/circle). Aplica stroke blanco + shadow para legibilidad sobre
   // cualquier color de fondo.
   onPhoto: boolean = false,
+  // Ola 3 — tarjeta de borde oscura (Polaroid Clásica): el texto por defecto
+  // sale claro (#FFFFFF). Solo aplica si NO hay override de color del cliente.
+  darkCard: boolean = false,
 ) {
   // Combinar layer base + override del slot. Cada campo del override
   // sobrescribe el layer base si está definido.
   const finalText = override?.text ?? layer.text;
   const fontSize = override?.fontSize ?? layer.fontSize ?? 48;
   const fontFamily = override?.fontFamily ?? layer.fontFamily ?? "Fredoka, Inter, sans-serif";
-  const fill = override?.fill ?? layer.fill ?? "#3D2E5C";
+  const fill = override?.fill ?? (darkCard ? "#FFFFFF" : (layer.fill ?? "#3D2E5C"));
   const fontStyle = override?.fontWeight ?? layer.fontWeight;
   const align = layer.align ?? "center";
 

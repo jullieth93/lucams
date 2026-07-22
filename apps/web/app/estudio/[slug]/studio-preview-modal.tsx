@@ -35,8 +35,9 @@ type StudioPreviewModalProps = {
   unitPrice: number | null; // precio en centavos COP de la variant elegida
   isFinalizing: boolean;
   errorMessage: string | null;
-  /** #3 — tipo de producto: el calendario se describe en "páginas", no "imanes". */
-  productKind?: "magnets" | "calendar";
+  /** #3 — tipo de producto: el calendario se describe en "páginas", no "imanes".
+   *  Ola 3 — "bookmarks": separadores de libros (tiras 2 caras), concordancia propia. */
+  productKind?: "magnets" | "calendar" | "bookmarks";
   /** Año del calendario (solo cuando productKind==="calendar"). */
   calendarYear?: number;
   onEdit: () => void;
@@ -60,8 +61,9 @@ export function StudioPreviewModal({
   if (!previewUrl) return null;
 
   // #3 — el calendario habla de "páginas" (concordancia femenina: "las"/"Revísalas"); los imanes,
-  // de "imanes". Copy separado para no romper el WYSIWYG conceptual (pantalla = físico).
+  // de "imanes". Ola 3 — los separadores hablan de "separadores" (cada uno con sus 2 caras).
   const isCalendar = productKind === "calendar";
+  const isBookmarks = productKind === "bookmarks";
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && !isFinalizing && onEdit()}>
@@ -78,7 +80,11 @@ export function StudioPreviewModal({
       >
         <DialogTitle className="text-brand-purple-dark font-display flex items-center gap-2 text-xl font-bold">
           <Sparkles className="text-brand-pink h-5 w-5" />
-          {isCalendar ? "Así se verá tu calendario" : "Así se verá tu pedido"}
+          {isCalendar
+            ? "Así se verá tu calendario"
+            : isBookmarks
+              ? "Así se verán tus separadores"
+              : "Así se verá tu pedido"}
         </DialogTitle>
         <DialogDescription className="text-brand-purple-dark/70 text-sm">
           {isCalendar ? (
@@ -92,6 +98,18 @@ export function StudioPreviewModal({
                 </>
               )}{" "}
               Revísalas antes de continuar.
+            </>
+          ) : isBookmarks ? (
+            <>
+              Esta es la vista previa de los {slotCount} separadores que vas a recibir — cada uno
+              desplegado con sus 2 caras (así se imprime la tira).
+              {sizeCm && (
+                <>
+                  {" "}
+                  Cada separador mide <strong>{sizeCm}</strong> doblado.
+                </>
+              )}{" "}
+              Revísalos antes de continuar.
             </>
           ) : (
             <>
@@ -115,7 +133,9 @@ export function StudioPreviewModal({
               alt={
                 isCalendar
                   ? `Vista previa de las ${slotCount} páginas de tu calendario${calendarYear ? ` ${calendarYear}` : ""}`
-                  : `Vista previa de ${slotCount} imanes`
+                  : isBookmarks
+                    ? `Vista previa de ${slotCount} separadores desplegados con sus 2 caras`
+                    : `Vista previa de ${slotCount} imanes`
               }
               fill
               sizes="(max-width: 640px) 90vw, 480px"
@@ -133,7 +153,9 @@ export function StudioPreviewModal({
               <p className="text-brand-muted text-xs">
                 {isCalendar
                   ? `Calendario personalizado · ${slotCount} páginas`
-                  : `${slotCount} ${slotCount === 1 ? "imán personalizado" : "imanes personalizados"}`}
+                  : isBookmarks
+                    ? `${slotCount} ${slotCount === 1 ? "separador personalizado" : "separadores personalizados"} (2 caras c/u)`
+                    : `${slotCount} ${slotCount === 1 ? "imán personalizado" : "imanes personalizados"}`}
                 {sizeCm && (
                   <>
                     {" · "}

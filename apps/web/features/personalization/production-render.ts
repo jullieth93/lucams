@@ -82,7 +82,7 @@ function parseColor(color: string | undefined): { r: number; g: number; b: numbe
  *   - texto/marco (asset/shape) → fallback (A1b, Konva-on-node).
  *   - stage gigante → fallback (anti-OOM).
  */
-function assertServerRenderable(unit: UnitTemplate, slots: Slot[]): void {
+function assertServerRenderable(unit: UnitTemplate, slots: Slot[], includeText: boolean): void {
   if (unit.stage.width > MAX_STAGE_DIM || unit.stage.height > MAX_STAGE_DIM) {
     throw new RenderNeedsKonvaError(
       `stage ${unit.stage.width}×${unit.stage.height} > ${MAX_STAGE_DIM}`,
@@ -101,6 +101,10 @@ function assertServerRenderable(unit: UnitTemplate, slots: Slot[]): void {
       continue;
     }
     if (l.type === "text") {
+      // Ola 3 — el producto sin texto (allowText=false, Fotoimanes Cuadrados) ignora las
+      // capas de texto de la plantilla: el editor no las dibuja → sharp tampoco (WYSIWYG)
+      // y el slot se puede renderizar acá sin caer al tier canvas.
+      if (!includeText) continue;
       const base = typeof l.text === "string" ? l.text.trim() : "";
       // Un texto-base vacío PERO con override del cliente (caption editado) SÍ tiene contenido →
       // no es "solo-foto" (evita que sharp lo dibuje sin el caption; hallazgo revisión A1b).
@@ -238,10 +242,12 @@ export async function renderProductionSlots(opts: {
   slots: Slot[];
   shape?: string;
   loadAsset: LoadAssetBytes;
+  /** Ola 3 — false: el producto no admite texto → las capas de texto se ignoran (WYSIWYG). */
+  includeText?: boolean;
 }): Promise<Buffer[]> {
   // Guard conservador: solo renderizamos server-side los casos que reproducimos con fidelidad
   // 100%. Cualquier otra cosa → NEEDS_KONVA → el caller conserva los PNG del cliente.
-  assertServerRenderable(opts.unitTemplate, opts.slots);
+  assertServerRenderable(opts.unitTemplate, opts.slots, opts.includeText ?? true);
 
   const out: Buffer[] = [];
   // Orden por slotIndex (defensivo).

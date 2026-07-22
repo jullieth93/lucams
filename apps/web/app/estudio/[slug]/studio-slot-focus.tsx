@@ -40,6 +40,7 @@ export function StudioSlotFocus({
   cornerRadiusPx,
   sizeCm,
   allowFilters = true,
+  allowText = false,
   onClose,
 }: {
   store: StoreApi<StudioStoreState>;
@@ -49,6 +50,9 @@ export function StudioSlotFocus({
   cornerRadiusPx?: number;
   sizeCm?: string;
   allowFilters?: boolean;
+  /** Ola 3 — false oculta las capas de texto también en el editor a pantalla
+   *  completa (WYSIWYG con la grilla y con producción). Default false. */
+  allowText?: boolean;
   onClose: () => void;
 }) {
   // Selector del slot: devuelve la referencia del objeto (estable salvo que cambie su transform) →
@@ -109,6 +113,7 @@ export function StudioSlotFocus({
             finish={finish}
             cornerRadiusPx={cornerRadiusPx}
             borderColor={borderColor}
+            allowText={allowText}
             onClick={() => {}}
             onClear={() => {}}
             onPhotoTransformChange={(transform) =>

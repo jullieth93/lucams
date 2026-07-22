@@ -66,6 +66,7 @@ import {
 import { CALENDAR_PAGE } from "@/features/personalization/calendar-layout";
 import { SceneGallery, type SceneKind } from "./scene-gallery";
 import { initialFrameColorFromSchema } from "@/features/personalization/frame-palette";
+import { faceSlotLabels, facePairOfUnit } from "./lib/faces";
 
 // FOTO4 — la galería de escenas del fotoimán (nevera/mural/repisa/regalo). Las vistas 3D pesadas
 // (three.js) van diferidas DENTRO de SceneGallery, así que este import estático no infla el bundle
@@ -229,7 +230,6 @@ export function StudioEditor({
   // Etapa 1 (modo catálogo): el asistente IA queda APAGADO — ni el botón
   // "Ideas" ni el panel se renderizan; el resto del Estudio sigue intacto.
   const aiEnabled = !isCatalogMode();
-  const allowText = (product.personalizationSchema as { allowText?: boolean })?.allowText === true;
 
   // M.3.b.A2.5 — Lee `sizeCm` del producto para badge visual en cada slot.
   // Producto config viene como JSON unknown, parsePhotoProductConfig hace
@@ -238,6 +238,15 @@ export function StudioEditor({
     () => parsePhotoProductConfig(product.personalizationSchema),
     [product.personalizationSchema],
   );
+  // Ola 3 (Lucy 2026-07-22) — flags del producto, via schema (NO por slug):
+  //  - allowText: el texto editable es de la Polaroid; Fotoimanes Cuadrados y
+  //    separadores NO dibujan las capas de texto de la plantilla.
+  //  - facesPerUnit=2 (separadores): cada unidad física es una tira doblada con
+  //    2 caras de diseño → el Estudio trabaja con 2N slots (slot 2k=cara A,
+  //    2k+1=cara B) y la grilla los agrupa por unidad.
+  const allowText = productConfig.allowText === true;
+  const facesPerUnit = productConfig.facesPerUnit === 2 ? 2 : 1;
+  const slotCount = photoSlots * facesPerUnit;
   // Ola 2A — marco inicial del Estudio: la variante elegida en la PDP aún trae
   // "Estilo"/"Marco" como dato (ya no es dimensión visible) → preselecciona el
   // color equivalente de la paleta; el cliente lo cambia libre en la sidebar.
@@ -285,7 +294,7 @@ export function StudioEditor({
 
         if (designId && initialDesignCanvas) {
           // Design existente: asegurar V2 (migrar V1 si hace falta)
-          canvasData = ensureCanvasV2(initialDesignCanvas, photoSlots);
+          canvasData = ensureCanvasV2(initialDesignCanvas, slotCount);
         } else {
           // Crear draft nuevo
           const result = await createDraftDesignAction({ productId: product.id });
@@ -320,14 +329,17 @@ export function StudioEditor({
           canvasData = {
             version: 2,
             unitTemplate,
-            slotCount: photoSlots,
-            slots: Array.from({ length: photoSlots }, (_, idx) => ({
+            // Ola 3 — con facesPerUnit=2 (separadores) hay 2 slots de diseño por
+            // unidad física: slot 2k = cara A, slot 2k+1 = cara B (convención
+            // compartida con producción y con el frente 3D).
+            slotCount,
+            slots: Array.from({ length: slotCount }, (_, idx) => ({
               slotIndex: idx,
               assetId: null,
               assetUrl: null,
             })),
             gridLayout: defaultGridFor(
-              photoSlots,
+              slotCount,
               unitTemplate.stage,
               // Ola 2A — la plantilla puede fijar las columnas (tira fotobooth: gridCols=1).
               typeof (unitTemplate as { gridCols?: unknown }).gridCols === "number"
@@ -378,6 +390,7 @@ export function StudioEditor({
     product.id,
     product.slug,
     photoSlots,
+    slotCount,
     templates,
     store,
     initialBorderColor,
@@ -480,11 +493,21 @@ export function StudioEditor({
       // Pasar shape del producto para que el preview compositado respete
       // la silueta real (corazón, círculo, etc.) y no se vea un rectángulo
       // Lucy 2026-05-21 feedback: "se ve completa, no como corazón".
-      const previewUrl = await buildCompositedPreview(
-        state.canvasData,
-        slotStagesRef.current,
-        productConfig.shape,
-      );
+      // Ola 3 — separadores 2 caras: el preview de confirmación muestra las TIRAS
+      // desplegadas (cara A | cara B por unidad, con el doblez punteado), no una
+      // grilla de caras sueltas — es la pieza física que el cliente va a recibir.
+      const previewUrl =
+        facesPerUnit === 2
+          ? await buildBookmarkStripPreview(
+              state.canvasData,
+              slotStagesRef.current,
+              productConfig.cornerRadiusPx,
+            )
+          : await buildCompositedPreview(
+              state.canvasData,
+              slotStagesRef.current,
+              productConfig.shape,
+            );
       setPreviewDataUrl(previewUrl);
       setPreviewModalOpen(true);
     } catch (err) {
@@ -498,8 +521,10 @@ export function StudioEditor({
   }, [
     store,
     productConfig.shape,
+    productConfig.cornerRadiusPx,
     ensureAllStagesMounted,
     isCalendarMonth,
+    facesPerUnit,
     selectedYear,
     product.personalizationSchema,
   ]);
@@ -810,6 +835,7 @@ export function StudioEditor({
         productImageUrl={product.images?.[0]}
         productSizeCm={productConfig.sizeCm}
         productSlotCount={photoSlots}
+        slotNoun={slotNoun}
         showRealismGuides={false}
         onOpenGesturesHint={() => {
           setGesturesHintPersistent(true);
@@ -873,8 +899,11 @@ export function StudioEditor({
             finish={productConfig.finish}
             cornerRadiusPx={productConfig.cornerRadiusPx}
             showRealismGuides={showRealismGuides}
-            slotLabels={slotLabels}
+            // Ola 3 — calendario: meses; separadores 2 caras: "1A","1B",… por unidad.
+            slotLabels={isCalendarMonth ? slotLabels : faceSlotLabels(photoSlots, facesPerUnit)}
             slotNoun={slotNoun}
+            allowText={allowText}
+            facesPerUnit={facesPerUnit}
             interactiveSlots={!isTouch}
             onSlotClick={handleSlotClick}
             onSlotAdjust={(slotIndex) => {
@@ -956,7 +985,7 @@ export function StudioEditor({
           open={aiOpen}
           onClose={() => setAiOpen(false)}
           productName={product.name}
-          slotCount={photoSlots}
+          slotCount={slotCount}
           allowText={allowText}
         />
       )}
@@ -1056,7 +1085,8 @@ export function StudioEditor({
       <StudioAssetPickerModal
         isOpen={pickerSlotIndex !== null}
         slotIndex={pickerSlotIndex}
-        totalSlots={photoSlots}
+        // Ola 3 — con separadores 2 caras hay 2N slots de diseño (cara A/B por unidad).
+        totalSlots={slotCount}
         assets={modalAssets}
         designId={modalDesignId}
         predesigned={predesigned}
@@ -1084,6 +1114,7 @@ export function StudioEditor({
         cornerRadiusPx={productConfig.cornerRadiusPx}
         sizeCm={productConfig.sizeCm}
         allowFilters={!isCalendarMonth}
+        allowText={allowText}
         onClose={() => setFocusSlotIndex(null)}
       />
 
@@ -1100,12 +1131,14 @@ export function StudioEditor({
         isOpen={previewModalOpen}
         previewUrl={previewDataUrl}
         productName={product.name}
+        // Ola 3 — en separadores la unidad física es la tira (2 caras): el conteo
+        // del modal es de UNIDADES (photoSlots), no de slots de diseño (2N).
         slotCount={photoSlots}
         sizeCm={productConfig.sizeCm}
         unitPrice={unitPriceCents}
         isFinalizing={isFinalizingFlag}
         errorMessage={previewError}
-        productKind={isCalendarMonth ? "calendar" : "magnets"}
+        productKind={isCalendarMonth ? "calendar" : facesPerUnit === 2 ? "bookmarks" : "magnets"}
         calendarYear={selectedYear}
         onEdit={handleClosePreviewModal}
         onConfirm={handleConfirmFinalize}
@@ -1463,6 +1496,97 @@ async function buildCompositedPreview(
       img.onerror = () => reject(new Error("No se pudo cargar snapshot del slot"));
       img.src = slotDataUrl;
     });
+  }
+
+  return compositeCanvas.toDataURL("image/png");
+}
+
+/**
+ * Ola 3 (Lucy 2026-07-22) — Preview de confirmación para SEPARADORES 2 CARAS:
+ * una TIRA DESPLEGADA por unidad física (cara A | cara B lado a lado, 8×4.2 /
+ * 12×2 cm), apiladas en vertical sobre fondo crema. Es el espejo pequeño de lo
+ * que producción compone a 300 DPI (composeFaceStrips) — el cliente aprueba la
+ * pieza física real, no una grilla de caras sueltas. Las esquinas exteriores se
+ * redondean (troquel) y el doblez central se marca con un filete punteado.
+ */
+async function buildBookmarkStripPreview(
+  canvasData: CanvasDataV2,
+  stages: Map<number, Konva.Stage | null>,
+  cornerRadiusPx?: number,
+): Promise<string> {
+  const { unitTemplate, slots } = canvasData;
+  const units = Math.floor(slots.length / 2);
+  const faceW = 300;
+  const faceH = Math.round(faceW * (unitTemplate.stage.height / unitTemplate.stage.width));
+  const pad = 24;
+  const gap = 18;
+  const stripW = faceW * 2;
+  const canvasW = stripW + pad * 2;
+  const canvasH = pad * 2 + units * faceH + (units - 1) * gap;
+
+  const compositeCanvas = document.createElement("canvas");
+  compositeCanvas.width = canvasW;
+  compositeCanvas.height = canvasH;
+  const ctx = compositeCanvas.getContext("2d");
+  if (!ctx) throw new Error("No se pudo crear contexto canvas para preview de tiras");
+
+  ctx.fillStyle = "#FFF8F0";
+  ctx.fillRect(0, 0, canvasW, canvasH);
+
+  // Radio de esquina de la tira escalado al tamaño del preview (mismo criterio
+  // que el troquel de producción: cornerRadiusPx lógico del stage de la cara).
+  const scale = faceW / unitTemplate.stage.width;
+  const radius = Math.max(6, Math.round((cornerRadiusPx ?? 0) * scale));
+
+  for (let unit = 0; unit < units; unit++) {
+    const { faceA, faceB } = facePairOfUnit(unit);
+    const x = pad;
+    const y = pad + unit * (faceH + gap);
+    // Troquel redondeado de la tira: clipeamos A+B al mismo roundRect → la
+    // silueta impresa coincide con la de producción (WYSIWYG).
+    ctx.save();
+    ctx.beginPath();
+    ctx.roundRect(x, y, stripW, faceH, radius);
+    ctx.clip();
+    for (const [i, slotIndex] of [faceA, faceB].entries()) {
+      const stage = stages.get(slotIndex);
+      if (!stage) continue;
+      // H6 — sin indicadores de edición en el preview de confirmación.
+      const indicators = stage.find(".edit-indicator");
+      indicators.forEach((l) => l.hide());
+      let dataUrl: string;
+      try {
+        dataUrl = stage.toDataURL({ pixelRatio: 1, mimeType: "image/png" });
+      } finally {
+        indicators.forEach((l) => l.show());
+      }
+      await new Promise<void>((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+          ctx.drawImage(img, x + i * faceW, y, faceW, faceH);
+          resolve();
+        };
+        img.onerror = () => reject(new Error("No se pudo cargar snapshot de la cara"));
+        img.src = dataUrl;
+      });
+    }
+    ctx.restore();
+    // Filete del doblez (pliegue central de la tira) + borde sutil de la silueta.
+    ctx.save();
+    ctx.strokeStyle = "rgba(124, 106, 173, 0.55)"; // brand-purple/55
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.moveTo(x + faceW, y + 4);
+    ctx.lineTo(x + faceW, y + faceH - 4);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.strokeStyle = "rgba(124, 106, 173, 0.7)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.roundRect(x, y, stripW, faceH, radius);
+    ctx.stroke();
+    ctx.restore();
   }
 
   return compositeCanvas.toDataURL("image/png");

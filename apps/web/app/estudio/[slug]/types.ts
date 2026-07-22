@@ -154,6 +154,24 @@ export type AssetLayer = {
   opacity?: number;
 };
 
+/**
+ * FrameCardLayer (Ola 3, Lucy 2026-07-22) — TARJETA de color de la Polaroid Clásica:
+ * un rect redondeado a todo el stage cuyo relleno es el COLOR DEL BORDE elegido en
+ * el Estudio (canvasData.borderColor de la paleta frame-palette: blanco/negro/pasteles).
+ * `fill` es el fallback cuando el cliente no eligió color (blanco clásico).
+ * Va DEBAJO del image-placeholder y del texto (la foto y el mensaje se montan encima).
+ * Cuando la plantilla trae esta capa, el marco-stroke de Ola 2A se omite (la tarjeta
+ * ES el marco) y el texto por defecto pasa a claro si la tarjeta es oscura.
+ */
+export type FrameCardLayer = {
+  id: string;
+  type: "frame-card";
+  /** Color fallback (hex) si canvasData.borderColor es null. Default "#FFFFFF". */
+  fill?: string;
+  /** Radio de esquina en px del stage (la tarjeta física tiene esquinas suaves). */
+  cornerRadius?: number;
+};
+
 type UnknownLayer = {
   id: string;
   type: string;
@@ -166,6 +184,7 @@ export type CanvasLayer =
   | TextLayer
   | ShapeLayer
   | AssetLayer
+  | FrameCardLayer
   | UnknownLayer;
 
 export type CanvasDataV1 = {
@@ -356,4 +375,14 @@ export type PhotoProductConfig = {
    * color alrededor de la foto). Ej: ["blanco","negro","aguamarina","rosa","lavanda","amarillo"].
    */
   frameOptions?: string[];
+  /**
+   * Ola 3 — ¿el producto admite texto editable? Default false (Fotoimanes Cuadrados
+   * NO llevan texto; la Polaroid sí). Espejo del campo Zod en schemas.ts.
+   */
+  allowText?: boolean;
+  /**
+   * Ola 3 — caras de diseño por unidad física (separadores: 2 → slotCount=2N,
+   * slots 2k=cara A / 2k+1=cara B). Default 1. Espejo del campo Zod en schemas.ts.
+   */
+  facesPerUnit?: number;
 };

@@ -338,3 +338,147 @@ describe("renderProductionSlotsCanvas — texto + marco (ADR-057 Fase A1b)", () 
     expect(await alphaAt(png, 9, 9)).toBe(0);
   });
 });
+
+/** ¿Hay algún píxel que cumpla el predicado en la región? (escaneo paso 2, suficiente para texto). */
+async function hasPixel(
+  png: Buffer,
+  region: { x: number; y: number; w: number; h: number },
+  pred: (r: number, g: number, b: number, a: number) => boolean,
+): Promise<boolean> {
+  const img = await loadImage(png);
+  const c = createCanvas(img.width, img.height);
+  const ctx = c.getContext("2d");
+  ctx.drawImage(img, 0, 0);
+  const data = ctx.getImageData(region.x, region.y, region.w, region.h).data;
+  for (let i = 0; i < data.length; i += 8) {
+    if (pred(data[i]!, data[i + 1]!, data[i + 2]!, data[i + 3]!)) return true;
+  }
+  return false;
+}
+
+describe("renderProductionSlotsCanvas — Ola 3 (frame-card Polaroid Clásica + includeText)", () => {
+  // Plantilla espejo del seed "photo-pack-polaroid-clasica": tarjeta con franja,
+  // foto arriba y mensaje editable. Stage chico (300×400 = 3:4) para tests rápidos.
+  const clasicaUnit = {
+    version: 1 as const,
+    stage: { width: 300, height: 400 },
+    layers: [
+      { id: "bg", type: "background", color: "#FFFFFF" },
+      { id: "card", type: "frame-card", fill: "#FFFFFF", cornerRadius: 12 },
+      { id: "ph", type: "image-placeholder", x: 19, y: 19, width: 262, height: 262 },
+      { id: "msg", type: "text", x: 150, y: 340, text: "Escribe tu mensaje", fontSize: 24 },
+    ],
+  };
+  const slotOk = {
+    slotIndex: 0,
+    assetId: "a0",
+    photoTransform: { offsetX: 0, offsetY: 0, scale: 1 },
+  };
+  // Franja del mensaje (debajo de la foto) en px de salida (stage × 3).
+  const band = { x: 10 * 3, y: 315 * 3, w: 280 * 3, h: 50 * 3 };
+  const nearWhite = (r: number, g: number, b: number, a: number) =>
+    a > 200 && r > 235 && g > 235 && b > 235;
+
+  it("frame-card: la tarjeta toma el COLOR DEL BORDE elegido (borderColor)", async () => {
+    const bufs = await renderProductionSlotsCanvas({
+      unitTemplate: clasicaUnit,
+      slots: [slotOk],
+      shape: "rectangle",
+      loadAsset: async () => fakePhoto(600, 600),
+      borderColor: "#5DD9D1", // aguamarina de la paleta
+    });
+    expect(bufs).toHaveLength(1);
+    // Esquina inferior de la tarjeta (dentro del redondeo) → color del borde.
+    const [r, g, b, a] = await rgbaAt(bufs[0], 150 * 3, 390 * 3);
+    expect(a).toBeGreaterThan(200);
+    expect([r, g, b]).toEqual([0x5d, 0xd9, 0xd1]);
+  });
+
+  it("frame-card sin borderColor → tarjeta blanca (fallback del layer)", async () => {
+    const bufs = await renderProductionSlotsCanvas({
+      unitTemplate: clasicaUnit,
+      slots: [slotOk],
+      shape: "rectangle",
+      loadAsset: async () => fakePhoto(600, 600),
+      borderColor: null,
+    });
+    const [r, g, b, a] = await rgbaAt(bufs[0], 150 * 3, 390 * 3);
+    expect(a).toBeGreaterThan(200);
+    expect([r, g, b]).toEqual([255, 255, 255]);
+  });
+
+  it("tarjeta OSCURA → el texto por defecto sale CLARO (legible); override del cliente manda", async () => {
+    // Negro de marca: el mensaje sin override debe dibujarse blanco.
+    const dark = await renderProductionSlotsCanvas({
+      unitTemplate: clasicaUnit,
+      slots: [slotOk],
+      shape: "rectangle",
+      loadAsset: async () => fakePhoto(600, 600),
+      borderColor: "#221E25",
+    });
+    expect(await hasPixel(dark[0], band, nearWhite)).toBe(true);
+
+    // Con override de color (rosa), NO hay texto blanco: el cliente manda.
+    const overridden = await renderProductionSlotsCanvas({
+      unitTemplate: clasicaUnit,
+      slots: [{ ...slotOk, textOverrides: { msg: { fill: "#E85B9F" } } }],
+      shape: "rectangle",
+      loadAsset: async () => fakePhoto(600, 600),
+      borderColor: "#221E25",
+    });
+    expect(await hasPixel(overridden[0], band, nearWhite)).toBe(false);
+    expect(
+      await hasPixel(overridden[0], band, (r, g, b, a) => a > 200 && r > 200 && b > 120 && g < 120),
+    ).toBe(true);
+  });
+
+  it("tarjeta clara (blanco) → el texto por defecto sale oscuro (morado marca)", async () => {
+    const bufs = await renderProductionSlotsCanvas({
+      unitTemplate: clasicaUnit,
+      slots: [slotOk],
+      shape: "rectangle",
+      loadAsset: async () => fakePhoto(600, 600),
+      borderColor: "#FFFFFF",
+    });
+    expect(
+      await hasPixel(bufs[0], band, (r, g, b, a) => a > 200 && r < 110 && g < 80 && b < 130),
+    ).toBe(true);
+  });
+
+  it("includeText=false (producto sin texto, Cuadrados): la capa de texto NO se dibuja", async () => {
+    const unit = {
+      version: 1 as const,
+      stage,
+      layers: [
+        { id: "bg", type: "background", color: "#221E25" },
+        photoLayer,
+        {
+          id: "t",
+          type: "text",
+          text: "NO DEBE SALIR",
+          fontSize: 60,
+          fill: "#FFFFFF",
+          y: 800,
+          x: 360,
+        },
+      ],
+    };
+    const textZone = { x: 60 * 3, y: 770 * 3, w: 600 * 3, h: 60 * 3 };
+    const withoutText = await renderProductionSlotsCanvas({
+      unitTemplate: unit,
+      slots: [slotOk],
+      shape: "rectangle",
+      loadAsset: async () => fakePhoto(800, 800),
+      includeText: false,
+    });
+    expect(await hasPixel(withoutText[0], textZone, nearWhite)).toBe(false);
+    // Control: con includeText normal sí aparece (la fuente está disponible en tests).
+    const withText = await renderProductionSlotsCanvas({
+      unitTemplate: unit,
+      slots: [slotOk],
+      shape: "rectangle",
+      loadAsset: async () => fakePhoto(800, 800),
+    });
+    expect(await hasPixel(withText[0], textZone, nearWhite)).toBe(true);
+  });
+});

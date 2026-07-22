@@ -19,6 +19,7 @@ import type { SKRSContext2D } from "@napi-rs/canvas";
 import { RenderNeedsKonvaError, type LoadAssetBytes } from "./production-render";
 import { CALENDAR_PAGE, scalePhotoTransformToPage } from "./calendar-layout";
 import { drawCalendarPage } from "./calendar-draw";
+import { isDarkColor } from "./frame-palette";
 
 const PRODUCTION_SCALE = 3;
 const MAX_STAGE_DIM = 3000;
@@ -147,6 +148,9 @@ async function renderSlotCanvas(
   shape: string | undefined,
   loadAsset: LoadAssetBytes,
   borderColor?: string | null,
+  /** Ola 3 — false cuando el producto NO admite texto (Fotoimanes Cuadrados): las
+   *  capas de texto de la plantilla se omiten, igual que en el editor (WYSIWYG). */
+  includeText: boolean = true,
 ): Promise<Buffer> {
   if (unit.stage.width > MAX_STAGE_DIM || unit.stage.height > MAX_STAGE_DIM) {
     throw new RenderNeedsKonvaError(
@@ -158,7 +162,8 @@ async function renderSlotCanvas(
 
   // Guards conservadores: solo capas conocidas + un placeholder sin rotación. Capas raras
   // (shape/otras) → fallback al cliente, igual que A1a (no dibujar de menos silenciosamente).
-  const KNOWN = new Set(["background", "image-placeholder", "text", "asset"]);
+  // Ola 3 — "frame-card" (tarjeta de color de la Polaroid Clásica) sí se soporta acá.
+  const KNOWN = new Set(["background", "image-placeholder", "text", "asset", "frame-card"]);
   for (const l of unit.layers) {
     if (!KNOWN.has(l.type)) throw new RenderNeedsKonvaError(`capa no soportada: ${l.type}`);
     // Marcos SVG con texto horneado (ej. Polaroid Instagram, Arial) → resvg divergiría en fuentes
@@ -177,11 +182,13 @@ async function renderSlotCanvas(
     throw new RenderNeedsKonvaError("placeholder con rotación");
   }
 
-  const hasText = unit.layers.some(
-    (l) =>
-      l.type === "text" &&
-      ((typeof l.text === "string" && l.text.trim()) || slot.textOverrides?.[l.id]?.text),
-  );
+  const hasText =
+    includeText &&
+    unit.layers.some(
+      (l) =>
+        l.type === "text" &&
+        ((typeof l.text === "string" && l.text.trim()) || slot.textOverrides?.[l.id]?.text),
+    );
   if (hasText && !ensureFonts(mod)) {
     throw new RenderNeedsKonvaError("fuentes no disponibles server-side");
   }
@@ -194,9 +201,25 @@ async function renderSlotCanvas(
   ctx.scale(S, S); // trabajar en coords lógicas del stage; el canvas es ×S
 
   const useFullStage = shape === "heart" || shape === "circle";
+  // Ola 3 — la plantilla Polaroid Clásica trae una capa "frame-card": la tarjeta entera
+  // toma el color del borde elegido (borderColor) con fallback al fill de la capa. Con
+  // tarjeta oscura, el texto por defecto sale claro (el override del cliente manda).
+  const hasFrameCard = unit.layers.some((l) => l.type === "frame-card");
+  const darkCard = hasFrameCard && typeof borderColor === "string" && isDarkColor(borderColor);
 
   for (const layer of unit.layers) {
-    if (layer.type === "background") {
+    if (layer.type === "frame-card") {
+      // Tarjeta de color a todo el stage (debajo de foto y texto), esquinas suaves.
+      // El color lo manda canvasData.borderColor (paleta del Estudio); `fill` es el
+      // fallback blanco-clásico cuando el cliente no eligió color.
+      const fill = borderColor ?? (typeof layer.fill === "string" ? layer.fill : "#FFFFFF");
+      const radius = Number(layer.cornerRadius) || 0;
+      ctx.save();
+      roundRectPath(ctx, 0, 0, unit.stage.width, unit.stage.height, radius);
+      ctx.fillStyle = fill;
+      ctx.fill();
+      ctx.restore();
+    } else if (layer.type === "background") {
       const bgColor = typeof layer.color === "string" ? layer.color : "#FFFFFF";
       if (useFullStage) {
         // #1 (FOTO1) — heart/circle pintan el fondo SOLO dentro de la silueta (troquel), transparente
@@ -294,17 +317,19 @@ async function renderSlotCanvas(
       }
       ctx.restore();
     } else if (layer.type === "text") {
-      // heart/circle omiten texto (igual que el editor).
-      if (useFullStage) continue;
-      renderTextLayer(ctx, layer, unit.stage, slot.textOverrides?.[layer.id]);
+      // heart/circle omiten texto (igual que el editor). Ola 3 — también se omite
+      // cuando el producto no admite texto (includeText=false, ej. Fotoimanes Cuadrados).
+      if (useFullStage || !includeText) continue;
+      renderTextLayer(ctx, layer, unit.stage, slot.textOverrides?.[layer.id], darkCard);
     }
     // 'shape' u otras → ignoradas (raras; si aparecen, el resultado es fiel salvo esa capa).
   }
 
   // Ola 2A — MARCO de color alrededor de la foto (canvasData.borderColor): mismo dibujo que el
   // editor (Rect de stroke centrado en el borde de la ventana de foto, encima de todo). Heart/
-  // circle no llevan marco (la silueta troquelada manda).
-  if (borderColor && !useFullStage) {
+  // circle no llevan marco (la silueta troquelada manda). Ola 3 — con frame-card TAMPOCO: la
+  // tarjeta entera ya es el marco de color (dibujar el stroke encima duplicaría el borde).
+  if (borderColor && !useFullStage && !hasFrameCard) {
     const phLayer = unit.layers.find((l) => l.type === "image-placeholder");
     if (phLayer) {
       const ph = {
@@ -334,12 +359,15 @@ async function renderSlotCanvas(
   return canvas.toBuffer("image/png");
 }
 
-/** Replica renderText de studio-slot.tsx: fontSize/family/fill/weight/align + stroke/shadow. */
+/** Replica renderText de studio-slot.tsx: fontSize/family/fill/weight/align + stroke/shadow.
+ *  Ola 3 — `darkCard`: la tarjeta del borde es oscura → el texto POR DEFECTO sale claro
+ *  (el override de color del cliente siempre manda). */
 function renderTextLayer(
   ctx: SKRSContext2D,
   layer: AnyLayer,
   stage: Stage,
   override: TextOverride | undefined,
+  darkCard: boolean = false,
 ) {
   const finalText = override?.text ?? (typeof layer.text === "string" ? layer.text : "");
   if (!finalText.trim()) return;
@@ -347,7 +375,9 @@ function renderTextLayer(
   const family =
     override?.fontFamily ??
     (typeof layer.fontFamily === "string" ? layer.fontFamily : "Fredoka, Inter, sans-serif");
-  const fill = override?.fill ?? (typeof layer.fill === "string" ? layer.fill : "#3D2E5C");
+  const fill =
+    override?.fill ??
+    (darkCard ? "#FFFFFF" : typeof layer.fill === "string" ? layer.fill : "#3D2E5C");
   // Konva default fontStyle = "normal" (400) cuando el layer no lo especifica (NO 600).
   const weight =
     override?.fontWeight ?? (typeof layer.fontWeight === "string" ? layer.fontWeight : "normal");
@@ -410,6 +440,8 @@ export async function renderProductionSlotsCanvas(opts: {
   loadAsset: LoadAssetBytes;
   /** Ola 2A — color del marco alrededor de la foto (hex) o null = sin marco. */
   borderColor?: string | null;
+  /** Ola 3 — false omite las capas de texto (producto sin texto, WYSIWYG con el editor). */
+  includeText?: boolean;
 }): Promise<Buffer[]> {
   const mod = await loadCanvas(); // lazy: un binario faltante → NEEDS_KONVA (fallback), no crash.
   const out: Buffer[] = [];
@@ -423,6 +455,7 @@ export async function renderProductionSlotsCanvas(opts: {
         opts.shape,
         opts.loadAsset,
         opts.borderColor,
+        opts.includeText ?? true,
       ),
     );
   }

@@ -9,6 +9,7 @@ import {
   DEFAULT_FRAME_OPTION_IDS,
   frameColorHex,
   isValidFrameHex,
+  isDarkColor,
   initialFrameColorFromSchema,
 } from "./frame-palette";
 
@@ -58,5 +59,16 @@ describe("frame-palette (Ola 2A)", () => {
     expect(initialFrameColorFromSchema({})).toBeNull();
     expect(initialFrameColorFromSchema(null)).toBeNull();
     expect(initialFrameColorFromSchema("x")).toBeNull();
+  });
+
+  it("isDarkColor: negro/lavanda cuentan oscuros (texto claro), blanco/pasteles no", () => {
+    // Ola 3 — el mensaje de la Polaroid Clásica sale claro si la tarjeta es oscura.
+    expect(isDarkColor("#221E25")).toBe(true); // negro de marca
+    expect(isDarkColor("#7C6AAD")).toBe(true); // lavanda
+    expect(isDarkColor("#E85B9F")).toBe(false); // rosa (luminancia media-alta)
+    expect(isDarkColor("#FFFFFF")).toBe(false); // blanco
+    expect(isDarkColor("#5DD9D1")).toBe(false); // aguamarina
+    expect(isDarkColor("#FFD93D")).toBe(false); // amarillo
+    expect(isDarkColor("rojo")).toBe(false); // inválido → no oscuro
   });
 });

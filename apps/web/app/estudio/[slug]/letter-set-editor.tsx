@@ -428,6 +428,9 @@ export function LetterSetEditor({
             <p className="text-brand-muted mt-2 text-xs">
               Este tema aún no tiene dibujitos: tus fichas se imprimen con la letra de color, tal
               como las ves abajo.
+              <span className="mt-1 block font-semibold">
+                Sube las ilustraciones en /admin/fichas para activar este tema.
+              </span>
             </p>
           )}
         </div>
