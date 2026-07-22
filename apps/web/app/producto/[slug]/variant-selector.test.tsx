@@ -47,7 +47,11 @@ type TestVariant = {
   attributes: unknown;
 };
 
-function makeVariant(id: string, attributes: Record<string, unknown>, price = 100_000): TestVariant {
+function makeVariant(
+  id: string,
+  attributes: Record<string, unknown>,
+  price = 100_000,
+): TestVariant {
   return { id, name: id, sku: id.toUpperCase(), price, attributes };
 }
 
@@ -160,7 +164,9 @@ describe("VariantSelector", () => {
     ];
     render(<VariantSelector productBasePrice={100_000} variants={variants} />);
     const estilo = screen.getByRole("group", { name: "Estilo" });
-    const chips = within(estilo).getAllByRole("button").map((b) => b.textContent);
+    const chips = within(estilo)
+      .getAllByRole("button")
+      .map((b) => b.textContent);
     expect(chips).toEqual(["Blanco clásico", "Pasteles", "Instagram"]);
   });
 
@@ -277,12 +283,36 @@ describe("VariantSelector — stepper de cantidad", () => {
   // Matriz estilo set-fotoimanes-cuadrados (real 2026-07): 2 tamaños × cantidad 1..3.
   // quantity == photoSlots en todas → también cubre el dedupe (un solo grupo Cantidad).
   const stepperVariants: TestVariant[] = [
-    makeVariant("v-a1", { shape: "rectangle", sizeCm: "6.5×6.5", quantity: 1, photoSlots: 1 }, 1_600_000),
-    makeVariant("v-a2", { shape: "rectangle", sizeCm: "6.5×6.5", quantity: 2, photoSlots: 2 }, 1_760_000),
-    makeVariant("v-a3", { shape: "rectangle", sizeCm: "6.5×6.5", quantity: 3, photoSlots: 3 }, 1_920_000),
-    makeVariant("v-b1", { shape: "rectangle", sizeCm: "7.5×10", quantity: 1, photoSlots: 1 }, 1_930_000),
-    makeVariant("v-b2", { shape: "rectangle", sizeCm: "7.5×10", quantity: 2, photoSlots: 2 }, 2_130_000),
-    makeVariant("v-b3", { shape: "rectangle", sizeCm: "7.5×10", quantity: 3, photoSlots: 3 }, 2_320_000),
+    makeVariant(
+      "v-a1",
+      { shape: "rectangle", sizeCm: "6.5×6.5", quantity: 1, photoSlots: 1 },
+      1_600_000,
+    ),
+    makeVariant(
+      "v-a2",
+      { shape: "rectangle", sizeCm: "6.5×6.5", quantity: 2, photoSlots: 2 },
+      1_760_000,
+    ),
+    makeVariant(
+      "v-a3",
+      { shape: "rectangle", sizeCm: "6.5×6.5", quantity: 3, photoSlots: 3 },
+      1_920_000,
+    ),
+    makeVariant(
+      "v-b1",
+      { shape: "rectangle", sizeCm: "7.5×10", quantity: 1, photoSlots: 1 },
+      1_930_000,
+    ),
+    makeVariant(
+      "v-b2",
+      { shape: "rectangle", sizeCm: "7.5×10", quantity: 2, photoSlots: 2 },
+      2_130_000,
+    ),
+    makeVariant(
+      "v-b3",
+      { shape: "rectangle", sizeCm: "7.5×10", quantity: 3, photoSlots: 3 },
+      2_320_000,
+    ),
   ];
 
   function renderWithProvider(variants: TestVariant[], initialId: string, basePrice = 100_000) {
@@ -371,5 +401,59 @@ describe("VariantSelector — stepper de cantidad", () => {
     expect(within(cantidad).getByText("6 unidades")).toBeInTheDocument();
     expect(within(cantidad).getByText("20 unidades")).toBeInTheDocument();
     expect(within(cantidad).queryByLabelText("Aumentar cantidad")).not.toBeInTheDocument();
+  });
+
+  it("usa stepper también con UNA sola dimensión visible (polaroid 7.5×10 qty 1..10, Lucy 2026-07-22)", () => {
+    // Datos reales (2026-07-22): pausados los sets, la polaroid queda con tamaño
+    // único 7.5×10 y cantidad libre 1..10 → solo la dimensión Cantidad es visible
+    // (sizeCm tiene 1 solo valor → no es dimensión). Debe salir el stepper, no la
+    // lista vertical de 10 filas.
+    const variants: TestVariant[] = [];
+    for (let qty = 1; qty <= 10; qty++) {
+      variants.push(
+        makeVariant(
+          `v-pol-${qty}`,
+          {
+            shape: "rectangle",
+            sizeCm: "7.5×10",
+            quantity: qty,
+            photoSlots: qty,
+            aspectRatio: "400:580",
+          },
+          1_830_000 + (qty - 1) * 183_300,
+        ),
+      );
+    }
+    renderWithProvider(variants, "v-pol-1");
+    // Sin lista vertical ni chips de cantidad: solo el stepper +/−.
+    expect(screen.queryByText("Elige tu opción")).not.toBeInTheDocument();
+    const cantidad = screen.getByRole("group", { name: "Cantidad" });
+    expect(within(cantidad).getAllByRole("button")).toHaveLength(2);
+    expect(within(cantidad).getByText("1 unidad")).toBeInTheDocument();
+    expect(within(cantidad).getByLabelText("Disminuir cantidad")).toBeDisabled();
+
+    // Recorrer hasta el tope: 9 clicks de "+" → 10 unidades y "+" deshabilitado.
+    for (let i = 0; i < 9; i++) {
+      fireEvent.click(within(cantidad).getByLabelText("Aumentar cantidad"));
+    }
+    expect(within(cantidad).getByText("10 unidades")).toBeInTheDocument();
+    expect(within(cantidad).getByLabelText("Aumentar cantidad")).toBeDisabled();
+    // Deep-link a la variante qty=10.
+    expect(replace).toHaveBeenLastCalledWith(
+      expect.stringContaining("variant=v-pol-10"),
+      expect.anything(),
+    );
+    // Y el card de Precio refleja el total de la línea (modo multi-dim).
+    expect(screen.getByText("Precio")).toBeInTheDocument();
+  });
+
+  it("mantiene la lista vertical cuando la única dimensión NO es de cantidad (retro-compat)", () => {
+    const variants = [
+      makeVariant("v-s1", { sizeCm: "6×6" }, 1_000_000),
+      makeVariant("v-s2", { sizeCm: "5×14" }, 1_500_000),
+    ];
+    render(<VariantSelector productBasePrice={100_000} variants={variants} />);
+    expect(screen.getByText("Elige tu opción")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Aumentar cantidad")).not.toBeInTheDocument();
   });
 });

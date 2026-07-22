@@ -56,10 +56,24 @@ async function main() {
   // exige "Cat …" — los tests usan `prod<ts>-ZZZ-cat`, `Beta cat<ts>`, etc.).
   const candidates = await prisma.category.findMany({
     where: { deletedAt: null },
-    select: { id: true, name: true, slug: true, _count: { select: { products: true } } },
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      parentId: true,
+      _count: { select: { products: true } },
+    },
     orderBy: { createdAt: "asc" },
   });
-  const junk = candidates.filter((c) => slugLooksLikeTest(c.slug));
+  const junkAll = candidates.filter((c) => slugLooksLikeTest(c.slug));
+  // Orden de borrado: HIJAS primero, MADRES al final (FK Category_parentId_fkey —
+  // una madre con hijas fixture no se puede borrar primero). P2003 en la corrida
+  // 2026-07-22 (run prod1784739… con árbol parent/child de tests).
+  const junkIds = new Set(junkAll.map((c) => c.id));
+  const junk = [
+    ...junkAll.filter((c) => c.parentId && junkIds.has(c.parentId)), // hijas de junk
+    ...junkAll.filter((c) => !(c.parentId && junkIds.has(c.parentId))), // el resto (madres y sueltas)
+  ];
 
   console.log(`Categorías vivas: ${candidates.length} · confirmadas como test: ${junk.length}`);
   if (junk.length === 0) {

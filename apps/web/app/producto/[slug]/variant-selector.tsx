@@ -19,7 +19,10 @@
  *   - Con un solo source, no hay bucle de sync. Local state = lo
  *     que el cliente ve. Server state catches up async.
  *
- * Modo single-dim: lista vertical con price por variant.
+ * Modo single-dim: lista vertical con price por variant. EXCEPCIÓN (Lucy
+ * 2026-07-22, polaroid 7.5×10 qty 1–10): si la ÚNICA dimensión visible es la
+ * cantidad 1..N contigua, se usa el stepper +/− del modo multi-dim en vez de
+ * la lista vertical de N filas.
  * Modo multi-dim: chips por dimensión + card de Precio prominente.
  *   - La dimensión Cantidad (quantity/photoSlots) se muestra como stepper +/−
  *     con "$X c/u" + total de la línea cuando sus valores son 1..N contiguos
@@ -315,8 +318,19 @@ export function VariantSelector({
 
   if (variants.length < 2) return null;
 
+  // Polaroid qty 1–10 (Lucy 2026-07-22): con UNA sola dimensión visible que es la
+  // cantidad 1..N contigua, ir directo al modo multi-dim (que pinta el stepper +/−)
+  // en vez de la lista vertical. Sin esto, pausar los sets viejos dejaba la PDP con
+  // una lista de 10 filas y sin stepper.
+  const firstDim = dimensions[0];
+  const singleQuantityStepper =
+    dimensions.length === 1 &&
+    firstDim !== undefined &&
+    QUANTITY_DIM_KEYS.has(firstDim.key) &&
+    isContiguousFromOne(firstDim.values);
+
   // ── Modo single-dimension: lista vertical con precio por variant ──
-  if (dimensions.length <= 1) {
+  if (dimensions.length <= 1 && !singleQuantityStepper) {
     return (
       <div className="mb-4">
         <p className="text-brand-purple-dark/70 mb-2 text-xs font-bold tracking-wider uppercase">

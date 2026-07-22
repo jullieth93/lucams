@@ -121,7 +121,7 @@ function asset({ id, src, x = 0, y = 0, width, height, rotation = 0, opacity = 1
   };
 }
 
-// ──────────── Plantillas activas (M.3.b.CAT.11, 2026-05-14) ────────────
+// ──────────── Plantillas activas (M.3.b.CAT.11, 2026-05-14; Ola 3, 2026-07-22) ────────────
 //
 // Estrategia aprobada con Lucy (sesión 2026-05-14):
 //   - Borrar las 11 plantillas mediocres pre-existentes (todas excepto la que
@@ -135,6 +135,14 @@ function asset({ id, src, x = 0, y = 0, width, height, rotation = 0, opacity = 1
 //     simplicidad sobre decoración. Cliente sube foto y/o agrega texto.
 //     No es plantilla "transitoria" sino una opción legítima del catálogo
 //     (decisión Lucy 2026-05-15: "lo básico no quiere decir malo").
+//
+// Ola 3 (Lucy 2026-07-22):
+//   - "Polaroid Clásica" (tarjeta con franja gruesa, color de borde elegible +
+//     mensaje editable) — 2 plantillas para la Polaroid, ambas en stage 450×600
+//     (3:4, formato físico 7.5×10; el selector del Estudio las ofrece juntas).
+//   - 2 plantillas de CARA para Separadores de Libros (cuadrado/rectangular),
+//     una por forma — el Estudio crea 2 slots por unidad (2 caras) y producción
+//     compone la tira desplegada.
 //
 // Las plantillas premium nuevas se irán agregando una a una en sesiones
 // futuras, siguiendo la matriz "Estrategia de plantilla por tipo" de ADR-037.
@@ -156,6 +164,13 @@ if (!polaroidProduct) {
 // producto aún no existe (DB fresca), su plantilla se omite sin romper el seed (idempotente).
 const tirasProduct = await prisma.product.findUnique({
   where: { slug: "tiras-magneticas-fotos" },
+  select: { id: true },
+});
+
+// Ola 3 — Separadores de Libros (2 caras por unidad): las plantillas de CARA (una por forma)
+// se asignan a este producto. Si aún no existe, se omiten sin romper el seed.
+const separadoresProduct = await prisma.product.findUnique({
+  where: { slug: "separadores-libros" },
   select: { id: true },
 });
 
@@ -193,9 +208,53 @@ function blankCanvas({ stageW, stageH, photoLabel = "Tu foto", includeText = fal
 }
 
 const templatesData = [
-  // ════════════════════ Plantilla premium #1 — Fotoimanes Polaroid (ig_post.svg) ════════════════════
+  // ════════════════════ Polaroid Clásica (Ola 3, Lucy 2026-07-22) ════════════════════
   //
-  // Aspect 400×580 (relación ~7:10) — encaja con variants Polaroid 7×9 cm, 6×8 cm.
+  // La polaroid de toda la vida: tarjeta con el borde GRUESO abajo. El COLOR del
+  // borde lo escoge el cliente en el Estudio (blanco/negro/pasteles — paleta
+  // frame-palette via canvasData.borderColor → capa "frame-card") y el mensaje de
+  // la franja es texto EDITABLE ("Escribe tu mensaje"). Stage 450×600 = 3:4, el
+  // formato físico 7.5×10 cm (igual que la Instagram → el filtro de aspect las
+  // muestra a las dos y el selector del Estudio ofrece ambas). Orden 1: es el
+  // look por defecto del producto Polaroid.
+  {
+    slug: "photo-pack-polaroid-clasica",
+    productId: polaroidProduct.id, // solo aparece en Fotoimanes Polaroid
+    kind: "PHOTO_PACK",
+    name: "Polaroid Clásica",
+    order: 1,
+    previewUrl: "/templates/polaroid_clasica.svg",
+    canvasData: {
+      version: 1,
+      stage: stage(450, 600),
+      layers: [
+        background("#FFFFFF"),
+        // Tarjeta de color a todo el stage (el cliente elige el color en el Estudio;
+        // blanco por defecto). Esquinas suaves de la tarjeta física.
+        { id: "card", type: "frame-card", fill: "#FFFFFF", cornerRadius: 18 },
+        // Foto cuadrada arriba; abajo queda la franja gruesa (~30% de la tarjeta)
+        // para el mensaje — la silueta clásica de la polaroid.
+        photoSlot({ id: "p1", x: 28, y: 28, width: 394, height: 394, label: "Tu foto" }),
+        text({
+          id: "message",
+          x: 225,
+          y: 512,
+          text: "Escribe tu mensaje",
+          fontFamily: "Fredoka",
+          fontSize: 34,
+          fill: BRAND.purpleDark,
+          editable: true,
+        }),
+      ],
+    },
+  },
+
+  // ════════════════════ Plantilla premium #2 — Fotoimanes Polaroid (ig_post.svg) ════════════════════
+  //
+  // Ola 3 — stage RE-LAYOUT 450×600 (3:4): el formato físico de la Polaroid es
+  // 7.5×10 cm; antes 400×580 y el filtro de aspect la dejaba FUERA del Estudio
+  // cuando la variante declaraba otro aspect (bug "no deja escribir el texto":
+  // sin plantilla visible no había capas de texto que editar).
   // Asset SVG con marco Instagram: avatar, username, iconos like/comment/share,
   // likes count, caption + hashtags. 4 zonas de texto editable.
   {
@@ -203,33 +262,34 @@ const templatesData = [
     productId: polaroidProduct.id, // solo aparece en Fotoimanes Polaroid
     kind: "PHOTO_PACK",
     name: "Polaroid Instagram",
-    order: 1,
-    previewUrl: "/templates/ig_post.svg",
+    order: 2,
+    previewUrl: "/templates/ig_post_3x4.svg",
     canvasData: {
       version: 1,
-      stage: stage(400, 580),
+      stage: stage(450, 600),
       layers: [
         background("#FFFFFF"),
-        // Ventana de foto ALINEADA con la ventana transparente del marco ig_post.svg (x20 y80
-        // 360×360). Antes p1 estaba en y50 h380 y no coincidía con el marco (auditoría v3 · B4).
-        photoSlot({ id: "p1", x: 20, y: 80, width: 360, height: 360, label: "Tu foto" }),
+        // Ventana de foto ALINEADA con la ventana transparente del marco ig_post_3x4.svg
+        // (x25 y88 400×400, ver comentario del SVG). El asset 400×580 original
+        // (ig_post.svg) queda solo para drafts viejos embebidos con ese stage.
+        photoSlot({ id: "p1", x: 25, y: 88, width: 400, height: 400, label: "Tu foto" }),
         asset({
           id: "frame",
-          src: "/templates/ig_post.svg",
+          src: "/templates/ig_post_3x4.svg",
           x: 0,
           y: 0,
-          width: 400,
-          height: 580,
+          width: 450,
+          height: 600,
         }),
         // 4 textos EDITABLES (Konva) — el marco SVG ya NO los hornea (evita doble-texto). Ubicados
         // en el chrome del marco: usuario en la cabecera, likes/título/hashtags bajo la foto.
         text({
           id: "user_name",
-          x: 75,
-          y: 34,
+          x: 80,
+          y: 42,
           text: "@tu_usuario",
           fontFamily: "Inter",
-          fontSize: 19,
+          fontSize: 21,
           fill: "#262626",
           fontWeight: "bold",
           align: "left",
@@ -237,8 +297,8 @@ const templatesData = [
         }),
         text({
           id: "likes_count",
-          x: 25,
-          y: 484,
+          x: 28,
+          y: 544,
           text: "362 me gusta",
           fontFamily: "Inter",
           fontSize: 17,
@@ -249,8 +309,8 @@ const templatesData = [
         }),
         text({
           id: "caption",
-          x: 22,
-          y: 510,
+          x: 25,
+          y: 568,
           text: "Tu título acá",
           fontFamily: "Inter",
           fontSize: 19,
@@ -261,11 +321,11 @@ const templatesData = [
         }),
         text({
           id: "hashtags",
-          x: 22,
-          y: 540,
+          x: 25,
+          y: 588,
           text: "#mirecuerdo #lucamsshop",
           fontFamily: "Inter",
-          fontSize: 15,
+          fontSize: 13,
           fill: "#00376B",
           align: "left",
           editable: true,
@@ -273,6 +333,53 @@ const templatesData = [
       ],
     },
   },
+
+  // ════════════════════ Separadores 2 caras (Ola 3, Lucy 2026-07-22) ════════════════════
+  //
+  // El separador físico es una TIRA doblada a la mitad: cada unidad tiene 2 caras con
+  // imagen propia. La plantilla define UNA CARA (el Estudio crea 2 slots por unidad,
+  // facesPerUnit=2 en el schema del producto, y producción compone la tira desplegada).
+  // Una plantilla por forma, alineada al aspect de la cara física:
+  //   - cuadrado    4×4.2 cm por cara (tira 8×4.2)  → stage 400×420
+  //   - rectangular 6×2 cm por cara  (tira 12×2)   → stage 600×200
+  // Foto a sangre (la cara se imprime entera); las esquinas REDONDAS del troquel las
+  // da el cornerRadiusPx del producto (canvas + tira de producción), no la plantilla.
+  ...(separadoresProduct
+    ? [
+        {
+          slug: "separador-cuadrado-cara",
+          productId: separadoresProduct.id,
+          kind: "PHOTO_PACK",
+          name: "Separador cuadrado (cara)",
+          order: 1,
+          previewUrl: "/templates/personalizacion-libre.svg",
+          canvasData: {
+            version: 1,
+            stage: stage(400, 420),
+            layers: [
+              background("#FFFFFF"),
+              photoSlot({ id: "p1", x: 0, y: 0, width: 400, height: 420, label: "Foto de la cara" }),
+            ],
+          },
+        },
+        {
+          slug: "separador-rectangular-cara",
+          productId: separadoresProduct.id,
+          kind: "PHOTO_PACK",
+          name: "Separador rectangular (cara)",
+          order: 2,
+          previewUrl: "/templates/personalizacion-libre.svg",
+          canvasData: {
+            version: 1,
+            stage: stage(600, 200),
+            layers: [
+              background("#FFFFFF"),
+              photoSlot({ id: "p1", x: 0, y: 0, width: 600, height: 200, label: "Foto de la cara" }),
+            ],
+          },
+        },
+      ]
+    : []),
 
   // ════════════════════ Plantillas globales "Personalización Libre" ════════════════════
   //
