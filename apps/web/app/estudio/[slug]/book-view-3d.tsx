@@ -6,18 +6,28 @@
  * una nevera sería WYSIWYG incorrecto; su hogar es un libro. Escena de rincón de lectura (madera +
  * papel), navegable/rotable.
  *
+ * Pase de realismo 2026-07-22:
+ *  - Bloque de páginas con textura PROCEDURAL de cantos de hoja (líneas finas con jitter), ya no
+ *    un box liso.
+ *  - Marcadores con GROSOR de cartulina (MagnetMesh, 0.025 + bisel) y DORSO sin imprimir (al
+ *    orbitar ya no se ve la foto espejada ni un plano infinitamente delgado).
+ *  - Sin Floating: el libro descansa sobre la superficie del backdrop (auto-rotación de CÁMARA
+ *    para vida, respetando prefers-reduced-motion; la sombra de contacto se hornea una vez).
+ *
  * Restricciones (idénticas a fridge/calendar 3D):
- *  - CSP estricta: CERO assets externos. Materiales con luces procedurales, sin env-map.
+ *  - CSP estricta: CERO assets externos. Materiales con luces procedurales.
  *  - Client-only (WebGL) → el caller lo importa con dynamic ssr:false.
  */
 
-import { Suspense, useMemo, useRef } from "react";
-import { Canvas, useFrame } from "@react-three/fiber";
+import { Suspense, useMemo } from "react";
+import { Canvas } from "@react-three/fiber";
 import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
-import { OrbitControls, RoundedBox, ContactShadows, useTexture, Center } from "@react-three/drei";
+import { useIsTouch } from "./use-is-touch";
+import { OrbitControls, RoundedBox, ContactShadows, Center } from "@react-three/drei";
 import { FitCamera } from "./fit-camera";
 import { StudioEnvironment, StudioBackdrop } from "./studio-3d-environment";
-import * as THREE from "three";
+import { MagnetMesh } from "./magnet-3d";
+import { getPageEdgesTexture } from "./lib/procedural-textures";
 import type { Magnet3D } from "./fridge-3d-view";
 
 // Libro (footprint fijo, no depende de la cantidad de marcadores).
@@ -25,17 +35,16 @@ const BOOK_W = 6;
 const BOOK_H = 8; // alto de la página (el libro está "de pie", visto en perspectiva)
 const BOOK_THICK = 1.1;
 const COVER_COLOR = "#8B5E3C"; // tapa de cuero/madera cálida
-const PAGE_COLOR = "#FBF7EE"; // papel crema
 
-/** Un marcador: plano tall texturizado, asomando por el borde superior del libro. */
+/** Un marcador con cuerpo de cartulina, asomando por el borde superior del libro. */
 function Bookmark({
-  tex,
+  m,
   width,
   height,
   x,
   tilt,
 }: {
-  tex: THREE.Texture;
+  m: Magnet3D;
   width: number;
   height: number;
   x: number;
@@ -46,19 +55,16 @@ function Bookmark({
   const centerY = BOOK_H / 2 - height * insideFrac + height / 2;
   return (
     <group position={[x, centerY, BOOK_THICK / 2 + 0.02]} rotation={[0.06, 0, tilt]}>
-      <mesh castShadow>
-        <planeGeometry args={[width, height]} />
-        <meshStandardMaterial
-          map={tex}
-          map-colorSpace={THREE.SRGBColorSpace}
-          map-anisotropy={8}
-          transparent
-          alphaTest={0.5}
-          roughness={0.6}
-          metalness={0}
-          side={THREE.DoubleSide}
-        />
-      </mesh>
+      <MagnetMesh
+        dataUrl={m.dataUrl}
+        width={width}
+        height={height}
+        shape={m.shape}
+        depth={0.025}
+        edgeColor="#F1EBDD"
+        backColor="#F1EBDD"
+        position={[0, 0, 0.03]}
+      />
     </group>
   );
 }
@@ -74,12 +80,17 @@ function Book() {
         castShadow
         receiveShadow
       >
-        <meshStandardMaterial color={COVER_COLOR} roughness={0.7} metalness={0.05} />
+        <meshStandardMaterial
+          color={COVER_COLOR}
+          roughness={0.7}
+          metalness={0.05}
+          envMapIntensity={0.8}
+        />
       </RoundedBox>
-      {/* Bloque de páginas (un pelo más chico, crema), apenas proud sobre la tapa */}
+      {/* Bloque de páginas (un pelo más chico): cantos de hoja procedurales, no un liso */}
       <mesh position={[0, 0, BOOK_THICK / 2 - 0.02]} castShadow>
         <boxGeometry args={[BOOK_W - 0.5, BOOK_H - 0.4, 0.1]} />
-        <meshStandardMaterial color={PAGE_COLOR} roughness={0.9} metalness={0} />
+        <meshStandardMaterial map={getPageEdgesTexture()} roughness={0.9} metalness={0} />
       </mesh>
       {/* Línea del centro (lomo/pliegue) */}
       <mesh position={[0, 0, BOOK_THICK / 2 + 0.04]}>
@@ -91,12 +102,9 @@ function Book() {
 }
 
 function Bookmarks({ items }: { items: Magnet3D[] }) {
-  const textures = useTexture(items.map((m) => m.dataUrl));
-  const list = useMemo(() => (Array.isArray(textures) ? textures : [textures]), [textures]);
-
-  return (
-    <>
-      {items.map((m, i) => {
+  const layout = useMemo(
+    () =>
+      items.map((m, i) => {
         const aspect = m.hRatio / m.wRatio; // tall (~2.8 para 500×1400)
         const height = BOOK_H * 0.85;
         const width = height / aspect;
@@ -105,31 +113,23 @@ function Bookmarks({ items }: { items: Magnet3D[] }) {
         const spread = BOOK_W * 0.5;
         const x = n === 1 ? 0 : (i / (n - 1) - 0.5) * spread;
         const tilt = n === 1 ? 0 : (i / (n - 1) - 0.5) * 0.18;
-        return <Bookmark key={i} tex={list[i]!} width={width} height={height} x={x} tilt={tilt} />;
-      })}
+        return { m, width, height, x, tilt, i };
+      }),
+    [items],
+  );
+
+  return (
+    <>
+      {layout.map(({ m, width, height, x, tilt, i }) => (
+        <Bookmark key={i} m={m} width={width} height={height} x={x} tilt={tilt} />
+      ))}
     </>
   );
 }
 
-function Floating({ children }: { children: React.ReactNode }) {
-  const g = useRef<THREE.Group>(null);
-  const reduced = usePrefersReducedMotion();
-  useFrame((state) => {
-    if (!g.current) return;
-    // #16 — respetar prefers-reduced-motion: dejar el grupo estático (cubre el toggle en vivo).
-    if (reduced) {
-      g.current.rotation.y = 0;
-      g.current.position.y = 0;
-      return;
-    }
-    const t = state.clock.elapsedTime;
-    g.current.rotation.y = Math.sin(t * 0.45) * 0.12;
-    g.current.position.y = Math.sin(t * 0.9) * 0.05;
-  });
-  return <group ref={g}>{children}</group>;
-}
-
 function Scene({ bookmarks }: { bookmarks: Magnet3D[] }) {
+  // #16 — no autorrotar si el usuario pide reducir movimiento.
+  const reduced = usePrefersReducedMotion();
   return (
     <>
       {/* FB5 — env-map procedural (reflejos en tapa/marcadores) + backdrop de estudio (contexto). */}
@@ -146,16 +146,16 @@ function Scene({ bookmarks }: { bookmarks: Magnet3D[] }) {
       <directionalLight position={[-5, 3, 4]} intensity={0.3} />
 
       <Center>
-        <Floating>
-          {/* El libro reclinado hacia atrás, como sobre una mesa vista en perspectiva. */}
-          <group rotation={[-0.5, 0, 0]}>
-            <Book />
-            <Bookmarks items={bookmarks} />
-          </group>
-        </Floating>
+        {/* El libro reclinado hacia atrás, como sobre una mesa vista en perspectiva. */}
+        <group rotation={[-0.5, 0, 0]}>
+          <Book />
+          <Bookmarks items={bookmarks} />
+        </group>
       </Center>
 
+      {/* Escena estática (el autoRotate mueve la CÁMARA) → sombra horneada 1 vez. */}
       <ContactShadows
+        frames={1}
         position={[0, -BOOK_H / 2 - 0.3, 0]}
         opacity={0.4}
         blur={2.6}
@@ -167,6 +167,8 @@ function Scene({ bookmarks }: { bookmarks: Magnet3D[] }) {
       <OrbitControls
         makeDefault
         enablePan={false}
+        autoRotate={!reduced}
+        autoRotateSpeed={0.6}
         minPolarAngle={Math.PI / 4}
         maxPolarAngle={Math.PI / 1.9}
         minDistance={8}
@@ -178,6 +180,7 @@ function Scene({ bookmarks }: { bookmarks: Magnet3D[] }) {
 }
 
 export default function BookView3D({ bookmarks }: { bookmarks: Magnet3D[] }) {
+  const isTouch = useIsTouch();
   if (bookmarks.length === 0) {
     return (
       <div className="text-brand-muted flex h-full items-center justify-center p-8 text-center text-sm">
@@ -188,7 +191,7 @@ export default function BookView3D({ bookmarks }: { bookmarks: Magnet3D[] }) {
   return (
     <Canvas
       shadows
-      dpr={[1, 2]}
+      dpr={isTouch ? [1, 1.5] : [1, 2]}
       camera={{ position: [0, 1, 15], fov: 42 }}
       gl={{ preserveDrawingBuffer: false, antialias: true }}
       style={{ width: "100%", height: "100%" }}

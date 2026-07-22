@@ -17,6 +17,8 @@
  *    las 4 esquinas.
  *  - Los imanes son PEQUEÑOS y se agrupan en la parte alta de la puerta del refrigerador (como
  *    imanes de verdad). La nevera es de tamaño fijo (no crece con la cantidad de imanes).
+ *  - 2026-07-22: los imanes ahora tienen CUERPO (MagnetMesh extruido desde su silueta, canto
+ *    blanco del material base + brillo PET), ya no son planos sin grosor.
  *
  * Restricciones respetadas:
  *  - CSP estricta: CERO assets externos (nada de Environment/HDR/GLTF/fuentes de CDN de drei). El
@@ -27,11 +29,12 @@
 
 import { Suspense, useMemo } from "react";
 import { Canvas } from "@react-three/fiber";
-import { OrbitControls, RoundedBox, ContactShadows, useTexture, Center } from "@react-three/drei";
+import { OrbitControls, RoundedBox, ContactShadows, Center } from "@react-three/drei";
 import { FitCamera } from "./fit-camera";
 import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
+import { useIsTouch } from "./use-is-touch";
 import { StudioEnvironment, StudioBackdrop } from "./studio-3d-environment";
-import * as THREE from "three";
+import { MagnetMesh, type MagnetShape } from "./magnet-3d";
 
 export type Magnet3D = {
   /** Snapshot PNG (dataURL) del imán, con transparencia fuera de la silueta. */
@@ -40,6 +43,8 @@ export type Magnet3D = {
   wRatio: number;
   /** Alto físico relativo (unitTemplate.stage.height). */
   hRatio: number;
+  /** Silueta física (la misma del recorte) → MagnetMesh extruye el cuerpo con esta forma. */
+  shape?: MagnetShape;
 };
 
 type FridgeView3DProps = {
@@ -73,7 +78,7 @@ const DOOR_FACE_Z = DOOR_Z + DOOR_T / 2; // cara frontal de la puerta
 const MAGNET_REGION_W = DOOR_W * 0.46;
 const MAGNET_REGION_H = FRIDGE_DOOR_H * 0.28;
 const MAGNET_REGION_CY = FRIDGE_CY + FRIDGE_DOOR_H * 0.22;
-const MAGNET_Z = DOOR_FACE_Z + 0.06; // claramente sobre el panel biselado
+const MAGNET_Z = DOOR_FACE_Z + 0.04; // centro del cuerpo extruido (canto visible sobre el panel)
 
 // Materiales (gris satinado de electrodoméstico; metalness baja para verse bien sin env-map).
 const BODY_COLOR = "#9297A0";
@@ -83,36 +88,19 @@ const SEAM_COLOR = "#34373D";
 const HANDLE_COLOR = "#C9CDD4";
 const FOOT_COLOR = "#212227";
 
-/** Un imán: plano texturizado con alphaTest para bordes nítidos según la silueta. */
+/** Un imán con CUERPO: extruido desde su silueta (canto blanco del material + brillo PET). */
 function Magnet({
-  dataUrl,
+  m,
   width,
   height,
   position,
 }: {
-  dataUrl: string;
+  m: Magnet3D;
   width: number;
   height: number;
   position: [number, number, number];
 }) {
-  const texture = useTexture(dataUrl);
-  return (
-    <mesh position={position} castShadow>
-      <planeGeometry args={[width, height]} />
-      {/* map-colorSpace / map-anisotropy: forma declarativa de R3F para configurar la textura
-          sin mutar el valor del hook (colores correctos + nitidez en ángulo). */}
-      <meshStandardMaterial
-        map={texture}
-        map-colorSpace={THREE.SRGBColorSpace}
-        map-anisotropy={8}
-        transparent
-        alphaTest={0.5}
-        roughness={0.5}
-        metalness={0}
-        side={THREE.FrontSide}
-      />
-    </mesh>
-  );
+  return <MagnetMesh dataUrl={m.dataUrl} width={width} height={height} shape={m.shape} position={position} />;
 }
 
 /** Manija vertical sobre el borde izquierdo: canal oscuro embutido + grip fino satinado. */
@@ -264,7 +252,7 @@ function Magnets({ magnets, cols }: FridgeView3DProps) {
   return (
     <>
       {items.map(({ m, w, h, x, y }, i) => (
-        <Magnet key={i} dataUrl={m.dataUrl} width={w} height={h} position={[x, y, MAGNET_Z]} />
+        <Magnet key={i} m={m} width={w} height={h} position={[x, y, MAGNET_Z]} />
       ))}
     </>
   );
@@ -297,7 +285,9 @@ function Scene({ magnets, cols }: FridgeView3DProps) {
         </group>
       </Center>
 
+      {/* Escena estática (el autoRotate mueve la CÁMARA, no la nevera) → sombra horneada 1 vez. */}
       <ContactShadows
+        frames={1}
         position={[0, -FRIDGE_H / 2 - 0.34, 0]}
         opacity={0.5}
         blur={2.8}
@@ -322,6 +312,7 @@ function Scene({ magnets, cols }: FridgeView3DProps) {
 }
 
 export default function FridgeView3D({ magnets, cols }: FridgeView3DProps) {
+  const isTouch = useIsTouch();
   if (magnets.length === 0) {
     return (
       <div className="text-brand-muted flex h-full items-center justify-center p-8 text-center text-sm">
@@ -332,7 +323,7 @@ export default function FridgeView3D({ magnets, cols }: FridgeView3DProps) {
   return (
     <Canvas
       shadows
-      dpr={[1, 2]}
+      dpr={isTouch ? [1, 1.5] : [1, 2]}
       camera={{ position: [0, 0.4, 14.5], fov: 40 }}
       gl={{ preserveDrawingBuffer: false, antialias: true }}
       style={{ width: "100%", height: "100%" }}

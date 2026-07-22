@@ -3,7 +3,8 @@
 /*
  * Galería de preview de las escenas 3D (dev-only) — herramienta de iteración para el pase de
  * realismo (feedback Lucy FB5). Genera imanes de muestra (dataURL en canvas, sin depender del
- * Estudio) y monta las 3 escenas 3D para poder capturarlas con Chromium y comparar antes/después.
+ * Estudio) y monta las 5 escenas 3D para poder capturarlas con Chromium y comparar antes/después.
+ * 2026-07-22: se agregaron Polaroid (escena nueva) y Calendario (con páginas sintéticas).
  */
 
 import { useEffect, useState } from "react";
@@ -17,6 +18,12 @@ const RoomBoardView3D = nextDynamic(() => import("../../estudio/[slug]/room-boar
   ssr: false,
 });
 const BookView3D = nextDynamic(() => import("../../estudio/[slug]/book-view-3d"), { ssr: false });
+const PolaroidView3D = nextDynamic(() => import("../../estudio/[slug]/polaroid-3d-view"), {
+  ssr: false,
+});
+const CalendarView3D = nextDynamic(() => import("../../estudio/[slug]/calendar-view-3d"), {
+  ssr: false,
+});
 
 /** Dibuja un imán-foto de muestra (rounded rect con gradiente + marco blanco) en un canvas transparente. */
 function photoMagnet(seed: number, w = 360, h = 360): Magnet3D {
@@ -88,7 +95,46 @@ function roundRect(
   ctx.closePath();
 }
 
-type Samples = { magnets: Magnet3D[]; letters: Magnet3D[]; bookmarks: Magnet3D[] };
+type Samples = {
+  magnets: Magnet3D[];
+  letters: Magnet3D[];
+  bookmarks: Magnet3D[];
+  calendarPages: string[];
+};
+
+/** Página de calendario sintética (foto en gradiente + título + grilla fake) para capturas. */
+function calendarPage(month: number): string {
+  const w = 540;
+  const h = 760;
+  const c = document.createElement("canvas");
+  c.width = w;
+  c.height = h;
+  const ctx = c.getContext("2d")!;
+  ctx.fillStyle = "#FFFDF9";
+  ctx.fillRect(0, 0, w, h);
+  const hues = [
+    ["#5DD9D1", "#E85B9F"],
+    ["#F58A6F", "#FFD93D"],
+    ["#7C6AAD", "#5DD9D1"],
+  ];
+  const [a, b] = hues[month % hues.length]!;
+  const g = ctx.createLinearGradient(0, 0, w, 540);
+  g.addColorStop(0, a);
+  g.addColorStop(1, b);
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, w, 540);
+  ctx.fillStyle = "#3D2E5C";
+  ctx.font = "700 44px system-ui, sans-serif";
+  ctx.fillText(`Mes ${month + 1}`, 28, 612);
+  ctx.strokeStyle = "rgba(61,46,92,0.25)";
+  ctx.lineWidth = 1;
+  for (let r = 0; r < 4; r++) {
+    for (let col = 0; col < 7; col++) {
+      ctx.strokeRect(28 + col * 68, 640 + r * 28, 60, 22);
+    }
+  }
+  return c.toDataURL("image/png");
+}
 
 export function Preview3DGallery() {
   // Los imanes de muestra se dibujan con canvas (client-only) → se generan al montar, no en SSR.
@@ -104,11 +150,13 @@ export function Preview3DGallery() {
         letterMagnet("A", "#FFD93D"),
       ],
       bookmarks: [photoMagnet(2, 260, 380), photoMagnet(4, 260, 380)],
+      calendarPages: [calendarPage(0), calendarPage(1), calendarPage(2)],
     });
   }, []);
   const magnets = s?.magnets ?? null;
   const letters = s?.letters ?? null;
   const bookmarks = s?.bookmarks ?? null;
+  const calendarPages = s?.calendarPages ?? null;
 
   const scenes: Array<{ title: string; node: React.ReactNode }> = [
     {
@@ -116,12 +164,24 @@ export function Preview3DGallery() {
       node: magnets ? <FridgeView3D magnets={magnets} cols={3} /> : null,
     },
     {
+      title: "Polaroid (pila en mesa)",
+      node: magnets ? <PolaroidView3D magnets={magnets} /> : null,
+    },
+    {
       title: "Tablero (nombre)",
       node: letters ? <RoomBoardView3D magnets={letters} cols={3} style="memo" /> : null,
     },
     {
+      title: "Tablero (corcho)",
+      node: magnets ? <RoomBoardView3D magnets={magnets} cols={3} style="cork" /> : null,
+    },
+    {
       title: "Libro (separadores)",
       node: bookmarks ? <BookView3D bookmarks={bookmarks} /> : null,
+    },
+    {
+      title: "Calendario (pared)",
+      node: calendarPages ? <CalendarView3D pages={calendarPages} index={1} /> : null,
     },
   ];
 

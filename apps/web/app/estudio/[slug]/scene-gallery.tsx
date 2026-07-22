@@ -4,10 +4,11 @@
  * SceneGallery — galería inmersiva "míralo en tu espacio" para los FOTOIMANES (ADR-063 · FOTO4).
  * En vez de una barra con muchos botones (que se desborda en móvil), UN solo modal reúne todas las
  * escenas del hogar y el cliente cambia con chips:
- *   🧊 Nevera  — imanes en la nevera (3D)         · escena original P1.4
- *   🖼️ Mural   — imanes en un tablero de un cuarto (3D) · FOTO4-A (RoomBoardView3D, corcho)
- *   📚 Repisa  — piezas apoyadas en un estante (2D)     · FOTO4-B (compose-shelf-flatlay)
- *   🎁 Regalo  — la pieza como obsequio (2D)            · FOTO3 (compose-gift-flatlay)
+ *   🧊 Nevera   — imanes en la nevera (3D)              · escena original P1.4
+ *   📸 Polaroid — pila de polaroids sobre mesa de madera (3D) · catálogo WhatsApp (producto foco)
+ *   🖼️ Mural    — imanes en un tablero de un cuarto (3D) · FOTO4-A (RoomBoardView3D, corcho)
+ *   📚 Repisa   — piezas apoyadas en un estante (2D)     · FOTO4-B (compose-shelf-flatlay)
+ *   🎁 Regalo   — la pieza como obsequio (2D)            · FOTO3 (compose-gift-flatlay)
  *
  * Las texturas por imán (recortadas a su silueta) se calculan UNA vez en el editor y se pasan acá;
  * las escenas 3D las usan directo y los compositores 2D se arman perezosamente al abrir su chip y se
@@ -39,11 +40,20 @@ const RoomBoardView3D = nextDynamic(() => import("./room-board-view-3d"), {
     </div>
   ),
 });
+const PolaroidView3D = nextDynamic(() => import("./polaroid-3d-view"), {
+  ssr: false,
+  loading: () => (
+    <div className="text-brand-muted flex h-full items-center justify-center text-sm">
+      Cargando tus polaroids 3D…
+    </div>
+  ),
+});
 
-type Scene = "fridge" | "board" | "shelf" | "gift";
+type Scene = "fridge" | "polaroid" | "board" | "shelf" | "gift";
 
 const SCENES: { key: Scene; label: string; emoji: string }[] = [
   { key: "fridge", label: "Nevera", emoji: "🧊" },
+  { key: "polaroid", label: "Polaroid", emoji: "📸" },
   { key: "board", label: "Mural", emoji: "🖼️" },
   { key: "shelf", label: "Repisa", emoji: "📚" },
   { key: "gift", label: "Regalo", emoji: "🎁" },
@@ -67,6 +77,7 @@ export function SceneGallery({
   // #18 — escenas cuyo compositor falló: mostramos un fallback claro en vez de un panel colgado.
   const [failed, setFailed] = useState<Record<Scene, boolean>>({
     fridge: false,
+    polaroid: false,
     board: false,
     shelf: false,
     gift: false,
@@ -107,7 +118,7 @@ export function SceneGallery({
     };
   }, [scene, magnets, shelfUrl, giftUrl]);
 
-  const is3D = scene === "fridge" || scene === "board";
+  const is3D = scene === "fridge" || scene === "board" || scene === "polaroid";
   const flatUrl = scene === "shelf" ? shelfUrl : scene === "gift" ? giftUrl : null;
 
   return (
@@ -164,6 +175,8 @@ export function SceneGallery({
         {is3D ? (
           scene === "fridge" ? (
             <FridgeView3D magnets={magnets} cols={cols} />
+          ) : scene === "polaroid" ? (
+            <PolaroidView3D magnets={magnets} />
           ) : (
             <RoomBoardView3D magnets={magnets} cols={cols} style="cork" />
           )

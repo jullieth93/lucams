@@ -89,6 +89,9 @@ export function LucamsLogo({
       height={size}
       priority={priority}
       className={className}
+      // El PNG de la mascota no es 1:1; fijar solo el ancho y dejar el alto
+      // automático evita el warning de next/image y no deforma el asset.
+      style={{ width: size, height: "auto" }}
       unoptimized={step === "svg"}
       onError={() => setStep(step === "svg" ? "png" : "fallback")}
     />

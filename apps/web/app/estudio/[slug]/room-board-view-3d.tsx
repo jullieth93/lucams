@@ -6,17 +6,25 @@
  * un tablero decorativo de una habitación, no en la cocina. Sigue siendo superficie magnética real
  * (WYSIWYG). Estilo "memo" (tablero claro) o "cork" (corcho, tipo moodboard).
  *
- * Restricciones (idénticas a las otras vistas 3D): CSP estricta (cero assets externos, luces
- * procedurales) · client-only (WebGL) → dynamic ssr:false.
+ * Pase de realismo 2026-07-22:
+ *  - Corcho PROCEDURAL (canvas 2D → CanvasTexture, miles de gránulos) en vez de color plano.
+ *  - El tablero cuelga QUIETO de la pared (un tablero colgado no flota: se eliminó el Floating);
+ *    la sombra se proyecta contra la PARED (gradiente cenital sutil), no contra un piso invisible
+ *    (se eliminó el ContactShadows de piso).
+ *  - Imanes con CUERPO (MagnetMesh extruido: canto blanco + brillo PET), no planos.
+ *
+ * Restricciones (idénticas a las otras vistas 3D): CSP estricta (cero assets externos) ·
+ * client-only (WebGL) → dynamic ssr:false.
  */
 
-import { Suspense, useMemo, useRef } from "react";
-import { Canvas, useFrame } from "@react-three/fiber";
-import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
-import { OrbitControls, RoundedBox, ContactShadows, useTexture, Center } from "@react-three/drei";
+import { Suspense, useMemo } from "react";
+import { Canvas } from "@react-three/fiber";
+import { OrbitControls, RoundedBox, GradientTexture } from "@react-three/drei";
 import { FitCamera } from "./fit-camera";
+import { useIsTouch } from "./use-is-touch";
 import { StudioEnvironment } from "./studio-3d-environment";
-import * as THREE from "three";
+import { MagnetMesh } from "./magnet-3d";
+import { getCorkTexture } from "./lib/procedural-textures";
 import type { Magnet3D } from "./fridge-3d-view";
 
 export type BoardStyle = "memo" | "cork";
@@ -29,39 +37,10 @@ const DEPTH = 0.22;
 const INNER_W = BOARD_W - FRAME * 2;
 const INNER_H = BOARD_H - FRAME * 2;
 const FRONT_Z = DEPTH / 2;
+const MAGNET_T = 0.056; // grosor total del imán extruido (0.04 + bisel) → z del centro
 
-const WALL_COLOR = "#EFE7DC"; // pared cálida del cuarto
 const FRAME_COLOR = "#B98A5E"; // marco de madera
-const SURFACE = { memo: "#F7F4EC", cork: "#C99A63" }; // tablero claro / corcho
-
-function Magnet({
-  dataUrl,
-  width,
-  height,
-  position,
-}: {
-  dataUrl: string;
-  width: number;
-  height: number;
-  position: [number, number, number];
-}) {
-  const texture = useTexture(dataUrl);
-  return (
-    <mesh position={position} castShadow>
-      <planeGeometry args={[width, height]} />
-      <meshStandardMaterial
-        map={texture}
-        map-colorSpace={THREE.SRGBColorSpace}
-        map-anisotropy={8}
-        transparent
-        alphaTest={0.5}
-        roughness={0.55}
-        metalness={0}
-        side={THREE.FrontSide}
-      />
-    </mesh>
-  );
-}
+const MEMO_COLOR = "#F7F4EC"; // tablero claro
 
 function Magnets({ magnets, cols }: { magnets: Magnet3D[]; cols: number }) {
   const items = useMemo(() => {
@@ -90,12 +69,13 @@ function Magnets({ magnets, cols }: { magnets: Magnet3D[]; cols: number }) {
   return (
     <>
       {items.map(({ m, w, h, x, y }, i) => (
-        <Magnet
+        <MagnetMesh
           key={i}
           dataUrl={m.dataUrl}
           width={w}
           height={h}
-          position={[x, y, FRONT_Z + 0.05]}
+          shape={m.shape}
+          position={[x, y, FRONT_Z + MAGNET_T / 2 + 0.005]}
         />
       ))}
     </>
@@ -107,13 +87,19 @@ function Board({ style }: { style: BoardStyle }) {
     <group>
       {/* Marco de madera */}
       <RoundedBox args={[BOARD_W, BOARD_H, DEPTH]} radius={0.05} smoothness={4} castShadow>
-        <meshStandardMaterial color={FRAME_COLOR} roughness={0.6} metalness={0.05} />
+        <meshStandardMaterial
+          color={FRAME_COLOR}
+          roughness={0.6}
+          metalness={0.05}
+          envMapIntensity={0.8}
+        />
       </RoundedBox>
-      {/* Superficie magnética (memo/corcho), apenas hundida */}
+      {/* Superficie magnética: corcho procedural o tablero claro, apenas hundida */}
       <mesh position={[0, 0, FRONT_Z - 0.01]} receiveShadow>
         <planeGeometry args={[INNER_W, INNER_H]} />
         <meshStandardMaterial
-          color={SURFACE[style]}
+          map={style === "cork" ? getCorkTexture() : null}
+          color={style === "cork" ? "#ffffff" : MEMO_COLOR}
           roughness={style === "cork" ? 0.95 : 0.7}
           metalness={0}
         />
@@ -122,34 +108,18 @@ function Board({ style }: { style: BoardStyle }) {
   );
 }
 
-function Floating({ children }: { children: React.ReactNode }) {
-  const g = useRef<THREE.Group>(null);
-  const reduced = usePrefersReducedMotion();
-  useFrame((state) => {
-    if (!g.current) return;
-    // #16 — respetar prefers-reduced-motion: dejar el grupo estático (cubre el toggle en vivo).
-    if (reduced) {
-      g.current.rotation.y = 0;
-      g.current.position.y = 0;
-      return;
-    }
-    const t = state.clock.elapsedTime;
-    g.current.rotation.y = Math.sin(t * 0.4) * 0.06;
-    g.current.position.y = Math.sin(t * 0.85) * 0.04;
-  });
-  return <group ref={g}>{children}</group>;
-}
-
 function Scene({ magnets, cols, style }: { magnets: Magnet3D[]; cols: number; style: BoardStyle }) {
   return (
     <>
-      {/* Pared del cuarto, detrás del tablero */}
+      {/* Pared del cuarto con luz cenital sutil; recibe la sombra del tablero y los imanes. */}
       <mesh position={[0, 0, -1.2]} receiveShadow>
         <planeGeometry args={[40, 26]} />
-        <meshStandardMaterial color={WALL_COLOR} roughness={1} metalness={0} />
+        <meshStandardMaterial roughness={1} metalness={0}>
+          <GradientTexture attach="map" stops={[0, 1]} colors={["#F2E9DC", "#E2D4C0"]} size={256} />
+        </meshStandardMaterial>
       </mesh>
 
-      {/* FB5 — env-map procedural para reflejos PBR (marco del tablero, fichas). Baja el ambiente
+      {/* FB5 — env-map procedural para reflejos PBR (marco del tablero, imanes). Baja el ambiente
         directo porque el entorno ya aporta. */}
       <StudioEnvironment intensity={0.9} />
       <hemisphereLight args={["#fff6ea", "#e5dccd", 0.35]} />
@@ -159,28 +129,26 @@ function Scene({ magnets, cols, style }: { magnets: Magnet3D[]; cols: number; st
         intensity={1.0}
         castShadow
         shadow-mapSize={[2048, 2048]}
+        shadow-camera-left={-8}
+        shadow-camera-right={8}
+        shadow-camera-top={8}
+        shadow-camera-bottom={-8}
+        shadow-camera-far={30}
+        shadow-bias={-0.0004}
+        shadow-normalBias={0.02}
       />
       <directionalLight position={[-5, 2, 5]} intensity={0.3} />
 
-      <Center>
-        <Floating>
-          <Board style={style} />
-          <Magnets magnets={magnets} cols={cols} />
-        </Floating>
-      </Center>
+      <Board style={style} />
+      <Magnets magnets={magnets} cols={cols} />
 
-      <ContactShadows
-        position={[0, -BOARD_H / 2 - 0.5, 0.5]}
-        opacity={0.3}
-        blur={2.6}
-        scale={16}
-        far={5}
-      />
       {/* #12 — encuadra el tablero al aspecto del viewport (fit-to-width en móvil vertical). */}
       <FitCamera halfW={BOARD_W / 2} halfH={BOARD_H / 2} margin={1.12} camY={0.3} />
       <OrbitControls
         makeDefault
         enablePan={false}
+        minAzimuthAngle={-0.9}
+        maxAzimuthAngle={0.9}
         minPolarAngle={Math.PI / 3.5}
         maxPolarAngle={Math.PI / 1.9}
         minDistance={7}
@@ -200,6 +168,7 @@ export default function RoomBoardView3D({
   cols: number;
   style?: BoardStyle;
 }) {
+  const isTouch = useIsTouch();
   if (magnets.length === 0) {
     return (
       <div className="text-brand-muted flex h-full items-center justify-center p-8 text-center text-sm">
@@ -210,12 +179,12 @@ export default function RoomBoardView3D({
   return (
     <Canvas
       shadows
-      dpr={[1, 2]}
+      dpr={isTouch ? [1, 1.5] : [1, 2]}
       camera={{ position: [0, 0.3, 12], fov: 42 }}
       gl={{ preserveDrawingBuffer: false, antialias: true }}
       style={{ width: "100%", height: "100%" }}
     >
-      <color attach="background" args={["#FFF8F0"]} />
+      <color attach="background" args={["#EBDFCF"]} />
       <Suspense fallback={null}>
         <Scene magnets={magnets} cols={cols} style={style} />
       </Suspense>

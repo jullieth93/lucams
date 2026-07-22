@@ -1511,6 +1511,8 @@ async function buildMagnetTextures(
       dataUrl,
       wRatio: unitTemplate.stage.width,
       hRatio: unitTemplate.stage.height,
+      // La silueta viaja con la textura → las escenas 3D extruyen el cuerpo con la misma forma.
+      shape,
     });
   }
   return out;
