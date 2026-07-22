@@ -24,9 +24,12 @@ import {
 } from "@/features/personalization/service";
 import { parsePhotoProductConfig } from "@/features/personalization/schemas";
 import { resolvePersonalizationSurface } from "@/features/personalization/surface";
-import { listLetterStyles, ALPHABET } from "@/features/personalization/letter-tiles";
+import {
+  listLetterStyles,
+  listLetterThemeOptions,
+  ALPHABET,
+} from "@/features/personalization/letter-tiles";
 import { listGalleryImages } from "@/features/personalization/design-gallery";
-import { formatCOP } from "@/lib/format";
 import { NameEditor } from "./name-editor";
 import { LetterSetEditor } from "./letter-set-editor";
 import { peekCartSession } from "@/lib/cart-session";
@@ -78,7 +81,7 @@ export default async function EstudioPage({
   const requestedVariantId = typeof sp.variant === "string" ? sp.variant : undefined;
   const selectedVariant =
     product.variants.find((v) => v.id === requestedVariantId) ?? product.variants[0] ?? null;
-  const { mergeVariantOverProduct, parseVariantAttributes } =
+  const { mergeVariantOverProduct, parseVariantAttributes, selectableVariants } =
     await import("@/features/products/variant-schemas");
   const mergedSchema = selectedVariant
     ? mergeVariantOverProduct(
@@ -131,12 +134,32 @@ export default async function EstudioPage({
 
   // Superficie "letterset": Abecedario Completo / Pack Vocales → color de marco.
   if (surface.surface === "letterset" && selectedVariant) {
-    const priceLabel = formatCOP(selectedVariant.price ?? product.basePrice);
-    const styles = await listLetterStyles(surface.config.language);
+    // Ola 2A (Lucy 2026-07-22) — el TEMA y el IDIOMA ya no son dimensiones de la PDP: se
+    // eligen en el Estudio. Acá se cargan: los sets por idioma (incluidos los vacíos, que
+    // degradan a letra estándar), las fichas ilustradas, los alfabetos y las variantes
+    // (para re-resolver la línea de cotización al cambiar tema/idioma conservando
+    // tamaño/imantado). La variante de la PDP solo PRESELECCIONA tema e idioma.
+    const variantAttrs = parseVariantAttributes(selectedVariant.attributes);
+    const initialLanguage = variantAttrs.language === "en" ? ("en" as const) : ("es" as const);
+    const selectable = selectableVariants(product.variants);
+    const availableLanguages = Array.from(
+      new Set(
+        selectable
+          .map((v) => parseVariantAttributes(v.attributes).language)
+          .filter((l): l is "es" | "en" => l === "es" || l === "en"),
+      ),
+    );
+    const [stylesEs, stylesEn, themeEs, themeEn] = await Promise.all([
+      listLetterStyles("es"),
+      listLetterStyles("en"),
+      listLetterThemeOptions("es"),
+      listLetterThemeOptions("en"),
+    ]);
+    const stylesForSubtitle = initialLanguage === "en" ? stylesEn : stylesEs;
     const letters =
       surface.config.letterSet === "vowels"
         ? ["A", "E", "I", "O", "U"]
-        : (ALPHABET[surface.config.language] ?? ALPHABET.es);
+        : (ALPHABET[initialLanguage] ?? ALPHABET.es);
     return (
       <div className="bg-brand-cream flex min-h-screen flex-col">
         <SiteHeader />
@@ -144,19 +167,35 @@ export default async function EstudioPage({
           <LetterSetEditor
             product={{ id: product.id, slug: product.slug, name: product.name }}
             variantId={selectedVariant.id}
-            letters={letters}
-            styles={styles}
-            priceLabel={priceLabel}
+            variants={selectable.map((v) => {
+              const a = parseVariantAttributes(v.attributes);
+              return {
+                id: v.id,
+                price: v.price,
+                sizeCm: a.sizeCm,
+                magnet: a.magnet,
+                theme: a.theme,
+                language: a.language,
+              };
+            })}
+            basePrice={product.basePrice}
+            letterSet={surface.config.letterSet}
+            alphabets={{ es: [...ALPHABET.es], en: [...ALPHABET.en] }}
+            availableLanguages={availableLanguages.length > 0 ? availableLanguages : ["es"]}
+            initialLanguage={initialLanguage}
+            themeOptions={{ es: themeEs, en: themeEn }}
+            initialTheme={variantAttrs.theme ?? null}
+            stylesByLanguage={{ es: stylesEs, en: stylesEn }}
             subtitle={
               // #15 — la promesa "cada una con su animalito" solo es veraz si HAY estilos ilustrados
               // subidos (styles.length>0). Sin estilos, las fichas salen como letra de color: prometer
               // un dibujo sería publicidad engañosa (Ley 1480). "dibujito" (no "animalito") porque el
               // estilo puede ser Navidad/Espacio/etc., no solo animales.
               surface.config.letterSet === "vowels"
-                ? styles.length > 0
+                ? stylesForSubtitle.length > 0
                   ? "Las 5 vocales, cada una con su dibujito. Pinta cada ficha del color que quieras — así se imprime."
                   : "Las 5 vocales. Pinta cada ficha del color que quieras — así se imprime."
-                : styles.length > 0
+                : stylesForSubtitle.length > 0
                   ? `Las ${letters.length} letras, cada una con su dibujito. Pinta cada ficha del color que quieras — así se imprime.`
                   : `Las ${letters.length} letras. Pinta cada ficha del color que quieras — así se imprime.`
             }

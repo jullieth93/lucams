@@ -7,6 +7,7 @@
 
 import { MousePointerClick, Sparkles, Package } from "lucide-react";
 import { CmsText } from "@/components/cms/cms-text";
+import { getCmsBlock, getSettingValue } from "@/lib/cms";
 
 const STEPS = [
   {
@@ -34,8 +35,39 @@ const STEPS = [
     // el envío se cierran por WhatsApp (sin prometer pago en línea).
     descFallback:
       "Lo producimos a mano en 2 días hábiles y te llega en 1 día más (máximo 3 en total). El pago y el envío se acuerdan por WhatsApp — contraentrega disponible.",
+    // La descripción promete contraentrega: depende del toggle COD_ENABLED (igual que
+    // el chip del hero) — con COD apagado se recorta esa coletilla.
+    codAware: true,
   },
-];
+] as const;
+
+/**
+ * Quita la mención a la contraentrega de un texto (CMS o fallback) conservando
+ * una frase gramatical: "…se coordinan por WhatsApp — contraentrega disponible."
+ * → "…se coordinan por WhatsApp." No-op si el texto no la menciona.
+ */
+function stripCodMention(text: string): string {
+  const cleaned = text
+    .replace(/\s*[—–,;]\s*contraentrega disponible/gi, "")
+    .replace(/contraentrega disponible/gi, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+  // Si al recortar la frase quedó sin cierre, la cerramos con punto.
+  return /[.!?…:]$/.test(cleaned) ? cleaned : `${cleaned}.`;
+}
+
+/**
+ * <CmsText> variante COD-aware: si COD_ENABLED está apagado, recorta la coletilla
+ * "contraentrega disponible" del paso 3 (aplica igual al texto CMS que al fallback).
+ */
+async function CodAwareCmsText({ blockKey, fallback }: { blockKey: string; fallback: string }) {
+  const [block, codValue] = await Promise.all([
+    getCmsBlock(blockKey),
+    getSettingValue("COD_ENABLED", "true"),
+  ]);
+  const text = block?.body ?? fallback;
+  return <>{codValue === "true" ? text : stripCodMention(text)}</>;
+}
 
 export function HowItWorks() {
   return (
@@ -57,7 +89,11 @@ export function HowItWorks() {
               <CmsText blockKey={s.titleKey} fallback={s.titleFallback} />
             </h3>
             <p className="text-brand-purple-dark/70 text-sm leading-relaxed">
-              <CmsText blockKey={s.descKey} fallback={s.descFallback} />
+              {"codAware" in s && s.codAware ? (
+                <CodAwareCmsText blockKey={s.descKey} fallback={s.descFallback} />
+              ) : (
+                <CmsText blockKey={s.descKey} fallback={s.descFallback} />
+              )}
             </p>
           </div>
         );

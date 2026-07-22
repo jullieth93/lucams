@@ -28,6 +28,12 @@ import { selectUnitImagePlaceholder, type StudioStoreState } from "./lib/store";
 
 const MAX_VIEWPORT_WIDTH = 720; // px lógicos máximo del grid en desktop
 
+// Ola 2A (Lucy 2026-07-22) — espacio RESERVADO bajo cada slot para su barra de acciones
+// (Centrar / Ajustar filtros / Eliminar). Antes el wrapper medía solo el canvas → la barra
+// se superponía a la fila de miniaturas de abajo y los botones "se perdían". Reservar el
+// alto SIEMPRE (lleno o vacío) mantiene el ritmo del grid sin layout shift.
+const ACTION_BAR_RESERVE = 44;
+
 // ADR-063 T5 — lazy-mount de stages Konva. Cada StudioSlot monta un Konva Stage (varios <canvas>
 // + capas de realismo). Con muchos slots (calendario = 12) eso es pesado en móvil. Por encima de
 // este umbral, montamos solo los slots cercanos al viewport (IntersectionObserver); el resto muestra
@@ -264,8 +270,8 @@ export function StudioCanvasGrid({
               <motion.div
                 key={slot.slotIndex}
                 data-slot-observe={slot.slotIndex}
-                className="flex items-center justify-center"
-                style={{ height: slotHeight }}
+                className="flex items-start justify-center"
+                style={{ height: slotHeight + ACTION_BAR_RESERVE }}
                 initial={{ opacity: 0, scale: 0.85 }}
                 animate={{ opacity: 1, scale: 1 }}
                 transition={{
@@ -289,6 +295,7 @@ export function StudioCanvasGrid({
                     finish={finish}
                     cornerRadiusPx={cornerRadiusPx}
                     showRealismGuides={showRealismGuides}
+                    borderColor={canvasData.borderColor ?? null}
                     onClick={() => {
                       selectSlot(slot.slotIndex);
                       onSlotClick(slot.slotIndex);

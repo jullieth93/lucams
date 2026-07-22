@@ -17,7 +17,7 @@ import path from "node:path";
 import fs from "node:fs";
 import type { SKRSContext2D } from "@napi-rs/canvas";
 import { RenderNeedsKonvaError, type LoadAssetBytes } from "./production-render";
-import { CALENDAR_PAGE } from "./calendar-layout";
+import { CALENDAR_PAGE, scalePhotoTransformToPage } from "./calendar-layout";
 import { drawCalendarPage } from "./calendar-draw";
 
 const PRODUCTION_SCALE = 3;
@@ -146,6 +146,7 @@ async function renderSlotCanvas(
   slot: Slot,
   shape: string | undefined,
   loadAsset: LoadAssetBytes,
+  borderColor?: string | null,
 ): Promise<Buffer> {
   if (unit.stage.width > MAX_STAGE_DIM || unit.stage.height > MAX_STAGE_DIM) {
     throw new RenderNeedsKonvaError(
@@ -300,6 +301,36 @@ async function renderSlotCanvas(
     // 'shape' u otras → ignoradas (raras; si aparecen, el resultado es fiel salvo esa capa).
   }
 
+  // Ola 2A — MARCO de color alrededor de la foto (canvasData.borderColor): mismo dibujo que el
+  // editor (Rect de stroke centrado en el borde de la ventana de foto, encima de todo). Heart/
+  // circle no llevan marco (la silueta troquelada manda).
+  if (borderColor && !useFullStage) {
+    const phLayer = unit.layers.find((l) => l.type === "image-placeholder");
+    if (phLayer) {
+      const ph = {
+        x: Number(phLayer.x) || 0,
+        y: Number(phLayer.y) || 0,
+        width: Number(phLayer.width) || unit.stage.width,
+        height: Number(phLayer.height) || unit.stage.height,
+        cornerRadius: Number(phLayer.cornerRadius) || 0,
+      };
+      const w = Math.max(6, Math.round(unit.stage.width * 0.04));
+      ctx.save();
+      ctx.strokeStyle = borderColor;
+      ctx.lineWidth = w;
+      roundRectPath(
+        ctx,
+        ph.x + w / 2,
+        ph.y + w / 2,
+        Math.max(0, ph.width - w),
+        Math.max(0, ph.height - w),
+        Math.max(0, ph.cornerRadius - w / 2),
+      );
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
   return canvas.toBuffer("image/png");
 }
 
@@ -377,22 +408,34 @@ export async function renderProductionSlotsCanvas(opts: {
   slots: Slot[];
   shape?: string;
   loadAsset: LoadAssetBytes;
+  /** Ola 2A — color del marco alrededor de la foto (hex) o null = sin marco. */
+  borderColor?: string | null;
 }): Promise<Buffer[]> {
   const mod = await loadCanvas(); // lazy: un binario faltante → NEEDS_KONVA (fallback), no crash.
   const out: Buffer[] = [];
   const slots = [...opts.slots].sort((a, b) => a.slotIndex - b.slotIndex);
   for (const slot of slots) {
-    out.push(await renderSlotCanvas(mod, opts.unitTemplate, slot, opts.shape, opts.loadAsset));
+    out.push(
+      await renderSlotCanvas(
+        mod,
+        opts.unitTemplate,
+        slot,
+        opts.shape,
+        opts.loadAsset,
+        opts.borderColor,
+      ),
+    );
   }
   return out;
 }
 
 // ════════════════════════════════════════════════════════════════════════════
-// ADR-063 CAL1 — Compositor de la PÁGINA de un mes del calendario.
+// ADR-063 CAL1 — Compositor de la TARJETA de un mes del calendario (set 12 tarjetas 7.5×10).
 // Antes el calendario se producía como 12 FOTOS DESNUDAS (mes/año/grilla eran overlays DOM que
-// NO entraban al PNG). Este compositor hornea, sobre la foto del cliente, el título mes+año, los
-// encabezados de día y la grilla real (calendar-grid). La región de foto = CALENDAR_PHOTO
-// (1080×1080 top), idéntica al slot del editor → el encuadre del cliente mapea 1:1 (WYSIWYG).
+// NO entraban al PNG). Este compositor hornea, bajo la foto del cliente, el título del mes en
+// lettering grande + año, los encabezados de día y la grilla real (calendar-grid). La región de
+// foto = CALENDAR_PHOTO (1080×810 top, ratio 4:3) — proporcional a la ventana de la plantilla
+// del editor (600×450) → el encuadre del cliente mapea 1:1 (WYSIWYG) reescalando ×1.8.
 // A diferencia del render genérico, NO cae al cliente: compone la página completa siempre.
 // ════════════════════════════════════════════════════════════════════════════
 
@@ -409,6 +452,7 @@ async function renderCalendarPage(
   year: number,
   fontsOk: boolean,
   loadAsset: LoadAssetBytes,
+  templateStageWidth?: number,
 ): Promise<Buffer> {
   const S = PRODUCTION_SCALE;
   const W = clampInt(CALENDAR_PAGE.width * S, 1, MAX_STAGE_DIM * S);
@@ -430,9 +474,11 @@ async function renderCalendarPage(
   }
 
   // ADR-063 CAL4 — dibujo compartido (misma fuente que el preview inmersivo del cliente → WYSIWYG).
+  // El photoTransform llega en unidades de la PLANTILLA del editor (600px) → se reescala a la
+  // página (1080px) para que el encuadre impreso coincida con el de pantalla.
   drawCalendarPage(ctx, {
     photo,
-    photoTransform: slot.photoTransform,
+    photoTransform: scalePhotoTransformToPage(slot.photoTransform, templateStageWidth),
     year,
     monthIndex0,
     fontsOk,
@@ -451,6 +497,8 @@ export async function renderCalendarMonthPagesCanvas(opts: {
   loadAsset: LoadAssetBytes;
   year: number;
   startMonth?: number;
+  /** Ancho del stage de la plantilla del editor (para reescalar el encuadre). Default = página. */
+  templateStageWidth?: number;
 }): Promise<Buffer[]> {
   const mod = await loadCanvas();
   const fontsOk = ensureFonts(mod);
@@ -459,7 +507,17 @@ export async function renderCalendarMonthPagesCanvas(opts: {
   const slots = [...opts.slots].sort((a, b) => a.slotIndex - b.slotIndex);
   for (const slot of slots) {
     const monthIndex0 = (((start + slot.slotIndex) % 12) + 12) % 12;
-    out.push(await renderCalendarPage(mod, slot, monthIndex0, opts.year, fontsOk, opts.loadAsset));
+    out.push(
+      await renderCalendarPage(
+        mod,
+        slot,
+        monthIndex0,
+        opts.year,
+        fontsOk,
+        opts.loadAsset,
+        opts.templateStageWidth,
+      ),
+    );
   }
   return out;
 }

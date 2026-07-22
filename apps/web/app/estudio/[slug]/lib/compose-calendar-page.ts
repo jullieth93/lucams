@@ -8,7 +8,7 @@
  */
 
 import { drawCalendarPage } from "@/features/personalization/calendar-draw";
-import { CALENDAR_PAGE } from "@/features/personalization/calendar-layout";
+import { CALENDAR_PAGE, scalePhotoTransformToPage } from "@/features/personalization/calendar-layout";
 
 // Escala del preview: 1080×1520 → ~810×1140. Nítido como textura 3D sin ser pesado.
 const PREVIEW_SCALE = 0.75;
@@ -24,6 +24,10 @@ export type CalendarPageInput = {
  * Construye las entradas de página (una por slot) a partir del canvasData del calendario. Compartido
  * por el preview de confirmación (#3) y la vista 3D — misma matemática de mes: monthIndex0 =
  * (startMonth + slotIndex) mod 12.
+ *
+ * `templateStageWidth` = ancho del stage de la plantilla con que el cliente encuadró las fotos
+ * (600 en la tarjeta actual): los offsets del photoTransform se reescalan a unidades de la
+ * página (1080) para que el encuadre en pantalla y el impreso coincidan (WYSIWYG).
  */
 export function buildCalendarPageInputs(
   slots: ReadonlyArray<{
@@ -32,12 +36,13 @@ export function buildCalendarPageInputs(
     photoTransform?: { offsetX: number; offsetY: number; scale: number } | null;
   }>,
   startMonth: number,
+  templateStageWidth?: number,
 ): CalendarPageInput[] {
   return [...slots]
     .sort((a, b) => a.slotIndex - b.slotIndex)
     .map((s) => ({
       assetUrl: s.assetUrl,
-      photoTransform: s.photoTransform,
+      photoTransform: scalePhotoTransformToPage(s.photoTransform, templateStageWidth),
       monthIndex0: (((startMonth + s.slotIndex) % 12) + 12) % 12,
     }));
 }
@@ -51,7 +56,7 @@ export async function buildCalendarPreviewMontage(pages: string[]): Promise<stri
   const cols = Math.min(4, Math.max(1, pages.length));
   const rows = Math.ceil(pages.length / cols);
   const cellW = 200;
-  const cellH = Math.round(cellW * (CALENDAR_PAGE.height / CALENDAR_PAGE.width)); // ~281
+  const cellH = Math.round(cellW * (CALENDAR_PAGE.height / CALENDAR_PAGE.width)); // ~267 (3:4)
   const gap = 14;
   const pad = 18;
   const w = pad * 2 + cols * cellW + (cols - 1) * gap;

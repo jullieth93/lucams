@@ -24,9 +24,12 @@ export async function ProductReviews({
 }) {
   const [reviews, session] = await Promise.all([
     prisma.review.findMany({
-      // H16 (auditoría v3) — solo reseñas de clientes REALES (customerId presente): las
-      // fabricadas/demo (customerId=null) no se muestran como reales en el PDP.
-      where: { productId, isApproved: true, deletedAt: null, customerId: { not: null } },
+      // H16 (auditoría v3) — actualizado 2026-07-22: las reseñas visibles son las
+      // APROBADAS por la dueña en /admin/resenas. El canal público (formulario) sigue
+      // exigiendo login (customerId presente). Además se admiten testimonios curados
+      // por la dueña (customerId=null, authorName real, trazables por createdBy) —
+      // ella revisa y aprueba cada texto antes de publicarse.
+      where: { productId, isApproved: true, deletedAt: null },
       orderBy: [{ featured: "desc" }, { createdAt: "desc" }],
       take: 20,
       select: { id: true, rating: true, comment: true, authorName: true, createdAt: true },

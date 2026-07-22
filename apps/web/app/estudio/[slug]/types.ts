@@ -245,6 +245,12 @@ export type MultiSlotCanvasData = {
   slots: SlotState[];
   /** Layout del grid de preview (cols × rows). Calculado al crear/migrar. */
   gridLayout: GridLayout;
+  /**
+   * Ola 2A (Lucy 2026-07-22) — color del MARCO alrededor de la foto (hex #RRGGBB), elegido
+   * en el Estudio como estilo visual (antes era la variante "Estilo"/"Marco" de la PDP).
+   * null/undefined = sin marco. Viaja con el diseño a la cotización y al render de producción.
+   */
+  borderColor?: string | null;
 };
 
 /** Alias de conveniencia — algunos consumidores usan `CanvasDataV2` por simetría con V1. */
@@ -344,4 +350,10 @@ export type PhotoProductConfig = {
    * Si shape === "circle" o "heart" se ignora (la forma define el contorno).
    */
   cornerRadiusPx?: number;
+  /**
+   * Ola 2A — ids de marco de color ofrecidos en el Estudio (paleta frame-palette).
+   * Si está presente y no vacío, el Estudio muestra el selector "Marco" (borde de
+   * color alrededor de la foto). Ej: ["blanco","negro","aguamarina","rosa","lavanda","amarillo"].
+   */
+  frameOptions?: string[];
 };

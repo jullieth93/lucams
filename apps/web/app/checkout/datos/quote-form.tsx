@@ -18,6 +18,7 @@
 
 import { useActionState, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
 import { Loader2, MessageCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -26,6 +27,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { TurnstileWidget } from "@/components/turnstile-widget";
 import { createQuoteAction, type QuoteActionState } from "@/features/quotes/actions";
 import type { QuoteFormInput } from "@/features/quotes/schemas";
+import type { CartLineItem } from "@/features/cart/service";
+import { formatCOP } from "@/lib/format";
 import {
   DEPARTMENTS,
   getCitiesByDeptCode,
@@ -34,7 +37,7 @@ import {
 } from "@/lib/dane-divipola";
 import { formatPhone, stripPhone, validatePhone } from "@/lib/colombia-validators";
 
-export function QuoteForm() {
+export function QuoteForm({ items = [] }: { items?: CartLineItem[] }) {
   const router = useRouter();
   const [state, formAction, pending] = useActionState<QuoteActionState, FormData>(
     createQuoteAction,
@@ -73,6 +76,58 @@ export function QuoteForm() {
 
   return (
     <form action={formAction} className="space-y-6">
+      {/* Ola 2A — resumen de lo que estás cotizando, con el PREVIEW del diseño personalizado
+          por ítem cuando existe (compositado del Estudio en Supabase Storage); si no hay
+          diseño, la imagen normal del producto. En móvil queda arriba del form (el resumen
+          lateral del checkout baja hasta el fondo). */}
+      {items.length > 0 && (
+        <section
+          aria-label="Productos de tu cotización"
+          className="border-brand-purple/10 rounded-2xl border bg-white p-5 shadow-sm sm:p-6"
+        >
+          <h2 className="text-brand-purple-dark font-display text-lg font-bold">
+            Lo que estás cotizando
+          </h2>
+          <ul className="divide-brand-purple/10 divide-y">
+            {items.map((item) => {
+              const imgUrl = item.designPreviewUrl ?? item.imageUrl ?? "/placeholder.png";
+              return (
+                <li key={item.itemId} className="flex items-center gap-3 py-3">
+                  <div className="bg-brand-purple/5 relative h-14 w-14 flex-shrink-0 overflow-hidden rounded-lg">
+                    <Image
+                      src={imgUrl}
+                      alt={
+                        item.designPreviewUrl
+                          ? `Vista previa de tu diseño de ${item.productName}`
+                          : item.productName
+                      }
+                      fill
+                      sizes="56px"
+                      className="object-cover"
+                      unoptimized
+                    />
+                    <span className="bg-brand-purple-dark/85 absolute top-0 right-0 inline-flex h-5 min-w-5 items-center justify-center rounded-bl-md px-1 text-[10px] font-bold text-white">
+                      {item.qty}
+                    </span>
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-brand-purple-dark line-clamp-2 text-sm leading-snug font-medium">
+                      {item.productName}
+                    </p>
+                    <p className="text-brand-muted text-xs">
+                      {item.designPreviewUrl ? "✨ Con tu diseño personalizado" : item.variantName}
+                    </p>
+                  </div>
+                  <div className="text-brand-purple-dark flex-shrink-0 text-sm font-semibold tabular-nums">
+                    {formatCOP(item.lineTotal)}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </section>
+      )}
+
       <section className="border-brand-purple/10 rounded-2xl border bg-white p-5 shadow-sm sm:p-6">
         <h1 className="text-brand-purple-dark font-display text-xl font-bold sm:text-2xl">
           Pide tu cotización ✨

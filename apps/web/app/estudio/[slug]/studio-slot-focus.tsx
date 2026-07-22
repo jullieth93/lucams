@@ -60,6 +60,8 @@ export function StudioSlotFocus({
   );
   const unitTemplate = useStore(store, (s) => s.canvasData?.unitTemplate ?? null);
   const totalSlots = useStore(store, (s) => s.canvasData?.slotCount ?? 0);
+  // Ola 2A — el marco elegido también se ve en el editor a pantalla completa (WYSIWYG).
+  const borderColor = useStore(store, (s) => s.canvasData?.borderColor ?? null);
   const setSlotPhotoTransform = useStore(store, (s) => s.setSlotPhotoTransform);
   const setSlotFilter = useStore(store, (s) => s.setSlotFilter);
 
@@ -106,6 +108,7 @@ export function StudioSlotFocus({
             shape={shape}
             finish={finish}
             cornerRadiusPx={cornerRadiusPx}
+            borderColor={borderColor}
             onClick={() => {}}
             onClear={() => {}}
             onPhotoTransformChange={(transform) =>

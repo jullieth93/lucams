@@ -116,6 +116,13 @@ export const CanvasDataV2Schema = z.object({
   slotCount: z.number().int().min(1).max(50), // soporte hasta 50 slots (calendarios + extreme cases)
   slots: z.array(SlotStateSchema).max(50),
   gridLayout: GridLayoutSchema,
+  // Ola 2A — color del marco alrededor de la foto (estilo elegido en el Estudio; viaja a la
+  // cotización y al render de producción). null = sin marco.
+  borderColor: z
+    .string()
+    .regex(/^#[0-9A-Fa-f]{6}$/)
+    .nullable()
+    .optional(),
 });
 
 export type CanvasDataV2 = z.infer<typeof CanvasDataV2Schema>;
@@ -245,6 +252,8 @@ export const PhotoProductConfigSchema = z.object({
   // M.3.b.B.1 — realismo del imán físico
   finish: z.enum(["matte", "glossy", "soft-touch"]).optional(),
   cornerRadiusPx: z.number().int().min(0).max(500).optional(),
+  // Ola 2A — ids de marco de color ofrecidos en el Estudio (paleta frame-palette).
+  frameOptions: z.array(z.string().max(24)).max(12).optional(),
 });
 export type PhotoProductConfig = z.infer<typeof PhotoProductConfigSchema>;
 

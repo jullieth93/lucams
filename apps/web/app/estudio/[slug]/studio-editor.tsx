@@ -53,7 +53,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { useIsTouch } from "./use-is-touch";
-import { Sparkles, Box, X, CalendarDays, ChevronLeft, ChevronRight } from "lucide-react";
+import { Sparkles, Box, X, CalendarDays } from "lucide-react";
 import nextDynamic from "next/dynamic";
 import type { Magnet3D } from "./fridge-3d-view";
 import { StudioAiPanel } from "./studio-ai-panel";
@@ -63,21 +63,16 @@ import {
   buildCalendarPageInputs,
   buildCalendarPreviewMontage,
 } from "./lib/compose-calendar-page";
-import { SceneGallery } from "./scene-gallery";
-import { MONTH_NAMES_ES } from "@/features/personalization/calendar-grid";
+import { CALENDAR_PAGE } from "@/features/personalization/calendar-layout";
+import { SceneGallery, type SceneKind } from "./scene-gallery";
+import { initialFrameColorFromSchema } from "@/features/personalization/frame-palette";
 
 // FOTO4 — la galería de escenas del fotoimán (nevera/mural/repisa/regalo). Las vistas 3D pesadas
 // (three.js) van diferidas DENTRO de SceneGallery, así que este import estático no infla el bundle
 // del editor con WebGL.
-// CAL4 — preview inmersivo del calendario (client-only, diferido igual que las vistas 3D).
-const CalendarView3D = nextDynamic(() => import("./calendar-view-3d"), {
-  ssr: false,
-  loading: () => (
-    <div className="text-brand-muted flex h-full items-center justify-center text-sm">
-      Cargando tu calendario 3D…
-    </div>
-  ),
-});
+// CAL4 (rediseño 2026-07-22) — el calendario-de-pared quedó ARCHIVADO para este producto (Lucy):
+// el set de 12 tarjetas 7.5×10 se muestra como imanes en la galería (kind="calendar"), no en la
+// pared. CalendarView3D sigue vivo solo en /internal/3d-preview.
 // SEP1 — preview inmersivo de separadores en un libro (los separadores no son imanes → su hogar es
 // un libro, no la nevera). Client-only, diferido.
 const BookView3D = nextDynamic(() => import("./book-view-3d"), {
@@ -210,26 +205,25 @@ export function StudioEditor({
       requestAnimationFrame(tick);
     });
   }, [store]);
-  // FOTO4 — galería de escenas del fotoimán (nevera/mural/repisa/regalo). null = cerrada; objeto =
-  // texturas por imán + columnas del grid (se calculan una vez al abrir).
-  const [sceneMagnets, setSceneMagnets] = useState<{ magnets: Magnet3D[]; cols: number } | null>(
-    null,
-  );
+  // FOTO4/CAL4 — galería de escenas "en tu espacio". null = cerrada; objeto = texturas por pieza +
+  // columnas del grid (se calculan una vez al abrir). kind/sizeCm (ola 2B): selección de escenas
+  // por tipo de producto y escala física real en nevera/tablero.
+  const [sceneMagnets, setSceneMagnets] = useState<{
+    magnets: Magnet3D[];
+    cols: number;
+    kind?: SceneKind;
+    sizeCm?: string;
+  } | null>(null);
   const [sceneBuilding, setSceneBuilding] = useState(false);
-  // CAL4 — preview inmersivo del calendario. null = cerrado; array = páginas de mes compuestas.
-  const [calendarPages, setCalendarPages] = useState<string[] | null>(null);
-  const [calendarMonthIndex, setCalendarMonthIndex] = useState(0);
+  // CAL4 — construcción perezosa de las tarjetas mes para la galería (botón "Ver mi calendario").
   const [calendarBuilding, setCalendarBuilding] = useState(false);
   // SEP1 — preview inmersivo de separadores en un libro. null = cerrado; array = texturas de marcador.
   const [book3D, setBook3D] = useState<Magnet3D[] | null>(null);
-  // #15 — a11y de los dos overlays 3D (foco inicial + trap + Escape + retorno). onClose estable
-  // (useCallback) para no re-armar el trap en cada render.
+  // #15 — a11y del overlay 3D del libro (foco inicial + trap + Escape + retorno). onClose estable
+  // (useCallback) para no re-armar el trap en cada render. La galería maneja la suya internamente.
   const book3DRef = useRef<HTMLDivElement>(null);
-  const calendarRef = useRef<HTMLDivElement>(null);
   const closeBook3D = useCallback(() => setBook3D(null), []);
-  const closeCalendar = useCallback(() => setCalendarPages(null), []);
   useDialogA11y(book3DRef, { onClose: closeBook3D, active: book3D !== null });
-  useDialogA11y(calendarRef, { onClose: closeCalendar, active: calendarPages !== null });
   // P1.5 — Asistente IA de ideas (ADR-058).
   const [aiOpen, setAiOpen] = useState(false);
   // Etapa 1 (modo catálogo): el asistente IA queda APAGADO — ni el botón
@@ -242,6 +236,13 @@ export function StudioEditor({
   // safeParse Zod con fallback a {photoSlots: 1}. Solo usamos sizeCm.
   const productConfig = useMemo(
     () => parsePhotoProductConfig(product.personalizationSchema),
+    [product.personalizationSchema],
+  );
+  // Ola 2A — marco inicial del Estudio: la variante elegida en la PDP aún trae
+  // "Estilo"/"Marco" como dato (ya no es dimensión visible) → preselecciona el
+  // color equivalente de la paleta; el cliente lo cambia libre en la sidebar.
+  const initialBorderColor = useMemo(
+    () => initialFrameColorFromSchema(product.personalizationSchema),
     [product.personalizationSchema],
   );
 
@@ -325,11 +326,24 @@ export function StudioEditor({
               assetId: null,
               assetUrl: null,
             })),
-            gridLayout: defaultGridFor(photoSlots, unitTemplate.stage),
+            gridLayout: defaultGridFor(
+              photoSlots,
+              unitTemplate.stage,
+              // Ola 2A — la plantilla puede fijar las columnas (tira fotobooth: gridCols=1).
+              typeof (unitTemplate as { gridCols?: unknown }).gridCols === "number"
+                ? (unitTemplate as { gridCols?: number }).gridCols
+                : undefined,
+            ),
           };
         }
 
         if (cancelled) return;
+
+        // Ola 2A — preselección del marco: solo si el diseño no trae uno ya elegido
+        // (un diseño recuperado conserva la elección del cliente).
+        if (!canvasData.borderColor && initialBorderColor) {
+          canvasData = { ...canvasData, borderColor: initialBorderColor };
+        }
 
         store.getState().init({
           designId: designId!,
@@ -366,6 +380,7 @@ export function StudioEditor({
     photoSlots,
     templates,
     store,
+    initialBorderColor,
   ]);
 
   // ──────────── Auto-save 2s debounce ────────────
@@ -409,6 +424,11 @@ export function StudioEditor({
       // el picker como siempre (el pan/zoom es inline con el mouse).
       const filled = !!store.getState().canvasData?.slots?.find((s) => s.slotIndex === slotIndex)
         ?.assetUrl;
+      // Exclusión mutua de paneles (bug Lucy 2026-07-22): abrir un panel cierra los otros
+      // — nunca dos encimados (antes el panel de ajuste, NO-modal por diseño, podía
+      // coexistir con "Editar texto" o con el picker).
+      setAdjustSlotIndex(null);
+      setTextEditTarget(null);
       if (isTouch && filled) setFocusSlotIndex(slotIndex);
       else setPickerSlotIndex(slotIndex);
     },
@@ -446,7 +466,11 @@ export function StudioEditor({
       if (isCalendarMonth) {
         const startMonth =
           (product.personalizationSchema as { startMonth?: number })?.startMonth ?? 0;
-        const inputs = buildCalendarPageInputs(state.canvasData.slots, startMonth);
+        const inputs = buildCalendarPageInputs(
+          state.canvasData.slots,
+          startMonth,
+          state.canvasData.unitTemplate.stage.width,
+        );
         const pages = await composeCalendarPages(inputs, selectedYear);
         setPreviewDataUrl(await buildCalendarPreviewMontage(pages));
         setPreviewModalOpen(true);
@@ -517,7 +541,12 @@ export function StudioEditor({
         slotStagesRef.current,
         productConfig.shape,
       );
-      setSceneMagnets({ magnets: textures, cols: state.canvasData.gridLayout.cols });
+      setSceneMagnets({
+        magnets: textures,
+        cols: state.canvasData.gridLayout.cols,
+        // Ola 2B — la nevera/tablero escalan los imanes a su tamaño físico real (sizeCm variante).
+        sizeCm: productConfig.sizeCm,
+      });
     } catch (err) {
       state.setAutoSaveStatus({
         kind: "error",
@@ -527,11 +556,13 @@ export function StudioEditor({
     } finally {
       setSceneBuilding(false);
     }
-  }, [store, productConfig.shape, ensureAllStagesMounted, sceneBuilding]);
+  }, [store, productConfig.shape, productConfig.sizeCm, ensureAllStagesMounted, sceneBuilding]);
 
-  // CAL4 — Abrir el calendario 3D: compone cada página de mes (foto + mes + año + grilla) con el
-  // MISMO dibujo que producción (WYSIWYG) y las muestra en un calendario de pared navegable. Usa la
-  // foto ORIGINAL + encuadre de cada slot (no Konva) → no depende del montaje de stages.
+  // CAL4 (rediseño 2026-07-22) — "Ver mi calendario": el set de 12 TARJETAS mes 7.5×10 se ve como
+  // IMANES en la galería de escenas (nevera/tablero, kind="calendar") — el calendario-de-pared
+  // quedó archivado (solo /internal/3d-preview). Compone cada tarjeta (foto + mes + año + grilla)
+  // con el MISMO dibujo que producción (WYSIWYG) y la pasa como textura 3:4 con su tamaño real,
+  // así la nevera/tablero las escalan a 7.5×10 cm físicos. No depende del montaje de stages.
   const handleOpenCalendar3D = useCallback(async () => {
     const state = store.getState();
     if (!state.canvasData || calendarBuilding) return;
@@ -539,10 +570,22 @@ export function StudioEditor({
     try {
       const startMonth =
         (product.personalizationSchema as { startMonth?: number })?.startMonth ?? 0;
-      const inputs = buildCalendarPageInputs(state.canvasData.slots, startMonth);
+      const inputs = buildCalendarPageInputs(
+        state.canvasData.slots,
+        startMonth,
+        state.canvasData.unitTemplate.stage.width,
+      );
       const pages = await composeCalendarPages(inputs, selectedYear);
-      setCalendarMonthIndex(0);
-      setCalendarPages(pages);
+      // Cada tarjeta compuesta (1080×1440 = 3:4 exacto) es un imán de nevera de 7.5×10 cm.
+      const cards: Magnet3D[] = pages.map((dataUrl) => ({
+        dataUrl,
+        wRatio: CALENDAR_PAGE.width,
+        hRatio: CALENDAR_PAGE.height,
+        shape: "rectangle" as const,
+        wCm: 7.5,
+        hCm: 10,
+      }));
+      setSceneMagnets({ magnets: cards, cols: 4, kind: "calendar", sizeCm: "7.5×10" });
     } catch (err) {
       state.setAutoSaveStatus({
         kind: "error",
@@ -787,6 +830,7 @@ export function StudioEditor({
             productSku={product.sku}
             productSizeCm={productConfig.sizeCm}
             productShape={productConfig.shape}
+            frameOptions={productConfig.frameOptions}
           />
         </aside>
 
@@ -795,16 +839,19 @@ export function StudioEditor({
             trae mb-3, pensado para apilado. */}
         <section className="flex flex-1 flex-col items-center p-4 pb-24 lg:p-8 lg:pb-8">
           {/* ADR-057 Fase D + CAL2 — banner de calendario: el cliente elige el AÑO (selector) y
-              pone una foto por mes. */}
+              pone una foto por mes. Ola 2A (Lucy 2026-07-22): el selector de año se perdía
+              visualmente → card blanca con borde marcado + año GRANDE en el dropdown. */}
           {isCalendarMonth && (
-            <div className="border-brand-purple/15 bg-brand-cream/60 text-brand-purple-dark mb-3 flex flex-wrap items-center justify-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold">
-              <span>📅 Calendario</span>
-              <label className="flex items-center gap-1.5">
-                <span className="sr-only">Año del calendario</span>
+            <div className="border-brand-purple/30 text-brand-purple-dark mb-4 flex w-full max-w-xl flex-wrap items-center justify-center gap-x-4 gap-y-2 rounded-2xl border-2 bg-white px-5 py-3 shadow-md">
+              <span className="text-base font-bold">📅 Tu calendario</span>
+              <label className="flex items-center gap-2">
+                <span className="text-brand-purple-dark/80 text-sm font-semibold">
+                  Año del calendario:
+                </span>
                 <select
                   value={selectedYear}
                   onChange={(e) => setSelectedYear(Number(e.target.value))}
-                  className="border-brand-purple/30 focus-visible:ring-brand-purple/40 rounded-lg border bg-white px-2 py-1 text-sm font-bold focus-visible:ring-2 focus-visible:outline-none"
+                  className="border-brand-purple/50 focus-visible:ring-brand-purple/40 text-brand-purple-dark font-display cursor-pointer rounded-xl border-2 bg-white px-3 py-1.5 text-xl font-bold focus-visible:ring-2 focus-visible:outline-none"
                   aria-label="Año del calendario"
                 >
                   {yearOptions.map((y) => (
@@ -814,7 +861,9 @@ export function StudioEditor({
                   ))}
                 </select>
               </label>
-              <span>· una foto por mes (toca cada mes para elegir tu foto)</span>
+              <span className="text-brand-purple-dark/70 text-sm font-medium">
+                · una foto por mes (toca cada mes para elegir tu foto)
+              </span>
             </div>
           )}
           <StudioCanvasGrid
@@ -828,10 +877,19 @@ export function StudioEditor({
             slotNoun={slotNoun}
             interactiveSlots={!isTouch}
             onSlotClick={handleSlotClick}
-            onSlotAdjust={(slotIndex) =>
-              isTouch ? setFocusSlotIndex(slotIndex) : setAdjustSlotIndex(slotIndex)
-            }
-            onTextEdit={(slotIndex, textLayerId) => setTextEditTarget({ slotIndex, textLayerId })}
+            onSlotAdjust={(slotIndex) => {
+              // Exclusión mutua de paneles: abrir el ajuste cierra "Editar texto".
+              setTextEditTarget(null);
+              if (isTouch) setFocusSlotIndex(slotIndex);
+              else setAdjustSlotIndex(slotIndex);
+            }}
+            onTextEdit={(slotIndex, textLayerId) => {
+              // Exclusión mutua de paneles: "Editar texto" cierra el ajuste (desktop)
+              // y el editor a pantalla completa (táctil) si estaban abiertos.
+              setAdjustSlotIndex(null);
+              setFocusSlotIndex(null);
+              setTextEditTarget({ slotIndex, textLayerId });
+            }}
             registerSlotStages={(stages) => {
               slotStagesRef.current = stages;
             }}
@@ -861,7 +919,7 @@ export function StudioEditor({
             type="button"
             onClick={handleOpenCalendar3D}
             disabled={calendarBuilding}
-            aria-label="Ver tu calendario en 3D"
+            aria-label="Ver tus tarjetas mes en la nevera o el tablero"
             className="bg-brand-purple ring-brand-purple/25 inline-flex h-12 items-center gap-2 rounded-full px-4 text-sm font-bold text-white shadow-xl ring-4 transition-transform hover:scale-105 active:scale-95 disabled:opacity-60"
           >
             <CalendarDays className="h-5 w-5" />
@@ -903,11 +961,14 @@ export function StudioEditor({
         />
       )}
 
-      {/* FOTO4 — Galería de escenas del fotoimán (nevera/mural/repisa/regalo) en un solo modal. */}
+      {/* FOTO4/CAL4 — Galería de escenas "en tu espacio" en un solo modal (kind decide las escenas:
+          fotoimanes → nevera/polaroid/mural/repisa/regalo · calendario → nevera/tablero). */}
       {sceneMagnets !== null && (
         <SceneGallery
           magnets={sceneMagnets.magnets}
           cols={sceneMagnets.cols}
+          kind={sceneMagnets.kind}
+          sizeCm={sceneMagnets.sizeCm}
           onClose={() => setSceneMagnets(null)}
         />
       )}
@@ -934,72 +995,12 @@ export function StudioEditor({
             </button>
           </div>
           <div className="relative flex-1">
-            <BookView3D bookmarks={book3D} />
+            <BookView3D bookmarks={book3D} sizeCm={productConfig.sizeCm} />
             <p className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-black/40 px-3 py-1.5 text-center text-xs text-white">
               {isTouch
                 ? "Arrastra para girar · pellizca con 2 dedos para acercar"
                 : "Arrastra para girar · rueda o pellizca para acercar"}
             </p>
-          </div>
-        </div>
-      )}
-
-      {/* CAL4 — Modal del calendario 3D navegable (lazy, client-only). */}
-      {calendarPages !== null && (
-        <div
-          ref={calendarRef}
-          role="dialog"
-          aria-modal="true"
-          aria-label="Vista 3D de tu calendario"
-          tabIndex={-1}
-          className="bg-brand-purple-dark/85 fixed inset-0 z-50 flex flex-col backdrop-blur-sm outline-none"
-        >
-          <div className="flex items-center justify-between px-4 py-3 text-white sm:px-6">
-            <span className="font-display text-lg font-bold">📅 Tu calendario {selectedYear}</span>
-            <button
-              type="button"
-              onClick={closeCalendar}
-              aria-label="Cerrar calendario 3D"
-              className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/15 text-white transition-colors hover:bg-white/25 focus:ring-2 focus:ring-white focus:outline-none"
-            >
-              <X className="h-5 w-5" />
-            </button>
-          </div>
-          <div className="relative flex-1">
-            <CalendarView3D pages={calendarPages} index={calendarMonthIndex} />
-            {/* Navegación mes a mes */}
-            <div className="pointer-events-none absolute inset-x-0 bottom-4 flex items-center justify-center gap-3">
-              <button
-                type="button"
-                onClick={() =>
-                  setCalendarMonthIndex(
-                    (i) => (i - 1 + calendarPages.length) % calendarPages.length,
-                  )
-                }
-                aria-label="Mes anterior"
-                className="pointer-events-auto inline-flex h-11 w-11 items-center justify-center rounded-full bg-white/20 text-white transition-colors hover:bg-white/35 focus:ring-2 focus:ring-white focus:outline-none"
-              >
-                <ChevronLeft className="h-6 w-6" />
-              </button>
-              <span className="pointer-events-none min-w-40 rounded-full bg-black/45 px-4 py-2 text-center text-sm font-semibold text-white">
-                {MONTH_NAMES_ES[
-                  (((((product.personalizationSchema as { startMonth?: number })?.startMonth ?? 0) +
-                    calendarMonthIndex) %
-                    12) +
-                    12) %
-                    12
-                ] ?? ""}{" "}
-                {selectedYear}
-              </span>
-              <button
-                type="button"
-                onClick={() => setCalendarMonthIndex((i) => (i + 1) % calendarPages.length)}
-                aria-label="Mes siguiente"
-                className="pointer-events-auto inline-flex h-11 w-11 items-center justify-center rounded-full bg-white/20 text-white transition-colors hover:bg-white/35 focus:ring-2 focus:ring-white focus:outline-none"
-              >
-                <ChevronRight className="h-6 w-6" />
-              </button>
-            </div>
           </div>
         </div>
       )}
@@ -1046,6 +1047,7 @@ export function StudioEditor({
               productSku={product.sku}
               productSizeCm={productConfig.sizeCm}
               productShape={productConfig.shape}
+              frameOptions={productConfig.frameOptions}
             />
           </div>
         </SheetContent>
@@ -1266,7 +1268,11 @@ function PhotoAdjustModalWrapper({
 //  Helpers
 // ──────────────────────────────────────────────────────────────────
 
-function defaultGridFor(slotCount: number, stage: { width: number; height: number }) {
+function defaultGridFor(
+  slotCount: number,
+  stage: { width: number; height: number },
+  forcedCols?: number,
+) {
   const presets: Record<number, { cols: number; rows: number }> = {
     1: { cols: 1, rows: 1 },
     2: { cols: 2, rows: 1 },
@@ -1282,6 +1288,11 @@ function defaultGridFor(slotCount: number, stage: { width: number; height: numbe
   const aspect = stage.width / stage.height;
   if (aspect > 2.0 && cols > rows) [cols, rows] = [rows, cols];
   if (aspect < 0.5 && rows > cols) [cols, rows] = [rows, cols];
+  // Ola 2A — la plantilla puede fijar las columnas (tira fotobooth: gridCols=1 → apilado vertical).
+  if (typeof forcedCols === "number" && forcedCols >= 1) {
+    cols = Math.min(forcedCols, slotCount);
+    rows = Math.ceil(slotCount / cols);
+  }
   const gap = slotCount <= 4 ? 24 : slotCount <= 9 ? 16 : slotCount <= 12 ? 12 : 8;
   return { cols, rows, gap };
 }

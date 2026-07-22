@@ -175,7 +175,25 @@ export const getCategoryTree = unstable_cache(
         }
       }
 
-      return roots;
+      // Categorías vacías (Lucy 2026-07-22): se podan del árbol público las
+      // categorías sin productos comprables (isActive + no borrados), para que el
+      // mega-menú nunca enlace a una categoría vacía ("Animales/Frutas" y basura
+      // futura). Regla (árbol de 1 nivel): una hija con 0 productos directos sale;
+      // una raíz con 0 directos Y sin hijas con productos también sale.
+      // El productCount de la raíz pasa a ser EFECTIVO (directos + hijas visibles):
+      // el mega-menú muestra "N productos" y el filtro /productos?categoria=raíz
+      // incluye las hijas → el número coincide con lo que el cliente verá.
+      for (const node of map.values()) {
+        node.children = node.children.filter((child) => child.productCount > 0);
+      }
+      const visibleRoots: CategoryNode[] = [];
+      for (const root of roots) {
+        const childrenCount = root.children.reduce((acc, c) => acc + c.productCount, 0);
+        if (root.productCount + childrenCount === 0) continue;
+        root.productCount += childrenCount;
+        visibleRoots.push(root);
+      }
+      return visibleRoots;
     } catch {
       return [];
     }

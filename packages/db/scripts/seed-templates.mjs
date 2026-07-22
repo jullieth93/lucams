@@ -152,6 +152,13 @@ if (!polaroidProduct) {
   process.exit(1);
 }
 
+// Ola 2A — Tiras Magnéticas (producto OCULTO, creado por ola2a-tiras-magneticas.mjs). Si el
+// producto aún no existe (DB fresca), su plantilla se omite sin romper el seed (idempotente).
+const tirasProduct = await prisma.product.findUnique({
+  where: { slug: "tiras-magneticas-fotos" },
+  select: { id: true },
+});
+
 // Helper para canvas blanco con foto + texto editable opcional.
 // Stage aspect ratio elegido por kind para encajar con producto físico típico.
 function blankCanvas({ stageW, stageH, photoLabel = "Tu foto", includeText = false }) {
@@ -273,6 +280,29 @@ const templatesData = [
   // se regeneran las plantillas premium una a una. Cliente sube foto + texto
   // libre. NO tienen `productId` → globales, aparecen en cualquier producto
   // del kind que no tenga plantillas premium específicas.
+  // Ola 2A — plantilla de la Tira Magnética (producto oculto): celda cuadrada
+  // (1 foto por slot) apilada en 1 columna (gridCols=1) → la tira 5×15 photobooth.
+  ...(tirasProduct
+    ? [
+        {
+          slug: "photo-strip-3-fotos",
+          productId: tirasProduct.id,
+          kind: "PHOTO_PACK",
+          name: "Tira photobooth (3 fotos)",
+          order: 1,
+          previewUrl: "/templates/personalizacion-libre.svg",
+          canvasData: {
+            version: 1,
+            stage: stage(500, 500),
+            gridCols: 1, // apilar las 3 fotos en vertical (la tira física es 1 columna)
+            layers: [
+              background("#FFFFFF"),
+              photoSlot({ id: "photo", x: 0, y: 0, width: 500, height: 500, label: "Foto de la tira" }),
+            ],
+          },
+        },
+      ]
+    : []),
   {
     slug: "libre-photo-pack",
     productId: null,
@@ -304,12 +334,26 @@ const templatesData = [
     name: "Personalización Libre",
     order: 99,
     previewUrl: "/templates/personalizacion-libre.svg",
-    canvasData: blankCanvas({
-      stageW: 600,
-      stageH: 800,
-      photoLabel: "Foto del mes",
-      includeText: false,
-    }),
+    // Ola 2A (Lucy 2026-07-22) — tarjeta 7.5×10 (3:4): foto full-bleed 4:3 arriba (600×450),
+    // espejo de la región CALENDAR_PHOTO de producción (1080×810 en página 1080×1440) para
+    // que el encuadre del cliente mapee 1:1 al imprimir (WYSIWYG). Abajo queda la franja del
+    // mes (lettering grande + grilla) que el compositor hornea en el PNG.
+    canvasData: {
+      version: 1,
+      stage: stage(600, 800),
+      layers: [
+        background("#FFFFFF"),
+        photoSlot({
+          id: "p1",
+          x: 0,
+          y: 0,
+          width: 600,
+          height: 450,
+          cornerRadius: 0,
+          label: "Foto del mes",
+        }),
+      ],
+    },
   },
   {
     slug: "libre-calendar-photo-hero",

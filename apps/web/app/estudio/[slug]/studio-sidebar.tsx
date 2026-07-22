@@ -28,6 +28,7 @@ import { toast } from "sonner";
 import type { StoreApi } from "zustand";
 import { useStore } from "zustand";
 import { uploadDesignAssetAction } from "@/features/personalization/actions";
+import { frameColorById } from "@/features/personalization/frame-palette";
 import {
   selectAssetIsUsed,
   selectFilledSlotCount,
@@ -44,6 +45,9 @@ type StudioSidebarProps = {
   productSizeCm?: string;
   /** P0.7 — forma física para borde redondeado realista de la card. */
   productShape?: "rectangle" | "circle" | "heart" | "custom";
+  /** Ola 2A — ids de marco de color disponibles (personalizationSchema.frameOptions).
+   * Si trae opciones, se muestra el selector "Marco" (borde de color alrededor de la foto). */
+  frameOptions?: string[];
 };
 
 export function StudioSidebar({
@@ -52,6 +56,7 @@ export function StudioSidebar({
   productSku,
   productSizeCm,
   productShape,
+  frameOptions,
 }: StudioSidebarProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(0);
@@ -72,6 +77,13 @@ export function StudioSidebar({
   const addAsset = useStore(store, (s) => s.addAsset);
   const autoFillSlots = useStore(store, (s) => s.autoFillSlots);
   const applyTemplate = useStore(store, (s) => s.applyTemplate);
+  // Ola 2A — marco de color (diseño-level, aplica a todas las fotos del pack).
+  const borderColor = useStore(store, (s) => s.canvasData?.borderColor ?? null);
+  const setBorderColor = useStore(store, (s) => s.setBorderColor);
+  // Ids válidos contra la paleta de marca (descarta ids desconocidos del schema).
+  const frameColors = (frameOptions ?? [])
+    .map((id) => frameColorById(id))
+    .filter((c): c is NonNullable<typeof c> => c !== null);
 
   const handleFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
@@ -270,6 +282,78 @@ export function StudioSidebar({
           </p>
         )}
       </section>
+
+      {/* ──────── Marco (Ola 2A — el "Estilo"/"Marco" de la PDP ahora es una plantilla
+          visual del Estudio: borde de color alrededor de la foto; viaja con el diseño) ──────── */}
+      {frameColors.length > 0 && (
+        <section aria-labelledby="sidebar-marco" className="border-brand-purple/10 border-t pt-5">
+          <div
+            id="sidebar-marco"
+            className="text-brand-purple-dark mb-3 flex items-center gap-2 text-sm font-semibold"
+          >
+            <Sparkles className="text-brand-purple h-4 w-4" />
+            Marco de tus fotos
+          </div>
+          <div role="radiogroup" aria-label="Color del marco" className="flex flex-wrap gap-2">
+            {/* Sin marco */}
+            <button
+              type="button"
+              role="radio"
+              aria-checked={borderColor === null}
+              aria-label="Sin marco"
+              title="Sin marco"
+              onClick={() => setBorderColor(null)}
+              className={[
+                "focus:ring-brand-turquoise relative flex h-10 w-10 cursor-pointer items-center justify-center rounded-full bg-white transition-all focus:ring-2 focus:outline-none",
+                borderColor === null
+                  ? "ring-brand-turquoise shadow-md ring-2 ring-offset-2"
+                  : "ring-brand-purple/20 hover:ring-brand-purple/50 ring-1",
+              ].join(" ")}
+            >
+              <span className="text-brand-muted text-lg leading-none" aria-hidden>
+                ∅
+              </span>
+            </button>
+            {frameColors.map((c) => {
+              const active = borderColor === c.hex;
+              return (
+                <button
+                  key={c.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={active}
+                  aria-label={`Marco ${c.label.toLowerCase()}`}
+                  title={c.label}
+                  onClick={() => setBorderColor(c.hex)}
+                  className={[
+                    "focus:ring-brand-turquoise relative h-10 w-10 cursor-pointer rounded-full transition-all focus:ring-2 focus:outline-none",
+                    active
+                      ? "ring-brand-turquoise shadow-md ring-2 ring-offset-2"
+                      : "ring-brand-purple/20 hover:ring-brand-purple/50 ring-1",
+                  ].join(" ")}
+                  style={{ backgroundColor: c.hex }}
+                >
+                  {active && (
+                    <Check
+                      className="absolute inset-0 m-auto h-4 w-4"
+                      strokeWidth={3}
+                      // Check visible sobre cualquier color (blanco incluido).
+                      style={{
+                        color: c.id === "blanco" || c.id === "amarillo" ? "#3D2E5C" : "#FFFFFF",
+                        filter: "drop-shadow(0 0 2px rgba(0,0,0,0.35))",
+                      }}
+                      aria-hidden
+                    />
+                  )}
+                </button>
+              );
+            })}
+          </div>
+          <p className="text-brand-muted mt-2 text-xs">
+            El borde de color se imprime alrededor de cada foto.
+          </p>
+        </section>
+      )}
 
       {/* ──────── Plantillas ──────── */}
       <section

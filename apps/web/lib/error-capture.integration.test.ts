@@ -14,7 +14,10 @@ import { captureClientError } from "./error-capture";
 const hasDb = Boolean(process.env.DATABASE_URL);
 const RUN = `ITESTCLIENTERR${Date.now()}${Math.floor(Math.random() * 1e6)}`;
 
-describe.skipIf(!hasDb)("captureClientError — dedup por fingerprint", () => {
+// Cada captureClientError hace ~2 round-trips al pooler remoto compartido (upsert +
+// select): el default de 5s no alcanza bajo latencia — mismo criterio que el resto
+// de integration tests del repo (30s por test).
+describe.skipIf(!hasDb)("captureClientError — dedup por fingerprint", { timeout: 30_000 }, () => {
   afterAll(async () => {
     // Limpia por prefijo RUN en message O en url. El caso "message vacío" produce
     // message="unknown" (sin prefijo RUN) → se marca con una url RUN-prefijada para
@@ -99,7 +102,7 @@ describe.skipIf(!hasDb)("captureClientError — dedup por fingerprint", () => {
     expect(after!.resolvedAt).toBeNull();
     expect(after!.resolvedBy).toBeNull();
     expect(after!.count).toBe(2); // incrementó, no creó fila nueva
-  });
+  }, 30000);
 
   it("un error IGNORED que recurre NO se reabre (silencio intencional)", async () => {
     const message = `${RUN}-ignorado`;

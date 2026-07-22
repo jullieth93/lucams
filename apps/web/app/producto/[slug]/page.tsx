@@ -35,7 +35,11 @@ import { formatCOP } from "@/lib/format";
 import { isCatalogMode } from "@/lib/store-mode";
 import { buildWhatsAppUrl } from "@/lib/wa";
 import { addToCartAction } from "@/app/carrito/actions";
-import { selectableVariants, parseVariantAttributes } from "@/features/products/variant-schemas";
+import {
+  selectableVariants,
+  parseVariantAttributes,
+  PDP_HIDDEN_DIMENSION_KEYS,
+} from "@/features/products/variant-schemas";
 import { NamePricePicker } from "./name-price-picker";
 import {
   getStorefrontProductBySlug,
@@ -339,12 +343,15 @@ export default async function ProductoDetallePage({
                 {/* H12 — el selector y las acciones comparten la variante elegida vía Context (sync
                   instantáneo), sin depender del re-render del RSC ni de la URL. */}
                 <SelectedVariantProvider variantIds={variantIds} initialId={firstVariantId}>
-                  {/* M.3.b.CAT.3 — Selector de variants si product tiene 2+ */}
+                  {/* M.3.b.CAT.3 — Selector de variants si product tiene 2+.
+                      Ola 2A — algunas dimensiones (Estilo/Marco/Tema/Idioma) ya no van en la
+                      ficha: se eligen como plantilla dentro del Estudio. */}
                   {selectable.length > 1 && (
                     <VariantSelector
                       productBasePrice={product.basePrice}
                       variants={selectable}
                       perTile={isNamePerTile}
+                      hiddenDimensions={PDP_HIDDEN_DIMENSION_KEYS[product.slug]}
                     />
                   )}
 

@@ -51,6 +51,10 @@ type MultiSlotCanvasData = {
   slotCount: number; // 6, 9, 12, 20 según photoSlots producto
   slots: SlotState[];
   gridLayout: { cols: number; rows: number; gap: number };
+  // Ola 2A (2026-07-22) — color del marco alrededor de la foto (hex #RRGGBB),
+  // elegido en el Estudio (antes era la variante "Estilo"/"Marco" de la PDP).
+  // null = sin marco. Viaja a la cotización y al render de producción.
+  borderColor?: string | null;
 };
 
 type SlotState = {

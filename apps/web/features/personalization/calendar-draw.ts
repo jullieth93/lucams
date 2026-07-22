@@ -53,6 +53,12 @@ export interface CalendarDrawCtx {
 export type CalendarPhotoTransform = { offsetX: number; offsetY: number; scale: number };
 
 /**
+ * Contrato del photoTransform (2026-07-22): los offsets llegan ya en UNIDADES DE LA PÁGINA
+ * (1080px de ancho). El editor los captura en unidades de la plantilla (stage 600px) y el
+ * caller los escala con `scalePhotoTransformToPage` antes de llamar acá.
+ */
+
+/**
  * #2 — fija el font-string Y el eje `wght` de la fuente variable juntos. En el servidor (@napi-rs/
  * canvas) el font-string por sí solo no aplica el peso en fuentes variables → se fuerza
  * fontVariationSettings. En el navegador la propiedad puede no existir (guard → no-op: el cliente ya
@@ -122,12 +128,14 @@ export function drawCalendarPage(
   const bodyFont = fontsOk ? "Inter" : "sans-serif";
   const L = CALENDAR_LAYOUT;
 
-  // Título: "Enero 2027".
+  // Título: "ENE 2027" — mes abreviado en MAYÚSCULAS, lettering grande protagonista de la
+  // tarjeta (referencia Lucy 2026-07-22: el mes manda sobre la grilla).
+  const monthShort = (MONTH_NAMES_ES[monthIndex0] ?? "").slice(0, 3).toUpperCase();
   ctx.fillStyle = "#3D2E5C";
   ctx.textAlign = "center";
   ctx.textBaseline = "alphabetic";
   setBrandFont(ctx, 700, L.titleFontSize, titleFont, fontsOk);
-  ctx.fillText(`${MONTH_NAMES_ES[monthIndex0] ?? ""} ${year}`, CALENDAR_PAGE.width / 2, L.titleY);
+  ctx.fillText(`${monthShort} ${year}`, CALENDAR_PAGE.width / 2, L.titleY);
 
   // Encabezados de día (D L M M J V S).
   const gridW = L.gridRight - L.gridLeft;

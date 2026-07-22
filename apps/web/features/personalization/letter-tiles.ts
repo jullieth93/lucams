@@ -51,6 +51,47 @@ export async function listLetterStyles(language: string): Promise<LetterStyle[]>
   return sets.map((s) => ({ id: s.id, name: s.name, tiles: tilesToMap(s.tiles) }));
 }
 
+/**
+ * Ola 2A (Lucy 2026-07-22) — OPCIONES DE TEMA para el selector del Estudio de sets de letras
+ * (Abecedario/Vocales): TODOS los sets activos de un idioma, INCLUSO los vacíos (que degradan
+ * a letra estándar en el preview). El tema ya no se elige como variante en la PDP: se elige
+ * acá. `theme` se deriva del nombre del set ("Kawaii Animales · Español" → "animales").
+ */
+export type LetterThemeOption = {
+  id: string;
+  name: string;
+  /** Clave de tema derivada del nombre: "animales" | "frutas" | "profesiones" | null (otro). */
+  theme: string | null;
+  language: string;
+  tileCount: number;
+};
+
+/** Deriva la clave de tema del nombre de un set (es/en). null = tema no reconocido. */
+export function themeKeyFromSetName(name: string): string | null {
+  const n = name.toLowerCase();
+  if (n.includes("animal")) return "animales";
+  if (n.includes("fruta") || n.includes("fruit")) return "frutas";
+  if (n.includes("profesion") || n.includes("profession") || n.includes("oficio")) {
+    return "profesiones";
+  }
+  return null;
+}
+
+export async function listLetterThemeOptions(language: string): Promise<LetterThemeOption[]> {
+  const sets = await prisma.letterTileSet.findMany({
+    where: { language, isActive: true, deletedAt: null },
+    orderBy: [{ isDefault: "desc" }, { order: "asc" }],
+    select: { id: true, name: true, language: true, _count: { select: { tiles: true } } },
+  });
+  return sets.map((s) => ({
+    id: s.id,
+    name: s.name,
+    theme: themeKeyFromSetName(s.name),
+    language: s.language,
+    tileCount: s._count.tiles,
+  }));
+}
+
 // ──────────────────────── Admin ────────────────────────
 
 /** Alfabeto esperado por idioma (para la grilla del admin). es incluye la Ñ. */

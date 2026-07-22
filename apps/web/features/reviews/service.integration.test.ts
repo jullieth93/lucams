@@ -155,7 +155,7 @@ describe.skipIf(!hasDb)("features/reviews — servicio (integración DB)", { tim
       expect(agg).toBeNull();
     });
 
-    it("promedia solo aprobadas de clientes reales, redondea a 1 decimal e ignora demo/pending", async () => {
+    it("promedia las APROBADAS (clientes y testimonios curados), redondea a 1 decimal e ignora pending", async () => {
       const c1 = await mkCustomer();
       const c2 = await mkCustomer();
       const c3 = await mkCustomer();
@@ -164,18 +164,19 @@ describe.skipIf(!hasDb)("features/reviews — servicio (integración DB)", { tim
       await mkReview({ productId: readProductId, customerId: c2, rating: 5, isApproved: true });
       await mkReview({ productId: readProductId, customerId: c3, rating: 1 }); // pending → excluida
       await mkReview({ productId: readProductId, customerId: c4, rating: 3, isApproved: true });
-      // Demo (customerId=null): aprobada pero NO debe contar en el aggregate público.
+      // Testimonio curado por la dueña (customerId=null): aprobada → SÍ cuenta
+      // (política 2026-07-22: el gate anti-fake es la aprobación humana en /admin/resenas).
       await mkReview({ productId: readProductId, customerId: null, rating: 1, isApproved: true });
 
       const agg = await getProductRatingAggregate(readProductId);
-      // (4 + 5 + 3) / 3 = 4.0 exacto; count 3 (pending y demo excluidas).
-      expect(agg).toEqual({ ratingValue: 4, reviewCount: 3 });
+      // (4 + 5 + 3 + 1) / 4 = 3.25 → 3.3; count 4 (solo pending excluida).
+      expect(agg).toEqual({ ratingValue: 3.3, reviewCount: 4 });
     });
   });
 
   // ───────────────────────── listFeaturedReviews ─────────────────────────
   describe("listFeaturedReviews", () => {
-    it("solo aprobadas+featured de clientes reales con producto activo, orden createdAt desc, respeta limit", async () => {
+    it("aprobadas+featured (clientes y testimonios curados) con producto activo, orden createdAt desc, respeta limit", async () => {
       const cOld = await mkCustomer();
       const cNew = await mkCustomer();
       const cPlain = await mkCustomer();
@@ -206,7 +207,8 @@ describe.skipIf(!hasDb)("features/reviews — servicio (integración DB)", { tim
         isApproved: true,
         featured: false,
       });
-      // Demo featured (customerId=null) → excluida.
+      // Testimonio curado featured (customerId=null) → INCLUIDO (política 2026-07-22:
+      // la aprobación de la dueña es el gate, no el customerId).
       const idDemo = await mkReview({
         productId: readProductId,
         customerId: null,
@@ -228,7 +230,7 @@ describe.skipIf(!hasDb)("features/reviews — servicio (integración DB)", { tim
       expect(ids).toContain(idOld);
       expect(ids).toContain(idNew);
       expect(ids).not.toContain(idPlain);
-      expect(ids).not.toContain(idDemo);
+      expect(ids).toContain(idDemo); // testimonio curado aprobado → visible
       expect(ids).not.toContain(idInactive);
 
       // Orden createdAt desc entre las mías: la nueva antes que la vieja.

@@ -86,6 +86,8 @@ type StudioSlotProps = {
   cornerRadiusPx?: number;
   /** M.3.b.B.1 — toggle global para mostrar bleed + safe guides. */
   showRealismGuides?: boolean;
+  /** Ola 2A — color del marco alrededor de la foto (hex #RRGGBB). null = sin marco. */
+  borderColor?: string | null;
   onClick: () => void;
   onClear: () => void;
   /** M.3.b.B.3 — Abrir modal de ajustar foto (filtros). Solo se llama si slot lleno. */
@@ -122,6 +124,7 @@ function StudioSlotImpl({
   finish,
   cornerRadiusPx,
   showRealismGuides,
+  borderColor,
   onClick,
   onClear,
   onAdjust,
@@ -183,8 +186,34 @@ function StudioSlotImpl({
   const aspect = unitTemplate.stage.height / unitTemplate.stage.width;
   const slotWidth = displaySize;
   const slotHeight = displayHeight ?? displaySize * aspect;
+  // Ola 2A — slots angostos (grids de 12-20 miniaturas): la barra de acciones se
+  // compacta (sin chip de tamaño, calidad solo icono, botones h-8) para que
+  // Centrar/Filtros/Eliminar no se desborden ni se pierdan entre las miniaturas.
+  const compact = slotWidth < 170;
   // Scale Konva: misma proporción horizontal y vertical (no distorsiona)
   const scale = slotWidth / unitTemplate.stage.width;
+
+  // Ola 2A — MARCO de color alrededor de la foto (estilo visual elegido en el Estudio;
+  // viaja en canvasData.borderColor). Se dibuja como un Rect de stroke ancho centrado en
+  // el borde de la ventana de foto → queda mitad dentro de la foto y mitad sobre el fondo,
+  // como el marco impreso del imán físico. Heart/circle no llevan marco (la silueta manda).
+  const frameStyle = useMemo(() => {
+    if (!borderColor || shape === "heart" || shape === "circle") return null;
+    const ph = unitTemplate.layers.find((l) => l.type === "image-placeholder") as
+      | ImagePlaceholderLayer
+      | undefined;
+    if (!ph) return null;
+    const w = Math.max(6, Math.round(unitTemplate.stage.width * 0.04));
+    return {
+      x: ph.x + w / 2,
+      y: ph.y + w / 2,
+      width: Math.max(0, ph.width - w),
+      height: Math.max(0, ph.height - w),
+      strokeWidth: w,
+      cornerRadius: Math.max(0, (ph.cornerRadius ?? 0) - w / 2),
+      color: borderColor,
+    };
+  }, [borderColor, shape, unitTemplate]);
 
   // ──────────── Drag & drop nativo ────────────
   const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
@@ -458,6 +487,12 @@ function StudioSlotImpl({
           // sería ignorado igualmente.
           borderRadius: slotClipPath ? 0 : 8,
           clipPath: slotClipPath,
+          // Pinch-zoom (WCAG 1.4.4): la página NUNCA bloquea el zoom a nivel viewport;
+          // solo el canvas INTERACTIVO captura el gesto (touch-action:none) para que el
+          // pellizco/arrastre actúe sobre la foto y no dispare zoom/scroll de la página
+          // a la vez. En la grilla táctil (slot no interactivo) queda undefined → el
+          // dedo scrollea y el pinch hace zoom de página con normalidad.
+          touchAction: onPhotoTransformChange ? "none" : undefined,
         }}
         whileHover={{ scale: 1.02 }}
         whileTap={{ scale: 0.98 }}
@@ -523,6 +558,22 @@ function StudioSlotImpl({
                 handlePhotoDragStart,
                 handlePhotoDragEnd,
               ),
+            )}
+            {/* Ola 2A — marco de color: ENCIMA de la foto (stroke centrado en el borde de la
+              ventana). Es contenido del diseño: se hornea en el snapshot de producción (no es
+              "realism" ni "edit-indicator"). */}
+            {frameStyle && (
+              <Rect
+                name="frame-border"
+                x={frameStyle.x}
+                y={frameStyle.y}
+                width={frameStyle.width}
+                height={frameStyle.height}
+                stroke={frameStyle.color}
+                strokeWidth={frameStyle.strokeWidth}
+                cornerRadius={frameStyle.cornerRadius}
+                listening={false}
+              />
             )}
           </Layer>
           <RealismOverlayLayer
@@ -672,7 +723,10 @@ function StudioSlotImpl({
         Visible siempre que el slot está lleno O seleccionado (no solo hover),
         para que el cliente vea claramente qué puede hacer.
         Anti-patrón superpuesto adentro: tapaba la foto en slots chicos.
-        Patrón Casetify/Mixbook: action bar inferior fuera del canvas. */}
+        Patrón Casetify/Mixbook: action bar inferior fuera del canvas.
+        Ola 2A — el padre (StudioCanvasGrid) RESERVA este alto en el grid para
+        que la barra no se solape con la fila de abajo; en slots angostos se
+        compacta para que los 3 botones quepan sin desbordarse. */}
       {(slotState.assetUrl || isSelected) && (
         <motion.div
           initial={{ opacity: 0, y: -4 }}
@@ -681,8 +735,9 @@ function StudioSlotImpl({
           className="flex items-center gap-1.5"
           style={{ width: slotWidth }}
         >
-          {/* Tamaño físico — chip a la izquierda con orientación explícita */}
-          {sizeCm && (
+          {/* Tamaño físico — chip a la izquierda con orientación explícita.
+              En slots angostos se omite: el tamaño ya lo muestra el toolbar. */}
+          {sizeCm && !compact && (
             <span
               className="text-brand-purple-dark/70 bg-brand-cream/90 ring-brand-purple/10 inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-bold ring-1"
               aria-label={`Tamaño físico ${sizeCm}`}
@@ -694,7 +749,8 @@ function StudioSlotImpl({
 
           {/* M.3.b.UX.v11 — Warning de calidad si la foto es de baja resolución
             para imprimir al tamaño físico. Detección automática al cargar foto
-            (checkPhotoQuality calcula DPI efectivo a 300 DPI estándar imprenta). */}
+            (checkPhotoQuality calcula DPI efectivo a 300 DPI estándar imprenta).
+            Ola 2A — en slots angostos solo el icono (el detalle va en el title). */}
           {photoQuality && !photoQuality.ok && (
             <span
               className={[
@@ -714,7 +770,8 @@ function StudioSlotImpl({
                   : `Esta foto está al límite de resolución para ${sizeCm} cm. Puede verse OK, pero recomendamos ${photoQuality.requiredPx?.w}×${photoQuality.requiredPx?.h}px o más.`
               }
             >
-              {photoQuality.severity === "error" ? "⚠" : "ⓘ"} calidad
+              {photoQuality.severity === "error" ? "⚠" : "ⓘ"}
+              {compact ? "" : " calidad"}
             </span>
           )}
 
@@ -736,10 +793,12 @@ function StudioSlotImpl({
                   }}
                   aria-label={`Centrar la foto del imán ${slotState.slotIndex + 1}`}
                   title="Volver al centro y resetear zoom"
-                  className="text-brand-purple-dark/70 ring-brand-purple/15 hover:bg-brand-purple/5 hover:text-brand-purple-dark focus:ring-brand-turquoise hover:ring-brand-purple/30 relative flex h-9 w-9 items-center justify-center rounded-md bg-white shadow-sm ring-1 before:absolute before:-inset-1 before:content-[''] focus:ring-2 focus:outline-none"
+                  className={`text-brand-purple-dark/70 ring-brand-purple/15 hover:bg-brand-purple/5 hover:text-brand-purple-dark focus:ring-brand-turquoise hover:ring-brand-purple/30 relative flex items-center justify-center rounded-md bg-white shadow-sm ring-1 before:absolute before:content-[''] focus:ring-2 focus:outline-none ${
+                    compact ? "h-8 w-8 before:-inset-1.5" : "h-9 w-9 before:-inset-1"
+                  }`}
                   tabIndex={-1}
                 >
-                  <RotateCcw className="h-4 w-4" />
+                  <RotateCcw className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} />
                 </motion.button>
               )}
               {onAdjust && (
@@ -753,10 +812,12 @@ function StudioSlotImpl({
                   }}
                   aria-label={`Ajustar foto del imán ${slotState.slotIndex + 1} (zoom y filtros)`}
                   title="Aplicar zoom y filtros a esta foto"
-                  className="text-brand-purple ring-brand-purple/20 hover:bg-brand-purple/5 focus:ring-brand-turquoise hover:ring-brand-purple/40 relative flex h-9 w-9 items-center justify-center rounded-md bg-white shadow-sm ring-1 before:absolute before:-inset-1 before:content-[''] focus:ring-2 focus:outline-none"
+                  className={`text-brand-purple ring-brand-purple/20 hover:bg-brand-purple/5 focus:ring-brand-turquoise hover:ring-brand-purple/40 relative flex items-center justify-center rounded-md bg-white shadow-sm ring-1 before:absolute before:content-[''] focus:ring-2 focus:outline-none ${
+                    compact ? "h-8 w-8 before:-inset-1.5" : "h-9 w-9 before:-inset-1"
+                  }`}
                   tabIndex={-1}
                 >
-                  <Wand2 className="h-4 w-4" />
+                  <Wand2 className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} />
                 </motion.button>
               )}
               <motion.button
@@ -769,10 +830,12 @@ function StudioSlotImpl({
                 }}
                 aria-label={`Quitar foto del imán ${slotState.slotIndex + 1}`}
                 title="Quitar esta foto"
-                className="relative flex h-9 w-9 items-center justify-center rounded-md bg-white text-red-600 shadow-sm ring-1 ring-red-200 before:absolute before:-inset-1 before:content-[''] hover:bg-red-50 hover:ring-red-400 focus:ring-2 focus:ring-red-500 focus:outline-none"
+                className={`relative flex items-center justify-center rounded-md bg-white text-red-600 shadow-sm ring-1 ring-red-200 before:absolute before:content-[''] hover:bg-red-50 hover:ring-red-400 focus:ring-2 focus:ring-red-500 focus:outline-none ${
+                  compact ? "h-8 w-8 before:-inset-1.5" : "h-9 w-9 before:-inset-1"
+                }`}
                 tabIndex={-1}
               >
-                <Trash2 className="h-4 w-4" />
+                <Trash2 className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} />
               </motion.button>
             </div>
           )}
@@ -798,7 +861,8 @@ export const StudioSlot = memo(StudioSlotImpl, (prev, next) => {
     prev.shape === next.shape &&
     prev.finish === next.finish &&
     prev.cornerRadiusPx === next.cornerRadiusPx &&
-    prev.showRealismGuides === next.showRealismGuides
+    prev.showRealismGuides === next.showRealismGuides &&
+    prev.borderColor === next.borderColor
   );
 });
 StudioSlot.displayName = "StudioSlot";
@@ -1013,12 +1077,18 @@ function renderText(
       onClick={(e) => {
         if (isEditable && onTextEdit) {
           e.cancelBubble = true;
+          // Exclusión mutua de paneles (bug Lucy 2026-07-22): cancelBubble solo frena
+          // la propagación INTERNA de Konva; el evento nativo seguía subiendo del
+          // <canvas> al wrapper div → su onClick abría ADEMÁS el picker/editor de foto
+          // y quedaban dos paneles encimados. stopPropagation lo corta en el DOM.
+          e.evt.stopPropagation();
           onTextEdit(layer.id);
         }
       }}
       onTap={(e) => {
         if (isEditable && onTextEdit) {
           e.cancelBubble = true;
+          e.evt.stopPropagation(); // ver onClick: evita el doble panel picker/foco + texto
           onTextEdit(layer.id);
         }
       }}

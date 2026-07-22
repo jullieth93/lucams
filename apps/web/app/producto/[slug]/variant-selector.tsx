@@ -21,10 +21,16 @@
  *
  * Modo single-dim: lista vertical con price por variant.
  * Modo multi-dim: chips por dimensión + card de Precio prominente.
+ *   - La dimensión Cantidad (quantity/photoSlots) se muestra como stepper +/−
+ *     con "$X c/u" + total de la línea cuando sus valores son 1..N contiguos
+ *     (fotoimanes/separadores 1–6); sets no contiguos (polaroid 6/9/12/20)
+ *     conservan chips. La selección siempre mapea a la variant con esa
+ *     cantidad (mismo handleSelectValue que los chips) → deep-link ?variant=
+ *     y dedupe quantity/photoSlots intactos.
  */
 
 import { useMemo } from "react";
-import { Check } from "lucide-react";
+import { Check, Minus, Plus } from "lucide-react";
 import { formatCOP } from "@/lib/format";
 import { useSelectedVariant } from "./variant-actions";
 import {
@@ -48,6 +54,10 @@ type VariantSelectorProps = {
    * count × price = total"); ocultamos el card "Precio" pelado del selector (confunde: parece el
    * total pero es el precio de UNA ficha). */
   perTile?: boolean;
+  /** Ola 2A — claves de attributes que NO se muestran como grupo (se eligen en el Estudio:
+   * variantStyle/frameStyle/theme/language según el producto). Las variantes siguen intactas;
+   * solo se filtra el grupo del UI. */
+  hiddenDimensions?: readonly string[];
 };
 
 const DIMENSION_LABELS: Record<string, string> = {
@@ -136,10 +146,27 @@ const VISIBLE_DIMENSIONS: (keyof ProductVariantAttributes)[] = [
   "theme",
 ];
 
+/** Dimensiones que representan CANTIDAD de unidades (candidatas al stepper +/−). */
+const QUANTITY_DIM_KEYS: ReadonlySet<string> = new Set(["quantity", "photoSlots"]);
+
+/**
+ * ¿Los valores de la dimensión son exactamente 1..N contiguos? Solo así la cantidad
+ * se elige con stepper +/− (fotoimanes cuadrados y separadores: 1–6, Lucy 2026-07-22).
+ * Sets NO contiguos (polaroid 6/9/12/20) conservan chips: un stepper insinuaría que
+ * existen todos los tamaños intermedios. La regla es por-producto, derivada de los
+ * valores reales de sus variants — no de una lista fija.
+ */
+function isContiguousFromOne(values: string[]): boolean {
+  const nums = values.map((v) => Number.parseInt(v, 10));
+  if (nums.length === 0 || nums.some((n) => !Number.isFinite(n))) return false;
+  return [...nums].sort((a, b) => a - b).every((n, i) => n === i + 1);
+}
+
 export function VariantSelector({
   productBasePrice,
   variants: rawVariants,
   perTile = false,
+  hiddenDimensions,
 }: VariantSelectorProps) {
   // ──── SINGLE SOURCE OF TRUTH: el Context del buy-box (H12) ────
   // Antes el estado vivía LOCAL acá + router.replace; las acciones (CTA/carrito/precio) no se
@@ -196,7 +223,13 @@ export function VariantSelector({
           }),
         ),
     );
-    return uniqueKeys.map((key) => {
+    // Ola 2A — ocultar las dimensiones que se eligen en el Estudio (Estilo/Marco/Tema/Idioma).
+    // El dato sigue en la variante seleccionada (preselección del Estudio + cotización);
+    // solo NO se pinta el grupo de chips. El dedupe corre ANTES para que una dim oculta no
+    // "tape" una visible idéntica (ej. theme espejo de otra clave).
+    const hidden = new Set(hiddenDimensions ?? []);
+    const visibleKeys = uniqueKeys.filter((key) => !hidden.has(key));
+    return visibleKeys.map((key) => {
       const rawValues = Array.from(dimMap[key]);
       const order = DIMENSION_VALUE_ORDER[key];
       let values: string[];
@@ -213,7 +246,7 @@ export function VariantSelector({
       }
       return { key, label: DIMENSION_LABELS[key] ?? key, values };
     });
-  }, [variants]);
+  }, [variants, hiddenDimensions]);
 
   // Valor actual por dimensión (del variant seleccionado) — refleja
   // INMEDIATO porque selectedVariant depende de selectedId (local).
@@ -249,17 +282,7 @@ export function VariantSelector({
     // = currentValues. Si no existe (combinación no disponible), el chip
     // ya debería estar deshabilitado en el UI; pero por seguridad: no
     // hacer nada (no auto-cambiar las otras dimensiones).
-    const exact = variants.find((v) => {
-      const attrs = parseVariantAttributes(v.attributes);
-      const dimValue = attrs[dimKey as keyof ProductVariantAttributes];
-      if (dimValue === undefined || String(dimValue) !== value) return false;
-      for (const [k, val] of Object.entries(currentValues)) {
-        if (k === dimKey) continue;
-        const variantValue = attrs[k as keyof ProductVariantAttributes];
-        if (variantValue === undefined || String(variantValue) !== val) return false;
-      }
-      return true;
-    });
+    const exact = findExactVariant(dimKey, value);
     if (exact) {
       selectVariant(exact.id);
       return;
@@ -273,6 +296,21 @@ export function VariantSelector({
       return dimValue !== undefined && String(dimValue) === value;
     });
     if (fallback) selectVariant(fallback.id);
+  }
+
+  /** Match exacto: dimKey=value Y las demás dimensiones como están (currentValues). */
+  function findExactVariant(dimKey: string, value: string) {
+    return variants.find((v) => {
+      const attrs = parseVariantAttributes(v.attributes);
+      const dimValue = attrs[dimKey as keyof ProductVariantAttributes];
+      if (dimValue === undefined || String(dimValue) !== value) return false;
+      for (const [k, val] of Object.entries(currentValues)) {
+        if (k === dimKey) continue;
+        const variantValue = attrs[k as keyof ProductVariantAttributes];
+        if (variantValue === undefined || String(variantValue) !== val) return false;
+      }
+      return true;
+    });
   }
 
   if (variants.length < 2) return null;
@@ -351,44 +389,114 @@ export function VariantSelector({
 
   return (
     <div className="mb-4 space-y-4">
-      {dimensions.map((dim) => (
-        <div key={dim.key}>
-          <p className="text-brand-purple-dark/70 mb-2 text-xs font-bold tracking-wider uppercase">
-            {dim.label}
-          </p>
-          <div role="group" aria-label={dim.label} className="flex flex-wrap gap-2">
-            {dim.values.map((value) => {
-              const isSelected = currentValues[dim.key] === value;
-              const available = isSelected || isCombinationAvailable(dim.key, value);
-              return (
-                <button
-                  key={value}
-                  type="button"
-                  aria-pressed={isSelected}
-                  aria-disabled={!available}
-                  disabled={!available}
-                  onClick={() => available && handleSelectValue(dim.key, value)}
-                  title={
-                    !available
-                      ? `No disponible en esta combinación. Cambia primero otra opción para acceder a "${formatDimensionValue(dim.key, value)}".`
-                      : undefined
-                  }
-                  className={[
-                    "focus:ring-brand-turquoise rounded-lg px-3 py-2 text-sm font-semibold transition-all focus:ring-2 focus:outline-none",
-                    isSelected
-                      ? "bg-brand-purple cursor-pointer text-white shadow-md"
-                      : available
-                        ? "ring-brand-purple/20 text-brand-purple-dark hover:ring-brand-purple/50 hover:bg-brand-cream/50 cursor-pointer bg-white ring-1"
-                        : "ring-brand-purple/10 text-brand-muted bg-brand-cream/40 cursor-not-allowed ring-1",
-                  ].join(" ")}
-                >
-                  {formatDimensionValue(dim.key, value)}
-                </button>
-              );
-            })}
+      {dimensions.map((dim) => {
+        // Stepper de cantidad (Lucy 2026-07-22): solo si la dimensión es de cantidad
+        // y sus valores son 1..N contiguos (fotoimanes/separadores 1–6). Sets no
+        // contiguos (polaroid 6/9/12/20) siguen con chips, más abajo.
+        const useStepper = QUANTITY_DIM_KEYS.has(dim.key) && isContiguousFromOne(dim.values);
+        if (useStepper) {
+          const maxQty = dim.values.length; // values = ["1",…,"N"] contiguos
+          const parsed = Number.parseInt(currentValues[dim.key] ?? "", 10);
+          const qty = Number.isFinite(parsed) ? Math.min(Math.max(parsed, 1), maxQty) : 1;
+          // La variante de la cantidad actual (misma combinación de las otras
+          // dimensiones) da el total de la línea; el c/u deriva de él.
+          const qtyVariant =
+            findExactVariant(dim.key, String(qty)) ??
+            variants.find(
+              (v) =>
+                String(
+                  parseVariantAttributes(v.attributes)[dim.key as keyof ProductVariantAttributes],
+                ) === String(qty),
+            );
+          const totalPrice = qtyVariant?.price ?? productBasePrice;
+          const unitPrice = Math.round(totalPrice / qty);
+          const canDecrease = qty > 1 && isCombinationAvailable(dim.key, String(qty - 1));
+          const canIncrease = qty < maxQty && isCombinationAvailable(dim.key, String(qty + 1));
+          return (
+            <div key={dim.key}>
+              <p className="text-brand-purple-dark/70 mb-2 text-xs font-bold tracking-wider uppercase">
+                {dim.label}
+              </p>
+              <div
+                role="group"
+                aria-label={dim.label}
+                className="flex flex-wrap items-center gap-x-3 gap-y-2"
+              >
+                <div className="ring-brand-purple/20 inline-flex items-center rounded-lg bg-white ring-1">
+                  <button
+                    type="button"
+                    aria-label="Disminuir cantidad"
+                    disabled={!canDecrease}
+                    onClick={() => canDecrease && handleSelectValue(dim.key, String(qty - 1))}
+                    className="text-brand-purple-dark hover:bg-brand-purple/5 focus:ring-brand-turquoise disabled:text-brand-muted flex h-10 w-10 cursor-pointer items-center justify-center rounded-l-lg transition-colors focus:ring-2 focus:outline-none disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                  >
+                    <Minus className="h-4 w-4" aria-hidden />
+                  </button>
+                  <span
+                    aria-live="polite"
+                    className="text-brand-purple-dark min-w-20 text-center text-sm font-bold tabular-nums"
+                  >
+                    {qty} {qty === 1 ? "unidad" : "unidades"}
+                  </span>
+                  <button
+                    type="button"
+                    aria-label="Aumentar cantidad"
+                    disabled={!canIncrease}
+                    onClick={() => canIncrease && handleSelectValue(dim.key, String(qty + 1))}
+                    className="text-brand-purple-dark hover:bg-brand-purple/5 focus:ring-brand-turquoise disabled:text-brand-muted flex h-10 w-10 cursor-pointer items-center justify-center rounded-r-lg transition-colors focus:ring-2 focus:outline-none disabled:cursor-not-allowed disabled:hover:bg-transparent"
+                  >
+                    <Plus className="h-4 w-4" aria-hidden />
+                  </button>
+                </div>
+                <span className="text-brand-muted text-xs tabular-nums">
+                  {formatCOP(unitPrice)} c/u
+                </span>
+                <span className="text-brand-purple-dark text-sm font-bold tabular-nums">
+                  Total: {formatCOP(totalPrice)}
+                </span>
+              </div>
+            </div>
+          );
+        }
+        return (
+          <div key={dim.key}>
+            <p className="text-brand-purple-dark/70 mb-2 text-xs font-bold tracking-wider uppercase">
+              {dim.label}
+            </p>
+            <div role="group" aria-label={dim.label} className="flex flex-wrap gap-2">
+              {dim.values.map((value) => {
+                const isSelected = currentValues[dim.key] === value;
+                const available = isSelected || isCombinationAvailable(dim.key, value);
+                return (
+                  <button
+                    key={value}
+                    type="button"
+                    aria-pressed={isSelected}
+                    aria-disabled={!available}
+                    disabled={!available}
+                    onClick={() => available && handleSelectValue(dim.key, value)}
+                    title={
+                      !available
+                        ? `No disponible en esta combinación. Cambia primero otra opción para acceder a "${formatDimensionValue(dim.key, value)}".`
+                        : undefined
+                    }
+                    className={[
+                      "focus:ring-brand-turquoise rounded-lg px-3 py-2 text-sm font-semibold transition-all focus:ring-2 focus:outline-none",
+                      isSelected
+                        ? "bg-brand-purple cursor-pointer text-white shadow-md"
+                        : available
+                          ? "ring-brand-purple/20 text-brand-purple-dark hover:ring-brand-purple/50 hover:bg-brand-cream/50 cursor-pointer bg-white ring-1"
+                          : "ring-brand-purple/10 text-brand-muted bg-brand-cream/40 cursor-not-allowed ring-1",
+                    ].join(" ")}
+                  >
+                    {formatDimensionValue(dim.key, value)}
+                  </button>
+                );
+              })}
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
 
       {/* Microcopy: explica los chips atenuados cuando hay combinaciones
           imposibles en el catálogo. No mostrar si la matriz está completa. */}

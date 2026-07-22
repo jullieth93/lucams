@@ -137,6 +137,25 @@ const FORM_MANAGED_ATTRIBUTE_KEYS: ReadonlySet<string> = new Set([
 ]);
 
 /**
+ * Ola 2A (catálogo WhatsApp, Lucy 2026-07-22) — dimensiones que YA NO se muestran como
+ * grupo de chips en la PDP porque se eligen DENTRO del Estudio (plantilla/estilo visual).
+ * Las variantes y sus attributes NO se tocan (viajan como dato para preselección y
+ * cotización); solo se oculta el grupo del selector:
+ *   - Polaroid: "Estilo" (variantStyle) → marco de color en el Estudio.
+ *   - Fotoimanes Cuadrados: "Marco" (frameStyle) → marco de color en el Estudio.
+ *   - Pack Vocales: "Tema" (theme) e "Idioma" (language) → tema/idioma en el Estudio
+ *     (las 5 vocales son las mismas en español e inglés).
+ *   - Abecedario Completo: "Idioma" (language) → idioma en el Estudio.
+ * Llave = slug del producto (familia). Valor = claves de attributes a ocultar.
+ */
+export const PDP_HIDDEN_DIMENSION_KEYS: Readonly<Record<string, readonly string[]>> = {
+  "set-fotoimanes-polaroid": ["variantStyle"],
+  "set-fotoimanes-cuadrados": ["frameStyle"],
+  "pack-vocales": ["theme", "language"],
+  "abecedario-completo": ["language"],
+};
+
+/**
  * Merge para el update del admin: las claves del form mandan, pero las claves
  * que el form NO puede expresar se PRESERVAN del valor existente en vez de
  * perderse. Sin esto, editar el precio de una variante desde /admin/productos

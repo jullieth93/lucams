@@ -105,6 +105,8 @@ export type StudioStoreState = {
   selectSlot: (slotIndex: number | null) => void;
   setSelectedTemplate: (templateId: string | null) => void;
   applyTemplate: (template: StudioTemplate) => void;
+  /** Ola 2A — color del marco alrededor de la foto (hex #RRGGBB) o null = sin marco. */
+  setBorderColor: (color: string | null) => void;
   addAsset: (asset: StudioAsset) => void;
   removeAsset: (assetId: string) => void;
   setAutoSaveStatus: (status: AutoSaveStatus) => void;
@@ -324,14 +326,28 @@ export function createStudioStore() {
         unitTemplate: template.canvasData,
         // gridLayout no cambia: depende de slotCount + aspect del stage del
         // nuevo template. Recalcular solo si stage del template difiere.
+        // Ola 2A — la plantilla puede fijar las columnas (tira fotobooth: gridCols=1).
         gridLayout:
           template.canvasData.stage.width === canvasData.unitTemplate.stage.width &&
           template.canvasData.stage.height === canvasData.unitTemplate.stage.height
             ? canvasData.gridLayout
-            : recalcGridLayout(canvasData.slotCount, template.canvasData.stage),
+            : recalcGridLayout(
+                canvasData.slotCount,
+                template.canvasData.stage,
+                typeof (template.canvasData as { gridCols?: unknown }).gridCols === "number"
+                  ? (template.canvasData as { gridCols?: number }).gridCols
+                  : undefined,
+              ),
       };
       get().setCanvasData(next);
       set({ selectedTemplateId: template.id });
+    },
+
+    setBorderColor: (color) => {
+      const { canvasData } = get();
+      if (!canvasData) return;
+      if ((canvasData.borderColor ?? null) === color) return;
+      get().setCanvasData({ ...canvasData, borderColor: color });
     },
 
     addAsset: (asset) => {
@@ -401,7 +417,11 @@ export type StudioStore = ReturnType<typeof createStudioStore>;
  * Replica de `lib/grid-layout.ts → generateGridLayout` (no podemos import
  * directo para evitar circular dependency en algunos contextos).
  */
-function recalcGridLayout(slotCount: number, stage: { width: number; height: number }) {
+function recalcGridLayout(
+  slotCount: number,
+  stage: { width: number; height: number },
+  forcedCols?: number,
+) {
   const presets: Record<number, { cols: number; rows: number }> = {
     1: { cols: 1, rows: 1 },
     2: { cols: 2, rows: 1 },
@@ -420,6 +440,11 @@ function recalcGridLayout(slotCount: number, stage: { width: number; height: num
   const aspect = stage.width / stage.height;
   if (aspect > 2.0 && cols > rows) [cols, rows] = [rows, cols];
   if (aspect < 0.5 && rows > cols) [cols, rows] = [rows, cols];
+  // Ola 2A — la plantilla puede fijar las columnas (tira fotobooth: gridCols=1).
+  if (typeof forcedCols === "number" && forcedCols >= 1) {
+    cols = Math.min(forcedCols, slotCount);
+    rows = Math.ceil(slotCount / cols);
+  }
   const gap = slotCount <= 4 ? 24 : slotCount <= 9 ? 16 : slotCount <= 12 ? 12 : 8;
   return { cols, rows, gap };
 }

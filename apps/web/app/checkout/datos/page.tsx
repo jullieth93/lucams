@@ -54,7 +54,7 @@ export default async function CheckoutDatosPage() {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2">
           {catalog ? (
-            <QuoteForm />
+            <QuoteForm items={ctx.cart.items} />
           ) : (
             <DatosForm
               initial={ctx.state}

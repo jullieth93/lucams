@@ -343,6 +343,8 @@ const LetterSetDesignInputSchema = z.object({
     .optional(),
   // ADR-057 — estilo ilustrado elegido (LetterTileSet.id) o null = "Solo letra".
   styleSetId: z.string().max(40).nullable().optional(),
+  // Ola 2A — idioma elegido en el Estudio (opcional; default = el de la variante).
+  language: z.enum(["es", "en"]).optional(),
 });
 
 export async function createLetterSetDesignAction(

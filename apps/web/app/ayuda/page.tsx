@@ -38,7 +38,18 @@ export const dynamic = "force-dynamic";
 // `catalog` = Etapa 1 (modo catálogo): sin pago en línea ni envío
 // integrado — la compra se cierra por WhatsApp. Los textos de pago/envío
 // se condicionan al modo para no prometer lo que no está activo.
-function buildFallbackFaqs(catalog: boolean): { slug: string; question: string; answer: string }[] {
+// `codEnabled`: el toggle COD del admin (SiteSetting COD_ENABLED) también
+// gobierna la mención de contraentrega — apagarlo quita la promesa (2026-07-22).
+function buildFallbackFaqs(
+  catalog: boolean,
+  codEnabled: boolean,
+): { slug: string; question: string; answer: string }[] {
+  const codCatalog = codEnabled
+    ? " Además tienes **contraentrega disponible**: pagas en efectivo al recibir tu pedido."
+    : "";
+  const codFull = codEnabled
+    ? " También aceptamos **pago contraentrega**: pagas en efectivo al recibir tu pedido."
+    : "";
   return [
     {
       slug: "como-personalizo",
@@ -58,8 +69,8 @@ function buildFallbackFaqs(catalog: boolean): { slug: string; question: string; 
       slug: "metodos-pago",
       question: "¿Qué métodos de pago aceptan?",
       answer: catalog
-        ? "Los medios de pago se acuerdan por **WhatsApp** al confirmar tu cotización. Además tienes **contraentrega disponible**: pagas en efectivo al recibir tu pedido."
-        : "Tarjetas de crédito y débito, PSE (cuentas bancarias), Nequi, Bancolombia transferencia y Daviplata. Todos los pagos los procesa Wompi de forma segura (pasarela certificada). También aceptamos **pago contraentrega**: pagas en efectivo al recibir tu pedido.",
+        ? `Los medios de pago se acuerdan por **WhatsApp** al confirmar tu cotización.${codCatalog}`
+        : `Tarjetas de crédito y débito, PSE (cuentas bancarias), Nequi, Bancolombia transferencia y Daviplata. Todos los pagos los procesa Wompi de forma segura (pasarela certificada).${codFull}`,
     },
     {
       slug: "envios-cobertura",
@@ -108,12 +119,14 @@ function buildFallbackFaqs(catalog: boolean): { slug: string; question: string; 
 }
 
 export default async function AyudaPage() {
-  const [faqs, waSupportUrl, contactEmail] = await Promise.all([
+  const [faqs, waSupportUrl, contactEmail, codSetting] = await Promise.all([
     getCmsBlocksByCategory("FAQ"),
     buildWhatsAppUrl({ kind: "support" }),
     getSettingValue("CONTACT_EMAIL", "hola@lucamsshop.com"),
+    getSettingValue("COD_ENABLED", "true"),
   ]);
   const catalog = isCatalogMode();
+  const codEnabled = codSetting === "true";
 
   // Si hay FAQs en CMS, las usamos. Si no, fallback editorial.
   const items =
@@ -124,7 +137,7 @@ export default async function AyudaPage() {
           answer: b.body,
           fromCms: true as const,
         }))
-      : buildFallbackFaqs(catalog).map((f) => ({ ...f, fromCms: false as const }));
+      : buildFallbackFaqs(catalog, codEnabled).map((f) => ({ ...f, fromCms: false as const }));
 
   return (
     <div className="bg-brand-cream flex min-h-screen flex-col">

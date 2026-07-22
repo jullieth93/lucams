@@ -136,7 +136,14 @@ async function tryServerRenderProduction(
         assetId: s.assetId,
         photoTransform: s.photoTransform,
       }));
-      const bufs = await renderCalendarMonthPagesCanvas({ slots, loadAsset, year, startMonth });
+      const bufs = await renderCalendarMonthPagesCanvas({
+        slots,
+        loadAsset,
+        year,
+        startMonth,
+        // Reescala el encuadre (pan) de unidades de la plantilla del editor a la página 1080.
+        templateStageWidth: canvasData.unitTemplate?.stage?.width,
+      });
       logger.info(
         {
           event: "design.finalize.server_render_ok",
@@ -161,61 +168,103 @@ async function tryServerRenderProduction(
     }
   }
 
+  // Ola 2A — marco de color elegido en el Estudio (viaja en canvasData). El tier sharp no
+  // dibuja marcos → con marco se entra directo al tier canvas (que sí lo hornea, WYSIWYG).
+  const borderColor =
+    typeof (canvasData as { borderColor?: unknown }).borderColor === "string"
+      ? ((canvasData as { borderColor?: string }).borderColor ?? null)
+      : null;
   const args = {
     unitTemplate: canvasData.unitTemplate as never,
     slots: canvasData.slots as never,
     shape,
     loadAsset,
+    borderColor,
   };
 
-  // Tier 1 — sharp (foto pura, rápido, sin deps nativas).
-  try {
-    return await renderProductionSlots(args);
-  } catch (err) {
-    if (!(err instanceof RenderNeedsKonvaError)) {
-      logger.warn(
-        {
-          event: "design.finalize.server_render_error",
-          designId,
-          engine: "sharp",
-          err: err instanceof Error ? err.message : String(err),
-        },
-        "Render sharp falló — usando PNG del cliente",
-      );
-      return null;
-    }
-    // Tier 2 — canvas (@napi-rs/canvas): la plantilla trae texto/marco/esquinas que sharp no hace.
+  // Tier 1 — sharp (foto pura, rápido, sin deps nativas). Solo SIN marco.
+  if (!borderColor) {
     try {
-      const bufs = await renderProductionSlotsCanvas(args);
-      logger.info(
-        {
-          event: "design.finalize.server_render_ok",
-          designId,
-          engine: "canvas",
-          slots: bufs.length,
-        },
-        "Production renderizada en el servidor (canvas)",
-      );
-      return bufs;
-    } catch (err2) {
-      if (err2 instanceof RenderNeedsKonvaError) {
-        logger.info(
-          { event: "design.finalize.server_render_skip", designId, reason: err2.message },
-          "Server render omitido (filtro/fuente/etc.) — usando PNG del cliente",
-        );
-      } else {
+      return await renderProductionSlots(args);
+    } catch (err) {
+      if (!(err instanceof RenderNeedsKonvaError)) {
         logger.warn(
           {
             event: "design.finalize.server_render_error",
             designId,
-            engine: "canvas",
-            err: err2 instanceof Error ? err2.message : String(err2),
+            engine: "sharp",
+            err: err instanceof Error ? err.message : String(err),
           },
-          "Render canvas falló — usando PNG del cliente",
+          "Render sharp falló — usando PNG del cliente",
         );
+        return null;
       }
-      return null;
+      // Tier 2 — canvas (@napi-rs/canvas): la plantilla trae texto/marco/esquinas que sharp no hace.
+      try {
+        const bufs = await renderProductionSlotsCanvas(args);
+        logger.info(
+          {
+            event: "design.finalize.server_render_ok",
+            designId,
+            engine: "canvas",
+            slots: bufs.length,
+          },
+          "Production renderizada en el servidor (canvas)",
+        );
+        return bufs;
+      } catch (err2) {
+        if (err2 instanceof RenderNeedsKonvaError) {
+          logger.info(
+            { event: "design.finalize.server_render_skip", designId, reason: err2.message },
+            "Server render omitido (filtro/fuente/etc.) — usando PNG del cliente",
+          );
+        } else {
+          logger.warn(
+            {
+              event: "design.finalize.server_render_error",
+              designId,
+              engine: "canvas",
+              err: err2 instanceof Error ? err2.message : String(err2),
+            },
+            "Render canvas falló — usando PNG del cliente",
+          );
+        }
+        return null;
+      }
     }
+  }
+
+  // Con marco: directo al tier canvas (sharp no dibuja marcos).
+  try {
+    const bufs = await renderProductionSlotsCanvas(args);
+    logger.info(
+      {
+        event: "design.finalize.server_render_ok",
+        designId,
+        engine: "canvas",
+        slots: bufs.length,
+      },
+      "Production renderizada en el servidor (canvas, con marco)",
+    );
+    return bufs;
+  } catch (err2) {
+    if (err2 instanceof RenderNeedsKonvaError) {
+      logger.info(
+        { event: "design.finalize.server_render_skip", designId, reason: err2.message },
+        "Server render omitido (filtro/fuente/etc.) — usando PNG del cliente",
+      );
+    } else {
+      logger.warn(
+        {
+          event: "design.finalize.server_render_error",
+          designId,
+          engine: "canvas",
+          err: err2 instanceof Error ? err2.message : String(err2),
+        },
+        "Render canvas falló — usando PNG del cliente",
+      );
+    }
+    return null;
   }
 }
 
@@ -326,13 +375,23 @@ function gapForSlotCount(n: number): number {
   return 8;
 }
 
-function generateGridLayout(slotCount: number, stage: { width: number; height: number }) {
+function generateGridLayout(
+  slotCount: number,
+  stage: { width: number; height: number },
+  forcedCols?: number,
+) {
   const preset = PRESET_LAYOUTS[slotCount];
   let cols = preset?.cols ?? Math.ceil(Math.sqrt(slotCount));
   let rows = preset?.rows ?? Math.ceil(slotCount / cols);
   const aspect = stage.width / stage.height;
   if (aspect > 2.0 && cols > rows) [cols, rows] = [rows, cols];
   if (aspect < 0.5 && rows > cols) [cols, rows] = [rows, cols];
+  // Ola 2A — la plantilla puede fijar las columnas (ej. tira fotobooth: gridCols=1 →
+  // las 3 fotos se apilan en vertical, como la tira física 5×15).
+  if (typeof forcedCols === "number" && forcedCols >= 1) {
+    cols = Math.min(forcedCols, slotCount);
+    rows = Math.ceil(slotCount / cols);
+  }
   return { cols, rows, gap: gapForSlotCount(slotCount) };
 }
 
@@ -429,7 +488,14 @@ export async function createDraftDesign(opts: {
     unitTemplate,
     slotCount,
     slots,
-    gridLayout: generateGridLayout(slotCount, unitTemplate.stage),
+    // Ola 2A — la plantilla puede fijar las columnas del grid (tira fotobooth: gridCols=1).
+    gridLayout: generateGridLayout(
+      slotCount,
+      unitTemplate.stage,
+      typeof (unitTemplate as { gridCols?: unknown }).gridCols === "number"
+        ? ((unitTemplate as { gridCols?: number }).gridCols as number)
+        : undefined,
+    ),
   };
 
   const design = await prisma.design.create({
@@ -579,6 +645,9 @@ export async function createLetterSetDesign(opts: {
   colors?: string[];
   /** ADR-057 — estilo ilustrado elegido (LetterTileSet.id) o null = "Solo letra". */
   styleSetId?: string | null;
+  /** Ola 2A — idioma elegido EN EL ESTUDIO (el cliente ya no lo elige en la PDP). Si viene,
+   *  manda sobre el de la variante: define el alfabeto (es incluye Ñ) y queda en metadata. */
+  language?: "es" | "en";
   customerId: string | null;
   sessionId: string | null;
 }): Promise<{ id: string; letters: string[]; language: string }> {
@@ -606,7 +675,14 @@ export async function createLetterSetDesign(opts: {
   }
 
   const attrs = parseVariantAttributes(variant.attributes);
-  const language = attrs.language === "en" ? "en" : "es";
+  // Ola 2A — el idioma lo elige el cliente en el Estudio (la PDP ya no lo muestra). El del
+  // Estudio manda; el de la variante queda como fallback (preselección desde la PDP).
+  const language =
+    opts.language === "en" || opts.language === "es"
+      ? opts.language
+      : attrs.language === "en"
+        ? "en"
+        : "es";
   const letters =
     schema.letterSet === "vowels" ? ["A", "E", "I", "O", "U"] : (ALPHABET[language] ?? ALPHABET.es);
 

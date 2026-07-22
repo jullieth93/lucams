@@ -93,7 +93,7 @@ const STOREFRONT_WHERE = {
 } as const;
 
 /**
- * Lista de categorías activas para storefront.
+ * Lista de categorías activas para storefront, SIN las vacías.
  *
  * Por default (`topLevelOnly: false`) retorna TODAS — útil para:
  *   - Filter sidebar en /productos (debe mostrar TODO el árbol)
@@ -102,6 +102,17 @@ const STOREFRONT_WHERE = {
  * Con `topLevelOnly: true` retorna solo padres (parentId: null) — útil
  * para footer y mega-menú principal, evita "desbordar" la UI con
  * sub-categorías.
+ *
+ * Categorías vacías (Lucy 2026-07-22): se excluye cualquier categoría con 0
+ * productos comprables (isActive + no borrados). El conteo de una categoría
+ * madre es EFECTIVO: sus productos directos + los de sus sub-categorías
+ * activas (el filtro /productos?categoria=madre incluye las hijas, así que
+ * el "N productos" mostrado coincide con lo que el cliente verá al entrar).
+ * Una madre sin productos directos pero con hijas con productos SIGUE
+ * visible; una madre totalmente vacía (o una hija vacía) desaparece del
+ * home grid, footer y filtro — evita basura de categorías sin contenido.
+ * La URL directa de una categoría que quedó vacía no se rompe: /productos
+ * muestra su empty state y /productos/[cat]/[sub] el suyo propio.
  */
 // #2 (perf) — dedup por request con React cache(). Se renderiza en TODAS las páginas (footer + body
 // + metadata) → 2-3 queries idénticas con _count agregado por visita. Normalizamos a un booleano
@@ -111,11 +122,12 @@ const STOREFRONT_WHERE = {
 const listStorefrontCategoriesCached = cache(async function listStorefrontCategoriesCached(
   topLevelOnly: boolean,
 ) {
-  return prisma.category.findMany({
+  // Se consulta SIEMPRE el árbol completo (aunque se pidan solo madres): el
+  // conteo efectivo de una madre necesita los conteos de sus hijas.
+  const all = await prisma.category.findMany({
     where: {
       deletedAt: null,
       isActive: true,
-      ...(topLevelOnly ? { parentId: null } : {}),
     },
     orderBy: [{ order: "asc" }, { name: "asc" }],
     select: {
@@ -131,6 +143,27 @@ const listStorefrontCategoriesCached = cache(async function listStorefrontCatego
       },
     },
   });
+
+  // Conteo efectivo: hijas = sus directos; madres = directos + hijas activas
+  // (todas las filas de `all` ya son isActive + no borradas). Árbol de 1 nivel.
+  const effectiveCount = new Map<string, number>();
+  for (const c of all) {
+    if (c.parentId === null) effectiveCount.set(c.id, c._count.products);
+  }
+  for (const c of all) {
+    if (c.parentId !== null) {
+      effectiveCount.set(c.id, c._count.products);
+      effectiveCount.set(
+        c.parentId,
+        (effectiveCount.get(c.parentId) ?? 0) + c._count.products,
+      );
+    }
+  }
+
+  return all
+    .filter((c) => (effectiveCount.get(c.id) ?? 0) > 0)
+    .filter((c) => (topLevelOnly ? c.parentId === null : true))
+    .map((c) => ({ ...c, _count: { products: effectiveCount.get(c.id) ?? 0 } }));
 });
 
 export function listStorefrontCategories(opts: { topLevelOnly?: boolean } = {}) {
