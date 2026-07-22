@@ -13,6 +13,13 @@
  *    (se eliminó el ContactShadows de piso).
  *  - Imanes con CUERPO (MagnetMesh extruido: canto blanco + brillo PET), no planos.
  *
+ * Pase 2026-07-22 (ola 2B):
+ *  - Imanes ESCALAN a su tamaño físico real (sizeCm de la variante o wCm/hCm por pieza): el
+ *    tablero mide ~45 cm de ancho (7 u → 0.1556 u/cm; 5.2 u ↔ 33.4 cm de alto cuadra con un
+ *    tablero decorativo real ~45×33 cm). Mismo mecanismo de ajuste global uniforme que la nevera.
+ *  - La pared queda a RAS del tablero (z −1.2 → −0.14): antes había ~1 u de AIRE entre el tablero
+ *    y la pared (flotaba); ahora cuelga como un tablero real y la sombra se lee nítida.
+ *
  * Restricciones (idénticas a las otras vistas 3D): CSP estricta (cero assets externos) ·
  * client-only (WebGL) → dynamic ssr:false.
  */
@@ -23,7 +30,7 @@ import { OrbitControls, RoundedBox, GradientTexture } from "@react-three/drei";
 import { FitCamera } from "./fit-camera";
 import { useIsTouch } from "./use-is-touch";
 import { StudioEnvironment } from "./studio-3d-environment";
-import { MagnetMesh } from "./magnet-3d";
+import { MagnetMesh, magnetWorldSizes } from "./magnet-3d";
 import { getCorkTexture } from "./lib/procedural-textures";
 import type { Magnet3D } from "./fridge-3d-view";
 
@@ -40,9 +47,22 @@ const FRONT_Z = DEPTH / 2;
 const MAGNET_T = 0.056; // grosor total del imán extruido (0.04 + bisel) → z del centro
 
 const FRAME_COLOR = "#B98A5E"; // marco de madera
-const MEMO_COLOR = "#F7F4EC"; // tablero claro
+// Tablero claro estilo memo. Un punto más hondo que el blanco de las fichas de letras (canto
+// #F6F1E8): así la ficha blanca con su borde de color se lee nítida contra la superficie.
+const MEMO_COLOR = "#F1EBDD";
 
-function Magnets({ magnets, cols }: { magnets: Magnet3D[]; cols: number }) {
+// Escala física de la escena: tablero decorativo real ~45 cm de ancho (7 u).
+const BOARD_U_PER_CM = BOARD_W / 45;
+
+function Magnets({
+  magnets,
+  cols,
+  sizeCm,
+}: {
+  magnets: Magnet3D[];
+  cols: number;
+  sizeCm?: string;
+}) {
   const items = useMemo(() => {
     const rows = Math.max(1, Math.ceil(magnets.length / cols));
     const regionW = INNER_W * 0.9;
@@ -50,13 +70,26 @@ function Magnets({ magnets, cols }: { magnets: Magnet3D[]; cols: number }) {
     const cellW = regionW / cols;
     const cellH = regionH / rows;
     const gap = 0.08;
+    // Tamaños FÍSICOS (cm reales) si hay dato; null → ajuste-a-celda (p.ej. letras del nombre).
+    const physical = magnetWorldSizes(magnets, BOARD_U_PER_CM, {
+      cellW,
+      cellH,
+      gap,
+      fallbackSizeCm: sizeCm,
+    });
     return magnets.map((m, i) => {
-      const aspect = m.hRatio / m.wRatio;
-      let w = cellW - gap;
-      let h = w * aspect;
-      if (h > cellH - gap) {
-        h = cellH - gap;
-        w = h / aspect;
+      let w: number;
+      let h: number;
+      if (physical) {
+        ({ w, h } = physical[i]!);
+      } else {
+        const aspect = m.hRatio / m.wRatio;
+        w = cellW - gap;
+        h = w * aspect;
+        if (h > cellH - gap) {
+          h = cellH - gap;
+          w = h / aspect;
+        }
       }
       const col = i % cols;
       const row = Math.floor(i / cols);
@@ -64,7 +97,7 @@ function Magnets({ magnets, cols }: { magnets: Magnet3D[]; cols: number }) {
       const y = ((rows - 1) / 2 - row) * cellH;
       return { m, w, h, x, y };
     });
-  }, [magnets, cols]);
+  }, [magnets, cols, sizeCm]);
 
   return (
     <>
@@ -108,11 +141,22 @@ function Board({ style }: { style: BoardStyle }) {
   );
 }
 
-function Scene({ magnets, cols, style }: { magnets: Magnet3D[]; cols: number; style: BoardStyle }) {
+function Scene({
+  magnets,
+  cols,
+  style,
+  sizeCm,
+}: {
+  magnets: Magnet3D[];
+  cols: number;
+  style: BoardStyle;
+  sizeCm?: string;
+}) {
   return (
     <>
-      {/* Pared del cuarto con luz cenital sutil; recibe la sombra del tablero y los imanes. */}
-      <mesh position={[0, 0, -1.2]} receiveShadow>
+      {/* Pared del cuarto a RAS del tablero (cuelga de verdad, no flota), con luz cenital sutil;
+        recibe la sombra del tablero y los imanes. */}
+      <mesh position={[0, 0, -0.14]} receiveShadow>
         <planeGeometry args={[40, 26]} />
         <meshStandardMaterial roughness={1} metalness={0}>
           <GradientTexture attach="map" stops={[0, 1]} colors={["#F2E9DC", "#E2D4C0"]} size={256} />
@@ -140,7 +184,7 @@ function Scene({ magnets, cols, style }: { magnets: Magnet3D[]; cols: number; st
       <directionalLight position={[-5, 2, 5]} intensity={0.3} />
 
       <Board style={style} />
-      <Magnets magnets={magnets} cols={cols} />
+      <Magnets magnets={magnets} cols={cols} sizeCm={sizeCm} />
 
       {/* #12 — encuadra el tablero al aspecto del viewport (fit-to-width en móvil vertical). */}
       <FitCamera halfW={BOARD_W / 2} halfH={BOARD_H / 2} margin={1.12} camY={0.3} />
@@ -163,10 +207,13 @@ export default function RoomBoardView3D({
   magnets,
   cols,
   style = "memo",
+  sizeCm,
 }: {
   magnets: Magnet3D[];
   cols: number;
   style?: BoardStyle;
+  /** sizeCm de la variante elegida (ej "6.5×6.5", "7.5×10") — escala física de los imanes. */
+  sizeCm?: string;
 }) {
   const isTouch = useIsTouch();
   if (magnets.length === 0) {
@@ -186,7 +233,7 @@ export default function RoomBoardView3D({
     >
       <color attach="background" args={["#EBDFCF"]} />
       <Suspense fallback={null}>
-        <Scene magnets={magnets} cols={cols} style={style} />
+        <Scene magnets={magnets} cols={cols} style={style} sizeCm={sizeCm} />
       </Suspense>
     </Canvas>
   );

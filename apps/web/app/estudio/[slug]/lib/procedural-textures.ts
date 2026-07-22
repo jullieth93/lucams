@@ -95,6 +95,44 @@ export function getPageEdgesTexture(): THREE.CanvasTexture {
   return pageEdges;
 }
 
+/**
+ * Página impresa (caras internas del bloque del libro en carpa): fondo papel + líneas de texto
+ * tenues con borde derecho irregular (justificado de novela). Sin márgenes: la cara ya recorta.
+ */
+let pagePrint: THREE.CanvasTexture | null = null;
+export function getPagePrintTexture(): THREE.CanvasTexture {
+  if (pagePrint) return pagePrint;
+  pagePrint = makeTexture(256, (ctx, s) => {
+    ctx.fillStyle = "#FDFAF2";
+    ctx.fillRect(0, 0, s, s);
+    // Mancha de impresión muy leve (el papel nunca es uniforme).
+    for (let i = 0; i < 350; i++) {
+      ctx.globalAlpha = 0.02 + Math.random() * 0.03;
+      ctx.fillStyle = "#C9BBA0";
+      ctx.fillRect(Math.random() * s, Math.random() * s, 1.5, 1.5);
+    }
+    ctx.globalAlpha = 1;
+    // Líneas de texto: gris cálido tenue, con sangría de párrafo y última línea corta al azar.
+    const left = 18;
+    const right = s - 18;
+    let y = 16;
+    let newPara = false;
+    while (y < s - 12) {
+      const indent = newPara ? 14 : 0;
+      const ragged = Math.random() < 0.24 ? right - 24 - Math.random() * 60 : right;
+      ctx.strokeStyle = `rgba(96, 84, 70, ${0.3 + Math.random() * 0.12})`;
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.moveTo(left + indent, y);
+      ctx.lineTo(ragged, y);
+      ctx.stroke();
+      newPara = ragged < right - 10;
+      y += 7 + Math.random() * 2;
+    }
+  });
+  return pagePrint;
+}
+
 /** Madera clara de mesa (escena Polaroid): vetas largas + separaciones de tabla + nudos. */
 let wood: THREE.CanvasTexture | null = null;
 export function getWoodTexture(): THREE.CanvasTexture {

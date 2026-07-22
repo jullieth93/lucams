@@ -1,21 +1,30 @@
 "use client";
 
 /*
- * SceneGallery — galería inmersiva "míralo en tu espacio" para los FOTOIMANES (ADR-063 · FOTO4).
- * En vez de una barra con muchos botones (que se desborda en móvil), UN solo modal reúne todas las
- * escenas del hogar y el cliente cambia con chips:
- *   🧊 Nevera   — imanes en la nevera (3D)              · escena original P1.4
- *   📸 Polaroid — pila de polaroids sobre mesa de madera (3D) · catálogo WhatsApp (producto foco)
- *   🖼️ Mural    — imanes en un tablero de un cuarto (3D) · FOTO4-A (RoomBoardView3D, corcho)
- *   📚 Repisa   — piezas apoyadas en un estante (2D)     · FOTO4-B (compose-shelf-flatlay)
- *   🎁 Regalo   — la pieza como obsequio (2D)            · FOTO3 (compose-gift-flatlay)
+ * SceneGallery — galería inmersiva "míralo en tu espacio" (ADR-063 · FOTO4).
+ * En vez de una barra con muchos botones (que se desborda en móvil), UN solo modal reúne las
+ * escenas del hogar y el cliente cambia con chips.
+ *
+ * 2026-07-22 (ola 2B) — escenas POR TIPO DE PRODUCTO (`kind`):
+ *  - "photo" (fotoimanes/polaroid, default): 🧊 Nevera · 📸 Polaroid · 🖼️ Mural (corcho) ·
+ *    📚 Repisa · 🎁 Regalo — la galería original FOTO4.
+ *  - "calendar" (set 12 tarjetas mes 7.5×10): 🧊 Nevera · 🖼️ Mural — las tarjetas mes son
+ *    IMANES DE NEVERA. La escena calendario-de-pared queda ARCHIVADA (sigue en
+ *    calendar-view-3d.tsx y en el preview interno, pero ya no se ofrece en la galería).
+ *  - "letters" (abecedario / pack vocales): 📌 Tablero memo — la escena que Lucy pidió para
+ *    deletrear nombres y fichas.
+ *  - "bookmark" (separadores): 📖 Libro — no son imanes de nevera; su hogar es un libro.
+ *
+ * El caller (studio-editor) decide el `kind` según el personalizationKind del producto. Si no
+ * llega, se asume "photo" (comportamiento retrocompatible).
  *
  * Las texturas por imán (recortadas a su silueta) se calculan UNA vez en el editor y se pasan acá;
- * las escenas 3D las usan directo y los compositores 2D se arman perezosamente al abrir su chip y se
- * cachean. Las vistas 3D se importan diferidas (WebGL, client-only).
+ * las escenas 3D las usan directo y los compositores 2D se arman perezosamente al abrir su chip y
+ * se cachean. Las vistas 3D se importan diferidas (WebGL, client-only). `sizeCm` (tamaño real de
+ * la variante) se reenvía a las escenas 3D para que las piezas escalen a su tamaño físico.
  */
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import nextDynamic from "next/dynamic";
 import { X } from "lucide-react";
 import { useDialogA11y } from "./use-dialog-a11y";
@@ -48,40 +57,83 @@ const PolaroidView3D = nextDynamic(() => import("./polaroid-3d-view"), {
     </div>
   ),
 });
+const BookView3D = nextDynamic(() => import("./book-view-3d"), {
+  ssr: false,
+  loading: () => (
+    <div className="text-brand-muted flex h-full items-center justify-center text-sm">
+      Cargando el libro 3D…
+    </div>
+  ),
+});
 
-type Scene = "fridge" | "polaroid" | "board" | "shelf" | "gift";
+/** Escena disponible en la galería (el calendario de pared NO está: queda archivado). */
+export type Scene = "fridge" | "polaroid" | "board" | "memo" | "book" | "shelf" | "gift";
 
-const SCENES: { key: Scene; label: string; emoji: string }[] = [
-  { key: "fridge", label: "Nevera", emoji: "🧊" },
-  { key: "polaroid", label: "Polaroid", emoji: "📸" },
-  { key: "board", label: "Mural", emoji: "🖼️" },
-  { key: "shelf", label: "Repisa", emoji: "📚" },
-  { key: "gift", label: "Regalo", emoji: "🎁" },
-];
+/** Tipo de producto que abre la galería (deriva del personalizationKind del producto). */
+export type SceneKind = "photo" | "calendar" | "letters" | "bookmark";
+
+const SCENE_META: Record<Scene, { label: string; emoji: string }> = {
+  fridge: { label: "Nevera", emoji: "🧊" },
+  polaroid: { label: "Polaroid", emoji: "📸" },
+  board: { label: "Mural", emoji: "🖼️" },
+  memo: { label: "Tablero", emoji: "📌" },
+  book: { label: "Libro", emoji: "📖" },
+  shelf: { label: "Repisa", emoji: "📚" },
+  gift: { label: "Regalo", emoji: "🎁" },
+};
+
+const ALL_SCENES = Object.keys(SCENE_META) as Scene[];
+
+/**
+ * Escenas ofrecidas por tipo de producto (el calendario-de-pared NO se ofrece: archivado).
+ * El orden importa: la primera es la que abre por defecto.
+ */
+export function scenesForKind(kind: SceneKind = "photo"): Scene[] {
+  switch (kind) {
+    case "calendar":
+      // Las tarjetas mes 7.5×10 son imanes de nevera → nevera/tablero, nunca calendario de pared.
+      return ["fridge", "board"];
+    case "letters":
+      // Abecedario / pack vocales: el tablero memo claro (deletrear nombres y fichas).
+      return ["memo"];
+    case "bookmark":
+      // Los separadores no son imanes de nevera: su hogar es un libro.
+      return ["book"];
+    case "photo":
+    default:
+      return ["fridge", "polaroid", "board", "shelf", "gift"];
+  }
+}
 
 export function SceneGallery({
   magnets,
   cols,
+  kind = "photo",
+  sizeCm,
   onClose,
 }: {
   magnets: Magnet3D[];
   cols: number;
+  /** Tipo de producto — decide qué escenas se ofrecen (ver scenesForKind). Default "photo". */
+  kind?: SceneKind;
+  /** sizeCm de la variante elegida (ej "6.5×6.5", "7.5×10") — escala física en las escenas 3D. */
+  sizeCm?: string;
   onClose: () => void;
 }) {
-  const [scene, setScene] = useState<Scene>("fridge");
+  const scenes = useMemo(() => scenesForKind(kind), [kind]);
+  const [scene, setScene] = useState<Scene>(() => scenes[0]!);
+  // Si el kind cambia con el modal abierto, la escena activa puede no existir en la nueva lista:
+  // se deriva en render (sin efecto ni setState en cascada — react-hooks/set-state-in-effect).
+  const activeScene = scenes.includes(scene) ? scene : scenes[0]!;
   const isTouch = useIsTouch(); // #9 — copy del gesto de zoom según táctil vs mouse.
   // Compositores 2D: se arman perezosamente al abrir su chip y se cachean.
   const [shelfUrl, setShelfUrl] = useState<string | null>(null);
   const [giftUrl, setGiftUrl] = useState<string | null>(null);
   const [building, setBuilding] = useState(false);
   // #18 — escenas cuyo compositor falló: mostramos un fallback claro en vez de un panel colgado.
-  const [failed, setFailed] = useState<Record<Scene, boolean>>({
-    fridge: false,
-    polaroid: false,
-    board: false,
-    shelf: false,
-    gift: false,
-  });
+  const [failed, setFailed] = useState<Record<Scene, boolean>>(
+    () => Object.fromEntries(ALL_SCENES.map((s) => [s, false])) as Record<Scene, boolean>,
+  );
 
   // #15 — foco inicial + trap + Escape + retorno de foco (centraliza el effect de Escape previo).
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -92,22 +144,23 @@ export function SceneGallery({
     let cancelled = false;
     const build = async () => {
       const need =
-        (scene === "shelf" && shelfUrl === null) || (scene === "gift" && giftUrl === null);
+        (activeScene === "shelf" && shelfUrl === null) ||
+        (activeScene === "gift" && giftUrl === null);
       if (!need) return;
       setBuilding(true);
-      if (!cancelled) setFailed((f) => (f[scene] ? { ...f, [scene]: false } : f)); // #18 limpiar al reintentar
+      if (!cancelled) setFailed((f) => (f[activeScene] ? { ...f, [activeScene]: false } : f)); // #18 limpiar al reintentar
       try {
-        if (scene === "shelf") {
+        if (activeScene === "shelf") {
           const url = await composeShelfFlatlay(magnets);
           if (!cancelled) setShelfUrl(url);
-        } else if (scene === "gift") {
+        } else if (activeScene === "gift") {
           const url = await composeGiftFlatlay(magnets);
           if (!cancelled) setGiftUrl(url);
         }
       } catch {
         // #18 — marcar la escena como fallida (fallback visible) en vez de dejarla colgada en carga.
         // No rompemos el editor: el cliente puede cambiar de escena o reintentar.
-        if (!cancelled) setFailed((f) => ({ ...f, [scene]: true }));
+        if (!cancelled) setFailed((f) => ({ ...f, [activeScene]: true }));
       } finally {
         if (!cancelled) setBuilding(false);
       }
@@ -116,10 +169,15 @@ export function SceneGallery({
     return () => {
       cancelled = true;
     };
-  }, [scene, magnets, shelfUrl, giftUrl]);
+  }, [activeScene, magnets, shelfUrl, giftUrl]);
 
-  const is3D = scene === "fridge" || scene === "board" || scene === "polaroid";
-  const flatUrl = scene === "shelf" ? shelfUrl : scene === "gift" ? giftUrl : null;
+  const is3D =
+    activeScene === "fridge" ||
+    activeScene === "board" ||
+    activeScene === "polaroid" ||
+    activeScene === "memo" ||
+    activeScene === "book";
+  const flatUrl = activeScene === "shelf" ? shelfUrl : activeScene === "gift" ? giftUrl : null;
 
   return (
     <div
@@ -144,47 +202,55 @@ export function SceneGallery({
 
       {/* Chips de escena — #22: botones de alternancia (aria-pressed), no tabs. Un role=tablist
         exige flechas + roving tabindex + tabpanel (WAI-ARIA APG); acá la interacción real es de
-        toggle, así que group + aria-pressed evita la disonancia semántica. */}
-      <div
-        role="group"
-        aria-label="Escenas"
-        className="flex flex-wrap items-center justify-center gap-2 px-4 pb-2"
-      >
-        {SCENES.map((s) => {
-          const active = s.key === scene;
-          return (
-            <button
-              key={s.key}
-              type="button"
-              aria-pressed={active}
-              onClick={() => setScene(s.key)}
-              className={`inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-bold transition-colors focus:ring-2 focus:ring-white focus:outline-none ${
-                active
-                  ? "text-brand-purple-dark bg-white shadow-md"
-                  : "bg-white/15 text-white hover:bg-white/25"
-              }`}
-            >
-              <span aria-hidden>{s.emoji}</span>
-              <span>{s.label}</span>
-            </button>
-          );
-        })}
-      </div>
+        toggle, así que group + aria-pressed evita la disonancia semántica. Con UNA sola escena
+        disponible no hay nada que alternar → se oculta la fila. */}
+      {scenes.length > 1 && (
+        <div
+          role="group"
+          aria-label="Escenas"
+          className="flex flex-wrap items-center justify-center gap-2 px-4 pb-2"
+        >
+          {scenes.map((key) => {
+            const meta = SCENE_META[key];
+            const active = key === activeScene;
+            return (
+              <button
+                key={key}
+                type="button"
+                aria-pressed={active}
+                onClick={() => setScene(key)}
+                className={`inline-flex items-center gap-1.5 rounded-full px-4 py-2 text-sm font-bold transition-colors focus:ring-2 focus:ring-white focus:outline-none ${
+                  active
+                    ? "text-brand-purple-dark bg-white shadow-md"
+                    : "bg-white/15 text-white hover:bg-white/25"
+                }`}
+              >
+                <span aria-hidden>{meta.emoji}</span>
+                <span>{meta.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       <div className="relative flex-1">
         {is3D ? (
-          scene === "fridge" ? (
-            <FridgeView3D magnets={magnets} cols={cols} />
-          ) : scene === "polaroid" ? (
+          activeScene === "fridge" ? (
+            <FridgeView3D magnets={magnets} cols={cols} sizeCm={sizeCm} />
+          ) : activeScene === "polaroid" ? (
             <PolaroidView3D magnets={magnets} />
+          ) : activeScene === "board" ? (
+            <RoomBoardView3D magnets={magnets} cols={cols} style="cork" sizeCm={sizeCm} />
+          ) : activeScene === "memo" ? (
+            <RoomBoardView3D magnets={magnets} cols={cols} style="memo" sizeCm={sizeCm} />
           ) : (
-            <RoomBoardView3D magnets={magnets} cols={cols} style="cork" />
+            <BookView3D bookmarks={magnets} sizeCm={sizeCm} />
           )
         ) : building && !flatUrl ? (
           <div className="text-brand-cream/90 flex h-full items-center justify-center text-sm">
             Armando la escena…
           </div>
-        ) : failed[scene] ? (
+        ) : failed[activeScene] ? (
           <div className="text-brand-cream/90 flex h-full flex-col items-center justify-center gap-2 p-6 text-center text-sm">
             <p>No pudimos armar esta escena en este momento.</p>
             <p className="text-brand-cream/70 text-xs">Prueba otra escena o vuelve al editor.</p>
@@ -195,7 +261,9 @@ export function SceneGallery({
             <img
               src={flatUrl}
               alt={
-                scene === "gift" ? "Tu diseño presentado como un regalo" : "Tu diseño en una repisa"
+                activeScene === "gift"
+                  ? "Tu diseño presentado como un regalo"
+                  : "Tu diseño en una repisa"
               }
               className="max-h-full max-w-full rounded-2xl object-contain shadow-2xl"
             />

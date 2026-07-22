@@ -19,6 +19,12 @@
  *    imanes de verdad). La nevera es de tamaño fijo (no crece con la cantidad de imanes).
  *  - 2026-07-22: los imanes ahora tienen CUERPO (MagnetMesh extruido desde su silueta, canto
  *    blanco del material base + brillo PET), ya no son planos sin grosor.
+ *  - 2026-07-22 (ola 2B): los imanes ESCALAN a su tamaño físico real (sizeCm de la variante,
+ *    o wCm/hCm por pieza): la nevera mide ~170 cm de alto (8.8 u → 0.0518 u/cm), así un
+ *    7.5×10 se ve notablemente más grande que un 4×4.2. Ajuste global uniforme a la celda
+ *    (verdad física relativa intacta); sin dato de cm cae al ajuste-a-celda de siempre.
+ *    Además: shadow-camera de la luz key acotada explícita (antes se recortaba la sombra de la
+ *    parte alta) y las patas APOYAN en el piso (antes flotaban ~2 cm sobre la sombra de contacto).
  *
  * Restricciones respetadas:
  *  - CSP estricta: CERO assets externos (nada de Environment/HDR/GLTF/fuentes de CDN de drei). El
@@ -34,7 +40,7 @@ import { FitCamera } from "./fit-camera";
 import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
 import { useIsTouch } from "./use-is-touch";
 import { StudioEnvironment, StudioBackdrop } from "./studio-3d-environment";
-import { MagnetMesh, type MagnetShape } from "./magnet-3d";
+import { MagnetMesh, magnetWorldSizes, type MagnetShape } from "./magnet-3d";
 
 export type Magnet3D = {
   /** Snapshot PNG (dataURL) del imán, con transparencia fuera de la silueta. */
@@ -45,11 +51,17 @@ export type Magnet3D = {
   hRatio: number;
   /** Silueta física (la misma del recorte) → MagnetMesh extruye el cuerpo con esta forma. */
   shape?: MagnetShape;
+  /** Ancho real en cm (opcional — escala física en escena; si falta, se usa sizeCm de la vista). */
+  wCm?: number;
+  /** Alto real en cm (opcional). */
+  hCm?: number;
 };
 
 type FridgeView3DProps = {
   magnets: Magnet3D[];
   cols: number;
+  /** sizeCm de la variante elegida (ej "6.5×6.5", "7.5×10") — escala física de los imanes. */
+  sizeCm?: string;
 };
 
 // ── Nevera de tamaño FIJO (no depende de la cantidad de imanes) ──
@@ -80,6 +92,10 @@ const MAGNET_REGION_H = FRIDGE_DOOR_H * 0.28;
 const MAGNET_REGION_CY = FRIDGE_CY + FRIDGE_DOOR_H * 0.22;
 const MAGNET_Z = DOOR_FACE_Z + 0.04; // centro del cuerpo extruido (canto visible sobre el panel)
 
+// Escala física de la escena: nevera top-freezer real ~170 cm de alto (y ~68 cm de ancho —
+// FRIDGE_W 3.5 u cuadra con la misma escala: 3.5/8.8·170 = 67.6 cm ✓).
+const FRIDGE_U_PER_CM = FRIDGE_H / 170;
+
 // Materiales (gris satinado de electrodoméstico; metalness baja para verse bien sin env-map).
 const BODY_COLOR = "#9297A0";
 const DOOR_COLOR = "#A0A5AE";
@@ -100,7 +116,15 @@ function Magnet({
   height: number;
   position: [number, number, number];
 }) {
-  return <MagnetMesh dataUrl={m.dataUrl} width={width} height={height} shape={m.shape} position={position} />;
+  return (
+    <MagnetMesh
+      dataUrl={m.dataUrl}
+      width={width}
+      height={height}
+      shape={m.shape}
+      position={position}
+    />
+  );
 }
 
 /** Manija vertical sobre el borde izquierdo: canal oscuro embutido + grip fino satinado. */
@@ -209,14 +233,14 @@ function Fridge() {
       <Door width={DOOR_W} height={FREEZER_DOOR_H} centerY={FREEZER_CY} />
       <Door width={DOOR_W} height={FRIDGE_DOOR_H} centerY={FRIDGE_CY} />
 
-      {/* Patas en las 4 esquinas */}
+      {/* Patas en las 4 esquinas (la base de la pata APOYA en el piso: centro = piso + alto/2) */}
       {[
         [-feetX, -feetZ],
         [feetX, -feetZ],
         [-feetX, feetZ],
         [feetX, feetZ],
       ].map(([x, z], i) => (
-        <mesh key={i} position={[x, -FRIDGE_H / 2 - 0.11, z]} castShadow>
+        <mesh key={i} position={[x, -FRIDGE_H / 2 - 0.23, z]} castShadow>
           <cylinderGeometry args={[0.11, 0.11, 0.22, 16]} />
           <meshStandardMaterial color={FOOT_COLOR} roughness={0.5} metalness={0.35} />
         </mesh>
@@ -225,21 +249,34 @@ function Fridge() {
   );
 }
 
-function Magnets({ magnets, cols }: FridgeView3DProps) {
+function Magnets({ magnets, cols, sizeCm }: FridgeView3DProps) {
   const items = useMemo(() => {
     const rows = Math.max(1, Math.ceil(magnets.length / cols));
     // Tamaño de celda para que TODO el clúster entre en la región de la puerta.
     const cellW = MAGNET_REGION_W / cols;
     const cellH = MAGNET_REGION_H / rows;
     const gap = 0.06;
+    // Tamaños FÍSICOS (cm reales → unidades de escena) si hay dato; null → ajuste-a-celda viejo.
+    const physical = magnetWorldSizes(magnets, FRIDGE_U_PER_CM, {
+      cellW,
+      cellH,
+      gap,
+      fallbackSizeCm: sizeCm,
+    });
     return magnets.map((m, i) => {
-      const aspect = m.hRatio / m.wRatio;
-      // El imán entra en la celda respetando su proporción física.
-      let w = cellW - gap;
-      let h = w * aspect;
-      if (h > cellH - gap) {
-        h = cellH - gap;
-        w = h / aspect;
+      let w: number;
+      let h: number;
+      if (physical) {
+        ({ w, h } = physical[i]!);
+      } else {
+        const aspect = m.hRatio / m.wRatio;
+        // El imán entra en la celda respetando su proporción física.
+        w = cellW - gap;
+        h = w * aspect;
+        if (h > cellH - gap) {
+          h = cellH - gap;
+          w = h / aspect;
+        }
       }
       const col = i % cols;
       const row = Math.floor(i / cols);
@@ -247,7 +284,7 @@ function Magnets({ magnets, cols }: FridgeView3DProps) {
       const y = MAGNET_REGION_CY + ((rows - 1) / 2 - row) * cellH;
       return { m, w, h, x, y };
     });
-  }, [magnets, cols]);
+  }, [magnets, cols, sizeCm]);
 
   return (
     <>
@@ -258,7 +295,7 @@ function Magnets({ magnets, cols }: FridgeView3DProps) {
   );
 }
 
-function Scene({ magnets, cols }: FridgeView3DProps) {
+function Scene({ magnets, cols, sizeCm }: FridgeView3DProps) {
   // #16 — no autorrotar si el usuario pide reducir movimiento.
   const reduced = usePrefersReducedMotion();
   return (
@@ -275,13 +312,20 @@ function Scene({ magnets, cols }: FridgeView3DProps) {
         intensity={1.15}
         castShadow
         shadow-mapSize={[2048, 2048]}
+        shadow-camera-left={-8}
+        shadow-camera-right={8}
+        shadow-camera-top={10}
+        shadow-camera-bottom={-8}
+        shadow-camera-far={30}
+        shadow-bias={-0.0004}
+        shadow-normalBias={0.02}
       />
       <directionalLight position={[-6, 3, 4]} intensity={0.3} />
 
       <Center>
         <group>
           <Fridge />
-          <Magnets magnets={magnets} cols={cols} />
+          <Magnets magnets={magnets} cols={cols} sizeCm={sizeCm} />
         </group>
       </Center>
 
@@ -311,7 +355,7 @@ function Scene({ magnets, cols }: FridgeView3DProps) {
   );
 }
 
-export default function FridgeView3D({ magnets, cols }: FridgeView3DProps) {
+export default function FridgeView3D({ magnets, cols, sizeCm }: FridgeView3DProps) {
   const isTouch = useIsTouch();
   if (magnets.length === 0) {
     return (
@@ -330,7 +374,7 @@ export default function FridgeView3D({ magnets, cols }: FridgeView3DProps) {
     >
       <color attach="background" args={["#FFF8F0"]} />
       <Suspense fallback={null}>
-        <Scene magnets={magnets} cols={cols} />
+        <Scene magnets={magnets} cols={cols} sizeCm={sizeCm} />
       </Suspense>
     </Canvas>
   );
