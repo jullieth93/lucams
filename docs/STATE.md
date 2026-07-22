@@ -13,6 +13,24 @@
 
 ## Resumen actual
 
+**✅ ETAPA 1 EN VIVO Y PULIDA (2026-07-22) — catálogo + cotización por WhatsApp sirviendo en `lucamsshop.com` con Frentes A-E desplegados.** Tras la auditoría y el plan de salida (ver 2026-07-21 abajo), Lucy dio feedback integral de UX/contenido y se ejecutó en 5 frentes, cada uno verificado y desplegado vía `vercel deploy --prod` (la rama de producción en Vercel sigue apuntando a `develop` — **pendiente Lucy**: cambiarla a `production` en Settings → Git para recuperar el flujo git→deploy):
+
+- **Frente A (datos):** 21 categorías-basura de tests eliminadas de la DB compartida (16 hard + 5 soft); `cleanup-test-junk.mjs` ahora detecta por epoch de 13 dígitos; fixtures de `products/service.integration.test` nacen con `isActive=false`. **`NEXT_PUBLIC_WA_NUMBER` en Vercel tenía el número viejo (315 071 8723)** — corregida a 320 887 3826 (el código y la DB estaban bien; la env de Vercel era la que fallaba).
+- **Frente B (copy/UI):** bug "CANTIDAD duplicada" en PDP (quantity y photoSlots con el mismo label — dedupe defensivo en variant-selector); "Personalizar producto" (ya no "tu imán"); "Llega a tu espacio"; tiempos 2+1 (máx 3 días); "transportadoras aliadas" (adiós Coordinadora); ayuda sin DIAN ni Wompi en catalog; header solo "Catálogo" (menú ≤8 + Ver todo); footer ≤6 + Facebook + sin nombre de la titular (solo en /legal/*); recomendador con "Volver"; búsqueda con la mascota; corazones/circulares ocultos (soft-hide); tamaños reales separadores (6×2, 4×4.2); 9 CMS blocks actualizados en DB.
+- **Frentes C+D (catálogo):** separadores 1-6 por forma; fotoimanes 6.5×6.5/7.5×10 × marco blanco/negro × 1-6 (viejos tamaños pausados); polaroid 3 estilos (blanco clásico/pasteles/instagram) × 4 sets; pack-vocales tema(animales/frutas/profesiones) × idioma × tamaño × imán = 36 combos; categorías Animales y Frutas; plantilla 3:4 para 7.5×10; **fix landmine**: editar variante en admin ya no borra attributes (`mergePreservingUnmanagedAttributes`); script idempotente `extend-variant-dims-2026-07-22.mjs`.
+- **Frente E (3D wow):** calendario con espiral HelixCurve real + hoja con curvatura + pared con sombra + FitCamera (móvil) + texturas perezosas; imanes extruidos con cuerpo (nevera/mural); corcho procedural; libro con cantos texturizados; **escena nueva Polaroid** (pila en mesa de madera); dpr táctil + ContactShadows horneadas.
+
+**🟡 PENDIENTES (en orden):**
+1. **Lucy — Vercel dashboard:** Production Branch `develop` → `production` (Settings → Git). Hasta que eso esté, NO se puede pushear a `develop` (dispararía el modo full a producción). El merge-back de `catalogo-whatsapp` → `develop` queda para ese momento.
+2. **Lucy — /admin/fichas:** subir ilustraciones de vocales A E I O U por set (Animales es/en también están vacíos; Frutas/Profesiones es/en ya existen como sets vacíos). Con 1 ficha el estilo aparece en el Estudio.
+3. **Lucy — Vercel Pro ($20/mes):** Hobby prohíbe uso comercial (verificado ToS/Fair Use 2026-07-21: "advertising the sale of a product" aplica aunque no haya pasarela). Antes de anunciar públicamente. Supabase Free SÍ permite uso comercial (no hace falta Pro).
+4. **Lucy — reseñas reales:** pasar nombres+textos de clientes de Instagram para cargarlas (NO se inventan reseñas: Ley 1480 art. 23).
+5. **Render visual pendiente (Frente E2 futuro):** plantillas Polaroid blanco-clásico/pasteles (hoy todo cae a instagram), marco blanco/negro en canvas de fotoimanes (viaja como dato, no se pinta), plantilla landscape 6:2 para separador rectangular, preselección de tema en letter-set-editor.
+6. **Trámites Etapa 2 (sin cambio):** NIT/RUT, abogado, DIAN, bucket R2 (FASE 10), Wompi/Aveonline prod.
+7. **Ojo:** existe `cleanup-empty-categories.mjs` — si se corre, podría archivar Animales/Frutas mientras estén sin productos.
+
+---
+
 **✅ ETAPA 1 CONSTRUIDA Y VALIDADA EN LA RAMA `catalogo-whatsapp` (2026-07-21) — salida en 2 etapas, ADR-077.** La decisión del día: publicar YA como **catálogo + cotización por WhatsApp** (no necesita NIT ni pasarela) y activar la tienda full (Wompi/Aveonline reales) después, cambiando UNA env var. Documentos guía: [PLAN_SALIDA_PRODUCCION.md](PLAN_SALIDA_PRODUCCION.md) + [auditoría fullstack 2026-07-21](audits/2026-07-21-fullstack-prelaunch-audit.md).
 
 **Qué se hizo (todo en la rama, sin commitear aún — esperando autorización de Lucy para commit/push/deploy):**
