@@ -3,7 +3,7 @@ import { RegistroForm } from "./registro-form";
 
 export const metadata: Metadata = {
   title: "Crear cuenta",
-  description: "Crea tu cuenta de Lucams_shop para empezar a personalizar tus imanes.",
+  description: "Crea tu cuenta de Lucams_shop para empezar a personalizar tus productos.",
 };
 
 // CSP por nonce (C3): requiere render dinámico (los scripts necesitan el nonce).

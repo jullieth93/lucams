@@ -35,7 +35,7 @@ export function RegistroForm() {
           Crea tu cuenta Lucams
         </CardTitle>
         <CardDescription className="text-base">
-          Empieza a personalizar imanes únicos en minutos.
+          Empieza a personalizar productos únicos en minutos.
         </CardDescription>
         <p className="text-muted-foreground pt-1 text-sm">
           ¿Ya tienes cuenta?{" "}

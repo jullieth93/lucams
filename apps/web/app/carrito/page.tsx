@@ -194,7 +194,7 @@ function EmptyCart() {
       <p className="text-brand-muted mt-1 text-sm">
         <CmsText
           blockKey="cart.empty.description"
-          fallback="Encuentra el imán perfecto para tu nevera."
+          fallback="Encuentra el producto perfecto para tu espacio."
         />
       </p>
       <Link

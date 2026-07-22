@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Check, Loader2, RotateCcw, Sparkles } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, Loader2, RotateCcw, Sparkles } from "lucide-react";
 import type { OcasionData, RecommendationResult } from "@/lib/catalog";
 import {
   DESTINATARIOS,
@@ -214,12 +214,21 @@ export function WizardRecomendador({
                 ti
               </h2>
             </div>
-            <button
-              onClick={reset}
-              className="text-brand-purple inline-flex items-center gap-1 text-sm font-medium hover:underline"
-            >
-              <RotateCcw className="h-4 w-4" /> Reiniciar
-            </button>
+            <div className="flex items-center gap-3">
+              {/* Volver al paso 4 conservando las respuestas (results=null → wizard). */}
+              <button
+                onClick={() => setResults(null)}
+                className="text-brand-purple inline-flex items-center gap-1 text-sm font-medium hover:underline"
+              >
+                <ArrowLeft className="h-4 w-4" /> Volver
+              </button>
+              <button
+                onClick={reset}
+                className="text-brand-purple inline-flex items-center gap-1 text-sm font-medium hover:underline"
+              >
+                <RotateCcw className="h-4 w-4" /> Reiniciar
+              </button>
+            </div>
           </div>
         </div>
 
@@ -298,13 +307,23 @@ export function WizardRecomendador({
                   );
                 })}
               </div>
-              <button
-                onClick={() => setStep(2)}
-                disabled={ocasionSlugs.length === 0}
-                className="bg-brand-purple mt-6 inline-flex items-center gap-2 rounded-full px-6 py-2 text-sm font-bold text-white hover:opacity-90 disabled:opacity-40"
-              >
-                Siguiente <ArrowRight className="h-4 w-4" />
-              </button>
+              <div className="mt-6 flex gap-3">
+                {/* Paso 1: "Volver" sale del wizard hacia la home (los pasos
+                    siguientes usan "Atrás" para devolverse). */}
+                <Link
+                  href="/"
+                  className="border-brand-purple/30 text-brand-purple-dark inline-flex items-center gap-1 rounded-full border bg-white px-6 py-2 text-sm font-medium"
+                >
+                  <ArrowLeft className="h-4 w-4" /> Volver
+                </Link>
+                <button
+                  onClick={() => setStep(2)}
+                  disabled={ocasionSlugs.length === 0}
+                  className="bg-brand-purple inline-flex items-center gap-2 rounded-full px-6 py-2 text-sm font-bold text-white hover:opacity-90 disabled:opacity-40"
+                >
+                  Siguiente <ArrowRight className="h-4 w-4" />
+                </button>
+              </div>
             </>
           )}
         </div>

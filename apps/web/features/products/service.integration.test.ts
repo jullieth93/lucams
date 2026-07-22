@@ -97,7 +97,10 @@ async function makeCategory(opts?: {
       name: opts?.name ?? `Cat ${RUN} ${u}`,
       parentId: opts?.parentId ?? undefined,
       order: opts?.order ?? 0,
-      isActive: opts?.isActive ?? true,
+      // Default false: un fixture huérfano (test que falla antes del cleanup)
+      // NUNCA debe volverse visible en el storefront. Los tests que necesitan
+      // categorías activas lo declaran explícito con isActive: true.
+      isActive: opts?.isActive ?? false,
       deletedAt: opts?.deletedAt ?? undefined,
     },
     select: { id: true, slug: true, name: true },
@@ -940,18 +943,21 @@ describe.skipIf(!hasDb)("products/service — integración DB", { timeout: T }, 
         label: "lcs-parent",
         name: `${RUN}-ParentCat`,
         order: 0,
+        isActive: true,
       });
       const childB = await makeCategory({
         label: "lcs-childb",
         name: `${RUN}-ChildB`,
         parentId: parent.id,
         order: 2,
+        isActive: true,
       });
       const childA = await makeCategory({
         label: "lcs-childa",
         name: `${RUN}-ChildA`,
         parentId: parent.id,
         order: 1,
+        isActive: true,
       });
       const inactive = await makeCategory({
         label: "lcs-inactive",
@@ -997,6 +1003,7 @@ describe.skipIf(!hasDb)("products/service — integración DB", { timeout: T }, 
         label: "lcs-ochild",
         name: `${RUN}-OrphanChild`,
         parentId: orphanParent.id,
+        isActive: true,
       });
 
       const list = await listCategoriesForSelect();

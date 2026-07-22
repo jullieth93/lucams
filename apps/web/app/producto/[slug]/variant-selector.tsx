@@ -151,7 +151,23 @@ export function VariantSelector({
         dimMap[key].add(String(value));
       }
     }
-    return VISIBLE_DIMENSIONS.filter((key) => dimMap[key] && dimMap[key].size > 1).map((key) => {
+    // Dimensiones con >1 valor distinto.
+    const keys = VISIBLE_DIMENSIONS.filter((key) => dimMap[key] && dimMap[key].size > 1);
+    // Dedupe de grupos redundantes: si dos dimensions tienen EXACTAMENTE el mismo
+    // valor en TODAS las variants (ej. `quantity` y `photoSlots` en packs donde cada
+    // unidad lleva 1 foto), elegir por una equivale a elegir por la otra → mostrar
+    // ambas pintaría el mismo grupo dos veces (bug: doble grupo "CANTIDAD" en la PDP
+    // de separadores-libros). Se conserva la primera según VISIBLE_DIMENSIONS.
+    const uniqueKeys = keys.filter(
+      (key, i) =>
+        !keys.slice(0, i).some((other) =>
+          variants.every((v) => {
+            const attrs = parseVariantAttributes(v.attributes);
+            return String(attrs[key]) === String(attrs[other]);
+          }),
+        ),
+    );
+    return uniqueKeys.map((key) => {
       const rawValues = Array.from(dimMap[key]);
       const order = DIMENSION_VALUE_ORDER[key];
       let values: string[];

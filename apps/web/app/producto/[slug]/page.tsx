@@ -120,9 +120,9 @@ export default async function ProductoDetallePage({
   const isNamePerTile = selectedAttrs.variant === "name";
   const nameMin = selectedAttrs.letterCountMin ?? 3;
   const nameMax = selectedAttrs.letterCountMax ?? 10;
-  // CTA adaptativo: "Sin imán" es un adhesivo, no un imán → no llamarlo "imán". (magnet
-  // undefined = con imán por defecto.)
-  const ctaNoun = selectedAttrs.magnet === false ? "tu adhesivo" : "tu imán";
+  // CTA genérico: no todos los productos son imanes (separadores, fichas, sets)
+  // → "Personalizar producto" sirve para todo el catálogo.
+  const ctaNoun = "producto";
   // Etapa 1 (modo catálogo): el strip de confianza NO promete pago en línea ni
   // envío calculado — la compra se cierra por WhatsApp tras la cotización.
   const catalog = isCatalogMode();
@@ -410,10 +410,20 @@ export default async function ProductoDetallePage({
                   <li className="flex items-start gap-2.5">
                     <Truck className="text-brand-purple mt-0.5 h-4 w-4 flex-shrink-0" aria-hidden />
                     <span>
-                      Hecho a pedido: se produce en{" "}
-                      <strong>{product.productionDays} días hábiles</strong> + envío{" "}
-                      {product.shippingDaysMin}–{product.shippingDaysMax} días con nuestras
-                      transportadoras aliadas según tu ciudad.
+                      {catalog ? (
+                        <>
+                          Lo producimos en <strong>2 días hábiles</strong> y te llega en{" "}
+                          <strong>1 día más</strong> (máximo 3 en total). El envío se coordina por
+                          WhatsApp con nuestras transportadoras aliadas.
+                        </>
+                      ) : (
+                        <>
+                          Hecho a pedido: se produce en{" "}
+                          <strong>{product.productionDays} días hábiles</strong> + envío{" "}
+                          {product.shippingDaysMin}–{product.shippingDaysMax} días con nuestras
+                          transportadoras aliadas según tu ciudad.
+                        </>
+                      )}
                     </span>
                   </li>
                   <li className="flex items-start gap-2.5">

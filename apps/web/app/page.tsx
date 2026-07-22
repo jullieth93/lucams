@@ -134,7 +134,7 @@ export default async function Home() {
               <p className="text-brand-purple-dark/70 mt-2">
                 <CmsText
                   blockKey="home.howitworks.subtext"
-                  fallback="Tu imán hecho con cariño en 3 pasos."
+                  fallback="Tu producto hecho con cariño en 3 pasos."
                 />
               </p>
             </header>
@@ -147,7 +147,7 @@ export default async function Home() {
           <header className="mb-8 flex flex-wrap items-end justify-between gap-3">
             <div>
               <h2 className="font-display text-brand-purple-dark text-3xl sm:text-4xl">
-                <CmsText blockKey="home.featured.heading" fallback="Imanes que están enamorando" />
+                <CmsText blockKey="home.featured.heading" fallback="Productos que están enamorando" />
               </h2>
               <p className="text-brand-purple-dark/70 mt-2">
                 <CmsText
@@ -187,7 +187,7 @@ export default async function Home() {
               <p className="text-brand-purple-dark/70 mt-2">
                 <CmsText
                   blockKey="home.reviews.subtext"
-                  fallback="Historias reales de neveras felices."
+                  fallback="Historias reales de clientes felices."
                 />
               </p>
             </header>
@@ -199,7 +199,7 @@ export default async function Home() {
                 <p className="text-brand-purple-dark mt-4 font-semibold">
                   <CmsText
                     blockKey="home.reviews.empty"
-                    fallback="Sé el primero en contarnos cómo te llegó tu imán 💜"
+                    fallback="Sé el primero en contarnos cómo te llegó tu pedido 💜"
                   />
                 </p>
                 <p className="text-brand-muted mt-1 text-sm">

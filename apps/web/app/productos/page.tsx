@@ -224,7 +224,7 @@ export default async function ProductosPage({ searchParams }: { searchParams: Se
             </h1>
             <p className="text-brand-purple-dark/70 mt-2 max-w-2xl text-base">
               {activeCategory?.description ??
-                "Imanes que cuentan historias. Personalizables, hechos a mano, listos para llegar a tu nevera."}
+                "Productos que cuentan historias. Personalizables, hechos a mano, listos para llegar a tu espacio."}
             </p>
           </header>
 

@@ -12,10 +12,18 @@ import Link from "next/link";
 import { LucamsLogo } from "@/components/lucams-logo";
 import { CmsText } from "@/components/cms/cms-text";
 import { getSettingValue } from "@/lib/cms";
+import { isCatalogMode } from "@/lib/store-mode";
 
 export async function HomeHero() {
   // #3 — mismo toggle que usa el checkout: el chip solo promete contraentrega si COD está activo.
   const codEnabled = (await getSettingValue("COD_ENABLED", "true")) === "true";
+  // Etapa 1 (catálogo): no hay pago en línea — la compra se cierra por WhatsApp
+  // con contraentrega disponible. Nunca prometer "Pago en línea" en este modo.
+  const chipCodFallback = isCatalogMode()
+    ? "Pago contraentrega disponible"
+    : codEnabled
+      ? "Pago contraentrega disponible"
+      : "Pago en línea seguro";
 
   return (
     <section className="relative overflow-hidden">
@@ -78,14 +86,12 @@ export async function HomeHero() {
             </span>
             <span className="bg-brand-coral/20 text-brand-purple-dark rounded-full px-3 py-1">
               {/* #3 — el chip promete contraentrega solo si está activa (ADR-055); si Lucy la apaga,
-                cae a "Pago en línea seguro". Veraz en ambos casos. */}
-              <CmsText
-                blockKey="home.hero.chip-cod"
-                fallback={codEnabled ? "Pago contraentrega disponible" : "Pago en línea seguro"}
-              />
+                cae a "Pago en línea seguro" (solo modo full). Veraz en ambos casos. */}
+              <CmsText blockKey="home.hero.chip-cod" fallback={chipCodFallback} />
             </span>
             <span className="bg-brand-yellow/30 text-brand-purple-dark rounded-full px-3 py-1">
-              <CmsText blockKey="home.hero.chip-eta" fallback="4-9 días hábiles" />
+              {/* Producción 2 días hábiles + 1 de entrega = máximo 3 en total. */}
+              <CmsText blockKey="home.hero.chip-eta" fallback="Te llega en máx. 3 días" />
             </span>
           </div>
         </div>

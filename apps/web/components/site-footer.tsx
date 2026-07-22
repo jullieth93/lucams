@@ -2,8 +2,8 @@
  * SiteFooter — footer kawaii del storefront.
  *
  * 4 columnas en desktop, accordion en móvil:
- *  1. Lucams: logo + tagline + redes (Instagram/TikTok/WhatsApp)
- *  2. Tienda: 7 categorías activas + Ver todo
+ *  1. Lucams: logo + tagline + redes (Instagram/TikTok/Facebook/WhatsApp)
+ *  2. Tienda: máx. 6 categorías activas + Ver todo
  *  3. Información: links a /legal/*
  *  4. Atención cliente: WhatsApp CTA + email + /ayuda
  *
@@ -63,16 +63,28 @@ function TikTokIcon({ className }: { className?: string }) {
   );
 }
 
+// Facebook tampoco está en lucide-react 1.14 (brand icons removidos) — glyph
+// propio en el mismo estilo que Instagram/TikTok.
+function FacebookIcon({ className }: { className?: string }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" className={className}>
+      <path d="M13.5 21v-8h2.7l.4-3.1h-3.1V7.9c0-.9.25-1.5 1.55-1.5h1.65V3.6c-.3-.04-1.3-.1-2.45-.1-2.4 0-4.05 1.47-4.05 4.17v2.23H7.5V13h2.7v8h3.3z" />
+    </svg>
+  );
+}
+
 export async function SiteFooter() {
   // Settings que se usan como atributos (href/mailto) los necesitamos
   // como string raw — los display los wrappea <CmsSetting>.
-  const [categories, waSupportUrl, contactEmail, instagramUrl, tiktokUrl] = await Promise.all([
-    listStorefrontCategories({ topLevelOnly: true }),
-    buildWhatsAppUrl({ kind: "support" }),
-    getSettingValue("CONTACT_EMAIL", "hola@lucamsshop.com"),
-    getSettingValue("SOCIAL_INSTAGRAM_URL", "https://www.instagram.com/lucams_shop"),
-    getSettingValue("SOCIAL_TIKTOK_URL", "https://www.tiktok.com/@lucams_shop"),
-  ]);
+  const [categories, waSupportUrl, contactEmail, instagramUrl, tiktokUrl, facebookUrl] =
+    await Promise.all([
+      listStorefrontCategories({ topLevelOnly: true }),
+      buildWhatsAppUrl({ kind: "support" }),
+      getSettingValue("CONTACT_EMAIL", "hola@lucamsshop.com"),
+      getSettingValue("SOCIAL_INSTAGRAM_URL", "https://www.instagram.com/lucams_shop"),
+      getSettingValue("SOCIAL_TIKTOK_URL", "https://www.tiktok.com/@lucams_shop"),
+      getSettingValue("SOCIAL_FACEBOOK_URL", "https://www.facebook.com/lucamsshop"),
+    ]);
   const buildVersion = process.env.NEXT_PUBLIC_BUILD_VERSION ?? "dev";
   const waNumberDisplay = getWhatsAppNumber().replace(/^57(\d{3})(\d{3})(\d{4})$/, "+57 $1 $2 $3");
 
@@ -118,6 +130,15 @@ export async function SiteFooter() {
                 <TikTokIcon className="h-4 w-4" />
               </a>
               <a
+                href={facebookUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Facebook"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/10 transition-colors hover:bg-white/20"
+              >
+                <FacebookIcon className="h-4 w-4" />
+              </a>
+              <a
                 href={waSupportUrl}
                 target="_blank"
                 rel="noopener noreferrer"
@@ -135,7 +156,9 @@ export async function SiteFooter() {
               <CmsText blockKey="footer.column.shop" fallback="Tienda" />
             </h3>
             <ul className="space-y-2 text-sm text-white/80">
-              {categories.map((c) => (
+              {/* Máximo 6 categorías + "Ver todo" (antes salían TODAS, incluidas
+                  categorías obsoletas ya desactivadas en DB). */}
+              {categories.slice(0, 6).map((c) => (
                 <li key={c.id}>
                   <Link
                     href={`/productos?categoria=${c.slug}`}
@@ -250,15 +273,12 @@ export async function SiteFooter() {
           </div>
         </div>
 
-        {/* Copyright + identidad del proveedor (Ley 1480 art. 23/50) + autoridad de consumidor (SIC) */}
+        {/* Copyright + ciudad de la marca + autoridad de consumidor (SIC) */}
         <div className="mt-12 border-t border-white/10 pt-6 text-xs text-white/60">
-          {/* Identidad de la persona natural, sin exponer cédula ni dirección exacta (Opción 1).
-              Editable en admin vía BUSINESS_LEGAL_NAME. */}
+          {/* La identificación legal de la persona natural (nombre completo) va en
+              /legal/*, no en el footer. Aquí solo marca + ciudad. */}
           <p className="mb-3 text-center text-[11px] text-white/50 md:text-left">
-            <CmsSetting
-              settingKey="BUSINESS_LEGAL_NAME"
-              fallback="Lucams_shop es una marca operada por Lucy Jullieth Hurtado Rodríguez · Persona natural · Bogotá D.C., Colombia"
-            />
+            Lucams_shop · Bogotá D.C., Colombia
             {" · "}
             <a
               href="https://www.sic.gov.co/"

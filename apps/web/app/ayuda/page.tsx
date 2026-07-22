@@ -20,6 +20,7 @@ import { CmsText } from "@/components/cms/cms-text";
 import { CmsMarkdown } from "@/components/cms/cms-markdown";
 import { getCmsBlocksByCategory, getSettingValue } from "@/lib/cms";
 import { buildWhatsAppUrl } from "@/lib/wa";
+import { isCatalogMode } from "@/lib/store-mode";
 
 export const metadata: Metadata = {
   title: "Ayuda",
@@ -33,68 +34,78 @@ export const dynamic = "force-dynamic";
 // una desde modo edición, el wrapper auto-crea el CmsBlock con
 // category=FAQ. Cuando getCmsBlocksByCategory devuelva blocks, esos
 // reemplazan al fallback (orden por key).
-const FALLBACK_FAQS: { slug: string; question: string; answer: string }[] = [
-  {
-    slug: "como-personalizo",
-    question: "¿Cómo personalizo un imán?",
-    answer:
-      "Elige el producto, haz clic en **Personalizar** y lo diseñas en vivo en nuestro Estudio: subes tus fotos, agregas texto y plantillas, y lo ves con vista previa 3D. Al terminar, lo agregas al carrito.",
-  },
-  {
-    slug: "cuanto-demora",
-    question: "¿Cuánto demora mi pedido?",
-    answer:
-      "Fabricación: **2-4 días hábiles**. Envío: **2-5 días hábiles** dentro de Colombia según destino. Total: 4-9 días hábiles desde que confirmas.",
-  },
-  {
-    slug: "metodos-pago",
-    question: "¿Qué métodos de pago aceptan?",
-    answer:
-      "Tarjetas de crédito y débito, PSE (cuentas bancarias), Nequi, Bancolombia transferencia y Daviplata. Todos los pagos los procesa Wompi de forma segura (pasarela certificada). También aceptamos **pago contraentrega**: pagas en efectivo al recibir tu pedido.",
-  },
-  {
-    slug: "envios-cobertura",
-    question: "¿Hacen envíos a mi ciudad?",
-    answer:
-      "Llegamos a **1.100+ destinos** en Colombia a través de transportadoras aliadas (Coordinadora, Servientrega, Envía y más). Al hacer el pedido calculamos automáticamente el costo, el tiempo estimado y qué transportadora llega a tu ciudad.",
-  },
-  {
-    slug: "cambios-devoluciones",
-    question: "¿Cómo cambio o devuelvo un producto?",
-    answer:
-      "Tienes **5 días hábiles** desde la entrega para retractarte (Ley 1480 art. 47), excepto en productos personalizados. Para garantía: 1 año desde la entrega. [Más detalles](/legal/devoluciones).",
-  },
-  {
-    slug: "factura-dian",
-    question: "¿Puedo pedir factura de mi compra?",
-    answer:
-      "Claro. Cuéntanos tus datos de facturación (CC/NIT o cédula, razón social y correo) al hacer el pedido o luego por WhatsApp y coordinamos el envío de tu factura a tu correo. Si necesitas **factura electrónica DIAN**, escríbenos y te confirmamos cómo gestionarla.",
-  },
-  {
-    slug: "datos-personales",
-    question: "¿Cómo manejan mis datos personales?",
-    answer:
-      "Tratamos tus datos según la **Ley 1581 de 2012** y nuestro [Aviso de Privacidad](/legal/privacidad). Puedes ejercer hábeas data (acceso, rectificación, supresión, revocación) escribiéndonos.",
-  },
-  {
-    slug: "borrar-mis-datos",
-    question: "¿Cómo borro mi cuenta y mis datos?",
-    answer:
-      "Escríbenos a **hola@lucamsshop.com** desde el email registrado. Procesamos la supresión dentro de **10 días hábiles**. Más info en [Hábeas Data](/legal/habeas-data).",
-  },
-  {
-    slug: "newsletter-unsuscripcion",
-    question: "¿Cómo me suscribo o desuscribo del newsletter?",
-    answer:
-      "Suscripción: form en el footer. Desuscripción: link **Cancelar suscripción** al final de cada email que te enviemos, o escríbenos a hola@lucamsshop.com.",
-  },
-  {
-    slug: "regalos-eventos",
-    question: "¿Hacen pedidos al por mayor o para eventos corporativos?",
-    answer:
-      "¡Sí! Bodas, baby showers, eventos corporativos, recordatorios para regalos. Escríbenos por WhatsApp con tu idea y volumen y te pasamos cotización personalizada.",
-  },
-];
+//
+// `catalog` = Etapa 1 (modo catálogo): sin pago en línea ni envío
+// integrado — la compra se cierra por WhatsApp. Los textos de pago/envío
+// se condicionan al modo para no prometer lo que no está activo.
+function buildFallbackFaqs(catalog: boolean): { slug: string; question: string; answer: string }[] {
+  return [
+    {
+      slug: "como-personalizo",
+      question: "¿Cómo personalizo un producto?",
+      answer: catalog
+        ? "Elige el producto, haz clic en **Personalizar** y lo diseñas en vivo en nuestro Estudio: subes tus fotos, agregas texto y plantillas, y lo ves con vista previa 3D. Al terminar, lo agregas al carrito y confirmas tu pedido por WhatsApp."
+        : "Elige el producto, haz clic en **Personalizar** y lo diseñas en vivo en nuestro Estudio: subes tus fotos, agregas texto y plantillas, y lo ves con vista previa 3D. Al terminar, lo agregas al carrito.",
+    },
+    {
+      slug: "cuanto-demora",
+      question: "¿Cuánto demora mi pedido?",
+      answer: catalog
+        ? "Lo producimos a mano en **2 días hábiles** y te llega en **1 día más**: máximo **3 días en total** desde que confirmas. El envío lo coordinamos por WhatsApp con nuestras transportadoras aliadas."
+        : "Lo producimos a mano en **2 días hábiles** y te llega en **1 día más** con nuestras transportadoras aliadas: máximo **3 días en total** desde que confirmas.",
+    },
+    {
+      slug: "metodos-pago",
+      question: "¿Qué métodos de pago aceptan?",
+      answer: catalog
+        ? "Los medios de pago se acuerdan por **WhatsApp** al confirmar tu cotización. Además tienes **contraentrega disponible**: pagas en efectivo al recibir tu pedido."
+        : "Tarjetas de crédito y débito, PSE (cuentas bancarias), Nequi, Bancolombia transferencia y Daviplata. Todos los pagos los procesa Wompi de forma segura (pasarela certificada). También aceptamos **pago contraentrega**: pagas en efectivo al recibir tu pedido.",
+    },
+    {
+      slug: "envios-cobertura",
+      question: "¿Hacen envíos a mi ciudad?",
+      answer: catalog
+        ? "Llegamos a **1.100+ destinos** en Colombia a través de nuestras transportadoras aliadas. El costo del envío y el tiempo estimado te los confirmamos por **WhatsApp** al cotizar tu pedido."
+        : "Llegamos a **1.100+ destinos** en Colombia a través de nuestras transportadoras aliadas. Al hacer el pedido calculamos automáticamente el costo, el tiempo estimado y qué transportadora llega a tu ciudad.",
+    },
+    {
+      slug: "cambios-devoluciones",
+      question: "¿Cómo cambio o devuelvo un producto?",
+      answer:
+        "Tienes **5 días hábiles** desde la entrega para retractarte (Ley 1480 art. 47), excepto en productos personalizados. Para garantía: 1 año desde la entrega. [Más detalles](/legal/devoluciones).",
+    },
+    {
+      slug: "factura-dian",
+      question: "¿Puedo pedir factura de mi compra?",
+      answer:
+        "Claro. Cuéntanos tus datos de facturación (nombre o razón social, cédula o NIT, y correo) al confirmar tu pedido y te enviamos el comprobante de tu compra a tu correo.",
+    },
+    {
+      slug: "datos-personales",
+      question: "¿Cómo manejan mis datos personales?",
+      answer:
+        "Tratamos tus datos según la **Ley 1581 de 2012** y nuestro [Aviso de Privacidad](/legal/privacidad). Puedes ejercer hábeas data (acceso, rectificación, supresión, revocación) escribiéndonos.",
+    },
+    {
+      slug: "borrar-mis-datos",
+      question: "¿Cómo borro mi cuenta y mis datos?",
+      answer:
+        "Escríbenos a **hola@lucamsshop.com** desde el email registrado. Procesamos la supresión dentro de **10 días hábiles**. Más info en [Hábeas Data](/legal/habeas-data).",
+    },
+    {
+      slug: "newsletter-unsuscripcion",
+      question: "¿Cómo me suscribo o desuscribo del newsletter?",
+      answer:
+        "Suscripción: form en el footer. Desuscripción: link **Cancelar suscripción** al final de cada email que te enviemos, o escríbenos a hola@lucamsshop.com.",
+    },
+    {
+      slug: "regalos-eventos",
+      question: "¿Hacen pedidos al por mayor o para eventos corporativos?",
+      answer:
+        "¡Sí! Bodas, baby showers, eventos corporativos, recordatorios para regalos. Escríbenos por WhatsApp con tu idea y volumen y te pasamos cotización personalizada.",
+    },
+  ];
+}
 
 export default async function AyudaPage() {
   const [faqs, waSupportUrl, contactEmail] = await Promise.all([
@@ -102,6 +113,7 @@ export default async function AyudaPage() {
     buildWhatsAppUrl({ kind: "support" }),
     getSettingValue("CONTACT_EMAIL", "hola@lucamsshop.com"),
   ]);
+  const catalog = isCatalogMode();
 
   // Si hay FAQs en CMS, las usamos. Si no, fallback editorial.
   const items =
@@ -112,7 +124,7 @@ export default async function AyudaPage() {
           answer: b.body,
           fromCms: true as const,
         }))
-      : FALLBACK_FAQS.map((f) => ({ ...f, fromCms: false as const }));
+      : buildFallbackFaqs(catalog).map((f) => ({ ...f, fromCms: false as const }));
 
   return (
     <div className="bg-brand-cream flex min-h-screen flex-col">

@@ -25,7 +25,7 @@ export function NamePricePicker({
   perTilePrice: number;
   min: number;
   max: number;
-  /** "tu imán" o "tu adhesivo" según la variante (con/sin imán). */
+  /** Sustantivo del CTA ("producto" — genérico para todo el catálogo). */
   ctaNoun: string;
 }) {
   // H12 — variante del Context compartido (en sync instantáneo con el selector).

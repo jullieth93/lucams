@@ -7,7 +7,6 @@
 
 import { MousePointerClick, Sparkles, Package } from "lucide-react";
 import { CmsText } from "@/components/cms/cms-text";
-import { WOMPI_METHODS_PROSE } from "@/lib/payment-methods";
 
 const STEPS = [
   {
@@ -24,14 +23,17 @@ const STEPS = [
     titleFallback: "Personalizas",
     descKey: "home.howitworks.step2.description",
     descFallback:
-      "Diseñas tu imán en vivo en nuestro Estudio: subes fotos, agregas texto y plantillas, y lo ves con vista previa 3D. ¡Sin salir del sitio!",
+      "Diseñas tu producto en vivo en nuestro Estudio: subes fotos, agregas texto y plantillas, y lo ves con vista previa 3D. ¡Sin salir del sitio!",
   },
   {
     icon: Package,
     titleKey: "home.howitworks.step3.title",
-    titleFallback: "Llega a tu nevera",
+    titleFallback: "Llega a tu espacio",
     descKey: "home.howitworks.step3.description",
-    descFallback: `Lo fabricamos a mano y te llega en 4-9 días hábiles. Pago en línea seguro con Wompi (${WOMPI_METHODS_PROSE}).`,
+    // Etapa 1 (modo catálogo): producción 2 días hábiles + 1 de entrega; el pago y
+    // el envío se cierran por WhatsApp (sin prometer pago en línea).
+    descFallback:
+      "Lo producimos a mano en 2 días hábiles y te llega en 1 día más (máximo 3 en total). El pago y el envío se acuerdan por WhatsApp — contraentrega disponible.",
   },
 ];
 

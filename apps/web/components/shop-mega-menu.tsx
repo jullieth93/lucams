@@ -64,6 +64,8 @@ const TOP_OCASIONES = [
 export function ShopMegaMenu({ tree, isLoggedIn }: { tree: CategoryNode[]; isLoggedIn: boolean }) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const visibleCategories = tree.filter((c) => c.isActive);
+  // Máximo 8 categorías en el menú; el resto queda detrás de "Ver todo el catálogo".
+  const menuCategories = visibleCategories.slice(0, 8);
 
   return (
     <>
@@ -73,12 +75,12 @@ export function ShopMegaMenu({ tree, isLoggedIn }: { tree: CategoryNode[]; isLog
           <NavigationMenuList>
             <NavigationMenuItem>
               <NavigationMenuTrigger className="text-brand-purple-dark data-[active]:text-brand-purple-dark data-[state=open]:text-brand-purple-dark hover:text-brand-purple bg-transparent text-sm font-medium hover:bg-transparent">
-                Tienda
+                Catálogo
               </NavigationMenuTrigger>
               <NavigationMenuContent>
                 <div className="w-[820px] p-5">
                   <div className="grid grid-cols-3 gap-x-6 gap-y-4">
-                    {visibleCategories.map((cat) => {
+                    {menuCategories.map((cat) => {
                       const Icon = ICONS[cat.slug] ?? Camera;
                       const activeSubCats = cat.children.filter((s) => s.isActive);
                       return (
@@ -178,10 +180,10 @@ export function ShopMegaMenu({ tree, isLoggedIn }: { tree: CategoryNode[]; isLog
         </SheetTrigger>
         <SheetContent side="left" className="w-[300px] overflow-y-auto sm:w-[340px]">
           <SheetHeader>
-            <SheetTitle className="font-display text-brand-purple-dark text-2xl">Tienda</SheetTitle>
+            <SheetTitle className="font-display text-brand-purple-dark text-2xl">Catálogo</SheetTitle>
           </SheetHeader>
           <nav className="mt-3 flex flex-col gap-0.5 px-3 pb-6">
-            {visibleCategories.map((cat) => {
+            {menuCategories.map((cat) => {
               const Icon = ICONS[cat.slug] ?? Camera;
               return (
                 <MobileCategoryAccordion

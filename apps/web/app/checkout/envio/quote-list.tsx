@@ -98,7 +98,7 @@ export function QuoteList({
         <Clock className="mt-0.5 h-3 w-3 flex-shrink-0" aria-hidden />
         <span>
           Son tiempos de transporte. Antes fabricamos tu pedido a mano: suma{" "}
-          <strong>2-4 días hábiles de fabricación</strong> antes del despacho.
+          <strong>2 días hábiles de fabricación</strong> antes del despacho.
         </span>
       </p>
 

@@ -3,7 +3,7 @@
  *
  * Estructura:
  *   - Wordmark + mascote (BrandMark)
- *   - Nav: "Tienda" con mega-menú (categorías visuales) + búsqueda Cmd+K
+ *   - Nav: "Catálogo" con mega-menú (categorías visuales) + búsqueda Cmd+K
  *   - Acciones: carrito (con badge contador) + auth links / cuenta
  *   - Chip "Panel admin" si el usuario es AdminUser activo
  *
@@ -38,14 +38,9 @@ export async function SiteHeader() {
         <BrandMark size="sm" animated />
 
         <nav className="flex items-center gap-1 sm:gap-3">
+          {/* Entrada única al catálogo: el mega-menú (trigger "Catálogo").
+              Antes había además un link plano "Catálogo" → redundante. */}
           <ShopMegaMenu tree={categoryTree} isLoggedIn={!!session} />
-
-          <Link
-            href="/productos"
-            className="text-brand-purple-dark hover:text-brand-purple hidden text-sm font-medium sm:inline"
-          >
-            Catálogo
-          </Link>
 
           <Link
             href="/recomendador"

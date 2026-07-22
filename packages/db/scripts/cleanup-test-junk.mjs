@@ -28,19 +28,40 @@ import { PrismaClient } from "@prisma/client";
 const prisma = new PrismaClient();
 const APPLY = process.argv.includes("--apply");
 
-const RUN_PREFIXES = ["cart", "chk", "e2e", "cms", "cons", "rls", "prod", "cat"];
+const RUN_PREFIXES = [
+  "cart",
+  "chk",
+  "e2e",
+  "cms",
+  "cons",
+  "rls",
+  "prod",
+  "cat",
+  "ord",
+  "saga",
+  "rtr",
+  "test",
+  "shots",
+  "clone",
+];
+// Señal robusta de fixture: el slug lleva un epoch de 13 dígitos (Date.now() del
+// RUN) y un prefijo de test conocido. Antes exigía name "Cat …" + sufijo "-cat",
+// pero los tests nuevos usan slugs `prod<ts>-lp-page-<rand>`, nombres
+// `prod<ts>-ZZZ-cat`, `Beta cat<ts>`, etc. — la basura de 2026-07 no se detectaba.
 const slugLooksLikeTest = (slug) =>
-  /-cat$/.test(slug) && RUN_PREFIXES.some((p) => slug.startsWith(p));
+  /1[0-9]{12}/.test(slug) && RUN_PREFIXES.some((p) => slug.startsWith(p));
 
 async function main() {
+  // Candidatas: cualquier categoría cuyo slug parezca fixture (el name ya no se
+  // exige "Cat …" — los tests usan `prod<ts>-ZZZ-cat`, `Beta cat<ts>`, etc.).
   const candidates = await prisma.category.findMany({
-    where: { deletedAt: null, name: { startsWith: "Cat " } },
+    where: { deletedAt: null },
     select: { id: true, name: true, slug: true, _count: { select: { products: true } } },
     orderBy: { createdAt: "asc" },
   });
   const junk = candidates.filter((c) => slugLooksLikeTest(c.slug));
 
-  console.log(`Candidatas "Cat …": ${candidates.length} · confirmadas como test: ${junk.length}`);
+  console.log(`Categorías vivas: ${candidates.length} · confirmadas como test: ${junk.length}`);
   if (junk.length === 0) {
     console.log("Nada que limpiar. ✓");
     return;

@@ -37,7 +37,7 @@ export function LoginForm({
           ¡Qué alegría verte de nuevo!
         </CardTitle>
         <CardDescription className="text-base">
-          Entra a tu cuenta para seguir personalizando tus imanes.
+          Entra a tu cuenta para seguir personalizando tus productos.
         </CardDescription>
       </CardHeader>
 
