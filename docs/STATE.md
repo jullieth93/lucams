@@ -13,6 +13,22 @@
 
 ## Resumen actual
 
+**✅ ETAPA 1 EN VIVO — OLAS 1 y 2 DESPLEGADAS (2026-07-22).** Segunda ronda de feedback de Lucy ejecutada en 5 frentes (olas 1A/1B/2A/2B/wiring) + verificación central (suite verde, builds ambos modos, capturas). Commits `47efa63` (catalog-ux) + `64b1d5c` (studio-3d) desplegados vía `vercel deploy --prod`.
+
+- **Ola 1 (bugs/UX):** favicon de marca; toggle COD gobierna hero/how-it-works/ayuda; categorías vacías ocultas (conteo efectivo server-side); paneles del Estudio mutuamente excluyentes (bug doble modal+propagación); touch-action solo en canvas (pinch de página libre); stepper +/- de cantidad en PDP (1..N contiguo, $ c/u y total en vivo); 7 reseñas del círculo de Lucy en borrador (aprueba en /admin/resenas); tags recomendador (12 ocasiones); limpieza admin residual.
+- **Ola 2 (fondo producto):** Calendario → **Set 12 tarjetas 7.5×10** ($45.000) con layout ENE 2027 + festivos + año visible + 44px para acciones de slots; **marcos de color** en canvas y producción (6 colores); Estilo/Tema/Idioma salen de la PDP → **plantillas del Estudio** (preselección + re-resolución de variante); **tiras magnéticas** ocultas ($19.000 propuesto, Lucy ajusta/activa); preview de diseños en cotización; **fichas certificadas end-to-end** (test de integración real).
+- **3D:** libro carpa 17×24 con separadores doblados al lomo (física derivada, 2 caras), imanes a escala real (nevera 170cm/tablero 45cm), escenas por producto (`scenesForKind`: calendario→nevera/corcho con la pared ARCHIVADA, letras→memo, separadores→libro), "Ver en 3D" en el editor de letras.
+
+**🟡 PENDIENTES Lucy (sin cambio + nuevos):**
+1. Vercel dashboard: Production Branch → `production` (para hacer merge-back a develop y recuperar git→deploy).
+2. /admin/resenas: revisar/aprobar las 7 reseñas borrador (quedan públicas al aprobar).
+3. /admin/fichas: subir ilustraciones A E I O U por set.
+4. /admin/productos: precios derivados de cantidades (separadores 2/4/6, fotoimanes) y activar tiras magnéticas si el precio sirve.
+5. Vercel Pro antes de anunciar públicamente ($20/mes).
+6. Fase siguiente (ya mapeada): separador 2 caras en Estudio/render (slotCount=2N o `side` por slot), plantillas Polaroid blanco-clásico/pasteles con ruteo por estilo, 7 productos-test archivados con 35 órdenes de test ancladas (borrado de órdenes requiere OK explícito), vocales frutas/profesiones en más tamaños si los quiere.
+
+---
+
 **✅ ETAPA 1 EN VIVO Y PULIDA (2026-07-22) — catálogo + cotización por WhatsApp sirviendo en `lucamsshop.com` con Frentes A-E desplegados.** Tras la auditoría y el plan de salida (ver 2026-07-21 abajo), Lucy dio feedback integral de UX/contenido y se ejecutó en 5 frentes, cada uno verificado y desplegado vía `vercel deploy --prod` (la rama de producción en Vercel sigue apuntando a `develop` — **pendiente Lucy**: cambiarla a `production` en Settings → Git para recuperar el flujo git→deploy):
 
 - **Frente A (datos):** 21 categorías-basura de tests eliminadas de la DB compartida (16 hard + 5 soft); `cleanup-test-junk.mjs` ahora detecta por epoch de 13 dígitos; fixtures de `products/service.integration.test` nacen con `isActive=false`. **`NEXT_PUBLIC_WA_NUMBER` en Vercel tenía el número viejo (315 071 8723)** — corregida a 320 887 3826 (el código y la DB estaban bien; la env de Vercel era la que fallaba).
