@@ -96,38 +96,50 @@ export function getPageEdgesTexture(): THREE.CanvasTexture {
 }
 
 /**
- * Página impresa (caras internas del bloque del libro en carpa): fondo papel + líneas de texto
- * tenues con borde derecho irregular (justificado de novela). Sin márgenes: la cara ya recorta.
+ * Página impresa (hojas del libro abierto acostado): fondo papel + TEXTO procedural legible de
+ * cerca — "palabras" (trazos cortos con huecos irregulares) en líneas justificadas con sangría
+ * de párrafo y última línea corta. 512px porque la cámara 3/4 se acerca a la hoja. Sin márgenes
+ * extra: la propia textura deja el bloque de texto centrado con márgenes de página reales.
  */
 let pagePrint: THREE.CanvasTexture | null = null;
 export function getPagePrintTexture(): THREE.CanvasTexture {
   if (pagePrint) return pagePrint;
-  pagePrint = makeTexture(256, (ctx, s) => {
+  pagePrint = makeTexture(512, (ctx, s) => {
     ctx.fillStyle = "#FDFAF2";
     ctx.fillRect(0, 0, s, s);
     // Mancha de impresión muy leve (el papel nunca es uniforme).
-    for (let i = 0; i < 350; i++) {
+    for (let i = 0; i < 900; i++) {
       ctx.globalAlpha = 0.02 + Math.random() * 0.03;
       ctx.fillStyle = "#C9BBA0";
-      ctx.fillRect(Math.random() * s, Math.random() * s, 1.5, 1.5);
+      ctx.fillRect(Math.random() * s, Math.random() * s, 2, 2);
     }
     ctx.globalAlpha = 1;
-    // Líneas de texto: gris cálido tenue, con sangría de párrafo y última línea corta al azar.
-    const left = 18;
-    const right = s - 18;
-    let y = 16;
-    let newPara = false;
-    while (y < s - 12) {
-      const indent = newPara ? 14 : 0;
-      const ragged = Math.random() < 0.24 ? right - 24 - Math.random() * 60 : right;
-      ctx.strokeStyle = `rgba(96, 84, 70, ${0.3 + Math.random() * 0.12})`;
-      ctx.lineWidth = 1.6;
-      ctx.beginPath();
-      ctx.moveTo(left + indent, y);
-      ctx.lineTo(ragged, y);
-      ctx.stroke();
-      newPara = ragged < right - 10;
-      y += 7 + Math.random() * 2;
+    // Líneas de texto: gris cálido tenue. Cada línea = serie de "palabras" (trazos cortos con
+    // huecos); sangría al abrir párrafo y última línea de párrafo más corta (justificado real).
+    const left = 42;
+    const right = s - 42;
+    let y = 46;
+    let newPara = true;
+    while (y < s - 38) {
+      const indent = newPara ? 26 : 0;
+      const short: boolean = !newPara && Math.random() < 0.22;
+      const end = short
+        ? left + indent + (right - left - indent) * (0.3 + Math.random() * 0.4)
+        : right;
+      const alpha = 0.32 + Math.random() * 0.12;
+      ctx.strokeStyle = `rgba(96, 84, 70, ${alpha})`;
+      ctx.lineWidth = 2.4;
+      let x = left + indent;
+      while (x < end - 7) {
+        const w = Math.min(8 + Math.random() * 22, end - x);
+        ctx.beginPath();
+        ctx.moveTo(x, y + (Math.random() - 0.5) * 0.9);
+        ctx.lineTo(x + w, y + (Math.random() - 0.5) * 0.9);
+        ctx.stroke();
+        x += w + 5 + Math.random() * 4;
+      }
+      newPara = short;
+      y += 13 + Math.random() * 3;
     }
   });
   return pagePrint;

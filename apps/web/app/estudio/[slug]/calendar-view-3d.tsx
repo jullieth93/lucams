@@ -25,7 +25,7 @@
  *  - Client-only (WebGL) → el caller lo importa con dynamic ssr:false.
  */
 
-import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
 import { useIsTouch } from "./use-is-touch";
@@ -34,6 +34,7 @@ import * as THREE from "three";
 import { CALENDAR_PAGE } from "@/features/personalization/calendar-layout";
 import { FitCamera } from "./fit-camera";
 import { StudioEnvironment } from "./studio-3d-environment";
+import { useWindowTextures } from "./use-window-textures";
 
 // Proporción física de la página (1080×1520). Tablero un poco más grande alrededor.
 const PAGE_W = 4.2;
@@ -87,77 +88,9 @@ class HelixCurve extends THREE.Curve<THREE.Vector3> {
 }
 
 /**
- * Texturas perezosas por ventana (mes actual ± radius). Carga con TextureLoader (dataURLs),
- * dispone las que salen de la ventana y TODAS al desmontar — sin esto cada textura 810×1140
- * son ~3.7MB de GPU que antes se cargaban ×12 de golpe.
- *
- * Dos estructuras (react-hooks/refs prohíbe leer refs durante render):
- *  - liveRef: la caché VIVA (propiedad y dispose de las texturas) — solo se toca en effects.
- *  - texMap: snapshot inmutable publicado vía setState cuando llega una textura — lo lee el render.
+ * Texturas perezosas por ventana (mes actual ± radius) — implementación compartida en
+ * ./use-window-textures.ts (con dispose al salir de la ventana y al desmontar).
  */
-function useWindowTextures(urls: string[], index: number, radius = 1): THREE.Texture | null {
-  const liveRef = useRef<Map<number, THREE.Texture>>(new Map());
-  const [texMap, setTexMap] = useState<ReadonlyMap<number, THREE.Texture>>(() => new Map());
-
-  useEffect(() => {
-    const live = liveRef.current;
-    let cancelled = false;
-    const wanted = new Set<number>();
-    for (
-      let i = Math.max(0, index - radius);
-      i <= Math.min(urls.length - 1, index + radius);
-      i++
-    ) {
-      wanted.add(i);
-    }
-
-    // Cargar faltantes (async → el setState de publicación es legal aquí).
-    const loader = new THREE.TextureLoader();
-    for (const i of wanted) {
-      if (live.has(i)) continue;
-      loader
-        .loadAsync(urls[i]!)
-        .then((tex) => {
-          if (cancelled) {
-            tex.dispose();
-            return;
-          }
-          tex.colorSpace = THREE.SRGBColorSpace;
-          tex.anisotropy = 8;
-          live.set(i, tex);
-          setTexMap(new Map(live));
-        })
-        .catch(() => {
-          // dataURL corrupto → la hoja queda en papel liso, sin romper la vista.
-        });
-    }
-
-    // Liberar las que salen de la ventana (ya no se renderizan: el flip arranca con el mes
-    // nuevo). Si texMap queda con una referencia de más no pasa nada: el render solo lee
-    // `index` (∈ wanted, viva) y la próxima publicación lo corrige.
-    for (const [i, tex] of Array.from(live.entries())) {
-      if (!wanted.has(i)) {
-        tex.dispose();
-        live.delete(i);
-      }
-    }
-
-    return () => {
-      cancelled = true;
-    };
-  }, [urls, index, radius]);
-
-  // Al desmontar la vista: liberar TODAS las texturas que sigan vivas.
-  useEffect(() => {
-    const live = liveRef.current;
-    return () => {
-      for (const tex of live.values()) tex.dispose();
-      live.clear();
-    };
-  }, []);
-
-  return texMap.get(index) ?? null;
-}
 
 /**
  * Deforma la hoja (posiciones por vértice) según el ángulo de volteada `a` (0 = colgando).

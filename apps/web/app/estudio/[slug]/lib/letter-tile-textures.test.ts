@@ -38,9 +38,9 @@ describe("letterTileMetrics", () => {
     expect(LETTER_TILE_TEX_H).toBe(Math.round((LETTER_TILE_TEX_W * 6.5) / 5));
   });
 
-  it("escala la geometría del tile 120×154 del compositor (radio 18, borde 6, inset 4)", () => {
+  it("escala la geometría del tile 120×154 del compositor (borde 6, inset 4) con radio 10% del ancho", () => {
     const m = letterTileMetrics(300, 390);
-    expect(m.radius).toBeCloseTo(45, 6);
+    expect(m.radius).toBeCloseTo(30, 6); // esquinas redondas (ola 2C — foto SARA)
     expect(m.borderWidth).toBeCloseTo(15, 6);
     expect(m.inset).toBeCloseTo(10, 6);
     expect(m.fontPx).toBe(150);
@@ -52,7 +52,9 @@ describe("drawLetterTile (con @napi-rs/canvas)", () => {
 
   it("deja transparente fuera de la silueta redondeada (el troquel 3D la respeta)", () => {
     const ctx = makeTile("A", COLOR);
-    const corner = px(ctx, 3, 3);
+    // Con r=30 (10%) el corte de esquina es el arco (0,30)-(30,0); (1,1) queda fuera incluso
+    // contando el grosor del borde (7.5px hacia afuera) y el antialiasing.
+    const corner = px(ctx, 1, 1);
     expect(corner[3]).toBe(0);
   });
 

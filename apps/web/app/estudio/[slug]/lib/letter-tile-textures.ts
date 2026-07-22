@@ -8,7 +8,14 @@
  * trae imagen. WYSIWYG: lo que el cliente configuró (tema + color por ficha) es lo que ve en 3D.
  *
  * La textura sale con transparencia fuera del roundRect → MagnetMesh extruye el cuerpo de la
- * ficha con esa silueta (shape "rectangle", radio proporcional al de buildShapePath).
+ * ficha con esa silueta (shape "rectangle", MISMO radio que la textura vía cornerRadiusRatio).
+ *
+ * 2026-07-22 (ola 2C — foto SARA de Lucy: las fichas reales tienen esquinas REDONDAS):
+ * el radio queda en ~10% del ancho Y —lo importante— el EXTRUIDO 3D usa el mismo ratio
+ * (antes el mesh heredaba el radio por defecto 8/512 ≈ 1.6%: casi en punta, y la esquina
+ * afilada del cuerpo asomaba por la esquina transparente de la textura → "terminadas en punta").
+ * OJO: el compositor de producción (letter-set-editor) sigue en r=18/120 (15%); si se ajusta
+ * allá, alinear LETTER_TILE_CORNER_RATIO al mismo valor (WYSIWYG).
  *
  * Estructura testeable:
  *  - `letterTileMetrics` y `drawLetterTile` son puras (dibujan sobre cualquier ctx 2D, incluido
@@ -27,12 +34,16 @@ export const LETTER_TILE_TEX_H = Math.round(
   (LETTER_TILE_TEX_W * LETTER_TILE_RATIO.h) / LETTER_TILE_RATIO.w,
 ); // 390
 
+/** Radio de esquina REDONDA de la ficha como fracción del ancho (textura y extruido 3D). */
+export const LETTER_TILE_CORNER_RATIO = 0.1;
+
 /** Color de respaldo si la paleta viene corta (morado de marca). */
 const FALLBACK_COLOR = "#7C6AAD";
 
 /**
- * Geometría de la ficha escalada al lienzo w×h. Espeja el tile de 120×154 del compositor
- * (roundRect r=18, borde 6, inset 4, glifo a 60px) — mismo dibujo, otra escala.
+ * Geometría de la ficha escalada al lienzo w×h. Misma estructura del tile de 120×154 del
+ * compositor (borde 6, inset 4, glifo a 60px) con el radio en 10% del ancho (12px en 120) —
+ * mismo dibujo, otra escala.
  */
 export function letterTileMetrics(
   w: number,
@@ -45,7 +56,7 @@ export function letterTileMetrics(
 } {
   const u = w / 120;
   return {
-    radius: 18 * u,
+    radius: LETTER_TILE_CORNER_RATIO * w,
     borderWidth: 6 * u,
     inset: 4 * u,
     fontPx: Math.round(60 * u),
@@ -147,6 +158,8 @@ export async function buildLetterTileTextures(
       wRatio: LETTER_TILE_RATIO.w,
       hRatio: LETTER_TILE_RATIO.h,
       shape: "rectangle" as const,
+      // El extruido 3D redondea con el MISMO radio que la textura (esquinas redondas, ola 2C).
+      cornerRadiusRatio: LETTER_TILE_CORNER_RATIO,
     };
   });
 }

@@ -55,6 +55,9 @@ export type Magnet3D = {
   wCm?: number;
   /** Alto real en cm (opcional). */
   hCm?: number;
+  /** Radio de esquina como fracción del ancho (opcional — p.ej. fichas de letras redondas 0.10;
+   *  si falta, el default 8/512 que espeja el recorte de la textura). */
+  cornerRadiusRatio?: number;
 };
 
 type FridgeView3DProps = {
@@ -122,6 +125,7 @@ function Magnet({
       width={width}
       height={height}
       shape={m.shape}
+      cornerRadiusRatio={m.cornerRadiusRatio}
       position={position}
     />
   );

@@ -18,15 +18,21 @@
  * El caller (studio-editor) decide el `kind` según el personalizationKind del producto. Si no
  * llega, se asume "photo" (comportamiento retrocompatible).
  *
+ * 2026-07-22 (ola 2C) — detalle 1-a-1 del calendario: con kind="calendar" aparece el botón
+ * "Ver en detalle" y se abre CalendarCardFocus (UNA tarjeta grande para leer mes y festivos,
+ * con ← → para recorrerlas de la 1 a la 12). Es un overlay DENTRO de este modal: mientras está
+ * activo, la galería pausa su useDialogA11y (Esc/trap/foco pasan al visor) y al salir se
+ * retoma — Esc nunca cierra los dos niveles de golpe.
+ *
  * Las texturas por imán (recortadas a su silueta) se calculan UNA vez en el editor y se pasan acá;
  * las escenas 3D las usan directo y los compositores 2D se arman perezosamente al abrir su chip y
  * se cachean. Las vistas 3D se importan diferidas (WebGL, client-only). `sizeCm` (tamaño real de
  * la variante) se reenvía a las escenas 3D para que las piezas escalen a su tamaño físico.
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import nextDynamic from "next/dynamic";
-import { X } from "lucide-react";
+import { X, ZoomIn } from "lucide-react";
 import { useDialogA11y } from "./use-dialog-a11y";
 import type { Magnet3D } from "./fridge-3d-view";
 import { composeGiftFlatlay } from "./lib/compose-gift-flatlay";
@@ -64,6 +70,11 @@ const BookView3D = nextDynamic(() => import("./book-view-3d"), {
       Cargando el libro 3D…
     </div>
   ),
+});
+// Ola 2C — visor de detalle tarjeta-a-tarjeta del calendario (WebGL, client-only).
+const CalendarCardFocus = nextDynamic(() => import("./calendar-card-focus"), {
+  ssr: false,
+  loading: () => null,
 });
 
 /** Escena disponible en la galería (el calendario de pared NO está: queda archivado). */
@@ -135,9 +146,17 @@ export function SceneGallery({
     () => Object.fromEntries(ALL_SCENES.map((s) => [s, false])) as Record<Scene, boolean>,
   );
 
+  // Ola 2C — visor de detalle 1-a-1 de las tarjetas mes (solo kind="calendar"). null = cerrado.
+  const [focusIndex, setFocusIndex] = useState<number | null>(null);
+  // onClose ESTABLE (useCallback): si cambia de identidad en cada render, el useDialogA11y del
+  // visor se rearma y roba el foco al primer botón al navegar tarjetas con teclado.
+  const closeFocus = useCallback(() => setFocusIndex(null), []);
+
   // #15 — foco inicial + trap + Escape + retorno de foco (centraliza el effect de Escape previo).
+  // Con el visor de detalle abierto, la galería PAUSA su a11y: Esc/trap/foco pasan al visor y
+  // al cerrarlo se retoma (Esc nunca cierra los dos niveles de golpe).
   const dialogRef = useRef<HTMLDivElement>(null);
-  useDialogA11y(dialogRef, { onClose });
+  useDialogA11y(dialogRef, { onClose, active: focusIndex === null });
 
   // Armar el compositor 2D de la escena activa (una sola vez por escena).
   useEffect(() => {
@@ -190,14 +209,28 @@ export function SceneGallery({
     >
       <div className="flex items-center justify-between px-4 py-3 text-white sm:px-6">
         <span className="font-display text-lg font-bold">✨ Míralo en tu espacio</span>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Cerrar"
-          className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/15 text-white transition-colors hover:bg-white/25 focus:ring-2 focus:ring-white focus:outline-none"
-        >
-          <X className="h-5 w-5" />
-        </button>
+        <div className="flex items-center gap-2">
+          {/* Ola 2C — detalle 1-a-1 del calendario: ver cada tarjeta de cerca, 1 → 12. */}
+          {kind === "calendar" && magnets.length > 0 && (
+            <button
+              type="button"
+              onClick={() => setFocusIndex(0)}
+              aria-label="Ver cada tarjeta en detalle"
+              className="inline-flex h-10 items-center gap-1.5 rounded-full bg-white/15 px-4 text-sm font-bold text-white transition-colors hover:bg-white/25 focus:ring-2 focus:ring-white focus:outline-none"
+            >
+              <ZoomIn className="h-4 w-4" aria-hidden />
+              <span>Ver en detalle</span>
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Cerrar"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/15 text-white transition-colors hover:bg-white/25 focus:ring-2 focus:ring-white focus:outline-none"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
       </div>
 
       {/* Chips de escena — #22: botones de alternancia (aria-pressed), no tabs. Un role=tablist
@@ -278,6 +311,16 @@ export function SceneGallery({
             : "Mantén presionada la imagen para guardarla o compartirla 💛"}
         </p>
       </div>
+
+      {/* Ola 2C — visor de detalle 1-a-1 (overlay dentro del modal; Esc/volver regresa acá). */}
+      {kind === "calendar" && focusIndex !== null && (
+        <CalendarCardFocus
+          cards={magnets}
+          index={focusIndex}
+          onIndexChange={setFocusIndex}
+          onClose={closeFocus}
+        />
+      )}
     </div>
   );
 }

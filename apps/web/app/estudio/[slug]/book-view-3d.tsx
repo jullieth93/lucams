@@ -4,66 +4,59 @@
  * BookView3D — preview inmersivo de los SEPARADORES en su rincón natural: un LIBRO (ADR-063 · SEP1).
  * Los separadores NO son imanes de nevera → su hogar es un libro.
  *
- * Pase de realismo 2026-07-22 (ola 2B — foto de referencia de Lucy: separador magnético real):
- *  - PROPORCIONES REALES (0.3 u/cm): libro 17×24 cm vs tira de 6×2 cm (o 4×4.2 cm). Antes el
- *    "marcador" medía ~85% del alto del libro — un separador real es una tira PEQUEÑA.
- *  - El libro va en CARPA (abierto, apoyado sobre sus propias cubiertas): puesta en escena real de
- *    producto, sin nada flotando (la versión anterior lo reclinaba 0.5 rad contra el vacío).
- *  - El separador se DOBLA A LA MITAD sobre el lomo (FoldedStripMesh): dos caras con grosor de
- *    cartulina (0.4 mm) + cresta del pliegue abrazando el lomo; la cresta COME tira (arco
- *    r·foldAngle), así el largo visible de cada cara sale de la física, no de un número mágico.
- *  - 2 CARAS: la cara frontal muestra el diseño del cliente (recorte cover centrado, sin deformar)
- *    y la trasera muestra el MISMO diseño orientado para leerse desde atrás — al orbitar se ve
- *    que el separador es de dos caras (la edición de 2 caras independientes en Estudio 2D/render
- *    de producción va en otra fase).
- *  - 3 separadores sobre el lomo (rotando los diseños del pack), con leves giros naturales.
- *  - Libro con detalle: cubiertas con marco repujado, bloque de páginas con cantos de hoja
- *    procedurales, caras internas del bloque con texto impreso procedural, lomo redondeado.
- *  - Sombras coherentes: la luz key tiene shadow-camera acotada explícita (antes ±5 por defecto →
- *    se recortaban las sombras de un objeto de ~6.3 u de alto).
+ * Reescritura 2026-07-22 (ola 2C — foto de referencia de Lucy: separadores magnéticos reales
+ * sobre un libro ABIERTO acostado, visto desde arriba-3/4). Antes el libro iba EN CARPA con los
+ * separadores sobre el lomo — esa NO es la realidad de la foto. Ahora:
+ *  - LIBRO ABIERTO ACOSTADO sobre la mesa: dos hojas con curvatura central al lomo (camber +
+ *    valle de encuadernación), texto impreso procedural legible en ambas páginas, bloque de
+ *    páginas en cuña (canto de hojas procedural), cubiertas con sobrehueso y lomo inferior.
+ *  - 3 separadores DOBLADOS SOBRE EL BORDE SUPERIOR de las páginas (no sobre el lomo), a
+ *    distintas alturas gracias al camber. La cara frontal reposa casi plana sobre la hoja
+ *    mostrando el diseño del cliente hacia la cámara; la trasera cuelga apenas pasada la
+ *    vertical abrazando el canto del bloque — al orbitar detrás se ve con el MISMO diseño
+ *    legible de pie (así se imprimen los separadores reales: dos caras). El pliegue abraza el
+ *    filo de la hoja (rFold ~2 mm) y las esquinas son REDONDAS (11% del ancho).
+ *  - PROPORCIONES REALES (0.3 u/cm): página 17×24 cm (pliego abierto 34×24) vs tira de 6×2 cm
+ *    (o 4×4.2 cm) — toda la matemática vive en lib/book-geometry.ts (pura, testeada): el
+ *    reposo de la cara frontal sobre la hoja y el aire bajo la cara trasera están verificados.
+ *  - Cámara con ángulo polar FIJO (FitCameraPolar): la vista arriba-3/4 no depende del aspecto
+ *    del viewport (FitCamera dejaba el ángulo casi rasante en móvil vertical). Órbita libre en
+ *    azimut y hasta bajo el horizonte para descubrir las caras traseras.
  *
  * Restricciones (idénticas a fridge/calendar 3D):
  *  - CSP estricta: CERO assets externos. Materiales/texturas procedurales en runtime.
  *  - Client-only (WebGL) → el caller lo importa con dynamic ssr:false.
  */
 
-import { Suspense, useMemo } from "react";
+import { Suspense, useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import { Canvas } from "@react-three/fiber";
+import * as THREE from "three";
 import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
 import { useIsTouch } from "./use-is-touch";
 import { OrbitControls, RoundedBox, ContactShadows } from "@react-three/drei";
-import { FitCamera } from "./fit-camera";
+import { FitCameraPolar } from "./fit-camera-polar";
 import { StudioEnvironment, StudioBackdrop } from "./studio-3d-environment";
 import { FoldedStripMesh, parseSizeCm } from "./magnet-3d";
 import { getPageEdgesTexture, getPagePrintTexture } from "./lib/procedural-textures";
+import {
+  BLOCK_T,
+  BOOK_FIT,
+  CM,
+  COVER_OVERHANG,
+  COVER_T,
+  GUTTER_GAP,
+  PAGE_D,
+  PAGE_W,
+  SEP_CORNER_RATIO,
+  SEP_FOLD_ANGLE,
+  SEP_R_FOLD,
+  SEPARATOR_SLOTS,
+  camber,
+  separatorPlacement,
+} from "./lib/book-geometry";
 import type { Magnet3D } from "./fridge-3d-view";
 
-// ── Proporciones reales (0.3 unidades de mundo por cm) ──
-const CM = 0.3;
-// Libro 17×24 cm en carpa: cada cara de la carpa = cubierta (17 de ancho × 24 de largo de página).
-const PAGE_LEN = 24 * CM; // 7.2 — largo de la cara (del lomo a la mesa)
-const COVER_W = 17 * CM; // 5.1 — ancho del libro (a lo largo del lomo)
-const COVER_T = 0.05; // cartón de cubierta ~1.7 mm
-const BLOCK_T = 0.28; // bloque de páginas ~0.9 cm
-const COVER_EPS = 0.002; // epsilon: la cubierta no queda coplanar con la cara del bloque
-const BLOCK_INSET = 0.24; // sobrehueso de la cubierta respecto al bloque (8 mm)
-// Apertura de la carpa: cada cara se aparta GAMMA de la vertical (≈28° → carpa amplia y estable).
-const GAMMA = 0.49;
-const COS_G = Math.cos(GAMMA);
-const SIN_G = Math.sin(GAMMA);
-// Punto más bajo de la carpa respecto al lomo: el canto exterior inferior de la CUBIERTA (cara
-// externa en BLOCK_T/2 + COVER_EPS + COVER_T). Apoya el libro sobre la mesa sin que nada rasgue.
-const FOOT_Y = -(PAGE_LEN * COS_G - (BLOCK_T / 2 + COVER_EPS + COVER_T) * SIN_G);
-// Altura visual del conjunto (lomo + crestas) para centrar la escena en Y.
-const TOP_Y = 0.26;
-// Desplazamiento del grupo para que el centro de la bbox quede en el origen de la escena.
-const GROUP_Y = -(FOOT_Y + TOP_Y) / 2;
-// Pliegue de los separadores: abraza el lomo (media profundidad del lomo + holgura de cartulina).
-const FOLD_ANGLE = Math.PI - 2 * GAMMA; // ángulo que gira el material sobre el lomo
-const R_FOLD = 0.23;
-
 const COVER_COLOR = "#8B5E3C"; // tapa de cuero/cartón cálido
-const COVER_PANEL = "#7C5334"; // marco repujado (un pelo más oscuro)
 const SPINE_COLOR = "#7C5334";
 
 /** Dimensiones físicas de la tira desplegada (u de mundo) según sizeCm de la variante o aspecto. */
@@ -80,34 +73,45 @@ function stripDims(m: Magnet3D, sizeCm: string | undefined): { stripW: number; s
   return tall ? { stripW: 2 * CM, stripL: 6 * CM } : { stripW: 4 * CM, stripL: 4.2 * CM };
 }
 
-/** 3 separadores doblados sobre el lomo, repartidos a lo ancho con giros naturales. */
+/**
+ * 3 separadores doblados sobre el BORDE SUPERIOR de las páginas (z = −PAGE_D/2), repartidos a
+ * lo ancho a distintas alturas (el camber eleva el borde hacia el lomo) y con giros naturales.
+ * La colocación física (tilt, altura del pliegue, holguras) sale de separatorPlacement — la cara
+ * frontal reposa sobre la hoja y la trasera cuelga libre detrás del canto del bloque.
+ */
 function Separators({ items, sizeCm }: { items: Magnet3D[]; sizeCm?: string }) {
   const layout = useMemo(() => {
     const at = (i: number) => items[((i % items.length) + items.length) % items.length]!;
-    const X = [-1.5, 0.08, 1.55];
-    const YAW = [0.05, -0.04, 0.03];
-    return X.map((x0, i) => {
+    return SEPARATOR_SLOTS.map(({ x, yaw }, i) => {
       const m = at(i);
       const { stripW, stripL } = stripDims(m, sizeCm);
-      // Que la tira nunca se salga del lomo por los extremos.
-      const maxX = COVER_W / 2 - stripW / 2 - 0.18;
-      const x = Math.max(-maxX, Math.min(maxX, x0));
-      return { m, stripW, stripL, x, yaw: YAW[i]!, i };
-    });
+      const p = separatorPlacement(x, stripL);
+      return { m, stripW, stripL, x, yaw, p, i };
+    })
+      .filter(({ p }) => p.backClearance > 0.015) // nunca atravesar la mesa
+      .map(({ m, stripW, stripL, x, yaw, p, i }) => ({
+        key: i,
+        m,
+        stripW,
+        stripL,
+        position: [x, p.crestY, p.crestZ] as [number, number, number],
+        rotation: [p.tilt, yaw, 0] as [number, number, number],
+      }));
   }, [items, sizeCm]);
 
   return (
     <>
-      {layout.map(({ m, stripW, stripL, x, yaw, i }) => (
-        <group key={i} position={[x, 0, 0]} rotation={[0, yaw, 0]}>
+      {layout.map(({ key, m, stripW, stripL, position, rotation }) => (
+        <group key={key} position={position} rotation={rotation}>
           <FoldedStripMesh
             dataUrl={m.dataUrl}
             wRatio={m.wRatio}
             hRatio={m.hRatio}
             stripW={stripW}
             stripL={stripL}
-            foldAngle={FOLD_ANGLE}
-            rFold={R_FOLD}
+            foldAngle={SEP_FOLD_ANGLE}
+            rFold={SEP_R_FOLD}
+            cornerRadiusRatio={SEP_CORNER_RATIO}
           />
         </group>
       ))}
@@ -116,74 +120,145 @@ function Separators({ items, sizeCm }: { items: Magnet3D[]; sizeCm?: string }) {
 }
 
 /**
- * Una cara de la carpa: cubierta (con marco repujado) + bloque de páginas. `side` = +1 cara hacia
- * la cámara (+z), -1 cara trasera. El bloque lleva materiales por cara: cantos de hoja en los
- * bordes expuestos y texto impreso en la cara interna (la página abierta visible en la carpa).
+ * La hoja superior de un lado: plano segmentado deformado por vértices con el camber (sube hacia
+ * el lomo y hunde en el valle de la encuadernación), con el texto impreso procedural. La página
+ * izquierda espeja la textura (clon) para que el patrón de líneas no se repita idéntico.
  */
-function BookHalf({ side }: { side: 1 | -1 }) {
-  const edges = getPageEdgesTexture();
+function PageSheet({ side }: { side: 1 | -1 }) {
   const print = getPagePrintTexture();
+  const tex = useMemo(() => {
+    if (side === 1) return print;
+    const t = print.clone();
+    t.repeat.set(-1, 1);
+    t.offset.set(1, 0);
+    t.needsUpdate = true;
+    return t;
+  }, [print, side]);
+  useEffect(() => {
+    if (tex === print) return;
+    return () => tex.dispose();
+  }, [tex, print]);
+
+  const geoRef = useRef<THREE.PlaneGeometry>(null);
+  const w = PAGE_W - GUTTER_GAP;
+  const cx = side * (GUTTER_GAP / 2 + w / 2);
+  useLayoutEffect(() => {
+    const geo = geoRef.current;
+    if (!geo) return;
+    const pos = geo.attributes.position as THREE.BufferAttribute;
+    for (let i = 0; i < pos.count; i++) {
+      // z local = normal del plano → altura mundial tras rotar −90° en X.
+      pos.setZ(i, camber(pos.getX(i) + cx));
+    }
+    pos.needsUpdate = true;
+    geo.computeVertexNormals();
+  }, [cx]);
+
   return (
-    <group rotation={[side === 1 ? -GAMMA : GAMMA, 0, 0]}>
-      {/* Cubierta */}
-      <RoundedBox
-        args={[COVER_W, PAGE_LEN, COVER_T]}
-        radius={0.02}
-        smoothness={3}
-        position={[0, -PAGE_LEN / 2, side * (BLOCK_T / 2 + COVER_T / 2 + COVER_EPS)]}
-        castShadow
-        receiveShadow
-      >
-        <meshStandardMaterial
-          color={COVER_COLOR}
-          roughness={0.65}
-          metalness={0.05}
-          envMapIntensity={0.8}
-        />
-      </RoundedBox>
-      {/* Marco repujado de la cubierta (detalle sutil, como una tapa real) */}
-      <RoundedBox
-        args={[COVER_W - 0.7, PAGE_LEN - 0.9, 0.012]}
-        radius={0.05}
-        smoothness={3}
-        position={[0, -PAGE_LEN / 2, side * (BLOCK_T / 2 + COVER_EPS + COVER_T + 0.006)]}
-        receiveShadow
-      >
-        <meshStandardMaterial color={COVER_PANEL} roughness={0.7} metalness={0.05} />
-      </RoundedBox>
-      {/* Bloque de páginas: 5 caras con cantos de hoja + cara interna con texto impreso */}
-      <mesh position={[0, -PAGE_LEN / 2, 0]} castShadow receiveShadow>
-        <boxGeometry args={[COVER_W - BLOCK_INSET, PAGE_LEN - BLOCK_INSET, BLOCK_T]} />
-        {/* orden de caras del box: +x, −x, +y, −y, +z, −z */}
-        <meshStandardMaterial attach="material-0" map={edges} roughness={0.9} metalness={0} />
-        <meshStandardMaterial attach="material-1" map={edges} roughness={0.9} metalness={0} />
-        <meshStandardMaterial attach="material-2" map={edges} roughness={0.9} metalness={0} />
-        <meshStandardMaterial attach="material-3" map={edges} roughness={0.9} metalness={0} />
-        <meshStandardMaterial
-          attach="material-4"
-          map={side === 1 ? edges : print}
-          roughness={0.9}
-          metalness={0}
-        />
-        <meshStandardMaterial
-          attach="material-5"
-          map={side === 1 ? print : edges}
-          roughness={0.9}
-          metalness={0}
-        />
-      </mesh>
-    </group>
+    <mesh
+      rotation={[-Math.PI / 2, 0, 0]}
+      position={[cx, COVER_T + BLOCK_T + 0.002, 0]}
+      castShadow
+      receiveShadow
+    >
+      <planeGeometry ref={geoRef} args={[w, PAGE_D, 28, 6]} />
+      <meshStandardMaterial
+        map={tex}
+        roughness={0.85}
+        metalness={0}
+        side={THREE.DoubleSide}
+        envMapIntensity={0.5}
+      />
+    </mesh>
   );
 }
 
-/** El lomo: tira redondeada que une las cubiertas en el eje de la carpa (la cresta la abraza). */
-function Spine() {
+/**
+ * El bloque de páginas de un lado: CUÑA extruida cuya cara superior sigue el camber (gruesa en
+ * el corte, se levanta hacia el lomo bajo la hoja superior). Tapas y paredes con cantos de hoja
+ * procedurales (la pared lleva un clon rotado 90° para que las hojas corran horizontales).
+ */
+function PageBlock({ side }: { side: 1 | -1 }) {
+  const edges = getPageEdgesTexture();
+  const edgesWall = useMemo(() => {
+    const t = edges.clone();
+    t.center.set(0.5, 0.5);
+    t.rotation = Math.PI / 2;
+    t.needsUpdate = true;
+    return t;
+  }, [edges]);
+  useEffect(() => () => edgesWall.dispose(), [edgesWall]);
+
+  const geometry = useMemo(() => {
+    const x0 = GUTTER_GAP / 2;
+    const x1 = PAGE_W;
+    const shape = new THREE.Shape();
+    shape.moveTo(x0, 0);
+    shape.lineTo(x1, 0);
+    shape.lineTo(x1, BLOCK_T + camber(x1)); // canto exterior (vertical)
+    const N = 24;
+    for (let i = 1; i <= N; i++) {
+      const x = x1 - ((x1 - x0) * i) / N;
+      shape.lineTo(x, BLOCK_T + camber(x));
+    }
+    shape.closePath(); // cara del lomo (vertical)
+    const geo = new THREE.ExtrudeGeometry(shape, {
+      depth: PAGE_D - 0.06,
+      bevelEnabled: false,
+      curveSegments: 4,
+      steps: 1,
+    });
+    geo.translate(0, 0, -(PAGE_D - 0.06) / 2);
+    return geo;
+  }, []);
+  useEffect(() => () => geometry.dispose(), [geometry]);
+
+  return (
+    <mesh
+      geometry={geometry}
+      position={[0, COVER_T, 0]}
+      scale={[side, 1, 1]}
+      castShadow
+      receiveShadow
+    >
+      <meshStandardMaterial attach="material-0" map={edges} roughness={0.92} metalness={0} />
+      <meshStandardMaterial attach="material-1" map={edgesWall} roughness={0.92} metalness={0} />
+    </mesh>
+  );
+}
+
+/** Cubierta de un lado (cartón con sobrehueso, apoya sobre la mesa). */
+function Cover({ side }: { side: 1 | -1 }) {
+  // Del lomo (−0.16, pasa bajo el lomo) al corte + sobrehueso.
+  const w = PAGE_W + COVER_OVERHANG + 0.16;
+  const cx = side * ((PAGE_W + COVER_OVERHANG - 0.16) / 2);
   return (
     <RoundedBox
-      args={[COVER_W, 0.1, 0.42]}
+      args={[w, COVER_T, PAGE_D + COVER_OVERHANG * 2]}
+      radius={0.02}
+      smoothness={3}
+      position={[cx, COVER_T / 2, 0]}
+      castShadow
+      receiveShadow
+    >
+      <meshStandardMaterial
+        color={COVER_COLOR}
+        roughness={0.65}
+        metalness={0.05}
+        envMapIntensity={0.8}
+      />
+    </RoundedBox>
+  );
+}
+
+/** El lomo del libro, apoyado sobre la mesa entre las dos cubiertas. */
+function SpinePiece() {
+  return (
+    <RoundedBox
+      args={[0.5, 0.09, PAGE_D + COVER_OVERHANG * 2]}
       radius={0.03}
       smoothness={3}
-      position={[0, 0, 0]}
+      position={[0, 0.045, 0]}
       castShadow
     >
       <meshStandardMaterial color={SPINE_COLOR} roughness={0.65} metalness={0.05} />
@@ -198,7 +273,7 @@ function Scene({ bookmarks, sizeCm }: { bookmarks: Magnet3D[]; sizeCm?: string }
     <>
       {/* FB5 — env-map procedural (reflejos en cubierta/cartulina) + ciclorama de estudio. */}
       <StudioEnvironment intensity={0.95} />
-      <StudioBackdrop position={[0, GROUP_Y + FOOT_Y - 0.02, -6]} scale={[40, 22, 8]} />
+      <StudioBackdrop position={[0, -0.02, -6]} scale={[40, 22, 8]} />
       <hemisphereLight args={["#fff6e8", "#d8cbb8", 0.32]} />
       <ambientLight intensity={0.22} />
       <directionalLight
@@ -216,40 +291,43 @@ function Scene({ bookmarks, sizeCm }: { bookmarks: Magnet3D[]; sizeCm?: string }
       />
       <directionalLight position={[-5, 3, 4]} intensity={0.3} />
 
-      {/* El libro en carpa, centrado verticalmente en la escena. */}
-      <group position={[0, GROUP_Y, 0]}>
-        <BookHalf side={1} />
-        <BookHalf side={-1} />
-        <Spine />
-        <Separators items={bookmarks} sizeCm={sizeCm} />
-      </group>
+      {/* El libro abierto acostado sobre la mesa (y=0). */}
+      <SpinePiece />
+      <Cover side={1} />
+      <Cover side={-1} />
+      <PageBlock side={1} />
+      <PageBlock side={-1} />
+      <PageSheet side={1} />
+      <PageSheet side={-1} />
+      <Separators items={bookmarks} sizeCm={sizeCm} />
 
       {/* Escena estática (el autoRotate mueve la CÁMARA) → sombra horneada 1 vez. */}
       <ContactShadows
         frames={1}
-        position={[0, GROUP_Y + FOOT_Y + 0.004, 0]}
+        position={[0, 0.004, 0]}
         opacity={0.4}
         blur={2.6}
-        scale={16}
+        scale={18}
         far={6}
       />
-      {/* #12 — encuadra la carpa (ancho del lomo × alto total) al aspecto del viewport. */}
-      <FitCamera
-        halfW={COVER_W / 2 + 0.4}
-        halfH={(TOP_Y - FOOT_Y) / 2 + 0.3}
+      {/* Encuadre con ángulo polar fijo (arriba-3/4) — no depende del aspecto del viewport. */}
+      <FitCameraPolar
+        halfW={BOOK_FIT.halfW}
+        halfH={BOOK_FIT.halfH}
+        polarDeg={BOOK_FIT.polarDeg}
         margin={1.12}
-        camY={0.3}
+        targetY={BOOK_FIT.targetY}
       />
       <OrbitControls
         makeDefault
         enablePan={false}
         autoRotate={!reduced}
         autoRotateSpeed={0.6}
-        minPolarAngle={0.5}
-        maxPolarAngle={Math.PI / 1.94}
-        minDistance={6}
-        maxDistance={24}
-        target={[0, 0, 0]}
+        minPolarAngle={0.32}
+        maxPolarAngle={Math.PI / 1.9}
+        minDistance={5}
+        maxDistance={60}
+        target={[0, BOOK_FIT.targetY, 0]}
       />
     </>
   );
@@ -275,7 +353,7 @@ export default function BookView3D({
     <Canvas
       shadows
       dpr={isTouch ? [1, 1.5] : [1, 2]}
-      camera={{ position: [0, 0.3, 13], fov: 42 }}
+      camera={{ position: [0, 9, 12], fov: 40 }}
       gl={{ preserveDrawingBuffer: false, antialias: true }}
       style={{ width: "100%", height: "100%" }}
     >

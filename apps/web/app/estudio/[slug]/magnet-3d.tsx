@@ -34,6 +34,16 @@
  *  - `coverRegion`: región normalizada tipo background-size:cover (sin deformar la textura).
  *  - `foldedStripMetrics`: geometría del separador doblado (largo visible de cada cara + arco de
  *    la cresta) — usado por FoldedStripMesh y testeado aparte.
+ *
+ * 2026-07-22 (ola 2C — feedback Lucy con fotos):
+ *  - `cornerRadiusRatio`: radio de esquina de la silueta rectangular como FRACCIÓN del ancho
+ *    (default 8/512, el espejo histórico de buildShapePath). Las fichas de letras (foto SARA) y
+ *    los separadores reales tienen esquinas REDONDAS (~10% del lado) — antes el extruido quedaba
+ *    casi en punta (1.6%) y delataba la esquina transparente de la textura.
+ *  - `ExtrudedMagnetMesh`: el núcleo geometría+materiales con la textura YA cargada (el clon por
+ *    pieza con la transform de región vive acá). MagnetMesh queda como wrapper que carga el
+ *    dataURL con useTexture; el visor de detalle del calendario le pasa texturas con lifecycle
+ *    propio (ventana con dispose) sin tocar el caché global de drei.
  */
 
 import { useEffect, useMemo } from "react";
@@ -166,8 +176,17 @@ export function foldedStripMetrics(
 //  MagnetMesh — pieza extruida con cara impresa
 // ──────────────────────────────────────────────────────────────────
 
+/** Radio de esquina histórico de la silueta rectangular: espejo del clip de la textura
+ *  (roundRect r = min(8, w/12) px sobre texW=512 → 8/512 del ancho). */
+const LEGACY_CORNER_RATIO = 8 / 512;
+
 /** Silueta física centrada en el origen (unidades de mundo). Espejo exacto de buildShapePath. */
-function buildSilhouette(shape: MagnetShape, w: number, h: number): THREE.Shape {
+function buildSilhouette(
+  shape: MagnetShape,
+  w: number,
+  h: number,
+  radiusRatio = LEGACY_CORNER_RATIO,
+): THREE.Shape {
   if (shape === "circle") {
     const s = new THREE.Shape();
     s.absellipse(0, 0, w / 2, h / 2, 0, Math.PI * 2, false, 0);
@@ -188,9 +207,9 @@ function buildSilhouette(shape: MagnetShape, w: number, h: number): THREE.Shape 
     s.closePath();
     return s;
   }
-  // rectangle/custom — el clip de la textura usa rounded-rect con r = min(8, w/12) px sobre
-  // texW=512 → r = 8/512 del ancho (misma r en X e Y porque la textura se estira al plano).
-  const r = (w * 8) / 512;
+  // rectangle/custom — radio = radiusRatio del ancho (default: el clip de la textura,
+  // r = 8/512). Acotado a la mitad del lado corto para no degenerar la silueta.
+  const r = Math.min(w * radiusRatio, Math.min(w, h) / 2);
   const x = -w / 2;
   const y = -h / 2;
   const s = new THREE.Shape();
@@ -207,8 +226,16 @@ function buildSilhouette(shape: MagnetShape, w: number, h: number): THREE.Shape 
   return s;
 }
 
-export function MagnetMesh({
-  dataUrl,
+/**
+ * Núcleo geometría+materiales de la pieza extruida, con la textura YA cargada. La textura se
+ * CLONA por pieza (transform propio de repeat/offset derivado de la región): la galería interna
+ * de preview monta varias escenas a la vez con la misma textura base y tamaños distintos —
+ * compartir la instancia haría que el repeat/offset de una escena rompiera el mapeo de la otra.
+ * El clon se dispone al desmontar; la textura BASE pertenece al caller (caché de drei o un
+ * loader con ventana) y NO se dispone acá.
+ */
+export function ExtrudedMagnetMesh({
+  texture,
   width,
   height,
   shape = "rectangle",
@@ -216,9 +243,11 @@ export function MagnetMesh({
   edgeColor = "#F6F1E8",
   backColor,
   textureRegion,
+  cornerRadiusRatio,
   position = [0, 0, 0],
 }: {
-  dataUrl: string;
+  /** Textura base (null = cargando → cara en color papel). La propiedad queda en el caller. */
+  texture: THREE.Texture | null;
   width: number;
   height: number;
   shape?: MagnetShape;
@@ -230,9 +259,10 @@ export function MagnetMesh({
   backColor?: string;
   /** Región normalizada de la textura (y desde arriba) para la cara impresa. Default: completa. */
   textureRegion?: TextureRegion;
+  /** Radio de esquina como fracción del ancho (default 8/512 — espejo de buildShapePath). */
+  cornerRadiusRatio?: number;
   position?: [number, number, number];
 }) {
-  const base = useTexture(dataUrl);
   const { x: rx, y: ry, w: rw, h: rh, flipV } = textureRegion ?? FULL_REGION;
   // Clon por pieza: UV de la tapa = coords del shape → repeat/offset derivados de la región.
   //   sin flip:  v_img = (1 − ry − rh) + v·rh
@@ -240,18 +270,19 @@ export function MagnetMesh({
   // Deps en primitivas (no en el objeto región): el caller puede pasarla inline sin recrear la
   // textura en cada render.
   const tex = useMemo(() => {
-    const t = base.clone();
+    if (!texture) return null;
+    const t = texture.clone();
     t.colorSpace = THREE.SRGBColorSpace;
     t.anisotropy = 8;
     t.repeat.set(rw / width, (flipV ? -rh : rh) / height);
     t.offset.set(rx + rw / 2, 1 - ry - rh / 2 + (flipV ? rh : 0));
     t.needsUpdate = true;
     return t;
-  }, [base, width, height, rx, ry, rw, rh, flipV]);
-  useEffect(() => () => tex.dispose(), [tex]);
+  }, [texture, width, height, rx, ry, rw, rh, flipV]);
+  useEffect(() => () => tex?.dispose(), [tex]);
 
   const geometry = useMemo(() => {
-    const g = new THREE.ExtrudeGeometry(buildSilhouette(shape, width, height), {
+    const g = new THREE.ExtrudeGeometry(buildSilhouette(shape, width, height, cornerRadiusRatio), {
       depth,
       bevelEnabled: true,
       bevelThickness: depth * 0.2,
@@ -262,12 +293,15 @@ export function MagnetMesh({
     });
     g.center(); // centra Z (X/Y ya vienen centrados) → cara frontal en +(depth/2 + bisel)
     return g;
-  }, [shape, width, height, depth]);
+  }, [shape, width, height, depth, cornerRadiusRatio]);
   useEffect(() => () => geometry.dispose(), [geometry]);
 
   const backGeo = useMemo(
-    () => (backColor ? new THREE.ShapeGeometry(buildSilhouette(shape, width, height), 28) : null),
-    [backColor, shape, width, height],
+    () =>
+      backColor
+        ? new THREE.ShapeGeometry(buildSilhouette(shape, width, height, cornerRadiusRatio), 28)
+        : null,
+    [backColor, shape, width, height, cornerRadiusRatio],
   );
   useEffect(() => () => backGeo?.dispose(), [backGeo]);
 
@@ -279,6 +313,7 @@ export function MagnetMesh({
         <meshStandardMaterial
           attach="material-0"
           map={tex}
+          color={tex ? "#ffffff" : "#FDFBF4"}
           roughness={0.38}
           metalness={0}
           envMapIntensity={1.15}
@@ -300,6 +335,51 @@ export function MagnetMesh({
   );
 }
 
+export function MagnetMesh({
+  dataUrl,
+  width,
+  height,
+  shape = "rectangle",
+  depth = 0.04,
+  edgeColor = "#F6F1E8",
+  backColor,
+  textureRegion,
+  cornerRadiusRatio,
+  position = [0, 0, 0],
+}: {
+  dataUrl: string;
+  width: number;
+  height: number;
+  shape?: MagnetShape;
+  /** Grosor del cuerpo (sin contar el bisel). Imanes 0.04, separadores 0.025. */
+  depth?: number;
+  /** Color del canto (material base blanco por defecto). */
+  edgeColor?: string;
+  /** Si se define, dibuja una tapa trasera lisa de este color (reverso sin imprimir). */
+  backColor?: string;
+  /** Región normalizada de la textura (y desde arriba) para la cara impresa. Default: completa. */
+  textureRegion?: TextureRegion;
+  /** Radio de esquina como fracción del ancho (default 8/512 — espejo de buildShapePath). */
+  cornerRadiusRatio?: number;
+  position?: [number, number, number];
+}) {
+  const base = useTexture(dataUrl);
+  return (
+    <ExtrudedMagnetMesh
+      texture={base}
+      width={width}
+      height={height}
+      shape={shape}
+      depth={depth}
+      edgeColor={edgeColor}
+      backColor={backColor}
+      textureRegion={textureRegion}
+      cornerRadiusRatio={cornerRadiusRatio}
+      position={position}
+    />
+  );
+}
+
 // ──────────────────────────────────────────────────────────────────
 //  FoldedStripMesh — separador magnético doblado sobre un borde
 // ──────────────────────────────────────────────────────────────────
@@ -316,8 +396,13 @@ const CARD_THICK = 0.012;
  * Caras impresas: AMBAS llevan el diseño del cliente orientado para leerse de pie desde su lado
  * (así se imprimen los separadores magnéticos reales: cada cara se lee derecha). Como la cara
  * física es más "achatada" que el lienzo completo, se aplica recorte COVER centrado (banda
- * media del diseño, sin deformar); la edición de 2 caras independientes en el Estudio 2D y el
- * render de producción va en otra fase.
+ * media del diseño, sin deformar).
+ *
+ * PUNTO DE EXTENSIÓN (ola 3 — 2 caras con diseños distintos): hoy la trasera repite el diseño
+ * frontal (`dataUrl`). Cuando la duplicación de slots del Estudio 2D/producción esté lista
+ * (convención de lib/faces.ts: slot 2k = cara A, 2k+1 = cara B), el caller puede pasar
+ * `backDataUrl` con la textura de la cara B y cada cara mostrará su propio diseño — la
+ * geometría y orientación (flipV) ya están resueltas.
  *
  * `foldAngle` = ángulo entre las dos caras: π = doblado plano (sobre una hoja); ~2.16 = sobre
  * el lomo de un libro en carpa (28° de apertura por cara). La cresta (medio cilindro hueco de
@@ -325,6 +410,7 @@ const CARD_THICK = 0.012;
  */
 export function FoldedStripMesh({
   dataUrl,
+  backDataUrl,
   wRatio,
   hRatio,
   stripW,
@@ -332,9 +418,12 @@ export function FoldedStripMesh({
   foldAngle,
   rFold,
   cardColor = "#F1EBDD",
+  cornerRadiusRatio,
   position = [0, 0, 0],
 }: {
   dataUrl: string;
+  /** Diseño de la cara TRASERA (ola 3, 2 caras). Default: el mismo de la frontal. */
+  backDataUrl?: string;
   /** Aspecto del lienzo del diseño (stage.width / stage.height) para el recorte cover. */
   wRatio: number;
   hRatio: number;
@@ -347,6 +436,8 @@ export function FoldedStripMesh({
   /** Radio del pliegue (grosor del borde abrazado + holgura de la cartulina). */
   rFold: number;
   cardColor?: string;
+  /** Radio de esquina de las caras como fracción del ancho (esquinas redondas del separador). */
+  cornerRadiusRatio?: number;
   position?: [number, number, number];
 }) {
   const { delta, hang, crestArc } = foldedStripMetrics(stripL, rFold, foldAngle);
@@ -364,20 +455,23 @@ export function FoldedStripMesh({
           edgeColor={cardColor}
           backColor={cardColor}
           textureRegion={region}
+          cornerRadiusRatio={cornerRadiusRatio}
           position={[0, -hang / 2, rFold]}
         />
       </group>
       {/* Cara trasera: rotada π sobre el pliegue (cuelga del lado −Z, diseño a −Z, de pie al
-          mirarla desde atrás: flipV compensa la rotación). */}
+          mirarla desde atrás: flipV compensa la rotación). backDataUrl (ola 3) permite un
+          diseño distinto al frontal; default: el mismo. */}
       <group rotation={[Math.PI + delta, 0, 0]}>
         <MagnetMesh
-          dataUrl={dataUrl}
+          dataUrl={backDataUrl ?? dataUrl}
           width={stripW}
           height={hang}
           depth={CARD_THICK}
           edgeColor={cardColor}
           backColor={cardColor}
           textureRegion={{ ...region, flipV: true }}
+          cornerRadiusRatio={cornerRadiusRatio}
           position={[0, hang / 2, rFold]}
         />
       </group>

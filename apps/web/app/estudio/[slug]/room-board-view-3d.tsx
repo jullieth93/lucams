@@ -108,6 +108,7 @@ function Magnets({
           width={w}
           height={h}
           shape={m.shape}
+          cornerRadiusRatio={m.cornerRadiusRatio}
           position={[x, y, FRONT_Z + MAGNET_T / 2 + 0.005]}
         />
       ))}
