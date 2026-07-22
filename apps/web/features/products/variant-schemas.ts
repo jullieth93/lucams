@@ -51,6 +51,12 @@ export const ProductVariantAttributesSchema = z.object({
    * un nombre → fichas). Antes se DESCARTABA en el merge → el editor no distinguía.
    */
   variant: z.string().optional(),
+  /**
+   * Etiqueta de forma visible de la familia (separadores: "cuadrado" | "rectangular").
+   * La distinción en PDP/Estudio la hacen `sizeCm`/`aspectRatio`; esta etiqueta es
+   * metadata de la variante (nombres, reportes).
+   */
+  variantShape: z.string().optional(),
   /** Cantidad fija de piezas/letras del set (ej. abecedario completo = 27). */
   letterCount: z.number().int().min(1).max(50).optional(),
   /** Mín. de letras para la variante "nombre" (ej. abecedario = 3). */
@@ -66,6 +72,22 @@ export const ProductVariantAttributesSchema = z.object({
   magnet: z.boolean().optional(),
   /** ADR-057 — idioma del producto (ej. abecedario "es"/"en"). Dimensión "Idioma". */
   language: z.string().optional(),
+  /**
+   * Catálogo WhatsApp D3 (2026-07-22) — color del marco impreso del fotoimán
+   * ("blanco" | "negro"). Dimensión "Marco" en la PDP. El Estudio aún NO renderiza
+   * el marco en el canvas (pendiente Frente E): viaja como dato para la cotización.
+   */
+  frameStyle: z.string().optional(),
+  /**
+   * Catálogo WhatsApp C1 (2026-07-22) — estilo visual de la Polaroid
+   * ("blanco-clasico" | "pasteles" | "instagram"). Dimensión "Estilo" en la PDP.
+   */
+  variantStyle: z.string().optional(),
+  /**
+   * Catálogo WhatsApp C2 (2026-07-22) — tema de las fichas ilustradas
+   * ("animales" | "frutas" | "profesiones"). Dimensión "Tema" en la PDP.
+   */
+  theme: z.string().optional(),
   /**
    * ADR-057 — precio POR FICHA (Nombre Personalizado): `price` de la variante es el
    * precio de UNA ficha; el total = nº de letras × price. El gate canónico sigue siendo
@@ -96,6 +118,43 @@ export function selectableVariants<T extends { attributes: unknown }>(variants: 
 export function parseVariantAttributes(raw: unknown): ProductVariantAttributes {
   const parsed = ProductVariantAttributesSchema.safeParse(raw);
   return parsed.success ? parsed.data : {};
+}
+
+/**
+ * Claves de attributes que el form de /admin/productos/[id]/variants EDITA
+ * explícitamente (parseAttributesFromForm). Toda otra clave conocida del schema
+ * (frameStyle, variantStyle, theme, language, magnet, size, letterCount…) NO
+ * tiene campo en el form.
+ */
+const FORM_MANAGED_ATTRIBUTE_KEYS: ReadonlySet<string> = new Set([
+  "sizeCm",
+  "photoSlots",
+  "quantity",
+  "color",
+  "aspectRatio",
+  "shape",
+  "finish",
+]);
+
+/**
+ * Merge para el update del admin: las claves del form mandan, pero las claves
+ * que el form NO puede expresar se PRESERVAN del valor existente en vez de
+ * perderse. Sin esto, editar el precio de una variante desde /admin/productos
+ * BORRABA silenciosamente sus dimensiones sin campo en el form (ej. frameStyle
+ * del fotoimán, variantStyle de la Polaroid, theme/language del Pack Vocales —
+ * catálogo WhatsApp 2026-07-22; ya pasaba con magnet/size/variantShape).
+ */
+export function mergePreservingUnmanagedAttributes(
+  existingRaw: unknown,
+  formAttrs: ProductVariantAttributes,
+): ProductVariantAttributes {
+  const existing = parseVariantAttributes(existingRaw);
+  const preserved: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(existing)) {
+    if (value === undefined || FORM_MANAGED_ATTRIBUTE_KEYS.has(key)) continue;
+    preserved[key] = value;
+  }
+  return { ...preserved, ...formAttrs };
 }
 
 /**

@@ -22,8 +22,10 @@ import {
 import {
   VariantCreateSchema,
   VariantUpdateSchema,
+  mergePreservingUnmanagedAttributes,
   type ProductVariantAttributes,
 } from "@/features/products/variant-schemas";
+import { prisma } from "@/lib/db";
 
 export type VariantActionState = {
   error?: string;
@@ -135,6 +137,21 @@ export async function updateVariantAction(
   const productId = String(formData.get("productId") ?? "");
   const priceStr = String(formData.get("price") ?? "").trim();
   const compareStr = String(formData.get("compareAtPrice") ?? "").trim();
+  // El form solo edita un subconjunto fijo de attributes; las dimensiones sin
+  // campo en el form (frameStyle, variantStyle, theme, language, magnet, size,
+  // variantShape…) se preservan del valor actual — antes se BORRABAN al guardar
+  // (catálogo WhatsApp 2026-07-22).
+  const variantId = String(formData.get("id") ?? "");
+  const current = variantId
+    ? await prisma.productVariant.findUnique({
+        where: { id: variantId },
+        select: { attributes: true },
+      })
+    : null;
+  const mergedAttributes = mergePreservingUnmanagedAttributes(
+    current?.attributes,
+    parseAttributesFromForm(formData),
+  );
   const parsed = VariantUpdateSchema.safeParse({
     id: formData.get("id"),
     name: formData.get("name"),
@@ -147,7 +164,7 @@ export async function updateVariantAction(
     // editor rápido del listado/Inventario). Lo omitimos para no pisarlo —
     // VariantUpdateSchema.stock es opcional y updateVariant no lo toca si falta.
     isActive: formData.get("isActive") === "on",
-    attributes: parseAttributesFromForm(formData),
+    attributes: mergedAttributes,
   });
   if (!parsed.success) {
     return {

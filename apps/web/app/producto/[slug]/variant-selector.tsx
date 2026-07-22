@@ -59,12 +59,18 @@ const DIMENSION_LABELS: Record<string, string> = {
   finish: "Acabado",
   language: "Idioma",
   magnet: "¿Con imán?",
+  frameStyle: "Marco",
+  variantStyle: "Estilo",
+  theme: "Tema",
 };
 
 /** Orden preferido por dimensión no numérica (lo demás = alfabético). */
 const DIMENSION_VALUE_ORDER: Record<string, string[]> = {
   language: ["es", "en"],
   magnet: ["true", "false"],
+  frameStyle: ["blanco", "negro"],
+  variantStyle: ["blanco-clasico", "pasteles", "instagram"],
+  theme: ["animales", "frutas", "profesiones"],
 };
 
 function formatDimensionValue(key: string, value: unknown): string {
@@ -93,6 +99,26 @@ function formatDimensionValue(key: string, value: unknown): string {
     return labels[String(value)] ?? String(value);
   }
   if (key === "magnet") return String(value) === "true" ? "🧲 Con imán" : "✨ Sin imán";
+  if (key === "frameStyle") {
+    const labels: Record<string, string> = { blanco: "Blanco", negro: "Negro" };
+    return labels[String(value)] ?? String(value);
+  }
+  if (key === "variantStyle") {
+    const labels: Record<string, string> = {
+      "blanco-clasico": "Blanco clásico",
+      pasteles: "Pasteles",
+      instagram: "Instagram",
+    };
+    return labels[String(value)] ?? String(value);
+  }
+  if (key === "theme") {
+    const labels: Record<string, string> = {
+      animales: "Animales",
+      frutas: "Frutas",
+      profesiones: "Profesiones",
+    };
+    return labels[String(value)] ?? String(value);
+  }
   return String(value);
 }
 
@@ -105,6 +131,9 @@ const VISIBLE_DIMENSIONS: (keyof ProductVariantAttributes)[] = [
   "color",
   "finish",
   "magnet",
+  "frameStyle",
+  "variantStyle",
+  "theme",
 ];
 
 export function VariantSelector({
