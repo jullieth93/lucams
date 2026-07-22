@@ -13,6 +13,17 @@
 
 ## Resumen actual
 
+**✅ ETAPA 1 EN VIVO — OLA 3 DESPLEGADA (2026-07-22).** Tercera ronda de feedback de Lucy: reseñas visibles (4 destacadas en home + todas en PDP), **Polaroid cantidad libre 1-10 a 7.5×10** ($18.300→$34.800, stepper single-dim nuevo), **Polaroid 2 plantillas** (Clásica con marco de color + texto / Instagram re-layout 3:4 — el bug "no deja escribir texto" era el filtro de aspect excluyendo la plantilla), **Fotoimanes Cuadrados sin texto** (allowText por schema), **Tiras magnéticas activas a $19.000**, **Separadores 2 CARAS** (slotCount=2N, grilla por unidad cara A|B, producción compone tiras desplegadas a ~450 DPI), **libro 3D v2** (abierto con texto impreso + separadores doblados sobre las páginas, física testeada), **detalle de calendario 1-a-1** (tarjeta grande con ←/→), fichas con esquinas redondas coherentes, selector de tema en name-editor siempre visible con hint /admin/fichas. **Purga histórica autorizada**: 53 órdenes de test + todos sus fixtures (órdenes reales intactas) + 82 categorías y 91 productos de tests eliminados; cleanup-test-junk ahora borra hijas→madres. Commits `4b4db55` (datos) + `d819ab1` (estudio 2D) + `9f84b59` (3D) desplegados vía `vercel deploy --prod`.
+
+**🟡 PENDIENTES Lucy:**
+1. Vercel dashboard: Production Branch → `production` (merge-back a develop queda esperando).
+2. /admin/fichas: subir ilustraciones A E I O U por set (selector de temas ya visible con hint).
+3. /admin/productos: precios derivados (separadores 2/4/6, polaroid 1-10) y tiras a $19.000.
+4. Vercel Pro antes de anunciar públicamente.
+5. Fase siguiente mapeada: 2 caras con diseños DISTINTOS en 3D (FoldedStripMesh.backDataUrl ya listo), plantillas Polaroid render por estilo si se quieren más (marcos ya viajan), vocales frutas/profesiones en más tamaños, seed-templates.mjs NO correr a ciegas (archivaría foto-rectangular-simple — riesgo preexistente).
+
+---
+
 **✅ ETAPA 1 EN VIVO — OLAS 1 y 2 DESPLEGADAS (2026-07-22).** Segunda ronda de feedback de Lucy ejecutada en 5 frentes (olas 1A/1B/2A/2B/wiring) + verificación central (suite verde, builds ambos modos, capturas). Commits `47efa63` (catalog-ux) + `64b1d5c` (studio-3d) desplegados vía `vercel deploy --prod`.
 
 - **Ola 1 (bugs/UX):** favicon de marca; toggle COD gobierna hero/how-it-works/ayuda; categorías vacías ocultas (conteo efectivo server-side); paneles del Estudio mutuamente excluyentes (bug doble modal+propagación); touch-action solo en canvas (pinch de página libre); stepper +/- de cantidad en PDP (1..N contiguo, $ c/u y total en vivo); 7 reseñas del círculo de Lucy en borrador (aprueba en /admin/resenas); tags recomendador (12 ocasiones); limpieza admin residual.
