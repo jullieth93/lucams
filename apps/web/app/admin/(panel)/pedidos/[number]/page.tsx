@@ -86,10 +86,17 @@ export default async function AdminPedidoDetallePage({
   const signedProduction = await getProductionAssetSignedUrls(productionPaths);
   // ADR-063 T7 — ¿hay piezas finalizadas? → ofrecer el ZIP completo (piezas + hoja de armado).
   const hasProduction = productionPaths.length > 0;
-  const hasUnapproved = order.items.some(
-    (it) =>
-      (it.design?.productionUrls?.length ?? 0) > 0 && it.design?.moderationStatus !== "APPROVED",
+  const productionItems = order.items.filter(
+    (it) => (it.design?.productionUrls?.length ?? 0) > 0,
   );
+  let approvedPieceCount = 0;
+  let unapprovedPieceCount = 0;
+  for (const it of productionItems) {
+    const pieceCount = it.design?.productionUrls?.length ?? 0;
+    if (it.design?.moderationStatus === "APPROVED") approvedPieceCount += pieceCount;
+    else unapprovedPieceCount += pieceCount;
+  }
+  const hasUnapproved = unapprovedPieceCount > 0;
 
   const ship = order.shippingAddress as ShippingAddrSnapshot;
   const dateFmt = new Intl.DateTimeFormat("es-CO", {
@@ -134,13 +141,26 @@ export default async function AdminPedidoDetallePage({
                       Archivos de impresión
                     </div>
                     <div className="text-brand-muted text-[11px]">
-                      ZIP con todas las piezas (300 DPI) + hoja de armado
+                      {productionPaths.length} pieza(s) ·{" "}
+                      <span className="text-emerald-700">{approvedPieceCount} listas para imprimir</span>
                       {hasUnapproved && (
                         <span className="ml-1 font-semibold text-amber-700">
-                          · ⚠️ hay diseños sin aprobar
+                          · {unapprovedPieceCount} pendiente(s) de aprobación
                         </span>
                       )}
                     </div>
+                    {hasUnapproved && (
+                      <div className="text-[11px] text-amber-800">
+                        ⚠️ Revisa los diseños en{" "}
+                        <Link
+                          href="/admin/moderacion"
+                          className="text-brand-purple-dark hover:text-brand-purple underline"
+                        >
+                          Moderación
+                        </Link>{" "}
+                        antes de imprimir.
+                      </div>
+                    )}
                   </div>
                   <a
                     href={`/admin/pedidos/${encodeURIComponent(order.number)}/produccion`}
@@ -189,10 +209,20 @@ export default async function AdminPedidoDetallePage({
                             <div className="text-brand-muted mb-1 flex items-center gap-1.5 text-[11px] font-semibold">
                               Archivos de impresión · {it.design.productionUrls.length} PNG (300
                               DPI)
-                              {it.design.moderationStatus !== "APPROVED" && (
-                                <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">
+                              {it.design.moderationStatus === "APPROVED" ? (
+                                <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700">
+                                  aprobado
+                                </span>
+                              ) : (
+                                <span
+                                  className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${
+                                    it.design.moderationStatus === "REJECTED"
+                                      ? "bg-rose-100 text-rose-700"
+                                      : "bg-amber-100 text-amber-700"
+                                  }`}
+                                >
                                   {it.design.moderationStatus === "REJECTED"
-                                    ? "diseño rechazado"
+                                    ? "rechazado — no imprimir"
                                     : "sin aprobar en Moderación"}
                                 </span>
                               )}
@@ -200,15 +230,22 @@ export default async function AdminPedidoDetallePage({
                             <div className="flex flex-wrap gap-1.5">
                               {it.design.productionUrls.map((path, i) => {
                                 const url = signedProduction.get(path);
-                                const label = `slot-${String(i + 1).padStart(2, "0")}`;
+                                const label = `pieza-${String(i + 1).padStart(2, "0")}`;
+                                const approved = it.design?.moderationStatus === "APPROVED";
                                 return url ? (
                                   <a
                                     key={path}
                                     href={url}
                                     download={`${order.number}-${label}.png`}
-                                    className="border-brand-purple/20 text-brand-purple-dark hover:bg-brand-purple/5 inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-semibold"
+                                    title={approved ? undefined : "No imprimir hasta aprobar en Moderación"}
+                                    className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-semibold ${
+                                      approved
+                                        ? "border-brand-purple/20 text-brand-purple-dark hover:bg-brand-purple/5"
+                                        : "border-amber-200 bg-amber-50/60 text-amber-800 hover:bg-amber-50"
+                                    }`}
                                   >
                                     ⬇ {label}
+                                    {!approved && <span>⚠️</span>}
                                   </a>
                                 ) : (
                                   <span key={path} className="text-brand-muted text-[11px]">

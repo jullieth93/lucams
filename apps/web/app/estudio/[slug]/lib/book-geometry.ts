@@ -132,15 +132,23 @@ export function stripDimsForFace(
  * lib/faces.ts: slot par = cara A → AL FRENTE, slot impar = cara B → ATRÁS). Con unidad impar
  * (no debería: facesPerUnit=2) la última repite su diseño atrás.
  *
+ * Ola 6 — cuando llega `sizeCm` (variante de separador con dimensiones reales) forzamos el
+ * pareo de caras, aunque las texturas ya hayan sido rotadas 90° en el editor y su aspecto
+ * hRatio/wRatio sea menor que FACE_CANVAS_MIN_ASPECT. Sin este hint las caras rectangulares
+ * (6×2) se confundían con tiras viejas y se repetía la misma textura en frente y atrás.
+ *
  * Diseños VIEJOS de tira completa (lienzo vertical, pre-ola-3): no traen cara B — cada textura
  * es su propia unidad y repite el diseño en ambas caras (comportamiento histórico).
  */
 export function bookmarkFaceUnits<T extends { wRatio: number; hRatio: number }>(
   bookmarks: readonly T[],
+  /** sizeCm de la variante: si llega, confirma que estamos en el flujo moderno de caras. */
+  sizeCm?: string,
 ): { front: T; back: T }[] {
   const looksLikeFaces =
-    bookmarks.length > 0 &&
-    bookmarks.every((b) => b.wRatio / b.hRatio >= FACE_CANVAS_MIN_ASPECT);
+    sizeCm !== undefined ||
+    (bookmarks.length > 0 &&
+      bookmarks.every((b) => b.wRatio / b.hRatio >= FACE_CANVAS_MIN_ASPECT));
   if (!looksLikeFaces) return bookmarks.map((b) => ({ front: b, back: b }));
   const units: { front: T; back: T }[] = [];
   for (let k = 0; 2 * k < bookmarks.length; k++) {

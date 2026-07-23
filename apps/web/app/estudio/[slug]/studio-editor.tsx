@@ -214,6 +214,7 @@ export function StudioEditor({
     cols: number;
     kind?: SceneKind;
     sizeCm?: string;
+    isPolaroid?: boolean;
   } | null>(null);
   const [sceneBuilding, setSceneBuilding] = useState(false);
   // CAL4 — construcción perezosa de las tarjetas mes para la galería (botón "Ver mi calendario").
@@ -579,6 +580,10 @@ export function StudioEditor({
         slotStagesRef.current,
         productConfig.shape,
       );
+      // Ola 6 — los separadores se renderizan de PIE en el libro 3D: la textura horizontal
+      // del Estudio debe rotarse 90° para que el diseño lea derecho sobre la cara 2×6 cm.
+      // Se hace ANTES de combinar tiras photobooth, para no mezclar la lógica de imanes.
+      if (isBookmark) textures = await rotateTextures90(textures);
       // Ola 6 — Tira magnética photobooth: la pieza física es continua (1 col, gap 0).
       // Combinamos los slots de 3 en 3 para que la nevera 3D muestre tiras enteras.
       const isStrip =
@@ -586,11 +591,19 @@ export function StudioEditor({
         state.canvasData.gridLayout.gap === 0 &&
         state.canvasData.slots.length > 1;
       if (isStrip) textures = await combineStripTextures(textures, 3);
+      // La escena Polaroid 3D solo corresponde a productos Polaroid: se detecta por el slug
+      // del producto o por la plantilla activa (Polaroid Clásica / Instagram).
+      const selectedTemplateSlug = state.templates.find((t) => t.id === state.selectedTemplateId)?.slug;
+      const isPolaroidTemplate =
+        selectedTemplateSlug === "photo-pack-polaroid-clasica" ||
+        selectedTemplateSlug === "photo-pack-polaroid-instagram";
+      const isPolaroid = product.slug.includes("polaroid") || isPolaroidTemplate;
       setSceneMagnets({
         magnets: textures,
         cols: isStrip ? 1 : state.canvasData.gridLayout.cols,
         // Ola 2B — la nevera/tablero escalan los imanes a su tamaño físico real (sizeCm variante).
         sizeCm: productConfig.sizeCm,
+        isPolaroid,
       });
     } catch (err) {
       state.setAutoSaveStatus({
@@ -601,7 +614,7 @@ export function StudioEditor({
     } finally {
       setSceneBuilding(false);
     }
-  }, [store, productConfig.shape, productConfig.sizeCm, ensureAllStagesMounted, sceneBuilding]);
+  }, [store, product.slug, productConfig.shape, productConfig.sizeCm, ensureAllStagesMounted, sceneBuilding, isBookmark]);
 
   // CAL4 (rediseño 2026-07-22) — "Ver mi calendario": el set de 12 TARJETAS mes 7.5×10 se ve como
   // IMANES en la galería de escenas (nevera/tablero, kind="calendar") — el calendario-de-pared
@@ -1036,6 +1049,7 @@ export function StudioEditor({
           cols={sceneMagnets.cols}
           kind={sceneMagnets.kind}
           sizeCm={sceneMagnets.sizeCm}
+          isPolaroid={sceneMagnets.isPolaroid}
           onClose={() => setSceneMagnets(null)}
         />
       )}

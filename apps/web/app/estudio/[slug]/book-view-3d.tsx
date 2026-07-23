@@ -95,7 +95,7 @@ const SPINE_COLOR = "#7C5334";
  */
 function Separators({ items, sizeCm }: { items: Magnet3D[]; sizeCm?: string }) {
   const layout = useMemo(() => {
-    const units = bookmarkFaceUnits(items);
+    const units = bookmarkFaceUnits(items, sizeCm);
     const at = (i: number) => units[((i % units.length) + units.length) % units.length]!;
     return SEPARATOR_SLOTS.map(({ x, yaw }, i) => {
       const unit = at(i);

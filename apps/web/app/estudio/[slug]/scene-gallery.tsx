@@ -8,6 +8,9 @@
  * 2026-07-22 (ola 2B) — escenas POR TIPO DE PRODUCTO (`kind`):
  *  - "photo" (fotoimanes/polaroid, default): 🧊 Nevera · 📸 Polaroid · 🖼️ Mural (corcho) ·
  *    📚 Repisa · 🎁 Regalo — la galería original FOTO4.
+ *    La escena 📸 Polaroid SOLO se ofrece cuando `isPolaroid` es true
+ *    (product.slug o plantilla indica producto Polaroid); para los demás
+ *    fotoimanes se oculta.
  *  - "calendar" (set 12 tarjetas mes 7.5×10): 🧊 Nevera · 🖼️ Mural — las tarjetas mes son
  *    IMANES DE NEVERA. La escena calendario-de-pared queda ARCHIVADA (sigue en
  *    calendar-view-3d.tsx y en el preview interno, pero ya no se ofrece en la galería).
@@ -123,6 +126,15 @@ export function scenesForKind(kind: SceneKind = "photo"): Scene[] {
   }
 }
 
+/**
+ * Filtra la escena Polaroid de la galería FOTO4 cuando el producto NO es Polaroid.
+ * El producto se identifica por slug o por plantilla activa (ver studio-editor.tsx).
+ */
+export function filterPhotoScenes(scenes: Scene[], isPolaroid: boolean): Scene[] {
+  if (isPolaroid) return scenes;
+  return scenes.filter((s) => s !== "polaroid");
+}
+
 /** Vista del modal con kind="calendar" (ola 3): el detalle es la raíz, la galería va encima. */
 export type CalendarModalView = "detail" | "gallery";
 
@@ -151,6 +163,7 @@ export function SceneGallery({
   cols,
   kind = "photo",
   sizeCm,
+  isPolaroid = false,
   onClose,
 }: {
   magnets: Magnet3D[];
@@ -159,9 +172,14 @@ export function SceneGallery({
   kind?: SceneKind;
   /** sizeCm de la variante elegida (ej "6.5×6.5", "7.5×10") — escala física en las escenas 3D. */
   sizeCm?: string;
+  /** La escena Polaroid solo se muestra para productos Polaroid (slug o plantilla). */
+  isPolaroid?: boolean;
   onClose: () => void;
 }) {
-  const scenes = useMemo(() => scenesForKind(kind), [kind]);
+  const scenes = useMemo(
+    () => filterPhotoScenes(scenesForKind(kind), isPolaroid),
+    [kind, isPolaroid],
+  );
   const [scene, setScene] = useState<Scene>(() => scenes[0]!);
   // Si el kind cambia con el modal abierto, la escena activa puede no existir en la nueva lista:
   // se deriva en render (sin efecto ni setState en cascada — react-hooks/set-state-in-effect).

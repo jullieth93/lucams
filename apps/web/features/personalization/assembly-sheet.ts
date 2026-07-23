@@ -44,8 +44,8 @@ export type AssemblyPiece = {
 // #14 — exportado para poder aseverar el mapeo de estado sin OCR en los tests. No cambia comportamiento.
 export const STATUS_META: Record<string, { color: string; text: string }> = {
   APPROVED: { color: "#2E8B57", text: "aprobado" },
-  PENDING: { color: "#C98A1E", text: "SIN APROBAR" },
-  REJECTED: { color: "#C0392B", text: "RECHAZADO — no imprimir" },
+  PENDING: { color: "#C98A1E", text: "SIN APROBAR — NO IMPRIMIR" },
+  REJECTED: { color: "#C0392B", text: "RECHAZADO — NO IMPRIMIR" },
 };
 
 const W = 1240;
@@ -104,11 +104,13 @@ export async function composeAssemblySheet(opts: {
     const x = PAD + col * (cellW + GAP);
     const y = HEADER_H + row * (cellH + GAP);
 
-    // Marco de la miniatura.
+    const st = STATUS_META[piece.moderationStatus] ?? STATUS_META.PENDING!;
+
+    // Marco de la miniatura: color de alerta si no está aprobada.
     ctx.fillStyle = "#FFFFFF";
     ctx.fillRect(x, y, cellW, thumbH);
-    ctx.strokeStyle = "#E7DFD3";
-    ctx.lineWidth = 1;
+    ctx.strokeStyle = piece.moderationStatus === "APPROVED" ? "#E7DFD3" : st.color;
+    ctx.lineWidth = piece.moderationStatus === "APPROVED" ? 1 : 3;
     ctx.strokeRect(x, y, cellW, thumbH);
 
     // Miniatura (contain, centrada).
@@ -129,7 +131,6 @@ export async function composeAssemblySheet(opts: {
     ctx.fillStyle = "#2A2140";
     ctx.font = `700 24px ${bodyFont}`;
     ctx.fillText(piece.label, x + 2, y + thumbH + 30);
-    const st = STATUS_META[piece.moderationStatus] ?? STATUS_META.PENDING!;
     ctx.fillStyle = st.color;
     ctx.font = `600 20px ${bodyFont}`;
     ctx.fillText(`● ${st.text}`, x + 2, y + thumbH + 56);
@@ -141,7 +142,7 @@ export async function composeAssemblySheet(opts: {
   ctx.font = `600 20px ${bodyFont}`;
   const legend: [string, string][] = [
     ["#2E8B57", "aprobado"],
-    ["#C98A1E", "sin aprobar"],
+    ["#C98A1E", "sin aprobar (no imprimir)"],
     ["#C0392B", "rechazado (no imprimir)"],
   ];
   let lx = PAD;

@@ -10,7 +10,7 @@ vi.mock("next/dynamic", () => ({
   default: () => () => null,
 }));
 
-import { galleryEscapeAction, initialModalView, scenesForKind } from "./scene-gallery";
+import { filterPhotoScenes, galleryEscapeAction, initialModalView, scenesForKind } from "./scene-gallery";
 
 describe("scenesForKind", () => {
   it("photo (default): la galería FOTO4 completa, nevera primero", () => {
@@ -32,6 +32,25 @@ describe("scenesForKind", () => {
 
   it("bookmark (separadores): libro", () => {
     expect(scenesForKind("bookmark")).toEqual(["book"]);
+  });
+
+  it("photo no polaroid: oculta la escena polaroid de la galería FOTO4", () => {
+    expect(filterPhotoScenes(scenesForKind("photo"), false)).toEqual([
+      "fridge",
+      "board",
+      "shelf",
+      "gift",
+    ]);
+  });
+
+  it("photo polaroid: mantiene la galería FOTO4 completa con escena polaroid", () => {
+    expect(filterPhotoScenes(scenesForKind("photo"), true)).toEqual([
+      "fridge",
+      "polaroid",
+      "board",
+      "shelf",
+      "gift",
+    ]);
   });
 
   it("toda lista es no vacía y sin duplicados (fallback razonable)", () => {

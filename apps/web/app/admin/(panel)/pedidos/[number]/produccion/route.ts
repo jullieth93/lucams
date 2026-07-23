@@ -64,8 +64,35 @@ export async function GET(_req: Request, ctx: { params: Promise<{ number: string
 
   const zip = new JSZip();
   const pieces: AssemblyPiece[] = [];
-  const summary: string[] = [`Pedido ${bundle.number}`, `Piezas de impresión (PNG 300 DPI).`, ""];
   let missing = 0;
+  let totalPieces = 0;
+  let unapprovedPieces = 0;
+
+  for (let itemIdx = 0; itemIdx < bundle.items.length; itemIdx++) {
+    const item = bundle.items[itemIdx]!;
+    totalPieces += item.productionUrls.length;
+    if (item.moderationStatus !== "APPROVED") {
+      unapprovedPieces += item.productionUrls.length;
+    }
+  }
+
+  const summary: string[] = [
+    `Pedido ${bundle.number}`,
+    `Piezas de impresión (PNG 300 DPI).`,
+    `Total: ${totalPieces} pieza(s) · ${totalPieces - unapprovedPieces} aprobada(s) · ${unapprovedPieces} pendiente(s) de aprobación.`,
+    "",
+  ];
+
+  if (unapprovedPieces > 0) {
+    summary.push(
+      "═══════════════════════════════════════════════════════════════",
+      "⚠️  ATENCIÓN: hay piezas SIN APROBAR.",
+      "    NO imprima los PNG marcados hasta revisarlos en /admin/moderacion.",
+      "    La hoja de armado (armado.png) indica cuáles están aprobadas.",
+      "═══════════════════════════════════════════════════════════════",
+      "",
+    );
+  }
 
   for (let itemIdx = 0; itemIdx < bundle.items.length; itemIdx++) {
     const item = bundle.items[itemIdx]!;

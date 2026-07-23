@@ -467,7 +467,13 @@ function StudioSlotImpl({
         onPhotoTransformChange({ scale: next });
       }
     },
-    [interactiveSlots, slotState.assetUrl, slotState.photoTransform?.scale, onPhotoTransformChange, clampScale],
+    [
+      interactiveSlots,
+      slotState.assetUrl,
+      slotState.photoTransform?.scale,
+      onPhotoTransformChange,
+      clampScale,
+    ],
   );
 
   // Native wheel listener — backup que SIEMPRE puede preventDefault
@@ -490,7 +496,13 @@ function StudioSlotImpl({
     // preventDefault() y la página termina scrolleando.
     el.addEventListener("wheel", onWheelNative, { passive: false });
     return () => el.removeEventListener("wheel", onWheelNative);
-  }, [interactiveSlots, slotState.assetUrl, slotState.photoTransform?.scale, onPhotoTransformChange, clampScale]);
+  }, [
+    interactiveSlots,
+    slotState.assetUrl,
+    slotState.photoTransform?.scale,
+    onPhotoTransformChange,
+    clampScale,
+  ]);
 
   // Pinch handlers — usan touchstart/move/end del Stage Konva.
   // Ola 6: solo activos cuando interactiveSlots=true; en táctil la grilla
@@ -521,7 +533,8 @@ function StudioSlotImpl({
 
   const handleTouchMove = useCallback(
     (e: Konva.KonvaEventObject<TouchEvent>) => {
-      if (!interactiveSlots || !onPhotoTransformChange || pinchInitialDistRef.current === null) return;
+      if (!interactiveSlots || !onPhotoTransformChange || pinchInitialDistRef.current === null)
+        return;
       if (e.evt.touches.length !== 2) return;
       if (pinchInitialDistRef.current <= 0) return; // dedos superpuestos → ratio inválido
       e.evt.preventDefault();
@@ -577,353 +590,385 @@ function StudioSlotImpl({
           </defs>
         </svg>
       )}
-      <motion.div
-        ref={containerRef}
-        role="button"
-        tabIndex={0}
-        aria-label={ariaLabel}
-        aria-pressed={isSelected}
-        onClick={(e: ReactMouseEvent) => {
-          // M.3.b.UX.v5 (Lucy 2026-05-15) — si el cliente acaba de arrastrar
-          // la foto, NO abrir el picker modal. El drag termina con un mouseup
-          // nativo que el browser propaga al wrapper div y dispararía
-          // onClick() inadvertidamente.
-          if (wasDraggingPhoto) {
+      <div className="relative">
+        <motion.div
+          ref={containerRef}
+          role="button"
+          tabIndex={0}
+          aria-label={ariaLabel}
+          aria-pressed={isSelected}
+          onClick={(e: ReactMouseEvent) => {
+            // M.3.b.UX.v5 (Lucy 2026-05-15) — si el cliente acaba de arrastrar
+            // la foto, NO abrir el picker modal. El drag termina con un mouseup
+            // nativo que el browser propaga al wrapper div y dispararía
+            // onClick() inadvertidamente.
+            if (wasDraggingPhoto) {
+              e.preventDefault();
+              return;
+            }
+            // Ola 3c — click sintético tras un tap de TEXTO editable (móvil):
+            // "Editar texto" ya se abrió vía Konva onTap; este click abriría el
+            // picker/foco encima y lo cerraría al instante. Ignorarlo.
+            if (Date.now() - textEditTapAt < 400) {
+              e.preventDefault();
+              return;
+            }
             e.preventDefault();
-            return;
+            onClick();
+          }}
+          onKeyDown={handleKeyDown}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          data-slot-index={slotState.slotIndex}
+          data-state={
+            isDropping
+              ? "dropping"
+              : slotState.assetUrl
+                ? isSelected
+                  ? "selected"
+                  : "filled"
+                : "empty"
           }
-          // Ola 3c — click sintético tras un tap de TEXTO editable (móvil):
-          // "Editar texto" ya se abrió vía Konva onTap; este click abriría el
-          // picker/foco encima y lo cerraría al instante. Ignorarlo.
-          if (Date.now() - textEditTapAt < 400) {
-            e.preventDefault();
-            return;
-          }
-          e.preventDefault();
-          onClick();
-        }}
-        onKeyDown={handleKeyDown}
-        onDragOver={handleDragOver}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
-        data-slot-index={slotState.slotIndex}
-        data-state={
-          isDropping
-            ? "dropping"
-            : slotState.assetUrl
-              ? isSelected
-                ? "selected"
-                : "filled"
-              : "empty"
-        }
-        className={[
-          "group relative cursor-pointer overflow-hidden bg-white outline-none",
-          "transition-shadow duration-200",
-          isSelected ? "ring-brand-turquoise ring-2 ring-offset-2" : "",
-          isDropping ? "ring-brand-turquoise ring-2 ring-offset-2" : "",
-        ].join(" ")}
-        style={{
-          width: slotWidth,
-          height: slotHeight,
-          // M.3.b.UX.v13 — borderRadius solo aplica si shape rectangle.
-          // Para heart/circle, el clipPath define la silueta y borderRadius
-          // sería ignorado igualmente.
-          // Ola 3 — si el producto declara cornerRadiusPx (separadores: troquel
-          // REDONDO real), la silueta en pantalla usa ese radio escalado al
-          // tamaño del slot en vez del 8px genérico (WYSIWYG con el troquel).
-          // Ola 4 — modo TIRA: solo la punta de arriba (first) y la de abajo
-          // (last) se redondean; las celdas del medio van cuadradas para que
-          // la tira se lea como UNA pieza continua.
-          borderRadius: slotClipPath
-            ? 0
-            : isStrip
-              ? stripPosition === "single"
-                ? 8
-                : stripPosition === "first"
-                  ? "8px 8px 0 0"
-                  : stripPosition === "last"
-                    ? "0 0 8px 8px"
-                    : 0
-              : cornerRadiusPx
-                ? Math.max(2, cornerRadiusPx * scale)
-                : 8,
-          clipPath: slotClipPath,
-          // Pinch-zoom (WCAG 1.4.4): la página NUNCA bloquea el zoom a nivel viewport;
-          // solo el canvas INTERACTIVO captura el gesto (touch-action:none) para que el
-          // pellizco/arrastre actúe sobre la foto y no dispare zoom/scroll de la página
-          // a la vez. Ola 3c / Ola 6: en la grilla táctil (slot NO interactivo) queda "pan-y"
-          // EXPLÍCITO → el dedo scrollea la página vertical con normalidad; el zoom de foto
-          // se hace vía slider flotante o editor a pantalla completa. Además las capas
-          // Konva no-interactivas van con preventDefault={false} para no matar el inicio
-          // del scroll (ver ImagePlaceholder).
-          touchAction: onPhotoTransformChange && interactiveSlots ? "none" : "pan-y",
-        }}
-        whileHover={{ scale: 1.02 }}
-        whileTap={{ scale: 0.98 }}
-        animate={{ scale: isDropping ? 1.04 : 1 }}
-        transition={{ duration: 0.15, ease: "easeOut" }}
-        onFocus={(e) => {
-          if (e.currentTarget instanceof HTMLElement) {
-            e.currentTarget.style.boxShadow = FOCUS_RING;
-          }
-        }}
-        onBlur={(e) => {
-          if (e.currentTarget instanceof HTMLElement) {
-            e.currentTarget.style.boxShadow = "";
-          }
-        }}
-      >
-        {/* Konva Stage — 3 layers stacked:
+          className={[
+            "group relative cursor-pointer overflow-hidden bg-white outline-none",
+            "transition-shadow duration-200",
+            isSelected ? "ring-brand-turquoise ring-2 ring-offset-2" : "",
+            isDropping ? "ring-brand-turquoise ring-2 ring-offset-2" : "",
+          ].join(" ")}
+          style={{
+            width: slotWidth,
+            height: slotHeight,
+            // M.3.b.UX.v13 — borderRadius solo aplica si shape rectangle.
+            // Para heart/circle, el clipPath define la silueta y borderRadius
+            // sería ignorado igualmente.
+            // Ola 3 — si el producto declara cornerRadiusPx (separadores: troquel
+            // REDONDO real), la silueta en pantalla usa ese radio escalado al
+            // tamaño del slot en vez del 8px genérico (WYSIWYG con el troquel).
+            // Ola 4 — modo TIRA: solo la punta de arriba (first) y la de abajo
+            // (last) se redondean; las celdas del medio van cuadradas para que
+            // la tira se lea como UNA pieza continua.
+            borderRadius: slotClipPath
+              ? 0
+              : isStrip
+                ? stripPosition === "single"
+                  ? 8
+                  : stripPosition === "first"
+                    ? "8px 8px 0 0"
+                    : stripPosition === "last"
+                      ? "0 0 8px 8px"
+                      : 0
+                : cornerRadiusPx
+                  ? Math.max(2, cornerRadiusPx * scale)
+                  : 8,
+            clipPath: slotClipPath,
+            // Pinch-zoom (WCAG 1.4.4): la página NUNCA bloquea el zoom a nivel viewport;
+            // solo el canvas INTERACTIVO captura el gesto (touch-action:none) para que el
+            // pellizco/arrastre actúe sobre la foto y no dispare zoom/scroll de la página
+            // a la vez. Ola 3c / Ola 6: en la grilla táctil (slot NO interactivo) queda "pan-y"
+            // EXPLÍCITO → el dedo scrollea la página vertical con normalidad; el zoom de foto
+            // se hace vía slider flotante o editor a pantalla completa. Además las capas
+            // Konva no-interactivas van con preventDefault={false} para no matar el inicio
+            // del scroll (ver ImagePlaceholder).
+            touchAction: onPhotoTransformChange && interactiveSlots ? "none" : "pan-y",
+          }}
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
+          animate={{ scale: isDropping ? 1.04 : 1 }}
+          transition={{ duration: 0.15, ease: "easeOut" }}
+          onFocus={(e) => {
+            if (e.currentTarget instanceof HTMLElement) {
+              e.currentTarget.style.boxShadow = FOCUS_RING;
+            }
+          }}
+          onBlur={(e) => {
+            if (e.currentTarget instanceof HTMLElement) {
+              e.currentTarget.style.boxShadow = "";
+            }
+          }}
+        >
+          {/* Konva Stage — 3 layers stacked:
           1. RealismShadowLayer (bottom) — sombra del imán físico
           2. Content Layer (middle)      — unit template del seed
           3. RealismOverlayLayer (top)   — acabado glossy + bleed/safe guides
           Ola 4 — modo TIRA: sin sombra POR CELDA (separaba las fotos); la sombra
           única de la pieza continua la pone el contenedor del grid (CSS). */}
-        <Stage
-          width={slotWidth}
-          height={slotHeight}
-          scaleX={scale}
-          scaleY={scale}
-          ref={(s: Konva.Stage | null) => {
-            stageRef.current = s;
-          }}
-          // M.3.b.D — Stage debe escuchar eventos para captar clicks sobre
-          // text layers editables. M.3.b.UX.v4+: también si hay drag/zoom de foto
-          // y el slot es interactivo (desktop). En táctil la grilla no captura
-          // gestos inline, salvo taps sobre textos editables.
-          listening={!!onTextEdit || (!!onPhotoTransformChange && interactiveSlots)}
-          // M.3.b.UX.v10 (Lucy 2026-05-15) — gestos de zoom:
-          //   Desktop: wheel sobre la foto → zoom in/out
-          //   Mobile:  pinch 2 dedos → zoom
-          //   Both:    doble click/tap → reset (centrar + scale 100%)
-          onWheel={handleWheel}
-          onTouchStart={handleTouchStart}
-          onTouchMove={handleTouchMove}
-          onTouchEnd={handleTouchEnd}
-          onDblClick={handleDblClick}
-          onDblTap={handleDblClick}
-        >
-          {!isStrip && (
-            <RealismShadowLayer
-              stage={unitTemplate.stage}
-              shape={shape}
-              cornerRadiusPx={cornerRadiusPx}
-            />
-          )}
-          <Layer name="content">
-            {/* M.3.b.UX.v13 (Lucy 2026-05-15) — Layer único sin Group clipFunc.
+          <Stage
+            width={slotWidth}
+            height={slotHeight}
+            scaleX={scale}
+            scaleY={scale}
+            ref={(s: Konva.Stage | null) => {
+              stageRef.current = s;
+            }}
+            // M.3.b.D — Stage debe escuchar eventos para captar clicks sobre
+            // text layers editables. M.3.b.UX.v4+: también si hay drag/zoom de foto
+            // y el slot es interactivo (desktop). En táctil la grilla no captura
+            // gestos inline, salvo taps sobre textos editables.
+            listening={!!onTextEdit || (!!onPhotoTransformChange && interactiveSlots)}
+            // M.3.b.UX.v10 (Lucy 2026-05-15) — gestos de zoom:
+            //   Desktop: wheel sobre la foto → zoom in/out
+            //   Mobile:  pinch 2 dedos → zoom
+            //   Both:    doble click/tap → reset (centrar + scale 100%)
+            onWheel={handleWheel}
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
+            onDblClick={handleDblClick}
+            onDblTap={handleDblClick}
+          >
+            {!isStrip && (
+              <RealismShadowLayer
+                stage={unitTemplate.stage}
+                shape={shape}
+                cornerRadiusPx={cornerRadiusPx}
+              />
+            )}
+            <Layer name="content">
+              {/* M.3.b.UX.v13 (Lucy 2026-05-15) — Layer único sin Group clipFunc.
               El CSS clip-path del wrapper HTML recorta visualmente al shape
               físico del imán (heart/circle/rect). La sombra Konva + edge stroke
               también respetan el shape via RealismShadowLayer/Overlay.
               Para products heart/circle el text layer del template NO se
               renderea (renderLayer "text" returns null). */}
-            {calendarCard ? (
-              // Ola 4 — calendario: tarjeta COMPUESTA (foto + mes/año + grilla real,
-              // mismo dibujo que producción). Reemplaza background + image-placeholder
-              // de la plantilla; el drag de la foto vive dentro de CalendarCardLayer.
-              <CalendarCardLayer
-                assetUrl={slotState.assetUrl}
-                photoTransform={slotState.photoTransform ?? null}
-                year={calendarCard.year}
-                monthIndex0={calendarCard.monthIndex0}
-                templateStageWidth={unitTemplate.stage.width}
-                stageWidth={unitTemplate.stage.width}
-                stageHeight={unitTemplate.stage.height}
-                onPhotoTransformChange={interactiveSlots ? onPhotoTransformChange : undefined}
-                onPhotoDragStart={handlePhotoDragStart}
-                onPhotoDragEnd={handlePhotoDragEnd}
-              />
-            ) : (
-              unitTemplate.layers.map((layer) =>
-                renderLayer(
-                  layer,
-                  slotState,
-                  unitTemplate.stage,
-                  handleTextEdit,
-                  shape,
-                  onPhotoTransformChange,
-                  handlePhotoDragStart,
-                  handlePhotoDragEnd,
-                  interactiveSlots,
-                  // Ola 3 — color del borde (tarjeta frame-card + texto claro si es
-                  // oscura) y bandera de texto del producto (Cuadrados: sin texto).
-                  // Ola 3b — fullBleed: tarjeta entera del color + foto inserta.
-                  // Ola 4 — tarjeta simple (sangre/franja uniforme), IG (fondo binario +
-                  // chrome oscuro), tira (borde exterior por posición), texto opcional.
-                  {
-                    borderColor: borderColor ?? null,
-                    allowText,
-                    hasFrameCard,
-                    fullBleed,
-                    cardBgHex,
-                    darkCardBg,
-                    simpleCard,
-                    isIg,
-                    frameFullBleed,
-                    stripPosition,
-                  },
-                ),
-              )
-            )}
-            {/* Ola 2A — marco de color: ENCIMA de la foto (stroke centrado en el borde de la
+              {calendarCard ? (
+                // Ola 4 — calendario: tarjeta COMPUESTA (foto + mes/año + grilla real,
+                // mismo dibujo que producción). Reemplaza background + image-placeholder
+                // de la plantilla; el drag de la foto vive dentro de CalendarCardLayer.
+                <CalendarCardLayer
+                  assetUrl={slotState.assetUrl}
+                  photoTransform={slotState.photoTransform ?? null}
+                  year={calendarCard.year}
+                  monthIndex0={calendarCard.monthIndex0}
+                  templateStageWidth={unitTemplate.stage.width}
+                  stageWidth={unitTemplate.stage.width}
+                  stageHeight={unitTemplate.stage.height}
+                  onPhotoTransformChange={interactiveSlots ? onPhotoTransformChange : undefined}
+                  onPhotoDragStart={handlePhotoDragStart}
+                  onPhotoDragEnd={handlePhotoDragEnd}
+                />
+              ) : (
+                unitTemplate.layers.map((layer) =>
+                  renderLayer(
+                    layer,
+                    slotState,
+                    unitTemplate.stage,
+                    handleTextEdit,
+                    shape,
+                    onPhotoTransformChange,
+                    handlePhotoDragStart,
+                    handlePhotoDragEnd,
+                    interactiveSlots,
+                    // Ola 3 — color del borde (tarjeta frame-card + texto claro si es
+                    // oscura) y bandera de texto del producto (Cuadrados: sin texto).
+                    // Ola 3b — fullBleed: tarjeta entera del color + foto inserta.
+                    // Ola 4 — tarjeta simple (sangre/franja uniforme), IG (fondo binario +
+                    // chrome oscuro), tira (borde exterior por posición), texto opcional.
+                    {
+                      borderColor: borderColor ?? null,
+                      allowText,
+                      hasFrameCard,
+                      fullBleed,
+                      cardBgHex,
+                      darkCardBg,
+                      simpleCard,
+                      isIg,
+                      frameFullBleed,
+                      stripPosition,
+                    },
+                  ),
+                )
+              )}
+              {/* Ola 2A — marco de color: ENCIMA de la foto (stroke centrado en el borde de la
               ventana). Es contenido del diseño: se hornea en el snapshot de producción (no es
               "realism" ni "edit-indicator"). */}
-            {frameStyle && (
-              <Rect
-                name="frame-border"
-                x={frameStyle.x}
-                y={frameStyle.y}
-                width={frameStyle.width}
-                height={frameStyle.height}
-                stroke={frameStyle.color}
-                strokeWidth={frameStyle.strokeWidth}
-                cornerRadius={frameStyle.cornerRadius}
-                listening={false}
-              />
-            )}
-          </Layer>
-          <RealismOverlayLayer
-            stage={unitTemplate.stage}
-            shape={shape}
-            finish={finish}
-            cornerRadiusPx={cornerRadiusPx}
-            showGuides={showRealismGuides}
-          />
-        </Stage>
+              {frameStyle && (
+                <Rect
+                  name="frame-border"
+                  x={frameStyle.x}
+                  y={frameStyle.y}
+                  width={frameStyle.width}
+                  height={frameStyle.height}
+                  stroke={frameStyle.color}
+                  strokeWidth={frameStyle.strokeWidth}
+                  cornerRadius={frameStyle.cornerRadius}
+                  listening={false}
+                />
+              )}
+            </Layer>
+            <RealismOverlayLayer
+              stage={unitTemplate.stage}
+              shape={shape}
+              finish={finish}
+              cornerRadiusPx={cornerRadiusPx}
+              showGuides={showRealismGuides}
+            />
+          </Stage>
 
-        {/* P0.1 — Slot vacío con mascote Lucams + microcopy emocional tuteo.
+          {/* P0.1 — Slot vacío con mascote Lucams + microcopy emocional tuteo.
           Anti-patrón: NO usar "Photo here" / "Click para subir" (Shutterfly).
           Mensaje emocional + mascote como guía → es la mascota la que invita. */}
-        <AnimatePresence>
-          {!slotState.assetUrl && (
-            <motion.div
-              key="empty"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              transition={{ duration: 0.25 }}
-              className={[
-                "absolute inset-0 flex flex-col items-center justify-center gap-1 transition-colors",
-                isDropping
-                  ? "from-brand-turquoise/35 to-brand-turquoise/15 bg-gradient-to-br"
-                  : "from-brand-cream/95 to-brand-cream/80 bg-gradient-to-br backdrop-blur-[1px]",
-              ].join(" ")}
-              aria-hidden="true"
-            >
-              {/* Borde punteado interno con la FORMA FÍSICA del imán (WYSIWYG, Lucy
+          <AnimatePresence>
+            {!slotState.assetUrl && (
+              <motion.div
+                key="empty"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.25 }}
+                className={[
+                  "absolute inset-0 flex flex-col items-center justify-center gap-1 transition-colors",
+                  isDropping
+                    ? "from-brand-turquoise/35 to-brand-turquoise/15 bg-gradient-to-br"
+                    : "from-brand-cream/95 to-brand-cream/80 bg-gradient-to-br backdrop-blur-[1px]",
+                ].join(" ")}
+                aria-hidden="true"
+              >
+                {/* Borde punteado interno con la FORMA FÍSICA del imán (WYSIWYG, Lucy
                 2026-07-13): corazón/círculo trazan su silueta punteada + relleno sutil;
                 el rectángulo mantiene el rect redondeado. Así el slot VACÍO ya "se ve"
                 como el producto real, no como un cuadrado genérico. */}
-              {shape === "heart" || shape === "circle" ? (
-                <svg
-                  className="pointer-events-none absolute inset-0 h-full w-full"
-                  viewBox="0 0 100 100"
-                  preserveAspectRatio="xMidYMid meet"
-                  aria-hidden
-                >
-                  {shape === "heart" ? (
-                    <path
-                      d={HEART_PATH_DATA}
-                      fill={isDropping ? "rgba(93, 217, 209, 0.14)" : "rgba(232, 91, 159, 0.07)"}
-                      stroke={isDropping ? "rgb(93, 217, 209)" : "rgba(124, 106, 173, 0.55)"}
-                      strokeWidth={2.5}
-                      strokeDasharray="5 3"
-                      strokeLinejoin="round"
-                    />
-                  ) : (
-                    <circle
-                      cx="50"
-                      cy="50"
-                      r="45"
-                      fill={isDropping ? "rgba(93, 217, 209, 0.14)" : "rgba(124, 106, 173, 0.05)"}
-                      stroke={isDropping ? "rgb(93, 217, 209)" : "rgba(124, 106, 173, 0.55)"}
-                      strokeWidth={2.5}
-                      strokeDasharray="5 3"
-                    />
-                  )}
-                </svg>
-              ) : (
+                {shape === "heart" || shape === "circle" ? (
+                  <svg
+                    className="pointer-events-none absolute inset-0 h-full w-full"
+                    viewBox="0 0 100 100"
+                    preserveAspectRatio="xMidYMid meet"
+                    aria-hidden
+                  >
+                    {shape === "heart" ? (
+                      <path
+                        d={HEART_PATH_DATA}
+                        fill={isDropping ? "rgba(93, 217, 209, 0.14)" : "rgba(232, 91, 159, 0.07)"}
+                        stroke={isDropping ? "rgb(93, 217, 209)" : "rgba(124, 106, 173, 0.55)"}
+                        strokeWidth={2.5}
+                        strokeDasharray="5 3"
+                        strokeLinejoin="round"
+                      />
+                    ) : (
+                      <circle
+                        cx="50"
+                        cy="50"
+                        r="45"
+                        fill={isDropping ? "rgba(93, 217, 209, 0.14)" : "rgba(124, 106, 173, 0.05)"}
+                        stroke={isDropping ? "rgb(93, 217, 209)" : "rgba(124, 106, 173, 0.55)"}
+                        strokeWidth={2.5}
+                        strokeDasharray="5 3"
+                      />
+                    )}
+                  </svg>
+                ) : (
+                  <motion.div
+                    animate={{
+                      borderColor: isDropping ? "rgb(93, 217, 209)" : "rgba(124, 106, 173, 0.25)",
+                      scale: isDropping ? 1.02 : 1,
+                    }}
+                    transition={{ duration: 0.2 }}
+                    className="pointer-events-none absolute inset-2 rounded-md border-2 border-dashed"
+                  />
+                )}
+
+                {/* Mascote Lucams bobbing — invita al cliente.
+                Al drop: bounce + wiggle excitado. */}
                 <motion.div
                   animate={{
-                    borderColor: isDropping ? "rgb(93, 217, 209)" : "rgba(124, 106, 173, 0.25)",
-                    scale: isDropping ? 1.02 : 1,
+                    y: isDropping ? -4 : [0, -3, 0],
+                    rotate: isDropping ? [0, -8, 8, 0] : 0,
                   }}
-                  transition={{ duration: 0.2 }}
-                  className="pointer-events-none absolute inset-2 rounded-md border-2 border-dashed"
-                />
-              )}
+                  transition={{
+                    y: {
+                      duration: isDropping ? 0.3 : 2.4,
+                      repeat: isDropping ? 0 : Infinity,
+                      ease: "easeInOut",
+                    },
+                    rotate: { duration: 0.4, ease: "easeInOut" },
+                  }}
+                >
+                  <LucamsLogo variant="mascot" size={44} />
+                </motion.div>
 
-              {/* Mascote Lucams bobbing — invita al cliente.
-                Al drop: bounce + wiggle excitado. */}
-              <motion.div
-                animate={{
-                  y: isDropping ? -4 : [0, -3, 0],
-                  rotate: isDropping ? [0, -8, 8, 0] : 0,
-                }}
-                transition={{
-                  y: {
-                    duration: isDropping ? 0.3 : 2.4,
-                    repeat: isDropping ? 0 : Infinity,
-                    ease: "easeInOut",
-                  },
-                  rotate: { duration: 0.4, ease: "easeInOut" },
-                }}
-              >
-                <LucamsLogo variant="mascot" size={44} />
+                {/* Microcopy emocional tuteo — cambia según estado drop */}
+                <span
+                  className={[
+                    "mt-0.5 px-2 text-center text-[11px] leading-tight font-semibold transition-colors",
+                    isDropping ? "text-brand-turquoise" : "text-brand-purple-dark/75",
+                  ].join(" ")}
+                >
+                  {isDropping ? "¡Suéltala aquí! 💜" : "Pásame una foto"}
+                </span>
+
+                {/* Indicador del slot: mes (calendario) o "Imán #N". */}
+                <span className="text-brand-muted text-[9px] font-medium tracking-wider uppercase">
+                  {slotLabel ?? `${nounCap} #${slotState.slotIndex + 1}`}
+                </span>
               </motion.div>
+            )}
+          </AnimatePresence>
 
-              {/* Microcopy emocional tuteo — cambia según estado drop */}
-              <span
-                className={[
-                  "mt-0.5 px-2 text-center text-[11px] leading-tight font-semibold transition-colors",
-                  isDropping ? "text-brand-turquoise" : "text-brand-purple-dark/75",
-                ].join(" ")}
-              >
-                {isDropping ? "¡Suéltala aquí! 💜" : "Pásame una foto"}
-              </span>
-
-              {/* Indicador del slot: mes (calendario) o "Imán #N". */}
-              <span className="text-brand-muted text-[9px] font-medium tracking-wider uppercase">
-                {slotLabel ?? `${nounCap} #${slotState.slotIndex + 1}`}
-              </span>
-            </motion.div>
+          {/* Glassmorphism overlay sutil cuando hover sobre foto (solo decorativo) */}
+          {slotState.assetUrl && (
+            <div
+              className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/0 via-black/0 to-black/10 opacity-0 transition-opacity duration-200 group-hover/wrapper:opacity-100"
+              aria-hidden
+            />
           )}
-        </AnimatePresence>
 
-        {/* Glassmorphism overlay sutil cuando hover sobre foto (solo decorativo) */}
-        {slotState.assetUrl && (
-          <div
-            className="pointer-events-none absolute inset-0 bg-gradient-to-b from-black/0 via-black/0 to-black/10 opacity-0 transition-opacity duration-200 group-hover/wrapper:opacity-100"
-            aria-hidden
-          />
-        )}
+          {/* Badge top-left: mes (calendario, abreviado) o número de slot. NO tapa la foto. */}
+          {slotState.assetUrl && (
+            <div
+              className="bg-brand-purple/80 absolute top-1.5 left-1.5 flex h-5 min-w-[1.25rem] items-center justify-center rounded-full px-1.5 text-[10px] font-bold text-white shadow-sm"
+              aria-hidden
+            >
+              {slotLabel ? slotLabel.slice(0, 3) : slotState.slotIndex + 1}
+            </div>
+          )}
 
-        {/* Badge top-left: mes (calendario, abreviado) o número de slot. NO tapa la foto. */}
-        {slotState.assetUrl && (
-          <div
-            className="bg-brand-purple/80 absolute top-1.5 left-1.5 flex h-5 min-w-[1.25rem] items-center justify-center rounded-full px-1.5 text-[10px] font-bold text-white shadow-sm"
-            aria-hidden
-          >
-            {slotLabel ? slotLabel.slice(0, 3) : slotState.slotIndex + 1}
-          </div>
-        )}
-
-        {/* M.3.b.UX.v10 — chip de zoom visible cuando scale != 100% (foto fue
+          {/* M.3.b.UX.v10 — chip de zoom visible cuando scale != 100% (foto fue
           modificada). Feedback al cliente de cuánto zoom tiene actualmente.
           Top-right del slot para no chocar con el badge slot # ni con action bar.
           Solo se muestra si fluctúa del default — si está en 100%, no estorba. */}
-        {slotState.assetUrl &&
-          slotState.photoTransform?.scale &&
-          Math.abs(slotState.photoTransform.scale - 1) > 0.001 && (
-            <div
-              className="bg-brand-turquoise/90 absolute top-1.5 right-1.5 flex h-5 items-center justify-center rounded-full px-1.5 text-[10px] font-bold text-white shadow-sm"
-              aria-label={`Zoom actual ${Math.round(slotState.photoTransform.scale * 100)}%`}
-              title={`Zoom ${Math.round(slotState.photoTransform.scale * 100)}% — doble click resetea`}
-            >
-              {Math.round(slotState.photoTransform.scale * 100)}%
-            </div>
-          )}
-      </motion.div>
+          {slotState.assetUrl &&
+            slotState.photoTransform?.scale &&
+            Math.abs(slotState.photoTransform.scale - 1) > 0.001 && (
+              <div
+                className="bg-brand-turquoise/90 absolute top-1.5 right-1.5 flex h-5 items-center justify-center rounded-full px-1.5 text-[10px] font-bold text-white shadow-sm"
+                aria-label={`Zoom actual ${Math.round(slotState.photoTransform.scale * 100)}%`}
+                title={`Zoom ${Math.round(slotState.photoTransform.scale * 100)}% — doble click resetea`}
+              >
+                {Math.round(slotState.photoTransform.scale * 100)}%
+              </div>
+            )}
+        </motion.div>
+
+        {/* Ola 6 — Slider de zoom flotante en móvil/táctil para slots seleccionados
+        con foto. Ahora vive junto al slot (no al pie del wrapper) para que su
+        posición se mida desde el borde inferior del canvas y no se solape con la
+        barra de acciones (centrar/editar/quitar). Se ubica por encima de la
+        action bar reservando espacio en la esquina inferior derecha. */}
+        {isSelected && slotState.assetUrl && isTouch && onPhotoTransformChange && (
+          <div
+            className="pointer-events-auto absolute right-2 bottom-14 z-20 flex items-center gap-1.5 rounded-full bg-white/85 px-2 py-1 shadow-md ring-1 ring-black/5 backdrop-blur-sm"
+            onClick={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+          >
+            <span className="text-brand-purple-dark min-w-[2ch] text-[10px] font-bold tabular-nums">
+              {Math.round((slotState.photoTransform?.scale ?? 1) * 100)}%
+            </span>
+            <input
+              type="range"
+              min={50}
+              max={300}
+              step={5}
+              value={Math.round((slotState.photoTransform?.scale ?? 1) * 100)}
+              onChange={(e) => {
+                const percent = Number(e.target.value);
+                onPhotoTransformChange({ scale: Math.max(0.5, Math.min(3, percent / 100)) });
+              }}
+              aria-label="Zoom de la foto"
+              className="accent-brand-purple bg-brand-purple/20 h-1 w-20 cursor-pointer appearance-none rounded"
+            />
+          </div>
+        )}
+      </div>
 
       {/* FIX-2 — Footer bar de acciones FUERA del slot.
         Visible siempre que el slot está lleno O seleccionado (no solo hover),
@@ -1064,34 +1109,6 @@ function StudioSlotImpl({
             </div>
           )}
         </motion.div>
-      )}
-
-      {/* Ola 6 — Slider de zoom flotante en móvil/táctil para slots seleccionados
-        con foto. Aparece sobre la esquina inferior derecha del slot, es
-        semitransparente y no tapa la foto. */}
-      {isSelected && slotState.assetUrl && isTouch && onPhotoTransformChange && (
-        <div
-          className="pointer-events-auto absolute bottom-2 right-2 z-20 flex items-center gap-1.5 rounded-full bg-white/85 px-2 py-1 shadow-md ring-1 ring-black/5 backdrop-blur-sm"
-          onClick={(e) => e.stopPropagation()}
-          onPointerDown={(e) => e.stopPropagation()}
-        >
-          <span className="text-brand-purple-dark min-w-[2ch] text-[10px] font-bold tabular-nums">
-            {Math.round((slotState.photoTransform?.scale ?? 1) * 100)}%
-          </span>
-          <input
-            type="range"
-            min={50}
-            max={300}
-            step={5}
-            value={Math.round((slotState.photoTransform?.scale ?? 1) * 100)}
-            onChange={(e) => {
-              const percent = Number(e.target.value);
-              onPhotoTransformChange({ scale: Math.max(0.5, Math.min(3, percent / 100)) });
-            }}
-            aria-label="Zoom de la foto"
-            className="accent-brand-purple h-1 w-20 cursor-pointer appearance-none rounded bg-brand-purple/20"
-          />
-        </div>
       )}
     </div>
   );
@@ -1249,7 +1266,12 @@ export function renderLayer(
       //     (Instagram conserva la geometría de su chrome: sin inset).
       //  3. Tira photobooth: la ventana viene a sangre vertical (fotos que se tocan);
       //     el borde exterior lo pone la posición (first/last).
-      let photoRect = { x: baseLayer.x, y: baseLayer.y, width: baseLayer.width, height: baseLayer.height };
+      let photoRect = {
+        x: baseLayer.x,
+        y: baseLayer.y,
+        width: baseLayer.width,
+        height: baseLayer.height,
+      };
       let photoCornerRadius = baseLayer.cornerRadius;
       if (frameFullBleed && simpleCard && !useFullStage) {
         const r = simpleCardPhotoRect(stage, borderColor, frameBleedMargin(stage));

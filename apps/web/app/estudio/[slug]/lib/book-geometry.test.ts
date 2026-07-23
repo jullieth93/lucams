@@ -200,6 +200,29 @@ describe("bookmarkFaceUnits (ola 3 — slot par = cara A al frente, impar = cara
   it("lista vacía → cero unidades (sin explosiones)", () => {
     expect(bookmarkFaceUnits([])).toEqual([]);
   });
+
+  it("Ola 6 — texturas rectangulares rotadas 90° (wRatio/hRatio < 0.6) se parean con sizeCm", () => {
+    // Simula el resultado de rotateTextures90 para una cara 6×2: la imagen pasa a 200×600.
+    const rotated = [
+      face("1A", 200, 600),
+      face("1B", 200, 600),
+      face("2A", 200, 600),
+      face("2B", 200, 600),
+    ];
+    // Sin sizeCm el aspecto < 0.6 se confunde con tira vieja y NO empareja.
+    expect(bookmarkFaceUnits(rotated).map((u) => [u.front.id, u.back.id])).toEqual([
+      ["1A", "1A"],
+      ["1B", "1B"],
+      ["2A", "2A"],
+      ["2B", "2B"],
+    ]);
+    // Con sizeCm se confirma que son caras de separador moderno → A al frente, B atrás.
+    const units = bookmarkFaceUnits(rotated, "6×2");
+    expect(units.map((u) => [u.front.id, u.back.id])).toEqual([
+      ["1A", "1B"],
+      ["2A", "2B"],
+    ]);
+  });
 });
 
 describe("separatorPlacement con las caras reales (ola 3)", () => {
