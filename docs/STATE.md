@@ -13,6 +13,21 @@
 
 ## Resumen actual
 
+**✅ ETAPA 1 EN VIVO — OLA 4 DESPLEGADA + FLUJO GIT CERRADO (2026-07-23).** Cuarta ronda de feedback de Lucy, desplegada y con las 3 ramas alineadas (`develop` = `catalogo-whatsapp` = `production` tras el merge-back — la var `NEXT_PUBLIC_STORE_MODE=catalog` en Vercel gobierna el modo, así que `develop` despliega lo mismo; el cambio de Production Branch en el dashboard queda como higiene opcional).
+
+- **Storefront/datos:** lupa en el buscador (revert mascota); **titular fuera de todos los textos públicos** (24 CMS versions + settings + seeds + fallbacks + emails + consent checkout + placeholders → "Lucams_shop (persona natural)" + frase Ley 1480 a requerimiento); cuadrados 6.5×6.5/8×8/10×10 × marco × 1-6 (7.5×10 pausado, lo cubre polaroid); tiras a 6.5×20 real; dimensión Tamaño visible siempre en PDP (chip estático); plantilla tira "Clásica" aplicada en DB (390×400, gridGap 0, frame-card, sin texto).
+- **Estudio 2D:** **color picker libre** (input color + 6 atajos + sin marco); **bug del borde blanco resuelto** (frameFullBleed: la tarjeta completa toma el color hasta el fin del papel, franja proporcional al tamaño); tira clásica (3 fotos a sangre, margen ~1mm); polaroid instagram con/sin borde; **"Tu mensaje" en sidebar** + guard anti click sintético (era la causa del "no deja modificar texto" en táctil); rotación de foto 90°; **gestos móvil arreglados** (pinch de foto con stopDrag al 2º dedo; scroll de página libre con pan-y — Konva capturaba todo).
+- **3D:** calendario abre directo en **detalle Tarjeta 1 de 12** con "Míralo en tu espacio" arriba; separadores con **caras A/B reales del Estudio** (aspecto exacto por cara, sets mixtos, cara trasera recostada natural); fichas de letras −37.5% de grosor.
+
+**🟡 PENDIENTES Lucy:**
+1. /admin/fichas: ilustraciones A E I O U por set (selector de temas ya visible).
+2. /admin/productos: revisar precios derivados (cuadrados 8×8/10×10, polaroid 1-10, separadores 2/4/6) y tiras a $19.000.
+3. Vercel Pro antes del anuncio público ($20/mes — Hobby prohíbe uso comercial).
+4. Validación en móvil real de los gestos (pinch + scroll) cuando puedas — la lógica quedó certificada en código pero el feel final es táctil.
+5. Etapa 2 (sin cambio): NIT/RUT, abogado, DIAN, R2 (FASE 10), Wompi/Aveonline prod.
+
+---
+
 **✅ ETAPA 1 EN VIVO — OLA 3 DESPLEGADA (2026-07-22).** Tercera ronda de feedback de Lucy: reseñas visibles (4 destacadas en home + todas en PDP), **Polaroid cantidad libre 1-10 a 7.5×10** ($18.300→$34.800, stepper single-dim nuevo), **Polaroid 2 plantillas** (Clásica con marco de color + texto / Instagram re-layout 3:4 — el bug "no deja escribir texto" era el filtro de aspect excluyendo la plantilla), **Fotoimanes Cuadrados sin texto** (allowText por schema), **Tiras magnéticas activas a $19.000**, **Separadores 2 CARAS** (slotCount=2N, grilla por unidad cara A|B, producción compone tiras desplegadas a ~450 DPI), **libro 3D v2** (abierto con texto impreso + separadores doblados sobre las páginas, física testeada), **detalle de calendario 1-a-1** (tarjeta grande con ←/→), fichas con esquinas redondas coherentes, selector de tema en name-editor siempre visible con hint /admin/fichas. **Purga histórica autorizada**: 53 órdenes de test + todos sus fixtures (órdenes reales intactas) + 82 categorías y 91 productos de tests eliminados; cleanup-test-junk ahora borra hijas→madres. Commits `4b4db55` (datos) + `d819ab1` (estudio 2D) + `9f84b59` (3D) desplegados vía `vercel deploy --prod`.
 
 **🟡 PENDIENTES Lucy:**
