@@ -1,137 +1,79 @@
 # CLAUDE.md — Contexto para Claude Code
 
-> Este archivo se carga automáticamente por Claude Code en cada sesión sobre este repo. Contiene los mandatos, decisiones y referencias necesarias para trabajar sin re-explicar el contexto cada vez.
+> Se carga automáticamente en cada sesión. Mandatos, decisiones y referencias para trabajar sin re-explicar el contexto. **Optimizado para consumo de tokens (2026-07-23):** lee solo lo que la tarea necesite.
 
-## 📚 Carga de contexto (modular, bajo demanda)
+## Lectura mínima al iniciar (siempre)
 
-Este `CLAUDE.md` ya se carga automáticamente y te da la mayoría del contexto. Para detalle profundo, **lee solo lo que la tarea necesite** — no leas todo siempre, gasta tokens.
+- `docs/STATE.md` — qué se hizo, dónde estamos, próximo paso.
 
-### Lectura mínima al iniciar sesión (siempre)
+## Lectura condicional (según la tarea)
 
-- `docs/STATE.md` — qué se hizo en la última sesión, dónde estamos parados ahora, próximo paso. Es el índice narrativo.
-- `docs/ROADMAP.md` — para saber en qué fase estamos y qué está autorizado o no. Son pocas líneas.
-
-### Lectura condicional (según la tarea)
-
-| Si vas a...                                                                                                                                  | Lee primero                                      |
-| -------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------ |
-| Tocar UI, componentes, colores, tipografías, copy                                                                                            | `docs/BRANDING.md`                               |
-| Crear/editar schema Prisma, RLS, estructura de carpetas, `PaymentProvider`                                                                   | `docs/ARCHITECTURE.md`                           |
-| Implementar o depurar Wompi, Venndelo, Resend, IA (Gemini / `AiProvider`), WhatsApp, DIAN, webhooks                                          | `docs/INTEGRATIONS.md`                           |
-| Tocar variables de entorno, despliegue, runbook, incidentes, costos, entorno de desarrollo, branching/releases, DR                           | `docs/OPERATIONS.md`                             |
-| Tocar autenticación, autorización, RLS, headers, CORS, rate limit, secrets, validación, RBAC, STRIDE, IRP                                    | `docs/SECURITY.md`                               |
-| **Patrones de código** (naming, error format RFC 7807, capa de servicio, saga, idempotency, audit fields, migrations, retry/circuit breaker) | `docs/CONVENTIONS.md`                            |
-| **SLOs/SLIs, dashboards, alertas, postmortem**                                                                                               | `docs/OBSERVABILITY.md`                          |
-| **Compliance colombiano** (Ley 1581, Ley 1480, DIAN, IVA, retracto, garantías, subprocesadores)                                              | `docs/COMPLIANCE.md`                             |
-| **Estrategia de testing** (pirámide, RLS automatizado, E2E, visual regression, load)                                                         | `docs/TESTING.md`                                |
-| Cuestionar o cambiar una decisión previa, o entender el "por qué" de algo                                                                    | `docs/DECISIONS.md`                              |
-| Planear una fase nueva o tienes duda de alcance global                                                                                       | `docs/PLAN.md`                                   |
-| Buscar el contenido seed, productos, categorías iniciales                                                                                    | `docs/CATALOG_SEED.md` (37 productos paritarios) |
-| Entender qué copiamos / mejoramos / descartamos vs magneticas.cl                                                                             | `docs/COMPETITIVE_ANALYSIS.md`                   |
-| Revisar auditorías previas (coherencia, seguridad, performance, productive readiness)                                                        | `docs/audits/` (formato `YYYY-MM-DD-<slug>.md`)  |
-
-Si una tarea cruza varias áreas, lee los archivos relevantes en paralelo. Si no estás seguro, **lee `docs/PLAN.md` y luego decides**.
+| Tarea | Lee |
+|---|---|
+| UI, componentes, colores, tipografías, copy | `docs/BRANDING.md` |
+| Schema Prisma, RLS, estructura de carpetas, `PaymentProvider` | `docs/ARCHITECTURE.md` |
+| Wompi, Aveonline, Resend, IA (Gemini), WhatsApp, DIAN, webhooks | `docs/INTEGRATIONS.md` |
+| Env vars, despliegue, runbook, costos, branching | `docs/OPERATIONS.md` |
+| Auth, autorización, RLS, headers, CORS, rate limit, secrets, RBAC | `docs/SECURITY.md` |
+| Patrones de código (naming, RFC 7807, saga, idempotency, migrations, retry/CB) | `docs/CONVENTIONS.md` |
+| SLOs/SLIs, dashboards, alertas, postmortem | `docs/OBSERVABILITY.md` |
+| Compliance colombiano (Ley 1581/1480, DIAN, IVA, retracto) | `docs/COMPLIANCE.md` |
+| Estrategia de testing | `docs/TESTING.md` |
+| Decisiones previas (el "por qué" de algo) | `docs/DECISIONS.md` |
+| Alcance global / fase nueva | `docs/PLAN.md` |
+| Auditorías previas | `docs/audits/` (formato `YYYY-MM-DD-<slug>.md`) |
 
 ### Reglas
 
-- **No releer** en cada turno: una vez cargado un archivo en la sesión, ya está en contexto.
-- Si el usuario pide algo que **contradice un mandato de este `CLAUDE.md` o un ADR de `docs/DECISIONS.md`**, señala el conflicto antes de actuar y pide confirmación explícita para sobrescribir.
-- Si una **decisión nueva** sale en la sesión, agrégala como ADR en `docs/DECISIONS.md` con fecha (YYYY-MM-DD) y razón.
-- Si una **fase avanza** (de pendiente a en curso, o de en curso a completada), actualiza el checklist correspondiente en `docs/ROADMAP.md`.
-
-### Cuándo SÍ leer todo de una vez
-
-- El usuario te pide explícitamente "lee toda la documentación" o "necesito que tengas contexto completo".
-- Vas a hacer un cambio que toca 4+ áreas (ej. lanzamiento productivo).
-- Estás auditando coherencia entre documentos.
+- **No releer** un archivo ya cargado en la sesión.
+- Si el usuario pide algo que **contradice un mandato o un ADR**, señala el conflicto y pide confirmación.
+- Decisión nueva → ADR en `docs/DECISIONS.md` (fecha + razón). Fase que avanza → actualizar `docs/ROADMAP.md`.
+- Lee todo de una vez solo si: el usuario lo pide, el cambio toca 4+ áreas, o auditas coherencia entre docs.
 
 ## Qué es este proyecto
 
-**Lucams_shop** — e-commerce colombiano de productos magnéticos personalizados. Negocio con presencia actual solo en Instagram ([@lucams_shop](https://www.instagram.com/lucams_shop)) y Linktree. Toma como referencia funcional a [magneticas.cl](https://www.magneticas.cl) pero con mandato de **superarla en valor agregado**.
+**Lucams_shop** — e-commerce colombiano de productos magnéticos personalizados (imanes, separadores, calendarios, tiras, letras). Venta actual: catálogo + cotización por WhatsApp (Etapa 1). Referencia funcional: magneticas.cl, con mandato de superarla.
 
 ## Mandatos no negociables
 
-1. **No es MVP.** El sitio debe nacer 100% productivo, listo para vender desde el día 1.
-2. **Free durante desarrollo, Pro al lanzar.** Nunca activar tiers de pago hasta el lanzamiento productivo.
-3. **Stack fijo:** Next.js **16** (App Router, RSC, Server Actions, Turbopack default) + TypeScript + **Tailwind v4** + shadcn/ui (style `radix-nova`) sobre **monorepo pnpm** (`apps/web` + `packages/db` + `packages/ui`), Supabase (DB+Auth+Storage+Realtime), Vercel. **Next.js 16 tiene breaking changes vs 15** — ver `apps/web/AGENTS.md` y la guía local `apps/web/node_modules/next/dist/docs/01-app/02-guides/upgrading/version-16.md` antes de escribir código nuevo.
-4. **Pasarela:** Wompi (con adaptador `PaymentProvider` que permite sumar Mercado Pago después).
-5. **Logística:** Aveonline (multi-carrier colombiano, ADR-039). Venndelo queda como Plan B documentado (stub en código; swap estimado 8-12h).
-6. **WhatsApp:** solo `wa.me` con mensaje pre-armado contextual; sin Twilio API por ahora.
-7. **Sin Sentry** ni monitoreo de errores en el plan actual; se decide alternativa gratuita en Fase 7.
-8. **Documentación dentro del repo.** Nada de archivos en `~/.claude/plans/` (auditorías en `docs/audits/`, decisiones en `docs/DECISIONS.md`).
-9. **Argumentación obligatoria — sin suposiciones.** Toda afirmación técnica (cifras, sintaxis, comportamientos, límites de tier, defaults, costos) debe citar la fuente oficial de la tecnología correspondiente con fecha de verificación. Si la doc oficial no se puede consultar, marcar como `[pendiente verificación]` en lugar de aseverar. Las afirmaciones que ya están en docs sin cita se tratan como deuda y se verifican antes de usarlas para decisiones.
-10. **VM dedicada como Ambiente de Desarrollo.** Usuario con `sudo`, persistencia local, instalación global permitida. **No usar venvs Python ni contenedores Docker en dev** salvo necesidad explícita y justificada. La VM funciona como símil local de Vercel (logs, env vars, Supabase local cuando aplica).
-11. **Background jobs en Supabase.** `pgmq` + `pg_cron` para jobs durables; **no Vercel Cron**. Rate limit y cache en Postgres durante dev y arranque productivo; migrar a Redis externo solo si métricas justifican (p95 > 50 ms o volumen real lo exige).
-12. **Seguridad por defecto.** Toda tabla con acceso vía `anon_key` debe tener RLS habilitada. Toda ruta `/admin/*` valida rol vía middleware. Toda variable secreta vive solo en `.env*` (gitignored) y nunca en cliente. Detalle en `docs/SECURITY.md`.
+1. **No es MVP.** El sitio nace 100% productivo.
+2. **Stack fijo:** Next.js **16** (App Router, RSC, Server Actions, Turbopack) + TypeScript + **Tailwind v4** + shadcn/ui, monorepo pnpm (`apps/web` + `packages/db`), Supabase (DB+Auth+Storage), Vercel. Next 16 tiene breaking changes vs 15 — ver `apps/web/AGENTS.md`.
+3. **Modo de tienda por flag:** `NEXT_PUBLIC_STORE_MODE` = `catalog` (Etapa 1, sin pagos/envíos/IA en UI) | `full` (Etapa 2, Wompi + Aveonline). Una sola base de código — ADR-077.
+4. **Pasarela:** Wompi (adaptador `PaymentProvider`; Mercado Pago después).
+5. **Logística:** Aveonline (ADR-039; Venndelo = Plan B stub).
+6. **WhatsApp:** solo `wa.me` con mensaje pre-armado contextual; sin Twilio.
+7. **Sin Sentry** ni monitoreo de errores de pago por ahora.
+8. **Documentación dentro del repo** (auditorías en `docs/audits/`, decisiones en `docs/DECISIONS.md`).
+9. **Argumentación obligatoria:** toda afirmación técnica (cifras, límites, defaults, costos) cita fuente oficial con fecha; si no se puede verificar, marcar `[pendiente verificación]`.
+10. **VM dedicada como dev.** Sin venvs Python ni Docker en dev salvo necesidad justificada.
+11. **Background jobs en Supabase** (`pgmq` + `pg_cron`; no Vercel Cron). Rate limit y cache en Postgres.
+12. **Seguridad por defecto:** RLS en toda tabla vía `anon_key`; `/admin/*` valida rol; secretos solo en `.env*` (gitignored) — `docs/SECURITY.md`.
 
-## Branding
+## Branding (resumen — detalle en docs/BRANDING.md)
 
-- Logo: insignia circular, mapache kawaii sobre lavanda, "LUCAMS" bubble multicolor + "SHOP".
-- Paleta principal: `#7C6AAD` (purple), `#3D2E5C` (purple-dark), `#5DD9D1` (turquoise), `#E85B9F` (pink), `#F58A6F` (coral), `#FFD93D` (yellow), `#FFF8F0` (cream).
-- Tipografía: `Fredoka`/`Baloo 2` (display) + `Inter`/`Nunito` (cuerpo).
-- Tono: kawaii, lúdico, cercano. Opuesto al minimalismo blanco de magneticas.cl.
-- Mascota mapache es personaje recurrente (loader, empty states, 404, badges, emails).
-
-> Detalle en [docs/BRANDING.md](docs/BRANDING.md).
-
-## Diferenciador #1
-
-**Estudio de Personalización en vivo** (react-konva): editor canvas con plantillas, fotos, texto. Guarda JSON del diseño + PNG alta resolución para producción. Es el "plus" real frente a magneticas.cl. Acompañado de vista 3D en nevera (Three.js) y **asistente IA de sugerencias de diseño** — detrás de un adaptador `AiProvider` (proveedor-agnóstico), con **Gemini** como proveedor elegido (nivel gratuito para dev, mandato #2) y **fallback entre modelos**. Ver ADR-058.
+- Paleta: `#7C6AAD` purple, `#3D2E5C` purple-dark, `#5DD9D1` turquoise, `#E85B9F` pink, `#F58A6F` coral, `#FFD93D` yellow, `#FFF8F0` cream.
+- Tipografía: Fredoka/Baloo 2 (display) + Inter/Nunito (cuerpo). Tono kawaii, mascota mapache recurrente.
+- Diferenciador #1: **Estudio de personalización** (Konva + vistas 3D con three.js) — el plus de venta.
 
 ## Datos clave
 
-- **Dominio:** `lucamsshop.com` — adquirido y entregado por Lucy el 2026-07-20. (Antes el plan citaba `lucamsshop.com`; quedó descartado.) Todo el repo, los textos legales y el CMS usan `.com`.
-- **WhatsApp temporal:** +57 320 887 3826 (centralizado en `NEXT_PUBLIC_WA_NUMBER`).
-- **Productos iniciales:** 30+ espejo de magneticas.cl con placeholders (cliente reemplaza fotos/precios).
-- **Pago contraentrega:** activo desde el lanzamiento.
-- **Costo dev:** $0/mes. **Costo prod:** ~$68 USD/mes + comisiones.
-
-## Cómo navegar la documentación
-
-| Si necesitas...                                                                | Lee...                                             |
-| ------------------------------------------------------------------------------ | -------------------------------------------------- |
-| El plan completo                                                               | [docs/PLAN.md](docs/PLAN.md)                       |
-| Paleta, logo, mascota, tipografías                                             | [docs/BRANDING.md](docs/BRANDING.md)               |
-| Estructura de carpetas, modelo Prisma, RLS                                     | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)       |
-| Cómo se integran Wompi/Venndelo/Claude/Resend                                  | [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md)       |
-| Fases con checklist y criterios de aceptación                                  | [docs/ROADMAP.md](docs/ROADMAP.md)                 |
-| Por qué se tomó tal decisión                                                   | [docs/DECISIONS.md](docs/DECISIONS.md)             |
-| Variables de entorno, despliegue, runbook, dev local, DevOps, DR               | [docs/OPERATIONS.md](docs/OPERATIONS.md)           |
-| Pasos para poner la tienda en vivo (dominio, DNS, Vercel, correo, pagos)       | [docs/RUNBOOK_GO_LIVE.md](docs/RUNBOOK_GO_LIVE.md) |
-| Estado actual + bitácora inter-sesión                                          | [docs/STATE.md](docs/STATE.md)                     |
-| Seguridad (RLS, CORS, headers, rate limit, RBAC, CSP, validación, STRIDE, IRP) | [docs/SECURITY.md](docs/SECURITY.md)               |
-| Patrones de código (naming, errores RFC 7807, saga, idempotency, audit fields) | [docs/CONVENTIONS.md](docs/CONVENTIONS.md)         |
-| Observabilidad (SLOs, dashboards, alertas, postmortem)                         | [docs/OBSERVABILITY.md](docs/OBSERVABILITY.md)     |
-| Compliance Colombia (Ley 1581, Ley 1480, DIAN, retracto, garantías)            | [docs/COMPLIANCE.md](docs/COMPLIANCE.md)           |
-| Estrategia de testing (pirámide, RLS, E2E, load)                               | [docs/TESTING.md](docs/TESTING.md)                 |
-| Auditorías históricas                                                          | [docs/audits/](docs/audits/)                       |
+- **Dominio:** `lucamsshop.com` (mi.com.co). **WhatsApp:** +57 320 887 3826 (`NEXT_PUBLIC_WA_NUMBER`).
+- **Costo:** ~$20 USD/mes Vercel Pro (requerido para uso comercial; Supabase Free sí permite comercial).
 
 ## Estado actual
 
-**Salida en 2 etapas (decisión 2026-07-21).** La app está completa y desplegada: storefront (catálogo, PDP, carrito, checkout), Estudio de personalización, panel admin (~25 módulos), integraciones Wompi/Aveonline/Resend/Turnstile/Gemini cableadas. Detalle siempre en [docs/STATE.md](docs/STATE.md) y en el plan de salida [docs/PLAN_SALIDA_PRODUCCION.md](docs/PLAN_SALIDA_PRODUCCION.md).
-
-- **Etapa 1 (en curso, rama `catalogo-whatsapp`):** modo `NEXT_PUBLIC_STORE_MODE=catalog` — catálogo + Estudio + **cotización por WhatsApp** (sin pagos en línea, sin envíos integrados, sin panel IA). Va a producción en `lucamsshop.com` sin necesidad de NIT.
-- **Etapa 2 (bloqueada por trámites humanos):** tienda full (Wompi prod + Aveonline real). Espera NIT/RUT, abogado y DIAN; después FASES 7/8/11.b/12 del runbook de go-live.
-- **Auditoría fullstack 2026-07-21:** `docs/audits/2026-07-21-fullstack-prelaunch-audit.md` — seguridad madura, bloqueantes son trámites y backups R2 (FASE 10).
-- **Riesgo aceptado (Lucy, 2026-07-21):** dev y prod comparten un solo proyecto Supabase; los tests de integración escriben en la tienda en vivo (fixtures con prefijo RUN + cleanup). Separar antes de Etapa 2.
+Ver `docs/STATE.md` (fuente narrativa). En corto: **Etapa 1 en vivo** (catálogo + cotización WhatsApp, olas de pulido 1-4 desplegadas). Etapa 2 (pagos/envíos reales) espera trámites humanos (NIT, abogado, DIAN).
 
 ## Convenciones
 
-- Idioma de UI: español (Colombia).
-- Idioma de código y commits: inglés.
-- Idioma de documentación: español.
-- Precios siempre en **enteros (centavos COP)** — nunca floats.
-- Slugs en `kebab-case`.
-- Identificadores en código `camelCase`/`PascalCase`.
+- UI: español (Colombia, tuteo). Código y commits: inglés. Docs: español.
+- Precios: **enteros (centavos COP)** — nunca floats. Slugs: kebab-case.
 - Commits: convencionales (`feat:`, `fix:`, `docs:`, `chore:`, `refactor:`, `test:`).
 
 ## Reglas para Claude Code en este repo
 
-- **No instalar dependencias ni crear archivos de proyecto** sin pedir aprobación explícita al usuario primero.
-- **No modificar la paleta** sin documentarlo en `DECISIONS.md`.
-- **No agregar Sentry/Twilio** hasta que el usuario lo pida (están explícitamente fuera del alcance).
-- **Toda decisión arquitectónica nueva** se documenta en `DECISIONS.md` con fecha y razón.
-- Si una decisión del usuario contradice un mandato de este archivo, **actualizar este `CLAUDE.md` primero**, después implementar.
-- **Free tiers obligatorios durante desarrollo** — no sugerir pagos antes del lanzamiento.
-- **Al cerrar la sesión con cambios**, actualizar `docs/STATE.md` (resumen actual + última sesión + bitácora) para que la próxima sesión arranque con contexto.
-- **Antes de citar una cifra técnica nueva** (límite de tier, costo, comportamiento de API), verificar contra la doc oficial; si no se puede, marcar `[pendiente verificación]` (mandato #9).
+- **No instalar dependencias ni crear archivos de proyecto** sin aprobación explícita.
+- **No modificar la paleta** sin ADR. **No agregar Sentry/Twilio** hasta que el usuario lo pida.
+- Decisión arquitectónica nueva → `docs/DECISIONS.md`. Contradicción con un mandato → **actualizar este CLAUDE.md primero**.
+- **Al cerrar la sesión con cambios:** actualizar `docs/STATE.md` (resumen + última sesión + bitácora).
+- **Antes de citar una cifra técnica nueva**, verificar contra doc oficial (mandato #9).
