@@ -1,6 +1,9 @@
 /*
- * Texturas de las FICHAS DE LETRAS (Abecedario Completo / Pack Vocales) para la vista 3D del
- * tablero memo (RoomBoardView3D style="memo", abierta desde letter-set-editor con "Ver en 3D").
+ * Texturas de las FICHAS DE LETRAS para la vista 3D del tablero memo (RoomBoardView3D
+ * style="memo"): Abecedario Completo / Pack Vocales (abierta desde letter-set-editor con
+ * "Ver en 3D") y el editor de NOMBRE (name-editor "Ver en un tablero 3D", ola 4 — un solo
+ * path: antes el nombre dibujaba su propia textura sin cornerRadiusRatio y el extruido en
+ * punta asomaba por la esquina transparente → "fichas en punta negra").
  *
  * MISMO dibujo por ficha que el preview 2D del editor y que el compositor de producción
  * (renderLetterSetBlob en letter-set-editor): ficha VERTICAL 5:6.5 blanca (espeja el imán

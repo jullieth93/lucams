@@ -24,6 +24,7 @@ import { createNameDesignAction, finalizeDesignAction } from "@/features/persona
 import { addPersonalizedToCartAction } from "@/app/carrito/actions";
 import { formatCOP } from "@/lib/format";
 import { LetterTile } from "./letter-tile";
+import { buildLetterTileTextures } from "./lib/letter-tile-textures";
 import { useLetterColors } from "./use-letter-colors";
 import { ThemePicker, SwatchRow } from "./letter-color-controls";
 import { LetterStylePicker } from "./letter-style-picker";
@@ -173,39 +174,6 @@ async function renderNameStripBlob(
   );
 }
 
-/**
- * NOM2 (ADR-063) — una textura POR ficha (fondo transparente afuera del recuadro) para la nevera 3D:
- * cada letra es un imán y el nombre se ve deletreado sobre la nevera. Reúsa el mismo dibujo de ficha
- * que la tira (WYSIWYG). Si el canvas se contamina por CORS, cae a solo-letras (sin ilustración).
- */
-async function renderLetterMagnets(
-  letters: string[],
-  colors: readonly string[],
-  tiles: LetterTileMap,
-  useTiles = true,
-): Promise<Magnet3D[]> {
-  const scale = 4;
-  const imgs = useTiles
-    ? await Promise.all(
-        letters.map((ch) =>
-          tiles[ch]?.imageUrl ? loadImage(tiles[ch]!.imageUrl) : Promise.resolve(null),
-        ),
-      )
-    : letters.map(() => null);
-
-  return letters.map((ch, i) => {
-    const canvas = document.createElement("canvas");
-    canvas.width = TILE_W * scale;
-    canvas.height = TILE_H * scale;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) throw new Error("canvas 2d no disponible");
-    ctx.scale(scale, scale);
-    // Sin fillRect → fondo transparente (la nevera se ve alrededor del imán).
-    drawLetterTile(ctx, 0, 0, ch, colors[i % colors.length], imgs[i]);
-    return { dataUrl: canvas.toDataURL("image/png"), wRatio: TILE_W, hRatio: TILE_H };
-  });
-}
-
 export function NameEditor({
   product,
   variantId,
@@ -334,16 +302,23 @@ export function NameEditor({
     }
   }
 
-  // NOM2 — arma una textura por ficha y abre el tablero 3D (el nombre deletreado con imanes).
+  // NOM2 — abre el tablero 3D con el nombre deletreado en fichas. Ola 4 (2026-07-23 — Lucy:
+  // fichas del nombre "en punta negra"): se usa el MISMO builder del tablero memo
+  // (buildLetterTileTextures: radio 10% en textura Y extruido vía cornerRadiusRatio). Antes
+  // este editor dibujaba su propia textura (radio 20/120 ≈ 16.7%) sin cornerRadiusRatio → el
+  // extruido heredaba el radio default 8/512 ≈ 1.6% (casi en punta) y la esquina afilada del
+  // cuerpo asomaba por la esquina transparente de la textura muestreando píxeles (0,0,0,0) →
+  // puntas NEGRAS. Un solo path = mismo radio y canto blanco que abecedario/vocales.
   const handleOpen3D = useCallback(async () => {
     if (letters.length === 0 || building3D) return;
     setBuilding3D(true);
     try {
       let magnets: Magnet3D[];
       try {
-        magnets = await renderLetterMagnets(letters, effectiveColors, activeTiles);
+        magnets = await buildLetterTileTextures(letters, activeTiles, effectiveColors);
       } catch {
-        magnets = await renderLetterMagnets(letters, effectiveColors, activeTiles, false);
+        // Si el canvas se contamina por CORS (ilustración del tema), cae a solo-letras.
+        magnets = await buildLetterTileTextures(letters, {}, effectiveColors);
       }
       setBoard3D(magnets);
     } catch {

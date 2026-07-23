@@ -17,15 +17,85 @@ import {
   foldedStripMetrics,
   magnetWorldSizes,
   parseSizeCm,
+  textureRegionTransform,
 } from "./magnet-3d";
 
-describe("grosores del extruido (ola 3 — Lucy: fichas UN PUNTO más delgadas, no planas)", () => {
-  it("TILE_DEPTH es 30-40% menos que MAGNET_DEPTH y sigue teniendo cuerpo (> 0)", () => {
+describe("grosores del extruido (ola 4 — Lucy: fichas OTRO punto más delgadas, no planas)", () => {
+  it("TILE_DEPTH es ~62.5% menos que MAGNET_DEPTH y sigue teniendo cuerpo (no plana)", () => {
     expect(TILE_DEPTH).toBeGreaterThan(0);
     expect(TILE_DEPTH).toBeLessThan(MAGNET_DEPTH);
     const reduction = 1 - TILE_DEPTH / MAGNET_DEPTH;
-    expect(reduction).toBeGreaterThanOrEqual(0.3);
-    expect(reduction).toBeLessThanOrEqual(0.4);
+    expect(reduction).toBeGreaterThanOrEqual(0.55);
+    expect(reduction).toBeLessThanOrEqual(0.7);
+  });
+
+  it("TILE_DEPTH ≈ 60% del grosor anterior (0.025) — bisel y sombra se conservan", () => {
+    expect(TILE_DEPTH).toBeGreaterThanOrEqual(0.012);
+    expect(TILE_DEPTH).toBeLessThanOrEqual(0.018);
+  });
+});
+
+describe("textureRegionTransform (ola 4 — bug de la cara B negra)", () => {
+  const W = 1.2; // stripW de ejemplo
+  const H = 0.6; // hang de ejemplo
+  /** v muestreada en los extremos de la cara (UV de la tapa = coords del shape). */
+  const vAt = (offset: number, repeat: number, y: number) => y * repeat + offset;
+  const uAt = (offset: number, repeat: number, x: number) => x * repeat + offset;
+
+  it("sin flip: la cara completa muestrea la región completa, derecha", () => {
+    const { repeat, offset } = textureRegionTransform({ x: 0, y: 0, w: 1, h: 1 }, W, H);
+    expect(uAt(offset[0], repeat[0], -W / 2)).toBeCloseTo(0, 9);
+    expect(uAt(offset[0], repeat[0], W / 2)).toBeCloseTo(1, 9);
+    // y=+h/2 (tope local) → v=1 (tope de la imagen): derecha, no volteada.
+    expect(vAt(offset[1], repeat[1], H / 2)).toBeCloseTo(1, 9);
+    expect(vAt(offset[1], repeat[1], -H / 2)).toBeCloseTo(0, 9);
+  });
+
+  it("flipV+flipU: el muestreo queda DENTRO de [0,1] (antes v ≥ 1 → fila del borde estirada, cara negra)", () => {
+    const { repeat, offset } = textureRegionTransform(
+      { x: 0, y: 0, w: 1, h: 1, flipV: true, flipU: true },
+      W,
+      H,
+    );
+    for (const y of [-H / 2, 0, H / 2]) {
+      const v = vAt(offset[1], repeat[1], y);
+      expect(v).toBeGreaterThanOrEqual(0);
+      expect(v).toBeLessThanOrEqual(1);
+    }
+    for (const x of [-W / 2, 0, W / 2]) {
+      const u = uAt(offset[0], repeat[0], x);
+      expect(u).toBeGreaterThanOrEqual(0);
+      expect(u).toBeLessThanOrEqual(1);
+    }
+  });
+
+  it("flipV+flipU = rotación de 180°: la cara trasera (girada ~π sobre X) se lee DERECHA desde atrás", () => {
+    const { repeat, offset } = textureRegionTransform(
+      { x: 0, y: 0, w: 1, h: 1, flipV: true, flipU: true },
+      W,
+      H,
+    );
+    // Tope local de la cara → fila INFERIOR de la imagen (v=0) y borde izquierdo local →
+    // columna derecha (u=1): exactamente lo que pide la rotación de 180° del mesh.
+    expect(vAt(offset[1], repeat[1], H / 2)).toBeCloseTo(0, 9);
+    expect(vAt(offset[1], repeat[1], -H / 2)).toBeCloseTo(1, 9);
+    expect(uAt(offset[0], repeat[0], W / 2)).toBeCloseTo(0, 9);
+    expect(uAt(offset[0], repeat[0], -W / 2)).toBeCloseTo(1, 9);
+  });
+
+  it("con sub-región (cover) y flips, el muestreo queda dentro de la región", () => {
+    const region = { x: 0.25, y: 0.1, w: 0.5, h: 0.8, flipV: true, flipU: true };
+    const { repeat, offset } = textureRegionTransform(region, W, H);
+    for (const y of [-H / 2, H / 2]) {
+      const v = vAt(offset[1], repeat[1], y);
+      expect(v).toBeGreaterThanOrEqual(1 - region.y - region.h - 1e-9);
+      expect(v).toBeLessThanOrEqual(1 - region.y + 1e-9);
+    }
+    for (const x of [-W / 2, W / 2]) {
+      const u = uAt(offset[0], repeat[0], x);
+      expect(u).toBeGreaterThanOrEqual(region.x - 1e-9);
+      expect(u).toBeLessThanOrEqual(region.x + region.w + 1e-9);
+    }
   });
 });
 

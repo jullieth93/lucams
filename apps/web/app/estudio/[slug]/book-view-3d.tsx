@@ -35,6 +35,17 @@
  *  - Cara trasera larga (4×4.2): se RECUESTÁ sobre la mesa detrás del libro (backLean de
  *    separatorPlacement) en vez de atravesarla — como la cartulina flexible real.
  *
+ * 2026-07-23 (ola 4 — Lucy: "la cara de atrás se ve negra · libro más plano · separador más
+ * de pie"):
+ *  - BUG cara B NEGRA: el offset UV con flipV dejaba el muestreo FUERA de rango (v ≥ 1 →
+ *    ClampToEdge estiraba la fila del borde superior del lienzo, transparente/oscura) — fix en
+ *    magnet-3d.textureRegionTransform (+ flipU: la cara B se lee DERECHA desde atrás, no
+ *    espejada). Además la trasera cuelga de espaldas a las dos luces principales → relleno de
+ *    contraluz desde −Z que la hace legible de pie sin quemar la frontal.
+ *  - COMPOSICIÓN: el libro tiende a MÁS PLANO (CAMBER_MAX 0.9 → 0.6, elevación ~2 cm) y el
+ *    separador queda un punto MÁS ERGUIDO sobre el borde (SEP_FRONT_LIFT_DEG 3° → 14°): la cara
+ *    frontal se lee más de frente y la punta sigue reposando sobre la hoja (lib/book-geometry).
+ *
  * Restricciones (idénticas a fridge/calendar 3D):
  *  - CSP estricta: CERO assets externos. Materiales/texturas procedurales en runtime.
  *  - Client-only (WebGL) → el caller lo importa con dynamic ssr:false.
@@ -300,6 +311,11 @@ function Scene({ bookmarks, sizeCm }: { bookmarks: Magnet3D[]; sizeCm?: string }
         shadow-normalBias={0.02}
       />
       <directionalLight position={[-5, 3, 4]} intensity={0.3} />
+      {/* Ola 4 — relleno de CONTRALUZ (bajo, desde atrás del libro): la cara B de los separadores
+        cuelga mirando a −Z, de espaldas a las dos luces principales y en la sombra propia del
+        libro → se veía negra. Esta luz rasante la levanta a legible de pie sin quemar la cara
+        frontal (casi perpendicular a su normal: aporte < 0.1 allá) ni la página. */}
+      <directionalLight position={[-3, 2.5, -8]} intensity={0.55} />
 
       {/* El libro abierto acostado sobre la mesa (y=0). */}
       <SpinePiece />

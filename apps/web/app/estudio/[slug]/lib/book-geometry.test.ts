@@ -16,6 +16,7 @@ import {
   PAGE_D,
   PAGE_W,
   SEP_FOLD_ANGLE,
+  SEP_FRONT_LIFT_DEG,
   SEP_R_FOLD,
   SEPARATOR_SLOTS,
   bookmarkFaceUnits,
@@ -45,7 +46,7 @@ describe("camber (curvatura de la hoja hacia el lomo)", () => {
   it("levanta hacia el lomo con dip en el valle de la encuadernación", () => {
     // Máximo cerca del lomo…
     expect(camber(0.5)).toBeGreaterThan(camber(2.5));
-    expect(camber(0.5)).toBeGreaterThan(0.7);
+    expect(camber(0.5)).toBeGreaterThan(0.5); // ola 4: libro más plano (CAMBER_MAX 0.9 → 0.6)
     // …pero justo en x=0 hunde un poco (el valle entre las dos hojas).
     expect(camber(0)).toBeLessThan(camber(0.5));
   });
@@ -237,6 +238,47 @@ describe("separatorPlacement con las caras reales (ola 3)", () => {
         const p = separatorPlacement(x, stripL);
         expect(p.frontTipY).toBeGreaterThanOrEqual(p.surfaceY - 0.03);
         expect(p.frontTipY).toBeLessThanOrEqual(p.surfaceY + 0.06);
+      }
+    }
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────
+//  Ola 4 (2026-07-23) — composición: libro MÁS PLANO + separador MÁS ERGUIDO
+// ──────────────────────────────────────────────────────────────────
+
+describe("composición ola 4 (libro más plano, separador un punto más erguido)", () => {
+  it("la cara frontal se ergue lo justo para leerse de frente (ni acostada ni vertical)", () => {
+    expect(SEP_FRONT_LIFT_DEG).toBeGreaterThanOrEqual(8);
+    expect(SEP_FRONT_LIFT_DEG).toBeLessThanOrEqual(25);
+  });
+
+  it("con la cara erguida la cresta SUBE y la punta frontal reposa EXACTA sobre la hoja", () => {
+    for (const [face, sizeCm] of [
+      [{ wRatio: 600, hRatio: 200 }, "6×2"],
+      [{ wRatio: 400, hRatio: 420 }, "4×4.2"],
+    ] as const) {
+      const { stripL } = stripDimsForFace(face, sizeCm);
+      for (const { x } of SEPARATOR_SLOTS) {
+        const p = separatorPlacement(x, stripL);
+        // La cresta nunca baja del abrazo del filo…
+        expect(p.crestY).toBeGreaterThanOrEqual(p.surfaceY + SEP_R_FOLD * 0.8 - 1e-9);
+        // …y la punta apoya justo en la superficie (no flota, no se hunde).
+        expect(p.frontTipY).toBeCloseTo(p.surfaceY, 6);
+      }
+    }
+  });
+
+  it("la trasera sigue libre o recostada dentro del límite con la nueva pose", () => {
+    for (const [face, sizeCm] of [
+      [{ wRatio: 600, hRatio: 200 }, "6×2"],
+      [{ wRatio: 400, hRatio: 420 }, "4×4.2"],
+    ] as const) {
+      const { stripL } = stripDimsForFace(face, sizeCm);
+      for (const { x } of SEPARATOR_SLOTS) {
+        const p = separatorPlacement(x, stripL);
+        expect(p.backClearance > BACK_TIP_CLEARANCE || p.backLean <= MAX_BACK_LEAN).toBe(true);
+        expect(Number.isFinite(p.backLean)).toBe(true);
       }
     }
   });

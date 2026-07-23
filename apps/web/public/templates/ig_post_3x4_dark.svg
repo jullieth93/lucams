@@ -1,0 +1,39 @@
+<svg width="450" height="600" viewBox="0 0 450 600" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!--
+    Marco "Polaroid Instagram" TRANSPARENTE — variante para FONDO NEGRO (Ola 4, Lucy 2026-07-23).
+    Misma geometría que ig_post_3x4.svg pero con el chrome en BLANCO: la plantilla Instagram solo
+    admite fondo blanco/negro y en fondo negro el chrome oscuro original no se leía. El botón
+    "Seguir" conserva el azul de marca IG (se lee sobre negro). Los textos editables (usuario,
+    likes, título, hashtags) son capas Konva y NO se hornean aquí (en fondo negro salen blancos
+    por la regla de contraste automático de studio-slot).
+    Ventana de foto (transparente): x25 y88 → 400×400, alineada con el photoSlot p1 del seed.
+  -->
+
+  <!-- CABECERA: avatar + botón Seguir + opciones -->
+  <g id="header">
+    <circle cx="48" cy="42" r="19" stroke="#FFFFFF" stroke-width="1.5"/>
+    <circle cx="48" cy="37.5" r="5.5" fill="#FFFFFF"/>
+    <path d="M36 54.5C36 48.5 41 47.5 48 47.5C55 47.5 60 48.5 60 54.5" stroke="#FFFFFF" stroke-width="1.5" stroke-linecap="round"/>
+
+    <!-- Botón Seguir (estático, no editable) -->
+    <rect x="288" y="28" width="100" height="30" rx="4" stroke="#3897f0" stroke-width="1.2"/>
+    <text x="338" y="48" font-family="Arial, Helvetica, sans-serif" font-weight="bold" font-size="13" fill="#3897f0" text-anchor="middle">Seguir</text>
+
+    <!-- Opciones (tres puntos) -->
+    <circle cx="412" cy="43" r="1.6" fill="#FFFFFF"/>
+    <circle cx="420" cy="43" r="1.6" fill="#FFFFFF"/>
+    <circle cx="428" cy="43" r="1.6" fill="#FFFFFF"/>
+  </g>
+
+  <!-- ÍCONOS DE INTERACCIÓN (justo debajo de la foto) -->
+  <g id="actions" transform="translate(28, 500)">
+    <!-- Corazón (like) -->
+    <path d="M12 5C12 5 10.3 2.2 7.2 2.2C3.3 2.2 1.1 5.6 1.1 9.4C1.1 14.4 12 21 12 21C12 21 23 14.4 23 9.4C23 5.6 20.8 2.2 16.6 2.2C13.3 2.2 12 5 12 5Z" stroke="#FFFFFF" stroke-width="2.2" stroke-linejoin="round"/>
+    <!-- Comentario -->
+    <path d="M53 2H76C78.2 2 79.5 3.1 79.5 5.3V19C79.5 21.2 78.2 22.3 76 22.3H61L53 28V2Z" stroke="#FFFFFF" stroke-width="2.2" stroke-linejoin="round" transform="translate(5, 0)"/>
+    <!-- Compartir (avión) -->
+    <path d="M112 2L138 12L112 22L118.6 12L112 2Z" stroke="#FFFFFF" stroke-width="2.2" stroke-linejoin="round" transform="translate(11, 0)"/>
+    <!-- Guardar (bookmark) -->
+    <path d="M372 2V25L383 18.4L394 25V2H372Z" stroke="#FFFFFF" stroke-width="2.2" stroke-linejoin="round"/>
+  </g>
+</svg>

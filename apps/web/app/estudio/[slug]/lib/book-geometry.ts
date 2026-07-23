@@ -24,8 +24,8 @@ export const COVER_T = 0.05;
 export const BLOCK_T = 0.24;
 /** Sobrehueso de la cubierta respecto al bloque (8 mm). */
 export const COVER_OVERHANG = 0.24;
-/** Levante máximo de la hoja hacia el lomo (~3 cm — libro grueso fotogénico). */
-export const CAMBER_MAX = 0.9;
+/** Levante máximo de la hoja hacia el lomo (~2 cm — ola 4: libro MÁS PLANO; era 3 cm). */
+export const CAMBER_MAX = 0.6;
 /** Hundimiento de la hoja justo en el lomo (el valle de la encuadernación). */
 export const GUTTER_DIP = 0.12;
 /** Rendija entre las dos hojas en el lomo. */
@@ -46,15 +46,18 @@ export function pageSurfaceY(x: number): number {
 
 // ── Separadores doblados sobre el borde superior (z = −PAGE_D/2) ──
 
-/** Ángulo entre las dos caras del separador: ~95° (la frontal reposa casi plana sobre la hoja,
- *  la trasera cuelga apenas pasada la vertical abrazando el canto del bloque). */
+/** Ángulo entre las dos caras del separador: ~95° (la frontal reposa casi plana sobre la hoja
+ *  —erguida solo SEP_FRONT_LIFT_DEG— y la trasera cuelga apenas pasada la vertical abrazando
+ *  el canto del bloque). */
 export const SEP_FOLD_ANGLE = (95 * Math.PI) / 180;
 /** Radio del pliegue: abraza el filo de la hoja (~2 mm de cartulina plastificada + holgura). */
 export const SEP_R_FOLD = 0.06;
 /** Esquinas REDONDAS del separador (foto Lucy): radio ≈ 11% del ancho de la tira. */
 export const SEP_CORNER_RATIO = 0.11;
-/** Elevación de la cara frontal sobre la hoja: casi acostada (3°) — reposa, no flota. */
-export const SEP_FRONT_LIFT_DEG = 3;
+/** Elevación de la cara frontal sobre la hoja (ola 4 — Lucy: separador "un punto más erguido",
+ *  de pie sobre el borde para leer ambas caras): 14° sobre la hoja (era 3°, casi acostada).
+ *  La punta sigue REPOSANDO sobre la hoja — el pliegue sube lo justo (ver separatorPlacement). */
+export const SEP_FRONT_LIFT_DEG = 14;
 
 // ── Ola 3 (2026-07-22) — separadores con las 2 CARAS REALES del Estudio ──
 //
@@ -172,8 +175,10 @@ export type SeparatorPlacement = {
  * rotada −δ; la trasera π+δ; con δ = (π − foldAngle)/2. Al rotar el grupo COMPLETO θ sobre X:
  *   frontal: dirección (0, −cos(δ−θ), +sin(δ−θ))  → baja 90°−(δ−θ) bajo la horizontal
  *   trasera: dirección (0, −cos(δ+θ), −sin(δ+θ))  → baja 90°−(δ+θ) bajo la horizontal
- * θ se elige para que la frontal quede SEP_FRONT_LIFT_DEG sobre la hoja; la trasera cae ~2°
+ * θ se elige para que la frontal quede SEP_FRONT_LIFT_DEG sobre la hoja; la trasera cae ~9°
  * pasada la vertical (abrazando el canto del bloque, visible al orbitar detrás del libro).
+ * Con la frontal erguida (14°), la cresta SUBE hang·sin(lift) para que la punta frontal siga
+ * REPOSANDO sobre la hoja (si la cresta quedara a ras, la punta se hundiría en la página).
  */
 export function separatorPlacement(bx: number, stripL: number): SeparatorPlacement {
   // Espejo de foldedStripMetrics (magnet-3d) — duplicado para mantener este módulo sin three.
@@ -182,9 +187,11 @@ export function separatorPlacement(bx: number, stripL: number): SeparatorPlaceme
   const hang = Math.max(0.05, (stripL - SEP_R_FOLD * crestArc) / 2);
   const tilt = delta - (Math.PI / 2 - (SEP_FRONT_LIFT_DEG * Math.PI) / 180);
   const surfaceY = pageSurfaceY(bx);
-  // El pliegue abraza el filo de la hoja: eje un 80% del radio sobre la superficie y un
-  // radio + holgura detrás del filo (la trasera cuelga libre del canto del bloque).
-  const crestY = surfaceY + SEP_R_FOLD * 0.8;
+  // El pliegue abraza el filo de la hoja (80% del radio sobre la superficie, un radio + holgura
+  // detrás del filo)… pero con la cara frontal erguida la cresta sube hang·sin(lift) para que
+  // la punta repose justo sobre la hoja (frontTipY = crestY − hang·sin(lift) = surfaceY).
+  const liftRad = (SEP_FRONT_LIFT_DEG * Math.PI) / 180;
+  const crestY = surfaceY + Math.max(SEP_R_FOLD * 0.8, hang * Math.sin(liftRad));
   const crestZ = -PAGE_D / 2 - SEP_R_FOLD - 0.015;
   const frontTipY = crestY - hang * Math.cos(delta - tilt);
   const backBottomY = crestY - hang * Math.cos(delta + tilt);

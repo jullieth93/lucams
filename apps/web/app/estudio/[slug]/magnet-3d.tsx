@@ -50,6 +50,15 @@
  *    UN PUNTO (0.04 → 0.025, −37.5%) manteniendo bisel y sombra — "no planas".
  *  - `FoldedStripMesh` queda cableado a las 2 CARAS REALES del Estudio (cara A al frente, cara B
  *    atrás vía `backDataUrl`) y gana `backLean` para recostar la trasera larga sobre la mesa.
+ *
+ * 2026-07-23 (ola 4 — feedback Lucy):
+ *  - BUG cara B NEGRA en el separador: el offset UV con `flipV` sumaba +rh de más → la cara
+ *    trasera muestreaba FUERA de rango (v ≥ 1) y, con ClampToEdgeWrapping, estiraba la fila del
+ *    borde superior del lienzo (transparente (0,0,0,0) → negro). Fix en `textureRegionTransform`
+ *    (puro, testeado): el offset no cambia con flips y el muestreo queda siempre en la región.
+ *  - La cara B además se veía ESPEJADA desde atrás (la cara gira ~π sobre X): `flipU` nuevo —
+ *    flipV+flipU = rotación de 180° de la textura → el diseño B se lee derecho, de pie.
+ *  - `TILE_DEPTH` baja OTRO punto (0.025 → 0.015): "siguen muy gruesas", sin llegar a planas.
  */
 
 import { useEffect, useMemo } from "react";
@@ -79,8 +88,10 @@ export function parseSizeCm(sizeCm: string | undefined): { wCm: number; hCm: num
 
 /**
  * Región normalizada de textura para la cara impresa de MagnetMesh. Coordenadas 0..1 con `y`
- * medido DESDE ARRIBA de la imagen (como se lee). `flipV` invierte el mapeo vertical (para la
- * cara trasera del separador doblado, que cuelga rotada 180° sobre el pliegue).
+ * medido DESDE ARRIBA de la imagen (como se lee). `flipV` invierte el mapeo vertical y `flipU`
+ * el horizontal (la cara trasera del separador doblado cuelga rotada ~180° sobre el pliegue:
+ * flipV+flipU = rotación de 180° de la textura → el diseño B se lee DERECHO desde atrás, no
+ * espejado ni cabeza abajo).
  */
 export type TextureRegion = {
   x: number;
@@ -88,9 +99,34 @@ export type TextureRegion = {
   w: number;
   h: number;
   flipV?: boolean;
+  flipU?: boolean;
 };
 
 const FULL_REGION: TextureRegion = { x: 0, y: 0, w: 1, h: 1 };
+
+/**
+ * Transform de la textura clonada (repeat/offset) para mapear `region` sobre la tapa del
+ * extruido. Los UV de la tapa del ExtrudeGeometry son las coordenadas CRUDAS del shape
+ * (x ∈ [−w/2, w/2], y ∈ [−h/2, h/2]), así: u_img = x·repeat.x + offset.x, v_img = y·repeat.y +
+ * offset.y. Con v medido desde ABAJO en three y `ry` desde ARRIBA en la imagen:
+ *   sin flip:  u_img = rx + rw/2 + x·rw/w,   v_img = (1 − ry − rh) + (y/h + 0.5)·rh
+ *   con flipU/flipV se niega el repeat correspondiente y el offset NO cambia — el muestreo
+ *   queda SIEMPRE dentro de la región ([rx, rx+rw] × [1−ry−rh, 1−ry] ⊆ [0,1]²).
+ * (Ola 4 — bug de la cara B NEGRA: el offset viejo sumaba +rh con flipV → v ≥ 1 fuera de rango;
+ *  con ClampToEdgeWrapping toda la cara muestreaba la fila del borde superior del lienzo —
+ *  transparente (0,0,0,0 → negro) u oscura — estirada.)
+ */
+export function textureRegionTransform(
+  region: TextureRegion,
+  width: number,
+  height: number,
+): { repeat: [number, number]; offset: [number, number] } {
+  const { x: rx, y: ry, w: rw, h: rh, flipV, flipU } = region;
+  return {
+    repeat: [(flipU ? -rw : rw) / width, (flipV ? -rh : rh) / height],
+    offset: [rx + rw / 2, 1 - ry - rh / 2],
+  };
+}
 
 /**
  * Equivalente a background-size:cover en coordenadas de región: la mayor sub-región centrada de
@@ -188,9 +224,11 @@ const LEGACY_CORNER_RATIO = 8 / 512;
 
 /** Grosor del cuerpo extruido de un IMÁN (sin contar el bisel). */
 export const MAGNET_DEPTH = 0.04;
-/** Grosor de las FICHAS DE LETRAS (tablero memo, ola 3 — Lucy: "bajar UN PUNTO, no planas"):
- *  37.5% más delgadas que el imán; el bisel y la sombra se mantienen → relieve, no plana. */
-export const TILE_DEPTH = 0.025;
+/** Grosor de las FICHAS DE LETRAS (tablero memo). Ola 3 (2026-07-22): "bajar UN PUNTO, no
+ *  planas" (0.04 → 0.025, −37.5%). Ola 4 (2026-07-23 — Lucy: "siguen muy gruesas"): OTRO
+ *  punto (0.025 → 0.015, −40% más; 62.5% bajo el imán) con bisel y sombra intactos → relieve
+ *  fino, no plana. El z del tablero deriva de este depth (totalThickness) → no se hunden. */
+export const TILE_DEPTH = 0.015;
 
 /** Silueta física centrada en el origen (unidades de mundo). Espejo exacto de buildShapePath. */
 function buildSilhouette(
@@ -275,10 +313,10 @@ export function ExtrudedMagnetMesh({
   cornerRadiusRatio?: number;
   position?: [number, number, number];
 }) {
-  const { x: rx, y: ry, w: rw, h: rh, flipV } = textureRegion ?? FULL_REGION;
-  // Clon por pieza: UV de la tapa = coords del shape → repeat/offset derivados de la región.
-  //   sin flip:  v_img = (1 − ry − rh) + v·rh
-  //   con flipV: v_img = (1 − ry) − v·rh                    (v = y/height + 0.5)
+  const { x: rx, y: ry, w: rw, h: rh, flipV, flipU } = textureRegion ?? FULL_REGION;
+  // Clon por pieza: UV de la tapa = coords del shape → repeat/offset derivados de la región
+  // (textureRegionTransform, puro y testeado: el muestreo queda siempre dentro de la región,
+  // también con flips — ola 4, bug de la cara B negra).
   // Deps en primitivas (no en el objeto región): el caller puede pasarla inline sin recrear la
   // textura en cada render.
   const tex = useMemo(() => {
@@ -286,11 +324,16 @@ export function ExtrudedMagnetMesh({
     const t = texture.clone();
     t.colorSpace = THREE.SRGBColorSpace;
     t.anisotropy = 8;
-    t.repeat.set(rw / width, (flipV ? -rh : rh) / height);
-    t.offset.set(rx + rw / 2, 1 - ry - rh / 2 + (flipV ? rh : 0));
+    const { repeat, offset } = textureRegionTransform(
+      { x: rx, y: ry, w: rw, h: rh, flipV, flipU },
+      width,
+      height,
+    );
+    t.repeat.set(repeat[0], repeat[1]);
+    t.offset.set(offset[0], offset[1]);
     t.needsUpdate = true;
     return t;
-  }, [texture, width, height, rx, ry, rw, rh, flipV]);
+  }, [texture, width, height, rx, ry, rw, rh, flipV, flipU]);
   useEffect(() => () => tex?.dispose(), [tex]);
 
   const geometry = useMemo(() => {
@@ -473,9 +516,11 @@ export function FoldedStripMesh({
           position={[0, -hang / 2, rFold]}
         />
       </group>
-      {/* Cara trasera: rotada π sobre el pliegue (cuelga del lado −Z, diseño a −Z, de pie al
-          mirarla desde atrás: flipV compensa la rotación). backDataUrl = cara B REAL de la
-          unidad (ola 3); backLean la recuesta sobre la mesa cuando es larga. */}
+      {/* Cara trasera: rotada ~π sobre el pliegue (cuelga del lado −Z, diseño a −Z). flipV +
+          flipU = rotación de 180° de la textura: compensa EXACTO la rotación del mesh sobre X,
+          así el diseño B se lee DERECHO (de pie, no espejado) al mirarla desde atrás.
+          backDataUrl = cara B REAL de la unidad (ola 3); backLean la recuesta sobre la mesa
+          cuando es larga. */}
       <group rotation={[Math.PI + delta + backLean, 0, 0]}>
         <MagnetMesh
           dataUrl={backDataUrl ?? dataUrl}
@@ -484,7 +529,7 @@ export function FoldedStripMesh({
           depth={CARD_THICK}
           edgeColor={cardColor}
           backColor={cardColor}
-          textureRegion={{ ...region, flipV: true }}
+          textureRegion={{ ...region, flipV: true, flipU: true }}
           cornerRadiusRatio={cornerRadiusRatio}
           position={[0, hang / 2, rFold]}
         />

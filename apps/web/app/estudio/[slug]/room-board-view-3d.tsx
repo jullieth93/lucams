@@ -27,6 +27,9 @@
  * del estilo — las fichas de letras del tablero MEMO (abecedario/vocales/nombre, mismo path de
  * texturas y extrusión) bajan de 0.04 a 0.025 (−37.5%) con bisel y sombra intactos; el corcho
  * (fotoimanes) conserva el grosor de imán.
+ * Pase 2026-07-23 (ola 4 — Lucy: "siguen muy gruesas"): las fichas bajan OTRO punto (0.025 →
+ * 0.015, ~62.5% bajo el imán) sin llegar a planas; el z sobre el tablero deriva del depth
+ * (totalThickness), así el cambio no hunde ni levanta las fichas.
  */
 
 import { Suspense, useMemo } from "react";
@@ -51,8 +54,9 @@ const INNER_H = BOARD_H - FRAME * 2;
 const FRONT_Z = DEPTH / 2;
 
 /** Grosor del extruido por estilo (ola 3 — Lucy: las fichas de letras se ven muy gruesas,
- *  "bajar UN PUNTO, no planas"): memo (fichas de letras/nombre/vocales) → TILE_DEPTH (−37.5%,
- *  con bisel y sombra intactos); cork (fotoimanes) → el grosor de imán de siempre. */
+ *  "bajar UN PUNTO, no planas"; ola 4 2026-07-23: "siguen muy gruesas" → OTRO punto):
+ *  memo (fichas de letras/nombre/vocales) → TILE_DEPTH (0.015, bisel y sombra intactos);
+ *  cork (fotoimanes) → el grosor de imán de siempre. */
 function boardDepth(style: BoardStyle): number {
   return style === "memo" ? TILE_DEPTH : MAGNET_DEPTH;
 }
