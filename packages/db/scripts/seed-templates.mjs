@@ -387,24 +387,38 @@ const templatesData = [
   // se regeneran las plantillas premium una a una. Cliente sube foto + texto
   // libre. NO tienen `productId` → globales, aparecen en cualquier producto
   // del kind que no tenga plantillas premium específicas.
-  // Ola 2A — plantilla de la Tira Magnética (producto oculto): celda cuadrada
-  // (1 foto por slot) apilada en 1 columna (gridCols=1) → la tira 5×15 photobooth.
+  // Ola 3c (Lucy 2026-07-22) — Tira Magnética REDISEÑADA al tamaño real 6.5×20 cm
+  // (el producto lo actualiza el frente de datos). Referencia de Lucy: tira vertical
+  // con 3 fotos APILADAS CASI A SANGRE, el fondo del color elegido visible solo como
+  // margen fino y uniforme alrededor. UNA sola plantilla ("Clásica"), SIN texto.
+  //
+  // Paradigma slot-por-foto (1 foto por slot, gridCols=1): cada celda es 1/3 de la
+  // tira → stage 390×400 (6.5 × 6.667 cm); las 3 celdas apiladas con gridGap=0 arman
+  // la tira 6.5×20 continua. La celda trae capa "frame-card" (fondo = borderColor,
+  // mismo mecanismo de la Polaroid Clásica) y la foto va inserta con margen fino
+  // (~1 mm físico): entre fotos quedan 2 márgenes de color, en los bordes 1.
   ...(tirasProduct
     ? [
         {
           slug: "photo-strip-3-fotos",
           productId: tirasProduct.id,
           kind: "PHOTO_PACK",
-          name: "Tira photobooth (3 fotos)",
+          name: "Clásica",
           order: 1,
-          previewUrl: "/templates/personalizacion-libre.svg",
+          previewUrl: "/templates/tira-clasica.svg",
           canvasData: {
             version: 1,
-            stage: stage(500, 500),
+            stage: stage(390, 400), // 1/3 de la tira 6.5×20 cm (celda 6.5×6.667)
             gridCols: 1, // apilar las 3 fotos en vertical (la tira física es 1 columna)
+            gridGap: 0, // celdas pegadas → la tira se lee como UNA pieza continua
             layers: [
               background("#FFFFFF"),
-              photoSlot({ id: "photo", x: 0, y: 0, width: 500, height: 500, label: "Foto de la tira" }),
+              // Fondo de la tira = color elegido en el Estudio (blanco por defecto).
+              // Sin esquinas redondeadas: la tira es una pieza continua (el troquel
+              // exterior lo da el cornerRadiusPx del producto, no la plantilla).
+              { id: "card", type: "frame-card", fill: "#FFFFFF", cornerRadius: 0 },
+              // Foto casi a sangre: margen fino uniforme de color (~1.5% del ancho).
+              photoSlot({ id: "photo", x: 6, y: 6, width: 378, height: 388, label: "Foto de la tira" }),
             ],
           },
         },

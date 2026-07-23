@@ -1,6 +1,6 @@
 Para armar tus imanes, cobrarte de forma segura y llevarte el pedido hasta la puerta, un pequeño equipo de proveedores de confianza nos ayuda entre bambalinas. A esos proveedores la ley los llama **encargados del tratamiento**: tratan tus datos personales **por cuenta nuestra**, solo para lo necesario y bajo un contrato que les exige cuidarlos.
 
-El **responsable del tratamiento** de tus datos es **Lucy Jullieth Hurtado Rodríguez** (persona natural), con domicilio en **Bogotá D.C., Colombia**. Puedes escribirnos a **hola@lucamsshop.com** o por **WhatsApp** (el número está en el pie de página del sitio). La cédula y la dirección exacta las entregamos directamente a quien lo solicite por estos mismos canales.
+El **responsable del tratamiento** de tus datos es **Lucams_shop (persona natural), Bogotá D.C., Colombia**. Puedes escribirnos a **hola@lucamsshop.com** o por **WhatsApp** (el número está en el pie de página del sitio). Los datos de identificación de la titular están disponibles a requerimiento del consumidor a través de nuestros canales de contacto.
 
 ## ¿Qué es un subprocesador?
 

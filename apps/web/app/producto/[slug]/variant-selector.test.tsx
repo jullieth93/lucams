@@ -403,11 +403,11 @@ describe("VariantSelector — stepper de cantidad", () => {
     expect(within(cantidad).queryByLabelText("Aumentar cantidad")).not.toBeInTheDocument();
   });
 
-  it("usa stepper también con UNA sola dimensión visible (polaroid 7.5×10 qty 1..10, Lucy 2026-07-22)", () => {
+  it("usa stepper también con UNA sola dimensión de elección (polaroid 7.5×10 qty 1..10, Lucy 2026-07-22)", () => {
     // Datos reales (2026-07-22): pausados los sets, la polaroid queda con tamaño
-    // único 7.5×10 y cantidad libre 1..10 → solo la dimensión Cantidad es visible
-    // (sizeCm tiene 1 solo valor → no es dimensión). Debe salir el stepper, no la
-    // lista vertical de 10 filas.
+    // único 7.5×10 y cantidad libre 1..10. La cantidad sale como stepper (no lista
+    // vertical de 10 filas) y el tamaño único se muestra como chip estático
+    // preseleccionado (regla SINGLE_VALUE_VISIBLE_DIMS, mismo feedback de Lucy).
     const variants: TestVariant[] = [];
     for (let qty = 1; qty <= 10; qty++) {
       variants.push(
@@ -455,5 +455,68 @@ describe("VariantSelector — stepper de cantidad", () => {
     render(<VariantSelector productBasePrice={100_000} variants={variants} />);
     expect(screen.getByText("Elige tu opción")).toBeInTheDocument();
     expect(screen.queryByLabelText("Aumentar cantidad")).not.toBeInTheDocument();
+  });
+});
+
+/*
+ * Dimensión de 1 SOLO valor visible (Lucy 2026-07-22). Regla: visible si la
+ * dimensión está en VISIBLE_DIMENSIONS y (tiene >1 valor O es sizeCm). El chip
+ * único sale preseleccionado y NO clicable (dato del producto, no opción);
+ * Forma/otras claves con 1 valor siguen ocultas por redundantes.
+ */
+describe("VariantSelector — dimensión de 1 valor visible (Tamaño fijo)", () => {
+  it("muestra 'Tamaño: 6.5×20 cm' aunque el producto tenga 1 sola variante (tiras)", () => {
+    // Tiras Magnéticas (real 2026-07-22): UNA variante, tamaño único 6.5×20.
+    // Antes: variants.length < 2 → selector null (sin tamaño en la PDP).
+    const variants = [
+      makeVariant("v-tira", { sizeCm: "6.5×20", photoSlots: 3, aspectRatio: "1:1" }, 1_900_000),
+    ];
+    render(<VariantSelector productBasePrice={1_900_000} variants={variants} />);
+    const tamano = screen.getByRole("group", { name: "Tamaño" });
+    const chip = within(tamano).getByRole("button", { name: "6.5×20 cm" });
+    // Preseleccionado y no clicable (dato, no opción).
+    expect(chip).toHaveAttribute("aria-pressed", "true");
+    expect(chip).toBeDisabled();
+    // No es la lista vertical ni hay stepper (photoSlots tiene 1 solo valor → oculto).
+    expect(screen.queryByText("Elige tu opción")).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: "Cantidad" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Aumentar cantidad")).not.toBeInTheDocument();
+  });
+
+  it("muestra 'Tamaño: 7.5×10 cm' como chip estático junto al stepper (polaroid qty 1..N)", () => {
+    const variants = [
+      makeVariant("v-p1", { shape: "rectangle", sizeCm: "7.5×10", quantity: 1, photoSlots: 1 }),
+      makeVariant("v-p2", { shape: "rectangle", sizeCm: "7.5×10", quantity: 2, photoSlots: 2 }),
+    ];
+    render(
+      <SelectedVariantProvider variantIds={variants.map((v) => v.id)} initialId="v-p1">
+        <VariantSelector productBasePrice={100_000} variants={variants} />
+      </SelectedVariantProvider>,
+    );
+    const tamano = screen.getByRole("group", { name: "Tamaño" });
+    const chip = within(tamano).getByRole("button", { name: "7.5×10 cm" });
+    expect(chip).toHaveAttribute("aria-pressed", "true");
+    expect(chip).toBeDisabled();
+    // La cantidad sigue interactiva (stepper 1..2 contiguo).
+    const cantidad = screen.getByRole("group", { name: "Cantidad" });
+    fireEvent.click(within(cantidad).getByLabelText("Aumentar cantidad"));
+    expect(replace).toHaveBeenCalledWith(
+      expect.stringContaining("variant=v-p2"),
+      expect.anything(),
+    );
+  });
+
+  it("mantiene oculta la Forma cuando es igual en todas las variants (redundante)", () => {
+    // Misma regla de siempre para claves fuera de SINGLE_VALUE_VISIBLE_DIMS:
+    // shape "rectangle" en todas → el grupo Forma NO se pinta, aunque sizeCm
+    // de 1 valor sí salga. Solo Cantidad queda como elección real.
+    const variants = [
+      makeVariant("v-r1", { shape: "rectangle", sizeCm: "6×6", quantity: 1, photoSlots: 1 }),
+      makeVariant("v-r2", { shape: "rectangle", sizeCm: "6×6", quantity: 3, photoSlots: 3 }),
+    ];
+    render(<VariantSelector productBasePrice={100_000} variants={variants} />);
+    expect(screen.queryByRole("group", { name: "Forma" })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("group", { name: "Cantidad" })).toHaveLength(1);
+    expect(screen.getAllByRole("group", { name: "Tamaño" })).toHaveLength(1);
   });
 });

@@ -109,59 +109,46 @@ const result = await prisma.$transaction(async (tx) => {
     select: { id: true, sku: true, name: true, price: true },
   });
 
-  // Plantilla del Estudio: celda cuadrada (1 foto por slot) apilada en 1 columna
-  // (gridCols=1) → el grid del editor y el preview compositado arman la tira 5×15.
+  // Plantilla del Estudio: REDISEÑO Ola 3c/4B (Lucy 2026-07-22) — alineada con
+  // seed-templates.mjs y con apply-tira-template-2026-07-22.mjs (el script que la
+  // aplicó a la DB compartida). Re-ejecutar este script YA NO pisa el rediseño.
+  // Celda 390×400 (1/3 exacto de la tira 6.5×20), frame-card con el color elegido,
+  // foto casi a sangre, gridCols=1 + gridGap=0 → tira continua. Sin texto.
+  const STRIP_TEMPLATE = {
+    productId: product.id,
+    kind: "PHOTO_PACK",
+    name: "Clásica",
+    order: 1,
+    previewUrl: "/templates/tira-clasica.svg",
+    canvasData: {
+      version: 1,
+      stage: { width: 390, height: 400, dpiPreview: 90, dpiProduction: 300 },
+      gridCols: 1, // apilar las 3 fotos en vertical (la tira física es 1 columna)
+      gridGap: 0, // celdas pegadas → la tira se lee como UNA pieza continua
+      layers: [
+        { id: "background", type: "background", color: "#FFFFFF" },
+        { id: "card", type: "frame-card", fill: "#FFFFFF", cornerRadius: 0 },
+        {
+          id: "photo",
+          type: "image-placeholder",
+          x: 6,
+          y: 6,
+          width: 378,
+          height: 388,
+          cornerRadius: 0,
+          rotation: 0,
+          label: "Foto de la tira",
+        },
+      ],
+    },
+  };
   const template = await tx.personalizationTemplate.upsert({
     where: { slug: TEMPLATE_SLUG },
     create: {
       slug: TEMPLATE_SLUG,
-      productId: product.id,
-      kind: "PHOTO_PACK",
-      name: "Tira photobooth (3 fotos)",
-      order: 1,
-      previewUrl: "/templates/personalizacion-libre.svg",
-      canvasData: {
-        version: 1,
-        stage: { width: 500, height: 500, dpiPreview: 90, dpiProduction: 300 },
-        gridCols: 1, // apilar las 3 fotos en vertical (la tira física es 1 columna)
-        layers: [
-          { id: "background", type: "background", color: "#FFFFFF" },
-          {
-            id: "photo",
-            type: "image-placeholder",
-            x: 0,
-            y: 0,
-            width: 500,
-            height: 500,
-            cornerRadius: 0,
-            label: "Foto de la tira",
-          },
-        ],
-      },
+      ...STRIP_TEMPLATE,
     },
-    update: {
-      productId: product.id,
-      kind: "PHOTO_PACK",
-      name: "Tira photobooth (3 fotos)",
-      canvasData: {
-        version: 1,
-        stage: { width: 500, height: 500, dpiPreview: 90, dpiProduction: 300 },
-        gridCols: 1,
-        layers: [
-          { id: "background", type: "background", color: "#FFFFFF" },
-          {
-            id: "photo",
-            type: "image-placeholder",
-            x: 0,
-            y: 0,
-            width: 500,
-            height: 500,
-            cornerRadius: 0,
-            label: "Foto de la tira",
-          },
-        ],
-      },
-    },
+    update: STRIP_TEMPLATE,
     select: { id: true, slug: true },
   });
 

@@ -154,7 +154,7 @@ export function QuoteForm({ items = [] }: { items?: CartLineItem[] }) {
               required
               minLength={2}
               maxLength={80}
-              placeholder="Ej. Lucy Hurtado"
+              placeholder="Ej. Valentina Rojas"
               autoComplete="name"
               className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
             />

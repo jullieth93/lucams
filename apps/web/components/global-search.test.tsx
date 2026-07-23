@@ -28,7 +28,7 @@
 
 import "@testing-library/jest-dom/vitest";
 import { afterEach, describe, it, expect, vi } from "vitest";
-import { render, screen, cleanup, fireEvent, waitFor, act } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent, waitFor, act, within } from "@testing-library/react";
 import type { SearchResult } from "@/features/products/public-service";
 
 // --- Mocks --------------------------------------------------------------
@@ -92,10 +92,17 @@ function openAndGetInput(): HTMLElement {
 }
 
 describe("GlobalSearch", () => {
-  it("el botón del header es accesible y muestra el hint ⌘K", () => {
+  it("el botón del header es accesible, muestra la lupa (no la mascota) y el hint ⌘K", () => {
     render(<GlobalSearch />);
-    expect(screen.getByRole("button", { name: "Buscar" })).toBeInTheDocument();
+    const trigger = screen.getByRole("button", { name: "Buscar" });
+    expect(trigger).toBeInTheDocument();
     expect(screen.getByText("⌘K")).toBeInTheDocument();
+    // Lucy 2026-07-22: el trigger vuelve al icono de lupa (lucide Search) —
+    // el mapache de marca no leía como affordance de búsqueda.
+    expect(trigger.querySelector("svg.lucide-search")).toBeInTheDocument();
+    expect(
+      within(trigger).queryByAltText(/Mascota Lucams_shop/i),
+    ).not.toBeInTheDocument();
     // Cerrado: no hay diálogo montado todavía.
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });

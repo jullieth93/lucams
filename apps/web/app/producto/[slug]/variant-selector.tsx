@@ -30,6 +30,12 @@
  *     conservan chips. La selección siempre mapea a la variant con esa
  *     cantidad (mismo handleSelectValue que los chips) → deep-link ?variant=
  *     y dedupe quantity/photoSlots intactos.
+ *   - Dimensión de 1 SOLO valor (Lucy 2026-07-22): normalmente se oculta por
+ *     redundante (Forma igual en todas las variants). EXCEPCIÓN: las claves en
+ *     SINGLE_VALUE_VISIBLE_DIMS (hoy `sizeCm`) se muestran igual como chip
+ *     único preseleccionado NO clicable — el tamaño físico es información de
+ *     compra ("Tamaño: 7.5×10 cm" en polaroid, "6.5×20 cm" en tiras) y deja
+ *     el grupo listo para cuando el producto acople más tamaños.
  */
 
 import { useMemo } from "react";
@@ -149,6 +155,16 @@ const VISIBLE_DIMENSIONS: (keyof ProductVariantAttributes)[] = [
   "theme",
 ];
 
+/**
+ * Dimensiones visibles AUN con 1 solo valor (Lucy 2026-07-22). Regla:
+ * una dimensión se muestra si está en VISIBLE_DIMENSIONS y (tiene >1 valor
+ * distinto O está en esta lista). Hoy solo `sizeCm`: el tamaño físico es dato
+ * de compra ("Tamaño: 7.5×10 cm" polaroid · "6.5×20 cm" tiras) y el grupo
+ * queda listo para cuando el producto acople más tamaños. El resto de claves
+ * con 1 valor (Forma, Marco fijo…) siguen ocultas por redundantes.
+ */
+const SINGLE_VALUE_VISIBLE_DIMS: ReadonlySet<string> = new Set(["sizeCm"]);
+
 /** Dimensiones que representan CANTIDAD de unidades (candidatas al stepper +/−). */
 const QUANTITY_DIM_KEYS: ReadonlySet<string> = new Set(["quantity", "photoSlots"]);
 
@@ -193,13 +209,12 @@ export function VariantSelector({
     setSelectedId(id);
   }
 
-  // Detectar dimensiones presentes con >1 valor distinto.
-  // Modo multi-dim: chips por dimensión. El cliente combina libremente.
-  // Si una combinación específica no existe en el catálogo, el chip
-  // correspondiente se muestra deshabilitado ("no disponible") en lugar
-  // de cambiar la dimensión no-clickeada automáticamente.
+  // Detectar dimensiones presentes con >1 valor distinto (más las de 1 valor
+  // en SINGLE_VALUE_VISIBLE_DIMS). Modo multi-dim: chips por dimensión. El
+  // cliente combina libremente. Si una combinación específica no existe en el
+  // catálogo, el chip correspondiente se muestra deshabilitado ("no
+  // disponible") en lugar de cambiar la dimensión no-clickeada automáticamente.
   const dimensions = useMemo(() => {
-    if (variants.length < 2) return [];
     const dimMap: Record<string, Set<string>> = {};
     for (const v of variants) {
       const attrs = parseVariantAttributes(v.attributes);
@@ -210,8 +225,11 @@ export function VariantSelector({
         dimMap[key].add(String(value));
       }
     }
-    // Dimensiones con >1 valor distinto.
-    const keys = VISIBLE_DIMENSIONS.filter((key) => dimMap[key] && dimMap[key].size > 1);
+    // Dimensiones con >1 valor distinto, o de 1 valor visible (sizeCm).
+    const keys = VISIBLE_DIMENSIONS.filter(
+      (key) =>
+        dimMap[key] && (dimMap[key].size > 1 || SINGLE_VALUE_VISIBLE_DIMS.has(key)),
+    );
     // Dedupe de grupos redundantes: si dos dimensions tienen EXACTAMENTE el mismo
     // valor en TODAS las variants (ej. `quantity` y `photoSlots` en packs donde cada
     // unidad lleva 1 foto), elegir por una equivale a elegir por la otra → mostrar
@@ -316,7 +334,7 @@ export function VariantSelector({
     });
   }
 
-  if (variants.length < 2) return null;
+  if (variants.length < 2 && dimensions.length === 0) return null;
 
   // Polaroid qty 1–10 (Lucy 2026-07-22): con UNA sola dimensión visible que es la
   // cantidad 1..N contigua, ir directo al modo multi-dim (que pinta el stepper +/−)
@@ -329,8 +347,14 @@ export function VariantSelector({
     QUANTITY_DIM_KEYS.has(firstDim.key) &&
     isContiguousFromOne(firstDim.values);
 
+  // Dimensión de 1 SOLO valor visible (Tamaño fijo, Lucy 2026-07-22): se pinta
+  // como chip estático en el modo multi-dim; la lista vertical "Elige tu opción"
+  // no aplica porque no hay opción que elegir (tiras 6.5×20 con 1 sola variante).
+  const singleStaticDim =
+    dimensions.length === 1 && firstDim !== undefined && firstDim.values.length === 1;
+
   // ── Modo single-dimension: lista vertical con precio por variant ──
-  if (dimensions.length <= 1 && !singleQuantityStepper) {
+  if (dimensions.length <= 1 && !singleQuantityStepper && !singleStaticDim) {
     return (
       <div className="mb-4">
         <p className="text-brand-purple-dark/70 mb-2 text-xs font-bold tracking-wider uppercase">
@@ -479,16 +503,22 @@ export function VariantSelector({
             </p>
             <div role="group" aria-label={dim.label} className="flex flex-wrap gap-2">
               {dim.values.map((value) => {
-                const isSelected = currentValues[dim.key] === value;
-                const available = isSelected || isCombinationAvailable(dim.key, value);
+                // Dimensión de 1 solo valor (Tamaño fijo, Lucy 2026-07-22):
+                // chip único PRESELECCIONADO y no clicable — es un dato del
+                // producto, no una opción. Mañana, al acoplar más tamaños,
+                // los chips se vuelven interactivos solos (>1 valor).
+                const isSingle = dim.values.length === 1;
+                const isSelected = isSingle || currentValues[dim.key] === value;
+                const available =
+                  isSingle || isSelected || isCombinationAvailable(dim.key, value);
                 return (
                   <button
                     key={value}
                     type="button"
                     aria-pressed={isSelected}
-                    aria-disabled={!available}
-                    disabled={!available}
-                    onClick={() => available && handleSelectValue(dim.key, value)}
+                    aria-disabled={!available || isSingle}
+                    disabled={!available || isSingle}
+                    onClick={() => !isSingle && available && handleSelectValue(dim.key, value)}
                     title={
                       !available
                         ? `No disponible en esta combinación. Cambia primero otra opción para acceder a "${formatDimensionValue(dim.key, value)}".`
@@ -497,7 +527,9 @@ export function VariantSelector({
                     className={[
                       "focus:ring-brand-turquoise rounded-lg px-3 py-2 text-sm font-semibold transition-all focus:ring-2 focus:outline-none",
                       isSelected
-                        ? "bg-brand-purple cursor-pointer text-white shadow-md"
+                        ? isSingle
+                          ? "bg-brand-purple cursor-default text-white shadow-md"
+                          : "bg-brand-purple cursor-pointer text-white shadow-md"
                         : available
                           ? "ring-brand-purple/20 text-brand-purple-dark hover:ring-brand-purple/50 hover:bg-brand-cream/50 cursor-pointer bg-white ring-1"
                           : "ring-brand-purple/10 text-brand-muted bg-brand-cream/40 cursor-not-allowed ring-1",

@@ -4,7 +4,7 @@ Este aviso es un resumen. El documento vinculante y completo es nuestra **Polít
 
 ## Quién es responsable de tus datos
 
-**Lucy Jullieth Hurtado Rodríguez** (persona natural), titular de la marca **Lucams_shop**, con domicilio en **Bogotá D.C., Colombia**, es la responsable del tratamiento de tus datos personales.
+**Lucams_shop (persona natural), Bogotá D.C., Colombia**, titular de la marca **Lucams_shop**, es la responsable del tratamiento de tus datos personales.
 
 Puedes contactarnos por:
 

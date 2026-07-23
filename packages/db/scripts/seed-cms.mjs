@@ -878,12 +878,13 @@ const settings = [
     category: "EXTERNAL",
   },
   // Identidad del proveedor (persona natural) — Ley 1480 art. 23/50 + Ley 1581 art. 12. Sin cédula
-  // ni dirección exacta (Opción 1). BUSINESS_LEGAL_NAME → footer del sitio; LEGAL_ENTITY_LINE → pie
-  // de los 20 correos transaccionales.
+  // ni dirección exacta (Opción 1). Lucy 2026-07-22: SIN el nombre de la titular — la identificación
+  // completa se entrega a requerimiento del consumidor por los canales de contacto.
+  // BUSINESS_LEGAL_NAME → footer del sitio; LEGAL_ENTITY_LINE → pie de los correos transaccionales.
   {
     key: "BUSINESS_LEGAL_NAME",
     value:
-      "Lucams_shop es una marca operada por Lucy Jullieth Hurtado Rodríguez · Persona natural · Bogotá D.C., Colombia",
+      "Lucams_shop (persona natural) · Bogotá D.C., Colombia · Identificación de la titular disponible a requerimiento del consumidor",
     valueType: "TEXT",
     label: "Identidad del proveedor (footer)",
     description: "Línea de identidad en el footer. NO incluir cédula ni dirección exacta.",
@@ -892,7 +893,7 @@ const settings = [
   {
     key: "LEGAL_ENTITY_LINE",
     value:
-      "Lucams_shop es una marca operada por Lucy Jullieth Hurtado Rodríguez · Persona natural · Bogotá D.C., Colombia",
+      "Lucams_shop (persona natural) · Bogotá D.C., Colombia · Identificación de la titular disponible a requerimiento del consumidor",
     valueType: "TEXT",
     label: "Identidad del proveedor (correos)",
     description: "Línea de identidad al pie de los correos. NO incluir cédula ni dirección exacta.",

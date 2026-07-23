@@ -2,7 +2,7 @@ En Lucams_shop respondemos por lo que hacemos. Todos nuestros productos tienen *
 
 ## Quién responde por tu garantía
 
-Lucams_shop es la marca de **Lucy Jullieth Hurtado Rodríguez** (persona natural), con domicilio en **Bogotá D.C., Colombia**. Somos quienes respondemos directamente por la garantía de todo lo que compras aquí.
+Lucams_shop es una marca operada por **Lucams_shop (persona natural), Bogotá D.C., Colombia**. Somos quienes respondemos directamente por la garantía de todo lo que compras aquí.
 
 - Correo: **hola@lucamsshop.com**
 - WhatsApp: el número que ves en nuestro sitio.

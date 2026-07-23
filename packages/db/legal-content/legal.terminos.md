@@ -2,7 +2,7 @@ Al comprar en **lucamsshop.com** aceptas estos Términos y Condiciones. Léelos 
 
 ## Quiénes somos
 
-**Lucams_shop** es una marca de productos magnéticos personalizados en Colombia, operada por **Lucy Jullieth Hurtado Rodríguez** como **persona natural**, con domicilio en **Bogotá D.C., Colombia**.
+**Lucams_shop** es una marca de productos magnéticos personalizados en Colombia, operada por **Lucams_shop (persona natural), Bogotá D.C., Colombia**.
 
 - Correo de contacto: **hola@lucamsshop.com**
 - WhatsApp: disponible en el sitio (botón de contacto).

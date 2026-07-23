@@ -36,7 +36,7 @@ export async function renderEmailLayout(opts: EmailLayoutOptions): Promise<strin
     // exponer cédula ni dirección exacta (Opción 1). Editable en admin.
     getSettingValue(
       "LEGAL_ENTITY_LINE",
-      "Lucams_shop es una marca operada por Lucy Jullieth Hurtado Rodríguez · Persona natural · Bogotá D.C., Colombia",
+      "Lucams_shop (persona natural) · Bogotá D.C., Colombia · Identificación de la titular disponible a requerimiento del consumidor",
     ),
   ]);
 

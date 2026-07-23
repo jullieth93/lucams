@@ -302,7 +302,7 @@ export function DatosForm({
               id="fullName"
               name="fullName"
               required
-              placeholder="Ej. Lucy Hurtado"
+              placeholder="Ej. Valentina Rojas"
               value={fullName}
               onChange={(e) => {
                 setFullName(e.target.value);
@@ -1022,7 +1022,7 @@ export function DatosForm({
             >
               Política de Tratamiento de Datos
             </a>
-            . Responsable: Lucy Jullieth Hurtado Rodríguez (persona natural), Bogotá D.C. Algunos
+            . Responsable: Lucams_shop (persona natural), Bogotá D.C. Algunos
             proveedores (alojamiento y correo) están en EE. UU.
           </span>
         </label>

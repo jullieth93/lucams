@@ -344,9 +344,12 @@ export default async function ProductoDetallePage({
                   instantáneo), sin depender del re-render del RSC ni de la URL. */}
                 <SelectedVariantProvider variantIds={variantIds} initialId={firstVariantId}>
                   {/* M.3.b.CAT.3 — Selector de variants si product tiene 2+.
+                      Lucy 2026-07-22: también con 1 sola variante — el selector
+                      decide solo: sin dimensiones visibles devuelve null (Default
+                      vacía), con tamaño fijo pinta el chip "Tamaño: 6.5×20 cm".
                       Ola 2A — algunas dimensiones (Estilo/Marco/Tema/Idioma) ya no van en la
                       ficha: se eligen como plantilla dentro del Estudio. */}
-                  {selectable.length > 1 && (
+                  {selectable.length > 0 && (
                     <VariantSelector
                       productBasePrice={product.basePrice}
                       variants={selectable}
