@@ -56,6 +56,94 @@ export const SEP_CORNER_RATIO = 0.11;
 /** Elevación de la cara frontal sobre la hoja: casi acostada (3°) — reposa, no flota. */
 export const SEP_FRONT_LIFT_DEG = 3;
 
+// ── Ola 3 (2026-07-22) — separadores con las 2 CARAS REALES del Estudio ──
+//
+// El Estudio produce 2N texturas (convención de lib/faces.ts: slot par = cara A, impar = cara B
+// de cada unidad) y el lienzo de cada slot es UNA CARA (600×200 rectangular · 400×420 cuadrada).
+// El sizeCm de la variante ("6×2" · "4×4.2") son las dimensiones de ESA cara — la tira
+// desplegada mide 2 caras + lo que come la cresta del pliegue.
+
+/** Aire mínimo bajo la punta de la cara trasera: si no cuelga libre, se RECUESTÁ sobre la mesa. */
+export const BACK_TIP_CLEARANCE = 0.02;
+/** Apertura máxima de la cara trasera recostada (rad, ~49°): más que esto se ve roto → no se
+ *  muestra el separador en ese slot. */
+export const MAX_BACK_LEAN = 0.85;
+
+/** Cara rectangular por defecto (template 600×200 → 6×2 cm reales). */
+const FACE_RECT_CM = { wCm: 6, hCm: 2 } as const;
+/** Cara cuadrada por defecto (template 400×420 → 4×4.2 cm reales). */
+const FACE_SQUARE_CM = { wCm: 4, hCm: 4.2 } as const;
+
+/** Parser local de "6×2"/"4×4.2" → cm (duplicado de magnet-3d.parseSizeCm para mantener este
+ *  módulo sin three; misma gramática). */
+function parseSizeCmLocal(sizeCm: string | undefined): { wCm: number; hCm: number } | null {
+  if (!sizeCm) return null;
+  const m = sizeCm.match(/^(\d+(?:\.\d+)?)(?:\s*[×x]\s*(\d+(?:\.\d+)?))?$/i);
+  if (!m) return null;
+  const w = parseFloat(m[1]!);
+  const h = m[2] ? parseFloat(m[2]) : w;
+  if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return null;
+  return { wCm: w, hCm: h };
+}
+
+/** Lienzo de CARA (ola 3) vs tira completa vieja: las caras son ~cuadradas/horizontales
+ *  (400×420 ≈ 0.95 · 600×200 = 3); la tira vieja es vertical ~5:14 ≈ 0.36. */
+const FACE_CANVAS_MIN_ASPECT = 0.6;
+
+/**
+ * Dimensiones de la tira desplegada (unidades de mundo) para la cara dada.
+ *
+ * Regla ola 3: la CARA manda — el lienzo del Estudio es UNA cara y `sizeCm` de la variante son
+ * sus cm reales, así la cara 3D queda con el MISMO aspecto que la textura (coverRegion = región
+ * completa → NO se re-corta el encuadre que dejó el cliente) y una cara 4×4.2 se ve distinta de
+ * una 6×2. Prioridad de cm: wCm/hCm de la pieza (sets mixtos) → sizeCm de la variante → aspecto
+ * del lienzo (600×200 → 6×2 · 400×420 → 4×4.2).
+ *
+ * Diseños VIEJOS (tira completa vertical ~5:14, sin sizeCm): se conserva la interpretación
+ * histórica (tira 2×6 cm) para no romper previews de diseños pre-ola-3.
+ */
+export function stripDimsForFace(
+  face: { wRatio: number; hRatio: number; wCm?: number; hCm?: number },
+  sizeCm?: string,
+): { stripW: number; stripL: number } {
+  const aspect = face.wRatio / face.hRatio;
+  if (!sizeCm && !(face.wCm && face.hCm) && aspect < FACE_CANVAS_MIN_ASPECT) {
+    return { stripW: 2 * CM, stripL: 6 * CM }; // tira vieja 5:14 (ola 2C)
+  }
+  const cm =
+    face.wCm && face.hCm
+      ? { wCm: face.wCm, hCm: face.hCm }
+      : (parseSizeCmLocal(sizeCm) ?? (aspect >= 1.8 ? FACE_RECT_CM : FACE_SQUARE_CM));
+  const stripW = cm.wCm * CM;
+  // Tira = 2 caras + lo que come la cresta → hang resultante = hCm·CM exacto (espejo de
+  // foldedStripMetrics con rFold=SEP_R_FOLD y crestArc=SEP_FOLD_ANGLE).
+  const stripL = 2 * cm.hCm * CM + SEP_R_FOLD * SEP_FOLD_ANGLE;
+  return { stripW, stripL };
+}
+
+/**
+ * Agrupa las texturas del Estudio en UNIDADES físicas de separador (ola 3 — convención de
+ * lib/faces.ts: slot par = cara A → AL FRENTE, slot impar = cara B → ATRÁS). Con unidad impar
+ * (no debería: facesPerUnit=2) la última repite su diseño atrás.
+ *
+ * Diseños VIEJOS de tira completa (lienzo vertical, pre-ola-3): no traen cara B — cada textura
+ * es su propia unidad y repite el diseño en ambas caras (comportamiento histórico).
+ */
+export function bookmarkFaceUnits<T extends { wRatio: number; hRatio: number }>(
+  bookmarks: readonly T[],
+): { front: T; back: T }[] {
+  const looksLikeFaces =
+    bookmarks.length > 0 &&
+    bookmarks.every((b) => b.wRatio / b.hRatio >= FACE_CANVAS_MIN_ASPECT);
+  if (!looksLikeFaces) return bookmarks.map((b) => ({ front: b, back: b }));
+  const units: { front: T; back: T }[] = [];
+  for (let k = 0; 2 * k < bookmarks.length; k++) {
+    const front = bookmarks[2 * k]!;
+    units.push({ front, back: bookmarks[2 * k + 1] ?? front });
+  }
+  return units;
+}
+
 export type SeparatorPlacement = {
   /** Altura del eje del pliegue sobre la mesa. */
   crestY: number;
@@ -69,8 +157,12 @@ export type SeparatorPlacement = {
   frontTipY: number;
   /** Superficie de la hoja bajo el separador (referencia para el reposo de la punta). */
   surfaceY: number;
-  /** Aire bajo el fondo de la cara trasera (≥ 0 → no atraviesa la mesa). */
+  /** Aire bajo el fondo de la cara trasera colgando libre (≥ 0 → no toca la mesa). */
   backClearance: number;
+  /** Apertura EXTRA de la cara trasera (rad, ola 3): cuando la cara es larga (4×4.2) y colgando
+   *  libre atravesaría la mesa, la trasera se RECUESTÁ sobre la mesa detrás del libro — como la
+   *  cartulina flexible real. 0 cuando cuelga libre; Infinity cuando ni recostada cabe. */
+  backLean: number;
 };
 
 /**
@@ -96,6 +188,14 @@ export function separatorPlacement(bx: number, stripL: number): SeparatorPlaceme
   const crestZ = -PAGE_D / 2 - SEP_R_FOLD - 0.015;
   const frontTipY = crestY - hang * Math.cos(delta - tilt);
   const backBottomY = crestY - hang * Math.cos(delta + tilt);
+  // Ola 3 — cara trasera larga (4×4.2): si colgando libre toca la mesa, se abre lo justo para
+  // RECOSTAR la punta sobre la mesa (la cartulina real flexiona; acá la cara rígida se abre).
+  // cos(δ+tilt+lean) = (crestY − clearance)/hang → lean = acos(…) − (δ+tilt), acotado a ≥ 0.
+  let backLean = 0;
+  if (backBottomY < BACK_TIP_CLEARANCE) {
+    const c = (crestY - BACK_TIP_CLEARANCE) / hang;
+    backLean = c <= 0 ? Infinity : Math.max(0, Math.acos(Math.min(1, c)) - (delta + tilt));
+  }
   return {
     crestY,
     crestZ,
@@ -104,6 +204,7 @@ export function separatorPlacement(bx: number, stripL: number): SeparatorPlaceme
     frontTipY,
     surfaceY,
     backClearance: backBottomY,
+    backLean,
   };
 }
 

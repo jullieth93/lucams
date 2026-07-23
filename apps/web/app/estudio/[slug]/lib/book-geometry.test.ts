@@ -7,16 +7,22 @@
 
 import { describe, expect, it } from "vitest";
 import {
+  BACK_TIP_CLEARANCE,
   BOOK_FIT,
   CM,
   COVER_T,
   BLOCK_T,
+  MAX_BACK_LEAN,
   PAGE_D,
   PAGE_W,
+  SEP_FOLD_ANGLE,
+  SEP_R_FOLD,
+  SEPARATOR_SLOTS,
+  bookmarkFaceUnits,
   camber,
   pageSurfaceY,
   separatorPlacement,
-  SEPARATOR_SLOTS,
+  stripDimsForFace,
 } from "./book-geometry";
 
 describe("proporciones del libro (escala física 0.3 u/cm)", () => {
@@ -95,5 +101,143 @@ describe("separatorPlacement (separador doblado sobre el borde superior)", () =>
   it("los 3 slots quedan a distintas alturas (gracias al camber)", () => {
     const heights = SEPARATOR_SLOTS.map(({ x }) => separatorPlacement(x, 6 * CM).crestY);
     expect(Math.max(...heights) - Math.min(...heights)).toBeGreaterThan(0.1);
+  });
+});
+
+// ──────────────────────────────────────────────────────────────────
+//  Ola 3 — separadores con las 2 CARAS REALES del Estudio
+// ──────────────────────────────────────────────────────────────────
+
+/** Hang efectivo que produce una tira (espejo de foldedStripMetrics con los SEP_* del libro). */
+function effectiveHang(stripL: number): number {
+  return (stripL - SEP_R_FOLD * SEP_FOLD_ANGLE) / 2;
+}
+
+describe("stripDimsForFace (ola 3 — la CARA manda: tamaño y encuadre sin re-corte)", () => {
+  const FACE_RECT = { wRatio: 600, hRatio: 200 }; // cara rectangular 6×2
+  const FACE_SQUARE = { wRatio: 400, hRatio: 420 }; // cara cuadrada 4×4.2
+
+  it("sizeCm de la variante son los cm de la CARA: 6×2 → tira de 6 de ancho y caras de 2", () => {
+    const { stripW, stripL } = stripDimsForFace(FACE_RECT, "6×2");
+    expect(stripW / CM).toBeCloseTo(6, 6);
+    expect(effectiveHang(stripL) / CM).toBeCloseTo(2, 6);
+    // La cara 3D respeta el aspecto del lienzo (600×200 = 3) → coverRegion = región completa.
+    expect(stripW / effectiveHang(stripL)).toBeCloseTo(FACE_RECT.wRatio / FACE_RECT.hRatio, 6);
+  });
+
+  it("cara cuadrada 4×4.2 → tira de 4 de ancho y caras de 4.2 (aspecto del lienzo intacto)", () => {
+    const { stripW, stripL } = stripDimsForFace(FACE_SQUARE, "4×4.2");
+    expect(stripW / CM).toBeCloseTo(4, 6);
+    expect(effectiveHang(stripL) / CM).toBeCloseTo(4.2, 6);
+    expect(stripW / effectiveHang(stripL)).toBeCloseTo(
+      FACE_SQUARE.wRatio / FACE_SQUARE.hRatio,
+      6,
+    );
+  });
+
+  it("la cara 4×4.2 se ve DISTINTA de la 6×2 (ancho y alto difieren claramente)", () => {
+    const sq = stripDimsForFace(FACE_SQUARE, "4×4.2");
+    const rect = stripDimsForFace(FACE_RECT, "6×2");
+    expect(rect.stripW).toBeGreaterThan(sq.stripW * 1.3);
+    expect(effectiveHang(sq.stripL)).toBeGreaterThan(effectiveHang(rect.stripL) * 1.8);
+  });
+
+  it("wCm/hCm por pieza tienen prioridad sobre sizeCm (sets mixtos: 1×6×2 y 2×4×4.2)", () => {
+    const mixed = stripDimsForFace({ ...FACE_SQUARE, wCm: 4, hCm: 4.2 }, "6×2");
+    expect(mixed.stripW / CM).toBeCloseTo(4, 6);
+    expect(effectiveHang(mixed.stripL) / CM).toBeCloseTo(4.2, 6);
+  });
+
+  it("sin sizeCm, el aspecto del lienzo decide: 600×200 → 6×2 · 400×420 → 4×4.2", () => {
+    expect(stripDimsForFace(FACE_RECT).stripW / CM).toBeCloseTo(6, 6);
+    expect(stripDimsForFace(FACE_SQUARE).stripW / CM).toBeCloseTo(4, 6);
+  });
+
+  it("diseño VIEJO de tira completa (vertical ~5:14, sin sizeCm) → tira 2×6 histórica", () => {
+    const { stripW, stripL } = stripDimsForFace({ wRatio: 500, hRatio: 1400 });
+    expect(stripW / CM).toBeCloseTo(2, 6);
+    expect(stripL / CM).toBeCloseTo(6, 6);
+  });
+});
+
+describe("bookmarkFaceUnits (ola 3 — slot par = cara A al frente, impar = cara B atrás)", () => {
+  const face = (id: string, w = 600, h = 200) => ({ id, wRatio: w, hRatio: h });
+
+  it("agrupa 2N texturas en N unidades: A al frente, B atrás", () => {
+    const slots = [face("1A"), face("1B"), face("2A"), face("2B"), face("3A"), face("3B")];
+    const units = bookmarkFaceUnits(slots);
+    expect(units.map((u) => [u.front.id, u.back.id])).toEqual([
+      ["1A", "1B"],
+      ["2A", "2B"],
+      ["3A", "3B"],
+    ]);
+  });
+
+  it("mezcla de aspectos de cara (600×200 y 400×420) también se agrupa por pares", () => {
+    const slots = [face("1A"), face("1B"), face("2A", 400, 420), face("2B", 400, 420)];
+    const units = bookmarkFaceUnits(slots);
+    expect(units).toHaveLength(2);
+    expect(units[1]!.front.id).toBe("2A");
+    expect(units[1]!.back.id).toBe("2B");
+  });
+
+  it("unidad impar (no debería con facesPerUnit=2): la última repite su diseño atrás", () => {
+    const units = bookmarkFaceUnits([face("1A"), face("1B"), face("2A")]);
+    expect(units).toHaveLength(2);
+    expect(units[1]!.back.id).toBe("2A");
+  });
+
+  it("diseños VIEJOS de tira completa (vertical) NO se parean: cada uno repite su diseño", () => {
+    const legacy = [face("tira1", 500, 1400), face("tira2", 500, 1400)];
+    const units = bookmarkFaceUnits(legacy);
+    expect(units.map((u) => [u.front.id, u.back.id])).toEqual([
+      ["tira1", "tira1"],
+      ["tira2", "tira2"],
+    ]);
+  });
+
+  it("lista vacía → cero unidades (sin explosiones)", () => {
+    expect(bookmarkFaceUnits([])).toEqual([]);
+  });
+});
+
+describe("separatorPlacement con las caras reales (ola 3)", () => {
+  const delta = (Math.PI - SEP_FOLD_ANGLE) / 2;
+
+  it("cara corta (6×2): la trasera cuelga LIBRE en los 3 slots (backLean = 0)", () => {
+    const { stripL } = stripDimsForFace({ wRatio: 600, hRatio: 200 }, "6×2");
+    for (const { x } of SEPARATOR_SLOTS) {
+      const p = separatorPlacement(x, stripL);
+      expect(p.backClearance).toBeGreaterThanOrEqual(0.015);
+      expect(p.backLean).toBe(0);
+    }
+  });
+
+  it("cara larga (4×4.2): la trasera se RECUESTÁ sobre la mesa (backLean acotado, sin atravesarla)", () => {
+    const { stripL } = stripDimsForFace({ wRatio: 400, hRatio: 420 }, "4×4.2");
+    for (const { x } of SEPARATOR_SLOTS) {
+      const p = separatorPlacement(x, stripL);
+      // Colgando libre tocaría la mesa…
+      expect(p.backClearance).toBeLessThan(BACK_TIP_CLEARANCE);
+      // …pero recostada la punta queda justo sobre la mesa, dentro del límite de apertura.
+      expect(p.backLean).toBeGreaterThan(0);
+      expect(p.backLean).toBeLessThanOrEqual(MAX_BACK_LEAN);
+      const restedTipY = p.crestY - p.hang * Math.cos(delta + p.tilt + p.backLean);
+      expect(restedTipY).toBeCloseTo(BACK_TIP_CLEARANCE, 5);
+    }
+  });
+
+  it("con las caras reales la frontal sigue reposando sobre la hoja (ni flota ni se hunde)", () => {
+    for (const [face, sizeCm] of [
+      [{ wRatio: 600, hRatio: 200 }, "6×2"],
+      [{ wRatio: 400, hRatio: 420 }, "4×4.2"],
+    ] as const) {
+      const { stripL } = stripDimsForFace(face, sizeCm);
+      for (const { x } of SEPARATOR_SLOTS) {
+        const p = separatorPlacement(x, stripL);
+        expect(p.frontTipY).toBeGreaterThanOrEqual(p.surfaceY - 0.03);
+        expect(p.frontTipY).toBeLessThanOrEqual(p.surfaceY + 0.06);
+      }
+    }
   });
 });

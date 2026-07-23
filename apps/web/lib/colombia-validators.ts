@@ -119,7 +119,7 @@ export function validateName(value: string): boolean {
 
 /**
  * Title-case respetando preposiciones cortas (de, del, la, las, los, y).
- * Ej. "lucy del pilar hurtado" → "Lucy del Pilar Hurtado".
+ * Ej. "valentina rojas pérez" → "Valentina Rojas Pérez".
  */
 const NAME_LOWERCASE_WORDS = new Set(["de", "del", "la", "las", "los", "y", "e", "da", "do"]);
 

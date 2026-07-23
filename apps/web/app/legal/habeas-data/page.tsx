@@ -13,7 +13,7 @@ Aquí te contamos, sin letra chiquita imposible, qué hacemos con tus datos y c�
 
 El tratamiento de tus datos está a cargo de:
 
-- **Responsable:** Lucy Jullieth Hurtado Rodríguez, quien actúa como **persona natural** titular de la marca **Lucams_shop**.
+- **Responsable:** **Lucams_shop (persona natural), Bogotá D.C., Colombia**, titular de la marca **Lucams_shop**.
 - **Domicilio:** Bogotá D.C., Colombia.
 - **Correo de contacto:** hola@lucamsshop.com
 - **WhatsApp:** disponible en el sitio (botón de WhatsApp).

@@ -44,6 +44,12 @@
  *    pieza con la transform de región vive acá). MagnetMesh queda como wrapper que carga el
  *    dataURL con useTexture; el visor de detalle del calendario le pasa texturas con lifecycle
  *    propio (ventana con dispose) sin tocar el caché global de drei.
+ *
+ * 2026-07-22 (ola 3 — feedback Lucy):
+ *  - `MAGNET_DEPTH`/`TILE_DEPTH`: grosores del extruido exportados. Las FICHAS DE LETRAS bajan
+ *    UN PUNTO (0.04 → 0.025, −37.5%) manteniendo bisel y sombra — "no planas".
+ *  - `FoldedStripMesh` queda cableado a las 2 CARAS REALES del Estudio (cara A al frente, cara B
+ *    atrás vía `backDataUrl`) y gana `backLean` para recostar la trasera larga sobre la mesa.
  */
 
 import { useEffect, useMemo } from "react";
@@ -180,6 +186,12 @@ export function foldedStripMetrics(
  *  (roundRect r = min(8, w/12) px sobre texW=512 → 8/512 del ancho). */
 const LEGACY_CORNER_RATIO = 8 / 512;
 
+/** Grosor del cuerpo extruido de un IMÁN (sin contar el bisel). */
+export const MAGNET_DEPTH = 0.04;
+/** Grosor de las FICHAS DE LETRAS (tablero memo, ola 3 — Lucy: "bajar UN PUNTO, no planas"):
+ *  37.5% más delgadas que el imán; el bisel y la sombra se mantienen → relieve, no plana. */
+export const TILE_DEPTH = 0.025;
+
 /** Silueta física centrada en el origen (unidades de mundo). Espejo exacto de buildShapePath. */
 function buildSilhouette(
   shape: MagnetShape,
@@ -239,7 +251,7 @@ export function ExtrudedMagnetMesh({
   width,
   height,
   shape = "rectangle",
-  depth = 0.04,
+  depth = MAGNET_DEPTH,
   edgeColor = "#F6F1E8",
   backColor,
   textureRegion,
@@ -251,7 +263,7 @@ export function ExtrudedMagnetMesh({
   width: number;
   height: number;
   shape?: MagnetShape;
-  /** Grosor del cuerpo (sin contar el bisel). Imanes 0.04, separadores 0.025. */
+  /** Grosor del cuerpo (sin contar el bisel). Imanes MAGNET_DEPTH, fichas TILE_DEPTH. */
   depth?: number;
   /** Color del canto (material base blanco por defecto). */
   edgeColor?: string;
@@ -340,7 +352,7 @@ export function MagnetMesh({
   width,
   height,
   shape = "rectangle",
-  depth = 0.04,
+  depth = MAGNET_DEPTH,
   edgeColor = "#F6F1E8",
   backColor,
   textureRegion,
@@ -351,7 +363,7 @@ export function MagnetMesh({
   width: number;
   height: number;
   shape?: MagnetShape;
-  /** Grosor del cuerpo (sin contar el bisel). Imanes 0.04, separadores 0.025. */
+  /** Grosor del cuerpo (sin contar el bisel). Imanes MAGNET_DEPTH, fichas TILE_DEPTH. */
   depth?: number;
   /** Color del canto (material base blanco por defecto). */
   edgeColor?: string;
@@ -393,16 +405,15 @@ const CARD_THICK = 0.012;
  * pliegue = X (la cresta corre a lo ancho de la tira); cara frontal cuelga hacia −Y del lado +Z
  * con el diseño mirando a +Z; la trasera cuelga del lado −Z con el diseño mirando a −Z.
  *
- * Caras impresas: AMBAS llevan el diseño del cliente orientado para leerse de pie desde su lado
- * (así se imprimen los separadores magnéticos reales: cada cara se lee derecha). Como la cara
- * física es más "achatada" que el lienzo completo, se aplica recorte COVER centrado (banda
- * media del diseño, sin deformar).
+ * Caras impresas (ola 3 — 2 CARAS REALES del Estudio): la frontal lleva la cara A (`dataUrl`) y
+ * la trasera la cara B (`backDataUrl`) — la convención slot par/impar la resuelve el caller
+ * (book-view-3d vía bookmarkFaceUnits). Cada lienzo es UNA cara con su aspecto exacto, así la
+ * cara 3D muestra el diseño COMPLETO, orientado para leerse de pie desde su lado, sin re-cortar
+ * el encuadre del cliente (coverRegion = región completa cuando la geometría respeta el aspecto;
+ * si no cuadra, recorte cover centrado sin deformar).
  *
- * PUNTO DE EXTENSIÓN (ola 3 — 2 caras con diseños distintos): hoy la trasera repite el diseño
- * frontal (`dataUrl`). Cuando la duplicación de slots del Estudio 2D/producción esté lista
- * (convención de lib/faces.ts: slot 2k = cara A, 2k+1 = cara B), el caller puede pasar
- * `backDataUrl` con la textura de la cara B y cada cara mostrará su propio diseño — la
- * geometría y orientación (flipV) ya están resueltas.
+ * `backLean` (ola 3): apertura EXTRA de la cara trasera para recostar su punta sobre la mesa
+ * cuando la cara es larga y colgando libre la atravesaría (la calcula separatorPlacement).
  *
  * `foldAngle` = ángulo entre las dos caras: π = doblado plano (sobre una hoja); ~2.16 = sobre
  * el lomo de un libro en carpa (28° de apertura por cara). La cresta (medio cilindro hueco de
@@ -419,10 +430,11 @@ export function FoldedStripMesh({
   rFold,
   cardColor = "#F1EBDD",
   cornerRadiusRatio,
+  backLean = 0,
   position = [0, 0, 0],
 }: {
   dataUrl: string;
-  /** Diseño de la cara TRASERA (ola 3, 2 caras). Default: el mismo de la frontal. */
+  /** Diseño de la cara TRASERA (cara B de la unidad). Default: el mismo de la frontal. */
   backDataUrl?: string;
   /** Aspecto del lienzo del diseño (stage.width / stage.height) para el recorte cover. */
   wRatio: number;
@@ -438,6 +450,8 @@ export function FoldedStripMesh({
   cardColor?: string;
   /** Radio de esquina de las caras como fracción del ancho (esquinas redondas del separador). */
   cornerRadiusRatio?: number;
+  /** Apertura extra de la cara trasera (rad) para recostarla sobre la mesa. Default 0. */
+  backLean?: number;
   position?: [number, number, number];
 }) {
   const { delta, hang, crestArc } = foldedStripMetrics(stripL, rFold, foldAngle);
@@ -460,9 +474,9 @@ export function FoldedStripMesh({
         />
       </group>
       {/* Cara trasera: rotada π sobre el pliegue (cuelga del lado −Z, diseño a −Z, de pie al
-          mirarla desde atrás: flipV compensa la rotación). backDataUrl (ola 3) permite un
-          diseño distinto al frontal; default: el mismo. */}
-      <group rotation={[Math.PI + delta, 0, 0]}>
+          mirarla desde atrás: flipV compensa la rotación). backDataUrl = cara B REAL de la
+          unidad (ola 3); backLean la recuesta sobre la mesa cuando es larga. */}
+      <group rotation={[Math.PI + delta + backLean, 0, 0]}>
         <MagnetMesh
           dataUrl={backDataUrl ?? dataUrl}
           width={stripW}

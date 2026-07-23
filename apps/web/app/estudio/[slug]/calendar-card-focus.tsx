@@ -4,9 +4,12 @@
  * CalendarCardFocus — visor de DETALLE 1-a-1 de las tarjetas mes del calendario (ola 2C,
  * feedback Lucy: "quiero ver cada tarjeta DE CERCA pasando de izquierda a derecha 1, 2, 3… 12").
  *
- * Se abre desde la galería de escenas (kind="calendar", botón "Ver en detalle") como overlay
- * DENTRO del modal de la galería; Esc / botón volver regresa a la galería (la galería pausa su
- * propio useDialogA11y mientras este visor está activo).
+ * 2026-07-22 (ola 3 — Lucy: "detalle primero, espacio después"): el flujo se INVIERTE. Este
+ * visor es ahora la vista INICIAL del modal del calendario ("Ver mi calendario" abre DE UNA el
+ * detalle "Tarjeta 1 de 12"); ARRIBA queda la acción "Míralo en tu espacio" que lleva a la
+ * galería (nevera/corcho), y desde la galería se vuelve al detalle con "Volver al detalle".
+ * Esc baja UN nivel: acá (raíz) CIERRA el modal; en la galería regresa a este visor. Vive como
+ * overlay DENTRO del modal de la galería, que pausa su useDialogA11y mientras este está activo.
  *
  * Decisiones:
  *  - UNA tarjeta grande ACOSTADA sobre la mesa, mirada desde ~62° (lenguaje visual del libro
@@ -29,7 +32,7 @@ import { Suspense, useCallback, useEffect, useMemo, useRef } from "react";
 import { Canvas } from "@react-three/fiber";
 import { OrbitControls, ContactShadows } from "@react-three/drei";
 import type * as THREE from "three";
-import { ChevronLeft, ChevronRight, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Home, X } from "lucide-react";
 import { useDialogA11y } from "./use-dialog-a11y";
 import { useIsTouch } from "./use-is-touch";
 import { useWindowTextures } from "./use-window-textures";
@@ -113,14 +116,17 @@ export default function CalendarCardFocus({
   index,
   onIndexChange,
   onClose,
+  onOpenGallery,
 }: {
   /** Las tarjetas mes (texturas compuestas) en orden 1..12. */
   cards: Magnet3D[];
   /** Índice de la tarjeta enfocada (0-based). */
   index: number;
   onIndexChange: (next: number) => void;
-  /** Cierra el visor y vuelve a la galería. */
+  /** Cierra el modal completo (este visor es la vista raíz del flujo del calendario). */
   onClose: () => void;
+  /** Sube UN nivel: cambia a la galería de escenas (nevera/corcho) dentro del mismo modal. */
+  onOpenGallery: () => void;
 }) {
   const isTouch = useIsTouch();
   const n = cards.length;
@@ -133,7 +139,8 @@ export default function CalendarCardFocus({
   const urls = useMemo(() => cards.map((c) => c.dataUrl), [cards]);
   const texture = useWindowTextures(urls, i, 1);
 
-  // #15 — foco inicial + trap + Escape (vuelve a la galería) + retorno de foco al botón que abrió.
+  // #15 — foco inicial + trap + Escape (cierra el modal: este visor es la raíz del flujo) +
+  // retorno de foco al botón que abrió.
   const dialogRef = useRef<HTMLDivElement>(null);
   useDialogA11y(dialogRef, { onClose });
 
@@ -173,18 +180,30 @@ export default function CalendarCardFocus({
       tabIndex={-1}
       className="bg-brand-purple-dark/90 absolute inset-0 z-10 flex flex-col outline-none"
     >
-      <div className="flex items-center justify-between px-4 py-3 text-white sm:px-6">
+      <div className="flex items-center justify-between gap-2 px-4 py-3 text-white sm:px-6">
         <span className="font-display text-lg font-bold" aria-live="polite">
           Tarjeta {i + 1} de {n}
         </span>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Volver a la galería"
-          className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/15 text-white transition-colors hover:bg-white/25 focus:ring-2 focus:ring-white focus:outline-none"
-        >
-          <X className="h-5 w-5" />
-        </button>
+        <div className="flex items-center gap-2">
+          {/* Ola 3 — "detalle primero, espacio después": desde el detalle se SUBE a la galería
+            (nevera/corcho) dentro del mismo modal; allá hay "Volver al detalle" para regresar. */}
+          <button
+            type="button"
+            onClick={onOpenGallery}
+            className="inline-flex h-10 items-center gap-1.5 rounded-full bg-white/15 px-4 text-sm font-bold text-white transition-colors hover:bg-white/25 focus:ring-2 focus:ring-white focus:outline-none"
+          >
+            <Home className="h-4 w-4" aria-hidden />
+            <span>Míralo en tu espacio</span>
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Cerrar"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/15 text-white transition-colors hover:bg-white/25 focus:ring-2 focus:ring-white focus:outline-none"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
       </div>
 
       <div className="relative flex-1">

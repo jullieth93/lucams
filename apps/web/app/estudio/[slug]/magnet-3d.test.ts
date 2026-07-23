@@ -10,7 +10,24 @@ vi.mock("@react-three/drei", () => ({
   useTexture: () => null,
 }));
 
-import { coverRegion, foldedStripMetrics, magnetWorldSizes, parseSizeCm } from "./magnet-3d";
+import {
+  MAGNET_DEPTH,
+  TILE_DEPTH,
+  coverRegion,
+  foldedStripMetrics,
+  magnetWorldSizes,
+  parseSizeCm,
+} from "./magnet-3d";
+
+describe("grosores del extruido (ola 3 — Lucy: fichas UN PUNTO más delgadas, no planas)", () => {
+  it("TILE_DEPTH es 30-40% menos que MAGNET_DEPTH y sigue teniendo cuerpo (> 0)", () => {
+    expect(TILE_DEPTH).toBeGreaterThan(0);
+    expect(TILE_DEPTH).toBeLessThan(MAGNET_DEPTH);
+    const reduction = 1 - TILE_DEPTH / MAGNET_DEPTH;
+    expect(reduction).toBeGreaterThanOrEqual(0.3);
+    expect(reduction).toBeLessThanOrEqual(0.4);
+  });
+});
 
 describe("parseSizeCm", () => {
   it("parsea tamaños con ×, x y un solo número", () => {

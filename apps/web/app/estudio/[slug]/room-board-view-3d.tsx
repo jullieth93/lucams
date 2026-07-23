@@ -22,6 +22,11 @@
  *
  * Restricciones (idénticas a las otras vistas 3D): CSP estricta (cero assets externos) ·
  * client-only (WebGL) → dynamic ssr:false.
+ *
+ * Pase 2026-07-22 (ola 3 — Lucy: "bajar UN PUNTO, no planas"): el grosor del extruido depende
+ * del estilo — las fichas de letras del tablero MEMO (abecedario/vocales/nombre, mismo path de
+ * texturas y extrusión) bajan de 0.04 a 0.025 (−37.5%) con bisel y sombra intactos; el corcho
+ * (fotoimanes) conserva el grosor de imán.
  */
 
 import { Suspense, useMemo } from "react";
@@ -30,7 +35,7 @@ import { OrbitControls, RoundedBox, GradientTexture } from "@react-three/drei";
 import { FitCamera } from "./fit-camera";
 import { useIsTouch } from "./use-is-touch";
 import { StudioEnvironment } from "./studio-3d-environment";
-import { MagnetMesh, magnetWorldSizes } from "./magnet-3d";
+import { MagnetMesh, MAGNET_DEPTH, TILE_DEPTH, magnetWorldSizes } from "./magnet-3d";
 import { getCorkTexture } from "./lib/procedural-textures";
 import type { Magnet3D } from "./fridge-3d-view";
 
@@ -44,7 +49,18 @@ const DEPTH = 0.22;
 const INNER_W = BOARD_W - FRAME * 2;
 const INNER_H = BOARD_H - FRAME * 2;
 const FRONT_Z = DEPTH / 2;
-const MAGNET_T = 0.056; // grosor total del imán extruido (0.04 + bisel) → z del centro
+
+/** Grosor del extruido por estilo (ola 3 — Lucy: las fichas de letras se ven muy gruesas,
+ *  "bajar UN PUNTO, no planas"): memo (fichas de letras/nombre/vocales) → TILE_DEPTH (−37.5%,
+ *  con bisel y sombra intactos); cork (fotoimanes) → el grosor de imán de siempre. */
+function boardDepth(style: BoardStyle): number {
+  return style === "memo" ? TILE_DEPTH : MAGNET_DEPTH;
+}
+
+/** Grosor TOTAL del extruido: depth + bisel a ambos lados (bevelThickness = 0.2·depth c/u). */
+function totalThickness(depth: number): number {
+  return depth * 1.4;
+}
 
 const FRAME_COLOR = "#B98A5E"; // marco de madera
 // Tablero claro estilo memo. Un punto más hondo que el blanco de las fichas de letras (canto
@@ -57,10 +73,12 @@ const BOARD_U_PER_CM = BOARD_W / 45;
 function Magnets({
   magnets,
   cols,
+  style,
   sizeCm,
 }: {
   magnets: Magnet3D[];
   cols: number;
+  style: BoardStyle;
   sizeCm?: string;
 }) {
   const items = useMemo(() => {
@@ -99,6 +117,9 @@ function Magnets({
     });
   }, [magnets, cols, sizeCm]);
 
+  const depth = boardDepth(style);
+  const z = FRONT_Z + totalThickness(depth) / 2 + 0.005;
+
   return (
     <>
       {items.map(({ m, w, h, x, y }, i) => (
@@ -108,8 +129,9 @@ function Magnets({
           width={w}
           height={h}
           shape={m.shape}
+          depth={depth}
           cornerRadiusRatio={m.cornerRadiusRatio}
-          position={[x, y, FRONT_Z + MAGNET_T / 2 + 0.005]}
+          position={[x, y, z]}
         />
       ))}
     </>
@@ -185,7 +207,7 @@ function Scene({
       <directionalLight position={[-5, 2, 5]} intensity={0.3} />
 
       <Board style={style} />
-      <Magnets magnets={magnets} cols={cols} sizeCm={sizeCm} />
+      <Magnets magnets={magnets} cols={cols} style={style} sizeCm={sizeCm} />
 
       {/* #12 — encuadra el tablero al aspecto del viewport (fit-to-width en móvil vertical). */}
       <FitCamera halfW={BOARD_W / 2} halfH={BOARD_H / 2} margin={1.12} camY={0.3} />

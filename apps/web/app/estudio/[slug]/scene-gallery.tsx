@@ -24,6 +24,13 @@
  * activo, la galería pausa su useDialogA11y (Esc/trap/foco pasan al visor) y al salir se
  * retoma — Esc nunca cierra los dos niveles de golpe.
  *
+ * 2026-07-22 (ola 3 — Lucy: "detalle primero, espacio después") — el flujo del calendario se
+ * INVIERTE: con kind="calendar" este modal ABRE en el visor de detalle ("Tarjeta 1 de 12") y la
+ * galería queda UN NIVEL ARRIBA: se entra con "Míralo en tu espacio" (en el visor) y se regresa
+ * con "Volver al detalle" (acá). Esc baja un nivel por vez: detalle → cierra el modal; galería
+ * → vuelve al detalle de donde vino (la tarjeta que se estaba leyendo se conserva). La galería
+ * pausa su useDialogA11y mientras el visor está activo → cero trap anidado.
+ *
  * Las texturas por imán (recortadas a su silueta) se calculan UNA vez en el editor y se pasan acá;
  * las escenas 3D las usan directo y los compositores 2D se arman perezosamente al abrir su chip y
  * se cachean. Las vistas 3D se importan diferidas (WebGL, client-only). `sizeCm` (tamaño real de
@@ -116,6 +123,29 @@ export function scenesForKind(kind: SceneKind = "photo"): Scene[] {
   }
 }
 
+/** Vista del modal con kind="calendar" (ola 3): el detalle es la raíz, la galería va encima. */
+export type CalendarModalView = "detail" | "gallery";
+
+/**
+ * Vista INICIAL del modal (ola 3 — "detalle primero, espacio después"): el calendario abre DE
+ * UNA en el visor de detalle tarjeta-a-tarjeta; los demás productos abren en la galería de
+ * escenas, como siempre. Sin tarjetas no hay detalle que mostrar → galería.
+ */
+export function initialModalView(kind: SceneKind, cardCount: number): CalendarModalView {
+  return kind === "calendar" && cardCount > 0 ? "detail" : "gallery";
+}
+
+/**
+ * Esc en la GALERÍA baja UN nivel: con calendario vuelve al detalle (de donde vino); con los
+ * demás productos cierra el modal. (Esc en el detalle cierra el modal — lo maneja el visor.)
+ */
+export function galleryEscapeAction(
+  kind: SceneKind,
+  cardCount: number,
+): "back-to-detail" | "close" {
+  return kind === "calendar" && cardCount > 0 ? "back-to-detail" : "close";
+}
+
 export function SceneGallery({
   magnets,
   cols,
@@ -146,17 +176,34 @@ export function SceneGallery({
     () => Object.fromEntries(ALL_SCENES.map((s) => [s, false])) as Record<Scene, boolean>,
   );
 
-  // Ola 2C — visor de detalle 1-a-1 de las tarjetas mes (solo kind="calendar"). null = cerrado.
-  const [focusIndex, setFocusIndex] = useState<number | null>(null);
-  // onClose ESTABLE (useCallback): si cambia de identidad en cada render, el useDialogA11y del
-  // visor se rearma y roba el foco al primer botón al navegar tarjetas con teclado.
-  const closeFocus = useCallback(() => setFocusIndex(null), []);
+  // Ola 3 — detalle PRIMERO del calendario: con kind="calendar" el modal abre en el visor
+  // tarjeta-a-tarjeta y la galería queda un nivel arriba ("Míralo en tu espacio"). focusIndex
+  // se conserva al ir y volver: la tarjeta que estabas leyendo sigue ahí al regresar.
+  const [focusIndex, setFocusIndex] = useState(0);
+  const [detailOpen, setDetailOpen] = useState(
+    () => initialModalView(kind, magnets.length) === "detail",
+  );
+  // Callbacks ESTABLES (useCallback): si cambian de identidad en cada render, los useDialogA11y
+  // se rearma y roban el foco al navegar tarjetas con teclado. El onClose del caller puede venir
+  // inline (identidad nueva por render) → se estabiliza vía ref.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+  const closeModal = useCallback(() => onCloseRef.current(), []);
+  const openGallery = useCallback(() => setDetailOpen(false), []);
+  const backToDetail = useCallback(() => setDetailOpen(true), []);
 
   // #15 — foco inicial + trap + Escape + retorno de foco (centraliza el effect de Escape previo).
   // Con el visor de detalle abierto, la galería PAUSA su a11y: Esc/trap/foco pasan al visor y
-  // al cerrarlo se retoma (Esc nunca cierra los dos niveles de golpe).
+  // al cerrarlo se retoma (Esc nunca cierra los dos niveles de golpe). Esc en la galería baja
+  // UN nivel: calendario → vuelve al detalle; demás productos → cierra el modal.
+  const onGalleryEscape = useCallback(() => {
+    if (galleryEscapeAction(kind, magnets.length) === "back-to-detail") backToDetail();
+    else closeModal();
+  }, [kind, magnets.length, backToDetail, closeModal]);
   const dialogRef = useRef<HTMLDivElement>(null);
-  useDialogA11y(dialogRef, { onClose, active: focusIndex === null });
+  useDialogA11y(dialogRef, { onClose: onGalleryEscape, active: !detailOpen });
 
   // Armar el compositor 2D de la escena activa (una sola vez por escena).
   useEffect(() => {
@@ -210,16 +257,16 @@ export function SceneGallery({
       <div className="flex items-center justify-between px-4 py-3 text-white sm:px-6">
         <span className="font-display text-lg font-bold">✨ Míralo en tu espacio</span>
         <div className="flex items-center gap-2">
-          {/* Ola 2C — detalle 1-a-1 del calendario: ver cada tarjeta de cerca, 1 → 12. */}
+          {/* Ola 3 — la galería es el nivel SUPERIOR del flujo del calendario: de acá se vuelve
+            al detalle tarjeta-a-tarjeta (la tarjeta que se estaba leyendo se conserva). */}
           {kind === "calendar" && magnets.length > 0 && (
             <button
               type="button"
-              onClick={() => setFocusIndex(0)}
-              aria-label="Ver cada tarjeta en detalle"
+              onClick={backToDetail}
               className="inline-flex h-10 items-center gap-1.5 rounded-full bg-white/15 px-4 text-sm font-bold text-white transition-colors hover:bg-white/25 focus:ring-2 focus:ring-white focus:outline-none"
             >
               <ZoomIn className="h-4 w-4" aria-hidden />
-              <span>Ver en detalle</span>
+              <span>Volver al detalle</span>
             </button>
           )}
           <button
@@ -312,13 +359,16 @@ export function SceneGallery({
         </p>
       </div>
 
-      {/* Ola 2C — visor de detalle 1-a-1 (overlay dentro del modal; Esc/volver regresa acá). */}
-      {kind === "calendar" && focusIndex !== null && (
+      {/* Ola 3 — visor de detalle 1-a-1 (overlay dentro del modal): es la vista INICIAL del
+        calendario; desde acá se sube a la galería con "Míralo en tu espacio" y se cierra todo
+        con Esc/X. La galería pausa su a11y mientras está activo. */}
+      {kind === "calendar" && detailOpen && magnets.length > 0 && (
         <CalendarCardFocus
           cards={magnets}
           index={focusIndex}
           onIndexChange={setFocusIndex}
-          onClose={closeFocus}
+          onClose={closeModal}
+          onOpenGallery={openGallery}
         />
       )}
     </div>

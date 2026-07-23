@@ -23,6 +23,18 @@
  *    del viewport (FitCamera dejaba el ángulo casi rasante en móvil vertical). Órbita libre en
  *    azimut y hasta bajo el horizonte para descubrir las caras traseras.
  *
+ * 2026-07-22 (ola 3 — Lucy: "no se ven igual ni el tamaño ni se evidencian las 2 caras de 1
+ * imán montado"):
+ *  - CARAS REALES del Estudio: las 2N texturas se agrupan en unidades (bookmarkFaceUnits: slot
+ *    par = cara A → FRENTE, impar = cara B → ATRÁS, vía FoldedStripMesh.backDataUrl). Al orbitar
+ *    detrás se ve la cara B con SU propio diseño, de pie.
+ *  - La CARA manda en tamaño y encuadre: cada lienzo del Estudio es UNA cara (600×200 → 6×2 cm ·
+ *    400×420 → 4×4.2 cm) y la cara 3D respeta su aspecto EXACTO (stripDimsForFace) → el diseño
+ *    se ve completo, con la orientación/encuadre que dejó el cliente (sin re-corte), y una cara
+ *    4×4.2 se ve claramente distinta de una 6×2.
+ *  - Cara trasera larga (4×4.2): se RECUESTÁ sobre la mesa detrás del libro (backLean de
+ *    separatorPlacement) en vez de atravesarla — como la cartulina flexible real.
+ *
  * Restricciones (idénticas a fridge/calendar 3D):
  *  - CSP estricta: CERO assets externos. Materiales/texturas procedurales en runtime.
  *  - Client-only (WebGL) → el caller lo importa con dynamic ssr:false.
@@ -36,64 +48,60 @@ import { useIsTouch } from "./use-is-touch";
 import { OrbitControls, RoundedBox, ContactShadows } from "@react-three/drei";
 import { FitCameraPolar } from "./fit-camera-polar";
 import { StudioEnvironment, StudioBackdrop } from "./studio-3d-environment";
-import { FoldedStripMesh, parseSizeCm } from "./magnet-3d";
+import { FoldedStripMesh } from "./magnet-3d";
 import { getPageEdgesTexture, getPagePrintTexture } from "./lib/procedural-textures";
 import {
   BLOCK_T,
   BOOK_FIT,
-  CM,
   COVER_OVERHANG,
   COVER_T,
   GUTTER_GAP,
+  MAX_BACK_LEAN,
   PAGE_D,
   PAGE_W,
   SEP_CORNER_RATIO,
   SEP_FOLD_ANGLE,
   SEP_R_FOLD,
   SEPARATOR_SLOTS,
+  bookmarkFaceUnits,
   camber,
   separatorPlacement,
+  stripDimsForFace,
 } from "./lib/book-geometry";
 import type { Magnet3D } from "./fridge-3d-view";
 
 const COVER_COLOR = "#8B5E3C"; // tapa de cuero/cartón cálido
 const SPINE_COLOR = "#7C5334";
 
-/** Dimensiones físicas de la tira desplegada (u de mundo) según sizeCm de la variante o aspecto. */
-function stripDims(m: Magnet3D, sizeCm: string | undefined): { stripW: number; stripL: number } {
-  const parsed = parseSizeCm(sizeCm);
-  if (parsed) {
-    return {
-      stripW: Math.min(parsed.wCm, parsed.hCm) * CM,
-      stripL: Math.max(parsed.wCm, parsed.hCm) * CM,
-    };
-  }
-  // Sin sizeCm: el separador rectangular (lienzo ~5:14) es 2×6 cm; el cuadrado (1:1) es 4×4.2 cm.
-  const tall = m.hRatio / m.wRatio >= 1.8;
-  return tall ? { stripW: 2 * CM, stripL: 6 * CM } : { stripW: 4 * CM, stripL: 4.2 * CM };
-}
-
 /**
  * 3 separadores doblados sobre el BORDE SUPERIOR de las páginas (z = −PAGE_D/2), repartidos a
  * lo ancho a distintas alturas (el camber eleva el borde hacia el lomo) y con giros naturales.
- * La colocación física (tilt, altura del pliegue, holguras) sale de separatorPlacement — la cara
- * frontal reposa sobre la hoja y la trasera cuelga libre detrás del canto del bloque.
+ * Ola 3: las texturas del Estudio se agrupan en UNIDADES (cara A al frente, cara B atrás) y cada
+ * cara conserva su aspecto real (6×2 vs 4×4.2 se ven distintas; el diseño no se re-corta).
+ * La colocación física (tilt, altura del pliegue, recosto de la trasera) sale de
+ * separatorPlacement — la cara frontal reposa sobre la hoja y la trasera cuelga libre o se
+ * recuesta sobre la mesa sin atravesarla.
  */
 function Separators({ items, sizeCm }: { items: Magnet3D[]; sizeCm?: string }) {
   const layout = useMemo(() => {
-    const at = (i: number) => items[((i % items.length) + items.length) % items.length]!;
+    const units = bookmarkFaceUnits(items);
+    const at = (i: number) => units[((i % units.length) + units.length) % units.length]!;
     return SEPARATOR_SLOTS.map(({ x, yaw }, i) => {
-      const m = at(i);
-      const { stripW, stripL } = stripDims(m, sizeCm);
+      const unit = at(i);
+      const { stripW, stripL } = stripDimsForFace(unit.front, sizeCm);
       const p = separatorPlacement(x, stripL);
-      return { m, stripW, stripL, x, yaw, p, i };
+      return { unit, stripW, stripL, x, yaw, p, i };
     })
-      .filter(({ p }) => p.backClearance > 0.015) // nunca atravesar la mesa
-      .map(({ m, stripW, stripL, x, yaw, p, i }) => ({
+      .filter(
+        // Cuelga libre, o recostada dentro del límite — nunca atravesar la mesa.
+        ({ p }) => p.backClearance > 0.015 || p.backLean <= MAX_BACK_LEAN,
+      )
+      .map(({ unit, stripW, stripL, x, yaw, p, i }) => ({
         key: i,
-        m,
+        unit,
         stripW,
         stripL,
+        backLean: p.backClearance > 0.015 ? 0 : p.backLean,
         position: [x, p.crestY, p.crestZ] as [number, number, number],
         rotation: [p.tilt, yaw, 0] as [number, number, number],
       }));
@@ -101,17 +109,19 @@ function Separators({ items, sizeCm }: { items: Magnet3D[]; sizeCm?: string }) {
 
   return (
     <>
-      {layout.map(({ key, m, stripW, stripL, position, rotation }) => (
+      {layout.map(({ key, unit, stripW, stripL, backLean, position, rotation }) => (
         <group key={key} position={position} rotation={rotation}>
           <FoldedStripMesh
-            dataUrl={m.dataUrl}
-            wRatio={m.wRatio}
-            hRatio={m.hRatio}
+            dataUrl={unit.front.dataUrl}
+            backDataUrl={unit.back.dataUrl}
+            wRatio={unit.front.wRatio}
+            hRatio={unit.front.hRatio}
             stripW={stripW}
             stripL={stripL}
             foldAngle={SEP_FOLD_ANGLE}
             rFold={SEP_R_FOLD}
             cornerRadiusRatio={SEP_CORNER_RATIO}
+            backLean={backLean}
           />
         </group>
       ))}

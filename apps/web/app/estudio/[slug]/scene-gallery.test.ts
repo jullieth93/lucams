@@ -10,7 +10,7 @@ vi.mock("next/dynamic", () => ({
   default: () => () => null,
 }));
 
-import { scenesForKind } from "./scene-gallery";
+import { galleryEscapeAction, initialModalView, scenesForKind } from "./scene-gallery";
 
 describe("scenesForKind", () => {
   it("photo (default): la galería FOTO4 completa, nevera primero", () => {
@@ -40,5 +40,32 @@ describe("scenesForKind", () => {
       expect(scenes.length).toBeGreaterThan(0);
       expect(new Set(scenes).size).toBe(scenes.length);
     }
+  });
+});
+
+describe("flujo detalle-first del calendario (ola 3 — Lucy: detalle primero, espacio después)", () => {
+  it("calendar CON tarjetas abre DE UNA en el detalle (no en la galería)", () => {
+    expect(initialModalView("calendar", 12)).toBe("detail");
+  });
+
+  it("calendar SIN tarjetas no tiene detalle que mostrar → galería", () => {
+    expect(initialModalView("calendar", 0)).toBe("gallery");
+  });
+
+  it("los demás productos abren en la galería, como siempre", () => {
+    expect(initialModalView("photo", 6)).toBe("gallery");
+    expect(initialModalView("letters", 27)).toBe("gallery");
+    expect(initialModalView("bookmark", 4)).toBe("gallery");
+  });
+
+  it("Esc en la galería del calendario vuelve UN nivel: al detalle de donde vino", () => {
+    expect(galleryEscapeAction("calendar", 12)).toBe("back-to-detail");
+  });
+
+  it("Esc en la galería de los demás productos cierra el modal", () => {
+    expect(galleryEscapeAction("photo", 6)).toBe("close");
+    expect(galleryEscapeAction("letters", 27)).toBe("close");
+    expect(galleryEscapeAction("bookmark", 4)).toBe("close");
+    expect(galleryEscapeAction("calendar", 0)).toBe("close");
   });
 });
