@@ -13,6 +13,23 @@
 
 ## Resumen actual
 
+**✅ ETAPA 1 EN VIVO — OLA 5 DESPLEGADA + OPTIMIZACIÓN DE TOKENS (2026-07-23).** Quinta ronda de feedback de Lucy + ajuste de consumo de tokens en CLI y repo.
+
+- **Estudio/producto:** calendario con **preview de tarjeta compuesta en vivo** por slot (foto + ENE 2027 + festivos, fuentes de marca reales); polaroid Instagram **blanco/negro con auto-contraste** de textos; texto de la Clásica **opcional** (placeholder guía que nunca se imprime); cuadrados **sin borde = foto a sangre / con borde = tarjeta de color**; tiras como **una pieza continua**; separadores con **1 plantilla por forma**; **depuración de plantillas** (7 archivadas, 2 reasignadas — cada producto solo ve las suyas); uploads con **formatos y resolución mínima** visibles; **área de Estudio unificada** (sin desbordes); links de compartir siempre canónicos (`lib/public-url.ts`); botón **"Actualizar caché de contenido"** en admin + nota anti-staleness en scripts CMS.
+- **3D:** cara B de separadores con el diseño REAL (bug UV + flip + luz trasera), libro más plano y separador más erguido (14°), fichas TILE_DEPTH 0.015, fichas del nombre redondeadas (buildLetterTileTextures compartido).
+- **Tokens:** `~/.kimi-code/config.toml` con `thinking.keep="off"`, `reserved_context_size=80000`, `image.read_byte_budget=128KB` (validado con `kimi doctor`, backup fechado); `CLAUDE.md` compactado ~60% (de 13,5 KB a 5 KB conservando mandatos) — menos tokens por sesión en adelante.
+
+**Commits:** `9728c6c` (studio-2d) + `7c98abd` (studio-3d) + `215deaf` (CLAUDE.md) — 3 ramas alineadas, desplegado y verificado en vivo (health ok, calendario/polaroid/cuadrados/tiras correctas).
+
+**🟡 PENDIENTES Lucy:**
+1. /admin/fichas: ilustraciones A E I O U por set.
+2. /admin/productos: precios derivados (cuadrados 8×8/10×10, polaroid 1-10) y tiras a $19.000.
+3. **Validar en móvil real:** pinch de foto y scroll tras cargar foto (fixes de gestos ola 4) + "Actualizar caché de contenido" si alguna página legal muestra texto viejo (un click y listo).
+4. Vercel Pro antes del anuncio público.
+5. Opcionales reportados: gutter fino entre fotos de tiras (1 constante), mockups propios para plantillas reasignadas, `drawLetterTile` del nombre al 10% si se quiere paridad total con el memo 3D.
+
+---
+
 **✅ ETAPA 1 EN VIVO — OLA 4 DESPLEGADA + FLUJO GIT CERRADO (2026-07-23).** Cuarta ronda de feedback de Lucy, desplegada y con las 3 ramas alineadas (`develop` = `catalogo-whatsapp` = `production` tras el merge-back — la var `NEXT_PUBLIC_STORE_MODE=catalog` en Vercel gobierna el modo, así que `develop` despliega lo mismo; el cambio de Production Branch en el dashboard queda como higiene opcional).
 
 - **Storefront/datos:** lupa en el buscador (revert mascota); **titular fuera de todos los textos públicos** (24 CMS versions + settings + seeds + fallbacks + emails + consent checkout + placeholders → "Lucams_shop (persona natural)" + frase Ley 1480 a requerimiento); cuadrados 6.5×6.5/8×8/10×10 × marco × 1-6 (7.5×10 pausado, lo cubre polaroid); tiras a 6.5×20 real; dimensión Tamaño visible siempre en PDP (chip estático); plantilla tira "Clásica" aplicada en DB (390×400, gridGap 0, frame-card, sin texto).
