@@ -98,6 +98,9 @@ export const SlotStateSchema = z.object({
       offsetX: z.number().min(-20000).max(20000),
       offsetY: z.number().min(-20000).max(20000),
       scale: z.number().min(0.05).max(20),
+      // Ola 3c — rotación de la foto (pasos de 90° desde "Ajustar foto"). Útil cuando
+      // la orientación de la foto no calza la de la cara/ventana (separadores 6×2).
+      rotation: z.number().min(-360).max(360).optional(),
     })
     .optional(),
   // ADR-057 Fase A — texto editado por el usuario, por TextLayer.id (Polaroid, plantillas).

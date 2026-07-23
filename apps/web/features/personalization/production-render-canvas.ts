@@ -19,7 +19,7 @@ import type { SKRSContext2D } from "@napi-rs/canvas";
 import { RenderNeedsKonvaError, type LoadAssetBytes } from "./production-render";
 import { CALENDAR_PAGE, scalePhotoTransformToPage } from "./calendar-layout";
 import { drawCalendarPage } from "./calendar-draw";
-import { isDarkColor } from "./frame-palette";
+import { isDarkColor, frameBleedMargin, insetToMinMargin } from "./frame-palette";
 
 const PRODUCTION_SCALE = 3;
 const MAX_STAGE_DIM = 3000;
@@ -60,7 +60,7 @@ function ensureFonts(mod: CanvasMod): boolean {
 type Stage = { width: number; height: number };
 type AnyLayer = { id: string; type: string; [k: string]: unknown };
 type UnitTemplate = { version: 1; stage: Stage; layers: AnyLayer[] };
-type PhotoTransform = { offsetX: number; offsetY: number; scale: number };
+type PhotoTransform = { offsetX: number; offsetY: number; scale: number; rotation?: number };
 type TextOverride = {
   text?: string;
   fontFamily?: string;
@@ -151,6 +151,10 @@ async function renderSlotCanvas(
   /** Ola 3 — false cuando el producto NO admite texto (Fotoimanes Cuadrados): las
    *  capas de texto de la plantilla se omiten, igual que en el editor (WYSIWYG). */
   includeText: boolean = true,
+  /** Ola 3b — el producto ofrece marcos de color (frameOptions): con borderColor la
+   *  tarjeta completa se pinta del color y la foto va inserta (frame-card full-bleed,
+   *  "el fin del papel"), igual que en el editor. Sin él se conserva el stroke viejo. */
+  frameFullBleed: boolean = false,
 ): Promise<Buffer> {
   if (unit.stage.width > MAX_STAGE_DIM || unit.stage.height > MAX_STAGE_DIM) {
     throw new RenderNeedsKonvaError(
@@ -206,6 +210,11 @@ async function renderSlotCanvas(
   // tarjeta oscura, el texto por defecto sale claro (el override del cliente manda).
   const hasFrameCard = unit.layers.some((l) => l.type === "frame-card");
   const darkCard = hasFrameCard && typeof borderColor === "string" && isDarkColor(borderColor);
+  // Ola 3b — full-bleed: plantillas SIN frame-card de productos con frameOptions pintan
+  // la tarjeta entera de borderColor y la foto va inserta (misma regla que el editor).
+  const fullBleed =
+    frameFullBleed && typeof borderColor === "string" && !hasFrameCard && !useFullStage;
+  const bleedMargin = fullBleed ? frameBleedMargin(unit.stage) : 0;
 
   for (const layer of unit.layers) {
     if (layer.type === "frame-card") {
@@ -220,7 +229,12 @@ async function renderSlotCanvas(
       ctx.fill();
       ctx.restore();
     } else if (layer.type === "background") {
-      const bgColor = typeof layer.color === "string" ? layer.color : "#FFFFFF";
+      const bgColor =
+        fullBleed && borderColor
+          ? borderColor // Ola 3b — la tarjeta entera toma el color ("fin del papel")
+          : typeof layer.color === "string"
+            ? layer.color
+            : "#FFFFFF";
       if (useFullStage) {
         // #1 (FOTO1) — heart/circle pintan el fondo SOLO dentro de la silueta (troquel), transparente
         // afuera. Omitirlo por completo dejaba los huecos DENTRO del corazón (foto con zoom-out o pan)
@@ -252,7 +266,7 @@ async function renderSlotCanvas(
       const imgH = img.height;
       if (!imgW || !imgH) throw new RenderNeedsKonvaError(`foto inválida slot ${slot.slotIndex}`);
 
-      const ph = useFullStage
+      const phRaw = useFullStage
         ? { x: 0, y: 0, width: unit.stage.width, height: unit.stage.height, cornerRadius: 0 }
         : {
             x: Number(layer.x) || 0,
@@ -261,8 +275,21 @@ async function renderSlotCanvas(
             height: Number(layer.height) || unit.stage.height,
             cornerRadius: Number(layer.cornerRadius) || 0,
           };
+      // Ola 3b — full-bleed: la foto se inserta dejando la franja de color mínima
+      // (respeta márgenes mayores de la plantilla). Misma geometría que el editor.
+      const ph = fullBleed
+        ? { ...insetToMinMargin(phRaw, unit.stage, bleedMargin), cornerRadius: phRaw.cornerRadius }
+        : phRaw;
 
-      const coverScaleBase = Math.max(ph.width / imgW, ph.height / imgH);
+      // Ola 3c — rotación de la foto (pasos de 90° desde "Ajustar foto"): con 90/270
+      // el cover se calcula con las dimensiones INTERCAMBIADAS (la foto girada cubre
+      // la ventana igual que en el editor Konva). Pan y zoom no cambian de eje.
+      const rot = (((slot.photoTransform?.rotation ?? 0) % 360) + 360) % 360;
+      const swapDims = rot === 90 || rot === 270;
+      const srcW = swapDims ? imgH : imgW;
+      const srcH = swapDims ? imgW : imgH;
+
+      const coverScaleBase = Math.max(ph.width / srcW, ph.height / srcH);
       const effectiveScale = Math.max(0.5, Math.min(3, slot.photoTransform?.scale ?? 1));
       const finalScale = coverScaleBase * effectiveScale;
       const renderedW = imgW * finalScale;
@@ -286,7 +313,14 @@ async function renderSlotCanvas(
       // Centro de la imagen en coords del stage (idéntico a Konva ImagePlaceholder).
       const cx = ph.x + ph.width / 2 + offX;
       const cy = ph.y + ph.height / 2 + offY;
-      ctx.drawImage(img, cx - renderedW / 2, cy - renderedH / 2, renderedW, renderedH);
+      if (rot !== 0) {
+        // Rotación alrededor del centro (pan ya aplicado), igual que el nodo Konva.
+        ctx.translate(cx, cy);
+        ctx.rotate((rot * Math.PI) / 180);
+        ctx.drawImage(img, -renderedW / 2, -renderedH / 2, renderedW, renderedH);
+      } else {
+        ctx.drawImage(img, cx - renderedW / 2, cy - renderedH / 2, renderedW, renderedH);
+      }
       ctx.restore();
     } else if (layer.type === "asset") {
       // Marco (PNG) desde /public/templates.
@@ -329,7 +363,8 @@ async function renderSlotCanvas(
   // editor (Rect de stroke centrado en el borde de la ventana de foto, encima de todo). Heart/
   // circle no llevan marco (la silueta troquelada manda). Ola 3 — con frame-card TAMPOCO: la
   // tarjeta entera ya es el marco de color (dibujar el stroke encima duplicaría el borde).
-  if (borderColor && !useFullStage && !hasFrameCard) {
+  // Ola 3b — con full-bleed tampoco: el fondo ya es borderColor y la foto va inserta.
+  if (borderColor && !useFullStage && !hasFrameCard && !fullBleed) {
     const phLayer = unit.layers.find((l) => l.type === "image-placeholder");
     if (phLayer) {
       const ph = {
@@ -442,6 +477,8 @@ export async function renderProductionSlotsCanvas(opts: {
   borderColor?: string | null;
   /** Ola 3 — false omite las capas de texto (producto sin texto, WYSIWYG con el editor). */
   includeText?: boolean;
+  /** Ola 3b — producto con frameOptions: tarjeta full-bleed del color + foto inserta. */
+  frameFullBleed?: boolean;
 }): Promise<Buffer[]> {
   const mod = await loadCanvas(); // lazy: un binario faltante → NEEDS_KONVA (fallback), no crash.
   const out: Buffer[] = [];
@@ -456,6 +493,7 @@ export async function renderProductionSlotsCanvas(opts: {
         opts.loadAsset,
         opts.borderColor,
         opts.includeText ?? true,
+        opts.frameFullBleed ?? false,
       ),
     );
   }

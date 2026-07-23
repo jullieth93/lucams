@@ -62,6 +62,52 @@ export function isDarkColor(hex: string): boolean {
   return 0.299 * r + 0.587 * g + 0.114 * b < 0.5;
 }
 
+// ──────────────────────────────────────────────────────────────────────────
+// Ola 3b (Lucy 2026-07-22) — MARCO FULL-BLEED ("el fin del papel")
+//
+// Bug reportado: el marco de color se dibujaba como un STROKE alrededor de la foto
+// sobre tarjeta BLANCA — la captura de Lucy mostraba el borde negro alrededor de la
+// foto pero la tarjeta exterior seguía blanca. Referencia correcta (su imagen rosa):
+// TODA la tarjeta es del color elegido y la foto va inserta (el "marco" es la tarjeta
+// misma, como ya hacía la Polaroid Clásica con su capa frame-card).
+//
+// Para productos con frameOptions, cuando la plantilla NO trae frame-card, el editor
+// (Konva) y producción (production-render-canvas) pintan el fondo completo del stage
+// con borderColor e INSERTAN la foto garantizando una franja mínima de color. La franja
+// es RELATIVA al stage → el ancho proporcional se mantiene igual en 6.5, 8 o 10 cm
+// (el stage escala con el tamaño físico de la variante).
+// ──────────────────────────────────────────────────────────────────────────
+
+/** Ancho mínimo de la franja de color como fracción del lado menor del stage (4%). */
+export const FRAME_BLEED_MARGIN_RATIO = 0.04;
+
+/** Franja mínima de color (px del stage) para el marco full-bleed. */
+export function frameBleedMargin(stage: { width: number; height: number }): number {
+  return Math.max(6, Math.round(Math.min(stage.width, stage.height) * FRAME_BLEED_MARGIN_RATIO));
+}
+
+export type PhotoRect = { x: number; y: number; width: number; height: number };
+
+/**
+ * Inserta la ventana de foto para el marco full-bleed: garantiza una franja de color
+ * de al menos `margin` px en CADA lado, respetando los márgenes mayores que ya traiga
+ * la plantilla (ej. libre-photo-pack con 40px de aire conserva su margen; una ventana
+ * a sangre como foto-rectangular-simple se encoge hasta dejar la franja mínima).
+ * Si el resultado sería degenerado (ventana < 10px), devuelve la ventana intacta.
+ */
+export function insetToMinMargin(
+  ph: PhotoRect,
+  stage: { width: number; height: number },
+  margin: number,
+): PhotoRect {
+  const x = Math.max(ph.x, margin);
+  const y = Math.max(ph.y, margin);
+  const right = Math.min(ph.x + ph.width, stage.width - margin);
+  const bottom = Math.min(ph.y + ph.height, stage.height - margin);
+  if (right - x < 10 || bottom - y < 10) return ph;
+  return { x, y, width: right - x, height: bottom - y };
+}
+
 /**
  * Marco inicial del Estudio según la variante que venía elegida de la PDP (schema ya
  * mergeado). La dimensión ya no se muestra en la PDP, pero la variante sigue trayendo

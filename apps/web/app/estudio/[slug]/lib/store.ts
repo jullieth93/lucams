@@ -94,14 +94,25 @@ export type StudioStoreState = {
     override: import("../types").TextOverride | null,
   ) => void;
   /** M.3.b.UX.v6 — Set parcial del transform de la foto del slot.
-   *  - `transform = null` → reset al default (offsetX/Y=0, scale=1).
-   *  - `transform = { offsetX?, offsetY?, scale? }` → merge sobre el actual.
+   *  - `transform = null` → reset al default (offsetX/Y=0, scale=1, rotation=0).
+   *  - `transform = { offsetX?, offsetY?, scale?, rotation? }` → merge sobre el actual.
    *  El editor aplica el overscan default 1.15× internamente, scale=1 acá
    *  significa "cover × 1.15" (default). scale > 1 → cliente hace zoom in. */
   setSlotPhotoTransform: (
     slotIndex: number,
-    transform: { offsetX?: number; offsetY?: number; scale?: number } | null,
+    transform: { offsetX?: number; offsetY?: number; scale?: number; rotation?: number } | null,
   ) => void;
+  /** Ola 3c — escribe el override de un text layer en TODOS los slots del pack
+   *  (el "Tu mensaje" de la sidebar es pack-level: la misma frase en cada imán).
+   *  `override === null` limpia el override en todos (vuelve al texto base). */
+  setTextOverrideAllSlots: (
+    textLayerId: string,
+    override: import("../types").TextOverride | null,
+  ) => void;
+  /** Ola 3c — reescribe la geometría del image-placeholder del unitTemplate
+   *  (toggle "sin borde" de la Polaroid Instagram: la foto crece a sangre bajo
+   *  el chrome; producción la dibuja igual porque viaja en canvasData → WYSIWYG). */
+  setImagePlaceholderRect: (rect: { x: number; y: number; width: number; height: number }) => void;
   selectSlot: (slotIndex: number | null) => void;
   setSelectedTemplate: (templateId: string | null) => void;
   applyTemplate: (template: StudioTemplate) => void;
@@ -242,9 +253,45 @@ export function createStudioStore() {
               offsetX: transform.offsetX ?? current.offsetX,
               offsetY: transform.offsetY ?? current.offsetY,
               scale: transform.scale ?? current.scale,
+              rotation: transform.rotation ?? current.rotation,
             },
           };
         }),
+      };
+      get().setCanvasData(next);
+    },
+
+    setTextOverrideAllSlots: (textLayerId, override) => {
+      const { canvasData } = get();
+      if (!canvasData) return;
+      const next: CanvasDataV2 = {
+        ...canvasData,
+        slots: canvasData.slots.map((s) => {
+          const nextOverrides = { ...(s.textOverrides ?? {}) };
+          if (override === null) {
+            delete nextOverrides[textLayerId];
+          } else {
+            nextOverrides[textLayerId] = override;
+          }
+          const finalOverrides =
+            Object.keys(nextOverrides).length === 0 ? undefined : nextOverrides;
+          return { ...s, textOverrides: finalOverrides };
+        }),
+      };
+      get().setCanvasData(next);
+    },
+
+    setImagePlaceholderRect: (rect) => {
+      const { canvasData } = get();
+      if (!canvasData) return;
+      const next: CanvasDataV2 = {
+        ...canvasData,
+        unitTemplate: {
+          ...canvasData.unitTemplate,
+          layers: canvasData.unitTemplate.layers.map((l) =>
+            l.type === "image-placeholder" ? { ...l, ...rect } : l,
+          ),
+        },
       };
       get().setCanvasData(next);
     },
@@ -337,6 +384,9 @@ export function createStudioStore() {
                 typeof (template.canvasData as { gridCols?: unknown }).gridCols === "number"
                   ? (template.canvasData as { gridCols?: number }).gridCols
                   : undefined,
+                typeof (template.canvasData as { gridGap?: unknown }).gridGap === "number"
+                  ? (template.canvasData as { gridGap?: number }).gridGap
+                  : undefined,
               ),
       };
       get().setCanvasData(next);
@@ -421,6 +471,7 @@ function recalcGridLayout(
   slotCount: number,
   stage: { width: number; height: number },
   forcedCols?: number,
+  forcedGap?: number,
 ) {
   const presets: Record<number, { cols: number; rows: number }> = {
     1: { cols: 1, rows: 1 },
@@ -445,7 +496,18 @@ function recalcGridLayout(
     cols = Math.min(forcedCols, slotCount);
     rows = Math.ceil(slotCount / cols);
   }
-  const gap = slotCount <= 4 ? 24 : slotCount <= 9 ? 16 : slotCount <= 12 ? 12 : 8;
+  // Ola 3c — la plantilla puede fijar el gap (tira photobooth: gridGap=0 → las
+  // celdas se tocan y la tira se lee como UNA pieza continua de color).
+  const gap =
+    typeof forcedGap === "number" && forcedGap >= 0
+      ? forcedGap
+      : slotCount <= 4
+        ? 24
+        : slotCount <= 9
+          ? 16
+          : slotCount <= 12
+            ? 12
+            : 8;
   return { cols, rows, gap };
 }
 

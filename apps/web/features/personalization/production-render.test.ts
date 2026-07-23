@@ -126,6 +126,39 @@ describe("renderProductionSlots — guards CONSERVADORES → NEEDS_KONVA (fallba
     );
   });
 
+  it("foto ROTADA (photoTransform.rotation, Ola 3c) → THROW (la dibuja el tier canvas)", async () => {
+    // sharp no aplica la rotación del encuadre → divergiría del preview; el service
+    // enruta al tier canvas (renderProductionSlotsCanvas), que replica la rotación de Konva.
+    await expectNeedsKonva(
+      renderProductionSlots({
+        unitTemplate: photoOnlyUnit,
+        slots: [
+          {
+            slotIndex: 0,
+            assetId: "a0",
+            photoTransform: { offsetX: 0, offsetY: 0, scale: 1, rotation: 90 },
+          },
+        ],
+        shape: "rectangle",
+        loadAsset: async () => fakePhoto(1000, 1000),
+      }),
+    );
+    // rotation 0 (o múltiplo de 360) NO dispara el guard → sigue en sharp.
+    const bufs = await renderProductionSlots({
+      unitTemplate: photoOnlyUnit,
+      slots: [
+        {
+          slotIndex: 0,
+          assetId: "a0",
+          photoTransform: { offsetX: 0, offsetY: 0, scale: 1, rotation: 0 },
+        },
+      ],
+      shape: "rectangle",
+      loadAsset: async () => fakePhoto(1000, 1000),
+    });
+    expect(bufs).toHaveLength(1);
+  });
+
   it("placeholder con cornerRadius → THROW", async () => {
     const unit = {
       ...photoOnlyUnit,

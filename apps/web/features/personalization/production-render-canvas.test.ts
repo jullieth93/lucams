@@ -482,3 +482,172 @@ describe("renderProductionSlotsCanvas — Ola 3 (frame-card Polaroid Clásica + 
     expect(await hasPixel(withText[0], textZone, nearWhite)).toBe(true);
   });
 });
+
+describe("renderProductionSlotsCanvas — Ola 3b (marco FULL-BLEED, 'fin del papel')", () => {
+  // Bug Lucy 2026-07-22: con marco de color la tarjeta exterior quedaba BLANCA (solo
+  // un stroke alrededor de la foto). Referencia correcta: TODA la tarjeta del color.
+  // Stage chico (300×400) → franja mínima = max(6, 4% de 300) = 12px.
+  const slotOk2 = {
+    slotIndex: 0,
+    assetId: "a0",
+    photoTransform: { offsetX: 0, offsetY: 0, scale: 1 },
+  };
+  const PINK: [number, number, number] = [0xe8, 0x5b, 0x9f]; // #E85B9F (rosa paleta)
+  const BLUE: [number, number, number] = [0x3a, 0xa0, 0xff]; // fakePhoto
+
+  it("plantilla con aire (foto inserta 40px): el margen exterior se pinta del COLOR (antes: blanco)", async () => {
+    const unit = {
+      version: 1 as const,
+      stage: { width: 300, height: 400 },
+      layers: [
+        { id: "bg", type: "background", color: "#FFFFFF" },
+        { id: "ph", type: "image-placeholder", x: 40, y: 40, width: 220, height: 320 },
+      ],
+    };
+    const bufs = await renderProductionSlotsCanvas({
+      unitTemplate: unit,
+      slots: [slotOk2],
+      shape: "rectangle",
+      loadAsset: async () => fakePhoto(600, 600),
+      borderColor: "#E85B9F",
+      frameFullBleed: true,
+    });
+    // Zona del margen (20,20) — FUERA de la ventana de foto → color de la tarjeta.
+    const [r1, g1, b1, a1] = await rgbaAt(bufs[0], 20 * 3, 20 * 3);
+    expect(a1).toBeGreaterThan(200);
+    expect([r1, g1, b1]).toEqual(PINK);
+    // El margen de la plantilla (40 > 12) se respeta: dentro de la ventana → la foto.
+    const [r2, g2, b2] = await rgbaAt(bufs[0], 150 * 3, 200 * 3);
+    expect([r2, g2, b2]).toEqual(BLUE);
+  });
+
+  it("misma plantilla SIN frameFullBleed (legado): el margen exterior sigue BLANCO (control del bug)", async () => {
+    const unit = {
+      version: 1 as const,
+      stage: { width: 300, height: 400 },
+      layers: [
+        { id: "bg", type: "background", color: "#FFFFFF" },
+        { id: "ph", type: "image-placeholder", x: 40, y: 40, width: 220, height: 320 },
+      ],
+    };
+    const bufs = await renderProductionSlotsCanvas({
+      unitTemplate: unit,
+      slots: [slotOk2],
+      shape: "rectangle",
+      loadAsset: async () => fakePhoto(600, 600),
+      borderColor: "#E85B9F",
+      frameFullBleed: false,
+    });
+    const [r, g, b, a] = await rgbaAt(bufs[0], 20 * 3, 20 * 3);
+    expect(a).toBeGreaterThan(200);
+    expect([r, g, b]).toEqual([255, 255, 255]); // el bug: blanco fuera del stroke
+  });
+
+  it("plantilla a sangre (foto 0,0): la foto se INSERTA dejando la franja mínima de color (12px)", async () => {
+    const unit = {
+      version: 1 as const,
+      stage: { width: 300, height: 400 },
+      layers: [
+        { id: "bg", type: "background", color: "#FFFFFF" },
+        { id: "ph", type: "image-placeholder", x: 0, y: 0, width: 300, height: 400 },
+      ],
+    };
+    const bufs = await renderProductionSlotsCanvas({
+      unitTemplate: unit,
+      slots: [slotOk2],
+      shape: "rectangle",
+      loadAsset: async () => fakePhoto(600, 800),
+      borderColor: "#E85B9F",
+      frameFullBleed: true,
+    });
+    // Franja: (6,6) dentro del margen de 12px → color.
+    expect((await rgbaAt(bufs[0], 6 * 3, 6 * 3)).slice(0, 3)).toEqual(PINK);
+    // (20,20) ya dentro de la foto insertada (ventana 12..288 × 12..388) → foto.
+    expect((await rgbaAt(bufs[0], 20 * 3, 20 * 3)).slice(0, 3)).toEqual(BLUE);
+    // Borde inferior-derecho también es color ("el fin del papel").
+    expect((await rgbaAt(bufs[0], 294 * 3, 394 * 3)).slice(0, 3)).toEqual(PINK);
+  });
+
+  it("sin borderColor no hay full-bleed aunque el producto lo pida (fondo de plantilla)", async () => {
+    const unit = {
+      version: 1 as const,
+      stage: { width: 300, height: 400 },
+      layers: [
+        { id: "bg", type: "background", color: "#FFF8F0" },
+        { id: "ph", type: "image-placeholder", x: 0, y: 0, width: 300, height: 400 },
+      ],
+    };
+    const bufs = await renderProductionSlotsCanvas({
+      unitTemplate: unit,
+      slots: [slotOk2],
+      shape: "rectangle",
+      loadAsset: async () => fakePhoto(600, 800),
+      borderColor: null,
+      frameFullBleed: true,
+    });
+    // Ventana intacta (a sangre) → esquina = foto, no fondo ni franja.
+    expect((await rgbaAt(bufs[0], 2 * 3, 2 * 3)).slice(0, 3)).toEqual(BLUE);
+  });
+});
+
+describe("renderProductionSlotsCanvas — Ola 3c (rotación de la foto)", () => {
+  // Foto 100×50: mitad izquierda ROJA, mitad derecha AZUL. Ventana 100×100.
+  function halfPhoto(): Buffer {
+    const c = createCanvas(100, 50);
+    const ctx = c.getContext("2d");
+    ctx.fillStyle = "#FF0000";
+    ctx.fillRect(0, 0, 50, 50);
+    ctx.fillStyle = "#0000FF";
+    ctx.fillRect(50, 0, 50, 50);
+    return c.toBuffer("image/png");
+  }
+  const rotUnit = {
+    version: 1 as const,
+    stage: { width: 100, height: 100 },
+    layers: [
+      { id: "bg", type: "background", color: "#FFFFFF" },
+      { id: "ph", type: "image-placeholder", x: 0, y: 0, width: 100, height: 100 },
+    ],
+  };
+
+  it("rotación 90°: el cover usa las dimensiones intercambiadas y la foto gira (rojo arriba)", async () => {
+    const bufs = await renderProductionSlotsCanvas({
+      unitTemplate: rotUnit,
+      slots: [
+        {
+          slotIndex: 0,
+          assetId: "a0",
+          photoTransform: { offsetX: 0, offsetY: 0, scale: 1, rotation: 90 },
+        },
+      ],
+      shape: "rectangle",
+      loadAsset: async () => halfPhoto(),
+    });
+    // Konva rotation +90 = horario: la mitad izquierda (roja) queda ARRIBA.
+    const top = await rgbaAt(bufs[0], 50 * 3, 10 * 3);
+    expect(top[0]).toBeGreaterThan(200); // rojo
+    expect(top[2]).toBeLessThan(60);
+    const bottom = await rgbaAt(bufs[0], 50 * 3, 90 * 3);
+    expect(bottom[2]).toBeGreaterThan(200); // azul
+    expect(bottom[0]).toBeLessThan(60);
+  });
+
+  it("rotación 0 (control): mitad roja a la IZQUIERDA sin intercambio de dims", async () => {
+    const bufs = await renderProductionSlotsCanvas({
+      unitTemplate: rotUnit,
+      slots: [
+        {
+          slotIndex: 0,
+          assetId: "a0",
+          photoTransform: { offsetX: 0, offsetY: 0, scale: 1, rotation: 0 },
+        },
+      ],
+      shape: "rectangle",
+      loadAsset: async () => halfPhoto(),
+    });
+    const left = await rgbaAt(bufs[0], 10 * 3, 50 * 3);
+    expect(left[0]).toBeGreaterThan(200); // rojo
+    const right = await rgbaAt(bufs[0], 90 * 3, 50 * 3);
+    expect(right[2]).toBeGreaterThan(200); // azul
+  });
+});

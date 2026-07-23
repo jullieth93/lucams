@@ -106,10 +106,13 @@ apps/web/app/estudio/[slug]/
 ├── studio-canvas-grid.tsx             # Grid responsive de N StudioSlots
 ├── studio-slot.tsx                    # 1 mini-canvas Konva por imán
 ├── studio-sidebar.tsx                 # Mis fotos + Plantillas + Auto-fill
+├── studio-frame-picker.tsx            # Marco: color LIBRE + atajos marca + "Sin marco" (Ola 3b)
+├── studio-message-field.tsx           # "Tu mensaje" pack-level en sidebar (Ola 3c)
+├── studio-ig-border-toggle.tsx        # Polaroid Instagram: foto con/sin borde (Ola 3c)
 ├── studio-toolbar.tsx                 # Header con auto-save + progress + ¡Listo!
 ├── studio-realism-overlay.tsx         # Bleed/safe area/grosor/sombra Konva layers
 ├── studio-asset-picker-modal.tsx      # Modal tap-on-slot picker
-├── studio-photo-adjust-modal.tsx      # Brightness/contrast/sat/crop/filters
+├── studio-photo-adjust-modal.tsx      # Encuadre (zoom/pan/rotar) + filtros
 ├── studio-size-modal.tsx              # "Ver tamaño real" con calibración
 ├── types.ts                           # Types V2 client-safe
 └── lib/
@@ -135,6 +138,29 @@ packages/db/scripts/
     ├── photo-pack-corazon-rosa.svg.ts
     └── ... (28 más)
 ```
+
+### Ola 3b/3c (Lucy 2026-07-22) — marco full-bleed, tira, rotación, texto, táctil
+
+- **Marco full-bleed ("fin del papel")**: en productos con `frameOptions`, elegir color
+  pinta la TARJETA ENTERA de `borderColor` y la foto va inserta con franja mínima
+  relativa (4% del lado menor del stage → proporcional en 6.5/8/10 cm). Misma regla en
+  el editor (Konva) y en producción (`production-render-canvas`; `service.ts` →
+  `frameFullBleed`). Helpers puros en `frame-palette.ts` (`frameBleedMargin`,
+  `insetToMinMargin`).
+- **Tira photobooth 6.5×20**: plantilla `photo-strip-3-fotos` = celda 390×400 con
+  `frame-card` + foto casi a sangre; `gridCols: 1` + `gridGap: 0` (la plantilla puede
+  fijar columnas y gap) → 3 celdas pegadas = tira continua. En modo tira la barra de
+  acciones flota sobre la foto (`overlayActions`).
+- **Rotación de foto**: `photoTransform.rotation` (pasos de 90°) desde "Ajustar foto"
+  (modal desktop y editor táctil a pantalla completa). Konva + tier canvas la
+  dibujan; el tier sharp la rechaza (NEEDS_KONVA). Apagada en calendarios.
+- **Texto Polaroid**: vía principal = campo "Tu mensaje" en sidebar (pack-level,
+  escribe todos los slots); tap en el texto del canvas = atajo al modal (guard
+  anti doble-panel táctil en `studio-slot.tsx`).
+- **Móvil**: slots NO interactivos de la grilla con `touch-action: pan-y` y capas
+  Konva con `preventDefault={false}` → el scroll de página funciona sobre las fotos;
+  el pinch corta cualquier drag de Konva activo (el gesto manda) en el editor a
+  pantalla completa.
 
 ## Wireframes ASCII
 

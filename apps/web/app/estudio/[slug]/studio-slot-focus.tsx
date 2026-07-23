@@ -15,7 +15,7 @@
 
 import { useStore } from "zustand";
 import type { StoreApi } from "zustand";
-import { RotateCcw, Check } from "lucide-react";
+import { RotateCcw, RotateCw, Check } from "lucide-react";
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { StudioSlot } from "./studio-slot";
@@ -40,7 +40,9 @@ export function StudioSlotFocus({
   cornerRadiusPx,
   sizeCm,
   allowFilters = true,
+  allowRotate = true,
   allowText = false,
+  frameFullBleed = false,
   onClose,
 }: {
   store: StoreApi<StudioStoreState>;
@@ -50,9 +52,14 @@ export function StudioSlotFocus({
   cornerRadiusPx?: number;
   sizeCm?: string;
   allowFilters?: boolean;
+  /** Ola 3c — muestra el botón Rotar 90° (enderezar foto vs cara/ventana). Se apaga
+   *  en calendarios: el compositor de página no replica la rotación (WYSIWYG). */
+  allowRotate?: boolean;
   /** Ola 3 — false oculta las capas de texto también en el editor a pantalla
    *  completa (WYSIWYG con la grilla y con producción). Default false. */
   allowText?: boolean;
+  /** Ola 3b — tarjeta full-bleed del color del marco (WYSIWYG con la grilla). */
+  frameFullBleed?: boolean;
   onClose: () => void;
 }) {
   // Selector del slot: devuelve la referencia del objeto (estable salvo que cambie su transform) →
@@ -113,6 +120,7 @@ export function StudioSlotFocus({
             finish={finish}
             cornerRadiusPx={cornerRadiusPx}
             borderColor={borderColor}
+            frameFullBleed={frameFullBleed}
             allowText={allowText}
             onClick={() => {}}
             onClear={() => {}}
@@ -126,16 +134,38 @@ export function StudioSlotFocus({
         </div>
 
         <div className="border-brand-purple/10 space-y-3 border-t px-4 py-3">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={() => slotIndex !== null && setSlotPhotoTransform(slotIndex, null)}
-            className="border-brand-purple/30 text-brand-purple-dark hover:bg-brand-purple/5 gap-1.5"
-          >
-            <RotateCcw className="h-3.5 w-3.5" />
-            Centrar y resetear zoom
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => slotIndex !== null && setSlotPhotoTransform(slotIndex, null)}
+              className="border-brand-purple/30 text-brand-purple-dark hover:bg-brand-purple/5 gap-1.5"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+              Centrar y resetear zoom
+            </Button>
+            {/* Ola 3c — Rotar 90°: endereza fotos cuya orientación no calza la
+                ventana (foto apaisada en cara vertical, retrato en separador 6×2). */}
+            {allowRotate && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                aria-label="Rotar la foto 90 grados"
+                onClick={() =>
+                  slotIndex !== null &&
+                  setSlotPhotoTransform(slotIndex, {
+                    rotation: ((slot.photoTransform?.rotation ?? 0) + 90) % 360,
+                  })
+                }
+                className="border-brand-purple/30 text-brand-purple-dark hover:bg-brand-purple/5 gap-1.5"
+              >
+                <RotateCw className="h-3.5 w-3.5" />
+                Rotar
+              </Button>
+            )}
+          </div>
 
           {allowFilters && slot.assetUrl && (
             <div>

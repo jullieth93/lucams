@@ -182,6 +182,12 @@ async function tryServerRenderProduction(
   const includeText = productSchema
     ? parsePhotoProductConfig(productSchema).allowText === true
     : true;
+  // Ola 3b (Lucy 2026-07-22) — ¿el producto ofrece marcos de color? Con frameOptions +
+  // borderColor la tarjeta se imprime ENTERA del color y la foto va inserta ("fin del
+  // papel"), no un stroke sobre tarjeta blanca. Misma regla que el editor (WYSIWYG).
+  const frameFullBleed = productSchema
+    ? (parsePhotoProductConfig(productSchema).frameOptions?.length ?? 0) > 0
+    : false;
   const args = {
     unitTemplate: canvasData.unitTemplate as never,
     slots: canvasData.slots as never,
@@ -189,6 +195,7 @@ async function tryServerRenderProduction(
     loadAsset,
     borderColor,
     includeText,
+    frameFullBleed,
   };
 
   // Tier 1 — sharp (foto pura, rápido, sin deps nativas). Solo SIN marco.

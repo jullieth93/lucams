@@ -1,0 +1,19 @@
+<svg width="390" height="1200" viewBox="0 0 390 1200" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!--
+    Mockup "Tira Clásica" (Ola 3c, Lucy 2026-07-22) — tira photobooth 6.5×20 cm:
+    3 fotos apiladas casi a sangre sobre fondo de color (margen fino uniforme).
+    El color real lo elige el cliente en el Estudio (frame-card + borderColor);
+    acá se muestra lavanda de marca como ejemplo.
+  -->
+  <rect width="390" height="1200" fill="#7C6AAD"/>
+  <!-- 3 celdas de foto (placeholder pastel) con margen fino de color -->
+  <rect x="12" y="12" width="366" height="376" fill="#F4ECFF"/>
+  <rect x="12" y="412" width="366" height="376" fill="#FFE5EC"/>
+  <rect x="12" y="812" width="366" height="376" fill="#DDF5F3"/>
+  <!-- Corazóncito de marca centrado en cada celda -->
+  <g fill="#7C6AAD" opacity="0.35">
+    <path d="M195 230c-14-11-31-23-31-39 0-9 7-15 15-15 7 0 11 3 16 10 5-7 9-10 16-10 8 0 15 6 15 15 0 16-17 28-31 39z"/>
+    <path d="M195 630c-14-11-31-23-31-39 0-9 7-15 15-15 7 0 11 3 16 10 5-7 9-10 16-10 8 0 15 6 15 15 0 16-17 28-31 39z"/>
+    <path d="M195 1030c-14-11-31-23-31-39 0-9 7-15 15-15 7 0 11 3 16 10 5-7 9-10 16-10 8 0 15 6 15 15 0 16-17 28-31 39z"/>
+  </g>
+</svg>

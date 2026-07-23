@@ -52,7 +52,11 @@ import type {
   SlotState,
   StudioAsset,
 } from "./types";
-import { isDarkColor } from "@/features/personalization/frame-palette";
+import {
+  isDarkColor,
+  frameBleedMargin,
+  insetToMinMargin,
+} from "@/features/personalization/frame-palette";
 import { RealismShadowLayer, RealismOverlayLayer } from "./studio-realism-overlay";
 import { getFilterParams } from "./lib/photo-filters";
 import { analyzeSmartCrop, checkPhotoQuality } from "./lib/smart-crop";
@@ -90,6 +94,19 @@ type StudioSlotProps = {
   showRealismGuides?: boolean;
   /** Ola 2A — color del marco alrededor de la foto (hex #RRGGBB). null = sin marco. */
   borderColor?: string | null;
+  /**
+   * Ola 3b (Lucy 2026-07-22) — el producto ofrece marcos de color (frameOptions).
+   * Con borderColor la tarjeta completa se pinta del color y la foto va INSERTA
+   * (frame-card full-bleed, "el color llega al fin del papel"), en vez del stroke
+   * sobre tarjeta blanca de Ola 2A. Producción replica la misma regla (WYSIWYG).
+   */
+  frameFullBleed?: boolean;
+  /**
+   * Ola 3c — modo TIRA (gridGap=0): las celdas se tocan para leerse como UNA pieza
+   * continua; la barra de acciones flota SOBRE la foto en vez de reservar una franja
+   * blanca entre celdas (rompería la continuidad de la tira).
+   */
+  overlayActions?: boolean;
   /**
    * Ola 3 — ¿el producto admite texto editable? Default false (el texto es de la
    * Polaroid; Fotoimanes Cuadrados y separadores no llevan). Cuando es false, las
@@ -134,6 +151,8 @@ function StudioSlotImpl({
   cornerRadiusPx,
   showRealismGuides,
   borderColor,
+  frameFullBleed = false,
+  overlayActions = false,
   allowText = false,
   onClick,
   onClear,
@@ -158,6 +177,20 @@ function StudioSlotImpl({
   // capturaban el ref. State es seguro y el extra rerender por drag start/end
   // es aceptable (1 vez por drag).
   const [wasDraggingPhoto, setWasDraggingPhoto] = useState(false);
+  // Ola 3c (Lucy 2026-07-22) — guard del doble disparo táctil del TEXTO editable:
+  // el tap sobre el texto abre "Editar texto" vía Konva onTap, pero el browser
+  // sintetiza ADEMÁS un click que burbujea al wrapper → abría el picker/foco y
+  // cerraba el modal de texto al instante ("no deja modificar texto"). Marcamos
+  // el tap y el click sintético subsiguiente (<400ms) se ignora. useState (no ref)
+  // por la regla `react-hooks/refs` (mismo patrón que wasDraggingPhoto arriba).
+  const [textEditTapAt, setTextEditTapAt] = useState(0);
+  const handleTextEdit = useCallback(
+    (textLayerId: string) => {
+      setTextEditTapAt(Date.now());
+      onTextEdit?.(textLayerId);
+    },
+    [onTextEdit],
+  );
 
   // M.3.b.UX.v13 (Lucy 2026-05-15) — CSS clip-path para que el slot wrapper
   // SE VEA con el shape físico del imán (heart/circle/rect). useId genera
@@ -212,8 +245,13 @@ function StudioSlotImpl({
     () => unitTemplate.layers.some((l) => l.type === "frame-card"),
     [unitTemplate],
   );
+  // Ola 3b — full-bleed: la tarjeta entera toma borderColor y la foto va inserta.
+  // Misma condición que production-render-canvas (WYSIWYG).
+  const fullBleed =
+    !!borderColor && frameFullBleed && !hasFrameCard && shape !== "heart" && shape !== "circle";
   const frameStyle = useMemo(() => {
-    if (!borderColor || shape === "heart" || shape === "circle" || hasFrameCard) return null;
+    if (!borderColor || shape === "heart" || shape === "circle" || hasFrameCard || fullBleed)
+      return null;
     const ph = unitTemplate.layers.find((l) => l.type === "image-placeholder") as
       | ImagePlaceholderLayer
       | undefined;
@@ -228,7 +266,7 @@ function StudioSlotImpl({
       cornerRadius: Math.max(0, (ph.cornerRadius ?? 0) - w / 2),
       color: borderColor,
     };
-  }, [borderColor, shape, unitTemplate, hasFrameCard]);
+  }, [borderColor, shape, unitTemplate, hasFrameCard, fullBleed]);
 
   // ──────────── Drag & drop nativo ────────────
   const handleDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
@@ -395,6 +433,14 @@ function StudioSlotImpl({
       if (!slotState.assetUrl || !onPhotoTransformChange) return;
       if (e.evt.touches.length === 2) {
         e.evt.preventDefault();
+        // Ola 3c (Lucy 2026-07-22, "pellizcar la foto es casi imposible"): con 1 dedo
+        // la foto ya estaba en DRAG de Konva; al caer el 2º dedo el drag seguía activo
+        // y la foto saltaba (pan errático) mientras el pinch intentaba escalar — los
+        // dos gestos peleaban. El pinch MANDA: cortar cualquier drag activo del stage.
+        const stageNode = e.target.getStage();
+        stageNode?.find("Image").forEach((n) => {
+          if (n.isDragging()) n.stopDrag();
+        });
         const [t1, t2] = [e.evt.touches[0], e.evt.touches[1]];
         const dx = t2.clientX - t1.clientX;
         const dy = t2.clientY - t1.clientY;
@@ -409,6 +455,7 @@ function StudioSlotImpl({
     (e: Konva.KonvaEventObject<TouchEvent>) => {
       if (!onPhotoTransformChange || pinchInitialDistRef.current === null) return;
       if (e.evt.touches.length !== 2) return;
+      if (pinchInitialDistRef.current <= 0) return; // dedos superpuestos → ratio inválido
       e.evt.preventDefault();
       const [t1, t2] = [e.evt.touches[0], e.evt.touches[1]];
       const dx = t2.clientX - t1.clientX;
@@ -446,7 +493,7 @@ function StudioSlotImpl({
     : `${slotName}, vacío. Enter para subir foto.`;
 
   return (
-    <div className="group/wrapper flex flex-col items-center gap-1.5">
+    <div className="group/wrapper relative flex flex-col items-center gap-1.5">
       {/* M.3.b.UX.v13 — SVG clipPath inline para shape heart. objectBoundingBox
         (0-1 normalized) escala automáticamente al tamaño del slot. */}
       {shape === "heart" && (
@@ -470,6 +517,13 @@ function StudioSlotImpl({
           // nativo que el browser propaga al wrapper div y dispararía
           // onClick() inadvertidamente.
           if (wasDraggingPhoto) {
+            e.preventDefault();
+            return;
+          }
+          // Ola 3c — click sintético tras un tap de TEXTO editable (móvil):
+          // "Editar texto" ya se abrió vía Konva onTap; este click abriría el
+          // picker/foco encima y lo cerraría al instante. Ignorarlo.
+          if (Date.now() - textEditTapAt < 400) {
             e.preventDefault();
             return;
           }
@@ -510,9 +564,14 @@ function StudioSlotImpl({
           // Pinch-zoom (WCAG 1.4.4): la página NUNCA bloquea el zoom a nivel viewport;
           // solo el canvas INTERACTIVO captura el gesto (touch-action:none) para que el
           // pellizco/arrastre actúe sobre la foto y no dispare zoom/scroll de la página
-          // a la vez. En la grilla táctil (slot no interactivo) queda undefined → el
-          // dedo scrollea y el pinch hace zoom de página con normalidad.
-          touchAction: onPhotoTransformChange ? "none" : undefined,
+          // a la vez. Ola 3c (Lucy 2026-07-22, "tras cargar una foto no puedo deslizar
+          // la página"): en la grilla táctil (slot NO interactivo) queda "pan-y"
+          // EXPLÍCITO → el dedo scrollea la página vertical con normalidad y el pinch
+          // hace zoom de página; el pan/zoom de foto vive en el editor a pantalla
+          // completa (FB4). Además las capas Konva no-interactivas van con
+          // preventDefault={false} para no matar el inicio del scroll (ver
+          // ImagePlaceholder).
+          touchAction: onPhotoTransformChange ? "none" : "pan-y",
         }}
         whileHover={{ scale: 1.02 }}
         whileTap={{ scale: 0.98 }}
@@ -572,14 +631,15 @@ function StudioSlotImpl({
                 layer,
                 slotState,
                 unitTemplate.stage,
-                onTextEdit,
+                handleTextEdit,
                 shape,
                 onPhotoTransformChange,
                 handlePhotoDragStart,
                 handlePhotoDragEnd,
                 // Ola 3 — color del borde (tarjeta frame-card + texto claro si es
                 // oscura) y bandera de texto del producto (Cuadrados: sin texto).
-                { borderColor: borderColor ?? null, allowText, hasFrameCard },
+                // Ola 3b — fullBleed: tarjeta entera del color + foto inserta.
+                { borderColor: borderColor ?? null, allowText, hasFrameCard, fullBleed },
               ),
             )}
             {/* Ola 2A — marco de color: ENCIMA de la foto (stroke centrado en el borde de la
@@ -755,12 +815,20 @@ function StudioSlotImpl({
           initial={{ opacity: 0, y: -4 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.2, ease: "easeOut" }}
-          className="flex items-center gap-1.5"
-          style={{ width: slotWidth }}
+          className={
+            overlayActions
+              ? // Ola 3c — modo TIRA (gridGap=0): la barra flota sobre la foto (fondo
+                // blanco translúcido) para no romper la continuidad de la tira con
+                // una franja vacía entre celdas.
+                "absolute bottom-1 z-20 flex items-center justify-center gap-1.5 rounded-full bg-white/90 px-1.5 py-0.5 shadow-md ring-1 ring-black/5 backdrop-blur-sm"
+              : "flex items-center gap-1.5"
+          }
+          style={overlayActions ? undefined : { width: slotWidth }}
         >
           {/* Tamaño físico — chip a la izquierda con orientación explícita.
-              En slots angostos se omite: el tamaño ya lo muestra el toolbar. */}
-          {sizeCm && !compact && (
+              En slots angostos se omite: el tamaño ya lo muestra el toolbar.
+              En modo tira (overlay) también: estorbaría sobre la foto. */}
+          {sizeCm && !compact && !overlayActions && (
             <span
               className="text-brand-purple-dark/70 bg-brand-cream/90 ring-brand-purple/10 inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-bold ring-1"
               aria-label={`Tamaño físico ${sizeCm}`}
@@ -886,6 +954,8 @@ export const StudioSlot = memo(StudioSlotImpl, (prev, next) => {
     prev.cornerRadiusPx === next.cornerRadiusPx &&
     prev.showRealismGuides === next.showRealismGuides &&
     prev.borderColor === next.borderColor &&
+    prev.frameFullBleed === next.frameFullBleed &&
+    prev.overlayActions === next.overlayActions &&
     prev.allowText === next.allowText
   );
 });
@@ -913,12 +983,20 @@ export function renderLayer(
    *    tarjeta es oscura, el texto por defecto sale claro).
    *  - allowText: false → las capas de texto NO se dibujan (Cuadrados/separadores).
    *  - hasFrameCard: la plantilla trae tarjeta de color (Polaroid Clásica).
+   *  - fullBleed (Ola 3b): la tarjeta entera se pinta de borderColor y la foto va
+   *    inserta con franja mínima de color (productos con frameOptions sin frame-card).
    */
-  opts?: { borderColor?: string | null; allowText?: boolean; hasFrameCard?: boolean },
+  opts?: {
+    borderColor?: string | null;
+    allowText?: boolean;
+    hasFrameCard?: boolean;
+    fullBleed?: boolean;
+  },
 ) {
   const borderColor = opts?.borderColor ?? null;
   const allowText = opts?.allowText ?? false;
   const hasFrameCard = opts?.hasFrameCard ?? false;
+  const fullBleed = opts?.fullBleed ?? false;
   switch (layer.type) {
     case "background":
       return (
@@ -928,7 +1006,11 @@ export function renderLayer(
           y={0}
           width={stage.width}
           height={stage.height}
-          fill={(layer as { color: string }).color}
+          // Ola 3b — "el color llega al fin del papel": con full-bleed la tarjeta
+          // entera es borderColor (el marco ES la tarjeta), no un stroke sobre blanco.
+          fill={fullBleed && borderColor ? borderColor : (layer as { color: string }).color}
+          listening={false}
+          preventDefault={false}
         />
       );
     case "frame-card": {
@@ -959,7 +1041,7 @@ export function renderLayer(
       // recorta visualmente — pero lo mantenemos para que la sombra Konva
       // también respete el shape físico.
       const useFullStage = shape === "heart" || shape === "circle";
-      const effectiveLayer = useFullStage
+      const baseLayer = useFullStage
         ? ({
             ...(layer as ImagePlaceholderLayer),
             x: 0,
@@ -969,6 +1051,15 @@ export function renderLayer(
             cornerRadius: 0,
           } as ImagePlaceholderLayer)
         : (layer as ImagePlaceholderLayer);
+      // Ola 3b — full-bleed: la foto se inserta dejando una franja mínima de color
+      // (respeta márgenes mayores de la plantilla). Misma geometría que producción.
+      const effectiveLayer =
+        fullBleed && borderColor && !useFullStage
+          ? ({
+              ...baseLayer,
+              ...insetToMinMargin(baseLayer, stage, frameBleedMargin(stage)),
+            } as ImagePlaceholderLayer)
+          : baseLayer;
       return (
         <ImagePlaceholder
           key={layer.id}
@@ -1125,6 +1216,10 @@ function renderText(
       fontStyle={fontStyle}
       align={align}
       listening={isEditable}
+      // Ola 3c — NO bloquear el scroll táctil sobre la franja de texto (Konva haría
+      // preventDefault en el touchstart). El click sintético subsiguiente al tap lo
+      // filtra el wrapper con el guard de lastTextEditTapRef.
+      preventDefault={false}
       {...(onPhotoStyling ?? {})}
       onMouseEnter={(e) => {
         if (isEditable) {
@@ -1499,9 +1594,16 @@ function ImagePlaceholder({
     // Es lo que hacen los editores reales. Modular, transparente, sin algoritmos
     // ocultos que limiten al cliente.
 
-    const coverScaleBase = Math.max(layer.width / image.width, layer.height / image.height);
-    const userScale = slotState.photoTransform?.scale ?? 1;
-    // Permite zoom-out hasta 0.5 (foto 50% del cover). Floor para evitar
+    // Ola 3c — rotación de la foto (pasos de 90° desde "Ajustar foto"). Con 90/270
+    // el cover se calcula con las dimensiones INTERCAMBIADAS: la foto girada cubre
+    // la ventana sin huecos (misma matemática en production-render-canvas).
+    const rotation = (((slotState.photoTransform?.rotation ?? 0) % 360) + 360) % 360;
+    const swapDims = rotation === 90 || rotation === 270;
+    const srcW = swapDims ? image.height : image.width;
+    const srcH = swapDims ? image.width : image.height;
+
+    const coverScaleBase = Math.max(layer.width / srcW, layer.height / srcH);
+    const userScale = slotState.photoTransform?.scale ?? 1; // Permite zoom-out hasta 0.5 (foto 50% del cover). Floor para evitar
     // tamaños absurdos (foto < 10% del slot).
     const effectiveScale = Math.max(0.5, Math.min(3, userScale));
     const finalScale = coverScaleBase * effectiveScale;
@@ -1560,7 +1662,14 @@ function ImagePlaceholder({
           y={layer.height / 2 + photoOffset.y}
           offsetX={renderedW / 2}
           offsetY={renderedH / 2}
+          rotation={rotation}
           draggable={isDraggable}
+          // Ola 3c (Lucy 2026-07-22) — slot NO interactivo (grilla táctil): Konva
+          // hace preventDefault en el touchstart sobre shapes con preventDefault
+          // default true → mataba el SCROLL de la página al empezar sobre la foto
+          // ("toca usar el borde del celular"). Sin gestos inline no hay nada que
+          // proteger → preventDefault={false} y el dedo scrollea libre (pan-y).
+          preventDefault={isDraggable}
           // M.3.b.UX.v9 — drag SIN bounds (libre). El cliente decide dónde
           // poner la foto. Si la mueve fuera del slot, ve el background (warning
           // visible). Patrón industria: Mixbook, Canva, Vistaprint.
@@ -1622,6 +1731,10 @@ function ImagePlaceholder({
       strokeWidth={2}
       dash={[12, 8]}
       cornerRadius={layer.cornerRadius ?? 0}
+      // Ola 3c — decorativo (el overlay HTML del estado vacío lo tapa): no escuchar
+      // ni bloquear el scroll táctil de la página.
+      listening={false}
+      preventDefault={false}
     />
   );
 }

@@ -69,6 +69,12 @@ type StudioCanvasGridProps = {
   /** Ola 3 — ¿el producto admite texto editable? false oculta las capas de texto (Cuadrados). */
   allowText?: boolean;
   /**
+   * Ola 3b (Lucy 2026-07-22) — el producto ofrece marcos de color (frameOptions):
+   * con borderColor la tarjeta se pinta ENTERA del color y la foto va inserta
+   * (full-bleed, "el fin del papel"). Producción usa la misma regla (WYSIWYG).
+   */
+  frameFullBleed?: boolean;
+  /**
    * Ola 3 — caras de diseño por unidad física (separadores de libros: 2). Con 2, la
    * grilla AGRUPA los slots en tarjetas-unidad: "Separador N" con sus 2 caras lado a
    * lado (cara A | cara B), la tira desplegada que luego va a producción.
@@ -100,6 +106,7 @@ export function StudioCanvasGrid({
   slotLabels,
   slotNoun,
   allowText = false,
+  frameFullBleed = false,
   facesPerUnit = 1,
   interactiveSlots = true,
   onSlotClick,
@@ -230,6 +237,10 @@ export function StudioCanvasGrid({
   // desplegada física). unitCols: 1 en móvil; en desktop 2 unidades por fila,
   // salvo caras muy anchas (rectangular 6:2 → tira 6:1, 1 por fila).
   const grouped = facesPerUnit === 2 && canvasData.slotCount % 2 === 0;
+  // Ola 3c — modo TIRA (gridGap=0, tira photobooth): las celdas se tocan → la tira
+  // se lee como UNA pieza continua de color. Sin reserva de barra de acciones entre
+  // celdas (flota sobre la foto, ver StudioSlot overlayActions).
+  const stripMode = !grouped && canvasData.gridLayout.gap === 0;
   const unitCount = grouped ? canvasData.slotCount / 2 : canvasData.slotCount;
   const stripAspect = grouped
     ? (canvasData.unitTemplate.stage.width * 2) / canvasData.unitTemplate.stage.height
@@ -290,7 +301,7 @@ export function StudioCanvasGrid({
         key={slot.slotIndex}
         data-slot-observe={slot.slotIndex}
         className="flex items-start justify-center"
-        style={{ height: slotHeight + ACTION_BAR_RESERVE }}
+        style={{ height: slotHeight + (stripMode ? 0 : ACTION_BAR_RESERVE) }}
         initial={reducedMotion ? false : { opacity: 0, scale: 0.85 }}
         animate={{ opacity: 1, scale: 1 }}
         transition={{
@@ -315,6 +326,8 @@ export function StudioCanvasGrid({
             cornerRadiusPx={cornerRadiusPx}
             showRealismGuides={showRealismGuides}
             borderColor={canvasData.borderColor ?? null}
+            frameFullBleed={frameFullBleed}
+            overlayActions={stripMode}
             allowText={allowText}
             onClick={() => {
               selectSlot(slot.slotIndex);

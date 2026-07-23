@@ -231,8 +231,10 @@ export type SlotState = {
    *  - scale: factor sobre el "cover scale" base. 1.0 = cover exacto (puede no
    *    permitir drag en ambos ejes si aspect coincide). El editor aplica un
    *    overscan default 1.15 para garantizar drag siempre.
+   *  - rotation (Ola 3c): grados (pasos de 90) para enderezar fotos cuya
+   *    orientación no calza la ventana (separadores 6×2, caras verticales).
    *  Valor `undefined` = transform default (centrada, scale cover × 1.15). */
-  photoTransform?: { offsetX: number; offsetY: number; scale: number };
+  photoTransform?: { offsetX: number; offsetY: number; scale: number; rotation?: number };
 };
 
 /** M.3.b.D — Override de un TextLayer específico. Cualquier campo no

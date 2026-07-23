@@ -29,6 +29,9 @@ import type { StoreApi } from "zustand";
 import { useStore } from "zustand";
 import { uploadDesignAssetAction } from "@/features/personalization/actions";
 import { frameColorById } from "@/features/personalization/frame-palette";
+import { StudioFramePicker } from "./studio-frame-picker";
+import { StudioMessageField } from "./studio-message-field";
+import { StudioIgBorderToggle } from "./studio-ig-border-toggle";
 import {
   selectAssetIsUsed,
   selectFilledSlotCount,
@@ -48,6 +51,8 @@ type StudioSidebarProps = {
   /** Ola 2A — ids de marco de color disponibles (personalizationSchema.frameOptions).
    * Si trae opciones, se muestra el selector "Marco" (borde de color alrededor de la foto). */
   frameOptions?: string[];
+  /** Ola 3 — el producto admite texto editable (Polaroid). Habilita el campo "Tu mensaje". */
+  allowText?: boolean;
 };
 
 export function StudioSidebar({
@@ -57,6 +62,7 @@ export function StudioSidebar({
   productSizeCm,
   productShape,
   frameOptions,
+  allowText = false,
 }: StudioSidebarProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(0);
@@ -283,8 +289,9 @@ export function StudioSidebar({
         )}
       </section>
 
-      {/* ──────── Marco (Ola 2A — el "Estilo"/"Marco" de la PDP ahora es una plantilla
-          visual del Estudio: borde de color alrededor de la foto; viaja con el diseño) ──────── */}
+      {/* ──────── Marco (Ola 2A/3b — el "Estilo"/"Marco" de la PDP ahora es una
+          decisión visual del Estudio: color LIBRE + atajos de marca + "Sin marco".
+          Con color, la tarjeta se imprime ENTERA del color y la foto va inserta) ──────── */}
       {frameColors.length > 0 && (
         <section aria-labelledby="sidebar-marco" className="border-brand-purple/10 border-t pt-5">
           <div
@@ -294,66 +301,19 @@ export function StudioSidebar({
             <Sparkles className="text-brand-purple h-4 w-4" />
             Marco de tus fotos
           </div>
-          <div role="radiogroup" aria-label="Color del marco" className="flex flex-wrap gap-2">
-            {/* Sin marco */}
-            <button
-              type="button"
-              role="radio"
-              aria-checked={borderColor === null}
-              aria-label="Sin marco"
-              title="Sin marco"
-              onClick={() => setBorderColor(null)}
-              className={[
-                "focus:ring-brand-turquoise relative flex h-10 w-10 cursor-pointer items-center justify-center rounded-full bg-white transition-all focus:ring-2 focus:outline-none",
-                borderColor === null
-                  ? "ring-brand-turquoise shadow-md ring-2 ring-offset-2"
-                  : "ring-brand-purple/20 hover:ring-brand-purple/50 ring-1",
-              ].join(" ")}
-            >
-              <span className="text-brand-muted text-lg leading-none" aria-hidden>
-                ∅
-              </span>
-            </button>
-            {frameColors.map((c) => {
-              const active = borderColor === c.hex;
-              return (
-                <button
-                  key={c.id}
-                  type="button"
-                  role="radio"
-                  aria-checked={active}
-                  aria-label={`Marco ${c.label.toLowerCase()}`}
-                  title={c.label}
-                  onClick={() => setBorderColor(c.hex)}
-                  className={[
-                    "focus:ring-brand-turquoise relative h-10 w-10 cursor-pointer rounded-full transition-all focus:ring-2 focus:outline-none",
-                    active
-                      ? "ring-brand-turquoise shadow-md ring-2 ring-offset-2"
-                      : "ring-brand-purple/20 hover:ring-brand-purple/50 ring-1",
-                  ].join(" ")}
-                  style={{ backgroundColor: c.hex }}
-                >
-                  {active && (
-                    <Check
-                      className="absolute inset-0 m-auto h-4 w-4"
-                      strokeWidth={3}
-                      // Check visible sobre cualquier color (blanco incluido).
-                      style={{
-                        color: c.id === "blanco" || c.id === "amarillo" ? "#3D2E5C" : "#FFFFFF",
-                        filter: "drop-shadow(0 0 2px rgba(0,0,0,0.35))",
-                      }}
-                      aria-hidden
-                    />
-                  )}
-                </button>
-              );
-            })}
-          </div>
+          <StudioFramePicker colors={frameColors} value={borderColor} onChange={setBorderColor} />
           <p className="text-brand-muted mt-2 text-xs">
-            El borde de color se imprime alrededor de cada foto.
+            Toda la tarjeta se imprime del color elegido, con tu foto inserta.
           </p>
         </section>
       )}
+
+      {/* ──────── Tu mensaje (Ola 3c — Polaroid Clásica: campo directo en la sidebar;
+          tocar el texto del canvas sigue abriendo el editor completo como atajo) ──────── */}
+      {allowText && <StudioMessageField store={store} />}
+
+      {/* ──────── Foto con/sin borde (Ola 3c — solo plantilla Polaroid Instagram) ──────── */}
+      <StudioIgBorderToggle store={store} />
 
       {/* ──────── Plantillas ──────── */}
       <section

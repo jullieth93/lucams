@@ -245,6 +245,10 @@ export function StudioEditor({
   //    2 caras de diseño → el Estudio trabaja con 2N slots (slot 2k=cara A,
   //    2k+1=cara B) y la grilla los agrupa por unidad.
   const allowText = productConfig.allowText === true;
+  // Ola 3b (Lucy 2026-07-22) — productos con marcos de color: con borderColor la
+  // tarjeta se pinta ENTERA del color y la foto va inserta ("fin del papel"), no un
+  // stroke sobre blanco. Misma regla en producción (service.ts → frameFullBleed).
+  const frameFullBleed = (productConfig.frameOptions?.length ?? 0) > 0;
   const facesPerUnit = productConfig.facesPerUnit === 2 ? 2 : 1;
   const slotCount = photoSlots * facesPerUnit;
   // Ola 2A — marco inicial del Estudio: la variante elegida en la PDP aún trae
@@ -344,6 +348,10 @@ export function StudioEditor({
               // Ola 2A — la plantilla puede fijar las columnas (tira fotobooth: gridCols=1).
               typeof (unitTemplate as { gridCols?: unknown }).gridCols === "number"
                 ? (unitTemplate as { gridCols?: number }).gridCols
+                : undefined,
+              // Ola 3c — y el gap (tira photobooth: gridGap=0 → tira continua).
+              typeof (unitTemplate as { gridGap?: unknown }).gridGap === "number"
+                ? (unitTemplate as { gridGap?: number }).gridGap
                 : undefined,
             ),
           };
@@ -588,6 +596,10 @@ export function StudioEditor({
   // quedó archivado (solo /internal/3d-preview). Compone cada tarjeta (foto + mes + año + grilla)
   // con el MISMO dibujo que producción (WYSIWYG) y la pasa como textura 3:4 con su tamaño real,
   // así la nevera/tablero las escalan a 7.5×10 cm físicos. No depende del montaje de stages.
+  // Ola 3 (Lucy 2026-07-22, "detalle primero, espacio después"): con kind="calendar" el modal
+  // ABRE en el visor de detalle tarjeta-a-tarjeta (CalendarCardFocus) y la galería nevera/tablero
+  // queda un nivel arriba ("Míralo en tu espacio") — la inversión vive dentro de SceneGallery;
+  // acá solo cambia la intención del botón (abre el detalle).
   const handleOpenCalendar3D = useCallback(async () => {
     const state = store.getState();
     if (!state.canvasData || calendarBuilding) return;
@@ -857,6 +869,7 @@ export function StudioEditor({
             productSizeCm={productConfig.sizeCm}
             productShape={productConfig.shape}
             frameOptions={productConfig.frameOptions}
+            allowText={allowText}
           />
         </aside>
 
@@ -903,6 +916,7 @@ export function StudioEditor({
             slotLabels={isCalendarMonth ? slotLabels : faceSlotLabels(photoSlots, facesPerUnit)}
             slotNoun={slotNoun}
             allowText={allowText}
+            frameFullBleed={frameFullBleed}
             facesPerUnit={facesPerUnit}
             interactiveSlots={!isTouch}
             onSlotClick={handleSlotClick}
@@ -948,7 +962,7 @@ export function StudioEditor({
             type="button"
             onClick={handleOpenCalendar3D}
             disabled={calendarBuilding}
-            aria-label="Ver tus tarjetas mes en la nevera o el tablero"
+            aria-label="Ver tus tarjetas mes en detalle, una por una"
             className="bg-brand-purple ring-brand-purple/25 inline-flex h-12 items-center gap-2 rounded-full px-4 text-sm font-bold text-white shadow-xl ring-4 transition-transform hover:scale-105 active:scale-95 disabled:opacity-60"
           >
             <CalendarDays className="h-5 w-5" />
@@ -991,7 +1005,8 @@ export function StudioEditor({
       )}
 
       {/* FOTO4/CAL4 — Galería de escenas "en tu espacio" en un solo modal (kind decide las escenas:
-          fotoimanes → nevera/polaroid/mural/repisa/regalo · calendario → nevera/tablero). */}
+          fotoimanes → nevera/polaroid/mural/repisa/regalo · calendario → abre en el DETALLE
+          tarjeta-a-tarjeta y sube a nevera/tablero con "Míralo en tu espacio", ola 3). */}
       {sceneMagnets !== null && (
         <SceneGallery
           magnets={sceneMagnets.magnets}
@@ -1077,6 +1092,7 @@ export function StudioEditor({
               productSizeCm={productConfig.sizeCm}
               productShape={productConfig.shape}
               frameOptions={productConfig.frameOptions}
+              allowText={allowText}
             />
           </div>
         </SheetContent>
@@ -1096,11 +1112,13 @@ export function StudioEditor({
       />
 
       {/* M.3.b.B.3 — Modal de ajustar foto (encuadre + filtros). H4: en calendarios se oculta la
-          sección de filtros (no llegan al PNG del calendario → romperían WYSIWYG); el encuadre sí. */}
+          sección de filtros (no llegan al PNG del calendario → romperían WYSIWYG); el encuadre sí.
+          Ola 3c — Rotar igual se apaga en calendarios (el compositor de página no lo replica). */}
       <PhotoAdjustModalWrapper
         store={store}
         slotIndex={adjustSlotIndex}
         allowFilters={!isCalendarMonth}
+        allowRotate={!isCalendarMonth}
         onClose={() => setAdjustSlotIndex(null)}
       />
 
@@ -1114,7 +1132,9 @@ export function StudioEditor({
         cornerRadiusPx={productConfig.cornerRadiusPx}
         sizeCm={productConfig.sizeCm}
         allowFilters={!isCalendarMonth}
+        allowRotate={!isCalendarMonth}
         allowText={allowText}
+        frameFullBleed={frameFullBleed}
         onClose={() => setFocusSlotIndex(null)}
       />
 
@@ -1227,11 +1247,13 @@ function PhotoAdjustModalWrapper({
   slotIndex,
   onClose,
   allowFilters = true,
+  allowRotate = true,
 }: {
   store: ReturnType<typeof createStudioStore>;
   slotIndex: number | null;
   onClose: () => void;
   allowFilters?: boolean;
+  allowRotate?: boolean;
 }) {
   // Selectores ATÓMICOS primitivos — evita el re-render infinito que daba
   // selector compuesto `s.canvasData?.slots ?? []` (array literal nuevo cada
@@ -1264,6 +1286,13 @@ function PhotoAdjustModalWrapper({
         0)
       : 0,
   );
+  // Ola 3c — rotación de la foto (pasos de 90°).
+  const slotRotation = useStore(store, (s) =>
+    slotIndex !== null
+      ? (s.canvasData?.slots?.find((sl) => sl.slotIndex === slotIndex)?.photoTransform?.rotation ??
+        0)
+      : 0,
+  );
   const setSlotFilter = useStore(store, (s) => s.setSlotFilter);
   const setSlotPhotoTransform = useStore(store, (s) => s.setSlotPhotoTransform);
 
@@ -1281,7 +1310,12 @@ function PhotoAdjustModalWrapper({
       onResetTransform={() => {
         if (slotIndex !== null) setSlotPhotoTransform(slotIndex, null);
       }}
-      photoTransform={{ offsetX: slotOffsetX, offsetY: slotOffsetY, scale: slotScale }}
+      photoTransform={{
+        offsetX: slotOffsetX,
+        offsetY: slotOffsetY,
+        scale: slotScale,
+        rotation: slotRotation,
+      }}
       onZoomChange={(percent) => {
         if (slotIndex !== null)
           setSlotPhotoTransform(slotIndex, { scale: Math.max(0.5, Math.min(3, percent / 100)) });
@@ -1293,6 +1327,14 @@ function PhotoAdjustModalWrapper({
             offsetY: slotOffsetY + dy,
           });
       }}
+      onRotate={
+        allowRotate
+          ? () => {
+              if (slotIndex !== null)
+                setSlotPhotoTransform(slotIndex, { rotation: (slotRotation + 90) % 360 });
+            }
+          : undefined
+      }
     />
   );
 }
@@ -1305,6 +1347,7 @@ function defaultGridFor(
   slotCount: number,
   stage: { width: number; height: number },
   forcedCols?: number,
+  forcedGap?: number,
 ) {
   const presets: Record<number, { cols: number; rows: number }> = {
     1: { cols: 1, rows: 1 },
@@ -1326,7 +1369,17 @@ function defaultGridFor(
     cols = Math.min(forcedCols, slotCount);
     rows = Math.ceil(slotCount / cols);
   }
-  const gap = slotCount <= 4 ? 24 : slotCount <= 9 ? 16 : slotCount <= 12 ? 12 : 8;
+  // Ola 3c — la plantilla puede fijar el gap (tira photobooth: gridGap=0 → tira continua).
+  const gap =
+    typeof forcedGap === "number" && forcedGap >= 0
+      ? forcedGap
+      : slotCount <= 4
+        ? 24
+        : slotCount <= 9
+          ? 16
+          : slotCount <= 12
+            ? 12
+            : 8;
   return { cols, rows, gap };
 }
 

@@ -41,7 +41,7 @@ type PlaceholderLayer = {
 type BackgroundLayer = { id: string; type: "background"; color?: string };
 type AnyLayer = { id: string; type: string; [k: string]: unknown };
 type UnitTemplate = { version: 1; stage: Stage; layers: AnyLayer[] };
-type PhotoTransform = { offsetX: number; offsetY: number; scale: number };
+type PhotoTransform = { offsetX: number; offsetY: number; scale: number; rotation?: number };
 type Slot = {
   slotIndex: number;
   assetId: string | null;
@@ -119,6 +119,11 @@ function assertServerRenderable(unit: UnitTemplate, slots: Slot[], includeText: 
   // Cualquier slot con FILTRO → el cliente tiene el filtro exacto de Konva (fidelidad) → fallback.
   if (slots.some((s) => s.filter))
     throw new RenderNeedsKonvaError("slot con filtro (fidelidad → cliente)");
+  // Ola 3c — foto ROTADA (photoTransform.rotation): el tier canvas la dibuja (misma
+  // matemática que Konva); sharp aquí la ignoraría y divergiría del preview.
+  if (slots.some((s) => (s.photoTransform?.rotation ?? 0) % 360 !== 0)) {
+    throw new RenderNeedsKonvaError("foto rotada → tier canvas");
+  }
 }
 
 const clampInt = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, Math.round(v)));

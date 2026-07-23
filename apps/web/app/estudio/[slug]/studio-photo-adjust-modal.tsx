@@ -25,7 +25,15 @@
  */
 
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Check, RotateCcw } from "lucide-react";
+import {
+  ArrowDown,
+  ArrowLeft,
+  ArrowRight,
+  ArrowUp,
+  Check,
+  RotateCcw,
+  RotateCw,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { FILTER_LABELS, FILTER_DESCRIPTIONS, FILTER_ORDER } from "./lib/photo-filters";
 import type { PhotoFilterPreset } from "./types";
@@ -40,11 +48,13 @@ type StudioPhotoAdjustModalProps = {
   /** Reset transform: vuelve la foto al centro con scale=1. */
   onResetTransform: () => void;
   /** #18 — encuadre por teclado/controles: estado actual del transform del slot (null = sin ajuste). */
-  photoTransform: { offsetX: number; offsetY: number; scale: number } | null;
+  photoTransform: { offsetX: number; offsetY: number; scale: number; rotation?: number } | null;
   /** #18 — zoom por slider (porcentaje 50-300). */
   onZoomChange: (scalePercent: number) => void;
   /** #18 — desplazar la foto (dx/dy en px del stage). */
   onNudge: (dx: number, dy: number) => void;
+  /** Ola 3c — rotar la foto en pasos de 90° (orientación vs ventana/cara). */
+  onRotate?: () => void;
   /**
    * Muestra la sección de filtros. Se desactiva para calendarios (auditoría v3 · H4): los filtros
    * Konva NO llegan al compositor del calendario ni al PNG de producción → se verían B&N en pantalla
@@ -75,6 +85,7 @@ export function StudioPhotoAdjustModal({
   photoTransform,
   onZoomChange,
   onNudge,
+  onRotate,
   allowFilters = true,
 }: StudioPhotoAdjustModalProps) {
   if (!photoUrl) return null;
@@ -111,8 +122,8 @@ export function StudioPhotoAdjustModal({
           {allowFilters ? " · Elige un filtro abajo" : ""}
         </DialogDescription>
 
-        {/* Reset transform — vuelve scale=1 + offset=0 */}
-        <div className="mt-2 flex">
+        {/* Reset transform — vuelve scale=1 + offset=0 (+ rotación) */}
+        <div className="mt-2 flex flex-wrap gap-2">
           <Button
             type="button"
             variant="outline"
@@ -123,6 +134,27 @@ export function StudioPhotoAdjustModal({
             <RotateCcw className="h-3.5 w-3.5" />
             Centrar y resetear zoom
           </Button>
+          {/* Ola 3c — Rotar 90°: endereza fotos cuya orientación no calza la
+              ventana (foto apaisada en cara vertical, retrato en separador 6×2).
+              El encuadre (pan/zoom) se mantiene; producción dibuja lo mismo. */}
+          {onRotate && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={onRotate}
+              aria-label="Rotar la foto 90 grados"
+              className="border-brand-purple/30 text-brand-purple-dark hover:bg-brand-purple/5 gap-1.5"
+            >
+              <RotateCw className="h-3.5 w-3.5" />
+              Rotar 90°
+              {photoTransform?.rotation ? (
+                <span className="text-brand-muted tabular-nums">
+                  ({Math.round(photoTransform.rotation)}°)
+                </span>
+              ) : null}
+            </Button>
+          )}
         </div>
 
         {/* #18 — encuadre accesible: zoom por slider + cruceta de 4 flechas (equivalente de teclado
