@@ -117,6 +117,8 @@ describe("GlobalSearch", () => {
     expect(combobox).toHaveAttribute("aria-expanded", "true");
     // Con query vacía, el heading invita a escribir (rama !query.trim()).
     expect(screen.getByText(/Empieza a escribir/i)).toBeInTheDocument();
+    // El header del diálogo muestra el logo/mascota de Lucams.
+    expect(screen.getByAltText(/Mascota Lucams_shop/i)).toBeInTheDocument();
   });
 
   it("Ctrl+K alterna la apertura del diálogo", async () => {
@@ -214,7 +216,7 @@ describe("GlobalSearch", () => {
     fireEvent.change(input, { target: { value: "imán" } });
     await waitFor(() => expect(screen.getByRole("option")).toBeInTheDocument());
     // alt="" → imagen decorativa (no aparece como role="img"); la buscamos por DOM.
-    const img = document.querySelector("[role='dialog'] img");
+    const img = document.querySelector("[role='dialog'] img[alt='']");
     expect(img).toHaveAttribute("src", "https://cdn/x.jpg");
   });
 

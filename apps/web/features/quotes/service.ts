@@ -22,6 +22,7 @@ import { prisma, Prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { formatCOP } from "@/lib/format";
 import { buildWhatsAppUrl } from "@/lib/wa";
+import { buildPublicShareUrl } from "@/lib/public-url";
 import { getCartDetail } from "@/features/cart/service";
 import { clearCartAfterPaid } from "@/features/orders/service";
 
@@ -161,6 +162,7 @@ export async function getQuoteByToken(token: string) {
     select: {
       id: true,
       number: true,
+      publicAccessToken: true,
       status: true,
       customerName: true,
       city: true,
@@ -184,6 +186,7 @@ export async function getQuoteByToken(token: string) {
 
 export type QuoteForWhatsApp = {
   number: string;
+  token: string;
   customerName: string;
   total: number; // centavos COP
   items: Array<{
@@ -214,5 +217,6 @@ export async function buildQuoteWhatsAppUrl(quote: QuoteForWhatsApp): Promise<st
     customerName: quote.customerName,
     itemsSummary,
     total: formatCOP(quote.total),
+    quoteUrl: buildPublicShareUrl(`/cotizacion/${quote.token}`),
   });
 }

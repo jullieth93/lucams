@@ -34,6 +34,7 @@ export type WhatsAppContext =
       customerName: string;
       itemsSummary: string;
       total: string;
+      quoteUrl: string;
     }
   | { kind: "wholesale" }
   | { kind: "custom"; text: string };
@@ -51,7 +52,7 @@ const FALLBACK_TEMPLATES = {
   // cantidades, total formateado COP y nombre del cliente. itemsSummary llega
   // pre-armado (una línea por item) desde features/quotes/service.ts.
   quote:
-    "Hola Lucams 👋 Soy {customerName}. Acabo de hacer la cotización {quoteNumber} en la tienda:\n{itemsSummary}\nTotal: {total}\nQuedo atento/a para concretar 🙌",
+    "Hola Lucams 👋 Soy {customerName}. Acabo de hacer la cotización {quoteNumber} en la tienda:\n{itemsSummary}\nTotal: {total}\nLink: {quoteUrl}\nQuedo atento/a para concretar 🙌",
   wholesale:
     "Hola Lucams 👋 Estoy interesado/a en pedido al por mayor / corporativo. ¿Me puedes contar?",
 } as const;
@@ -95,6 +96,7 @@ export async function buildWhatsAppMessage(ctx: WhatsAppContext): Promise<string
         customerName: ctx.customerName,
         itemsSummary: ctx.itemsSummary,
         total: ctx.total,
+        quoteUrl: ctx.quoteUrl,
       });
     }
     case "wholesale":

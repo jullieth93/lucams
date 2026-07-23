@@ -117,10 +117,13 @@ export function stripDimsForFace(
     face.wCm && face.hCm
       ? { wCm: face.wCm, hCm: face.hCm }
       : (parseSizeCmLocal(sizeCm) ?? (aspect >= 1.8 ? FACE_RECT_CM : FACE_SQUARE_CM));
-  const stripW = cm.wCm * CM;
-  // Tira = 2 caras + lo que come la cresta → hang resultante = hCm·CM exacto (espejo de
+  // Ola 6 — el separador rectangular se dobla de PIE sobre el borde del libro: el lado CORTO
+  // del lienzo (hCm, ej. 2 cm) es el ANCHO de la tira, y el lado LARGO (wCm, ej. 6 cm) es la
+  // mitad del largo desplegado. La textura se rota 90° en el editor antes de llegar acá.
+  const stripW = cm.hCm * CM;
+  // Tira = 2 caras + lo que come la cresta → hang resultante = wCm·CM exacto (espejo de
   // foldedStripMetrics con rFold=SEP_R_FOLD y crestArc=SEP_FOLD_ANGLE).
-  const stripL = 2 * cm.hCm * CM + SEP_R_FOLD * SEP_FOLD_ANGLE;
+  const stripL = 2 * cm.wCm * CM + SEP_R_FOLD * SEP_FOLD_ANGLE;
   return { stripW, stripL };
 }
 

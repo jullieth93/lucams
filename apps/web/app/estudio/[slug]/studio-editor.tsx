@@ -545,11 +545,16 @@ export function StudioEditor({
     if (!state.canvasData) return;
     try {
       await ensureAllStagesMounted(); // T5: la vista 3D necesita la textura de TODOS los slots
-      const textures = await buildMagnetTextures(
+      let textures = await buildMagnetTextures(
         state.canvasData,
         slotStagesRef.current,
         productConfig.shape,
       );
+      if (isBookmark) {
+        // Ola 6 — el separador se dobla de PIE sobre el borde del libro: la textura
+        // horizontal del Estudio se rota 90° para que el diseño lea derecho en la cara 3D.
+        textures = await rotateTextures90(textures);
+      }
       setBook3D(textures);
     } catch (err) {
       state.setAutoSaveStatus({
@@ -558,7 +563,7 @@ export function StudioEditor({
       });
       void err;
     }
-  }, [store, productConfig.shape, ensureAllStagesMounted]);
+  }, [store, productConfig.shape, ensureAllStagesMounted, isBookmark]);
 
   // FOTO4 — Abrir la galería de escenas "en tu espacio" (nevera/mural/repisa/regalo). Calcula UNA vez
   // la textura por imán (recortada a su silueta) y la pasa a la galería, que arma cada escena bajo
@@ -569,14 +574,21 @@ export function StudioEditor({
     setSceneBuilding(true);
     try {
       await ensureAllStagesMounted(); // T5: la galería necesita la textura de TODOS los slots
-      const textures = await buildMagnetTextures(
+      let textures = await buildMagnetTextures(
         state.canvasData,
         slotStagesRef.current,
         productConfig.shape,
       );
+      // Ola 6 — Tira magnética photobooth: la pieza física es continua (1 col, gap 0).
+      // Combinamos los slots de 3 en 3 para que la nevera 3D muestre tiras enteras.
+      const isStrip =
+        state.canvasData.gridLayout.cols === 1 &&
+        state.canvasData.gridLayout.gap === 0 &&
+        state.canvasData.slots.length > 1;
+      if (isStrip) textures = await combineStripTextures(textures, 3);
       setSceneMagnets({
         magnets: textures,
-        cols: state.canvasData.gridLayout.cols,
+        cols: isStrip ? 1 : state.canvasData.gridLayout.cols,
         // Ola 2B — la nevera/tablero escalan los imanes a su tamaño físico real (sizeCm variante).
         sizeCm: productConfig.sizeCm,
       });
@@ -1493,6 +1505,15 @@ async function clipProductionSnapshotToShape(
   });
 }
 
+function loadImage(dataUrl: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("No se pudo cargar imagen para textura 3D"));
+    img.src = dataUrl;
+  });
+}
+
 async function buildCompositedPreview(
   canvasData: CanvasDataV2,
   stages: Map<number, Konva.Stage | null>,
@@ -1670,6 +1691,80 @@ async function buildBookmarkStripPreview(
   }
 
   return compositeCanvas.toDataURL("image/png");
+}
+
+/**
+ * Ola 6 (Lucy 2026-07-23) — Tiras magnéticas photobooth: la pieza física es UNA tira continua
+ * con N fotos apiladas verticalmente. En la nevera 3D no queremos N imanes sueltos; combinamos
+ * los slots de cada tira en un solo Magnet3D con su textura vertical y proporción de tira.
+ *
+ * El `sizeCm` del producto ya describe la TIRA COMPLETA (p. ej. 5×15 cm), no cada celda, así que
+ * conservamos `wCm`/`hCm` tal cual si vienen. El alto de la textura combinada sí crece con la
+ * cantidad de fotos (`hRatio *= chunk.length`), de modo que `magnetWorldSizes` derive el tamaño
+ * físico respetando el aspecto real de la textura sin deformarla.
+ */
+async function combineStripTextures(
+  magnets: Magnet3D[],
+  slotsPerStrip: number,
+): Promise<Magnet3D[]> {
+  if (magnets.length <= 1) return magnets;
+  const out: Magnet3D[] = [];
+  for (let i = 0; i < magnets.length; i += slotsPerStrip) {
+    const chunk = magnets.slice(i, i + slotsPerStrip);
+    if (chunk.length === 1) {
+      out.push(chunk[0]!);
+      continue;
+    }
+    const first = chunk[0]!;
+    const images = await Promise.all(chunk.map((m) => loadImage(m.dataUrl)));
+    const w = images[0]!.naturalWidth;
+    const h = images[0]!.naturalHeight;
+    const c = document.createElement("canvas");
+    c.width = w;
+    c.height = h * images.length;
+    const ctx = c.getContext("2d");
+    if (!ctx) throw new Error("No se pudo crear contexto canvas para tira 3D");
+    images.forEach((img, idx) => ctx.drawImage(img, 0, h * idx));
+    out.push({
+      dataUrl: c.toDataURL("image/png"),
+      wRatio: first.wRatio,
+      hRatio: first.hRatio * chunk.length,
+      shape: first.shape,
+      // El fallback sizeCm del producto describe la tira completa; no duplicamos medidas.
+      wCm: first.wCm,
+      hCm: first.hCm,
+      cornerRadiusRatio: first.cornerRadiusRatio,
+    });
+  }
+  return out;
+}
+
+/**
+ * Ola 6 (Lucy 2026-07-23) — Separadores rectangulares: el lienzo del Estudio es horizontal
+ * (cara A/B una al lado de la otra), pero en el libro 3D la tira doblada se pone de PIE
+ * (largo a lo largo del borde). Rotamos 90° la textura y el lienzo para que el diseño se
+ * lea derecho sobre la cara 2×6 cm (o 4.2×4 cm) sin deformarse.
+ */
+async function rotateTextures90(magnets: Magnet3D[]): Promise<Magnet3D[]> {
+  return Promise.all(
+    magnets.map(async (m) => {
+      const img = await loadImage(m.dataUrl);
+      const c = document.createElement("canvas");
+      c.width = img.naturalHeight;
+      c.height = img.naturalWidth;
+      const ctx = c.getContext("2d");
+      if (!ctx) throw new Error("No se pudo crear contexto canvas para rotar textura");
+      ctx.translate(c.width / 2, c.height / 2);
+      ctx.rotate(Math.PI / 2);
+      ctx.drawImage(img, -img.naturalWidth / 2, -img.naturalHeight / 2);
+      return {
+        ...m,
+        dataUrl: c.toDataURL("image/png"),
+        wRatio: m.hRatio,
+        hRatio: m.wRatio,
+      };
+    }),
+  );
 }
 
 // P1.4 — Genera una textura PNG por slot para la vista 3D: el snapshot del imán recortado a su

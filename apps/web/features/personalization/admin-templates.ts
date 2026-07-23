@@ -32,6 +32,7 @@ export type AdminTemplate = {
   isDeleted: boolean;
   isFallback: boolean; // "libre-*" (lienzo en blanco de respaldo)
   order: number;
+  productSlug: string | null;
 };
 
 /** Estado visible para Lucy: 🟢 aprobada · 🟡 oculta · ⚫ descartada. */
@@ -52,6 +53,7 @@ export async function listTemplatesForAdmin(): Promise<AdminTemplate[]> {
       isActive: true,
       deletedAt: true,
       order: true,
+      product: { select: { slug: true } },
     },
     orderBy: [{ kind: "asc" }, { order: "asc" }, { name: "asc" }],
   });
@@ -65,6 +67,7 @@ export async function listTemplatesForAdmin(): Promise<AdminTemplate[]> {
     isDeleted: r.deletedAt !== null,
     isFallback: r.slug.startsWith("libre-"),
     order: r.order,
+    productSlug: r.product?.slug ?? null,
   }));
 }
 

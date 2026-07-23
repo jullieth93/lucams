@@ -22,6 +22,7 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command";
+import { LucamsLogo } from "@/components/lucams-logo";
 import { formatCOP } from "@/lib/format";
 import type { SearchResult } from "@/features/products/public-service";
 import { searchProductsAction } from "@/app/actions/search";
@@ -97,6 +98,10 @@ export function GlobalSearch() {
         title="Buscar productos"
         description="Escribe parte del nombre o SKU"
       >
+        <div className="flex flex-col items-center border-b border-brand-purple/10 bg-brand-purple/5 py-3">
+          <LucamsLogo variant="mascot" size={48} aria-hidden="true" />
+          <p className="text-brand-purple-dark mt-1 text-xs font-semibold">Buscar en Lucams</p>
+        </div>
         <CommandInput placeholder="Buscar productos..." value={query} onValueChange={setQuery} />
         <CommandList>
           {query.trim().length >= 2 && results.length === 0 ? (

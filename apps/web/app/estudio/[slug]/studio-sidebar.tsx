@@ -32,6 +32,7 @@ import { frameColorById, isInstagramTemplate } from "@/features/personalization/
 import { StudioFramePicker } from "./studio-frame-picker";
 import { StudioMessageField } from "./studio-message-field";
 import { StudioIgBorderToggle } from "./studio-ig-border-toggle";
+import { StudioPolaroidBorderToggle } from "./studio-polaroid-border-toggle";
 import {
   selectAssetIsUsed,
   selectFilledSlotCount,
@@ -335,6 +336,9 @@ export function StudioSidebar({
 
       {/* ──────── Foto con/sin borde (Ola 3c — solo plantilla Polaroid Instagram) ──────── */}
       <StudioIgBorderToggle store={store} />
+
+      {/* ──────── Foto con/sin borde (Ola 6 — solo plantilla Polaroid Clásica) ──────── */}
+      <StudioPolaroidBorderToggle store={store} />
 
       {/* ──────── Plantillas ──────── */}
       <section

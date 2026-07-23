@@ -81,6 +81,7 @@ describe("generateQuoteNumber", () => {
 
 const QUOTE = {
   number: "COT-ABC234",
+  token: "abc123token",
   customerName: "Lucía Pérez",
   total: 45_000, // centavos → $ 450
   items: [
@@ -105,6 +106,8 @@ describe("buildQuoteWhatsAppUrl", () => {
     expect(text).not.toContain("Default");
     // Total formateado COP ($ 450 para 45_000 centavos).
     expect(text).toMatch(/Total: \$\s*450/);
+    // Incluye el link público de la cotización sobre el dominio canónico.
+    expect(text).toContain("https://lucamsshop.com/cotizacion/abc123token");
   });
 
   it("consulta la plantilla WA_MSG_QUOTE del CMS con su fallback", async () => {

@@ -24,7 +24,9 @@ import { SiteHeader } from "@/components/site-header";
 import { Button } from "@/components/ui/button";
 import { LucamsLogo } from "@/components/lucams-logo";
 import { formatCOP, formatCityDept } from "@/lib/format";
+import { buildPublicShareUrl } from "@/lib/public-url";
 import { buildQuoteWhatsAppUrl, getQuoteByToken } from "@/features/quotes/service";
+import { CopyQuoteLink } from "./copy-quote-link";
 
 export const metadata: Metadata = {
   title: "Tu cotización · Lucams",
@@ -38,7 +40,14 @@ export default async function CotizacionPage({ params }: { params: Params }) {
   const quote = await getQuoteByToken(token);
   if (!quote) notFound();
 
-  const waUrl = await buildQuoteWhatsAppUrl(quote);
+  const quoteUrl = buildPublicShareUrl(`/cotizacion/${token}`);
+  const waUrl = await buildQuoteWhatsAppUrl({
+    number: quote.number,
+    token,
+    customerName: quote.customerName,
+    total: quote.total,
+    items: quote.items,
+  });
 
   return (
     <div className="bg-brand-cream flex min-h-screen flex-col">
@@ -137,9 +146,10 @@ export default async function CotizacionPage({ params }: { params: Params }) {
               </a>
             </Button>
             <p className="text-brand-muted max-w-md text-xs">
-              Se abre WhatsApp con el mensaje ya listo (número de cotización, productos y total) —
-              solo dale enviar.
+              Se abre WhatsApp con el mensaje ya listo (número de cotización, productos, total y link)
+              — solo dale enviar.
             </p>
+            <CopyQuoteLink url={quoteUrl} />
             <Link
               href="/productos"
               className="text-brand-purple-dark/70 hover:text-brand-purple mt-2 text-sm font-medium"

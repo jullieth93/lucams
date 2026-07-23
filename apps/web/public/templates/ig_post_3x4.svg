@@ -1,20 +1,30 @@
 <svg width="450" height="600" viewBox="0 0 450 600" fill="none" xmlns="http://www.w3.org/2000/svg">
   <!--
     Marco "Polaroid Instagram" TRANSPARENTE — versión 450×600 (Ola 3, Lucy 2026-07-22).
-    El formato físico de la Polaroid es 7.5×10 cm (3:4); el asset original 400×580
-    (ig_post.svg) queda para los DRAFTS viejos guardados con ese stage (sus plantillas
-    embebidas lo referencian y deben seguir viéndose igual). Las plantillas nuevas usan
-    ESTE archivo. El marco es SOLO el chrome (avatar, botón, íconos): el fondo blanco lo
-    aporta la capa `background` y la foto la capa `p1`; los textos (usuario, likes,
-    título, hashtags) son capas EDITABLES de Konva y NO se hornean aquí.
-    Ventana de foto (transparente): x25 y88 → 400×400, alineada con el photoSlot p1 del seed.
+    Formato físico 7.5×10 cm (3:4). El fondo blanco lo aporta la capa `background`
+    y la foto la capa `p1`; los textos editables (usuario, likes, caption, hashtags)
+    son capas Konva y NO se hornean aquí. El chrome ahora incluye avatar, ubicación,
+    íconos de interacción y "Ver comentarios" para verse más como un post real.
+    Ventana de foto (transparente): x25 y88 → 400×400, alineada con el photoSlot p1.
   -->
 
-  <!-- CABECERA: avatar + botón Seguir + opciones -->
+  <!-- Definiciones -->
+  <defs>
+    <linearGradient id="avatarGradient" x1="42" y1="20" x2="42" y2="64" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F4ECFF"/>
+      <stop offset="1" stop-color="#E85B9F"/>
+    </linearGradient>
+  </defs>
+
+  <!-- CABECERA: avatar + ubicación + botón Seguir + opciones -->
   <g id="header">
-    <circle cx="48" cy="42" r="19" stroke="#262626" stroke-width="1.5"/>
-    <circle cx="48" cy="37.5" r="5.5" fill="#262626"/>
-    <path d="M36 54.5C36 48.5 41 47.5 48 47.5C55 47.5 60 48.5 60 54.5" stroke="#262626" stroke-width="1.5" stroke-linecap="round"/>
+    <!-- Avatar con borde -->
+    <circle cx="42" cy="42" r="22" fill="url(#avatarGradient)" stroke="#262626" stroke-width="1.5"/>
+    <circle cx="42" cy="37" r="7" fill="#BDBDBD"/>
+    <path d="M30 54 C30 47 35 46 42 46 C49 46 54 47 54 54" stroke="#262626" stroke-width="1.5" stroke-linecap="round" fill="none"/>
+
+    <!-- Ubicación (chrome estático, no editable) -->
+    <text x="75" y="66" font-family="Inter, Arial, sans-serif" font-size="13" fill="#262626">Bogotá, Colombia</text>
 
     <!-- Botón Seguir (estático, no editable) -->
     <rect x="288" y="28" width="100" height="30" rx="4" stroke="#3897f0" stroke-width="1.2"/>
@@ -29,12 +39,15 @@
   <!-- ÍCONOS DE INTERACCIÓN (justo debajo de la foto) -->
   <g id="actions" transform="translate(28, 500)">
     <!-- Corazón (like) -->
-    <path d="M12 5C12 5 10.3 2.2 7.2 2.2C3.3 2.2 1.1 5.6 1.1 9.4C1.1 14.4 12 21 12 21C12 21 23 14.4 23 9.4C23 5.6 20.8 2.2 16.6 2.2C13.3 2.2 12 5 12 5Z" stroke="#262626" stroke-width="2.2" stroke-linejoin="round"/>
+    <path d="M12 21.35l-1.45-1.32C5.4 14.36 2 11.28 2 7.5 2 4.42 4.42 2 7.5 2c1.74 0 3.41.81 4.5 2.09C13.09 2.81 14.76 2 16.5 2 19.58 2 22 4.42 22 7.5c0 3.78-3.4 6.86-8.55 12.54L12 21.35z" stroke="#262626" stroke-width="2" stroke-linejoin="round" fill="none"/>
     <!-- Comentario -->
-    <path d="M53 2H76C78.2 2 79.5 3.1 79.5 5.3V19C79.5 21.2 78.2 22.3 76 22.3H61L53 28V2Z" stroke="#262626" stroke-width="2.2" stroke-linejoin="round" transform="translate(5, 0)"/>
+    <path d="M45 25c0 1.1-.9 2-2 2H31l-8 6V5c0-1.1.9-2 2-2h18c1.1 0 2 .9 2 2v20z" stroke="#262626" stroke-width="2" stroke-linejoin="round" fill="none" transform="translate(28, -2)"/>
     <!-- Compartir (avión) -->
-    <path d="M112 2L138 12L112 22L118.6 12L112 2Z" stroke="#262626" stroke-width="2.2" stroke-linejoin="round" transform="translate(11, 0)"/>
+    <path d="M2 12l18-10-2 8h12v4H18l2 8L2 12z" stroke="#262626" stroke-width="2" stroke-linejoin="round" fill="none" transform="translate(70, 0)"/>
     <!-- Guardar (bookmark) -->
-    <path d="M372 2V25L383 18.4L394 25V2H372Z" stroke="#262626" stroke-width="2.2" stroke-linejoin="round"/>
+    <path d="M344 2v21l6-4 6 4V2h-12z" stroke="#262626" stroke-width="2" stroke-linejoin="round" fill="none"/>
   </g>
+
+  <!-- Ver comentarios (chrome estático) -->
+  <text x="28" y="594" font-family="Inter, Arial, sans-serif" font-size="12" fill="#8e8e8e">Ver los 12 comentarios</text>
 </svg>

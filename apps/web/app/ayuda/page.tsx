@@ -86,10 +86,10 @@ function buildFallbackFaqs(
         "Tienes **5 días hábiles** desde la entrega para retractarte (Ley 1480 art. 47), excepto en productos personalizados. Para garantía: 1 año desde la entrega. [Más detalles](/legal/devoluciones).",
     },
     {
-      slug: "factura-dian",
-      question: "¿Puedo pedir factura de mi compra?",
+      slug: "comprobante-venta",
+      question: "¿Puedo pedir comprobante de venta de mi compra?",
       answer:
-        "Claro. Cuéntanos tus datos de facturación (nombre o razón social, cédula o NIT, y correo) al confirmar tu pedido y te enviamos el comprobante de tu compra a tu correo.",
+        "Claro. Cuéntanos tus datos de facturación (nombre o razón social, cédula o NIT, y correo) al confirmar tu pedido y te enviamos el comprobante de tu compra a tu correo. Hoy no emitimos factura electrónica de la DIAN; te entregamos el documento equivalente que corresponda según nuestro régimen tributario.",
     },
     {
       slug: "datos-personales",

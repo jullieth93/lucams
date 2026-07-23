@@ -62,7 +62,7 @@ Para operar la tienda usamos proveedores de tecnología ("encargados del tratami
 | Google (Gemini API) | Asistente de diseño con IA (sin datos de contacto directos) | EE.UU. |
 | Cloudflare | Seguridad anti-bot y protección contra ataques | EE.UU. |
 | Wompi | Procesamiento de pagos | Colombia |
-| Aveonline / Coordinadora | Logística y envíos | Colombia |
+| Aveonline (agregador logístico — múltiples transportadoras aliadas) | Logística y envíos | Colombia |
 
 **Base de legitimación:** estas transferencias y transmisiones se realizan con **tu autorización** y porque son **necesarias para ejecutar tu compra**, con acuerdos de tratamiento (DPA) y medidas de seguridad (cifrado en tránsito y en reposo) con cada proveedor. La lista completa y actualizada vive en [Subprocesadores](/legal/subprocesadores).
 

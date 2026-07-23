@@ -23,7 +23,8 @@ import type Konva from "konva";
 import type { StoreApi } from "zustand";
 import { useStore } from "zustand";
 import { StudioSlot } from "./studio-slot";
-import type { CanvasDataV2, StudioAsset } from "./types";
+import { StudioSlotEditModal } from "./studio-slot-edit-modal";
+import type { CanvasDataV2, StudioAsset, TextLayer } from "./types";
 import { selectUnitImagePlaceholder, type StudioStoreState } from "./lib/store";
 import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
 import { unitIndexOfSlot } from "./lib/faces";
@@ -38,6 +39,13 @@ const MAX_VIEWPORT_WIDTH = 720; // px lógicos máximo del grid en desktop
 const FRAME_HEIGHT_VH = 0.78;
 const FRAME_HEIGHT_MIN = 420;
 const FRAME_HEIGHT_MAX = 900;
+
+// Ola 6 (Lucy 2026-07-23) — límite de alto por slot según cantidad de slots,
+// para que productos de pocos slots (ej. Polaroid 1 slot) no ocupen toda la pantalla.
+const SLOT_HEIGHT_CAP_BY_COUNT = {
+  few: { desktop: 420, tablet: 320, mobile: 280 }, // 1-2 slots
+  medium: 520, // 3-6 slots
+};
 
 // Ola 2A (Lucy 2026-07-22) — espacio RESERVADO bajo cada slot para su barra de acciones
 // (Centrar / Ajustar filtros / Eliminar). Antes el wrapper medía solo el canvas → la barra
@@ -126,7 +134,9 @@ export function StudioCanvasGrid({
   facesPerUnit = 1,
   interactiveSlots = true,
   onSlotClick,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   onSlotAdjust,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   onTextEdit,
   registerSlotStages,
   forceMountAll = false,
@@ -139,6 +149,12 @@ export function StudioCanvasGrid({
   // ADR-063 T5 — slots ya montados (una vez montados, permanecen; el store es la fuente de verdad,
   // así que re-montar desde slotState no pierde nada).
   const [mountedSlots, setMountedSlots] = useState<Set<number>>(() => new Set());
+  // Ola 6 — modal unificado de edición por slot (tabs Foto/Texto).
+  const [editModal, setEditModal] = useState<{
+    slotIndex: number;
+    tab: "photo" | "text";
+    focusTextLayerId?: string;
+  } | null>(null);
 
   // Selectores zustand: solo re-render al cambiar slices específicos.
   const canvasData = useStore(store, (s) => s.canvasData);
@@ -276,12 +292,31 @@ export function StudioCanvasGrid({
   const navCols = grouped ? unitCols * 2 : layout.cols;
 
   const availableW = containerWidth - layout.gap * (layout.cols - 1);
+  // Ola 6 — límite de alto del slot según cantidad de slots, para evitar que
+  // productos de pocos slots (ej. Polaroid de 1 slot) ocupen toda la pantalla.
+  const slotMaxHeight = (() => {
+    if (canvasData.slotCount <= 2) {
+      if (containerWidth < BP_NARROW) return SLOT_HEIGHT_CAP_BY_COUNT.few.mobile;
+      if (containerWidth < BP_TABLET) return SLOT_HEIGHT_CAP_BY_COUNT.few.tablet;
+      return SLOT_HEIGHT_CAP_BY_COUNT.few.desktop;
+    }
+    if (canvasData.slotCount <= 6) return SLOT_HEIGHT_CAP_BY_COUNT.medium;
+    return FRAME_HEIGHT_MAX; // 7+ slots: sin cap adicional (comportamiento anterior)
+  })();
+
   // Ola 4 — marco máximo en ALTO (78% del viewport, acotado): las celdas se achican
-  // si el grid completo no cabe en pantalla (calendario 4×3, polaroid de 1 slot,
-  // tira 1-col se desbordaban). null antes de hidratar → comportamiento anterior.
+  // si el grid completo no cabe en pantalla. Ola 6: se respeta también el cap por slot.
+  const reserve = stripMode ? 0 : ACTION_BAR_RESERVE;
+  const maxFrameHBySlots =
+    slotMaxHeight * layout.rows + layout.gap * (layout.rows - 1) + layout.rows * reserve;
   const maxFrameH = viewportH
-    ? Math.min(FRAME_HEIGHT_MAX, Math.max(FRAME_HEIGHT_MIN, Math.round(viewportH * FRAME_HEIGHT_VH)))
+    ? Math.min(
+        FRAME_HEIGHT_MAX,
+        Math.max(FRAME_HEIGHT_MIN, Math.round(viewportH * FRAME_HEIGHT_VH)),
+        maxFrameHBySlots,
+      )
     : null;
+
   const slotDisplaySize = grouped
     ? // Ancho de cara dentro de la tarjeta: (tarjeta − padding − separación) / 2.
       Math.max(
@@ -293,7 +328,6 @@ export function StudioCanvasGrid({
         if (!maxFrameH) return Math.max(MIN_SLOT_SIZE, byWidth);
         // Alto útil del marco: menos gaps entre filas y la reserva de la barra de
         // acciones por fila (en modo tira no hay reserva: la barra flota).
-        const reserve = stripMode ? 0 : ACTION_BAR_RESERVE;
         const usableH = maxFrameH - layout.gap * (layout.rows - 1) - layout.rows * reserve;
         const byHeight = Math.floor(usableH / layout.rows / slotAspect);
         return Math.max(MIN_SLOT_SIZE, Math.min(byWidth, byHeight));
@@ -391,20 +425,16 @@ export function StudioCanvasGrid({
               onSlotClick(slot.slotIndex);
             }}
             onClear={() => clearSlot(slot.slotIndex)}
-            onAdjust={onSlotAdjust ? () => onSlotAdjust(slot.slotIndex) : undefined}
-            onTextEdit={
-              onTextEdit ? (textLayerId) => onTextEdit(slot.slotIndex, textLayerId) : undefined
+            onEdit={(tab) => setEditModal({ slotIndex: slot.slotIndex, tab })}
+            onTextEdit={(textLayerId) =>
+              setEditModal({ slotIndex: slot.slotIndex, tab: "text", focusTextLayerId: textLayerId })
             }
-            onPhotoTransformChange={
-              // FB4 — en táctil se omiten (grilla sin gestos → scroll libre; pan/zoom va al
-              // editor a pantalla completa). En desktop se conserva el inline.
-              interactiveSlots
-                ? (transform) => setSlotPhotoTransform(slot.slotIndex, transform)
-                : undefined
-            }
-            onCenterPhoto={
-              interactiveSlots ? () => setSlotPhotoTransform(slot.slotIndex, null) : undefined
-            }
+            // Ola 6 — el callback de transform está siempre disponible para controles
+            // externos (slider flotante de zoom en móvil); los gestos inline se
+            // habilitan/deshabilitan vía interactiveSlots.
+            onPhotoTransformChange={(transform) => setSlotPhotoTransform(slot.slotIndex, transform)}
+            onCenterPhoto={() => setSlotPhotoTransform(slot.slotIndex, null)}
+            interactiveSlots={interactiveSlots}
             onAssetDrop={(asset: StudioAsset) => assignAssetToSlot(slot.slotIndex, asset)}
             onKeyboardNav={(dir) => handleKeyboardNav(slot.slotIndex, dir)}
             onRegisterStage={registerStage(slot.slotIndex)}
@@ -495,6 +525,15 @@ export function StudioCanvasGrid({
         </AnimatePresence>
       </motion.div>
 
+      {/* Ola 6 — Modal unificado de edición por slot (tabs Foto/Texto). */}
+      <StudioSlotEditModalWrapper
+        store={store}
+        editModal={editModal}
+        onClose={() => setEditModal(null)}
+        allowFilters={!calendarPreview}
+        slotLabels={slotLabels}
+      />
+
       {/* A2.6 — Overlay de transición al cambiar plantilla */}
       <AnimatePresence>
         {transitioning && !reducedMotion && (
@@ -566,3 +605,124 @@ function LazySlotPlaceholder({
 // Re-export para que componentes consumidores tengan acceso directo
 export { selectUnitImagePlaceholder };
 export type { CanvasDataV2 };
+
+
+// Ola 6 — Wrapper para el modal unificado de edición por slot. Vive dentro del
+// grid para tener acceso directo al store sin modificar StudioEditor.
+function StudioSlotEditModalWrapper({
+  store,
+  editModal,
+  onClose,
+  allowFilters = true,
+  slotLabels,
+}: {
+  store: StoreApi<StudioStoreState>;
+  editModal: { slotIndex: number; tab: "photo" | "text"; focusTextLayerId?: string } | null;
+  onClose: () => void;
+  allowFilters?: boolean;
+  slotLabels?: string[];
+}) {
+  const slotIndex = editModal?.slotIndex ?? null;
+  const slotAssetUrl = useStore(store, (s) =>
+    slotIndex !== null
+      ? (s.canvasData?.slots?.find((sl) => sl.slotIndex === slotIndex)?.assetUrl ?? null)
+      : null,
+  );
+  const slotFilter = useStore(store, (s) =>
+    slotIndex !== null
+      ? (s.canvasData?.slots?.find((sl) => sl.slotIndex === slotIndex)?.filter ?? null)
+      : null,
+  );
+  const slotScale = useStore(store, (s) =>
+    slotIndex !== null
+      ? (s.canvasData?.slots?.find((sl) => sl.slotIndex === slotIndex)?.photoTransform?.scale ?? 1)
+      : 1,
+  );
+  const slotOffsetX = useStore(store, (s) =>
+    slotIndex !== null
+      ? (s.canvasData?.slots?.find((sl) => sl.slotIndex === slotIndex)?.photoTransform?.offsetX ?? 0)
+      : 0,
+  );
+  const slotOffsetY = useStore(store, (s) =>
+    slotIndex !== null
+      ? (s.canvasData?.slots?.find((sl) => sl.slotIndex === slotIndex)?.photoTransform?.offsetY ?? 0)
+      : 0,
+  );
+  const slotRotation = useStore(store, (s) =>
+    slotIndex !== null
+      ? (s.canvasData?.slots?.find((sl) => sl.slotIndex === slotIndex)?.photoTransform?.rotation ?? 0)
+      : 0,
+  );
+  const slotTextOverrides = useStore(store, (s) =>
+    slotIndex !== null
+      ? s.canvasData?.slots?.find((sl) => sl.slotIndex === slotIndex)?.textOverrides
+      : undefined,
+  );
+  const unitTemplate = useStore(store, (s) => s.canvasData?.unitTemplate);
+  const slotCount = useStore(store, (s) => s.canvasData?.slotCount ?? 0);
+  const setSlotFilter = useStore(store, (s) => s.setSlotFilter);
+  const setSlotPhotoTransform = useStore(store, (s) => s.setSlotPhotoTransform);
+  const setSlotTextOverride = useStore(store, (s) => s.setSlotTextOverride);
+
+  const textLayers = useMemo(() => {
+    if (!unitTemplate) return [];
+    const layers = unitTemplate.layers.filter(
+      (l): l is TextLayer => l.type === "text" && (l as TextLayer).editable === true,
+    );
+    // Si se tocó un texto específico, ponerlo primero para preseleccionarlo.
+    if (editModal?.focusTextLayerId) {
+      const focused = layers.find((l) => l.id === editModal.focusTextLayerId);
+      if (focused) {
+        return [focused, ...layers.filter((l) => l.id !== editModal.focusTextLayerId)];
+      }
+    }
+    return layers;
+  }, [unitTemplate, editModal]);
+
+  return (
+    <StudioSlotEditModal
+      isOpen={editModal !== null}
+      slotIndex={slotIndex}
+      slotLabel={
+        slotIndex !== null
+          ? (slotLabels?.[slotIndex] ?? `Espacio ${slotIndex + 1} de ${slotCount}`)
+          : undefined
+      }
+      hasPhoto={!!slotAssetUrl}
+      hasText={textLayers.length > 0}
+      photoUrl={slotAssetUrl}
+      currentFilter={slotFilter}
+      currentTransform={{
+        offsetX: slotOffsetX,
+        offsetY: slotOffsetY,
+        scale: slotScale,
+        rotation: slotRotation,
+      }}
+      currentTextOverrides={slotTextOverrides}
+      textLayers={textLayers}
+      allowFilters={allowFilters}
+      onClose={onClose}
+      onApplyFilter={(filter) => {
+        if (slotIndex !== null) setSlotFilter(slotIndex, filter);
+      }}
+      onResetTransform={() => {
+        if (slotIndex !== null) setSlotPhotoTransform(slotIndex, null);
+      }}
+      onZoomChange={(percent) => {
+        if (slotIndex !== null)
+          setSlotPhotoTransform(slotIndex, { scale: Math.max(0.5, Math.min(3, percent / 100)) });
+      }}
+      onNudge={(dx, dy) => {
+        if (slotIndex !== null)
+          setSlotPhotoTransform(slotIndex, { offsetX: slotOffsetX + dx, offsetY: slotOffsetY + dy });
+      }}
+      onRotate={() => {
+        if (slotIndex !== null)
+          setSlotPhotoTransform(slotIndex, { rotation: (slotRotation + 90) % 360 });
+      }}
+      onApplyTextOverride={(layerId, override) => {
+        if (slotIndex !== null) setSlotTextOverride(slotIndex, layerId, override);
+      }}
+    />
+  );
+}

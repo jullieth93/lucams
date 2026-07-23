@@ -16,6 +16,7 @@ import {
 import type { PersonalizationKind } from "@lucams/db";
 import { AdminPage, AdminPageHeader, AdminPageBody } from "@/components/admin-page";
 import { TemplateCardActions } from "./template-card-actions";
+import { TemplatePreviewButton } from "./template-preview-button";
 
 export const metadata: Metadata = { title: "Plantillas" };
 
@@ -93,7 +94,8 @@ export default async function AdminPlantillasPage() {
                       <p className="text-brand-muted text-[11px]" title={STATUS_UI[st].label}>
                         {STATUS_UI[st].dot} {st}
                       </p>
-                      <div className="mt-auto">
+                      <div className="mt-auto flex flex-col gap-1.5">
+                        <TemplatePreviewButton template={t} />
                         <TemplateCardActions id={t.id} status={st} />
                       </div>
                     </div>

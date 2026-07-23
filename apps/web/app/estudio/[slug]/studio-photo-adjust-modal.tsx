@@ -16,12 +16,8 @@
  *   - Removido el slider de Zoom redundante: el scroll del mouse + pinch
  *     ya cubren esa función. El reset button queda para volver a centrado.
  *
- * Decisiones:
- *   - Solo presets, no sliders custom (90% de los casos cubiertos con menos
- *     fricción UX). Sliders quedan para M.3.b.D futuro si Lucy lo pide.
- *   - Cada preview es un mini-thumbnail con CSS filters CSS-equivalents al
- *     preset Konva (rough approximation). El render real con Konva.Filters
- *     se aplica al confirmar en el canvas.
+ * Ola 6 (2026-07-23): se extrae `StudioPhotoAdjustForm` para reutilizar la
+ * misma UI dentro del modal unificado de edición por slot (`StudioSlotEditModal`).
  */
 
 import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
@@ -64,6 +60,18 @@ type StudioPhotoAdjustModalProps = {
   allowFilters?: boolean;
 };
 
+export type StudioPhotoAdjustFormProps = {
+  photoUrl: string;
+  currentFilter: PhotoFilterPreset | null;
+  currentTransform: { offsetX: number; offsetY: number; scale: number; rotation?: number } | null;
+  onApplyFilter: (filter: PhotoFilterPreset | null) => void;
+  onResetTransform: () => void;
+  onZoomChange: (scalePercent: number) => void;
+  onNudge: (dx: number, dy: number) => void;
+  onRotate?: () => void;
+  allowFilters?: boolean;
+};
+
 // CSS filter equivalents para preview (no idéntico a Konva, suficiente para
 // que el cliente vea el cambio aproximado antes de confirmar).
 const CSS_FILTER_BY_PRESET: Record<PhotoFilterPreset, string> = {
@@ -90,14 +98,6 @@ export function StudioPhotoAdjustModal({
 }: StudioPhotoAdjustModalProps) {
   if (!photoUrl) return null;
 
-  const handleSelectFilter = (filter: PhotoFilterPreset | null) => {
-    onApply(filter);
-  };
-
-  // #18 — paso de desplazamiento por pulsación (px del stage), y % de zoom actual.
-  const NUDGE = 12;
-  const zoomPct = Math.round((photoTransform?.scale ?? 1) * 100);
-
   return (
     // modal={false} — el contenido detrás (canvas Konva) sigue recibiendo
     // eventos (scroll-zoom, drag-pan). Focus NO se atrapa dentro del panel.
@@ -122,119 +122,17 @@ export function StudioPhotoAdjustModal({
           {allowFilters ? " · Elige un filtro abajo" : ""}
         </DialogDescription>
 
-        {/* Reset transform — vuelve scale=1 + offset=0 (+ rotación) */}
-        <div className="mt-2 flex flex-wrap gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={onResetTransform}
-            className="border-brand-purple/30 text-brand-purple-dark hover:bg-brand-purple/5 gap-1.5"
-          >
-            <RotateCcw className="h-3.5 w-3.5" />
-            Centrar y resetear zoom
-          </Button>
-          {/* Ola 3c — Rotar 90°: endereza fotos cuya orientación no calza la
-              ventana (foto apaisada en cara vertical, retrato en separador 6×2).
-              El encuadre (pan/zoom) se mantiene; producción dibuja lo mismo. */}
-          {onRotate && (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={onRotate}
-              aria-label="Rotar la foto 90 grados"
-              className="border-brand-purple/30 text-brand-purple-dark hover:bg-brand-purple/5 gap-1.5"
-            >
-              <RotateCw className="h-3.5 w-3.5" />
-              Rotar 90°
-              {photoTransform?.rotation ? (
-                <span className="text-brand-muted tabular-nums">
-                  ({Math.round(photoTransform.rotation)}°)
-                </span>
-              ) : null}
-            </Button>
-          )}
-        </div>
-
-        {/* #18 — encuadre accesible: zoom por slider + cruceta de 4 flechas (equivalente de teclado
-          a los gestos de pan/zoom). Aplica también a calendarios (el encuadre sí se propaga). */}
-        <div className="border-brand-purple/10 mt-3 flex flex-wrap items-end gap-x-6 gap-y-3 rounded-lg border p-3">
-          <div className="flex-1">
-            <label
-              htmlFor="pa-zoom"
-              className="text-brand-purple-dark mb-1 block text-xs font-semibold"
-            >
-              Zoom: {zoomPct}%
-            </label>
-            <input
-              id="pa-zoom"
-              type="range"
-              min={50}
-              max={300}
-              step={5}
-              value={zoomPct}
-              onChange={(e) => onZoomChange(Number(e.target.value))}
-              aria-label={`Zoom ${zoomPct} por ciento`}
-              aria-valuetext={`${zoomPct}%`}
-              className="accent-brand-purple w-full"
-            />
-          </div>
-
-          <div className="flex flex-col items-center">
-            <span className="text-brand-purple-dark mb-1 text-xs font-semibold">Mover</span>
-            <div className="grid grid-cols-3 grid-rows-2 gap-1">
-              <span />
-              <NudgeButton label="Mover la foto hacia arriba" onClick={() => onNudge(0, -NUDGE)}>
-                <ArrowUp className="h-4 w-4" />
-              </NudgeButton>
-              <span />
-              <NudgeButton label="Mover la foto a la izquierda" onClick={() => onNudge(-NUDGE, 0)}>
-                <ArrowLeft className="h-4 w-4" />
-              </NudgeButton>
-              <NudgeButton label="Mover la foto hacia abajo" onClick={() => onNudge(0, NUDGE)}>
-                <ArrowDown className="h-4 w-4" />
-              </NudgeButton>
-              <NudgeButton label="Mover la foto a la derecha" onClick={() => onNudge(NUDGE, 0)}>
-                <ArrowRight className="h-4 w-4" />
-              </NudgeButton>
-            </div>
-          </div>
-        </div>
-
-        {allowFilters && (
-          <div className="mt-3">
-            <h3 className="text-brand-purple-dark mb-2 text-sm font-semibold">Filtros</h3>
-            {/* Grid de presets: 6 cards (sin filtro + 5 presets) */}
-            <div
-              role="radiogroup"
-              aria-label="Filtros disponibles"
-              className="grid grid-cols-2 gap-3 sm:grid-cols-3"
-            >
-              {/* Sin filtro */}
-              <FilterCard
-                isSelected={currentFilter === null}
-                previewUrl={photoUrl}
-                cssFilter="none"
-                label="Sin filtro"
-                description="Foto original sin ajustes"
-                onClick={() => handleSelectFilter(null)}
-              />
-
-              {FILTER_ORDER.map((preset) => (
-                <FilterCard
-                  key={preset}
-                  isSelected={currentFilter === preset}
-                  previewUrl={photoUrl}
-                  cssFilter={CSS_FILTER_BY_PRESET[preset]}
-                  label={FILTER_LABELS[preset]}
-                  description={FILTER_DESCRIPTIONS[preset]}
-                  onClick={() => handleSelectFilter(preset)}
-                />
-              ))}
-            </div>
-          </div>
-        )}
+        <StudioPhotoAdjustForm
+          photoUrl={photoUrl}
+          currentFilter={currentFilter}
+          currentTransform={photoTransform}
+          onApplyFilter={onApply}
+          onResetTransform={onResetTransform}
+          onZoomChange={onZoomChange}
+          onNudge={onNudge}
+          onRotate={onRotate}
+          allowFilters={allowFilters}
+        />
 
         <div className="border-brand-purple/10 mt-5 flex justify-end border-t pt-4">
           <Button
@@ -247,6 +145,140 @@ export function StudioPhotoAdjustModal({
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+export function StudioPhotoAdjustForm({
+  photoUrl,
+  currentFilter,
+  currentTransform,
+  onApplyFilter,
+  onResetTransform,
+  onZoomChange,
+  onNudge,
+  onRotate,
+  allowFilters = true,
+}: StudioPhotoAdjustFormProps) {
+  // #18 — paso de desplazamiento por pulsación (px del stage), y % de zoom actual.
+  const NUDGE = 12;
+  const zoomPct = Math.round((currentTransform?.scale ?? 1) * 100);
+
+  return (
+    <div className="space-y-3">
+      {/* Reset transform — vuelve scale=1 + offset=0 (+ rotación) */}
+      <div className="flex flex-wrap gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={onResetTransform}
+          className="border-brand-purple/30 text-brand-purple-dark hover:bg-brand-purple/5 gap-1.5"
+        >
+          <RotateCcw className="h-3.5 w-3.5" />
+          Centrar y resetear zoom
+        </Button>
+        {/* Ola 3c — Rotar 90°: endereza fotos cuya orientación no calza la
+            ventana (foto apaisada en cara vertical, retrato en separador 6×2).
+            El encuadre (pan/zoom) se mantiene; producción dibuja lo mismo. */}
+        {onRotate && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={onRotate}
+            aria-label="Rotar la foto 90 grados"
+            className="border-brand-purple/30 text-brand-purple-dark hover:bg-brand-purple/5 gap-1.5"
+          >
+            <RotateCw className="h-3.5 w-3.5" />
+            Rotar 90°
+            {currentTransform?.rotation ? (
+              <span className="text-brand-muted tabular-nums">
+                ({Math.round(currentTransform.rotation)}°)
+              </span>
+            ) : null}
+          </Button>
+        )}
+      </div>
+
+      {/* #18 — encuadre accesible: zoom por slider + cruceta de 4 flechas (equivalente de teclado
+        a los gestos de pan/zoom). Aplica también a calendarios (el encuadre sí se propaga). */}
+      <div className="border-brand-purple/10 flex flex-wrap items-end gap-x-6 gap-y-3 rounded-lg border p-3">
+        <div className="flex-1">
+          <label
+            htmlFor="pa-zoom"
+            className="text-brand-purple-dark mb-1 block text-xs font-semibold"
+          >
+            Zoom: {zoomPct}%
+          </label>
+          <input
+            id="pa-zoom"
+            type="range"
+            min={50}
+            max={300}
+            step={5}
+            value={zoomPct}
+            onChange={(e) => onZoomChange(Number(e.target.value))}
+            aria-label={`Zoom ${zoomPct} por ciento`}
+            aria-valuetext={`${zoomPct}%`}
+            className="accent-brand-purple w-full"
+          />
+        </div>
+
+        <div className="flex flex-col items-center">
+          <span className="text-brand-purple-dark mb-1 text-xs font-semibold">Mover</span>
+          <div className="grid grid-cols-3 grid-rows-2 gap-1">
+            <span />
+            <NudgeButton label="Mover la foto hacia arriba" onClick={() => onNudge(0, -NUDGE)}>
+              <ArrowUp className="h-4 w-4" />
+            </NudgeButton>
+            <span />
+            <NudgeButton label="Mover la foto a la izquierda" onClick={() => onNudge(-NUDGE, 0)}>
+              <ArrowLeft className="h-4 w-4" />
+            </NudgeButton>
+            <NudgeButton label="Mover la foto hacia abajo" onClick={() => onNudge(0, NUDGE)}>
+              <ArrowDown className="h-4 w-4" />
+            </NudgeButton>
+            <NudgeButton label="Mover la foto a la derecha" onClick={() => onNudge(NUDGE, 0)}>
+              <ArrowRight className="h-4 w-4" />
+            </NudgeButton>
+          </div>
+        </div>
+      </div>
+
+      {allowFilters && (
+        <div className="mt-3">
+          <h3 className="text-brand-purple-dark mb-2 text-sm font-semibold">Filtros</h3>
+          {/* Grid de presets: 6 cards (sin filtro + 5 presets) */}
+          <div
+            role="radiogroup"
+            aria-label="Filtros disponibles"
+            className="grid grid-cols-2 gap-3 sm:grid-cols-3"
+          >
+            {/* Sin filtro */}
+            <FilterCard
+              isSelected={currentFilter === null}
+              previewUrl={photoUrl}
+              cssFilter="none"
+              label="Sin filtro"
+              description="Foto original sin ajustes"
+              onClick={() => onApplyFilter(null)}
+            />
+
+            {FILTER_ORDER.map((preset) => (
+              <FilterCard
+                key={preset}
+                isSelected={currentFilter === preset}
+                previewUrl={photoUrl}
+                cssFilter={CSS_FILTER_BY_PRESET[preset]}
+                label={FILTER_LABELS[preset]}
+                description={FILTER_DESCRIPTIONS[preset]}
+                onClick={() => onApplyFilter(preset)}
+              />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
 

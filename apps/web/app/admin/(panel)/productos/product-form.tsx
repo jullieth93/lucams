@@ -349,7 +349,7 @@ export function ProductForm({ categories, priceFrom, initialProduct, action, sub
                 type="number"
                 min={1}
                 max={60}
-                defaultValue={initialProduct?.productionDays ?? 3}
+                defaultValue={initialProduct?.productionDays ?? 2}
                 disabled={pending}
               />
             </Field>
@@ -360,7 +360,7 @@ export function ProductForm({ categories, priceFrom, initialProduct, action, sub
                 type="number"
                 min={0}
                 max={30}
-                defaultValue={initialProduct?.shippingDaysMin ?? 2}
+                defaultValue={initialProduct?.shippingDaysMin ?? 1}
                 disabled={pending}
               />
             </Field>
@@ -371,7 +371,7 @@ export function ProductForm({ categories, priceFrom, initialProduct, action, sub
                 type="number"
                 min={0}
                 max={60}
-                defaultValue={initialProduct?.shippingDaysMax ?? 5}
+                defaultValue={initialProduct?.shippingDaysMax ?? 1}
                 disabled={pending}
               />
             </Field>

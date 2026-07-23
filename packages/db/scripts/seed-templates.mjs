@@ -310,7 +310,7 @@ const templatesData = [
         text({
           id: "likes_count",
           x: 28,
-          y: 544,
+          y: 536,
           text: "362 me gusta",
           fontFamily: "Inter",
           fontSize: 17,
@@ -322,7 +322,7 @@ const templatesData = [
         text({
           id: "caption",
           x: 25,
-          y: 568,
+          y: 556,
           text: "Tu título acá",
           fontFamily: "Inter",
           fontSize: 19,
@@ -334,7 +334,7 @@ const templatesData = [
         text({
           id: "hashtags",
           x: 25,
-          y: 588,
+          y: 575,
           text: "#mirecuerdo #lucamsshop",
           fontFamily: "Inter",
           fontSize: 13,
@@ -441,7 +441,7 @@ const templatesData = [
           slug: "photo-strip-3-fotos",
           productId: tirasProduct.id,
           kind: "PHOTO_PACK",
-          name: "Clásica",
+          name: "Plantilla Tiras",
           order: 1,
           previewUrl: "/templates/tira-clasica.svg",
           canvasData: {
@@ -479,7 +479,7 @@ const templatesData = [
           slug: "libre-photo-pack",
           productId: cuadradosProduct.id,
           kind: "PHOTO_PACK",
-          name: "Foto simple",
+          name: "Plantilla Cuadrado",
           order: 1,
           previewUrl: "/templates/personalizacion-libre.svg",
           // M.3.b.UX.v13 (Lucy 2026-05-15) — Stage cuadrado 600×600 para que el
@@ -509,7 +509,7 @@ const templatesData = [
           kind: "CALENDAR_PHOTO_MONTH",
           name: "Calendario mes a mes",
           order: 1,
-          previewUrl: "/templates/personalizacion-libre.svg",
+          previewUrl: "/templates/calendar_month.svg",
           // Ola 2A (Lucy 2026-07-22) — tarjeta 7.5×10 (3:4): foto full-bleed 4:3 arriba (600×450),
           // espejo de la región CALENDAR_PHOTO de producción (1080×810 en página 1080×1440) para
           // que el encuadre del cliente mapee 1:1 al imprimir (WYSIWYG). Abajo queda la franja del

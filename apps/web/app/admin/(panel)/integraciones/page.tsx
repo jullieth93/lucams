@@ -206,7 +206,7 @@ export default async function AdminIntegracionesPage() {
     {
       name: "Aveonline — Envíos Colombia",
       group: "envio",
-      description: "Coordina envíos Coordinadora/Servientrega + impresión etiquetas + tracking.",
+      description: "Cotiza y gestiona envíos con transportadoras aliadas (Servientrega, Coordinadora, TCC, Interrapidísimo, Envía y otras) + impresión de etiquetas + tracking.",
       // Credenciales por env; la dirección de ORIGEN (recogida) vive en SiteSettings
       // (PICKUP_* + BUSINESS_NIT), editable desde /admin, no en env.
       envVarsRequired: [

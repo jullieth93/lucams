@@ -31,7 +31,7 @@
 import { memo, useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import type { KeyboardEvent as ReactKeyboardEvent, MouseEvent as ReactMouseEvent } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Trash2, Wand2, RotateCcw } from "lucide-react";
+import { Trash2, RotateCcw, Pencil } from "lucide-react";
 import { LucamsLogo } from "@/components/lucams-logo";
 import { Stage, Layer, Rect, Image as KonvaImage, Group, Text, Circle, Path } from "react-konva";
 import useImage from "use-image";
@@ -51,6 +51,7 @@ import type {
   ImagePlaceholderLayer,
   SlotState,
   StudioAsset,
+  TextLayer,
 } from "./types";
 import {
   isDarkColor,
@@ -67,6 +68,8 @@ import {
 } from "@/features/personalization/frame-palette";
 import { RealismShadowLayer, RealismOverlayLayer } from "./studio-realism-overlay";
 import { CalendarCardLayer } from "./studio-calendar-card-layer";
+import { useIsTouch } from "./use-is-touch";
+
 import { getFilterParams } from "./lib/photo-filters";
 import { analyzeSmartCrop, checkPhotoQuality } from "./lib/smart-crop";
 
@@ -132,10 +135,19 @@ type StudioSlotProps = {
   calendarCard?: { year: number; monthIndex0: number } | null;
   onClick: () => void;
   onClear: () => void;
-  /** M.3.b.B.3 — Abrir modal de ajustar foto (filtros). Solo se llama si slot lleno. */
-  onAdjust?: () => void;
+  /**
+   * Ola 6 — Abrir el modal unificado de edición de este slot.
+   * `tab` indica qué pestaña abrir por defecto.
+   */
+  onEdit?: (tab: "photo" | "text") => void;
   /** M.3.b.D — Click sobre text layer editable abre el editor inline. */
   onTextEdit?: (textLayerId: string) => void;
+  /**
+   * FB4 — si es false, la grilla no captura gestos inline (drag/pinch/wheel);
+   * el dedo scrollea la página. El callback de transform sigue disponible
+   * para controles externos como el slider flotante de zoom.
+   */
+  interactiveSlots?: boolean;
   /** M.3.b.UX.v9 — Aplicar transform parcial a la foto del slot.
    *  Acepta cualquier combinación de { offsetX, offsetY, scale }. Útil para:
    *    - drag → { offsetX, offsetY }
@@ -173,13 +185,14 @@ function StudioSlotImpl({
   calendarCard = null,
   onClick,
   onClear,
-  onAdjust,
+  onEdit,
   onTextEdit,
   onPhotoTransformChange,
   onCenterPhoto,
   onAssetDrop,
   onKeyboardNav,
   onRegisterStage,
+  interactiveSlots = true,
 }: StudioSlotProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<Konva.Stage | null>(null);
@@ -246,6 +259,16 @@ function StudioSlotImpl({
   const aspect = unitTemplate.stage.height / unitTemplate.stage.width;
   const slotWidth = displaySize;
   const slotHeight = displayHeight ?? displaySize * aspect;
+  // Ola 6 — capas de texto editables del template para decidir si mostrar
+  // el botón "Editar" en slots vacíos (productos con texto opcional).
+  const editableTextLayers = useMemo(() => {
+    if (!allowText) return [];
+    return unitTemplate.layers.filter(
+      (l): l is TextLayer => l.type === "text" && (l as TextLayer).editable === true,
+    );
+  }, [unitTemplate.layers, allowText]);
+  const hasEditableText = editableTextLayers.length > 0;
+  const isTouch = useIsTouch();
   // Ola 2A — slots angostos (grids de 12-20 miniaturas): la barra de acciones se
   // compacta (sin chip de tamaño, calidad solo icono, botones h-8) para que
   // Centrar/Filtros/Eliminar no se desborden ni se pierdan entre las miniaturas.
@@ -363,19 +386,21 @@ function StudioSlotImpl({
           }
           break;
         // #17 — atajos scoped-al-foco (WCAG 2.1.4 excepción "component focus") para las acciones
-        // que antes solo tenían botón con tabIndex={-1}: A = Ajustar (encuadre), C = Centrar.
+        // del slot: A = Ajustar foto (abre modal unificado en pestaña Foto),
+        // C = Centrar foto y abrir la pestaña Foto.
         case "a":
         case "A":
-          if (slotState.assetUrl && onAdjust) {
+          if (slotState.assetUrl && onEdit) {
             e.preventDefault();
-            onAdjust();
+            onEdit("photo");
           }
           break;
         case "c":
         case "C":
-          if (slotState.assetUrl && onCenterPhoto && slotState.photoTransform) {
+          if (slotState.assetUrl && onEdit) {
             e.preventDefault();
-            onCenterPhoto();
+            onEdit("photo");
+            if (onCenterPhoto && slotState.photoTransform) onCenterPhoto();
           }
           break;
         case "ArrowUp":
@@ -401,7 +426,7 @@ function StudioSlotImpl({
       onClear,
       onKeyboardNav,
       slotState.assetUrl,
-      onAdjust,
+      onEdit,
       onCenterPhoto,
       slotState.photoTransform,
     ],
@@ -430,18 +455,10 @@ function StudioSlotImpl({
   const pinchInitialScaleRef = useRef<number>(1);
 
   // Wheel handler: scroll up → zoom in, scroll down → zoom out.
-  // Solo aplica si la foto ya está cargada (slotState.assetUrl).
-  //
-  // Lucy 2026-05-21 bug: tras aplicar un filtro (B&N, Vintage, etc.),
-  // el wheel via Konva onWheel dejaba de prevenir el scroll de la
-  // página. El node.cache() del filter probablemente interfería con
-  // el dispatch del wheel event de Konva. Fix: bind native listener
-  // directo al wrapper div con `{ passive: false }` para garantizar
-  // que preventDefault() siempre funciona, sin importar el estado del
-  // filter ni de Radix Dialog encima.
+  // Solo aplica en slots interactivos (desktop) y si la foto ya está cargada.
   const handleWheel = useCallback(
     (e: Konva.KonvaEventObject<WheelEvent>) => {
-      if (!slotState.assetUrl || !onPhotoTransformChange) return;
+      if (!interactiveSlots || !slotState.assetUrl || !onPhotoTransformChange) return;
       e.evt.preventDefault();
       const factor = e.evt.deltaY > 0 ? 1 / 1.1 : 1.1;
       const current = slotState.photoTransform?.scale ?? 1;
@@ -450,19 +467,16 @@ function StudioSlotImpl({
         onPhotoTransformChange({ scale: next });
       }
     },
-    [slotState.assetUrl, slotState.photoTransform?.scale, onPhotoTransformChange, clampScale],
+    [interactiveSlots, slotState.assetUrl, slotState.photoTransform?.scale, onPhotoTransformChange, clampScale],
   );
 
   // Native wheel listener — backup que SIEMPRE puede preventDefault
   // independiente del estado del cache de Konva o de Radix Dialog.
-  // Patrón industria standard cuando React's passive synthetic events
-  // no son confiables para preventDefault.
+  // Solo en slots interactivos; en táctil el dedo scrollea la página.
   useEffect(() => {
     const el = containerRef.current;
-    if (!el || !slotState.assetUrl || !onPhotoTransformChange) return;
+    if (!el || !interactiveSlots || !slotState.assetUrl || !onPhotoTransformChange) return;
     function onWheelNative(e: WheelEvent) {
-      // Solo manejamos wheel sobre el slot (no sobre el modal de filtros
-      // que está fuera del slot DOM tree).
       e.preventDefault();
       e.stopPropagation();
       const factor = e.deltaY > 0 ? 1 / 1.1 : 1.1;
@@ -476,12 +490,15 @@ function StudioSlotImpl({
     // preventDefault() y la página termina scrolleando.
     el.addEventListener("wheel", onWheelNative, { passive: false });
     return () => el.removeEventListener("wheel", onWheelNative);
-  }, [slotState.assetUrl, slotState.photoTransform?.scale, onPhotoTransformChange, clampScale]);
+  }, [interactiveSlots, slotState.assetUrl, slotState.photoTransform?.scale, onPhotoTransformChange, clampScale]);
 
   // Pinch handlers — usan touchstart/move/end del Stage Konva.
+  // Ola 6: solo activos cuando interactiveSlots=true; en táctil la grilla
+  // no captura pinch inline (el zoom se hace vía slider flotante o editor
+  // a pantalla completa) para no bloquear el scroll de la página.
   const handleTouchStart = useCallback(
     (e: Konva.KonvaEventObject<TouchEvent>) => {
-      if (!slotState.assetUrl || !onPhotoTransformChange) return;
+      if (!interactiveSlots || !slotState.assetUrl || !onPhotoTransformChange) return;
       if (e.evt.touches.length === 2) {
         e.evt.preventDefault();
         // Ola 3c (Lucy 2026-07-22, "pellizcar la foto es casi imposible"): con 1 dedo
@@ -499,12 +516,12 @@ function StudioSlotImpl({
         pinchInitialScaleRef.current = slotState.photoTransform?.scale ?? 1;
       }
     },
-    [slotState.assetUrl, slotState.photoTransform?.scale, onPhotoTransformChange],
+    [interactiveSlots, slotState.assetUrl, slotState.photoTransform?.scale, onPhotoTransformChange],
   );
 
   const handleTouchMove = useCallback(
     (e: Konva.KonvaEventObject<TouchEvent>) => {
-      if (!onPhotoTransformChange || pinchInitialDistRef.current === null) return;
+      if (!interactiveSlots || !onPhotoTransformChange || pinchInitialDistRef.current === null) return;
       if (e.evt.touches.length !== 2) return;
       if (pinchInitialDistRef.current <= 0) return; // dedos superpuestos → ratio inválido
       e.evt.preventDefault();
@@ -512,11 +529,14 @@ function StudioSlotImpl({
       const dx = t2.clientX - t1.clientX;
       const dy = t2.clientY - t1.clientY;
       const dist = Math.sqrt(dx * dx + dy * dy);
-      const ratio = dist / pinchInitialDistRef.current;
-      const next = clampScale(pinchInitialScaleRef.current * ratio);
+      // Ola 6 — suavizar la curva de pinch para que el zoom sea más predecible
+      // y no se dispare con movimientos pequeños de los dedos.
+      const rawRatio = dist / pinchInitialDistRef.current;
+      const easedRatio = Math.pow(rawRatio, 0.85);
+      const next = clampScale(pinchInitialScaleRef.current * easedRatio);
       onPhotoTransformChange({ scale: next });
     },
-    [onPhotoTransformChange, clampScale],
+    [interactiveSlots, onPhotoTransformChange, clampScale],
   );
 
   const handleTouchEnd = useCallback(() => {
@@ -525,9 +545,9 @@ function StudioSlotImpl({
 
   // Doble click/tap → reset transform (= centrar + scale 1).
   const handleDblClick = useCallback(() => {
-    if (!slotState.assetUrl || !onCenterPhoto) return;
+    if (!interactiveSlots || !slotState.assetUrl || !onCenterPhoto) return;
     onCenterPhoto();
-  }, [slotState.assetUrl, onCenterPhoto]);
+  }, [interactiveSlots, slotState.assetUrl, onCenterPhoto]);
 
   // ──────────── ARIA label ────────────
   // #14 — "Imán" era fijo; ahora deriva del producto (imán/separador). Capitalizado para inicio de
@@ -537,7 +557,8 @@ function StudioSlotImpl({
   const slotName = slotLabel ?? `${nounCap} ${slotState.slotIndex + 1} de ${totalSlots}`;
   // #17 — anunciar solo los atajos que existen para este slot (honesto).
   const filledHints = ["Enter para cambiar foto", "Delete para quitar"];
-  if (onAdjust) filledHints.push("A para ajustar el encuadre");
+  if (onEdit) filledHints.push("A para ajustar la foto");
+  if (onEdit && hasEditableText) filledHints.push("Tab para editar el texto");
   if (onCenterPhoto && slotState.photoTransform) filledHints.push("C para centrar");
   const ariaLabel = slotState.assetUrl
     ? `${slotName}, con foto cargada. ${filledHints.join(", ")}.`
@@ -630,14 +651,12 @@ function StudioSlotImpl({
           // Pinch-zoom (WCAG 1.4.4): la página NUNCA bloquea el zoom a nivel viewport;
           // solo el canvas INTERACTIVO captura el gesto (touch-action:none) para que el
           // pellizco/arrastre actúe sobre la foto y no dispare zoom/scroll de la página
-          // a la vez. Ola 3c (Lucy 2026-07-22, "tras cargar una foto no puedo deslizar
-          // la página"): en la grilla táctil (slot NO interactivo) queda "pan-y"
-          // EXPLÍCITO → el dedo scrollea la página vertical con normalidad y el pinch
-          // hace zoom de página; el pan/zoom de foto vive en el editor a pantalla
-          // completa (FB4). Además las capas Konva no-interactivas van con
-          // preventDefault={false} para no matar el inicio del scroll (ver
-          // ImagePlaceholder).
-          touchAction: onPhotoTransformChange ? "none" : "pan-y",
+          // a la vez. Ola 3c / Ola 6: en la grilla táctil (slot NO interactivo) queda "pan-y"
+          // EXPLÍCITO → el dedo scrollea la página vertical con normalidad; el zoom de foto
+          // se hace vía slider flotante o editor a pantalla completa. Además las capas
+          // Konva no-interactivas van con preventDefault={false} para no matar el inicio
+          // del scroll (ver ImagePlaceholder).
+          touchAction: onPhotoTransformChange && interactiveSlots ? "none" : "pan-y",
         }}
         whileHover={{ scale: 1.02 }}
         whileTap={{ scale: 0.98 }}
@@ -669,8 +688,10 @@ function StudioSlotImpl({
             stageRef.current = s;
           }}
           // M.3.b.D — Stage debe escuchar eventos para captar clicks sobre
-          // text layers editables. M.3.b.UX.v4+: también si hay drag/zoom de foto.
-          listening={!!onTextEdit || !!onPhotoTransformChange}
+          // text layers editables. M.3.b.UX.v4+: también si hay drag/zoom de foto
+          // y el slot es interactivo (desktop). En táctil la grilla no captura
+          // gestos inline, salvo taps sobre textos editables.
+          listening={!!onTextEdit || (!!onPhotoTransformChange && interactiveSlots)}
           // M.3.b.UX.v10 (Lucy 2026-05-15) — gestos de zoom:
           //   Desktop: wheel sobre la foto → zoom in/out
           //   Mobile:  pinch 2 dedos → zoom
@@ -708,7 +729,7 @@ function StudioSlotImpl({
                 templateStageWidth={unitTemplate.stage.width}
                 stageWidth={unitTemplate.stage.width}
                 stageHeight={unitTemplate.stage.height}
-                onPhotoTransformChange={onPhotoTransformChange}
+                onPhotoTransformChange={interactiveSlots ? onPhotoTransformChange : undefined}
                 onPhotoDragStart={handlePhotoDragStart}
                 onPhotoDragEnd={handlePhotoDragEnd}
               />
@@ -723,6 +744,7 @@ function StudioSlotImpl({
                   onPhotoTransformChange,
                   handlePhotoDragStart,
                   handlePhotoDragEnd,
+                  interactiveSlots,
                   // Ola 3 — color del borde (tarjeta frame-card + texto claro si es
                   // oscura) y bandera de texto del producto (Cuadrados: sin texto).
                   // Ola 3b — fullBleed: tarjeta entera del color + foto inserta.
@@ -967,10 +989,12 @@ function StudioSlotImpl({
             </span>
           )}
 
-          {/* Acciones secundarias derecha — solo cuando slot lleno.
+          {/* Acciones secundarias derecha.
+              Ola 6 — Botón unificado "Editar" (lápiz) que abre el modal de edición
+              por slot (tabs Foto + Texto). Solo aparece si hay algo editable.
               M.3.b.UX.2 — Action buttons 50% más grandes (h-6 → h-8, icons h-3 → h-4)
               Tap target compliant Material/HIG con wrapper padding. */}
-          {slotState.assetUrl && (
+          {(slotState.assetUrl || hasEditableText) && (
             <div className="ml-auto flex items-center gap-2">
               {/* M.3.b.UX.v6 — Botón Centrar: visible solo si transform aplicado.
                 Resetea offsetX/Y a 0 + scale a 1 (cover overscan default). */}
@@ -993,45 +1017,81 @@ function StudioSlotImpl({
                   <RotateCcw className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} />
                 </motion.button>
               )}
-              {onAdjust && (
+              {onEdit && (
                 <motion.button
                   type="button"
                   whileHover={{ scale: 1.1 }}
                   whileTap={{ scale: 0.94 }}
                   onClick={(e) => {
                     e.stopPropagation();
-                    onAdjust();
+                    onEdit(slotState.assetUrl ? "photo" : "text");
                   }}
-                  aria-label={`Ajustar foto del imán ${slotState.slotIndex + 1} (zoom y filtros)`}
-                  title="Aplicar zoom y filtros a esta foto"
+                  aria-label={`Editar ${slotName}`}
+                  title={
+                    slotState.assetUrl && hasEditableText
+                      ? "Ajustar foto y texto"
+                      : slotState.assetUrl
+                        ? "Ajustar foto"
+                        : "Editar texto"
+                  }
                   className={`text-brand-purple ring-brand-purple/20 hover:bg-brand-purple/5 focus:ring-brand-turquoise hover:ring-brand-purple/40 relative flex items-center justify-center rounded-md bg-white shadow-sm ring-1 before:absolute before:content-[''] focus:ring-2 focus:outline-none ${
                     compact ? "h-8 w-8 before:-inset-1.5" : "h-9 w-9 before:-inset-1"
                   }`}
                   tabIndex={-1}
                 >
-                  <Wand2 className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} />
+                  <Pencil className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} />
                 </motion.button>
               )}
-              <motion.button
-                type="button"
-                whileHover={{ scale: 1.1 }}
-                whileTap={{ scale: 0.94 }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onClear();
-                }}
-                aria-label={`Quitar foto del imán ${slotState.slotIndex + 1}`}
-                title="Quitar esta foto"
-                className={`relative flex items-center justify-center rounded-md bg-white text-red-600 shadow-sm ring-1 ring-red-200 before:absolute before:content-[''] hover:bg-red-50 hover:ring-red-400 focus:ring-2 focus:ring-red-500 focus:outline-none ${
-                  compact ? "h-8 w-8 before:-inset-1.5" : "h-9 w-9 before:-inset-1"
-                }`}
-                tabIndex={-1}
-              >
-                <Trash2 className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} />
-              </motion.button>
+              {slotState.assetUrl && (
+                <motion.button
+                  type="button"
+                  whileHover={{ scale: 1.1 }}
+                  whileTap={{ scale: 0.94 }}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onClear();
+                  }}
+                  aria-label={`Quitar foto del imán ${slotState.slotIndex + 1}`}
+                  title="Quitar esta foto"
+                  className={`relative flex items-center justify-center rounded-md bg-white text-red-600 shadow-sm ring-1 ring-red-200 before:absolute before:content-[''] hover:bg-red-50 hover:ring-red-400 focus:ring-2 focus:ring-red-500 focus:outline-none ${
+                    compact ? "h-8 w-8 before:-inset-1.5" : "h-9 w-9 before:-inset-1"
+                  }`}
+                  tabIndex={-1}
+                >
+                  <Trash2 className={compact ? "h-3.5 w-3.5" : "h-4 w-4"} />
+                </motion.button>
+              )}
             </div>
           )}
         </motion.div>
+      )}
+
+      {/* Ola 6 — Slider de zoom flotante en móvil/táctil para slots seleccionados
+        con foto. Aparece sobre la esquina inferior derecha del slot, es
+        semitransparente y no tapa la foto. */}
+      {isSelected && slotState.assetUrl && isTouch && onPhotoTransformChange && (
+        <div
+          className="pointer-events-auto absolute bottom-2 right-2 z-20 flex items-center gap-1.5 rounded-full bg-white/85 px-2 py-1 shadow-md ring-1 ring-black/5 backdrop-blur-sm"
+          onClick={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <span className="text-brand-purple-dark min-w-[2ch] text-[10px] font-bold tabular-nums">
+            {Math.round((slotState.photoTransform?.scale ?? 1) * 100)}%
+          </span>
+          <input
+            type="range"
+            min={50}
+            max={300}
+            step={5}
+            value={Math.round((slotState.photoTransform?.scale ?? 1) * 100)}
+            onChange={(e) => {
+              const percent = Number(e.target.value);
+              onPhotoTransformChange({ scale: Math.max(0.5, Math.min(3, percent / 100)) });
+            }}
+            aria-label="Zoom de la foto"
+            className="accent-brand-purple h-1 w-20 cursor-pointer appearance-none rounded bg-brand-purple/20"
+          />
+        </div>
       )}
     </div>
   );
@@ -1058,6 +1118,7 @@ export const StudioSlot = memo(StudioSlotImpl, (prev, next) => {
     prev.frameFullBleed === next.frameFullBleed &&
     prev.overlayActions === next.overlayActions &&
     prev.allowText === next.allowText &&
+    prev.interactiveSlots === next.interactiveSlots &&
     prev.calendarCard?.year === next.calendarCard?.year &&
     prev.calendarCard?.monthIndex0 === next.calendarCard?.monthIndex0
   );
@@ -1080,6 +1141,7 @@ export function renderLayer(
   ) => void,
   onPhotoDragStart?: () => void,
   onPhotoDragEnd?: () => void,
+  interactiveSlots?: boolean,
   /**
    * Ola 3 — contexto de estilo del producto:
    *  - borderColor: color del borde elegido (la tarjeta frame-card lo toma; si la
@@ -1212,6 +1274,7 @@ export function renderLayer(
           onPhotoTransformChange={onPhotoTransformChange}
           onPhotoDragStart={onPhotoDragStart}
           onPhotoDragEnd={onPhotoDragEnd}
+          interactiveSlots={interactiveSlots}
         />
       );
     }
@@ -1650,6 +1713,7 @@ function ImagePlaceholder({
   onPhotoTransformChange,
   onPhotoDragStart,
   onPhotoDragEnd,
+  interactiveSlots = true,
 }: {
   layer: ImagePlaceholderLayer;
   slotState: SlotState;
@@ -1662,6 +1726,7 @@ function ImagePlaceholder({
    * arrastrando la foto, y aborte el picker modal en ese caso. */
   onPhotoDragStart?: () => void;
   onPhotoDragEnd?: () => void;
+  interactiveSlots?: boolean;
 }) {
   const [image] = useImage(slotState.assetUrl ?? "", "anonymous");
   const imageNodeRef = useRef<Konva.Image | null>(null);
@@ -1785,7 +1850,7 @@ function ImagePlaceholder({
       ? { x: slotState.photoTransform.offsetX, y: slotState.photoTransform.offsetY }
       : { x: 0, y: 0 };
 
-    const isDraggable = !!onPhotoTransformChange;
+    const isDraggable = !!onPhotoTransformChange && interactiveSlots;
 
     // Clip del Group local: rounded rect cuando cornerRadius, rect plano resto.
     // Para heart/circle no hace falta acá porque el Layer-level clipFunc del
@@ -1833,11 +1898,11 @@ function ImagePlaceholder({
           offsetY={renderedH / 2}
           rotation={rotation}
           draggable={isDraggable}
-          // Ola 3c (Lucy 2026-07-22) — slot NO interactivo (grilla táctil): Konva
-          // hace preventDefault en el touchstart sobre shapes con preventDefault
-          // default true → mataba el SCROLL de la página al empezar sobre la foto
-          // ("toca usar el borde del celular"). Sin gestos inline no hay nada que
-          // proteger → preventDefault={false} y el dedo scrollea libre (pan-y).
+          // Ola 3c / Ola 6 — slot NO interactivo (grilla táctil): Konva hace
+          // preventDefault en shapes con preventDefault default true, bloqueando
+          // el SCROLL de la página. Sin gestos inline (interactiveSlots=false)
+          // dejamos preventDefault={false} y el dedo scrollea libre (pan-y).
+          // En desktop interactivo el wheel/pinch necesita capturar el evento.
           preventDefault={isDraggable}
           // M.3.b.UX.v9 — drag SIN bounds (libre). El cliente decide dónde
           // poner la foto. Si la mueve fuera del slot, ve el background (warning
