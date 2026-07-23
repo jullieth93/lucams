@@ -9,6 +9,7 @@
 
 import { drawCalendarPage } from "@/features/personalization/calendar-draw";
 import { CALENDAR_PAGE, scalePhotoTransformToPage } from "@/features/personalization/calendar-layout";
+import { ensureBrandCanvasFontsLoaded } from "./calendar-card-preview";
 
 // Escala del preview: 1080×1520 → ~810×1140. Nítido como textura 3D sin ser pesado.
 const PREVIEW_SCALE = 0.75;
@@ -97,19 +98,11 @@ export async function composeCalendarPages(
   pages: CalendarPageInput[],
   year: number,
 ): Promise<string[]> {
-  // Asegurar fuentes de marca cargadas antes de dibujar texto en el canvas.
-  if (typeof document !== "undefined" && document.fonts) {
-    try {
-      await Promise.all([
-        document.fonts.load("700 62px Fredoka"),
-        document.fonts.load("400 30px Inter"),
-        document.fonts.load("700 30px Inter"),
-      ]);
-      await document.fonts.ready;
-    } catch {
-      // si falla la carga, drawCalendarPage cae a sans-serif (fontsOk=true igual dibuja).
-    }
-  }
+  // Asegurar fuentes de marca cargadas antes de dibujar texto en el canvas. Ola 4
+  // (Lucy 2026-07-23): next/font hashea los nombres de familia → se resuelven via las
+  // CSS vars --font-fredoka/--font-inter y se pasan explícitas al dibujo (antes el
+  // literal "Fredoka" no existía en el document y la grilla salía con fuente genérica).
+  const brandFonts = await ensureBrandCanvasFontsLoaded();
 
   const S = PREVIEW_SCALE;
   const out: string[] = [];
@@ -136,6 +129,7 @@ export async function composeCalendarPages(
       year,
       monthIndex0: p.monthIndex0,
       fontsOk: true,
+      fonts: brandFonts ?? undefined,
     });
     out.push(canvas.toDataURL("image/png"));
   }

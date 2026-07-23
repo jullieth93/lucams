@@ -15,8 +15,9 @@
  * tocando cada texto en el canvas.
  *
  * El mensaje es PACK-LEVEL: escribe el override en TODOS los slots (la misma
- * frase va impresa en cada imán del pack). Vaciar el campo = volver al texto
- * base de la plantilla.
+ * frase va impresa en cada imán del pack). Ola 4 (Lucy 2026-07-23): el mensaje es
+ * OPCIONAL — vacío = NO se imprime nada (el placeholder "Escribe tu mensaje" es
+ * solo guía, en el canvas se ve atenuado y nunca se hornea en producción).
  */
 
 import { useStore } from "zustand";
@@ -34,7 +35,6 @@ export function StudioMessageField({ store }: { store: StoreApi<StudioStoreState
     return editable.length === 1 ? JSON.stringify(editable[0]) : null;
   });
   const layerId = layerJson ? (JSON.parse(layerJson) as { id: string }).id : null;
-  const baseText = layerJson ? ((JSON.parse(layerJson) as { text?: string }).text ?? "") : "";
   const currentText = useStore(store, (s) => {
     if (!layerId || !s.canvasData) return null;
     for (const slot of s.canvasData.slots) {
@@ -46,7 +46,11 @@ export function StudioMessageField({ store }: { store: StoreApi<StudioStoreState
   const setTextOverrideAllSlots = useStore(store, (s) => s.setTextOverrideAllSlots);
 
   if (!layerId) return null;
-  const value = currentText ?? baseText;
+  // Ola 4 (Lucy 2026-07-23) — el mensaje es OPCIONAL: el campo arranca VACÍO (el
+  // placeholder "Escribe tu mensaje" es solo guía; vacío = NO se imprime nada).
+  // Antes el campo mostraba el texto base como valor → el cliente creía estar
+  // obligado a escribir y el placeholder terminaba IMPRESO si no lo cambiaba.
+  const value = currentText ?? "";
 
   return (
     <section aria-labelledby="sidebar-mensaje" className="border-brand-purple/10 border-t pt-5">
@@ -56,7 +60,7 @@ export function StudioMessageField({ store }: { store: StoreApi<StudioStoreState
         className="text-brand-purple-dark mb-3 flex items-center gap-2 text-sm font-semibold"
       >
         <MessageSquareHeart className="text-brand-purple h-4 w-4" />
-        Tu mensaje
+        Tu mensaje <span className="text-brand-muted text-xs font-normal">(opcional)</span>
       </label>
       <input
         id="studio-message-input"
@@ -66,17 +70,14 @@ export function StudioMessageField({ store }: { store: StoreApi<StudioStoreState
         placeholder="Escribe tu mensaje"
         onChange={(e) => {
           const text = e.target.value;
-          // Vacío o igual al base → limpiar overrides (vuelve el texto de la plantilla).
-          setTextOverrideAllSlots(
-            layerId,
-            text === baseText || text.trim() === "" ? null : { text },
-          );
+          // Vacío → sin override (no se imprime nada). Cualquier texto → se imprime tal cual.
+          setTextOverrideAllSlots(layerId, text.trim() === "" ? null : { text });
         }}
         className="border-brand-purple/15 text-brand-purple-dark focus:border-brand-turquoise focus:ring-brand-turquoise/30 w-full rounded-md border px-3 py-2 text-sm transition-colors focus:ring-2 focus:outline-none"
       />
       <p className="text-brand-muted mt-2 text-xs">
-        Se imprime en la franja de cada foto. Para cambiar fuente o color, toca el texto en la
-        imagen.
+        Si lo dejas vacío, la franja queda limpia (no se imprime nada). Para cambiar fuente o
+        color, toca el texto en la imagen.
       </p>
     </section>
   );

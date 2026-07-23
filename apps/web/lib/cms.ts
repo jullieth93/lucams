@@ -5,8 +5,11 @@
  * `<CmsSetting>` y por endpoints API públicos.
  *
  * Cache: `unstable_cache` con tag global `cms`. Cuando el admin
- * publica un bloque o cambia un setting, `revalidateTag("cms")`
- * invalida todo el cache → siguiente request lo refresca.
+ * publica un bloque o cambia un setting, `updateTag("cms")` (desde
+ * una Server Action) invalida todo el cache → siguiente request lo
+ * refresca. Si el contenido se edita DIRECTO en DB con un script de
+ * packages/db/scripts, hay que invalidar a mano: /admin/contenido →
+ * botón "Actualizar caché de contenido" (Lucy 2026-07-23).
  *
  * Fallback pattern: si el bloque no existe en DB (caso durante
  * migración J.2), se devuelve null y el componente cae al fallback
@@ -95,7 +98,7 @@ function cachedCms<A extends unknown[], R>(
  * hardcoded en ese caso.
  *
  * Cache TTL 1h en background revalidate. Invalidación inmediata
- * cuando el admin publica via `revalidateTag("cms")`.
+ * cuando el admin publica via `updateTag("cms")` (Server Action).
  */
 export const getCmsBlock = cachedCms(
   async (key: string): Promise<CmsBlockData | null> => {

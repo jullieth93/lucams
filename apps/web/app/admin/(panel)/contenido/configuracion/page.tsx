@@ -17,6 +17,7 @@ import {
   Copyright,
   Megaphone,
   Cog,
+  RefreshCw,
 } from "lucide-react";
 import { listSiteSettings } from "@/features/cms/service";
 import { getCurrentAdmin } from "@/lib/auth";
@@ -24,10 +25,12 @@ import {
   AdminPage,
   AdminPageHeader,
   AdminPageBody,
+  AdminButton,
   AdminCard,
   AdminEmpty,
   AdminNotice,
 } from "@/components/admin-page";
+import { refreshCmsCacheAction } from "../actions";
 import { SettingRow } from "./setting-row";
 
 export const metadata: Metadata = {
@@ -82,9 +85,16 @@ const CATEGORY_INFO: Record<string, { label: string; icon: typeof Mail; desc: st
   },
 };
 
-export default async function ConfiguracionPage() {
+export default async function ConfiguracionPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}) {
   const session = await getCurrentAdmin();
   if (!session) redirect("/admin/login");
+
+  const sp = await searchParams;
+  const cacheRefreshed = sp.cache === "refreshed";
 
   const settings = await listSiteSettings();
 
@@ -109,9 +119,26 @@ export default async function ConfiguracionPage() {
           { label: "Configuración" },
           { label: "General" },
         ]}
+        actions={
+          // Lucy 2026-07-23 — invalidar el caché público del CMS tras editar la DB
+          // directo con scripts (los scripts no pueden llamar updateTag).
+          <form action={refreshCmsCacheAction}>
+            <input type="hidden" name="from" value="configuracion" />
+            <AdminButton type="submit" variant="secondary">
+              <RefreshCw className="h-4 w-4" />
+              Actualizar caché de contenido
+            </AdminButton>
+          </form>
+        }
       />
 
       <AdminPageBody>
+        {cacheRefreshed && (
+          <AdminNotice tone="success">
+            Caché de contenido actualizado. El sitio público ya sirve la versión más reciente de
+            bloques y configuración.
+          </AdminNotice>
+        )}
         {settings.length === 0 ? (
           <AdminEmpty
             icon={<Cog className="h-5 w-5" />}

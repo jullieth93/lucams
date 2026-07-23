@@ -111,3 +111,87 @@ describe("frame-palette — Ola 3b (marco full-bleed, 'fin del papel')", () => {
     expect(insetToMinMargin(ph, stage, 24)).toEqual(ph);
   });
 });
+
+describe("frame-palette — Ola 4 (cuadrados / tira / instagram)", () => {
+  it("isSimpleCardTemplate: fondo+foto simple sí; frame-card, chrome asset o texto visible no", async () => {
+    const { isSimpleCardTemplate } = await import("./frame-palette");
+    const simple = [
+      { type: "background" },
+      { type: "image-placeholder" },
+      { type: "text" }, // texto presente pero NO visible (allowText=false) → sigue simple
+    ];
+    expect(isSimpleCardTemplate(simple, { textIsVisible: false })).toBe(true);
+    expect(isSimpleCardTemplate(simple, { textIsVisible: true })).toBe(false);
+    expect(isSimpleCardTemplate([...simple, { type: "frame-card" }])).toBe(false);
+    expect(isSimpleCardTemplate([...simple, { type: "asset" }])).toBe(false);
+    expect(isSimpleCardTemplate([...simple, { type: "shape" }])).toBe(false);
+  });
+
+  it("simpleCardPhotoRect: sin borde → sangre total; con borde → franja uniforme", async () => {
+    const { simpleCardPhotoRect } = await import("./frame-palette");
+    const stage = { width: 600, height: 600 };
+    expect(simpleCardPhotoRect(stage, null, 24)).toEqual({
+      x: 0,
+      y: 0,
+      width: 600,
+      height: 600,
+    });
+    expect(simpleCardPhotoRect(stage, "#E85B9F", 24)).toEqual({
+      x: 24,
+      y: 24,
+      width: 552,
+      height: 552,
+    });
+  });
+
+  it("isStripTemplate: solo con gridCols=1 y gridGap=0", async () => {
+    const { isStripTemplate } = await import("./frame-palette");
+    expect(isStripTemplate({ gridCols: 1, gridGap: 0 })).toBe(true);
+    expect(isStripTemplate({ gridCols: 1, gridGap: 8 })).toBe(false);
+    expect(isStripTemplate({ gridCols: 3, gridGap: 0 })).toBe(false);
+    expect(isStripTemplate({})).toBe(false);
+  });
+
+  it("stripPhotoRect: el borde exterior solo en first/last; middle se toca", async () => {
+    const { stripPhotoRect, stripOuterInset } = await import("./frame-palette");
+    const stage = { width: 390, height: 400 };
+    const inset = stripOuterInset(stage); // 12
+    expect(inset).toBe(12);
+    const ph = { x: 12, y: 0, width: 366, height: 400 };
+    expect(stripPhotoRect(ph, stage, "middle")).toEqual(ph);
+    expect(stripPhotoRect(ph, stage, "first")).toEqual({ ...ph, y: 12, height: 388 });
+    expect(stripPhotoRect(ph, stage, "last")).toEqual({ ...ph, y: 0, height: 388 });
+    expect(stripPhotoRect(ph, stage, "single")).toEqual({ ...ph, y: 12, height: 376 });
+  });
+
+  it("isInstagramTemplate: detecta el chrome ig_post", async () => {
+    const { isInstagramTemplate } = await import("./frame-palette");
+    expect(
+      isInstagramTemplate([
+        { type: "background" },
+        { type: "asset", src: "/templates/ig_post_3x4.svg" },
+      ]),
+    ).toBe(true);
+    expect(isInstagramTemplate([{ type: "background" }, { type: "frame-card" }])).toBe(false);
+  });
+
+  it("instagramBackgroundHex: binario — negro oscuro pasa; cualquier otro cae al blanco base", async () => {
+    const { instagramBackgroundHex } = await import("./frame-palette");
+    expect(instagramBackgroundHex("#221E25", "#FFFFFF")).toBe("#221E25"); // negro marca
+    expect(instagramBackgroundHex("#FFFFFF", "#FFFFFF")).toBe("#FFFFFF");
+    expect(instagramBackgroundHex(null, "#FFFFFF")).toBe("#FFFFFF");
+    // Un pastel residual (cambiaste de plantilla) NO pinta el fondo Instagram.
+    expect(instagramBackgroundHex("#E85B9F", "#FFFFFF")).toBe("#FFFFFF");
+  });
+
+  it("darkChromeSrc: variante _dark del chrome solo con fondo oscuro", async () => {
+    const { darkChromeSrc } = await import("./frame-palette");
+    expect(darkChromeSrc("/templates/ig_post_3x4.svg", true)).toBe(
+      "/templates/ig_post_3x4_dark.svg",
+    );
+    expect(darkChromeSrc("/templates/ig_post_3x4.svg", false)).toBe("/templates/ig_post_3x4.svg");
+    expect(darkChromeSrc("/templates/ig_post_3x4_dark.svg", true)).toBe(
+      "/templates/ig_post_3x4_dark.svg",
+    );
+  });
+});

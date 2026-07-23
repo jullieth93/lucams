@@ -4,8 +4,9 @@
  * Test del FLUJO de edición de texto de la Polaroid (Ola 3c, Lucy 2026-07-22 — 2ª
  * queja: "no deja modificar texto"). Certifica la vía principal nueva: el campo
  * "Tu mensaje" de la sidebar escribe el override en TODOS los slots del pack
- * (canvasData → auto-save → producción, WYSIWYG), y vaciarlo restaura el texto
- * base de la plantilla. El click/tap en el canvas queda como atajo al modal.
+ * (canvasData → auto-save → producción, WYSIWYG). Ola 4 (Lucy 2026-07-23): el
+ * mensaje es OPCIONAL — el campo arranca vacío y vacío = no se imprime nada.
+ * El click/tap en el canvas queda como atajo al modal.
  */
 
 import { afterEach, describe, expect, it } from "vitest";
@@ -68,12 +69,16 @@ function makeStore() {
 afterEach(cleanup);
 
 describe("StudioMessageField — flujo 'Tu mensaje' (Lucy 2026-07-22)", () => {
-  it("muestra el texto base de la plantilla y lo edita en TODOS los slots", () => {
+  it("arranca VACÍO (placeholder solo guía) y escribe el override en TODOS los slots", () => {
+    // Ola 4 (Lucy 2026-07-23) — el mensaje es OPCIONAL: el campo ya no muestra el texto
+    // base de la plantilla como valor (eso lo hacía parecer obligatorio y el placeholder
+    // terminaba impreso). Vacío = no se imprime nada.
     const store = makeStore();
     render(<StudioMessageField store={store} />);
 
     const input = screen.getByRole("textbox", { name: /tu mensaje/i }) as HTMLInputElement;
-    expect(input.value).toBe("Escribe tu mensaje");
+    expect(input.value).toBe("");
+    expect(input.placeholder).toBe("Escribe tu mensaje");
 
     fireEvent.change(input, { target: { value: "Te amo mamá" } });
 
@@ -84,7 +89,7 @@ describe("StudioMessageField — flujo 'Tu mensaje' (Lucy 2026-07-22)", () => {
     }
   });
 
-  it("vaciar el campo limpia los overrides (vuelve el texto base de la plantilla)", () => {
+  it("vaciar el campo limpia los overrides (sin texto → no se imprime nada)", () => {
     const store = makeStore();
     render(<StudioMessageField store={store} />);
     const input = screen.getByRole("textbox", { name: /tu mensaje/i }) as HTMLInputElement;
@@ -96,8 +101,8 @@ describe("StudioMessageField — flujo 'Tu mensaje' (Lucy 2026-07-22)", () => {
     for (const s of store.getState().canvasData!.slots) {
       expect(s.textOverrides?.message).toBeUndefined();
     }
-    // El input vuelve a mostrar el texto base (sin override vigente).
-    expect(input.value).toBe("Escribe tu mensaje");
+    // El input queda vacío (ya NO vuelve a mostrar el texto base).
+    expect(input.value).toBe("");
   });
 
   it("refleja un override hecho por otra vía (modal del canvas) en el primer slot con texto", () => {

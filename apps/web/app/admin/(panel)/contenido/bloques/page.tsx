@@ -8,7 +8,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { FileText, Plus, ChevronRight } from "lucide-react";
+import { FileText, Plus, ChevronRight, RefreshCw } from "lucide-react";
 import {
   AdminPage,
   AdminPageHeader,
@@ -24,6 +24,7 @@ import {
 } from "@/components/admin-page";
 import { getCurrentAdmin } from "@/lib/auth";
 import { listCmsBlocks } from "@/features/cms/service";
+import { refreshCmsCacheAction } from "../actions";
 
 export const metadata: Metadata = {
   title: "Base de conocimiento",
@@ -51,6 +52,7 @@ export default async function BloquesListPage({ searchParams }: { searchParams: 
   const sp = await searchParams;
   const justCreated = sp.created === "1";
   const justArchived = sp.archived === "1";
+  const cacheRefreshed = sp.cache === "refreshed";
 
   const blocks = await listCmsBlocks({});
 
@@ -80,14 +82,30 @@ export default async function BloquesListPage({ searchParams }: { searchParams: 
           { label: "Bloques" },
         ]}
         actions={
-          <AdminButton href="/admin/contenido/bloques/nuevo" variant="primary">
-            <Plus className="h-4 w-4" />
-            Crear bloque nuevo
-          </AdminButton>
+          <div className="flex flex-wrap items-center gap-2">
+            {/* Lucy 2026-07-23 — invalidar el caché público del CMS tras editar la DB
+                directo con scripts (los scripts no pueden llamar updateTag). */}
+            <form action={refreshCmsCacheAction}>
+              <AdminButton type="submit" variant="secondary">
+                <RefreshCw className="h-4 w-4" />
+                Actualizar caché de contenido
+              </AdminButton>
+            </form>
+            <AdminButton href="/admin/contenido/bloques/nuevo" variant="primary">
+              <Plus className="h-4 w-4" />
+              Crear bloque nuevo
+            </AdminButton>
+          </div>
         }
       />
 
       <AdminPageBody>
+        {cacheRefreshed && (
+          <AdminNotice tone="success">
+            Caché de contenido actualizado. El sitio público ya sirve la versión más reciente de
+            bloques y configuración.
+          </AdminNotice>
+        )}
         {justCreated && (
           <AdminNotice tone="success">
             Bloque creado. Ya puedes editarlo y publicarlo cuando quieras.

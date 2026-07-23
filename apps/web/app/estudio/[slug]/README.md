@@ -162,6 +162,74 @@ packages/db/scripts/
   el pinch corta cualquier drag de Konva activo (el gesto manda) en el editor a
   pantalla completa.
 
+### Ola 4 (Lucy 2026-07-23) — calendario: slot = TARJETA COMPUESTA
+
+- **El slot del calendario muestra la tarjeta completa** (foto + "ENE 2027" + grilla real del
+  mes con festivos), no la foto a sangre. Antes el cliente subía 12 fotos "a ciegas" y solo
+  veía la composición al finalizar. `studio-calendar-card-layer.tsx` dibuja el MISMO
+  `drawCalendarPage` de producción/preview-3D en un canvas offscreen (0.5× = 540×720) y lo
+  usa como fuente de un `Konva.Image` dentro del stage del slot (`studio-slot.tsx` rama
+  `calendarCard`; el grid la activa con `calendarPreview={{ year, startMonth }}` desde
+  `studio-editor.tsx`, con `year` = estado `selectedYear` del banner).
+- **Decisión de render: en vivo, SIN debounce.** Cada repintado son ~50 ops vectoriales + 1
+  drawImage a 540×720 (<3ms); solo se repinta cuando cambia foto/encuadre/año/fuentes de ese
+  slot. Se descartó debounce y vista-previa-por-slot porque el costo es despreciable y la
+  respuesta inmediata (drag/zoom de la foto con la grilla visible) es la gracia del cambio.
+- **Interacción conservada**: el Konva.Image compuesto es draggable (el delta se acumula en
+  `photoTransform`, pan de la foto en su franja 4:3); wheel/pinch zoom sigue en el Stage;
+  smart-crop inicial de fotos nuevas igual que `ImagePlaceholder`.
+- **Fuentes de marca reales en canvas 2D**: next/font hashea los nombres de familia
+  (`__Fredoka_<hash>`), así que el literal "Fredoka" no existe en el document y los canvas
+  del navegador caían a una genérica. `lib/calendar-card-preview.ts` resuelve el nombre real
+  via CSS vars `--font-fredoka`/`--font-inter` y `drawCalendarPage` acepta `fonts` opcional
+  (el server sigue con los TTF registrados "Fredoka"/"Inter"). Aplica también al montaje de
+  confirmación y a las texturas 3D (`compose-calendar-page.ts`).
+
+### Ola 4 (Lucy 2026-07-23) — Instagram binario, texto opcional, cuadrados, tira continua
+
+- **Polaroid Instagram — fondo SOLO blanco/negro + contraste automático.** El picker del
+  sidebar muestra solo blanco/negro (`StudioFramePicker allowCustom={false}`). Regla: fondo
+  blanco → textos negros (los de la plantilla); fondo negro → TODOS los textos blancos
+  (`#FFFFFF`, incluidos los hashtags) y el chrome SVG cambia a su variante oscura
+  (`/templates/ig_post_3x4_dark.svg`, swap en `AssetLayerRenderer` — el canvasData conserva
+  el src original). El color de letra es MANUALMENTE sobreescribible tocando cada texto
+  (modal con color picker — el `textOverrides[].fill` siempre manda sobre el automático).
+  Un `borderColor` pastel residual (cambio de plantilla) cae a fondo blanco
+  (`instagramBackgroundHex`: solo un hex OSCURO pinta el fondo). Producción: Instagram
+  siempre hornea el PNG del cliente (asset SVG → NEEDS_KONVA) → WYSIWYG automático.
+- **Polaroid Clásica — el mensaje es OPCIONAL.** El campo "Tu mensaje" arranca vacío
+  (antes mostraba el placeholder como valor → parecía obligatorio y el "Escribe tu mensaje"
+  terminaba IMPRESO). Sin override, el editor dibuja el placeholder atenuado (45%,
+  `name="edit-indicator"` → nunca se hornea en snapshots) y producción NO imprime nada
+  (`renderTextLayer`: capa `editable` imprime solo su override; capas no editables —
+  decorativas — imprimen su base). Producción WYSIWYG igual.
+- **Cuadrados — sin borde = foto a sangre TOTAL; con borde = franja UNIFORME.** Aplica a
+  "tarjetas simples" (`isSimpleCardTemplate`: fondo + foto, sin frame-card/chrome/texto
+  visible — no aplica a Polaroid/Instagram/tiras). `simpleCardPhotoRect`: borderColor null
+  → ventana = todo el stage (0 margen; antes quedaba la franja blanca de la plantilla);
+  borderColor set → franja uniforme `frameBleedMargin` en los 4 lados (antes: márgenes
+  asimétricos de la plantilla). Misma geometría en Konva y en `production-render-canvas`;
+  `service.ts` manda los productos con frameOptions directo al tier canvas (el tier sharp
+  no conoce la regla). Tests pixel-level en `production-render-canvas.test.ts` (Ola 4).
+- **Tira photobooth — UNA pieza continua.** La celda trae la foto a sangre VERTICAL
+  (y=0 → las fotos de celdas vecinas se tocan, gap 0 REAL); lados 12px (~2mm) de color y
+  borde EXTERIOR 12px solo en first/last (`stripPhotoRect` por posición — la plantilla es
+  uniforme por celda y no puede expresarlo). Sin sombra ni radio por celda (separaban la
+  tira): UNA sombra CSS alrededor de la columna (`studio-canvas-grid` stripMode) y radio
+  solo en las puntas. Preview compositado: sin stroke morado por celda, un solo borde
+  exterior. Decisión: gutter entre fotos = 0 (referencia de Lucy acepta separación fina;
+  si la pide, `stripPhotoRect` con inset>0 la añade en 1 línea).
+- **Marco máximo consistente del lienzo (T9).** El grid ahora se dimensiona por ancho Y
+  por alto: `slotDisplaySize = min(porAncho, porAlto)` donde porAlto sale de un marco del
+  78% del alto del viewport (acotado 420–900px). El grid usa ancho explícito (celdas+gaps)
+  con `margin: 0 auto` → ningún estudio se desborda (calendario 4×3, polaroid de 1 slot,
+  tira 1-col) ni queda estirado; centrado siempre. Modo agrupado (separadores) intacto.
+- **Uploader con formatos y resolución.** `lib/upload-guidance.ts` centraliza el `accept`
+  (JPG, PNG, WebP, HEIC) y el texto visible junto a los puntos de subida (sidebar "Mis
+  fotos", modal de elegir foto, onboarding): "…máx 10 MB por foto · para que se vea nítida
+  al imprimir, que el lado menor tenga al menos ~N px (salida 300 DPI)", con N de la misma
+  fórmula del quality-check (`PX_PER_CM_300DPI` × lado menor del tamaño físico).
+
 ## Wireframes ASCII
 
 ### Desktop (≥ 1024px)

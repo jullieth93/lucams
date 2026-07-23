@@ -198,8 +198,11 @@ async function tryServerRenderProduction(
     frameFullBleed,
   };
 
-  // Tier 1 — sharp (foto pura, rápido, sin deps nativas). Solo SIN marco.
-  if (!borderColor) {
+  // Tier 1 — sharp (foto pura, rápido, sin deps nativas). Solo SIN marco y SIN frameOptions.
+  // Ola 4 (Lucy 2026-07-23): los productos con frameOptions (Cuadrados) van DIRECTO al tier
+  // canvas — la regla "sin borde → foto a sangre total / con borde → franja uniforme" solo
+  // vive allá; el tier sharp dibuja la ventana cruda de la plantilla y dejaría la franja.
+  if (!borderColor && !frameFullBleed) {
     try {
       return await renderProductionSlots(args);
     } catch (err) {
@@ -250,7 +253,8 @@ async function tryServerRenderProduction(
     }
   }
 
-  // Con marco: directo al tier canvas (sharp no dibuja marcos).
+  // Con marco (o con frameOptions, Ola 4): directo al tier canvas (sharp no dibuja marcos
+  // ni aplica la regla sangre-total/franja-uniforme de las tarjetas simples).
   try {
     const bufs = await renderProductionSlotsCanvas(args);
     logger.info(

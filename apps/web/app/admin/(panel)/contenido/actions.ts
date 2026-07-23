@@ -208,6 +208,34 @@ export async function deleteCmsBlockAction(formData: FormData): Promise<void> {
 
 // ─────────────────── SiteSetting ───────────────────
 
+/**
+ * "Actualizar caché de contenido" (feedback Lucy 2026-07-23): las páginas públicas leen
+ * CMS con unstable_cache tag "cms" (lib/cms.ts). Cuando el contenido se edita DIRECTO en
+ * la DB con un script de packages/db/scripts (seed-cms, update-legal-*, fix-voseo-cms…),
+ * nadie invalida el tag y el sitio sirve la versión vieja hasta 1h (revalidate 3600).
+ * `updateTag` solo puede llamarse dentro de un Server Action (Next 16) → este botón es
+ * el mecanismo manual de invalidación tras correr esos scripts. No toca la DB.
+ */
+export async function refreshCmsCacheAction(formData: FormData): Promise<void> {
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
+
+  const from = String(formData.get("from") ?? "");
+  await recordAdminAction({
+    actorId: session.admin.id,
+    action: "cms.cache.refresh",
+    entityType: "SiteSetting",
+    entityId: "cms-cache",
+    metadata: { reason: "manual refresh tras edición directa en DB" },
+  });
+  updateTag("cms");
+  revalidatePath("/admin/contenido");
+  const back =
+    from === "configuracion" ? "/admin/contenido/configuracion" : "/admin/contenido/bloques";
+  redirect(`${back}?cache=refreshed`);
+}
+
+// ─────────────────── SiteSetting ───────────────────
+
 export type SiteSettingActionState = {
   error?: string;
   ok?: boolean;

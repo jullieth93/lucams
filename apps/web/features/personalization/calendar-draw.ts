@@ -90,6 +90,15 @@ export function drawCalendarPage(
     year: number;
     monthIndex0: number;
     fontsOk: boolean;
+    /**
+     * Familias de fuente YA RESUELTAS por el caller (opcional). En el navegador las fuentes
+     * de marca se cargan vía next/font con nombres hasheados (`__Fredoka_<hash>`): el literal
+     * "Fredoka" NO existe en el document y el canvas caía a una genérica (la grilla del preview
+     * del cliente no salía con la tipografía de marca, Lucy 2026-07-23). El caller del navegador
+     * resuelve el nombre real via la CSS var `--font-fredoka`/`--font-inter` y lo pasa acá; el
+     * server (TTF registrados como "Fredoka"/"Inter") no lo necesita. Solo aplica si fontsOk.
+     */
+    fonts?: { title?: string; body?: string };
   },
 ): void {
   const { photo, photoTransform, year, monthIndex0, fontsOk } = opts;
@@ -124,8 +133,8 @@ export function drawCalendarPage(
     ctx.fillRect(ph.x, ph.y, ph.width, ph.height);
   }
 
-  const titleFont = fontsOk ? "Fredoka" : "sans-serif";
-  const bodyFont = fontsOk ? "Inter" : "sans-serif";
+  const titleFont = fontsOk ? (opts.fonts?.title ?? "Fredoka") : "sans-serif";
+  const bodyFont = fontsOk ? (opts.fonts?.body ?? "Inter") : "sans-serif";
   const L = CALENDAR_LAYOUT;
 
   // Título: "ENE 2027" — mes abreviado en MAYÚSCULAS, lettering grande protagonista de la

@@ -30,6 +30,7 @@ import {
   assignPredesignedToDesignAction,
 } from "@/features/personalization/actions";
 import type { StudioAsset } from "./types";
+import { STUDIO_ACCEPTED_IMAGE_TYPES, uploadGuidanceText } from "./lib/upload-guidance";
 
 /** Diseño prediseñado de la galería (ADR-057 B2). */
 export type PredesignedItem = { id: string; name: string; imageUrl: string };
@@ -42,6 +43,8 @@ type StudioAssetPickerModalProps = {
   designId: string | null;
   /** Diseños prediseñados que el cliente puede aplicar al slot (vacío = solo subir foto). */
   predesigned?: PredesignedItem[];
+  /** Ola 4 — tamaño físico del producto para la recomendación de resolución del uploader. */
+  productSizeCm?: string;
   onClose: () => void;
   onSelectAsset: (asset: StudioAsset) => void;
   onAssetUploaded: (asset: StudioAsset) => void;
@@ -54,6 +57,7 @@ export function StudioAssetPickerModal({
   assets,
   designId,
   predesigned = [],
+  productSizeCm,
   onClose,
   onSelectAsset,
   onAssetUploaded,
@@ -257,10 +261,15 @@ export function StudioAssetPickerModal({
                   <input
                     ref={fileInputRef}
                     type="file"
-                    accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
+                    accept={STUDIO_ACCEPTED_IMAGE_TYPES}
                     className="hidden"
                     onChange={(e) => handleFiles(e.target.files)}
                   />
+                  {/* Ola 4 (Lucy 2026-07-23) — formatos y resolución recomendada, visibles
+                      junto al punto de subida (texto centralizado en lib/upload-guidance). */}
+                  <p className="text-brand-muted mt-2 text-[11px] leading-snug">
+                    {uploadGuidanceText(productSizeCm)}
+                  </p>
 
                   {error && (
                     <div

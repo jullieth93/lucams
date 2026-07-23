@@ -174,6 +174,18 @@ const separadoresProduct = await prisma.product.findUnique({
   select: { id: true },
 });
 
+// Ola 4 (Lucy 2026-07-23) — depuración de plantillas: las "Personalización Libre" que SÍ
+// se usan dejan de ser GLOBALES y pasan a ser plantillas propias de su producto (nombre
+// real, no genérico). Las que no aportan quedan con archive:true (isActive=false).
+const cuadradosProduct = await prisma.product.findUnique({
+  where: { slug: "set-fotoimanes-cuadrados" },
+  select: { id: true },
+});
+const calendarioProduct = await prisma.product.findUnique({
+  where: { slug: "calendario-mes-a-mes-fotos" },
+  select: { id: true },
+});
+
 // Helper para canvas blanco con foto + texto editable opcional.
 // Stage aspect ratio elegido por kind para encajar con producto físico típico.
 function blankCanvas({ stageW, stageH, photoLabel = "Tu foto", includeText = false }) {
@@ -381,12 +393,37 @@ const templatesData = [
       ]
     : []),
 
-  // ════════════════════ Plantillas globales "Personalización Libre" ════════════════════
+  // ════════════════════ Tira Magnética (photobooth) ════════════════════
   //
-  // 8 plantillas, una por kind personalizable. Fallback funcional mientras
-  // se regeneran las plantillas premium una a una. Cliente sube foto + texto
-  // libre. NO tienen `productId` → globales, aparecen en cualquier producto
-  // del kind que no tenga plantillas premium específicas.
+  // Ola 4 (Lucy 2026-07-23) — foto-rectangular-simple queda registrada pero ARCHIVADA:
+  // su stage 3:4 (600×800) no calza con ninguna variante activa de Cuadrados (todas 1:1)
+  // y el filtro de aspect ya la ocultaba del estudio. Se conserva en el seed con
+  // archive:true para que el bloque de "legacy soft-delete" no la borre (deletedAt) en
+  // un re-seed: la regla es ARCHIVAR, nunca borrar (sus 33 diseños conservan templateId).
+  ...(cuadradosProduct
+    ? [
+        {
+          slug: "foto-rectangular-simple",
+          productId: cuadradosProduct.id,
+          kind: "PHOTO_PACK",
+          name: "Rectangular simple",
+          order: 98,
+          previewUrl: "/brand/lucams-logo.png",
+          archive: true,
+          canvasData: {
+            version: 1,
+            stage: stage(600, 800),
+            layers: [
+              background("#FFFFFF"),
+              photoSlot({ id: "p1", x: 0, y: 0, width: 600, height: 800, label: "Tu foto" }),
+            ],
+          },
+        },
+      ]
+    : []),
+
+  // ════════════════════ Tira Magnética (photobooth) ════════════════════
+  //
   // Ola 3c (Lucy 2026-07-22) — Tira Magnética REDISEÑADA al tamaño real 6.5×20 cm
   // (el producto lo actualiza el frente de datos). Referencia de Lucy: tira vertical
   // con 3 fotos APILADAS CASI A SANGRE, el fondo del color elegido visible solo como
@@ -395,8 +432,9 @@ const templatesData = [
   // Paradigma slot-por-foto (1 foto por slot, gridCols=1): cada celda es 1/3 de la
   // tira → stage 390×400 (6.5 × 6.667 cm); las 3 celdas apiladas con gridGap=0 arman
   // la tira 6.5×20 continua. La celda trae capa "frame-card" (fondo = borderColor,
-  // mismo mecanismo de la Polaroid Clásica) y la foto va inserta con margen fino
-  // (~1 mm físico): entre fotos quedan 2 márgenes de color, en los bordes 1.
+  // mismo mecanismo de la Polaroid Clásica). Ola 4 (Lucy 2026-07-23): la foto va a
+  // sangre VERTICAL → las fotos se TOCAN (pieza continua); el color queda en los
+  // lados (12px) y en el borde exterior first/last (12px, lo pone el código).
   ...(tirasProduct
     ? [
         {
@@ -417,28 +455,41 @@ const templatesData = [
               // Sin esquinas redondeadas: la tira es una pieza continua (el troquel
               // exterior lo da el cornerRadiusPx del producto, no la plantilla).
               { id: "card", type: "frame-card", fill: "#FFFFFF", cornerRadius: 0 },
-              // Foto casi a sangre: margen fino uniforme de color (~1.5% del ancho).
-              photoSlot({ id: "photo", x: 6, y: 6, width: 378, height: 388, label: "Foto de la tira" }),
+              // Ola 4 (Lucy 2026-07-23) — foto a sangre VERTICAL (y0, alto completo):
+              // las fotos de celdas vecinas SE TOCAN (gap 0 real, tira de una pieza).
+              // Los lados llevan 12px (~2mm) de color; el borde EXTERIOR (arriba/abajo)
+              // lo aplica el código por posición (stripPhotoRect, first/last 12px).
+              photoSlot({ id: "photo", x: 12, y: 0, width: 366, height: 400, label: "Foto de la tira" }),
             ],
           },
         },
       ]
     : []),
-  {
-    slug: "libre-photo-pack",
-    productId: null,
-    kind: "PHOTO_PACK",
-    name: "Personalización Libre",
-    order: 99,
-    previewUrl: "/templates/personalizacion-libre.svg",
-    // M.3.b.UX.v13 (Lucy 2026-05-15) — Stage cuadrado 600×600 para que el
-    // shape físico (heart/circle/rect cuadrado) se vea proporcionado. Para
-    // products rect vertical (Polaroid 7×9), la plantilla Polaroid Instagram
-    // tiene su propio stage 400×580 y NO usa este Libre.
-    // includeText:true se mantiene → el text se renderea solo en rect
-    // shapes (heart/circle lo skip en renderLayer "text" case).
-    canvasData: blankCanvas({ stageW: 600, stageH: 600, includeText: true }),
-  },
+  // ════════════════════ Plantillas de producto (antes "Personalización Libre") ════════
+  //
+  // Ola 4 (Lucy 2026-07-23) — DEPURACIÓN: las "Personalización Libre" GLOBALES se
+  // deprecaron. Las dos que SÍ se usan pasan a ser plantillas PROPIAS de su producto
+  // (nombre real, preview real): el calendario y los cuadrados dejan de ofrecer una
+  // plantilla genérica duplicada en otros productos (bug "aparecen 2 plantillas" en
+  // separadores/tiras). El resto queda con archive:true (isActive=false) — ver la
+  // lista y razones en scripts/ola4-depura-plantillas-2026-07-23.mjs.
+  ...(cuadradosProduct
+    ? [
+        {
+          slug: "libre-photo-pack",
+          productId: cuadradosProduct.id,
+          kind: "PHOTO_PACK",
+          name: "Foto simple",
+          order: 1,
+          previewUrl: "/templates/personalizacion-libre.svg",
+          // M.3.b.UX.v13 (Lucy 2026-05-15) — Stage cuadrado 600×600 para que el
+          // shape físico (heart/circle/rect cuadrado) se vea proporcionado. Ola 4:
+          // es la plantilla de los Fotoimanes Cuadrados 1:1 (sin borde → foto a
+          // sangre total; con borde → franja uniforme, ver frame-palette).
+          canvasData: blankCanvas({ stageW: 600, stageH: 600, includeText: true }),
+        },
+      ]
+    : []),
   {
     slug: "libre-photo-grid",
     productId: null,
@@ -446,36 +497,42 @@ const templatesData = [
     name: "Personalización Libre",
     order: 99,
     previewUrl: "/templates/personalizacion-libre.svg",
+    // Ola 4 — ARCHIVADA: ningún producto activo usa el kind PHOTO_GRID.
+    archive: true,
     canvasData: blankCanvas({ stageW: 720, stageH: 720, includeText: false }),
   },
-  {
-    slug: "libre-calendar-photo-month",
-    productId: null,
-    kind: "CALENDAR_PHOTO_MONTH",
-    name: "Personalización Libre",
-    order: 99,
-    previewUrl: "/templates/personalizacion-libre.svg",
-    // Ola 2A (Lucy 2026-07-22) — tarjeta 7.5×10 (3:4): foto full-bleed 4:3 arriba (600×450),
-    // espejo de la región CALENDAR_PHOTO de producción (1080×810 en página 1080×1440) para
-    // que el encuadre del cliente mapee 1:1 al imprimir (WYSIWYG). Abajo queda la franja del
-    // mes (lettering grande + grilla) que el compositor hornea en el PNG.
-    canvasData: {
-      version: 1,
-      stage: stage(600, 800),
-      layers: [
-        background("#FFFFFF"),
-        photoSlot({
-          id: "p1",
-          x: 0,
-          y: 0,
-          width: 600,
-          height: 450,
-          cornerRadius: 0,
-          label: "Foto del mes",
-        }),
-      ],
-    },
-  },
+  ...(calendarioProduct
+    ? [
+        {
+          slug: "libre-calendar-photo-month",
+          productId: calendarioProduct.id,
+          kind: "CALENDAR_PHOTO_MONTH",
+          name: "Calendario mes a mes",
+          order: 1,
+          previewUrl: "/templates/personalizacion-libre.svg",
+          // Ola 2A (Lucy 2026-07-22) — tarjeta 7.5×10 (3:4): foto full-bleed 4:3 arriba (600×450),
+          // espejo de la región CALENDAR_PHOTO de producción (1080×810 en página 1080×1440) para
+          // que el encuadre del cliente mapee 1:1 al imprimir (WYSIWYG). Abajo queda la franja del
+          // mes (lettering grande + grilla) que el compositor hornea en el PNG.
+          canvasData: {
+            version: 1,
+            stage: stage(600, 800),
+            layers: [
+              background("#FFFFFF"),
+              photoSlot({
+                id: "p1",
+                x: 0,
+                y: 0,
+                width: 600,
+                height: 450,
+                cornerRadius: 0,
+                label: "Foto del mes",
+              }),
+            ],
+          },
+        },
+      ]
+    : []),
   {
     slug: "libre-calendar-photo-hero",
     productId: null,
@@ -483,6 +540,8 @@ const templatesData = [
     name: "Personalización Libre",
     order: 99,
     previewUrl: "/templates/personalizacion-libre.svg",
+    // Ola 4 — ARCHIVADA: ningún producto activo usa el kind CALENDAR_PHOTO_HERO.
+    archive: true,
     canvasData: blankCanvas({
       stageW: 800,
       stageH: 600,
@@ -497,6 +556,8 @@ const templatesData = [
     name: "Personalización Libre",
     order: 99,
     previewUrl: "/templates/personalizacion-libre.svg",
+    // Ola 4 — ARCHIVADA: ningún producto activo usa el kind EVENT_FAVOR.
+    archive: true,
     canvasData: blankCanvas({ stageW: 600, stageH: 800, includeText: true }),
   },
   {
@@ -506,6 +567,8 @@ const templatesData = [
     name: "Personalización Libre",
     order: 99,
     previewUrl: "/templates/personalizacion-libre.svg",
+    // Ola 4 — ARCHIVADA: ningún producto activo usa el kind BUSINESS_LOGO.
+    archive: true,
     canvasData: blankCanvas({
       stageW: 700,
       stageH: 500,
@@ -520,6 +583,8 @@ const templatesData = [
     name: "Personalización Libre",
     order: 99,
     previewUrl: "/templates/personalizacion-libre.svg",
+    // Ola 4 — ARCHIVADA: ningún producto activo usa el kind CUSTOM_DECOR.
+    archive: true,
     canvasData: blankCanvas({ stageW: 600, stageH: 800, includeText: true }),
   },
   {
@@ -529,6 +594,9 @@ const templatesData = [
     name: "Personalización Libre",
     order: 99,
     previewUrl: "/templates/personalizacion-libre.svg",
+    // Ola 4 — ARCHIVADA: el producto TEXT_ONLY (nombre-personalizado) usa el
+    // NameEditor (superficie "name"), que no carga plantillas.
+    archive: true,
     canvasData: {
       version: 1,
       stage: stage(800, 800),
@@ -584,6 +652,9 @@ if (legacy.length > 0) {
 console.log(`Creando/actualizando ${templatesData.length} plantillas asset paradigm...`);
 const byKind = {};
 for (const t of templatesData) {
+  // Ola 4 — `archive: true` → la plantilla queda registrada pero INACTIVA (isActive=false),
+  // sin borrarla (los diseños viejos conservan su snapshot y su templateId).
+  const active = t.archive !== true;
   // `product` es relación Prisma — usar connect/disconnect en lugar de productId directo.
   const productRelation = t.productId ? { connect: { id: t.productId } } : { disconnect: true };
   await prisma.personalizationTemplate.upsert({
@@ -595,7 +666,7 @@ for (const t of templatesData) {
       previewUrl: t.previewUrl,
       canvasData: t.canvasData,
       order: t.order,
-      isActive: true,
+      isActive: active,
       deletedAt: null,
       deletedBy: null,
     },
@@ -607,12 +678,12 @@ for (const t of templatesData) {
       previewUrl: t.previewUrl,
       canvasData: t.canvasData,
       order: t.order,
-      isActive: true,
+      isActive: active,
     },
   });
   byKind[t.kind] = (byKind[t.kind] ?? 0) + 1;
   const scope = t.productId ? "(producto-específico)" : "(global)";
-  console.log(`  ✓ ${t.name}  [${t.kind}]  ${scope}`);
+  console.log(`  ✓ ${t.name}  [${t.kind}]  ${scope}${active ? "" : "  ⛔ ARCHIVADA"}`);
 }
 
 console.log("");

@@ -19,7 +19,19 @@ import type { SKRSContext2D } from "@napi-rs/canvas";
 import { RenderNeedsKonvaError, type LoadAssetBytes } from "./production-render";
 import { CALENDAR_PAGE, scalePhotoTransformToPage } from "./calendar-layout";
 import { drawCalendarPage } from "./calendar-draw";
-import { isDarkColor, frameBleedMargin, insetToMinMargin } from "./frame-palette";
+import {
+  isDarkColor,
+  frameBleedMargin,
+  insetToMinMargin,
+  isSimpleCardTemplate,
+  simpleCardPhotoRect,
+  isStripTemplate,
+  stripPhotoRect,
+  stripPositionOf,
+  isInstagramTemplate,
+  instagramBackgroundHex,
+  type StripPosition,
+} from "./frame-palette";
 
 const PRODUCTION_SCALE = 3;
 const MAX_STAGE_DIM = 3000;
@@ -59,7 +71,14 @@ function ensureFonts(mod: CanvasMod): boolean {
 // ── Tipos (mismos que production-render.ts, minimal) ────────────────────────
 type Stage = { width: number; height: number };
 type AnyLayer = { id: string; type: string; [k: string]: unknown };
-type UnitTemplate = { version: 1; stage: Stage; layers: AnyLayer[] };
+type UnitTemplate = {
+  version: 1;
+  stage: Stage;
+  layers: AnyLayer[];
+  /** Ola 2A — marcadores de tira photobooth (gridCols=1 + gridGap=0 → pieza continua). */
+  gridCols?: unknown;
+  gridGap?: unknown;
+};
 type PhotoTransform = { offsetX: number; offsetY: number; scale: number; rotation?: number };
 type TextOverride = {
   text?: string;
@@ -155,6 +174,8 @@ async function renderSlotCanvas(
    *  tarjeta completa se pinta del color y la foto va inserta (frame-card full-bleed,
    *  "el fin del papel"), igual que en el editor. Sin él se conserva el stroke viejo. */
   frameFullBleed: boolean = false,
+  /** Ola 4 — posición del slot dentro de una TIRA photobooth (borde exterior first/last). */
+  stripPosition: StripPosition | null = null,
 ): Promise<Buffer> {
   if (unit.stage.width > MAX_STAGE_DIM || unit.stage.height > MAX_STAGE_DIM) {
     throw new RenderNeedsKonvaError(
@@ -188,11 +209,14 @@ async function renderSlotCanvas(
 
   const hasText =
     includeText &&
-    unit.layers.some(
-      (l) =>
-        l.type === "text" &&
-        ((typeof l.text === "string" && l.text.trim()) || slot.textOverrides?.[l.id]?.text),
-    );
+    unit.layers.some((l) => {
+      if (l.type !== "text") return false;
+      const overrideText = slot.textOverrides?.[l.id]?.text;
+      // Ola 4 (texto opcional): una capa EDITABLE solo imprime su override — el texto
+      // base de la plantilla es una GUÍA del editor ("Escribe tu mensaje"), no se imprime.
+      if (l.editable === true) return typeof overrideText === "string" && overrideText.trim() !== "";
+      return (typeof l.text === "string" && l.text.trim() !== "") || !!overrideText;
+    });
   if (hasText && !ensureFonts(mod)) {
     throw new RenderNeedsKonvaError("fuentes no disponibles server-side");
   }
@@ -209,12 +233,40 @@ async function renderSlotCanvas(
   // toma el color del borde elegido (borderColor) con fallback al fill de la capa. Con
   // tarjeta oscura, el texto por defecto sale claro (el override del cliente manda).
   const hasFrameCard = unit.layers.some((l) => l.type === "frame-card");
-  const darkCard = hasFrameCard && typeof borderColor === "string" && isDarkColor(borderColor);
   // Ola 3b — full-bleed: plantillas SIN frame-card de productos con frameOptions pintan
   // la tarjeta entera de borderColor y la foto va inserta (misma regla que el editor).
   const fullBleed =
     frameFullBleed && typeof borderColor === "string" && !hasFrameCard && !useFullStage;
   const bleedMargin = fullBleed ? frameBleedMargin(unit.stage) : 0;
+  // Ola 4 — reglas nuevas por tipo de tarjeta (Lucy 2026-07-23):
+  //  - "tarjeta simple" (Cuadrados: fondo + foto, sin chrome ni texto visible):
+  //    borderColor null → foto a sangre TOTAL; borderColor set → franja UNIFORME.
+  //  - Instagram (chrome SVG): fondo BINARIO blanco/negro (un pastel residual cae a blanco).
+  //  - Tira photobooth (gridCols=1+gridGap=0): borde exterior solo en first/last.
+  const textVisible = includeText && unit.layers.some((l) => l.type === "text");
+  const simpleCard = isSimpleCardTemplate(unit.layers, {
+    hasFrameCard,
+    textIsVisible: textVisible,
+  });
+  const isIg = isInstagramTemplate(unit.layers);
+  const strip = isStripTemplate(unit) && stripPosition !== null;
+  const bgLayerHex = (() => {
+    const bg = unit.layers.find((l) => l.type === "background");
+    return typeof bg?.color === "string" ? bg.color : "#FFFFFF";
+  })();
+  const frameCardFillHex = (() => {
+    const fc = unit.layers.find((l) => l.type === "frame-card");
+    return typeof fc?.fill === "string" ? fc.fill : "#FFFFFF";
+  })();
+  // Fondo efectivo de la tarjeta → contraste automático del texto (blanco si es oscuro).
+  const cardBgHex = isIg
+    ? instagramBackgroundHex(borderColor, bgLayerHex)
+    : fullBleed && borderColor
+      ? borderColor
+      : hasFrameCard
+        ? (borderColor ?? frameCardFillHex)
+        : bgLayerHex;
+  const darkCard = isDarkColor(cardBgHex);
 
   for (const layer of unit.layers) {
     if (layer.type === "frame-card") {
@@ -229,12 +281,11 @@ async function renderSlotCanvas(
       ctx.fill();
       ctx.restore();
     } else if (layer.type === "background") {
-      const bgColor =
-        fullBleed && borderColor
+      const bgColor = isIg
+        ? cardBgHex // Ola 4 — Instagram: fondo binario blanco/negro (no cualquier hex)
+        : fullBleed && borderColor
           ? borderColor // Ola 3b — la tarjeta entera toma el color ("fin del papel")
-          : typeof layer.color === "string"
-            ? layer.color
-            : "#FFFFFF";
+          : bgLayerHex;
       if (useFullStage) {
         // #1 (FOTO1) — heart/circle pintan el fondo SOLO dentro de la silueta (troquel), transparente
         // afuera. Omitirlo por completo dejaba los huecos DENTRO del corazón (foto con zoom-out o pan)
@@ -275,11 +326,25 @@ async function renderSlotCanvas(
             height: Number(layer.height) || unit.stage.height,
             cornerRadius: Number(layer.cornerRadius) || 0,
           };
-      // Ola 3b — full-bleed: la foto se inserta dejando la franja de color mínima
-      // (respeta márgenes mayores de la plantilla). Misma geometría que el editor.
-      const ph = fullBleed
-        ? { ...insetToMinMargin(phRaw, unit.stage, bleedMargin), cornerRadius: phRaw.cornerRadius }
-        : phRaw;
+      // Ola 4 — ventana de foto según el tipo de tarjeta:
+      //  1. "tarjeta simple" (Cuadrados): borderColor null → foto a sangre TOTAL (0 margen);
+      //     borderColor set → franja UNIFORME de color en los 4 lados.
+      //  2. Ola 3b (resto de plantillas full-bleed): inserta respetando márgenes mayores.
+      //     Instagram conserva la geometría de su chrome (sin inset).
+      //  3. Tira photobooth: la ventana viene a sangre vertical (fotos que se tocan);
+      //     el borde exterior lo pone la posición (first/last).
+      let ph = phRaw;
+      if (frameFullBleed && simpleCard && !useFullStage) {
+        ph = {
+          ...simpleCardPhotoRect(unit.stage, borderColor ?? null, frameBleedMargin(unit.stage)),
+          cornerRadius: 0,
+        };
+      } else if (fullBleed && !isIg && !useFullStage) {
+        ph = { ...insetToMinMargin(phRaw, unit.stage, bleedMargin), cornerRadius: phRaw.cornerRadius };
+      }
+      if (strip && stripPosition) {
+        ph = { ...stripPhotoRect(ph, unit.stage, stripPosition), cornerRadius: ph.cornerRadius };
+      }
 
       // Ola 3c — rotación de la foto (pasos de 90° desde "Ajustar foto"): con 90/270
       // el cover se calcula con las dimensiones INTERCAMBIADAS (la foto girada cubre
@@ -396,7 +461,10 @@ async function renderSlotCanvas(
 
 /** Replica renderText de studio-slot.tsx: fontSize/family/fill/weight/align + stroke/shadow.
  *  Ola 3 — `darkCard`: la tarjeta del borde es oscura → el texto POR DEFECTO sale claro
- *  (el override de color del cliente siempre manda). */
+ *  (el override de color del cliente siempre manda).
+ *  Ola 4 — texto OPCIONAL (Lucy 2026-07-23): una capa EDITABLE imprime solo su override;
+ *  el texto base de la plantilla es una guía del editor ("Escribe tu mensaje") y NO se
+ *  imprime. Las capas NO editables (decorativas de la plantilla) imprimen su texto base. */
 function renderTextLayer(
   ctx: SKRSContext2D,
   layer: AnyLayer,
@@ -404,7 +472,8 @@ function renderTextLayer(
   override: TextOverride | undefined,
   darkCard: boolean = false,
 ) {
-  const finalText = override?.text ?? (typeof layer.text === "string" ? layer.text : "");
+  const baseText = layer.editable === true ? "" : typeof layer.text === "string" ? layer.text : "";
+  const finalText = override?.text ?? baseText;
   if (!finalText.trim()) return;
   const fontSize = override?.fontSize ?? (Number(layer.fontSize) || 48);
   const family =
@@ -483,7 +552,10 @@ export async function renderProductionSlotsCanvas(opts: {
   const mod = await loadCanvas(); // lazy: un binario faltante → NEEDS_KONVA (fallback), no crash.
   const out: Buffer[] = [];
   const slots = [...opts.slots].sort((a, b) => a.slotIndex - b.slotIndex);
-  for (const slot of slots) {
+  // Ola 4 — tira photobooth (gridCols=1 + gridGap=0): el borde exterior de la pieza
+  // continua va solo en la primera/última celda; las fotos del medio se tocan.
+  const strip = isStripTemplate(opts.unitTemplate);
+  for (const [index, slot] of slots.entries()) {
     out.push(
       await renderSlotCanvas(
         mod,
@@ -494,6 +566,7 @@ export async function renderProductionSlotsCanvas(opts: {
         opts.borderColor,
         opts.includeText ?? true,
         opts.frameFullBleed ?? false,
+        strip ? stripPositionOf(index, slots.length) : null,
       ),
     );
   }

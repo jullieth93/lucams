@@ -10,6 +10,11 @@
  *
  * Uso:
  *   make seed-cms
+ *
+ * ⚠️ CACHÉ CMS (2026-07-23): este script edita contenido CMS DIRECTO en DB → el sitio
+ * público sigue sirviendo la versión cacheada (unstable_cache tag "cms", TTL 1h) hasta
+ * que alguien la invalide. Después de correrlo: /admin/contenido (Bloques o
+ * Configuración) → botón "Actualizar caché de contenido".
  */
 
 import { PrismaClient } from "@prisma/client";

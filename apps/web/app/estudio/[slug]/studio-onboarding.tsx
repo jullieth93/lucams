@@ -28,6 +28,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { LucamsLogo } from "@/components/lucams-logo";
 import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
 import { useDialogA11y } from "./use-dialog-a11y";
+import { UPLOAD_FORMATS_TEXT } from "./lib/upload-guidance";
 import { ArrowRight, Sparkles, X } from "lucide-react";
 
 const ONBOARD_KEY = "lucams_studio_onboarded";
@@ -44,12 +45,13 @@ type OnboardingStep = {
 
 // #14 — el sustantivo del slot se parametriza por producto: en /estudio/separadores-libros los slots
 // son "separador", no "imán" (pantalla=físico). #7/#13 — copy en es-CO tuteo (sin voseo).
+// Ola 4 — los formatos salen de lib/upload-guidance (única fuente, igual que los uploaders).
 function buildSteps(noun: string): OnboardingStep[] {
   return [
     {
       title: "Sube tu foto",
-      body: "Empieza por arrastrar fotos al panel de la izquierda. Aceptamos JPG, PNG, WebP y HEIC del celular.",
-      bodyMobile: `Toca un ${noun} y súbele una foto desde tu celular. Aceptamos JPG, PNG, WebP y HEIC.`,
+      body: `Empieza por arrastrar fotos al panel de la izquierda. Aceptamos ${UPLOAD_FORMATS_TEXT} del celular.`,
+      bodyMobile: `Toca un ${noun} y súbele una foto desde tu celular. Aceptamos ${UPLOAD_FORMATS_TEXT}.`,
       cta: "Siguiente",
     },
     {

@@ -914,6 +914,17 @@ export function StudioEditor({
             showRealismGuides={showRealismGuides}
             // Ola 3 — calendario: meses; separadores 2 caras: "1A","1B",… por unidad.
             slotLabels={isCalendarMonth ? slotLabels : faceSlotLabels(photoSlots, facesPerUnit)}
+            // Ola 4 (Lucy 2026-07-23) — calendario: cada slot previsualiza la TARJETA
+            // compuesta del mes (foto + título + grilla), no la foto a sangre.
+            calendarPreview={
+              isCalendarMonth
+                ? {
+                    year: selectedYear,
+                    startMonth:
+                      (product.personalizationSchema as { startMonth?: number })?.startMonth ?? 0,
+                  }
+                : null
+            }
             slotNoun={slotNoun}
             allowText={allowText}
             frameFullBleed={frameFullBleed}
@@ -1106,6 +1117,7 @@ export function StudioEditor({
         assets={modalAssets}
         designId={modalDesignId}
         predesigned={predesigned}
+        productSizeCm={productConfig.sizeCm}
         onClose={() => setPickerSlotIndex(null)}
         onSelectAsset={handleAssetSelected}
         onAssetUploaded={handleAssetUploaded}
@@ -1491,6 +1503,9 @@ async function buildCompositedPreview(
   const cellW = 360;
   const cellH = Math.floor(360 * (unitTemplate.stage.height / unitTemplate.stage.width));
   const gap = gridLayout.gap;
+  // Ola 4 — TIRA photobooth (1 col, gap 0): la pieza es CONTINUA — sin stroke por celda
+  // (separaba las fotos); se dibuja un solo borde exterior al final.
+  const isStripPreview = gridLayout.cols === 1 && gridLayout.gap === 0 && slots.length > 1;
   const canvasW = gridLayout.cols * cellW + (gridLayout.cols - 1) * gap;
   const canvasH = gridLayout.rows * cellH + (gridLayout.rows - 1) * gap;
 
@@ -1538,17 +1553,29 @@ async function buildCompositedPreview(
         ctx.restore();
         // 2) Borde visible para destacar la silueta sobre el fondo crema
         //    (Lucy 2026-05-21: "el corazón y el fondo es blanco y no se
-        //    detalla bien el contorno").
-        ctx.save();
-        ctx.strokeStyle = "rgba(124, 106, 173, 0.7)"; // brand-purple/70
-        ctx.lineWidth = 2.5;
-        ctx.stroke(path);
-        ctx.restore();
+        //    detalla bien el contorno"). Ola 4 — en modo TIRA se omite el
+        //    stroke por celda: la pieza es continua (solo borde exterior).
+        if (!isStripPreview) {
+          ctx.save();
+          ctx.strokeStyle = "rgba(124, 106, 173, 0.7)"; // brand-purple/70
+          ctx.lineWidth = 2.5;
+          ctx.stroke(path);
+          ctx.restore();
+        }
         resolve();
       };
       img.onerror = () => reject(new Error("No se pudo cargar snapshot del slot"));
       img.src = slotDataUrl;
     });
+  }
+
+  // Ola 4 — TIRA: un solo borde exterior alrededor de la pieza continua.
+  if (isStripPreview) {
+    ctx.save();
+    ctx.strokeStyle = "rgba(124, 106, 173, 0.7)";
+    ctx.lineWidth = 2.5;
+    ctx.strokeRect(1.25, 1.25, canvasW - 2.5, canvasH - 2.5);
+    ctx.restore();
   }
 
   return compositeCanvas.toDataURL("image/png");

@@ -496,6 +496,9 @@ describe("renderProductionSlotsCanvas — Ola 3b (marco FULL-BLEED, 'fin del pap
   const BLUE: [number, number, number] = [0x3a, 0xa0, 0xff]; // fakePhoto
 
   it("plantilla con aire (foto inserta 40px): el margen exterior se pinta del COLOR (antes: blanco)", async () => {
+    // Ola 4 (Lucy 2026-07-23): en "tarjetas simples" (fondo + foto, sin chrome) la franja es
+    // UNIFORME en los 4 lados (frameBleedMargin = 12px acá), NO los márgenes de la plantilla
+    // (40px asimétricos) — la referencia de Lucy es un marco parejo alrededor de la foto.
     const unit = {
       version: 1 as const,
       stage: { width: 300, height: 400 },
@@ -512,13 +515,15 @@ describe("renderProductionSlotsCanvas — Ola 3b (marco FULL-BLEED, 'fin del pap
       borderColor: "#E85B9F",
       frameFullBleed: true,
     });
-    // Zona del margen (20,20) — FUERA de la ventana de foto → color de la tarjeta.
-    const [r1, g1, b1, a1] = await rgbaAt(bufs[0], 20 * 3, 20 * 3);
+    // Franja uniforme 12px: (6,6) dentro de la franja → color de la tarjeta.
+    const [r1, g1, b1, a1] = await rgbaAt(bufs[0], 6 * 3, 6 * 3);
     expect(a1).toBeGreaterThan(200);
     expect([r1, g1, b1]).toEqual(PINK);
-    // El margen de la plantilla (40 > 12) se respeta: dentro de la ventana → la foto.
-    const [r2, g2, b2] = await rgbaAt(bufs[0], 150 * 3, 200 * 3);
+    // (20,20) ya dentro de la foto insertada (ventana 12..288 × 12..388) → la foto.
+    const [r2, g2, b2] = await rgbaAt(bufs[0], 20 * 3, 20 * 3);
     expect([r2, g2, b2]).toEqual(BLUE);
+    // La franja es PAREJA: mismo grosor abajo-derecha que arriba-izquierda.
+    expect((await rgbaAt(bufs[0], 294 * 3, 394 * 3)).slice(0, 3)).toEqual(PINK);
   });
 
   it("misma plantilla SIN frameFullBleed (legado): el margen exterior sigue BLANCO (control del bug)", async () => {
@@ -649,5 +654,215 @@ describe("renderProductionSlotsCanvas — Ola 3c (rotación de la foto)", () => 
     expect(left[0]).toBeGreaterThan(200); // rojo
     const right = await rgbaAt(bufs[0], 90 * 3, 50 * 3);
     expect(right[2]).toBeGreaterThan(200); // azul
+  });
+});
+
+describe("renderProductionSlotsCanvas — Ola 4 (Lucy 2026-07-23)", () => {
+  const slotOk3 = {
+    slotIndex: 0,
+    assetId: "a0",
+    photoTransform: { offsetX: 0, offsetY: 0, scale: 1 },
+  };
+  const BLUE: [number, number, number] = [0x3a, 0xa0, 0xff]; // fakePhoto
+  const PINK: [number, number, number] = [0xe8, 0x5b, 0x9f];
+
+  // T4 — Cuadrados: sin borde → foto a sangre TOTAL aunque la plantilla tenga aire.
+  it("T4 tarjeta simple SIN borde (borderColor null): la foto cubre TODA la tarjeta (0 margen)", async () => {
+    const unit = {
+      version: 1 as const,
+      stage: { width: 300, height: 300 },
+      layers: [
+        { id: "bg", type: "background", color: "#FFFFFF" },
+        // Plantilla con aire (40px): antes dejaba franja blanca aunque el cliente eligiera ∅.
+        { id: "ph", type: "image-placeholder", x: 40, y: 40, width: 220, height: 220 },
+      ],
+    };
+    const bufs = await renderProductionSlotsCanvas({
+      unitTemplate: unit,
+      slots: [slotOk3],
+      shape: "rectangle",
+      loadAsset: async () => fakePhoto(600, 600),
+      borderColor: null,
+      frameFullBleed: true,
+    });
+    // Esquina (2,2): la foto llega al borde (antes: franja blanca de 40px).
+    expect((await rgbaAt(bufs[0], 2 * 3, 2 * 3)).slice(0, 3)).toEqual(BLUE);
+    // Y el centro sigue siendo foto.
+    expect((await rgbaAt(bufs[0], 150 * 3, 150 * 3)).slice(0, 3)).toEqual(BLUE);
+  });
+
+  it("T4 tarjeta simple CON borde: franja UNIFORME de color (12px) en los 4 lados", async () => {
+    const unit = {
+      version: 1 as const,
+      stage: { width: 300, height: 300 },
+      layers: [
+        { id: "bg", type: "background", color: "#FFFFFF" },
+        { id: "ph", type: "image-placeholder", x: 40, y: 40, width: 220, height: 180 },
+      ],
+    };
+    const bufs = await renderProductionSlotsCanvas({
+      unitTemplate: unit,
+      slots: [slotOk3],
+      shape: "rectangle",
+      loadAsset: async () => fakePhoto(600, 600),
+      borderColor: "#E85B9F",
+      frameFullBleed: true,
+    });
+    // Franja uniforme 12px (4% de 300): arriba-izquierda y abajo-derecha iguales.
+    expect((await rgbaAt(bufs[0], 6 * 3, 6 * 3)).slice(0, 3)).toEqual(PINK);
+    expect((await rgbaAt(bufs[0], 294 * 3, 294 * 3)).slice(0, 3)).toEqual(PINK);
+    expect((await rgbaAt(bufs[0], 294 * 3, 6 * 3)).slice(0, 3)).toEqual(PINK);
+    // Dentro de la ventana (12..288) → foto.
+    expect((await rgbaAt(bufs[0], 20 * 3, 20 * 3)).slice(0, 3)).toEqual(BLUE);
+    expect((await rgbaAt(bufs[0], 150 * 3, 150 * 3)).slice(0, 3)).toEqual(BLUE);
+  });
+
+  // T3 — Polaroid Clásica: el texto es OPCIONAL. La capa EDITABLE imprime solo su
+  // override; el placeholder base ("Escribe tu mensaje") es guía del editor.
+  const clasicaEditable = {
+    version: 1 as const,
+    stage: { width: 300, height: 400 },
+    layers: [
+      { id: "bg", type: "background", color: "#FFFFFF" },
+      { id: "card", type: "frame-card", fill: "#FFFFFF", cornerRadius: 12 },
+      { id: "ph", type: "image-placeholder", x: 19, y: 19, width: 262, height: 262 },
+      {
+        id: "msg",
+        type: "text",
+        x: 150,
+        y: 340,
+        text: "Escribe tu mensaje",
+        fontSize: 24,
+        fill: "#3D2E5C",
+        editable: true,
+      },
+    ],
+  };
+  // Franja del mensaje en px de salida (stage × 3).
+  const msgBand = { x: 10 * 3, y: 315 * 3, w: 280 * 3, h: 50 * 3 };
+  const darkInk = (r: number, g: number, b: number, a: number) =>
+    a > 200 && r < 120 && g < 120 && b < 160;
+
+  it("T3 texto EDITABLE sin override → NO se imprime (el placeholder es solo guía)", async () => {
+    const bufs = await renderProductionSlotsCanvas({
+      unitTemplate: clasicaEditable,
+      slots: [slotOk3],
+      shape: "rectangle",
+      loadAsset: async () => fakePhoto(600, 600),
+      borderColor: null,
+    });
+    expect(await hasPixel(bufs[0], msgBand, darkInk)).toBe(false);
+  });
+
+  it("T3 texto EDITABLE con override vacío (\"\") → NO se imprime; con override → se imprime", async () => {
+    const empty = await renderProductionSlotsCanvas({
+      unitTemplate: clasicaEditable,
+      slots: [{ ...slotOk3, textOverrides: { msg: { text: "" } } }],
+      shape: "rectangle",
+      loadAsset: async () => fakePhoto(600, 600),
+      borderColor: null,
+    });
+    expect(await hasPixel(empty[0], msgBand, darkInk)).toBe(false);
+
+    const filled = await renderProductionSlotsCanvas({
+      unitTemplate: clasicaEditable,
+      slots: [{ ...slotOk3, textOverrides: { msg: { text: "Te amo mamá" } } }],
+      shape: "rectangle",
+      loadAsset: async () => fakePhoto(600, 600),
+      borderColor: null,
+    });
+    expect(await hasPixel(filled[0], msgBand, darkInk)).toBe(true);
+  });
+
+  it("T3 capa NO editable (decorativa) sin override → imprime su texto base (control)", async () => {
+    const unit = {
+      version: 1 as const,
+      stage: { width: 300, height: 400 },
+      layers: [
+        { id: "bg", type: "background", color: "#FFFFFF" },
+        { id: "ph", type: "image-placeholder", x: 19, y: 19, width: 262, height: 262 },
+        // Sin `editable`: texto fijo de la plantilla (ej. firma) → sí se imprime.
+        { id: "sig", type: "text", x: 150, y: 340, text: "Lucams", fontSize: 24, fill: "#3D2E5C" },
+      ],
+    };
+    const bufs = await renderProductionSlotsCanvas({
+      unitTemplate: unit,
+      slots: [slotOk3],
+      shape: "rectangle",
+      loadAsset: async () => fakePhoto(600, 600),
+      borderColor: null,
+    });
+    expect(await hasPixel(bufs[0], msgBand, darkInk)).toBe(true);
+  });
+
+  // T5 — Tira photobooth: UNA pieza continua. Las fotos de celdas vecinas se TOCAN
+  // (gap 0 real); el borde exterior (color frame-card) solo en first/last + lados.
+  const stripUnit = {
+    version: 1 as const,
+    stage: { width: 390, height: 400 },
+    gridCols: 1,
+    gridGap: 0,
+    layers: [
+      { id: "bg", type: "background", color: "#FFFFFF" },
+      { id: "card", type: "frame-card", fill: "#FFFFFF", cornerRadius: 0 },
+      // Ventana de la plantilla: sangre vertical (y=0), lados 12px (espejo del seed Ola 4).
+      { id: "ph", type: "image-placeholder", x: 12, y: 0, width: 366, height: 400 },
+    ],
+  };
+  const stripSlots = [0, 1, 2].map((i) => ({ ...slotOk3, slotIndex: i, assetId: `a${i}` }));
+  const nearWhiteRgb = [255, 255, 255];
+
+  it("T5 celda del MEDIO: la foto toca los bordes superior e inferior (gap 0 real)", async () => {
+    const bufs = await renderProductionSlotsCanvas({
+      unitTemplate: stripUnit,
+      slots: stripSlots,
+      shape: "rectangle",
+      loadAsset: async () => fakePhoto(600, 600),
+      borderColor: null,
+      frameFullBleed: true,
+    });
+    expect(bufs).toHaveLength(3);
+    const middle = bufs[1];
+    // Borde superior de la celda del medio → foto (toca la foto de la celda anterior).
+    expect((await rgbaAt(middle, 195 * 3, 1 * 3)).slice(0, 3)).toEqual(BLUE);
+    // Borde inferior → foto (toca la siguiente).
+    expect((await rgbaAt(middle, 195 * 3, 398 * 3)).slice(0, 3)).toEqual(BLUE);
+    // Lado izquierdo (dentro del margen lateral 12px) → color de la tarjeta.
+    expect((await rgbaAt(middle, 4 * 3, 200 * 3)).slice(0, 3)).toEqual(nearWhiteRgb);
+  });
+
+  it("T5 primera y última celda: borde EXTERIOR de 12px del color de la tarjeta", async () => {
+    const bufs = await renderProductionSlotsCanvas({
+      unitTemplate: stripUnit,
+      slots: stripSlots,
+      shape: "rectangle",
+      loadAsset: async () => fakePhoto(600, 600),
+      borderColor: null,
+      frameFullBleed: true,
+    });
+    const [first, , last] = bufs;
+    // Primera: franja superior blanca (borde exterior); la foto empieza a los 12px.
+    expect((await rgbaAt(first, 195 * 3, 4 * 3)).slice(0, 3)).toEqual(nearWhiteRgb);
+    expect((await rgbaAt(first, 195 * 3, 20 * 3)).slice(0, 3)).toEqual(BLUE);
+    // …pero su borde inferior toca la siguiente celda → foto.
+    expect((await rgbaAt(first, 195 * 3, 398 * 3)).slice(0, 3)).toEqual(BLUE);
+    // Última: franja inferior blanca; su borde superior toca la anterior → foto.
+    expect((await rgbaAt(last, 195 * 3, 1 * 3)).slice(0, 3)).toEqual(BLUE);
+    expect((await rgbaAt(last, 195 * 3, 396 * 3)).slice(0, 3)).toEqual(nearWhiteRgb);
+    expect((await rgbaAt(last, 195 * 3, 380 * 3)).slice(0, 3)).toEqual(BLUE);
+  });
+
+  it("T5 con color de borde: el borde exterior y los lados toman el color elegido", async () => {
+    const bufs = await renderProductionSlotsCanvas({
+      unitTemplate: stripUnit,
+      slots: stripSlots,
+      shape: "rectangle",
+      loadAsset: async () => fakePhoto(600, 600),
+      borderColor: "#E85B9F",
+      frameFullBleed: true,
+    });
+    const [first] = bufs;
+    expect((await rgbaAt(first, 195 * 3, 4 * 3)).slice(0, 3)).toEqual(PINK);
+    expect((await rgbaAt(first, 4 * 3, 200 * 3)).slice(0, 3)).toEqual(PINK);
   });
 });

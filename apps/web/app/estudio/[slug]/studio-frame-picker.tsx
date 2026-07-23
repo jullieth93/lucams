@@ -27,6 +27,11 @@ type StudioFramePickerProps = {
   /** Hex activo (#RRGGBB) o null = sin marco. */
   value: string | null;
   onChange: (hex: string | null) => void;
+  /**
+   * Ola 4 (Lucy 2026-07-23) — false oculta el picker LIBRE: la Polaroid Instagram solo
+   * admite fondo blanco/negro (los pasteles no aplican a su chrome). Default true.
+   */
+  allowCustom?: boolean;
 };
 
 /** Check legible sobre cualquier color: oscuro con halo sobre colores claros. */
@@ -46,9 +51,15 @@ function ActiveCheck({ dark }: { dark: boolean }) {
 
 const LIGHT_HEXES = new Set(["#FFFFFF", "#FFD93D"]);
 
-export function StudioFramePicker({ colors, value, onChange }: StudioFramePickerProps) {
+export function StudioFramePicker({
+  colors,
+  value,
+  onChange,
+  allowCustom = true,
+}: StudioFramePickerProps) {
   const normalized = value?.toUpperCase() ?? null;
-  const isCustom = normalized !== null && !colors.some((c) => c.hex.toUpperCase() === normalized);
+  const isCustom =
+    allowCustom && normalized !== null && !colors.some((c) => c.hex.toUpperCase() === normalized);
   // El input type="color" exige #rrggbb (minúsculas); default rosa de marca.
   const inputValue = isValidFrameHex(normalized) ? normalized.toLowerCase() : "#e85b9f";
 
@@ -101,41 +112,45 @@ export function StudioFramePicker({ colors, value, onChange }: StudioFramePicker
         })}
 
         {/* Picker LIBRE — el input nativo ocupa todo el chip (invisible pero clicable);
-            el chip muestra el color personalizado o un gradiente "cualquier color". */}
-        <label
-          role="radio"
-          aria-checked={isCustom}
-          aria-label="Elegir otro color"
-          title="Elegir otro color"
-          className={[
-            "focus-within:ring-brand-turquoise relative h-10 w-10 cursor-pointer overflow-hidden rounded-full transition-all focus-within:ring-2",
-            isCustom
-              ? "ring-brand-turquoise shadow-md ring-2 ring-offset-2"
-              : "ring-brand-purple/20 hover:ring-brand-purple/50 ring-1",
-          ].join(" ")}
-          style={{
-            background: isCustom
-              ? (normalized ?? undefined)
-              : "conic-gradient(#E85B9F, #FFD93D, #5DD9D1, #7C6AAD, #E85B9F)",
-          }}
-        >
-          <input
-            type="color"
-            value={inputValue}
-            aria-label="Elegir otro color de marco"
-            onChange={(e) => onChange(e.target.value.toUpperCase())}
-            className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
-          />
-          {isCustom ? (
-            <ActiveCheck dark={LIGHT_HEXES.has(normalized ?? "")} />
-          ) : (
-            <Palette
-              className="absolute inset-0 m-auto h-4 w-4 text-white"
-              style={{ filter: "drop-shadow(0 0 2px rgba(0,0,0,0.45))" }}
-              aria-hidden
+            el chip muestra el color personalizado o un gradiente "cualquier color".
+            Ola 4 — se oculta cuando la plantilla no admite color libre (Instagram:
+            fondo solo blanco/negro). */}
+        {allowCustom && (
+          <label
+            role="radio"
+            aria-checked={isCustom}
+            aria-label="Elegir otro color"
+            title="Elegir otro color"
+            className={[
+              "focus-within:ring-brand-turquoise relative h-10 w-10 cursor-pointer overflow-hidden rounded-full transition-all focus-within:ring-2",
+              isCustom
+                ? "ring-brand-turquoise shadow-md ring-2 ring-offset-2"
+                : "ring-brand-purple/20 hover:ring-brand-purple/50 ring-1",
+            ].join(" ")}
+            style={{
+              background: isCustom
+                ? (normalized ?? undefined)
+                : "conic-gradient(#E85B9F, #FFD93D, #5DD9D1, #7C6AAD, #E85B9F)",
+            }}
+          >
+            <input
+              type="color"
+              value={inputValue}
+              aria-label="Elegir otro color de marco"
+              onChange={(e) => onChange(e.target.value.toUpperCase())}
+              className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
             />
-          )}
-        </label>
+            {isCustom ? (
+              <ActiveCheck dark={LIGHT_HEXES.has(normalized ?? "")} />
+            ) : (
+              <Palette
+                className="absolute inset-0 m-auto h-4 w-4 text-white"
+                style={{ filter: "drop-shadow(0 0 2px rgba(0,0,0,0.45))" }}
+                aria-hidden
+              />
+            )}
+          </label>
+        )}
       </div>
       {isCustom && normalized && (
         <p className="text-brand-muted mt-1.5 text-[11px] font-medium tabular-nums">

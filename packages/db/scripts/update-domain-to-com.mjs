@@ -11,6 +11,11 @@
  * dos veces no rompe nada.
  *
  * Uso:  pnpm --filter @lucams/db exec dotenv -e ../../.env.local -- node scripts/update-domain-to-com.mjs
+ *
+ * ⚠️ CACHÉ CMS (2026-07-23): este script edita contenido CMS DIRECTO en DB → el sitio
+ * público sigue sirviendo la versión cacheada (unstable_cache tag "cms", TTL 1h) hasta
+ * que alguien la invalide. Después de correrlo: /admin/contenido (Bloques o
+ * Configuración) → botón "Actualizar caché de contenido".
  */
 
 import { PrismaClient } from "@prisma/client";

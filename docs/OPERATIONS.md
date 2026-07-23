@@ -472,6 +472,23 @@ supabase db connect
 supabase db dump --data-only > backup-$(date +%F).sql
 ```
 
+### Editar contenido CMS por script → invalidar caché
+
+Las páginas públicas (legales, home, footer, mensajes) leen `CmsBlock`/`SiteSetting` con
+`unstable_cache` tag `"cms"` (TTL 1h, `apps/web/lib/cms.ts`). Las acciones del admin lo
+invalidan solas (`updateTag("cms")`), pero **un script de `packages/db/scripts` que edite
+CMS directo en DB NO puede invalidarlo** (`updateTag` solo corre dentro de una Server
+Action de Next — confirmado: la opción "script que dispara el tag" no es viable fuera de
+un request). Después de correr cualquiera de esos scripts (`seed-cms.mjs`,
+`seed-legal-content-2026-07.mjs`, `update-legal-ley-2439.mjs`,
+`remove-owner-name-legal-2026-07-22.mjs`, `update-domain-to-com.mjs`, `fix-voseo-cms.mjs`):
+
+1. Entra a **`/admin/contenido`** (Bloques o Configuración).
+2. Click en **"Actualizar caché de contenido"** (header, botón con ícono de refresco).
+
+Eso llama `refreshCmsCacheAction` → `updateTag("cms")` + queda en `AdminActionLog`
+(`cms.cache.refresh`). Si no se hace, el sitio sirve la versión vieja hasta 1 hora.
+
 ---
 
 ## Runbook de incidentes

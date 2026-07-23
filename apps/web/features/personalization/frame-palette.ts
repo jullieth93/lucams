@@ -88,6 +88,139 @@ export function frameBleedMargin(stage: { width: number; height: number }): numb
 
 export type PhotoRect = { x: number; y: number; width: number; height: number };
 
+// ──────────────────────────────────────────────────────────────────────────
+// Ola 4 (Lucy 2026-07-23) — Cuadrados: SIN borde → foto a sangre total;
+// CON borde → tarjeta de color + foto inserta con franja UNIFORME.
+//
+// La regla aplica solo a plantillas "tarjeta simple" (fondo + 1 foto, sin
+// chrome propio): con borderColor la franja es UNIFORME en los 4 lados (la
+// referencia rosa de Lucy), no "los márgenes que traiga la plantilla" (eso
+// dejaba la franja asimétrica 40/40/40/100 de libre-photo-pack). Sin
+// borderColor la foto cubre TODA la tarjeta (0 margen — antes quedaba la
+// franja blanca de la plantilla aunque el cliente eligiera "sin marco").
+// ──────────────────────────────────────────────────────────────────────────
+
+/** Tipos de capa que le dan layout propio a la plantilla (chrome/marca), no "tarjeta simple". */
+const DECOR_LAYER_TYPES = new Set(["asset", "shape"]);
+
+/**
+ * ¿La plantilla es una "tarjeta simple"? (fondo + foto, SIN chrome propio: sin frame-card,
+ * sin capas asset/shape y sin texto VISIBLE para el producto). Solo a esas les aplica la
+ * regla cuadrados (sangre total / franja uniforme). Las demás conservan su layout
+ * (Polaroid Clásica con frame-card, Instagram con chrome SVG, tiras con frame-card).
+ */
+export function isSimpleCardTemplate(
+  layers: ReadonlyArray<{ type: string }>,
+  opts?: { hasFrameCard?: boolean; textIsVisible?: boolean },
+): boolean {
+  if (opts?.hasFrameCard ?? layers.some((l) => l.type === "frame-card")) return false;
+  if (layers.some((l) => DECOR_LAYER_TYPES.has(l.type))) return false;
+  if ((opts?.textIsVisible ?? false) && layers.some((l) => l.type === "text")) return false;
+  return true;
+}
+
+/**
+ * Ventana de foto para "tarjeta simple" de un producto con frameOptions:
+ *   - borderColor set → franja UNIFORME de `margin` px en los 4 lados (tarjeta de color).
+ *   - borderColor null → la foto cubre TODA la tarjeta (0 margen).
+ */
+export function simpleCardPhotoRect(
+  stage: { width: number; height: number },
+  borderColor: string | null | undefined,
+  margin: number,
+): PhotoRect {
+  if (!borderColor) return { x: 0, y: 0, width: stage.width, height: stage.height };
+  return {
+    x: margin,
+    y: margin,
+    width: Math.max(10, stage.width - margin * 2),
+    height: Math.max(10, stage.height - margin * 2),
+  };
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Ola 4 (Lucy 2026-07-23) — TIRA photobooth: UNA pieza continua.
+//
+// La plantilla de celda (gridCols:1 + gridGap:0) trae la foto a sangre vertical
+// (y=0) para que las fotos de celdas vecinas SE TOQUEN (gap 0 real). El borde
+// EXTERIOR de la tira (arriba de la 1ª foto, abajo de la última) no puede vivir
+// en la plantilla (es uniforme por celda) → lo aplica el código por posición.
+// ──────────────────────────────────────────────────────────────────────────
+
+/** ¿La plantilla es una celda de tira photobooth? (marcadores gridCols=1 + gridGap=0). */
+export function isStripTemplate(unitTemplate: {
+  gridCols?: unknown;
+  gridGap?: unknown;
+}): boolean {
+  return unitTemplate.gridCols === 1 && unitTemplate.gridGap === 0;
+}
+
+export type StripPosition = "first" | "middle" | "last" | "single";
+
+/** Posición del slot dentro de la tira (para el borde exterior). */
+export function stripPositionOf(slotIndex: number, slotCount: number): StripPosition {
+  if (slotCount <= 1) return "single";
+  if (slotIndex === 0) return "first";
+  if (slotIndex === slotCount - 1) return "last";
+  return "middle";
+}
+
+/**
+ * Grosor del borde exterior de la tira (px del stage). ≈2 mm a 300 DPI sobre una tira
+ * de 6.5 cm de ancho (390 px → 12 px); proporcional al ancho del stage.
+ */
+export function stripOuterInset(stage: { width: number; height: number }): number {
+  return Math.max(6, Math.round(stage.width * 0.03));
+}
+
+/**
+ * Aplica el borde EXTERIOR de la tira a la ventana de foto de una celda:
+ * first/single → inset arriba; last/single → inset abajo; middle → fotos se tocan.
+ * Los lados los maneja la plantilla (ventana con margen lateral uniforme).
+ */
+export function stripPhotoRect(ph: PhotoRect, stage: { width: number; height: number }, position: StripPosition): PhotoRect {
+  const inset = stripOuterInset(stage);
+  const top = position === "first" || position === "single" ? inset : 0;
+  const bottom = position === "last" || position === "single" ? inset : 0;
+  return { ...ph, y: ph.y + top, height: Math.max(10, ph.height - top - bottom) };
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Ola 4 (Lucy 2026-07-23) — Polaroid Instagram: fondo SOLO blanco/negro con
+// contraste automático de textos (fondo blanco → textos negros; fondo negro →
+// textos blancos). El chrome (SVG) también tiene variante oscura.
+// ──────────────────────────────────────────────────────────────────────────
+
+/** ¿La plantilla es la Polaroid Instagram? (chrome SVG ig_post). */
+export function isInstagramTemplate(layers: ReadonlyArray<{ type: string; src?: unknown }>): boolean {
+  return layers.some(
+    (l) => l.type === "asset" && typeof l.src === "string" && l.src.includes("ig_post"),
+  );
+}
+
+/**
+ * Fondo EFECTIVO de la tarjeta Instagram: binario blanco/negro. borderColor oscuro
+ * (negro de marca) → fondo negro; cualquier otro caso (null, blanco o un pastel
+ * residual de otra plantilla) → el fondo blanco de la capa background.
+ */
+export function instagramBackgroundHex(
+  borderColor: string | null | undefined,
+  fallbackHex: string,
+): string {
+  if (borderColor && isDarkColor(borderColor)) return borderColor;
+  return fallbackHex;
+}
+
+/**
+ * Variante del chrome SVG para fondo oscuro: `ig_post_3x4.svg` → `ig_post_3x4_dark.svg`.
+ * Si no hay variante conocida, devuelve el src intacto.
+ */
+export function darkChromeSrc(src: string, darkBackground: boolean): string {
+  if (!darkBackground) return src;
+  if (src.endsWith("_dark.svg")) return src;
+  return src.replace(/\.svg$/i, "_dark.svg");
+}
+
 /**
  * Inserta la ventana de foto para el marco full-bleed: garantiza una franja de color
  * de al menos `margin` px en CADA lado, respetando los márgenes mayores que ya traiga

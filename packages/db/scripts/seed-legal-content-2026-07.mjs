@@ -21,6 +21,11 @@
  * colombiano antes del lanzamiento (ADR-020 / ADR-072).
  *
  * Uso:  (desde la raíz, con .env.local sourced)  node packages/db/scripts/seed-legal-content-2026-07.mjs
+ *
+ * ⚠️ CACHÉ CMS (2026-07-23): este script edita contenido CMS DIRECTO en DB → el sitio
+ * público sigue sirviendo la versión cacheada (unstable_cache tag "cms", TTL 1h) hasta
+ * que alguien la invalide. Después de correrlo: /admin/contenido (Bloques o
+ * Configuración) → botón "Actualizar caché de contenido".
  */
 
 import { PrismaClient } from "@prisma/client";

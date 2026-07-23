@@ -28,7 +28,7 @@ import { toast } from "sonner";
 import type { StoreApi } from "zustand";
 import { useStore } from "zustand";
 import { uploadDesignAssetAction } from "@/features/personalization/actions";
-import { frameColorById } from "@/features/personalization/frame-palette";
+import { frameColorById, isInstagramTemplate } from "@/features/personalization/frame-palette";
 import { StudioFramePicker } from "./studio-frame-picker";
 import { StudioMessageField } from "./studio-message-field";
 import { StudioIgBorderToggle } from "./studio-ig-border-toggle";
@@ -38,6 +38,7 @@ import {
   selectTotalSlotCount,
   type StudioStoreState,
 } from "./lib/store";
+import { STUDIO_ACCEPTED_IMAGE_TYPES, uploadGuidanceText } from "./lib/upload-guidance";
 import type { StudioAsset, StudioTemplate } from "./types";
 
 type StudioSidebarProps = {
@@ -86,10 +87,18 @@ export function StudioSidebar({
   // Ola 2A — marco de color (diseño-level, aplica a todas las fotos del pack).
   const borderColor = useStore(store, (s) => s.canvasData?.borderColor ?? null);
   const setBorderColor = useStore(store, (s) => s.setBorderColor);
+  // Ola 4 (Lucy 2026-07-23) — ¿la plantilla activa es la Polaroid Instagram? Su fondo
+  // es BINARIO blanco/negro: se restringe el picker (sin pasteles ni color libre) y los
+  // textos salen en contraste automático (negro sobre blanco, blanco sobre negro).
+  const isIgActive = useStore(store, (s) =>
+    isInstagramTemplate(s.canvasData?.unitTemplate?.layers ?? []),
+  );
   // Ids válidos contra la paleta de marca (descarta ids desconocidos del schema).
   const frameColors = (frameOptions ?? [])
     .map((id) => frameColorById(id))
-    .filter((c): c is NonNullable<typeof c> => c !== null);
+    .filter((c): c is NonNullable<typeof c> => c !== null)
+    // Instagram: solo blanco/negro (el resto de la paleta no aplica a su chrome).
+    .filter((c) => (isIgActive ? c.id === "blanco" || c.id === "negro" : true));
 
   const handleFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
@@ -227,11 +236,16 @@ export function StudioSidebar({
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
+          accept={STUDIO_ACCEPTED_IMAGE_TYPES}
           multiple
           className="hidden"
           onChange={(e) => handleFiles(e.target.files)}
         />
+        {/* Ola 4 (Lucy 2026-07-23) — formatos y resolución recomendada, visibles junto
+            al punto de subida (texto centralizado en lib/upload-guidance.ts). */}
+        <p className="text-brand-muted mt-2 text-[11px] leading-snug">
+          {uploadGuidanceText(productSizeCm)}
+        </p>
 
         {uploadError && (
           <p role="alert" className="mt-2 text-xs text-red-600">
@@ -299,11 +313,18 @@ export function StudioSidebar({
             className="text-brand-purple-dark mb-3 flex items-center gap-2 text-sm font-semibold"
           >
             <Sparkles className="text-brand-purple h-4 w-4" />
-            Marco de tus fotos
+            {isIgActive ? "Fondo del post" : "Marco de tus fotos"}
           </div>
-          <StudioFramePicker colors={frameColors} value={borderColor} onChange={setBorderColor} />
+          <StudioFramePicker
+            colors={frameColors}
+            value={borderColor}
+            onChange={setBorderColor}
+            allowCustom={!isIgActive}
+          />
           <p className="text-brand-muted mt-2 text-xs">
-            Toda la tarjeta se imprime del color elegido, con tu foto inserta.
+            {isIgActive
+              ? "Blanco o negro. Los textos salen solos en el color que contraste (negro sobre blanco, blanco sobre negro); para cambiarlos a mano toca cada texto en la imagen."
+              : "Toda la tarjeta se imprime del color elegido, con tu foto inserta."}
           </p>
         </section>
       )}

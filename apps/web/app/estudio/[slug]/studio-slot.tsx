@@ -56,8 +56,17 @@ import {
   isDarkColor,
   frameBleedMargin,
   insetToMinMargin,
+  isSimpleCardTemplate,
+  simpleCardPhotoRect,
+  isStripTemplate,
+  stripPhotoRect,
+  stripPositionOf,
+  isInstagramTemplate,
+  instagramBackgroundHex,
+  darkChromeSrc,
 } from "@/features/personalization/frame-palette";
 import { RealismShadowLayer, RealismOverlayLayer } from "./studio-realism-overlay";
+import { CalendarCardLayer } from "./studio-calendar-card-layer";
 import { getFilterParams } from "./lib/photo-filters";
 import { analyzeSmartCrop, checkPhotoQuality } from "./lib/smart-crop";
 
@@ -114,6 +123,13 @@ type StudioSlotProps = {
    * mismo vía includeText → WYSIWYG).
    */
   allowText?: boolean;
+  /**
+   * Ola 4 (Lucy 2026-07-23) — CALENDARIO: el slot muestra la TARJETA COMPUESTA del mes
+   * (foto + "ENE 2027" + grilla real, mismo drawCalendarPage que producción) en vez de
+   * la foto a sangre sobre fondo blanco. Cuando está set, reemplaza las capas del
+   * unitTemplate (background + image-placeholder) por el canvas compuesto.
+   */
+  calendarCard?: { year: number; monthIndex0: number } | null;
   onClick: () => void;
   onClear: () => void;
   /** M.3.b.B.3 — Abrir modal de ajustar foto (filtros). Solo se llama si slot lleno. */
@@ -154,6 +170,7 @@ function StudioSlotImpl({
   frameFullBleed = false,
   overlayActions = false,
   allowText = false,
+  calendarCard = null,
   onClick,
   onClear,
   onAdjust,
@@ -249,6 +266,40 @@ function StudioSlotImpl({
   // Misma condición que production-render-canvas (WYSIWYG).
   const fullBleed =
     !!borderColor && frameFullBleed && !hasFrameCard && shape !== "heart" && shape !== "circle";
+  // Ola 4 (Lucy 2026-07-23) — clasificación de la tarjeta, compartida con producción:
+  //  - "tarjeta simple" (Cuadrados): sin chrome ni texto visible → sin borde = foto a
+  //    sangre TOTAL; con borde = franja UNIFORME de color.
+  //  - Instagram (chrome SVG): fondo BINARIO blanco/negro + textos en contraste auto.
+  //  - Tira photobooth (gridCols=1 + gridGap=0): pieza continua, borde exterior por posición.
+  const isIg = useMemo(() => isInstagramTemplate(unitTemplate.layers), [unitTemplate]);
+  const simpleCard = useMemo(
+    () =>
+      isSimpleCardTemplate(unitTemplate.layers, {
+        hasFrameCard,
+        textIsVisible: allowText && unitTemplate.layers.some((l) => l.type === "text"),
+      }),
+    [unitTemplate, hasFrameCard, allowText],
+  );
+  const isStrip = useMemo(
+    () => isStripTemplate(unitTemplate as { gridCols?: unknown; gridGap?: unknown }),
+    [unitTemplate],
+  );
+  const stripPosition = isStrip ? stripPositionOf(slotState.slotIndex, totalSlots) : null;
+  // Fondo efectivo de la tarjeta → contraste automático del texto (blanco si es oscuro).
+  const cardBgHex = useMemo(() => {
+    const bgLayer = unitTemplate.layers.find((l) => l.type === "background") as
+      | { color?: string }
+      | undefined;
+    const bgHex = bgLayer?.color ?? "#FFFFFF";
+    const fcLayer = unitTemplate.layers.find((l) => l.type === "frame-card") as
+      | { fill?: string }
+      | undefined;
+    if (isIg) return instagramBackgroundHex(borderColor ?? null, bgHex);
+    if (fullBleed && borderColor) return borderColor;
+    if (hasFrameCard) return borderColor ?? fcLayer?.fill ?? "#FFFFFF";
+    return bgHex;
+  }, [unitTemplate, isIg, fullBleed, borderColor, hasFrameCard]);
+  const darkCardBg = isDarkColor(cardBgHex);
   const frameStyle = useMemo(() => {
     if (!borderColor || shape === "heart" || shape === "circle" || hasFrameCard || fullBleed)
       return null;
@@ -559,7 +610,22 @@ function StudioSlotImpl({
           // Ola 3 — si el producto declara cornerRadiusPx (separadores: troquel
           // REDONDO real), la silueta en pantalla usa ese radio escalado al
           // tamaño del slot en vez del 8px genérico (WYSIWYG con el troquel).
-          borderRadius: slotClipPath ? 0 : cornerRadiusPx ? Math.max(2, cornerRadiusPx * scale) : 8,
+          // Ola 4 — modo TIRA: solo la punta de arriba (first) y la de abajo
+          // (last) se redondean; las celdas del medio van cuadradas para que
+          // la tira se lea como UNA pieza continua.
+          borderRadius: slotClipPath
+            ? 0
+            : isStrip
+              ? stripPosition === "single"
+                ? 8
+                : stripPosition === "first"
+                  ? "8px 8px 0 0"
+                  : stripPosition === "last"
+                    ? "0 0 8px 8px"
+                    : 0
+              : cornerRadiusPx
+                ? Math.max(2, cornerRadiusPx * scale)
+                : 8,
           clipPath: slotClipPath,
           // Pinch-zoom (WCAG 1.4.4): la página NUNCA bloquea el zoom a nivel viewport;
           // solo el canvas INTERACTIVO captura el gesto (touch-action:none) para que el
@@ -591,7 +657,9 @@ function StudioSlotImpl({
         {/* Konva Stage — 3 layers stacked:
           1. RealismShadowLayer (bottom) — sombra del imán físico
           2. Content Layer (middle)      — unit template del seed
-          3. RealismOverlayLayer (top)   — acabado glossy + bleed/safe guides */}
+          3. RealismOverlayLayer (top)   — acabado glossy + bleed/safe guides
+          Ola 4 — modo TIRA: sin sombra POR CELDA (separaba las fotos); la sombra
+          única de la pieza continua la pone el contenedor del grid (CSS). */}
         <Stage
           width={slotWidth}
           height={slotHeight}
@@ -614,11 +682,13 @@ function StudioSlotImpl({
           onDblClick={handleDblClick}
           onDblTap={handleDblClick}
         >
-          <RealismShadowLayer
-            stage={unitTemplate.stage}
-            shape={shape}
-            cornerRadiusPx={cornerRadiusPx}
-          />
+          {!isStrip && (
+            <RealismShadowLayer
+              stage={unitTemplate.stage}
+              shape={shape}
+              cornerRadiusPx={cornerRadiusPx}
+            />
+          )}
           <Layer name="content">
             {/* M.3.b.UX.v13 (Lucy 2026-05-15) — Layer único sin Group clipFunc.
               El CSS clip-path del wrapper HTML recorta visualmente al shape
@@ -626,21 +696,52 @@ function StudioSlotImpl({
               también respetan el shape via RealismShadowLayer/Overlay.
               Para products heart/circle el text layer del template NO se
               renderea (renderLayer "text" returns null). */}
-            {unitTemplate.layers.map((layer) =>
-              renderLayer(
-                layer,
-                slotState,
-                unitTemplate.stage,
-                handleTextEdit,
-                shape,
-                onPhotoTransformChange,
-                handlePhotoDragStart,
-                handlePhotoDragEnd,
-                // Ola 3 — color del borde (tarjeta frame-card + texto claro si es
-                // oscura) y bandera de texto del producto (Cuadrados: sin texto).
-                // Ola 3b — fullBleed: tarjeta entera del color + foto inserta.
-                { borderColor: borderColor ?? null, allowText, hasFrameCard, fullBleed },
-              ),
+            {calendarCard ? (
+              // Ola 4 — calendario: tarjeta COMPUESTA (foto + mes/año + grilla real,
+              // mismo dibujo que producción). Reemplaza background + image-placeholder
+              // de la plantilla; el drag de la foto vive dentro de CalendarCardLayer.
+              <CalendarCardLayer
+                assetUrl={slotState.assetUrl}
+                photoTransform={slotState.photoTransform ?? null}
+                year={calendarCard.year}
+                monthIndex0={calendarCard.monthIndex0}
+                templateStageWidth={unitTemplate.stage.width}
+                stageWidth={unitTemplate.stage.width}
+                stageHeight={unitTemplate.stage.height}
+                onPhotoTransformChange={onPhotoTransformChange}
+                onPhotoDragStart={handlePhotoDragStart}
+                onPhotoDragEnd={handlePhotoDragEnd}
+              />
+            ) : (
+              unitTemplate.layers.map((layer) =>
+                renderLayer(
+                  layer,
+                  slotState,
+                  unitTemplate.stage,
+                  handleTextEdit,
+                  shape,
+                  onPhotoTransformChange,
+                  handlePhotoDragStart,
+                  handlePhotoDragEnd,
+                  // Ola 3 — color del borde (tarjeta frame-card + texto claro si es
+                  // oscura) y bandera de texto del producto (Cuadrados: sin texto).
+                  // Ola 3b — fullBleed: tarjeta entera del color + foto inserta.
+                  // Ola 4 — tarjeta simple (sangre/franja uniforme), IG (fondo binario +
+                  // chrome oscuro), tira (borde exterior por posición), texto opcional.
+                  {
+                    borderColor: borderColor ?? null,
+                    allowText,
+                    hasFrameCard,
+                    fullBleed,
+                    cardBgHex,
+                    darkCardBg,
+                    simpleCard,
+                    isIg,
+                    frameFullBleed,
+                    stripPosition,
+                  },
+                ),
+              )
             )}
             {/* Ola 2A — marco de color: ENCIMA de la foto (stroke centrado en el borde de la
               ventana). Es contenido del diseño: se hornea en el snapshot de producción (no es
@@ -956,7 +1057,9 @@ export const StudioSlot = memo(StudioSlotImpl, (prev, next) => {
     prev.borderColor === next.borderColor &&
     prev.frameFullBleed === next.frameFullBleed &&
     prev.overlayActions === next.overlayActions &&
-    prev.allowText === next.allowText
+    prev.allowText === next.allowText &&
+    prev.calendarCard?.year === next.calendarCard?.year &&
+    prev.calendarCard?.monthIndex0 === next.calendarCard?.monthIndex0
   );
 });
 StudioSlot.displayName = "StudioSlot";
@@ -985,18 +1088,37 @@ export function renderLayer(
    *  - hasFrameCard: la plantilla trae tarjeta de color (Polaroid Clásica).
    *  - fullBleed (Ola 3b): la tarjeta entera se pinta de borderColor y la foto va
    *    inserta con franja mínima de color (productos con frameOptions sin frame-card).
+   *
+   * Ola 4 (Lucy 2026-07-23):
+   *  - cardBgHex / darkCardBg: fondo efectivo de la tarjeta y su contraste (texto
+   *    automático blanco/negro — Instagram binario; frame-card oscura → texto claro).
+   *  - simpleCard + frameFullBleed: "tarjeta simple" (Cuadrados) → sin borde = foto a
+   *    sangre total; con borde = franja uniforme (simpleCardPhotoRect).
+   *  - isIg: plantilla Instagram → fondo binario blanco/negro + chrome SVG variante oscura.
+   *  - stripPosition: posición en la tira (first/last llevan borde exterior).
    */
   opts?: {
     borderColor?: string | null;
     allowText?: boolean;
     hasFrameCard?: boolean;
     fullBleed?: boolean;
+    cardBgHex?: string;
+    darkCardBg?: boolean;
+    simpleCard?: boolean;
+    isIg?: boolean;
+    frameFullBleed?: boolean;
+    stripPosition?: import("@/features/personalization/frame-palette").StripPosition | null;
   },
 ) {
   const borderColor = opts?.borderColor ?? null;
   const allowText = opts?.allowText ?? false;
-  const hasFrameCard = opts?.hasFrameCard ?? false;
   const fullBleed = opts?.fullBleed ?? false;
+  const isIg = opts?.isIg ?? false;
+  const cardBgHex = opts?.cardBgHex ?? null;
+  const darkCardBg = opts?.darkCardBg ?? false;
+  const simpleCard = opts?.simpleCard ?? false;
+  const frameFullBleed = opts?.frameFullBleed ?? false;
+  const stripPosition = opts?.stripPosition ?? null;
   switch (layer.type) {
     case "background":
       return (
@@ -1008,7 +1130,14 @@ export function renderLayer(
           height={stage.height}
           // Ola 3b — "el color llega al fin del papel": con full-bleed la tarjeta
           // entera es borderColor (el marco ES la tarjeta), no un stroke sobre blanco.
-          fill={fullBleed && borderColor ? borderColor : (layer as { color: string }).color}
+          // Ola 4 — Instagram: fondo BINARIO blanco/negro (cardBgHex ya resuelto).
+          fill={
+            isIg && cardBgHex
+              ? cardBgHex
+              : fullBleed && borderColor
+                ? borderColor
+                : (layer as { color: string }).color
+          }
           listening={false}
           preventDefault={false}
         />
@@ -1051,15 +1180,30 @@ export function renderLayer(
             cornerRadius: 0,
           } as ImagePlaceholderLayer)
         : (layer as ImagePlaceholderLayer);
-      // Ola 3b — full-bleed: la foto se inserta dejando una franja mínima de color
-      // (respeta márgenes mayores de la plantilla). Misma geometría que producción.
-      const effectiveLayer =
-        fullBleed && borderColor && !useFullStage
-          ? ({
-              ...baseLayer,
-              ...insetToMinMargin(baseLayer, stage, frameBleedMargin(stage)),
-            } as ImagePlaceholderLayer)
-          : baseLayer;
+      // Ola 4 — ventana de foto según el tipo de tarjeta (misma geometría que producción):
+      //  1. "tarjeta simple" (Cuadrados) con frameOptions: sin borde → foto a sangre TOTAL;
+      //     con borde → franja UNIFORME de color (simpleCardPhotoRect).
+      //  2. Ola 3b resto de plantillas full-bleed: inserta respetando márgenes mayores
+      //     (Instagram conserva la geometría de su chrome: sin inset).
+      //  3. Tira photobooth: la ventana viene a sangre vertical (fotos que se tocan);
+      //     el borde exterior lo pone la posición (first/last).
+      let photoRect = { x: baseLayer.x, y: baseLayer.y, width: baseLayer.width, height: baseLayer.height };
+      let photoCornerRadius = baseLayer.cornerRadius;
+      if (frameFullBleed && simpleCard && !useFullStage) {
+        const r = simpleCardPhotoRect(stage, borderColor, frameBleedMargin(stage));
+        photoRect = r;
+        photoCornerRadius = 0;
+      } else if (fullBleed && borderColor && !useFullStage && !isIg) {
+        photoRect = insetToMinMargin(photoRect, stage, frameBleedMargin(stage));
+      }
+      if (stripPosition) {
+        photoRect = stripPhotoRect(photoRect, stage, stripPosition);
+      }
+      const effectiveLayer = {
+        ...baseLayer,
+        ...photoRect,
+        cornerRadius: photoCornerRadius,
+      } as ImagePlaceholderLayer;
       return (
         <ImagePlaceholder
           key={layer.id}
@@ -1083,15 +1227,23 @@ export function renderLayer(
       if (!allowText) return null;
       const textLayer = layer as TextLayerData;
       const override = slotState.textOverrides?.[textLayer.id];
-      // Ola 3 — tarjeta de borde oscura (Polaroid Clásica negro/lavanda): el texto
-      // por defecto sale CLARO para que se lea; el override del cliente manda.
-      const darkCard = hasFrameCard && borderColor !== null && isDarkColor(borderColor);
-      return renderText(textLayer, stage, override, onTextEdit, false, darkCard);
+      // Ola 4 — contraste AUTOMÁTICO del texto por el fondo efectivo de la tarjeta
+      // (generaliza el darkCard de Ola 3: Instagram fondo negro → textos blancos;
+      // frame-card oscura → texto claro; el override de color del cliente manda).
+      return renderText(textLayer, stage, override, onTextEdit, false, darkCardBg);
     }
     case "shape":
       return renderShape(layer as never);
     case "asset":
-      return <AssetLayerRenderer key={layer.id} layer={layer as never} />;
+      return (
+        <AssetLayerRenderer
+          key={layer.id}
+          layer={layer as never}
+          // Ola 4 — Instagram con fondo negro: el chrome SVG usa su variante oscura
+          // (íconos/textos blancos), igual que los textos pasan a blanco (contraste).
+          darkBackground={isIg && darkCardBg}
+        />
+      );
     default:
       return null;
   }
@@ -1116,8 +1268,15 @@ type AssetLayerData = {
  * useImage("anonymous") permite cargar SVG via fetch + decode, listo para
  * stage.toDataURL() al finalize.
  */
-function AssetLayerRenderer({ layer }: { layer: AssetLayerData }) {
-  const [image] = useImage(layer.src, "anonymous");
+function AssetLayerRenderer({
+  layer,
+  darkBackground = false,
+}: {
+  layer: AssetLayerData;
+  /** Ola 4 — fondo oscuro (Instagram negro): usa la variante `_dark` del chrome SVG. */
+  darkBackground?: boolean;
+}) {
+  const [image] = useImage(darkChromeSrc(layer.src, darkBackground), "anonymous");
   if (!image) {
     // Fallback rect transparente mientras carga (no se ve, evita layout shift)
     return null;
@@ -1169,6 +1328,12 @@ function renderText(
 ) {
   // Combinar layer base + override del slot. Cada campo del override
   // sobrescribe el layer base si está definido.
+  // Ola 4 (Lucy 2026-07-23) — texto OPCIONAL: si la capa es EDITABLE y el cliente no
+  // escribió nada (sin override), el texto base ("Escribe tu mensaje") se dibuja como
+  // GUÍA atenuada con name="edit-indicator" → NUNCA se hornea en el snapshot de
+  // producción/preview (producción tampoco imprime nada sin override: mismo criterio
+  // en renderTextLayer). Con override (incluso ""), manda el override del cliente.
+  const isPlaceholderGuide = layer.editable === true && override?.text === undefined;
   const finalText = override?.text ?? layer.text;
   const fontSize = override?.fontSize ?? layer.fontSize ?? 48;
   const fontFamily = override?.fontFamily ?? layer.fontFamily ?? "Fredoka, Inter, sans-serif";
@@ -1206,6 +1371,10 @@ function renderText(
   const textNode = (
     <Text
       key={`${layer.id}-text`}
+      // Ola 4 — la GUÍA del placeholder (sin override) se marca "edit-indicator":
+      // no se hornea en el snapshot de producción/preview (vacío = no se imprime nada).
+      name={isPlaceholderGuide ? "edit-indicator" : undefined}
+      opacity={isPlaceholderGuide ? 0.45 : 1}
       x={textX}
       y={textY}
       width={align === "center" ? stage.width : undefined}

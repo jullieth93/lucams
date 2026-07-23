@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { Share2, Archive, ExternalLink, MessageCircle, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { buildPublicShareUrl } from "@/lib/public-url";
 import { shareDesignAction, archiveDesignAction, revokeShareAction } from "./actions";
 
 export type DesignCardData = {
@@ -42,7 +43,7 @@ function DesignCard({ design }: { design: DesignCardData }) {
       t = r.token;
       setToken(t);
     }
-    return `${window.location.origin}/d/${t}`;
+    return buildPublicShareUrl(`/d/${t}`);
   }
 
   function handleCopy() {

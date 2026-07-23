@@ -30,6 +30,15 @@ import { unitIndexOfSlot } from "./lib/faces";
 
 const MAX_VIEWPORT_WIDTH = 720; // px lógicos máximo del grid en desktop
 
+// Ola 4 (Lucy 2026-07-23) — marco máximo TAMBIÉN EN ALTO: el tamaño de celda se deriva
+// del ancho Y del alto disponible, así ningún estudio se desborda (calendario 4×3,
+// polaroid 1-slot, tira 1-col se veían gigantes) ni queda diminuto. El marco es
+// proporcional al viewport (78% del alto, acotado entre 420 y 900px) y el grid queda
+// centrado siempre (width fija = celdas + gaps, margin auto).
+const FRAME_HEIGHT_VH = 0.78;
+const FRAME_HEIGHT_MIN = 420;
+const FRAME_HEIGHT_MAX = 900;
+
 // Ola 2A (Lucy 2026-07-22) — espacio RESERVADO bajo cada slot para su barra de acciones
 // (Centrar / Ajustar filtros / Eliminar). Antes el wrapper medía solo el canvas → la barra
 // se superponía a la fila de miniaturas de abajo y los botones "se perdían". Reservar el
@@ -64,6 +73,12 @@ type StudioCanvasGridProps = {
   showRealismGuides?: boolean;
   /** ADR-057 Fase D — etiquetas por slot (ej. meses del calendario). */
   slotLabels?: string[];
+  /**
+   * Ola 4 (Lucy 2026-07-23) — CALENDARIO: cada slot muestra la TARJETA COMPUESTA del mes
+   * (foto + título + grilla) en vez de la foto suelta. `startMonth` = mes (0-11) del slot 0;
+   * `year` = año elegido en el banner del Estudio (estado selectedYear del editor).
+   */
+  calendarPreview?: { year: number; startMonth: number } | null;
   /** #14 — sustantivo del slot ("imán" | "separador") para el fallback y aria de cada StudioSlot. */
   slotNoun?: string;
   /** Ola 3 — ¿el producto admite texto editable? false oculta las capas de texto (Cuadrados). */
@@ -104,6 +119,7 @@ export function StudioCanvasGrid({
   cornerRadiusPx,
   showRealismGuides,
   slotLabels,
+  calendarPreview = null,
   slotNoun,
   allowText = false,
   frameFullBleed = false,
@@ -132,7 +148,7 @@ export function StudioCanvasGrid({
   const setSlotPhotoTransform = useStore(store, (s) => s.setSlotPhotoTransform);
   const selectSlot = useStore(store, (s) => s.selectSlot);
 
-  // Responsive scale
+  // Responsive scale (ancho del contenedor, cap MAX_VIEWPORT_WIDTH)
   useEffect(() => {
     if (!containerRef.current) return;
     const update = () => {
@@ -143,6 +159,16 @@ export function StudioCanvasGrid({
     const ro = new ResizeObserver(update);
     ro.observe(containerRef.current);
     return () => ro.disconnect();
+  }, []);
+
+  // Ola 4 — alto del viewport para el marco máximo en alto (null hasta hidratar:
+  // el primer render usa solo el ancho, como antes; luego entra el cap de alto).
+  const [viewportH, setViewportH] = useState<number | null>(null);
+  useEffect(() => {
+    const update = () => setViewportH(window.innerHeight);
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
   }, []);
 
   const layout = useMemo(() => {
@@ -250,14 +276,34 @@ export function StudioCanvasGrid({
   const navCols = grouped ? unitCols * 2 : layout.cols;
 
   const availableW = containerWidth - layout.gap * (layout.cols - 1);
+  // Ola 4 — marco máximo en ALTO (78% del viewport, acotado): las celdas se achican
+  // si el grid completo no cabe en pantalla (calendario 4×3, polaroid de 1 slot,
+  // tira 1-col se desbordaban). null antes de hidratar → comportamiento anterior.
+  const maxFrameH = viewportH
+    ? Math.min(FRAME_HEIGHT_MAX, Math.max(FRAME_HEIGHT_MIN, Math.round(viewportH * FRAME_HEIGHT_VH)))
+    : null;
   const slotDisplaySize = grouped
     ? // Ancho de cara dentro de la tarjeta: (tarjeta − padding − separación) / 2.
       Math.max(
         MIN_SLOT_SIZE,
         Math.floor(((containerWidth - layout.gap * (unitCols - 1)) / unitCols - 16 - 8) / 2),
       )
-    : Math.max(MIN_SLOT_SIZE, Math.floor(availableW / layout.cols));
+    : (() => {
+        const byWidth = Math.floor(availableW / layout.cols);
+        if (!maxFrameH) return Math.max(MIN_SLOT_SIZE, byWidth);
+        // Alto útil del marco: menos gaps entre filas y la reserva de la barra de
+        // acciones por fila (en modo tira no hay reserva: la barra flota).
+        const reserve = stripMode ? 0 : ACTION_BAR_RESERVE;
+        const usableH = maxFrameH - layout.gap * (layout.rows - 1) - layout.rows * reserve;
+        const byHeight = Math.floor(usableH / layout.rows / slotAspect);
+        return Math.max(MIN_SLOT_SIZE, Math.min(byWidth, byHeight));
+      })();
   const slotHeight = slotDisplaySize * slotAspect;
+  // Ola 4 — ancho EXPLÍCITO del grid (celdas + gaps): si el cap de alto achicó las
+  // celdas, el grid no se estira a lo ancho — queda centrado en el marco (margin auto).
+  const gridContentW = grouped
+    ? undefined
+    : slotDisplaySize * layout.cols + layout.gap * (layout.cols - 1);
 
   // Keyboard navigation entre slots
   const handleKeyboardNav = (
@@ -319,6 +365,17 @@ export function StudioCanvasGrid({
             isSelected={selectedSlotIndex === slot.slotIndex}
             totalSlots={canvasData.slotCount}
             slotLabel={slotLabels?.[slot.slotIndex]}
+            calendarCard={
+              calendarPreview
+                ? {
+                    year: calendarPreview.year,
+                    // Misma matemática de mes que producción y el preview de confirmación:
+                    // monthIndex0 = (startMonth + slotIndex) mod 12.
+                    monthIndex0:
+                      (((calendarPreview.startMonth + slot.slotIndex) % 12) + 12) % 12,
+                  }
+                : null
+            }
             slotNoun={slotNoun}
             sizeCm={sizeCm}
             shape={shape}
@@ -379,10 +436,20 @@ export function StudioCanvasGrid({
       aria-label="Lienzo del Estudio de Personalización"
     >
       <motion.div
-        className="grid"
+        className={
+          stripMode
+            ? // Ola 4 — TIRA continua: UNA sombra alrededor de la pieza entera (las
+              // celdas individuales no llevan sombra — separaban la tira visualmente).
+              // Sin overflow-hidden: el anillo de selección del slot no debe cortarse.
+              "grid rounded-lg shadow-[0_10px_28px_rgba(0,0,0,0.20)]"
+            : "grid"
+        }
         style={{
           gridTemplateColumns: `repeat(${grouped ? unitCols : layout.cols}, 1fr)`,
           gap: layout.gap,
+          // Ola 4 — ancho explícito + margin auto: el grid siempre centrado en el marco,
+          // sin estirarse cuando el cap de alto achica las celdas.
+          ...(gridContentW ? { width: gridContentW, margin: "0 auto" } : {}),
         }}
         initial={reducedMotion ? false : { opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
