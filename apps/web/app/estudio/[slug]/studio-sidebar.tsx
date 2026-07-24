@@ -28,11 +28,7 @@ import { toast } from "sonner";
 import type { StoreApi } from "zustand";
 import { useStore } from "zustand";
 import { uploadDesignAssetAction } from "@/features/personalization/actions";
-import { frameColorById, isInstagramTemplate } from "@/features/personalization/frame-palette";
-import { StudioFramePicker } from "./studio-frame-picker";
 import { StudioMessageField } from "./studio-message-field";
-import { StudioIgBorderToggle } from "./studio-ig-border-toggle";
-import { StudioPolaroidBorderToggle } from "./studio-polaroid-border-toggle";
 import {
   selectAssetIsUsed,
   selectFilledSlotCount,
@@ -50,9 +46,6 @@ type StudioSidebarProps = {
   productSizeCm?: string;
   /** P0.7 — forma física para borde redondeado realista de la card. */
   productShape?: "rectangle" | "circle" | "heart" | "custom";
-  /** Ola 2A — ids de marco de color disponibles (personalizationSchema.frameOptions).
-   * Si trae opciones, se muestra el selector "Marco" (borde de color alrededor de la foto). */
-  frameOptions?: string[];
   /** Ola 3 — el producto admite texto editable (Polaroid). Habilita el campo "Tu mensaje". */
   allowText?: boolean;
 };
@@ -63,7 +56,6 @@ export function StudioSidebar({
   productSku,
   productSizeCm,
   productShape,
-  frameOptions,
   allowText = false,
 }: StudioSidebarProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -85,21 +77,6 @@ export function StudioSidebar({
   const addAsset = useStore(store, (s) => s.addAsset);
   const autoFillSlots = useStore(store, (s) => s.autoFillSlots);
   const applyTemplate = useStore(store, (s) => s.applyTemplate);
-  // Ola 2A — marco de color (diseño-level, aplica a todas las fotos del pack).
-  const borderColor = useStore(store, (s) => s.canvasData?.borderColor ?? null);
-  const setBorderColor = useStore(store, (s) => s.setBorderColor);
-  // Ola 4 (Lucy 2026-07-23) — ¿la plantilla activa es la Polaroid Instagram? Su fondo
-  // es BINARIO blanco/negro: se restringe el picker (sin pasteles ni color libre) y los
-  // textos salen en contraste automático (negro sobre blanco, blanco sobre negro).
-  const isIgActive = useStore(store, (s) =>
-    isInstagramTemplate(s.canvasData?.unitTemplate?.layers ?? []),
-  );
-  // Ids válidos contra la paleta de marca (descarta ids desconocidos del schema).
-  const frameColors = (frameOptions ?? [])
-    .map((id) => frameColorById(id))
-    .filter((c): c is NonNullable<typeof c> => c !== null)
-    // Instagram: solo blanco/negro (el resto de la paleta no aplica a su chrome).
-    .filter((c) => (isIgActive ? c.id === "blanco" || c.id === "negro" : true));
 
   const handleFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
@@ -304,41 +281,9 @@ export function StudioSidebar({
         )}
       </section>
 
-      {/* ──────── Marco (Ola 2A/3b — el "Estilo"/"Marco" de la PDP ahora es una
-          decisión visual del Estudio: color LIBRE + atajos de marca + "Sin marco".
-          Con color, la tarjeta se imprime ENTERA del color y la foto va inserta) ──────── */}
-      {frameColors.length > 0 && (
-        <section aria-labelledby="sidebar-marco" className="border-brand-purple/10 border-t pt-5">
-          <div
-            id="sidebar-marco"
-            className="text-brand-purple-dark mb-3 flex items-center gap-2 text-sm font-semibold"
-          >
-            <Sparkles className="text-brand-purple h-4 w-4" />
-            {isIgActive ? "Fondo del post" : "Marco de tus fotos"}
-          </div>
-          <StudioFramePicker
-            colors={frameColors}
-            value={borderColor}
-            onChange={setBorderColor}
-            allowCustom={!isIgActive}
-          />
-          <p className="text-brand-muted mt-2 text-xs">
-            {isIgActive
-              ? "Blanco o negro. Los textos salen solos en el color que contraste (negro sobre blanco, blanco sobre negro); para cambiarlos a mano toca cada texto en la imagen."
-              : "Toda la tarjeta se imprime del color elegido, con tu foto inserta."}
-          </p>
-        </section>
-      )}
-
       {/* ──────── Tu mensaje (Ola 3c — Polaroid Clásica: campo directo en la sidebar;
           tocar el texto del canvas sigue abriendo el editor completo como atajo) ──────── */}
       {allowText && <StudioMessageField store={store} />}
-
-      {/* ──────── Foto con/sin borde (Ola 3c — solo plantilla Polaroid Instagram) ──────── */}
-      <StudioIgBorderToggle store={store} />
-
-      {/* ──────── Foto con/sin borde (Ola 6 — solo plantilla Polaroid Clásica) ──────── */}
-      <StudioPolaroidBorderToggle store={store} />
 
       {/* ──────── Plantillas ──────── */}
       <section

@@ -37,6 +37,7 @@ import { addPersonalizedToCartAction } from "@/app/carrito/actions";
 import { StudioCanvasGrid } from "./studio-canvas-grid";
 import { StudioSidebar } from "./studio-sidebar";
 import { StudioToolbar, StudioFinalizeFab } from "./studio-toolbar";
+import { StudioStyleToolbar } from "./studio-style-toolbar";
 import { StudioOnboarding } from "./studio-onboarding";
 import { StudioGesturesHint, GESTURES_HINT_STORAGE_KEY } from "./studio-gestures-hint";
 import { StudioAssetPickerModal } from "./studio-asset-picker-modal";
@@ -882,7 +883,6 @@ export function StudioEditor({
             productSku={product.sku}
             productSizeCm={productConfig.sizeCm}
             productShape={productConfig.shape}
-            frameOptions={productConfig.frameOptions}
             allowText={allowText}
           />
         </aside>
@@ -891,6 +891,8 @@ export function StudioEditor({
             era flex-row → banner y grid en fila → overflow horizontal y slots sangrando). El banner ya
             trae mb-3, pensado para apilado. */}
         <section className="flex flex-1 flex-col items-center p-4 pb-24 lg:p-8 lg:pb-8">
+          <StudioStyleToolbar store={store} frameOptions={productConfig.frameOptions} />
+
           {/* ADR-057 Fase D + CAL2 — banner de calendario: el cliente elige el AÑO (selector) y
               pone una foto por mes. Ola 2A (Lucy 2026-07-22): el selector de año se perdía
               visualmente → card blanca con borde marcado + año GRANDE en el dropdown. */}
@@ -1106,7 +1108,6 @@ export function StudioEditor({
               productSku={product.sku}
               productSizeCm={productConfig.sizeCm}
               productShape={productConfig.shape}
-              frameOptions={productConfig.frameOptions}
               allowText={allowText}
             />
           </div>

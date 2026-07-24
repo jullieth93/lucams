@@ -135,7 +135,7 @@ export function StudioPhotoPreview({
     function onWheelNative(e: WheelEvent) {
       e.preventDefault();
       e.stopPropagation();
-      const factor = e.deltaY > 0 ? 1 / 1.1 : 1.1;
+      const factor = e.deltaY > 0 ? 1 / 1.15 : 1.15;
       const current = slotState.photoTransform?.scale ?? 1;
       const next = clampScale(current * factor);
       if (Math.abs(next - current) > 0.001) {
@@ -179,9 +179,10 @@ export function StudioPhotoPreview({
       const dx = t2.clientX - t1.clientX;
       const dy = t2.clientY - t1.clientY;
       const dist = Math.sqrt(dx * dx + dy * dy);
+      // Ola 10 — pinch más directo (respuesta lineal) para que en móvil el zoom
+      // con dos dedos se sienta inmediato, sin "maña".
       const rawRatio = dist / pinchInitialDistRef.current;
-      const easedRatio = Math.pow(rawRatio, 0.85);
-      onTransformChange({ scale: clampScale(pinchInitialScaleRef.current * easedRatio) });
+      onTransformChange({ scale: clampScale(pinchInitialScaleRef.current * rawRatio) });
     },
     [onTransformChange, clampScale],
   );

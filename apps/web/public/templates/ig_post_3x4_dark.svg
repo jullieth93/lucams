@@ -43,5 +43,4 @@
 
   <!-- Pie horneado -->
   <text x="25" y="582" font-family="Arial, sans-serif" font-size="12" fill="#FFFFFF" opacity="0.6">Ver los 12 comentarios</text>
-  <text x="25" y="595" font-family="Arial, sans-serif" font-size="10" fill="#FFFFFF" opacity="0.5">Hace 2 días</text>
 </svg>

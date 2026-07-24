@@ -14,7 +14,7 @@
       · Caption   (Konva `caption`):   x=25 y=537 fontSize 18 bold.
       · Hashtags  (Konva `hashtags`):  x=25 y=559 fontSize 13 azul #00376B.
       · (y de Konva = CENTRO vertical del texto; el renderer resta fontSize/2)
-      · "Ver comentarios" + "Hace 2 días": horneados (gris, dentro del canvas).
+      · "Ver comentarios" (horneado, gris, baja jerarquía). Sin timestamp.
   -->
 
   <defs>
@@ -60,5 +60,4 @@
   <!-- Pie horneado: solo chrome estático de baja jerarquía.
        Likes / caption / hashtags van por Konva (editables). -->
   <text x="25" y="582" font-family="Arial, sans-serif" font-size="12" fill="#8e8e8e">Ver los 12 comentarios</text>
-  <text x="25" y="595" font-family="Arial, sans-serif" font-size="10" fill="#8e8e8e">Hace 2 días</text>
 </svg>
