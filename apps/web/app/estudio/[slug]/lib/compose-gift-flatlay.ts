@@ -117,28 +117,29 @@ export async function composeGiftFlatlay(pieces: Piece[]): Promise<string> {
   drawBow(ctx, S * 0.2, S * 0.2, 44, "#5DD9D1");
 
   // Pieza(s): 1 grande centrada; varias en fila. Sombra suave para "posarlas" sobre el papel.
-  // Ola 10 — acotamos el área para que la pieza no desborde el flatlay (máx ~42% del lienzo).
+  // Ola 15 — reducimos el área para dejar márgenes generosos y evitar que la pieza o
+  // la etiqueta de regalo toquen los bordes del lienzo.
   const n = Math.min(pieces.length, 5);
   const imgs = await Promise.all(
     pieces.slice(0, n).map((p) => loadImg(p.dataUrl).catch(() => null)),
   );
-  const areaW = S * 0.42;
-  const cellW = n === 1 ? areaW : (S * 0.58) / n;
+  const areaW = S * 0.36;
+  const cellW = n === 1 ? areaW : (S * 0.52) / n;
 
   for (let i = 0; i < n; i++) {
     const img = imgs[i];
     const p = pieces[i]!;
     if (!img) continue;
     const aspect = p.hRatio / p.wRatio;
-    let w = n === 1 ? areaW : cellW * 0.85;
+    let w = n === 1 ? areaW : cellW * 0.82;
     let h = w * aspect;
-    const maxH = S * 0.42;
+    const maxH = S * 0.38;
     if (h > maxH) {
       h = maxH;
       w = h / aspect;
     }
     const cx = n === 1 ? S * 0.52 : S * 0.5 + (i - (n - 1) / 2) * cellW;
-    const cy = n === 1 ? S * 0.55 : S * 0.56;
+    const cy = n === 1 ? S * 0.52 : S * 0.53;
     ctx.save();
     ctx.shadowColor = "rgba(61, 46, 92, 0.28)";
     ctx.shadowBlur = 34;
@@ -150,10 +151,10 @@ export async function composeGiftFlatlay(pieces: Piece[]): Promise<string> {
     ctx.restore();
   }
 
-  // Etiqueta de regalo "Para ti" con cordón (abajo a la derecha).
+  // Etiqueta de regalo "Para ti" con cordón (abajo a la derecha, más centrada).
   ctx.save();
-  ctx.translate(S * 0.76, S * 0.83);
-  ctx.rotate(-0.14);
+  ctx.translate(S * 0.72, S * 0.80);
+  ctx.rotate(-0.12);
   // cordón
   ctx.strokeStyle = "#B79A78";
   ctx.lineWidth = 3;

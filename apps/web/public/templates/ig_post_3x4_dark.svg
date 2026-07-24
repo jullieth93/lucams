@@ -29,29 +29,29 @@
 
   <!-- CABECERA -->
   <g id="header">
-    <circle cx="38" cy="34" r="17.5" fill="none" stroke="url(#storyRingDark)" stroke-width="2.5"/>
-    <circle cx="38" cy="34" r="13.5" fill="#3A3A3A"/>
-    <circle cx="38" cy="30.5" r="4.5" fill="#6E6E6E"/>
-    <path d="M29 40.5 C29 36.2 33 35.2 38 35.2 C43 35.2 47 36.2 47 40.5" fill="#6E6E6E"/>
+    <circle cx="38" cy="38" r="17.5" fill="none" stroke="url(#storyRingDark)" stroke-width="2.5"/>
+    <circle cx="38" cy="38" r="13.5" fill="#3A3A3A"/>
+    <circle cx="38" cy="34" r="4.5" fill="#6E6E6E"/>
+    <path d="M29 43.5 C29 39.8 33 38.5 38 38.5 C43 38.5 47 39.8 47 43.5" fill="#6E6E6E"/>
 
     <!-- Menú de 3 puntos -->
-    <circle cx="410" cy="34" r="1.8" fill="#FFFFFF"/>
-    <circle cx="418" cy="34" r="1.8" fill="#FFFFFF"/>
-    <circle cx="426" cy="34" r="1.8" fill="#FFFFFF"/>
+    <circle cx="410" cy="38" r="2" fill="#FFFFFF"/>
+    <circle cx="418" cy="38" r="2" fill="#FFFFFF"/>
+    <circle cx="426" cy="38" r="2" fill="#FFFFFF"/>
   </g>
 
   <!-- ÍCONOS DE INTERACCIÓN -->
-  <g id="actions" transform="translate(25, 468)">
+  <g id="actions" transform="translate(22, 418)">
     <path d="M18,35 C18,35 0,20 0,11 C0,5 4.5,0 10.5,0 C14,0 16.5,2 18,5 C19.5,2 22,0 25.5,0 C31.5,0 36,5 36,11 C36,20 18,35 18,35 Z"
-          transform="scale(0.8)" fill="#ED4956"/>
+          transform="scale(0.78)" fill="#ED4956"/>
     <path d="M20,0 C9,0 0,7 0,16 C0,21 3,26 7,29 L4,36 L12,32 C14.5,33 17,33.5 20,33.5 C31,33.5 40,26 40,16 C40,7 31,0 20,0 Z"
-          transform="translate(52, 0.5) scale(0.72)" fill="none" stroke="#FFFFFF" stroke-width="3.2" stroke-linejoin="round"/>
+          transform="translate(48, 1) scale(0.7)" fill="none" stroke="#FFFFFF" stroke-width="3.2" stroke-linejoin="round"/>
     <polygon points="1,7 23,1 17,23 12,12"
-             transform="translate(97, 2)" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linejoin="round"/>
+             transform="translate(94, 2)" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linejoin="round"/>
     <polygon points="0,0 22,0 22,33 11,24 0,33"
-             transform="translate(378, 0) scale(0.85)" fill="none" stroke="#FFFFFF" stroke-width="2.6" stroke-linejoin="round"/>
+             transform="translate(376, 0) scale(0.85)" fill="none" stroke="#FFFFFF" stroke-width="2.6" stroke-linejoin="round"/>
   </g>
 
   <!-- Pie horneado -->
-  <text x="25" y="586" font-family="Arial, sans-serif" font-size="12" fill="#FFFFFF" opacity="0.65">Ver los 12 comentarios</text>
+  <text x="22" y="514" font-family="Arial, sans-serif" font-size="12" fill="#FFFFFF" opacity="0.65">Ver los 12 comentarios</text>
 </svg>

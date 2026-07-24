@@ -65,14 +65,14 @@ export function StudioPhotoPreview({
   onResetTransform,
 }: StudioPhotoPreviewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const [containerWidth, setContainerWidth] = useState(320);
+  const [containerWidth, setContainerWidth] = useState(340);
 
-  // Ancho fluido: el preview llena el ancho disponible del modal (tope 340px
-  // para que en desktop no se vuelva gigante) y conserva el aspect del stage.
+  // Ancho fluido: el preview llena el ancho disponible del modal (tope 420px
+  // para que en desktop no se desborde y en móvil se aproveche mejor la pantalla).
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-    const update = () => setContainerWidth(Math.min(340, el.clientWidth || 320));
+    const update = () => setContainerWidth(Math.min(420, el.clientWidth || 340));
     update();
     const ro = new ResizeObserver(update);
     ro.observe(el);
@@ -179,10 +179,12 @@ export function StudioPhotoPreview({
       const dx = t2.clientX - t1.clientX;
       const dy = t2.clientY - t1.clientY;
       const dist = Math.sqrt(dx * dx + dy * dy);
-      // Ola 10 — pinch más directo (respuesta lineal) para que en móvil el zoom
-      // con dos dedos se sienta inmediato, sin "maña".
       const rawRatio = dist / pinchInitialDistRef.current;
-      onTransformChange({ scale: clampScale(pinchInitialScaleRef.current * rawRatio) });
+      // Ola 15 — pinch más sensible en móvil: amplificamos la curva para que
+      // el gesto se sienta inmediato, sin tener que estirar mucho los dedos.
+      const sensitivity = 1.35;
+      const adjustedRatio = 1 + (rawRatio - 1) * sensitivity;
+      onTransformChange({ scale: clampScale(pinchInitialScaleRef.current * adjustedRatio) });
     },
     [onTransformChange, clampScale],
   );
@@ -196,7 +198,7 @@ export function StudioPhotoPreview({
   }, [onResetTransform]);
 
   return (
-    <div ref={containerRef} className="mx-auto w-full max-w-[340px]">
+    <div ref={containerRef} className="mx-auto w-full max-w-[420px]">
       <div
         className="ring-brand-purple/15 relative overflow-hidden rounded-lg shadow-md ring-1"
         style={{ width: displayWidth, height: displayHeight, touchAction: "none" }}

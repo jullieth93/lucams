@@ -282,8 +282,8 @@ const templatesData = [
       layers: [
         background("#FFFFFF"),
         // Ola 10 — Ventana de foto ALINEADA con el nuevo marco ig_post_3x4.svg
-        // (x=25 y=58 400×392, ver comentario del SVG).
-        photoSlot({ id: "p1", x: 25, y: 58, width: 400, height: 392, label: "Tu foto" }),
+        // (x=22 y=72 406×338, ver comentario del SVG).
+        photoSlot({ id: "p1", x: 22, y: 72, width: 406, height: 338, label: "Tu foto" }),
         asset({
           id: "frame",
           src: "/templates/ig_post_3x4.svg",
@@ -295,13 +295,12 @@ const templatesData = [
         // 5 textos EDITABLES (Konva) — el marco SVG ya NO los hornea (evita doble-texto).
         // Ubicados en el chrome del marco (ver zonas documentadas en ig_post_3x4.svg).
         // OJO: la `y` de Konva es el CENTRO vertical del texto (el renderer resta
-        // fontSize/2). Ola 9 (rediseño con referencia del diseñador): cabecera alineada
-        // al avatar, pie con aire de post real y todo DENTRO del canvas (antes "Agrega
-        // un comentario..." quedaba horneado a y=600, cortado por el borde).
+        // fontSize/2). Ola 15 (rediseño con referencia del diseñador): cabecera alineada
+        // al avatar, pie con aire real de post y todo DENTRO del canvas.
         text({
           id: "user_name",
-          x: 64,
-          y: 27,
+          x: 72,
+          y: 33,
           text: "@tu_usuario",
           fontFamily: "Inter",
           fontSize: 20,
@@ -312,8 +311,8 @@ const templatesData = [
         }),
         text({
           id: "location",
-          x: 64,
-          y: 48,
+          x: 72,
+          y: 52,
           text: "Bogotá, Colombia",
           fontFamily: "Inter",
           fontSize: 12,
@@ -323,8 +322,8 @@ const templatesData = [
         }),
         text({
           id: "likes_count",
-          x: 25,
-          y: 520,
+          x: 22,
+          y: 452,
           text: "362 me gusta",
           fontFamily: "Inter",
           fontSize: 17,
@@ -335,8 +334,8 @@ const templatesData = [
         }),
         text({
           id: "caption",
-          x: 25,
-          y: 544,
+          x: 22,
+          y: 476,
           text: "Tu título acá",
           fontFamily: "Inter",
           fontSize: 18,
@@ -347,8 +346,8 @@ const templatesData = [
         }),
         text({
           id: "hashtags",
-          x: 25,
-          y: 564,
+          x: 22,
+          y: 494,
           text: "#mirecuerdo #lucamsshop",
           fontFamily: "Inter",
           fontSize: 13,

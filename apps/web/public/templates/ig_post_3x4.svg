@@ -1,19 +1,19 @@
 <svg width="450" height="600" viewBox="0 0 450 600" fill="none" xmlns="http://www.w3.org/2000/svg">
   <!--
     Marco "Polaroid Instagram" — 450×600 (7.5×10 cm, 3:4).
-    Basado en la referencia /templates/ig.svg del diseñador: borde degradado tipo
-    Instagram, cabecera con anillo de historia + avatar, iconos de acción y pie.
-    Los textos editables (usuario, ubicación, likes, caption, hashtags) son capas
-    Konva y NO se hornean aquí; el fondo blanco/negro lo aporta la capa background.
+    Layout fiel a un post de Instagram: borde degradado, tarjeta blanca,
+    cabecera con avatar + anillo de historia, menú de 3 puntos, foto grande,
+    iconos de acción y pie de post.
 
     Zonas (coordenadas del stage 450×600):
-      · Ventana de foto (transparente): x=25 y=58 → 400×392.
-      · Username  (Konva `user_name`):  x=64 y=27  fontSize 20 bold.
-      · Ubicación (Konva `location`):   x=64 y=48  fontSize 12 gris.
-      · Likes     (Konva `likes_count`): x=25 y=520 fontSize 17 bold.
-      · Caption   (Konva `caption`):    x=25 y=544 fontSize 18 bold.
-      · Hashtags  (Konva `hashtags`):   x=25 y=564 fontSize 13 azul #00376B.
-      · Comentarios horneados: x=25 y=586 (gris, baja jerarquía).
+      · Ventana de foto (transparente): x=22 y=72 → 406×338.
+      · Username  (Konva `user_name`):  x=72  y=33  fontSize 20 bold.
+      · Ubicación (Konva `location`):   x=72  y=52  fontSize 12 gris.
+      · Likes     (Konva `likes_count`): x=22  y=452 fontSize 17 bold.
+      · Caption   (Konva `caption`):    x=22  y=476 fontSize 18 bold username +
+                                         x=78  y=476 fontSize 18 texto.
+      · Hashtags  (Konva `hashtags`):   x=22  y=494 fontSize 13 azul #00376B.
+      · Comentarios horneados: x=22 y=514 (gris, baja jerarquía).
   -->
 
   <defs>
@@ -43,35 +43,37 @@
   <!-- CABECERA: anillo de historia + avatar + menú de opciones.
        Username y ubicación son capas Konva editables (no se hornean). -->
   <g id="header">
-    <circle cx="38" cy="34" r="17.5" fill="none" stroke="url(#storyRing)" stroke-width="2.5"/>
-    <circle cx="38" cy="34" r="13.5" fill="#E5E5E5"/>
-    <!-- silueta de persona dentro del avatar -->
-    <circle cx="38" cy="30.5" r="4.5" fill="#BDBDBD"/>
-    <path d="M29 40.5 C29 36.2 33 35.2 38 35.2 C43 35.2 47 36.2 47 40.5" fill="#BDBDBD"/>
+    <!-- Anillo de historia -->
+    <circle cx="38" cy="38" r="17.5" fill="none" stroke="url(#storyRing)" stroke-width="2.5"/>
+    <!-- Avatar placeholder -->
+    <circle cx="38" cy="38" r="13.5" fill="#E5E5E5"/>
+    <!-- Silueta de persona dentro del avatar -->
+    <circle cx="38" cy="34" r="4.5" fill="#BDBDBD"/>
+    <path d="M29 43.5 C29 39.8 33 38.5 38 38.5 C43 38.5 47 39.8 47 43.5" fill="#BDBDBD"/>
 
     <!-- Menú de 3 puntos (esquina derecha) -->
-    <circle cx="410" cy="34" r="1.8" fill="#262626"/>
-    <circle cx="418" cy="34" r="1.8" fill="#262626"/>
-    <circle cx="426" cy="34" r="1.8" fill="#262626"/>
+    <circle cx="410" cy="38" r="2" fill="#262626"/>
+    <circle cx="418" cy="38" r="2" fill="#262626"/>
+    <circle cx="426" cy="38" r="2" fill="#262626"/>
   </g>
 
   <!-- ÍCONOS DE INTERACCIÓN (bajo la foto, aire de 14px) -->
-  <g id="actions" transform="translate(25, 468)">
+  <g id="actions" transform="translate(22, 418)">
     <!-- Corazón (me gusta) — ROJO RELLENO -->
     <path d="M18,35 C18,35 0,20 0,11 C0,5 4.5,0 10.5,0 C14,0 16.5,2 18,5 C19.5,2 22,0 25.5,0 C31.5,0 36,5 36,11 C36,20 18,35 18,35 Z"
-          transform="scale(0.8)" fill="#ED4956"/>
+          transform="scale(0.78)" fill="#ED4956"/>
     <!-- Comentario (bocadillo) -->
     <path d="M20,0 C9,0 0,7 0,16 C0,21 3,26 7,29 L4,36 L12,32 C14.5,33 17,33.5 20,33.5 C31,33.5 40,26 40,16 C40,7 31,0 20,0 Z"
-          transform="translate(52, 0.5) scale(0.72)" fill="none" stroke="#262626" stroke-width="3.2" stroke-linejoin="round"/>
+          transform="translate(48, 1) scale(0.7)" fill="none" stroke="#262626" stroke-width="3.2" stroke-linejoin="round"/>
     <!-- Compartir (avión de papel) -->
     <polygon points="1,7 23,1 17,23 12,12"
-             transform="translate(97, 2)" fill="none" stroke="#262626" stroke-width="2.2" stroke-linejoin="round"/>
+             transform="translate(94, 2)" fill="none" stroke="#262626" stroke-width="2.2" stroke-linejoin="round"/>
     <!-- Guardar (bookmark, esquina derecha) -->
     <polygon points="0,0 22,0 22,33 11,24 0,33"
-             transform="translate(378, 0) scale(0.85)" fill="none" stroke="#262626" stroke-width="2.6" stroke-linejoin="round"/>
+             transform="translate(376, 0) scale(0.85)" fill="none" stroke="#262626" stroke-width="2.6" stroke-linejoin="round"/>
   </g>
 
   <!-- Pie horneado: solo chrome estático de baja jerarquía.
        Likes / caption / hashtags van por Konva (editables). -->
-  <text x="25" y="586" font-family="Arial, sans-serif" font-size="12" fill="#8e8e8e">Ver los 12 comentarios</text>
+  <text x="22" y="514" font-family="Arial, sans-serif" font-size="12" fill="#8e8e8e">Ver los 12 comentarios</text>
 </svg>

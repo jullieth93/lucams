@@ -1,13 +1,13 @@
 /*
- * Ola 10 (Lucy 2026-07-24) — Polaroid Instagram: rediseño con referencia del diseñador.
+ * Ola 15 (Lucy 2026-07-24) — Polaroid Instagram: rediseño con referencia del diseñador.
  *
  * Re-layout completo de la plantilla `photo-pack-polaroid-instagram` siguiendo la
- * referencia `apps/web/public/templates/ig.svg`:
+ * referencia real de un post de Instagram:
  *   - Borde degradado estilo Instagram y tarjeta blanca interior.
- *   - Cabecera alineada al avatar (username y=27, location y=48).
- *   - Pie re-espaciado (likes y=520, caption y=544, hashtags y=564) acorde al nuevo
- *     chrome SVG: iconos de acción en y=468, comentarios horneados en y=586.
- *   - Ventana de foto x=25 y=58 400×392.
+ *   - Cabecera alineada al avatar (username y=33, location y=52).
+ *   - Pie re-espaciado (likes y=452, caption y=476, hashtags y=494) acorde al nuevo
+ *     chrome SVG: iconos de acción en y=418, comentarios horneados en y=514.
+ *   - Ventana de foto x=22 y=72 406×338.
  *
  * Solo toca el canvasData de la plantilla (capas text). Los drafts/cotizaciones
  * existentes conservan su snapshot propio.
@@ -26,8 +26,8 @@ const TEXT_LAYERS = [
   {
     id: "user_name",
     type: "text",
-    x: 64,
-    y: 27,
+    x: 72,
+    y: 33,
     text: "@tu_usuario",
     fontFamily: "Inter",
     fontSize: 20,
@@ -39,8 +39,8 @@ const TEXT_LAYERS = [
   {
     id: "location",
     type: "text",
-    x: 64,
-    y: 48,
+    x: 72,
+    y: 52,
     text: "Bogotá, Colombia",
     fontFamily: "Inter",
     fontSize: 12,
@@ -52,8 +52,8 @@ const TEXT_LAYERS = [
   {
     id: "likes_count",
     type: "text",
-    x: 25,
-    y: 520,
+    x: 22,
+    y: 452,
     text: "362 me gusta",
     fontFamily: "Inter",
     fontSize: 17,
@@ -65,8 +65,8 @@ const TEXT_LAYERS = [
   {
     id: "caption",
     type: "text",
-    x: 25,
-    y: 544,
+    x: 22,
+    y: 476,
     text: "Tu título acá",
     fontFamily: "Inter",
     fontSize: 18,
@@ -78,8 +78,8 @@ const TEXT_LAYERS = [
   {
     id: "hashtags",
     type: "text",
-    x: 25,
-    y: 564,
+    x: 22,
+    y: 494,
     text: "#mirecuerdo #lucamsshop",
     fontFamily: "Inter",
     fontSize: 13,
