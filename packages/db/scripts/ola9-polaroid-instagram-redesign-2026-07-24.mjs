@@ -1,14 +1,13 @@
 /*
- * Ola 9 (Lucy 2026-07-24) — Polaroid Instagram: rediseño con referencia del diseñador.
+ * Ola 10 (Lucy 2026-07-24) — Polaroid Instagram: rediseño con referencia del diseñador.
  *
  * Re-layout completo de la plantilla `photo-pack-polaroid-instagram` siguiendo la
  * referencia `apps/web/public/templates/ig.svg`:
- *   - Cabecera alineada al avatar (username sube de y=30 a y=9, fontSize 20).
- *   - NUEVO texto editable `location` ("Bogotá, Colombia") bajo el username.
- *   - Pie re-espaciado (likes y=501, caption y=525, hashtags y=549) acorde al nuevo
- *     chrome SVG: corazón rojo relleno + acciones en y=461, comentarios/fecha
- *     horneados DENTRO del canvas (antes "Agrega un comentario..." caía a y=600,
- *     cortado por el borde del stage).
+ *   - Borde degradado estilo Instagram y tarjeta blanca interior.
+ *   - Cabecera alineada al avatar (username y=27, location y=48).
+ *   - Pie re-espaciado (likes y=520, caption y=544, hashtags y=564) acorde al nuevo
+ *     chrome SVG: iconos de acción en y=468, comentarios horneados en y=586.
+ *   - Ventana de foto x=25 y=58 400×392.
  *
  * Solo toca el canvasData de la plantilla (capas text). Los drafts/cotizaciones
  * existentes conservan su snapshot propio.
@@ -28,7 +27,7 @@ const TEXT_LAYERS = [
     id: "user_name",
     type: "text",
     x: 64,
-    y: 20,
+    y: 27,
     text: "@tu_usuario",
     fontFamily: "Inter",
     fontSize: 20,
@@ -41,7 +40,7 @@ const TEXT_LAYERS = [
     id: "location",
     type: "text",
     x: 64,
-    y: 42,
+    y: 48,
     text: "Bogotá, Colombia",
     fontFamily: "Inter",
     fontSize: 12,
@@ -54,7 +53,7 @@ const TEXT_LAYERS = [
     id: "likes_count",
     type: "text",
     x: 25,
-    y: 512,
+    y: 520,
     text: "362 me gusta",
     fontFamily: "Inter",
     fontSize: 17,
@@ -67,7 +66,7 @@ const TEXT_LAYERS = [
     id: "caption",
     type: "text",
     x: 25,
-    y: 537,
+    y: 544,
     text: "Tu título acá",
     fontFamily: "Inter",
     fontSize: 18,
@@ -80,7 +79,7 @@ const TEXT_LAYERS = [
     id: "hashtags",
     type: "text",
     x: 25,
-    y: 559,
+    y: 564,
     text: "#mirecuerdo #lucamsshop",
     fontFamily: "Inter",
     fontSize: 13,

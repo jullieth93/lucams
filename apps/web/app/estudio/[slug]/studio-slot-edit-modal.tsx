@@ -47,6 +47,8 @@ type StudioSlotEditModalProps = {
   onApplyTextOverride: (layerId: string, override: TextOverride | null) => void;
   /** Text layer a preseleccionar al abrir la pestaña Texto (ej. al tocar un texto en el canvas). */
   focusTextLayerId?: string;
+  /** Ola 10 — solicitud de cambiar la foto: cierra el editor y abre el picker. */
+  onChangePhoto?: () => void;
   /**
    * Ola 9 — datos para el preview interactivo de la pestaña Foto (gestos de
    * zoom/pan directos sobre la foto; reemplaza al slider eliminado).
@@ -82,6 +84,7 @@ export function StudioSlotEditModal({
   onApplyTextOverride,
   focusTextLayerId,
   preview,
+  onChangePhoto,
 }: StudioSlotEditModalProps) {
   // Tab activa: Foto por default si hay foto; si no, Texto (si aplica).
   const defaultTab = hasPhoto ? "photo" : "text";
@@ -161,6 +164,17 @@ export function StudioSlotEditModal({
                       onTransformChange={preview.onTransformChange}
                       onResetTransform={onResetTransform}
                     />
+                  )}
+                  {/* Ola 10 — desde el editor unificado se puede reemplazar la foto sin
+                      volver a la grilla. Mantiene el flujo de 2 tabs unificado. */}
+                  {onChangePhoto && (
+                    <button
+                      type="button"
+                      onClick={onChangePhoto}
+                      className="text-brand-purple-dark hover:text-brand-purple w-full text-xs font-semibold underline"
+                    >
+                      Cambiar foto
+                    </button>
                   )}
                   <StudioPhotoAdjustForm
                     photoUrl={photoUrl}

@@ -281,10 +281,9 @@ const templatesData = [
       stage: stage(450, 600),
       layers: [
         background("#FFFFFF"),
-        // Ventana de foto ALINEADA con la ventana transparente del marco ig_post_3x4.svg
-        // (x25 y54 400×400, ver comentario del SVG). El asset 400×580 original
-        // (ig_post.svg) queda solo para drafts viejos embebidos con ese stage.
-        photoSlot({ id: "p1", x: 25, y: 54, width: 400, height: 400, label: "Tu foto" }),
+        // Ola 10 — Ventana de foto ALINEADA con el nuevo marco ig_post_3x4.svg
+        // (x=25 y=58 400×392, ver comentario del SVG).
+        photoSlot({ id: "p1", x: 25, y: 58, width: 400, height: 392, label: "Tu foto" }),
         asset({
           id: "frame",
           src: "/templates/ig_post_3x4.svg",
@@ -302,7 +301,7 @@ const templatesData = [
         text({
           id: "user_name",
           x: 64,
-          y: 20,
+          y: 27,
           text: "@tu_usuario",
           fontFamily: "Inter",
           fontSize: 20,
@@ -314,7 +313,7 @@ const templatesData = [
         text({
           id: "location",
           x: 64,
-          y: 42,
+          y: 48,
           text: "Bogotá, Colombia",
           fontFamily: "Inter",
           fontSize: 12,
@@ -325,7 +324,7 @@ const templatesData = [
         text({
           id: "likes_count",
           x: 25,
-          y: 512,
+          y: 520,
           text: "362 me gusta",
           fontFamily: "Inter",
           fontSize: 17,
@@ -337,7 +336,7 @@ const templatesData = [
         text({
           id: "caption",
           x: 25,
-          y: 537,
+          y: 544,
           text: "Tu título acá",
           fontFamily: "Inter",
           fontSize: 18,
@@ -349,7 +348,7 @@ const templatesData = [
         text({
           id: "hashtags",
           x: 25,
-          y: 559,
+          y: 564,
           text: "#mirecuerdo #lucamsshop",
           fontFamily: "Inter",
           fontSize: 13,

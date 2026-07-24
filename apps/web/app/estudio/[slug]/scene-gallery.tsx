@@ -165,6 +165,8 @@ export function SceneGallery({
   sizeCm,
   isPolaroid = false,
   onClose,
+  /** Ola 10 — caras por unidad (separadores): para agrupar A/B en la vista 3D. */
+  facesPerUnit,
 }: {
   magnets: Magnet3D[];
   cols: number;
@@ -175,6 +177,8 @@ export function SceneGallery({
   /** La escena Polaroid solo se muestra para productos Polaroid (slug o plantilla). */
   isPolaroid?: boolean;
   onClose: () => void;
+  /** Ola 10 — caras por unidad física (2 para separadores). */
+  facesPerUnit?: number;
 }) {
   const scenes = useMemo(
     () => filterPhotoScenes(scenesForKind(kind), isPolaroid),
@@ -342,7 +346,7 @@ export function SceneGallery({
           ) : activeScene === "memo" ? (
             <RoomBoardView3D magnets={magnets} cols={cols} style="memo" sizeCm={sizeCm} />
           ) : (
-            <BookView3D bookmarks={magnets} sizeCm={sizeCm} />
+            <BookView3D bookmarks={magnets} sizeCm={sizeCm} facesPerUnit={facesPerUnit} />
           )
         ) : building && !flatUrl ? (
           <div className="text-brand-cream/90 flex h-full items-center justify-center text-sm">

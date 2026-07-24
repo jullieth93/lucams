@@ -114,6 +114,8 @@ type StudioCanvasGridProps = {
   openEditSlot?: { slotIndex: number; tab: "photo" | "text" } | null;
   /** Ola 8 — Callback cuando el modal unificado se cierra. */
   onEditClose?: () => void;
+  /** Ola 10 — solicitud de cambiar la foto desde el editor unificado: el padre abre el picker. */
+  onRequestChangePhoto?: (slotIndex: number) => void;
   registerSlotStages: (stages: Map<number, Konva.Stage | null>) => void;
   /** ADR-063 T5 — forzar el montaje de TODOS los slots (antes de snapshot/preview/3D). */
   forceMountAll?: boolean;
@@ -137,6 +139,7 @@ export function StudioCanvasGrid({
   openEditSlot,
   onEditClose,
   registerSlotStages,
+  onRequestChangePhoto,
   forceMountAll = false,
 }: StudioCanvasGridProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -556,6 +559,7 @@ export function StudioCanvasGrid({
         allowText={allowText}
         frameFullBleed={frameFullBleed}
         calendarPreview={calendarPreview}
+        onChangePhoto={onRequestChangePhoto}
       />
 
       {/* A2.6 — Overlay de transición al cambiar plantilla */}
@@ -642,6 +646,7 @@ function StudioSlotEditModalWrapper({
   allowText = false,
   frameFullBleed = false,
   calendarPreview = null,
+  onChangePhoto,
 }: {
   store: StoreApi<StudioStoreState>;
   editModal: { slotIndex: number; tab: "photo" | "text"; focusTextLayerId?: string } | null;
@@ -651,6 +656,8 @@ function StudioSlotEditModalWrapper({
   allowText?: boolean;
   frameFullBleed?: boolean;
   calendarPreview?: { year: number; startMonth: number } | null;
+  /** Ola 10 — solicitud de cambiar la foto: el padre abre el picker. */
+  onChangePhoto?: (slotIndex: number) => void;
 }) {
   const slotIndex = editModal?.slotIndex ?? null;
   const slotAssetUrl = useStore(store, (s) =>
@@ -749,6 +756,9 @@ function StudioSlotEditModalWrapper({
       }}
       onApplyTextOverride={(layerId, override) => {
         if (slotIndex !== null) setSlotTextOverride(slotIndex, layerId, override);
+      }}
+      onChangePhoto={() => {
+        if (slotIndex !== null) onChangePhoto?.(slotIndex);
       }}
       preview={
         unitTemplate

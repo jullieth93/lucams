@@ -93,9 +93,17 @@ const SPINE_COLOR = "#7C5334";
  * separatorPlacement — la cara frontal reposa sobre la hoja y la trasera cuelga libre o se
  * recuesta sobre la mesa sin atravesarla.
  */
-function Separators({ items, sizeCm }: { items: Magnet3D[]; sizeCm?: string }) {
+function Separators({
+  items,
+  sizeCm,
+  facesPerUnit,
+}: {
+  items: Magnet3D[];
+  sizeCm?: string;
+  facesPerUnit?: number;
+}) {
   const layout = useMemo(() => {
-    const units = bookmarkFaceUnits(items, sizeCm);
+    const units = bookmarkFaceUnits(items, facesPerUnit, sizeCm);
     const at = (i: number) => units[((i % units.length) + units.length) % units.length]!;
     return SEPARATOR_SLOTS.map(({ x, yaw }, i) => {
       const unit = at(i);
@@ -116,7 +124,7 @@ function Separators({ items, sizeCm }: { items: Magnet3D[]; sizeCm?: string }) {
         position: [x, p.crestY, p.crestZ] as [number, number, number],
         rotation: [p.tilt, yaw, 0] as [number, number, number],
       }));
-  }, [items, sizeCm]);
+  }, [items, sizeCm, facesPerUnit]);
 
   return (
     <>
@@ -287,7 +295,7 @@ function SpinePiece() {
   );
 }
 
-function Scene({ bookmarks, sizeCm }: { bookmarks: Magnet3D[]; sizeCm?: string }) {
+function Scene({ bookmarks, sizeCm, facesPerUnit }: { bookmarks: Magnet3D[]; sizeCm?: string; facesPerUnit?: number }) {
   // #16 — no autorrotar si el usuario pide reducir movimiento.
   const reduced = usePrefersReducedMotion();
   return (
@@ -325,7 +333,7 @@ function Scene({ bookmarks, sizeCm }: { bookmarks: Magnet3D[]; sizeCm?: string }
       <PageBlock side={-1} />
       <PageSheet side={1} />
       <PageSheet side={-1} />
-      <Separators items={bookmarks} sizeCm={sizeCm} />
+      <Separators items={bookmarks} sizeCm={sizeCm} facesPerUnit={facesPerUnit} />
 
       {/* Escena estática (el autoRotate mueve la CÁMARA) → sombra horneada 1 vez. */}
       <ContactShadows
@@ -362,10 +370,13 @@ function Scene({ bookmarks, sizeCm }: { bookmarks: Magnet3D[]; sizeCm?: string }
 export default function BookView3D({
   bookmarks,
   sizeCm,
+  facesPerUnit,
 }: {
   bookmarks: Magnet3D[];
   /** sizeCm de la variante (ej "6×2", "4×4.2") — fija el tamaño real de la tira. */
   sizeCm?: string;
+  /** Ola 10 — caras por unidad física (2 para separadores modernos). */
+  facesPerUnit?: number;
 }) {
   const isTouch = useIsTouch();
   if (bookmarks.length === 0) {
@@ -385,7 +396,7 @@ export default function BookView3D({
     >
       <color attach="background" args={["#FFF8F0"]} />
       <Suspense fallback={null}>
-        <Scene bookmarks={bookmarks} sizeCm={sizeCm} />
+        <Scene bookmarks={bookmarks} sizeCm={sizeCm} facesPerUnit={facesPerUnit} />
       </Suspense>
     </Canvas>
   );

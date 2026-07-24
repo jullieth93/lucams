@@ -210,6 +210,7 @@ export function StudioEditor({
     kind?: SceneKind;
     sizeCm?: string;
     isPolaroid?: boolean;
+    facesPerUnit?: number;
   } | null>(null);
   const [sceneBuilding, setSceneBuilding] = useState(false);
   // CAL4 — construcción perezosa de las tarjetas mes para la galería (botón "Ver mi calendario").
@@ -447,6 +448,15 @@ export function StudioEditor({
     [store],
   );
 
+  // Ola 10 — solicitud de cambiar foto desde el editor unificado: cerrar editor + abrir picker.
+  const handleRequestChangePhoto = useCallback(
+    (slotIndex: number) => {
+      setOpenEditSlot(null);
+      setPickerSlotIndex(slotIndex);
+    },
+    [setOpenEditSlot],
+  );
+
   const handleAssetSelected = useCallback(
     (asset: StudioAsset) => {
       if (pickerSlotIndex === null) return;
@@ -594,6 +604,8 @@ export function StudioEditor({
         // Ola 2B — la nevera/tablero escalan los imanes a su tamaño físico real (sizeCm variante).
         sizeCm: productConfig.sizeCm,
         isPolaroid,
+        // Ola 10 — para separadores 2 caras: la galería necesita saber el facesPerUnit.
+        facesPerUnit: productConfig.facesPerUnit,
       });
     } catch (err) {
       state.setAutoSaveStatus({
@@ -604,7 +616,7 @@ export function StudioEditor({
     } finally {
       setSceneBuilding(false);
     }
-  }, [store, product.slug, productConfig.shape, productConfig.sizeCm, ensureAllStagesMounted, sceneBuilding, isBookmark]);
+  }, [store, product.slug, productConfig.shape, productConfig.sizeCm, productConfig.facesPerUnit, ensureAllStagesMounted, sceneBuilding, isBookmark]);
 
   // CAL4 (rediseño 2026-07-22) — "Ver mi calendario": el set de 12 TARJETAS mes 7.5×10 se ve como
   // IMANES en la galería de escenas (nevera/tablero, kind="calendar") — el calendario-de-pared
@@ -949,6 +961,7 @@ export function StudioEditor({
             onSlotClick={handleSlotClick}
             openEditSlot={openEditSlot}
             onEditClose={() => setOpenEditSlot(null)}
+            onRequestChangePhoto={handleRequestChangePhoto}
             registerSlotStages={(stages) => {
               slotStagesRef.current = stages;
             }}
@@ -1030,6 +1043,7 @@ export function StudioEditor({
           kind={sceneMagnets.kind}
           sizeCm={sceneMagnets.sizeCm}
           isPolaroid={sceneMagnets.isPolaroid}
+          facesPerUnit={sceneMagnets.facesPerUnit}
           onClose={() => setSceneMagnets(null)}
         />
       )}
@@ -1680,6 +1694,9 @@ async function buildMagnetTextures(
       hRatio: unitTemplate.stage.height,
       // La silueta viaja con la textura → las escenas 3D extruyen el cuerpo con la misma forma.
       shape,
+      // Ola 10 — metadata del slot para agrupar caras de separadores.
+      slotIndex: slot.slotIndex,
+      assetUrl: slot.assetUrl,
     });
   }
   return out;

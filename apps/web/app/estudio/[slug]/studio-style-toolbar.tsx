@@ -96,9 +96,9 @@ export function StudioStyleToolbar({ store, frameOptions = [] }: StudioStyleTool
       const scale = stageW / base.width;
       return {
         x: 0,
-        y: Math.round(54 * scale),
+        y: Math.round(58 * scale),
         width: stageW,
-        height: Math.round(400 * scale),
+        height: Math.round(410 * scale),
       };
     }
     return { x: 0, y: 0, width: stageW, height: stageH };

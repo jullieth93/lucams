@@ -58,6 +58,10 @@ export type Magnet3D = {
   /** Radio de esquina como fracción del ancho (opcional — p.ej. fichas de letras redondas 0.10;
    *  si falta, el default 8/512 que espeja el recorte de la textura). */
   cornerRadiusRatio?: number;
+  /** Ola 10 — índice de slot original (para separadores 2 caras). */
+  slotIndex?: number;
+  /** Ola 10 — URL del asset cargado (null si vacío). Para caras B sin foto, duplicar cara A. */
+  assetUrl?: string | null;
 };
 
 type FridgeView3DProps = {

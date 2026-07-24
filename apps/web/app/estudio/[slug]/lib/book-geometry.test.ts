@@ -217,7 +217,7 @@ describe("bookmarkFaceUnits (ola 3 — slot par = cara A al frente, impar = cara
       ["2B", "2B"],
     ]);
     // Con sizeCm se confirma que son caras de separador moderno → A al frente, B atrás.
-    const units = bookmarkFaceUnits(rotated, "6×2");
+    const units = bookmarkFaceUnits(rotated, undefined, "6×2");
     expect(units.map((u) => [u.front.id, u.back.id])).toEqual([
       ["1A", "1B"],
       ["2A", "2B"],

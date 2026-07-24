@@ -140,11 +140,29 @@ export function stripDimsForFace(
  * Diseños VIEJOS de tira completa (lienzo vertical, pre-ola-3): no traen cara B — cada textura
  * es su propia unidad y repite el diseño en ambas caras (comportamiento histórico).
  */
-export function bookmarkFaceUnits<T extends { wRatio: number; hRatio: number }>(
+export function bookmarkFaceUnits<T extends { wRatio: number; hRatio: number; slotIndex?: number; assetUrl?: string | null }>(
   bookmarks: readonly T[],
+  /** facesPerUnit del producto: 2 = separadores con cara A/B; 1 = tiras viejas sin cara B. */
+  facesPerUnit?: number,
   /** sizeCm de la variante: si llega, confirma que estamos en el flujo moderno de caras. */
   sizeCm?: string,
 ): { front: T; back: T }[] {
+  // Ola 10 — si el producto declara facesPerUnit=2, agrupamos por pares de slotIndex
+  // (no por orden del array). La cara B sin foto propia usa la misma textura que la cara A.
+  if (facesPerUnit === 2 && bookmarks.length > 0 && bookmarks.every((b) => typeof b.slotIndex === "number")) {
+    const bySlot = new Map<number, T>();
+    for (const b of bookmarks) bySlot.set(b.slotIndex!, b);
+    const maxSlot = Math.max(...bookmarks.map((b) => b.slotIndex!));
+    const units: { front: T; back: T }[] = [];
+    for (let k = 0; 2 * k <= maxSlot; k++) {
+      const front = bySlot.get(2 * k);
+      if (!front) continue; // unidad sin cara A: no renderizar
+      const back = bySlot.get(2 * k + 1);
+      units.push({ front, back: back?.assetUrl ? back : front });
+    }
+    return units;
+  }
+
   const looksLikeFaces =
     sizeCm !== undefined ||
     (bookmarks.length > 0 &&

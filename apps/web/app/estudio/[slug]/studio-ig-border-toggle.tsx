@@ -25,10 +25,10 @@ import type { StoreApi } from "zustand";
 import { Frame, Image as ImageIcon } from "lucide-react";
 import type { StudioStoreState } from "./lib/store";
 
-// Geometría "sin borde" del diseño 450×600 (ventana del SVG: cabecera hasta y=54,
-// íconos desde y=462). Se escala proporcionalmente si el stage difiere.
+// Geometría "sin borde" del diseño 450×600 (ventana del SVG: cabecera hasta y=58,
+// íconos desde y=468). Se escala proporcionalmente si el stage difiere.
 const IG_BASE_STAGE = { width: 450, height: 600 };
-const IG_FULL_BLEED = { x: 0, y: 54, width: 450, height: 400 };
+const IG_FULL_BLEED = { x: 0, y: 58, width: 450, height: 410 };
 
 function IgBorderOption({
   active,

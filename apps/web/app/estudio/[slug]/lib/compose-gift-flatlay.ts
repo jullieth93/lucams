@@ -10,7 +10,7 @@
 
 const S = 1080; // lienzo cuadrado (compartible)
 
-type Piece = { dataUrl: string; wRatio: number; hRatio: number };
+type Piece = { dataUrl: string; wRatio: number; hRatio: number; shape?: "rectangle" | "circle" | "heart" | "custom" };
 
 function loadImg(url: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
@@ -57,6 +57,40 @@ function drawBow(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: numbe
   ctx.restore();
 }
 
+/** Recorta el ctx a la silueta física (mismo path que buildShapePath en el editor). */
+function clipShape(
+  ctx: CanvasRenderingContext2D,
+  shape: Piece["shape"],
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+) {
+  ctx.save();
+  ctx.beginPath();
+  if (shape === "circle") {
+    ctx.ellipse(x + w / 2, y + h / 2, w / 2, h / 2, 0, 0, Math.PI * 2);
+  } else if (shape === "heart") {
+    const s = Math.min(w, h);
+    const ox = x + (w - s) / 2;
+    const oy = y + (h - s) / 2;
+    const r = s / 2;
+    const cx = ox + r;
+    const cy = oy + r * 0.88;
+    ctx.moveTo(cx, cy + r * 0.72);
+    ctx.bezierCurveTo(cx - r * 1.1, cy - r * 0.2, cx - r, cy - r, cx - r * 0.5, cy - r * 0.78);
+    ctx.bezierCurveTo(cx - r * 0.1, cy - r * 1.1, cx, cy - r * 0.75, cx, cy - r * 0.6);
+    ctx.bezierCurveTo(cx, cy - r * 0.75, cx + r * 0.1, cy - r * 1.1, cx + r * 0.5, cy - r * 0.78);
+    ctx.bezierCurveTo(cx + r, cy - r, cx + r * 1.1, cy - r * 0.2, cx, cy + r * 0.72);
+  } else {
+    // rectangle / custom: rectángulo con esquinas redondeas suaves.
+    const r = Math.min(28, w * 0.06, h * 0.06);
+    ctx.roundRect(x, y, w, h, r);
+  }
+  ctx.closePath();
+  ctx.clip();
+}
+
 /** Compone el flat-lay de regalo con la(s) pieza(s) → dataURL PNG. */
 export async function composeGiftFlatlay(pieces: Piece[]): Promise<string> {
   const canvas = document.createElement("canvas");
@@ -83,32 +117,35 @@ export async function composeGiftFlatlay(pieces: Piece[]): Promise<string> {
   drawBow(ctx, S * 0.2, S * 0.2, 44, "#5DD9D1");
 
   // Pieza(s): 1 grande centrada; varias en fila. Sombra suave para "posarlas" sobre el papel.
+  // Ola 10 — acotamos el área para que la pieza no desborde el flatlay (máx ~42% del lienzo).
   const n = Math.min(pieces.length, 5);
   const imgs = await Promise.all(
     pieces.slice(0, n).map((p) => loadImg(p.dataUrl).catch(() => null)),
   );
-  const areaW = S * 0.48;
-  const cellW = n === 1 ? areaW : (S * 0.62) / n;
+  const areaW = S * 0.42;
+  const cellW = n === 1 ? areaW : (S * 0.58) / n;
 
   for (let i = 0; i < n; i++) {
     const img = imgs[i];
     const p = pieces[i]!;
     if (!img) continue;
     const aspect = p.hRatio / p.wRatio;
-    let w = n === 1 ? areaW : cellW * 0.9;
+    let w = n === 1 ? areaW : cellW * 0.85;
     let h = w * aspect;
-    const maxH = S * 0.5;
+    const maxH = S * 0.42;
     if (h > maxH) {
       h = maxH;
       w = h / aspect;
     }
     const cx = n === 1 ? S * 0.52 : S * 0.5 + (i - (n - 1) / 2) * cellW;
-    const cy = S * 0.56;
+    const cy = n === 1 ? S * 0.55 : S * 0.56;
     ctx.save();
     ctx.shadowColor = "rgba(61, 46, 92, 0.28)";
     ctx.shadowBlur = 34;
     ctx.shadowOffsetY = 20;
-    ctx.rotate(0); // sin rotación (legible); la sombra da el volumen
+    if (p.shape && p.shape !== "rectangle") {
+      clipShape(ctx, p.shape, cx - w / 2, cy - h / 2, w, h);
+    }
     ctx.drawImage(img, cx - w / 2, cy - h / 2, w, h);
     ctx.restore();
   }

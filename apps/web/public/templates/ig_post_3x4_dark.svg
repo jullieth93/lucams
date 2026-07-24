@@ -1,14 +1,19 @@
 <svg width="450" height="600" viewBox="0 0 450 600" fill="none" xmlns="http://www.w3.org/2000/svg">
   <!--
-    Marco "Polaroid Instagram" TRANSPARENTE — variante para FONDO NEGRO (Ola 9).
-    Misma geometría que ig_post_3x4.svg (ver ese archivo para las zonas Konva) pero
-    con el chrome en BLANCO para que se lea sobre el fondo oscuro. El corazón se
-    mantiene rojo (#ED4956): es el sello visual del post y contrasta en ambos fondos.
-    Los textos editables (usuario, ubicación, likes, caption, hashtags) son capas
-    Konva; en fondo negro salen blancos por la regla de contraste automático.
+    Marco "Polaroid Instagram" — variante para FONDO NEGRO.
+    Misma geometría que ig_post_3x4.svg pero con el chrome en BLANCO para que se
+    lea sobre el fondo oscuro. El corazón se mantiene rojo (#ED4956).
   -->
 
   <defs>
+    <linearGradient id="instaBorderDark" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#f09433"/>
+      <stop offset="25%" stop-color="#e6683c"/>
+      <stop offset="50%" stop-color="#dc2743"/>
+      <stop offset="75%" stop-color="#cc2366"/>
+      <stop offset="100%" stop-color="#bc1888"/>
+    </linearGradient>
+
     <linearGradient id="storyRingDark" x1="0%" y1="100%" x2="100%" y2="0%">
       <stop offset="0%" stop-color="#FFD600"/>
       <stop offset="50%" stop-color="#FF0069"/>
@@ -16,21 +21,27 @@
     </linearGradient>
   </defs>
 
+  <!-- Borde degradado exterior -->
+  <rect x="0" y="0" width="450" height="600" rx="27" fill="url(#instaBorderDark)"/>
+
+  <!-- Tarjeta negra interior -->
+  <rect x="4" y="4" width="442" height="592" rx="22" fill="#0F0F0F"/>
+
   <!-- CABECERA -->
   <g id="header">
-    <circle cx="38" cy="26" r="16.5" fill="none" stroke="url(#storyRingDark)" stroke-width="2.5"/>
-    <circle cx="38" cy="26" r="13" fill="#3A3A3A"/>
-    <circle cx="38" cy="22.5" r="4.5" fill="#6E6E6E"/>
-    <path d="M29.5 33 C29.5 28.5 33 27.5 38 27.5 C43 27.5 46.5 28.5 46.5 33" fill="#6E6E6E"/>
+    <circle cx="38" cy="34" r="17.5" fill="none" stroke="url(#storyRingDark)" stroke-width="2.5"/>
+    <circle cx="38" cy="34" r="13.5" fill="#3A3A3A"/>
+    <circle cx="38" cy="30.5" r="4.5" fill="#6E6E6E"/>
+    <path d="M29 40.5 C29 36.2 33 35.2 38 35.2 C43 35.2 47 36.2 47 40.5" fill="#6E6E6E"/>
 
     <!-- Menú de 3 puntos -->
-    <circle cx="410" cy="26" r="1.8" fill="#FFFFFF"/>
-    <circle cx="418" cy="26" r="1.8" fill="#FFFFFF"/>
-    <circle cx="426" cy="26" r="1.8" fill="#FFFFFF"/>
+    <circle cx="410" cy="34" r="1.8" fill="#FFFFFF"/>
+    <circle cx="418" cy="34" r="1.8" fill="#FFFFFF"/>
+    <circle cx="426" cy="34" r="1.8" fill="#FFFFFF"/>
   </g>
 
   <!-- ÍCONOS DE INTERACCIÓN -->
-  <g id="actions" transform="translate(25, 461)">
+  <g id="actions" transform="translate(25, 468)">
     <path d="M18,35 C18,35 0,20 0,11 C0,5 4.5,0 10.5,0 C14,0 16.5,2 18,5 C19.5,2 22,0 25.5,0 C31.5,0 36,5 36,11 C36,20 18,35 18,35 Z"
           transform="scale(0.8)" fill="#ED4956"/>
     <path d="M20,0 C9,0 0,7 0,16 C0,21 3,26 7,29 L4,36 L12,32 C14.5,33 17,33.5 20,33.5 C31,33.5 40,26 40,16 C40,7 31,0 20,0 Z"
@@ -42,5 +53,5 @@
   </g>
 
   <!-- Pie horneado -->
-  <text x="25" y="582" font-family="Arial, sans-serif" font-size="12" fill="#FFFFFF" opacity="0.6">Ver los 12 comentarios</text>
+  <text x="25" y="586" font-family="Arial, sans-serif" font-size="12" fill="#FFFFFF" opacity="0.65">Ver los 12 comentarios</text>
 </svg>
