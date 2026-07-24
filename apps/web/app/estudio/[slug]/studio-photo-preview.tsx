@@ -67,12 +67,13 @@ export function StudioPhotoPreview({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [containerWidth, setContainerWidth] = useState(340);
 
-  // Ancho fluido: el preview llena el ancho disponible del modal (tope 420px
-  // para que en desktop no se desborde y en móvil se aproveche mejor la pantalla).
+  // Ancho fluido: el preview llena el ancho disponible del modal (tope 520px
+  // en desktop; en móvil aprovecha todo el ancho para que el pellizco y el pan
+  // sean más cómodos).
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-    const update = () => setContainerWidth(Math.min(420, el.clientWidth || 340));
+    const update = () => setContainerWidth(Math.min(520, el.clientWidth || 340));
     update();
     const ro = new ResizeObserver(update);
     ro.observe(el);
@@ -182,7 +183,7 @@ export function StudioPhotoPreview({
       const rawRatio = dist / pinchInitialDistRef.current;
       // Ola 15 — pinch más sensible en móvil: amplificamos la curva para que
       // el gesto se sienta inmediato, sin tener que estirar mucho los dedos.
-      const sensitivity = 1.35;
+      const sensitivity = 1.7;
       const adjustedRatio = 1 + (rawRatio - 1) * sensitivity;
       onTransformChange({ scale: clampScale(pinchInitialScaleRef.current * adjustedRatio) });
     },

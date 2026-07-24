@@ -504,8 +504,8 @@ function StudioSlotImpl({
 
   // Pinch handlers — usan touchstart/move/end del Stage Konva.
   // Ola 6: solo activos cuando interactiveSlots=true; en táctil la grilla
-  // no captura pinch inline (el zoom se hace vía slider flotante o editor
-  // a pantalla completa) para no bloquear el scroll de la página.
+  // no captura pinch inline (el zoom se hace en el editor a pantalla completa)
+  // para no bloquear el scroll de la página.
   const handleTouchStart = useCallback(
     (e: Konva.KonvaEventObject<TouchEvent>) => {
       if (!interactiveSlots || !slotState.assetUrl || !onPhotoTransformChange) return;
@@ -935,11 +935,6 @@ function StudioSlotImpl({
               </div>
             )}
         </motion.div>
-
-        {/* Ola 9 (Lucy 2026-07-24) — slider flotante de zoom ELIMINADO: se montaba
-        sobre la foto y estorbaba la edición. El zoom se hace con gestos directos:
-        rueda del mouse en desktop, pellizco en táctil (grilla interactiva o el
-        preview del modal de edición), doble click/tap para resetear. */}
       </div>
 
       {/* FIX-2 — Footer bar de acciones FUERA del slot.

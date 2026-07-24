@@ -450,9 +450,9 @@ export function StudioCanvasGrid({
             onTextEdit={(textLayerId) =>
               setEditModal({ slotIndex: slot.slotIndex, tab: "text", focusTextLayerId: textLayerId })
             }
-            // Ola 6 — el callback de transform está siempre disponible para controles
-            // externos (slider flotante de zoom en móvil); los gestos inline se
-            // habilitan/deshabilitan vía interactiveSlots.
+            // Ola 6 — el callback de transform está siempre disponible para el
+            // editor a pantalla completa; los gestos inline se habilitan/deshabilitan
+            // vía interactiveSlots.
             onPhotoTransformChange={(transform) => setSlotPhotoTransform(slot.slotIndex, transform)}
             onCenterPhoto={() => setSlotPhotoTransform(slot.slotIndex, null)}
             interactiveSlots={interactiveSlots}

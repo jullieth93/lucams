@@ -281,9 +281,9 @@ const templatesData = [
       stage: stage(450, 600),
       layers: [
         background("#FFFFFF"),
-        // Ola 16 — Ventana de foto agrandada y chrome re-espaciado para un look más realista
-        // de post de Instagram (x=15 y=70 420×400, ver comentario del SVG).
-        photoSlot({ id: "p1", x: 15, y: 70, width: 420, height: 400, label: "Tu foto" }),
+        // Ola 16 — Ventana de foto más grande y chrome re-espaciado para un look
+        // más realista de post de Instagram (x=29 y=58 392×392, ver comentario del SVG).
+        photoSlot({ id: "p1", x: 29, y: 58, width: 392, height: 392, label: "Tu foto" }),
         asset({
           id: "frame",
           src: "/templates/ig_post_3x4.svg",
@@ -292,11 +292,11 @@ const templatesData = [
           width: 450,
           height: 600,
         }),
-        // Ola 16 — chrome re-espaciado: foto más grande, texto más compacto y legible.
+        // Ola 16 — chrome re-espaciado: header más limpio, footer con aire.
         text({
           id: "user_name",
           x: 68,
-          y: 35,
+          y: 28,
           text: "@tu_usuario",
           fontFamily: "Inter",
           fontSize: 16,
@@ -308,7 +308,7 @@ const templatesData = [
         text({
           id: "location",
           x: 68,
-          y: 52,
+          y: 46,
           text: "Bogotá, Colombia",
           fontFamily: "Inter",
           fontSize: 12,
@@ -319,7 +319,7 @@ const templatesData = [
         text({
           id: "likes_count",
           x: 22,
-          y: 520,
+          y: 492,
           text: "362 me gusta",
           fontFamily: "Inter",
           fontSize: 15,
@@ -331,7 +331,7 @@ const templatesData = [
         text({
           id: "caption",
           x: 22,
-          y: 542,
+          y: 510,
           text: "Tu título acá",
           fontFamily: "Inter",
           fontSize: 16,
@@ -343,7 +343,7 @@ const templatesData = [
         text({
           id: "hashtags",
           x: 22,
-          y: 560,
+          y: 528,
           text: "#mirecuerdo #lucamsshop",
           fontFamily: "Inter",
           fontSize: 13,

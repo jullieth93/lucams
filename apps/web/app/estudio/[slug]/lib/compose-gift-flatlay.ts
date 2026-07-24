@@ -106,15 +106,15 @@ export async function composeGiftFlatlay(pieces: Piece[]): Promise<string> {
   ctx.fillStyle = bg;
   ctx.fillRect(0, 0, S, S);
 
-  // Cinta diagonal (esquina superior-izquierda) + moño.
+  // Cinta diagonal más delgada y centrada, para no desbordar la esquina.
   ctx.save();
   ctx.fillStyle = "rgba(93, 217, 209, 0.85)"; // turquesa de marca
-  ctx.translate(S * 0.2, S * 0.2);
+  ctx.translate(S * 0.22, S * 0.22);
   ctx.rotate(-Math.PI / 4);
-  ctx.fillRect(-S, -55, S * 2, 46);
-  ctx.fillRect(-S, 20, S * 2, 46);
+  ctx.fillRect(-S, -36, S * 2, 28);
+  ctx.fillRect(-S, 16, S * 2, 28);
   ctx.restore();
-  drawBow(ctx, S * 0.2, S * 0.2, 44, "#5DD9D1");
+  drawBow(ctx, S * 0.22, S * 0.22, 30, "#5DD9D1");
 
   // Pieza(s): 1 grande centrada; varias en fila. Sombra suave para "posarlas" sobre el papel.
   // Ola 15 — reducimos el área para dejar márgenes generosos y evitar que la pieza o
@@ -123,8 +123,8 @@ export async function composeGiftFlatlay(pieces: Piece[]): Promise<string> {
   const imgs = await Promise.all(
     pieces.slice(0, n).map((p) => loadImg(p.dataUrl).catch(() => null)),
   );
-  const areaW = S * 0.36;
-  const cellW = n === 1 ? areaW : (S * 0.52) / n;
+  const areaW = S * 0.32;
+  const cellW = n === 1 ? areaW : (S * 0.48) / n;
 
   for (let i = 0; i < n; i++) {
     const img = imgs[i];
@@ -151,10 +151,10 @@ export async function composeGiftFlatlay(pieces: Piece[]): Promise<string> {
     ctx.restore();
   }
 
-  // Etiqueta de regalo "Para ti" con cordón (abajo a la derecha, más centrada).
+  // Etiqueta de regalo "Para ti" con cordón (abajo, centrada y sin tocar bordes).
   ctx.save();
-  ctx.translate(S * 0.72, S * 0.80);
-  ctx.rotate(-0.12);
+  ctx.translate(S * 0.5, S * 0.74);
+  ctx.rotate(-0.08);
   // cordón
   ctx.strokeStyle = "#B79A78";
   ctx.lineWidth = 3;

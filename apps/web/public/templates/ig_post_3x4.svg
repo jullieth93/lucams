@@ -1,22 +1,20 @@
 <svg width="450" height="600" viewBox="0 0 450 600" fill="none" xmlns="http://www.w3.org/2000/svg">
   <!--
-    Marco "Polaroid Instagram" — 450×600 (7.5×10 cm, 3:4).
-    Layout fiel a un post de Instagram: borde degradado ancho, tarjeta blanca,
-    cabecera con avatar + anillo de historia, menú de 3 puntos, foto grande,
-    iconos de acción y pie de post.
+    Polaroid Instagram — layout 450×600 (7.5×10 cm, 3:4).
+    Look más fiel a un post real: header limpio, foto grande con marco blanco,
+    iconos de acción realistas y pie con aire.
 
-    Zonas (coordenadas del stage 450×600):
-      · Ventana de foto (transparente): x=15 y=70 → 420×400.
-      · Username  (Konva `user_name`):  x=68  y=35  fontSize 16 bold.
-      · Ubicación (Konva `location`):   x=68  y=52  fontSize 12 gris.
-      · Likes     (Konva `likes_count`): x=22  y=520 fontSize 15 bold.
-      · Caption   (Konva `caption`):    x=22  y=542 fontSize 16 bold.
-      · Hashtags  (Konva `hashtags`):   x=22  y=560 fontSize 13 azul #00376B.
-      · Comentarios horneados: x=22 y=576 (gris, baja jerarquía).
+    Zonas (stage 450×600):
+      · Ventana foto (con borde blanco): x=29 y=58 → 392×392.
+      · Username  (Konva user_name):  x=68  y=28  fontSize 16 bold.
+      · Ubicación (Konva location):  x=68  y=46  fontSize 12.
+      · Likes     (Konva likes_count): x=22  y=492 fontSize 15 bold.
+      · Caption   (Konva caption):    x=22  y=510 fontSize 16 bold.
+      · Hashtags  (Konva hashtags):   x=22  y=528 fontSize 13.
+      · Chrome estático: iconos en y=458, comentarios en y=548.
   -->
 
   <defs>
-    <!-- Borde exterior degradado estilo Instagram -->
     <linearGradient id="instaBorder" x1="0%" y1="100%" x2="100%" y2="0%">
       <stop offset="0%" stop-color="#f09433"/>
       <stop offset="25%" stop-color="#e6683c"/>
@@ -25,54 +23,57 @@
       <stop offset="100%" stop-color="#bc1888"/>
     </linearGradient>
 
-    <!-- Anillo de historia -->
     <linearGradient id="storyRing" x1="0%" y1="100%" x2="100%" y2="0%">
       <stop offset="0%" stop-color="#FFD600"/>
       <stop offset="50%" stop-color="#FF0069"/>
       <stop offset="100%" stop-color="#7638FA"/>
     </linearGradient>
+
+    <clipPath id="cardMask">
+      <rect x="10" y="10" width="430" height="580" rx="22"/>
+    </clipPath>
   </defs>
 
   <!-- Borde degradado exterior -->
   <rect x="0" y="0" width="450" height="600" rx="27" fill="url(#instaBorder)"/>
 
   <!-- Tarjeta blanca interior -->
-  <rect x="8" y="8" width="434" height="584" rx="22" fill="#FFFFFF"/>
+  <rect x="10" y="10" width="430" height="580" rx="22" fill="#FFFFFF"/>
 
-  <!-- CABECERA: anillo de historia + avatar + menú de opciones.
-       Username y ubicación son capas Konva editables (no se hornean). -->
+  <!-- Marco blanco alrededor de la foto (visible en modo "con borde") -->
+  <rect x="29" y="58" width="392" height="392" rx="4" fill="none" stroke="#F0F0F0" stroke-width="1"/>
+
+  <!-- CABECERA -->
   <g id="header">
     <!-- Anillo de historia -->
     <circle cx="34" cy="34" r="20" fill="none" stroke="url(#storyRing)" stroke-width="2.5"/>
     <!-- Avatar placeholder -->
     <circle cx="34" cy="34" r="16" fill="#E5E5E5"/>
-    <!-- Silueta de persona dentro del avatar -->
     <circle cx="34" cy="30" r="5" fill="#BDBDBD"/>
     <path d="M24 41 C24 37 29 35 34 35 C39 35 44 37 44 41" fill="#BDBDBD"/>
 
-    <!-- Menú de 3 puntos (esquina derecha) -->
+    <!-- Menú de 3 puntos -->
     <circle cx="410" cy="34" r="2" fill="#262626"/>
     <circle cx="418" cy="34" r="2" fill="#262626"/>
     <circle cx="426" cy="34" r="2" fill="#262626"/>
   </g>
 
-  <!-- ÍCONOS DE INTERACCIÓN (bajo la foto, aire de 14px) -->
-  <g id="actions" transform="translate(22, 484)">
-    <!-- Corazón (me gusta) — ROJO RELLENO -->
-    <path d="M18,35 C18,35 0,20 0,11 C0,5 4.5,0 10.5,0 C14,0 16.5,2 18,5 C19.5,2 22,0 25.5,0 C31.5,0 36,5 36,11 C36,20 18,35 18,35 Z"
-          transform="scale(0.78)" fill="#ED4956"/>
-    <!-- Comentario (bocadillo) -->
-    <path d="M20,0 C9,0 0,7 0,16 C0,21 3,26 7,29 L4,36 L12,32 C14.5,33 17,33.5 20,33.5 C31,33.5 40,26 40,16 C40,7 31,0 20,0 Z"
-          transform="translate(48, 1) scale(0.7)" fill="none" stroke="#262626" stroke-width="3.2" stroke-linejoin="round"/>
+  <!-- ÍCONOS DE ACCIÓN (24×24 escalados a 28px, espaciados) -->
+  <g id="actions" transform="translate(22, 458)">
+    <!-- Corazón (me gusta) -->
+    <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"
+          transform="scale(1.17)" fill="#ED4956"/>
+    <!-- Comentario -->
+    <path d="M21.99 4c0-1.1-.89-2-1.99-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h14l4 4-.01-18z"
+          transform="translate(44, 0) scale(1.17)" fill="none" stroke="#262626" stroke-width="2" stroke-linejoin="round"/>
     <!-- Compartir (avión de papel) -->
-    <polygon points="1,7 23,1 17,23 12,12"
-             transform="translate(94, 2)" fill="none" stroke="#262626" stroke-width="2.2" stroke-linejoin="round"/>
-    <!-- Guardar (bookmark, esquina derecha) -->
-    <polygon points="0,0 22,0 22,33 11,24 0,33"
-             transform="translate(376, 0) scale(0.85)" fill="none" stroke="#262626" stroke-width="2.6" stroke-linejoin="round"/>
+    <path d="M2.01 21 23 12 2.01 3 2 10l15 2-15 2z"
+          transform="translate(86, 0) scale(1.17)" fill="none" stroke="#262626" stroke-width="2" stroke-linejoin="round"/>
+    <!-- Guardar -->
+    <path d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z"
+          transform="translate(372, 0) scale(1.17)" fill="none" stroke="#262626" stroke-width="2" stroke-linejoin="round"/>
   </g>
 
-  <!-- Pie horneado: solo chrome estático de baja jerarquía.
-       Likes / caption / hashtags van por Konva (editables). -->
-  <text x="22" y="576" font-family="Arial, sans-serif" font-size="12" fill="#8e8e8e">Ver los 12 comentarios</text>
+  <!-- Pie estático: contador de comentarios (baja jerarquía) -->
+  <text x="22" y="548" font-family="Arial, sans-serif" font-size="12" fill="#8e8e8e">Ver los 12 comentarios</text>
 </svg>

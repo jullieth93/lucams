@@ -3,10 +3,11 @@
  *
  * Re-layout de la plantilla `photo-pack-polaroid-instagram`:
  *   - Borde degradado estilo Instagram y tarjeta blanca interior.
- *   - Cabecera con avatar más grande (username y=35, location y=52).
- *   - Foto agrandada: x=15 y=70 420×400.
- *   - Pie re-espaciado (likes y=520, caption y=542, hashtags y=560) acorde al nuevo
- *     chrome SVG: iconos de acción en y=484, comentarios horneados en y=576.
+ *   - Cabecera más limpia (username y=28, location y=46).
+ *   - Ventana de foto con marco blanco: x=29 y=58 392×392.
+ *   - Pie re-espaciado: iconos de acción en y=458, likes y=492, caption y=510,
+ *     hashtags y=528, comentarios horneados en y=548.
+ *   - Sin timestamp "Hace 2 días".
  *
  * Solo toca el canvasData de la plantilla (capas text). Los drafts/cotizaciones
  * existentes conservan su snapshot propio.
@@ -26,7 +27,7 @@ const TEXT_LAYERS = [
     id: "user_name",
     type: "text",
     x: 68,
-    y: 35,
+    y: 28,
     text: "@tu_usuario",
     fontFamily: "Inter",
     fontSize: 16,
@@ -39,7 +40,7 @@ const TEXT_LAYERS = [
     id: "location",
     type: "text",
     x: 68,
-    y: 52,
+    y: 46,
     text: "Bogotá, Colombia",
     fontFamily: "Inter",
     fontSize: 12,
@@ -52,7 +53,7 @@ const TEXT_LAYERS = [
     id: "likes_count",
     type: "text",
     x: 22,
-    y: 520,
+    y: 492,
     text: "362 me gusta",
     fontFamily: "Inter",
     fontSize: 15,
@@ -65,7 +66,7 @@ const TEXT_LAYERS = [
     id: "caption",
     type: "text",
     x: 22,
-    y: 542,
+    y: 510,
     text: "Tu título acá",
     fontFamily: "Inter",
     fontSize: 16,
@@ -78,7 +79,7 @@ const TEXT_LAYERS = [
     id: "hashtags",
     type: "text",
     x: 22,
-    y: 560,
+    y: 528,
     text: "#mirecuerdo #lucamsshop",
     fontFamily: "Inter",
     fontSize: 13,
@@ -103,7 +104,7 @@ async function main() {
     ),
   );
 
-  // Reemplaza las capas text existentes por el set Ola 9 (conserva background,
+  // Reemplaza las capas text existentes por el set Ola 16 (conserva background,
   // image-placeholder y asset tal cual, en su orden). Idempotente: si las 5
   // capas ya están con estos valores exactos, no escribe.
   const nonText = cd.layers.filter((l) => l.type !== "text");

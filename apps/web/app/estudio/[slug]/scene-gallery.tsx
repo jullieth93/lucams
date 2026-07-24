@@ -340,7 +340,7 @@ export function SceneGallery({
           activeScene === "fridge" ? (
             <FridgeView3D magnets={magnets} cols={cols} sizeCm={sizeCm} />
           ) : activeScene === "polaroid" ? (
-            <PolaroidView3D magnets={magnets} />
+            <PolaroidView3D magnets={magnets} sizeCm={sizeCm} />
           ) : activeScene === "board" ? (
             <RoomBoardView3D magnets={magnets} cols={cols} style="cork" sizeCm={sizeCm} />
           ) : activeScene === "memo" ? (
@@ -358,7 +358,7 @@ export function SceneGallery({
             <p className="text-brand-cream/70 text-xs">Prueba otra escena o vuelve al editor.</p>
           </div>
         ) : flatUrl ? (
-          <div className="absolute inset-0 flex items-center justify-center overflow-hidden p-4 sm:p-6">
+          <div className="absolute inset-0 flex items-center justify-center overflow-hidden p-2 sm:p-3">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={flatUrl}
@@ -367,7 +367,7 @@ export function SceneGallery({
                   ? "Tu diseño presentado como un regalo"
                   : "Tu diseño en una repisa"
               }
-              className="max-h-[calc(100%-2rem)] max-w-[calc(100%-2rem)] rounded-2xl object-contain shadow-2xl"
+              className="max-h-[calc(100%-1rem)] max-w-[calc(100%-1rem)] rounded-2xl object-contain shadow-2xl"
             />
           </div>
         ) : null}
