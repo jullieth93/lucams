@@ -64,9 +64,11 @@ const nextConfig: NextConfig = {
     },
   },
 
-  // ADR-057 Fase A1b — @napi-rs/canvas es un módulo NATIVO (binario precompilado): debe
-  // resolverse en runtime, no bundlearse por el compilador.
-  serverExternalPackages: ["@napi-rs/canvas"],
+  // ADR-057 Fase A1b — @napi-rs/canvas y sharp son módulos NATIVOS (binarios
+  // precompilados): deben resolverse en runtime, no bundlearse por el compilador.
+  // sharp requiere además su plataforma específica (@img/sharp-*) para funcionar
+  // en el runtime serverless de Vercel.
+  serverExternalPackages: ["@napi-rs/canvas", "sharp"],
 
   // ADR-057 Fase A1b — el render de producción server-side (finalizeDesign) registra las
   // fuentes de marca desde assets/fonts/ vía fs. Hay que incluirlas en el bundle serverless
