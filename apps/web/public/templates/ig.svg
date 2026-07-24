@@ -1,0 +1,108 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 710" width="100%" height="100%">
+  <defs>
+    <!-- Gradiente del borde exterior (Estilo Instagram) -->
+    <linearGradient id="instaGrad" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#f09433"/>
+      <stop offset="25%" stop-color="#e6683c"/>
+      <stop offset="50%" stop-color="#dc2743"/>
+      <stop offset="75%" stop-color="#cc2366"/>
+      <stop offset="100%" stop-color="#bc1888"/>
+    </linearGradient>
+    
+    <!-- Gradiente del anillo de Historia (Profile Ring) -->
+    <linearGradient id="storyGrad" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#FFD600"/>
+      <stop offset="50%" stop-color="#FF0069"/>
+      <stop offset="100%" stop-color="#7638FA"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Borde exterior con gradiente -->
+  <rect width="600" height="710" rx="36" fill="url(#instaGrad)" />
+  <!-- Contenedor blanco principal -->
+  <rect x="6" y="6" width="588" height="698" rx="30" fill="#FFFFFF" />
+
+  <!-- ========================================== -->
+  <!-- SECCIÓN 1: CABECERA (HEADER)               -->
+  <!-- ========================================== -->
+  
+  <!-- Avatar de Usuario -->
+  <circle cx="55" cy="45" r="23" fill="none" stroke="url(#storyGrad)" stroke-width="2.5"/>
+  <circle cx="55" cy="45" r="19" fill="#E5E5E5"/>
+  <!-- Icono de foto en el avatar -->
+  <rect x="46" y="38" width="18" height="14" rx="2" fill="none" stroke="#737373" stroke-width="1.5"/>
+  <circle cx="50.5" cy="42" r="1.5" fill="#737373"/>
+  <polyline points="46,50 51,46 56,49 59,45 64,50" fill="none" stroke="#737373" stroke-width="1.2"/>
+
+  <!-- [EDITABLE: USERNAME (CABECERA)] -->
+  <text x="88" y="41" font-family="Arial, -apple-system, sans-serif" font-size="15" font-weight="bold" fill="#262626">username</text>
+  
+  <!-- Icono de Verificado (Badge Azul) -->
+  <g transform="translate(162, 29) scale(0.95)">
+    <path d="M7 0 C10.866 0 14 3.134 14 7 C14 10.866 10.866 14 7 14 C3.134 14 0 10.866 0 7 C0 3.134 3.134 0 7 0 Z" fill="#3897F0"/>
+    <polyline points="4,7 6,9 10,4" fill="none" stroke="#FFFFFF" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <!-- [EDITABLE: LOCATION (UBICACIÓN)] -->
+  <text x="88" y="58" font-family="Arial, -apple-system, sans-serif" font-size="13" fill="#8E8E8E">Location Here</text>
+
+  <!-- Menú de tres puntos (...) -->
+  <circle cx="544" cy="45" r="2" fill="#262626"/>
+  <circle cx="550" cy="45" r="2" fill="#262626"/>
+  <circle cx="556" cy="45" r="2" fill="#262626"/>
+
+  <!-- ========================================== -->
+  <!-- SECCIÓN 2: IMAGEN (PLACEHOLDER)            -->
+  <!-- ========================================== -->
+  <rect x="30" y="78" width="540" height="450" fill="#E5E5E5"/>
+  
+  <!-- Icono central de imagen (Montañas) -->
+  <g transform="translate(268, 275)">
+    <rect x="0" y="0" width="64" height="48" rx="4" fill="none" stroke="#4A4A4A" stroke-width="2.5"/>
+    <circle cx="20" cy="16" r="5" fill="none" stroke="#4A4A4A" stroke-width="2.5"/>
+    <polyline points="0,40 20,22 38,36 46,28 64,42" fill="none" stroke="#4A4A4A" stroke-width="2.5" stroke-linejoin="round"/>
+  </g>
+
+  <!-- ========================================== -->
+  <!-- SECCIÓN 3: BOTONES DE ACCIÓN               -->
+  <!-- ========================================== -->
+  
+  <!-- Icono Corazón (Me Gusta - Rojo) -->
+  <path d="M50,573 C50,573 32,558 32,549 C32,543 36.5,538 42.5,538 C46,538 48.5,540 50,543 C51.5,540 54,538 57.5,538 C63.5,538 68,543 68,549 C68,558 50,573 50,573 Z" fill="#ED4956"/>
+  
+  <!-- Icono Comentario -->
+  <path d="M96,540 C85,540 76,547 76,556 C76,561 79,566 83,569 L80,576 L88,572 C90.5,573 93,573.5 96,573.5 C107,573.5 116,566 116,556 C116,547 107,540 96,540 Z" fill="none" stroke="#262626" stroke-width="2.3" stroke-linejoin="round"/>
+  
+  <!-- Icono Compartir (Avión de papel) -->
+  <polygon points="130,573 162,554 130,543 135,556 151,555 135,561" fill="none" stroke="#262626" stroke-width="2.2" stroke-linejoin="round"/>
+  
+  <!-- Icono Guardar (Bookmark - Derecha) -->
+  <polygon points="535,540 557,540 557,573 546,564 535,573" fill="none" stroke="#262626" stroke-width="2.3" stroke-linejoin="round"/>
+
+  <!-- ========================================== -->
+  <!-- SECCIÓN 4: TEXTOS Y COMENTARIOS EDITABLES   -->
+  <!-- ========================================== -->
+
+  <!-- [EDITABLE: LIKES (ME GUSTA)] -->
+  <text x="32" y="605" font-family="Arial, -apple-system, sans-serif" font-size="15" font-weight="bold" fill="#262626">6,867 likes</text>
+
+  <!-- [EDITABLE: COMENTARIO / CAPTION (USERNAME + TEXTO)] -->
+  <!-- Username en el pie de foto -->
+  <text x="32" y="633" font-family="Arial, -apple-system, sans-serif" font-size="15" font-weight="bold" fill="#262626">username</text>
+  
+  <!-- Verificado en el pie de foto -->
+  <g transform="translate(108, 621) scale(0.85)">
+    <path d="M7 0 C10.866 0 14 3.134 14 7 C14 10.866 10.866 14 7 14 C3.134 14 0 10.866 0 7 C0 3.134 3.134 0 7 0 Z" fill="#3897F0"/>
+    <polyline points="4,7 6,9 10,4" fill="none" stroke="#FFFFFF" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+
+  <!-- Línea 1 del Comentario -->
+  <text x="123" y="633" font-family="Arial, -apple-system, sans-serif" font-size="15" fill="#262626">Enhance your Instagram Post with,</text>
+  
+  <!-- Línea 2 del Comentario + Hashtags/Mentions -->
+  <text x="32" y="655" font-family="Arial, -apple-system, sans-serif" font-size="15" fill="#262626">UI Mockup Psd Templates <tspan fill="#00376B">@instagram #templates</tspan></text>
+
+  <!-- [EDITABLE: VER TODOS LOS COMENTARIOS] -->
+  <text x="32" y="683" font-family="Arial, -apple-system, sans-serif" font-size="14" fill="#8E8E8E">View all 42 comments</text>
+
+</svg>

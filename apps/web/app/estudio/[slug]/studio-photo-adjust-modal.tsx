@@ -1,26 +1,22 @@
 "use client";
 
 /*
- * StudioPhotoAdjustModal — M.3.b.B.3 (2026-05-13).
+ * StudioPhotoAdjustForm — M.3.b.B.3 (2026-05-13), extraído en Ola 6 (2026-07-23).
  *
- * Panel auxiliar (NO modal-bloqueante) para aplicar filtros pre-armados
- * a la foto de un slot. 5 presets clicables (Vivid / Vintage / Polaroid /
- * Pastel / B&N) + opción "Sin filtro" para reset.
+ * Controles de la pestaña Foto del modal unificado de edición por slot
+ * (`StudioSlotEditModal`): filtros pre-armados (Vivid / Vintage / Polaroid /
+ * Pastel / B&N) + "Sin filtro", rotar 90°, centrar/reset y cruceta de
+ * desplazamiento (equivalente de teclado a los gestos).
  *
- * Cambios 2026-05-21 (feedback Lucy):
- *   - Pasa a NON-MODAL (withOverlay=false): el canvas Konva detrás queda
- *     interactivo. El cliente puede seguir haciendo scroll-zoom, drag-pan
- *     y arrastrar la foto MIENTRAS ajusta filtros.
- *   - Posicionado bottom-center (no centered overlay) para no tapar el
- *     canvas donde está la foto que se está editando.
- *   - Removido el slider de Zoom redundante: el scroll del mouse + pinch
- *     ya cubren esa función. El reset button queda para volver a centrado.
- *
- * Ola 6 (2026-07-23): se extrae `StudioPhotoAdjustForm` para reutilizar la
- * misma UI dentro del modal unificado de edición por slot (`StudioSlotEditModal`).
+ * Ola 9 (Lucy 2026-07-24) — slider de zoom ELIMINADO de TODA la UI:
+ *   - Desktop: zoom con la RUEDA del mouse sobre la foto (slot o preview del modal).
+ *   - Táctil: zoom con PELLIZCO sobre la foto (preview del modal; la grilla no
+ *     captura gestos inline para no bloquear el scroll de la página).
+ *   - Doble click/tap o el botón "Centrar" resetean el encuadre.
+ *   El antiguo `StudioPhotoAdjustModal` standalone (huérfano desde Ola 6) se
+ *   retiró con este cambio.
  */
 
-import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import {
   ArrowDown,
   ArrowLeft,
@@ -34,19 +30,12 @@ import { Button } from "@/components/ui/button";
 import { FILTER_LABELS, FILTER_DESCRIPTIONS, FILTER_ORDER } from "./lib/photo-filters";
 import type { PhotoFilterPreset } from "./types";
 
-type StudioPhotoAdjustModalProps = {
-  isOpen: boolean;
-  photoUrl: string | null;
+export type StudioPhotoAdjustFormProps = {
+  photoUrl: string;
   currentFilter: PhotoFilterPreset | null;
-  slotIndex: number | null;
-  onClose: () => void;
-  onApply: (filter: PhotoFilterPreset | null) => void;
-  /** Reset transform: vuelve la foto al centro con scale=1. */
+  currentTransform: { offsetX: number; offsetY: number; scale: number; rotation?: number } | null;
+  onApplyFilter: (filter: PhotoFilterPreset | null) => void;
   onResetTransform: () => void;
-  /** #18 — encuadre por teclado/controles: estado actual del transform del slot (null = sin ajuste). */
-  photoTransform: { offsetX: number; offsetY: number; scale: number; rotation?: number } | null;
-  /** #18 — zoom por slider (porcentaje 50-300). */
-  onZoomChange: (scalePercent: number) => void;
   /** #18 — desplazar la foto (dx/dy en px del stage). */
   onNudge: (dx: number, dy: number) => void;
   /** Ola 3c — rotar la foto en pasos de 90° (orientación vs ventana/cara). */
@@ -60,20 +49,6 @@ type StudioPhotoAdjustModalProps = {
   allowFilters?: boolean;
 };
 
-export type StudioPhotoAdjustFormProps = {
-  photoUrl: string;
-  currentFilter: PhotoFilterPreset | null;
-  currentTransform: { offsetX: number; offsetY: number; scale: number; rotation?: number } | null;
-  onApplyFilter: (filter: PhotoFilterPreset | null) => void;
-  onResetTransform: () => void;
-  onZoomChange: (scalePercent: number) => void;
-  onNudge: (dx: number, dy: number) => void;
-  onRotate?: () => void;
-  allowFilters?: boolean;
-  /** Ola 8 — false oculta el slider de zoom (desktop: scroll/pellizco; móvil: slider). Default true. */
-  showZoomSlider?: boolean;
-};
-
 // CSS filter equivalents para preview (no idéntico a Konva, suficiente para
 // que el cliente vea el cambio aproximado antes de confirmar).
 const CSS_FILTER_BY_PRESET: Record<PhotoFilterPreset, string> = {
@@ -84,87 +59,18 @@ const CSS_FILTER_BY_PRESET: Record<PhotoFilterPreset, string> = {
   bw: "grayscale(1) contrast(1.1)",
 };
 
-export function StudioPhotoAdjustModal({
-  isOpen,
-  photoUrl,
-  currentFilter,
-  slotIndex,
-  onClose,
-  onApply,
-  onResetTransform,
-  photoTransform,
-  onZoomChange,
-  onNudge,
-  onRotate,
-  allowFilters = true,
-}: StudioPhotoAdjustModalProps) {
-  if (!photoUrl) return null;
-
-  return (
-    // modal={false} — el contenido detrás (canvas Konva) sigue recibiendo
-    // eventos (scroll-zoom, drag-pan). Focus NO se atrapa dentro del panel.
-    //
-    // IMPORTANTE: NO ponemos preventDefault en onInteractOutside ni
-    // onPointerDownOutside — esos handlers reciben eventos del exterior
-    // y al preventDefault Radix interpreta "no propagar", lo que termina
-    // bloqueando los eventos también al canvas. Para evitar autocierre,
-    // dejamos esos handlers no-op (Radix solo cierra con explicit close
-    // o ESC en modal=false con esos handlers vacíos).
-    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()} modal={false}>
-      <DialogContent
-        withOverlay={false}
-        className="!top-auto bottom-4 left-1/2 max-w-2xl !translate-y-0 shadow-lg"
-      >
-        <DialogTitle className="text-brand-purple-dark text-lg font-bold">
-          Ajustar foto del imán {slotIndex !== null ? slotIndex + 1 : ""}
-        </DialogTitle>
-        <DialogDescription className="text-brand-muted text-sm">
-          Arrastra la foto en el canvas para encuadrar · Scroll del mouse (o pellizco) para zoom · o
-          usa el zoom y las flechas de abajo para encuadrar con el teclado
-          {allowFilters ? " · Elige un filtro abajo" : ""}
-        </DialogDescription>
-
-        <StudioPhotoAdjustForm
-          photoUrl={photoUrl}
-          currentFilter={currentFilter}
-          currentTransform={photoTransform}
-          onApplyFilter={onApply}
-          onResetTransform={onResetTransform}
-          onZoomChange={onZoomChange}
-          onNudge={onNudge}
-          onRotate={onRotate}
-          allowFilters={allowFilters}
-        />
-
-        <div className="border-brand-purple/10 mt-5 flex justify-end border-t pt-4">
-          <Button
-            type="button"
-            onClick={onClose}
-            className="bg-brand-purple hover:bg-brand-purple-dark text-white"
-          >
-            Listo
-          </Button>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 export function StudioPhotoAdjustForm({
   photoUrl,
   currentFilter,
   currentTransform,
   onApplyFilter,
   onResetTransform,
-  onZoomChange,
   onNudge,
   onRotate,
   allowFilters = true,
-  showZoomSlider = true,
 }: StudioPhotoAdjustFormProps) {
-  // #18 — paso de desplazamiento por pulsación (px del stage), y % de zoom actual.
+  // #18 — paso de desplazamiento por pulsación (px del stage).
   const NUDGE = 12;
-  const zoomPct = Math.round((currentTransform?.scale ?? 1) * 100);
 
   return (
     <div className="space-y-3">
@@ -203,33 +109,10 @@ export function StudioPhotoAdjustForm({
         )}
       </div>
 
-      {/* #18 — encuadre accesible: en desktop se usa scroll/pellizco sobre el slot; en móvil
-        se ofrece el slider + cruceta de 4 flechas (equivalente de teclado a los gestos de pan/zoom).
-        Aplica también a calendarios (el encuadre sí se propaga). */}
+      {/* #18 — encuadre accesible: los gestos (rueda/pellizco/arrastre) actúan
+        directamente sobre la foto; la cruceta es el equivalente de teclado para
+        moverla con precisión. Aplica también a calendarios (el encuadre sí se propaga). */}
       <div className="border-brand-purple/10 flex flex-wrap items-end gap-x-6 gap-y-3 rounded-lg border p-3">
-        {showZoomSlider && (
-          <div className="flex-1">
-            <label
-              htmlFor="pa-zoom"
-              className="text-brand-purple-dark mb-1 block text-xs font-semibold"
-            >
-              Zoom: {zoomPct}%
-            </label>
-            <input
-              id="pa-zoom"
-              type="range"
-              min={50}
-              max={300}
-              step={5}
-              value={zoomPct}
-              onChange={(e) => onZoomChange(Number(e.target.value))}
-              aria-label={`Zoom ${zoomPct} por ciento`}
-              aria-valuetext={`${zoomPct}%`}
-              className="accent-brand-purple w-full"
-            />
-          </div>
-        )}
-
         <div className="flex flex-col items-center">
           <span className="text-brand-purple-dark mb-1 text-xs font-semibold">Mover</span>
           <div className="grid grid-cols-3 grid-rows-2 gap-1">

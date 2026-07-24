@@ -293,25 +293,39 @@ const templatesData = [
           width: 450,
           height: 600,
         }),
-        // 4 textos EDITABLES (Konva) — el marco SVG ya NO los hornea (evita doble-texto). Ubicados
-        // en el chrome del marco: usuario en la cabecera, likes/título/hashtags bajo la foto.
-        // Ola 8: más aire entre líneas para que se lea como un post real y no se vea amontonado.
+        // 5 textos EDITABLES (Konva) — el marco SVG ya NO los hornea (evita doble-texto).
+        // Ubicados en el chrome del marco (ver zonas documentadas en ig_post_3x4.svg).
+        // OJO: la `y` de Konva es el CENTRO vertical del texto (el renderer resta
+        // fontSize/2). Ola 9 (rediseño con referencia del diseñador): cabecera alineada
+        // al avatar, pie con aire de post real y todo DENTRO del canvas (antes "Agrega
+        // un comentario..." quedaba horneado a y=600, cortado por el borde).
         text({
           id: "user_name",
-          x: 68,
-          y: 30,
+          x: 64,
+          y: 20,
           text: "@tu_usuario",
           fontFamily: "Inter",
-          fontSize: 21,
+          fontSize: 20,
           fill: "#262626",
           fontWeight: "bold",
           align: "left",
           editable: true,
         }),
         text({
+          id: "location",
+          x: 64,
+          y: 42,
+          text: "Bogotá, Colombia",
+          fontFamily: "Inter",
+          fontSize: 12,
+          fill: "#8E8E8E",
+          align: "left",
+          editable: true,
+        }),
+        text({
           id: "likes_count",
-          x: 28,
-          y: 500,
+          x: 25,
+          y: 512,
           text: "362 me gusta",
           fontFamily: "Inter",
           fontSize: 17,
@@ -323,10 +337,10 @@ const templatesData = [
         text({
           id: "caption",
           x: 25,
-          y: 524,
+          y: 537,
           text: "Tu título acá",
           fontFamily: "Inter",
-          fontSize: 19,
+          fontSize: 18,
           fill: "#262626",
           fontWeight: "bold",
           align: "left",
@@ -335,7 +349,7 @@ const templatesData = [
         text({
           id: "hashtags",
           x: 25,
-          y: 548,
+          y: 559,
           text: "#mirecuerdo #lucamsshop",
           fontFamily: "Inter",
           fontSize: 13,

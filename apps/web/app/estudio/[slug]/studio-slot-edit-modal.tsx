@@ -21,9 +21,11 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { ImageIcon, Type, ChevronLeft } from "lucide-react";
 import { StudioPhotoAdjustForm } from "./studio-photo-adjust-modal";
+import { StudioPhotoPreview } from "./studio-photo-preview";
 import { StudioTextEditorForm } from "./studio-text-editor-modal";
-import { useIsTouch } from "./use-is-touch";
-import type { PhotoFilterPreset, TextLayer, TextOverride } from "./types";
+import type { CanvasDataV1, PhotoFilterPreset, TextLayer, TextOverride } from "./types";
+
+type PhotoTransform = { offsetX: number; offsetY: number; scale: number; rotation?: number };
 
 type StudioSlotEditModalProps = {
   isOpen: boolean;
@@ -33,19 +35,31 @@ type StudioSlotEditModalProps = {
   hasText: boolean;
   photoUrl: string | null;
   currentFilter: PhotoFilterPreset | null;
-  currentTransform: { offsetX: number; offsetY: number; scale: number; rotation?: number } | null;
+  currentTransform: PhotoTransform | null;
   currentTextOverrides: Record<string, TextOverride> | undefined;
   textLayers: TextLayer[];
   allowFilters: boolean;
   onClose: () => void;
   onApplyFilter: (filter: PhotoFilterPreset | null) => void;
   onResetTransform: () => void;
-  onZoomChange: (scalePercent: number) => void;
   onNudge: (dx: number, dy: number) => void;
   onRotate: () => void;
   onApplyTextOverride: (layerId: string, override: TextOverride | null) => void;
   /** Text layer a preseleccionar al abrir la pestaña Texto (ej. al tocar un texto en el canvas). */
   focusTextLayerId?: string;
+  /**
+   * Ola 9 — datos para el preview interactivo de la pestaña Foto (gestos de
+   * zoom/pan directos sobre la foto; reemplaza al slider eliminado).
+   */
+  preview?: {
+    unitTemplate: CanvasDataV1;
+    totalSlots: number;
+    borderColor: string | null;
+    allowText: boolean;
+    frameFullBleed: boolean;
+    calendarCard: { year: number; monthIndex0: number } | null;
+    onTransformChange: (t: Partial<{ offsetX: number; offsetY: number; scale: number }>) => void;
+  };
 };
 
 export function StudioSlotEditModal({
@@ -63,16 +77,15 @@ export function StudioSlotEditModal({
   onClose,
   onApplyFilter,
   onResetTransform,
-  onZoomChange,
   onNudge,
   onRotate,
   onApplyTextOverride,
   focusTextLayerId,
+  preview,
 }: StudioSlotEditModalProps) {
   // Tab activa: Foto por default si hay foto; si no, Texto (si aplica).
   const defaultTab = hasPhoto ? "photo" : "text";
   const [activeTab, setActiveTab] = useState(defaultTab);
-  const isTouch = useIsTouch();
 
   const title = slotLabel
     ? `Editar ${slotLabel}`
@@ -125,18 +138,41 @@ export function StudioSlotEditModal({
           <div className="min-h-0 flex-1 overflow-y-auto px-4 py-3">
             <TabsContent value="photo" className="mt-0 focus-visible:outline-none">
               {hasPhoto && photoUrl && (
-                <StudioPhotoAdjustForm
-                  photoUrl={photoUrl}
-                  currentFilter={currentFilter}
-                  currentTransform={currentTransform}
-                  onApplyFilter={onApplyFilter}
-                  onResetTransform={onResetTransform}
-                  onZoomChange={onZoomChange}
-                  onNudge={onNudge}
-                  onRotate={onRotate}
-                  allowFilters={allowFilters}
-                  showZoomSlider={isTouch}
-                />
+                <div className="space-y-4">
+                  {/* Ola 9 — preview interactivo WYSIWYG: acá van los gestos de
+                    encuadre (arrastre = pan, rueda/pellizco = zoom, doble toque
+                    = centrar). Sin slider: el control es directo sobre la foto. */}
+                  {preview && (
+                    <StudioPhotoPreview
+                      unitTemplate={preview.unitTemplate}
+                      slotState={{
+                        slotIndex: slotIndex ?? 0,
+                        assetId: null,
+                        assetUrl: photoUrl,
+                        filter: currentFilter,
+                        photoTransform: currentTransform ?? undefined,
+                        textOverrides: currentTextOverrides,
+                      }}
+                      totalSlots={preview.totalSlots}
+                      borderColor={preview.borderColor}
+                      allowText={preview.allowText}
+                      frameFullBleed={preview.frameFullBleed}
+                      calendarCard={preview.calendarCard}
+                      onTransformChange={preview.onTransformChange}
+                      onResetTransform={onResetTransform}
+                    />
+                  )}
+                  <StudioPhotoAdjustForm
+                    photoUrl={photoUrl}
+                    currentFilter={currentFilter}
+                    currentTransform={currentTransform}
+                    onApplyFilter={onApplyFilter}
+                    onResetTransform={onResetTransform}
+                    onNudge={onNudge}
+                    onRotate={onRotate}
+                    allowFilters={allowFilters}
+                  />
+                </div>
               )}
             </TabsContent>
 

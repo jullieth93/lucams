@@ -68,7 +68,6 @@ import {
 } from "@/features/personalization/frame-palette";
 import { RealismShadowLayer, RealismOverlayLayer } from "./studio-realism-overlay";
 import { CalendarCardLayer } from "./studio-calendar-card-layer";
-import { useIsTouch } from "./use-is-touch";
 
 import { getFilterParams } from "./lib/photo-filters";
 import { analyzeSmartCrop, checkPhotoQuality } from "./lib/smart-crop";
@@ -145,7 +144,7 @@ type StudioSlotProps = {
   /**
    * FB4 — si es false, la grilla no captura gestos inline (drag/pinch/wheel);
    * el dedo scrollea la página. El callback de transform sigue disponible
-   * para controles externos como el slider flotante de zoom.
+   * para el preview interactivo del modal de edición (Ola 9).
    */
   interactiveSlots?: boolean;
   /** M.3.b.UX.v9 — Aplicar transform parcial a la foto del slot.
@@ -268,7 +267,6 @@ function StudioSlotImpl({
     );
   }, [unitTemplate.layers, allowText]);
   const hasEditableText = editableTextLayers.length > 0;
-  const isTouch = useIsTouch();
   // Ola 2A — slots angostos (grids de 12-20 miniaturas): la barra de acciones se
   // compacta (sin chip de tamaño, calidad solo icono, botones h-8) para que
   // Centrar/Filtros/Eliminar no se desborden ni se pierdan entre las miniaturas.
@@ -667,7 +665,7 @@ function StudioSlotImpl({
             // pellizco/arrastre actúe sobre la foto y no dispare zoom/scroll de la página
             // a la vez. Ola 3c / Ola 6: en la grilla táctil (slot NO interactivo) queda "pan-y"
             // EXPLÍCITO → el dedo scrollea la página vertical con normalidad; el zoom de foto
-            // se hace vía slider flotante o editor a pantalla completa. Además las capas
+            // se hace con pellizco en el preview del modal de edición (Ola 9). Además las capas
             // Konva no-interactivas van con preventDefault={false} para no matar el inicio
             // del scroll (ver ImagePlaceholder).
             touchAction: onPhotoTransformChange && interactiveSlots ? "none" : "pan-y",
@@ -939,35 +937,10 @@ function StudioSlotImpl({
             )}
         </motion.div>
 
-        {/* Ola 6 — Slider de zoom flotante en móvil/táctil para slots seleccionados
-        con foto. Ahora vive junto al slot (no al pie del wrapper) para que su
-        posición se mida desde el borde inferior del canvas y no se solape con la
-        barra de acciones (centrar/editar/quitar). Se ubica por encima de la
-        action bar reservando espacio en la esquina inferior derecha. */}
-        {isSelected && slotState.assetUrl && isTouch && onPhotoTransformChange && (
-          <div
-            className="pointer-events-auto absolute right-2 bottom-14 z-20 flex items-center gap-1.5 rounded-full bg-white/85 px-2 py-1 shadow-md ring-1 ring-black/5 backdrop-blur-sm"
-            onClick={(e) => e.stopPropagation()}
-            onPointerDown={(e) => e.stopPropagation()}
-          >
-            <span className="text-brand-purple-dark min-w-[2ch] text-[10px] font-bold tabular-nums">
-              {Math.round((slotState.photoTransform?.scale ?? 1) * 100)}%
-            </span>
-            <input
-              type="range"
-              min={50}
-              max={300}
-              step={5}
-              value={Math.round((slotState.photoTransform?.scale ?? 1) * 100)}
-              onChange={(e) => {
-                const percent = Number(e.target.value);
-                onPhotoTransformChange({ scale: Math.max(0.5, Math.min(3, percent / 100)) });
-              }}
-              aria-label="Zoom de la foto"
-              className="accent-brand-purple bg-brand-purple/20 h-1 w-20 cursor-pointer appearance-none rounded"
-            />
-          </div>
-        )}
+        {/* Ola 9 (Lucy 2026-07-24) — slider flotante de zoom ELIMINADO: se montaba
+        sobre la foto y estorbaba la edición. El zoom se hace con gestos directos:
+        rueda del mouse en desktop, pellizco en táctil (grilla interactiva o el
+        preview del modal de edición), doble click/tap para resetear. */}
       </div>
 
       {/* FIX-2 — Footer bar de acciones FUERA del slot.
@@ -1837,7 +1810,9 @@ function ImagePlaceholder({
     // Approach correcto:
     //   1. Default scale = cover EXACTO sin overscan invisible. Cliente ve cover
     //      por default, sin sorpresas.
-    //   2. Slider zoom AMPLIO (50%-300%) en el modal. Cliente DECIDE el zoom:
+    //   2. Zoom AMPLIO (50%-300%) con GESTOS directos (Ola 9: rueda del mouse en
+    //      desktop, pellizco en táctil dentro del preview del modal; el slider
+    //      se eliminó porque se montaba sobre la foto). Cliente DECIDE el zoom:
     //      - 50%: foto más chica que slot, padding visible. Útil para encuadrar
     //        toda la foto sin recorte.
     //      - 100%: cover exacto (default).

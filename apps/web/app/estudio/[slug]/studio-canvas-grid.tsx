@@ -553,6 +553,9 @@ export function StudioCanvasGrid({
         }}
         allowFilters={!calendarPreview}
         slotLabels={slotLabels}
+        allowText={allowText}
+        frameFullBleed={frameFullBleed}
+        calendarPreview={calendarPreview}
       />
 
       {/* A2.6 — Overlay de transición al cambiar plantilla */}
@@ -636,12 +639,18 @@ function StudioSlotEditModalWrapper({
   onClose,
   allowFilters = true,
   slotLabels,
+  allowText = false,
+  frameFullBleed = false,
+  calendarPreview = null,
 }: {
   store: StoreApi<StudioStoreState>;
   editModal: { slotIndex: number; tab: "photo" | "text"; focusTextLayerId?: string } | null;
   onClose: () => void;
   allowFilters?: boolean;
   slotLabels?: string[];
+  allowText?: boolean;
+  frameFullBleed?: boolean;
+  calendarPreview?: { year: number; startMonth: number } | null;
 }) {
   const slotIndex = editModal?.slotIndex ?? null;
   const slotAssetUrl = useStore(store, (s) =>
@@ -681,6 +690,7 @@ function StudioSlotEditModalWrapper({
   );
   const unitTemplate = useStore(store, (s) => s.canvasData?.unitTemplate);
   const slotCount = useStore(store, (s) => s.canvasData?.slotCount ?? 0);
+  const borderColor = useStore(store, (s) => s.canvasData?.borderColor ?? null);
   const setSlotFilter = useStore(store, (s) => s.setSlotFilter);
   const setSlotPhotoTransform = useStore(store, (s) => s.setSlotPhotoTransform);
   const setSlotTextOverride = useStore(store, (s) => s.setSlotTextOverride);
@@ -729,10 +739,6 @@ function StudioSlotEditModalWrapper({
       onResetTransform={() => {
         if (slotIndex !== null) setSlotPhotoTransform(slotIndex, null);
       }}
-      onZoomChange={(percent) => {
-        if (slotIndex !== null)
-          setSlotPhotoTransform(slotIndex, { scale: Math.max(0.5, Math.min(3, percent / 100)) });
-      }}
       onNudge={(dx, dy) => {
         if (slotIndex !== null)
           setSlotPhotoTransform(slotIndex, { offsetX: slotOffsetX + dx, offsetY: slotOffsetY + dy });
@@ -744,6 +750,28 @@ function StudioSlotEditModalWrapper({
       onApplyTextOverride={(layerId, override) => {
         if (slotIndex !== null) setSlotTextOverride(slotIndex, layerId, override);
       }}
+      preview={
+        unitTemplate
+          ? {
+              unitTemplate,
+              totalSlots: slotCount,
+              borderColor,
+              allowText,
+              frameFullBleed,
+              calendarCard:
+                calendarPreview && slotIndex !== null
+                  ? {
+                      year: calendarPreview.year,
+                      // Misma matemática de mes que el slot de la grilla y producción.
+                      monthIndex0: (((calendarPreview.startMonth + slotIndex) % 12) + 12) % 12,
+                    }
+                  : null,
+              onTransformChange: (t) => {
+                if (slotIndex !== null) setSlotPhotoTransform(slotIndex, t);
+              },
+            }
+          : undefined
+      }
     />
   );
 }
