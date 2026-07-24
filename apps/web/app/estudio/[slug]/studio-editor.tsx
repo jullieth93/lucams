@@ -1070,7 +1070,7 @@ export function StudioEditor({
             </button>
           </div>
           <div className="relative flex-1">
-            <BookView3D bookmarks={book3D} sizeCm={productConfig.sizeCm} />
+            <BookView3D bookmarks={book3D} sizeCm={productConfig.sizeCm} facesPerUnit={productConfig.facesPerUnit} />
             <p className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-black/40 px-3 py-1.5 text-center text-xs text-white">
               {isTouch
                 ? "Arrastra para girar · pellizca con 2 dedos para acercar"

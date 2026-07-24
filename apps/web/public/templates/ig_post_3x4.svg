@@ -1,19 +1,18 @@
 <svg width="450" height="600" viewBox="0 0 450 600" fill="none" xmlns="http://www.w3.org/2000/svg">
   <!--
     Marco "Polaroid Instagram" — 450×600 (7.5×10 cm, 3:4).
-    Layout fiel a un post de Instagram: borde degradado, tarjeta blanca,
+    Layout fiel a un post de Instagram: borde degradado ancho, tarjeta blanca,
     cabecera con avatar + anillo de historia, menú de 3 puntos, foto grande,
     iconos de acción y pie de post.
 
     Zonas (coordenadas del stage 450×600):
-      · Ventana de foto (transparente): x=22 y=72 → 406×338.
-      · Username  (Konva `user_name`):  x=72  y=33  fontSize 20 bold.
-      · Ubicación (Konva `location`):   x=72  y=52  fontSize 12 gris.
-      · Likes     (Konva `likes_count`): x=22  y=452 fontSize 17 bold.
-      · Caption   (Konva `caption`):    x=22  y=476 fontSize 18 bold username +
-                                         x=78  y=476 fontSize 18 texto.
-      · Hashtags  (Konva `hashtags`):   x=22  y=494 fontSize 13 azul #00376B.
-      · Comentarios horneados: x=22 y=514 (gris, baja jerarquía).
+      · Ventana de foto (transparente): x=15 y=70 → 420×400.
+      · Username  (Konva `user_name`):  x=68  y=35  fontSize 16 bold.
+      · Ubicación (Konva `location`):   x=68  y=52  fontSize 12 gris.
+      · Likes     (Konva `likes_count`): x=22  y=520 fontSize 15 bold.
+      · Caption   (Konva `caption`):    x=22  y=542 fontSize 16 bold.
+      · Hashtags  (Konva `hashtags`):   x=22  y=560 fontSize 13 azul #00376B.
+      · Comentarios horneados: x=22 y=576 (gris, baja jerarquía).
   -->
 
   <defs>
@@ -38,27 +37,27 @@
   <rect x="0" y="0" width="450" height="600" rx="27" fill="url(#instaBorder)"/>
 
   <!-- Tarjeta blanca interior -->
-  <rect x="4" y="4" width="442" height="592" rx="22" fill="#FFFFFF"/>
+  <rect x="8" y="8" width="434" height="584" rx="22" fill="#FFFFFF"/>
 
   <!-- CABECERA: anillo de historia + avatar + menú de opciones.
        Username y ubicación son capas Konva editables (no se hornean). -->
   <g id="header">
     <!-- Anillo de historia -->
-    <circle cx="38" cy="38" r="17.5" fill="none" stroke="url(#storyRing)" stroke-width="2.5"/>
+    <circle cx="34" cy="34" r="20" fill="none" stroke="url(#storyRing)" stroke-width="2.5"/>
     <!-- Avatar placeholder -->
-    <circle cx="38" cy="38" r="13.5" fill="#E5E5E5"/>
+    <circle cx="34" cy="34" r="16" fill="#E5E5E5"/>
     <!-- Silueta de persona dentro del avatar -->
-    <circle cx="38" cy="34" r="4.5" fill="#BDBDBD"/>
-    <path d="M29 43.5 C29 39.8 33 38.5 38 38.5 C43 38.5 47 39.8 47 43.5" fill="#BDBDBD"/>
+    <circle cx="34" cy="30" r="5" fill="#BDBDBD"/>
+    <path d="M24 41 C24 37 29 35 34 35 C39 35 44 37 44 41" fill="#BDBDBD"/>
 
     <!-- Menú de 3 puntos (esquina derecha) -->
-    <circle cx="410" cy="38" r="2" fill="#262626"/>
-    <circle cx="418" cy="38" r="2" fill="#262626"/>
-    <circle cx="426" cy="38" r="2" fill="#262626"/>
+    <circle cx="410" cy="34" r="2" fill="#262626"/>
+    <circle cx="418" cy="34" r="2" fill="#262626"/>
+    <circle cx="426" cy="34" r="2" fill="#262626"/>
   </g>
 
   <!-- ÍCONOS DE INTERACCIÓN (bajo la foto, aire de 14px) -->
-  <g id="actions" transform="translate(22, 418)">
+  <g id="actions" transform="translate(22, 484)">
     <!-- Corazón (me gusta) — ROJO RELLENO -->
     <path d="M18,35 C18,35 0,20 0,11 C0,5 4.5,0 10.5,0 C14,0 16.5,2 18,5 C19.5,2 22,0 25.5,0 C31.5,0 36,5 36,11 C36,20 18,35 18,35 Z"
           transform="scale(0.78)" fill="#ED4956"/>
@@ -75,5 +74,5 @@
 
   <!-- Pie horneado: solo chrome estático de baja jerarquía.
        Likes / caption / hashtags van por Konva (editables). -->
-  <text x="22" y="514" font-family="Arial, sans-serif" font-size="12" fill="#8e8e8e">Ver los 12 comentarios</text>
+  <text x="22" y="576" font-family="Arial, sans-serif" font-size="12" fill="#8e8e8e">Ver los 12 comentarios</text>
 </svg>

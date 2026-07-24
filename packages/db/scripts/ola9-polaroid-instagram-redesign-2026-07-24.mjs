@@ -1,13 +1,12 @@
 /*
- * Ola 15 (Lucy 2026-07-24) — Polaroid Instagram: rediseño con referencia del diseñador.
+ * Ola 16 (Lucy 2026-07-24) — Polaroid Instagram: rediseño más fiel a un post real.
  *
- * Re-layout completo de la plantilla `photo-pack-polaroid-instagram` siguiendo la
- * referencia real de un post de Instagram:
+ * Re-layout de la plantilla `photo-pack-polaroid-instagram`:
  *   - Borde degradado estilo Instagram y tarjeta blanca interior.
- *   - Cabecera alineada al avatar (username y=33, location y=52).
- *   - Pie re-espaciado (likes y=452, caption y=476, hashtags y=494) acorde al nuevo
- *     chrome SVG: iconos de acción en y=418, comentarios horneados en y=514.
- *   - Ventana de foto x=22 y=72 406×338.
+ *   - Cabecera con avatar más grande (username y=35, location y=52).
+ *   - Foto agrandada: x=15 y=70 420×400.
+ *   - Pie re-espaciado (likes y=520, caption y=542, hashtags y=560) acorde al nuevo
+ *     chrome SVG: iconos de acción en y=484, comentarios horneados en y=576.
  *
  * Solo toca el canvasData de la plantilla (capas text). Los drafts/cotizaciones
  * existentes conservan su snapshot propio.
@@ -26,11 +25,11 @@ const TEXT_LAYERS = [
   {
     id: "user_name",
     type: "text",
-    x: 72,
-    y: 33,
+    x: 68,
+    y: 35,
     text: "@tu_usuario",
     fontFamily: "Inter",
-    fontSize: 20,
+    fontSize: 16,
     fill: "#262626",
     fontWeight: "bold",
     align: "left",
@@ -39,7 +38,7 @@ const TEXT_LAYERS = [
   {
     id: "location",
     type: "text",
-    x: 72,
+    x: 68,
     y: 52,
     text: "Bogotá, Colombia",
     fontFamily: "Inter",
@@ -53,10 +52,10 @@ const TEXT_LAYERS = [
     id: "likes_count",
     type: "text",
     x: 22,
-    y: 452,
+    y: 520,
     text: "362 me gusta",
     fontFamily: "Inter",
-    fontSize: 17,
+    fontSize: 15,
     fill: "#262626",
     fontWeight: "bold",
     align: "left",
@@ -66,10 +65,10 @@ const TEXT_LAYERS = [
     id: "caption",
     type: "text",
     x: 22,
-    y: 476,
+    y: 542,
     text: "Tu título acá",
     fontFamily: "Inter",
-    fontSize: 18,
+    fontSize: 16,
     fill: "#262626",
     fontWeight: "bold",
     align: "left",
@@ -79,7 +78,7 @@ const TEXT_LAYERS = [
     id: "hashtags",
     type: "text",
     x: 22,
-    y: 494,
+    y: 560,
     text: "#mirecuerdo #lucamsshop",
     fontFamily: "Inter",
     fontSize: 13,

@@ -89,16 +89,18 @@ export function StudioStyleToolbar({ store, frameOptions = [] }: StudioStyleTool
     };
   })();
 
-  // Rect "sin borde": la foto a sangre. Instagram conserva el chrome arriba/abajo.
+  // Rect "sin borde": la foto a sangre bajo todo el marco blanco de Instagram.
+  // El chrome (avatar, iconos, textos) sigue renderizándose encima del SVG.
   const fullBleedRect = (() => {
     if (isIg) {
       const base = { width: 450, height: 600 };
       const scale = stageW / base.width;
+      const inset = Math.round(8 * scale);
       return {
-        x: 0,
-        y: Math.round(72 * scale),
-        width: stageW,
-        height: Math.round(346 * scale),
+        x: inset,
+        y: inset,
+        width: stageW - 2 * inset,
+        height: stageH - 2 * inset,
       };
     }
     return { x: 0, y: 0, width: stageW, height: stageH };

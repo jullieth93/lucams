@@ -84,6 +84,25 @@ import type { Magnet3D } from "./fridge-3d-view";
 const COVER_COLOR = "#8B5E3C"; // tapa de cuero/cartón cálido
 const SPINE_COLOR = "#7C5334";
 
+function separatorSlotsForCount(count: number): { x: number; yaw: number }[] {
+  if (count <= 0) return [];
+  if (count === 1) return [{ x: 0, yaw: 0 }];
+  if (count === 2) {
+    return [
+      { x: SEPARATOR_SLOTS[0]!.x * 0.55, yaw: SEPARATOR_SLOTS[0]!.yaw },
+      { x: SEPARATOR_SLOTS[2]!.x * 0.55, yaw: SEPARATOR_SLOTS[2]!.yaw },
+    ];
+  }
+  if (count === 3) return SEPARATOR_SLOTS.slice();
+  // >3: distribuir uniformemente en el mismo tramo, manteniendo yaws sutiles.
+  const minX = SEPARATOR_SLOTS[0]!.x;
+  const maxX = SEPARATOR_SLOTS[2]!.x;
+  return Array.from({ length: count }, (_, i) => ({
+    x: minX + ((maxX - minX) * i) / (count - 1),
+    yaw: (i % 2 === 0 ? 1 : -1) * 0.05,
+  }));
+}
+
 /**
  * 3 separadores doblados sobre el BORDE SUPERIOR de las páginas (z = −PAGE_D/2), repartidos a
  * lo ancho a distintas alturas (el camber eleva el borde hacia el lomo) y con giros naturales.
@@ -92,6 +111,8 @@ const SPINE_COLOR = "#7C5334";
  * La colocación física (tilt, altura del pliegue, recosto de la trasera) sale de
  * separatorPlacement — la cara frontal reposa sobre la hoja y la trasera cuelga libre o se
  * recuesta sobre la mesa sin atravesarla.
+ * Ola 16: renderizamos UNA instancia por unidad real del cliente, nunca repitiendo para llenar
+ * 3 slots. Si hay 1 separador se ve 1; si hay 3, se ven 3 posicionados como la foto de referencia.
  */
 function Separators({
   items,
@@ -104,13 +125,14 @@ function Separators({
 }) {
   const layout = useMemo(() => {
     const units = bookmarkFaceUnits(items, facesPerUnit, sizeCm);
-    const at = (i: number) => units[((i % units.length) + units.length) % units.length]!;
-    return SEPARATOR_SLOTS.map(({ x, yaw }, i) => {
-      const unit = at(i);
-      const { stripW, stripL } = stripDimsForFace(unit.front, sizeCm);
-      const p = separatorPlacement(x, stripL);
-      return { unit, stripW, stripL, x, yaw, p, i };
-    })
+    const slots = separatorSlotsForCount(units.length);
+    return slots
+      .map(({ x, yaw }, i) => {
+        const unit = units[i]!;
+        const { stripW, stripL } = stripDimsForFace(unit.front, sizeCm);
+        const p = separatorPlacement(x, stripL);
+        return { unit, stripW, stripL, x, yaw, p, i };
+      })
       .filter(
         // Cuelga libre, o recostada dentro del límite — nunca atravesar la mesa.
         ({ p }) => p.backClearance > 0.015 || p.backLean <= MAX_BACK_LEAN,

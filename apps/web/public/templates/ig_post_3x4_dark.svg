@@ -3,6 +3,9 @@
     Marco "Polaroid Instagram" — variante para FONDO NEGRO.
     Misma geometría que ig_post_3x4.svg pero con el chrome en BLANCO para que se
     lea sobre el fondo oscuro. El corazón se mantiene rojo (#ED4956).
+
+    Zonas (coordenadas del stage 450×600):
+      · Ventana de foto (transparente): x=15 y=70 → 420×400.
   -->
 
   <defs>
@@ -25,23 +28,23 @@
   <rect x="0" y="0" width="450" height="600" rx="27" fill="url(#instaBorderDark)"/>
 
   <!-- Tarjeta negra interior -->
-  <rect x="4" y="4" width="442" height="592" rx="22" fill="#0F0F0F"/>
+  <rect x="8" y="8" width="434" height="584" rx="22" fill="#0F0F0F"/>
 
   <!-- CABECERA -->
   <g id="header">
-    <circle cx="38" cy="38" r="17.5" fill="none" stroke="url(#storyRingDark)" stroke-width="2.5"/>
-    <circle cx="38" cy="38" r="13.5" fill="#3A3A3A"/>
-    <circle cx="38" cy="34" r="4.5" fill="#6E6E6E"/>
-    <path d="M29 43.5 C29 39.8 33 38.5 38 38.5 C43 38.5 47 39.8 47 43.5" fill="#6E6E6E"/>
+    <circle cx="34" cy="34" r="20" fill="none" stroke="url(#storyRingDark)" stroke-width="2.5"/>
+    <circle cx="34" cy="34" r="16" fill="#3A3A3A"/>
+    <circle cx="34" cy="30" r="5" fill="#6E6E6E"/>
+    <path d="M24 41 C24 37 29 35 34 35 C39 35 44 37 44 41" fill="#6E6E6E"/>
 
     <!-- Menú de 3 puntos -->
-    <circle cx="410" cy="38" r="2" fill="#FFFFFF"/>
-    <circle cx="418" cy="38" r="2" fill="#FFFFFF"/>
-    <circle cx="426" cy="38" r="2" fill="#FFFFFF"/>
+    <circle cx="410" cy="34" r="2" fill="#FFFFFF"/>
+    <circle cx="418" cy="34" r="2" fill="#FFFFFF"/>
+    <circle cx="426" cy="34" r="2" fill="#FFFFFF"/>
   </g>
 
   <!-- ÍCONOS DE INTERACCIÓN -->
-  <g id="actions" transform="translate(22, 418)">
+  <g id="actions" transform="translate(22, 484)">
     <path d="M18,35 C18,35 0,20 0,11 C0,5 4.5,0 10.5,0 C14,0 16.5,2 18,5 C19.5,2 22,0 25.5,0 C31.5,0 36,5 36,11 C36,20 18,35 18,35 Z"
           transform="scale(0.78)" fill="#ED4956"/>
     <path d="M20,0 C9,0 0,7 0,16 C0,21 3,26 7,29 L4,36 L12,32 C14.5,33 17,33.5 20,33.5 C31,33.5 40,26 40,16 C40,7 31,0 20,0 Z"
@@ -53,5 +56,5 @@
   </g>
 
   <!-- Pie horneado -->
-  <text x="22" y="514" font-family="Arial, sans-serif" font-size="12" fill="#FFFFFF" opacity="0.65">Ver los 12 comentarios</text>
+  <text x="22" y="576" font-family="Arial, sans-serif" font-size="12" fill="#FFFFFF" opacity="0.65">Ver los 12 comentarios</text>
 </svg>
