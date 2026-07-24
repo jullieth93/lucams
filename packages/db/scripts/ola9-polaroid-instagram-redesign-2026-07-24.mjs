@@ -5,9 +5,10 @@
  *   - Borde degradado estilo Instagram y tarjeta blanca interior.
  *   - Cabecera más limpia (username y=28, location y=46).
  *   - Ventana de foto con marco blanco: x=29 y=58 392×392.
- *   - Pie re-espaciado: iconos de acción en y=458, likes y=492, caption y=510,
- *     hashtags y=528, comentarios horneados en y=548.
- *   - Sin timestamp "Hace 2 días".
+ *   - Área máxima foto a sangre (sin borde): x=15 y=58 420×400.
+ *   - Pie re-espaciado: iconos de acción en y=468, likes y=486, caption y=502,
+ *     hashtags y=518.
+ *   - Sin timestamp "Hace 2 días"; sin contador estático de comentarios.
  *
  * Solo toca el canvasData de la plantilla (capas text). Los drafts/cotizaciones
  * existentes conservan su snapshot propio.
@@ -53,7 +54,7 @@ const TEXT_LAYERS = [
     id: "likes_count",
     type: "text",
     x: 22,
-    y: 492,
+    y: 486,
     text: "362 me gusta",
     fontFamily: "Inter",
     fontSize: 15,
@@ -66,7 +67,7 @@ const TEXT_LAYERS = [
     id: "caption",
     type: "text",
     x: 22,
-    y: 510,
+    y: 502,
     text: "Tu título acá",
     fontFamily: "Inter",
     fontSize: 16,
@@ -79,7 +80,7 @@ const TEXT_LAYERS = [
     id: "hashtags",
     type: "text",
     x: 22,
-    y: 528,
+    y: 518,
     text: "#mirecuerdo #lucamsshop",
     fontFamily: "Inter",
     fontSize: 13,

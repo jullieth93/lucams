@@ -59,7 +59,7 @@ async function main() {
     description,
     personalizationKind: "PHOTO_PACK",
     // galleryTag: habilita la galería de diseños PREDISEÑADOS en el editor (Fase B2).
-    personalizationSchema: { allowText: false, photoSlots: 1, aspectRatio: "1:1", shape: "rectangle", galleryTag: "separadores" },
+    personalizationSchema: { allowText: false, photoSlots: 1, aspectRatio: "1:1", shape: "rectangle", galleryTag: "separadores", facesPerUnit: 2, cornerRadiusPx: 28 },
     physicalSpecs: basePhysicalSpecs,
     basePrice: 6000 * 100,
     cost: Math.round(6000 * 100 * 0.35),

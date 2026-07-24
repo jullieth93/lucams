@@ -199,7 +199,7 @@ export function StudioPhotoPreview({
   }, [onResetTransform]);
 
   return (
-    <div ref={containerRef} className="mx-auto w-full max-w-[420px]">
+    <div ref={containerRef} className="mx-auto w-full max-w-[520px]">
       <div
         className="ring-brand-purple/15 relative overflow-hidden rounded-lg shadow-md ring-1"
         style={{ width: displayWidth, height: displayHeight, touchAction: "none" }}

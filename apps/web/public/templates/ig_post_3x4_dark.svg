@@ -5,8 +5,9 @@
 
     Zonas (stage 450×600):
       · Ventana foto (con borde): x=29 y=58 → 392×392.
-      · Textos editables (Konva): username y=28, location y=46, likes y=492,
-        caption y=510, hashtags y=528.
+      · Área máxima foto a sangre (sin borde): x=15 y=58 → 420×400.
+      · Textos editables (Konva): username y=28, location y=46, likes y=486,
+        caption y=502, hashtags y=518.
   -->
 
   <defs>
@@ -24,16 +25,23 @@
       <stop offset="100%" stop-color="#7638FA"/>
     </linearGradient>
 
+    <!-- Máscara que perfora el centro del borde y tarjeta para que la foto del
+         cliente se vea. Agujero = área máxima de foto a sangre (sin borde). -->
+    <mask id="photoMaskDark">
+      <rect x="0" y="0" width="450" height="600" fill="white"/>
+      <rect x="15" y="58" width="420" height="400" rx="4" fill="black"/>
+    </mask>
+
     <clipPath id="cardMaskDark">
       <rect x="10" y="10" width="430" height="580" rx="22"/>
     </clipPath>
   </defs>
 
-  <!-- Borde degradado exterior -->
-  <rect x="0" y="0" width="450" height="600" rx="27" fill="url(#instaBorderDark)"/>
+  <!-- Borde degradado exterior — perforado en el centro -->
+  <rect x="0" y="0" width="450" height="600" rx="27" fill="url(#instaBorderDark)" mask="url(#photoMaskDark)"/>
 
-  <!-- Tarjeta negra interior -->
-  <rect x="10" y="10" width="430" height="580" rx="22" fill="#0F0F0F"/>
+  <!-- Tarjeta negra interior — perforada en el centro -->
+  <rect x="10" y="10" width="430" height="580" rx="22" fill="#0F0F0F" mask="url(#photoMaskDark)"/>
 
   <!-- Marco sutil alrededor de la foto -->
   <rect x="29" y="58" width="392" height="392" rx="4" fill="none" stroke="#2A2A2A" stroke-width="1"/>
@@ -52,7 +60,7 @@
   </g>
 
   <!-- ÍCONOS DE ACCIÓN -->
-  <g id="actions" transform="translate(22, 458)">
+  <g id="actions" transform="translate(22, 468)">
     <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"
           transform="scale(1.17)" fill="#ED4956"/>
     <path d="M21.99 4c0-1.1-.89-2-1.99-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h14l4 4-.01-18z"
@@ -62,7 +70,4 @@
     <path d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z"
           transform="translate(372, 0) scale(1.17)" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linejoin="round"/>
   </g>
-
-  <!-- Pie estático -->
-  <text x="22" y="548" font-family="Arial, sans-serif" font-size="12" fill="#FFFFFF" opacity="0.65">Ver los 12 comentarios</text>
 </svg>

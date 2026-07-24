@@ -91,7 +91,7 @@ export function StudioStyleToolbar({ store, frameOptions = [] }: StudioStyleTool
 
   // Rect "sin borde": la foto a sangre bajo el marco blanco de Instagram.
   // Deja el header y el footer del chrome (SVG) visibles, y expande la foto solo
-  // en la ventana central de la tarjeta (x=15 y=58 w=420 h=412 en el stage 450×600).
+  // en la ventana central de la tarjeta (x=15 y=58 w=420 h=400 en el stage 450×600).
   const fullBleedRect = (() => {
     if (isIg) {
       const base = { width: 450, height: 600 };
@@ -100,16 +100,21 @@ export function StudioStyleToolbar({ store, frameOptions = [] }: StudioStyleTool
         x: Math.round(15 * scale),
         y: Math.round(58 * scale),
         width: Math.round(420 * scale),
-        height: Math.round(412 * scale),
+        height: Math.round(400 * scale),
       };
     }
     return { x: 0, y: 0, width: stageW, height: stageH };
   })();
 
   const photoPlaceholder = unitTemplate.layers.find((l) => l.type === "image-placeholder") as
-    | { width?: number }
+    | { x?: number; y?: number; width?: number; height?: number }
     | undefined;
-  const isFullBleed = !!photoPlaceholder && (photoPlaceholder.width ?? 0) >= stageW - 1;
+  const isFullBleed = !!photoPlaceholder && !!baseRect && (
+    (photoPlaceholder.x ?? 0) !== baseRect.x ||
+    (photoPlaceholder.y ?? 0) !== baseRect.y ||
+    (photoPlaceholder.width ?? 0) !== baseRect.width ||
+    (photoPlaceholder.height ?? 0) !== baseRect.height
+  );
 
   // Paleta efectiva: Instagram solo blanco/negro; el resto todas las opciones válidas.
   const frameColors = (frameOptions ?? [])

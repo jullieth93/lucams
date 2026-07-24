@@ -36,17 +36,17 @@ function drawBow(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: numbe
   ctx.moveTo(cx, cy);
   ctx.bezierCurveTo(cx + r * 1.6, cy - r, cx + r * 1.6, cy + r, cx, cy);
   ctx.fill();
-  // Colas
+  // Colas más cortas para que el moño no se sienta desbordado.
   ctx.beginPath();
   ctx.moveTo(cx - r * 0.3, cy);
-  ctx.lineTo(cx - r * 0.9, cy + r * 1.9);
-  ctx.lineTo(cx - r * 0.1, cy + r * 1.4);
+  ctx.lineTo(cx - r * 0.7, cy + r * 1.4);
+  ctx.lineTo(cx - r * 0.1, cy + r * 1.1);
   ctx.closePath();
   ctx.fill();
   ctx.beginPath();
   ctx.moveTo(cx + r * 0.3, cy);
-  ctx.lineTo(cx + r * 0.9, cy + r * 1.9);
-  ctx.lineTo(cx + r * 0.1, cy + r * 1.4);
+  ctx.lineTo(cx + r * 0.7, cy + r * 1.4);
+  ctx.lineTo(cx + r * 0.1, cy + r * 1.1);
   ctx.closePath();
   ctx.fill();
   // Nudo
@@ -106,15 +106,15 @@ export async function composeGiftFlatlay(pieces: Piece[]): Promise<string> {
   ctx.fillStyle = bg;
   ctx.fillRect(0, 0, S, S);
 
-  // Cinta diagonal más delgada y centrada, para no desbordar la esquina.
+  // Cinta diagonal más contenida, más cerca del centro para no cortar las esquinas.
   ctx.save();
   ctx.fillStyle = "rgba(93, 217, 209, 0.85)"; // turquesa de marca
-  ctx.translate(S * 0.22, S * 0.22);
+  ctx.translate(S * 0.25, S * 0.25);
   ctx.rotate(-Math.PI / 4);
-  ctx.fillRect(-S, -36, S * 2, 28);
-  ctx.fillRect(-S, 16, S * 2, 28);
+  ctx.fillRect(-S, -32, S * 2, 28);
+  ctx.fillRect(-S, 12, S * 2, 28);
   ctx.restore();
-  drawBow(ctx, S * 0.22, S * 0.22, 30, "#5DD9D1");
+  drawBow(ctx, S * 0.25, S * 0.25, 26, "#5DD9D1");
 
   // Pieza(s): 1 grande centrada; varias en fila. Sombra suave para "posarlas" sobre el papel.
   // Ola 15 — reducimos el área para dejar márgenes generosos y evitar que la pieza o
@@ -153,38 +153,38 @@ export async function composeGiftFlatlay(pieces: Piece[]): Promise<string> {
 
   // Etiqueta de regalo "Para ti" con cordón (abajo, centrada y sin tocar bordes).
   ctx.save();
-  ctx.translate(S * 0.5, S * 0.74);
+  ctx.translate(S * 0.5, S * 0.76);
   ctx.rotate(-0.08);
   // cordón
   ctx.strokeStyle = "#B79A78";
   ctx.lineWidth = 3;
   ctx.beginPath();
-  ctx.moveTo(-40, -70);
+  ctx.moveTo(-36, -58);
   ctx.lineTo(6, -6);
   ctx.stroke();
   // tarjeta
   ctx.fillStyle = "#FFFDF9";
   ctx.strokeStyle = "#E0CDB0";
   ctx.lineWidth = 2;
-  const tw = 190;
-  const th = 96;
+  const tw = 170;
+  const th = 86;
   ctx.beginPath();
   ctx.roundRect(-tw / 2, 0, tw, th, 12);
   ctx.fill();
   ctx.stroke();
   // agujerito del cordón
   ctx.beginPath();
-  ctx.arc(6, 12, 5, 0, Math.PI * 2);
+  ctx.arc(6, 10, 5, 0, Math.PI * 2);
   ctx.strokeStyle = "#C9B18E";
   ctx.stroke();
   // texto
   ctx.fillStyle = "#7C6AAD";
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
-  ctx.font = '700 34px "Fredoka", system-ui, sans-serif';
+  ctx.font = '700 30px "Fredoka", system-ui, sans-serif';
   ctx.fillText("Para ti", 0, th / 2 - 6);
-  ctx.font = "26px system-ui, sans-serif";
-  ctx.fillText("🎁", 0, th / 2 + 26);
+  ctx.font = "22px system-ui, sans-serif";
+  ctx.fillText("🎁", 0, th / 2 + 20);
   ctx.restore();
 
   return canvas.toDataURL("image/png");

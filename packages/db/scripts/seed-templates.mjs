@@ -319,7 +319,7 @@ const templatesData = [
         text({
           id: "likes_count",
           x: 22,
-          y: 492,
+          y: 486,
           text: "362 me gusta",
           fontFamily: "Inter",
           fontSize: 15,
@@ -331,7 +331,7 @@ const templatesData = [
         text({
           id: "caption",
           x: 22,
-          y: 510,
+          y: 502,
           text: "Tu título acá",
           fontFamily: "Inter",
           fontSize: 16,
@@ -343,7 +343,7 @@ const templatesData = [
         text({
           id: "hashtags",
           x: 22,
-          y: 528,
+          y: 518,
           text: "#mirecuerdo #lucamsshop",
           fontFamily: "Inter",
           fontSize: 13,
