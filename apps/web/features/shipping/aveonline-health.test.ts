@@ -50,6 +50,9 @@ beforeEach(() => {
   vi.stubEnv("AVEONLINE_ENV", "");
   vi.stubEnv("AVEONLINE_USUARIO", "");
   vi.stubEnv("AVEONLINE_CLAVE", "");
+  vi.stubEnv("AVEONLINE_DEMO_USUARIO", "");
+  vi.stubEnv("AVEONLINE_DEMO_CLAVE", "");
+  vi.stubEnv("AVEONLINE_DEMO_IDEMPRESA", "");
 });
 
 afterEach(() => {
@@ -59,6 +62,9 @@ afterEach(() => {
 
 describe("probeAveonlineHealth", () => {
   it("modo test contra la cuenta demo: ok, y lo declara como demo", async () => {
+    vi.stubEnv("AVEONLINE_DEMO_USUARIO", "demointegracion");
+    vi.stubEnv("AVEONLINE_DEMO_CLAVE", "demointegra2021");
+    vi.stubEnv("AVEONLINE_DEMO_IDEMPRESA", "15289");
     vi.stubGlobal("fetch", mockAuthOk(15289));
     const probe = await loadFresh();
 

@@ -17,6 +17,7 @@ export default defineConfig({
   test: {
     environment: "node",
     globals: false,
+    setupFiles: ["./tests/setup-env.ts"],
     // Retry para flakes TRANSITORIOS de infraestructura: los tests de integración
     // pegan al pooler de Supabase (pgbouncer :6543), que bajo concurrencia
     // ocasionalmente rechaza/cae una conexión ("Can't reach database server").

@@ -25,7 +25,6 @@ import {
   isInstagramTemplate,
 } from "@/features/personalization/frame-palette";
 import type { StudioStoreState } from "./lib/store";
-import type { FrameColor } from "@/features/personalization/frame-palette";
 
 const LIGHT_HEXES = new Set(["#FFFFFF", "#FFD93D"]);
 

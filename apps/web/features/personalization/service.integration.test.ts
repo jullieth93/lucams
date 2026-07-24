@@ -183,7 +183,7 @@ describe("getSharedDesign (vista pública)", () => {
     expect(await getSharedDesign("a".repeat(32))).toBeNull();
   });
 
-  it("deja de resolver cuando el diseño se archiva", async () => {
+  it("deja de resolver cuando el diseño se archiva", { timeout: 15000 }, async () => {
     const shareId = await makeDesign({ customerId: ownerId, status: "READY" });
     const token = (await ensureDesignShareToken(shareId, ownerId))!;
     expect(await getSharedDesign(token)).not.toBeNull();

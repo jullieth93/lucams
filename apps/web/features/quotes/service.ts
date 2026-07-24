@@ -162,7 +162,6 @@ export async function getQuoteByToken(token: string) {
     select: {
       id: true,
       number: true,
-      publicAccessToken: true,
       status: true,
       customerName: true,
       city: true,

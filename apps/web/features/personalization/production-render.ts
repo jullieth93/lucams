@@ -17,7 +17,7 @@
  */
 
 import "server-only";
-import sharp from "sharp";
+import sharp, { OverlayOptions } from "sharp";
 import type { PhotoFilterPreset } from "@/app/estudio/[slug]/types";
 
 /** Escala de salida = pixelRatio del cliente (stage.toDataURL({pixelRatio:3})) → paridad de px. */
@@ -207,7 +207,7 @@ async function renderSlot(
 
   // Intersección imagen ∩ placeholder (clip). Vacía = el usuario movió la foto fuera del slot
   // (zoom-out/drag extremo) → solo fondo, que es EXACTO lo que vio en el preview (WYSIWYG).
-  const composites: sharp.OverlayOptions[] = [];
+  const composites: OverlayOptions[] = [];
   const left = Math.max(PX, IX);
   const top = Math.max(PY, IY);
   const right = Math.min(PX + PW, IX + IW);

@@ -135,11 +135,23 @@ export function buildCotizarProductos(items: ShipmentItem[]) {
  * idempresa = 15289 (Demo - Integracion, servicio AVEONLINE COURIER).
  * 7 transportadoras habilitadas: 99MINUTOS, COORDINADORA MERCANTIL, ENVIA,
  * GO ENVIOS, INTERRAPIDISIMO, SERVIENTREGA, TCC SA.
+ *
+ * NOTA DE SEGURIDAD: los valores concretos viven en variables de entorno
+ * (AVEONLINE_DEMO_USUARIO / AVEONLINE_DEMO_CLAVE) para no quedar hardcodeados
+ * en el repositorio. En `.env.example` se documentan los valores públicos de
+ * Aveonline; en producción real deben rotarse por las credenciales de Lucams.
  */
-const DEMO_CREDENTIALS = {
-  usuario: "demointegracion",
-  clave: "demointegra2021",
-} as const;
+function getDemoCredentials(): { usuario: string; clave: string } {
+  const usuario = process.env.AVEONLINE_DEMO_USUARIO ?? "";
+  const clave = process.env.AVEONLINE_DEMO_CLAVE ?? "";
+  if (!usuario || !clave) {
+    throw new Error(
+      "AVEONLINE_DEMO_USUARIO + AVEONLINE_DEMO_CLAVE no configurados. " +
+        "Revisa .env.example y configura las credenciales demo de Aveonline.",
+    );
+  }
+  return { usuario, clave };
+}
 
 /**
  * Determina si estamos en modo prueba según `AVEONLINE_ENV`.
@@ -480,16 +492,17 @@ async function getAuthToken(): Promise<{ token: string; idempresa: number }> {
     return { token: tokenCache.token, idempresa: tokenCache.idempresa };
   }
 
-  // En modo test usa la cuenta demo pública (sin requerir env vars).
+  // En modo test usa la cuenta demo pública desde env vars.
   // En production usa AVEONLINE_USUARIO + AVEONLINE_CLAVE del .env.
   const isProd = isProductionEnv();
-  const usuario = isProd ? process.env.AVEONLINE_USUARIO : DEMO_CREDENTIALS.usuario;
-  const clave = isProd ? process.env.AVEONLINE_CLAVE : DEMO_CREDENTIALS.clave;
+  const { usuario, clave } = isProd
+    ? { usuario: process.env.AVEONLINE_USUARIO, clave: process.env.AVEONLINE_CLAVE }
+    : getDemoCredentials();
   if (!usuario || !clave) {
     throw new Error(
       isProd
         ? "AVEONLINE_USUARIO + AVEONLINE_CLAVE no configurados (modo production). Ver ADR-039 + .env.example."
-        : "Aveonline modo test: credenciales demo no disponibles (revisar DEMO_CREDENTIALS hardcoded).",
+        : "AVEONLINE_DEMO_USUARIO + AVEONLINE_DEMO_CLAVE no configurados (modo test). Ver .env.example.",
     );
   }
 
@@ -538,8 +551,9 @@ async function getAuthToken(): Promise<{ token: string; idempresa: number }> {
   return { token: data.token, idempresa };
 }
 
-/** `idempresa` de la cuenta DEMO pública. Ver DEMO_CREDENTIALS. */
-export const AVEONLINE_DEMO_IDEMPRESA = 15289;
+/** `idempresa` de la cuenta DEMO pública. Valor por defecto 15289; se puede
+ *  sobreescribir con `AVEONLINE_DEMO_IDEMPRESA` para staging/tests. */
+export const AVEONLINE_DEMO_IDEMPRESA = Number(process.env.AVEONLINE_DEMO_IDEMPRESA || 15289);
 
 export type AveonlineHealth = {
   /** Modo declarado por AVEONLINE_ENV. En `test` NO se generan guías reales. */
@@ -755,10 +769,11 @@ export class AveonlineProvider implements ShippingProvider {
     // Mismo endpoint que cotización pero tipo="generarGuia2".
     // idtransportador viene del quoteId que cotización devolvió como codTransportadora.
     const { token, idempresa } = await getAuthToken();
-    // En modo test usa creds demo, en prod usa env vars.
+    // En modo test usa creds demo desde env vars, en prod usa env vars.
     const isProd = isProductionEnv();
-    const usuario = isProd ? process.env.AVEONLINE_USUARIO! : DEMO_CREDENTIALS.usuario;
-    const clave = isProd ? process.env.AVEONLINE_CLAVE! : DEMO_CREDENTIALS.clave;
+    const { usuario, clave } = isProd
+      ? { usuario: process.env.AVEONLINE_USUARIO!, clave: process.env.AVEONLINE_CLAVE! }
+      : getDemoCredentials();
 
     // Resolver idtransportador: si caller pasó quoteId (del flow inmediato
     // post-checkout) lo usamos; sino lo derivamos del carrier name via

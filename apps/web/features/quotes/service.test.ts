@@ -15,7 +15,7 @@
  * ejercita la plantilla hardcoded real).
  */
 
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeAll, afterAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Bordes mockeados: el service importa prisma/cart/orders pero estos tests
 // solo ejercitan las partes puras (number, wa url, schema).
@@ -91,6 +91,13 @@ const QUOTE = {
 };
 
 describe("buildQuoteWhatsAppUrl", () => {
+  beforeAll(() => {
+    vi.stubEnv("NEXT_PUBLIC_SITE_URL", "https://lucamsshop.com");
+  });
+  afterAll(() => {
+    vi.unstubAllEnvs();
+  });
+
   it("arma el wa.me con número, items con cantidades, total COP y nombre (plantilla fallback)", async () => {
     process.env.NEXT_PUBLIC_WA_NUMBER = "573001234567";
     const url = await buildQuoteWhatsAppUrl(QUOTE);

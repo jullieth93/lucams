@@ -18,7 +18,7 @@
  */
 
 import "server-only";
-import sharp from "sharp";
+import sharp, { OverlayOptions } from "sharp";
 
 export type ComposeFaceStripsOptions = {
   /**
@@ -68,7 +68,7 @@ export async function composeFaceStrips(
         : await sharp(faceB, { failOn: "none" }).resize(w, h, { fit: "fill" }).png().toBuffer();
 
     const stripW = w * 2;
-    const composites: sharp.OverlayOptions[] = [
+    const composites: OverlayOptions[] = [
       { input: faceA, left: 0, top: 0 },
       { input: bBuffer, left: w, top: 0 },
     ];
