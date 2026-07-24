@@ -110,10 +110,10 @@ type StudioCanvasGridProps = {
    */
   interactiveSlots?: boolean;
   onSlotClick: (slotIndex: number) => void;
-  /** M.3.b.B.3 — abrir modal ajustar foto (filtros) para un slot lleno. */
-  onSlotAdjust?: (slotIndex: number) => void;
-  /** M.3.b.D — abrir editor de texto inline al click sobre text layer editable. */
-  onTextEdit?: (slotIndex: number, textLayerId: string) => void;
+  /** Ola 8 — Abre el modal unificado de edición para el slot indicado (desde clic en slot lleno). */
+  openEditSlot?: { slotIndex: number; tab: "photo" | "text" } | null;
+  /** Ola 8 — Callback cuando el modal unificado se cierra. */
+  onEditClose?: () => void;
   registerSlotStages: (stages: Map<number, Konva.Stage | null>) => void;
   /** ADR-063 T5 — forzar el montaje de TODOS los slots (antes de snapshot/preview/3D). */
   forceMountAll?: boolean;
@@ -134,10 +134,8 @@ export function StudioCanvasGrid({
   facesPerUnit = 1,
   interactiveSlots = true,
   onSlotClick,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  onSlotAdjust,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  onTextEdit,
+  openEditSlot,
+  onEditClose,
   registerSlotStages,
   forceMountAll = false,
 }: StudioCanvasGridProps) {
@@ -155,6 +153,26 @@ export function StudioCanvasGrid({
     tab: "photo" | "text";
     focusTextLayerId?: string;
   } | null>(null);
+
+  // Ola 8 — cuando el padre pide abrir el editor unificado (ej. clic en slot lleno),
+  // reflejamos la petición en el estado local y limpiamos el callback del padre.
+  const editRequestRef = useRef(openEditSlot);
+  useEffect(() => {
+    const prev = editRequestRef.current;
+    editRequestRef.current = openEditSlot;
+    if (
+      openEditSlot &&
+      (!prev ||
+        prev.slotIndex !== openEditSlot.slotIndex ||
+        prev.tab !== openEditSlot.tab)
+    ) {
+      setEditModal({
+        slotIndex: openEditSlot.slotIndex,
+        tab: openEditSlot.tab,
+      });
+      onEditClose?.();
+    }
+  }, [openEditSlot, onEditClose]);
 
   // Selectores zustand: solo re-render al cambiar slices específicos.
   const canvasData = useStore(store, (s) => s.canvasData);
@@ -529,7 +547,10 @@ export function StudioCanvasGrid({
       <StudioSlotEditModalWrapper
         store={store}
         editModal={editModal}
-        onClose={() => setEditModal(null)}
+        onClose={() => {
+          setEditModal(null);
+          onEditClose?.();
+        }}
         allowFilters={!calendarPreview}
         slotLabels={slotLabels}
       />

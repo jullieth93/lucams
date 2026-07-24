@@ -354,7 +354,7 @@ export function SceneGallery({
             <p className="text-brand-cream/70 text-xs">Prueba otra escena o vuelve al editor.</p>
           </div>
         ) : flatUrl ? (
-          <div className="flex h-full items-center justify-center p-4">
+          <div className="absolute inset-0 flex items-center justify-center overflow-hidden p-4 sm:p-6">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={flatUrl}
@@ -363,7 +363,7 @@ export function SceneGallery({
                   ? "Tu diseño presentado como un regalo"
                   : "Tu diseño en una repisa"
               }
-              className="max-h-full max-w-full rounded-2xl object-contain shadow-2xl"
+              className="max-h-[calc(100%-2rem)] max-w-[calc(100%-2rem)] rounded-2xl object-contain shadow-2xl"
             />
           </div>
         ) : null}

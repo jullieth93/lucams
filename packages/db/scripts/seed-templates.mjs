@@ -295,6 +295,7 @@ const templatesData = [
         }),
         // 4 textos EDITABLES (Konva) — el marco SVG ya NO los hornea (evita doble-texto). Ubicados
         // en el chrome del marco: usuario en la cabecera, likes/título/hashtags bajo la foto.
+        // Ola 8: más aire entre líneas para que se lea como un post real y no se vea amontonado.
         text({
           id: "user_name",
           x: 68,
@@ -310,7 +311,7 @@ const templatesData = [
         text({
           id: "likes_count",
           x: 28,
-          y: 492,
+          y: 500,
           text: "362 me gusta",
           fontFamily: "Inter",
           fontSize: 17,
@@ -322,7 +323,7 @@ const templatesData = [
         text({
           id: "caption",
           x: 25,
-          y: 510,
+          y: 524,
           text: "Tu título acá",
           fontFamily: "Inter",
           fontSize: 19,
@@ -334,7 +335,7 @@ const templatesData = [
         text({
           id: "hashtags",
           x: 25,
-          y: 531,
+          y: 548,
           text: "#mirecuerdo #lucamsshop",
           fontFamily: "Inter",
           fontSize: 13,

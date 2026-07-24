@@ -22,6 +22,7 @@ import { Button } from "@/components/ui/button";
 import { ImageIcon, Type, ChevronLeft } from "lucide-react";
 import { StudioPhotoAdjustForm } from "./studio-photo-adjust-modal";
 import { StudioTextEditorForm } from "./studio-text-editor-modal";
+import { useIsTouch } from "./use-is-touch";
 import type { PhotoFilterPreset, TextLayer, TextOverride } from "./types";
 
 type StudioSlotEditModalProps = {
@@ -71,6 +72,7 @@ export function StudioSlotEditModal({
   // Tab activa: Foto por default si hay foto; si no, Texto (si aplica).
   const defaultTab = hasPhoto ? "photo" : "text";
   const [activeTab, setActiveTab] = useState(defaultTab);
+  const isTouch = useIsTouch();
 
   const title = slotLabel
     ? `Editar ${slotLabel}`
@@ -133,6 +135,7 @@ export function StudioSlotEditModal({
                   onNudge={onNudge}
                   onRotate={onRotate}
                   allowFilters={allowFilters}
+                  showZoomSlider={isTouch}
                 />
               )}
             </TabsContent>

@@ -70,6 +70,8 @@ export type StudioPhotoAdjustFormProps = {
   onNudge: (dx: number, dy: number) => void;
   onRotate?: () => void;
   allowFilters?: boolean;
+  /** Ola 8 — false oculta el slider de zoom (desktop: scroll/pellizco; móvil: slider). Default true. */
+  showZoomSlider?: boolean;
 };
 
 // CSS filter equivalents para preview (no idéntico a Konva, suficiente para
@@ -158,6 +160,7 @@ export function StudioPhotoAdjustForm({
   onNudge,
   onRotate,
   allowFilters = true,
+  showZoomSlider = true,
 }: StudioPhotoAdjustFormProps) {
   // #18 — paso de desplazamiento por pulsación (px del stage), y % de zoom actual.
   const NUDGE = 12;
@@ -200,29 +203,32 @@ export function StudioPhotoAdjustForm({
         )}
       </div>
 
-      {/* #18 — encuadre accesible: zoom por slider + cruceta de 4 flechas (equivalente de teclado
-        a los gestos de pan/zoom). Aplica también a calendarios (el encuadre sí se propaga). */}
+      {/* #18 — encuadre accesible: en desktop se usa scroll/pellizco sobre el slot; en móvil
+        se ofrece el slider + cruceta de 4 flechas (equivalente de teclado a los gestos de pan/zoom).
+        Aplica también a calendarios (el encuadre sí se propaga). */}
       <div className="border-brand-purple/10 flex flex-wrap items-end gap-x-6 gap-y-3 rounded-lg border p-3">
-        <div className="flex-1">
-          <label
-            htmlFor="pa-zoom"
-            className="text-brand-purple-dark mb-1 block text-xs font-semibold"
-          >
-            Zoom: {zoomPct}%
-          </label>
-          <input
-            id="pa-zoom"
-            type="range"
-            min={50}
-            max={300}
-            step={5}
-            value={zoomPct}
-            onChange={(e) => onZoomChange(Number(e.target.value))}
-            aria-label={`Zoom ${zoomPct} por ciento`}
-            aria-valuetext={`${zoomPct}%`}
-            className="accent-brand-purple w-full"
-          />
-        </div>
+        {showZoomSlider && (
+          <div className="flex-1">
+            <label
+              htmlFor="pa-zoom"
+              className="text-brand-purple-dark mb-1 block text-xs font-semibold"
+            >
+              Zoom: {zoomPct}%
+            </label>
+            <input
+              id="pa-zoom"
+              type="range"
+              min={50}
+              max={300}
+              step={5}
+              value={zoomPct}
+              onChange={(e) => onZoomChange(Number(e.target.value))}
+              aria-label={`Zoom ${zoomPct} por ciento`}
+              aria-valuetext={`${zoomPct}%`}
+              className="accent-brand-purple w-full"
+            />
+          </div>
+        )}
 
         <div className="flex flex-col items-center">
           <span className="text-brand-purple-dark mb-1 text-xs font-semibold">Mover</span>

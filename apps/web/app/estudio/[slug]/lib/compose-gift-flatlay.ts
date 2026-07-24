@@ -87,17 +87,17 @@ export async function composeGiftFlatlay(pieces: Piece[]): Promise<string> {
   const imgs = await Promise.all(
     pieces.slice(0, n).map((p) => loadImg(p.dataUrl).catch(() => null)),
   );
-  const areaW = S * 0.62;
-  const cellW = n === 1 ? areaW : (S * 0.72) / n;
+  const areaW = S * 0.48;
+  const cellW = n === 1 ? areaW : (S * 0.62) / n;
 
   for (let i = 0; i < n; i++) {
     const img = imgs[i];
     const p = pieces[i]!;
     if (!img) continue;
     const aspect = p.hRatio / p.wRatio;
-    let w = n === 1 ? areaW : cellW * 0.92;
+    let w = n === 1 ? areaW : cellW * 0.9;
     let h = w * aspect;
-    const maxH = S * 0.6;
+    const maxH = S * 0.5;
     if (h > maxH) {
       h = maxH;
       w = h / aspect;

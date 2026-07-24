@@ -40,10 +40,7 @@ import { StudioToolbar, StudioFinalizeFab } from "./studio-toolbar";
 import { StudioOnboarding } from "./studio-onboarding";
 import { StudioGesturesHint, GESTURES_HINT_STORAGE_KEY } from "./studio-gestures-hint";
 import { StudioAssetPickerModal } from "./studio-asset-picker-modal";
-import { StudioPhotoAdjustModal } from "./studio-photo-adjust-modal";
-import { StudioSlotFocus } from "./studio-slot-focus";
 import { StudioPreviewModal } from "./studio-preview-modal";
-import { StudioTextEditorModal } from "./studio-text-editor-modal";
 import {
   Sheet,
   SheetClose,
@@ -153,10 +150,12 @@ export function StudioEditor({
   const router = useRouter();
   const store = useMemo(() => createStudioStore(), []);
   const [pickerSlotIndex, setPickerSlotIndex] = useState<number | null>(null);
-  // M.3.b.B.3 — Slot index del modal de ajustar foto (filtros).
-  const [adjustSlotIndex, setAdjustSlotIndex] = useState<number | null>(null);
-  // FB4 — slot abierto en el editor a pantalla completa (solo táctil: ahí se hace pan/zoom + filtros).
-  const [focusSlotIndex, setFocusSlotIndex] = useState<number | null>(null);
+  // Ola 8 — Modal unificado de edición por slot (tabs Foto/Texto). Se abre desde el
+  // clic en un slot lleno o desde el botón lápiz de la action bar del slot.
+  const [openEditSlot, setOpenEditSlot] = useState<{
+    slotIndex: number;
+    tab: "photo" | "text";
+  } | null>(null);
   // M.3.b.UX.v12 (Lucy 2026-05-15) — Banner de gestos: open controlado +
   // flag persistent (no auto-dismiss cuando se abre manualmente con "?").
   const [gesturesHintOpen, setGesturesHintOpen] = useState(false);
@@ -178,11 +177,6 @@ export function StudioEditor({
   const showRealismGuides = false;
   // A2.8 — Sheet drawer mobile state (sidebar bottom slide-up).
   const [mobileSheetOpen, setMobileSheetOpen] = useState(false);
-  // M.3.b.D — Text editor inline state: { slotIndex, textLayerId } o null
-  const [textEditTarget, setTextEditTarget] = useState<{
-    slotIndex: number;
-    textLayerId: string;
-  } | null>(null);
   const slotStagesRef = useRef<Map<number, Konva.Stage | null>>(new Map());
   // ADR-063 T5 — cuando hay muchos slots, el grid monta solo los cercanos al viewport (lazy). Antes
   // de CUALQUIER snapshot (preview, producción, 3D) forzamos el montaje de todos y esperamos a que
@@ -438,23 +432,18 @@ export function StudioEditor({
     };
   }, [store]);
 
-  // ──────────── Click slot → abrir asset picker ────────────
+  // ──────────── Click slot → picker si está vacío, editor unificado si está lleno ────────────
   const handleSlotClick = useCallback(
     (slotIndex: number) => {
-      // FB4 — en táctil, tocar un slot YA LLENO abre el editor a pantalla completa (pan/zoom/filtros),
-      // no el picker; un slot vacío siempre abre el picker para subir la foto. En desktop, tocar abre
-      // el picker como siempre (el pan/zoom es inline con el mouse).
       const filled = !!store.getState().canvasData?.slots?.find((s) => s.slotIndex === slotIndex)
         ?.assetUrl;
-      // Exclusión mutua de paneles (bug Lucy 2026-07-22): abrir un panel cierra los otros
-      // — nunca dos encimados (antes el panel de ajuste, NO-modal por diseño, podía
-      // coexistir con "Editar texto" o con el picker).
-      setAdjustSlotIndex(null);
-      setTextEditTarget(null);
-      if (isTouch && filled) setFocusSlotIndex(slotIndex);
-      else setPickerSlotIndex(slotIndex);
+      if (filled) {
+        setOpenEditSlot({ slotIndex, tab: "photo" });
+      } else {
+        setPickerSlotIndex(slotIndex);
+      }
     },
-    [isTouch, store],
+    [store],
   );
 
   const handleAssetSelected = useCallback(
@@ -956,19 +945,8 @@ export function StudioEditor({
             facesPerUnit={facesPerUnit}
             interactiveSlots={!isTouch}
             onSlotClick={handleSlotClick}
-            onSlotAdjust={(slotIndex) => {
-              // Exclusión mutua de paneles: abrir el ajuste cierra "Editar texto".
-              setTextEditTarget(null);
-              if (isTouch) setFocusSlotIndex(slotIndex);
-              else setAdjustSlotIndex(slotIndex);
-            }}
-            onTextEdit={(slotIndex, textLayerId) => {
-              // Exclusión mutua de paneles: "Editar texto" cierra el ajuste (desktop)
-              // y el editor a pantalla completa (táctil) si estaban abiertos.
-              setAdjustSlotIndex(null);
-              setFocusSlotIndex(null);
-              setTextEditTarget({ slotIndex, textLayerId });
-            }}
+            openEditSlot={openEditSlot}
+            onEditClose={() => setOpenEditSlot(null)}
             registerSlotStages={(stages) => {
               slotStagesRef.current = stages;
             }}
@@ -1149,41 +1127,6 @@ export function StudioEditor({
         onAssetUploaded={handleAssetUploaded}
       />
 
-      {/* M.3.b.B.3 — Modal de ajustar foto (encuadre + filtros). H4: en calendarios se oculta la
-          sección de filtros (no llegan al PNG del calendario → romperían WYSIWYG); el encuadre sí.
-          Ola 3c — Rotar igual se apaga en calendarios (el compositor de página no lo replica). */}
-      <PhotoAdjustModalWrapper
-        store={store}
-        slotIndex={adjustSlotIndex}
-        allowFilters={!isCalendarMonth}
-        allowRotate={!isCalendarMonth}
-        onClose={() => setAdjustSlotIndex(null)}
-      />
-
-      {/* FB4 — editor de foto a PANTALLA COMPLETA (táctil): pan/zoom + filtros sin atrapar el scroll
-          de la grilla. Solo se abre en táctil (focusSlotIndex); en desktop se usa el panel flotante. */}
-      <StudioSlotFocus
-        store={store}
-        slotIndex={focusSlotIndex}
-        shape={productConfig.shape}
-        finish={productConfig.finish}
-        cornerRadiusPx={productConfig.cornerRadiusPx}
-        sizeCm={productConfig.sizeCm}
-        allowFilters={!isCalendarMonth}
-        allowRotate={!isCalendarMonth}
-        allowText={allowText}
-        frameFullBleed={frameFullBleed}
-        onClose={() => setFocusSlotIndex(null)}
-      />
-
-      {/* M.3.b.D — Modal editor de texto inline */}
-      <TextEditorModalWrapper
-        store={store}
-        target={textEditTarget}
-        slotNoun={slotNoun}
-        onClose={() => setTextEditTarget(null)}
-      />
-
       {/* PR A.3 (Lucy 2026-05-21) — Vista previa pre-carrito */}
       <StudioPreviewModal
         isOpen={previewModalOpen}
@@ -1274,107 +1217,6 @@ function StudioGesturesHintWrapper({
   }, [filledCount, onAutoTrigger]);
 
   return <StudioGesturesHint open={open} onClose={onClose} persistent={persistent} />;
-}
-
-// ──────────────────────────────────────────────────────────────────
-//  PhotoAdjustModalWrapper — extrae slot state via store + monta modal
-// ──────────────────────────────────────────────────────────────────
-
-function PhotoAdjustModalWrapper({
-  store,
-  slotIndex,
-  onClose,
-  allowFilters = true,
-  allowRotate = true,
-}: {
-  store: ReturnType<typeof createStudioStore>;
-  slotIndex: number | null;
-  onClose: () => void;
-  allowFilters?: boolean;
-  allowRotate?: boolean;
-}) {
-  // Selectores ATÓMICOS primitivos — evita el re-render infinito que daba
-  // selector compuesto `s.canvasData?.slots ?? []` (array literal nuevo cada
-  // render → React detecta cambio → loop). Memoria feedback_react_atomic_selectors.
-  const slotAssetUrl = useStore(store, (s) =>
-    slotIndex !== null
-      ? (s.canvasData?.slots?.find((sl) => sl.slotIndex === slotIndex)?.assetUrl ?? null)
-      : null,
-  );
-  const slotFilter = useStore(store, (s) =>
-    slotIndex !== null
-      ? (s.canvasData?.slots?.find((sl) => sl.slotIndex === slotIndex)?.filter ?? null)
-      : null,
-  );
-  // #18 — selectores ATÓMICOS del transform (no un objeto compuesto → evita el loop de re-render).
-  const slotScale = useStore(store, (s) =>
-    slotIndex !== null
-      ? (s.canvasData?.slots?.find((sl) => sl.slotIndex === slotIndex)?.photoTransform?.scale ?? 1)
-      : 1,
-  );
-  const slotOffsetX = useStore(store, (s) =>
-    slotIndex !== null
-      ? (s.canvasData?.slots?.find((sl) => sl.slotIndex === slotIndex)?.photoTransform?.offsetX ??
-        0)
-      : 0,
-  );
-  const slotOffsetY = useStore(store, (s) =>
-    slotIndex !== null
-      ? (s.canvasData?.slots?.find((sl) => sl.slotIndex === slotIndex)?.photoTransform?.offsetY ??
-        0)
-      : 0,
-  );
-  // Ola 3c — rotación de la foto (pasos de 90°).
-  const slotRotation = useStore(store, (s) =>
-    slotIndex !== null
-      ? (s.canvasData?.slots?.find((sl) => sl.slotIndex === slotIndex)?.photoTransform?.rotation ??
-        0)
-      : 0,
-  );
-  const setSlotFilter = useStore(store, (s) => s.setSlotFilter);
-  const setSlotPhotoTransform = useStore(store, (s) => s.setSlotPhotoTransform);
-
-  return (
-    <StudioPhotoAdjustModal
-      isOpen={slotIndex !== null && !!slotAssetUrl}
-      photoUrl={slotAssetUrl}
-      currentFilter={slotFilter}
-      slotIndex={slotIndex}
-      allowFilters={allowFilters}
-      onClose={onClose}
-      onApply={(filter) => {
-        if (slotIndex !== null) setSlotFilter(slotIndex, filter);
-      }}
-      onResetTransform={() => {
-        if (slotIndex !== null) setSlotPhotoTransform(slotIndex, null);
-      }}
-      photoTransform={{
-        offsetX: slotOffsetX,
-        offsetY: slotOffsetY,
-        scale: slotScale,
-        rotation: slotRotation,
-      }}
-      onZoomChange={(percent) => {
-        if (slotIndex !== null)
-          setSlotPhotoTransform(slotIndex, { scale: Math.max(0.5, Math.min(3, percent / 100)) });
-      }}
-      onNudge={(dx, dy) => {
-        if (slotIndex !== null)
-          setSlotPhotoTransform(slotIndex, {
-            offsetX: slotOffsetX + dx,
-            offsetY: slotOffsetY + dy,
-          });
-      }}
-      onRotate={
-        allowRotate
-          ? () => {
-              if (slotIndex !== null)
-                setSlotPhotoTransform(slotIndex, { rotation: (slotRotation + 90) % 360 });
-            }
-          : undefined
-      }
-    />
-  );
 }
 
 // ──────────────────────────────────────────────────────────────────
@@ -1842,60 +1684,4 @@ async function buildMagnetTextures(
   return out;
 }
 
-// ──────────────────────────────────────────────────────────────────
-//  TextEditorModalWrapper — M.3.b.D
-//  Extrae text layer base + override actual via store atómicamente.
-// ──────────────────────────────────────────────────────────────────
 
-function TextEditorModalWrapper({
-  store,
-  target,
-  slotNoun = "imán",
-  onClose,
-}: {
-  store: ReturnType<typeof createStudioStore>;
-  target: { slotIndex: number; textLayerId: string } | null;
-  slotNoun?: string;
-  onClose: () => void;
-}) {
-  // Selectores ATÓMICOS — retornan primitivos para evitar re-render loops
-  const layerJson = useStore(store, (s) => {
-    if (!target) return null;
-    const found = s.canvasData?.unitTemplate?.layers?.find(
-      (l) => l.type === "text" && (l as { id: string }).id === target.textLayerId,
-    );
-    return found ? JSON.stringify(found) : null;
-  });
-
-  const overrideJson = useStore(store, (s) => {
-    if (!target) return null;
-    const slot = s.canvasData?.slots?.find((sl) => sl.slotIndex === target.slotIndex);
-    const ov = slot?.textOverrides?.[target.textLayerId];
-    return ov ? JSON.stringify(ov) : null;
-  });
-
-  const slotCount = useStore(store, (s) => s.canvasData?.slotCount ?? 0);
-  const setSlotTextOverride = useStore(store, (s) => s.setSlotTextOverride);
-
-  const layer = layerJson ? (JSON.parse(layerJson) as import("./types").TextLayer) : null;
-  const currentOverride = overrideJson
-    ? (JSON.parse(overrideJson) as import("./types").TextOverride)
-    : undefined;
-
-  return (
-    <StudioTextEditorModal
-      isOpen={target !== null && layer !== null}
-      layer={layer}
-      currentOverride={currentOverride}
-      slotLabel={
-        target
-          ? `${slotNoun.charAt(0).toUpperCase()}${slotNoun.slice(1)} ${target.slotIndex + 1} de ${slotCount}`
-          : undefined
-      }
-      onClose={onClose}
-      onApply={(override) => {
-        if (target) setSlotTextOverride(target.slotIndex, target.textLayerId, override);
-      }}
-    />
-  );
-}
