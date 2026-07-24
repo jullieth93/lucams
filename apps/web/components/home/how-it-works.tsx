@@ -29,7 +29,7 @@ const STEPS = [
   {
     icon: Package,
     titleKey: "home.howitworks.step3.title",
-    titleFallback: "Llega a tu espacio",
+    titleFallback: "Llega a tus manos",
     descKey: "home.howitworks.step3.description",
     // Etapa 1 (modo catálogo): producción 2 días hábiles + 1 de entrega; el pago y
     // el envío se cierran por WhatsApp (sin prometer pago en línea).
