@@ -58,6 +58,11 @@ const hasDb = Boolean(process.env.DATABASE_URL);
 // Prefijo único por corrida. Minúsculas (como los tests de cart) para slugs.
 const RUN = `itestquote${Date.now()}${Math.floor(Math.random() * 1e6)}`.toLowerCase();
 const ACTOR = `${RUN}-admin`;
+// Móvil ÚNICO por corrida (10 dígitos empezando en 3, como exige el schema). Antes se usaba el
+// WhatsApp real de la tienda: desde que crear una Quote también crea su fila Consent, esas filas
+// quedaban en la tabla de consentimientos de PRODUCCIÓN atribuidas a un número real y sin forma
+// de distinguirlas de una autorización legítima.
+const RUN_PHONE = `3${String(Math.floor(Math.random() * 1e9)).padStart(9, "0")}`;
 
 // ───────────────────────── IDs de fixtures (beforeAll) ─────────────────────────
 let categoryId = "";
@@ -98,7 +103,7 @@ async function makeCartWithItems(
 function quoteInput(over: Partial<Parameters<typeof createQuoteFromCart>[0]> = {}) {
   return {
     customerName: `${RUN} Lucía Prueba`,
-    customerWhatsapp: "3208873826",
+    customerWhatsapp: RUN_PHONE,
     city: "Bogotá D.C.",
     department: "Bogotá D.C.",
     ...over,
@@ -172,6 +177,11 @@ describe.skipIf(!hasDb)(
       const quoteIds = myQuotes.map((q) => q.id);
       await prisma.quoteItem.deleteMany({ where: { quoteId: { in: quoteIds } } });
       await prisma.quote.deleteMany({ where: { id: { in: quoteIds } } });
+      // Crear una Quote crea TAMBIÉN su autorización de tratamiento (Ley 1581) en la misma
+      // transacción. Consent no tiene FK a Quote, así que borrarla en cascada no ocurre: hay que
+      // borrarla explícitamente o cada corrida deja consentimientos huérfanos en la tabla real.
+      // Scoped al móvil único de esta corrida — jamás un deleteMany sin filtro.
+      await prisma.consent.deleteMany({ where: { phone: RUN_PHONE } });
 
       const myCarts = await prisma.cart.findMany({
         where: { sessionId: { startsWith: RUN } },
@@ -352,7 +362,7 @@ describe.skipIf(!hasDb)(
         // Shape del item de lista (incluye _count.items para el admin).
         const item = byNumber.items.find((i) => i.number === number)!;
         expect(item._count.items).toBe(1);
-        expect(item.customerWhatsapp).toBe("3208873826");
+        expect(item.customerWhatsapp).toBe(RUN_PHONE);
       });
 
       it("listQuotes filtra por status y pagina", async () => {
@@ -389,7 +399,7 @@ describe.skipIf(!hasDb)(
         const full = await getQuoteById(quote.id);
         expect(full).not.toBeNull();
         expect(full!.items).toHaveLength(1);
-        expect(full!.customerWhatsapp).toBe("3208873826"); // admin SÍ ve el contacto
+        expect(full!.customerWhatsapp).toBe(RUN_PHONE); // admin SÍ ve el contacto
       });
     });
 
