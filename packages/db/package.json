@@ -23,7 +23,7 @@
   "devDependencies": {
     "@supabase/supabase-js": "^2.105.4",
     "dotenv-cli": "^11.0.0",
-    "prisma": "^6.18.0",
-    "typescript": "^5"
+    "prisma": "^7.9.0",
+    "typescript": "^7"
   }
 }
