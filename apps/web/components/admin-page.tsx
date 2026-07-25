@@ -38,6 +38,7 @@ import {
   ChevronsUpDown,
   type LucideIcon,
 } from "lucide-react";
+import { AdminSubmitButton } from "@/components/admin-submit-button";
 
 // ─────────────────── Layout primitives ───────────────────
 
@@ -466,6 +467,7 @@ export function AdminButton({
   children,
   className = "",
   disabled,
+  pendingLabel,
 }: {
   href?: string;
   type?: "button" | "submit";
@@ -474,6 +476,8 @@ export function AdminButton({
   children: ReactNode;
   className?: string;
   disabled?: boolean;
+  /** Texto a mostrar mientras la acción corre (solo aplica a type="submit"). */
+  pendingLabel?: string;
 }) {
   const sizes = {
     sm: "px-2.5 py-1.5 text-xs",
@@ -495,8 +499,18 @@ export function AdminButton({
       </Link>
     );
   }
+  // Los submits delegan en la variante CLIENTE: solo ella puede leer `useFormStatus()` del form
+  // ancestro y mostrar que la acción está en vuelo. Así el feedback llega gratis a todo el panel,
+  // sin cablear un `loading` en cada sitio ni recordarlo en los botones que se agreguen después.
+  if ((type ?? "button") === "submit") {
+    return (
+      <AdminSubmitButton className={cls} disabled={disabled} pendingLabel={pendingLabel}>
+        {children}
+      </AdminSubmitButton>
+    );
+  }
   return (
-    <button type={type ?? "button"} className={cls} disabled={disabled}>
+    <button type="button" className={cls} disabled={disabled}>
       {children}
     </button>
   );

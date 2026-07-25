@@ -294,6 +294,133 @@ h6 {
   }
 }
 
+/* ─────────── Contenido largo del CMS (legales, ayuda) ───────────
+   `<CmsMarkdown>` aplica la clase `.cms-markdown` pero NADIE la estilaba: react-markdown emite
+   <p>/<h2>/<ul> limpios y el preflight de Tailwind deja todos los márgenes en 0, así que los 8
+   documentos legales y /ayuda se renderizaban como un muro de texto sin separación entre párrafos
+   ni jerarquía visible (reporte de Lucy, 2026-07-25). Documentos que la gente tiene que poder leer
+   —y que un abogado tiene que revisar— no pueden verse así.
+
+   Se escribe a mano en vez de sumar @tailwindcss/typography: es una superficie acotada, usa los
+   tokens de marca que ya existen y evita una dependencia nueva. */
+.cms-markdown {
+  color: var(--brand-purple-dark);
+  line-height: 1.7;
+  overflow-wrap: break-word;
+}
+
+.cms-markdown > * + * {
+  margin-top: 1rem;
+}
+
+.cms-markdown h2 {
+  font-size: 1.5rem;
+  line-height: 1.25;
+  margin-top: 2.5rem;
+  /* El heading pertenece al bloque que sigue: mucho aire arriba, poco abajo. */
+  margin-bottom: 0.75rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--brand-purple) 15%, transparent);
+}
+
+.cms-markdown h3 {
+  font-size: 1.15rem;
+  line-height: 1.3;
+  margin-top: 1.75rem;
+  margin-bottom: 0.5rem;
+}
+
+/* Sin margen extra arriba del primer elemento: la página ya trae su propio espaciado. */
+.cms-markdown > :first-child {
+  margin-top: 0;
+}
+
+.cms-markdown p {
+  margin-bottom: 0;
+}
+
+.cms-markdown strong {
+  color: var(--brand-purple-dark);
+  font-weight: 600;
+}
+
+.cms-markdown a {
+  color: var(--brand-pink-ink);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.cms-markdown ul,
+.cms-markdown ol {
+  padding-left: 1.35rem;
+  margin-top: 0.75rem;
+}
+.cms-markdown ul {
+  list-style: disc;
+}
+.cms-markdown ol {
+  list-style: decimal;
+}
+.cms-markdown li + li {
+  margin-top: 0.4rem;
+}
+.cms-markdown li::marker {
+  color: color-mix(in srgb, var(--brand-purple) 60%, transparent);
+}
+
+/* Citas: se usan para el encuadre de etapa ("hoy operamos por cotización"), que debe destacar. */
+.cms-markdown blockquote {
+  border-left: 3px solid var(--brand-turquoise);
+  background: color-mix(in srgb, var(--brand-turquoise) 8%, transparent);
+  padding: 0.85rem 1.1rem;
+  border-radius: 0 0.5rem 0.5rem 0;
+  margin-top: 1.25rem;
+}
+.cms-markdown blockquote > * + * {
+  margin-top: 0.6rem;
+}
+
+/* Las tablas (subprocesadores) desbordan en móvil: scrollan en su propio contenedor, nunca la página. */
+.cms-markdown table {
+  display: block;
+  overflow-x: auto;
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  margin-top: 1.25rem;
+}
+.cms-markdown th,
+.cms-markdown td {
+  border: 1px solid color-mix(in srgb, var(--brand-purple) 15%, transparent);
+  padding: 0.5rem 0.7rem;
+  text-align: left;
+  vertical-align: top;
+}
+.cms-markdown th {
+  background: color-mix(in srgb, var(--brand-purple) 7%, transparent);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.cms-markdown hr {
+  border: 0;
+  border-top: 1px solid color-mix(in srgb, var(--brand-purple) 15%, transparent);
+  margin-top: 2rem;
+}
+
+.cms-markdown code {
+  background: color-mix(in srgb, var(--brand-purple) 8%, transparent);
+  padding: 0.1rem 0.35rem;
+  border-radius: 0.25rem;
+  font-size: 0.9em;
+}
+
+@media (min-width: 640px) {
+  .cms-markdown h2 {
+    font-size: 1.65rem;
+  }
+}
+
 /* Reduced motion respeto */
 @media (prefers-reduced-motion: reduce) {
   *,

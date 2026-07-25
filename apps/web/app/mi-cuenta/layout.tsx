@@ -14,9 +14,9 @@ import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { logoutAction } from "@/app/auth/logout/actions";
 import { BrandMark } from "@/components/brand-mark";
-import { Button } from "@/components/ui/button";
 import { getCurrentCustomer } from "@/lib/auth";
 import { AccountNav } from "./account-nav";
+import { SubmitButton } from "@/components/ui/submit-button";
 
 export default async function MiCuentaLayout({ children }: { children: React.ReactNode }) {
   const session = await getCurrentCustomer();
@@ -33,14 +33,13 @@ export default async function MiCuentaLayout({ children }: { children: React.Rea
         <div className="mx-auto flex max-w-4xl items-center justify-between px-4 py-4 sm:px-6">
           <BrandMark size="sm" animated />
           <form action={logoutAction}>
-            <Button
-              type="submit"
+            <SubmitButton
               variant="ghost"
               size="sm"
               className="text-brand-muted hover:text-brand-purple-dark"
             >
               Cerrar sesión
-            </Button>
+            </SubmitButton>
           </form>
         </div>
       </header>

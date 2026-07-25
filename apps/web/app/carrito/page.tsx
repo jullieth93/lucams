@@ -23,6 +23,8 @@ import { formatCOP } from "@/lib/format";
 import { isCatalogMode } from "@/lib/store-mode";
 import { peekCartSession } from "@/lib/cart-session";
 import { removeItemAction, updateQtyAction } from "./actions";
+import { SubmitButton } from "@/components/ui/submit-button";
+import { IconSubmitButton } from "./qty-button";
 
 export const metadata: Metadata = {
   title: "Carrito",
@@ -102,15 +104,14 @@ export default async function CarritoPage() {
                         </div>
                         <form action={removeItemAction}>
                           <input type="hidden" name="itemId" value={item.itemId} />
-                          <Button
-                            type="submit"
+                          <SubmitButton
                             variant="ghost"
                             size="sm"
                             className="text-red-700 hover:bg-red-50"
                             aria-label={`Quitar ${item.productName}`}
                           >
                             <Trash2 className="h-4 w-4" />
-                          </Button>
+                          </SubmitButton>
                         </form>
                       </div>
                       <div className="flex items-center justify-between gap-3">
@@ -213,14 +214,13 @@ function QtyControls({ itemId, qty }: { itemId: string; qty: number }) {
       <form action={updateQtyAction}>
         <input type="hidden" name="itemId" value={itemId} />
         <input type="hidden" name="qty" value={qty - 1} />
-        <button
-          type="submit"
+        <IconSubmitButton
           className="text-brand-purple-dark hover:bg-brand-purple/10 flex h-11 w-11 items-center justify-center disabled:opacity-40"
           aria-label="Disminuir cantidad"
           disabled={qty <= 1}
         >
           <Minus className="h-3.5 w-3.5" />
-        </button>
+        </IconSubmitButton>
       </form>
       <span className="text-brand-purple-dark w-8 text-center text-sm font-semibold tabular-nums">
         {qty}
@@ -228,14 +228,13 @@ function QtyControls({ itemId, qty }: { itemId: string; qty: number }) {
       <form action={updateQtyAction}>
         <input type="hidden" name="itemId" value={itemId} />
         <input type="hidden" name="qty" value={qty + 1} />
-        <button
-          type="submit"
+        <IconSubmitButton
           className="text-brand-purple-dark hover:bg-brand-purple/10 flex h-11 w-11 items-center justify-center disabled:opacity-40"
           aria-label="Aumentar cantidad"
           disabled={qty >= 99}
         >
           <Plus className="h-3.5 w-3.5" />
-        </button>
+        </IconSubmitButton>
       </form>
     </div>
   );
