@@ -36,8 +36,11 @@ type StudioPreviewModalProps = {
   isFinalizing: boolean;
   errorMessage: string | null;
   /** #3 — tipo de producto: el calendario se describe en "páginas", no "imanes".
-   *  Ola 3 — "bookmarks": separadores de libros (tiras 2 caras), concordancia propia. */
-  productKind?: "magnets" | "calendar" | "bookmarks";
+   *  Ola 3 — "bookmarks": separadores de libros (tiras 2 caras), concordancia propia.
+   *  "tiles": fichas SIN imán. Los sets de letras y el nombre tienen variantes "Con imán" y
+   *  "Sin imán"; llamarle "imán" a la que no lo lleva es una afirmación falsa sobre el producto
+   *  físico, hecha justo en la pantalla de confirmación (revisión 2026-07-25, Ley 1480 art. 23). */
+  productKind?: "magnets" | "calendar" | "bookmarks" | "tiles";
   /** Año del calendario (solo cuando productKind==="calendar"). */
   calendarYear?: number;
   onEdit: () => void;
@@ -64,6 +67,9 @@ export function StudioPreviewModal({
   // de "imanes". Ola 3 — los separadores hablan de "separadores" (cada uno con sus 2 caras).
   const isCalendar = productKind === "calendar";
   const isBookmarks = productKind === "bookmarks";
+  // Cómo nombrar la pieza: con imán es un "imán"; sin él, una "ficha".
+  const pieza = productKind === "tiles" ? "ficha" : "imán";
+  const piezas = productKind === "tiles" ? "fichas" : "imanes";
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && !isFinalizing && onEdit()}>
@@ -113,14 +119,16 @@ export function StudioPreviewModal({
             </>
           ) : (
             <>
-              Esta es la vista previa de los {slotCount} imanes que vas a recibir.
+              {slotCount === 1
+                ? `Esta es la vista previa del ${pieza} que vas a recibir.`
+                : `Esta es la vista previa de los ${slotCount} ${piezas} que vas a recibir.`}
               {sizeCm && (
                 <>
                   {" "}
-                  Cada imán mide <strong>{sizeCm}</strong>.
+                  Cada {pieza} mide <strong>{sizeCm}</strong>.
                 </>
               )}{" "}
-              Revísalos antes de continuar.
+              {slotCount === 1 ? "Revísalo" : "Revísalos"} antes de continuar.
             </>
           )}
         </DialogDescription>
@@ -155,7 +163,7 @@ export function StudioPreviewModal({
                   ? `Calendario personalizado · ${slotCount} páginas`
                   : isBookmarks
                     ? `${slotCount} ${slotCount === 1 ? "separador personalizado" : "separadores personalizados"} (2 caras c/u)`
-                    : `${slotCount} ${slotCount === 1 ? "imán personalizado" : "imanes personalizados"}`}
+                    : `${slotCount} ${slotCount === 1 ? `${pieza} personalizad${pieza === "ficha" ? "a" : "o"}` : `${piezas} personalizad${piezas === "fichas" ? "as" : "os"}`}`}
                 {sizeCm && (
                   <>
                     {" · "}

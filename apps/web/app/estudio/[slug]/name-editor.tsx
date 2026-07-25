@@ -5,10 +5,11 @@
  * la variante "nombre": escribe un nombre → ve en vivo la tira de fichas kawaii que vas
  * a recibir. Sin foto, sin cajita. Reemplaza el editor de foto genérico para este caso.
  *
- * "Agregar al carrito": crea el diseño (createNameDesignAction, valida en servidor),
- * renderiza la tira a PNG y reutiliza finalizeDesignAction + addPersonalizedToCartAction
- * (la ruta del dinero probada) → /carrito. El nombre real se guarda en Design.metadata;
- * el PNG es el preview que ven carrito/orden/producción.
+ * "¡Listo!" NO agrega nada todavía: renderiza la tira a PNG en el navegador y abre la vista
+ * previa "Así se verá tu pedido" (Lucy 2026-07-25). Solo si el cliente confirma ahí se crea
+ * el diseño (createNameDesignAction, valida en servidor) y se reutilizan finalizeDesignAction +
+ * addPersonalizedToCartAction (la ruta del dinero probada) → /carrito. El nombre real se guarda
+ * en Design.metadata; el PNG aprobado es el mismo que ven carrito/orden/producción.
  */
 
 import { useCallback, useMemo, useRef, useState } from "react";
@@ -28,6 +29,7 @@ import { buildLetterTileTextures } from "./lib/letter-tile-textures";
 import { useLetterColors } from "./use-letter-colors";
 import { ThemePicker, SwatchRow } from "./letter-color-controls";
 import { LetterStylePicker } from "./letter-style-picker";
+import { StudioPreviewModal } from "./studio-preview-modal";
 import { useIsTouch } from "./use-is-touch";
 
 // NOM2 — tablero magnético 3D en un cuarto (WebGL, client-only), diferido. El nombre son imanes de
@@ -129,16 +131,34 @@ function drawLetterTile(
 }
 
 /**
- * Dibuja la tira de fichas en canvas y devuelve el PNG. Usa la ilustración real de cada
- * letra si existe (tiles); si no, dibuja la letra en color. `useTiles=false` fuerza el
- * fallback de solo-letras (si el toBlob se contaminara por CORS).
+ * Convierte un data URL base64 a Blob binario. Los PNG viajan a la server action como bytes
+ * en FormData y no como string base64: el protocolo React Flight de Next 16 revienta con
+ * "Maximum array nesting exceeded" en strings gigantes (mismo motivo que en studio-editor).
  */
-async function renderNameStripBlob(
+function dataUrlToBlob(dataUrl: string): Blob {
+  const commaIdx = dataUrl.indexOf(",");
+  if (commaIdx < 0) throw new Error("dataURL inválido (sin coma)");
+  const meta = dataUrl.slice(0, commaIdx);
+  const binary = atob(dataUrl.slice(commaIdx + 1));
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return new Blob([bytes], { type: meta.match(/^data:([^;]+)/)?.[1] ?? "image/png" });
+}
+
+/**
+ * Dibuja la tira de fichas en canvas y devuelve el PNG como data URL. Usa la ilustración real
+ * de cada letra si existe (tiles); si no, dibuja la letra en color. `useTiles=false` fuerza el
+ * fallback de solo-letras (si el canvas se contaminara por CORS).
+ *
+ * Devuelve data URL (no Blob) porque ese MISMO pixel es el que se muestra en la vista previa y
+ * el que se sube a producción: un solo render = lo que el cliente aprueba es lo que se imprime.
+ */
+async function renderNameStripDataUrl(
   letters: string[],
   colors: readonly string[],
   tiles: LetterTileMap,
   useTiles = true,
-): Promise<Blob> {
+): Promise<string> {
   const scale = 4;
   const gap = 16;
   const pad = 22;
@@ -166,12 +186,9 @@ async function renderNameStripBlob(
     drawLetterTile(ctx, pad + i * (TILE_W + gap), pad, ch, colors[i % colors.length], imgs[i]);
   });
 
-  return new Promise((resolve, reject) =>
-    canvas.toBlob(
-      (b) => (b ? resolve(b) : reject(new Error("No se pudo generar la imagen"))),
-      "image/png",
-    ),
-  );
+  // toDataURL lanza SecurityError si el canvas quedó contaminado por una ilustración sin CORS
+  // → lo atrapa quien llama y reintenta con useTiles=false (tira de solo-letras).
+  return canvas.toDataURL("image/png");
 }
 
 export function NameEditor({
@@ -187,6 +204,24 @@ export function NameEditor({
   const [raw, setRaw] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Vista previa pre-carrito (Lucy 2026-07-25) — el cliente tiene que VER "Así se verá tu pedido"
+  // antes de que exista nada. `preparingPreview` cubre el dibujo local de la tira; `submitting`
+  // sigue siendo el "enviando" real (crear + subir + carrito), que solo corre si confirma.
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewDataUrl, setPreviewDataUrl] = useState<string | null>(null);
+  const [preparingPreview, setPreparingPreview] = useState(false);
+  // Los errores de la fase de confirmación se muestran DENTRO de la modal: es la capa que el
+  // cliente está mirando, y el mensaje de la página quedaría tapado por el backdrop.
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  // Si el finalize o el carrito fallan y el cliente reintenta desde la misma modal, reusamos el
+  // diseño ya creado: cada createNameDesignAction inserta una fila nueva → diseños huérfanos.
+  const pendingDesignIdRef = useRef<string | null>(null);
+  // …y si ese diseño YA quedó finalizado. `finalizeDesign` solo acepta borradores: reintentar el
+  // finalize sobre uno en READY lanza «Design is READY — only DRAFT can be finalized», un texto
+  // interno en inglés que salía crudo en la pantalla de confirmación y dejaba el reintento en un
+  // callejón sin salida (revisión adversarial 2026-07-25). Con esta marca, el reintento tras un
+  // fallo del carrito salta directo al carrito, que es el paso que de verdad falló.
+  const finalizedRef = useRef(false);
   const isTouch = useIsTouch(); // #9 — copy del gesto de zoom del tablero 3D según táctil vs mouse.
   // NOM2 — vista 3D del nombre en un tablero magnético de un cuarto. null = cerrada.
   const [board3D, setBoard3D] = useState<Magnet3D[] | null>(null);
@@ -243,64 +278,111 @@ export function NameEditor({
 
   const examples = config.language === "es" ? ["Mía", "Mateo", "Amor"] : ["Mia", "Noah", "Love"];
 
-  async function handleAddToCart() {
-    if (!valid || submitting) return;
-    setSubmitting(true);
+  // ──────────── Paso 1: ¡Listo! → dibuja la tira y abre "Así se verá tu pedido" ────────────
+  //
+  // Todo pasa en el navegador (canvas), sin server actions: si el cliente vuelve a editar no
+  // quedó ningún diseño creado ni ningún archivo subido.
+  async function handleShowPreview() {
+    if (!valid || preparingPreview || submitting) return;
     setError(null);
+    setPreviewError(null);
+    setPreparingPreview(true);
     try {
-      const created = await createNameDesignAction({
-        productId: product.id,
-        variantId,
-        name: raw,
-        themeId,
-        colors: effectiveColors,
-        styleSetId: styleId,
-      });
-      if (!created.ok) {
-        setError(created.message);
-        setSubmitting(false);
-        return;
+      // Con fichas del estilo elegido; si el canvas se contamina por CORS, cae a solo-letras.
+      // El fallback ocurre ACÁ, antes de mostrar: la previa es exactamente el PNG que se produce.
+      let dataUrl: string;
+      try {
+        dataUrl = await renderNameStripDataUrl(letters, effectiveColors, activeTiles);
+      } catch {
+        dataUrl = await renderNameStripDataUrl(letters, effectiveColors, activeTiles, false);
+      }
+      setPreviewDataUrl(dataUrl);
+      setPreviewOpen(true);
+    } catch (err) {
+      // #14 — detalle técnico al log; mensaje claro es-CO al cliente.
+      console.error("[studio.name.preview]", err);
+      setError("No pudimos preparar la vista previa. Intenta de nuevo en un momento.");
+    } finally {
+      setPreparingPreview(false);
+    }
+  }
+
+  // ──────────── Paso 2: confirmar en la modal → crear + subir + carrito ────────────
+  async function handleConfirmAddToCart() {
+    if (!valid || submitting || !previewDataUrl) return;
+    setSubmitting(true);
+    setPreviewError(null);
+    try {
+      let designId = pendingDesignIdRef.current;
+      if (!designId) {
+        const created = await createNameDesignAction({
+          productId: product.id,
+          variantId,
+          name: raw,
+          themeId,
+          colors: effectiveColors,
+          styleSetId: styleId,
+        });
+        if (!created.ok) {
+          setPreviewError(created.message);
+          setSubmitting(false);
+          return;
+        }
+        designId = created.designId;
+        pendingDesignIdRef.current = designId;
       }
 
-      // Con fichas del estilo elegido; si el canvas se contamina por CORS, cae a solo-letras.
-      let blob: Blob;
-      try {
-        blob = await renderNameStripBlob(letters, effectiveColors, activeTiles);
-      } catch {
-        blob = await renderNameStripBlob(letters, effectiveColors, activeTiles, false);
-      }
+      // El MISMO PNG que el cliente acaba de aprobar va como previa y como archivo de producción.
+      const blob = dataUrlToBlob(previewDataUrl);
       const fd = new FormData();
-      fd.set("designId", created.designId);
+      fd.set("designId", designId);
       fd.set("slotCount", "1");
       fd.set("preview", blob, "preview.png");
       fd.set("production_0", blob, "produccion.png");
 
-      const finalized = await finalizeDesignAction(fd);
-      if (!finalized.ok) {
-        setError(finalized.message);
-        setSubmitting(false);
-        return;
+      if (!finalizedRef.current) {
+        const finalized = await finalizeDesignAction(fd);
+        if (!finalized.ok) {
+          setPreviewError(finalized.message);
+          setSubmitting(false);
+          return;
+        }
+        finalizedRef.current = true;
       }
 
       const added = await addPersonalizedToCartAction({
-        designId: created.designId,
+        designId,
         qty: 1,
         variantId,
       });
       if (!added.ok) {
-        setError(`Guardamos tu diseño pero no pudimos agregarlo al carrito: ${added.message}`);
+        setPreviewError(
+          `Guardamos tu diseño pero no pudimos agregarlo al carrito: ${added.message}`,
+        );
         setSubmitting(false);
         return;
       }
 
+      // Cerramos la modal antes de navegar para que no parpadee sobre el carrito.
+      setPreviewOpen(false);
       router.push("/carrito?personalized=1");
     } catch (err) {
       // #14 — detalle técnico al log; mensaje claro es-CO al cliente.
       console.error("[studio.name]", err);
-      setError("Algo salió mal. Intenta de nuevo en un momento.");
+      setPreviewError("Algo salió mal. Intenta de nuevo en un momento.");
       setSubmitting(false);
     }
   }
+
+  // "Volver a editar": el editor queda intacto y nada se creó. Se descarta la previa (y el diseño
+  // a medio camino de un intento fallido) para que el próximo "¡Listo!" dibuje el nombre actual.
+  const handleEditFromPreview = useCallback(() => {
+    setPreviewOpen(false);
+    setPreviewDataUrl(null);
+    finalizedRef.current = false;
+    setPreviewError(null);
+    pendingDesignIdRef.current = null;
+  }, []);
 
   // NOM2 — abre el tablero 3D con el nombre deletreado en fichas. Ola 4 (2026-07-23 — Lucy:
   // fichas del nombre "en punta negra"): se usa el MISMO builder del tablero memo
@@ -573,18 +655,22 @@ export function NameEditor({
               {building3D ? "Armando…" : "Ver en un tablero 3D"}
             </button>
           )}
+          {/* El CTA ya no agrega directo: abre la vista previa. El sr-only lo deja explícito para
+              lectores de pantalla sin alargar el botón (el texto visible sigue contenido en el
+              nombre accesible — WCAG 2.5.3). */}
           <button
             type="button"
-            onClick={handleAddToCart}
-            disabled={!valid || submitting}
+            onClick={handleShowPreview}
+            disabled={!valid || preparingPreview || submitting}
             className="bg-gradient-brand inline-flex items-center gap-2 rounded-full px-8 py-3.5 text-base font-bold text-white shadow-md transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {submitting ? (
+            {preparingPreview || submitting ? (
               <Loader2 className="h-5 w-5 animate-spin" />
             ) : (
               <Sparkles className="h-5 w-5" />
             )}
-            {submitting ? "Agregando…" : "Agregar al carrito"}
+            {preparingPreview ? "Preparando…" : submitting ? "Agregando…" : "¡Listo!"}
+            <span className="sr-only">: te mostramos cómo queda antes de agregarlo al carrito</span>
           </button>
           {/* Precio EN VIVO por ficha — lo que ves es lo que pagas (igual que el carrito). */}
           {letters.length > 0 ? (
@@ -601,6 +687,24 @@ export function NameEditor({
           )}
         </div>
       </div>
+
+      {/* Vista previa pre-carrito: "Así se verá tu pedido" con la tira de fichas ya renderizada.
+          Confirmar = crear + subir + carrito; editar = volver sin haber creado nada. */}
+      <StudioPreviewModal
+        isOpen={previewOpen}
+        previewUrl={previewDataUrl}
+        productName={product.name}
+        // Cada ficha es un imán de letra: el conteo de la modal es el nº de letras a producir.
+        slotCount={letters.length}
+        // ADR-057 — el precio es POR FICHA, así que el total que se confirma es
+        // letras × pricePerTile (enteros en centavos COP): el MISMO cálculo del carrito.
+        unitPrice={liveTotal}
+        isFinalizing={submitting}
+        errorMessage={previewError}
+        productKind="magnets"
+        onEdit={handleEditFromPreview}
+        onConfirm={handleConfirmAddToCart}
+      />
 
       {/* NOM2 — Modal del tablero magnético 3D con el nombre deletreado (lazy, client-only). */}
       {board3D !== null && (

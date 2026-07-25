@@ -2969,3 +2969,68 @@ encuadrar ("cuando activemos…"), y ninguna identificación fiscal que la tiend
 
 **Nota de operación.** Publicar en el CMS sigue siendo un paso **humano**; mientras no ocurra, lo
 que ven los clientes es el fallback. Por eso tenerlo correcto no es opcional.
+
+---
+
+## ADR-081 — Los PNG de imprenta los renderiza el servidor, no los sube el navegador (2026-07-25)
+
+**Contexto.** El Estudio de personalización —el diferenciador de la tienda— **nunca funcionó en
+producción**. Al confirmar «Sí, agregar al carrito» el cliente veía _"An unexpected response was
+received from the server"_. El fallo llevaba meses y ninguna prueba lo detectaba.
+
+La causa: `finalizeDesignAction` recibía por el body de la Server Action el preview **más los N PNG de
+imprenta** que el navegador exportaba con Konva. Vercel corta el body de una Function en **4.5 MB** y
+devuelve `413 FUNCTION_PAYLOAD_TOO_LARGE`
+([docs](https://vercel.com/docs/functions/limitations), consulta 2026-07-25). El 413 vuelve como HTML,
+el runtime de Next no lo sabe interpretar y lo traduce a ese mensaje genérico.
+
+Medido contra diseños reales de la base, el envío pesaba:
+
+| Producto                   | Slots | Peso de los PNG |
+| -------------------------- | ----- | --------------- |
+| calendario-mes-a-mes-fotos | 12    | **56.6 MB**     |
+| set-fotoimanes-circulares  | 6     | 14.9 MB         |
+| separadores-libros         | 4     | 8.3 MB          |
+| tiras-magneticas-fotos     | 3     | 3.5 MB          |
+
+Entre 1 y 13 veces el techo. Los únicos editores que funcionaban (nombre, abecedario) mandan **un solo
+blob diminuto**, y eso encaja con lo que decía la base: 10 y 7 diseños en `READY` para esos dos, contra
+**0** para calendarios, fotoimanes cuadrados, corazón y tiras.
+
+`next.config.ts` fija `serverActions.bodySizeLimit: "50mb"`, lo que daba la falsa impresión de que
+había margen: ese ajuste es del framework, y el corte de 4.5 MB es de la plataforma. En local no hay
+tal corte —el server de dev es un Node propio— y por eso todo pasaba en escritorio.
+
+**Decisión.** El navegador deja de mandar los PNG de imprenta. El servidor ya sabía renderizarlos
+(`tryServerRenderProduction`, con tres tiers: compositor de calendario, sharp y `@napi-rs/canvas`);
+hasta hoy era una mejora opcional y pasa a ser **la vía principal**. El body queda en solo el preview
+compositado, cuyo mayor ejemplar medido en Storage pesa **0.61 MB**.
+
+Verificado contra diseños reales: **6 de los 7 productos de fotos renderizan server-side**. El único
+que no es `set-fotoimanes-polaroid`, que da `NEEDS_KONVA` por su marco SVG con fuentes horneadas.
+
+**Fallback para ese caso.** Trocear por slot no sirve: un solo slot ya llegó a **5.03 MB** en Storage,
+por encima del techo. Así que cuando ningún tier puede renderizar, el servidor responde
+`NEEDS_CLIENT_SLOTS` con **URLs firmadas de subida** (`createSignedUploadUrl`, válidas 2 h) y el
+navegador sube los PNG **directo a Supabase Storage** — camino que no pasa por la Function y por tanto
+no tiene techo de tamaño. Una segunda pasada con `useStagedSlots=1` los recoge del área de paso
+(`{designId}/_client/`), que se borra al terminar. Las URLs se emiten solo tras validar propiedad y
+estado `DRAFT`: una URL firmada es una capacidad, y emitirla sobre un diseño ajeno dejaría sobrescribir
+sus archivos de imprenta.
+
+**Efecto lateral bienvenido.** En el camino normal el celular ya no exporta 12 lienzos de 1800×2400 px
+—lo más pesado y más propenso a quedarse sin memoria de todo el flujo— sino ninguno.
+
+**Compatibilidad.** Los editores de una sola ficha (nombre, abecedario) siguen mandando su blob inline:
+es diminuto, no hay nada que renderizar en el servidor y es el único camino que sí funcionaba. El
+servidor acepta los dos.
+
+**Cómo se blinda.** `features/personalization/finalize-server-render.integration.test.ts` ejerce el
+flujo completo contra la Supabase real: clona un diseño real, finaliza **sin un solo blob** y comprueba
+que los archivos existen en Storage; y recorre el fallback entero —error reconocible, emisión de URLs,
+`PUT` de verdad, segunda pasada y limpieza del área de paso—. Sin `return` silenciosos: si no hay datos
+que clonar, la prueba **falla**. Omitir en silencio es justo lo que dejó vivir este bug.
+
+**Lección.** Una prueba que solo corre en local no puede ver un límite que solo existe en la
+plataforma. Lo que distingue producción de dev —techos de body, timeouts, binarios nativos— hay que
+ejercerlo contra la infraestructura real o no está probado.

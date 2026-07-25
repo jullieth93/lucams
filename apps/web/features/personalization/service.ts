@@ -790,19 +790,114 @@ export async function saveCanvas(opts: {
 //   4. Sube N production PNGs a bucket production-assets (privado)
 //   5. Marca Design.status=READY, persiste previewUrl + productionUrls[]
 
+// ──────────────────────────────────────────────────────────────────
+//  Fallback: snapshots del cliente por subida DIRECTA a Storage (ADR-081)
+// ──────────────────────────────────────────────────────────────────
+//
+// Cuando ningún tier server-side reproduce el diseño con fidelidad (hoy: el marco SVG de la
+// Polaroid, que trae fuentes horneadas), los PNG de imprenta tienen que venir del navegador. Lo que
+// NO pueden hacer es venir por el body de la Server Action: un slot solo ya llega a 5 MB y Vercel
+// corta las Functions en 4.5 MB. Van directo a Storage con una URL firmada de subida y el servidor
+// los recoge de ahí — ese camino no pasa por la Function, así que no tiene techo de tamaño.
+//
+// El área de paso vive bajo el prefijo `_client/` del propio diseño y se borra al terminar: los
+// archivos definitivos son siempre los que sube `finalizeDesign`.
+
+const CLIENT_SLOT_PREFIX = "_client";
+const MAX_STAGED_SLOT_BYTES = 20 * 1024 * 1024;
+
+function stagedSlotPath(designId: string, slotIndex: number): string {
+  return `${designId}/${CLIENT_SLOT_PREFIX}/slot-${String(slotIndex + 1).padStart(2, "0")}.png`;
+}
+
+/**
+ * Emite N URLs firmadas de subida (2 h) para los snapshots del cliente.
+ *
+ * Valida propiedad y estado DRAFT antes de emitirlas: una URL firmada es una CAPACIDAD, y emitir
+ * una sobre un diseño ajeno dejaría sobrescribir sus archivos de imprenta.
+ */
+export async function createClientSlotUploadTickets(opts: {
+  designId: string;
+  customerId: string | null;
+  sessionId: string | null;
+}): Promise<{ slotIndex: number; url: string }[]> {
+  const design = await getOwnedDesign(opts.designId, opts);
+  if (!design) throw new Error("Design not found or not owned by caller");
+  if (design.status !== "DRAFT") {
+    throw new Error(`Design is ${design.status} — only DRAFT can be finalized`);
+  }
+  const canvasData = design.canvasData as unknown as CanvasData;
+  const slotCount = canvasData.version === 2 ? (canvasData as CanvasDataV2).slotCount : 1;
+
+  const tickets: { slotIndex: number; url: string }[] = [];
+  for (let i = 0; i < slotCount; i++) {
+    const { data, error } = await supabaseService.storage
+      .from(BUCKET_PRODUCTION)
+      .createSignedUploadUrl(stagedSlotPath(design.id, i), { upsert: true });
+    if (error || !data) {
+      throw new Error(`No pudimos preparar la subida del slot ${i + 1}: ${error?.message ?? "?"}`);
+    }
+    tickets.push({ slotIndex: i, url: data.signedUrl });
+  }
+  return tickets;
+}
+
+/** Recoge del área de paso los N snapshots que subió el cliente. */
+async function readStagedClientSlots(designId: string, slotCount: number): Promise<Buffer[]> {
+  const out: Buffer[] = [];
+  for (let i = 0; i < slotCount; i++) {
+    const { data, error } = await supabaseService.storage
+      .from(BUCKET_PRODUCTION)
+      .download(stagedSlotPath(designId, i));
+    if (error || !data) {
+      throw new Error(`INCOMPLETE_SLOTS: falta el snapshot del slot ${i + 1}`);
+    }
+    const buf = Buffer.from(await data.arrayBuffer());
+    if (buf.length === 0) throw new Error(`INCOMPLETE_SLOTS: el slot ${i + 1} llegó vacío`);
+    if (buf.length > MAX_STAGED_SLOT_BYTES) {
+      throw new Error(
+        `slot ${i + 1} demasiado grande (${Math.round(buf.length / 1024 / 1024)}MB, max 20MB)`,
+      );
+    }
+    out.push(buf);
+  }
+  return out;
+}
+
+/** Borra el área de paso. Best-effort: no romper un finalize que ya salió bien. */
+async function discardStagedClientSlots(designId: string, slotCount: number): Promise<void> {
+  const paths = Array.from({ length: slotCount }, (_, i) => stagedSlotPath(designId, i));
+  const { error } = await supabaseService.storage.from(BUCKET_PRODUCTION).remove(paths);
+  if (error) {
+    logger.warn(
+      { event: "design.finalize.staging_cleanup_fail", designId, err: error.message },
+      "No se pudo limpiar el área de paso de snapshots",
+    );
+  }
+}
+
 export async function finalizeDesign(opts: {
   designId: string;
   /** Buffer binario del preview compositado (PNG 1080×1080 típico). */
   previewBuffer: Buffer;
   /**
    * Buffers binarios de los N snapshots production (PNG 300 DPI por slot).
-   * IMPORTANTE: se reciben como Buffer en vez de dataURL base64 porque
-   * Next 16 Server Actions tienen un límite de profundidad de array en
-   * el protocolo de serialización React Flight — strings base64 grandes
-   * los chunkea internamente y dispara "Maximum array nesting exceeded".
-   * Solución: action accepts FormData con Blobs, llamado convierte a Buffer.
+   *
+   * OPCIONAL desde 2026-07-25 (ADR-081) — y ausente en el caso normal. Los PNG de imprenta los
+   * RENDERIZA EL SERVIDOR; estos son el fallback para lo que ningún tier server-side reproduce
+   * (hoy: el marco SVG de la Polaroid). Mandarlos siempre era lo que rompía producción: 12 páginas
+   * de calendario pesan ~57 MB y Vercel corta el body de una Function en 4.5 MB.
+   *
+   * Cuando vienen, se reciben como Buffer y no como dataURL base64 porque el protocolo React Flight
+   * de Next 16 chunkea los strings grandes y dispara "Maximum array nesting exceeded"; la acción
+   * recibe FormData con Blobs y el llamador convierte a Buffer.
    */
-  productionBuffers: Buffer[];
+  productionBuffers?: Buffer[];
+  /**
+   * ADR-081 — el cliente ya subió sus snapshots al área de paso de Storage (segunda pasada, tras un
+   * `NEEDS_CLIENT_SLOTS`): recógelos de ahí en vez de esperarlos en el body.
+   */
+  useStagedClientSlots?: boolean;
   customerId: string | null;
   sessionId: string | null;
   /** ADR-063 CAL2 — año elegido por el cliente para un calendario mes-a-mes (opcional). */
@@ -816,10 +911,10 @@ export async function finalizeDesign(opts: {
     throw new Error(`Design is ${design.status} — only DRAFT can be finalized`);
   }
 
-  // Validar que la cantidad de production snapshots matchea slotCount del Design
+  // Si el cliente mandó snapshots, deben ser exactamente uno por slot.
   const canvasData = design.canvasData as unknown as CanvasData;
   const expectedSlotCount = canvasData.version === 2 ? (canvasData as CanvasDataV2).slotCount : 1;
-  if (opts.productionBuffers.length !== expectedSlotCount) {
+  if (opts.productionBuffers && opts.productionBuffers.length !== expectedSlotCount) {
     throw new Error(
       `INCOMPLETE_SLOTS: expected ${expectedSlotCount} production snapshots, got ${opts.productionBuffers.length}`,
     );
@@ -853,14 +948,16 @@ export async function finalizeDesign(opts: {
   } = supabase.storage.from(BUCKET_PREVIEWS).getPublicUrl(previewPath);
 
   // ADR-057 A1a — Render de producción EN EL SERVIDOR (independiente del celular del cliente).
-  // Solo-foto → reemplaza los PNG del cliente por los server-side (calidad garantizada, sin
-  // adornos de realismo). Texto/marco (NEEDS_KONVA) o fallo → conserva los del cliente (fallback).
+  // ADR-081 — es la vía PRINCIPAL, no una mejora: el cliente ya no manda los PNG salvo que se los
+  // pidamos, porque no caben en el body de una Function de Vercel (4.5 MB contra ~57 MB de un
+  // calendario). Si ningún tier reproduce el diseño con fidelidad (hoy solo el marco SVG de la
+  // Polaroid) se exige el fallback del cliente, que sube por Storage y no por el body.
   let productionBuffers = opts.productionBuffers;
   if (canvasData.version === 2) {
     const serverBuffers = await tryServerRenderProduction(design.id, canvasData as CanvasDataV2, {
       calendarYear: opts.calendarYear,
     });
-    if (serverBuffers && serverBuffers.length === opts.productionBuffers.length) {
+    if (serverBuffers && serverBuffers.length === expectedSlotCount) {
       productionBuffers = serverBuffers;
       logger.info(
         {
@@ -870,7 +967,23 @@ export async function finalizeDesign(opts: {
         },
         "Production renderizada en el servidor",
       );
+    } else if (!productionBuffers && opts.useStagedClientSlots) {
+      productionBuffers = await readStagedClientSlots(design.id, expectedSlotCount);
+      logger.info(
+        {
+          event: "design.finalize.staged_slots_used",
+          designId: design.id,
+          slots: productionBuffers.length,
+        },
+        "Snapshots del cliente recogidos del área de paso",
+      );
     }
+  }
+  if (!productionBuffers) {
+    // El caller traduce esto a un pedido de snapshots al cliente (subida directa a Storage).
+    throw new Error(
+      `NEEDS_CLIENT_SLOTS: el servidor no pudo renderizar los ${expectedSlotCount} PNG de imprenta`,
+    );
   }
 
   // Ola 3 (Lucy 2026-07-22) — SEPARADORES 2 CARAS: la pieza física es una tira doblada;
@@ -977,6 +1090,11 @@ export async function finalizeDesign(opts: {
     },
     "Design finalized (V2)",
   );
+
+  // Los definitivos ya están subidos: el área de paso sobra (ADR-081).
+  if (opts.useStagedClientSlots) {
+    await discardStagedClientSlots(design.id, expectedSlotCount);
+  }
 
   return updated;
 }

@@ -13,6 +13,13 @@
  * Si la PDP traía tema/idioma en la variante, se PRESELECCIONAN. Las vocales son las mismas
  * 5 letras en español e inglés (sin selector de idioma para ellas). Al cambiar tema/idioma se
  * re-resuelve la variante exacta (mismo tamaño/imantado) para que la cotización quede precisa.
+ *
+ * Vista previa pre-carrito (Lucy 2026-07-25) — antes este editor mandaba el set al carrito sin que
+ * el cliente viera cómo iba a quedar. Ahora "¡Listo!" solo DIBUJA el PNG del set y lo muestra en
+ * StudioPreviewModal ("Así se verá tu pedido", el mismo componente del Estudio principal): el
+ * diseño se crea, se finaliza y se agrega al carrito RECIÉN al confirmar. Si el cliente vuelve a
+ * editar no queda nada creado en la base. El PNG que se ve es exactamente el que se sube como
+ * archivo de producción — que es la promesa WYSIWYG de la tienda, no un adorno.
  */
 
 import { useCallback, useMemo, useRef, useState } from "react";
@@ -29,6 +36,7 @@ import { addPersonalizedToCartAction } from "@/app/carrito/actions";
 import { formatCOP } from "@/lib/format";
 import { useLetterColors } from "./use-letter-colors";
 import { ThemePicker, SwatchRow } from "./letter-color-controls";
+import { StudioPreviewModal } from "./studio-preview-modal";
 import { resolveLetterSetVariant, type LetterSetVariant } from "./lib/letter-set-resolve";
 import type { Magnet3D } from "./fridge-3d-view";
 import { buildLetterTileTextures } from "./lib/letter-tile-textures";
@@ -159,6 +167,20 @@ async function renderLetterSetBlob(
   );
 }
 
+/**
+ * El PNG del set se dibuja UNA sola vez: el modal necesita una URL para mostrarlo y el finalize
+ * necesita los bytes. Convertimos ese mismo Blob a data URL en vez de volver a dibujar el canvas,
+ * así se garantiza que la imagen que el cliente aprueba es byte a byte la que se manda a producir.
+ */
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error("No se pudo leer la vista previa"));
+    reader.readAsDataURL(blob);
+  });
+}
+
 /** Emoji del chip según la clave de tema (fallback 🎨 para temas nuevos). */
 function themeEmoji(theme: string | null, name: string): string {
   if (theme === "animales") return "🐾";
@@ -208,6 +230,14 @@ export function LetterSetEditor({
   const router = useRouter();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Vista previa pre-carrito: `preparing` cubre el dibujo del PNG (puede tardar si hay que bajar
+  // las fichas ilustradas), `previewDataUrl` abre la modal y `previewBlob` es el archivo que se
+  // sube al confirmar. `previewError` es el error del PASO de confirmación: va DENTRO de la modal
+  // (donde está mirando el cliente), mientras `error` sigue siendo el del editor.
+  const [preparing, setPreparing] = useState(false);
+  const [previewDataUrl, setPreviewDataUrl] = useState<string | null>(null);
+  const [previewBlob, setPreviewBlob] = useState<Blob | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
 
   // Idioma del alfabeto (para vocales no se muestra el selector: mismas 5 letras).
   const [language, setLanguage] = useState<"es" | "en">(initialLanguage);
@@ -234,7 +264,10 @@ export function LetterSetEditor({
     : {};
 
   const currentVariant = variants.find((v) => v.id === currentVariantId);
-  const priceLabel = formatCOP(currentVariant?.price ?? basePrice);
+  // Centavos COP enteros: la etiqueta del editor y el precio de la modal salen del MISMO valor,
+  // para que el cliente no vea un número distinto al confirmar.
+  const unitPriceCents = currentVariant?.price ?? basePrice;
+  const priceLabel = formatCOP(unitPriceCents);
 
   // Mismos controles de color que el editor de Nombre.
   const {
@@ -301,10 +334,47 @@ export function LetterSetEditor({
     );
   }
 
-  async function handleAddToCart() {
-    if (submitting) return;
-    setSubmitting(true);
+  /**
+   * Paso 1 — "¡Listo!": dibuja el set y abre la vista previa. No toca la red ni la base: si el
+   * cliente decide seguir editando, no queda ningún diseño creado ni ningún archivo subido.
+   */
+  async function handleShowPreview() {
+    // Simétrico al guard de handleOpen3D: si el 3D se está construyendo, abrir la previa
+    // dejaría los dos diálogos superpuestos y el 3D inerte bajo el overlay.
+    if (building3D) return;
+    if (submitting || preparing) return;
+    setPreparing(true);
     setError(null);
+    setPreviewError(null);
+    try {
+      let blob: Blob;
+      try {
+        blob = await renderLetterSetBlob(letters, activeTiles, effectiveColors);
+      } catch {
+        // Si alguna ficha ilustrada no carga, el set se dibuja con la letra de color: el cliente
+        // ve —y aprueba— exactamente lo que se imprimiría en ese caso.
+        blob = await renderLetterSetBlob(letters, activeTiles, effectiveColors, false);
+      }
+      setPreviewBlob(blob);
+      setPreviewDataUrl(await blobToDataUrl(blob));
+    } catch (err) {
+      // #14 — detalle técnico al log; mensaje claro es-CO al cliente.
+      console.error("[studio.letter-set.preview]", err);
+      setError("No pudimos preparar la vista previa. Intenta de nuevo en un momento.");
+    } finally {
+      setPreparing(false);
+    }
+  }
+
+  /**
+   * Paso 2 — "Sí, agregar al carrito": recién acá se crea el diseño, se sube el PNG aprobado y se
+   * agrega al carrito. Se reusa el blob de la vista previa (no se re-dibuja) para que el archivo
+   * de producción sea el mismo que el cliente aprobó.
+   */
+  async function handleConfirmAddToCart() {
+    if (submitting || !previewBlob) return;
+    setSubmitting(true);
+    setPreviewError(null);
     try {
       const created = await createLetterSetDesignAction({
         productId: product.id,
@@ -315,24 +385,20 @@ export function LetterSetEditor({
         language,
       });
       if (!created.ok) {
-        setError(created.message);
+        setPreviewError(created.message);
         setSubmitting(false);
         return;
       }
-      let blob: Blob;
-      try {
-        blob = await renderLetterSetBlob(letters, activeTiles, effectiveColors);
-      } catch {
-        blob = await renderLetterSetBlob(letters, activeTiles, effectiveColors, false);
-      }
       const fd = new FormData();
       fd.set("designId", created.designId);
+      // El set entero se imprime como UNA lámina (un solo archivo de producción), aunque la modal
+      // le cuente al cliente las fichas que va a recibir.
       fd.set("slotCount", "1");
-      fd.set("preview", blob, "preview.png");
-      fd.set("production_0", blob, "produccion.png");
+      fd.set("preview", previewBlob, "preview.png");
+      fd.set("production_0", previewBlob, "produccion.png");
       const finalized = await finalizeDesignAction(fd);
       if (!finalized.ok) {
-        setError(finalized.message);
+        setPreviewError(finalized.message);
         setSubmitting(false);
         return;
       }
@@ -342,17 +408,29 @@ export function LetterSetEditor({
         variantId: currentVariantId,
       });
       if (!added.ok) {
-        setError(`Guardamos el diseño pero no pudimos agregarlo al carrito: ${added.message}`);
+        setPreviewError(
+          `Guardamos el diseño pero no pudimos agregarlo al carrito: ${added.message}`,
+        );
         setSubmitting(false);
         return;
       }
+      // Cerramos la modal antes de redirigir para que no quede parpadeando sobre el carrito.
+      setPreviewDataUrl(null);
       router.push("/carrito?personalized=1");
     } catch (err) {
       // #14 — detalle técnico al log; mensaje claro es-CO al cliente.
       console.error("[studio.letter-set]", err);
-      setError("Algo salió mal. Intenta de nuevo en un momento.");
+      setPreviewError("Algo salió mal. Intenta de nuevo en un momento.");
       setSubmitting(false);
     }
+  }
+
+  /** "Volver a editar": suelta la vista previa para no reusar un PNG viejo tras cambiar colores. */
+  function handleClosePreview() {
+    if (submitting) return; // nunca soltar el blob en medio de la subida
+    setPreviewDataUrl(null);
+    setPreviewBlob(null);
+    setPreviewError(null);
   }
 
   // El idioma solo se elige cuando cambia el alfabeto (abecedario) y el producto tiene ambos.
@@ -537,7 +615,7 @@ export function LetterSetEditor({
           <button
             type="button"
             onClick={handleOpen3D}
-            disabled={building3D || submitting}
+            disabled={building3D || submitting || preparing}
             aria-label="Ver tus fichas en un tablero magnético 3D"
             className="border-brand-purple/30 text-brand-purple-dark hover:border-brand-purple/60 inline-flex items-center gap-2 rounded-full border-2 bg-white px-6 py-2.5 text-sm font-bold transition disabled:opacity-60"
           >
@@ -548,22 +626,52 @@ export function LetterSetEditor({
             )}
             {building3D ? "Armando…" : "Ver en 3D"}
           </button>
+          {/* El botón ya no agrega al carrito: abre la vista previa. El texto lo dice ("¡Listo!",
+              igual que el Estudio principal) y el sr-only completa la promesa sin romper WCAG
+              2.5.3 (el nombre accesible empieza por el texto visible). */}
           <button
             type="button"
-            onClick={handleAddToCart}
-            disabled={submitting}
+            onClick={handleShowPreview}
+            disabled={submitting || preparing || building3D}
             className="bg-gradient-brand inline-flex items-center gap-2 rounded-full px-8 py-3.5 text-base font-bold text-white shadow-md transition hover:brightness-110 disabled:opacity-60"
           >
-            {submitting ? (
+            {preparing || submitting ? (
               <Loader2 className="h-5 w-5 animate-spin" />
             ) : (
               <Sparkles className="h-5 w-5" />
             )}
-            {submitting ? "Agregando…" : "Agregar al carrito"}
+            {preparing ? "Preparando…" : submitting ? "Agregando…" : "¡Listo!"}
+            {!preparing && !submitting && (
+              <span className="sr-only">: mira cómo se verá tu pedido antes de agregarlo</span>
+            )}
           </button>
           <span className="text-brand-muted text-sm font-semibold">{priceLabel}</span>
         </div>
       </div>
+
+      {/* Vista previa pre-carrito (Lucy 2026-07-25) — "Así se verá tu pedido". El estado abierto
+          lo manda el propio PNG: sin vista previa no hay nada que confirmar (y la modal ya se
+          auto-oculta con previewUrl=null), así no hay dos banderas que puedan desincronizarse. */}
+      <StudioPreviewModal
+        isOpen={previewDataUrl !== null}
+        previewUrl={previewDataUrl}
+        productName={product.name}
+        // Estos productos tienen variantes "Con imán" y "Sin imán" (la PDP las ofrece como
+        // dimensión propia). Llamarle "imán" a la que no lo lleva es afirmar algo falso sobre el
+        // producto físico, y justo en la pantalla de confirmación (revisión 2026-07-25).
+        productKind={currentVariant?.magnet === false ? "tiles" : "magnets"}
+        // El cliente cuenta FICHAS, no archivos: el set son N imanes ("los 27 imanes que vas a
+        // recibir"). El slotCount=1 del finalize es otra cosa: la lámina única de producción.
+        slotCount={letters.length}
+        // Tamaño real de la variante vigente (la que se re-resuelve al cambiar tema/idioma).
+        // El atributo se guarda sin unidad ("5×7"); sin esto la modal decía "Cada imán mide 7×10.".
+        sizeCm={currentVariant?.sizeCm ? `${currentVariant.sizeCm} cm` : undefined}
+        unitPrice={unitPriceCents}
+        isFinalizing={submitting}
+        errorMessage={previewError}
+        onEdit={handleClosePreview}
+        onConfirm={handleConfirmAddToCart}
+      />
 
       {/* Ola 2B — Modal del tablero memo 3D con las fichas (lazy, client-only). */}
       {board3D !== null && (

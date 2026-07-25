@@ -179,6 +179,11 @@ export function StudioEditor({
   // A2.8 — Sheet drawer mobile state (sidebar bottom slide-up).
   const [mobileSheetOpen, setMobileSheetOpen] = useState(false);
   const slotStagesRef = useRef<Map<number, Konva.Stage | null>>(new Map());
+  // Si el finalize ya pasó pero el CARRITO falló, reintentar desde la modal no puede volver a
+  // finalizar: el diseño quedó en READY y `finalizeDesign` solo acepta borradores, así que el
+  // reintento moría con «Design is READY — only DRAFT can be finalized» y no había salida. Se
+  // limpia al volver a editar, que es cuando el diseño puede cambiar de verdad.
+  const finalizedRef = useRef(false);
   // ADR-063 T5 — cuando hay muchos slots, el grid monta solo los cercanos al viewport (lazy). Antes
   // de CUALQUIER snapshot (preview, producción, 3D) forzamos el montaje de todos y esperamos a que
   // Konva registre sus stages, para no snapshotear un slot vacío.
@@ -685,57 +690,86 @@ export function StudioEditor({
     state.setIsFinalizing(true);
     setPreviewError(null);
     try {
-      await ensureAllStagesMounted(); // T5: garantizar los N stages antes de snapshotear producción
-      // Generar productionDataUrls (uno por slot). H5 (auditoría v3): el pixelRatio va RELATIVO al
-      // tamaño LÓGICO del stage, no al display responsive — así el PNG de imprenta sale a resolución
-      // FIJA (ancho lógico × 3, = los 3240px del render server para 1080) igual en móvil y en desktop
-      // (antes toDataURL({pixelRatio:3}) sobre un slot de ~171px móvil daba ~186 DPI, borroso).
-      const logicalStageW = state.canvasData.unitTemplate.stage.width;
-      const productionDataUrls: string[] = [];
-      for (const slot of state.canvasData.slots) {
-        const stage = slotStagesRef.current.get(slot.slotIndex);
-        if (!stage) {
-          throw new Error(`No se pudo encontrar el slot ${slot.slotIndex + 1} para snapshot`);
+      // ADR-081 — el finalize ya NO manda los PNG de imprenta: los renderiza el servidor. Antes se
+      // generaban acá los N snapshots y viajaban en el body de la Server Action; un calendario de 12
+      // páginas pesa ~57 MB y Vercel corta el body de una Function en 4.5 MB, así que en producción
+      // esto fallaba SIEMPRE (en local no, porque el server de dev no tiene ese techo — por eso pasó
+      // desapercibido). De paso el celular se ahorra exportar 12 lienzos de 1800×2400 en el camino
+      // normal, que era lo más pesado de todo el flujo.
+      const designId = state.designId;
+      const canvasData = state.canvasData;
+      const buildFinalizeForm = () => {
+        const fd = new FormData();
+        fd.set("designId", designId);
+        fd.set("slotCount", String(canvasData.slots.length));
+        // ADR-063 CAL2 — para calendarios mes-a-mes, el año elegido viaja al server (que lo hornea en
+        // cada página del mes y lo persiste por-diseño).
+        if (isCalendarMonth) fd.set("calendarYear", String(selectedYear));
+        fd.set("preview", dataURLtoBlob(previewDataUrl), "preview.png");
+        return fd;
+      };
+
+      let result = finalizedRef.current
+        ? ({
+            ok: true as const,
+            previewUrl: null,
+            status: "READY",
+            productionSlotsCount: 0,
+          } as Awaited<ReturnType<typeof finalizeDesignAction>>)
+        : await finalizeDesignAction(buildFinalizeForm());
+
+      // Ningún tier server-side reproduce este diseño con fidelidad (hoy solo la Polaroid, por su
+      // marco SVG con fuentes horneadas): el servidor nos devuelve URLs firmadas y los PNG suben
+      // DIRECTO a Storage. Ese camino no pasa por la Function, así que no tiene techo de tamaño.
+      if (!result.ok && result.code === "NEEDS_CLIENT_SLOTS") {
+        await ensureAllStagesMounted(); // T5: garantizar los N stages antes de snapshotear producción
+        // H5 (auditoría v3): el pixelRatio va RELATIVO al tamaño LÓGICO del stage, no al display
+        // responsive — así el PNG de imprenta sale a resolución FIJA (ancho lógico × 3, = los 3240px
+        // del render server para 1080) igual en móvil y en desktop (antes toDataURL({pixelRatio:3})
+        // sobre un slot de ~171px móvil daba ~186 DPI, borroso).
+        const logicalStageW = canvasData.unitTemplate.stage.width;
+        for (const { slotIndex, url } of result.uploads) {
+          const stage = slotStagesRef.current.get(slotIndex);
+          if (!stage) {
+            throw new Error(`No se pudo encontrar el slot ${slotIndex + 1} para snapshot`);
+          }
+          // ADR-063 T3 + H6 — archivo de imprenta LIMPIO: la sombra/glossy/edge (`name="realism"`) y
+          // los indicadores de edición (recuadro punteado + dot, `name="edit-indicator"`) son adornos
+          // de PANTALLA; NO deben hornearse en el PNG 300 DPI. Se ocultan solo durante el snapshot y
+          // se restauran de inmediato. (El preview compositado conserva el realismo, pero NO los
+          // indicadores — se ocultan también allá.)
+          const hiddenForSnapshot = [...stage.find(".realism"), ...stage.find(".edit-indicator")];
+          hiddenForSnapshot.forEach((l) => l.hide());
+          let dataUrl: string;
+          try {
+            const displayW = stage.width() || logicalStageW;
+            const pixelRatio = (logicalStageW * 3) / displayW;
+            dataUrl = stage.toDataURL({ pixelRatio, mimeType: "image/png" });
+          } finally {
+            hiddenForSnapshot.forEach((l) => l.show());
+          }
+          // FOTO1: heart/circle → recortar a la silueta (transparente afuera).
+          dataUrl = await clipProductionSnapshotToShape(dataUrl, productConfig.shape);
+          const put = await fetch(url, {
+            method: "PUT",
+            headers: { "content-type": "image/png", "cache-control": "max-age=3600" },
+            body: dataURLtoBlob(dataUrl),
+          });
+          if (!put.ok) {
+            throw new Error(`No pudimos subir la imagen del slot ${slotIndex + 1}. Reintenta.`);
+          }
         }
-        // ADR-063 T3 + H6 — archivo de imprenta LIMPIO: la sombra/glossy/edge (`name="realism"`) y los
-        // indicadores de edición (recuadro punteado + dot, `name="edit-indicator"`) son adornos de
-        // PANTALLA; NO deben hornearse en el PNG 300 DPI. Se ocultan solo durante el snapshot y se
-        // restauran de inmediato. (El preview compositado conserva el realismo, pero NO los
-        // indicadores — se ocultan también allá.)
-        const hiddenForSnapshot = [...stage.find(".realism"), ...stage.find(".edit-indicator")];
-        hiddenForSnapshot.forEach((l) => l.hide());
-        let dataUrl: string;
-        try {
-          const displayW = stage.width() || logicalStageW;
-          const pixelRatio = (logicalStageW * 3) / displayW;
-          dataUrl = stage.toDataURL({ pixelRatio, mimeType: "image/png" });
-        } finally {
-          hiddenForSnapshot.forEach((l) => l.show());
-        }
-        // FOTO1 (fallback de cliente): heart/circle → recortar a la silueta (transparente afuera).
-        dataUrl = await clipProductionSnapshotToShape(dataUrl, productConfig.shape);
-        productionDataUrls.push(dataUrl);
+        const retry = buildFinalizeForm();
+        retry.set("useStagedSlots", "1");
+        result = await finalizeDesignAction(retry);
       }
 
-      // FormData con blobs binarios — bypassea límite de array nesting de
-      // React Flight protocol de Next 16 (ver lib/wompi.ts comment también).
-      const fd = new FormData();
-      fd.set("designId", state.designId);
-      fd.set("slotCount", String(productionDataUrls.length));
-      // ADR-063 CAL2 — para calendarios mes-a-mes, el año elegido viaja al server (que lo hornea en
-      // cada página del mes y lo persiste por-diseño).
-      if (isCalendarMonth) fd.set("calendarYear", String(selectedYear));
-      fd.set("preview", dataURLtoBlob(previewDataUrl), "preview.png");
-      productionDataUrls.forEach((url, i) => {
-        fd.set(`production_${i}`, dataURLtoBlob(url), `slot-${i + 1}.png`);
-      });
-
-      const result = await finalizeDesignAction(fd);
       if (!result.ok) {
         state.setIsFinalizing(false);
         setPreviewError(result.message);
         return;
       }
+      finalizedRef.current = true;
 
       // Add to cart — pasamos variantId del PDP (consolidación familias M.3.b.CAT).
       // replacesCartDesignId: si venimos de "Editar" desde el carrito, reemplaza el item original.
@@ -778,6 +812,7 @@ export function StudioEditor({
     setPreviewModalOpen(false);
     setPreviewDataUrl(null);
     setPreviewError(null);
+    finalizedRef.current = false; // vuelve a editar → el diseño puede cambiar, hay que re-finalizar
   }, []);
 
   // ──────────── Estados de boot ────────────

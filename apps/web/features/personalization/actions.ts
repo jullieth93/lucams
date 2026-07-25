@@ -32,6 +32,7 @@ import {
   UploadAssetMetadataSchema,
 } from "./schemas";
 import {
+  createClientSlotUploadTickets,
   createDraftDesign,
   createNameDesign,
   createLetterSetDesign,
@@ -165,26 +166,34 @@ export async function saveCanvasAction(input: { designId: string; canvasData: un
 
 // ──────────── Finalize (READY snapshot) ────────────
 //
-// V2: el cliente envía 1 preview compositado del grid + N production snapshots
-// (uno por slot llenado). Server valida que cantidad de buffers production
-// matchea el slotCount del Design + que todos los slots tienen assetUrl.
+// El cliente envía 1 preview compositado del grid. Los N PNG de imprenta los RENDERIZA EL SERVIDOR
+// (ADR-081): antes viajaban en este mismo body y por eso el Estudio nunca funcionó en producción —
+// un calendario de 12 páginas pesa ~57 MB y Vercel corta el body de una Function en 4.5 MB
+// (https://vercel.com/docs/functions/limitations, consulta 2026-07-25). El 413 vuelve como HTML, el
+// cliente de Next no puede leerlo y el cliente veía "An unexpected response was received from the
+// server". El preview sí cabe de sobra: el mayor medido en Storage pesa 0.61 MB.
 //
-// Recibe FormData (NO objeto JSON) porque los PNGs son blobs binarios de
-// 2-6MB cada uno. Si se enviaran como dataURL base64 vía Server Action JSON,
-// React Flight protocol los chunkea internamente y dispara "Maximum array
-// nesting exceeded" (límite ~20 niveles de profundidad de array en wire format).
-// FormData con Blob bypassea esa serialización — bytes raw vía multipart.
+// Dos caminos siguen aceptando snapshots del cliente:
+//   · inline (`production_i`) — lo usan los editores de una sola ficha (nombre, abecedario), donde
+//     el blob es diminuto y no hay nada que renderizar en el servidor;
+//   · `useStagedSlots` — segunda pasada del fallback: el cliente ya los subió DIRECTO a Storage con
+//     una URL firmada, así que no pasan por el body y no tienen techo de tamaño.
 //
-// El error code `INCOMPLETE_SLOTS` permite al cliente mostrar UI específica
-// (modal listando slots vacíos) en lugar de error genérico.
+// Códigos de error para el cliente: `INCOMPLETE_SLOTS` (slots vacíos → modal específica) y
+// `NEEDS_CLIENT_SLOTS` (ningún tier server-side reproduce el diseño → el cliente sube los suyos).
 
 const MAX_PRODUCTION_BUFFER_BYTES = 20 * 1024 * 1024; // 20 MB por slot
-const MAX_PREVIEW_BUFFER_BYTES = 8 * 1024 * 1024; // 8 MB preview compositado
+// Techo del preview: por debajo de los 4.5 MB de Vercel, con margen para el resto del multipart.
+const MAX_PREVIEW_BUFFER_BYTES = 3 * 1024 * 1024;
 
-export async function finalizeDesignAction(
-  formData: FormData,
-): Promise<
+export async function finalizeDesignAction(formData: FormData): Promise<
   | { ok: true; previewUrl: string | null; status: string; productionSlotsCount: number }
+  | {
+      ok: false;
+      code: "NEEDS_CLIENT_SLOTS";
+      message: string;
+      uploads: { slotIndex: number; url: string }[];
+    }
   | { ok: false; code: "VALIDATION" | "INCOMPLETE_SLOTS" | "INTERNAL"; message: string }
 > {
   const designId = String(formData.get("designId") ?? "").trim();
@@ -217,31 +226,36 @@ export async function finalizeDesignAction(
     return {
       ok: false,
       code: "VALIDATION",
-      message: `preview demasiado grande (${Math.round(previewBlob.size / 1024 / 1024)}MB, max 8MB)`,
+      message: `preview demasiado grande (${Math.round(previewBlob.size / 1024 / 1024)}MB, max 3MB)`,
     };
   }
   if (previewBlob.size === 0) {
     return { ok: false, code: "VALIDATION", message: "preview vacío" };
   }
 
-  // Lee y valida los N production blobs
-  const productionBuffers: Buffer[] = [];
-  for (let i = 0; i < slotCountRaw; i++) {
-    const blob = formData.get(`production_${i}`);
-    if (!(blob instanceof Blob)) {
-      return { ok: false, code: "VALIDATION", message: `falta production_${i}` };
+  // Snapshots inline: OPCIONALES (ADR-081). Solo los mandan los editores de una sola ficha. Si
+  // viene el primero, tienen que venir todos — un envío a medias es un bug del cliente, no un caso
+  // que debamos completar renderizando la mitad.
+  let productionBuffers: Buffer[] | undefined;
+  if (formData.get("production_0") instanceof Blob) {
+    productionBuffers = [];
+    for (let i = 0; i < slotCountRaw; i++) {
+      const blob = formData.get(`production_${i}`);
+      if (!(blob instanceof Blob)) {
+        return { ok: false, code: "VALIDATION", message: `falta production_${i}` };
+      }
+      if (blob.size === 0) {
+        return { ok: false, code: "VALIDATION", message: `production_${i} vacío` };
+      }
+      if (blob.size > MAX_PRODUCTION_BUFFER_BYTES) {
+        return {
+          ok: false,
+          code: "VALIDATION",
+          message: `slot ${i + 1} demasiado grande (${Math.round(blob.size / 1024 / 1024)}MB, max 20MB)`,
+        };
+      }
+      productionBuffers.push(Buffer.from(await blob.arrayBuffer()));
     }
-    if (blob.size === 0) {
-      return { ok: false, code: "VALIDATION", message: `production_${i} vacío` };
-    }
-    if (blob.size > MAX_PRODUCTION_BUFFER_BYTES) {
-      return {
-        ok: false,
-        code: "VALIDATION",
-        message: `slot ${i + 1} demasiado grande (${Math.round(blob.size / 1024 / 1024)}MB, max 20MB)`,
-      };
-    }
-    productionBuffers.push(Buffer.from(await blob.arrayBuffer()));
   }
 
   const previewBuffer = Buffer.from(await previewBlob.arrayBuffer());
@@ -258,6 +272,7 @@ export async function finalizeDesignAction(
       designId,
       previewBuffer,
       productionBuffers,
+      useStagedClientSlots: formData.get("useStagedSlots") === "1",
       customerId,
       sessionId,
       calendarYear,
@@ -270,6 +285,32 @@ export async function finalizeDesignAction(
     };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
+
+    // Ningún tier server-side reproduce este diseño (hoy: el marco SVG de la Polaroid). Le pedimos
+    // los PNG al navegador, pero por Storage y no por el body — ver ADR-081.
+    if (msg.startsWith("NEEDS_CLIENT_SLOTS")) {
+      try {
+        const uploads = await createClientSlotUploadTickets({ designId, customerId, sessionId });
+        logger.info(
+          { event: "design.finalize.needs_client_slots", designId, slots: uploads.length },
+          "Render server-side no disponible — se piden los snapshots al cliente",
+        );
+        return {
+          ok: false,
+          code: "NEEDS_CLIENT_SLOTS",
+          message: "Necesitamos las imágenes de imprenta desde tu navegador.",
+          uploads,
+        };
+      } catch (ticketErr) {
+        const tmsg = ticketErr instanceof Error ? ticketErr.message : String(ticketErr);
+        logger.warn(
+          { event: "design.finalize.tickets_fail", designId, err: tmsg },
+          "No se pudieron emitir las URLs de subida",
+        );
+        return { ok: false, code: "INTERNAL", message: tmsg };
+      }
+    }
+
     const code: "INCOMPLETE_SLOTS" | "INTERNAL" = msg.startsWith("INCOMPLETE_SLOTS")
       ? "INCOMPLETE_SLOTS"
       : "INTERNAL";
