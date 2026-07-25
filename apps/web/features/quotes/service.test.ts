@@ -363,3 +363,29 @@ describe("truncateForWhatsApp — no parte emojis", () => {
     expect(truncateForWhatsApp("Imán Corazón 💜", 60)).toBe("Imán Corazón 💜");
   });
 });
+
+describe("truncateForWhatsApp — respaldo sin Intl.Segmenter", () => {
+  it("sin Segmenter recorta por code points, que ya basta para no partir un emoji", async () => {
+    // Runtimes viejos o builds sin ICU completo no traen Intl.Segmenter. El respaldo usa
+    // Array.from (itera por code points): no preserva secuencias ZWJ, pero sí evita el
+    // URIError, que es lo que tumbaba la página.
+    // `Intl.Segmenter` es readonly para TS; se manipula vía el objeto para simular un runtime
+    // sin ICU completo (donde la propiedad sencillamente no existe).
+    const intl = Intl as unknown as Record<string, unknown>;
+    const original = intl.Segmenter;
+    delete intl.Segmenter;
+    try {
+      vi.resetModules();
+      const { truncateForWhatsApp } = await import("./service");
+      const name = `${"a".repeat(58)}\u{1F49C}${"b".repeat(10)}`;
+
+      const out = truncateForWhatsApp(name, 60);
+
+      expect(() => encodeURIComponent(out)).not.toThrow();
+      expect(out).not.toMatch(/[\uD800-\uDBFF]$/);
+    } finally {
+      intl.Segmenter = original;
+      vi.resetModules();
+    }
+  });
+});
