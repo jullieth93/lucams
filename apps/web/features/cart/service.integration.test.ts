@@ -310,12 +310,15 @@ describe.skipIf(!hasDb)("cart/service — integración DB", { timeout: T }, () =
     });
     readyDesignId = ready.id;
 
+    // Contenido DISTINTO al de `ready`: desde 2026-07-25 el carrito agrupa por contenido, así que
+    // dos canvas vacíos serían "el mismo diseño" y este fixture dejaría de representar dos pedidos
+    // diferentes.
     const ready2 = await prisma.design.create({
       data: {
         sessionId: sid("design"),
         productId: persoProductId,
         status: "READY",
-        canvasData: {},
+        canvasData: { version: 2, slotCount: 1, marca: "distinto-a-ready-1" },
         previewUrl: "https://cdn.lucams.test/preview-ready-2.png",
       },
       select: { id: true },
@@ -685,6 +688,93 @@ describe.skipIf(!hasDb)("cart/service — integración DB", { timeout: T }, () =
       expect(detail.items).toHaveLength(2);
       const designIds = detail.items.map((i) => i.designId).sort();
       expect(designIds).toEqual([readyDesignId, readyDesign2Id].sort());
+    });
+
+    /*
+     * Lucy, 2026-07-25: en su cotización salieron dos «1× Abecedario Completo (Español · 5×7 cm ·
+     * Con imán)» seguidas. Eran dos pasadas por el Estudio con las MISMAS opciones — dos designId,
+     * el mismo producto físico. Su regla: mismo diseño exacto → una línea con cantidad 2; si cambia
+     * una variante (color, tamaño), líneas separadas.
+     */
+    it("dos diseños IDÉNTICOS en contenido se agrupan en una línea con cantidad 2", async () => {
+      const sessionId = sid("perso");
+      const gemeloA = await prisma.design.create({
+        data: {
+          sessionId: sid("design"),
+          productId: persoProductId,
+          status: "READY",
+          canvasData: { version: 2, slotCount: 1, color: "turquesa" },
+        },
+        select: { id: true },
+      });
+      const gemeloB = await prisma.design.create({
+        data: {
+          sessionId: sid("design"),
+          productId: persoProductId,
+          status: "READY",
+          // Mismo contenido; el orden de las claves cambia a propósito: la huella es canónica.
+          canvasData: { color: "turquesa", slotCount: 1, version: 2 },
+        },
+        select: { id: true },
+      });
+
+      await addPersonalizedToCart({
+        sessionId,
+        customerId: null,
+        designId: gemeloA.id,
+        variantId: persoVariantAId,
+        qty: 1,
+      });
+      const detail = await addPersonalizedToCart({
+        sessionId,
+        customerId: null,
+        designId: gemeloB.id,
+        variantId: persoVariantAId,
+        qty: 1,
+      });
+
+      expect(detail.items).toHaveLength(1);
+      expect(detail.items[0].qty).toBe(2);
+    });
+
+    it("el mismo diseño en VARIANTES distintas NO se agrupa (son productos físicos distintos)", async () => {
+      const sessionId = sid("perso");
+      const base = { version: 2, slotCount: 1, color: "coral" };
+      const dA = await prisma.design.create({
+        data: {
+          sessionId: sid("design"),
+          productId: persoProductId,
+          status: "READY",
+          canvasData: base,
+        },
+        select: { id: true },
+      });
+      const dB = await prisma.design.create({
+        data: {
+          sessionId: sid("design"),
+          productId: persoProductId,
+          status: "READY",
+          canvasData: base,
+        },
+        select: { id: true },
+      });
+
+      await addPersonalizedToCart({
+        sessionId,
+        customerId: null,
+        designId: dA.id,
+        variantId: persoVariantAId,
+        qty: 1,
+      });
+      const detail = await addPersonalizedToCart({
+        sessionId,
+        customerId: null,
+        designId: dB.id,
+        variantId: persoVariantBId,
+        qty: 1,
+      });
+
+      expect(detail.items).toHaveLength(2);
     });
 
     it("design en DRAFT lanza PRODUCT_NOT_FOUND (no surface de detalles internos)", async () => {

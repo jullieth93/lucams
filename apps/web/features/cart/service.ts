@@ -23,6 +23,10 @@
 import "server-only";
 import { prisma } from "@/lib/db";
 import { parseVariantAttributes } from "@/features/products/variant-schemas";
+import { logger } from "@/lib/logger";
+import { designIdentity } from "./design-identity";
+import { describePieces, pieceKindFor } from "./line-preview";
+import { parsePhotoProductConfig } from "@/features/personalization/schemas";
 
 export type CartLineItem = {
   itemId: string;
@@ -39,6 +43,12 @@ export type CartLineItem = {
   designId: string | null;
   /** Si designId está set, este es el previewUrl del Design (1080×1080 PNG público). */
   designPreviewUrl: string | null;
+  /**
+   * Frase que describe la pieza FÍSICA ("6 imanes · 6×6 cm cada imán"), para que el checkout pueda
+   * mostrar lo mismo que la modal del Estudio y el cliente confirme sabiendo qué recibe.
+   * `null` cuando no hay nada verdadero que decir.
+   */
+  pieceSummary: string | null;
 };
 
 export type CartDetail = {
@@ -96,6 +106,9 @@ const cartItemsInclude = {
               isPersonalizable: true,
               isActive: true,
               deletedAt: true,
+              // Para describir la pieza física en el checkout (nº de piezas y medida).
+              personalizationKind: true,
+              personalizationSchema: true,
             },
           },
         },
@@ -163,6 +176,23 @@ async function ensureCart(sessionId: string, customerId: string | null) {
 
 type RawCart = Awaited<ReturnType<typeof ensureCart>>;
 
+/**
+ * Frase que describe la pieza física de una línea ("6 imanes · 6×6 cm cada imán").
+ *
+ * La VARIANTE manda sobre el producto: "Set 12 unidades" y "Set 6 unidades" son el mismo producto
+ * con distinto número de piezas y distinto tamaño, y lo que el cliente compró es la variante.
+ */
+function describeLine(item: RawCart["items"][number]): string | null {
+  const attrs = parseVariantAttributes(item.variant.attributes);
+  const schema = item.variant.product.personalizationSchema;
+  const delProducto = schema ? parsePhotoProductConfig(schema) : null;
+  return describePieces({
+    kind: pieceKindFor(item.variant.product.personalizationKind, item.variant.name),
+    pieces: attrs.photoSlots ?? delProducto?.photoSlots ?? null,
+    sizeCm: attrs.sizeCm ?? (schema as { sizeCm?: string } | null)?.sizeCm ?? null,
+  });
+}
+
 function toDetail(cart: RawCart): CartDetail {
   const items: CartLineItem[] = cart.items
     // Filtra items donde el producto fue archivado entre add-to-cart y
@@ -185,6 +215,7 @@ function toDetail(cart: RawCart): CartDetail {
       imageUrl: i.design?.previewUrl ?? i.variant.product.images[0] ?? null,
       designId: i.designId,
       designPreviewUrl: i.design?.previewUrl ?? null,
+      pieceSummary: describeLine(i),
     }));
   return {
     cartId: cart.id,
@@ -290,10 +321,12 @@ export async function addProductToCart(opts: {
 // Una vez Design.status=READY, el cliente lo agrega al carrito. Diferencias
 // vs addProductToCart:
 //   - Se requiere designId (estado READY validado).
-//   - Cada Design es UN cart item — no agrupar por variantId. Si el cliente
-//     agrega "Pack 6 fotoimanes" personalizado dos veces, son dos diseños
-//     distintos = dos CartItems. Si quiere 2 copias del mismo diseño,
-//     ajusta qty del CartItem existente.
+//   - Se agrupa por CONTENIDO, no por id de diseño (Lucy 2026-07-25). Cada pasada
+//     por el Estudio crea un Design nuevo, así que pedir dos veces lo mismo daba
+//     dos líneas idénticas seguidas, que se lee como un error de la tienda. La
+//     regla: misma variante + mismo contenido → una línea con cantidad 2; si
+//     cambia la variante (color, tamaño, piezas) → líneas separadas, porque son
+//     productos físicos distintos. La huella la calcula `designIdentity`.
 //   - Validación de ownership del Design ya la hizo el Server Action que
 //     llama esto. Aquí solo verificamos status READY.
 
@@ -414,7 +447,37 @@ export async function addPersonalizedToCart(opts: {
     // Caso de re-entrar al editor: el cliente personaliza Design X, lo agrega
     // al cart, vuelve al estudio, hace cambios, "¡Listo!" otra vez → mismo
     // designId, debe sumar al qty existente (mejora UX vs duplicar).
-    const existing = cart.items.find((i) => i.designId === opts.designId);
+    let existing = cart.items.find((i) => i.designId === opts.designId);
+
+    // Y si no es el MISMO diseño, ¿es uno IDÉNTICO? (Lucy 2026-07-25) Cada pasada por el Estudio
+    // crea un Design nuevo, así que pedir dos veces lo mismo daba dos líneas iguales seguidas, que
+    // se lee como un error de la tienda. Se agrupa solo con misma VARIANTE y mismo CONTENIDO: si
+    // cambia el color, el tamaño o el número de piezas, la variante es otra y siguen separadas.
+    if (!existing) {
+      const nuevo = await prisma.design.findUnique({
+        where: { id: opts.designId },
+        select: { productId: true, canvasData: true, metadata: true },
+      });
+      const candidatos = cart.items.filter(
+        (i) => i.variantId === variant.id && i.designId && i.designId !== opts.designId,
+      );
+      if (nuevo && candidatos.length > 0) {
+        const huella = designIdentity(nuevo);
+        const gemelos = await prisma.design.findMany({
+          where: { id: { in: candidatos.map((i) => i.designId!) } },
+          select: { id: true, productId: true, canvasData: true, metadata: true },
+        });
+        const gemelo = gemelos.find((g) => designIdentity(g) === huella);
+        if (gemelo) {
+          existing = candidatos.find((i) => i.designId === gemelo.id);
+          logger.info(
+            { event: "cart.personalized.grouped", designId: opts.designId, mergedInto: gemelo.id },
+            "Diseño idéntico agrupado en la línea existente",
+          );
+        }
+      }
+    }
+
     if (existing) {
       await prisma.cartItem.update({
         where: { id: existing.id },

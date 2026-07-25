@@ -97,8 +97,18 @@ export async function GET(_req: Request, ctx: { params: Promise<{ number: string
   for (let itemIdx = 0; itemIdx < bundle.items.length; itemIdx++) {
     const item = bundle.items[itemIdx]!;
     const isCalendar = item.personalizationKind === "CALENDAR_PHOTO_MONTH";
-    const folder = bundle.items.length > 1 ? `${itemIdx + 1}-${slug(item.productName)}/` : "";
-    summary.push(`• ${item.productName} (${item.sku}) — ${item.productionUrls.length} pieza(s)`);
+    // La CANTIDAD va en el nombre de la carpeta y en la hoja de resumen, no en archivos duplicados:
+    // los PNG serían byte a byte iguales y solo engordarían el ZIP. Lo que hacía falta era decirlo,
+    // porque antes no aparecía en ninguna parte y un pedido de 2 se imprimía como 1.
+    const copias = item.qty > 1 ? ` ×${item.qty}` : "";
+    const folder =
+      bundle.items.length > 1 ? `${itemIdx + 1}-${slug(item.productName)}${copias}/` : "";
+    summary.push(
+      `• ${item.productName} (${item.sku}) — ${item.productionUrls.length} pieza(s)` +
+        (item.qty > 1
+          ? `  ⚠️ IMPRIMIR ${item.qty} COPIAS DE CADA PIEZA (${item.productionUrls.length} × ${item.qty} = ${item.productionUrls.length * item.qty} impresiones)`
+          : ""),
+    );
     if (item.moderationStatus !== "APPROVED") {
       summary.push(
         `  ⚠️ Estado de moderación: ${item.moderationStatus} — no imprimir hasta aprobar en /admin/moderacion.`,
@@ -122,7 +132,9 @@ export async function GET(_req: Request, ctx: { params: Promise<{ number: string
       }
       zip.file(`${folder}${fileName}`, bytes);
       pieces.push({
-        label,
+        // La hoja de armado es lo que se mira mientras se produce: si hay que sacar más de una
+        // copia, tiene que verse ahí y no solo en el resumen de texto.
+        label: item.qty > 1 ? `${label} — ${item.qty} copias` : label,
         moderationStatus: item.moderationStatus,
         productName: item.productName,
         png: bytes,

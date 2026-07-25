@@ -91,35 +91,65 @@ export function QuoteForm({ items = [] }: { items?: CartLineItem[] }) {
           <h2 className="text-brand-purple-dark font-display text-lg font-bold">
             Lo que estás cotizando
           </h2>
-          <ul className="divide-brand-purple/10 divide-y">
+          <p className="text-brand-muted mt-1 text-sm">
+            Esto es exactamente lo que vas a recibir. Revísalo con calma antes de enviarnos tu
+            cotización.
+          </p>
+          <ul className="divide-brand-purple/10 mt-3 divide-y">
             {items.map((item) => {
-              const imgUrl = item.designPreviewUrl ?? item.imageUrl ?? "/placeholder.png";
+              const imgUrl = item.designPreviewUrl ?? item.imageUrl ?? null;
               return (
-                <li key={item.itemId} className="flex items-center gap-3 py-3">
-                  <div className="bg-brand-purple/5 relative h-14 w-14 flex-shrink-0 overflow-hidden rounded-lg">
-                    <Image
-                      src={imgUrl}
-                      alt={
-                        item.designPreviewUrl
-                          ? `Vista previa de tu diseño de ${item.productName}`
-                          : item.productName
-                      }
-                      fill
-                      sizes="56px"
-                      className="object-cover"
-                      unoptimized
-                    />
-                    <span className="bg-brand-purple-dark/85 absolute top-0 right-0 inline-flex h-5 min-w-5 items-center justify-center rounded-bl-md px-1 text-[10px] font-bold text-white">
-                      {item.qty}
-                    </span>
+                <li key={item.itemId} className="flex items-start gap-4 py-4">
+                  {/* `object-contain` sobre fondo crema, no `object-cover`: el preview del Estudio es
+                      el MOSAICO de todas las piezas, así que recortarlo cuadrado se come justo lo
+                      que el cliente quiere revisar (Lucy 2026-07-25). */}
+                  <div className="from-brand-cream/60 border-brand-purple/10 relative h-24 w-24 flex-shrink-0 overflow-hidden rounded-xl border bg-gradient-to-b to-white sm:h-28 sm:w-28">
+                    {imgUrl ? (
+                      <Image
+                        src={imgUrl}
+                        alt={
+                          item.designPreviewUrl
+                            ? `Vista previa de tu diseño de ${item.productName}`
+                            : item.productName
+                        }
+                        fill
+                        sizes="112px"
+                        className="object-contain p-1.5 drop-shadow-sm"
+                        unoptimized
+                      />
+                    ) : (
+                      <span className="text-brand-purple/40 flex h-full items-center justify-center text-2xl">
+                        ✨
+                      </span>
+                    )}
+                    {item.qty > 1 && (
+                      <span className="bg-brand-purple-dark/85 absolute top-0 right-0 inline-flex h-6 min-w-6 items-center justify-center rounded-bl-lg px-1.5 text-xs font-bold text-white">
+                        ×{item.qty}
+                      </span>
+                    )}
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="text-brand-purple-dark line-clamp-2 text-sm leading-snug font-medium">
+                    <p className="text-brand-purple-dark text-sm leading-snug font-semibold">
                       {item.productName}
                     </p>
-                    <p className="text-brand-muted text-xs">
-                      {item.designPreviewUrl ? "✨ Con tu diseño personalizado" : item.variantName}
-                    </p>
+                    <p className="text-brand-muted mt-0.5 text-xs">{item.variantName}</p>
+                    {item.pieceSummary && (
+                      <p className="text-brand-purple-dark/80 mt-1 text-xs">
+                        📐 {item.pieceSummary}
+                      </p>
+                    )}
+                    {item.designPreviewUrl && (
+                      <p className="text-brand-purple mt-1 text-xs font-medium">
+                        ✨ Con tu diseño personalizado
+                      </p>
+                    )}
+                    {/* Con cantidad > 1 el precio unitario evita que el total de línea se lea como
+                        el precio del producto. */}
+                    {item.qty > 1 && (
+                      <p className="text-brand-muted mt-1 text-xs tabular-nums">
+                        {item.qty} × {formatCOP(item.unitPrice)}
+                      </p>
+                    )}
                   </div>
                   <div className="text-brand-purple-dark flex-shrink-0 text-sm font-semibold tabular-nums">
                     {formatCOP(item.lineTotal)}
@@ -128,6 +158,12 @@ export function QuoteForm({ items = [] }: { items?: CartLineItem[] }) {
               );
             })}
           </ul>
+          <div className="border-brand-purple/10 mt-1 flex items-center justify-between border-t pt-3">
+            <span className="text-brand-purple-dark text-sm font-semibold">Total</span>
+            <span className="text-brand-purple-dark font-display text-lg font-bold tabular-nums">
+              {formatCOP(items.reduce((sum, i) => sum + i.lineTotal, 0))}
+            </span>
+          </div>
         </section>
       )}
 

@@ -708,6 +708,10 @@ export async function getOrderProductionBundle(idOrNumber: string) {
       items: {
         select: {
           id: true,
+          // La CANTIDAD manda cuántas copias hay que imprimir de cada pieza. Sin ella el ZIP emitía
+          // un solo juego por línea, así que un pedido de 2 unidades del mismo diseño se producía
+          // como 1 y el cliente recibía la mitad (auditoría 2026-07-25).
+          qty: true,
           variant: { select: { sku: true } },
           design: {
             select: {
@@ -732,6 +736,7 @@ export async function getOrderProductionBundle(idOrNumber: string) {
       const meta = (d.metadata as { calendarYear?: number } | null) ?? null;
       return {
         sku: it.variant.sku,
+        qty: it.qty,
         productName: d.product?.name ?? it.variant.sku,
         personalizationKind: d.product?.personalizationKind ?? "NONE",
         startMonth: typeof schema?.startMonth === "number" ? schema.startMonth : 0,
