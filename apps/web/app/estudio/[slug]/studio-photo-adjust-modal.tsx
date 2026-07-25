@@ -215,7 +215,9 @@ function FilterCard({
         />
         {isSelected && (
           <div className="bg-brand-turquoise/95 absolute top-1 right-1 flex h-5 w-5 items-center justify-center rounded-full shadow">
-            <Check className="h-3 w-3 text-white" />
+            {/* A11Y — mismo caso que el ✓ de la sidebar: blanco sobre turquesa = 1.71:1, bajo el
+              3:1 de WCAG 1.4.11. brand-purple-dark → 7.06:1 sin tocar la paleta. */}
+            <Check className="text-brand-purple-dark h-3 w-3" />
           </div>
         )}
       </div>

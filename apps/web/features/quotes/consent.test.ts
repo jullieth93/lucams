@@ -17,6 +17,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const consentCreate = vi.hoisted(() => vi.fn());
 const quoteCreate = vi.hoisted(() => vi.fn());
+// El service reclama el carrito (soft-delete condicional) dentro de la misma transacción; count>0
+// = este envío se quedó con el carrito. La idempotencia se prueba en idempotency.test.ts.
+const cartUpdateMany = vi.hoisted(() => vi.fn(async () => ({ count: 1 })));
 const getSettingValue = vi.hoisted(() =>
   vi.fn(async (_key: string, fallback: string): Promise<string> => fallback),
 );
@@ -33,7 +36,11 @@ vi.mock("@/lib/db", () => ({
   prisma: {
     // La transacción ejecuta el callback con un `tx` que expone los mismos modelos.
     $transaction: (fn: (tx: unknown) => Promise<unknown>) =>
-      fn({ quote: { create: quoteCreate }, consent: { create: consentCreate } }),
+      fn({
+        quote: { create: quoteCreate },
+        consent: { create: consentCreate },
+        cart: { updateMany: cartUpdateMany },
+      }),
   },
   Prisma: { PrismaClientKnownRequestError: class extends Error {} },
 }));

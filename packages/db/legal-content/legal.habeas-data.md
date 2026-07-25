@@ -17,7 +17,8 @@ Según cómo uses la tienda, podemos recolectar y tratar:
 
 - **Identificación y contacto:** nombre, correo electrónico y teléfono.
 - **Datos de envío:** dirección de entrega y ciudad.
-- **Datos de la compra:** productos, historial de pedidos, reseñas y favoritos. Los **datos sensibles de pago** (número de tarjeta, etc.) los procesa directamente nuestra pasarela **Wompi**; nosotros no los almacenamos.
+- **Datos de tu cotización:** los productos que elegiste, tu nombre, tu número de WhatsApp, tu ciudad y las notas que nos dejes. Hoy es la vía principal por la que cerramos un pedido contigo.
+- **Datos de la compra:** productos, historial de pedidos, reseñas y favoritos. **Cuando activemos la compra en línea**, los **datos sensibles de pago** (número de tarjeta, etc.) los procesará directamente nuestra pasarela **Wompi**; nosotros no los almacenamos en ningún caso.
 - **Fotos e imágenes** que subes al **Estudio de Personalización** para crear tu producto.
 - **Datos de navegación:** cookies y datos técnicos (ver nuestra [Política de Cookies](/legal/cookies)).
 
@@ -26,6 +27,7 @@ Según cómo uses la tienda, podemos recolectar y tratar:
 Tratamos tus datos únicamente para estas finalidades:
 
 - **Procesar tu pedido**, cobrarlo y coordinar el envío hasta tu puerta.
+- **Atender tu cotización:** responderte por WhatsApp, confirmarte el total y el envío, y coordinar la entrega.
 - **Comunicarnos contigo** sobre el estado de tu compra (correos y mensajes transaccionales).
 - **Producir tu diseño personalizado** a partir de las fotos y textos que subes al Estudio.
 - **Atender tus peticiones, quejas y reclamos** (PQR) y el ejercicio de tus derechos.
@@ -59,7 +61,7 @@ Para operar la tienda usamos proveedores de tecnología ("encargados del tratami
 
 ## Autorización
 
-Antes de recolectar tus datos te pedimos una autorización **previa, expresa e informada** (por ejemplo, al registrarte o al finalizar tu compra). Guardamos el registro de esa autorización como prueba. Puedes **revocarla** en cualquier momento por los canales de esta política, salvo que exista un deber legal que nos obligue a conservar ciertos datos (como los comprobantes de tus pedidos).
+Antes de recolectar tus datos te pedimos una autorización **previa, expresa e informada**, con una **casilla que tú marcas**: al pedir tu cotización por WhatsApp, al crear tu cuenta, al completar tus datos de compra y al elegir tus cookies. Guardamos el registro de esa autorización como prueba. Puedes **revocarla** en cualquier momento por los canales de esta política, salvo que exista un deber legal que nos obligue a conservar ciertos datos (como los comprobantes de tus pedidos).
 
 ## Tus derechos
 
@@ -88,7 +90,7 @@ Tienes dos caminos:
 1. **Tú mismo, al instante:** puedes eliminar tu cuenta y tus datos desde [Mi cuenta → Seguridad](/mi-cuenta/seguridad). Para dejar de recibir correos de marketing, usa el enlace **"Cancelar suscripción"** al final de cualquier correo nuestro.
 2. **Escribiéndonos:** manda tu solicitud a **hola@lucamsshop.com** o por WhatsApp, indicando:
    - Tu nombre completo y documento de identidad.
-   - El correo con el que te registraste.
+   - El correo **o el número de WhatsApp** con el que nos escribiste o pediste tu cotización (si cotizaste como invitado, el correo es opcional y tu WhatsApp basta para identificarte).
    - El derecho que quieres ejercer.
    - Una breve descripción de tu solicitud.
 
@@ -108,4 +110,4 @@ Esta política rige desde su fecha de entrada en vigencia y se mantiene mientras
 
 ---
 
-_Versión 2 · vigente desde 2026-07-19 · en revisión por asesoría legal antes del lanzamiento_
+_Versión 3 · vigente desde 2026-07-24 · en revisión por asesoría legal antes del lanzamiento_

@@ -1,10 +1,17 @@
 name: CI
 
+# Ramas REALES del repo (verificado con `git branch -a` el 2026-07-24): `develop`,
+# `production` y `catalogo-whatsapp`. **`main` NO EXISTE** — la rama de producción se llama
+# `production` (ver docs/OPERATIONS.md § Estrategia de ramas y releases). Mientras el trigger
+# apuntó a la rama fantasma `main`, todo merge a `production` — la que ven los clientes — se
+# desplegaba SIN typecheck, sin lint, sin los ~1.400 vitest, sin E2E/a11y, sin Lighthouse y sin
+# gitleaks: el único gate era el `next build` de Vercel. Auditoría 2026-07-21, hallazgo A4.
+# `master` queda fuera a propósito: es legado local, no existe en `origin`.
 on:
   push:
-    branches: [develop, main]
+    branches: [develop, production, catalogo-whatsapp]
   pull_request:
-    branches: [develop, main]
+    branches: [develop, production, catalogo-whatsapp]
 
 # Cancela runs anteriores del mismo PR/branch si llega uno nuevo.
 concurrency:

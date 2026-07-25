@@ -102,14 +102,50 @@ describe("validateEnv — modo tienda FULL (default)", () => {
     expect(() => validateEnv()).toThrowError(/AVEONLINE_WEBHOOK_SECRET/);
     expect(() => validateEnv()).toThrowError(/GEMINI_API_KEY/);
   });
+});
 
-  it("prod sin NEXT_PUBLIC_STORE_MODE (default full) y sin Wompi → throw", async () => {
+/*
+ * El modo de tienda debe ser EXPLÍCITO en producción (auditoría 2026-07-21).
+ * `readStoreMode()` cae a "full" ante ausencia o typo — bien para dev (un error de config no le
+ * apaga el checkout a una tienda que vende), pero en producción ese mismo default significa que
+ * BORRAR la variable publica en silencio toda la superficie transaccional de una tienda que
+ * legalmente aún no vende. Se exige el valor escrito: ningún modo se activa por accidente.
+ */
+describe("validateEnv — el modo de tienda debe ser explícito en producción", () => {
+  it("prod SIN NEXT_PUBLIC_STORE_MODE → throw nombrando la variable (no un fallo colateral)", async () => {
+    stubEnvBase();
+    vi.stubEnv("VERCEL_ENV", "production");
+    vi.stubEnv("NEXT_PUBLIC_STORE_MODE", undefined);
+    const validateEnv = await loadValidateEnv();
+    expect(() => validateEnv()).toThrowError(/NEXT_PUBLIC_STORE_MODE/);
+    expect(() => validateEnv()).toThrowError(/ausente/);
+  });
+
+  it("prod con un typo ('catalogue') → throw citando el valor recibido", async () => {
+    stubEnvBase();
+    vi.stubEnv("VERCEL_ENV", "production");
+    vi.stubEnv("NEXT_PUBLIC_STORE_MODE", "catalogue");
+    const validateEnv = await loadValidateEnv();
+    expect(() => validateEnv()).toThrowError(/NEXT_PUBLIC_STORE_MODE/);
+    expect(() => validateEnv()).toThrowError(/catalogue/);
+  });
+
+  it("falla ANTES de reportar vars faltantes: la causa raíz es el modo, no lo que arrastra", async () => {
     stubEnvBase();
     vi.stubEnv("VERCEL_ENV", "production");
     vi.stubEnv("NEXT_PUBLIC_STORE_MODE", undefined);
     vi.stubEnv("WOMPI_PUBLIC_KEY", undefined);
     const validateEnv = await loadValidateEnv();
-    expect(() => validateEnv()).toThrowError(/WOMPI_PUBLIC_KEY/);
+    expect(() => validateEnv()).toThrowError(/NEXT_PUBLIC_STORE_MODE/);
+    expect(() => validateEnv()).not.toThrowError(/WOMPI_PUBLIC_KEY/);
+  });
+
+  it("en dev/preview NO se exige (el default a 'full' sigue siendo válido fuera de producción)", async () => {
+    stubEnvBase();
+    vi.stubEnv("VERCEL_ENV", "preview");
+    vi.stubEnv("NEXT_PUBLIC_STORE_MODE", undefined);
+    const validateEnv = await loadValidateEnv();
+    expect(() => validateEnv()).not.toThrow();
   });
 });
 

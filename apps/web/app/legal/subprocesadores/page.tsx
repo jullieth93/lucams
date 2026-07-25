@@ -10,6 +10,10 @@ export const metadata: Metadata = {
 // Aveonline es un agregador logístico que rutea cada envío por una de varias
 // transportadoras colombianas; esas transportadoras reciben los datos de entrega
 // (nombre, dirección, teléfono) para hacer la entrega, por eso se listan.
+// Fallback que se renderiza cuando el CmsBlock no existe, no está publicado o la DB falla.
+// Es COPIA EXACTA de packages/db/legal-content/legal.subprocesadores.md (la fuente canónica) y viaja en git,
+// así que es el único texto legal garantizado ante una caída de la base.
+// legal-content-sync.test.ts falla si ambos divergen.
 const FALLBACK = `
 Para armar tus imanes, cobrarte de forma segura y llevarte el pedido hasta la puerta, un pequeño equipo de proveedores de confianza nos ayuda entre bambalinas. A esos proveedores la ley los llama **encargados del tratamiento**: tratan tus datos personales **por cuenta nuestra**, solo para lo necesario y bajo un contrato que les exige cuidarlos.
 
@@ -21,15 +25,17 @@ Es un tercero (una empresa proveedora) que trata algunos de tus datos **en nuest
 
 ## Proveedores que tratan tus datos
 
-| Proveedor | País | Qué hace | Qué datos tuyos trata | DPA |
-|---|---|---|---|---|
-| **Supabase** | EE.UU. (con opción de región EU) | Base de datos, autenticación y almacenamiento de archivos | Casi todos los datos de tu cuenta y pedidos (protegidos con RLS) y las fotos que subes al Estudio | [Ver](https://supabase.com/legal/dpa) |
-| **Vercel** | EE.UU. | Hosting, despliegue y CDN del sitio | Datos en tránsito durante tu visita y registros técnicos (incluida tu IP) | [Ver](https://vercel.com/legal/dpa) |
-| **Resend** | EE.UU. | Envío de correos transaccionales y del boletín | Tu correo electrónico y el contenido del mensaje | [Ver](https://resend.com/legal/dpa) |
-| **Google (Gemini API)** | EE.UU. | Asistente de IA que sugiere ideas de diseño en el Estudio | El texto de tu solicitud de diseño (sin datos de identificación directa) | [Ver](https://cloud.google.com/terms/data-processing-addendum) |
-| **Cloudflare** | EE.UU. / global | Anti-bot (Turnstile) y protección contra ataques | Tu dirección IP y datos en tránsito | [Ver](https://www.cloudflare.com/cloudflare-customer-dpa/) |
-| **Wompi** | Colombia | Procesamiento de pagos en línea (tarjetas y PSE) | Datos de la transacción y datos para prevención de fraude | [Ver](https://wompi.com/legal) |
-| **Aveonline** | Colombia | Agregador de logística: cotiza el envío, genera la guía y gestiona el recaudo del pago contraentrega | Nombre, dirección y teléfono de entrega | [Ver](https://www.aveonline.co/) |
+> **Hoy la tienda opera por cotización por WhatsApp**, así que los proveedores marcados con ⏳ todavía **no tratan** ningún dato tuyo: entrarán en operación cuando activemos la compra en línea, y actualizaremos esta lista antes de que eso pase.
+
+| Proveedor                  | País                             | Qué hace                                                                                                                              | Qué datos tuyos trata                                                                             | DPA                                                            |
+| -------------------------- | -------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| **Supabase**               | EE.UU. (con opción de región EU) | Base de datos, autenticación y almacenamiento de archivos                                                                             | Casi todos los datos de tu cuenta y pedidos (protegidos con RLS) y las fotos que subes al Estudio | [Ver](https://supabase.com/legal/dpa)                          |
+| **Vercel**                 | EE.UU.                           | Hosting, despliegue y CDN del sitio                                                                                                   | Datos en tránsito durante tu visita y registros técnicos (incluida tu IP)                         | [Ver](https://vercel.com/legal/dpa)                            |
+| **Resend**                 | EE.UU.                           | Envío de correos transaccionales y del boletín                                                                                        | Tu correo electrónico y el contenido del mensaje                                                  | [Ver](https://resend.com/legal/dpa)                            |
+| **Google (Gemini API)** ⏳ | EE.UU.                           | Asistente de IA que sugiere ideas de diseño en el Estudio — **cuando lo activemos**                                                   | El texto de tu solicitud de diseño (sin datos de identificación directa)                          | [Ver](https://cloud.google.com/terms/data-processing-addendum) |
+| **Cloudflare**             | EE.UU. / global                  | Anti-bot (Turnstile) y protección contra ataques                                                                                      | Tu dirección IP y datos en tránsito                                                               | [Ver](https://www.cloudflare.com/cloudflare-customer-dpa/)     |
+| **Wompi** ⏳               | Colombia                         | Procesamiento de pagos en línea (tarjetas y PSE) — **cuando activemos la compra en línea**                                            | Datos de la transacción y datos para prevención de fraude                                         | [Ver](https://wompi.com/legal)                                 |
+| **Aveonline** ⏳           | Colombia                         | Agregador de logística: cotiza el envío, genera la guía y gestiona el recaudo contraentrega — **cuando activemos la compra en línea** | Nombre, dirección y teléfono de entrega                                                           | [Ver](https://www.aveonline.co/)                               |
 
 ### Transportadoras
 
@@ -70,7 +76,7 @@ Si vamos a **agregar o cambiar** un subprocesador, avisaremos por correo a los c
 
 ---
 
-_Versión 2 · vigente desde 2026-07-19 · en revisión por asesoría legal antes del lanzamiento_
+_Versión 3 · vigente desde 2026-07-24 · en revisión por asesoría legal antes del lanzamiento_
 `;
 
 export default function Page() {

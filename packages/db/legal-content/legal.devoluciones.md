@@ -2,7 +2,7 @@
 
 En **Lucams_shop** queremos que ames lo que recibes. Aquí te contamos, en cristiano, cómo funciona el **derecho de retracto**, cuándo puedes devolver un producto y cómo te regresamos tu dinero. Nuestro mapache está pendiente de que todo salga bien.
 
-> Esta política aplica a compras hechas en **lucamsshop.com**. Para defectos de fabricación revisa además nuestra [Política de Garantía](/legal/garantias).
+> Esta política aplica a las compras hechas en **lucamsshop.com**, incluidas las que hoy cerramos por **WhatsApp** a partir de una cotización del sitio: el retracto protege las ventas a distancia, sin importar por cuál de esos dos canales compres. Para defectos de fabricación revisa además nuestra [Política de Garantía](/legal/garantias).
 
 ## Tu derecho de retracto
 
@@ -23,7 +23,7 @@ Los productos personalizados quedan por fuera del retracto porque la ley except�
 
 Es sencillo, y estamos para ayudarte en cada paso:
 
-1. **Escríbenos dentro de los 5 días hábiles** siguientes a la entrega, a **retracto@lucamsshop.com** o por **WhatsApp**. Cuéntanos tu número de pedido.
+1. **Escríbenos dentro de los 5 días hábiles** siguientes a la entrega, a **retracto@lucamsshop.com** o por **WhatsApp**. Cuéntanos tu número de pedido o de cotización.
 2. Te confirmamos que tu retracto aplica y te damos las instrucciones para la **devolución del producto**.
 3. **Devuelves el producto** en las mismas condiciones en que lo recibiste (sin uso, con su empaque original y lo que venía incluido).
 4. Nos indicas los datos para hacerte el **reembolso**.
@@ -39,8 +39,8 @@ Cuando te retractas (o sea, cambiaste de opinión, sin que el producto tenga nin
 
 Una vez ejerces el retracto y devuelves el producto, te regresamos **todo el dinero que pagaste**, en un plazo máximo de **15 días calendario** contados **desde el día en que ejerciste el retracto** (Ley 1480, art. 47, modificado por la **Ley 2439 de 2024**).
 
-- Si pagaste con **tarjeta, PSE o botón de pago**, el reembolso se hace al **mismo medio de pago**.
-- Si pagaste **contraentrega (en efectivo)**, el reembolso se hace por **transferencia bancaria** a la cuenta que nos indiques.
+- Si acordamos el pago por **transferencia** al cerrar tu cotización por WhatsApp, el reembolso se hace por **transferencia** a la cuenta que nos indiques.
+- Cuando activemos la compra en línea: si pagaste con **tarjeta, PSE o botón de pago**, el reembolso se hace al **mismo medio de pago**; si pagaste **contraentrega (en efectivo)**, se hace por **transferencia bancaria** a la cuenta que nos indiques.
 
 ## Reversión del pago
 
@@ -60,4 +60,4 @@ Estamos para ayudarte. Escríbenos a **retracto@lucamsshop.com**, a **hola@lucam
 
 ---
 
-_Versión 2 · vigente desde 2026-07-19 · en revisión por asesoría legal antes del lanzamiento_
+_Versión 3 · vigente desde 2026-07-24 · en revisión por asesoría legal antes del lanzamiento_

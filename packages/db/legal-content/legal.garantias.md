@@ -11,7 +11,7 @@ Si necesitas nuestros datos completos de identificación, te los damos con gusto
 
 ## Cuánto dura (art. 8)
 
-Tienes **1 año de garantía legal**, contado **desde el día en que recibes tu producto**. Es el mínimo que exige la ley y aplica a todo nuestro catálogo.
+Tienes **1 año de garantía legal**, contado **desde el día en que recibes tu producto**. Es el mínimo que exige la ley y aplica a todo nuestro catálogo, sin importar si compraste en línea o si cerramos tu pedido por WhatsApp a partir de una cotización del sitio.
 
 Mientras reparamos un producto en garantía, ese tiempo **no cuenta en tu contra**: el plazo se suspende y se extiende por los días que el producto esté con nosotros.
 
@@ -47,7 +47,7 @@ Si tu producto sale con defecto dentro del año de garantía:
 ## Cómo la haces efectiva
 
 1. Escríbenos a **hola@lucamsshop.com** (o por WhatsApp) con:
-   - tu número de pedido,
+   - tu número de pedido o de cotización,
    - una foto o un video del defecto,
    - una breve descripción de qué pasó.
 2. Revisamos tu caso y te respondemos en el **menor tiempo posible**. En todo caso, la ley nos da un máximo de **15 días hábiles** para responder tu reclamación (art. 58).
@@ -59,4 +59,4 @@ Queremos resolverlo directamente contigo, de la mejor manera. Pero si no quedas 
 
 ---
 
-_Versión 2 · vigente desde 2026-07-19 · en revisión por asesoría legal antes del lanzamiento_
+_Versión 3 · vigente desde 2026-07-24 · en revisión por asesoría legal antes del lanzamiento_

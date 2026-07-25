@@ -11,12 +11,16 @@ export const metadata: Metadata = {
 // cambió es el plazo de reembolso para comercio electrónico: de 30 días hábiles
 // a 15 días CALENDARIO desde que ejerces el retracto. Ver memoria
 // reference_retracto_ley_2439_2024 + docs/COMPLIANCE.md.
+// Fallback que se renderiza cuando el CmsBlock no existe, no está publicado o la DB falla.
+// Es COPIA EXACTA de packages/db/legal-content/legal.devoluciones.md (la fuente canónica) y viaja en git,
+// así que es el único texto legal garantizado ante una caída de la base.
+// legal-content-sync.test.ts falla si ambos divergen.
 const FALLBACK = `
 ## Devoluciones y Retracto
 
 En **Lucams_shop** queremos que ames lo que recibes. Aquí te contamos, en cristiano, cómo funciona el **derecho de retracto**, cuándo puedes devolver un producto y cómo te regresamos tu dinero. Nuestro mapache está pendiente de que todo salga bien.
 
-> Esta política aplica a compras hechas en **lucamsshop.com**. Para defectos de fabricación revisa además nuestra [Política de Garantía](/legal/garantias).
+> Esta política aplica a las compras hechas en **lucamsshop.com**, incluidas las que hoy cerramos por **WhatsApp** a partir de una cotización del sitio: el retracto protege las ventas a distancia, sin importar por cuál de esos dos canales compres. Para defectos de fabricación revisa además nuestra [Política de Garantía](/legal/garantias).
 
 ## Tu derecho de retracto
 
@@ -24,12 +28,12 @@ De acuerdo con la **Ley 1480 de 2011 (art. 47)**, tienes **5 días hábiles** co
 
 ## ¿Qué productos tienen retracto?
 
-| Producto | ¿Aplica retracto? |
-| --- | --- |
+| Producto                                                                       | ¿Aplica retracto?                           |
+| ------------------------------------------------------------------------------ | ------------------------------------------- |
 | **Catálogo estándar** (imanes y diseños pre-armados, sin personalización tuya) | ✅ **Sí** — 5 días hábiles desde la entrega |
-| **Productos del Estudio de Personalización** (con tu foto o tu texto) | ❌ **No** — la ley los exceptúa |
-| **Combos del catálogo estándar** | ✅ **Sí** |
-| **Combos que incluyen al menos un producto personalizado** | ❌ **No** |
+| **Productos del Estudio de Personalización** (con tu foto o tu texto)          | ❌ **No** — la ley los exceptúa             |
+| **Combos del catálogo estándar**                                               | ✅ **Sí**                                   |
+| **Combos que incluyen al menos un producto personalizado**                     | ❌ **No**                                   |
 
 Los productos personalizados quedan por fuera del retracto porque la ley exceptúa los bienes _"confeccionados conforme a las especificaciones del consumidor o claramente personalizados"_ (Ley 1480, art. 47). Como los hacemos con tu foto o tu texto, no podemos revenderlos: por eso no tienen retracto. Esto también te lo avisamos en la página de cada producto antes de comprar.
 
@@ -37,7 +41,7 @@ Los productos personalizados quedan por fuera del retracto porque la ley except�
 
 Es sencillo, y estamos para ayudarte en cada paso:
 
-1. **Escríbenos dentro de los 5 días hábiles** siguientes a la entrega, a **retracto@lucamsshop.com** o por **WhatsApp**. Cuéntanos tu número de pedido.
+1. **Escríbenos dentro de los 5 días hábiles** siguientes a la entrega, a **retracto@lucamsshop.com** o por **WhatsApp**. Cuéntanos tu número de pedido o de cotización.
 2. Te confirmamos que tu retracto aplica y te damos las instrucciones para la **devolución del producto**.
 3. **Devuelves el producto** en las mismas condiciones en que lo recibiste (sin uso, con su empaque original y lo que venía incluido).
 4. Nos indicas los datos para hacerte el **reembolso**.
@@ -53,8 +57,8 @@ Cuando te retractas (o sea, cambiaste de opinión, sin que el producto tenga nin
 
 Una vez ejerces el retracto y devuelves el producto, te regresamos **todo el dinero que pagaste**, en un plazo máximo de **15 días calendario** contados **desde el día en que ejerciste el retracto** (Ley 1480, art. 47, modificado por la **Ley 2439 de 2024**).
 
-- Si pagaste con **tarjeta, PSE o botón de pago**, el reembolso se hace al **mismo medio de pago**.
-- Si pagaste **contraentrega (en efectivo)**, el reembolso se hace por **transferencia bancaria** a la cuenta que nos indiques.
+- Si acordamos el pago por **transferencia** al cerrar tu cotización por WhatsApp, el reembolso se hace por **transferencia** a la cuenta que nos indiques.
+- Cuando activemos la compra en línea: si pagaste con **tarjeta, PSE o botón de pago**, el reembolso se hace al **mismo medio de pago**; si pagaste **contraentrega (en efectivo)**, se hace por **transferencia bancaria** a la cuenta que nos indiques.
 
 ## Reversión del pago
 
@@ -74,7 +78,7 @@ Estamos para ayudarte. Escríbenos a **retracto@lucamsshop.com**, a **hola@lucam
 
 ---
 
-_Versión 2 · vigente desde 2026-07-19 · en revisión por asesoría legal antes del lanzamiento_
+_Versión 3 · vigente desde 2026-07-24 · en revisión por asesoría legal antes del lanzamiento_
 `;
 
 export default function Page() {

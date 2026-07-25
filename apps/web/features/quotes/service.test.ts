@@ -144,6 +144,115 @@ describe("buildQuoteWhatsAppUrl", () => {
   });
 });
 
+// ───────────────── buildQuoteWhatsAppUrl — cota de longitud ────────────────
+//
+// Un carrito grande generaba una URL wa.me larguísima. Chrome no lanza URLs de protocolo de
+// aplicación (`whatsapp://`, a donde deriva wa.me) de más de 2046 caracteres: el cliente pulsaba
+// el botón y no pasaba nada (Microsoft, "URL Length Limits", IEInternals 2014-08-13, archivado en
+// Microsoft Learn). Como el total va al FINAL de la plantilla, un truncado se lo llevaba justo a
+// él. Estos tests fijan el techo y el degradado con el link público.
+
+/** Carrito de n ítems con nombres de largo realista ("Imán 07 oooo..."). */
+function bigQuote(n: number, nameLen = 20) {
+  return {
+    ...QUOTE,
+    items: Array.from({ length: n }, (_, i) => ({
+      productName: `Imán ${String(i).padStart(2, "0")} ${"o".repeat(Math.max(0, nameLen - 8))}`,
+      variantName: "Set 6",
+      quantity: 3,
+      unitPrice: 15_000,
+    })),
+  };
+}
+
+/**
+ * Peor caso del percent-encoding: nombres larguísimos y llenos de tildes (cada "á" ocupa 6
+ * caracteres ya codificada, así que pocos ítems inflan la URL como muchos).
+ */
+function accentedQuote(n: number) {
+  return {
+    ...QUOTE,
+    items: Array.from({ length: n }, (_, i) => ({
+      productName: `Imán ${String(i).padStart(2, "0")} ${"á".repeat(300)}`,
+      variantName: "Set 6",
+      quantity: 3,
+      unitPrice: 15_000,
+    })),
+  };
+}
+
+/** Texto decodificado del parámetro `text` de la URL wa.me. */
+function waText(url: string): string {
+  return decodeURIComponent(url.slice(url.indexOf("?text=") + "?text=".length));
+}
+
+describe("buildQuoteWhatsAppUrl — cota de longitud del mensaje", () => {
+  beforeAll(() => {
+    vi.stubEnv("NEXT_PUBLIC_SITE_URL", "https://lucamsshop.com");
+    process.env.NEXT_PUBLIC_WA_NUMBER = "573001234567";
+  });
+  afterAll(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("un carrito de 30 ítems NO pasa de 2000 caracteres de URL", async () => {
+    const url = await buildQuoteWhatsAppUrl(bigQuote(30));
+    expect(url.length).toBeLessThanOrEqual(2000);
+  });
+
+  it("conserva SIEMPRE número, total y link aunque recorte los ítems", async () => {
+    const text = waText(await buildQuoteWhatsAppUrl(bigQuote(30)));
+    expect(text).toContain("COT-ABC234");
+    expect(text).toMatch(/Total: \$\s*450/);
+    expect(text).toContain("https://lucamsshop.com/cotizacion/abc123token");
+  });
+
+  it("detalla los primeros ítems y resume el resto con el link público", async () => {
+    const text = waText(await buildQuoteWhatsAppUrl(bigQuote(30)));
+    const detailed = text.split("\n").filter((l) => l.startsWith("•"));
+    expect(detailed).toHaveLength(8);
+    // El primero sí está detallado; el número 9 en adelante, no.
+    expect(text).toContain("Imán 00");
+    expect(text).not.toContain("Imán 08");
+    expect(text).toContain(
+      "…y 22 productos más — mira el detalle aquí: https://lucamsshop.com/cotizacion/abc123token",
+    );
+  });
+
+  it("un carrito que cabe entero NO gana línea de resumen (sin degradar de más)", async () => {
+    const text = waText(await buildQuoteWhatsAppUrl(bigQuote(8)));
+    expect(text.split("\n").filter((l) => l.startsWith("•"))).toHaveLength(8);
+    expect(text).not.toContain("productos más");
+    expect(text).toContain("Imán 07");
+  });
+
+  it("con un solo producto omitido usa singular ('1 producto más')", async () => {
+    const text = waText(await buildQuoteWhatsAppUrl(bigQuote(9)));
+    expect(text).toContain("…y 1 producto más — mira el detalle aquí:");
+    expect(text).not.toContain("1 productos más");
+  });
+
+  it("nombres patológicos: corta por caracteres, no solo por cantidad de ítems", async () => {
+    // 6 ítems (bajo el tope de 8), pero cada nombre codificado pesa como cinco normales.
+    const url = await buildQuoteWhatsAppUrl(accentedQuote(6));
+    const text = waText(url);
+    expect(url.length).toBeLessThanOrEqual(2000);
+    expect(text.split("\n").filter((l) => l.startsWith("•")).length).toBeLessThan(6);
+    expect(text).toContain("productos más — mira el detalle aquí:");
+    expect(text).toMatch(/Total: \$\s*450/);
+  });
+
+  it("un único ítem de nombre gigante se detalla igual, con el nombre recortado y su precio", async () => {
+    const url = await buildQuoteWhatsAppUrl(accentedQuote(1));
+    const text = waText(url);
+    const [line] = text.split("\n").filter((l) => l.startsWith("•"));
+    expect(url.length).toBeLessThanOrEqual(2000);
+    expect(line).toContain("…"); // nombre recortado
+    expect(line).toMatch(/— \$\s*450$/); // el precio de la línea sobrevive al recorte
+    expect(text).not.toContain("productos más");
+  });
+});
+
 // ─────────────────────────── QuoteFormSchema ───────────────────────────────
 
 const VALID = {
@@ -212,5 +321,45 @@ describe("QuoteFormSchema", () => {
     const vacio = QuoteFormSchema.safeParse({ ...VALID, notes: "" });
     expect(vacio.success).toBe(true);
     if (vacio.success) expect(vacio.data.notes).toBeUndefined();
+  });
+});
+
+/*
+ * Regresión (revisión adversarial 2026-07-21): la cota de longitud del mensaje de WhatsApp
+ * recortaba el nombre con `slice`, que corta por unidades UTF-16. Un emoji en el borde dejaba
+ * media pareja subrogada y `encodeURIComponent` lanzaba `URIError: URI malformed`. El caller
+ * (app/cotizacion/[token]/page.tsx) es un server component sin try/catch → la página respondía
+ * 500, y para entonces la Quote ya existía y el carrito ya se había vaciado: el cliente quedaba
+ * sin poder reintentar ni ver su cotización. Alcanzable de verdad: Product.name admite 120
+ * caracteres y la marca usa emoji por todas partes.
+ */
+describe("truncateForWhatsApp — no parte emojis", () => {
+  it("no deja surrogates sueltos con un emoji EXACTAMENTE en el borde del corte", async () => {
+    const { truncateForWhatsApp } = await import("./service");
+    // 💜 ocupa los índices UTF-16 58-59; el corte viejo (slice(0,59)) lo partía a la mitad.
+    const name = `${"a".repeat(58)}\u{1F49C}${"b".repeat(10)}`;
+
+    const out = truncateForWhatsApp(name, 60);
+
+    expect(() => encodeURIComponent(`${out}\n`)).not.toThrow();
+    expect(out).not.toMatch(/[\uD800-\uDBFF]$/); // sin high surrogate colgando
+    expect(out.endsWith("…")).toBe(true);
+  });
+
+  it("no parte secuencias ZWJ (familias, profesiones) al recortar", async () => {
+    const { truncateForWhatsApp } = await import("./service");
+    const name = `${"a".repeat(58)}\u{1F469}\u{200D}\u{1F467}${"b".repeat(10)}`;
+
+    const out = truncateForWhatsApp(name, 60);
+
+    expect(() => encodeURIComponent(out)).not.toThrow();
+    // Con Intl.Segmenter la familia entra completa o no entra; nunca queda la mujer sin la niña.
+    expect(out.includes("\u{1F469}") === out.includes("\u{1F467}")).toBe(true);
+  });
+
+  it("devuelve el texto intacto cuando cabe (no agrega puntos suspensivos de más)", async () => {
+    const { truncateForWhatsApp } = await import("./service");
+
+    expect(truncateForWhatsApp("Imán Corazón 💜", 60)).toBe("Imán Corazón 💜");
   });
 });

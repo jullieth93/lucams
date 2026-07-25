@@ -990,11 +990,15 @@ export function StudioEditor({
           <button
             type="button"
             onClick={() => setAiOpen(true)}
-            aria-label="Pedir ideas al asistente"
-            className="bg-brand-pink ring-brand-pink/25 inline-flex h-12 items-center gap-2 rounded-full px-4 text-sm font-bold text-white shadow-xl ring-4 transition-transform hover:scale-105 active:scale-95"
+            // A11Y — bg-brand-pink con texto blanco daba 3.27:1 (WCAG 1.4.3 AA pide 4.5:1 para
+            // texto de 14px). Se baja al tono de tinta YA existente (ADR-044): 5.31:1. La paleta
+            // no se toca. El nombre accesible sale del CONTENIDO (no de aria-label) para que
+            // contenga el texto visible — WCAG 2.5.3, control por voz dice lo que ve.
+            className="bg-brand-pink-ink ring-brand-pink-ink/25 inline-flex h-12 items-center gap-2 rounded-full px-4 text-sm font-bold text-white shadow-xl ring-4 transition-transform hover:scale-105 active:scale-95"
           >
-            <Sparkles className="h-5 w-5" />
+            <Sparkles className="h-5 w-5" aria-hidden />
             <span>Ideas</span>
+            <span className="sr-only">&nbsp;para tu diseño, con el asistente</span>
           </button>
         )}
         {isCalendarMonth ? (
@@ -1002,21 +1006,21 @@ export function StudioEditor({
             type="button"
             onClick={handleOpenCalendar3D}
             disabled={calendarBuilding}
-            aria-label="Ver tus tarjetas mes en detalle, una por una"
             className="bg-brand-purple ring-brand-purple/25 inline-flex h-12 items-center gap-2 rounded-full px-4 text-sm font-bold text-white shadow-xl ring-4 transition-transform hover:scale-105 active:scale-95 disabled:opacity-60"
           >
-            <CalendarDays className="h-5 w-5" />
+            <CalendarDays className="h-5 w-5" aria-hidden />
             <span>{calendarBuilding ? "Armando…" : "Ver mi calendario"}</span>
+            <span className="sr-only">: tus tarjetas mes en detalle, una por una</span>
           </button>
         ) : isBookmark ? (
           <button
             type="button"
             onClick={handleOpen3D}
-            aria-label="Ver tu separador en un libro 3D"
             className="bg-brand-purple ring-brand-purple/25 inline-flex h-12 items-center gap-2 rounded-full px-4 text-sm font-bold text-white shadow-xl ring-4 transition-transform hover:scale-105 active:scale-95"
           >
-            <Box className="h-5 w-5" />
+            <Box className="h-5 w-5" aria-hidden />
             <span>Ver en un libro</span>
+            <span className="sr-only">&nbsp;en 3D: tu separador entre las páginas</span>
           </button>
         ) : (
           // FOTO4 — un solo botón abre la galería con TODAS las escenas (nevera/mural/repisa/regalo).
@@ -1024,11 +1028,11 @@ export function StudioEditor({
             type="button"
             onClick={handleOpenScene}
             disabled={sceneBuilding}
-            aria-label="Míralo en tu espacio: nevera, mural, repisa o regalo"
             className="bg-brand-purple ring-brand-purple/25 inline-flex h-12 items-center gap-2 rounded-full px-4 text-sm font-bold text-white shadow-xl ring-4 transition-transform hover:scale-105 active:scale-95 disabled:opacity-60"
           >
-            <Box className="h-5 w-5" />
+            <Box className="h-5 w-5" aria-hidden />
             <span>{sceneBuilding ? "Armando…" : "Ver en tu espacio"}</span>
+            <span className="sr-only">: nevera, mural, repisa o regalo</span>
           </button>
         )}
       </div>
@@ -1100,11 +1104,16 @@ export function StudioEditor({
         <SheetTrigger asChild>
           <button
             type="button"
-            aria-label="Abrir herramientas (plantillas y fotos)"
-            className="bg-brand-turquoise ring-brand-turquoise/30 fixed bottom-4 left-4 z-30 inline-flex h-14 items-center gap-2 rounded-full px-5 text-sm font-bold text-white shadow-xl ring-4 transition-transform hover:scale-105 active:scale-95 lg:hidden"
+            // A11Y — el texto blanco sobre bg-brand-turquoise daba 1.71:1 (WCAG 1.4.3 AA pide
+            // 4.5:1). No se toca el turquesa (paleta = ADR): se oscurece el TEXTO a
+            // brand-purple-dark → 7.06:1. Y el nombre accesible sale del CONTENIDO en vez de un
+            // aria-label que no decía "Editar": con control por voz "haz clic en Editar" no
+            // activaba nada (WCAG 2.5.3 Label in Name).
+            className="bg-brand-turquoise ring-brand-turquoise/30 text-brand-purple-dark fixed bottom-4 left-4 z-30 inline-flex h-14 items-center gap-2 rounded-full px-5 text-sm font-bold shadow-xl ring-4 transition-transform hover:scale-105 active:scale-95 lg:hidden"
           >
-            <Sparkles className="h-5 w-5" />
+            <Sparkles className="h-5 w-5" aria-hidden />
             <span>Editar</span>
+            <span className="sr-only">: abre las herramientas de plantillas y fotos</span>
           </button>
         </SheetTrigger>
         <SheetContent

@@ -37,6 +37,10 @@ export function FitCameraPolar({
   const controls = useThree((s) => s.controls) as OrbitLike | null;
   const width = useThree((s) => s.size.width);
   const height = useThree((s) => s.size.height);
+  // Mover la cámara es una mutación IMPERATIVA: el reconciler de r3f no la ve, así que en un
+  // lienzo con frameloop="demand" (CalendarCardFocus) el reencuadre no se pintaba hasta que el
+  // usuario tocara algo. En frameloop="always" invalidate() es inocuo.
+  const invalidate = useThree((s) => s.invalidate);
 
   useEffect(() => {
     if (!width || !height) return;
@@ -48,7 +52,8 @@ export function FitCameraPolar({
     camera.position.set(0, targetY + d * Math.sin(phi), d * Math.cos(phi));
     camera.updateProjectionMatrix();
     controls?.update?.();
-  }, [camera, controls, width, height, halfW, halfH, polarDeg, margin, targetY]);
+    invalidate();
+  }, [camera, controls, invalidate, width, height, halfW, halfH, polarDeg, margin, targetY]);
 
   return null;
 }

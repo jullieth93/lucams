@@ -16,8 +16,16 @@
  *    acostado): suficiente para leer el mes y los festivos impresos en la textura compuesta.
  *    Escala física 0.54 u/cm → la tarjeta de 7.5×10 cm mide 4.05×5.4 u (ancho del cm real,
  *    alto del aspecto del lienzo — misma regla que magnetWorldSizes).
- *  - SIN autoRotate: es una vista de LECTURA (el movimiento solo viene del usuario → amable con
- *    prefers-reduced-motion por construcción). Órbita manual acotada.
+ *  - SIN autoRotate: es una vista de LECTURA (el movimiento solo viene del usuario). Órbita
+ *    manual acotada.
+ *  - frameloop="demand": nada se anima solo, así que pintar a 60 fps continuos quemaba GPU y
+ *    batería mientras el cliente simplemente LEE el mes. Con "demand" el lienzo pinta al montar
+ *    y solo cuando algo cambia: OrbitControls llama invalidate() en su evento "change" (drag,
+ *    zoom, inercia), FitCameraPolar invalida al reencuadrar y <InvalidateOnChange> cubre la
+ *    llegada ASÍNCRONA de la textura (useWindowTextures) al pasar de tarjeta.
+ *  - prefers-reduced-motion: se apaga el damping de OrbitControls — la inercia sigue moviendo la
+ *    escena DESPUÉS de soltar, que es justo el movimiento post-interacción que WCAG 2.3.3 pide
+ *    evitar. Con la preferencia activa la tarjeta se detiene donde la sueltas.
  *  - Texturas por VENTANA (tarjeta actual ±1) con dispose al salir de la ventana y al desmontar
  *    (useWindowTextures): recorrer las 12 no deja ~44MB de GPU vivos ni pasa por el caché
  *    global de drei useTexture. La malla es ExtrudedMagnetMesh con la textura base del loader
@@ -29,12 +37,13 @@
  */
 
 import { Suspense, useCallback, useEffect, useMemo, useRef } from "react";
-import { Canvas } from "@react-three/fiber";
+import { Canvas, useThree } from "@react-three/fiber";
 import { OrbitControls, ContactShadows } from "@react-three/drei";
 import type * as THREE from "three";
 import { ChevronLeft, ChevronRight, Home, X } from "lucide-react";
 import { useDialogA11y } from "./use-dialog-a11y";
 import { useIsTouch } from "./use-is-touch";
+import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
 import { useWindowTextures } from "./use-window-textures";
 import { FitCameraPolar } from "./fit-camera-polar";
 import { StudioEnvironment, StudioBackdrop } from "./studio-3d-environment";
@@ -48,7 +57,28 @@ const CARD_CORNER_RATIO = 0.025;
 /** Giro natural de la tarjeta sobre la mesa (como recién puesta, no en escuadra). */
 const CARD_YAW = -0.14;
 
-function Scene({ card, texture }: { card: Magnet3D; texture: THREE.Texture | null }) {
+/**
+ * Pide UN frame cada vez que `token` cambia. Con frameloop="demand" el lienzo no repinta solo:
+ * la textura de la tarjeta llega asíncrona (useWindowTextures) y sin este disparo pasar de mes
+ * dejaba la tarjeta anterior —o el papel en blanco— congelada en pantalla.
+ */
+function InvalidateOnChange({ token }: { token: unknown }) {
+  const invalidate = useThree((s) => s.invalidate);
+  useEffect(() => {
+    invalidate();
+  }, [invalidate, token]);
+  return null;
+}
+
+function Scene({
+  card,
+  texture,
+  reduced,
+}: {
+  card: Magnet3D;
+  texture: THREE.Texture | null;
+  reduced: boolean;
+}) {
   // Ancho del cm real (o 7.5 por defecto), alto del aspecto del lienzo — regla magnetWorldSizes.
   const w = (card.wCm ?? 7.5) * U_PER_CM;
   const h = w * (card.hRatio / card.wRatio);
@@ -107,12 +137,18 @@ function Scene({ card, texture }: { card: Magnet3D; texture: THREE.Texture | nul
       <OrbitControls
         makeDefault
         enablePan={false}
+        // Sin damping la escena se detiene al soltar (WCAG 2.3.3): la inercia es movimiento que
+        // sigue después de la interacción. También evita la cadena change→invalidate→frame que
+        // el amortiguado mantiene viva unos segundos tras cada arrastre.
+        enableDamping={!reduced}
         minPolarAngle={0.55}
         maxPolarAngle={Math.PI / 1.75}
         minDistance={3.5}
         maxDistance={40}
         target={[0, 0.03, 0]}
       />
+      {/* Último en el árbol: su effect corre DESPUÉS del reencuadre de FitCameraPolar. */}
+      <InvalidateOnChange token={texture} />
     </>
   );
 }
@@ -135,6 +171,7 @@ export default function CalendarCardFocus({
   onOpenGallery: () => void;
 }) {
   const isTouch = useIsTouch();
+  const reduced = usePrefersReducedMotion();
   const n = cards.length;
   const i = Math.min(Math.max(index, 0), Math.max(0, n - 1));
   const card = cards[i];
@@ -215,6 +252,8 @@ export default function CalendarCardFocus({
       <div className="relative flex-1">
         <Canvas
           shadows
+          // Vista de LECTURA sin animación propia → se pinta bajo demanda, no a 60 fps continuos.
+          frameloop="demand"
           dpr={isTouch ? [1, 1.5] : [1, 2]}
           camera={{ position: [0, 5, 5], fov: 40 }}
           gl={{ preserveDrawingBuffer: false, antialias: true }}
@@ -222,7 +261,7 @@ export default function CalendarCardFocus({
         >
           <color attach="background" args={["#F5EDE2"]} />
           <Suspense fallback={null}>
-            <Scene card={card} texture={texture} />
+            <Scene card={card} texture={texture} reduced={reduced} />
           </Suspense>
         </Canvas>
         <p className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-black/40 px-3 py-1.5 text-center text-xs text-white">

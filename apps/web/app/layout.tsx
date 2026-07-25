@@ -6,6 +6,7 @@ import { WebVitalsReporter } from "@/components/web-vitals";
 import { CookiesBanner } from "@/components/cookies-banner";
 import { RouteToasts } from "@/components/route-toasts";
 import { getCanonicalSiteUrl } from "@/lib/origin";
+import { isCatalogMode } from "@/lib/store-mode";
 import "./globals.css";
 
 /*
@@ -28,6 +29,14 @@ const inter = Inter({
   display: "swap",
 });
 
+/* Meta description del sitio. En modo catálogo (Etapa 1) NO hay checkout de pago ni envío
+   calculado: prometer "pago en línea seguro y envío a 1.100+ destinos" en el snippet de Google
+   sería información engañosa (Ley 1480, art. 23). Se deriva del flag para que el texto
+   transaccional vuelva solo cuando se active el modo full. */
+const SITE_DESCRIPTION = isCatalogMode()
+  ? "E-commerce colombiano de imanes magnéticos personalizados. Diseñas el tuyo en el Estudio de personalización y pides tu cotización por WhatsApp: ahí acordamos pago y envío contigo."
+  : "E-commerce colombiano de imanes magnéticos personalizados. Estudio de personalización en vivo, pago en línea seguro y envío a 1.100+ destinos.";
+
 export const metadata: Metadata = {
   // #28 — misma fuente que sitemap/robots/canonicals (getCanonicalSiteUrl); consolida la URL base.
   metadataBase: new URL(getCanonicalSiteUrl()),
@@ -35,8 +44,7 @@ export const metadata: Metadata = {
     default: "Lucams_shop — Tus recuerdos en imán",
     template: "%s · Lucams_shop",
   },
-  description:
-    "E-commerce colombiano de imanes magnéticos personalizados. Estudio de personalización en vivo, pago en línea seguro y envío a 1.100+ destinos.",
+  description: SITE_DESCRIPTION,
   applicationName: "Lucams_shop",
   authors: [{ name: "Lucams_shop" }],
   generator: "Next.js",

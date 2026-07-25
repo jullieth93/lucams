@@ -25,6 +25,8 @@ export function RegistroForm() {
   );
   const [password, setPassword] = useState("");
   const [passwordConfirm, setPasswordConfirm] = useState("");
+  // Autorización de tratamiento (Ley 1581) — acto afirmativo, obligatorio antes de crear la cuenta.
+  const [dataConsent, setDataConsent] = useState(false);
 
   const passwordsMatch = !passwordConfirm || password === passwordConfirm;
 
@@ -151,23 +153,41 @@ export function RegistroForm() {
             </div>
           )}
 
-          <p className="text-muted-foreground text-xs">
-            Al crear tu cuenta aceptas nuestros{" "}
-            <Link
-              href="/legal/terminos"
-              className="text-brand-pink-ink underline underline-offset-4"
-            >
-              términos
-            </Link>{" "}
-            y la{" "}
-            <Link
-              href="/legal/privacidad"
-              className="text-brand-pink-ink underline underline-offset-4"
-            >
-              política de privacidad
-            </Link>{" "}
-            (Ley 1581 Habeas Data).
-          </p>
+          {/* Ley 1581 art. 9: la autorización debe ser expresa y verificable, no inferida de un
+              aviso pasivo. Antes esto era solo texto y la acción registraba el Consent server-side
+              sin ningún acto afirmativo del titular — y el aviso de privacidad, además, declaraba
+              públicamente una casilla que no existía. */}
+          <label className="flex items-start gap-3 text-xs">
+            <input
+              type="checkbox"
+              name="dataConsent"
+              required
+              checked={dataConsent}
+              onChange={(e) => setDataConsent(e.target.checked)}
+              aria-invalid={state?.fieldErrors?.dataConsent ? true : undefined}
+              className="accent-brand-purple mt-0.5 h-4 w-4 flex-shrink-0"
+            />
+            <span className="text-muted-foreground leading-relaxed">
+              Acepto los{" "}
+              <Link
+                href="/legal/terminos"
+                className="text-brand-pink-ink underline underline-offset-4"
+              >
+                términos
+              </Link>{" "}
+              y autorizo el <strong>tratamiento de mis datos personales</strong> conforme a la{" "}
+              <Link
+                href="/legal/privacidad"
+                className="text-brand-pink-ink underline underline-offset-4"
+              >
+                política de privacidad
+              </Link>{" "}
+              (Ley 1581 de 2012).
+            </span>
+          </label>
+          {state?.fieldErrors?.dataConsent && (
+            <p className="text-xs text-rose-600">{state.fieldErrors.dataConsent[0]}</p>
+          )}
           <TurnstileWidget />
         </CardContent>
 

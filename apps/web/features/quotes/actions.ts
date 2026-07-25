@@ -10,8 +10,9 @@
  *  4. Rate-limit: 5/día por IP + 3/día por WhatsApp — mitiga spam de
  *     cotizaciones sin friccionar al cliente legítimo.
  *  5. Crea la Quote desde el carrito de la sesión anónima (el service lo
- *     vacía) y devuelve { number, token } para la página de confirmación
- *     (botón "Enviar por WhatsApp" + vista pública /cotizacion/[token]).
+ *     vacía, y ese vaciado condicional es el reclamo que impide cotizaciones
+ *     duplicadas por doble envío) y devuelve { number, token } para la página
+ *     de confirmación (botón "Enviar por WhatsApp" + vista /cotizacion/[token]).
  */
 
 import { headers } from "next/headers";
@@ -117,6 +118,17 @@ export async function createQuoteAction(
       return {
         ok: false,
         error: "Tu carrito está vacío. Agrega productos antes de pedir la cotización.",
+      };
+    }
+    // Doble envío simultáneo: el otro request ya se quedó con el carrito y creó LA cotización
+    // (el service reclama el carrito de forma atómica). No es un fallo — no lo logueamos como
+    // error ni asustamos al cliente pidiéndole que reintente: eso sí crearía un duplicado.
+    if (err instanceof QuoteError && err.code === "DUPLICATE_SUBMIT") {
+      logger.warn({ event: "quote.create.duplicate_submit", ip });
+      return {
+        ok: false,
+        error:
+          "Ya recibimos esta cotización — no la enviamos dos veces. Revisa la pestaña donde se abrió tu confirmación o escríbenos por WhatsApp.",
       };
     }
     logger.error({

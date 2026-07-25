@@ -41,6 +41,7 @@ import {
   PDP_HIDDEN_DIMENSION_KEYS,
 } from "@/features/products/variant-schemas";
 import { NamePricePicker } from "./name-price-picker";
+import { buildProductJsonLd } from "./product-jsonld";
 import {
   getStorefrontProductBySlug,
   listRelatedProducts,
@@ -170,7 +171,6 @@ export default async function ProductoDetallePage({
   const warrantyMonths = Math.max(product.warrantyMonths ?? 12, 12);
 
   // JSON-LD Product structured data — Google rich results.
-  // basePrice está en centavos COP → dividir por 100 para schema.org.
   // priceValidUntil usa la updatedAt + 1 año (no Date.now() para evitar
   // impuras; se actualiza naturalmente cada vez que admin edita el producto).
   const oneYearMs = 365 * 24 * 60 * 60 * 1000;
@@ -188,54 +188,20 @@ export default async function ProductoDetallePage({
       ? selectable.map((v) => v.price ?? product.basePrice)
       : [product.basePrice]
   ).map((p) => p * perTileFactor);
-  const lowPrice = Math.min(...effectivePrices);
-  const highPrice = Math.max(...effectivePrices);
-  const availability = outOfStock ? "https://schema.org/OutOfStock" : "https://schema.org/InStock";
-  const offers =
-    lowPrice === highPrice
-      ? {
-          "@type": "Offer",
-          url: `https://lucamsshop.com/producto/${product.slug}`,
-          priceCurrency: "COP",
-          price: (lowPrice / 100).toFixed(0),
-          priceValidUntil,
-          availability,
-          itemCondition: "https://schema.org/NewCondition",
-          seller: { "@type": "Organization", name: "Lucams_shop" },
-        }
-      : {
-          "@type": "AggregateOffer",
-          url: `https://lucamsshop.com/producto/${product.slug}`,
-          priceCurrency: "COP",
-          lowPrice: (lowPrice / 100).toFixed(0),
-          highPrice: (highPrice / 100).toFixed(0),
-          priceValidUntil,
-          availability,
-          itemCondition: "https://schema.org/NewCondition",
-          seller: { "@type": "Organization", name: "Lucams_shop" },
-        };
-  const jsonLd = {
-    "@context": "https://schema.org/",
-    "@type": "Product",
+  // El shape (y el gate por modo de tienda) vive en product-jsonld.ts para poder testearlo puro.
+  const jsonLd = buildProductJsonLd({
     name: product.name,
-    description: product.description.slice(0, 5000),
+    description: product.description,
     sku: product.sku,
-    image: product.images.length > 0 ? product.images : ["/brand/lucams-logo.png"],
-    category: product.category.name,
-    brand: { "@type": "Brand", name: "Lucams_shop" },
-    // aggregateRating solo si hay reseñas reales aprobadas (Google rechaza rating vacío/inventado).
-    // El valor es visible en la página (sección Reseñas) — requisito de la política de rich results.
-    ...(ratingAggregate
-      ? {
-          aggregateRating: {
-            "@type": "AggregateRating",
-            ratingValue: ratingAggregate.ratingValue.toFixed(1),
-            reviewCount: ratingAggregate.reviewCount,
-          },
-        }
-      : {}),
-    offers, // #17 — Offer (precio único) o AggregateOffer (rango) coincidente con el precio visible
-  };
+    slug: product.slug,
+    images: product.images,
+    categoryName: product.category.name,
+    ratingAggregate,
+    effectivePrices,
+    priceValidUntil,
+    outOfStock,
+    catalogMode: catalog,
+  });
 
   // BreadcrumbList (auditoría 2026-07-13): Tienda → Categoría → Producto → migas en Google.
   // Escape XSS + nonce CSP + render los maneja <JsonLd> (helper compartido con los listados).

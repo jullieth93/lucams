@@ -1,5 +1,7 @@
 Al comprar en **lucamsshop.com** aceptas estos Términos y Condiciones. Léelos con calma: aquí te contamos quiénes somos, cómo funciona la compra y cuáles son tus derechos. Toda venta se rige por la legislación colombiana, en especial la **Ley 1480 de 2011 (Estatuto del Consumidor)** y la **Ley 1581 de 2012 (Protección de Datos Personales)**.
 
+> **Cómo operamos hoy: venta por cotización.** En esta etapa lucamsshop.com es un **catálogo con cotización por WhatsApp**. Eliges tus productos, nos dejas tus datos y cerramos el pedido contigo por WhatsApp, donde acordamos el pago y la entrega. **Todavía no cobramos en línea en el sitio.** Las partes de estos Términos que hablan de pago en línea, contraentrega y cálculo del envío en el sitio aplican **cuando activemos la compra en línea**; cuando eso pase, lo publicaremos aquí con una versión nueva. Tus derechos como consumidor —garantía, retracto y reversión del pago— te los da la ley y no dependen del canal por el que compres.
+
 ## Quiénes somos
 
 **Lucams_shop** es una marca de productos magnéticos personalizados en Colombia, operada por **Lucams_shop (persona natural), Bogotá D.C., Colombia**.
@@ -13,7 +15,7 @@ Los datos completos de identificación (documento de identidad) y la dirección 
 
 ## Objeto
 
-Estos Términos regulan la relación entre tú (el **consumidor**) y Lucams_shop (la **vendedora**) cuando visitas el sitio, personalizas un producto o realizas una compra. Al usar el sitio o hacer un pedido, aceptas estas condiciones. Si no estás de acuerdo, por favor no completes la compra.
+Estos Términos regulan la relación entre tú (el **consumidor**) y Lucams_shop (la **vendedora**) cuando visitas el sitio, personalizas un producto, pides una cotización o realizas una compra. Al usar el sitio o hacer un pedido, aceptas estas condiciones. Si no estás de acuerdo, por favor no completes tu pedido.
 
 ## Los productos
 
@@ -22,6 +24,15 @@ Vendemos imanes y otros productos, algunos de catálogo estándar y otros person
 Los colores y acabados pueden variar levemente respecto a lo que ves en pantalla, por diferencias propias de cada monitor y del proceso de impresión.
 
 ## Cómo comprar
+
+**Hoy, con la tienda operando por cotización:**
+
+1. Eliges tu producto y, si es personalizable, lo diseñas en el Estudio.
+2. Lo agregas al carrito y pides tu cotización dejándonos tu nombre, tu WhatsApp y tu ciudad.
+3. Te damos un número de cotización y seguimos la conversación por WhatsApp.
+4. Ahí te confirmamos el total, el costo del envío y el medio de pago **antes** de que pagues, y coordinamos la entrega.
+
+**Cuando activemos la compra en línea**, el flujo será:
 
 1. Eliges tu producto y, si es personalizable, lo diseñas en el Estudio.
 2. Lo agregas al carrito y confirmas los datos de envío.
@@ -32,19 +43,19 @@ Los colores y acabados pueden variar levemente respecto a lo que ves en pantalla
 ## Precios y pago
 
 - Los precios están en **pesos colombianos (COP)** y son el **valor final que pagas** por el producto.
-- El **costo de envío** se calcula y se muestra antes de que pagues; no hay cobros ocultos.
-- Aceptamos **tarjeta de crédito y débito, PSE y otros medios** a través de **Wompi**, y **pago contraentrega** donde esté disponible.
+- El **costo de envío** se te informa **antes** de que pagues: hoy por WhatsApp al confirmar tu cotización y, cuando activemos la compra en línea, calculado en el sitio. No hay cobros ocultos.
+- Mientras la tienda opere por cotización, el **medio de pago lo acordamos contigo por WhatsApp** antes de producir tu pedido. Cuando activemos la compra en línea aceptaremos **tarjeta de crédito y débito, PSE y otros medios** a través de **Wompi**, y **pago contraentrega** donde esté disponible.
 - Según el **régimen tributario vigente** de la vendedora, con tu compra recibes el documento que corresponda: **documento equivalente, cuenta de cobro o factura electrónica**.
 
 ## Envío y entrega
 
-Despachamos a través de **transportadoras aliadas**, gestionadas mediante nuestro operador logístico (ver [Subprocesadores](/legal/subprocesadores)). El tiempo de entrega depende de tu ciudad y se te informa antes de comprar. Cuando el pedido incluye personalización, al plazo de envío se suma el tiempo de producción, que también se indica en el producto.
+Despachamos a través de **transportadoras aliadas** (ver [Subprocesadores](/legal/subprocesadores)). El tiempo de entrega depende de tu ciudad y se te informa **antes** de que pagues. Cuando el pedido incluye personalización, al plazo de envío se suma el tiempo de producción, que también se indica en el producto.
 
-Donde ofrecemos **contraentrega**, el recaudo del pago lo gestiona el operador logístico al momento de la entrega.
+Hoy el envío se **coordina y se cotiza por WhatsApp** al cerrar tu cotización. Cuando activemos la compra en línea, el costo se calculará en el sitio a través de nuestro operador logístico y, donde ofrezcamos **contraentrega**, el recaudo del pago lo gestionará ese operador al momento de la entrega.
 
 ## Derecho de retracto
 
-Como consumidor tienes **derecho de retracto** (Ley 1480 de 2011, art. 47): dentro de los **cinco (5) días hábiles** siguientes a la entrega puedes retractarte de la compra **sin dar explicaciones**, siempre que devuelvas el producto en las mismas condiciones en que lo recibiste.
+Como consumidor tienes **derecho de retracto** (Ley 1480 de 2011, art. 47): dentro de los **cinco (5) días hábiles** siguientes a la entrega puedes retractarte de la compra **sin dar explicaciones**, siempre que devuelvas el producto en las mismas condiciones en que lo recibiste. Es un derecho de las **ventas a distancia**, así que también cubre los pedidos que cerramos contigo por WhatsApp a partir de una cotización del sitio.
 
 Cuando ejerces el retracto, te **devolvemos el dinero en un máximo de quince (15) días calendario** contados desde que ejerces el derecho (plazo de la **Ley 2439 de 2024**, que modificó el art. 47).
 
@@ -99,4 +110,4 @@ Podemos actualizar estos Términos para reflejar cambios legales o de nuestro se
 
 ---
 
-_Versión 2 · vigente desde 2026-07-19 · en revisión por asesoría legal antes del lanzamiento_
+_Versión 3 · vigente desde 2026-07-24 · en revisión por asesoría legal antes del lanzamiento_

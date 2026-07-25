@@ -11,6 +11,10 @@ export const metadata: Metadata = {
 // (texto base aviso de privacidad) + Ley 1581 de 2012 + Decreto 1377 de 2013.
 // Persona natural; la identificación completa (CC + dirección) vive en el CMS, no en git (PII).
 // Sigue sujeto a revisión de abogado antes del lanzamiento.
+// Fallback que se renderiza cuando el CmsBlock no existe, no está publicado o la DB falla.
+// Es COPIA EXACTA de packages/db/legal-content/legal.privacidad.md (la fuente canónica) y viaja en git,
+// así que es el único texto legal garantizado ante una caída de la base.
+// legal-content-sync.test.ts falla si ambos divergen.
 const FALLBACK = `
 En **Lucams_shop** cuidamos tus datos personales con el mismo cariño con el que hacemos tus imanes. Este Aviso de Privacidad te explica, en cristiano, quién es responsable de tus datos, qué recolectamos, para qué, cuáles son tus derechos y cómo ejercerlos, conforme a la **Ley 1581 de 2012** y el **Decreto 1377 de 2013** de Colombia.
 
@@ -32,12 +36,14 @@ Puedes contactarnos por:
 
 - **Identificación:** nombre, correo electrónico y teléfono.
 - **Contacto y envío:** dirección de entrega.
-- **Pago:** información mínima de la transacción. Los datos sensibles de tu tarjeta los procesa **Wompi**, nuestra pasarela de pagos — nosotros no los almacenamos.
+- **Cotización por WhatsApp:** tu nombre, tu número de WhatsApp, tu ciudad y departamento, tu correo (opcional) y las notas que nos escribas en el formulario.
+- **Pago:** información mínima de la transacción. Cuando activemos el pago en línea, los datos sensibles de tu tarjeta los procesará **Wompi**, nuestra pasarela de pagos — nosotros no los almacenamos.
 - **Comportamiento:** historial de pedidos, productos vistos y reseñas.
 - **Imágenes:** las fotos que subes al **Estudio de Personalización**.
 
 ## Con qué finalidad los usamos
 
+- Atender tu **cotización** y contactarte por WhatsApp para cerrarla contigo.
 - Procesar tu pedido, cobrarlo y enviártelo.
 - Enviarte comunicaciones sobre tu compra (confirmación, despacho, entrega).
 - Enviarte novedades y promociones **solo si nos das tu consentimiento** — es opcional y puedes cancelarlo cuando quieras.
@@ -83,7 +89,14 @@ Puedes ver la lista actualizada de terceros y los países donde operan en **[Sub
 
 ## Tu autorización
 
-Al entregarnos tus datos y aceptar este aviso, **autorizas** su tratamiento para las finalidades descritas. Puedes **revocar** tu autorización en cualquier momento por los canales indicados, salvo cuando exista un deber legal o contractual de conservar cierta información (por ejemplo, datos de facturación o de un pedido en curso).
+Al entregarnos tus datos y aceptar este aviso, **autorizas** su tratamiento para las finalidades descritas. Te pedimos esa autorización de forma expresa —con una casilla que tú marcas— cuando:
+
+- **creas tu cuenta**,
+- **pides tu cotización por WhatsApp**,
+- **completas tus datos de compra** en el sitio, y
+- **eliges tus cookies** en el banner.
+
+De cada una guardamos el registro (fecha, versión de este aviso y el correo o el número de WhatsApp con el que la diste) como **prueba de la autorización**. Puedes **revocarla** en cualquier momento por los canales indicados, salvo cuando exista un deber legal o contractual de conservar cierta información (por ejemplo, datos de facturación o de un pedido en curso).
 
 ## Política de Tratamiento completa
 
@@ -98,7 +111,7 @@ Si cambiamos este aviso de forma sustancial, te lo informaremos y actualizaremos
 
 ---
 
-_Versión 2 · vigente desde 2026-07-19 · en revisión por asesoría legal antes del lanzamiento._
+_Versión 3 · vigente desde 2026-07-24 · en revisión por asesoría legal antes del lanzamiento._
 `;
 
 export default function Page() {

@@ -10,13 +10,18 @@
  */
 
 import type { MetadataRoute } from "next";
+import { isCatalogMode } from "@/lib/store-mode";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "Lucams_shop — Tus recuerdos en imán",
     short_name: "Lucams_shop",
-    description:
-      "E-commerce colombiano de imanes magnéticos personalizados. Estudio de personalización, pago en línea seguro y envío a 1.100+ destinos.",
+    // Etapa 1 (modo catálogo): sin checkout de pago ni envío calculado — la descripción
+    // instalable no puede prometerlos. Derivada del flag, no hardcodeada, para que el
+    // texto transaccional vuelva solo al activar el modo full.
+    description: isCatalogMode()
+      ? "E-commerce colombiano de imanes magnéticos personalizados. Estudio de personalización y cotización por WhatsApp: acordamos pago y envío contigo."
+      : "E-commerce colombiano de imanes magnéticos personalizados. Estudio de personalización, pago en línea seguro y envío a 1.100+ destinos.",
     start_url: "/",
     display: "standalone",
     background_color: "#FFF8F0",

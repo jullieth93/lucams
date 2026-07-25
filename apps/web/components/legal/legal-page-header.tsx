@@ -25,7 +25,7 @@ export function LegalPageHeader({
       <p className="text-brand-muted mt-2 text-sm">
         <CmsText
           blockKey="legal.last-updated"
-          fallback="Última actualización: 2026-07-19 · Versión 2"
+          fallback="Última actualización: 2026-07-24 · Versión 3"
         />
       </p>
     </>

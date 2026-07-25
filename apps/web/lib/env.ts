@@ -78,6 +78,24 @@ export function validateEnv(): void {
   }
 
   const isProd = process.env.VERCEL_ENV === "production";
+
+  // El modo de tienda debe ser EXPLÍCITO en producción (auditoría 2026-07-21, hallazgo del flag).
+  // `readStoreMode()` cae a "full" ante ausencia o typo — un default deliberado para que un error
+  // de configuración nunca apague el checkout de una tienda que sí vende. Pero ese mismo default
+  // hace que borrar la variable publique en silencio toda la superficie transaccional. Con la
+  // variable declarada a la fuerza, ninguno de los dos modos puede activarse por accidente: el
+  // valor tiene que estar escrito.
+  if (isProd) {
+    const raw = process.env.NEXT_PUBLIC_STORE_MODE;
+    if (raw !== "catalog" && raw !== "full") {
+      throw new Error(
+        `[env] NEXT_PUBLIC_STORE_MODE debe valer exactamente "catalog" o "full" en producción ` +
+          `(recibido: ${raw === undefined ? "ausente" : `"${raw}"`}). Sin un valor explícito la app ` +
+          `asumiría "full" y habilitaría pagos y envíos sin que nadie lo haya decidido.`,
+      );
+    }
+  }
+
   // Modo catálogo (Etapa 1): NO se exigen las vars de pago/envío/IA — la tienda
   // vende por cotización WhatsApp sin Wompi/Aveonline/Gemini. El resto (email,
   // Turnstile, crons, WA) sigue siendo obligatorio en prod.

@@ -52,7 +52,12 @@ export type SignupActionState = {
   error?: string;
   success?: string;
   fieldErrors?: Partial<
-    Record<"email" | "password" | "passwordConfirm" | "firstName" | "lastName", string[]>
+    // `dataConsent` no viene del schema Zod: es la casilla de autorización, que se valida aparte
+    // y antes, para no tocar la PII sin permiso del titular.
+    Record<
+      "email" | "password" | "passwordConfirm" | "firstName" | "lastName" | "dataConsent",
+      string[]
+    >
   >;
 };
 
@@ -78,6 +83,17 @@ export async function signupAction(
     return {
       error: "Datos inválidos.",
       fieldErrors: flat.fieldErrors as SignupActionState["fieldErrors"],
+    };
+  }
+
+  // ─── Autorización de tratamiento de datos (Ley 1581 art. 9) ───
+  // PREVIA a persistir la PII y a crear el usuario. Antes el consentimiento se registraba
+  // server-side infiriéndolo de un aviso pasivo del formulario, sin ningún acto afirmativo del
+  // titular — y el aviso de privacidad declaraba públicamente una casilla que no existía.
+  if (formData.get("dataConsent") !== "on") {
+    return {
+      error: "Para crear tu cuenta debes autorizar el tratamiento de tus datos personales.",
+      fieldErrors: { dataConsent: ["Autoriza el tratamiento de tus datos para crear tu cuenta."] },
     };
   }
 

@@ -495,7 +495,9 @@ function TemplateCard({
             className="bg-brand-turquoise absolute top-1.5 right-1.5 z-10 flex h-6 w-6 items-center justify-center rounded-full shadow-md ring-2 ring-white"
             aria-hidden
           >
-            <Check className="h-3.5 w-3.5 text-white" strokeWidth={3} />
+            {/* A11Y — el ✓ es el único indicador de "elegida": blanco sobre turquesa daba 1.71:1
+              y WCAG 1.4.11 (no-text contrast) pide 3:1. En brand-purple-dark queda 7.06:1. */}
+            <Check className="text-brand-purple-dark h-3.5 w-3.5" strokeWidth={3} />
           </motion.div>
         )}
       </div>

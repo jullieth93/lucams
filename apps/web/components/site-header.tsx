@@ -58,8 +58,11 @@ export async function SiteHeader() {
             aria-label={`Carrito (${cartCount} ítems)`}
           >
             <ShoppingBag className="h-5 w-5" />
+            {/* A11Y — el contador iba blanco sobre brand-pink: 3.27:1, bajo el 4.5:1 que WCAG
+              1.4.3 AA exige para texto de 10px. Se baja al tono de tinta que ya usan los badges de
+              product-card (ADR-044): 5.31:1. La paleta no cambia. */}
             {cartCount > 0 && (
-              <span className="bg-brand-pink absolute -top-1 -right-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[10px] font-bold text-white tabular-nums">
+              <span className="bg-brand-pink-ink absolute -top-1 -right-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[10px] font-bold text-white tabular-nums">
                 {cartCount > 99 ? "99+" : cartCount}
               </span>
             )}

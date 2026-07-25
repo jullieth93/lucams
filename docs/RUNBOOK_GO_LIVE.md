@@ -60,7 +60,9 @@ FASE 9  Crons (pg_cron)  →  FASE 10  Backups R2  →  FASE 11  Turnstile
    ↓
 FASE 11.b  Pagar Vercel Pro + Supabase Pro  ← el ÚNICO paso que cuesta
    ↓
-FASE 12  Verificación final (compra de prueba real)
+FASE 11.c  Verificación post-deploy del MODO CATÁLOGO  ← si sales en Etapa 1, TERMINAS acá
+   ↓
+FASE 12  Verificación final (compra de prueba real)  ← solo en Etapa 2 (con pagos)
 ```
 
 ---
@@ -858,6 +860,63 @@ widget cuyos hostnames se editaron.
    > por medio, eso no es aceptable.
 
 ✅ **Cómo sabes que quedó bien:** ambas cuentas muestran plan de pago activo y el sitio sigue **Ready**.
+
+---
+
+## FASE 11.c — Verificación post-deploy del MODO CATÁLOGO (Etapa 1) 🤖
+
+> **Cuándo usar esta fase:** si sales en **Etapa 1** (catálogo + cotización por WhatsApp, sin pagos
+> ni envíos), **esta reemplaza a la FASE 12** — no hay compra que probar. Sirve para confirmar
+> **desde fuera** que el deploy quedó realmente en modo catálogo: `NEXT_PUBLIC_STORE_MODE` se
+> inlinea en el build igual que cualquier `NEXT_PUBLIC_*` (ver `OPERATIONS.md § Modo mantenimiento`),
+> así que **cambiarla en Vercel sin redesplegar no cambia nada** y el panel te miente.
+
+Copia y pega cada bloque en la terminal, ya con el deploy en **Ready**:
+
+```bash
+# 1) El paso de PAGO no existe: redirige al formulario de cotización.
+curl -sI https://lucamsshop.com/checkout/pago | grep -iE '^HTTP|^location'
+#    Esperado:  HTTP/2 307   +   location: /checkout/datos
+#    ⚠️ Si dice  location: /carrito  → el sitio está en modo FULL (te mandó a llenar el carrito).
+
+# 2) El checkout se presenta como cotización, no como compra.
+curl -s https://lucamsshop.com/checkout/datos | grep -c 'Cotización sin pago en línea'   # → 1
+curl -s https://lucamsshop.com/checkout/datos | grep -c 'Pago seguro Wompi'              # → 0
+
+# 3) La ficha instalable (manifest) no promete pagos.
+curl -s https://lucamsshop.com/manifest.webmanifest | grep -c 'pago en línea seguro'     # → 0
+curl -s https://lucamsshop.com/manifest.webmanifest | grep -c 'cotización por WhatsApp'  # → 1
+
+# 4) Google no lee los productos como comprables (JSON-LD sin oferta).
+curl -s https://lucamsshop.com/producto/set-fotoimanes-polaroid | grep -c '"@type":"Product"'   # → 1
+curl -s https://lucamsshop.com/producto/set-fotoimanes-polaroid | grep -c 'schema.org/InStock'  # → 0
+
+# 5) El WhatsApp del sitio es el tuyo.
+curl -s https://lucamsshop.com/carrito | grep -o 'wa\.me/[0-9]*' | sort -u
+#    Esperado:  wa.me/573208873826
+```
+
+✅ **Cómo sabes que quedó bien:** el paso 1 muestra `307` + `location: /checkout/datos`, los **6
+números** de los pasos 2-4 salen como dice cada comentario y el 5 imprime tu número. El paso 4 lleva un
+control a propósito (`"@type":"Product"` → 1): un `grep -c` de algo que **no** debe aparecer también
+da 0 cuando la página no cargó, así que sin ese control un 0 podría estar mintiéndote.
+
+📌 **Estado al escribir esto (2026-07-24, contra `https://lucamsshop.com` en vivo):** los pasos 1, 2
+y 5 **ya pasan**; los 3 y 4 **todavía no** (`pago en línea seguro` → 1, `schema.org/InStock` → 1)
+porque la rama `catalogo-whatsapp` aún no está desplegada. Esos dos son justamente los que te avisan
+si el deploy nuevo llegó o si Vercel te dejó el build viejo.
+
+⚠️ **Tres trampas verificadas el 2026-07-24 contra el sitio en vivo — no saques conclusiones falsas:**
+
+1. **`/checkout/envio` responde `200`, no un redirect.** Next lo redirige desde dentro del stream, así
+   que el código HTTP no sirve para diagnosticar ese paso. Usa el 1) y el 2).
+2. **El `wa.me` de `/carrito` es el del pie de página**, presente en los dos modos: el paso 5 prueba
+   que el **número** es correcto, **no** que estés en catálogo. El botón "Cotizar por WhatsApp →"
+   solo se pinta con productos en el carrito, y `curl` siempre llega con el carrito vacío.
+3. Por lo mismo, **la casilla de autorización de datos** (Ley 1581) del formulario de cotización
+   **no se puede ver con `curl`**: sin carrito, el formulario no se renderiza. Esa parte es 🙋
+   humana: agrega un producto en el navegador, entra a `/checkout/datos` y confirma que aparece
+   _"Autorizo el tratamiento de mis datos personales…"_ y que **no** deja enviar sin marcarla.
 
 ---
 

@@ -64,7 +64,6 @@ import {
   stripPositionOf,
   isInstagramTemplate,
   instagramBackgroundHex,
-  darkChromeSrc,
   noBorderChromeSrc,
   isInstagramNoBorder,
 } from "@/features/personalization/frame-palette";
@@ -939,7 +938,10 @@ function StudioSlotImpl({
             slotState.photoTransform?.scale &&
             Math.abs(slotState.photoTransform.scale - 1) > 0.001 && (
               <div
-                className="bg-brand-turquoise/90 absolute top-1.5 right-1.5 flex h-5 items-center justify-center rounded-full px-1.5 text-[10px] font-bold text-white shadow-sm"
+                // A11Y — el % iba en blanco sobre turquesa: 1.62:1 con la mezcla /90 sobre foto
+                // clara (WCAG 1.4.3 AA pide 4.5:1). Sin tocar la paleta, el TEXTO pasa a
+                // brand-purple-dark → 7.43:1.
+                className="bg-brand-turquoise/90 text-brand-purple-dark absolute top-1.5 right-1.5 flex h-5 items-center justify-center rounded-full px-1.5 text-[10px] font-bold shadow-sm"
                 aria-label={`Zoom actual ${Math.round(slotState.photoTransform.scale * 100)}%`}
                 title={`Zoom ${Math.round(slotState.photoTransform.scale * 100)}% — doble click resetea`}
               >

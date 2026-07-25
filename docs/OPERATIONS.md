@@ -221,6 +221,14 @@ Dos ramas en `github.com/jullieth93/lucams`:
 - **Flujo diario:** commitear en `develop` + `git push origin develop` al cerrar cada tanda (no acumular commits locales sin subir — pasó un atraso de 116).
 - **Release:** con OK explícito de Lucy, `git checkout production && git merge --ff-only develop && git push` → Vercel despliega producción. `production` solo avanza en releases.
 - **ACCIÓN HUMANA (Lucy):** en Vercel → Settings → Git, cambiar **Production Branch** de `develop` a `production`. Mientras siga en `develop`, cada push a develop actualiza el sitio en vivo.
+- **CI (2026-07-24):** [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) pasa a disparar en `develop`, `production` y `catalogo-whatsapp`. Antes apuntaba a `[develop, main]` y **`main` no existe** → `production` se desplegaba sin ningún gate (auditoría 2026-07-21, A4).
+
+  ⚠️ **Todavía no aplica en `production`.** En un evento `push`, GitHub usa el workflow **de la rama pusheada**, y `production` conserva la config vieja hasta que este cambio se mergee hasta allá (`git show production:.github/workflows/ci.yml` sigue mostrando `[develop, main]`). Es decir: la rama productiva sigue sin gate hasta el merge.
+
+  **ACCIÓN HUMANA (Lucy), en este orden:**
+  1. Mergear `catalogo-whatsapp` → `develop` → `production` para que el workflow nuevo viaje.
+  2. Conseguir **un primer run verde** en `production`. Sin esto, marcar los checks como obligatorios deja la rama sin poder mergear.
+  3. Recién entonces: GitHub → Settings → Branches → branch protection de `production` → marcar los 7 jobs como _required status checks_.
 
 ### `vercel.json` del repo
 
@@ -381,6 +389,10 @@ R2_BUCKET=lucams-backups
 CRON_SECRET=GENERATE_WITH_OPENSSL_RAND_HEX_32
 
 # ─── Misc ───
+# Modo mantenimiento: "1" (y solo "1") redirige todo el tráfico público a /maintenance
+# (apps/web/proxy.ts). Al ser NEXT_PUBLIC_* queda inlineada en el build → cambiarla en Vercel
+# NO surte efecto sin un redeploy. Ver § Disaster Recovery.
+# NEXT_PUBLIC_MAINTENANCE_MODE=1
 CSRF_SECRET=GENERATE_WITH_OPENSSL_RAND_HEX_32      # firma HMAC de cookies de sesión (carrito/checkout)
 NODE_ENV=development                               # development | production
 LOG_LEVEL=info                                     # debug | info | warn | error
@@ -830,7 +842,8 @@ if (await isFeatureEnabled("ai-design-suggest", user?.id)) {
 
 2. Comunicar a clientes (status page o email masivo si los emails funcionan).
 
-3. Activar MAINTENANCE_MODE=true en Vercel para evitar tráfico durante restore.
+3. Activar el modo mantenimiento: NEXT_PUBLIC_MAINTENANCE_MODE=1 en Vercel
+   + REDEPLOY (ver abajo — sin redeploy la variable no hace nada).
 
 4. Ejecutar restore.
 
@@ -839,10 +852,45 @@ if (await isFeatureEnabled("ai-design-suggest", user?.id)) {
    - Datos críticos (Order, Customer) están consistentes vs último estado conocido.
    - Smoke tests E2E en staging o producción passed.
 
-6. Desactivar MAINTENANCE_MODE.
+6. Desactivar el modo mantenimiento: borrar (o poner en 0) NEXT_PUBLIC_MAINTENANCE_MODE
+   + REDEPLOY otra vez.
 
 7. Post-mortem dentro de 48 h.
 ```
+
+#### Modo mantenimiento — la variable real y por qué exige redeploy
+
+Hasta 2026-07-24 este runbook decía `MAINTENANCE_MODE=true`: **esa variable no existe en el
+código**. Quien la hubiera puesto en medio de un incidente habría creído que el sitio estaba
+cerrado mientras seguía atendiendo tráfico.
+
+|                     | Valor real                                                                              |
+| ------------------- | --------------------------------------------------------------------------------------- |
+| Variable            | `NEXT_PUBLIC_MAINTENANCE_MODE`                                                          |
+| Valor que activa    | exactamente `1` (comparación estricta con el string `"1"`; `true` **no** sirve)         |
+| Quién la lee        | [`apps/web/proxy.ts`](../apps/web/proxy.ts) — redirige todo el tráfico a `/maintenance` |
+| Qué sigue accesible | `/maintenance`, `/admin/*`, `/api/health/*`, `/_next/*`                                 |
+
+> 🔁 **Cambiar la variable en Vercel NO basta: hay que redesplegar.** Al llevar el prefijo
+> `NEXT_PUBLIC_`, Next.js **reemplaza `process.env.NEXT_PUBLIC_MAINTENANCE_MODE` por su valor
+> literal durante `next build`** — también en el código de servidor —, y la doc oficial es
+> explícita: _"After being built, your app will no longer respond to changes to these environment
+> variables"_ ([Next.js 16.2.11, `docs/01-app/02-guides/environment-variables.md`, § Bundling
+> Environment Variables for the Browser](https://nextjs.org/docs/app/guides/environment-variables#bundling-environment-variables-for-the-browser),
+> consultado 2026-07-24 en la copia que trae el paquete `next` del repo). El build vigente quedó
+> congelado con el valor que existía cuando se compiló.
+>
+> Procedimiento correcto: Vercel → Settings → Environment Variables → setear/borrar la var →
+> **Deployments → Redeploy** (desmarcando "Use existing Build Cache" no hace falta, pero el
+> redeploy sí). Comprobación, ya con el redeploy en **Ready**:
+> `curl -sI https://lucamsshop.com/ | grep -iE '^HTTP|^location'` debe mostrar un redirect hacia
+> `/maintenance` al activar, y `HTTP/2 200` sin `location` al desactivar. _(La forma exacta del
+> header — relativa o absoluta — no se pudo comprobar en vivo: exigiría cerrar la tienda real.
+> [pendiente verificación])_
+>
+> ⏱️ **Consecuencia operativa:** cerrar la tienda cuesta un build completo (~2-4 min), no un
+> toggle instantáneo. Si el incidente exige cortar tráfico YA, es más rápido pausar el dominio en
+> Vercel o poner una regla en Cloudflare que esperar el redeploy.
 
 ### DR drills (cuatrimestral)
 
