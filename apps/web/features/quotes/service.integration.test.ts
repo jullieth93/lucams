@@ -36,6 +36,9 @@ import {
   updateQuoteStatus,
 } from "./admin-service";
 
+/** Contexto de consentimiento para los tests (Ley 1581): la firma lo exige desde 2026-07-21. */
+const TEST_CONSENT = { ip: "127.0.0.1", userAgent: "vitest" };
+
 // Guard RBAC y audit mockeados: el integration test ejercita la mutación en DB,
 // no el flujo de sesión/MFA (cubierto por lib/admin-rbac-guard.test.ts).
 // ACTOR se lee DIFERIDO (dentro del closure async) → sin problema de hoisting.
@@ -200,6 +203,7 @@ describe.skipIf(!hasDb)(
         const result = await createQuoteFromCart(
           quoteInput({ customerEmail: "lucia@lucams.test", notes: "Para el sábado" }),
           cart.sessionId,
+          TEST_CONSENT,
         );
 
         expect(result.number).toMatch(/^COT-[A-Z2-9]{6}$/);
@@ -246,7 +250,7 @@ describe.skipIf(!hasDb)(
         const cart = await makeCartWithItems([
           { variantId: defaultVariantId, qty: 1, unitPrice: DEFAULT_PRICE },
         ]);
-        const result = await createQuoteFromCart(quoteInput(), cart.sessionId);
+        const result = await createQuoteFromCart(quoteInput(), cart.sessionId, TEST_CONSENT);
         const quote = await prisma.quote.findUnique({
           where: { publicAccessToken: result.token },
         });
@@ -255,7 +259,9 @@ describe.skipIf(!hasDb)(
 
       it("lanza QuoteError EMPTY_CART con un carrito sin items (y NO lo vacía)", async () => {
         const cart = await makeCartWithItems([]);
-        await expect(createQuoteFromCart(quoteInput(), cart.sessionId)).rejects.toMatchObject({
+        await expect(
+          createQuoteFromCart(quoteInput(), cart.sessionId, TEST_CONSENT),
+        ).rejects.toMatchObject({
           name: "QuoteError",
           code: "EMPTY_CART",
         });
@@ -264,7 +270,9 @@ describe.skipIf(!hasDb)(
       });
 
       it("lanza QuoteError CART_NOT_FOUND con una sesión sin carrito", async () => {
-        await expect(createQuoteFromCart(quoteInput(), sid("ghost"))).rejects.toMatchObject({
+        await expect(
+          createQuoteFromCart(quoteInput(), sid("ghost"), TEST_CONSENT),
+        ).rejects.toMatchObject({
           name: "QuoteError",
           code: "CART_NOT_FOUND",
         });
@@ -277,8 +285,8 @@ describe.skipIf(!hasDb)(
         const c2 = await makeCartWithItems([
           { variantId: defaultVariantId, qty: 1, unitPrice: 100 },
         ]);
-        const r1 = await createQuoteFromCart(quoteInput(), c1.sessionId);
-        const r2 = await createQuoteFromCart(quoteInput(), c2.sessionId);
+        const r1 = await createQuoteFromCart(quoteInput(), c1.sessionId, TEST_CONSENT);
+        const r2 = await createQuoteFromCart(quoteInput(), c2.sessionId, TEST_CONSENT);
         expect(r1.number).not.toBe(r2.number);
         expect(r1.token).not.toBe(r2.token);
       });
@@ -291,7 +299,7 @@ describe.skipIf(!hasDb)(
         const cart = await makeCartWithItems([
           { variantId: namedVariantId, qty: 3, unitPrice: NAMED_PRICE },
         ]);
-        const { token } = await createQuoteFromCart(quoteInput(), cart.sessionId);
+        const { token } = await createQuoteFromCart(quoteInput(), cart.sessionId, TEST_CONSENT);
         // Ensuciamos la quote con nota interna + PII para verificar que NO salen.
         await prisma.quote.update({
           where: { publicAccessToken: token },
@@ -333,7 +341,7 @@ describe.skipIf(!hasDb)(
         const cart = await makeCartWithItems([
           { variantId: defaultVariantId, qty: 1, unitPrice: DEFAULT_PRICE },
         ]);
-        const { number } = await createQuoteFromCart(quoteInput(), cart.sessionId);
+        const { number } = await createQuoteFromCart(quoteInput(), cart.sessionId, TEST_CONSENT);
 
         const byNumber = await listQuotes({ q: number.toLowerCase() });
         expect(byNumber.items.map((i) => i.number)).toContain(number);
@@ -354,8 +362,8 @@ describe.skipIf(!hasDb)(
         const c2 = await makeCartWithItems([
           { variantId: defaultVariantId, qty: 1, unitPrice: 100 },
         ]);
-        const r1 = await createQuoteFromCart(quoteInput(), c1.sessionId);
-        const r2 = await createQuoteFromCart(quoteInput(), c2.sessionId);
+        const r1 = await createQuoteFromCart(quoteInput(), c1.sessionId, TEST_CONSENT);
+        const r2 = await createQuoteFromCart(quoteInput(), c2.sessionId, TEST_CONSENT);
         const q1 = (await prisma.quote.findUnique({ where: { number: r1.number } }))!;
         await prisma.quote.update({ where: { id: q1.id }, data: { status: "CONTACTED" } });
 
@@ -375,7 +383,7 @@ describe.skipIf(!hasDb)(
         const cart = await makeCartWithItems([
           { variantId: defaultVariantId, qty: 1, unitPrice: DEFAULT_PRICE },
         ]);
-        const { token } = await createQuoteFromCart(quoteInput(), cart.sessionId);
+        const { token } = await createQuoteFromCart(quoteInput(), cart.sessionId, TEST_CONSENT);
         const quote = (await prisma.quote.findUnique({ where: { publicAccessToken: token } }))!;
 
         const full = await getQuoteById(quote.id);
@@ -393,7 +401,7 @@ describe.skipIf(!hasDb)(
         const cart = await makeCartWithItems([
           { variantId: defaultVariantId, qty: 1, unitPrice: DEFAULT_PRICE },
         ]);
-        const { token } = await createQuoteFromCart(quoteInput(), cart.sessionId);
+        const { token } = await createQuoteFromCart(quoteInput(), cart.sessionId, TEST_CONSENT);
         const quote = (await prisma.quote.findUnique({ where: { publicAccessToken: token } }))!;
 
         const updated = await updateQuoteStatus(quote.id, "CONTACTED");
@@ -415,7 +423,7 @@ describe.skipIf(!hasDb)(
         const cart = await makeCartWithItems([
           { variantId: defaultVariantId, qty: 1, unitPrice: DEFAULT_PRICE },
         ]);
-        const { token } = await createQuoteFromCart(quoteInput(), cart.sessionId);
+        const { token } = await createQuoteFromCart(quoteInput(), cart.sessionId, TEST_CONSENT);
         const quote = (await prisma.quote.findUnique({ where: { publicAccessToken: token } }))!;
 
         const res = await updateQuoteStatus(quote.id, "PENDING");
@@ -434,7 +442,7 @@ describe.skipIf(!hasDb)(
         const cart = await makeCartWithItems([
           { variantId: defaultVariantId, qty: 1, unitPrice: DEFAULT_PRICE },
         ]);
-        const { token } = await createQuoteFromCart(quoteInput(), cart.sessionId);
+        const { token } = await createQuoteFromCart(quoteInput(), cart.sessionId, TEST_CONSENT);
         const quote = (await prisma.quote.findUnique({ where: { publicAccessToken: token } }))!;
 
         const first = await addQuoteInternalNote(quote.id, "Cliente prefiere por la tarde");
@@ -456,7 +464,7 @@ describe.skipIf(!hasDb)(
         const cart = await makeCartWithItems([
           { variantId: defaultVariantId, qty: 1, unitPrice: DEFAULT_PRICE },
         ]);
-        const { token } = await createQuoteFromCart(quoteInput(), cart.sessionId);
+        const { token } = await createQuoteFromCart(quoteInput(), cart.sessionId, TEST_CONSENT);
         const quote = (await prisma.quote.findUnique({ where: { publicAccessToken: token } }))!;
 
         await expect(addQuoteInternalNote(quote.id, "   ")).rejects.toThrow(/vacía/);

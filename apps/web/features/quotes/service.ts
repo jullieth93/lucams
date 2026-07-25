@@ -25,6 +25,7 @@ import { buildWhatsAppUrl } from "@/lib/wa";
 import { buildPublicShareUrl } from "@/lib/public-url";
 import { getCartDetail } from "@/features/cart/service";
 import { clearCartAfterPaid } from "@/features/orders/service";
+import { buildQuoteConsentRow } from "@/features/consent/service";
 
 export class QuoteError extends Error {
   constructor(
@@ -62,6 +63,12 @@ export type CreateQuoteInput = {
   notes?: string;
 };
 
+/** Contexto para la prueba de la autorización (Ley 1581): de dónde vino el titular. */
+export type QuoteConsentContext = {
+  ip?: string | null;
+  userAgent?: string | null;
+};
+
 export type CreateQuoteResult = {
   number: string;
   token: string;
@@ -79,10 +86,21 @@ export type CreateQuoteResult = {
 export async function createQuoteFromCart(
   input: CreateQuoteInput,
   sessionId: string,
+  consent: QuoteConsentContext,
 ): Promise<CreateQuoteResult> {
   const cart = await getCartDetail(sessionId);
   if (!cart) throw new QuoteError("CART_NOT_FOUND");
   if (cart.items.length === 0) throw new QuoteError("EMPTY_CART");
+
+  // Autorización de tratamiento (Ley 1581 art. 9). Se resuelve ANTES de la transacción para no
+  // meter una lectura de CMS dentro de ella, y se escribe DENTRO: la prueba y la PII son atómicas.
+  const { version: consentVersion, row: consentRow } = await buildQuoteConsentRow({
+    phone: input.customerWhatsapp,
+    email: input.customerEmail ?? null,
+    ip: consent.ip,
+    userAgent: consent.userAgent,
+  });
+  const consentAt = new Date();
 
   // Etapa 1: sin envío ni descuentos — el total es el subtotal del carrito.
   const subtotal = cart.subtotal;
@@ -111,6 +129,8 @@ export async function createQuoteFromCart(
             notes: input.notes ?? null,
             subtotal,
             total,
+            dataConsentAt: consentAt,
+            dataConsentVersion: consentVersion,
             items: {
               create: cart.items.map((i) => ({
                 productId: i.productId,
@@ -125,6 +145,9 @@ export async function createQuoteFromCart(
             },
           },
         });
+        // Ledger central de consentimientos, en la misma transacción: si algo falla, no queda
+        // ni la cotización ni una autorización huérfana.
+        await tx.consent.create({ data: { ...consentRow, acceptedAt: consentAt } });
         // Vaciar el carrito al confirmar — mismo mecanismo que el checkout
         // pago (soft-delete; el próximo lookup crea un cart vacío nuevo).
         await clearCartAfterPaid(cart.cartId, tx, "quote:create");

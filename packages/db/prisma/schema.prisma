@@ -1011,6 +1011,11 @@ model Consent {
   customer   Customer?    @relation(fields: [customerId], references: [id], onDelete: SetNull)
   // Para guests/newsletter sin cuenta: identificamos por email.
   email      String?
+  // Anclaje alterno para titulares SIN email: la cotización por WhatsApp (Etapa 1) pide el móvil
+  // y deja el email opcional, así que sin esto una autorización de un invitado quedaría huérfana
+  // (imposible de encontrar ante una solicitud de habeas data por WhatsApp). Móvil normalizado
+  // a 10 dígitos, igual que Quote.customerWhatsapp.
+  phone      String?
   scope      ConsentScope
   accepted   Boolean
   // Versión del aviso de privacidad / términos que el titular vió
@@ -1026,6 +1031,7 @@ model Consent {
 
   @@index([customerId, scope])
   @@index([email, scope])
+  @@index([phone, scope])
   @@index([scope, acceptedAt])
 }
 
@@ -1642,29 +1648,36 @@ enum QuoteStatus {
 }
 
 model Quote {
-  id                String      @id @default(cuid())
+  id                 String      @id @default(cuid())
   // Número humano "COT-XXXXXX" (6 chars alfanuméricos sin ambiguos, generado en
   // app — ver features/quotes/service.ts). Único; el create reintenta ante P2002.
-  number            String      @unique
-  status            QuoteStatus @default(PENDING)
-  customerName      String
+  number             String      @unique
+  status             QuoteStatus @default(PENDING)
+  customerName       String
   // Móvil colombiano normalizado a 10 dígitos (sin +57 ni espacios).
-  customerWhatsapp  String
-  customerEmail     String?
-  city              String
-  department        String
-  notes             String? // notas DEL CLIENTE (formulario público)
+  customerWhatsapp   String
+  customerEmail      String?
+  city               String
+  department         String
+  notes              String? // notas DEL CLIENTE (formulario público)
   // Notas internas del admin — NUNCA exponer en la vista pública por token
   // (getQuoteByToken las excluye con select explícito).
-  internalNotes     String?
+  internalNotes      String?
   // Centavos COP (mandato CLAUDE.md — nunca float). En Etapa 1 total == subtotal:
   // no hay envío calculado, cupones ni impuestos en la cotización.
-  subtotal          Int
-  total             Int
+  subtotal           Int
+  total              Int
   // Token para vista pública /cotizacion/[token] (guest sin login, mismo patrón
   // que Order.publicAccessToken): 32 chars hex = crypto.randomBytes(16).
-  publicAccessToken String      @unique
-  items             QuoteItem[]
+  publicAccessToken  String      @unique
+  // Prueba de la autorización de tratamiento (Ley 1581 art. 9) SOBRE el registro que contiene la
+  // PII: quién autorizó, cuándo y qué versión del aviso vio. Se guarda aquí además de en Consent
+  // porque es la cotización la que materializa el dato personal; el ledger central puede depurarse
+  // y el vínculo con la PII no debe perderse. Nullable: las cotizaciones anteriores a la casilla
+  // (2026-07-21) no la tienen.
+  dataConsentAt      DateTime?
+  dataConsentVersion String?
+  items              QuoteItem[]
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt

@@ -75,6 +75,37 @@ export async function recordHabeasDataConsent(input: {
  * puede ser INVITADO (sin cuenta) → customerId opcional; la prueba se ancla al email + IP/UA.
  * Requisito Ley 1581: autorización previa, expresa, informada y verificable, también para guests.
  */
+/**
+ * Datos de la fila de autorización que acompaña a una cotización. Se devuelve en vez de
+ * escribirse aquí para que el llamador la cree DENTRO de la misma transacción que la Quote:
+ * la prueba y la PII nacen juntas o no nace ninguna. (En el checkout la autorización es
+ * best-effort porque la orden ya existe cuando se registra; acá no hace falta ese compromiso.)
+ *
+ * Ley 1581 art. 9: el titular de una cotización suele ser INVITADO y el email es opcional, así
+ * que la fila se ancla al móvil de WhatsApp (`phone`) cuando no hay correo.
+ */
+export async function buildQuoteConsentRow(input: {
+  phone: string;
+  email?: string | null;
+  ip?: string | null;
+  userAgent?: string | null;
+}) {
+  const version = await getSettingValue("PRIVACY_POLICY_VERSION", "v1");
+  return {
+    version,
+    row: {
+      scope: "HABEAS_DATA" as const,
+      accepted: true,
+      version,
+      ipAddress: input.ip ?? null,
+      userAgent: input.userAgent ?? null,
+      customerId: null,
+      email: input.email ?? null,
+      phone: input.phone,
+    },
+  };
+}
+
 export async function recordCheckoutDataConsent(input: {
   email: string;
   customerId?: string | null;

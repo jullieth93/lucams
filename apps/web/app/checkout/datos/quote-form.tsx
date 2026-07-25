@@ -64,10 +64,13 @@ export function QuoteForm({ items = [] }: { items?: CartLineItem[] }) {
   const selectedDept = useMemo(() => DEPARTMENTS.find((d) => d.code === deptCode), [deptCode]);
   const selectedCity = useMemo(() => getCityByCode(cityCode), [cityCode]);
 
-  function err(field: keyof QuoteFormInput): string | null {
+  function err(field: keyof QuoteFormInput | "dataConsent"): string | null {
     if (state && !state.ok) return state.fieldErrors?.[field]?.[0] ?? null;
     return null;
   }
+
+  // Autorización de tratamiento (Ley 1581) — obligatoria antes de enviar la PII de la cotización.
+  const [dataConsent, setDataConsent] = useState(false);
 
   const phoneClientError =
     phoneDisplay.length > 0 && !validatePhone(phoneDisplay) && phoneTouched
@@ -257,7 +260,9 @@ export function QuoteForm({ items = [] }: { items?: CartLineItem[] }) {
               disabled={!deptCode}
               className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 h-9 w-full rounded-md border bg-white px-2 text-sm focus:ring-2 focus:outline-none disabled:bg-slate-50 disabled:text-slate-400"
             >
-              <option value="">{deptCode ? "Elige ciudad..." : "Elige departamento primero"}</option>
+              <option value="">
+                {deptCode ? "Elige ciudad..." : "Elige departamento primero"}
+              </option>
               {cities.map((c) => (
                 <option key={c.code} value={c.code}>
                   {c.name}
@@ -318,13 +323,36 @@ export function QuoteForm({ items = [] }: { items?: CartLineItem[] }) {
         </Button>
       </div>
 
-      <p className="text-brand-muted text-center text-xs">
-        Tus datos se tratan según el{" "}
-        <a href="/legal/privacidad" className="text-brand-purple underline underline-offset-2">
-          Aviso de Privacidad
-        </a>
-        . Sin spam: solo te escribimos por esta cotización.
-      </p>
+      <div className="border-brand-purple/15 bg-brand-cream/40 rounded-2xl border p-4">
+        <label className="flex items-start gap-3 text-sm">
+          <input
+            type="checkbox"
+            name="dataConsent"
+            required
+            checked={dataConsent}
+            onChange={(e) => setDataConsent(e.target.checked)}
+            aria-invalid={err("dataConsent") ? true : undefined}
+            className="accent-brand-purple mt-0.5 h-4 w-4 flex-shrink-0"
+          />
+          <span className="text-brand-purple-dark/90 leading-relaxed">
+            Autorizo el <strong>tratamiento de mis datos personales</strong> para responder esta
+            cotización por WhatsApp, conforme a la{" "}
+            <a
+              href="/legal/privacidad"
+              target="_blank"
+              rel="noreferrer"
+              className="text-brand-purple underline underline-offset-2"
+            >
+              Política de Privacidad
+            </a>{" "}
+            (Ley 1581 de 2012).
+          </span>
+        </label>
+        <FieldError message={err("dataConsent")} />
+        <p className="text-brand-muted mt-2 text-xs">
+          Sin spam: solo te escribimos por esta cotización.
+        </p>
+      </div>
     </form>
   );
 }

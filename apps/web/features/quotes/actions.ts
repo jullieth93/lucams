@@ -5,10 +5,11 @@
  *
  * Pipeline (mismo patrón que features/support/actions.ts):
  *  1. Valida con Zod (QuoteFormSchema).
- *  2. Turnstile anti-bot (en dev sin secret pasa automáticamente).
- *  3. Rate-limit: 5/día por IP + 3/día por WhatsApp — mitiga spam de
+ *  2. Exige la autorización de tratamiento de datos (Ley 1581) ANTES de persistir la PII.
+ *  3. Turnstile anti-bot (en dev sin secret pasa automáticamente).
+ *  4. Rate-limit: 5/día por IP + 3/día por WhatsApp — mitiga spam de
  *     cotizaciones sin friccionar al cliente legítimo.
- *  4. Crea la Quote desde el carrito de la sesión anónima (el service lo
+ *  5. Crea la Quote desde el carrito de la sesión anónima (el service lo
  *     vacía) y devuelve { number, token } para la página de confirmación
  *     (botón "Enviar por WhatsApp" + vista pública /cotizacion/[token]).
  */
@@ -24,9 +25,15 @@ import { getOrCreateCartSession } from "@/lib/cart-session";
 import { QuoteFormSchema, type QuoteFormInput } from "./schemas";
 import { QuoteError, createQuoteFromCart } from "./service";
 
+/**
+ * Errores por campo. Incluye `dataConsent`, que NO es un campo del schema Zod (es una casilla de
+ * autorización que se valida aparte, antes de tocar la PII) pero sí necesita pintar su error.
+ */
+export type QuoteFieldErrors = Partial<Record<keyof QuoteFormInput | "dataConsent", string[]>>;
+
 export type QuoteActionState =
   | { ok: true; token: string; number: string }
-  | { ok: false; error: string; fieldErrors?: Partial<Record<keyof QuoteFormInput, string[]>> }
+  | { ok: false; error: string; fieldErrors?: QuoteFieldErrors }
   | null;
 
 export async function createQuoteAction(
@@ -47,7 +54,19 @@ export async function createQuoteAction(
     return {
       ok: false,
       error: "Revisa los campos marcados.",
-      fieldErrors: flat.fieldErrors as Partial<Record<keyof QuoteFormInput, string[]>>,
+      fieldErrors: flat.fieldErrors as QuoteFieldErrors,
+    };
+  }
+
+  // ─── Autorización de tratamiento de datos (Ley 1581) ───
+  // PREVIA a persistir la PII: esta cotización es el único flujo de la Etapa 1 que recolecta
+  // datos personales, y su titular suele ser un invitado que de otro modo nunca autorizaría.
+  // Mismo criterio que el checkout (app/checkout/datos/actions.ts).
+  if (formData.get("dataConsent") !== "on") {
+    return {
+      ok: false,
+      error: "Para pedir tu cotización debes autorizar el tratamiento de tus datos personales.",
+      fieldErrors: { dataConsent: ["Autoriza el tratamiento de tus datos para continuar."] },
     };
   }
 
@@ -87,7 +106,10 @@ export async function createQuoteAction(
 
   try {
     const sessionId = await getOrCreateCartSession();
-    const { number, token } = await createQuoteFromCart(parsed.data, sessionId);
+    const { number, token } = await createQuoteFromCart(parsed.data, sessionId, {
+      ip,
+      userAgent: hdrs.get("user-agent"),
+    });
     logger.info({ event: "quote.create.success", number, ip });
     return { ok: true, token, number };
   } catch (err) {
