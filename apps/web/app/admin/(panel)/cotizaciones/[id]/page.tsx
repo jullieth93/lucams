@@ -14,6 +14,7 @@ import { notFound } from "next/navigation";
 import {
   ArrowLeft,
   FileText,
+  Hammer,
   MapPin,
   MessageCircle,
   Sparkles,
@@ -89,15 +90,26 @@ export default async function AdminCotizacionDetallePage({ params }: { params: P
           { label: quote.number },
         ]}
         actions={
-          <a
-            href={waUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 rounded-md bg-emerald-600 px-3.5 py-2 text-sm font-semibold text-white transition-colors hover:bg-emerald-700"
-          >
-            <MessageCircle className="h-4 w-4" />
-            Abrir WhatsApp
-          </a>
+          <>
+            {/* La hoja de taller es lo que Lucy mira mientras fabrica: qué es cada archivo, cuántas
+                piezas son de verdad, con qué color y por dónde se corta. */}
+            <Link
+              href={`/admin/cotizaciones/${quote.id}/taller`}
+              className="border-brand-purple/20 text-brand-purple-dark hover:bg-brand-purple/5 inline-flex items-center gap-1.5 rounded-md border px-3.5 py-2 text-sm font-semibold transition-colors"
+            >
+              <Hammer className="h-4 w-4" />
+              Hoja de taller
+            </Link>
+            <a
+              href={waUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 rounded-md bg-emerald-600 px-3.5 py-2 text-sm font-semibold text-white transition-colors hover:bg-emerald-700"
+            >
+              <MessageCircle className="h-4 w-4" />
+              Abrir WhatsApp
+            </a>
+          </>
         }
       />
 

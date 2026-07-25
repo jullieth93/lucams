@@ -101,6 +101,72 @@ export async function getQuoteById(id: string) {
   });
 }
 
+/**
+ * Todo lo que hace falta para FABRICAR lo que se cotizó (Lucy, 2026-07-25).
+ *
+ * Hasta hoy no existía puerta alguna: la descarga de archivos de imprenta colgaba de `Order`, y
+ * mientras la tienda opera por cotización no hay pedidos. El detalle de la cotización mostraba una
+ * miniatura de 56 px y nada más, así que los PNG a 300 DPI existían en Storage sin forma de llegar
+ * a ellos.
+ *
+ * Tres diferencias deliberadas frente a `getOrderProductionBundle`:
+ *   · NO se filtran las líneas sin archivos de imprenta. Los productos no personalizables también se
+ *     fabrican y se empacan, y si desaparecen de la hoja se despachan incompletos.
+ *   · `QuoteItem.variantId` es nullable (`onDelete: SetNull`), así que el SKU se busca en cascada
+ *     variante → producto → null. Nunca se inventa.
+ *   · Se traen los datos que el PNG no explica (atributos de la variante, schema y specs del
+ *     producto, canvas y metadata del diseño): son los que `resolveProductionSpec` convierte en
+ *     instrucciones.
+ */
+export async function getQuoteProductionBundle(id: string) {
+  return prisma.quote.findFirst({
+    where: { id, deletedAt: null },
+    select: {
+      id: true,
+      number: true,
+      status: true,
+      customerName: true,
+      customerWhatsapp: true,
+      city: true,
+      department: true,
+      notes: true,
+      createdAt: true,
+      total: true,
+      items: {
+        orderBy: { createdAt: "asc" },
+        select: {
+          id: true,
+          productName: true,
+          variantName: true,
+          quantity: true,
+          unitPrice: true,
+          previewUrl: true,
+          variant: { select: { sku: true, attributes: true } },
+          product: {
+            select: {
+              sku: true,
+              personalizationKind: true,
+              personalizationSchema: true,
+              physicalSpecs: true,
+            },
+          },
+          design: {
+            select: {
+              id: true,
+              canvasData: true,
+              metadata: true,
+              productionUrls: true,
+              previewUrl: true,
+              moderationStatus: true,
+              moderationReason: true,
+            },
+          },
+        },
+      },
+    },
+  });
+}
+
 // ─────────────────────────────────────────────────────────────────────
 // Mutaciones (guard RBAC + AdminActionLog)
 // ─────────────────────────────────────────────────────────────────────
