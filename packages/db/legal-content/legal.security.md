@@ -2,7 +2,7 @@
 
 En Lucams_shop cuidamos tus datos con el mismo cariño con el que armamos cada imán. Si encontraste una vulnerabilidad de seguridad en nuestro sitio, te agradecemos de corazón que nos la cuentes **antes** de divulgarla públicamente, para poder arreglarla y proteger a quienes compran con nosotros.
 
-Lucams_shop es operado por **Lucams_shop (persona natural), Bogotá D.C., Colombia**. Los datos de identificación de la titular están disponibles a requerimiento del consumidor a través de nuestros canales de contacto.
+Lucams_shop es operado por **Lucams_shop (persona natural), Bogotá D.C., Colombia**. Si necesitas nuestros datos para un trámite formal, escríbenos y te los damos.
 
 ## Cómo reportar
 

@@ -1,6 +1,6 @@
 Al comprar en **lucamsshop.com** aceptas estos Términos y Condiciones. Léelos con calma: aquí te contamos quiénes somos, cómo funciona la compra y cuáles son tus derechos. Toda venta se rige por la legislación colombiana, en especial la **Ley 1480 de 2011 (Estatuto del Consumidor)** y la **Ley 1581 de 2012 (Protección de Datos Personales)**.
 
-> **Cómo operamos hoy: venta por cotización.** En esta etapa lucamsshop.com es un **catálogo con cotización por WhatsApp**. Eliges tus productos, nos dejas tus datos y cerramos el pedido contigo por WhatsApp, donde acordamos el pago y la entrega. **Todavía no cobramos en línea en el sitio.** Las partes de estos Términos que hablan de pago en línea, contraentrega y cálculo del envío en el sitio aplican **cuando activemos la compra en línea**; cuando eso pase, lo publicaremos aquí con una versión nueva. Tus derechos como consumidor —garantía, retracto y reversión del pago— te los da la ley y no dependen del canal por el que compres.
+> **Cómo operamos hoy: venta por cotización.** En esta etapa lucamsshop.com es un **catálogo con cotización por WhatsApp**. Eliges tus productos, nos dejas tus datos y cerramos el pedido contigo por WhatsApp, donde acordamos el pago y la entrega. **Todavía no cobramos en línea en el sitio.** Las partes de estos Términos que hablan de pago en línea, contraentrega y cálculo del envío en el sitio aplican **cuando activemos la compra en línea**; cuando eso pase, lo publicaremos aquí con una versión nueva. Tus derechos de **garantía legal** y **retracto** te los da la ley y no dependen del canal: aplican igual si cerramos tu pedido por WhatsApp a partir de una cotización del sitio, porque sigue siendo una **venta a distancia** (Ley 1480 de 2011, arts. 5 num. 16, 47 y 49). La **reversión del pago** es distinta: la ley la condiciona a haber pagado con tarjeta u otro medio electrónico (art. 51), así que aplicará cuando activemos la compra en línea.
 
 ## Quiénes somos
 
@@ -11,7 +11,7 @@ Al comprar en **lucamsshop.com** aceptas estos Términos y Condiciones. Léelos 
 - Peticiones de datos personales (Hábeas Data): **habeas-data@lucamsshop.com**
 - Retracto y devoluciones: **retracto@lucamsshop.com**
 
-Los datos completos de identificación (documento de identidad) y la dirección de notificación se entregan **a solicitud** por cualquiera de los canales de contacto o de Hábeas Data indicados arriba.
+Si necesitas nuestros datos para un trámite formal o una reclamación, escríbenos a **hola@lucamsshop.com** y te los damos.
 
 ## Objeto
 
@@ -45,7 +45,7 @@ Los colores y acabados pueden variar levemente respecto a lo que ves en pantalla
 - Los precios están en **pesos colombianos (COP)** y son el **valor final que pagas** por el producto.
 - El **costo de envío** se te informa **antes** de que pagues: hoy por WhatsApp al confirmar tu cotización y, cuando activemos la compra en línea, calculado en el sitio. No hay cobros ocultos.
 - Mientras la tienda opere por cotización, el **medio de pago lo acordamos contigo por WhatsApp** antes de producir tu pedido. Cuando activemos la compra en línea aceptaremos **tarjeta de crédito y débito, PSE y otros medios** a través de **Wompi**, y **pago contraentrega** donde esté disponible.
-- Según el **régimen tributario vigente** de la vendedora, con tu compra recibes el documento que corresponda: **documento equivalente, cuenta de cobro o factura electrónica**.
+- **Sobre comprobantes.** Hoy la vendedora **no está obligada a expedir factura de venta**, por ser persona natural **no responsable de IVA** (Estatuto Tributario, art. 437 parágrafo 3, y Decreto 1625 de 2016, art. 1.6.1.4.3 numeral 3). Por cada compra te entregamos la **constancia de la operación** con el detalle de lo que pediste, lo que pagaste y la fecha. Si en el futuro quedamos obligadas a facturar, lo publicaremos aquí antes de que aplique.
 
 ## Envío y entrega
 
@@ -67,11 +67,13 @@ Para ejercerlo, escríbenos a **retracto@lucamsshop.com** o por WhatsApp. Más d
 
 Todos los productos cuentan con **garantía legal** (Ley 1480 de 2011, arts. 7 a 16) de **mínimo un (1) año** contado desde la entrega, frente a defectos de fabricación o de calidad. La garantía no cubre el daño causado por uso indebido, descuido o desgaste normal.
 
-Ante un defecto cubierto, **tú eliges** entre la **reparación**, la **sustitución** del producto o la **devolución del dinero**. Para hacerla efectiva, contáctanos por los canales de arriba. Más detalle en [Garantías](/legal/garantias).
+Ante un defecto cubierto, primero lo **reparamos totalmente gratis**, y el transporte corre por nuestra cuenta. Si el producto **no admite reparación** o **la falla se repite** después de arreglarlo, ahí **eliges tú** entre que te lo **cambiemos** por uno nuevo o que te **devolvamos el dinero** (Ley 1480 de 2011, art. 11). Para hacerla efectiva, contáctanos por los canales de arriba. Más detalle en [Garantías](/legal/garantias).
 
 ## Reversión del pago
 
-Si pagaste con **medios electrónicos** (por ejemplo tarjeta o PSE) y ocurre una compra no solicitada o fraudulenta, el producto **no se entrega**, o lo entregado **no corresponde** con lo pedido o está defectuoso, puedes solicitar a tu entidad financiera la **reversión del pago** (Ley 1480 de 2011, art. 51). Contamos con **veintiún (21) días calendario** para atender la solicitud.
+Este derecho aplica **cuando activemos la compra en línea**, porque la ley lo condiciona a que hayas pagado con **tarjeta de crédito, débito u otro instrumento de pago electrónico** (Ley 1480 de 2011, art. 51). Mientras el pago se acuerde por WhatsApp, tus derechos son la **garantía** y el **retracto**, que sí aplican siempre.
+
+Cuando aplique: si ocurre una compra no solicitada o fraudulenta, el producto **no se entrega**, o lo entregado **no corresponde** con lo pedido o está defectuoso, pides la reversión ante la entidad que emitió tu medio de pago y nos avisas. El plazo para atenderla corre contra **los participantes del proceso de pago** —tu banco, la pasarela, el emisor de la tarjeta—, que tienen **quince (15) días hábiles** para devolver el dinero (Decreto 1074 de 2015, art. 2.2.2.51.8). Nosotras te acompañamos en el trámite y respondemos lo que nos corresponda.
 
 ## Personalización y contenido que subes
 
@@ -91,7 +93,7 @@ Las marcas, ilustraciones, la mascota, los diseños y los contenidos del sitio s
 
 Tratamos tus datos conforme a la **Ley 1581 de 2012** y sus decretos reglamentarios, con tu autorización previa, expresa e informada. Puedes conocer, actualizar, rectificar y suprimir tus datos, revocar la autorización y pedir prueba de ella. Consulta el detalle en el [Aviso de Privacidad](/legal/privacidad) y ejerce tus derechos en [Hábeas Data](/legal/habeas-data).
 
-Algunos de nuestros proveedores tecnológicos están fuera de Colombia (por ejemplo alojamiento y correo en EE. UU.), lo que implica una **transferencia internacional** de datos con las garantías descritas en el Aviso de Privacidad y en la lista de [Subprocesadores](/legal/subprocesadores).
+Algunos de nuestros proveedores tecnológicos están fuera de Colombia (por ejemplo alojamiento y correo en EE. UU.). Como tratan tus datos **por nuestra cuenta**, eso es una **transmisión internacional** —no una transferencia— y va amparada por un contrato de transmisión con cada uno, con las garantías descritas en el Aviso de Privacidad y en la lista de [Subprocesadores](/legal/subprocesadores).
 
 ## PQR y atención al cliente
 

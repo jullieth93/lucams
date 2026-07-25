@@ -9,7 +9,7 @@ El tratamiento de tus datos está a cargo de:
 - **Correo de contacto:** hola@lucamsshop.com
 - **WhatsApp:** disponible en el sitio (botón de WhatsApp).
 
-El número de documento de identidad y la dirección física de notificación de la responsable **están disponibles a solicitud**, escribiendo a hola@lucamsshop.com. No los publicamos abiertamente por seguridad, pero te los entregamos cuando los necesites para un trámite legal.
+Si necesitas nuestros datos para un trámite formal o una reclamación, escríbenos a **habeas-data@lucamsshop.com** y te los damos.
 
 ## Qué datos tratamos
 

@@ -16,7 +16,7 @@ export const metadata: Metadata = {
 // así que es el único texto legal garantizado ante una caída de la base.
 // legal-content-sync.test.ts falla si ambos divergen.
 const FALLBACK = `
-En **Lucams_shop** cuidamos tus datos personales con el mismo cariño con el que hacemos tus imanes. Este Aviso de Privacidad te explica, en cristiano, quién es responsable de tus datos, qué recolectamos, para qué, cuáles son tus derechos y cómo ejercerlos, conforme a la **Ley 1581 de 2012** y el **Decreto 1377 de 2013** de Colombia.
+En **Lucams_shop** cuidamos tus datos personales con el mismo cariño con el que hacemos tus imanes. Este Aviso de Privacidad te explica, en cristiano, quién es responsable de tus datos, qué recolectamos, para qué, cuáles son tus derechos y cómo ejercerlos, conforme a la **Ley 1581 de 2012** y su **Decreto reglamentario 1377 de 2013, compilado en el Decreto 1074 de 2015**.
 
 Este aviso es un resumen. El documento vinculante y completo es nuestra **Política de Tratamiento de Datos Personales**, que puedes consultar en cualquier momento (ver más abajo).
 
@@ -30,7 +30,7 @@ Puedes contactarnos por:
 - **Habeas Data (trámites de datos personales):** habeas-data@lucamsshop.com
 - **WhatsApp:** el botón de WhatsApp que ves en el sitio.
 
-> Si necesitas nuestros datos de identificación ampliados para un trámite formal, te los entregamos **a solicitud** por cualquiera de estos canales.
+> Si necesitas nuestros datos para un trámite formal o una reclamación, escríbenos por cualquiera de estos canales y te los damos.
 
 ## Qué datos recolectamos
 
@@ -83,7 +83,7 @@ Si quieres el detalle completo de cómo ejercerlos, visita nuestra página de **
 
 Para prestarte el servicio compartimos datos con proveedores que actúan como **encargados del tratamiento** (hosting, correo, pagos, logística e inteligencia artificial del Estudio). Todos están obligados contractualmente a proteger tus datos.
 
-Algunos de estos encargados operan **fuera de Colombia (Estados Unidos)** — por ejemplo, la infraestructura de nube y de correo, y el asistente de IA del Estudio. Esto implica una **transferencia internacional de datos**, que se sustenta en **tu autorización**, en la **ejecución del contrato** contigo y en **medidas de seguridad** (cifrado en tránsito y en reposo y acuerdos de tratamiento de datos con cada proveedor).
+Algunos de estos encargados operan **fuera de Colombia (Estados Unidos)** — por ejemplo, la infraestructura de nube y de correo, y el asistente de IA del Estudio. Jurídicamente esto es una **transmisión internacional**, no una transferencia: ellos tratan los datos **por nuestra cuenta y siguiendo nuestras instrucciones**, y nosotras seguimos siendo las responsables (Decreto 1074 de 2015, art. 2.2.2.25.1.3, numerales 4 y 5). Con cada uno tenemos un **contrato de transmisión** que fija el alcance del tratamiento y exige garantías de seguridad (cifrado en tránsito y en reposo).
 
 Puedes ver la lista actualizada de terceros y los países donde operan en **[Subprocesadores](/legal/subprocesadores)**.
 

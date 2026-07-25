@@ -52,7 +52,7 @@ Si pagaste con **medios electrónicos** (tarjeta, PSE, botón de pago), la **Ley
 - el producto entregado **no corresponde** a lo que pediste, o
 - el producto resultó **defectuoso**.
 
-Para pedirla, avísanos a **retracto@lucamsshop.com** (o al canal de contacto) y solicita la reversión ante la entidad que emitió tu medio de pago. La reversión debe atenderse dentro de los **21 días calendario** siguientes a la solicitud.
+Para pedirla, avísanos a **retracto@lucamsshop.com** (o al canal de contacto) y solicita la reversión ante la entidad que emitió tu medio de pago. El plazo de **quince (15) días hábiles** para devolverte el dinero corre contra **los participantes del proceso de pago** —tu banco, la pasarela y el emisor de la tarjeta—, no contra la tienda (Decreto 1074 de 2015, art. 2.2.2.51.8). Nosotras te acompañamos en el trámite.
 
 ## ¿Dudas?
 

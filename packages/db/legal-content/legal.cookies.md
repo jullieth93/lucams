@@ -1,6 +1,6 @@
 Las **cookies** son archivos pequeñitos que tu navegador guarda cuando visitas un sitio. Nos sirven para que **Lucams_shop** funcione (que puedas iniciar sesión y que tu carrito no se pierda) y, si tú lo autorizas, para mejorar tu experiencia. Aquí te contamos, sin letra menuda, qué cookies usamos, para qué, cuánto duran y cómo las controlas.
 
-Responsable del tratamiento: **Lucams_shop (persona natural), Bogotá D.C., Colombia**, titular de la marca **Lucams_shop**. Tratamos tus datos conforme a la **Ley 1581 de 2012** y el **Decreto 1377 de 2013**. Para dudas o para ejercer tus derechos, escríbenos a **habeas-data@lucamsshop.com** (encuentras el detalle en el **Aviso de Privacidad** y en **Hábeas Data**). Los datos de identificación de la titular están disponibles a requerimiento del consumidor a través de nuestros canales de contacto.
+Responsable del tratamiento: **Lucams_shop (persona natural), Bogotá D.C., Colombia**, titular de la marca **Lucams_shop**. Tratamos tus datos conforme a la **Ley 1581 de 2012** y su **Decreto reglamentario 1377 de 2013, compilado en el Decreto 1074 de 2015**. Para dudas o para ejercer tus derechos, escríbenos a **habeas-data@lucamsshop.com** (encuentras el detalle en el **Aviso de Privacidad** y en **Hábeas Data**). Si necesitas nuestros datos para un trámite formal o una reclamación, escríbenos y te los damos.
 
 ## Cómo clasificamos las cookies
 
@@ -27,14 +27,14 @@ Las tres categorías opcionales están **desactivadas por defecto** y solo se ac
 
 Las cookies de tu carrito y de tu checkout (`cart_session` y `checkout_state`) son `HttpOnly`: viven solo en tu navegador y ningún script de terceros puede leerlas. Cuando resuelves un reto anti-bot (por ejemplo, al registrarte), Cloudflare puede añadir cookies de seguridad adicionales; las usamos únicamente para protegerte del fraude.
 
-## Cookies de terceros y transferencia internacional
+## Cookies de terceros y transmisión internacional
 
 Algunas cookies necesarias las ponen proveedores que nos ayudan a operar y que están **fuera de Colombia**:
 
 - **Supabase** (EE.UU.) — sesión e infraestructura.
 - **Cloudflare** (red global) — seguridad, anti-bot y entrega del sitio.
 
-Esto implica una **transferencia internacional de datos**. La hacemos con base en tu autorización y en la ejecución del contrato de compra (art. 26 de la Ley 1581), aplicando medidas de seguridad y contratos de transmisión de datos con cada proveedor (arts. 24 y 25 del Decreto 1377). Puedes ver la lista completa y actualizada de proveedores en **Subprocesadores**.
+Esto implica una **transmisión internacional de datos**: esos proveedores los tratan **por nuestra cuenta y siguiendo nuestras instrucciones**, y nosotras seguimos siendo las responsables. Con cada uno firmamos un **contrato de transmisión** que fija el alcance y exige garantías de seguridad (Decreto 1074 de 2015, arts. 2.2.2.25.5.1 y 2.2.2.25.5.2). Puedes ver la lista completa y actualizada de proveedores en **Subprocesadores**.
 
 ## Cómo controlas tus cookies
 

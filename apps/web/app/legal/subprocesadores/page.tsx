@@ -17,11 +17,11 @@ export const metadata: Metadata = {
 const FALLBACK = `
 Para armar tus imanes, cobrarte de forma segura y llevarte el pedido hasta la puerta, un pequeño equipo de proveedores de confianza nos ayuda entre bambalinas. A esos proveedores la ley los llama **encargados del tratamiento**: tratan tus datos personales **por cuenta nuestra**, solo para lo necesario y bajo un contrato que les exige cuidarlos.
 
-El **responsable del tratamiento** de tus datos es **Lucams_shop (persona natural), Bogotá D.C., Colombia**. Puedes escribirnos a **hola@lucamsshop.com** o por **WhatsApp** (el número está en el pie de página del sitio). Los datos de identificación de la titular están disponibles a requerimiento del consumidor a través de nuestros canales de contacto.
+El **responsable del tratamiento** de tus datos es **Lucams_shop (persona natural), Bogotá D.C., Colombia**. Puedes escribirnos a **hola@lucamsshop.com** o por **WhatsApp** (el número está en el pie de página del sitio). Si necesitas nuestros datos para un trámite formal, escríbenos y te los damos.
 
 ## ¿Qué es un subprocesador?
 
-Es un tercero (una empresa proveedora) que trata algunos de tus datos **en nuestro nombre y siguiendo nuestras instrucciones**, únicamente para prestarte el servicio: alojar el sitio, enviarte correos, procesar el pago o entregar tu pedido. Con cada uno nos acogemos a un **Acuerdo de Tratamiento de Datos (DPA) / contrato de transmisión** que fija los alcances del tratamiento y exige garantías de seguridad, tal como lo pide el **artículo 25 del Decreto 1377 de 2013**.
+Es un tercero (una empresa proveedora) que trata algunos de tus datos **en nuestro nombre y siguiendo nuestras instrucciones**, únicamente para prestarte el servicio: alojar el sitio, enviarte correos, procesar el pago o entregar tu pedido. Con cada uno nos acogemos a un **Acuerdo de Tratamiento de Datos (DPA) / contrato de transmisión** que fija los alcances del tratamiento y exige garantías de seguridad, tal como lo pide el **artículo 2.2.2.25.5.2 del Decreto 1074 de 2015** (que compiló el art. 25 del Decreto 1377 de 2013).
 
 ## Proveedores que tratan tus datos
 
@@ -54,7 +54,7 @@ Aveonline entrega tu pedido a través de **una** de estas transportadoras, segú
 Algunos de estos proveedores (Supabase, Vercel, Resend, Google/Gemini y Cloudflare) están ubicados en **Estados Unidos**, país al que la Superintendencia de Industria y Comercio (SIC) **no ha declarado como de nivel adecuado** de protección de datos. Que tus datos se traten allí es, por tanto, una **transferencia/transmisión internacional**, amparada en:
 
 1. **Tu autorización previa, expresa e informada**, que recogemos en el [Aviso de Privacidad](/legal/privacidad) y la Política de Tratamiento de Datos.
-2. El **contrato de transmisión / DPA** que tenemos con cada proveedor, con garantías de seguridad (artículo 25 del Decreto 1377 de 2013).
+2. El **contrato de transmisión / DPA** que tenemos con cada proveedor, con garantías de seguridad (artículo 2.2.2.25.5.2 del Decreto 1074 de 2015).
 3. **Medidas técnicas**: cifrado de tus datos en tránsito y en reposo.
 
 Todo esto se hace conforme al **artículo 26 de la Ley 1581 de 2012**, que regula las transferencias internacionales de datos personales.
