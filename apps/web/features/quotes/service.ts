@@ -284,15 +284,32 @@ export function truncateForWhatsApp(text: string, maxChars: number): string {
   return `${units.slice(0, maxChars - 1).join("")}…`;
 }
 
-/** Una línea del detalle: "• 2× Imán Corazón (Set 6) — $ 300". */
+/**
+ * Neutraliza los caracteres de formato de WhatsApp dentro de texto que no controlamos.
+ *
+ * WhatsApp interpreta `*`, `_`, `~` y ``` como marcas de formato, así que un producto llamado
+ * "Set 12_pack" italizaría media línea y uno con un asterisco suelto podría dejar el resto del
+ * mensaje en negrita. Se sustituyen por caracteres visualmente equivalentes (no hay escape en el
+ * formato de WhatsApp) para que el texto se lea igual sin activar el marcado.
+ */
+function neutralizeWhatsAppMarkup(text: string): string {
+  return text.replace(/\*/g, "∗").replace(/_/g, "‗").replace(/~/g, "∼").replace(/`/g, "ʼ");
+}
+
+/** Una línea del detalle: "• 2× *Imán Corazón* (Set 6) — $ 300". */
 function formatQuoteItemLine(i: QuoteForWhatsApp["items"][number]): string {
   // La variante "Default" es interna (productos sin opciones) — la UI del
   // storefront tampoco la muestra; no la mandamos por WhatsApp.
-  const variant = i.variantName && i.variantName !== "Default" ? ` (${i.variantName})` : "";
+  const variant =
+    i.variantName && i.variantName !== "Default"
+      ? ` (${neutralizeWhatsAppMarkup(i.variantName)})`
+      : "";
   // El nombre es el único trozo sin tope de largo; se recorta ANTES del precio para que un
   // nombre kilométrico no deje la línea sin su valor (y para que la cota de abajo sea firme).
-  const name = truncateForWhatsApp(i.productName, WA_MAX_ITEM_NAME_CHARS);
-  return `• ${i.quantity}× ${name}${variant} — ${formatCOP(i.unitPrice * i.quantity)}`;
+  const name = neutralizeWhatsAppMarkup(truncateForWhatsApp(i.productName, WA_MAX_ITEM_NAME_CHARS));
+  // El nombre en negrita: es lo que se busca al repasar la lista. La cantidad y el precio quedan
+  // planos para que la línea no se vuelva un bloque ilegible.
+  return `• ${i.quantity}× *${name}*${variant} — ${formatCOP(i.unitPrice * i.quantity)}`;
 }
 
 /**

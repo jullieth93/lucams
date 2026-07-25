@@ -43,7 +43,7 @@ function quoteForm({ consent = true }: { consent?: boolean } = {}): FormData {
   const fd = new FormData();
   fd.set("customerName", "Lucía Pérez");
   fd.set("customerWhatsapp", "3001234567");
-  fd.set("customerEmail", "");
+  fd.set("customerEmail", "lucia@example.com");
   fd.set("city", "Bogotá");
   fd.set("department", "Cundinamarca");
   fd.set("notes", "");

@@ -106,13 +106,13 @@ describe("buildQuoteWhatsAppUrl", () => {
     const text = decodeURIComponent(url.slice(url.indexOf("?text=") + "?text=".length));
     expect(text).toContain("COT-ABC234");
     expect(text).toContain("Lucía Pérez");
-    // Items: "• 2× Imán Corazón (Set 6) — $ 300" (centavos → pesos, es-CO).
-    expect(text).toContain("2× Imán Corazón (Set 6)");
+    // Items con el nombre en *negrita* (formato de WhatsApp): "• 2× *Imán Corazón* (Set 6) — $ 300".
+    expect(text).toContain("2× *Imán Corazón* (Set 6)");
     // La variante interna "Default" NO se muestra.
-    expect(text).toContain("1× Llavero Foto —");
+    expect(text).toContain("1× *Llavero Foto* —");
     expect(text).not.toContain("Default");
-    // Total formateado COP ($ 450 para 45_000 centavos).
-    expect(text).toMatch(/Total: \$\s*450/);
+    // Total en negrita, formateado COP ($ 450 para 45_000 centavos).
+    expect(text).toMatch(/\*Total: \$\s*450\*/);
     // Incluye el link público de la cotización sobre el dominio canónico.
     expect(text).toContain("https://lucamsshop.com/cotizacion/abc123token");
   });
@@ -260,14 +260,15 @@ const VALID = {
   customerWhatsapp: "3208873826",
   city: "Bogotá D.C.",
   department: "Bogotá D.C.",
+  customerEmail: "lucia@example.com",
 };
 
 describe("QuoteFormSchema", () => {
-  it("acepta el caso feliz mínimo (sin email ni notas)", () => {
+  it("acepta el caso feliz mínimo (sin notas)", () => {
     const r = QuoteFormSchema.safeParse(VALID);
     expect(r.success).toBe(true);
     if (r.success) {
-      expect(r.data.customerEmail).toBeUndefined();
+      expect(r.data.customerEmail).toBe("lucia@example.com");
       expect(r.data.notes).toBeUndefined();
     }
   });
@@ -296,10 +297,15 @@ describe("QuoteFormSchema", () => {
     );
   });
 
-  it("email opcional: acepta vacío, rechaza formato inválido, normaliza a minúsculas", () => {
-    const vacio = QuoteFormSchema.safeParse({ ...VALID, customerEmail: "" });
-    expect(vacio.success).toBe(true);
-    if (vacio.success) expect(vacio.data.customerEmail).toBeUndefined();
+  // Obligatorio desde 2026-07-25: la cotización se manda por WhatsApp Y por correo, así que sin
+  // email el cliente se queda sin copia escrita de lo que cotizó.
+  it("email OBLIGATORIO: rechaza vacío y formato inválido, normaliza a minúsculas", () => {
+    expect(QuoteFormSchema.safeParse({ ...VALID, customerEmail: "" }).success).toBe(false);
+    expect(QuoteFormSchema.safeParse({ ...VALID, customerEmail: "   " }).success).toBe(false);
+
+    const sinCampo = { ...VALID } as Record<string, unknown>;
+    delete sinCampo.customerEmail;
+    expect(QuoteFormSchema.safeParse(sinCampo).success).toBe(false);
 
     expect(QuoteFormSchema.safeParse({ ...VALID, customerEmail: "no-es-email" }).success).toBe(
       false,

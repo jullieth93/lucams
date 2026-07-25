@@ -51,8 +51,12 @@ const FALLBACK_TEMPLATES = {
   // Etapa 1 (modo catálogo): mensaje de la cotización con número, items con
   // cantidades, total formateado COP y nombre del cliente. itemsSummary llega
   // pre-armado (una línea por item) desde features/quotes/service.ts.
+  // Formato de WhatsApp: *negrita*, _cursiva_, ~tachado~ y ```monoespaciado```.
+  // Fuente: https://faq.whatsapp.com/539178204879377 (consultado 2026-07-25).
+  // Llegaba todo plano y costaba leerlo de un vistazo; ahora el número de cotización y el total
+  // —lo que Lucy y el cliente buscan primero— resaltan sobre el detalle.
   quote:
-    "Hola Lucams 👋 Soy {customerName}. Acabo de hacer la cotización {quoteNumber} en la tienda:\n{itemsSummary}\nTotal: {total}\nLink: {quoteUrl}\nQuedo atento/a para concretar 🙌",
+    "Hola Lucams 👋 Soy *{customerName}*.\n\nAcabo de hacer la cotización *{quoteNumber}* en la tienda:\n\n{itemsSummary}\n\n*Total: {total}*\n\n_Ver el detalle:_ {quoteUrl}\n\nQuedo atento/a para concretar 🙌",
   wholesale:
     "Hola Lucams 👋 Estoy interesado/a en pedido al por mayor / corporativo. ¿Me puedes contar?",
 } as const;

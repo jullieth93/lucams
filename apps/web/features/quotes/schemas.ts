@@ -24,13 +24,13 @@ export const QuoteFormSchema = z.object({
     .min(1, "El WhatsApp es requerido")
     .refine(validatePhone, "Debe ser un móvil colombiano de 10 dígitos (300...)")
     .transform(stripPhone),
-  // Opcional: se trimea/normaliza primero; string vacío del form → undefined.
+  // OBLIGATORIO desde 2026-07-25: la cotización se envía por WhatsApp Y por correo, así que sin
+  // email se pierde el respaldo escrito — y con él la copia que le queda al cliente de lo que
+  // cotizó. Se normaliza a minúsculas y sin espacios antes de validar.
   customerEmail: z
     .string()
     .transform((v) => v.trim().toLowerCase())
-    .pipe(z.union([z.literal(""), z.email("Email inválido").max(254)]))
-    .transform((v) => (v === "" ? undefined : v))
-    .optional(),
+    .pipe(z.email("Email inválido").max(254)),
   city: z.string().min(2, "La ciudad es requerida").max(80).trim(),
   department: z.string().min(2, "El departamento es requerido").max(80).trim(),
   notes: z

@@ -87,7 +87,7 @@ function quoteForm(): FormData {
   const fd = new FormData();
   fd.set("customerName", INPUT.customerName);
   fd.set("customerWhatsapp", INPUT.customerWhatsapp);
-  fd.set("customerEmail", "");
+  fd.set("customerEmail", "lucia@example.com");
   fd.set("city", INPUT.city);
   fd.set("department", INPUT.department);
   fd.set("notes", "");

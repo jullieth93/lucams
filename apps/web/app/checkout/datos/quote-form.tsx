@@ -195,24 +195,28 @@ export function QuoteForm({ items = [] }: { items?: CartLineItem[] }) {
             />
           </div>
 
-          {/* Email (opcional) */}
+          {/* Email — obligatorio: la cotización también se envía por correo. */}
           <div>
             <Label
               htmlFor="customerEmail"
               className="text-brand-purple-dark mb-1 block text-xs font-semibold"
             >
-              Email (opcional)
+              Email
             </Label>
             <Input
               id="customerEmail"
               name="customerEmail"
               type="email"
+              required
               maxLength={254}
               placeholder="tu@correo.com"
               autoComplete="email"
               className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
             />
-            <FieldError message={err("customerEmail")} hint="Por si prefieres respuesta escrita" />
+            <FieldError
+              message={err("customerEmail")}
+              hint="Te enviamos la cotización por WhatsApp y también por correo"
+            />
           </div>
 
           {/* Departamento */}
