@@ -12,6 +12,7 @@ import { saveAddressStep, saveContactStep } from "@/features/checkout/service";
 import { saveCheckoutAddressToAccount } from "@/features/addresses/service";
 import { recordCheckoutDataConsent } from "@/features/consent/service";
 import { recordAbandonedCartEmail } from "@/features/cart/recovery-service";
+import { guardTransactionalAction } from "@/lib/stage-guard";
 
 export type DatosActionState = {
   error?: string;
@@ -22,6 +23,10 @@ export async function saveDatosAction(
   _prev: DatosActionState | null,
   formData: FormData,
 ): Promise<DatosActionState> {
+  // Etapa 1: /checkout/datos renderiza el form de COTIZACIÓN (QuoteForm), no este paso.
+  // Su acción propia es createQuoteAction, que sí registra el consentimiento habeas-data.
+  guardTransactionalAction("saveDatosAction");
+
   // ─── Contacto ───
   const contactRaw = {
     fullName: String(formData.get("fullName") ?? "").trim(),

@@ -27,6 +27,7 @@ import { fitsMoneyInt4 } from "@/lib/money";
 import { priceCouponForCart, CouponInvalidatedError } from "@/features/coupons/redemption";
 import { computeShippingAddressKey } from "@/features/checkout/address-key";
 import { sendOrderRefunded } from "./emails";
+import { assertTransactionalAllowed } from "@/lib/stage-guard";
 
 const ORDER_PAGE_SIZE = 20;
 
@@ -117,6 +118,10 @@ export type CreateOrderFromCartResult = {
 export async function createOrderFromCart(
   input: CreateOrderFromCartInput,
 ): Promise<CreateOrderFromCartResult> {
+  // Última línea de defensa de etapa: ninguna Order real nace mientras la tienda esté en modo
+  // catálogo, venga la llamada de donde venga (auditoría 2026-07-21, hallazgo A3).
+  assertTransactionalAllowed("createOrderFromCart");
+
   // #15 (post-launch Bloque A) — retry sobre colisión de Order.number.
   // generateOrderNumber usa count()+1: dos checkouts concurrentes de carts
   // DISTINTOS pueden calcular el mismo número → P2002 en Order.number. Antes

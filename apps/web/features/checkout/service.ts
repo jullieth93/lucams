@@ -38,6 +38,7 @@ import {
 } from "@/lib/checkout-session";
 import { composeAddressLine, type ShippingSelectionInput } from "./schemas";
 import { assessCodRisk } from "./cod-risk";
+import { assertTransactionalAllowed } from "@/lib/stage-guard";
 
 export class CheckoutError extends Error {
   constructor(
@@ -297,6 +298,10 @@ export function calculateTotals(input: {
 export async function finalizeCheckout(input: {
   redirectUrl: string;
 }): Promise<{ orderId: string; orderNumber: string; checkoutUrl: string }> {
+  // Backstop de etapa: aunque una Server Action nueva olvide su guard, aquí no se crea una
+  // orden real mientras la tienda esté en modo catálogo (auditoría 2026-07-21, hallazgo A3).
+  assertTransactionalAllowed("finalizeCheckout");
+
   const ctx = await loadCheckoutContext();
   const { state } = ctx;
 

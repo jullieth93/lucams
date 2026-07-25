@@ -4,8 +4,12 @@ import { redirect } from "next/navigation";
 import { logger } from "@/lib/logger";
 import { ShippingSelectionSchema } from "@/features/checkout/schemas";
 import { saveShippingSelectionStep } from "@/features/checkout/service";
+import { guardTransactionalAction } from "@/lib/stage-guard";
 
 export async function selectShippingAction(formData: FormData): Promise<void> {
+  // Etapa 1: no hay envío que seleccionar. Antes del parseo — el flete llega del FormData.
+  guardTransactionalAction("selectShippingAction");
+
   const raw = {
     carrier: String(formData.get("carrier") ?? ""),
     carrierName: String(formData.get("carrierName") ?? ""),
