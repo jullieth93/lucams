@@ -13,6 +13,30 @@
 
 ## Resumen actual
 
+**🔴→✅ EL ESTUDIO NUNCA FUNCIONÓ EN PRODUCCIÓN — ARREGLADO (2026-07-25, ADR-081).** El
+diferenciador de la tienda llevaba meses roto en vivo y ninguna prueba lo veía: el navegador mandaba
+los N PNG de imprenta por el body de la Server Action (hasta **56.6 MB** en un calendario) contra el
+techo de **4.5 MB** que Vercel impone a las Functions. En local no existe ese techo, así que todo
+pasaba en escritorio. La base lo gritaba: 0 diseños READY en calendarios, cuadrados, corazón y tiras
+contra 517 empezados. Ahora los PNG los renderiza el servidor y el body lleva solo el preview;
+verificado contra Supabase real, incluido el fallback por URL firmada del polaroid.
+
+**Lección que vale más que el arreglo:** una prueba que solo corre en local no puede ver un límite
+que solo existe en la plataforma. Lo que distingue producción de dev —techos de body, timeouts,
+binarios nativos— hay que ejercerlo contra la infraestructura real o no está probado.
+
+En la misma sesión: narrativa de envíos corregida en 29 sitios (se prometía entrega en 3 días; ahora
+el compromiso es el **despacho en máx. 2 días hábiles** y el tránsito es estimado del courier),
+carrito que agrupa diseños idénticos, preview real en el checkout, el ZIP de imprenta que ignoraba la
+cantidad, y el **contenido legal v4** con las correcciones verificadas contra norma colombiana.
+
+**🙋 Bloqueo humano del cierre legal:** el bloque de identificación del art. 50 lit. a) de la Ley 1480
+(nombre real + dirección de notificación judicial). Lucy trabaja desde su casa. Verificado que la ley
+NO obliga a publicar la vivienda y que el correo solo no basta. Pendiente además el canal de **PQR con
+radicado** (art. 50 lit. g, Ley 2439 de 2024) — hoy incumplido, y es desarrollo.
+
+---
+
 **✅ RAMA `catalogo-whatsapp` LISTA EN CÓDIGO PARA PRODUCCIÓN (2026-07-24) — ADR-078/079/080.** Se
 auditó toda la app con el lente "salir productiva en modo catálogo" (auditoría multiagente, 46
 hallazgos → 31 confirmados) y se cerró **todo el punch-list de código**. Lo que queda abierto es
@@ -1855,6 +1879,77 @@ sidebar fijo, Cancelar en cupones.
 ---
 
 ## Bitácora (append-only, más reciente arriba)
+
+### 2026-07-25 — El Estudio nunca funcionó en producción (ADR-081) + narrativa de envíos + carrito agrupado + legal v4
+
+**El hallazgo de la sesión.** Lucy reportó que al confirmar en el Estudio de calendario o fotoimanes
+salía _"An unexpected response was received from the server"_. No era una regresión: **el Estudio no
+funcionó nunca en producción, desde que existe**. `finalizeDesignAction` recibía por el body de la
+Server Action el preview **más los N PNG de imprenta** que exportaba el navegador; Vercel corta el
+body de una Function en **4.5 MB** y responde `413 FUNCTION_PAYLOAD_TOO_LARGE`, cuyo HTML el runtime
+de Next no sabe leer. Medido contra diseños reales de la base: un calendario de 12 páginas enviaba
+**56.6 MB**, 13× el techo. `next.config.ts` fijaba `serverActions.bodySizeLimit: "50mb"` y eso daba
+la falsa impresión de que había margen — ese ajuste es del framework, el corte de 4.5 MB es de la
+plataforma. En local no existe, y por eso pasó todas las pruebas de escritorio durante meses.
+
+La base lo decía sin que nadie mirara: **abecedario 10 diseños READY, nombre 7** (los dos editores
+que mandan un solo blob diminuto) contra **0** en calendarios, fotoimanes cuadrados, corazón y tiras;
+1 de 176 en polaroid. 517 diseños empezados, ninguno terminado.
+
+**El arreglo.** El navegador deja de mandar los PNG: los renderiza el servidor, que ya sabía hacerlo
+(`tryServerRenderProduction`, tres tiers). Era una mejora opcional y pasó a ser la vía principal. El
+body queda en solo el preview compositado (0.61 MB el mayor medido en Storage). Verificado contra
+diseños reales: **6 de 7 productos de fotos renderizan server-side**; el único que no es
+`set-fotoimanes-polaroid` (marco SVG con fuentes horneadas → `NEEDS_KONVA`). Para ese caso trocear
+por slot tampoco servía —un slot solo llegó a 5.03 MB—, así que el servidor responde
+`NEEDS_CLIENT_SLOTS` con **URLs firmadas** y el navegador sube directo a Storage, camino que no pasa
+por la Function y no tiene techo. Efecto lateral: en el camino normal el celular ya no exporta 12
+lienzos de 1800×2400 px, lo más pesado y más propenso a quedarse sin memoria de todo el flujo.
+
+**Revisión adversarial** (6 hallazgos, 3 sobrevivieron a la refutación) — todos cerrados: el área de
+paso `_client/` no la conocían ni la retención ni el borrado de cuenta (son renders de fotos del
+cliente: Ley 1581, temporalidad); los tickets se emitían según `canvasData.slotCount`, que escribe el
+propio cliente y el esquema solo topa en 50 → ahora se acota contra el producto; y `finalizeDesign`
+pasó a ser **idempotente**, porque un diseño READY no se puede editar y volver a finalizarlo no puede
+dar nada distinto — antes lanzaba error y dejaba sin salida a quien tuviera un fallo del carrito. Se
+añadió además el flush del auto-guardado antes de finalizar: tenía 2 s de debounce y el servidor
+imprime desde el canvas GUARDADO, así que mover una foto y confirmar rápido aprobaba una cosa e
+imprimía otra.
+
+**Narrativa de envíos** (Lucy): el sitio prometía "te llega en máx. 3 días", imposible de sostener con
+las transportadoras colombianas. Corregidos **29 sitios**: el compromiso propio es el **despacho
+(máx. 2 días hábiles)** y el tránsito se presenta como estimado de la transportadora. Incluye la fila
+`home.howitworks.step3.description` del CmsBlock, que estaba publicada y ganaba sobre el fallback.
+
+**Carrito agrupado** (Lucy): dos pasadas por el Estudio con el mismo diseño daban dos líneas
+idénticas. Ahora agrupan por CONTENIDO (`designIdentity`, hash canónico con lista NEGRA para que un
+campo nuevo no fusione diseños distintos en silencio); si cambia la variante, siguen separadas. De
+paso se halló que **el ZIP de imprenta ignoraba `qty`** — un pedido de 2 se producía como 1, ya
+alcanzable con los botones +/− del carrito.
+
+**Preview del checkout** (Lucy): "Lo que estás cotizando" existía pero recortaba el preview con
+`object-cover`, y el preview del Estudio es el mosaico de todas las piezas. Ahora se ve entero, con
+cuántas piezas son, cuánto mide cada una, precio unitario y total.
+
+**Legal v4.** Terminó la investigación jurídica (11 agentes). Correcciones aplicadas y publicadas:
+fuera la promesa de "documento equivalente, cuenta de cobro o factura electrónica" (emitir cualquiera
+de las dos primeras la volvería obligada a facturar); fuera la frase "a solicitud / no los publicamos
+por seguridad", que era una confesión escrita de incumplir el art. 50 lit. a) repetida en cinco
+páginas; garantía unificada con el escalonamiento del art. 11; los "21 días" de reversión eran 15
+hábiles y corren contra los participantes del pago, no contra la tienda; "transferencia" internacional
+era **transmisión**. `PRIVACY_POLICY_VERSION` → v4. Confirmado que **no** hay obligación de facturar
+ni de RNBD.
+
+**Abierto y en carril humano:** el bloque de identificación del art. 50 lit. a) — Lucy trabaja desde
+su casa y publicar su domicilio es un riesgo real. Verificado: la ley **no** obliga a publicar la
+vivienda (el CGP distingue domicilio de lugar señalado para notificaciones, arts. 78 num. 5 y 291
+num. 2), y el correo electrónico **no basta** por sí solo (el art. 50 lit. a) lo enumera aparte de la
+dirección). Creada `notificaciones@lucamsshop.com` en Cloudflare Email Routing. Pendiente también el
+**canal de PQR con radicado, fecha/hora y seguimiento** (art. 50 lit. g, reformado por la Ley 2439 de
+2024, exigible desde ~19-abr-2025): es desarrollo, no redacción, y hoy no se cumple.
+
+**Commits:** `c96f499` (finalize) · `2b80bb5` (envíos) · `631a503` (revisión adversarial) · `e61beb6`
+(carrito + checkout + imprenta) · `9572f01` + `8dff533` (legal v4).
 
 ### 2026-07-19 (cont.) — Barrido legal-Colombia integral (ADR-072)
 
