@@ -5,7 +5,24 @@
 > aplicabilidad en modo catálogo) + corroboración manual de los blockers duros contra producción en vivo.
 > **Cobertura:** 54 agentes, 46 hallazgos crudos → **31 confirmados**, 15 refutados/descartados.
 
-## Veredicto: **NO SALIR AÚN — pero la ruta es corta y acotada (punch-list, no rework)**
+> ## ✅ ESTADO 2026-07-24 — punch-list de código CERRADO
+>
+> Todos los gates que dependían de código están implementados, certificados y commiteados
+> (`d9a1c73`, `c1edf22`, `78fd25b`, `5045f38`, `52c076a`). Cada arreglo pasó por revisión
+> adversarial, y esa revisión encontró **tres blockers sobre el propio trabajo** que también se
+> cerraron: el aviso de privacidad declaraba una casilla de registro inexistente (se agregó la
+> casilla en vez de suavizar el texto), el contenido legal nuevo era **inerte** porque las páginas
+> caen a un fallback hardcodeado que seguía prometiendo Wompi/PSE/contraentrega, y el recorte del
+> mensaje de WhatsApp partía emojis provocando un **500 en la página de la cotización después de
+> vaciar el carrito**.
+>
+> **Lo que sigue abierto es carril humano** — ver § G al final. Los blockers restantes para vender
+> son: fotografía real del catálogo (A2), publicar el contenido legal por el admin CMS, revisión de
+> abogado, y las pruebas GUI que no se pueden hacer por `curl`.
+>
+> Suite al cierre: **1643 tests en verde**, `tsc` limpio, `eslint` 0 warnings, prettier OK.
+
+## Veredicto original (2026-07-21): **NO SALIR AÚN — punch-list, no rework**
 
 La rama no debe certificarse como `production` todavía. Los bloqueadores son reales pero ninguno es
 arquitectónico: son ~12 gates cerrables sin rediseño. Marco central verificado:
@@ -148,3 +165,40 @@ rate-limit del recovery-code MFA; invertir el default fail-open del flag a `cata
 - Dominio remitente Resend con SPF/DKIM verificado (✅ hecho en FASE 5 del go-live).
 - Publicar la copia legal corregida al estado catálogo.
 - Que la captura de consentimiento de la Quote realmente shippee (gate legal duro, no diferible).
+
+---
+
+## G. Estado final por gate (2026-07-24)
+
+| Gate | Estado | Dónde |
+| --- | --- | --- |
+| 1 · Frontera de modo explícita | ✅ código | `lib/env.ts`, `.env.example`, `.env.local` de dev alineado |
+| 2 · Guard server-side de etapa | ✅ código | `lib/stage-guard.ts` + 6 acciones + 2 backstops (15 tests) |
+| 3 · Consentimiento habeas-data | ✅ código | cotización **y** registro; prueba atómica en `Quote` + `Consent` (17 tests) |
+| 4 · Copy/meta/JSON-LD/legales | ✅ código · 🙋 publicar | fallbacks sincronizados con el `.md`; falta correr el seed y publicar |
+| 5 · Fotografía real del catálogo | 🙋 **bloquea vender** | 8 productos: 5 sin foto, 3 con Unsplash |
+| 6 · Línea WhatsApp | ✅ número correcto · 🙋 probar embudo | prueba GUI con carrito de 10+ ítems |
+| 7 · Admin MFA | ✅ rate-limit · 🙋 enrolar TOTP | acto humano |
+| 8 · Turnstile en prod | 🙋 verificar | que el widget renderice y un submit legítimo pase |
+| 9 · Durabilidad (backup/R2) | 🙋 | R2 sin aprovisionar; sin restore drill |
+| 10 · Observabilidad | 🙋 | `cron_base_url` al dominio nuevo + monitor externo |
+| 11 · CI en la rama productiva | ✅ código · 🙋 branch protection | requiere merge hasta `production` + primer run verde |
+| 12 · Residuo de tests en la BD | ✅ purgado + causa cerrada | 30 consents, 17 cotizaciones, 52 categorías y 3 plantillas de test |
+
+### Decisiones de negocio que faltan (🙋 Lucy)
+
+- **Vigencia de la cotización** (N días hábiles) para escribirla en Términos y en `/cotizacion/[token]`.
+- **Plazos de retención de fotos** elegidos por defecto: 90 días de gracia tras cerrar la cotización
+  y 365 días de techo para una abierta sin movimiento. Son criterio de negocio, no legal — confirmar.
+- **`PRIVACY_POLICY_VERSION` = «v3 · 2026-07-24»** debe fijarse ANTES de la primera cotización con el
+  aviso nuevo; si no, la prueba de la autorización queda estampada con una versión que ya cambió.
+- Qué hacer con la rama local `master` (legado, no está en `origin`).
+
+### Pruebas GUI imprescindibles (no se pueden hacer por `curl`)
+
+1. **Embudo de cotización** con carrito de 10+ ítems: enviar el formulario y pulsar «Enviar por
+   WhatsApp» en `/cotizacion/<token>` — verificar que el mensaje llega completo y con el link.
+2. **Casilla de habeas data**: sin marcarla el botón no debe permitir enviar; marcándola, la
+   cotización se crea. Igual en el formulario de registro.
+3. **Código de respaldo de MFA**: repetir códigos inválidos y confirmar que aparece el bloqueo.
+4. **Estudio en móvil**: el FAB y los chips con el contraste nuevo.

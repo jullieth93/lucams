@@ -929,7 +929,7 @@ Decisión definitiva de observabilidad de errores: ADR-022 abierto en Fase 7.
 | Webhook flooding (signature válida pero tráfico anómalo) | Cloudflare WAF rule temporal + alertar a Wompi/Venndelo                        |
 | Sitio bajo DDoS                                          | Cloudflare "Under Attack" mode + IP whitelist solo admin                       |
 | Dato sensible expuesto en logs                           | Borrar de Vercel Logs (si retención lo permite) + rotar credenciales si aplica |
-| Database corrupted                                       | Modo mantenimiento (`MAINTENANCE_MODE=true`) + restore desde PITR              |
+| Database corrupted                                       | Modo mantenimiento (`NEXT_PUBLIC_MAINTENANCE_MODE=1`) + restore desde PITR     |
 | Phishing usando nuestro dominio                          | Reportar a phishtank.com + advertencia en homepage + email a clientes          |
 
 #### 4. Erradicación
@@ -1294,7 +1294,7 @@ export function isAllowedRedirectDestination(input: unknown): input is string {
 
 ### Modo mantenimiento
 
-- Variable `MAINTENANCE_MODE=true` en Vercel env vars.
+- Variable `NEXT_PUBLIC_MAINTENANCE_MODE=1` en Vercel env vars. Al ser `NEXT_PUBLIC_*` se inliniza en build: **no basta cambiarla, hay que redesplegar**.
 - Middleware que devuelve `503` con HTML estático cuando está activa, excepto para IPs allowlisted (admin) y `/api/health`.
 - Se activa antes de migraciones destructivas o despliegues riesgosos.
 

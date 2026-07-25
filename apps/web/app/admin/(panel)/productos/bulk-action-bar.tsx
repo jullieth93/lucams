@@ -177,7 +177,9 @@ function BulkSubmitButton({
   const tones: Record<typeof tone, string> = {
     emerald: "bg-emerald-500 text-white hover:bg-emerald-600",
     amber: "bg-amber-500 text-white hover:bg-amber-600",
-    pink: "bg-brand-pink text-white hover:brightness-110",
+    // A11Y (WCAG 1.4.3 AA): blanco sobre brand-pink da 3.27:1, bajo el 4.5:1 que exige el texto
+    // normal. Se pasa al tono de tinta que ya existe en la paleta: 5.31:1. No se cambia la paleta.
+    pink: "bg-brand-pink-ink text-white hover:brightness-110",
     muted: "bg-white/15 text-white hover:bg-white/25",
   };
   return (

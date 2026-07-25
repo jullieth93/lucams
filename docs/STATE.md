@@ -13,6 +13,54 @@
 
 ## Resumen actual
 
+**✅ RAMA `catalogo-whatsapp` LISTA EN CÓDIGO PARA PRODUCCIÓN (2026-07-24) — ADR-078/079/080.** Se
+auditó toda la app con el lente "salir productiva en modo catálogo" (auditoría multiagente, 46
+hallazgos → 31 confirmados) y se cerró **todo el punch-list de código**. Lo que queda abierto es
+carril humano. Detalle y estado por gate: [docs/audits/2026-07-21-produccion-catalogo-whatsapp.md](audits/2026-07-21-produccion-catalogo-whatsapp.md).
+
+**El hallazgo que reencuadró todo:** los 5 críticos transaccionales que dos reviews de Codex habían
+marcado como "do not ship" (precio de carrito editable por RLS, flete tomado del formulario, race de
+COD, borrado de artwork, reembolso antes de mover la plata) están **dormidos en modo catálogo** — no
+hay cobro. No bloquean esta salida; se difieren a `develop`. Lo que sí bloqueaba eran otros:
+
+- **La frontera de modo era solo de render** (ADR-078). Las Server Actions de Next son endpoints
+  POST: un invitado podía llegar a `finalizeCheckout` con POSTs crafteados y crear pedidos reales
+  —con stock comprometido y correo desde el dominio de marca— en una tienda que aún no vende. Ahora
+  se hace cumplir server-side en dos capas, con un test de la invariante.
+- **La cotización recolectaba PII sin autorización** (ADR-079). Único flujo con datos personales en
+  Etapa 1, con aviso pasivo y sin prueba. Ahora casilla obligatoria + prueba **atómica** con el dato.
+  Se extendió al registro, donde el aviso de privacidad declaraba una casilla que no existía: se
+  eligió hacer verdadera la afirmación en vez de suavizarla.
+- **El contenido legal nuevo era inerte** (ADR-080). Las páginas caen a un fallback hardcodeado que
+  seguía prometiendo Wompi/PSE/contraentrega — el único texto garantizado ante una caída era el que
+  ya no era cierto. Sincronizado y con test que impide la divergencia.
+- **La CI no gateaba la rama productiva.** Apuntaba a `main`, que nunca existió: cada merge a
+  `production` desplegaba sin un solo check.
+- **El JSON-LD emitía `Offer`/`InStock`** siempre → Google leía como comprables los productos de una
+  tienda que solo cotiza.
+
+**La revisión adversarial encontró 3 blockers sobre el propio trabajo**, también cerrados. El más
+serio: el recorte del mensaje de WhatsApp cortaba por unidades UTF-16, así que un emoji en el borde
+partía una pareja subrogada → `URIError` → **500 en la página de la cotización, ya con el carrito
+vacío**. Estrictamente peor que la URL larga que venía a evitar. Se recorta por grafemas.
+
+**Limpieza de producción (dev == prod).** Se purgó el residuo de tests de la base en vivo: 30
+consentimientos, 17 cotizaciones, 52 categorías y 3 plantillas. Uno de esos residuos **lo introduje
+yo** al hacer que cada cotización cree su fila `Consent` — el `afterAll` no la borraba y el fixture
+usaba el WhatsApp real de la tienda, así que quedaban indistinguibles de una autorización legítima.
+Corregido en el test (móvil único por corrida) y verificado: los conteos vuelven exactos.
+
+**Certificado al cierre:** 1643 tests en verde, `tsc` limpio, `eslint` 0 warnings, prettier OK.
+Commits `d9a1c73`, `c1edf22`, `78fd25b`, `5045f38`, `52c076a`.
+
+**🙋 Lo que falta para vender (carril humano):** fotografía real de los 8 productos (5 sin foto, 3
+con Unsplash — viola WYSIWYG), publicar el contenido legal por el admin CMS + fijar
+`PRIVACY_POLICY_VERSION`, revisión de abogado, enrolar TOTP admin, branch protection tras el primer
+run verde, y las pruebas GUI del embudo que no se pueden hacer por `curl`. Más FASE 7 (Wompi,
+bloqueada por el NIT), FASE 10 (R2 sin aprovisionar) y FASE 12.
+
+---
+
 **✅ ETAPA 1 EN VIVO — OLA 5 DESPLEGADA + OPTIMIZACIÓN DE TOKENS (2026-07-23).** Quinta ronda de feedback de Lucy + ajuste de consumo de tokens en CLI y repo.
 
 - **Estudio/producto:** calendario con **preview de tarjeta compuesta en vivo** por slot (foto + ENE 2027 + festivos, fuentes de marca reales); polaroid Instagram **blanco/negro con auto-contraste** de textos; texto de la Clásica **opcional** (placeholder guía que nunca se imprime); cuadrados **sin borde = foto a sangre / con borde = tarjeta de color**; tiras como **una pieza continua**; separadores con **1 plantilla por forma**; **depuración de plantillas** (7 archivadas, 2 reasignadas — cada producto solo ve las suyas); uploads con **formatos y resolución mínima** visibles; **área de Estudio unificada** (sin desbordes); links de compartir siempre canónicos (`lib/public-url.ts`); botón **"Actualizar caché de contenido"** en admin + nota anti-staleness en scripts CMS.

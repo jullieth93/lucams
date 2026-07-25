@@ -383,7 +383,9 @@ export function VariantSelector({
                   <span
                     className={[
                       "flex h-5 w-5 items-center justify-center rounded-full transition-colors",
-                      isSelected ? "bg-brand-turquoise text-white" : "ring-brand-purple/30 ring-1",
+                      isSelected
+                        ? "bg-brand-turquoise text-brand-purple-dark"
+                        : "ring-brand-purple/30 ring-1",
                     ].join(" ")}
                     aria-hidden
                   >

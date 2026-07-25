@@ -2883,3 +2883,89 @@ registradas en Wompi y Aveonline.
 - Cupones fuera del flujo de cotización de Etapa 1 (simplicidad del formulario de 1 paso); vuelven en Etapa 2 con el checkout completo.
 - Los webhooks de Wompi/Aveonline quedan desplegados pero sin tráfico (fail-closed: sin eventos, sin efecto).
 - Riesgo aceptado ya registrado: Supabase compartida dev/prod (Lucy, 2026-07-21) — la migración de `Quote` es aditiva y no afecta la tienda en vivo.
+
+---
+
+## ADR-078 — La frontera de etapa se hace cumplir en el servidor, no en el render (2026-07-24)
+
+**Contexto.** [ADR-077](#adr-077--salida-a-producción-en-2-etapas--store_mode-por-flag-2026-07-21)
+introdujo `NEXT_PUBLIC_STORE_MODE` para separar la Etapa 1 (catálogo + cotización por WhatsApp) de
+la Etapa 2 (tienda transaccional). La auditoría de producción del 21-jul encontró que ese flag solo
+se evaluaba en las `page.tsx`: las páginas de checkout redirigían y sus formularios no se
+renderizaban, pero **las Server Actions de Next son endpoints POST** cuyos IDs viajan en el bundle
+desplegado. Un invitado podía recorrer datos → envío → pago con POSTs crafteados y llegar a
+`finalizeCheckout`, creando pedidos reales —con commit de stock y correo de confirmación desde el
+dominio de marca— en una tienda que legalmente todavía no vende.
+
+**Decisión.**
+
+1. La etapa se hace cumplir **server-side**, en dos capas: `guardTransactionalAction()` al inicio de
+   cada Server Action del checkout, y `assertTransactionalAllowed()` como backstop dentro de
+   `finalizeCheckout` y `createOrderFromCart`. Esconder la UI no es autorizar.
+2. Un test estático verifica la **invariante** —que toda acción exportada del checkout llame al
+   guard— porque el modo de fallo realista no es que alguien rompa el guard, sino que agregue una
+   acción nueva y lo olvide; y en modo catálogo ese hueco no se nota navegando.
+3. `validateEnv` **exige el flag explícito en producción**. El default fail-open a `"full"` se
+   conserva (un typo no debe apagarle el checkout a una tienda que sí vende), pero en producción un
+   valor ausente o inválido aborta el arranque: ningún modo se activa por accidente.
+
+**Consecuencia deliberada.** Mientras la tienda esté en catálogo, esto neutraliza los hallazgos
+transaccionales que siguen abiertos para la Etapa 2 (precio de carrito editable vía RLS, flete
+tomado del formulario, race de método de pago) incluso si el flag se volcara por error de
+configuración. No los resuelve — quedan como deuda explícita para cuando se active el modo full.
+
+**Alternativa descartada.** Bloquear en el proxy/middleware por ruta: los Server Action IDs no se
+resuelven a una ruta legible allí, y una acción importada por un componente de otra página seguiría
+siendo alcanzable. El guard tiene que vivir donde vive la acción.
+
+---
+
+## ADR-079 — La prueba del consentimiento se persiste con el dato, no después (2026-07-24)
+
+**Contexto.** La cotización por WhatsApp es el único flujo que recolecta datos personales en la
+Etapa 1, y lo hacía con un aviso **pasivo** en el pie del formulario: sin casilla, sin rechazo si no
+se marcaba, y sin ninguna fila que probara la autorización. La política de privacidad, en cambio, sí
+declaraba conservar esa prueba — y además afirmaba que se pedía "con una casilla que tú marcas" al
+crear la cuenta, casilla que tampoco existía. La Ley 1581 (arts. 8 lit. b y 9) exige autorización
+previa, expresa e informada, y **conservar prueba** de ella.
+
+**Decisión.**
+
+1. Casilla obligatoria en **todos** los puntos que el aviso declara: cotización, registro, datos de
+   compra y cookies. Ante una afirmación pública falsa se elige **hacerla verdadera**, no suavizar
+   el texto: declarar ante la SIC un mecanismo de autorización inexistente desmiente la prueba misma.
+2. La validación ocurre **antes del anti-bot y del rate-limit**: un rechazo por falta de
+   autorización no debe gastarle la cuota al titular ni filtrar estado del sistema.
+3. La prueba se escribe **en la misma transacción** que el dato: fila `Consent` +
+   `Quote.dataConsentAt`/`dataConsentVersion`. La cotización y su autorización nacen juntas o no
+   nace ninguna. (En el checkout la autorización es best-effort porque la orden ya existe cuando se
+   registra; aquí no hacía falta ese compromiso.)
+4. `Consent.phone` como anclaje alterno: el titular de una cotización es invitado y su correo es
+   **opcional**, así que sin él la autorización quedaba imposible de localizar ante una solicitud de
+   habeas data hecha por WhatsApp — el canal por el que llegó.
+
+**Consecuencia.** El versionado del aviso deja de ser cosmético: `Consent.version` y
+`Quote.dataConsentVersion` se estampan desde `PRIVACY_POLICY_VERSION`, así que cambiar el texto sin
+subir la versión rompe la trazabilidad en silencio. Un test lo verifica y el script de publicación
+se versiona junto al contenido.
+
+---
+
+## ADR-080 — El texto legal que se renderiza debe ser el canónico (2026-07-24)
+
+**Contexto.** Las páginas legales leen un `CmsBlock` de la base y caen a un `FALLBACK` hardcodeado
+cuando el bloque no existe, no está publicado o la base falla. Al reescribir el contenido para la
+Etapa 1 se editaron los `.md` canónicos de `packages/db/legal-content/` y el cambio quedó **inerte**:
+el fallback —la única copia que viaja en git y la que sobrevive a una caída— seguía prometiendo pago
+con Wompi, PSE y contraentrega. Es decir, el texto garantizado ante un incidente era justamente el
+que ya no era cierto (Ley 1480 arts. 23 y 29: información veraz; la publicidad vincula al proveedor).
+
+**Decisión.** El fallback de cada página es **copia exacta** del `.md` canónico, y un test lo
+verifica. Se acepta la duplicación —el fallback no puede importar del paquete de datos en tiempo de
+ejecución— a cambio de que la divergencia sea imposible de mergear.
+
+El mismo test incluye dos guardas de veracidad para la etapa: ninguna mención de cobro en línea sin
+encuadrar ("cuando activemos…"), y ninguna identificación fiscal que la tienda todavía no tiene.
+
+**Nota de operación.** Publicar en el CMS sigue siendo un paso **humano**; mientras no ocurra, lo
+que ven los clientes es el fallback. Por eso tenerlo correcto no es opcional.

@@ -278,7 +278,7 @@ Mientras el equipo es 1 persona, no hay rotación formal. Pero:
 
 - **Escalamiento documentado** en OPERATIONS.md (a quién avisar para Wompi caído, Venndelo caído, Vercel caído, Supabase caído).
 - **Runbook por incidente** en `OPERATIONS.md` (ya existe la base — expandir con cada incidente).
-- **Modo mantenimiento** activable con env var `MAINTENANCE_MODE=true` (ver `SECURITY.md` § Otros vectores).
+- **Modo mantenimiento** activable con env var `NEXT_PUBLIC_MAINTENANCE_MODE=1` (ver `SECURITY.md` § Otros vectores y el runbook en `OPERATIONS.md`; al ser `NEXT_PUBLIC_*` se inliniza en build → **requiere redeploy**).
 
 ---
 
