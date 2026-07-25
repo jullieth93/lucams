@@ -1,65 +1,37 @@
 <svg width="450" height="600" viewBox="0 0 450 600" fill="none" xmlns="http://www.w3.org/2000/svg">
   <!--
-    Polaroid Instagram — layout 450×600 (7.5×10 cm, 3:4).
-    Rediseño realista: tarjeta blanca limpia, foto grande, chrome Instagram.
-    Sin gradiente decorativo externo (solo en la variante legacy).
-
-    Zonas (stage 450×600):
-      · Header:    y=10  → 58  (avatar + username/location)
-      · Foto:      y=58  → 458 (400×400, con marco blanco)
-      · Iconos:    y=468 → 496 (28px)
-      · Likes:     y=506
-      · Caption:   y=522
-      · Hashtags:  y=538
+    Polaroid Instagram SIN BORDE — la foto cubre toda la tarjeta.
+    Solo chrome Instagram (header + iconos) sobre la foto.
+    La tarjeta de fondo la pinta el canvas (color seleccionado).
   -->
 
   <defs>
-    <linearGradient id="storyRing" x1="0%" y1="100%" x2="100%" y2="0%">
+    <linearGradient id="storyRingNB" x1="0%" y1="100%" x2="100%" y2="0%">
       <stop offset="0%" stop-color="#FFD600"/>
       <stop offset="50%" stop-color="#FF0069"/>
       <stop offset="100%" stop-color="#7638FA"/>
     </linearGradient>
-
-    <!-- Máscara que perfora el centro de la tarjeta para que la foto se vea. -->
-    <mask id="photoMask">
-      <rect x="0" y="0" width="450" height="600" fill="white"/>
-      <rect x="29" y="58" width="392" height="392" rx="4" fill="black"/>
-    </mask>
   </defs>
-
-  <!-- Tarjeta blanca -->
-  <rect x="10" y="10" width="430" height="580" rx="22" fill="#FFFFFF" mask="url(#photoMask)"/>
-
-  <!-- Marco sutil alrededor de la foto -->
-  <rect x="29" y="58" width="392" height="392" rx="4" fill="none" stroke="#E8E8E8" stroke-width="1"/>
 
   <!-- CABECERA -->
   <g id="header">
-    <!-- Anillo de historia -->
-    <circle cx="34" cy="34" r="20" fill="none" stroke="url(#storyRing)" stroke-width="2.5"/>
-    <!-- Avatar placeholder -->
+    <circle cx="34" cy="34" r="20" fill="none" stroke="url(#storyRingNB)" stroke-width="2.5"/>
     <circle cx="34" cy="34" r="16" fill="#E5E5E5"/>
     <circle cx="34" cy="30" r="5" fill="#BDBDBD"/>
     <path d="M24 41 C24 37 29 35 34 35 C39 35 44 37 44 41" fill="#BDBDBD"/>
-
-    <!-- Menú de 3 puntos -->
     <circle cx="410" cy="34" r="2" fill="#262626"/>
     <circle cx="418" cy="34" r="2" fill="#262626"/>
     <circle cx="426" cy="34" r="2" fill="#262626"/>
   </g>
 
-  <!-- ÍCONOS DE ACCIÓN (24×24 escalados a 28px) -->
+  <!-- ÍCONOS DE ACCIÓN -->
   <g id="actions" transform="translate(22, 468)">
-    <!-- Corazón (me gusta) -->
     <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z"
           transform="scale(1.17)" fill="#ED4956"/>
-    <!-- Comentario -->
     <path d="M21.99 4c0-1.1-.89-2-1.99-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h14l4 4-.01-18z"
           transform="translate(44, 0) scale(1.17)" fill="none" stroke="#262626" stroke-width="2" stroke-linejoin="round"/>
-    <!-- Compartir (avión de papel) -->
     <path d="M2.01 21 23 12 2.01 3 2 10l15 2-15 2z"
           transform="translate(86, 0) scale(1.17)" fill="none" stroke="#262626" stroke-width="2" stroke-linejoin="round"/>
-    <!-- Guardar -->
     <path d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z"
           transform="translate(372, 0) scale(1.17)" fill="none" stroke="#262626" stroke-width="2" stroke-linejoin="round"/>
   </g>

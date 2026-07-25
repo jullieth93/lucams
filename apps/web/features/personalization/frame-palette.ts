@@ -222,6 +222,43 @@ export function darkChromeSrc(src: string, darkBackground: boolean): string {
 }
 
 /**
+ * Variante del chrome SVG para modo SIN BORDE (foto a sangre): el asset deja de
+ * pintar la tarjeta/marco y solo dibuja el chrome (header + iconos). La foto del
+ * cliente cubre todo el stage y el color de tarjeta lo pone el canvas.
+ * Combina con `_dark` cuando el fondo es oscuro.
+ */
+export function noBorderChromeSrc(src: string, noBorder: boolean, darkBackground = false): string {
+  if (!noBorder) return darkChromeSrc(src, darkBackground);
+  const base = src.replace(/_dark\.svg$/i, "").replace(/\.svg$/i, "");
+  return `${base}${darkBackground ? "_dark" : ""}_noborder.svg`;
+}
+
+/**
+ * ¿La plantilla Instagram está en modo SIN BORDE?
+ * Detecta por el rect del image-placeholder: si coincide con el área a sangre
+ * (x=15 y=58 w=420 h=400 en el stage 450×600), el asset debe usar su variante
+ * `_noborder` (sin tarjeta/marco, solo chrome sobre la foto).
+ */
+export function isInstagramNoBorder(
+  photoRect: { x?: number; y?: number; width?: number; height?: number } | undefined,
+  stage: { width: number; height: number },
+): boolean {
+  if (!photoRect) return false;
+  const base = { width: 450, height: 600 };
+  const scale = stage.width / base.width;
+  const x = Math.round(15 * scale);
+  const y = Math.round(58 * scale);
+  const w = Math.round(420 * scale);
+  const h = Math.round(400 * scale);
+  return (
+    photoRect.x === x &&
+    photoRect.y === y &&
+    photoRect.width === w &&
+    photoRect.height === h
+  );
+}
+
+/**
  * Inserta la ventana de foto para el marco full-bleed: garantiza una franja de color
  * de al menos `margin` px en CADA lado, respetando los márgenes mayores que ya traiga
  * la plantilla (ej. libre-photo-pack con 40px de aire conserva su margen; una ventana

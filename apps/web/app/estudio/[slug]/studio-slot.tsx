@@ -65,6 +65,8 @@ import {
   isInstagramTemplate,
   instagramBackgroundHex,
   darkChromeSrc,
+  noBorderChromeSrc,
+  isInstagramNoBorder,
 } from "@/features/personalization/frame-palette";
 import { RealismShadowLayer, RealismOverlayLayer } from "./studio-realism-overlay";
 import { CalendarCardLayer } from "./studio-calendar-card-layer";
@@ -321,6 +323,15 @@ function StudioSlotImpl({
     return bgHex;
   }, [unitTemplate, isIg, fullBleed, borderColor, hasFrameCard]);
   const darkCardBg = isDarkColor(cardBgHex);
+  // Ola 16 — Instagram: detectar modo SIN BORDE por el rect del placeholder
+  // (área a sangre x=15 y=58 w=420 h=400 en el stage 450×600).
+  const noBorder = useMemo(() => {
+    if (!isIg) return false;
+    const ph = unitTemplate.layers.find((l) => l.type === "image-placeholder") as
+      | ImagePlaceholderLayer
+      | undefined;
+    return isInstagramNoBorder(ph, unitTemplate.stage);
+  }, [unitTemplate, isIg]);
   const frameStyle = useMemo(() => {
     if (!borderColor || shape === "heart" || shape === "circle" || hasFrameCard || fullBleed)
       return null;
@@ -771,6 +782,7 @@ function StudioSlotImpl({
                       simpleCard,
                       isIg,
                       frameFullBleed,
+                      noBorder,
                       stripPosition,
                     },
                   ),
@@ -1153,6 +1165,7 @@ export function renderLayer(
     simpleCard?: boolean;
     isIg?: boolean;
     frameFullBleed?: boolean;
+    noBorder?: boolean;
     stripPosition?: import("@/features/personalization/frame-palette").StripPosition | null;
   },
 ) {
@@ -1164,6 +1177,7 @@ export function renderLayer(
   const darkCardBg = opts?.darkCardBg ?? false;
   const simpleCard = opts?.simpleCard ?? false;
   const frameFullBleed = opts?.frameFullBleed ?? false;
+  const noBorder = opts?.noBorder ?? false;
   const stripPosition = opts?.stripPosition ?? null;
   switch (layer.type) {
     case "background":
@@ -1294,6 +1308,8 @@ export function renderLayer(
           // Ola 4 — Instagram con fondo negro: el chrome SVG usa su variante oscura
           // (íconos/textos blancos), igual que los textos pasan a blanco (contraste).
           darkBackground={isIg && darkCardBg}
+          // Ola 16 — Instagram sin borde: chrome sobre la foto (sin tarjeta/marco).
+          noBorder={isIg && noBorder}
         />
       );
     default:
@@ -1323,12 +1339,15 @@ type AssetLayerData = {
 function AssetLayerRenderer({
   layer,
   darkBackground = false,
+  noBorder = false,
 }: {
   layer: AssetLayerData;
   /** Ola 4 — fondo oscuro (Instagram negro): usa la variante `_dark` del chrome SVG. */
   darkBackground?: boolean;
+  /** Ola 16 — modo sin borde (Instagram): usa la variante `_noborder` (solo chrome sobre la foto). */
+  noBorder?: boolean;
 }) {
-  const [image] = useImage(darkChromeSrc(layer.src, darkBackground), "anonymous");
+  const [image] = useImage(noBorderChromeSrc(layer.src, noBorder, darkBackground), "anonymous");
   if (!image) {
     // Fallback rect transparente mientras carga (no se ve, evita layout shift)
     return null;

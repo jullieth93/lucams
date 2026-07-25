@@ -29,6 +29,7 @@ import {
   stripPositionOf,
   isInstagramTemplate,
   instagramBackgroundHex,
+  isInstagramNoBorder,
 } from "@/features/personalization/frame-palette";
 import type { CanvasDataV1, SlotState } from "./types";
 
@@ -120,6 +121,14 @@ export function StudioPhotoPreview({
     return bgHex;
   }, [unitTemplate, isIg, fullBleed, borderColor, hasFrameCard]);
   const darkCardBg = isDarkColor(cardBgHex);
+  // Ola 16 — Instagram: detectar modo SIN BORDE por el rect del placeholder.
+  const noBorder = useMemo(() => {
+    if (!isIg) return false;
+    const ph = unitTemplate.layers.find((l) => l.type === "image-placeholder") as
+      | { x?: number; y?: number; width?: number; height?: number }
+      | undefined;
+    return isInstagramNoBorder(ph, unitTemplate.stage);
+  }, [unitTemplate, isIg]);
 
   // ── Gestos de zoom (rueda en desktop, pellizco en táctil) ──
   const clampScale = useCallback(
@@ -250,6 +259,7 @@ export function StudioPhotoPreview({
                     simpleCard,
                     isIg,
                     frameFullBleed,
+                    noBorder,
                     stripPosition,
                   },
                 ),
