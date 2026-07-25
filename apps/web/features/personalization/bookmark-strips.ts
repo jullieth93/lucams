@@ -18,7 +18,7 @@
  */
 
 import "server-only";
-import sharp, { OverlayOptions } from "sharp";
+import sharp, { type OverlayOptions } from "./sharp-safe";
 
 export type ComposeFaceStripsOptions = {
   /**

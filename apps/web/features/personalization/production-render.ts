@@ -17,7 +17,7 @@
  */
 
 import "server-only";
-import sharp, { OverlayOptions } from "sharp";
+import sharp, { type OverlayOptions } from "./sharp-safe";
 import type { PhotoFilterPreset } from "@/app/estudio/[slug]/types";
 
 /** Escala de salida = pixelRatio del cliente (stage.toDataURL({pixelRatio:3})) → paridad de px. */
