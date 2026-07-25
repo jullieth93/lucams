@@ -52,7 +52,7 @@ export async function rejectDesignAction(formData: FormData): Promise<void> {
     action: "design.moderation.reject",
     entityType: "Design",
     entityId: designId,
-    metadata: { reason, orders: result.orders.map((o) => o.number) },
+    metadata: { reason, afectados: result.sources.map((x) => `${x.tipo} ${x.numero}`) },
   });
   // Avisar al cliente (best-effort: no rompe la acción si el correo falla).
   await sendDesignRejectedEmails(designId, result, reason);

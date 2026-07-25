@@ -132,17 +132,21 @@ export default async function AdminModeracionPage({
 
                 <div className="min-w-0 flex-1">
                   <p className="text-brand-purple-dark font-semibold">{d.productName}</p>
+                  {/* Un diseño puede esperar por un PEDIDO o por una COTIZACIÓN. Mientras la tienda
+                      opera por cotización son todas de ese tipo, así que rotularlas "Pedido" sería
+                      mentir sobre lo que Lucy está a punto de aprobar. */}
                   <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                    <span className="text-brand-muted text-xs">
-                      Pedido{d.orders.length > 1 ? "s" : ""}:
-                    </span>
-                    {d.orders.map((o) => (
+                    {d.sources.map((s) => (
                       <Link
-                        key={o.number}
-                        href={`/admin/pedidos/${encodeURIComponent(o.number)}`}
+                        key={s.numero}
+                        href={
+                          s.tipo === "pedido"
+                            ? `/admin/pedidos/${encodeURIComponent(s.numero)}`
+                            : `/admin/cotizaciones?q=${encodeURIComponent(s.numero)}`
+                        }
                         className="text-brand-purple-dark hover:text-brand-purple text-xs font-semibold underline"
                       >
-                        {o.number}
+                        {s.tipo === "pedido" ? "Pedido" : "Cotización"} {s.numero}
                       </Link>
                     ))}
                   </div>

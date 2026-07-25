@@ -134,7 +134,8 @@ describe("moderation service", () => {
     const rows = await listPendingModeration();
     const mine = rows.find((r) => r.designId === designId);
     expect(mine).toBeTruthy();
-    expect(mine!.orders.map((o) => o.number)).toContain(orderNumber);
+    expect(mine!.sources.map((x) => x.numero)).toContain(orderNumber);
+    expect(mine!.sources.find((x) => x.numero === orderNumber)!.tipo).toBe("pedido");
   });
 
   it("approveDesign marca APPROVED y el gate deja de bloquear", async () => {
@@ -151,7 +152,7 @@ describe("moderation service", () => {
 
   it("rejectDesign marca REJECTED, guarda el motivo y devuelve los pedidos afectados", async () => {
     const result = await rejectDesign(design2Id, ADMIN_ID, "Contenido no apto");
-    expect(result.orders.map((o) => o.number)).toContain(`${RUN}-ORD2`);
+    expect(result.sources.map((x) => x.numero)).toContain(`${RUN}-ORD2`);
     const d = await prisma.design.findUnique({
       where: { id: design2Id },
       select: { moderationStatus: true, moderationReason: true },

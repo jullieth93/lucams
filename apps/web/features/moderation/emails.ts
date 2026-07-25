@@ -12,13 +12,22 @@ import type { RejectResult } from "./service";
 
 type ShippingAddrSnapshot = { fullName?: string };
 
-/** Avisa a cada pedido afectado que su diseño fue rechazado, con el motivo. */
+/*
+ * Avisa a cada PEDIDO afectado que su diseño fue rechazado, con el motivo.
+ *
+ * Las COTIZACIONES quedan fuera a propósito: no tienen correo del cliente garantizado ni plantilla
+ * propia, y en Etapa 1 el contacto se cierra por WhatsApp. `rejectDesign` sí las devuelve, así que
+ * el admin las ve en la auditoría y puede avisar por el canal que corresponde.
+ */
 export async function sendDesignRejectedEmails(
   designId: string,
   result: RejectResult,
   reason: string,
 ): Promise<void> {
-  for (const o of result.orders) {
+  const pedidos = result.sources
+    .filter((x) => x.tipo === "pedido")
+    .map((x) => ({ number: x.numero, email: x.contacto }));
+  for (const o of pedidos) {
     try {
       const order = await prisma.order.findFirst({
         where: { number: o.number, deletedAt: null },
