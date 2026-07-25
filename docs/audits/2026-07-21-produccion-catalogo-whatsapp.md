@@ -185,6 +185,38 @@ rate-limit del recovery-code MFA; invertir el default fail-open del flag a `cata
 | 11 · CI en la rama productiva | ✅ código · 🙋 branch protection | requiere merge hasta `production` + primer run verde |
 | 12 · Residuo de tests en la BD | ✅ purgado + causa cerrada | 30 consents, 17 cotizaciones, 52 categorías y 3 plantillas de test |
 
+### Hallazgos de producción posteriores al cierre (2026-07-25)
+
+Dos fallos que solo aparecieron al verificar el sistema EN VIVO, no leyendo el código:
+
+**🔴 Los crons de producción apuntaban a un túnel de desarrollo.** El secreto Vault `cron_base_url`
+valía `https://kebab-late-batting.ngrok-free.dev` — el ngrok de la máquina de Lucy. Los jobs
+programados llevaban días golpeando ese túnel: `net._http_response` mostraba **404 en todas** las
+peticiones. Efecto: sin resumen diario desde el 21-jul, sin recordatorio de reseñas desde el 20-jul,
+sin recuperación de carrito, sin purga de datos (deriva de retención de PII).
+
+Lo insidioso es que `pg_cron` reportaba **`succeeded`**: solo ejecuta el SQL, y la petición HTTP la
+hace `pg_net` de forma asíncrona, así que su fallo nunca llega al `job_run_details`. El único
+detector era `/api/health/crons`, que mira cuándo la APP registró la corrida.
+
+Corregido con `vault.update_secret` → `https://lucamsshop.com`. Verificado: `404 → 200` y `alerts`
+(cada 5 min) volvió a `ok` en la siguiente vuelta.
+
+**🔒 `sharp` tenía una salida que no era actualizar.** Las CVE de libvips (33327/33328/35590/35591)
+solo se parchean en `sharp >= 0.35.0`, justo la rama que el commit `6e86f94` bajó porque reventaba
+el runtime de Vercel — y `0.35.3` sigue siendo la última publicada, así que **no hay versión que
+resuelva ambas cosas**. La exposición era real: el Estudio está vivo en catálogo y `finalizeDesign`
+procesa fotos de invitados.
+
+El advisory ([GHSA-f88m-g3jw-g9cj](https://github.com/advisories/GHSA-f88m-g3jw-g9cj)) documenta la
+mitigación: bloquear los cargadores vulnerables (GIF, TIFF, VIPS). La tienda no acepta ninguno de
+los tres (`ALLOWED_MIME` = jpeg/png/webp/heic/heif), así que se cierra con cero impacto funcional.
+Vive en `features/personalization/sharp-safe.ts`, única puerta a la librería, con un test que
+decodifica un GIF real.
+
+⚠️ **`pnpm audit` seguirá en rojo**: mira la versión instalada y no puede saber que los loaders
+están bloqueados. No es un descuido — está mitigado en código.
+
 ### Estado de la CI tras encender el gate
 
 Primera vez que la CI corre en esta rama. **5 de 7 jobs en verde**; los dos rojos ya lo estaban
