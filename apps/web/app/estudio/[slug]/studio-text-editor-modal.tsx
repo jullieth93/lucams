@@ -69,7 +69,9 @@ export function StudioTextEditorModal(props: StudioTextEditorModalProps) {
           </div>
         </div>
 
-        {layer && <StudioTextEditorForm layer={layer} currentOverride={currentOverride} onApply={onApply} />}
+        {layer && (
+          <StudioTextEditorForm layer={layer} currentOverride={currentOverride} onApply={onApply} />
+        )}
 
         <div className="border-brand-purple/10 bg-brand-cream/30 flex items-center justify-between border-t px-4 py-3">
           <button
@@ -85,7 +87,11 @@ export function StudioTextEditorModal(props: StudioTextEditorModalProps) {
   );
 }
 
-export function StudioTextEditorForm({ layer, currentOverride, onApply }: StudioTextEditorFormProps) {
+export function StudioTextEditorForm({
+  layer,
+  currentOverride,
+  onApply,
+}: StudioTextEditorFormProps) {
   // Estado local inicializado con valores del layer + override actual.
   const [text, setText] = useState(currentOverride?.text ?? layer.text ?? "");
   const [fontFamily, setFontFamily] = useState(

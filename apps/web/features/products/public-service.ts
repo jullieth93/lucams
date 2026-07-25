@@ -153,10 +153,7 @@ const listStorefrontCategoriesCached = cache(async function listStorefrontCatego
   for (const c of all) {
     if (c.parentId !== null) {
       effectiveCount.set(c.id, c._count.products);
-      effectiveCount.set(
-        c.parentId,
-        (effectiveCount.get(c.parentId) ?? 0) + c._count.products,
-      );
+      effectiveCount.set(c.parentId, (effectiveCount.get(c.parentId) ?? 0) + c._count.products);
     }
   }
 

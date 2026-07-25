@@ -126,7 +126,11 @@ export function StudioSlotEditModal({
           </Button>
         </div>
 
-        <Tabs value={activeTab} onValueChange={setActiveTab} className="flex min-h-0 flex-1 flex-col">
+        <Tabs
+          value={activeTab}
+          onValueChange={setActiveTab}
+          className="flex min-h-0 flex-1 flex-col"
+        >
           <TabsList className="bg-brand-cream/50 mx-4 mt-3 grid w-auto grid-cols-2">
             <TabsTrigger value="photo" disabled={!hasPhoto} className="gap-1.5">
               <ImageIcon className="h-4 w-4" />
@@ -203,7 +207,7 @@ export function StudioSlotEditModal({
           </div>
         </Tabs>
 
-        <div className="border-brand-purple/10 bg-brand-cream/30 shrink-0 flex justify-end border-t px-4 py-3">
+        <div className="border-brand-purple/10 bg-brand-cream/30 flex shrink-0 justify-end border-t px-4 py-3">
           <Button
             type="button"
             onClick={onClose}
@@ -273,7 +277,9 @@ function TextLayersEditor({
 
       {selectedLayerId === null || layers.length === 1 ? (
         <div className="space-y-2">
-          <p className="text-brand-purple-dark/80 text-xs font-semibold">Elige un texto para editar</p>
+          <p className="text-brand-purple-dark/80 text-xs font-semibold">
+            Elige un texto para editar
+          </p>
           <div className="grid gap-2">
             {layers.map((layer) => {
               const override = currentOverrides?.[layer.id];

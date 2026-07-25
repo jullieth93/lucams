@@ -702,7 +702,7 @@ Cuando se rompan estos límites, abrir issue automático:
 | Anthropic      | Variable        | —                     | Alerta si > $30/mes                                                                                                                                        |
 | Wompi          | Por trx         | —                     | 2.65% + $700 + IVA (plan Avanzado, frecuencia mensual). [Verificado: wompi.com/es/co/planes-tarifas a 2026-05-09](https://wompi.com/es/co/planes-tarifas/) |
 | Venndelo       | Por envío       | —                     | 0% comisión                                                                                                                                                |
-| Dominio        | $50.000 COP/año | —                     | mi.com.co                                                                                                                        |
+| Dominio        | $50.000 COP/año | —                     | mi.com.co                                                                                                                                                  |
 | **Total fijo** |                 | **~$272.000 COP/mes** |                                                                                                                                                            |
 
 ---

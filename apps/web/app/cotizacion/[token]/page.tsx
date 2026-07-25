@@ -107,7 +107,10 @@ export default async function CotizacionPage({ params }: { params: Params }) {
                       <p className="text-brand-purple-dark text-sm leading-snug font-medium">
                         {item.productName}
                         {showVariant && (
-                          <span className="text-brand-muted font-normal"> · {item.variantName}</span>
+                          <span className="text-brand-muted font-normal">
+                            {" "}
+                            · {item.variantName}
+                          </span>
                         )}
                       </p>
                       <p className="text-brand-muted text-xs tabular-nums">
@@ -146,8 +149,8 @@ export default async function CotizacionPage({ params }: { params: Params }) {
               </a>
             </Button>
             <p className="text-brand-muted max-w-md text-xs">
-              Se abre WhatsApp con el mensaje ya listo (número de cotización, productos, total y link)
-              — solo dale enviar.
+              Se abre WhatsApp con el mensaje ya listo (número de cotización, productos, total y
+              link) — solo dale enviar.
             </p>
             <CopyQuoteLink url={quoteUrl} />
             <Link

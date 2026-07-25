@@ -317,11 +317,22 @@ function SpinePiece() {
   );
 }
 
-function Scene({ bookmarks, sizeCm, facesPerUnit }: { bookmarks: Magnet3D[]; sizeCm?: string; facesPerUnit?: number }) {
+function Scene({
+  bookmarks,
+  sizeCm,
+  facesPerUnit,
+}: {
+  bookmarks: Magnet3D[];
+  sizeCm?: string;
+  facesPerUnit?: number;
+}) {
   // Ola 16 — defensa: si el producto no declara 2 caras, el 3D no puede mostrar
   // la cara B real. Log para soporte; el UI del Estudio sigue funcionando con 1 cara.
   if (process.env.NODE_ENV === "development" && facesPerUnit !== 2) {
-    console.warn("[BookView3D] facesPerUnit !== 2; la cara B no se renderizará.", { facesPerUnit, bookmarks: bookmarks.length });
+    console.warn("[BookView3D] facesPerUnit !== 2; la cara B no se renderizará.", {
+      facesPerUnit,
+      bookmarks: bookmarks.length,
+    });
   }
   // #16 — no autorrotar si el usuario pide reducir movimiento.
   const reduced = usePrefersReducedMotion();

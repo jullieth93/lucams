@@ -78,7 +78,7 @@ export function ShopMegaMenu({ tree, isLoggedIn }: { tree: CategoryNode[]; isLog
                 Tienda
               </NavigationMenuTrigger>
               <NavigationMenuContent>
-                <div className="w-[820px] max-h-[80vh] overflow-y-auto p-5">
+                <div className="max-h-[80vh] w-[820px] overflow-y-auto p-5">
                   <div className="grid grid-cols-3 gap-x-6 gap-y-4">
                     {menuCategories.map((cat) => {
                       const Icon = ICONS[cat.slug] ?? Camera;

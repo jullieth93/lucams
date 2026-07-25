@@ -9,7 +9,9 @@ mkdirSync(SHOTS, { recursive: true });
 test("capturas del Estudio (ola 3)", async ({ page }) => {
   test.setTimeout(420_000);
   await page.addInitScript(() => {
-    try { window.localStorage.setItem("lucams_studio_onboarded", "v1"); } catch {}
+    try {
+      window.localStorage.setItem("lucams_studio_onboarded", "v1");
+    } catch {}
   });
   const studios: Array<[string, string]> = [
     ["separadores-libros", "studio-separadores-2caras"],
@@ -28,7 +30,9 @@ test("capturas del Estudio (ola 3)", async ({ page }) => {
       // Tour de bienvenida OFF vía localStorage (studio-onboarding lee
       // 'lucams_studio_onboarded' === "v1" al montar).
       await page.evaluate(() => {
-        try { window.localStorage.setItem("lucams_studio_onboarded", "v1"); } catch {}
+        try {
+          window.localStorage.setItem("lucams_studio_onboarded", "v1");
+        } catch {}
       });
       await page.waitForTimeout(2_500); // settle de texturas/grilla
       await page.screenshot({ path: `${SHOTS}/${name}.png`, fullPage: false });

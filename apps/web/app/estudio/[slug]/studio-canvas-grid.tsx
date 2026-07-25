@@ -165,9 +165,7 @@ export function StudioCanvasGrid({
     editRequestRef.current = openEditSlot;
     if (
       openEditSlot &&
-      (!prev ||
-        prev.slotIndex !== openEditSlot.slotIndex ||
-        prev.tab !== openEditSlot.tab)
+      (!prev || prev.slotIndex !== openEditSlot.slotIndex || prev.tab !== openEditSlot.tab)
     ) {
       setEditModal({
         slotIndex: openEditSlot.slotIndex,
@@ -426,8 +424,7 @@ export function StudioCanvasGrid({
                     year: calendarPreview.year,
                     // Misma matemática de mes que producción y el preview de confirmación:
                     // monthIndex0 = (startMonth + slotIndex) mod 12.
-                    monthIndex0:
-                      (((calendarPreview.startMonth + slot.slotIndex) % 12) + 12) % 12,
+                    monthIndex0: (((calendarPreview.startMonth + slot.slotIndex) % 12) + 12) % 12,
                   }
                 : null
             }
@@ -448,7 +445,11 @@ export function StudioCanvasGrid({
             onClear={() => clearSlot(slot.slotIndex)}
             onEdit={(tab) => setEditModal({ slotIndex: slot.slotIndex, tab })}
             onTextEdit={(textLayerId) =>
-              setEditModal({ slotIndex: slot.slotIndex, tab: "text", focusTextLayerId: textLayerId })
+              setEditModal({
+                slotIndex: slot.slotIndex,
+                tab: "text",
+                focusTextLayerId: textLayerId,
+              })
             }
             // Ola 6 — el callback de transform está siempre disponible para el
             // editor a pantalla completa; los gestos inline se habilitan/deshabilitan
@@ -634,7 +635,6 @@ function LazySlotPlaceholder({
 export { selectUnitImagePlaceholder };
 export type { CanvasDataV2 };
 
-
 // Ola 6 — Wrapper para el modal unificado de edición por slot. Vive dentro del
 // grid para tener acceso directo al store sin modificar StudioEditor.
 function StudioSlotEditModalWrapper({
@@ -677,17 +677,20 @@ function StudioSlotEditModalWrapper({
   );
   const slotOffsetX = useStore(store, (s) =>
     slotIndex !== null
-      ? (s.canvasData?.slots?.find((sl) => sl.slotIndex === slotIndex)?.photoTransform?.offsetX ?? 0)
+      ? (s.canvasData?.slots?.find((sl) => sl.slotIndex === slotIndex)?.photoTransform?.offsetX ??
+        0)
       : 0,
   );
   const slotOffsetY = useStore(store, (s) =>
     slotIndex !== null
-      ? (s.canvasData?.slots?.find((sl) => sl.slotIndex === slotIndex)?.photoTransform?.offsetY ?? 0)
+      ? (s.canvasData?.slots?.find((sl) => sl.slotIndex === slotIndex)?.photoTransform?.offsetY ??
+        0)
       : 0,
   );
   const slotRotation = useStore(store, (s) =>
     slotIndex !== null
-      ? (s.canvasData?.slots?.find((sl) => sl.slotIndex === slotIndex)?.photoTransform?.rotation ?? 0)
+      ? (s.canvasData?.slots?.find((sl) => sl.slotIndex === slotIndex)?.photoTransform?.rotation ??
+        0)
       : 0,
   );
   const slotTextOverrides = useStore(store, (s) =>
@@ -748,7 +751,10 @@ function StudioSlotEditModalWrapper({
       }}
       onNudge={(dx, dy) => {
         if (slotIndex !== null)
-          setSlotPhotoTransform(slotIndex, { offsetX: slotOffsetX + dx, offsetY: slotOffsetY + dy });
+          setSlotPhotoTransform(slotIndex, {
+            offsetX: slotOffsetX + dx,
+            offsetY: slotOffsetY + dy,
+          });
       }}
       onRotate={() => {
         if (slotIndex !== null)

@@ -11,11 +11,7 @@ import { useDialogA11y } from "./use-dialog-a11y";
  * Muestra el previewUrl real y un link al producto asociado para probarla en el Estudio.
  * A11y: role=dialog, aria-modal, foco inicial, trampa de foco, Escape y retorno de foco.
  */
-export function TemplatePreviewButton({
-  template,
-}: {
-  template: AdminTemplate;
-}) {
+export function TemplatePreviewButton({ template }: { template: AdminTemplate }) {
   const [open, setOpen] = useState(false);
   const dialogRef = useRef<HTMLDivElement>(null);
   useDialogA11y(dialogRef, { onClose: () => setOpen(false), active: open });
@@ -80,9 +76,7 @@ export function TemplatePreviewButton({
 
               {/* Body */}
               <div className="px-5 py-4">
-                <p className="text-brand-purple-dark mb-3 text-sm font-semibold">
-                  {template.name}
-                </p>
+                <p className="text-brand-purple-dark mb-3 text-sm font-semibold">{template.name}</p>
                 <div className="bg-brand-cream/50 ring-brand-purple/10 relative aspect-[3/4] w-full overflow-hidden rounded-xl ring-1">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
@@ -92,8 +86,8 @@ export function TemplatePreviewButton({
                   />
                 </div>
                 <p className="text-brand-muted mt-3 text-xs">
-                  Así se ve el imán con la plantilla seleccionada. Para probarla con
-                  tus fotos, abre el producto asociado en el Estudio.
+                  Así se ve el imán con la plantilla seleccionada. Para probarla con tus fotos, abre
+                  el producto asociado en el Estudio.
                 </p>
               </div>
 

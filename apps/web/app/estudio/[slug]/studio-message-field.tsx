@@ -76,8 +76,8 @@ export function StudioMessageField({ store }: { store: StoreApi<StudioStoreState
         className="border-brand-purple/15 text-brand-purple-dark focus:border-brand-turquoise focus:ring-brand-turquoise/30 w-full rounded-md border px-3 py-2 text-sm transition-colors focus:ring-2 focus:outline-none"
       />
       <p className="text-brand-muted mt-2 text-xs">
-        Si lo dejas vacío, la franja queda limpia (no se imprime nada). Para cambiar fuente o
-        color, toca el texto en la imagen.
+        Si lo dejas vacío, la franja queda limpia (no se imprime nada). Para cambiar fuente o color,
+        toca el texto en la imagen.
       </p>
     </section>
   );

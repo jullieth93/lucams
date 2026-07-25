@@ -140,7 +140,9 @@ export function stripDimsForFace(
  * Diseños VIEJOS de tira completa (lienzo vertical, pre-ola-3): no traen cara B — cada textura
  * es su propia unidad y repite el diseño en ambas caras (comportamiento histórico).
  */
-export function bookmarkFaceUnits<T extends { wRatio: number; hRatio: number; slotIndex?: number; assetUrl?: string | null }>(
+export function bookmarkFaceUnits<
+  T extends { wRatio: number; hRatio: number; slotIndex?: number; assetUrl?: string | null },
+>(
   bookmarks: readonly T[],
   /** facesPerUnit del producto: 2 = separadores con cara A/B; 1 = tiras viejas sin cara B. */
   facesPerUnit?: number,
@@ -149,7 +151,11 @@ export function bookmarkFaceUnits<T extends { wRatio: number; hRatio: number; sl
 ): { front: T; back: T }[] {
   // Ola 10 — si el producto declara facesPerUnit=2, agrupamos por pares de slotIndex
   // (no por orden del array). La cara B sin foto propia usa la misma textura que la cara A.
-  if (facesPerUnit === 2 && bookmarks.length > 0 && bookmarks.every((b) => typeof b.slotIndex === "number")) {
+  if (
+    facesPerUnit === 2 &&
+    bookmarks.length > 0 &&
+    bookmarks.every((b) => typeof b.slotIndex === "number")
+  ) {
     const bySlot = new Map<number, T>();
     for (const b of bookmarks) bySlot.set(b.slotIndex!, b);
     const maxSlot = Math.max(...bookmarks.map((b) => b.slotIndex!));
@@ -165,8 +171,7 @@ export function bookmarkFaceUnits<T extends { wRatio: number; hRatio: number; sl
 
   const looksLikeFaces =
     sizeCm !== undefined ||
-    (bookmarks.length > 0 &&
-      bookmarks.every((b) => b.wRatio / b.hRatio >= FACE_CANVAS_MIN_ASPECT));
+    (bookmarks.length > 0 && bookmarks.every((b) => b.wRatio / b.hRatio >= FACE_CANVAS_MIN_ASPECT));
   if (!looksLikeFaces) return bookmarks.map((b) => ({ front: b, back: b }));
   const units: { front: T; back: T }[] = [];
   for (let k = 0; 2 * k < bookmarks.length; k++) {

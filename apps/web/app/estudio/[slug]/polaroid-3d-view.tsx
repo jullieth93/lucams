@@ -137,7 +137,14 @@ function Cards({ magnets, sizeCm }: { magnets: Magnet3D[]; sizeCm?: string }) {
   return (
     <>
       {specs.map((spec, i) => (
-        <PolaroidCard key={i} spec={spec} tex={list[i]!} cardW={cardW} cardH={cardH} cardT={cardT} />
+        <PolaroidCard
+          key={i}
+          spec={spec}
+          tex={list[i]!}
+          cardW={cardW}
+          cardH={cardH}
+          cardT={cardT}
+        />
       ))}
     </>
   );
@@ -219,7 +226,13 @@ function Scene({ magnets, sizeCm }: { magnets: Magnet3D[]; sizeCm?: string }) {
   );
 }
 
-export default function PolaroidView3D({ magnets, sizeCm }: { magnets: Magnet3D[]; sizeCm?: string }) {
+export default function PolaroidView3D({
+  magnets,
+  sizeCm,
+}: {
+  magnets: Magnet3D[];
+  sizeCm?: string;
+}) {
   const isTouch = useIsTouch();
   if (magnets.length === 0) {
     return (

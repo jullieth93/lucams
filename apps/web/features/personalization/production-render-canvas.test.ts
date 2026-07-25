@@ -754,7 +754,7 @@ describe("renderProductionSlotsCanvas — Ola 4 (Lucy 2026-07-23)", () => {
     expect(await hasPixel(bufs[0], msgBand, darkInk)).toBe(false);
   });
 
-  it("T3 texto EDITABLE con override vacío (\"\") → NO se imprime; con override → se imprime", async () => {
+  it('T3 texto EDITABLE con override vacío ("") → NO se imprime; con override → se imprime', async () => {
     const empty = await renderProductionSlotsCanvas({
       unitTemplate: clasicaEditable,
       slots: [{ ...slotOk3, textOverrides: { msg: { text: "" } } }],

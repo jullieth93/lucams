@@ -214,7 +214,8 @@ async function renderSlotCanvas(
       const overrideText = slot.textOverrides?.[l.id]?.text;
       // Ola 4 (texto opcional): una capa EDITABLE solo imprime su override — el texto
       // base de la plantilla es una GUÍA del editor ("Escribe tu mensaje"), no se imprime.
-      if (l.editable === true) return typeof overrideText === "string" && overrideText.trim() !== "";
+      if (l.editable === true)
+        return typeof overrideText === "string" && overrideText.trim() !== "";
       return (typeof l.text === "string" && l.text.trim() !== "") || !!overrideText;
     });
   if (hasText && !ensureFonts(mod)) {
@@ -340,7 +341,10 @@ async function renderSlotCanvas(
           cornerRadius: 0,
         };
       } else if (fullBleed && !isIg && !useFullStage) {
-        ph = { ...insetToMinMargin(phRaw, unit.stage, bleedMargin), cornerRadius: phRaw.cornerRadius };
+        ph = {
+          ...insetToMinMargin(phRaw, unit.stage, bleedMargin),
+          cornerRadius: phRaw.cornerRadius,
+        };
       }
       if (strip && stripPosition) {
         ph = { ...stripPhotoRect(ph, unit.stage, stripPosition), cornerRadius: ph.cornerRadius };

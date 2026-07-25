@@ -1022,8 +1022,8 @@ export function DatosForm({
             >
               Política de Tratamiento de Datos
             </a>
-            . Responsable: Lucams_shop (persona natural), Bogotá D.C. Algunos
-            proveedores (alojamiento y correo) están en EE. UU.
+            . Responsable: Lucams_shop (persona natural), Bogotá D.C. Algunos proveedores
+            (alojamiento y correo) están en EE. UU.
           </span>
         </label>
         {err("dataConsent") && <p className="mt-2 text-xs text-rose-600">{err("dataConsent")}</p>}

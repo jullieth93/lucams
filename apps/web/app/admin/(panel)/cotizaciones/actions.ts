@@ -23,12 +23,7 @@ import {
 
 type St = { error?: string; success?: string } | null;
 
-const QUOTE_STATUSES: readonly QuoteStatus[] = [
-  "PENDING",
-  "CONTACTED",
-  "CLOSED",
-  "DISCARDED",
-];
+const QUOTE_STATUSES: readonly QuoteStatus[] = ["PENDING", "CONTACTED", "CLOSED", "DISCARDED"];
 
 const STATUS_SUCCESS_LABEL: Record<QuoteStatus, string> = {
   PENDING: "pendiente",

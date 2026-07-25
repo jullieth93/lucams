@@ -203,7 +203,9 @@ describe("frame-palette — Ola 4 (cuadrados / tira / instagram)", () => {
     expect(noBorderChromeSrc("/templates/ig_post_3x4.svg", true, true)).toBe(
       "/templates/ig_post_3x4_dark_noborder.svg",
     );
-    expect(noBorderChromeSrc("/templates/ig_post_3x4.svg", false)).toBe("/templates/ig_post_3x4.svg");
+    expect(noBorderChromeSrc("/templates/ig_post_3x4.svg", false)).toBe(
+      "/templates/ig_post_3x4.svg",
+    );
     expect(noBorderChromeSrc("/templates/ig_post_3x4.svg", false, true)).toBe(
       "/templates/ig_post_3x4_dark.svg",
     );
@@ -212,12 +214,8 @@ describe("frame-palette — Ola 4 (cuadrados / tira / instagram)", () => {
   it("isInstagramNoBorder: detecta el rect a sangre del modo sin borde", async () => {
     const { isInstagramNoBorder } = await import("./frame-palette");
     const stage = { width: 450, height: 600 };
-    expect(
-      isInstagramNoBorder({ x: 15, y: 58, width: 420, height: 400 }, stage),
-    ).toBe(true);
-    expect(
-      isInstagramNoBorder({ x: 29, y: 58, width: 392, height: 392 }, stage),
-    ).toBe(false);
+    expect(isInstagramNoBorder({ x: 15, y: 58, width: 420, height: 400 }, stage)).toBe(true);
+    expect(isInstagramNoBorder({ x: 29, y: 58, width: 392, height: 392 }, stage)).toBe(false);
     expect(isInstagramNoBorder(undefined, stage)).toBe(false);
   });
 });

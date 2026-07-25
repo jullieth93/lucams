@@ -593,7 +593,9 @@ export function StudioEditor({
       if (isStrip) textures = await combineStripTextures(textures, 3);
       // La escena Polaroid 3D solo corresponde a productos Polaroid: se detecta por el slug
       // del producto o por la plantilla activa (Polaroid Clásica / Instagram).
-      const selectedTemplateSlug = state.templates.find((t) => t.id === state.selectedTemplateId)?.slug;
+      const selectedTemplateSlug = state.templates.find(
+        (t) => t.id === state.selectedTemplateId,
+      )?.slug;
       const isPolaroidTemplate =
         selectedTemplateSlug === "photo-pack-polaroid-clasica" ||
         selectedTemplateSlug === "photo-pack-polaroid-instagram";
@@ -616,7 +618,16 @@ export function StudioEditor({
     } finally {
       setSceneBuilding(false);
     }
-  }, [store, product.slug, productConfig.shape, productConfig.sizeCm, productConfig.facesPerUnit, ensureAllStagesMounted, sceneBuilding, isBookmark]);
+  }, [
+    store,
+    product.slug,
+    productConfig.shape,
+    productConfig.sizeCm,
+    productConfig.facesPerUnit,
+    ensureAllStagesMounted,
+    sceneBuilding,
+    isBookmark,
+  ]);
 
   // CAL4 (rediseño 2026-07-22) — "Ver mi calendario": el set de 12 TARJETAS mes 7.5×10 se ve como
   // IMANES en la galería de escenas (nevera/tablero, kind="calendar") — el calendario-de-pared
@@ -1070,7 +1081,11 @@ export function StudioEditor({
             </button>
           </div>
           <div className="relative flex-1">
-            <BookView3D bookmarks={book3D} sizeCm={productConfig.sizeCm} facesPerUnit={productConfig.facesPerUnit} />
+            <BookView3D
+              bookmarks={book3D}
+              sizeCm={productConfig.sizeCm}
+              facesPerUnit={productConfig.facesPerUnit}
+            />
             <p className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-black/40 px-3 py-1.5 text-center text-xs text-white">
               {isTouch
                 ? "Arrastra para girar · pellizca con 2 dedos para acercar"
@@ -1701,5 +1716,3 @@ async function buildMagnetTextures(
   }
   return out;
 }
-
-

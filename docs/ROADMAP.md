@@ -20,19 +20,19 @@ El trabajo reciente se nombró por **bloques**; equivalen a:
 
 ## Vista general
 
-| Fase | Nombre                                           | Estado                                                                           | Aprobado |
-| ---- | ------------------------------------------------ | -------------------------------------------------------------------------------- | -------- |
-| 0a   | Estructura de documentación                      | 🟢 Completada (2026-05-09)                                                       | ✅ Sí    |
-| 0b   | Cuentas externas críticas para Fase 1 (re-scope) | 🟢 Completada (2026-05-09)                                                       | ✅ Sí    |
-| 1    | Base sólida (core técnico)                       | 🟢 Completada (auth + seguridad base; CI/CD y tests RLS → Bloques C/E)           | ✅ Sí    |
-| 2    | Catálogo y carrito (storefront)                  | 🟢 Completada (admin CRUD + storefront + carrito + admin pulido 2026-06-27)      | ✅ Sí    |
-| 3    | Estudio de Personalización                       | 🔄 Núcleo hecho; faltan plantillas (≈2/30), vista 3D y compartir                 | ✅ Sí    |
-| 4    | Checkout, pagos y logística                      | 🟢 **Completada y CERTIFICADA** (Bloque A · Wompi + Aveonline + saga · 48 tests) | ✅ Sí    |
-| 5    | Marketing engine                                 | ⏸️ Pendiente (incl. redención de cupones → Bloque F)                             | ❌ No    |
-| 6    | Backoffice y B2B                                 | ⏸️ Pendiente                                                                     | ❌ No    |
-| 7    | Pulido productivo + lanzamiento                  | ⏸️ Pendiente (incl. Bloques C Seguridad · D Observabilidad · E Testing)          | ❌ No    |
-| **E1** | **Etapa 1 salida: catálogo + cotización WhatsApp** | 🔄 **En curso (2026-07-21, rama `catalogo-whatsapp`, ADR-077)** — ver `docs/PLAN_SALIDA_PRODUCCION.md` | ✅ Sí    |
-| **E2** | **Etapa 2 salida: tienda full (Wompi + Aveonline reales)** | ⏸️ Bloqueada por trámites humanos (NIT, abogado, DIAN) — ver `docs/PLAN_SALIDA_PRODUCCION.md` | ✅ Sí    |
+| Fase   | Nombre                                                     | Estado                                                                                                 | Aprobado |
+| ------ | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | -------- |
+| 0a     | Estructura de documentación                                | 🟢 Completada (2026-05-09)                                                                             | ✅ Sí    |
+| 0b     | Cuentas externas críticas para Fase 1 (re-scope)           | 🟢 Completada (2026-05-09)                                                                             | ✅ Sí    |
+| 1      | Base sólida (core técnico)                                 | 🟢 Completada (auth + seguridad base; CI/CD y tests RLS → Bloques C/E)                                 | ✅ Sí    |
+| 2      | Catálogo y carrito (storefront)                            | 🟢 Completada (admin CRUD + storefront + carrito + admin pulido 2026-06-27)                            | ✅ Sí    |
+| 3      | Estudio de Personalización                                 | 🔄 Núcleo hecho; faltan plantillas (≈2/30), vista 3D y compartir                                       | ✅ Sí    |
+| 4      | Checkout, pagos y logística                                | 🟢 **Completada y CERTIFICADA** (Bloque A · Wompi + Aveonline + saga · 48 tests)                       | ✅ Sí    |
+| 5      | Marketing engine                                           | ⏸️ Pendiente (incl. redención de cupones → Bloque F)                                                   | ❌ No    |
+| 6      | Backoffice y B2B                                           | ⏸️ Pendiente                                                                                           | ❌ No    |
+| 7      | Pulido productivo + lanzamiento                            | ⏸️ Pendiente (incl. Bloques C Seguridad · D Observabilidad · E Testing)                                | ❌ No    |
+| **E1** | **Etapa 1 salida: catálogo + cotización WhatsApp**         | 🔄 **En curso (2026-07-21, rama `catalogo-whatsapp`, ADR-077)** — ver `docs/PLAN_SALIDA_PRODUCCION.md` | ✅ Sí    |
+| **E2** | **Etapa 2 salida: tienda full (Wompi + Aveonline reales)** | ⏸️ Bloqueada por trámites humanos (NIT, abogado, DIAN) — ver `docs/PLAN_SALIDA_PRODUCCION.md`          | ✅ Sí    |
 
 > **Salida en 2 etapas (ADR-077, 2026-07-21):** el lanzamiento se desacopló de los trámites legales. Etapa 1 (modo `STORE_MODE=catalog`) publica catálogo + Estudio + cotización por WhatsApp sin pagos ni envíos; Etapa 2 activa la tienda full cambiando una env var cuando el NIT esté. Detalle y checklists en `docs/PLAN_SALIDA_PRODUCCION.md`.
 

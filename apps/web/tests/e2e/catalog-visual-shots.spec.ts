@@ -182,7 +182,10 @@ test("flujo completo de cotización con capturas", async ({ page }) => {
   await page.screenshot({ path: `${SHOTS}/catalog-07-admin-lista.png`, fullPage: true });
 
   // 8. Admin: detalle de la cotización (el link de la fila es "Ver detalle")
-  await page.getByRole("link", { name: /ver detalle/i }).first().click();
+  await page
+    .getByRole("link", { name: /ver detalle/i })
+    .first()
+    .click();
   await expect(page).toHaveURL(new RegExp(`/admin/cotizaciones/${quoteId}`));
   await expect(page.getByText("Valentina Prueba").first()).toBeVisible();
   await page.screenshot({ path: `${SHOTS}/catalog-08-admin-detalle.png`, fullPage: true });

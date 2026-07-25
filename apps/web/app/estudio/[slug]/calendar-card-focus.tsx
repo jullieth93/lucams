@@ -97,7 +97,13 @@ function Scene({ card, texture }: { card: Magnet3D; texture: THREE.Texture | nul
         far={4}
       />
       {/* Lectura desde ~62° sobre la horizontal: la grilla del mes y los festivos se leen. */}
-      <FitCameraPolar halfW={w / 2 + 0.15} halfH={1.55} polarDeg={62} margin={1.15} targetY={0.03} />
+      <FitCameraPolar
+        halfW={w / 2 + 0.15}
+        halfH={1.55}
+        polarDeg={62}
+        margin={1.15}
+        targetY={0.03}
+      />
       <OrbitControls
         makeDefault
         enablePan={false}

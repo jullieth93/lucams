@@ -147,7 +147,10 @@ export default async function Home() {
           <header className="mb-8 flex flex-wrap items-end justify-between gap-3">
             <div>
               <h2 className="font-display text-brand-purple-dark text-3xl sm:text-4xl">
-                <CmsText blockKey="home.featured.heading" fallback="Productos que están enamorando" />
+                <CmsText
+                  blockKey="home.featured.heading"
+                  fallback="Productos que están enamorando"
+                />
               </h2>
               <p className="text-brand-purple-dark/70 mt-2">
                 <CmsText

@@ -100,9 +100,7 @@ describe("GlobalSearch", () => {
     // Lucy 2026-07-22: el trigger vuelve al icono de lupa (lucide Search) —
     // el mapache de marca no leía como affordance de búsqueda.
     expect(trigger.querySelector("svg.lucide-search")).toBeInTheDocument();
-    expect(
-      within(trigger).queryByAltText(/Mascota Lucams_shop/i),
-    ).not.toBeInTheDocument();
+    expect(within(trigger).queryByAltText(/Mascota Lucams_shop/i)).not.toBeInTheDocument();
     // Cerrado: no hay diálogo montado todavía.
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });

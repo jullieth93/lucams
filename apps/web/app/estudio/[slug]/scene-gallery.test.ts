@@ -10,7 +10,12 @@ vi.mock("next/dynamic", () => ({
   default: () => () => null,
 }));
 
-import { filterPhotoScenes, galleryEscapeAction, initialModalView, scenesForKind } from "./scene-gallery";
+import {
+  filterPhotoScenes,
+  galleryEscapeAction,
+  initialModalView,
+  scenesForKind,
+} from "./scene-gallery";
 
 describe("scenesForKind", () => {
   it("photo (default): la galería FOTO4 completa, nevera primero", () => {

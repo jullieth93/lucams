@@ -215,12 +215,7 @@ function WireCoil() {
   return (
     <mesh position={[0, PIVOT_Y, COIL_Z]} castShadow>
       <tubeGeometry args={[curve, COIL_COUNT * 20, 0.022, 8, false]} />
-      <meshStandardMaterial
-        color="#D9DDE3"
-        roughness={0.24}
-        metalness={1}
-        envMapIntensity={1.7}
-      />
+      <meshStandardMaterial color="#D9DDE3" roughness={0.24} metalness={1} envMapIntensity={1.7} />
     </mesh>
   );
 }

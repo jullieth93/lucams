@@ -22,6 +22,7 @@
 **Commits:** `9728c6c` (studio-2d) + `7c98abd` (studio-3d) + `215deaf` (CLAUDE.md) — 3 ramas alineadas, desplegado y verificado en vivo (health ok, calendario/polaroid/cuadrados/tiras correctas).
 
 **🟡 PENDIENTES Lucy:**
+
 1. /admin/fichas: ilustraciones A E I O U por set.
 2. /admin/productos: precios derivados (cuadrados 8×8/10×10, polaroid 1-10) y tiras a $19.000.
 3. **Validar en móvil real:** pinch de foto y scroll tras cargar foto (fixes de gestos ola 4) + "Actualizar caché de contenido" si alguna página legal muestra texto viejo (un click y listo).
@@ -37,6 +38,7 @@
 - **3D:** calendario abre directo en **detalle Tarjeta 1 de 12** con "Míralo en tu espacio" arriba; separadores con **caras A/B reales del Estudio** (aspecto exacto por cara, sets mixtos, cara trasera recostada natural); fichas de letras −37.5% de grosor.
 
 **🟡 PENDIENTES Lucy:**
+
 1. /admin/fichas: ilustraciones A E I O U por set (selector de temas ya visible).
 2. /admin/productos: revisar precios derivados (cuadrados 8×8/10×10, polaroid 1-10, separadores 2/4/6) y tiras a $19.000.
 3. Vercel Pro antes del anuncio público ($20/mes — Hobby prohíbe uso comercial).
@@ -48,6 +50,7 @@
 **✅ ETAPA 1 EN VIVO — OLA 3 DESPLEGADA (2026-07-22).** Tercera ronda de feedback de Lucy: reseñas visibles (4 destacadas en home + todas en PDP), **Polaroid cantidad libre 1-10 a 7.5×10** ($18.300→$34.800, stepper single-dim nuevo), **Polaroid 2 plantillas** (Clásica con marco de color + texto / Instagram re-layout 3:4 — el bug "no deja escribir texto" era el filtro de aspect excluyendo la plantilla), **Fotoimanes Cuadrados sin texto** (allowText por schema), **Tiras magnéticas activas a $19.000**, **Separadores 2 CARAS** (slotCount=2N, grilla por unidad cara A|B, producción compone tiras desplegadas a ~450 DPI), **libro 3D v2** (abierto con texto impreso + separadores doblados sobre las páginas, física testeada), **detalle de calendario 1-a-1** (tarjeta grande con ←/→), fichas con esquinas redondas coherentes, selector de tema en name-editor siempre visible con hint /admin/fichas. **Purga histórica autorizada**: 53 órdenes de test + todos sus fixtures (órdenes reales intactas) + 82 categorías y 91 productos de tests eliminados; cleanup-test-junk ahora borra hijas→madres. Commits `4b4db55` (datos) + `d819ab1` (estudio 2D) + `9f84b59` (3D) desplegados vía `vercel deploy --prod`.
 
 **🟡 PENDIENTES Lucy:**
+
 1. Vercel dashboard: Production Branch → `production` (merge-back a develop queda esperando).
 2. /admin/fichas: subir ilustraciones A E I O U por set (selector de temas ya visible con hint).
 3. /admin/productos: precios derivados (separadores 2/4/6, polaroid 1-10) y tiras a $19.000.
@@ -63,6 +66,7 @@
 - **3D:** libro carpa 17×24 con separadores doblados al lomo (física derivada, 2 caras), imanes a escala real (nevera 170cm/tablero 45cm), escenas por producto (`scenesForKind`: calendario→nevera/corcho con la pared ARCHIVADA, letras→memo, separadores→libro), "Ver en 3D" en el editor de letras.
 
 **🟡 PENDIENTES Lucy (sin cambio + nuevos):**
+
 1. Vercel dashboard: Production Branch → `production` (para hacer merge-back a develop y recuperar git→deploy).
 2. /admin/resenas: revisar/aprobar las 7 reseñas borrador (quedan públicas al aprobar).
 3. /admin/fichas: subir ilustraciones A E I O U por set.
@@ -75,11 +79,12 @@
 **✅ ETAPA 1 EN VIVO Y PULIDA (2026-07-22) — catálogo + cotización por WhatsApp sirviendo en `lucamsshop.com` con Frentes A-E desplegados.** Tras la auditoría y el plan de salida (ver 2026-07-21 abajo), Lucy dio feedback integral de UX/contenido y se ejecutó en 5 frentes, cada uno verificado y desplegado vía `vercel deploy --prod` (la rama de producción en Vercel sigue apuntando a `develop` — **pendiente Lucy**: cambiarla a `production` en Settings → Git para recuperar el flujo git→deploy):
 
 - **Frente A (datos):** 21 categorías-basura de tests eliminadas de la DB compartida (16 hard + 5 soft); `cleanup-test-junk.mjs` ahora detecta por epoch de 13 dígitos; fixtures de `products/service.integration.test` nacen con `isActive=false`. **`NEXT_PUBLIC_WA_NUMBER` en Vercel tenía el número viejo (315 071 8723)** — corregida a 320 887 3826 (el código y la DB estaban bien; la env de Vercel era la que fallaba).
-- **Frente B (copy/UI):** bug "CANTIDAD duplicada" en PDP (quantity y photoSlots con el mismo label — dedupe defensivo en variant-selector); "Personalizar producto" (ya no "tu imán"); "Llega a tu espacio"; tiempos 2+1 (máx 3 días); "transportadoras aliadas" (adiós Coordinadora); ayuda sin DIAN ni Wompi en catalog; header solo "Catálogo" (menú ≤8 + Ver todo); footer ≤6 + Facebook + sin nombre de la titular (solo en /legal/*); recomendador con "Volver"; búsqueda con la mascota; corazones/circulares ocultos (soft-hide); tamaños reales separadores (6×2, 4×4.2); 9 CMS blocks actualizados en DB.
+- **Frente B (copy/UI):** bug "CANTIDAD duplicada" en PDP (quantity y photoSlots con el mismo label — dedupe defensivo en variant-selector); "Personalizar producto" (ya no "tu imán"); "Llega a tu espacio"; tiempos 2+1 (máx 3 días); "transportadoras aliadas" (adiós Coordinadora); ayuda sin DIAN ni Wompi en catalog; header solo "Catálogo" (menú ≤8 + Ver todo); footer ≤6 + Facebook + sin nombre de la titular (solo en /legal/\*); recomendador con "Volver"; búsqueda con la mascota; corazones/circulares ocultos (soft-hide); tamaños reales separadores (6×2, 4×4.2); 9 CMS blocks actualizados en DB.
 - **Frentes C+D (catálogo):** separadores 1-6 por forma; fotoimanes 6.5×6.5/7.5×10 × marco blanco/negro × 1-6 (viejos tamaños pausados); polaroid 3 estilos (blanco clásico/pasteles/instagram) × 4 sets; pack-vocales tema(animales/frutas/profesiones) × idioma × tamaño × imán = 36 combos; categorías Animales y Frutas; plantilla 3:4 para 7.5×10; **fix landmine**: editar variante en admin ya no borra attributes (`mergePreservingUnmanagedAttributes`); script idempotente `extend-variant-dims-2026-07-22.mjs`.
 - **Frente E (3D wow):** calendario con espiral HelixCurve real + hoja con curvatura + pared con sombra + FitCamera (móvil) + texturas perezosas; imanes extruidos con cuerpo (nevera/mural); corcho procedural; libro con cantos texturizados; **escena nueva Polaroid** (pila en mesa de madera); dpr táctil + ContactShadows horneadas.
 
 **🟡 PENDIENTES (en orden):**
+
 1. **Lucy — Vercel dashboard:** Production Branch `develop` → `production` (Settings → Git). Hasta que eso esté, NO se puede pushear a `develop` (dispararía el modo full a producción). El merge-back de `catalogo-whatsapp` → `develop` queda para ese momento.
 2. **Lucy — /admin/fichas:** subir ilustraciones de vocales A E I O U por set (Animales es/en también están vacíos; Frutas/Profesiones es/en ya existen como sets vacíos). Con 1 ficha el estilo aparece en el Estudio.
 3. **Lucy — Vercel Pro ($20/mes):** Hobby prohíbe uso comercial (verificado ToS/Fair Use 2026-07-21: "advertising the sale of a product" aplica aunque no haya pasarela). Antes de anunciar públicamente. Supabase Free SÍ permite uso comercial (no hace falta Pro).

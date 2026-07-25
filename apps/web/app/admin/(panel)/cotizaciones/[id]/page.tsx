@@ -11,7 +11,15 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, FileText, MapPin, MessageCircle, Sparkles, StickyNote, User } from "lucide-react";
+import {
+  ArrowLeft,
+  FileText,
+  MapPin,
+  MessageCircle,
+  Sparkles,
+  StickyNote,
+  User,
+} from "lucide-react";
 import { requireRole } from "@/lib/admin-rbac-guard";
 import { formatCOP, formatCityDept } from "@/lib/format";
 import { getQuoteById } from "@/features/quotes/admin-service";

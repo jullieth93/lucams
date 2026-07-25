@@ -45,12 +45,12 @@ Modo por flag `NEXT_PUBLIC_STORE_MODE=catalog` (default `full`) sobre la base de
 
 ### P0 humanos (bloqueantes — empezar YA en paralelo, no dependen de código)
 
-| # | Acción | Bloquea | Notas |
-|---|---|---|---|
-| H-1 | **NIT/RUT + Cámara de Comercio** (ADR-071, persona natural) | Wompi prod, DIAN | Es el cuello de botella real del lanzamiento full |
-| H-2 | Abogado revisa los 8 textos legales (ADR-020) + cierra `[pendiente verificación]` de cookies/términos | Compliance | Los drafts son base compliant, no reemplazan abogado |
-| H-3 | Decisión de régimen DIAN + facturación electrónica con contador (Resolución 165/2023) | Venta legal con pago en línea | Multas hasta 1% de ingresos |
-| H-4 | Verificar que el bucket R2 existe en Cloudflare (FASE 10 — handshake TLS) | Backups/DR | Hipótesis: R2 no aprovisionado en la cuenta |
+| #   | Acción                                                                                                | Bloquea                       | Notas                                                |
+| --- | ----------------------------------------------------------------------------------------------------- | ----------------------------- | ---------------------------------------------------- |
+| H-1 | **NIT/RUT + Cámara de Comercio** (ADR-071, persona natural)                                           | Wompi prod, DIAN              | Es el cuello de botella real del lanzamiento full    |
+| H-2 | Abogado revisa los 8 textos legales (ADR-020) + cierra `[pendiente verificación]` de cookies/términos | Compliance                    | Los drafts son base compliant, no reemplazan abogado |
+| H-3 | Decisión de régimen DIAN + facturación electrónica con contador (Resolución 165/2023)                 | Venta legal con pago en línea | Multas hasta 1% de ingresos                          |
+| H-4 | Verificar que el bucket R2 existe en Cloudflare (FASE 10 — handshake TLS)                             | Backups/DR                    | Hipótesis: R2 no aprovisionado en la cuenta          |
 
 ### P0 técnicos (secuencia una vez H-1 esté)
 

@@ -7,10 +7,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import {
-  mergePreservingUnmanagedAttributes,
-  parseVariantAttributes,
-} from "./variant-schemas";
+import { mergePreservingUnmanagedAttributes, parseVariantAttributes } from "./variant-schemas";
 
 describe("mergePreservingUnmanagedAttributes", () => {
   it("preserva las dimensiones sin campo en el form y aplica las del form", () => {
@@ -64,9 +61,19 @@ describe("mergePreservingUnmanagedAttributes", () => {
   it("preserva theme/language del Pack Vocales y variantStyle de la Polaroid", () => {
     const vocales = { size: "mini", sizeCm: "5×7", magnet: true, theme: "frutas", language: "en" };
     const mergedVoc = mergePreservingUnmanagedAttributes(vocales, { sizeCm: "5×7" });
-    expect(mergedVoc).toMatchObject({ magnet: true, theme: "frutas", language: "en", size: "mini" });
+    expect(mergedVoc).toMatchObject({
+      magnet: true,
+      theme: "frutas",
+      language: "en",
+      size: "mini",
+    });
 
-    const polaroid = { sizeCm: "6×8", photoSlots: 12, aspectRatio: "400:580", variantStyle: "pasteles" };
+    const polaroid = {
+      sizeCm: "6×8",
+      photoSlots: 12,
+      aspectRatio: "400:580",
+      variantStyle: "pasteles",
+    };
     // El form real reenvía sizeCm/aspectRatio (prefill); variantStyle no tiene campo → se preserva.
     const mergedPol = mergePreservingUnmanagedAttributes(polaroid, {
       sizeCm: "6×8",

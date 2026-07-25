@@ -36,7 +36,10 @@ export function computeUnsubscribeToken(email: string): string {
         "Defínelo en .env.local / Vercel env vars.",
     );
   }
-  return createHash("sha256").update(`${email.trim().toLowerCase()}:${secret}`).digest("hex").slice(0, 32);
+  return createHash("sha256")
+    .update(`${email.trim().toLowerCase()}:${secret}`)
+    .digest("hex")
+    .slice(0, 32);
 }
 
 /**

@@ -28,10 +28,7 @@ import {
   CALENDAR_PHOTO,
   scalePhotoTransformToPage,
 } from "@/features/personalization/calendar-layout";
-import {
-  ensureBrandCanvasFontsLoaded,
-  type BrandCanvasFonts,
-} from "./lib/calendar-card-preview";
+import { ensureBrandCanvasFontsLoaded, type BrandCanvasFonts } from "./lib/calendar-card-preview";
 import { analyzeSmartCrop } from "./lib/smart-crop";
 
 /** Resolución del canvas offscreen: 0.5× de la página 1080×1440 → 540×720.

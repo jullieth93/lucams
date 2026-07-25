@@ -25,8 +25,12 @@ test.describe("catalogo-whatsapp preview certification", () => {
       page.getByRole("heading", { name: /Calendarios Magnéticos/i }).first(),
     ).toBeVisible({ timeout: 15_000 });
     await expect(page.getByRole("heading", { name: /Fotoimanes/i }).first()).toBeVisible();
-    await expect(page.getByRole("heading", { name: /Separadores Magnéticos/i }).first()).toBeVisible();
-    await expect(page.getByRole("heading", { name: /Juegos y Aprendizaje/i }).first()).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: /Separadores Magnéticos/i }).first(),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: /Juegos y Aprendizaje/i }).first(),
+    ).toBeVisible();
     await page.screenshot({ path: "/tmp/cert-home-desktop.png", fullPage: true });
   });
 

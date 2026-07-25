@@ -98,7 +98,7 @@ export function GlobalSearch() {
         title="Buscar productos"
         description="Escribe parte del nombre o SKU"
       >
-        <div className="flex flex-col items-center border-b border-brand-purple/10 bg-brand-purple/5 py-3">
+        <div className="border-brand-purple/10 bg-brand-purple/5 flex flex-col items-center border-b py-3">
           <LucamsLogo variant="mascot" size={48} aria-hidden="true" />
           <p className="text-brand-purple-dark mt-1 text-xs font-semibold">Buscar en Lucams</p>
         </div>

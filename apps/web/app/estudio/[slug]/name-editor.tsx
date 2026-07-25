@@ -487,8 +487,8 @@ export function NameEditor({
               styleId &&
               (themeOptions.find((t) => t.id === styleId)?.tileCount ?? 0) === 0 && (
                 <p className="text-brand-purple-dark/70 mt-2 text-xs">
-                  Este tema aún no tiene ilustraciones — se imprime como letra de color.
-                  Sube las ilustraciones en /admin/fichas para activarlo.
+                  Este tema aún no tiene ilustraciones — se imprime como letra de color. Sube las
+                  ilustraciones en /admin/fichas para activarlo.
                 </p>
               )}
           </div>

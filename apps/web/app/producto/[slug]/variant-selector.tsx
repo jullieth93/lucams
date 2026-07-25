@@ -227,8 +227,7 @@ export function VariantSelector({
     }
     // Dimensiones con >1 valor distinto, o de 1 valor visible (sizeCm).
     const keys = VISIBLE_DIMENSIONS.filter(
-      (key) =>
-        dimMap[key] && (dimMap[key].size > 1 || SINGLE_VALUE_VISIBLE_DIMS.has(key)),
+      (key) => dimMap[key] && (dimMap[key].size > 1 || SINGLE_VALUE_VISIBLE_DIMS.has(key)),
     );
     // Dedupe de grupos redundantes: si dos dimensions tienen EXACTAMENTE el mismo
     // valor en TODAS las variants (ej. `quantity` y `photoSlots` en packs donde cada
@@ -509,8 +508,7 @@ export function VariantSelector({
                 // los chips se vuelven interactivos solos (>1 valor).
                 const isSingle = dim.values.length === 1;
                 const isSelected = isSingle || currentValues[dim.key] === value;
-                const available =
-                  isSingle || isSelected || isCombinationAvailable(dim.key, value);
+                const available = isSingle || isSelected || isCombinationAvailable(dim.key, value);
                 return (
                   <button
                     key={value}

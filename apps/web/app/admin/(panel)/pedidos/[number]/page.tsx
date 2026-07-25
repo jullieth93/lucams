@@ -86,9 +86,7 @@ export default async function AdminPedidoDetallePage({
   const signedProduction = await getProductionAssetSignedUrls(productionPaths);
   // ADR-063 T7 — ¿hay piezas finalizadas? → ofrecer el ZIP completo (piezas + hoja de armado).
   const hasProduction = productionPaths.length > 0;
-  const productionItems = order.items.filter(
-    (it) => (it.design?.productionUrls?.length ?? 0) > 0,
-  );
+  const productionItems = order.items.filter((it) => (it.design?.productionUrls?.length ?? 0) > 0);
   let approvedPieceCount = 0;
   let unapprovedPieceCount = 0;
   for (const it of productionItems) {
@@ -142,7 +140,9 @@ export default async function AdminPedidoDetallePage({
                     </div>
                     <div className="text-brand-muted text-[11px]">
                       {productionPaths.length} pieza(s) ·{" "}
-                      <span className="text-emerald-700">{approvedPieceCount} listas para imprimir</span>
+                      <span className="text-emerald-700">
+                        {approvedPieceCount} listas para imprimir
+                      </span>
                       {hasUnapproved && (
                         <span className="ml-1 font-semibold text-amber-700">
                           · {unapprovedPieceCount} pendiente(s) de aprobación
@@ -237,7 +237,11 @@ export default async function AdminPedidoDetallePage({
                                     key={path}
                                     href={url}
                                     download={`${order.number}-${label}.png`}
-                                    title={approved ? undefined : "No imprimir hasta aprobar en Moderación"}
+                                    title={
+                                      approved
+                                        ? undefined
+                                        : "No imprimir hasta aprobar en Moderación"
+                                    }
                                     className={`inline-flex items-center gap-1 rounded-md border px-2 py-1 text-[11px] font-semibold ${
                                       approved
                                         ? "border-brand-purple/20 text-brand-purple-dark hover:bg-brand-purple/5"

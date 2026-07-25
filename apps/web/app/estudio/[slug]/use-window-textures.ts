@@ -29,11 +29,7 @@ export function useWindowTextures(
     const live = liveRef.current;
     let cancelled = false;
     const wanted = new Set<number>();
-    for (
-      let i = Math.max(0, index - radius);
-      i <= Math.min(urls.length - 1, index + radius);
-      i++
-    ) {
+    for (let i = Math.max(0, index - radius); i <= Math.min(urls.length - 1, index + radius); i++) {
       wanted.add(i);
     }
 

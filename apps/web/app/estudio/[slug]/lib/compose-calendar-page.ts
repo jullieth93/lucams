@@ -8,7 +8,10 @@
  */
 
 import { drawCalendarPage } from "@/features/personalization/calendar-draw";
-import { CALENDAR_PAGE, scalePhotoTransformToPage } from "@/features/personalization/calendar-layout";
+import {
+  CALENDAR_PAGE,
+  scalePhotoTransformToPage,
+} from "@/features/personalization/calendar-layout";
 import { ensureBrandCanvasFontsLoaded } from "./calendar-card-preview";
 
 // Escala del preview: 1080×1520 → ~810×1140. Nítido como textura 3D sin ser pesado.

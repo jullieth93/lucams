@@ -8,20 +8,20 @@
 
 ## Lectura condicional (según la tarea)
 
-| Tarea | Lee |
-|---|---|
-| UI, componentes, colores, tipografías, copy | `docs/BRANDING.md` |
-| Schema Prisma, RLS, estructura de carpetas, `PaymentProvider` | `docs/ARCHITECTURE.md` |
-| Wompi, Aveonline, Resend, IA (Gemini), WhatsApp, DIAN, webhooks | `docs/INTEGRATIONS.md` |
-| Env vars, despliegue, runbook, costos, branching | `docs/OPERATIONS.md` |
-| Auth, autorización, RLS, headers, CORS, rate limit, secrets, RBAC | `docs/SECURITY.md` |
-| Patrones de código (naming, RFC 7807, saga, idempotency, migrations, retry/CB) | `docs/CONVENTIONS.md` |
-| SLOs/SLIs, dashboards, alertas, postmortem | `docs/OBSERVABILITY.md` |
-| Compliance colombiano (Ley 1581/1480, DIAN, IVA, retracto) | `docs/COMPLIANCE.md` |
-| Estrategia de testing | `docs/TESTING.md` |
-| Decisiones previas (el "por qué" de algo) | `docs/DECISIONS.md` |
-| Alcance global / fase nueva | `docs/PLAN.md` |
-| Auditorías previas | `docs/audits/` (formato `YYYY-MM-DD-<slug>.md`) |
+| Tarea                                                                          | Lee                                             |
+| ------------------------------------------------------------------------------ | ----------------------------------------------- |
+| UI, componentes, colores, tipografías, copy                                    | `docs/BRANDING.md`                              |
+| Schema Prisma, RLS, estructura de carpetas, `PaymentProvider`                  | `docs/ARCHITECTURE.md`                          |
+| Wompi, Aveonline, Resend, IA (Gemini), WhatsApp, DIAN, webhooks                | `docs/INTEGRATIONS.md`                          |
+| Env vars, despliegue, runbook, costos, branching                               | `docs/OPERATIONS.md`                            |
+| Auth, autorización, RLS, headers, CORS, rate limit, secrets, RBAC              | `docs/SECURITY.md`                              |
+| Patrones de código (naming, RFC 7807, saga, idempotency, migrations, retry/CB) | `docs/CONVENTIONS.md`                           |
+| SLOs/SLIs, dashboards, alertas, postmortem                                     | `docs/OBSERVABILITY.md`                         |
+| Compliance colombiano (Ley 1581/1480, DIAN, IVA, retracto)                     | `docs/COMPLIANCE.md`                            |
+| Estrategia de testing                                                          | `docs/TESTING.md`                               |
+| Decisiones previas (el "por qué" de algo)                                      | `docs/DECISIONS.md`                             |
+| Alcance global / fase nueva                                                    | `docs/PLAN.md`                                  |
+| Auditorías previas                                                             | `docs/audits/` (formato `YYYY-MM-DD-<slug>.md`) |
 
 ### Reglas
 

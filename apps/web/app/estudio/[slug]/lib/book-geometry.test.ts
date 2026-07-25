@@ -130,10 +130,7 @@ describe("stripDimsForFace (ola 3 — la CARA manda: tamaño y encuadre sin re-c
     const { stripW, stripL } = stripDimsForFace(FACE_SQUARE, "4×4.2");
     expect(stripW / CM).toBeCloseTo(4.2, 6);
     expect(effectiveHang(stripL) / CM).toBeCloseTo(4, 6);
-    expect(stripW / effectiveHang(stripL)).toBeCloseTo(
-      FACE_SQUARE.hRatio / FACE_SQUARE.wRatio,
-      6,
-    );
+    expect(stripW / effectiveHang(stripL)).toBeCloseTo(FACE_SQUARE.hRatio / FACE_SQUARE.wRatio, 6);
   });
 
   it("la cara 4×4.2 se ve DISTINTA de la 6×2 (ancho y alto difieren claramente)", () => {

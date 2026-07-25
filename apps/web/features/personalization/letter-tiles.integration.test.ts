@@ -128,57 +128,57 @@ describe.skipIf(!canRunStorage)("certificación fichas end-to-end (Ola 2A)", () 
     "diseño de vocales con styleSetId + language → finalize (preview + producción en Storage)",
     { timeout: 60_000 },
     async () => {
-    // Producto REAL Pack Vocales (compartido) + una variante activa suya.
-    const product = await prisma.product.findUnique({
-      where: { slug: "pack-vocales" },
-      select: { id: true },
-    });
-    expect(product).not.toBeNull();
-    const variant = await prisma.productVariant.findFirst({
-      where: { productId: product!.id, isActive: true, deletedAt: null },
-      select: { id: true },
-    });
-    expect(variant).not.toBeNull();
+      // Producto REAL Pack Vocales (compartido) + una variante activa suya.
+      const product = await prisma.product.findUnique({
+        where: { slug: "pack-vocales" },
+        select: { id: true },
+      });
+      expect(product).not.toBeNull();
+      const variant = await prisma.productVariant.findFirst({
+        where: { productId: product!.id, isActive: true, deletedAt: null },
+        select: { id: true },
+      });
+      expect(variant).not.toBeNull();
 
-    const created = await createLetterSetDesign({
-      productId: product!.id,
-      variantId: variant!.id,
-      frameTheme: "arcoiris",
-      colors: ["#5DD9D1", "#E85B9F", "#7C6AAD", "#FFD93D", "#5DD9D1"],
-      styleSetId: setId,
-      language: "es",
-      customerId: null,
-      sessionId: `test-${RUN}`,
-    });
-    designId = created.id;
-    // El diseño queda con las 5 vocales y el idioma del Estudio (no el de la variante).
-    expect(created.letters).toEqual(["A", "E", "I", "O", "U"]);
-    expect(created.language).toBe("es");
-    const meta = await prisma.design.findUnique({
-      where: { id: designId },
-      select: { metadata: true },
-    });
-    expect((meta!.metadata as { styleSetId?: string }).styleSetId).toBe(setId);
-    expect((meta!.metadata as { language?: string }).language).toBe("es");
+      const created = await createLetterSetDesign({
+        productId: product!.id,
+        variantId: variant!.id,
+        frameTheme: "arcoiris",
+        colors: ["#5DD9D1", "#E85B9F", "#7C6AAD", "#FFD93D", "#5DD9D1"],
+        styleSetId: setId,
+        language: "es",
+        customerId: null,
+        sessionId: `test-${RUN}`,
+      });
+      designId = created.id;
+      // El diseño queda con las 5 vocales y el idioma del Estudio (no el de la variante).
+      expect(created.letters).toEqual(["A", "E", "I", "O", "U"]);
+      expect(created.language).toBe("es");
+      const meta = await prisma.design.findUnique({
+        where: { id: designId },
+        select: { metadata: true },
+      });
+      expect((meta!.metadata as { styleSetId?: string }).styleSetId).toBe(setId);
+      expect((meta!.metadata as { language?: string }).language).toBe("es");
 
-    // Finalize: preview + producción (1 PNG, canvasData V1) a los buckets reales.
-    const preview = await solidTile("#FFF8F0");
-    storageCleanup.push({ bucket: "design-previews", paths: [`${designId}/preview.png`] });
-    storageCleanup.push({ bucket: "production-assets", paths: [`${designId}/slot-01.png`] });
-    const finalized = await finalizeDesign({
-      designId,
-      previewBuffer: preview,
-      productionBuffers: [preview],
-      customerId: null,
-      sessionId: `test-${RUN}`,
-    });
-    expect(finalized.status).toBe("READY");
-    expect(finalized.previewUrl).toContain("design-previews");
-    expect(finalized.productionUrls).toHaveLength(1);
+      // Finalize: preview + producción (1 PNG, canvasData V1) a los buckets reales.
+      const preview = await solidTile("#FFF8F0");
+      storageCleanup.push({ bucket: "design-previews", paths: [`${designId}/preview.png`] });
+      storageCleanup.push({ bucket: "production-assets", paths: [`${designId}/slot-01.png`] });
+      const finalized = await finalizeDesign({
+        designId,
+        previewBuffer: preview,
+        productionBuffers: [preview],
+        customerId: null,
+        sessionId: `test-${RUN}`,
+      });
+      expect(finalized.status).toBe("READY");
+      expect(finalized.previewUrl).toContain("design-previews");
+      expect(finalized.productionUrls).toHaveLength(1);
 
-    // El preview quedó público (es el thumbnail que ve el carrito/cotización).
-    const res = await fetch(finalized.previewUrl!);
-    expect(res.status).toBe(200);
+      // El preview quedó público (es el thumbnail que ve el carrito/cotización).
+      const res = await fetch(finalized.previewUrl!);
+      expect(res.status).toBe(200);
     },
   );
 });

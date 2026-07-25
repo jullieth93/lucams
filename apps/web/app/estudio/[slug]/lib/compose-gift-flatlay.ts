@@ -10,7 +10,12 @@
 
 const S = 1080; // lienzo cuadrado (compartible)
 
-type Piece = { dataUrl: string; wRatio: number; hRatio: number; shape?: "rectangle" | "circle" | "heart" | "custom" };
+type Piece = {
+  dataUrl: string;
+  wRatio: number;
+  hRatio: number;
+  shape?: "rectangle" | "circle" | "heart" | "custom";
+};
 
 function loadImg(url: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {

@@ -148,10 +148,7 @@ export function simpleCardPhotoRect(
 // ──────────────────────────────────────────────────────────────────────────
 
 /** ¿La plantilla es una celda de tira photobooth? (marcadores gridCols=1 + gridGap=0). */
-export function isStripTemplate(unitTemplate: {
-  gridCols?: unknown;
-  gridGap?: unknown;
-}): boolean {
+export function isStripTemplate(unitTemplate: { gridCols?: unknown; gridGap?: unknown }): boolean {
   return unitTemplate.gridCols === 1 && unitTemplate.gridGap === 0;
 }
 
@@ -178,7 +175,11 @@ export function stripOuterInset(stage: { width: number; height: number }): numbe
  * first/single → inset arriba; last/single → inset abajo; middle → fotos se tocan.
  * Los lados los maneja la plantilla (ventana con margen lateral uniforme).
  */
-export function stripPhotoRect(ph: PhotoRect, stage: { width: number; height: number }, position: StripPosition): PhotoRect {
+export function stripPhotoRect(
+  ph: PhotoRect,
+  stage: { width: number; height: number },
+  position: StripPosition,
+): PhotoRect {
   const inset = stripOuterInset(stage);
   const top = position === "first" || position === "single" ? inset : 0;
   const bottom = position === "last" || position === "single" ? inset : 0;
@@ -192,7 +193,9 @@ export function stripPhotoRect(ph: PhotoRect, stage: { width: number; height: nu
 // ──────────────────────────────────────────────────────────────────────────
 
 /** ¿La plantilla es la Polaroid Instagram? (chrome SVG ig_post). */
-export function isInstagramTemplate(layers: ReadonlyArray<{ type: string; src?: unknown }>): boolean {
+export function isInstagramTemplate(
+  layers: ReadonlyArray<{ type: string; src?: unknown }>,
+): boolean {
   return layers.some(
     (l) => l.type === "asset" && typeof l.src === "string" && l.src.includes("ig_post"),
   );
@@ -250,12 +253,7 @@ export function isInstagramNoBorder(
   const y = Math.round(58 * scale);
   const w = Math.round(420 * scale);
   const h = Math.round(400 * scale);
-  return (
-    photoRect.x === x &&
-    photoRect.y === y &&
-    photoRect.width === w &&
-    photoRect.height === h
-  );
+  return photoRect.x === x && photoRect.y === y && photoRect.width === w && photoRect.height === h;
 }
 
 /**

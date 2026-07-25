@@ -68,14 +68,17 @@ describe("getAdminNav", () => {
     expect(config?.items?.some((it) => it.href === "/admin/seguridad")).toBe(true);
   });
 
-  it.each(["full", "catalog"])("Cotizaciones es el primer item de Ventas (modo %s)", async (mode) => {
-    process.env[KEY] = mode;
-    const mod = await loadNav();
-    const ventas = mod.getAdminNav().find((g) => g.title === "Ventas");
+  it.each(["full", "catalog"])(
+    "Cotizaciones es el primer item de Ventas (modo %s)",
+    async (mode) => {
+      process.env[KEY] = mode;
+      const mod = await loadNav();
+      const ventas = mod.getAdminNav().find((g) => g.title === "Ventas");
 
-    expect(ventas?.items?.[0]?.label).toBe("Cotizaciones");
-    expect(ventas?.items?.[0]?.href).toBe("/admin/cotizaciones");
-  });
+      expect(ventas?.items?.[0]?.label).toBe("Cotizaciones");
+      expect(ventas?.items?.[0]?.href).toBe("/admin/cotizaciones");
+    },
+  );
 
   it("modo catalog: el filtrado NO muta ADMIN_NAV (el placeholder sigue viendo todo)", async () => {
     process.env[KEY] = "catalog";

@@ -91,8 +91,7 @@ export function StudioPhotoPreview({
     () => unitTemplate.layers.some((l) => l.type === "frame-card"),
     [unitTemplate],
   );
-  const fullBleed =
-    !!borderColor && frameFullBleed && !hasFrameCard;
+  const fullBleed = !!borderColor && frameFullBleed && !hasFrameCard;
   const isIg = useMemo(() => isInstagramTemplate(unitTemplate.layers), [unitTemplate]);
   const simpleCard = useMemo(
     () =>
@@ -131,10 +130,7 @@ export function StudioPhotoPreview({
   }, [unitTemplate, isIg]);
 
   // ── Gestos de zoom (rueda en desktop, pellizco en táctil) ──
-  const clampScale = useCallback(
-    (s: number) => Math.max(SCALE_MIN, Math.min(SCALE_MAX, s)),
-    [],
-  );
+  const clampScale = useCallback((s: number) => Math.max(SCALE_MIN, Math.min(SCALE_MAX, s)), []);
 
   // Listener NATIVO con passive:false — el único camino de zoom por rueda.
   // Es el mismo patrón del slot: garantiza preventDefault incluso dentro del

@@ -102,7 +102,10 @@ export function StudioPolaroidBorderToggle({ store }: { store: StoreApi<StudioSt
     : null;
 
   return (
-    <section aria-labelledby="sidebar-polaroid-borde" className="border-brand-purple/10 border-t pt-5">
+    <section
+      aria-labelledby="sidebar-polaroid-borde"
+      className="border-brand-purple/10 border-t pt-5"
+    >
       <div
         id="sidebar-polaroid-borde"
         className="text-brand-purple-dark mb-3 flex items-center gap-2 text-sm font-semibold"

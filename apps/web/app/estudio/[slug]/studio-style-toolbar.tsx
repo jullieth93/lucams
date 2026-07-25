@@ -20,10 +20,7 @@
 import { useStore } from "zustand";
 import type { StoreApi } from "zustand";
 import { Frame, Image as ImageIcon, Check } from "lucide-react";
-import {
-  frameColorById,
-  isInstagramTemplate,
-} from "@/features/personalization/frame-palette";
+import { frameColorById, isInstagramTemplate } from "@/features/personalization/frame-palette";
 import type { StudioStoreState } from "./lib/store";
 
 const LIGHT_HEXES = new Set(["#FFFFFF", "#FFD93D"]);
@@ -65,8 +62,7 @@ export function StudioStyleToolbar({ store, frameOptions = [] }: StudioStyleTool
   const isPolaroidClasica = selectedTemplate?.slug === "photo-pack-polaroid-clasica";
 
   // Solo mostrar la barra si hay algo configurable.
-  const hasConfigurableFrame =
-    frameOptions.length > 0 || isIg || isPolaroidClasica;
+  const hasConfigurableFrame = frameOptions.length > 0 || isIg || isPolaroidClasica;
   if (!hasConfigurableFrame) return null;
 
   const stageW = unitTemplate.stage.width;
@@ -109,12 +105,13 @@ export function StudioStyleToolbar({ store, frameOptions = [] }: StudioStyleTool
   const photoPlaceholder = unitTemplate.layers.find((l) => l.type === "image-placeholder") as
     | { x?: number; y?: number; width?: number; height?: number }
     | undefined;
-  const isFullBleed = !!photoPlaceholder && !!baseRect && (
-    (photoPlaceholder.x ?? 0) !== baseRect.x ||
-    (photoPlaceholder.y ?? 0) !== baseRect.y ||
-    (photoPlaceholder.width ?? 0) !== baseRect.width ||
-    (photoPlaceholder.height ?? 0) !== baseRect.height
-  );
+  const isFullBleed =
+    !!photoPlaceholder &&
+    !!baseRect &&
+    ((photoPlaceholder.x ?? 0) !== baseRect.x ||
+      (photoPlaceholder.y ?? 0) !== baseRect.y ||
+      (photoPlaceholder.width ?? 0) !== baseRect.width ||
+      (photoPlaceholder.height ?? 0) !== baseRect.height);
 
   // Paleta efectiva: Instagram solo blanco/negro; el resto todas las opciones válidas.
   const frameColors = (frameOptions ?? [])
@@ -135,13 +132,17 @@ export function StudioStyleToolbar({ store, frameOptions = [] }: StudioStyleTool
   };
 
   return (
-    <div className="border-brand-purple/10 bg-white/95 mb-4 w-full max-w-xl rounded-2xl border px-4 py-3 shadow-sm">
+    <div className="border-brand-purple/10 mb-4 w-full max-w-xl rounded-2xl border bg-white/95 px-4 py-3 shadow-sm">
       <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-3">
         {/* Color de tarjeta */}
         {frameColors.length > 0 && (
           <div className="flex items-center gap-2">
             <span className="text-brand-purple-dark text-xs font-semibold">Color de tarjeta</span>
-            <div role="radiogroup" aria-label="Color de tarjeta" className="flex items-center gap-1.5">
+            <div
+              role="radiogroup"
+              aria-label="Color de tarjeta"
+              className="flex items-center gap-1.5"
+            >
               {isIg ? null : (
                 <ColorButton
                   active={borderColor === null}
@@ -211,7 +212,9 @@ function BorderOption({
       onClick={onClick}
       className={[
         "flex items-center justify-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold transition-all focus:outline-none",
-        active ? "bg-brand-purple text-white shadow-sm" : "text-brand-purple-dark/70 hover:bg-brand-purple/10",
+        active
+          ? "bg-brand-purple text-white shadow-sm"
+          : "text-brand-purple-dark/70 hover:bg-brand-purple/10",
       ].join(" ")}
     >
       {icon}
@@ -243,13 +246,11 @@ function ColorButton({
       onClick={onClick}
       className={[
         "focus:ring-brand-turquoise relative flex h-8 w-8 cursor-pointer items-center justify-center rounded-full transition-all focus:ring-2 focus:outline-none",
-        active ? "ring-brand-turquoise shadow-md ring-2 ring-offset-2" : "ring-brand-purple/20 hover:ring-brand-purple/50 ring-1",
+        active
+          ? "ring-brand-turquoise shadow-md ring-2 ring-offset-2"
+          : "ring-brand-purple/20 hover:ring-brand-purple/50 ring-1",
       ].join(" ")}
-      style={
-        kind === "none"
-          ? { background: "white" }
-          : { backgroundColor: color }
-      }
+      style={kind === "none" ? { background: "white" } : { backgroundColor: color }}
     >
       {kind === "none" ? (
         <span className="text-brand-muted text-lg leading-none" aria-hidden>
