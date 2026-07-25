@@ -72,7 +72,7 @@ const REVIEWS = [
     author: "Manuela O.",
     city: "Pereira",
     comment:
-      "Detalle súper completo, mi suegra quedó encantada. El empaque ya es un regalo en sí mismo. Llegó perfecto y en 3 días.",
+      "Detalle súper completo, mi suegra quedó encantada. El empaque ya es un regalo en sí mismo. Llegó perfecto y muy bien protegido.",
     featured: false,
   },
   {

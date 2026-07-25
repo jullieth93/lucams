@@ -232,7 +232,7 @@ async function buildGroups(): Promise<Group[]> {
       claimId: "wr_123456",
       productName: "Fotoimanes Cuadrados",
       resolutionType: "REPLACE",
-      note: "Te enviamos el reemplazo sin costo. Llega en 3-5 días hábiles.",
+      note: "Te enviamos el reemplazo sin costo. Lo despachamos en máximo 2 días hábiles; el tiempo de entrega depende de la transportadora.",
     }),
   ]);
 

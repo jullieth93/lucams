@@ -26,7 +26,7 @@ Certificar CADA flujo end-to-end en desktop (1280×800) y móvil (390×844):
 
 1. Home: hero, 4 categorías reales (Fotoimanes, Calendarios, Separadores,
    Juegos), reseñas sin etiqueta demo, how-it-works ("Llega a tus manos",
-   "Despacho de 1 a 2 días"), "Pago contraentrega disponible" SOLO si COD
+   "Despachamos en máx. 2 días hábiles"), "Pago contraentrega disponible" SOLO si COD
    está activo en admin (modular).
 2. Catálogo (/productos, /productos/[categoria]/[subcategoria]): filtros,
    orden, cards con precio/descuento, mega-menú sin desborde, cantidad de
@@ -64,7 +64,8 @@ Certificar CADA flujo end-to-end en desktop (1280×800) y móvil (390×844):
 9. Footer: WhatsApp 57 320 887 3826, Facebook https://www.facebook.com/lucamsshop,
    listas cortas, datos de contacto correctos en TODO el ecosistema.
 10. /ayuda: contenido coherente con persona natural SIN facturación DIAN
-    (quitar promesas de factura electrónica), tiempos máx 3 días, COD modular.
+    (quitar promesas de factura electrónica), despacho máx. 2 días hábiles + tiempo
+    de la transportadora, COD modular.
 
 ## FASE 2 — CAPA ADMIN (admin NO técnico)
 
@@ -136,7 +137,8 @@ el ítem; no se aceptan "errores conocidos".
 
 - PROHIBIDO exponer UI de pagos en línea, integración de envíos o chatbot.
 - CTA de cierre siempre WhatsApp con el número correcto.
-- Tiempos comunicados: producción 1 a 2 días hábiles + tiempo aliado de transporte.
+- Tiempos comunicados: despacho en máximo 2 días hábiles (compromiso propio) + tiempo de la
+  transportadora (estimado del courier, variable según ciudad). NUNCA se promete una fecha de entrega.
 - Cambios mínimos y revisables; nada de refactors oportunistas.
 - Trabajar en la rama catalogo-whatsapp; develop queda para la futura
   transaccionalidad (Wompi/Aveonline); production/master es el cierre final.

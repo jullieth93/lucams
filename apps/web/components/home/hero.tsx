@@ -87,8 +87,12 @@ export async function HomeHero() {
               </span>
             )}
             <span className="bg-brand-yellow/30 text-brand-purple-dark rounded-full px-3 py-1">
-              {/* Producción 2 días hábiles + 1 de entrega = máximo 3 en total. */}
-              <CmsText blockKey="home.hero.chip-eta" fallback="Te llega en máx. 3 días" />
+              {/* El compromiso propio es el DESPACHO (máx. 2 días hábiles). El tránsito lo pone la
+                  transportadora y cambia según la ciudad: no se promete una fecha de entrega. */}
+              <CmsText
+                blockKey="home.hero.chip-eta"
+                fallback="Despachamos en máx. 2 días hábiles"
+              />
             </span>
           </div>
         </div>

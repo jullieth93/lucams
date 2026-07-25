@@ -342,7 +342,7 @@ export function ProductForm({ categories, priceFrom, initialProduct, action, sub
                 disabled={pending}
               />
             </Field>
-            <Field id="productionDays" label="Producción (días)">
+            <Field id="productionDays" label="Días hábiles hasta el despacho">
               <Input
                 id="productionDays"
                 name="productionDays"

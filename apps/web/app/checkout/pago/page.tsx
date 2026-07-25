@@ -164,7 +164,7 @@ export default async function CheckoutPagoPage({ searchParams }: { searchParams:
             <p className="text-brand-purple-dark mt-2 text-xs font-medium">
               Vía {shippingSelection.carrierName}
               {shippingSelection.deliveryDays > 0 &&
-                ` · ${shippingSelection.deliveryDays} día${shippingSelection.deliveryDays === 1 ? "" : "s"} hábil${shippingSelection.deliveryDays === 1 ? "" : "es"}`}
+                ` · estimado de la transportadora: ${shippingSelection.deliveryDays} día${shippingSelection.deliveryDays === 1 ? "" : "s"} hábil${shippingSelection.deliveryDays === 1 ? "" : "es"} tras el despacho`}
             </p>
           </ReviewCard>
 

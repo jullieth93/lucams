@@ -1554,7 +1554,7 @@ const reviewsData = [
     productSlug: "set-6-fotoimanes-polaroid-grande",
     rating: 5,
     comment:
-      "Personalización súper fácil, llegó en 4 días. Vino con un empaque kawaii precioso, parece regalo de marca grande.",
+      "Personalización súper fácil y llegó muy bien empacado. Vino con un empaque kawaii precioso, parece regalo de marca grande.",
     authorName: "Ana S.",
     authorCity: "Medellín",
     featured: true,
@@ -1620,7 +1620,7 @@ const reviewsData = [
     productSlug: "recuerdos-matrimonio",
     rating: 5,
     comment:
-      "Lucy nos asesoró por WhatsApp con el diseño, súper paciente. Llegaron antes de lo prometido.",
+      "Lucy nos asesoró por WhatsApp con el diseño, súper paciente. Quedaron divinos y llegaron muy bien empacados.",
     authorName: "Pablo H.",
     authorCity: "Bogotá",
     isApproved: true,

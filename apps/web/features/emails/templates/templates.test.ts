@@ -412,7 +412,9 @@ describe("orderShippedEmail", () => {
     const r = await orderShippedEmail(shData({ estimatedDays: 1 }));
     expect(r.html).toContain("1 día hábil");
     expect(r.html).not.toContain("1 días");
-    expect(r.text).toContain("Estimado: 1 día(s) hábil(es)");
+    // El plazo se atribuye a la transportadora, no a la tienda: es un estimado del courier, no una
+    // fecha que prometamos nosotros (corrección comercial de Lucy, 2026-07-25).
+    expect(r.text).toContain("Estimado de la transportadora: 1 día(s) hábil(es) desde el despacho");
   });
 
   it("estimatedDays>1 usa plural 'días hábiles'", async () => {

@@ -388,16 +388,19 @@ export default async function ProductoDetallePage({
                     <span>
                       {catalog ? (
                         <>
-                          Lo producimos en <strong>2 días hábiles</strong> y te llega en{" "}
-                          <strong>1 día más</strong> (máximo 3 en total). El envío se coordina por
-                          WhatsApp con nuestras transportadoras aliadas.
+                          Lo producimos a mano y lo{" "}
+                          <strong>despachamos en máximo 2 días hábiles</strong>. El tiempo de
+                          entrega depende de la transportadora y de tu ciudad; el envío lo
+                          coordinamos por WhatsApp con nuestras aliadas.
                         </>
                       ) : (
                         <>
-                          Hecho a pedido: se produce en{" "}
-                          <strong>{product.productionDays} días hábiles</strong> + envío{" "}
-                          {product.shippingDaysMin}–{product.shippingDaysMax} días con nuestras
-                          transportadoras aliadas según tu ciudad.
+                          Hecho a pedido: lo{" "}
+                          <strong>
+                            despachamos en máximo {product.productionDays} días hábiles
+                          </strong>
+                          . Desde ahí, las transportadoras aliadas estiman {product.shippingDaysMin}
+                          –{product.shippingDaysMax} días según tu ciudad.
                         </>
                       )}
                     </span>

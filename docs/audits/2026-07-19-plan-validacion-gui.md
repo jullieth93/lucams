@@ -81,7 +81,9 @@ El "ayúdame a elegir". Se reescribió casi completo (Tanda 8 A/B).
 
 - [ ] 🔴 **Contraentrega no dice "Pagado":** en un pedido contraentrega (guest y en `/mi-cuenta/pedidos`), el estado dice "Confirmado" y hay un aviso persistente "Pagas $X en efectivo…". Nunca "Pagado" antes de recibir.
 - [ ] 🟡 **Transportadora legible:** en el seguimiento, el nombre de la transportadora sale en formato bonito (no en MAYÚSCULAS de código).
-- [ ] 🟡 **Tiempos de entrega unificados** a "4-9 días hábiles" y el nombre "Fotoimanes".
+- [x] ~~🟡 **Tiempos de entrega unificados** a "4-9 días hábiles"~~ → SUPERADO (2026-07-25): la
+      narrativa correcta es despacho en máx. 2 días hábiles + tiempo de la transportadora. Sigue
+      vigente el nombre "Fotoimanes".
 - [ ] 🟡 **Deep-link tras login:** entra a `/mi-cuenta/pedidos/<numero>` sin sesión → te manda a login y **después del login te devuelve a esa misma página** (no a `/mi-cuenta` genérico).
 - [ ] 🟢 **Cotizador de envío:** los tiempos dicen "…tras el despacho" y hay una nota de que antes se fabrica a mano (2-4 días).
 

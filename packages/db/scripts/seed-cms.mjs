@@ -453,7 +453,7 @@ Archivo machine-readable disponible en [/.well-known/security.txt](/.well-known/
     title: "Paso 3 — Descripción",
     category: "HOME",
     format: "TEXT",
-    body: "Lo fabricamos a mano y te llega en 4-9 días hábiles. Pago contraentrega disponible en 1.100+ destinos.",
+    body: "Lo producimos a mano y lo despachamos en máximo 2 días hábiles. El tiempo de entrega depende de la transportadora y de tu ciudad. Pago contraentrega disponible en 1.100+ destinos.",
   },
   {
     key: "home.featured.heading",
@@ -808,7 +808,7 @@ const settings = [
   // COMMERCE
   {
     key: "MANUFACTURING_DAYS_RANGE",
-    value: "4-9 días hábiles",
+    value: "2 días hábiles (hasta el despacho)",
     valueType: "TEXT",
     label: "Tiempo de fabricación",
     description: "Tiempo que tardan los productos personalizados en fabricarse antes de envío.",

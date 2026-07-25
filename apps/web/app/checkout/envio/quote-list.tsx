@@ -69,10 +69,10 @@ export function QuoteList({
                     {/* #25 — es tiempo de TRÁNSITO, no de entrega total; nunca "Entrega hoy" a secas
                       (falta la fabricación). Ver la nota bajo la lista. */}
                     {q.deliveryDays === 0
-                      ? "Envío el mismo día tras el despacho"
+                      ? "Estimado de la transportadora: el mismo día del despacho"
                       : q.deliveryDays === 1
-                        ? "1 día hábil tras el despacho"
-                        : `${q.deliveryDays} días hábiles tras el despacho`}
+                        ? "Estimado de la transportadora: 1 día hábil tras el despacho"
+                        : `Estimado de la transportadora: ${q.deliveryDays} días hábiles tras el despacho`}
                     {q.contraentrega && (
                       <span className="bg-brand-yellow/30 ml-2 rounded px-1.5 py-0.5 text-[10px] font-semibold text-amber-900">
                         Contraentrega
@@ -97,8 +97,9 @@ export function QuoteList({
       <p className="text-brand-muted mt-3 flex items-start gap-1.5 text-xs">
         <Clock className="mt-0.5 h-3 w-3 flex-shrink-0" aria-hidden />
         <span>
-          Son tiempos de transporte. Antes fabricamos tu pedido a mano: suma{" "}
-          <strong>2 días hábiles de fabricación</strong> antes del despacho.
+          Son tiempos <strong>estimados por la transportadora</strong>, no una fecha garantizada.
+          Antes fabricamos tu pedido a mano: lo{" "}
+          <strong>despachamos en máximo 2 días hábiles</strong> y de ahí corre el tránsito.
         </span>
       </p>
 

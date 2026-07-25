@@ -18,7 +18,7 @@ export type OrderShippedData = {
 export async function orderShippedEmail(data: OrderShippedData) {
   const siteUrl = await getSettingValue("SITE_URL", "https://lucamsshop.com");
   const etaText = data.estimatedDays
-    ? `<p>Estimado de entrega: <strong>${data.estimatedDays} día${data.estimatedDays === 1 ? "" : "s"} hábil${data.estimatedDays === 1 ? "" : "es"}</strong>.</p>`
+    ? `<p>Estimado de la transportadora: <strong>${data.estimatedDays} día${data.estimatedDays === 1 ? "" : "s"} hábil${data.estimatedDays === 1 ? "" : "es"}</strong> desde el despacho. Es un estimado del courier, no una fecha garantizada.</p>`
     : "";
 
   const trackingBlock = data.trackingUrl
@@ -51,7 +51,7 @@ Despachamos tu pedido ${data.orderNumber}.
 
 Transportadora: ${data.carrier}
 Número de guía: ${data.trackingNumber}
-${data.estimatedDays ? `Estimado: ${data.estimatedDays} día(s) hábil(es)\n` : ""}
+${data.estimatedDays ? `Estimado de la transportadora: ${data.estimatedDays} día(s) hábil(es) desde el despacho\n` : ""}
 ${data.trackingUrl ? `Rastrear: ${data.trackingUrl}\n` : ""}
 Cualquier duda, escríbenos al ${siteUrl}/contacto`;
 
