@@ -19,12 +19,24 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const removeMock = vi.hoisted(() =>
   vi.fn(async (_paths: string[]) => ({ error: null as { message: string } | null })),
 );
+/*
+ * `list` existe porque la purga tiene que descubrir el área de paso `{designId}/_client/` (ADR-081):
+ * esos PNG no viven en ninguna columna, así que la única forma de encontrarlos es listar el prefijo.
+ * Por defecto devuelve vacío —el caso normal— y un caso concreto lo puebla para comprobar que sí se
+ * borran.
+ */
+const listMock = vi.hoisted(() =>
+  vi.fn(async (_prefix: string) => ({
+    data: [] as { name: string }[],
+    error: null as { message: string } | null,
+  })),
+);
 
 vi.mock("@/lib/logger", () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
 vi.mock("@/lib/supabase/service", () => ({
-  supabaseService: { storage: { from: () => ({ remove: removeMock }) } },
+  supabaseService: { storage: { from: () => ({ remove: removeMock, list: listMock }) } },
 }));
 
 // ─────────────────────────── filas en memoria ───────────────────────────
@@ -300,6 +312,8 @@ beforeEach(() => {
   quoteItemUpdates.length = 0;
   removeMock.mockClear();
   removeMock.mockResolvedValue({ error: null });
+  listMock.mockClear();
+  listMock.mockResolvedValue({ data: [], error: null });
 });
 
 const runPurge = () => purgeAbandonedAnonymousDesigns({ now: NOW });
@@ -340,6 +354,23 @@ describe("purga de diseños anónimos — ciclo de vida de la cotización", () =
     const expected = CASES.filter((c) => c.purge).length;
     expect(res.designsPurged).toBe(expected);
     expect(res.assetsPurged).toBe(expected); // una foto por diseño en el fixture
+  });
+
+  /*
+   * ADR-081 — los snapshots que el cliente sube DIRECTO a Storage viven bajo `{designId}/_client/` y
+   * no se persisten en ninguna columna: `Design.productionUrls` solo guarda los archivos definitivos.
+   * Si el cliente abandona después de subirlos, nadie más los conoce. Y son el render de SUS fotos,
+   * o sea datos personales: dejarlos en el bucket para siempre contradice el principio de
+   * temporalidad de la Ley 1581 (Decreto 1074 de 2015, art. 2.2.2.25.2.8).
+   */
+  it("borra también el área de paso de los snapshots del cliente", async () => {
+    listMock.mockResolvedValue({ data: [{ name: "slot-01.png" }], error: null });
+
+    await runPurge();
+
+    const borrados = removeMock.mock.calls.flatMap(([paths]) => paths);
+    const purgado = CASES.find((c) => c.purge)!.design.id;
+    expect(borrados).toContain(`${purgado}/_client/slot-01.png`);
   });
 
   it("si falla el borrado de los bytes, NO borra filas (se reintenta el próximo ciclo)", async () => {

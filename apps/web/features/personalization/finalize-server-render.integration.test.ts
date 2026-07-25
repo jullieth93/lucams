@@ -112,29 +112,37 @@ beforeAll(() => {
   if (!process.env.SUPABASE_SECRET_KEY) throw new Error("falta SUPABASE_SECRET_KEY");
 });
 
+/*
+ * La limpieza lleva timeout EXPLÍCITO y generoso. El de vitest son 10 s, y con varios diseños —cada
+ * uno con dos listados de Storage por bucket— se agota: el hook muere a medias, la prueba "pasa" y
+ * quedan filas de prueba en la tienda EN VIVO, que es la misma base. Un afterAll que no alcanza a
+ * terminar es peor que uno que falla.
+ */
 afterAll(async () => {
-  for (const id of creados) {
-    // Storage primero: si falla el borrado de las filas, al menos no quedan archivos huérfanos.
-    for (const bucket of ["production-assets", "design-previews"]) {
-      const { data } = await supabase.storage.from(bucket).list(id);
-      if (data?.length) {
-        await supabase.storage.from(bucket).remove(data.map((f) => `${id}/${f.name}`));
+  // Los diseños se limpian en paralelo: en serie el tiempo crece con cada caso nuevo.
+  await Promise.all(
+    creados.map(async (id) => {
+      // Storage primero: si falla el borrado de las filas, al menos no quedan archivos huérfanos.
+      for (const bucket of ["production-assets", "design-previews"]) {
+        for (const prefix of [id, `${id}/_client`]) {
+          const { data } = await supabase.storage.from(bucket).list(prefix);
+          if (data?.length) {
+            await supabase.storage.from(bucket).remove(data.map((f) => `${prefix}/${f.name}`));
+          }
+        }
       }
-      const { data: staged } = await supabase.storage.from(bucket).list(`${id}/_client`);
-      if (staged?.length) {
-        await supabase.storage.from(bucket).remove(staged.map((f) => `${id}/_client/${f.name}`));
-      }
-    }
-    await prisma.designAsset.deleteMany({ where: { designId: id } });
-    await prisma.design.delete({ where: { id } }).catch(() => undefined);
-  }
+      await prisma.designAsset.deleteMany({ where: { designId: id } });
+      await prisma.design.delete({ where: { id } }).catch(() => undefined);
+    }),
+  );
   // Red de seguridad: nada con nuestra marca puede sobrevivir a la prueba.
   const restos = await prisma.design.findMany({ where: { sessionId: RUN }, select: { id: true } });
   for (const r of restos) {
     await prisma.designAsset.deleteMany({ where: { designId: r.id } });
     await prisma.design.delete({ where: { id: r.id } }).catch(() => undefined);
   }
-});
+  expect(await prisma.design.count({ where: { sessionId: RUN } })).toBe(0);
+}, 180_000);
 
 describe("finalizeDesign — el cliente ya no manda los PNG de imprenta", () => {
   it("camino normal: el servidor renderiza y el diseño queda READY sin recibir un solo blob", async () => {
@@ -213,6 +221,55 @@ describe("finalizeDesign — el cliente ya no manda los PNG de imprenta", () => 
       .from("production-assets")
       .list(`${designId!}/_client`);
     expect(staged ?? []).toHaveLength(0);
+  }, 600_000);
+
+  /*
+   * El callejón sin salida: si el finalize pasa pero el CARRITO falla, el diseño queda READY. Antes
+   * el reintento moría con «Design is READY — only DRAFT can be finalized» y no había forma de
+   * completar la compra. Como un READY ya no se puede editar, re-finalizarlo debe ser un no-op.
+   */
+  it("finalizar dos veces es idempotente: el segundo intento no rompe el reintento del carrito", async () => {
+    const designId = await clonarBorradorReal("separadores-libros");
+    expect(designId).toBeTruthy();
+
+    const primero = await finalizeDesign({
+      designId: designId!,
+      previewBuffer: PNG_1X1,
+      ...OWNER,
+    });
+    expect(primero.status).toBe("READY");
+
+    const segundo = await finalizeDesign({
+      designId: designId!,
+      previewBuffer: PNG_1X1,
+      ...OWNER,
+    });
+    expect(segundo.status).toBe("READY");
+    expect(segundo.productionUrls).toEqual(primero.productionUrls);
+  }, 600_000);
+
+  /*
+   * `canvasData.slotCount` lo escribe el propio cliente y el esquema solo lo topa en 50: sin
+   * contrastarlo contra el producto, pedir el fallback regalaba hasta 50 permisos de escritura.
+   */
+  it("no emite más URLs de subida que piezas admite el producto", async () => {
+    const designId = await clonarBorradorReal("set-fotoimanes-polaroid");
+    expect(designId).toBeTruthy();
+
+    const d = await prisma.design.findUnique({
+      where: { id: designId! },
+      select: { canvasData: true },
+    });
+    const cd = d!.canvasData as Record<string, unknown>;
+    // El cliente infla el contador a 50 (el máximo que deja pasar el esquema).
+    await prisma.design.update({
+      where: { id: designId! },
+      data: { canvasData: { ...cd, slotCount: 50 } as never },
+    });
+
+    await expect(createClientSlotUploadTickets({ designId: designId!, ...OWNER })).rejects.toThrow(
+      /admite/i,
+    );
   }, 600_000);
 
   it("no emite URLs de subida para un diseño ajeno", async () => {

@@ -30,6 +30,8 @@ import { logger } from "@/lib/logger";
 
 const CUSTOMER_UPLOADS_BUCKET = "customer-uploads";
 const PREVIEWS_BUCKET = "design-previews";
+import { listStagedSlotPaths } from "@/features/personalization/staged-slots";
+
 const PRODUCTION_BUCKET = "production-assets";
 
 const TERMINAL_ORDER_STATUS: OrderStatus[] = ["DELIVERED", "CANCELLED", "REFUNDED"];
@@ -93,7 +95,7 @@ export async function deleteCustomerAccount(
     prisma.designAsset.findMany({ where: { customerId }, select: { storageUrl: true } }),
     prisma.design.findMany({
       where: { customerId },
-      select: { previewUrl: true, productionUrl: true, productionUrls: true },
+      select: { id: true, previewUrl: true, productionUrl: true, productionUrls: true },
     }),
     prisma.order.findMany({
       where: { customerId, status: { in: TERMINAL_ORDER_STATUS } },
@@ -113,6 +115,13 @@ export async function deleteCustomerAccount(
     ...d.productionUrls,
     ...(d.productionUrl ? [d.productionUrl] : []),
   ]);
+  // ADR-081 — el área de paso `{designId}/_client/` no vive en ninguna columna. Sin esto, un diseño
+  // que quedó a medias dejaba en el bucket el render de las fotos del titular DESPUÉS de que pidió
+  // que le borráramos la cuenta, que es exactamente lo que el derecho de supresión prohíbe.
+  const stagedPaths = await listStagedSlotPaths(
+    PRODUCTION_BUCKET,
+    designs.map((d) => d.id),
+  );
 
   // 1) Supresión + anonimización en DB (transacción).
   await prisma.$transaction(async (tx) => {
@@ -229,7 +238,7 @@ export async function deleteCustomerAccount(
   await Promise.all([
     removeStorage(CUSTOMER_UPLOADS_BUCKET, uploadPaths),
     removeStorage(PREVIEWS_BUCKET, previewPaths),
-    removeStorage(PRODUCTION_BUCKET, productionPaths),
+    removeStorage(PRODUCTION_BUCKET, [...productionPaths, ...stagedPaths]),
   ]);
 
   // 3) Revocar el auth user (delete → fallback ban).

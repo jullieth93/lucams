@@ -46,6 +46,7 @@ import type { Prisma } from "@lucams/db";
 import { prisma } from "@/lib/db";
 import { supabaseService } from "@/lib/supabase/service";
 import { logger } from "@/lib/logger";
+import { listStagedSlotPaths } from "./staged-slots";
 
 const CUSTOMER_UPLOADS_BUCKET = "customer-uploads";
 export const PREVIEWS_BUCKET = "design-previews";
@@ -170,13 +171,17 @@ async function purgeDesignBatch(designs: PurgeCandidate[]): Promise<PurgeResult>
     .map((d) => (d.previewUrl ? pathFromPublicUrl(d.previewUrl, PREVIEWS_BUCKET) : null))
     .filter((p): p is string => !!p);
   const productionPaths = designs.flatMap((d) => d.productionUrls).filter(Boolean);
+  // ADR-081 — el área de paso `{designId}/_client/` no se persiste en ninguna columna, así que sin
+  // esto los snapshots de un diseño ABANDONADO tras subirlos se quedaban en el bucket para siempre.
+  // Son el render de las fotos del cliente: conservarlos contradice el principio de temporalidad.
+  const stagedPaths = await listStagedSlotPaths(PRODUCTION_BUCKET, designIds);
 
   // Bytes PRIMERO (best-effort). Si la remoción de las fotos crudas falla, NO borramos las filas
   // → el próximo ciclo reintenta y no dejamos bytes sin registro. Previews/producción son
   // secundarios (públicos/derivados); su fallo no bloquea.
   const uploadsOk = await removeStorage(CUSTOMER_UPLOADS_BUCKET, uploadPaths);
   await removeStorage(PREVIEWS_BUCKET, previewPaths);
-  await removeStorage(PRODUCTION_BUCKET, productionPaths);
+  await removeStorage(PRODUCTION_BUCKET, [...productionPaths, ...stagedPaths]);
   if (!uploadsOk) return { designsPurged: 0, assetsPurged: 0 };
 
   // DesignAsset.design es onDelete:SetNull → hay que borrar las filas explícitamente para no

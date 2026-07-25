@@ -698,6 +698,23 @@ export function StudioEditor({
       // normal, que era lo más pesado de todo el flujo.
       const designId = state.designId;
       const canvasData = state.canvasData;
+
+      // El PNG de imprenta lo renderiza el servidor desde el canvasData GUARDADO, y el auto-guardado
+      // tiene 2 s de debounce. Si el cliente mueve una foto y confirma antes de que corra, aprobaría
+      // una vista previa (que sale del estado EN MEMORIA) distinta de lo que se imprime. Forzar el
+      // guardado acá es lo que sostiene el mandato de que la pantalla sea el producto físico.
+      if (state.isDirty) {
+        state.setAutoSaveStatus({ kind: "saving" });
+        const saved = await saveCanvasAction({ designId, canvasData });
+        if (!saved.ok) {
+          state.setAutoSaveStatus({ kind: "error", message: saved.message });
+          state.setIsFinalizing(false);
+          setPreviewError("No pudimos guardar tus últimos cambios. Intenta de nuevo.");
+          return;
+        }
+        state.setAutoSaveStatus({ kind: "saved", at: Date.now() });
+        state.markClean();
+      }
       const buildFinalizeForm = () => {
         const fd = new FormData();
         fd.set("designId", designId);
@@ -812,7 +829,9 @@ export function StudioEditor({
     setPreviewModalOpen(false);
     setPreviewDataUrl(null);
     setPreviewError(null);
-    finalizedRef.current = false; // vuelve a editar → el diseño puede cambiar, hay que re-finalizar
+    // La bandera NO se limpia acá. "Volver a editar" no devuelve el diseño a DRAFT, así que si el
+    // finalize ya pasó, limpiarla solo conseguía que el siguiente intento volviera a llamarlo sobre
+    // un diseño READY. El servidor además ya es idempotente, así que esto es cinturón y tirantes.
   }, []);
 
   // ──────────── Estados de boot ────────────

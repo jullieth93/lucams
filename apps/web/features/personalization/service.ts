@@ -31,6 +31,7 @@ import {
 } from "@/features/personalization/retention-service";
 import { supabaseService } from "@/lib/supabase/service";
 import { parsePhotoProductConfig } from "./schemas";
+import { listStagedSlotPaths, stagedSlotPath } from "./staged-slots";
 import { resolvePersonalizationSurface } from "./surface";
 import { normalizeName } from "./name-input";
 import { remapCanvasAssetIds } from "./canvas-remap";
@@ -803,18 +804,18 @@ export async function saveCanvas(opts: {
 // El área de paso vive bajo el prefijo `_client/` del propio diseño y se borra al terminar: los
 // archivos definitivos son siempre los que sube `finalizeDesign`.
 
-const CLIENT_SLOT_PREFIX = "_client";
 const MAX_STAGED_SLOT_BYTES = 20 * 1024 * 1024;
-
-function stagedSlotPath(designId: string, slotIndex: number): string {
-  return `${designId}/${CLIENT_SLOT_PREFIX}/slot-${String(slotIndex + 1).padStart(2, "0")}.png`;
-}
 
 /**
  * Emite N URLs firmadas de subida (2 h) para los snapshots del cliente.
  *
  * Valida propiedad y estado DRAFT antes de emitirlas: una URL firmada es una CAPACIDAD, y emitir
  * una sobre un diseño ajeno dejaría sobrescribir sus archivos de imprenta.
+ *
+ * Y acota cuántas emite contra el PRODUCTO, no contra el canvas: `canvasData.slotCount` lo escribe
+ * el propio cliente con `saveCanvasAction` y el esquema solo lo topa en 50, así que confiar en él
+ * regalaba hasta 50 permisos de escritura por llamada a quien quisiera llenarnos el bucket
+ * (revisión adversarial 2026-07-25). El producto es la fuente de verdad de cuántas piezas hay.
  */
 export async function createClientSlotUploadTickets(opts: {
   designId: string;
@@ -828,6 +829,22 @@ export async function createClientSlotUploadTickets(opts: {
   }
   const canvasData = design.canvasData as unknown as CanvasData;
   const slotCount = canvasData.version === 2 ? (canvasData as CanvasDataV2).slotCount : 1;
+
+  const product = await prisma.product.findUnique({
+    where: { id: design.productId },
+    select: { personalizationSchema: true },
+  });
+  const allowed = product ? parsePhotoProductConfig(product.personalizationSchema).photoSlots : 1;
+  // `facesPerUnit: 2` (separadores) manda 2 snapshots por unidad: el tope es por CARA, no por pieza.
+  const faces = product
+    ? (parsePhotoProductConfig(product.personalizationSchema).facesPerUnit ?? 1)
+    : 1;
+  const maxSlots = Math.max(1, allowed * faces);
+  if (slotCount > maxSlots) {
+    throw new Error(
+      `INCOMPLETE_SLOTS: el diseño declara ${slotCount} piezas y el producto admite ${maxSlots}`,
+    );
+  }
 
   const tickets: { slotIndex: number; url: string }[] = [];
   for (let i = 0; i < slotCount; i++) {
@@ -864,9 +881,15 @@ async function readStagedClientSlots(designId: string, slotCount: number): Promi
   return out;
 }
 
-/** Borra el área de paso. Best-effort: no romper un finalize que ya salió bien. */
-async function discardStagedClientSlots(designId: string, slotCount: number): Promise<void> {
-  const paths = Array.from({ length: slotCount }, (_, i) => stagedSlotPath(designId, i));
+/**
+ * Borra el área de paso. Best-effort: no romper un finalize que ya salió bien.
+ *
+ * Lista lo que hay en vez de reconstruir las rutas desde `slotCount`: si el canvas cambió entre la
+ * subida y el finalize, reconstruirlas dejaría archivos atrás.
+ */
+async function discardStagedClientSlots(designId: string): Promise<void> {
+  const paths = await listStagedSlotPaths(BUCKET_PRODUCTION, [designId]);
+  if (paths.length === 0) return;
   const { error } = await supabaseService.storage.from(BUCKET_PRODUCTION).remove(paths);
   if (error) {
     logger.warn(
@@ -907,6 +930,19 @@ export async function finalizeDesign(opts: {
   if (!design) {
     throw new Error("Design not found or not owned by caller");
   }
+  // Finalizar es IDEMPOTENTE. Un diseño ya READY no se puede editar (`saveCanvas` solo acepta
+  // borradores), así que volver a finalizarlo no puede producir nada distinto: devolverlo tal cual es
+  // la respuesta correcta. Antes se lanzaba un error, y eso dejaba al cliente sin salida cuando el
+  // finalize salía bien pero el CARRITO fallaba: al reintentar veía «Design is READY — only DRAFT can
+  // be finalized» —texto interno, en inglés— y por más que insistiera nunca podía completar la compra
+  // (revisión adversarial 2026-07-25).
+  if (design.status === "READY" && design.productionUrls.length > 0) {
+    logger.info(
+      { event: "design.finalize.already_ready", designId: design.id },
+      "Finalize idempotente: el diseño ya estaba listo",
+    );
+    return design;
+  }
   if (design.status !== "DRAFT") {
     throw new Error(`Design is ${design.status} — only DRAFT can be finalized`);
   }
@@ -931,27 +967,18 @@ export async function finalizeDesign(opts: {
 
   const supabase = supabaseService;
 
-  // Subir preview compositado del grid completo
-  const previewPath = `${design.id}/preview.png`;
-  const { error: pErr } = await supabase.storage
-    .from(BUCKET_PREVIEWS)
-    .upload(previewPath, opts.previewBuffer, { contentType: "image/png", upsert: true });
-  if (pErr) {
-    logger.warn(
-      { event: "design.finalize.upload_preview_fail", err: pErr.message },
-      "Preview upload fail",
-    );
-    throw new Error(`No pudimos subir el preview: ${pErr.message}`);
-  }
-  const {
-    data: { publicUrl: previewPublicUrl },
-  } = supabase.storage.from(BUCKET_PREVIEWS).getPublicUrl(previewPath);
-
   // ADR-057 A1a — Render de producción EN EL SERVIDOR (independiente del celular del cliente).
   // ADR-081 — es la vía PRINCIPAL, no una mejora: el cliente ya no manda los PNG salvo que se los
   // pidamos, porque no caben en el body de una Function de Vercel (4.5 MB contra ~57 MB de un
   // calendario). Si ningún tier reproduce el diseño con fidelidad (hoy solo el marco SVG de la
   // Polaroid) se exige el fallback del cliente, que sube por Storage y no por el body.
+  //
+  // Va ANTES de subir el preview a propósito: la primera pasada de un diseño que necesita el
+  // fallback termina en `NEEDS_CLIENT_SLOTS`, y si el cliente abandona ahí, un preview ya subido
+  // quedaría huérfano en un bucket PÚBLICO sin ninguna fila que lo referencie (revisión adversarial
+  // 2026-07-25). Resolver primero los PNG deja el efecto de red recién cuando el finalize va a salir.
+  // Cuando el render server-side sale bien GANA sobre los snapshots inline del cliente: es el
+  // archivo de imprenta de calidad garantizada, sin adornos de pantalla y sin depender del celular.
   let productionBuffers = opts.productionBuffers;
   if (canvasData.version === 2) {
     const serverBuffers = await tryServerRenderProduction(design.id, canvasData as CanvasDataV2, {
@@ -967,17 +994,20 @@ export async function finalizeDesign(opts: {
         },
         "Production renderizada en el servidor",
       );
-    } else if (!productionBuffers && opts.useStagedClientSlots) {
-      productionBuffers = await readStagedClientSlots(design.id, expectedSlotCount);
-      logger.info(
-        {
-          event: "design.finalize.staged_slots_used",
-          designId: design.id,
-          slots: productionBuffers.length,
-        },
-        "Snapshots del cliente recogidos del área de paso",
-      );
     }
+  }
+  // Fuera del `if` de v2: con canvasData v1 también se emiten tickets, y dejar la lectura dentro
+  // dejaba al cliente en un bucle —sube los PNG, y el finalize vuelve a pedírselos— sin salida.
+  if (!productionBuffers && opts.useStagedClientSlots) {
+    productionBuffers = await readStagedClientSlots(design.id, expectedSlotCount);
+    logger.info(
+      {
+        event: "design.finalize.staged_slots_used",
+        designId: design.id,
+        slots: productionBuffers.length,
+      },
+      "Snapshots del cliente recogidos del área de paso",
+    );
   }
   if (!productionBuffers) {
     // El caller traduce esto a un pedido de snapshots al cliente (subida directa a Storage).
@@ -985,6 +1015,22 @@ export async function finalizeDesign(opts: {
       `NEEDS_CLIENT_SLOTS: el servidor no pudo renderizar los ${expectedSlotCount} PNG de imprenta`,
     );
   }
+
+  // Subir preview compositado del grid completo
+  const previewPath = `${design.id}/preview.png`;
+  const { error: pErr } = await supabase.storage
+    .from(BUCKET_PREVIEWS)
+    .upload(previewPath, opts.previewBuffer, { contentType: "image/png", upsert: true });
+  if (pErr) {
+    logger.warn(
+      { event: "design.finalize.upload_preview_fail", err: pErr.message },
+      "Preview upload fail",
+    );
+    throw new Error(`No pudimos subir el preview: ${pErr.message}`);
+  }
+  const {
+    data: { publicUrl: previewPublicUrl },
+  } = supabase.storage.from(BUCKET_PREVIEWS).getPublicUrl(previewPath);
 
   // Ola 3 (Lucy 2026-07-22) — SEPARADORES 2 CARAS: la pieza física es una tira doblada;
   // la imprenta recibe la tira DESPLEGADA con las 2 caras lado a lado (8×4.2 / 12×2 cm).
@@ -1093,7 +1139,7 @@ export async function finalizeDesign(opts: {
 
   // Los definitivos ya están subidos: el área de paso sobra (ADR-081).
   if (opts.useStagedClientSlots) {
-    await discardStagedClientSlots(design.id, expectedSlotCount);
+    await discardStagedClientSlots(design.id);
   }
 
   return updated;

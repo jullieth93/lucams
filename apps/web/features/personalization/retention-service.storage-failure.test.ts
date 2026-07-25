@@ -14,7 +14,11 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 const { removeMock, fromMock } = vi.hoisted(() => {
   const removeMock = vi.fn();
-  const fromMock = vi.fn(() => ({ remove: removeMock }));
+  // `list` lo necesita la purga para descubrir el área de paso `{designId}/_client/` (ADR-081):
+  // esos PNG no viven en ninguna columna, así que se encuentran listando el prefijo. Acá no hay
+  // ninguno, que es el caso normal.
+  const listMock = vi.fn(async () => ({ data: [] as { name: string }[], error: null }));
+  const fromMock = vi.fn(() => ({ remove: removeMock, list: listMock }));
   return { removeMock, fromMock };
 });
 vi.mock("server-only", () => ({}));
