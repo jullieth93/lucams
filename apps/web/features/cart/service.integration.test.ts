@@ -806,6 +806,79 @@ describe.skipIf(!hasDb)("cart/service — integración DB", { timeout: T }, () =
   // updateCartItemQty / removeCartItem
   // ════════════════════════════════════════════════════════════════════════
 
+  // ════════════════════════════════════════════════════════════════════════
+  // Reutilizar la sesión después de cotizar / pagar
+  // ════════════════════════════════════════════════════════════════════════
+
+  describe("sesión reutilizada tras vaciar el carrito", () => {
+    /*
+     * Regresión (Lucy, 2026-07-25): tras pedir una cotización, agregar cualquier cosa al carrito
+     * fallaba con un "Algo salió mal" genérico y ya no se recuperaba en esa sesión.
+     *
+     * Causa: `Cart.sessionId` es @unique GLOBAL, no parcial. `clearCartAfterPaid` SOFT-borra el
+     * carrito al cotizar, así que el sessionId queda ocupado por una fila con deletedAt. La
+     * siguiente llamada no encuentra carrito ACTIVO y creaba uno nuevo con el mismo sessionId →
+     * violación de la restricción. En modo catálogo cotizar ES el flujo principal, o sea que el
+     * embudo se rompía desde la primera conversión.
+     */
+    it("permite volver a agregar al carrito con la MISMA sesión tras soft-borrarlo", async () => {
+      const sessionId = sid("revive");
+      const first = await addProductToCart({
+        sessionId,
+        customerId: null,
+        productSlug: simpleSlug,
+        qty: 1,
+      });
+      expect(first.items).toHaveLength(1);
+
+      // Lo que hace crear una cotización (o pagar): soft-delete del carrito.
+      await prisma.cart.update({
+        where: { id: first.cartId },
+        data: { deletedAt: new Date() },
+      });
+
+      const second = await addProductToCart({
+        sessionId,
+        customerId: null,
+        productSlug: simpleSlug,
+        qty: 2,
+      });
+
+      expect(second.items).toHaveLength(1);
+      expect(second.items[0].qty).toBe(2);
+    });
+
+    it("el carrito revivido arranca VACÍO: no resucita las líneas ya cotizadas", async () => {
+      const sessionId = sid("revive-limpio");
+      const before = await addProductToCart({
+        sessionId,
+        customerId: null,
+        productSlug: simpleSlug,
+        qty: 3,
+      });
+      await prisma.cart.update({ where: { id: before.cartId }, data: { deletedAt: new Date() } });
+
+      const after = await getCartDetail(sessionId);
+
+      // Antes del arreglo, los CartItem sobrevivían al soft-delete y reaparecían al revivir.
+      expect(after?.items ?? []).toHaveLength(0);
+    });
+
+    it("no deja carritos duplicados para la misma sesión", async () => {
+      const sessionId = sid("revive-unico");
+      const c = await addProductToCart({
+        sessionId,
+        customerId: null,
+        productSlug: simpleSlug,
+        qty: 1,
+      });
+      await prisma.cart.update({ where: { id: c.cartId }, data: { deletedAt: new Date() } });
+      await addProductToCart({ sessionId, customerId: null, productSlug: simpleSlug, qty: 1 });
+
+      expect(await prisma.cart.count({ where: { sessionId } })).toBe(1);
+    });
+  });
+
   describe("updateCartItemQty / removeCartItem", () => {
     async function seedOneItemCart() {
       const sessionId = sid("upd");

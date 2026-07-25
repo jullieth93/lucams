@@ -129,6 +129,28 @@ async function ensureCart(sessionId: string, customerId: string | null) {
     }
     return existing;
   }
+  // `Cart.sessionId` es @unique GLOBAL, no parcial: un carrito soft-borrado sigue ocupando su
+  // sessionId. Como `clearCartAfterPaid` soft-borra el carrito al crear una cotización (y al pagar),
+  // el cliente que ya cotizó conserva la misma cookie de sesión y aquí no encuentra carrito ACTIVO
+  // → el `create` de abajo violaba la restricción y salía un "Algo salió mal" genérico.
+  //
+  // Síntoma real (Lucy, 2026-07-25): tras pedir una cotización, agregar cualquier cosa al carrito
+  // fallaba para siempre en esa sesión. En modo catálogo cotizar ES el flujo principal, así que
+  // rompía el embudo completo desde la primera conversión.
+  //
+  // Se REVIVE el carrito en vez de crear otro: misma sesión, carrito nuevo y vacío. Sus ítems
+  // viejos se borran —`clearCartAfterPaid` solo marca el carrito, los CartItem quedaban vivos— y
+  // eso no pierde nada: la cotización o la orden ya guardaron su propio snapshot de las líneas.
+  const soft = await prisma.cart.findUnique({ where: { sessionId }, select: { id: true } });
+  if (soft) {
+    await prisma.cartItem.deleteMany({ where: { cartId: soft.id } });
+    return prisma.cart.update({
+      where: { id: soft.id },
+      data: { deletedAt: null, customerId: customerId ?? undefined },
+      include: cartItemsInclude,
+    });
+  }
+
   return prisma.cart.create({
     data: { sessionId, customerId: customerId ?? undefined },
     include: cartItemsInclude,
