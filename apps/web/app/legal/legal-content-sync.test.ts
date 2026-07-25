@@ -125,3 +125,24 @@ describe("contenido legal — versionado coherente", () => {
     expect(header).toContain(`Última actualización: ${date} · Versión ${num}`);
   });
 });
+
+/*
+ * Las descripciones de metadata viajan al snippet de Google y vinculan al proveedor (Ley 1480
+ * art. 23). Varias páginas definen la suya propia y PISAN la del layout, así que derivar solo la
+ * del layout no basta: la home prometía "entrega a 1.100+ destinos" —cobertura del operador
+ * logístico, inactiva en la Etapa 1— mucho después de que layout y manifest ya estuvieran
+ * corregidos.
+ */
+describe("metadata — sin promesas logísticas sin encuadrar", () => {
+  const PAGES = ["page.tsx", "productos/page.tsx"];
+
+  it.each(PAGES)("app/%s no promete cobertura de envío sin derivar del modo", (rel) => {
+    const src = readFileSync(join(__dirname, "..", rel), "utf-8");
+    const promisesCoverage = /1\.100\+|1100\+/.test(src);
+    if (!promisesCoverage) return; // no menciona cobertura: nada que encuadrar
+    expect(
+      src.includes("isCatalogMode"),
+      `app/${rel} menciona la cobertura logística pero no la deriva del modo de tienda`,
+    ).toBe(true);
+  });
+});
