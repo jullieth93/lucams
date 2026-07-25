@@ -56,4 +56,4 @@ Si actualizamos nuestras cookies o esta política, publicaremos la nueva versió
 
 ---
 
-_Versión 2 · vigente desde 2026-07-19 · en revisión por asesoría legal antes del lanzamiento_
+_Versión 3 · vigente desde 2026-07-25 · en revisión por asesoría legal antes del lanzamiento_

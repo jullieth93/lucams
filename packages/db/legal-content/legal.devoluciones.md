@@ -60,4 +60,4 @@ Estamos para ayudarte. Escríbenos a **retracto@lucamsshop.com**, a **hola@lucam
 
 ---
 
-_Versión 3 · vigente desde 2026-07-24 · en revisión por asesoría legal antes del lanzamiento_
+_Versión 4 · vigente desde 2026-07-25 · en revisión por asesoría legal antes del lanzamiento_

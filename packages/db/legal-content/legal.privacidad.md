@@ -93,4 +93,4 @@ Si cambiamos este aviso de forma sustancial, te lo informaremos y actualizaremos
 
 ---
 
-_Versión 3 · vigente desde 2026-07-24 · en revisión por asesoría legal antes del lanzamiento._
+_Versión 4 · vigente desde 2026-07-25 · en revisión por asesoría legal antes del lanzamiento._
