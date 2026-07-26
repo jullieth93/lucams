@@ -256,6 +256,54 @@ export const SEPARATOR_SLOTS: readonly { x: number; yaw: number }[] = [
   { x: 2.15, yaw: 0.05 },
 ];
 
+// ── Ola 17 (2026-07-24) — marcapáginas ALARGADO PLANO (sin doblez) acostado sobre la hoja ──
+//
+// Los "Alargados" (15×4 / 12×4 cm) son piezas PLANAS: no se doblan sobre el borde de la
+// página, se ACUESTAN sobre la hoja como el marcapáginas clásico (foto de referencia Lucy:
+// pieza vertical, bordes redondeados, diseño en toda la cara). La cara del Estudio ES la
+// pieza completa — a diferencia del separador doblado, donde la cara es la mitad de la tira.
+
+/** Grosor de la pieza plana (~1 mm de cartulina imantada laminada). */
+export const FLAT_BOOKMARK_T = 0.03;
+
+/**
+ * Dimensiones de la pieza plana (unidades de mundo) para el marcapáginas alargado.
+ * Prioridad: sizeCm de la variante ("4×15" / "4×12" = ancho × alto reales de la pieza)
+ * → aspecto del lienzo (400×1500 ≈ 0.267 → 4×15; 400×1200 ≈ 0.333 → 4×12).
+ */
+export function flatBookmarkDims(
+  face: { wRatio: number; hRatio: number },
+  sizeCm?: string,
+): { w: number; h: number } {
+  const cm = parseSizeCmLocal(sizeCm);
+  if (cm) return { w: cm.wCm * CM, h: cm.hCm * CM };
+  const aspect = face.wRatio / face.hRatio;
+  return { w: 4 * CM, h: (aspect <= 0.3 ? 15 : 12) * CM };
+}
+
+/** Slots para piezas planas sobre la hoja DERECHA (x>0): centradas a lo ancho de la página,
+ *  con giros naturales sutiles. Con 1 pieza queda centrada; con N se reparten. */
+export function flatBookmarkSlots(count: number): { x: number; z: number; yaw: number }[] {
+  if (count <= 0) return [];
+  const cx = PAGE_W / 2;
+  if (count === 1) return [{ x: cx, z: 0, yaw: -0.05 }];
+  const spread = Math.min(0.9, 0.45 * (count - 1));
+  return Array.from({ length: count }, (_, i) => ({
+    x: cx - spread + (2 * spread * i) / (count - 1),
+    z: 0,
+    yaw: (i % 2 === 0 ? -1 : 1) * 0.05,
+  }));
+}
+
+/**
+ * Colocación de UNA pieza plana acostada sobre la hoja en (bx, bz): y pegada a la
+ * superficie de la hoja (pageSurfaceY + medio grosor). El giro (yaw) lo aplica el caller
+ * sobre el grupo (rotación mundial Y tras acostar la pieza con −90° en X).
+ */
+export function flatBookmarkPlacement(bx: number, bz: number): [number, number, number] {
+  return [bx, pageSurfaceY(bx) + FLAT_BOOKMARK_T / 2 + 0.002, bz];
+}
+
 /** Encuadre de la cámara (FitCameraPolar): pliego completo + holgura, vista desde arriba-3/4. */
 export const BOOK_FIT = {
   halfW: PAGE_W + COVER_OVERHANG + 0.16,

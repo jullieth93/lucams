@@ -556,9 +556,11 @@ export function StudioEditor({
         slotStagesRef.current,
         productConfig.shape,
       );
-      if (isBookmark) {
+      if (isBookmark && !productConfig.noFold) {
         // Ola 6 — el separador se dobla de PIE sobre el borde del libro: la textura
         // horizontal del Estudio se rota 90° para que el diseño lea derecho en la cara 3D.
+        // Ola 17 — el marcapáginas ALARGADO plano (noFold) ya viene vertical del Estudio
+        // (stage 400×1500/400×1200): no se rota, se acuesta tal cual sobre la hoja.
         textures = await rotateTextures90(textures);
       }
       setBook3D(textures);
@@ -569,7 +571,7 @@ export function StudioEditor({
       });
       void err;
     }
-  }, [store, productConfig.shape, ensureAllStagesMounted, isBookmark]);
+  }, [store, productConfig.shape, productConfig.noFold, ensureAllStagesMounted, isBookmark]);
 
   // FOTO4 — Abrir la galería de escenas "en tu espacio" (nevera/mural/repisa/regalo). Calcula UNA vez
   // la textura por imán (recortada a su silueta) y la pasa a la galería, que arma cada escena bajo
@@ -1143,6 +1145,7 @@ export function StudioEditor({
               bookmarks={book3D}
               sizeCm={productConfig.sizeCm}
               facesPerUnit={productConfig.facesPerUnit}
+              flat={productConfig.noFold}
             />
             <p className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-black/40 px-3 py-1.5 text-center text-xs text-white">
               {isTouch

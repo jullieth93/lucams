@@ -308,3 +308,57 @@ describe("composición ola 4 (libro más plano, separador un punto más erguido)
     }
   });
 });
+
+// ──────────────────────────────────────────────────────────────────
+//  Ola 17 (2026-07-24) — marcapáginas ALARGADO PLANO (sin doblez) acostado sobre la hoja
+// ──────────────────────────────────────────────────────────────────
+
+import {
+  FLAT_BOOKMARK_T,
+  flatBookmarkDims,
+  flatBookmarkPlacement,
+  flatBookmarkSlots,
+} from "./book-geometry";
+
+describe("flatBookmarkDims (ola 17 — pieza plana 4×15 / 4×12 cm reales)", () => {
+  it("sizeCm de la variante son los cm de la pieza completa (ancho × alto)", () => {
+    const d15 = flatBookmarkDims({ wRatio: 400, hRatio: 1500 }, "4×15");
+    expect(d15.w / CM).toBeCloseTo(4, 6);
+    expect(d15.h / CM).toBeCloseTo(15, 6);
+    const d12 = flatBookmarkDims({ wRatio: 400, hRatio: 1200 }, "4×12");
+    expect(d12.w / CM).toBeCloseTo(4, 6);
+    expect(d12.h / CM).toBeCloseTo(12, 6);
+  });
+
+  it("sin sizeCm cae al aspecto del lienzo (400×1500 → 4×15; 400×1200 → 4×12)", () => {
+    expect(flatBookmarkDims({ wRatio: 400, hRatio: 1500 }).h / CM).toBeCloseTo(15, 6);
+    expect(flatBookmarkDims({ wRatio: 400, hRatio: 1200 }).h / CM).toBeCloseTo(12, 6);
+  });
+
+  it("la pieza 15×4 cabe en la página (17×24 cm)", () => {
+    const d = flatBookmarkDims({ wRatio: 400, hRatio: 1500 }, "4×15");
+    expect(d.w).toBeLessThan(PAGE_W);
+    expect(d.h).toBeLessThan(PAGE_D);
+  });
+});
+
+describe("flatBookmarkPlacement + slots (acostada sobre la hoja derecha)", () => {
+  it("con 1 pieza queda centrada en la página derecha", () => {
+    const [slot] = flatBookmarkSlots(1);
+    expect(slot!.x).toBeCloseTo(PAGE_W / 2, 6);
+    expect(slot!.z).toBe(0);
+  });
+
+  it("la pieza reposa JUSTO sobre la superficie de la hoja (ni flota ni se hunde)", () => {
+    for (const { x, z } of flatBookmarkSlots(1)) {
+      const [, y] = flatBookmarkPlacement(x, z);
+      // Centro de la pieza = superficie + medio grosor (tolerancia del epsilon anti-z-fight).
+      expect(y).toBeGreaterThanOrEqual(pageSurfaceY(x) + FLAT_BOOKMARK_T / 2);
+      expect(y).toBeLessThanOrEqual(pageSurfaceY(x) + FLAT_BOOKMARK_T / 2 + 0.01);
+    }
+  });
+
+  it("sin piezas no hay slots", () => {
+    expect(flatBookmarkSlots(0)).toEqual([]);
+  });
+});

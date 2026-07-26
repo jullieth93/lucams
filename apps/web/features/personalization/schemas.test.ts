@@ -147,4 +147,11 @@ describe("PhotoProductConfigSchema — flags Ola 3 (allowText / facesPerUnit)", 
     expect(parsePhotoProductConfig({ photoSlots: 99 })).toEqual({ photoSlots: 1 }); // >50 inválido
     expect(parsePhotoProductConfig({ photoSlots: 2, facesPerUnit: 2 }).facesPerUnit).toBe(2);
   });
+
+  it("noFold (Ola 17 — marcapáginas plano Alargados): opcional, booleano", () => {
+    const parsed = PhotoProductConfigSchema.parse({ photoSlots: 1, facesPerUnit: 2, noFold: true });
+    expect(parsed.noFold).toBe(true);
+    expect(PhotoProductConfigSchema.parse({ photoSlots: 1 }).noFold).toBeUndefined();
+    expect(PhotoProductConfigSchema.safeParse({ photoSlots: 1, noFold: "si" }).success).toBe(false);
+  });
 });

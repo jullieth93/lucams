@@ -59,13 +59,14 @@ import { useIsTouch } from "./use-is-touch";
 import { OrbitControls, RoundedBox, ContactShadows } from "@react-three/drei";
 import { FitCameraPolar } from "./fit-camera-polar";
 import { StudioEnvironment, StudioBackdrop } from "./studio-3d-environment";
-import { FoldedStripMesh } from "./magnet-3d";
+import { FoldedStripMesh, MagnetMesh } from "./magnet-3d";
 import { getPageEdgesTexture, getPagePrintTexture } from "./lib/procedural-textures";
 import {
   BLOCK_T,
   BOOK_FIT,
   COVER_OVERHANG,
   COVER_T,
+  FLAT_BOOKMARK_T,
   GUTTER_GAP,
   MAX_BACK_LEAN,
   PAGE_D,
@@ -76,6 +77,9 @@ import {
   SEPARATOR_SLOTS,
   bookmarkFaceUnits,
   camber,
+  flatBookmarkDims,
+  flatBookmarkPlacement,
+  flatBookmarkSlots,
   separatorPlacement,
   stripDimsForFace,
 } from "./lib/book-geometry";
@@ -164,6 +168,64 @@ function Separators({
             cornerRadiusRatio={SEP_CORNER_RATIO}
             backLean={backLean}
           />
+        </group>
+      ))}
+    </>
+  );
+}
+
+/**
+ * Ola 17 — marcapáginas ALARGADO PLANO (sin doblez): la pieza se ACUESTA sobre la hoja
+ * derecha del libro, como el marcapáginas clásico de la foto de referencia (vertical,
+ * bordes redondeados, diseño en toda la cara). Se extruye finita (~1 mm) con la textura
+ * del frente en la tapa — la cara B va impresa en el reverso físico pero queda contra la
+ * página (al orbitar por debajo no aplica: la pieza reposa sobre la hoja).
+ * La textura del Estudio ya viene VERTICAL (stage 400×1500 / 400×1200) → NO se rota,
+ * a diferencia de los separadores doblados (textura horizontal rotada 90° en el editor).
+ */
+function FlatBookmarks({
+  items,
+  sizeCm,
+  facesPerUnit,
+}: {
+  items: Magnet3D[];
+  sizeCm?: string;
+  facesPerUnit?: number;
+}) {
+  const layout = useMemo(() => {
+    const units = bookmarkFaceUnits(items, facesPerUnit, sizeCm);
+    const slots = flatBookmarkSlots(units.length);
+    return units.map((unit, i) => {
+      const { w, h } = flatBookmarkDims(unit.front, sizeCm);
+      const slot = slots[i]!;
+      return {
+        key: i,
+        unit,
+        w,
+        h,
+        position: flatBookmarkPlacement(slot.x, slot.z),
+        yaw: slot.yaw,
+      };
+    });
+  }, [items, sizeCm, facesPerUnit]);
+
+  return (
+    <>
+      {layout.map(({ key, unit, w, h, position, yaw }) => (
+        <group key={key} position={position} rotation={[0, yaw, 0]}>
+          {/* La pieza extruye en +Z con la tapa impresa arriba; al rotar −90° en X la tapa
+              queda mirando a +Y (hacia la cámara) y el diseño lee hacia el tope de la página. */}
+          <group rotation={[-Math.PI / 2, 0, 0]}>
+            <MagnetMesh
+              dataUrl={unit.front.dataUrl}
+              width={w}
+              height={h}
+              shape="rectangle"
+              depth={FLAT_BOOKMARK_T}
+              cornerRadiusRatio={0.06}
+              position={[0, 0, 0]}
+            />
+          </group>
         </group>
       ))}
     </>
@@ -321,10 +383,13 @@ function Scene({
   bookmarks,
   sizeCm,
   facesPerUnit,
+  flat,
 }: {
   bookmarks: Magnet3D[];
   sizeCm?: string;
   facesPerUnit?: number;
+  /** Ola 17 — marcapáginas plano (Alargados): acostado sobre la hoja, sin doblez. */
+  flat?: boolean;
 }) {
   // Ola 16 — defensa: si el producto no declara 2 caras, el 3D no puede mostrar
   // la cara B real. Log para soporte; el UI del Estudio sigue funcionando con 1 cara.
@@ -371,7 +436,11 @@ function Scene({
       <PageBlock side={-1} />
       <PageSheet side={1} />
       <PageSheet side={-1} />
-      <Separators items={bookmarks} sizeCm={sizeCm} facesPerUnit={facesPerUnit} />
+      {flat ? (
+        <FlatBookmarks items={bookmarks} sizeCm={sizeCm} facesPerUnit={facesPerUnit} />
+      ) : (
+        <Separators items={bookmarks} sizeCm={sizeCm} facesPerUnit={facesPerUnit} />
+      )}
 
       {/* Escena estática (el autoRotate mueve la CÁMARA) → sombra horneada 1 vez. */}
       <ContactShadows
@@ -409,12 +478,15 @@ export default function BookView3D({
   bookmarks,
   sizeCm,
   facesPerUnit,
+  flat,
 }: {
   bookmarks: Magnet3D[];
   /** sizeCm de la variante (ej "6×2", "4×4.2") — fija el tamaño real de la tira. */
   sizeCm?: string;
   /** Ola 10 — caras por unidad física (2 para separadores modernos). */
   facesPerUnit?: number;
+  /** Ola 17 — marcapáginas plano (Alargados): acostado sobre la hoja, sin doblez. */
+  flat?: boolean;
 }) {
   const isTouch = useIsTouch();
   if (bookmarks.length === 0) {
@@ -434,7 +506,7 @@ export default function BookView3D({
     >
       <color attach="background" args={["#FFF8F0"]} />
       <Suspense fallback={null}>
-        <Scene bookmarks={bookmarks} sizeCm={sizeCm} facesPerUnit={facesPerUnit} />
+        <Scene bookmarks={bookmarks} sizeCm={sizeCm} facesPerUnit={facesPerUnit} flat={flat} />
       </Suspense>
     </Canvas>
   );

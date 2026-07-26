@@ -272,6 +272,14 @@ export const PhotoProductConfigSchema = z.object({
    * Default 1 (productos normales, 1 slot = 1 pieza).
    */
   facesPerUnit: z.number().int().min(1).max(2).optional(),
+  /**
+   * Ola 17 (Lucy 2026-07-24) — separadores ALARGADOS: la pieza es PLANA (marcapáginas
+   * clásico, no se dobla sobre el borde de la página). `true` → la vista 3D de libro
+   * la muestra ACOSTADA sobre la hoja en vez de doblada (BookView3D modo flat).
+   * Las 2 caras se siguen personalizando (frente/reverso) y producción imprime ambas
+   * espalda con espalda, igual que los separadores doblados. Default false/undefined.
+   */
+  noFold: z.boolean().optional(),
 });
 export type PhotoProductConfig = z.infer<typeof PhotoProductConfigSchema>;
 
