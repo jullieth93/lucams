@@ -28,9 +28,8 @@ export async function GET(req: Request) {
     { categories: tree, generatedAt: new Date().toISOString() },
     {
       headers: {
-        "Cache-Control": "public, max-age=3600, s-maxage=3600",
-        "Access-Control-Allow-Origin": "*",
-      },
+        "Cache-Control": "public, max-age=3600, s-maxage=3600"
+      }
     },
   );
 }

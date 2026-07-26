@@ -18,5 +18,8 @@ export async function searchProductsAction(query: string): Promise<SearchResult[
   // 60/min por IP: generoso para búsqueda-mientras-escribes (debounced), corta abuso.
   const { allowed } = await rateLimit(`search_action:${ip}`, 60, 60);
   if (!allowed) return [];
-  return searchStorefrontProducts(query);
+  // Cap de longitud (auditoría experto 2026-07-26, P2): el query llegaba crudo al LIKE de la
+  // búsqueda; acotarlo evita queries degeneradas por strings enormes (la búsqueda ya trunca
+  // internamente a 80 chars en public-service, acá cortamos antes también por defensa en capas).
+  return searchStorefrontProducts(query.slice(0, 120));
 }

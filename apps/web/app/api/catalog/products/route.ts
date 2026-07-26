@@ -50,7 +50,7 @@ export async function GET(req: Request) {
     isPersonalizable: sp.get("isPersonalizable") ? sp.get("isPersonalizable") === "1" : undefined,
     sort,
     limit: Math.max(1, Math.min(100, parseInt(sp.get("limit") ?? "24", 10) || 24)),
-    offset: Math.max(0, parseInt(sp.get("offset") ?? "0", 10) || 0),
+    offset: Math.max(0, parseInt(sp.get("offset") ?? "0", 10) || 0)
   };
 
   const products = await listCatalogProducts(filters);
@@ -60,13 +60,12 @@ export async function GET(req: Request) {
       products,
       count: products.length,
       filters,
-      generatedAt: new Date().toISOString(),
+      generatedAt: new Date().toISOString()
     },
     {
       headers: {
-        "Cache-Control": "public, max-age=300, s-maxage=300",
-        "Access-Control-Allow-Origin": "*",
-      },
+        "Cache-Control": "public, max-age=300, s-maxage=300"
+      }
     },
   );
 }

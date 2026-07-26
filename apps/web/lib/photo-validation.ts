@@ -183,8 +183,9 @@ export async function validatePhotoQuality(
   }
 
   // ───────── 2. BRILLO + 3. BLUR (vía sharp) ─────────
-  // Importamos sharp dinámicamente para no bundlear en build estático.
-  const sharp = (await import("sharp")).default;
+  // sharp-safe (no sharp directo): garantiza sharp.block() de los loaders con CVE
+  // antes de analizar la foto (auditoría experto 2026-07-26, cierra el bypass).
+  const sharp = (await import("@/features/personalization/sharp-safe")).default;
 
   // Brillo: mean del canal grayscale.
   let brightness: PhotoValidationResult["brightness"];

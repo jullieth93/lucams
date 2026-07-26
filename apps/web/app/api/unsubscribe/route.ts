@@ -15,6 +15,15 @@ import { decodeUnsubscribeParam, unsubscribeNewsletter } from "@/features/newsle
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
+  // Rate-limit por IP (auditoría experto 2026-07-26, P2): el token HMAC ya mitiga el abuso
+  // (sin token válido no hay unsubscribe), pero sin límite el endpoint era fuerza-brutable
+  // para enumerar tokens. 30/min por IP es invisible para un clic real de baja.
+  const { rateLimit } = await import("@/lib/rate-limit");
+  const { getClientIp } = await import("@/lib/client-ip");
+  const { allowed } = await rateLimit(`unsubscribe:${getClientIp(req.headers)}`, 30, 60);
+  if (!allowed) {
+    return Response.json({ ok: false, error: "rate_limited" }, { status: 429 });
+  }
   const u = req.nextUrl.searchParams.get("u");
   const decoded = u ? decodeUnsubscribeParam(u) : null;
   if (!decoded) {

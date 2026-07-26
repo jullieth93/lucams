@@ -36,7 +36,7 @@ export async function GET(req: Request) {
   if (!productSlug) {
     return NextResponse.json(
       { error: "productSlug query param required" },
-      { status: 400, headers: { "Access-Control-Allow-Origin": "*" } },
+      { status: 400 },
     );
   }
 
@@ -48,13 +48,12 @@ export async function GET(req: Request) {
       count: templates.length,
       productSlug,
       mode,
-      generatedAt: new Date().toISOString(),
+      generatedAt: new Date().toISOString()
     },
     {
       headers: {
-        "Cache-Control": "public, max-age=3600, s-maxage=3600",
-        "Access-Control-Allow-Origin": "*",
-      },
+        "Cache-Control": "public, max-age=3600, s-maxage=3600"
+      }
     },
   );
 }

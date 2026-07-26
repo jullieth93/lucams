@@ -21,6 +21,20 @@ export async function register() {
   if (process.env.NEXT_RUNTIME === "nodejs") {
     const { validateEnv } = await import("@/lib/env");
     validateEnv();
+    // Warm-up del pooler (auditoría experto 2026-07-26, P1 cold-start): la PRIMERA query tras
+    // un cold start de la instancia podía caer en P1001 ("Can't reach database server") porque
+    // PgBouncer aún no tenía la conexión establecida → 500 transitorio. Un `SELECT 1` acá
+    // calienta el pool en el boot para que la primera request real ya lo encuentre listo.
+    // try/catch: si la DB está momentáneamente caída no tumbamos el boot (solo se loguea).
+    try {
+      const { prisma } = await import("@/lib/db");
+      await prisma.$queryRaw`SELECT 1`;
+    } catch (err) {
+      logger.warn({
+        event: "db.warmup.failed",
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 }
 

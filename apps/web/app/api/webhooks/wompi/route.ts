@@ -94,8 +94,12 @@ export async function POST(req: Request) {
   // #3 (certificación Bloque A): derivamos de WOMPI_ENV (misma fuente que el
   // cliente API), NO de NODE_ENV — en Vercel preview NODE_ENV=production aunque
   // WOMPI_ENV=sandbox, lo que rechazaba webhooks sandbox legítimos con 401.
+  // Auditoría experto 2026-07-26 (P1): el escape hatch WOMPI_DISABLE_TIMESTAMP_CHECK
+  // estaba anidado acá también (!skipTsCheck) → apagar la ventana de tiempo para un
+  // test local TAMBIÉN apagaba el environment-match. Se separa: el escape solo cubre
+  // la ventana anti-replay; el environment-match SIEMPRE aplica (son defensas distintas).
   const expectedEnv = getWompiExpectedWebhookEnv();
-  if (event.environment !== expectedEnv && !skipTsCheck) {
+  if (event.environment !== expectedEnv) {
     logger.warn({
       event: "webhook.wompi.environment_mismatch",
       expectedEnv,

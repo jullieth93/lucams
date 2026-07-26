@@ -66,6 +66,14 @@ const REDACT_KEYS = new Set([
   // #7 — 'to' es el destinatario de un email (dato personal); varios logger.info({to}) lo dejaban en
   // claro en los logs de Vercel (Ley 1581). Tradeoff: un 'to' que fuera una URL también se enmascara.
   "to",
+  // Auditoría experto 2026-07-26 (P1-PII): la IP y el WhatsApp (teléfono) SON datos personales
+  // (Ley 1581/GDPR) y quedaban en claro (ej. features/quotes/actions logueaba {ip}). Hasheados
+  // en rate-limit-keys; acá se enmascaran. NO se redactan 'address' ni 'name' sueltos: son
+  // claves demasiado comunes (nombres de producto/categoría) y ocultarlas rompería la
+  // observabilidad; la PII embebida en strings se cubre con la redacción de Error.message.
+  "ip",
+  "ipaddress",
+  "whatsapp",
 ]);
 
 function shouldRedactKey(key: string): boolean {
@@ -76,6 +84,20 @@ function shouldRedactKey(key: string): boolean {
   return /(secret|token|key|password|cookie|authorization|email|phone)$/i.test(k);
 }
 
+const EMAIL_RE = /[\w.+-]+@[\w-]+\.[\w.-]+/g;
+// Teléfono colombiano (+57 opcional, 3XX XXX XXXX) y genérico de 7-12 dígitos con espacios/guiones.
+const PHONE_RE = /(\+?57[\s-]?)?3\d{2}[\s-]?\d{3}[\s-]?\d{4}|\b\d{3}[\s-]\d{3}[\s-]\d{4}\b/g;
+
+/**
+ * Redacción de PII DENTRO de strings (auditoría experto 2026-07-26, P1): la redacción por key no
+ * alcanza el CONTENIDO de un mensaje — un unique-violation de Postgres trae la PII embebida
+ * (`Key (email)=(cliente@x.com) already exists`). Se enmascaran emails y teléfonos antes de
+ * serializar Error.message/stack para que los logs de Vercel no registren datos personales.
+ */
+function scrubPii(text: string): string {
+  return text.replace(EMAIL_RE, "[EMAIL]").replace(PHONE_RE, "[PHONE]");
+}
+
 function redact(value: unknown, depth = 0): unknown {
   if (depth > 6) return "[DEEP]";
   if (value === null || value === undefined) return value;
@@ -84,8 +106,8 @@ function redact(value: unknown, depth = 0): unknown {
   if (value instanceof Error) {
     return {
       name: value.name,
-      message: value.message,
-      stack: value.stack,
+      message: scrubPii(value.message),
+      stack: value.stack ? scrubPii(value.stack) : value.stack,
     };
   }
   if (Array.isArray(value)) {

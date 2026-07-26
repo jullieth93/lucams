@@ -30,7 +30,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ slug: st
   if (!ocasion) {
     return NextResponse.json(
       { error: "Ocasión not found", slug },
-      { status: 404, headers: { "Access-Control-Allow-Origin": "*" } },
+      { status: 404 },
     );
   }
 
@@ -41,9 +41,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ slug: st
     { ocasion, products, generatedAt: new Date().toISOString() },
     {
       headers: {
-        "Cache-Control": "public, max-age=3600, s-maxage=3600",
-        "Access-Control-Allow-Origin": "*",
-      },
+        "Cache-Control": "public, max-age=3600, s-maxage=3600"
+      }
     },
   );
 }

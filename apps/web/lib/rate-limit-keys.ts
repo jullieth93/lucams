@@ -25,8 +25,15 @@ export function hashEmail(email: string): string {
   return createHash("sha256").update(email.toLowerCase().trim()).digest("hex").slice(0, 16);
 }
 
+/** Hash de IP — el criterio es el mismo que para email/teléfono: la IP ES dato personal
+ * (Ley 1581/GDPR) y no debe quedar en claro ni en la tabla de rate-limit ni en logs.
+ * Determinístico (misma IP → mismo hash) para que el rate-limit por IP siga funcionando. */
+export function hashIp(ip: string): string {
+  return createHash("sha256").update(ip.trim()).digest("hex").slice(0, 16);
+}
+
 export function ipKey(scope: string, ip: string): string {
-  return `${scope}:ip:${ip}`;
+  return `${scope}:ip:${hashIp(ip)}`;
 }
 
 export function emailKey(scope: string, email: string): string {

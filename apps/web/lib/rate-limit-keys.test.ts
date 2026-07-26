@@ -25,9 +25,16 @@ describe("hashEmail", () => {
 });
 
 describe("ipKey", () => {
-  it("builds consistent key format scope:ip:<address>", () => {
-    expect(ipKey("login", "1.2.3.4")).toBe("login:ip:1.2.3.4");
-    expect(ipKey("signup", "::1")).toBe("signup:ip:::1");
+  it("scope:ip:<hash> format — la IP es PII y va hasheada (auditoría experto 2026-07-26)", () => {
+    // Determinístico (misma IP → mismo hash) para que el rate-limit por IP siga agrupando,
+    // pero la IP nunca queda en claro en la key (Ley 1581/GDPR).
+    const k1 = ipKey("login", "1.2.3.4");
+    const k2 = ipKey("login", "1.2.3.4");
+    const k3 = ipKey("login", "5.6.7.8");
+    expect(k1).toBe(k2); // estable por IP
+    expect(k1).not.toBe(k3); // distinto por IP distinta
+    expect(k1).toMatch(/^login:ip:[0-9a-f]{16}$/); // formato scope:ip:<sha256 truncado>
+    expect(k1).not.toContain("1.2.3.4"); // la IP nunca en claro
   });
 });
 

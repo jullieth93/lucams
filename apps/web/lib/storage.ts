@@ -266,7 +266,9 @@ export async function uploadCustomerPhoto(opts: {
   // Strip EXIF + auto-orient + convert HEIC→JPEG via sharp.
   // sharp.rotate() respeta EXIF orientation y luego strip lo descarta.
   // .toBuffer() devuelve buffer optimizado.
-  const sharp = (await import("sharp")).default;
+  // sharp-safe (no sharp directo): garantiza sharp.block() de los loaders con CVE
+  // ANTES de procesar el upload (auditoría experto 2026-07-26, cierra el bypass).
+  const sharp = (await import("@/features/personalization/sharp-safe")).default;
   let processed: Buffer;
   let finalMime: string;
   let width: number;

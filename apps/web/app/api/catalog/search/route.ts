@@ -34,7 +34,7 @@ export async function GET(req: Request) {
   if (!q || q.trim().length < 2) {
     return NextResponse.json(
       { results: [], count: 0, query: q, message: "Query too short (min 2 chars)" },
-      { status: 200, headers: { "Access-Control-Allow-Origin": "*" } },
+      { status: 200 },
     );
   }
 
@@ -44,9 +44,8 @@ export async function GET(req: Request) {
     { results, count: results.length, query: q, generatedAt: new Date().toISOString() },
     {
       headers: {
-        "Cache-Control": "public, max-age=300, s-maxage=300",
-        "Access-Control-Allow-Origin": "*",
-      },
+        "Cache-Control": "public, max-age=300, s-maxage=300"
+      }
     },
   );
 }

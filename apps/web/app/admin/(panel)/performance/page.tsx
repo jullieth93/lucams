@@ -84,11 +84,18 @@ function formatMetric(name: string, value: number): string {
   return `${Math.round(value).toLocaleString("es-CO")} ms`;
 }
 
+// Helper (no-componente) para el inicio de la ventana — el react-hooks/purity no
+// permite Date.now() directo en el cuerpo del componente RSC (mismo patrón que
+// probeHealth en /admin/integraciones).
+function windowStart(days: number): Date {
+  return new Date(Date.now() - days * 24 * 3600 * 1000);
+}
+
 export default async function AdminPerformancePage() {
   const session = await getCurrentAdmin();
   if (!session) redirect("/admin/login");
 
-  const since = new Date(Date.now() - WINDOW_DAYS * 24 * 3600 * 1000);
+  const since = windowStart(WINDOW_DAYS);
 
   const [errorCount7d, recentErrors, vitalsAvgRaw, vitalsSampleCount] = await Promise.all([
     prisma.errorLog.count({ where: { createdAt: { gte: since } } }),

@@ -51,20 +51,19 @@ export async function GET(req: Request) {
     priceMax: sp.get("precioMax") ? parseInt(sp.get("precioMax") as string, 10) : undefined,
     personalizationPreference,
     excludeSlugs: excludeSlugs.length > 0 ? excludeSlugs : undefined,
-    limit: Math.max(1, Math.min(30, parseInt(sp.get("limit") ?? "12", 10) || 12)),
+    limit: Math.max(1, Math.min(30, parseInt(sp.get("limit") ?? "12", 10) || 12))
   });
 
   return NextResponse.json(
     {
       results,
       count: results.length,
-      generatedAt: new Date().toISOString(),
+      generatedAt: new Date().toISOString()
     },
     {
       headers: {
-        "Cache-Control": "public, max-age=600, s-maxage=600",
-        "Access-Control-Allow-Origin": "*",
-      },
+        "Cache-Control": "public, max-age=600, s-maxage=600"
+      }
     },
   );
 }
