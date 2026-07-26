@@ -1,6 +1,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import "../setup-env";
-import { PrismaClient } from "@prisma/client";
+// PrismaClient vía @lucams/db (re-exporta @prisma/client) — mismo patrón que los otros specs.
+import { PrismaClient } from "@lucams/db";
 import { createClient } from "@supabase/supabase-js";
 
 /*
@@ -158,7 +159,7 @@ test.describe.serial("AUDITORÍA ADMIN — catalogo-whatsapp (producción)", () 
     watch(page, "config");
     await adminLogin(page);
     // Leer el estado actual del COD desde la DB para restaurar exacto
-    const setting = await prisma.storeSetting.findFirst({ where: { key: "cod_enabled" } }).catch(() => null);
+    const setting = await prisma.siteSetting.findFirst({ where: { key: "cod_enabled" } }).catch(() => null);
     const before = setting?.value;
     for (const path of ["/admin/configuracion", "/admin/ajustes", "/admin/config"]) {
       const resp = await page.goto(path, { waitUntil: "domcontentloaded" });
