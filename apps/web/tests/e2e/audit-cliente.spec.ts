@@ -222,12 +222,13 @@ test.describe("AUDITORÍA CLIENTE — catalogo-whatsapp (producción)", () => {
     const searchBtn = page.getByRole("button", { name: /Buscar/i }).first();
     if (await searchBtn.count()) {
       await searchBtn.click();
-      const input = page.locator('input[type="search"], input[placeholder*="uscar"]').first();
+      // La paleta cmdk expone el input con role="combobox" (patrón ARIA autocomplete).
+      const input = page.getByRole("combobox").first();
       if (await input.count()) {
         await input.fill("polaroid");
         await page.waitForTimeout(1500);
         await page.screenshot({ path: "/tmp/audit-cliente-busqueda.png" });
-        findings.push({ area: "busqueda", ok: true, detail: "input de búsqueda responde" });
+        findings.push({ area: "busqueda", ok: true, detail: "paleta cmdk responde con resultados" });
         return;
       }
     }

@@ -85,10 +85,21 @@ async function adminLogin(page: Page) {
   await page.goto("/admin", { waitUntil: "domcontentloaded" });
   const accept = page.getByRole("button", { name: /Aceptar todas/i });
   if (await accept.count()) await accept.first().click().catch(() => {});
-  await page.locator('input[name="email"], input[type="email"]').first().fill(ADMIN_EMAIL);
+  const emailInput = page.locator('input[name="email"], input[type="email"]').first();
+  // Si ya hay sesión activa (redirige al dashboard), no hace falta loguear de nuevo.
+  if (!(await emailInput.count())) {
+    await page.waitForTimeout(2000);
+    return;
+  }
+  await emailInput.fill(ADMIN_EMAIL);
   await page.locator('input[name="password"], input[type="password"]').first().fill(ADMIN_PASSWORD);
-  await page.getByRole("button", { name: /Ingresar|Entrar|Iniciar/i }).first().click();
-  await page.waitForURL(/\/admin/, { timeout: 30_000 });
+  await page.getByRole("button", { name: /Iniciar sesión|Ingresar|Entrar/i }).first().click();
+  // Esperar al DASHBOARD, no a la URL: el form de login también vive bajo /admin.
+  await page
+    .locator('input[name="email"], input[type="email"]')
+    .first()
+    .waitFor({ state: "detached", timeout: 30_000 })
+    .catch(() => {});
   await page.waitForTimeout(3000);
 }
 
