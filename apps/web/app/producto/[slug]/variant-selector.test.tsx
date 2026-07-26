@@ -82,15 +82,17 @@ describe("VariantSelector", () => {
   it("mantiene grupos separados cuando las dimensions NO coinciden (photoSlots vs sizeCm)", () => {
     // Estilo polaroid: cada variant combina fotos y tamaño distintos (no
     // coinciden como strings) → ambos grupos deben seguir apareciendo.
+    // Ola 18 — photoSlots se etiqueta "Fotos" (fotos por unidad; las cantidades
+    // de unidades usan `quantity` → "Cantidad").
     const variants = [
       makeVariant("v-p6", { photoSlots: 6, sizeCm: "7×9" }),
       makeVariant("v-p12", { photoSlots: 12, sizeCm: "6×8" }),
     ];
     render(<VariantSelector productBasePrice={100_000} variants={variants} />);
-    expect(screen.getAllByRole("group", { name: "Cantidad" })).toHaveLength(1);
+    expect(screen.getAllByRole("group", { name: "Fotos" })).toHaveLength(1);
     expect(screen.getAllByRole("group", { name: "Tamaño" })).toHaveLength(1);
-    expect(screen.getByText("6 unidades")).toBeInTheDocument();
-    expect(screen.getByText("12 unidades")).toBeInTheDocument();
+    expect(screen.getByText("6 fotos")).toBeInTheDocument();
+    expect(screen.getByText("12 fotos")).toBeInTheDocument();
   });
 
   it("muestra la dimensión Forma cuando shape tiene más de un valor", () => {
@@ -221,7 +223,7 @@ describe("VariantSelector — dimensiones ocultas (Ola 2A)", () => {
       />,
     );
     expect(screen.queryByRole("group", { name: "Estilo" })).not.toBeInTheDocument();
-    expect(screen.getAllByRole("group", { name: "Cantidad" })).toHaveLength(1);
+    expect(screen.getAllByRole("group", { name: "Fotos" })).toHaveLength(1);
     expect(screen.getAllByRole("group", { name: "Tamaño" })).toHaveLength(1);
   });
 
@@ -390,6 +392,7 @@ describe("VariantSelector — stepper de cantidad", () => {
   });
 
   it("conserva chips (sin stepper) cuando la cantidad NO es 1..N contigua (polaroid 6/9/12/20)", () => {
+    // Ola 18 — photoSlots se etiqueta "Fotos" (fotos por unidad).
     const variants = [
       makeVariant("v-p6", { photoSlots: 6, sizeCm: "7×9", variantStyle: "instagram" }),
       makeVariant("v-p9", { photoSlots: 9, sizeCm: "6×8", variantStyle: "instagram" }),
@@ -397,10 +400,10 @@ describe("VariantSelector — stepper de cantidad", () => {
       makeVariant("v-p20", { photoSlots: 20, sizeCm: "4×5", variantStyle: "instagram" }),
     ];
     render(<VariantSelector productBasePrice={100_000} variants={variants} />);
-    const cantidad = screen.getByRole("group", { name: "Cantidad" });
-    expect(within(cantidad).getByText("6 unidades")).toBeInTheDocument();
-    expect(within(cantidad).getByText("20 unidades")).toBeInTheDocument();
-    expect(within(cantidad).queryByLabelText("Aumentar cantidad")).not.toBeInTheDocument();
+    const fotos = screen.getByRole("group", { name: "Fotos" });
+    expect(within(fotos).getByText("6 fotos")).toBeInTheDocument();
+    expect(within(fotos).getByText("20 fotos")).toBeInTheDocument();
+    expect(within(fotos).queryByLabelText("Aumentar cantidad")).not.toBeInTheDocument();
   });
 
   it("usa stepper también con UNA sola dimensión de elección (polaroid 7.5×10 qty 1..10, Lucy 2026-07-22)", () => {

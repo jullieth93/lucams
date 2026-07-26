@@ -71,7 +71,7 @@ type VariantSelectorProps = {
 
 const DIMENSION_LABELS: Record<string, string> = {
   quantity: "Cantidad",
-  photoSlots: "Cantidad",
+  photoSlots: "Fotos",
   sizeCm: "Tamaño",
   shape: "Forma",
   color: "Color",
@@ -93,7 +93,8 @@ const DIMENSION_VALUE_ORDER: Record<string, string[]> = {
 };
 
 function formatDimensionValue(key: string, value: unknown): string {
-  if (key === "quantity" || key === "photoSlots") return `${value} unidades`;
+  if (key === "quantity") return `${value} unidades`;
+  if (key === "photoSlots") return `${value} fotos`;
   if (key === "sizeCm") return `${value} cm`;
   if (key === "shape") {
     const labels: Record<string, string> = {
