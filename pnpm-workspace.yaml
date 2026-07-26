@@ -15,3 +15,7 @@ allowBuilds:
   prisma: true
   sharp: true
   unrs-resolver: true
+
+overrides:
+  postcss: 8.5.18
+  '@babel/core': 7.29.6
