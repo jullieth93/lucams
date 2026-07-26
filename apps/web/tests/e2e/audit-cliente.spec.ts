@@ -123,6 +123,9 @@ test.describe("AUDITORÍA CLIENTE — catalogo-whatsapp (producción)", () => {
         if (slug === "nombre-personalizado") {
           // Superficie propia "Arma tu palabra" (editor de nombre, sin canvas Konva).
           await expect(page.getByText("Arma tu palabra", { exact: false }).first()).toBeVisible({ timeout: 30_000 });
+        } else if (slug === "pack-vocales" || slug === "abecedario-completo") {
+          // Editores de sets (letras): HTML con tema/idioma/colores, sin canvas Konva.
+          await expect(page.getByText("Elige los colores", { exact: false }).first()).toBeVisible({ timeout: 30_000 });
         } else {
           await expect(page.locator("canvas").first()).toBeVisible({ timeout: 30_000 });
         }
@@ -172,9 +175,9 @@ test.describe("AUDITORÍA CLIENTE — catalogo-whatsapp (producción)", () => {
     }
   });
 
-  test("6. Auth: /ingresar y /registro con Turnstile", async ({ page }) => {
+  test("6. Auth: /login y /registro con Turnstile", async ({ page }) => {
     watch(page, "auth");
-    await page.goto("/ingresar", { waitUntil: "domcontentloaded" });
+    await page.goto("/login", { waitUntil: "domcontentloaded" });
     await expect(page.locator('input[type="email"], input[name="email"]').first()).toBeVisible({ timeout: 15_000 });
     const turnstile = await page.locator('[class*="turnstile"], [data-turnstile-sitekey], iframe[src*="turnstile"]').count();
     await page.screenshot({ path: "/tmp/audit-cliente-login.png" });
