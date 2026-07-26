@@ -26,7 +26,7 @@ test.describe("catalogo-whatsapp preview certification", () => {
     ).toBeVisible({ timeout: 15_000 });
     await expect(page.getByRole("heading", { name: /Fotoimanes/i }).first()).toBeVisible();
     await expect(
-      page.getByRole("heading", { name: /Separadores Magnéticos/i }).first(),
+      page.getByRole("heading", { name: /Separadores de Libros \(Marcapáginas\)/i }).first(),
     ).toBeVisible();
     await expect(
       page.getByRole("heading", { name: /Juegos y Aprendizaje/i }).first(),
