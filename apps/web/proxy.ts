@@ -84,10 +84,11 @@ const IS_PROD_DEPLOY =
   process.env.VERCEL_ENV === "production" || process.env.VERCEL_ENV === "preview";
 const IS_DEV = process.env.NODE_ENV === "development";
 
-// CSP por nonce (C3, Lucy 2026-06-27). script-src usa nonce + strict-dynamic: los
-// scripts de Next llevan el nonce automáticamente y los que ellos cargan
-// (Turnstile vía next/script) se confían por propagación. style-src mantiene
-// 'unsafe-inline' a propósito: los atributos style="" inline NO aceptan nonce
+// CSP por nonce (C3, Lucy 2026-06-27). script-src usa nonce + 'self' (Ola 18 fix,
+// auditoría 2026-07-26: se retiró 'strict-dynamic' porque bloqueaba los chunks lazy
+// de Next — editores de sets, login, admin — ver lib/security-headers.ts): los
+// scripts inline exigen el nonce y los chunks de Next cargan por 'self'. style-src
+// mantiene 'unsafe-inline' a propósito: los atributos style="" inline NO aceptan nonce
 // (el nonce solo aplica a elementos <style>/<script>) y removerlo rompería toda
 // la UI. 'unsafe-eval' solo en dev (HMR + stacks de React); en prod no se usa.
 // Guía oficial: node_modules/next/.../guides/content-security-policy.md

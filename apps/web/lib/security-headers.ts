@@ -19,13 +19,22 @@ export const SECURITY_HEADERS: Record<string, string> = {
 };
 
 /**
- * Content-Security-Policy. En prod/preview: nonce + strict-dynamic (sin 'unsafe-inline' para
- * scripts). En dev: 'unsafe-inline'/'unsafe-eval' porque el dev server de Next inyecta HMR/overlay
- * que con nonce se romperían (el nonce se valida de verdad en un deploy prod-like).
+ * Content-Security-Policy. En prod/preview: nonce para scripts inline (sin 'unsafe-inline')
+ * + 'self' para los chunks de Next. En dev: 'unsafe-inline'/'unsafe-eval' porque el dev
+ * server de Next inyecta HMR/overlay que con nonce se romperían.
+ *
+ * Ola 18 fix (auditoría 2026-07-26): se retira 'strict-dynamic'. Con strict-dynamic la
+ * allowlist de hosts ('self') queda INERTE (comportamiento CSP3) y SOLO corren scripts
+ * con trust de nonce — los chunks lazy de Next (editores de sets vocales/abecedario,
+ * formulario de login, partes del admin) se cargan sin ese trust y el navegador los
+ * BLOQUEABA (consola: "violates CSP directive script-src ... 'strict-dynamic'"),
+ * rompiendo la hidratación de esas páginas en producción. Con 'self' + nonce los chunks
+ * de Next cargan y los inline siguen exigiendo nonce: la postura sigue siendo fuerte
+ * (sin unsafe-inline ni unsafe-eval).
  */
 export function buildCsp(nonce: string, isProd: boolean): string {
   const scriptSrc = isProd
-    ? `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' https://challenges.cloudflare.com https://checkout.wompi.co`
+    ? `script-src 'self' 'nonce-${nonce}' https://challenges.cloudflare.com https://checkout.wompi.co`
     : "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com https://checkout.wompi.co";
   return [
     "default-src 'self'",

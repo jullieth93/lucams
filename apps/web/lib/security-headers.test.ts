@@ -7,15 +7,22 @@
 import { describe, it, expect } from "vitest";
 import { buildCsp, isOriginAllowed, getAllowedOrigins, SECURITY_HEADERS } from "./security-headers";
 
-describe("buildCsp — prod (nonce + strict-dynamic)", () => {
+describe("buildCsp — prod (nonce + 'self', sin strict-dynamic)", () => {
   const csp = buildCsp("NONCE123", true);
 
-  it("script-src usa nonce + strict-dynamic y NO 'unsafe-inline'/'unsafe-eval'", () => {
+  it("script-src usa nonce + 'self' y NO 'unsafe-inline'/'unsafe-eval'", () => {
     expect(csp).toContain("'nonce-NONCE123'");
-    expect(csp).toContain("'strict-dynamic'");
     const scriptSrc = csp.split("; ").find((d) => d.startsWith("script-src"))!;
+    expect(scriptSrc).toContain("'self'");
     expect(scriptSrc).not.toContain("unsafe-inline");
     expect(scriptSrc).not.toContain("unsafe-eval");
+  });
+
+  it("NO usa 'strict-dynamic' (Ola 18 fix — bloqueaba los chunks lazy de Next)", () => {
+    // Con strict-dynamic la allowlist 'self' queda inerte (CSP3) y los chunks lazy de
+    // Next (editores de sets, login, admin) se bloqueaban en producción (auditoría 2026-07-26).
+    const scriptSrc = csp.split("; ").find((d) => d.startsWith("script-src"))!;
+    expect(scriptSrc).not.toContain("'strict-dynamic'");
   });
 
   it("incluye upgrade-insecure-requests, object-src 'none' y base-uri 'self'", () => {
