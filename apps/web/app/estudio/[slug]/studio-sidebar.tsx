@@ -347,7 +347,9 @@ function ProgressBar({ filled, total }: { filled: number; total: number }) {
         <span
           className={[
             "text-sm font-bold tabular-nums",
-            isComplete ? "text-emerald-600" : isEmpty ? "text-red-500" : "text-brand-purple-dark",
+            // red-600 (#dc2626 ≈ 4.8:1 sobre crema) en vez de red-500 (#ef4444 ≈ 3.9:1):
+            // el contador de progreso vacío no cumplía AA de contraste (auditoría experto 2026-07-26).
+            isComplete ? "text-emerald-600" : isEmpty ? "text-red-600" : "text-brand-purple-dark",
           ].join(" ")}
         >
           {filled}/{total} {isComplete && <Check className="ml-0.5 inline h-4 w-4" aria-hidden />}

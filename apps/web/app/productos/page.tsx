@@ -346,7 +346,14 @@ function Pagination({
             ← Anterior
           </Link>
         ) : (
-          <span className="border-brand-purple/10 text-brand-purple-dark/35 inline-flex items-center gap-1 rounded-md border bg-white/40 px-3 py-1.5 text-xs font-semibold">
+          // Estado deshabilitado REAL (auditoría experto 2026-07-26): era un <span> con texto al
+          // 35% de opacidad sin marcado semántico — axe lo contaba como texto normal y fallaba
+          // color-contrast. aria-disabled="true" lo declara componente inactivo (la excepción
+          // WCAG 1.4.3 aplica) y /50 lo hace perceptible como "presente pero inactivo".
+          <span
+            aria-disabled="true"
+            className="border-brand-purple/15 text-brand-purple-dark/50 inline-flex cursor-not-allowed items-center gap-1 rounded-md border bg-white/40 px-3 py-1.5 text-xs font-semibold"
+          >
             ← Anterior
           </span>
         )}
@@ -384,7 +391,10 @@ function Pagination({
             Siguiente →
           </Link>
         ) : (
-          <span className="border-brand-purple/10 text-brand-purple-dark/35 inline-flex items-center gap-1 rounded-md border bg-white/40 px-3 py-1.5 text-xs font-semibold">
+          <span
+            aria-disabled="true"
+            className="border-brand-purple/15 text-brand-purple-dark/50 inline-flex cursor-not-allowed items-center gap-1 rounded-md border bg-white/40 px-3 py-1.5 text-xs font-semibold"
+          >
             Siguiente →
           </span>
         )}

@@ -46,6 +46,11 @@ const BLOCKING = new Set(["serious", "critical"]);
 async function auditPage(page: import("@playwright/test").Page, label: string, path: string) {
   test.slow();
   await page.goto(path, { waitUntil: "domcontentloaded" });
+  // Settle (auditoría experto 2026-07-26): axe analizaba la página a mitad de carga y los
+  // skeletons/estados transitorios (shimmer de bajo contraste) disparaban falsos positivos
+  // de color-contrast que variaban por corrida. Esperar a que el contenido real termine de
+  // pintar estabiliza el gate (0 violaciones serious/critical verificadas tras el settle).
+  await page.waitForTimeout(3000);
   const violations = await scanA11y(page);
   // Visible en el output para triage (incluye moderate/minor).
   console.log(formatViolations(label, violations));
