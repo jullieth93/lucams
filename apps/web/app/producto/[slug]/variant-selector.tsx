@@ -353,6 +353,10 @@ export function VariantSelector({
     dimensions.length === 1 && firstDim !== undefined && firstDim.values.length === 1;
 
   // ── Modo single-dimension: lista vertical con precio por variant ──
+  // Ola 18 (Lucy 2026-07-26) — estilo visual UNIFICADO con el modo chips/stepper:
+  // mismo acento púrpura de selección (antes turquesa, desentonaba), mismo ring-2 +
+  // shadow-md al seleccionar y mismo hover que el resto de la PDP. La lógica de
+  // selección (single source en Context) no cambia.
   if (dimensions.length <= 1 && !singleQuantityStepper && !singleStaticDim) {
     return (
       <div className="mb-4">
@@ -373,9 +377,9 @@ export function VariantSelector({
                 aria-pressed={isSelected}
                 onClick={() => selectVariant(v.id)}
                 className={[
-                  "focus:ring-brand-turquoise flex w-full cursor-pointer items-center justify-between rounded-lg p-3 text-left transition-all focus:ring-2 focus:outline-none",
+                  "focus:ring-brand-purple flex w-full cursor-pointer items-center justify-between rounded-lg p-3 text-left transition-all focus:ring-2 focus:outline-none",
                   isSelected
-                    ? "ring-brand-turquoise from-brand-turquoise/10 to-brand-purple/10 bg-gradient-to-br shadow-md ring-2"
+                    ? "ring-brand-purple bg-brand-purple/5 shadow-md ring-2"
                     : "ring-brand-purple/15 hover:ring-brand-purple/40 hover:bg-brand-cream/40 ring-1 hover:shadow-sm",
                 ].join(" ")}
               >
@@ -384,7 +388,7 @@ export function VariantSelector({
                     className={[
                       "flex h-5 w-5 items-center justify-center rounded-full transition-colors",
                       isSelected
-                        ? "bg-brand-turquoise text-brand-purple-dark"
+                        ? "bg-brand-purple text-white"
                         : "ring-brand-purple/30 ring-1",
                     ].join(" ")}
                     aria-hidden
@@ -461,7 +465,7 @@ export function VariantSelector({
                 aria-label={dim.label}
                 className="flex flex-wrap items-center gap-x-3 gap-y-2"
               >
-                <div className="ring-brand-purple/20 inline-flex items-center rounded-lg bg-white ring-1">
+                <div className="ring-brand-purple/15 inline-flex items-center rounded-lg bg-white ring-1">
                   <button
                     type="button"
                     aria-label="Disminuir cantidad"
@@ -556,9 +560,10 @@ export function VariantSelector({
       {/* Precio del variant seleccionado, prominente. Refleja inmediato
           porque depende de selectedVariant (local). El router.replace
           en background sincroniza la URL y el RSC silenciosamente.
-          #14 — se oculta en por-ficha: el total lo muestra el NamePricePicker. */}
+          #14 — se oculta en por-ficha: el total lo muestra el NamePricePicker.
+          Ola 18 — misma familia visual que la lista single-dim (bg-purple/5 + ring purple). */}
       {!perTile && (
-        <div className="from-brand-turquoise/8 to-brand-purple/8 ring-brand-purple/15 flex items-center justify-between rounded-lg bg-gradient-to-br p-3 ring-1">
+        <div className="bg-brand-purple/5 ring-brand-purple/15 flex items-center justify-between rounded-lg p-3 ring-1">
           <span className="text-brand-purple-dark/70 text-xs font-bold tracking-wider uppercase">
             Precio
           </span>
