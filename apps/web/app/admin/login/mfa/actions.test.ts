@@ -69,7 +69,13 @@ describe("useRecoveryCodeAction — rate-limit del acceso de emergencia", () => 
 
     expect(rateLimit).toHaveBeenCalledTimes(2);
     const keys = rateLimit.mock.calls.map((c) => (c as unknown as [string])[0]);
-    expect(keys).toContain("admin-recovery-code:ip:203.0.113.7");
+    // La key de IP ahora va hasheada (hashIp — auditoría experto 2026-07-26: la IP es PII y no
+    // debe quedar en claro en la tabla de rate-limit). El rate-limit por IP sigue funcionando
+    // porque el hash es determinístico por IP.
+    const ipKeys = keys.filter((k) => k.startsWith("admin-recovery-code:ip:"));
+    expect(ipKeys).toHaveLength(1);
+    expect(ipKeys[0]).toMatch(/^admin-recovery-code:ip:[0-9a-f]{16}$/);
+    expect(ipKeys[0]).not.toContain("203.0.113.7"); // la IP nunca en claro
     expect(keys).toContain("admin-recovery-code:owner:adm_1");
     // Ventana de 15 min, igual que /admin/login.
     for (const call of rateLimit.mock.calls) {
