@@ -35,8 +35,11 @@ describe("EmailInput — accesibilidad y atributos", () => {
     const input = screen.getByRole("textbox", { name: "Correo" });
     expect(input).toHaveAttribute("type", "email");
     expect(input).toHaveAttribute("autocomplete", "email");
-    // pattern: exige punto en dominio + TLD 2-24 chars (más estricto que HTML5).
-    expect(input).toHaveAttribute("pattern", "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,24}$");
+    // pattern: exige punto en dominio + TLD 2-24 chars (más estricto que HTML5),
+    // con los `-` escapados para la flag /v con la que el navegador compila pattern.
+    expect(input).toHaveAttribute("pattern", "^[a-zA-Z0-9._%+\\-]+@[a-zA-Z0-9.\\-]+\\.[a-zA-Z]{2,24}$");
+    // El pattern es VÁLIDO bajo la flag /v (unicodeSets) de los navegadores modernos.
+    expect(() => new RegExp(input.getAttribute("pattern")!, "v")).not.toThrow();
   });
 
   it("permite override de autoComplete", () => {

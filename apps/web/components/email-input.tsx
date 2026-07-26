@@ -42,7 +42,12 @@ const POPULAR_DOMAINS = [
 // Regex práctico para emails consumer (RFC 5321 simplificado).
 // Más estricto que el `type=email` HTML5: requiere al menos un punto
 // en el dominio + TLD de 2-24 chars.
-const EMAIL_PATTERN = "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,24}$";
+// Ola 18 fix (auditoría 2026-07-26): los `-` de las clases van ESCAPADOS. Los
+// navegadores modernos compilan el atributo `pattern` con la flag /v
+// (unicodeSets), donde un `-` sin escapar dentro de […] es inválido y el
+// navegador logueaba "Pattern attribute value … is not a valid regular
+// expression" en TODOS los formularios (login, registro, cotización, admin).
+const EMAIL_PATTERN = "^[a-zA-Z0-9._%+\\-]+@[a-zA-Z0-9.\\-]+\\.[a-zA-Z]{2,24}$";
 
 type Props = Omit<ComponentProps<"input">, "type" | "pattern"> & {
   value?: string;

@@ -40,7 +40,12 @@ export function buildCsp(nonce: string, isProd: boolean): string {
     "default-src 'self'",
     scriptSrc,
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-    "img-src 'self' data: blob: https://*.supabase.co https://*.coordinadora.com",
+    // img-src incluye images.unsplash.com TEMPORALMENTE: fotos placeholder del seed que
+    // Lucy reemplazará por fotos reales (vía admin/Supabase Storage). La decisión es
+    // coherente con next.config images.remotePatterns (que ya permite Unsplash vía proxy
+    // /_next/image); acá se permite además la carga directa (previews admin/cotización).
+    // TODO (contenido): retirar Unsplash cuando las fotos reales estén montadas.
+    "img-src 'self' data: blob: https://*.supabase.co https://*.coordinadora.com https://images.unsplash.com",
     "font-src 'self' https://fonts.gstatic.com",
     // Solo hosts que el NAVEGADOR contacta: Supabase (auth/storage/realtime) + Wompi (widget/checkout).
     // El envío (Aveonline) y la IA (Gemini) se llaman SERVER-SIDE → no van en connect-src. Se retiran
