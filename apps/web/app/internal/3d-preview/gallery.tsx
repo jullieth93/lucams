@@ -95,10 +95,36 @@ function roundRect(
   ctx.closePath();
 }
 
+/** Ola 17 — cara vertical del marcapáginas plano (4:15), con etiqueta para distinguir
+ *  FRENTE de RESPALDO en las capturas (verificación visual de la cara B real). */
+function flatFace(label: string, a: string, b: string, slotIndex: number): Magnet3D {
+  const w = 200;
+  const h = 750;
+  const c = document.createElement("canvas");
+  c.width = w;
+  c.height = h;
+  const ctx = c.getContext("2d")!;
+  const g = ctx.createLinearGradient(0, 0, 0, h);
+  g.addColorStop(0, a);
+  g.addColorStop(1, b);
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, w, h);
+  ctx.fillStyle = "rgba(255,255,255,0.92)";
+  ctx.font = `800 34px system-ui, sans-serif`;
+  ctx.textAlign = "center";
+  ctx.save();
+  ctx.translate(w / 2, h / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillText(label, 0, 12);
+  ctx.restore();
+  return { dataUrl: c.toDataURL("image/png"), wRatio: 4, hRatio: 15, slotIndex };
+}
+
 type Samples = {
   magnets: Magnet3D[];
   letters: Magnet3D[];
   bookmarks: Magnet3D[];
+  flatFaces: Magnet3D[];
   calendarPages: string[];
 };
 
@@ -150,12 +176,17 @@ export function Preview3DGallery() {
         letterMagnet("A", "#FFD93D"),
       ],
       bookmarks: [photoMagnet(2, 260, 380), photoMagnet(4, 260, 380)],
+      flatFaces: [
+        flatFace("FRENTE", "#5DD9D1", "#7C6AAD", 0),
+        flatFace("RESPALDO", "#E85B9F", "#FFD93D", 1),
+      ],
       calendarPages: [calendarPage(0), calendarPage(1), calendarPage(2)],
     });
   }, []);
   const magnets = s?.magnets ?? null;
   const letters = s?.letters ?? null;
   const bookmarks = s?.bookmarks ?? null;
+  const flatFaces = s?.flatFaces ?? null;
   const calendarPages = s?.calendarPages ?? null;
 
   const scenes: Array<{ title: string; node: React.ReactNode }> = [
@@ -178,6 +209,12 @@ export function Preview3DGallery() {
     {
       title: "Libro (separadores)",
       node: bookmarks ? <BookView3D bookmarks={bookmarks} /> : null,
+    },
+    {
+      title: "Libro (marcapáginas plano · cara B real)",
+      node: flatFaces ? (
+        <BookView3D bookmarks={flatFaces} sizeCm="4×15" facesPerUnit={2} flat />
+      ) : null,
     },
     {
       title: "Calendario (pared)",

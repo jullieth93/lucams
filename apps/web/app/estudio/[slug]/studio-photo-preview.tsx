@@ -81,9 +81,19 @@ export function StudioPhotoPreview({
     return () => ro.disconnect();
   }, []);
 
+  // Ola 17 — el preview respeta la PROPORCIÓN REAL del producto, pero con tope de alto:
+  // sin tope, un stage alto (marcapáginas alargado 4:15 → aspect 3.75) generaba un canvas
+  // de ~2000px que desbordaba el modal y obligaba a SCROLL. Con tope MAX_H la pieza queda
+  // angosta y alta (como el físico real) y la edición cabe en pantalla. Stages anchos o
+  // cuadrados no cambian (su alto natural ya queda bajo el tope).
+  const MAX_H = 560;
   const aspect = unitTemplate.stage.height / unitTemplate.stage.width;
-  const displayWidth = Math.max(200, containerWidth);
-  const displayHeight = displayWidth * aspect;
+  let displayWidth = Math.max(200, containerWidth);
+  let displayHeight = displayWidth * aspect;
+  if (displayHeight > MAX_H) {
+    displayHeight = MAX_H;
+    displayWidth = Math.max(140, Math.round(displayHeight / aspect));
+  }
   const scale = displayWidth / unitTemplate.stage.width;
 
   // ── Estilo de tarjeta — misma clasificación que StudioSlot (WYSIWYG) ──
@@ -206,7 +216,7 @@ export function StudioPhotoPreview({
   return (
     <div ref={containerRef} className="mx-auto w-full max-w-[520px]">
       <div
-        className="ring-brand-purple/15 relative overflow-hidden rounded-lg shadow-md ring-1"
+        className="ring-brand-purple/15 relative mx-auto overflow-hidden rounded-lg shadow-md ring-1"
         style={{ width: displayWidth, height: displayHeight, touchAction: "none" }}
       >
         <Stage

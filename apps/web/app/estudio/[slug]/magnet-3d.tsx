@@ -292,6 +292,7 @@ export function ExtrudedMagnetMesh({
   depth = MAGNET_DEPTH,
   edgeColor = "#F6F1E8",
   backColor,
+  backTexture,
   textureRegion,
   cornerRadiusRatio,
   position = [0, 0, 0],
@@ -307,6 +308,9 @@ export function ExtrudedMagnetMesh({
   edgeColor?: string;
   /** Si se define, dibuja una tapa trasera lisa de este color (reverso sin imprimir). */
   backColor?: string;
+  /** Ola 17 — textura de la cara TRASERA real (cara B del Estudio). Manda sobre backColor:
+   *  la tapa trasera se dibuja con SU diseño (flipU para leerse derecho desde atrás). */
+  backTexture?: THREE.Texture | null;
   /** Región normalizada de la textura (y desde arriba) para la cara impresa. Default: completa. */
   textureRegion?: TextureRegion;
   /** Radio de esquina como fracción del ancho (default 8/512 — espejo de buildShapePath). */
@@ -353,12 +357,33 @@ export function ExtrudedMagnetMesh({
 
   const backGeo = useMemo(
     () =>
-      backColor
+      backColor || backTexture
         ? new THREE.ShapeGeometry(buildSilhouette(shape, width, height, cornerRadiusRatio), 28)
         : null,
-    [backColor, shape, width, height, cornerRadiusRatio],
+    [backColor, backTexture, shape, width, height, cornerRadiusRatio],
   );
   useEffect(() => () => backGeo?.dispose(), [backGeo]);
+
+  // Ola 17 — textura clonada para la cara TRASERA real (cara B): misma región que la
+  // frontal pero con flipU, así el diseño B se lee DERECHO al ver la pieza desde atrás
+  // (la tapa trasera es una ShapeGeometry rotada π sobre Y — espejo de la convención
+  // flipU de FoldedStripMesh, testeada en textureRegionTransform).
+  const backTex = useMemo(() => {
+    if (!backTexture) return null;
+    const t = backTexture.clone();
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.anisotropy = 8;
+    const { repeat, offset } = textureRegionTransform(
+      { x: rx, y: ry, w: rw, h: rh, flipV, flipU: true },
+      width,
+      height,
+    );
+    t.repeat.set(repeat[0], repeat[1]);
+    t.offset.set(offset[0], offset[1]);
+    t.needsUpdate = true;
+    return t;
+  }, [backTexture, width, height, rx, ry, rw, rh, flipV]);
+  useEffect(() => () => backTex?.dispose(), [backTex]);
 
   const backZ = -(depth / 2 + depth * 0.2) - 0.0012;
 
@@ -381,7 +406,17 @@ export function ExtrudedMagnetMesh({
           envMapIntensity={0.9}
         />
       </mesh>
-      {backGeo && backColor ? (
+      {backGeo && backTexture ? (
+        <mesh geometry={backGeo} position={[0, 0, backZ]} rotation={[0, Math.PI, 0]}>
+          <meshStandardMaterial
+            map={backTex}
+            color={backTex ? "#ffffff" : "#FDFBF4"}
+            roughness={0.5}
+            metalness={0}
+            envMapIntensity={1.0}
+          />
+        </mesh>
+      ) : backGeo && backColor ? (
         <mesh geometry={backGeo} position={[0, 0, backZ]} rotation={[0, Math.PI, 0]}>
           <meshStandardMaterial color={backColor} roughness={0.85} metalness={0} />
         </mesh>
@@ -392,6 +427,7 @@ export function ExtrudedMagnetMesh({
 
 export function MagnetMesh({
   dataUrl,
+  backDataUrl,
   width,
   height,
   shape = "rectangle",
@@ -403,6 +439,8 @@ export function MagnetMesh({
   position = [0, 0, 0],
 }: {
   dataUrl: string;
+  /** Ola 17 — diseño de la cara TRASERA real (cara B). Default: la misma de la frontal. */
+  backDataUrl?: string;
   width: number;
   height: number;
   shape?: MagnetShape;
@@ -419,6 +457,8 @@ export function MagnetMesh({
   position?: [number, number, number];
 }) {
   const base = useTexture(dataUrl);
+  // Sin cara B explícita se reuso la frontal (mismo URL → mismo caché de drei, sin doble fetch).
+  const back = useTexture(backDataUrl ?? dataUrl);
   return (
     <ExtrudedMagnetMesh
       texture={base}
@@ -428,6 +468,7 @@ export function MagnetMesh({
       depth={depth}
       edgeColor={edgeColor}
       backColor={backColor}
+      backTexture={backDataUrl ? back : null}
       textureRegion={textureRegion}
       cornerRadiusRatio={cornerRadiusRatio}
       position={position}

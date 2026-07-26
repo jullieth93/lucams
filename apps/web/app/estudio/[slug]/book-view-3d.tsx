@@ -218,6 +218,7 @@ function FlatBookmarks({
           <group rotation={[-Math.PI / 2, 0, 0]}>
             <MagnetMesh
               dataUrl={unit.front.dataUrl}
+              backDataUrl={unit.back.dataUrl}
               width={w}
               height={h}
               shape="rectangle"
