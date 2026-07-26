@@ -150,9 +150,8 @@ export const ADMIN_NAV: NavGroup[] = [
         label: "Reclamos",
         href: "/admin/reclamos",
         icon: AlertCircle,
-        badge: { text: "Fase 4", tone: "phase4" },
         description:
-          "Gestión de tickets de soporte (devoluciones, garantías, dudas). Llega tras Fase 2.",
+          "Gestión de reclamos de garantía: revisa, resuelve o rechaza con remedio (reparación, cambio o devolución).",
       },
       {
         label: "Reseñas",
@@ -202,9 +201,8 @@ export const ADMIN_NAV: NavGroup[] = [
         label: "Mayorista B2B",
         href: "/admin/mayorista",
         icon: Building2,
-        badge: { text: "Próximo", tone: "soon" },
         description:
-          "Cuentas mayoristas con precios especiales, listas de precios B2B y aprobación de pedidos en lote.",
+          "Niveles de precio mayorista B2B por producto o catálogo completo (cantidad mínima → precio por unidad).",
       },
       // P1-17: "Redirects 301" se movió a Configuración — no es una promo,
       // es plumbing SEO. Lo dejamos cerca de Integraciones y General.
@@ -218,17 +216,15 @@ export const ADMIN_NAV: NavGroup[] = [
         label: "Materiales e Insumos",
         href: "/admin/materiales",
         icon: Boxes,
-        badge: { text: "Fase 5", tone: "phase5" },
         description:
-          "Inventario de materias primas, alertas de stock bajo, proveedores. Llega con Fase 5 (gestión interna).",
+          "Inventario de materiales e insumos de producción con alerta de bajo stock.",
       },
       {
         label: "Costos de fabricación",
         href: "/admin/costos",
         icon: Calculator,
-        badge: { text: "Fase 5", tone: "phase5" },
         description:
-          "Costeo por producto (materiales + mano de obra + indirectos) y margen real por venta.",
+          "Costo de fabricación por producto y margen contra el precio de venta.",
       },
     ],
   },
@@ -240,9 +236,8 @@ export const ADMIN_NAV: NavGroup[] = [
         label: "Tienda Lucams",
         href: "/admin/canales/tienda",
         icon: Store,
-        badge: { text: "Próximo", tone: "soon" },
         description:
-          "Configuración del canal storefront (este sitio). Hoy se administra desde Configuración › General.",
+          "Estado del canal Tienda online: URL, modo de tienda y salud de integraciones.",
       },
       {
         label: "Mercado Libre",
@@ -304,9 +299,8 @@ export const ADMIN_NAV: NavGroup[] = [
         label: "Métricas",
         href: "/admin/metricas",
         icon: TrendingUp,
-        badge: { text: "Fase 4", tone: "phase4" },
         description:
-          "Reportes de ventas, productos más vendidos, conversión, ticket promedio. Llega con datos reales (post-Fase 2).",
+          "Métricas de ventas: pedidos, cotizaciones, ingresos del mes y top productos.",
       },
       {
         label: "Salud técnica",
@@ -319,9 +313,8 @@ export const ADMIN_NAV: NavGroup[] = [
         label: "Performance",
         href: "/admin/performance",
         icon: Gauge,
-        badge: { text: "Próximo", tone: "soon" },
         description:
-          "Web Vitals (LCP/CLS/INP) y errores server captados. Útil para optimizar performance del storefront.",
+          "Rendimiento técnico: errores recientes y métricas web (LCP/CLS/INP).",
       },
       { label: "Auditoría", href: "/admin/auditoria", icon: Activity },
     ],
@@ -372,9 +365,8 @@ export const ADMIN_NAV: NavGroup[] = [
     title: "Mensajes",
     icon: MessageSquare,
     href: "/admin/mensajes",
-    badge: { text: "Opcional", tone: "soon" },
     description:
-      "Inbox unificado de WhatsApp + emails de soporte (cuando se cablee). Hoy opcional, no bloquea operación.",
+      "Bandeja de mensajes de clientes (tickets de soporte): abiertos, en proceso y cerrados.",
   },
 ];
 

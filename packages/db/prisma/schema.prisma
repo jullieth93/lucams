@@ -379,6 +379,8 @@ model Product {
   designs               Design[]
   templates             PersonalizationTemplate[]
   quoteItems            QuoteItem[]
+  // Ola Admin 100% — niveles de precio mayorista B2B por producto (/admin/mayorista).
+  wholesaleTiers        WholesaleTier[]
   // PLAN_CATALOG_V2 1.5 / 2.10 — tags transversales por ocasión (matrimonio, día madre, etc.).
   ocasionTags           ProductOcasionTag[]
   isActive              Boolean                   @default(true)
@@ -1714,4 +1716,52 @@ model QuoteItem {
   createdAt DateTime @default(now())
 
   @@index([quoteId])
+}
+
+// Ola Admin 100% (Lucy 2026-07-26) — módulos Mayorista B2B y Materiales.
+
+/// Nivel de precio mayorista B2B: a partir de `minQty` unidades, el precio por
+/// unidad es `unitPrice` (centavos COP). Por producto (null = aplica a todo el
+/// catálogo). El admin no técnico lo gestiona desde /admin/mayorista.
+model WholesaleTier {
+  id        String   @id @default(cuid())
+  productId String?
+  product   Product? @relation(fields: [productId], references: [id], onDelete: Cascade)
+  minQty    Int
+  unitPrice Int // centavos COP por unidad en este nivel
+  note      String?
+  isActive  Boolean  @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  createdBy String?
+  updatedBy String?
+  deletedAt DateTime?
+  deletedBy String?
+
+  @@index([productId, isActive])
+  @@index([deletedAt])
+}
+
+/// Material/insumo de producción (PET laminado, imán flexible, tinta, empaque…).
+/// Stock en unidades con alerta de mínimo para el admin no técnico (/admin/materiales).
+model Material {
+  id          String   @id @default(cuid())
+  name        String
+  unit        String // "unidad", "pliego", "metro", "ml", "paquete"
+  stock       Float    @default(0)
+  minStock    Float    @default(0)
+  costPerUnit Int? // centavos COP por unidad (para costos de fabricación)
+  note        String?
+  isActive    Boolean  @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  createdBy String?
+  updatedBy String?
+  deletedAt DateTime?
+  deletedBy String?
+
+  @@index([isActive])
+  @@index([deletedAt])
 }
