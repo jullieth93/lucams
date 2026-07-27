@@ -23,7 +23,7 @@ import { logger } from "@/lib/logger";
 import { rateLimit } from "@/lib/rate-limit";
 import { ownerKey, ipKey } from "@/lib/rate-limit-keys";
 import { uploadCustomerPhoto } from "@/lib/storage";
-import { getGalleryImageUrl } from "./design-gallery";
+import { getGalleryImageById } from "./design-gallery";
 import { prisma } from "@/lib/db";
 import {
   CreateDraftDesignSchema,
@@ -553,12 +553,21 @@ export async function uploadDesignAssetAction(formData: FormData) {
 //
 // El cliente elige un diseño de la galería; lo "subimos" como asset del diseño (reusando
 // uploadCustomerPhoto) para que el slot lo trate como cualquier foto (encuadre, finalize, render).
+// Ola 21 — soporta pares cara A/B para separadores: si el diseño tiene `imageUrlB`, se suben
+// ambas imágenes y se devuelven los dos assets.
 
 export async function assignPredesignedToDesignAction(input: {
   designId: string;
   galleryImageId: string;
 }): Promise<
-  | { ok: true; assetId: string; signedUrl: string; width: number; height: number }
+  | {
+      ok: true;
+      assetId: string;
+      signedUrl: string;
+      width: number;
+      height: number;
+      assetB?: { assetId: string; signedUrl: string; width: number; height: number };
+    }
   | { ok: false; message: string }
 > {
   const designId = typeof input?.designId === "string" ? input.designId : "";
@@ -575,17 +584,20 @@ export async function assignPredesignedToDesignAction(input: {
   const design = await getOwnedDesign(designId, { customerId, sessionId });
   if (!design) return { ok: false, message: "Diseño no encontrado o no autorizado." };
 
-  const url = await getGalleryImageUrl(galleryImageId);
-  if (!url) return { ok: false, message: "Diseño no disponible." };
+  const galleryImage = await getGalleryImageById(galleryImageId);
+  if (!galleryImage) return { ok: false, message: "Diseño no disponible." };
+
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+  const isAllowedUrl = (url: string) =>
+    !!supabaseUrl && url.startsWith(`${supabaseUrl}/storage/v1/object/public/`);
 
   // Anti-SSRF: solo se permite bajar la imagen desde NUESTRO storage público (la galería la
   // llena el admin vía uploadProductImage → bucket propio). Cualquier otra URL se rechaza.
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
-  if (!supabaseUrl || !url.startsWith(`${supabaseUrl}/storage/v1/object/public/`)) {
+  if (!isAllowedUrl(galleryImage.imageUrl)) {
     return { ok: false, message: "Diseño no disponible." };
   }
 
-  try {
+  async function uploadFromUrl(url: string) {
     const res = await fetch(url);
     if (!res.ok) throw new Error(`fetch ${res.status}`);
     const buffer = Buffer.from(await res.arrayBuffer());
@@ -612,12 +624,20 @@ export async function assignPredesignedToDesignAction(input: {
       },
     });
     return {
-      ok: true,
       assetId: asset.id,
       signedUrl: uploaded.signedUrl,
       width: uploaded.width,
       height: uploaded.height,
     };
+  }
+
+  try {
+    const assetA = await uploadFromUrl(galleryImage.imageUrl);
+    let assetB;
+    if (galleryImage.imageUrlB && isAllowedUrl(galleryImage.imageUrlB)) {
+      assetB = await uploadFromUrl(galleryImage.imageUrlB);
+    }
+    return { ok: true, ...assetA, assetB };
   } catch (err) {
     logger.warn(
       {

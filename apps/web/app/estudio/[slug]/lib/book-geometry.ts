@@ -142,7 +142,7 @@ export function stripDimsForFace(
  * es su propia unidad y repite el diseño en ambas caras (comportamiento histórico).
  */
 export function bookmarkFaceUnits<
-  T extends { wRatio: number; hRatio: number; slotIndex?: number; assetUrl?: string | null },
+  T extends { wRatio: number; hRatio: number; slotIndex?: number; assetUrl?: string | null; dataUrl?: string | null },
 >(
   bookmarks: readonly T[],
   /** facesPerUnit del producto: 2 = separadores con cara A/B; 1 = tiras viejas sin cara B. */
@@ -165,7 +165,9 @@ export function bookmarkFaceUnits<
       const front = bySlot.get(2 * k);
       if (!front) continue; // unidad sin cara A: no renderizar
       const back = bySlot.get(2 * k + 1);
-      units.push({ front, back: back?.assetUrl ? back : front });
+      // Magnet3D usa dataUrl (textura capturada del stage), no assetUrl. Si la cara B
+      // no tiene textura propia, reusamos la frontal (comportamiento histórico).
+      units.push({ front, back: back?.dataUrl || back?.assetUrl ? back : front });
     }
     return units;
   }
@@ -303,6 +305,15 @@ export function flatBookmarkSlots(count: number): { x: number; z: number; yaw: n
  */
 export function flatBookmarkPlacement(bx: number, bz: number): [number, number, number] {
   return [bx, pageSurfaceY(bx) + FLAT_BOOKMARK_T / 2 + 0.002, bz];
+}
+
+/**
+ * Colocación de UNA pieza plana DE PIE sobre la hoja en (bx, bz): la base de la pieza
+ * reposa sobre la superficie de la hoja (y = pageSurfaceY + h/2). El giro (yaw) lo aplica
+ * el caller sobre el grupo (rotación mundial Y).
+ */
+export function flatBookmarkPlacementUpright(bx: number, bz: number, h: number): [number, number, number] {
+  return [bx, pageSurfaceY(bx) + h / 2, bz];
 }
 
 /** Encuadre de la cámara (FitCameraPolar): pliego completo + holgura, vista desde arriba-3/4. */

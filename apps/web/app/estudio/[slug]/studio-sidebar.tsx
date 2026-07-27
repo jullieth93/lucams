@@ -27,7 +27,7 @@ import {
 import { toast } from "sonner";
 import type { StoreApi } from "zustand";
 import { useStore } from "zustand";
-import { uploadDesignAssetAction } from "@/features/personalization/actions";
+import { uploadDesignAssetAction, assignPredesignedToDesignAction } from "@/features/personalization/actions";
 import { StudioMessageField } from "./studio-message-field";
 import {
   selectAssetIsUsed,
@@ -48,6 +48,8 @@ type StudioSidebarProps = {
   productShape?: "rectangle" | "circle" | "heart" | "custom";
   /** Ola 3 — el producto admite texto editable (Polaroid). Habilita el campo "Tu mensaje". */
   allowText?: boolean;
+  /** Ola 21 — diseños prediseñados aplicables por slot (galería admin). */
+  predesigned?: import("./studio-asset-picker-modal").PredesignedItem[];
 };
 
 export function StudioSidebar({
@@ -57,6 +59,7 @@ export function StudioSidebar({
   productSizeCm,
   productShape,
   allowText = false,
+  predesigned = [],
 }: StudioSidebarProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(0);
@@ -77,6 +80,54 @@ export function StudioSidebar({
   const addAsset = useStore(store, (s) => s.addAsset);
   const autoFillSlots = useStore(store, (s) => s.autoFillSlots);
   const applyTemplate = useStore(store, (s) => s.applyTemplate);
+  const assignAssetToSlot = useStore(store, (s) => s.assignAssetToSlot);
+  const selectedSlotIndex = useStore(store, (s) => s.selectedSlotIndex);
+  const [applyingPredesignedId, setApplyingPredesignedId] = useState<string | null>(null);
+
+  // Ola 21 — aplicar un diseño prediseñado al slot seleccionado (o al primer slot vacío).
+  // Reusa la acción del asset picker: sube la imagen como asset del diseño y la asigna.
+  const handleApplyPredesigned = async (item: import("./studio-asset-picker-modal").PredesignedItem) => {
+    if (!designId || applyingPredesignedId) return;
+    const targetSlot = selectedSlotIndex ?? store.getState().canvasData?.slots.find((s) => !s.assetUrl)?.slotIndex ?? null;
+    if (targetSlot === null) {
+      toast.error("Selecciona un slot vacío primero");
+      return;
+    }
+    setApplyingPredesignedId(item.id);
+    try {
+      const res = await assignPredesignedToDesignAction({ designId, galleryImageId: item.id });
+      if (!res.ok) {
+        toast.error(res.message);
+        return;
+      }
+      const assetA: StudioAsset = {
+        id: res.assetId,
+        signedUrl: res.signedUrl,
+        width: res.width,
+        height: res.height,
+      };
+      addAsset(assetA);
+      assignAssetToSlot(targetSlot, assetA);
+      if (res.assetB) {
+        const assetB: StudioAsset = {
+          id: res.assetB.assetId,
+          signedUrl: res.assetB.signedUrl,
+          width: res.assetB.width,
+          height: res.assetB.height,
+        };
+        addAsset(assetB);
+        // Asignar cara B al slot siguiente si existe (convención separadores 2 caras).
+        const nextSlot = store.getState().canvasData?.slots.find((s) => s.slotIndex === targetSlot + 1 && !s.assetUrl);
+        if (nextSlot) assignAssetToSlot(nextSlot.slotIndex, assetB);
+      }
+      toast.success(`Diseño "${item.name}" aplicado`);
+    } catch (err) {
+      toast.error("No pudimos aplicar el diseño. Intenta de nuevo.");
+      void err;
+    } finally {
+      setApplyingPredesignedId(null);
+    }
+  };
 
   const handleFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
@@ -122,7 +173,9 @@ export function StudioSidebar({
   };
 
   const emptySlots = totalSlots - filledSlots;
-  const canAutoFill = assets.length > 0 && emptySlots > 0;
+  // Ola 21 — el botón mágico solo aparece cuando hay fotos suficientes para llenar TODOS
+  // los slots vacíos (evita que el cliente llene un lote incompleto con repeticiones).
+  const canAutoFill = assets.length >= emptySlots && emptySlots > 0;
 
   return (
     <div className="flex h-full flex-col gap-6 p-5">
@@ -236,7 +289,7 @@ export function StudioSidebar({
           <motion.button
             type="button"
             onClick={autoFillSlots}
-            aria-label={`Llenar ${Math.min(emptySlots, assets.length)} slots vacíos con mis fotos`}
+            aria-label={`Llenar ${emptySlots} slots vacíos con mis fotos`}
             initial={{ opacity: 0, y: -4 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.2 }}
@@ -330,6 +383,52 @@ export function StudioSidebar({
           </div>
         )}
       </section>
+
+      {/* ──────── Diseños prediseñados (galería admin) ──────── */}
+      {predesigned.length > 0 && (
+        <section
+          aria-labelledby="sidebar-predisenados"
+          className="border-brand-purple/10 border-t pt-5"
+        >
+          <div
+            id="sidebar-predisenados"
+            className="text-brand-purple-dark mb-3 flex items-center gap-2 text-sm font-semibold"
+          >
+            <Sparkles className="text-brand-purple h-4 w-4" />
+            Diseños prediseñados
+            <span className="text-brand-muted text-xs font-normal">({predesigned.length})</span>
+          </div>
+          <p className="text-brand-muted mb-2 text-[11px]">
+            Aplica un diseño listo al slot seleccionado (o al primero vacío).
+          </p>
+          <div className="grid grid-cols-3 gap-2">
+            {predesigned.map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => handleApplyPredesigned(item)}
+                disabled={applyingPredesignedId !== null}
+                aria-label={`Aplicar el diseño ${item.name} al slot`}
+                title={item.name}
+                className="border-brand-purple/20 hover:border-brand-purple focus:border-brand-turquoise focus:ring-brand-turquoise relative aspect-square overflow-hidden rounded-md border-2 transition-all hover:scale-105 focus:ring-2 focus:outline-none disabled:opacity-50"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={item.imageUrl}
+                  alt={item.name}
+                  className="h-full w-full object-cover"
+                  loading="lazy"
+                />
+                {applyingPredesignedId === item.id && (
+                  <div className="bg-brand-purple-dark/40 absolute inset-0 flex items-center justify-center">
+                    <Loader2 className="h-5 w-5 animate-spin text-white" />
+                  </div>
+                )}
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   );
 }

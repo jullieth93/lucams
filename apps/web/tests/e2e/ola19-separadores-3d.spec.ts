@@ -1,20 +1,20 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 
 const LOCAL_4000 = "http://localhost:4000";
 const CARA_A = "/tmp/test-cara-a.png";
 const CARA_B = "/tmp/test-cara-b.png";
 
-async function dismissOnboarding(page) {
+async function dismissOnboarding(page: Page) {
   const skip = page.getByRole("button", { name: /Saltar tutorial|¡Empezar!/i });
   if (await skip.count()) await skip.first().click();
 }
 
-async function acceptCookies(page) {
+async function acceptCookies(page: Page) {
   const accept = page.getByRole("button", { name: /Aceptar todas/i });
   if (await accept.count()) await accept.first().click();
 }
 
-async function uploadToSlot(page, slotLabel: string, filePath: string) {
+async function uploadToSlot(page: Page, slotLabel: string, filePath: string) {
   const slot = page.locator('[role="button"]', { hasText: new RegExp(slotLabel) }).first();
   await slot.click();
 
@@ -30,7 +30,7 @@ async function uploadToSlot(page, slotLabel: string, filePath: string) {
   await modal.waitFor({ state: "detached", timeout: 20_000 });
 }
 
-async function orbitBook(page, direction: "left" | "right" = "right") {
+async function orbitBook(page: Page, direction: "left" | "right" = "right") {
   const bookCanvas = page.locator('[role="dialog"] canvas').first();
   const box = await bookCanvas.boundingBox();
   if (!box) return;
@@ -40,7 +40,7 @@ async function orbitBook(page, direction: "left" | "right" = "right") {
   const endX = startX + deltaX;
 
   await page.evaluate(
-    ({ sx, sy, ex, ey }) => {
+    ({ sx, sy, ex, ey }: { sx: number; sy: number; ex: number; ey: number }) => {
       const canvas = document.querySelector('[role="dialog"] canvas') as HTMLCanvasElement | null;
       if (!canvas) return;
       const dispatch = (type: string, x: number, y: number) => {
@@ -72,7 +72,7 @@ async function orbitBook(page, direction: "left" | "right" = "right") {
 }
 
 test.describe("Ola 19 — Separadores Cara A/B en 3D", () => {
-  async function goToStudio(page, slug: string) {
+  async function goToStudio(page: Page, slug: string) {
     await page.goto(`${LOCAL_4000}/estudio/${slug}`, { waitUntil: "domcontentloaded" });
     await acceptCookies(page);
     await page.locator("canvas").first().waitFor({ timeout: 30_000 });

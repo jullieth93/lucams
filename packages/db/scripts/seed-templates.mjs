@@ -281,8 +281,8 @@ const templatesData = [
       stage: stage(450, 600),
       layers: [
         background("#FFFFFF"),
-        // Ola 16 — Ventana de foto más grande y chrome re-espaciado para un look
-        // más realista de post de Instagram (x=29 y=58 392×392, ver comentario del SVG).
+        // Ola 21 — Ventana de foto con borde blanco: x=29 y=58 392×392 (stage 450×600).
+        // El modo "sin borde" expande la foto a toda la tarjeta via toolbar + canvasData.
         photoSlot({ id: "p1", x: 29, y: 58, width: 392, height: 392, label: "Tu foto" }),
         asset({
           id: "frame",

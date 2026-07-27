@@ -150,6 +150,15 @@ export function StudioEditor({
 }: StudioEditorProps) {
   const router = useRouter();
   const store = useMemo(() => createStudioStore(), []);
+  // DEBUG e2e: exponer el store en dev para que Playwright pueda inspeccionar/auto-fill sin depender de clicks frágiles.
+  useEffect(() => {
+    if (process.env.NODE_ENV === "development") {
+      (window as unknown as { __studioStore?: typeof store }).__studioStore = store;
+      return () => {
+        delete (window as unknown as { __studioStore?: typeof store }).__studioStore;
+      };
+    }
+  }, [store]);
   const [pickerSlotIndex, setPickerSlotIndex] = useState<number | null>(null);
   // Ola 8 — Modal unificado de edición por slot (tabs Foto/Texto). Se abre desde el
   // clic en un slot lleno o desde el botón lápiz de la action bar del slot.
@@ -292,6 +301,10 @@ export function StudioEditor({
 
   // ──────────── Boot: crear draft (o recuperar existente) ────────────
   useEffect(() => {
+    // Guard: evita re-boot cuando una prop cambia de referencia pero el store ya
+    // está inicializado (p.ej. templates se recrea por render del padre). El boot
+    // solo debe correr una vez por mount real del editor.
+    if (store.getState().designId) return;
     let cancelled = false;
     const boot = async () => {
       try {
@@ -464,11 +477,17 @@ export function StudioEditor({
   );
 
   const handleAssetSelected = useCallback(
-    (asset: StudioAsset) => {
-      if (pickerSlotIndex === null) return;
-      store.getState().assignAssetToSlot(pickerSlotIndex, asset);
+    (slotIndex: number, asset: StudioAsset) => {
+      store.getState().assignAssetToSlot(slotIndex, asset);
     },
-    [pickerSlotIndex, store],
+    [store],
+  );
+
+  const handleAssetBSelected = useCallback(
+    (slotIndex: number, asset: StudioAsset) => {
+      store.getState().assignAssetToSlot(slotIndex, asset);
+    },
+    [store],
   );
 
   const handleAssetUploaded = useCallback(
@@ -964,6 +983,7 @@ export function StudioEditor({
             productSizeCm={productConfig.sizeCm}
             productShape={productConfig.shape}
             allowText={allowText}
+            predesigned={predesigned}
           />
         </aside>
 
@@ -1221,8 +1241,10 @@ export function StudioEditor({
         designId={modalDesignId}
         predesigned={predesigned}
         productSizeCm={productConfig.sizeCm}
+        facesPerUnit={facesPerUnit}
         onClose={() => setPickerSlotIndex(null)}
         onSelectAsset={handleAssetSelected}
+        onSelectAssetB={handleAssetBSelected}
         onAssetUploaded={handleAssetUploaded}
       />
 

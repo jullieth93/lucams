@@ -26,7 +26,7 @@ const PRODUCTS = [
   "nombre-personalizado",
   "pack-vocales",
   "abecedario-completo",
-  "separadores-libros",
+  "separadores-magneticos",
   "separadores-alargados",
 ];
 
@@ -191,13 +191,15 @@ test.describe("AUDITORÍA CLIENTE — catalogo-whatsapp (producción)", () => {
     watch(page, "ayuda");
     await page.goto("/ayuda", { waitUntil: "domcontentloaded" });
     await dismissOverlays(page);
-    const dian = await page.getByText(/factura electrónica|DIAN/i).count();
+    // Coherencia: la ayuda puede mencionar DIAN para aclarar que HOY NO emitimos factura;
+    // el error sería prometerla. Buscamos frases positivas de facturación DIAN.
+    const promesasDian = await page.getByText(/emitimos factura electrónica|factura electrónica de la DIAN|facturación electrónica obligatoria/i).count();
     await page.screenshot({ path: "/tmp/audit-cliente-ayuda.png", fullPage: true });
     for (const legal of ["/legal/privacidad", "/legal/terminos", "/legal/devoluciones"]) {
       const r = await page.goto(legal, { waitUntil: "domcontentloaded" });
       expect(r?.status(), `${legal} status`).toBe(200);
     }
-    findings.push({ area: "ayuda+legal", ok: dian === 0, detail: `menciones DIAN: ${dian} · legales 200` });
+    findings.push({ area: "ayuda+legal", ok: promesasDian === 0, detail: `promesas DIAN: ${promesasDian} · legales 200` });
   });
 
   test("8. Footer/header: WhatsApp, Facebook, email correctos", async ({ page }) => {

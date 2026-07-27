@@ -251,7 +251,7 @@ Todos los productos Lucams_shop tienen garantía legal de **1 año** desde la fe
 
 ## Cómo ejercerla
 
-Escribe a **hola@lucamsshop.com** con tu número de pedido y fotos del defecto. Respondemos en 2 días hábiles. Reparación, reposición o devolución según corresponda dentro de los 30 días siguientes a la verificación.`,
+Escribe a **hola@lucamsshop.com** con tu número de pedido y fotos del defecto. Respondemos lo antes posible, máximo en 1 día hábil. Reparación, reposición o devolución según corresponda dentro de los 30 días siguientes a la verificación.`,
   },
   {
     key: "legal.habeas-data",
@@ -446,14 +446,14 @@ Archivo machine-readable disponible en [/.well-known/security.txt](/.well-known/
     title: "Paso 3 — Título",
     category: "HOME",
     format: "TEXT",
-    body: "Llega a tu nevera",
+    body: "Llega a tus manos",
   },
   {
     key: "home.howitworks.step3.description",
     title: "Paso 3 — Descripción",
     category: "HOME",
     format: "TEXT",
-    body: "Lo producimos a mano y lo despachamos en máximo 2 días hábiles. El tiempo de entrega depende de la transportadora y de tu ciudad. Pago contraentrega disponible en 1.100+ destinos.",
+    body: "Lo producimos a mano y lo entregamos en máximo 3 días hábiles (2 de fabricación + 1 de entrega). El tiempo final depende de la transportadora y de tu ciudad. El pago y el envío se acuerdan por WhatsApp — contraentrega disponible.",
   },
   {
     key: "home.featured.heading",

@@ -259,20 +259,25 @@ export function LetterSetEditor({
   // Ola 3 (Lucy 2026-07-27) — solo mostrar temas ilustrados que estén 100% completos para el
   // set de letras activo. Un set incompleto genera una experiencia rota (mezcla de dibujitos y
   // letras de color) y confunde al cliente, por lo que se filtran del picker y se ignoran si
-  // llegan preseleccionados desde la PDP/URL.
-  const optionsForLanguage = useMemo(
-    () => (themeOptions[language] ?? []).filter((o) => o.tileCount >= letters.length),
-    [themeOptions, language, letters.length],
-  );
+  // llegan preseleccionados desde la PDP/URL. La cobertura se verifica letra a letra (no solo
+  // por conteo): en vocales, 5 fichas que no sean A-E-I-O-U NO habilitan el tema.
+  const optionsForLanguage = useMemo(() => {
+    const styles = stylesByLanguage[language] ?? [];
+    return (themeOptions[language] ?? []).filter((o) => {
+      if (o.tileCount < letters.length) return false;
+      const set = styles.find((s) => s.id === o.id);
+      return set ? letters.every((l) => set.tiles[l]) : false;
+    });
+  }, [themeOptions, stylesByLanguage, language, letters]);
   const selectedOption = styleId ? optionsForLanguage.find((o) => o.id === styleId) : null;
   const selectedThemeKey = selectedOption?.theme ?? null;
   const activeTiles: LetterTileMap = useMemo(() => {
     if (!styleId) return {};
     const set = (stylesByLanguage[language] ?? []).find((s) => s.id === styleId);
     const option = optionsForLanguage.find((o) => o.id === styleId);
-    if (!set || !option || option.tileCount < letters.length) return {};
+    if (!set || !option || !letters.every((l) => set.tiles[l])) return {};
     return set.tiles ?? {};
-  }, [styleId, stylesByLanguage, language, optionsForLanguage, letters.length]);
+  }, [styleId, stylesByLanguage, language, optionsForLanguage, letters]);
 
   const currentVariant = variants.find((v) => v.id === currentVariantId);
   // Centavos COP enteros: la etiqueta del editor y el precio de la modal salen del MISMO valor,
@@ -513,15 +518,6 @@ export function LetterSetEditor({
               );
             })}
           </div>
-          {selectedOption && selectedOption.tileCount === 0 && (
-            <p className="text-brand-muted mt-2 text-xs">
-              Este tema aún no tiene dibujitos: tus fichas se imprimen con la letra de color, tal
-              como las ves abajo.
-              <span className="mt-1 block font-semibold">
-                Sube las ilustraciones en /admin/fichas para activar este tema.
-              </span>
-            </p>
-          )}
         </div>
 
         {/* Ola 2A — Selector de IDIOMA (antes dimensión de la PDP). Solo abecedario (el

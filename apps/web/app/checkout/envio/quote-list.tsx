@@ -99,7 +99,8 @@ export function QuoteList({
         <span>
           Son tiempos <strong>estimados por la transportadora</strong>, no una fecha garantizada.
           Antes fabricamos tu pedido a mano: lo{" "}
-          <strong>despachamos en máximo 2 días hábiles</strong> y de ahí corre el tránsito.
+          <strong>entregamos en máximo 3 días hábiles</strong> (2 de fabricación + 1 de entrega)
+          y de ahí corre el tránsito.
         </span>
       </p>
 

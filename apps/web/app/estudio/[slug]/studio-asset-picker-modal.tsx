@@ -33,7 +33,13 @@ import type { StudioAsset } from "./types";
 import { STUDIO_ACCEPTED_IMAGE_TYPES, uploadGuidanceText } from "./lib/upload-guidance";
 
 /** Diseño prediseñado de la galería (ADR-057 B2). */
-export type PredesignedItem = { id: string; name: string; imageUrl: string };
+export type PredesignedItem = {
+  id: string;
+  name: string;
+  imageUrl: string;
+  /** Ola 21 — URL opcional de la cara B (pares A/B para separadores). */
+  imageUrlB?: string | null;
+};
 
 type StudioAssetPickerModalProps = {
   isOpen: boolean;
@@ -45,8 +51,13 @@ type StudioAssetPickerModalProps = {
   predesigned?: PredesignedItem[];
   /** Ola 4 — tamaño físico del producto para la recomendación de resolución del uploader. */
   productSizeCm?: string;
+  /** Ola 21 — separadores de 2 caras: permite aplicar el par A/B a la unidad. */
+  facesPerUnit?: number;
   onClose: () => void;
-  onSelectAsset: (asset: StudioAsset) => void;
+  /** Ola 21 — ahora recibe el slot target para poder reubicar A/B en separadores. */
+  onSelectAsset: (slotIndex: number, asset: StudioAsset) => void;
+  /** Ola 21 — callback opcional para asignar el asset de la cara B en separadores. */
+  onSelectAssetB?: (slotIndex: number, asset: StudioAsset) => void;
   onAssetUploaded: (asset: StudioAsset) => void;
 };
 
@@ -58,8 +69,10 @@ export function StudioAssetPickerModal({
   designId,
   predesigned = [],
   productSizeCm,
+  facesPerUnit,
   onClose,
   onSelectAsset,
+  onSelectAssetB,
   onAssetUploaded,
 }: StudioAssetPickerModalProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -73,8 +86,9 @@ export function StudioAssetPickerModal({
 
   // ADR-057 B2 — aplicar un diseño prediseñado: lo subimos como asset del diseño y lo asignamos
   // al slot (reusando el pipeline de foto: encuadre, finalize, render server-side).
+  // Ola 21 — separadores 2 caras: si el diseño trae imageUrlB, asignamos A/B a la unidad física.
   const handleApplyPredesigned = async (item: PredesignedItem) => {
-    if (!designId || applyingId) return;
+    if (!designId || applyingId || slotIndex === null) return;
     setApplyingId(item.id);
     setError(null);
     try {
@@ -83,14 +97,32 @@ export function StudioAssetPickerModal({
         setError(res.message);
         return;
       }
-      const asset: StudioAsset = {
+      const assetA: StudioAsset = {
         id: res.assetId,
         signedUrl: res.signedUrl,
         width: res.width,
         height: res.height,
       };
-      onAssetUploaded(asset);
-      onSelectAsset(asset);
+      onAssetUploaded(assetA);
+
+      const isTwoFace = facesPerUnit === 2 && res.assetB;
+      if (isTwoFace && res.assetB) {
+        const assetB: StudioAsset = {
+          id: res.assetB.assetId,
+          signedUrl: res.assetB.signedUrl,
+          width: res.assetB.width,
+          height: res.assetB.height,
+        };
+        onAssetUploaded(assetB);
+
+        const isCurrentB = slotIndex % 2 === 1;
+        const slotA = isCurrentB ? Math.max(0, slotIndex - 1) : slotIndex;
+        const slotB = isCurrentB ? slotIndex : slotIndex + 1;
+        onSelectAsset(slotA, assetA);
+        onSelectAssetB?.(slotB, assetB);
+      } else {
+        onSelectAsset(slotIndex, assetA);
+      }
       onClose();
     } catch {
       setError("No pudimos aplicar el diseño. Intenta de nuevo.");
@@ -150,7 +182,7 @@ export function StudioAssetPickerModal({
           }
           // Auto-asignar al slot si solo se subió 1 archivo (y no hay error)
           if (files.length === 1) {
-            onSelectAsset(asset);
+            if (slotIndex !== null) onSelectAsset(slotIndex, asset);
             onClose();
             break;
           }
@@ -334,7 +366,7 @@ export function StudioAssetPickerModal({
                             type="button"
                             role="gridcell"
                             onClick={() => {
-                              onSelectAsset(asset);
+                              if (slotIndex !== null) onSelectAsset(slotIndex, asset);
                               onClose();
                             }}
                             aria-label={

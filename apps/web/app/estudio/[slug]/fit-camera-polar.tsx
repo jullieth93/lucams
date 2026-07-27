@@ -25,6 +25,8 @@ export function FitCameraPolar({
   polarDeg,
   margin = 1.12,
   targetY = 0,
+  targetX = 0,
+  targetZ = 0,
 }: {
   halfW: number;
   halfH: number;
@@ -32,6 +34,8 @@ export function FitCameraPolar({
   polarDeg: number;
   margin?: number;
   targetY?: number;
+  targetX?: number;
+  targetZ?: number;
 }) {
   const camera = useThree((s) => s.camera) as THREE.PerspectiveCamera;
   const controls = useThree((s) => s.controls) as OrbitLike | null;
@@ -49,11 +53,15 @@ export function FitCameraPolar({
     // Distancia que hace caber el alto (halfH/tan) Y el ancho (halfW/(tan·aspect)); la mayor manda.
     const d = Math.max(halfH / tan, halfW / (tan * aspect)) * margin;
     const phi = (polarDeg * Math.PI) / 180;
-    camera.position.set(0, targetY + d * Math.sin(phi), d * Math.cos(phi));
+    camera.position.set(
+      targetX,
+      targetY + d * Math.sin(phi),
+      targetZ + d * Math.cos(phi),
+    );
     camera.updateProjectionMatrix();
     controls?.update?.();
     invalidate();
-  }, [camera, controls, invalidate, width, height, halfW, halfH, polarDeg, margin, targetY]);
+  }, [camera, controls, invalidate, width, height, halfW, halfH, polarDeg, margin, targetY, targetX, targetZ]);
 
   return null;
 }

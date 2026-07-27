@@ -340,6 +340,10 @@ export function ExtrudedMagnetMesh({
   }, [texture, width, height, rx, ry, rw, rh, flipV, flipU]);
   useEffect(() => () => tex?.dispose(), [tex]);
 
+  // Ola 18 — el extruido usa SOLO material-1 (canto) en todas sus caras. Las tapas se
+  // dibujan por separado con ShapeGeometry, así la tapa trasera puede llevar la textura
+  // de la cara B sin que la tapa trasera del extruido (que antes compartía material-0
+  // con la frontal) la tape mostrando la misma foto.
   const geometry = useMemo(() => {
     const g = new THREE.ExtrudeGeometry(buildSilhouette(shape, width, height, cornerRadiusRatio), {
       depth,
@@ -350,10 +354,20 @@ export function ExtrudedMagnetMesh({
       curveSegments: 28,
       steps: 1,
     });
-    g.center(); // centra Z (X/Y ya vienen centrados) → cara frontal en +(depth/2 + bisel)
+    g.center(); // centra Z (X/Y ya vienen centrados) → canto alrededor de z=0
+    // Forzar material-1 (canto) en TODAS las caras: las tapas del extruido quedan del
+    // color del canto y son reemplazadas visualmente por las ShapeGeometry front/back.
+    g.clearGroups();
+    g.addGroup(0, Infinity, 1);
     return g;
   }, [shape, width, height, depth, cornerRadiusRatio]);
   useEffect(() => () => geometry.dispose(), [geometry]);
+
+  const faceGeo = useMemo(
+    () => new THREE.ShapeGeometry(buildSilhouette(shape, width, height, cornerRadiusRatio), 28),
+    [shape, width, height, cornerRadiusRatio],
+  );
+  useEffect(() => () => faceGeo.dispose(), [faceGeo]);
 
   const backGeo = useMemo(
     () =>
@@ -385,29 +399,47 @@ export function ExtrudedMagnetMesh({
   }, [backTexture, width, height, rx, ry, rw, rh, flipV]);
   useEffect(() => () => backTex?.dispose(), [backTex]);
 
+  const frontZ = depth / 2 + depth * 0.2 + 0.0012;
   const backZ = -(depth / 2 + depth * 0.2) - 0.0012;
 
   return (
     <group position={position}>
+      {/* Canto extruido (sin tapas) — material base blanco del imán. */}
       <mesh geometry={geometry} castShadow receiveShadow>
         <meshStandardMaterial
-          attach="material-0"
-          map={tex}
-          color={tex ? "#ffffff" : "#FDFBF4"}
-          roughness={0.38}
-          metalness={0}
-          envMapIntensity={1.15}
-        />
-        <meshStandardMaterial
-          attach="material-1"
           color={edgeColor}
           roughness={0.45}
           metalness={0}
           envMapIntensity={0.9}
         />
       </mesh>
+      {/* Tapa frontal con la cara A del Estudio. */}
+      <mesh geometry={faceGeo} position={[0, 0, frontZ]} castShadow receiveShadow>
+        <meshStandardMaterial
+          map={tex}
+          color={tex ? "#ffffff" : "#FDFBF4"}
+          roughness={0.38}
+          metalness={0}
+          envMapIntensity={1.15}
+        />
+      </mesh>
+      {/* Ola 18 — para piezas planas (alargados) la cara B queda contra la página y no se
+          ve. Este mesh extra usa la MISMA posición que la tapa frontal pero con side:BackSide
+          y la textura de la cara B, así al orbitar por debajo se ve el reverso impreso. */}
+      {backTexture && (
+        <mesh geometry={faceGeo} position={[0, 0, frontZ - 0.0005]}>
+          <meshStandardMaterial
+            map={backTex}
+            color={backTex ? "#ffffff" : "#FDFBF4"}
+            roughness={0.5}
+            metalness={0}
+            envMapIntensity={1.0}
+            side={THREE.BackSide}
+          />
+        </mesh>
+      )}
       {backGeo && backTexture ? (
-        <mesh geometry={backGeo} position={[0, 0, backZ]} rotation={[0, Math.PI, 0]}>
+        <mesh geometry={backGeo} position={[0, 0, backZ]} rotation={[0, Math.PI, 0]} castShadow>
           <meshStandardMaterial
             map={backTex}
             color={backTex ? "#ffffff" : "#FDFBF4"}
@@ -417,7 +449,7 @@ export function ExtrudedMagnetMesh({
           />
         </mesh>
       ) : backGeo && backColor ? (
-        <mesh geometry={backGeo} position={[0, 0, backZ]} rotation={[0, Math.PI, 0]}>
+        <mesh geometry={backGeo} position={[0, 0, backZ]} rotation={[0, Math.PI, 0]} castShadow>
           <meshStandardMaterial color={backColor} roughness={0.85} metalness={0} />
         </mesh>
       ) : null}

@@ -146,9 +146,9 @@ afterAll(async () => {
 
 describe("finalizeDesign — el cliente ya no manda los PNG de imprenta", () => {
   it("camino normal: el servidor renderiza y el diseño queda READY sin recibir un solo blob", async () => {
-    const designId = await clonarBorradorReal("separadores-libros");
+    const designId = await clonarBorradorReal("separadores-magneticos");
     // Omitir en silencio sería fingir cobertura — justo lo que dejó vivir este bug meses.
-    expect(designId, "no hay ningún diseño real de separadores-libros que clonar").toBeTruthy();
+    expect(designId, "no hay ningún diseño real de separadores-magneticos que clonar").toBeTruthy();
 
     const design = await finalizeDesign({
       designId: designId!,
@@ -229,7 +229,7 @@ describe("finalizeDesign — el cliente ya no manda los PNG de imprenta", () => 
    * completar la compra. Como un READY ya no se puede editar, re-finalizarlo debe ser un no-op.
    */
   it("finalizar dos veces es idempotente: el segundo intento no rompe el reintento del carrito", async () => {
-    const designId = await clonarBorradorReal("separadores-libros");
+    const designId = await clonarBorradorReal("separadores-magneticos");
     expect(designId).toBeTruthy();
 
     const primero = await finalizeDesign({

@@ -45,7 +45,7 @@ const PRESET_LAYOUTS: Record<number, { cols: number; rows: number }> = {
   8: { cols: 4, rows: 2 },
   9: { cols: 3, rows: 3 }, // Set 9 Polaroid Color
   10: { cols: 5, rows: 2 },
-  12: { cols: 4, rows: 3 }, // Set 12 Polaroid + CALENDAR_PHOTO_MONTH
+  12: { cols: 3, rows: 4 }, // Set 12 Polaroid + CALENDAR_PHOTO_MONTH (más vertical, mejor lectura meses)
   15: { cols: 5, rows: 3 },
   16: { cols: 4, rows: 4 },
   20: { cols: 5, rows: 4 }, // Set 20 Mini Polaroids

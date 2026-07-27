@@ -384,11 +384,29 @@ export const ADMIN_NAV: NavGroup[] = [
  */
 export function getAdminNav(): NavGroup[] {
   if (!isCatalogMode()) return ADMIN_NAV;
-  return ADMIN_NAV.filter((group) => group.title !== "Finanzas").map((group) =>
-    group.title === "Configuración" && group.items
-      ? { ...group, items: group.items.filter((it) => it.href !== "/admin/integraciones") }
-      : group,
-  );
+  return ADMIN_NAV.filter((group) => group.title !== "Finanzas")
+    .map((group) => {
+      // Ocultar módulos futuros que aún no están implementados (Lucy 2026-07-27):
+      // - Mercado Libre dentro de Canales
+      // - Bot WhatsApp IA dentro de IA y Conocimiento
+      if (group.title === "Canales" && group.items) {
+        return {
+          ...group,
+          items: group.items.filter((it) => it.label !== "Mercado Libre"),
+        };
+      }
+      if (group.title === "IA y Conocimiento" && group.items) {
+        return {
+          ...group,
+          items: group.items.filter((it) => it.label !== "Bot WhatsApp"),
+        };
+      }
+      if (group.title === "Configuración" && group.items) {
+        return { ...group, items: group.items.filter((it) => it.href !== "/admin/integraciones") };
+      }
+      return group;
+    })
+    .filter((group) => !group.items || group.items.length > 0 || group.href);
 }
 
 /**

@@ -70,6 +70,17 @@ async function main() {
   // una madre con hijas fixture no se puede borrar primero). P2003 en la corrida
   // 2026-07-22 (run prod1784739… con árbol parent/child de tests).
   const junkIds = new Set(junkAll.map((c) => c.id));
+
+  // Desligar posibles relaciones padre/hijo DENTRO del junk antes de borrar;
+  // de lo contrario la FK Category_parentId_fkey impide borrar la madre
+  // aunque sus hijas también estén en la lista (ej. tests de árbol de categorías).
+  if (APPLY && junkIds.size > 0) {
+    await prisma.category.updateMany({
+      where: { id: { in: Array.from(junkIds) } },
+      data: { parentId: null },
+    });
+  }
+
   const junk = [
     ...junkAll.filter((c) => c.parentId && junkIds.has(c.parentId)), // hijas de junk
     ...junkAll.filter((c) => !(c.parentId && junkIds.has(c.parentId))), // el resto (madres y sueltas)

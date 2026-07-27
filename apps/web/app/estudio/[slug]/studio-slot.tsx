@@ -322,8 +322,8 @@ function StudioSlotImpl({
     return bgHex;
   }, [unitTemplate, isIg, fullBleed, borderColor, hasFrameCard]);
   const darkCardBg = isDarkColor(cardBgHex);
-  // Ola 16 — Instagram: detectar modo SIN BORDE por el rect del placeholder
-  // (área a sangre x=15 y=58 w=420 h=400 en el stage 450×600).
+  // Ola 21 — Instagram: detectar modo SIN BORDE por el rect del placeholder
+  // (foto a sangre total x=0 y=0 w=450 h=600 en el stage 450×600).
   const noBorder = useMemo(() => {
     if (!isIg) return false;
     const ph = unitTemplate.layers.find((l) => l.type === "image-placeholder") as

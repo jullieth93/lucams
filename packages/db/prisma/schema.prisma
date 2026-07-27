@@ -1471,12 +1471,14 @@ model LetterTile {
 // aplicar a un slot en el editor, en vez de subir su foto). Agrupados por `tag` (ej. "separadores")
 // para reusar el mismo modelo en otros productos (fotoimanes, etc.). Admin-gestionable.
 model DesignGalleryImage {
-  id       String  @id @default(cuid())
-  tag      String // agrupador: "separadores", "fotoimanes", …
-  name     String // nombre visible ("Flores", "Frase motivadora")
-  imageUrl String // imagen del diseño (bucket público product-images)
-  order    Int     @default(0)
-  isActive Boolean @default(true)
+  id        String  @id @default(cuid())
+  tag       String // agrupador: "separadores", "fotoimanes", …
+  name      String // nombre visible ("Flores", "Frase motivadora")
+  imageUrl  String // imagen del diseño (bucket público product-images)
+  // Ola 21 — URL opcional de la cara B para productos de separadores (pares A/B).
+  imageUrlB String?
+  order     Int     @default(0)
+  isActive  Boolean @default(true)
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt

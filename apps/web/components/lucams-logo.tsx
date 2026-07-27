@@ -82,18 +82,20 @@ export function LucamsLogo({
   const src = step === "svg" ? SOURCES[variant].svg : SOURCES[variant].png;
 
   return (
-    <Image
-      src={src}
-      alt={SOURCES[variant].alt}
-      width={size}
-      height={size}
-      priority={priority}
+    <span
       className={className}
-      // El PNG de la mascota no es 1:1; fijar solo el ancho y dejar el alto
-      // automático evita el warning de next/image y no deforma el asset.
-      style={{ width: size, height: "auto" }}
-      unoptimized={step === "svg"}
-      onError={() => setStep(step === "svg" ? "png" : "fallback")}
-    />
+      style={{ display: "inline-block", width: size, height: size, position: "relative" }}
+    >
+      <Image
+        src={src}
+        alt={SOURCES[variant].alt}
+        fill
+        sizes={`${size}px`}
+        priority={priority}
+        unoptimized={step === "svg"}
+        style={{ objectFit: "contain" }}
+        onError={() => setStep(step === "svg" ? "png" : "fallback")}
+      />
+    </span>
   );
 }

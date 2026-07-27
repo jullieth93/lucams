@@ -85,22 +85,9 @@ export function StudioStyleToolbar({ store, frameOptions = [] }: StudioStyleTool
     };
   })();
 
-  // Rect "sin borde": la foto a sangre bajo el marco blanco de Instagram.
-  // Deja el header y el footer del chrome (SVG) visibles, y expande la foto solo
-  // en la ventana central de la tarjeta (x=15 y=58 w=420 h=400 en el stage 450×600).
-  const fullBleedRect = (() => {
-    if (isIg) {
-      const base = { width: 450, height: 600 };
-      const scale = stageW / base.width;
-      return {
-        x: Math.round(15 * scale),
-        y: Math.round(58 * scale),
-        width: Math.round(420 * scale),
-        height: Math.round(400 * scale),
-      };
-    }
-    return { x: 0, y: 0, width: stageW, height: stageH };
-  })();
+  // Rect "sin borde": la foto cubre TODA la tarjeta y el chrome SVG se dibuja
+  // encima (header + iconos). En Instagram el stage es 450×600 → foto a sangre total.
+  const fullBleedRect = { x: 0, y: 0, width: stageW, height: stageH };
 
   const photoPlaceholder = unitTemplate.layers.find((l) => l.type === "image-placeholder") as
     | { x?: number; y?: number; width?: number; height?: number }

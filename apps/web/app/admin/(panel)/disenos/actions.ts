@@ -24,17 +24,24 @@ export async function uploadGalleryImageAction(formData: FormData): Promise<Acti
   const tag = String(formData.get("tag") ?? "");
   const name = String(formData.get("name") ?? "").trim();
   const file = formData.get("file");
+  const fileB = formData.get("fileB");
   if (!ALLOWED_TAGS.has(tag)) return { error: "Producto inválido." };
   if (name.length < 2 || name.length > 60)
     return { error: "El nombre debe tener 2–60 caracteres." };
   if (!(file instanceof File)) return { error: "Falta la imagen." };
 
   try {
-    const { publicUrl } = await uploadProductImage({ productId: `gallery-${tag}`, file });
+    const [{ publicUrl }, urlB] = await Promise.all([
+      uploadProductImage({ productId: `gallery-${tag}`, file }),
+      fileB instanceof File
+        ? uploadProductImage({ productId: `gallery-${tag}-b`, file: fileB }).then((r) => r.publicUrl)
+        : Promise.resolve(null),
+    ]);
     const row = await createGalleryImage({
       tag,
       name,
       imageUrl: publicUrl,
+      imageUrlB: urlB,
       adminId: session.admin.id,
     });
     await recordAdminAction({

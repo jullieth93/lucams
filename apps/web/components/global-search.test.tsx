@@ -92,15 +92,15 @@ function openAndGetInput(): HTMLElement {
 }
 
 describe("GlobalSearch", () => {
-  it("el botón del header es accesible, muestra la lupa (no la mascota) y el hint ⌘K", () => {
+  it("el botón del header es accesible, muestra la mascota de marca y el hint ⌘K", () => {
     render(<GlobalSearch />);
     const trigger = screen.getByRole("button", { name: "Buscar" });
     expect(trigger).toBeInTheDocument();
     expect(screen.getByText("⌘K")).toBeInTheDocument();
-    // Lucy 2026-07-22: el trigger vuelve al icono de lupa (lucide Search) —
-    // el mapache de marca no leía como affordance de búsqueda.
-    expect(trigger.querySelector("svg.lucide-search")).toBeInTheDocument();
-    expect(within(trigger).queryByAltText(/Mascota Lucams_shop/i)).not.toBeInTheDocument();
+    // Lucy 2026-07-26: el trigger lleva la mascota de Lucams (identidad de marca
+    // en la barra de búsqueda), no el icono genérico de lupa.
+    expect(within(trigger).getByAltText(/Mascota Lucams_shop/i)).toBeInTheDocument();
+    expect(trigger.querySelector("svg.lucide-search")).not.toBeInTheDocument();
     // Cerrado: no hay diálogo montado todavía.
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
@@ -109,14 +109,16 @@ describe("GlobalSearch", () => {
     render(<GlobalSearch />);
     openAndGetInput();
     // El diálogo toma su nombre del <DialogTitle> sr-only.
-    expect(screen.getByRole("dialog", { name: /Buscar productos/i })).toBeInTheDocument();
+    const dialog = screen.getByRole("dialog", { name: /Buscar productos/i });
+    expect(dialog).toBeInTheDocument();
     // El input de cmdk expone role="combobox" (patrón ARIA de autocompletar).
     const combobox = screen.getByRole("combobox");
     expect(combobox).toHaveAttribute("aria-expanded", "true");
     // Con query vacía, el heading invita a escribir (rama !query.trim()).
     expect(screen.getByText(/Empieza a escribir/i)).toBeInTheDocument();
-    // El header del diálogo muestra el logo/mascota de Lucams.
-    expect(screen.getByAltText(/Mascota Lucams_shop/i)).toBeInTheDocument();
+    // El header del diálogo muestra la mascota de Lucams (acotado al diálogo:
+    // el trigger del header también la lleva).
+    expect(within(dialog).getByAltText(/Mascota Lucams_shop/i)).toBeInTheDocument();
   });
 
   it("Ctrl+K alterna la apertura del diálogo", async () => {

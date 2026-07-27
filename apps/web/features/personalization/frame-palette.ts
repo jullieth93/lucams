@@ -238,8 +238,8 @@ export function noBorderChromeSrc(src: string, noBorder: boolean, darkBackground
 
 /**
  * ¿La plantilla Instagram está en modo SIN BORDE?
- * Detecta por el rect del image-placeholder: si coincide con el área a sangre
- * (x=15 y=58 w=420 h=400 en el stage 450×600), el asset debe usar su variante
+ * Detecta por el rect del image-placeholder: si la foto cubre TODO el stage
+ * (x=0 y=0 w=450 h=600 en el stage 450×600), el asset debe usar su variante
  * `_noborder` (sin tarjeta/marco, solo chrome sobre la foto).
  */
 export function isInstagramNoBorder(
@@ -249,10 +249,10 @@ export function isInstagramNoBorder(
   if (!photoRect) return false;
   const base = { width: 450, height: 600 };
   const scale = stage.width / base.width;
-  const x = Math.round(15 * scale);
-  const y = Math.round(58 * scale);
-  const w = Math.round(420 * scale);
-  const h = Math.round(400 * scale);
+  const x = 0;
+  const y = 0;
+  const w = Math.round(base.width * scale);
+  const h = Math.round(base.height * scale);
   return photoRect.x === x && photoRect.y === y && photoRect.width === w && photoRect.height === h;
 }
 

@@ -29,22 +29,24 @@ import { selectUnitImagePlaceholder, type StudioStoreState } from "./lib/store";
 import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
 import { unitIndexOfSlot } from "./lib/faces";
 
-const MAX_VIEWPORT_WIDTH = 960; // px lógicos máximo del grid en desktop (aumentado: calendarios/separadores se veían diminutos)
+const MAX_VIEWPORT_WIDTH = 1024; // px lógicos máximo del grid en desktop (aumentado: calendarios/separadores se veían diminutos)
 
-// Ola 4 (Lucy 2026-07-23) — marco máximo TAMBIÉN EN ALTO: el tamaño de celda se deriva
+// Ola 21 (Lucy 2026-07-27) — marco máximo TAMBIÉN EN ALTO: el tamaño de celda se deriva
 // del ancho Y del alto disponible, así ningún estudio se desborda (calendario 4×3,
 // polaroid 1-slot, tira 1-col se veían gigantes) ni queda diminuto. El marco es
-// proporcional al viewport (78% del alto, acotado entre 420 y 900px) y el grid queda
+// proporcional al viewport (82% del alto, acotado entre 440 y 1100px) y el grid queda
 // centrado siempre (width fija = celdas + gaps, margin auto).
-const FRAME_HEIGHT_VH = 0.78;
-const FRAME_HEIGHT_MIN = 420;
-const FRAME_HEIGHT_MAX = 900;
+const FRAME_HEIGHT_VH = 0.82;
+const FRAME_HEIGHT_MIN = 440;
+const FRAME_HEIGHT_MAX = 1100;
 
-// Ola 6 (Lucy 2026-07-23) — límite de alto por slot según cantidad de slots,
-// para que productos de pocos slots (ej. Polaroid 1 slot) no ocupen toda la pantalla.
+// Ola 21 (Lucy 2026-07-27) — límite de alto por slot según cantidad de slots,
+// para que productos de pocos slots no ocupen toda la pantalla y los de muchos slots
+// (calendario 12) no queden con recuadros tapados.
 const SLOT_HEIGHT_CAP_BY_COUNT = {
-  few: { desktop: 420, tablet: 320, mobile: 280 }, // 1-2 slots
-  medium: 520, // 3-6 slots
+  few: { desktop: 460, tablet: 360, mobile: 300 }, // 1-2 slots
+  medium: { desktop: 560, tablet: 440, mobile: 360 }, // 3-6 slots
+  many: { desktop: 520, tablet: 400, mobile: 320 }, // 7-12 slots
 };
 
 // Ola 2A (Lucy 2026-07-22) — espacio RESERVADO bajo cada slot para su barra de acciones
@@ -311,27 +313,43 @@ export function StudioCanvasGrid({
   const navCols = grouped ? unitCols * 2 : layout.cols;
 
   const availableW = containerWidth - layout.gap * (layout.cols - 1);
+  const isCalendar = calendarPreview !== null;
+
   // Ola 6 — límite de alto del slot según cantidad de slots, para evitar que
   // productos de pocos slots (ej. Polaroid de 1 slot) ocupen toda la pantalla.
+  // Calendario: más alto porque son 12 tarjetas con texto/fechas.
   const slotMaxHeight = (() => {
     if (canvasData.slotCount <= 2) {
       if (containerWidth < BP_NARROW) return SLOT_HEIGHT_CAP_BY_COUNT.few.mobile;
       if (containerWidth < BP_TABLET) return SLOT_HEIGHT_CAP_BY_COUNT.few.tablet;
       return SLOT_HEIGHT_CAP_BY_COUNT.few.desktop;
     }
-    if (canvasData.slotCount <= 6) return SLOT_HEIGHT_CAP_BY_COUNT.medium;
-    return FRAME_HEIGHT_MAX; // 7+ slots: sin cap adicional (comportamiento anterior)
+    if (canvasData.slotCount <= 6) {
+      if (containerWidth < BP_NARROW) return SLOT_HEIGHT_CAP_BY_COUNT.medium.mobile;
+      if (containerWidth < BP_TABLET) return SLOT_HEIGHT_CAP_BY_COUNT.medium.tablet;
+      return SLOT_HEIGHT_CAP_BY_COUNT.medium.desktop;
+    }
+    if (isCalendar) {
+      if (containerWidth < BP_NARROW) return 400;
+      if (containerWidth < BP_TABLET) return 540;
+      return 760;
+    }
+    if (containerWidth < BP_NARROW) return SLOT_HEIGHT_CAP_BY_COUNT.many.mobile;
+    if (containerWidth < BP_TABLET) return SLOT_HEIGHT_CAP_BY_COUNT.many.tablet;
+    return SLOT_HEIGHT_CAP_BY_COUNT.many.desktop;
   })();
 
-  // Ola 4 — marco máximo en ALTO (78% del viewport, acotado): las celdas se achican
+  // Ola 4 — marco máximo en ALTO (82% del viewport, acotado): las celdas se achican
   // si el grid completo no cabe en pantalla. Ola 6: se respeta también el cap por slot.
+  // Calendario: usa casi todo el viewport porque son 12 tarjetas apiladas verticalmente.
   const reserve = stripMode ? 0 : ACTION_BAR_RESERVE;
   const maxFrameHBySlots =
     slotMaxHeight * layout.rows + layout.gap * (layout.rows - 1) + layout.rows * reserve;
+  const frameHeightVh = isCalendar ? 0.94 : FRAME_HEIGHT_VH;
   const maxFrameH = viewportH
     ? Math.min(
         FRAME_HEIGHT_MAX,
-        Math.max(FRAME_HEIGHT_MIN, Math.round(viewportH * FRAME_HEIGHT_VH)),
+        Math.max(FRAME_HEIGHT_MIN, Math.round(viewportH * frameHeightVh)),
         maxFrameHBySlots,
       )
     : null;

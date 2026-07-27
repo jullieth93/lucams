@@ -389,9 +389,9 @@ export default async function ProductoDetallePage({
                       {catalog ? (
                         <>
                           Lo producimos a mano y lo{" "}
-                          <strong>despachamos en máximo 2 días hábiles</strong>. El tiempo de
-                          entrega depende de la transportadora y de tu ciudad; el envío lo
-                          coordinamos por WhatsApp con nuestras aliadas.
+                          <strong>entregamos en máximo 3 días hábiles</strong> (2 de fabricación +
+                          1 de entrega). El tiempo final depende de la transportadora y de tu
+                          ciudad; el envío lo coordinamos por WhatsApp con nuestras aliadas.
                         </>
                       ) : (
                         <>

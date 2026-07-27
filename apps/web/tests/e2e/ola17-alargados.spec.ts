@@ -8,10 +8,11 @@ test.describe("Ola 17 — Alargados", () => {
     if (await accept.count()) await accept.first().click();
   });
 
-  test("PDP Alargados muestra variantes 15×4 y 12×4 a $4.000", async ({ page }) => {
+  test("PDP Alargados muestra variantes 4×15 y 4×12 cm a $4.000", async ({ page }) => {
     await page.goto("/producto/separadores-alargados", { waitUntil: "domcontentloaded" });
-    await page.getByText("15×4", { exact: false }).first().waitFor({ timeout: 15_000 });
-    await page.getByText("12×4", { exact: false }).first().waitFor({ timeout: 5_000 });
+    // Convención de tallas: ancho×alto con "cm" al final (ej. "4×15 cm").
+    await page.getByText("4×15", { exact: false }).first().waitFor({ timeout: 15_000 });
+    await page.getByText("4×12", { exact: false }).first().waitFor({ timeout: 5_000 });
     await page.getByText("4.000", { exact: false }).first().waitFor({ timeout: 5_000 });
     await page.screenshot({ path: "/tmp/ola17-pdp-alargados.png", fullPage: true });
   });

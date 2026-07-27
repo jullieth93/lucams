@@ -67,26 +67,33 @@ export function StudioPhotoPreview({
 }: StudioPhotoPreviewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [containerWidth, setContainerWidth] = useState(340);
+  const [viewportH, setViewportH] = useState(800);
 
   // Ancho fluido: el preview llena el ancho disponible del modal (tope 520px
   // en desktop; en móvil aprovecha todo el ancho para que el pellizco y el pan
-  // sean más cómodos).
+  // sean más cómodos). También medimos el viewport para acotar el alto del preview
+  // y evitar scroll en productos alargados.
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-    const update = () => setContainerWidth(Math.min(520, el.clientWidth || 340));
+    const update = () => {
+      setContainerWidth(Math.min(520, el.clientWidth || 340));
+      setViewportH(window.innerHeight || 800);
+    };
     update();
     const ro = new ResizeObserver(update);
     ro.observe(el);
-    return () => ro.disconnect();
+    window.addEventListener("resize", update);
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("resize", update);
+    };
   }, []);
 
-  // Ola 17 — el preview respeta la PROPORCIÓN REAL del producto, pero con tope de alto:
-  // sin tope, un stage alto (marcapáginas alargado 4:15 → aspect 3.75) generaba un canvas
-  // de ~2000px que desbordaba el modal y obligaba a SCROLL. Con tope MAX_H la pieza queda
-  // angosta y alta (como el físico real) y la edición cabe en pantalla. Stages anchos o
-  // cuadrados no cambian (su alto natural ya queda bajo el tope).
-  const MAX_H = 560;
+  // Ola 21 — el preview respeta la proporción real del producto, pero acota el alto
+  // al espacio disponible del modal (~55 % del viewport) para que no aparezca scroll
+  // en productos alargados y para que la edición sea maniobrable en móvil.
+  const MAX_H = Math.round(Math.min(620, viewportH * 0.55));
   const aspect = unitTemplate.stage.height / unitTemplate.stage.width;
   let displayWidth = Math.max(200, containerWidth);
   let displayHeight = displayWidth * aspect;

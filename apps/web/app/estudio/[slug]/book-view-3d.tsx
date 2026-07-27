@@ -79,6 +79,7 @@ import {
   camber,
   flatBookmarkDims,
   flatBookmarkPlacement,
+  flatBookmarkPlacementUpright,
   flatBookmarkSlots,
   separatorPlacement,
   stripDimsForFace,
@@ -129,8 +130,6 @@ function Separators({
 }) {
   const layout = useMemo(() => {
     const units = bookmarkFaceUnits(items, facesPerUnit, sizeCm);
-    // eslint-disable-next-line no-console
-    console.log("[BookView3D Separators] " + JSON.stringify({ itemsCount: items.length, facesPerUnit, sizeCm, unitsCount: units.length, units: units.map((u) => ({ frontSlot: u.front.slotIndex, backSlot: u.back.slotIndex, frontUrl: u.front.assetUrl?.slice(0, 30), backUrl: u.back.assetUrl?.slice(0, 30) })) }));
     const slots = separatorSlotsForCount(units.length);
     return slots
       .map(({ x, yaw }, i) => {
@@ -205,7 +204,7 @@ function FlatBookmarks({
         unit,
         w,
         h,
-        position: flatBookmarkPlacement(slot.x, slot.z),
+        position: flatBookmarkPlacementUpright(slot.x, slot.z, h),
         yaw: slot.yaw,
       };
     });
@@ -215,20 +214,20 @@ function FlatBookmarks({
     <>
       {layout.map(({ key, unit, w, h, position, yaw }) => (
         <group key={key} position={position} rotation={[0, yaw, 0]}>
-          {/* La pieza extruye en +Z con la tapa impresa arriba; al rotar −90° en X la tapa
-              queda mirando a +Y (hacia la cámara) y el diseño lee hacia el tope de la página. */}
-          <group rotation={[-Math.PI / 2, 0, 0]}>
-            <MagnetMesh
-              dataUrl={unit.front.dataUrl}
-              backDataUrl={unit.back.dataUrl}
-              width={w}
-              height={h}
-              shape="rectangle"
-              depth={FLAT_BOOKMARK_T}
-              cornerRadiusRatio={0.06}
-              position={[0, 0, 0]}
-            />
-          </group>
+          {/* Ola 18 — la pieza se muestra DE PIE sobre la hoja (sin rotación): la cara A
+              mira a la cámara y la cara B se descubre al orbitar detrás. El diseño físico del
+              alargado es plano, pero para que el cliente vea las 2 caras que montó en el
+              estudio, la pieza 3D se presenta erguida como los separadores doblados. */}
+          <MagnetMesh
+            dataUrl={unit.front.dataUrl}
+            backDataUrl={unit.back.dataUrl}
+            width={w}
+            height={h}
+            shape="rectangle"
+            depth={FLAT_BOOKMARK_T}
+            cornerRadiusRatio={0.06}
+            position={[0, 0, 0]}
+          />
         </group>
       ))}
     </>
@@ -404,6 +403,23 @@ function Scene({
   }
   // #16 — no autorrotar si el usuario pide reducir movimiento.
   const reduced = usePrefersReducedMotion();
+  // Ola 18 — el marcapáginas plano (Alargados) vive sobre la hoja derecha; acercamos la cámara
+  // para que la pieza se distinga claramente, sin perder el contexto del libro.
+  const fit = useMemo(() => {
+    if (!flat) return { ...BOOK_FIT, targetX: 0, targetZ: 0, margin: 1.12, minDistance: 5 };
+    // Ola 18 — la pieza de pie es alta (15 cm → ~4.5 u). Encuadre más holgado para que
+    // la pieza completa sea visible, no solo su base.
+    return {
+      halfW: 3.0,
+      halfH: 5.0,
+      polarDeg: 48,
+      targetY: 1.2,
+      targetX: PAGE_W / 2,
+      targetZ: 0,
+      margin: 1.05,
+      minDistance: 3.5,
+    };
+  }, [flat]);
   return (
     <>
       {/* FB5 — env-map procedural (reflejos en cubierta/cartulina) + ciclorama de estudio. */}
@@ -456,11 +472,13 @@ function Scene({
       />
       {/* Encuadre con ángulo polar fijo (arriba-3/4) — no depende del aspecto del viewport. */}
       <FitCameraPolar
-        halfW={BOOK_FIT.halfW}
-        halfH={BOOK_FIT.halfH}
-        polarDeg={BOOK_FIT.polarDeg}
-        margin={1.12}
-        targetY={BOOK_FIT.targetY}
+        halfW={fit.halfW}
+        halfH={fit.halfH}
+        polarDeg={fit.polarDeg}
+        margin={fit.margin}
+        targetY={fit.targetY}
+        targetX={fit.targetX}
+        targetZ={fit.targetZ}
       />
       <OrbitControls
         makeDefault
@@ -469,9 +487,9 @@ function Scene({
         autoRotateSpeed={0.6}
         minPolarAngle={0.32}
         maxPolarAngle={Math.PI / 1.9}
-        minDistance={5}
+        minDistance={fit.minDistance}
         maxDistance={60}
-        target={[0, BOOK_FIT.targetY, 0]}
+        target={[fit.targetX, fit.targetY, fit.targetZ]}
       />
     </>
   );

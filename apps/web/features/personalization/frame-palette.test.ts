@@ -211,10 +211,10 @@ describe("frame-palette — Ola 4 (cuadrados / tira / instagram)", () => {
     );
   });
 
-  it("isInstagramNoBorder: detecta el rect a sangre del modo sin borde", async () => {
+  it("isInstagramNoBorder: detecta la foto a sangre total del modo sin borde", async () => {
     const { isInstagramNoBorder } = await import("./frame-palette");
     const stage = { width: 450, height: 600 };
-    expect(isInstagramNoBorder({ x: 15, y: 58, width: 420, height: 400 }, stage)).toBe(true);
+    expect(isInstagramNoBorder({ x: 0, y: 0, width: 450, height: 600 }, stage)).toBe(true);
     expect(isInstagramNoBorder({ x: 29, y: 58, width: 392, height: 392 }, stage)).toBe(false);
     expect(isInstagramNoBorder(undefined, stage)).toBe(false);
   });

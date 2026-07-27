@@ -5,9 +5,9 @@
  * zonas apartadas eso no se puede sostener, y prometer una fecha de entrega que no controlas es
  * exponerse por publicidad engañosa (Ley 1480 de 2011, arts. 29 y 30).
  *
- * El mensaje correcto separa lo propio de lo ajeno: el compromiso es el DESPACHO —máximo 2 días
- * hábiles, que sí depende de nosotros— y el tránsito es un ESTIMADO de la transportadora, variable
- * según la ciudad de destino.
+ * El mensaje correcto separa lo propio de lo ajeno: el compromiso es la ENTREGA —máximo 3 días
+ * hábiles (2 de fabricación + 1 de entrega), que sí depende de nosotros— y el tránsito final es un
+ * ESTIMADO de la transportadora, variable según la ciudad de destino.
  *
  * Por qué hace falta este script y no basta con cambiar el código: el `fallback` de `<CmsText>` solo
  * se usa cuando NO hay fila publicada en `CmsBlock`. `home.howitworks.step3.description` sí la tiene,
@@ -28,8 +28,8 @@ const BLOQUES = [
   {
     key: "home.howitworks.step3.description",
     body:
-      "Lo producimos a mano y lo despachamos en máximo 2 días hábiles. El tiempo de entrega depende " +
-      "de la transportadora y de tu ciudad. El pago y el envío se acuerdan por WhatsApp — " +
+      "Lo producimos a mano y lo entregamos en máximo 3 días hábiles (2 de fabricación + 1 de entrega). " +
+      "El tiempo final depende de la transportadora y de tu ciudad. El pago y el envío se acuerdan por WhatsApp — " +
       "contraentrega disponible.",
   },
 ];
@@ -38,9 +38,9 @@ const BLOQUES = [
  * Ajustes cuyo valor alimenta copy de cara al cliente. `MANUFACTURING_DAYS_RANGE` decía "5-7 días
  * hábiles", que además no coincidía ni con el seed ("4-9") ni con lo que decía la home ("máx 3").
  */
-const AJUSTES = [{ key: "MANUFACTURING_DAYS_RANGE", value: "2 días hábiles (hasta el despacho)" }];
+const AJUSTES = [{ key: "MANUFACTURING_DAYS_RANGE", value: "3 días hábiles (2 de fabricación + 1 de entrega)" }];
 
-console.log("=== narrativa de envíos: despacho ≤ 2 días hábiles + tránsito de la transportadora ===\n");
+console.log("=== narrativa de envíos: entrega ≤ 3 días hábiles (2+1) + tránsito de la transportadora ===\n");
 
 /** Publica una versión nueva de un CmsBlock con `body`, sincronizando block.body. */
 async function publishBlock(key, body, format = "TEXT") {
