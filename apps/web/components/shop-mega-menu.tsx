@@ -75,7 +75,7 @@ export function ShopMegaMenu({ tree, isLoggedIn }: { tree: CategoryNode[]; isLog
           <NavigationMenuList>
             <NavigationMenuItem>
               <NavigationMenuTrigger className="text-brand-purple-dark data-[active]:text-brand-purple-dark data-[state=open]:text-brand-purple-dark hover:text-brand-purple bg-transparent text-sm font-medium hover:bg-transparent">
-                Tienda
+                Catálogo
               </NavigationMenuTrigger>
               <NavigationMenuContent>
                 <div className="max-h-[80vh] w-[820px] overflow-y-auto p-5">
@@ -180,7 +180,7 @@ export function ShopMegaMenu({ tree, isLoggedIn }: { tree: CategoryNode[]; isLog
         </SheetTrigger>
         <SheetContent side="left" className="w-[300px] overflow-y-auto sm:w-[340px]">
           <SheetHeader>
-            <SheetTitle className="font-display text-brand-purple-dark text-2xl">Tienda</SheetTitle>
+            <SheetTitle className="font-display text-brand-purple-dark text-2xl">Catálogo</SheetTitle>
           </SheetHeader>
           <nav className="mt-3 flex flex-col gap-0.5 px-3 pb-6">
             {menuCategories.map((cat) => {

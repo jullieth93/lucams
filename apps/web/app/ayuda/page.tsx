@@ -62,8 +62,8 @@ function buildFallbackFaqs(
       slug: "cuanto-demora",
       question: "¿Cuánto demora mi pedido?",
       answer: catalog
-        ? "Lo producimos a mano y lo **despachamos en máximo 2 días hábiles** desde que confirmas. De ahí en adelante el tiempo lo pone la transportadora y depende de tu ciudad, así que no te prometemos una fecha exacta de entrega: te pasamos el número de guía para que lo sigas. El envío lo coordinamos por WhatsApp con nuestras transportadoras aliadas."
-        : "Lo producimos a mano y lo **despachamos en máximo 2 días hábiles** desde que confirmas. El tiempo de entrega lo pone la transportadora y varía según tu ciudad; al despachar te enviamos el número de guía para que sigas tu pedido.",
+        ? "Lo producimos a mano y lo **entregamos en máximo 3 días hábiles** (2 de fabricación + 1 de entrega) desde que confirmas. El envío lo coordinamos por WhatsApp con nuestras transportadoras aliadas y te pasamos el número de guía para que sigas tu pedido."
+        : "Lo producimos a mano y lo **entregamos en máximo 3 días hábiles** (2 de fabricación + 1 de entrega) desde que confirmas. El tránsito final lo pone la transportadora; al despachar te enviamos el número de guía para que sigas tu pedido.",
     },
     {
       slug: "metodos-pago",

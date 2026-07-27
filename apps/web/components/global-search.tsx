@@ -13,7 +13,7 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
-import { Search, Sparkles } from "lucide-react";
+import { Sparkles } from "lucide-react";
 import {
   CommandDialog,
   CommandEmpty,
@@ -82,10 +82,8 @@ export function GlobalSearch() {
         aria-label="Buscar"
         className="text-brand-purple-dark hover:text-brand-purple hover:bg-brand-purple/5 inline-flex items-center gap-1 rounded-md px-2 py-1.5 transition-colors"
       >
-        {/* Lupa estándar (Lucy 2026-07-22: el mapache no leía como "buscar").
-            El affordance lo refuerzan el texto "Buscar" + el atajo ⌘K, y el
-            input del diálogo conserva su propio icono Search interno. */}
-        <Search className="h-5 w-5" aria-hidden />
+        {/* Icono de marca en el trigger de búsqueda (Lucams mapache). */}
+        <LucamsLogo variant="mascot" size={20} aria-hidden />
         <span className="hidden text-xs sm:inline">Buscar</span>
         <kbd className="border-brand-purple/20 text-brand-muted hidden rounded border px-1.5 py-0.5 text-[10px] sm:inline">
           ⌘K

@@ -31,11 +31,11 @@ const STEPS = [
     titleKey: "home.howitworks.step3.title",
     titleFallback: "Llega a tus manos",
     descKey: "home.howitworks.step3.description",
-    // Etapa 1 (modo catálogo): el compromiso propio es el DESPACHO (máx. 2 días hábiles); el pago y
-    // el envío se cierran por WhatsApp (sin prometer pago en línea). No se promete fecha de entrega:
-    // el tránsito lo pone la transportadora y en Colombia varía mucho según el destino.
+    // Etapa 1 (modo catálogo): el compromiso propio es el DESPACHO (máx. 3 días hábiles: 2 de
+    // fabricación + 1 de entrega); el pago y el envío se cierran por WhatsApp (sin prometer pago en
+    // línea). El tránsito lo pone la transportadora y en Colombia varía mucho según el destino.
     descFallback:
-      "Lo producimos a mano y lo despachamos en máximo 2 días hábiles. El tiempo de entrega depende de la transportadora y de tu ciudad. El pago y el envío se acuerdan por WhatsApp — contraentrega disponible.",
+      "Lo producimos a mano y lo entregamos en máximo 3 días hábiles (2 de fabricación + 1 de entrega). El pago y el envío se acuerdan por WhatsApp — contraentrega disponible.",
     // La descripción promete contraentrega: depende del toggle COD_ENABLED (igual que
     // el chip del hero) — con COD apagado se recorta esa coletilla.
     codAware: true,

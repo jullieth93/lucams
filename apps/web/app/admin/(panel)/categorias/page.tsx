@@ -71,8 +71,11 @@ export default async function AdminCategoriasPage({
   const sp = await searchParams;
   const q = pickString(sp, "q");
   const statusRaw = pickString(sp, "status");
+  // Ola 3 (Lucy 2026-07-27): default "active" para no desbordar al admin con categorías de
+  // prueba/inactivas al abrir el listado. Los tests crean muchas categorías basura; el admin las
+  // puede ver cambiando el filtro.
   const status: "all" | "active" | "inactive" | "archived" = (
-    ["active", "inactive", "archived"].includes(statusRaw ?? "") ? statusRaw : "all"
+    ["active", "inactive", "archived"].includes(statusRaw ?? "") ? statusRaw : "active"
   ) as "all" | "active" | "inactive" | "archived";
   const sortRaw = pickString(sp, "sort");
   const sort = (["name", "recent"].includes(sortRaw ?? "") ? sortRaw : "order") as
@@ -118,7 +121,7 @@ export default async function AdminCategoriasPage({
   const justCreated = sp.created === "1";
   const justDeleted = sp.deleted === "1";
   const errorMsg = typeof sp.error === "string" ? sp.error : null;
-  const hasActiveFilters = !!q || status !== "all" || sort !== "order";
+  const hasActiveFilters = !!q || status !== "active" || sort !== "order";
 
   return (
     <AdminPage>
