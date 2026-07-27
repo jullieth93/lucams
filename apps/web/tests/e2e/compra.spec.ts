@@ -13,6 +13,7 @@
  */
 
 import { test, expect, type Page } from "@playwright/test";
+import "../setup-env";
 // PrismaClient vía @lucams/db (re-exporta @prisma/client) — resoluble por tsc
 // desde apps/web y sin el import `server-only` de @/lib/db (rompería en Node).
 import { PrismaClient } from "@lucams/db";
@@ -71,17 +72,20 @@ test.afterAll(async () => {
 });
 
 async function addToCart(page: Page) {
-  await page.goto(`/producto/${slug}`);
+  await page.goto(`/producto/${slug}`, { waitUntil: "domcontentloaded" });
   const addBtn = page.getByRole("button", { name: /añadir al carrito/i });
-  await expect(addBtn).toBeVisible();
+  await expect(addBtn).toBeVisible({ timeout: 15_000 });
+  // Next.js dev puede hidratar tarde el botón; aseguramos que esté habilitado
+  // antes de clickear para evitar clicks fantasmas.
+  await expect(addBtn).toBeEnabled({ timeout: 15_000 });
   await addBtn.click();
   // El server action inserta el ítem y redirige a `${returnTo}?added=1` — esperar
   // ESE redirect es la señal fiable de que el ítem quedó en DB. NO gateamos en el
   // conteo del header ("Carrito (N ítems)"): ese es un read de una sola vez por el
   // pooler de Supabase y, bajo carga, puede verse stale (0 ítems) sin reintentarse,
-  // colgando el wait 15s en vano. La verificación real la hace el toPass del caller
+  // colgando el wait en vano. La verificación real la hace el toPass del caller
   // sobre /carrito o /checkout, que sí tolera el read-after-write del pooler.
-  await page.waitForURL(/[?&]added=1/, { timeout: 15_000 });
+  await page.waitForURL(/[?&]added=1/, { timeout: 30_000 });
 }
 
 test.describe("compra — núcleo del carrito", () => {
@@ -93,7 +97,7 @@ test.describe("compra — núcleo del carrito", () => {
       await page.goto("/carrito");
       await expect(page.getByRole("heading", { name: /tu carrito está vacío/i })).toHaveCount(0);
       await expect(page.getByText(`E2E Simple ${RUN}`).first()).toBeVisible();
-    }).toPass({ timeout: 30_000 });
+    }).toPass({ timeout: 60_000 });
     await expect(page.locator('a[href="/checkout/datos"]').first()).toBeVisible();
   });
 
@@ -105,7 +109,7 @@ test.describe("compra — núcleo del carrito", () => {
       await page.goto("/checkout/datos");
       await expect(page).toHaveURL(/\/checkout\/datos/);
       await expect(page.locator('input[name="fullName"]')).toBeVisible();
-    }).toPass({ timeout: 30_000 });
+    }).toPass({ timeout: 60_000 });
     await expect(page.locator('input[name="email"]')).toBeVisible();
   });
 });

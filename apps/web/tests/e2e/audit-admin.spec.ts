@@ -119,14 +119,28 @@ test.describe.serial("AUDITORÍA ADMIN — catalogo-whatsapp (producción)", () 
     await page.goto("/admin/productos", { waitUntil: "domcontentloaded" });
     await page.waitForTimeout(3000);
     await page.screenshot({ path: "/tmp/audit-admin-productos.png" });
-    // Abrir el producto Alargados para editar
-    const alargados = page.getByText("Alargados", { exact: false }).first();
-    await expect(alargados).toBeVisible({ timeout: 15_000 });
-    await alargados.click();
-    await page.waitForTimeout(3000);
+    // El catálogo tiene 432+ productos paginados; buscamos "Alargados" para abrirlo.
+    // El input de búsqueda es un <input type="search"> con label "Buscar"; usamos
+    // getByLabel para no depender del role implícito que varía entre navegadores.
+    const search = page.getByLabel(/Buscar/i);
+    await expect(search).toBeVisible({ timeout: 15_000 });
+    await search.fill("Alargados");
+    // Aplicar filtro: submit del formulario de búsqueda o click en "Aplicar".
+    await page.getByRole("button", { name: /Aplicar/i }).click();
+    await page.waitForTimeout(1500);
+    await page.screenshot({ path: "/tmp/audit-admin-productos-busqueda.png" });
+    // Abrir el producto Alargados para editar. El texto del nombre no es un
+    // link; usamos el link "Editar" de la primera fila que contenga "Alargados".
+    const alargadosRow = page.locator("tr", { hasText: /Alargados/i }).first();
+    await expect(alargadosRow).toBeVisible({ timeout: 15_000 });
+    const editLink = alargadosRow.locator('a[href^="/admin/productos/"]', { hasText: /Editar/i });
+    await expect(editLink).toBeVisible({ timeout: 15_000 });
+    await editLink.click();
+    await page.waitForURL(/\/admin\/productos\/.+/, { timeout: 30_000 });
+    await page.waitForTimeout(2000);
     await page.screenshot({ path: "/tmp/audit-admin-producto-edit.png" });
     // Round-trip: cambiar descripción corta y restaurar (sin persistir cambios destructivos)
-    findings.push({ area: "admin:productos", ok: true, detail: "lista + editor de producto cargan" });
+    findings.push({ area: "admin:productos", ok: true, detail: "lista + búsqueda + editor de producto cargan" });
   });
 
   test("3. Categorías: lista + toggle con reflejo en front + restore", async ({ page }) => {

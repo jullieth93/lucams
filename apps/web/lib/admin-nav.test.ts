@@ -1,16 +1,16 @@
 /*
- * Tests de lib/admin-nav.ts — getAdminNav() según el modo de tienda (Etapa 1/2).
+ * Tests de lib/admin-nav.ts — getAdminNav() según el modo de tienda.
  *
  * El módulo evalúa NEXT_PUBLIC_STORE_MODE AL IMPORTARSE (vía lib/store-mode),
  * así que cada caso corre con `vi.resetModules()` + import dinámico tras fijar
  * el valor (mismo patrón que lib/store-mode.test.ts).
  *
  * FOCO:
- *   - modo full: getAdminNav() === ADMIN_NAV (con Finanzas e Integraciones).
- *   - modo catalog: oculta el grupo "Finanzas" completo y el item
- *     "Integraciones" de "Configuración" (no hay pagos ni envíos integrados).
+ *   - En AMBOS modos se habilitan todas las secciones admin funcionales.
+ *   - Únicamente se ocultan los módulos explícitamente descopeados:
+ *     "Mercado Libre" dentro de Canales y "Bot WhatsApp" dentro de IA y Conocimiento.
  *   - "Cotizaciones" es el primer item de "Ventas" en AMBOS modos.
- *   - el filtrado NO muta ADMIN_NAV (el catch-all placeholder sigue viendo
+ *   - El filtrado NO muta ADMIN_NAV (el catch-all placeholder sigue viendo
  *     todos los módulos para su info contextual).
  */
 
@@ -32,63 +32,80 @@ afterEach(() => {
   else process.env[KEY] = original;
 });
 
+async function getNavForMode(mode: "full" | "catalog") {
+  process.env[KEY] = mode;
+  const mod = await loadNav();
+  return { mod, nav: mod.getAdminNav() };
+}
+
 describe("getAdminNav", () => {
-  it("modo full: devuelve ADMIN_NAV intacto (Finanzas e Integraciones visibles)", async () => {
-    process.env[KEY] = "full";
-    const mod = await loadNav();
-    const nav = mod.getAdminNav();
+  it.each(["full", "catalog"] as const)(
+    "modo %s: Finanzas e Integraciones están visibles",
+    async (mode) => {
+      const { nav } = await getNavForMode(mode);
 
-    expect(nav).toBe(mod.ADMIN_NAV); // misma referencia, sin filtrar
-    expect(nav.some((g) => g.title === "Finanzas")).toBe(true);
-    const config = nav.find((g) => g.title === "Configuración");
-    expect(config?.items?.some((it) => it.href === "/admin/integraciones")).toBe(true);
-  });
+      expect(nav.some((g) => g.title === "Finanzas")).toBe(true);
+      const config = nav.find((g) => g.title === "Configuración");
+      expect(config?.items?.some((it) => it.href === "/admin/integraciones")).toBe(true);
+    },
+  );
 
-  it("modo catalog: oculta el grupo Finanzas completo", async () => {
-    process.env[KEY] = "catalog";
-    const mod = await loadNav();
-    const nav = mod.getAdminNav();
+  it.each(["full", "catalog"] as const)(
+    "modo %s: oculta Mercado Libre y Bot WhatsApp IA",
+    async (mode) => {
+      const { nav } = await getNavForMode(mode);
 
-    expect(nav.some((g) => g.title === "Finanzas")).toBe(false);
-    // Y ningún link a /admin/finanzas sobrevive en otro grupo.
-    const allHrefs = nav.flatMap((g) => (g.items ?? []).map((it) => it.href));
-    expect(allHrefs.some((h) => h.startsWith("/admin/finanzas"))).toBe(false);
-  });
+      const allHrefs = nav.flatMap((g) => (g.items ?? []).map((it) => it.href));
+      const allLabels = nav.flatMap((g) => (g.items ?? []).map((it) => it.label));
 
-  it("modo catalog: oculta Integraciones de Configuración pero conserva el resto del grupo", async () => {
-    process.env[KEY] = "catalog";
-    const mod = await loadNav();
-    const nav = mod.getAdminNav();
+      expect(allHrefs).not.toContain("/admin/canales/mercadolibre");
+      expect(allLabels).not.toContain("Mercado Libre");
+      expect(allLabels).not.toContain("Bot WhatsApp");
+    },
+  );
 
-    const config = nav.find((g) => g.title === "Configuración");
-    expect(config).toBeDefined();
-    expect(config?.items?.some((it) => it.href === "/admin/integraciones")).toBe(false);
-    // El resto de items de Configuración sigue (General, Seguridad, Redirects…).
-    expect(config?.items?.some((it) => it.href === "/admin/contenido/configuracion")).toBe(true);
-    expect(config?.items?.some((it) => it.href === "/admin/seguridad")).toBe(true);
-  });
-
-  it.each(["full", "catalog"])(
+  it.each(["full", "catalog"] as const)(
     "Cotizaciones es el primer item de Ventas (modo %s)",
     async (mode) => {
-      process.env[KEY] = mode;
-      const mod = await loadNav();
-      const ventas = mod.getAdminNav().find((g) => g.title === "Ventas");
+      const { nav } = await getNavForMode(mode);
+      const ventas = nav.find((g) => g.title === "Ventas");
 
       expect(ventas?.items?.[0]?.label).toBe("Cotizaciones");
       expect(ventas?.items?.[0]?.href).toBe("/admin/cotizaciones");
     },
   );
 
-  it("modo catalog: el filtrado NO muta ADMIN_NAV (el placeholder sigue viendo todo)", async () => {
-    process.env[KEY] = "catalog";
-    const mod = await loadNav();
-    mod.getAdminNav(); // corre el filtrado
+  it.each(["full", "catalog"] as const)(
+    "modo %s: el filtrado NO muta ADMIN_NAV",
+    async (mode) => {
+      const { mod, nav } = await getNavForMode(mode);
+      nav; // consume el resultado
 
-    // ADMIN_NAV (lo que usa findNavItem del catch-all) conserva Finanzas e
-    // Integraciones después del filtrado.
-    expect(mod.ADMIN_NAV.some((g) => g.title === "Finanzas")).toBe(true);
-    const config = mod.ADMIN_NAV.find((g) => g.title === "Configuración");
-    expect(config?.items?.some((it) => it.href === "/admin/integraciones")).toBe(true);
+      // ADMIN_NAV conserva todos los módulos originales.
+      expect(mod.ADMIN_NAV.some((g) => g.title === "Finanzas")).toBe(true);
+      const canales = mod.ADMIN_NAV.find((g) => g.title === "Canales");
+      expect(canales?.items?.some((it) => it.label === "Mercado Libre")).toBe(true);
+      const ia = mod.ADMIN_NAV.find((g) => g.title === "IA y Conocimiento");
+      expect(ia?.items?.some((it) => it.label === "Bot WhatsApp")).toBe(true);
+    },
+  );
+
+  it("modo full: getAdminNav() filtra descopeados sin mutar ADMIN_NAV", async () => {
+    process.env[KEY] = "full";
+    const mod = await loadNav();
+    const nav = mod.getAdminNav();
+
+    // Filtra: no devuelve la misma referencia porque oculta módulos descopeados.
+    expect(nav).not.toBe(mod.ADMIN_NAV);
+
+    // Los descopeados no aparecen en el NAV efectivo.
+    const allLabels = nav.flatMap((g) => (g.items ?? []).map((it) => it.label));
+    expect(allLabels).not.toContain("Mercado Libre");
+    expect(allLabels).not.toContain("Bot WhatsApp");
+
+    // ADMIN_NAV original conserva todo (lo usa el catch-all placeholder).
+    expect(mod.ADMIN_NAV.some((g) => g.title === "Canales")).toBe(true);
+    const canales = mod.ADMIN_NAV.find((g) => g.title === "Canales");
+    expect(canales?.items?.some((it) => it.label === "Mercado Libre")).toBe(true);
   });
 });

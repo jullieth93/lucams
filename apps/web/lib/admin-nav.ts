@@ -383,30 +383,25 @@ export const ADMIN_NAV: NavGroup[] = [
  * del sidebar (admin-shell.tsx) usa ESTA función.
  */
 export function getAdminNav(): NavGroup[] {
-  if (!isCatalogMode()) return ADMIN_NAV;
-  return ADMIN_NAV.filter((group) => group.title !== "Finanzas")
-    .map((group) => {
-      // Ocultar módulos futuros que aún no están implementados (Lucy 2026-07-27):
-      // - Mercado Libre dentro de Canales
-      // - Bot WhatsApp IA dentro de IA y Conocimiento
-      if (group.title === "Canales" && group.items) {
-        return {
-          ...group,
-          items: group.items.filter((it) => it.label !== "Mercado Libre"),
-        };
-      }
-      if (group.title === "IA y Conocimiento" && group.items) {
-        return {
-          ...group,
-          items: group.items.filter((it) => it.label !== "Bot WhatsApp"),
-        };
-      }
-      if (group.title === "Configuración" && group.items) {
-        return { ...group, items: group.items.filter((it) => it.href !== "/admin/integraciones") };
-      }
-      return group;
-    })
-    .filter((group) => !group.items || group.items.length > 0 || group.href);
+  // En todas las ramas se habilitan todas las secciones admin funcionales.
+  // Únicamente se ocultan los módulos futuros explícitamente descopeados:
+  //   - Mercado Libre dentro de Canales
+  //   - Bot WhatsApp IA dentro de IA y Conocimiento
+  return ADMIN_NAV.map((group) => {
+    if (group.title === "Canales" && group.items) {
+      return {
+        ...group,
+        items: group.items.filter((it) => it.label !== "Mercado Libre"),
+      };
+    }
+    if (group.title === "IA y Conocimiento" && group.items) {
+      return {
+        ...group,
+        items: group.items.filter((it) => it.label !== "Bot WhatsApp"),
+      };
+    }
+    return group;
+  }).filter((group) => !group.items || group.items.length > 0 || group.href);
 }
 
 /**
