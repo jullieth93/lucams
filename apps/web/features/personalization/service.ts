@@ -1170,33 +1170,45 @@ export async function listTemplatesForKind(
       name: true,
       previewUrl: true,
       canvasData: true,
-      // Ola 3 — necesario para la red de seguridad de plantillas específicas del producto.
+      // Ola 3 / Ola 19 — necesario para preferir plantillas específicas del producto.
       productId: true,
     },
   });
 
+  // Ola 19 (Lucy 2026-07-26) — si el producto tiene plantillas ESPECÍFICAS curadas,
+  // se usan SOLO esas (no mezclamos con globales del mismo kind). Si no tiene específicas,
+  // caemos a las globales filtradas por aspect ratio.
+  if (opts?.productId) {
+    const specific = templates.filter((t) => t.productId === opts.productId);
+    if (specific.length > 0) {
+      return filterTemplatesByAspectRatio(specific, opts.productAspectRatio);
+    }
+  }
+
   // Aspect filter aterrizado 2026-05-13: solo mostrar plantillas cuyo
   // canvasData.stage.width/height matchee con el aspect ratio del producto.
-  // Si no se pasa productAspectRatio, devuelve todas (legacy behavior).
-  if (!opts?.productAspectRatio) return templates;
-  const target = parseAspectRatio(opts.productAspectRatio);
+  return filterTemplatesByAspectRatio(templates, opts?.productAspectRatio);
+}
+
+function filterTemplatesByAspectRatio(
+  templates: {
+    id: string;
+    slug: string;
+    name: string;
+    previewUrl: string;
+    canvasData: unknown;
+    productId: string | null;
+  }[],
+  productAspectRatio?: string,
+) {
+  if (!productAspectRatio) return templates;
+  const target = parseAspectRatio(productAspectRatio);
   if (target === null) return templates;
-  const filtered = templates.filter((t) => {
+  return templates.filter((t) => {
     const a = templateAspectRatio(t.canvasData);
     if (a === null) return true; // template sin stage parseable → permitir
     return Math.abs(a - target) <= 0.05;
   });
-  // Ola 3 (bug texto Polaroid, Lucy 2026-07-22) — red de seguridad: si el filtro deja
-  // el producto SIN plantillas pero existen plantillas ESPECÍFICAS curadas para él
-  // (productId = este producto), se muestran igual aunque su aspect no matchee. Sin
-  // esto, una variante con aspect distinto al de la plantilla (ej. Polaroid 3:4 vs
-  // marco 400:580) dejaba el Estudio sin plantilla → sin capas de texto → "no deja
-  // escribir el texto". Las plantillas GLOBALES que no matchean sí se siguen ocultando
-  // (evita looks estirados en productos ajenos).
-  if (filtered.length === 0 && opts?.productId) {
-    return templates.filter((t) => t.productId === opts.productId);
-  }
-  return filtered;
 }
 
 /** Parsea "1:1", "4:5", "7:9" → ratio numérico width/height. */

@@ -256,12 +256,23 @@ export function LetterSetEditor({
     [letterSet, alphabets, language],
   );
 
-  const optionsForLanguage = themeOptions[language] ?? [];
+  // Ola 3 (Lucy 2026-07-27) — solo mostrar temas ilustrados que estén 100% completos para el
+  // set de letras activo. Un set incompleto genera una experiencia rota (mezcla de dibujitos y
+  // letras de color) y confunde al cliente, por lo que se filtran del picker y se ignoran si
+  // llegan preseleccionados desde la PDP/URL.
+  const optionsForLanguage = useMemo(
+    () => (themeOptions[language] ?? []).filter((o) => o.tileCount >= letters.length),
+    [themeOptions, language, letters.length],
+  );
   const selectedOption = styleId ? optionsForLanguage.find((o) => o.id === styleId) : null;
   const selectedThemeKey = selectedOption?.theme ?? null;
-  const activeTiles: LetterTileMap = styleId
-    ? ((stylesByLanguage[language] ?? []).find((s) => s.id === styleId)?.tiles ?? {})
-    : {};
+  const activeTiles: LetterTileMap = useMemo(() => {
+    if (!styleId) return {};
+    const set = (stylesByLanguage[language] ?? []).find((s) => s.id === styleId);
+    const option = optionsForLanguage.find((o) => o.id === styleId);
+    if (!set || !option || option.tileCount < letters.length) return {};
+    return set.tiles ?? {};
+  }, [styleId, stylesByLanguage, language, optionsForLanguage, letters.length]);
 
   const currentVariant = variants.find((v) => v.id === currentVariantId);
   // Centavos COP enteros: la etiqueta del editor y el precio de la modal salen del MISMO valor,

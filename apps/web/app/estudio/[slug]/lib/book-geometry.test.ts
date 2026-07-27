@@ -126,11 +126,11 @@ describe("stripDimsForFace (ola 3 — la CARA manda: tamaño y encuadre sin re-c
     expect(stripW / effectiveHang(stripL)).toBeCloseTo(FACE_RECT.hRatio / FACE_RECT.wRatio, 6);
   });
 
-  it("cara cuadrada 4×4.2 → tira de 4.2 de ancho y caras de 4 (de pie sobre el libro)", () => {
+  it("cara cuadrada 4×4.2 → tira de 4 de ancho y caras de 4.2 (de pie sobre el libro)", () => {
     const { stripW, stripL } = stripDimsForFace(FACE_SQUARE, "4×4.2");
-    expect(stripW / CM).toBeCloseTo(4.2, 6);
-    expect(effectiveHang(stripL) / CM).toBeCloseTo(4, 6);
-    expect(stripW / effectiveHang(stripL)).toBeCloseTo(FACE_SQUARE.hRatio / FACE_SQUARE.wRatio, 6);
+    expect(stripW / CM).toBeCloseTo(4, 6);
+    expect(effectiveHang(stripL) / CM).toBeCloseTo(4.2, 6);
+    expect(stripW / effectiveHang(stripL)).toBeCloseTo(FACE_SQUARE.wRatio / FACE_SQUARE.hRatio, 6);
   });
 
   it("la cara 4×4.2 se ve DISTINTA de la 6×2 (ancho y alto difieren claramente)", () => {
@@ -142,13 +142,13 @@ describe("stripDimsForFace (ola 3 — la CARA manda: tamaño y encuadre sin re-c
 
   it("wCm/hCm por pieza tienen prioridad sobre sizeCm (sets mixtos: 1×6×2 y 2×4×4.2)", () => {
     const mixed = stripDimsForFace({ ...FACE_SQUARE, wCm: 4, hCm: 4.2 }, "6×2");
-    expect(mixed.stripW / CM).toBeCloseTo(4.2, 6);
-    expect(effectiveHang(mixed.stripL) / CM).toBeCloseTo(4, 6);
+    expect(mixed.stripW / CM).toBeCloseTo(4, 6);
+    expect(effectiveHang(mixed.stripL) / CM).toBeCloseTo(4.2, 6);
   });
 
-  it("sin sizeCm, el aspecto del lienzo decide: 600×200 → 2×6 · 400×420 → 4.2×4", () => {
+  it("sin sizeCm, el aspecto del lienzo decide: 600×200 → 2×6 · 400×420 → 4×4.2", () => {
     expect(stripDimsForFace(FACE_RECT).stripW / CM).toBeCloseTo(2, 6);
-    expect(stripDimsForFace(FACE_SQUARE).stripW / CM).toBeCloseTo(4.2, 6);
+    expect(stripDimsForFace(FACE_SQUARE).stripW / CM).toBeCloseTo(4, 6);
   });
 
   it("diseño VIEJO de tira completa (vertical ~5:14, sin sizeCm) → tira 2×6 histórica", () => {

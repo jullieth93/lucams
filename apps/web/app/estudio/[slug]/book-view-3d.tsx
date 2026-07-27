@@ -129,6 +129,8 @@ function Separators({
 }) {
   const layout = useMemo(() => {
     const units = bookmarkFaceUnits(items, facesPerUnit, sizeCm);
+    // eslint-disable-next-line no-console
+    console.log("[BookView3D Separators] " + JSON.stringify({ itemsCount: items.length, facesPerUnit, sizeCm, unitsCount: units.length, units: units.map((u) => ({ frontSlot: u.front.slotIndex, backSlot: u.back.slotIndex, frontUrl: u.front.assetUrl?.slice(0, 30), backUrl: u.back.assetUrl?.slice(0, 30) })) }));
     const slots = separatorSlotsForCount(units.length);
     return slots
       .map(({ x, yaw }, i) => {

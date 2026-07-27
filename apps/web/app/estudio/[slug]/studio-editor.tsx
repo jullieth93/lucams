@@ -265,9 +265,10 @@ export function StudioEditor({
   // del producto, y podía venir vacío). Default = año del producto → próximo año. Se ofrece un
   // rango seguro (nunca un año pasado) y se persiste por-diseño en el finalize.
   const isCalendarMonth = product.personalizationKind === "CALENDAR_PHOTO_MONTH";
-  // SEP1 — separadores (galleryTag "separadores"): su vista inmersiva es un LIBRO, no la nevera.
-  const isBookmark =
-    (product.personalizationSchema as { galleryTag?: string } | null)?.galleryTag === "separadores";
+  // SEP1 — separadores (galleryTag "separadores" o "separadores-magneticos" / "separadores-alargados"):
+  // su vista inmersiva es un LIBRO, no la nevera.
+  const galleryTag = (product.personalizationSchema as { galleryTag?: string } | null)?.galleryTag;
+  const isBookmark = typeof galleryTag === "string" && galleryTag.startsWith("separadores");
   // #14 — sustantivo del slot: en separadores el producto NO es un imán → "separador" en los labels,
   // aria y onboarding (pantalla=físico). Deriva de isBookmark; el calendario usa slotLabels propios.
   const slotNoun = isBookmark ? "separador" : "imán";
@@ -969,7 +970,7 @@ export function StudioEditor({
         {/* Auditoría v3 · H15: flex-COL para que el banner del calendario quede ARRIBA del grid (antes
             era flex-row → banner y grid en fila → overflow horizontal y slots sangrando). El banner ya
             trae mb-3, pensado para apilado. */}
-        <section className="flex flex-1 flex-col items-center p-4 pb-24 lg:p-8 lg:pb-8">
+        <section className="flex flex-1 flex-col items-center p-4 pb-28 sm:pb-24 lg:p-8 lg:pb-16">
           <StudioStyleToolbar store={store} frameOptions={productConfig.frameOptions} />
 
           {/* ADR-057 Fase D + CAL2 — banner de calendario: el cliente elige el AÑO (selector) y
@@ -1000,6 +1001,63 @@ export function StudioEditor({
               </span>
             </div>
           )}
+
+          {/* P1.4/P1.5 — Botones de acción global: Ideas (IA) + Ver en 3D/tu espacio.
+              Ahora siempre fluyen dentro del section: en mobile quedan justo debajo del banner
+              y arriba del grid para no tapar los slots; en desktop se sientan debajo del banner.
+              Se elimina el posicionamiento fixed que superponía los botones de edición/eliminación. */}
+          <div className="mt-2 mb-2 flex flex-wrap items-center justify-center gap-2 px-4">
+            {aiEnabled && (
+              <button
+                type="button"
+                onClick={() => setAiOpen(true)}
+                // A11Y — bg-brand-pink con texto blanco daba 3.27:1 (WCAG 1.4.3 AA pide 4.5:1 para
+                // texto de 14px). Se baja al tono de tinta YA existente (ADR-044): 5.31:1. La paleta
+                // no se toca. El nombre accesible sale del CONTENIDO (no de aria-label) para que
+                // contenga el texto visible — WCAG 2.5.3, control por voz dice lo que ve.
+                className="bg-brand-pink-ink ring-brand-pink-ink/25 inline-flex h-12 items-center gap-2 rounded-full px-4 text-sm font-bold text-white shadow-xl ring-4 transition-transform hover:scale-105 active:scale-95"
+              >
+                <Sparkles className="h-5 w-5" aria-hidden />
+                <span>Ideas</span>
+                <span className="sr-only">&nbsp;para tu diseño, con el asistente</span>
+              </button>
+            )}
+            {isCalendarMonth ? (
+              <button
+                type="button"
+                onClick={handleOpenCalendar3D}
+                disabled={calendarBuilding}
+                className="bg-brand-purple ring-brand-purple/25 inline-flex h-12 items-center gap-2 rounded-full px-4 text-sm font-bold text-white shadow-xl ring-4 transition-transform hover:scale-105 active:scale-95 disabled:opacity-60"
+              >
+                <CalendarDays className="h-5 w-5" aria-hidden />
+                <span>{calendarBuilding ? "Armando…" : "Ver mi calendario"}</span>
+                <span className="sr-only">: tus tarjetas mes en detalle, una por una</span>
+              </button>
+            ) : isBookmark ? (
+              <button
+                type="button"
+                onClick={handleOpen3D}
+                className="bg-brand-purple ring-brand-purple/25 inline-flex h-12 items-center gap-2 rounded-full px-4 text-sm font-bold text-white shadow-xl ring-4 transition-transform hover:scale-105 active:scale-95"
+              >
+                <Box className="h-5 w-5" aria-hidden />
+                <span>Ver en un libro</span>
+                <span className="sr-only">&nbsp;en 3D: tu separador entre las páginas</span>
+              </button>
+            ) : (
+              // FOTO4 — un solo botón abre la galería con TODAS las escenas (nevera/mural/repisa/regalo).
+              <button
+                type="button"
+                onClick={handleOpenScene}
+                disabled={sceneBuilding}
+                className="bg-brand-purple ring-brand-purple/25 inline-flex h-12 items-center gap-2 rounded-full px-4 text-sm font-bold text-white shadow-xl ring-4 transition-transform hover:scale-105 active:scale-95 disabled:opacity-60"
+              >
+                <Box className="h-5 w-5" aria-hidden />
+                <span>{sceneBuilding ? "Armando…" : "Ver en tu espacio"}</span>
+                <span className="sr-only">: nevera, mural, repisa o regalo</span>
+              </button>
+            )}
+          </div>
+
           <StudioCanvasGrid
             store={store}
             sizeCm={productConfig.sizeCm}
@@ -1034,63 +1092,8 @@ export function StudioEditor({
             }}
             forceMountAll={forceMountAll}
           />
-        </section>
-      </div>
 
-      {/* P1.4/P1.5 — Botones flotantes: Ideas (IA) + Ver en 3D/tu espacio. Auditoría v3 · H14: en
-          pantallas chicas el grupo central chocaba con el FAB de Editar (izq) y el de ¡Listo! (der).
-          Se sube a una FILA PROPIA por encima (bottom-24) en móvil; en sm+ hay ancho de sobra y baja
-          a bottom-4. flex-wrap por si el texto es largo. */}
-      <div className="fixed bottom-24 left-1/2 z-30 flex -translate-x-1/2 flex-wrap items-center justify-center gap-2 sm:bottom-4">
-        {aiEnabled && (
-          <button
-            type="button"
-            onClick={() => setAiOpen(true)}
-            // A11Y — bg-brand-pink con texto blanco daba 3.27:1 (WCAG 1.4.3 AA pide 4.5:1 para
-            // texto de 14px). Se baja al tono de tinta YA existente (ADR-044): 5.31:1. La paleta
-            // no se toca. El nombre accesible sale del CONTENIDO (no de aria-label) para que
-            // contenga el texto visible — WCAG 2.5.3, control por voz dice lo que ve.
-            className="bg-brand-pink-ink ring-brand-pink-ink/25 inline-flex h-12 items-center gap-2 rounded-full px-4 text-sm font-bold text-white shadow-xl ring-4 transition-transform hover:scale-105 active:scale-95"
-          >
-            <Sparkles className="h-5 w-5" aria-hidden />
-            <span>Ideas</span>
-            <span className="sr-only">&nbsp;para tu diseño, con el asistente</span>
-          </button>
-        )}
-        {isCalendarMonth ? (
-          <button
-            type="button"
-            onClick={handleOpenCalendar3D}
-            disabled={calendarBuilding}
-            className="bg-brand-purple ring-brand-purple/25 inline-flex h-12 items-center gap-2 rounded-full px-4 text-sm font-bold text-white shadow-xl ring-4 transition-transform hover:scale-105 active:scale-95 disabled:opacity-60"
-          >
-            <CalendarDays className="h-5 w-5" aria-hidden />
-            <span>{calendarBuilding ? "Armando…" : "Ver mi calendario"}</span>
-            <span className="sr-only">: tus tarjetas mes en detalle, una por una</span>
-          </button>
-        ) : isBookmark ? (
-          <button
-            type="button"
-            onClick={handleOpen3D}
-            className="bg-brand-purple ring-brand-purple/25 inline-flex h-12 items-center gap-2 rounded-full px-4 text-sm font-bold text-white shadow-xl ring-4 transition-transform hover:scale-105 active:scale-95"
-          >
-            <Box className="h-5 w-5" aria-hidden />
-            <span>Ver en un libro</span>
-            <span className="sr-only">&nbsp;en 3D: tu separador entre las páginas</span>
-          </button>
-        ) : (
-          // FOTO4 — un solo botón abre la galería con TODAS las escenas (nevera/mural/repisa/regalo).
-          <button
-            type="button"
-            onClick={handleOpenScene}
-            disabled={sceneBuilding}
-            className="bg-brand-purple ring-brand-purple/25 inline-flex h-12 items-center gap-2 rounded-full px-4 text-sm font-bold text-white shadow-xl ring-4 transition-transform hover:scale-105 active:scale-95 disabled:opacity-60"
-          >
-            <Box className="h-5 w-5" aria-hidden />
-            <span>{sceneBuilding ? "Armando…" : "Ver en tu espacio"}</span>
-            <span className="sr-only">: nevera, mural, repisa o regalo</span>
-          </button>
-        )}
+        </section>
       </div>
 
       {/* P1.5 — Panel del asistente IA de ideas (apagado en modo catálogo) */}

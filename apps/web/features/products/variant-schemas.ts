@@ -153,6 +153,8 @@ export const PDP_HIDDEN_DIMENSION_KEYS: Readonly<Record<string, readonly string[
   "set-fotoimanes-cuadrados": ["frameStyle"],
   "pack-vocales": ["theme", "language"],
   "abecedario-completo": ["language"],
+  "separadores-magneticos": ["photoSlots"],
+  "separadores-alargados": ["photoSlots"],
 };
 
 /**

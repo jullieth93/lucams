@@ -29,7 +29,7 @@ import { selectUnitImagePlaceholder, type StudioStoreState } from "./lib/store";
 import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
 import { unitIndexOfSlot } from "./lib/faces";
 
-const MAX_VIEWPORT_WIDTH = 720; // px lógicos máximo del grid en desktop
+const MAX_VIEWPORT_WIDTH = 960; // px lógicos máximo del grid en desktop (aumentado: calendarios/separadores se veían diminutos)
 
 // Ola 4 (Lucy 2026-07-23) — marco máximo TAMBIÉN EN ALTO: el tamaño de celda se deriva
 // del ancho Y del alto disponible, así ningún estudio se desborda (calendario 4×3,
