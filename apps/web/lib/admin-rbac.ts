@@ -35,13 +35,21 @@ export const ADMIN_ROLE_SETS = {
 const ROUTE_ROLES: Array<{ prefix: string; roles: AdminRole[] }> = [
   { prefix: "/admin/dashboard", roles: ALL },
   { prefix: "/admin/pedidos", roles: ALL },
-  // "Reclamos" son las rutas reales garantias + retractos (antes apuntaba a /admin/reclamos
-  // inexistente). FULFILLMENT/MANAGER gestionan estados; el resto es SUPERADMIN.
+  // "Reclamos" legales = garantias + retractos: FULFILLMENT/MANAGER gestionan
+  // estados; el resto es SUPERADMIN. /admin/reclamos (bandeja aparte, sí existe)
+  // queda MANAGER_UP más abajo, igual que sus actions.
   { prefix: "/admin/garantias", roles: ALL },
   { prefix: "/admin/retractos", roles: ALL },
   { prefix: "/admin/soporte", roles: CATALOG },
   // Cotizaciones (Etapa 1): las mutaciones del service exigen MANAGER_UP.
   { prefix: "/admin/cotizaciones", roles: CATALOG },
+  // MANAGER_UP (= CATALOG): rutas cuyas actions ya exigen ADMIN_ROLE_SETS.MANAGER_UP
+  // (reclamos, mensajes, diseños/galería, fichas y plantillas del Estudio).
+  { prefix: "/admin/reclamos", roles: CATALOG },
+  { prefix: "/admin/mensajes", roles: CATALOG },
+  { prefix: "/admin/disenos", roles: CATALOG },
+  { prefix: "/admin/fichas", roles: CATALOG },
+  { prefix: "/admin/plantillas", roles: CATALOG },
   { prefix: "/admin/moderacion", roles: CATALOG },
   { prefix: "/admin/productos", roles: CATALOG },
   { prefix: "/admin/inventario", roles: CATALOG },

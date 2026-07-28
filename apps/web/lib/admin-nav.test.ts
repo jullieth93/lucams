@@ -6,9 +6,12 @@
  * el valor (mismo patrón que lib/store-mode.test.ts).
  *
  * FOCO:
- *   - En AMBOS modos se habilitan todas las secciones admin funcionales.
- *   - Únicamente se ocultan los módulos explícitamente descopeados:
+ *   - En AMBOS modos se ocultan los módulos futuros descopeados:
  *     "Mercado Libre" dentro de Canales y "Bot WhatsApp" dentro de IA y Conocimiento.
+ *   - modo full: todo lo demás visible (Finanzas, Integraciones, Mayorista B2B).
+ *   - modo catalog: además oculta el grupo "Finanzas" completo, el item
+ *     "Integraciones" de "Configuración" (no hay pagos ni envíos integrados)
+ *     y "Mayorista B2B" de "Promociones" (WholesaleTier sin consumidor en Etapa 1).
  *   - "Cotizaciones" es el primer item de "Ventas" en AMBOS modos.
  *   - El filtrado NO muta ADMIN_NAV (el catch-all placeholder sigue viendo
  *     todos los módulos para su info contextual).
@@ -39,16 +42,13 @@ async function getNavForMode(mode: "full" | "catalog") {
 }
 
 describe("getAdminNav", () => {
-  it.each(["full", "catalog"] as const)(
-    "modo %s: Finanzas e Integraciones están visibles",
-    async (mode) => {
-      const { nav } = await getNavForMode(mode);
+  it("modo full: Finanzas e Integraciones están visibles", async () => {
+    const { nav } = await getNavForMode("full");
 
-      expect(nav.some((g) => g.title === "Finanzas")).toBe(true);
-      const config = nav.find((g) => g.title === "Configuración");
-      expect(config?.items?.some((it) => it.href === "/admin/integraciones")).toBe(true);
-    },
-  );
+    expect(nav.some((g) => g.title === "Finanzas")).toBe(true);
+    const config = nav.find((g) => g.title === "Configuración");
+    expect(config?.items?.some((it) => it.href === "/admin/integraciones")).toBe(true);
+  });
 
   it.each(["full", "catalog"] as const)(
     "modo %s: oculta Mercado Libre y Bot WhatsApp IA",
@@ -63,6 +63,37 @@ describe("getAdminNav", () => {
       expect(allLabels).not.toContain("Bot WhatsApp");
     },
   );
+
+  it("modo catalog: oculta el grupo Finanzas y el item Integraciones", async () => {
+    const { nav } = await getNavForMode("catalog");
+
+    expect(nav.some((g) => g.title === "Finanzas")).toBe(false);
+    const config = nav.find((g) => g.title === "Configuración");
+    expect(config).toBeDefined();
+    expect(config?.items?.some((it) => it.href === "/admin/integraciones")).toBe(false);
+    // El resto de items de Configuración sigue (General, Seguridad, Redirects…).
+    expect(config?.items?.some((it) => it.href === "/admin/contenido/configuracion")).toBe(true);
+    expect(config?.items?.some((it) => it.href === "/admin/seguridad")).toBe(true);
+  });
+
+  it("modo catalog: oculta Mayorista B2B de Promociones pero conserva Cupones", async () => {
+    process.env[KEY] = "catalog";
+    const mod = await loadNav();
+    const promo = mod.getAdminNav().find((g) => g.title === "Promociones");
+
+    expect(promo).toBeDefined();
+    expect(promo?.items?.some((it) => it.href === "/admin/mayorista")).toBe(false);
+    // Cupones sí aplica en Etapa 1 (se crean ahora, se activan con los pagos).
+    expect(promo?.items?.some((it) => it.href === "/admin/cupones")).toBe(true);
+  });
+
+  it("modo full: Mayorista B2B visible en Promociones", async () => {
+    process.env[KEY] = "full";
+    const mod = await loadNav();
+    const promo = mod.getAdminNav().find((g) => g.title === "Promociones");
+
+    expect(promo?.items?.some((it) => it.href === "/admin/mayorista")).toBe(true);
+  });
 
   it.each(["full", "catalog"] as const)(
     "Cotizaciones es el primer item de Ventas (modo %s)",

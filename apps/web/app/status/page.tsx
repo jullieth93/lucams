@@ -5,16 +5,17 @@
  * verde/amarillo/rojo por servicio. Útil para que clientes puedan
  * verificar si "el sitio está caído" sin esperar respuesta del soporte.
  *
- * Por ahora solo /api/health/db existe (creado en A). Cuando F sume
- * /api/health/storage + /api/health/resend + /api/health/all, los
- * agregamos a la lista de SERVICES. No bloqueamos el cierre de E:
- * los faltantes muestran "Pendiente" hasta que F los implemente.
+ * Chequea 4 endpoints en vivo: /api/health (web), /api/health/db,
+ * /api/health/storage y /api/health/resend. Pagos (Wompi) queda como
+ * "Pendiente": en modo catálogo llega con la Etapa 2 (pagos en línea);
+ * en modo full, con la Fase 3 de la integración.
  */
 
 import type { Metadata } from "next";
 import { CmsText } from "@/components/cms/cms-text";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
+import { isCatalogMode } from "@/lib/store-mode";
 
 export const metadata: Metadata = {
   title: "Estado del sitio",
@@ -37,7 +38,8 @@ async function checkService(
   path: string,
 ): Promise<ServiceStatus> {
   try {
-    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000";
+    // El dev server del proyecto corre en :4000 (ver Makefile / playwright.config.ts).
+    const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:4000";
     const r = await fetch(`${baseUrl}${path}`, {
       cache: "no-store",
       signal: AbortSignal.timeout(5000),
@@ -78,13 +80,16 @@ export default async function StatusPage() {
     ),
   ]);
 
-  // Wompi se mide cuando la integración esté productiva (Fase 3).
+  // Wompi se mide cuando la integración esté productiva: en modo catálogo
+  // (Etapa 1) los pagos en línea llegan con la Etapa 2; en modo full, Fase 3.
   const pending: ServiceStatus[] = [
     {
       name: "Pagos (Wompi)",
       description: "Procesamiento de tarjetas y PSE",
       status: "pending",
-      detail: "Integración completa en Fase 3",
+      detail: isCatalogMode()
+        ? "Llega con la Etapa 2 (pagos en línea)"
+        : "Integración completa en Fase 3",
     },
   ];
 

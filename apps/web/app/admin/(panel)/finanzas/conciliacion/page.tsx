@@ -9,6 +9,7 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { Wallet, ArrowLeft } from "lucide-react";
 import {
   AdminBadge,
@@ -25,6 +26,7 @@ import {
 } from "@/components/admin-page";
 import { requireRole } from "@/lib/admin-rbac-guard";
 import { formatCOP } from "@/lib/format";
+import { isCatalogMode } from "@/lib/store-mode";
 import {
   listCodReconciliation,
   getCodReconciliationTotals,
@@ -67,6 +69,9 @@ export default async function ConciliacionCodPage({
   searchParams: SearchParams;
 }) {
   await requireRole(["SUPERADMIN"]);
+  // Modo catálogo (Etapa 1): no hay pedidos contra entrega (sin checkout) —
+  // el nav oculta Finanzas; esto cierra el acceso por URL directa.
+  if (isCatalogMode()) redirect("/admin/dashboard");
   const sp = await searchParams;
   const filter: CodReconFilter = (["all", "pending", "remitted", "discrepancy"] as const).includes(
     sp.filter as CodReconFilter,

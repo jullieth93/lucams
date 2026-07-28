@@ -33,6 +33,7 @@ import {
   AdminPageHeader,
 } from "@/components/admin-page";
 import { getCurrentAdmin } from "@/lib/auth";
+import { isCatalogMode } from "@/lib/store-mode";
 
 export const metadata: Metadata = {
   title: "Integraciones",
@@ -130,6 +131,9 @@ async function probeHealth(
 export default async function AdminIntegracionesPage() {
   const session = await getCurrentAdmin();
   if (!session) redirect("/admin/login");
+  // Modo catálogo (Etapa 1): Wompi/Aveonline/Gemini están apagadas — el nav ya
+  // oculta esta página; esto cierra también el acceso por URL directa.
+  if (isCatalogMode()) redirect("/admin/dashboard");
 
   const baseUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:4000";
 
@@ -368,6 +372,15 @@ export default async function AdminIntegracionesPage() {
                             <strong>{i.acciones.startsWith("ACCIÓN") ? "" : "💡 "}</strong>
                             {i.acciones}
                           </p>
+                        )}
+                        {i.docs && (
+                          <Link
+                            href={i.docs}
+                            className="text-brand-purple hover:text-brand-purple-dark mt-2 inline-flex items-center gap-1 text-xs font-semibold"
+                          >
+                            Ver detalle
+                            <ExternalLink className="h-3 w-3" />
+                          </Link>
                         )}
                         <details className="mt-3">
                           <summary className="text-brand-muted hover:text-brand-purple-dark cursor-pointer text-xs">

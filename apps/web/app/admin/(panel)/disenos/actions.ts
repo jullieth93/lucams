@@ -12,11 +12,13 @@ import { requireAdminAction } from "@/lib/admin-rbac-guard";
 import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { logger } from "@/lib/logger";
 import { StorageError, uploadProductImage } from "@/lib/storage";
-import { createGalleryImage, deleteGalleryImage } from "@/features/personalization/design-gallery";
+import {
+  createGalleryImage,
+  deleteGalleryImage,
+  listGalleryTagOptions,
+} from "@/features/personalization/design-gallery";
 
 type ActionResult = { error?: string };
-
-const ALLOWED_TAGS = new Set(["separadores", "fotoimanes"]);
 
 export async function uploadGalleryImageAction(formData: FormData): Promise<ActionResult> {
   const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.MANAGER_UP });
@@ -25,7 +27,10 @@ export async function uploadGalleryImageAction(formData: FormData): Promise<Acti
   const name = String(formData.get("name") ?? "").trim();
   const file = formData.get("file");
   const fileB = formData.get("fileB");
-  if (!ALLOWED_TAGS.has(tag)) return { error: "Producto inválido." };
+  // El tag es válido solo si un producto ACTIVO lo declara como galleryTag
+  // (misma fuente que el selector del admin — nada hardcodeado, no se desalinea).
+  const tagOptions = await listGalleryTagOptions();
+  if (!tagOptions.some((o) => o.tag === tag)) return { error: "Producto inválido." };
   if (name.length < 2 || name.length > 60)
     return { error: "El nombre debe tener 2–60 caracteres." };
   if (!(file instanceof File)) return { error: "Falta la imagen." };

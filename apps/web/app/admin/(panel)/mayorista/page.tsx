@@ -28,6 +28,7 @@ import { ConfirmAction } from "@/components/admin/confirm-action";
 import { getCurrentAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { formatCOP } from "@/lib/format";
+import { isCatalogMode } from "@/lib/store-mode";
 import { deleteWholesaleTierAction, toggleWholesaleTierAction } from "./actions";
 import { CreateTierForm } from "./create-tier-form";
 
@@ -47,6 +48,10 @@ const dateFmt = new Intl.DateTimeFormat("es-CO", {
 export default async function AdminMayoristaPage({ searchParams }: { searchParams: SearchParams }) {
   const session = await getCurrentAdmin();
   if (!session) redirect("/admin/login");
+  // Modo catálogo (Etapa 1): WholesaleTier NO tiene ningún consumidor fuera de
+  // este admin (ni PDP, ni carrito, ni cotización aplican niveles B2B) — el
+  // módulo es de Etapa 2. El nav ya lo oculta; esto cierra la URL directa.
+  if (isCatalogMode()) redirect("/admin/dashboard");
 
   const sp = await searchParams;
 

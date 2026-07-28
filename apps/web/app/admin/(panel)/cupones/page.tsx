@@ -14,6 +14,7 @@ import { Ticket } from "lucide-react";
 import { listCoupons } from "@/features/coupons/service";
 import { requireRole } from "@/lib/admin-rbac-guard";
 import { formatCOP } from "@/lib/format";
+import { isCatalogMode } from "@/lib/store-mode";
 import {
   AdminPage,
   AdminPageHeader,
@@ -111,12 +112,25 @@ export default async function AdminCuponesPage({ searchParams }: { searchParams:
       />
 
       <AdminPageBody>
-        <AdminNotice tone="info">
-          <strong>¿Cómo funcionan?</strong> Crea códigos de descuento que el cliente escribe en el
-          carrito (o se aplican con un enlace especial). Los marcados como <strong>Públicos</strong>{" "}
-          se pueden mostrar abiertamente (ej. en una promoción o, más adelante, en el bot de
-          WhatsApp); los no públicos solo funcionan si el cliente sabe el código.
-        </AdminNotice>
+        {/*
+         * Modo catálogo (Etapa 1): el cupón se escribe en el checkout de pago
+         * (applyCouponAction), que aún no existe — decir "el cliente lo escribe
+         * en el carrito" sería engañoso. Se pueden crear y dejar listos.
+         */}
+        {isCatalogMode() ? (
+          <AdminNotice tone="info">
+            <strong>Modo catálogo:</strong> los cupones se activarán cuando se habiliten los pagos
+            en línea (Etapa 2). Por ahora puedes crearlos y dejarlos listos.
+          </AdminNotice>
+        ) : (
+          <AdminNotice tone="info">
+            <strong>¿Cómo funcionan?</strong> Crea códigos de descuento que el cliente escribe en
+            el carrito (o se aplican con un enlace especial). Los marcados como{" "}
+            <strong>Públicos</strong> se pueden mostrar abiertamente (ej. en una promoción o, más
+            adelante, en el bot de WhatsApp); los no públicos solo funcionan si el cliente sabe el
+            código.
+          </AdminNotice>
+        )}
 
         {sp.created === "1" && <AdminNotice tone="success">Cupón creado.</AdminNotice>}
         {sp.updated === "1" && <AdminNotice tone="success">Cupón actualizado.</AdminNotice>}

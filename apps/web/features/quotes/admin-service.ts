@@ -97,7 +97,14 @@ export async function listQuotes(opts: QuoteListOpts = {}) {
 export async function getQuoteById(id: string) {
   return prisma.quote.findFirst({
     where: { id, deletedAt: null },
-    include: { items: { orderBy: { createdAt: "asc" } } },
+    include: {
+      items: {
+        orderBy: { createdAt: "asc" },
+        // product.images: la miniatura del detalle muestra la FOTO REAL del producto
+        // cuando la línea no es personalizada (antes solo un ícono genérico).
+        include: { product: { select: { images: true, slug: true } } },
+      },
+    },
   });
 }
 

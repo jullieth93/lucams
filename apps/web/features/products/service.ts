@@ -58,15 +58,17 @@ export async function listProducts(opts: {
     | "category-desc";
 }): Promise<{ items: ProductListItem[]; total: number; page: number; pageSize: number }> {
   const page = Math.max(1, opts.page ?? 1);
-  // Default: muestra TODO (activos + inactivos + archivados). Admin gestiona
-  // el estado de cada uno desde acá; el storefront filtra por isActive+deletedAt.
-  // Lucy 2026-05-22: sin esto el admin no era modular (no podía reactivar archivados).
+  // Default ("all"): todos los VIVOS (activos + inactivos, sin archivados).
+  // La papelera (deletedAt!=null) solo aparece con el filtro explícito "archived"
+  // — la capacidad de restaurar de Lucy 2026-05-22 se conserva, pero la vista por
+  // defecto deja de estar dominada por residuos archivados (caso real 2026-07-28:
+  // 453 "productos" en pantalla, ~440 de ellos archivados de pruebas).
   const where: Prisma.ProductWhereInput = {
-    ...(opts.status === "active" ? { isActive: true, deletedAt: null } : {}),
-    ...(opts.status === "inactive" ? { isActive: false, deletedAt: null } : {}),
+    deletedAt: null,
+    ...(opts.status === "active" ? { isActive: true } : {}),
+    ...(opts.status === "inactive" ? { isActive: false } : {}),
     ...(opts.status === "archived" ? { deletedAt: { not: null } } : {}),
-    ...(opts.status === "featured" ? { isActive: true, isFeatured: true, deletedAt: null } : {}),
-    // status "all" o undefined → sin filtro, muestra TODO
+    ...(opts.status === "featured" ? { isActive: true, isFeatured: true } : {}),
     ...(opts.categoryId ? { categoryId: opts.categoryId } : {}),
     ...(opts.search
       ? {

@@ -55,6 +55,7 @@ import {
   BadgeCheck,
   LifeBuoy,
   FileText,
+  Headset,
 } from "lucide-react";
 import { isCatalogMode } from "@/lib/store-mode";
 
@@ -112,6 +113,40 @@ export const ADMIN_NAV: NavGroup[] = [
           "Tablero de pedidos con filtros por estado, detalle de cada orden, reintento de guía Aveonline y cambio de estado manual (SHIPPED/DELIVERED/CANCELLED).",
       },
       {
+        label: "Clientes",
+        href: "/admin/clientes",
+        icon: Users,
+        description:
+          "Customer 360: listado con filtros + perfil completo con pedidos, reseñas, direcciones, diseños, referidos y puntos de fidelidad.",
+      },
+      {
+        label: "Reseñas",
+        href: "/admin/resenas",
+        icon: Star,
+        description:
+          "Moderación: aprobar/rechazar reseñas pendientes, destacar las mejores en home, archivar las que no sirven.",
+      },
+    ],
+  },
+  {
+    // 2026-07-28 — decisión Lucy/Kimi: los 4 tipos de caso (Soporte, Retractos,
+    // Garantías, Reclamos) + la revisión de diseños NO se fusionan en un solo
+    // módulo: legalmente son flujos distintos (retracto Ley 1480, garantía
+    // legal, SAC) y cada uno conserva su pantalla y su proceso. Solo se
+    // REAGRUPAN bajo esta sección (colapsada por defecto) para que el menú
+    // quede corto: Ventas = lo del día a día; acá = los casos puntuales.
+    title: "Servicio al cliente",
+    icon: Headset,
+    defaultOpen: false,
+    items: [
+      {
+        label: "Soporte",
+        href: "/admin/soporte",
+        icon: LifeBuoy,
+        description:
+          "Tickets de soporte que llegan desde /contacto: responder por email, asignar estado y cerrar. La respuesta sale con la plantilla de correo configurada.",
+      },
+      {
         label: "Moderación",
         href: "/admin/moderacion",
         icon: ShieldAlert,
@@ -133,32 +168,11 @@ export const ADMIN_NAV: NavGroup[] = [
           "Reclamos de garantía legal (1 año, Ley 1480): recibir, evaluar, resolver (reparación/reposición/devolución) y notificar al cliente en cada paso.",
       },
       {
-        label: "Soporte",
-        href: "/admin/soporte",
-        icon: LifeBuoy,
-        description:
-          "Tickets de soporte que llegan desde /contacto: responder por email, asignar estado y cerrar. La respuesta sale con la plantilla de correo configurada.",
-      },
-      {
-        label: "Clientes",
-        href: "/admin/clientes",
-        icon: Users,
-        description:
-          "Customer 360: listado con filtros + perfil completo con pedidos, reseñas, direcciones, diseños, referidos y puntos de fidelidad.",
-      },
-      {
         label: "Reclamos",
         href: "/admin/reclamos",
         icon: AlertCircle,
         description:
           "Gestión de reclamos de garantía: revisa, resuelve o rechaza con remedio (reparación, cambio o devolución).",
-      },
-      {
-        label: "Reseñas",
-        href: "/admin/resenas",
-        icon: Star,
-        description:
-          "Moderación: aprobar/rechazar reseñas pendientes, destacar las mejores en home, archivar las que no sirven.",
       },
     ],
   },
@@ -373,21 +387,24 @@ export const ADMIN_NAV: NavGroup[] = [
 /**
  * NAV efectivo según el modo de tienda (Etapa 1/2 — lib/store-mode).
  *
- * En modo catálogo (Etapa 1) no hay pagos en línea ni envíos integrados, así
- * que el sidebar oculta lo que no aplica:
+ * En TODOS los modos se ocultan los módulos futuros descopeados (decisión
+ * develop 5499161): "Mercado Libre" (Canales) y "Bot WhatsApp IA".
+ * En modo catálogo (Etapa 1), además, no hay pagos en línea ni envíos
+ * integrados, así que el sidebar oculta lo que no aplica:
  *   - el grupo "Finanzas" completo (resumen, conciliación y bloqueos COD),
- *   - "Integraciones" dentro de "Configuración" (Wompi/Aveonline apagadas).
+ *   - "Integraciones" dentro de "Configuración" (Wompi/Aveonline apagadas),
+ *   - "Mayorista B2B" dentro de "Promociones" (WholesaleTier no tiene NINGÚN
+ *     consumidor fuera del admin: ni PDP, ni carrito, ni cotización aplican
+ *     niveles B2B — módulo de Etapa 2).
  *
  * ADMIN_NAV se mantiene exportado e intacto: lo usa el catch-all placeholder
  * (findNavItem) para mostrar info contextual de módulos "Próximo". El consumidor
  * del sidebar (admin-shell.tsx) usa ESTA función.
  */
 export function getAdminNav(): NavGroup[] {
-  // En todas las ramas se habilitan todas las secciones admin funcionales.
-  // Únicamente se ocultan los módulos futuros explícitamente descopeados:
-  //   - Mercado Libre dentro de Canales
-  //   - Bot WhatsApp IA dentro de IA y Conocimiento
-  return ADMIN_NAV.map((group) => {
+  // Módulos futuros explícitamente descopeados: ocultos en TODOS los modos
+  // (decisión develop 5499161): Mercado Libre (Canales) y Bot WhatsApp IA.
+  const withoutFuture = ADMIN_NAV.map((group) => {
     if (group.title === "Canales" && group.items) {
       return {
         ...group,
@@ -401,7 +418,26 @@ export function getAdminNav(): NavGroup[] {
       };
     }
     return group;
-  }).filter((group) => !group.items || group.items.length > 0 || group.href);
+  });
+  if (!isCatalogMode()) {
+    return withoutFuture.filter((group) => !group.items || group.items.length > 0 || group.href);
+  }
+  // Modo catálogo (Etapa 1): además de los futuros, se ocultan lo que solo aplica
+  // con pagos/envíos online (grupo Finanzas completo, Integraciones) y Mayorista B2B
+  // (WholesaleTier sin consumidor en storefront hasta Etapa 2). Coherente con los
+  // gates de página (esas rutas redirigen a /admin/dashboard en este modo).
+  return withoutFuture
+    .filter((group) => group.title !== "Finanzas")
+    .map((group) => {
+      if (group.title === "Promociones" && group.items) {
+        return { ...group, items: group.items.filter((it) => it.href !== "/admin/mayorista") };
+      }
+      if (group.title === "Configuración" && group.items) {
+        return { ...group, items: group.items.filter((it) => it.href !== "/admin/integraciones") };
+      }
+      return group;
+    })
+    .filter((group) => !group.items || group.items.length > 0 || group.href);
 }
 
 /**

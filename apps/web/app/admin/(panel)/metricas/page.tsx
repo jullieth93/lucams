@@ -18,6 +18,7 @@ import type { OrderStatus, QuoteStatus } from "@lucams/db";
 import { prisma } from "@/lib/db";
 import { getCurrentAdmin } from "@/lib/auth";
 import { formatCOP } from "@/lib/format";
+import { isCatalogMode } from "@/lib/store-mode";
 import { ORDER_STATUS_LABEL } from "@/features/orders/order-status-display";
 import {
   AdminBadge,
@@ -74,6 +75,12 @@ export default async function AdminMetricasPage() {
   const session = await getCurrentAdmin();
   if (!session) redirect("/admin/login");
 
+  // Modo catálogo (Etapa 1): sin pagos en línea NO se generan Orders — los KPIs
+  // basados en Order (pedidos pagados, ingresos, top productos) serían ceros
+  // permanentes y puro ruido. Solo se consulta/muestra lo de cotizaciones (el
+  // canal real de venta en Etapa 1); las métricas de Order vuelven en Etapa 2.
+  const catalog = isCatalogMode();
+
   const now = new Date();
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
   const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
@@ -83,35 +90,43 @@ export default async function AdminMetricasPage() {
   }).format(now);
 
   // Consultas independientes → Promise.all para no serializar round-trips a DB.
-  const [ordersByStatus, ordersLast30, quotesByStatus, revenueMonth, topByVariant] =
-    await Promise.all([
-      prisma.order.groupBy({
-        by: ["status"],
-        _count: { _all: true },
-      }),
-      // Se excluyen los DRAFT: son carritos abandonados, no pedidos reales, e
-      // inflarían el conteo que Lucy usa como pulso del negocio.
-      prisma.order.count({
-        where: { createdAt: { gte: thirtyDaysAgo }, status: { not: "DRAFT" } },
-      }),
-      prisma.quote.groupBy({
-        by: ["status"],
-        where: { deletedAt: null },
-        _count: { _all: true },
-      }),
-      prisma.order.aggregate({
-        where: { status: { in: PAID_STATUSES }, createdAt: { gte: startOfMonth } },
-        _sum: { total: true },
-      }),
-      // Top 10 variantes por unidades vendidas en pedidos pagados.
-      prisma.orderItem.groupBy({
-        by: ["variantId"],
-        where: { order: { status: { in: PAID_STATUSES } } },
-        _sum: { qty: true },
-        orderBy: { _sum: { qty: "desc" } },
-        take: 10,
-      }),
-    ]);
+  // En modo catálogo las queries de Order ni siquiera se disparan (orderData=null).
+  const [quotesByStatus, orderData] = await Promise.all([
+    prisma.quote.groupBy({
+      by: ["status"],
+      where: { deletedAt: null },
+      _count: { _all: true },
+    }),
+    catalog
+      ? Promise.resolve(null)
+      : Promise.all([
+          prisma.order.groupBy({
+            by: ["status"],
+            _count: { _all: true },
+          }),
+          // Se excluyen los DRAFT: son carritos abandonados, no pedidos reales, e
+          // inflarían el conteo que Lucy usa como pulso del negocio.
+          prisma.order.count({
+            where: { createdAt: { gte: thirtyDaysAgo }, status: { not: "DRAFT" } },
+          }),
+          prisma.order.aggregate({
+            where: { status: { in: PAID_STATUSES }, createdAt: { gte: startOfMonth } },
+            _sum: { total: true },
+          }),
+          // Top 10 variantes por unidades vendidas en pedidos pagados.
+          prisma.orderItem.groupBy({
+            by: ["variantId"],
+            where: { order: { status: { in: PAID_STATUSES } } },
+            _sum: { qty: true },
+            orderBy: { _sum: { qty: "desc" } },
+            take: 10,
+          }),
+        ]),
+  ]);
+  const ordersByStatus = orderData?.[0] ?? [];
+  const ordersLast30 = orderData?.[1] ?? 0;
+  const revenueCents = orderData?.[2]._sum.total ?? 0;
+  const topByVariant = orderData?.[3] ?? [];
 
   const orderCount = new Map<OrderStatus, number>(
     ordersByStatus.map((g) => [g.status, g._count._all]),
@@ -122,15 +137,16 @@ export default async function AdminMetricasPage() {
 
   const paidCount = PAID_STATUSES.reduce((acc, s) => acc + (orderCount.get(s) ?? 0), 0);
   const pendingCount = orderCount.get("PENDING_PAYMENT") ?? 0;
-  const revenueCents = revenueMonth._sum.total ?? 0;
   const totalQuotes = QUOTE_STATUSES.reduce((acc, s) => acc + (quoteCount.get(s) ?? 0), 0);
 
   // Segundo round-trip chico: nombres de las variantes del top (el groupBy no
-  // puede traer relaciones). Son máximo 10 ids.
-  const variants = await prisma.productVariant.findMany({
-    where: { id: { in: topByVariant.map((t) => t.variantId) } },
-    select: { id: true, name: true, sku: true, product: { select: { name: true } } },
-  });
+  // puede traer relaciones). Son máximo 10 ids. En modo catálogo no hay top.
+  const variants = topByVariant.length
+    ? await prisma.productVariant.findMany({
+        where: { id: { in: topByVariant.map((t) => t.variantId) } },
+        select: { id: true, name: true, sku: true, product: { select: { name: true } } },
+      })
+    : [];
   const variantById = new Map(variants.map((v) => [v.id, v]));
   const topProducts = topByVariant
     .map((t) => ({ ...t, variant: variantById.get(t.variantId) }))
@@ -150,49 +166,61 @@ export default async function AdminMetricasPage() {
       />
 
       <AdminPageBody>
-        {/* KPIs principales */}
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <KpiCard
-            label="Pedidos pagados"
-            value={paidCount.toLocaleString("es-CO")}
-            trendLabel="Acumulado histórico (pagado, preparación, enviado, entregado)"
-          />
-          <KpiCard
-            label="Esperando pago"
-            value={pendingCount.toLocaleString("es-CO")}
-            trend={pendingCount > 0 ? "down" : "neutral"}
-            trendLabel="Pedidos creados que aún no confirman el pago"
-          />
-          <KpiCard
-            label="Pedidos últimos 30 días"
-            value={ordersLast30.toLocaleString("es-CO")}
-            trendLabel="Sin contar borradores (carritos abandonados)"
-          />
-          <KpiCard
-            label="Ingresos del mes"
-            value={formatCOP(revenueCents)}
-            trend="up"
-            trendLabel={`Pedidos pagados en ${monthLabel}`}
-          />
-        </div>
+        {catalog && (
+          <AdminNotice tone="info">
+            <strong>Modo catálogo (Etapa 1):</strong> aún no hay pagos en línea, así que las
+            métricas de pedidos e ingresos no aplican — llegan con la Etapa 2. Mientras tanto, el
+            pulso del negocio son las cotizaciones.
+          </AdminNotice>
+        )}
+
+        {/* KPIs principales (basados en Order — ocultos en modo catálogo) */}
+        {!catalog && (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <KpiCard
+              label="Pedidos pagados"
+              value={paidCount.toLocaleString("es-CO")}
+              trendLabel="Acumulado histórico (pagado, preparación, enviado, entregado)"
+            />
+            <KpiCard
+              label="Esperando pago"
+              value={pendingCount.toLocaleString("es-CO")}
+              trend={pendingCount > 0 ? "down" : "neutral"}
+              trendLabel="Pedidos creados que aún no confirman el pago"
+            />
+            <KpiCard
+              label="Pedidos últimos 30 días"
+              value={ordersLast30.toLocaleString("es-CO")}
+              trendLabel="Sin contar borradores (carritos abandonados)"
+            />
+            <KpiCard
+              label="Ingresos del mes"
+              value={formatCOP(revenueCents)}
+              trend="up"
+              trendLabel={`Pedidos pagados en ${monthLabel}`}
+            />
+          </div>
+        )}
 
         {/* Detalle por estado */}
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <AdminCard className="p-5">
-            <h2 className="text-brand-purple-dark font-display mb-4 text-base font-bold">
-              Pedidos por estado
-            </h2>
-            <ul className="space-y-2.5">
-              {(Object.keys(ORDER_STATUS_LABEL) as OrderStatus[]).map((s) => (
-                <li key={s} className="flex items-center justify-between gap-3">
-                  <AdminBadge tone={ORDER_STATUS_TONE[s]}>{ORDER_STATUS_LABEL[s]}</AdminBadge>
-                  <span className="text-brand-purple-dark text-sm font-semibold tabular-nums">
-                    {(orderCount.get(s) ?? 0).toLocaleString("es-CO")}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </AdminCard>
+          {!catalog && (
+            <AdminCard className="p-5">
+              <h2 className="text-brand-purple-dark font-display mb-4 text-base font-bold">
+                Pedidos por estado
+              </h2>
+              <ul className="space-y-2.5">
+                {(Object.keys(ORDER_STATUS_LABEL) as OrderStatus[]).map((s) => (
+                  <li key={s} className="flex items-center justify-between gap-3">
+                    <AdminBadge tone={ORDER_STATUS_TONE[s]}>{ORDER_STATUS_LABEL[s]}</AdminBadge>
+                    <span className="text-brand-purple-dark text-sm font-semibold tabular-nums">
+                      {(orderCount.get(s) ?? 0).toLocaleString("es-CO")}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </AdminCard>
+          )}
 
           <AdminCard className="p-5">
             <h2 className="text-brand-purple-dark font-display mb-4 text-base font-bold">
@@ -215,61 +243,65 @@ export default async function AdminMetricasPage() {
           </AdminCard>
         </div>
 
-        {/* Top productos */}
-        <section>
-          <h2 className="text-brand-purple-dark font-display mb-3 flex items-center gap-2 text-base font-bold">
-            <Trophy className="h-5 w-5" />
-            Top productos por unidades vendidas
-          </h2>
-          {topProducts.length === 0 ? (
-            <AdminEmpty
-              icon={<Trophy className="h-5 w-5" />}
-              title="Todavía no hay ventas"
-              description="Cuando entren los primeros pedidos pagados, acá vas a ver qué productos se venden más."
-            />
-          ) : (
-            <AdminTable minWidth={520}>
-              <AdminTableHead>
-                <tr>
-                  <th className="w-12 px-4 py-3 text-center font-semibold">#</th>
-                  <th className="px-4 py-3 text-left font-semibold">Producto</th>
-                  <th className="px-4 py-3 text-left font-semibold">Opción</th>
-                  <th className="px-4 py-3 text-left font-semibold">SKU</th>
-                  <th className="px-4 py-3 text-right font-semibold">Unidades vendidas</th>
-                </tr>
-              </AdminTableHead>
-              <AdminTableBody>
-                {topProducts.map((t, i) => (
-                  <AdminTableRow key={t.variantId}>
-                    <td className="text-brand-muted px-4 py-3 text-center text-xs tabular-nums">
-                      {i + 1}
-                    </td>
-                    <td className="text-brand-purple-dark px-4 py-3 font-medium">
-                      {t.variant!.product.name}
-                    </td>
-                    <td className="text-brand-purple-dark/85 px-4 py-3 text-sm">
-                      {t.variant!.name}
-                    </td>
-                    <td className="px-4 py-3">
-                      <code className="text-brand-purple-dark/85 bg-brand-purple/5 rounded px-1.5 py-0.5 font-mono text-[11px]">
-                        {t.variant!.sku}
-                      </code>
-                    </td>
-                    <td className="text-brand-purple-dark px-4 py-3 text-right font-semibold tabular-nums">
-                      {(t._sum.qty ?? 0).toLocaleString("es-CO")}
-                    </td>
-                  </AdminTableRow>
-                ))}
-              </AdminTableBody>
-            </AdminTable>
-          )}
-        </section>
+        {/* Top productos (basado en Order — oculto en modo catálogo) */}
+        {!catalog && (
+          <section>
+            <h2 className="text-brand-purple-dark font-display mb-3 flex items-center gap-2 text-base font-bold">
+              <Trophy className="h-5 w-5" />
+              Top productos por unidades vendidas
+            </h2>
+            {topProducts.length === 0 ? (
+              <AdminEmpty
+                icon={<Trophy className="h-5 w-5" />}
+                title="Todavía no hay ventas"
+                description="Cuando entren los primeros pedidos pagados, acá vas a ver qué productos se venden más."
+              />
+            ) : (
+              <AdminTable minWidth={520}>
+                <AdminTableHead>
+                  <tr>
+                    <th className="w-12 px-4 py-3 text-center font-semibold">#</th>
+                    <th className="px-4 py-3 text-left font-semibold">Producto</th>
+                    <th className="px-4 py-3 text-left font-semibold">Opción</th>
+                    <th className="px-4 py-3 text-left font-semibold">SKU</th>
+                    <th className="px-4 py-3 text-right font-semibold">Unidades vendidas</th>
+                  </tr>
+                </AdminTableHead>
+                <AdminTableBody>
+                  {topProducts.map((t, i) => (
+                    <AdminTableRow key={t.variantId}>
+                      <td className="text-brand-muted px-4 py-3 text-center text-xs tabular-nums">
+                        {i + 1}
+                      </td>
+                      <td className="text-brand-purple-dark px-4 py-3 font-medium">
+                        {t.variant!.product.name}
+                      </td>
+                      <td className="text-brand-purple-dark/85 px-4 py-3 text-sm">
+                        {t.variant!.name}
+                      </td>
+                      <td className="px-4 py-3">
+                        <code className="text-brand-purple-dark/85 bg-brand-purple/5 rounded px-1.5 py-0.5 font-mono text-[11px]">
+                          {t.variant!.sku}
+                        </code>
+                      </td>
+                      <td className="text-brand-purple-dark px-4 py-3 text-right font-semibold tabular-nums">
+                        {(t._sum.qty ?? 0).toLocaleString("es-CO")}
+                      </td>
+                    </AdminTableRow>
+                  ))}
+                </AdminTableBody>
+              </AdminTable>
+            )}
+          </section>
+        )}
 
-        <AdminNotice tone="info">
-          <strong>¿Cómo se calcula?</strong> “Pagados” incluye pedidos pagados, en preparación,
-          enviados y entregados (la plata ya entró). No suma cancelados ni reembolsados. El top de
-          productos cuenta solo unidades de pedidos pagados.
-        </AdminNotice>
+        {!catalog && (
+          <AdminNotice tone="info">
+            <strong>¿Cómo se calcula?</strong> “Pagados” incluye pedidos pagados, en preparación,
+            enviados y entregados (la plata ya entró). No suma cancelados ni reembolsados. El top
+            de productos cuenta solo unidades de pedidos pagados.
+          </AdminNotice>
+        )}
       </AdminPageBody>
     </AdminPage>
   );

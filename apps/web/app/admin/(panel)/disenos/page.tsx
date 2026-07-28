@@ -4,14 +4,16 @@
  */
 
 import type { Metadata } from "next";
-import { listGalleryAdmin } from "@/features/personalization/design-gallery";
+import { listGalleryAdmin, listGalleryTagOptions } from "@/features/personalization/design-gallery";
 import { GalleryManager } from "./gallery-manager";
 
 export const metadata: Metadata = { title: "Diseños prediseñados" };
 export const dynamic = "force-dynamic";
 
 export default async function DisenosAdminPage() {
-  const items = await listGalleryAdmin();
+  // tagOptions = productos activos que declaran galleryTag (fuente única: la BD).
+  // El selector del client y la validación del upload leen de la misma lista.
+  const [items, tagOptions] = await Promise.all([listGalleryAdmin(), listGalleryTagOptions()]);
   return (
     <div className="mx-auto max-w-4xl">
       <header className="mb-6">
@@ -22,7 +24,7 @@ export default async function DisenosAdminPage() {
           sube tus diseños y aparecen en el editor para elegir o combinar con foto propia.
         </p>
       </header>
-      <GalleryManager items={items} />
+      <GalleryManager items={items} tagOptions={tagOptions} />
     </div>
   );
 }
