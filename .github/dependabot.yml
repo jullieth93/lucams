@@ -1,5 +1,8 @@
 # Dependabot — actualizaciones de seguridad + versiones (Bloque C / S4, 2026-06-27).
 # Agrupa para no inundar de PRs; las de seguridad llegan aparte por su urgencia.
+# 2026-07-28 — dev-dependencies también limitado a minor/patch: los majors automáticos
+# (Prisma 7 quitó url/directUrl del schema → prisma generate P1012; TS 7; ESLint 10)
+# rompían el build en cada PR semanal. Los majors se evalúan manualmente, aparte.
 version: 2
 updates:
   - package-ecosystem: npm
@@ -11,6 +14,9 @@ updates:
     groups:
       dev-dependencies:
         dependency-type: development
+        update-types:
+          - minor
+          - patch
       prod-minor-patch:
         dependency-type: production
         update-types:
