@@ -3,6 +3,10 @@
 # 2026-07-28 — dev-dependencies también limitado a minor/patch: los majors automáticos
 # (Prisma 7 quitó url/directUrl del schema → prisma generate P1012; TS 7; ESLint 10)
 # rompían el build en cada PR semanal. Los majors se evalúan manualmente, aparte.
+# OJO: update-types en `groups` solo limita lo que entra al GRUPO — los majors siguen
+# llegando como PRs INDIVIDUALES (ej. PR #7 @prisma/client 7.x). El `ignore` global de
+# semver-major de abajo es el que frena TODOS los majors automáticos. NO aplica a
+# actualizaciones de seguridad: esas siguen llegando siempre.
 version: 2
 updates:
   - package-ecosystem: npm
@@ -11,6 +15,10 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 5
+    ignore:
+      - dependency-name: "*"
+        update-types:
+          - "version-update:semver-major"
     groups:
       dev-dependencies:
         dependency-type: development
