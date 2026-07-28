@@ -30,7 +30,7 @@ import { LucamsLogo } from "@/components/lucams-logo";
 import { Button } from "@/components/ui/button";
 import { getTransaction } from "@/lib/wompi";
 import { logger } from "@/lib/logger";
-import { finishCheckoutSession } from "@/features/checkout/service";
+import { ClearCheckoutSession } from "./clear-checkout-session";
 import { processPaidOrder } from "@/features/orders/saga";
 import { prisma } from "@/lib/db";
 import { formatCOP } from "@/lib/format";
@@ -123,7 +123,6 @@ export default async function CheckoutGraciasPage({
       });
       // No procesamos: el webhook (con la misma validación) lo marcará para
       // revisión. Mostramos página honesta de "verificando" en vez de confirmar.
-      await finishCheckoutSession();
       return <PaymentReceivedPage orderNumber={order.number} txId={tx.id} />;
     }
 
@@ -180,8 +179,9 @@ export default async function CheckoutGraciasPage({
         // Si la saga falló, admin reconcilia manualmente desde /admin/pedidos.
       }
     }
-    // Limpiar cookie del checkout (ya cumplió su propósito).
-    await finishCheckoutSession();
+    // Limpiar cookie del checkout (ya cumplió su propósito): la borra
+    // <ClearCheckoutSession /> al montar en el cliente — en render RSC
+    // `cookies().delete()` es ilegal y tumbaba esta página entera.
 
     // #8 (certificación Bloque A) — NO mentir. Wompi aprobó el cobro, pero la
     // Order solo está realmente confirmada si la saga la llevó a PAID/FULFILLING.
@@ -249,6 +249,7 @@ function ApprovedPage({
 
   return (
     <div className="mx-auto max-w-2xl py-8 text-center">
+      <ClearCheckoutSession />
       <div className="inline-flex h-20 w-20 items-center justify-center rounded-full bg-emerald-50 ring-8 ring-emerald-100">
         <CheckCircle2 className="h-12 w-12 text-emerald-600" />
       </div>
@@ -402,6 +403,7 @@ function PendingPage({ orderNumber, txId }: { orderNumber: string; txId: string 
 function PaymentReceivedPage({ orderNumber, txId }: { orderNumber: string; txId: string }) {
   return (
     <div className="mx-auto max-w-2xl py-8 text-center">
+      <ClearCheckoutSession />
       <div className="inline-flex h-20 w-20 items-center justify-center rounded-full bg-amber-50 ring-8 ring-amber-100">
         <Clock className="h-12 w-12 text-amber-600" />
       </div>

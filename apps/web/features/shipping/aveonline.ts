@@ -870,15 +870,16 @@ export class AveonlineProvider implements ShippingProvider {
       dscorreopre: process.env.EMAIL_FROM?.match(/<(.+?)>/)?.[1] ?? "hola@lucamsshop.com",
       // Destino (destinatario = cliente). Lucy 2026-05-21:
       // - destino con formato `CIUDAD(DEPTO)` UPPERCASE igual que cotización.
-      // - dsnit del cliente (Aveonline exige ≥6 dígitos numéricos). Si el cliente
-      //   no ingresó CC en checkout, usamos "000001" como placeholder válido
-      //   (admin debe completarlo desde /admin/pedidos antes de despachar).
+      // - dsnit del cliente (Aveonline exige numérico ≥5 dígitos y valor >10000 —
+      //   verificado sandbox 2026-07-28: "000001" se rechaza por "mayor a 10000").
+      //   Si el cliente no ingresó CC en checkout, usamos "100001" como placeholder
+      //   válido (admin debe completarlo desde /admin/pedidos antes de despachar).
       // - dscorreop con el email real del cliente (Aveonline le notifica).
       destino: formatAveonlineCity(params.delivery.city, params.delivery.department),
       dsdir: params.delivery.address,
       dsbarrio: "", // opcional Aveonline
       IdTipoEntrega: "1", // 1=domicilio, 2=oficina
-      dsnit: (params.delivery.documentNumber ?? "").replace(/\D/g, "").slice(0, 15) || "000001",
+      dsnit: (params.delivery.documentNumber ?? "").replace(/\D/g, "").slice(0, 15) || "100001",
       dsnombrecompleto: params.delivery.contactName,
       dstel: params.delivery.phone,
       dscelular: params.delivery.phone,

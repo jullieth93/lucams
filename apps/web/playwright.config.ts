@@ -42,6 +42,11 @@ export default defineConfig({
   reporter: isCI ? [["html", { open: "never" }], ["line"]] : "list",
   use: {
     baseURL: BASE_URL,
+    // PW_CHANNEL=chromium → build completo en vez de chromium_headless_shell.
+    // Páginas de terceros con anti-bot (checkout hospedado de Wompi) detectan
+    // el headless shell y bloquean el CTA ~50% de las corridas (verificado
+    // 2026-07-28, intentos e2e 15-19 vs 13/14/18).
+    ...(process.env.PW_CHANNEL ? { channel: process.env.PW_CHANNEL } : {}),
     trace: "on-first-retry",
     screenshot: "only-on-failure",
     video: "retain-on-failure",
