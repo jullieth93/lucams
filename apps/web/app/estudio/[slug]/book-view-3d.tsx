@@ -393,18 +393,6 @@ function Scene({
   /** Ola 17 — marcapáginas plano (Alargados): acostado sobre la hoja, sin doblez. */
   flat?: boolean;
 }) {
-  // Ola 19 — encuadre dinámico: los separadores pequeños (2×6 doblados) quedaban diminutos
-  // al enfocar el pliego completo. Si la pieza es chica, acercamos la cámara para que el
-  // separador sea legible sin perder de vista el libro.
-  const fit = useMemo(() => {
-    const base = BOOK_FIT;
-    if (flat) {
-      // Alargados planos: la pieza es grande (4×12 / 4×15) → encuadre normal.
-      return base;
-    }
-    // Separadores doblados: mitad de alto útil para acercar la cámara.
-    return { ...base, halfH: base.halfH * 0.55, halfW: base.halfW * 0.75 };
-  }, [flat]);
   // Ola 16 — defensa: si el producto no declara 2 caras, el 3D no puede mostrar
   // la cara B real. Log para soporte; el UI del Estudio sigue funcionando con 1 cara.
   if (process.env.NODE_ENV === "development" && facesPerUnit !== 2) {
@@ -504,7 +492,6 @@ function Scene({
         minDistance={fit.minDistance}
         maxDistance={60}
         target={[fit.targetX, fit.targetY, fit.targetZ]}
->>>>>>> 7454a02 (fix(catalogo-whatsapp): polaroid instagram, separadores homogéneos, limpieza de datos y UI)
       />
     </>
   );
