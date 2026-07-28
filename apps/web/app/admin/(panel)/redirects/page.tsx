@@ -38,6 +38,7 @@ import {
   toggleRedirectActiveAction,
 } from "./actions";
 import { CreateRedirectForm } from "./create-redirect-form";
+import { EditRedirectForm } from "./edit-redirect-form";
 
 export const metadata: Metadata = {
   title: "Redirects",
@@ -301,6 +302,20 @@ export default async function AdminRedirectsPage({ searchParams }: { searchParam
                         </form>
                       ) : (
                         <>
+                          {/* Edición inline: destino/tipo/descripción/activo.
+                              El fromPath es inmutable (archivar + crear para eso). */}
+                          <details className="w-full">
+                            <summary className="text-brand-purple-dark hover:text-brand-purple cursor-pointer text-right text-[11px] font-medium select-none">
+                              Editar
+                            </summary>
+                            <EditRedirectForm
+                              id={r.id}
+                              toPath={r.toPath}
+                              statusCode={r.statusCode}
+                              description={r.description}
+                              isActive={r.isActive}
+                            />
+                          </details>
                           <form action={toggleRedirectActiveAction}>
                             <input type="hidden" name="id" value={r.id} />
                             <button

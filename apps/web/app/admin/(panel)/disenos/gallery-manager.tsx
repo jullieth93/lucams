@@ -18,11 +18,13 @@ type Item = {
   isActive: boolean;
 };
 
-const TAGS = [
-  { value: "separadores-magneticos", label: "Separadores Magnéticos" },
-  { value: "separadores-alargados", label: "Separadores Alargados" },
-  { value: "fotoimanes", label: "Fotoimanes" },
-];
+// Llega del server (page.tsx): productos activos que declaran galleryTag en su
+// personalizationSchema. Misma fuente que valida el upload — nada hardcodeado.
+type TagOption = {
+  tag: string;
+  label: string;
+  needsFaceB: boolean;
+};
 
 function formatPreview(src: string | null | undefined) {
   if (!src) return null;
@@ -30,8 +32,8 @@ function formatPreview(src: string | null | undefined) {
   return src;
 }
 
-export function GalleryManager({ items }: { items: Item[] }) {
-  const [tag, setTag] = useState("separadores");
+export function GalleryManager({ items, tagOptions }: { items: Item[]; tagOptions: TagOption[] }) {
+  const [tag, setTag] = useState(tagOptions[0]?.tag ?? "");
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -40,7 +42,7 @@ export function GalleryManager({ items }: { items: Item[] }) {
   const [fileA, setFileA] = useState<File | null>(null);
   const [fileB, setFileB] = useState<File | null>(null);
 
-  const needsFaceB = tag === "separadores";
+  const needsFaceB = tagOptions.find((t) => t.tag === tag)?.needsFaceB ?? false;
 
   function resetForm() {
     setName("");
@@ -81,7 +83,18 @@ export function GalleryManager({ items }: { items: Item[] }) {
     });
   }
 
-  const byTag = TAGS.map((t) => ({ ...t, items: items.filter((i) => i.tag === t.value) }));
+  const byTag = tagOptions.map((t) => ({ ...t, items: items.filter((i) => i.tag === t.tag) }));
+
+  // Sin productos con galleryTag declarado no hay dónde colgar los diseños:
+  // el upload fallaría siempre, así que mejor explicarlo que mostrar un form roto.
+  if (tagOptions.length === 0) {
+    return (
+      <p className="text-brand-muted text-sm italic">
+        Ningún producto activo declara <code>galleryTag</code> en su schema de personalización
+        todavía. Decláralo en el producto (ej. separadores) para habilitar la subida de diseños.
+      </p>
+    );
+  }
 
   return (
     <div className="space-y-8">
@@ -100,8 +113,8 @@ export function GalleryManager({ items }: { items: Item[] }) {
               }}
               className="border-brand-purple/25 mt-1 block w-full rounded-xl border-2 px-3 py-2 text-sm outline-none"
             >
-              {TAGS.map((t) => (
-                <option key={t.value} value={t.value}>
+              {tagOptions.map((t) => (
+                <option key={t.tag} value={t.tag}>
                   {t.label}
                 </option>
               ))}
@@ -204,7 +217,7 @@ export function GalleryManager({ items }: { items: Item[] }) {
 
       {/* Listado por producto */}
       {byTag.map((group) => (
-        <section key={group.value}>
+        <section key={group.tag}>
           <h3 className="text-brand-purple-dark mb-2 text-lg font-semibold">{group.label}</h3>
           {group.items.length === 0 ? (
             <p className="text-brand-muted text-sm italic">

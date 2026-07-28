@@ -78,7 +78,6 @@ import {
   bookmarkFaceUnits,
   camber,
   flatBookmarkDims,
-  flatBookmarkPlacement,
   flatBookmarkPlacementUpright,
   flatBookmarkSlots,
   separatorPlacement,

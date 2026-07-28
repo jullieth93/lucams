@@ -155,6 +155,10 @@ test("flujo completo de cotización con capturas", async ({ page }) => {
   await page.locator("#deptCode").selectOption({ index: 1 });
   await page.locator("#cityCode").selectOption({ index: 1 });
   await page.locator("#notes").fill("Es para un regalo, ¿me ayudan con el empaque?");
+  // Email es required en el form (validación HTML5) — sin él el submit no dispara.
+  await page.locator('input[name="customerEmail"]').fill(`${RUN}@example.com`);
+  // Consentimiento Ley 1581 (checkbox required) — sin él el submit HTML5 no dispara.
+  await page.locator('input[name="dataConsent"]').check();
   await page.screenshot({ path: `${SHOTS}/catalog-05-form-cotizacion.png`, fullPage: true });
 
   // 6. Submit real (Turnstile en bypass dev) → confirmación

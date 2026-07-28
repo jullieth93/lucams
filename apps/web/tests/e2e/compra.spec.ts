@@ -104,8 +104,11 @@ test.describe("compra — núcleo del carrito", () => {
     await expect(async () => {
       await page.goto("/checkout/datos");
       await expect(page).toHaveURL(/\/checkout\/datos/);
-      await expect(page.locator('input[name="fullName"]')).toBeVisible();
+      // Modo full → datos-form (fullName); modo catálogo → quote-form (customerName).
+      await expect(
+        page.locator('input[name="fullName"], input[name="customerName"]'),
+      ).toBeVisible();
     }).toPass({ timeout: 30_000 });
-    await expect(page.locator('input[name="email"]')).toBeVisible();
+    await expect(page.locator('input[name="email"], input[name="customerEmail"]')).toBeVisible();
   });
 });

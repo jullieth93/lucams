@@ -125,13 +125,20 @@ export default async function AdminCotizacionDetallePage({ params }: { params: P
                 {quote.items.map((item) => {
                   // "Default" es la variante interna de productos sin opciones.
                   const showVariant = item.variantName && item.variantName !== "Default";
+                  // Miniatura: preview del diseño si es personalizado; si no, la foto
+                  // real del producto (antes: ícono genérico que no decía qué era).
+                  const thumbSrc = item.previewUrl ?? item.product?.images?.[0] ?? null;
                   return (
                     <li key={item.id} className="flex items-start gap-3 py-3">
                       <div className="bg-brand-purple/5 relative h-14 w-14 flex-shrink-0 overflow-hidden rounded-lg">
-                        {item.previewUrl ? (
+                        {thumbSrc ? (
                           <Image
-                            src={item.previewUrl}
-                            alt={`Diseño personalizado de ${item.productName}`}
+                            src={thumbSrc}
+                            alt={
+                              item.previewUrl
+                                ? `Diseño personalizado de ${item.productName}`
+                                : item.productName
+                            }
                             fill
                             sizes="56px"
                             className="object-cover"
@@ -178,7 +185,9 @@ export default async function AdminCotizacionDetallePage({ params }: { params: P
                 </div>
                 <div className="flex justify-between">
                   <span className="text-brand-purple-dark/70">Envío</span>
-                  <span className="text-brand-muted text-xs italic">Se coordina por WhatsApp</span>
+                  <span className="text-brand-muted text-xs italic">
+                    A confirmar por WhatsApp · {formatCityDept(quote.city, quote.department)}
+                  </span>
                 </div>
                 <div className="border-brand-purple/10 mt-1 flex justify-between border-t pt-2">
                   <span className="text-brand-purple-dark font-display text-base font-bold">

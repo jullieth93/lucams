@@ -14,6 +14,7 @@
 
 import type { Metadata } from "next";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { DollarSign, TrendingUp, Receipt, CreditCard, FileText, ArrowRight } from "lucide-react";
 import {
   AdminBadge,
@@ -26,6 +27,7 @@ import {
 import { requireRole } from "@/lib/admin-rbac-guard";
 import { prisma } from "@/lib/db";
 import { formatCOP } from "@/lib/format";
+import { isCatalogMode } from "@/lib/store-mode";
 import { getCodReconciliationTotals } from "@/features/orders/cod-reconciliation";
 
 export const metadata: Metadata = {
@@ -37,6 +39,9 @@ export const dynamic = "force-dynamic";
 
 export default async function AdminFinanzasPage() {
   const _session = await requireRole(["SUPERADMIN"]);
+  // Modo catálogo (Etapa 1): sin pagos en línea no hay finanzas que mostrar.
+  // El nav ya oculta el módulo; esto cierra también el acceso por URL directa.
+  if (isCatalogMode()) redirect("/admin/dashboard");
 
   // Probar contadores reales: si hay alguna orden pagada en DB ya, los
   // mostramos; si no, mantenemos los placeholders educativos.

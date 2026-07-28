@@ -55,6 +55,7 @@ import {
   BadgeCheck,
   LifeBuoy,
   FileText,
+  Headset,
 } from "lucide-react";
 import { isCatalogMode } from "@/lib/store-mode";
 
@@ -112,6 +113,40 @@ export const ADMIN_NAV: NavGroup[] = [
           "Tablero de pedidos con filtros por estado, detalle de cada orden, reintento de guía Aveonline y cambio de estado manual (SHIPPED/DELIVERED/CANCELLED).",
       },
       {
+        label: "Clientes",
+        href: "/admin/clientes",
+        icon: Users,
+        description:
+          "Customer 360: listado con filtros + perfil completo con pedidos, reseñas, direcciones, diseños, referidos y puntos de fidelidad.",
+      },
+      {
+        label: "Reseñas",
+        href: "/admin/resenas",
+        icon: Star,
+        description:
+          "Moderación: aprobar/rechazar reseñas pendientes, destacar las mejores en home, archivar las que no sirven.",
+      },
+    ],
+  },
+  {
+    // 2026-07-28 — decisión Lucy/Kimi: los 4 tipos de caso (Soporte, Retractos,
+    // Garantías, Reclamos) + la revisión de diseños NO se fusionan en un solo
+    // módulo: legalmente son flujos distintos (retracto Ley 1480, garantía
+    // legal, SAC) y cada uno conserva su pantalla y su proceso. Solo se
+    // REAGRUPAN bajo esta sección (colapsada por defecto) para que el menú
+    // quede corto: Ventas = lo del día a día; acá = los casos puntuales.
+    title: "Servicio al cliente",
+    icon: Headset,
+    defaultOpen: false,
+    items: [
+      {
+        label: "Soporte",
+        href: "/admin/soporte",
+        icon: LifeBuoy,
+        description:
+          "Tickets de soporte que llegan desde /contacto: responder por email, asignar estado y cerrar. La respuesta sale con la plantilla de correo configurada.",
+      },
+      {
         label: "Moderación",
         href: "/admin/moderacion",
         icon: ShieldAlert,
@@ -133,32 +168,11 @@ export const ADMIN_NAV: NavGroup[] = [
           "Reclamos de garantía legal (1 año, Ley 1480): recibir, evaluar, resolver (reparación/reposición/devolución) y notificar al cliente en cada paso.",
       },
       {
-        label: "Soporte",
-        href: "/admin/soporte",
-        icon: LifeBuoy,
-        description:
-          "Tickets de soporte que llegan desde /contacto: responder por email, asignar estado y cerrar. La respuesta sale con la plantilla de correo configurada.",
-      },
-      {
-        label: "Clientes",
-        href: "/admin/clientes",
-        icon: Users,
-        description:
-          "Customer 360: listado con filtros + perfil completo con pedidos, reseñas, direcciones, diseños, referidos y puntos de fidelidad.",
-      },
-      {
         label: "Reclamos",
         href: "/admin/reclamos",
         icon: AlertCircle,
         description:
           "Gestión de reclamos de garantía: revisa, resuelve o rechaza con remedio (reparación, cambio o devolución).",
-      },
-      {
-        label: "Reseñas",
-        href: "/admin/resenas",
-        icon: Star,
-        description:
-          "Moderación: aprobar/rechazar reseñas pendientes, destacar las mejores en home, archivar las que no sirven.",
       },
     ],
   },
@@ -376,7 +390,10 @@ export const ADMIN_NAV: NavGroup[] = [
  * En modo catálogo (Etapa 1) no hay pagos en línea ni envíos integrados, así
  * que el sidebar oculta lo que no aplica:
  *   - el grupo "Finanzas" completo (resumen, conciliación y bloqueos COD),
- *   - "Integraciones" dentro de "Configuración" (Wompi/Aveonline apagadas).
+ *   - "Integraciones" dentro de "Configuración" (Wompi/Aveonline apagadas),
+ *   - "Mayorista B2B" dentro de "Promociones" (WholesaleTier no tiene NINGÚN
+ *     consumidor fuera del admin: ni PDP, ni carrito, ni cotización aplican
+ *     niveles B2B — módulo de Etapa 2).
  *
  * ADMIN_NAV se mantiene exportado e intacto: lo usa el catch-all placeholder
  * (findNavItem) para mostrar info contextual de módulos "Próximo". El consumidor
@@ -400,6 +417,9 @@ export function getAdminNav(): NavGroup[] {
           ...group,
           items: group.items.filter((it) => it.label !== "Bot WhatsApp"),
         };
+      }
+      if (group.title === "Promociones" && group.items) {
+        return { ...group, items: group.items.filter((it) => it.href !== "/admin/mayorista") };
       }
       if (group.title === "Configuración" && group.items) {
         return { ...group, items: group.items.filter((it) => it.href !== "/admin/integraciones") };

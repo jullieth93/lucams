@@ -185,7 +185,7 @@ export default async function AdminProductosPage({ searchParams }: { searchParam
               defaultValue={status}
               className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 w-full rounded-md border bg-white px-2 py-1.5 text-sm focus:ring-2 focus:outline-none"
             >
-              <option value="all">Todos (activos + inactivos + archivados)</option>
+              <option value="all">Todos los vivos (activos + inactivos)</option>
               <option value="active">Solo activos (visibles en tienda)</option>
               <option value="inactive">Solo inactivos (ocultos pero recuperables)</option>
               <option value="archived">Solo archivados (papelera)</option>

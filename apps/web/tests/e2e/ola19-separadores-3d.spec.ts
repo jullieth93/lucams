@@ -114,7 +114,6 @@ test.describe("Ola 19 — Separadores Cara A/B en 3D", () => {
     const relevant = logs.find((l) => l.includes("[BookView3D Separators]"));
     if (relevant) {
       const parsed = JSON.parse(relevant.replace(/^.*\[BookView3D Separators\]\s*/, ""));
-      // eslint-disable-next-line no-console
       console.log("BookView3D units:", parsed.unitsCount);
       expect(parsed.unitsCount, "cara A y cara B deben agruparse en 1 separador doblado").toBe(1);
     }

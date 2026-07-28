@@ -6,6 +6,7 @@
 
 import "server-only";
 import { prisma } from "@/lib/db";
+import { parsePhotoProductConfig } from "./schemas";
 
 export type GalleryImage = {
   id: string;
@@ -46,6 +47,48 @@ export async function getGalleryImageById(
 }
 
 // ──────────────────────── Admin ────────────────────────
+
+export type GalleryTagOption = {
+  /** galleryTag declarado en el personalizationSchema del producto (convención: su slug). */
+  tag: string;
+  /** Nombre del producto (label del selector en el admin). */
+  label: string;
+  /** true si el producto tiene 2 caras de diseño (facesPerUnit=2 → pares A/B, separadores). */
+  needsFaceB: boolean;
+};
+
+/**
+ * Tags de galería disponibles = productos ACTIVOS que declaran
+ * `personalizationSchema.galleryTag` (el Estudio lee la galería con ese exacto tag).
+ * ÚNICA fuente de verdad compartida por el selector del admin y la validación del
+ * upload: antes ambos lados tenían listas hardcodeadas y desalineadas
+ * ("separadores"/"fotoimanes" vs "separadores-magneticos") → subir separadores
+ * siempre fallaba con "Producto inválido" y la cara B era inalcanzable.
+ * Si un producto nuevo declara galleryTag, aparece acá solo — sin tocar código.
+ */
+export async function listGalleryTagOptions(): Promise<GalleryTagOption[]> {
+  const products = await prisma.product.findMany({
+    where: { isActive: true, deletedAt: null },
+    select: { name: true, personalizationSchema: true },
+    orderBy: { name: "asc" },
+  });
+  const seen = new Set<string>();
+  const options: GalleryTagOption[] = [];
+  for (const p of products) {
+    // galleryTag NO está en PhotoProductConfigSchema (Zod lo strippea): se lee
+    // directo del JSON, igual que app/estudio/[slug]/page.tsx.
+    const schema = p.personalizationSchema as { galleryTag?: unknown } | null;
+    const tag = typeof schema?.galleryTag === "string" ? schema.galleryTag : null;
+    if (!tag || seen.has(tag)) continue;
+    seen.add(tag);
+    options.push({
+      tag,
+      label: p.name,
+      needsFaceB: parsePhotoProductConfig(p.personalizationSchema).facesPerUnit === 2,
+    });
+  }
+  return options;
+}
 
 export type AdminGalleryImage = {
   id: string;

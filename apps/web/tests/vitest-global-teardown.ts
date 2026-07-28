@@ -137,8 +137,64 @@ export async function teardown() {
       data: { isActive: false, deletedAt: new Date(), updatedAt: new Date() },
     });
 
+    // ─────────────────────────────────────────────────────────────────────
+    // Fase 2 de la red (2026-07-28) — basura TRANSACCIONAL de tests. La red
+    // original solo cubría catálogo; los tests de orders/checkout/coupons/
+    // customers/reviews/quotes/retracts dejaban residuos que el admin mostraba
+    // como pedidos/clientes/cupones fantasmas (caso real: "20 pedidos
+    // pendientes" en el dashboard, todos de corridas de integración).
+    //
+    // Patrón de run-id: timestamp ms + random = 15+ dígitos seguidos. Los
+    // números/correos reales NUNCA lo cumplen (LCM-2026-0146, gmail, 10 díg.
+    // de teléfono) → el regex es seguro contra data real. Soft-delete donde
+    // el modelo lo soporta (mismo criterio recuperable del catálogo);
+    // hard-delete en modelos sin deletedAt (ledger/pivotes de pedidos test).
+    // ─────────────────────────────────────────────────────────────────────
+    const RUN_ID = "[0-9]{15,}";
+    const [
+      ordersTest,
+      customersTest,
+      couponsTest,
+      reviewsTest,
+      quotesTest,
+      designsTest,
+      tilesTest,
+      setsTest,
+      codTest,
+      retractsTest,
+    ] = await Promise.all([
+      prisma.$executeRaw`UPDATE "Order" SET "deletedAt" = NOW(), "updatedAt" = NOW()
+        WHERE "deletedAt" IS NULL AND (number ~ ${RUN_ID} OR number LIKE 'TEST%')`,
+      prisma.$executeRaw`UPDATE "Customer" SET "deletedAt" = NOW(), "updatedAt" = NOW()
+        WHERE "deletedAt" IS NULL AND (
+          email ILIKE '%@lucams.test' OR email ILIKE '%@cust.test'
+          OR email ILIKE '%@consent.test' OR email ILIKE '%@test.local'
+          OR email ILIKE 'itest%' OR email LIKE 'test+%@example.com'
+          OR email ~ ${RUN_ID})`,
+      prisma.$executeRaw`UPDATE "Coupon" SET "isActive" = false
+        WHERE "isActive" = true AND code ~ ${RUN_ID}`,
+      prisma.$executeRaw`UPDATE "Review" SET "deletedAt" = NOW(), "updatedAt" = NOW()
+        WHERE "deletedAt" IS NULL AND comment ~ ${RUN_ID}`,
+      prisma.$executeRaw`UPDATE "Quote" SET "deletedAt" = NOW(), "updatedAt" = NOW()
+        WHERE "deletedAt" IS NULL AND (
+          "customerName" ILIKE 'itest%' OR "customerEmail" ILIKE '%.test'
+          OR "customerEmail" ILIKE 'itest%')`,
+      prisma.$executeRaw`DELETE FROM "Design" WHERE "sessionId" ILIKE 'test-%'`,
+      prisma.$executeRaw`DELETE FROM "LetterTile" WHERE "setId" IN
+        (SELECT id FROM "LetterTileSet" WHERE name LIKE 'TEST %')`,
+      prisma.$executeRaw`DELETE FROM "LetterTileSet" WHERE name LIKE 'TEST %'`,
+      prisma.$executeRaw`DELETE FROM "CodReconciliation" WHERE "orderId" IN
+        (SELECT id FROM "Order" WHERE number ~ ${RUN_ID})`,
+      prisma.$executeRaw`DELETE FROM "RetractRequest" WHERE "orderItemId" IN
+        (SELECT oi.id FROM "OrderItem" oi JOIN "Order" o ON o.id = oi."orderId"
+         WHERE o.number ~ ${RUN_ID})`,
+    ]);
+
     console.log(
-      `[vitest teardown] Limpieza: ${products.count} productos, ${categories.count} categorías, ${ocasiones.count} ocasiones.`,
+      `[vitest teardown] Limpieza: ${products.count} productos, ${categories.count} categorías, ${ocasiones.count} ocasiones. ` +
+        `Transaccional: ${ordersTest} pedidos, ${customersTest} clientes, ${couponsTest} cupones, ` +
+        `${reviewsTest} reseñas, ${quotesTest} cotizaciones, ${designsTest} diseños, ` +
+        `${setsTest} sets fichas (+${tilesTest} fichas), ${codTest} ledger COD, ${retractsTest} retractos.`,
     );
   } catch (err) {
     console.error("[vitest teardown] Error limpiando DB:", err);

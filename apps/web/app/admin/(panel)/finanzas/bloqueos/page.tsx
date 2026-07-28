@@ -7,6 +7,7 @@
  */
 
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 import { ShieldBan } from "lucide-react";
 import {
   AdminBadge,
@@ -22,6 +23,7 @@ import {
   AdminTableRow,
 } from "@/components/admin-page";
 import { requireRole } from "@/lib/admin-rbac-guard";
+import { isCatalogMode } from "@/lib/store-mode";
 import { listBlockedIdentities } from "@/features/anti-abuse/blocklist-service";
 import { AddBlockForm, RemoveBlockButton } from "./bloqueos-form";
 
@@ -46,6 +48,9 @@ const dateFmt = new Intl.DateTimeFormat("es-CO", {
 
 export default async function BloqueosCodPage() {
   await requireRole(["SUPERADMIN"]);
+  // Modo catálogo (Etapa 1): no hay pago contra entrega (sin checkout) —
+  // el nav oculta Finanzas; esto cierra el acceso por URL directa.
+  if (isCatalogMode()) redirect("/admin/dashboard");
   const rows = await listBlockedIdentities();
 
   return (

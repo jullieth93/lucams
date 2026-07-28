@@ -367,19 +367,30 @@ describe.skipIf(!hasDb)("products/service — integración DB", { timeout: T }, 
       expect(res.items[0].isFeatured).toBe(true);
     });
 
-    it("status='all' (default) muestra activos + inactivos + archivados", async () => {
+    it("status='all' (default) muestra activos + inactivos (SIN archivados; la papelera va por filtro explícito)", async () => {
       const cat = await makeCategory({ label: "lp-all" });
       const a = await makeProduct({ categoryId: cat.id, label: "all-a", isActive: true });
       const b = await makeProduct({ categoryId: cat.id, label: "all-b", isActive: false });
-      const c = await makeProduct({ categoryId: cat.id, label: "all-c", deletedAt: new Date() });
+      await makeProduct({ categoryId: cat.id, label: "all-c", deletedAt: new Date() });
 
+      // 2026-07-28 — semántica nueva: "all" = todos los vivos. Los archivados solo
+      // salen con status="archived" (capacidad de restaurar intacta, vista limpia).
       const res = await listProducts({ categoryId: cat.id, status: "all" });
-      expect(res.items.map((i) => i.id).sort()).toEqual([a.id, b.id, c.id].sort());
-      expect(res.total).toBe(3);
+      expect(res.items.map((i) => i.id).sort()).toEqual([a.id, b.id].sort());
+      expect(res.total).toBe(2);
 
       // sin status === undefined → mismo comportamiento que "all"
       const noStatus = await listProducts({ categoryId: cat.id });
-      expect(noStatus.total).toBe(3);
+      expect(noStatus.total).toBe(2);
+
+      // La papelera sigue accesible por filtro explícito (restaurar).
+      const c = (await prisma.product.findFirst({
+        where: { categoryId: cat.id, deletedAt: { not: null } },
+        select: { id: true },
+      }))!;
+      const archived = await listProducts({ categoryId: cat.id, status: "archived" });
+      expect(archived.items.map((i) => i.id)).toEqual([c.id]);
+      expect(archived.total).toBe(1);
     });
 
     it("orden price-asc / price-desc ordenan por basePrice", async () => {

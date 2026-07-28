@@ -7,8 +7,9 @@
  *
  * FOCO:
  *   - modo full: getAdminNav() === ADMIN_NAV (con Finanzas e Integraciones).
- *   - modo catalog: oculta el grupo "Finanzas" completo y el item
- *     "Integraciones" de "Configuración" (no hay pagos ni envíos integrados).
+ *   - modo catalog: oculta el grupo "Finanzas" completo, el item
+ *     "Integraciones" de "Configuración" (no hay pagos ni envíos integrados)
+ *     y "Mayorista B2B" de "Promociones" (WholesaleTier sin consumidor en Etapa 1).
  *   - "Cotizaciones" es el primer item de "Ventas" en AMBOS modos.
  *   - el filtrado NO muta ADMIN_NAV (el catch-all placeholder sigue viendo
  *     todos los módulos para su info contextual).
@@ -66,6 +67,25 @@ describe("getAdminNav", () => {
     // El resto de items de Configuración sigue (General, Seguridad, Redirects…).
     expect(config?.items?.some((it) => it.href === "/admin/contenido/configuracion")).toBe(true);
     expect(config?.items?.some((it) => it.href === "/admin/seguridad")).toBe(true);
+  });
+
+  it("modo catalog: oculta Mayorista B2B de Promociones pero conserva Cupones", async () => {
+    process.env[KEY] = "catalog";
+    const mod = await loadNav();
+    const promo = mod.getAdminNav().find((g) => g.title === "Promociones");
+
+    expect(promo).toBeDefined();
+    expect(promo?.items?.some((it) => it.href === "/admin/mayorista")).toBe(false);
+    // Cupones sí aplica en Etapa 1 (se crean ahora, se activan con los pagos).
+    expect(promo?.items?.some((it) => it.href === "/admin/cupones")).toBe(true);
+  });
+
+  it("modo full: Mayorista B2B visible en Promociones", async () => {
+    process.env[KEY] = "full";
+    const mod = await loadNav();
+    const promo = mod.getAdminNav().find((g) => g.title === "Promociones");
+
+    expect(promo?.items?.some((it) => it.href === "/admin/mayorista")).toBe(true);
   });
 
   it.each(["full", "catalog"])(

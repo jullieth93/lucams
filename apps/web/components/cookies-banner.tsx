@@ -23,6 +23,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { X, Sparkles, Cookie } from "lucide-react";
 import {
   Dialog,
@@ -53,6 +54,11 @@ export function CookiesBanner() {
   const [show, setShow] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [prefs, setPrefs] = useState<CookiePreferences>(emptyPreferences());
+  // El banner es para visitantes del STOREFRONT (Ley 1581); dentro de /admin solo
+  // estorba (tapa acciones del panel en cada navegador nuevo). El modal de
+  // preferencias sigue disponible desde el footer legal si alguien lo reabre allá.
+  const pathname = usePathname();
+  const isAdmin = pathname?.startsWith("/admin") ?? false;
 
   // Detectar primera visita (sin cookie persistida)
   useEffect(() => {
@@ -83,6 +89,7 @@ export function CookiesBanner() {
   }
 
   if (!show && !modalOpen) return null;
+  if (isAdmin) return null;
 
   return (
     <>
