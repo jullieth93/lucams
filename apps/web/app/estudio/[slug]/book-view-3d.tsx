@@ -393,6 +393,18 @@ function Scene({
   /** Ola 17 — marcapáginas plano (Alargados): acostado sobre la hoja, sin doblez. */
   flat?: boolean;
 }) {
+  // Ola 19 — encuadre dinámico: los separadores pequeños (2×6 doblados) quedaban diminutos
+  // al enfocar el pliego completo. Si la pieza es chica, acercamos la cámara para que el
+  // separador sea legible sin perder de vista el libro.
+  const fit = useMemo(() => {
+    const base = BOOK_FIT;
+    if (flat) {
+      // Alargados planos: la pieza es grande (4×12 / 4×15) → encuadre normal.
+      return base;
+    }
+    // Separadores doblados: mitad de alto útil para acercar la cámara.
+    return { ...base, halfH: base.halfH * 0.55, halfW: base.halfW * 0.75 };
+  }, [flat]);
   // Ola 16 — defensa: si el producto no declara 2 caras, el 3D no puede mostrar
   // la cara B real. Log para soporte; el UI del Estudio sigue funcionando con 1 cara.
   if (process.env.NODE_ENV === "development" && facesPerUnit !== 2) {
@@ -403,22 +415,24 @@ function Scene({
   }
   // #16 — no autorrotar si el usuario pide reducir movimiento.
   const reduced = usePrefersReducedMotion();
-  // Ola 18 — el marcapáginas plano (Alargados) vive sobre la hoja derecha; acercamos la cámara
-  // para que la pieza se distinga claramente, sin perder el contexto del libro.
+  // Ola 18/19 — encuadre dinámico:
+  // - Alargados planos (pieza alta 12/15 cm): encuadre más holgado y centrado en la hoja
+  //   derecha para que la pieza completa sea visible.
+  // - Separadores doblados (pieza chica 2×6): encuadre más cercano para que la tira se lea.
   const fit = useMemo(() => {
-    if (!flat) return { ...BOOK_FIT, targetX: 0, targetZ: 0, margin: 1.12, minDistance: 5 };
-    // Ola 18 — la pieza de pie es alta (15 cm → ~4.5 u). Encuadre más holgado para que
-    // la pieza completa sea visible, no solo su base.
-    return {
-      halfW: 3.0,
-      halfH: 5.0,
-      polarDeg: 48,
-      targetY: 1.2,
-      targetX: PAGE_W / 2,
-      targetZ: 0,
-      margin: 1.05,
-      minDistance: 3.5,
-    };
+    if (flat) {
+      return {
+        halfW: 3.0,
+        halfH: 5.0,
+        polarDeg: 48,
+        targetY: 1.2,
+        targetX: PAGE_W / 2,
+        targetZ: 0,
+        margin: 1.05,
+        minDistance: 3.5,
+      };
+    }
+    return { ...BOOK_FIT, halfH: BOOK_FIT.halfH * 0.55, halfW: BOOK_FIT.halfW * 0.75, targetX: 0, targetZ: 0, margin: 1.12, minDistance: 5 };
   }, [flat]);
   return (
     <>
@@ -490,6 +504,7 @@ function Scene({
         minDistance={fit.minDistance}
         maxDistance={60}
         target={[fit.targetX, fit.targetY, fit.targetZ]}
+>>>>>>> 7454a02 (fix(catalogo-whatsapp): polaroid instagram, separadores homogéneos, limpieza de datos y UI)
       />
     </>
   );

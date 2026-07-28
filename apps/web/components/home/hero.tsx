@@ -93,6 +93,7 @@ export async function HomeHero() {
                 blockKey="home.hero.chip-eta"
                 fallback="Entrega en máx. 3 días hábiles"
               />
+              />
             </span>
           </div>
         </div>

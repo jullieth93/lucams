@@ -90,16 +90,16 @@ export function StudioPhotoPreview({
     };
   }, []);
 
-  // Ola 21 — el preview respeta la proporción real del producto, pero acota el alto
-  // al espacio disponible del modal (~55 % del viewport) para que no aparezca scroll
-  // en productos alargados y para que la edición sea maniobrable en móvil.
-  const MAX_H = Math.round(Math.min(620, viewportH * 0.55));
+  // Ola 19/21 — el preview respeta la proporción real del producto, pero acota el alto
+  // al espacio disponible del modal (~55 % del viewport, mín. 420 px) para que no aparezca
+  // scroll en productos alargados y para que la edición sea maniobrable en móvil.
+  const MAX_H = Math.max(420, Math.round(Math.min(620, viewportH * 0.55)));
   const aspect = unitTemplate.stage.height / unitTemplate.stage.width;
-  let displayWidth = Math.max(200, containerWidth);
+  let displayWidth = Math.max(220, containerWidth);
   let displayHeight = displayWidth * aspect;
   if (displayHeight > MAX_H) {
     displayHeight = MAX_H;
-    displayWidth = Math.max(140, Math.round(displayHeight / aspect));
+    displayWidth = Math.max(220, Math.round(displayHeight / aspect));
   }
   const scale = displayWidth / unitTemplate.stage.width;
 

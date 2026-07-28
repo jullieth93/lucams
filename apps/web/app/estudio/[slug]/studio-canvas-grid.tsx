@@ -308,7 +308,11 @@ export function StudioCanvasGrid({
   const stripAspect = grouped
     ? (canvasData.unitTemplate.stage.width * 2) / canvasData.unitTemplate.stage.height
     : 0;
-  const unitCols = grouped ? (containerWidth < BP_MOBILE || stripAspect >= 3 ? 1 : 2) : 0;
+  // Ola 19 — separadores: si solo hay UNA unidad física, no la obliguemos a compartir
+  // el ancho con una columna fantasma. La tarjeta debe usar el alto disponible para
+  // verse proporcional al producto real (vertical estrecho).
+  const desiredUnitCols = containerWidth < BP_MOBILE || stripAspect >= 3 ? 1 : 2;
+  const unitCols = grouped ? Math.min(unitCount, desiredUnitCols) : 0;
   // Columnas VISUALES de slots para la navegación por teclado (flechas).
   const navCols = grouped ? unitCols * 2 : layout.cols;
 
@@ -355,11 +359,17 @@ export function StudioCanvasGrid({
     : null;
 
   const slotDisplaySize = grouped
-    ? // Ancho de cara dentro de la tarjeta: (tarjeta − padding − separación) / 2.
-      Math.max(
-        MIN_SLOT_SIZE,
-        Math.floor(((containerWidth - layout.gap * (unitCols - 1)) / unitCols - 16 - 8) / 2),
-      )
+    ? // Ola 19 — separadores: el ancho de cara se limita también por el ALTO útil del
+      // marco. Sin esto, un separador vertical 2×6 (aspect 3) ocupaba el ancho que le
+      // dejaba la tarjeta (~350px) y terminaba altísimo, desbordando la pantalla.
+      // Regla: byWidth = ancho disponible por cara; byHeight = alto útil / aspect.
+      (() => {
+        const byWidth = Math.floor(((containerWidth - layout.gap * (unitCols - 1)) / unitCols - 16 - 8) / 2);
+        if (!maxFrameH) return Math.max(MIN_SLOT_SIZE, byWidth);
+        const usableH = maxFrameH - layout.gap * (layout.rows - 1) - layout.rows * reserve;
+        const byHeight = Math.floor(usableH / layout.rows / slotAspect);
+        return Math.max(MIN_SLOT_SIZE, Math.min(byWidth, byHeight));
+      })()
     : (() => {
         const byWidth = Math.floor(availableW / layout.cols);
         if (!maxFrameH) return Math.max(MIN_SLOT_SIZE, byWidth);
