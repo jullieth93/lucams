@@ -19,8 +19,3 @@ allowBuilds:
 overrides:
   postcss: 8.5.18
   '@babel/core': 7.29.6
-  # sharp <0.35.0 arrastra libvips vulnerable (CVE-2026-33327/33328/35590/35591).
-  # pnpm 11 solo lee overrides de este archivo: el bloque `pnpm.overrides` de
-  # package.json se ignora, por eso next>sharp seguía resolviendo 0.34.x.
-  sharp: '>=0.35.0'
-  'next>sharp': '>=0.35.0'

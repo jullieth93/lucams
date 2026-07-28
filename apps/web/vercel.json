@@ -1,4 +1,4 @@
 {
-  "installCommand": "pnpm install --os=linux --cpu=x64",
-  "buildCommand": "pnpm run build"
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "nextjs"
 }
