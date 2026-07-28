@@ -21,7 +21,7 @@
 
 import crypto from "node:crypto";
 import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
-import { generateIntegritySignature, verifyWebhookSignature } from "./wompi";
+import { generateIntegritySignature, verifyWebhookSignature, buildCheckoutUrl } from "./wompi";
 
 // --- Secretos deterministas para los vectores --------------------------------
 const INTEGRITY_SECRET = "test_integrity_FIXED";
@@ -443,5 +443,65 @@ describe("verifyWebhookSignature — entradas inválidas y campos faltantes", ()
     delete process.env.WOMPI_EVENTS_SECRET;
     const body = buildWebhookBody();
     expect(() => verifyWebhookSignature(body)).toThrow(/faltan WOMPI/);
+  });
+});
+
+// =============================================================================
+// buildCheckoutUrl — prefill customer-data (doc widget-checkout-web paso 5)
+// =============================================================================
+describe("buildCheckoutUrl — prefill del comprador (customer-data)", () => {
+  const base = {
+    reference: "LCM-2026-0001",
+    amountInCents: 5_830_000,
+    currency: "COP",
+    customerEmail: "cliente@example.co",
+    redirectUrl: "https://lucamsshop.com/checkout/gracias",
+  };
+
+  it("sin customer: solo email (comportamiento previo intacto)", () => {
+    const url = new URL(buildCheckoutUrl(base));
+    expect(url.searchParams.get("customer-data:email")).toBe("cliente@example.co");
+    expect(url.searchParams.get("customer-data:full-name")).toBeNull();
+    expect(url.searchParams.get("customer-data:phone-number")).toBeNull();
+    expect(url.searchParams.get("customer-data:legal-id")).toBeNull();
+  });
+
+  it("con customer completo: full-name, phone-number(+prefix 57) y legal-id(+type)", () => {
+    const url = new URL(
+      buildCheckoutUrl({
+        ...base,
+        customer: {
+          fullName: "Valentina Wompi",
+          phone: "300 123 4567",
+          legalIdType: "CC",
+          legalId: "1.040.032.100",
+        },
+      }),
+    );
+    expect(url.searchParams.get("customer-data:full-name")).toBe("Valentina Wompi");
+    expect(url.searchParams.get("customer-data:phone-number-prefix")).toBe("57");
+    expect(url.searchParams.get("customer-data:phone-number")).toBe("3001234567");
+    expect(url.searchParams.get("customer-data:legal-id")).toBe("1040032100");
+    expect(url.searchParams.get("customer-data:legal-id-type")).toBe("CC");
+  });
+
+  it("teléfono con prefijo 57 embebido (12 dígitos) → lo normaliza a nacional 10", () => {
+    const url = new URL(buildCheckoutUrl({ ...base, customer: { phone: "573001234567" } }));
+    expect(url.searchParams.get("customer-data:phone-number")).toBe("3001234567");
+  });
+
+  it("legal-id sin type (o vacío) NO se envía (par inválido para Wompi)", () => {
+    const url = new URL(buildCheckoutUrl({ ...base, customer: { legalId: "1040032100" } }));
+    expect(url.searchParams.get("customer-data:legal-id")).toBeNull();
+    expect(url.searchParams.get("customer-data:legal-id-type")).toBeNull();
+  });
+
+  it("campos vacíos/blank no se envían", () => {
+    const url = new URL(
+      buildCheckoutUrl({ ...base, customer: { fullName: "  ", phone: "", legalId: "" } }),
+    );
+    expect(url.searchParams.get("customer-data:full-name")).toBeNull();
+    expect(url.searchParams.get("customer-data:phone-number")).toBeNull();
+    expect(url.searchParams.get("customer-data:legal-id")).toBeNull();
   });
 });

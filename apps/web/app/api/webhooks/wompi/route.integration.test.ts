@@ -200,14 +200,34 @@ describe.skipIf(!hasDb)("webhook Wompi ROUTE — portería con firma real", () =
     expect(ev).toBeNull();
   });
 
-  it("timestamp fuera de ventana (replay) → 401", async () => {
-    const ref = `${RUN}-LCM-REPLAY`;
-    await makeOrder(ref, 55000);
-    const oldTs = Math.floor(Date.now() / 1000) - 3600; // 1h atrás
+  it("reintento Wompi (mismo timestamp, 3h después) → se PROCESA, no se rechaza (doc eventos)", async () => {
+    const ref = `${RUN}-LCM-RETRY`;
+    const orderId = await makeOrder(ref, 55000);
+    const oldTs = Math.floor(Date.now() / 1000) - 3 * 3600; // 3h atrás (horario del 2do reintento)
     const res = await POST(
       req(
         signedEvent({
           txId: `${RUN}-tx3`,
+          status: "APPROVED",
+          amountInCents: 55000,
+          reference: ref,
+          timestamp: oldTs,
+        }),
+      ),
+    );
+    expect(res.status).toBe(200);
+    expect(sagaCalls).toHaveLength(1);
+    expect(sagaCalls[0]).toMatchObject({ fn: "processPaidOrder", orderId });
+  });
+
+  it("timestamp MÁS ALLÁ del horizonte de reintentos (>25h, replay viejo) → 401", async () => {
+    const ref = `${RUN}-LCM-REPLAY`;
+    await makeOrder(ref, 55000);
+    const oldTs = Math.floor(Date.now() / 1000) - 26 * 3600; // 26h atrás
+    const res = await POST(
+      req(
+        signedEvent({
+          txId: `${RUN}-tx3b`,
           status: "APPROVED",
           amountInCents: 55000,
           reference: ref,
@@ -284,9 +304,9 @@ describe.skipIf(!hasDb)("webhook Wompi ROUTE — portería con firma real", () =
     expect(sagaCalls).toHaveLength(0);
   });
 
-  it("DECLINED → processFailedPaymentOrder", async () => {
+  it("DECLINED → noop (orden sigue PENDING_PAYMENT para el reintento de Wompi, doc oficial)", async () => {
     const ref = `${RUN}-LCM-DECL`;
-    const orderId = await makeOrder(ref, 55000);
+    await makeOrder(ref, 55000);
     const res = await POST(
       req(
         signedEvent({
@@ -299,11 +319,28 @@ describe.skipIf(!hasDb)("webhook Wompi ROUTE — portería con firma real", () =
       ),
     );
     expect(res.status).toBe(200);
+    expect(sagaCalls).toHaveLength(0); // NO se cancela: Wompi reintenta con la misma reference
+  });
+
+  it("VOIDED → processFailedPaymentOrder (dinero capturado)", async () => {
+    const ref = `${RUN}-LCM-VOID`;
+    const orderId = await makeOrder(ref, 55000, "PAID");
+    const res = await POST(
+      req(
+        signedEvent({
+          txId: `${RUN}-tx8b`,
+          status: "VOIDED",
+          amountInCents: 55000,
+          reference: ref,
+        }),
+      ),
+    );
+    expect(res.status).toBe(200);
     expect(sagaCalls).toHaveLength(1);
     expect(sagaCalls[0]).toMatchObject({
       fn: "processFailedPaymentOrder",
       orderId,
-      reason: "Fondos insuficientes",
+      wompiTransactionId: `${RUN}-tx8b`,
     });
   });
 

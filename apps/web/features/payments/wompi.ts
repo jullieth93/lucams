@@ -53,6 +53,7 @@ export class WompiPaymentProvider implements PaymentProvider {
       currency: input.currency,
       customerEmail: input.customerEmail,
       redirectUrl: input.redirectUrl,
+      customer: input.customer,
     });
     return { checkoutUrl, reference: input.reference };
   }

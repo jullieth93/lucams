@@ -28,6 +28,13 @@ export type CreateCheckoutInput = {
   customerEmail: string;
   /** URL absoluta a la que el gateway redirige tras pago (success o failure). */
   redirectUrl: string;
+  /** Prefill del comprador en el checkout hospedado (doc Wompi customer-data). */
+  customer?: {
+    fullName?: string;
+    phone?: string;
+    legalIdType?: "CC" | "CE" | "NIT" | "PP" | "TI" | "DNI" | "RG" | "OTHER";
+    legalId?: string;
+  };
 };
 
 export type CreateCheckoutResult = {

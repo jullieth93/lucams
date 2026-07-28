@@ -107,12 +107,12 @@ async function verifyWebhook(req: Request): Promise<boolean> {
 
 ### Estados de transacción
 
-| Estado Wompi | OrderStatus interno | Acción                                              |
-| ------------ | ------------------- | --------------------------------------------------- |
-| `APPROVED`   | `PAID`              | Crear envío Venndelo, descontar stock, enviar email |
-| `DECLINED`   | `CANCELLED`         | Liberar stock reservado, email de fallido           |
-| `VOIDED`     | `REFUNDED`          | Restaurar stock, email de reembolso                 |
-| `ERROR`      | `CANCELLED`         | Liberar stock, log de error                         |
+| Estado Wompi | OrderStatus interno | Acción                                                                                                          |
+| ------------ | ------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `APPROVED`   | `PAID`              | Crear envío Aveonline, descontar stock, enviar email                                                            |
+| `DECLINED`   | `PENDING_PAYMENT`   | Sin dinero movido: NO cancela (Wompi habilita reintento con la misma reference ~3 min — doc oficial 2026-07-28) |
+| `VOIDED`     | `REFUNDED`          | Restaurar stock, email de reembolso                                                                             |
+| `ERROR`      | `PENDING_PAYMENT`   | Igual que DECLINED: la orden espera el reintento del cliente                                                    |
 
 ### Pago contraentrega (COD)
 

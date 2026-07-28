@@ -108,22 +108,73 @@ const centsToPesos = (cents: number) => Math.round(cents / 100);
  *   - dims: las del paquete unitario (para densos, el peso real supera al volumétrico)
  * `valorDeclarado` mínimo 10.000 COP (sino Aveonline devuelve numbererror -5). Ver ADR-053.
  */
+/**
+ * Modelo de empaque "caja apilada" — UN bulto físico (el rótulo de Aveonline
+ * imprime productos[].unidades como N bultos, verificado en vivo 2026-07-11:
+ * unidades:5 imprimió "1 / 5" y la transportadora esperaba 5 paquetes).
+ *
+ * Liquidación correcta (la transportadora re-mide y factura por
+ * max(peso real, peso volumen) de la caja REAL):
+ *  - peso: Σ(peso_unit × qty) — exacto.
+ *  - dims: los items del catálogo se apilan por su cara plana (imanes,
+ *    calendarios, tiles). Cada item se orienta con su dim MENOR como espesor;
+ *    la caja queda con huella = máx de las dos dims mayores por item y
+ *    espesor = Σ(dim_menor × qty). Ni bounding-box máximo (SUB-dimensiona:
+ *    3 calendarios de 1cm declaraban 30×30×1 → re-liquidación en contra) ni
+ *    suma ciega de ejes (SOBRE-dimensiona).
+ *  - valorDeclarado: Σ(valor_unit × qty) en PESOS, piso $10.000 (error -5).
+ * Cotización y guía usan EL MISMO modelo → el flete cotizado == el facturado.
+ */
+export function computePackedPackage(items: ShipmentItem[]): {
+  altoCm: number;
+  anchoCm: number;
+  largoCm: number;
+  pesoKg: number;
+  valorDeclaradoPesos: number;
+  nombre: string;
+} {
+  let pesoGramos = 0;
+  let espesorCm = 0;
+  let caraMayorCm = 0;
+  let caraMediaCm = 0;
+  let valorCop = 0;
+  for (const i of items) {
+    const [menor, media, mayor] = [i.widthCm, i.heightCm, i.depthCm].sort((a, b) => a - b);
+    caraMayorCm = Math.max(caraMayorCm, mayor);
+    caraMediaCm = Math.max(caraMediaCm, media);
+    espesorCm += menor * i.qty;
+    pesoGramos += i.weightGrams * i.qty;
+    valorCop += i.declaredValueCop * i.qty;
+  }
+  return {
+    altoCm: caraMayorCm,
+    anchoCm: caraMediaCm,
+    largoCm: Math.round(espesorCm * 10) / 10,
+    pesoKg: Math.max(0.1, Math.round((pesoGramos / 1000) * 10) / 10),
+    valorDeclaradoPesos: Math.max(MIN_DECLARED_VALUE_COP, centsToPesos(valorCop)),
+    nombre:
+      items
+        .map((i) => i.productSlug)
+        .join(", ")
+        .slice(0, 100) || "Pedido",
+  };
+}
+
 export function buildCotizarProductos(items: ShipmentItem[]) {
-  return items.map((i) => ({
-    // La doc tipa alto/ancho/largo/peso/valorDeclarado como String (el ejemplo oficial
-    // los manda entre comillas); createShipment ya los stringifica. Alineamos acá también.
-    alto: String(i.heightCm),
-    ancho: String(i.widthCm),
-    largo: String(i.depthCm),
-    // Peso TOTAL de la línea (peso_unit × qty), redondeado a 1 decimal, piso 0.1 kg.
-    peso: String(Math.max(0.1, Math.round(((i.weightGrams * i.qty) / 1000) * 10) / 10)),
-    unidades: 1, // Aveonline lo ignora al cotizar; la cantidad ya viaja en `peso`.
-    nombre: i.productSlug,
-    // valorDeclarado en PESOS (no centavos) — total de la línea, mínimo $10.000.
-    valorDeclarado: String(
-      Math.max(MIN_DECLARED_VALUE_COP, centsToPesos(i.declaredValueCop * i.qty)),
-    ),
-  }));
+  const pkg = computePackedPackage(items);
+  return [
+    {
+      // La doc tipa alto/ancho/largo/peso/valorDeclarado como String (el ejemplo oficial
+      // los manda entre comillas); createShipment ya los stringifica. Alineamos acá también.
+      alto: String(pkg.altoCm),
+      ancho: String(pkg.anchoCm),
+      largo: String(pkg.largoCm),
+      peso: String(pkg.pesoKg),
+      unidades: 1, // UN bulto físico (Aveonline lo imprime como bultos en el rótulo)
+      nombre: pkg.nombre,
+      valorDeclarado: String(pkg.valorDeclaradoPesos),
+    },
+  ];
 }
 
 /**
@@ -625,9 +676,8 @@ export class AveonlineProvider implements ShippingProvider {
     contraentrega: boolean;
   }): Promise<ShippingQuote[]> {
     const { token, idempresa } = await getAuthToken();
-    // PR C (Lucy 2026-05-21): peso + dims REALES del item (resueltos por el caller via
-    // getEffectiveShippingDims). La cantidad se pliega en el peso porque Aveonline ignora
-    // `unidades` al cotizar (ver buildCotizarProductos + ADR-053).
+    // UN bulto con el modelo "caja apilada" (computePackedPackage): peso y espesor
+    // Σ(qty), huella máxima. La guía usa el MISMO modelo → flete cotizado == facturado.
     const productos = buildCotizarProductos(params.items);
 
     // Aveonline 2026-05-21: usar `cotizarDoble` (multi-carrier) en vez de `cotizar2`
@@ -819,37 +869,38 @@ export class AveonlineProvider implements ShippingProvider {
       );
     }
 
+    // `dscorreop` es REQUERIDO por generarGuia2 (doc oficial; error tipificado -13
+    // "El correo del destinatario no existe"). Fallar temprano con causa accionable
+    // en vez de quemar la llamada no-idempotente contra Aveonline.
+    if (!params.delivery.email?.trim()) {
+      throw new Error(
+        "Aveonline createShipment: la orden no tiene email del destinatario " +
+          "(dscorreop es requerido por Aveonline). Completarlo en /admin/pedidos antes de reintentar.",
+      );
+    }
+
     // Aveonline en PESOS (montos internos en centavos → centsToPesos).
     const valorRecaudo = params.contraentrega ? centsToPesos(params.valorRecaudoCop ?? 0) : 0;
     const totalDeclaradoPesos = centsToPesos(
       params.items.reduce((acc, i) => acc + i.declaredValueCop * i.qty, 0),
     );
 
-    // El pedido se despacha como UN paquete físico (imanes: todo va en una caja).
-    // Declaramos 1 bulto con el peso y el valor TOTALES. Antes mandábamos
-    // `unidades = qty` → el rótulo decía "N bultos" (VERIFICADO 2026-07-11: guía con
-    // unidades:5 imprime "1 / 5") → el transportador esperaría N paquetes que no
-    // existen, con posible lío en la recogida. El peso total es el driver real del
-    // flete (imanes densos); dims = bounding box (máximo por eje). Ver ADR-053.
-    const totalWeightKg = Math.max(
-      0.1,
-      Math.round((params.items.reduce((a, i) => a + i.weightGrams * i.qty, 0) / 1000) * 10) / 10,
-    );
-    const maxDim = (pick: (i: ShipmentItem) => number) => Math.max(...params.items.map(pick));
+    // El pedido se despacha como UN paquete físico (imanes: todo va en una caja)
+    // con el MISMO modelo de empaque de la cotización (computePackedPackage:
+    // peso y espesor Σ, huella máxima) → el flete facturado == el cotizado, y
+    // qty=2 nunca duplica el flete (una sola guía tarifada por peso/volumen
+    // real, no 2 guías ni 2 bultos). Ver ADR-053 + auditoría doc 2026-07-28.
+    const pkg = computePackedPackage(params.items);
     const productos = [
       {
-        alto: String(maxDim((i) => i.heightCm)),
-        ancho: String(maxDim((i) => i.widthCm)),
-        largo: String(maxDim((i) => i.depthCm)),
-        peso: String(totalWeightKg),
+        alto: String(pkg.altoCm),
+        ancho: String(pkg.anchoCm),
+        largo: String(pkg.largoCm),
+        peso: String(pkg.pesoKg),
         unidades: 1,
-        nombre:
-          params.items
-            .map((i) => i.productSlug)
-            .join(", ")
-            .slice(0, 100) || "Pedido",
+        nombre: pkg.nombre,
         ref: params.orderId,
-        valorDeclarado: String(Math.max(MIN_DECLARED_VALUE_COP, totalDeclaradoPesos)),
+        valorDeclarado: String(pkg.valorDeclaradoPesos),
       },
     ];
 
@@ -893,8 +944,18 @@ export class AveonlineProvider implements ShippingProvider {
         .join(", ")
         .slice(0, 80),
       dscom: "",
-      idasumecosto: 1, // tenant asume costo flete
-      contraentrega: params.contraentrega ? 1 : 0,
+      // Formas de pago de la guía (tabla oficial de la doc de cotización,
+      // verificada 2026-07-28): `contraentrega` = "el DESTINATARIO asume el costo
+      // del ENVÍO"; `idasumecosto` = "el DESTINATARIO asume el costo del RECAUDO".
+      // Ambos en 0 SIEMPRE:
+      //  - Prepagada (Wompi): fila 1 de la tabla — destinatario no paga nada.
+      //  - COD: fila 5 — el mensajero cobra EXACTAMENTE `valorrecaudo`
+      //    (= order.total, que YA incluye el flete que el cliente vio en checkout)
+      //    y Lucams asume transporte + fee de recaudo en la liquidación.
+      //  Antes iban 1/1 (fila 2): el mensajero cobraba valorrecaudo + flete + fee
+      //  ENCIMA → el cliente pagaba el flete DOS veces (auditoría doc 2026-07-28).
+      idasumecosto: 0,
+      contraentrega: 0,
       valorrecaudo: valorRecaudo,
       // Aveonline `bloquegenerarguia` (semántica contraintuitiva):
       //   "1" = BLOQUEA generación facturable → SEGURO (igual devuelve numguia + PDF para staging)
@@ -910,7 +971,7 @@ export class AveonlineProvider implements ShippingProvider {
         (process.env.NODE_ENV === "production" || process.env.AVEONLINE_FORCE_BILLING === "true")
           ? "0"
           : "1",
-      relacion_envios: "1",
+      relacion_envios: "0", // no creamos la relación de envíos (doc: 1=sí, 0=no)
       enviarcorreos: "1",
       cartaporte: "0",
       // valorMinimo=0: usar la SUMA de valores declarados reales (no la valoración fija
@@ -1126,7 +1187,25 @@ function mapAveonlineStatus(raw: string): TrackingStatus["status"] {
   if (s.includes("ENTREGAD")) return "DELIVERED";
   if (s.includes("DEVUELT") || s.includes("RETORN")) return "RETURNED";
   if (s.includes("NOVEDAD") || s.includes("EXCEPCI")) return "EXCEPTION";
-  if (s.includes("TRANSITO") || s.includes("TRÁNSITO") || s.includes("CAMINO")) return "IN_TRANSIT";
-  if (s.includes("DESPACHAD") || s.includes("ADMITID")) return "DISPATCHED";
+  // Estados canónicos documentados (doc "Tipos de estados de envíos" + flujo
+  // sandbox avanzarEstado): GENERADA → PRODUCIDA → EN DESPACHO → EN REPARTO →
+  // ENTREGADA (+ EN NOVEDAD, ANULADA terminal). Antes "EN DESPACHO"/"EN REPARTO"
+  // no matcheaban nada → la orden jamás transicionaba a SHIPPED y una guía
+  // ANULADA quedaba "pendiente" para siempre (auditoría doc 2026-07-28).
+  if (s.includes("ANULAD") || s.includes("CANCEL")) return "EXCEPTION";
+  if (
+    s.includes("REPARTO") ||
+    s.includes("TRANSITO") ||
+    s.includes("TRÁNSITO") ||
+    s.includes("CAMINO")
+  )
+    return "IN_TRANSIT";
+  if (
+    s.includes("DESPACHO") ||
+    s.includes("DESPACHAD") ||
+    s.includes("ADMITID") ||
+    s.includes("PRODUCIDA")
+  )
+    return "DISPATCHED";
   return "PENDING";
 }

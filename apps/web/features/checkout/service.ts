@@ -485,6 +485,14 @@ export async function finalizeCheckout(input: {
       currency: "COP",
       customerEmail: state.contact.email,
       redirectUrl: input.redirectUrl,
+      // Prefill en el checkout hospedado (doc Wompi customer-data): el cliente
+      // no redigita nombre/teléfono/documento dentro de Wompi.
+      customer: {
+        fullName: state.contact.fullName,
+        phone: state.contact.phone,
+        legalIdType: state.contact.documentType,
+        legalId: state.contact.documentNumber,
+      },
     });
     logger.info({
       event: "checkout.finalize.success",

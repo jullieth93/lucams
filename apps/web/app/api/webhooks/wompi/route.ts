@@ -9,7 +9,9 @@
  *      Si ya estaba processed, devolver 200 sin re-procesar.
  *   4. Por status:
  *      - APPROVED → processPaidOrder (transitionOrder PAID + createShipment)
- *      - DECLINED/VOIDED/ERROR → processFailedPaymentOrder (transitionOrder CANCELLED)
+ *      - VOIDED → processFailedPaymentOrder (dinero capturado → refund/cancel)
+ *      - DECLINED/ERROR → noop: sin dinero movido, la orden queda PENDING_PAYMENT
+ *        (Wompi habilita reintento con la misma reference ~3 min — doc oficial)
  *      - PENDING → log y esperar próximo evento
  *   5. Marcar WebhookEvent.processedAt + devolver 200.
  *
@@ -65,15 +67,22 @@ export async function POST(req: Request) {
   }
 
   // 2.5) P1-011 (Lucy 2026-06-26) — Defensas anti-replay.
-  // (a) Timestamp dentro de ventana ±5 min: rechaza payload viejo capturado
-  //     por atacante y replay-eado después. Wompi sandbox envía timestamp Unix.
-  //     Toleramos drift de reloj y latencias razonables.
+  // (a) Ventana anti-replay de 25 h (antes 5 min — auditoría doc 2026-07-28):
+  //     Wompi REINTENTA el evento con el MISMO timestamp original a los 30 min /
+  //     3 h / 24 h si no recibe 200 (doc oficial de eventos; el timestamp va
+  //     DENTRO de la firma y NO puede cambiar entre reintentos). La ventana de
+  //     5 min mataba TODOS los reintentos legítimos con 401 → el evento se
+  //     perdía para siempre si la primera entrega fallaba (deploy, caída de DB).
+  //     La idempotencia real la da el dedup por eventKey (txId-status-timestamp):
+  //     un replay (atacante o reintento Wompi) cae en "already processed", y
+  //     forjar un timestamp nuevo rompe la firma. 25 h = horizonte máximo de
+  //     reintento documentado + margen.
   // (b) Environment match: rechaza un webhook prod en dev (o viceversa)
   //     incluso si por accidente las keys quedaron crossed entre entornos.
   //
   // Escape hatch para tests/smoke locales que firman timestamp viejo:
   // WOMPI_DISABLE_TIMESTAMP_CHECK=true bypasea la ventana.
-  const TIMESTAMP_WINDOW_SEC = 5 * 60; // 5 minutos
+  const TIMESTAMP_WINDOW_SEC = 25 * 60 * 60; // 25 horas
   const nowSec = Math.floor(Date.now() / 1000);
   const eventSec = Number(event.timestamp);
   const ageSec = Math.abs(nowSec - eventSec);
@@ -207,15 +216,26 @@ export async function POST(req: Request) {
         trackingNumber: result.trackingNumber ?? null,
         reason: result.reason ?? null,
       });
-    } else if (
-      transaction.status === "DECLINED" ||
-      transaction.status === "VOIDED" ||
-      transaction.status === "ERROR"
-    ) {
+    } else if (transaction.status === "VOIDED") {
       await processFailedPaymentOrder({
         orderId: order.id,
         wompiTransactionId: transaction.id,
         reason: transaction.status_message ?? transaction.status,
+      });
+    } else if (transaction.status === "DECLINED" || transaction.status === "ERROR") {
+      // Doc Wompi "reintento de pago": el checkout hospedado habilita al cliente
+      // a reintentar en ~3 min con la MISMA reference (una SEGUNDA transacción).
+      // Si cancelamos la orden al primer DECLINED, el APPROVED del reintento cae
+      // en una orden CANCELLED → reconciliación manual con copy de "reembolsar"
+      // sobre una venta legítima (auditoría doc 2026-07-28). Además la tienda
+      // reutiliza la orden PENDING_PAYMENT si el cliente vuelve a intentarlo
+      // (createOrderFromCart). En DECLINED/ERROR no se movió dinero: la orden
+      // queda esperando pago (visible en el resumen diario).
+      logger.info({
+        event: "webhook.wompi.declined_noop",
+        orderNumber: order.number,
+        txStatus: transaction.status,
+        statusMessage: transaction.status_message ?? null,
       });
     } else {
       // PENDING — Wompi enviará otro evento cuando finalice. Sólo log.

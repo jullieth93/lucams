@@ -110,6 +110,12 @@ export function buildCheckoutUrl(input: {
   customerEmail: string;
   redirectUrl: string;
   taxes?: { type: "VAT" | "CONSUMPTION"; amountInCents: number }[];
+  customer?: {
+    fullName?: string;
+    phone?: string;
+    legalIdType?: "CC" | "CE" | "NIT" | "PP" | "TI" | "DNI" | "RG" | "OTHER";
+    legalId?: string;
+  };
 }): string {
   const { publicKey } = getWompiConfig();
   const signature = generateIntegritySignature({
@@ -125,6 +131,25 @@ export function buildCheckoutUrl(input: {
     "signature:integrity": signature,
     "customer-data:email": input.customerEmail,
   });
+
+  // Prefill del comprador (doc widget-checkout-web paso 5): el checkout YA
+  // recolectó nombre/teléfono/documento — sin esto el cliente redigitaba todo
+  // dentro de Wompi (fricción → abandono; auditoría doc 2026-07-28).
+  const c = input.customer;
+  if (c?.fullName?.trim()) params.set("customer-data:full-name", c.fullName.trim());
+  if (c?.phone?.trim()) {
+    // Tienda solo Colombia: prefijo +57; el form guarda formato local (3XX…).
+    const digits = c.phone.replace(/\D/g, "");
+    const national = digits.length === 12 && digits.startsWith("57") ? digits.slice(2) : digits;
+    if (national.length >= 10) {
+      params.set("customer-data:phone-number-prefix", "57");
+      params.set("customer-data:phone-number", national.slice(-10));
+    }
+  }
+  if (c?.legalId?.trim() && c?.legalIdType) {
+    params.set("customer-data:legal-id", c.legalId.replace(/\D/g, ""));
+    params.set("customer-data:legal-id-type", c.legalIdType);
+  }
 
   // CloudFront WAF de Wompi bloquea (403) redirect-url que apunta a
   // localhost/127.0.0.1 (open-redirect protection). Verificado 2026-05-21

@@ -1089,3 +1089,36 @@ Probe en vivo contra cuenta `crittan01@gmail.com` ejecutado desde `packages/db/s
 ---
 
 **Fin del dossier.**
+
+---
+
+## 21. Auditoría doc-oficial 2026-07-28 (cambios aplicados)
+
+Re-lectura completa de `https://integraciones.aveonline.co/docs/` contra la implementación, en el contexto de la certificación E2E transaccional (orden sandbox real pagada con Wompi + guía generada). Cambios aplicados el mismo día en `apps/web/features/shipping/aveonline.ts`:
+
+### 21.1 Formas de pago de la guía — COD ya no cobra el flete dos veces 🔴→✅
+
+La tabla oficial de cotización ("Formas de pago de la guía") define `contraentrega` = "el **destinatario** asume el costo del **envío**" e `idasumecosto` = "el **destinatario** asume el costo del **recaudo**". Antes enviábamos `contraentrega=1, idasumecosto=1, valorrecaudo=order.total` (fila 2 de la tabla) → el mensajero cobraba `valorrecaudo` (que ya incluye el flete visto en checkout) **+ flete + fee de recaudo encima** → el cliente pagaba el flete DOS veces.
+
+Ahora, siempre `contraentrega=0, idasumecosto=0`:
+
+- Prepagada (Wompi) → fila 1: destinatario no paga nada.
+- COD → fila 5: el mensajero cobra exactamente `valorrecaudo` (= `order.total`); Lucams asume transporte + fee de recaudo en la liquidación (el fee es el costo de ofrecer COD).
+
+### 21.2 Modelo de empaque "caja apilada" (liquidación multi-producto) ✅
+
+Cotización y guía comparten ahora `computePackedPackage(items)`: UN bulto con peso Σ(peso×qty), espesor Σ(dim_menor×qty) y huella = máx de las dos dims mayores por item. Antes: cotización per-línea con qty solo en peso y guía con bounding-box máximo por eje → volumen sub-declarado con qty>1 (la transportadora re-mide y liquida en contra) y flete cotizado ≠ facturado. Con el modelo unificado: qty=2 **nunca duplica** el flete (una guía tarifada por peso/volumen real) y tampoco se sobredimensiona.
+
+### 21.3 Otros cambios aplicados
+
+- `relacion_envios: "1"` → `"0"`: declarábamos intención de relacionar y jamás creamos la relación (doc: 1=sí, 0=no).
+- `dscorreop` (requerido, error tipificado -13): validación temprana con error accionable si la orden no tiene email del destinatario.
+- `mapAveonlineStatus`: reconoce los estados canónicos documentados — `EN DESPACHO`→DISPATCHED, `EN REPARTO`/`TRANSITO`→IN_TRANSIT, `ANULADA`→EXCEPTION (antes el tracking intermedio no transicionaba nunca a SHIPPED y una guía anulada quedaba "pendiente" para siempre).
+- `dsnit` (placeholder sin CC del cliente): `"000001"` era rechazado en vivo ("Debe ser numérico, tener al menos 5 dígitos y ser mayor a 10000") → ahora `"100001"`. **Desviación doc-vs-vivo:** la doc no documenta restricción y su ejemplo usa `"00000"`; el sandbox valida más que la doc.
+
+### 21.4 Contradicciones doc-vs-código abiertas (requieren verificación con cuenta REAL)
+
+- **`bloquegenerarguia`:** la doc dice "Si desea generar la guia: 1. Si no: 0" y su ejemplo envía `"1"`; nuestro gate usa semántica inversa (`"1"`=no facturable/seguro, `"0"`=facturable) basada en un bug histórico "verificado en vivo". En sandbox con `"1"` SÍ se genera guía + PDF (no facturable). Resolver exige probe con la cuenta de producción (revisar cartera en el panel tras generar con cada valor). **No se toca hasta esa verificación.**
+- **`cotizarDoble`:** sigue sin aparecer en la doc oficial (solo `cotizar2`). Funciona en vivo (multi-carrier); contrato invisible — pedir spec formal a Aveonline.
+- **Webhook oficial:** existe registro por API (`/api-integrations/public/api/integrations/custom-webhook`) que devuelve un `token` de integración reenviado en cada notificación. Hoy usamos el endpoint legacy AveCRM + secret en query (deuda registrada en `route.ts`).
+- **Pendientes no críticos:** recogidas por API (`generarRecogida2`, hoy manual en panel), reimpresión de rótulo (API V3), entrega en oficina (`IdTipoEntrega="2"`), fechas `fechacreacion`/`fechanovedad` del webhook (formato con AM/PM no parseado — solo afecta dedup key).
