@@ -38,6 +38,11 @@ const nextConfig: NextConfig = {
         protocol: "https",
         hostname: "images.unsplash.com",
       },
+      {
+        // Placeholder de imágenes genéricas de tests/seeds (productos sin foto real aún).
+        protocol: "https",
+        hostname: "cdn.lucams.test",
+      },
     ],
   },
 

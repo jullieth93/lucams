@@ -26,7 +26,16 @@ importers:
 
   apps/web:
     dependencies:
+      '@img/sharp-libvips-linux-x64':
+        specifier: ^1.3.2
+        version: 1.3.2
+      '@img/sharp-libvips-linuxmusl-x64':
+        specifier: ^1.3.2
+        version: 1.3.2
       '@img/sharp-linux-x64':
+        specifier: ^0.35.3
+        version: 0.35.3
+      '@img/sharp-linuxmusl-x64':
         specifier: ^0.35.3
         version: 0.35.3
       '@lucams/db':
@@ -724,7 +733,6 @@ packages:
     resolution: {integrity: sha512-m0lrLiUt+lBYnCFr8qV/65yMR4E/c7/wf78I5eKTdkEakFAlZ9QlzEM3QIhhAwVeUhLAHLcCq7a7Vszq/oFNZQ==}
     cpu: [x64]
     os: [linux]
-    libc: [musl]
 
   '@img/sharp-linux-arm64@0.35.3':
     resolution: {integrity: sha512-QgKDspHPnrU+GQ55XPhGwyhC8acLVOOSyAvo1oVfFmrIXLkDNmGWzAfDZ4xK8oSA1qBQrALcHX0G5UZni/SuFQ==}
@@ -766,6 +774,7 @@ packages:
     engines: {node: '>=20.9.0'}
     cpu: [x64]
     os: [linux]
+    libc: [glibc]
 
   '@img/sharp-linuxmusl-arm64@0.35.3':
     resolution: {integrity: sha512-Vz0iQjzzcSX3HCbfwFfCSG/9SCIqyO0mH2sXyiHaAYfBk0cRsCWXRyQYX0ovCK/PAQBbTzQ0dsPQHh5MAFL59w==}
@@ -779,7 +788,6 @@ packages:
     engines: {node: '>=20.9.0'}
     cpu: [x64]
     os: [linux]
-    libc: [musl]
 
   '@img/sharp-wasm32@0.35.3':
     resolution: {integrity: sha512-cZ0XkcYGpHZkqW6iCkqTcmUC0CD9DhD5d/qeZlZkfRBn6GnHniZXLUo5+9xw8Iv76YE6LQFN9YNBlKREcCG76w==}
@@ -7089,14 +7097,12 @@ snapshots:
   '@img/sharp-libvips-linux-s390x@1.3.2':
     optional: true
 
-  '@img/sharp-libvips-linux-x64@1.3.2':
-    optional: true
+  '@img/sharp-libvips-linux-x64@1.3.2': {}
 
   '@img/sharp-libvips-linuxmusl-arm64@1.3.2':
     optional: true
 
-  '@img/sharp-libvips-linuxmusl-x64@1.3.2':
-    optional: true
+  '@img/sharp-libvips-linuxmusl-x64@1.3.2': {}
 
   '@img/sharp-linux-arm64@0.35.3':
     optionalDependencies:
@@ -7135,7 +7141,6 @@ snapshots:
   '@img/sharp-linuxmusl-x64@0.35.3':
     optionalDependencies:
       '@img/sharp-libvips-linuxmusl-x64': 1.3.2
-    optional: true
 
   '@img/sharp-wasm32@0.35.3':
     dependencies:
