@@ -403,22 +403,24 @@ function Scene({
   }
   // #16 — no autorrotar si el usuario pide reducir movimiento.
   const reduced = usePrefersReducedMotion();
-  // Ola 18 — el marcapáginas plano (Alargados) vive sobre la hoja derecha; acercamos la cámara
-  // para que la pieza se distinga claramente, sin perder el contexto del libro.
+  // Ola 18/19 — encuadre dinámico:
+  // - Alargados planos (pieza alta 12/15 cm): encuadre más holgado y centrado en la hoja
+  //   derecha para que la pieza completa sea visible.
+  // - Separadores doblados (pieza chica 2×6): encuadre más cercano para que la tira se lea.
   const fit = useMemo(() => {
-    if (!flat) return { ...BOOK_FIT, targetX: 0, targetZ: 0, margin: 1.12, minDistance: 5 };
-    // Ola 18 — la pieza de pie es alta (15 cm → ~4.5 u). Encuadre más holgado para que
-    // la pieza completa sea visible, no solo su base.
-    return {
-      halfW: 3.0,
-      halfH: 5.0,
-      polarDeg: 48,
-      targetY: 1.2,
-      targetX: PAGE_W / 2,
-      targetZ: 0,
-      margin: 1.05,
-      minDistance: 3.5,
-    };
+    if (flat) {
+      return {
+        halfW: 3.0,
+        halfH: 5.0,
+        polarDeg: 48,
+        targetY: 1.2,
+        targetX: PAGE_W / 2,
+        targetZ: 0,
+        margin: 1.05,
+        minDistance: 3.5,
+      };
+    }
+    return { ...BOOK_FIT, halfH: BOOK_FIT.halfH * 0.55, halfW: BOOK_FIT.halfW * 0.75, targetX: 0, targetZ: 0, margin: 1.12, minDistance: 5 };
   }, [flat]);
   return (
     <>

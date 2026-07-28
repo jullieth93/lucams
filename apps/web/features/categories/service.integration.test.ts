@@ -26,6 +26,10 @@
  * `dotenv -e .env.local -- vitest`); sin ella se salta (skipIf) para no romper
  * CI sin DB.
  *
+ * `next/cache.updateTag` se mockea a no-op: fuera de un Server Action real lanza
+ * ("can only be called from within a Server Action"). El service lo invoca tras
+ * cada mutación; aquí no nos interesa la revalidación sino el efecto en DB.
+ *
  * AISLAMIENTO ESTRICTO (nunca tocar datos reales — seed, productos de Lucy):
  *   - Todo registro de esta corrida lleva el prefijo único `RUN` en su slug
  *     (Category) / sku+slug (Product). La limpieza en afterAll borra EXACTAMENTE
@@ -46,7 +50,14 @@
  *   - Category.parent onDelete:Restrict → hard-delete de madre con hija → P2003.
  */
 
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
+
+vi.mock("next/cache", () => ({
+  updateTag: vi.fn(),
+  revalidateTag: vi.fn(),
+  revalidatePath: vi.fn(),
+}));
+
 import { Prisma, prisma } from "@/lib/db";
 import {
   CategoryValidationError,

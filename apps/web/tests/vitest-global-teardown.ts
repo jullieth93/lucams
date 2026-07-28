@@ -1,4 +1,7 @@
 import { PrismaClient } from "@lucams/db";
+import { config } from "dotenv";
+import { existsSync } from "node:fs";
+import { resolve } from "node:path";
 
 /**
  * Global teardown para la suite de vitest.
@@ -16,6 +19,15 @@ import { PrismaClient } from "@lucams/db";
  *
  * NOTA: esto NO sustituye a una DB de test dedicada (ideal). Es una red de
  * seguridad mientras no exista staging/test separado (ver vitest.config.ts).
+ *
+ * FIX 2026-07-28 — la red estaba rota en corridas LOCALES: el teardown corre en
+ * el proceso PRINCIPAL de vitest (globalSetup), pero `.env.local` se cargaba en
+ * `setup-env.ts`, que es un setupFile y solo corre en los WORKERS. Resultado:
+ * el proceso del teardown nunca veía DATABASE_URL/DIRECT_URL, se saltaba la
+ * limpieza ("se omite limpieza") y la basura de tests se acumulaba en la BD
+ * compartida hasta volverse visible en lucamsshop.com/productos (categorías
+ * "Cat cart…", ocasiones "itestoca…", "Ocasión Base" ×N). Acá el teardown carga
+ * el env él mismo (sin pisar vars ya inyectadas por la shell/CI).
  */
 
 const REAL_PRODUCT_SLUGS = [
@@ -60,11 +72,23 @@ const REAL_OCASION_SLUGS = [
 ];
 
 export async function setup() {
-  // No-op: la carga de env.local ya la hace setupFiles.
+  // No-op: el env que este proceso necesita lo carga teardown() directamente
+  // (los setupFiles solo corren en los workers, no acá).
 }
 
 export async function teardown() {
-  // El entorno CI inyecta DATABASE_URL; en local el setup-env.ts carga .env.local.
+  // El entorno CI inyecta DATABASE_URL/DIRECT_URL; en local hay que cargar .env.local
+  // ACÁ MISMO (ver nota del encabezado: los setupFiles no corren en este proceso).
+  // dotenv no pisa vars ya definidas → la shell/CI siempre mandan.
+  for (const envPath of [
+    resolve(__dirname, "../.env.local"),
+    resolve(__dirname, "../../../.env.local"),
+  ]) {
+    if (existsSync(envPath)) {
+      config({ path: envPath });
+      break;
+    }
+  }
   const url = process.env.DIRECT_URL || process.env.DATABASE_URL;
   if (!url) {
     console.warn("[vitest teardown] DIRECT_URL/DATABASE_URL no disponible; se omite limpieza.");

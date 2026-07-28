@@ -1,9 +1,14 @@
 /*
  * Tests de integración del SERVICE de PRODUCTOS (admin/catálogo) contra la DB real.
  *
- * `@/features/products/service.ts` es lógica de dominio PURA-de-next (solo Prisma
- * + tipos, sin next/* ni cookies): toda su superficie pega a la DB. Por eso es
- * 100% test de integración — NO hay nada determinista que mockear.
+ * `@/features/products/service.ts` es lógica de dominio casi-PURA-de-next (solo Prisma
+ * + tipos; la única excepción es `next/cache.updateTag` para invalidar el caché
+ * `catalog` tras cada mutación): toda su superficie pega a la DB. Por eso es
+ * 100% test de integración.
+ *
+ * `next/cache.updateTag` se mockea a no-op: fuera de un Server Action real lanza
+ * ("can only be called from within a Server Action"). El service lo invoca tras
+ * cada mutación; aquí no nos interesa la revalidación sino el efecto en DB.
  *
  * Cobertura:
  *   - listProducts: filtros (search por name/sku/slug, categoryId, status
@@ -40,7 +45,14 @@
  * y filtrables por prefijo.
  */
 
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
+
+vi.mock("next/cache", () => ({
+  updateTag: vi.fn(),
+  revalidateTag: vi.fn(),
+  revalidatePath: vi.fn(),
+}));
+
 import { prisma, type Prisma } from "@/lib/db";
 import {
   ProductValidationError,

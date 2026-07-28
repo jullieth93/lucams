@@ -1,4 +1,5 @@
 import "server-only";
+import { updateTag } from "next/cache";
 import { prisma } from "@/lib/db";
 import type { CategoryCreateInput } from "./schemas";
 
@@ -143,7 +144,7 @@ export async function createCategory(input: CategoryCreateInput, createdBy: stri
   // D3: orden auto = último de su grupo de hermanas + 1 (salvo que venga explícito).
   const order = input.order ?? (await nextOrderInGroup(parentId));
 
-  return prisma.category.create({
+  const created = await prisma.category.create({
     data: {
       name: input.name,
       slug: input.slug,
@@ -154,6 +155,8 @@ export async function createCategory(input: CategoryCreateInput, createdBy: stri
       ...(createdBy ? { createdBy } : {}),
     },
   });
+  updateTag("catalog");
+  return created;
 }
 
 export async function updateCategory(
@@ -190,7 +193,7 @@ export async function updateCategory(
     }
   }
 
-  return prisma.category.update({
+  const updated = await prisma.category.update({
     where: { id },
     data: {
       ...input,
@@ -198,6 +201,8 @@ export async function updateCategory(
       ...(updatedBy ? { updatedBy } : {}),
     },
   });
+  updateTag("catalog");
+  return updated;
 }
 
 /**
@@ -233,6 +238,7 @@ export async function moveCategory(id: string, direction: "up" | "down", actorId
       }),
     ),
   );
+  updateTag("catalog");
 }
 
 export async function softDeleteCategory(id: string, deletedBy: string | null) {
@@ -247,7 +253,7 @@ export async function softDeleteCategory(id: string, deletedBy: string | null) {
       `No se puede archivar: tiene ${productCount} producto(s) activo(s). Movelos a otra categoría primero.`,
     );
   }
-  return prisma.category.update({
+  const deleted = await prisma.category.update({
     where: { id },
     data: {
       deletedAt: new Date(),
@@ -255,12 +261,14 @@ export async function softDeleteCategory(id: string, deletedBy: string | null) {
       ...(deletedBy ? { deletedBy } : {}),
     },
   });
+  updateTag("catalog");
+  return deleted;
 }
 
 /** Restaura una categoría archivada. isActive queda false; admin la activa
  * explícito desde el listado para evitar que reaparezca en storefront sin querer. */
 export async function restoreCategory(id: string, restoredBy: string | null) {
-  return prisma.category.update({
+  const restored = await prisma.category.update({
     where: { id },
     data: {
       deletedAt: null,
@@ -269,6 +277,8 @@ export async function restoreCategory(id: string, restoredBy: string | null) {
       ...(restoredBy ? { updatedBy: restoredBy } : {}),
     },
   });
+  updateTag("catalog");
+  return restored;
 }
 
 /** Toggle isActive de una categoría (activar/desactivar sin archivar). */
@@ -277,8 +287,10 @@ export async function toggleCategoryActive(
   isActive: boolean,
   actorAdminId: string | null,
 ) {
-  return prisma.category.update({
+  const updated = await prisma.category.update({
     where: { id },
     data: { isActive, ...(actorAdminId ? { updatedBy: actorAdminId } : {}) },
   });
+  updateTag("catalog");
+  return updated;
 }

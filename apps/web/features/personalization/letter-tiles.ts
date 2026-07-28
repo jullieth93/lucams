@@ -39,16 +39,28 @@ export async function getLetterTilesForLanguage(language: string): Promise<Lette
  * El editor los ofrece como chips; el cliente elige el tema y ve las fichas al instante (WYSIWYG).
  */
 export async function listLetterStyles(language: string): Promise<LetterStyle[]> {
+  const expected = ALPHABET[language]?.length ?? 27;
   const sets = await prisma.letterTileSet.findMany({
-    where: { language, isActive: true, deletedAt: null, tiles: { some: {} } },
+    where: {
+      language,
+      isActive: true,
+      deletedAt: null,
+      OR: [{ isDefault: true }, { tiles: { some: {} } }],
+    },
     orderBy: [{ isDefault: "desc" }, { order: "asc" }],
     select: {
       id: true,
       name: true,
+      isDefault: true,
+      _count: { select: { tiles: true } },
       tiles: { select: { char: true, imageUrl: true, label: true } },
     },
   });
-  return sets.map((s) => ({ id: s.id, name: s.name, tiles: tilesToMap(s.tiles) }));
+  // Ola 19 — solo mostrar sets completos (todas las fichas del alfabeto). El default
+  // vacío se conserva para que el editor pueda degradar a letra plana.
+  return sets
+    .filter((s) => s.isDefault || s._count.tiles >= expected)
+    .map((s) => ({ id: s.id, name: s.name, tiles: tilesToMap(s.tiles) }));
 }
 
 /**
@@ -81,15 +93,27 @@ export async function listLetterThemeOptions(language: string): Promise<LetterTh
   const sets = await prisma.letterTileSet.findMany({
     where: { language, isActive: true, deletedAt: null },
     orderBy: [{ isDefault: "desc" }, { order: "asc" }],
-    select: { id: true, name: true, language: true, _count: { select: { tiles: true } } },
+    select: {
+      id: true,
+      name: true,
+      language: true,
+      isDefault: true,
+      _count: { select: { tiles: true } },
+    },
   });
-  return sets.map((s) => ({
-    id: s.id,
-    name: s.name,
-    theme: themeKeyFromSetName(s.name),
-    language: s.language,
-    tileCount: s._count.tiles,
-  }));
+  // Ola 19 (Lucy 2026-07-26) — solo ofrecer sets que tengan TODAS las fichas del alfabeto.
+  // Un set incompleto se veía "roto" en el Estudio (algunas letras ilustradas, otras planas).
+  // El default vacío se mantiene para que el cliente vea el hint "sube las ilustraciones".
+  const expected = ALPHABET[language]?.length ?? 27;
+  return sets
+    .filter((s) => s.isDefault || s._count.tiles >= expected)
+    .map((s) => ({
+      id: s.id,
+      name: s.name,
+      theme: themeKeyFromSetName(s.name),
+      language: s.language,
+      tileCount: s._count.tiles,
+    }));
 }
 
 // ──────────────────────── Admin ────────────────────────

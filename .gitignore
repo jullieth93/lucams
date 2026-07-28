@@ -131,3 +131,5 @@ gitleaks-report.json
 
 lucams_shop.code-workspace
 .vercel
+tmp/
+apps/web/tmp/

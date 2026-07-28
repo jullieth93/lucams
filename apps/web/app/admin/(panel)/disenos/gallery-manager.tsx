@@ -19,7 +19,8 @@ type Item = {
 };
 
 const TAGS = [
-  { value: "separadores", label: "Separadores para Libros" },
+  { value: "separadores-magneticos", label: "Separadores Magnéticos" },
+  { value: "separadores-alargados", label: "Separadores Alargados" },
   { value: "fotoimanes", label: "Fotoimanes" },
 ];
 

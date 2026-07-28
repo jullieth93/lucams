@@ -40,16 +40,14 @@ import {
   mergeVariantOverProduct,
   parseVariantAttributes,
 } from "@/features/products/variant-schemas";
-import {
-  renderProductionSlots,
-  RenderNeedsKonvaError,
-  type LoadAssetBytes,
-} from "./production-render";
-import {
-  renderProductionSlotsCanvas,
-  renderCalendarMonthPagesCanvas,
-} from "./production-render-canvas";
-import { composeFaceStrips } from "./bookmark-strips";
+// Los motores de render son módulos NATIVOS (production-render y bookmark-strips → sharp;
+// production-render-canvas → @napi-rs/canvas): se cargan con import() perezoso en cada punto
+// de uso, nunca estáticamente. Un import estático acá haría que TODA ruta que toque este
+// service (la PDP vía carrito/actions, estudio, carrito) cargue los binarios nativos al
+// arrancar la lambda — y si dlopen falla en el runtime serverless, la página entera devuelve
+// 500 aunque nunca renderice nada (caso real 2026-07-28: ERR_DLOPEN_FAILED libvips-cpp.so
+// tumbó /producto/* en Vercel). Mismo patrón que lib/photo-validation.ts y lib/storage.ts.
+import type { LoadAssetBytes } from "./production-render";
 import type { CanvasData, CanvasDataV1, CanvasDataV2 } from "./schemas";
 import type { z } from "zod";
 import type { SlotStateSchema } from "./schemas";
@@ -115,6 +113,34 @@ async function tryServerRenderProduction(
         err: err instanceof Error ? err.message : String(err),
       },
       "No se pudieron cargar assets para el render server — usando PNG del cliente",
+    );
+    return null;
+  }
+
+  // Carga perezosa de los motores nativos (sharp / @napi-rs/canvas) — ver nota en imports.
+  // Si el binario no carga en este runtime, el finalize continúa con los PNG del cliente.
+  let renderProductionSlots: typeof import("./production-render").renderProductionSlots;
+  let RenderNeedsKonvaError: typeof import("./production-render").RenderNeedsKonvaError;
+  let renderProductionSlotsCanvas: typeof import("./production-render-canvas").renderProductionSlotsCanvas;
+  let renderCalendarMonthPagesCanvas: typeof import("./production-render-canvas").renderCalendarMonthPagesCanvas;
+  try {
+    const [sharpEngine, canvasEngine] = await Promise.all([
+      import("./production-render"),
+      import("./production-render-canvas"),
+    ]);
+    renderProductionSlots = sharpEngine.renderProductionSlots;
+    RenderNeedsKonvaError = sharpEngine.RenderNeedsKonvaError;
+    renderProductionSlotsCanvas = canvasEngine.renderProductionSlotsCanvas;
+    renderCalendarMonthPagesCanvas = canvasEngine.renderCalendarMonthPagesCanvas;
+  } catch (err) {
+    logger.warn(
+      {
+        event: "design.finalize.server_render_error",
+        designId,
+        stage: "engine-load",
+        err: err instanceof Error ? err.message : String(err),
+      },
+      "Motores de render nativos no cargaron en este runtime — usando PNG del cliente",
     );
     return null;
   }
@@ -1048,6 +1074,8 @@ export async function finalizeDesign(opts: {
       try {
         // cornerRadiusPx del schema es en px LÓGICOS del stage de la cara; los buffers
         // están a escala de producción (×3, mismo factor que el snapshot del cliente).
+        // composeFaceStrips carga sharp (nativo) — import perezoso: ver nota en imports.
+        const { composeFaceStrips } = await import("./bookmark-strips");
         productionBuffers = await composeFaceStrips(productionBuffers, {
           cornerRadiusPx: (productConfig.cornerRadiusPx ?? 0) * 3,
         });
