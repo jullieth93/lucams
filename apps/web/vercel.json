@@ -1,4 +1,4 @@
 {
-  "installCommand": "pnpm install --arch=x64 --platform=linux",
+  "installCommand": "pnpm install --os=linux --cpu=x64",
   "buildCommand": "pnpm run build"
 }
