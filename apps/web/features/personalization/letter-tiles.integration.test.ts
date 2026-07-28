@@ -1,5 +1,5 @@
 /*
- * Integración — certificación end-to-end de las FICHAS (letter tiles, Ola 2A).
+ * Integración — certificación end-to-end de las FICHAS (letter tiles, Ola 2A + regla Ola 19).
  * Recorre el cableado real que usa el admin /admin/fichas y el Estudio:
  *
  *   createLetterSet (crear set) → uploadProductImage (subir PNG de prueba al bucket real)
@@ -7,8 +7,17 @@
  *   (lo que alimenta los chips del editor) → createLetterSetDesign con styleSetId+language
  *   (sobre el producto REAL "Pack Vocales") → finalizeDesign (preview + producción a Storage).
  *
+ * REGLA OLA 19 que se certifica acá (antes este test esperaba el comportamiento viejo y
+ * fallaba): el Estudio SOLO muestra sets con el alfabeto COMPLETO (27 fichas en "es");
+ * un set incompleto se oculta del editor (se veía "roto": letras ilustradas mezcladas con
+ * planas) pero SIGUE existiendo para el admin y para finalize. Por eso se crean DOS sets:
+ *   - set incompleto (2 fichas: A, E) → NO aparece en listLetterStyles/ThemeOptions,
+ *     pero sí en el grid del admin (getLetterSet) y sirve para el finalize de vocales.
+ *   - set completo (27 fichas) → SÍ aparece en ambos listados del editor, con tiles
+ *     mapeados por letra y URL pública servible (lo que el <img>/canvas necesita).
+ *
  * Sin assets reales: las fichas son PNGs de color sólido generados con sharp. Todos los
- * fixtures llevan prefijo RUN único y se borran en afterAll (set, tiles, diseño, objetos
+ * fixtures llevan prefijo RUN único y se borran en afterAll (sets, tiles, diseño, objetos
  * de storage). Comparte la Supabase de dev; salta si faltan llaves (CI sin Supabase).
  */
 
@@ -18,6 +27,7 @@ import { prisma } from "@/lib/db";
 import { supabaseService } from "@/lib/supabase/service";
 import { uploadProductImage } from "@/lib/storage";
 import {
+  ALPHABET,
   createLetterSet,
   upsertLetterTile,
   listLetterStyles,
@@ -29,6 +39,9 @@ import { createLetterSetDesign, finalizeDesign } from "./service";
 
 const RUN = `fichas${Date.now()}${Math.floor(Math.random() * 1e6)}`.toLowerCase();
 
+// Alfabeto "es" (27 letras, incluye Ñ) — fuente única para el set completo y las aserciones.
+const ES_ALPHABET = ALPHABET.es ?? [];
+
 const strip = (v: string | undefined) => v?.replace(/^["']|["']$/g, "");
 const canRunStorage = Boolean(
   strip(process.env.NEXT_PUBLIC_SUPABASE_URL) && strip(process.env.SUPABASE_SECRET_KEY),
@@ -37,8 +50,8 @@ const canRunStorage = Boolean(
 const storageCleanup: { bucket: string; paths: string[] }[] = [];
 
 let setId = "";
+let fullSetId = "";
 let designId = "";
-const tilePaths: string[] = [];
 
 /** PNG de color sólido 200×260 (ficha vertical de prueba). */
 async function solidTile(hex: string): Promise<Buffer> {
@@ -47,35 +60,56 @@ async function solidTile(hex: string): Promise<Buffer> {
     .toBuffer();
 }
 
+/** Sube una ficha de prueba al bucket real y la persiste (mismo path que uploadLetterTileAction). */
+async function uploadAndPersistTile(
+  targetSetId: string,
+  char: string,
+  hex: string,
+): Promise<string> {
+  const buf = await solidTile(hex);
+  const file = new File([new Uint8Array(buf)], `${char}.png`, { type: "image/png" });
+  const { path, publicUrl } = await uploadProductImage({ productId: targetSetId, file });
+  await upsertLetterTile({
+    setId: targetSetId,
+    char,
+    imageUrl: publicUrl,
+    label: `Prueba ${char}`,
+    adminId: `test-${RUN}`,
+  });
+  return path;
+}
+
 beforeAll(async () => {
-  // 1) Crear el set de prueba (misma función que createLetterSetAction del admin).
+  // 1) Set INCOMPLETO (2 fichas: A y E) — certifica la regla Ola 19 de ocultamiento.
   const set = await createLetterSet({
     name: `TEST ${RUN} · Español`,
     language: "es",
     adminId: `test-${RUN}`,
   });
   setId = set.id;
-
-  // 2) Subir 2 fichas (A y E) al bucket real — mismo path que uploadLetterTileAction.
+  const tilePaths: string[] = [];
   for (const [char, hex] of [
     ["A", "#5DD9D1"],
     ["E", "#E85B9F"],
   ] as const) {
-    const buf = await solidTile(hex);
-    const file = new File([new Uint8Array(buf)], `${char}.png`, { type: "image/png" });
-    const { path, publicUrl } = await uploadProductImage({ productId: setId, file });
-    tilePaths.push(path);
-    // 3) Persistir la ficha en DB (misma función que el admin action).
-    await upsertLetterTile({
-      setId,
-      char,
-      imageUrl: publicUrl,
-      label: `Prueba ${char}`,
-      adminId: `test-${RUN}`,
-    });
+    tilePaths.push(await uploadAndPersistTile(setId, char, hex));
   }
   storageCleanup.push({ bucket: "product-images", paths: tilePaths });
-});
+
+  // 2) Set COMPLETO (las 27 fichas del alfabeto "es") — certifica la exposición en el editor.
+  const fullSet = await createLetterSet({
+    name: `TEST ${RUN} Completo · Español`,
+    language: "es",
+    adminId: `test-${RUN}`,
+  });
+  fullSetId = fullSet.id;
+  const palette = ["#5DD9D1", "#E85B9F", "#7C6AAD", "#FFD93D", "#FF8A5C", "#8BC34A"];
+  const fullTilePaths: string[] = [];
+  for (const [i, char] of ES_ALPHABET.entries()) {
+    fullTilePaths.push(await uploadAndPersistTile(fullSetId, char, palette[i % palette.length]!));
+  }
+  storageCleanup.push({ bucket: "product-images", paths: fullTilePaths });
+}, 180_000); // 29 uploads reales a Supabase Storage: el default de 10s no alcanza.
 
 afterAll(async () => {
   const safe = (p: Promise<unknown>) => p.catch(() => {});
@@ -85,40 +119,47 @@ afterAll(async () => {
   if (designId) {
     await safe(prisma.design.deleteMany({ where: { id: designId } }));
   }
-  if (setId) {
-    await safe(prisma.letterTile.deleteMany({ where: { setId } }));
-    await safe(prisma.letterTileSet.deleteMany({ where: { id: setId } }));
+  for (const id of [setId, fullSetId]) {
+    if (id) {
+      await safe(prisma.letterTile.deleteMany({ where: { setId: id } }));
+      await safe(prisma.letterTileSet.deleteMany({ where: { id } }));
+    }
   }
 });
 
-describe.skipIf(!canRunStorage)("certificación fichas end-to-end (Ola 2A)", () => {
-  it("el set de prueba existe con sus 2 fichas (admin grid)", async () => {
+describe.skipIf(!canRunStorage)("certificación fichas end-to-end (Ola 2A + Ola 19)", () => {
+  it("el set incompleto existe con sus 2 fichas (admin grid)", async () => {
     const set = await getLetterSet(setId);
     expect(set).not.toBeNull();
     expect(set!.tiles.map((t) => t.char).sort()).toEqual(["A", "E"]);
   });
 
-  it("listLetterStyles lo expone al editor con las fichas mapeadas por letra", async () => {
+  it("listLetterStyles: oculta el set incompleto y expone el completo (regla Ola 19)", async () => {
     const styles = await listLetterStyles("es");
-    const mine = styles.find((s) => s.id === setId);
-    expect(mine).toBeDefined();
-    expect(mine!.tiles.A?.imageUrl).toContain("http");
-    expect(mine!.tiles.E?.label).toBe("Prueba E");
+    // Incompleto (2/27): NO se ofrece en el editor (se vería roto).
+    expect(styles.find((s) => s.id === setId)).toBeUndefined();
+    // Completo (27/27): SÍ se ofrece, con las fichas mapeadas por letra.
+    const full = styles.find((s) => s.id === fullSetId);
+    expect(full).toBeDefined();
+    expect(full!.tiles.A?.imageUrl).toContain("http");
+    expect(full!.tiles.E?.label).toBe("Prueba E");
+    expect(full!.tiles["Ñ"]?.imageUrl).toContain("http");
     // El fallback por idioma también lo puede resolver (default del idioma si aplica).
     const fallback = await getLetterTilesForLanguage("es");
     expect(typeof fallback).toBe("object");
   });
 
-  it("listLetterThemeOptions lo incluye con su conteo de fichas (selector de tema Ola 2A)", async () => {
+  it("listLetterThemeOptions: misma regla — solo el completo, con su conteo de fichas", async () => {
     const options = await listLetterThemeOptions("es");
-    const mine = options.find((o) => o.id === setId);
-    expect(mine).toBeDefined();
-    expect(mine!.tileCount).toBe(2);
+    expect(options.find((o) => o.id === setId)).toBeUndefined();
+    const full = options.find((o) => o.id === fullSetId);
+    expect(full).toBeDefined();
+    expect(full!.tileCount).toBe(ES_ALPHABET.length);
   });
 
   it("la URL pública de la ficha es servible (lo que el <img>/canvas del editor necesita)", async () => {
     const styles = await listLetterStyles("es");
-    const url = styles.find((s) => s.id === setId)!.tiles.A!.imageUrl;
+    const url = styles.find((s) => s.id === fullSetId)!.tiles.A!.imageUrl;
     const res = await fetch(url);
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toContain("image");
