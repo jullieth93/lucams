@@ -16,6 +16,7 @@
     "db:backup": "node scripts/backup-db-to-r2.mjs"
   },
   "dependencies": {
+    "@img/sharp-linux-x64": "^0.35.3",
     "@lucams/db": "workspace:*",
     "@napi-rs/canvas": "^1.0.2",
     "@react-three/drei": "^10.7.7",
