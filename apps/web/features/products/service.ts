@@ -5,11 +5,17 @@
  * sin imports de next/* ni @/lib/supabase. Solo Prisma + tipos.
  * Server actions llaman a este service.
  *
+ * Excepción deliberada: se importa `updateTag` de `next/cache` para
+ * invalidar el caché público del catálogo (unstable_cache tag "catalog")
+ * tras cada mutación — misma convención que features/ocasiones/service.ts
+ * y features/coupons/service.ts.
+ *
  * Soft delete: `deleteProduct` marca `deletedAt` (no hard delete).
  * Filtros: las queries de listado excluyen soft-deleted por default.
  */
 
 import "server-only";
+import { updateTag } from "next/cache";
 import { prisma, type Prisma } from "@/lib/db";
 import type { ProductCreateInput, ProductUpdateInput } from "./schemas";
 import { getEffectiveShippingDims } from "./shipping-schemas";
@@ -199,7 +205,7 @@ export async function createProduct(input: ProductCreateInput, createdBy: string
   // "Default" 1:1 con price=null (hereda basePrice) y stock=0 (sin
   // enforcement). Cuando se sumen variantes reales se reemplazan o
   // expanden.
-  return prisma.$transaction(async (tx) => {
+  const created = await prisma.$transaction(async (tx) => {
     const product = await tx.product.create({
       data: {
         name: input.name,
@@ -248,6 +254,8 @@ export async function createProduct(input: ProductCreateInput, createdBy: string
     });
     return product;
   });
+  updateTag("catalog");
+  return created;
 }
 
 export async function updateProduct(input: ProductUpdateInput, updatedBy: string | null) {
@@ -295,7 +303,7 @@ export async function updateProduct(input: ProductUpdateInput, updatedBy: string
 
   // idealFor es Json — necesita tratamiento especial para tipos Prisma.
   const { idealFor, ...restWithoutJson } = restNoShipping;
-  return prisma.product.update({
+  const updated = await prisma.product.update({
     where: { id },
     data: {
       ...restWithoutJson,
@@ -304,10 +312,12 @@ export async function updateProduct(input: ProductUpdateInput, updatedBy: string
       ...(updatedBy ? { updatedBy } : {}),
     },
   });
+  updateTag("catalog");
+  return updated;
 }
 
 export async function softDeleteProduct(id: string, deletedBy: string | null) {
-  return prisma.product.update({
+  const deleted = await prisma.product.update({
     where: { id },
     data: {
       deletedAt: new Date(),
@@ -315,12 +325,14 @@ export async function softDeleteProduct(id: string, deletedBy: string | null) {
       isActive: false, // dejarlo invisible al storefront además del soft delete
     },
   });
+  updateTag("catalog");
+  return deleted;
 }
 
 /** Restaura un producto archivado (deletedAt = null). isActive queda en false
  * por seguridad — admin debe revisarlo + activarlo explícito. */
 export async function restoreProduct(id: string, restoredBy: string | null) {
-  return prisma.product.update({
+  const restored = await prisma.product.update({
     where: { id },
     data: {
       deletedAt: null,
@@ -329,6 +341,8 @@ export async function restoreProduct(id: string, restoredBy: string | null) {
       ...(restoredBy ? { updatedBy: restoredBy } : {}),
     },
   });
+  updateTag("catalog");
+  return restored;
 }
 
 /** Toggle isActive de un producto (activa/desactiva sin archivar). */
@@ -378,10 +392,12 @@ export async function toggleProductActive(
 ) {
   // Al PUBLICAR: exigir dims de envío (sino la cotización del cliente falla).
   if (isActive) await assertProductsQuotable([id]);
-  return prisma.product.update({
+  const updated = await prisma.product.update({
     where: { id },
     data: { isActive, ...(actorAdminId ? { updatedBy: actorAdminId } : {}) },
   });
+  updateTag("catalog");
+  return updated;
 }
 
 /**
@@ -403,6 +419,7 @@ export async function bulkUpdateProductsActive(
     where: { id: { in: ids }, deletedAt: null },
     data: { isActive, ...(actorAdminId ? { updatedBy: actorAdminId } : {}) },
   });
+  updateTag("catalog");
   return { count: result.count };
 }
 
@@ -421,6 +438,7 @@ export async function bulkUpdateProductsFeatured(
     where: { id: { in: ids }, deletedAt: null },
     data: { isFeatured, ...(actorAdminId ? { updatedBy: actorAdminId } : {}) },
   });
+  updateTag("catalog");
   return { count: result.count };
 }
 
@@ -518,6 +536,7 @@ export async function syncProductBasePrice(productId: string): Promise<void> {
           : null,
     },
   });
+  updateTag("catalog");
 }
 
 export async function createVariant(input: VariantCreateInput, createdBy: string | null) {
@@ -542,6 +561,7 @@ export async function createVariant(input: VariantCreateInput, createdBy: string
     },
   });
   await syncProductBasePrice(input.productId);
+  updateTag("catalog");
   return created;
 }
 
@@ -568,6 +588,7 @@ export async function updateVariant(input: VariantUpdateInput, updatedBy: string
     },
   });
   await syncProductBasePrice(updated.productId);
+  updateTag("catalog");
   return updated;
 }
 
@@ -602,6 +623,7 @@ export async function softDeleteVariant(id: string, deletedBy: string | null) {
     },
   });
   await syncProductBasePrice(variant.productId);
+  updateTag("catalog");
   return deleted;
 }
 
