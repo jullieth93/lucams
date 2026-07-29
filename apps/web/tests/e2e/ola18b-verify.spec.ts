@@ -35,7 +35,7 @@ test("ola18b: Cuadrados (7.5×10) y Tiras (3/4 fotos) + estudio tira 4 fotos", a
 
   // Estudio Tiras 4 fotos (variante por query param si aplica deep-link, si no, el default)
   const variant4 = await page.evaluate(async () => {
-    const r = await fetch("/api/catalog/producto/tiras-magneticas-fotos").catch(() => null);
+    const r = await fetch("/api/catalog/products/tiras-magneticas-fotos").catch(() => null);
     return r ? "ok" : null;
   });
   void variant4;

@@ -78,6 +78,17 @@ async function login(page: import("@playwright/test").Page) {
 }
 
 test.describe("admin transaccional (modo full)", () => {
+  test("/admin/dashboard renderiza con la tarjeta operativa 'Por producir / enviar'", async ({
+    page,
+  }) => {
+    await login(page);
+    // El login aterriza en el dashboard: el RSC debe renderizar (sin error
+    // boundary) y mostrar la tarjeta que mide el trabajo real de Lucy
+    // (pedidos PAID + FULFILLING — certificación 2026-07-29, 2ª pasada).
+    await expect(page.getByText(/por producir/i).first()).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByText(/algo salió mal/i)).toHaveCount(0);
+  });
+
   test("/admin/pedidos lista la orden PAID real con su número", async ({ page }) => {
     await login(page);
     await page.goto("/admin/pedidos");
