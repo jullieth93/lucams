@@ -64,12 +64,22 @@ async function generateOrderNumber(tx: Prisma.TransactionClient): Promise<string
   // es de baja frecuencia (nunca en el hot path de render) → serializarla es inocuo.
   await tx.$executeRaw`SELECT pg_advisory_xact_lock(918273)`;
   const year = new Date().getFullYear();
-  const yearStart = new Date(year, 0, 1);
-  const yearEnd = new Date(year + 1, 0, 1);
-  const count = await tx.order.count({
-    where: { createdAt: { gte: yearStart, lt: yearEnd } },
+  // max(number)+1, NO count()+1 (certificación 2026-07-29, 2ª pasada): count() se
+  // descuadra del último número cuando hay HARD deletes (teardowns de tests,
+  // purgas operativas) — count+1 aterriza sobre un número ya ocupado por una
+  // orden soft-deleted y colisiona en TODOS los reintentos (tormenta de P2002
+  // detectada en la suite: 356 reintentos en un solo archivo). El máximo real
+  // es inmune a huecos y a borrados. Los números de seed de tests que no
+  // siguen el formato (LCM-SAGA-…) no calzan el startsWith y no cuentan.
+  const prefix = `LCM-${year}-`;
+  const last = await tx.order.findFirst({
+    where: { number: { startsWith: prefix } },
+    orderBy: { number: "desc" },
+    select: { number: true },
   });
-  return `LCM-${year}-${String(count + 1).padStart(4, "0")}`;
+  const lastSeq = last ? Number.parseInt(last.number.slice(prefix.length), 10) : 0;
+  const nextSeq = (Number.isNaN(lastSeq) ? 0 : lastSeq) + 1;
+  return `${prefix}${String(nextSeq).padStart(4, "0")}`;
 }
 
 export type CreateOrderFromCartInput = {
@@ -123,11 +133,13 @@ export async function createOrderFromCart(
   assertTransactionalAllowed("createOrderFromCart");
 
   // #15 (post-launch Bloque A) — retry sobre colisión de Order.number.
-  // generateOrderNumber usa count()+1: dos checkouts concurrentes de carts
-  // DISTINTOS pueden calcular el mismo número → P2002 en Order.number. Antes
-  // eso reventaba con error genérico (venta perdida). Reintentamos hasta 10×;
-  // el count() siguiente ya ve la orden ganadora y avanza el número. 10 cubre
-  // hasta 10 checkouts simultáneos en el mismo boundary (holgado para Instagram).
+  // generateOrderNumber usa max(number)+1 bajo advisory lock transaccional; aun
+  // así, dos checkouts concurrentes de carts DISTINTOS podrían calcular el mismo
+  // número si uno lee antes del commit del otro (lectura fuera del lock en
+  // lecturas viejas) → P2002 en Order.number. Antes eso reventaba con error
+  // genérico (venta perdida). Reintentamos hasta 10×; el max() siguiente ya ve
+  // la orden ganadora y avanza el número. 10 cubre hasta 10 checkouts
+  // simultáneos en el mismo boundary (holgado para Instagram).
   const MAX_NUMBER_RETRIES = 10;
   for (let attempt = 1; attempt <= MAX_NUMBER_RETRIES; attempt++) {
     try {
