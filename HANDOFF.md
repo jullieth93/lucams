@@ -97,19 +97,25 @@ Tests que exigen Supabase real (Storage/PostgREST/GoTrue): **skip cuando `NEXT_P
 
 ---
 
-## 5. Próximos Pasos (en orden)
+## 5. Próximos Pasos
 
-1. **Go-live master** (sin cambios — cuando el negocio decida):
-   a. Vercel (scope Production): `WOMPI_ENV=prod` + 4 llaves Wompi PRODUCCIÓN.
+### 5a. Decisiones que dependen de ti (negocio)
+
+1. **Go-live master** — cuándo activar la tienda transaccional como producción. Al decidirlo, este es el checklist (lo ejecuto yo; de ti solo necesito llaves y respuestas):
+   a. Vercel (scope Production): `WOMPI_ENV=prod` + 4 llaves Wompi PRODUCCIÓN (se consiguen en el dashboard Wompi prod).
    b. Dashboard Wompi PROD: URL de Eventos → `https://lucamsshop.com/api/webhooks/wompi` (dominio propio = exento de SSO).
-   c. Verificar `AVEONLINE_*` producción + credenciales reales activas.
-   d. **Verificación `bloquegenerarguia` con la cuenta REAL** ANTES de `AVEONLINE_GENERATE_REAL=true` (semántica inversa histórica; generar una guía con cada valor y revisar cartera en el panel). Registrar en `docs/INTEGRATIONS_AVEONLINE.md` §21.4.
-   e. **Decisión contable IVA**: si Lucy es responsable de IVA, cablear `tax-in-cents:vat` en `finalizeCheckout`.
+   c. Credenciales `AVEONLINE_*` de PRODUCCIÓN activas en Vercel (reemplazar las sandbox).
+   d. **IVA**: confirmar con el contador si Lucy es responsable de IVA → si sí, cableo `tax-in-cents:vat` en `finalizeCheckout` (el campo ya existe; no suma al total).
+   e. **Verificación `bloquegenerarguia` con la cuenta REAL** ANTES de `AVEONLINE_GENERATE_REAL=true` (semántica inversa histórica; genero una guía con cada valor y revisamos cartera en el panel Aveonline). Registro en `docs/INTEGRATIONS_AVEONLINE.md` §21.4.
    f. Merge `develop` → `master`.
-2. **Supabase test/staging separado** (decisión aplazada desde Fase A). Cuando exista: **apretar cobertura** (functions 68.5→70, statements 69.5→70) — los tests Supabase-real volverán a correr en CI.
-3. **sharp 0.35.x**: NO subir sin deploy de verificación en Vercel (PDP con imágenes + lambda render). La GHSA queda mitigada por `sharp-safe`; las PRs de seguridad de sharp se trian a mano una a una.
-4. **Backlog no bloqueante** (informe Fase B §4): recogidas por API (`generarRecogida2`), reimpresión de rótulo (API V3), entrega en oficina (`IdTipoEntrega=2`), polling en PendingPage, `expiration-time` en checkout (va en la firma en el MISMO PR), persistir `payment_method_type`/`status_message` en Order, migrar webhook Aveonline al token oficial, fechas `fechacreacion`/`fechanovedad`, spec formal de `cotizarDoble`, guard de monto máximo Wompi vs contrato real.
-5. **Dependabot**: corre los lunes; los próximos grupos llegan sobre develop verde. La config vive en la rama default (`develop`).
+2. **Supabase test/staging separado** (aplazada desde Fase A) — decidir si se crea un proyecto Supabase aparte para tests/staging (hoy dev=prod en uno solo). Cuando exista: aprieto la cobertura (functions 68.5→70, statements 69.5→70) porque los tests Supabase-real vuelven a correr en CI.
+3. **Seguimiento comercial**: 8 cotizaciones reales de "Cristian" (hasta $12.8M COP) intactas en producción — leads de negocio para verificar/contactar (Fase A §8).
+
+### 5b. Trabajo técnico pendiente (mío, sin decisión previa)
+
+1. **Backlog no bloqueante** (informe Fase B §4): recogidas por API (`generarRecogida2`), reimpresión de rótulo (API V3), entrega en oficina (`IdTipoEntrega=2`), polling en PendingPage, `expiration-time` en checkout (va en la firma en el MISMO PR), persistir `payment_method_type`/`status_message` en Order, migrar webhook Aveonline al token oficial, fechas `fechacreacion`/`fechanovedad`, spec formal de `cotizarDoble` a Aveonline, guard de monto máximo Wompi vs contrato real.
+2. **sharp 0.35.x**: NO subir sin deploy de verificación en Vercel (PDP con imágenes + lambda render). La GHSA queda mitigada por `sharp-safe`; las PRs de seguridad de sharp se trian a mano una a una.
+3. **Dependabot**: corre los lunes; los próximos grupos llegan sobre develop verde. La config vive en la rama default (`develop`).
 
 ---
 
