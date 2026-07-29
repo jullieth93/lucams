@@ -155,6 +155,7 @@ import { prisma } from "@/lib/db";
 import {
   CheckoutError,
   calculateTotals,
+  destinationKeyOf,
   finalizeCheckout,
   loadCheckoutContext,
   quoteShipping,
@@ -163,8 +164,9 @@ import {
   saveShippingSelectionStep,
   savePaymentMethodStep,
   finishCheckoutSession,
+  sealShippingOffers,
 } from "./service";
-import { getCheckoutState } from "@/lib/checkout-session";
+import { getCheckoutState, sealShippingOffersPayload } from "@/lib/checkout-session";
 
 const hasDb = Boolean(process.env.DATABASE_URL);
 
@@ -379,7 +381,15 @@ describe("step savers — persisten state firmado en la cookie (round-trip HMAC)
     async () => {
       await saveContactStep(validContact);
       await saveAddressStep(validUrbanAddress, { wantsInvoice: false });
-      await saveShippingSelectionStep(validShippingSelection);
+      // Token sellado manual (acá no hay carrito sembrado — no hace falta: la
+      // validación de saveShippingSelectionStep es token + destino, sin DB).
+      const token = sealShippingOffersPayload({
+        offers: [validShippingSelection],
+        cartHash: "sin-carrito-en-este-test",
+        destKey: destinationKeyOf(validUrbanAddress),
+        quotedAt: Date.now(),
+      });
+      await saveShippingSelectionStep(validShippingSelection, token);
       await savePaymentMethodStep("WOMPI");
 
       const state = await getCheckoutState();
@@ -388,9 +398,59 @@ describe("step savers — persisten state firmado en la cookie (round-trip HMAC)
       expect(state?.address?.city).toBe("Bogotá");
       expect(state?.billing?.wantsInvoice).toBe(false);
       expect(state?.shippingSelection?.carrier).toBe("envia");
+      // El set sellado queda persistido para el re-chequeo de finalizeCheckout.
+      expect(state?.shippingOffers?.offers[0]?.quoteId).toBe(validShippingSelection.quoteId);
       expect(state?.paymentMethod).toBe("WOMPI");
       // savePaymentMethodStep fija step=3.
       expect(state?.step).toBe(3);
+    },
+  );
+
+  it.skipIf(!hasSecret)(
+    "SEGURIDAD (anti-manipulación de flete): rechaza fleteCop alterado aunque pase la estructura Zod",
+    async () => {
+      await saveAddressStep(validUrbanAddress, { wantsInvoice: false });
+      const token = sealShippingOffersPayload({
+        offers: [validShippingSelection],
+        cartHash: "sin-carrito-en-este-test",
+        destKey: destinationKeyOf(validUrbanAddress),
+        quotedAt: Date.now(),
+      });
+      // El cliente manipuló el hidden input fleteCop (15_000 → 0): no hay match
+      // exacto contra el set sellado → SHIPPING_SELECTION_INVALID.
+      await expect(
+        saveShippingSelectionStep({ ...validShippingSelection, fleteCop: 0 }, token),
+      ).rejects.toMatchObject({ code: "SHIPPING_SELECTION_INVALID" });
+      // Y la cookie NO quedó con la selección manipulada.
+      expect((await getCheckoutState())?.shippingSelection).toBeUndefined();
+    },
+  );
+
+  it.skipIf(!hasSecret)(
+    "SEGURIDAD (anti-manipulación de flete): rechaza un offersToken forjado o de otro destino",
+    async () => {
+      await saveAddressStep(validUrbanAddress, { wantsInvoice: false });
+      // (a) Token con firma corrupta.
+      const bueno = sealShippingOffersPayload({
+        offers: [validShippingSelection],
+        cartHash: "x",
+        destKey: destinationKeyOf(validUrbanAddress),
+        quotedAt: Date.now(),
+      });
+      const forjado = bueno.slice(0, bueno.lastIndexOf(".") + 1) + "deadbeefdeadbeef";
+      await expect(
+        saveShippingSelectionStep(validShippingSelection, forjado),
+      ).rejects.toMatchObject({ code: "SHIPPING_SELECTION_INVALID" });
+      // (b) Token válido pero sellado para OTRO destino (Tunja) que el de la cookie (Bogotá).
+      const otroDestino = sealShippingOffersPayload({
+        offers: [validShippingSelection],
+        cartHash: "x",
+        destKey: destinationKeyOf(validRuralAddress),
+        quotedAt: Date.now(),
+      });
+      await expect(
+        saveShippingSelectionStep(validShippingSelection, otroDestino),
+      ).rejects.toMatchObject({ code: "SHIPPING_SELECTION_INVALID" });
     },
   );
 
@@ -801,7 +861,15 @@ describe.skipIf(!hasDb)("checkout/service — integración DB (ruta de ingresos)
     if (!over?.skipContact) await saveContactStep(validContact);
     if (!over?.skipAddress)
       await saveAddressStep(over?.address ?? validUrbanAddress, { wantsInvoice: false });
-    if (!over?.skipShipping) await saveShippingSelectionStep(validShippingSelection);
+    if (!over?.skipShipping && !over?.skipAddress) {
+      // Mismo sello que emite la página /checkout/envio (requiere la cookie de
+      // cart ya puesta + address guardada: cartHash y destKey salen del ctx real).
+      // Con skipAddress no se siembra shipping: en producción ese estado es
+      // inalcanzable (la página de envío exige dirección para cotizar) y el
+      // guard de finalize por dirección faltante dispara ANTES que el de envío.
+      const token = await sealShippingOffers({ offers: [validShippingSelection] });
+      await saveShippingSelectionStep(validShippingSelection, token);
+    }
     if (!over?.skipPayment) await savePaymentMethodStep(over?.paymentMethod ?? "WOMPI");
   }
 
@@ -1029,11 +1097,17 @@ describe.skipIf(!hasDb)("checkout/service — integración DB (ruta de ingresos)
 
       // Cambiar email Y total (flete distinto) para el 2º finalize.
       await saveContactStep({ ...validContact, email: `${RUN}-changed@lucams.test` });
-      await saveShippingSelectionStep({
+      const selection2 = {
         ...validShippingSelection,
         fleteCop: 99_000,
         quoteId: `${RUN}-quote-2`,
-      });
+      };
+      // Re-selección legítima: el carrito no cambió → cartHash sigue igual, así que
+      // el nuevo sello (con el flete nuevo) pasa el re-chequeo de finalizeCheckout.
+      await saveShippingSelectionStep(
+        selection2,
+        await sealShippingOffers({ offers: [selection2] }),
+      );
       const second = await finalizeCheckout({ redirectUrl: "https://x.test" });
 
       // Misma Order (mismo id/número): el unique parcial garantiza que no se cree una segunda; se
@@ -1058,6 +1132,29 @@ describe.skipIf(!hasDb)("checkout/service — integración DB (ruta de ingresos)
       expect(paymentCalls[1].reference).toBe(first.orderNumber);
       expect(paymentCalls[0].amountInCents).toBe(115_000);
       expect(paymentCalls[1].amountInCents).toBe(199_000);
+    }, 30000);
+
+    it("SEGURIDAD (anti-flete obsoleto): si el carrito cambia DESPUÉS de seleccionar envío, finalize rechaza y no crea la Order", async () => {
+      // Escenario real de 2 pestañas: el cliente cotiza y elige envío en la pestaña A,
+      // agrega otro item en la pestaña B y paga en A. El flete cotizado ya no cubre el
+      // peso real → finalizeCheckout debe rebotar a re-cotizar, no cobrar de menos.
+      const sid = uuid();
+      const { cartId } = await createCartWithItem({ sessionId: sid, qty: 2, unitPrice: 50_000 });
+      setCartCookie(sid);
+      await seedFullState();
+
+      // El carrito cambia tras la cotización (otro item en otra pestaña).
+      await prisma.cartItem.create({
+        data: { cartId, variantId: variantWithDims, qty: 1, unitPrice: 10_000 },
+      });
+
+      await expect(finalizeCheckout({ redirectUrl: "https://x.test" })).rejects.toMatchObject({
+        name: "CheckoutError",
+        code: "SHIPPING_SELECTION_INVALID",
+      });
+      // No se creó NINGUNA Order ni se invocó el gateway de pago.
+      expect(await prisma.order.count({ where: { email: { contains: RUN } } })).toBe(0);
+      expect(paymentCalls).toHaveLength(0);
     }, 30000);
   });
 });

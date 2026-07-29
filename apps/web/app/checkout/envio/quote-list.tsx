@@ -9,10 +9,13 @@ import type { ShippingSelectionInput } from "@/features/checkout/schemas";
 
 export function QuoteList({
   quotes,
+  offersToken,
   preselectedQuoteId,
   onSelectionChange,
 }: {
   quotes: ShippingSelectionInput[];
+  /** Set de cotizaciones sellado HMAC por el servidor (anti-manipulación de flete). */
+  offersToken: string;
   preselectedQuoteId?: string;
   onSelectionChange?: (quoteId: string) => void;
 }) {
@@ -103,7 +106,10 @@ export function QuoteList({
         </span>
       </p>
 
-      {/* Hidden fields del seleccionado */}
+      {/* Hidden fields del seleccionado + sello HMAC del set de cotizaciones
+          (el server action valida la selección contra ESTE set firmado — los
+          campos sueltos son solo eco visual, no se confía en ellos). */}
+      <input type="hidden" name="offersToken" value={offersToken} />
       {chosen && (
         <>
           <input type="hidden" name="carrier" value={chosen.carrier} />

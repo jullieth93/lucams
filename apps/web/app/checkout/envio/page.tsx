@@ -19,6 +19,7 @@ import {
   loadCheckoutContext,
   assertCheckoutAvailability,
   quoteShipping,
+  sealShippingOffers,
 } from "@/features/checkout/service";
 import { logger } from "@/lib/logger";
 import { formatCityDept } from "@/lib/format";
@@ -93,6 +94,14 @@ export default async function CheckoutEnvioPage({
     quoteErrorMessage = "No pudimos cotizar el envío en este momento.";
   }
 
+  // Sellar el set de cotizaciones ofrecidas (HMAC) para que viaje por el form como
+  // hidden input `offersToken`: selectShippingAction solo acepta una selección que
+  // coincida EXACTAMENTE con una de estas cotizaciones (anti-manipulación de flete —
+  // certificación 2026-07-29). La RSC no puede escribir cookies, por eso el set
+  // firmado hace ida y vuelta dentro del HTML.
+  const offersToken =
+    quotes && quotes.length > 0 ? await sealShippingOffers({ offers: quotes, ctx }) : null;
+
   return (
     <div className="mx-auto max-w-6xl">
       <CheckoutStepper current={2} />
@@ -144,6 +153,7 @@ export default async function CheckoutEnvioPage({
           <EnvioStep
             cart={ctx.cart}
             quotes={quotes}
+            offersToken={offersToken!}
             preselectedQuoteId={ctx.state.shippingSelection?.quoteId}
             destinationCity={ctx.state.address.city}
             destinationDepartment={ctx.state.address.department}

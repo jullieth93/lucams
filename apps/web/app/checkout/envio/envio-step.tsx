@@ -22,12 +22,15 @@ import type { CartDetail } from "@/features/cart/service";
 export function EnvioStep({
   cart,
   quotes,
+  offersToken,
   preselectedQuoteId,
   destinationCity,
   destinationDepartment,
 }: {
   cart: CartDetail;
   quotes: ShippingSelectionInput[];
+  /** Set de cotizaciones sellado HMAC por el servidor (anti-manipulación de flete). */
+  offersToken: string;
   preselectedQuoteId?: string;
   destinationCity: string;
   destinationDepartment: string;
@@ -53,6 +56,7 @@ export function EnvioStep({
           </p>
           <QuoteList
             quotes={quotes}
+            offersToken={offersToken}
             preselectedQuoteId={selectedQuoteId ?? undefined}
             onSelectionChange={setSelectedQuoteId}
           />

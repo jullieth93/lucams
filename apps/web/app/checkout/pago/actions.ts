@@ -122,6 +122,13 @@ export async function payWompiAction(formData: FormData): Promise<void> {
       logger.info({ event: "checkout.pago.coupon_invalidated_bounce", method: "WOMPI" });
       redirect(`/checkout/pago?couponNotice=${encodeURIComponent(err.message)}`);
     }
+    // Flete manipulado u obsoleto (carrito/dirección cambiaron tras cotizar —
+    // certificación 2026-07-29): volver al step de envío a re-cotizar. El mensaje
+    // de SHIPPING_SELECTION_INVALID es customer-safe (es-CO, tuteo).
+    if (err instanceof CheckoutError && err.code === "SHIPPING_SELECTION_INVALID") {
+      logger.warn({ event: "checkout.pago.shipping_selection_invalid", method: "WOMPI" });
+      redirect(`/checkout/envio?error=${encodeURIComponent(err.message)}`);
+    }
     const msg = safeCheckoutMessage(
       err,
       "No pudimos iniciar el pago en este momento. Inténtalo de nuevo en unos minutos.",
@@ -215,6 +222,11 @@ export async function payCodAction(formData: FormData): Promise<void> {
     if (err instanceof CheckoutError && err.code === "COUPON_INVALIDATED") {
       logger.info({ event: "checkout.pago.coupon_invalidated_bounce", method: "COD" });
       redirect(`/checkout/pago?couponNotice=${encodeURIComponent(err.message)}`);
+    }
+    // Flete manipulado u obsoleto — ver payWompiAction. El mensaje es customer-safe.
+    if (err instanceof CheckoutError && err.code === "SHIPPING_SELECTION_INVALID") {
+      logger.warn({ event: "checkout.pago.shipping_selection_invalid", method: "COD" });
+      redirect(`/checkout/envio?error=${encodeURIComponent(err.message)}`);
     }
     const msg = safeCheckoutMessage(
       err,

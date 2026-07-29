@@ -93,12 +93,34 @@ export type ShippingSelection = {
   quoteId: string;
 };
 
+/**
+ * Set de cotizaciones de envío que el SERVIDOR ofreció en el step 2
+ * (anti-manipulación de flete — certificación 2026-07-29). Viaja en 2 sitios:
+ *   1. Hidden input `offersToken` del form de /checkout/envio, sellado HMAC
+ *      (sealShippingOffersPayload) — la página RSC no puede escribir cookies,
+ *      así que el set firmado hace ida y vuelta dentro del HTML.
+ *   2. Este campo en la cookie (lo escribe saveShippingSelectionStep, una
+ *      Server Action que SÍ puede) — finalizeCheckout lo re-valida antes de
+ *      crear la Order (el carrito/destino pudo cambiar tras seleccionar).
+ */
+export type ShippingOffersPayload = {
+  /** Cotizaciones EXACTAS ofrecidas (fuente de verdad del flete). */
+  offers: ShippingSelection[];
+  /** Huella del carrito (variantId/qty/unitPrice) al cotizar. */
+  cartHash: string;
+  /** Destino (deptCode:cityCode DANE) al cotizar. */
+  destKey: string;
+  /** epoch ms de la cotización — expira con el mismo TTL que la cookie. */
+  quotedAt: number;
+};
+
 export type CheckoutState = {
   step: CheckoutStep;
   contact?: ContactData;
   address?: AddressData;
   billing?: BillingData;
   shippingSelection?: ShippingSelection;
+  shippingOffers?: ShippingOffersPayload;
   paymentMethod?: "WOMPI" | "COD";
   couponCode?: string; // F1 — código aplicado; el descuento se recalcula al vuelo
   updatedAt: number; // epoch ms
@@ -194,4 +216,53 @@ export async function setCheckoutState(partial: Partial<CheckoutState>): Promise
 export async function clearCheckoutState(): Promise<void> {
   const jar = await cookies();
   jar.delete(COOKIE_NAME);
+}
+
+/**
+ * Sella el set de cotizaciones de envío para que viaje por el FORM del step 2
+ * (hidden input `offersToken`) sin que el cliente pueda alterarlo — mismo HMAC
+ * de la cookie. La página RSC que cotiza no puede escribir cookies (Next solo
+ * permite writes en Server Actions / Route Handlers), así que el set firmado
+ * hace ida y vuelta dentro del HTML y la Server Action lo valida al recibirlo.
+ */
+export function sealShippingOffersPayload(payload: ShippingOffersPayload): string {
+  const body = Buffer.from(JSON.stringify(payload), "utf-8").toString("base64url");
+  return `${body}.${sign(body)}`;
+}
+
+/**
+ * Abre un `offersToken` sellado. Devuelve null si: firma inválida (manipulado),
+ * JSON corrupto, shape inesperado o cotización más vieja que el TTL (la misma
+ * ventana de 60 min de la cookie).
+ */
+export function openShippingOffersPayload(token: string): ShippingOffersPayload | null {
+  const dot = token.lastIndexOf(".");
+  if (dot < 0) return null;
+  const body = token.slice(0, dot);
+  const signature = token.slice(dot + 1);
+
+  if (!verify(body, signature)) {
+    logger.warn({ event: "checkout.shipping_offers.invalid_signature" });
+    return null;
+  }
+
+  try {
+    const decoded = JSON.parse(Buffer.from(body, "base64url").toString("utf-8"));
+    const payload = decoded as ShippingOffersPayload;
+    if (
+      !Array.isArray(payload.offers) ||
+      typeof payload.cartHash !== "string" ||
+      typeof payload.destKey !== "string" ||
+      typeof payload.quotedAt !== "number"
+    ) {
+      return null;
+    }
+    if (Date.now() - payload.quotedAt > TTL_SECONDS * 1000) {
+      logger.info({ event: "checkout.shipping_offers.expired" });
+      return null;
+    }
+    return payload;
+  } catch {
+    return null;
+  }
 }

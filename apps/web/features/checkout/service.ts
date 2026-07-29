@@ -34,6 +34,8 @@ import {
   getCheckoutState,
   setCheckoutState,
   clearCheckoutState,
+  sealShippingOffersPayload,
+  openShippingOffersPayload,
   type CheckoutState,
 } from "@/lib/checkout-session";
 import { composeAddressLine, type ShippingSelectionInput } from "./schemas";
@@ -48,6 +50,7 @@ export class CheckoutError extends Error {
       | "MISSING_CONTACT"
       | "MISSING_ADDRESS"
       | "MISSING_SHIPPING_SELECTION"
+      | "SHIPPING_SELECTION_INVALID"
       | "MISSING_PAYMENT_METHOD"
       | "SHIPPING_QUOTE_FAILED"
       | "ORDER_CREATE_FAILED"
@@ -149,11 +152,67 @@ export async function assertCheckoutAvailability(ctx: CheckoutContext): Promise<
 }
 
 /**
+ * Huella estable del carrito, para atar una cotización de envío al carrito que
+ * la originó (anti-manipulación de flete — certificación 2026-07-29). Incluye
+ * unitPrice porque el valor declarado asegurado mueve el precio del flete.
+ */
+export function fingerprintCartItems(
+  items: ReadonlyArray<{ variantId: string; qty: number; unitPrice: number }>,
+): string {
+  return items
+    .map((it) => `${it.variantId}x${it.qty}@${it.unitPrice}`)
+    .sort()
+    .join("|");
+}
+
+/** Llave de destino de una dirección de checkout (depto + ciudad DANE). */
+export function destinationKeyOf(address: NonNullable<CheckoutState["address"]>): string {
+  return `${address.deptCode}:${address.cityCode}`;
+}
+
+/** Match EXACTO de una selección contra las cotizaciones que el servidor ofreció. */
+function matchShippingOffer(
+  offers: ReadonlyArray<ShippingSelectionInput>,
+  selection: ShippingSelectionInput,
+): ShippingSelectionInput | null {
+  return (
+    offers.find(
+      (o) =>
+        o.quoteId === selection.quoteId &&
+        o.carrier === selection.carrier &&
+        o.fleteCop === selection.fleteCop &&
+        o.deliveryDays === selection.deliveryDays &&
+        o.contraentrega === selection.contraentrega,
+    ) ?? null
+  );
+}
+
+/**
+ * Sella el set de cotizaciones ofrecidas para que viaje por el form del step 2
+ * (hidden input `offersToken` firmado HMAC — la página RSC no puede escribir
+ * cookies; ver checkout-session.ts). `ctx` opcional: la página ya lo cargó.
+ */
+export async function sealShippingOffers(input: {
+  offers: ShippingSelectionInput[];
+  ctx?: CheckoutContext;
+}): Promise<string> {
+  const ctx = input.ctx ?? (await loadCheckoutContext());
+  if (!ctx.state.address) throw new CheckoutError("MISSING_ADDRESS");
+  return sealShippingOffersPayload({
+    offers: input.offers,
+    cartHash: fingerprintCartItems(ctx.cart.items),
+    destKey: destinationKeyOf(ctx.state.address),
+    quotedAt: Date.now(),
+  });
+}
+
+/**
  * Cotiza envío llamando Aveonline. Args: dirección de destino + items
  * del cart actual. Devuelve N opciones de transportadora.
  *
- * Peso por item: usamos 500g por unidad como default razonable hasta
- * que cada Product tenga peso configurado. TODO en V2.
+ * Peso/dimensiones por item: se leen los valores REALES de cada producto
+ * (physicalSpecs + attributes de la variante). Si falta la data → error claro
+ * a admin (no se cotiza con defaults inventados).
  */
 export async function quoteShipping(input: {
   destinationCity: string;
@@ -309,6 +368,27 @@ export async function finalizeCheckout(input: {
   if (!state.address) throw new CheckoutError("MISSING_ADDRESS");
   if (!state.shippingSelection) throw new CheckoutError("MISSING_SHIPPING_SELECTION");
   if (!state.paymentMethod) throw new CheckoutError("MISSING_PAYMENT_METHOD");
+
+  // Defensa en profundidad anti-manipulación de flete (certificación 2026-07-29):
+  // la selección debe seguir siendo una de las cotizaciones selladas por el servidor
+  // para ESTE carrito y ESTE destino. El check del step 2 (saveShippingSelectionStep)
+  // no puede ver lo que pasa DESPUÉS de seleccionar: items agregados en otra pestaña,
+  // o volver al step 1, cambiar la dirección y saltar directo a /checkout/pago por URL.
+  // Sin esto, la Order se crea con un flete obsoleto (casi siempre más barato) y
+  // Aveonline nos cobra el flete real de la dirección/peso nuevo.
+  const sealedOffers = state.shippingOffers;
+  if (
+    !sealedOffers ||
+    !matchShippingOffer(sealedOffers.offers, state.shippingSelection) ||
+    sealedOffers.cartHash !== fingerprintCartItems(ctx.cart.items) ||
+    sealedOffers.destKey !== destinationKeyOf(state.address)
+  ) {
+    logger.warn({
+      event: "checkout.finalize.shipping_selection_stale",
+      hasOffers: Boolean(sealedOffers),
+    });
+    throw new CheckoutError("SHIPPING_SELECTION_INVALID", SHIPPING_SELECTION_INVALID_MSG);
+  }
 
   const billing = state.billing ?? { wantsInvoice: false };
 
@@ -533,8 +613,41 @@ export async function saveAddressStep(
   await setCheckoutState({ address, billing, step: 2 });
 }
 
-export async function saveShippingSelectionStep(selection: ShippingSelectionInput) {
-  await setCheckoutState({ shippingSelection: selection, step: 3 });
+/**
+ * Copy customer-safe (es-CO, tuteo) para SHIPPING_SELECTION_INVALID — llega al
+ * cliente vía redirect ?error= en /checkout/envio.
+ */
+const SHIPPING_SELECTION_INVALID_MSG =
+  "La cotización de envío cambió. Elige de nuevo tu transportadora.";
+
+/**
+ * Guarda la selección de envío del step 2. Anti-manipulación de flete
+ * (certificación 2026-07-29, hallazgo ShadowAgent): antes la selección llegaba
+ * del FormData del cliente validada solo por ESTRUCTURA (Zod) → un POST forjado
+ * con fleteCop=0 creaba la Order sin flete mientras Aveonline nos cobra el flete
+ * real. Ahora la selección debe ser una de las cotizaciones EXACTAS que el
+ * servidor selló en `offersToken` (HMAC — ver checkout-session.ts) y para el
+ * MISMO destino guardado en la cookie. Se persiste la copia del SERVIDOR (la del
+ * token), no los campos del cliente.
+ */
+export async function saveShippingSelectionStep(
+  selection: ShippingSelectionInput,
+  offersToken: string,
+) {
+  const sealed = openShippingOffersPayload(offersToken);
+  const state = await getCheckoutState();
+  const offer = sealed ? matchShippingOffer(sealed.offers, selection) : null;
+  if (!sealed || !offer || !state?.address || sealed.destKey !== destinationKeyOf(state.address)) {
+    logger.warn({
+      event: "checkout.shipping_selection.rejected",
+      reason: !sealed ? "token_invalid" : !offer ? "no_offer_match" : "destination_changed",
+      quoteId: selection.quoteId,
+    });
+    throw new CheckoutError("SHIPPING_SELECTION_INVALID", SHIPPING_SELECTION_INVALID_MSG);
+  }
+  // Dejamos el set sellado en la cookie: finalizeCheckout lo re-valida contra el
+  // carrito/destino FRESCOS en la frontera del dinero (defensa en profundidad).
+  await setCheckoutState({ shippingSelection: offer, shippingOffers: sealed, step: 3 });
 }
 
 export async function savePaymentMethodStep(method: "WOMPI" | "COD") {

@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { logger } from "@/lib/logger";
 import { ShippingSelectionSchema } from "@/features/checkout/schemas";
-import { saveShippingSelectionStep } from "@/features/checkout/service";
+import { CheckoutError, saveShippingSelectionStep } from "@/features/checkout/service";
 import { guardTransactionalAction } from "@/lib/stage-guard";
 
 export async function selectShippingAction(formData: FormData): Promise<void> {
@@ -23,7 +23,19 @@ export async function selectShippingAction(formData: FormData): Promise<void> {
     redirect(`/checkout/envio?error=${encodeURIComponent("Selección inválida")}`);
   }
 
-  await saveShippingSelectionStep(parsed.data);
+  // Los campos sueltos del form NO se confían: saveShippingSelectionStep valida la
+  // selección contra el set de cotizaciones sellado HMAC en `offersToken` (si el
+  // cliente manipuló fleteCop/carrier, no hay match → rebota a re-cotizar).
+  const offersToken = String(formData.get("offersToken") ?? "");
+  try {
+    await saveShippingSelectionStep(parsed.data, offersToken);
+  } catch (err) {
+    if (err instanceof CheckoutError && err.code === "SHIPPING_SELECTION_INVALID") {
+      logger.warn({ event: "checkout.step.envio.selection_rejected" });
+      redirect(`/checkout/envio?error=${encodeURIComponent(err.message)}`);
+    }
+    throw err;
+  }
   logger.info({
     event: "checkout.step.envio.saved",
     carrier: parsed.data.carrier,
