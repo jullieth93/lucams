@@ -63,7 +63,7 @@ jobs:
       CSRF_SECRET: nightly-csrf-secret-32-chars-minimo
       NEXT_TELEMETRY_DISABLED: "1"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
         with:
           version: ${{ env.PNPM_VERSION }}
@@ -103,7 +103,7 @@ jobs:
       WOMPI_EVENTS_SECRET: ${{ secrets.WOMPI_EVENTS_SECRET || 'test_events_ci' }}
       NEXT_TELEMETRY_DISABLED: "1"
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
         with:
           version: ${{ env.PNPM_VERSION }}
