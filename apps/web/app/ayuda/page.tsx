@@ -18,15 +18,17 @@ import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { CmsText } from "@/components/cms/cms-text";
 import { CmsMarkdown } from "@/components/cms/cms-markdown";
-import { getCmsBlocksByCategory, getSettingValue } from "@/lib/cms";
+import { getCmsBlocksByCategory, getSettingValue, getPageSeo } from "@/lib/cms";
 import { buildWhatsAppUrl } from "@/lib/wa";
 import { isCatalogMode } from "@/lib/store-mode";
 
-export const metadata: Metadata = {
-  title: "Ayuda",
-  description:
-    "Preguntas frecuentes sobre personalización, envíos, métodos de pago, garantías y devoluciones en Lucams_shop.",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  return getPageSeo("seo.page.ayuda", {
+    title: "Ayuda",
+    description:
+      "Preguntas frecuentes sobre personalización, envíos, métodos de pago, garantías y devoluciones en Lucams_shop.",
+  });
+}
 
 export const dynamic = "force-dynamic";
 
