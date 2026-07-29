@@ -31,11 +31,13 @@ const STEPS = [
     titleKey: "home.howitworks.step3.title",
     titleFallback: "Llega a tus manos",
     descKey: "home.howitworks.step3.description",
-    // Etapa 1 (modo catálogo): el compromiso propio es el DESPACHO (máx. 3 días hábiles: 2 de
-    // fabricación + 1 de entrega); el pago y el envío se cierran por WhatsApp (sin prometer pago en
-    // línea). El tránsito lo pone la transportadora y en Colombia varía mucho según el destino.
+    // El compromiso propio es DESPACHO+ENTREGA (máx. 3 días hábiles: 2 de fabricación + 1 de
+    // entrega); el tránsito final lo pone la transportadora y varía según la ciudad. El pago es
+    // EN LÍNEA (Wompi) — el texto viejo de "se acuerdan por WhatsApp" era de la Etapa 1 (modo
+    // catálogo) y era FALSO en modo full (Lucy 2026-07-29). La coletilla COD se mantiene para
+    // que stripCodMention la recorte si COD_ENABLED está apagado.
     descFallback:
-      "Lo producimos a mano y lo entregamos en máximo 3 días hábiles (2 de fabricación + 1 de entrega). El pago y el envío se acuerdan por WhatsApp — contraentrega disponible.",
+      "Lo producimos a mano y lo entregamos en máximo 3 días hábiles (2 de fabricación + 1 de entrega). El tiempo final depende de la transportadora y de tu ciudad. Pagas en línea de forma segura — contraentrega disponible.",
     // La descripción promete contraentrega: depende del toggle COD_ENABLED (igual que
     // el chip del hero) — con COD apagado se recorta esa coletilla.
     codAware: true,
