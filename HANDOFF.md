@@ -191,6 +191,10 @@ Decisión de negocio comunicada por Lucy en este chat: "Venndelo hoy por hoy NO 
   1. `fix(orders): numeración de orden max(number)+1 bajo advisory lock — elimina tormenta de colisiones P2002 tras hard deletes` (solo `features/orders/service.ts`).
   2. `chore(shipping)!: eliminar Venndelo por completo — provider único Aveonline, enum/columna fuera, docs purgados (decisión Lucy 2026-07-29)` (breaking: requiere `prisma migrate deploy` en cada entorno — la migración `20260729150000_drop_venndelo_plan_b` ya está aplicada en la BD de develop y viaja en el repo para producción).
 
+### Post-script operativo — credenciales demo Aveonline restauradas en Vercel (2026-07-29)
+
+El smoke post-deploy destapó un gap **pre-existente** (no causado por los cambios del día): `/api/health/aveonline` en producción respondía `ok:false — AVEONLINE_DEMO_USUARIO/CLAVE no configurados`, cuando el 2026-07-20 respondía `ok:true` con la cuenta demo 15289 (RUNBOOK FASE 8). En Vercel solo existían las 4 vars `AVEONLINE_{ENV,USUARIO,CLAVE,WEBHOOK_SECRET}` (creadas hace 9 días); el trío `AVEONLINE_DEMO_*` había desaparecido en algún momento (quién/cuándo no es auditable desde el repo) → **la cotización de envíos del sitio en vivo estaba caída**. Con autorización de Lucy se agregaron las 3 vars demo (públicas, de `.env.example`) al scope **Production** vía `vercel env` y se redeployó (`lucams-shop-lbthk24tb`): el health volvió a `{"status":"ok","authenticated":true,"idempresa":15289,"isDemoAccount":true}` — el estado sano documentado. Pendientes menores: (a) scope **Preview** no quedó (el CLI exige prompt interactivo de gitBranch para target=preview; agregarlo a mano si se usa el checkout en previews); (b) auditar quién borró las vars originales para que no se repita (las borradas no dejan rastro en `vercel env ls`).
+
 ### Documentación importante
 
 - `docs/audits/2026-07-29-restore-point.md` — puntos de restauración de AMBAS pasadas (`bc1e41b` y `019f6fe`).
