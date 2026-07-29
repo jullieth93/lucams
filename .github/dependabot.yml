@@ -19,6 +19,12 @@ updates:
       - dependency-name: "*"
         update-types:
           - "version-update:semver-major"
+      # sharp clavado en 0.34.4: la línea 0.35.x rompía las lambdas de Vercel
+      # (ERR_DLOPEN_FAILED libvips → 500 en todas las PDP; Fase A, 2026-07-28). Su GHSA
+      # queda mitigada por sharp-safe + ignore en pnpm-workspace.yaml > auditConfig.
+      # Las PRs de SEGURIDAD de sharp siguen llegando (el ignore no las frena) y se
+      # trian a mano, con deploy de verificación en Vercel antes de aceptarlas.
+      - dependency-name: "sharp"
     groups:
       dev-dependencies:
         dependency-type: development

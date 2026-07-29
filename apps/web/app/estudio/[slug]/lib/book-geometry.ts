@@ -142,7 +142,13 @@ export function stripDimsForFace(
  * es su propia unidad y repite el diseño en ambas caras (comportamiento histórico).
  */
 export function bookmarkFaceUnits<
-  T extends { wRatio: number; hRatio: number; slotIndex?: number; assetUrl?: string | null; dataUrl?: string | null },
+  T extends {
+    wRatio: number;
+    hRatio: number;
+    slotIndex?: number;
+    assetUrl?: string | null;
+    dataUrl?: string | null;
+  },
 >(
   bookmarks: readonly T[],
   /** facesPerUnit del producto: 2 = separadores con cara A/B; 1 = tiras viejas sin cara B. */
@@ -312,7 +318,11 @@ export function flatBookmarkPlacement(bx: number, bz: number): [number, number, 
  * reposa sobre la superficie de la hoja (y = pageSurfaceY + h/2). El giro (yaw) lo aplica
  * el caller sobre el grupo (rotación mundial Y).
  */
-export function flatBookmarkPlacementUpright(bx: number, bz: number, h: number): [number, number, number] {
+export function flatBookmarkPlacementUpright(
+  bx: number,
+  bz: number,
+  h: number,
+): [number, number, number] {
   return [bx, pageSurfaceY(bx) + h / 2, bz];
 }
 

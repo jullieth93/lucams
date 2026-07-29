@@ -44,7 +44,9 @@ function pesosToCents(raw: FormDataEntryValue | null): number | null {
 }
 
 function parseNonNegative(raw: FormDataEntryValue | null): number | null {
-  const s = String(raw ?? "").trim().replace(",", ".");
+  const s = String(raw ?? "")
+    .trim()
+    .replace(",", ".");
   if (!s) return null;
   const n = Number(s);
   return Number.isFinite(n) && n >= 0 ? n : null;
@@ -70,7 +72,8 @@ function parseMaterialForm(formData: FormData): ParsedFields | { error: string }
 
   const costRaw = String(formData.get("costPerUnit") ?? "").trim();
   const costPerUnit = pesosToCents(costRaw);
-  if (costRaw && costPerUnit === null) return { error: "El costo por unidad debe ser en pesos (sin decimales)." };
+  if (costRaw && costPerUnit === null)
+    return { error: "El costo por unidad debe ser en pesos (sin decimales)." };
 
   const note = String(formData.get("note") ?? "").trim() || null;
 

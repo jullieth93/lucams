@@ -24,7 +24,6 @@ export async function GET(req: Request): Promise<Response> {
     });
   }
 
-
   const start = Date.now();
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const secret = process.env.SUPABASE_SECRET_KEY;

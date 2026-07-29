@@ -142,7 +142,11 @@ export function GalleryManager({ items, tagOptions }: { items: Item[]; tagOption
               disabled={pending}
               className="bg-brand-purple hover:bg-brand-purple-dark inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
             >
-              {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+              {pending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Upload className="h-4 w-4" />
+              )}
               {fileA ? `Cambiar: ${fileA.name}` : "Seleccionar imagen A"}
             </button>
             <input
@@ -239,7 +243,7 @@ export function GalleryManager({ items, tagOptions }: { items: Item[]; tagOption
                       className="aspect-square w-full rounded-lg object-cover"
                     />
                     {previewB && (
-                      <span className="absolute top-2 left-2 rounded-full bg-white/90 px-2 py-0.5 text-[10px] font-semibold text-brand-purple-dark shadow">
+                      <span className="text-brand-purple-dark absolute top-2 left-2 rounded-full bg-white/90 px-2 py-0.5 text-[10px] font-semibold shadow">
                         A/B
                       </span>
                     )}

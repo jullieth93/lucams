@@ -45,12 +45,7 @@ const REAL_PRODUCT_SLUGS = [
   "pack-separadores-libros",
 ];
 
-const REAL_CATEGORY_SLUGS = [
-  "foto-imanes",
-  "calendarios",
-  "separadores",
-  "juegos-aprendizaje",
-];
+const REAL_CATEGORY_SLUGS = ["foto-imanes", "calendarios", "separadores", "juegos-aprendizaje"];
 
 const REAL_OCASION_SLUGS = [
   "cumpleanos",

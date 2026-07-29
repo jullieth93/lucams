@@ -39,7 +39,9 @@ export async function uploadGalleryImageAction(formData: FormData): Promise<Acti
     const [{ publicUrl }, urlB] = await Promise.all([
       uploadProductImage({ productId: `gallery-${tag}`, file }),
       fileB instanceof File
-        ? uploadProductImage({ productId: `gallery-${tag}-b`, file: fileB }).then((r) => r.publicUrl)
+        ? uploadProductImage({ productId: `gallery-${tag}-b`, file: fileB }).then(
+            (r) => r.publicUrl,
+          )
         : Promise.resolve(null),
     ]);
     const row = await createGalleryImage({

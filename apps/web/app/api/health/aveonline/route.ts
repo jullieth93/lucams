@@ -30,7 +30,6 @@ export async function GET(req: Request): Promise<Response> {
     });
   }
 
-
   const start = Date.now();
   try {
     const shipping = await probeAveonlineHealth();

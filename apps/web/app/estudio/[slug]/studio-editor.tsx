@@ -1112,7 +1112,6 @@ export function StudioEditor({
             }}
             forceMountAll={forceMountAll}
           />
-
         </section>
       </div>
 

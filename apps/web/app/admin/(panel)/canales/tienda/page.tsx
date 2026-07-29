@@ -89,7 +89,7 @@ export default async function AdminCanalTiendaPage() {
                 href={siteUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-brand-purple-dark hover:text-brand-purple font-mono text-sm font-semibold underline break-all"
+                className="text-brand-purple-dark hover:text-brand-purple font-mono text-sm font-semibold break-all underline"
               >
                 {siteUrl}
               </a>
@@ -109,7 +109,9 @@ export default async function AdminCanalTiendaPage() {
               </h2>
             </div>
             <p className="mt-3">
-              <AdminBadge tone={isCatalog ? "blue" : "emerald"}>{MODE_LABEL[STORE_MODE]}</AdminBadge>
+              <AdminBadge tone={isCatalog ? "blue" : "emerald"}>
+                {MODE_LABEL[STORE_MODE]}
+              </AdminBadge>
             </p>
             <p className="text-brand-muted mt-2 text-xs">
               {isCatalog

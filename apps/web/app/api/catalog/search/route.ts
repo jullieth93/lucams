@@ -44,8 +44,8 @@ export async function GET(req: Request) {
     { results, count: results.length, query: q, generatedAt: new Date().toISOString() },
     {
       headers: {
-        "Cache-Control": "public, max-age=300, s-maxage=300"
-      }
+        "Cache-Control": "public, max-age=300, s-maxage=300",
+      },
     },
   );
 }

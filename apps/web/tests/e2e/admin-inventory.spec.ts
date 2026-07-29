@@ -11,9 +11,13 @@ import { createClient } from "@supabase/supabase-js";
 
 const strip = (v: string | undefined) => v?.replace(/^["']|["']$/g, "");
 const prisma = new PrismaClient();
-const service = createClient(strip(process.env.NEXT_PUBLIC_SUPABASE_URL)!, strip(process.env.SUPABASE_SECRET_KEY)!, {
-  auth: { persistSession: false },
-});
+const service = createClient(
+  strip(process.env.NEXT_PUBLIC_SUPABASE_URL)!,
+  strip(process.env.SUPABASE_SECRET_KEY)!,
+  {
+    auth: { persistSession: false },
+  },
+);
 
 const RUN = `inv-${Date.now()}`;
 const ADMIN_EMAIL = `${RUN}@example.com`;
@@ -86,9 +90,19 @@ async function adminLogin(page: Page) {
   const emailInput = page.locator('input[name="email"], input[type="email"]').first();
   if (await emailInput.count()) {
     await emailInput.fill(ADMIN_EMAIL);
-    await page.locator('input[name="password"], input[type="password"]').first().fill(ADMIN_PASSWORD);
-    await page.getByRole("button", { name: /Iniciar sesión|Ingresar|Entrar/i }).first().click();
-    await page.locator('input[name="email"], input[type="email"]').first().waitFor({ state: "detached", timeout: 30_000 }).catch(() => {});
+    await page
+      .locator('input[name="password"], input[type="password"]')
+      .first()
+      .fill(ADMIN_PASSWORD);
+    await page
+      .getByRole("button", { name: /Iniciar sesión|Ingresar|Entrar/i })
+      .first()
+      .click();
+    await page
+      .locator('input[name="email"], input[type="email"]')
+      .first()
+      .waitFor({ state: "detached", timeout: 30_000 })
+      .catch(() => {});
   }
   await page.waitForTimeout(2000);
 }
@@ -100,16 +114,24 @@ test("inventario de rutas admin", async ({ page }) => {
   for (const route of ROUTES) {
     const resp = await page.goto(route, { waitUntil: "domcontentloaded" }).catch(() => null);
     await page.waitForTimeout(1200);
-    const body = await page.locator("body").innerText().catch(() => "");
+    const body = await page
+      .locator("body")
+      .innerText()
+      .catch(() => "");
     let status = "REAL";
     if (!resp || resp.status() === 404) status = "404";
     else if (/en desarrollo|en construcción/i.test(body)) status = "PLACEHOLDER";
     else if (/acceso restringido|iniciar sesión/i.test(body)) status = "AUTH-FAIL";
     results.push({ route, status });
-    console.log(`${status === "REAL" ? "✅" : status === "PLACEHOLDER" ? "🚧" : "❌"} ${route} — ${status}`);
+    console.log(
+      `${status === "REAL" ? "✅" : status === "PLACEHOLDER" ? "🚧" : "❌"} ${route} — ${status}`,
+    );
   }
   const fs = await import("node:fs");
   fs.writeFileSync("/tmp/admin-inventory.json", JSON.stringify(results, null, 2));
-  const counts = results.reduce((acc, r) => ({ ...acc, [r.status]: (acc[r.status] ?? 0) + 1 }), {} as Record<string, number>);
+  const counts = results.reduce(
+    (acc, r) => ({ ...acc, [r.status]: (acc[r.status] ?? 0) + 1 }),
+    {} as Record<string, number>,
+  );
   console.log("\nRESUMEN:", JSON.stringify(counts));
 });

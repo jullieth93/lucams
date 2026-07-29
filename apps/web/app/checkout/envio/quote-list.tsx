@@ -98,9 +98,8 @@ export function QuoteList({
         <Clock className="mt-0.5 h-3 w-3 flex-shrink-0" aria-hidden />
         <span>
           Son tiempos <strong>estimados por la transportadora</strong>, no una fecha garantizada.
-          Antes fabricamos tu pedido a mano: lo{" "}
-          <strong>entregamos en máximo 3 días hábiles</strong> (2 de fabricación + 1 de entrega)
-          y de ahí corre el tránsito.
+          Antes fabricamos tu pedido a mano: lo <strong>entregamos en máximo 3 días hábiles</strong>{" "}
+          (2 de fabricación + 1 de entrega) y de ahí corre el tránsito.
         </span>
       </p>
 

@@ -34,10 +34,7 @@ export async function GET(req: Request) {
       : undefined;
 
   if (!productSlug) {
-    return NextResponse.json(
-      { error: "productSlug query param required" },
-      { status: 400 },
-    );
+    return NextResponse.json({ error: "productSlug query param required" }, { status: 400 });
   }
 
   const templates = await listTemplatesByProduct(productSlug, mode);
@@ -48,12 +45,12 @@ export async function GET(req: Request) {
       count: templates.length,
       productSlug,
       mode,
-      generatedAt: new Date().toISOString()
+      generatedAt: new Date().toISOString(),
     },
     {
       headers: {
-        "Cache-Control": "public, max-age=3600, s-maxage=3600"
-      }
+        "Cache-Control": "public, max-age=3600, s-maxage=3600",
+      },
     },
   );
 }

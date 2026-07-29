@@ -19,3 +19,13 @@ allowBuilds:
 overrides:
   postcss: 8.5.18
   '@babel/core': 7.29.6
+
+# sharp queda clavado en 0.34.4 a propósito: la línea 0.35.x rompía las lambdas de Vercel
+# (ERR_DLOPEN_FAILED libvips → 500 en todas las PDP; ver docs/audits/2026-07-28-certificacion-catalogo-whatsapp.md).
+# GHSA-f88m-g3jw-g9cj (libvips heredado, sharp <0.35.0) se excluye del gate de audit porque
+# ya está mitigada en código por sharp-safe (bloquea los loaders alcanzables) y el riesgo
+# residual quedó aceptado y documentado en la Fase A. NO quitar este ignore sin verificar
+# antes que sharp 0.35.x carga en una lambda real de Vercel.
+auditConfig:
+  ignoreGhsas:
+    - GHSA-f88m-g3jw-g9cj

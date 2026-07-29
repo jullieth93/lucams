@@ -27,7 +27,10 @@ import {
 import { toast } from "sonner";
 import type { StoreApi } from "zustand";
 import { useStore } from "zustand";
-import { uploadDesignAssetAction, assignPredesignedToDesignAction } from "@/features/personalization/actions";
+import {
+  uploadDesignAssetAction,
+  assignPredesignedToDesignAction,
+} from "@/features/personalization/actions";
 import { StudioMessageField } from "./studio-message-field";
 import {
   selectAssetIsUsed,
@@ -86,9 +89,14 @@ export function StudioSidebar({
 
   // Ola 21 — aplicar un diseño prediseñado al slot seleccionado (o al primer slot vacío).
   // Reusa la acción del asset picker: sube la imagen como asset del diseño y la asigna.
-  const handleApplyPredesigned = async (item: import("./studio-asset-picker-modal").PredesignedItem) => {
+  const handleApplyPredesigned = async (
+    item: import("./studio-asset-picker-modal").PredesignedItem,
+  ) => {
     if (!designId || applyingPredesignedId) return;
-    const targetSlot = selectedSlotIndex ?? store.getState().canvasData?.slots.find((s) => !s.assetUrl)?.slotIndex ?? null;
+    const targetSlot =
+      selectedSlotIndex ??
+      store.getState().canvasData?.slots.find((s) => !s.assetUrl)?.slotIndex ??
+      null;
     if (targetSlot === null) {
       toast.error("Selecciona un slot vacío primero");
       return;
@@ -117,7 +125,9 @@ export function StudioSidebar({
         };
         addAsset(assetB);
         // Asignar cara B al slot siguiente si existe (convención separadores 2 caras).
-        const nextSlot = store.getState().canvasData?.slots.find((s) => s.slotIndex === targetSlot + 1 && !s.assetUrl);
+        const nextSlot = store
+          .getState()
+          .canvasData?.slots.find((s) => s.slotIndex === targetSlot + 1 && !s.assetUrl);
         if (nextSlot) assignAssetToSlot(nextSlot.slotIndex, assetB);
       }
       toast.success(`Diseño "${item.name}" aplicado`);

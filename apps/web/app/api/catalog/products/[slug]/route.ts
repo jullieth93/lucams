@@ -35,18 +35,15 @@ export async function GET(req: Request, { params }: { params: Promise<{ slug: st
   const product = await getCatalogProductDetail(slug);
 
   if (!product) {
-    return NextResponse.json(
-      { error: "Product not found", slug },
-      { status: 404 },
-    );
+    return NextResponse.json({ error: "Product not found", slug }, { status: 404 });
   }
 
   return NextResponse.json(
     { product, generatedAt: new Date().toISOString() },
     {
       headers: {
-        "Cache-Control": "public, max-age=3600, s-maxage=3600"
-      }
+        "Cache-Control": "public, max-age=3600, s-maxage=3600",
+      },
     },
   );
 }

@@ -92,7 +92,16 @@ export default async function AdminCostosPage({ searchParams }: { searchParams: 
     const maxPrice = Math.max(...prices);
     const margin = p.cost != null ? minPrice - p.cost : null;
     const marginPct = margin != null && minPrice > 0 ? (margin / minPrice) * 100 : null;
-    return { id: p.id, name: p.name, sku: p.sku, cost: p.cost, minPrice, maxPrice, margin, marginPct };
+    return {
+      id: p.id,
+      name: p.name,
+      sku: p.sku,
+      cost: p.cost,
+      minPrice,
+      maxPrice,
+      margin,
+      marginPct,
+    };
   });
 
   // Peores primero; sin costo al final (no tienen margen calculable).
@@ -117,9 +126,7 @@ export default async function AdminCostosPage({ searchParams }: { searchParams: 
             {sinCosto > 0 && (
               <>
                 {" · "}
-                <span className="font-semibold text-amber-700">
-                  {sinCosto} sin costo cargado
-                </span>
+                <span className="font-semibold text-amber-700">{sinCosto} sin costo cargado</span>
               </>
             )}
           </>
@@ -133,11 +140,11 @@ export default async function AdminCostosPage({ searchParams }: { searchParams: 
 
       <AdminPageBody>
         <AdminNotice tone="info">
-          <strong>¿Cómo leer esta tabla?</strong> Escribe el <strong>costo de fabricación por
-          unidad</strong> (materiales + mano de obra, en pesos) y la tabla calcula el margen contra
-          el <strong>precio mínimo de venta</strong> del producto (su opción más barata). Los
-          productos con peor margen aparecen primero: ahí es donde conviene subir precio o bajar
-          costo.
+          <strong>¿Cómo leer esta tabla?</strong> Escribe el{" "}
+          <strong>costo de fabricación por unidad</strong> (materiales + mano de obra, en pesos) y
+          la tabla calcula el margen contra el <strong>precio mínimo de venta</strong> del producto
+          (su opción más barata). Los productos con peor margen aparecen primero: ahí es donde
+          conviene subir precio o bajar costo.
         </AdminNotice>
 
         {sp.updated === "1" && <AdminNotice tone="success">Costo actualizado.</AdminNotice>}
@@ -204,9 +211,7 @@ export default async function AdminCostosPage({ searchParams }: { searchParams: 
                     {r.margin != null ? (
                       <span
                         className={
-                          r.margin < 0
-                            ? "font-semibold text-rose-600"
-                            : "text-brand-purple-dark/85"
+                          r.margin < 0 ? "font-semibold text-rose-600" : "text-brand-purple-dark/85"
                         }
                       >
                         {formatCOP(r.margin)}

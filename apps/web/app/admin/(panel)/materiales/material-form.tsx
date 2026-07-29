@@ -11,11 +11,7 @@
  */
 
 import { useActionState } from "react";
-import {
-  createMaterialAction,
-  updateMaterialAction,
-  type MaterialActionState,
-} from "./actions";
+import { createMaterialAction, updateMaterialAction, type MaterialActionState } from "./actions";
 
 export type MaterialFormValues = {
   id: string;

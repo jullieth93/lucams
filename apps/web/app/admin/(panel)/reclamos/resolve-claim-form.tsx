@@ -12,11 +12,7 @@
 
 import { useActionState } from "react";
 import { AdminSubmitButton } from "@/components/admin-submit-button";
-import {
-  rejectClaimAction,
-  resolveClaimAction,
-  type ClaimActionState,
-} from "./actions";
+import { rejectClaimAction, resolveClaimAction, type ClaimActionState } from "./actions";
 
 const inputCls =
   "border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 w-full rounded-md border bg-white px-2 py-1.5 text-sm focus:ring-2 focus:outline-none";
@@ -55,14 +51,22 @@ export function ResolveClaimForm({ id }: { id: string }) {
           >
             Tipo de solución
           </label>
-          <select id="resolutionType" name="resolutionType" defaultValue="REPAIR" className={inputCls}>
+          <select
+            id="resolutionType"
+            name="resolutionType"
+            defaultValue="REPAIR"
+            className={inputCls}
+          >
             <option value="REPAIR">Reparación</option>
             <option value="REPLACE">Cambio del producto</option>
             <option value="REFUND">Devolución del dinero</option>
           </select>
         </div>
         <div>
-          <label htmlFor="note" className="text-brand-purple-dark/70 mb-1 block text-xs font-semibold">
+          <label
+            htmlFor="note"
+            className="text-brand-purple-dark/70 mb-1 block text-xs font-semibold"
+          >
             Nota para el cliente <span className="text-brand-muted font-normal">(opcional)</span>
           </label>
           <textarea

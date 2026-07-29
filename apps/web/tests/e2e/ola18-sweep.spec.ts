@@ -24,10 +24,18 @@ test.setTimeout(240_000);
 
 async function dismissOverlays(page: import("@playwright/test").Page) {
   const accept = page.getByRole("button", { name: /Aceptar todas/i });
-  if (await accept.count()) await accept.first().click().catch(() => {});
+  if (await accept.count())
+    await accept
+      .first()
+      .click()
+      .catch(() => {});
   const onboarding = page.locator('div[role="dialog"][aria-labelledby="onboarding-title"]');
   if (await onboarding.count()) {
-    await page.getByRole("button", { name: /Saltar/i }).first().click().catch(() => {});
+    await page
+      .getByRole("button", { name: /Saltar/i })
+      .first()
+      .click()
+      .catch(() => {});
     await onboarding.waitFor({ state: "detached", timeout: 4_000 }).catch(() => {});
   }
 }
@@ -57,7 +65,9 @@ test.describe("Barrido visual catálogo completo", () => {
             await page.screenshot({ path: `/tmp/sweep-estudio-${slug}-${viewport.name}.png` });
           } else {
             // Redirigió (superficie direct-cart / editor propio): evidencia igual.
-            await page.screenshot({ path: `/tmp/sweep-estudio-${slug}-${viewport.name}-redirect.png` });
+            await page.screenshot({
+              path: `/tmp/sweep-estudio-${slug}-${viewport.name}-redirect.png`,
+            });
           }
           void resp;
         });

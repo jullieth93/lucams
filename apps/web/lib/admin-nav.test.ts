@@ -106,20 +106,16 @@ describe("getAdminNav", () => {
     },
   );
 
-  it.each(["full", "catalog"] as const)(
-    "modo %s: el filtrado NO muta ADMIN_NAV",
-    async (mode) => {
-      const { mod, nav } = await getNavForMode(mode);
-      nav; // consume el resultado
+  it.each(["full", "catalog"] as const)("modo %s: el filtrado NO muta ADMIN_NAV", async (mode) => {
+    const { mod } = await getNavForMode(mode);
 
-      // ADMIN_NAV conserva todos los módulos originales.
-      expect(mod.ADMIN_NAV.some((g) => g.title === "Finanzas")).toBe(true);
-      const canales = mod.ADMIN_NAV.find((g) => g.title === "Canales");
-      expect(canales?.items?.some((it) => it.label === "Mercado Libre")).toBe(true);
-      const ia = mod.ADMIN_NAV.find((g) => g.title === "IA y Conocimiento");
-      expect(ia?.items?.some((it) => it.label === "Bot WhatsApp")).toBe(true);
-    },
-  );
+    // ADMIN_NAV conserva todos los módulos originales.
+    expect(mod.ADMIN_NAV.some((g) => g.title === "Finanzas")).toBe(true);
+    const canales = mod.ADMIN_NAV.find((g) => g.title === "Canales");
+    expect(canales?.items?.some((it) => it.label === "Mercado Libre")).toBe(true);
+    const ia = mod.ADMIN_NAV.find((g) => g.title === "IA y Conocimiento");
+    expect(ia?.items?.some((it) => it.label === "Bot WhatsApp")).toBe(true);
+  });
 
   it("modo full: getAdminNav() filtra descopeados sin mutar ADMIN_NAV", async () => {
     process.env[KEY] = "full";

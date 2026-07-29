@@ -180,7 +180,9 @@ export function ShopMegaMenu({ tree, isLoggedIn }: { tree: CategoryNode[]; isLog
         </SheetTrigger>
         <SheetContent side="left" className="w-[300px] overflow-y-auto sm:w-[340px]">
           <SheetHeader>
-            <SheetTitle className="font-display text-brand-purple-dark text-2xl">Catálogo</SheetTitle>
+            <SheetTitle className="font-display text-brand-purple-dark text-2xl">
+              Catálogo
+            </SheetTitle>
           </SheetHeader>
           <nav className="mt-3 flex flex-col gap-0.5 px-3 pb-6">
             {menuCategories.map((cat) => {

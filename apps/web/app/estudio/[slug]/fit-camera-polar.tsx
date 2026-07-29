@@ -53,15 +53,24 @@ export function FitCameraPolar({
     // Distancia que hace caber el alto (halfH/tan) Y el ancho (halfW/(tan·aspect)); la mayor manda.
     const d = Math.max(halfH / tan, halfW / (tan * aspect)) * margin;
     const phi = (polarDeg * Math.PI) / 180;
-    camera.position.set(
-      targetX,
-      targetY + d * Math.sin(phi),
-      targetZ + d * Math.cos(phi),
-    );
+    camera.position.set(targetX, targetY + d * Math.sin(phi), targetZ + d * Math.cos(phi));
     camera.updateProjectionMatrix();
     controls?.update?.();
     invalidate();
-  }, [camera, controls, invalidate, width, height, halfW, halfH, polarDeg, margin, targetY, targetX, targetZ]);
+  }, [
+    camera,
+    controls,
+    invalidate,
+    width,
+    height,
+    halfW,
+    halfH,
+    polarDeg,
+    margin,
+    targetY,
+    targetX,
+    targetZ,
+  ]);
 
   return null;
 }

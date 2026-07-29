@@ -364,7 +364,9 @@ export function StudioCanvasGrid({
       // dejaba la tarjeta (~350px) y terminaba altísimo, desbordando la pantalla.
       // Regla: byWidth = ancho disponible por cara; byHeight = alto útil / aspect.
       (() => {
-        const byWidth = Math.floor(((containerWidth - layout.gap * (unitCols - 1)) / unitCols - 16 - 8) / 2);
+        const byWidth = Math.floor(
+          ((containerWidth - layout.gap * (unitCols - 1)) / unitCols - 16 - 8) / 2,
+        );
         if (!maxFrameH) return Math.max(MIN_SLOT_SIZE, byWidth);
         const usableH = maxFrameH - layout.gap * (layout.rows - 1) - layout.rows * reserve;
         const byHeight = Math.floor(usableH / layout.rows / slotAspect);

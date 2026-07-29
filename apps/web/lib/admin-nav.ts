@@ -230,15 +230,13 @@ export const ADMIN_NAV: NavGroup[] = [
         label: "Materiales e Insumos",
         href: "/admin/materiales",
         icon: Boxes,
-        description:
-          "Inventario de materiales e insumos de producción con alerta de bajo stock.",
+        description: "Inventario de materiales e insumos de producción con alerta de bajo stock.",
       },
       {
         label: "Costos de fabricación",
         href: "/admin/costos",
         icon: Calculator,
-        description:
-          "Costo de fabricación por producto y margen contra el precio de venta.",
+        description: "Costo de fabricación por producto y margen contra el precio de venta.",
       },
     ],
   },
@@ -313,8 +311,7 @@ export const ADMIN_NAV: NavGroup[] = [
         label: "Métricas",
         href: "/admin/metricas",
         icon: TrendingUp,
-        description:
-          "Métricas de ventas: pedidos, cotizaciones, ingresos del mes y top productos.",
+        description: "Métricas de ventas: pedidos, cotizaciones, ingresos del mes y top productos.",
       },
       {
         label: "Salud técnica",
@@ -327,8 +324,7 @@ export const ADMIN_NAV: NavGroup[] = [
         label: "Performance",
         href: "/admin/performance",
         icon: Gauge,
-        description:
-          "Rendimiento técnico: errores recientes y métricas web (LCP/CLS/INP).",
+        description: "Rendimiento técnico: errores recientes y métricas web (LCP/CLS/INP).",
       },
       { label: "Auditoría", href: "/admin/auditoria", icon: Activity },
     ],

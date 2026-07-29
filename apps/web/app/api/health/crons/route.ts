@@ -27,7 +27,6 @@ export async function GET(req: Request): Promise<Response> {
     });
   }
 
-
   const health = await getCronHealth();
   const overdue = health.filter((c) => c.overdue);
   const body = {

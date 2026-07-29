@@ -44,7 +44,8 @@ function watch(page: Page, area: string) {
     if (msg.type() === "error") consoleErrors.push(`[${area}] ${msg.text().slice(0, 300)}`);
   });
   page.on("response", (res) => {
-    if (res.status() >= 500) networkErrors.push(`[${area}] ${res.status()} ${res.url().slice(0, 160)}`);
+    if (res.status() >= 500)
+      networkErrors.push(`[${area}] ${res.status()} ${res.url().slice(0, 160)}`);
   });
 }
 
@@ -73,7 +74,9 @@ test.afterAll(async () => {
   );
   console.log(`\n=== RESUMEN AUDITORÍA ADMIN ===`);
   console.log(`checks: ${findings.filter((f) => f.ok).length}/${findings.length} OK`);
-  console.log(`consoleErrors: ${consoleErrors.length} · networkErrors(5xx): ${networkErrors.length}`);
+  console.log(
+    `consoleErrors: ${consoleErrors.length} · networkErrors(5xx): ${networkErrors.length}`,
+  );
   for (const e of consoleErrors.slice(0, 10)) console.log(`  CONSOLE: ${e}`);
   for (const e of networkErrors.slice(0, 10)) console.log(`  NET5XX: ${e}`);
   if (adminId) await prisma.adminUser.deleteMany({ where: { id: adminId } }).catch(() => {});
@@ -84,7 +87,11 @@ test.afterAll(async () => {
 async function adminLogin(page: Page) {
   await page.goto("/admin", { waitUntil: "domcontentloaded" });
   const accept = page.getByRole("button", { name: /Aceptar todas/i });
-  if (await accept.count()) await accept.first().click().catch(() => {});
+  if (await accept.count())
+    await accept
+      .first()
+      .click()
+      .catch(() => {});
   const emailInput = page.locator('input[name="email"], input[type="email"]').first();
   // Si ya hay sesión activa (redirige al dashboard), no hace falta loguear de nuevo.
   if (!(await emailInput.count())) {
@@ -93,7 +100,10 @@ async function adminLogin(page: Page) {
   }
   await emailInput.fill(ADMIN_EMAIL);
   await page.locator('input[name="password"], input[type="password"]').first().fill(ADMIN_PASSWORD);
-  await page.getByRole("button", { name: /Iniciar sesión|Ingresar|Entrar/i }).first().click();
+  await page
+    .getByRole("button", { name: /Iniciar sesión|Ingresar|Entrar/i })
+    .first()
+    .click();
   // Esperar al DASHBOARD, no a la URL: el form de login también vive bajo /admin.
   await page
     .locator('input[name="email"], input[type="email"]')
@@ -140,7 +150,11 @@ test.describe.serial("AUDITORÍA ADMIN — catalogo-whatsapp (producción)", () 
     await page.waitForTimeout(2000);
     await page.screenshot({ path: "/tmp/audit-admin-producto-edit.png" });
     // Round-trip: cambiar descripción corta y restaurar (sin persistir cambios destructivos)
-    findings.push({ area: "admin:productos", ok: true, detail: "lista + búsqueda + editor de producto cargan" });
+    findings.push({
+      area: "admin:productos",
+      ok: true,
+      detail: "lista + búsqueda + editor de producto cargan",
+    });
   });
 
   test("3. Categorías: lista + toggle con reflejo en front + restore", async ({ page }) => {
@@ -151,7 +165,11 @@ test.describe.serial("AUDITORÍA ADMIN — catalogo-whatsapp (producción)", () 
     await page.screenshot({ path: "/tmp/audit-admin-categorias.png" });
     const bodyText = await page.locator("body").innerText();
     const hasReal = bodyText.includes("Separadores de Libros") || bodyText.includes("Fotoimanes");
-    findings.push({ area: "admin:categorias", ok: hasReal, detail: `lista carga con categorías reales: ${hasReal}` });
+    findings.push({
+      area: "admin:categorias",
+      ok: hasReal,
+      detail: `lista carga con categorías reales: ${hasReal}`,
+    });
   });
 
   test("4. Plantillas: lista sin basura", async ({ page }) => {
@@ -162,7 +180,11 @@ test.describe.serial("AUDITORÍA ADMIN — catalogo-whatsapp (producción)", () 
     await page.screenshot({ path: "/tmp/audit-admin-plantillas.png", fullPage: true });
     const bodyText = await page.locator("body").innerText();
     const junk = (bodyText.match(/cat\d{10,}|Beta cat|YY Sibling/gi) ?? []).length;
-    findings.push({ area: "admin:plantillas", ok: junk === 0, detail: `entradas basura visibles: ${junk}` });
+    findings.push({
+      area: "admin:plantillas",
+      ok: junk === 0,
+      detail: `entradas basura visibles: ${junk}`,
+    });
   });
 
   test("5. Pedidos/cotizaciones: lista carga", async ({ page }) => {
@@ -177,14 +199,20 @@ test.describe.serial("AUDITORÍA ADMIN — catalogo-whatsapp (producción)", () 
         return;
       }
     }
-    findings.push({ area: "admin:pedidos", ok: false, detail: "ni /admin/pedidos ni /admin/cotizaciones respondieron 200" });
+    findings.push({
+      area: "admin:pedidos",
+      ok: false,
+      detail: "ni /admin/pedidos ni /admin/cotizaciones respondieron 200",
+    });
   });
 
   test("6. Configuración: toggle COD con reflejo en front + restore", async ({ page }) => {
     watch(page, "config");
     await adminLogin(page);
     // Leer el estado actual del COD desde la DB para restaurar exacto
-    const setting = await prisma.siteSetting.findFirst({ where: { key: "cod_enabled" } }).catch(() => null);
+    const setting = await prisma.siteSetting
+      .findFirst({ where: { key: "cod_enabled" } })
+      .catch(() => null);
     const before = setting?.value;
     for (const path of ["/admin/configuracion", "/admin/ajustes", "/admin/config"]) {
       const resp = await page.goto(path, { waitUntil: "domcontentloaded" });
@@ -193,11 +221,19 @@ test.describe.serial("AUDITORÍA ADMIN — catalogo-whatsapp (producción)", () 
         await page.screenshot({ path: `/tmp/audit-admin${path.replace(/\//g, "-")}.png` });
         const bodyText = await page.locator("body").innerText();
         const mentionsCod = /contraentrega|COD|contra entrega/i.test(bodyText);
-        findings.push({ area: "admin:config", ok: true, detail: `${path} carga · COD visible: ${mentionsCod} · estado previo: ${JSON.stringify(before)}` });
+        findings.push({
+          area: "admin:config",
+          ok: true,
+          detail: `${path} carga · COD visible: ${mentionsCod} · estado previo: ${JSON.stringify(before)}`,
+        });
         return;
       }
     }
-    findings.push({ area: "admin:config", ok: false, detail: "ninguna ruta de configuración respondió 200" });
+    findings.push({
+      area: "admin:config",
+      ok: false,
+      detail: "ninguna ruta de configuración respondió 200",
+    });
   });
 
   test("7. Reseñas: lista carga", async ({ page }) => {

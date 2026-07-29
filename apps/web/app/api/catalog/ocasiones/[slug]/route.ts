@@ -28,10 +28,7 @@ export async function GET(req: Request, { params }: { params: Promise<{ slug: st
   const ocasion = await getOcasionBySlug(slug);
 
   if (!ocasion) {
-    return NextResponse.json(
-      { error: "Ocasión not found", slug },
-      { status: 404 },
-    );
+    return NextResponse.json({ error: "Ocasión not found", slug }, { status: 404 });
   }
 
   // Top productos de esta ocasión
@@ -41,8 +38,8 @@ export async function GET(req: Request, { params }: { params: Promise<{ slug: st
     { ocasion, products, generatedAt: new Date().toISOString() },
     {
       headers: {
-        "Cache-Control": "public, max-age=3600, s-maxage=3600"
-      }
+        "Cache-Control": "public, max-age=3600, s-maxage=3600",
+      },
     },
   );
 }

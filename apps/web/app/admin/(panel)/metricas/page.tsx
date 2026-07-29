@@ -236,9 +236,9 @@ export default async function AdminMetricasPage() {
                 </li>
               ))}
             </ul>
-            <p className="text-brand-muted mt-4 border-t border-brand-purple/10 pt-3 text-xs">
-              Total: <strong>{totalQuotes.toLocaleString("es-CO")}</strong> cotizaciones activas
-              (no incluye eliminadas).
+            <p className="text-brand-muted border-brand-purple/10 mt-4 border-t pt-3 text-xs">
+              Total: <strong>{totalQuotes.toLocaleString("es-CO")}</strong> cotizaciones activas (no
+              incluye eliminadas).
             </p>
           </AdminCard>
         </div>
@@ -298,8 +298,8 @@ export default async function AdminMetricasPage() {
         {!catalog && (
           <AdminNotice tone="info">
             <strong>¿Cómo se calcula?</strong> “Pagados” incluye pedidos pagados, en preparación,
-            enviados y entregados (la plata ya entró). No suma cancelados ni reembolsados. El top
-            de productos cuenta solo unidades de pedidos pagados.
+            enviados y entregados (la plata ya entró). No suma cancelados ni reembolsados. El top de
+            productos cuenta solo unidades de pedidos pagados.
           </AdminNotice>
         )}
       </AdminPageBody>

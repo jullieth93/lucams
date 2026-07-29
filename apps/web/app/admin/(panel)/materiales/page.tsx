@@ -30,11 +30,7 @@ import { ConfirmAction } from "@/components/admin/confirm-action";
 import { getCurrentAdmin } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { formatCOP } from "@/lib/format";
-import {
-  deleteMaterialAction,
-  restoreMaterialAction,
-  toggleMaterialActiveAction,
-} from "./actions";
+import { deleteMaterialAction, restoreMaterialAction, toggleMaterialActiveAction } from "./actions";
 import { MaterialForm, type MaterialFormValues } from "./material-form";
 
 export const metadata: Metadata = {
@@ -58,7 +54,11 @@ function isLowStock(m: { stock: number; minStock: number; isActive: boolean }): 
 
 const numFmt = new Intl.NumberFormat("es-CO", { maximumFractionDigits: 2 });
 
-export default async function AdminMaterialesPage({ searchParams }: { searchParams: SearchParams }) {
+export default async function AdminMaterialesPage({
+  searchParams,
+}: {
+  searchParams: SearchParams;
+}) {
   const session = await getCurrentAdmin();
   if (!session) redirect("/admin/login");
 
@@ -114,7 +114,9 @@ export default async function AdminMaterialesPage({ searchParams }: { searchPara
         {sp.updated === "1" && <AdminNotice tone="success">Material actualizado.</AdminNotice>}
         {sp.activated === "1" && <AdminNotice tone="success">Material activado.</AdminNotice>}
         {sp.deactivated === "1" && (
-          <AdminNotice tone="warning">Material desactivado (ya no se usa en producción).</AdminNotice>
+          <AdminNotice tone="warning">
+            Material desactivado (ya no se usa en producción).
+          </AdminNotice>
         )}
         {sp.deleted === "1" && (
           <AdminNotice tone="warning">

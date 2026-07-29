@@ -104,9 +104,9 @@ export default async function AdminMayoristaPage({ searchParams }: { searchParam
 
       <AdminPageBody>
         <AdminNotice tone="info">
-          <strong>¿Cómo funciona?</strong> Cada nivel dice: “a partir de <strong>X unidades</strong>,
-          la unidad cuesta <strong>$Y</strong>”. Un nivel de <strong>Todo el catálogo</strong> aplica
-          a cualquier producto; uno de un producto específico solo a ese. Si un nivel está{" "}
+          <strong>¿Cómo funciona?</strong> Cada nivel dice: “a partir de <strong>X unidades</strong>
+          , la unidad cuesta <strong>$Y</strong>”. Un nivel de <strong>Todo el catálogo</strong>{" "}
+          aplica a cualquier producto; uno de un producto específico solo a ese. Si un nivel está{" "}
           <strong>desactivado</strong>, simplemente no se aplica.
         </AdminNotice>
 

@@ -18,9 +18,11 @@ Estabilizar y **certificar al 100%, técnica y funcionalmente, las dos ramas** d
 ## 2. Estado en que va y terminó todo
 
 ### FASE A — `catalogo-whatsapp`: ✅ CERTIFICADA (en producción)
+
 Informe completo: `docs/audits/2026-07-28-certificacion-catalogo-whatsapp.md`. Resumen: sharp 0.34.4 estabilizado (el 0.35 rompía lambdas), baseline 2609/2609, e2e/a11y/admin verdes contra producción, seguridad en vivo OK (CSP/HSTS/rate-limits/RBAC), k6 0% errores, BD saneada con guardas (8 cotizaciones reales de "Cristian" intactas), red anti-basura activa.
 
 ### FASE B — `develop`: ✅ CERTIFICADA (2026-07-28, esta sesión)
+
 Informe completo: `docs/audits/2026-07-28-certificacion-develop.md`. Estado verificado:
 
 - **E2E transaccional verde 2/2 corridas** (`apps/web/tests/e2e/wompi-sandbox.spec.ts`, ~2.3 min): PDP → carrito → datos → **cotización Aveonline real (4 transportadoras)** → checkout hospedado **Wompi sandbox (4242)** → redirect gracias → **webhook firmado 200** → saga → orden **FULFILLING + guía Aveonline real + rótulo PDF**. Órdenes de evidencia: **LCM-2026-0176** (guía Servientrega 247215217) y **LCM-2026-0178** (guía Servientrega 2245604743) — soft-borradas por el propio test tras verificar.
@@ -36,7 +38,7 @@ Informe completo: `docs/audits/2026-07-28-certificacion-develop.md`. Estado veri
   7. **Tracking Aveonline muerto** (`EN DESPACHO`/`EN REPARTO`/`ANULADA` no mapeaban) → mapeo de estados canónicos de la doc.
   8. `relacion_envios: "1"` declarado sin crearla jamás → `"0"`.
   9. `dscorreop` (requerido, error -13) podía ir vacío → validación temprana accionable.
-  \+ Wompi: **prefill completo** `customer-data` (full-name, phone +57, legal-id+type) — el cliente ya no redigita dentro de Wompi.
+     \+ Wompi: **prefill completo** `customer-data` (full-name, phone +57, legal-id+type) — el cliente ya no redigita dentro de Wompi.
 - **Auditoría doc oficial Wompi + Aveonline** (solicitud mandatoria del usuario): re-lectura completa campo por campo, gaps corregidos, decisiones abiertas documentadas en `docs/INTEGRATIONS_AVEONLINE.md` §21.
 - **Webhook Wompi sandbox natural configurado** (usuario en dashboard Wompi): URL de Eventos → `https://lucams-shop-git-develop-jullieth93s-projects.vercel.app/api/webhooks/wompi`. Verificado: alcanza la app y valida firma (401 a firma inválida).
 - **Vercel SSO de previews**: se desactivó SOLO para certificar y **ya quedó re-activado por el usuario** (verificado: preview 302 → login; lucamsshop.com 200 público).
@@ -46,23 +48,27 @@ Informe completo: `docs/audits/2026-07-28-certificacion-develop.md`. Estado veri
 ## 3. Archivos y Cambios
 
 ### Commits en `catalogo-whatsapp` (producción, todos pusheados)
+
 `44291fd` sharp 0.34.4 + lazy render · `1229537` teardown carga .env.local · `de57e8a` updateTag("catalog") · `c2d0f4f` test fichas Ola 19 · `9c5d04e`+`3cf4b13` dependabot minor/patch + ignore majors · `15702af` paquete Fase A (30 archivos) · `805be97` informe Fase A.
 
 ### Commits en `develop` (todos pusheados; rama al día con origin)
-| Commit | Contenido |
-|---|---|
-| `cfc9028` | Merge Fase A (3 conflictos resueltos mode-aware) |
-| `da78cb2` | HANDOFF previo (Fase A certificada, Fase B ~70%) |
-| `734c3fb` | `tests/e2e/wompi-sandbox.spec.ts` (nuevo) + fix dsnit (`features/shipping/aveonline.ts`) + fix gracias crash (`app/checkout/gracias/{page.tsx,actions.ts,clear-checkout-session.tsx}` nuevos) + `playwright.config.ts` (PW_CHANNEL) |
+
+| Commit    | Contenido                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `cfc9028` | Merge Fase A (3 conflictos resueltos mode-aware)                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `da78cb2` | HANDOFF previo (Fase A certificada, Fase B ~70%)                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| `734c3fb` | `tests/e2e/wompi-sandbox.spec.ts` (nuevo) + fix dsnit (`features/shipping/aveonline.ts`) + fix gracias crash (`app/checkout/gracias/{page.tsx,actions.ts,clear-checkout-session.tsx}` nuevos) + `playwright.config.ts` (PW_CHANNEL)                                                                                                                                                                                                                                                                |
 | `cd1043d` | **Auditoría integraciones** (13 archivos): COD fila 5 + `computePackedPackage` + `relacion_envios=0` + `dscorreop` + status mapping (`aveonline.ts`, `aveonline.test.ts`); replay 25h + DECLINED noop (`app/api/webhooks/wompi/route.ts` + integration test); prefill customer-data (`lib/wompi.ts`, `lib/wompi.test.ts`, `features/payments/{provider,wompi}.ts`, `features/checkout/service.ts`); stage-guard en `gracias/actions.ts`; docs (`INTEGRATIONS.md`, `INTEGRATIONS_AVEONLINE.md` §21) |
-| `4718802` | `tests/e2e/admin-transactional.spec.ts` (nuevo) + `preview-cert.spec.ts` (slug `separadores-libros`→`separadores-magneticos`) + informe Fase B + HANDOFF cierre |
+| `4718802` | `tests/e2e/admin-transactional.spec.ts` (nuevo) + `preview-cert.spec.ts` (slug `separadores-libros`→`separadores-magneticos`) + informe Fase B + HANDOFF cierre                                                                                                                                                                                                                                                                                                                                    |
 
 ### Working tree
+
 Limpio (`git status` vacío). Nada sin commitear.
 
 ### Credenciales/infra (verificado)
+
 - Vercel: proyecto `lucams-shop`, rootDirectory `apps/web`, Node 22, **rama producción = `catalogo-whatsapp`** (intacta). SSO del proyecto ON para previews (`all_except_custom_domains`).
-- WOMPI_* (4 llaves sandbox) + AVEONLINE_USUARIO/CLAVE + WOMPI_ENV=sandbox: en `apps/web/.env.local` y Vercel (Preview+Production). `NEXT_PUBLIC_STORE_MODE` solo en Production (previews corren modo full).
+- WOMPI\_\* (4 llaves sandbox) + AVEONLINE_USUARIO/CLAVE + WOMPI_ENV=sandbox: en `apps/web/.env.local` y Vercel (Preview+Production). `NEXT_PUBLIC_STORE_MODE` solo en Production (previews corren modo full).
 - BD: UN solo proyecto Supabase (dev=prod), saneada, red anti-basura activa.
 - Wompi dashboard sandbox: URL de Eventos → alias git-develop (configurada por el usuario 2026-07-28).
 
@@ -71,6 +77,7 @@ Limpio (`git status` vacío). Nada sin commitear.
 ## 4. Intentos Fallidos (y qué los resolvió)
 
 ### 4.1 E2E transaccional — 22 intentos (UI de Wompi mapeada de cero)
+
 1. Banner de cookies tapaba el CTA (z-9000) → aceptarlo ("Solo necesarias") al inicio de todo spec.
 2. Nombre con números rechazado por el form de datos → "Valentina Wompi" (solo letras).
 3. "Tipo de dirección" (Urbana/Rural) requerido; `cruceNumber` exige formato `NN-NN`.
@@ -88,10 +95,12 @@ Limpio (`git status` vacío). Nada sin commitear.
 15. **Aserción de test demasiado estricta**: esperaba status `PAID` pero con guía creada la orden avanza a `FULFILLING` → aceptar PAID|FULFILLING|SHIPPED|DELIVERED.
 
 ### 4.2 Bugs reales que el e2e destapó (corregidos, ver §2)
+
 - Intento 18 llegó a la saga y expuso: **dsnit rechazado** (guía fallaba) y **gracias en crash** (cliente veía "Algo salió mal" tras pagar — digest del error = cookies RSC).
 - Auditoría doc expuso: **COD doble flete**, **liquidación multi-producto**, **replay window**, **DECLINED+cancel**, **tracking muerto**, **relacion_envios**, **dscorreop**.
 
 ### 4.3 Otros fallos del camino
+
 - **Baseline vitest 37 fallos** (corrida vieja): interferencia suite↔e2e compartiendo BD + pooler inestable → regla de hierro: **NUNCA vitest y playwright en paralelo**.
 - **`clone-design-for-edit` timeout 5s**: flake de pooler (pasa con 30s) — no es fallo real.
 - **`stage-boundary.test.ts` 2 fallos**: el nuevo `gracias/actions.ts` no tenía `guardTransactionalAction` (convención del repo) → guard agregado.
@@ -119,6 +128,7 @@ Limpio (`git status` vacío). Nada sin commitear.
 ## 6. Información relevante
 
 ### Gotchas operativos (acumulados Fase A+B)
+
 - `pkill -f "next start"` se auto-mata → usar `fuser -k 4000/tcp`.
 - NUNCA vitest y playwright e2e en paralelo (comparten BD).
 - El banner de cookies aparece en CADA navegador de test → aceptarlo siempre al inicio.
@@ -128,6 +138,7 @@ Limpio (`git status` vacío). Nada sin commitear.
 - Vercel SSO del proyecto se consulta/cambia por API: `GET/PATCH /v9/projects/lucams-shop` (campo `ssoProtection`) con el token del CLI.
 
 ### Comandos de utilidad
+
 - **E2E transaccional**: `cd apps/web && set -a && source .env.local && set +a && TURNSTILE_SECRET_KEY= NEXT_PUBLIC_TURNSTILE_SITE_KEY= PW_CHANNEL=chromium npx playwright test wompi-sandbox --workers=1 --retries=0`
 - **Suites contra preview**: mismo entorno + `PLAYWRIGHT_BASE_URL=<url-preview> npx playwright test smoke a11y axe admin-login admin-mfa audit-admin admin100-shots preview-cert admin-transactional --workers=1`
 - **Vitest**: `pnpm --filter web test` (NUNCA en paralelo con e2e)
@@ -137,6 +148,7 @@ Limpio (`git status` vacío). Nada sin commitear.
 - **k6**: `./tmp/k6-v0.55.0-linux-amd64/k6 run -e BASE_URL=http://localhost:4000 tests/load/storefront-browsing.js` (con `next start -p 4000` activo)
 
 ### Documentos clave
+
 - `docs/audits/2026-07-28-certificacion-catalogo-whatsapp.md` — informe Fase A.
 - `docs/audits/2026-07-28-certificacion-develop.md` — informe Fase B (veredicto, bugs, gaps, go-live).
 - `docs/INTEGRATIONS_AVEONLINE.md` §21 — auditoría doc-oficial Aveonline (cambios + contradicciones abiertas).

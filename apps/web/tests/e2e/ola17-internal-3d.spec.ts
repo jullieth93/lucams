@@ -4,10 +4,7 @@ test.setTimeout(90_000);
 
 test("preview 3D interno: marcapáginas plano renderiza con su textura", async ({ page }) => {
   await page.goto("/internal/3d-preview", { waitUntil: "domcontentloaded" });
-  const section = page
-    .locator("section")
-    .filter({ hasText: "marcapáginas plano" })
-    .first();
+  const section = page.locator("section").filter({ hasText: "marcapáginas plano" }).first();
   await section.waitFor({ timeout: 20_000 });
   await page.waitForTimeout(8000);
   // La escena montó su canvas WebGL.

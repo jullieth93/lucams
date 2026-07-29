@@ -172,14 +172,12 @@ async function payInWompiHostedCheckout(page: Page) {
   // Anclar el select por su placeholder "Año" y elegir leyendo sus options reales.
   const anoSelect = page.locator('select:has(option:text-is("Año"))').first();
   await expect(anoSelect).toBeVisible({ timeout: 10_000 });
-  const anoOpts = await anoSelect
-    .locator("option")
-    .evaluateAll((os) =>
-      os.map((o) => ({
-        label: o.textContent?.trim() ?? "",
-        value: (o as HTMLOptionElement).value,
-      })),
-    );
+  const anoOpts = await anoSelect.locator("option").evaluateAll((os) =>
+    os.map((o) => ({
+      label: o.textContent?.trim() ?? "",
+      value: (o as HTMLOptionElement).value,
+    })),
+  );
   const yearLike = anoOpts.filter((o) => /^\d{2}(\d{2})?$/.test(o.label));
   const anoTarget = yearLike.find((o) => o.label === "2028" || o.label === "28") ?? yearLike.at(-1);
   if (!anoTarget) throw new Error(`Año: sin opciones año-like: ${JSON.stringify(anoOpts)}`);

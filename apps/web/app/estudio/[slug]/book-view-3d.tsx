@@ -419,7 +419,15 @@ function Scene({
         minDistance: 3.5,
       };
     }
-    return { ...BOOK_FIT, halfH: BOOK_FIT.halfH * 0.55, halfW: BOOK_FIT.halfW * 0.75, targetX: 0, targetZ: 0, margin: 1.12, minDistance: 5 };
+    return {
+      ...BOOK_FIT,
+      halfH: BOOK_FIT.halfH * 0.55,
+      halfW: BOOK_FIT.halfW * 0.75,
+      targetX: 0,
+      targetZ: 0,
+      margin: 1.12,
+      minDistance: 5,
+    };
   }, [flat]);
   return (
     <>

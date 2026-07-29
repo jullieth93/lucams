@@ -21,20 +21,32 @@ test.describe("Ola 17 fixes — Alargados: modal sin scroll + 3D con cara B", ()
     // verificar el modal de edición y el 3D con cara B de forma determinista.
     await page.waitForFunction(
       () => {
-        const store = (window as unknown as { __studioStore?: { getState: () => { designId: string | null } } }).__studioStore;
+        const store = (
+          window as unknown as { __studioStore?: { getState: () => { designId: string | null } } }
+        ).__studioStore;
         return store !== undefined && store.getState().designId !== null;
       },
       { timeout: 30_000, polling: 500 },
     );
     await page.evaluate(() => {
-      const store = (window as unknown as {
-        __studioStore?: {
-          getState: () => {
-            addAsset: (a: { id: string; signedUrl: string; width: number; height: number }) => void;
-            assignAssetToSlot: (slotIndex: number, asset: { id: string; signedUrl: string; width: number; height: number }) => void;
+      const store = (
+        window as unknown as {
+          __studioStore?: {
+            getState: () => {
+              addAsset: (a: {
+                id: string;
+                signedUrl: string;
+                width: number;
+                height: number;
+              }) => void;
+              assignAssetToSlot: (
+                slotIndex: number,
+                asset: { id: string; signedUrl: string; width: number; height: number },
+              ) => void;
+            };
           };
-        };
-      }).__studioStore;
+        }
+      ).__studioStore;
       if (!store) return;
       const s = store.getState();
       // Usar colores sólidos distintos para verificar visualmente la cara B en el 3D.
@@ -68,7 +80,11 @@ test.describe("Ola 17 fixes — Alargados: modal sin scroll + 3D con cara B", ()
 
     // Cerrar el tooltip de gestos si está visible (tapa el botón Ajustar foto y el 3D).
     const closeTip = page.getByRole("button", { name: /Cerrar este tip/i });
-    if (await closeTip.count()) await closeTip.first().click().catch(() => {});
+    if (await closeTip.count())
+      await closeTip
+        .first()
+        .click()
+        .catch(() => {});
 
     // Abrir el modal de edición del primer slot (botón "Ajustar foto…", force por overlays Konva)
     const ajustar = page.getByRole("button", { name: /Ajustar foto/i }).first();
@@ -87,10 +103,12 @@ test.describe("Ola 17 fixes — Alargados: modal sin scroll + 3D con cara B", ()
     }
 
     // Esperar a que el autosave termine para que el 3D tenga las texturas listas.
-    await page.waitForFunction(
-      () => !document.body.textContent?.includes("Guardando…"),
-      { timeout: 30_000, polling: 500 },
-    ).catch(() => {});
+    await page
+      .waitForFunction(() => !document.body.textContent?.includes("Guardando…"), {
+        timeout: 30_000,
+        polling: 500,
+      })
+      .catch(() => {});
 
     // Abrir el 3D
     const ver3d = page.getByRole("button", { name: /Ver en un libro/i }).first();

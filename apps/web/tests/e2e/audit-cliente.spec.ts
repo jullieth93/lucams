@@ -41,16 +41,25 @@ function watch(page: Page, area: string) {
     if (msg.type() === "error") consoleErrors.push(`[${area}] ${msg.text().slice(0, 300)}`);
   });
   page.on("response", (res) => {
-    if (res.status() >= 500) networkErrors.push(`[${area}] ${res.status()} ${res.url().slice(0, 160)}`);
+    if (res.status() >= 500)
+      networkErrors.push(`[${area}] ${res.status()} ${res.url().slice(0, 160)}`);
   });
 }
 
 async function dismissOverlays(page: Page) {
   const accept = page.getByRole("button", { name: /Aceptar todas/i });
-  if (await accept.count()) await accept.first().click().catch(() => {});
+  if (await accept.count())
+    await accept
+      .first()
+      .click()
+      .catch(() => {});
   const onboarding = page.locator('div[role="dialog"][aria-labelledby="onboarding-title"]');
   if (await onboarding.count()) {
-    await page.getByRole("button", { name: /Saltar/i }).first().click().catch(() => {});
+    await page
+      .getByRole("button", { name: /Saltar/i })
+      .first()
+      .click()
+      .catch(() => {});
     await onboarding.waitFor({ state: "detached", timeout: 4_000 }).catch(() => {});
   }
 }
@@ -66,7 +75,9 @@ test.describe("AUDITORÍA CLIENTE — catalogo-whatsapp (producción)", () => {
     );
     console.log(`\n=== RESUMEN AUDITORÍA CLIENTE ===`);
     console.log(`checks: ${findings.filter((f) => f.ok).length}/${findings.length} OK`);
-    console.log(`consoleErrors: ${consoleErrors.length} · networkErrors(5xx): ${networkErrors.length}`);
+    console.log(
+      `consoleErrors: ${consoleErrors.length} · networkErrors(5xx): ${networkErrors.length}`,
+    );
     for (const e of consoleErrors.slice(0, 10)) console.log(`  CONSOLE: ${e}`);
     for (const e of networkErrors.slice(0, 10)) console.log(`  NET5XX: ${e}`);
   });
@@ -77,7 +88,12 @@ test.describe("AUDITORÍA CLIENTE — catalogo-whatsapp (producción)", () => {
     await page.goto("/", { waitUntil: "domcontentloaded" });
     await dismissOverlays(page);
     const loadMs = Date.now() - t0;
-    for (const cat of ["Fotoimanes", "Calendarios Magnéticos", "Separadores de Libros", "Juegos y Aprendizaje"]) {
+    for (const cat of [
+      "Fotoimanes",
+      "Calendarios Magnéticos",
+      "Separadores de Libros",
+      "Juegos y Aprendizaje",
+    ]) {
       await expect(page.getByText(cat, { exact: false }).first()).toBeVisible({ timeout: 15_000 });
     }
     await expect(page.getByText("Llega a tus manos", { exact: false }).first()).toBeVisible();
@@ -92,7 +108,12 @@ test.describe("AUDITORÍA CLIENTE — catalogo-whatsapp (producción)", () => {
     watch(page, "catalogo");
     await page.goto("/productos", { waitUntil: "domcontentloaded" });
     await dismissOverlays(page);
-    for (const p of ["Fotoimanes Polaroid", "Calendario Set 12 Tarjetas", "Magnéticos", "Alargados"]) {
+    for (const p of [
+      "Fotoimanes Polaroid",
+      "Calendario Set 12 Tarjetas",
+      "Magnéticos",
+      "Alargados",
+    ]) {
       await expect(page.getByText(p, { exact: false }).first()).toBeVisible({ timeout: 15_000 });
     }
     await page.screenshot({ path: "/tmp/audit-cliente-catalogo.png", fullPage: true });
@@ -122,10 +143,14 @@ test.describe("AUDITORÍA CLIENTE — catalogo-whatsapp (producción)", () => {
       if (page.url().includes("/estudio/")) {
         if (slug === "nombre-personalizado") {
           // Superficie propia "Arma tu palabra" (editor de nombre, sin canvas Konva).
-          await expect(page.getByText("Arma tu palabra", { exact: false }).first()).toBeVisible({ timeout: 30_000 });
+          await expect(page.getByText("Arma tu palabra", { exact: false }).first()).toBeVisible({
+            timeout: 30_000,
+          });
         } else if (slug === "pack-vocales" || slug === "abecedario-completo") {
           // Editores de sets (letras): HTML con tema/idioma/colores, sin canvas Konva.
-          await expect(page.getByText("Elige los colores", { exact: false }).first()).toBeVisible({ timeout: 30_000 });
+          await expect(page.getByText("Elige los colores", { exact: false }).first()).toBeVisible({
+            timeout: 30_000,
+          });
         } else {
           await expect(page.locator("canvas").first()).toBeVisible({ timeout: 30_000 });
         }
@@ -134,12 +159,18 @@ test.describe("AUDITORÍA CLIENTE — catalogo-whatsapp (producción)", () => {
       } else {
         // Superficie no-estudio (editor propio o direct-cart) — se verifica que cargue.
         await expect(page.locator("body")).toBeVisible();
-        findings.push({ area: `estudio:${slug}`, ok: true, detail: `superficie alterna (${page.url().split("/").pop()})` });
+        findings.push({
+          area: `estudio:${slug}`,
+          ok: true,
+          detail: `superficie alterna (${page.url().split("/").pop()})`,
+        });
       }
     });
   }
 
-  test("5. Flujo cotización: polaroid → estudio → finalizar → form → WhatsApp", async ({ page }) => {
+  test("5. Flujo cotización: polaroid → estudio → finalizar → form → WhatsApp", async ({
+    page,
+  }) => {
     watch(page, "cotizacion");
     await page.goto("/estudio/set-fotoimanes-polaroid", { waitUntil: "domcontentloaded" });
     await dismissOverlays(page);
@@ -165,24 +196,42 @@ test.describe("AUDITORÍA CLIENTE — catalogo-whatsapp (producción)", () => {
       if (await waLink.count()) {
         const href = await waLink.getAttribute("href");
         expect(href).toContain("573208873826");
-        findings.push({ area: "cotizacion", ok: true, detail: `WhatsApp link OK (${href?.slice(0, 80)})` });
+        findings.push({
+          area: "cotizacion",
+          ok: true,
+          detail: `WhatsApp link OK (${href?.slice(0, 80)})`,
+        });
       } else {
         await page.screenshot({ path: "/tmp/audit-cliente-cotizacion-sin-wa.png" });
-        findings.push({ area: "cotizacion", ok: false, detail: "no se encontró link wa.me tras finalizar" });
+        findings.push({
+          area: "cotizacion",
+          ok: false,
+          detail: "no se encontró link wa.me tras finalizar",
+        });
       }
     } else {
-      findings.push({ area: "cotizacion", ok: false, detail: "botón ¡Listo! no disponible (foto no asignó)" });
+      findings.push({
+        area: "cotizacion",
+        ok: false,
+        detail: "botón ¡Listo! no disponible (foto no asignó)",
+      });
     }
   });
 
   test("6. Auth: /login y /registro con Turnstile", async ({ page }) => {
     watch(page, "auth");
     await page.goto("/login", { waitUntil: "domcontentloaded" });
-    await expect(page.locator('input[type="email"], input[name="email"]').first()).toBeVisible({ timeout: 15_000 });
-    const turnstile = await page.locator('[class*="turnstile"], [data-turnstile-sitekey], iframe[src*="turnstile"]').count();
+    await expect(page.locator('input[type="email"], input[name="email"]').first()).toBeVisible({
+      timeout: 15_000,
+    });
+    const turnstile = await page
+      .locator('[class*="turnstile"], [data-turnstile-sitekey], iframe[src*="turnstile"]')
+      .count();
     await page.screenshot({ path: "/tmp/audit-cliente-login.png" });
     await page.goto("/registro", { waitUntil: "domcontentloaded" });
-    await expect(page.locator('input[type="email"], input[name="email"]').first()).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('input[type="email"], input[name="email"]').first()).toBeVisible({
+      timeout: 15_000,
+    });
     await page.screenshot({ path: "/tmp/audit-cliente-registro.png" });
     findings.push({ area: "auth", ok: true, detail: `forms OK · turnstile nodes: ${turnstile}` });
   });
@@ -193,28 +242,44 @@ test.describe("AUDITORÍA CLIENTE — catalogo-whatsapp (producción)", () => {
     await dismissOverlays(page);
     // Coherencia: la ayuda puede mencionar DIAN para aclarar que HOY NO emitimos factura;
     // el error sería prometerla. Buscamos frases positivas de facturación DIAN.
-    const promesasDian = await page.getByText(/emitimos factura electrónica|factura electrónica de la DIAN|facturación electrónica obligatoria/i).count();
+    const promesasDian = await page
+      .getByText(
+        /emitimos factura electrónica|factura electrónica de la DIAN|facturación electrónica obligatoria/i,
+      )
+      .count();
     await page.screenshot({ path: "/tmp/audit-cliente-ayuda.png", fullPage: true });
     for (const legal of ["/legal/privacidad", "/legal/terminos", "/legal/devoluciones"]) {
       const r = await page.goto(legal, { waitUntil: "domcontentloaded" });
       expect(r?.status(), `${legal} status`).toBe(200);
     }
-    findings.push({ area: "ayuda+legal", ok: promesasDian === 0, detail: `promesas DIAN: ${promesasDian} · legales 200` });
+    findings.push({
+      area: "ayuda+legal",
+      ok: promesasDian === 0,
+      detail: `promesas DIAN: ${promesasDian} · legales 200`,
+    });
   });
 
   test("8. Footer/header: WhatsApp, Facebook, email correctos", async ({ page }) => {
     watch(page, "chrome");
     await page.goto("/", { waitUntil: "domcontentloaded" });
     await dismissOverlays(page);
-    const wa = page.locator('a[href*="wa.me/573208873826"], a[href*="wa.me/+573208873826"]').first();
-    await expect(wa).toHaveCount(1, { timeout: 15_000 }).catch(async () => {
-      const anyWa = await page.locator('a[href*="wa.me"]').first().getAttribute("href");
-      expect(anyWa, "número de WhatsApp en footer").toContain("573208873826");
-    });
+    const wa = page
+      .locator('a[href*="wa.me/573208873826"], a[href*="wa.me/+573208873826"]')
+      .first();
+    await expect(wa)
+      .toHaveCount(1, { timeout: 15_000 })
+      .catch(async () => {
+        const anyWa = await page.locator('a[href*="wa.me"]').first().getAttribute("href");
+        expect(anyWa, "número de WhatsApp en footer").toContain("573208873826");
+      });
     const fb = page.locator('a[href*="facebook.com/lucamsshop"]').first();
     await expect(fb).toHaveCount(1);
     await expect(page.getByText("320 887 3826", { exact: false }).first()).toBeVisible();
-    findings.push({ area: "chrome", ok: true, detail: "WhatsApp 573208873826 + Facebook + email OK" });
+    findings.push({
+      area: "chrome",
+      ok: true,
+      detail: "WhatsApp 573208873826 + Facebook + email OK",
+    });
   });
 
   test("9. Búsqueda del header", async ({ page }) => {
@@ -230,10 +295,18 @@ test.describe("AUDITORÍA CLIENTE — catalogo-whatsapp (producción)", () => {
         await input.fill("polaroid");
         await page.waitForTimeout(1500);
         await page.screenshot({ path: "/tmp/audit-cliente-busqueda.png" });
-        findings.push({ area: "busqueda", ok: true, detail: "paleta cmdk responde con resultados" });
+        findings.push({
+          area: "busqueda",
+          ok: true,
+          detail: "paleta cmdk responde con resultados",
+        });
         return;
       }
     }
-    findings.push({ area: "busqueda", ok: false, detail: "no se encontró trigger/input de búsqueda" });
+    findings.push({
+      area: "busqueda",
+      ok: false,
+      detail: "no se encontró trigger/input de búsqueda",
+    });
   });
 });

@@ -108,7 +108,6 @@ export async function GET(req: Request): Promise<Response> {
     });
   }
 
-
   const start = Date.now();
   const apiKey = process.env.RESEND_API_KEY;
 

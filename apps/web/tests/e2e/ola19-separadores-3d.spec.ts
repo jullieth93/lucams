@@ -80,7 +80,9 @@ test.describe("Ola 19 — Separadores Cara A/B en 3D", () => {
     await dismissOnboarding(page);
   }
 
-  test("Separadores Magnéticos: cara A y cara B se ven distintas en el libro 3D", async ({ page }) => {
+  test("Separadores Magnéticos: cara A y cara B se ven distintas en el libro 3D", async ({
+    page,
+  }) => {
     const logs: string[] = [];
     page.on("console", (msg) => {
       const text = msg.text();
@@ -119,7 +121,9 @@ test.describe("Ola 19 — Separadores Cara A/B en 3D", () => {
     }
   });
 
-  test("Separadores Alargados: cara A y cara B se ven distintas en el libro 3D", async ({ page }) => {
+  test("Separadores Alargados: cara A y cara B se ven distintas en el libro 3D", async ({
+    page,
+  }) => {
     await goToStudio(page, "separadores-alargados");
 
     await uploadToSlot(page, "1A", CARA_A);

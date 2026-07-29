@@ -20,14 +20,21 @@
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { prisma } from "@/lib/db";
 import { createClientSlotUploadTickets, finalizeDesign } from "./service";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SECRET_KEY!,
-);
+/*
+ * En CI las vars de Supabase van vacías A PROPÓSITO (ci.yml: los tests que exigen Supabase
+ * real se saltan ahí) y esta prueba se salta entera — ejerce Storage de verdad y no hay
+ * cómo fingirlo. En local corre siempre (.env.local vía tests/setup-env.ts), y si ahí
+ * falta la llave el beforeAll falla en voz alta: omitir en silencio sería fingir cobertura.
+ */
+const HAS_SUPABASE = !!(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.SUPABASE_SECRET_KEY);
+const SKIP = !HAS_SUPABASE && process.env.CI === "true";
+
+// Cliente perezoso: crearlo al importar el módulo reventaba la recolección de vitest en CI.
+let supabase: SupabaseClient;
 
 /** Todo lo que cree esta prueba lleva esta marca, para poder borrarlo sin tocar datos reales. */
 const RUN = `itest-finalize-${Date.now()}`;
@@ -109,7 +116,9 @@ async function clonarBorradorReal(slug: string): Promise<string | null> {
 }
 
 beforeAll(() => {
+  if (SKIP) return;
   if (!process.env.SUPABASE_SECRET_KEY) throw new Error("falta SUPABASE_SECRET_KEY");
+  supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SECRET_KEY);
 });
 
 /*
@@ -119,6 +128,7 @@ beforeAll(() => {
  * terminar es peor que uno que falla.
  */
 afterAll(async () => {
+  if (SKIP) return;
   // Los diseños se limpian en paralelo: en serie el tiempo crece con cada caso nuevo.
   await Promise.all(
     creados.map(async (id) => {
@@ -144,7 +154,7 @@ afterAll(async () => {
   expect(await prisma.design.count({ where: { sessionId: RUN } })).toBe(0);
 }, 180_000);
 
-describe("finalizeDesign — el cliente ya no manda los PNG de imprenta", () => {
+describe.skipIf(SKIP)("finalizeDesign — el cliente ya no manda los PNG de imprenta", () => {
   it("camino normal: el servidor renderiza y el diseño queda READY sin recibir un solo blob", async () => {
     const designId = await clonarBorradorReal("separadores-magneticos");
     // Omitir en silencio sería fingir cobertura — justo lo que dejó vivir este bug meses.
