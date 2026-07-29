@@ -8,7 +8,7 @@
  *   checkout hospedado de Wompi (checkout.wompi.co, sandbox) → pago con
  *   tarjeta de prueba 4242 (APPROVED) → regreso a /checkout/gracias →
  *   verificación de la transacción vía API Wompi → webhook firmado
- *   (mismo esquema HMAC que Wompi, secreto sandbox real) contra
+ *   (mismo esquema SHA-256 que Wompi, secreto sandbox real) contra
  *   /api/webhooks/wompi → saga: orden PAID + guía Aveonline creada.
  *
  * Cubre en una sola corrida: UI checkout, Aveonline (cotización + guía),
@@ -36,6 +36,7 @@ let productId = "";
 let slug = "";
 let orderId = "";
 let orderNumber = "";
+let wompiTxId = "";
 
 const strip = (v: string | undefined) => v?.replace(/^["']|["']$/g, "");
 const WOMPI_EVENTS_SECRET = strip(process.env.WOMPI_EVENTS_SECRET) ?? "";
@@ -78,14 +79,43 @@ test.beforeAll(async () => {
 });
 
 test.afterAll(async () => {
-  // Limpieza: orden de prueba fuera del tablero (soft delete), fixtures fuera (hard).
+  // Limpieza: todo SOFT delete (orden, cliente, producto, categoría). El hard
+  // delete de producto/categoría NUNCA funcionó — revienta por FK (variantes y
+  // OrderItems las referencian) y el .catch lo tragaba en silencio: 41 fixtures
+  // wompi-e2e-* quedaron acumuladas en la DB hasta que el teardown de vitest las
+  // soft-borraba (certificación 2026-07-29). Soft delete = invisible en catálogo
+  // y admin desde ya, sin depender de la siguiente corrida de vitest.
   if (orderId) {
     await prisma.order
       .update({ where: { id: orderId }, data: { deletedAt: new Date() } })
       .catch(() => {});
   }
-  if (productId) await prisma.product.deleteMany({ where: { id: productId } }).catch(() => {});
-  if (categoryId) await prisma.category.deleteMany({ where: { id: categoryId } }).catch(() => {});
+  // Cliente de prueba creado por el checkout (email <RUN>@example.com) — soft delete.
+  // El teardown global de vitest NO lo alcanza (el RUN trae 13 dígitos y el regex
+  // run-id exige 15+) → lo limpia el propio spec (certificación 2026-07-29).
+  await prisma.customer
+    .updateMany({ where: { email: `${RUN}@example.com` }, data: { deletedAt: new Date() } })
+    .catch(() => {});
+  // Evento de webhook sintético firmado por el spec (externalId = <txId>-APPROVED-<ts>).
+  if (wompiTxId) {
+    await prisma.webhookEvent
+      .deleteMany({ where: { source: "WOMPI", externalId: { startsWith: wompiTxId } } })
+      .catch(() => {});
+  }
+  if (productId)
+    await prisma.product
+      .updateMany({
+        where: { id: productId },
+        data: { isActive: false, deletedAt: new Date(), updatedAt: new Date() },
+      })
+      .catch(() => {});
+  if (categoryId)
+    await prisma.category
+      .updateMany({
+        where: { id: categoryId },
+        data: { isActive: false, deletedAt: new Date(), updatedAt: new Date() },
+      })
+      .catch(() => {});
   await prisma.$disconnect();
 });
 
@@ -339,6 +369,7 @@ test("checkout transaccional E2E sandbox: datos → envío Aveonline → pago Wo
   const tx = txBody.data?.[0];
   expect(tx, `transacción Wompi para ${orderNumber}`).toBeTruthy();
   expect(tx!.status).toBe("APPROVED");
+  wompiTxId = tx!.id;
 
   // 9. Webhook firmado (mismo esquema que Wompi: properties+timestamp+secret → SHA256)
   const order = await prisma.order.findUniqueOrThrow({
