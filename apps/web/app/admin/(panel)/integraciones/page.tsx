@@ -46,7 +46,7 @@ type IntegrationStatus = "ok" | "warn" | "fail" | "not-configured";
 
 type Integration = {
   name: string;
-  group: "infra" | "pago" | "envio" | "comunicacion" | "seguridad" | "ai";
+  group: "infra" | "pago" | "envio" | "comunicacion" | "seguridad";
   description: string;
   envVarsRequired: string[];
   isConfigured: boolean;
@@ -64,7 +64,6 @@ const GROUP_LABEL: Record<Integration["group"], string> = {
   envio: "Envío",
   comunicacion: "Comunicación",
   seguridad: "Seguridad",
-  ai: "Inteligencia artificial",
 };
 
 function statusBadge(status: IntegrationStatus) {
@@ -159,7 +158,6 @@ export default async function AdminIntegracionesPage() {
     "NEXT_PUBLIC_TURNSTILE_SITE_KEY",
     "TURNSTILE_SECRET_KEY",
   ]);
-  const anthropicConfigured = envConfigured(["ANTHROPIC_API_KEY"]);
   const waConfigured = envConfigured(["NEXT_PUBLIC_WA_NUMBER"]);
 
   const integrations: Integration[] = [
@@ -272,22 +270,6 @@ export default async function AdminIntegracionesPage() {
         ? undefined
         : "ACCIÓN HUMANA: crear Turnstile site + cargar siteKey + secretKey",
     },
-    {
-      name: "Anthropic Claude — Asistente IA",
-      group: "ai",
-      description:
-        "Sugerencias del Estudio de Personalización + futuro bot WhatsApp con base de conocimiento.",
-      envVarsRequired: ["ANTHROPIC_API_KEY", "ANTHROPIC_MODEL"],
-      isConfigured: anthropicConfigured,
-      healthStatus: anthropicConfigured ? "warn" : "not-configured",
-      healthDetail: anthropicConfigured
-        ? "Healthcheck activo se cablea en M.5 (IA Assist)."
-        : "Pendiente: crear cuenta Anthropic + cargar API key.",
-      dashboardUrl: "https://console.anthropic.com",
-      acciones: anthropicConfigured
-        ? undefined
-        : "ACCIÓN HUMANA: alta en console.anthropic.com + cargar API key",
-    },
   ];
 
   const grouped = integrations.reduce<Record<Integration["group"], Integration[]>>(
@@ -340,7 +322,7 @@ export default async function AdminIntegracionesPage() {
           </AdminNotice>
         )}
 
-        {(["infra", "pago", "envio", "comunicacion", "seguridad", "ai"] as const).map((group) => {
+        {(["infra", "pago", "envio", "comunicacion", "seguridad"] as const).map((group) => {
           const items = grouped[group];
           if (!items || items.length === 0) return null;
           return (

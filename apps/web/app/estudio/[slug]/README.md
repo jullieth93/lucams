@@ -106,7 +106,6 @@ apps/web/app/estudio/[slug]/
 ├── studio-canvas-grid.tsx             # Grid responsive de N StudioSlots
 ├── studio-slot.tsx                    # 1 mini-canvas Konva por imán
 ├── studio-sidebar.tsx                 # Mis fotos + Plantillas + Auto-fill
-├── studio-frame-picker.tsx            # Marco: color LIBRE + atajos marca + "Sin marco" (Ola 3b)
 ├── studio-message-field.tsx           # "Tu mensaje" pack-level en sidebar (Ola 3c)
 ├── studio-ig-border-toggle.tsx        # Polaroid Instagram: foto con/sin borde (Ola 3c)
 ├── studio-toolbar.tsx                 # Header con auto-save + progress + ¡Listo!

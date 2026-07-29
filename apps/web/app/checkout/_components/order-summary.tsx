@@ -8,7 +8,7 @@
  */
 
 import Image from "next/image";
-import { ShoppingBag } from "lucide-react";
+import { ShoppingBag, Sparkles } from "lucide-react";
 import { formatCOP } from "@/lib/format";
 import { isCatalogMode } from "@/lib/store-mode";
 import type { CartDetail } from "@/features/cart/service";
@@ -45,11 +45,26 @@ export function OrderSummary({
       {/* Items compactos */}
       <ul className="divide-brand-purple/10 max-h-60 divide-y overflow-y-auto">
         {cart.items.map((item) => {
-          const imgUrl = item.designPreviewUrl ?? item.imageUrl ?? "/placeholder.png";
+          // Sin imagen: fallback inline (Sparkles, igual que checkout/gracias) —
+          // jamás pedir una URL que no existe en public/.
+          const imgUrl = item.designPreviewUrl ?? item.imageUrl ?? null;
           return (
             <li key={item.itemId} className="flex items-start gap-3 py-3">
               <div className="bg-brand-purple/5 relative h-12 w-12 flex-shrink-0 overflow-hidden rounded-lg">
-                <Image src={imgUrl} alt="" fill sizes="48px" className="object-cover" unoptimized />
+                {imgUrl ? (
+                  <Image
+                    src={imgUrl}
+                    alt=""
+                    fill
+                    sizes="48px"
+                    className="object-cover"
+                    unoptimized
+                  />
+                ) : (
+                  <div className="flex h-full w-full items-center justify-center">
+                    <Sparkles className="text-brand-muted h-5 w-5" />
+                  </div>
+                )}
                 <span className="bg-brand-purple-dark/85 absolute top-0 right-0 inline-flex h-5 min-w-5 items-center justify-center rounded-bl-md px-1 text-[10px] font-bold text-white">
                   {item.qty}
                 </span>

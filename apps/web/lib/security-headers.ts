@@ -48,8 +48,9 @@ export function buildCsp(nonce: string, isProd: boolean): string {
     "img-src 'self' data: blob: https://*.supabase.co https://*.coordinadora.com https://images.unsplash.com",
     "font-src 'self' https://fonts.gstatic.com",
     // Solo hosts que el NAVEGADOR contacta: Supabase (auth/storage/realtime) + Wompi (widget/checkout).
-    // El envío (Aveonline) y la IA (Gemini) se llaman SERVER-SIDE → no van en connect-src. Se retiran
-    // api.venndelo.com y api.anthropic.com (muertos: ni el operador ni el proveedor de IA reales).
+    // El envío (Aveonline) y la IA (Gemini) se llaman SERVER-SIDE → no van en connect-src.
+    // api.venndelo.com y api.anthropic.com quedaron ELIMINADOS de la CSP: ninguno existe en el
+    // código (no hay operador Venndelo ni provider Anthropic — la IA real es solo Gemini).
     "connect-src 'self' https://*.supabase.co https://api.wompi.co",
     "frame-src 'self' https://challenges.cloudflare.com https://checkout.wompi.co",
     "form-action 'self' https://checkout.wompi.co",
