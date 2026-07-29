@@ -13,15 +13,17 @@ import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { CmsText } from "@/components/cms/cms-text";
 import { CmsSetting } from "@/components/cms/cms-setting";
-import { getSettingValue } from "@/lib/cms";
+import { getSettingValue, getPageSeo } from "@/lib/cms";
 import { buildWhatsAppUrl } from "@/lib/wa";
 import { ContactForm } from "./contact-form";
 
-export const metadata: Metadata = {
-  title: "Contacto",
-  description:
-    "Escríbenos por WhatsApp, email o el formulario. Te respondemos en menos de 24 horas hábiles.",
-};
+export async function generateMetadata(): Promise<Metadata> {
+  return getPageSeo("seo.page.contacto", {
+    title: "Contacto",
+    description:
+      "Escríbenos por WhatsApp, email o el formulario. Te respondemos en menos de 24 horas hábiles.",
+  });
+}
 
 export const dynamic = "force-dynamic";
 

@@ -31,19 +31,24 @@ import {
 } from "@/features/products/public-service";
 import { listFeaturedReviews } from "@/features/reviews/public-service";
 import { CmsText } from "@/components/cms/cms-text";
+import { getPageSeo } from "@/lib/cms";
 import { buildWhatsAppUrl } from "@/lib/wa";
 import { isCatalogMode } from "@/lib/store-mode";
 
 /* La home define su PROPIA description y por eso pisa la del layout — que sí se derivaba del modo
    (auditoría 2026-07-21). "Entrega a 1.100+ destinos" es la cobertura del operador logístico, que
    en la Etapa 1 no está activa: hoy el envío se coordina y se cotiza por WhatsApp. Prometerlo en el
-   snippet de Google es información engañosa (Ley 1480 art. 23), así que también se deriva del flag. */
-export const metadata: Metadata = {
-  title: "Lucams_shop — Tus recuerdos en imán",
-  description: isCatalogMode()
-    ? "Imanes magnéticos personalizados, fotoimanes, recuerdos para eventos, calendarios y planners. Hechos a mano en Colombia; el envío lo coordinamos contigo por WhatsApp."
-    : "Imanes magnéticos personalizados, fotoimanes, recuerdos para eventos, calendarios y planners. Hechos a mano en Colombia con entrega a 1.100+ destinos.",
-};
+   snippet de Google es información engañosa (Ley 1480 art. 23), así que también se deriva del flag.
+   Ruta A (2026-07-29): el bloque `seo.page.home` (title=meta title, body=meta description)
+   sobreescribe ambos desde /admin/contenido/bloques; el fallback mantiene el gate de modo. */
+export async function generateMetadata(): Promise<Metadata> {
+  return getPageSeo("seo.page.home", {
+    title: "Lucams_shop — Tus recuerdos en imán",
+    description: isCatalogMode()
+      ? "Imanes magnéticos personalizados, fotoimanes, recuerdos para eventos, calendarios y planners. Hechos a mano en Colombia; el envío lo coordinamos contigo por WhatsApp."
+      : "Imanes magnéticos personalizados, fotoimanes, recuerdos para eventos, calendarios y planners. Hechos a mano en Colombia con entrega a 1.100+ destinos.",
+  });
+}
 
 // Home consulta DB en SSR — dynamic para que Next no pre-renderice
 // en build con DATABASE_URL placeholder.
