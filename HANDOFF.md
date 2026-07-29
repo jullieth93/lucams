@@ -1,6 +1,6 @@
-# HANDOFF — Lucams: Fases A+B certificadas, CI de develop reparada y dependabot al día (cierre 2026-07-29)
+# HANDOFF — Lucams: Fases A+B certificadas, CI reparada, dependabot al día y **producción = `develop` (sandbox)** (cierre 2026-07-29)
 
-Documento de continuidad. Todo lo aquí escrito está verificado con evidencia (runs de CI, merges, corridas locales); nada es suposición. Reescrito minucioso al cierre de la sesión de triaje dependabot + reparación de CI.
+Documento de continuidad. Todo lo aquí escrito está verificado con evidencia (runs de CI, merges, corridas locales, deploys y respuestas de API); nada es suposición. Reescrito minucioso al cierre de la sesión de triaje dependabot + reparación de CI + go-live de develop en etapa de pruebas.
 
 ---
 
@@ -8,7 +8,9 @@ Documento de continuidad. Todo lo aquí escrito está verificado con evidencia (
 
 Sesión anterior: Fase A (`catalogo-whatsapp`, en producción) y Fase B (`develop`, transaccional completa) **certificadas** — ver `docs/audits/2026-07-28-certificacion-catalogo-whatsapp.md` y `docs/audits/2026-07-28-certificacion-develop.md`.
 
-Esta sesión: **triaje de los 6 PRs de dependabot abiertos contra `develop`**. Lo que destapó cambió el frente real de trabajo: la CI de `develop` llevaba **roja en los 5 pushes desde el merge de Fase A** (`cfc9028` en adelante) — la certificación Fase A/B fue local + preview y sus commits rompieron 4 jobs sin que nadie corriera la CI de rama. Objetivo ampliado y cumplido: dejar `develop` con CI 7/7 verde, dependencias al día, producción intacta.
+Esta sesión: **triaje de los 6 PRs de dependabot abiertos contra `develop`**. Lo que destapó cambió el frente real de trabajo: la CI de `develop` llevaba **roja en los 5 pushes desde el merge de Fase A** (`cfc9028` en adelante) — la certificación Fase A/B fue local + preview y sus commits rompieron 4 jobs sin que nadie corriera la CI de rama. Objetivo ampliado y cumplido: dejar `develop` con CI 7/7 verde, dependencias al día.
+
+Al cierre, por decisión del usuario: **go-live de `develop` en etapa de pruebas** — producción de Vercel (lucamsshop.com) ahora sirve `develop` con llaves Wompi/Aveonline **sandbox**, como paso previo a la rama `production` con llaves PRD (ver §2 y §5a).
 
 ---
 
@@ -39,10 +41,22 @@ Las 4 majors de GitHub Actions eliminan además los warnings "Node 20 is depreca
 - `.github/dependabot.yml`: `ignore` de sharp en version-updates (las PRs de **seguridad** siguen llegando → triaje manual con deploy de verificación en Vercel antes de aceptar).
 - Subir a 0.35.x sin verificar es exactamente lo que rompió producción (ERR_DLOPEN_FAILED libvips → 500 en todas las PDP, Fase A).
 
+### 🟢 Go-live etapa de pruebas (2026-07-29): producción = `develop` con llaves SANDBOX
+
+Decisión explícita del usuario (consciente de las llaves sandbox): la tienda transaccional se prueba en infraestructura real antes del go-live PRD con la rama `production`.
+
+- **Vercel `productionBranch`: `catalogo-whatsapp` → `develop`** (verificado re-leyendo el proyecto: `develop`). El cambio NO es editable por PATCH directo — método unlink/relink (ver §6).
+- **`NEXT_PUBLIC_STORE_MODE=full`** en scope Production (era `catalog` para `catalogo-whatsapp`). La var es por ENTORNO, no por rama — ver rollback en §6.
+- **Deploy producción desde tip `6b6b908`** (`lucams-shop-6w2zr51eb`, Ready, vía `POST /v13/deployments` con `gitSource.repoId`). Verificado en vivo: lucamsshop.com 200, `/status` reporta modo **full**, `/api/webhooks/wompi` responde **401 a firma inválida** en el dominio real, SSO intacto (`all_except_custom_domains`: prod pública, previews protegidos).
+- **Wompi y Aveonline siguen SANDBOX** (`WOMPI_ENV=sandbox`, credenciales demo): los pedidos de prueba NO cobran dinero real ni generan guías facturables.
+- **PENDIENTE (usuario)**: dashboard Wompi **sandbox** → URL de Eventos → `https://lucamsshop.com/api/webhooks/wompi` (hoy apunta al alias git-develop, que funciona, pero el dominio propio es el canónico y no depende del alias).
+- `catalogo-whatsapp` queda como rama de preview (sus pushes ya no van a producción). OJO: todo push a `develop` ahora dispara un **deploy de producción**.
+
 ### Estado de ramas
 
-- `develop` (default): tip `6ff37a9`, al día con origin, working tree limpio. CI verde.
-- `catalogo-whatsapp` (producción en Vercel): **intacta**, sin cambios esta sesión.
+- `develop` (default y **PRODUCCIÓN en Vercel**): tip `6b6b908`, al día con origin, working tree limpio. CI verde. Modo full + llaves sandbox.
+- `production` (existe en origin, `6e86f94`): destino del go-live PRD con llaves reales (§5a).
+- `catalogo-whatsapp`: rama de preview; catálogo certificado intacto (rollback disponible, §6).
 - 0 ramas dependabot locales/remotas (limpieza verificada con `git ls-remote` + `gh pr list`).
 
 ---
@@ -101,15 +115,15 @@ Tests que exigen Supabase real (Storage/PostgREST/GoTrue): **skip cuando `NEXT_P
 
 ### 5a. Decisiones que dependen de ti (negocio)
 
-1. **Go-live master** — cuándo activar la tienda transaccional como producción. Al decidirlo, este es el checklist (lo ejecuto yo; de ti solo necesito llaves y respuestas):
-   a. Vercel (scope Production): `WOMPI_ENV=prod` + 4 llaves Wompi PRODUCCIÓN (se consiguen en el dashboard Wompi prod).
-   b. Dashboard Wompi PROD: URL de Eventos → `https://lucamsshop.com/api/webhooks/wompi` (dominio propio = exento de SSO).
-   c. Credenciales `AVEONLINE_*` de PRODUCCIÓN activas en Vercel (reemplazar las sandbox).
+1. **Go-live PRD (rama `production`)** — cuando termines las pruebas en develop-sandbox. Checklist (lo ejecuto yo; de ti solo llaves y respuestas):
+   a. Merge `develop` → `production` (la rama ya existe en origin, `6e86f94`).
+   b. Vercel (scope Production): `WOMPI_ENV=prod` + 4 llaves Wompi PRODUCCIÓN (dashboard Wompi prod) + credenciales `AVEONLINE_*` REALES (reemplazar las sandbox).
+   c. Dashboard Wompi PROD: URL de Eventos → `https://lucamsshop.com/api/webhooks/wompi` (dominio propio = exento de SSO).
    d. **IVA**: confirmar con el contador si Lucy es responsable de IVA → si sí, cableo `tax-in-cents:vat` en `finalizeCheckout` (el campo ya existe; no suma al total).
    e. **Verificación `bloquegenerarguia` con la cuenta REAL** ANTES de `AVEONLINE_GENERATE_REAL=true` (semántica inversa histórica; genero una guía con cada valor y revisamos cartera en el panel Aveonline). Registro en `docs/INTEGRATIONS_AVEONLINE.md` §21.4.
-   f. Merge `develop` → `master`.
+   f. Vercel `productionBranch`: `develop` → `production` (método unlink/relink, §6) + deploy desde el tip de `production`.
 2. **Supabase test/staging separado** (aplazada desde Fase A) — decidir si se crea un proyecto Supabase aparte para tests/staging (hoy dev=prod en uno solo). Cuando exista: aprieto la cobertura (functions 68.5→70, statements 69.5→70) porque los tests Supabase-real vuelven a correr en CI.
-3. **Seguimiento comercial**: 8 cotizaciones reales de "Cristian" (hasta $12.8M COP) intactas en producción — leads de negocio para verificar/contactar (Fase A §8).
+3. **Seguimiento comercial**: 8 cotizaciones reales de "Cristian" (hasta $12.8M COP) intactas en la BD — leads de negocio para verificar/contactar (Fase A §8).
 
 ### 5b. Trabajo técnico pendiente (mío, sin decisión previa)
 
@@ -136,6 +150,8 @@ Tests que exigen Supabase real (Storage/PostgREST/GoTrue): **skip cuando `NEXT_P
 - Rate limits reales: cotizaciones 5/IP/día + 3/teléfono/día; API catálogo ~17 req ráfaga.
 - La guía Aveonline imprime `productos[].unidades` como N bultos: SIEMPRE 1 bulto agregado (modelo caja apilada).
 - Vercel SSO del proyecto se consulta/cambia por API: `GET/PATCH /v9/projects/lucams-shop` (campo `ssoProtection`) con el token del CLI. ON para previews (verificado 2026-07-28).
+- **Vercel `productionBranch` NO es editable por PATCH directo** (`/v9/projects` con `productionBranch` o `link`, y `/link` por PATCH: todos rechazados). Método que funciona (2026-07-29): `DELETE /v9/projects/lucams-shop/link` + `POST /link` con `{"type":"github","repo":"jullieth93/lucams","productionBranch":"<rama>"}`. Re-leer el proyecto para verificar (un 200 puede no cambiar nada). Deploy desde una rama sin push: `POST /v13/deployments` con `{"name":"lucams-shop","project":"lucams-shop","target":"production","gitSource":{"type":"github","repoId":1233985927,"ref":"<rama>"}}` (repoId sale de `link.repoId`).
+- **Rollback a catálogo** (si hiciera falta): `productionBranch` → `catalogo-whatsapp` (método unlink/relink) + `NEXT_PUBLIC_STORE_MODE=catalog` en scope Production + deploy nuevo. La var STORE_MODE es por ENTORNO, no por rama — SIEMPRE va de la mano del switch.
 
 ### Comandos de utilidad
 
