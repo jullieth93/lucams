@@ -1,15 +1,11 @@
 /*
  * Interface ShippingProvider — PLAN_CATALOG_V2 ADR-039.
  *
- * Pattern equivalente a PaymentProvider (Wompi/Mercado Pago). Permite
- * swap entre Aveonline (multi-carrier) y Venndelo (Coordinadora) sin
- * tocar el código del checkout ni del admin.
+ * Pattern equivalente a PaymentProvider (Wompi/Mercado Pago).
  *
- * Implementaciones:
- *   - features/shipping/aveonline.ts (activa, decisión 4.10)
- *   - features/shipping/venndelo.ts  (dormida, Plan B documentado N5)
- *
- * Env var SHIPPING_PROVIDER controla cuál se usa. Default "aveonline".
+ * Implementación única: features/shipping/aveonline.ts (activa, decisión 4.10).
+ * El Plan B Venndelo se eliminó del código y de los docs el 2026-07-29 por
+ * decisión de negocio (la logística es y será Aveonline).
  */
 
 export type ShippingAddress = {
@@ -71,7 +67,7 @@ export type WebhookEvent = {
 };
 
 export interface ShippingProvider {
-  /** Cotiza envío. En Aveonline retorna lista multi-carrier; en Venndelo solo Coordinadora. */
+  /** Cotiza envío. Retorna la lista multi-carrier de Aveonline. */
   quote(params: {
     origin: { city: string; department: string };
     destination: { city: string; department: string };
@@ -102,24 +98,18 @@ export interface ShippingProvider {
   handleWebhook(rawBody: string, headers: Record<string, string>): Promise<WebhookEvent>;
 
   /** Nombre del proveedor para logs/telemetría. */
-  readonly name: "aveonline" | "venndelo";
+  readonly name: "aveonline";
 }
 
 let _provider: ShippingProvider | null = null;
 
 /**
- * Singleton del provider activo según env SHIPPING_PROVIDER.
+ * Singleton del provider activo (Aveonline — único soportado).
  * Lazy load para no romper build cuando vars no están configuradas.
  */
 export async function getShippingProvider(): Promise<ShippingProvider> {
   if (_provider) return _provider;
-  const which = process.env.SHIPPING_PROVIDER ?? "aveonline";
-  if (which === "venndelo") {
-    const { VenndeloProvider } = await import("./venndelo");
-    _provider = new VenndeloProvider();
-  } else {
-    const { AveonlineProvider } = await import("./aveonline");
-    _provider = new AveonlineProvider();
-  }
+  const { AveonlineProvider } = await import("./aveonline");
+  _provider = new AveonlineProvider();
   return _provider;
 }

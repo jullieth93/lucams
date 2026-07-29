@@ -104,7 +104,7 @@ afterAll(() => server.close());
 | ------------------------------------------------------- | ------------------------------------- | ------------------------------------------------------------- |
 | **Postgres**                                            | Real (Supabase local)                 | RLS, transacciones, pgmq, pg_cron solo se validan con DB real |
 | **Wompi API**                                           | MSW intercept con respuestas grabadas | Cuenta de costo + sandbox lento                               |
-| **Venndelo API**                                        | MSW intercept                         | Idem                                                          |
+| **Aveonline API**                                       | MSW intercept                         | Idem                                                          |
 | **Anthropic API**                                       | MSW intercept                         | Costo + lentitud + variabilidad de respuesta IA               |
 | **Resend API**                                          | MSW intercept                         | Costo del free tier                                           |
 | **Supabase Storage**                                    | Real (Supabase local)                 | Validar URL firmada, MIME, etc.                               |

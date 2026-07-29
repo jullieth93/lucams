@@ -4,14 +4,14 @@ Detalle de cada integración externa: cómo se conecta, qué endpoints/webhooks 
 
 ## Tabla resumen
 
-| Integración    | Propósito                             | SDK / método            | Webhooks                      | Sandbox                 |
-| -------------- | ------------------------------------- | ----------------------- | ----------------------------- | ----------------------- |
-| **Wompi**      | Pasarela de pago                      | REST + Web Checkout     | `transaction.updated`         | Sí                      |
-| **Venndelo**   | Logística (Coordinadora + COD)        | REST API pública        | Tracking (`shipment.updated`) | Sí                      |
-| **Supabase**   | DB + Auth + Storage + Realtime        | `@supabase/supabase-js` | —                             | Mismo proyecto Free     |
-| **Resend**     | Email transaccional                   | `resend` SDK            | — (sin webhooks por ahora)    | Subdominio `resend.dev` |
-| **Claude API** | Asistente de diseño en estudio        | `@anthropic-ai/sdk`     | —                             | Mismo endpoint          |
-| **WhatsApp**   | Botón flotante con mensaje pre-armado | `wa.me` URL scheme      | —                             | —                       |
+| Integración    | Propósito                             | SDK / método            | Webhooks                   | Sandbox                 |
+| -------------- | ------------------------------------- | ----------------------- | -------------------------- | ----------------------- |
+| **Wompi**      | Pasarela de pago                      | REST + Web Checkout     | `transaction.updated`      | Sí                      |
+| **Aveonline**  | Logística multi-carrier + COD         | REST API                | Tracking (webhook AveCRM)  | Cuenta DEMO pública     |
+| **Supabase**   | DB + Auth + Storage + Realtime        | `@supabase/supabase-js` | —                          | Mismo proyecto Free     |
+| **Resend**     | Email transaccional                   | `resend` SDK            | — (sin webhooks por ahora) | Subdominio `resend.dev` |
+| **Claude API** | Asistente de diseño en estudio        | `@anthropic-ai/sdk`     | —                          | Mismo endpoint          |
+| **WhatsApp**   | Botón flotante con mensaje pre-armado | `wa.me` URL scheme      | —                          | —                       |
 
 ---
 
@@ -42,7 +42,7 @@ NEXT_PUBLIC_WOMPI_PUBLIC_KEY=$WOMPI_PUBLIC_KEY  # Para el widget en cliente
 ### Flujo de pago (Web Checkout — redirección)
 
 ```
-Cliente               Lucams_shop                   Wompi                 Venndelo
+Cliente               Lucams_shop                   Wompi                 Aveonline
    │                      │                            │                      │
    │ 1. Click "Pagar"     │                            │                      │
    ├─────────────────────>│                            │                      │
@@ -62,7 +62,7 @@ Cliente               Lucams_shop                   Wompi                 Vennde
    │                      │ 9. Verifica firma         │                      │
    │                      │ 10. Inserta WebhookEvent (idempotente)           │
    │                      │ 11. Update Order=PAID     │                      │
-   │                      │ 12. Crea envío Venndelo  │                      │
+   │                      │ 12. Crea envío Aveonline │                      │
    │                      │     ───────────────────────────────────────────>│
    │                      │ 13. Envía email + log     │                      │
    │ 14. Redirect a /orden/[id]                        │                      │
@@ -120,101 +120,31 @@ No pasa por Wompi. Flujo:
 
 1. Cliente elige "Pago contraentrega" en checkout.
 2. Order se crea directo con `paymentMethod=COD` y `status=PAID`.
-3. Se crea envío Venndelo COD (Venndelo cobra al entregar).
-4. Venndelo deposita el dinero en la cuenta del usuario tras la entrega.
+3. Se crea guía Aveonline COD (el carrier cobra al entregar).
+4. Aveonline recauda el COD y lo remite a la cuenta del usuario tras la entrega (conciliación manual — ver [`INTEGRATIONS_AVEONLINE.md`](./INTEGRATIONS_AVEONLINE.md) §7).
 
 ---
 
-## 2. Venndelo (logística)
+## 2. Aveonline (logística)
 
-### Qué es
+> **Fuente de verdad:** [`INTEGRATIONS_AVEONLINE.md`](./INTEGRATIONS_AVEONLINE.md) — investigación completa de la API (auth, cotización, guías, recogidas, tracking webhook, COD, cobertura, tarifas, sandbox). Decisión: [ADR-039](./DECISIONS.md).
 
-Plataforma colombiana de logística para e-commerce. Partner: **Coordinadora**. Cubre 1.100+ destinos con contraentrega. **0% comisión sobre venta**, solo pagas el costo de envío. Pago inmediato al usuario al entregar.
+Agregador **multi-carrier** colombiano (Servientrega, Envía, TCC, Coordinadora, Domina, Interrapidísimo, Saferbo): al cotizar, el cliente elige carrier en checkout. Soporta contraentrega (COD).
 
 ### Variables de entorno
 
 ```bash
-VENNDELO_ENV=sandbox  # sandbox | production
-VENNDELO_API_URL=https://api.venndelo.com/v1
-VENNDELO_API_KEY=xxxxxxxxxxxxxx
-VENNDELO_WEBHOOK_SECRET=xxxxxxxxxxxxxx
-VENNDELO_ORIGIN_CITY=Bogotá          # Ciudad de recolección
-VENNDELO_ORIGIN_DEPARTMENT=Cundinamarca
+AVEONLINE_ENV=test  # test | production (default test — fail-safe)
+AVEONLINE_USUARIO=xxxxxxxxxxxxxx
+AVEONLINE_CLAVE=xxxxxxxxxxxxxx
 ```
 
-### Endpoints clave
+### Puntos clave
 
-| Endpoint                   | Uso                                                         |
-| -------------------------- | ----------------------------------------------------------- |
-| `POST /shipments/quote`    | Cotización en checkout: peso + ciudad/depto destino → costo |
-| `POST /shipments`          | Crear envío al pasar Order a `PAID`                         |
-| `GET /shipments/:id`       | Consultar estado actual                                     |
-| `GET /shipments/:id/label` | Descargar guía PDF                                          |
-| `POST /webhooks`           | Endpoint nuestro para recibir cambios de estado             |
-
-### Flujo en checkout
-
-```ts
-// app/api/shipping/quote/route.ts
-import { z } from "zod";
-import { rateLimit } from "@/lib/rate-limit";
-import { cacheGet, cacheSet } from "@/lib/cache";
-
-const QuoteSchema = z.object({
-  city: z.string().min(2).max(80),
-  department: z.string().min(2).max(80),
-  weightGrams: z.number().int().positive().max(50_000),
-});
-
-export async function POST(req: Request) {
-  const ip = req.headers.get("x-forwarded-for") ?? "unknown";
-  const allowed = await rateLimit(`shipping_quote:${ip}`, 30, 60); // 30 req/min
-  if (!allowed) return new Response("Too Many Requests", { status: 429 });
-
-  const parsed = QuoteSchema.safeParse(await req.json());
-  if (!parsed.success) return Response.json(parsed.error, { status: 400 });
-
-  const { city, department, weightGrams } = parsed.data;
-  const cacheKey = `quote:${city}:${department}:${weightGrams}`;
-
-  // Cache 5 min por destino + peso para no llamar a Venndelo en cada keystroke
-  const cached = await cacheGet(cacheKey);
-  if (cached) return Response.json(cached);
-
-  const quote = await venndelo.quoteShipment({
-    origin: process.env.VENNDELO_ORIGIN_CITY!,
-    destination: { city, department },
-    weight: weightGrams,
-  });
-
-  await cacheSet(cacheKey, quote, 300); // TTL 5 min
-  return Response.json(quote);
-}
-```
-
-### Webhook de tracking
-
-```ts
-// app/api/venndelo/webhook/route.ts
-export async function POST(req: Request) {
-  // 1. Verificar firma HMAC con VENNDELO_WEBHOOK_SECRET
-  // 2. Insertar en WebhookEvent (idempotente)
-  // 3. Mapear estado Venndelo → OrderStatus
-  // 4. Actualizar Order
-  // 5. Si DELIVERED, enviar email "tu pedido llegó"
-}
-```
-
-### Mapeo de estados
-
-| Estado Venndelo | OrderStatus interno |
-| --------------- | ------------------- |
-| `created`       | `FULFILLING`        |
-| `picked_up`     | `SHIPPED`           |
-| `in_transit`    | `SHIPPED`           |
-| `delivered`     | `DELIVERED`         |
-| `returned`      | `CANCELLED`         |
-| `failed`        | `CANCELLED`         |
+- **Cotización:** `POST /api/shipping/quote` → `cotizarDoble` de Aveonline (multi-carrier); cache 5 min por destino + peso para no llamar a Aveonline en cada keystroke (`INTEGRATIONS_AVEONLINE.md` §3).
+- **Guías:** se generan al pasar la orden a `PAID`; reintentos durables vía `pgmq` (`INTEGRATIONS_AVEONLINE.md` §4).
+- **Tracking:** webhook AveCRM en `/api/webhooks/aveonline` → mapea estado del carrier a `OrderStatus` (`INTEGRATIONS_AVEONLINE.md` §6).
+- **Implementación:** `features/shipping/aveonline.ts` detrás de la interface `ShippingProvider` (`features/shipping/provider.ts`).
 
 ---
 
@@ -297,15 +227,15 @@ EMAIL_FROM=Lucams_shop <onboarding@resend.dev>
 
 ### Plantillas a crear (`lib/email/templates/`)
 
-| Template                 | Trigger                      | Plantilla react-email                |
-| ------------------------ | ---------------------------- | ------------------------------------ |
-| `welcome.tsx`            | Registro de cliente          | Mascota saludando                    |
-| `order-confirmation.tsx` | Order pasa a `PAID`          | Items + total + tracking placeholder |
-| `order-shipped.tsx`      | Webhook Venndelo `picked_up` | Tracking URL + ETA                   |
-| `order-delivered.tsx`    | Webhook Venndelo `delivered` | Pidiendo reseña                      |
-| `cart-recovery-1h.tsx`   | Cron 1h después de abandono  | Cupón 5%                             |
-| `cart-recovery-24h.tsx`  | Cron 24h después             | Recordatorio sin cupón               |
-| `password-reset.tsx`     | Solicitud de reset           | Link con TTL 1h                      |
+| Template                 | Trigger                         | Plantilla react-email                |
+| ------------------------ | ------------------------------- | ------------------------------------ |
+| `welcome.tsx`            | Registro de cliente             | Mascota saludando                    |
+| `order-confirmation.tsx` | Order pasa a `PAID`             | Items + total + tracking placeholder |
+| `order-shipped.tsx`      | Webhook Aveonline `EN TRANSITO` | Tracking URL + ETA                   |
+| `order-delivered.tsx`    | Webhook Aveonline `ENTREGADA`   | Pidiendo reseña                      |
+| `cart-recovery-1h.tsx`   | Cron 1h después de abandono     | Cupón 5%                             |
+| `cart-recovery-24h.tsx`  | Cron 24h después                | Recordatorio sin cupón               |
+| `password-reset.tsx`     | Solicitud de reset              | Link con TTL 1h                      |
 
 ### Limitaciones Free a recordar
 
@@ -535,15 +465,15 @@ Reembolsos parciales o totales requieren nota crédito electrónica. Se emite v�
 
 ### Aplicación por integración
 
-| Integración              | Timeout | Retry                               | Circuit breaker             |
-| ------------------------ | ------- | ----------------------------------- | --------------------------- |
-| Wompi GET status         | 5 s     | 3 intentos, backoff exp. base 200ms | threshold=5, resetMs=30000  |
-| Wompi POST transaction   | 10 s    | 1 intento (no idempotente)          | Idem                        |
-| Venndelo quote           | 5 s     | 3 intentos                          | threshold=5, resetMs=30000  |
-| Venndelo create shipment | 15 s    | 3 intentos vía pgmq (durables)      | threshold=3, resetMs=60000  |
-| Anthropic                | 30 s    | 2 intentos para 5xx, 0 para 4xx     | threshold=10, resetMs=60000 |
-| Resend                   | 10 s    | 3 intentos vía pgmq                 | threshold=5, resetMs=30000  |
-| Proveedor DIAN           | 15 s    | 5 intentos vía pgmq                 | threshold=3, resetMs=120000 |
+| Integración            | Timeout | Retry                               | Circuit breaker             |
+| ---------------------- | ------- | ----------------------------------- | --------------------------- |
+| Wompi GET status       | 5 s     | 3 intentos, backoff exp. base 200ms | threshold=5, resetMs=30000  |
+| Wompi POST transaction | 10 s    | 1 intento (no idempotente)          | Idem                        |
+| Aveonline cotización   | 5 s     | 3 intentos                          | threshold=5, resetMs=30000  |
+| Aveonline generar guía | 15 s    | 3 intentos vía pgmq (durables)      | threshold=3, resetMs=60000  |
+| Anthropic              | 30 s    | 2 intentos para 5xx, 0 para 4xx     | threshold=10, resetMs=60000 |
+| Resend                 | 10 s    | 3 intentos vía pgmq                 | threshold=5, resetMs=30000  |
+| Proveedor DIAN         | 15 s    | 5 intentos vía pgmq                 | threshold=3, resetMs=120000 |
 
 ### Request ID correlation
 
@@ -581,13 +511,13 @@ No se necesitan vars dedicadas: el acceso a `pgmq` usa `SUPABASE_SECRET_KEY` que
 
 ### Colas previstas
 
-| Cola                      | Productor                                   | Consumidor    | Frecuencia                         |
-| ------------------------- | ------------------------------------------- | ------------- | ---------------------------------- |
-| `cart_recovery_1h`        | `pg_cron` cada 5 min                        | Edge Function | A 1h del abandono                  |
-| `cart_recovery_24h`       | `pg_cron` cada 5 min                        | Edge Function | A 24h del abandono                 |
-| `order_reconciliation`    | `pg_cron` cada 15 min                       | Edge Function | Órdenes en `PENDING_PAYMENT` >1h   |
-| `shipment_creation_retry` | Webhook handler de Wompi al fallar Venndelo | Edge Function | Inmediato + reintentos con backoff |
-| `email_send`              | Cualquier flujo que mande email             | Edge Function | Inmediato                          |
+| Cola                      | Productor                                    | Consumidor    | Frecuencia                         |
+| ------------------------- | -------------------------------------------- | ------------- | ---------------------------------- |
+| `cart_recovery_1h`        | `pg_cron` cada 5 min                         | Edge Function | A 1h del abandono                  |
+| `cart_recovery_24h`       | `pg_cron` cada 5 min                         | Edge Function | A 24h del abandono                 |
+| `order_reconciliation`    | `pg_cron` cada 15 min                        | Edge Function | Órdenes en `PENDING_PAYMENT` >1h   |
+| `shipment_creation_retry` | Webhook handler de Wompi al fallar Aveonline | Edge Function | Inmediato + reintentos con backoff |
+| `email_send`              | Cualquier flujo que mande email              | Edge Function | Inmediato                          |
 
 ### Patrón de productor (en server-side)
 
@@ -851,12 +781,12 @@ const answer = await anthropic.messages.create({
 - [ ] Probar compra real con valor mínimo
 - [ ] Cambiar `WOMPI_ENV=production`
 
-### Venndelo
+### Aveonline
 
-- [ ] Cuenta de producción activada
-- [ ] Dirección de origen para recolección configurada
-- [ ] API key de producción en Vercel
-- [ ] Webhook configurado
+- [ ] Cuenta de producción activada (usuario + clave)
+- [ ] Dirección de origen y recogidas configuradas
+- [ ] `AVEONLINE_ENV=production` + `AVEONLINE_USUARIO`/`AVEONLINE_CLAVE` reales solo en Vercel production
+- [ ] Webhook AveCRM configurado apuntando a `https://lucamsshop.com/api/webhooks/aveonline`
 - [ ] Probar envío real con destino conocido
 
 ### Resend

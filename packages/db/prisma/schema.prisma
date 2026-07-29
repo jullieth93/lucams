@@ -69,7 +69,6 @@ enum CouponType {
 
 enum WebhookSource {
   WOMPI
-  VENNDELO
   RESEND
   AVEONLINE
 }
@@ -579,8 +578,6 @@ model Order {
   // subidas y autorizar su impresión—. Se sella al crear la Order (baja fricción, sin checkbox
   // extra); es la evidencia con fecha del consentimiento.
   contentRightsAcceptedAt DateTime?
-  // Legacy: venndeloShipmentId queda por compat. Nueva integración usa los campos Aveonline abajo.
-  venndeloShipmentId      String?
   // PLAN_CATALOG_V2 4.10 — Aveonline + ShippingProvider interface (ADR-039).
   // shippingCarrier: qué carrier eligió el cliente ("envia", "tcc", "coordinadora", etc.).
   shippingCarrier         String?

@@ -119,24 +119,24 @@ magneticas.cl es un e-commerce chileno **maduro** (60+ productos activos, segmen
 
 ### 2. Pagos colombianos completos
 
-|                              | magneticas.cl                        | Lucams_shop                      |
-| ---------------------------- | ------------------------------------ | -------------------------------- |
-| Tarjeta crédito/débito       | Webpay (CL)                          | Wompi (CO)                       |
-| PSE / transferencia banco    | Transferencia manual con comprobante | **PSE Wompi nativo**             |
-| Wallet móvil                 | No                                   | **Nequi + Daviplata** vía Wompi  |
-| Bancolombia transferencia    | No (Chile)                           | **Sí, Wompi nativo**             |
-| **Pago contraentrega (COD)** | **No**                               | **Sí, vía Venndelo desde día 1** |
+|                              | magneticas.cl                        | Lucams_shop                       |
+| ---------------------------- | ------------------------------------ | --------------------------------- |
+| Tarjeta crédito/débito       | Webpay (CL)                          | Wompi (CO)                        |
+| PSE / transferencia banco    | Transferencia manual con comprobante | **PSE Wompi nativo**              |
+| Wallet móvil                 | No                                   | **Nequi + Daviplata** vía Wompi   |
+| Bancolombia transferencia    | No (Chile)                           | **Sí, Wompi nativo**              |
+| **Pago contraentrega (COD)** | **No**                               | **Sí, vía Aveonline desde día 1** |
 
 > COD es **crítico** en e-commerce CO: eleva conversión 30–50% en regiones fuera de las grandes ciudades ([ADR-009](DECISIONS.md)).
 
 ### 3. Logística sin dependencia personal
 
-|               | magneticas.cl                                                                     | Lucams_shop                                     |
-| ------------- | --------------------------------------------------------------------------------- | ----------------------------------------------- |
-| Despacho      | "Hacemos los despachos personalmente en Santiago todos los días, 14:00–21:00 hrs" | API Venndelo con Coordinadora (1.100+ destinos) |
-| Tracking      | Limitado                                                                          | Webhook tracking + email automático             |
-| Cobertura     | Santiago + Starken/Bluexpress regiones                                            | Cobertura nacional CO con un solo proveedor     |
-| Escalabilidad | Limitada por capacidad humana                                                     | Limitada solo por volumen de Coordinadora       |
+|               | magneticas.cl                                                                     | Lucams_shop                                                           |
+| ------------- | --------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| Despacho      | "Hacemos los despachos personalmente en Santiago todos los días, 14:00–21:00 hrs" | API Aveonline multi-carrier (Coordinadora, Servientrega, Envía, TCC…) |
+| Tracking      | Limitado                                                                          | Webhook tracking + email automático                                   |
+| Cobertura     | Santiago + Starken/Bluexpress regiones                                            | Cobertura nacional CO con un solo proveedor                           |
+| Escalabilidad | Limitada por capacidad humana                                                     | Limitada solo por volumen de Coordinadora                             |
 
 ### 4. Sin riesgo legal por marcas
 
@@ -198,7 +198,7 @@ magneticas.cl no expone esto al usuario, pero un sitio productivo serio lo neces
 ### Logística manual personal
 
 - magneticas.cl: "despachos personalmente en Santiago, 14:00–21:00".
-- Lucams: full API Venndelo desde día 1. **No depende de capacidad humana del operador.**
+- Lucams: full API Aveonline desde día 1. **No depende de capacidad humana del operador.**
 
 ### Pago solo por transferencia bancaria con comprobante
 
@@ -223,7 +223,7 @@ magneticas.cl no expone esto al usuario, pero un sitio productivo serio lo neces
 | **Día de la Madre**           | Mayo (segundo domingo) — coincide            | Mayo (segundo domingo) — productos similares aplican                                                     |
 | **Tradiciones únicas CO**     | —                                            | **Día de las Velitas** (7 dic) · **Novena de aguinaldos** (16–24 dic) · **Quinceañera** (latina general) |
 | **Tono linguístico**          | Tutea con jerga chilena suave                | Tutea con colombianismos suaves ("súper bonito", "regalo de pana", "imancito"). Sin "vos", sin "huevón". |
-| **Logística**                 | Starken/Bluexpress (CL)                      | Coordinadora (vía Venndelo)                                                                              |
+| **Logística**                 | Starken/Bluexpress (CL)                      | Multi-carrier vía Aveonline (Coordinadora, Servientrega, Envía, TCC…)                                    |
 | **Pasarela**                  | Webpay (Transbank, CL)                       | Wompi (Bancolombia, CO)                                                                                  |
 | **Departamentos/Regiones**    | 16 regiones CL                               | 32 departamentos CO (lista en validación Zod del checkout)                                               |
 | **Compliance**                | Ley del Consumidor (CL), SERNAC              | Ley 1581 (Habeas Data) + Ley 1480 (Consumidor) + DIAN (factura electrónica)                              |

@@ -339,10 +339,11 @@ Vercel → Settings → **Environment Variables** → cada una con ambiente **Pr
 Al comparar lo que hay en Vercel contra lo que el **código realmente lee**
 (`grep process.env` sobre `apps/web` + `packages`), aparecieron tres cosas:
 
-**🗑️ MUERTAS — borrar (9).** El proyecto migró de Venndelo a **Aveonline** ([ADR-039](DECISIONS.md)).
-`features/shipping/venndelo.ts` quedó como Plan B dormido y **no lee ninguna env var** (solo las
-menciona en comentarios); además la dirección de recolección se movió a los **ajustes del admin**
-(`PICKUP_CITY`, `PICKUP_ADDRESS`… vía CMS), no a variables:
+**🗑️ MUERTAS — borradas el 2026-07-29 (9).** El proyecto migró de Venndelo a **Aveonline**
+([ADR-039](DECISIONS.md)) y el 2026-07-29 se eliminaron las 9 variables `VENNDELO_*` de Vercel junto
+con el stub `features/shipping/venndelo.ts` y toda referencia en código y docs (ya no hay Plan B).
+La dirección de recolección vive en los **ajustes del admin** (`PICKUP_CITY`, `PICKUP_ADDRESS`… vía
+CMS), no en variables. Registro de lo borrado:
 
 `VENNDELO_ENV`, `VENNDELO_API_URL`, `VENNDELO_API_KEY`, `VENNDELO_PICKUP_ADDRESS_LINE`,
 `VENNDELO_PICKUP_CITY_CODE`, `VENNDELO_PICKUP_SUBDIVISION_CODE`, `VENNDELO_PICKUP_COUNTRY_CODE`,

@@ -83,7 +83,7 @@ Modo por flag `NEXT_PUBLIC_STORE_MODE=catalog` (default `full`) sobre la base de
 - SEC-02: fallback `?? "dev"` eliminado del HMAC de unsubscribe.
 - SEC-03: redirects admin ahora exigen `https:` (o path interno).
 - UX-01: Soporte y Garantías agregados al NAV admin.
-- DOC-01/02/03: `CLAUDE.md` "Estado actual" corregido; Venndelo→Aveonline en mandatos; `OPERATIONS.md` con `CRON_SECRET`/`EMAIL_REPLY_TO` y Gemini en vez de Anthropic.
+- DOC-01/02/03: `CLAUDE.md` "Estado actual" corregido; mandatos de logística a Aveonline; `OPERATIONS.md` con `CRON_SECRET`/`EMAIL_REPLY_TO` y Gemini en vez de Anthropic.
 
 ## Semáforo de dependencias (qué espera a qué)
 

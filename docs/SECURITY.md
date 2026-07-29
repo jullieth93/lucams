@@ -16,7 +16,7 @@
 10. [Output encoding / XSS](#output-encoding--xss)
 11. [TTLs y caducidad de recursos](#ttls-y-caducidad-de-recursos)
 12. [File upload y Storage](#file-upload-y-storage)
-13. [Webhooks (Wompi, Venndelo)](#webhooks-wompi-venndelo)
+13. [Webhooks (Wompi, Aveonline)](#webhooks-wompi-aveonline)
 14. [Audit logs](#audit-logs)
 15. [Logging](#logging)
 16. [PII y Habeas Data (Ley 1581)](#pii-y-habeas-data-ley-1581)
@@ -35,7 +35,7 @@
 | Atacante con cuenta   | Acceso a datos de otros usuarios           | RLS + tests automatizados                                                                                                          |
 | Atacante sin cuenta   | SQL injection, XSS, CSRF                   | Prisma + React + SameSite cookies + CSP                                                                                            |
 | Insider (empleado)    | Abuso del admin                            | RBAC + audit log + 2FA                                                                                                             |
-| Suplantador           | Webhook falso de Wompi/Venndelo            | HMAC verification + idempotencia                                                                                                   |
+| Suplantador           | Webhook falso de Wompi/Aveonline           | HMAC verification + idempotencia                                                                                                   |
 | Compromiso de secreto | Secret key (`sb_secret_*`) expuesta        | Rotación inmediata (Supabase permite múltiples secret keys, revocar la comprometida sin downtime) + nunca al cliente + .gitignored |
 | Subida maliciosa      | Archivo con malware en storage             | Allowlist MIME + tamaño máximo + nombre aleatorio + render server                                                                  |
 | Pago fraudulento      | Stolen card en checkout                    | Wompi 3DS + Turnstile + límites Wompi                                                                                              |
@@ -197,8 +197,8 @@ describe('RLS', () => {
 | `WOMPI_PRIVATE_KEY`                                         | Privada                   | **NO**             | —                                                                                                                       |
 | `WOMPI_INTEGRITY_SECRET`                                    | Privada                   | **NO**             | —                                                                                                                       |
 | `WOMPI_EVENTS_SECRET`                                       | Privada (HMAC webhooks)   | **NO**             | —                                                                                                                       |
-| `VENNDELO_API_KEY`                                          | Privada                   | **NO**             | —                                                                                                                       |
-| `VENNDELO_WEBHOOK_SECRET`                                   | Privada (HMAC webhooks)   | **NO**             | —                                                                                                                       |
+| `AVEONLINE_USUARIO` / `AVEONLINE_CLAVE`                     | Privada                   | **NO**             | —                                                                                                                       |
+| `AVEONLINE_WEBHOOK_SECRET`                                  | Privada (HMAC webhooks)   | **NO**             | —                                                                                                                       |
 | `RESEND_API_KEY`                                            | Privada                   | **NO**             | —                                                                                                                       |
 | `ANTHROPIC_API_KEY`                                         | Privada                   | **NO**             | Solo en `/api/ai/*` server                                                                                              |
 | `NEXT_PUBLIC_TURNSTILE_SITE_KEY`                            | Pública                   | Sí                 | Whitelist de dominio en Cloudflare                                                                                      |
@@ -276,7 +276,7 @@ script-src 'self' 'nonce-<aleatorio-por-request>' 'strict-dynamic' https://chall
 style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
 img-src 'self' data: blob: https://*.supabase.co https://*.coordinadora.com;
 font-src 'self' https://fonts.gstatic.com;
-connect-src 'self' https://*.supabase.co https://api.venndelo.com https://api.anthropic.com https://api.wompi.co;
+connect-src 'self' https://*.supabase.co https://api.anthropic.com https://api.wompi.co;
 frame-src 'self' https://challenges.cloudflare.com https://checkout.wompi.co;
 form-action 'self' https://checkout.wompi.co;
 base-uri 'self';
@@ -322,7 +322,7 @@ test("security headers present", async ({ request }) => {
 
 - **Storefront público (`app/(storefront)/*`):** servido siempre desde el mismo origen → no requiere CORS.
 - **API routes (`app/api/*`):** por defecto **bloquear cualquier origen distinto al sitio**. Solo abrir `Access-Control-Allow-Origin` para casos específicos justificados.
-- **Webhooks (`/api/wompi/webhook`, `/api/venndelo/webhook`):** no usan CORS porque los llaman servidores, no navegadores. Validar firma + IP whitelist si la integración lo permite.
+- **Webhooks (`/api/wompi/webhook`, `/api/webhooks/aveonline`):** no usan CORS porque los llaman servidores, no navegadores. Validar firma + IP whitelist si la integración lo permite.
 
 ### Implementación
 
@@ -400,16 +400,16 @@ Rate limit en Postgres + `pg_cron` durante dev y arranque productivo. Migrar a R
 
 ### Buckets y límites
 
-| Endpoint                       | Clave                   | Límite        | Ventana | Razón                     |
-| ------------------------------ | ----------------------- | ------------- | ------- | ------------------------- |
-| `POST /api/ai/design-suggest`  | IP + cuenta autenticada | 20 / 5 min    | 5 min   | Costo Claude API          |
-| `POST /api/checkout/create`    | IP                      | 10 / 10 min   | 10 min  | Anti-fraude               |
-| `POST /auth/signup` (Supabase) | IP                      | 5 / 1 h       | 1 h     | Anti-bot                  |
-| `POST /auth/login`             | IP + email              | 5 / 15 min    | 15 min  | Anti-brute force          |
-| `POST /api/shipping/quote`     | IP                      | 60 / 1 min    | 1 min   | Genera tráfico a Venndelo |
-| `POST /api/upload/sign`        | userId                  | 30 / 10 min   | 10 min  | Anti-DoS de storage       |
-| Webhooks Wompi/Venndelo        | externalId              | 1 / siempre   | —       | Idempotencia (`@@unique`) |
-| Storefront público (lectura)   | IP                      | 1.000 / 1 min | 1 min   | Anti-scraper agresivo     |
+| Endpoint                       | Clave                   | Límite        | Ventana | Razón                      |
+| ------------------------------ | ----------------------- | ------------- | ------- | -------------------------- |
+| `POST /api/ai/design-suggest`  | IP + cuenta autenticada | 20 / 5 min    | 5 min   | Costo Claude API           |
+| `POST /api/checkout/create`    | IP                      | 10 / 10 min   | 10 min  | Anti-fraude                |
+| `POST /auth/signup` (Supabase) | IP                      | 5 / 1 h       | 1 h     | Anti-bot                   |
+| `POST /auth/login`             | IP + email              | 5 / 15 min    | 15 min  | Anti-brute force           |
+| `POST /api/shipping/quote`     | IP                      | 60 / 1 min    | 1 min   | Genera tráfico a Aveonline |
+| `POST /api/upload/sign`        | userId                  | 30 / 10 min   | 10 min  | Anti-DoS de storage        |
+| Webhooks Wompi/Aveonline       | externalId              | 1 / siempre   | —       | Idempotencia (`@@unique`)  |
+| Storefront público (lectura)   | IP                      | 1.000 / 1 min | 1 min   | Anti-scraper agresivo      |
 
 ### Implementación
 
@@ -566,7 +566,7 @@ export async function POST(req: Request) {
 | Email confirmation link               | 24 h              | Idem                                    |
 | Reserva de stock (`StockReservation`) | 15 min            | `pg_cron` cleanup cada minuto (ADR-014) |
 | Cache de respuestas IA                | 24 h              | `cache_entries.expires_at` + `pg_cron`  |
-| Cache de cotizaciones Venndelo        | 5 min             | Idem                                    |
+| Cache de cotizaciones Aveonline       | 5 min             | Idem                                    |
 | Rate limit windows                    | 1 h               | `pg_cron` cleanup                       |
 | URL firmada `customer-uploads`        | 1 h               | Supabase Storage signed URL             |
 | URL firmada `production-assets`       | 15 min            | Idem (acceso solo admin)                |
@@ -926,7 +926,7 @@ Decisión definitiva de observabilidad de errores: ADR-022 abierto en Fase 7.
 | -------------------------------------------------------- | ------------------------------------------------------------------------------ |
 | Credencial comprometida (API key)                        | Rotar inmediatamente en panel del vendor + redeploy                            |
 | Cuenta admin comprometida                                | Suspender desde panel Supabase Auth + invalidar sesiones                       |
-| Webhook flooding (signature válida pero tráfico anómalo) | Cloudflare WAF rule temporal + alertar a Wompi/Venndelo                        |
+| Webhook flooding (signature válida pero tráfico anómalo) | Cloudflare WAF rule temporal + alertar a Wompi/Aveonline                       |
 | Sitio bajo DDoS                                          | Cloudflare "Under Attack" mode + IP whitelist solo admin                       |
 | Dato sensible expuesto en logs                           | Borrar de Vercel Logs (si retención lo permite) + rotar credenciales si aplica |
 | Database corrupted                                       | Modo mantenimiento (`NEXT_PUBLIC_MAINTENANCE_MODE=1`) + restore desde PITR     |

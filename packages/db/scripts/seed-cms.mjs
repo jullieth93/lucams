@@ -307,7 +307,7 @@ Si no estás conforme con nuestra respuesta puedes acudir a la Superintendencia 
     <tr><td><strong>Vercel</strong></td><td>US</td><td>Hosting, despliegue y CDN del sitio web</td><td><a href="https://vercel.com/legal/dpa" target="_blank" rel="noopener">Ver</a></td></tr>
     <tr><td><strong>Resend</strong></td><td>US</td><td>Envío de emails transaccionales y newsletter</td><td><a href="https://resend.com/legal/dpa" target="_blank" rel="noopener">Ver</a></td></tr>
     <tr><td><strong>Wompi</strong></td><td>Colombia</td><td>Procesamiento de pagos (tarjetas y PSE)</td><td><a href="https://wompi.com/legal" target="_blank" rel="noopener">Ver</a></td></tr>
-    <tr><td><strong>Venndelo / Coordinadora</strong></td><td>Colombia</td><td>Logística de envíos a 1.100+ destinos</td><td><a href="https://venndelo.com/legal" target="_blank" rel="noopener">Ver</a></td></tr>
+    <tr><td><strong>Aveonline</strong></td><td>Colombia</td><td>Agregador logístico multi-carrier (cotización, guía y recaudo contraentrega)</td><td><a href="https://www.aveonline.co/" target="_blank" rel="noopener">Ver</a></td></tr>
     <tr><td><strong>Cloudflare</strong></td><td>US</td><td>Anti-bot Turnstile y protección DDoS</td><td><a href="https://www.cloudflare.com/cloudflare-customer-dpa/" target="_blank" rel="noopener">Ver</a></td></tr>
     <tr><td><strong>Anthropic (Claude API)</strong></td><td>US</td><td>Asistente IA para personalización de productos (futuro)</td><td><a href="https://www.anthropic.com/legal/dpa" target="_blank" rel="noopener">Ver</a></td></tr>
   </tbody>

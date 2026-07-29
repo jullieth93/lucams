@@ -356,14 +356,6 @@ AVEONLINE_CLAVE=xxxxxxxxxxxxxx
 AVEONLINE_WEBHOOK_SECRET=xxxxxxxxxxxxxx
 AVEONLINE_ENV=test                                 # test | production
 
-# ─── Venndelo (Plan B de envíos — stub en código, NO configurar hoy) ───
-VENNDELO_ENV=sandbox
-VENNDELO_API_URL=https://api.venndelo.com/v1
-VENNDELO_API_KEY=xxxxxxxxxxxxxx
-VENNDELO_WEBHOOK_SECRET=xxxxxxxxxxxxxx
-VENNDELO_ORIGIN_CITY=Bogotá                        # Ciudad de recolección
-VENNDELO_ORIGIN_DEPARTMENT=Cundinamarca            # Departamento de recolección
-
 # ─── Resend ───
 RESEND_API_KEY=re_xxxxxxxxxxxxxx
 EMAIL_FROM=Lucams_shop <onboarding@resend.dev>     # dev
@@ -411,13 +403,13 @@ NEXT_TELEMETRY_DISABLED=1                          # Anonymous telemetry de Next
 
 ### Política de rotación
 
-| Secreto               | Frecuencia     | Después de                                                                                                                      |
-| --------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| Wompi production keys | Anual          | Compromiso sospechoso                                                                                                           |
-| Supabase secret key   | Anual o ad-hoc | Compromiso sospechoso. Las nuevas secret keys (`sb_secret_*`) son revocables/rotables sin downtime — múltiples activas a la vez |
-| Resend API key        | Anual          | Compromiso sospechoso                                                                                                           |
-| Anthropic API key     | 6 meses        | Cambio de equipo                                                                                                                |
-| Venndelo API key      | Anual          | Compromiso sospechoso                                                                                                           |
+| Secreto                 | Frecuencia     | Después de                                                                                                                      |
+| ----------------------- | -------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| Wompi production keys   | Anual          | Compromiso sospechoso                                                                                                           |
+| Supabase secret key     | Anual o ad-hoc | Compromiso sospechoso. Las nuevas secret keys (`sb_secret_*`) son revocables/rotables sin downtime — múltiples activas a la vez |
+| Resend API key          | Anual          | Compromiso sospechoso                                                                                                           |
+| Anthropic API key       | 6 meses        | Cambio de equipo                                                                                                                |
+| Aveonline usuario/clave | Anual          | Compromiso sospechoso                                                                                                           |
 
 ---
 
@@ -521,7 +513,7 @@ Eso llama `refreshCmsCacheAction` → `updateTag("cms")` + queda en `AdminAction
 
 1. Validar manualmente el pago en panel Wompi.
 2. Marcar `Order.status = PAID` desde admin con razón "manual_after_webhook_failure".
-3. Crear envío Venndelo manualmente.
+3. Crear envío (guía) Aveonline manualmente.
 4. Notificar al cliente.
 
 **Prevención:**
@@ -616,22 +608,22 @@ Eso llama `refreshCmsCacheAction` → `updateTag("cms")` + queda en `AdminAction
 
 ---
 
-### Incidente: Pago realizado pero envío no se creó en Venndelo
+### Incidente: Pago realizado pero guía no se creó en Aveonline
 
-**Síntomas:** orden en `PAID` sin `venndeloShipmentId`.
+**Síntomas:** orden en `PAID` sin `trackingNumber`.
 
 **Diagnóstico:** Vercel Logs del flujo post-pago.
 
 **Mitigación:**
 
 1. Crear el envío manualmente desde admin (`/admin/ordenes/[id]/crear-envio`).
-2. Si Venndelo está caído (verificar status), reintentar después.
+2. Si Aveonline está caído (verificar status), reintentar después.
 
 **Prevención:**
 
 - Cola `shipment_creation_retry` en `pgmq` con visibility timeout 60s y backoff implícito por reintentos del consumer.
-- Job `pg_cron` cada 15 min: detecta órdenes `PAID` sin `venndeloShipmentId` con > 1h y las enqueue.
-- Consumer idempotente: chequea `venndeloShipmentId` antes de crear (no duplicar envíos en Venndelo).
+- Job `pg_cron` cada 15 min: detecta órdenes `PAID` sin `trackingNumber` con > 1h y las enqueue.
+- Consumer idempotente: chequea `trackingNumber` antes de crear (no duplicar guías en Aveonline).
 
 ---
 
@@ -682,7 +674,7 @@ Eso llama `refreshCmsCacheAction` → `updateTag("cms")` + queda en `AdminAction
 
 - `GET /api/health` — devuelve 200 si DB y Supabase responden.
 - `GET /api/health/wompi` — verifica que Wompi responde (consulta a `/v1/merchants/[id]`).
-- `GET /api/health/venndelo` — verifica que Venndelo responde.
+- `GET /api/health/aveonline` — verifica que Aveonline responde.
 
 Configurar en BetterStack (free) o UptimeRobot (free) para alertas si alguno cae > 3 min.
 
@@ -713,7 +705,7 @@ Cuando se rompan estos límites, abrir issue automático:
 | Resend Pro     | $20/mes         | —                     | —                                                                                                                                                          |
 | Anthropic      | Variable        | —                     | Alerta si > $30/mes                                                                                                                                        |
 | Wompi          | Por trx         | —                     | 2.65% + $700 + IVA (plan Avanzado, frecuencia mensual). [Verificado: wompi.com/es/co/planes-tarifas a 2026-05-09](https://wompi.com/es/co/planes-tarifas/) |
-| Venndelo       | Por envío       | —                     | 0% comisión                                                                                                                                                |
+| Aveonline      | Por envío       | —                     | Plan mensual + comisión COD desde 2.40% (ver `INTEGRATIONS_AVEONLINE.md` §11)                                                                              |
 | Dominio        | $50.000 COP/año | —                     | mi.com.co                                                                                                                                                  |
 | **Total fijo** |                 | **~$272.000 COP/mes** |                                                                                                                                                            |
 
@@ -724,7 +716,7 @@ Cuando se rompan estos límites, abrir issue automático:
 | Tipo de incidente      | A quién avisar                                   |
 | ---------------------- | ------------------------------------------------ |
 | Pasarela de pago caída | Soporte Wompi (panel) + usuario                  |
-| Logística caída        | Soporte Venndelo + usuario                       |
+| Logística caída        | Soporte Aveonline + usuario                      |
 | DB caída               | Soporte Supabase + usuario                       |
 | Sitio caído            | Vercel status + usuario                          |
 | Pregunta del cliente   | WhatsApp del usuario (+57 320 887 3826 temporal) |
@@ -1049,7 +1041,7 @@ cerrado mientras seguía atendiendo tráfico.
 
 > Registrar cambios en infraestructura, vars o procesos.
 
-- **2026-05-09** — Cierre de Fase 0a. Auditoría de coherencia aplicada (21 hallazgos resueltos). 6 ADRs nuevos (014–019). Variables de entorno expandidas con Turnstile (`TURNSTILE_*`), R2 (`R2_*`), `VENNDELO_ORIGIN_DEPARTMENT`. Política de stock cerrada (reserva al `PENDING_PAYMENT` + descuento al `PAID`). Background jobs migran de Vercel Cron a `pgmq` + `pg_cron`. Rate-limit y cache se mueven a Postgres. Documento `SECURITY.md` creado como fuente única de seguridad.
+- **2026-05-09** — Cierre de Fase 0a. Auditoría de coherencia aplicada (21 hallazgos resueltos). 6 ADRs nuevos (014–019). Variables de entorno expandidas con Turnstile (`TURNSTILE_*`) y R2 (`R2_*`). Política de stock cerrada (reserva al `PENDING_PAYMENT` + descuento al `PAID`). Background jobs migran de Vercel Cron a `pgmq` + `pg_cron`. Rate-limit y cache se mueven a Postgres. Documento `SECURITY.md` creado como fuente única de seguridad.
 - **2026-05-09** — Documento creado en Fase 0a.
 
 > **Estado pg_cron (verificado 2026-07-18 con la key de la DB).** Los 7 jobs HTTP (`lucams-*`) quedaron **agendados y corriendo** en el proyecto Supabase de dev: se crearon los secretos `cron_base_url` (= URL ngrok fija de dev) y `cron_secret` (= `CRON_SECRET`) en el Vault, y se aplicaron las migraciones `supabase/migrations/015` + `016`. Confirmado end-to-end: el endpoint responde 200 con el header `x-cron-secret` y 401 sin él; `cron.job_run_details` + los heartbeats (`AlertState cron:*`, dead-man switch #15) muestran ejecuciones reales. **Para producción:** actualizar el secreto `cron_base_url` del Vault a `https://lucamsshop.com` cuando el dominio esté vivo (`select vault.update_secret((select id from vault.secrets where name='cron_base_url'), 'https://lucamsshop.com');`).

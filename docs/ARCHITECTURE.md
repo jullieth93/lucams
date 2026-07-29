@@ -2,7 +2,7 @@
 
 ## Visión general
 
-Aplicación monolítica modular en **Next.js 15 (App Router)** desplegada en Vercel, con backend serverless integrado, persistencia en **Supabase Postgres** vía **Prisma**, autenticación con **Supabase Auth**, almacenamiento de imágenes en **Supabase Storage**, e integraciones externas con Wompi (pagos), Venndelo (logística) y Claude API (IA).
+Aplicación monolítica modular en **Next.js 15 (App Router)** desplegada en Vercel, con backend serverless integrado, persistencia en **Supabase Postgres** vía **Prisma**, autenticación con **Supabase Auth**, almacenamiento de imágenes en **Supabase Storage**, e integraciones externas con Wompi (pagos), Aveonline (logística) y Claude API (IA).
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
@@ -25,7 +25,7 @@ Aplicación monolítica modular en **Next.js 15 (App Router)** desplegada en Ver
           │                                    ▲
           ▼                                    │
    ┌──────────────┐  ┌──────────────┐  ┌──────────────────┐
-   │   Wompi      │  │   Venndelo   │  │  Claude API      │
+   │   Wompi      │  │  Aveonline   │  │  Claude API      │
    │ (pagos)      │  │ (logística)  │  │  (IA diseño)     │
    └──────────────┘  └──────────────┘  └──────────────────┘
                               │
@@ -70,7 +70,6 @@ lucams_shop/
 │       │   │   └── analytics/
 │       │   └── api/
 │       │       ├── wompi/webhook/route.ts
-│       │       ├── venndelo/webhook/route.ts
 │       │       ├── checkout/create/route.ts
 │       │       ├── shipping/quote/route.ts
 │       │       ├── ai/design-suggest/route.ts
@@ -89,7 +88,6 @@ lucams_shop/
 │       │   │   ├── types.ts              # Interface PaymentProvider
 │       │   │   ├── wompi.ts              # WompiProvider
 │       │   │   └── index.ts              # getProvider()
-│       │   ├── venndelo.ts
 │       │   ├── whatsapp.ts
 │       │   ├── ai.ts
 │       │   ├── cart.ts                   # Zustand persistido
@@ -341,7 +339,8 @@ model Order {
   status              OrderStatus   @default(DRAFT)
   paymentMethod       PaymentMethod
   wompiTransactionId  String?
-  venndeloShipmentId  String?
+  shippingCarrier     String?
+  trackingNumber      String?
   trackingUrl         String?
   couponId            String?
   coupon              Coupon?       @relation(fields: [couponId], references: [id])
@@ -446,7 +445,8 @@ model BlogPost {
 
 enum WebhookSource {
   WOMPI
-  VENNDELO
+  RESEND
+  AVEONLINE
 }
 
 model WebhookEvent {
@@ -598,7 +598,7 @@ SELECT cron.schedule(
 ┌─────────────────────────────┐         ┌─────────────────────────────┐
 │  Productor (pg_cron job)    │         │ Productor (Server Action /  │
 │  - Detecta carritos         │         │ Webhook handler de Wompi/   │
-│    abandonados              │  ──────►│ Venndelo)                   │
+│    abandonados              │  ──────►│ Aveonline)                  │
 │  - Detecta órdenes en       │         │ - Encola "send_email"       │
 │    PENDING > 1h             │         │ - Encola "shipment_retry"   │
 └──────────┬──────────────────┘         └──────────┬──────────────────┘
@@ -829,7 +829,7 @@ Para no duplicar contenido, esta sección referencia las fuentes únicas de patr
 | API conventions (REST + Server Actions)                                | [`CONVENTIONS.md` § APIs](./CONVENTIONS.md#backend--apis-rest--server-actions)                        |
 | Formato estándar de errores (RFC 7807)                                 | [`CONVENTIONS.md` § Errores RFC 7807](./CONVENTIONS.md#backend--formato-estándar-de-errores-rfc-7807) |
 | Capa de servicio (service.ts / repository.ts)                          | [`CONVENTIONS.md` § Capa de servicio](./CONVENTIONS.md#backend--capa-de-servicio)                     |
-| **Saga pattern** (Wompi → Venndelo → Email)                            | [`CONVENTIONS.md` § Saga pattern](./CONVENTIONS.md#backend--saga-pattern-para-flujos-distribuidos)    |
+| **Saga pattern** (Wompi → Aveonline → Email)                           | [`CONVENTIONS.md` § Saga pattern](./CONVENTIONS.md#backend--saga-pattern-para-flujos-distribuidos)    |
 | **Idempotency keys**                                                   | [`CONVENTIONS.md` § Idempotency](./CONVENTIONS.md#backend--idempotency-keys)                          |
 | Naming SQL (snake_case vs PascalCase)                                  | [`CONVENTIONS.md` § DB naming](./CONVENTIONS.md#db--naming-sql)                                       |
 | **Migration strategy** (expand-then-contract)                          | [`CONVENTIONS.md` § Migration strategy](./CONVENTIONS.md#db--migration-strategy-expand-then-contract) |

@@ -20,7 +20,7 @@ E-commerce colombiano de productos magnéticos personalizados. Inspirado en [mag
 - **Background jobs**: Supabase Queues (`pgmq`) + `pg_cron` (no Vercel Cron — ADR-017)
 - **Rate limit + cache**: Postgres + `pg_cron` (no Redis externo — ADR-016)
 - **Pasarela de pago**: Wompi (Etapa 2; con adaptador `PaymentProvider` para sumar Mercado Pago después)
-- **Logística**: Aveonline (Etapa 2, ADR-039; Venndelo queda como Plan B)
+- **Logística**: Aveonline (Etapa 2, ADR-039)
 - **Email**: Resend
 - **CAPTCHA**: Cloudflare Turnstile (en checkout y registro)
 - **Hosting**: Vercel (Hobby/Free durante dev → Pro al lanzar)
@@ -33,7 +33,7 @@ E-commerce colombiano de productos magnéticos personalizados. Inspirado en [mag
 | [docs/PLAN.md](docs/PLAN.md)                                 | Plan maestro del proyecto (fuente de verdad)                                               |
 | [docs/BRANDING.md](docs/BRANDING.md)                         | Logo, paleta, mascota, tipografías, tono                                                   |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)                 | Stack, estructura de carpetas, modelo de datos, RLS, extensiones Postgres, background jobs |
-| [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md)                 | Wompi, Venndelo, Claude API, Resend, WhatsApp, pgmq                                        |
+| [docs/INTEGRATIONS.md](docs/INTEGRATIONS.md)                 | Wompi, Aveonline, Claude API, Resend, WhatsApp, pgmq                                       |
 | [docs/SECURITY.md](docs/SECURITY.md)                         | RLS, CORS, headers, rate limit, secrets, auth, RBAC, CSP, validación, file upload, PII     |
 | [docs/ROADMAP.md](docs/ROADMAP.md)                           | Fases de implementación con checklist                                                      |
 | [docs/DECISIONS.md](docs/DECISIONS.md)                       | Log cronológico de decisiones (ADRs)                                                       |

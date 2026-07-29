@@ -6,7 +6,7 @@ export const metadata: Metadata = {
   title: "Subprocesadores",
 };
 
-// P0-008 (Bloque B 2026-06-27) — actualizado de Venndelo a Aveonline (ADR-039).
+// P0-008 (Bloque B 2026-06-27) — subprocesadores reales (ADR-039).
 // Aveonline es un agregador logístico que rutea cada envío por una de varias
 // transportadoras colombianas; esas transportadoras reciben los datos de entrega
 // (nombre, dirección, teléfono) para hacer la entrega, por eso se listan.

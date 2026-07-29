@@ -852,7 +852,6 @@ model CouponUsage {
   - **Cobertura 90% nacional con COD** vs 1.100 destinos Coordinadora.
   - **Resiliencia**: si un carrier tiene problema operativo, Lucams sigue operando con otro.
   - **Lucy cura oferta** desde admin (qué transportadoras habilitar).
-- **Plan B**: si Aveonline falla en producción, swap a Venndelo con cambio mínimo gracias a interface (mismo pattern que `PaymentProvider`).
 - **API design verificado**:
   - Base URL `https://app.aveonline.co/api`.
   - Auth JWT 1h vigencia (refresh server-side con cache).
@@ -882,7 +881,6 @@ model CouponUsage {
 - **ACCIÓN HUMANA REQUERIDA (Lucy)**:
   1. Crear cuenta comercial en `aveonline.co` + completar onboarding.
   2. Consultar a comercial Aveonline: costo plan, carriers disponibles para Bogotá origen, SLA, política logística inversa, HMAC webhook, sandbox.
-  3. Decidir si mantener Venndelo como backup en docs (recomendación: sacarlo del plan operativo, dejarlo solo como Plan B documentado).
 
 ---
 
@@ -1441,12 +1439,6 @@ Hoy NO se implementa. Cualquier descuento que necesitemos modelar antes de tener
 - Bundles aparecen como pattern de compra frecuente (ej. "Pack matrimonio: 30 recuerdos + 1 cuadro = -15%").
 - Cupones se sienten limitados.
 
-### [Nota N5] Venndelo como Plan B documentado (decisión 4.10)
-
-Lucams arranca con Aveonline como proveedor logístico primario. Venndelo se mantiene documentado en `docs/INTEGRATIONS.md` como Plan B alternativo. Si Aveonline falla en producción (problema de servicio, costos suben, soporte malo, etc.), el swap a Venndelo se hace implementando `features/shipping/venndelo.ts` que cumple la misma interface `ShippingProvider`. Tiempo estimado de swap: 8-12h ingeniería más onboarding comercial Venndelo.
-
-ADR-039 documenta interface + ambas implementaciones (Aveonline activa, Venndelo dormida).
-
 ### [Nota N6] Dependencias bloqueantes con Fase 4 (Orders productivos)
 
 Acumulado de decisiones que requieren Orders productivos en Fase 4:
@@ -1493,11 +1485,11 @@ Hoy todas las decisiones que documentan APIs AI-ready están listas para que el 
 
 ### ADRs a redactar antes de codear
 
-| ADR                | Tema                                                                               | Áreas que lo demandan   |
-| ------------------ | ---------------------------------------------------------------------------------- | ----------------------- |
-| ADR-038            | API Catálogo RAG-ready (5 endpoints + schema enriquecido + tabla OcasionTag)       | 2.10 / 5.10 / 6.7 / 7.7 |
-| ADR-039            | Logística Aveonline con interface `ShippingProvider` (Venndelo Plan B documentado) | 4.10                    |
-| ADR-040 (opcional) | Filtros configurables por categoría + endpoint `/api/catalog/filters` AI-ready     | 7.2 / 7.6 / 7.7         |
+| ADR                | Tema                                                                           | Áreas que lo demandan   |
+| ------------------ | ------------------------------------------------------------------------------ | ----------------------- |
+| ADR-038            | API Catálogo RAG-ready (5 endpoints + schema enriquecido + tabla OcasionTag)   | 2.10 / 5.10 / 6.7 / 7.7 |
+| ADR-039            | Logística Aveonline con interface `ShippingProvider`                           | 4.10                    |
+| ADR-040 (opcional) | Filtros configurables por categoría + endpoint `/api/catalog/filters` AI-ready | 7.2 / 7.6 / 7.7         |
 
 ### Migraciones Prisma necesarias
 
@@ -1645,7 +1637,7 @@ Todos: cache HTTP, rate-limit, sin auth (excepto admin insights diferidos).
 2. **Migración Polaroid 4→9 variants**: refactor del producto más visible. Mitigación: redirects 301 + tests E2E + visual check.
 3. **Riesgo legal Coleccionables Universos** (decisión 1.7): Lucy lo asumió. Plan B: admin permite archivar sub-cat completa en 1 click si llega cease & desist.
 4. **Generación de plantillas con IA** (Nota N1): Lucy depende de tiempo + iteración. Mitigación: lanzar con ~30 plantillas mínimo, escalar con tracción.
-5. **Aveonline API legacy PHP**: encapsular en `lib/aveonline.ts`. Mitigación: interface `ShippingProvider` permite swap a Venndelo en 8-12h si rinde mal.
+5. **Aveonline API legacy PHP**: encapsular en `lib/aveonline.ts`. Mitigación: interface `ShippingProvider` aísla el acoplamiento si el API rinde mal.
 
 ---
 

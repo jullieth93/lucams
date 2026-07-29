@@ -3,8 +3,8 @@
 > **Fuente de verdad canónica.** Cualquier cambio de rumbo se refleja primero aquí, luego en los demás `.md` del proyecto.
 >
 > **🔄 Refresh 2026-06-27.** Este plan se actualizó para corregir desfases con la realidad del
-> código: **stack = Next.js 16** (no 15), **logística = Aveonline** (Venndelo queda como Plan B,
-> ver [ADR-039](DECISIONS.md)). El avance real por fase vive en [`STATE.md`](STATE.md) +
+> código: **stack = Next.js 16** (no 15), **logística = Aveonline**
+> (ver [ADR-039](DECISIONS.md)). El avance real por fase vive en [`STATE.md`](STATE.md) +
 > [`ROADMAP.md`](ROADMAP.md) (refrescado el mismo día): a hoy, el **checkout/pagos está certificado
 > (Bloque A, 48 tests)**, compliance básico hecho, y el admin del catálogo restructurado y pulido.
 > Pendiente pre-launch: Seguridad (C), Observabilidad (D), Testing (E), Refund/Cupones (F).
@@ -21,7 +21,7 @@
 - Stack: **Next.js 16 (App Router) + TypeScript + Tailwind v4 + shadcn/ui**.
 - Despliegue en **Vercel** (decisión justificada abajo).
 - Pasarela: **Wompi** (en gestión por el usuario).
-- Logística: **Aveonline** (Coordinadora + contraentrega + API pública). _Venndelo = Plan B (ADR-039)._
+- Logística: **Aveonline** (multi-carrier: cotización + guías + tracking webhook; ADR-039).
 - Dominio: `lucamsshop.com` registrado en **mi.com.co** (al lanzar).
 
 ---
@@ -160,7 +160,6 @@ lucams_shop/
 │       │   │   └── analytics/
 │       │   └── api/
 │       │       ├── wompi/webhook/
-│       │       ├── venndelo/webhook/
 │       │       ├── checkout/create/
 │       │       ├── shipping/quote/
 │       │       ├── ai/design-suggest/
@@ -175,7 +174,6 @@ lucams_shop/
 │       │   ├── payment/                  # Adaptador PaymentProvider
 │       │   │   ├── types.ts
 │       │   │   └── wompi.ts
-│       │   ├── venndelo.ts
 │       │   ├── whatsapp.ts
 │       │   ├── ai.ts
 │       │   ├── cart.ts
@@ -211,7 +209,7 @@ Cart, CartItem, Order, OrderItem, Coupon, Review
 AbandonedCart, LoyaltyTxn, Referral, BlogPost
 
 // Idempotencia
-WebhookEvent (source: WOMPI|VENNDELO, externalId UNIQUE)
+WebhookEvent (source: WOMPI|RESEND|AVEONLINE, externalId UNIQUE)
 ```
 
 **Reglas:**

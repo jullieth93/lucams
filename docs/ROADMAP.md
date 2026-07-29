@@ -36,7 +36,7 @@ El trabajo reciente se nombró por **bloques**; equivalen a:
 
 > **Salida en 2 etapas (ADR-077, 2026-07-21):** el lanzamiento se desacopló de los trámites legales. Etapa 1 (modo `STORE_MODE=catalog`) publica catálogo + Estudio + cotización por WhatsApp sin pagos ni envíos; Etapa 2 activa la tienda full cambiando una env var cuando el NIT esté. Detalle y checklists en `docs/PLAN_SALIDA_PRODUCCION.md`.
 
-> **Logística:** el plan original citaba **Venndelo**; la integración **realmente implementada es Aveonline** (ver [ADR-039](DECISIONS.md) e [INTEGRATIONS.md](INTEGRATIONS.md)). Donde abajo se lea "Venndelo" en tareas de Fase 4+, léase **Aveonline** (Venndelo queda como Plan B). **Stack:** Next.js **16** (no 15).
+> **Logística:** la integración implementada es **Aveonline** (ver [ADR-039](DECISIONS.md) e [INTEGRATIONS.md](INTEGRATIONS.md)). **Stack:** Next.js **16** (no 15).
 
 ---
 
@@ -76,7 +76,7 @@ El trabajo reciente se nombró por **bloques**; equivalen a:
 
 ## Fase 0b — Cuentas externas críticas para Fase 1 🟢 Completada (2026-05-09)
 
-> **Re-scope al final de Fase 0b:** la lista original incluía 8 cuentas. Al revisar **qué bloquea realmente arrancar Fase 1**, solo 4 son críticas. Las otras 4 (Cloudflare, Anthropic, Venndelo, Wompi sandbox) se mueven a sus fases respectivas — se crean cuando se vayan a usar, no antes. Esto evita el costo de mantener cuentas "frías" y reduce surface area mientras no se necesitan.
+> **Re-scope al final de Fase 0b:** la lista original incluía 8 cuentas. Al revisar **qué bloquea realmente arrancar Fase 1**, solo 4 son críticas. Las otras 4 (Cloudflare, Anthropic, Aveonline, Wompi sandbox) se mueven a sus fases respectivas — se crean cuando se vayan a usar, no antes. Esto evita el costo de mantener cuentas "frías" y reduce surface area mientras no se necesitan.
 
 ### Tareas (todas en tier Free) — completadas
 
@@ -89,7 +89,7 @@ El trabajo reciente se nombró por **bloques**; equivalen a:
 
 - **Cloudflare** (DNS + Turnstile + R2) → Fase 1 (Turnstile junto al signup) y Fase 7 (DNS + R2 al lanzar).
 - **Anthropic** API key → Fase 3 (cuando se implemente el Estudio de Personalización con IA).
-- **Venndelo** sandbox → Fase 4 (cuando se implemente el checkout con cotización).
+- **Aveonline** cuenta DEMO → Fase 4 (cuando se implemente el checkout con cotización).
 - **Wompi** sandbox → Fase 4 (cuando se implemente el checkout). Su gestión la lleva la operadora externamente.
 
 ### Verificación de tiers Free contra docs oficiales (mandato #9) — completada
@@ -162,7 +162,7 @@ Antes de iniciar la fase, citar fuente con fecha en `OPERATIONS.md` para:
 > Pendientes del bloque (siguen abiertos):
 >
 > - [ ] Middleware `/admin/*` con guard de rol — preparado en proxy.ts, falta activar cuando exista admin flow
-> - [ ] `/api/health/integrations` (Wompi/Venndelo/Anthropic) — cuando esas integraciones existan en Fases 4/5
+> - [ ] `/api/health/integrations` (Wompi/Aveonline/Anthropic) — cuando esas integraciones existan en Fases 4/5
 > - [ ] Cache sobre Postgres (`lib/cache.ts` + tabla `cache_entries`) — diferido a cuando aparezca el primer caso de uso real
 
 #### UI base — 🟡 EN CURSO
@@ -320,7 +320,6 @@ Antes de iniciar la fase, citar fuente con fecha en `OPERATIONS.md` para:
 > **Aveonline** (Coordinadora + contraentrega), claim atómico de guía, VOIDED→REFUNDED con revert
 > de stock, y reconciliación visible en `/admin/pedidos`. **Pendiente solo:** llaves/cuenta de
 > **producción** (acción humana) + el flujo de **retracto E2E** y **refund desde admin** (Bloque F).
-> El checklist de abajo es el plan original; donde dice "Venndelo", léase **Aveonline**.
 
 > **Alcance:** convertir carritos en órdenes pagadas y enviadas.
 
@@ -329,14 +328,14 @@ Antes de iniciar la fase, citar fuente con fecha en `OPERATIONS.md` para:
 - [ ] Checkout multi-paso con `react-hook-form` + Zod
   - [ ] Paso 1: datos de contacto
   - [ ] Paso 2: dirección de envío + selector de departamento/ciudad
-  - [ ] Paso 3: cotización Venndelo en vivo + selección de método de pago
+  - [ ] Paso 3: cotización Aveonline en vivo + selección de método de pago
   - [ ] Paso 4: revisión y confirmación
 - [ ] Adaptador `PaymentProvider` con `WompiProvider` implementado
 - [ ] `/api/checkout/create` crea Order y redirige a Wompi (sandbox)
 - [ ] `/api/wompi/webhook` con verificación de firma e idempotencia
-- [ ] `/api/venndelo/webhook` para tracking
+- [ ] `/api/webhooks/aveonline` para tracking
 - [ ] Pago contraentrega (COD) bypass de Wompi
-- [ ] `/orden/[id]` con estado actual + tracking de Venndelo
+- [ ] `/orden/[id]` con estado actual + tracking de Aveonline
 - [ ] Email de confirmación (Resend) con plantilla react-email
 - [ ] Email "tu pedido salió a reparto" con tracking URL
 - [ ] Email "tu pedido llegó" pidiendo reseña
@@ -357,7 +356,7 @@ Antes de iniciar la fase, citar fuente con fecha en `OPERATIONS.md` para:
 ### Criterio de aceptación
 
 - Compra completa con tarjeta sandbox Wompi `4242 4242 4242 4242` (verificado: [docs.wompi.co/datos-de-prueba-en-sandbox](https://docs.wompi.co/en/docs/colombia/datos-de-prueba-en-sandbox/) a 2026-05-09) → orden a `PAID`.
-- Compra COD → orden a `PAID` con envío Venndelo creado.
+- Compra COD → orden a `PAID` con guía Aveonline creada.
 - Webhook idempotente: enviar el mismo evento 2 veces no duplica nada (garantizado por `WebhookEvent.@@unique([source, externalId])`).
 - **Stock se reserva al `PENDING_PAYMENT` con TTL 15 min** (transacción atómica `SELECT FOR UPDATE`) y se descuenta cuando pasa a `PAID` (ADR-014).
 - Si Wompi declina (`DECLINED`/`ERROR`/`VOIDED`) o la reserva expira, el stock se libera.
@@ -426,7 +425,7 @@ Antes de iniciar la fase, citar fuente con fecha en `OPERATIONS.md` para:
 - [ ] Gestión de inventario (ajustes manuales con razón obligatoria)
 - [ ] Listado de órdenes con filtros y búsqueda
 - [ ] Detalle de orden con descarga de PNG de producción
-- [ ] Reimprimir guía Venndelo
+- [ ] Reimprimir guía Aveonline
 - [ ] Cambiar estado manual de orden (con razón)
 - [ ] Listado de clientes
 - [ ] Aprobación de reseñas (queue)
@@ -517,14 +516,14 @@ Antes de iniciar la fase, citar fuente con fecha en `OPERATIONS.md` para:
 - [ ] Dominio conectado a Vercel
 - [ ] DNS de email `mail.lucamsshop.com` configurado en Resend (SPF/DKIM/DMARC)
 - [ ] Wompi en producción (cuentas reales)
-- [ ] Venndelo en producción
+- [ ] Aveonline en producción
 - [ ] Cambio de número WhatsApp temporal por el definitivo
 
 ### Tareas de soft launch
 
 - [ ] Compra de prueba real con valor mínimo
 - [ ] Verificar webhook de Wompi en producción
-- [ ] Verificar webhook de Venndelo en producción
+- [ ] Verificar webhook de Aveonline en producción
 - [ ] Verificar email transaccional desde dominio propio
 - [ ] Lanzamiento público (anuncio en Instagram + Linktree)
 - [ ] Monitoreo activo las primeras 72h
@@ -533,7 +532,7 @@ Antes de iniciar la fase, citar fuente con fecha en `OPERATIONS.md` para:
 
 - Una compra real con tarjeta real procesa correctamente.
 - El cliente recibe email desde `hola@mail.lucamsshop.com`.
-- El envío llega al destino vía Coordinadora/Venndelo.
+- El envío llega al destino vía Aveonline (multi-carrier).
 - No hay errores 500 en Vercel Logs durante 24h continuas.
 - Todas las páginas críticas con Lighthouse ≥ 95.
 

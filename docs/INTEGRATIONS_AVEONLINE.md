@@ -612,7 +612,7 @@ Aveonline acepta **ambos** formatos en `origen`/`destino`:
 - Nombre formateado: `"BOGOTA(CUNDINAMARCA)"` — UPPERCASE, sin tilde, sin "D.C."
 - codigoDANE 8 dígitos: `"11001000"`
 
-> Bogotá D.C. aparece como `"BOGOTA(CUNDINAMARCA)"`. ~4.500 ciudades/centros poblados (más granular que Venndelo).
+> Bogotá D.C. aparece como `"BOGOTA(CUNDINAMARCA)"`. ~4.500 ciudades/centros poblados.
 
 ### 10.4 Recomendación de implementación
 
@@ -831,7 +831,6 @@ El switch toma efecto en el siguiente request (no requiere redeploy si se cambia
 | ------------------------------------------------------- | --------------------------------------------------- |
 | `apps/web/features/shipping/provider.ts:15-107`         | ✅ Interface `ShippingProvider` completa            |
 | `apps/web/features/shipping/aveonline.ts:75-373`        | ✅ `AveonlineProvider` implementa todos los métodos |
-| `apps/web/features/shipping/venndelo.ts`                | ⚪ Plan B dormido (stub `NOT_IMPLEMENTED`)          |
 | `apps/web/features/products/shipping-schemas.ts:32-117` | ✅ Zod + helpers `getEffectiveShippingDims`         |
 | `apps/web/features/checkout/service.ts:101-177`         | ✅ `quoteShipping()` orquesta                       |
 | `apps/web/app/checkout/envio/page.tsx`                  | ✅ Llama `quoteShipping` server-side                |
@@ -1077,14 +1076,13 @@ Probe en vivo contra cuenta `crittan01@gmail.com` ejecutado desde `packages/db/s
 
 ## 20. Cambios pendientes a otros docs
 
-| Doc                     | Cambio                                                                              |
-| ----------------------- | ----------------------------------------------------------------------------------- |
-| `docs/DECISIONS.md`     | Agregar ADR-040 "Migración cotizar2 → cotizarDoble + filtro numbererror"            |
-| `docs/INTEGRATIONS.md`  | Agregar sección Aveonline en tabla resumen (línea 7-14) — hoy aparece solo Venndelo |
-| `docs/SECURITY.md`      | Documentar mitigación webhook Aveonline sin HMAC (paramN secret + IP whitelist)     |
-| `docs/COMPLIANCE.md`    | Agregar Aveonline + 6 carriers en política subprocesadores Ley 1581                 |
-| `docs/OBSERVABILITY.md` | Agregar SLO cotización Aveonline (p95 < 5s, error rate < 2%)                        |
-| `apps/web/.env.example` | Documentar variables Aveonline con comentarios                                      |
+| Doc                     | Cambio                                                                          |
+| ----------------------- | ------------------------------------------------------------------------------- |
+| `docs/DECISIONS.md`     | Agregar ADR-040 "Migración cotizar2 → cotizarDoble + filtro numbererror"        |
+| `docs/SECURITY.md`      | Documentar mitigación webhook Aveonline sin HMAC (paramN secret + IP whitelist) |
+| `docs/COMPLIANCE.md`    | Agregar Aveonline + 6 carriers en política subprocesadores Ley 1581             |
+| `docs/OBSERVABILITY.md` | Agregar SLO cotización Aveonline (p95 < 5s, error rate < 2%)                    |
+| `apps/web/.env.example` | Documentar variables Aveonline con comentarios                                  |
 
 ---
 

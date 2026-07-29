@@ -34,22 +34,22 @@
 
 > Compromisos cuantitativos. Si los rompemos, pausamos features y arreglamos.
 
-| SLO                                                                         | Objetivo | Ventana         | Aplicable desde |
-| --------------------------------------------------------------------------- | -------- | --------------- | --------------- |
-| **Disponibilidad storefront** (home, catálogo, PDP)                         | 99.5%    | 30 días rolling | Lanzamiento     |
-| **Disponibilidad checkout** (`/checkout`, `/api/checkout/create`)           | 99.9%    | 30 días         | Lanzamiento     |
-| **Disponibilidad webhooks** (`/api/wompi/webhook`, `/api/venndelo/webhook`) | 99.9%    | 30 días         | Lanzamiento     |
-| **Latencia p95 home (TTFB)**                                                | < 500 ms | 7 días          | Fase 1          |
-| **Latencia p95 PDP**                                                        | < 800 ms | 7 días          | Fase 2          |
-| **Latencia p95 `/api/checkout/create`**                                     | < 2 s    | 7 días          | Fase 4          |
-| **Latencia p95 `/api/ai/design-suggest`**                                   | < 5 s    | 7 días          | Fase 3          |
-| **Tasa de error 5xx global**                                                | < 0.1%   | 24 h            | Fase 1          |
-| **Tasa de webhook fallido (Wompi/Venndelo)**                                | < 0.5%   | 30 días         | Fase 4          |
-| **Tasa de saga fallida** (compensación ejecutada)                           | < 0.2%   | 30 días         | Fase 4          |
-| **Tasa de stock oversold**                                                  | 0        | siempre         | Fase 4          |
-| **Lighthouse Performance home**                                             | ≥ 95     | cada deploy     | Fase 1          |
-| **Lighthouse A11y**                                                         | ≥ 95     | cada deploy     | Fase 1          |
-| **Email transactional delivery rate**                                       | ≥ 98%    | 7 días          | Fase 4          |
+| SLO                                                                           | Objetivo | Ventana         | Aplicable desde |
+| ----------------------------------------------------------------------------- | -------- | --------------- | --------------- |
+| **Disponibilidad storefront** (home, catálogo, PDP)                           | 99.5%    | 30 días rolling | Lanzamiento     |
+| **Disponibilidad checkout** (`/checkout`, `/api/checkout/create`)             | 99.9%    | 30 días         | Lanzamiento     |
+| **Disponibilidad webhooks** (`/api/wompi/webhook`, `/api/webhooks/aveonline`) | 99.9%    | 30 días         | Lanzamiento     |
+| **Latencia p95 home (TTFB)**                                                  | < 500 ms | 7 días          | Fase 1          |
+| **Latencia p95 PDP**                                                          | < 800 ms | 7 días          | Fase 2          |
+| **Latencia p95 `/api/checkout/create`**                                       | < 2 s    | 7 días          | Fase 4          |
+| **Latencia p95 `/api/ai/design-suggest`**                                     | < 5 s    | 7 días          | Fase 3          |
+| **Tasa de error 5xx global**                                                  | < 0.1%   | 24 h            | Fase 1          |
+| **Tasa de webhook fallido (Wompi/Aveonline)**                                 | < 0.5%   | 30 días         | Fase 4          |
+| **Tasa de saga fallida** (compensación ejecutada)                             | < 0.2%   | 30 días         | Fase 4          |
+| **Tasa de stock oversold**                                                    | 0        | siempre         | Fase 4          |
+| **Lighthouse Performance home**                                               | ≥ 95     | cada deploy     | Fase 1          |
+| **Lighthouse A11y**                                                           | ≥ 95     | cada deploy     | Fase 1          |
+| **Email transactional delivery rate**                                         | ≥ 98%    | 7 días          | Fase 4          |
 
 > **Nota:** estos SLOs son iniciales. Tras 90 días de producción se revisan con datos reales y se ajustan.
 
@@ -141,7 +141,7 @@ Panel para el dev/Claude:
 | Disparador                                                | Canal | Severidad | Acción inmediata                                                                                                                                                                                                                                                                                                                           |
 | --------------------------------------------------------- | ----- | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | 5+ errores 500 en 5 min en una misma ruta                 | Email | Alta      | Ver Vercel Logs ruta afectada; rollback si reciente                                                                                                                                                                                                                                                                                        |
-| Webhook handler fallando > 3 veces consecutivas           | Email | Alta      | Verificar payload + firma + Wompi/Venndelo status                                                                                                                                                                                                                                                                                          |
+| Webhook handler fallando > 3 veces consecutivas           | Email | Alta      | Verificar payload + firma + Wompi/Aveonline status                                                                                                                                                                                                                                                                                         |
 | Saga compensation fallida (estado inconsistente)          | Email | Crítica   | Intervención manual; revisar `SagaLog` y reconciliar                                                                                                                                                                                                                                                                                       |
 | `/api/health` devuelve 503 por > 3 min                    | Email | Crítica   | Verificar Supabase status, Vercel status                                                                                                                                                                                                                                                                                                   |
 | Stock oversold detectado                                  | Email | Crítica   | Contactar cliente afectado, ofrecer reembolso/sustituto                                                                                                                                                                                                                                                                                    |
@@ -185,7 +185,7 @@ Definidos en [`CONVENTIONS.md` § Logging](./CONVENTIONS.md#logging-y-request-id
 | `webhook.received`          | `source`, `externalId`, `requestId`                   | `info`        |
 | `webhook.signature.invalid` | `source`, `requestId`, `reason`                       | `warn`        |
 | `rate_limit.exceeded`       | `key`, `limit`, `requestId`                           | `warn`        |
-| `circuit_breaker.open`      | `service` (`wompi`/`venndelo`), `failures`            | `warn`        |
+| `circuit_breaker.open`      | `service` (`wompi`/`aveonline`), `failures`           | `warn`        |
 | `error.unhandled`           | `requestId`, `error.message`, `error.stack` (sin PII) | `error`       |
 
 ---
@@ -223,7 +223,7 @@ lucams_pgmq_lag_seconds{queue="email_send"} 12
 - En logs: `requestId` en cada entry.
 - En `pgmq` mensajes: incluir `requestId` en el payload del mensaje para que el consumer lo loggee.
 - En emails: incluir `X-Lucams-Request-Id` header al enviar a Resend.
-- En llamadas a Wompi/Venndelo: incluir `X-Lucams-Request-Id` en el header (no es estándar; algunos APIs lo aceptan, otros lo ignoran — sin efecto adverso).
+- En llamadas a Wompi/Aveonline: incluir `X-Lucams-Request-Id` en el header (no es estándar; algunos APIs lo aceptan, otros lo ignoran — sin efecto adverso).
 
 ### Post-lanzamiento (Fase 7+)
 
@@ -233,11 +233,11 @@ Evaluar OpenTelemetry SDK con exporter a un backend gratuito (Honeycomb Free, Gr
 
 ## Healthchecks
 
-| Endpoint                       | Qué verifica                                                                  | Timeout |
-| ------------------------------ | ----------------------------------------------------------------------------- | ------- |
-| `GET /api/health`              | App viva (devuelve `200 OK`)                                                  | 1 s     |
-| `GET /api/health/db`           | Postgres responde un `SELECT 1`                                               | 2 s     |
-| `GET /api/health/integrations` | Wompi, Venndelo, Resend respondieron a `/health` o equivalente en último ping | 5 s     |
+| Endpoint                       | Qué verifica                                                                   | Timeout |
+| ------------------------------ | ------------------------------------------------------------------------------ | ------- |
+| `GET /api/health`              | App viva (devuelve `200 OK`)                                                   | 1 s     |
+| `GET /api/health/db`           | Postgres responde un `SELECT 1`                                                | 2 s     |
+| `GET /api/health/integrations` | Wompi, Aveonline, Resend respondieron a `/health` o equivalente en último ping | 5 s     |
 
 ### Implementación
 
@@ -276,7 +276,7 @@ Post-lanzamiento: configurar **UptimeRobot** o **BetterStack** (Free) para pinge
 
 Mientras el equipo es 1 persona, no hay rotación formal. Pero:
 
-- **Escalamiento documentado** en OPERATIONS.md (a quién avisar para Wompi caído, Venndelo caído, Vercel caído, Supabase caído).
+- **Escalamiento documentado** en OPERATIONS.md (a quién avisar para Wompi caído, Aveonline caído, Vercel caído, Supabase caído).
 - **Runbook por incidente** en `OPERATIONS.md` (ya existe la base — expandir con cada incidente).
 - **Modo mantenimiento** activable con env var `NEXT_PUBLIC_MAINTENANCE_MODE=1` (ver `SECURITY.md` § Otros vectores y el runbook en `OPERATIONS.md`; al ser `NEXT_PUBLIC_*` se inliniza en build → **requiere redeploy**).
 

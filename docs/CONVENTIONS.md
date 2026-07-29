@@ -79,7 +79,6 @@ apps/web/
 │   │       └── ...
 │   ├── api/                             # Solo endpoints REST
 │   │   ├── wompi/webhook/
-│   │   ├── venndelo/webhook/
 │   │   ├── checkout/create/
 │   │   └── ...
 │   ├── error.tsx                        # Error boundary global
@@ -107,7 +106,6 @@ apps/web/
 ├── lib/                                 # Utilidades cross-feature
 │   ├── supabase/
 │   ├── payment/                         # Adaptador PaymentProvider
-│   ├── venndelo.ts
 │   ├── whatsapp.ts
 │   ├── ai.ts
 │   ├── cart.ts                          # Zustand store
@@ -416,7 +414,7 @@ export function problemResponse(p: ProblemDetails): Response {
 | `unprocessable`             | 422    | Estado inválido para la operación             |
 | `too-many-requests`         | 429    | Rate limit                                    |
 | `payment-declined`          | 402    | Wompi declinó                                 |
-| `shipping-unavailable`      | 503    | Venndelo no responde                          |
+| `shipping-unavailable`      | 503    | Aveonline no responde                         |
 | `webhook-signature-invalid` | 401    | Firma incorrecta (no revelar detalles)        |
 | `internal-error`            | 500    | Catch-all (con requestId)                     |
 
@@ -479,7 +477,7 @@ export async function createOrder(payload: CheckoutPayload, requestId: string) {
 
 ## Backend — saga pattern para flujos distribuidos
 
-> El flujo `Wompi APPROVED → reservar stock → crear envío Venndelo → enviar email` toca tres sistemas externos. Si falla a la mitad, no podemos dejar la base inconsistente.
+> El flujo `Wompi APPROVED → reservar stock → crear guía Aveonline → enviar email` toca tres sistemas externos. Si falla a la mitad, no podemos dejar la base inconsistente.
 
 ### Estrategia: orchestrator-based saga con compensaciones
 
@@ -546,9 +544,9 @@ const stockStep: Step<Ctx> = {
 
 const shipmentStep: Step<Ctx> = {
   name: "create-shipment",
-  forward: async (ctx) => ({ ...ctx, shipment: await venndelo.createShipment(ctx.order) }),
+  forward: async (ctx) => ({ ...ctx, shipment: await aveonline.createShipment(ctx.order) }),
   compensate: async (ctx) => {
-    if (ctx.shipment) await venndelo.cancelShipment(ctx.shipment.id);
+    if (ctx.shipment) await aveonline.cancelShipment(ctx.shipment.id);
   },
 };
 
@@ -874,7 +872,7 @@ export async function withRetry<T>(
 
 ### Circuit breakers
 
-Para llamadas críticas (Wompi, Venndelo):
+Para llamadas críticas (Wompi, Aveonline):
 
 ```ts
 // lib/circuit-breaker.ts (simplificado)

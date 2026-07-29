@@ -40,7 +40,7 @@
 2. **Stack fijo:** Next.js **16** (App Router, RSC, Server Actions, Turbopack) + TypeScript + **Tailwind v4** + shadcn/ui, monorepo pnpm (`apps/web` + `packages/db`), Supabase (DB+Auth+Storage), Vercel. Next 16 tiene breaking changes vs 15 — ver `apps/web/AGENTS.md`.
 3. **Modo de tienda por flag:** `NEXT_PUBLIC_STORE_MODE` = `catalog` (Etapa 1, sin pagos/envíos/IA en UI) | `full` (Etapa 2, Wompi + Aveonline). Una sola base de código — ADR-077.
 4. **Pasarela:** Wompi (adaptador `PaymentProvider`; Mercado Pago después).
-5. **Logística:** Aveonline (ADR-039; Venndelo = Plan B stub).
+5. **Logística:** Aveonline (ADR-039).
 6. **WhatsApp:** solo `wa.me` con mensaje pre-armado contextual; sin Twilio.
 7. **Sin Sentry** ni monitoreo de errores de pago por ahora.
 8. **Documentación dentro del repo** (auditorías en `docs/audits/`, decisiones en `docs/DECISIONS.md`).

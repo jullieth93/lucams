@@ -116,6 +116,8 @@ Verificado contra `developers.wompi.co` (doc oficial, 2026-05-13).
 
 ## ADR-005 — Logística: Venndelo (Coordinadora + COD)
 
+> ⚠️ SUPERSEDED por ADR-039 (2026-05): la logística real es Aveonline. Venndelo fue eliminado del código y los docs en 2026-07-29.
+
 **Fecha:** 2026-05-09
 **Estado:** ✅ Aceptada
 
@@ -1285,6 +1287,8 @@ export interface ShippingProvider {
 - Recogida 11am: UI admin muestra advertencia "Confirma antes de 11am para que salga hoy".
 
 **Implementación Venndelo (dormida):**
+
+> ⚠️ **Nota 2026-07-29:** por decisión de negocio, el stub `features/shipping/venndelo.ts` y toda referencia a Venndelo fueron eliminados del código y de los docs en esta fecha. Ya no hay Plan B: la logística es y será Aveonline. Lo que sigue es solo registro histórico de la decisión original.
 
 - Archivo `features/shipping/venndelo.ts` queda no exportado por default. Si Aveonline falla, swap: cambiar import en `features/shipping/provider.ts` y deploy.
 - Schema `lib/venndelo.ts` ya documentado en `docs/INTEGRATIONS.md`.
