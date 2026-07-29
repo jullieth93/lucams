@@ -1,16 +1,16 @@
 # HANDOFF - CERTIFICACIÓN RAMA DEVELOP
 
-Certificación transaccional multiagente ejecutada el **2026-07-29** sobre `develop` (Capa Cliente + Capa Admin), con cambios reales en disco, pruebas reales en terminal y verificación de residuos en BD. Nada de lo aquí escrito es suposición: cada afirmación tiene su evidencia (salida de tests, corridas E2E, queries de verificación).
+**Segunda pasada de certificación transaccional multiagente**, ejecutada el **2026-07-29** sobre `develop` (Capa Cliente + Capa Admin), con cambios reales en disco, pruebas reales en terminal y verificación de residuos en BD. Nada de lo aquí escrito es suposición: cada afirmación tiene su evidencia (salida de tests, corridas E2E, queries de verificación). La primera pasada del mismo día quedó commiteada en `019f6fe` (ver git history); esta segunda pasada fue **adversarial**: tres agentes exploradores buscaron lo que la primera no vio, y se corrigió lo hallado.
 
-**Punto de restauración registrado ANTES de tocar nada** (pedido explícito del usuario): `develop` @ `bc1e41b7c05ec787ac2dfa2a0d58d62abb2cc369`, working tree limpio. Detalle y comando de rollback en `docs/audits/2026-07-29-restore-point.md`.
+**Punto de restauración registrado ANTES de tocar nada** (pedido explícito del usuario: "documentate en el punto estable commit que estás ahora por si acaso"): `develop` @ `019f6fe` (`docs: HANDOFF certificación transaccional multiagente develop 2026-07-29 + punto de restauración`), working tree limpio, `origin/develop` al día. Detalle y comando de rollback en `docs/audits/2026-07-29-restore-point.md` (sección "Re-certificación").
 
 ---
 
 ## 1. Objetivo
 
-Auditar, cablear, limpiar y certificar la rama `develop` de forma REAL: (a) inventario de módulos y variables de entorno, (b) cableado transaccional Wompi (firmas + webhooks sandbox) y Aveonline (auth + cotización + guías sandbox) sin mocks, (c) simplificación "menos es más" del panel Admin para una administradora no técnica, (d) certificación E2E con Playwright/Chromium del flujo completo cliente + admin con limpieza de datos de prueba, y (e) este documento de entrega.
+Re-auditar, cablear, limpiar y re-certificar la rama `develop` de forma REAL tras la primera pasada: (a) verificar que las evidencias del HANDOFF anterior seguían en pie (baseline completo), (b) segunda auditoría adversarial con 3 agentes (QA dead-code/cableado, ShadowAgent pentesting, UX/UI Admin "menos es más"), (c) aplicar los fixes aprobados por el Gatekeeper con tests nuevos, (d) re-certificar E2E con Playwright/Chromium contra Wompi y Aveonline sandbox reales, (e) dejar la BD sin residuos de prueba y (f) este documento.
 
-Contexto encontrado: el cableado base de Wompi/Aveonline YA existía y era sólido (certificaciones Fase A/B previas). El trabajo real de esta sesión fue **adversarial**: encontrar y cerrar lo que esas certificaciones no vieron.
+Contexto: la primera pasada (commit `019f6fe`) ya había cerrado el flete forjado (HMAC), la carrera dedup P2002 en webhooks y el cableado del gestor Aveonline. Esta pasada encontró y cerró lo siguiente: exposición pública de la dirección de recogida, amplificación hacia la API de Wompi desde /checkout/gracias, un enlace roto del dashboard que perdía el filtro, una tarjeta del dashboard que medía el trabajo del cliente en vez del de Lucy, 7 archivos muertos, config de una IA inexistente y 28 órdenes de prueba históricas visibles en el admin.
 
 ---
 
@@ -18,91 +18,111 @@ Contexto encontrado: el cableado base de Wompi/Aveonline YA existía y era sóli
 
 ### Veredicto del ecosistema (The Gatekeeper)
 
-| Agente                   | Veredicto                                                                                                                                                                                                                                  |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| QA Técnico & Mutación    | 1 vulnerabilidad crítica, 1 carrera de concurrencia, 1 componente muerto, 1 var muerta, 2 comentarios obsoletos. Todo corregido y cubierto con tests nuevos.                                                                               |
-| ShadowAgent (pentesting) | El vector de robo de flete (`fleteCop` forjado) está **cerrado y probado** (3 tests nuevos de seguridad + defensa en profundidad en `finalizeCheckout`). Llaves: 0 secretos en cliente; las 4 de Wompi y las de Aveonline son server-only. |
-| UX/UI Admin              | Menú ya saneado por la decisión Lucy/Kimi 2026-07-28 (respetada). Esta sesión: 1 función huérfana cableada, 2 etiquetas crípticas re-etiquetadas, 2 fusiones de módulos duplicados quedan como decisión de negocio (§5a).                  |
-| E2E Playwright           | Flujo punta a punta certificado en limpio con Chromium contra Wompi y Aveonline **sandbox reales** (evidencias abajo).                                                                                                                     |
-| Self-Healing             | 17 archivos modificados, 1 eliminado, 2 creados. Typecheck ✓ · ESLint 0 warnings ✓ · Prettier ✓.                                                                                                                                           |
+| Agente                   | Veredicto                                                                                                                                                                                                                                                                                              |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| QA Técnico & Mutación    | 24 ítems clasificados: 7 archivos muertos eliminados (verificados 0 imports), placeholder roto en checkout reparado, env var de seguridad documentada, spec e2e con ruta inexistente corregido, config Anthropic purgada. Venndelo y la suite /api/catalog quedan como decisión de negocio (§5a).      |
+| ShadowAgent (pentesting) | Fixes de la 1ª pasada verificados EN PIE (sello HMAC de flete, dedup P2002, anti-replay Wompi, RBAC con MFA en las 33 actions). 3 hallazgos MEDIO cerrados esta sesión (PICKUP_* público, amplificación Wompi, origin spoofable); 5 BAJO: 1 corregido (comentario de dinero falso), 4 diferidos a §5b. |
+| UX/UI Admin              | 17 hallazgos (H1-H17): 2 ALTA y 8 MEDIA corregidos en disco (dashboard, jerga, /admin 404, destructiva sin confirmación); relabels opcionales y fusiones quedan como decisión de negocio (§5a).                                                                                                        |
+| E2E Playwright           | Flujo punta a punta re-certificado en limpio post-cambios con Chromium contra sandbox REALES (evidencias abajo), incluyendo test NUEVO que certifica el dashboard.                                                                                                                                     |
+| Self-Healing             | 33 archivos modificados, 2 creados, 7 eliminados. Typecheck ✓ · ESLint 0 warnings ✓ · Prettier ✓.                                                                                                                                                                                                      |
 
 ### Evidencias de conclusión (datos reales de mi ejecución)
 
-- **Vitest focal** (5 archivos tocados, DB real compartida): corrida inicial 101/102 (1 fallo introducido por mí en un helper de test → corregido, ver §4.2) → re-corrida del archivo checkout **39/39 ✓**. Estado final: **102/102 verdes**, incluyendo 5 tests NUEVOS escritos esta sesión (3 anti-manipulación de flete, 2 de carrera dedup en webhooks).
-- **Typecheck** (`tsc --noEmit`) ✓ · **ESLint** `--max-warnings 0` ✓ · **Prettier** ✓ en todos los archivos tocados.
-- **E2E certificación** (comando en §6, log `/tmp/e2e-cert-20260729.log`, `EXIT:0`):
-  - `wompi-sandbox.spec.ts`: **1 passed (2.7m)** — cliente de prueba `wompi-e2e-*@example.com` creado por el checkout; cotización Aveonline sandbox en vivo; pago en checkout hospedado de Wompi sandbox con tarjeta 4242 → transacción **APPROVED verificada vía API oficial**; webhook firmado con el `WOMPI_EVENTS_SECRET` real aceptado (200); saga → orden **LCM-2026-0193** en **FULFILLING** con **guía Aveonline sandbox real #2245604750** y total **$58.300 COP**.
-  - `admin-transactional.spec.ts`: **3 passed (51.2s)** — admin de prueba SUPERADMIN efímero creado, login en el panel, orden LCM-2026-0193 visible en `/admin/pedidos`, `/admin/finanzas`, `/admin/moderacion` y `/admin/disenos` operativos.
-  - **Limpieza verificada por query** al finalizar: orden soft-deleted ✓ · 0 `AdminUser` `e2e-admin-tx-*` residuales ✓ · 0 clientes de prueba residuales ✓ · 0 eventos webhook del run ✓ · puerto 4000 liberado ✓.
-- **Conteo de módulos**: Capa Cliente — flujo de ingresos (PDP → carrito → datos → envío → pago → gracias → webhook → guía) certificado E2E; 31 specs e2e y ~2.6k tests vitest existentes intactos. Capa Admin — 34 rutas del sidebar, todas reales (0 placeholder visibles; los 2 módulos futuros siguen ocultos por diseño); 1 página huérfana (gestor de webhooks Aveonline) ahora cableada al menú de Integraciones.
-- **Resistencia/estrés básico del flujo**: la suite de integración ejerce el checkout bajo carreras (dedup concurrente P2002, doble finalize idempotente, reconciliación de orden divergente, stock en carrera) — 102/102 con `retry: 2` contra el pooler real.
+- **Baseline ANTES de cambios** (re-verificación del HANDOFF anterior): vitest suite completa **2631 passed / 2 skipped** (162 archivos, 19.7 min, 0 residuos en teardown) · E2E `wompi-sandbox` **1 passed (2.3m)** — orden **LCM-2026-0194** real en sandbox · `admin-transactional` **3 passed (41.6s)** · typecheck ✓ · lint ✓.
+- **Gates POST-cambios**: `tsc --noEmit` ✓ (tras `next typegen`, ver §4.2) · `eslint --max-warnings 0` ✓ · `prettier --check` ✓ en todos los archivos tocados.
+- **Vitest focal POST-cambios** (lib + features/checkout + features/orders + app/api): **58 archivos, 1144/1144 tests verdes**, 0 residuos. Incluye **7 tests NUEVOS** escritos esta sesión: 3 de privacidad del endpoint CMS (`lib/cms-settings-privacy.test.ts`) y 4 del origin anti-spoof (`lib/origin.test.ts`).
+- **E2E re-certificación POST-cambios** (comando en §6, `E2E_RECERT_OK`):
+  - `wompi-sandbox.spec.ts`: **1 passed (2.3m)** — checkout completo con cotización Aveonline sandbox en vivo, pago APPROVED verificado vía API oficial de Wompi sandbox, webhook firmado aceptado, saga → orden **LCM-2026-0195** PAID con guía Aveonline sandbox.
+  - `admin-transactional.spec.ts`: **4 passed (51.2s)** — incluye el test NUEVO `/admin/dashboard renderiza con la tarjeta operativa 'Por producir / enviar'` (certifica los fixes H1+H13 en runtime), más pedidos/finanzas/moderación/diseños operativos con la orden real.
+- **Limpieza de BD verificada por query** (resultados literales): 28 órdenes residuo e2e históricas (`LCM-2026-0147`…`0175`, PENDING_PAYMENT, 2026-07-28, emails `wompi-e2e-*`) **soft-deleted** + 1 carrito anónimo vacío expirado purgado → estado final: `ordersExample:0, ordersRemaining:0, customersAny:0, cartsE2E:0, adminsE2E:0, webhooksLast2h:0, productsE2E:0`.
+- **Conteo de módulos**: Capa Cliente — flujo de ingresos (PDP → carrito → datos → envío → pago → webhook → guía → gracias) certificado E2E; el checkout ya no pide URLs inexistentes (`/placeholder.png` eliminado). Capa Admin — 34 rutas del sidebar + `/admin` raíz (antes 404, ahora redirige al dashboard); 0 páginas huérfanas; 0 placeholders fuera de lo deliberado; 1 destructiva (borrar webhook) ahora con confirmación.
+- **Cobertura de lo tocado**: toda lógica nueva va con test (7 unitarios + 1 e2e); la purga eliminó 1 spec muerto (62 líneas) cuyo único sujeto era el componente borrado.
 
 ### Propuestas de commits (NO ejecutados — git mutations requieren tu confirmación)
 
 Sugerencia: 1 solo commit, o 4 atómicos en este orden:
 
-1. `fix(checkout): sellar cotizaciones de envío con HMAC — cierra manipulación de flete (fleteCop forjado)` (checkout-session, service, envio/*, pago/actions, test integración).
-2. `fix(webhooks): carrera dedup P2002 → 200 "concurrent duplicate" en wompi y aveonline (+2 tests)`.
-3. `test(e2e): wompi-sandbox auto-limpia TODOS sus residuos (cliente, webhookEvent; fixtures soft-delete)`.
-4. `chore(admin): cablear gestor webhooks Aveonline en Integraciones, relabel jerga del menú, purgar dead code`.
+1. `fix(security): /api/cms/settings oculta PICKUP_*/BUSINESS_NIT; rate-limit anti-amplificación en /checkout/gracias; origin de emails canónico en producción (+7 tests)`.
+2. `fix(admin): dashboard mide "Por producir / enviar" y enlaza con ?status=; /admin redirige al dashboard; jerga traducida; destructiva con confirmación; ruido purgado (H1-H17)`.
+3. `chore(qa): purgar 7 archivos muertos, placeholder inline en checkout, WOMPI_DISABLE_TIMESTAMP_CHECK documentada, config Anthropic eliminada`.
+4. `test(e2e): aserción del dashboard en admin-transactional; ruta /api/catalog/products corregida en ola18b-verify`.
 
 ---
 
 ## 3. Archivos y Cambios
 
-### Modificados (17)
+### Creados (2)
 
-**Fix crítico anti-manipulación de flete (ShadowAgent + Self-Healing):**
+- `apps/web/app/admin/page.tsx` — redirect `/admin` → `/admin/dashboard` (antes 404; H14).
+- `apps/web/lib/cms-settings-privacy.test.ts` — 3 tests del filtro de privacidad del endpoint CMS.
 
-- `apps/web/lib/checkout-session.ts` — nuevo `ShippingOffersPayload` (offers + cartHash + destKey + quotedAt) en `CheckoutState`; `sealShippingOffersPayload()` / `openShippingOffersPayload()` con el mismo HMAC de la cookie y TTL de 60 min.
-- `apps/web/features/checkout/service.ts` — código de error nuevo `SHIPPING_SELECTION_INVALID`; helpers `fingerprintCartItems()`, `destinationKeyOf()`, `matchShippingOffer()`, `sealShippingOffers()`; `saveShippingSelectionStep(selection, offersToken)` ahora exige match EXACTO contra el set sellado y el destino de la cookie (guarda la copia del SERVIDOR); `finalizeCheckout` re-valida selección vs cotizaciones selladas + huella de carrito + destino FRESCOS antes de crear la Order; comentario obsoleto de "500g default" corregido (el código usa dims reales y falla duro si faltan).
-- `apps/web/app/checkout/envio/page.tsx` — sella el set de cotizaciones tras cotizar y lo pasa como `offersToken` (la RSC no puede escribir cookies: el sello viaja por el HTML).
-- `apps/web/app/checkout/envio/envio-step.tsx` — prop `offersToken` (pass-through).
-- `apps/web/app/checkout/envio/quote-list.tsx` — hidden input `offersToken` en el form.
-- `apps/web/app/checkout/envio/actions.ts` — lee `offersToken`, lo pasa al service; captura `SHIPPING_SELECTION_INVALID` → redirect a `/checkout/envio?error=…` (mensaje customer-safe).
-- `apps/web/app/checkout/pago/actions.ts` — `payWompiAction` y `payCodAction`: rama dedicada para `SHIPPING_SELECTION_INVALID` → redirect a `/checkout/envio?error=…` (re-cotizar, no cobrar de menos).
-- `apps/web/features/checkout/service.integration.test.ts` — 3 call sites actualizados al nuevo contrato + 3 tests NUEVOS de seguridad (fleteCop alterado, token forjado/otro destino, carrito cambiado tras seleccionar).
+(`HANDOFF.md` se sobrescribe pero ya existía en git — cuenta como modificado.)
 
-**Fix carrera dedup webhooks (ShadowAgent):**
+### Eliminados (7) — código muerto verificado con 0 imports
 
-- `apps/web/app/api/webhooks/wompi/route.ts` — `create` de WebhookEvent envuelto: P2002 → 200 "concurrent duplicate, already processing" (antes: 500 crudo + reintentos ciegos + riesgo de doble saga); comentarios "HMAC" corregidos (Wompi usa SHA-256 de concatenación, no HMAC).
-- `apps/web/app/api/webhooks/aveonline/route.ts` — mismo patrón P2002.
-- `apps/web/app/api/webhooks/wompi/route.integration.test.ts` — test NUEVO de la carrera (findUnique miss + P2002 real contra el unique de la DB).
-- `apps/web/app/api/webhooks/aveonline/route.integration.test.ts` — test NUEVO de la carrera (externalId calculado con el provider real) + import del provider.
+- `apps/web/components/ui/badge.tsx`, `select.tsx`, `skeleton.tsx`, `tooltip.tsx` — primitivas UI sin un solo uso.
+- `apps/web/app/estudio/[slug]/studio-frame-picker.tsx` + su test — solo lo importaba su propio test.
+- `apps/web/app/estudio/[slug]/studio-polaroid-border-toggle.tsx` — 0 referencias en el repo.
+
+### Modificados (33)
+
+(incluye `HANDOFF.md` — este documento, que sobrescribe al de la 1ª pasada, preservado en git history en `019f6fe`)
+
+**Seguridad (ShadowAgent + Self-Healing):**
+
+- `apps/web/lib/cms.ts` — nuevo `isPublicSettingKey()`: las claves `PICKUP_*` (dirección/teléfono/contacto de recogida — posible casa del negocio) y `BUSINESS_NIT` no son públicas.
+- `apps/web/app/api/cms/settings/route.ts` — ambas ramas (all + by-category) filtran con `isPublicSettingKey`; header actualizado. **Cierra la exposición pública de la dirección de recogida** (hallazgo MEDIO #1).
+- `apps/web/app/checkout/gracias/page.tsx` — rate-limit `gracias:ip:<ip>` (20 vistas/5 min) ANTES de llamar `getTransaction` (API Wompi con private key); al excederse se muestra la nueva `VerifyingPage` honesta sin llamar a Wompi (el webhook procesa la orden igual). **Cierra la amplificación hacia Wompi** (hallazgo MEDIO #3).
+- `apps/web/lib/origin.ts` — `getRequestOrigin()` en producción (`VERCEL_ENV=production`) usa SOLO `NEXT_PUBLIC_SITE_URL`, nunca `x-forwarded-host` (spoofable → links de email a host atacante). Preview/dev sin cambios.
+- `apps/web/lib/origin.test.ts` — mock de `next/headers` + 4 tests nuevos del comportamiento prod/preview/dev.
+- `apps/web/features/cart/service.ts` — comentario corregido: el precio que se cobra es el snapshot que el cliente VIO (la Order NO re-lee `variant.price`; el comentario anterior prometía una invariante de dinero falsa — hallazgo BAJO #4 resuelto documentando la conducta real, que además es la correcta para el Estatuto del Consumidor).
+- `apps/web/features/orders/service.ts` — select de variant sin `price`/`productId` (seleccionados y jamás usados); comentario explicando por qué el precio NO se re-lee.
 
 **Limpieza (QA):**
 
-- `apps/web/lib/wompi.ts` — comentario del esquema de firma corregido (SHA-256, no HMAC).
-- `apps/web/.env.example` — eliminada `NEXT_PUBLIC_WOMPI_PUBLIC_KEY` (declarada, jamás referenciada en código; el checkout es redirect al hosted checkout, no widget).
+- `apps/web/app/checkout/_components/order-summary.tsx` — fallback `"/placeholder.png"` (404 real, el asset no existe) reemplazado por placeholder inline con icono `Sparkles`, mismo idioma visual que gracias.
+- `apps/web/.env.example` — `WOMPI_DISABLE_TIMESTAMP_CHECK=false` documentada (escape hatch anti-replay, NUNCA en producción); sección Anthropic eliminada (no existe provider Anthropic en el código).
+- `apps/web/app/admin/(panel)/integraciones/page.tsx` — tarjeta "Anthropic Claude" y grupo `ai` eliminados (mostraban el estado de una integración inexistente).
+- `apps/web/lib/security-headers.ts` — comentario CSP actualizado a estado final (sin lógica tocada).
+- `apps/web/lib/admin-nav.ts` — relabel "Mayorista B2B" → "Precios al por mayor"; descripción muerta de Integraciones sin "Anthropic"; descripción obsoleta de Finanzas eliminada (nunca se renderizaba).
+- `apps/web/lib/admin-nav.test.ts` — 2 nombres de `it()` y comentarios actualizados (aserciones de hrefs intactas).
+- `apps/web/tests/e2e/ola18b-verify.spec.ts` — fetch a ruta inexistente `/api/catalog/producto/...` → `/api/catalog/products/tiras-magneticas-fotos` (el check era inerte por el `.catch(() => null)`).
+- `apps/web/app/estudio/[slug]/README.md` — línea del árbol que listaba el componente eliminado.
 
 **Admin "menos es más" (UX/UI):**
 
-- `apps/web/app/admin/(panel)/integraciones/page.tsx` — tarjeta Aveonline ahora enlaza (`docs`) al gestor de webhooks `/admin/integraciones/aveonline`, que existía y funcionaba pero era **inalcanzable** desde la UI (0 inbound links).
-- `apps/web/lib/admin-nav.ts` — relabel de jerga para usuaria no técnica: "Performance" → "Rendimiento web"; "Redirects 301" → "Redirecciones (SEO)". Sin tocar hrefs ni estructura (tests de nav intactos y verdes).
+- `apps/web/app/admin/(panel)/dashboard/page.tsx` — **H13 (bug)**: el enlace usaba `?estado=` pero pedidos lee `status=` (filtro descartado en silencio). **H1**: la OpsCard ya no cuenta `PENDING_PAYMENT` (trabajo del cliente) sino `PAID + FULFILLING` con etiqueta "Por producir / enviar" y alerta `urgent` si hay; el chip de alertas del hero mide lo mismo; pendiente de pago queda como dato secundario.
+- `apps/web/app/admin/(panel)/pedidos/[number]/page.tsx` — H2: "Customer ID"→"Cliente", "Guest checkout"→"Compra sin cuenta", "Wompi TX"→"Transacción Wompi", "Carrier"→"Transportadora", "Tracking"→"N° de guía" (+2 anglicismos adyacentes en la misma tarjeta).
+- `apps/web/app/admin/(panel)/pedidos/page.tsx` — H3: eliminada la línea críptica `wompi · <id largo>` bajo el número de orden.
+- `apps/web/app/admin/(panel)/observability/page.tsx` — H4: tile "A reconciliar" deduplicado; título unificado a "Salud técnica" (igual que el menú); SLOs/crons/webhooks/errores/Web Vitals colapsados bajo `<details>` "Detalle técnico (para soporte)"; tiles operativos visibles arriba.
+- `apps/web/app/admin/(panel)/finanzas/page.tsx` — H6: eliminado el ítem obsoleto "Configurar la pasarela Wompi" (Wompi ya está certificado en vivo); comentario de cabecera reescrito (decía que el módulo no tenía datos reales — sí los tiene).
+- `apps/web/app/admin/(panel)/integraciones/aveonline/page.tsx` — H7: borrado de webhook ahora pasa por `ConfirmAction` (antes submit directo sin confirmación); aviso "Esta pantalla es para soporte técnico".
+- `apps/web/app/admin/(panel)/soporte/page.tsx`, `garantias/page.tsx`, `retractos/page.tsx`, `moderacion/page.tsx` — H8: estados vacíos unificados a `AdminEmpty` con frase guía (fuera los textos planos con 🦝).
+- `apps/web/app/admin/(panel)/mensajes/page.tsx` — H9: IP y userAgent fuera de la bandeja (la query que solo servía a esa UI también se fue; el modelo sigue guardándolos).
+- `apps/web/app/admin/(panel)/metricas/page.tsx` — H10: encabezado "SKU"→"Código".
+- `apps/web/app/admin/(panel)/auditoria/page.tsx` — H11: placeholders con ejemplos reales de negocio (`ej. product.update`, `ej. Order`); label "Acción (prefijo)".
+- `apps/web/components/admin-shell.tsx` — H15: pastilla "Free" eliminada (residuo de plantilla SaaS); H16: indicador "Live" estático eliminado (no estaba cableado a ningún health check).
+- `apps/web/app/admin/(panel)/mayorista/page.tsx` — título/breadcrumb/comentario alineados al nuevo label "Precios al por mayor".
+
+**Docs de sesión:**
+
+- `docs/audits/2026-07-29-restore-point.md` — sección "Re-certificación" con el punto estable `019f6fe` y comando de rollback.
 
 **E2E (Playwright Agent):**
 
-- `apps/web/tests/e2e/wompi-sandbox.spec.ts` — `afterAll` ahora limpia TODOS los residuos del run: soft-delete del cliente de prueba (el teardown global de vitest NO lo alcanzaba: 13 dígitos del RUN < 15 del regex run-id), borrado del WebhookEvent sintético (`wompiTxId` hoisted a módulo), y producto/categoría **soft-delete** en vez de hard delete (ver §4.4); comentario "HMAC" corregido.
-
-### Eliminados (1)
-
-- `apps/web/components/reveal-on-scroll.tsx` — componente `Reveal` con **0 imports** en todo el repo (código muerto confirmado por grep).
-
-### Creados (2)
-
-- `docs/audits/2026-07-29-restore-point.md` — punto de restauración pre-sesión (`bc1e41b`) con comando de rollback.
-- `HANDOFF.md` — este documento (sobrescribe el anterior, que queda en git history).
+- `apps/web/tests/e2e/admin-transactional.spec.ts` — test NUEVO primero del describe: el dashboard renderiza la tarjeta "Por producir / enviar" sin error boundary (certifica H1+H13 en runtime).
 
 ---
 
 ## 4. Intentos Fallidos (y qué lógica exacta los resolvió)
 
-1. **E2E intento 1: fallo en 3 ms** — `browserType.launch: Executable doesn't exist at …/chromium-1234/chrome-linux64/chrome`. Causa: el bump de dependabot #20 (mergeado hoy) subió `@playwright/test` a 1.62, que exige la revisión de navegador **1234**; el servidor tenía la 1223 de corridas previas. Resolución: `npx playwright install chromium` (descargó chromium-1234 + headless-shell-1234) y re-correr. Regla: tras cada bump de Playwright hay que reinstalar navegadores en el servidor.
-2. **Mi propio cambio rompió 1 test** — `MISSING_ADDRESS cuando falta la dirección` (rojo ×3 con retries): mi `seedFullState` actualizado sellaba cotizaciones que exigen dirección, pero ese test la omite a propósito. Lógica que lo resolvió: en producción ese estado es **inalcanzable** (la página de envío exige dirección para cotizar) y el guard `MISSING_ADDRESS` de `finalizeCheckout` dispara ANTES que el de envío → el helper ahora omite también el paso de envío cuando se omite la dirección. Re-corrida: 39/39.
-3. **Edición deslizada en `envio/page.tsx`** — una sustitución sin newline pegó `} catch (err) {` con la línea de comentario siguiente. Detectada re-leyendo la región (no por tests) y reparada en el mismo pase; typecheck/lint/prettier lo confirmaron después.
-4. **El hard delete de fixtures del e2e NUNCA funcionó** — 41 productos/categorías `wompi-e2e-*` acumulados en la BD de corridas viejas: `prisma.product.deleteMany` revienta por FK (variantes y OrderItems referencian el producto) y el `.catch(() => {})` tragaba el error en silencio. Los 41 estaban ya soft-deleted (0 activos — el teardown global de vitest los tapaba después); los verifiqué y el spec ahora soft-borra directo, sin depender de nadie. Evidencia del conteo en §2 y query de verificación ejecutada.
-5. **`playwright test --list` falló** en `admin-transactional.spec.ts` (`createClient` de Supabase a nivel módulo sin env): no es un bug — ese spec espera el entorno sourceado (el comando documentado lo hace); `wompi-sandbox` sí importa `setup-env`. Anotado para no volver a diagnosticarlo.
-6. **Emails de confirmación "fallan" en dev** — el log E2E muestra `email.send.fail` + `not_marked_will_retry` para la orden LCM-2026-0193: es el comportamiento esperado en local (Resend sin entrega verificada en dev); el saga lo registra para reintento y NO bloquea PAID ni la guía. No es un defecto del flujo.
+1. **Typecheck falló por carrera con el dev server** — `.next/dev/types/validator.ts(566,1): error TS1161: Unterminated regular expression literal` (y 2 más). Causa: lancé `tsc --noEmit` mientras el `next dev` de Playwright **re-escribía** los tipos generados en `.next/dev/types/`. Resolución: re-correr typecheck cuando el E2E terminó → limpio. Regla: **nunca correr tsc en paralelo con `next dev`** (ambos tocan `.next/`). Secuela: la carrera dejó una línea CORRUPTA persistente en `validator.ts` (un comentario truncado, `/../../app/api/cron/...` en vez de `// Validate ...`) que sobrevivía incluso a `next typegen` (no regenera si cree estar al día) → purga total con `rm -rf .next/dev/types && npx next typegen` → `tsc` exit 0.
+2. **Typecheck falló tras crear la ruta /admin** — `validator.ts(430,52): error TS2344: Type '"/admin"' does not satisfy the constraint 'AppRoutes'`. Causa: los tipos de rutas generados estaban STALE (anteriores a `app/admin/page.tsx`). Resolución: `npx next typegen` → `TSC_OK`. Regla: **tras agregar/quitar rutas del App Router, correr `next typegen` antes de `tsc`**.
+3. **Mi primera query de verificación de BD falló** — `MODULE_NOT_FOUND './node_modules/.prisma/client'`: adiviné la ruta del require en vez de resolver `@prisma/client` desde `packages/db`. Corregido el require, la query corrió.
+4. **El email de confirmación "falla" en el log E2E** — `email.send.fail` 422 "use our testing email address instead of domains like example.com": Resend rechaza el dominio de prueba en dev. Comportamiento esperado y no bloqueante (el saga lo marca para reintento; PAID y la guía no se afectan). No es un defecto del flujo.
+5. **La verificación de residuos encontró lo que la 1ª pasada no vio** — 28 órdenes `wompi-e2e-*` ACTIVAS de corridas de 2026-07-28 (anteriores al auto-cleanup) listadas en `/admin/pedidos` de Lucy. La 1ª pasada verificó solo los residuos de SU corrida. Resolución: soft-delete con filtro exacto (`email contains wompi-e2e- AND status PENDING_PAYMENT AND deletedAt null`) → 28 filas, re-verificado en 0. El carrito `e2e` adicional resultó ser un match hex coincidental de un carrito anónimo vacío y expirado (2026-06-30, 0 items) — soft-deleted igual, sin efecto.
+6. **Desviaciones reportadas por los sub-agentes (resueltas en el acto)**: el README del estudio listaba el componente borrado (línea eliminada); `WOMPI_DISABLE_TIMESTAMP_CHECK` ya estaba en `docs/SECURITY.md` (solo faltaba en `.env.example`, no se duplicó); el grupo `ai` de integraciones quedó vacío al quitar Anthropic (se eliminó completo); el test RBAC usa `?estado=PAID` como input incidental (no es enlace roto — no se tocó).
+7. **Vitest completo + E2E en paralelo: sin interferencia** — corrí la suite completa (2631 tests) mientras el E2E creaba/borraba sus fixtures en la misma BD; el aislamiento por run-id funcionó y ambos terminaron verdes. Confirmado como práctica segura (con la salvedad del punto 1 para tsc).
 
 ---
 
@@ -110,20 +130,24 @@ Sugerencia: 1 solo commit, o 4 atómicos en este orden:
 
 ### a) Decisiones que dependen de ti (Negocio)
 
-1. **Menú admin — fusiones pendientes**: `Mensajes` y `Soporte` son dos UIs sobre el MISMO modelo (SupportTicket: bandeja inbox vs tarjetas operativas); `Garantías` y `Reclamos` igual (WarrantyClaim). La decisión 2026-07-28 mantuvo los flujos legales separados, pero el MENÚ sigue mostrando ambos pares. ¿Fusiono cada par en una sola pantalla (menos es más) o quedan así?
-2. **Reembolsos**: hoy marcar REFUNDED en el admin **no devuelve el dinero** — se emite manual en el dashboard de Wompi (la UI ya lo advierte). ¿Cableo la API de void/refund de Wompi o se queda manual documentado?
-3. **Go-live PRD** (rama `production`, llaves reales Wompi/Aveonline): el checklist del HANDOFF anterior sigue vigente e intacto (merge develop→production, llaves PRD en Vercel, URL de eventos Wompi, verificación `bloquegenerarguia` con la cuenta real, IVA con el contador).
-4. **Rol FULFILLMENT puede regenerar guías** Aveonline desde el pedido. ¿Es el alcance deseado o lo restringimos a MANAGER+?
-5. **Supabase staging/test separado** (pendiente de Fase A): habilita endurecer cobertura y correr los tests Supabase-real en CI.
+1. **Venndelo (Plan B de envíos)**: quedó un archivo cascarón (`features/shipping/venndelo.ts`, no implementa nada) + 9 env vars muertas en `.env.example`. Si el Plan B sigue vigente, se queda (hay que implementarlo algún día); si no, lo elimino con las docs (`PLAN.md`, `ARCHITECTURE.md`, `INTEGRATIONS.md`).
+2. **Suite `/api/catalog/*` (9 endpoints) + `/api/coupons/public`**: hoy solo los consumiría el bot de WhatsApp (Fase 5+, descopeado). ¿Se mantienen como API pública documentada o salen hasta entonces?
+3. **Fusiones del menú (arrastrada, ahora con detalle)**: `Mensajes` (bandeja inbox, triage rápido) vs `Soporte` (tarjetas con respuesta por email — el dashboard apunta acá); `Garantías` (flujo legal Ley 1480; su filtro default "Nuevos" OCULTA los que están en diagnóstico) vs `Reclamos` (bandeja donde "Pendientes" = todo lo no cerrado). Ojo: hoy ambas pantallas pueden mostrar números distintos para lo mismo. ¿Fusiono cada par en una sola entrada?
+4. **Re-etiquetas opcionales del menú** (propuestas UX, no apliqué sin tu visto porque el menú ya pasó dos decisiones): "Dashboard"→"Inicio", "Auditoría"→"Registro de cambios", "Conciliación contra entrega"→"Cobros del mensajero", "Integraciones"→"Servicios conectados". Dime cuáles sí.
+5. **Secreto del webhook Aveonline registrado en la URL** (`?secret=`, queda en la BD del tercero y en logs): la ruta ya acepta el header `x-aveonline-secret`. Acción humana: reconfigurar en el dashboard de Aveonline para que envíe el header y re-registrar el webhook desde `/admin/integraciones/aveonline`.
+6. **Precio cobrado = precio visto en el carrito**: quedó documentado como conducta deliberada (cobrar de más lo ya exhibido sería peor para el cliente y el Estatuto del Consumidor). Si prefieres que el checkout re-lea precios de BD, es un cambio de conducta — lo discutimos antes de tocarlo.
+7. **"Rendimiento web" vs "Salud técnica" se solapan** (mismos errores y Web Vitals en ambas). ¿Dejamos una sola puerta técnica?
+8. **Finanzas: tarjetas "Próximamente" y KPI DIAN en 0** — se mantuvieron por decisión previa, pero UX los marca como ruido permanente. ¿Los colapso en un acordeón?
+9. **Vigentes de la 1ª pasada**: reembolsos manual-en-Wompi vs cablear API de void/refund; rol FULFILLMENT puede regenerar guías (¿restringir a MANAGER+?); Supabase staging/test separado; checklist go-live PRD intacto.
 
 ### b) Trabajo técnico pendiente
 
-1. **Persistir `quoteId` (codTransportadora) en la Order** — hoy la saga re-resuelve la transportadora por nombre al generar la guía (funciona, pero es frágil si dos carriers comparten nombre).
-2. **`/checkout/gracias?id=<txId>`** — endpoint público que revela datos de la orden con solo el id de transacción (adivinable solo por quien lo posee, pero viaja en URLs). Opciones: token firmado de un solo uso o rate-limit más estricto.
-3. **Poda menor**: `verifyWebhook`/`getPaymentDetails` del `PaymentProvider` (solo los ejerce su test; la abstracción espera a MercadoPago) y allowances CSP del widget Wompi que no se usa (`script-src`/`frame-src checkout.wompi.co`).
-4. **`dsnit: "100001"` placeholder** cuando el cliente no registra CC: nada bloquea el despacho con NIT genérico — valorar un gate en el admin antes de marcar SHIPPED.
-5. **Gaps E2E registrados** (no bloqueantes): compra COD punta a punta, tarjeta DECLINED en UI, checkout con producto personalizado del Estudio, login de cliente, cupón en UI.
-6. **Backlog previo vigente** (del HANDOFF anterior): recogidas por API (`generarRecogida2`), rótulo V3, entrega en oficina, polling en PendingPage, `expiration-time` en checkout, persistir `payment_method_type`/`status_message` en Order, migrar webhook Aveonline al token oficial, sharp 0.35.x solo con deploy de verificación.
+1. **Dedup Aveonline sin timestamp**: cuando el payload no trae fecha, `parseAveonlineDate` devuelve `new Date()` y cada re-entrega es "evento nuevo" (inofensivo para datos por las transiciones monotónicas, pero se pierde idempotencia). Diseño: que el provider exponga `timestampIsSynthetic` y el externalId caiga a `hash(rawBody)` en ese caso.
+2. **Firmar la cookie `admin_last_activity`** (idle-timeout admin): hoy es un timestamp plano; con cookies `sb-*` robadas se podría mantener viva una sesión secuestrada. Diseño: HMAC con clave derivada (NO reusar `CSRF_SECRET` directo — ver punto 3), verificación timing-safe en el proxy (Web Crypto, edge-safe), aceptar el formato legado una sola vez para no tumbar sesiones activas.
+3. **Separación de claves**: `CSRF_SECRET` firma hoy 3 cosas (cookie de checkout, sello de cotizaciones, token de unsubscribe). Derivar sub-claves por propósito (HKDF o sufijo de dominio) con plan de rotación para no invalidar tokens en vuelo.
+4. **`/checkout/gracias?id=<txId>`** — ya rate-limited (esta sesión); queda el pendiente original: el txId en URL revela los datos de la orden a quien lo posea. Opciones: token firmado de un solo uso o migrar a la vista `/pedido/<publicAccessToken>`.
+5. **Vigentes de la 1ª pasada**: persistir `quoteId` (codTransportadora) en la Order; gate admin para `dsnit:"100001"` placeholder antes de SHIPPED; gaps E2E (COD punta a punta, tarjeta DECLINED en UI, checkout con diseño del Estudio, login de cliente, cupón en UI); backlog (recogidas por API, rótulo V3, entrega en oficina, polling en PendingPage, `expiration-time`, persistir `payment_method_type`/`status_message`, migrar webhook Aveonline al token oficial, sharp 0.35.x solo con deploy de verificación).
+6. **Verificación periódica de residuos de prueba en BD** (la query de §6) — las corridas anteriores al auto-cleanup dejaron 28 órdenes visibles en el admin; conviene correrla tras sesiones de debugging e2e.
 
 ---
 
@@ -131,27 +155,28 @@ Sugerencia: 1 solo commit, o 4 atómicos en este orden:
 
 ### Gotchas detectados esta sesión
 
-- **Tras bump de `@playwright/test`, reinstalar navegadores** en el servidor (`npx playwright install chromium`) — la revisión de Chromium exigida cambia (1223 → 1234 hoy).
-- **Las RSC no pueden escribir cookies** (Next 16): por eso el sello HMAC de cotizaciones viaja como hidden input `offersToken` en el form y lo valida la Server Action; la cookie solo se escribe en actions.
-- **Despliegue de este cambio**: un checkout EN CURSO con la cookie vieja (sin `shippingOffers`) rebota UNA vez a re-cotizar el envío con mensaje claro ("La cotización de envío cambió…"); no pierde el carrito ni los datos.
-- **`.catch(() => {})` en limpiezas de tests es una trampa silenciosa**: el hard delete de fixtures llevaba meses fallando por FK sin que nadie lo viera (41 residuos). Si una limpieza importa, que falle en voz alta o soft-borre.
-- El teardown global de vitest purga por regex run-id de **15+ dígitos**; los RUN con `Date.now()` (13) no calzan — cada spec e2e debe limpiar su propio cliente/orden.
-- `admin-transactional.spec.ts` no importa `setup-env`: necesita el entorno sourceado en la shell (el comando de abajo lo hace).
-- Los `[wompi requestfailed] analytics.google.com` del log E2E son el tracking de la página hospedada de Wompi bloqueado por el navegador de test — ruido irrelevante, no del flujo.
+- **Tras agregar/quitar rutas del App Router, `npx next typegen` antes de `tsc --noEmit`** — si no, `.next/dev/types/validator.ts` falla con TS2344 sobre rutas fantasmas o faltantes. Y si los errores en `validator.ts` **persisten** tras typegen (sintaxis rota, líneas truncadas), el generado quedó corrupto por escrituras concurrentes: `rm -rf .next/dev/types && npx next typegen` lo regenera limpio (ocurrió hoy; `.next` es caché gitignored, borrarlo es seguro).
+- **Nunca correr `tsc` en paralelo con `next dev`** (el dev server re-escribe `.next/dev/types/` mientras tsc lee → errores de sintaxis espurios en archivos generados).
+- **El endpoint público `/api/cms/settings` devolvía TODO SiteSetting** — el comentario de la propia ruta advertía el patrón ("si se agregan settings sensibles, filtrar acá") pero ya había datos sensibles dentro. Lección: el filtro debe ser por defecto, no "cuando haga falta".
+- **El dashboard medía el trabajo del cliente** (`PENDING_PAYMENT`) y no el de Lucy (`PAID`+`FULFILLING`): las métricas de una home operativa deben responder "¿qué tengo que hacer HOY?".
+- **`git diff --name-only` incluye archivos eliminados** — al pasarlo a `prettier --check` hay que filtrarlos o reporta "No files matching the pattern" (ruido, no fallo real).
+- **Un query de residuos con `contains: "e2e"` puede dar falsos positivos hex** (un UUID contiene "4e2e"): verificar antes de borrar; el soft-delete lo hace reversible.
+- Los `[wompi requestfailed] analytics.google.com` del log E2E son el tracking de la página hospedada de Wompi bloqueado por el navegador de test — ruido irrelevante (vigente de la 1ª pasada).
 
 ### Comandos clave
 
 - **E2E certificación transaccional (el usado hoy, verde)**:
   `cd apps/web && set -a && source .env.local && set +a && TURNSTILE_SECRET_KEY= NEXT_PUBLIC_TURNSTILE_SITE_KEY= PW_CHANNEL=chromium npx playwright test wompi-sandbox --workers=1 --retries=0 && TURNSTILE_SECRET_KEY= NEXT_PUBLIC_TURNSTILE_SITE_KEY= PW_CHANNEL=chromium npx playwright test admin-transactional --workers=1 --retries=0`
-  (orden importa: `admin-transactional` restaura la orden PAID que crea `wompi-sandbox`)
-- **Vitest de lo tocado**: `cd apps/web && npx vitest run features/checkout/service.integration.test.ts app/api/webhooks lib/admin-nav.test.ts lib/wompi.test.ts`
-- **Verificación de residuos e2e (solo lectura)**: `cd packages/db && node --env-file=../../apps/web/.env.local -e '<query Prisma>'`
-- **Gates de código**: `pnpm --filter web typecheck` · `pnpm --filter web lint` · `npx prettier --check <archivos>`
-- **Rollback al punto estable**: `git checkout develop && git reset --hard bc1e41b7c05ec787ac2dfa2a0d58d62abb2cc369` (⚠️ descarta cambios sin commitear — ver `docs/audits/2026-07-29-restore-point.md`)
+  (orden importa: `admin-transactional` restaura la orden PAID que crea `wompi-sandbox`; también corre solo si ya existe una orden e2e reciente)
+- **Vitest focal de lo tocado**: `cd apps/web && npx vitest run lib features/checkout features/orders app/api`
+- **Suite completa**: `cd apps/web && npx vitest run` (~20 min contra el pooler real)
+- **Gates de código**: `cd apps/web && npx next typegen && pnpm typecheck && pnpm lint` · `npx prettier --check <archivos>`
+- **Verificación de residuos e2e (solo lectura)**: `cd packages/db && node --env-file=../../apps/web/.env.local -e '<query Prisma: orders/customers/products con wompi-e2e- o @example.com y deletedAt:null; webhookEvent últimas 2h>'`
+- **Rollback al punto estable**: `git checkout develop && git reset --hard 019f6fe` (⚠️ descarta cambios sin commitear — ver `docs/audits/2026-07-29-restore-point.md`)
 
 ### Documentación importante
 
-- `docs/audits/2026-07-29-restore-point.md` — punto de restauración de esta sesión.
-- HANDOFF anterior (git history, commit `bc1e41b`) — go-live develop-sandbox en producción Vercel, rollback a catálogo, decisión sharp, convenciones de CI. Sigue vigente como contexto operativo.
+- `docs/audits/2026-07-29-restore-point.md` — puntos de restauración de AMBAS pasadas (`bc1e41b` y `019f6fe`).
+- HANDOFF de la 1ª pasada (git history, commit `019f6fe`) — fix flete HMAC, carrera dedup P2002, cableado gestor Aveonline. Sigue vigente como contexto operativo.
 - `docs/INTEGRATIONS.md` (estados Wompi) y `docs/INTEGRATIONS_AVEONLINE.md` §21 (semántica `bloquegenerarguia` — pendiente verificación con cuenta real antes de `AVEONLINE_GENERATE_REAL=true`).
 - Recordatorio operativo vigente: **todo push a `develop` dispara deploy de PRODUCCIÓN en Vercel** (modo full, llaves sandbox) — por eso los commits propuestos en §2 esperan tu confirmación.
