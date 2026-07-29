@@ -23,6 +23,7 @@ import {
   CommandList,
 } from "@/components/ui/command";
 import { LucamsLogo } from "@/components/lucams-logo";
+import { Search } from "lucide-react";
 import { formatCOP } from "@/lib/format";
 import type { SearchResult } from "@/features/products/public-service";
 import { searchProductsAction } from "@/app/actions/search";
@@ -82,8 +83,9 @@ export function GlobalSearch() {
         aria-label="Buscar"
         className="text-brand-purple-dark hover:text-brand-purple hover:bg-brand-purple/5 inline-flex items-center gap-1 rounded-md px-2 py-1.5 transition-colors"
       >
-        {/* Icono de marca en el trigger de búsqueda (Lucams mapache). */}
-        <LucamsLogo variant="mascot" size={20} aria-hidden="true" />
+        {/* Lupita estándar en el trigger (antes iba la mascota de marca — Lucy 2026-07-29:
+            en la barra de búsqueda el icono debe comunicar "buscar", no marca). */}
+        <Search className="h-4 w-4" aria-hidden="true" />
         <span className="hidden text-xs sm:inline">Buscar</span>
         <kbd className="border-brand-purple/20 text-brand-muted hidden rounded border px-1.5 py-0.5 text-[10px] sm:inline">
           ⌘K

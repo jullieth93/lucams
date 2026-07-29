@@ -92,15 +92,15 @@ function openAndGetInput(): HTMLElement {
 }
 
 describe("GlobalSearch", () => {
-  it("el botón del header es accesible, muestra la mascota de marca y el hint ⌘K", () => {
+  it("el botón del header es accesible, muestra la lupita y el hint ⌘K", () => {
     render(<GlobalSearch />);
     const trigger = screen.getByRole("button", { name: "Buscar" });
     expect(trigger).toBeInTheDocument();
     expect(screen.getByText("⌘K")).toBeInTheDocument();
-    // Lucy 2026-07-26: el trigger lleva la mascota de Lucams (identidad de marca
-    // en la barra de búsqueda), no el icono genérico de lupa.
-    expect(within(trigger).getByAltText(/Mascota Lucams_shop/i)).toBeInTheDocument();
-    expect(trigger.querySelector("svg.lucide-search")).not.toBeInTheDocument();
+    // Lucy 2026-07-29: el trigger lleva la LUPITA estándar (en la barra de búsqueda
+    // el icono comunica "buscar", no marca). La mascota se queda solo en el diálogo.
+    expect(trigger.querySelector("svg.lucide-search")).toBeInTheDocument();
+    expect(within(trigger).queryByAltText(/Mascota Lucams_shop/i)).not.toBeInTheDocument();
     // Cerrado: no hay diálogo montado todavía.
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
   });
@@ -116,8 +116,8 @@ describe("GlobalSearch", () => {
     expect(combobox).toHaveAttribute("aria-expanded", "true");
     // Con query vacía, el heading invita a escribir (rama !query.trim()).
     expect(screen.getByText(/Empieza a escribir/i)).toBeInTheDocument();
-    // El header del diálogo muestra la mascota de Lucams (acotado al diálogo:
-    // el trigger del header también la lleva).
+    // El header del diálogo muestra la mascota de Lucams (la marca se acota al
+    // diálogo: el trigger del header lleva lupita, no mascota — Lucy 2026-07-29).
     expect(within(dialog).getByAltText(/Mascota Lucams_shop/i)).toBeInTheDocument();
   });
 

@@ -26,6 +26,7 @@
 import Image from "next/image";
 import { useState } from "react";
 import { RaccoonFace } from "@/components/brand-mark";
+import { cn } from "@/lib/utils";
 
 type Variant = "full" | "mascot";
 
@@ -81,11 +82,11 @@ export function LucamsLogo({
 
   const src = step === "svg" ? SOURCES[variant].svg : SOURCES[variant].png;
 
+  // El display va en CLASE, no en inline style: un `style={{display:"inline-block"}}`
+  // le ganaba al `md:hidden` de Tailwind en el hero y AMBOS logos (mobile+desktop)
+  // se renderizaban a la vez — el "logo duplicado" reportado por Lucy 2026-07-29.
   return (
-    <span
-      className={className}
-      style={{ display: "inline-block", width: size, height: size, position: "relative" }}
-    >
+    <span className={cn("relative inline-block", className)} style={{ width: size, height: size }}>
       <Image
         src={src}
         alt={SOURCES[variant].alt}
