@@ -209,6 +209,8 @@ Ronda de observaciones de Lucy poniéndose del lado del usuario, con análisis d
 
 Archivos tocados: `components/lucams-logo.tsx`, `components/global-search.tsx`, `components/global-search.test.tsx`, `components/home/hero.tsx`, `components/home/how-it-works.tsx` + contenido del bloque en BD. Gates: typecheck ✓ · lint ✓ · prettier ✓ · tests del componente ✓. Verificación visual con screenshots antes/después.
 
+**Caché CMS en producción (lección operativa real)**: tras el deploy, la home seguía mostrando el texto viejo del paso 3 aunque `/api/cms/blocks` ya devolvía el nuevo — **Vercel persiste el data cache de `unstable_cache` entre deploys** (el TTL de 3600 s no bastó). Se invalidó el tag `cms` con la vía diseñada: el botón "Actualizar caché de contenido" de `/admin/contenido/bloques`, clicado vía patrón admin-efímero E2E (SUPERADMIN temporal creado por API, login Playwright en producción, clic, borrado; 0 residuos verificados). Regla: **toda edición de contenido CMS directa en BD exige invalidar el tag `cms` con ese botón** — un redeploy NO lo hace.
+
 ### Documentación importante
 
 - `docs/audits/2026-07-29-restore-point.md` — puntos de restauración de AMBAS pasadas (`bc1e41b` y `019f6fe`).
