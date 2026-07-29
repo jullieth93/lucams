@@ -56,6 +56,10 @@ vi.mock("@/lib/cms", () => ({
         return fallback;
     }
   }),
+  // Ruta A — patrón emails editables: por defecto SIN bloque → el template
+  // cae a su fallback hardcoded. Los tests de override lo pisan con
+  // mockResolvedValueOnce (ver describe "subject/preview editables CMS").
+  getCmsBlock: vi.fn(async () => null),
 }));
 
 import { getSettingValue } from "@/lib/cms";
@@ -590,6 +594,40 @@ describe("newsletterWelcomeEmail", () => {
   it("subject es el saludo de bienvenida", async () => {
     const r = await newsletterWelcomeEmail(nwData());
     expect(r.subject).toBe("¡Estás dentro! 💜");
+  });
+
+  // Ruta A (2026-07-29) — patrón emails editables CMS: subject/preview salen del
+  // bloque cuando existe (email.welcome.subject|preview), y del fallback si no.
+  it("subject/preview editables CMS: override del bloque gana al fallback", async () => {
+    const { getCmsBlock } = await import("@/lib/cms");
+    const mock = vi.mocked(getCmsBlock);
+    const block = (body: string) => ({
+      key: "email.welcome.subject",
+      title: null,
+      body,
+      format: "MARKDOWN" as const,
+      category: "EMAIL" as const,
+      description: null,
+      version: 1,
+      updatedAt: new Date(),
+    });
+    mock.mockImplementation(async (key: string) =>
+      key === "email.welcome.subject"
+        ? block("Bienvenida a la familia 💌")
+        : key === "email.welcome.preview"
+          ? block("Tenemos novedades kawaii para ti.")
+          : null,
+    );
+    const r = await newsletterWelcomeEmail(nwData());
+    expect(r.subject).toBe("Bienvenida a la familia 💌");
+    expect(r.html).toContain("Tenemos novedades kawaii para ti.");
+    mock.mockImplementation(async () => null);
+  });
+
+  it("subject/preview editables CMS: bloque vacío o ausente → fallback intacto", async () => {
+    const r = await newsletterWelcomeEmail(nwData());
+    expect(r.subject).toBe("¡Estás dentro! 💜");
+    expect(r.html).toContain("Gracias por sumarte. Esto es lo que viene.");
   });
 
   it("HTML de bienvenida menciona la marca y el CTA al catálogo", async () => {

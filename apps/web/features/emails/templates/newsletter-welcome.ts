@@ -7,7 +7,7 @@
  */
 
 import { renderEmailLayout, ctaButton } from "../layout";
-import { getSettingValue } from "@/lib/cms";
+import { getSettingValue, getCmsBlock } from "@/lib/cms";
 
 export type NewsletterWelcomeData = {
   email: string; // P0-005: va en el URL junto al token (el token solo verifica).
@@ -15,7 +15,19 @@ export type NewsletterWelcomeData = {
 };
 
 export async function newsletterWelcomeEmail(data: NewsletterWelcomeData) {
-  const siteUrl = await getSettingValue("SITE_URL", "https://lucamsshop.com");
+  // Ruta A (2026-07-29) — patrón emails editables: subject y preview (preheader)
+  // viven en bloques CMS `email.<plantilla>.subject|preview` que Lucy edita desde
+  // /admin/contenido/bloques. El BODY queda en código a propósito: mezcla
+  // variables (unsubscribeUrl), layout inline-style y texto de cumplimiento —
+  // un HTML libre editable rompería clientes de correo. Fallbacks = textos
+  // originales, así el email sale igual aunque el bloque falte o la DB caiga.
+  const [siteUrl, subjectBlock, previewBlock] = await Promise.all([
+    getSettingValue("SITE_URL", "https://lucamsshop.com"),
+    getCmsBlock("email.welcome.subject"),
+    getCmsBlock("email.welcome.preview"),
+  ]);
+  const subject = subjectBlock?.body?.trim() || "¡Estás dentro! 💜";
+  const preview = previewBlock?.body?.trim() || "Gracias por sumarte. Esto es lo que viene.";
   // #8 — parámetro opaco `u` (base64url(email).token): el email ya NO viaja en claro en la URL.
   const u = `${Buffer.from(data.email.trim().toLowerCase(), "utf-8").toString("base64url")}.${data.unsubscribeToken}`;
   const unsubscribeUrl = `${siteUrl}/unsubscribe?u=${u}`;
@@ -51,9 +63,9 @@ ${siteUrl}/productos
 Cancelar suscripción: ${unsubscribeUrl}`;
 
   return {
-    subject: "¡Estás dentro! 💜",
+    subject,
     html: await renderEmailLayout({
-      preview: "Gracias por sumarte. Esto es lo que viene.",
+      preview,
       unsubscribeUrl,
       bodyHtml,
     }),
