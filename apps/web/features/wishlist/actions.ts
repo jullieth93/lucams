@@ -8,8 +8,7 @@ import { toggleWishlist } from "./service";
 const Schema = z.object({ productId: z.string().min(1) });
 
 type Result =
-  | { ok: true; wishlisted: boolean }
-  | { ok: false; code: "AUTH" | "VALIDATION"; message: string };
+  { ok: true; wishlisted: boolean } | { ok: false; code: "AUTH" | "VALIDATION"; message: string };
 
 /** Alterna un producto en la wishlist del cliente logueado. */
 export async function toggleWishlistAction(input: { productId: string }): Promise<Result> {

@@ -151,8 +151,7 @@ async function renderSlot(
   // o la foto no se puede cargar, NO producir un PNG en blanco (pérdida de datos silenciosa):
   // lanzar → el caller conserva el PNG del cliente (que sí trae la foto).
   const placeholderRaw = unit.layers.find((l) => l.type === "image-placeholder") as
-    | PlaceholderLayer
-    | undefined;
+    PlaceholderLayer | undefined;
   if (!placeholderRaw) throw new RenderNeedsKonvaError("sin image-placeholder");
   if (!slot.assetId) throw new RenderNeedsKonvaError(`slot ${slot.slotIndex} sin assetId`);
   const assetBytes = await loadAsset(slot.assetId);

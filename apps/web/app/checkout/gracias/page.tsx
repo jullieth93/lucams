@@ -244,8 +244,7 @@ function ApprovedPage({
       : "/mi-cuenta/pedidos";
   const orderCtaLabel = isGuest && order?.publicAccessToken ? "Ver mi pedido" : "Ver mis pedidos";
   const addr = order?.shippingAddress as
-    | { fullName?: string; addressLine1?: string; city?: string; department?: string }
-    | undefined;
+    { fullName?: string; addressLine1?: string; city?: string; department?: string } | undefined;
 
   return (
     <div className="mx-auto max-w-2xl py-8 text-center">

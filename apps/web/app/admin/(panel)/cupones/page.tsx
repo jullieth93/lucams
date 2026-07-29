@@ -51,15 +51,10 @@ export default async function AdminCuponesPage({ searchParams }: { searchParams:
   const q = pickString(sp, "q");
   const statusRaw = pickString(sp, "status");
   const status = (["active", "inactive"].includes(statusRaw ?? "") ? statusRaw : "all") as
-    | "all"
-    | "active"
-    | "inactive";
+    "all" | "active" | "inactive";
   const sortRaw = pickString(sp, "sort");
   const sort = (["expiry-asc", "code", "uses"].includes(sortRaw ?? "") ? sortRaw : "recent") as
-    | "recent"
-    | "expiry-asc"
-    | "code"
-    | "uses";
+    "recent" | "expiry-asc" | "code" | "uses";
 
   const coupons = await listCoupons({ q, status, sort });
   const now = new Date();

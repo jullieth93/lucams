@@ -44,14 +44,10 @@ export default async function AdminClientesPage({ searchParams }: { searchParams
   const q = pickString(sp, "q");
   const statusRaw = pickString(sp, "status");
   const status = (["with-orders", "no-orders"].includes(statusRaw ?? "") ? statusRaw : "all") as
-    | "all"
-    | "with-orders"
-    | "no-orders";
+    "all" | "with-orders" | "no-orders";
   const sortRaw = pickString(sp, "sort");
   const sort = (["name", "orders"].includes(sortRaw ?? "") ? sortRaw : "recent") as
-    | "recent"
-    | "name"
-    | "orders";
+    "recent" | "name" | "orders";
   const page = Number(sp.page) || 1;
 
   const { items, total, totalPages } = await listCustomers({ q, status, sort, page });

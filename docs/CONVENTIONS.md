@@ -455,9 +455,7 @@ export async function createOrder(payload: CheckoutPayload, requestId: string) {
     const cart = await repo.findCartById(tx, payload.cartId);
     if (!cart) throw new NotFoundError("cart");
 
-    const order = await repo.createOrder(tx, {
-      /* ... */
-    });
+    const order = await repo.createOrder(tx, {/* ... */});
     await reserveStock(tx, order.id, cart.items, requestId);
 
     if (payload.paymentMethod === "WOMPI") {

@@ -79,9 +79,7 @@ export default async function AdminCategoriasPage({
   ) as "all" | "active" | "inactive" | "archived";
   const sortRaw = pickString(sp, "sort");
   const sort = (["name", "recent"].includes(sortRaw ?? "") ? sortRaw : "order") as
-    | "order"
-    | "name"
-    | "recent";
+    "order" | "name" | "recent";
 
   const [categories, parentOptions] = await Promise.all([
     listCategories({ q, status, sort }),

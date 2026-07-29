@@ -97,8 +97,7 @@ export function verifyUnsubscribeToken(email: string, token: string): boolean {
 }
 
 export type UnsubscribeResult =
-  | { ok: true; alreadyUnsubscribed: boolean }
-  | { ok: false; reason: "invalid_token" };
+  { ok: true; alreadyUnsubscribed: boolean } | { ok: false; reason: "invalid_token" };
 
 /**
  * Revoca el consentimiento de newsletter para un email.

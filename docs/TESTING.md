@@ -516,12 +516,7 @@ export const options = {
 };
 
 export default function () {
-  const res = http.post(
-    `${__ENV.BASE_URL}/api/checkout/create`,
-    JSON.stringify({
-      /* ... */
-    }),
-  );
+  const res = http.post(`${__ENV.BASE_URL}/api/checkout/create`, JSON.stringify({/* ... */}));
   check(res, { "status 200": (r) => r.status === 200 });
   sleep(1);
 }

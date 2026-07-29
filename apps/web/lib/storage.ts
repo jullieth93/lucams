@@ -25,11 +25,7 @@ const ALLOWED_MIME = new Set(["image/jpeg", "image/png", "image/webp", "image/av
 export class StorageError extends Error {
   constructor(
     public code:
-      | "FILE_TOO_LARGE"
-      | "INVALID_TYPE"
-      | "UPLOAD_FAILED"
-      | "DELETE_FAILED"
-      | "EMPTY_FILE",
+      "FILE_TOO_LARGE" | "INVALID_TYPE" | "UPLOAD_FAILED" | "DELETE_FAILED" | "EMPTY_FILE",
     message: string,
   ) {
     super(message);
