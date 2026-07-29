@@ -60,7 +60,7 @@ test.describe("catalogo-whatsapp preview certification", () => {
         window.localStorage.setItem("lucams_studio_onboarded", "v1");
       } catch {}
     });
-    await page.goto("/estudio/separadores-libros", { waitUntil: "domcontentloaded" });
+    await page.goto("/estudio/separadores-magneticos", { waitUntil: "domcontentloaded" });
     await expect(page.locator("canvas").first()).toBeVisible({ timeout: 30_000 });
     await page.screenshot({ path: "/tmp/cert-studio-separadores.png", fullPage: false });
   });
