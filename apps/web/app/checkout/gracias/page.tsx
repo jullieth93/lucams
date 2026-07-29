@@ -30,6 +30,9 @@ import { LucamsLogo } from "@/components/lucams-logo";
 import { Button } from "@/components/ui/button";
 import { getTransaction } from "@/lib/wompi";
 import { logger } from "@/lib/logger";
+import { headers } from "next/headers";
+import { getClientIp } from "@/lib/client-ip";
+import { rateLimit } from "@/lib/rate-limit";
 import { ClearCheckoutSession } from "./clear-checkout-session";
 import { processPaidOrder } from "@/features/orders/saga";
 import { prisma } from "@/lib/db";
@@ -60,6 +63,20 @@ export default async function CheckoutGraciasPage({
   if (!txId) {
     // Acceso directo sin TX_ID → al inicio
     redirect("/");
+  }
+
+  // Anti-amplificación (certificación 2026-07-29, 2ª pasada): esta página llama
+  // getTransaction(txId) → API de Wompi con la private key por CADA visita. Sin
+  // límite, un flood con txIds basura dispara el rate-limit/circuit breaker de
+  // Wompi y un comprador legítimo recién pagado vería "No pudimos confirmar tu
+  // pago". 20 vistas / 5 min por IP es holgado para un comprador real (redirect
+  // post-pago + algunos refreshes); al excederse NO llamamos a Wompi — el
+  // webhook procesa la orden igual y el correo de confirmación llega igual.
+  const ip = getClientIp(await headers());
+  const rl = await rateLimit(`gracias:ip:${ip}`, 20, 300);
+  if (!rl.allowed) {
+    logger.warn({ event: "checkout.gracias.rate_limited", ip, txId });
+    return <VerifyingPage txId={txId} />;
   }
 
   // Verificar estado REAL contra Wompi
@@ -434,6 +451,38 @@ function PaymentReceivedPage({ orderNumber, txId }: { orderNumber: string; txId:
           </Button>
         </Link>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Anti-amplificación: la IP excedió el límite de consultas a esta página, así
+ * que NO llamamos a la API de Wompi (esa es la defensa). Página honesta: el
+ * webhook procesa la orden independientemente de esta vista — si el pago fue
+ * aprobado, la confirmación llega por correo igual.
+ */
+function VerifyingPage({ txId }: { txId: string }) {
+  return (
+    <div className="mx-auto max-w-2xl py-8 text-center">
+      <div className="inline-flex h-20 w-20 items-center justify-center rounded-full bg-amber-50 ring-8 ring-amber-100">
+        <Clock className="h-12 w-12 text-amber-600" />
+      </div>
+      <h1 className="font-display text-brand-purple-dark mt-6 text-3xl font-bold sm:text-4xl">
+        Estamos verificando tu pago ⏳
+      </h1>
+      <p className="text-brand-purple-dark/75 mx-auto mt-3 max-w-md text-sm sm:text-base">
+        Hay muchas consultas en este momento y no pudimos mostrar el estado al instante. No te
+        preocupes: si tu pago fue aprobado, tu pedido se confirma igual y te llega el correo con
+        todos los detalles.
+      </p>
+      <p className="text-brand-muted mt-4 text-xs">
+        Comprobante Wompi <code className="font-mono">{txId.slice(0, 16)}…</code>
+      </p>
+      <Link href="/" className="mt-8 inline-block">
+        <Button size="lg" variant="outline" className="border-brand-purple/30">
+          Volver al inicio
+        </Button>
+      </Link>
     </div>
   );
 }

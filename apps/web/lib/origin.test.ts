@@ -3,8 +3,16 @@
  * ADR-062: evita SSRF/reporte falso en el self-fetch de /api/health/all.
  */
 
-import { describe, it, expect, afterEach } from "vitest";
-import { getTrustedSelfBaseUrl } from "./origin";
+import { describe, it, expect, afterEach, vi } from "vitest";
+
+// Mock controlable de next/headers para getRequestOrigin (los tests de
+// getTrustedSelfBaseUrl no lo usan, pero origin.ts lo importa a nivel módulo).
+const headerStore = new Map<string, string>();
+vi.mock("next/headers", () => ({
+  headers: async () => ({ get: (k: string) => headerStore.get(k) ?? null }),
+}));
+
+import { getTrustedSelfBaseUrl, getRequestOrigin } from "./origin";
 
 const KEYS = ["VERCEL_URL", "VERCEL_ENV", "NEXT_PUBLIC_SITE_URL", "PORT"] as const;
 const saved: Record<string, string | undefined> = {};
@@ -79,5 +87,40 @@ describe("getTrustedSelfBaseUrl", () => {
     clear();
     // Sin envs → localhost por defecto, jamás un host arbitrario.
     expect(getTrustedSelfBaseUrl()).toBe("http://localhost:3000");
+  });
+});
+
+describe("getRequestOrigin", () => {
+  afterEach(() => headerStore.clear());
+
+  it("en PRODUCCIÓN ignora x-forwarded-host y usa el dominio canónico (anti-spoof de emails)", async () => {
+    clear();
+    process.env.VERCEL_ENV = "production";
+    process.env.NEXT_PUBLIC_SITE_URL = "https://lucamsshop.com/";
+    headerStore.set("x-forwarded-host", "evil.example.com");
+    headerStore.set("x-forwarded-proto", "https");
+    expect(await getRequestOrigin()).toBe("https://lucamsshop.com");
+  });
+
+  it("en producción SIN dominio canónico cae al header (no queda otra)", async () => {
+    clear();
+    process.env.VERCEL_ENV = "production";
+    headerStore.set("x-forwarded-host", "lucams-shop-abc.vercel.app");
+    headerStore.set("x-forwarded-proto", "https");
+    expect(await getRequestOrigin()).toBe("https://lucams-shop-abc.vercel.app");
+  });
+
+  it("en PREVIEW deriva del header (el email apunta al deployment, no a prod)", async () => {
+    clear();
+    process.env.VERCEL_ENV = "preview";
+    process.env.NEXT_PUBLIC_SITE_URL = "https://lucamsshop.com";
+    headerStore.set("x-forwarded-host", "lucams-shop-pr123.vercel.app");
+    headerStore.set("x-forwarded-proto", "https");
+    expect(await getRequestOrigin()).toBe("https://lucams-shop-pr123.vercel.app");
+  });
+
+  it("en dev sin headers cae a localhost:3000", async () => {
+    clear();
+    expect(await getRequestOrigin()).toBe("http://localhost:3000");
   });
 });

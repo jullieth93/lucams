@@ -1,5 +1,5 @@
 /*
- * GET /api/cms/settings — devuelve todos los SiteSetting.
+ * GET /api/cms/settings — devuelve los SiteSetting PÚBLICOS.
  *
  * Querystring opcional:
  *   ?category=CONTACT|BUSINESS|LEGAL|COMMERCE|SOCIAL|EXTERNAL|
@@ -8,13 +8,22 @@
  * Endpoint público sin auth — los settings son configurables visibles
  * al usuario final (email contacto, horarios, redes, etc.).
  *
+ * Filtro de sensibilidad (certificación 2026-07-29, 2ª pasada): las claves
+ * PICKUP_* (dirección/teléfono/contacto de recogida — puede ser la casa del
+ * negocio) y BUSINESS_NIT NUNCA salen por este endpoint. Solo se leen
+ * server-side (saga de guías, cotizador Aveonline) vía getSettingValue.
  * Cuidado: si en el futuro se agregan settings con info sensible (claves
- * API, secretos), filtrar acá antes de devolverlos.
+ * API, secretos), extender isPublicSettingKey en lib/cms.ts.
  *
  * Rate-limit 30/min por IP. Cache HTTP 1 h.
  */
 
-import { getAllSiteSettings, getSettingsByCategory, type SiteSettingCategory } from "@/lib/cms";
+import {
+  getAllSiteSettings,
+  getSettingsByCategory,
+  isPublicSettingKey,
+  type SiteSettingCategory,
+} from "@/lib/cms";
 import { applyRateLimit, extractIp, withCmsCacheHeaders } from "../_helpers";
 
 export const dynamic = "force-dynamic";
@@ -53,7 +62,7 @@ export async function GET(req: Request): Promise<Response> {
         { status: 400, headers: { "Content-Type": "application/problem+json" } },
       );
     }
-    const settings = await getSettingsByCategory(upper);
+    const settings = (await getSettingsByCategory(upper)).filter((s) => isPublicSettingKey(s.key));
     return withCmsCacheHeaders({
       count: settings.length,
       category: upper,
@@ -61,7 +70,7 @@ export async function GET(req: Request): Promise<Response> {
     });
   }
 
-  const settings = await getAllSiteSettings();
+  const settings = (await getAllSiteSettings()).filter((s) => isPublicSettingKey(s.key));
   return withCmsCacheHeaders({
     count: settings.length,
     settings,

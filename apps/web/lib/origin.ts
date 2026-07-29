@@ -17,6 +17,15 @@
 import { headers } from "next/headers";
 
 export async function getRequestOrigin(): Promise<string> {
+  // Producción: el origin de los emails (confirmación, reset, magic links)
+  // sale SOLO de la env canónica, NUNCA del header — x-forwarded-host lo
+  // controla el edge de Vercel, pero si algún proxy intermedio deja pasar
+  // uno falsificado, los links de Supabase apuntarían a un host atacante
+  // (la allowlist de Redirect URLs del dashboard queda como segunda red).
+  // Preview/dev siguen derivando del header para que el email apunte al
+  // deployment correcto sin tocar la "Site URL" de Supabase.
+  const site = process.env.NEXT_PUBLIC_SITE_URL;
+  if (process.env.VERCEL_ENV === "production" && site) return site.replace(/\/+$/, "");
   const h = await headers();
   const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
   const protoHeader = h.get("x-forwarded-proto");

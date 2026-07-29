@@ -14,8 +14,11 @@
  *   - Al login, mergeAnonCartIntoCustomer combina el anon en el cart
  *     existente del customer (si lo hay) sumando qty por variantId.
  *   - unitPrice se snapshotea al añadir (variant.price ?? product.basePrice).
- *     Si después el admin sube el precio, el cart NO se actualiza
- *     hasta checkout (donde el price autoritativo se vuelve a leer).
+ *     Es el precio que el cliente VIO al armar el carrito y el que se cobra:
+ *     la Order toma unitPrice del CartItem, NO re-lee variant.price en
+ *     checkout (si Lucy cambia un precio, aplica a carritos nuevos — cobrar
+ *     de más lo ya exhibido sería peor para el cliente y para el Estatuto
+ *     del Consumidor; la ventana de exposición la acota el TTL del carrito).
  *   - Variante default ("<sku>-DEFAULT") es la que se usa cuando un
  *     producto no tiene variantes reales — ver features/products/service.ts.
  */

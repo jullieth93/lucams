@@ -64,6 +64,21 @@ export type SiteSettingData = {
 };
 
 /**
+ * Claves que NUNCA deben salir por endpoints públicos (/api/cms/settings):
+ * - PICKUP_* — dirección/teléfono/contacto de recogida de Aveonline; si el
+ *   negocio opera desde casa, es la dirección exacta de la casa (riesgo
+ *   físico, detectado en certificación 2026-07-29 2ª pasada).
+ * - BUSINESS_NIT — identificación tributaria del negocio; solo la usa la
+ *   guía Aveonline server-side.
+ * Esas lecturas siguen funcionando internamente vía getSettingValue (la
+ * saga y el cotizador no pasan por HTTP). Si se agrega otro setting
+ * sensible, extender acá — el endpoint filtra con esta función.
+ */
+export function isPublicSettingKey(key: string): boolean {
+  return !key.startsWith("PICKUP_") && key !== "BUSINESS_NIT";
+}
+
+/**
  * `unstable_cache` con degradación grácil cuando NO hay `incrementalCache` de
  * Next disponible (fuera de un request/render: vitest, scripts de seed, workers
  * de pg_cron ejecutados standalone). En Next 16 —breaking change vs 15— llamar a

@@ -205,7 +205,10 @@ async function createOrderFromCartTx(
         items: {
           include: {
             variant: {
-              select: { id: true, productId: true, price: true, sku: true },
+              // sku lo usa el snapshot de items (líneas de la Order). El
+              // PRECIO NO se re-lee acá a propósito: se cobra el unitPrice
+              // que el cliente vio en el carrito (ver features/cart/service.ts).
+              select: { id: true, sku: true },
             },
             // ADR-070 (pieza #1) — snapshot autocontenido del diseño en el pedido.
             design: {
