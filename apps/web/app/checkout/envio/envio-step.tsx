@@ -15,7 +15,7 @@ import { useState } from "react";
 import { Truck } from "lucide-react";
 import { QuoteList } from "./quote-list";
 import { OrderSummary } from "../_components/order-summary";
-import { formatCityDept } from "@/lib/format";
+import { formatCityDept, splitCityTemplate } from "@/lib/format";
 import type { ShippingSelectionInput } from "@/features/checkout/schemas";
 import type { CartDetail } from "@/features/cart/service";
 
@@ -26,6 +26,8 @@ export function EnvioStep({
   preselectedQuoteId,
   destinationCity,
   destinationDepartment,
+  headingText,
+  subtextTemplate,
 }: {
   cart: CartDetail;
   quotes: ShippingSelectionInput[];
@@ -34,12 +36,16 @@ export function EnvioStep({
   preselectedQuoteId?: string;
   destinationCity: string;
   destinationDepartment: string;
+  /** Microcopy editable CMS (Ruta A) — lo resuelve el server page con fallback. */
+  headingText: string;
+  subtextTemplate: string;
 }) {
   // State compartido — Lucy 2026-05-21: sidebar reactivo al cambio de radio.
   const initial = preselectedQuoteId ?? quotes[0]?.quoteId ?? null;
   const [selectedQuoteId, setSelectedQuoteId] = useState<string | null>(initial);
 
   const selected = quotes.find((q) => q.quoteId === selectedQuoteId) ?? null;
+  const sub = splitCityTemplate(subtextTemplate);
 
   return (
     <>
@@ -47,12 +53,12 @@ export function EnvioStep({
         <section className="border-brand-purple/10 rounded-2xl border bg-white p-5 shadow-sm sm:p-6">
           <h2 className="text-brand-purple-dark font-display mb-1 flex items-center gap-2 text-lg font-bold">
             <Truck className="h-5 w-5" />
-            Elige cómo te lo enviamos
+            {headingText}
           </h2>
           <p className="text-brand-muted mb-5 text-sm">
-            {/* #30 — sin duplicar "Bogotá D.C., Bogotá D.C." (ciudad=departamento). */}
-            Cotizamos con Aveonline para{" "}
-            <strong>{formatCityDept(destinationCity, destinationDepartment)}</strong>.
+            {sub.pre}
+            <strong>{formatCityDept(destinationCity, destinationDepartment)}</strong>
+            {sub.post}
           </p>
           <QuoteList
             quotes={quotes}

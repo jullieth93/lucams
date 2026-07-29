@@ -46,3 +46,19 @@ export function maskEmail(email: string): string {
   const keep = local.length <= 2 ? 1 : 2;
   return `${local.slice(0, keep)}•••${domain}`;
 }
+
+/**
+ * Token `{{ciudad}}` en textos CMS (Ruta A, 2026-07-29): bloques como
+ * `checkout.envio.subtext` llevan el placeholder y el render lo sustituye
+ * por la ciudad real. Devuelve [antes, después] del token para poder
+ * envolver la ciudad en <strong>; si el texto no trae el token, va entero
+ * en `pre` y `post` queda vacío.
+ */
+export function splitCityTemplate(template: string): { pre: string; post: string } {
+  const idx = template.indexOf("{{ciudad}}");
+  if (idx === -1) return { pre: template, post: "" };
+  return {
+    pre: template.slice(0, idx),
+    post: template.slice(idx + "{{ciudad}}".length),
+  };
+}

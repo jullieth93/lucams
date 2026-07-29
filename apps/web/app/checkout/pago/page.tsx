@@ -22,6 +22,7 @@ import {
   assertCheckoutAvailability,
 } from "@/features/checkout/service";
 import { getSettingValue } from "@/lib/cms";
+import { CmsText } from "@/components/cms/cms-text";
 import { formatCityDept } from "@/lib/format";
 
 const STOCK_GONE_MSG = "Uno de los productos ya no está disponible. Por favor revisa tu carrito.";
@@ -190,7 +191,7 @@ export default async function CheckoutPagoPage({ searchParams }: { searchParams:
           <section className="border-brand-purple/10 rounded-2xl border bg-white p-5 shadow-sm sm:p-6">
             <h2 className="text-brand-purple-dark font-display mb-4 flex items-center gap-2 text-lg font-bold">
               <CreditCard className="h-5 w-5" />
-              Método de pago
+              <CmsText blockKey="checkout.pago.heading" fallback="Método de pago" />
             </h2>
 
             <PaymentMethodChooser

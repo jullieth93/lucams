@@ -22,7 +22,8 @@ import {
   sealShippingOffers,
 } from "@/features/checkout/service";
 import { logger } from "@/lib/logger";
-import { formatCityDept } from "@/lib/format";
+import { getCmsBlock } from "@/lib/cms";
+import { formatCityDept, splitCityTemplate } from "@/lib/format";
 import { RetryQuoteButton } from "./retry-quote-button";
 
 const STOCK_GONE_MSG = "Uno de los productos ya no está disponible. Por favor revisa tu carrito.";
@@ -102,6 +103,18 @@ export default async function CheckoutEnvioPage({
   const offersToken =
     quotes && quotes.length > 0 ? await sealShippingOffers({ offers: quotes, ctx }) : null;
 
+  // Ruta A (2026-07-29) — microcopy del step editable por Lucy desde
+  // /admin/contenido/bloques (checkout.envio.heading / checkout.envio.subtext);
+  // el subtexto admite el token {{ciudad}} que se reemplaza por el destino real.
+  const [headingBlock, subtextBlock] = await Promise.all([
+    getCmsBlock("checkout.envio.heading"),
+    getCmsBlock("checkout.envio.subtext"),
+  ]);
+  const headingText = headingBlock?.body ?? "Elige cómo te lo enviamos";
+  const subtextTemplate = subtextBlock?.body ?? "Cotizamos con Aveonline para {{ciudad}}.";
+  const cityLabel = formatCityDept(ctx.state.address.city, ctx.state.address.department);
+  const sub = splitCityTemplate(subtextTemplate);
+
   return (
     <div className="mx-auto max-w-6xl">
       <CheckoutStepper current={2} />
@@ -122,15 +135,12 @@ export default async function CheckoutEnvioPage({
               <section className="border-brand-purple/10 rounded-2xl border bg-white p-5 shadow-sm sm:p-6">
                 <h2 className="text-brand-purple-dark font-display mb-1 flex items-center gap-2 text-lg font-bold">
                   <Truck className="h-5 w-5" />
-                  Elige cómo te lo enviamos
+                  {headingText}
                 </h2>
                 <p className="text-brand-muted mb-5 text-sm">
-                  {/* #30 — sin duplicar ciudad/departamento (Bogotá D.C.). */}
-                  Cotizamos con Aveonline para{" "}
-                  <strong>
-                    {formatCityDept(ctx.state.address.city, ctx.state.address.department)}
-                  </strong>
-                  .
+                  {sub.pre}
+                  <strong>{cityLabel}</strong>
+                  {sub.post}
                 </p>
                 <QuoteError
                   message={
@@ -157,6 +167,8 @@ export default async function CheckoutEnvioPage({
             preselectedQuoteId={ctx.state.shippingSelection?.quoteId}
             destinationCity={ctx.state.address.city}
             destinationDepartment={ctx.state.address.department}
+            headingText={headingText}
+            subtextTemplate={subtextTemplate}
           />
         )}
       </div>
