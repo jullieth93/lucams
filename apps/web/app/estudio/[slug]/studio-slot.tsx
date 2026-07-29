@@ -310,12 +310,10 @@ function StudioSlotImpl({
   // Fondo efectivo de la tarjeta → contraste automático del texto (blanco si es oscuro).
   const cardBgHex = useMemo(() => {
     const bgLayer = unitTemplate.layers.find((l) => l.type === "background") as
-      | { color?: string }
-      | undefined;
+      { color?: string } | undefined;
     const bgHex = bgLayer?.color ?? "#FFFFFF";
     const fcLayer = unitTemplate.layers.find((l) => l.type === "frame-card") as
-      | { fill?: string }
-      | undefined;
+      { fill?: string } | undefined;
     if (isIg) return instagramBackgroundHex(borderColor ?? null, bgHex);
     if (fullBleed && borderColor) return borderColor;
     if (hasFrameCard) return borderColor ?? fcLayer?.fill ?? "#FFFFFF";
@@ -327,16 +325,14 @@ function StudioSlotImpl({
   const noBorder = useMemo(() => {
     if (!isIg) return false;
     const ph = unitTemplate.layers.find((l) => l.type === "image-placeholder") as
-      | ImagePlaceholderLayer
-      | undefined;
+      ImagePlaceholderLayer | undefined;
     return isInstagramNoBorder(ph, unitTemplate.stage);
   }, [unitTemplate, isIg]);
   const frameStyle = useMemo(() => {
     if (!borderColor || shape === "heart" || shape === "circle" || hasFrameCard || fullBleed)
       return null;
     const ph = unitTemplate.layers.find((l) => l.type === "image-placeholder") as
-      | ImagePlaceholderLayer
-      | undefined;
+      ImagePlaceholderLayer | undefined;
     if (!ph) return null;
     const w = Math.max(6, Math.round(unitTemplate.stage.width * 0.04));
     return {

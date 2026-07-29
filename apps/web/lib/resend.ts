@@ -76,8 +76,7 @@ export type SendEmailInput = {
 };
 
 export type SendEmailResult =
-  | { sent: true; id: string }
-  | { sent: false; reason: string; skipped?: boolean; status?: number };
+  { sent: true; id: string } | { sent: false; reason: string; skipped?: boolean; status?: number };
 
 async function attemptSend(
   apiKey: string,

@@ -22,8 +22,7 @@ import { logger } from "@/lib/logger";
 const VERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
 
 export type TurnstileResult =
-  | { success: true }
-  | { success: false; errorCodes: string[]; reason: string };
+  { success: true } | { success: false; errorCodes: string[]; reason: string };
 
 export async function verifyTurnstileToken(
   token: string | null | undefined,

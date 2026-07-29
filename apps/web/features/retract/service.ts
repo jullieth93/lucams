@@ -66,10 +66,7 @@ export function isItemPersonalized(item: {
 }
 
 export type RetractIneligibleReason =
-  | "NOT_DELIVERED"
-  | "OUT_OF_WINDOW"
-  | "PERSONALIZED"
-  | "ALREADY_REQUESTED";
+  "NOT_DELIVERED" | "OUT_OF_WINDOW" | "PERSONALIZED" | "ALREADY_REQUESTED";
 
 export type RetractableItem = {
   orderItemId: string;

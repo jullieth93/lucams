@@ -125,12 +125,10 @@ export function StudioPhotoPreview({
   const stripPosition = isStrip ? stripPositionOf(slotState.slotIndex, totalSlots) : null;
   const cardBgHex = useMemo(() => {
     const bgLayer = unitTemplate.layers.find((l) => l.type === "background") as
-      | { color?: string }
-      | undefined;
+      { color?: string } | undefined;
     const bgHex = bgLayer?.color ?? "#FFFFFF";
     const fcLayer = unitTemplate.layers.find((l) => l.type === "frame-card") as
-      | { fill?: string }
-      | undefined;
+      { fill?: string } | undefined;
     if (isIg) return instagramBackgroundHex(borderColor ?? null, bgHex);
     if (fullBleed && borderColor) return borderColor;
     if (hasFrameCard) return borderColor ?? fcLayer?.fill ?? "#FFFFFF";
@@ -141,8 +139,7 @@ export function StudioPhotoPreview({
   const noBorder = useMemo(() => {
     if (!isIg) return false;
     const ph = unitTemplate.layers.find((l) => l.type === "image-placeholder") as
-      | { x?: number; y?: number; width?: number; height?: number }
-      | undefined;
+      { x?: number; y?: number; width?: number; height?: number } | undefined;
     return isInstagramNoBorder(ph, unitTemplate.stage);
   }, [unitTemplate, isIg]);
 

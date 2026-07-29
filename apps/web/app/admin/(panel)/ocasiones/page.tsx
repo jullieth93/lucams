@@ -62,14 +62,10 @@ export default async function AdminOcasionesPage({ searchParams }: { searchParam
   const q = pickString(sp, "q");
   const statusRaw = pickString(sp, "status");
   const status = (["active", "inactive"].includes(statusRaw ?? "") ? statusRaw : "all") as
-    | "all"
-    | "active"
-    | "inactive";
+    "all" | "active" | "inactive";
   const sortRaw = pickString(sp, "sort");
   const sort = (["name", "recent"].includes(sortRaw ?? "") ? sortRaw : "order") as
-    | "order"
-    | "name"
-    | "recent";
+    "order" | "name" | "recent";
 
   const ocasiones = await listOcasionTags({ q, status, sort });
   const created = sp.created === "1";

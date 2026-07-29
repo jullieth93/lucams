@@ -64,16 +64,14 @@ export function StudioPolaroidBorderToggle({ store }: { store: StoreApi<StudioSt
   const stageH = useStore(store, (s) => s.canvasData?.unitTemplate?.stage?.height ?? 0);
   const photoWidth = useStore(store, (s) => {
     const ph = s.canvasData?.unitTemplate?.layers?.find((l) => l.type === "image-placeholder") as
-      | { width?: number }
-      | undefined;
+      { width?: number } | undefined;
     return ph?.width ?? 0;
   });
   // Rect "con borde" canónico: el de la plantilla seleccionada (seed).
   const baseRectJson = useStore(store, (s) => {
     const tpl = s.templates.find((t) => t.id === s.selectedTemplateId);
     const ph = tpl?.canvasData?.layers?.find((l) => l.type === "image-placeholder") as
-      | { x: number; y: number; width: number; height: number }
-      | undefined;
+      { x: number; y: number; width: number; height: number } | undefined;
     return ph ? JSON.stringify({ x: ph.x, y: ph.y, width: ph.width, height: ph.height }) : null;
   });
   const setImagePlaceholderRect = useStore(store, (s) => s.setImagePlaceholderRect);

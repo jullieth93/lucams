@@ -38,9 +38,9 @@ const createLetterSetDesignAction = vi.fn(
   }),
 );
 const finalizeDesignAction = vi.fn(async (_fd: FormData): Promise<ActionResult> => ({ ok: true }));
-const addPersonalizedToCartAction = vi.fn(
-  async (_input: unknown): Promise<ActionResult> => ({ ok: true }),
-);
+const addPersonalizedToCartAction = vi.fn(async (_input: unknown): Promise<ActionResult> => ({
+  ok: true,
+}));
 
 vi.mock("@/features/personalization/actions", () => ({
   createLetterSetDesignAction: (input: unknown) => createLetterSetDesignAction(input),

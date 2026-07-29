@@ -93,12 +93,7 @@ export async function getWarrantyItems(
 export class WarrantyError extends Error {
   constructor(
     public readonly reason:
-      | "NOT_FOUND"
-      | "FORBIDDEN"
-      | "NOT_DELIVERED"
-      | "OUT_OF_WARRANTY"
-      | "ACTIVE_CLAIM"
-      | "INVALID",
+      "NOT_FOUND" | "FORBIDDEN" | "NOT_DELIVERED" | "OUT_OF_WARRANTY" | "ACTIVE_CLAIM" | "INVALID",
   ) {
     super(reason);
     this.name = "WarrantyError";

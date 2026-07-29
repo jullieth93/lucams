@@ -72,8 +72,7 @@ export function StudioStyleToolbar({ store, frameOptions = [] }: StudioStyleTool
   const baseRect = (() => {
     if (!selectedTemplate) return null;
     const ph = selectedTemplate.canvasData?.layers?.find((l) => l.type === "image-placeholder") as
-      | { x: number; y: number; width: number; height: number }
-      | undefined;
+      { x: number; y: number; width: number; height: number } | undefined;
     if (!ph) return null;
     const scaleX = stageW / selectedTemplate.canvasData.stage.width;
     const scaleY = stageH / selectedTemplate.canvasData.stage.height;
@@ -90,8 +89,7 @@ export function StudioStyleToolbar({ store, frameOptions = [] }: StudioStyleTool
   const fullBleedRect = { x: 0, y: 0, width: stageW, height: stageH };
 
   const photoPlaceholder = unitTemplate.layers.find((l) => l.type === "image-placeholder") as
-    | { x?: number; y?: number; width?: number; height?: number }
-    | undefined;
+    { x?: number; y?: number; width?: number; height?: number } | undefined;
   const isFullBleed =
     !!photoPlaceholder &&
     !!baseRect &&
