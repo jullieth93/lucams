@@ -1,174 +1,157 @@
-# HANDOFF — Lucams: Fases A+B certificadas, CI reparada, dependabot al día y **producción = `develop` (sandbox)** (cierre 2026-07-29)
+# HANDOFF - CERTIFICACIÓN RAMA DEVELOP
 
-Documento de continuidad. Todo lo aquí escrito está verificado con evidencia (runs de CI, merges, corridas locales, deploys y respuestas de API); nada es suposición. Reescrito minucioso al cierre de la sesión de triaje dependabot + reparación de CI + go-live de develop en etapa de pruebas.
+Certificación transaccional multiagente ejecutada el **2026-07-29** sobre `develop` (Capa Cliente + Capa Admin), con cambios reales en disco, pruebas reales en terminal y verificación de residuos en BD. Nada de lo aquí escrito es suposición: cada afirmación tiene su evidencia (salida de tests, corridas E2E, queries de verificación).
+
+**Punto de restauración registrado ANTES de tocar nada** (pedido explícito del usuario): `develop` @ `bc1e41b7c05ec787ac2dfa2a0d58d62abb2cc369`, working tree limpio. Detalle y comando de rollback en `docs/audits/2026-07-29-restore-point.md`.
 
 ---
 
 ## 1. Objetivo
 
-Sesión anterior: Fase A (`catalogo-whatsapp`, en producción) y Fase B (`develop`, transaccional completa) **certificadas** — ver `docs/audits/2026-07-28-certificacion-catalogo-whatsapp.md` y `docs/audits/2026-07-28-certificacion-develop.md`.
+Auditar, cablear, limpiar y certificar la rama `develop` de forma REAL: (a) inventario de módulos y variables de entorno, (b) cableado transaccional Wompi (firmas + webhooks sandbox) y Aveonline (auth + cotización + guías sandbox) sin mocks, (c) simplificación "menos es más" del panel Admin para una administradora no técnica, (d) certificación E2E con Playwright/Chromium del flujo completo cliente + admin con limpieza de datos de prueba, y (e) este documento de entrega.
 
-Esta sesión: **triaje de los 6 PRs de dependabot abiertos contra `develop`**. Lo que destapó cambió el frente real de trabajo: la CI de `develop` llevaba **roja en los 5 pushes desde el merge de Fase A** (`cfc9028` en adelante) — la certificación Fase A/B fue local + preview y sus commits rompieron 4 jobs sin que nadie corriera la CI de rama. Objetivo ampliado y cumplido: dejar `develop` con CI 7/7 verde, dependencias al día.
-
-Al cierre, por decisión del usuario: **go-live de `develop` en etapa de pruebas** — producción de Vercel (lucamsshop.com) ahora sirve `develop` con llaves Wompi/Aveonline **sandbox**, como paso previo a la rama `production` con llaves PRD (ver §2 y §5a).
+Contexto encontrado: el cableado base de Wompi/Aveonline YA existía y era sólido (certificaciones Fase A/B previas). El trabajo real de esta sesión fue **adversarial**: encontrar y cerrar lo que esas certificaciones no vieron.
 
 ---
 
-## 2. Estado en que va y terminó todo
+## 2. Estado Final y Evidencias de Conclusión
 
-### ✅ CI de `develop`: VERDE 7/7 (primera vez desde el merge de Fase A)
+### Veredicto del ecosistema (The Gatekeeper)
 
-- Run verde del tip `6ff37a9`: **30418100451**. Los 7 jobs pasan: Vitest (+coverage gate), Typecheck+Lint+Build, Prettier, Dependency audit, E2E+a11y Playwright, Lighthouse, Gitleaks.
-- Baseline local con las deps NUEVAS (react 19.2.8, vitest 4.1.10, prettier 3.9.6, supabase-js 2.110.9, eslint 9.39.5 + eslint-config-next 16.2.12): **2626/2626** — idéntico al certificado. format:check ✓ · lint 0 warnings ✓ · typecheck ✓ · audit ✓.
+| Agente                   | Veredicto                                                                                                                                                                                                                                  |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| QA Técnico & Mutación    | 1 vulnerabilidad crítica, 1 carrera de concurrencia, 1 componente muerto, 1 var muerta, 2 comentarios obsoletos. Todo corregido y cubierto con tests nuevos.                                                                               |
+| ShadowAgent (pentesting) | El vector de robo de flete (`fleteCop` forjado) está **cerrado y probado** (3 tests nuevos de seguridad + defensa en profundidad en `finalizeCheckout`). Llaves: 0 secretos en cliente; las 4 de Wompi y las de Aveonline son server-only. |
+| UX/UI Admin              | Menú ya saneado por la decisión Lucy/Kimi 2026-07-28 (respetada). Esta sesión: 1 función huérfana cableada, 2 etiquetas crípticas re-etiquetadas, 2 fusiones de módulos duplicados quedan como decisión de negocio (§5a).                  |
+| E2E Playwright           | Flujo punta a punta certificado en limpio con Chromium contra Wompi y Aveonline **sandbox reales** (evidencias abajo).                                                                                                                     |
+| Self-Healing             | 17 archivos modificados, 1 eliminado, 2 creados. Typecheck ✓ · ESLint 0 warnings ✓ · Prettier ✓.                                                                                                                                           |
 
-### ✅ Dependabot: 6/6 PRs mergeados (squash + rama borrada), 0 abiertos, 0 ramas huérfanas
+### Evidencias de conclusión (datos reales de mi ejecución)
 
-| PR    | Contenido                                                                                                                                                                                                                                              | Resultado                                                                             |
-| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------- |
-| `#21` | prod-minor-patch, **11 updates SIN sharp** (react 19.2.8, react-dom, @supabase/ssr 0.12.3, supabase-js 2.110.9, radix-ui 1.6.7, framer-motion 12.43, lucide-react 1.27, react-konva 19.2.5, @napi-rs/canvas 1.0.3, tailwind-merge 3.6, zustand 5.0.14) | CI 9/9 → MERGED (`1fe66ca`)                                                           |
-| `#20` | dev-dependencies, 13 updates (prettier 3.9.6, vitest/@vitest/* 4.1.10, eslint 9.39.5, eslint-config-next 16.2.12, @playwright/test 1.62, tailwind 4.3.3, shadcn 4.16, @aws-sdk/client-s3, @types/node)                                                 | MERGED (`6ff37a9`) tras 3 commits manuales en su rama (ver §4)                        |
-| `#3`  | pnpm/action-setup 4→6                                                                                                                                                                                                                                  | MERGED (`fa9765a`)                                                                    |
-| `#11` | actions/setup-node 4→7                                                                                                                                                                                                                                 | MERGED (`5e27ef2`)                                                                    |
-| `#1`  | gitleaks/gitleaks-action 2→3                                                                                                                                                                                                                           | MERGED (`fc73f60`)                                                                    |
-| `#2`  | actions/checkout 4→7                                                                                                                                                                                                                                   | MERGED (`7779f68`) tras rebase (conflicto con #3)                                     |
-| `#18` | prod group CON sharp 0.35.3                                                                                                                                                                                                                            | **CERRADA por dependabot** al ignorar sharp en config → recreada como `#21` sin sharp |
+- **Vitest focal** (5 archivos tocados, DB real compartida): corrida inicial 101/102 (1 fallo introducido por mí en un helper de test → corregido, ver §4.2) → re-corrida del archivo checkout **39/39 ✓**. Estado final: **102/102 verdes**, incluyendo 5 tests NUEVOS escritos esta sesión (3 anti-manipulación de flete, 2 de carrera dedup en webhooks).
+- **Typecheck** (`tsc --noEmit`) ✓ · **ESLint** `--max-warnings 0` ✓ · **Prettier** ✓ en todos los archivos tocados.
+- **E2E certificación** (comando en §6, log `/tmp/e2e-cert-20260729.log`, `EXIT:0`):
+  - `wompi-sandbox.spec.ts`: **1 passed (2.7m)** — cliente de prueba `wompi-e2e-*@example.com` creado por el checkout; cotización Aveonline sandbox en vivo; pago en checkout hospedado de Wompi sandbox con tarjeta 4242 → transacción **APPROVED verificada vía API oficial**; webhook firmado con el `WOMPI_EVENTS_SECRET` real aceptado (200); saga → orden **LCM-2026-0193** en **FULFILLING** con **guía Aveonline sandbox real #2245604750** y total **$58.300 COP**.
+  - `admin-transactional.spec.ts`: **3 passed (51.2s)** — admin de prueba SUPERADMIN efímero creado, login en el panel, orden LCM-2026-0193 visible en `/admin/pedidos`, `/admin/finanzas`, `/admin/moderacion` y `/admin/disenos` operativos.
+  - **Limpieza verificada por query** al finalizar: orden soft-deleted ✓ · 0 `AdminUser` `e2e-admin-tx-*` residuales ✓ · 0 clientes de prueba residuales ✓ · 0 eventos webhook del run ✓ · puerto 4000 liberado ✓.
+- **Conteo de módulos**: Capa Cliente — flujo de ingresos (PDP → carrito → datos → envío → pago → gracias → webhook → guía) certificado E2E; 31 specs e2e y ~2.6k tests vitest existentes intactos. Capa Admin — 34 rutas del sidebar, todas reales (0 placeholder visibles; los 2 módulos futuros siguen ocultos por diseño); 1 página huérfana (gestor de webhooks Aveonline) ahora cableada al menú de Integraciones.
+- **Resistencia/estrés básico del flujo**: la suite de integración ejerce el checkout bajo carreras (dedup concurrente P2002, doble finalize idempotente, reconciliación de orden divergente, stock en carrera) — 102/102 con `retry: 2` contra el pooler real.
 
-Las 4 majors de GitHub Actions eliminan además los warnings "Node 20 is deprecated" de todos los runs.
+### Propuestas de commits (NO ejecutados — git mutations requieren tu confirmación)
 
-### ✅ Decisión sharp (registrada en código, no solo aquí)
+Sugerencia: 1 solo commit, o 4 atómicos en este orden:
 
-- Se mantiene **0.34.4**. GHSA-f88m-g3jw-g9cj (libvips heredado, <0.35.0, high) queda en `pnpm-workspace.yaml > auditConfig.ignoreGhsas` — mitigada por `sharp-safe` (bloquea loaders alcanzables), riesgo residual aceptado y documentado en Fase A.
-- `.github/dependabot.yml`: `ignore` de sharp en version-updates (las PRs de **seguridad** siguen llegando → triaje manual con deploy de verificación en Vercel antes de aceptar).
-- Subir a 0.35.x sin verificar es exactamente lo que rompió producción (ERR_DLOPEN_FAILED libvips → 500 en todas las PDP, Fase A).
-
-### 🟢 Go-live etapa de pruebas (2026-07-29): producción = `develop` con llaves SANDBOX
-
-Decisión explícita del usuario (consciente de las llaves sandbox): la tienda transaccional se prueba en infraestructura real antes del go-live PRD con la rama `production`.
-
-- **Vercel `productionBranch`: `catalogo-whatsapp` → `develop`** (verificado re-leyendo el proyecto: `develop`). El cambio NO es editable por PATCH directo — método unlink/relink (ver §6).
-- **`NEXT_PUBLIC_STORE_MODE=full`** en scope Production (era `catalog` para `catalogo-whatsapp`). La var es por ENTORNO, no por rama — ver rollback en §6.
-- **Deploy producción desde tip `6b6b908`** (`lucams-shop-6w2zr51eb`, Ready, vía `POST /v13/deployments` con `gitSource.repoId`). Verificado en vivo: lucamsshop.com 200, `/status` reporta modo **full**, `/api/webhooks/wompi` responde **401 a firma inválida** en el dominio real, SSO intacto (`all_except_custom_domains`: prod pública, previews protegidos).
-- **Wompi y Aveonline siguen SANDBOX** (`WOMPI_ENV=sandbox`, credenciales demo): los pedidos de prueba NO cobran dinero real ni generan guías facturables.
-- **PENDIENTE (usuario)**: dashboard Wompi **sandbox** → URL de Eventos → `https://lucamsshop.com/api/webhooks/wompi` (hoy apunta al alias git-develop, que funciona, pero el dominio propio es el canónico y no depende del alias).
-- `catalogo-whatsapp` queda como rama de preview (sus pushes ya no van a producción). OJO: todo push a `develop` ahora dispara un **deploy de producción**.
-
-### Estado de ramas
-
-- `develop` (default y **PRODUCCIÓN en Vercel**): tip `6b6b908`, al día con origin, working tree limpio. CI verde. Modo full + llaves sandbox.
-- `production` (existe en origin, `6e86f94`): destino del go-live PRD con llaves reales (§5a).
-- `catalogo-whatsapp`: rama de preview; catálogo certificado intacto (rollback disponible, §6).
-- 0 ramas dependabot locales/remotas (limpieza verificada con `git ls-remote` + `gh pr list`).
+1. `fix(checkout): sellar cotizaciones de envío con HMAC — cierra manipulación de flete (fleteCop forjado)` (checkout-session, service, envio/*, pago/actions, test integración).
+2. `fix(webhooks): carrera dedup P2002 → 200 "concurrent duplicate" en wompi y aveonline (+2 tests)`.
+3. `test(e2e): wompi-sandbox auto-limpia TODOS sus residuos (cliente, webhookEvent; fixtures soft-delete)`.
+4. `chore(admin): cablear gestor webhooks Aveonline en Integraciones, relabel jerga del menú, purgar dead code`.
 
 ---
 
 ## 3. Archivos y Cambios
 
-### Commits directos a `develop` (reparación CI)
+### Modificados (17)
 
-| Commit    | Contenido                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `e775ded` | **fix(ci): develop verde** (57 archivos). (a) `pnpm format`: 52 archivos que la certificación Fase A/B dejó sin formatear (job Prettier rojo desde `cfc9028`). (b) `lib/admin-nav.test.ts`: elimina expresión bare `nav;` (warning no-unused-expressions con `--max-warnings 0`). (c) `pnpm-workspace.yaml`: `auditConfig.ignoreGhsas: [GHSA-f88m-g3jw-g9cj]` (sharp). (d) `.github/dependabot.yml`: hold de sharp. (e) `retention-service.integration.test.ts`: describe gate `!DATABASE_URL \|\| !hasStorage` + header corregido (la purga SIEMPRE toca Storage al barrer staged slots, aunque el diseño no tenga assets — el comentario viejo decía que los tests de filtro corrían en CI: falso). (f) `finalize-server-render.integration.test.ts`: cliente Supabase lazy (antes `createClient` top-level → moría la recolección en CI) + `SKIP = !HAS_SUPABASE && CI==="true"` + guards en beforeAll/afterAll + `describe.skipIf` — en local sin env sigue fallando en voz alta ("omitir en silencio sería fingir cobertura"). (g) `vitest.config.ts`: thresholds statements 69.5 / functions 69 + nota de calibración. |
-| `51c8863` | **fix(ci): functions 69→68.5** — la CI real midió 68.92% (run 30416182665: 156 archivos de test verdes, 0 fallos; solo el gate cayó). La sim-CI local había medido 69.41: la diferencia es seed/DB (pooler dev con datos reales vs postgres:15 service pelado). Regla: calibrar SIEMPRE con la medición real de CI.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+**Fix crítico anti-manipulación de flete (ShadowAgent + Self-Healing):**
 
-### Commits en la rama de #20 (absorbidos en el squash `6ff37a9`)
+- `apps/web/lib/checkout-session.ts` — nuevo `ShippingOffersPayload` (offers + cartHash + destKey + quotedAt) en `CheckoutState`; `sealShippingOffersPayload()` / `openShippingOffersPayload()` con el mismo HMAC de la cookie y TTL de 60 min.
+- `apps/web/features/checkout/service.ts` — código de error nuevo `SHIPPING_SELECTION_INVALID`; helpers `fingerprintCartItems()`, `destinationKeyOf()`, `matchShippingOffer()`, `sealShippingOffers()`; `saveShippingSelectionStep(selection, offersToken)` ahora exige match EXACTO contra el set sellado y el destino de la cookie (guarda la copia del SERVIDOR); `finalizeCheckout` re-valida selección vs cotizaciones selladas + huella de carrito + destino FRESCOS antes de crear la Order; comentario obsoleto de "500g default" corregido (el código usa dims reales y falla duro si faltan).
+- `apps/web/app/checkout/envio/page.tsx` — sella el set de cotizaciones tras cotizar y lo pasa como `offersToken` (la RSC no puede escribir cookies: el sello viaja por el HTML).
+- `apps/web/app/checkout/envio/envio-step.tsx` — prop `offersToken` (pass-through).
+- `apps/web/app/checkout/envio/quote-list.tsx` — hidden input `offersToken` en el form.
+- `apps/web/app/checkout/envio/actions.ts` — lee `offersToken`, lo pasa al service; captura `SHIPPING_SELECTION_INVALID` → redirect a `/checkout/envio?error=…` (mensaje customer-safe).
+- `apps/web/app/checkout/pago/actions.ts` — `payWompiAction` y `payCodAction`: rama dedicada para `SHIPPING_SELECTION_INVALID` → redirect a `/checkout/envio?error=…` (re-cotizar, no cobrar de menos).
+- `apps/web/features/checkout/service.integration.test.ts` — 3 call sites actualizados al nuevo contrato + 3 tests NUEVOS de seguridad (fleteCop alterado, token forjado/otro destino, carrito cambiado tras seleccionar).
 
-`8483092` reformateo con prettier 3.9.6 (21 archivos — el bump cambia reglas y el job Prettier fallaba) · `eabd159` merge de develop post-#21 (conflicto lockfile) · `fb486f8` reconciliación del lockfile (ver §4.4).
+**Fix carrera dedup webhooks (ShadowAgent):**
 
-### Convención CI que quedó codificada (respetarla en tests futuros)
+- `apps/web/app/api/webhooks/wompi/route.ts` — `create` de WebhookEvent envuelto: P2002 → 200 "concurrent duplicate, already processing" (antes: 500 crudo + reintentos ciegos + riesgo de doble saga); comentarios "HMAC" corregidos (Wompi usa SHA-256 de concatenación, no HMAC).
+- `apps/web/app/api/webhooks/aveonline/route.ts` — mismo patrón P2002.
+- `apps/web/app/api/webhooks/wompi/route.integration.test.ts` — test NUEVO de la carrera (findUnique miss + P2002 real contra el unique de la DB).
+- `apps/web/app/api/webhooks/aveonline/route.integration.test.ts` — test NUEVO de la carrera (externalId calculado con el provider real) + import del provider.
 
-Tests que exigen Supabase real (Storage/PostgREST/GoTrue): **skip cuando `NEXT_PUBLIC_SUPABASE_URL`/`SUPABASE_SECRET_KEY` están vacías** (CI las vacía a propósito, `ci.yml` job unit-tests). Patrón de referencia: los dos archivos de arriba + rls-matrix. En CI el cliente Storage no puede ni construirse (`validateSupabaseUrl`).
+**Limpieza (QA):**
+
+- `apps/web/lib/wompi.ts` — comentario del esquema de firma corregido (SHA-256, no HMAC).
+- `apps/web/.env.example` — eliminada `NEXT_PUBLIC_WOMPI_PUBLIC_KEY` (declarada, jamás referenciada en código; el checkout es redirect al hosted checkout, no widget).
+
+**Admin "menos es más" (UX/UI):**
+
+- `apps/web/app/admin/(panel)/integraciones/page.tsx` — tarjeta Aveonline ahora enlaza (`docs`) al gestor de webhooks `/admin/integraciones/aveonline`, que existía y funcionaba pero era **inalcanzable** desde la UI (0 inbound links).
+- `apps/web/lib/admin-nav.ts` — relabel de jerga para usuaria no técnica: "Performance" → "Rendimiento web"; "Redirects 301" → "Redirecciones (SEO)". Sin tocar hrefs ni estructura (tests de nav intactos y verdes).
+
+**E2E (Playwright Agent):**
+
+- `apps/web/tests/e2e/wompi-sandbox.spec.ts` — `afterAll` ahora limpia TODOS los residuos del run: soft-delete del cliente de prueba (el teardown global de vitest NO lo alcanzaba: 13 dígitos del RUN < 15 del regex run-id), borrado del WebhookEvent sintético (`wompiTxId` hoisted a módulo), y producto/categoría **soft-delete** en vez de hard delete (ver §4.4); comentario "HMAC" corregido.
+
+### Eliminados (1)
+
+- `apps/web/components/reveal-on-scroll.tsx` — componente `Reveal` con **0 imports** en todo el repo (código muerto confirmado por grep).
+
+### Creados (2)
+
+- `docs/audits/2026-07-29-restore-point.md` — punto de restauración pre-sesión (`bc1e41b`) con comando de rollback.
+- `HANDOFF.md` — este documento (sobrescribe el anterior, que queda en git history).
 
 ---
 
-## 4. Intentos Fallidos (y qué los resolvió)
+## 4. Intentos Fallidos (y qué lógica exacta los resolvió)
 
-### 4.1 Diagnóstico
-
-1. **Premisa inicial errada**: se asumió que los PRs rompían CI. Realidad: `develop` ya estaba roja desde `cfc9028` (5 pushes, 5 failure). Los PRs solo heredaban la base roja + 2 problemas propios (prettier 3.9.6 reformatea; sharp en #18). Verificar SIEMPRE el estado de la rama base antes de culpar al PR.
-2. **Los 3 warnings lint extra de #20** (`book-view-3d.tsx`, `admin-nav.ts`, `ola19 spec`) eran contra su base vieja; en develop actual ya no existían (los commits `4718802`/`23fccf2` los habían limpiado). Solo 1 warning real: `admin-nav.test.ts:113`.
-
-### 4.2 Corridas locales de vitest (3 intentos)
-
-1. Background con `npx vitest run | tail -12` y timeout 900s → murió por timeout con **0 bytes de log** (el pipe bufferea; al matar el proceso no queda nada).
-2. Background del task system, timeout 3600s → **"Session closed"** lo mató a los ~2 min (las tareas background del CLI no sobreviven al cierre de sesión).
-3. ✅ **`nohup npx vitest run > /tmp/log 2>&1 &` + polling** con `sleep`/`grep -c ✓`: sobrevive a la sesión y deja log inspeccionable. Duración real de la suite local: **~18-20 min** (integration tests con `retry: 2` contra el pooler).
-
-### 4.3 Cobertura: dos calibraciones
-
-- Sim-CI local (env Supabase vacío, pooler + datos reales): functions 69.41 → umbral puesto en 69 → **CI real midió 68.92** y el primer push quedó 6/7. Recalibrado a 68.5 con la medición real (`51c8863`). Margen ~0.4, misma práctica documentada en el config desde 2026-07-25. PARA APRETAR cuando exista Supabase staging: volver functions a 70 y statements a 70.
-
-### 4.4 Merge de #20 (3 tropiezos)
-
-1. **Conflicto con #21** en `pnpm-lock.yaml` (ambos lo tocan) tras mergear #21 primero → merge local de develop en la rama, `git checkout --theirs pnpm-lock.yaml` + `pnpm install` para reconciliar. NO usar `@dependabot rebase` acá: **descarta los commits manuales de la rama** (habría borrado el commit de formateo).
-2. **El merge commit se llevó solo lo staged**: `git add pnpm-lock.yaml` se hizo ANTES de `pnpm install`, así que el commit `eabd159` quedó con el lockfile de develop (importer prettier 3.8.3) inconsistente con el package.json de la rama (^3.9.6) → `--frozen-lockfile` habría fallado en CI. Commit correctivo `fb486f8`. Regla: `pnpm install` → `git add` → commit, en ese orden.
-3. **Lint local rojo falso**: `apps/web/coverage/` (artifact de mi corrida local de cobertura) tiene un eslint-disable que la config nueva reporta. Ese dir no existe en CI → `rm -rf apps/web/coverage` antes de lint local.
-
-### 4.5 Otros
-
-- **#2 (checkout 4→7) quedó DIRTY** al mergear #3 antes (líneas adyacentes en los workflows) → `@dependabot rebase` y quedó limpio. Orden de merges de actions: dejar checkout (que está en TODOS los workflows y líneas) de último o rebasear entre medias.
-- **Corridas "cancelled" en GitHub** (#571, #574 y viejas de PRs): no fueron cancelaciones manuales — #571 fue el fallo de cobertura ya corregido, #574 el fallo de Prettier de #20 ya corregido; las viejas las cancela la concurrencia al force-push de rebases. Normal.
-- **#18 cerrada "sola"**: dependabot recalcula grupos al cambiar la config (push de dependabot.yml) y cierra/recrea PRs de grupo. Por eso #21 nació ya sin sharp.
+1. **E2E intento 1: fallo en 3 ms** — `browserType.launch: Executable doesn't exist at …/chromium-1234/chrome-linux64/chrome`. Causa: el bump de dependabot #20 (mergeado hoy) subió `@playwright/test` a 1.62, que exige la revisión de navegador **1234**; el servidor tenía la 1223 de corridas previas. Resolución: `npx playwright install chromium` (descargó chromium-1234 + headless-shell-1234) y re-correr. Regla: tras cada bump de Playwright hay que reinstalar navegadores en el servidor.
+2. **Mi propio cambio rompió 1 test** — `MISSING_ADDRESS cuando falta la dirección` (rojo ×3 con retries): mi `seedFullState` actualizado sellaba cotizaciones que exigen dirección, pero ese test la omite a propósito. Lógica que lo resolvió: en producción ese estado es **inalcanzable** (la página de envío exige dirección para cotizar) y el guard `MISSING_ADDRESS` de `finalizeCheckout` dispara ANTES que el de envío → el helper ahora omite también el paso de envío cuando se omite la dirección. Re-corrida: 39/39.
+3. **Edición deslizada en `envio/page.tsx`** — una sustitución sin newline pegó `} catch (err) {` con la línea de comentario siguiente. Detectada re-leyendo la región (no por tests) y reparada en el mismo pase; typecheck/lint/prettier lo confirmaron después.
+4. **El hard delete de fixtures del e2e NUNCA funcionó** — 41 productos/categorías `wompi-e2e-*` acumulados en la BD de corridas viejas: `prisma.product.deleteMany` revienta por FK (variantes y OrderItems referencian el producto) y el `.catch(() => {})` tragaba el error en silencio. Los 41 estaban ya soft-deleted (0 activos — el teardown global de vitest los tapaba después); los verifiqué y el spec ahora soft-borra directo, sin depender de nadie. Evidencia del conteo en §2 y query de verificación ejecutada.
+5. **`playwright test --list` falló** en `admin-transactional.spec.ts` (`createClient` de Supabase a nivel módulo sin env): no es un bug — ese spec espera el entorno sourceado (el comando documentado lo hace); `wompi-sandbox` sí importa `setup-env`. Anotado para no volver a diagnosticarlo.
+6. **Emails de confirmación "fallan" en dev** — el log E2E muestra `email.send.fail` + `not_marked_will_retry` para la orden LCM-2026-0193: es el comportamiento esperado en local (Resend sin entrega verificada en dev); el saga lo registra para reintento y NO bloquea PAID ni la guía. No es un defecto del flujo.
 
 ---
 
 ## 5. Próximos Pasos
 
-### 5a. Decisiones que dependen de ti (negocio)
+### a) Decisiones que dependen de ti (Negocio)
 
-1. **Go-live PRD (rama `production`)** — cuando termines las pruebas en develop-sandbox. Checklist (lo ejecuto yo; de ti solo llaves y respuestas):
-   a. Merge `develop` → `production` (la rama ya existe en origin, `6e86f94`).
-   b. Vercel (scope Production): `WOMPI_ENV=prod` + 4 llaves Wompi PRODUCCIÓN (dashboard Wompi prod) + credenciales `AVEONLINE_*` REALES (reemplazar las sandbox).
-   c. Dashboard Wompi PROD: URL de Eventos → `https://lucamsshop.com/api/webhooks/wompi` (dominio propio = exento de SSO).
-   d. **IVA**: confirmar con el contador si Lucy es responsable de IVA → si sí, cableo `tax-in-cents:vat` en `finalizeCheckout` (el campo ya existe; no suma al total).
-   e. **Verificación `bloquegenerarguia` con la cuenta REAL** ANTES de `AVEONLINE_GENERATE_REAL=true` (semántica inversa histórica; genero una guía con cada valor y revisamos cartera en el panel Aveonline). Registro en `docs/INTEGRATIONS_AVEONLINE.md` §21.4.
-   f. Vercel `productionBranch`: `develop` → `production` (método unlink/relink, §6) + deploy desde el tip de `production`.
-2. **Supabase test/staging separado** (aplazada desde Fase A) — decidir si se crea un proyecto Supabase aparte para tests/staging (hoy dev=prod en uno solo). Cuando exista: aprieto la cobertura (functions 68.5→70, statements 69.5→70) porque los tests Supabase-real vuelven a correr en CI.
-3. **Seguimiento comercial**: 8 cotizaciones reales de "Cristian" (hasta $12.8M COP) intactas en la BD — leads de negocio para verificar/contactar (Fase A §8).
+1. **Menú admin — fusiones pendientes**: `Mensajes` y `Soporte` son dos UIs sobre el MISMO modelo (SupportTicket: bandeja inbox vs tarjetas operativas); `Garantías` y `Reclamos` igual (WarrantyClaim). La decisión 2026-07-28 mantuvo los flujos legales separados, pero el MENÚ sigue mostrando ambos pares. ¿Fusiono cada par en una sola pantalla (menos es más) o quedan así?
+2. **Reembolsos**: hoy marcar REFUNDED en el admin **no devuelve el dinero** — se emite manual en el dashboard de Wompi (la UI ya lo advierte). ¿Cableo la API de void/refund de Wompi o se queda manual documentado?
+3. **Go-live PRD** (rama `production`, llaves reales Wompi/Aveonline): el checklist del HANDOFF anterior sigue vigente e intacto (merge develop→production, llaves PRD en Vercel, URL de eventos Wompi, verificación `bloquegenerarguia` con la cuenta real, IVA con el contador).
+4. **Rol FULFILLMENT puede regenerar guías** Aveonline desde el pedido. ¿Es el alcance deseado o lo restringimos a MANAGER+?
+5. **Supabase staging/test separado** (pendiente de Fase A): habilita endurecer cobertura y correr los tests Supabase-real en CI.
 
-### 5b. Trabajo técnico pendiente (mío, sin decisión previa)
+### b) Trabajo técnico pendiente
 
-1. **Backlog no bloqueante** (informe Fase B §4): recogidas por API (`generarRecogida2`), reimpresión de rótulo (API V3), entrega en oficina (`IdTipoEntrega=2`), polling en PendingPage, `expiration-time` en checkout (va en la firma en el MISMO PR), persistir `payment_method_type`/`status_message` en Order, migrar webhook Aveonline al token oficial, fechas `fechacreacion`/`fechanovedad`, spec formal de `cotizarDoble` a Aveonline, guard de monto máximo Wompi vs contrato real.
-2. **sharp 0.35.x**: NO subir sin deploy de verificación en Vercel (PDP con imágenes + lambda render). La GHSA queda mitigada por `sharp-safe`; las PRs de seguridad de sharp se trian a mano una a una.
-3. **Dependabot**: corre los lunes; los próximos grupos llegan sobre develop verde. La config vive en la rama default (`develop`).
+1. **Persistir `quoteId` (codTransportadora) en la Order** — hoy la saga re-resuelve la transportadora por nombre al generar la guía (funciona, pero es frágil si dos carriers comparten nombre).
+2. **`/checkout/gracias?id=<txId>`** — endpoint público que revela datos de la orden con solo el id de transacción (adivinable solo por quien lo posee, pero viaja en URLs). Opciones: token firmado de un solo uso o rate-limit más estricto.
+3. **Poda menor**: `verifyWebhook`/`getPaymentDetails` del `PaymentProvider` (solo los ejerce su test; la abstracción espera a MercadoPago) y allowances CSP del widget Wompi que no se usa (`script-src`/`frame-src checkout.wompi.co`).
+4. **`dsnit: "100001"` placeholder** cuando el cliente no registra CC: nada bloquea el despacho con NIT genérico — valorar un gate en el admin antes de marcar SHIPPED.
+5. **Gaps E2E registrados** (no bloqueantes): compra COD punta a punta, tarjeta DECLINED en UI, checkout con producto personalizado del Estudio, login de cliente, cupón en UI.
+6. **Backlog previo vigente** (del HANDOFF anterior): recogidas por API (`generarRecogida2`), rótulo V3, entrega en oficina, polling en PendingPage, `expiration-time` en checkout, persistir `payment_method_type`/`status_message` en Order, migrar webhook Aveonline al token oficial, sharp 0.35.x solo con deploy de verificación.
 
 ---
 
-## 6. Información relevante
+## 6. Información Relevante
 
-### Gotchas operativos (acumulados Fase A+B + esta sesión)
+### Gotchas detectados esta sesión
 
-- `pkill -f "next start"` se auto-mata → usar `fuser -k 4000/tcp`.
-- NUNCA vitest y playwright e2e en paralelo (comparten BD). Tampoco dos vitest contra la misma BD.
-- Corridas largas locales: `nohup cmd > /tmp/log 2>&1 &` + polling. El background del CLI muere con la sesión; un `| tail` al final deja 0 bytes de log si el proceso muere.
-- Suite vitest local completa: ~18-20 min. En CI: ~2-4 min (postgres directo, sin pooler).
-- `@dependabot rebase` **descarta commits manuales**; para PRs de dependabot con commits propios, resolver con merge local.
-- En merges: `pnpm install` ANTES de `git add` del lockfile.
-- `apps/web/coverage/` local rompe eslint → borrarlo antes de lint (no existe en CI).
-- Calibrar umbrales de cobertura con la medición REAL de CI, no con la simulación local (~0.5ptos de diferencia por seed/DB).
-- El banner de cookies aparece en CADA navegador de test → aceptarlo siempre al inicio.
-- Productos creados vía Prisma son invisibles en deploys con Data Cache caliente (300s/1h); en dev server sí se ven.
-- Rate limits reales: cotizaciones 5/IP/día + 3/teléfono/día; API catálogo ~17 req ráfaga.
-- La guía Aveonline imprime `productos[].unidades` como N bultos: SIEMPRE 1 bulto agregado (modelo caja apilada).
-- Vercel SSO del proyecto se consulta/cambia por API: `GET/PATCH /v9/projects/lucams-shop` (campo `ssoProtection`) con el token del CLI. ON para previews (verificado 2026-07-28).
-- **Vercel `productionBranch` NO es editable por PATCH directo** (`/v9/projects` con `productionBranch` o `link`, y `/link` por PATCH: todos rechazados). Método que funciona (2026-07-29): `DELETE /v9/projects/lucams-shop/link` + `POST /link` con `{"type":"github","repo":"jullieth93/lucams","productionBranch":"<rama>"}`. Re-leer el proyecto para verificar (un 200 puede no cambiar nada). Deploy desde una rama sin push: `POST /v13/deployments` con `{"name":"lucams-shop","project":"lucams-shop","target":"production","gitSource":{"type":"github","repoId":1233985927,"ref":"<rama>"}}` (repoId sale de `link.repoId`).
-- **Rollback a catálogo** (si hiciera falta): `productionBranch` → `catalogo-whatsapp` (método unlink/relink) + `NEXT_PUBLIC_STORE_MODE=catalog` en scope Production + deploy nuevo. La var STORE_MODE es por ENTORNO, no por rama — SIEMPRE va de la mano del switch.
+- **Tras bump de `@playwright/test`, reinstalar navegadores** en el servidor (`npx playwright install chromium`) — la revisión de Chromium exigida cambia (1223 → 1234 hoy).
+- **Las RSC no pueden escribir cookies** (Next 16): por eso el sello HMAC de cotizaciones viaja como hidden input `offersToken` en el form y lo valida la Server Action; la cookie solo se escribe en actions.
+- **Despliegue de este cambio**: un checkout EN CURSO con la cookie vieja (sin `shippingOffers`) rebota UNA vez a re-cotizar el envío con mensaje claro ("La cotización de envío cambió…"); no pierde el carrito ni los datos.
+- **`.catch(() => {})` en limpiezas de tests es una trampa silenciosa**: el hard delete de fixtures llevaba meses fallando por FK sin que nadie lo viera (41 residuos). Si una limpieza importa, que falle en voz alta o soft-borre.
+- El teardown global de vitest purga por regex run-id de **15+ dígitos**; los RUN con `Date.now()` (13) no calzan — cada spec e2e debe limpiar su propio cliente/orden.
+- `admin-transactional.spec.ts` no importa `setup-env`: necesita el entorno sourceado en la shell (el comando de abajo lo hace).
+- Los `[wompi requestfailed] analytics.google.com` del log E2E son el tracking de la página hospedada de Wompi bloqueado por el navegador de test — ruido irrelevante, no del flujo.
 
-### Comandos de utilidad
+### Comandos clave
 
-- **E2E transaccional**: `cd apps/web && set -a && source .env.local && set +a && TURNSTILE_SECRET_KEY= NEXT_PUBLIC_TURNSTILE_SITE_KEY= PW_CHANNEL=chromium npx playwright test wompi-sandbox --workers=1 --retries=0`
-- **Suites contra preview**: mismo entorno + `PLAYWRIGHT_BASE_URL=<url-preview> npx playwright test smoke a11y axe admin-login admin-mfa audit-admin admin100-shots preview-cert admin-transactional --workers=1`
-- **Vitest**: `pnpm --filter web test` (NUNCA en paralelo con e2e) · puntuales: `cd apps/web && npx vitest run <patrón>`
-- **Queries BD (solo lectura)**: `cd packages/db && node --env-file=../../apps/web/.env.local -e '<js con require("@prisma/client")>'`
-- **Deploys/logs**: `vercel ls lucams-shop`, `vercel logs <deployment-url>`, `vercel inspect <url> --logs`
-- **k6**: `./tmp/k6-v0.55.0-linux-amd64/k6 run -e BASE_URL=http://localhost:4000 tests/load/storefront-browsing.js` (con `next start -p 4000` activo)
-- **CI/PRs**: `gh run list --branch develop --workflow ci.yml`, `gh run view --job <id> --log-failed`, `gh pr checks <n> | cut -f1,2`, `gh pr merge <n> --squash --delete-branch`
-- **Dependabot**: comentario `@dependabot rebase` en el PR (descarta commits manuales); la config se lee de la rama default (`develop`)
+- **E2E certificación transaccional (el usado hoy, verde)**:
+  `cd apps/web && set -a && source .env.local && set +a && TURNSTILE_SECRET_KEY= NEXT_PUBLIC_TURNSTILE_SITE_KEY= PW_CHANNEL=chromium npx playwright test wompi-sandbox --workers=1 --retries=0 && TURNSTILE_SECRET_KEY= NEXT_PUBLIC_TURNSTILE_SITE_KEY= PW_CHANNEL=chromium npx playwright test admin-transactional --workers=1 --retries=0`
+  (orden importa: `admin-transactional` restaura la orden PAID que crea `wompi-sandbox`)
+- **Vitest de lo tocado**: `cd apps/web && npx vitest run features/checkout/service.integration.test.ts app/api/webhooks lib/admin-nav.test.ts lib/wompi.test.ts`
+- **Verificación de residuos e2e (solo lectura)**: `cd packages/db && node --env-file=../../apps/web/.env.local -e '<query Prisma>'`
+- **Gates de código**: `pnpm --filter web typecheck` · `pnpm --filter web lint` · `npx prettier --check <archivos>`
+- **Rollback al punto estable**: `git checkout develop && git reset --hard bc1e41b7c05ec787ac2dfa2a0d58d62abb2cc369` (⚠️ descarta cambios sin commitear — ver `docs/audits/2026-07-29-restore-point.md`)
 
-### Documentos clave
+### Documentación importante
 
-- `docs/audits/2026-07-28-certificacion-catalogo-whatsapp.md` — informe Fase A.
-- `docs/audits/2026-07-28-certificacion-develop.md` — informe Fase B (veredicto, bugs, gaps, go-live).
-- `docs/INTEGRATIONS_AVEONLINE.md` §21 — auditoría doc-oficial Aveonline.
-- `docs/INTEGRATIONS.md` — tabla de estados Wompi (DECLINED/ERROR → PENDING_PAYMENT).
-- `apps/web/vitest.config.ts` — historia de calibraciones del gate de cobertura (2026-07-25 y 2026-07-29).
-- `pnpm-workspace.yaml` — `auditConfig.ignoreGhsas` (sharp) con justificación.
+- `docs/audits/2026-07-29-restore-point.md` — punto de restauración de esta sesión.
+- HANDOFF anterior (git history, commit `bc1e41b`) — go-live develop-sandbox en producción Vercel, rollback a catálogo, decisión sharp, convenciones de CI. Sigue vigente como contexto operativo.
+- `docs/INTEGRATIONS.md` (estados Wompi) y `docs/INTEGRATIONS_AVEONLINE.md` §21 (semántica `bloquegenerarguia` — pendiente verificación con cuenta real antes de `AVEONLINE_GENERATE_REAL=true`).
+- Recordatorio operativo vigente: **todo push a `develop` dispara deploy de PRODUCCIÓN en Vercel** (modo full, llaves sandbox) — por eso los commits propuestos en §2 esperan tu confirmación.
