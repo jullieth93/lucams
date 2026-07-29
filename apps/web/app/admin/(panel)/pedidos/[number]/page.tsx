@@ -289,7 +289,7 @@ export default async function AdminPedidoDetallePage({
                   }
                 />
                 <Row
-                  label="Customer ID"
+                  label="Cliente"
                   value={
                     order.customer ? (
                       <Link
@@ -299,7 +299,7 @@ export default async function AdminPedidoDetallePage({
                         Ver perfil
                       </Link>
                     ) : (
-                      <span className="text-brand-muted">Guest checkout</span>
+                      <span className="text-brand-muted">Compra sin cuenta</span>
                     )
                   }
                 />
@@ -366,7 +366,7 @@ export default async function AdminPedidoDetallePage({
               <Row label="Método" value={order.paymentMethod} />
               {order.wompiTransactionId && (
                 <Row
-                  label="Wompi TX"
+                  label="Transacción Wompi"
                   value={
                     <a
                       href={`https://comercios.wompi.co/transactions/${order.wompiTransactionId}`}
@@ -384,11 +384,11 @@ export default async function AdminPedidoDetallePage({
 
             {/* Envío */}
             <Card icon={<Truck className="h-4 w-4" />} title="Envío">
-              <Row label="Carrier" value={order.shippingCarrier ?? "—"} />
+              <Row label="Transportadora" value={order.shippingCarrier ?? "—"} />
               {order.trackingNumber ? (
                 <>
                   <Row
-                    label="Tracking"
+                    label="N° de guía"
                     value={
                       <span className="text-brand-purple-dark/85 font-mono text-xs">
                         {order.trackingNumber}
@@ -397,7 +397,7 @@ export default async function AdminPedidoDetallePage({
                   />
                   {isSimulatedTracking && (
                     <p className="mt-1 text-[10px] text-amber-700">
-                      ⚠️ Tracking simulado (modo test). Producción genera guía real.
+                      ⚠️ Guía simulada (modo test). Producción genera guía real.
                     </p>
                   )}
                   {order.trackingUrl && (
@@ -407,7 +407,7 @@ export default async function AdminPedidoDetallePage({
                       rel="noopener noreferrer"
                       className="text-brand-purple mt-2 block text-xs underline"
                     >
-                      Ver tracking en Aveonline →
+                      Ver guía en Aveonline →
                     </a>
                   )}
                   {order.labelUrl && (

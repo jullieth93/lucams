@@ -9,7 +9,13 @@ import { LifeBuoy } from "lucide-react";
 import { requireRole } from "@/lib/admin-rbac-guard";
 import { listSupportTickets, type SupportTicketStatus } from "@/features/support/admin-service";
 import { SUBJECT_LABELS } from "@/features/support/schemas";
-import { AdminPage, AdminPageHeader, AdminPageBody, AdminBadge } from "@/components/admin-page";
+import {
+  AdminPage,
+  AdminPageHeader,
+  AdminPageBody,
+  AdminBadge,
+  AdminEmpty,
+} from "@/components/admin-page";
 import Link from "next/link";
 import { TicketActions } from "./ticket-actions";
 
@@ -86,9 +92,11 @@ export default async function AdminSoportePage({ searchParams }: { searchParams:
         </div>
 
         {rows.length === 0 ? (
-          <p className="text-brand-muted border-brand-purple/10 rounded-xl border bg-white p-8 text-center text-sm">
-            No hay tickets en este estado. 🦝
-          </p>
+          <AdminEmpty
+            icon={<LifeBuoy className="h-5 w-5" />}
+            title="No hay tickets en este estado"
+            description="Cuando un cliente escriba desde el formulario de contacto, su mensaje aparecerá acá."
+          />
         ) : (
           <ul className="space-y-3">
             {rows.map((t) => (

@@ -1,5 +1,5 @@
 /*
- * Admin > Mayorista B2B — niveles de precio por volumen (WholesaleTier).
+ * Admin > Precios al por mayor — niveles de precio por volumen (WholesaleTier).
  *
  * Cada nivel define: a partir de `minQty` unidades, el precio por unidad baja
  * a `unitPrice` (centavos COP). Un nivel con productId NULL es global ("Todo
@@ -88,7 +88,7 @@ export default async function AdminMayoristaPage({ searchParams }: { searchParam
     <AdminPage>
       <AdminPageHeader
         icon={<Building2 className="h-5 w-5" />}
-        title="Precios mayoristas (B2B)"
+        title="Precios al por mayor"
         subtitle={
           <>
             {tiers.length} {tiers.length === 1 ? "nivel de precio" : "niveles de precio"} · precios
@@ -98,7 +98,7 @@ export default async function AdminMayoristaPage({ searchParams }: { searchParam
         breadcrumbs={[
           { label: "Admin", href: "/admin/dashboard" },
           { label: "Promociones" },
-          { label: "Mayorista B2B" },
+          { label: "Precios al por mayor" },
         ]}
       />
 

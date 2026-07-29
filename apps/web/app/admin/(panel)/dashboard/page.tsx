@@ -6,7 +6,7 @@
  *
  * Estructura:
  *   - Hero: saludo con name + tagline + chip alerta si hay reseñas pendientes
- *   - Operaciones: 4 OpsCards (Pedidos pendientes, Reclamos abiertos,
+ *   - Operaciones: 4 OpsCards (Por producir, Reclamos abiertos,
  *     Bajo stock, Reseñas pendientes) — algunos urgentes (>0)
  *   - Negocio: 4 KpiCards (Clientes, Productos, Ocasiones activas, Cupones vigentes)
  *   - Acceso rápido: 6 QuickLinks a las pantallas operativas
@@ -66,8 +66,10 @@ export default async function AdminDashboardPage({
   // #28 — el guard RBAC redirige aquí con ?denied=1; hasta ahora nada explicaba el porqué.
   const denied = (await searchParams).denied === "1";
 
-  // Pedidos pendientes = Orders en PENDING_PAYMENT (esperando pago Wompi).
-  // No incluyo PAID/FULFILLING porque esos ya están en producción.
+  // H1 (veredicto UX) — la tarjeta de pedidos cuenta los PAGADOS listos para
+  // producción (PAID + FULFILLING): ese es el trabajo real de Lucy.
+  // PENDING_PAYMENT ("esperando pago" = acción del cliente) queda solo como
+  // dato secundario en la descripción de la tarjeta.
   // Lucy 2026-06-26 — antes orderCount era count total, mostraba ruido en KPI.
   const pendingOrdersWhere = {
     deletedAt: null,
@@ -76,6 +78,7 @@ export default async function AdminDashboardPage({
 
   const [
     customerCount,
+    productionOrderCount,
     pendingOrderCount,
     productCount,
     pendingReviews,
@@ -87,6 +90,9 @@ export default async function AdminDashboardPage({
     openWarranty,
   ] = await Promise.all([
     prisma.customer.count({ where: { deletedAt: null } }),
+    prisma.order.count({
+      where: { deletedAt: null, status: { in: ["PAID", "FULFILLING"] } },
+    }),
     prisma.order.count({ where: pendingOrdersWhere }),
     prisma.product.count({ where: { deletedAt: null } }),
     prisma.review.count({ where: { isApproved: false, deletedAt: null } }),
@@ -114,10 +120,10 @@ export default async function AdminDashboardPage({
   const displayName = deriveAdminDisplayName(session.admin.email);
 
   // Operaciones urgentes — combinamos señales reales:
-  // pedidos pendientes pago + variants agotadas + reseñas sin moderar.
+  // pedidos por producir + variants agotadas + reseñas sin moderar.
   // hasAlerts dispara el chip "Atención" en el hero.
   const opsAlerts =
-    pendingOrderCount + inventorySummary.outCount + pendingReviews + openTickets + openWarranty;
+    productionOrderCount + inventorySummary.outCount + pendingReviews + openTickets + openWarranty;
   const hasAlerts = opsAlerts > 0;
 
   return (
@@ -175,13 +181,17 @@ export default async function AdminDashboardPage({
           </h2>
           <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
             <OpsCard
-              href="/admin/pedidos?estado=PENDING_PAYMENT"
+              href="/admin/pedidos"
               icon={Box}
-              label="Pedidos pendientes pago"
-              value={pendingOrderCount}
-              description={pendingOrderCount > 0 ? "Esperan completar pago" : "Sin pendientes"}
+              label="Por producir / enviar"
+              value={productionOrderCount}
+              description={
+                productionOrderCount > 0
+                  ? `Pagados listos para producir${pendingOrderCount > 0 ? ` · ${pendingOrderCount} esperando pago` : ""}`
+                  : "Sin pedidos por producir"
+              }
               tone="purple"
-              urgent={pendingOrderCount > 0}
+              urgent={productionOrderCount > 0}
             />
             <OpsCard
               href="/admin/inventario?estado=out"

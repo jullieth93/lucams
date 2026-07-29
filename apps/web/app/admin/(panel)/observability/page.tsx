@@ -31,7 +31,7 @@ import { getCronHealth } from "@/features/observability/cron-heartbeat";
 import { AdminPage, AdminPageHeader, AdminPageBody } from "@/components/admin-page";
 import { ClientErrorActions } from "./client-error-actions";
 
-export const metadata: Metadata = { title: "Operación y salud" };
+export const metadata: Metadata = { title: "Salud técnica" };
 
 const dateFmt = new Intl.DateTimeFormat("es-CO", {
   day: "2-digit",
@@ -58,7 +58,7 @@ export default async function AdminObservabilityPage() {
     <AdminPage>
       <AdminPageHeader
         icon={<Activity className="h-5 w-5" />}
-        title="Operación y salud"
+        title="Salud técnica"
         subtitle="Tu resumen de las últimas 24h (el mismo del correo diario) + la salud técnica. Se refresca al cargar."
       />
       <AdminPageBody>
@@ -130,175 +130,183 @@ export default async function AdminObservabilityPage() {
             : "(sin pedidos contra entrega pendientes en 24h)."}
         </p>
 
-        {/* ─── SLOs (objetivos de nivel de servicio, de datos reales) ─── */}
-        <h2 className="text-brand-purple-dark mt-6 mb-2 flex items-center gap-2 text-sm font-bold">
-          <Gauge className="h-4 w-4" /> Objetivos de servicio (SLOs)
-        </h2>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          {slos.map((s) => (
-            <SloCard key={s.key} slo={s} />
-          ))}
-        </div>
-        <p className="text-brand-muted mt-2 text-xs">
-          Disponibilidad y latencia por ruta se miden con el monitor externo + tráfico real tras el
-          lanzamiento (OBSERVABILITY.md).
-        </p>
+        {/*
+         * H4 — todo lo puramente técnico (SLOs, webhooks, crons, errores,
+         * Web Vitals) queda colapsado: Lucy ve los tiles operativos de arriba
+         * y soporte abre esto cuando lo necesita. <details> nativo, sin JS.
+         */}
+        <details className="mt-6">
+          <summary className="text-brand-purple-dark mb-2 flex cursor-pointer items-center gap-2 text-sm font-bold">
+            <Activity className="h-4 w-4" /> Detalle técnico (para soporte)
+          </summary>
 
-        {/* ─── Salud técnica (para dev) ─── */}
-        <h2 className="text-brand-purple-dark mt-6 mb-2 flex items-center gap-2 text-sm font-bold">
-          <Activity className="h-4 w-4" /> Salud técnica
-        </h2>
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <Tile
-            icon={<AlertTriangle className="h-4 w-4" />}
-            label="Errores (24h)"
-            value={h.errors.last24h}
-            danger={h.errors.last24h > 0}
-            hint={`${h.errors.last7d} en 7 días`}
-          />
-          <Tile
-            icon={<RotateCcw className="h-4 w-4" />}
-            label="A reconciliar"
-            value={h.reconciliation.count}
-            danger={h.reconciliation.count > 0}
-            hint="órdenes con pago/stock inconsistente"
-          />
-          <Tile
-            icon={<Webhook className="h-4 w-4" />}
-            label="Webhooks pendientes"
-            value={h.webhooks.pending}
-            danger={h.webhooks.pending > 5}
-            hint={`${h.webhooks.processed7d}/${h.webhooks.total7d} procesados (7d)`}
-          />
-          <Tile
-            icon={<RotateCcw className="h-4 w-4" />}
-            label="Reversas stock (7d)"
-            value={h.stockReverts7d}
-            hint="cancelaciones + reembolsos"
-          />
-          <Tile
-            icon={<Bug className="h-4 w-4" />}
-            label="Errores cliente"
-            value={h.clientErrors.openCount}
-            danger={h.clientErrors.openCount > 0}
-            hint="reportes del navegador sin resolver"
-          />
-        </div>
+          {/* ─── SLOs (objetivos de nivel de servicio, de datos reales) ─── */}
+          <h2 className="text-brand-purple-dark mt-6 mb-2 flex items-center gap-2 text-sm font-bold">
+            <Gauge className="h-4 w-4" /> Objetivos de servicio (SLOs)
+          </h2>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            {slos.map((s) => (
+              <SloCard key={s.key} slo={s} />
+            ))}
+          </div>
+          <p className="text-brand-muted mt-2 text-xs">
+            Disponibilidad y latencia por ruta se miden con el monitor externo + tráfico real tras
+            el lanzamiento (OBSERVABILITY.md).
+          </p>
 
-        {/* ─── Crons (dead-man switch, #15) ─── */}
-        <h2 className="text-brand-purple-dark mt-6 mb-2 flex items-center gap-2 text-sm font-bold">
-          <Clock className="h-4 w-4" /> Trabajos automáticos (crons)
-        </h2>
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
-          {crons.map((c) => (
+          {/* ─── Salud técnica (para dev) ─── */}
+          <h2 className="text-brand-purple-dark mt-6 mb-2 flex items-center gap-2 text-sm font-bold">
+            <Activity className="h-4 w-4" /> Salud técnica
+          </h2>
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
             <Tile
-              key={c.job}
-              icon={<Clock className="h-4 w-4" />}
-              label={c.label}
-              value={c.overdue ? "Sin correr" : "Al día"}
-              danger={c.overdue}
-              hint={
-                c.lastRunAt ? `últ. ${dateFmt.format(c.lastRunAt)}` : "sin registro de ejecución"
-              }
+              icon={<AlertTriangle className="h-4 w-4" />}
+              label="Errores (24h)"
+              value={h.errors.last24h}
+              danger={h.errors.last24h > 0}
+              hint={`${h.errors.last7d} en 7 días`}
             />
-          ))}
-        </div>
+            {/* H4 — el tile "A reconciliar" ya está arriba en Operación · 24h. */}
+            <Tile
+              icon={<Webhook className="h-4 w-4" />}
+              label="Webhooks pendientes"
+              value={h.webhooks.pending}
+              danger={h.webhooks.pending > 5}
+              hint={`${h.webhooks.processed7d}/${h.webhooks.total7d} procesados (7d)`}
+            />
+            <Tile
+              icon={<RotateCcw className="h-4 w-4" />}
+              label="Reversas stock (7d)"
+              value={h.stockReverts7d}
+              hint="cancelaciones + reembolsos"
+            />
+            <Tile
+              icon={<Bug className="h-4 w-4" />}
+              label="Errores cliente"
+              value={h.clientErrors.openCount}
+              danger={h.clientErrors.openCount > 0}
+              hint="reportes del navegador sin resolver"
+            />
+          </div>
 
-        {/* Top errores */}
-        <Section title="Errores recientes (7 días)" icon={<AlertTriangle className="h-4 w-4" />}>
-          {h.errors.top.length === 0 ? (
-            <Empty>Sin errores del servidor registrados. 🎉</Empty>
-          ) : (
-            <ul className="divide-brand-purple/10 divide-y text-sm">
-              {h.errors.top.map((e, i) => (
-                <li key={i} className="flex items-start justify-between gap-3 py-2">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-brand-purple-dark truncate font-medium">{e.message}</p>
-                    <p className="text-brand-muted text-xs">
-                      {e.routePath ?? "—"} · últ. {dateFmt.format(e.lastAt)}
-                    </p>
-                  </div>
-                  <span className="flex-shrink-0 rounded-full bg-rose-100 px-2 py-0.5 text-xs font-bold text-rose-700">
-                    ×{e.count}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Section>
+          {/* ─── Crons (dead-man switch, #15) ─── */}
+          <h2 className="text-brand-purple-dark mt-6 mb-2 flex items-center gap-2 text-sm font-bold">
+            <Clock className="h-4 w-4" /> Trabajos automáticos (crons)
+          </h2>
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+            {crons.map((c) => (
+              <Tile
+                key={c.job}
+                icon={<Clock className="h-4 w-4" />}
+                label={c.label}
+                value={c.overdue ? "Sin correr" : "Al día"}
+                danger={c.overdue}
+                hint={
+                  c.lastRunAt ? `últ. ${dateFmt.format(c.lastRunAt)}` : "sin registro de ejecución"
+                }
+              />
+            ))}
+          </div>
 
-        {/* Errores del navegador (cliente) */}
-        <Section title="Errores del navegador (cliente)" icon={<Bug className="h-4 w-4" />}>
-          {h.clientErrors.top.length === 0 ? (
-            <Empty>Sin errores del cliente sin resolver. 🎉</Empty>
-          ) : (
-            <ul className="divide-brand-purple/10 divide-y text-sm">
-              {h.clientErrors.top.map((e) => (
-                <li key={e.id} className="flex items-start justify-between gap-3 py-2">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-brand-purple-dark truncate font-medium">{e.message}</p>
-                    <p className="text-brand-muted truncate text-xs">
-                      {e.url ?? "—"} · últ. {dateFmt.format(e.lastSeenAt)}
-                    </p>
-                  </div>
-                  <div className="flex flex-shrink-0 items-center gap-2">
-                    <span className="rounded-full bg-rose-100 px-2 py-0.5 text-xs font-bold text-rose-700">
+          {/* Top errores */}
+          <Section title="Errores recientes (7 días)" icon={<AlertTriangle className="h-4 w-4" />}>
+            {h.errors.top.length === 0 ? (
+              <Empty>Sin errores del servidor registrados. 🎉</Empty>
+            ) : (
+              <ul className="divide-brand-purple/10 divide-y text-sm">
+                {h.errors.top.map((e, i) => (
+                  <li key={i} className="flex items-start justify-between gap-3 py-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-brand-purple-dark truncate font-medium">{e.message}</p>
+                      <p className="text-brand-muted text-xs">
+                        {e.routePath ?? "—"} · últ. {dateFmt.format(e.lastAt)}
+                      </p>
+                    </div>
+                    <span className="flex-shrink-0 rounded-full bg-rose-100 px-2 py-0.5 text-xs font-bold text-rose-700">
                       ×{e.count}
                     </span>
-                    <ClientErrorActions id={e.id} />
-                  </div>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Section>
-
-        {/* Órdenes a reconciliar */}
-        {h.reconciliation.count > 0 && (
-          <Section title="Órdenes que necesitan atención" icon={<RotateCcw className="h-4 w-4" />}>
-            <ul className="divide-brand-purple/10 divide-y text-sm">
-              {h.reconciliation.orders.map((o) => (
-                <li key={o.number} className="flex items-center justify-between gap-3 py-2">
-                  <Link
-                    href={`/admin/pedidos/${encodeURIComponent(o.number)}`}
-                    className="text-brand-purple-dark hover:text-brand-purple font-semibold underline"
-                  >
-                    {o.number}
-                  </Link>
-                  <span className="text-brand-muted text-xs">{o.reason ?? "sin motivo"}</span>
-                </li>
-              ))}
-            </ul>
+                  </li>
+                ))}
+              </ul>
+            )}
           </Section>
-        )}
 
-        {/* Web Vitals + enlaces */}
-        <Section title="Rendimiento (Web Vitals, 7 días)" icon={<Gauge className="h-4 w-4" />}>
-          <div className="flex flex-wrap gap-3 text-sm">
-            <VitalPill label="Buenos" value={h.vitals7d.good} tone="emerald" />
-            <VitalPill label="A mejorar" value={h.vitals7d.needsImprovement} tone="amber" />
-            <VitalPill label="Pobres" value={h.vitals7d.poor} tone="rose" />
-            <Link
-              href="/admin/performance"
-              className="text-brand-purple-dark hover:text-brand-purple ml-auto inline-flex items-center gap-1 text-xs font-semibold underline"
+          {/* Errores del navegador (cliente) */}
+          <Section title="Errores del navegador (cliente)" icon={<Bug className="h-4 w-4" />}>
+            {h.clientErrors.top.length === 0 ? (
+              <Empty>Sin errores del cliente sin resolver. 🎉</Empty>
+            ) : (
+              <ul className="divide-brand-purple/10 divide-y text-sm">
+                {h.clientErrors.top.map((e) => (
+                  <li key={e.id} className="flex items-start justify-between gap-3 py-2">
+                    <div className="min-w-0 flex-1">
+                      <p className="text-brand-purple-dark truncate font-medium">{e.message}</p>
+                      <p className="text-brand-muted truncate text-xs">
+                        {e.url ?? "—"} · últ. {dateFmt.format(e.lastSeenAt)}
+                      </p>
+                    </div>
+                    <div className="flex flex-shrink-0 items-center gap-2">
+                      <span className="rounded-full bg-rose-100 px-2 py-0.5 text-xs font-bold text-rose-700">
+                        ×{e.count}
+                      </span>
+                      <ClientErrorActions id={e.id} />
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Section>
+
+          {/* Órdenes a reconciliar */}
+          {h.reconciliation.count > 0 && (
+            <Section
+              title="Órdenes que necesitan atención"
+              icon={<RotateCcw className="h-4 w-4" />}
             >
-              Ver detalle <ExternalLink className="h-3 w-3" />
-            </Link>
-          </div>
-        </Section>
+              <ul className="divide-brand-purple/10 divide-y text-sm">
+                {h.reconciliation.orders.map((o) => (
+                  <li key={o.number} className="flex items-center justify-between gap-3 py-2">
+                    <Link
+                      href={`/admin/pedidos/${encodeURIComponent(o.number)}`}
+                      className="text-brand-purple-dark hover:text-brand-purple font-semibold underline"
+                    >
+                      {o.number}
+                    </Link>
+                    <span className="text-brand-muted text-xs">{o.reason ?? "sin motivo"}</span>
+                  </li>
+                ))}
+              </ul>
+            </Section>
+          )}
 
-        <p className="text-brand-muted mt-4 text-xs">
-          Healthchecks en vivo:{" "}
-          <a
-            href="/api/health/all"
-            target="_blank"
-            rel="noopener"
-            className="text-brand-purple-dark hover:text-brand-purple underline"
-          >
-            /api/health/all
-          </a>{" "}
-          (DB · storage · Resend).
-        </p>
+          {/* Web Vitals + enlaces */}
+          <Section title="Rendimiento (Web Vitals, 7 días)" icon={<Gauge className="h-4 w-4" />}>
+            <div className="flex flex-wrap gap-3 text-sm">
+              <VitalPill label="Buenos" value={h.vitals7d.good} tone="emerald" />
+              <VitalPill label="A mejorar" value={h.vitals7d.needsImprovement} tone="amber" />
+              <VitalPill label="Pobres" value={h.vitals7d.poor} tone="rose" />
+              <Link
+                href="/admin/performance"
+                className="text-brand-purple-dark hover:text-brand-purple ml-auto inline-flex items-center gap-1 text-xs font-semibold underline"
+              >
+                Ver detalle <ExternalLink className="h-3 w-3" />
+              </Link>
+            </div>
+          </Section>
+
+          <p className="text-brand-muted mt-4 text-xs">
+            Healthchecks en vivo:{" "}
+            <a
+              href="/api/health/all"
+              target="_blank"
+              rel="noopener"
+              className="text-brand-purple-dark hover:text-brand-purple underline"
+            >
+              /api/health/all
+            </a>{" "}
+            (DB · storage · Resend).
+          </p>
+        </details>
       </AdminPageBody>
     </AdminPage>
   );

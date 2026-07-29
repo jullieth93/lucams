@@ -21,6 +21,7 @@ import {
   AdminTableRow,
   AdminEmpty,
 } from "@/components/admin-page";
+import { ConfirmAction } from "@/components/admin/confirm-action";
 import { Button } from "@/components/ui/button";
 import { getCurrentAdmin } from "@/lib/auth";
 import { listAveonlineWebhooks } from "@/features/shipping/aveonline";
@@ -74,6 +75,12 @@ export default async function AveonlineIntegrationPage({
       />
 
       <AdminPageBody>
+        {/* H7 — pantalla técnica: aviso permanente para que Lucy no toque nada. */}
+        <AdminNotice tone="info">
+          <strong>Esta pantalla es para soporte técnico.</strong> Los webhooks ya están configurados
+          — no cambies nada aquí a menos que te lo indique soporte.
+        </AdminNotice>
+
         {errorMsg && <AdminNotice tone="error">{decodeURIComponent(errorMsg)}</AdminNotice>}
 
         {!hasSecret && (
@@ -131,7 +138,11 @@ export default async function AveonlineIntegrationPage({
                     </td>
                     <td className="px-4 py-3 text-right">
                       {w.url && (
-                        <form action={deleteAveonlineWebhookAction} className="inline">
+                        <ConfirmAction
+                          action={deleteAveonlineWebhookAction}
+                          message="¿Eliminar este webhook? Aveonline dejará de avisar a esa URL los cambios de estado de las guías."
+                          className="inline"
+                        >
                           <input type="hidden" name="url" value={w.url} />
                           <Button
                             type="submit"
@@ -142,7 +153,7 @@ export default async function AveonlineIntegrationPage({
                           >
                             <Trash2 className="h-3.5 w-3.5" />
                           </Button>
-                        </form>
+                        </ConfirmAction>
                       )}
                     </td>
                   </AdminTableRow>

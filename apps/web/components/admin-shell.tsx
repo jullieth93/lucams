@@ -8,7 +8,7 @@
  *
  * Componentes:
  *   - Sidebar oscuro premium con blobs decorativos brand
- *   - Topbar minimal con breadcrumb + Live indicator
+ *   - Topbar minimal con breadcrumb + link "Ver el sitio"
  *   - Footer sidebar con avatar + dropdown (Cambiar contraseña + Cerrar sesión)
  *   - 11 áreas top-level: Dashboard, Ventas, Catálogo, Comercial, Producción,
  *     Canales, Finanzas, IA y Conocimiento, Analítica, Configuración, Mensajes
@@ -177,13 +177,6 @@ function AdminTopBar({ pathname }: { pathname: string }) {
           <ExternalLink className="h-3.5 w-3.5" />
           Ver el sitio
         </Link>
-        <div className="flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 ring-1 ring-emerald-200/60">
-          <span className="relative flex h-2 w-2">
-            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75" />
-            <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-500" />
-          </span>
-          <span className="text-xs font-semibold text-emerald-700">Live</span>
-        </div>
       </div>
     </div>
   );
@@ -305,9 +298,6 @@ function UserFooter({ admin, onNavigate }: { admin: AdminInfo; onNavigate: () =>
               <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-400/25 px-1.5 text-[10px] font-medium text-amber-100">
                 <Crown className="h-2.5 w-2.5" />
                 {roleLabel}
-              </span>
-              <span className="bg-brand-yellow/90 text-brand-purple-dark inline-flex items-center rounded-full px-1.5 text-[10px] font-bold tracking-wide uppercase">
-                Free
               </span>
             </div>
           </div>

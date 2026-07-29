@@ -12,7 +12,13 @@ import {
   type WarrantyStatus,
   type WarrantyResolution,
 } from "@/features/warranty/service";
-import { AdminPage, AdminPageHeader, AdminPageBody, AdminBadge } from "@/components/admin-page";
+import {
+  AdminPage,
+  AdminPageHeader,
+  AdminPageBody,
+  AdminBadge,
+  AdminEmpty,
+} from "@/components/admin-page";
 import { WarrantyActions } from "./warranty-actions";
 
 export const metadata: Metadata = { title: "Garantías" };
@@ -94,9 +100,11 @@ export default async function AdminGarantiasPage({ searchParams }: { searchParam
         </div>
 
         {rows.length === 0 ? (
-          <p className="text-brand-muted border-brand-purple/10 rounded-xl border bg-white p-8 text-center text-sm">
-            No hay reclamos en este estado. 🦝
-          </p>
+          <AdminEmpty
+            icon={<ShieldCheck className="h-5 w-5" />}
+            title="No hay reclamos en este estado"
+            description="Cuando un cliente reporte un defecto cubierto por la garantía, aparecerá acá."
+          />
         ) : (
           <ul className="space-y-3">
             {rows.map((c) => (

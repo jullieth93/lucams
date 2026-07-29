@@ -1,15 +1,11 @@
 /*
  * Admin > Finanzas — dashboard financiero.
  *
- * Pre-Fase 2 (sin checkout productivo) este módulo NO tiene datos reales
- * — Order existe en schema pero no se generan filas hasta que Wompi esté
- * cableado. Mostramos el marco preparado con KPIs vacíos + explicación
- * clara de qué llega con Fase 2.
- *
- * Cuando Fase 2 esté cerrada (checkout + Wompi + Aveonline), este page
- * pasa a leer Order.total agregado por período + breakdown por método de
- * pago + IVA + conciliación con Wompi. Ese trabajo está scopeado en
- * sub-bloques N (Wompi reconciliación) y Q.6 (reportes admin).
+ * Lee datos REALES de Order (ingresos agregados, conteos por estado,
+ * reembolsos) vía las queries de abajo. Lo que sigue pendiente es la
+ * capa contable: facturación electrónica DIAN, desagregación de IVA y
+ * conciliación automática contra el dashboard de Wompi — por eso esas
+ * tarjetas se muestran como "Próximamente" y el KPI DIAN está en 0.
  */
 
 import type { Metadata } from "next";
@@ -269,13 +265,6 @@ export default async function AdminFinanzasPage() {
             Mientras tanto, puedes ir dejando todo listo:
           </p>
           <ul className="text-brand-purple-dark/75 list-inside list-disc space-y-1.5 text-sm">
-            <li>
-              Configurar la pasarela Wompi en{" "}
-              <Link href="/admin/integraciones" className="text-brand-purple underline">
-                /admin/integraciones
-              </Link>
-              .
-            </li>
             <li>
               Crear cupones promocionales en{" "}
               <Link href="/admin/cupones" className="text-brand-purple underline">

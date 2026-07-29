@@ -8,10 +8,10 @@
  * FOCO:
  *   - En AMBOS modos se ocultan los módulos futuros descopeados:
  *     "Mercado Libre" dentro de Canales y "Bot WhatsApp" dentro de IA y Conocimiento.
- *   - modo full: todo lo demás visible (Finanzas, Integraciones, Mayorista B2B).
+ *   - modo full: todo lo demás visible (Finanzas, Integraciones, Precios al por mayor).
  *   - modo catalog: además oculta el grupo "Finanzas" completo, el item
  *     "Integraciones" de "Configuración" (no hay pagos ni envíos integrados)
- *     y "Mayorista B2B" de "Promociones" (WholesaleTier sin consumidor en Etapa 1).
+ *     y "Precios al por mayor" de "Promociones" (WholesaleTier sin consumidor en Etapa 1).
  *   - "Cotizaciones" es el primer item de "Ventas" en AMBOS modos.
  *   - El filtrado NO muta ADMIN_NAV (el catch-all placeholder sigue viendo
  *     todos los módulos para su info contextual).
@@ -76,7 +76,7 @@ describe("getAdminNav", () => {
     expect(config?.items?.some((it) => it.href === "/admin/seguridad")).toBe(true);
   });
 
-  it("modo catalog: oculta Mayorista B2B de Promociones pero conserva Cupones", async () => {
+  it("modo catalog: oculta Precios al por mayor de Promociones pero conserva Cupones", async () => {
     process.env[KEY] = "catalog";
     const mod = await loadNav();
     const promo = mod.getAdminNav().find((g) => g.title === "Promociones");
@@ -87,7 +87,7 @@ describe("getAdminNav", () => {
     expect(promo?.items?.some((it) => it.href === "/admin/cupones")).toBe(true);
   });
 
-  it("modo full: Mayorista B2B visible en Promociones", async () => {
+  it("modo full: Precios al por mayor visible en Promociones", async () => {
     process.env[KEY] = "full";
     const mod = await loadNav();
     const promo = mod.getAdminNav().find((g) => g.title === "Promociones");

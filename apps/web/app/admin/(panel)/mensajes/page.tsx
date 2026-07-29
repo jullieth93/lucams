@@ -26,7 +26,6 @@ import {
   AdminTableRow,
 } from "@/components/admin-page";
 import { getCurrentAdmin } from "@/lib/auth";
-import { prisma } from "@/lib/db";
 import { listSupportTickets, type SupportTicketStatus } from "@/features/support/admin-service";
 import { SUBJECT_LABELS } from "@/features/support/schemas";
 import { MessageActions } from "./message-actions";
@@ -82,18 +81,6 @@ export default async function AdminMensajesPage({ searchParams }: { searchParams
   // Default: abiertos — es lo que requiere acción inmediata de Lucy.
   const filter = statusRaw === "all" ? undefined : (validStatus ?? "OPEN");
   const rows = await listSupportTickets(filter ? { status: filter } : {});
-
-  // El select del servicio compartido no incluye ip/userAgent (y el servicio no es
-  // editable desde este módulo); se traen aparte en una sola query por PK para
-  // mostrarlos en el detalle desplegable de cada fila.
-  const metaById = new Map<string, { ip: string | null; userAgent: string | null }>();
-  if (rows.length > 0) {
-    const meta = await prisma.supportTicket.findMany({
-      where: { id: { in: rows.map((t) => t.id) } },
-      select: { id: true, ip: true, userAgent: true },
-    });
-    for (const m of meta) metaById.set(m.id, { ip: m.ip, userAgent: m.userAgent });
-  }
 
   return (
     <AdminPage>
@@ -151,7 +138,6 @@ export default async function AdminMensajesPage({ searchParams }: { searchParams
             <AdminTableBody>
               {rows.map((t) => {
                 const status = t.status as SupportTicketStatus;
-                const meta = metaById.get(t.id);
                 return (
                   <AdminTableRow key={t.id}>
                     <td className="text-brand-muted px-4 py-3 align-top text-xs whitespace-nowrap">
@@ -181,13 +167,7 @@ export default async function AdminMensajesPage({ searchParams }: { searchParams
                             {t.resolvedAt
                               ? `Cerrado el ${dateFmt.format(t.resolvedAt)}`
                               : "Sin cerrar todavía"}
-                            {meta?.ip ? ` · IP: ${meta.ip}` : ""}
                           </p>
-                          {meta?.userAgent && (
-                            <p className="text-brand-muted mt-0.5 text-[11px] break-all">
-                              Dispositivo: {meta.userAgent}
-                            </p>
-                          )}
                         </div>
                       </details>
                     </td>

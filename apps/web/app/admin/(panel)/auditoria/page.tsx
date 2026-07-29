@@ -3,9 +3,9 @@
  *
  * Filtros opcionales (query params):
  *   - admin: id de AdminUser
- *   - action: prefijo (ej. "cms.block" matchea cms.block.publish,
- *     cms.block.inline_publish, etc.)
- *   - entity: entityType exacto (ej. "Product", "CmsBlock")
+ *   - action: prefijo (ej. "product." matchea product.create,
+ *     product.update, product.archive, etc.)
+ *   - entity: entityType exacto (ej. "Product", "Order")
  *   - from / to: ISO date YYYY-MM-DD
  *   - page: número (paginación 30/page)
  *
@@ -139,13 +139,13 @@ export default async function AuditoriaPage({ searchParams }: { searchParams: Se
               htmlFor="f-action"
               className="text-brand-purple-dark/70 mb-1 block text-xs font-semibold"
             >
-              Acción (prefix)
+              Acción (prefijo)
             </label>
             <input
               id="f-action"
               name="action"
               defaultValue={filterAction ?? ""}
-              placeholder="ej. cms.block"
+              placeholder="ej. product.update"
               className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 w-full rounded-md border bg-white px-2 py-1.5 text-sm focus:ring-2 focus:outline-none"
             />
           </div>
@@ -160,7 +160,7 @@ export default async function AuditoriaPage({ searchParams }: { searchParams: Se
               id="f-entity"
               name="entity"
               defaultValue={filterEntity ?? ""}
-              placeholder="ej. Product"
+              placeholder="ej. Order"
               className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 w-full rounded-md border bg-white px-2 py-1.5 text-sm focus:ring-2 focus:outline-none"
             />
           </div>

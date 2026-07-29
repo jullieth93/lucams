@@ -275,11 +275,6 @@ export default async function AdminPedidosPage({ searchParams }: { searchParams:
                       <div className="text-brand-purple-dark font-mono text-sm font-semibold">
                         {o.number}
                       </div>
-                      {o.wompiTransactionId && (
-                        <div className="text-brand-muted font-mono text-[10px]">
-                          wompi · {o.wompiTransactionId.slice(0, 14)}…
-                        </div>
-                      )}
                     </td>
                     <td className="px-4 py-3">
                       <div className="text-brand-purple-dark text-sm font-medium">{fullName}</div>

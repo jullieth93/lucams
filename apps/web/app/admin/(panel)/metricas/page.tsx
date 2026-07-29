@@ -263,7 +263,7 @@ export default async function AdminMetricasPage() {
                     <th className="w-12 px-4 py-3 text-center font-semibold">#</th>
                     <th className="px-4 py-3 text-left font-semibold">Producto</th>
                     <th className="px-4 py-3 text-left font-semibold">Opción</th>
-                    <th className="px-4 py-3 text-left font-semibold">SKU</th>
+                    <th className="px-4 py-3 text-left font-semibold">Código</th>
                     <th className="px-4 py-3 text-right font-semibold">Unidades vendidas</th>
                   </tr>
                 </AdminTableHead>

@@ -212,7 +212,7 @@ export const ADMIN_NAV: NavGroup[] = [
     items: [
       { label: "Cupones", href: "/admin/cupones", icon: Ticket },
       {
-        label: "Mayorista B2B",
+        label: "Precios al por mayor",
         href: "/admin/mayorista",
         icon: Building2,
         description:
@@ -269,8 +269,6 @@ export const ADMIN_NAV: NavGroup[] = [
         label: "Resumen",
         href: "/admin/finanzas",
         icon: DollarSign,
-        description:
-          "Dashboard financiero: KPIs ingresos + DIAN + breakdown método pago. Marco preparado; datos reales llegan con Fase 2 (Checkout).",
       },
       {
         label: "Conciliación contra entrega",
@@ -352,7 +350,7 @@ export const ADMIN_NAV: NavGroup[] = [
         href: "/admin/integraciones",
         icon: Plug,
         description:
-          "Estado en vivo de Supabase, Wompi, Aveonline, Resend, WhatsApp, Turnstile, Anthropic + env vars requeridas + acciones humanas pendientes.",
+          "Estado en vivo de Supabase, Wompi, Aveonline, Resend, WhatsApp, Turnstile + env vars requeridas + acciones humanas pendientes.",
       },
       {
         label: "Plantillas de correo",
@@ -389,7 +387,7 @@ export const ADMIN_NAV: NavGroup[] = [
  * integrados, así que el sidebar oculta lo que no aplica:
  *   - el grupo "Finanzas" completo (resumen, conciliación y bloqueos COD),
  *   - "Integraciones" dentro de "Configuración" (Wompi/Aveonline apagadas),
- *   - "Mayorista B2B" dentro de "Promociones" (WholesaleTier no tiene NINGÚN
+ *   - "Precios al por mayor" dentro de "Promociones" (WholesaleTier no tiene NINGÚN
  *     consumidor fuera del admin: ni PDP, ni carrito, ni cotización aplican
  *     niveles B2B — módulo de Etapa 2).
  *
@@ -419,7 +417,7 @@ export function getAdminNav(): NavGroup[] {
     return withoutFuture.filter((group) => !group.items || group.items.length > 0 || group.href);
   }
   // Modo catálogo (Etapa 1): además de los futuros, se ocultan lo que solo aplica
-  // con pagos/envíos online (grupo Finanzas completo, Integraciones) y Mayorista B2B
+  // con pagos/envíos online (grupo Finanzas completo, Integraciones) y Precios al por mayor
   // (WholesaleTier sin consumidor en storefront hasta Etapa 2). Coherente con los
   // gates de página (esas rutas redirigen a /admin/dashboard en este modo).
   return withoutFuture

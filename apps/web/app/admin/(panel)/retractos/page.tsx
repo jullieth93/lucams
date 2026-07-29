@@ -10,7 +10,13 @@ import { requireRole } from "@/lib/admin-rbac-guard";
 import { formatCOP } from "@/lib/format";
 import { listRetractRequests } from "@/features/retract/service";
 import type { RetractStatus } from "@lucams/db";
-import { AdminPage, AdminPageHeader, AdminPageBody, AdminBadge } from "@/components/admin-page";
+import {
+  AdminPage,
+  AdminPageHeader,
+  AdminPageBody,
+  AdminBadge,
+  AdminEmpty,
+} from "@/components/admin-page";
 import { RetractActions } from "./retract-actions";
 
 export const metadata: Metadata = { title: "Retractos" };
@@ -88,9 +94,11 @@ export default async function AdminRetractosPage({ searchParams }: { searchParam
         </div>
 
         {rows.length === 0 ? (
-          <p className="text-brand-muted border-brand-purple/10 rounded-xl border bg-white p-8 text-center text-sm">
-            No hay solicitudes en este estado. 🦝
-          </p>
+          <AdminEmpty
+            icon={<Undo2 className="h-5 w-5" />}
+            title="No hay solicitudes en este estado"
+            description="Cuando un cliente pida devolver su pedido (derecho de retracto), la solicitud aparecerá acá."
+          />
         ) : (
           <ul className="space-y-3">
             {rows.map((r) => (

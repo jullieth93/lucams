@@ -11,7 +11,13 @@ import { ShieldAlert } from "lucide-react";
 import { requireRole } from "@/lib/admin-rbac-guard";
 import { listPendingModeration } from "@/features/moderation/service";
 import { getProductionAssetSignedUrls } from "@/lib/storage";
-import { AdminPage, AdminPageHeader, AdminPageBody, AdminNotice } from "@/components/admin-page";
+import {
+  AdminPage,
+  AdminPageHeader,
+  AdminPageBody,
+  AdminNotice,
+  AdminEmpty,
+} from "@/components/admin-page";
 import { ModerationActions } from "./moderation-actions";
 
 export const metadata: Metadata = { title: "Moderación" };
@@ -63,9 +69,11 @@ export default async function AdminModeracionPage({
         )}
 
         {rows.length === 0 ? (
-          <p className="text-brand-muted border-brand-purple/10 rounded-xl border bg-white p-8 text-center text-sm">
-            No hay diseños pendientes de revisar. ¡Todo al día! 🦝
-          </p>
+          <AdminEmpty
+            icon={<ShieldAlert className="h-5 w-5" />}
+            title="No hay diseños pendientes de revisar"
+            description="¡Todo al día! Cuando un pedido pago traiga un diseño personalizado, aparecerá acá para tu aprobación."
+          />
         ) : (
           <ul className="space-y-3">
             {rows.map((d) => (
