@@ -225,6 +225,7 @@ export default async function AdminIntegracionesPage() {
       healthDetail: aveonlineConfigured
         ? "Cableado en checkout (cotización + guía contraentrega + tracking)."
         : "Pendiente: activar cuenta comercial + cargar usuario/clave.",
+      docs: "/admin/integraciones/aveonline",
       dashboardUrl: "https://app.aveonline.co",
       acciones:
         "ACCIÓN HUMANA: cuenta comercial + AVEONLINE_USUARIO/CLAVE + AVEONLINE_ENV=production + AVEONLINE_GENERATE_REAL=true + SiteSettings de origen (PICKUP_* + BUSINESS_NIT)",

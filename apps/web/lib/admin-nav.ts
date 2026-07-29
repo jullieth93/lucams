@@ -321,7 +321,7 @@ export const ADMIN_NAV: NavGroup[] = [
           "Panel de salud del sistema: errores del servidor, webhooks, órdenes a reconciliar, reversas de stock y Web Vitals. La fuente para saber si algo está roto (sin Sentry).",
       },
       {
-        label: "Performance",
+        label: "Rendimiento web",
         href: "/admin/performance",
         icon: Gauge,
         description: "Rendimiento técnico: errores recientes y métricas web (LCP/CLS/INP).",
@@ -363,7 +363,7 @@ export const ADMIN_NAV: NavGroup[] = [
       },
       // P1-17: movido desde "Promociones" — es plumbing SEO, no oferta comercial.
       {
-        label: "Redirects 301",
+        label: "Redirecciones (SEO)",
         href: "/admin/redirects",
         icon: ArrowRightLeft,
         description:
