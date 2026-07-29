@@ -13,8 +13,8 @@
  *   - WOMPI_INTEGRITY_SECRET (test_integrity_… | prod_integrity_…) → firma de transacción al crear
  *   - WOMPI_EVENTS_SECRET    (test_events_…    | prod_events_…)    → firma de webhook recibido
  *
- * Webhooks: Wompi firma con HMAC-SHA256(events_secret) sobre el JSON
- * body concatenado en orden alfabético de propiedades específicas. Doc:
+ * Webhooks: Wompi firma con SHA-256 plano (NO HMAC): hex( concat de los valores
+ * de signature.properties en orden + timestamp + events_secret ). Doc:
  * https://docs.wompi.co/docs/colombia/eventos/ (Eventos / Verificación firma)
  */
 

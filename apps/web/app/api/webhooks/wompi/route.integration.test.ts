@@ -360,4 +360,32 @@ describe.skipIf(!hasDb)("webhook Wompi ROUTE — portería con firma real", () =
     expect(res.status).toBe(200);
     expect(sagaCalls).toHaveLength(0);
   });
+
+  it("carrera de dedup (findUnique miss + create P2002 por entrega concurrente) → 200, sin doble saga ni 500", async () => {
+    // Certificación 2026-07-29: dos entregas concurrentes del mismo evento pasan el
+    // findUnique; el create perdedor revienta P2002. Antes: 500 crudo → reintentos
+    // ciegos de Wompi. Ahora: 200 "concurrent duplicate" y el ganador procesa.
+    const ref = `${RUN}-LCM-RACE`;
+    await makeOrder(ref, 55000);
+    const ev = signedEvent({
+      txId: `${RUN}-tx10`,
+      status: "APPROVED",
+      amountInCents: 55000,
+      reference: ref,
+    });
+    // La fila YA existe en DB (la creó el request "ganador"), pero ESTE request la
+    // pierde en findUnique (mock de UNA llamada) → su create revienta contra el
+    // unique real (source, externalId) de la DB.
+    const eventKey = `${ev.data.transaction.id}-${ev.data.transaction.status}-${ev.timestamp}`;
+    await prisma.webhookEvent.create({
+      data: { source: "WOMPI", externalId: eventKey, payload: {} },
+    });
+    const spy = vi.spyOn(prisma.webhookEvent, "findUnique").mockResolvedValueOnce(null);
+
+    const res = await POST(req(ev));
+
+    expect(res.status).toBe(200);
+    expect(sagaCalls).toHaveLength(0); // sin doble procesamiento
+    spy.mockRestore();
+  });
 });

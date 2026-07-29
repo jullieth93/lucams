@@ -16,7 +16,7 @@
  */
 
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
+import { prisma, Prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { secureEquals } from "@/lib/timing-safe";
 import { getShippingProvider } from "@/features/shipping/provider";
@@ -103,19 +103,36 @@ export async function POST(req: Request) {
   }
   const webhookRow = existing
     ? existing
-    : await prisma.webhookEvent.create({
-        data: {
-          source: "AVEONLINE",
-          externalId,
-          payload: {
-            trackingNumber: event.trackingNumber,
-            status: event.status,
-            carrierStatusRaw: event.carrierStatusRaw,
-            timestamp: event.timestamp.toISOString(),
-            rawBodyHead: rawBody.slice(0, 1000),
-          },
-        },
-      });
+    : await (async () => {
+        try {
+          return await prisma.webhookEvent.create({
+            data: {
+              source: "AVEONLINE",
+              externalId,
+              payload: {
+                trackingNumber: event.trackingNumber,
+                status: event.status,
+                carrierStatusRaw: event.carrierStatusRaw,
+                timestamp: event.timestamp.toISOString(),
+                rawBodyHead: rawBody.slice(0, 1000),
+              },
+            },
+          });
+        } catch (err) {
+          // Carrera de dedup (certificación 2026-07-29): dos entregas concurrentes del
+          // mismo evento pueden pasar el findUnique; el create perdedor revienta P2002
+          // por el unique (source, externalId). El ganador está procesando → 200 como
+          // duplicado en vez de 500 (que gatillaría reintentos + doble saga).
+          if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+            return null;
+          }
+          throw err;
+        }
+      })();
+  if (!webhookRow) {
+    logger.info({ event: "webhook.aveonline.duplicate_skipped", externalId, race: true });
+    return NextResponse.json({ ok: true, note: "concurrent duplicate, already processing" });
+  }
 
   logger.info({
     event: "webhook.aveonline.received",

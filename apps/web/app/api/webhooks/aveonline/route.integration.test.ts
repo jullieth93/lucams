@@ -56,6 +56,7 @@ vi.mock("@/features/orders/emails", () => ({
 
 import { prisma } from "@/lib/db";
 import { POST } from "@/app/api/webhooks/aveonline/route";
+import { getShippingProvider } from "@/features/shipping/provider";
 
 const hasDb = Boolean(process.env.DATABASE_URL);
 const RUN = `whroute${Date.now()}${Math.floor(Math.random() * 1e6)}`.toLowerCase();
@@ -248,5 +249,41 @@ describe.skipIf(!hasDb)("webhook Aveonline ROUTE — path real con guia numéric
       }),
     );
     expect(res.status).toBe(200);
+  });
+
+  it("carrera de dedup (findUnique miss + create P2002 por entrega concurrente) → 200, sin doble saga ni 500", async () => {
+    // Certificación 2026-07-29: dos entregas concurrentes del mismo evento pasan el
+    // findUnique; el create perdedor revienta P2002. Antes: 500 crudo → reintentos
+    // ciegos de Aveonline. Ahora: 200 "concurrent duplicate" y el ganador procesa.
+    const guia = freshGuia();
+    const orderId = await makeFulfillingOrder(String(guia));
+    const payload = {
+      status: "ok",
+      guia,
+      estado: [{ nombre_estado: "EN TRANSITO", fecha: "2026-07-11 10:00:00" }],
+    };
+    // externalId EXACTO que construirá el route (parse con el provider real).
+    const provider = await getShippingProvider();
+    const parsed = await provider.handleWebhook(JSON.stringify(payload), {});
+    const externalId = `${parsed.trackingNumber}-${parsed.status}-${parsed.timestamp.getTime()}`;
+    // La fila YA existe en DB (la creó el request "ganador"), pero ESTE request la
+    // pierde en findUnique (mock de UNA llamada) → su create revienta contra el
+    // unique real (source, externalId) de la DB.
+    await prisma.webhookEvent.create({
+      data: { source: "AVEONLINE", externalId, payload: {} },
+    });
+    const spy = vi.spyOn(prisma.webhookEvent, "findUnique").mockResolvedValueOnce(null);
+
+    const res = await POST(webhookRequest(payload));
+
+    expect(res.status).toBe(200);
+    // Sin doble procesamiento: ni email ni transición de estado (el ganador procesa).
+    expect(emailCalls).toHaveLength(0);
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+      select: { status: true },
+    });
+    expect(order?.status).toBe("FULFILLING");
+    spy.mockRestore();
   });
 });

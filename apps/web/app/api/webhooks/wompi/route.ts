@@ -2,7 +2,8 @@
  * Webhook Wompi — recibe transaction.updated cuando un pago cambia de estado.
  *
  * Flow:
- *   1. POST /api/webhooks/wompi con body JSON firmado HMAC-SHA256.
+ *   1. POST /api/webhooks/wompi con body JSON + firma de integridad SHA-256
+ *      (esquema eventos Wompi: sha256(propiedades + timestamp + events_secret)).
  *   2. Verificar firma con WOMPI_EVENTS_SECRET (verifyWebhookSignature).
  *      Si inválida → 401 + no procesar.
  *   3. Idempotency: upsert WebhookEvent (source=WOMPI, externalId=transaction.id).
@@ -23,7 +24,7 @@
  */
 
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/db";
+import { prisma, Prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { verifyWebhookSignature, getWompiExpectedWebhookEnv } from "@/lib/wompi";
 import { processPaidOrder, processFailedPaymentOrder } from "@/features/orders/saga";
@@ -38,7 +39,7 @@ export const runtime = "nodejs";
 export const maxDuration = 60;
 
 export async function POST(req: Request) {
-  // 1) Leer raw body (string) — necesario para HMAC verify byte-exacto.
+  // 1) Leer raw body (string) — necesario para verificar la firma byte-exacto.
   let rawBody: string;
   try {
     rawBody = await req.text();
@@ -50,7 +51,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "bad request" }, { status: 400 });
   }
 
-  // 2) Verificar firma HMAC. Si inválida, rechazamos (potencial atacante).
+  // 2) Verificar firma. Si inválida, rechazamos (potencial atacante).
   const verification = verifyWebhookSignature(rawBody);
   if (!verification.valid) {
     logger.warn({
@@ -141,13 +142,31 @@ export async function POST(req: Request) {
   }
   const webhookRow = existing
     ? existing
-    : await prisma.webhookEvent.create({
-        data: {
-          source: "WOMPI",
-          externalId: eventKey,
-          payload: event as unknown as object,
-        },
-      });
+    : await (async () => {
+        try {
+          return await prisma.webhookEvent.create({
+            data: {
+              source: "WOMPI",
+              externalId: eventKey,
+              payload: event as unknown as object,
+            },
+          });
+        } catch (err) {
+          // Carrera de dedup (certificación 2026-07-29): dos entregas concurrentes del
+          // mismo evento pueden pasar el findUnique de arriba; el create perdedor
+          // revienta P2002 por el unique (source, externalId). El request ganador ya
+          // está procesando → respondemos como duplicado (200) en vez de reventar con
+          // 500 y gatillar los reintentos ciegos de Wompi + doble saga.
+          if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
+            return null;
+          }
+          throw err;
+        }
+      })();
+  if (!webhookRow) {
+    logger.info({ event: "webhook.wompi.duplicate_skipped", eventKey, race: true });
+    return NextResponse.json({ ok: true, note: "concurrent duplicate, already processing" });
+  }
 
   logger.info({
     event: "webhook.wompi.received",
