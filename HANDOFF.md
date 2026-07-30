@@ -191,6 +191,17 @@ Decisión de negocio comunicada por Lucy en este chat: "Venndelo hoy por hoy NO 
   1. `fix(orders): numeración de orden max(number)+1 bajo advisory lock — elimina tormenta de colisiones P2002 tras hard deletes` (solo `features/orders/service.ts`).
   2. `chore(shipping)!: eliminar Venndelo por completo — provider único Aveonline, enum/columna fuera, docs purgados (decisión Lucy 2026-07-29)` (breaking: requiere `prisma migrate deploy` en cada entorno — la migración `20260729150000_drop_venndelo_plan_b` ya está aplicada en la BD de develop y viaja en el repo para producción).
 
+### Post-script 5 — Todo el texto visible editable + Admin de contenido reformulado (2026-07-29, noche)
+
+Lucy: "¿no sería bueno que todo esto se administre desde el Admin?" + "el Admin debería reformularse". Verificado texto por texto contra BD/código (no suposición): el 95% ya era editable; se completó el 5% restante y se reformuló la presentación.
+
+- **Seed completion (26 bloques)**: todo `blockKey` que solo tenía fallback en código quedó sembrado con su texto actual: hero completo (título, acento, chips — chip-eta en forma token), featured.empty, pdp.related, columnas del footer, contacto, ayuda (encabezados/CTA), mi-cuenta, status, maintenance. Total: **83 textos editables** desde `/admin/contenido/bloques`. LEGAL queda fuera a propósito (cumplimiento, no edición casual — decisión documentada).
+- **Limpieza de basura de tests**: 30 bloques `itestcms*` (residuo de tests de integración CMS) visibles en el admin de Lucy → soft-deleted (0 restantes). Misma clase de residuo histórico que las 28 órdenes e2e: los teardowns no alcanzan todo.
+- **Reformulación del módulo** (`blocks-browser.tsx`, client): (a) **buscador** ("escribe lo que ves en tu sitio"); (b) agrupación por **LUGAR del sitio** derivada del prefijo de key ("Inicio · Portada", "Preguntas frecuentes", "Checkout", "Pie de página"…) en vez de categoría técnica; (c) título "Base de conocimiento" → **"Textos del sitio"** y grupo del menú "IA y Conocimiento" → **"Contenido"** (label "Textos del sitio"; la key queda pequeña solo para soporte). Nav + test actualizados.
+- **Data-quality**: descripciones de los 29 bloques nuevos corregidas (el default "FAQ visible en /ayuda" había quedado pegado por el seed).
+- **Evidencias**: screenshots del admin reformulado (lista + búsqueda "entrega" → 2 resultados) · admin-nav 11/11 ✓ · typecheck/lint/prettier ✓ · render del sitio intacto (los textos sembrados son idénticos a los fallbacks).
+- **Gotcha recurrente (ya documentado)**: `tsc` falló otra vez por `.next/dev/types` corrupto con el dev server vivo → `rm -rf .next/dev/types && npx next typegen`. Y pkill con el patrón del propio servidor en la misma línea de comando se auto-mata (separar en dos llamadas).
+
 ### Post-script 4 — Fuente única para promesas: settings atómicos + tokens CMS (2026-07-29, noche)
 
 Duda de Lucy: "en Admin dice Tiempo de fabricación pero el Front dice Entrega en máx. 3 días (2 fabricación + 1 entrega)… esto es un ejemplo de muchos, por eso pongo en duda el CMS". Tenía razón y era un defecto de modelado, no de uso:
