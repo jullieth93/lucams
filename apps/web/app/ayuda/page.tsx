@@ -18,7 +18,8 @@ import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { CmsText } from "@/components/cms/cms-text";
 import { CmsMarkdown } from "@/components/cms/cms-markdown";
-import { getCmsBlocksByCategory, getSettingValue, getPageSeo } from "@/lib/cms";
+import { getCmsBlocksByCategory, getSettingValue } from "@/lib/cms";
+import { getPageSeo } from "@/lib/cms-tokens";
 import { buildWhatsAppUrl } from "@/lib/wa";
 import { isCatalogMode } from "@/lib/store-mode";
 
@@ -64,8 +65,8 @@ function buildFallbackFaqs(
       slug: "cuanto-demora",
       question: "¿Cuánto demora mi pedido?",
       answer: catalog
-        ? "Lo producimos a mano y lo **entregamos en máximo 3 días hábiles** (2 de fabricación + 1 de entrega) desde que confirmas. El envío lo coordinamos por WhatsApp con nuestras transportadoras aliadas y te pasamos el número de guía para que sigas tu pedido."
-        : "Lo producimos a mano y lo **entregamos en máximo 3 días hábiles** (2 de fabricación + 1 de entrega) desde que confirmas. El tránsito final lo pone la transportadora; al despachar te enviamos el número de guía para que sigas tu pedido.",
+        ? "Lo producimos a mano y lo **entregamos en máximo {{total}} días hábiles** ({{fab}} de fabricación + {{entrega}} de entrega) desde que confirmas. El envío lo coordinamos por WhatsApp con nuestras transportadoras aliadas y te pasamos el número de guía para que sigas tu pedido."
+        : "Lo producimos a mano y lo **entregamos en máximo {{total}} días hábiles** ({{fab}} de fabricación + {{entrega}} de entrega) desde que confirmas. El tránsito final lo pone la transportadora; al despachar te enviamos el número de guía para que sigas tu pedido.",
     },
     {
       slug: "metodos-pago",
@@ -78,8 +79,8 @@ function buildFallbackFaqs(
       slug: "envios-cobertura",
       question: "¿Hacen envíos a mi ciudad?",
       answer: catalog
-        ? "Llegamos a **1.100+ destinos** en Colombia a través de nuestras transportadoras aliadas. El costo del envío y el tiempo estimado te los confirmamos por **WhatsApp** al cotizar tu pedido."
-        : "Llegamos a **1.100+ destinos** en Colombia a través de nuestras transportadoras aliadas. Al hacer el pedido calculamos automáticamente el costo, el tiempo estimado y qué transportadora llega a tu ciudad.",
+        ? "Llegamos a **{{cobertura}} destinos** en Colombia a través de nuestras transportadoras aliadas. El costo del envío y el tiempo estimado te los confirmamos por **WhatsApp** al cotizar tu pedido."
+        : "Llegamos a **{{cobertura}} destinos** en Colombia a través de nuestras transportadoras aliadas. Al hacer el pedido calculamos automáticamente el costo, el tiempo estimado y qué transportadora llega a tu ciudad.",
     },
     {
       slug: "cambios-devoluciones",

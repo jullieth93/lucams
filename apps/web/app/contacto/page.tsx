@@ -13,7 +13,8 @@ import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { CmsText } from "@/components/cms/cms-text";
 import { CmsSetting } from "@/components/cms/cms-setting";
-import { getSettingValue, getPageSeo } from "@/lib/cms";
+import { getSettingValue } from "@/lib/cms";
+import { getPageSeo } from "@/lib/cms-tokens";
 import { buildWhatsAppUrl } from "@/lib/wa";
 import { ContactForm } from "./contact-form";
 

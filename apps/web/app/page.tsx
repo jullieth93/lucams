@@ -31,7 +31,7 @@ import {
 } from "@/features/products/public-service";
 import { listFeaturedReviews } from "@/features/reviews/public-service";
 import { CmsText } from "@/components/cms/cms-text";
-import { getPageSeo } from "@/lib/cms";
+import { getPageSeo } from "@/lib/cms-tokens";
 import { buildWhatsAppUrl } from "@/lib/wa";
 import { isCatalogMode } from "@/lib/store-mode";
 
@@ -46,7 +46,7 @@ export async function generateMetadata(): Promise<Metadata> {
     title: "Lucams_shop — Tus recuerdos en imán",
     description: isCatalogMode()
       ? "Imanes magnéticos personalizados, fotoimanes, recuerdos para eventos, calendarios y planners. Hechos a mano en Colombia; el envío lo coordinamos contigo por WhatsApp."
-      : "Imanes magnéticos personalizados, fotoimanes, recuerdos para eventos, calendarios y planners. Hechos a mano en Colombia con entrega a 1.100+ destinos.",
+      : "Imanes magnéticos personalizados, fotoimanes, recuerdos para eventos, calendarios y planners. Hechos a mano en Colombia con entrega a {{cobertura}} destinos.",
   });
 }
 

@@ -37,7 +37,7 @@ const STEPS = [
     // catálogo) y era FALSO en modo full (Lucy 2026-07-29). La coletilla COD se mantiene para
     // que stripCodMention la recorte si COD_ENABLED está apagado.
     descFallback:
-      "Lo producimos a mano y lo entregamos en máximo 3 días hábiles (2 de fabricación + 1 de entrega). El tiempo final depende de la transportadora y de tu ciudad. Pagas en línea de forma segura — contraentrega disponible.",
+      "Lo producimos a mano y lo entregamos en máximo {{total}} días hábiles ({{fab}} de fabricación + {{entrega}} de entrega). El tiempo final depende de la transportadora y de tu ciudad. Pagas en línea de forma segura — contraentrega disponible.",
     // La descripción promete contraentrega: depende del toggle COD_ENABLED (igual que
     // el chip del hero) — con COD apagado se recorta esa coletilla.
     codAware: true,
