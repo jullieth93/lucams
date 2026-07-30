@@ -10,6 +10,7 @@
  */
 
 import { getCmsBlock } from "@/lib/cms";
+import { resolveCmsTokens } from "@/lib/cms-tokens";
 import { applyRateLimit, extractIp, withCmsCacheHeaders } from "../../_helpers";
 
 export const dynamic = "force-dynamic";
@@ -49,5 +50,13 @@ export async function GET(
     );
   }
 
-  return withCmsCacheHeaders({ block });
+  // Tokens canónicos resueltos para el consumidor externo (Ruta A+): un bot o
+  // app que lea la API recibe el texto final, no placeholders internos.
+  return withCmsCacheHeaders({
+    block: {
+      ...block,
+      title: block.title ? await resolveCmsTokens(block.title) : block.title,
+      body: await resolveCmsTokens(block.body),
+    },
+  });
 }

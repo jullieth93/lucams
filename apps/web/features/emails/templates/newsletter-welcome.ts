@@ -8,6 +8,7 @@
 
 import { renderEmailLayout, ctaButton } from "../layout";
 import { getSettingValue, getCmsBlock } from "@/lib/cms";
+import { resolveCmsTokens } from "@/lib/cms-tokens";
 
 export type NewsletterWelcomeData = {
   email: string; // P0-005: va en el URL junto al token (el token solo verifica).
@@ -26,8 +27,10 @@ export async function newsletterWelcomeEmail(data: NewsletterWelcomeData) {
     getCmsBlock("email.welcome.subject"),
     getCmsBlock("email.welcome.preview"),
   ]);
-  const subject = subjectBlock?.body?.trim() || "¡Estás dentro! 💜";
-  const preview = previewBlock?.body?.trim() || "Gracias por sumarte. Esto es lo que viene.";
+  const subject = await resolveCmsTokens(subjectBlock?.body?.trim() || "¡Estás dentro! 💜");
+  const preview = await resolveCmsTokens(
+    previewBlock?.body?.trim() || "Gracias por sumarte. Esto es lo que viene.",
+  );
   // #8 — parámetro opaco `u` (base64url(email).token): el email ya NO viaja en claro en la URL.
   const u = `${Buffer.from(data.email.trim().toLowerCase(), "utf-8").toString("base64url")}.${data.unsubscribeToken}`;
   const unsubscribeUrl = `${siteUrl}/unsubscribe?u=${u}`;

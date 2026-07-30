@@ -18,6 +18,7 @@
  */
 
 import { getAllCmsBlocks, getCmsBlocksByCategory, type CmsBlockCategory } from "@/lib/cms";
+import { resolveCmsTokens } from "@/lib/cms-tokens";
 import { applyRateLimit, extractIp, withCmsCacheHeaders } from "../_helpers";
 
 export const dynamic = "force-dynamic";
@@ -41,6 +42,17 @@ export async function GET(req: Request): Promise<Response> {
   const limited = await applyRateLimit(ip);
   if (limited) return limited;
 
+  // Tokens canónicos resueltos para el consumidor externo (Ruta A+): la API
+  // pública entrega el texto final, no placeholders internos.
+  const resolveAll = (blocks: Awaited<ReturnType<typeof getAllCmsBlocks>>) =>
+    Promise.all(
+      blocks.map(async (b) => ({
+        ...b,
+        title: b.title ? await resolveCmsTokens(b.title) : b.title,
+        body: await resolveCmsTokens(b.body),
+      })),
+    );
+
   const url = new URL(req.url);
   const rawCategory = url.searchParams.get("category");
 
@@ -57,7 +69,7 @@ export async function GET(req: Request): Promise<Response> {
         { status: 400, headers: { "Content-Type": "application/problem+json" } },
       );
     }
-    const blocks = await getCmsBlocksByCategory(upper);
+    const blocks = await resolveAll(await getCmsBlocksByCategory(upper));
     return withCmsCacheHeaders({
       count: blocks.length,
       category: upper,
@@ -65,7 +77,7 @@ export async function GET(req: Request): Promise<Response> {
     });
   }
 
-  const blocks = await getAllCmsBlocks();
+  const blocks = await resolveAll(await getAllCmsBlocks());
   return withCmsCacheHeaders({
     count: blocks.length,
     blocks,

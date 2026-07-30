@@ -8,6 +8,7 @@
 import { MousePointerClick, Sparkles, Package } from "lucide-react";
 import { CmsText } from "@/components/cms/cms-text";
 import { getCmsBlock, getSettingValue } from "@/lib/cms";
+import { resolveCmsTokens } from "@/lib/cms-tokens";
 
 const STEPS = [
   {
@@ -68,7 +69,8 @@ async function CodAwareCmsText({ blockKey, fallback }: { blockKey: string; fallb
     getCmsBlock(blockKey),
     getSettingValue("COD_ENABLED", "true"),
   ]);
-  const text = block?.body ?? fallback;
+  // Tokens canónicos ({{total}}/{{fab}}/{{entrega}}…) se resuelven ANTES del recorte COD.
+  const text = await resolveCmsTokens(block?.body ?? fallback);
   return <>{codValue === "true" ? text : stripCodMention(text)}</>;
 }
 
