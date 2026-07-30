@@ -104,7 +104,7 @@ export default async function CheckoutEnvioPage({
     quotes && quotes.length > 0 ? await sealShippingOffers({ offers: quotes, ctx }) : null;
 
   // Ruta A (2026-07-29) — microcopy del step editable por Lucy desde
-  // /admin/contenido/bloques (checkout.envio.heading / checkout.envio.subtext);
+  // /admin/contenido/paginas/checkout (checkout.envio.heading / checkout.envio.subtext);
   // el subtexto admite el token {{ciudad}} que se reemplaza por el destino real.
   const [headingBlock, subtextBlock] = await Promise.all([
     getCmsBlock("checkout.envio.heading"),

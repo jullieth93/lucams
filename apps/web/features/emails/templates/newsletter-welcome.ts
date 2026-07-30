@@ -18,7 +18,7 @@ export type NewsletterWelcomeData = {
 export async function newsletterWelcomeEmail(data: NewsletterWelcomeData) {
   // Ruta A (2026-07-29) — patrón emails editables: subject y preview (preheader)
   // viven en bloques CMS `email.<plantilla>.subject|preview` que Lucy edita desde
-  // /admin/contenido/bloques. El BODY queda en código a propósito: mezcla
+  // /admin/contenido/paginas/emails. El BODY queda en código a propósito: mezcla
   // variables (unsubscribeUrl), layout inline-style y texto de cumplimiento —
   // un HTML libre editable rompería clientes de correo. Fallbacks = textos
   // originales, así el email sale igual aunque el bloque falte o la DB caiga.

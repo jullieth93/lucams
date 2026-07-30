@@ -275,7 +275,7 @@ export async function quoteShipping(input: {
   });
 
   // Origen del envío = donde Aveonline recoge. Se lee de SiteSettings PICKUP_CITY +
-  // PICKUP_DEPARTMENT (Lucy los edita desde /admin/contenido/configuracion BUSINESS).
+  // PICKUP_DEPARTMENT (Lucy los edita desde /admin/contenido/paginas/global, sección Negocio).
   // Fallback a Bogotá/Cundinamarca si por algún motivo no están seteados (no rompe la cotización
   // pero loguea warning para que admin lo corrija).
   const [pickupCity, pickupDept] = await Promise.all([
@@ -295,7 +295,7 @@ export async function quoteShipping(input: {
     throw new CheckoutError(
       "SHIPPING_QUOTE_FAILED",
       "Falta configurar la ciudad/departamento de recogida (PICKUP_CITY / PICKUP_DEPARTMENT) " +
-        "en /admin/contenido/configuracion (categoría 'Negocio').",
+        "en /admin/contenido/paginas/global (sección 'Negocio').",
     );
   }
 

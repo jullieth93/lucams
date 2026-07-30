@@ -2,7 +2,8 @@
  * Tests de lib/wa.ts — construcción de URLs wa.me con mensaje pre-armado.
  *
  * FOCO: buildWhatsAppUrl / buildWhatsAppMessage / getWhatsAppNumber.
- *   - número desde env (NEXT_PUBLIC_WA_NUMBER) con fallback hardcoded
+ *   - número desde el CMS (setting WA_NUMBER) con fallback a env
+ *     (NEXT_PUBLIC_WA_NUMBER) y, en última instancia, hardcoded
  *   - encoding correcto del mensaje (encodeURIComponent)
  *   - plantillas contextuales por kind (product, personalize, support,
  *     order, wholesale, custom) + interpolación de {placeholders}
@@ -50,19 +51,28 @@ describe("getWhatsAppNumber", () => {
     else process.env.NEXT_PUBLIC_WA_NUMBER = original;
   });
 
-  it("devuelve el número de NEXT_PUBLIC_WA_NUMBER cuando está seteado", () => {
+  it("el setting WA_NUMBER del CMS tiene prioridad sobre la env var", async () => {
     process.env.NEXT_PUBLIC_WA_NUMBER = "573001234567";
-    expect(getWhatsAppNumber()).toBe("573001234567");
+    getSettingValue.mockImplementation(async (key: string, fallback: string) =>
+      key === "WA_NUMBER" ? "573119998888" : fallback,
+    );
+    expect(await getWhatsAppNumber()).toBe("573119998888");
+    expect(getSettingValue).toHaveBeenCalledWith("WA_NUMBER", "573001234567");
   });
 
-  it("cae al fallback hardcoded cuando la env var no existe", () => {
+  it("usa NEXT_PUBLIC_WA_NUMBER como fallback cuando el CMS no tiene el setting", async () => {
+    process.env.NEXT_PUBLIC_WA_NUMBER = "573001234567";
+    expect(await getWhatsAppNumber()).toBe("573001234567");
+  });
+
+  it("cae al fallback hardcoded cuando ni el CMS ni la env var existen", async () => {
     delete process.env.NEXT_PUBLIC_WA_NUMBER;
-    expect(getWhatsAppNumber()).toBe(FALLBACK_NUMBER);
+    expect(await getWhatsAppNumber()).toBe(FALLBACK_NUMBER);
   });
 
-  it("cae al fallback cuando la env var es string vacío (|| falsy)", () => {
+  it("cae al fallback cuando la env var es string vacío (|| falsy)", async () => {
     process.env.NEXT_PUBLIC_WA_NUMBER = "";
-    expect(getWhatsAppNumber()).toBe(FALLBACK_NUMBER);
+    expect(await getWhatsAppNumber()).toBe(FALLBACK_NUMBER);
   });
 });
 
@@ -260,7 +270,9 @@ describe("buildWhatsAppUrl — seguridad / inyección", () => {
     expect(url).toContain("%3D"); // '=' codificado
     // Sigue siendo un solo querystring; no aparece "&" crudo.
     expect(url.split("&")).toHaveLength(1);
-    expect(url).toBe("https://wa.me/" + getWhatsAppNumber() + "?text=hola%26utm_source%3Devil%3D1");
+    expect(url).toBe(
+      "https://wa.me/" + (await getWhatsAppNumber()) + "?text=hola%26utm_source%3Devil%3D1",
+    );
   });
 
   it("'#' en el mensaje se codifica (%23), no genera un fragment", async () => {

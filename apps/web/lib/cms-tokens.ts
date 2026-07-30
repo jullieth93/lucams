@@ -44,7 +44,7 @@ export async function resolveCmsTokens(text: string, ctx?: { city?: string }): P
  * SEO por página estática (Ruta A, 2026-07-29): lee el bloque `seo.page.<nombre>`
  * (title = meta title, body = meta description) con fallback al valor hardcoded
  * y resolviendo tokens canónicos ({{cobertura}} etc.). Lucy los edita desde
- * /admin/contenido/bloques sin tocar código. Vive acá (no en lib/cms) para no
+ * /admin/contenido/paginas/seo sin tocar código. Vive acá (no en lib/cms) para no
  * crear un ciclo de imports cms ↔ cms-tokens.
  */
 export async function getPageSeo(

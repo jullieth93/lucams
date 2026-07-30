@@ -20,10 +20,15 @@ import { NewsletterForm } from "@/components/newsletter-form";
 import { CmsText } from "@/components/cms/cms-text";
 import { CmsSetting } from "@/components/cms/cms-setting";
 import { listStorefrontCategories } from "@/features/products/public-service";
-import { getSettingValue } from "@/lib/cms";
+import { getCmsBlock, getSettingValue } from "@/lib/cms";
 import { buildWhatsAppUrl, getWhatsAppNumber } from "@/lib/wa";
 
-const LEGAL_LINKS = [
+type LegalLink = { label: string; href: string };
+
+// Fallback de los enlaces legales: si el campo CMS footer.legal.links no
+// existe o trae JSON inválido, el footer se ve idéntico a como estaba
+// hardcodeado (REGLA DE ORO del CMS).
+const FALLBACK_LEGAL_LINKS: LegalLink[] = [
   { href: "/legal/privacidad", label: "Aviso de Privacidad" },
   { href: "/legal/terminos", label: "Términos y Condiciones" },
   { href: "/legal/cookies", label: "Política de Cookies" },
@@ -33,6 +38,32 @@ const LEGAL_LINKS = [
   { href: "/legal/subprocesadores", label: "Subprocesadores" },
   { href: "/legal/security", label: "Seguridad" },
 ];
+
+// Parse defensivo del JSON del CMS: cualquier cosa que no sea un array
+// no vacío de { label: string, href: string } cae al fallback hardcoded
+// (la columna legal nunca puede quedar vacía por un typo en el admin).
+function parseLegalLinks(body: string | undefined): LegalLink[] {
+  if (!body) return FALLBACK_LEGAL_LINKS;
+  try {
+    const parsed: unknown = JSON.parse(body);
+    if (
+      !Array.isArray(parsed) ||
+      parsed.length === 0 ||
+      !parsed.every(
+        (item) =>
+          typeof item === "object" &&
+          item !== null &&
+          typeof (item as LegalLink).label === "string" &&
+          typeof (item as LegalLink).href === "string",
+      )
+    ) {
+      return FALLBACK_LEGAL_LINKS;
+    }
+    return parsed as LegalLink[];
+  } catch {
+    return FALLBACK_LEGAL_LINKS;
+  }
+}
 
 // SVG inline — Instagram + TikTok no están en la versión actual de
 // lucide-react. Estos son simplified glyphs propios para el footer.
@@ -76,17 +107,40 @@ function FacebookIcon({ className }: { className?: string }) {
 export async function SiteFooter() {
   // Settings que se usan como atributos (href/mailto) los necesitamos
   // como string raw — los display los wrappea <CmsSetting>.
-  const [categories, waSupportUrl, contactEmail, instagramUrl, tiktokUrl, facebookUrl] =
-    await Promise.all([
-      listStorefrontCategories({ topLevelOnly: true }),
-      buildWhatsAppUrl({ kind: "support" }),
-      getSettingValue("CONTACT_EMAIL", "hola@lucamsshop.com"),
-      getSettingValue("SOCIAL_INSTAGRAM_URL", "https://www.instagram.com/lucams_shop"),
-      getSettingValue("SOCIAL_TIKTOK_URL", "https://www.tiktok.com/@lucams_shop"),
-      getSettingValue("SOCIAL_FACEBOOK_URL", "https://www.facebook.com/lucamsshop"),
-    ]);
+  const [
+    categories,
+    waSupportUrl,
+    contactEmail,
+    instagramUrl,
+    tiktokUrl,
+    facebookUrl,
+    waNumber,
+    legalLinksBlock,
+    appName,
+    businessLocation,
+    sicUrl,
+    instagramEnabled,
+    tiktokEnabled,
+    facebookEnabled,
+  ] = await Promise.all([
+    listStorefrontCategories({ topLevelOnly: true }),
+    buildWhatsAppUrl({ kind: "support" }),
+    getSettingValue("CONTACT_EMAIL", "hola@lucamsshop.com"),
+    getSettingValue("SOCIAL_INSTAGRAM_URL", "https://www.instagram.com/lucams_shop"),
+    getSettingValue("SOCIAL_TIKTOK_URL", "https://www.tiktok.com/@lucams_shop"),
+    getSettingValue("SOCIAL_FACEBOOK_URL", "https://www.facebook.com/lucamsshop"),
+    getWhatsAppNumber(),
+    getCmsBlock("footer.legal.links"),
+    getSettingValue("APP_NAME", "Lucams_shop"),
+    getSettingValue("BUSINESS_LOCATION", "Bogotá D.C., Colombia"),
+    getSettingValue("GOVT_SIC_URL", "https://www.sic.gov.co/"),
+    getSettingValue("SOCIAL_INSTAGRAM_ENABLED", "true"),
+    getSettingValue("SOCIAL_TIKTOK_ENABLED", "true"),
+    getSettingValue("SOCIAL_FACEBOOK_ENABLED", "true"),
+  ]);
   const buildVersion = process.env.NEXT_PUBLIC_BUILD_VERSION ?? "dev";
-  const waNumberDisplay = getWhatsAppNumber().replace(/^57(\d{3})(\d{3})(\d{4})$/, "+57 $1 $2 $3");
+  const waNumberDisplay = waNumber.replace(/^57(\d{3})(\d{3})(\d{4})$/, "+57 $1 $2 $3");
+  const legalLinks = parseLegalLinks(legalLinksBlock?.body);
 
   return (
     <footer className="from-brand-purple-dark via-brand-purple-dark to-brand-purple relative overflow-hidden bg-gradient-to-br text-white">
@@ -111,33 +165,41 @@ export async function SiteFooter() {
               />
             </p>
             <div className="mt-4 flex gap-2">
-              <a
-                href={instagramUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label="Instagram"
-                className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/10 transition-colors hover:bg-white/20"
-              >
-                <InstagramIcon className="h-4 w-4" />
-              </a>
-              <a
-                href={tiktokUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label="TikTok"
-                className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/10 transition-colors hover:bg-white/20"
-              >
-                <TikTokIcon className="h-4 w-4" />
-              </a>
-              <a
-                href={facebookUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label="Facebook"
-                className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/10 transition-colors hover:bg-white/20"
-              >
-                <FacebookIcon className="h-4 w-4" />
-              </a>
+              {/* Cada red se muestra solo si su toggle SOCIAL_*_ENABLED está
+                  en "true" (default: visibles, como estaban hardcodeadas). */}
+              {instagramEnabled === "true" && (
+                <a
+                  href={instagramUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="Instagram"
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/10 transition-colors hover:bg-white/20"
+                >
+                  <InstagramIcon className="h-4 w-4" />
+                </a>
+              )}
+              {tiktokEnabled === "true" && (
+                <a
+                  href={tiktokUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="TikTok"
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/10 transition-colors hover:bg-white/20"
+                >
+                  <TikTokIcon className="h-4 w-4" />
+                </a>
+              )}
+              {facebookEnabled === "true" && (
+                <a
+                  href={facebookUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="Facebook"
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/10 transition-colors hover:bg-white/20"
+                >
+                  <FacebookIcon className="h-4 w-4" />
+                </a>
+              )}
               <a
                 href={waSupportUrl}
                 target="_blank"
@@ -185,7 +247,7 @@ export async function SiteFooter() {
               <CmsText blockKey="footer.column.info" fallback="Información" />
             </h3>
             <ul className="space-y-2 text-sm text-white/80">
-              {LEGAL_LINKS.map((l) => (
+              {legalLinks.map((l) => (
                 <li key={l.href}>
                   <Link href={l.href} className="transition-colors hover:text-white">
                     {l.label}
@@ -229,7 +291,7 @@ export async function SiteFooter() {
                   href="/ayuda"
                   className="text-brand-pink hover:text-brand-coral font-semibold transition-colors"
                 >
-                  Centro de ayuda →
+                  <CmsText blockKey="footer.help.cta" fallback="Centro de ayuda →" />
                 </Link>
               </li>
               <li>
@@ -237,7 +299,7 @@ export async function SiteFooter() {
                   href="/contacto"
                   className="text-brand-pink hover:text-brand-coral font-semibold transition-colors"
                 >
-                  Contacto →
+                  <CmsText blockKey="footer.contact.cta" fallback="Contacto →" />
                 </Link>
               </li>
               <li>
@@ -245,7 +307,7 @@ export async function SiteFooter() {
                   href="/rastrear"
                   className="text-brand-pink hover:text-brand-coral font-semibold transition-colors"
                 >
-                  Rastrear pedido →
+                  <CmsText blockKey="footer.track.cta" fallback="Rastrear pedido →" />
                 </Link>
               </li>
             </ul>
@@ -278,15 +340,18 @@ export async function SiteFooter() {
           {/* La identificación legal de la persona natural (nombre completo) va en
               /legal/*, no en el footer. Aquí solo marca + ciudad. */}
           <p className="mb-3 text-center text-[11px] text-white/50 md:text-left">
-            Lucams_shop · Bogotá D.C., Colombia
+            {appName} · {businessLocation}
             {" · "}
             <a
-              href="https://www.sic.gov.co/"
+              href={sicUrl}
               target="_blank"
               rel="noreferrer"
               className="underline hover:text-white/80"
             >
-              SIC (protección al consumidor)
+              <CmsText
+                blockKey="footer.legal.sic-label"
+                fallback="SIC (protección al consumidor)"
+              />
             </a>
           </p>
           <div className="flex flex-col items-center justify-between gap-3 md:flex-row">

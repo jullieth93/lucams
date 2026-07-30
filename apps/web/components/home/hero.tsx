@@ -14,11 +14,18 @@ import { CmsText } from "@/components/cms/cms-text";
 import { getSettingValue } from "@/lib/cms";
 
 export async function HomeHero() {
-  // #3 — mismo toggle que usa el checkout (/admin/contenido/configuracion → SiteSetting
+  // #3 — mismo toggle que usa el checkout (/admin/contenido/paginas/global → campo
   // COD_ENABLED, invalida tag "cms"). Si Lucy apaga COD, el chip NO se renderiza en ningún
   // modo: prometer contraentrega apagada es peor que no decir nada (bug 2026-07: en modo
   // catálogo el fallback ignoraba el toggle y el chip quedaba visible).
   const codEnabled = (await getSettingValue("COD_ENABLED", "true")) === "true";
+
+  // Destinos de los CTAs, editables desde /admin/contenido (settings). Los
+  // fallbacks conservan el comportamiento actual si la DB no responde.
+  const [ctaPrimaryHref, ctaSecondaryHref] = await Promise.all([
+    getSettingValue("home.hero.cta-primary.href", "/productos"),
+    getSettingValue("home.hero.cta-secondary.href", "/productos?personalizable=1"),
+  ]);
 
   return (
     <section className="relative overflow-hidden">
@@ -61,15 +68,16 @@ export async function HomeHero() {
           </p>
           <div className="flex flex-wrap items-center justify-center gap-2 sm:gap-3 md:justify-start">
             <Link
-              href="/productos"
+              href={ctaPrimaryHref}
               className="bg-brand-purple hover:bg-brand-purple-dark inline-block rounded-full px-5 py-2.5 text-sm font-semibold text-white shadow-md transition-colors sm:px-6 sm:py-3 sm:text-base"
             >
               <CmsText blockKey="home.hero.cta-primary" fallback="Ver catálogo →" />
             </Link>
             {/* #1 — antes salía a WhatsApp; ahora entra al catálogo de productos PERSONALIZABLES
-              (cuyos PDP abren el Estudio en vivo). La home ya no saca al cliente del flujo. */}
+              (cuyos PDP abren el Estudio en vivo). La home ya no saca al cliente del flujo.
+              El destino es editable via setting home.hero.cta-secondary.href. */}
             <Link
-              href="/productos?personalizable=1"
+              href={ctaSecondaryHref}
               className="border-brand-purple/30 text-brand-purple-dark hover:bg-brand-purple/5 inline-block rounded-full border bg-white px-5 py-2.5 text-sm font-semibold transition-colors sm:px-6 sm:py-3 sm:text-base"
             >
               <CmsText blockKey="home.hero.cta-secondary" fallback="Personalizar el mío" />

@@ -46,6 +46,7 @@ export const dynamic = "force-dynamic";
 function buildFallbackFaqs(
   catalog: boolean,
   codEnabled: boolean,
+  contactEmail: string,
 ): { slug: string; question: string; answer: string }[] {
   const codCatalog = codEnabled
     ? " Además tienes **contraentrega disponible**: pagas en efectivo al recibir tu pedido."
@@ -103,14 +104,12 @@ function buildFallbackFaqs(
     {
       slug: "borrar-mis-datos",
       question: "¿Cómo borro mi cuenta y mis datos?",
-      answer:
-        "Escríbenos a **hola@lucamsshop.com** desde el email registrado. Procesamos la supresión dentro de **10 días hábiles**. Más info en [Hábeas Data](/legal/habeas-data).",
+      answer: `Escríbenos a **${contactEmail}** desde el email registrado. Procesamos la supresión dentro de **10 días hábiles**. Más info en [Hábeas Data](/legal/habeas-data).`,
     },
     {
       slug: "newsletter-unsuscripcion",
       question: "¿Cómo me suscribo o desuscribo del newsletter?",
-      answer:
-        "Suscripción: form en el footer. Desuscripción: link **Cancelar suscripción** al final de cada email que te enviemos, o escríbenos a hola@lucamsshop.com.",
+      answer: `Suscripción: form en el footer. Desuscripción: link **Cancelar suscripción** al final de cada email que te enviemos, o escríbenos a ${contactEmail}.`,
     },
     {
       slug: "regalos-eventos",
@@ -140,7 +139,10 @@ export default async function AyudaPage() {
           answer: b.body,
           fromCms: true as const,
         }))
-      : buildFallbackFaqs(catalog, codEnabled).map((f) => ({ ...f, fromCms: false as const }));
+      : buildFallbackFaqs(catalog, codEnabled, contactEmail).map((f) => ({
+          ...f,
+          fromCms: false as const,
+        }));
 
   return (
     <div className="bg-brand-cream flex min-h-screen flex-col">

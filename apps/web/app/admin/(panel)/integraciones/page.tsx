@@ -250,10 +250,14 @@ export default async function AdminIntegracionesPage() {
       envVarsRequired: ["NEXT_PUBLIC_WA_NUMBER"],
       isConfigured: waConfigured,
       healthStatus: waConfigured ? "ok" : "not-configured",
+      // El número ACTIVO es el setting WA_NUMBER del CMS (Contenido → Ajustes
+      // del sitio → WhatsApp); la env queda como fallback si el setting falta.
       healthDetail: waConfigured
-        ? `Número actual: ${process.env.NEXT_PUBLIC_WA_NUMBER}`
-        : "Pendiente: setear NEXT_PUBLIC_WA_NUMBER (formato wa.me).",
-      acciones: waConfigured ? undefined : "ACCIÓN HUMANA: setear número productivo de WhatsApp",
+        ? `Número activo: setting WA_NUMBER (Contenido → Ajustes del sitio → WhatsApp). Fallback env: ${process.env.NEXT_PUBLIC_WA_NUMBER}.`
+        : "El número activo se edita en Contenido → Ajustes del sitio → WhatsApp. NEXT_PUBLIC_WA_NUMBER queda como fallback (formato wa.me).",
+      acciones: waConfigured
+        ? undefined
+        : "ACCIÓN HUMANA: revisar el número en Contenido → Ajustes del sitio → WhatsApp",
     },
     {
       name: "Cloudflare Turnstile — anti-bot",

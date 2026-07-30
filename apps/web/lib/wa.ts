@@ -2,16 +2,21 @@
  * Helpers centralizados para WhatsApp wa.me.
  *
  * Mensajes pre-armados configurables desde el CMS admin
- * (/admin/contenido/configuracion, categoría WhatsApp). Si el setting
+ * (/admin/contenido/paginas/global, sección WhatsApp). Si el setting
  * no existe en DB, cae al fallback hardcoded.
+ *
+ * El número de destino también sale del CMS (setting WA_NUMBER, editable
+ * en /admin/contenido → Ajustes del sitio → WhatsApp). La env
+ * NEXT_PUBLIC_WA_NUMBER queda como fallback y, en última instancia, el
+ * número hardcoded de abajo.
  *
  * Decisión (mandato CLAUDE.md #6): no usamos Twilio API por ahora —
  * todo va por wa.me con mensaje pre-armado. Si en futuro se migra a
  * Twilio Conversations o WhatsApp Business API, esta función queda
  * como el único punto de cambio.
  *
- * NOTA: `buildWhatsAppUrl` y `buildWhatsAppMessage` son ASYNC porque
- * leen del CMS. Solo usables en server components.
+ * NOTA: `buildWhatsAppUrl`, `buildWhatsAppMessage` y `getWhatsAppNumber`
+ * son ASYNC porque leen del CMS. Solo usables en server components.
  */
 
 import "server-only";
@@ -19,8 +24,12 @@ import { getSettingValue } from "@/lib/cms";
 
 const FALLBACK_NUMBER = "573208873826"; // Lucy WhatsApp temporal — ver .env.example
 
-export function getWhatsAppNumber(): string {
-  return process.env.NEXT_PUBLIC_WA_NUMBER || FALLBACK_NUMBER;
+/**
+ * Número wa.me de destino. Fuente de verdad: setting WA_NUMBER del CMS.
+ * Fallback: NEXT_PUBLIC_WA_NUMBER y, en última instancia, FALLBACK_NUMBER.
+ */
+export async function getWhatsAppNumber(): Promise<string> {
+  return getSettingValue("WA_NUMBER", process.env.NEXT_PUBLIC_WA_NUMBER || FALLBACK_NUMBER);
 }
 
 export type WhatsAppContext =
@@ -118,7 +127,7 @@ export async function buildWhatsAppUrl(
   ctx: WhatsAppContext,
   opts?: { number?: string },
 ): Promise<string> {
-  const number = opts?.number ?? getWhatsAppNumber();
+  const number = opts?.number ?? (await getWhatsAppNumber());
   const message = await buildWhatsAppMessage(ctx);
   return `https://wa.me/${number}?text=${encodeURIComponent(message)}`;
 }

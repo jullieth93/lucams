@@ -5,7 +5,9 @@
  *   + sub-categorías agrupadas debajo de cada padre + chip "Por ocasión" al pie.
  * Mobile: Sheet drawer slide-in con expansión por categoría (acordeón).
  *
- * Consume CategoryNode tree (server-side fetch).
+ * Consume CategoryNode tree (server-side fetch). Como es client component,
+ * los textos CMS (header.menu.*) los resuelve el server parent (site-header)
+ * y llegan por la prop `texts`.
  */
 
 "use client";
@@ -61,7 +63,32 @@ const TOP_OCASIONES = [
   { slug: "empresarial", label: "Empresarial" },
 ];
 
-export function ShopMegaMenu({ tree, isLoggedIn }: { tree: CategoryNode[]; isLoggedIn: boolean }) {
+// Textos del menú que vienen del CMS (header.menu.*), resueltos por el
+// server parent — este client component no puede leer el CMS directamente.
+// `occasions` mapea slug de ocasión → etiqueta.
+export type MegaMenuTexts = {
+  catalog: string;
+  helpCta: string;
+  helpChip: string;
+  occasionsTitle: string;
+  viewAll: string;
+  viewAllMobile: string;
+  accountTitle: string;
+  accountMobile: string;
+  login: string;
+  signup: string;
+  occasions: Record<string, string>;
+};
+
+export function ShopMegaMenu({
+  tree,
+  isLoggedIn,
+  texts,
+}: {
+  tree: CategoryNode[];
+  isLoggedIn: boolean;
+  texts: MegaMenuTexts;
+}) {
   const [mobileOpen, setMobileOpen] = useState(false);
   const visibleCategories = tree.filter((c) => c.isActive);
   // Máximo 8 categorías en el menú; el resto queda detrás de "Ver todo el catálogo".
@@ -75,7 +102,7 @@ export function ShopMegaMenu({ tree, isLoggedIn }: { tree: CategoryNode[]; isLog
           <NavigationMenuList>
             <NavigationMenuItem>
               <NavigationMenuTrigger className="text-brand-purple-dark data-[active]:text-brand-purple-dark data-[state=open]:text-brand-purple-dark hover:text-brand-purple bg-transparent text-sm font-medium hover:bg-transparent">
-                Catálogo
+                {texts.catalog}
               </NavigationMenuTrigger>
               <NavigationMenuContent>
                 <div className="max-h-[80vh] w-[820px] overflow-y-auto p-5">
@@ -133,7 +160,7 @@ export function ShopMegaMenu({ tree, isLoggedIn }: { tree: CategoryNode[]; isLog
 
                   <div className="border-brand-purple/10 mt-4 border-t pt-4">
                     <p className="text-brand-muted mb-2 text-[10px] font-bold tracking-wider uppercase">
-                      Por ocasión
+                      {texts.occasionsTitle}
                     </p>
                     <div className="flex flex-wrap gap-1.5">
                       {TOP_OCASIONES.map((o) => (
@@ -142,14 +169,14 @@ export function ShopMegaMenu({ tree, isLoggedIn }: { tree: CategoryNode[]; isLog
                           href={`/ocasion/${o.slug}`}
                           className="border-brand-purple/20 text-brand-purple-dark hover:bg-brand-purple/10 rounded-full border bg-white px-2.5 py-0.5 text-xs"
                         >
-                          {o.label}
+                          {texts.occasions[o.slug] ?? o.label}
                         </Link>
                       ))}
                       <Link
                         href="/recomendador"
                         className="bg-brand-purple inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold text-white"
                       >
-                        <Sparkles className="h-3 w-3" /> ¿Te ayudamos?
+                        <Sparkles className="h-3 w-3" /> {texts.helpChip}
                       </Link>
                     </div>
                   </div>
@@ -158,7 +185,7 @@ export function ShopMegaMenu({ tree, isLoggedIn }: { tree: CategoryNode[]; isLog
                     href="/productos"
                     className="text-brand-purple-dark hover:text-brand-purple mt-4 block text-center text-sm font-semibold"
                   >
-                    Ver todo el catálogo →
+                    {texts.viewAll}
                   </Link>
                 </div>
               </NavigationMenuContent>
@@ -181,7 +208,7 @@ export function ShopMegaMenu({ tree, isLoggedIn }: { tree: CategoryNode[]; isLog
         <SheetContent side="left" className="w-[300px] overflow-y-auto sm:w-[340px]">
           <SheetHeader>
             <SheetTitle className="font-display text-brand-purple-dark text-2xl">
-              Catálogo
+              {texts.catalog}
             </SheetTitle>
           </SheetHeader>
           <nav className="mt-3 flex flex-col gap-0.5 px-3 pb-6">
@@ -198,7 +225,7 @@ export function ShopMegaMenu({ tree, isLoggedIn }: { tree: CategoryNode[]; isLog
             })}
             <div className="border-brand-purple/10 mt-4 border-t pt-3">
               <p className="text-brand-muted mb-2 px-2 text-[10px] font-bold tracking-wider uppercase">
-                Por ocasión
+                {texts.occasionsTitle}
               </p>
               <div className="flex flex-wrap gap-1.5 px-2">
                 {TOP_OCASIONES.map((o) => (
@@ -208,7 +235,7 @@ export function ShopMegaMenu({ tree, isLoggedIn }: { tree: CategoryNode[]; isLog
                     onClick={() => setMobileOpen(false)}
                     className="border-brand-purple/20 text-brand-purple-dark rounded-full border bg-white px-2.5 py-1 text-xs"
                   >
-                    {o.label}
+                    {texts.occasions[o.slug] ?? o.label}
                   </Link>
                 ))}
               </div>
@@ -218,20 +245,20 @@ export function ShopMegaMenu({ tree, isLoggedIn }: { tree: CategoryNode[]; isLog
               onClick={() => setMobileOpen(false)}
               className="bg-brand-purple mt-3 inline-flex items-center justify-center gap-1.5 rounded-md py-2 text-sm font-semibold text-white"
             >
-              <Sparkles className="h-4 w-4" /> ¿Te ayudamos a elegir?
+              <Sparkles className="h-4 w-4" /> {texts.helpCta}
             </Link>
             <Link
               href="/productos"
               onClick={() => setMobileOpen(false)}
               className="border-brand-purple/30 text-brand-purple-dark mt-2 rounded-md border bg-white py-2 text-center text-sm font-semibold"
             >
-              Ver todo el catálogo
+              {texts.viewAllMobile}
             </Link>
 
             {/* #10 — entrada a cuenta/ayuda en el drawer móvil (antes no existía en móvil). */}
             <div className="border-brand-purple/10 mt-4 border-t pt-3">
               <p className="text-brand-muted mb-2 px-2 text-[10px] font-bold tracking-wider uppercase">
-                Tu cuenta
+                {texts.accountTitle}
               </p>
               <div className="flex flex-col">
                 <Link
@@ -239,7 +266,7 @@ export function ShopMegaMenu({ tree, isLoggedIn }: { tree: CategoryNode[]; isLog
                   onClick={() => setMobileOpen(false)}
                   className="text-brand-purple-dark hover:bg-brand-purple/5 rounded-md px-2 py-2 text-sm font-medium"
                 >
-                  {isLoggedIn ? "Mi cuenta" : "Ingresar"}
+                  {isLoggedIn ? texts.accountMobile : texts.login}
                 </Link>
                 {!isLoggedIn && (
                   <Link
@@ -247,7 +274,7 @@ export function ShopMegaMenu({ tree, isLoggedIn }: { tree: CategoryNode[]; isLog
                     onClick={() => setMobileOpen(false)}
                     className="text-brand-purple-dark hover:bg-brand-purple/5 rounded-md px-2 py-2 text-sm font-medium"
                   >
-                    Crear cuenta
+                    {texts.signup}
                   </Link>
                 )}
                 <Link

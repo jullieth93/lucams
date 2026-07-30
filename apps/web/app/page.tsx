@@ -31,6 +31,7 @@ import {
 } from "@/features/products/public-service";
 import { listFeaturedReviews } from "@/features/reviews/public-service";
 import { CmsText } from "@/components/cms/cms-text";
+import { getSettingValue } from "@/lib/cms";
 import { getPageSeo } from "@/lib/cms-tokens";
 import { buildWhatsAppUrl } from "@/lib/wa";
 import { isCatalogMode } from "@/lib/store-mode";
@@ -40,7 +41,7 @@ import { isCatalogMode } from "@/lib/store-mode";
    en la Etapa 1 no está activa: hoy el envío se coordina y se cotiza por WhatsApp. Prometerlo en el
    snippet de Google es información engañosa (Ley 1480 art. 23), así que también se deriva del flag.
    Ruta A (2026-07-29): el bloque `seo.page.home` (title=meta title, body=meta description)
-   sobreescribe ambos desde /admin/contenido/bloques; el fallback mantiene el gate de modo. */
+   sobreescribe ambos desde /admin/contenido/paginas/seo; el fallback mantiene el gate de modo. */
 export async function generateMetadata(): Promise<Metadata> {
   return getPageSeo("seo.page.home", {
     title: "Lucams_shop — Tus recuerdos en imán",
@@ -55,14 +56,19 @@ export async function generateMetadata(): Promise<Metadata> {
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
-  const [categories, featured, reviews, waSupportUrl] = await Promise.all([
-    // Solo top-level: la home muestra ~11 categorías padre, no 57 (mismo
-    // patrón que footer y mega-menú).
-    listStorefrontCategories({ topLevelOnly: true }),
-    listStorefrontProducts({ featured: true, limit: 10 }),
-    listFeaturedReviews(8),
-    buildWhatsAppUrl({ kind: "support" }),
-  ]);
+  const [categories, featured, reviews, waSupportUrl, instagramUrl, tiktokUrl, facebookUrl] =
+    await Promise.all([
+      // Solo top-level: la home muestra ~11 categorías padre, no 57 (mismo
+      // patrón que footer y mega-menú).
+      listStorefrontCategories({ topLevelOnly: true }),
+      listStorefrontProducts({ featured: true, limit: 10 }),
+      listFeaturedReviews(8),
+      buildWhatsAppUrl({ kind: "support" }),
+      // Mismas URLs sociales del footer — alimentan el sameAs del JSON-LD.
+      getSettingValue("SOCIAL_INSTAGRAM_URL", "https://www.instagram.com/lucams_shop"),
+      getSettingValue("SOCIAL_TIKTOK_URL", "https://www.tiktok.com/@lucams_shop"),
+      getSettingValue("SOCIAL_FACEBOOK_URL", "https://www.facebook.com/lucamsshop"),
+    ]);
 
   // #2 — despriorizar agotados en el carrusel destacado: disponibles primero, agotados al final
   // (sin filtrarlos → siguen visibles con su badge "Agotado"). Sort estable (ES2019) → entre los
@@ -74,6 +80,9 @@ export default async function Home() {
 
   // Structured data del sitio (auditoría 2026-07-13): Organization (knowledge panel) + WebSite
   // (nombre para sitelinks). Escapado anti-XSS + nonce, como el JSON-LD del PDP.
+  // El sameAs sale de los settings SOCIAL_*_URL (los mismos del footer); si una
+  // URL queda vacía se excluye del array.
+  const sameAs = [instagramUrl, tiktokUrl, facebookUrl].filter((url) => url.trim() !== "");
   const siteJsonLd = [
     {
       "@context": "https://schema.org",
@@ -81,7 +90,7 @@ export default async function Home() {
       name: "Lucams_shop",
       url: "https://lucamsshop.com",
       logo: "https://lucamsshop.com/brand/lucams-logo.png",
-      sameAs: ["https://www.instagram.com/lucams_shop"],
+      sameAs,
     },
     {
       "@context": "https://schema.org",
@@ -130,7 +139,10 @@ export default async function Home() {
               href="/productos"
               className="text-brand-purple-dark hover:text-brand-purple border-brand-purple/30 hover:bg-brand-purple/5 inline-flex items-center gap-1.5 rounded-full border px-5 py-2 text-sm font-semibold transition-colors"
             >
-              Ver todas las categorías y productos →
+              <CmsText
+                blockKey="home.categories.cta-all"
+                fallback="Ver todas las categorías y productos →"
+              />
             </Link>
           </div>
         </section>
@@ -174,7 +186,7 @@ export default async function Home() {
               href="/productos"
               className="text-brand-purple-dark hover:text-brand-purple text-sm font-semibold"
             >
-              Ver todo →
+              <CmsText blockKey="home.featured.cta-all" fallback="Ver todo →" />
             </Link>
           </header>
           {featuredSorted.length > 0 ? (
@@ -217,7 +229,10 @@ export default async function Home() {
                   />
                 </p>
                 <p className="text-brand-muted mt-1 text-sm">
-                  Cuando los primeros clientes reseñen, aparecerán acá.
+                  <CmsText
+                    blockKey="home.reviews.empty-note"
+                    fallback="Cuando los primeros clientes reseñen, aparecerán acá."
+                  />
                 </p>
               </div>
             )}
@@ -251,13 +266,13 @@ export default async function Home() {
                 rel="noopener noreferrer"
                 className="text-brand-purple-dark hover:bg-brand-cream inline-block rounded-full bg-white px-6 py-3 text-sm font-semibold transition-colors"
               >
-                Háblanos por WhatsApp
+                <CmsText blockKey="home.cta.whatsapp-label" fallback="Háblanos por WhatsApp" />
               </a>
               <Link
                 href="/productos"
                 className="inline-block rounded-full border border-white/30 px-6 py-3 text-sm font-semibold text-white transition-colors hover:bg-white/10"
               >
-                Ver catálogo
+                <CmsText blockKey="home.cta.catalog-label" fallback="Ver catálogo" />
               </Link>
             </div>
           </div>

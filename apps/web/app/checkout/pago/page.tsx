@@ -75,7 +75,7 @@ export default async function CheckoutPagoPage({ searchParams }: { searchParams:
   // F1 — cupón aplicado (si hay): descuento vigente + posible aviso si dejó de valer.
   const applied = await getAppliedCoupon();
 
-  // Toggle de negocio: ¿se ofrece contra entrega? (editable en /admin/contenido/configuracion)
+  // Toggle de negocio: ¿se ofrece contra entrega? (editable en /admin/contenido/paginas/global)
   const codEnabled = (await getSettingValue("COD_ENABLED", "true")) === "true";
 
   return (

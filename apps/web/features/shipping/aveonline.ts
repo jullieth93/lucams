@@ -865,7 +865,7 @@ export class AveonlineProvider implements ShippingProvider {
     if (missing.length > 0) {
       throw new Error(
         `Aveonline createShipment: faltan datos de recogida [${missing.join(", ")}]. ` +
-          `Configurálos en /admin/contenido/configuracion (categoría 'Negocio').`,
+          `Configurálos en /admin/contenido/paginas/global (sección 'Negocio').`,
       );
     }
 
