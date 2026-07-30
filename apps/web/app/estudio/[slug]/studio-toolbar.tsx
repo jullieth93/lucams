@@ -30,6 +30,8 @@ import {
   selectTotalSlotCount,
   type StudioStoreState,
 } from "./lib/store";
+import { useStudioTexts } from "./studio-texts-provider";
+import { fillStudioText, splitStudioText } from "./studio-texts";
 
 type StudioToolbarProps = {
   store: StoreApi<StudioStoreState>;
@@ -76,11 +78,12 @@ export function StudioToolbar({
   const filled = useStore(store, selectFilledSlotCount);
   const total = useStore(store, selectTotalSlotCount);
   const complete = useStore(store, selectIsComplete);
+  const texts = useStudioTexts();
 
   const canFinalize = complete && !isFinalizing;
 
   const disabledTooltip = !complete
-    ? `Faltan ${total - filled} fotos por cargar antes de poder finalizar`
+    ? fillStudioText(texts.lienzo.finalizeTooltip, { n: total - filled })
     : undefined;
 
   return (
@@ -95,11 +98,11 @@ export function StudioToolbar({
           borrador se autoguarda, no se pierde nada). */}
         <Link
           href={`/producto/${productSlug}`}
-          aria-label={`Salir del estudio y volver al producto ${productName}`}
+          aria-label={fillStudioText(texts.lienzo.salirAria, { producto: productName })}
           className="text-brand-purple-dark/80 hover:text-brand-purple-dark bg-brand-purple/8 hover:bg-brand-purple/15 focus:ring-brand-purple inline-flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-sm font-semibold transition-colors focus:ring-2 focus:outline-none"
         >
           <ArrowLeft className="h-4 w-4" />
-          <span>Salir</span>
+          <span>{texts.lienzo.headerExit}</span>
         </Link>
 
         {/* A1.1 — Hero del estudio: avatar producto + nombre + medidas físicas grandes */}
@@ -107,7 +110,7 @@ export function StudioToolbar({
           <ProductAvatar productImageUrl={productImageUrl} productName={productName} />
           <div className="flex flex-col items-start leading-tight">
             <p className="text-brand-purple-dark text-sm font-semibold">
-              Personalizar · {productName}
+              {fillStudioText(texts.lienzo.headerTitle, { producto: productName })}
             </p>
             {(productSizeCm || productSlotCount) && (
               <p className="text-brand-muted mt-0.5 flex items-center gap-1.5 text-[11px] font-medium">
@@ -147,8 +150,8 @@ export function StudioToolbar({
             <button
               type="button"
               onClick={onOpenGesturesHint}
-              aria-label="Ver instrucciones de gestos del editor"
-              title="Cómo editar tu foto (drag, zoom, doble click)"
+              aria-label={texts.lienzo.gestosAria}
+              title={texts.lienzo.gesturesButtonTitle}
               className="text-brand-purple-dark/70 hover:bg-brand-purple/10 hover:text-brand-purple-dark focus:ring-brand-purple inline-flex h-9 w-9 items-center justify-center rounded-md transition-colors focus:ring-2 focus:ring-offset-1 focus:outline-none"
             >
               <HelpCircle className="h-4 w-4" aria-hidden />
@@ -189,12 +192,26 @@ export function StudioToolbar({
               className="inline-block h-0.5 w-4 rounded-sm"
               style={{ borderTop: "2.5px dashed rgb(124 106 173 / 0.85)" }}
             />
-            <strong>Línea morada</strong> = mantén texto y caras adentro para que no se corten al
-            imprimir
+            <strong>{texts.lienzo.guiaLinea}</strong> {texts.lienzo.guiaDescripcion}
           </span>
           {productSizeCm && (
             <span className="text-brand-muted">
-              · Tu imán físico mide <strong>{productSizeCm} cm</strong>
+              {(() => {
+                // {size} conserva el <strong> de la medida (roadmap B1).
+                const parts = splitStudioText(texts.lienzo.guiaTamano, "size");
+                if (!parts) {
+                  return fillStudioText(texts.lienzo.guiaTamano, { size: productSizeCm });
+                }
+                return (
+                  <>
+                    {parts[0]}
+                    <strong>
+                      {productSizeCm}
+                      {parts[1]}
+                    </strong>
+                  </>
+                );
+              })()}
             </span>
           )}
         </div>
@@ -225,6 +242,7 @@ export function FinalizeButton({
   onFinalize: () => void;
   variant: "inline" | "fab";
 }) {
+  const texts = useStudioTexts();
   if (variant === "fab") {
     return (
       <button
@@ -234,8 +252,8 @@ export function FinalizeButton({
         title={disabledTooltip}
         aria-label={
           canFinalize
-            ? "Listo, generar diseño final"
-            : (disabledTooltip ?? "No se puede finalizar todavía")
+            ? texts.lienzo.finalizeAria
+            : (disabledTooltip ?? texts.lienzo.finalizeAriaBloqueado)
         }
         aria-disabled={!canFinalize}
         className={[
@@ -248,12 +266,12 @@ export function FinalizeButton({
         {isFinalizing ? (
           <>
             <Loader2 className="h-5 w-5 animate-spin" aria-hidden />
-            <span>Guardando...</span>
+            <span>{texts.comun.guardando}</span>
           </>
         ) : (
           <>
             <Sparkles className="h-5 w-5" aria-hidden />
-            <span>¡Listo!</span>
+            <span>{texts.comun.listo}</span>
           </>
         )}
       </button>
@@ -269,8 +287,8 @@ export function FinalizeButton({
       title={disabledTooltip}
       aria-label={
         canFinalize
-          ? "Listo, generar diseño final"
-          : (disabledTooltip ?? "No se puede finalizar todavía")
+          ? texts.lienzo.finalizeAria
+          : (disabledTooltip ?? texts.lienzo.finalizeAriaBloqueado)
       }
       aria-disabled={!canFinalize}
       className={[
@@ -283,12 +301,12 @@ export function FinalizeButton({
       {isFinalizing ? (
         <>
           <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
-          <span>Guardando diseño...</span>
+          <span>{texts.lienzo.finalizeGuardando}</span>
         </>
       ) : (
         <>
           <Sparkles className="h-4 w-4" aria-hidden />
-          <span>¡Listo!</span>
+          <span>{texts.comun.listo}</span>
         </>
       )}
     </button>
@@ -313,9 +331,10 @@ export function StudioFinalizeFab({
   const filled = useStore(store, selectFilledSlotCount);
   const total = useStore(store, selectTotalSlotCount);
   const complete = useStore(store, selectIsComplete);
+  const texts = useStudioTexts();
   const canFinalize = complete && !isFinalizing;
   const disabledTooltip = !complete
-    ? `Faltan ${total - filled} fotos por cargar antes de poder finalizar`
+    ? fillStudioText(texts.lienzo.finalizeTooltip, { n: total - filled })
     : undefined;
   return (
     <FinalizeButton
@@ -331,6 +350,7 @@ export function StudioFinalizeFab({
 // ──────────── Sub-components ────────────
 
 function ProgressBadge({ filled, total }: { filled: number; total: number }) {
+  const texts = useStudioTexts();
   const complete = filled === total && total > 0;
   return (
     <span
@@ -346,9 +366,7 @@ function ProgressBadge({ filled, total }: { filled: number; total: number }) {
       ].join(" ")}
     >
       {complete && <Check className="h-3 w-3" aria-hidden />}
-      <span>
-        {filled}/{total} fotos
-      </span>
+      <span>{fillStudioText(texts.lienzo.progressBadge, { n: filled, total })}</span>
     </span>
   );
 }
@@ -360,6 +378,7 @@ function AutoSaveIndicator({
   status: StudioStoreState["autoSaveStatus"];
   isFinalizing: boolean;
 }) {
+  const texts = useStudioTexts();
   if (isFinalizing) return null;
   return (
     <AnimatePresence mode="wait">
@@ -371,17 +390,19 @@ function AutoSaveIndicator({
         transition={{ duration: 0.15 }}
         className="hidden items-center gap-1 text-xs sm:flex"
       >
-        {status.kind === "idle" && <span className="text-brand-muted">Editando…</span>}
+        {status.kind === "idle" && (
+          <span className="text-brand-muted">{texts.lienzo.autosaveEditando}</span>
+        )}
         {status.kind === "saving" && (
           <>
             <Loader2 className="text-brand-muted h-3 w-3 animate-spin" />
-            <span className="text-brand-muted">Guardando...</span>
+            <span className="text-brand-muted">{texts.comun.guardando}</span>
           </>
         )}
         {status.kind === "saved" && (
           <>
             <Check className="h-3 w-3 text-emerald-600" />
-            <span className="text-brand-muted">{formatRelative(status.at)}</span>
+            <span className="text-brand-muted">{formatRelative(status.at, texts)}</span>
           </>
         )}
         {status.kind === "error" && (
@@ -392,7 +413,7 @@ function AutoSaveIndicator({
           >
             <AlertCircle className="h-3 w-3 flex-shrink-0" />
             <span className="truncate" title={status.message}>
-              {status.message || "Error al guardar"}
+              {status.message || texts.lienzo.autosaveError}
             </span>
           </span>
         )}
@@ -401,13 +422,13 @@ function AutoSaveIndicator({
   );
 }
 
-function formatRelative(timestamp: number): string {
+function formatRelative(timestamp: number, texts: ReturnType<typeof useStudioTexts>): string {
   const diffMs = Date.now() - timestamp;
   const sec = Math.floor(diffMs / 1000);
-  if (sec < 5) return "Guardado";
-  if (sec < 60) return `Guardado hace ${sec}s`;
+  if (sec < 5) return texts.lienzo.autosaveGuardado;
+  if (sec < 60) return fillStudioText(texts.lienzo.autosaveGuardadoS, { n: sec });
   const min = Math.floor(sec / 60);
-  return `Guardado hace ${min}m`;
+  return fillStudioText(texts.lienzo.autosaveGuardadoM, { n: min });
 }
 
 // ──────────────────────────────────────────────────────────────────
@@ -461,6 +482,7 @@ function ProductAvatar({
 
 function SizeChipWithComparator({ sizeCm }: { sizeCm: string }) {
   const [open, setOpen] = useState(false);
+  const texts = useStudioTexts();
   const comparison = compareSizeToObject(sizeCm);
 
   if (!comparison) {
@@ -478,7 +500,7 @@ function SizeChipWithComparator({ sizeCm }: { sizeCm: string }) {
         type="button"
         onClick={() => setOpen((v) => !v)}
         aria-expanded={open}
-        aria-label={`Tamaño físico ${sizeCm} cm. Click para ver comparación con objeto cotidiano.`}
+        aria-label={fillStudioText(texts.lienzo.tamanoChipAria, { size: sizeCm })}
         className="bg-brand-cream text-brand-purple-dark ring-brand-purple/15 hover:bg-brand-yellow/20 hover:ring-brand-purple/40 focus:ring-brand-turquoise inline-flex items-center gap-1 rounded-full px-2 py-0.5 ring-1 transition-colors focus:ring-2 focus:ring-offset-1 focus:outline-none"
       >
         📐 {sizeCm} cm
@@ -491,7 +513,7 @@ function SizeChipWithComparator({ sizeCm }: { sizeCm: string }) {
             {/* Backdrop click-to-close */}
             <button
               type="button"
-              aria-label="Cerrar comparador"
+              aria-label={texts.comun.cerrarComparador}
               onClick={() => setOpen(false)}
               className="fixed inset-0 z-30 cursor-default"
               tabIndex={-1}
@@ -510,7 +532,7 @@ function SizeChipWithComparator({ sizeCm }: { sizeCm: string }) {
                 </span>
                 <div className="flex flex-col">
                   <p className="text-brand-purple-dark text-xs leading-tight font-bold">
-                    Tu imán será {comparison.phrase}
+                    {fillStudioText(texts.lienzo.sizePrefix, { frase: comparison.phrase })}
                   </p>
                   <p className="text-brand-muted mt-0.5 text-[10px]">{comparison.name}</p>
                 </div>
@@ -519,7 +541,7 @@ function SizeChipWithComparator({ sizeCm }: { sizeCm: string }) {
                   ambigüedad "7×9 o 9×7". Convención del catálogo: primero
                   ancho, después alto. */}
               <p className="text-brand-muted border-brand-purple/10 mt-2 border-t pt-1.5 text-[10px]">
-                <span className="font-bold">Medida:</span> {comparison.humanLabel}
+                <span className="font-bold">{texts.lienzo.sizeMedida}</span> {comparison.humanLabel}
               </p>
               {/* Pico apuntando al chip */}
               <span

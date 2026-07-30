@@ -28,6 +28,8 @@ import type { CanvasDataV2, StudioAsset, TextLayer } from "./types";
 import { selectUnitImagePlaceholder, type StudioStoreState } from "./lib/store";
 import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
 import { unitIndexOfSlot } from "./lib/faces";
+import { useStudioTexts } from "./studio-texts-provider";
+import { fillStudioText } from "./studio-texts";
 
 const MAX_VIEWPORT_WIDTH = 1024; // px lógicos máximo del grid en desktop (aumentado: calendarios/separadores se veían diminutos)
 
@@ -184,6 +186,7 @@ export function StudioCanvasGrid({
   const clearSlot = useStore(store, (s) => s.clearSlot);
   const setSlotPhotoTransform = useStore(store, (s) => s.setSlotPhotoTransform);
   const selectSlot = useStore(store, (s) => s.selectSlot);
+  const texts = useStudioTexts();
 
   // Responsive scale (ancho del contenedor, cap MAX_VIEWPORT_WIDTH)
   useEffect(() => {
@@ -286,7 +289,7 @@ export function StudioCanvasGrid({
   if (!canvasData || !layout) {
     return (
       <div className="flex items-center justify-center py-12">
-        <span className="text-brand-muted text-sm">Cargando lienzo...</span>
+        <span className="text-brand-muted text-sm">{texts.lienzo.loadingLienzo}</span>
       </div>
     );
   }
@@ -515,7 +518,7 @@ export function StudioCanvasGrid({
       ref={containerRef}
       className="relative mx-auto w-full"
       style={{ maxWidth: MAX_VIEWPORT_WIDTH }}
-      aria-label="Lienzo del Estudio de Personalización"
+      aria-label={texts.lienzo.lienzoAria}
     >
       <motion.div
         className={
@@ -546,11 +549,14 @@ export function StudioCanvasGrid({
                 <div
                   key={unitIndex}
                   role="group"
-                  aria-label={`Separador ${unitIndex + 1} de ${unitCount}`}
+                  aria-label={fillStudioText(texts.lienzo.unidadAria, {
+                    n: unitIndex + 1,
+                    total: unitCount,
+                  })}
                   className="border-brand-purple/15 flex flex-col items-center gap-1.5 rounded-2xl border bg-white/70 p-2 shadow-sm"
                 >
                   <span className="text-brand-purple-dark text-xs font-bold">
-                    Separador {unitIndex + 1}
+                    {fillStudioText(texts.lienzo.unitSeparador, { n: unitIndex + 1 })}
                   </span>
                   <div className="flex items-start justify-center gap-2">
                     {canvasData.slots
@@ -565,7 +571,7 @@ export function StudioCanvasGrid({
                           }
                         >
                           <span className="text-brand-muted text-[10px] font-semibold tracking-wide uppercase">
-                            Cara {i === 0 ? "A" : "B"}
+                            {i === 0 ? texts.lienzo.unitCaraA : texts.lienzo.unitCaraB}
                           </span>
                           {renderSlotCell(slot)}
                         </div>
@@ -628,12 +634,17 @@ function LazySlotPlaceholder({
   label?: string;
   onClick: () => void;
 }) {
+  const texts = useStudioTexts();
   const isCircle = shape === "circle";
   return (
     <button
       type="button"
       onClick={onClick}
-      aria-label={label ? `Editar ${label}` : "Editar este espacio"}
+      aria-label={
+        label
+          ? fillStudioText(texts.lienzo.editarAria, { etiqueta: label })
+          : texts.lienzo.editarEspacioAria
+      }
       className="group border-brand-purple/15 bg-brand-cream/40 focus-visible:ring-brand-turquoise relative cursor-pointer overflow-hidden border bg-white outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
       style={{
         width: displaySize,
@@ -646,7 +657,7 @@ function LazySlotPlaceholder({
         // eslint-disable-next-line @next/next/no-img-element
         <img
           src={assetUrl}
-          alt={label ?? "Tu foto"}
+          alt={label ?? texts.lienzo.altTuFoto}
           className="h-full w-full object-cover"
           loading="lazy"
           draggable={false}
@@ -654,7 +665,7 @@ function LazySlotPlaceholder({
       ) : (
         <span className="text-brand-muted absolute inset-0 flex flex-col items-center justify-center gap-1 text-center text-xs font-semibold">
           {label ? <span className="text-brand-purple-dark">{label}</span> : null}
-          <span>Toca para elegir</span>
+          <span>{texts.lienzo.slotTocaElegir}</span>
         </span>
       )}
     </button>
@@ -734,6 +745,7 @@ function StudioSlotEditModalWrapper({
   const setSlotFilter = useStore(store, (s) => s.setSlotFilter);
   const setSlotPhotoTransform = useStore(store, (s) => s.setSlotPhotoTransform);
   const setSlotTextOverride = useStore(store, (s) => s.setSlotTextOverride);
+  const texts = useStudioTexts();
 
   const textLayers = useMemo(() => {
     if (!unitTemplate) return [];
@@ -756,7 +768,11 @@ function StudioSlotEditModalWrapper({
       slotIndex={slotIndex}
       slotLabel={
         slotIndex !== null
-          ? (slotLabels?.[slotIndex] ?? `Espacio ${slotIndex + 1} de ${slotCount}`)
+          ? (slotLabels?.[slotIndex] ??
+            fillStudioText(texts.lienzo.slotLabelFallback, {
+              n: slotIndex + 1,
+              total: slotCount,
+            }))
           : undefined
       }
       hasPhoto={!!slotAssetUrl}

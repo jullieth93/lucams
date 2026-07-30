@@ -18,19 +18,28 @@
 
 import nextDynamic from "next/dynamic";
 import type { StudioEditorProps } from "./studio-editor";
+import { useStudioTexts } from "./studio-texts-provider";
+
+// Roadmap B1 — el "Cargando estudio..." es texto CMS (estudio.lienzo.loading-estudio).
+// Se lee del contexto (el loader vive dentro de <StudioTextsProvider>); sin provider
+// cae al default exacto pre-CMS.
+function StudioEditorLoadingFallback() {
+  const texts = useStudioTexts();
+  return (
+    <div className="flex flex-1 items-center justify-center p-12">
+      <div className="text-brand-muted flex items-center gap-3">
+        <div className="border-brand-purple/30 border-t-brand-purple h-6 w-6 animate-spin rounded-full border-2" />
+        <span>{texts.lienzo.loadingEstudio}</span>
+      </div>
+    </div>
+  );
+}
 
 const StudioEditor = nextDynamic(
   () => import("./studio-editor").then((mod) => ({ default: mod.StudioEditor })),
   {
     ssr: false,
-    loading: () => (
-      <div className="flex flex-1 items-center justify-center p-12">
-        <div className="text-brand-muted flex items-center gap-3">
-          <div className="border-brand-purple/30 border-t-brand-purple h-6 w-6 animate-spin rounded-full border-2" />
-          <span>Cargando estudio...</span>
-        </div>
-      </div>
-    ),
+    loading: () => <StudioEditorLoadingFallback />,
   },
 );
 

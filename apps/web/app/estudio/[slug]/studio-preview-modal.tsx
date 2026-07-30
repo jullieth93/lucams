@@ -23,6 +23,33 @@ import { Loader2, Pencil, Sparkles, ShoppingCart } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { formatCOP } from "@/lib/format";
+import { useStudioTexts } from "./studio-texts-provider";
+import { fillStudioText, splitStudioText } from "./studio-texts";
+
+/**
+ * Intercala un valor dinámico en <strong> dentro de un texto CMS (ej. la medida
+ * física en las descripciones de confirmación). Si el texto editado ya no trae
+ * el placeholder, se interpola plano (degradación segura, sin strong).
+ */
+function StrongVar({
+  template,
+  varName,
+  value,
+}: {
+  template: string;
+  varName: string;
+  value: string;
+}) {
+  const parts = splitStudioText(template, varName);
+  if (!parts) return <>{fillStudioText(template, { [varName]: value })}</>;
+  return (
+    <>
+      {parts[0]}
+      <strong>{value}</strong>
+      {parts[1]}
+    </>
+  );
+}
 
 type StudioPreviewModalProps = {
   isOpen: boolean;
@@ -61,6 +88,7 @@ export function StudioPreviewModal({
   onEdit,
   onConfirm,
 }: StudioPreviewModalProps) {
+  const texts = useStudioTexts();
   if (!previewUrl) return null;
 
   // #3 — el calendario habla de "páginas" (concordancia femenina: "las"/"Revísalas"); los imanes,
@@ -68,8 +96,40 @@ export function StudioPreviewModal({
   const isCalendar = productKind === "calendar";
   const isBookmarks = productKind === "bookmarks";
   // Cómo nombrar la pieza: con imán es un "imán"; sin él, una "ficha".
-  const pieza = productKind === "tiles" ? "ficha" : "imán";
-  const piezas = productKind === "tiles" ? "fichas" : "imanes";
+  const pieza = productKind === "tiles" ? texts.exportar.piezaFicha : texts.exportar.piezaIman;
+  const piezas = productKind === "tiles" ? texts.exportar.piezaFichas : texts.exportar.piezaImanes;
+  // Roadmap B1 — textos CMS (estudio.exportar.*): la concordancia de género/número se
+  // resuelve acá (pieza/piezas/o/os) y los textos llevan placeholders documentados.
+  const descCalendar = fillStudioText(texts.exportar.descCalendario, {
+    n: slotCount,
+    año: calendarYear ? ` ${calendarYear}` : "",
+  });
+  const descMagnets =
+    slotCount === 1
+      ? fillStudioText(texts.exportar.descImanUno, { pieza })
+      : fillStudioText(texts.exportar.descImanes, { n: slotCount, piezas });
+  const summaryLine = isCalendar
+    ? fillStudioText(texts.exportar.resumenCalendario, { n: slotCount })
+    : isBookmarks
+      ? slotCount === 1
+        ? fillStudioText(texts.exportar.resumenSeparadorUno, { n: slotCount })
+        : fillStudioText(texts.exportar.resumenSeparadores, { n: slotCount })
+      : slotCount === 1
+        ? fillStudioText(texts.exportar.resumenUno, {
+            n: slotCount,
+            pieza,
+            o: pieza === texts.exportar.piezaFicha ? "a" : "o",
+          })
+        : fillStudioText(texts.exportar.resumenMuchos, {
+            n: slotCount,
+            piezas,
+            os: piezas === texts.exportar.piezaFichas ? "as" : "os",
+          });
+  const summarySize = sizeCm
+    ? isCalendar
+      ? fillStudioText(texts.exportar.resumenTamano, { tamano: sizeCm })
+      : fillStudioText(texts.exportar.resumenTamanoCada, { tamano: sizeCm })
+    : null;
 
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && !isFinalizing && onEdit()}>
@@ -87,48 +147,56 @@ export function StudioPreviewModal({
         <DialogTitle className="text-brand-purple-dark font-display flex items-center gap-2 text-xl font-bold">
           <Sparkles className="text-brand-pink h-5 w-5" />
           {isCalendar
-            ? "Así se verá tu calendario"
+            ? texts.exportar.tituloCalendario
             : isBookmarks
-              ? "Así se verán tus separadores"
-              : "Así se verá tu pedido"}
+              ? texts.exportar.tituloSeparadores
+              : texts.exportar.tituloPedido}
         </DialogTitle>
         <DialogDescription className="text-brand-purple-dark/70 text-sm">
           {isCalendar ? (
             <>
-              Esta es la vista previa de las {slotCount} páginas de tu calendario
-              {calendarYear ? ` ${calendarYear}` : ""}.
+              {descCalendar}
               {sizeCm && (
                 <>
                   {" "}
-                  Cada página mide <strong>{sizeCm}</strong>.
+                  <StrongVar
+                    template={texts.exportar.descCalendarioTamano}
+                    varName="tamano"
+                    value={sizeCm}
+                  />
                 </>
               )}{" "}
-              Revísalas antes de continuar.
+              {texts.exportar.descCalendarioRevisa}
             </>
           ) : isBookmarks ? (
             <>
-              Esta es la vista previa de los {slotCount} separadores que vas a recibir — cada uno
-              desplegado con sus 2 caras (así se imprime la tira).
+              {fillStudioText(texts.exportar.descSeparadores, { n: slotCount })}
               {sizeCm && (
                 <>
                   {" "}
-                  Cada separador mide <strong>{sizeCm}</strong> doblado.
+                  <StrongVar
+                    template={texts.exportar.descSeparadoresTamano}
+                    varName="tamano"
+                    value={sizeCm}
+                  />
                 </>
               )}{" "}
-              Revísalos antes de continuar.
+              {texts.exportar.descRevisaMuchos}
             </>
           ) : (
             <>
-              {slotCount === 1
-                ? `Esta es la vista previa del ${pieza} que vas a recibir.`
-                : `Esta es la vista previa de los ${slotCount} ${piezas} que vas a recibir.`}
+              {descMagnets}
               {sizeCm && (
                 <>
                   {" "}
-                  Cada {pieza} mide <strong>{sizeCm}</strong>.
+                  <StrongVar
+                    template={texts.exportar.descImanTamano}
+                    varName="tamano"
+                    value={sizeCm}
+                  />
                 </>
               )}{" "}
-              {slotCount === 1 ? "Revísalo" : "Revísalos"} antes de continuar.
+              {slotCount === 1 ? texts.exportar.descRevisaUno : texts.exportar.descRevisaMuchos}
             </>
           )}
         </DialogDescription>
@@ -159,18 +227,11 @@ export function StudioPreviewModal({
             <div className="min-w-0 flex-1">
               <p className="text-brand-purple-dark font-semibold">{productName}</p>
               <p className="text-brand-muted text-xs">
-                {isCalendar
-                  ? `Calendario personalizado · ${slotCount} páginas`
-                  : isBookmarks
-                    ? `${slotCount} ${slotCount === 1 ? "separador personalizado" : "separadores personalizados"} (2 caras c/u)`
-                    : `${slotCount} ${slotCount === 1 ? `${pieza} personalizad${pieza === "ficha" ? "a" : "o"}` : `${piezas} personalizad${piezas === "fichas" ? "as" : "os"}`}`}
-                {sizeCm && (
+                {summaryLine}
+                {summarySize && (
                   <>
                     {" · "}
-                    <span className="text-brand-purple font-semibold">
-                      📐 {sizeCm}
-                      {isCalendar ? "" : " c/u"}
-                    </span>
+                    <span className="text-brand-purple font-semibold">{summarySize}</span>
                   </>
                 )}
               </p>
@@ -202,7 +263,7 @@ export function StudioPreviewModal({
             className="border-brand-purple/30 text-brand-purple-dark hover:bg-brand-purple/5"
           >
             <Pencil className="mr-1.5 h-4 w-4" />
-            Volver a editar
+            {texts.exportar.volverEditar}
           </Button>
           <Button
             type="button"
@@ -214,12 +275,12 @@ export function StudioPreviewModal({
             {isFinalizing ? (
               <>
                 <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
-                Guardando…
+                {texts.exportar.confirmarGuardando}
               </>
             ) : (
               <>
                 <ShoppingCart className="mr-1.5 h-4 w-4" />
-                Sí, agregar al carrito
+                {texts.exportar.confirmarCta}
               </>
             )}
           </Button>

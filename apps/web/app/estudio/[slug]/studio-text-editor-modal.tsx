@@ -30,6 +30,8 @@ import { Slider } from "@/components/ui/slider";
 import { Bold, Check, Italic, Type } from "lucide-react";
 import { FONT_PRESETS, TEXT_COLOR_PRESETS } from "./lib/fonts";
 import type { TextLayer, TextOverride } from "./types";
+import { useStudioTexts } from "./studio-texts-provider";
+import { fillStudioText } from "./studio-texts";
 
 type StudioTextEditorModalProps = {
   isOpen: boolean;
@@ -52,6 +54,7 @@ export type StudioTextEditorFormProps = {
 
 export function StudioTextEditorModal(props: StudioTextEditorModalProps) {
   const { isOpen, layer, currentOverride, slotLabel, onClose, onApply } = props;
+  const texts = useStudioTexts();
   return (
     <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-w-md p-0">
@@ -61,10 +64,11 @@ export function StudioTextEditorModal(props: StudioTextEditorModalProps) {
           </div>
           <div className="flex flex-col">
             <DialogTitle className="text-brand-purple-dark text-sm font-bold">
-              Editar texto
+              {texts.texto.editorTitulo}
             </DialogTitle>
             <DialogDescription className="text-brand-muted text-[11px]">
-              {slotLabel ? `${slotLabel} · ` : ""}Click &quot;Aplicar&quot; para guardar
+              {slotLabel ? `${slotLabel} · ` : ""}
+              {texts.texto.editorDesc}
             </DialogDescription>
           </div>
         </div>
@@ -79,7 +83,7 @@ export function StudioTextEditorModal(props: StudioTextEditorModalProps) {
             onClick={onClose}
             className="text-brand-purple-dark/70 hover:bg-brand-purple/10 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors"
           >
-            Cerrar
+            {texts.texto.editorCerrar}
           </button>
         </div>
       </DialogContent>
@@ -92,6 +96,7 @@ export function StudioTextEditorForm({
   currentOverride,
   onApply,
 }: StudioTextEditorFormProps) {
+  const texts = useStudioTexts();
   // Estado local inicializado con valores del layer + override actual.
   const [text, setText] = useState(currentOverride?.text ?? layer.text ?? "");
   const [fontFamily, setFontFamily] = useState(
@@ -161,7 +166,7 @@ export function StudioTextEditorForm({
           wordBreak: "break-word",
         }}
       >
-        {text || <span className="text-brand-purple-dark/30 italic">Sin texto</span>}
+        {text || <span className="text-brand-purple-dark/30 italic">{texts.texto.sinTexto}</span>}
       </div>
 
       {/* Input texto */}
@@ -170,7 +175,7 @@ export function StudioTextEditorForm({
           htmlFor="text-edit-input"
           className="text-brand-purple-dark/70 mb-1 block text-xs font-semibold"
         >
-          Texto
+          {texts.texto.campoLabel}
         </label>
         <input
           id="text-edit-input"
@@ -179,7 +184,7 @@ export function StudioTextEditorForm({
           onChange={(e) => setText(e.target.value)}
           maxLength={120}
           className="border-brand-purple/15 text-brand-purple-dark focus:border-brand-turquoise focus:ring-brand-turquoise/30 w-full rounded-md border px-3 py-2 text-sm transition-colors focus:ring-2 focus:outline-none"
-          placeholder="Escribe tu texto…"
+          placeholder={texts.texto.campoPlaceholder}
           autoFocus
         />
       </div>
@@ -188,7 +193,7 @@ export function StudioTextEditorForm({
       <div className="flex items-end gap-3">
         <div className="flex-1">
           <label className="text-brand-purple-dark/70 mb-1.5 flex items-center justify-between text-xs font-semibold">
-            <span>Tamaño</span>
+            <span>{texts.texto.tamanoLabel}</span>
             <span className="text-brand-muted tabular-nums">{fontSize}px</span>
           </label>
           <Slider
@@ -197,7 +202,7 @@ export function StudioTextEditorForm({
             step={2}
             value={[fontSize]}
             onValueChange={(v) => setFontSize(v[0])}
-            aria-label="Tamaño del texto"
+            aria-label={texts.texto.tamanoAria}
           />
         </div>
         <div className="flex items-center gap-1">
@@ -205,8 +210,8 @@ export function StudioTextEditorForm({
             type="button"
             onClick={() => setIsBold((v) => !v)}
             aria-pressed={isBold}
-            aria-label="Negrita"
-            title="Negrita"
+            aria-label={texts.texto.negrita}
+            title={texts.texto.negrita}
             className={[
               "focus:ring-brand-turquoise flex h-9 w-9 items-center justify-center rounded-md transition-colors focus:ring-2 focus:outline-none",
               isBold
@@ -220,8 +225,8 @@ export function StudioTextEditorForm({
             type="button"
             onClick={() => setIsItalic((v) => !v)}
             aria-pressed={isItalic}
-            aria-label="Cursiva"
-            title="Cursiva"
+            aria-label={texts.texto.cursiva}
+            title={texts.texto.cursiva}
             className={[
               "focus:ring-brand-turquoise flex h-9 w-9 items-center justify-center rounded-md transition-colors focus:ring-2 focus:outline-none",
               isItalic
@@ -237,7 +242,7 @@ export function StudioTextEditorForm({
       {/* Color picker */}
       <div>
         <label className="text-brand-purple-dark/70 mb-1.5 block text-xs font-semibold">
-          Color
+          {texts.texto.colorLabel}
         </label>
         <div className="grid grid-cols-9 gap-1.5">
           {TEXT_COLOR_PRESETS.map((c) => {
@@ -275,7 +280,7 @@ export function StudioTextEditorForm({
       {/* Font picker */}
       <div>
         <label className="text-brand-purple-dark/70 mb-1.5 block text-xs font-semibold">
-          Tipografía
+          {texts.texto.tipografiaLabel}
         </label>
         <div className="grid grid-cols-2 gap-1.5">
           {FONT_PRESETS.map((f) => {
@@ -285,7 +290,7 @@ export function StudioTextEditorForm({
                 key={f.fontFamily}
                 type="button"
                 onClick={() => setFontFamily(f.fontFamily)}
-                aria-label={`Tipografía ${f.label}`}
+                aria-label={fillStudioText(texts.texto.tipografiaAria, { nombre: f.label })}
                 title={f.mood}
                 className={[
                   "flex items-center justify-between rounded-md px-2.5 py-2 text-left transition-all focus:outline-none",
@@ -313,14 +318,14 @@ export function StudioTextEditorForm({
           onClick={handleReset}
           className="text-brand-purple-dark/70 hover:text-brand-purple-dark text-xs font-semibold underline"
         >
-          Volver al original
+          {texts.texto.reset}
         </button>
         <button
           type="button"
           onClick={handleApply}
           className="bg-brand-purple hover:bg-brand-purple-dark rounded-md px-4 py-1.5 text-xs font-semibold text-white shadow-sm transition-colors"
         >
-          Aplicar
+          {texts.texto.aplicar}
         </button>
       </div>
     </div>

@@ -27,8 +27,9 @@ import {
   RotateCw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { FILTER_LABELS, FILTER_DESCRIPTIONS, FILTER_ORDER } from "./lib/photo-filters";
+import { FILTER_ORDER } from "./lib/photo-filters";
 import type { PhotoFilterPreset } from "./types";
+import { useStudioTexts } from "./studio-texts-provider";
 
 export type StudioPhotoAdjustFormProps = {
   photoUrl: string;
@@ -71,6 +72,23 @@ export function StudioPhotoAdjustForm({
 }: StudioPhotoAdjustFormProps) {
   // #18 — paso de desplazamiento por pulsación (px del stage).
   const NUDGE = 12;
+  const texts = useStudioTexts();
+  // Roadmap B1 — nombres y descripciones de filtros desde el CMS (estudio.texto.filtro-*);
+  // FILTER_LABELS/DESCRIPTIONS de lib/photo-filters quedan como respaldo de datos del preset.
+  const filterLabels: Record<PhotoFilterPreset, string> = {
+    vivid: texts.texto.filtroVividLabel,
+    vintage: texts.texto.filtroVintageLabel,
+    polaroid: texts.texto.filtroPolaroidLabel,
+    pastel: texts.texto.filtroPastelLabel,
+    bw: texts.texto.filtroBwLabel,
+  };
+  const filterDescriptions: Record<PhotoFilterPreset, string> = {
+    vivid: texts.texto.filtroVividDesc,
+    vintage: texts.texto.filtroVintageDesc,
+    polaroid: texts.texto.filtroPolaroidDesc,
+    pastel: texts.texto.filtroPastelDesc,
+    bw: texts.texto.filtroBwDesc,
+  };
 
   return (
     <div className="space-y-3">
@@ -84,7 +102,7 @@ export function StudioPhotoAdjustForm({
           className="border-brand-purple/30 text-brand-purple-dark hover:bg-brand-purple/5 gap-1.5"
         >
           <RotateCcw className="h-3.5 w-3.5" />
-          Centrar y resetear zoom
+          {texts.texto.ajustarReset}
         </Button>
         {/* Ola 3c — Rotar 90°: endereza fotos cuya orientación no calza la
             ventana (foto apaisada en cara vertical, retrato en separador 6×2).
@@ -95,11 +113,11 @@ export function StudioPhotoAdjustForm({
             variant="outline"
             size="sm"
             onClick={onRotate}
-            aria-label="Rotar la foto 90 grados"
+            aria-label={texts.texto.rotarAria}
             className="border-brand-purple/30 text-brand-purple-dark hover:bg-brand-purple/5 gap-1.5"
           >
             <RotateCw className="h-3.5 w-3.5" />
-            Rotar 90°
+            {texts.texto.ajustarRotar}
             {currentTransform?.rotation ? (
               <span className="text-brand-muted tabular-nums">
                 ({Math.round(currentTransform.rotation)}°)
@@ -114,7 +132,9 @@ export function StudioPhotoAdjustForm({
         moverla con precisión. Aplica también a calendarios (el encuadre sí se propaga). */}
       <div className="border-brand-purple/10 flex flex-wrap items-end gap-x-6 gap-y-3 rounded-lg border p-3">
         <div className="flex flex-col items-center">
-          <span className="text-brand-purple-dark mb-1 text-xs font-semibold">Mover</span>
+          <span className="text-brand-purple-dark mb-1 text-xs font-semibold">
+            {texts.texto.ajustarMover}
+          </span>
           <div className="grid grid-cols-3 grid-rows-2 gap-1">
             <span />
             <NudgeButton label="Mover la foto hacia arriba" onClick={() => onNudge(0, -NUDGE)}>
@@ -136,11 +156,13 @@ export function StudioPhotoAdjustForm({
 
       {allowFilters && (
         <div className="mt-3">
-          <h3 className="text-brand-purple-dark mb-2 text-sm font-semibold">Filtros</h3>
+          <h3 className="text-brand-purple-dark mb-2 text-sm font-semibold">
+            {texts.texto.filtrosTitulo}
+          </h3>
           {/* Grid de presets: 6 cards (sin filtro + 5 presets) */}
           <div
             role="radiogroup"
-            aria-label="Filtros disponibles"
+            aria-label={texts.texto.filtrosAria}
             className="grid grid-cols-2 gap-3 sm:grid-cols-3"
           >
             {/* Sin filtro */}
@@ -148,8 +170,8 @@ export function StudioPhotoAdjustForm({
               isSelected={currentFilter === null}
               previewUrl={photoUrl}
               cssFilter="none"
-              label="Sin filtro"
-              description="Foto original sin ajustes"
+              label={texts.texto.filtroSinLabel}
+              description={texts.texto.filtroSinDesc}
               onClick={() => onApplyFilter(null)}
             />
 
@@ -159,8 +181,8 @@ export function StudioPhotoAdjustForm({
                 isSelected={currentFilter === preset}
                 previewUrl={photoUrl}
                 cssFilter={CSS_FILTER_BY_PRESET[preset]}
-                label={FILTER_LABELS[preset]}
-                description={FILTER_DESCRIPTIONS[preset]}
+                label={filterLabels[preset]}
+                description={filterDescriptions[preset]}
                 onClick={() => onApplyFilter(preset)}
               />
             ))}

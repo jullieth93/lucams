@@ -48,38 +48,38 @@ import type { Magnet3D } from "./fridge-3d-view";
 import { composeGiftFlatlay } from "./lib/compose-gift-flatlay";
 import { composeShelfFlatlay } from "./lib/compose-shelf-flatlay";
 import { useIsTouch } from "./use-is-touch";
+import { useStudioTexts } from "./studio-texts-provider";
+
+// Roadmap B1 — los "Cargando … 3D…" de los dynamic imports son texto CMS
+// (estudio.escenas.loading-*); sin provider caen al default exacto pre-CMS.
+function SceneLoading({
+  textKey,
+}: {
+  textKey: "loadingNevera" | "loadingTablero" | "loadingPolaroid" | "loadingLibro";
+}) {
+  const texts = useStudioTexts();
+  return (
+    <div className="text-brand-muted flex h-full items-center justify-center text-sm">
+      {texts.escenas[textKey]}
+    </div>
+  );
+}
 
 const FridgeView3D = nextDynamic(() => import("./fridge-3d-view"), {
   ssr: false,
-  loading: () => (
-    <div className="text-brand-muted flex h-full items-center justify-center text-sm">
-      Cargando la nevera 3D…
-    </div>
-  ),
+  loading: () => <SceneLoading textKey="loadingNevera" />,
 });
 const RoomBoardView3D = nextDynamic(() => import("./room-board-view-3d"), {
   ssr: false,
-  loading: () => (
-    <div className="text-brand-muted flex h-full items-center justify-center text-sm">
-      Cargando tu tablero 3D…
-    </div>
-  ),
+  loading: () => <SceneLoading textKey="loadingTablero" />,
 });
 const PolaroidView3D = nextDynamic(() => import("./polaroid-3d-view"), {
   ssr: false,
-  loading: () => (
-    <div className="text-brand-muted flex h-full items-center justify-center text-sm">
-      Cargando tus polaroids 3D…
-    </div>
-  ),
+  loading: () => <SceneLoading textKey="loadingPolaroid" />,
 });
 const BookView3D = nextDynamic(() => import("./book-view-3d"), {
   ssr: false,
-  loading: () => (
-    <div className="text-brand-muted flex h-full items-center justify-center text-sm">
-      Cargando el libro 3D…
-    </div>
-  ),
+  loading: () => <SceneLoading textKey="loadingLibro" />,
 });
 // Ola 2C — visor de detalle tarjeta-a-tarjeta del calendario (WebGL, client-only).
 const CalendarCardFocus = nextDynamic(() => import("./calendar-card-focus"), {
@@ -93,17 +93,19 @@ export type Scene = "fridge" | "polaroid" | "board" | "memo" | "book" | "shelf" 
 /** Tipo de producto que abre la galería (deriva del personalizationKind del producto). */
 export type SceneKind = "photo" | "calendar" | "letters" | "bookmark";
 
-const SCENE_META: Record<Scene, { label: string; emoji: string }> = {
-  fridge: { label: "Nevera", emoji: "🧊" },
-  polaroid: { label: "Polaroid", emoji: "📸" },
-  board: { label: "Mural", emoji: "🖼️" },
-  memo: { label: "Tablero", emoji: "📌" },
-  book: { label: "Libro", emoji: "📖" },
-  shelf: { label: "Repisa", emoji: "📚" },
-  gift: { label: "Regalo", emoji: "🎁" },
+// Emoji de cada escena. El LABEL es texto CMS (estudio.escenas.chip-*) y se resuelve
+// dentro del componente via contexto (roadmap B1).
+const SCENE_EMOJI: Record<Scene, string> = {
+  fridge: "🧊",
+  polaroid: "📸",
+  board: "🖼️",
+  memo: "📌",
+  book: "📖",
+  shelf: "📚",
+  gift: "🎁",
 };
 
-const ALL_SCENES = Object.keys(SCENE_META) as Scene[];
+const ALL_SCENES = Object.keys(SCENE_EMOJI) as Scene[];
 
 /**
  * Escenas ofrecidas por tipo de producto (el calendario-de-pared NO se ofrece: archivado).
@@ -189,6 +191,17 @@ export function SceneGallery({
   // se deriva en render (sin efecto ni setState en cascada — react-hooks/set-state-in-effect).
   const activeScene = scenes.includes(scene) ? scene : scenes[0]!;
   const isTouch = useIsTouch(); // #9 — copy del gesto de zoom según táctil vs mouse.
+  const texts = useStudioTexts();
+  // Roadmap B1 — labels de las escenas desde el CMS (estudio.escenas.chip-*).
+  const sceneLabels: Record<Scene, string> = {
+    fridge: texts.escenas.chipNevera,
+    polaroid: texts.escenas.chipPolaroid,
+    board: texts.escenas.chipMural,
+    memo: texts.escenas.chipTablero,
+    book: texts.escenas.chipLibro,
+    shelf: texts.escenas.chipRepisa,
+    gift: texts.escenas.chipRegalo,
+  };
   // Compositores 2D: se arman perezosamente al abrir su chip y se cachean.
   const [shelfUrl, setShelfUrl] = useState<string | null>(null);
   const [giftUrl, setGiftUrl] = useState<string | null>(null);
@@ -272,12 +285,12 @@ export function SceneGallery({
       ref={dialogRef}
       role="dialog"
       aria-modal="true"
-      aria-label="Mira tu diseño en tu espacio"
+      aria-label={texts.escenas.galeriaAria}
       tabIndex={-1}
       className="bg-brand-purple-dark/85 fixed inset-0 z-50 flex flex-col backdrop-blur-sm outline-none"
     >
       <div className="flex items-center justify-between px-4 py-3 text-white sm:px-6">
-        <span className="font-display text-lg font-bold">✨ Míralo en tu espacio</span>
+        <span className="font-display text-lg font-bold">{texts.escenas.titulo}</span>
         <div className="flex items-center gap-2">
           {/* Ola 3 — la galería es el nivel SUPERIOR del flujo del calendario: de acá se vuelve
             al detalle tarjeta-a-tarjeta (la tarjeta que se estaba leyendo se conserva). */}
@@ -288,13 +301,13 @@ export function SceneGallery({
               className="inline-flex h-10 items-center gap-1.5 rounded-full bg-white/15 px-4 text-sm font-bold text-white transition-colors hover:bg-white/25 focus:ring-2 focus:ring-white focus:outline-none"
             >
               <ZoomIn className="h-4 w-4" aria-hidden />
-              <span>Volver al detalle</span>
+              <span>{texts.escenas.volverDetalle}</span>
             </button>
           )}
           <button
             type="button"
             onClick={onClose}
-            aria-label="Cerrar"
+            aria-label={texts.comun.cerrar}
             className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/15 text-white transition-colors hover:bg-white/25 focus:ring-2 focus:ring-white focus:outline-none"
           >
             <X className="h-5 w-5" />
@@ -309,11 +322,10 @@ export function SceneGallery({
       {scenes.length > 1 && (
         <div
           role="group"
-          aria-label="Escenas"
+          aria-label={texts.escenas.grupoAria}
           className="flex flex-wrap items-center justify-center gap-2 px-4 pb-2"
         >
           {scenes.map((key) => {
-            const meta = SCENE_META[key];
             const active = key === activeScene;
             return (
               <button
@@ -327,8 +339,8 @@ export function SceneGallery({
                     : "bg-white/15 text-white hover:bg-white/25"
                 }`}
               >
-                <span aria-hidden>{meta.emoji}</span>
-                <span>{meta.label}</span>
+                <span aria-hidden>{SCENE_EMOJI[key]}</span>
+                <span>{sceneLabels[key]}</span>
               </button>
             );
           })}
@@ -350,12 +362,12 @@ export function SceneGallery({
           )
         ) : building && !flatUrl ? (
           <div className="text-brand-cream/90 flex h-full items-center justify-center text-sm">
-            Armando la escena…
+            {texts.escenas.armando}
           </div>
         ) : failed[activeScene] ? (
           <div className="text-brand-cream/90 flex h-full flex-col items-center justify-center gap-2 p-6 text-center text-sm">
-            <p>No pudimos armar esta escena en este momento.</p>
-            <p className="text-brand-cream/70 text-xs">Prueba otra escena o vuelve al editor.</p>
+            <p>{texts.escenas.error}</p>
+            <p className="text-brand-cream/70 text-xs">{texts.escenas.errorHint}</p>
           </div>
         ) : flatUrl ? (
           <div className="absolute inset-0 flex items-center justify-center overflow-hidden p-2 sm:p-3">
@@ -375,9 +387,9 @@ export function SceneGallery({
         <p className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-black/40 px-3 py-1.5 text-center text-xs text-white">
           {is3D
             ? isTouch
-              ? "Arrastra para girar · pellizca con 2 dedos para acercar"
-              : "Arrastra para girar · rueda o pellizca para acercar"
-            : "Mantén presionada la imagen para guardarla o compartirla 💛"}
+              ? texts.escenas.hintTouch
+              : texts.escenas.hintMouse
+            : texts.escenas.hintPlana}
         </p>
       </div>
 

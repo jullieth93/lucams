@@ -32,6 +32,7 @@ import {
   assignPredesignedToDesignAction,
 } from "@/features/personalization/actions";
 import { StudioMessageField } from "./studio-message-field";
+import { ConsentText } from "./studio-consent-text";
 import {
   selectAssetIsUsed,
   selectFilledSlotCount,
@@ -40,6 +41,8 @@ import {
 } from "./lib/store";
 import { STUDIO_ACCEPTED_IMAGE_TYPES, uploadGuidanceText } from "./lib/upload-guidance";
 import type { StudioAsset, StudioTemplate } from "./types";
+import { useStudioTexts } from "./studio-texts-provider";
+import { fillStudioText } from "./studio-texts";
 
 type StudioSidebarProps = {
   store: StoreApi<StudioStoreState>;
@@ -71,6 +74,7 @@ export function StudioSidebar({
   const [rightsAccepted, setRightsAccepted] = useState(false);
   // P0.2 — Toggle "ocultar usadas" tipo Mixbook Hide Used.
   const [hideUsed, setHideUsed] = useState(false);
+  const texts = useStudioTexts();
 
   // Suscripciones selectivas zustand
   const assets = useStore(store, (s) => s.assets);
@@ -98,7 +102,7 @@ export function StudioSidebar({
       store.getState().canvasData?.slots.find((s) => !s.assetUrl)?.slotIndex ??
       null;
     if (targetSlot === null) {
-      toast.error("Selecciona un slot vacío primero");
+      toast.error(texts.plantillas.toastSinSlot);
       return;
     }
     setApplyingPredesignedId(item.id);
@@ -130,9 +134,9 @@ export function StudioSidebar({
           .canvasData?.slots.find((s) => s.slotIndex === targetSlot + 1 && !s.assetUrl);
         if (nextSlot) assignAssetToSlot(nextSlot.slotIndex, assetB);
       }
-      toast.success(`Diseño "${item.name}" aplicado`);
+      toast.success(fillStudioText(texts.plantillas.toastPredisenado, { nombre: item.name }));
     } catch (err) {
-      toast.error("No pudimos aplicar el diseño. Intenta de nuevo.");
+      toast.error(texts.plantillas.toastError);
       void err;
     } finally {
       setApplyingPredesignedId(null);
@@ -162,10 +166,7 @@ export function StudioSidebar({
           // M.3.b.B.2 — Si la foto subió con calidad insuficiente, mostrar
           // banner naranja persistente con el mensaje (cliente decide si usarla).
           if (result.validationLevel === "warning-strong" || result.validationLevel === "error") {
-            setUploadError(
-              result.validationMessage ??
-                "La foto tiene problemas de calidad. Revisa la sugerencia.",
-            );
+            setUploadError(result.validationMessage ?? texts.fotos.errorCalidad);
           }
         } else {
           setUploadError(result.message);
@@ -206,7 +207,7 @@ export function StudioSidebar({
         >
           <span className="flex items-center gap-2">
             <ImageIcon className="text-brand-purple h-4 w-4" />
-            Mis fotos
+            {texts.fotos.titulo}
             {assets.length > 0 && (
               <span className="text-brand-muted text-[10px] font-medium tabular-nums">
                 ({assets.length})
@@ -225,11 +226,9 @@ export function StudioSidebar({
                   ? "text-brand-turquoise"
                   : "text-brand-muted hover:text-brand-purple-dark/70",
               ].join(" ")}
-              title={
-                hideUsed ? "Mostrar todas las fotos" : "Ocultar fotos que ya pegaste en algún imán"
-              }
+              title={hideUsed ? texts.fotos.toggleTitleTodas : texts.fotos.toggleTitleOcultar}
             >
-              {hideUsed ? "✓ Solo no usadas" : "Ver todas"}
+              {hideUsed ? texts.fotos.toggleOcultar : texts.fotos.toggleTodas}
             </button>
           )}
         </div>
@@ -242,16 +241,7 @@ export function StudioSidebar({
             className="accent-brand-purple mt-0.5 h-4 w-4 flex-shrink-0"
           />
           <span>
-            Tengo derecho a usar esta foto y autorizo imprimirla (
-            <a
-              href="/legal/privacidad"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="underline"
-            >
-              Ley 1581
-            </a>
-            ).
+            <ConsentText template={texts.fotos.consentimiento} />
           </span>
         </label>
 
@@ -259,18 +249,18 @@ export function StudioSidebar({
           type="button"
           onClick={() => fileInputRef.current?.click()}
           disabled={uploading > 0 || !rightsAccepted}
-          aria-label="Subir foto desde el dispositivo"
+          aria-label={texts.fotos.subirAria}
           className="border-brand-purple/30 bg-brand-purple/5 text-brand-purple hover:bg-brand-purple/10 focus:ring-brand-purple flex w-full items-center justify-center gap-2 rounded-md border-2 border-dashed py-4 text-sm font-medium transition-colors focus:ring-2 focus:outline-none disabled:opacity-60"
         >
           {uploading > 0 ? (
             <>
               <Loader2 className="h-4 w-4 animate-spin" />
-              Subiendo ({uploading})...
+              {fillStudioText(texts.fotos.subiendo, { n: uploading })}
             </>
           ) : (
             <>
               <Upload className="h-4 w-4" />
-              Subir foto
+              {texts.fotos.subirCta}
             </>
           )}
         </button>
@@ -285,7 +275,11 @@ export function StudioSidebar({
         {/* Ola 4 (Lucy 2026-07-23) — formatos y resolución recomendada, visibles junto
             al punto de subida (texto centralizado en lib/upload-guidance.ts). */}
         <p className="text-brand-muted mt-2 text-[11px] leading-snug">
-          {uploadGuidanceText(productSizeCm)}
+          {uploadGuidanceText(productSizeCm, {
+            formats: texts.fotos.formatos,
+            withPx: texts.fotos.guiaPx,
+            generic: texts.fotos.guiaGenerica,
+          })}
         </p>
 
         {uploadError && (
@@ -299,20 +293,24 @@ export function StudioSidebar({
           <motion.button
             type="button"
             onClick={autoFillSlots}
-            aria-label={`Llenar ${emptySlots} slots vacíos con mis fotos`}
+            aria-label={fillStudioText(texts.fotos.autofillAria, { n: emptySlots })}
             initial={{ opacity: 0, y: -4 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.2 }}
             className="bg-brand-turquoise/15 text-brand-purple-dark hover:bg-brand-turquoise/25 focus:ring-brand-turquoise mt-3 flex w-full items-center justify-center gap-1.5 rounded-md py-2.5 text-sm font-semibold transition-colors focus:ring-2 focus:outline-none"
           >
             <Wand2 className="text-brand-purple h-4 w-4" />
-            Llenar slots con mis fotos
+            {texts.fotos.autofillCta}
           </motion.button>
         )}
 
         {/* Lista de assets con drag handle + checkmark "usada" + filtro Hide Used */}
         {assets.length > 0 && (
-          <div role="list" aria-label="Fotos subidas" className="mt-3 grid grid-cols-3 gap-2">
+          <div
+            role="list"
+            aria-label={texts.fotos.listaAria}
+            className="mt-3 grid grid-cols-3 gap-2"
+          >
             <AnimatePresence>
               {assets.map((asset, idx) => (
                 <AssetThumb
@@ -329,17 +327,14 @@ export function StudioSidebar({
         )}
 
         {assets.length === 0 && uploading === 0 && (
-          <p className="text-brand-muted mt-3 text-xs italic">
-            Tip: sube tus fotos primero, después usa el botón mágico para repartirlas en los slots.
-          </p>
+          <p className="text-brand-muted mt-3 text-xs italic">{texts.fotos.tipVacio}</p>
         )}
 
         {/* M.3.b.UX.6 — Microcopy cuando todos los slots están llenos pero
             hay fotos sin asignar: explicar que se pueden cambiar arrastrando. */}
         {assets.length > 0 && emptySlots === 0 && totalSlots > 0 && (
           <p className="text-brand-muted bg-brand-turquoise/10 mt-3 rounded-md px-2.5 py-2 text-xs">
-            ✨ Todos los imanes tienen foto. Toca un imán para cambiarle la foto (o arrástrale otra
-            en computador).
+            {texts.fotos.todoLleno}
           </p>
         )}
       </section>
@@ -358,18 +353,16 @@ export function StudioSidebar({
           className="text-brand-purple-dark mb-3 flex items-center gap-2 text-sm font-semibold"
         >
           <Sparkles className="text-brand-purple h-4 w-4" />
-          Plantillas
+          {texts.plantillas.titulo}
           <span className="text-brand-muted text-xs font-normal">({templates.length})</span>
         </div>
 
         {templates.length === 0 ? (
-          <p className="text-brand-muted text-xs italic">
-            Aún no hay plantillas para este producto.
-          </p>
+          <p className="text-brand-muted text-xs italic">{texts.plantillas.vacio}</p>
         ) : (
           <div
             role="radiogroup"
-            aria-label="Selecciona plantilla del imán"
+            aria-label={texts.plantillas.elegirAria}
             className="grid grid-cols-2 gap-2"
           >
             {templates.map((tpl) => (
@@ -383,10 +376,13 @@ export function StudioSidebar({
                   if (tpl.id === selectedTemplateId) return; // no-op si ya está
                   applyTemplate(tpl);
                   // A2.7 — Toast premium feedback
-                  toast.success(`Plantilla "${tpl.name}" aplicada`, {
-                    duration: 2200,
-                    icon: "✨",
-                  });
+                  toast.success(
+                    fillStudioText(texts.plantillas.toastAplicada, { nombre: tpl.name }),
+                    {
+                      duration: 2200,
+                      icon: "✨",
+                    },
+                  );
                 }}
               />
             ))}
@@ -405,12 +401,10 @@ export function StudioSidebar({
             className="text-brand-purple-dark mb-3 flex items-center gap-2 text-sm font-semibold"
           >
             <Sparkles className="text-brand-purple h-4 w-4" />
-            Diseños prediseñados
+            {texts.plantillas.predisenadosTitulo}
             <span className="text-brand-muted text-xs font-normal">({predesigned.length})</span>
           </div>
-          <p className="text-brand-muted mb-2 text-[11px]">
-            Aplica un diseño listo al slot seleccionado (o al primero vacío).
-          </p>
+          <p className="text-brand-muted mb-2 text-[11px]">{texts.plantillas.predisenadosHint}</p>
           <div className="grid grid-cols-3 gap-2">
             {predesigned.map((item) => (
               <button
@@ -418,7 +412,9 @@ export function StudioSidebar({
                 type="button"
                 onClick={() => handleApplyPredesigned(item)}
                 disabled={applyingPredesignedId !== null}
-                aria-label={`Aplicar el diseño ${item.name} al slot`}
+                aria-label={fillStudioText(texts.plantillas.aplicarDisenoAria, {
+                  nombre: item.name,
+                })}
                 title={item.name}
                 className="border-brand-purple/20 hover:border-brand-purple focus:border-brand-turquoise focus:ring-brand-turquoise relative aspect-square overflow-hidden rounded-md border-2 transition-all hover:scale-105 focus:ring-2 focus:outline-none disabled:opacity-50"
               >
@@ -444,6 +440,7 @@ export function StudioSidebar({
 }
 
 function ProgressBar({ filled, total }: { filled: number; total: number }) {
+  const texts = useStudioTexts();
   const pct = total > 0 ? (filled / total) * 100 : 0;
   const isComplete = filled === total && total > 0;
   const isEmpty = filled === 0;
@@ -451,7 +448,7 @@ function ProgressBar({ filled, total }: { filled: number; total: number }) {
     <div role="status" aria-live="polite" aria-atomic="true">
       <div className="mb-1.5 flex items-baseline justify-between">
         <span className="text-brand-purple-dark text-xs font-semibold tracking-wider uppercase">
-          Progreso
+          {texts.fotos.progresoTitulo}
         </span>
         <span
           className={[
@@ -477,10 +474,13 @@ function ProgressBar({ filled, total }: { filled: number; total: number }) {
       </div>
       <p className="text-brand-muted mt-1.5 text-xs">
         {isComplete
-          ? "¡Listo! Todas las fotos están cargadas."
+          ? texts.fotos.progresoCompleto
           : isEmpty
-            ? "Carga fotos para empezar."
-            : `Faltan ${total - filled} ${total - filled === 1 ? "foto" : "fotos"} para terminar.`}
+            ? texts.fotos.progresoVacio
+            : fillStudioText(texts.fotos.progresoFaltan, {
+                n: total - filled,
+                fotos: total - filled === 1 ? "foto" : "fotos",
+              })}
       </p>
     </div>
   );
@@ -499,6 +499,7 @@ function TemplateCard({
   productShape?: "rectangle" | "circle" | "heart" | "custom";
   onClick: () => void;
 }) {
+  const texts = useStudioTexts();
   // P0.7 — Card que renderea el imán físico real con la plantilla aplicada,
   // no un SVG plano flotando. Patrón Casetify: el cliente ve EXACTAMENTE cómo
   // se verá el producto físico (proporción real + sombra de grosor + forma).
@@ -530,7 +531,7 @@ function TemplateCard({
       type="button"
       role="radio"
       aria-checked={isSelected}
-      aria-label={`Plantilla ${template.name}${isSelected ? " (seleccionada)" : ""}${productSizeCm ? ` para imán ${productSizeCm} cm` : ""}`}
+      aria-label={`${fillStudioText(texts.plantillas.itemAria, { nombre: template.name })}${isSelected ? ` ${texts.plantillas.itemSeleccionada}` : ""}${productSizeCm ? ` ${fillStudioText(texts.plantillas.itemTamano, { size: productSizeCm })}` : ""}`}
       onClick={onClick}
       whileHover={{ scale: isSelected ? 1 : 1.03, y: isSelected ? 0 : -2 }}
       whileTap={{ scale: 0.97 }}
@@ -661,6 +662,7 @@ function AssetThumb({
   const isUsed = useStore(store, selectAssetIsUsed(asset.id));
   // P0.3 — Estado del modal de warning calidad (al click sobre thumb problemático)
   const [showQualityModal, setShowQualityModal] = useState(false);
+  const texts = useStudioTexts();
   const hasWarning =
     asset.validationLevel === "warning-strong" || asset.validationLevel === "warning-soft";
 
@@ -676,10 +678,10 @@ function AssetThumb({
         onClick={hasWarning ? () => setShowQualityModal(true) : undefined}
         title={
           isUsed
-            ? "Ya está pegada en algún imán. Puedes arrastrar otra foto."
+            ? texts.fotos.thumbUsada
             : hasWarning
-              ? "Click para ver detalles del problema de calidad."
-              : "Arrastra al canvas o toca un slot vacío para asignar"
+              ? texts.fotos.thumbAviso
+              : texts.fotos.thumbArrastrar
         }
         initial={{ opacity: 0, scale: 0.85 }}
         animate={{ opacity: 1, scale: 1 }}
@@ -723,7 +725,7 @@ function AssetThumb({
             animate={{ scale: 1, rotate: 0 }}
             transition={{ type: "spring", stiffness: 400, damping: 20 }}
             className="absolute bottom-1 left-1 flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500 shadow ring-2 ring-white"
-            aria-label="Foto ya usada en un imán"
+            aria-label={texts.fotos.usadaAria}
           >
             <Check className="h-3 w-3 text-white" strokeWidth={3} />
           </motion.div>
@@ -733,7 +735,7 @@ function AssetThumb({
         {asset.validationLevel === "warning-strong" && (
           <div
             className="absolute top-1 right-1 rounded-full bg-red-100 px-1.5 py-0.5 text-[10px] font-bold text-red-700 shadow"
-            aria-label="Resolución baja"
+            aria-label={texts.fotos.resolucionBajaAria}
           >
             ⚠️
           </div>
@@ -741,7 +743,7 @@ function AssetThumb({
         {asset.validationLevel === "warning-soft" && (
           <div
             className="absolute top-1 right-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800 shadow"
-            aria-label="Aviso de calidad"
+            aria-label={texts.fotos.avisoCalidadAria}
           >
             ⓘ
           </div>
@@ -775,10 +777,10 @@ function PhotoQualityModal({
   onClose: () => void;
   asset: StudioAsset;
 }) {
+  const texts = useStudioTexts();
   const isStrong = asset.validationLevel === "warning-strong";
   const isSoft = asset.validationLevel === "warning-soft";
-  const message =
-    asset.validationMessage ?? "La foto tiene un detalle de calidad que vale la pena revisar.";
+  const message = asset.validationMessage ?? texts.fotos.calidadMensajeFallback;
   // #15 — foco inicial + trap + Escape + retorno de foco.
   const dialogRef = useRef<HTMLDivElement>(null);
   useDialogA11y(dialogRef, { onClose, active: open });
@@ -790,7 +792,7 @@ function PhotoQualityModal({
           {/* Backdrop */}
           <motion.button
             type="button"
-            aria-label="Cerrar"
+            aria-label={texts.comun.cerrar}
             onClick={onClose}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -835,7 +837,7 @@ function PhotoQualityModal({
                     isStrong ? "text-red-800" : "text-amber-900",
                   ].join(" ")}
                 >
-                  {isStrong ? "Cuidado con esta foto" : "Aviso sobre esta foto"}
+                  {isStrong ? texts.fotos.calidadTituloFuerte : texts.fotos.calidadTituloSuave}
                 </h2>
                 <p
                   className={[
@@ -843,7 +845,7 @@ function PhotoQualityModal({
                     isStrong ? "text-red-700/85" : "text-amber-800/85",
                   ].join(" ")}
                 >
-                  {isSoft ? "Se puede usar igual, pero" : "Recomendamos revisarla:"}
+                  {isSoft ? texts.fotos.calidadSubSuave : texts.fotos.calidadSubFuerte}
                 </p>
               </div>
             </div>
@@ -855,17 +857,17 @@ function PhotoQualityModal({
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={asset.signedUrl}
-                  alt="Foto en revisión"
+                  alt={texts.fotos.fotoRevisionAlt}
                   className="h-full w-full object-cover"
                 />
               </div>
               <div className="flex flex-1 flex-col justify-center text-sm">
                 <p className="text-brand-purple-dark leading-snug font-medium">{message}</p>
                 <div className="text-brand-muted mt-2 space-y-1 text-xs">
-                  <p className="font-semibold">¿Qué puedes hacer?</p>
+                  <p className="font-semibold">{texts.fotos.calidadAccionesTitulo}</p>
                   <ul className="ml-3 list-disc space-y-0.5">
-                    <li>Subir una foto de mayor resolución (la original, no la de WhatsApp)</li>
-                    <li>Si la foto ya es la mejor que tienes, igual la podemos imprimir</li>
+                    <li>{texts.fotos.calidadTip1}</li>
+                    <li>{texts.fotos.calidadTip2}</li>
                   </ul>
                 </div>
               </div>
@@ -878,7 +880,7 @@ function PhotoQualityModal({
                 onClick={onClose}
                 className="text-brand-purple-dark/70 hover:bg-brand-purple/10 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors"
               >
-                Entendido
+                {texts.fotos.calidadCerrar}
               </button>
             </div>
           </motion.div>

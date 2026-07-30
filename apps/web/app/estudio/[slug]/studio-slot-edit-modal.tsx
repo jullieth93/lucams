@@ -24,6 +24,8 @@ import { StudioPhotoAdjustForm } from "./studio-photo-adjust-modal";
 import { StudioPhotoPreview } from "./studio-photo-preview";
 import { StudioTextEditorForm } from "./studio-text-editor-modal";
 import type { CanvasDataV1, PhotoFilterPreset, TextLayer, TextOverride } from "./types";
+import { useStudioTexts } from "./studio-texts-provider";
+import { fillStudioText } from "./studio-texts";
 
 type PhotoTransform = { offsetX: number; offsetY: number; scale: number; rotation?: number };
 
@@ -89,12 +91,13 @@ export function StudioSlotEditModal({
   // Tab activa: Foto por default si hay foto; si no, Texto (si aplica).
   const defaultTab = hasPhoto ? "photo" : "text";
   const [activeTab, setActiveTab] = useState(defaultTab);
+  const texts = useStudioTexts();
 
   const title = slotLabel
-    ? `Editar ${slotLabel}`
+    ? fillStudioText(texts.texto.slotEditTitulo, { etiqueta: slotLabel })
     : slotIndex !== null
-      ? `Editar espacio ${slotIndex + 1}`
-      : "Editar";
+      ? fillStudioText(texts.texto.slotEditTituloIndice, { n: slotIndex + 1 })
+      : texts.comun.editar;
 
   return (
     <Dialog key={slotIndex ?? "closed"} open={isOpen} onOpenChange={(open) => !open && onClose()}>
@@ -108,7 +111,7 @@ export function StudioSlotEditModal({
               {title}
             </DialogTitle>
             <DialogDescription className="text-brand-muted text-xs sm:text-sm">
-              Ajusta la foto y el texto de este espacio
+              {texts.texto.slotEditDesc}
             </DialogDescription>
           </div>
           <Button
@@ -116,10 +119,10 @@ export function StudioSlotEditModal({
             variant="ghost"
             size="icon-sm"
             onClick={onClose}
-            aria-label="Cerrar"
+            aria-label={texts.comun.cerrar}
             className="text-brand-purple-dark/70 hover:text-brand-purple-dark"
           >
-            <span className="sr-only">Cerrar</span>
+            <span className="sr-only">{texts.comun.cerrar}</span>
             <span aria-hidden className="text-lg leading-none">
               ×
             </span>
@@ -134,11 +137,11 @@ export function StudioSlotEditModal({
           <TabsList className="bg-brand-cream/50 mx-4 mt-3 grid w-auto grid-cols-2">
             <TabsTrigger value="photo" disabled={!hasPhoto} className="gap-1.5">
               <ImageIcon className="h-4 w-4" />
-              Foto
+              {texts.texto.tabFoto}
             </TabsTrigger>
             <TabsTrigger value="text" disabled={!hasText} className="gap-1.5">
               <Type className="h-4 w-4" />
-              Texto
+              {texts.texto.tabTexto}
             </TabsTrigger>
           </TabsList>
 
@@ -177,7 +180,7 @@ export function StudioSlotEditModal({
                       onClick={onChangePhoto}
                       className="text-brand-purple-dark hover:text-brand-purple w-full text-xs font-semibold underline"
                     >
-                      Cambiar foto
+                      {texts.texto.cambiarFoto}
                     </button>
                   )}
                   <StudioPhotoAdjustForm
@@ -213,7 +216,7 @@ export function StudioSlotEditModal({
             onClick={onClose}
             className="bg-brand-purple hover:bg-brand-purple-dark text-white"
           >
-            Listo
+            {texts.texto.slotEditListo}
           </Button>
         </div>
       </DialogContent>
@@ -232,6 +235,7 @@ function TextLayersEditor({
   onApply: (layerId: string, override: TextOverride | null) => void;
   focusTextLayerId?: string;
 }) {
+  const texts = useStudioTexts();
   const [selectedLayerId, setSelectedLayerId] = useState<string | null>(() => {
     // Si se tocó un texto específico, empezar editándolo directamente.
     if (focusTextLayerId && layers.some((l) => l.id === focusTextLayerId)) {
@@ -269,7 +273,7 @@ function TextLayersEditor({
               className="text-brand-purple-dark/70 hover:text-brand-purple-dark flex items-center gap-1 text-xs font-semibold underline"
             >
               <ChevronLeft className="h-3.5 w-3.5" />
-              Volver a capas
+              {texts.texto.capasVolver}
             </button>
           )}
         </div>
@@ -278,7 +282,7 @@ function TextLayersEditor({
       {selectedLayerId === null || layers.length === 1 ? (
         <div className="space-y-2">
           <p className="text-brand-purple-dark/80 text-xs font-semibold">
-            Elige un texto para editar
+            {texts.texto.capasElegir}
           </p>
           <div className="grid gap-2">
             {layers.map((layer) => {
@@ -293,15 +297,17 @@ function TextLayersEditor({
                   className="border-brand-purple/15 hover:border-brand-purple/40 hover:bg-brand-cream/50 flex items-center justify-between rounded-lg border p-3 text-left transition-colors"
                 >
                   <span className="text-brand-purple-dark truncate text-sm font-medium">
-                    {displayText || <span className="italic opacity-50">Sin texto</span>}
+                    {displayText || (
+                      <span className="italic opacity-50">{texts.texto.sinTexto}</span>
+                    )}
                   </span>
                   <div className="flex items-center gap-2">
                     {hasOverride && (
                       <span className="bg-brand-turquoise/10 text-brand-turquoise shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-bold">
-                        editado
+                        {texts.texto.capaEditadaBadge}
                       </span>
                     )}
-                    <span className="text-brand-muted text-xs">Editar</span>
+                    <span className="text-brand-muted text-xs">{texts.comun.editar}</span>
                   </div>
                 </button>
               );
@@ -317,10 +323,12 @@ function TextLayersEditor({
               className="text-brand-purple-dark/70 hover:text-brand-purple-dark flex items-center gap-1 text-xs font-semibold underline"
             >
               <ChevronLeft className="h-3.5 w-3.5" />
-              Volver
+              {texts.comun.volver}
             </button>
             <span className="text-brand-muted text-xs">
-              Editando: {selectedLayer.text || "Sin texto"}
+              {fillStudioText(texts.texto.capaEditando, {
+                texto: selectedLayer.text || texts.texto.sinTexto,
+              })}
             </span>
           </div>
           <StudioTextEditorForm

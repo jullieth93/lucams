@@ -7,6 +7,8 @@
  */
 
 import { NAME_TILE_THEMES, LETTER_SWATCHES, LETTER_SWATCH_LABELS } from "./letter-tile";
+import { useStudioTexts } from "./studio-texts-provider";
+import { fillStudioText, splitStudioText } from "./studio-texts";
 
 /** Picker de tema de color. Re-clic al tema activo lo baraja (lo maneja applyTheme). */
 export function ThemePicker({
@@ -19,12 +21,13 @@ export function ThemePicker({
   customized: boolean;
   onApply: (id: string) => void;
 }) {
+  const texts = useStudioTexts();
   return (
     <div>
       <p className="text-brand-purple-dark mb-2 text-sm font-semibold">
-        Elige los colores
+        {texts.nombre.coloresTitulo}
         <span className="text-brand-muted ml-2 text-xs font-normal">
-          · toca un tema otra vez para barajar 🎲
+          {texts.nombre.coloresHint}
         </span>
       </p>
       <div className="flex flex-wrap gap-2">
@@ -62,10 +65,21 @@ export function ThemePicker({
 
 /** Fila de swatches para pintar la ficha seleccionada a gusto. */
 export function SwatchRow({ letter, onPick }: { letter: string; onPick: (color: string) => void }) {
+  const texts = useStudioTexts();
+  // {letra} se interpola conservando el <span> display de la letra (roadmap B1).
+  const titleParts = splitStudioText(texts.nombre.swatchTitulo, "letra");
   return (
     <div className="border-brand-purple/15 mt-4 rounded-xl border bg-white p-3">
       <p className="text-brand-purple-dark mb-2 text-center text-xs font-semibold">
-        Color de la letra <span className="font-display text-base">{letter}</span>
+        {titleParts ? (
+          <>
+            {titleParts[0]}
+            <span className="font-display text-base">{letter}</span>
+            {titleParts[1]}
+          </>
+        ) : (
+          fillStudioText(texts.nombre.swatchTitulo, { letra: letter })
+        )}
       </p>
       <div className="flex flex-wrap justify-center gap-2">
         {LETTER_SWATCHES.map((c) => (
@@ -75,7 +89,9 @@ export function SwatchRow({ letter, onPick }: { letter: string; onPick: (color: 
             onClick={() => onPick(c)}
             // #16 — aria-label con el nombre del color (no "este color" idéntico ×22) + área táctil
             // de 40px (antes 32px, bajo el mínimo recomendado) → menos toques al color vecino.
-            aria-label={`Pintar de ${LETTER_SWATCH_LABELS[c] ?? "este color"}`}
+            aria-label={fillStudioText(texts.nombre.swatchAria, {
+              color: LETTER_SWATCH_LABELS[c] ?? "este color",
+            })}
             className="h-10 w-10 rounded-full ring-2 ring-black/5 transition hover:scale-110"
             style={{ backgroundColor: c }}
           />

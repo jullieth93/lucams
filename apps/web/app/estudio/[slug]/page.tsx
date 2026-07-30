@@ -37,6 +37,10 @@ import { getCurrentCustomer } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { refreshCustomerUploadSignedUrl } from "@/lib/storage";
 import type { CanvasData, StudioAsset } from "./types";
+import { getCmsBlock } from "@/lib/cms";
+import { getStudioTexts } from "./studio-texts.server";
+import { StudioTextsProvider } from "./studio-texts-provider";
+import { fillStudioText, splitStudioText, type StudioTexts } from "./studio-texts";
 
 type Params = Promise<{ slug: string }>;
 type SearchParams = Promise<{
@@ -49,11 +53,24 @@ type SearchParams = Promise<{
 
 export async function generateMetadata({ params }: { params: Params }): Promise<Metadata> {
   const { slug } = await params;
-  const product = await getStorefrontProductBySlug(slug);
-  if (!product) return { title: "Producto no encontrado" };
+  // Roadmap B1 — título/description del Estudio son campos CMS (seo.page.estudio.*,
+  // editables en /admin/contenido → SEO). {producto} se interpola acá; los fallbacks
+  // son los textos exactos pre-CMS.
+  const [product, titleBlock, descBlock, notFoundBlock] = await Promise.all([
+    getStorefrontProductBySlug(slug),
+    getCmsBlock("seo.page.estudio.title"),
+    getCmsBlock("seo.page.estudio.description"),
+    getCmsBlock("seo.page.estudio.not-found"),
+  ]);
+  if (!product) return { title: notFoundBlock?.body ?? "Producto no encontrado" };
   return {
-    title: `Personalizar — ${product.name}`,
-    description: `Diseña tu ${product.name.toLowerCase()} en vivo. Estudio de personalización Lucams.`,
+    title: fillStudioText(titleBlock?.body ?? "Personalizar — {producto}", {
+      producto: product.name,
+    }),
+    description: fillStudioText(
+      descBlock?.body ?? "Diseña tu {producto} en vivo. Estudio de personalización Lucams.",
+      { producto: product.name.toLowerCase() },
+    ),
     robots: { index: false, follow: false },
   };
 }
@@ -97,6 +114,10 @@ export default async function EstudioPage({
     mergedSchema as Record<string, unknown>,
   );
 
+  // Roadmap B1 — textos CMS del Estudio (UNA query por prefijo estudio.*, con
+  // fallback exacto pre-CMS por campo). Se inyectan al árbol client vía provider.
+  const texts = await getStudioTexts();
+
   // Set fijo (abecedario completo/vocales) o no personalizable → no abrir el Estudio.
   if (surface.surface === "direct-cart") {
     redirect(`/producto/${product.slug}`);
@@ -125,15 +146,17 @@ export default async function EstudioPage({
       <div className="bg-brand-cream flex min-h-screen flex-col">
         <SiteHeader />
         <main id="contenido" tabIndex={-1} className="flex flex-1 flex-col">
-          <NameEditor
-            product={{ id: product.id, slug: product.slug, name: product.name }}
-            variantId={selectedVariant.id}
-            config={surface.config}
-            pricePerTile={pricePerTile}
-            initialCount={initialCount}
-            styles={styles}
-            themeOptions={themeOptions}
-          />
+          <StudioTextsProvider texts={texts}>
+            <NameEditor
+              product={{ id: product.id, slug: product.slug, name: product.name }}
+              variantId={selectedVariant.id}
+              config={surface.config}
+              pricePerTile={pricePerTile}
+              initialCount={initialCount}
+              styles={styles}
+              themeOptions={themeOptions}
+            />
+          </StudioTextsProvider>
         </main>
       </div>
     );
@@ -171,42 +194,37 @@ export default async function EstudioPage({
       <div className="bg-brand-cream flex min-h-screen flex-col">
         <SiteHeader />
         <main id="contenido" tabIndex={-1} className="flex flex-1 flex-col">
-          <LetterSetEditor
-            product={{ id: product.id, slug: product.slug, name: product.name }}
-            variantId={selectedVariant.id}
-            variants={selectable.map((v) => {
-              const a = parseVariantAttributes(v.attributes);
-              return {
-                id: v.id,
-                price: v.price,
-                sizeCm: a.sizeCm,
-                magnet: a.magnet,
-                theme: a.theme,
-                language: a.language,
-              };
-            })}
-            basePrice={product.basePrice}
-            letterSet={surface.config.letterSet}
-            alphabets={{ es: [...ALPHABET.es], en: [...ALPHABET.en] }}
-            availableLanguages={availableLanguages.length > 0 ? availableLanguages : ["es"]}
-            initialLanguage={initialLanguage}
-            themeOptions={{ es: themeEs, en: themeEn }}
-            initialTheme={variantAttrs.theme ?? null}
-            stylesByLanguage={{ es: stylesEs, en: stylesEn }}
-            subtitle={
-              // #15 — la promesa "cada una con su animalito" solo es veraz si HAY estilos ilustrados
-              // subidos (styles.length>0). Sin estilos, las fichas salen como letra de color: prometer
-              // un dibujo sería publicidad engañosa (Ley 1480). "dibujito" (no "animalito") porque el
-              // estilo puede ser Navidad/Espacio/etc., no solo animales.
-              surface.config.letterSet === "vowels"
-                ? stylesForSubtitle.length > 0
-                  ? "Las 5 vocales, cada una con su dibujito. Pinta cada ficha del color que quieras — así se imprime."
-                  : "Las 5 vocales. Pinta cada ficha del color que quieras — así se imprime."
-                : stylesForSubtitle.length > 0
-                  ? `Las ${letters.length} letras, cada una con su dibujito. Pinta cada ficha del color que quieras — así se imprime.`
-                  : `Las ${letters.length} letras. Pinta cada ficha del color que quieras — así se imprime.`
-            }
-          />
+          <StudioTextsProvider texts={texts}>
+            <LetterSetEditor
+              product={{ id: product.id, slug: product.slug, name: product.name }}
+              variantId={selectedVariant.id}
+              variants={selectable.map((v) => {
+                const a = parseVariantAttributes(v.attributes);
+                return {
+                  id: v.id,
+                  price: v.price,
+                  sizeCm: a.sizeCm,
+                  magnet: a.magnet,
+                  theme: a.theme,
+                  language: a.language,
+                };
+              })}
+              basePrice={product.basePrice}
+              letterSet={surface.config.letterSet}
+              alphabets={{ es: [...ALPHABET.es], en: [...ALPHABET.en] }}
+              availableLanguages={availableLanguages.length > 0 ? availableLanguages : ["es"]}
+              initialLanguage={initialLanguage}
+              themeOptions={{ es: themeEs, en: themeEn }}
+              initialTheme={variantAttrs.theme ?? null}
+              stylesByLanguage={{ es: stylesEs, en: stylesEn }}
+              subtitle={letterSetSubtitle(
+                surface.config.letterSet,
+                letters.length,
+                stylesForSubtitle.length > 0,
+                texts,
+              )}
+            />
+          </StudioTextsProvider>
         </main>
       </div>
     );
@@ -231,11 +249,24 @@ export default async function EstudioPage({
         >
           <div className="max-w-md text-center">
             <h1 className="font-display text-brand-purple-dark text-2xl">
-              Este producto lo hacemos a medida
+              {texts.comun.gateTitulo}
             </h1>
             <p className="text-brand-purple-dark/70 mt-3">
-              Para <strong>{product.name}</strong> preparamos tu diseño contigo por WhatsApp — así
-              queda justo como lo imaginas.
+              {(() => {
+                // {producto} se interpola conservando el <strong> del nombre (roadmap B1).
+                // Si el texto editado ya no trae el placeholder, se interpola como texto plano.
+                const parts = splitStudioText(texts.comun.gateCuerpo, "producto");
+                if (!parts) {
+                  return fillStudioText(texts.comun.gateCuerpo, { producto: product.name });
+                }
+                return (
+                  <>
+                    {parts[0]}
+                    <strong>{product.name}</strong>
+                    {parts[1]}
+                  </>
+                );
+              })()}
             </p>
             <a
               href={waUrl}
@@ -243,7 +274,7 @@ export default async function EstudioPage({
               rel="noopener noreferrer"
               className="bg-brand-purple-dark hover:bg-brand-purple mt-6 inline-block rounded-full px-6 py-3 text-sm font-semibold text-white transition-colors"
             >
-              Escríbenos por WhatsApp
+              {texts.comun.gateCta}
             </a>
           </div>
         </main>
@@ -349,33 +380,56 @@ export default async function EstudioPage({
       <SiteHeader />
 
       <main id="contenido" tabIndex={-1} className="flex flex-1 flex-col">
-        <StudioEditorLoader
-          product={{
-            id: product.id,
-            slug: product.slug,
-            name: product.name,
-            sku: product.sku,
-            personalizationKind: product.personalizationKind,
-            // M.3.b.CAT.4 — pasar mergedSchema (variant attributes sobre base)
-            personalizationSchema: mergedSchema,
-            images: product.images,
-          }}
-          // M.3.b.CAT — variant elegido en PDP, propagado al cart al finalizar
-          variantId={selectedVariant?.id}
-          // Precio de la variante elegida (o base) → vista previa pre-carrito.
-          unitPriceCents={selectedVariant?.price ?? product.basePrice}
-          // Edición desde el carrito: reemplazar el item original al finalizar (no duplicar).
-          replacesCartDesignId={replacesCartDesignId}
-          templates={templates}
-          initialDesignId={initialDesignId}
-          initialDesignCanvas={initialDesignCanvas}
-          initialDesignAssets={initialDesignAssets}
-          photoSlots={photoConfig.photoSlots}
-          predesigned={predesigned}
-          slotLabels={slotLabels}
-          calendarYear={calendarYear}
-        />
+        <StudioTextsProvider texts={texts}>
+          <StudioEditorLoader
+            product={{
+              id: product.id,
+              slug: product.slug,
+              name: product.name,
+              sku: product.sku,
+              personalizationKind: product.personalizationKind,
+              // M.3.b.CAT.4 — pasar mergedSchema (variant attributes sobre base)
+              personalizationSchema: mergedSchema,
+              images: product.images,
+            }}
+            // M.3.b.CAT — variant elegido en PDP, propagado al cart al finalizar
+            variantId={selectedVariant?.id}
+            // Precio de la variante elegida (o base) → vista previa pre-carrito.
+            unitPriceCents={selectedVariant?.price ?? product.basePrice}
+            // Edición desde el carrito: reemplazar el item original al finalizar (no duplicar).
+            replacesCartDesignId={replacesCartDesignId}
+            templates={templates}
+            initialDesignId={initialDesignId}
+            initialDesignCanvas={initialDesignCanvas}
+            initialDesignAssets={initialDesignAssets}
+            photoSlots={photoConfig.photoSlots}
+            predesigned={predesigned}
+            slotLabels={slotLabels}
+            calendarYear={calendarYear}
+          />
+        </StudioTextsProvider>
       </main>
     </div>
   );
+}
+
+/**
+ * Subtítulo del editor de set de letras (roadmap B1 — texts.letras.*, CMS).
+ *
+ * #15 — la promesa "cada una con su dibujito" solo es veraz si HAY estilos ilustrados
+ * subidos (hasStyles). Sin estilos, las fichas salen como letra de color: prometer
+ * un dibujo sería publicidad engañosa (Ley 1480). "dibujito" (no "animalito") porque el
+ * estilo puede ser Navidad/Espacio/etc., no solo animales.
+ */
+function letterSetSubtitle(
+  letterSet: "full" | "vowels",
+  letterCount: number,
+  hasStyles: boolean,
+  texts: StudioTexts,
+): string {
+  if (letterSet === "vowels") {
+    return hasStyles ? texts.letras.subVocalesIlustrado : texts.letras.subVocales;
+  }
+  const template = hasStyles ? texts.letras.subFullIlustrado : texts.letras.subFull;
+  return fillStudioText(template, { n: letterCount });
 }

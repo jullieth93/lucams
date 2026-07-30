@@ -7,6 +7,8 @@
  * fichas. Al elegir, las fichas del preview cambian a ese tema → WYSIWYG (así se imprime).
  */
 
+import { useStudioTexts } from "./studio-texts-provider";
+
 /** Emoji del chip derivado del nombre del estilo (sin campo extra en DB). */
 function styleEmoji(name: string): string {
   const n = name.toLowerCase();
@@ -31,11 +33,12 @@ export function LetterStylePicker({
   selectedId: string | null;
   onSelect: (id: string | null) => void;
 }) {
+  const texts = useStudioTexts();
   // Si no hay estilos ilustrados subidos, no mostramos el selector (solo existe "Solo letra").
   if (styles.length === 0) return null;
 
   const options: { id: string | null; label: string; emoji: string }[] = [
-    { id: null, label: "Solo letra", emoji: "✏️" },
+    { id: null, label: texts.letras.soloLetra, emoji: "✏️" },
     // Nombre corto para el chip: el set seed es "Kawaii Animales · Español" → "Kawaii Animales".
     ...styles.map((s) => ({
       id: s.id,
@@ -47,10 +50,8 @@ export function LetterStylePicker({
   return (
     <div>
       <p className="text-brand-purple-dark mb-2 text-sm font-semibold">
-        Elige el estilo
-        <span className="text-brand-muted ml-2 text-xs font-normal">
-          · el dibujo de cada ficha 🎨
-        </span>
+        {texts.nombre.estiloTitulo}
+        <span className="text-brand-muted ml-2 text-xs font-normal">{texts.nombre.estiloHint}</span>
       </p>
       <div className="flex flex-wrap gap-2">
         {options.map((o) => {

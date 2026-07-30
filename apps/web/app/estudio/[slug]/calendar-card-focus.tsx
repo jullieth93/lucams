@@ -49,6 +49,8 @@ import { FitCameraPolar } from "./fit-camera-polar";
 import { StudioEnvironment, StudioBackdrop } from "./studio-3d-environment";
 import { ExtrudedMagnetMesh } from "./magnet-3d";
 import type { Magnet3D } from "./fridge-3d-view";
+import { useStudioTexts } from "./studio-texts-provider";
+import { fillStudioText } from "./studio-texts";
 
 /** Escala física del visor: 1 cm real → 0.54 u de mundo (la tarjeta 7.5×10 llena el encuadre). */
 const U_PER_CM = 0.54;
@@ -172,6 +174,7 @@ export default function CalendarCardFocus({
 }) {
   const isTouch = useIsTouch();
   const reduced = usePrefersReducedMotion();
+  const texts = useStudioTexts();
   const n = cards.length;
   const i = Math.min(Math.max(index, 0), Math.max(0, n - 1));
   const card = cards[i];
@@ -219,13 +222,13 @@ export default function CalendarCardFocus({
       ref={dialogRef}
       role="dialog"
       aria-modal="true"
-      aria-label={`Tarjeta ${i + 1} de ${n} en detalle`}
+      aria-label={fillStudioText(texts.lienzo.tarjetaDetalleAria, { n: i + 1, total: n })}
       tabIndex={-1}
       className="bg-brand-purple-dark/90 absolute inset-0 z-10 flex flex-col outline-none"
     >
       <div className="flex items-center justify-between gap-2 px-4 py-3 text-white sm:px-6">
         <span className="font-display text-lg font-bold" aria-live="polite">
-          Tarjeta {i + 1} de {n}
+          {fillStudioText(texts.escenas.calTitulo, { n: i + 1, total: n })}
         </span>
         <div className="flex items-center gap-2">
           {/* Ola 3 — "detalle primero, espacio después": desde el detalle se SUBE a la galería
@@ -236,12 +239,12 @@ export default function CalendarCardFocus({
             className="inline-flex h-10 items-center gap-1.5 rounded-full bg-white/15 px-4 text-sm font-bold text-white transition-colors hover:bg-white/25 focus:ring-2 focus:ring-white focus:outline-none"
           >
             <Home className="h-4 w-4" aria-hidden />
-            <span>Míralo en tu espacio</span>
+            <span>{texts.escenas.calBtnEspacio}</span>
           </button>
           <button
             type="button"
             onClick={onClose}
-            aria-label="Cerrar"
+            aria-label={texts.comun.cerrar}
             className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/15 text-white transition-colors hover:bg-white/25 focus:ring-2 focus:ring-white focus:outline-none"
           >
             <X className="h-5 w-5" />
@@ -265,9 +268,7 @@ export default function CalendarCardFocus({
           </Suspense>
         </Canvas>
         <p className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-black/40 px-3 py-1.5 text-center text-xs text-white">
-          {isTouch
-            ? "Arrastra para girar · pellizca para acercar"
-            : "← → para cambiar de tarjeta · arrastra para girar"}
+          {isTouch ? texts.escenas.calHintTouch : texts.escenas.calHintMouse}
         </p>
       </div>
 
@@ -276,19 +277,19 @@ export default function CalendarCardFocus({
         <button
           type="button"
           onClick={() => go(-1)}
-          aria-label="Tarjeta anterior"
+          aria-label={texts.lienzo.tarjetaAnteriorAria}
           className="inline-flex h-11 items-center gap-1.5 rounded-full bg-white/15 px-5 text-sm font-bold text-white transition-colors hover:bg-white/25 focus:ring-2 focus:ring-white focus:outline-none"
         >
           <ChevronLeft className="h-5 w-5" aria-hidden />
-          <span>Anterior</span>
+          <span>{texts.comun.anterior}</span>
         </button>
         <button
           type="button"
           onClick={() => go(1)}
-          aria-label="Tarjeta siguiente"
+          aria-label={texts.lienzo.tarjetaSiguienteAria}
           className="inline-flex h-11 items-center gap-1.5 rounded-full bg-white/15 px-5 text-sm font-bold text-white transition-colors hover:bg-white/25 focus:ring-2 focus:ring-white focus:outline-none"
         >
-          <span>Siguiente</span>
+          <span>{texts.comun.siguiente}</span>
           <ChevronRight className="h-5 w-5" aria-hidden />
         </button>
       </div>

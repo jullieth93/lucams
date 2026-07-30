@@ -31,6 +31,9 @@ import {
 } from "@/features/personalization/actions";
 import type { StudioAsset } from "./types";
 import { STUDIO_ACCEPTED_IMAGE_TYPES, uploadGuidanceText } from "./lib/upload-guidance";
+import { useStudioTexts } from "./studio-texts-provider";
+import { fillStudioText } from "./studio-texts";
+import { ConsentText } from "./studio-consent-text";
 
 /** Diseño prediseñado de la galería (ADR-057 B2). */
 export type PredesignedItem = {
@@ -83,6 +86,7 @@ export function StudioAssetPickerModal({
   const [error, setError] = useState<string | null>(null);
   // Consentimiento de derechos de imagen (Ley 1581): obligatorio antes de subir.
   const [rightsAccepted, setRightsAccepted] = useState(false);
+  const texts = useStudioTexts();
 
   // ADR-057 B2 — aplicar un diseño prediseñado: lo subimos como asset del diseño y lo asignamos
   // al slot (reusando el pipeline de foto: encuadre, finalize, render server-side).
@@ -125,7 +129,7 @@ export function StudioAssetPickerModal({
       }
       onClose();
     } catch {
-      setError("No pudimos aplicar el diseño. Intenta de nuevo.");
+      setError(texts.plantillas.toastError);
     } finally {
       setApplyingId(null);
     }
@@ -174,10 +178,7 @@ export function StudioAssetPickerModal({
           // M.3.b.B.2 — Si validación falló con error, mostrar warning prominente
           // pero NO auto-asignar (cliente decide).
           if (result.validationLevel === "error") {
-            setError(
-              result.validationMessage ??
-                "La foto subida no cumple los requisitos mínimos de calidad.",
-            );
+            setError(result.validationMessage ?? texts.fotos.errorCalidadMinima);
             continue;
           }
           // Auto-asignar al slot si solo se subió 1 archivo (y no hay error)
@@ -229,16 +230,19 @@ export function StudioAssetPickerModal({
                 <div className="border-brand-purple/10 flex items-center justify-between border-b px-5 py-4">
                   <div>
                     <h2 id={titleId} className="text-brand-purple-dark font-display text-lg">
-                      Foto para el imán {(slotIndex ?? 0) + 1} de {totalSlots}
+                      {fillStudioText(texts.fotos.pickerTitulo, {
+                        n: (slotIndex ?? 0) + 1,
+                        total: totalSlots,
+                      })}
                     </h2>
                     <p id={descId} className="text-brand-muted mt-0.5 text-xs">
-                      Elige una foto ya subida o suma una nueva.
+                      {texts.fotos.pickerDesc}
                     </p>
                   </div>
                   <button
                     type="button"
                     onClick={onClose}
-                    aria-label="Cerrar"
+                    aria-label={texts.comun.cerrar}
                     className="text-brand-muted hover:text-brand-purple-dark hover:bg-brand-cream focus:ring-brand-purple rounded-md p-2 transition-colors focus:ring-2 focus:outline-none"
                   >
                     <X className="h-4 w-4" />
@@ -258,16 +262,7 @@ export function StudioAssetPickerModal({
                       className="accent-brand-purple mt-0.5 h-4 w-4 flex-shrink-0"
                     />
                     <span>
-                      Tengo derecho a usar esta foto y autorizo imprimirla (
-                      <a
-                        href="/legal/privacidad"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="underline"
-                      >
-                        Ley 1581
-                      </a>
-                      ).
+                      <ConsentText template={texts.fotos.consentimiento} />
                     </span>
                   </label>
 
@@ -281,12 +276,12 @@ export function StudioAssetPickerModal({
                     {uploading ? (
                       <>
                         <Loader2 className="h-4 w-4 animate-spin" />
-                        Subiendo...
+                        {texts.fotos.subiendoPicker}
                       </>
                     ) : (
                       <>
                         <Upload className="h-4 w-4" />
-                        Subir foto desde tu dispositivo
+                        {texts.fotos.subirCtaPicker}
                       </>
                     )}
                   </button>
@@ -300,7 +295,11 @@ export function StudioAssetPickerModal({
                   {/* Ola 4 (Lucy 2026-07-23) — formatos y resolución recomendada, visibles
                       junto al punto de subida (texto centralizado en lib/upload-guidance). */}
                   <p className="text-brand-muted mt-2 text-[11px] leading-snug">
-                    {uploadGuidanceText(productSizeCm)}
+                    {uploadGuidanceText(productSizeCm, {
+                      formats: texts.fotos.formatos,
+                      withPx: texts.fotos.guiaPx,
+                      generic: texts.fotos.guiaGenerica,
+                    })}
                   </p>
 
                   {error && (
@@ -317,7 +316,7 @@ export function StudioAssetPickerModal({
                     <div className="mt-5">
                       <h3 className="text-brand-purple-dark mb-2 flex items-center gap-1.5 text-xs font-semibold tracking-wider uppercase">
                         <Sparkles className="text-brand-purple h-3.5 w-3.5" />
-                        Diseños prediseñados
+                        {texts.plantillas.predisenadosTitulo}
                       </h3>
                       <div className="grid grid-cols-3 gap-2">
                         {predesigned.map((item) => (
@@ -326,7 +325,9 @@ export function StudioAssetPickerModal({
                             type="button"
                             onClick={() => handleApplyPredesigned(item)}
                             disabled={applyingId !== null}
-                            aria-label={`Aplicar el diseño ${item.name} al slot`}
+                            aria-label={fillStudioText(texts.plantillas.aplicarDisenoAria, {
+                              nombre: item.name,
+                            })}
                             title={item.name}
                             className="border-brand-purple/20 hover:border-brand-purple focus:border-brand-turquoise focus:ring-brand-turquoise relative aspect-square overflow-hidden rounded-md border-2 transition-all hover:scale-105 focus:ring-2 focus:outline-none disabled:opacity-50"
                           >
@@ -353,11 +354,11 @@ export function StudioAssetPickerModal({
                     <div className="mt-5">
                       <h3 className="text-brand-purple-dark mb-2 flex items-center gap-1.5 text-xs font-semibold tracking-wider uppercase">
                         <ImageIcon className="text-brand-purple h-3.5 w-3.5" />
-                        Mis fotos ({assets.length})
+                        {texts.fotos.titulo} ({assets.length})
                       </h3>
                       <div
                         role="grid"
-                        aria-label="Tus fotos subidas"
+                        aria-label={texts.fotos.tusFotosAria}
                         className="grid grid-cols-3 gap-2"
                       >
                         {assets.map((asset) => (
@@ -380,7 +381,7 @@ export function StudioAssetPickerModal({
                             {/* eslint-disable-next-line @next/next/no-img-element */}
                             <img
                               src={asset.signedUrl}
-                              alt="Foto subida"
+                              alt={texts.fotos.fotoSubidaAlt}
                               className="h-full w-full object-cover"
                               loading="lazy"
                             />
@@ -409,7 +410,7 @@ export function StudioAssetPickerModal({
 
                   {assets.length === 0 && !uploading && (
                     <p className="text-brand-muted mt-4 text-center text-xs italic">
-                      Todavía no subiste fotos. Empieza arriba.
+                      {texts.fotos.pickerVacio}
                     </p>
                   )}
                 </div>

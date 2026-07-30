@@ -31,17 +31,26 @@ import { ThemePicker, SwatchRow } from "./letter-color-controls";
 import { LetterStylePicker } from "./letter-style-picker";
 import { StudioPreviewModal } from "./studio-preview-modal";
 import { useIsTouch } from "./use-is-touch";
+import { useStudioTexts } from "./studio-texts-provider";
+import { fillStudioText, splitStudioText } from "./studio-texts";
+
+// Roadmap B1 — el "Cargando tu tablero 3D…" del dynamic import es texto CMS
+// (estudio.escenas.loading-tablero); sin provider cae al default exacto pre-CMS.
+function Board3DLoadingFallback() {
+  const texts = useStudioTexts();
+  return (
+    <div className="text-brand-muted flex h-full items-center justify-center text-sm">
+      {texts.escenas.loadingTablero}
+    </div>
+  );
+}
 
 // NOM2 — tablero magnético 3D en un cuarto (WebGL, client-only), diferido. El nombre son imanes de
 // letras → viven en un tablero decorativo de una habitación (su propia escena), no en la nevera de
 // la cocina (que es el hogar de los fotoimanes). Sigue siendo superficie magnética real (WYSIWYG).
 const RoomBoardView3D = nextDynamic(() => import("./room-board-view-3d"), {
   ssr: false,
-  loading: () => (
-    <div className="text-brand-muted flex h-full items-center justify-center text-sm">
-      Cargando tu tablero 3D…
-    </div>
-  ),
+  loading: () => <Board3DLoadingFallback />,
 });
 
 type NameEditorProps = {
@@ -204,6 +213,7 @@ export function NameEditor({
   const [raw, setRaw] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const texts = useStudioTexts();
   // Vista previa pre-carrito (Lucy 2026-07-25) — el cliente tiene que VER "Así se verá tu pedido"
   // antes de que exista nada. `preparingPreview` cubre el dibujo local de la tira; `submitting`
   // sigue siendo el "enviando" real (crear + subir + carrito), que solo corre si confirma.
@@ -276,7 +286,10 @@ export function NameEditor({
       .map(([l, n]) => `${l}×${n}`);
   }, [letters]);
 
-  const examples = config.language === "es" ? ["Mía", "Mateo", "Amor"] : ["Mia", "Noah", "Love"];
+  const examples = (config.language === "es" ? texts.nombre.ejemplosEs : texts.nombre.ejemplosEn)
+    .split(",")
+    .map((e) => e.trim())
+    .filter(Boolean);
 
   // ──────────── Paso 1: ¡Listo! → dibuja la tira y abre "Así se verá tu pedido" ────────────
   //
@@ -301,7 +314,7 @@ export function NameEditor({
     } catch (err) {
       // #14 — detalle técnico al log; mensaje claro es-CO al cliente.
       console.error("[studio.name.preview]", err);
-      setError("No pudimos preparar la vista previa. Intenta de nuevo en un momento.");
+      setError(texts.errores.preview);
     } finally {
       setPreparingPreview(false);
     }
@@ -357,7 +370,7 @@ export function NameEditor({
       });
       if (!added.ok) {
         setPreviewError(
-          `Guardamos tu diseño pero no pudimos agregarlo al carrito: ${added.message}`,
+          fillStudioText(texts.exportar.errorCarritoNombre, { error: added.message }),
         );
         setSubmitting(false);
         return;
@@ -369,7 +382,7 @@ export function NameEditor({
     } catch (err) {
       // #14 — detalle técnico al log; mensaje claro es-CO al cliente.
       console.error("[studio.name]", err);
-      setPreviewError("Algo salió mal. Intenta de nuevo en un momento.");
+      setPreviewError(texts.errores.generico);
       setSubmitting(false);
     }
   }
@@ -404,11 +417,11 @@ export function NameEditor({
       }
       setBoard3D(magnets);
     } catch {
-      setError("No pudimos abrir la vista 3D. Intenta de nuevo.");
+      setError(texts.errores.vista3d);
     } finally {
       setBuilding3D(false);
     }
-  }, [letters, effectiveColors, activeTiles, building3D]);
+  }, [letters, effectiveColors, activeTiles, building3D, texts]);
 
   // El Escape del overlay 3D lo maneja useDialogA11y (#15, arriba).
 
@@ -425,20 +438,17 @@ export function NameEditor({
         className="text-brand-muted hover:text-brand-purple mb-4 inline-flex items-center gap-1 text-sm"
       >
         <ChevronLeft className="h-4 w-4" />
-        Volver
+        {texts.comun.volver}
       </Link>
 
       <header className="mb-6 text-center">
         <p className="text-brand-muted text-xs font-semibold tracking-wider uppercase">
-          Personalizar · {product.name}
+          {fillStudioText(texts.lienzo.headerTitle, { producto: product.name })}
         </p>
         <h1 className="font-display text-brand-purple-dark mt-1 text-3xl sm:text-4xl">
-          Arma tu palabra ✨
+          {texts.nombre.titulo}
         </h1>
-        <p className="text-brand-muted mx-auto mt-2 max-w-md text-sm">
-          Escribe un nombre o palabra (MÍA, MATEO, AMOR…) y verás las fichas que vas a recibir — una
-          por cada letra.
-        </p>
+        <p className="text-brand-muted mx-auto mt-2 max-w-md text-sm">{texts.nombre.subtitulo}</p>
       </header>
 
       <div className="border-brand-purple/12 rounded-3xl border bg-white p-6 shadow-sm sm:p-8">
@@ -448,7 +458,7 @@ export function NameEditor({
             htmlFor="name-input"
             className="text-brand-purple-dark block text-sm font-semibold"
           >
-            Escribe el nombre o palabra
+            {texts.nombre.inputLabel}
           </label>
           {/* Stepper: cuántas letras (fichas). El campo queda limitado a esta cantidad. */}
           <div className="border-brand-purple/20 flex items-center gap-1 rounded-full border bg-white p-1">
@@ -456,19 +466,21 @@ export function NameEditor({
               type="button"
               onClick={() => changeCount(-1)}
               disabled={count <= config.min}
-              aria-label="Menos letras"
+              aria-label={texts.nombre.menosAria}
               className="text-brand-purple hover:bg-brand-purple/10 relative flex h-7 w-7 items-center justify-center rounded-full transition before:absolute before:-inset-2 before:content-[''] disabled:opacity-30"
             >
               <Minus className="h-3.5 w-3.5" />
             </button>
             <span className="text-brand-purple-dark w-16 text-center text-xs font-semibold tabular-nums">
-              {count} {count === 1 ? "letra" : "letras"}
+              {count === 1
+                ? fillStudioText(texts.nombre.contadorUna, { n: count })
+                : fillStudioText(texts.nombre.contadorMuchas, { n: count })}
             </span>
             <button
               type="button"
               onClick={() => changeCount(1)}
               disabled={count >= config.max}
-              aria-label="Más letras"
+              aria-label={texts.nombre.masAria}
               className="text-brand-purple hover:bg-brand-purple/10 relative flex h-7 w-7 items-center justify-center rounded-full transition before:absolute before:-inset-2 before:content-[''] disabled:opacity-30"
             >
               <Plus className="h-3.5 w-3.5" />
@@ -493,7 +505,9 @@ export function NameEditor({
               const typed = normalizeName(next, { ...config, max: config.max }).letters.length;
               setCount((c) => Math.min(config.max, Math.max(config.min, Math.max(c, typed))));
             }}
-            placeholder={config.language === "es" ? "Ej: Mía" : "Ex: Mia"}
+            placeholder={
+              config.language === "es" ? texts.nombre.placeholderEs : texts.nombre.placeholderEn
+            }
             className="border-brand-purple/25 focus:border-brand-purple focus:ring-brand-turquoise/40 font-display text-brand-purple-dark w-full rounded-2xl border-2 bg-white px-4 py-3 text-2xl tracking-wide uppercase outline-none focus:ring-4"
           />
           <span
@@ -505,15 +519,16 @@ export function NameEditor({
           </span>
         </div>
         <p className="text-brand-muted mt-2 text-xs">
-          Ajusta la cantidad con − / + (de {config.min} a {config.max} letras) ·{" "}
-          {config.language === "es" ? "incluye la Ñ" : "alfabeto en inglés (sin Ñ)"} · sin números
-          ni símbolos
+          {fillStudioText(config.language === "es" ? texts.nombre.ayudaEs : texts.nombre.ayudaEn, {
+            min: config.min,
+            max: config.max,
+          })}
         </p>
 
         {/* Ejemplos de arranque (menos fricción) */}
         {raw.trim() === "" && (
           <div className="text-brand-muted mt-3 flex flex-wrap items-center gap-2 text-xs">
-            <span>Prueba:</span>
+            <span>{texts.nombre.pruebaLabel}</span>
             {examples.map((ex) => (
               <button
                 key={ex}
@@ -535,9 +550,22 @@ export function NameEditor({
         {/* Aviso de letras repetidas (transparencia) */}
         {repeats.length > 0 && (
           <p className="text-brand-muted mt-3 text-xs">
-            Se repiten fichas:{" "}
-            <span className="text-brand-purple-dark font-semibold">{repeats.join(" · ")}</span> (una
-            ficha por cada letra).
+            {(() => {
+              // {lista} se interpola conservando el <span> resaltado (roadmap B1).
+              const parts = splitStudioText(texts.nombre.repetidas, "lista");
+              if (!parts) {
+                return fillStudioText(texts.nombre.repetidas, { lista: repeats.join(" · ") });
+              }
+              return (
+                <>
+                  {parts[0]}
+                  <span className="text-brand-purple-dark font-semibold">
+                    {repeats.join(" · ")}
+                  </span>
+                  {parts[1]}
+                </>
+              );
+            })()}
           </p>
         )}
 
@@ -569,8 +597,7 @@ export function NameEditor({
               styleId &&
               (themeOptions.find((t) => t.id === styleId)?.tileCount ?? 0) === 0 && (
                 <p className="text-brand-purple-dark/70 mt-2 text-xs">
-                  Este tema aún no tiene ilustraciones — se imprime como letra de color. Sube las
-                  ilustraciones en /admin/fichas para activarlo.
+                  {texts.nombre.temaVacioHint}
                 </p>
               )}
           </div>
@@ -596,7 +623,7 @@ export function NameEditor({
                   </div>
                 ))}
               </div>
-              <p className="text-brand-muted text-sm">Aquí verás tu nombre en fichas 🦝</p>
+              <p className="text-brand-muted text-sm">{texts.nombre.vacioHint}</p>
             </div>
           ) : (
             <>
@@ -604,7 +631,7 @@ export function NameEditor({
               {selectedIndex === null && (
                 <p className="text-brand-purple-dark mb-3 flex items-center justify-center gap-1.5 text-center text-xs font-semibold">
                   <span className="bg-brand-yellow/45 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5">
-                    👇 Toca una letra para darle el color que quieras
+                    {texts.nombre.tocaHint}
                   </span>
                 </p>
               )}
@@ -631,7 +658,7 @@ export function NameEditor({
 
         {tooShort && letters.length > 0 && (
           <p className="text-brand-muted mt-3 text-center text-sm">
-            Te faltan letras — mínimo {config.min}.
+            {fillStudioText(texts.nombre.faltan, { min: config.min })}
           </p>
         )}
 
@@ -652,7 +679,7 @@ export function NameEditor({
               className="border-brand-purple/25 text-brand-purple-dark hover:bg-brand-purple/5 mb-1 inline-flex items-center gap-2 rounded-full border px-5 py-2 text-sm font-semibold transition disabled:opacity-60"
             >
               <Box className="h-4 w-4" />
-              {building3D ? "Armando…" : "Ver en un tablero 3D"}
+              {building3D ? texts.comun.armando : texts.escenas.nombreBtnTablero}
             </button>
           )}
           {/* El CTA ya no agrega directo: abre la vista previa. El sr-only lo deja explícito para
@@ -669,20 +696,49 @@ export function NameEditor({
             ) : (
               <Sparkles className="h-5 w-5" />
             )}
-            {preparingPreview ? "Preparando…" : submitting ? "Agregando…" : "¡Listo!"}
-            <span className="sr-only">: te mostramos cómo queda antes de agregarlo al carrito</span>
+            {preparingPreview
+              ? texts.comun.preparando
+              : submitting
+                ? texts.comun.agregando
+                : texts.comun.listo}
+            <span className="sr-only">{texts.nombre.listoSr}</span>
           </button>
           {/* Precio EN VIVO por ficha — lo que ves es lo que pagas (igual que el carrito). */}
           {letters.length > 0 ? (
             <span className="text-brand-purple-dark text-sm font-semibold tabular-nums">
-              {letters.length} {letters.length === 1 ? "ficha" : "fichas"} ×{" "}
-              {formatCOP(pricePerTile)} ={" "}
-              <span className="text-brand-purple">{formatCOP(liveTotal)}</span>
+              {(() => {
+                // {total} se interpola conservando el <span> morado del precio (roadmap B1).
+                const parts = splitStudioText(texts.nombre.precioVivo, "total");
+                const fichas =
+                  letters.length === 1 ? texts.exportar.piezaFicha : texts.exportar.piezaFichas;
+                if (!parts) {
+                  return fillStudioText(texts.nombre.precioVivo, {
+                    n: letters.length,
+                    fichas,
+                    precio: formatCOP(pricePerTile),
+                    total: formatCOP(liveTotal),
+                  });
+                }
+                return (
+                  <>
+                    {fillStudioText(parts[0], {
+                      n: letters.length,
+                      fichas,
+                      precio: formatCOP(pricePerTile),
+                    })}
+                    <span className="text-brand-purple">{formatCOP(liveTotal)}</span>
+                    {parts[1]}
+                  </>
+                );
+              })()}
             </span>
           ) : (
             <span className="text-brand-muted text-sm font-semibold tabular-nums">
-              {formatCOP(pricePerTile)} por ficha · {count} letras ={" "}
-              {formatCOP(pricePerTile * count)}
+              {fillStudioText(texts.nombre.precioHint, {
+                precio: formatCOP(pricePerTile),
+                n: count,
+                total: formatCOP(pricePerTile * count),
+              })}
             </span>
           )}
         </div>
@@ -712,16 +768,18 @@ export function NameEditor({
           ref={board3DRef}
           role="dialog"
           aria-modal="true"
-          aria-label="Vista 3D de tu nombre en un tablero magnético"
+          aria-label={texts.escenas.nombreTableroAria}
           tabIndex={-1}
           className="bg-brand-purple-dark/85 fixed inset-0 z-50 flex flex-col backdrop-blur-sm outline-none"
         >
           <div className="flex items-center justify-between px-4 py-3 text-white sm:px-6">
-            <span className="font-display text-lg font-bold">🖼️ Tu nombre en el tablero</span>
+            <span className="font-display text-lg font-bold">
+              {texts.escenas.nombreTableroTitulo}
+            </span>
             <button
               type="button"
               onClick={closeBoard3D}
-              aria-label="Cerrar vista 3D"
+              aria-label={texts.comun.cerrarVista3d}
               className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/15 text-white transition-colors hover:bg-white/25 focus:ring-2 focus:ring-white focus:outline-none"
             >
               <X className="h-5 w-5" />
@@ -730,9 +788,7 @@ export function NameEditor({
           <div className="relative flex-1">
             <RoomBoardView3D magnets={board3D} cols={board3D.length} style="memo" />
             <p className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-black/40 px-3 py-1.5 text-center text-xs text-white">
-              {isTouch
-                ? "Arrastra para girar · pellizca con 2 dedos para acercar"
-                : "Arrastra para girar · rueda o pellizca para acercar"}
+              {isTouch ? texts.escenas.hintTouch : texts.escenas.hintMouse}
             </p>
           </div>
         </div>

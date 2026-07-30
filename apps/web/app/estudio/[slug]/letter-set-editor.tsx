@@ -42,15 +42,24 @@ import type { Magnet3D } from "./fridge-3d-view";
 import { buildLetterTileTextures } from "./lib/letter-tile-textures";
 import { useDialogA11y } from "./use-dialog-a11y";
 import { useIsTouch } from "./use-is-touch";
+import { useStudioTexts } from "./studio-texts-provider";
+import { fillStudioText } from "./studio-texts";
+
+// Roadmap B1 — el "Cargando tu tablero 3D…" del dynamic import es texto CMS
+// (estudio.escenas.loading-tablero); sin provider cae al default exacto pre-CMS.
+function Board3DLoadingFallback() {
+  const texts = useStudioTexts();
+  return (
+    <div className="text-brand-muted flex h-full items-center justify-center text-sm">
+      {texts.escenas.loadingTablero}
+    </div>
+  );
+}
 
 // Ola 2B — tablero memo 3D de las fichas (WebGL, client-only → diferido).
 const RoomBoardView3D = nextDynamic(() => import("./room-board-view-3d"), {
   ssr: false,
-  loading: () => (
-    <div className="text-brand-muted flex h-full items-center justify-center text-sm">
-      Cargando tu tablero 3D…
-    </div>
-  ),
+  loading: () => <Board3DLoadingFallback />,
 });
 
 /** Opción de tema (set de fichas) tal como la entrega listLetterThemeOptions. */
@@ -304,6 +313,7 @@ export function LetterSetEditor({
   const closeBoard3D = useCallback(() => setBoard3D(null), []);
   useDialogA11y(board3DRef, { onClose: closeBoard3D, active: board3D !== null });
   const isTouch = useIsTouch();
+  const texts = useStudioTexts();
 
   async function handleOpen3D() {
     if (building3D) return;
@@ -313,7 +323,7 @@ export function LetterSetEditor({
     } catch (err) {
       // #14 — detalle técnico al log; al cliente un mensaje claro es-CO.
       console.error("[studio.letter-set.3d]", err);
-      setError("No pudimos abrir la vista 3D. Intenta de nuevo.");
+      setError(texts.errores.vista3d);
     } finally {
       setBuilding3D(false);
     }
@@ -376,7 +386,7 @@ export function LetterSetEditor({
     } catch (err) {
       // #14 — detalle técnico al log; mensaje claro es-CO al cliente.
       console.error("[studio.letter-set.preview]", err);
-      setError("No pudimos preparar la vista previa. Intenta de nuevo en un momento.");
+      setError(texts.errores.preview);
     } finally {
       setPreparing(false);
     }
@@ -424,9 +434,7 @@ export function LetterSetEditor({
         variantId: currentVariantId,
       });
       if (!added.ok) {
-        setPreviewError(
-          `Guardamos el diseño pero no pudimos agregarlo al carrito: ${added.message}`,
-        );
+        setPreviewError(fillStudioText(texts.exportar.errorCarritoSet, { error: added.message }));
         setSubmitting(false);
         return;
       }
@@ -436,7 +444,7 @@ export function LetterSetEditor({
     } catch (err) {
       // #14 — detalle técnico al log; mensaje claro es-CO al cliente.
       console.error("[studio.letter-set]", err);
-      setPreviewError("Algo salió mal. Intenta de nuevo en un momento.");
+      setPreviewError(texts.errores.generico);
       setSubmitting(false);
     }
   }
@@ -459,15 +467,15 @@ export function LetterSetEditor({
         className="text-brand-muted hover:text-brand-purple mb-4 inline-flex items-center gap-1 text-sm"
       >
         <ChevronLeft className="h-4 w-4" />
-        Volver
+        {texts.comun.volver}
       </Link>
 
       <header className="mb-6 text-center">
         <p className="text-brand-muted text-xs font-semibold tracking-wider uppercase">
-          Personalizar · {product.name}
+          {fillStudioText(texts.lienzo.headerTitle, { producto: product.name })}
         </p>
         <h1 className="font-display text-brand-purple-dark mt-1 text-3xl sm:text-4xl">
-          Elige los colores 🎨
+          {texts.letras.titulo}
         </h1>
         {subtitle && <p className="text-brand-muted mx-auto mt-2 max-w-md text-sm">{subtitle}</p>}
       </header>
@@ -477,12 +485,16 @@ export function LetterSetEditor({
             ("Solo letra") + un chip por set del idioma (vacíos degradan a letra estándar). */}
         <div className="mb-5">
           <p className="text-brand-purple-dark mb-2 text-sm font-semibold">
-            Elige el tema
+            {texts.letras.temaTitulo}
             <span className="text-brand-muted ml-2 text-xs font-normal">
-              · el dibujo de cada ficha 🎨
+              {texts.letras.temaHint}
             </span>
           </p>
-          <div role="radiogroup" aria-label="Tema de las fichas" className="flex flex-wrap gap-2">
+          <div
+            role="radiogroup"
+            aria-label={texts.letras.temaAria}
+            className="flex flex-wrap gap-2"
+          >
             <button
               type="button"
               role="radio"
@@ -495,7 +507,7 @@ export function LetterSetEditor({
               }`}
             >
               <span aria-hidden="true">✏️</span>
-              Solo letra
+              {texts.letras.soloLetra}
             </button>
             {optionsForLanguage.map((o) => {
               const active = o.id === styleId;
@@ -524,10 +536,12 @@ export function LetterSetEditor({
             alfabeto cambia: la Ñ) y solo si el producto tiene ambos idiomas. */}
         {showLanguagePicker && (
           <div className="mb-5">
-            <p className="text-brand-purple-dark mb-2 text-sm font-semibold">Idioma del alfabeto</p>
+            <p className="text-brand-purple-dark mb-2 text-sm font-semibold">
+              {texts.letras.idiomaTitulo}
+            </p>
             <div
               role="radiogroup"
-              aria-label="Idioma del alfabeto"
+              aria-label={texts.letras.idiomaTitulo}
               className="flex flex-wrap gap-2"
             >
               {availableLanguages.map((lang) => {
@@ -546,7 +560,7 @@ export function LetterSetEditor({
                     }`}
                   >
                     <span aria-hidden="true">{lang === "es" ? "🇪🇸" : "🇬🇧"}</span>
-                    {lang === "es" ? "Español" : "English"}
+                    {lang === "es" ? texts.letras.idiomaEs : texts.letras.idiomaEn}
                   </button>
                 );
               })}
@@ -562,7 +576,7 @@ export function LetterSetEditor({
           {selectedIndex === null && (
             <p className="text-brand-purple-dark mb-3 flex items-center justify-center text-center text-xs font-semibold">
               <span className="bg-brand-yellow/45 inline-flex items-center gap-1.5 rounded-full px-3 py-1.5">
-                👇 Toca una ficha para darle el color que quieras
+                {texts.letras.tocaHint}
               </span>
             </p>
           )}
@@ -577,7 +591,7 @@ export function LetterSetEditor({
                   type="button"
                   onClick={() => toggleSelected(i)}
                   aria-pressed={isSel}
-                  aria-label={`Pintar la ficha ${ch}`}
+                  aria-label={fillStudioText(texts.letras.pintarAria, { letra: ch })}
                   className={`flex flex-col items-center rounded-xl transition ${
                     isSel ? "ring-brand-purple scale-105 ring-2 ring-offset-2" : "hover:scale-105"
                   }`}
@@ -591,7 +605,7 @@ export function LetterSetEditor({
                       // eslint-disable-next-line @next/next/no-img-element -- ficha del bucket público
                       <img
                         src={tile.imageUrl}
-                        alt={`Letra ${ch}`}
+                        alt={fillStudioText(texts.letras.letraAlt, { letra: ch })}
                         className="h-full w-full object-contain p-1"
                       />
                     ) : (
@@ -623,7 +637,7 @@ export function LetterSetEditor({
             type="button"
             onClick={handleOpen3D}
             disabled={building3D || submitting || preparing}
-            aria-label="Ver tus fichas en un tablero magnético 3D"
+            aria-label={texts.escenas.setBtnTableroAria}
             className="border-brand-purple/30 text-brand-purple-dark hover:border-brand-purple/60 inline-flex items-center gap-2 rounded-full border-2 bg-white px-6 py-2.5 text-sm font-bold transition disabled:opacity-60"
           >
             {building3D ? (
@@ -631,7 +645,7 @@ export function LetterSetEditor({
             ) : (
               <Box className="h-4 w-4" />
             )}
-            {building3D ? "Armando…" : "Ver en 3D"}
+            {building3D ? texts.comun.armando : texts.escenas.setBtnTablero}
           </button>
           {/* El botón ya no agrega al carrito: abre la vista previa. El texto lo dice ("¡Listo!",
               igual que el Estudio principal) y el sr-only completa la promesa sin romper WCAG
@@ -647,10 +661,12 @@ export function LetterSetEditor({
             ) : (
               <Sparkles className="h-5 w-5" />
             )}
-            {preparing ? "Preparando…" : submitting ? "Agregando…" : "¡Listo!"}
-            {!preparing && !submitting && (
-              <span className="sr-only">: mira cómo se verá tu pedido antes de agregarlo</span>
-            )}
+            {preparing
+              ? texts.comun.preparando
+              : submitting
+                ? texts.comun.agregando
+                : texts.comun.listo}
+            {!preparing && !submitting && <span className="sr-only">{texts.letras.listoSr}</span>}
           </button>
           <span className="text-brand-muted text-sm font-semibold">{priceLabel}</span>
         </div>
@@ -686,16 +702,16 @@ export function LetterSetEditor({
           ref={board3DRef}
           role="dialog"
           aria-modal="true"
-          aria-label="Vista 3D de tus fichas en un tablero magnético"
+          aria-label={texts.escenas.setTableroAria}
           tabIndex={-1}
           className="bg-brand-purple-dark/85 fixed inset-0 z-50 flex flex-col backdrop-blur-sm outline-none"
         >
           <div className="flex items-center justify-between px-4 py-3 text-white sm:px-6">
-            <span className="font-display text-lg font-bold">🖼️ Tus fichas en el tablero</span>
+            <span className="font-display text-lg font-bold">{texts.escenas.setTableroTitulo}</span>
             <button
               type="button"
               onClick={closeBoard3D}
-              aria-label="Cerrar vista 3D"
+              aria-label={texts.comun.cerrarVista3d}
               className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/15 text-white transition-colors hover:bg-white/25 focus:ring-2 focus:ring-white focus:outline-none"
             >
               <X className="h-5 w-5" />
@@ -704,9 +720,7 @@ export function LetterSetEditor({
           <div className="relative flex-1">
             <RoomBoardView3D magnets={board3D} cols={boardCols} style="memo" />
             <p className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-black/40 px-3 py-1.5 text-center text-xs text-white">
-              {isTouch
-                ? "Arrastra para girar · pellizca con 2 dedos para acercar"
-                : "Arrastra para girar · rueda o pellizca para acercar"}
+              {isTouch ? texts.escenas.hintTouch : texts.escenas.hintMouse}
             </p>
           </div>
         </div>

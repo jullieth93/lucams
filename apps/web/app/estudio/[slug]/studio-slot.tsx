@@ -72,6 +72,8 @@ import { CalendarCardLayer } from "./studio-calendar-card-layer";
 
 import { getFilterParams } from "./lib/photo-filters";
 import { analyzeSmartCrop, checkPhotoQuality } from "./lib/smart-crop";
+import { useStudioTexts } from "./studio-texts-provider";
+import { fillStudioText } from "./studio-texts";
 
 const FOCUS_RING = "0 0 0 3px rgb(93 217 209)"; // brand-turquoise
 
@@ -197,6 +199,7 @@ function StudioSlotImpl({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const stageRef = useRef<Konva.Stage | null>(null);
   const [isDropping, setIsDropping] = useState(false);
+  const texts = useStudioTexts();
   // M.3.b.UX.v5 (Lucy 2026-05-15) — flag para evitar que el drag de la foto
   // dispare el picker modal al soltar el click. Cuando Konva detecta drag,
   // se setea wasDraggingPhoto=true; el click handler del wrapper div verifica
@@ -897,12 +900,16 @@ function StudioSlotImpl({
                     isDropping ? "text-brand-turquoise" : "text-brand-purple-dark/75",
                   ].join(" ")}
                 >
-                  {isDropping ? "¡Suéltala aquí! 💜" : "Pásame una foto"}
+                  {isDropping ? texts.lienzo.slotEmptyDrop : texts.lienzo.slotEmptyInvite}
                 </span>
 
                 {/* Indicador del slot: mes (calendario) o "Imán #N". */}
                 <span className="text-brand-muted text-[9px] font-medium tracking-wider uppercase">
-                  {slotLabel ?? `${nounCap} #${slotState.slotIndex + 1}`}
+                  {slotLabel ??
+                    fillStudioText(texts.lienzo.slotIndicator, {
+                      sustantivo: nounCap,
+                      n: slotState.slotIndex + 1,
+                    })}
                 </span>
               </motion.div>
             )}
@@ -938,8 +945,12 @@ function StudioSlotImpl({
                 // clara (WCAG 1.4.3 AA pide 4.5:1). Sin tocar la paleta, el TEXTO pasa a
                 // brand-purple-dark → 7.43:1.
                 className="bg-brand-turquoise/90 text-brand-purple-dark absolute top-1.5 right-1.5 flex h-5 items-center justify-center rounded-full px-1.5 text-[10px] font-bold shadow-sm"
-                aria-label={`Zoom actual ${Math.round(slotState.photoTransform.scale * 100)}%`}
-                title={`Zoom ${Math.round(slotState.photoTransform.scale * 100)}% — doble click resetea`}
+                aria-label={fillStudioText(texts.lienzo.zoomAria, {
+                  pct: Math.round(slotState.photoTransform.scale * 100),
+                })}
+                title={fillStudioText(texts.lienzo.slotZoomTitle, {
+                  pct: Math.round(slotState.photoTransform.scale * 100),
+                })}
               >
                 {Math.round(slotState.photoTransform.scale * 100)}%
               </div>
@@ -976,8 +987,8 @@ function StudioSlotImpl({
           {sizeCm && !compact && !overlayActions && (
             <span
               className="text-brand-purple-dark/70 bg-brand-cream/90 ring-brand-purple/10 inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 text-[9px] font-bold ring-1"
-              aria-label={`Tamaño físico ${sizeCm}`}
-              title={`Tu imán será ${sizeCm} cm (ancho × alto)`}
+              aria-label={fillStudioText(texts.lienzo.slotTamanoAria, { size: sizeCm })}
+              title={fillStudioText(texts.lienzo.slotSizeTitle, { sizeCm })}
             >
               📐 {sizeCm}
             </span>
@@ -1002,12 +1013,22 @@ function StudioSlotImpl({
               }
               title={
                 photoQuality.severity === "error"
-                  ? `Esta foto (${photoQuality.actualPx?.w}×${photoQuality.actualPx?.h}px) se verá pixelada al imprimir a ${sizeCm} cm. Recomendado: ${photoQuality.requiredPx?.w}×${photoQuality.requiredPx?.h}px o más.`
-                  : `Esta foto está al límite de resolución para ${sizeCm} cm. Puede verse OK, pero recomendamos ${photoQuality.requiredPx?.w}×${photoQuality.requiredPx?.h}px o más.`
+                  ? fillStudioText(texts.lienzo.qualityErrorTitle, {
+                      ancho: photoQuality.actualPx?.w ?? "",
+                      alto: photoQuality.actualPx?.h ?? "",
+                      sizeCm: sizeCm ?? "",
+                      anchoMin: photoQuality.requiredPx?.w ?? "",
+                      altoMin: photoQuality.requiredPx?.h ?? "",
+                    })
+                  : fillStudioText(texts.lienzo.qualityWarnTitle, {
+                      sizeCm: sizeCm ?? "",
+                      anchoMin: photoQuality.requiredPx?.w ?? "",
+                      altoMin: photoQuality.requiredPx?.h ?? "",
+                    })
               }
             >
               {photoQuality.severity === "error" ? "⚠" : "ⓘ"}
-              {compact ? "" : " calidad"}
+              {compact ? "" : ` ${texts.lienzo.slotQualityChip}`}
             </span>
           )}
 
@@ -1029,8 +1050,10 @@ function StudioSlotImpl({
                     e.stopPropagation();
                     onCenterPhoto();
                   }}
-                  aria-label={`Centrar la foto del imán ${slotState.slotIndex + 1}`}
-                  title="Volver al centro y resetear zoom"
+                  aria-label={fillStudioText(texts.lienzo.slotCentrarAria, {
+                    n: slotState.slotIndex + 1,
+                  })}
+                  title={texts.lienzo.slotTooltipCentrar}
                   className={`text-brand-purple-dark/70 ring-brand-purple/15 hover:bg-brand-purple/5 hover:text-brand-purple-dark focus:ring-brand-turquoise hover:ring-brand-purple/30 relative flex items-center justify-center rounded-md bg-white shadow-sm ring-1 before:absolute before:content-[''] focus:ring-2 focus:outline-none ${
                     compact ? "h-8 w-8 before:-inset-1.5" : "h-9 w-9 before:-inset-1"
                   }`}
@@ -1048,13 +1071,13 @@ function StudioSlotImpl({
                     e.stopPropagation();
                     onEdit(slotState.assetUrl ? "photo" : "text");
                   }}
-                  aria-label={`Editar ${slotName}`}
+                  aria-label={fillStudioText(texts.lienzo.slotEditarAria, { nombre: slotName })}
                   title={
                     slotState.assetUrl && hasEditableText
-                      ? "Ajustar foto y texto"
+                      ? texts.lienzo.slotTooltipEditarAmbos
                       : slotState.assetUrl
-                        ? "Ajustar foto"
-                        : "Editar texto"
+                        ? texts.lienzo.slotTooltipEditarFoto
+                        : texts.texto.editorTitulo
                   }
                   className={`text-brand-purple ring-brand-purple/20 hover:bg-brand-purple/5 focus:ring-brand-turquoise hover:ring-brand-purple/40 relative flex items-center justify-center rounded-md bg-white shadow-sm ring-1 before:absolute before:content-[''] focus:ring-2 focus:outline-none ${
                     compact ? "h-8 w-8 before:-inset-1.5" : "h-9 w-9 before:-inset-1"
@@ -1073,8 +1096,10 @@ function StudioSlotImpl({
                     e.stopPropagation();
                     onClear();
                   }}
-                  aria-label={`Quitar foto del imán ${slotState.slotIndex + 1}`}
-                  title="Quitar esta foto"
+                  aria-label={fillStudioText(texts.lienzo.slotQuitarAria, {
+                    n: slotState.slotIndex + 1,
+                  })}
+                  title={texts.lienzo.slotTooltipQuitar}
                   className={`relative flex items-center justify-center rounded-md bg-white text-red-600 shadow-sm ring-1 ring-red-200 before:absolute before:content-[''] hover:bg-red-50 hover:ring-red-400 focus:ring-2 focus:ring-red-500 focus:outline-none ${
                     compact ? "h-8 w-8 before:-inset-1.5" : "h-9 w-9 before:-inset-1"
                   }`}

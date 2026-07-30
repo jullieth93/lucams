@@ -22,6 +22,7 @@ import type { StoreApi } from "zustand";
 import { Frame, Image as ImageIcon, Check } from "lucide-react";
 import { frameColorById, isInstagramTemplate } from "@/features/personalization/frame-palette";
 import type { StudioStoreState } from "./lib/store";
+import { useStudioTexts } from "./studio-texts-provider";
 
 const LIGHT_HEXES = new Set(["#FFFFFF", "#FFD93D"]);
 
@@ -53,6 +54,7 @@ export function StudioStyleToolbar({ store, frameOptions = [] }: StudioStyleTool
   const borderColor = useStore(store, (s) => s.canvasData?.borderColor ?? null);
   const setBorderColor = useStore(store, (s) => s.setBorderColor);
   const setImagePlaceholderRect = useStore(store, (s) => s.setImagePlaceholderRect);
+  const texts = useStudioTexts();
 
   if (!canvasData) return null;
 
@@ -122,16 +124,18 @@ export function StudioStyleToolbar({ store, frameOptions = [] }: StudioStyleTool
         {/* Color de tarjeta */}
         {frameColors.length > 0 && (
           <div className="flex items-center gap-2">
-            <span className="text-brand-purple-dark text-xs font-semibold">Color de tarjeta</span>
+            <span className="text-brand-purple-dark text-xs font-semibold">
+              {texts.texto.estiloColorTitulo}
+            </span>
             <div
               role="radiogroup"
-              aria-label="Color de tarjeta"
+              aria-label={texts.texto.estiloColorAria}
               className="flex items-center gap-1.5"
             >
               {isIg ? null : (
                 <ColorButton
                   active={borderColor === null}
-                  label="Sin color"
+                  label={texts.texto.estiloSinColor}
                   onClick={() => handleBorderChange(null)}
                   kind="none"
                 />
@@ -152,21 +156,23 @@ export function StudioStyleToolbar({ store, frameOptions = [] }: StudioStyleTool
         {/* Borde de foto */}
         {(isIg || isPolaroidClasica || frameColors.length > 0) && (
           <div className="flex items-center gap-2">
-            <span className="text-brand-purple-dark text-xs font-semibold">Borde de foto</span>
+            <span className="text-brand-purple-dark text-xs font-semibold">
+              {texts.texto.estiloBordeTitulo}
+            </span>
             <div
               role="radiogroup"
-              aria-label="Borde de foto"
+              aria-label={texts.texto.estiloBordeAria}
               className="ring-brand-purple/15 flex gap-1 rounded-lg p-1 ring-1"
             >
               <BorderOption
                 active={!isFullBleed}
-                label="Con borde"
+                label={texts.texto.estiloConBorde}
                 icon={<Frame className="h-3.5 w-3.5" aria-hidden />}
                 onClick={() => handleBorderToggle(false)}
               />
               <BorderOption
                 active={isFullBleed}
-                label="Sin borde"
+                label={texts.texto.estiloSinBorde}
                 icon={<ImageIcon className="h-3.5 w-3.5" aria-hidden />}
                 onClick={() => handleBorderToggle(true)}
               />

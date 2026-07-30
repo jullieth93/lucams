@@ -22,6 +22,7 @@
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Move, ZoomIn, MousePointer2, Hand } from "lucide-react";
+import { useStudioTexts } from "./studio-texts-provider";
 
 export const GESTURES_HINT_STORAGE_KEY = "lucams_studio_gestures_hint_v1";
 
@@ -34,6 +35,7 @@ type Props = {
 };
 
 export function StudioGesturesHint({ open, onClose, persistent = false }: Props) {
+  const texts = useStudioTexts();
   // Lazy state initializer — calculado UNA VEZ en el primer render.
   // Evita el setState-in-effect antipattern de React 19.
   const [isTouch] = useState(() => {
@@ -67,26 +69,29 @@ export function StudioGesturesHint({ open, onClose, persistent = false }: Props)
         >
           <div className="border-brand-purple/20 bg-brand-purple-dark/95 flex items-start gap-3 rounded-2xl border px-4 py-3 text-white shadow-2xl backdrop-blur">
             <div className="flex-1">
-              <p className="text-sm font-bold">¡Tip! Cómo editar tu foto:</p>
+              <p className="text-sm font-bold">{texts.lienzo.gesturesTitulo}</p>
               <ul className="mt-1.5 space-y-1 text-[12px]">
                 {isTouch ? (
                   <>
                     <li className="flex items-center gap-2">
                       <Hand className="text-brand-turquoise h-3.5 w-3.5" aria-hidden />
                       <span>
-                        <strong>1 dedo arrastra</strong> para mover la foto
+                        <strong>{texts.lienzo.gesturesTouchMoverLead}</strong>{" "}
+                        {texts.lienzo.gesturesRestMover}
                       </span>
                     </li>
                     <li className="flex items-center gap-2">
                       <ZoomIn className="text-brand-turquoise h-3.5 w-3.5" aria-hidden />
                       <span>
-                        <strong>Pellizca con 2 dedos</strong> para zoom
+                        <strong>{texts.lienzo.gesturesTouchZoomLead}</strong>{" "}
+                        {texts.lienzo.gesturesTouchZoomRest}
                       </span>
                     </li>
                     <li className="flex items-center gap-2">
                       <Move className="text-brand-turquoise h-3.5 w-3.5" aria-hidden />
                       <span>
-                        <strong>Doble tap</strong> para volver al centro
+                        <strong>{texts.lienzo.gesturesTouchCentrarLead}</strong>{" "}
+                        {texts.lienzo.gesturesRestCentrar}
                       </span>
                     </li>
                   </>
@@ -95,19 +100,22 @@ export function StudioGesturesHint({ open, onClose, persistent = false }: Props)
                     <li className="flex items-center gap-2">
                       <MousePointer2 className="text-brand-turquoise h-3.5 w-3.5" aria-hidden />
                       <span>
-                        <strong>Arrastra con el mouse</strong> para mover la foto
+                        <strong>{texts.lienzo.gesturesMouseMoverLead}</strong>{" "}
+                        {texts.lienzo.gesturesRestMover}
                       </span>
                     </li>
                     <li className="flex items-center gap-2">
                       <ZoomIn className="text-brand-turquoise h-3.5 w-3.5" aria-hidden />
                       <span>
-                        <strong>Scroll</strong> sobre la foto para zoom in/out
+                        <strong>{texts.lienzo.gesturesMouseZoomLead}</strong>{" "}
+                        {texts.lienzo.gesturesMouseZoomRest}
                       </span>
                     </li>
                     <li className="flex items-center gap-2">
                       <Move className="text-brand-turquoise h-3.5 w-3.5" aria-hidden />
                       <span>
-                        <strong>Doble click</strong> para volver al centro
+                        <strong>{texts.lienzo.gesturesMouseCentrarLead}</strong>{" "}
+                        {texts.lienzo.gesturesRestCentrar}
                       </span>
                     </li>
                   </>
@@ -117,7 +125,7 @@ export function StudioGesturesHint({ open, onClose, persistent = false }: Props)
             <button
               type="button"
               onClick={onClose}
-              aria-label="Cerrar este tip"
+              aria-label={texts.comun.cerrarTip}
               className="text-white/70 hover:text-white"
             >
               <X className="h-4 w-4" />

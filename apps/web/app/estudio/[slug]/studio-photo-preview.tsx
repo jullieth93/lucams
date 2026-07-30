@@ -32,6 +32,7 @@ import {
   isInstagramNoBorder,
 } from "@/features/personalization/frame-palette";
 import type { CanvasDataV1, SlotState } from "./types";
+import { useStudioTexts } from "./studio-texts-provider";
 
 type PhotoTransformPartial = Partial<{ offsetX: number; offsetY: number; scale: number }>;
 
@@ -68,6 +69,7 @@ export function StudioPhotoPreview({
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [containerWidth, setContainerWidth] = useState(340);
   const [viewportH, setViewportH] = useState(800);
+  const texts = useStudioTexts();
 
   // Ancho fluido: el preview llena el ancho disponible del modal (tope 520px
   // en desktop; en móvil aprovecha todo el ancho para que el pellizco y el pan
@@ -279,8 +281,7 @@ export function StudioPhotoPreview({
         </Stage>
       </div>
       <p className="text-brand-muted mt-1.5 text-center text-[11px] leading-snug">
-        Arrastra la foto para encuadrar · Rueda del mouse o pellizco para zoom · Doble toque para
-        centrar
+        {texts.texto.previewHint}
       </p>
     </div>
   );

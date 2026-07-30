@@ -11,6 +11,8 @@ import { useDialogA11y } from "./use-dialog-a11y";
 import { Sparkles, X, Loader2, Copy, Check } from "lucide-react";
 import { suggestDesignAction } from "@/features/ai/actions";
 import type { DesignSuggestion } from "@/features/ai/schemas";
+import { useStudioTexts } from "./studio-texts-provider";
+import { fillStudioText, splitStudioText } from "./studio-texts";
 
 export function StudioAiPanel({
   open,
@@ -30,6 +32,7 @@ export function StudioAiPanel({
   const [suggestion, setSuggestion] = useState<DesignSuggestion | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const texts = useStudioTexts();
 
   // #15 — foco inicial + trap + Escape + retorno de foco (activo solo cuando el panel está abierto).
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -69,7 +72,7 @@ export function StudioAiPanel({
       ref={dialogRef}
       role="dialog"
       aria-modal="true"
-      aria-label="Asistente de ideas"
+      aria-label={texts.ia.panelAria}
       tabIndex={-1}
       className="fixed inset-0 z-50 flex items-end justify-center bg-black/40 p-3 backdrop-blur-sm outline-none sm:items-center"
       onClick={onClose}
@@ -81,12 +84,12 @@ export function StudioAiPanel({
         <div className="mb-3 flex items-center justify-between">
           <h2 className="font-display text-brand-purple-dark flex items-center gap-2 text-lg font-bold">
             <Sparkles className="text-brand-pink-ink h-5 w-5" />
-            ¿Sin ideas? Te ayudo
+            {texts.ia.titulo}
           </h2>
           <button
             type="button"
             onClick={onClose}
-            aria-label="Cerrar asistente"
+            aria-label={texts.comun.cerrarAsistente}
             className="text-brand-muted hover:bg-brand-purple/5 hover:text-brand-purple-dark rounded-full p-1.5"
           >
             <X className="h-5 w-5" />
@@ -95,14 +98,14 @@ export function StudioAiPanel({
 
         <form onSubmit={handleSubmit} className="space-y-2">
           <label htmlFor="ai-occasion" className="text-brand-muted block text-xs">
-            ¿Para qué es? (ej. “cumpleaños de mi mamá”, “aniversario”)
+            {texts.ia.label}
           </label>
           <input
             id="ai-occasion"
             value={occasion}
             onChange={(e) => setOccasion(e.target.value)}
             maxLength={200}
-            placeholder="Cuéntame la ocasión…"
+            placeholder={texts.ia.placeholder}
             className="border-brand-purple/20 focus:ring-brand-purple/30 w-full rounded-lg border px-3 py-2 text-sm focus:ring-2 focus:outline-none"
           />
           <button
@@ -115,7 +118,7 @@ export function StudioAiPanel({
             ) : (
               <Sparkles className="h-4 w-4" />
             )}
-            {loading ? "Pensando ideas…" : "Dame ideas"}
+            {loading ? texts.ia.cargando : texts.ia.enviar}
           </button>
         </form>
 
@@ -126,7 +129,7 @@ export function StudioAiPanel({
             {suggestion.phrase && (
               <div className="bg-brand-cream rounded-xl p-3">
                 <p className="text-brand-muted text-[11px] font-semibold uppercase">
-                  Frase sugerida
+                  {texts.ia.fraseLabel}
                 </p>
                 <div className="mt-1 flex items-center justify-between gap-2">
                   <p className="text-brand-purple-dark text-sm font-semibold">
@@ -138,7 +141,7 @@ export function StudioAiPanel({
                     className="text-brand-purple hover:bg-brand-purple/5 inline-flex flex-shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs font-semibold"
                   >
                     {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-                    {copied ? "¡Copiada!" : "Copiar"}
+                    {copied ? texts.ia.copiada : texts.ia.copiar}
                   </button>
                 </div>
               </div>
@@ -151,23 +154,38 @@ export function StudioAiPanel({
                 aria-hidden
               />
               <p className="text-brand-purple-dark text-sm">
-                Color sugerido: <strong>{suggestion.colorLabel}</strong>
+                {(() => {
+                  // {color} se interpola conservando el <strong> (roadmap B1).
+                  const parts = splitStudioText(texts.ia.colorLabel, "color");
+                  if (!parts) {
+                    return fillStudioText(texts.ia.colorLabel, { color: suggestion.colorLabel });
+                  }
+                  return (
+                    <>
+                      {parts[0]}
+                      <strong>{suggestion.colorLabel}</strong>
+                      {parts[1]}
+                    </>
+                  );
+                })()}
               </p>
             </div>
 
             <div className="bg-brand-cream rounded-xl p-3">
-              <p className="text-brand-muted text-[11px] font-semibold uppercase">Composición</p>
+              <p className="text-brand-muted text-[11px] font-semibold uppercase">
+                {texts.ia.composicionLabel}
+              </p>
               <p className="text-brand-purple-dark mt-1 text-sm">{suggestion.layout}</p>
             </div>
 
             <div className="bg-brand-cream rounded-xl p-3">
-              <p className="text-brand-muted text-[11px] font-semibold uppercase">Tip</p>
+              <p className="text-brand-muted text-[11px] font-semibold uppercase">
+                {texts.ia.tipLabel}
+              </p>
               <p className="text-brand-purple-dark mt-1 text-sm">{suggestion.tip}</p>
             </div>
 
-            <p className="text-brand-muted text-[11px]">
-              Son ideas para inspirarte — tú decides qué usar en tu diseño. ✨
-            </p>
+            <p className="text-brand-muted text-[11px]">{texts.ia.pie}</p>
           </div>
         )}
       </div>

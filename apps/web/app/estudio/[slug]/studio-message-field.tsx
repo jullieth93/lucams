@@ -24,6 +24,7 @@ import { useStore } from "zustand";
 import type { StoreApi } from "zustand";
 import { MessageSquareHeart } from "lucide-react";
 import type { StudioStoreState } from "./lib/store";
+import { useStudioTexts } from "./studio-texts-provider";
 
 export function StudioMessageField({ store }: { store: StoreApi<StudioStoreState> }) {
   // Selectores atómicos: el layer editable (JSON estable) y el override vigente.
@@ -44,6 +45,7 @@ export function StudioMessageField({ store }: { store: StoreApi<StudioStoreState
     return null;
   });
   const setTextOverrideAllSlots = useStore(store, (s) => s.setTextOverrideAllSlots);
+  const texts = useStudioTexts();
 
   if (!layerId) return null;
   // Ola 4 (Lucy 2026-07-23) — el mensaje es OPCIONAL: el campo arranca VACÍO (el
@@ -60,14 +62,15 @@ export function StudioMessageField({ store }: { store: StoreApi<StudioStoreState
         className="text-brand-purple-dark mb-3 flex items-center gap-2 text-sm font-semibold"
       >
         <MessageSquareHeart className="text-brand-purple h-4 w-4" />
-        Tu mensaje <span className="text-brand-muted text-xs font-normal">(opcional)</span>
+        {texts.texto.mensajeLabel}{" "}
+        <span className="text-brand-muted text-xs font-normal">{texts.texto.mensajeOpcional}</span>
       </label>
       <input
         id="studio-message-input"
         type="text"
         value={value}
         maxLength={120}
-        placeholder="Escribe tu mensaje"
+        placeholder={texts.texto.mensajePlaceholder}
         onChange={(e) => {
           const text = e.target.value;
           // Vacío → sin override (no se imprime nada). Cualquier texto → se imprime tal cual.
@@ -75,10 +78,7 @@ export function StudioMessageField({ store }: { store: StoreApi<StudioStoreState
         }}
         className="border-brand-purple/15 text-brand-purple-dark focus:border-brand-turquoise focus:ring-brand-turquoise/30 w-full rounded-md border px-3 py-2 text-sm transition-colors focus:ring-2 focus:outline-none"
       />
-      <p className="text-brand-muted mt-2 text-xs">
-        Si lo dejas vacío, la franja queda limpia (no se imprime nada). Para cambiar fuente o color,
-        toca el texto en la imagen.
-      </p>
+      <p className="text-brand-muted mt-2 text-xs">{texts.texto.mensajeAyuda}</p>
     </section>
   );
 }

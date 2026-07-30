@@ -76,17 +76,26 @@ import { faceSlotLabels, facePairOfUnit } from "./lib/faces";
 // un libro, no la nevera). Client-only, diferido.
 const BookView3D = nextDynamic(() => import("./book-view-3d"), {
   ssr: false,
-  loading: () => (
-    <div className="text-brand-muted flex h-full items-center justify-center text-sm">
-      Cargando tu libro 3D…
-    </div>
-  ),
+  loading: () => <Book3DLoadingFallback />,
 });
 import { createStudioStore } from "./lib/store";
 import type { CanvasData, CanvasDataV2, StudioAsset, StudioProduct, StudioTemplate } from "./types";
 import { ensureCanvasV2 } from "./lib/canvas-migrate";
+import { useStudioTexts } from "./studio-texts-provider";
+import { fillStudioText } from "./studio-texts";
 
 const AUTO_SAVE_DELAY_MS = 2000;
+
+// Roadmap B1 — el "Cargando tu libro 3D…" del dynamic import es texto CMS
+// (estudio.lienzo.loading-libro); sin provider cae al default exacto pre-CMS.
+function Book3DLoadingFallback() {
+  const texts = useStudioTexts();
+  return (
+    <div className="text-brand-muted flex h-full items-center justify-center text-sm">
+      {texts.lienzo.loadingLibro}
+    </div>
+  );
+}
 
 /**
  * Convierte un data URL base64 a Blob binario. Usado al finalizar el
@@ -150,6 +159,8 @@ export function StudioEditor({
 }: StudioEditorProps) {
   const router = useRouter();
   const store = useMemo(() => createStudioStore(), []);
+  // Roadmap B1 — textos CMS del Estudio (fallback exacto pre-CMS vía contexto).
+  const texts = useStudioTexts();
   // DEBUG e2e: exponer el store en dev para que Playwright pueda inspeccionar/auto-fill sin depender de clicks frágiles.
   useEffect(() => {
     if (process.env.NODE_ENV === "development") {
@@ -280,7 +291,7 @@ export function StudioEditor({
   const isBookmark = typeof galleryTag === "string" && galleryTag.startsWith("separadores");
   // #14 — sustantivo del slot: en separadores el producto NO es un imán → "separador" en los labels,
   // aria y onboarding (pantalla=físico). Deriva de isBookmark; el calendario usa slotLabels propios.
-  const slotNoun = isBookmark ? "separador" : "imán";
+  const slotNoun = isBookmark ? texts.lienzo.sustantivoSeparador : texts.lienzo.sustantivoIman;
   const isTouch = useIsTouch(); // #9 — copy del gesto de zoom del libro 3D según táctil vs mouse.
   // FOTO4 — la galería de escenas "en tu espacio" (nevera/mural/repisa/regalo) es la vista por
   // defecto del fotoimán: se muestra cuando NO es calendario ni separador (el `else` del botón).
@@ -399,7 +410,7 @@ export function StudioEditor({
         if (cancelled) return;
         // #14 — el detalle técnico (inglés/stack) va al log; al cliente un mensaje claro es-CO.
         console.error("[studio.boot]", err);
-        setBootError("No pudimos abrir el Estudio. Recarga la página o escríbenos por WhatsApp.");
+        setBootError(texts.errores.boot);
         setBooting(false);
       }
     };
@@ -418,6 +429,7 @@ export function StudioEditor({
     templates,
     store,
     initialBorderColor,
+    texts,
   ]);
 
   // ──────────── Auto-save 2s debounce ────────────
@@ -549,7 +561,7 @@ export function StudioEditor({
       console.error("[studio.preview]", err);
       state.setAutoSaveStatus({
         kind: "error",
-        message: "No pudimos preparar la vista previa. Intenta de nuevo en un momento.",
+        message: texts.errores.preview,
       });
     }
   }, [
@@ -561,6 +573,7 @@ export function StudioEditor({
     facesPerUnit,
     selectedYear,
     product.personalizationSchema,
+    texts,
   ]);
 
   // SEP1 — Abrir el libro 3D del separador: captura un snapshot recortado a la silueta física
@@ -587,11 +600,11 @@ export function StudioEditor({
     } catch (err) {
       state.setAutoSaveStatus({
         kind: "error",
-        message: "No pudimos abrir la vista 3D. Intenta de nuevo.",
+        message: texts.errores.vista3d,
       });
       void err;
     }
-  }, [store, productConfig.shape, productConfig.noFold, ensureAllStagesMounted, isBookmark]);
+  }, [store, productConfig.shape, productConfig.noFold, ensureAllStagesMounted, isBookmark, texts]);
 
   // FOTO4 — Abrir la galería de escenas "en tu espacio" (nevera/mural/repisa/regalo). Calcula UNA vez
   // la textura por imán (recortada a su silueta) y la pasa a la galería, que arma cada escena bajo
@@ -639,7 +652,7 @@ export function StudioEditor({
     } catch (err) {
       state.setAutoSaveStatus({
         kind: "error",
-        message: "No pudimos abrir la vista de tu espacio. Intenta de nuevo.",
+        message: texts.errores.espacio,
       });
       void err;
     } finally {
@@ -654,6 +667,7 @@ export function StudioEditor({
     ensureAllStagesMounted,
     sceneBuilding,
     isBookmark,
+    texts,
   ]);
 
   // CAL4 (rediseño 2026-07-22) — "Ver mi calendario": el set de 12 TARJETAS mes 7.5×10 se ve como
@@ -691,13 +705,13 @@ export function StudioEditor({
     } catch (err) {
       state.setAutoSaveStatus({
         kind: "error",
-        message: "No pudimos armar tu calendario. Intenta de nuevo.",
+        message: texts.errores.calendario,
       });
       void err;
     } finally {
       setCalendarBuilding(false);
     }
-  }, [store, product.personalizationSchema, selectedYear, calendarBuilding]);
+  }, [store, product.personalizationSchema, selectedYear, calendarBuilding, texts]);
 
   // El Escape de ambos overlays 3D lo maneja ahora useDialogA11y (#15, arriba); la galería de
   // escenas maneja el suyo internamente.
@@ -731,7 +745,7 @@ export function StudioEditor({
         if (!saved.ok) {
           state.setAutoSaveStatus({ kind: "error", message: saved.message });
           state.setIsFinalizing(false);
-          setPreviewError("No pudimos guardar tus últimos cambios. Intenta de nuevo.");
+          setPreviewError(texts.exportar.errorGuardar);
           return;
         }
         state.setAutoSaveStatus({ kind: "saved", at: Date.now() });
@@ -795,7 +809,7 @@ export function StudioEditor({
             body: dataURLtoBlob(dataUrl),
           });
           if (!put.ok) {
-            throw new Error(`No pudimos subir la imagen del slot ${slotIndex + 1}. Reintenta.`);
+            throw new Error(fillStudioText(texts.exportar.errorSubidaSlot, { n: slotIndex + 1 }));
           }
         }
         const retry = buildFinalizeForm();
@@ -820,9 +834,7 @@ export function StudioEditor({
       });
       if (!addResult.ok) {
         state.setIsFinalizing(false);
-        setPreviewError(
-          `Diseño guardado pero no pudimos agregarlo al carrito: ${addResult.message}`,
-        );
+        setPreviewError(fillStudioText(texts.exportar.errorCarrito, { error: addResult.message }));
         return;
       }
 
@@ -843,6 +855,7 @@ export function StudioEditor({
     isCalendarMonth,
     selectedYear,
     ensureAllStagesMounted,
+    texts,
   ]);
 
   // Cerrar modal "Volver a editar": libera estado para no acumular preview
@@ -861,9 +874,7 @@ export function StudioEditor({
     return (
       <div className="flex flex-1 items-center justify-center p-8">
         <div className="text-center">
-          <p className="text-brand-purple-dark text-lg font-semibold">
-            No pudimos abrir el Estudio
-          </p>
+          <p className="text-brand-purple-dark text-lg font-semibold">{texts.errores.bootTitulo}</p>
           <p className="text-brand-purple-dark/70 mt-2 text-sm">{bootError}</p>
         </div>
       </div>
@@ -898,16 +909,14 @@ export function StudioEditor({
             <div className="relative h-12 w-12">
               <div className="from-brand-purple/40 via-brand-pink/30 to-brand-yellow/30 absolute inset-0 animate-pulse rounded-full bg-gradient-to-br shadow-md" />
               <div className="absolute inset-1 flex items-center justify-center rounded-full bg-white">
-                <span className="text-xl" role="img" aria-label="mascote">
+                <span className="text-xl" role="img" aria-label={texts.lienzo.mascotaAria}>
                   💜
                 </span>
               </div>
             </div>
             <div className="flex flex-col">
-              <p className="text-brand-purple-dark text-sm font-bold">Preparando tu lienzo...</p>
-              <p className="text-brand-muted text-xs">
-                Cargando tu producto y plantillas en un instante ✨
-              </p>
+              <p className="text-brand-purple-dark text-sm font-bold">{texts.lienzo.bootTitulo}</p>
+              <p className="text-brand-muted text-xs">{texts.lienzo.bootSubtitulo}</p>
             </div>
           </div>
 
@@ -974,7 +983,7 @@ export function StudioEditor({
         {/* Sidebar desktop (visible lg+, oculto en mobile — usa sheet drawer) */}
         <aside
           className="border-brand-purple/10 hidden bg-white lg:block lg:w-72 lg:border-r"
-          aria-label="Herramientas del Estudio"
+          aria-label={texts.lienzo.herramientasAria}
         >
           <StudioSidebar
             store={store}
@@ -998,16 +1007,16 @@ export function StudioEditor({
               visualmente → card blanca con borde marcado + año GRANDE en el dropdown. */}
           {isCalendarMonth && (
             <div className="border-brand-purple/30 text-brand-purple-dark mb-4 flex w-full max-w-xl flex-wrap items-center justify-center gap-x-4 gap-y-2 rounded-2xl border-2 bg-white px-5 py-3 shadow-md">
-              <span className="text-base font-bold">📅 Tu calendario</span>
+              <span className="text-base font-bold">{texts.lienzo.calBannerTitulo}</span>
               <label className="flex items-center gap-2">
                 <span className="text-brand-purple-dark/80 text-sm font-semibold">
-                  Año del calendario:
+                  {texts.lienzo.calBannerAno}
                 </span>
                 <select
                   value={selectedYear}
                   onChange={(e) => setSelectedYear(Number(e.target.value))}
                   className="border-brand-purple/50 focus-visible:ring-brand-purple/40 text-brand-purple-dark font-display cursor-pointer rounded-xl border-2 bg-white px-3 py-1.5 text-xl font-bold focus-visible:ring-2 focus-visible:outline-none"
-                  aria-label="Año del calendario"
+                  aria-label={texts.lienzo.calAnoAria}
                 >
                   {yearOptions.map((y) => (
                     <option key={y} value={y}>
@@ -1017,7 +1026,7 @@ export function StudioEditor({
                 </select>
               </label>
               <span className="text-brand-purple-dark/70 text-sm font-medium">
-                · una foto por mes (toca cada mes para elegir tu foto)
+                {texts.lienzo.calBannerHint}
               </span>
             </div>
           )}
@@ -1038,8 +1047,8 @@ export function StudioEditor({
                 className="bg-brand-pink-ink ring-brand-pink-ink/25 inline-flex h-12 items-center gap-2 rounded-full px-4 text-sm font-bold text-white shadow-xl ring-4 transition-transform hover:scale-105 active:scale-95"
               >
                 <Sparkles className="h-5 w-5" aria-hidden />
-                <span>Ideas</span>
-                <span className="sr-only">&nbsp;para tu diseño, con el asistente</span>
+                <span>{texts.lienzo.btnIdeas}</span>
+                <span className="sr-only">&nbsp;{texts.lienzo.ideasSr}</span>
               </button>
             )}
             {isCalendarMonth ? (
@@ -1050,8 +1059,8 @@ export function StudioEditor({
                 className="bg-brand-purple ring-brand-purple/25 inline-flex h-12 items-center gap-2 rounded-full px-4 text-sm font-bold text-white shadow-xl ring-4 transition-transform hover:scale-105 active:scale-95 disabled:opacity-60"
               >
                 <CalendarDays className="h-5 w-5" aria-hidden />
-                <span>{calendarBuilding ? "Armando…" : "Ver mi calendario"}</span>
-                <span className="sr-only">: tus tarjetas mes en detalle, una por una</span>
+                <span>{calendarBuilding ? texts.comun.armando : texts.lienzo.btnCalendario}</span>
+                <span className="sr-only">{texts.lienzo.calBtnSr}</span>
               </button>
             ) : isBookmark ? (
               <button
@@ -1060,8 +1069,8 @@ export function StudioEditor({
                 className="bg-brand-purple ring-brand-purple/25 inline-flex h-12 items-center gap-2 rounded-full px-4 text-sm font-bold text-white shadow-xl ring-4 transition-transform hover:scale-105 active:scale-95"
               >
                 <Box className="h-5 w-5" aria-hidden />
-                <span>Ver en un libro</span>
-                <span className="sr-only">&nbsp;en 3D: tu separador entre las páginas</span>
+                <span>{texts.lienzo.btnLibro}</span>
+                <span className="sr-only">&nbsp;{texts.lienzo.libroBtnSr}</span>
               </button>
             ) : (
               // FOTO4 — un solo botón abre la galería con TODAS las escenas (nevera/mural/repisa/regalo).
@@ -1072,8 +1081,8 @@ export function StudioEditor({
                 className="bg-brand-purple ring-brand-purple/25 inline-flex h-12 items-center gap-2 rounded-full px-4 text-sm font-bold text-white shadow-xl ring-4 transition-transform hover:scale-105 active:scale-95 disabled:opacity-60"
               >
                 <Box className="h-5 w-5" aria-hidden />
-                <span>{sceneBuilding ? "Armando…" : "Ver en tu espacio"}</span>
-                <span className="sr-only">: nevera, mural, repisa o regalo</span>
+                <span>{sceneBuilding ? texts.comun.armando : texts.lienzo.btnEspacio}</span>
+                <span className="sr-only">{texts.lienzo.espacioBtnSr}</span>
               </button>
             )}
           </div>
@@ -1147,16 +1156,16 @@ export function StudioEditor({
           ref={book3DRef}
           role="dialog"
           aria-modal="true"
-          aria-label="Vista 3D de tu separador en un libro"
+          aria-label={texts.lienzo.libroAria}
           tabIndex={-1}
           className="bg-brand-purple-dark/85 fixed inset-0 z-50 flex flex-col backdrop-blur-sm outline-none"
         >
           <div className="flex items-center justify-between px-4 py-3 text-white sm:px-6">
-            <span className="font-display text-lg font-bold">📖 Tu separador en un libro</span>
+            <span className="font-display text-lg font-bold">{texts.lienzo.libroTitulo}</span>
             <button
               type="button"
               onClick={closeBook3D}
-              aria-label="Cerrar vista 3D"
+              aria-label={texts.comun.cerrarVista3d}
               className="inline-flex h-10 w-10 items-center justify-center rounded-full bg-white/15 text-white transition-colors hover:bg-white/25 focus:ring-2 focus:ring-white focus:outline-none"
             >
               <X className="h-5 w-5" />
@@ -1170,9 +1179,7 @@ export function StudioEditor({
               flat={productConfig.noFold}
             />
             <p className="pointer-events-none absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-black/40 px-3 py-1.5 text-center text-xs text-white">
-              {isTouch
-                ? "Arrastra para girar · pellizca con 2 dedos para acercar"
-                : "Arrastra para girar · rueda o pellizca para acercar"}
+              {isTouch ? texts.escenas.hintTouch : texts.escenas.hintMouse}
             </p>
           </div>
         </div>
@@ -1191,8 +1198,8 @@ export function StudioEditor({
             className="bg-brand-turquoise ring-brand-turquoise/30 text-brand-purple-dark fixed bottom-4 left-4 z-30 inline-flex h-14 items-center gap-2 rounded-full px-5 text-sm font-bold shadow-xl ring-4 transition-transform hover:scale-105 active:scale-95 lg:hidden"
           >
             <Sparkles className="h-5 w-5" aria-hidden />
-            <span>Editar</span>
-            <span className="sr-only">: abre las herramientas de plantillas y fotos</span>
+            <span>{texts.comun.editar}</span>
+            <span className="sr-only">{texts.comun.editarSr}</span>
           </button>
         </SheetTrigger>
         <SheetContent
@@ -1205,12 +1212,12 @@ export function StudioEditor({
         >
           <SheetHeader className="border-brand-purple/10 sticky top-0 z-10 flex-row items-center justify-between border-b bg-white/95 px-4 py-3 backdrop-blur">
             <SheetTitle className="text-brand-purple-dark text-base font-bold">
-              Personalizar
+              {texts.lienzo.sheetTitulo}
             </SheetTitle>
             <SheetClose asChild>
               <button
                 type="button"
-                aria-label="Cerrar personalización"
+                aria-label={texts.comun.cerrarPersonalizacion}
                 className="text-brand-purple-dark/70 hover:bg-brand-purple/10 hover:text-brand-purple-dark -mr-2 inline-flex size-11 shrink-0 items-center justify-center rounded-full transition-colors"
               >
                 <X className="size-5" aria-hidden />

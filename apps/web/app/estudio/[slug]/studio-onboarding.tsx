@@ -28,8 +28,9 @@ import { motion, AnimatePresence } from "framer-motion";
 import { LucamsLogo } from "@/components/lucams-logo";
 import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
 import { useDialogA11y } from "./use-dialog-a11y";
-import { UPLOAD_FORMATS_TEXT } from "./lib/upload-guidance";
 import { ArrowRight, Sparkles, X } from "lucide-react";
+import { useStudioTexts } from "./studio-texts-provider";
+import { fillStudioText, type StudioTexts } from "./studio-texts";
 
 const ONBOARD_KEY = "lucams_studio_onboarded";
 const ONBOARD_VERSION = "v1";
@@ -45,25 +46,27 @@ type OnboardingStep = {
 
 // #14 — el sustantivo del slot se parametriza por producto: en /estudio/separadores-libros los slots
 // son "separador", no "imán" (pantalla=físico). #7/#13 — copy en es-CO tuteo (sin voseo).
-// Ola 4 — los formatos salen de lib/upload-guidance (única fuente, igual que los uploaders).
-function buildSteps(noun: string): OnboardingStep[] {
+// Ola 4 — los formatos salen del CMS (estudio.fotos.formatos, via texts) igual que los uploaders.
+// Roadmap B1 — todos los textos del tutorial son campos CMS (estudio.lienzo.onboarding-*).
+function buildSteps(noun: string, texts: StudioTexts): OnboardingStep[] {
+  const vars = { sustantivo: noun, formatos: texts.fotos.formatos };
   return [
     {
-      title: "Sube tu foto",
-      body: `Empieza por arrastrar fotos al panel de la izquierda. Aceptamos ${UPLOAD_FORMATS_TEXT} del celular.`,
-      bodyMobile: `Toca un ${noun} y súbele una foto desde tu celular. Aceptamos ${UPLOAD_FORMATS_TEXT}.`,
-      cta: "Siguiente",
+      title: texts.lienzo.onboarding1Titulo,
+      body: fillStudioText(texts.lienzo.onboarding1Cuerpo, vars),
+      bodyMobile: fillStudioText(texts.lienzo.onboarding1CuerpoMovil, vars),
+      cta: texts.comun.siguiente,
     },
     {
-      title: `Asigna a cada ${noun}`,
-      body: `Toca un ${noun} vacío y elige cuál foto quieres, o usa el botón mágico ‘Llenar slots con mis fotos’ para repartir todo de una.`,
-      bodyMobile: `Toca cada ${noun} para ponerle una foto. Con el botón ‘Editar’ (abajo) abres plantillas y más fotos.`,
-      cta: "Siguiente",
+      title: fillStudioText(texts.lienzo.onboarding2Titulo, vars),
+      body: fillStudioText(texts.lienzo.onboarding2Cuerpo, vars),
+      bodyMobile: fillStudioText(texts.lienzo.onboarding2CuerpoMovil, vars),
+      cta: texts.comun.siguiente,
     },
     {
-      title: "Personaliza los textos",
-      body: "Si la plantilla tiene textos editables (los marcados con punto turquesa), tócalos para cambiar el contenido, color y tipografía.",
-      cta: "¡Empezar!",
+      title: texts.lienzo.onboarding3Titulo,
+      body: texts.lienzo.onboarding3Cuerpo,
+      cta: texts.lienzo.onboardingCtaEmpezar,
     },
   ];
 }
@@ -88,7 +91,8 @@ export function StudioOnboarding({ slotNoun = "imán" }: { slotNoun?: string }) 
   const dialogRef = useRef<HTMLDivElement>(null);
   const [step, setStep] = useState(0);
   const isMobile = useIsMobile();
-  const STEPS = buildSteps(slotNoun);
+  const texts = useStudioTexts();
+  const STEPS = buildSteps(slotNoun, texts);
 
   useEffect(() => {
     // Solo mostrar en cliente — SSR evita el localStorage
@@ -165,7 +169,10 @@ export function StudioOnboarding({ slotNoun = "imán" }: { slotNoun?: string }) 
               </motion.div>
               <div className="flex-1 pt-1">
                 <p className="text-brand-muted text-[10px] font-semibold tracking-wider uppercase">
-                  Paso {step + 1} de {STEPS.length}
+                  {fillStudioText(texts.lienzo.onboardingPaso, {
+                    n: step + 1,
+                    total: STEPS.length,
+                  })}
                 </p>
                 <h2
                   id="onboarding-title"
@@ -177,8 +184,8 @@ export function StudioOnboarding({ slotNoun = "imán" }: { slotNoun?: string }) 
               <button
                 type="button"
                 onClick={skip}
-                aria-label="Saltar tutorial"
-                title="Saltar tutorial"
+                aria-label={texts.comun.saltarTutorial}
+                title={texts.comun.saltarTutorial}
                 className="text-brand-muted hover:bg-brand-purple/10 hover:text-brand-purple-dark/70 flex h-7 w-7 items-center justify-center rounded-md transition-colors focus:outline-none"
               >
                 <X className="h-4 w-4" />
@@ -217,7 +224,7 @@ export function StudioOnboarding({ slotNoun = "imán" }: { slotNoun?: string }) 
                 onClick={skip}
                 className="text-brand-muted hover:text-brand-purple-dark text-xs font-semibold underline"
               >
-                Saltar
+                {texts.lienzo.onboardingSaltar}
               </button>
               <div className="flex items-center gap-2">
                 {step > 0 && (
@@ -226,7 +233,7 @@ export function StudioOnboarding({ slotNoun = "imán" }: { slotNoun?: string }) 
                     onClick={prev}
                     className="text-brand-purple-dark/70 hover:bg-brand-purple/10 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors"
                   >
-                    Anterior
+                    {texts.comun.anterior}
                   </button>
                 )}
                 <button
