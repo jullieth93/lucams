@@ -1,7 +1,16 @@
 # ROADMAP — Ecosistema CMS completo (CMS v2 → CMS total)
 
-**Estado:** propuesta formalizada 2026-07-30 · Base ya construida: CMS v2 (HANDOFF.md del mismo día)
+**Estado:** en ejecución · Base construida: CMS v2 (HANDOFF.md 2026-07-30)
 **Propósito:** que el 100% del contenido visible del sitio sea administrable por una persona NO técnica desde `/admin/contenido`, con modularidad a futuro (listas, imágenes, banners, roles, preview) sin rehacer el modelo.
+
+**Progreso (se actualiza con cada fase):**
+
+- ✅ **C2** rol CMS_EDITOR — commit `06a8384`
+- ✅ **B4** campos de lista sin JSON (CmsListItem) — commit `05fac56`
+- ✅ **B2** páginas transaccionales (94 campos) — commit `0e9b52b`
+- ✅ **B3** iconos/gradientes de categoría en `Category` — commit `73bbbfc`
+- 🔄 **B1** copy del /estudio — en curso
+- ⏳ B5, B6, C1, C3, C4, D1, D3 — pendientes · ⏸️ A1/A2/A3, D4 — bloqueadas (requieren producción/cuenta Supabase externa)
 
 **Base sobre la que se parte (ya en producción, commit `bd1e427`):**
 
@@ -178,6 +187,44 @@ Tablas legacy (CmsBlock/CmsBlockVersion/SiteSetting): DROP en A2
 
 - Playwright (con staging de A3): login admin → editar campo de Inicio → publicar → ver el cambio en `/` → revertir versión.
 - Esfuerzo **M**. Dependencia: A3.
+
+---
+
+## FASE E — Experiencia móvil (agregada por pedido del usuario, 2026-07-30)
+
+> Hallazgo del usuario: "la versión móvil para capa cliente y capa admin está poco eficiente, sobre todo capa admin". El admin se diseñó desktop-first; Lucy opera desde el celular con frecuencia.
+
+### E1 — Auditoría móvil admin (alta prioridad)
+
+- Recorrido con viewport móvil (375px) por las pantallas admin críticas: contenido (índice, editor de página, editor de campo, editor de lista), pedidos, cotizaciones, productos, dashboard.
+- Inventario de problemas: tablas con scroll horizontal, formularios que no apilan, botones/toolbars que desbordan, modales que no caben, sidebar que tapa contenido.
+- Esfuerzo **S** (auditoría con screenshots por pantalla).
+
+### E2 — Fixes móviles admin
+
+- Admin shell: navegación colapsable/hamburguesa en móvil (hoy sidebar permanente).
+- Tablas admin → tarjetas apiladas en móvil (patrón responsive del repo si existe) o scroll horizontal controlado con indicación visual.
+- Formularios de contenido: campos y acciones apilados, botones de ancho completo, teclado correcto por tipo (email/url/tel ya da el tipo de input — verificar).
+- Editor de campo/lista usable en móvil (preview apilado debajo del editor).
+- Esfuerzo **L**.
+
+### E3 — Auditoría + fixes móviles storefront (capa cliente)
+
+- Recorrido móvil por home, PDP, carrito, checkout, estudio (el Estudio en móvil es crítico: canvas + gestures).
+- Fixes de los hallazgos principales.
+- Esfuerzo **M-L** según hallazgos de la auditoría.
+
+---
+
+## Cómo retomar este trabajo (desde esta u otra sesión)
+
+**Si reanudas ESTA sesión** (`kimi --continue`, `kimi --session`, o `/sessions` dentro del TUI): el objetivo (goal) y la lista de tareas siguen vivos — basta decir "continúa" o `/goal resume`.
+
+**Si abres una sesión NUEVA**: el goal no se transfiere (vive en la sesión), pero el estado completo del trabajo está en el repo. Pega este prompt de arranque:
+
+> Retoma la ejecución del roadmap CMS de este repo. El plan completo y el progreso por fases (✅/🔄/⏳/⏸️) están en `docs/CMS_ROADMAP.md`; el estado del CMS v2 en `HANDOFF.md`. Revisa `git status` y `git log --oneline -15`: puede haber trabajo sin commitear de la fase en curso — si existe, primero verifícalo (tsc/lint/tests) y commiétéalo. Continúa con la siguiente fase ⏳ en el orden de la sección "Secuencia recomendada", con esta disciplina por fase: implementación → tsc + lint + prettier + tests focal → commit atómico en español → push a develop → vigilar CI verde → marcar progreso (✅ + commit) en este documento. Las fases ⏸️ (A1/A2 producción, A3 staging Supabase, D4 E2E admin) están bloqueadas por acceso externo: no las ejecutes, están documentadas para hacerlas a mano. Al terminar todo: suite completa + build + HANDOFF.md actualizado + bloqueadas con instrucciones.
+
+**Estado del working tree al 2026-07-30:** hay trabajo SIN COMMITEAR de la fase **B1 (copy del /estudio)**: ~22 archivos modificados + `studio-texts.server.ts`, `studio-texts-provider.tsx`, `studio-consent-text.tsx` nuevos + la página `estudio` (con sus campos) en `packages/db/scripts/cms-site-map.mjs`. Pendiente: correr `make migrate-cms-v2` (crea los campos en DB), revisar que ningún componente quedó a medias, verificar (tsc/lint/prettier/`vitest run app/estudio`) y commitear.
 
 ---
 
