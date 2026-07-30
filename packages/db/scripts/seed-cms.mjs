@@ -1,4 +1,9 @@
 /*
+ * ⚠️ DEPRECATED (CMS v2, 2026-07-30): este seed escribe en las tablas VIEJAS
+ * (CmsBlock/SiteSetting), que el storefront ya NO lee. Para agregar contenido
+ * nuevo al CMS usa `cms-site-map.mjs` (campos en la sección correspondiente) +
+ * `migrate-cms-v2.mjs`. Se conserva solo como respaldo histórico.
+ *
  * Seed CMS — pobla CmsBlock + SiteSetting con todo el contenido
  * editable del sitio (~32 bloques + ~33 settings).
  *

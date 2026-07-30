@@ -1176,6 +1176,8 @@ model SupportTicket {
 }
 
 // ──────────────────────── CMS BLOCKS ────────────────────────
+// DEPRECATED (CMS v2): reemplazado por CmsPage/CmsSection/CmsField. Se conserva
+// como respaldo de datos hasta verificar la migración en producción; luego drop.
 // Contenido editable desde admin: prosa larga (legales, FAQ, hero copy,
 // empty states). Versionado por save. Render via react-markdown en el
 // storefront. Consumible por futuro chatbot RAG vía /api/cms/blocks.
@@ -1229,6 +1231,8 @@ model CmsBlockVersion {
 }
 
 // ──────────────────────── SITE SETTINGS ────────────────────────
+// DEPRECATED (CMS v2): reemplazado por CmsField (kind SETTING). Se conserva
+// como respaldo de datos hasta verificar la migración en producción; luego drop.
 // Configurables atómicos (email, horario, número WA, plazos legales,
 // versiones policies, URLs DPA, mensajes WhatsApp). NO versionado —
 // AdminActionLog captura quién cambió qué cuándo.
@@ -1248,6 +1252,128 @@ model SiteSetting {
   updatedBy String?
 
   @@index([category])
+}
+
+// ──────────────────────── CMS V2 — PÁGINA → SECCIÓN → CAMPO ────────────────────────
+// Modelo relacional de contenido pensado para una administradora NO técnica:
+// el contenido se navega por PÁGINA del sitio (Inicio, Footer, Contacto…) y
+// dentro de cada página por SECCIÓN (Hero, Redes sociales…). Unifica los dos
+// conceptos anteriores (CmsBlock + SiteSetting, DEPRECATED) en un solo CmsField:
+//   - kind BLOCK   → prosa larga versionada (lo que era CmsBlock)
+//   - kind SETTING → valor atómico (lo que era SiteSetting)
+// Compatibilidad: CmsField.key conserva las mismas keys históricas
+// ("home.hero.title", "CONTACT_EMAIL") → lib/cms.ts mantiene su API pública.
+// CmsBlock/CmsBlockVersion/SiteSetting se conservan como respaldo hasta
+// verificar la migración en producción; luego se dropean (ver HANDOFF).
+
+// Tipo de campo CMS (validación del formulario admin + control de input).
+// Unión de BlockFormat (MARKDOWN/HTML/TEXT/JSON) + SettingType
+// (EMAIL/URL/NUMBER/PHONE/COLOR/BOOLEAN) + TEXTAREA para textos largos sin md.
+enum CmsFieldType {
+  TEXT
+  TEXTAREA
+  MARKDOWN
+  HTML
+  JSON
+  EMAIL
+  URL
+  NUMBER
+  PHONE // WA en formato wa.me (sin + ni espacios)
+  COLOR
+  BOOLEAN
+}
+
+// Procedencia semántica del campo: BLOCK = prosa versionada con publicación
+// explícita; SETTING = valor atómico (el admin publica al guardar).
+enum CmsFieldKind {
+  BLOCK
+  SETTING
+}
+
+model CmsPage {
+  id          String       @id @default(cuid())
+  slug        String       @unique // "inicio", "footer", "contacto", "global"
+  title       String // "Página principal" — display admin
+  description String? // Qué cubre la página, para la administradora
+  path        String? // Ruta pública para el botón "Ver página" ("/", "/contacto")
+  icon        String? // Nombre de icono lucide para el índice admin
+  sortOrder   Int          @default(0)
+  sections    CmsSection[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([sortOrder])
+}
+
+model CmsSection {
+  id          String     @id @default(cuid())
+  pageId      String
+  page        CmsPage    @relation(fields: [pageId], references: [id], onDelete: Cascade)
+  key         String // "hero", "redes-sociales" (única por página)
+  title       String // "Portada (hero)" — display admin
+  description String?
+  sortOrder   Int        @default(0)
+  fields      CmsField[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([pageId, key])
+  @@index([pageId, sortOrder])
+}
+
+model CmsField {
+  id                 String            @id @default(cuid())
+  sectionId          String
+  section            CmsSection        @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  key                String            @unique // "home.hero.title", "CONTACT_EMAIL" (keys históricas)
+  kind               CmsFieldKind
+  label              String // "Título principal" — display admin no-técnico
+  helpText           String? // "Aparece en la portada, máx ~60 caracteres"
+  type               CmsFieldType      @default(TEXT)
+  body               String // Borrador actual (mismo patrón que CmsBlock.body)
+  metadata           Json              @default("{}")
+  category           String // BlockCategory o SettingCategory legacy (API pública/RAG//ayuda)
+  sortOrder          Int               @default(0)
+  isPublished        Boolean           @default(false)
+  publishedVersionId String?
+  publishedVersion   CmsFieldVersion?  @relation("PublishedFieldVersion", fields: [publishedVersionId], references: [id], onDelete: SetNull)
+  versions           CmsFieldVersion[] @relation("FieldVersions")
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  createdBy String?
+  updatedBy String?
+  deletedAt DateTime?
+  deletedBy String?
+
+  @@index([sectionId, sortOrder])
+  @@index([kind, category, isPublished])
+  @@index([key])
+  @@index([deletedAt])
+}
+
+// Append-only, espejo de CmsBlockVersion: historial inmutable + revert +
+// auditoría legal de qué decía un texto un día específico. Para kind SETTING
+// cada guardado crea versión publicada (el setting viejo no versionaba; esto
+// es una mejora — AdminActionLog sigue capturando quién/cuándo).
+model CmsFieldVersion {
+  id           String     @id @default(cuid())
+  fieldId      String
+  field        CmsField   @relation("FieldVersions", fields: [fieldId], references: [id], onDelete: Cascade)
+  version      Int // Auto-increment por fieldId (1, 2, 3...)
+  title        String?
+  body         String
+  metadata     Json       @default("{}")
+  publishedAt  DateTime? // null = borrador
+  publishedFor CmsField[] @relation("PublishedFieldVersion")
+
+  createdAt DateTime @default(now())
+  createdBy String?
+
+  @@unique([fieldId, version])
+  @@index([fieldId, createdAt])
 }
 
 // ──────────────────────── PERSONALIZACIÓN (sub-bloque M) ────────────────────────
@@ -1745,14 +1871,14 @@ model WholesaleTier {
 /// Material/insumo de producción (PET laminado, imán flexible, tinta, empaque…).
 /// Stock en unidades con alerta de mínimo para el admin no técnico (/admin/materiales).
 model Material {
-  id          String   @id @default(cuid())
+  id          String  @id @default(cuid())
   name        String
   unit        String // "unidad", "pliego", "metro", "ml", "paquete"
-  stock       Float    @default(0)
-  minStock    Float    @default(0)
+  stock       Float   @default(0)
+  minStock    Float   @default(0)
   costPerUnit Int? // centavos COP por unidad (para costos de fabricación)
   note        String?
-  isActive    Boolean  @default(true)
+  isActive    Boolean @default(true)
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt

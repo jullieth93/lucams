@@ -1,4 +1,4 @@
-.PHONY: help install build typecheck lint format migrate seed-products seed-templates seed-ocasiones seed-catalog-v2 seed-cms seed-abecedario seed-letter-sets cleanup-test-junk seed-separadores consolidate-product-families fix-voseo-cms rename-family-base-slugs backfill-variant-prices cleanup-slugs audit-slugs test test-unit test-e2e test-rls test-load test-coverage clean
+.PHONY: help install build typecheck lint format migrate seed-products seed-templates seed-ocasiones seed-catalog-v2 seed-cms migrate-cms-v2 seed-abecedario seed-letter-sets cleanup-test-junk seed-separadores consolidate-product-families fix-voseo-cms rename-family-base-slugs backfill-variant-prices cleanup-slugs audit-slugs test test-unit test-e2e test-rls test-load test-coverage clean
 
 # Makefile en repo — targets primitivos para CI y devs locales.
 # El Makefile completo de runtime (con state/log/pid management,
@@ -61,8 +61,16 @@ seed-ocasiones:
 seed-catalog-v2:
 	pnpm --filter @lucams/db exec node scripts/seed-catalog-v2.mjs
 
+# DEPRECATED (CMS v2): siembra en las tablas viejas (CmsBlock/SiteSetting) que
+# el storefront ya no lee. Para contenido nuevo: editar packages/db/scripts/
+# cms-site-map.mjs y correr `make migrate-cms-v2`.
 seed-cms:
 	pnpm --filter @lucams/db exec node scripts/seed-cms.mjs
+
+# CMS v2 — migra CmsBlock + SiteSetting al modelo Página→Sección→Campo.
+# Idempotente; no pisa ediciones hechas en v2. Cierra con reporte de paridad.
+migrate-cms-v2:
+	pnpm --filter @lucams/db exec node scripts/migrate-cms-v2.mjs
 
 # ADR-057 — Abecedario a 3 productos (Completo / Pack Vocales / Nombre Personalizado)
 # con variantes idioma × tamaño × imantado. Reproducible; no pisa precios editados en
