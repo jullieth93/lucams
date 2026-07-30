@@ -41,6 +41,7 @@ import { ConfirmAction } from "@/components/admin/confirm-action";
 import { PendingSubmitButton } from "@/components/admin/pending-submit-button";
 import { listCategories, listParentCategoryOptions } from "@/features/categories/service";
 import { getCurrentAdmin } from "@/lib/auth";
+import { resolveCategoryGradient, resolveCategoryIcon } from "@/lib/category-visuals";
 import { CategoryForm } from "./category-form";
 import {
   deleteCategoryAction,
@@ -260,148 +261,175 @@ export default async function AdminCategoriasPage({
                   preserve={{ q, status: status !== "all" ? status : undefined }}
                 />
                 <th className="px-4 py-3 text-left font-semibold">Slug</th>
+                {/* Roadmap B3 — vista previa del visual (icono + gradiente)
+                    tal como se pinta en la tienda (BD → fallback → default). */}
+                <th className="px-4 py-3 text-center font-semibold">Visual</th>
                 <th className="px-4 py-3 text-center font-semibold">Productos</th>
                 <th className="px-4 py-3 text-center font-semibold">Estado</th>
                 <th className="px-4 py-3 text-right font-semibold">Acciones</th>
               </tr>
             </AdminTableHead>
             <AdminTableBody>
-              {displayRows.map(({ cat: c, depth, first, last }) => (
-                <AdminTableRow key={c.id}>
-                  <td className="px-4 py-3">
-                    {/* D3: flechas ↑/↓ en lugar del número de orden manual.
+              {displayRows.map(({ cat: c, depth, first, last }) => {
+                // Vista previa B3: misma precedencia que la tienda
+                // (BD → fallback por slug → default). Resuelto en el callback
+                // (patrón de category-grid.tsx) por la regla static-components.
+                const VisualIcon = resolveCategoryIcon(c.icon, c.slug);
+                const visualGradient = resolveCategoryGradient(c.gradient, c.slug);
+                return (
+                  <AdminTableRow key={c.id}>
+                    <td className="px-4 py-3">
+                      {/* D3: flechas ↑/↓ en lugar del número de orden manual.
                         Solo activas en "orden manual" sin búsqueda. */}
-                    {isManualOrder && !c.deletedAt ? (
-                      <div className="flex items-center gap-0.5">
-                        <ReorderButton id={c.id} direction="up" disabled={first} />
-                        <ReorderButton id={c.id} direction="down" disabled={last} />
-                      </div>
-                    ) : (
-                      <span className="text-brand-purple-dark/35 text-xs tabular-nums">
-                        {c.order}
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3">
-                    <div
-                      className="text-brand-purple-dark flex items-center gap-1.5 font-medium"
-                      style={depth > 0 ? { paddingLeft: `${depth * 1.25}rem` } : undefined}
-                    >
-                      {depth > 0 && (
-                        <CornerDownRight className="text-brand-purple-dark/35 h-3.5 w-3.5 shrink-0" />
-                      )}
-                      {c.name}
-                      {c._count.children > 0 && (
-                        <span className="bg-brand-purple/10 text-brand-purple-dark/70 rounded-full px-1.5 py-0.5 text-[10px] font-semibold">
-                          {c._count.children} sub
+                      {isManualOrder && !c.deletedAt ? (
+                        <div className="flex items-center gap-0.5">
+                          <ReorderButton id={c.id} direction="up" disabled={first} />
+                          <ReorderButton id={c.id} direction="down" disabled={last} />
+                        </div>
+                      ) : (
+                        <span className="text-brand-purple-dark/35 text-xs tabular-nums">
+                          {c.order}
                         </span>
                       )}
-                    </div>
-                    {c.description && (
+                    </td>
+                    <td className="px-4 py-3">
                       <div
-                        className="text-brand-muted line-clamp-1 text-xs"
-                        style={depth > 0 ? { paddingLeft: `${depth * 1.25 + 1.25}rem` } : undefined}
+                        className="text-brand-purple-dark flex items-center gap-1.5 font-medium"
+                        style={depth > 0 ? { paddingLeft: `${depth * 1.25}rem` } : undefined}
                       >
-                        {c.description}
+                        {depth > 0 && (
+                          <CornerDownRight className="text-brand-purple-dark/35 h-3.5 w-3.5 shrink-0" />
+                        )}
+                        {c.name}
+                        {c._count.children > 0 && (
+                          <span className="bg-brand-purple/10 text-brand-purple-dark/70 rounded-full px-1.5 py-0.5 text-[10px] font-semibold">
+                            {c._count.children} sub
+                          </span>
+                        )}
                       </div>
-                    )}
-                  </td>
-                  <td className="text-brand-purple-dark/75 px-4 py-3 font-mono text-xs">
-                    /{c.slug}
-                  </td>
-                  <td className="text-brand-purple-dark/85 px-4 py-3 text-center tabular-nums">
-                    {c._count.products}
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    {/* 3 estados: archivada / inactiva / activa. Si archivada,
-                        el badge muestra rose y NO permite toggle (primero restaurar). */}
-                    {c.deletedAt ? (
-                      <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-50 px-2.5 py-0.5 text-xs font-medium text-rose-700 ring-1 ring-rose-200">
-                        <span className="h-1.5 w-1.5 rounded-full bg-rose-500" aria-hidden />
-                        Archivada
-                      </span>
-                    ) : (
-                      <form action={toggleCategoryActiveAction} className="inline">
-                        <input type="hidden" name="id" value={c.id} />
-                        <input type="hidden" name="next" value={c.isActive ? "false" : "true"} />
-                        <PendingSubmitButton
-                          spinnerClass="h-3 w-3"
-                          className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium transition-all hover:shadow-sm ${
-                            c.isActive
-                              ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 hover:bg-emerald-100"
-                              : "bg-slate-100 text-slate-600 ring-1 ring-slate-200 hover:bg-slate-200"
-                          }`}
-                          title={
-                            c.isActive
-                              ? "Clic para pausar (ocultar de tu tienda)"
-                              : "Clic para activar (mostrar en tu tienda)"
-                          }
-                          idleIcon={
-                            <span
-                              className={`h-1.5 w-1.5 rounded-full ${c.isActive ? "bg-emerald-500" : "bg-slate-400"}`}
-                              aria-hidden
-                            />
+                      {c.description && (
+                        <div
+                          className="text-brand-muted line-clamp-1 text-xs"
+                          style={
+                            depth > 0 ? { paddingLeft: `${depth * 1.25 + 1.25}rem` } : undefined
                           }
                         >
-                          {c.isActive ? "Activa" : "Inactiva"}
-                        </PendingSubmitButton>
-                      </form>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <div className="flex items-center justify-end gap-1">
+                          {c.description}
+                        </div>
+                      )}
+                    </td>
+                    <td className="text-brand-purple-dark/75 px-4 py-3 font-mono text-xs">
+                      /{c.slug}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-center">
+                        <span
+                          title={`Visual ${c.icon || c.gradient ? "personalizado (BD)" : "fallback por defecto"}`}
+                          className={
+                            "border-brand-purple/10 inline-flex items-center justify-center rounded-md border bg-gradient-to-br p-1.5 " +
+                            visualGradient
+                          }
+                        >
+                          <span className="rounded-full bg-white/60 p-1">
+                            <VisualIcon className="text-brand-purple h-3.5 w-3.5" />
+                          </span>
+                        </span>
+                      </div>
+                    </td>
+                    <td className="text-brand-purple-dark/85 px-4 py-3 text-center tabular-nums">
+                      {c._count.products}
+                    </td>
+                    <td className="px-4 py-3 text-center">
+                      {/* 3 estados: archivada / inactiva / activa. Si archivada,
+                        el badge muestra rose y NO permite toggle (primero restaurar). */}
                       {c.deletedAt ? (
-                        <form action={restoreCategoryAction} className="inline">
-                          <input type="hidden" name="id" value={c.id} />
-                          <Button
-                            type="submit"
-                            variant="ghost"
-                            size="sm"
-                            className="h-7 gap-1 px-2 text-amber-700 hover:bg-amber-50"
-                            title="Restaurar de papelera (quedará inactiva)"
-                          >
-                            <RotateCcw className="h-3.5 w-3.5" />
-                            Restaurar
-                          </Button>
-                        </form>
+                        <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-50 px-2.5 py-0.5 text-xs font-medium text-rose-700 ring-1 ring-rose-200">
+                          <span className="h-1.5 w-1.5 rounded-full bg-rose-500" aria-hidden />
+                          Archivada
+                        </span>
                       ) : (
-                        <>
-                          <Link
-                            href={`/admin/categorias/${c.id}`}
-                            className="text-brand-purple hover:bg-brand-purple/10 inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs font-medium"
-                            title="Editar"
+                        <form action={toggleCategoryActiveAction} className="inline">
+                          <input type="hidden" name="id" value={c.id} />
+                          <input type="hidden" name="next" value={c.isActive ? "false" : "true"} />
+                          <PendingSubmitButton
+                            spinnerClass="h-3 w-3"
+                            className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-medium transition-all hover:shadow-sm ${
+                              c.isActive
+                                ? "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-200 hover:bg-emerald-100"
+                                : "bg-slate-100 text-slate-600 ring-1 ring-slate-200 hover:bg-slate-200"
+                            }`}
+                            title={
+                              c.isActive
+                                ? "Clic para pausar (ocultar de tu tienda)"
+                                : "Clic para activar (mostrar en tu tienda)"
+                            }
+                            idleIcon={
+                              <span
+                                className={`h-1.5 w-1.5 rounded-full ${c.isActive ? "bg-emerald-500" : "bg-slate-400"}`}
+                                aria-hidden
+                              />
+                            }
                           >
-                            <Edit3 className="h-3.5 w-3.5" />
-                            Editar
-                          </Link>
-                          <ConfirmAction
-                            action={deleteCategoryAction}
-                            message={`¿Archivar la categoría "${c.name}"? Quedará oculta de tu tienda.`}
-                            className="inline"
-                          >
+                            {c.isActive ? "Activa" : "Inactiva"}
+                          </PendingSubmitButton>
+                        </form>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex items-center justify-end gap-1">
+                        {c.deletedAt ? (
+                          <form action={restoreCategoryAction} className="inline">
                             <input type="hidden" name="id" value={c.id} />
                             <Button
                               type="submit"
                               variant="ghost"
                               size="sm"
-                              className="h-7 px-2 text-rose-600 hover:bg-rose-50"
-                              aria-label={`Archivar ${c.name}`}
-                              disabled={c._count.products > 0}
-                              title={
-                                c._count.products > 0
-                                  ? "Tiene productos asociados — moverlos primero"
-                                  : "Archivar"
-                              }
+                              className="h-7 gap-1 px-2 text-amber-700 hover:bg-amber-50"
+                              title="Restaurar de papelera (quedará inactiva)"
                             >
-                              <Trash2 className="h-3.5 w-3.5" />
+                              <RotateCcw className="h-3.5 w-3.5" />
+                              Restaurar
                             </Button>
-                          </ConfirmAction>
-                        </>
-                      )}
-                    </div>
-                  </td>
-                </AdminTableRow>
-              ))}
+                          </form>
+                        ) : (
+                          <>
+                            <Link
+                              href={`/admin/categorias/${c.id}`}
+                              className="text-brand-purple hover:bg-brand-purple/10 inline-flex h-7 items-center gap-1 rounded-md px-2 text-xs font-medium"
+                              title="Editar"
+                            >
+                              <Edit3 className="h-3.5 w-3.5" />
+                              Editar
+                            </Link>
+                            <ConfirmAction
+                              action={deleteCategoryAction}
+                              message={`¿Archivar la categoría "${c.name}"? Quedará oculta de tu tienda.`}
+                              className="inline"
+                            >
+                              <input type="hidden" name="id" value={c.id} />
+                              <Button
+                                type="submit"
+                                variant="ghost"
+                                size="sm"
+                                className="h-7 px-2 text-rose-600 hover:bg-rose-50"
+                                aria-label={`Archivar ${c.name}`}
+                                disabled={c._count.products > 0}
+                                title={
+                                  c._count.products > 0
+                                    ? "Tiene productos asociados — moverlos primero"
+                                    : "Archivar"
+                                }
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </Button>
+                            </ConfirmAction>
+                          </>
+                        )}
+                      </div>
+                    </td>
+                  </AdminTableRow>
+                );
+              })}
             </AdminTableBody>
           </AdminTable>
         )}

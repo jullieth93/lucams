@@ -117,6 +117,8 @@ export default async function EditCategoryPage({
               isActive: category.isActive,
               order: category.order,
               parentId: category.parentId,
+              icon: category.icon,
+              gradient: category.gradient,
             }}
           />
           {category._count.children > 0 && (

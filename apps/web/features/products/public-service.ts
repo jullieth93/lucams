@@ -136,6 +136,10 @@ const listStorefrontCategoriesCached = cache(async function listStorefrontCatego
       name: true,
       description: true,
       parentId: true,
+      // Roadmap B3 — visual de catálogo (icono lucide + gradiente del home
+      // grid). Null → el componente cae al fallback por slug / default.
+      icon: true,
+      gradient: true,
       _count: {
         select: {
           products: { where: { deletedAt: null, isActive: true } },

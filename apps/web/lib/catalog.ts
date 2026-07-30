@@ -29,6 +29,10 @@ export type CategoryNode = {
   richDescription: string | null;
   useCase: string | null;
   image: string | null;
+  // Roadmap B3 — visual de catálogo (icono lucide + gradiente). Null → el
+  // componente cae al fallback por slug / default (lib/category-visuals.ts).
+  icon: string | null;
+  gradient: string | null;
   order: number;
   isActive: boolean;
   defaultSort: string | null;
@@ -155,6 +159,8 @@ export const getCategoryTree = unstable_cache(
           richDescription: cat.richDescription,
           useCase: cat.useCase,
           image: cat.image,
+          icon: cat.icon,
+          gradient: cat.gradient,
           order: cat.order,
           isActive: cat.isActive,
           defaultSort: cat.defaultSort,
@@ -231,6 +237,8 @@ export const getCategoryBySlug = unstable_cache(
         richDescription: cat.richDescription,
         useCase: cat.useCase,
         image: cat.image,
+        icon: cat.icon,
+        gradient: cat.gradient,
         order: cat.order,
         isActive: cat.isActive,
         defaultSort: cat.defaultSort,
@@ -245,6 +253,8 @@ export const getCategoryBySlug = unstable_cache(
           richDescription: c.richDescription,
           useCase: c.useCase,
           image: c.image,
+          icon: c.icon,
+          gradient: c.gradient,
           order: c.order,
           isActive: c.isActive,
           defaultSort: c.defaultSort,

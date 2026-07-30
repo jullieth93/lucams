@@ -19,11 +19,17 @@ import { logger } from "@/lib/logger";
 
 export type CategoryActionState = {
   error?: string;
-  fieldErrors?: Partial<Record<"name" | "slug" | "description" | "order", string[]>>;
+  fieldErrors?: Partial<
+    Record<"name" | "slug" | "description" | "order" | "icon" | "gradient", string[]>
+  >;
 };
 
 function parsePayload(formData: FormData) {
   const parentRaw = String(formData.get("parentId") ?? "").trim();
+  // Roadmap B3 — visual de catálogo. "" (campo vacío) => null = la tienda
+  // cae al fallback por slug / default genérico (lib/category-visuals.ts).
+  const iconRaw = String(formData.get("icon") ?? "").trim();
+  const gradientRaw = String(formData.get("gradient") ?? "").trim();
   return {
     name: String(formData.get("name") ?? "").trim(),
     slug: String(formData.get("slug") ?? "")
@@ -33,6 +39,8 @@ function parsePayload(formData: FormData) {
     isActive: formData.get("isActive") === "on",
     // "" (— Ninguna —) => null = categoría principal.
     parentId: parentRaw === "" ? null : parentRaw,
+    icon: iconRaw === "" ? null : iconRaw,
+    gradient: gradientRaw === "" ? null : gradientRaw,
     // D3: el orden ya NO viene del form — lo auto-asigna el service.
   };
 }

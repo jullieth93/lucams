@@ -753,6 +753,63 @@ describe.skipIf(!hasDb)(
       });
     });
 
+    // ───────────────────────── visuales de catálogo (roadmap B3) ─────────────────────────
+
+    describe("icon/gradient (roadmap B3 — dato de catálogo, no CMS)", () => {
+      it("createCategory persiste icon/gradient cuando vienen en el input", async () => {
+        const created = await createCategory(
+          {
+            name: "ConVisual",
+            slug: nextSlug("visual"),
+            isActive: true,
+            icon: "PartyPopper",
+            gradient: "from-brand-pink/30 via-brand-coral/20 to-brand-purple/15",
+          },
+          null,
+        );
+        expect(created.icon).toBe("PartyPopper");
+        expect(created.gradient).toBe("from-brand-pink/30 via-brand-coral/20 to-brand-purple/15");
+      });
+
+      it("createCategory sin icon/gradient los deja en null (fallback por slug/default en la tienda)", async () => {
+        const created = await createCategory(
+          { name: "SinVisual", slug: nextSlug("sinvisual"), isActive: true },
+          null,
+        );
+        expect(created.icon).toBeNull();
+        expect(created.gradient).toBeNull();
+      });
+
+      it("updateCategory actualiza icon/gradient y permite limpiarlos a null", async () => {
+        const cat = await seedCat();
+        const updated = await updateCategory(
+          cat.id,
+          { icon: "Gift", gradient: "from-brand-purple/20 to-brand-coral/20" },
+          null,
+        );
+        expect(updated.icon).toBe("Gift");
+        expect(updated.gradient).toBe("from-brand-purple/20 to-brand-coral/20");
+
+        const cleared = await updateCategory(cat.id, { icon: null, gradient: null }, null);
+        expect(cleared.icon).toBeNull();
+        expect(cleared.gradient).toBeNull();
+      });
+
+      it("listCategories expone icon/gradient en el select (vista previa del admin)", async () => {
+        const token = nextSlug("listvisual");
+        await seedCat({ name: `LV${token}` });
+        await prisma.category.updateMany({
+          where: { name: `LV${token}` },
+          data: { icon: "Sparkles", gradient: "from-brand-yellow/30 to-brand-pink/15" },
+        });
+
+        const res = await listCategories({ q: `LV${token}` });
+        const item = res.find((c) => c.name === `LV${token}`);
+        expect(item?.icon).toBe("Sparkles");
+        expect(item?.gradient).toBe("from-brand-yellow/30 to-brand-pink/15");
+      });
+    });
+
     // ───────────────────────── integridad / seguridad ─────────────────────────
 
     describe("integridad de constraints DB", () => {

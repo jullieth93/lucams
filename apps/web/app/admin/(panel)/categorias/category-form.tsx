@@ -10,13 +10,19 @@
  * Brand 2026-05-18: tokens brand-purple, AdminNotice para errores.
  */
 
-import { useActionState, useState } from "react";
+import { useActionState, useState, createElement } from "react";
 import { Loader2, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { AdminNotice } from "@/components/admin-page";
+import {
+  CATEGORY_GRADIENT_OPTIONS,
+  CATEGORY_ICON_OPTIONS,
+  DEFAULT_CATEGORY_GRADIENT,
+  resolveCategoryIcon,
+} from "@/lib/category-visuals";
 import { createCategoryAction, updateCategoryAction, type CategoryActionState } from "./actions";
 
 type CategoryInput = {
@@ -27,6 +33,8 @@ type CategoryInput = {
   isActive?: boolean;
   order?: number;
   parentId?: string | null;
+  icon?: string | null;
+  gradient?: string | null;
 };
 
 export function CategoryForm({
@@ -46,6 +54,12 @@ export function CategoryForm({
   const [name, setName] = useState(initialCategory?.name ?? "");
   const [slug, setSlug] = useState(initialCategory?.slug ?? "");
   const [slugTouched, setSlugTouched] = useState(isEdit); // en edit, ya viene "touched"
+
+  // Roadmap B3 — visual de catálogo. Estado local para la vista previa en vivo
+  // (icono + swatch del gradiente) mientras Lucy edita. Vacío = fallback por slug.
+  const [icon, setIcon] = useState(initialCategory?.icon ?? "");
+  const [gradient, setGradient] = useState(initialCategory?.gradient ?? "");
+  const previewGradient = gradient.trim() || DEFAULT_CATEGORY_GRADIENT;
 
   const onNameChange = (v: string) => {
     setName(v);
@@ -120,6 +134,87 @@ export function CategoryForm({
           disabled={pending}
           className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
         />
+      </div>
+
+      {/* Roadmap B3 — visual de la categoría (dato de catálogo, no CMS).
+          Pickers con vista previa en vivo: datalist de opciones curadas +
+          input libre. Vacío = la tienda usa el fallback por slug / default. */}
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div className="space-y-1.5">
+          <Label htmlFor="icon" className="text-brand-purple-dark text-sm font-semibold">
+            Ícono (home y menú)
+          </Label>
+          <div className="flex items-center gap-2">
+            <span className="bg-brand-purple/10 inline-flex shrink-0 rounded-md p-2" aria-hidden>
+              {/* El ícono de preview resuelve igual que la tienda: valor escrito
+                  → fallback por slug → default. createElement inline porque la
+                  regla react-hooks/static-components prohíbe asignar el resultado
+                  de resolveCategoryIcon a una variable componente en el body. */}
+              {createElement(resolveCategoryIcon(icon || null, slug || ""), {
+                className: "text-brand-purple h-4 w-4",
+              })}
+            </span>
+            <Input
+              id="icon"
+              name="icon"
+              list="category-icon-options"
+              value={icon}
+              onChange={(e) => setIcon(e.target.value)}
+              placeholder="Camera"
+              disabled={pending}
+              className="border-brand-purple/20 focus-visible:ring-brand-purple/30 font-mono text-sm"
+            />
+            <datalist id="category-icon-options">
+              {CATEGORY_ICON_OPTIONS.map((name) => (
+                <option key={name} value={name} />
+              ))}
+            </datalist>
+          </div>
+          {state?.fieldErrors?.icon && (
+            <p className="text-xs text-rose-600">{state.fieldErrors.icon[0]}</p>
+          )}
+          <p className="text-brand-muted text-[11px]">
+            Nombre del ícono lucide en PascalCase (ej. PartyPopper). Déjalo vacío para usar el ícono
+            por defecto. El ícono solo se pinta si está en la lista curada.
+          </p>
+        </div>
+
+        <div className="space-y-1.5">
+          <Label htmlFor="gradient" className="text-brand-purple-dark text-sm font-semibold">
+            Gradiente (card de la home)
+          </Label>
+          <div className="flex items-center gap-2">
+            <span
+              aria-hidden
+              className={
+                "border-brand-purple/10 h-9 w-12 shrink-0 rounded-md border bg-gradient-to-br " +
+                previewGradient
+              }
+            />
+            <Input
+              id="gradient"
+              name="gradient"
+              list="category-gradient-options"
+              value={gradient}
+              onChange={(e) => setGradient(e.target.value)}
+              placeholder={DEFAULT_CATEGORY_GRADIENT}
+              disabled={pending}
+              className="border-brand-purple/20 focus-visible:ring-brand-purple/30 font-mono text-xs"
+            />
+            <datalist id="category-gradient-options">
+              {CATEGORY_GRADIENT_OPTIONS.map((g) => (
+                <option key={g.value} value={g.value} label={g.label} />
+              ))}
+            </datalist>
+          </div>
+          {state?.fieldErrors?.gradient && (
+            <p className="text-xs text-rose-600">{state.fieldErrors.gradient[0]}</p>
+          )}
+          <p className="text-brand-muted text-[11px]">
+            Clases tailwind del gradiente (from-… via-… to-…). Vacío = gradiente por defecto. La
+            vista previa usa el default mientras el campo esté vacío.
+          </p>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

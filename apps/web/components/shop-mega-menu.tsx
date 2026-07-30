@@ -14,22 +14,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import {
-  Camera,
-  PartyPopper,
-  Calendar,
-  ClipboardList,
-  Bookmark,
-  Frame,
-  Gift,
-  Snowflake,
-  Sparkles,
-  GraduationCap,
-  Briefcase,
-  Menu,
-  ChevronDown,
-  type LucideIcon,
-} from "lucide-react";
+import { Sparkles, Menu, ChevronDown, type LucideIcon } from "lucide-react";
 import {
   NavigationMenu,
   NavigationMenuContent,
@@ -39,20 +24,12 @@ import {
 } from "@/components/ui/navigation-menu";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import type { CategoryNode } from "@/lib/catalog";
+import { resolveCategoryIcon } from "@/lib/category-visuals";
 
-const ICONS: Record<string, LucideIcon> = {
-  "foto-imanes": Camera,
-  recuerdos: PartyPopper,
-  calendarios: Calendar,
-  publicitarios: Briefcase,
-  organizate: ClipboardList,
-  "regalos-personalizados": Gift,
-  "de-temporada": Snowflake,
-  "cuadros-decoracion": Frame,
-  separadores: Bookmark,
-  coleccionables: Sparkles,
-  "juegos-aprendizaje": GraduationCap,
-};
+// Icono de cada categoría (roadmap B3): primero el valor de BD
+// (Category.icon, editable en /admin/categorias); si es NULL se cae al mapa
+// fallback por slug de lib/category-visuals.ts (el viejo mapa ICONS quemado
+// acá) y por último al icono default genérico.
 
 const TOP_OCASIONES = [
   { slug: "cumpleanos", label: "Cumpleaños" },
@@ -108,7 +85,7 @@ export function ShopMegaMenu({
                 <div className="max-h-[80vh] w-[820px] overflow-y-auto p-5">
                   <div className="grid grid-cols-3 gap-x-6 gap-y-4">
                     {menuCategories.map((cat) => {
-                      const Icon = ICONS[cat.slug] ?? Camera;
+                      const Icon = resolveCategoryIcon(cat.icon, cat.slug);
                       const activeSubCats = cat.children.filter((s) => s.isActive);
                       return (
                         <div key={cat.slug} className="flex flex-col">
@@ -213,7 +190,7 @@ export function ShopMegaMenu({
           </SheetHeader>
           <nav className="mt-3 flex flex-col gap-0.5 px-3 pb-6">
             {menuCategories.map((cat) => {
-              const Icon = ICONS[cat.slug] ?? Camera;
+              const Icon = resolveCategoryIcon(cat.icon, cat.slug);
               return (
                 <MobileCategoryAccordion
                   key={cat.slug}

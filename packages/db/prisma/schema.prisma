@@ -290,6 +290,21 @@ model Category {
   // PLAN_CATALOG_V2 2.10 — casos de uso típicos en 2-3 frases.
   useCase             String?
   image               String?
+  // Roadmap B3 — visual de la categoría (icono + gradiente del home grid y el
+  // mega-menú). Decisión de dominio: es DATO DE CATÁLOGO (cómo se ve una
+  // categoría del catálogo), NO contenido editorial → vive acá y se edita en
+  // /admin/categorias; NO va en el CMS. Antes estaba quemado por slug en
+  // código (category-grid.tsx / shop-mega-menu.tsx) y una categoría nueva no
+  // podía tener icono sin deploy.
+  //   - icon: nombre del icono lucide en PascalCase (ej. "PartyPopper").
+  //     Se resuelve contra el subset curado CATEGORY_ICONS de
+  //     apps/web/lib/category-visuals.ts (sin import dinámico inseguro).
+  //   - gradient: clases tailwind del gradiente (ej. "from-brand-pink/30
+  //     via-brand-coral/20 to-brand-purple/15").
+  // Null en ambos = el storefront cae al mapa fallback por slug y luego al
+  // default genérico (ver resolveCategoryIcon / resolveCategoryGradient).
+  icon                String?
+  gradient            String?
   // PLAN_CATALOG_V2 7.6 — keys de filtros visibles en esta categoría.
   // Vacío = todos los filtros aplican (default 7.2). No vacío = override manual.
   visibleFilters      String[]   @default([])

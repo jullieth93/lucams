@@ -111,6 +111,9 @@ export async function listCategories(opts: CategoryListOpts = {}) {
       deletedAt: true,
       order: true,
       parentId: true,
+      // Roadmap B3 — para la vista previa (icono + swatch) en el listado admin.
+      icon: true,
+      gradient: true,
       parent: { select: { name: true } },
       _count: { select: { products: true, children: true } },
     },
@@ -152,6 +155,9 @@ export async function createCategory(input: CategoryCreateInput, createdBy: stri
       isActive: input.isActive,
       parentId,
       order,
+      // Roadmap B3 — visual de catálogo (null = fallback por slug/default).
+      icon: input.icon ?? null,
+      gradient: input.gradient ?? null,
       ...(createdBy ? { createdBy } : {}),
     },
   });
