@@ -271,6 +271,36 @@ export async function getSettingValue(key: string, fallback: string): Promise<st
 }
 
 /**
+ * Lee un campo LISTA (roadmap B4: el admin lo edita como filas con inputs por
+ * subcampo — ver CmsListItem — pero el body público sigue siendo el array
+ * serializado a JSON). Parsea el body con try/catch, valida CADA item con
+ * `validate` y devuelve `fallback` ante cualquier problema: campo inexistente
+ * o sin publicar, JSON inválido, array vacío o un solo item que no pase la
+ * validación. El sitio nunca se rompe por contenido mal editado (misma REGLA
+ * DE ORO del fallback pattern de este archivo).
+ *
+ * Pattern:
+ *   const links = await getCmsList("footer.legal.links", validateLink, FALLBACK_LINKS);
+ */
+export async function getCmsList<T>(
+  key: string,
+  validate: (v: unknown) => T | null,
+  fallback: T[],
+): Promise<T[]> {
+  const block = await getCmsBlock(key);
+  if (!block) return fallback;
+  try {
+    const parsed: unknown = JSON.parse(block.body);
+    if (!Array.isArray(parsed) || parsed.length === 0) return fallback;
+    const items = parsed.map(validate);
+    if (items.some((item) => item === null)) return fallback;
+    return items as T[];
+  } catch {
+    return fallback;
+  }
+}
+
+/**
  * Lee settings filtrados por categoría. Usado por endpoint
  * GET /api/cms/settings?category=contact.
  */

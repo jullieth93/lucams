@@ -257,6 +257,9 @@ async function upsertMapFields() {
           type: def.type,
           category: def.category,
           sortOrder: def.sortOrder ?? 0,
+          // metadata solo cuando el mapa la declara (ej. listSchema de los
+          // campos LISTA) — si no viene, se conserva la que ya tenga el campo.
+          ...(def.metadata ? { metadata: def.metadata } : {}),
         };
         const existing = await prisma.cmsField.findUnique({ where: { key: def.key } });
         if (existing) {

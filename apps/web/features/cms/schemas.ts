@@ -34,6 +34,17 @@ export const CmsFieldSaveSchema = z.object({
 });
 export type CmsFieldSaveInput = z.infer<typeof CmsFieldSaveSchema>;
 
+/**
+ * Guardar las filas de un campo LISTA (el editor las serializa a JSON en un
+ * hidden input; acá se re-parsea). La validación contra el listSchema de
+ * metadata (subcampos requeridos) la hace el service — acá solo la forma.
+ */
+export const CmsFieldItemsSaveSchema = z.object({
+  id: z.string().cuid("ID inválido"),
+  items: z.array(z.record(z.string(), z.unknown())).max(100, "Máximo 100 elementos"),
+});
+export type CmsFieldItemsSaveInput = z.infer<typeof CmsFieldItemsSaveSchema>;
+
 /** Crear un campo nuevo dentro de una sección existente. */
 export const CmsFieldCreateSchema = z.object({
   sectionId: z.string().cuid("Sección inválida"),

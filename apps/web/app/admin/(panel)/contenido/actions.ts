@@ -21,13 +21,18 @@ import { recordAdminAction } from "@/lib/admin-audit";
 import { requireAdminAction } from "@/lib/admin-rbac-guard";
 import { ADMIN_ROLE_SETS } from "@/lib/admin-rbac";
 import { logger } from "@/lib/logger";
-import { CmsFieldCreateSchema, CmsFieldSaveSchema } from "@/features/cms/schemas";
+import {
+  CmsFieldCreateSchema,
+  CmsFieldItemsSaveSchema,
+  CmsFieldSaveSchema,
+} from "@/features/cms/schemas";
 import {
   CmsValidationError,
   createCmsField,
   getCmsFieldById,
   publishCmsFieldVersion,
   saveCmsFieldDraft,
+  saveCmsFieldItems,
   softDeleteCmsField,
   unpublishCmsField,
 } from "@/features/cms/service";
@@ -111,6 +116,61 @@ export async function saveCmsFieldAction(
       err: err instanceof Error ? err.message : String(err),
     });
     return { error: "No pudimos guardar el cambio. Intenta de nuevo." };
+  }
+}
+
+// ─────────────────── Guardar filas de un campo LISTA ───────────────────
+
+/**
+ * Guardado de un campo LISTA (el editor de filas serializa los items a JSON
+ * en el hidden input `items`). Misma semántica que saveCmsFieldAction: BLOCK
+ * queda en borrador (NO se invalida el tag "cms" — hay que Publicar aparte);
+ * SETTING publica al guardar (ahí sí se invalida).
+ */
+export async function saveCmsFieldItemsAction(
+  _prev: CmsActionState | null,
+  formData: FormData,
+): Promise<CmsActionState> {
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.CONTENT });
+
+  let itemsRaw: unknown;
+  try {
+    itemsRaw = JSON.parse(String(formData.get("items") ?? "[]"));
+  } catch {
+    return { error: "Los datos de la lista llegaron incompletos. Intenta de nuevo." };
+  }
+  const parsed = CmsFieldItemsSaveSchema.safeParse({
+    id: String(formData.get("id") ?? ""),
+    items: itemsRaw,
+  });
+  if (!parsed.success) {
+    return { error: "Te faltan algunos datos." };
+  }
+
+  try {
+    await saveCmsFieldItems(parsed.data.id, parsed.data.items, session.admin.id);
+    await recordAdminAction({
+      actorId: session.admin.id,
+      action: "cms.field.items.save",
+      entityType: "CmsField",
+      entityId: parsed.data.id,
+      metadata: { itemCount: parsed.data.items.length },
+    });
+    const field = await getCmsFieldById(parsed.data.id);
+    // Los SETTING se publican al guardar → el sitio ya cambió.
+    if (field?.kind === "SETTING") updateTag("cms");
+    revalidateCmsPaths(parsed.data.id, field?.section.page.slug);
+    return { ok: true };
+  } catch (err) {
+    if (err instanceof CmsValidationError) {
+      return { error: err.message };
+    }
+    logger.error({
+      event: "admin.cms.field.items_save_fail",
+      adminId: session.admin.id,
+      err: err instanceof Error ? err.message : String(err),
+    });
+    return { error: "No pudimos guardar la lista. Intenta de nuevo." };
   }
 }
 

@@ -20,7 +20,7 @@ import { NewsletterForm } from "@/components/newsletter-form";
 import { CmsText } from "@/components/cms/cms-text";
 import { CmsSetting } from "@/components/cms/cms-setting";
 import { listStorefrontCategories } from "@/features/products/public-service";
-import { getCmsBlock, getSettingValue } from "@/lib/cms";
+import { getCmsList, getSettingValue } from "@/lib/cms";
 import { buildWhatsAppUrl, getWhatsAppNumber } from "@/lib/wa";
 
 type LegalLink = { label: string; href: string };
@@ -39,30 +39,14 @@ const FALLBACK_LEGAL_LINKS: LegalLink[] = [
   { href: "/legal/security", label: "Seguridad" },
 ];
 
-// Parse defensivo del JSON del CMS: cualquier cosa que no sea un array
-// no vacío de { label: string, href: string } cae al fallback hardcoded
-// (la columna legal nunca puede quedar vacía por un typo en el admin).
-function parseLegalLinks(body: string | undefined): LegalLink[] {
-  if (!body) return FALLBACK_LEGAL_LINKS;
-  try {
-    const parsed: unknown = JSON.parse(body);
-    if (
-      !Array.isArray(parsed) ||
-      parsed.length === 0 ||
-      !parsed.every(
-        (item) =>
-          typeof item === "object" &&
-          item !== null &&
-          typeof (item as LegalLink).label === "string" &&
-          typeof (item as LegalLink).href === "string",
-      )
-    ) {
-      return FALLBACK_LEGAL_LINKS;
-    }
-    return parsed as LegalLink[];
-  } catch {
-    return FALLBACK_LEGAL_LINKS;
-  }
+// Validación de un enlace legal del CMS: solo { label: string, href: string }.
+// Cualquier otra cosa hace que getCmsList caiga al fallback hardcoded (la
+// columna legal nunca puede quedar vacía por un typo en el admin).
+function validateLegalLink(v: unknown): LegalLink | null {
+  if (typeof v !== "object" || v === null) return null;
+  const item = v as LegalLink;
+  if (typeof item.label !== "string" || typeof item.href !== "string") return null;
+  return item;
 }
 
 // SVG inline — Instagram + TikTok no están en la versión actual de
@@ -115,7 +99,7 @@ export async function SiteFooter() {
     tiktokUrl,
     facebookUrl,
     waNumber,
-    legalLinksBlock,
+    legalLinks,
     appName,
     businessLocation,
     sicUrl,
@@ -130,7 +114,7 @@ export async function SiteFooter() {
     getSettingValue("SOCIAL_TIKTOK_URL", "https://www.tiktok.com/@lucams_shop"),
     getSettingValue("SOCIAL_FACEBOOK_URL", "https://www.facebook.com/lucamsshop"),
     getWhatsAppNumber(),
-    getCmsBlock("footer.legal.links"),
+    getCmsList("footer.legal.links", validateLegalLink, FALLBACK_LEGAL_LINKS),
     getSettingValue("APP_NAME", "Lucams_shop"),
     getSettingValue("BUSINESS_LOCATION", "Bogotá D.C., Colombia"),
     getSettingValue("GOVT_SIC_URL", "https://www.sic.gov.co/"),
@@ -140,7 +124,6 @@ export async function SiteFooter() {
   ]);
   const buildVersion = process.env.NEXT_PUBLIC_BUILD_VERSION ?? "dev";
   const waNumberDisplay = waNumber.replace(/^57(\d{3})(\d{3})(\d{4})$/, "+57 $1 $2 $3");
-  const legalLinks = parseLegalLinks(legalLinksBlock?.body);
 
   return (
     <footer className="from-brand-purple-dark via-brand-purple-dark to-brand-purple relative overflow-hidden bg-gradient-to-br text-white">

@@ -20,6 +20,11 @@
  *     SETTING → throw (los ajustes no se despublican).
  *   - softDeleteCmsField: deletedAt + despublica; desaparece de queries.
  *   - updateCmsPage / updateCmsSection: metadatos de estructura.
+ *   - Campos LISTA (roadmap B4, CmsListItem): getCmsFieldItems (vacío,
+ *     derivado del body JSON, persistidos ordenados); saveCmsFieldItems
+ *     (BLOCK → versión borrador + items reemplazados en transacción, SETTING
+ *     → publica al guardar, validación contra listSchema, tope MAX_LIST_ITEMS,
+ *     normalización de subcampos); round-trip con getCmsList de lib/cms.
  *
  * Estrategia: integración DB pura. Requiere DATABASE_URL (corre vía
  * `dotenv -e .env.local -- vitest`); sin ella se salta (skipIf) para no romper
@@ -36,15 +41,19 @@
 
 import { afterAll, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/db";
+import { getCmsList } from "@/lib/cms";
 import {
+  MAX_LIST_ITEMS,
   cmsFieldHasDraft,
   createCmsField,
   getCmsFieldById,
   getCmsFieldByKey,
+  getCmsFieldItems,
   getCmsPageBySlug,
   listCmsPages,
   publishCmsFieldVersion,
   saveCmsFieldDraft,
+  saveCmsFieldItems,
   searchCmsFields,
   softDeleteCmsField,
   unpublishCmsField,
@@ -324,6 +333,204 @@ describe.skipIf(!hasDb)(
         expect(await getCmsFieldByKey(field.key)).toBeNull();
         const found = await searchCmsFields(field.key);
         expect(found.find((f) => f.id === field.id)).toBeUndefined();
+      });
+    });
+
+    // ───────────────────────── Campos LISTA (CmsListItem) ─────────────────────────
+
+    describe("campos LISTA (getCmsFieldItems / saveCmsFieldItems)", () => {
+      const LIST_SCHEMA = [
+        { name: "label", type: "TEXT", label: "Texto del enlace" },
+        { name: "href", type: "URL", label: "Ruta o URL" },
+      ];
+      const BODY_V1 = '[{"label":"A","href":"/a"},{"label":"B","href":"/b"}]';
+
+      // Campo lista: se crea por el flujo normal y luego se le inyecta el
+      // listSchema en metadata (createCmsField no recibe metadata — la pone
+      // el site map vía migrador).
+      async function makeListField(over: FieldOverrides = {}) {
+        const field = await makeField({ type: "JSON", body: BODY_V1, ...over });
+        await prisma.cmsField.update({
+          where: { id: field.id },
+          data: { metadata: { listSchema: LIST_SCHEMA } },
+        });
+        return field;
+      }
+
+      describe("getCmsFieldItems", () => {
+        it("deriva los items del body cuando el campo aún no tiene filas", async () => {
+          const field = await makeListField();
+          const items = await getCmsFieldItems(field.id);
+          expect(items).toHaveLength(2);
+          expect(items[0]).toMatchObject({
+            id: null,
+            position: 0,
+            values: { label: "A", href: "/a" },
+          });
+          expect(items[1].position).toBe(1);
+        });
+
+        it("devuelve [] si el body no es un array JSON válido", async () => {
+          const field = await makeListField({ body: "texto plano, no JSON" });
+          expect(await getCmsFieldItems(field.id)).toEqual([]);
+        });
+
+        it("lee los items persistidos ordenados por position", async () => {
+          const field = await makeListField();
+          await saveCmsFieldItems(
+            field.id,
+            [
+              { label: "Uno", href: "/uno" },
+              { label: "Dos", href: "/dos" },
+            ],
+            null,
+          );
+          const items = await getCmsFieldItems(field.id);
+          expect(items[0].id).not.toBeNull();
+          expect(items.map((i) => [i.position, i.values])).toEqual([
+            [0, { label: "Uno", href: "/uno" }],
+            [1, { label: "Dos", href: "/dos" }],
+          ]);
+        });
+
+        it("lanza para campo inexistente", async () => {
+          await expect(getCmsFieldItems(`${RUN}-ghost-id000000`)).rejects.toMatchObject({
+            name: "CmsValidationError",
+          });
+        });
+      });
+
+      describe("saveCmsFieldItems", () => {
+        it("BLOCK: crea items y versión BORRADOR; el body queda como JSON serializado", async () => {
+          const field = await makeListField();
+          // Publicar v1 para probar que el borrador nuevo NO cambia lo vivo.
+          const detail0 = await getCmsFieldById(field.id);
+          await publishCmsFieldVersion(field.id, detail0!.versions[0].id, null);
+
+          const v = await saveCmsFieldItems(
+            field.id,
+            [{ label: "Nuevo", href: "/nuevo" }],
+            "editor",
+          );
+          expect(v.publishedAt).toBeNull();
+
+          const detail = await getCmsFieldById(field.id);
+          expect(JSON.parse(detail!.body)).toEqual([{ label: "Nuevo", href: "/nuevo" }]);
+          expect(detail!.publishedVersion!.body).toBe(BODY_V1); // sitio sigue en v1
+          expect(detail!.items).toHaveLength(1);
+          expect(detail!.items[0]).toMatchObject({
+            position: 0,
+            values: { label: "Nuevo", href: "/nuevo" },
+          });
+          expect(detail!.updatedBy).toBe("editor");
+        });
+
+        it("SETTING: guardar publica de inmediato", async () => {
+          const field = await makeListField({ kind: "SETTING", category: "CONTACT" });
+          const v = await saveCmsFieldItems(field.id, [{ label: "S", href: "/s" }], null);
+          expect(v.publishedAt).not.toBeNull();
+
+          const detail = await getCmsFieldById(field.id);
+          expect(detail!.publishedVersionId).toBe(v.id);
+          expect(JSON.parse(detail!.publishedVersion!.body)).toEqual([{ label: "S", href: "/s" }]);
+        });
+
+        it("normaliza: solo subcampos del schema, strings recortados", async () => {
+          const field = await makeListField();
+          await saveCmsFieldItems(
+            field.id,
+            [{ label: "  X  ", href: "/x", intruso: "fuera" }],
+            null,
+          );
+          const items = await getCmsFieldItems(field.id);
+          expect(items[0].values).toEqual({ label: "X", href: "/x" });
+          const detail = await getCmsFieldById(field.id);
+          expect(JSON.parse(detail!.body)).toEqual([{ label: "X", href: "/x" }]);
+        });
+
+        it("reemplaza los items anteriores (delete + insert, sin duplicar)", async () => {
+          const field = await makeListField();
+          await saveCmsFieldItems(
+            field.id,
+            [
+              { label: "A", href: "/a" },
+              { label: "B", href: "/b" },
+            ],
+            null,
+          );
+          await saveCmsFieldItems(field.id, [{ label: "C", href: "/c" }], null);
+          const items = await getCmsFieldItems(field.id);
+          expect(items).toHaveLength(1);
+          expect(items[0].values).toEqual({ label: "C", href: "/c" });
+        });
+
+        it("rechaza fila con subcampo requerido vacío y NO toca los items", async () => {
+          const field = await makeListField();
+          await saveCmsFieldItems(field.id, [{ label: "OK", href: "/ok" }], null);
+          await expect(
+            saveCmsFieldItems(field.id, [{ label: "", href: "/x" }], null),
+          ).rejects.toMatchObject({ name: "CmsValidationError" });
+          // La validación corre antes de la transacción → items intactos.
+          const items = await getCmsFieldItems(field.id);
+          expect(items.map((i) => i.values)).toEqual([{ label: "OK", href: "/ok" }]);
+        });
+
+        it("rechaza subcampos que no son string", async () => {
+          const field = await makeListField();
+          await expect(
+            saveCmsFieldItems(field.id, [{ label: 123, href: "/x" }], null),
+          ).rejects.toMatchObject({ name: "CmsValidationError" });
+        });
+
+        it("rechaza más de MAX_LIST_ITEMS filas", async () => {
+          const field = await makeListField();
+          const many = Array.from({ length: MAX_LIST_ITEMS + 1 }, (_, i) => ({
+            label: `L${i}`,
+            href: `/${i}`,
+          }));
+          await expect(saveCmsFieldItems(field.id, many, null)).rejects.toMatchObject({
+            name: "CmsValidationError",
+          });
+        });
+
+        it("rechaza un campo SIN listSchema en metadata", async () => {
+          const field = await makeField();
+          await expect(
+            saveCmsFieldItems(field.id, [{ label: "A", href: "/a" }], null),
+          ).rejects.toMatchObject({ name: "CmsValidationError" });
+        });
+      });
+
+      describe("round-trip con getCmsList (lectura pública)", () => {
+        type Link = { label: string; href: string };
+        const FALLBACK: Link[] = [{ label: "Fallback", href: "/fallback" }];
+        const validateLink = (v: unknown): Link | null => {
+          if (typeof v !== "object" || v === null) return null;
+          const l = v as Link;
+          return typeof l.label === "string" && typeof l.href === "string" ? l : null;
+        };
+
+        it("guardar items + publicar → getCmsList devuelve los items tipados", async () => {
+          const field = await makeListField();
+          // Sin publicar todavía: el sitio cae al fallback.
+          expect(await getCmsList(field.key, validateLink, FALLBACK)).toEqual(FALLBACK);
+
+          const v = await saveCmsFieldItems(
+            field.id,
+            [
+              { label: "Privacidad", href: "/legal/privacidad" },
+              { label: "Términos", href: "/legal/terminos" },
+            ],
+            null,
+          );
+          await publishCmsFieldVersion(field.id, v.id, null);
+
+          const links = await getCmsList(field.key, validateLink, FALLBACK);
+          expect(links).toEqual([
+            { label: "Privacidad", href: "/legal/privacidad" },
+            { label: "Términos", href: "/legal/terminos" },
+          ]);
+        });
       });
     });
 

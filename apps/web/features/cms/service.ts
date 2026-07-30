@@ -98,7 +98,8 @@ export async function getCmsPageBySlug(slug: string) {
   });
 }
 
-/** Editor de un campo: con breadcrumb (sección → página) e historial. */
+/** Editor de un campo: con breadcrumb (sección → página), historial e items
+ *  de lista (solo presentes si el campo es LISTA — ver CmsListItem). */
 export async function getCmsFieldById(id: string) {
   return prisma.cmsField.findFirst({
     where: { id, deletedAt: null },
@@ -106,6 +107,7 @@ export async function getCmsFieldById(id: string) {
       section: { include: { page: true } },
       publishedVersion: true,
       versions: { orderBy: { version: "desc" }, take: 50 },
+      items: { orderBy: { position: "asc" } },
     },
   });
 }
@@ -287,6 +289,163 @@ export async function softDeleteCmsField(id: string, deletedBy: string | null) {
       publishedVersionId: null,
       ...(deletedBy ? { deletedBy } : {}),
     },
+  });
+}
+
+// ─────────────────── Campos LISTA (roadmap B4) ───────────────────
+// Un campo con `metadata.listSchema` se edita como filas con un input por
+// subcampo (sin ver JSON). CmsListItem es la representación de EDICIÓN; al
+// guardar, el array serializado a JSON es el body del CmsField y pasa por el
+// flujo NORMAL de versión (BLOCK → borrador; SETTING → publica al guardar).
+// La lectura pública (lib/cms.ts getCmsList) sigue leyendo ese JSON.
+
+/** Tope de filas por lista: protege contra payloads absurdos. */
+export const MAX_LIST_ITEMS = 100;
+
+/** Subcampo declarado en `metadata.listSchema` de un campo lista. */
+export type CmsListSubfield = {
+  name: string;
+  type: string; // CmsFieldType — controla el tipo de input del editor
+  label: string;
+};
+
+/** Fila de un campo lista tal como la consume el editor admin. */
+export type CmsListItemData = {
+  /** null cuando el item se derivó del body y aún no existe en CmsListItem. */
+  id: string | null;
+  position: number;
+  values: Record<string, unknown>;
+};
+
+/**
+ * Lee el `listSchema` de la metadata de un campo (null si NO es un campo
+ * lista). Defensivo: ignora entradas malformadas y devuelve null si no queda
+ * ningún subcampo válido.
+ */
+export function getCmsListSchema(metadata: Prisma.JsonValue): CmsListSubfield[] | null {
+  if (typeof metadata !== "object" || metadata === null || Array.isArray(metadata)) return null;
+  const raw = (metadata as Record<string, unknown>).listSchema;
+  if (!Array.isArray(raw)) return null;
+  const schema = raw.filter(
+    (v): v is CmsListSubfield =>
+      typeof v === "object" &&
+      v !== null &&
+      typeof (v as CmsListSubfield).name === "string" &&
+      typeof (v as CmsListSubfield).type === "string" &&
+      typeof (v as CmsListSubfield).label === "string",
+  );
+  return schema.length > 0 ? schema : null;
+}
+
+/**
+ * Items de un campo lista, ordenados por position. Si el campo aún no tiene
+ * filas en CmsListItem pero su body es un array JSON válido (campo no migrado
+ * todavía), deriva los items del body — migración perezosa al abrir el
+ * editor; se persisten en CmsListItem al primer guardado.
+ */
+export async function getCmsFieldItems(fieldId: string): Promise<CmsListItemData[]> {
+  const field = await prisma.cmsField.findFirst({
+    where: { id: fieldId, deletedAt: null },
+    include: { items: { orderBy: { position: "asc" } } },
+  });
+  if (!field) throw new CmsValidationError("general", "Campo no encontrado");
+  if (field.items.length > 0) {
+    return field.items.map((item) => ({
+      id: item.id,
+      position: item.position,
+      values: item.values as Record<string, unknown>,
+    }));
+  }
+  try {
+    const parsed: unknown = JSON.parse(field.body);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter(
+        (v): v is Record<string, unknown> =>
+          typeof v === "object" && v !== null && !Array.isArray(v),
+      )
+      .map((values, position) => ({ id: null, position, values }));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Guarda las filas de un campo lista:
+ *   1. Valida contra el listSchema de metadata (todos los subcampos son
+ *      requeridos: string no vacío; máx. MAX_LIST_ITEMS filas) y normaliza —
+ *      solo quedan los subcampos declarados, en el orden del schema, así el
+ *      JSON que ve el sitio tiene SIEMPRE la forma esperada.
+ *   2. Reemplaza los CmsListItem (delete + insert en la misma transacción).
+ *   3. El array serializado es el body del campo → flujo normal de versión:
+ *      BLOCK crea versión BORRADOR (hay que Publicar aparte); SETTING crea
+ *      versión y PUBLICA de inmediato.
+ */
+export async function saveCmsFieldItems(
+  fieldId: string,
+  items: Record<string, unknown>[],
+  updatedBy: string | null,
+) {
+  const existing = await prisma.cmsField.findFirst({
+    where: { id: fieldId, deletedAt: null },
+    include: { versions: { orderBy: { version: "desc" }, take: 1 } },
+  });
+  if (!existing) throw new CmsValidationError("general", "Campo no encontrado");
+
+  const listSchema = getCmsListSchema(existing.metadata);
+  if (!listSchema) {
+    throw new CmsValidationError("general", "Este campo no está configurado como lista");
+  }
+  if (items.length > MAX_LIST_ITEMS) {
+    throw new CmsValidationError("general", `La lista admite máximo ${MAX_LIST_ITEMS} elementos`);
+  }
+
+  const cleaned = items.map((item, index) => {
+    const values: Record<string, string> = {};
+    for (const sub of listSchema) {
+      const raw = item[sub.name];
+      const value = typeof raw === "string" ? raw.trim() : "";
+      if (!value) {
+        throw new CmsValidationError(
+          "general",
+          `Fila ${index + 1}: «${sub.label}» no puede estar vacío`,
+        );
+      }
+      values[sub.name] = value;
+    }
+    return values;
+  });
+
+  const body = JSON.stringify(cleaned, null, 2);
+  const nextVersion = (existing.versions[0]?.version ?? 0) + 1;
+  const publishNow = existing.kind === "SETTING";
+
+  return prisma.$transaction(async (tx) => {
+    await tx.cmsListItem.deleteMany({ where: { fieldId: existing.id } });
+    if (cleaned.length > 0) {
+      await tx.cmsListItem.createMany({
+        data: cleaned.map((values, position) => ({ fieldId: existing.id, position, values })),
+      });
+    }
+    const version = await tx.cmsFieldVersion.create({
+      data: {
+        fieldId: existing.id,
+        version: nextVersion,
+        title: existing.label,
+        body,
+        publishedAt: publishNow ? new Date() : null,
+        ...(updatedBy ? { createdBy: updatedBy } : {}),
+      },
+    });
+    await tx.cmsField.update({
+      where: { id: existing.id },
+      data: {
+        body,
+        ...(publishNow ? { isPublished: true, publishedVersionId: version.id } : {}),
+        ...(updatedBy ? { updatedBy } : {}),
+      },
+    });
+    return version;
   });
 }
 

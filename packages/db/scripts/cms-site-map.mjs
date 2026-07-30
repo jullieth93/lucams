@@ -405,8 +405,17 @@ export const SITE_MAP = {
               type: "JSON",
               label: "Enlaces legales",
               helpText:
-                "Lista de enlaces legales en formato JSON. Cada entrada tiene label (texto) y href (ruta).",
+                "Los enlaces de la columna «Información» del pie de página. Se editan como una lista: texto y ruta por enlace, sin ver código.",
               category: "FOOTER",
+              // Campo LISTA (roadmap B4): el admin lo edita como filas
+              // (texto + ruta) en vez de JSON crudo. El service serializa
+              // la lista a JSON y ese JSON sigue siendo el body público.
+              metadata: {
+                listSchema: [
+                  { name: "label", type: "TEXT", label: "Texto del enlace" },
+                  { name: "href", type: "URL", label: "Ruta o URL" },
+                ],
+              },
               body: `[
   {
     "label": "Aviso de Privacidad",

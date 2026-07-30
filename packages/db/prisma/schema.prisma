@@ -1341,6 +1341,7 @@ model CmsField {
   publishedVersionId String?
   publishedVersion   CmsFieldVersion?  @relation("PublishedFieldVersion", fields: [publishedVersionId], references: [id], onDelete: SetNull)
   versions           CmsFieldVersion[] @relation("FieldVersions")
+  items              CmsListItem[]
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -1375,6 +1376,25 @@ model CmsFieldVersion {
 
   @@unique([fieldId, version])
   @@index([fieldId, createdAt])
+}
+
+// Campos LISTA (roadmap B4, 2026-07-30): un CmsField cuyo `metadata` declara
+// `listSchema` (ej. footer.legal.links: [{name:"label"},{name:"href"}]) se
+// edita en el admin como filas con un input por subcampo — sin ver JSON.
+// CmsListItem es la representación de EDICIÓN; al guardar, el service
+// serializa el array a JSON y ese JSON queda como body/versión del CmsField,
+// así que la lectura pública (lib/cms.ts) NO cambia.
+model CmsListItem {
+  id       String   @id @default(cuid())
+  fieldId  String
+  field    CmsField @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+  position Int
+  values   Json     @default("{}")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([fieldId, position])
 }
 
 // ──────────────────────── PERSONALIZACIÓN (sub-bloque M) ────────────────────────

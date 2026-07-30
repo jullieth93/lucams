@@ -4,7 +4,8 @@
  *
  * 2 secciones:
  *  - Editor: según el tipo (Markdown con preview, JSON con validación suave,
- *    input/textarea simple) + nombre/ayuda colapsables.
+ *    input/textarea simple) + nombre/ayuda colapsables. Los campos LISTA
+ *    (metadata.listSchema) usan el editor de filas (list-editor-form).
  *  - Historial: versiones anteriores con botón "Volver a esta".
  *
  * Acciones de header: Publicar última versión (si hay borrador más nuevo),
@@ -27,13 +28,14 @@ import {
 import { Button } from "@/components/ui/button";
 import { ConfirmAction } from "@/components/admin/confirm-action";
 import { getCurrentAdmin } from "@/lib/auth";
-import { getCmsFieldById } from "@/features/cms/service";
+import { getCmsFieldById, getCmsFieldItems, getCmsListSchema } from "@/features/cms/service";
 import {
   deleteCmsFieldAction,
   publishCmsFieldAction,
   unpublishCmsFieldAction,
 } from "../../actions";
 import { FieldEditorForm } from "./field-editor-form";
+import { ListEditorForm } from "./list-editor-form";
 import { VersionHistory } from "./version-history";
 
 export const metadata: Metadata = {
@@ -70,6 +72,12 @@ export default async function EditarCampoPage({
   // La última versión guardada (puede ser borrador o ya publicada).
   const latestVersion = field.versions[0];
   const canPublishLatest = latestVersion && latestVersion.id !== field.publishedVersionId;
+
+  // Campo LISTA (roadmap B4): se edita como filas con inputs por subcampo,
+  // no con el editor de body. Los items vienen de CmsListItem o se derivan
+  // del body JSON (migración perezosa al abrir el editor).
+  const listSchema = getCmsListSchema(field.metadata);
+  const listItems = listSchema ? await getCmsFieldItems(field.id) : null;
 
   return (
     <AdminPage>
@@ -174,19 +182,34 @@ export default async function EditarCampoPage({
         )}
         {errorMsg && <AdminNotice tone="error">{errorMsg}</AdminNotice>}
 
-        {/* Editor */}
-        <FieldEditorForm
-          field={{
-            id: field.id,
-            key: field.key,
-            kind: field.kind,
-            type: field.type,
-            label: field.label,
-            helpText: field.helpText,
-            body: field.body,
-            isPublished: field.isPublished,
-          }}
-        />
+        {/* Editor: lista (campos con listSchema) o editor de body normal */}
+        {listSchema && listItems ? (
+          <ListEditorForm
+            field={{
+              id: field.id,
+              key: field.key,
+              kind: field.kind,
+              label: field.label,
+              helpText: field.helpText,
+              isPublished: field.isPublished,
+              listSchema,
+              items: listItems.map((item) => item.values),
+            }}
+          />
+        ) : (
+          <FieldEditorForm
+            field={{
+              id: field.id,
+              key: field.key,
+              kind: field.kind,
+              type: field.type,
+              label: field.label,
+              helpText: field.helpText,
+              body: field.body,
+              isPublished: field.isPublished,
+            }}
+          />
+        )}
 
         {/* Historial */}
         <section>
