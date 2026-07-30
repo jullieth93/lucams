@@ -204,6 +204,7 @@ Duda de Lucy: "en Admin dice Tiempo de fabricación pero el Front dice Entrega e
 - **Evidencias**: 6 tests nuevos del resolver (6/6) · typecheck/lint/prettier ✓ · vitest focal (ver §2 conteo) · renders verificados localmente antes/después.
 - **Archivos**: creado `apps/web/lib/cms-tokens.ts` + `lib/cms-tokens.test.ts`; modificados `components/cms/cms-text.tsx`, `components/cms/cms-markdown.tsx`, `lib/cms.ts`, `components/home/hero.tsx`, `components/home/how-it-works.tsx`, `app/page.tsx`, `app/ayuda/page.tsx`, `app/contacto/page.tsx` (import) + contenido de 5 bloques y 3 settings en BD.
 - **Regla de oro documentada para el futuro**: un dato que aparezca en 2+ textos del sitio vive UNA vez en SiteSettings y se referencia con token — nunca literal duplicado. Tokens disponibles: `{{fab}}`, `{{entrega}}`, `{{total}}`, `{{cobertura}}`, `{{ciudad}}` (checkout).
+- **Fix de cobertura detectado en la verificación de prod** (`51fe89b`): `CodAwareCmsText` (paso 3 del home) leía `getCmsBlock` DIRECTO y mostraba `{{total}}` crudo en producción. Se resolvió el token en TODOS los consumidores directos: `CodAwareCmsText`, `newsletter-welcome` y la API pública (`/api/cms/blocks` + `[key]`, que ahora entregan el texto final al consumidor externo). Verificado en vivo: 0 tokens crudos en home y /ayuda; API sirve texto resuelto.
 
 ### Post-script 3 — Ruta A: extensión del CMS in-house al 100% del gap (2026-07-29)
 
