@@ -49,4 +49,10 @@ regexes = [
     '''placeholder''',
     '''xxxxxxxx''',
     '''eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9\.placeholder''',
+    # Falso positivo (2026-07-30): `key: "faq.03-metodos-pago"` en
+    # packages/db/scripts/seed-cms-ruta-a.mjs — la regla default generic-api-key
+    # ve una "key" con entropía suficiente en el slug de la FAQ. Son identificadores
+    # de contenido CMS, no credenciales. Rompió CI en todos los push desde el
+    # run 30499078411 hasta este fix.
+    '''faq\.\d{2}-[a-z-]+''',
 ]
