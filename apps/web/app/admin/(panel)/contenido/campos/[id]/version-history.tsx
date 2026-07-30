@@ -1,13 +1,14 @@
 /*
- * Tab "Historial" — lista de versiones del bloque con botón
- * "Volver a esta versión" (brand 2026-05-20).
+ * Historial de versiones de un CmsField (CMS v2) — adaptado del viejo
+ * version-history.tsx de bloques (brand 2026-05-20).
  *
- * Cada save crea una versión. El admin ve fecha humana + texto inicial
- * + acción para republicar una versión antigua.
+ * Cada guardado crea una versión. La administradora ve fecha humana +
+ * inicio del texto + botón "Volver a esta" (publica esa versión vía
+ * publishCmsFieldAction y vuelve al editor del campo).
  */
 
 import { History, RotateCcw } from "lucide-react";
-import { publishCmsBlockVersionAction } from "@/app/admin/(panel)/contenido/actions";
+import { publishCmsFieldAction } from "@/app/admin/(panel)/contenido/actions";
 import { Button } from "@/components/ui/button";
 
 type Version = {
@@ -21,11 +22,11 @@ type Version = {
 };
 
 export function VersionHistory({
-  blockId,
+  fieldId,
   versions,
   currentPublishedVersionId,
 }: {
-  blockId: string;
+  fieldId: string;
   versions: Version[];
   currentPublishedVersionId: string | null;
 }) {
@@ -51,7 +52,7 @@ export function VersionHistory({
             }
           >
             <div className="min-w-0 flex-1">
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <span className="text-brand-purple-dark text-sm font-semibold">
                   Versión {v.version}
                 </span>
@@ -65,6 +66,11 @@ export function VersionHistory({
                     Publicada antes
                   </span>
                 )}
+                {!v.publishedAt && !isCurrent && (
+                  <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800">
+                    Borrador
+                  </span>
+                )}
               </div>
               <p className="text-brand-muted mt-1 text-xs">
                 Guardada el {formatDateHuman(v.createdAt)}
@@ -76,9 +82,14 @@ export function VersionHistory({
               </p>
             </div>
             {!isCurrent && (
-              <form action={publishCmsBlockVersionAction}>
-                <input type="hidden" name="blockId" value={blockId} />
+              <form action={publishCmsFieldAction}>
+                <input type="hidden" name="fieldId" value={fieldId} />
                 <input type="hidden" name="versionId" value={v.id} />
+                <input
+                  type="hidden"
+                  name="redirectTo"
+                  value={`/admin/contenido/campos/${fieldId}`}
+                />
                 <Button
                   type="submit"
                   variant="ghost"

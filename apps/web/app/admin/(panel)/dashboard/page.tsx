@@ -291,13 +291,13 @@ export default async function AdminDashboardPage({
               description="Códigos de descuento: porcentaje, monto fijo, envío gratis."
             />
             <QuickLink
-              href="/admin/contenido/bloques"
+              href="/admin/contenido"
               icon={BookOpen}
-              label="Base de conocimiento"
-              description="Edita los textos del sitio (legales, FAQ, hero) y prepara el bot futuro."
+              label="Páginas del sitio"
+              description="Edita los textos del sitio por página (legales, FAQ, hero) y prepara el bot futuro."
             />
             <QuickLink
-              href="/admin/contenido/configuracion"
+              href="/admin/contenido/paginas/global"
               icon={Cog}
               label="Configuración general"
               description="Email, WhatsApp, horario, redes y datos del negocio."
@@ -345,7 +345,7 @@ export default async function AdminDashboardPage({
               description="Quién cambió qué y cuándo. Registro inmutable de acciones admin."
             />
             <QuickLink
-              href="/admin/contenido/configuracion"
+              href="/admin/contenido/paginas/global"
               icon={Settings}
               label="Ajustes del sitio"
               description="Banners legales, plazos, contacto, copyrights y subprocesadores."

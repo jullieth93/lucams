@@ -289,7 +289,7 @@ export const ADMIN_NAV: NavGroup[] = [
     title: "Contenido",
     icon: FileText,
     items: [
-      { label: "Textos del sitio", href: "/admin/contenido/bloques", icon: BookOpen },
+      { label: "Páginas del sitio", href: "/admin/contenido", icon: BookOpen },
       {
         label: "Bot WhatsApp",
         href: "/admin/bot",
@@ -330,7 +330,7 @@ export const ADMIN_NAV: NavGroup[] = [
     title: "Configuración",
     icon: Settings,
     items: [
-      { label: "General", href: "/admin/contenido/configuracion", icon: Cog },
+      { label: "Ajustes del sitio", href: "/admin/contenido/paginas/global", icon: Cog },
       {
         label: "Seguridad (2 pasos)",
         href: "/admin/seguridad",

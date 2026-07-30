@@ -71,8 +71,8 @@ describe("getAdminNav", () => {
     const config = nav.find((g) => g.title === "Configuración");
     expect(config).toBeDefined();
     expect(config?.items?.some((it) => it.href === "/admin/integraciones")).toBe(false);
-    // El resto de items de Configuración sigue (General, Seguridad, Redirects…).
-    expect(config?.items?.some((it) => it.href === "/admin/contenido/configuracion")).toBe(true);
+    // El resto de items de Configuración sigue (Ajustes del sitio, Seguridad, Redirects…).
+    expect(config?.items?.some((it) => it.href === "/admin/contenido/paginas/global")).toBe(true);
     expect(config?.items?.some((it) => it.href === "/admin/seguridad")).toBe(true);
   });
 
