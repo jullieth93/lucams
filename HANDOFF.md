@@ -191,6 +191,20 @@ Decisión de negocio comunicada por Lucy en este chat: "Venndelo hoy por hoy NO 
   1. `fix(orders): numeración de orden max(number)+1 bajo advisory lock — elimina tormenta de colisiones P2002 tras hard deletes` (solo `features/orders/service.ts`).
   2. `chore(shipping)!: eliminar Venndelo por completo — provider único Aveonline, enum/columna fuera, docs purgados (decisión Lucy 2026-07-29)` (breaking: requiere `prisma migrate deploy` en cada entorno — la migración `20260729150000_drop_venndelo_plan_b` ya está aplicada en la BD de develop y viaja en el repo para producción).
 
+### Post-script 4 — Fuente única para promesas: settings atómicos + tokens CMS (2026-07-29, noche)
+
+Duda de Lucy: "en Admin dice Tiempo de fabricación pero el Front dice Entrega en máx. 3 días (2 fabricación + 1 entrega)… esto es un ejemplo de muchos, por eso pongo en duda el CMS". Tenía razón y era un defecto de modelado, no de uso:
+
+- **Causa raíz**: la promesa vivía literal en 5+ lugares (bloques, fallbacks, settings) sin fuente única. Peor: `MANUFACTURING_DAYS_RANGE` y `DELIVERY_COVERAGE_COUNT` **no tenía ningún lector en el código** (verificado por grep) — editarlas no movía nada.
+- **Fix estructural**:
+  - Settings atómicos canónicos en COMMERCE: `PRODUCTION_DAYS_DEFAULT="2"` y `DELIVERY_DAYS_ESTIMATE="1"` (etiquetas inequívocas en español + descripción de qué alimentan). `MANUFACTURING_DAYS_RANGE` **eliminada** (0 refs, valor ambiguo).
+  - Nuevo `lib/cms-tokens.ts` → `resolveCmsTokens()`: tokens `{{fab}}`, `{{entrega}}`, `{{total}}` (calculado), `{{cobertura}}`, `{{ciudad}}` (con ctx). Aplicado en `<CmsText>` y `<CmsMarkdown>` sobre body Y fallback; `getPageSeo` se movió a ese módulo (evita ciclo cms ↔ cms-tokens).
+  - Migración a tokens: 5 bloques en BD (`faq.02`, `faq.04`, `home.howitworks.step3.description`, `home.hero.description`, `seo.page.home`) + 6 fallbacks de código (`hero.tsx` ×2, `how-it-works.tsx`, `app/page.tsx`, `ayuda/page.tsx` ×2).
+- **Prueba empírica (la duda misma)**: settings a 4+2 en BD → `/ayuda` y el chip del home pasaron a "máximo **6** días hábiles (4 de fabricación + 2 de entrega)" sin tocar código ni contenido → revertidas a 2+1 → todo volvió a 3. Un solo cambio propaga a TODOS los textos.
+- **Evidencias**: 6 tests nuevos del resolver (6/6) · typecheck/lint/prettier ✓ · vitest focal (ver §2 conteo) · renders verificados localmente antes/después.
+- **Archivos**: creado `apps/web/lib/cms-tokens.ts` + `lib/cms-tokens.test.ts`; modificados `components/cms/cms-text.tsx`, `components/cms/cms-markdown.tsx`, `lib/cms.ts`, `components/home/hero.tsx`, `components/home/how-it-works.tsx`, `app/page.tsx`, `app/ayuda/page.tsx`, `app/contacto/page.tsx` (import) + contenido de 5 bloques y 3 settings en BD.
+- **Regla de oro documentada para el futuro**: un dato que aparezca en 2+ textos del sitio vive UNA vez en SiteSettings y se referencia con token — nunca literal duplicado. Tokens disponibles: `{{fab}}`, `{{entrega}}`, `{{total}}`, `{{cobertura}}`, `{{ciudad}}` (checkout).
+
 ### Post-script 3 — Ruta A: extensión del CMS in-house al 100% del gap (2026-07-29)
 
 Decisión de Lucy: descartado Strapi/Sanity (ya existe un headless CMS in-house certificado: 72 bloques + 41 settings + API pública + admin no-técnico). Se extendió su cobertura al gap restante. **Punto de restauración**: `19f0e0f` + factores de rollback en `docs/audits/2026-07-29-restore-point.md` (sin migración de schema; filas aditivas inertes en rollback gracias a los fallbacks).
