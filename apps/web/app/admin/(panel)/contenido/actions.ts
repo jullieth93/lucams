@@ -2,8 +2,9 @@
  * Server Actions — Admin Contenido (CMS v2: CmsPage → CmsSection → CmsField).
  *
  * Patrón Lucams: actions delgadas, validación Zod aquí + delegación
- * al service. getCurrentAdmin defensivo (requireAdminAction, solo SUPER).
- * AdminActionLog en cada mutación. updateTag("cms") invalida el cache
+ * al service. getCurrentAdmin defensivo (requireAdminAction, set CONTENT:
+ * SUPERADMIN + CMS_EDITOR). AdminActionLog en cada mutación.
+ * updateTag("cms") invalida el cache
  * público cuando el cambio ya se ve en el sitio (publicar, despublicar,
  * archivar, crear/guardar un SETTING — los ajustes se aplican al guardar).
  *
@@ -67,7 +68,7 @@ export async function saveCmsFieldAction(
   _prev: CmsActionState | null,
   formData: FormData,
 ): Promise<CmsActionState> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.CONTENT });
 
   // label/helpText solo viajan desde el editor completo; si no vienen,
   // van undefined y el service conserva los valores actuales.
@@ -119,7 +120,7 @@ export async function createCmsFieldAction(
   _prev: CmsActionState | null,
   formData: FormData,
 ): Promise<CmsActionState> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.CONTENT });
 
   const parsed = CmsFieldCreateSchema.safeParse({
     sectionId: String(formData.get("sectionId") ?? ""),
@@ -172,7 +173,7 @@ export async function createCmsFieldAction(
 // ─────────────────── Publicar / Despublicar / Archivar ───────────────────
 
 export async function publishCmsFieldAction(formData: FormData): Promise<void> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.CONTENT });
 
   const fieldId = String(formData.get("fieldId") ?? "");
   const versionId = String(formData.get("versionId") ?? "");
@@ -206,7 +207,7 @@ export async function publishCmsFieldAction(formData: FormData): Promise<void> {
 }
 
 export async function unpublishCmsFieldAction(formData: FormData): Promise<void> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.CONTENT });
 
   const fieldId = String(formData.get("fieldId") ?? "");
   if (!fieldId) redirect("/admin/contenido");
@@ -243,7 +244,7 @@ export async function unpublishCmsFieldAction(formData: FormData): Promise<void>
 }
 
 export async function deleteCmsFieldAction(formData: FormData): Promise<void> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.CONTENT });
 
   const fieldId = String(formData.get("fieldId") ?? "");
   if (!fieldId) redirect("/admin/contenido");
@@ -276,7 +277,7 @@ export async function deleteCmsFieldAction(formData: FormData): Promise<void> {
  * el mecanismo manual de invalidación tras correr esos scripts. No toca la DB.
  */
 export async function refreshCmsCacheAction(formData: FormData): Promise<void> {
-  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER });
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.CONTENT });
 
   await recordAdminAction({
     actorId: session.admin.id,

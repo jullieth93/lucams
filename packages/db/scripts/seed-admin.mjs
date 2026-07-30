@@ -34,8 +34,10 @@ const prisma = new PrismaClient();
 const desiredEmail = process.env.EMAIL?.toLowerCase().trim();
 const desiredRole = process.env.ROLE ?? "SUPERADMIN";
 
-if (!["SUPERADMIN", "MANAGER", "FULFILLMENT"].includes(desiredRole)) {
-  console.error(`ROLE inválido: ${desiredRole}. Use SUPERADMIN | MANAGER | FULFILLMENT.`);
+if (!["SUPERADMIN", "MANAGER", "FULFILLMENT", "CMS_EDITOR"].includes(desiredRole)) {
+  console.error(
+    `ROLE inválido: ${desiredRole}. Use SUPERADMIN | MANAGER | FULFILLMENT | CMS_EDITOR.`,
+  );
   process.exit(1);
 }
 

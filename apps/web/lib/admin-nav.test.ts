@@ -15,9 +15,12 @@
  *   - "Cotizaciones" es el primer item de "Ventas" en AMBOS modos.
  *   - El filtrado NO muta ADMIN_NAV (el catch-all placeholder sigue viendo
  *     todos los módulos para su info contextual).
+ *   - filterNavByRole(getAdminNav(), "CMS_EDITOR") deja SOLO el contenido del
+ *     sitio (Páginas del sitio, Ajustes del sitio, Plantillas de correo).
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { filterNavByRole } from "./admin-rbac";
 
 const KEY = "NEXT_PUBLIC_STORE_MODE";
 const original = process.env[KEY];
@@ -135,4 +138,59 @@ describe("getAdminNav", () => {
     const canales = mod.ADMIN_NAV.find((g) => g.title === "Canales");
     expect(canales?.items?.some((it) => it.label === "Mercado Libre")).toBe(true);
   });
+});
+
+// ---------------------------------------------------------------------------
+// filterNavByRole sobre el NAV real — rol CMS_EDITOR (solo contenido del sitio)
+// ---------------------------------------------------------------------------
+
+describe("filterNavByRole(getAdminNav()) — CMS_EDITOR", () => {
+  it.each(["full", "catalog"] as const)(
+    "modo %s: ve SOLO los grupos Contenido y Configuración",
+    async (mode) => {
+      const { nav } = await getNavForMode(mode);
+      const visible = filterNavByRole(nav, "CMS_EDITOR");
+
+      expect(visible.map((g) => g.title)).toEqual(["Contenido", "Configuración"]);
+    },
+  );
+
+  it.each(["full", "catalog"] as const)(
+    "modo %s: ve exactamente Páginas del sitio, Ajustes del sitio y Plantillas de correo",
+    async (mode) => {
+      const { nav } = await getNavForMode(mode);
+      const visible = filterNavByRole(nav, "CMS_EDITOR");
+
+      const contenido = visible.find((g) => g.title === "Contenido");
+      expect(contenido?.items?.map((it) => it.href)).toEqual(["/admin/contenido"]);
+
+      const config = visible.find((g) => g.title === "Configuración");
+      expect(config?.items?.map((it) => it.href)).toEqual([
+        "/admin/contenido/paginas/global",
+        "/admin/email-templates",
+      ]);
+    },
+  );
+
+  it.each(["full", "catalog"] as const)(
+    "modo %s: NO ve dashboard, usuarios, seguridad, finanzas ni cupones",
+    async (mode) => {
+      const { nav } = await getNavForMode(mode);
+      const visible = filterNavByRole(nav, "CMS_EDITOR");
+
+      const allHrefs = [
+        ...visible.flatMap((g) => (g.items ?? []).map((it) => it.href)),
+        ...visible.filter((g) => g.href).map((g) => g.href as string),
+      ];
+      expect(allHrefs).not.toContain("/admin/dashboard");
+      expect(allHrefs).not.toContain("/admin/usuarios");
+      expect(allHrefs).not.toContain("/admin/seguridad");
+      expect(allHrefs).not.toContain("/admin/finanzas");
+      expect(allHrefs).not.toContain("/admin/cupones");
+      // Y todo lo visible es contenido (coherente con la matriz de rutas).
+      for (const href of allHrefs) {
+        expect(href.startsWith("/admin/contenido") || href === "/admin/email-templates").toBe(true);
+      }
+    },
+  );
 });

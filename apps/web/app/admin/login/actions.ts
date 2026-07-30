@@ -16,7 +16,8 @@
  *   3. supabase.auth.signInWithPassword.
  *   4. Si éxito: verificar AdminUser activo. Si no → signOut + error
  *      genérico.
- *   5. Si admin verificado: redirect /admin/dashboard.
+ *   5. Si admin verificado: redirect a su home (adminHomePath — dashboard
+ *      para roles operativos, /admin/contenido para CMS_EDITOR).
  */
 
 "use server";
@@ -25,6 +26,7 @@ import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { ADMIN_ACTIVITY_COOKIE, adminActivityCookieOptions } from "@/lib/admin-activity";
+import { adminHomePath } from "@/lib/admin-rbac";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { rateLimit } from "@/lib/rate-limit";
@@ -132,5 +134,7 @@ export async function adminLoginAction(
   // (cierra el hueco "marca ausente = primera visita"). Mismo mecanismo que las
   // cookies sb-*: se propaga a la request de destino tras el redirect.
   (await cookies()).set(ADMIN_ACTIVITY_COOKIE, String(Date.now()), adminActivityCookieOptions());
-  redirect("/admin/dashboard");
+  // Destino post-login = home del rol: CMS_EDITOR no tiene acceso a /admin/dashboard
+  // (solo contenido), así que aterriza en /admin/contenido (ver adminHomePath).
+  redirect(adminHomePath(admin.role));
 }

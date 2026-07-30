@@ -7,6 +7,7 @@ import "server-only";
 import { redirect } from "next/navigation";
 import type { AdminRole } from "@lucams/db";
 import { getCurrentAdmin } from "@/lib/auth";
+import { adminHomePath } from "@/lib/admin-rbac";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 /**
@@ -20,7 +21,8 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
  *      acciones — que Next expone como endpoints POST invocables directo. Sin esto,
  *      una contraseña robada bastaba para invocar cualquier mutación (reembolsos,
  *      auto-promoción a SUPERADMIN vía promoteAdminAction) saltándose el 2º factor.
- *   3. Rol permitido (si se pasan `roles`). Si no → /admin/dashboard?denied=1.
+ *   3. Rol permitido (si se pasan `roles`). Si no → home del rol con ?denied=1
+ *      (adminHomePath: dashboard para operativos, /admin/contenido para CMS_EDITOR).
  *
  * redirect() aborta la acción (lanza NEXT_REDIRECT), por eso DEBE invocarse al INICIO
  * de la acción, antes de cualquier try/catch que pudiera tragarse la excepción.
@@ -42,7 +44,9 @@ export async function requireAdminAction(
   }
 
   if (opts.roles && !opts.roles.includes(session.admin.role)) {
-    redirect("/admin/dashboard?denied=1");
+    // A SU home, no al dashboard fijo: CMS_EDITOR no tiene acceso a
+    // /admin/dashboard y caería en un loop de redirects (ver adminHomePath).
+    redirect(`${adminHomePath(session.admin.role)}?denied=1`);
   }
   return session;
 }

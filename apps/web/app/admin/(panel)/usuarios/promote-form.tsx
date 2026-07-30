@@ -50,6 +50,7 @@ export function PromoteForm() {
             <option value="SUPERADMIN">SUPERADMIN — control total</option>
             <option value="MANAGER">MANAGER — operación + contenido</option>
             <option value="FULFILLMENT">FULFILLMENT — solo pedidos + envíos</option>
+            <option value="CMS_EDITOR">CMS_EDITOR — solo contenido del sitio</option>
           </select>
           {state?.fieldErrors?.role && (
             <p className="mt-1 text-xs text-rose-600">{state.fieldErrors.role[0]}</p>

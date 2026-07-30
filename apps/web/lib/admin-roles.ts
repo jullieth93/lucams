@@ -4,12 +4,13 @@
  * Antes el sidebar y /admin/usuarios tenían diccionarios distintos y hasta con
  * valores de enum inexistentes (ADMIN/EDITOR/OPERATOR), así que el mismo rol se
  * veía con nombres diferentes según la pantalla. El enum real es
- * SUPERADMIN | MANAGER | FULFILLMENT (ver prisma `enum AdminRole`).
+ * SUPERADMIN | MANAGER | FULFILLMENT | CMS_EDITOR (ver prisma `enum AdminRole`).
  */
 export const ADMIN_ROLE_LABEL: Record<string, string> = {
   SUPERADMIN: "Administradora",
   MANAGER: "Gestora",
   FULFILLMENT: "Despachos",
+  CMS_EDITOR: "Editor de contenido",
 };
 
 export function adminRoleLabel(role: string): string {

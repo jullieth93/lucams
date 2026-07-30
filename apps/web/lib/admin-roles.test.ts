@@ -3,18 +3,19 @@ import { ADMIN_ROLE_LABEL, adminRoleLabel } from "./admin-roles";
 
 /**
  * Roles reales del enum Prisma `AdminRole` (packages/db/prisma/schema.prisma):
- *   SUPERADMIN | MANAGER | FULFILLMENT
+ *   SUPERADMIN | MANAGER | FULFILLMENT | CMS_EDITOR
  *
  * Si alguien agrega/renombra un valor del enum sin actualizar el diccionario de
  * labels, los tests de exhaustividad de abajo deben romper a propósito.
  */
-const ADMIN_ROLE_ENUM = ["SUPERADMIN", "MANAGER", "FULFILLMENT"] as const;
+const ADMIN_ROLE_ENUM = ["SUPERADMIN", "MANAGER", "FULFILLMENT", "CMS_EDITOR"] as const;
 
 describe("ADMIN_ROLE_LABEL (diccionario)", () => {
   it("mapea cada rol del enum a su label en español", () => {
     expect(ADMIN_ROLE_LABEL.SUPERADMIN).toBe("Administradora");
     expect(ADMIN_ROLE_LABEL.MANAGER).toBe("Gestora");
     expect(ADMIN_ROLE_LABEL.FULFILLMENT).toBe("Despachos");
+    expect(ADMIN_ROLE_LABEL.CMS_EDITOR).toBe("Editor de contenido");
   });
 
   it("cubre exactamente los valores del enum AdminRole — ni más ni menos", () => {
@@ -48,6 +49,7 @@ describe("adminRoleLabel — roles conocidos", () => {
     ["SUPERADMIN", "Administradora"],
     ["MANAGER", "Gestora"],
     ["FULFILLMENT", "Despachos"],
+    ["CMS_EDITOR", "Editor de contenido"],
   ])("traduce %s -> %s", (role, expected) => {
     expect(adminRoleLabel(role)).toBe(expected);
   });

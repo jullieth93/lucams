@@ -6,6 +6,8 @@
  *   - MANAGER:    catálogo (productos/inventario/categorías/ocasiones), pedidos,
  *                 reclamos, reseñas, clientes.
  *   - FULFILLMENT: solo pedidos + reclamos (cambio de estado, descarga PNG).
+ *   - CMS_EDITOR: solo contenido del sitio (CMS v2 en /admin/contenido y
+ *                 /admin/email-templates). NO entra a nada más.
  *   - Cualquier ruta NO listada → solo SUPERADMIN (deny-by-default).
  *
  * Hoy solo existe SUPERADMIN (Lucy), así que no la afecta — prepara el terreno
@@ -16,19 +18,25 @@ import type { AdminRole } from "@lucams/db";
 
 const ALL: AdminRole[] = ["SUPERADMIN", "MANAGER", "FULFILLMENT"];
 const CATALOG: AdminRole[] = ["SUPERADMIN", "MANAGER"];
+const CONTENT: AdminRole[] = ["SUPERADMIN", "CMS_EDITOR"];
 
 /**
  * Conjuntos de rol nombrados para declarar la autorización de cada Server Action
  * de forma uniforme (ADR-062 P0-1). Los consume `requireAdminAction` en el guard:
  *   - ALL         → pedidos, garantías, retractos (transiciones de estado).
+ *                   (Son los roles OPERATIVOS; CMS_EDITOR no está: no es "todos
+ *                   los roles del enum", es "todos los de operación".)
  *   - MANAGER_UP  → catálogo (productos/variantes/categorías/ocasiones/reseñas/
  *                   fichas/plantillas/galería), soporte, garantías.
- *   - SUPER       → finanzas, cupones, usuarios, contenido, redirects, seguridad,
+ *   - CONTENT     → contenido del sitio (CMS v2: páginas, ajustes globales y
+ *                   plantillas de correo).
+ *   - SUPER       → finanzas, cupones, usuarios, redirects, seguridad,
  *                   integraciones, observability, reembolsos.
  */
 export const ADMIN_ROLE_SETS = {
   ALL: ["SUPERADMIN", "MANAGER", "FULFILLMENT"] as const,
   MANAGER_UP: ["SUPERADMIN", "MANAGER"] as const,
+  CONTENT: ["SUPERADMIN", "CMS_EDITOR"] as const,
   SUPER: ["SUPERADMIN"] as const,
 } satisfies Record<string, readonly AdminRole[]>;
 
@@ -57,9 +65,14 @@ const ROUTE_ROLES: Array<{ prefix: string; roles: AdminRole[] }> = [
   { prefix: "/admin/ocasiones", roles: CATALOG },
   { prefix: "/admin/resenas", roles: CATALOG },
   { prefix: "/admin/clientes", roles: CATALOG },
-  // Resto (finanzas, cupones, usuarios, integraciones, contenido, auditoria,
+  // Contenido del sitio (CMS v2): "Páginas del sitio" (/admin/contenido, incluye
+  // /admin/contenido/paginas/global = "Ajustes del sitio") y "Plantillas de
+  // correo" (/admin/email-templates, redirect legacy a /admin/contenido/paginas/emails).
+  { prefix: "/admin/contenido", roles: CONTENT },
+  { prefix: "/admin/email-templates", roles: CONTENT },
+  // Resto (finanzas, cupones, usuarios, integraciones, auditoria,
   // seguridad, mayorista, materiales, costos, canales, bot, metricas,
-  // performance, redirects, email-templates) → SUPERADMIN únicamente.
+  // performance, redirects) → SUPERADMIN únicamente.
 ];
 
 /** ¿El rol puede acceder a esta ruta admin? */
@@ -77,6 +90,27 @@ export function canAccessAdminPath(role: AdminRole, pathname: string): boolean {
   }
   if (!best) return false; // no listada → solo SUPERADMIN
   return best.roles.includes(role);
+}
+
+/**
+ * Ruta "home" del panel para cada rol (Lucy 2026-07-30, rol CMS_EDITOR).
+ *
+ * CMS_EDITOR NO tiene acceso a /admin/dashboard (la matriz lo limita a
+ * contenido), así que el dashboard no puede ser su destino post-login ni su
+ * fallback de "acceso denegado" — sería un loop de redirects. Decisión (la más
+ * simple): la home es la PRIMERA ruta preferida a la que el rol tiene acceso
+ * según la misma matriz (dashboard → contenido). Para los roles operativos el
+ * comportamiento no cambia (dashboard); para CMS_EDITOR es /admin/contenido.
+ *
+ * La usan: la action de login (redirect post-login), el layout del panel
+ * (redirect por rol sin permiso) y requireAdminAction (idem en Server Actions).
+ */
+export function adminHomePath(role: AdminRole): string {
+  for (const path of ["/admin/dashboard", "/admin/contenido"]) {
+    if (canAccessAdminPath(role, path)) return path;
+  }
+  // Defensivo: un rol sin NINGUNA ruta accesible no debería estar en el panel.
+  return "/admin/login";
 }
 
 /**

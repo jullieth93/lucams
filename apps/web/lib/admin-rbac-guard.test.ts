@@ -79,6 +79,31 @@ describe("requireAdminAction", () => {
     );
   });
 
+  it("CMS_EDITOR con rol no permitido → redirige a SU home (/admin/contenido?denied=1, anti-loop)", async () => {
+    state.session = { admin: { id: "c1", role: "CMS_EDITOR" } };
+    state.aal = { currentLevel: "aal2", nextLevel: "aal2" };
+    await expectRedirect(
+      () => requireAdminAction({ roles: ADMIN_ROLE_SETS.SUPER }),
+      "/admin/contenido?denied=1",
+    );
+  });
+
+  it("CMS_EDITOR ejecuta actions de contenido (set CONTENT)", async () => {
+    state.session = { admin: { id: "c1", role: "CMS_EDITOR" } };
+    state.aal = { currentLevel: "aal2", nextLevel: "aal2" };
+    const s = await requireAdminAction({ roles: ADMIN_ROLE_SETS.CONTENT });
+    expect(s.admin.id).toBe("c1");
+  });
+
+  it("MANAGER NO ejecuta actions de contenido (set CONTENT) → su home es el dashboard", async () => {
+    state.session = { admin: { id: "m1", role: "MANAGER" } };
+    state.aal = { currentLevel: "aal2", nextLevel: "aal2" };
+    await expectRedirect(
+      () => requireAdminAction({ roles: ADMIN_ROLE_SETS.CONTENT }),
+      "/admin/dashboard?denied=1",
+    );
+  });
+
   it("sin MFA inscrito (nextLevel aal1) → no bloquea (el candado solo aplica con 2 pasos activos)", async () => {
     state.session = { admin: { id: "a1", role: "SUPERADMIN" } };
     state.aal = { currentLevel: "aal1", nextLevel: "aal1" };

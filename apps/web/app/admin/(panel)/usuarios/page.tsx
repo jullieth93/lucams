@@ -56,10 +56,11 @@ const STATUS_LABEL: Record<(typeof STATUS_OPTIONS)[number], string> = {
   all: "Todos",
 };
 
-const ROLE_TONE: Record<string, "purple" | "blue" | "amber"> = {
+const ROLE_TONE: Record<string, "purple" | "blue" | "amber" | "emerald"> = {
   SUPERADMIN: "purple",
   MANAGER: "blue",
   FULFILLMENT: "amber",
+  CMS_EDITOR: "emerald",
 };
 // Diccionario único compartido (lib/admin-roles) — consistente con el sidebar.
 const ROLE_LABEL = ADMIN_ROLE_LABEL;
@@ -120,8 +121,8 @@ export default async function AdminUsuariosPage({ searchParams }: { searchParams
     : "active";
   const roleFilter = pickString(sp, "role");
   const role =
-    roleFilter && ["SUPERADMIN", "MANAGER", "FULFILLMENT"].includes(roleFilter)
-      ? (roleFilter as "SUPERADMIN" | "MANAGER" | "FULFILLMENT")
+    roleFilter && ["SUPERADMIN", "MANAGER", "FULFILLMENT", "CMS_EDITOR"].includes(roleFilter)
+      ? (roleFilter as "SUPERADMIN" | "MANAGER" | "FULFILLMENT" | "CMS_EDITOR")
       : undefined;
   const sortRaw = pickString(sp, "sort");
   const sort = (["recent", "email", "role"] as const).includes(sortRaw as "recent")
@@ -172,7 +173,8 @@ export default async function AdminUsuariosPage({ searchParams }: { searchParams
           </Link>{" "}
           y luego usa el form de abajo para promoverla. Roles: <strong>Superadmin</strong> (control
           total), <strong>Manager</strong> (operación + contenido), <strong>Fulfillment</strong>{" "}
-          (solo pedidos + envíos).
+          (solo pedidos + envíos) y <strong>Editor de contenido</strong> (solo páginas y textos del
+          sitio).
         </AdminNotice>
 
         {sp.promoted === "1" && (
@@ -250,6 +252,7 @@ export default async function AdminUsuariosPage({ searchParams }: { searchParams
               <option value="SUPERADMIN">Superadmin</option>
               <option value="MANAGER">Manager</option>
               <option value="FULFILLMENT">Fulfillment</option>
+              <option value="CMS_EDITOR">Editor de contenido</option>
             </select>
           </div>
           <div className="flex items-end gap-2 sm:col-span-1">
@@ -331,6 +334,7 @@ export default async function AdminUsuariosPage({ searchParams }: { searchParams
                               <option value="SUPERADMIN">Superadmin</option>
                               <option value="MANAGER">Manager</option>
                               <option value="FULFILLMENT">Fulfillment</option>
+                              <option value="CMS_EDITOR">Editor de contenido</option>
                             </select>
                             <button
                               type="submit"

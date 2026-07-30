@@ -14,7 +14,7 @@ import {
 } from "@/features/admin-users/service";
 import { logger } from "@/lib/logger";
 
-const ROLES: readonly AdminRole[] = ["SUPERADMIN", "MANAGER", "FULFILLMENT"];
+const ROLES: readonly AdminRole[] = ["SUPERADMIN", "MANAGER", "FULFILLMENT", "CMS_EDITOR"];
 
 export type PromoteAdminState = {
   error?: string;

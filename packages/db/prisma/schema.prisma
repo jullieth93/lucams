@@ -34,6 +34,7 @@ enum AdminRole {
   SUPERADMIN
   MANAGER
   FULFILLMENT
+  CMS_EDITOR // puede editar contenido del sitio, nada más
 }
 
 enum OrderStatus {

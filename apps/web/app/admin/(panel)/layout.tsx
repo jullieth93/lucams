@@ -14,7 +14,7 @@ import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 import { AdminShell } from "@/components/admin-shell";
 import { getCurrentAdmin } from "@/lib/auth";
-import { canAccessAdminPath } from "@/lib/admin-rbac";
+import { canAccessAdminPath, adminHomePath } from "@/lib/admin-rbac";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 // Todo el panel admin es SIEMPRE dinámico: exige sesión + datos vivos de la BD, nunca debe
@@ -37,10 +37,12 @@ export default async function AdminPanelLayout({ children }: { children: ReactNo
 
   // Guard RBAC server-side (auditoría 2026-07-13): la matriz ruta→rol se ENFORCEA aquí,
   // no solo en el menú (que es UX, no seguridad). El pathname viene del proxy (x-pathname,
-  // autoritativo). Un rol sin permiso para la ruta se redirige a su dashboard.
+  // autoritativo). Un rol sin permiso para la ruta se redirige a SU home (adminHomePath):
+  // para CMS_EDITOR es /admin/contenido — mandarlo al dashboard sería un loop de redirects
+  // porque tampoco tiene acceso ahí.
   const pathname = (await headers()).get("x-pathname") ?? "";
   if (pathname.startsWith("/admin") && !canAccessAdminPath(session.admin.role, pathname)) {
-    redirect("/admin/dashboard?denied=1");
+    redirect(`${adminHomePath(session.admin.role)}?denied=1`);
   }
 
   return (
