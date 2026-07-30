@@ -64,22 +64,6 @@ export type SiteSettingData = {
 };
 
 /**
- * SEO por página estática (Ruta A, 2026-07-29): lee el bloque `seo.page.<nombre>`
- * (title = meta title, body = meta description) con fallback al valor hardcoded.
- * Lucy los edita desde /admin/contenido/bloques sin tocar código.
- */
-export async function getPageSeo(
-  key: string,
-  fallback: { title: string; description: string },
-): Promise<{ title: string; description: string }> {
-  const block = await getCmsBlock(key);
-  return {
-    title: block?.title?.trim() || fallback.title,
-    description: block?.body?.trim() || fallback.description,
-  };
-}
-
-/**
  * Claves que NUNCA deben salir por endpoints públicos (/api/cms/settings):
  * - PICKUP_* — dirección/teléfono/contacto de recogida de Aveonline; si el
  *   negocio opera desde casa, es la dirección exacta de la casa (riesgo

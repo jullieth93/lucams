@@ -13,6 +13,7 @@ import ReactMarkdown from "react-markdown";
 import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
 import { getCmsBlock } from "@/lib/cms";
+import { resolveCmsTokens } from "@/lib/cms-tokens";
 
 export async function CmsMarkdown({
   blockKey,
@@ -24,7 +25,7 @@ export async function CmsMarkdown({
   className?: string;
 }) {
   const block = await getCmsBlock(blockKey);
-  const body = block?.body ?? fallback;
+  const body = await resolveCmsTokens(block?.body ?? fallback);
 
   return (
     <div className={"cms-markdown " + className}>

@@ -6,8 +6,9 @@
  */
 
 import { getCmsBlock } from "@/lib/cms";
+import { resolveCmsTokens } from "@/lib/cms-tokens";
 
 export async function CmsText({ blockKey, fallback }: { blockKey: string; fallback: string }) {
   const block = await getCmsBlock(blockKey);
-  return <>{block?.body ?? fallback}</>;
+  return <>{await resolveCmsTokens(block?.body ?? fallback)}</>;
 }
