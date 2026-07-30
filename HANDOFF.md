@@ -70,13 +70,23 @@ Fuera de alcance (backlog documentado): copy del `/estudio` (componentes client 
 2. Smoke manual en el admin: editar un texto de Inicio → publicar → ver el cambio en `/`.
 3. En una iteración posterior (con verificación en producción encima): drop de `CmsBlock`/`CmsBlockVersion`/`SiteSetting` y borrado de `seed-cms*.mjs` (ya marcados DEPRECATED).
 
-### Propuestas de commits (NO ejecutados — git mutations requieren tu confirmación)
+### Commits EJECUTADOS (push `dddfc26..6cdba03` a `develop`)
 
-1. `feat(db): modelo CMS v2 (CmsPage/CmsSection/CmsField/CmsFieldVersion) + RLS + migración de datos con paridad`
-2. `refactor(cms): lib/cms.ts + features/cms sobre modelo v2 (API pública idéntica)`
-3. `feat(admin): contenido por páginas — índice, editor inline, editor de campo con versiones`
-4. `feat(cms): cerrar brechas de contenido — WA fuente única, redes sociales, home, footer, header, contacto, ayuda, cotización`
-5. `docs: HANDOFF CMS v2 + OPERATIONS + seeds DEPRECATED`
+1. `782233e feat(db): modelo CMS v2 (CmsPage/CmsSection/CmsField/CmsFieldVersion) + RLS + migración de datos con paridad`
+2. `56b5d37 refactor(cms): lib/cms.ts + features/cms sobre modelo v2 (API pública idéntica)`
+3. `ff7d0f4 feat(admin): contenido por páginas — índice, editor inline y editor de campo con versiones`
+4. `e62561a feat(cms): cerrar brechas de contenido — WA fuente única, redes sociales, home, footer, header, contacto, cotización`
+5. `3fcad9c fix(ci): gitleaks allowlist falso positivo faq.* — CI rojo desde run 30499078411`
+6. `6cdba03 docs: HANDOFF CMS v2 + OPERATIONS apunta al nuevo índice de contenido`
+
+**Fix CI anexo (hallado al validar los runs rojos desde #598):** los push a develop
+fallaban desde 2026-07-29 23:18 en el job Gitleaks — la regla `generic-api-key`
+marcaba los slugs `faq.*` de `seed-cms-ruta-a.mjs` como secretos (falso positivo).
+Allowlist agregado en `.gitleaks.toml` (verificado local con gitleaks 8.30.1: el
+rango exacto de los runs fallidos escanea limpio). Además `lib/cms-tokens.test.ts`
+llegó sin formatear en un commit anterior y rompía el job Prettier — formateado en
+el commit docs de este bloque. CI del push: gitleaks ✓, typecheck+lint+build ✓,
+vitest ✓, E2E ✓, Lighthouse ✓.
 
 ---
 

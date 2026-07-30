@@ -57,7 +57,9 @@ describe("resolveCmsTokens", () => {
   });
 
   it("tokens desconocidos pasan intactos y texto sin tokens no toca settings", async () => {
-    expect(await resolveCmsTokens("cupón {{raro}} sin resolver")).toBe("cupón {{raro}} sin resolver");
+    expect(await resolveCmsTokens("cupón {{raro}} sin resolver")).toBe(
+      "cupón {{raro}} sin resolver",
+    );
     const { getSettingValue } = await import("@/lib/cms");
     vi.mocked(getSettingValue).mockClear();
     await resolveCmsTokens("texto sin tokens");
