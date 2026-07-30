@@ -138,10 +138,177 @@ const EMAIL_BLOCKS = [
   },
 ];
 
+// Fase 5 — completion (2026-07-29): todo texto visible del sitio queda editable
+// en /admin/contenido/bloques (Lucy: "que todo esto se administre desde el
+// Admin"). Son los blockKeys que antes solo tenían fallback en código.
+// LEGAL queda fuera A PROPÓSITO (textos de cumplimiento, no edición casual).
+const COMPLETION = [
+  // HOME
+  {
+    key: "home.hero.title-prefix",
+    category: "HOME",
+    title: "Hero — título (parte 1)",
+    body: "Tus recuerdos, ",
+  },
+  {
+    key: "home.hero.title-accent",
+    category: "HOME",
+    title: "Hero — título (acento rosa)",
+    body: "en imán",
+  },
+  {
+    key: "home.hero.chip-studio",
+    category: "HOME",
+    title: "Hero — chip Estudio",
+    body: "Estudio de diseño en vivo ✨",
+  },
+  {
+    key: "home.hero.chip-cod",
+    category: "HOME",
+    title: "Hero — chip contraentrega",
+    body: "Pago contraentrega disponible",
+  },
+  {
+    key: "home.hero.chip-eta",
+    category: "HOME",
+    title: "Hero — chip entrega (usa tokens {{total}}/{{fab}}/{{entrega}})",
+    body: "Entrega en máx. {{total}} días hábiles ({{fab}} de fabricación + {{entrega}} de entrega)",
+  },
+  {
+    key: "home.featured.empty",
+    category: "HOME",
+    title: "Destacados — texto vacío",
+    body: "Cargando destacados pronto ✨",
+  },
+  {
+    key: "pdp.related.heading",
+    category: "HOME",
+    title: "PDP — título relacionados",
+    body: "También te puede gustar",
+  },
+  // FOOTER
+  {
+    key: "footer.column.info",
+    category: "FOOTER",
+    title: "Footer — columna Información",
+    body: "Información",
+  },
+  {
+    key: "footer.column.shop",
+    category: "FOOTER",
+    title: "Footer — columna Tienda",
+    body: "Tienda",
+  },
+  {
+    key: "footer.column.support",
+    category: "FOOTER",
+    title: "Footer — columna Atención cliente",
+    body: "Atención cliente",
+  },
+  {
+    key: "footer.shop.cta-all",
+    category: "FOOTER",
+    title: "Footer — link Ver todo",
+    body: "Ver todo →",
+  },
+  // SUPPORT (contacto / ayuda / mi-cuenta / status)
+  {
+    key: "support.contacto.heading",
+    category: "SUPPORT",
+    title: "Contacto — título",
+    body: "Hablemos",
+  },
+  {
+    key: "support.contacto.subtext",
+    category: "SUPPORT",
+    title: "Contacto — subtexto",
+    body: "¿Una idea, una duda, un pedido especial? Escríbenos por el medio que prefieras. Te respondemos en menos de 24h hábiles.",
+  },
+  {
+    key: "support.contacto.form-heading",
+    category: "SUPPORT",
+    title: "Contacto — título form",
+    body: "Escríbenos por aquí",
+  },
+  {
+    key: "support.contacto.form-subtext",
+    category: "SUPPORT",
+    title: "Contacto — subtexto form",
+    body: "Te respondemos al email que nos dejes.",
+  },
+  {
+    key: "support.contacto.wa-copy",
+    category: "SUPPORT",
+    title: "Contacto — copy WhatsApp",
+    body: "El canal más rápido. Te respondemos en minutos durante horario hábil.",
+  },
+  {
+    key: "support.help.heading",
+    category: "SUPPORT",
+    title: "Ayuda — título",
+    body: "Centro de ayuda",
+  },
+  {
+    key: "support.help.subtext",
+    category: "SUPPORT",
+    title: "Ayuda — subtexto",
+    body: "¿Tienes una pregunta? Acá las respuestas a las dudas más comunes. Si no encuentras lo que buscas, escríbenos.",
+  },
+  {
+    key: "support.help.cta.heading",
+    category: "SUPPORT",
+    title: "Ayuda — CTA título",
+    body: "¿No resolvimos tu duda?",
+  },
+  {
+    key: "support.help.cta.subtext",
+    category: "SUPPORT",
+    title: "Ayuda — CTA subtexto",
+    body: "Escríbenos por WhatsApp o email y te respondemos en menos de 24h.",
+  },
+  {
+    key: "account.orders.heading",
+    category: "SUPPORT",
+    title: "Mi cuenta — título pedidos",
+    body: "Mis pedidos",
+  },
+  {
+    key: "account.orders.empty.title",
+    category: "SUPPORT",
+    title: "Mi cuenta — vacío título",
+    body: "Aún no has hecho un pedido",
+  },
+  {
+    key: "account.orders.empty.subtext",
+    category: "SUPPORT",
+    title: "Mi cuenta — vacío subtexto",
+    body: "Cuando hagas tu primer pedido aparecerá aquí con todos los detalles ✨",
+  },
+  {
+    key: "status.heading",
+    category: "SUPPORT",
+    title: "Status — título",
+    body: "Estado de Lucams_shop",
+  },
+  // MAINTENANCE
+  {
+    key: "maintenance.title",
+    category: "MAINTENANCE",
+    title: "Mantenimiento — título",
+    body: "Estamos puliendo unos detalles ✨",
+  },
+  {
+    key: "maintenance.description",
+    category: "MAINTENANCE",
+    title: "Mantenimiento — descripción",
+    body: "Volvemos en unas horas con todo brillando. Mientras tanto, escríbenos por WhatsApp si necesitas ayuda urgente.",
+  },
+];
+
 let created = 0;
 let skipped = 0;
 
-for (const b of [...FAQS, ...CHECKOUT_MICROCOPY, ...SEO_PAGES, ...EMAIL_BLOCKS]) {
+for (const b of [...FAQS, ...CHECKOUT_MICROCOPY, ...SEO_PAGES, ...EMAIL_BLOCKS, ...COMPLETION]) {
   const existing = await prisma.cmsBlock.findUnique({ where: { key: b.key } });
   if (existing) {
     skipped++;

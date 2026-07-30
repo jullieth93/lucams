@@ -23,7 +23,6 @@ import {
   DollarSign,
   Wallet,
   ShieldBan,
-  BrainCircuit,
   BarChart2,
   Settings,
   MessageSquare,
@@ -287,10 +286,10 @@ export const ADMIN_NAV: NavGroup[] = [
     ],
   },
   {
-    title: "IA y Conocimiento",
-    icon: BrainCircuit,
+    title: "Contenido",
+    icon: FileText,
     items: [
-      { label: "Base de conocimiento", href: "/admin/contenido/bloques", icon: BookOpen },
+      { label: "Textos del sitio", href: "/admin/contenido/bloques", icon: BookOpen },
       {
         label: "Bot WhatsApp",
         href: "/admin/bot",
@@ -405,7 +404,7 @@ export function getAdminNav(): NavGroup[] {
         items: group.items.filter((it) => it.label !== "Mercado Libre"),
       };
     }
-    if (group.title === "IA y Conocimiento" && group.items) {
+    if (group.title === "Contenido" && group.items) {
       return {
         ...group,
         items: group.items.filter((it) => it.label !== "Bot WhatsApp"),

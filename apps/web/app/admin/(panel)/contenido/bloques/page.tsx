@@ -1,23 +1,18 @@
 /*
- * Admin > Contenido > Bloques — Lista todos los bloques editables (brand 2026-05-18).
+ * Admin > Contenido > Bloques — textos editables del sitio.
  *
- * Agrupados por categoría con badges de estado:
- *  🟢 Publicado · 🟡 Borrador
+ * Presentación reformulada (Lucy 2026-07-29): la lista vive en
+ * <BlocksBrowser> (cliente) con buscador + agrupación por LUGAR del sitio
+ * en vez de categoría técnica. El server solo trae los datos.
  */
 
 import type { Metadata } from "next";
-import Link from "next/link";
 import { redirect } from "next/navigation";
-import { FileText, Plus, ChevronRight, RefreshCw } from "lucide-react";
+import { FileText, Plus, RefreshCw } from "lucide-react";
 import {
   AdminPage,
   AdminPageHeader,
   AdminPageBody,
-  AdminTable,
-  AdminTableHead,
-  AdminTableBody,
-  AdminTableRow,
-  AdminBadge,
   AdminEmpty,
   AdminButton,
   AdminNotice,
@@ -25,22 +20,10 @@ import {
 import { getCurrentAdmin } from "@/lib/auth";
 import { listCmsBlocks } from "@/features/cms/service";
 import { refreshCmsCacheAction } from "../actions";
+import { BlocksBrowser } from "./blocks-browser";
 
 export const metadata: Metadata = {
-  title: "Base de conocimiento",
-};
-
-const CATEGORY_LABELS: Record<string, string> = {
-  LEGAL: "📋 Textos legales",
-  HOME: "🏠 Página de inicio",
-  FOOTER: "👇 Pie de página",
-  EMPTY_STATE: "🦝 Mensajes cuando no hay contenido",
-  COOKIES: "🍪 Banner de cookies",
-  FAQ: "❓ Preguntas frecuentes",
-  SUPPORT: "💬 Soporte y contacto",
-  MAINTENANCE: "🛠️ Página de mantenimiento",
-  EMAIL: "📧 Correos automáticos",
-  MARKETING: "📢 Banners promocionales",
+  title: "Textos del sitio",
 };
 
 type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
@@ -55,31 +38,29 @@ export default async function BloquesListPage({ searchParams }: { searchParams: 
   const cacheRefreshed = sp.cache === "refreshed";
 
   const blocks = await listCmsBlocks({});
-
-  const grouped = blocks.reduce(
-    (acc, b) => {
-      (acc[b.category] ??= []).push(b);
-      return acc;
-    },
-    {} as Record<string, typeof blocks>,
-  );
-
-  const categories = Object.keys(grouped).sort();
+  const rows = blocks.map((b) => ({
+    id: b.id,
+    key: b.key,
+    title: b.title,
+    description: b.description,
+    isPublished: b.isPublished,
+    version: b.publishedVersion?.version ?? null,
+  }));
 
   return (
     <AdminPage>
       <AdminPageHeader
         icon={<FileText className="h-5 w-5" />}
-        title="Base de conocimiento"
+        title="Textos del sitio"
         subtitle={
           blocks.length === 0
             ? "Todavía no hay bloques de contenido."
-            : `${blocks.length} bloque${blocks.length === 1 ? "" : "s"} de contenido editables — alimentan tu tienda, los correos y el bot futuro.`
+            : `${blocks.length} textos editables de tu tienda y correos — búscalos como los ves en el sitio y edítalos sin tocar código.`
         }
         breadcrumbs={[
           { label: "Admin", href: "/admin/dashboard" },
-          { label: "IA y Conocimiento" },
-          { label: "Bloques" },
+          { label: "Contenido" },
+          { label: "Textos del sitio" },
         ]}
         actions={
           <div className="flex flex-wrap items-center gap-2">
@@ -130,68 +111,7 @@ export default async function BloquesListPage({ searchParams }: { searchParams: 
             }
           />
         ) : (
-          <div className="space-y-6">
-            {categories.map((cat) => (
-              <section key={cat}>
-                <h2 className="text-brand-purple-dark mb-2.5 flex items-center gap-2 text-sm font-bold">
-                  <span>{CATEGORY_LABELS[cat] ?? cat}</span>
-                  <span className="text-brand-muted text-xs font-normal">
-                    ({grouped[cat].length})
-                  </span>
-                </h2>
-                <AdminTable>
-                  <AdminTableHead>
-                    <tr>
-                      <th className="px-4 py-3 text-left font-semibold">Bloque</th>
-                      <th className="px-4 py-3 text-left font-semibold">Identificador</th>
-                      <th className="px-4 py-3 text-center font-semibold">Estado</th>
-                      <th className="px-4 py-3 text-center font-semibold">Versión</th>
-                      <th className="px-4 py-3" />
-                    </tr>
-                  </AdminTableHead>
-                  <AdminTableBody>
-                    {grouped[cat].map((b) => (
-                      <AdminTableRow key={b.id}>
-                        <td className="px-4 py-3">
-                          <Link
-                            href={`/admin/contenido/bloques/${b.id}`}
-                            className="text-brand-purple-dark hover:text-brand-purple font-medium"
-                          >
-                            {b.title ?? b.key}
-                          </Link>
-                          {b.description && (
-                            <p className="text-brand-muted line-clamp-1 text-xs">{b.description}</p>
-                          )}
-                        </td>
-                        <td className="text-brand-purple-dark/75 px-4 py-3 font-mono text-xs">
-                          {b.key}
-                        </td>
-                        <td className="px-4 py-3 text-center">
-                          {b.isPublished ? (
-                            <AdminBadge tone="emerald">🟢 Publicado</AdminBadge>
-                          ) : (
-                            <AdminBadge tone="amber">🟡 Borrador</AdminBadge>
-                          )}
-                        </td>
-                        <td className="text-brand-muted px-4 py-3 text-center text-xs tabular-nums">
-                          {b.publishedVersion?.version ? `v${b.publishedVersion.version}` : "—"}
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          <Link
-                            href={`/admin/contenido/bloques/${b.id}`}
-                            className="text-brand-purple-dark hover:text-brand-purple inline-flex items-center gap-1 text-xs font-medium"
-                          >
-                            Editar
-                            <ChevronRight className="h-3.5 w-3.5" />
-                          </Link>
-                        </td>
-                      </AdminTableRow>
-                    ))}
-                  </AdminTableBody>
-                </AdminTable>
-              </section>
-            ))}
-          </div>
+          <BlocksBrowser blocks={rows} />
         )}
       </AdminPageBody>
     </AdminPage>

@@ -7,7 +7,7 @@
  *
  * FOCO:
  *   - En AMBOS modos se ocultan los módulos futuros descopeados:
- *     "Mercado Libre" dentro de Canales y "Bot WhatsApp" dentro de IA y Conocimiento.
+ *     "Mercado Libre" dentro de Canales y "Bot WhatsApp" dentro de Contenido.
  *   - modo full: todo lo demás visible (Finanzas, Integraciones, Precios al por mayor).
  *   - modo catalog: además oculta el grupo "Finanzas" completo, el item
  *     "Integraciones" de "Configuración" (no hay pagos ni envíos integrados)
@@ -113,7 +113,7 @@ describe("getAdminNav", () => {
     expect(mod.ADMIN_NAV.some((g) => g.title === "Finanzas")).toBe(true);
     const canales = mod.ADMIN_NAV.find((g) => g.title === "Canales");
     expect(canales?.items?.some((it) => it.label === "Mercado Libre")).toBe(true);
-    const ia = mod.ADMIN_NAV.find((g) => g.title === "IA y Conocimiento");
+    const ia = mod.ADMIN_NAV.find((g) => g.title === "Contenido");
     expect(ia?.items?.some((it) => it.label === "Bot WhatsApp")).toBe(true);
   });
 
