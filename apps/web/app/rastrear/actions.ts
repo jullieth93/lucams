@@ -17,6 +17,14 @@ import { rateLimit } from "@/lib/rate-limit";
 import { ipKey } from "@/lib/rate-limit-keys";
 import { getClientIp } from "@/lib/client-ip";
 import { logger } from "@/lib/logger";
+import { getCmsBlock } from "@/lib/cms";
+
+// Mensajes de error visibles: editables desde /admin/contenido (página
+// "Rastrear pedido"). El fallback es el texto exacto anterior (REGLA DE ORO).
+async function cmsErrorText(key: string, fallback: string): Promise<string> {
+  const block = await getCmsBlock(key);
+  return block?.body ?? fallback;
+}
 
 const Schema = z.object({
   number: z.string().trim().min(3, "Ingresa el número de tu pedido.").max(40),
@@ -34,14 +42,21 @@ export async function rastrearAction(
     email: formData.get("email"),
   });
   if (!parsed.success) {
-    return { error: "Revisa el número de pedido y el correo." };
+    return {
+      error: await cmsErrorText("track.error.invalid", "Revisa el número de pedido y el correo."),
+    };
   }
 
   // Anti-abuso: 10 intentos por IP/hora (evita fuerza bruta de números + correos).
   const ip = getClientIp(await headers());
   const { allowed } = await rateLimit(ipKey("rastrear", ip), 10, 60 * 60);
   if (!allowed) {
-    return { error: "Demasiados intentos. Espera un momento e inténtalo de nuevo." };
+    return {
+      error: await cmsErrorText(
+        "track.error.rate-limit",
+        "Demasiados intentos. Espera un momento e inténtalo de nuevo.",
+      ),
+    };
   }
 
   // El número se guarda en mayúsculas (LCM-2026-0001); el correo se compara sin distinguir caso.
@@ -59,8 +74,10 @@ export async function rastrearAction(
   if (!order?.publicAccessToken) {
     logger.info({ event: "rastrear.miss", ip });
     return {
-      error:
+      error: await cmsErrorText(
+        "track.error.not-found",
         "No encontramos un pedido con ese número y correo. Revísalos tal cual aparecen en tu correo de confirmación.",
+      ),
     };
   }
 

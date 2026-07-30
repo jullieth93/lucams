@@ -38,11 +38,17 @@ import { processPaidOrder } from "@/features/orders/saga";
 import { prisma } from "@/lib/db";
 import { formatCOP } from "@/lib/format";
 import { getCurrentCustomer } from "@/lib/auth";
+import { getCmsBlock } from "@/lib/cms";
+import { CmsText } from "@/components/cms/cms-text";
 
-export const metadata: Metadata = {
-  title: "¡Gracias! · Checkout",
-  robots: { index: false, follow: false },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  // noindex: la URL trae el id de la transacción de Wompi.
+  const block = await getCmsBlock("checkout.gracias.meta-title");
+  return {
+    title: block?.body ?? "¡Gracias! · Checkout",
+    robots: { index: false, follow: false },
+  };
+}
 
 // Esta page corre el FALLBACK processPaidOrder (getTransaction ~16s + createShipment
 // 20s no-idempotente) cuando el webhook se demoró. Igual que el webhook, la función
@@ -89,7 +95,14 @@ export default async function CheckoutGraciasPage({
       txId,
       err: err instanceof Error ? err.message : String(err),
     });
-    return <FailedPage reason="No pudimos confirmar tu pago. Si te cobraron, contáctanos." />;
+    const unknownReasonBlock = await getCmsBlock("checkout.gracias.failed.unknown-reason");
+    return (
+      <FailedPage
+        reason={
+          unknownReasonBlock?.body ?? "No pudimos confirmar tu pago. Si te cobraron, contáctanos."
+        }
+      />
+    );
   }
 
   // Lookup Order por reference (= Order.number)
@@ -259,7 +272,6 @@ function ApprovedPage({
     isGuest && order?.publicAccessToken
       ? `/pedido/${order.publicAccessToken}`
       : "/mi-cuenta/pedidos";
-  const orderCtaLabel = isGuest && order?.publicAccessToken ? "Ver mi pedido" : "Ver mis pedidos";
   const addr = order?.shippingAddress as
     { fullName?: string; addressLine1?: string; city?: string; department?: string } | undefined;
 
@@ -270,16 +282,23 @@ function ApprovedPage({
         <CheckCircle2 className="h-12 w-12 text-emerald-600" />
       </div>
       <h1 className="font-display text-brand-purple-dark mt-6 text-3xl font-bold sm:text-4xl">
-        ¡Listo, tu pedido está confirmado! ✨
+        <CmsText
+          blockKey="checkout.gracias.approved.title"
+          fallback="¡Listo, tu pedido está confirmado! ✨"
+        />
       </h1>
       <p className="text-brand-purple-dark/75 mx-auto mt-3 max-w-md text-sm sm:text-base">
-        Tu pago fue aprobado. Te enviamos la confirmación por email y ya empezamos a preparar tu
-        pedido.
+        <CmsText
+          blockKey="checkout.gracias.approved.body"
+          fallback="Tu pago fue aprobado. Te enviamos la confirmación por email y ya empezamos a preparar tu pedido."
+        />
       </p>
 
       <div className="from-brand-purple/10 to-brand-pink/10 mt-8 inline-flex items-center gap-2 rounded-full bg-gradient-to-r px-5 py-2.5">
         <LucamsLogo className="h-6 w-6" />
-        <span className="text-brand-purple-dark text-sm font-medium">Pedido</span>
+        <span className="text-brand-purple-dark text-sm font-medium">
+          <CmsText blockKey="checkout.gracias.order-label" fallback="Pedido" />
+        </span>
         <code className="text-brand-purple-dark rounded bg-white/60 px-2 py-0.5 font-mono text-sm font-bold">
           {order?.number ?? "—"}
         </code>
@@ -289,7 +308,9 @@ function ApprovedPage({
         snapshot autocontenido (sobrevive aunque el diseño original se borre luego). */}
       {order?.items && order.items.length > 0 && (
         <div className="mt-7">
-          <p className="text-brand-muted mb-2 text-xs font-medium">Esto es lo que pediste</p>
+          <p className="text-brand-muted mb-2 text-xs font-medium">
+            <CmsText blockKey="checkout.gracias.items-heading" fallback="Esto es lo que pediste" />
+          </p>
           <div className="flex flex-wrap items-center justify-center gap-2">
             {order.items.map((it) => {
               const img =
@@ -322,7 +343,7 @@ function ApprovedPage({
                   )}
                   {personalized && (
                     <span className="bg-brand-purple/90 absolute inset-x-0 bottom-0 text-center text-[8px] font-bold tracking-wide text-white">
-                      Tu diseño
+                      <CmsText blockKey="checkout.gracias.custom-badge" fallback="Tu diseño" />
                     </span>
                   )}
                 </div>
@@ -333,11 +354,19 @@ function ApprovedPage({
       )}
 
       <div className="mx-auto mt-8 max-w-md space-y-3 text-left">
-        <DetailRow icon={<Mail className="h-4 w-4" />} label="Confirmación enviada a">
+        <DetailRow
+          icon={<Mail className="h-4 w-4" />}
+          label={
+            <CmsText blockKey="checkout.gracias.email-label" fallback="Confirmación enviada a" />
+          }
+        >
           {order?.email ?? "—"}
         </DetailRow>
         {addr && (
-          <DetailRow icon={<MapPin className="h-4 w-4" />} label="Enviamos a">
+          <DetailRow
+            icon={<MapPin className="h-4 w-4" />}
+            label={<CmsText blockKey="checkout.gracias.address-label" fallback="Enviamos a" />}
+          >
             <span className="block">{addr.fullName}</span>
             <span className="text-brand-muted block text-xs">
               {addr.addressLine1}
@@ -347,7 +376,10 @@ function ApprovedPage({
           </DetailRow>
         )}
         {order?.shippingCarrier && (
-          <DetailRow icon={<Package className="h-4 w-4" />} label="Transportadora">
+          <DetailRow
+            icon={<Package className="h-4 w-4" />}
+            label={<CmsText blockKey="checkout.gracias.carrier-label" fallback="Transportadora" />}
+          >
             {order.shippingCarrier
               .split("-")
               .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
@@ -356,14 +388,15 @@ function ApprovedPage({
         )}
         <DetailRow
           icon={<CheckCircle2 className="h-4 w-4 text-emerald-600" />}
-          label="Total pagado"
+          label={<CmsText blockKey="checkout.gracias.total-label" fallback="Total pagado" />}
         >
           <strong className="text-brand-purple-dark">{formatCOP(order?.total ?? 0)}</strong>
         </DetailRow>
       </div>
 
       <div className="text-brand-muted mt-8 text-xs">
-        Comprobante Wompi: <code className="font-mono">{txId.slice(0, 16)}…</code>
+        <CmsText blockKey="checkout.gracias.receipt-label" fallback="Comprobante Wompi" />:{" "}
+        <code className="font-mono">{txId.slice(0, 16)}…</code>
       </div>
 
       <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
@@ -373,11 +406,17 @@ function ApprovedPage({
             variant="outline"
             className="border-brand-purple/30 text-brand-purple-dark"
           >
-            Seguir comprando
+            <CmsText blockKey="checkout.gracias.keep-shopping-cta" fallback="Seguir comprando" />
           </Button>
         </Link>
         <Button asChild size="lg" className="bg-gradient-brand text-white hover:brightness-110">
-          <Link href={orderUrl}>{orderCtaLabel}</Link>
+          <Link href={orderUrl}>
+            {isGuest && order?.publicAccessToken ? (
+              <CmsText blockKey="checkout.gracias.order-cta-guest" fallback="Ver mi pedido" />
+            ) : (
+              <CmsText blockKey="checkout.gracias.order-cta-account" fallback="Ver mis pedidos" />
+            )}
+          </Link>
         </Button>
       </div>
     </div>
@@ -391,19 +430,25 @@ function PendingPage({ orderNumber, txId }: { orderNumber: string; txId: string 
         <Clock className="h-12 w-12 text-amber-600" />
       </div>
       <h1 className="font-display text-brand-purple-dark mt-6 text-3xl font-bold sm:text-4xl">
-        Estamos verificando tu pago ⏳
+        <CmsText
+          blockKey="checkout.gracias.pending.title"
+          fallback="Estamos verificando tu pago ⏳"
+        />
       </h1>
       <p className="text-brand-purple-dark/75 mx-auto mt-3 max-w-md text-sm sm:text-base">
-        Algunos métodos (PSE / transferencia) tardan unos minutos en confirmarse. Te enviamos un
-        email cuando esté todo OK.
+        <CmsText
+          blockKey="checkout.gracias.pending.body"
+          fallback="Algunos métodos (PSE / transferencia) tardan unos minutos en confirmarse. Te enviamos un email cuando esté todo OK."
+        />
       </p>
       <p className="text-brand-muted mt-4 text-xs">
-        Pedido <code className="font-mono font-bold">{orderNumber}</code> · Wompi{" "}
+        <CmsText blockKey="checkout.gracias.order-label" fallback="Pedido" />{" "}
+        <code className="font-mono font-bold">{orderNumber}</code> · Wompi{" "}
         <code className="font-mono">{txId.slice(0, 16)}…</code>
       </p>
       <Link href="/" className="mt-8 inline-block">
         <Button size="lg" variant="outline" className="border-brand-purple/30">
-          Volver al inicio
+          <CmsText blockKey="checkout.gracias.home-cta" fallback="Volver al inicio" />
         </Button>
       </Link>
     </div>
@@ -424,15 +469,20 @@ function PaymentReceivedPage({ orderNumber, txId }: { orderNumber: string; txId:
         <Clock className="h-12 w-12 text-amber-600" />
       </div>
       <h1 className="font-display text-brand-purple-dark mt-6 text-3xl font-bold sm:text-4xl">
-        Recibimos tu pago, lo estamos confirmando ⏳
+        <CmsText
+          blockKey="checkout.gracias.received.title"
+          fallback="Recibimos tu pago, lo estamos confirmando ⏳"
+        />
       </h1>
       <p className="text-brand-purple-dark/75 mx-auto mt-3 max-w-md text-sm sm:text-base">
-        Tu pago fue aprobado y lo estamos verificando para preparar tu pedido. En cuanto esté todo
-        listo te llega un correo con los detalles. Si en unas horas no recibes nada, escríbenos y lo
-        revisamos enseguida.
+        <CmsText
+          blockKey="checkout.gracias.received.body"
+          fallback="Tu pago fue aprobado y lo estamos verificando para preparar tu pedido. En cuanto esté todo listo te llega un correo con los detalles. Si en unas horas no recibes nada, escríbenos y lo revisamos enseguida."
+        />
       </p>
       <p className="text-brand-muted mt-4 text-xs">
-        Pedido <code className="font-mono font-bold">{orderNumber}</code> · Wompi{" "}
+        <CmsText blockKey="checkout.gracias.order-label" fallback="Pedido" />{" "}
+        <code className="font-mono font-bold">{orderNumber}</code> · Wompi{" "}
         <code className="font-mono">{txId.slice(0, 16)}…</code>
       </p>
       <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
@@ -442,12 +492,12 @@ function PaymentReceivedPage({ orderNumber, txId }: { orderNumber: string; txId:
             variant="outline"
             className="border-brand-purple/30 text-brand-purple-dark"
           >
-            Contactar soporte
+            <CmsText blockKey="checkout.gracias.support-cta" fallback="Contactar soporte" />
           </Button>
         </Link>
         <Link href="/">
           <Button size="lg" className="bg-gradient-brand text-white hover:brightness-110">
-            Volver al inicio
+            <CmsText blockKey="checkout.gracias.home-cta" fallback="Volver al inicio" />
           </Button>
         </Link>
       </div>
@@ -468,19 +518,24 @@ function VerifyingPage({ txId }: { txId: string }) {
         <Clock className="h-12 w-12 text-amber-600" />
       </div>
       <h1 className="font-display text-brand-purple-dark mt-6 text-3xl font-bold sm:text-4xl">
-        Estamos verificando tu pago ⏳
+        <CmsText
+          blockKey="checkout.gracias.pending.title"
+          fallback="Estamos verificando tu pago ⏳"
+        />
       </h1>
       <p className="text-brand-purple-dark/75 mx-auto mt-3 max-w-md text-sm sm:text-base">
-        Hay muchas consultas en este momento y no pudimos mostrar el estado al instante. No te
-        preocupes: si tu pago fue aprobado, tu pedido se confirma igual y te llega el correo con
-        todos los detalles.
+        <CmsText
+          blockKey="checkout.gracias.verifying.body"
+          fallback="Hay muchas consultas en este momento y no pudimos mostrar el estado al instante. No te preocupes: si tu pago fue aprobado, tu pedido se confirma igual y te llega el correo con todos los detalles."
+        />
       </p>
       <p className="text-brand-muted mt-4 text-xs">
-        Comprobante Wompi <code className="font-mono">{txId.slice(0, 16)}…</code>
+        <CmsText blockKey="checkout.gracias.receipt-label" fallback="Comprobante Wompi" />{" "}
+        <code className="font-mono">{txId.slice(0, 16)}…</code>
       </p>
       <Link href="/" className="mt-8 inline-block">
         <Button size="lg" variant="outline" className="border-brand-purple/30">
-          Volver al inicio
+          <CmsText blockKey="checkout.gracias.home-cta" fallback="Volver al inicio" />
         </Button>
       </Link>
     </div>
@@ -494,14 +549,16 @@ function FailedPage({ reason }: { reason: string }) {
         <XCircle className="h-12 w-12 text-rose-600" />
       </div>
       <h1 className="font-display text-brand-purple-dark mt-6 text-3xl font-bold sm:text-4xl">
-        El pago no se completó
+        <CmsText blockKey="checkout.gracias.failed.title" fallback="El pago no se completó" />
       </h1>
       <p className="text-brand-purple-dark/75 mx-auto mt-3 max-w-md text-sm sm:text-base">
         {reason}
       </p>
       <p className="text-brand-muted mx-auto mt-4 max-w-md text-sm">
-        Tu carrito sigue intacto. Puedes reintentar con otro método de pago o contactarnos si
-        necesitas ayuda.
+        <CmsText
+          blockKey="checkout.gracias.failed.body"
+          fallback="Tu carrito sigue intacto. Puedes reintentar con otro método de pago o contactarnos si necesitas ayuda."
+        />
       </p>
       <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
         <Link href="/contacto">
@@ -510,12 +567,12 @@ function FailedPage({ reason }: { reason: string }) {
             variant="outline"
             className="border-brand-purple/30 text-brand-purple-dark"
           >
-            Contactar soporte
+            <CmsText blockKey="checkout.gracias.support-cta" fallback="Contactar soporte" />
           </Button>
         </Link>
         <Link href="/carrito">
           <Button size="lg" className="bg-gradient-brand text-white hover:brightness-110">
-            Volver al carrito
+            <CmsText blockKey="checkout.gracias.cart-cta" fallback="Volver al carrito" />
           </Button>
         </Link>
       </div>
@@ -529,7 +586,7 @@ function DetailRow({
   children,
 }: {
   icon: React.ReactNode;
-  label: string;
+  label: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (

@@ -4,7 +4,16 @@ import { useActionState } from "react";
 import { Loader2, Search } from "lucide-react";
 import { rastrearAction, type RastrearState } from "./actions";
 
-export function RastrearForm() {
+// Textos visibles del formulario: los resuelve el padre server (page.tsx)
+// desde el CMS y los baja por props — un client component no puede leer el CMS.
+export type RastrearTexts = {
+  numberLabel: string;
+  numberHelp: string;
+  emailLabel: string;
+  submit: string;
+};
+
+export function RastrearForm({ texts }: { texts: RastrearTexts }) {
   const [state, formAction, pending] = useActionState<RastrearState, FormData>(
     rastrearAction,
     null,
@@ -14,7 +23,7 @@ export function RastrearForm() {
     <form action={formAction} className="space-y-4">
       <div>
         <label htmlFor="number" className="text-brand-purple-dark mb-1 block text-sm font-semibold">
-          Número de pedido
+          {texts.numberLabel}
         </label>
         <input
           id="number"
@@ -24,12 +33,12 @@ export function RastrearForm() {
           placeholder="LCM-2026-0001"
           className="border-brand-purple/25 focus:border-brand-purple focus:ring-brand-purple/20 w-full rounded-md border bg-white px-3 py-2 text-sm focus:ring-2 focus:outline-none"
         />
-        <p className="text-brand-muted mt-1 text-xs">Lo encuentras en tu correo de confirmación.</p>
+        <p className="text-brand-muted mt-1 text-xs">{texts.numberHelp}</p>
       </div>
 
       <div>
         <label htmlFor="email" className="text-brand-purple-dark mb-1 block text-sm font-semibold">
-          Correo del pedido
+          {texts.emailLabel}
         </label>
         <input
           id="email"
@@ -57,7 +66,7 @@ export function RastrearForm() {
         className="bg-gradient-brand inline-flex h-11 w-full items-center justify-center gap-1.5 rounded-md text-sm font-semibold text-white hover:brightness-110 disabled:opacity-60"
       >
         {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Search className="h-4 w-4" />}
-        Ver mi pedido
+        {texts.submit}
       </button>
     </form>
   );

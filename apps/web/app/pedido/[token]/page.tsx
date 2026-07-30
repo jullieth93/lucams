@@ -20,15 +20,21 @@ import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { MapPin, Package, Truck, Wallet } from "lucide-react";
+import { CmsText } from "@/components/cms/cms-text";
+import { LucamsLogo } from "@/components/lucams-logo";
+import { getCmsBlock } from "@/lib/cms";
 import { prisma } from "@/lib/db";
 import { formatCOP, maskEmail } from "@/lib/format";
 import { buildWhatsAppUrl } from "@/lib/wa";
-import { LucamsLogo } from "@/components/lucams-logo";
 
-export const metadata: Metadata = {
-  title: "Mi pedido",
-  robots: { index: false, follow: false },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  // noindex: la URL es de un solo uso y trae un token opaco.
+  const block = await getCmsBlock("order.status.meta-title");
+  return {
+    title: block?.body ?? "Mi pedido",
+    robots: { index: false, follow: false },
+  };
+}
 
 const STATUS_LABEL: Record<string, string> = {
   PENDING_PAYMENT: "Esperando pago",
@@ -116,6 +122,23 @@ export default async function PublicOrderPage({
     ? await buildWhatsAppUrl({ kind: "order", orderNumber: order.number })
     : null;
 
+  // Textos con interpolación propia ({total}, {cantidad}, {email}) se leen con
+  // getCmsBlock y se reemplazan a mano; el resto va con <CmsText>.
+  const [itemsHeadingBlock, accountCtaBodyBlock, codBannerBlock] = await Promise.all([
+    getCmsBlock("order.status.items-heading"),
+    getCmsBlock("order.status.account-cta-body"),
+    showCodBanner ? getCmsBlock("order.status.cod-banner") : Promise.resolve(null),
+  ]);
+  const itemsHeading = (itemsHeadingBlock?.body ?? "Lo que pediste ({cantidad})").replaceAll(
+    "{cantidad}",
+    String(order.items.length),
+  );
+  const accountCtaBody =
+    accountCtaBodyBlock?.body ??
+    "Crea una cuenta con el email {email} y vas a tener historial, direcciones guardadas y descuentos exclusivos.";
+  const codBanner =
+    codBannerBlock?.body ?? "Pagas {total} en efectivo cuando el mensajero te entregue el pedido.";
+
   return (
     <div className="bg-brand-cream flex min-h-screen flex-col">
       <header className="border-brand-purple/10 border-b bg-white">
@@ -130,7 +153,7 @@ export default async function PublicOrderPage({
             href="/productos"
             className="text-brand-purple-dark/70 hover:text-brand-purple text-xs font-medium"
           >
-            Ver catálogo →
+            <CmsText blockKey="order.status.catalog-cta" fallback="Ver catálogo →" />
           </Link>
         </div>
       </header>
@@ -140,11 +163,17 @@ export default async function PublicOrderPage({
           {nueva === "1" && !isCancelled && (
             <div className="mb-6 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
               <p className="font-display text-lg font-bold text-emerald-900">
-                🎉 ¡Pedido confirmado!
+                <CmsText
+                  blockKey="order.status.confirmed-title"
+                  fallback="🎉 ¡Pedido confirmado!"
+                />
               </p>
               <p className="mt-0.5 text-sm text-emerald-800">
                 {/* #2 — el detalle COD lo lleva el aviso persistente de abajo; aquí solo el saludo. */}
-                Te enviamos los detalles y el seguimiento a tu correo. ¡Gracias por tu compra!
+                <CmsText
+                  blockKey="order.status.confirmed-body"
+                  fallback="Te enviamos los detalles y el seguimiento a tu correo. ¡Gracias por tu compra!"
+                />
               </p>
             </div>
           )}
@@ -153,10 +182,17 @@ export default async function PublicOrderPage({
             salida a WhatsApp, en vez de dejar el timeline gris mudo. */}
           {isPending && (
             <div role="note" className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-4">
-              <p className="text-sm font-semibold text-amber-900">Estamos confirmando tu pago</p>
+              <p className="text-sm font-semibold text-amber-900">
+                <CmsText
+                  blockKey="order.status.pending-title"
+                  fallback="Estamos confirmando tu pago"
+                />
+              </p>
               <p className="mt-1 text-xs text-amber-800">
-                Esto puede tardar unos minutos (algunos métodos como PSE o transferencia son así).
-                Cuando lo confirmemos te llega un correo y aquí verás el avance. ¿Tienes dudas?
+                <CmsText
+                  blockKey="order.status.pending-body"
+                  fallback="Esto puede tardar unos minutos (algunos métodos como PSE o transferencia son así). Cuando lo confirmemos te llega un correo y aquí verás el avance. ¿Tienes dudas?"
+                />
               </p>
               {waUrl && (
                 <a
@@ -165,7 +201,10 @@ export default async function PublicOrderPage({
                   rel="noreferrer"
                   className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-amber-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-amber-700"
                 >
-                  Escríbenos por WhatsApp
+                  <CmsText
+                    blockKey="order.status.pending-wa-cta"
+                    fallback="Escríbenos por WhatsApp"
+                  />
                 </a>
               )}
             </div>
@@ -180,14 +219,15 @@ export default async function PublicOrderPage({
             >
               <Wallet className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-700" aria-hidden />
               <p className="text-sm text-amber-900">
-                Pagas <strong>{formatCOP(order.total)}</strong> en efectivo cuando el mensajero te
-                entregue el pedido.
+                {withStrong(codBanner, "{total}", formatCOP(order.total))}
               </p>
             </div>
           )}
 
           <header className="mb-6">
-            <p className="text-brand-muted text-xs tracking-wider uppercase">Tu pedido</p>
+            <p className="text-brand-muted text-xs tracking-wider uppercase">
+              <CmsText blockKey="order.status.eyebrow" fallback="Tu pedido" />
+            </p>
             <h1 className="font-display text-brand-purple-dark text-3xl sm:text-4xl">
               {order.number}
             </h1>
@@ -198,7 +238,9 @@ export default async function PublicOrderPage({
 
           {!isCancelled && !isPending && (
             <div className="border-brand-purple/15 mb-6 rounded-2xl border bg-white p-5 shadow-sm">
-              <h2 className="text-brand-purple-dark mb-4 text-sm font-bold">Estado de tu pedido</h2>
+              <h2 className="text-brand-purple-dark mb-4 text-sm font-bold">
+                <CmsText blockKey="order.status.timeline-heading" fallback="Estado de tu pedido" />
+              </h2>
               <ol className="flex justify-between">
                 {TIMELINE_STEPS.map((s, i) => {
                   const done = progress >= i;
@@ -231,16 +273,28 @@ export default async function PublicOrderPage({
           {isCancelled && (
             <div className="mb-6 rounded-xl border border-rose-200 bg-rose-50 p-4">
               <p className="text-sm font-semibold text-rose-900">
-                Este pedido fue {order.status === "REFUNDED" ? "reembolsado" : "cancelado"}.
+                {order.status === "REFUNDED" ? (
+                  <CmsText
+                    blockKey="order.status.refunded-title"
+                    fallback="Este pedido fue reembolsado."
+                  />
+                ) : (
+                  <CmsText
+                    blockKey="order.status.cancelled-title"
+                    fallback="Este pedido fue cancelado."
+                  />
+                )}
               </p>
-              <p className="mt-1 text-xs text-rose-800">Si tienes dudas escríbenos por WhatsApp.</p>
+              <p className="mt-1 text-xs text-rose-800">
+                <CmsText
+                  blockKey="order.status.cancelled-note"
+                  fallback="Si tienes dudas escríbenos por WhatsApp."
+                />
+              </p>
             </div>
           )}
 
-          <Card
-            icon={<Package className="h-4 w-4" />}
-            title={`Lo que pediste (${order.items.length})`}
-          >
+          <Card icon={<Package className="h-4 w-4" />} title={itemsHeading}>
             <ul className="divide-brand-purple/10 divide-y">
               {order.items.map((it) => {
                 const previewUrl = it.designAssetUrl ?? it.design?.previewUrl ?? null; // ADR-070 — snapshot primero
@@ -278,16 +332,24 @@ export default async function PublicOrderPage({
               })}
             </ul>
             <dl className="border-brand-purple/10 mt-3 space-y-1 border-t pt-3 text-sm">
-              <Row label="Subtotal" value={formatCOP(order.subtotal)} />
-              <Row label="Envío" value={formatCOP(order.shipping)} />
+              <Row
+                label={<CmsText blockKey="order.status.subtotal-label" fallback="Subtotal" />}
+                value={formatCOP(order.subtotal)}
+              />
+              <Row
+                label={<CmsText blockKey="order.status.shipping-label" fallback="Envío" />}
+                value={formatCOP(order.shipping)}
+              />
               {order.discount > 0 && (
                 <Row
-                  label="Descuento"
+                  label={<CmsText blockKey="order.status.discount-label" fallback="Descuento" />}
                   value={<span className="text-emerald-700">−{formatCOP(order.discount)}</span>}
                 />
               )}
               <div className="border-brand-purple/10 mt-2 flex justify-between border-t pt-2">
-                <dt className="text-brand-purple-dark font-bold">Total</dt>
+                <dt className="text-brand-purple-dark font-bold">
+                  <CmsText blockKey="order.status.total-label" fallback="Total" />
+                </dt>
                 <dd className="text-brand-purple-dark font-bold tabular-nums">
                   {formatCOP(order.total)}
                 </dd>
@@ -295,7 +357,12 @@ export default async function PublicOrderPage({
             </dl>
           </Card>
 
-          <Card icon={<MapPin className="h-4 w-4" />} title="Dirección de envío">
+          <Card
+            icon={<MapPin className="h-4 w-4" />}
+            title={
+              <CmsText blockKey="order.status.address-heading" fallback="Dirección de envío" />
+            }
+          >
             {/* #16 — esta vista es pública por token (link reenviable). Minimización PII (Ley 1581):
                 mostramos nombre + ciudad/departamento y ENMASCARAMOS la calle exacta. Basta para
                 reconocer el pedido; el cliente ya conoce su dirección completa (decisión Lucy). */}
@@ -304,14 +371,25 @@ export default async function PublicOrderPage({
               {ship.fullName && <br />}
               {ship.city}, {ship.department}
             </p>
-            <p className="text-brand-muted mt-1 text-xs">Dirección exacta oculta por privacidad</p>
+            <p className="text-brand-muted mt-1 text-xs">
+              <CmsText
+                blockKey="order.status.address-privacy-note"
+                fallback="Dirección exacta oculta por privacidad"
+              />
+            </p>
           </Card>
 
           {order.trackingNumber && (
-            <Card icon={<Truck className="h-4 w-4" />} title="Envío">
-              <Row label="Transportadora" value={order.shippingCarrier ?? "—"} />
+            <Card
+              icon={<Truck className="h-4 w-4" />}
+              title={<CmsText blockKey="order.status.shipping-label" fallback="Envío" />}
+            >
               <Row
-                label="Número de guía"
+                label={<CmsText blockKey="order.status.carrier-label" fallback="Transportadora" />}
+                value={order.shippingCarrier ?? "—"}
+              />
+              <Row
+                label={<CmsText blockKey="order.status.tracking-label" fallback="Número de guía" />}
                 value={
                   <span className="text-brand-purple-dark/85 font-mono text-xs">
                     {order.trackingNumber}
@@ -325,7 +403,7 @@ export default async function PublicOrderPage({
                   rel="noopener noreferrer"
                   className="text-brand-purple mt-2 inline-block text-sm font-semibold underline"
                 >
-                  Rastrear mi pedido →
+                  <CmsText blockKey="order.status.tracking-cta" fallback="Rastrear mi pedido →" />
                 </a>
               )}
             </Card>
@@ -333,19 +411,21 @@ export default async function PublicOrderPage({
 
           <div className="border-brand-purple/15 from-brand-pink/10 to-brand-purple/10 rounded-2xl border bg-gradient-to-br p-5 text-center shadow-sm">
             <p className="text-brand-purple-dark text-sm font-semibold">
-              ¿Quieres ver todos tus pedidos?
+              <CmsText
+                blockKey="order.status.account-cta-heading"
+                fallback="¿Quieres ver todos tus pedidos?"
+              />
             </p>
             <p className="text-brand-muted mt-1 text-xs">
               {/* #13/#16 — email ENMASCARADO (link público reenviable) y NO viaja en el href del CTA
                   (antes ?email= lo dejaba en claro en la URL/HTML). Ley 1581. */}
-              Crea una cuenta con el email <strong>{maskEmail(order.email)}</strong> y vas a tener
-              historial, direcciones guardadas y descuentos exclusivos.
+              {withStrong(accountCtaBody, "{email}", maskEmail(order.email))}
             </p>
             <Link
               href="/registro"
               className="bg-brand-purple hover:bg-brand-purple-dark mt-3 inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold text-white shadow-sm"
             >
-              Crear cuenta
+              <CmsText blockKey="order.status.account-cta-button" fallback="Crear cuenta" />
             </Link>
           </div>
         </div>
@@ -360,7 +440,7 @@ function Card({
   children,
 }: {
   icon: React.ReactNode;
-  title: string;
+  title: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
@@ -374,11 +454,20 @@ function Card({
   );
 }
 
-function Row({ label, value }: { label: string; value: React.ReactNode }) {
+function Row({ label, value }: { label: React.ReactNode; value: React.ReactNode }) {
   return (
     <div className="flex items-center justify-between gap-3 py-1">
       <dt className="text-brand-muted text-xs">{label}</dt>
       <dd className="text-brand-purple-dark text-right text-xs font-medium">{value}</dd>
     </div>
   );
+}
+
+// Interpola un placeholder del texto CMS ({total}, {email}) envolviendo el
+// valor en <strong>: la administradora mueve el dato dentro de la frase sin
+// tocar código, y el énfasis visual se conserva.
+function withStrong(text: string, placeholder: string, value: string): React.ReactNode {
+  const parts = text.split(placeholder);
+  if (parts.length === 1) return text;
+  return parts.flatMap((part, i) => (i === 0 ? [part] : [<strong key={i}>{value}</strong>, part]));
 }

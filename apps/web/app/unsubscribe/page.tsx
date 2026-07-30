@@ -15,15 +15,21 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { CheckCircle2, XCircle } from "lucide-react";
+import { CmsText } from "@/components/cms/cms-text";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { Button } from "@/components/ui/button";
 import { unsubscribeNewsletter, decodeUnsubscribeParam } from "@/features/newsletter/unsubscribe";
+import { getCmsBlock, getSettingValue } from "@/lib/cms";
 
-export const metadata: Metadata = {
-  title: "Cancelar suscripción",
-  robots: { index: false, follow: false },
-};
+export async function generateMetadata(): Promise<Metadata> {
+  // noindex: la URL trae un token opaco de un solo uso.
+  const block = await getCmsBlock("unsubscribe.meta-title");
+  return {
+    title: block?.body ?? "Cancelar suscripción",
+    robots: { index: false, follow: false },
+  };
+}
 
 type SearchParams = Promise<{ u?: string; email?: string; token?: string }>;
 
@@ -55,6 +61,22 @@ export default async function UnsubscribePage({ searchParams }: { searchParams: 
 
   const ok = outcome === "ok" || outcome === "already";
 
+  // Los textos de error llevan {email} → se reemplaza por el correo de contacto
+  // (ajustes globales); el resto de los textos va con <CmsText>.
+  const [contactEmail, invalidBlock, missingBlock] = await Promise.all([
+    getSettingValue("CONTACT_EMAIL", "hola@lucamsshop.com"),
+    getCmsBlock("unsubscribe.invalid.body"),
+    getCmsBlock("unsubscribe.missing.body"),
+  ]);
+  const invalidBody = (
+    invalidBlock?.body ??
+    "El enlace no es válido o ya expiró. Si quieres dejar de recibir nuestros correos, escríbenos a {email} y lo hacemos enseguida."
+  ).replaceAll("{email}", contactEmail);
+  const missingBody = (
+    missingBlock?.body ??
+    "Abre el enlace completo desde el correo que te enviamos, o escríbenos a {email} para darte de baja."
+  ).replaceAll("{email}", contactEmail);
+
   return (
     <div className="flex min-h-screen flex-col">
       <SiteHeader />
@@ -78,21 +100,41 @@ export default async function UnsubscribePage({ searchParams }: { searchParams: 
           </div>
 
           <h1 className="font-display text-brand-purple-dark mt-6 text-3xl font-bold">
-            {outcome === "ok" && "Listo, cancelamos tu suscripción"}
-            {outcome === "already" && "Ya estabas dado de baja"}
-            {outcome === "invalid" && "No pudimos verificar el enlace"}
-            {outcome === "missing" && "Enlace incompleto"}
+            {outcome === "ok" && (
+              <CmsText
+                blockKey="unsubscribe.ok.title"
+                fallback="Listo, cancelamos tu suscripción"
+              />
+            )}
+            {outcome === "already" && (
+              <CmsText blockKey="unsubscribe.already.title" fallback="Ya estabas dado de baja" />
+            )}
+            {outcome === "invalid" && (
+              <CmsText
+                blockKey="unsubscribe.invalid.title"
+                fallback="No pudimos verificar el enlace"
+              />
+            )}
+            {outcome === "missing" && (
+              <CmsText blockKey="unsubscribe.missing.title" fallback="Enlace incompleto" />
+            )}
           </h1>
 
           <p className="text-brand-purple-dark/75 mx-auto mt-3 text-sm sm:text-base">
-            {outcome === "ok" &&
-              "No volverás a recibir nuestros correos de novedades. Si fue un error, puedes volver a suscribirte cuando quieras desde el sitio."}
-            {outcome === "already" &&
-              "Tu correo no está en nuestra lista de novedades. No tienes que hacer nada más."}
-            {outcome === "invalid" &&
-              "El enlace no es válido o ya expiró. Si quieres dejar de recibir nuestros correos, escríbenos a hola@lucamsshop.com y lo hacemos enseguida."}
-            {outcome === "missing" &&
-              "Abre el enlace completo desde el correo que te enviamos, o escríbenos a hola@lucamsshop.com para darte de baja."}
+            {outcome === "ok" && (
+              <CmsText
+                blockKey="unsubscribe.ok.body"
+                fallback="No volverás a recibir nuestros correos de novedades. Si fue un error, puedes volver a suscribirte cuando quieras desde el sitio."
+              />
+            )}
+            {outcome === "already" && (
+              <CmsText
+                blockKey="unsubscribe.already.body"
+                fallback="Tu correo no está en nuestra lista de novedades. No tienes que hacer nada más."
+              />
+            )}
+            {outcome === "invalid" && invalidBody}
+            {outcome === "missing" && missingBody}
           </p>
 
           <div className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row">
@@ -102,13 +144,13 @@ export default async function UnsubscribePage({ searchParams }: { searchParams: 
                 variant="outline"
                 className="border-brand-purple/30 text-brand-purple-dark"
               >
-                Volver al inicio
+                <CmsText blockKey="unsubscribe.home-cta" fallback="Volver al inicio" />
               </Button>
             </Link>
             {!ok && (
               <Link href="/contacto">
                 <Button size="lg" className="bg-gradient-brand text-white hover:brightness-110">
-                  Contactar soporte
+                  <CmsText blockKey="unsubscribe.support-cta" fallback="Contactar soporte" />
                 </Button>
               </Link>
             )}

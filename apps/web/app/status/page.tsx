@@ -15,6 +15,7 @@ import type { Metadata } from "next";
 import { CmsText } from "@/components/cms/cms-text";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
+import { getCmsBlock } from "@/lib/cms";
 import { isCatalogMode } from "@/lib/store-mode";
 
 export const metadata: Metadata = {
@@ -97,6 +98,19 @@ export default async function StatusPage() {
   const allOk = services.every((s) => s.status === "ok" || s.status === "pending");
   const anyDown = services.some((s) => s.status === "down");
 
+  // Pastilla de resumen: textos editables desde /admin/contenido (página
+  // "Errores y estados", sección "Estado del sitio").
+  const [summaryOk, summaryDown, summaryChecking] = await Promise.all([
+    getCmsBlock("status.summary.ok"),
+    getCmsBlock("status.summary.down"),
+    getCmsBlock("status.summary.checking"),
+  ]);
+  const summaryText = anyDown
+    ? (summaryDown?.body ?? "Algunos servicios con problemas")
+    : allOk
+      ? (summaryOk?.body ?? "Todos los servicios operativos")
+      : (summaryChecking?.body ?? "Verificando...");
+
   return (
     <div className="bg-brand-cream flex min-h-screen flex-col">
       <SiteHeader />
@@ -123,11 +137,7 @@ export default async function StatusPage() {
                   (anyDown ? "bg-red-500" : allOk ? "bg-emerald-500" : "bg-amber-500")
                 }
               />
-              {anyDown
-                ? "Algunos servicios con problemas"
-                : allOk
-                  ? "Todos los servicios operativos"
-                  : "Verificando..."}
+              {summaryText}
             </div>
           </header>
 
@@ -168,7 +178,7 @@ export default async function StatusPage() {
           </div>
 
           <p className="text-brand-muted mt-6 text-center text-xs">
-            Verificado en tiempo real ·{" "}
+            <CmsText blockKey="status.verified-note" fallback="Verificado en tiempo real" /> ·{" "}
             {new Date().toLocaleString("es-CO", { dateStyle: "medium", timeStyle: "short" })}
           </p>
         </div>

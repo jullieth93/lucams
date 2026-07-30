@@ -13,6 +13,15 @@ import { redirect } from "next/navigation";
 import { Package, MapPin, Star, ShieldCheck, Pencil, ChevronRight } from "lucide-react";
 import { prisma } from "@/lib/db";
 import { getCurrentCustomer } from "@/lib/auth";
+import { getCmsBlock } from "@/lib/cms";
+import { resolveCmsTokens } from "@/lib/cms-tokens";
+
+// Resuelve un bloque CMS a string plano: mismo patrón que cmsMenuText del
+// site-header, para textos que se usan como strings (props, rótulos).
+async function cmsAccountText(key: string, fallback: string): Promise<string> {
+  const block = await getCmsBlock(key);
+  return resolveCmsTokens(block?.body ?? fallback);
+}
 
 export const metadata: Metadata = {
   title: "Mi cuenta",
@@ -21,30 +30,40 @@ export const metadata: Metadata = {
 
 export const dynamic = "force-dynamic";
 
+// Textos de las tarjetas: editables desde /admin/contenido (página "Mi cuenta",
+// sección "Resumen de cuenta"). Los fallback son el texto exacto anterior.
 const SECTIONS = [
   {
     href: "/mi-cuenta/pedidos",
     icon: Package,
-    title: "Mis pedidos",
-    desc: "Historial de compras y seguimiento de tus envíos.",
+    titleKey: "account.hub.section.pedidos.title",
+    titleFallback: "Mis pedidos",
+    descKey: "account.hub.section.pedidos.desc",
+    descFallback: "Historial de compras y seguimiento de tus envíos.",
   },
   {
     href: "/mi-cuenta/direcciones",
     icon: MapPin,
-    title: "Mis direcciones",
-    desc: "Guárdalas para un checkout más rápido.",
+    titleKey: "account.hub.section.direcciones.title",
+    titleFallback: "Mis direcciones",
+    descKey: "account.hub.section.direcciones.desc",
+    descFallback: "Guárdalas para un checkout más rápido.",
   },
   {
     href: "/mi-cuenta/resenas",
     icon: Star,
-    title: "Mis reseñas",
-    desc: "Los productos que has calificado.",
+    titleKey: "account.hub.section.resenas.title",
+    titleFallback: "Mis reseñas",
+    descKey: "account.hub.section.resenas.desc",
+    descFallback: "Los productos que has calificado.",
   },
   {
     href: "/mi-cuenta/seguridad",
     icon: ShieldCheck,
-    title: "Seguridad",
-    desc: "Cambia tu contraseña o elimina tu cuenta.",
+    titleKey: "account.hub.section.seguridad.title",
+    titleFallback: "Seguridad",
+    descKey: "account.hub.section.seguridad.desc",
+    descFallback: "Cambia tu contraseña o elimina tu cuenta.",
   },
 ] as const;
 
@@ -60,16 +79,39 @@ export default async function MiCuentaPage() {
     where: { customerId: customer.id, deletedAt: null },
   });
 
+  // Textos del hub: editables desde /admin/contenido (página "Mi cuenta",
+  // sección "Resumen de cuenta"). Fallback = texto exacto anterior.
+  const [greetingRaw, subtext, profileHeading, profileEdit, labelName, labelEmail, labelPhone] =
+    await Promise.all([
+      cmsAccountText("account.hub.greeting", "Hola, {nombre} 👋"),
+      cmsAccountText("account.hub.subtext", "Este es tu espacio Lucams."),
+      cmsAccountText("account.hub.profile-heading", "Tu perfil"),
+      cmsAccountText("account.hub.profile-edit", "Editar"),
+      cmsAccountText("account.hub.profile-name", "Nombre"),
+      cmsAccountText("account.hub.profile-email", "Correo"),
+      cmsAccountText("account.hub.profile-phone", "Teléfono"),
+    ]);
+  const sections = await Promise.all(
+    SECTIONS.map(async (s) => ({
+      href: s.href,
+      icon: s.icon,
+      title: await cmsAccountText(s.titleKey, s.titleFallback),
+      desc: await cmsAccountText(s.descKey, s.descFallback),
+    })),
+  );
+  // {nombre} se interpola a mano (mismo patrón que quote.confirmation.title).
+  const greeting = greetingRaw.replaceAll("{nombre}", displayName);
+
   return (
     <div className="mx-auto max-w-4xl space-y-8">
       <div>
-        <h1 className="font-display text-brand-purple-dark text-3xl">Hola, {displayName} 👋</h1>
-        <p className="text-brand-muted mt-1">Este es tu espacio Lucams.</p>
+        <h1 className="font-display text-brand-purple-dark text-3xl">{greeting}</h1>
+        <p className="text-brand-muted mt-1">{subtext}</p>
       </div>
 
       {/* Accesos a secciones */}
       <div className="grid gap-3 sm:grid-cols-2">
-        {SECTIONS.map((s) => {
+        {sections.map((s) => {
           const Icon = s.icon;
           return (
             <Link
@@ -100,21 +142,21 @@ export default async function MiCuentaPage() {
       {/* Perfil */}
       <section className="border-brand-purple/15 rounded-2xl border bg-white p-5 shadow-sm sm:p-6">
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="font-display text-brand-purple-dark text-xl">Tu perfil</h2>
+          <h2 className="font-display text-brand-purple-dark text-xl">{profileHeading}</h2>
           <Link
             href="/mi-cuenta/perfil"
             className="text-brand-pink-ink hover:text-brand-coral-ink inline-flex items-center gap-1 text-sm font-semibold"
           >
             <Pencil className="h-3.5 w-3.5" />
-            Editar
+            {profileEdit}
           </Link>
         </div>
         <dl className="space-y-1">
-          <ProfileRow label="Nombre">
+          <ProfileRow label={labelName}>
             {[customer.firstName, customer.lastName].filter(Boolean).join(" ") || "—"}
           </ProfileRow>
-          <ProfileRow label="Correo">{customer.email}</ProfileRow>
-          <ProfileRow label="Teléfono">{customer.phone ?? "—"}</ProfileRow>
+          <ProfileRow label={labelEmail}>{customer.email}</ProfileRow>
+          <ProfileRow label={labelPhone}>{customer.phone ?? "—"}</ProfileRow>
         </dl>
       </section>
 

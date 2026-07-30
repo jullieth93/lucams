@@ -24,6 +24,8 @@ import {
   Search,
   FileText,
   Settings,
+  Truck,
+  Receipt,
   MoreHorizontal,
   type LucideIcon,
 } from "lucide-react";
@@ -45,5 +47,7 @@ export const CMS_PAGE_ICONS: Record<string, LucideIcon> = {
   Search,
   FileText,
   Settings,
+  Truck,
+  Receipt,
   MoreHorizontal,
 };
