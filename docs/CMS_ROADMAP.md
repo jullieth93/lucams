@@ -25,7 +25,8 @@
 - ✅ **D4** E2E del flujo de edición — corrida `30655678412`
 - ✅ **A2** drop de tablas legacy — commit `c436195` (+ respaldo JSON)
 - ✅ **B7** copy de autenticación al CMS (58 campos) — commit `b83c2e7`
-- ⏳ Backlog punto 5: B8 (checkout), B9 (mi-cuenta), tablas móvil, C1 paso 2, gestos canvas
+- ✅ **B9** copy del área de cliente al CMS (118 campos) — commit `e5a4441`
+- ⏳ Backlog punto 5: B8 (checkout), tablas móvil, C1 paso 2, gestos canvas
 
 **Base sobre la que se parte (ya en producción, commit `bd1e427`):**
 
@@ -163,6 +164,13 @@ Tablas legacy (CmsBlock/CmsBlockVersion/SiteSetting): DROP en A2
 - Esfuerzo **S-M**. Dependencia: ninguna.
 
 > **✅ RESULTADO — certificado 2026-07-31, commit `b83c2e7`.** Página `auth` en `/admin/contenido` con **6 secciones y 58 campos** (layout, login, registro, recuperar, confirmar, restablecer): todo el copy visible de las pantallas de acceso es administrable. Resolución con el patrón B1: `getAuthTexts()` (`app/(auth)/auth-texts.server.ts`) hace **UNA query por prefijo `auth.*`** (cache tag `cms`, guard E469) y sobreescribe `DEFAULT_AUTH_TEXTS` campo a campo — los defaults son el copy exacto pre-CMS (regla de oro). Cada `page.tsx` (server) resuelve y pasa props tipadas al formulario client; las interpolaciones (`{email}`, `{nombre}`) se reemplazan server-side. El texto legal del checkbox de autorización (Ley 1581) quedó como campo MARKDOWN `auth.registro.consent` (enlaces a términos/privacidad preservados con react-markdown + sanitize client-side). La medición del auditor D1 sube al regenerar el baseline: los 49 literales de `app/(auth)` salen del stock de copy quemado. **Evidencia:** migración verificada por query (58/58 campos publicados, página `auth` con sus 6 secciones, 0 sin versión) · integración `getAuthTexts` contra los campos reales (estructura completa, placeholders intactos) · `tsc` ✓ · `eslint` ✓ · `prettier` ✓ · `next build` ✓.
+
+### B9 — Copy del área de cliente (`/mi-cuenta`) al CMS (agregada 2026-07-31, backlog post-roadmap)
+
+- El área de cliente (navegación, perfil, pedidos y detalle, retracto/garantía, direcciones, diseños, favoritos, reseñas, seguridad, eliminación de cuenta) tenía ~96 literales quemados (medidos por el auditor D1). Mismo patrón B7: ampliar la página `mi-cuenta` del site map → `getAccountTexts()` por prefijo → props con fallback.
+- Esfuerzo **M**. Dependencia: ninguna (usa la página `mi-cuenta` ya existente).
+
+> **✅ RESULTADO — certificado 2026-07-31, commit `e5a4441`.** La página `mi-cuenta` del CMS crece con **12 secciones nuevas y 118 campos** (`account.*`): navegación (7 pestañas + logout + aria + back-links), perfil, pedidos (lista), pedido (detalle: banner COD, stepper, cancelación, totales, dirección, envío, CTA reseña), retracto y garantía (incl. nota legal en MARKDOWN), direcciones (CRUD completo + aviso de formato viejo), diseños (compartir/archivar), favoritos, reseñas (badges + borrar), seguridad y eliminación de cuenta (advertencias legales en MARKDOWN, palabra de confirmación con nota de que cambiarla exige tocar la acción). Resolución: `getAccountTexts()` (`app/mi-cuenta/account-texts.server.ts`, patrón B7 — una query por prefijo, defaults exactos, guard E469). Interpolaciones server-side: `{email}` en perfil, `{n}` en conteos, `{total}` en el banner COD, `{estado}` en cancelación, `{fecha}` en garantía, `{palabra}` en la confirmación de borrado (con split que conserva el estilo original). **Evidencia:** migración verificada por query · integración `getAccountTexts` contra los campos reales · `tsc` ✓ · `eslint` ✓ · `prettier` ✓ · `next build` ✓.
 
 ---
 
