@@ -12,6 +12,7 @@ import { ShoppingBag, Sparkles } from "lucide-react";
 import { formatCOP } from "@/lib/format";
 import { isCatalogMode } from "@/lib/store-mode";
 import type { CartDetail } from "@/features/cart/service";
+import type { CheckoutTexts } from "../checkout-texts";
 
 export function OrderSummary({
   cart,
@@ -19,12 +20,15 @@ export function OrderSummary({
   shippingLabel,
   discount,
   couponCode,
+  texts,
 }: {
   cart: CartDetail;
   shippingCost?: number | null;
   shippingLabel?: string;
   discount?: number; // F1 — descuento por cupón (COP centavos)
   couponCode?: string;
+  /** Textos CMS del resumen (roadmap B8) — los resuelve el padre server con getCheckoutTexts. */
+  texts: CheckoutTexts["summary"];
 }) {
   const subtotal = cart.subtotal;
   const shipping = shippingCost ?? null;
@@ -36,9 +40,9 @@ export function OrderSummary({
     <aside className="border-brand-purple/15 sticky top-24 rounded-2xl border bg-white p-5 shadow-sm">
       <h2 className="text-brand-purple-dark font-display mb-4 flex items-center gap-2 text-base font-bold">
         <ShoppingBag className="h-4 w-4" />
-        Tu pedido
+        {texts.title}
         <span className="text-brand-muted ml-auto text-xs font-normal">
-          {cart.itemCount} {cart.itemCount === 1 ? "producto" : "productos"}
+          {cart.itemCount} {cart.itemCount === 1 ? texts.itemSingle : texts.itemMany}
         </span>
       </h2>
 
@@ -74,7 +78,7 @@ export function OrderSummary({
                   {item.productName}
                 </p>
                 {item.isPersonalizable && item.designPreviewUrl && (
-                  <p className="text-brand-muted text-[10px]">Personalizado</p>
+                  <p className="text-brand-muted text-[10px]">{texts.personalized}</p>
                 )}
               </div>
               <div className="text-brand-purple-dark flex-shrink-0 text-xs font-semibold tabular-nums">
@@ -88,18 +92,18 @@ export function OrderSummary({
       {/* Totales */}
       <dl className="border-brand-purple/10 mt-4 space-y-1.5 border-t pt-4 text-sm">
         <div className="flex justify-between">
-          <dt className="text-brand-purple-dark/70">Subtotal</dt>
+          <dt className="text-brand-purple-dark/70">{texts.subtotal}</dt>
           <dd className="text-brand-purple-dark font-medium tabular-nums">{formatCOP(subtotal)}</dd>
         </div>
         <div className="flex justify-between">
-          <dt className="text-brand-purple-dark/70">Envío</dt>
+          <dt className="text-brand-purple-dark/70">{texts.shippingLabel}</dt>
           <dd className="text-brand-purple-dark/85 text-right tabular-nums">
             {catalog ? (
-              <span className="text-brand-muted text-xs italic">Se coordina por WhatsApp</span>
+              <span className="text-brand-muted text-xs italic">{texts.shippingCatalog}</span>
             ) : shipping === null ? (
-              <span className="text-brand-muted text-xs italic">Se calcula al elegir envío</span>
+              <span className="text-brand-muted text-xs italic">{texts.shippingPending}</span>
             ) : shipping === 0 ? (
-              <span className="font-semibold text-emerald-700">Gratis</span>
+              <span className="font-semibold text-emerald-700">{texts.free}</span>
             ) : (
               <>
                 {formatCOP(shipping)}
@@ -115,7 +119,7 @@ export function OrderSummary({
         {appliedDiscount > 0 && (
           <div className="flex justify-between">
             <dt className="text-emerald-700">
-              Descuento
+              {texts.discount}
               {couponCode && <span className="ml-1 font-semibold">({couponCode})</span>}
             </dt>
             <dd className="font-semibold text-emerald-700 tabular-nums">
@@ -124,15 +128,13 @@ export function OrderSummary({
           </div>
         )}
         <div className="border-brand-purple/10 mt-2 flex justify-between border-t pt-3">
-          <dt className="text-brand-purple-dark font-display text-base font-bold">Total</dt>
+          <dt className="text-brand-purple-dark font-display text-base font-bold">{texts.total}</dt>
           <dd className="text-brand-purple-dark font-display text-lg font-bold tabular-nums">
             {formatCOP(total)}
           </dd>
         </div>
         <p className="text-brand-muted mt-1 text-[10px]">
-          {catalog
-            ? "Precios en pesos colombianos (COP) · el envío se coordina por WhatsApp al confirmar tu cotización"
-            : "Precios en pesos colombianos (COP) · el total es el valor final que pagas"}
+          {catalog ? texts.noteCatalog : texts.noteFinal}
         </p>
       </dl>
     </aside>

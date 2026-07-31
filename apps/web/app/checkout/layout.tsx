@@ -10,8 +10,12 @@ import Link from "next/link";
 import { ArrowLeft, Lock, MessageCircle } from "lucide-react";
 import { LucamsLogo } from "@/components/lucams-logo";
 import { isCatalogMode } from "@/lib/store-mode";
+import { getCheckoutTexts } from "./checkout-texts.server";
 
-export default function CheckoutLayout({ children }: { children: React.ReactNode }) {
+export default async function CheckoutLayout({ children }: { children: React.ReactNode }) {
+  // Roadmap B8 — textos del marco del checkout administrables desde /admin/contenido.
+  const texts = await getCheckoutTexts();
+
   return (
     <div className="from-brand-cream via-brand-cream/50 flex min-h-full flex-col bg-gradient-to-br to-white">
       {/* Header minimal */}
@@ -20,7 +24,7 @@ export default function CheckoutLayout({ children }: { children: React.ReactNode
           <Link
             href="/"
             className="flex items-center gap-2 transition-opacity hover:opacity-80"
-            aria-label="Volver al inicio"
+            aria-label={texts.layout.backHome}
           >
             <LucamsLogo className="h-8 w-8" />
             <span className="font-display text-brand-purple-dark hidden text-lg font-bold sm:inline">
@@ -33,13 +37,13 @@ export default function CheckoutLayout({ children }: { children: React.ReactNode
             className="text-brand-purple-dark/70 hover:text-brand-purple-dark inline-flex items-center gap-1.5 text-sm font-medium"
           >
             <ArrowLeft className="h-4 w-4" />
-            <span className="hidden sm:inline">Volver al carrito</span>
-            <span className="sm:hidden">Carrito</span>
+            <span className="hidden sm:inline">{texts.layout.backCart}</span>
+            <span className="sm:hidden">{texts.layout.cartShort}</span>
           </Link>
 
           <div className="text-brand-muted hidden items-center gap-1.5 text-xs font-medium md:inline-flex">
             <Lock className="h-3.5 w-3.5" />
-            Compra segura
+            {texts.layout.secure}
           </div>
         </div>
       </header>
@@ -55,24 +59,24 @@ export default function CheckoutLayout({ children }: { children: React.ReactNode
             {isCatalogMode() ? (
               <>
                 <MessageCircle className="h-3 w-3" />
-                Cotización sin pago en línea · coordinamos por WhatsApp
+                {texts.layout.footerCatalog}
               </>
             ) : (
               <>
                 <Lock className="h-3 w-3" />
-                Pago seguro Wompi · Envío Aveonline
+                {texts.layout.footerPayments}
               </>
             )}
           </div>
           <div className="flex gap-4">
             <Link href="/legal/terminos" className="hover:text-brand-purple-dark">
-              Términos
+              {texts.layout.linkTerminos}
             </Link>
             <Link href="/legal/privacidad" className="hover:text-brand-purple-dark">
-              Privacidad
+              {texts.layout.linkPrivacidad}
             </Link>
             <Link href="/legal/garantias" className="hover:text-brand-purple-dark">
-              Garantías
+              {texts.layout.linkGarantias}
             </Link>
           </div>
         </div>

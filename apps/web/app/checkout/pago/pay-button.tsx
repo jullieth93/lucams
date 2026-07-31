@@ -3,15 +3,19 @@
 import { useState } from "react";
 import { useFormStatus } from "react-dom";
 import Link from "next/link";
+import ReactMarkdown from "react-markdown";
+import rehypeSanitize from "rehype-sanitize";
+import remarkGfm from "remark-gfm";
 import { Loader2, Lock, Wallet, CreditCard, CheckCircle2, Banknote } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { TurnstileWidget } from "@/components/turnstile-widget";
 import { WOMPI_METHODS_SHORT } from "@/lib/payment-methods";
 import { payWompiAction, payCodAction } from "./actions";
+import type { CheckoutTexts } from "../checkout-texts";
 
 type Method = "WOMPI" | "COD";
 
-function SubmitButton({ method }: { method: Method }) {
+function SubmitButton({ method, texts }: { method: Method; texts: CheckoutTexts["pay"] }) {
   const { pending } = useFormStatus();
   if (method === "COD") {
     return (
@@ -23,12 +27,12 @@ function SubmitButton({ method }: { method: Method }) {
       >
         {pending ? (
           <>
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Confirmando tu pedido…
+            <Loader2 className="mr-2 h-4 w-4 animate-spin" /> {texts.codPending}
           </>
         ) : (
           <>
             <Banknote className="mr-2 h-4 w-4" />
-            Confirmar pedido (pago al recibir)
+            {texts.codButton}
           </>
         )}
       </Button>
@@ -43,12 +47,12 @@ function SubmitButton({ method }: { method: Method }) {
     >
       {pending ? (
         <>
-          <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Redirigiendo a Wompi…
+          <Loader2 className="mr-2 h-4 w-4 animate-spin" /> {texts.wompiPending}
         </>
       ) : (
         <>
           <Lock className="mr-2 h-4 w-4" />
-          Pagar con Wompi
+          {texts.wompiButton}
         </>
       )}
     </Button>
@@ -99,6 +103,7 @@ export function PaymentMethodChooser({
   backHref,
   codEnabled = true,
   couponInvalidAtRender = false,
+  texts,
 }: {
   backHref: string;
   codEnabled?: boolean;
@@ -109,6 +114,8 @@ export function PaymentMethodChooser({
    * es false y el backstop atómico lo rebota con aviso (nunca cobramos en silencio un total no visto).
    */
   couponInvalidAtRender?: boolean;
+  /** Textos CMS de métodos de pago y legales (roadmap B8). */
+  texts: CheckoutTexts["pay"];
 }) {
   // Si el negocio desactivó COD, el único método es Wompi (no mostramos selector).
   const [method, setMethod] = useState<Method>("WOMPI");
@@ -119,64 +126,52 @@ export function PaymentMethodChooser({
       {codEnabled && (
         <div
           role="radiogroup"
-          aria-label="Método de pago"
+          aria-label={texts.methodAria}
           className="mb-4 grid gap-3 sm:grid-cols-2"
         >
           <MethodCard
             selected={method === "WOMPI"}
             onSelect={() => setMethod("WOMPI")}
             icon={<CreditCard className="h-6 w-6" />}
-            title="Pagar con Wompi"
+            title={texts.wompiTitle}
             desc={WOMPI_METHODS_SHORT}
           />
           <MethodCard
             selected={method === "COD"}
             onSelect={() => setMethod("COD")}
             icon={<Wallet className="h-6 w-6" />}
-            title="Pago contraentrega"
-            desc="Pagas en efectivo al recibir"
+            title={texts.codTitle}
+            desc={texts.codDesc}
           />
         </div>
       )}
 
       <div className="text-brand-muted mb-4 flex items-start gap-2 text-xs">
         <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-emerald-600" />
-        {activeMethod === "WOMPI" ? (
-          <span>
-            Al pagar serás redirigido a Wompi (Bancolombia). Tu información bancaria nunca pasa por
-            Lucams.
-          </span>
-        ) : (
-          <span>
-            Confirmamos tu pedido de una vez y el mensajero te lo entrega. Pagas el total en
-            efectivo al recibir — sin tarjeta.
-          </span>
-        )}
+        {activeMethod === "WOMPI" ? <span>{texts.wompiNote}</span> : <span>{texts.codNote}</span>}
       </div>
 
       {/* Consentimiento de baja fricción (ADR-062 P0-2): al confirmar, el cliente acepta los
           términos —que incluyen la declaración de derechos de imagen— sin checkbox extra. */}
-      <p className="text-brand-muted mb-4 text-[11px] leading-relaxed">
-        Al confirmar tu pedido aceptas los{" "}
-        <Link href="/legal/terminos" className="hover:text-brand-purple-dark underline">
-          Términos y Condiciones
-        </Link>{" "}
-        y declaras que tienes derecho a usar las imágenes que subiste y autorizas su impresión.
-      </p>
+      <div className="text-brand-muted [&_a:hover]:text-brand-purple-dark mb-4 text-[11px] leading-relaxed [&_a]:underline">
+        <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
+          {texts.terms}
+        </ReactMarkdown>
+      </div>
 
       <div className="flex flex-col items-end gap-2 sm:flex-row sm:justify-between">
         <Link
           href={backHref}
           className="text-brand-purple-dark/70 hover:text-brand-purple-dark text-sm font-medium"
         >
-          ← Cambiar envío
+          {texts.back}
         </Link>
         <form action={activeMethod === "WOMPI" ? payWompiAction : payCodAction}>
           {/* Anti-bot: el widget inyecta el input cf-turnstile-response dentro del form;
               el server action lo verifica. En dev sin keys es un input vacío (fail-open). */}
           <TurnstileWidget size="flexible" />
           {couponInvalidAtRender && <input type="hidden" name="couponInvalidAtRender" value="1" />}
-          <SubmitButton method={activeMethod} />
+          <SubmitButton method={activeMethod} texts={texts} />
         </form>
       </div>
     </div>

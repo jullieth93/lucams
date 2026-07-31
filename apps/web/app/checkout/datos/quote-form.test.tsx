@@ -29,6 +29,7 @@ vi.mock("@/features/quotes/actions", () => ({
 }));
 
 import { QuoteForm } from "./quote-form";
+import { DEFAULT_CHECKOUT_TEXTS } from "../checkout-texts";
 
 afterEach(cleanup);
 
@@ -40,7 +41,7 @@ function getForm(): HTMLFormElement {
 
 describe("QuoteForm", () => {
   it("renderiza los campos que espera createQuoteAction (nombres exactos)", () => {
-    render(<QuoteForm />);
+    render(<QuoteForm texts={DEFAULT_CHECKOUT_TEXTS.quote} />);
 
     expect(screen.getByText(/pide tu cotización/i)).toBeInTheDocument();
     expect(document.querySelector('input[name="customerName"]')).toBeInTheDocument();
@@ -52,19 +53,19 @@ describe("QuoteForm", () => {
   });
 
   it("muestra el copy clave: el envío se coordina por WhatsApp", () => {
-    render(<QuoteForm />);
+    render(<QuoteForm texts={DEFAULT_CHECKOUT_TEXTS.quote} />);
     expect(
       screen.getByText(/el envío se coordina por whatsapp al confirmar tu cotización/i),
     ).toBeInTheDocument();
   });
 
   it("el form vacío NO pasa validación nativa (requeridos: nombre, WhatsApp, depto, ciudad)", () => {
-    render(<QuoteForm />);
+    render(<QuoteForm texts={DEFAULT_CHECKOUT_TEXTS.quote} />);
     expect(getForm().checkValidity()).toBe(false);
   });
 
   it("auto-formatea el WhatsApp en pantalla y envía los 10 dígitos limpios en el hidden", () => {
-    render(<QuoteForm />);
+    render(<QuoteForm texts={DEFAULT_CHECKOUT_TEXTS.quote} />);
     const display = document.querySelector<HTMLInputElement>("#whatsapp-display")!;
     fireEvent.change(display, { target: { value: "3008873826" } });
 
@@ -75,7 +76,7 @@ describe("QuoteForm", () => {
   });
 
   it("sincroniza los hidden department/city con el NOMBRE humano al elegir en los selects DANE", () => {
-    render(<QuoteForm />);
+    render(<QuoteForm texts={DEFAULT_CHECKOUT_TEXTS.quote} />);
 
     fireEvent.change(document.querySelector("#deptCode")!, { target: { value: "11" } });
     // La ciudad se habilita solo tras elegir departamento.

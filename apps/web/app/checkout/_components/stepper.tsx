@@ -4,18 +4,20 @@
  */
 
 import { Check } from "lucide-react";
+import { getCheckoutTexts } from "../checkout-texts.server";
 
 type Step = { num: 1 | 2 | 3; label: string };
 
-const STEPS: Step[] = [
-  { num: 1, label: "Datos" },
-  { num: 2, label: "Envío" },
-  { num: 3, label: "Pago" },
-];
-
-export function CheckoutStepper({ current }: { current: 1 | 2 | 3 }) {
+export async function CheckoutStepper({ current }: { current: 1 | 2 | 3 }) {
+  // Roadmap B8 — etiquetas del stepper desde el CMS.
+  const texts = await getCheckoutTexts();
+  const STEPS: Step[] = [
+    { num: 1, label: texts.steps.datos },
+    { num: 2, label: texts.steps.envio },
+    { num: 3, label: texts.steps.pago },
+  ];
   return (
-    <nav aria-label="Progreso del checkout" className="mx-auto mb-8 max-w-3xl">
+    <nav aria-label={texts.steps.aria} className="mx-auto mb-8 max-w-3xl">
       <ol className="flex items-center justify-between gap-2">
         {STEPS.map((step, idx) => {
           const isCompleted = step.num < current;

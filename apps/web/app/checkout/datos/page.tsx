@@ -19,6 +19,7 @@ import {
   CheckoutError,
 } from "@/features/checkout/service";
 import { getSavedAddressesForCheckout } from "@/features/addresses/service";
+import { getCheckoutTexts } from "../checkout-texts.server";
 
 // Mensaje único cuando un item se agotó mientras estaba en el carrito (auditoría 2026-07-16).
 const STOCK_GONE_MSG = "Uno de los productos ya no está disponible. Por favor revisa tu carrito.";
@@ -46,6 +47,8 @@ export default async function CheckoutDatosPage() {
   // Las direcciones guardadas solo las usa el formulario full (DatosForm).
   const savedAddresses =
     !catalog && ctx.customerId ? await getSavedAddressesForCheckout(ctx.customerId) : [];
+  // Roadmap B8 — textos CMS del paso (formulario de datos o cotización + resumen).
+  const texts = await getCheckoutTexts();
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -54,17 +57,18 @@ export default async function CheckoutDatosPage() {
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2">
           {catalog ? (
-            <QuoteForm items={ctx.cart.items} />
+            <QuoteForm items={ctx.cart.items} texts={texts.quote} />
           ) : (
             <DatosForm
               initial={ctx.state}
               savedAddresses={savedAddresses}
               canSaveAddress={Boolean(ctx.customerId)}
+              texts={texts.datos}
             />
           )}
         </div>
         <div className="lg:col-span-1">
-          <OrderSummary cart={ctx.cart} />
+          <OrderSummary cart={ctx.cart} texts={texts.summary} />
         </div>
       </div>
     </div>

@@ -957,6 +957,30 @@ describe.skipIf(!hasDb)(
       });
     });
 
+    // ───────────────────────── Copy del checkout (roadmap B8) ─────────────────────────
+
+    describe("getCheckoutTexts (B8: copy del checkout al CMS)", () => {
+      it("resuelve los campos checkout.* migrados con la estructura completa (valores sembrados = defaults)", async () => {
+        // Mismo patrón B7/B9: UNA query por prefijo checkout.* sobre defaults exactos.
+        const { getCheckoutTexts } = await import("@/app/checkout/checkout-texts.server");
+        const texts = await getCheckoutTexts();
+        expect(texts.layout.backCart).toBe("Volver al carrito");
+        expect(texts.steps.pago).toBe("Pago");
+        expect(texts.summary.free).toBe("Gratis");
+        expect(texts.summary.itemSingle).toBe("producto");
+        expect(texts.datos.consent).toContain("[Política de Privacidad](/legal/privacidad)");
+        expect(texts.datos.refError).toContain("Mínimo 10 caracteres");
+        expect(texts.datos.viaTypeAria).toBe("Tipo de vía");
+        expect(texts.quote.consent).toContain("Ley 1581 de 2012");
+        expect(texts.shipping.note).toContain("**estimados por la transportadora**");
+        expect(texts.shipping.errorWa).toBe("Contáctanos por WhatsApp");
+        expect(texts.payment.couponAsk).toBe("¿Tienes un cupón?");
+        expect(texts.payment.billingNote).toContain("cuenta de cobro o factura");
+        expect(texts.pay.terms).toContain("[Términos y Condiciones](/legal/terminos)");
+        expect(texts.pay.legalWarrantyTitle).toBe("Garantía:");
+      });
+    });
+
     // ───────────────────────── Utilidades del admin (roadmap C4) ─────────────────────────
 
     describe("utilidades admin (C4: borradores, mover, duplicar)", () => {

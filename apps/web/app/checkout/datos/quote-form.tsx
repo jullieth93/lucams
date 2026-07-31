@@ -17,6 +17,9 @@
  */
 
 import { useActionState, useEffect, useMemo, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import rehypeSanitize from "rehype-sanitize";
+import remarkGfm from "remark-gfm";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { Loader2, MessageCircle } from "lucide-react";
@@ -36,8 +39,16 @@ import {
   type DaneCity,
 } from "@/lib/dane-divipola";
 import { formatPhone, stripPhone, validatePhone } from "@/lib/colombia-validators";
+import type { CheckoutTexts } from "../checkout-texts";
 
-export function QuoteForm({ items = [] }: { items?: CartLineItem[] }) {
+export function QuoteForm({
+  items = [],
+  texts,
+}: {
+  items?: CartLineItem[];
+  /** Textos CMS de la cotización (roadmap B8) — los resuelve el padre server. */
+  texts: CheckoutTexts["quote"];
+}) {
   const router = useRouter();
   const [state, formAction, pending] = useActionState<QuoteActionState, FormData>(
     createQuoteAction,
@@ -85,16 +96,11 @@ export function QuoteForm({ items = [] }: { items?: CartLineItem[] }) {
           lateral del checkout baja hasta el fondo). */}
       {items.length > 0 && (
         <section
-          aria-label="Productos de tu cotización"
+          aria-label={texts.title}
           className="border-brand-purple/10 rounded-2xl border bg-white p-5 shadow-sm sm:p-6"
         >
-          <h2 className="text-brand-purple-dark font-display text-lg font-bold">
-            Lo que estás cotizando
-          </h2>
-          <p className="text-brand-muted mt-1 text-sm">
-            Esto es exactamente lo que vas a recibir. Revísalo con calma antes de enviarnos tu
-            cotización.
-          </p>
+          <h2 className="text-brand-purple-dark font-display text-lg font-bold">{texts.heading}</h2>
+          <p className="text-brand-muted mt-1 text-sm">{texts.subtext}</p>
           <ul className="divide-brand-purple/10 mt-3 divide-y">
             {items.map((item) => {
               const imgUrl = item.designPreviewUrl ?? item.imageUrl ?? null;
@@ -140,7 +146,7 @@ export function QuoteForm({ items = [] }: { items?: CartLineItem[] }) {
                     )}
                     {item.designPreviewUrl && (
                       <p className="text-brand-purple mt-1 text-xs font-medium">
-                        ✨ Con tu diseño personalizado
+                        {texts.customBadge}
                       </p>
                     )}
                     {/* Con cantidad > 1 el precio unitario evita que el total de línea se lea como
@@ -159,7 +165,7 @@ export function QuoteForm({ items = [] }: { items?: CartLineItem[] }) {
             })}
           </ul>
           <div className="border-brand-purple/10 mt-1 flex items-center justify-between border-t pt-3">
-            <span className="text-brand-purple-dark text-sm font-semibold">Total</span>
+            <span className="text-brand-purple-dark text-sm font-semibold">{texts.total}</span>
             <span className="text-brand-purple-dark font-display text-lg font-bold tabular-nums">
               {formatCOP(items.reduce((sum, i) => sum + i.lineTotal, 0))}
             </span>
@@ -169,13 +175,10 @@ export function QuoteForm({ items = [] }: { items?: CartLineItem[] }) {
 
       <section className="border-brand-purple/10 rounded-2xl border bg-white p-5 shadow-sm sm:p-6">
         <h1 className="text-brand-purple-dark font-display text-xl font-bold sm:text-2xl">
-          Pide tu cotización ✨
+          {texts.ctaTitle}
         </h1>
         <p className="text-brand-purple-dark/75 mt-2 text-sm">
-          Déjanos tus datos y te contactamos por WhatsApp para confirmar precio, pago y entrega.{" "}
-          <strong className="text-brand-purple-dark">
-            El envío se coordina por WhatsApp al confirmar tu cotización.
-          </strong>
+          {texts.ctaSub} <strong className="text-brand-purple-dark">{texts.shipNote}</strong>
         </p>
 
         <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -206,7 +209,7 @@ export function QuoteForm({ items = [] }: { items?: CartLineItem[] }) {
               htmlFor="whatsapp-display"
               className="text-brand-purple-dark mb-1 block text-xs font-semibold"
             >
-              Tu WhatsApp <span className="text-rose-600">*</span>
+              {texts.whatsappLabel} <span className="text-rose-600">*</span>
             </Label>
             <Input
               id="whatsapp-display"
@@ -245,7 +248,7 @@ export function QuoteForm({ items = [] }: { items?: CartLineItem[] }) {
               type="email"
               required
               maxLength={254}
-              placeholder="tu@correo.com"
+              placeholder={texts.emailPlaceholder}
               autoComplete="email"
               className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
             />
@@ -290,7 +293,7 @@ export function QuoteForm({ items = [] }: { items?: CartLineItem[] }) {
               htmlFor="cityCode"
               className="text-brand-purple-dark mb-1 block text-xs font-semibold"
             >
-              Ciudad <span className="text-rose-600">*</span>
+              {texts.cityLabel} <span className="text-rose-600">*</span>
             </Label>
             <select
               id="cityCode"
@@ -326,7 +329,7 @@ export function QuoteForm({ items = [] }: { items?: CartLineItem[] }) {
               name="notes"
               rows={3}
               maxLength={500}
-              placeholder="Ej. es para un regalo, lo necesito antes del viernes..."
+              placeholder={texts.notePlaceholder}
               className="border-brand-purple/20 focus-visible:ring-brand-purple/30 resize-y"
             />
             <FieldError message={err("notes")} />
@@ -353,11 +356,11 @@ export function QuoteForm({ items = [] }: { items?: CartLineItem[] }) {
         >
           {pending ? (
             <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Creando tu cotización…
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" /> {texts.pending}
             </>
           ) : (
             <>
-              <MessageCircle className="mr-2 h-4 w-4" /> Pedir cotización por WhatsApp
+              <MessageCircle className="mr-2 h-4 w-4" /> {texts.submit}
             </>
           )}
         </Button>
@@ -374,24 +377,14 @@ export function QuoteForm({ items = [] }: { items?: CartLineItem[] }) {
             aria-invalid={err("dataConsent") ? true : undefined}
             className="accent-brand-purple mt-0.5 h-4 w-4 flex-shrink-0"
           />
-          <span className="text-brand-purple-dark/90 leading-relaxed">
-            Autorizo el <strong>tratamiento de mis datos personales</strong> para responder esta
-            cotización por WhatsApp, conforme a la{" "}
-            <a
-              href="/legal/privacidad"
-              target="_blank"
-              rel="noreferrer"
-              className="text-brand-purple underline underline-offset-2"
-            >
-              Política de Privacidad
-            </a>{" "}
-            (Ley 1581 de 2012).
+          <span className="text-brand-purple-dark/90 [&_a]:text-brand-purple leading-relaxed [&_a]:underline [&_a]:underline-offset-2">
+            <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
+              {texts.consent}
+            </ReactMarkdown>
           </span>
         </label>
         <FieldError message={err("dataConsent")} />
-        <p className="text-brand-muted mt-2 text-xs">
-          Sin spam: solo te escribimos por esta cotización.
-        </p>
+        <p className="text-brand-muted mt-2 text-xs">{texts.noSpam}</p>
       </div>
     </form>
   );

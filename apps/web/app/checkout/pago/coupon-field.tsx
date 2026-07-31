@@ -20,6 +20,7 @@ import { useActionState, useEffect, useRef } from "react";
 import { useFormStatus } from "react-dom";
 import { Ticket, X, Loader2, Check, AlertTriangle } from "lucide-react";
 import { applyCouponAction, removeCouponAction, type CouponActionState } from "./actions";
+import type { CheckoutTexts } from "../checkout-texts";
 
 /**
  * Botón "quitar cupón" con estado de carga propio (useFormStatus lee el <form>
@@ -42,9 +43,12 @@ function RemoveButton({ code }: { code: string }) {
 export function CouponField({
   appliedCode,
   appliedError,
+  texts,
 }: {
   appliedCode?: string;
   appliedError?: string;
+  /** Textos CMS del bloque de pago/cupón (roadmap B8). */
+  texts: CheckoutTexts["payment"];
 }) {
   const [state, action, pending] = useActionState<CouponActionState, FormData>(
     applyCouponAction,
@@ -70,7 +74,8 @@ export function CouponField({
       <div className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-emerald-800">
         <Check className="h-4 w-4 flex-shrink-0 text-emerald-700" />
         <span className="text-sm">
-          Cupón <span className="font-bold">{appliedCode}</span> aplicado
+          {texts.couponLabel} <span className="font-bold">{appliedCode}</span>{" "}
+          {texts.couponAppliedSuffix}
         </span>
         <form action={removeCouponAction} className="ml-auto text-emerald-700">
           <RemoveButton code={appliedCode} />
@@ -87,9 +92,10 @@ export function CouponField({
           <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600" />
           <div className="flex-1 text-sm">
             <p role="alert">
-              El cupón <span className="font-bold">{appliedCode}</span> ya no aplica: {appliedError}
+              {texts.couponInvalidPre} <span className="font-bold">{appliedCode}</span>{" "}
+              {texts.couponInvalidPost} {appliedError}
             </p>
-            <p className="mt-0.5 text-xs text-amber-800">Quítalo para continuar con el pago.</p>
+            <p className="mt-0.5 text-xs text-amber-800">{texts.couponInvalidNote}</p>
           </div>
           <form action={removeCouponAction} className="text-amber-700">
             <RemoveButton code={appliedCode} />
@@ -106,7 +112,7 @@ export function CouponField({
     <form action={action} className="space-y-1.5">
       <label htmlFor="coupon-code" className="text-brand-muted flex items-center gap-1.5 text-xs">
         <Ticket className="h-3.5 w-3.5" />
-        ¿Tienes un cupón?
+        {texts.couponAsk}
       </label>
       <div className="flex gap-2">
         <input
@@ -116,7 +122,7 @@ export function CouponField({
           type="text"
           required
           autoCapitalize="characters"
-          placeholder="Escribe tu código"
+          placeholder={texts.couponPlaceholder}
           aria-invalid={!!errorMsg}
           aria-describedby={errorMsg ? "coupon-error" : undefined}
           className="border-brand-purple/20 focus:ring-brand-purple/30 min-w-0 flex-1 rounded-md border bg-white px-3 py-2 text-sm uppercase placeholder:normal-case focus:ring-2 focus:outline-none"
@@ -126,7 +132,7 @@ export function CouponField({
           disabled={pending}
           className="bg-brand-purple-dark hover:bg-brand-purple inline-flex items-center gap-1.5 rounded-md px-4 py-2 text-sm font-semibold text-white transition-colors disabled:opacity-60"
         >
-          {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Aplicar"}
+          {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : texts.couponApply}
         </button>
       </div>
       {errorMsg && (

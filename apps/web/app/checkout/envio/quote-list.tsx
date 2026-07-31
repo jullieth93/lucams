@@ -1,23 +1,30 @@
 "use client";
 
 import { useState } from "react";
+import ReactMarkdown from "react-markdown";
+import rehypeSanitize from "rehype-sanitize";
+import remarkGfm from "remark-gfm";
 import { Truck, Clock, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatCOP } from "@/lib/format";
 import { selectShippingAction } from "./actions";
 import type { ShippingSelectionInput } from "@/features/checkout/schemas";
+import type { CheckoutTexts } from "../checkout-texts";
 
 export function QuoteList({
   quotes,
   offersToken,
   preselectedQuoteId,
   onSelectionChange,
+  texts,
 }: {
   quotes: ShippingSelectionInput[];
   /** Set de cotizaciones sellado HMAC por el servidor (anti-manipulación de flete). */
   offersToken: string;
   preselectedQuoteId?: string;
   onSelectionChange?: (quoteId: string) => void;
+  /** Textos CMS de la lista de envío (roadmap B8). */
+  texts: CheckoutTexts["shipping"];
 }) {
   const [selected, setSelected] = useState<string | null>(
     preselectedQuoteId ?? quotes[0]?.quoteId ?? null,
@@ -31,7 +38,7 @@ export function QuoteList({
 
   return (
     <form action={selectShippingAction} className="space-y-4">
-      <ul role="radiogroup" aria-label="Opciones de envío" className="space-y-2">
+      <ul role="radiogroup" aria-label={texts.listTitle} className="space-y-2">
         {quotes.map((q) => {
           const isSelected = selected === q.quoteId;
           return (
@@ -85,7 +92,7 @@ export function QuoteList({
                 </div>
                 <div className="text-brand-purple-dark flex-shrink-0 text-right text-base font-bold tabular-nums">
                   {q.fleteCop === 0 ? (
-                    <span className="text-emerald-700">Gratis</span>
+                    <span className="text-emerald-700">{texts.free}</span>
                   ) : (
                     formatCOP(q.fleteCop)
                   )}
@@ -100,9 +107,9 @@ export function QuoteList({
       <p className="text-brand-muted mt-3 flex items-start gap-1.5 text-xs">
         <Clock className="mt-0.5 h-3 w-3 flex-shrink-0" aria-hidden />
         <span>
-          Son tiempos <strong>estimados por la transportadora</strong>, no una fecha garantizada.
-          Antes fabricamos tu pedido a mano: lo <strong>entregamos en máximo 3 días hábiles</strong>{" "}
-          (2 de fabricación + 1 de entrega) y de ahí corre el tránsito.
+          <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
+            {texts.note}
+          </ReactMarkdown>
         </span>
       </p>
 
@@ -126,7 +133,7 @@ export function QuoteList({
           href="/checkout/datos"
           className="text-brand-purple-dark/70 hover:text-brand-purple-dark text-sm font-medium"
         >
-          ← Cambiar dirección
+          {texts.back}
         </a>
         <Button
           type="submit"
@@ -134,7 +141,7 @@ export function QuoteList({
           size="lg"
           className="bg-gradient-brand w-full text-white hover:brightness-110 sm:w-auto"
         >
-          Continuar al pago →
+          {texts.next}
         </Button>
       </div>
     </form>

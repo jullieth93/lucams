@@ -24,6 +24,7 @@ import {
 import { getSettingValue } from "@/lib/cms";
 import { CmsText } from "@/components/cms/cms-text";
 import { formatCityDept } from "@/lib/format";
+import { getCheckoutTexts } from "../checkout-texts.server";
 
 const STOCK_GONE_MSG = "Uno de los productos ya no está disponible. Por favor revisa tu carrito.";
 
@@ -78,6 +79,9 @@ export default async function CheckoutPagoPage({ searchParams }: { searchParams:
   // Toggle de negocio: ¿se ofrece contra entrega? (editable en /admin/contenido/paginas/global)
   const codEnabled = (await getSettingValue("COD_ENABLED", "true")) === "true";
 
+  // Roadmap B8 — textos CMS del paso de pago (revisión, cupón, métodos, legales).
+  const texts = await getCheckoutTexts();
+
   return (
     <div className="mx-auto max-w-6xl">
       <CheckoutStepper current={3} />
@@ -93,7 +97,7 @@ export default async function CheckoutPagoPage({ searchParams }: { searchParams:
                 <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-rose-700" />
                 <div>
                   <h3 className="text-sm font-semibold text-rose-900">
-                    No pudimos procesar el pago
+                    {texts.payment.errorTitle}
                   </h3>
                   {/* searchParams ya viene decodificado; un decodeURIComponent extra con '%' literal
                       lanzaría URIError y tumbaría la página (auditoría v3, quick win). */}
@@ -107,7 +111,7 @@ export default async function CheckoutPagoPage({ searchParams }: { searchParams:
                 <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-600" />
                 <div>
                   <h3 className="text-sm font-semibold text-amber-900">
-                    Revisa tu pedido antes de pagar
+                    {texts.payment.reviewTitle}
                   </h3>
                   <p className="mt-1 text-xs text-amber-800">{couponNotice}</p>
                 </div>
@@ -118,7 +122,12 @@ export default async function CheckoutPagoPage({ searchParams }: { searchParams:
 
         <div className="order-2 space-y-4 lg:order-none lg:col-span-2">
           {/* Resumen de contacto */}
-          <ReviewCard icon={<User className="h-4 w-4" />} title="Contacto" href="/checkout/datos">
+          <ReviewCard
+            icon={<User className="h-4 w-4" />}
+            title={texts.payment.contact}
+            href="/checkout/datos"
+            editLabel={texts.payment.edit}
+          >
             <p className="text-brand-purple-dark text-sm font-semibold">{contact.fullName}</p>
             <p className="text-brand-purple-dark/70 text-xs">{contact.email}</p>
             <p className="text-brand-purple-dark/70 text-xs">{contact.phone}</p>
@@ -132,8 +141,9 @@ export default async function CheckoutPagoPage({ searchParams }: { searchParams:
           {/* Resumen de envío */}
           <ReviewCard
             icon={<MapPin className="h-4 w-4" />}
-            title="Dirección de envío"
+            title={texts.payment.address}
             href="/checkout/datos"
+            editLabel={texts.payment.edit}
           >
             <p className="text-brand-purple-dark text-sm">
               {address.kind === "urban" ? (
@@ -160,10 +170,12 @@ export default async function CheckoutPagoPage({ searchParams }: { searchParams:
               {address.zip && ` · ${address.zip}`}
             </p>
             {address.notes && (
-              <p className="text-brand-muted mt-1 text-xs italic">Nota: {address.notes}</p>
+              <p className="text-brand-muted mt-1 text-xs italic">
+                {texts.payment.note} {address.notes}
+              </p>
             )}
             <p className="text-brand-purple-dark mt-2 text-xs font-medium">
-              Vía {shippingSelection.carrierName}
+              {texts.payment.via} {shippingSelection.carrierName}
               {shippingSelection.deliveryDays > 0 &&
                 ` · estimado de la transportadora: ${shippingSelection.deliveryDays} día${shippingSelection.deliveryDays === 1 ? "" : "s"} hábil${shippingSelection.deliveryDays === 1 ? "" : "es"} tras el despacho`}
             </p>
@@ -173,16 +185,16 @@ export default async function CheckoutPagoPage({ searchParams }: { searchParams:
           {billing?.wantsInvoice && (
             <ReviewCard
               icon={<Receipt className="h-4 w-4" />}
-              title="Facturación"
+              title={texts.payment.billing}
               href="/checkout/datos"
+              editLabel={texts.payment.edit}
             >
               <p className="text-brand-purple-dark text-sm">{billing.name}</p>
               <p className="text-brand-purple-dark/70 text-xs">
                 {billing.documentType} {billing.documentNumber}
               </p>
               <p className="text-brand-muted mt-1 text-xs">
-                Coordinamos tu documento de venta (cuenta de cobro o factura, según corresponda) al
-                correo {contact.email}
+                {texts.payment.billingNote} {contact.email}
               </p>
             </ReviewCard>
           )}
@@ -198,35 +210,32 @@ export default async function CheckoutPagoPage({ searchParams }: { searchParams:
               backHref="/checkout/envio"
               codEnabled={codEnabled}
               couponInvalidAtRender={Boolean(applied?.error)}
+              texts={texts.pay}
             />
           </section>
 
           {/* Aviso legal en el punto de venta (Ley 1480 art. 23/47/7-16): antes de pagar el
               consumidor debe conocer el retracto y la garantía. */}
           <section
-            aria-label="Retracto y garantía"
+            aria-label={texts.pay.legalRetractTitle}
             className="border-brand-purple/10 text-brand-purple-dark/80 rounded-2xl border bg-white p-4 text-xs sm:p-5"
           >
             <p>
-              <strong className="text-brand-purple-dark">Retracto:</strong> tienes 5 días hábiles
-              desde que recibes para retractarte de productos del catálogo estándar; te devolvemos
-              el dinero en máximo 15 días calendario. Los productos personalizados en el Estudio
-              (con tu foto o tu texto) no tienen retracto por ser hechos a tu medida (Ley 1480, art.
-              47).
+              <strong className="text-brand-purple-dark">Retracto:</strong>{" "}
+              {texts.pay.legalRetractBody}
             </p>
             <p className="mt-2">
-              <strong className="text-brand-purple-dark">Garantía:</strong> todos los productos
-              tienen garantía legal de 1 año por defectos de fabricación; puedes pedir reparación,
-              cambio o devolución del dinero.
+              <strong className="text-brand-purple-dark">{texts.pay.legalWarrantyTitle}</strong>{" "}
+              {texts.pay.legalWarrantyBody}
             </p>
             <p className="mt-2">
-              Más en{" "}
+              {texts.pay.legalMore}{" "}
               <Link href="/legal/devoluciones" className="text-brand-purple underline">
-                Devoluciones y Retracto
+                {texts.pay.legalDevoluciones}
               </Link>{" "}
               y{" "}
               <Link href="/legal/garantias" className="text-brand-purple underline">
-                Garantías
+                {texts.pay.legalGarantias}
               </Link>
               .
             </p>
@@ -235,7 +244,11 @@ export default async function CheckoutPagoPage({ searchParams }: { searchParams:
 
         <div className="order-1 space-y-4 lg:order-none lg:col-span-1">
           <div className="border-brand-purple/10 rounded-2xl border bg-white p-4 shadow-sm">
-            <CouponField appliedCode={applied?.code} appliedError={applied?.error} />
+            <CouponField
+              appliedCode={applied?.code}
+              appliedError={applied?.error}
+              texts={texts.payment}
+            />
           </div>
           <OrderSummary
             cart={ctx.cart}
@@ -243,6 +256,7 @@ export default async function CheckoutPagoPage({ searchParams }: { searchParams:
             shippingLabel={shippingSelection.carrierName}
             discount={applied && !applied.error ? applied.discount : 0}
             couponCode={applied && !applied.error ? applied.code : undefined}
+            texts={texts.summary}
           />
         </div>
       </div>
@@ -254,11 +268,13 @@ function ReviewCard({
   icon,
   title,
   href,
+  editLabel,
   children,
 }: {
   icon: React.ReactNode;
   title: string;
   href: string;
+  editLabel: string;
   children: React.ReactNode;
 }) {
   return (
@@ -272,7 +288,7 @@ function ReviewCard({
           href={href}
           className="text-brand-purple-dark hover:text-brand-purple text-xs font-semibold"
         >
-          Editar
+          {editLabel}
         </Link>
       </header>
       <div className="space-y-0.5">{children}</div>

@@ -14,6 +14,9 @@
  */
 
 import { useActionState, useMemo, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import rehypeSanitize from "rehype-sanitize";
+import remarkGfm from "remark-gfm";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -40,16 +43,20 @@ import {
 import { detectEmailTypo, isValidEmail, suggestEmails } from "@/lib/email-domains";
 import { VIA_TYPES } from "@/features/checkout/schemas";
 import type { CheckoutPrefillAddress } from "@/features/addresses/service";
+import type { CheckoutTexts } from "../checkout-texts";
 
 export function DatosForm({
   initial,
   savedAddresses = [],
   canSaveAddress = false,
+  texts,
 }: {
   initial: CheckoutState;
   savedAddresses?: CheckoutPrefillAddress[];
   // true solo si hay cliente logueado → ofrecer "guardar esta dirección".
   canSaveAddress?: boolean;
+  /** Textos CMS del formulario (roadmap B8) — los resuelve el padre server. */
+  texts: CheckoutTexts["datos"];
 }) {
   const [state, formAction, pending] = useActionState<DatosActionState | null, FormData>(
     saveDatosAction,
@@ -288,7 +295,9 @@ export function DatosForm({
     <form action={formAction} className="space-y-6">
       {/* CONTACTO */}
       <section className="border-brand-purple/10 rounded-2xl border bg-white p-5 shadow-sm sm:p-6">
-        <h2 className="text-brand-purple-dark font-display mb-4 text-lg font-bold">1. Contacto</h2>
+        <h2 className="text-brand-purple-dark font-display mb-4 text-lg font-bold">
+          {texts.contactTitle}
+        </h2>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           {/* Nombre */}
           <div>
@@ -296,13 +305,13 @@ export function DatosForm({
               htmlFor="fullName"
               className="text-brand-purple-dark mb-1 block text-xs font-semibold"
             >
-              Nombre completo <span className="text-rose-600">*</span>
+              {texts.nameLabel} <span className="text-rose-600">*</span>
             </Label>
             <Input
               id="fullName"
               name="fullName"
               required
-              placeholder="Ej. Valentina Rojas"
+              placeholder={texts.namePlaceholder}
               value={fullName}
               onChange={(e) => {
                 setFullName(e.target.value);
@@ -313,9 +322,7 @@ export function DatosForm({
             />
             <FieldHint
               clientError={
-                fullName.length > 0 && !isNameValid && touched.fullName
-                  ? "Solo letras, espacios y acentos (sin números)"
-                  : null
+                fullName.length > 0 && !isNameValid && touched.fullName ? texts.nameError : null
               }
               serverError={err("fullName")}
             />
@@ -327,14 +334,14 @@ export function DatosForm({
               htmlFor="email"
               className="text-brand-purple-dark mb-1 block text-xs font-semibold"
             >
-              Email <span className="text-rose-600">*</span>
+              {texts.emailLabel} <span className="text-rose-600">*</span>
             </Label>
             <Input
               id="email"
               name="email"
               type="email"
               required
-              placeholder="tu@correo.com"
+              placeholder={texts.emailPlaceholder}
               value={email}
               onChange={(e) => handleEmailChange(e.target.value)}
               onBlur={handleEmailBlur}
@@ -363,15 +370,15 @@ export function DatosForm({
             )}
             <FieldHint
               clientError={
-                email.length > 0 && !isEmailValid && touched.email ? "Email inválido" : null
+                email.length > 0 && !isEmailValid && touched.email ? texts.emailError : null
               }
               serverError={err("email")}
-              hint="Aquí te enviamos la confirmación + tracking"
+              hint={texts.emailHint}
             />
             {/* Sugerencia de typo */}
             {emailTypoFix && (
               <p className="mt-1 text-xs text-amber-700">
-                ¿Quisiste decir{" "}
+                {texts.emailTypo}{" "}
                 <button
                   type="button"
                   onClick={() => {
@@ -393,7 +400,7 @@ export function DatosForm({
               htmlFor="phone-display"
               className="text-brand-purple-dark mb-1 block text-xs font-semibold"
             >
-              Teléfono móvil <span className="text-rose-600">*</span>
+              {texts.phoneLabel} <span className="text-rose-600">*</span>
             </Label>
             <Input
               id="phone-display"
@@ -412,19 +419,17 @@ export function DatosForm({
             <input type="hidden" name="phone" value={stripPhone(phoneDisplay)} />
             <FieldHint
               clientError={
-                phoneDisplay.length > 0 && !isPhoneValid && touched.phone
-                  ? "Móvil colombiano: 10 dígitos empezando con 3"
-                  : null
+                phoneDisplay.length > 0 && !isPhoneValid && touched.phone ? texts.phoneError : null
               }
               serverError={err("phone")}
-              hint="El courier lo usa para coordinar entrega"
+              hint={texts.phoneHint}
             />
           </div>
 
           {/* Documento (opcional) */}
           <div>
             <Label className="text-brand-purple-dark mb-1 block text-xs font-semibold">
-              Documento (opcional, requerido si quieres factura)
+              {texts.docLabel}
             </Label>
             <div className="grid grid-cols-3 gap-2">
               <select
@@ -450,7 +455,7 @@ export function DatosForm({
                 }}
                 onBlur={() => markTouched("documentNumber")}
                 disabled={!docType}
-                placeholder={docType ? "1234567890" : "Elige tipo primero"}
+                placeholder={docType ? "1234567890" : texts.docTypePlaceholder}
                 className="border-brand-purple/20 focus-visible:ring-brand-purple/30 col-span-2"
               />
             </div>
@@ -470,7 +475,7 @@ export function DatosForm({
       {/* DIRECCIÓN */}
       <section className="border-brand-purple/10 rounded-2xl border bg-white p-5 shadow-sm sm:p-6">
         <h2 className="text-brand-purple-dark font-display mb-4 text-lg font-bold">
-          2. Dirección de envío
+          {texts.addressTitle}
         </h2>
 
         {/* USAR DIRECCIÓN GUARDADA — solo si el cliente logueado tiene direcciones */}
@@ -480,7 +485,7 @@ export function DatosForm({
               htmlFor="saved-address"
               className="text-brand-purple-dark mb-1.5 block text-sm font-semibold"
             >
-              📍 Usar una dirección guardada
+              {texts.savedLabel}
             </label>
             <select
               id="saved-address"
@@ -488,7 +493,7 @@ export function DatosForm({
               onChange={(e) => e.target.value && applySavedAddress(e.target.value)}
               className="border-brand-purple/25 focus:border-brand-purple h-9 w-full rounded-md border bg-white px-2 text-sm"
             >
-              <option value="">Escribir una dirección nueva…</option>
+              <option value="">{texts.savedNew}</option>
               {savedAddresses.map((a) => (
                 <option key={a.id} value={a.id}>
                   {a.label}
@@ -496,9 +501,7 @@ export function DatosForm({
                 </option>
               ))}
             </select>
-            <p className="text-brand-muted mt-1.5 text-xs">
-              Rellenamos tu dirección guardada. Revisa que esté completa antes de continuar.
-            </p>
+            <p className="text-brand-muted mt-1.5 text-xs">{texts.savedNote}</p>
           </div>
         )}
 
@@ -519,7 +522,7 @@ export function DatosForm({
               onChange={(e) => handleDeptChange(e.target.value)}
               className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 h-9 w-full rounded-md border bg-white px-2 text-sm focus:ring-2 focus:outline-none"
             >
-              <option value="">Elige departamento...</option>
+              <option value="">{texts.deptPlaceholder}</option>
               {DEPARTMENTS.map((d) => (
                 <option key={d.code} value={d.code}>
                   {d.name}
@@ -536,7 +539,7 @@ export function DatosForm({
               htmlFor="cityCode"
               className="text-brand-purple-dark mb-1 block text-xs font-semibold"
             >
-              Ciudad <span className="text-rose-600">*</span>
+              {texts.cityLabel} <span className="text-rose-600">*</span>
             </Label>
             <select
               id="cityCode"
@@ -547,9 +550,7 @@ export function DatosForm({
               disabled={!deptCode}
               className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 h-9 w-full rounded-md border bg-white px-2 text-sm focus:ring-2 focus:outline-none disabled:bg-slate-50 disabled:text-slate-400"
             >
-              <option value="">
-                {deptCode ? "Elige ciudad..." : "Elige departamento primero"}
-              </option>
+              <option value="">{deptCode ? texts.cityPlaceholder : texts.cityWait}</option>
               {cities.map((c) => (
                 <option key={c.code} value={c.code}>
                   {c.name}
@@ -559,11 +560,7 @@ export function DatosForm({
             <FieldHint
               clientError={deptCode && cities.length > 0 && !cityCode ? null : null}
               serverError={err("cityCode")}
-              hint={
-                deptCode && cities.length === 0
-                  ? "No tenemos esa ciudad en el catálogo. Contáctanos por WhatsApp."
-                  : undefined
-              }
+              hint={deptCode && cities.length === 0 ? texts.cityMissing : undefined}
             />
             <input type="hidden" name="city" value={selectedCity?.name ?? ""} />
           </div>
@@ -573,7 +570,7 @@ export function DatosForm({
               htmlFor="zip"
               className="text-brand-purple-dark mb-1 block text-xs font-semibold"
             >
-              Código postal (opcional)
+              {texts.zipLabel}
             </Label>
             <Input
               id="zip"
@@ -587,7 +584,7 @@ export function DatosForm({
             <FieldHint
               clientError={null}
               serverError={err("zip")}
-              hint={selectedCity?.zip ? "Autocompletado para tu ciudad" : "6 dígitos"}
+              hint={selectedCity?.zip ? texts.zipHintAuto : texts.zipHint}
             />
           </div>
         </div>
@@ -595,10 +592,10 @@ export function DatosForm({
         {/* Toggle Urbana / Rural (Lucy 2026-05-21) */}
         <div className="mt-4">
           <Label className="text-brand-purple-dark mb-2 block text-xs font-semibold">
-            Tipo de dirección <span className="text-rose-600">*</span>
+            {texts.kindLabel} <span className="text-rose-600">*</span>
           </Label>
           <input type="hidden" name="addressKind" value={addressKind} />
-          <div role="radiogroup" aria-label="Tipo de dirección" className="grid grid-cols-2 gap-2">
+          <div role="radiogroup" aria-label={texts.kindLabel} className="grid grid-cols-2 gap-2">
             <button
               type="button"
               role="radio"
@@ -611,10 +608,8 @@ export function DatosForm({
                   : "border-brand-purple/15 hover:border-brand-purple/30")
               }
             >
-              <div className="text-brand-purple-dark text-sm font-semibold">🏙️ Urbana</div>
-              <div className="text-brand-muted text-xs">
-                Calle / Carrera + número (nomenclatura DIAN)
-              </div>
+              <div className="text-brand-purple-dark text-sm font-semibold">{texts.kindUrban}</div>
+              <div className="text-brand-muted text-xs">{texts.kindUrbanDesc}</div>
             </button>
             <button
               type="button"
@@ -628,10 +623,8 @@ export function DatosForm({
                   : "border-brand-purple/15 hover:border-brand-purple/30")
               }
             >
-              <div className="text-brand-purple-dark text-sm font-semibold">🌳 Rural</div>
-              <div className="text-brand-muted text-xs">
-                Vereda / Finca / Corregimiento + referencias
-              </div>
+              <div className="text-brand-purple-dark text-sm font-semibold">{texts.kindRural}</div>
+              <div className="text-brand-muted text-xs">{texts.kindRuralDesc}</div>
             </button>
           </div>
         </div>
@@ -642,20 +635,20 @@ export function DatosForm({
                 (Lucy 2026-05-21: bis + cardinal + letras) */}
             <div className="mt-4 space-y-3">
               <Label className="text-brand-purple-dark block text-xs font-semibold">
-                Dirección <span className="text-rose-600">*</span>
+                {texts.addressLabel} <span className="text-rose-600">*</span>
               </Label>
 
               {/* Primera fila: Tipo de vía + Número + Bis + Cardinal */}
               <div>
                 <p className="text-brand-muted mb-1 text-[10px] font-semibold tracking-wide uppercase">
-                  Vía principal
+                  {texts.viaLabel}
                 </p>
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-12">
                   <select
                     name="viaType"
                     value={viaType}
                     onChange={(e) => setViaType(e.target.value as (typeof VIA_TYPES)[number])}
-                    aria-label="Tipo de vía"
+                    aria-label={texts.viaTypeAria}
                     className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 h-9 w-full rounded-md border bg-white px-2 text-sm focus:ring-2 focus:outline-none sm:col-span-4"
                   >
                     {VIA_TYPES.map((v) => (
@@ -674,7 +667,7 @@ export function DatosForm({
                     placeholder="7A"
                     maxLength={10}
                     className="border-brand-purple/20 focus-visible:ring-brand-purple/30 sm:col-span-3"
-                    aria-label="Número de vía"
+                    aria-label={texts.viaNumberAria}
                   />
                   <label className="border-brand-purple/20 inline-flex h-9 items-center justify-center gap-1.5 rounded-md border bg-white px-2 text-xs sm:col-span-2">
                     <input
@@ -684,33 +677,29 @@ export function DatosForm({
                       onChange={(e) => setViaBis(e.target.checked)}
                       className="accent-brand-purple h-3.5 w-3.5"
                     />
-                    <span className="text-brand-purple-dark font-semibold">Bis</span>
+                    <span className="text-brand-purple-dark font-semibold">{texts.viaBis}</span>
                   </label>
                   <select
                     name="viaCardinal"
                     value={viaCardinal}
                     onChange={(e) => setViaCardinal(e.target.value)}
-                    aria-label="Cuadrante de vía"
+                    aria-label={texts.viaCardinalAria}
                     className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 h-9 w-full rounded-md border bg-white px-2 text-sm focus:ring-2 focus:outline-none sm:col-span-3"
                   >
-                    <option value="">— Cuadrante —</option>
+                    <option value="">{texts.cardinalPlaceholder}</option>
                     <option value="Norte">Norte</option>
                     <option value="Sur">Sur</option>
                     <option value="Este">Este</option>
                     <option value="Oeste">Oeste</option>
                   </select>
                 </div>
-                <FieldHint
-                  clientError={null}
-                  serverError={err("viaNumber")}
-                  hint="Ej. Carrera 7A Bis Sur"
-                />
+                <FieldHint clientError={null} serverError={err("viaNumber")} hint={texts.viaHint} />
               </div>
 
               {/* Segunda fila: Cruce + Cardinal del cruce */}
               <div>
                 <p className="text-brand-muted mb-1 text-[10px] font-semibold tracking-wide uppercase">
-                  Cruce
+                  {texts.cruceLabel}
                 </p>
                 <div className="grid grid-cols-1 gap-2 sm:grid-cols-12">
                   <div className="border-brand-purple/20 col-span-1 hidden h-9 items-center justify-center rounded-md border bg-slate-50 text-sm font-bold text-slate-600 sm:flex">
@@ -730,10 +719,10 @@ export function DatosForm({
                     name="cruceCardinal"
                     value={cruceCardinal}
                     onChange={(e) => setCruceCardinal(e.target.value)}
-                    aria-label="Cuadrante del cruce"
+                    aria-label={texts.cruceCardinalAria}
                     className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 h-9 w-full rounded-md border bg-white px-2 text-sm focus:ring-2 focus:outline-none sm:col-span-3"
                   >
-                    <option value="">— Cuadrante —</option>
+                    <option value="">{texts.cardinalPlaceholder}</option>
                     <option value="Norte">Norte</option>
                     <option value="Sur">Sur</option>
                     <option value="Este">Este</option>
@@ -743,7 +732,7 @@ export function DatosForm({
                 <FieldHint
                   clientError={null}
                   serverError={err("cruceNumber")}
-                  hint="Formato: 23-45 o 13B-42C"
+                  hint={texts.cruceHint}
                 />
               </div>
             </div>
@@ -753,14 +742,14 @@ export function DatosForm({
                 htmlFor="detail"
                 className="text-brand-purple-dark mb-1 block text-xs font-semibold"
               >
-                Complemento (opcional)
+                {texts.detailLabel}
               </Label>
               <Input
                 id="detail"
                 name="detail"
                 value={detail}
                 onChange={(e) => setDetail(e.target.value)}
-                placeholder="Apto 401, Conjunto Lucams, casa color rosa..."
+                placeholder={texts.detailPlaceholder}
                 maxLength={200}
                 className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
               />
@@ -775,7 +764,7 @@ export function DatosForm({
                   htmlFor="vereda"
                   className="text-brand-purple-dark mb-1 block text-xs font-semibold"
                 >
-                  Vereda / Corregimiento / Sector <span className="text-rose-600">*</span>
+                  {texts.veredaLabel} <span className="text-rose-600">*</span>
                 </Label>
                 <Input
                   id="vereda"
@@ -783,7 +772,7 @@ export function DatosForm({
                   required
                   value={vereda}
                   onChange={(e) => setVereda(e.target.value)}
-                  placeholder="Ej. Vereda El Roble"
+                  placeholder={texts.veredaPlaceholder}
                   maxLength={120}
                   className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
                 />
@@ -794,14 +783,14 @@ export function DatosForm({
                   htmlFor="finca"
                   className="text-brand-purple-dark mb-1 block text-xs font-semibold"
                 >
-                  Finca / Lugar (opcional)
+                  {texts.fincaLabel}
                 </Label>
                 <Input
                   id="finca"
                   name="finca"
                   value={finca}
                   onChange={(e) => setFinca(e.target.value)}
-                  placeholder="Ej. Finca Las Flores"
+                  placeholder={texts.fincaPlaceholder}
                   maxLength={120}
                   className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
                 />
@@ -812,7 +801,7 @@ export function DatosForm({
                 htmlFor="referencia"
                 className="text-brand-purple-dark mb-1 block text-xs font-semibold"
               >
-                Indicaciones para llegar <span className="text-rose-600">*</span>
+                {texts.refLabel} <span className="text-rose-600">*</span>
               </Label>
               <textarea
                 id="referencia"
@@ -822,17 +811,15 @@ export function DatosForm({
                 onChange={(e) => setReferencia(e.target.value)}
                 rows={3}
                 maxLength={300}
-                placeholder="Ej. A 200m del puente sobre el río, casa de dos pisos color azul, portón de madera. Llamar al llegar."
+                placeholder={texts.refPlaceholder}
                 className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 w-full rounded-md border bg-white px-3 py-2 text-sm focus:ring-2 focus:outline-none"
               />
               <FieldHint
                 clientError={
-                  referencia.length > 0 && referencia.length < 10
-                    ? "Mínimo 10 caracteres — el courier necesita referencias claras"
-                    : null
+                  referencia.length > 0 && referencia.length < 10 ? texts.refError : null
                 }
                 serverError={err("referencia")}
-                hint="Cuanto más detallada la referencia, más fácil para el courier"
+                hint={texts.refHint}
               />
             </div>
           </>
@@ -842,7 +829,7 @@ export function DatosForm({
         {addressPreview && (
           <div className="border-brand-purple/15 bg-brand-purple/5 mt-4 rounded-lg border p-3">
             <p className="text-brand-muted text-[10px] font-semibold tracking-wider uppercase">
-              📦 Así verá tu dirección el courier
+              {texts.previewLabel}
             </p>
             <p className="text-brand-purple-dark mt-1 text-sm">{addressPreview}</p>
             {selectedCity && selectedDept && (
@@ -859,7 +846,7 @@ export function DatosForm({
             htmlFor="notes"
             className="text-brand-purple-dark mb-1 block text-xs font-semibold"
           >
-            Notas para el courier (opcional)
+            {texts.notesLabel}
           </Label>
           <textarea
             id="notes"
@@ -868,7 +855,7 @@ export function DatosForm({
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
             maxLength={500}
-            placeholder="Ej. timbre 2, dejar con portería"
+            placeholder={texts.notesPlaceholder}
             className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 w-full rounded-md border bg-white px-3 py-2 text-sm focus:ring-2 focus:outline-none"
           />
         </div>
@@ -884,7 +871,7 @@ export function DatosForm({
                 onChange={(e) => setSaveToAccount(e.target.checked)}
                 className="accent-brand-purple h-4 w-4 rounded"
               />
-              💾 Guardar esta dirección en mi cuenta para la próxima
+              {texts.saveCheck}
             </label>
             {saveToAccount && (
               <div className="mt-2">
@@ -892,14 +879,14 @@ export function DatosForm({
                   htmlFor="saveAddressLabel"
                   className="text-brand-muted mb-1 block text-xs font-semibold"
                 >
-                  Nombre para recordarla (opcional)
+                  {texts.saveNameLabel}
                 </Label>
                 <Input
                   id="saveAddressLabel"
                   name="saveAddressLabel"
                   value={saveAddressLabel}
                   onChange={(e) => setSaveAddressLabel(e.target.value.slice(0, 60))}
-                  placeholder="Ej. Casa, Oficina, Casa de mamá"
+                  placeholder={texts.saveNamePlaceholder}
                   maxLength={60}
                 />
               </div>
@@ -911,13 +898,9 @@ export function DatosForm({
       {/* FACTURACIÓN */}
       <section className="border-brand-purple/10 rounded-2xl border bg-white p-5 shadow-sm sm:p-6">
         <h2 className="text-brand-purple-dark font-display mb-2 text-lg font-bold">
-          3. Facturación
+          {texts.billingTitle}
         </h2>
-        <p className="text-brand-muted mb-4 text-sm">
-          Si necesitas un documento de venta (cuenta de cobro o factura, según corresponda), marca
-          la casilla y déjanos tus datos: lo coordinamos a tu correo. Si es compra personal, déjala
-          sin marcar.
-        </p>
+        <p className="text-brand-muted mb-4 text-sm">{texts.billingNote}</p>
 
         <label className="text-brand-purple-dark inline-flex items-center gap-2 text-sm font-medium">
           <input
@@ -927,7 +910,7 @@ export function DatosForm({
             onChange={(e) => setWantsInvoice(e.target.checked)}
             className="accent-brand-purple h-4 w-4"
           />
-          Quiero documento tributario (cuenta de cobro o factura)
+          {texts.billingCheck}
         </label>
 
         {wantsInvoice && (
@@ -937,7 +920,7 @@ export function DatosForm({
                 htmlFor="billingDocumentType"
                 className="text-brand-purple-dark mb-1 block text-xs font-semibold"
               >
-                Tipo doc <span className="text-rose-600">*</span>
+                {texts.billingTypeLabel} <span className="text-rose-600">*</span>
               </Label>
               <select
                 id="billingDocumentType"
@@ -956,14 +939,14 @@ export function DatosForm({
                 htmlFor="billingDocumentNumber"
                 className="text-brand-purple-dark mb-1 block text-xs font-semibold"
               >
-                Número documento <span className="text-rose-600">*</span>
+                {texts.billingNumberLabel} <span className="text-rose-600">*</span>
               </Label>
               <Input
                 id="billingDocumentNumber"
                 name="billingDocumentNumber"
                 required={wantsInvoice}
                 defaultValue={initial.billing?.documentNumber ?? ""}
-                placeholder="900.123.456-7"
+                placeholder={texts.billingNumberPlaceholder}
                 className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
               />
               <FieldHint clientError={null} serverError={err("billingDocumentNumber")} />
@@ -973,14 +956,14 @@ export function DatosForm({
                 htmlFor="billingName"
                 className="text-brand-purple-dark mb-1 block text-xs font-semibold"
               >
-                Razón social o nombre <span className="text-rose-600">*</span>
+                {texts.billingNameLabel} <span className="text-rose-600">*</span>
               </Label>
               <Input
                 id="billingName"
                 name="billingName"
                 required={wantsInvoice}
                 defaultValue={initial.billing?.name ?? ""}
-                placeholder="Ej. Tu nombre o el de tu empresa"
+                placeholder={texts.billingNamePlaceholder}
                 className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
               />
               <FieldHint clientError={null} serverError={err("billingName")} />
@@ -1002,28 +985,10 @@ export function DatosForm({
             onChange={(e) => setDataConsent(e.target.checked)}
             className="accent-brand-purple mt-0.5 h-4 w-4 flex-shrink-0"
           />
-          <span className="text-brand-purple-dark/90 leading-relaxed">
-            Autorizo el <strong>tratamiento de mis datos personales</strong> para procesar y enviar
-            mi pedido, conforme a la{" "}
-            <a
-              href="/legal/privacidad"
-              target="_blank"
-              rel="noreferrer"
-              className="text-brand-purple underline"
-            >
-              Política de Privacidad
-            </a>{" "}
-            y la{" "}
-            <a
-              href="/legal/habeas-data"
-              target="_blank"
-              rel="noreferrer"
-              className="text-brand-purple underline"
-            >
-              Política de Tratamiento de Datos
-            </a>
-            . Responsable: Lucams_shop (persona natural), Bogotá D.C. Algunos proveedores
-            (alojamiento y correo) están en EE. UU.
+          <span className="text-brand-purple-dark/90 [&_a]:text-brand-purple leading-relaxed [&_a]:underline">
+            <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
+              {texts.consent}
+            </ReactMarkdown>
           </span>
         </label>
         {err("dataConsent") && <p className="mt-2 text-xs text-rose-600">{err("dataConsent")}</p>}
@@ -1044,10 +1009,10 @@ export function DatosForm({
         >
           {pending ? (
             <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Guardando…
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" /> {texts.pending}
             </>
           ) : (
-            "Continuar al envío →"
+            texts.submit
           )}
         </Button>
       </div>

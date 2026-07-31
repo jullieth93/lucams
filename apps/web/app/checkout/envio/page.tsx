@@ -25,6 +25,7 @@ import { logger } from "@/lib/logger";
 import { getCmsBlock } from "@/lib/cms";
 import { formatCityDept, splitCityTemplate } from "@/lib/format";
 import { RetryQuoteButton } from "./retry-quote-button";
+import { getCheckoutTexts } from "../checkout-texts.server";
 
 const STOCK_GONE_MSG = "Uno de los productos ya no está disponible. Por favor revisa tu carrito.";
 
@@ -114,6 +115,8 @@ export default async function CheckoutEnvioPage({
   const subtextTemplate = subtextBlock?.body ?? "Cotizamos con Aveonline para {{ciudad}}.";
   const cityLabel = formatCityDept(ctx.state.address.city, ctx.state.address.department);
   const sub = splitCityTemplate(subtextTemplate);
+  // Roadmap B8 — textos CMS del paso de envío (errores, lista, resumen).
+  const texts = await getCheckoutTexts();
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -124,7 +127,7 @@ export default async function CheckoutEnvioPage({
           role="alert"
           className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
         >
-          {selectionError} — elige de nuevo tu transportadora.
+          {selectionError} {texts.shipping.errorReselectSuffix}
         </div>
       )}
 
@@ -146,6 +149,10 @@ export default async function CheckoutEnvioPage({
                   message={
                     quoteErrorMessage ?? "No encontramos transportadoras que cubran esa ciudad."
                   }
+                  errorTitle={texts.shipping.errorTitle}
+                  errorNote={texts.shipping.errorNote}
+                  errorAddress={texts.shipping.errorAddress}
+                  errorWa={texts.shipping.errorWa}
                 />
               </section>
             </div>
@@ -154,6 +161,7 @@ export default async function CheckoutEnvioPage({
                 cart={ctx.cart}
                 shippingCost={ctx.state.shippingSelection?.fleteCop ?? null}
                 shippingLabel={ctx.state.shippingSelection?.carrierName}
+                texts={texts.summary}
               />
             </div>
           </>
@@ -169,6 +177,8 @@ export default async function CheckoutEnvioPage({
             destinationDepartment={ctx.state.address.department}
             headingText={headingText}
             subtextTemplate={subtextTemplate}
+            summaryTexts={texts.summary}
+            shippingTexts={texts.shipping}
           />
         )}
       </div>
@@ -176,17 +186,27 @@ export default async function CheckoutEnvioPage({
   );
 }
 
-function QuoteError({ message }: { message: string }) {
+function QuoteError({
+  message,
+  errorTitle,
+  errorNote,
+  errorAddress,
+  errorWa,
+}: {
+  message: string;
+  errorTitle: string;
+  errorNote: string;
+  errorAddress: string;
+  errorWa: string;
+}) {
   return (
     <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
       <div className="flex items-start gap-3">
         <AlertCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-700" />
         <div className="flex-1">
-          <h3 className="text-sm font-semibold text-amber-900">No pudimos cotizar el envío</h3>
+          <h3 className="text-sm font-semibold text-amber-900">{errorTitle}</h3>
           <p className="mt-1 text-xs text-amber-800">{message}</p>
-          <p className="mt-1 text-xs text-amber-700">
-            Suele resolverse reintentando en unos segundos.
-          </p>
+          <p className="mt-1 text-xs text-amber-700">{errorNote}</p>
           {/* #25 — acción PRIMARIA: re-cotizar sin recargar la página. */}
           <div className="mt-3">
             <RetryQuoteButton />
@@ -196,14 +216,14 @@ function QuoteError({ message }: { message: string }) {
               href="/checkout/datos"
               className="text-xs font-semibold text-amber-900 underline hover:text-amber-950"
             >
-              Revisar dirección
+              {errorAddress}
             </Link>
             <span className="text-amber-700">·</span>
             <Link
               href="/contacto"
               className="text-xs font-semibold text-amber-900 underline hover:text-amber-950"
             >
-              Contáctanos por WhatsApp
+              {errorWa}
             </Link>
           </div>
         </div>

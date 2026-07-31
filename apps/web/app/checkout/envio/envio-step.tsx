@@ -18,6 +18,7 @@ import { OrderSummary } from "../_components/order-summary";
 import { formatCityDept, splitCityTemplate } from "@/lib/format";
 import type { ShippingSelectionInput } from "@/features/checkout/schemas";
 import type { CartDetail } from "@/features/cart/service";
+import type { CheckoutTexts } from "../checkout-texts";
 
 export function EnvioStep({
   cart,
@@ -28,6 +29,8 @@ export function EnvioStep({
   destinationDepartment,
   headingText,
   subtextTemplate,
+  summaryTexts,
+  shippingTexts,
 }: {
   cart: CartDetail;
   quotes: ShippingSelectionInput[];
@@ -39,6 +42,9 @@ export function EnvioStep({
   /** Microcopy editable CMS (Ruta A) — lo resuelve el server page con fallback. */
   headingText: string;
   subtextTemplate: string;
+  /** Textos CMS del resumen y de la lista de envío (roadmap B8). */
+  summaryTexts: CheckoutTexts["summary"];
+  shippingTexts: CheckoutTexts["shipping"];
 }) {
   // State compartido — Lucy 2026-05-21: sidebar reactivo al cambio de radio.
   const initial = preselectedQuoteId ?? quotes[0]?.quoteId ?? null;
@@ -65,6 +71,7 @@ export function EnvioStep({
             offersToken={offersToken}
             preselectedQuoteId={selectedQuoteId ?? undefined}
             onSelectionChange={setSelectedQuoteId}
+            texts={shippingTexts}
           />
         </section>
       </div>
@@ -73,6 +80,7 @@ export function EnvioStep({
           cart={cart}
           shippingCost={selected?.fleteCop ?? null}
           shippingLabel={selected?.carrierName}
+          texts={summaryTexts}
         />
       </div>
     </>
