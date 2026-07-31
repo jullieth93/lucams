@@ -13,7 +13,9 @@
 - ✅ **B5** campos de imagen (type IMAGE) + mediateca — commit `e8d4dad`
 - ✅ **B6** banners/promos administrables en home — commit `b7ed459`
 - ✅ **C1** preview en vivo junto al editor — commit `87bda56`
-- ⏳ C3, C4, D1, D3 — pendientes · ⏸️ A1/A2/A3, D4 — bloqueadas (requieren producción/cuenta Supabase externa)
+- ✅ **C3** publicación programada — commit `14481a7`
+- ✅ **C4** utilidades del admin de contenido — commit `6c04bde`
+- ⏳ D1, D3 — pendientes · ⏸️ A1/A2/A3, D4 — bloqueadas (requieren producción/cuenta Supabase externa)
 
 **Base sobre la que se parte (ya en producción, commit `bd1e427`):**
 
@@ -166,11 +168,15 @@ Tablas legacy (CmsBlock/CmsBlockVersion/SiteSetting): DROP en A2
 - Admin: date-picker "Publicar el…" en el editor de campo (útil para campañas/navidad).
 - Esfuerzo **M**. Dependencia: ninguna.
 
+> **✅ RESULTADO — certificado 2026-07-31, commit `14481a7`.** Publicación programada completa: `CmsFieldVersion.publishAt` (migración `20260731120000_add_cms_publish_at` con índice PARCIAL — Prisma no los expresa, vive solo en el SQL y va documentado en el schema) + job pg_cron `lucams-cms-publish-scheduled` cada 5 min (migración `00000000000021_pgcron_cms_publish.sql`, mismo patrón que 015/016: secretos en Vault, header `x-cron-secret`, guardado e idempotente) que llama al endpoint firmado `GET /api/cron/cms-publish-scheduled` — publica las versiones vencidas, invalida el tag `cms` (`revalidateTag("cms", "max")` — Next 16 exige perfil), heartbeat + ErrorLog como los demás crons. **Service:** `scheduleCmsFieldPublish` (una sola programación vigente por campo — programar limpia las demás; exige ≥1 min en el futuro; rechaza versiones ya publicadas), `unscheduleCmsFieldPublish` y `publishScheduledCmsFields` (idempotente; devuelve las keys publicadas). **Admin:** date-picker «Programar» junto al botón Publicar del editor de campo — la hora elegida es **hora de Colombia** (UTC-5 fijo, documentado; el input se convierte a UTC en la action), badge «Sale el …» con opción de quitar la programación, badge «Programada» en el historial de versiones y noticias `?scheduled/unscheduled`. **Evidencia:** migraciones aplicadas y verificadas por query (columna `publishAt`, índice parcial `WHERE publishAt IS NOT NULL`, job agendado `*/5 * * * *` en `cron.job`) · integración **51/51** ✓ (+4 C3: una sola vigente, rechazos, unschedule, publishScheduled publica vencidas/salta futuras/idempotente con round-trip `getCmsBlock`) · `tsc` ✓ · `eslint` ✓ · `prettier` ✓ · `next build` ✓ · CI verde (run 30614061591).
+
 ### C4 — Utilidades del admin de contenido
 
 - Mover campo entre secciones, duplicar campo, renombrar secciones/páginas desde admin (hoy el service ya tiene `updateCmsPage`/`updateCmsSection`; falta la UI).
 - Vista "Solo borradores" (todos los cambios sin publicar del sitio en una sola lista, con publicar-en-lote).
 - Esfuerzo **S-M** cada una. Sin migración.
+
+> **✅ RESULTADO — certificado 2026-07-31, commit `6c04bde`.** Las 4 utilidades, sin cambios de DB: **(1) Vista «Solo borradores»** (`/admin/contenido/borradores`): todos los campos con cambios sin publicar o nunca publicados (`listCmsDraftFields`), con publicar individual y «Publicar todo» en lote (`publishAllCmsDraftsAction` — publica la última versión de cada uno, una sola auditoría `cms.field.publish_all` + un solo `updateTag("cms")`); enlace con conteo desde el índice de contenido. **(2) Renombrar páginas/secciones:** formularios SERVER sin JS (`<details>/<summary>` nativo — `PageRenameForm` como tarjeta al inicio del editor de página, `SectionRenameForm` como lápiz junto a cada título de sección) sobre `updateCmsPage`/`updateCmsSection` (ya existían) con zod + auditoría. **(3) Mover campo a otra sección** (`moveCmsFieldToSection`): tarjeta en el editor del campo con select agrupado por página (`listCmsPageSections` ligero); no toca contenido ni publicación (no invalida `cms`). **(4) Duplicar campo** (`duplicateCmsField`): copia tipo/metadata (listSchema incluido) e items de lista, y nace como **borrador sin publicar** — duplicar nunca cambia el sitio vivo; valida key (formato + unicidad) y redirige al editor de la copia. **Evidencia:** integración **51/51** ✓ (+3 C4: bandeja de borradores incluye/excluye correcto, mover + validación de destino + no-op, duplicar con items y versión borrador + validaciones de key) · `tsc` ✓ · `eslint` ✓ · `prettier` ✓ · `next build` ✓ · ruta agregada al inventario E2E admin.
 
 ---
 
@@ -235,7 +241,7 @@ Tablas legacy (CmsBlock/CmsBlockVersion/SiteSetting): DROP en A2
 
 > Retoma la ejecución del roadmap CMS de este repo. El plan completo y el progreso por fases (✅/🔄/⏳/⏸️) están en `docs/CMS_ROADMAP.md`; el estado del CMS v2 en `HANDOFF.md`. Revisa `git status` y `git log --oneline -15`: puede haber trabajo sin commitear de la fase en curso — si existe, primero verifícalo (tsc/lint/tests) y commiétéalo. Continúa con la siguiente fase ⏳ en el orden de la sección "Secuencia recomendada", con esta disciplina por fase: implementación → tsc + lint + prettier + tests focal → commit atómico en español → push a develop → vigilar CI verde → marcar progreso (✅ + commit) en este documento. Las fases ⏸️ (A1/A2 producción, A3 staging Supabase, D4 E2E admin) están bloqueadas por acceso externo: no las ejecutes, están documentadas para hacerlas a mano. Al terminar todo: suite completa + build + HANDOFF.md actualizado + bloqueadas con instrucciones.
 
-**Estado del working tree al 2026-07-31:** limpio — **B5, B6 y C1 completadas y certificadas** (commits `e8d4dad`, `b7ed459`, `87bda56` + migración de `home.banners` aplicada y verificada en dev). Próxima fase sugerida por valor: **C3** (publicación programada — útil para campañas con los banners de B6) o **C4** (utilidades admin). Recordar tras cada deploy: invalidar el caché CMS desde `/admin/contenido` (los scripts escriben directo en DB).
+**Estado del working tree al 2026-07-31:** limpio — **B5, B6, C1, C3 y C4 completadas y certificadas** (commits `e8d4dad`, `b7ed459`, `87bda56`, `14481a7`, `6c04bde` + migraciones aplicadas y verificadas en dev: `home.banners`, `CmsFieldVersion.publishAt` + job pg_cron de publicación programada). Quedan libres solo **D1** (auditoría de cobertura) y **D3** (documentación estructural); el resto (A1/A2/A3, D4) está bloqueado por acceso externo. Recordar tras cada deploy: invalidar el caché CMS desde `/admin/contenido` (los scripts escriben directo en DB).
 
 ---
 
