@@ -19,7 +19,8 @@
 - ✅ **D3** documentación estructural — commit `c7ca6d5`
 - ✅ **E1** auditoría móvil del admin — commit `39f7e77`
 - ✅ **E2** fixes móviles admin — commit `82b0248`
-- ⏳ E3 — pendiente · ⏸️ A1/A2/A3, D4 — bloqueadas (requieren producción/cuenta Supabase externa)
+- ✅ **E3** auditoría + fixes móviles storefront — commit `0bf3868`
+- ⏳ Ninguna libre · ⏸️ A1/A2/A3, D4 — bloqueadas (requieren producción/cuenta Supabase externa)
 
 **Base sobre la que se parte (ya en producción, commit `bd1e427`):**
 
@@ -243,6 +244,8 @@ Tablas legacy (CmsBlock/CmsBlockVersion/SiteSetting): DROP en A2
 - Fixes de los hallazgos principales.
 - Esfuerzo **M-L** según hallazgos de la auditoría.
 
+> **✅ RESULTADO — certificado 2026-07-31, commit `0bf3868`.** Tour Playwright a 375×812 por 6 pantallas del cliente (home, catálogo, PDP, carrito, checkout, estudio) con medición objetiva de overflow + revisión visual (`docs/audits/2026-07-31-e3-mobile-storefront-audit.md`; spec `tests/e2e/mobile-storefront-audit.spec.ts` queda como regresión móvil del storefront, compañera de la de admin de E1). **El storefront está en buena forma móvil**: un solo defecto objetivo — la PDP desbordaba 22px (397 vs 375) por el formulario «Avísame cuando vuelva» (input `flex-1` sin `min-w-0` empujaba el botón fuera del viewport); fix canónico `min-w-0`, verificado con sonda de elementos desbordados y **re-auditoría: 0/6 pantallas con overflow**. Revisión visual: home (hero, grilla, carruseles, footer), catálogo, carrito y Estudio (modal de bienvenida + banner cookies, experiencia app-like) apilan y se leen correctamente; `/checkout` con carrito vacío responde 404 (esperado — exige items). **Fuera de alcance, documentado:** gestos del canvas del Estudio (pinch/zoom/drag) — no los cubre una auditoría de screenshots; van a prueba interactiva (territorio D4). Esfuerzo real **S** (un hallazgo, una clase). **Evidencia:** re-auditoría 0/6 ✓ · `tsc` ✓ · `eslint` ✓ · `prettier` ✓ · `next build` ✓.
+
 ---
 
 ## Cómo retomar este trabajo (desde esta u otra sesión)
@@ -253,7 +256,7 @@ Tablas legacy (CmsBlock/CmsBlockVersion/SiteSetting): DROP en A2
 
 > Retoma la ejecución del roadmap CMS de este repo. El plan completo y el progreso por fases (✅/🔄/⏳/⏸️) están en `docs/CMS_ROADMAP.md`; el estado del CMS v2 en `HANDOFF.md`. Revisa `git status` y `git log --oneline -15`: puede haber trabajo sin commitear de la fase en curso — si existe, primero verifícalo (tsc/lint/tests) y commiétéalo. Continúa con la siguiente fase ⏳ en el orden de la sección "Secuencia recomendada", con esta disciplina por fase: implementación → tsc + lint + prettier + tests focal → commit atómico en español → push a develop → vigilar CI verde → marcar progreso (✅ + commit) en este documento. Las fases ⏸️ (A1/A2 producción, A3 staging Supabase, D4 E2E admin) están bloqueadas por acceso externo: no las ejecutes, están documentadas para hacerlas a mano. Al terminar todo: suite completa + build + HANDOFF.md actualizado + bloqueadas con instrucciones.
 
-**Estado del working tree al 2026-07-31:** limpio — **TODAS las fases ejecutables sin acceso externo están completadas y certificadas**: C2, B4, B2, B3, B1, B5, B6, C1, C3, C4, D1, D3 (últimos commits `4a6d242` D1 y `c7ca6d5` D3). Solo quedan las ⏸️ bloqueadas por acceso externo (A1/A2 producción, A3 staging Supabase, D4 E2E admin) — están documentadas arriba para ejecutarlas a mano. Recordar tras cada deploy: invalidar el caché CMS desde `/admin/contenido` (los scripts escriben directo en DB) y aplicar las migraciones pendientes en producción (`make migrate` + las SQL de `supabase/migrations`).
+**Estado del working tree al 2026-07-31:** limpio — **TODAS las fases ejecutables sin acceso externo están completadas y certificadas**: C2, B4, B2, B3, B1, B5, B6, C1, C3, C4, D1, D3 (ecosistema CMS) + E1, E2, E3 (móvil — admin y storefront verificados a 375px con specs de regresión en `tests/e2e/mobile-*-audit.spec.ts`). Solo quedan las ⏸️ bloqueadas por acceso externo (A1/A2 producción, A3 staging Supabase, D4 E2E admin) — están documentadas arriba para ejecutarlas a mano. Recordar tras cada deploy: invalidar el caché CMS desde `/admin/contenido` y aplicar las migraciones pendientes en producción (`make migrate` + las SQL de `supabase/migrations`).
 
 ---
 
