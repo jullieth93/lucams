@@ -33,6 +33,9 @@ export function MfaChallenge({ factorId }: { factorId: string }) {
       code: code.trim(),
     });
     if (verifyErr) {
+      // Log temporal de diagnóstico (A3 nightly): el mensaje genérico al usuario
+      // no distingue "sin sesión" de "código malo" — en consola queda el real.
+      console.error("[mfa] challengeAndVerify error:", verifyErr.message, verifyErr);
       setPending(false);
       setError("Código incorrecto o vencido. Mira el código actual en tu app e intenta de nuevo.");
       return;
