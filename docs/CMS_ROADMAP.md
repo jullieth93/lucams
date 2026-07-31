@@ -11,7 +11,9 @@
 - ✅ **B3** iconos/gradientes de categoría en `Category` — commit `73bbbfc`
 - ✅ **B1** copy del /estudio (363 campos) — commit `ce90423`
 - ✅ **B5** campos de imagen (type IMAGE) + mediateca — commit `e8d4dad`
-- ⏳ B6, C1, C3, C4, D1, D3 — pendientes · ⏸️ A1/A2/A3, D4 — bloqueadas (requieren producción/cuenta Supabase externa)
+- ✅ **B6** banners/promos administrables en home — commit `b7ed459`
+- ✅ **C1** preview en vivo junto al editor — commit `87bda56`
+- ⏳ C3, C4, D1, D3 — pendientes · ⏸️ A1/A2/A3, D4 — bloqueadas (requieren producción/cuenta Supabase externa)
 
 **Base sobre la que se parte (ya en producción, commit `bd1e427`):**
 
@@ -135,6 +137,8 @@ Tablas legacy (CmsBlock/CmsBlockVersion/SiteSetting): DROP en A2
 - Sección nueva en el site map (`inicio/banners`) + componente storefront nuevo.
 - Esfuerzo **M** (con B4/B5 hechas). Dependencias: B4, B5.
 
+> **✅ RESULTADO — certificado 2026-07-31, commit `b7ed459`.** Campo lista `home.banners` (sección `banners` de la página `inicio`, kind BLOCK con flujo borrador→publicar) con subcampos `imagen` (IMAGE — id de la mediateca), `titulo`, `enlace` y `activo` (BOOLEAN, select Sí/No); creado vía site map + `migrate-cms-v2` y publicado con body `[]` — **la home de hoy no cambia hasta que Lucy agregue el primer banner** (regla de oro). **Editor de listas extendido** (B4): subcampos IMAGE renderizan el control de la mediateca (subir/elegir, B5) y BOOLEAN un select Sí/No (default "true" en filas nuevas). **Reader** `getCmsBanners(key)` en `lib/cms.ts` (cache tag `cms`): parsea la lista publicada, filtra `activo ≠ "false"`, resuelve los assets en batch (misma derivación de URL pública que `getCmsImage`), DESCARTA items con asset borrado (un banner roto no tumba la franja) y devuelve `[]` ante cualquier fallo → la sección no se renderiza. **Storefront:** `<HomeBanners>` tras el hero — tira horizontal con scroll-snap (sin librería de carrusel; con 1 banner ocupa el ancho completo), `next/image` con dimensiones reales y título en overlay. **Refuerzo de seguridad de datos detectado en ejecución:** la guarda de borrado de la mediateca (B5) comparaba `body = id` y NO veía los ids embebidos en el JSON de campos lista — ahora `deleteCmsMedia` y `getCmsMediaUsage` usan `contains` (un cuid de 25 chars no aparece en prosa por accidente; el mensaje lista las keys). **Evidencia:** migración aplicada y verificada por query (`home.banners` publicado en sección `banners`/`inicio`, metadata listSchema intacta, paridad del migrador OK) · integración `features/cms/service.integration.test.ts` **44/44** ✓ (+4 B6: resolución de activos/filtro inactivos/descarte fantasmas, sin publicar → [], JSON inválido → [], guarda de borrado con id embebido + mapa de uso) · unit `cms-media` 15/15 ✓ · `tsc` ✓ · `eslint` ✓ · `prettier` ✓ · `next build` ✓.
+
 ---
 
 ## FASE C — Experiencia de edición
@@ -144,6 +148,8 @@ Tablas legacy (CmsBlock/CmsBlockVersion/SiteSetting): DROP en A2
 - Editor de página con panel lateral: iframe de la página pública (`CmsPage.path`) que se recarga tras publicar. Sin cambios de DB.
 - Paso 2 (después, opcional): edición in-place — el código ya referencia el endpoint planeado `/api/admin/cms/by-key/[key]` (sub-bloque K): overlay en el storefront visible solo para admins logueados (banner "modo edición", click en texto → salta al editor del campo).
 - Esfuerzo **M** (iframe) / **L** (in-place).
+
+> **✅ RESULTADO — certificado 2026-07-31, commit `87bda56`.** Vista previa en vivo en el editor de página (`/admin/contenido/paginas/[slug]`): cuando la CmsPage tiene ruta pública, el editor queda a la izquierda y un panel con el **iframe de la página pública** a la derecha (sticky en `xl`, apilado debajo en pantallas menores), con recarga manual, abrir-en-pestaña y mostrar/ocultar. **Recarga automática tras guardar/publicar:** la señal es el max `updatedAt` de los campos de la página — toda Server Action que guarda/publica/despublica toca ese timestamp, re-renderiza la página admin y el iframe se recarga solo (el caché `cms` ya quedó invalidado por la action, así que la preview trae el contenido fresco). La preview muestra lo PUBLICADO (un borrador se ve al publicar — indicado en el panel). **Cambio de postura de framing (deliberado):** `X-Frame-Options: DENY → SAMEORIGIN` + `frame-ancestors 'self'` nuevo en la CSP — el admin y el storefront comparten origen, así que la preview funciona mientras el framing EXTERNO (clickjacking) sigue bloqueado en las dos capas; documentado en `lib/security-headers.ts`. El paso 2 (edición in-place con overlay en el storefront) queda como trabajo futuro opcional — no hace parte de esta certificación. **Evidencia:** unit `security-headers` 15/15 ✓ (expectativa SAMEORIGIN + `frame-ancestors 'self'` en prod y dev) · `tsc` ✓ · `eslint` ✓ · `prettier` ✓ · `next build` ✓.
 
 ### C2 — Rol CMS_EDITOR ( segregación real de acceso )
 
@@ -229,7 +235,7 @@ Tablas legacy (CmsBlock/CmsBlockVersion/SiteSetting): DROP en A2
 
 > Retoma la ejecución del roadmap CMS de este repo. El plan completo y el progreso por fases (✅/🔄/⏳/⏸️) están en `docs/CMS_ROADMAP.md`; el estado del CMS v2 en `HANDOFF.md`. Revisa `git status` y `git log --oneline -15`: puede haber trabajo sin commitear de la fase en curso — si existe, primero verifícalo (tsc/lint/tests) y commiétéalo. Continúa con la siguiente fase ⏳ en el orden de la sección "Secuencia recomendada", con esta disciplina por fase: implementación → tsc + lint + prettier + tests focal → commit atómico en español → push a develop → vigilar CI verde → marcar progreso (✅ + commit) en este documento. Las fases ⏸️ (A1/A2 producción, A3 staging Supabase, D4 E2E admin) están bloqueadas por acceso externo: no las ejecutes, están documentadas para hacerlas a mano. Al terminar todo: suite completa + build + HANDOFF.md actualizado + bloqueadas con instrucciones.
 
-**Estado del working tree al 2026-07-31:** limpio — **B5 completada y certificada** (commit `e8d4dad` + migraciones aplicadas y verificadas en dev: enum `IMAGE`, tabla `CmsMedia` con RLS, bucket `cms-media` con policies). Próxima fase sugerida por valor: **B6** (banners/promos en home — ya tiene sus dependencias B4+B5 listas) o **C1** (preview en vivo). Recordar tras cada deploy: invalidar el caché CMS desde `/admin/contenido` (los scripts escriben directo en DB).
+**Estado del working tree al 2026-07-31:** limpio — **B5, B6 y C1 completadas y certificadas** (commits `e8d4dad`, `b7ed459`, `87bda56` + migración de `home.banners` aplicada y verificada en dev). Próxima fase sugerida por valor: **C3** (publicación programada — útil para campañas con los banners de B6) o **C4** (utilidades admin). Recordar tras cada deploy: invalidar el caché CMS desde `/admin/contenido` (los scripts escriben directo en DB).
 
 ---
 
