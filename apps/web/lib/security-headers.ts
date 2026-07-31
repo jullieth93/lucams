@@ -41,6 +41,17 @@ export function buildCsp(nonce: string, isProd: boolean): string {
   const scriptSrc = isProd
     ? `script-src 'self' 'nonce-${nonce}' https://challenges.cloudflare.com https://checkout.wompi.co`
     : "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com https://checkout.wompi.co";
+  // El host de Supabase NO siempre es *.supabase.co: el stack local del
+  // nightly A3 corre en http://localhost:54321 y la CSP bloqueaba las llamadas
+  // auth del browser (AuthRetryableFetchError — el connect-src no lo cubría).
+  // Se deriva del env y se añade al lado del wildcard (duplicar es inocuo).
+  let supabaseOrigin = "";
+  try {
+    const raw = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim();
+    if (raw) supabaseOrigin = ` ${new URL(raw).origin}`;
+  } catch {
+    supabaseOrigin = "";
+  }
   return [
     "default-src 'self'",
     scriptSrc,
@@ -54,7 +65,7 @@ export function buildCsp(nonce: string, isProd: boolean): string {
     "font-src 'self' https://fonts.gstatic.com",
     // Solo hosts que el NAVEGADOR contacta: Supabase (auth/storage/realtime) + Wompi (widget/checkout).
     // El envío (Aveonline) y la IA (Gemini) se llaman SERVER-SIDE → no van en connect-src.
-    "connect-src 'self' https://*.supabase.co https://api.wompi.co",
+    `connect-src 'self' https://*.supabase.co https://api.wompi.co${supabaseOrigin}`,
     "frame-src 'self' https://challenges.cloudflare.com https://checkout.wompi.co",
     // Quién nos puede enmarcar: solo el propio origen (preview en vivo del
     // admin, roadmap C1). Equivalente moderno de X-Frame-Options SAMEORIGIN;

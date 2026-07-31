@@ -35,6 +35,16 @@ describe("buildCsp — prod (nonce + 'self', sin strict-dynamic)", () => {
     expect(csp).toContain("https://checkout.wompi.co");
     expect(csp).toContain("https://challenges.cloudflare.com");
   });
+
+  it("connect-src incluye el origen de NEXT_PUBLIC_SUPABASE_URL (stacks no-supabase.co)", () => {
+    // Nightly A3: el stack local corre en http://localhost:54321 y la CSP fija
+    // bloqueaba el auth del browser (AuthRetryableFetchError). El origen se
+    // deriva del env; sin env, connect-src queda como siempre.
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "http://localhost:54321";
+    expect(buildCsp("N", true)).toContain("http://localhost:54321");
+    delete process.env.NEXT_PUBLIC_SUPABASE_URL;
+    expect(buildCsp("N", true)).not.toContain("localhost");
+  });
 });
 
 describe("buildCsp — dev (permisivo para HMR)", () => {
