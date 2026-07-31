@@ -51,7 +51,7 @@
 
 **Regla de oro aplicada en todo**: cada `fallback` es el texto exacto que estaba hardcodeado — si la DB cae, el sitio se ve idéntico a hoy.
 
-Backlog documentado (roadmap `docs/CMS_ROADMAP.md`, en ejecución): ya cerrados el copy del `/estudio` (**B1**, commit `ce90423` — 363 campos `estudio.*`) y los iconos/gradientes de categorías (**B3**, commit `73bbbfc` — dominio Category, no CMS). Drop de tablas viejas: diferido a post-verificación en producción (fase A2, bloqueada).
+Backlog documentado (roadmap `docs/CMS_ROADMAP.md`, en ejecución): ya cerrados el copy del `/estudio` (**B1**, commit `ce90423` — 363 campos `estudio.*`), los iconos/gradientes de categorías (**B3**, commit `73bbbfc` — dominio Category, no CMS) y los campos de imagen con mediateca (**B5**, commit `e8d4dad` — type `IMAGE` con `body` = `CmsMedia.id`, bucket público `cms-media` con RLS/policies, pipeline con alt obligatorio + anti-polyglot, admin uploader + `/admin/contenido/mediateca`, reader `getCmsImage` con fallback). Drop de tablas viejas: diferido a post-verificación en producción (fase A2, bloqueada).
 
 ---
 

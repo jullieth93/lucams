@@ -10,7 +10,8 @@
 - ✅ **B2** páginas transaccionales (94 campos) — commit `0e9b52b`
 - ✅ **B3** iconos/gradientes de categoría en `Category` — commit `73bbbfc`
 - ✅ **B1** copy del /estudio (363 campos) — commit `ce90423`
-- ⏳ B5, B6, C1, C3, C4, D1, D3 — pendientes · ⏸️ A1/A2/A3, D4 — bloqueadas (requieren producción/cuenta Supabase externa)
+- ✅ **B5** campos de imagen (type IMAGE) + mediateca — commit `e8d4dad`
+- ⏳ B6, C1, C3, C4, D1, D3 — pendientes · ⏸️ A1/A2/A3, D4 — bloqueadas (requieren producción/cuenta Supabase externa)
 
 **Base sobre la que se parte (ya en producción, commit `bd1e427`):**
 
@@ -126,6 +127,8 @@ Tablas legacy (CmsBlock/CmsBlockVersion/SiteSetting): DROP en A2
 - **Lectura:** `getCmsImage(key)` → `{ url, alt, width, height }` (URL firmada pública del bucket); fallback = asset actual del repo.
 - Esfuerzo **L**. Dependencia: A3 recomendada (probar uploads contra staging, no contra prod compartido).
 
+> **✅ RESULTADO — certificado 2026-07-31, commit `e8d4dad`.** Campos `type: IMAGE` en el CMS v2: el `body` del campo guarda el `CmsMedia.id` y la lectura pública resuelve `{ url, alt, width, height }` con `getCmsImage(key)` en `lib/cms.ts` (mismo cache tag `cms`; devuelve `null` ante campo faltante/sin publicar/asset borrado o cualquier error → fallback = asset del repo, regla de oro intacta). **Mediateca mínima:** bucket público `cms-media` (5 MB, jpg/png/webp/avif, URL pública inmutable con UUID, cache 1 año) + tabla `CmsMedia` con RLS deny-by-default y policies de escritura solo-admin (`is_active_admin()`, mismo patrón que product-images de la 005). **Pipeline de subida** (`lib/cms-media.ts`, mismo estándar que `uploadProductImage`): alt OBLIGATORIO (WCAG 1.1.1), MIME real por magic bytes (anti-polyglot: un .html renombrado no entra), dimensiones reales con sharp endurecido (`sharp-safe`) y borrado con guarda de uso — rechaza si lo usa el borrador de un campo o cualquier versión del historial (revertir nunca rompe una imagen publicada). **Admin:** uploader con preview en el editor del campo IMAGE (subir o reutilizar de la biblioteca), página `/admin/contenido/mediateca` (miniaturas, alt editable inline, dimensiones/peso, conteo de uso por campo, borrado protegido con confirmación), accesible también para el rol CMS_EDITOR (nav + actions con `ADMIN_ROLE_SETS.CONTENT`). **Sin campos IMAGE sembrados todavía** (0 en DB): la capacidad queda lista — primer uso previsto = B6 (banners) o creación directa desde el admin. **Fix anexo:** timeout de `clone-design-for-edit.integration.test.ts` a 30s (latencia del pooler pgbouncer; el caso READY→DRAFT toma ~7s — calibración de infraestructura, sin cambio de aserciones). **Evidencia:** migración `20260730160000_alter_cms_field_type_add_image` + storage `00000000000020_storage_cms_media.sql` aplicadas en dev y verificadas por query (enum `CmsFieldType` incluye `IMAGE` · `CmsMedia.rowsecurity=true` · bucket con límites de tamaño/MIME + 3 policies `cms_media_admin_*`) · `tsc` ✓ · `eslint --max-warnings 0` ✓ · `prettier` ✓ · vitest **2709 passed / 2 skipped / 0 failed** (166 archivos; +16 unit del pipeline `cms-media`, +3 integración `getCmsImage`: SETTING publicado resuelve, BLOCK sin publicar → null, asset fantasma → null) · `next build` ✓.
+
 ### B6 — Banners/promos administrables en home
 
 - Con B4 + B5: campo lista `home.banners` (items `{ imagen: IMAGE, titulo: TEXT, enlace: URL, activo: BOOLEAN }`) + sección en home que itera (hoy no existe; la categoría MARKETING ya existe en el enum legacy de categorías por compat).
@@ -226,7 +229,7 @@ Tablas legacy (CmsBlock/CmsBlockVersion/SiteSetting): DROP en A2
 
 > Retoma la ejecución del roadmap CMS de este repo. El plan completo y el progreso por fases (✅/🔄/⏳/⏸️) están en `docs/CMS_ROADMAP.md`; el estado del CMS v2 en `HANDOFF.md`. Revisa `git status` y `git log --oneline -15`: puede haber trabajo sin commitear de la fase en curso — si existe, primero verifícalo (tsc/lint/tests) y commiétéalo. Continúa con la siguiente fase ⏳ en el orden de la sección "Secuencia recomendada", con esta disciplina por fase: implementación → tsc + lint + prettier + tests focal → commit atómico en español → push a develop → vigilar CI verde → marcar progreso (✅ + commit) en este documento. Las fases ⏸️ (A1/A2 producción, A3 staging Supabase, D4 E2E admin) están bloqueadas por acceso externo: no las ejecutes, están documentadas para hacerlas a mano. Al terminar todo: suite completa + build + HANDOFF.md actualizado + bloqueadas con instrucciones.
 
-**Estado del working tree al 2026-07-30 (tarde):** limpio — **B1 completada y certificada** (commit `ce90423` + migración aplicada: 363 campos `estudio.*` en DB). Próxima fase sugerida por valor: **B5** (campos de imagen + mediateca; desbloquea B6) o **C1** (preview en vivo). Recordar tras cada deploy: invalidar el caché CMS desde `/admin/contenido` (los scripts escriben directo en DB).
+**Estado del working tree al 2026-07-31:** limpio — **B5 completada y certificada** (commit `e8d4dad` + migraciones aplicadas y verificadas en dev: enum `IMAGE`, tabla `CmsMedia` con RLS, bucket `cms-media` con policies). Próxima fase sugerida por valor: **B6** (banners/promos en home — ya tiene sus dependencias B4+B5 listas) o **C1** (preview en vivo). Recordar tras cada deploy: invalidar el caché CMS desde `/admin/contenido` (los scripts escriben directo en DB).
 
 ---
 
