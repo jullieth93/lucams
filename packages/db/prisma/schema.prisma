@@ -1385,6 +1385,11 @@ model CmsFieldVersion {
   body         String
   metadata     Json       @default("{}")
   publishedAt  DateTime? // null = borrador
+  // Publicación programada (roadmap C3, 2026-07-31): fecha futura a la que el
+  // cron lucams-cms-publish-scheduled publicará esta versión. El índice es
+  // PARCIAL (WHERE publishAt IS NOT NULL) y vive solo en la migración SQL —
+  // Prisma no expresa índices parciales en el schema.
+  publishAt    DateTime?
   publishedFor CmsField[] @relation("PublishedFieldVersion")
 
   createdAt DateTime @default(now())

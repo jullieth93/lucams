@@ -32,6 +32,10 @@
  *     lib/cms (lista con subcampos IMAGE/BOOLEAN; activos resueltos con su
  *     asset, inactivos filtrados, assets fantasma descartados, sin publicar
  *     o JSON inválido → []).
+ *   - Publicación programada (roadmap C3): scheduleCmsFieldPublish (una sola
+ *     programación vigente, rechaza pasado/publicada/fantasma), unschedule,
+ *     publishScheduledCmsFields (publica vencidas, salta futuras, idempotente;
+ *     round-trip con getCmsBlock).
  *
  * Estrategia: integración DB pura. Requiere DATABASE_URL (corre vía
  * `dotenv -e .env.local -- vitest`); sin ella se salta (skipIf) para no romper
@@ -48,7 +52,7 @@
 
 import { afterAll, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/db";
-import { getCmsBanners, getCmsImage, getCmsList } from "@/lib/cms";
+import { getCmsBanners, getCmsBlock, getCmsImage, getCmsList } from "@/lib/cms";
 import { deleteCmsMedia, getCmsMediaUsage } from "@/lib/cms-media";
 import {
   MAX_LIST_ITEMS,
@@ -60,11 +64,14 @@ import {
   getCmsPageBySlug,
   listCmsPages,
   publishCmsFieldVersion,
+  publishScheduledCmsFields,
   saveCmsFieldDraft,
   saveCmsFieldItems,
+  scheduleCmsFieldPublish,
   searchCmsFields,
   softDeleteCmsField,
   unpublishCmsField,
+  unscheduleCmsFieldPublish,
   updateCmsPage,
   updateCmsSection,
 } from "./service";
@@ -792,6 +799,107 @@ describe.skipIf(!hasDb)(
         // El mapa de uso de la mediateca también lo ve (contador «en uso»).
         const usage = await getCmsMediaUsage([media.id]);
         expect(usage.get(media.id)).toContain(field.key);
+      });
+    });
+
+    // ───────────────────────── Publicación programada (roadmap C3) ─────────────────────────
+
+    describe("publicación programada (C3: publishAt + cron)", () => {
+      it("programa una versión y deja UNA sola programación vigente por campo", async () => {
+        const field = await makeField({ body: "v1" });
+        await saveCmsFieldDraft({ id: field.id, body: "v2" }, null);
+        const detail = await getCmsFieldById(field.id);
+        const [v2, v1] = detail!.versions; // versions vienen desc: v2 primero
+
+        const at1 = new Date(Date.now() + 3600_000);
+        await scheduleCmsFieldPublish(field.id, v1!.id, at1, null);
+        let after = await getCmsFieldById(field.id);
+        expect(after!.versions.find((v) => v.id === v1!.id)?.publishAt).toEqual(at1);
+
+        // Programar otra versión limpia la anterior.
+        const at2 = new Date(Date.now() + 7200_000);
+        await scheduleCmsFieldPublish(field.id, v2!.id, at2, null);
+        after = await getCmsFieldById(field.id);
+        expect(after!.versions.find((v) => v.id === v1!.id)?.publishAt).toBeNull();
+        expect(after!.versions.find((v) => v.id === v2!.id)?.publishAt).toEqual(at2);
+      });
+
+      it("rechaza fecha casi-presente, versión ya publicada y versión fantasma", async () => {
+        const field = await makeField();
+        const detail = await getCmsFieldById(field.id);
+        const v1 = detail!.versions[0]!;
+        await expect(
+          scheduleCmsFieldPublish(field.id, v1.id, new Date(Date.now() + 5_000), null),
+        ).rejects.toThrow(/futuro/i);
+
+        await publishCmsFieldVersion(field.id, v1.id, null);
+        await expect(
+          scheduleCmsFieldPublish(field.id, v1.id, new Date(Date.now() + 3600_000), null),
+        ).rejects.toThrow(/ya está publicada/i);
+
+        await expect(
+          scheduleCmsFieldPublish(
+            field.id,
+            `${RUN}-ghost-v`,
+            new Date(Date.now() + 3600_000),
+            null,
+          ),
+        ).rejects.toThrow(/no encontrada/i);
+      });
+
+      it("unschedule limpia la programación y rechaza si no había", async () => {
+        const field = await makeField();
+        const detail = await getCmsFieldById(field.id);
+        const v1 = detail!.versions[0]!;
+        await scheduleCmsFieldPublish(field.id, v1.id, new Date(Date.now() + 3600_000), null);
+        await unscheduleCmsFieldPublish(field.id, v1.id);
+        const after = await getCmsFieldById(field.id);
+        expect(after!.versions[0]!.publishAt).toBeNull();
+        await expect(unscheduleCmsFieldPublish(field.id, v1.id)).rejects.toThrow(
+          /no tiene publicación programada/i,
+        );
+      });
+
+      it("publishScheduledCmsFields: publica las vencidas, salta futuras, idempotente", async () => {
+        // Campo A: programado en el pasado (vence ya) — se crea con fecha
+        // futura y se retrocede por DB para no depender del reloj.
+        const a = await makeField({ body: "contenido A programado" });
+        const aDetail = await getCmsFieldById(a.id);
+        const aV1 = aDetail!.versions[0]!;
+        await scheduleCmsFieldPublish(a.id, aV1.id, new Date(Date.now() + 3600_000), null);
+        await prisma.cmsFieldVersion.update({
+          where: { id: aV1.id },
+          data: { publishAt: new Date(Date.now() - 60_000) },
+        });
+
+        // Campo B: programado a futuro — NO debe publicarse.
+        const b = await makeField({ body: "contenido B futuro" });
+        const bDetail = await getCmsFieldById(b.id);
+        await scheduleCmsFieldPublish(
+          b.id,
+          bDetail!.versions[0]!.id,
+          new Date(Date.now() + 3600_000),
+          null,
+        );
+
+        const keys = await publishScheduledCmsFields();
+        expect(keys).toContain(a.key);
+        expect(keys).not.toContain(b.key);
+
+        // A quedó publicado con la versión programada; el sitio ya lo lee.
+        const aAfter = await getCmsFieldById(a.id);
+        expect(aAfter!.isPublished).toBe(true);
+        expect(aAfter!.publishedVersionId).toBe(aV1.id);
+        expect(aAfter!.versions[0]!.publishAt).toBeNull();
+        expect(aAfter!.versions[0]!.publishedAt).not.toBeNull();
+        const block = await getCmsBlock(a.key);
+        expect(block?.body).toBe("contenido A programado");
+
+        // B sigue sin publicar → el reader cae al fallback (null).
+        expect(await getCmsBlock(b.key)).toBeNull();
+
+        // Idempotente: una segunda corrida no publica nada más.
+        expect(await publishScheduledCmsFields()).toEqual([]);
       });
     });
   },

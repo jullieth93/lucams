@@ -292,6 +292,106 @@ export async function softDeleteCmsField(id: string, deletedBy: string | null) {
   });
 }
 
+// ─────────────────── Publicación programada (roadmap C3) ───────────────────
+// Una CmsFieldVersion puede llevar `publishAt` (fecha futura): el cron
+// lucams-cms-publish-scheduled (cada 5 min, pg_cron → endpoint firmado) la
+// publica cuando vence. Solo UNA versión programada por campo (programar una
+// limpia las demás). La publicación en sí es la misma de siempre
+// (publishedAt + field.publishedVersionId) + invalidación del tag "cms" en
+// el caller (Server Action o route handler del cron).
+
+/** Tolerancia al programar: exige que la fecha esté al menos 1 minuto adelante. */
+const SCHEDULE_MIN_LEAD_MS = 60_000;
+
+/**
+ * Programa la publicación de una versión para `publishAt` (futuro). Limpia el
+ * publishAt de las demás versiones del campo: una sola programación vigente.
+ */
+export async function scheduleCmsFieldPublish(
+  fieldId: string,
+  versionId: string,
+  publishAt: Date,
+  updatedBy: string | null,
+) {
+  const field = await prisma.cmsField.findFirst({
+    where: { id: fieldId, deletedAt: null },
+    include: { versions: { where: { id: versionId } } },
+  });
+  const version = field?.versions[0];
+  if (!field || !version) throw new CmsValidationError("general", "Versión no encontrada");
+  if (version.publishedAt) {
+    throw new CmsValidationError("general", "Esa versión ya está publicada");
+  }
+  if (publishAt.getTime() - Date.now() < SCHEDULE_MIN_LEAD_MS) {
+    throw new CmsValidationError(
+      "general",
+      "La fecha de publicación debe ser al menos un par de minutos en el futuro.",
+    );
+  }
+
+  return prisma.$transaction(async (tx) => {
+    // Una sola programación vigente por campo.
+    await tx.cmsFieldVersion.updateMany({
+      where: { fieldId, publishAt: { not: null } },
+      data: { publishAt: null },
+    });
+    const scheduled = await tx.cmsFieldVersion.update({
+      where: { id: version.id },
+      data: { publishAt },
+    });
+    await tx.cmsField.update({
+      where: { id: fieldId },
+      data: { ...(updatedBy ? { updatedBy } : {}) },
+    });
+    return scheduled;
+  });
+}
+
+/** Quita la programación de una versión (la versión queda como borrador). */
+export async function unscheduleCmsFieldPublish(fieldId: string, versionId: string) {
+  const result = await prisma.cmsFieldVersion.updateMany({
+    where: { id: versionId, fieldId, publishAt: { not: null }, publishedAt: null },
+    data: { publishAt: null },
+  });
+  if (result.count === 0) {
+    throw new CmsValidationError("general", "Esa versión no tiene publicación programada");
+  }
+}
+
+/**
+ * Publica las versiones programadas ya vencidas (publishAt <= now). La llama
+ * el cron cada 5 min vía endpoint firmado. Idempotente: una versión publicada
+ * queda con publishedAt y sale del filtro. Devuelve las keys publicadas para
+ * que el caller decida invalidar caché y loguear.
+ */
+export async function publishScheduledCmsFields(now = new Date()): Promise<string[]> {
+  const due = await prisma.cmsFieldVersion.findMany({
+    where: {
+      publishAt: { lte: now },
+      publishedAt: null,
+      field: { deletedAt: null },
+    },
+    include: { field: { select: { id: true, key: true } } },
+    orderBy: { publishAt: "asc" },
+  });
+
+  const publishedKeys: string[] = [];
+  for (const version of due) {
+    await prisma.$transaction(async (tx) => {
+      await tx.cmsFieldVersion.update({
+        where: { id: version.id },
+        data: { publishedAt: now, publishAt: null },
+      });
+      await tx.cmsField.update({
+        where: { id: version.field.id },
+        data: { isPublished: true, publishedVersionId: version.id },
+      });
+    });
+    publishedKeys.push(version.field.key);
+  }
+  return publishedKeys;
+}
+
 // ─────────────────── Campos LISTA (roadmap B4) ───────────────────
 // Un campo con `metadata.listSchema` se edita como filas con un input por
 // subcampo (sin ver JSON). CmsListItem es la representación de EDICIÓN; al
@@ -472,8 +572,6 @@ export async function updateCmsSection(input: CmsSectionUpdateInput) {
     },
   });
 }
-
-// ─────────────────── Lookups por key ───────────────────
 
 /** Busca un campo por su key natural (no id). */
 export async function getCmsFieldByKey(key: string) {

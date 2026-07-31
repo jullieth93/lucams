@@ -110,8 +110,9 @@ re-aplicar la migración agenda los jobs.
 
 ### Jobs HTTP pg_cron — VERSIONADOS vía Vault (auditoría 2026-07-17)
 
-Los 6 jobs que llaman a `GET /api/cron/*` (protegidos por `CRON_SECRET`, mandato #11 — no Vercel
-Cron) **también están versionados** en `supabase/migrations/00000000000015_pgcron_http_jobs.sql`.
+Los jobs que llaman a `GET /api/cron/*` (protegidos por `CRON_SECRET`, mandato #11 — no Vercel
+Cron) **también están versionados** en `supabase/migrations/00000000000015_pgcron_http_jobs.sql`
+(+ la `016` de purge-event-logs y la `021` de cms-publish-scheduled, roadmap C3).
 Antes vivían solo como comandos manuales aquí → en un `db reset`, proyecto nuevo o DR se perdían
 silenciosamente (alertas, resumen diario, palancas de ingreso, purga de retención). La migración es
 GUARDADA (pg_cron + pg_net) e IDEMPOTENTE.
@@ -120,14 +121,15 @@ GUARDADA (pg_cron + pg_net) e IDEMPOTENTE.
 `CRON_SECRET` desde **Supabase Vault** (`vault.decrypted_secrets`) y manda el secreto por el header
 `x-cron-secret` (no en la URL). El texto versionado solo contiene la BÚSQUEDA en el vault.
 
-| Job                         | Schedule (UTC) | Endpoint                       | Qué hace                                           |
-| --------------------------- | -------------- | ------------------------------ | -------------------------------------------------- |
-| `lucams-alerts`             | `*/5 * * * *`  | `/api/cron/alerts`             | Alertas (5xx en pico, reconciliación, webhooks)    |
-| `lucams-daily-summary`      | `0 13 * * *`   | `/api/cron/daily-summary`      | Resumen diario 8am Colombia                        |
-| `lucams-review-request`     | `0 17 * * *`   | `/api/cron/review-request`     | Solicitud de reseña 7–30 días post-entrega         |
-| `lucams-cart-recovery`      | `0 * * * *`    | `/api/cron/cart-recovery`      | Recordatorio de carrito abandonado (≥4h)           |
-| `lucams-back-in-stock`      | `*/30 * * * *` | `/api/cron/back-in-stock`      | "Avísame cuando vuelva"                            |
-| `lucams-purge-anon-designs` | `0 8 * * *`    | `/api/cron/purge-anon-designs` | Retención: purga diseños DRAFT anónimos (Ley 1581) |
+| Job                            | Schedule (UTC) | Endpoint                          | Qué hace                                                       |
+| ------------------------------ | -------------- | --------------------------------- | -------------------------------------------------------------- |
+| `lucams-alerts`                | `*/5 * * * *`  | `/api/cron/alerts`                | Alertas (5xx en pico, reconciliación, webhooks)                |
+| `lucams-daily-summary`         | `0 13 * * *`   | `/api/cron/daily-summary`         | Resumen diario 8am Colombia                                    |
+| `lucams-review-request`        | `0 17 * * *`   | `/api/cron/review-request`        | Solicitud de reseña 7–30 días post-entrega                     |
+| `lucams-cart-recovery`         | `0 * * * *`    | `/api/cron/cart-recovery`         | Recordatorio de carrito abandonado (≥4h)                       |
+| `lucams-back-in-stock`         | `*/30 * * * *` | `/api/cron/back-in-stock`         | "Avísame cuando vuelva"                                        |
+| `lucams-purge-anon-designs`    | `0 8 * * *`    | `/api/cron/purge-anon-designs`    | Retención: purga diseños DRAFT anónimos (Ley 1581)             |
+| `lucams-cms-publish-scheduled` | `*/5 * * * *`  | `/api/cron/cms-publish-scheduled` | CMS: publica versiones programadas (roadmap C3, e.g. campañas) |
 
 **Env var:** `CRON_SECRET` (generar con `openssl rand -hex 32`) — en `.env.local` y en Vercel. Sin
 ella los endpoints responden 401 (fail-closed). El destinatario de alertas/resumen sale de la setting

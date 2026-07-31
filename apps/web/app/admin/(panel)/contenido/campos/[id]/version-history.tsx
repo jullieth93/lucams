@@ -17,6 +17,8 @@ type Version = {
   title: string | null;
   body: string;
   publishedAt: Date | null;
+  /** Roadmap C3: publicación programada (solo en borradores). */
+  publishAt: Date | null;
   createdAt: Date;
   createdBy: string | null;
 };
@@ -66,9 +68,14 @@ export function VersionHistory({
                     Publicada antes
                   </span>
                 )}
-                {!v.publishedAt && !isCurrent && (
+                {!v.publishedAt && !isCurrent && !v.publishAt && (
                   <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-800">
                     Borrador
+                  </span>
+                )}
+                {!v.publishedAt && !isCurrent && v.publishAt && (
+                  <span className="rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-medium text-sky-900">
+                    Programada: sale el {formatDateHuman(v.publishAt)} (hora Colombia)
                   </span>
                 )}
               </div>
@@ -111,7 +118,10 @@ export function VersionHistory({
 
 function formatDateHuman(d: Date): string {
   const date = new Date(d);
+  // Hora de Colombia (America/Bogota, UTC-5 fijo): es la hora que Lucy espera
+  // ver tanto en "Guardada el…" como en la programación (C3).
   return date.toLocaleDateString("es-CO", {
+    timeZone: "America/Bogota",
     day: "numeric",
     month: "short",
     year: "numeric",

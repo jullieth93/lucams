@@ -33,8 +33,10 @@ import {
   publishCmsFieldVersion,
   saveCmsFieldDraft,
   saveCmsFieldItems,
+  scheduleCmsFieldPublish,
   softDeleteCmsField,
   unpublishCmsField,
+  unscheduleCmsFieldPublish,
 } from "@/features/cms/service";
 import { StorageError } from "@/lib/storage";
 import { deleteCmsMedia, updateCmsMediaAlt, uploadCmsMedia } from "@/lib/cms-media";
@@ -326,6 +328,100 @@ export async function deleteCmsFieldAction(formData: FormData): Promise<void> {
   updateTag("cms");
   revalidateCmsPaths(fieldId, field?.section.page.slug);
   redirect(`${back}?archived=1`);
+}
+
+// ─────────────────── Publicación programada (roadmap C3) ───────────────────
+
+/**
+ * La hora que elige Lucy en el date-picker (datetime-local, sin zona) es hora
+ * de COLOMBIA (America/Bogota, UTC-5 fijo — sin horario de verano). Se
+ * convierte a UTC pegando el offset; el service valida que sea futura.
+ */
+function parseBogotaDateTimeLocal(value: string): Date | null {
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) return null;
+  const d = new Date(`${value}:00-05:00`);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+export async function scheduleCmsPublishAction(formData: FormData): Promise<void> {
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.CONTENT });
+
+  const fieldId = String(formData.get("fieldId") ?? "");
+  const versionId = String(formData.get("versionId") ?? "");
+  if (!fieldId || !versionId) redirect("/admin/contenido");
+  const back = safeBackPath(formData.get("redirectTo"), `/admin/contenido/campos/${fieldId}`);
+
+  const publishAt = parseBogotaDateTimeLocal(String(formData.get("publishAt") ?? ""));
+  if (!publishAt) {
+    redirect(`${back}?error=${encodeURIComponent("Elige una fecha y hora válidas.")}`);
+  }
+
+  try {
+    await scheduleCmsFieldPublish(fieldId, versionId, publishAt, session.admin.id);
+    await recordAdminAction({
+      actorId: session.admin.id,
+      action: "cms.field.schedule",
+      entityType: "CmsField",
+      entityId: fieldId,
+      metadata: { versionId, publishAt: publishAt.toISOString() },
+    });
+    // No se invalida el tag "cms": el contenido público NO cambia hasta que
+    // el cron publique la versión (ahí sí se invalida — ver endpoint del cron).
+    const field = await getCmsFieldById(fieldId);
+    revalidateCmsPaths(fieldId, field?.section.page.slug);
+    redirect(`${back}?scheduled=1`);
+  } catch (err) {
+    if (err instanceof Error && err.message === "NEXT_REDIRECT") throw err;
+    const msg =
+      err instanceof CmsValidationError
+        ? err.message
+        : "No pudimos programar la publicación. Intenta de nuevo.";
+    if (!(err instanceof CmsValidationError)) {
+      logger.error({
+        event: "admin.cms.field.schedule_fail",
+        adminId: session.admin.id,
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
+    redirect(`${back}?error=${encodeURIComponent(msg)}`);
+  }
+}
+
+export async function unscheduleCmsPublishAction(formData: FormData): Promise<void> {
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.CONTENT });
+
+  const fieldId = String(formData.get("fieldId") ?? "");
+  const versionId = String(formData.get("versionId") ?? "");
+  if (!fieldId || !versionId) redirect("/admin/contenido");
+  const back = safeBackPath(formData.get("redirectTo"), `/admin/contenido/campos/${fieldId}`);
+
+  try {
+    await unscheduleCmsFieldPublish(fieldId, versionId);
+    await recordAdminAction({
+      actorId: session.admin.id,
+      action: "cms.field.unschedule",
+      entityType: "CmsField",
+      entityId: fieldId,
+      metadata: { versionId },
+    });
+    const field = await getCmsFieldById(fieldId);
+    revalidateCmsPaths(fieldId, field?.section.page.slug);
+    redirect(`${back}?unscheduled=1`);
+  } catch (err) {
+    if (err instanceof Error && err.message === "NEXT_REDIRECT") throw err;
+    const msg =
+      err instanceof CmsValidationError
+        ? err.message
+        : "No pudimos quitar la programación. Intenta de nuevo.";
+    if (!(err instanceof CmsValidationError)) {
+      logger.error({
+        event: "admin.cms.field.unschedule_fail",
+        adminId: session.admin.id,
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
+    redirect(`${back}?error=${encodeURIComponent(msg)}`);
+  }
 }
 
 // ─────────────────── Mediateca (roadmap B5) ───────────────────

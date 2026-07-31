@@ -9,13 +9,15 @@
  *  - Historial: versiones anteriores con botón "Volver a esta".
  *
  * Acciones de header: Publicar última versión (si hay borrador más nuevo),
- * Despublicar (SOLO kind BLOCK — los ajustes no se pueden despublicar) y
- * Archivar (soft delete → vuelve al editor de la página).
+ * PROGRAMAR la publicación para una fecha futura (roadmap C3 — la publica el
+ * cron lucams-cms-publish-scheduled; hora de Colombia), Despublicar (SOLO
+ * kind BLOCK — los ajustes no se pueden despublicar) y Archivar (soft delete
+ * → vuelve al editor de la página).
  */
 
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
-import { ArrowLeft, FileText, History, Send, EyeOff, Trash2 } from "lucide-react";
+import { ArrowLeft, CalendarClock, FileText, History, Send, EyeOff, Trash2, X } from "lucide-react";
 import {
   AdminBadge,
   AdminButton,
@@ -34,7 +36,9 @@ import { prisma } from "@/lib/db";
 import {
   deleteCmsFieldAction,
   publishCmsFieldAction,
+  scheduleCmsPublishAction,
   unpublishCmsFieldAction,
+  unscheduleCmsPublishAction,
 } from "../../actions";
 import { FieldEditorForm } from "./field-editor-form";
 import { ListEditorForm } from "./list-editor-form";
@@ -46,6 +50,23 @@ export const metadata: Metadata = {
 
 type Params = Promise<{ id: string }>;
 type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
+
+/** "Ahora" en hora de Colombia (UTC-5 fijo) formateado para input datetime-local. */
+function nowBogotaLocal(): string {
+  return new Date(Date.now() - 5 * 3600 * 1000).toISOString().slice(0, 16);
+}
+
+/** Fecha UTC → texto humano en hora de Colombia (es-CO). */
+function formatBogotaHuman(d: Date): string {
+  return new Date(d).toLocaleString("es-CO", {
+    timeZone: "America/Bogota",
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
 
 export default async function EditarCampoPage({
   params,
@@ -62,6 +83,8 @@ export default async function EditarCampoPage({
   const justCreated = sp.created === "1";
   const justPublished = sp.published === "1";
   const justUnpublished = sp.unpublished === "1";
+  const justScheduled = sp.scheduled === "1";
+  const justUnscheduled = sp.unscheduled === "1";
   const errorMsg = typeof sp.error === "string" ? sp.error : null;
 
   const field = await getCmsFieldById(id);
@@ -150,6 +173,53 @@ export default async function EditarCampoPage({
                 </Button>
               </form>
             )}
+            {/* C3 — Publicación programada: el cron publica la versión cuando
+                vence la fecha (hora de Colombia). Si ya hay programación, se
+                muestra con opción de quitarla. */}
+            {canPublishLatest &&
+              (latestVersion.publishAt ? (
+                <span className="inline-flex items-center gap-1.5 rounded-md bg-sky-100 px-2.5 py-1.5 text-xs font-medium text-sky-900">
+                  <CalendarClock className="h-3.5 w-3.5" />
+                  Sale el {formatBogotaHuman(latestVersion.publishAt)} (hora Colombia)
+                  <form action={unscheduleCmsPublishAction}>
+                    <input type="hidden" name="fieldId" value={field.id} />
+                    <input type="hidden" name="versionId" value={latestVersion.id} />
+                    <input type="hidden" name="redirectTo" value={selfHref} />
+                    <button
+                      type="submit"
+                      className="ml-0.5 rounded-full p-0.5 hover:bg-sky-200"
+                      title="Quitar la programación (la versión queda como borrador)"
+                      aria-label="Quitar la programación"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </form>
+                </span>
+              ) : (
+                <form action={scheduleCmsPublishAction} className="flex items-center gap-1.5">
+                  <input type="hidden" name="fieldId" value={field.id} />
+                  <input type="hidden" name="versionId" value={latestVersion.id} />
+                  <input type="hidden" name="redirectTo" value={selfHref} />
+                  <input
+                    type="datetime-local"
+                    name="publishAt"
+                    required
+                    min={nowBogotaLocal()}
+                    aria-label="Fecha y hora de publicación (hora de Colombia)"
+                    className="border-brand-purple/20 h-8 rounded-md border bg-white px-2 text-xs shadow-sm"
+                  />
+                  <Button
+                    type="submit"
+                    size="sm"
+                    variant="ghost"
+                    className="text-brand-purple-dark hover:bg-brand-purple/10"
+                    title="Programar: la versión se publica sola en esa fecha (hora de Colombia)"
+                  >
+                    <CalendarClock className="mr-1 h-3.5 w-3.5" />
+                    Programar
+                  </Button>
+                </form>
+              ))}
             {field.kind === "BLOCK" && field.isPublished && (
               <ConfirmAction
                 action={unpublishCmsFieldAction}
@@ -201,6 +271,18 @@ export default async function EditarCampoPage({
         {justUnpublished && (
           <AdminNotice tone="warning">
             Despublicado. El sitio caerá al texto por defecto.
+          </AdminNotice>
+        )}
+        {justScheduled && (
+          <AdminNotice tone="success">
+            Publicación programada. La versión saldrá sola en la fecha elegida (el cron pasa cada 5
+            minutos).
+          </AdminNotice>
+        )}
+        {justUnscheduled && (
+          <AdminNotice tone="warning">
+            Programación quitada. La versión queda como borrador (puedes publicarla a mano cuando
+            quieras).
           </AdminNotice>
         )}
         {errorMsg && <AdminNotice tone="error">{errorMsg}</AdminNotice>}
@@ -266,6 +348,7 @@ export default async function EditarCampoPage({
                 title: v.title,
                 body: v.body,
                 publishedAt: v.publishedAt,
+                publishAt: v.publishAt,
                 createdAt: v.createdAt,
                 createdBy: v.createdBy,
               }))}
