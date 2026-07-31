@@ -68,6 +68,13 @@ jobs:
       - name: Lint
         run: pnpm -r lint
 
+      # Gate de cobertura de contenido (roadmap D1 — ratchet anti-regresión):
+      # falla si aparece copy nuevo en español fuera del CMS (literal no
+      # presente en el baseline) o si el % global de cobertura baja del umbral
+      # fijado en packages/db/scripts/content-coverage-baseline.json.
+      - name: Auditoría de cobertura de contenido (CMS)
+        run: pnpm --filter @lucams/db exec node scripts/audit-content-coverage.mjs --check
+
       # Guard es-CO: el copy debe ser TUTEO, nunca voseo (mandato de idioma). Falla si
       # aparece cualquier token de voseo en el código fuente (excluye tests y los scripts
       # que justamente corrigen voseo).

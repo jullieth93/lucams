@@ -137,6 +137,11 @@ cleanup-slugs:
 audit-slugs:
 	pnpm --filter @lucams/db exec node scripts/audit-slugs.mjs
 
+# Auditoría de cobertura de contenido (roadmap D1): reporte local.
+# El gate vive en CI (job quality) corriendo el script con --check.
+audit-content:
+	pnpm --filter @lucams/db exec node scripts/audit-content-coverage.mjs
+
 test: test-unit test-e2e
 
 test-unit:
