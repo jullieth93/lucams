@@ -20,7 +20,8 @@
 - ✅ **E1** auditoría móvil del admin — commit `39f7e77`
 - ✅ **E2** fixes móviles admin — commit `82b0248`
 - ✅ **E3** auditoría + fixes móviles storefront — commit `0bf3868`
-- ⏳ Ninguna libre · ⏸️ A1/A2/A3, D4 — bloqueadas (requieren producción/cuenta Supabase externa)
+- ✅ **A1** verificación en producción (release + smoke) — smoke `prod-smoke-a1`
+- ⏳ Ninguna libre · ⏸️ A2 (ejecutar ~2026-08-04 tras estabilidad), A3, D4 — bloqueadas (requieren cuenta Supabase externa / ventana de estabilidad)
 
 **Base sobre la que se parte (ya en producción, commit `bd1e427`):**
 
@@ -72,6 +73,8 @@ Tablas legacy (CmsBlock/CmsBlockVersion/SiteSetting): DROP en A2
 - Invalidar caché CMS (botón del índice) si no se hizo tras el deploy.
 - Verificar emails transaccionales (usan `email.*` y settings) y /legal/*.
 - Sin migración. **Verificación:** checklist firmado en HANDOFF.
+
+> **✅ RESULTADO — certificado 2026-07-31 (release `6e86f94..3ec7f06` a `production`, 487 archivos).** Deploy verificado en vivo por señales del código nuevo: `X-Frame-Options: SAMEORIGIN` (C1), `/api/cron/cms-publish-scheduled` → 401 (C3 existe y exige secreto), `/admin/contenido/mediateca` → 307 a login (B5), home 200. Smoke **automatizado con Playwright contra el sitio en vivo** (`tests/e2e/prod-smoke-a1.spec.ts`, queda como herramienta de verificación para futuros releases; admin temporal creado/borrado vía service role — el proyecto Supabase es compartido): **(1)** home + `/legal/privacidad` 200 con el texto original visible ✓ **(2)** caché CMS invalidado desde `/admin/contenido` ✓ **(3)** editar `home.categories.cta-all` → Guardar → Publicar → **la variante se ve en la home pública** → revertir → **la home vuelve al original** ✓ **(4)** dashboard admin a 375px sin overflow en prod (fix E2 verificado en vivo) ✓ — 4/4 en 31.7s. **Residual manual (no automatizable sin generar correos/pedidos reales):** disparar un email transaccional real (los templates `email.*` ya se verificaron contra la misma DB compartida en dev); se recomienda un pedido de prueba en la próxima ventana operativa.
 
 ### A2 — Drop de tablas legacy
 
