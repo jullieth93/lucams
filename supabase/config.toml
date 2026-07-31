@@ -1,0 +1,18 @@
+# Config del stack LOCAL de Supabase (roadmap A3 — 2026-07-31, decisión del
+# usuario: Supabase local en GitHub Actions para separar dev/pruebas de prod).
+#
+# `supabase start` levanta Postgres + GoTrue + Storage + PostgREST + pg_cron
+# y aplica supabase/migrations/* automáticamente. Las credenciales del stack
+# local son deterministas de desarrollo (no son secretos de verdad). El resto
+# de la config queda en defaults del CLI.
+project_id = "lucams"
+
+[db]
+major_version = 15
+
+# Las migraciones de supabase/migrations/* las aplicamos A MANO en el workflow
+# (psql, mismo patrón que el CI por-PR) DESPUÉS de `prisma migrate deploy`:
+# varias tocan tablas Prisma (RLS de CmsPage/CmsMedia…) y si el boot del stack
+# las aplica antes de que existan, la migración y el boot fallan.
+[db.migrations]
+enabled = false
