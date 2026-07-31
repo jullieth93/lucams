@@ -91,18 +91,23 @@ async function loginToMfa(page: Page) {
 test.describe.serial("admin — reto MFA", () => {
   test("con el código TOTP correcto entra al dashboard", async ({ page }) => {
     await loginToMfa(page);
+    // Diagnóstico A3: ¿la sesión de Supabase quedó en cookies tras el login?
+    const cookieNames = (await page.context().cookies()).map((c) => c.name);
+    console.log(`[mfa-diag] cookies tras login: ${cookieNames.join(", ") || "(ninguna)"}`);
     await page.getByPlaceholder("123456").fill(totp(totpSecret, Date.now()));
-    // Diagnóstico A3: captura la respuesta REAL de GoTrue al /verify (el
-    // componente muestra un mensaje genérico para cualquier verifyErr).
+    // Diagnóstico A3: captura la respuesta REAL de GoTrue al challenge/verify
+    // (el componente muestra un mensaje genérico para cualquier verifyErr).
     const verifyRespPromise = page
-      .waitForResponse((r) => r.url().includes("/auth/v1/verify"), { timeout: 15_000 })
+      .waitForResponse((r) => r.url().includes("/auth/v1/"), { timeout: 15_000 })
       .catch(() => null);
     await page.getByRole("button", { name: /verificar y entrar/i }).click();
     const verifyResp = await verifyRespPromise;
-    if (verifyResp && verifyResp.status() !== 200) {
+    if (verifyResp) {
       console.log(
-        `[mfa-diag] /verify → ${verifyResp.status()} :: ${await verifyResp.text().catch(() => "<sin body>")}`,
+        `[mfa-diag] ${verifyResp.url()} → ${verifyResp.status()} :: ${await verifyResp.text().catch(() => "<sin body>")}`,
       );
+    } else {
+      console.log("[mfa-diag] ninguna request a /auth/v1/* tras el click (¿sin sesión?)");
     }
     await page.waitForURL(/\/admin\/dashboard/, { timeout: 20_000 });
     await expect(page).toHaveURL(/\/admin\/dashboard/);
