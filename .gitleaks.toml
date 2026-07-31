@@ -55,4 +55,9 @@ regexes = [
     # de contenido CMS, no credenciales. Rompió CI en todos los push desde el
     # run 30499078411 hasta este fix.
     '''faq\.\d{2}-[a-z-]+''',
+    # Falso positivo (2026-07-31): contraseñas de admins TEMPORALES que crean y
+    # borran las specs e2e (tests/e2e/*audit*.spec.ts, release-check-a1.spec.ts)
+    # contra la Supabase de dev — no son credenciales reales, viven minutos en
+    # una corrida de tests. Mismo valor en varias specs por convención.
+    '''[A-Za-z0-9]+-Admin-918273650''',
 ]
