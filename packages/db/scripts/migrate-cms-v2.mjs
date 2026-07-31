@@ -1,16 +1,18 @@
 /*
- * Migración CMS v2 — CmsBlock + SiteSetting → CmsPage/CmsSection/CmsField.
+ * Migración CMS v2 — site map → CmsPage/CmsSection/CmsField.
+ *
+ * ORIGEN: este script migró CmsBlock + SiteSetting (legacy) al modelo v2; tras
+ * el drop de las tablas legacy (fase A2, 2026-07-31) queda como herramienta de
+ * UPSERT del site map — es el paso 2 del flujo «agregar un campo CMS»
+ * (docs/CONVENTIONS.md § CMS).
  *
  * Idempotente y SEGURO de re-ejecutar:
  *   - Estructura (páginas/secciones): upsert completo (títulos, orden…).
- *   - Campos migrados: la PRIMERA vez copia todo (body, versiones, estado de
- *     publicación); en re-ejecuciones solo actualiza atributos estructurales
- *     (sección, label, helpText, type, category, sortOrder) — NUNCA pisa
- *     body/isPublished/versiones, para no borrar ediciones hechas en v2.
- *   - Campos nuevos declarados en el site map (`fields`): igual — se crean con
- *     su valor por defecto + v1 publicada solo si no existen.
+ *   - Campos nuevos declarados en el site map (`fields`): se crean con su
+ *     valor por defecto + v1 publicada solo si NO existen — NUNCA pisa
+ *     body/isPublished/versiones de campos ya editados desde el admin.
  *
- * Cierra con un reporte de PARIDAD: conteos origen vs destino, campos sin
+ * Cierra con un reporte de estado: conteos en destino, campos publicados sin
  * versión publicada, y keys caídas en la página "otros".
  *
  * Uso:
@@ -21,7 +23,7 @@
  */
 
 import { PrismaClient } from "@prisma/client";
-import { SITE_MAP, resolveBlockSection, resolveSettingSection } from "./cms-site-map.mjs";
+import { SITE_MAP } from "./cms-site-map.mjs";
 
 const stripQuotes = (v) => v?.replace(/^["']|["']$/g, "");
 process.env.DATABASE_URL = stripQuotes(process.env.DATABASE_URL);
@@ -31,17 +33,9 @@ const prisma = new PrismaClient();
 
 console.log("=== migrate-cms-v2 ===\n");
 
-// BlockFormat → CmsFieldType (los demás tipos vienen de SettingType 1:1).
-const BLOCK_TYPE = { MARKDOWN: "MARKDOWN", HTML: "HTML", TEXT: "TEXT", JSON: "JSON" };
-
 const report = {
   pages: 0,
   sections: 0,
-  blocksTotal: 0,
-  blocksCreated: 0,
-  versionsCopied: 0,
-  settingsTotal: 0,
-  settingsCreated: 0,
   mapFieldsCreated: 0,
   inOtros: [],
   anomalies: [],
@@ -95,149 +89,6 @@ async function ensureStructure() {
     }
   }
   console.log(`Estructura: ${report.pages} páginas, ${report.sections} secciones OK.`);
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 2. CmsBlock → CmsField (kind BLOCK) con TODAS sus versiones.
-// ─────────────────────────────────────────────────────────────────────────────
-async function migrateBlocks() {
-  const blocks = await prisma.cmsBlock.findMany({
-    where: { deletedAt: null },
-    include: { versions: { orderBy: { version: "asc" } }, publishedVersion: true },
-    orderBy: { key: "asc" },
-  });
-  report.blocksTotal = blocks.length;
-
-  for (const block of blocks) {
-    const { pageSlug, sectionKey } = resolveBlockSection(block.key);
-    if (pageSlug === "otros") report.inOtros.push(block.key);
-    const sectionId = sectionIdByPath.get(`${pageSlug}/${sectionKey}`);
-
-    const structural = {
-      sectionId,
-      label: block.title ?? block.key,
-      helpText: block.description ?? null,
-      type: BLOCK_TYPE[block.format] ?? "TEXT",
-      category: block.category,
-      metadata: block.metadata ?? {},
-    };
-
-    let field = await prisma.cmsField.findUnique({ where: { key: block.key } });
-    if (field) {
-      field = await prisma.cmsField.update({ where: { id: field.id }, data: structural });
-    } else {
-      field = await prisma.cmsField.create({
-        data: {
-          ...structural,
-          key: block.key,
-          kind: "BLOCK",
-          body: block.body,
-          isPublished: block.isPublished,
-          createdBy: block.createdBy,
-          updatedBy: block.updatedBy,
-        },
-      });
-      report.blocksCreated++;
-
-      // Versiones append-only: copiar SOLO en la creación del campo.
-      for (const v of block.versions) {
-        await prisma.cmsFieldVersion.create({
-          data: {
-            fieldId: field.id,
-            version: v.version,
-            title: v.title,
-            body: v.body,
-            metadata: v.metadata ?? {},
-            publishedAt: v.publishedAt,
-            createdAt: v.createdAt,
-            createdBy: v.createdBy,
-          },
-        });
-        report.versionsCopied++;
-      }
-
-      // Apuntar publishedVersionId a la misma versión que tenía el bloque.
-      if (block.publishedVersion) {
-        const fv = await prisma.cmsFieldVersion.findUnique({
-          where: {
-            fieldId_version: { fieldId: field.id, version: block.publishedVersion.version },
-          },
-        });
-        if (fv) {
-          await prisma.cmsField.update({
-            where: { id: field.id },
-            data: { publishedVersionId: fv.id },
-          });
-        }
-      }
-    }
-
-    // Anomalías: publicado sin versión publicada.
-    if (block.isPublished && !block.publishedVersion) {
-      report.anomalies.push(`${block.key}: bloque publicado sin publishedVersion`);
-    }
-  }
-  console.log(
-    `Bloques: ${report.blocksTotal} leídos, ${report.blocksCreated} campos creados, ${report.versionsCopied} versiones copiadas.`,
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// 3. SiteSetting → CmsField (kind SETTING) con v1 publicada.
-// ─────────────────────────────────────────────────────────────────────────────
-async function migrateSettings() {
-  const settings = await prisma.siteSetting.findMany({ orderBy: { key: "asc" } });
-  report.settingsTotal = settings.length;
-
-  for (const setting of settings) {
-    const { pageSlug, sectionKey } = resolveSettingSection(setting.category);
-    if (pageSlug === "otros") report.inOtros.push(setting.key);
-    const sectionId = sectionIdByPath.get(`${pageSlug}/${sectionKey}`);
-
-    const structural = {
-      sectionId,
-      label: setting.label,
-      helpText: setting.description ?? null,
-      type: setting.valueType, // SettingType ⊆ CmsFieldType (mismos nombres)
-      category: setting.category,
-    };
-
-    const existing = await prisma.cmsField.findUnique({ where: { key: setting.key } });
-    if (existing) {
-      await prisma.cmsField.update({ where: { id: existing.id }, data: structural });
-      continue;
-    }
-
-    const field = await prisma.cmsField.create({
-      data: {
-        ...structural,
-        key: setting.key,
-        kind: "SETTING",
-        body: setting.value,
-        isPublished: true,
-        createdBy: setting.createdBy,
-        updatedBy: setting.updatedBy,
-      },
-    });
-    const v1 = await prisma.cmsFieldVersion.create({
-      data: {
-        fieldId: field.id,
-        version: 1,
-        title: setting.label,
-        body: setting.value,
-        publishedAt: setting.updatedAt,
-        createdBy: setting.createdBy,
-      },
-    });
-    await prisma.cmsField.update({
-      where: { id: field.id },
-      data: { publishedVersionId: v1.id },
-    });
-    report.settingsCreated++;
-  }
-  console.log(
-    `Settings: ${report.settingsTotal} leídos, ${report.settingsCreated} campos creados.`,
-  );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -303,13 +154,8 @@ async function parity() {
     }),
   ]);
 
-  console.log("\n--- PARIDAD ---");
-  console.log(
-    `Bloques  origen ${report.blocksTotal} → destino ${fieldBlocks} ${fieldBlocks >= report.blocksTotal ? "OK" : "✗ FALTAN"}`,
-  );
-  console.log(
-    `Settings origen ${report.settingsTotal} → destino ${fieldSettings} ${fieldSettings >= report.settingsTotal ? "OK" : "✗ FALTAN"}`,
-  );
+  console.log("\n--- ESTADO ---");
+  console.log(`Campos BLOCK en DB: ${fieldBlocks} · SETTING: ${fieldSettings}`);
   console.log(
     `Campos publicados sin versión publicada: ${publishedNoVersion} ${publishedNoVersion === 0 ? "OK" : "✗ REVISAR"}`,
   );
@@ -325,8 +171,6 @@ async function parity() {
 
 try {
   await ensureStructure();
-  await migrateBlocks();
-  await migrateSettings();
   await upsertMapFields();
   await parity();
 } finally {

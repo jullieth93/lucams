@@ -115,55 +115,6 @@ enum ConsentScope {
 
 // ──────────────────────── CMS (sub-bloque J) ────────────────────────
 
-// Formato del cuerpo de un bloque CMS. La mayoría son MARKDOWN.
-// HTML solo para tablas complejas (cookies/subprocesadores) con
-// rehype-sanitize allowlist. TEXT para strings cortos sin estructura.
-// JSON para arrays estructurados (futuro: steps de un proceso).
-enum BlockFormat {
-  MARKDOWN
-  HTML
-  TEXT
-  JSON
-}
-
-// Categoría del bloque CMS para agrupar en el admin + filtrar en RAG.
-enum BlockCategory {
-  LEGAL // 8 páginas /legal/*
-  HOME // hero, secciones, CTAs home
-  FOOTER // tagline, newsletter copy
-  EMPTY_STATE // 404, errores, carrito vacío, sin resultados
-  COOKIES // banner Ley 1581 (sub-bloque E)
-  FAQ // entradas /ayuda (sub-bloque E)
-  SUPPORT // /contacto, /mi-cuenta/pedidos textos (sub-bloque E)
-  MAINTENANCE // /maintenance page (sub-bloque E)
-  EMAIL // templates react-email (sub-bloque G)
-  MARKETING // banners promocionales, hero rotativo futuro
-}
-
-// Tipo de valor para SiteSetting (validación admin form + display).
-enum SettingType {
-  TEXT
-  EMAIL
-  URL
-  NUMBER
-  PHONE // WA en formato wa.me (sin + ni espacios)
-  COLOR // futuro: hex code
-  BOOLEAN // futuro: feature flags
-}
-
-// Categoría de SiteSetting para agrupar en el admin.
-enum SettingCategory {
-  CONTACT // email, WhatsApp, redes
-  BUSINESS // horarios, ubicación, NIT (futuro)
-  LEGAL // versiones policies, plazos
-  COMMERCE // mínimo orden, días fabricación, cobertura
-  SOCIAL // Instagram, TikTok URLs (mantenido separado)
-  EXTERNAL // DPA links, gov URLs
-  WHATSAPP // mensajes pre-armados
-  COPYRIGHT // año, tagline, location
-  SEO // titles/descriptions defaults
-}
-
 // ──────────────────────── IDENTIDAD ────────────────────────
 
 model Customer {
@@ -1192,95 +1143,17 @@ model SupportTicket {
 }
 
 // ──────────────────────── CMS BLOCKS ────────────────────────
-// DEPRECATED (CMS v2): reemplazado por CmsPage/CmsSection/CmsField. Se conserva
-// como respaldo de datos hasta verificar la migración en producción; luego drop.
-// Contenido editable desde admin: prosa larga (legales, FAQ, hero copy,
-// empty states). Versionado por save. Render via react-markdown en el
-// storefront. Consumible por futuro chatbot RAG vía /api/cms/blocks.
-
-model CmsBlock {
-  id                 String            @id @default(cuid())
-  key                String            @unique // "legal.privacidad", "home.hero.title"
-  title              String? // Display interno en admin
-  body               String // Cuerpo según `format` (markdown/html/text/json)
-  format             BlockFormat       @default(MARKDOWN)
-  category           BlockCategory
-  description        String? // Notas para la editora: "Aparece en footer + /legal/*"
-  metadata           Json              @default("{}")
-  isPublished        Boolean           @default(false)
-  publishedVersionId String? // Apunta a la versión actualmente publicada
-  publishedVersion   CmsBlockVersion?  @relation("PublishedVersion", fields: [publishedVersionId], references: [id], onDelete: SetNull)
-  versions           CmsBlockVersion[] @relation("BlockVersions")
-
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  createdBy String?
-  updatedBy String?
-  deletedAt DateTime?
-  deletedBy String?
-
-  @@index([category, isPublished])
-  @@index([key])
-  @@index([deletedAt])
-}
-
-// Append-only: cada save crea una versión inmutable. Permite ver
-// historial + revertir + cumplir auditoría legal de qué decía el
-// aviso de privacidad un día específico.
-model CmsBlockVersion {
-  id           String      @id @default(cuid())
-  blockId      String
-  block        CmsBlock    @relation("BlockVersions", fields: [blockId], references: [id], onDelete: Cascade)
-  version      Int // Auto-increment por blockId (1, 2, 3...)
-  title        String?
-  body         String
-  format       BlockFormat
-  metadata     Json        @default("{}")
-  publishedAt  DateTime? // null = borrador
-  publishedFor CmsBlock[]  @relation("PublishedVersion")
-
-  createdAt DateTime @default(now())
-  createdBy String?
-
-  @@unique([blockId, version])
-  @@index([blockId, createdAt])
-}
-
-// ──────────────────────── SITE SETTINGS ────────────────────────
-// DEPRECATED (CMS v2): reemplazado por CmsField (kind SETTING). Se conserva
-// como respaldo de datos hasta verificar la migración en producción; luego drop.
-// Configurables atómicos (email, horario, número WA, plazos legales,
-// versiones policies, URLs DPA, mensajes WhatsApp). NO versionado —
-// AdminActionLog captura quién cambió qué cuándo.
-
-model SiteSetting {
-  id          String          @id @default(cuid())
-  key         String          @unique // "CONTACT_EMAIL", "BUSINESS_HOURS"
-  value       String
-  valueType   SettingType     @default(TEXT)
-  label       String // Display admin: "Email de contacto público"
-  description String? // "Aparece en footer + /contacto + /legal/*"
-  category    SettingCategory
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  createdBy String?
-  updatedBy String?
-
-  @@index([category])
-}
-
 // ──────────────────────── CMS V2 — PÁGINA → SECCIÓN → CAMPO ────────────────────────
 // Modelo relacional de contenido pensado para una administradora NO técnica:
 // el contenido se navega por PÁGINA del sitio (Inicio, Footer, Contacto…) y
 // dentro de cada página por SECCIÓN (Hero, Redes sociales…). Unifica los dos
-// conceptos anteriores (CmsBlock + SiteSetting, DEPRECATED) en un solo CmsField:
+// conceptos anteriores en un solo CmsField:
 //   - kind BLOCK   → prosa larga versionada (lo que era CmsBlock)
 //   - kind SETTING → valor atómico (lo que era SiteSetting)
 // Compatibilidad: CmsField.key conserva las mismas keys históricas
 // ("home.hero.title", "CONTACT_EMAIL") → lib/cms.ts mantiene su API pública.
-// CmsBlock/CmsBlockVersion/SiteSetting se conservan como respaldo hasta
-// verificar la migración en producción; luego se dropean (ver HANDOFF).
+// Las tablas legacy (CmsBlock/CmsBlockVersion/SiteSetting) se dropearon en la
+// fase A2 (2026-07-31, migración drop_cms_legacy — respaldo JSON en tmp/backups).
 
 // Tipo de campo CMS (validación del formulario admin + control de input).
 // Unión de BlockFormat (MARKDOWN/HTML/TEXT/JSON) + SettingType

@@ -210,10 +210,11 @@ test.describe.serial("AUDITORÍA ADMIN — catalogo-whatsapp (producción)", () 
     watch(page, "config");
     await adminLogin(page);
     // Leer el estado actual del COD desde la DB para restaurar exacto
-    const setting = await prisma.siteSetting
-      .findFirst({ where: { key: "cod_enabled" } })
+    // (CMS v2 — antes SiteSetting legacy, borrado en A2; valor = versión publicada).
+    const codField = await prisma.cmsField
+      .findFirst({ where: { key: "cod_enabled" }, include: { publishedVersion: true } })
       .catch(() => null);
-    const before = setting?.value;
+    const before = codField?.publishedVersion?.body ?? codField?.body;
     for (const path of ["/admin/configuracion", "/admin/ajustes", "/admin/config"]) {
       const resp = await page.goto(path, { waitUntil: "domcontentloaded" });
       if (resp?.status() === 200) {

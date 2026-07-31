@@ -61,14 +61,10 @@ seed-ocasiones:
 seed-catalog-v2:
 	pnpm --filter @lucams/db exec node scripts/seed-catalog-v2.mjs
 
-# DEPRECATED (CMS v2): siembra en las tablas viejas (CmsBlock/SiteSetting) que
-# el storefront ya no lee. Para contenido nuevo: editar packages/db/scripts/
-# cms-site-map.mjs y correr `make migrate-cms-v2`.
-seed-cms:
-	pnpm --filter @lucams/db exec node scripts/seed-cms.mjs
-
-# CMS v2 — migra CmsBlock + SiteSetting al modelo Página→Sección→Campo.
-# Idempotente; no pisa ediciones hechas en v2. Cierra con reporte de paridad.
+# CMS v2 — upsert del site map (páginas/secciones/campos nuevos) al modelo
+# Página→Sección→Campo. Idempotente; no pisa ediciones hechas en v2.
+# (Tras A2 las tablas legacy ya no existen: el paso de migración vieja→nueva
+# se salta solo — solo queda el upsert del mapa.)
 migrate-cms-v2:
 	pnpm --filter @lucams/db exec node scripts/migrate-cms-v2.mjs
 

@@ -584,7 +584,12 @@ describe.skipIf(!hasDb)("checkout/service — integración DB (ruta de ingresos)
   afterAll(async () => {
     await cleanupRunData();
     await prisma.customer.deleteMany({ where: { email: { contains: RUN } } });
-    await prisma.siteSetting.deleteMany({ where: { key: { startsWith: RUN } } });
+    // Settings de prueba del RUN (CMS v2 — antes siteSetting legacy, borrado en A2).
+    await prisma.cmsField.updateMany({
+      where: { key: { startsWith: RUN } },
+      data: { publishedVersionId: null },
+    });
+    await prisma.cmsField.deleteMany({ where: { key: { startsWith: RUN } } });
     await prisma.productVariant.deleteMany({
       where: { id: { in: [variantWithDims, variantNoDims].filter(Boolean) } },
     });

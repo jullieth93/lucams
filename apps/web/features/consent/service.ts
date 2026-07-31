@@ -9,7 +9,7 @@
  *   3. Si el aviso de privacidad cambia (nuevo `version`), requerir
  *      re-consent y comparar contra la versión que el usuario aceptó
  *
- * `version` viene de SiteSetting PRIVACY_POLICY_VERSION editable
+ * `version` viene del campo CMS PRIVACY_POLICY_VERSION editable
  * desde admin. Cambiar el valor de ese setting invalida los consents
  * previos y dispara re-banner para visitantes recurrentes.
  */
