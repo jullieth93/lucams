@@ -8,7 +8,12 @@ import { createClient } from "@supabase/supabase-js";
  * Inicio → publicar → ver en /"). Corre SOLO con PLAYWRIGHT_BASE_URL apuntando
  * al sitio en vivo (no levanta server local):
  *
- *   PLAYWRIGHT_BASE_URL=https://lucamsshop.com pnpm --filter web exec playwright test prod-smoke-a1
+ *   PLAYWRIGHT_BASE_URL=https://lucamsshop.com pnpm --filter web exec playwright test release-check-a1
+ *
+ * ⚠️ NOMBRE DELIBERADO: el job e2e de CI corre `playwright test smoke a11y axe
+ * compra estudio` (match por SUBSTRING de archivo) — llamarla prod-smoke-a1 la
+ * metió al gate de CI, que corre con Supabase placeholder y reventó (run
+ * 30642231886). "release-check" no matchea ningún filtro.
  *
  * Qué hace (todo con un admin TEMPORAL que crea y borra ella misma vía
  * service role — el proyecto Supabase es compartido dev/prod):
@@ -34,7 +39,7 @@ const service = createClient(
 
 const RUN = `a1-${Date.now()}`;
 const ADMIN_EMAIL = `${RUN}@example.com`;
-const ADMIN_PASSWORD = "A1-Smoke-918273650";
+const ADMIN_PASSWORD = "A1-Admin-918273650";
 let supabaseUserId = "";
 let adminId = "";
 

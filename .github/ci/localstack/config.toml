@@ -1,0 +1,12 @@
+# Stack LOCAL de Supabase para el Nightly CI (A3, 2026-07-31).
+#
+# Este workdir existe SOLO para que `supabase start` levante el stack SIN
+# auto-aplicar migraciones: el CLI aplica <workdir>/supabase/migrations al
+# boot, y las nuestras (repo: supabase/migrations/*) tocan tablas Prisma que a
+# esa altura aún no existen → el boot fallaría. Al correr `supabase start`
+# desde ESTE directorio (que no tiene supabase/migrations), el stack arranca
+# pelado y el workflow aplica todo en el orden correcto:
+#   prisma migrate deploy → psql supabase/migrations/* → seeds.
+# Las credenciales del stack local son deterministas de desarrollo (las lee el
+# workflow de `supabase status -o env`); no son secretos reales.
+project_id = "lucams-ci"

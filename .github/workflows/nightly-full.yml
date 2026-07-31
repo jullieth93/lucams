@@ -46,9 +46,11 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @lucams/db db:generate
       - uses: supabase/setup-cli@v1
-      # Stack local SIN auto-migraciones (db.migrations.enabled=false en
-      # supabase/config.toml): las aplicamos a mano tras prisma migrate deploy.
+      # El start corre desde .github/ci/localstack (workdir pelado SIN
+      # migrations — ver su config.toml): el stack arranca sin auto-aplicar
+      # nada y el orden correcto queda en manos del workflow (prisma → psql).
       - name: Levantar Supabase local y exportar credenciales
+        working-directory: .github/ci/localstack
         run: |
           supabase start
           {
@@ -101,6 +103,7 @@ jobs:
       - run: pnpm --filter @lucams/db db:generate
       - uses: supabase/setup-cli@v1
       - name: Levantar Supabase local y exportar credenciales
+        working-directory: .github/ci/localstack
         run: |
           supabase start
           {
