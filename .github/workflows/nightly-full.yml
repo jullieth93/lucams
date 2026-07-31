@@ -60,6 +60,8 @@ jobs:
             echo "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=$(supabase status -o env | grep '^ANON_KEY=' | cut -d'\"' -f2)"
             echo "SUPABASE_SECRET_KEY=$(supabase status -o env | grep '^SERVICE_ROLE_KEY=' | cut -d'\"' -f2)"
           } >> "$GITHUB_ENV"
+      - name: Extensiones Postgres prerequisito (pg_trgm/unaccent — las exigen migraciones viejas)
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f .github/ci/localstack/prereq-extensions.sql
       - name: Aplicar migraciones Prisma
         run: pnpm --filter @lucams/db exec prisma migrate deploy
       - name: Aplicar migraciones SQL de Supabase (RLS, storage, pg_cron)
@@ -108,11 +110,13 @@ jobs:
           supabase start
           {
             echo "DATABASE_URL=postgresql://postgres:postgres@localhost:54322/postgres"
-            echo "DIRECT_URL=postgresql://postgres://postgres@localhost:54322/postgres"
+            echo "DIRECT_URL=postgresql://postgres:postgres@localhost:54322/postgres"
             echo "NEXT_PUBLIC_SUPABASE_URL=http://localhost:54321"
             echo "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=$(supabase status -o env | grep '^ANON_KEY=' | cut -d'\"' -f2)"
             echo "SUPABASE_SECRET_KEY=$(supabase status -o env | grep '^SERVICE_ROLE_KEY=' | cut -d'\"' -f2)"
           } >> "$GITHUB_ENV"
+      - name: Extensiones Postgres prerequisito (pg_trgm/unaccent — las exigen migraciones viejas)
+        run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f .github/ci/localstack/prereq-extensions.sql
       - name: Aplicar migraciones Prisma
         run: pnpm --filter @lucams/db exec prisma migrate deploy
       - name: Aplicar migraciones SQL de Supabase (RLS, storage, pg_cron)
