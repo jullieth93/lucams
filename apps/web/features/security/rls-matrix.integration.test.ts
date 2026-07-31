@@ -100,7 +100,12 @@ describe.skipIf(!canRun)("RLS matrix R3 — la API pública no filtra datos sens
     });
     fixtureAdminAuthId = adminAuth.user?.id;
     const admin = await prisma.adminUser.create({
-      data: { supabaseUserId: fixtureAdminAuthId!, email: adminEmail, role: "SUPERADMIN", isActive: true },
+      data: {
+        supabaseUserId: fixtureAdminAuthId!,
+        email: adminEmail,
+        role: "SUPERADMIN",
+        isActive: true,
+      },
     });
     fixtureAdminId = admin.id;
   });
