@@ -25,6 +25,9 @@
  *     (BLOCK → versión borrador + items reemplazados en transacción, SETTING
  *     → publica al guardar, validación contra listSchema, tope MAX_LIST_ITEMS,
  *     normalización de subcampos); round-trip con getCmsList de lib/cms.
+ *   - Campos IMAGE (roadmap B5, CmsMedia): round-trip con getCmsImage de
+ *     lib/cms (SETTING publicado resuelve url/alt/dimensiones; BLOCK sin
+ *     publicar → null; asset fantasma → null).
  *
  * Estrategia: integración DB pura. Requiere DATABASE_URL (corre vía
  * `dotenv -e .env.local -- vitest`); sin ella se salta (skipIf) para no romper
@@ -41,7 +44,7 @@
 
 import { afterAll, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/db";
-import { getCmsList } from "@/lib/cms";
+import { getCmsImage, getCmsList } from "@/lib/cms";
 import {
   MAX_LIST_ITEMS,
   cmsFieldHasDraft,
@@ -600,6 +603,72 @@ describe.skipIf(!hasDb)(
         const sectionId = await ensureSection();
         const updated = await updateCmsSection({ id: sectionId, title: "Sección renombrada" });
         expect(updated.title).toBe("Sección renombrada");
+      });
+    });
+
+    // ───────────────────────── Campos IMAGE + getCmsImage (roadmap B5) ─────────────────────────
+
+    describe("getCmsImage (B5: campos IMAGE + mediateca)", () => {
+      const mediaIds: string[] = [];
+
+      // CI corre vitest con NEXT_PUBLIC_SUPABASE_URL="" (stack Supabase real
+      // salta). getCmsImage deriva la URL pública del bucket desde ese env —
+      // con placeholder basta (la aserción es sobre el path, no el host).
+      process.env.NEXT_PUBLIC_SUPABASE_URL ||= "https://placeholder.supabase.co";
+
+      afterAll(async () => {
+        // Los assets del RUN se borran por id (no hay FK con CmsField; el
+        // orden con el afterAll externo —fields del RUN— es indiferente).
+        await prisma.cmsMedia.deleteMany({ where: { id: { in: mediaIds } } });
+      });
+
+      async function makeMedia() {
+        const media = await prisma.cmsMedia.create({
+          data: {
+            bucket: "cms-media",
+            path: `media/itest-${RUN}-${nextSuffix()}.png`,
+            alt: "Asset de prueba B5",
+            width: 40,
+            height: 30,
+            bytes: 1234,
+            mime: "image/png",
+          },
+        });
+        mediaIds.push(media.id);
+        return media;
+      }
+
+      it("SETTING IMAGE publicado → resuelve { url, alt, width, height }", async () => {
+        const media = await makeMedia();
+        const field = await makeField({ type: "IMAGE", kind: "SETTING", body: media.id });
+        const img = await getCmsImage(field.key);
+        expect(img).not.toBeNull();
+        expect(img!.url).toContain(`/storage/v1/object/public/cms-media/${media.path}`);
+        expect(img!.alt).toBe("Asset de prueba B5");
+        expect(img!.width).toBe(40);
+        expect(img!.height).toBe(30);
+      });
+
+      it("BLOCK sin publicar → null (fallback); al publicar → resuelve", async () => {
+        const media = await makeMedia();
+        const field = await makeField({ type: "IMAGE", kind: "BLOCK", body: media.id });
+        expect(await getCmsImage(field.key)).toBeNull();
+        const detail = await getCmsFieldById(field.id);
+        await publishCmsFieldVersion(field.id, detail!.versions[0].id, null);
+        const img = await getCmsImage(field.key);
+        expect(img).not.toBeNull();
+        expect(img!.width).toBe(40);
+      });
+
+      it("key inexistente / campo sin asset / asset borrado → null", async () => {
+        expect(await getCmsImage(`${RUN}.no-such-image`)).toBeNull();
+        // Campo IMAGE cuyo body apunta a un asset que no existe.
+        const ghost = await makeField({
+          type: "IMAGE",
+          kind: "SETTING",
+          body: "cuidque no existe00000000",
+        });
+        expect(await getCmsImage(ghost.key)).toBeNull();
       });
     });
   },

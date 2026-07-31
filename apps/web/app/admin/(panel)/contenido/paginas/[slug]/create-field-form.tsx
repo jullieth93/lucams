@@ -30,6 +30,7 @@ const FIELD_TYPES = [
   { value: "NUMBER", label: "Número" },
   { value: "COLOR", label: "Color" },
   { value: "BOOLEAN", label: "Sí / No" },
+  { value: "IMAGE", label: "Imagen (se sube o elige de la mediateca)" },
   { value: "HTML", label: "HTML (avanzado)" },
   { value: "JSON", label: "Datos estructurados JSON (avanzado)" },
 ] as const;
@@ -50,6 +51,7 @@ export function CreateFieldForm({
     null,
   );
   const [open, setOpen] = useState(false);
+  const [type, setType] = useState<string>("TEXT");
 
   return (
     <details
@@ -133,7 +135,8 @@ export function CreateFieldForm({
             <select
               id={`type-${sectionId}`}
               name="type"
-              defaultValue="TEXT"
+              value={type}
+              onChange={(e) => setType(e.target.value)}
               disabled={pending}
               className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 flex h-9 w-full rounded-md border bg-white px-3 py-1 text-sm shadow-sm focus:ring-2 focus:outline-none"
             >
@@ -146,23 +149,34 @@ export function CreateFieldForm({
           </div>
         </div>
 
-        <div className="space-y-1.5">
-          <Label htmlFor={`body-${sectionId}`} className="text-brand-purple-dark font-semibold">
-            Contenido inicial <span className="text-rose-600">*</span>
-          </Label>
-          <textarea
-            id={`body-${sectionId}`}
-            name="body"
-            required
-            rows={3}
-            disabled={pending}
-            placeholder="Escribe el texto inicial. Podrás cambiarlo cuando quieras."
-            className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 text-brand-purple-dark w-full rounded-md border bg-white px-3 py-2 text-sm shadow-sm focus:ring-2 focus:outline-none"
-          />
-          {state?.fieldErrors?.body && (
-            <p className="text-xs text-rose-600">{state.fieldErrors.body[0]}</p>
-          )}
-        </div>
+        {type === "IMAGE" ? (
+          // Campo imagen: no lleva contenido inicial — la imagen se sube o se
+          // elige de la mediateca en el editor del campo (body = CmsMedia.id).
+          <>
+            <input type="hidden" name="body" value="" />
+            <p className="text-brand-muted text-xs">
+              La imagen se sube o se elige de la mediateca después, en el editor del campo.
+            </p>
+          </>
+        ) : (
+          <div className="space-y-1.5">
+            <Label htmlFor={`body-${sectionId}`} className="text-brand-purple-dark font-semibold">
+              Contenido inicial <span className="text-rose-600">*</span>
+            </Label>
+            <textarea
+              id={`body-${sectionId}`}
+              name="body"
+              required
+              rows={3}
+              disabled={pending}
+              placeholder="Escribe el texto inicial. Podrás cambiarlo cuando quieras."
+              className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 text-brand-purple-dark w-full rounded-md border bg-white px-3 py-2 text-sm shadow-sm focus:ring-2 focus:outline-none"
+            />
+            {state?.fieldErrors?.body && (
+              <p className="text-xs text-rose-600">{state.fieldErrors.body[0]}</p>
+            )}
+          </div>
+        )}
 
         {state?.error && !state.fieldErrors && (
           <div className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">

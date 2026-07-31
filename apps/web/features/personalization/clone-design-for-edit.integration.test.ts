@@ -126,7 +126,11 @@ afterAll(async () => {
   await safe(prisma.customer.deleteMany({ where: { email: { contains: RUN } } }));
 });
 
-describe("cloneDesignForEdit", () => {
+// Timeout de suite amplio (mismo criterio que features/cms/service.integration.test.ts):
+// cada caso encadena varios round-trips contra el pooler de Supabase (pgbouncer) y el
+// default de vitest (5000ms) no alcanza bajo latencia alta — el test de clonado READY→DRAFT
+// toma ~7s limpios. Es calibración de infraestructura, no cambio de aserciones.
+describe("cloneDesignForEdit", { timeout: 30000 }, () => {
   it("#10 — un clon de un diseño APPROVED nace PENDING (re-moderación al reeditar)", async () => {
     // Diseño APPROVED propio (no reusar readyId compartido, que arrastraría estado a otros tests).
     const approved = await prisma.design.create({

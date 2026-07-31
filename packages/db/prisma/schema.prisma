@@ -1297,6 +1297,7 @@ enum CmsFieldType {
   PHONE // WA en formato wa.me (sin + ni espacios)
   COLOR
   BOOLEAN
+  IMAGE // body = CmsMedia.id (roadmap B5); lectura pública vía getCmsImage
 }
 
 // Procedencia semántica del campo: BLOCK = prosa versionada con publicación
@@ -1410,6 +1411,27 @@ model CmsListItem {
   updatedAt DateTime @updatedAt
 
   @@index([fieldId, position])
+}
+
+// Mediateca CMS (roadmap B5, 2026-07-30): un asset de imagen en Supabase
+// Storage (bucket público `cms-media`) con su metadata. Un CmsField de
+// type IMAGE guarda en `body` el CmsMedia.id; la lectura pública
+// (getCmsImage en lib/cms.ts) resuelve id → { url, alt, width, height } —
+// la URL pública se DERIVA de bucket+path (no se guarda: sobrevive a
+// cambios de proyecto/dominio de Supabase).
+model CmsMedia {
+  id        String   @id @default(cuid())
+  bucket    String // "cms-media" (único hoy; queda abierto por si se separa otro)
+  path      String   @unique // path dentro del bucket: "media/<uuid>.<ext>"
+  alt       String // texto alternativo — obligatorio por a11y (WCAG 1.1.1)
+  width     Int
+  height    Int
+  bytes     Int
+  mime      String // MIME REAL sniffado por magic bytes (no el declarado por el cliente)
+  createdBy String?
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
 }
 
 // ──────────────────────── PERSONALIZACIÓN (sub-bloque M) ────────────────────────

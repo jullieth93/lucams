@@ -20,6 +20,7 @@ const FIELD_TYPES = [
   "PHONE",
   "COLOR",
   "BOOLEAN",
+  "IMAGE",
 ] as const;
 const FIELD_KINDS = ["BLOCK", "SETTING"] as const;
 
@@ -46,20 +47,32 @@ export const CmsFieldItemsSaveSchema = z.object({
 export type CmsFieldItemsSaveInput = z.infer<typeof CmsFieldItemsSaveSchema>;
 
 /** Crear un campo nuevo dentro de una sección existente. */
-export const CmsFieldCreateSchema = z.object({
-  sectionId: z.string().cuid("Sección inválida"),
-  key: z
-    .string()
-    .min(3, "Identificador muy corto")
-    .max(120, "Máximo 120 caracteres")
-    .regex(keyRegex, "Solo letras, números, puntos, guiones y guiones bajos"),
-  kind: z.enum(FIELD_KINDS),
-  label: z.string().min(2, "Mínimo 2 caracteres").max(200),
-  helpText: z.string().max(500).nullable().optional(),
-  type: z.enum(FIELD_TYPES).default("TEXT"),
-  category: z.string().min(2).max(40),
-  body: z.string().min(1, "El contenido no puede estar vacío").max(50_000),
-});
+export const CmsFieldCreateSchema = z
+  .object({
+    sectionId: z.string().cuid("Sección inválida"),
+    key: z
+      .string()
+      .min(3, "Identificador muy corto")
+      .max(120, "Máximo 120 caracteres")
+      .regex(keyRegex, "Solo letras, números, puntos, guiones y guiones bajos"),
+    kind: z.enum(FIELD_KINDS),
+    label: z.string().min(2, "Mínimo 2 caracteres").max(200),
+    helpText: z.string().max(500).nullable().optional(),
+    type: z.enum(FIELD_TYPES).default("TEXT"),
+    category: z.string().min(2).max(40),
+    // Vacío solo permitido para IMAGE: la imagen se sube después en el editor
+    // del campo (body = CmsMedia.id; un campo recién creado aún no tiene asset).
+    body: z.string().max(50_000),
+  })
+  .superRefine((data, ctx) => {
+    if (data.type !== "IMAGE" && data.body.trim().length === 0) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["body"],
+        message: "El contenido no puede estar vacío",
+      });
+    }
+  });
 export type CmsFieldCreateInput = z.infer<typeof CmsFieldCreateSchema>;
 
 export const CmsFieldPublishSchema = z.object({

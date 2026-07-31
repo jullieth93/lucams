@@ -36,6 +36,8 @@ import {
   softDeleteCmsField,
   unpublishCmsField,
 } from "@/features/cms/service";
+import { StorageError } from "@/lib/storage";
+import { deleteCmsMedia, updateCmsMediaAlt, uploadCmsMedia } from "@/lib/cms-media";
 
 export type CmsActionState = {
   error?: string;
@@ -324,6 +326,140 @@ export async function deleteCmsFieldAction(formData: FormData): Promise<void> {
   updateTag("cms");
   revalidateCmsPaths(fieldId, field?.section.page.slug);
   redirect(`${back}?archived=1`);
+}
+
+// ─────────────────── Mediateca (roadmap B5) ───────────────────
+
+export type CmsMediaActionState = {
+  error?: string;
+  ok?: boolean;
+  media?: {
+    id: string;
+    url: string;
+    alt: string;
+    width: number;
+    height: number;
+  };
+};
+
+/**
+ * Sube una imagen a la mediateca (campos type IMAGE). Recibe el archivo y el
+ * texto alternativo (obligatorio, a11y) por FormData; devuelve el asset creado
+ * para que el editor del campo lo fije como `body` (CmsMedia.id). No invalida
+ * el tag "cms": la imagen solo se ve en el sitio cuando el campo se GUARDA.
+ */
+export async function uploadCmsMediaAction(
+  _prev: CmsMediaActionState | null,
+  formData: FormData,
+): Promise<CmsMediaActionState> {
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.CONTENT });
+
+  const file = formData.get("file");
+  const alt = String(formData.get("alt") ?? "");
+  if (!(file instanceof File)) {
+    return { error: "Elige un archivo de imagen primero." };
+  }
+
+  try {
+    const media = await uploadCmsMedia({ file, alt, createdBy: session.admin.id });
+    await recordAdminAction({
+      actorId: session.admin.id,
+      action: "cms.media.upload",
+      entityType: "CmsMedia",
+      entityId: media.id,
+      metadata: { path: media.path, bytes: media.bytes, mime: media.mime },
+    });
+    revalidatePath("/admin/contenido/mediateca");
+    return {
+      ok: true,
+      media: {
+        id: media.id,
+        url: media.url,
+        alt: media.alt,
+        width: media.width,
+        height: media.height,
+      },
+    };
+  } catch (err) {
+    if (err instanceof CmsValidationError || err instanceof StorageError) {
+      return { error: err.message };
+    }
+    logger.error({
+      event: "admin.cms.media.upload_fail",
+      adminId: session.admin.id,
+      err: err instanceof Error ? err.message : String(err),
+    });
+    return { error: "No pudimos subir la imagen. Intenta de nuevo." };
+  }
+}
+
+/** Edita el texto alternativo de un asset (desde la mediateca). */
+export async function updateCmsMediaAltAction(
+  _prev: CmsMediaActionState | null,
+  formData: FormData,
+): Promise<CmsMediaActionState> {
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.CONTENT });
+
+  const id = String(formData.get("id") ?? "");
+  const alt = String(formData.get("alt") ?? "");
+  if (!id) return { error: "Imagen no encontrada." };
+
+  try {
+    await updateCmsMediaAlt(id, alt);
+    await recordAdminAction({
+      actorId: session.admin.id,
+      action: "cms.media.alt",
+      entityType: "CmsMedia",
+      entityId: id,
+    });
+    revalidatePath("/admin/contenido/mediateca");
+    return { ok: true };
+  } catch (err) {
+    if (err instanceof CmsValidationError) return { error: err.message };
+    logger.error({
+      event: "admin.cms.media.alt_fail",
+      adminId: session.admin.id,
+      err: err instanceof Error ? err.message : String(err),
+    });
+    return { error: "No pudimos guardar el texto alternativo. Intenta de nuevo." };
+  }
+}
+
+/**
+ * Borra un asset de la mediateca. El service rechaza si algún campo lo usa
+ * (borrador actual o cualquier versión del historial) — el mensaje llega tal
+ * cual al admin con las keys de los campos.
+ */
+export async function deleteCmsMediaAction(
+  _prev: CmsMediaActionState | null,
+  formData: FormData,
+): Promise<CmsMediaActionState> {
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.CONTENT });
+
+  const id = String(formData.get("id") ?? "");
+  if (!id) return { error: "Imagen no encontrada." };
+
+  try {
+    await deleteCmsMedia(id);
+    await recordAdminAction({
+      actorId: session.admin.id,
+      action: "cms.media.delete",
+      entityType: "CmsMedia",
+      entityId: id,
+    });
+    revalidatePath("/admin/contenido/mediateca");
+    return { ok: true };
+  } catch (err) {
+    if (err instanceof CmsValidationError || err instanceof StorageError) {
+      return { error: err.message };
+    }
+    logger.error({
+      event: "admin.cms.media.delete_fail",
+      adminId: session.admin.id,
+      err: err instanceof Error ? err.message : String(err),
+    });
+    return { error: "No pudimos borrar la imagen. Intenta de nuevo." };
+  }
 }
 
 // ─────────────────── Caché pública del CMS ───────────────────

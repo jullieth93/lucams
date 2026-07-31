@@ -35,6 +35,13 @@ const nextConfig: NextConfig = {
         pathname: "/storage/v1/object/public/design-previews/**",
       },
       {
+        // Mediateca CMS (roadmap B5) — imágenes administrables del sitio
+        // (banners, hero, logos). Bucket `cms-media` público.
+        protocol: "https",
+        hostname: "zxkucphbsfygakgxcnik.supabase.co",
+        pathname: "/storage/v1/object/public/cms-media/**",
+      },
+      {
         protocol: "https",
         hostname: "images.unsplash.com",
       },

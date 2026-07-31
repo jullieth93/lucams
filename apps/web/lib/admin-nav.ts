@@ -55,6 +55,7 @@ import {
   LifeBuoy,
   FileText,
   Headset,
+  Image,
 } from "lucide-react";
 import { isCatalogMode } from "@/lib/store-mode";
 
@@ -290,6 +291,13 @@ export const ADMIN_NAV: NavGroup[] = [
     icon: FileText,
     items: [
       { label: "Páginas del sitio", href: "/admin/contenido", icon: BookOpen },
+      {
+        label: "Mediateca",
+        href: "/admin/contenido/mediateca",
+        icon: Image,
+        description:
+          "Biblioteca de imágenes del sitio (banners, hero, logos). Sube una vez y reutiliza en los campos de imagen.",
+      },
       {
         label: "Bot WhatsApp",
         href: "/admin/bot",

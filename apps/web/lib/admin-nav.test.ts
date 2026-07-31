@@ -162,7 +162,10 @@ describe("filterNavByRole(getAdminNav()) — CMS_EDITOR", () => {
       const visible = filterNavByRole(nav, "CMS_EDITOR");
 
       const contenido = visible.find((g) => g.title === "Contenido");
-      expect(contenido?.items?.map((it) => it.href)).toEqual(["/admin/contenido"]);
+      expect(contenido?.items?.map((it) => it.href)).toEqual([
+        "/admin/contenido",
+        "/admin/contenido/mediateca",
+      ]);
 
       const config = visible.find((g) => g.title === "Configuración");
       expect(config?.items?.map((it) => it.href)).toEqual([

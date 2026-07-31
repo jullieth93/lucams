@@ -29,6 +29,8 @@ import { Button } from "@/components/ui/button";
 import { ConfirmAction } from "@/components/admin/confirm-action";
 import { getCurrentAdmin } from "@/lib/auth";
 import { getCmsFieldById, getCmsFieldItems, getCmsListSchema } from "@/features/cms/service";
+import { cmsMediaPublicUrl, listCmsMedia } from "@/lib/cms-media";
+import { prisma } from "@/lib/db";
 import {
   deleteCmsFieldAction,
   publishCmsFieldAction,
@@ -78,6 +80,23 @@ export default async function EditarCampoPage({
   // del body JSON (migración perezosa al abrir el editor).
   const listSchema = getCmsListSchema(field.metadata);
   const listItems = listSchema ? await getCmsFieldItems(field.id) : null;
+
+  // Campo IMAGE (roadmap B5): body = CmsMedia.id. Se resuelve el asset actual
+  // y la mediateca reciente para el control (subir / reutilizar).
+  const isImage = field.type === "IMAGE" && !listSchema;
+  const imageMedia =
+    isImage && field.body.trim()
+      ? await prisma.cmsMedia.findUnique({ where: { id: field.body.trim() } })
+      : null;
+  const imageLibrary = isImage
+    ? (await listCmsMedia(60)).map((m) => ({
+        id: m.id,
+        url: m.url,
+        alt: m.alt,
+        width: m.width,
+        height: m.height,
+      }))
+    : null;
 
   return (
     <AdminPage>
@@ -208,6 +227,18 @@ export default async function EditarCampoPage({
               body: field.body,
               isPublished: field.isPublished,
             }}
+            imageMedia={
+              imageMedia
+                ? {
+                    id: imageMedia.id,
+                    url: cmsMediaPublicUrl(imageMedia.bucket, imageMedia.path),
+                    alt: imageMedia.alt,
+                    width: imageMedia.width,
+                    height: imageMedia.height,
+                  }
+                : null
+            }
+            imageLibrary={imageLibrary ?? undefined}
           />
         )}
 

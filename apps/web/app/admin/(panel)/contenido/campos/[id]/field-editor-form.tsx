@@ -27,6 +27,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { MarkdownEditor } from "@/components/admin/markdown-editor";
 import { saveCmsFieldAction, type CmsActionState } from "@/app/admin/(panel)/contenido/actions";
+import { CmsImageControl, type CmsMediaLite } from "./cms-image-control";
 
 export type EditableField = {
   id: string;
@@ -43,7 +44,8 @@ export type EditableField = {
     | "NUMBER"
     | "PHONE"
     | "COLOR"
-    | "BOOLEAN";
+    | "BOOLEAN"
+    | "IMAGE";
   label: string;
   helpText: string | null;
   /** Último borrador (CmsField.body). */
@@ -60,7 +62,17 @@ const SIMPLE_INPUT_TYPE: Record<string, string> = {
   COLOR: "color",
 };
 
-export function FieldEditorForm({ field }: { field: EditableField }) {
+export function FieldEditorForm({
+  field,
+  imageMedia,
+  imageLibrary,
+}: {
+  field: EditableField;
+  /** Solo type IMAGE: asset actual (body = CmsMedia.id), resuelto server-side. */
+  imageMedia?: CmsMediaLite | null;
+  /** Solo type IMAGE: assets recientes de la mediateca para reutilizar. */
+  imageLibrary?: CmsMediaLite[];
+}) {
   const isSetting = field.kind === "SETTING";
 
   // Snapshot del "original" para Descartar + isDirty (mismo patrón que el
@@ -245,6 +257,19 @@ export function FieldEditorForm({ field }: { field: EditableField }) {
         disabled={pending}
         rows={6}
         className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 text-brand-purple-dark/90 w-full rounded-lg border bg-white px-4 py-3 text-sm leading-relaxed shadow-sm focus:ring-2 focus:outline-none"
+      />
+    </div>
+  ) : field.type === "IMAGE" ? (
+    <div className="space-y-2">
+      {/* Roadmap B5 — body = CmsMedia.id; el control sube/elige y fija el valor. */}
+      <CmsImageControl
+        name="body"
+        value={body}
+        onChange={updateBody}
+        library={[
+          ...(imageMedia ? [imageMedia] : []),
+          ...(imageLibrary ?? []).filter((m) => m.id !== imageMedia?.id),
+        ]}
       />
     </div>
   ) : field.type === "BOOLEAN" ? (

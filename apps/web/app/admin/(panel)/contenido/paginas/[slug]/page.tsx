@@ -40,8 +40,8 @@ export const metadata: Metadata = {
   title: "Editar página",
 };
 
-/** Tipos con edición inline; MARKDOWN/HTML/JSON van al editor completo. */
-const RICH_TYPES = new Set(["MARKDOWN", "HTML", "JSON"]);
+/** Tipos con edición inline; MARKDOWN/HTML/JSON/IMAGE van al editor completo. */
+const RICH_TYPES = new Set(["MARKDOWN", "HTML", "JSON", "IMAGE"]);
 
 /** Prefijo de key sugerido para campos nuevos: el prefijo común de la sección. */
 function suggestKeyPrefix(keys: string[], pageSlug: string, sectionKey: string): string {

@@ -196,6 +196,49 @@ export const getCmsBlock = cachedCms(
   { tags: ["cms"], revalidate: 3600 },
 );
 
+export type CmsImageData = {
+  url: string;
+  alt: string;
+  width: number;
+  height: number;
+};
+
+/**
+ * Lee una imagen del CMS por la key de su campo (roadmap B5). El campo
+ * (type IMAGE, publicado) guarda en `body` el CmsMedia.id; acá se resuelve a
+ * `{ url, alt, width, height }`. La URL pública se deriva de bucket+path con
+ * la URL pública del proyecto (bucket público — sin firma ni credenciales,
+ * lo mismo que hace getPublicUrl internamente).
+ * Devuelve `null` si falta el campo, no está publicado, o el asset ya no
+ * existe — el caller cae al asset hardcoded del repo (REGLA DE ORO).
+ */
+export const getCmsImage = cachedCms(
+  async (key: string): Promise<CmsImageData | null> => {
+    try {
+      const field = await prisma.cmsField.findFirst({
+        where: { key, type: "IMAGE", isPublished: true, deletedAt: null },
+        include: { publishedVersion: true },
+      });
+      const mediaId = field?.publishedVersion?.body.trim();
+      if (!mediaId) return null;
+      const media = await prisma.cmsMedia.findUnique({ where: { id: mediaId } });
+      const base = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/$/, "");
+      if (!media || !base) return null;
+      return {
+        url: `${base}/storage/v1/object/public/${media.bucket}/${media.path}`,
+        alt: media.alt,
+        width: media.width,
+        height: media.height,
+      };
+    } catch {
+      // Misma degradación que getCmsBlock: cualquier fallo → fallback del caller.
+      return null;
+    }
+  },
+  ["cms-image"],
+  { tags: ["cms"], revalidate: 3600 },
+);
+
 /**
  * Lee todos los bloques publicados de una categoría. Usado por el
  * endpoint /api/cms/blocks?category=legal y por páginas que renderean

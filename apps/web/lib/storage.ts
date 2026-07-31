@@ -62,8 +62,11 @@ function inferExtension(mime: string): string {
  * Reconoce jpeg/png/webp/avif y los contenedores ISOBMFF HEIC/HEIF (fotos de
  * iPhone). El llamador filtra además contra SU allow-list (admin no acepta heic,
  * cliente no acepta avif), así que este sniffer puede ser permisivo.
+ *
+ * Exportado para la mediateca CMS (lib/cms-media.ts, roadmap B5): mismo
+ * pipeline anti-polyglot en los uploads de la mediateca.
  */
-function sniffImageMime(buf: Buffer): string | null {
+export function sniffImageMime(buf: Buffer): string | null {
   if (buf.length < 12) return null;
   // JPEG: FF D8 FF
   if (buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return "image/jpeg";
