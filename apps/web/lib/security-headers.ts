@@ -7,7 +7,12 @@
 /** Cabeceras de seguridad estáticas aplicadas a toda respuesta. */
 export const SECURITY_HEADERS: Record<string, string> = {
   "Strict-Transport-Security": "max-age=63072000; includeSubDomains; preload",
-  "X-Frame-Options": "DENY",
+  // SAMEORIGIN (antes DENY) desde el roadmap C1 (2026-07-31): el editor de
+  // contenido del admin muestra una VISTA PREVIA EN VIVO de la página pública
+  // en un iframe — mismo origen, siempre detrás de login admin. El framing
+  // EXTERNO (clickjacking) sigue bloqueado por SAMEORIGIN acá y por
+  // `frame-ancestors 'self'` en la CSP (navegadores modernos).
+  "X-Frame-Options": "SAMEORIGIN",
   "X-Content-Type-Options": "nosniff",
   "Referrer-Policy": "strict-origin-when-cross-origin",
   // Permissions-Policy: deny capacidades por default. /estudio/* podrá necesitar camera → override allí.
@@ -51,6 +56,10 @@ export function buildCsp(nonce: string, isProd: boolean): string {
     // El envío (Aveonline) y la IA (Gemini) se llaman SERVER-SIDE → no van en connect-src.
     "connect-src 'self' https://*.supabase.co https://api.wompi.co",
     "frame-src 'self' https://challenges.cloudflare.com https://checkout.wompi.co",
+    // Quién nos puede enmarcar: solo el propio origen (preview en vivo del
+    // admin, roadmap C1). Equivalente moderno de X-Frame-Options SAMEORIGIN;
+    // el framing externo (clickjacking) queda bloqueado.
+    "frame-ancestors 'self'",
     "form-action 'self' https://checkout.wompi.co",
     "base-uri 'self'",
     "object-src 'none'",

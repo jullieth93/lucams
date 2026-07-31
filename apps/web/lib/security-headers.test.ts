@@ -107,10 +107,17 @@ describe("isOriginAllowed — CORS allowlist", () => {
 
 describe("SECURITY_HEADERS", () => {
   it("incluye las cabeceras defensivas clave", () => {
-    expect(SECURITY_HEADERS["X-Frame-Options"]).toBe("DENY");
+    // SAMEORIGIN (no DENY) desde C1: el admin enmarca la página pública en la
+    // vista previa en vivo; el framing externo sigue bloqueado.
+    expect(SECURITY_HEADERS["X-Frame-Options"]).toBe("SAMEORIGIN");
     expect(SECURITY_HEADERS["X-Content-Type-Options"]).toBe("nosniff");
     expect(SECURITY_HEADERS["Strict-Transport-Security"]).toContain("max-age=");
     expect(SECURITY_HEADERS["Cross-Origin-Opener-Policy"]).toBe("same-origin");
     expect(SECURITY_HEADERS["Referrer-Policy"]).toBe("strict-origin-when-cross-origin");
+  });
+
+  it("la CSP limita el framing al propio origen (frame-ancestors 'self')", () => {
+    expect(buildCsp("N", true)).toContain("frame-ancestors 'self'");
+    expect(buildCsp("N", false)).toContain("frame-ancestors 'self'");
   });
 });

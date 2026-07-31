@@ -11,6 +11,11 @@
  * borrador actual, marcado como tal. Tras guardar inline, el Server Action
  * revalida esta ruta y la fila se re-renderiza (aparece "Publicar" cuando
  * un BLOCK queda con cambios sin publicar).
+ *
+ * Roadmap C1: si la página tiene ruta pública (CmsPage.path), a la derecha
+ * va una VISTA PREVIA EN VIVO (iframe) que se recarga sola tras guardar o
+ * publicar — la señal es el max updatedAt de los campos, que cambia en cada
+ * re-render del servidor post-action.
  */
 
 import type { Metadata } from "next";
@@ -32,6 +37,7 @@ import { refreshCmsCacheAction } from "../../actions";
 import { CMS_PAGE_ICONS } from "../../page-icons";
 import { CreateFieldForm } from "./create-field-form";
 import { FieldRow, type InlineField } from "./field-row";
+import { PagePreviewPanel } from "./page-preview-panel";
 
 type Params = Promise<{ slug: string }>;
 type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
@@ -104,6 +110,13 @@ export default async function EditarPaginaCmsPage({
   const page = await getCmsPageBySlug(slug);
   if (!page) notFound();
 
+  // Señal de recarga de la vista previa (C1): cualquier guardar/publicar
+  // actualiza el updatedAt de un campo → el servidor re-renderiza con una
+  // señal nueva y el iframe se recarga solo.
+  const refreshSignal = String(
+    Math.max(0, ...page.sections.flatMap((s) => s.fields.map((f) => f.updatedAt.getTime()))),
+  );
+
   const Icon = CMS_PAGE_ICONS[page.icon ?? ""] ?? FileText;
 
   return (
@@ -166,109 +179,125 @@ export default async function EditarPaginaCmsPage({
         )}
         {errorMsg && <AdminNotice tone="error">{errorMsg}</AdminNotice>}
 
-        {page.sections.map((section) => {
-          const keyPrefix = suggestKeyPrefix(
-            section.fields.map((f) => f.key),
-            page.slug,
-            section.key,
-          );
-          const category = defaultCategory(section.fields.map((f) => f.category));
-          return (
-            <section key={section.id}>
-              <div className="mb-2.5">
-                <h2 className="text-brand-purple-dark font-display text-base font-bold">
-                  {section.title}
-                </h2>
-                {section.description && (
-                  <p className="text-brand-muted text-xs">{section.description}</p>
-                )}
-              </div>
-              <AdminCard className="overflow-hidden">
-                {section.fields.length === 0 ? (
-                  <p className="text-brand-muted px-4 py-6 text-center text-sm">
-                    Esta sección todavía no tiene campos.
-                  </p>
-                ) : (
-                  <ul className="divide-brand-purple/10 divide-y">
-                    {section.fields.map((f) => {
-                      const hasDraft = cmsFieldHasDraft(f) || !f.isPublished;
-                      const publishedBody = f.publishedVersion?.body ?? null;
-                      if (RICH_TYPES.has(f.type)) {
-                        // Contenido rico (Markdown/HTML/JSON): no se edita inline —
-                        // preview truncado + acceso al editor completo.
-                        return (
-                          <li
-                            key={f.id}
-                            className="flex flex-col gap-3 p-4 sm:flex-row sm:items-start sm:justify-between"
-                          >
-                            <div className="min-w-0 flex-1">
-                              <div className="flex flex-wrap items-center gap-2">
-                                <span className="text-brand-purple-dark text-sm font-semibold">
-                                  {f.label}
-                                </span>
-                                {f.isPublished && !hasDraft ? (
-                                  <AdminBadge tone="emerald">Publicado</AdminBadge>
-                                ) : f.isPublished ? (
-                                  <AdminBadge tone="amber">Cambios sin publicar</AdminBadge>
-                                ) : (
-                                  <AdminBadge tone="amber">Borrador</AdminBadge>
-                                )}
-                              </div>
-                              {f.helpText && (
-                                <p className="text-brand-muted mt-0.5 text-xs">{f.helpText}</p>
-                              )}
-                              <p className="text-brand-muted mt-0.5 font-mono text-[10px]">
-                                {f.key}
-                              </p>
-                              <p className="text-brand-purple-dark/60 mt-2 line-clamp-2 text-xs">
-                                {plainPreview(publishedBody ?? f.body)}
-                                {!publishedBody && (
-                                  <span className="text-amber-700"> (borrador sin publicar)</span>
-                                )}
-                              </p>
-                            </div>
-                            <Link
-                              href={`/admin/contenido/campos/${f.id}`}
-                              className="border-brand-purple/20 text-brand-purple-dark hover:bg-brand-purple/5 inline-flex flex-shrink-0 items-center gap-1.5 rounded-md border bg-white px-3 py-1.5 text-xs font-semibold transition-all"
-                            >
-                              Editar
-                              <ArrowRight className="h-3.5 w-3.5" />
-                            </Link>
-                          </li>
-                        );
-                      }
-                      const inline: InlineField = {
-                        id: f.id,
-                        key: f.key,
-                        kind: f.kind,
-                        type: f.type as InlineField["type"],
-                        label: f.label,
-                        helpText: f.helpText,
-                        value: publishedBody ?? f.body,
-                        showingDraft: publishedBody === null,
-                        hasDraft,
-                        isPublished: f.isPublished,
-                      };
-                      return (
-                        <FieldRow
-                          key={f.id}
-                          field={inline}
-                          latestVersionId={f.versions[0]?.id ?? null}
-                          pageSlug={page.slug}
-                        />
-                      );
-                    })}
-                  </ul>
-                )}
-                <CreateFieldForm
-                  sectionId={section.id}
-                  suggestedKeyPrefix={keyPrefix}
-                  defaultCategory={category}
-                />
-              </AdminCard>
-            </section>
-          );
-        })}
+        {/* C1: con ruta pública, el editor va a la izquierda y la vista
+            previa en vivo a la derecha (apilada en pantallas < xl). */}
+        <div
+          className={
+            page.path
+              ? "grid grid-cols-1 items-start gap-6 xl:grid-cols-[minmax(0,3fr)_minmax(340px,2fr)]"
+              : "space-y-6"
+          }
+        >
+          <div className="space-y-6">
+            {page.sections.map((section) => {
+              const keyPrefix = suggestKeyPrefix(
+                section.fields.map((f) => f.key),
+                page.slug,
+                section.key,
+              );
+              const category = defaultCategory(section.fields.map((f) => f.category));
+              return (
+                <section key={section.id}>
+                  <div className="mb-2.5">
+                    <h2 className="text-brand-purple-dark font-display text-base font-bold">
+                      {section.title}
+                    </h2>
+                    {section.description && (
+                      <p className="text-brand-muted text-xs">{section.description}</p>
+                    )}
+                  </div>
+                  <AdminCard className="overflow-hidden">
+                    {section.fields.length === 0 ? (
+                      <p className="text-brand-muted px-4 py-6 text-center text-sm">
+                        Esta sección todavía no tiene campos.
+                      </p>
+                    ) : (
+                      <ul className="divide-brand-purple/10 divide-y">
+                        {section.fields.map((f) => {
+                          const hasDraft = cmsFieldHasDraft(f) || !f.isPublished;
+                          const publishedBody = f.publishedVersion?.body ?? null;
+                          if (RICH_TYPES.has(f.type)) {
+                            // Contenido rico (Markdown/HTML/JSON): no se edita inline —
+                            // preview truncado + acceso al editor completo.
+                            return (
+                              <li
+                                key={f.id}
+                                className="flex flex-col gap-3 p-4 sm:flex-row sm:items-start sm:justify-between"
+                              >
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className="text-brand-purple-dark text-sm font-semibold">
+                                      {f.label}
+                                    </span>
+                                    {f.isPublished && !hasDraft ? (
+                                      <AdminBadge tone="emerald">Publicado</AdminBadge>
+                                    ) : f.isPublished ? (
+                                      <AdminBadge tone="amber">Cambios sin publicar</AdminBadge>
+                                    ) : (
+                                      <AdminBadge tone="amber">Borrador</AdminBadge>
+                                    )}
+                                  </div>
+                                  {f.helpText && (
+                                    <p className="text-brand-muted mt-0.5 text-xs">{f.helpText}</p>
+                                  )}
+                                  <p className="text-brand-muted mt-0.5 font-mono text-[10px]">
+                                    {f.key}
+                                  </p>
+                                  <p className="text-brand-purple-dark/60 mt-2 line-clamp-2 text-xs">
+                                    {plainPreview(publishedBody ?? f.body)}
+                                    {!publishedBody && (
+                                      <span className="text-amber-700">
+                                        {" "}
+                                        (borrador sin publicar)
+                                      </span>
+                                    )}
+                                  </p>
+                                </div>
+                                <Link
+                                  href={`/admin/contenido/campos/${f.id}`}
+                                  className="border-brand-purple/20 text-brand-purple-dark hover:bg-brand-purple/5 inline-flex flex-shrink-0 items-center gap-1.5 rounded-md border bg-white px-3 py-1.5 text-xs font-semibold transition-all"
+                                >
+                                  Editar
+                                  <ArrowRight className="h-3.5 w-3.5" />
+                                </Link>
+                              </li>
+                            );
+                          }
+                          const inline: InlineField = {
+                            id: f.id,
+                            key: f.key,
+                            kind: f.kind,
+                            type: f.type as InlineField["type"],
+                            label: f.label,
+                            helpText: f.helpText,
+                            value: publishedBody ?? f.body,
+                            showingDraft: publishedBody === null,
+                            hasDraft,
+                            isPublished: f.isPublished,
+                          };
+                          return (
+                            <FieldRow
+                              key={f.id}
+                              field={inline}
+                              latestVersionId={f.versions[0]?.id ?? null}
+                              pageSlug={page.slug}
+                            />
+                          );
+                        })}
+                      </ul>
+                    )}
+                    <CreateFieldForm
+                      sectionId={section.id}
+                      suggestedKeyPrefix={keyPrefix}
+                      defaultCategory={category}
+                    />
+                  </AdminCard>
+                </section>
+              );
+            })}
+          </div>
+          {page.path && <PagePreviewPanel path={page.path} refreshSignal={refreshSignal} />}
+        </div>
       </AdminPageBody>
     </AdminPage>
   );
