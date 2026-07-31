@@ -523,6 +523,48 @@ model AdminActionLog {
 }
 ```
 
+## CMS v2 — contenido administrable (2026-07-30)
+
+El 100% del contenido visible del sitio lo edita una persona NO técnica desde
+`/admin/contenido`. El modelo viejo (`CmsBlock` + `SiteSetting`, DEPRECATED — en DB solo como
+respaldo hasta la fase A2) se reemplazó por una jerarquía de 4 tablas (migración
+`20260730120000_add_cms_v2`, RLS deny-by-default en `supabase/migrations/00000000000018`):
+
+```
+CmsPage ─┬─ CmsSection ─┬─ CmsField ───── CmsFieldVersion (append-only)
+         │              │                        └─ publishAt (C3: publicación programada,
+         │              │                           job pg_cron lucams-cms-publish-scheduled)
+         │              ├─ CmsListItem (B4: filas de campos LISTA; el body público
+         │              │   sigue siendo el array serializado a JSON — lectura compatible)
+         │              └─ fields type IMAGE (B5) → CmsMedia (metadata del asset;
+         │                  el archivo vive en el bucket público `cms-media`)
+         └─ path (ruta pública — alimenta la vista previa en vivo del editor, C1)
+```
+
+- **`CmsPage`**: una por sitio/página (`inicio`, `header`, `footer`, `estudio`, `emails`, `seo`,
+  `global`…). **`CmsSection`**: zonas dentro de la página. **`CmsField`**: un texto/ajuste con
+  `key` global única histórica (`home.hero.title`, `CONTACT_EMAIL`), `kind` (BLOCK = prosa con
+  publicación explícita · SETTING = valor atómico que publica al guardar), `type`
+  (TEXT…JSON, IMAGE desde B5), `label`/`helpText` para no-técnicos. **`CmsFieldVersion`**:
+  historial inmutable (revert + auditoría legal).
+- **Estructura declarativa**: `packages/db/scripts/cms-site-map.mjs` es la fuente de verdad de
+  páginas/secciones/campos; `make migrate-cms-v2` la aplica idempotente (nunca pisa body ni
+  publicación de campos existentes).
+- **Lectura** (`apps/web/lib/cms.ts`): `getCmsBlock`, `getSettingValue`, `getCmsList` (listas B4),
+  `getCmsImage` (B5), `getCmsBanners` (B6) — todas con `unstable_cache` tag `cms` (1h) y
+  **fallback** al valor hardcoded pre-CMS (regla de oro: si la DB cae, el sitio se ve idéntico).
+  Invalidación: `updateTag("cms")` desde las Server Actions del admin; tras scripts directos en
+  DB, botón «Actualizar caché de contenido» en `/admin/contenido`.
+- **Admin** (`app/admin/(panel)/contenido/`): índice por páginas con búsqueda global, editor de
+  página con edición inline + vista previa en vivo (C1), editor de campo con versiones,
+  date-picker de publicación programada (C3), editor de filas para listas (B4) con subcampos
+  IMAGE/BOOLEAN (B6), mediateca (B5), vista «Solo borradores» con publicar en lote, renombrar /
+  mover / duplicar (C4). Acceso: SUPERADMIN + CMS_EDITOR (C2, `ADMIN_ROLE_SETS.CONTENT`).
+- **Anti-regresión (D1)**: `packages/db/scripts/audit-content-coverage.mjs` escanea el JSX del
+  storefront con AST y gatea en CI que no aparezca copy nuevo en español fuera del CMS
+  (baseline ratchet en `content-coverage-baseline.json`).
+- ADRs: DECISIONS.md ADR-082 (modelo v2), ADR-083 (iconos en Category), ADR-084 (listas B4).
+
 ## Extensiones Postgres habilitadas
 
 > Configuradas en Supabase vía dashboard o migración SQL. Verificar disponibilidad en plan Free contra [supabase.com/docs/guides/database/extensions](https://supabase.com/docs/guides/database/extensions).

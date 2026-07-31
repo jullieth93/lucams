@@ -3038,3 +3038,72 @@ que clonar, la prueba **falla**. Omitir en silencio es justo lo que dejó vivir 
 **Lección.** Una prueba que solo corre en local no puede ver un límite que solo existe en la
 plataforma. Lo que distingue producción de dev —techos de body, timeouts, binarios nativos— hay que
 ejercerlo contra la infraestructura real o no está probado.
+
+## ADR-082 — CMS v2: Página → Sección → Campo → Versión, con key histórica estable (2026-07-30)
+
+**Contexto.** El contenido administrable creció por acumulación: `CmsBlock` (prosa versionada con
+publicación explícita) y `SiteSetting` (valor atómico que publica al guardar) cubrían lo mismo con
+dos APIs y dos admins; la Página Principal no estaba centralizada (faltaban redes sociales, CTAs,
+destinos de botones); y la capa admin mezclaba dos mentalidades. Pedido explícito del usuario:
+una administradora NO técnica debe poder editar todo desde una admin reconstruida con segregación
+por sitios/páginas. Las keys de consumo (`home.hero.title`, `CONTACT_EMAIL`…) ya estaban
+referenciadas en ~63 archivos del storefront y en contenido real de la base.
+
+**Decisión.** Un solo modelo jerárquico: `CmsPage → CmsSection → CmsField → CmsFieldVersion`
+(migración `20260730120000_add_cms_v2` + RLS deny-by-default). `CmsField` **unifica** los dos
+conceptos viejos: `kind` distingue BLOCK (publicación explícita) de SETTING (publica al guardar),
+conservando las **mismas keys históricas** y la misma API pública de lectura (`lib/cms.ts` se
+re-escribió por dentro sin tocar firmas ni el cache tag `cms`), así que ningún consumidor cambia.
+La estructura página→sección→campos vive en un **site map declarativo**
+(`packages/db/scripts/cms-site-map.mjs`) que un migrador idempotente aplica sin pisar ediciones.
+Las tablas viejas quedan como respaldo hasta verificación en producción (drop en fase A2).
+Toda lectura nace con **fallback al valor hardcoded** (regla de oro: si la DB cae, el sitio se
+ve idéntico) — migración y adoptación con cero downtime por definición.
+
+**Consecuencias.** La jerarquía resultó ser la base de todo lo demás: campos LISTA (ADR-084),
+campos IMAGE + mediateca (B5), banners (B6), preview en vivo (C1, usa `CmsPage.path`), rol
+CMS_EDITOR (C2), publicación programada (C3, `CmsFieldVersion.publishAt`) y utilidades de
+estructura (C4) se agregaron sin rehacer el modelo. El versionado append-only conserva la
+auditoría legal de qué decía un texto un día específico (mismo criterio que `CmsBlockVersion`).
+
+## ADR-083 — Icono/gradiente de categoría: dato de catálogo, no contenido del CMS (2026-07-30)
+
+**Contexto.** `CATEGORY_STYLES` e `ICONS` estaban quemados por slug en el código
+(`category-grid.tsx`, `shop-mega-menu.tsx`): crear una categoría nueva exigía un deploy. Al
+llevarlo al dominio administrable había dos candidatos: el CMS v2 (contenido editorial) o el
+modelo de catálogo (`Category`).
+
+**Decisión.** Es dato de **catálogo**: columnas `Category.icon` y `Category.gradient` (migración
+`add_category_visuals`, backfill con los estilos entonces vigentes por slug), editables desde
+`/admin/categorias` con picker de icono lucide y gradiente de la paleta brand. La lectura
+(`listStorefrontCategories`) devuelve los campos con fallback al mapa hardcodeado por slug.
+Criterio: el icono/gradiente describe **cómo se ve una entidad de negocio** (la categoría, que
+además tiene slug, orden y jerarquía en catálogo), no **qué dice el sitio**; el CMS v2 queda para
+copy editorial. Mismo criterio aplicado después en B1: paletas de color, moods de tipografías y
+presets de filtro del Estudio quedan como dato de diseño, fuera del CMS.
+
+**Consecuencias.** Una categoría nueva queda 100% administrable (nombre, slug, imagen, icono y
+gradiente) sin tocar código. El CMS no se contamina con pares clave-valor visuales sin texto, y
+el principio quedó documentado para futuros "¿va en el CMS o en el dominio?".
+
+## ADR-084 — Campos lista: items de edición tipados + JSON serializado como body público (2026-07-30)
+
+**Contexto.** `footer.legal.links` se editaba como JSON crudo en un textarea — inaceptable para
+una administradora no técnica, y venían más casos (FAQs, pasos, banners). La opción "lista de
+verdad" (tabla hija + lectura por join) cambiaba el formato público del campo y obligaba a
+migrar todos los consumidores del JSON.
+
+**Decisión.** Doble representación con una sola fuente de escritura: `CmsListItem`
+(`fieldId`, `position`, `values` JSONB tipado por un mini-schema declarado en el site map,
+`metadata.listSchema`) es la representación de **edición**; al guardar, el service valida contra
+el schema, reemplaza las filas y **serializa el array a JSON como `body` del campo**, que pasa
+por el flujo normal de versiones (BLOCK → borrador; SETTING → publica). La lectura pública
+(`getCmsList`) sigue parseando ese JSON: **cero cambios en consumidores** y compatibilidad total
+con historial/revert. El subtipado crece por convención: B6 agregó subcampos IMAGE (id de la
+mediateca) y BOOLEAN ("true"/"false") sin tocar el modelo.
+
+**Consecuencias.** La administradora edita filas con inputs por subcampo (agregar/quitar/
+reordenar) sin ver JSON; el sitio no cambia de formato; revertir una versión restaura el JSON y
+los items se re-derivan de él (migración perezosa al abrir el editor). La guarda de borrado de la
+mediateca tuvo que ampliarse a búsqueda por `contains` porque los ids de imagen quedan embebidos
+en el JSON de los campos lista (detectado en B6).

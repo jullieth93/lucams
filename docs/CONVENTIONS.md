@@ -24,6 +24,7 @@
 18. [Resiliencia — timeouts, retries, circuit breakers](#resiliencia--timeouts-retries-circuit-breakers)
 19. [Logging y request ID correlation](#logging-y-request-id-correlation)
 20. [Code style](#code-style)
+21. [CMS — agregar un campo de contenido administrable](#cms--agregar-un-campo-de-contenido-administrable)
 
 ---
 
@@ -985,3 +986,40 @@ logger.info({ event: "order.created", orderId, customerId, requestId: getRequest
 - **Comentarios solo cuando el WHY no es obvio.** Ver mandato de CLAUDE.md.
 - **Tests al lado del archivo:** `service.ts` + `service.test.ts` en la misma carpeta.
 - **`.editorconfig`** versionado para consistencia entre IDEs.
+
+---
+
+## CMS — agregar un campo de contenido administrable
+
+El contenido visible del storefront NO va hardcodeado: vive en el CMS v2 (ver
+`docs/ARCHITECTURE.md` § CMS v2) y se edita desde `/admin/contenido`. Flujo para un campo nuevo:
+
+1. **Declararlo en el site map** (`packages/db/scripts/cms-site-map.mjs`): en la sección de la
+   página que corresponda, con `key` única (convención `pagina.seccion.nombre`, o `SCREAMING_SNAKE`
+   para ajustes globales), `kind` (BLOCK si tiene flujo borrador→publicar · SETTING si aplica al
+   guardar), `type`, `label` y `helpText` pensados para una persona no técnica, y `body` =
+   **el texto exacto que hoy está hardcodeado** (el fallback).
+2. **Aplicarlo:** `make migrate-cms-v2` (idempotente; crea el campo publicado con v1 si no existe,
+   nunca pisa ediciones). En producción se aplica en el deploy como cualquier script de contenido.
+3. **Consumirlo** con la API de `apps/web/lib/cms.ts` conservando el fallback hardcoded:
+   - JSX: `<CmsText blockKey="home.ejemplo" fallback="Texto actual" />` (o `CmsMarkdown`).
+   - Server: `getSettingValue("MI_SETTING", "valor actual")`, `getCmsList(key, validate, fallback)`
+     para listas (B4), `getCmsImage(key)` para imágenes (B5), `getCmsBanners(key)` para banners (B6).
+4. **Invalidar el caché:** las ediciones desde el admin invalidan solas (`updateTag("cms")`); tras
+   correr scripts que escriben directo en DB, botón «Actualizar caché de contenido» en
+   `/admin/contenido` (runbook: `docs/OPERATIONS.md`).
+
+Reglas asociadas:
+
+- **Regla de oro:** todo fallback es el texto exacto pre-CMS — si la DB cae, el sitio se ve igual.
+- **Ratchet de cobertura (D1):** CI falla si aparece un literal nuevo en español en el JSX del
+  storefront fuera del CMS. Si el hardcode es legítimo (dato de diseño, copy de infraestructura),
+  regenerar el baseline: `pnpm --filter @lucams/db exec node scripts/audit-content-coverage.mjs
+--write-baseline` y commitearlo en el mismo PR, con la justificación en el mensaje del commit.
+- **Campos lista** (B4): declarar `metadata.listSchema` en el site map (subcampos TEXT/URL/
+  TEXTAREA/BOOLEAN/IMAGE); el admin los edita como filas y el body público sigue siendo el JSON
+  serializado — la lectura no cambia.
+- **Imágenes** (B5): `type: IMAGE` guarda el `CmsMedia.id`; el admin sube al bucket `cms-media`
+  desde el editor del campo o la mediateca. `alt` siempre obligatorio (WCAG 1.1.1).
+- **Publicación programada** (C3): cualquier versión borrador puede programarse con «Programar»
+  en el editor del campo (hora de Colombia); la publica el cron `lucams-cms-publish-scheduled`.
