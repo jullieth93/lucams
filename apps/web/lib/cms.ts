@@ -239,6 +239,77 @@ export const getCmsImage = cachedCms(
   { tags: ["cms"], revalidate: 3600 },
 );
 
+export type CmsBannerItem = CmsImageData & {
+  /** Texto visible del banner (overlay). */
+  titulo: string;
+  /** Destino del click (ruta interna o URL externa). */
+  enlace: string;
+};
+
+/**
+ * Lee un campo LISTA de banners (roadmap B6: `home.banners`, items
+ * `{ imagen: CmsMedia.id, titulo, enlace, activo }`) y devuelve los banners
+ * ACTIVOS con el asset ya resuelto (misma derivación de URL que getCmsImage).
+ * Items con forma inválida o cuyo asset ya no existe se DESCARTAN (un banner
+ * roto no debe tumbar la franja entera). Devuelve `[]` si falta el campo, no
+ * está publicado o la lista quedó vacía — el caller NO renderiza la sección
+ * (fallback = el sitio como estaba antes de B6, REGLA DE ORO).
+ */
+export const getCmsBanners = cachedCms(
+  async (key: string): Promise<CmsBannerItem[]> => {
+    try {
+      const field = await prisma.cmsField.findFirst({
+        where: { key, kind: "BLOCK", isPublished: true, deletedAt: null },
+        include: { publishedVersion: true },
+      });
+      const body = field?.publishedVersion?.body;
+      if (!body) return [];
+      const parsed: unknown = JSON.parse(body);
+      if (!Array.isArray(parsed) || parsed.length === 0) return [];
+
+      const rows = parsed
+        .filter(
+          (v): v is Record<string, unknown> =>
+            typeof v === "object" && v !== null && !Array.isArray(v),
+        )
+        .map((v) => ({
+          imagen: typeof v.imagen === "string" ? v.imagen.trim() : "",
+          titulo: typeof v.titulo === "string" ? v.titulo.trim() : "",
+          enlace: typeof v.enlace === "string" ? v.enlace.trim() : "",
+          activo: typeof v.activo === "string" ? v.activo.trim() : "",
+        }))
+        .filter((v) => v.imagen && v.titulo && v.enlace && v.activo !== "false");
+      if (rows.length === 0) return [];
+
+      const base = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/$/, "");
+      if (!base) return [];
+      const media = await prisma.cmsMedia.findMany({
+        where: { id: { in: rows.map((r) => r.imagen) } },
+      });
+      const byId = new Map(media.map((m) => [m.id, m]));
+      return rows.flatMap((r) => {
+        const m = byId.get(r.imagen);
+        if (!m) return []; // asset borrado: el banner se omite, no rompe la franja
+        return [
+          {
+            url: `${base}/storage/v1/object/public/${m.bucket}/${m.path}`,
+            alt: m.alt,
+            width: m.width,
+            height: m.height,
+            titulo: r.titulo,
+            enlace: r.enlace,
+          },
+        ];
+      });
+    } catch {
+      // Misma degradación que getCmsBlock: cualquier fallo → sin sección.
+      return [];
+    }
+  },
+  ["cms-banners"],
+  { tags: ["cms"], revalidate: 3600 },
+);
+
 /**
  * Lee todos los bloques publicados de una categoría. Usado por el
  * endpoint /api/cms/blocks?category=legal y por páginas que renderean

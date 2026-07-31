@@ -28,6 +28,10 @@
  *   - Campos IMAGE (roadmap B5, CmsMedia): round-trip con getCmsImage de
  *     lib/cms (SETTING publicado resuelve url/alt/dimensiones; BLOCK sin
  *     publicar → null; asset fantasma → null).
+ *   - Banners de portada (roadmap B6): round-trip con getCmsBanners de
+ *     lib/cms (lista con subcampos IMAGE/BOOLEAN; activos resueltos con su
+ *     asset, inactivos filtrados, assets fantasma descartados, sin publicar
+ *     o JSON inválido → []).
  *
  * Estrategia: integración DB pura. Requiere DATABASE_URL (corre vía
  * `dotenv -e .env.local -- vitest`); sin ella se salta (skipIf) para no romper
@@ -44,7 +48,8 @@
 
 import { afterAll, describe, expect, it } from "vitest";
 import { prisma } from "@/lib/db";
-import { getCmsImage, getCmsList } from "@/lib/cms";
+import { getCmsBanners, getCmsImage, getCmsList } from "@/lib/cms";
+import { deleteCmsMedia, getCmsMediaUsage } from "@/lib/cms-media";
 import {
   MAX_LIST_ITEMS,
   cmsFieldHasDraft,
@@ -669,6 +674,124 @@ describe.skipIf(!hasDb)(
           body: "cuidque no existe00000000",
         });
         expect(await getCmsImage(ghost.key)).toBeNull();
+      });
+    });
+
+    // ───────────────────────── Banners de portada (roadmap B6) ─────────────────────────
+
+    describe("getCmsBanners (B6: lista home.banners con imagen + activo)", () => {
+      const BANNER_SCHEMA = [
+        { name: "imagen", type: "IMAGE", label: "Imagen (de la mediateca)" },
+        { name: "titulo", type: "TEXT", label: "Título" },
+        { name: "enlace", type: "URL", label: "Enlace (ruta o URL)" },
+        { name: "activo", type: "BOOLEAN", label: "Activo (Sí/No)" },
+      ];
+      const mediaIds: string[] = [];
+
+      // Mismo motivo que en getCmsImage: la URL pública se deriva de este env.
+      process.env.NEXT_PUBLIC_SUPABASE_URL ||= "https://placeholder.supabase.co";
+
+      afterAll(async () => {
+        await prisma.cmsMedia.deleteMany({ where: { id: { in: mediaIds } } });
+      });
+
+      async function makeBannerMedia() {
+        const media = await prisma.cmsMedia.create({
+          data: {
+            bucket: "cms-media",
+            path: `media/itest-b6-${RUN}-${nextSuffix()}.png`,
+            alt: "Banner de prueba B6",
+            width: 1200,
+            height: 400,
+            bytes: 4321,
+            mime: "image/png",
+          },
+        });
+        mediaIds.push(media.id);
+        return media;
+      }
+
+      async function makeBannerField(body = "[]") {
+        const field = await makeField({ type: "JSON", body });
+        await prisma.cmsField.update({
+          where: { id: field.id },
+          data: { metadata: { listSchema: BANNER_SCHEMA } },
+        });
+        return field;
+      }
+
+      async function publishLatest(fieldId: string) {
+        const detail = await getCmsFieldById(fieldId);
+        await publishCmsFieldVersion(fieldId, detail!.versions[0].id, null);
+      }
+
+      it("publicada: resuelve assets, filtra inactivos y descarta assets fantasmas", async () => {
+        const media = await makeBannerMedia();
+        const other = await makeBannerMedia();
+        const field = await makeBannerField();
+        await saveCmsFieldItems(
+          field.id,
+          [
+            { imagen: media.id, titulo: "Promo activa", enlace: "/productos", activo: "true" },
+            { imagen: other.id, titulo: "Promo apagada", enlace: "/productos", activo: "false" },
+            { imagen: "cuidfantasma000000000", titulo: "Sin asset", enlace: "/x", activo: "true" },
+          ],
+          null,
+        );
+        await publishLatest(field.id);
+
+        const banners = await getCmsBanners(field.key);
+        expect(banners).toHaveLength(1);
+        expect(banners[0]).toMatchObject({
+          alt: "Banner de prueba B6",
+          width: 1200,
+          height: 400,
+          titulo: "Promo activa",
+          enlace: "/productos",
+        });
+        expect(banners[0].url).toContain(`/storage/v1/object/public/cms-media/${media.path}`);
+      });
+
+      it("BLOCK sin publicar → []; al publicar → resuelve", async () => {
+        const media = await makeBannerMedia();
+        const field = await makeBannerField();
+        await saveCmsFieldItems(
+          field.id,
+          [{ imagen: media.id, titulo: "B", enlace: "/b", activo: "true" }],
+          null,
+        );
+        expect(await getCmsBanners(field.key)).toEqual([]);
+        await publishLatest(field.id);
+        const banners = await getCmsBanners(field.key);
+        expect(banners).toHaveLength(1);
+      });
+
+      it("key inexistente, body vacío o JSON inválido → []", async () => {
+        expect(await getCmsBanners(`${RUN}.no-such-banners`)).toEqual([]);
+        const empty = await makeBannerField();
+        await publishLatest(empty.id);
+        expect(await getCmsBanners(empty.key)).toEqual([]);
+        const invalid = await makeBannerField("esto no es JSON");
+        await publishLatest(invalid.id);
+        expect(await getCmsBanners(invalid.key)).toEqual([]);
+      });
+
+      it("la guarda de borrado de la mediateca detecta el id embebido en una lista", async () => {
+        // B6 introdujo ids de CmsMedia DENTRO del body JSON de campos lista;
+        // la guarda de deleteCmsMedia usa `contains` para cubrir ese caso
+        // (borrar el asset dejaría un banner roto en el sitio).
+        const media = await makeBannerMedia();
+        const field = await makeBannerField();
+        await saveCmsFieldItems(
+          field.id,
+          [{ imagen: media.id, titulo: "B", enlace: "/b", activo: "true" }],
+          null,
+        );
+        await expect(deleteCmsMedia(media.id)).rejects.toThrow(/no se puede borrar/i);
+        expect(await prisma.cmsMedia.findUnique({ where: { id: media.id } })).not.toBeNull();
+        // El mapa de uso de la mediateca también lo ve (contador «en uso»).
+        const usage = await getCmsMediaUsage([media.id]);
+        expect(usage.get(media.id)).toContain(field.key);
       });
     });
   },

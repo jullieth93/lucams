@@ -58,6 +58,39 @@ export const SITE_MAP = {
           ],
         },
         {
+          key: "banners",
+          title: "Banners / promos",
+          description:
+            "Franja de banners de la portada (aparece bajo la portada principal, solo si hay banners activos).",
+          prefixes: ["home.banners"],
+          sortOrder: 15,
+          fields: [
+            {
+              key: "home.banners",
+              kind: "BLOCK",
+              type: "JSON",
+              label: "Banners de la portada",
+              helpText:
+                "Promos y campañas de la portada. Cada banner: imagen (de la mediateca), título, enlace y si está activo. Lista vacía = la franja no se muestra en el sitio.",
+              category: "MARKETING",
+              // Campo LISTA con imagen (roadmap B6, usa B4+B5): el subcampo
+              // `imagen` guarda el CmsMedia.id; `activo` es "true"/"false".
+              // La lectura pública (getCmsBanners en lib/cms.ts) filtra los
+              // inactivos y resuelve los assets.
+              metadata: {
+                listSchema: [
+                  { name: "imagen", type: "IMAGE", label: "Imagen (de la mediateca)" },
+                  { name: "titulo", type: "TEXT", label: "Título" },
+                  { name: "enlace", type: "URL", label: "Enlace (ruta o URL)" },
+                  { name: "activo", type: "BOOLEAN", label: "Activo (Sí/No)" },
+                ],
+              },
+              body: "[]",
+              sortOrder: 10,
+            },
+          ],
+        },
+        {
           key: "como-funciona",
           title: "Así de fácil (3 pasos)",
           prefixes: ["home.howitworks."],

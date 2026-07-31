@@ -84,19 +84,23 @@ export default async function EditarCampoPage({
   // Campo IMAGE (roadmap B5): body = CmsMedia.id. Se resuelve el asset actual
   // y la mediateca reciente para el control (subir / reutilizar).
   const isImage = field.type === "IMAGE" && !listSchema;
+  // Lista con subcampo IMAGE (roadmap B6, ej. home.banners): el editor de
+  // filas también necesita la mediateca para la imagen de cada fila.
+  const listHasImage = listSchema?.some((s) => s.type === "IMAGE") ?? false;
   const imageMedia =
     isImage && field.body.trim()
       ? await prisma.cmsMedia.findUnique({ where: { id: field.body.trim() } })
       : null;
-  const imageLibrary = isImage
-    ? (await listCmsMedia(60)).map((m) => ({
-        id: m.id,
-        url: m.url,
-        alt: m.alt,
-        width: m.width,
-        height: m.height,
-      }))
-    : null;
+  const imageLibrary =
+    isImage || listHasImage
+      ? (await listCmsMedia(60)).map((m) => ({
+          id: m.id,
+          url: m.url,
+          alt: m.alt,
+          width: m.width,
+          height: m.height,
+        }))
+      : null;
 
   return (
     <AdminPage>
@@ -214,6 +218,7 @@ export default async function EditarCampoPage({
               listSchema,
               items: listItems.map((item) => item.values),
             }}
+            mediaLibrary={imageLibrary ?? []}
           />
         ) : (
           <FieldEditorForm

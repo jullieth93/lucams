@@ -14,8 +14,9 @@
  * confirma que el archivo decodifica de verdad.
  *
  * Borrado con guarda de uso: si algún campo (borrador o cualquier versión del
- * historial) apunta al asset, no se puede borrar — revertir a una versión vieja
- * nunca rompe una imagen publicada.
+ * historial) apunta al asset — sea un campo IMAGE (body = id) o un campo
+ * LISTA con subcampo IMAGE (id embebido en el JSON, roadmap B6) — no se puede
+ * borrar: revertir a una versión vieja nunca rompe una imagen publicada.
  */
 
 import "server-only";
@@ -147,16 +148,24 @@ export async function listCmsMedia(limit = 120): Promise<CmsMediaWithUrl[]> {
 }
 
 /** Mapa `CmsMedia.id → keys de campos activos que lo usan en su borrador actual`. */
-export async function getCmsMediaUsage(): Promise<Map<string, string[]>> {
+export async function getCmsMediaUsage(ids: string[]): Promise<Map<string, string[]>> {
+  const usage = new Map<string, string[]>();
+  if (ids.length === 0) return usage;
+  // `contains` y no igualdad: en los campos LISTA con subcampo IMAGE (roadmap
+  // B6, ej. home.banners) el id va EMBEBIDO en el body JSON del campo; en un
+  // campo type IMAGE el body ES el id (contains también matchea).
   const fields = await prisma.cmsField.findMany({
-    where: { type: "IMAGE", deletedAt: null },
+    where: { deletedAt: null, OR: ids.map((id) => ({ body: { contains: id } })) },
     select: { key: true, body: true },
   });
-  const usage = new Map<string, string[]>();
   for (const f of fields) {
-    const list = usage.get(f.body) ?? [];
-    list.push(f.key);
-    usage.set(f.body, list);
+    for (const id of ids) {
+      if (f.body.includes(id)) {
+        const list = usage.get(id) ?? [];
+        list.push(f.key);
+        usage.set(id, list);
+      }
+    }
   }
   return usage;
 }
@@ -186,12 +195,16 @@ export async function deleteCmsMedia(id: string): Promise<void> {
   if (!media) throw new CmsValidationError("general", "Imagen no encontrada");
 
   const [usedByFields, usedByVersion] = await Promise.all([
+    // `contains` y no igualdad (mismo criterio que getCmsMediaUsage): en los
+    // campos LISTA (B6) el id va embebido en el body JSON; en un campo IMAGE
+    // el body ES el id. Falso positivo = un cuid de 25 chars en prosa: no
+    // pasa en la práctica, y el mensaje lista las keys para verificar.
     prisma.cmsField.findMany({
-      where: { body: id, deletedAt: null },
+      where: { body: { contains: id }, deletedAt: null },
       select: { key: true },
     }),
     prisma.cmsFieldVersion.findFirst({
-      where: { body: id },
+      where: { body: { contains: id } },
       select: { field: { select: { key: true } } },
     }),
   ]);

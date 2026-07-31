@@ -27,7 +27,8 @@ export default async function MediatecaPage() {
   const session = await getCurrentAdmin();
   if (!session) redirect("/admin/login");
 
-  const [media, usage] = await Promise.all([listCmsMedia(120), getCmsMediaUsage()]);
+  const media = await listCmsMedia(120);
+  const usage = await getCmsMediaUsage(media.map((m) => m.id));
 
   return (
     <AdminPage>

@@ -7,11 +7,12 @@
  * Secciones (en orden):
  *   1. SiteHeader (mega-menú + búsqueda)
  *   2. Hero kawaii
- *   3. Categorías visuales (7)
- *   4. "Así de fácil" — 3 pasos
- *   5. Productos destacados (Embla)
- *   6. Lo que dicen quienes nos compran (reseñas reales o empty kawaii)
- *   7. CTA cierre
+ *   3. Banners/promos (roadmap B6 — solo si hay banners activos en el CMS)
+ *   4. Categorías visuales (7)
+ *   5. "Así de fácil" — 3 pasos
+ *   6. Productos destacados (Embla)
+ *   7. Lo que dicen quienes nos compran (reseñas reales o empty kawaii)
+ *   8. CTA cierre
  */
 
 import type { Metadata } from "next";
@@ -22,6 +23,7 @@ import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { CategoryGrid } from "@/components/home/category-grid";
 import { FeaturedCarousel } from "@/components/home/featured-carousel";
+import { HomeBanners } from "@/components/home/banners";
 import { HomeHero } from "@/components/home/hero";
 import { HowItWorks } from "@/components/home/how-it-works";
 import { ReviewsCarousel } from "@/components/home/reviews-carousel";
@@ -31,7 +33,7 @@ import {
 } from "@/features/products/public-service";
 import { listFeaturedReviews } from "@/features/reviews/public-service";
 import { CmsText } from "@/components/cms/cms-text";
-import { getSettingValue } from "@/lib/cms";
+import { getCmsBanners, getSettingValue } from "@/lib/cms";
 import { getPageSeo } from "@/lib/cms-tokens";
 import { buildWhatsAppUrl } from "@/lib/wa";
 import { isCatalogMode } from "@/lib/store-mode";
@@ -56,19 +58,30 @@ export async function generateMetadata(): Promise<Metadata> {
 export const dynamic = "force-dynamic";
 
 export default async function Home() {
-  const [categories, featured, reviews, waSupportUrl, instagramUrl, tiktokUrl, facebookUrl] =
-    await Promise.all([
-      // Solo top-level: la home muestra ~11 categorías padre, no 57 (mismo
-      // patrón que footer y mega-menú).
-      listStorefrontCategories({ topLevelOnly: true }),
-      listStorefrontProducts({ featured: true, limit: 10 }),
-      listFeaturedReviews(8),
-      buildWhatsAppUrl({ kind: "support" }),
-      // Mismas URLs sociales del footer — alimentan el sameAs del JSON-LD.
-      getSettingValue("SOCIAL_INSTAGRAM_URL", "https://www.instagram.com/lucams_shop"),
-      getSettingValue("SOCIAL_TIKTOK_URL", "https://www.tiktok.com/@lucams_shop"),
-      getSettingValue("SOCIAL_FACEBOOK_URL", "https://www.facebook.com/lucamsshop"),
-    ]);
+  const [
+    categories,
+    featured,
+    reviews,
+    waSupportUrl,
+    instagramUrl,
+    tiktokUrl,
+    facebookUrl,
+    banners,
+  ] = await Promise.all([
+    // Solo top-level: la home muestra ~11 categorías padre, no 57 (mismo
+    // patrón que footer y mega-menú).
+    listStorefrontCategories({ topLevelOnly: true }),
+    listStorefrontProducts({ featured: true, limit: 10 }),
+    listFeaturedReviews(8),
+    buildWhatsAppUrl({ kind: "support" }),
+    // Mismas URLs sociales del footer — alimentan el sameAs del JSON-LD.
+    getSettingValue("SOCIAL_INSTAGRAM_URL", "https://www.instagram.com/lucams_shop"),
+    getSettingValue("SOCIAL_TIKTOK_URL", "https://www.tiktok.com/@lucams_shop"),
+    getSettingValue("SOCIAL_FACEBOOK_URL", "https://www.facebook.com/lucamsshop"),
+    // Franja de banners/promos (B6): [] cuando el campo no existe, no está
+    // publicado o no hay banners activos → la sección no se renderiza.
+    getCmsBanners("home.banners"),
+  ]);
 
   // #2 — despriorizar agotados en el carrusel destacado: disponibles primero, agotados al final
   // (sin filtrarlos → siguen visibles con su badge "Agotado"). Sort estable (ES2019) → entre los
@@ -119,6 +132,9 @@ export default async function Home() {
         <div className="mx-auto max-w-6xl px-6 sm:px-10">
           <HomeHero />
         </div>
+
+        {/* Banners/promos (B6) — no renderiza nada si no hay banners activos */}
+        <HomeBanners items={banners} />
 
         {/* Categorías */}
         <section className="mx-auto max-w-6xl px-6 py-12 sm:px-10 sm:py-16">

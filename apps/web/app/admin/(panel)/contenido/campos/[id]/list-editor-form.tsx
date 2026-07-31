@@ -13,6 +13,10 @@
  * reemplaza las filas (CmsListItem) y serializa el array a JSON como body del
  * campo → flujo normal: en BLOCK crea BORRADOR (hay que Publicar después);
  * en SETTING publica de inmediato.
+ *
+ * Roadmap B6: subcampos especiales — IMAGE renderiza el control de la
+ * mediateca (subir/elegir; el value es el CmsMedia.id) y BOOLEAN un select
+ * Sí/No ("true"/"false"; default "true" en filas nuevas).
  */
 
 import { useActionState, useEffect, useState } from "react";
@@ -25,6 +29,7 @@ import {
   saveCmsFieldItemsAction,
   type CmsActionState,
 } from "@/app/admin/(panel)/contenido/actions";
+import { CmsImageControl, type CmsMediaLite } from "./cms-image-control";
 
 export type EditableListField = {
   id: string;
@@ -60,6 +65,7 @@ let rowSeq = 0;
 const makeRowId = () => `row-${rowSeq++}`;
 
 // Coerce defensivo: los values vienen de JSON y podrían no ser strings.
+// BOOLEAN sin valor (item viejo sin el subcampo) arranca en "true".
 function toRowValues(
   listSchema: EditableListField["listSchema"],
   values: Record<string, unknown>,
@@ -67,12 +73,20 @@ function toRowValues(
   const out: Record<string, string> = {};
   for (const sub of listSchema) {
     const raw = values[sub.name];
-    out[sub.name] = typeof raw === "string" ? raw : raw == null ? "" : String(raw);
+    const str = typeof raw === "string" ? raw : raw == null ? "" : String(raw);
+    out[sub.name] = sub.type === "BOOLEAN" && str !== "true" && str !== "false" ? "true" : str;
   }
   return out;
 }
 
-export function ListEditorForm({ field }: { field: EditableListField }) {
+export function ListEditorForm({
+  field,
+  mediaLibrary = [],
+}: {
+  field: EditableListField;
+  /** Mediateca reciente para subcampos IMAGE (roadmap B6). */
+  mediaLibrary?: CmsMediaLite[];
+}) {
   const isSetting = field.kind === "SETTING";
 
   const toRows = (items: Record<string, unknown>[]): Row[] =>
@@ -127,7 +141,7 @@ export function ListEditorForm({ field }: { field: EditableListField }) {
 
   function addRow() {
     const empty: Record<string, string> = {};
-    for (const sub of field.listSchema) empty[sub.name] = "";
+    for (const sub of field.listSchema) empty[sub.name] = sub.type === "BOOLEAN" ? "true" : "";
     setRows((prev) => [...prev, { rowId: makeRowId(), values: empty }]);
   }
 
@@ -230,35 +244,60 @@ export function ListEditorForm({ field }: { field: EditableListField }) {
               </div>
             </div>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {field.listSchema.map((sub) => (
-                <div key={sub.name} className="space-y-1.5">
-                  <Label
-                    htmlFor={`${row.rowId}-${sub.name}`}
-                    className="text-brand-purple-dark font-semibold"
-                  >
-                    {sub.label}
-                  </Label>
-                  {sub.type === "TEXTAREA" || sub.type === "MARKDOWN" ? (
-                    <textarea
-                      id={`${row.rowId}-${sub.name}`}
+              {field.listSchema.map((sub) =>
+                sub.type === "IMAGE" ? (
+                  // Subcampo imagen (roadmap B6): value = CmsMedia.id; el
+                  // control sube a la mediateca o deja elegir un asset ya
+                  // subido. Ocupa la fila completa (tiene preview + picker).
+                  <div key={sub.name} className="space-y-1.5 sm:col-span-2">
+                    <CmsImageControl
+                      name={`${row.rowId}-${sub.name}`}
                       value={row.values[sub.name] ?? ""}
-                      onChange={(e) => updateCell(index, sub.name, e.target.value)}
-                      disabled={pending}
-                      rows={3}
-                      className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 text-brand-purple-dark/90 w-full rounded-lg border bg-white px-4 py-3 text-sm leading-relaxed shadow-sm focus:ring-2 focus:outline-none"
+                      onChange={(mediaId) => updateCell(index, sub.name, mediaId)}
+                      library={mediaLibrary}
                     />
-                  ) : (
-                    <Input
-                      id={`${row.rowId}-${sub.name}`}
-                      type={SIMPLE_INPUT_TYPE[sub.type] ?? "text"}
-                      value={row.values[sub.name] ?? ""}
-                      onChange={(e) => updateCell(index, sub.name, e.target.value)}
-                      disabled={pending}
-                      className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
-                    />
-                  )}
-                </div>
-              ))}
+                  </div>
+                ) : (
+                  <div key={sub.name} className="space-y-1.5">
+                    <Label
+                      htmlFor={`${row.rowId}-${sub.name}`}
+                      className="text-brand-purple-dark font-semibold"
+                    >
+                      {sub.label}
+                    </Label>
+                    {sub.type === "TEXTAREA" || sub.type === "MARKDOWN" ? (
+                      <textarea
+                        id={`${row.rowId}-${sub.name}`}
+                        value={row.values[sub.name] ?? ""}
+                        onChange={(e) => updateCell(index, sub.name, e.target.value)}
+                        disabled={pending}
+                        rows={3}
+                        className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 text-brand-purple-dark/90 w-full rounded-lg border bg-white px-4 py-3 text-sm leading-relaxed shadow-sm focus:ring-2 focus:outline-none"
+                      />
+                    ) : sub.type === "BOOLEAN" ? (
+                      <select
+                        id={`${row.rowId}-${sub.name}`}
+                        value={row.values[sub.name] ?? "true"}
+                        onChange={(e) => updateCell(index, sub.name, e.target.value)}
+                        disabled={pending}
+                        className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 h-9 w-full rounded-md border bg-white px-3 py-1 text-sm shadow-sm focus:ring-2 focus:outline-none"
+                      >
+                        <option value="true">Sí</option>
+                        <option value="false">No</option>
+                      </select>
+                    ) : (
+                      <Input
+                        id={`${row.rowId}-${sub.name}`}
+                        type={SIMPLE_INPUT_TYPE[sub.type] ?? "text"}
+                        value={row.values[sub.name] ?? ""}
+                        onChange={(e) => updateCell(index, sub.name, e.target.value)}
+                        disabled={pending}
+                        className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
+                      />
+                    )}
+                  </div>
+                ),
+              )}
             </div>
           </div>
         ))}
