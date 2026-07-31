@@ -49,6 +49,11 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @lucams/db db:generate
       - uses: supabase/setup-cli@v1
+        with:
+          # La default del action instala un CLI VIEJO (2.20.3 → GoTrue
+          # v2.170.0, cuya verificación TOTP difiere de la hosted y rompe
+          # admin-mfa — run 30650501983). Con latest, CLI e imágenes recientes.
+          version: latest
       # El start corre desde .github/ci/localstack (workdir pelado SIN
       # migrations — ver su config.toml): el stack arranca sin auto-aplicar
       # nada y el orden correcto queda en manos del workflow (prisma → psql).
@@ -122,6 +127,11 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter @lucams/db db:generate
       - uses: supabase/setup-cli@v1
+        with:
+          # La default del action instala un CLI VIEJO (2.20.3 → GoTrue
+          # v2.170.0, cuya verificación TOTP difiere de la hosted y rompe
+          # admin-mfa — run 30650501983). Con latest, CLI e imágenes recientes.
+          version: latest
       - name: Levantar Supabase local y exportar credenciales
         working-directory: .github/ci/localstack
         run: |
