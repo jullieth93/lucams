@@ -16,8 +16,16 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { restablecerPasswordAction, type RestablecerActionState } from "./actions";
+import type { AuthTexts } from "../auth-texts";
 
-export function RestablecerForm({ email }: { email: string }) {
+export function RestablecerForm({
+  texts,
+  email,
+}: {
+  /** Textos de la pantalla (roadmap B7 — con {email} ya interpolado). */
+  texts: AuthTexts["restablecer"];
+  email: string;
+}) {
   const [state, formAction, pending] = useActionState<RestablecerActionState | null, FormData>(
     restablecerPasswordAction,
     null,
@@ -38,13 +46,9 @@ export function RestablecerForm({ email }: { email: string }) {
           <KeyRound className="h-8 w-8" strokeWidth={1.75} />
         </span>
         <CardTitle className="font-display text-brand-purple-dark text-2xl">
-          Restablece tu contraseña
+          {texts.title}
         </CardTitle>
-        <CardDescription className="text-base">
-          Te enviamos un código a{" "}
-          <span className="text-brand-purple-dark font-medium">{email}</span>. Escríbelo aquí junto
-          con tu nueva contraseña.
-        </CardDescription>
+        <CardDescription className="text-base">{texts.subtitle}</CardDescription>
       </CardHeader>
 
       <form action={formAction}>
@@ -53,7 +57,7 @@ export function RestablecerForm({ email }: { email: string }) {
         <CardContent className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="token" className="block text-center">
-              Código del correo
+              {texts.codeLabel}
             </Label>
             <Input
               id="token"
@@ -78,7 +82,7 @@ export function RestablecerForm({ email }: { email: string }) {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="password">Nueva contraseña</Label>
+            <Label htmlFor="password">{texts.passwordLabel}</Label>
             <PasswordInput
               id="password"
               name="password"
@@ -91,14 +95,14 @@ export function RestablecerForm({ email }: { email: string }) {
               showStrength
               aria-invalid={Boolean(state?.fieldErrors?.password)}
             />
-            <p className="text-muted-foreground text-xs">Mínimo 8 caracteres.</p>
+            <p className="text-muted-foreground text-xs">{texts.passwordHint}</p>
             {state?.fieldErrors?.password && (
               <p className="text-destructive text-sm">{state.fieldErrors.password[0]}</p>
             )}
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="passwordConfirm">Confirmar nueva contraseña</Label>
+            <Label htmlFor="passwordConfirm">{texts.confirmLabel}</Label>
             <PasswordInput
               id="passwordConfirm"
               name="passwordConfirm"
@@ -110,9 +114,7 @@ export function RestablecerForm({ email }: { email: string }) {
               onValueChange={setPasswordConfirm}
               aria-invalid={Boolean(state?.fieldErrors?.passwordConfirm) || !passwordsMatch}
             />
-            {!passwordsMatch && (
-              <p className="text-destructive text-sm">Las contraseñas no coinciden.</p>
-            )}
+            {!passwordsMatch && <p className="text-destructive text-sm">{texts.mismatch}</p>}
             {state?.fieldErrors?.passwordConfirm && passwordsMatch && (
               <p className="text-destructive text-sm">{state.fieldErrors.passwordConfirm[0]}</p>
             )}
@@ -136,19 +138,19 @@ export function RestablecerForm({ email }: { email: string }) {
           >
             {pending ? (
               <span className="inline-flex items-center gap-2">
-                <SpinnerIcon /> Guardando...
+                <SpinnerIcon /> {texts.pending}
               </span>
             ) : (
-              "Guardar nueva contraseña"
+              texts.submit
             )}
           </Button>
           <p className="text-muted-foreground text-center text-sm">
-            ¿No te llegó el código?{" "}
+            {texts.noCode}{" "}
             <Link
               href="/recuperar-password"
               className="text-brand-pink-ink hover:text-brand-coral-ink font-medium underline-offset-4 hover:underline"
             >
-              Solicitar otro
+              {texts.resendCta}
             </Link>
           </p>
         </CardFooter>

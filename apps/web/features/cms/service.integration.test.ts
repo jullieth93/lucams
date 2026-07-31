@@ -910,6 +910,28 @@ describe.skipIf(!hasDb)(
       });
     });
 
+    // ───────────────────────── Copy de autenticación (roadmap B7) ─────────────────────────
+
+    describe("getAuthTexts (B7: copy de auth al CMS)", () => {
+      it("resuelve los campos auth.* migrados con la estructura completa (valores sembrados = defaults)", async () => {
+        // El resolver hace UNA query por prefijo auth.* y sobreescribe defaults
+        // campo a campo; con los campos migrados (sembrados con el texto pre-CMS)
+        // el resultado debe ser exactamente el copy original.
+        const { getAuthTexts } = await import("@/app/(auth)/auth-texts.server");
+        const texts = await getAuthTexts();
+        expect(texts.login.title).toBe("¡Qué alegría verte de nuevo!");
+        expect(texts.login.submit).toBe("Iniciar sesión");
+        expect(texts.registro.consent).toContain("Ley 1581 de 2012");
+        expect(texts.registro.consent).toContain("[términos](/legal/terminos)");
+        expect(texts.recuperar.backLogin).toBe("Volver a iniciar sesión");
+        // Los placeholders de interpolación llegan intactos (la página los reemplaza).
+        expect(texts.confirmar.subtitle).toContain("{email}");
+        expect(texts.restablecer.subtitle).toContain("{email}");
+        expect(texts.confirmar.titleNamed).toContain("{nombre}");
+        expect(texts.layout.helpCta).toBe("Escríbenos por WhatsApp");
+      });
+    });
+
     // ───────────────────────── Utilidades del admin (roadmap C4) ─────────────────────────
 
     describe("utilidades admin (C4: borradores, mover, duplicar)", () => {

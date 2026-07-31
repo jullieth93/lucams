@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { RestablecerForm } from "./restablecer-form";
+import { getAuthTexts } from "../auth-texts.server";
 
 export const metadata: Metadata = {
   title: "Restablecer contraseña",
@@ -23,5 +24,12 @@ export default async function RestablecerPasswordPage({
     redirect("/recuperar-password?error=link-invalido");
   }
 
-  return <RestablecerForm email={email} />;
+  // Roadmap B7 — textos del CMS con interpolación server-side de {email}.
+  const texts = await getAuthTexts();
+  const restablecer = {
+    ...texts.restablecer,
+    subtitle: texts.restablecer.subtitle.replace("{email}", email),
+  };
+
+  return <RestablecerForm texts={restablecer} email={email} />;
 }

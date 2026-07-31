@@ -2,6 +2,9 @@
 
 import Link from "next/link";
 import { useActionState, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import rehypeSanitize from "rehype-sanitize";
+import remarkGfm from "remark-gfm";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -17,8 +20,9 @@ import { EmailInput } from "@/components/email-input";
 import { PasswordInput } from "@/components/password-input";
 import { TurnstileWidget } from "@/components/turnstile-widget";
 import { signupAction, type SignupActionState } from "./actions";
+import type { AuthTexts } from "../auth-texts";
 
-export function RegistroForm() {
+export function RegistroForm({ texts }: { texts: AuthTexts["registro"] }) {
   const [state, formAction, pending] = useActionState<SignupActionState | null, FormData>(
     signupAction,
     null,
@@ -34,18 +38,16 @@ export function RegistroForm() {
     <Card className="border-brand-purple/10 animate-in fade-in slide-in-from-bottom-3 shadow-xl duration-500">
       <CardHeader className="space-y-2">
         <CardTitle className="font-display text-brand-purple-dark text-2xl">
-          Crea tu cuenta Lucams
+          {texts.title}
         </CardTitle>
-        <CardDescription className="text-base">
-          Empieza a personalizar productos únicos en minutos.
-        </CardDescription>
+        <CardDescription className="text-base">{texts.subtitle}</CardDescription>
         <p className="text-muted-foreground pt-1 text-sm">
-          ¿Ya tienes cuenta?{" "}
+          {texts.hasAccount}{" "}
           <Link
             href="/login"
             className="text-brand-pink-ink hover:text-brand-coral-ink font-medium underline-offset-4 hover:underline"
           >
-            Inicia sesión
+            {texts.loginCta}
           </Link>
         </p>
       </CardHeader>
@@ -54,14 +56,14 @@ export function RegistroForm() {
         <CardContent className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-2">
-              <Label htmlFor="firstName">Nombre</Label>
+              <Label htmlFor="firstName">{texts.firstNameLabel}</Label>
               <Input
                 id="firstName"
                 name="firstName"
                 type="text"
                 autoComplete="given-name"
                 required
-                placeholder="María"
+                placeholder={texts.firstNamePlaceholder}
                 disabled={pending}
                 aria-invalid={Boolean(state?.fieldErrors?.firstName)}
               />
@@ -71,15 +73,15 @@ export function RegistroForm() {
             </div>
             <div className="space-y-2">
               <Label htmlFor="lastName" className="flex items-center gap-1">
-                Apellido
-                <span className="text-muted-foreground text-xs">(opcional)</span>
+                {texts.lastNameLabel}
+                <span className="text-muted-foreground text-xs">{texts.lastNameOptional}</span>
               </Label>
               <Input
                 id="lastName"
                 name="lastName"
                 type="text"
                 autoComplete="family-name"
-                placeholder="Pérez"
+                placeholder={texts.lastNamePlaceholder}
                 disabled={pending}
                 aria-invalid={Boolean(state?.fieldErrors?.lastName)}
               />
@@ -90,12 +92,12 @@ export function RegistroForm() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="email">Correo electrónico</Label>
+            <Label htmlFor="email">{texts.emailLabel}</Label>
             <EmailInput
               id="email"
               name="email"
               required
-              placeholder="tu@email.com"
+              placeholder={texts.emailPlaceholder}
               disabled={pending}
               aria-invalid={Boolean(state?.fieldErrors?.email)}
             />
@@ -105,7 +107,7 @@ export function RegistroForm() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="password">Contraseña</Label>
+            <Label htmlFor="password">{texts.passwordLabel}</Label>
             <PasswordInput
               id="password"
               name="password"
@@ -124,7 +126,7 @@ export function RegistroForm() {
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="passwordConfirm">Confirmar contraseña</Label>
+            <Label htmlFor="passwordConfirm">{texts.confirmLabel}</Label>
             <PasswordInput
               id="passwordConfirm"
               name="passwordConfirm"
@@ -136,9 +138,7 @@ export function RegistroForm() {
               onValueChange={setPasswordConfirm}
               aria-invalid={Boolean(state?.fieldErrors?.passwordConfirm) || !passwordsMatch}
             />
-            {!passwordsMatch && (
-              <p className="text-destructive text-sm">Las contraseñas no coinciden.</p>
-            )}
+            {!passwordsMatch && <p className="text-destructive text-sm">{texts.mismatch}</p>}
             {state?.fieldErrors?.passwordConfirm && passwordsMatch && (
               <p className="text-destructive text-sm">{state.fieldErrors.passwordConfirm[0]}</p>
             )}
@@ -154,9 +154,8 @@ export function RegistroForm() {
           )}
 
           {/* Ley 1581 art. 9: la autorización debe ser expresa y verificable, no inferida de un
-              aviso pasivo. Antes esto era solo texto y la acción registraba el Consent server-side
-              sin ningún acto afirmativo del titular — y el aviso de privacidad, además, declaraba
-              públicamente una casilla que no existía. */}
+              aviso pasivo. El texto de la casilla es administrable desde el CMS (roadmap B7,
+              campo auth.registro.consent en markdown — links y negrita preservados). */}
           <label className="flex items-start gap-3 text-xs">
             <input
               type="checkbox"
@@ -167,22 +166,10 @@ export function RegistroForm() {
               aria-invalid={state?.fieldErrors?.dataConsent ? true : undefined}
               className="accent-brand-purple mt-0.5 h-4 w-4 flex-shrink-0"
             />
-            <span className="text-muted-foreground leading-relaxed">
-              Acepto los{" "}
-              <Link
-                href="/legal/terminos"
-                className="text-brand-pink-ink underline underline-offset-4"
-              >
-                términos
-              </Link>{" "}
-              y autorizo el <strong>tratamiento de mis datos personales</strong> conforme a la{" "}
-              <Link
-                href="/legal/privacidad"
-                className="text-brand-pink-ink underline underline-offset-4"
-              >
-                política de privacidad
-              </Link>{" "}
-              (Ley 1581 de 2012).
+            <span className="text-muted-foreground [&_a]:text-brand-pink-ink leading-relaxed [&_a]:underline [&_a]:underline-offset-4">
+              <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
+                {texts.consent}
+              </ReactMarkdown>
             </span>
           </label>
           {state?.fieldErrors?.dataConsent && (
@@ -199,10 +186,10 @@ export function RegistroForm() {
           >
             {pending ? (
               <span className="inline-flex items-center gap-2">
-                <SpinnerIcon /> Creando...
+                <SpinnerIcon /> {texts.pending}
               </span>
             ) : (
-              "Crear cuenta"
+              texts.submit
             )}
           </Button>
         </CardFooter>

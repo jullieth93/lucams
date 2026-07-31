@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { LoginForm } from "./login-form";
+import { getAuthTexts } from "../auth-texts.server";
 
 export const metadata: Metadata = {
   title: "Iniciar sesión",
@@ -26,8 +27,12 @@ export default async function LoginPage({ searchParams }: { searchParams: Search
   const initialError = errorParam ? ERROR_MESSAGES[errorParam] : undefined;
   const initialSuccess = resetParam ? SUCCESS_MESSAGES[resetParam] : undefined;
 
+  // Roadmap B7 — textos de la pantalla resueltos del CMS (fallback = defaults).
+  const texts = await getAuthTexts();
+
   return (
     <LoginForm
+      texts={texts.login}
       {...(initialError && { initialError })}
       {...(initialSuccess && { initialSuccess })}
       {...(nextParam && { next: nextParam })}

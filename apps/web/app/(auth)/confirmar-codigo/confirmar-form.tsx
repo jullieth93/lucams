@@ -20,8 +20,18 @@ import {
   type ResendCodeActionState,
   type VerifyOtpActionState,
 } from "./actions";
+import type { AuthTexts } from "../auth-texts";
 
-export function ConfirmarForm({ email, firstName }: { email: string; firstName?: string }) {
+export function ConfirmarForm({
+  texts,
+  email,
+  firstName,
+}: {
+  /** Textos de la pantalla (roadmap B7 — con {email}/{nombre} ya interpolados). */
+  texts: AuthTexts["confirmar"];
+  email: string;
+  firstName?: string;
+}) {
   const [verifyState, verifyAction, verifying] = useActionState<
     VerifyOtpActionState | null,
     FormData
@@ -42,13 +52,9 @@ export function ConfirmarForm({ email, firstName }: { email: string; firstName?:
           <Mail className="h-8 w-8" strokeWidth={1.75} />
         </span>
         <CardTitle className="font-display text-brand-purple-dark text-2xl">
-          {firstName ? `Listo, ${firstName}` : "Revisa tu correo"}
+          {firstName ? texts.titleNamed : texts.title}
         </CardTitle>
-        <CardDescription className="text-base">
-          Te enviamos un código a{" "}
-          <span className="text-brand-purple-dark font-medium">{email}</span>. Escríbelo aquí para
-          activar tu cuenta.
-        </CardDescription>
+        <CardDescription className="text-base">{texts.subtitle}</CardDescription>
       </CardHeader>
 
       <form action={verifyAction}>
@@ -56,7 +62,7 @@ export function ConfirmarForm({ email, firstName }: { email: string; firstName?:
         <CardContent className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="token" className="block text-center">
-              Código de confirmación
+              {texts.codeLabel}
             </Label>
             <Input
               id="token"
@@ -75,9 +81,7 @@ export function ConfirmarForm({ email, firstName }: { email: string; firstName?:
               disabled={verifying}
               aria-invalid={Boolean(verifyState?.fieldErrors?.token)}
             />
-            <p className="text-muted-foreground text-center text-xs">
-              ¿No llegó? Revisa la carpeta de spam o solicita uno nuevo abajo.
-            </p>
+            <p className="text-muted-foreground text-center text-xs">{texts.codeHint}</p>
             {verifyState?.fieldErrors?.token && (
               <p className="text-destructive text-center text-sm">
                 {verifyState.fieldErrors.token[0]}
@@ -122,10 +126,10 @@ export function ConfirmarForm({ email, firstName }: { email: string; firstName?:
           >
             {verifying ? (
               <span className="inline-flex items-center gap-2">
-                <SpinnerIcon /> Confirmando...
+                <SpinnerIcon /> {texts.pending}
               </span>
             ) : (
-              "Activar mi cuenta"
+              texts.submit
             )}
           </Button>
         </CardFooter>
@@ -139,17 +143,17 @@ export function ConfirmarForm({ email, firstName }: { email: string; firstName?:
           className="text-brand-purple-dark hover:bg-brand-cream w-full text-sm"
           disabled={resending}
         >
-          {resending ? "Enviando..." : "Enviar otro código"}
+          {resending ? texts.resending : texts.resend}
         </Button>
       </form>
 
       <p className="text-muted-foreground -mt-2 px-6 pb-6 text-center text-sm">
-        ¿Email equivocado?{" "}
+        {texts.wrongEmail}{" "}
         <Link
           href="/registro"
           className="text-brand-pink-ink hover:text-brand-coral-ink font-medium underline-offset-4 hover:underline"
         >
-          Volver al registro
+          {texts.backRegister}
         </Link>
       </p>
     </Card>

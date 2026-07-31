@@ -19,9 +19,14 @@
 import type { ReactNode } from "react";
 import { BrandMark } from "@/components/brand-mark";
 import { buildWhatsAppUrl } from "@/lib/wa";
+import { getAuthTexts } from "./auth-texts.server";
 
 export default async function AuthLayout({ children }: { children: ReactNode }) {
-  const waSupportUrl = await buildWhatsAppUrl({ kind: "support" });
+  // Roadmap B7 — textos del marco de auth administrables desde /admin/contenido.
+  const [waSupportUrl, texts] = await Promise.all([
+    buildWhatsAppUrl({ kind: "support" }),
+    getAuthTexts(),
+  ]);
   return (
     <div className="from-brand-cream to-brand-purple/10 relative flex min-h-screen flex-col overflow-hidden bg-gradient-to-br via-white">
       {/* Blobs de color para profundidad — pointer-events-none */}
@@ -48,14 +53,14 @@ export default async function AuthLayout({ children }: { children: ReactNode }) 
 
       <footer className="text-muted-foreground relative z-10 px-6 py-6 text-center text-sm">
         <p>
-          ¿Necesitas ayuda?{" "}
+          {texts.layout.helpText}{" "}
           <a
             className="text-brand-pink-ink hover:text-brand-coral-ink font-medium underline-offset-4 hover:underline"
             href={waSupportUrl}
             target="_blank"
             rel="noopener noreferrer"
           >
-            Escríbenos por WhatsApp
+            {texts.layout.helpCta}
           </a>
         </p>
       </footer>

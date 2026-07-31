@@ -15,12 +15,16 @@ import { Label } from "@/components/ui/label";
 import { EmailInput } from "@/components/email-input";
 import { PasswordInput } from "@/components/password-input";
 import { loginAction, type LoginActionState } from "./actions";
+import type { AuthTexts } from "../auth-texts";
 
 export function LoginForm({
+  texts,
   initialError,
   initialSuccess,
   next,
 }: {
+  /** Textos de la pantalla (roadmap B7 — resueltos del CMS en page.tsx). */
+  texts: AuthTexts["login"];
   initialError?: string;
   initialSuccess?: string;
   next?: string;
@@ -34,11 +38,9 @@ export function LoginForm({
     <Card className="border-brand-purple/10 animate-in fade-in slide-in-from-bottom-3 shadow-xl duration-500">
       <CardHeader className="space-y-2">
         <CardTitle className="font-display text-brand-purple-dark text-2xl">
-          ¡Qué alegría verte de nuevo!
+          {texts.title}
         </CardTitle>
-        <CardDescription className="text-base">
-          Entra a tu cuenta para seguir personalizando tus productos.
-        </CardDescription>
+        <CardDescription className="text-base">{texts.subtitle}</CardDescription>
       </CardHeader>
 
       {initialSuccess && !state && (
@@ -68,12 +70,12 @@ export function LoginForm({
         {next && <input type="hidden" name="next" value={next} />}
         <CardContent className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="email">Correo electrónico</Label>
+            <Label htmlFor="email">{texts.emailLabel}</Label>
             <EmailInput
               id="email"
               name="email"
               required
-              placeholder="tu@email.com"
+              placeholder={texts.emailPlaceholder}
               disabled={pending}
               aria-invalid={Boolean(state?.fieldErrors?.email)}
               aria-describedby={state?.fieldErrors?.email ? "email-error" : undefined}
@@ -87,12 +89,12 @@ export function LoginForm({
 
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <Label htmlFor="password">Contraseña</Label>
+              <Label htmlFor="password">{texts.passwordLabel}</Label>
               <Link
                 href="/recuperar-password"
                 className="text-brand-pink-ink hover:text-brand-coral-ink text-sm font-medium underline-offset-4 hover:underline"
               >
-                ¿Olvidaste tu contraseña?
+                {texts.forgot}
               </Link>
             </div>
             <PasswordInput
@@ -126,19 +128,19 @@ export function LoginForm({
           >
             {pending ? (
               <span className="inline-flex items-center gap-2">
-                <SpinnerIcon /> Entrando...
+                <SpinnerIcon /> {texts.pending}
               </span>
             ) : (
-              "Iniciar sesión"
+              texts.submit
             )}
           </Button>
           <p className="text-muted-foreground text-center text-sm">
-            ¿Aún no tienes cuenta?{" "}
+            {texts.noAccount}{" "}
             <Link
               href="/registro"
               className="text-brand-pink-ink hover:text-brand-coral-ink font-medium underline-offset-4 hover:underline"
             >
-              Crear cuenta
+              {texts.signupCta}
             </Link>
           </p>
         </CardFooter>

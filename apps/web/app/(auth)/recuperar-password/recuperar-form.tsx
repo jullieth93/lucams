@@ -15,8 +15,9 @@ import { Label } from "@/components/ui/label";
 import { EmailInput } from "@/components/email-input";
 import { TurnstileWidget } from "@/components/turnstile-widget";
 import { recuperarPasswordAction, type RecuperarActionState } from "./actions";
+import type { AuthTexts } from "../auth-texts";
 
-export function RecuperarForm() {
+export function RecuperarForm({ texts }: { texts: AuthTexts["recuperar"] }) {
   const [state, formAction, pending] = useActionState<RecuperarActionState | null, FormData>(
     recuperarPasswordAction,
     null,
@@ -26,11 +27,9 @@ export function RecuperarForm() {
     <Card className="border-brand-purple/10 animate-in fade-in slide-in-from-bottom-3 shadow-xl duration-500">
       <CardHeader className="space-y-2">
         <CardTitle className="font-display text-brand-purple-dark text-2xl">
-          Recupera tu contraseña
+          {texts.title}
         </CardTitle>
-        <CardDescription className="text-base">
-          Escribe tu correo y te enviaremos un código para crear una contraseña nueva.
-        </CardDescription>
+        <CardDescription className="text-base">{texts.subtitle}</CardDescription>
       </CardHeader>
 
       {state?.success ? (
@@ -47,7 +46,7 @@ export function RecuperarForm() {
               href="/login"
               className="text-brand-pink-ink hover:text-brand-coral-ink font-medium underline-offset-4 hover:underline"
             >
-              Volver a iniciar sesión
+              {texts.backLogin}
             </Link>
           </p>
         </CardContent>
@@ -55,12 +54,12 @@ export function RecuperarForm() {
         <form action={formAction}>
           <CardContent className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="email">Correo electrónico</Label>
+              <Label htmlFor="email">{texts.emailLabel}</Label>
               <EmailInput
                 id="email"
                 name="email"
                 required
-                placeholder="tu@email.com"
+                placeholder={texts.emailPlaceholder}
                 disabled={pending}
                 aria-invalid={Boolean(state?.fieldErrors?.email)}
               />
@@ -88,10 +87,10 @@ export function RecuperarForm() {
             >
               {pending ? (
                 <span className="inline-flex items-center gap-2">
-                  <SpinnerIcon /> Enviando...
+                  <SpinnerIcon /> {texts.pending}
                 </span>
               ) : (
-                "Enviar código"
+                texts.submit
               )}
             </Button>
             <p className="text-muted-foreground text-center text-sm">
@@ -99,7 +98,7 @@ export function RecuperarForm() {
                 href="/login"
                 className="text-brand-pink-ink hover:text-brand-coral-ink font-medium underline-offset-4 hover:underline"
               >
-                Volver a iniciar sesión
+                {texts.backLogin}
               </Link>
             </p>
           </CardFooter>

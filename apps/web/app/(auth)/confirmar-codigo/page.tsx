@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { ConfirmarForm } from "./confirmar-form";
+import { getAuthTexts } from "../auth-texts.server";
 
 export const metadata: Metadata = {
   title: "Confirma tu cuenta",
@@ -23,5 +24,15 @@ export default async function ConfirmarCodigoPage({
     redirect("/registro");
   }
 
-  return <ConfirmarForm email={email} {...(firstName && { firstName })} />;
+  // Roadmap B7 — textos del CMS con interpolación server-side de {email}/{nombre}.
+  const texts = await getAuthTexts();
+  const confirmar = {
+    ...texts.confirmar,
+    subtitle: texts.confirmar.subtitle.replace("{email}", email),
+    titleNamed: firstName
+      ? texts.confirmar.titleNamed.replace("{nombre}", firstName)
+      : texts.confirmar.titleNamed,
+  };
+
+  return <ConfirmarForm texts={confirmar} email={email} {...(firstName && { firstName })} />;
 }
