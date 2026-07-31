@@ -38,6 +38,7 @@ import { CMS_PAGE_ICONS } from "../../page-icons";
 import { CreateFieldForm } from "./create-field-form";
 import { FieldRow, type InlineField } from "./field-row";
 import { PagePreviewPanel } from "./page-preview-panel";
+import { PageRenameForm, SectionRenameForm } from "./rename-forms";
 
 type Params = Promise<{ slug: string }>;
 type SearchParams = Promise<{ [key: string]: string | string[] | undefined }>;
@@ -104,6 +105,7 @@ export default async function EditarPaginaCmsPage({
   const justPublished = sp.published === "1";
   const justUnpublished = sp.unpublished === "1";
   const justArchived = sp.archived === "1";
+  const justRenamed = sp.renamed === "1";
   const cacheRefreshed = sp.cache === "refreshed";
   const errorMsg = typeof sp.error === "string" ? sp.error : null;
 
@@ -172,12 +174,21 @@ export default async function EditarPaginaCmsPage({
             Campo archivado. El sitio público dejará de mostrarlo (cae al texto por defecto).
           </AdminNotice>
         )}
+        {justRenamed && <AdminNotice tone="success">Nombre actualizado.</AdminNotice>}
         {cacheRefreshed && (
           <AdminNotice tone="success">
             Caché de contenido actualizado. El sitio público ya sirve la versión más reciente.
           </AdminNotice>
         )}
         {errorMsg && <AdminNotice tone="error">{errorMsg}</AdminNotice>}
+
+        {/* C4 — renombrar la página (título/descripción visibles en el admin) */}
+        <PageRenameForm
+          pageId={page.id}
+          title={page.title}
+          description={page.description}
+          redirectTo={`/admin/contenido/paginas/${page.slug}`}
+        />
 
         {/* C1: con ruta pública, el editor va a la izquierda y la vista
             previa en vivo a la derecha (apilada en pantallas < xl). */}
@@ -199,9 +210,18 @@ export default async function EditarPaginaCmsPage({
               return (
                 <section key={section.id}>
                   <div className="mb-2.5">
-                    <h2 className="text-brand-purple-dark font-display text-base font-bold">
-                      {section.title}
-                    </h2>
+                    <div className="flex items-center gap-1.5">
+                      <h2 className="text-brand-purple-dark font-display text-base font-bold">
+                        {section.title}
+                      </h2>
+                      {/* C4 — renombrar la sección (despliegue nativo, sin JS) */}
+                      <SectionRenameForm
+                        sectionId={section.id}
+                        title={section.title}
+                        description={section.description}
+                        redirectTo={`/admin/contenido/paginas/${page.slug}`}
+                      />
+                    </div>
                     {section.description && (
                       <p className="text-brand-muted text-xs">{section.description}</p>
                     )}

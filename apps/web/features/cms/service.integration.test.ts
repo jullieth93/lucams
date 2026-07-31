@@ -36,6 +36,9 @@
  *     programación vigente, rechaza pasado/publicada/fantasma), unschedule,
  *     publishScheduledCmsFields (publica vencidas, salta futuras, idempotente;
  *     round-trip con getCmsBlock).
+ *   - Utilidades admin (roadmap C4): listCmsDraftFields (bandeja «Solo
+ *     borradores»), moveCmsFieldToSection, duplicateCmsField (copia borrador
+ *     con metadata + items de lista; validación de key).
  *
  * Estrategia: integración DB pura. Requiere DATABASE_URL (corre vía
  * `dotenv -e .env.local -- vitest`); sin ella se salta (skipIf) para no romper
@@ -58,11 +61,15 @@ import {
   MAX_LIST_ITEMS,
   cmsFieldHasDraft,
   createCmsField,
+  duplicateCmsField,
   getCmsFieldById,
   getCmsFieldByKey,
   getCmsFieldItems,
+  getCmsListSchema,
   getCmsPageBySlug,
+  listCmsDraftFields,
   listCmsPages,
+  moveCmsFieldToSection,
   publishCmsFieldVersion,
   publishScheduledCmsFields,
   saveCmsFieldDraft,
@@ -900,6 +907,84 @@ describe.skipIf(!hasDb)(
 
         // Idempotente: una segunda corrida no publica nada más.
         expect(await publishScheduledCmsFields()).toEqual([]);
+      });
+    });
+
+    // ───────────────────────── Utilidades del admin (roadmap C4) ─────────────────────────
+
+    describe("utilidades admin (C4: borradores, mover, duplicar)", () => {
+      it("listCmsDraftFields: incluye borradores y cambios sin publicar, no lo al día", async () => {
+        const draft = await makeField({ body: "nunca publicado" });
+        const published = await makeField({ body: "vivo" });
+        const publishedDetail = await getCmsFieldById(published.id);
+        await publishCmsFieldVersion(published.id, publishedDetail!.versions[0]!.id, null);
+
+        let keys = (await listCmsDraftFields()).map((f) => f.key);
+        expect(keys).toContain(draft.key);
+        expect(keys).not.toContain(published.key);
+
+        // Un cambio nuevo sobre lo publicado vuelve a entrar en la lista.
+        await saveCmsFieldDraft({ id: published.id, body: "cambio sin publicar" }, null);
+        keys = (await listCmsDraftFields()).map((f) => f.key);
+        expect(keys).toContain(published.key);
+      });
+
+      it("moveCmsFieldToSection: mueve a otra sección y valida el destino", async () => {
+        const page = await prisma.cmsPage.findUniqueOrThrow({
+          where: { slug: RUN_PAGE_SLUG },
+        });
+        const other = await prisma.cmsSection.create({
+          data: { pageId: page.id, key: "otra", title: "Otra sección", sortOrder: 2 },
+        });
+        const field = await makeField();
+        const moved = await moveCmsFieldToSection(field.id, other.id, null);
+        expect(moved.sectionId).toBe(other.id);
+        // Mover a la misma sección es no-op (no lanza).
+        const same = await moveCmsFieldToSection(field.id, other.id, null);
+        expect(same.sectionId).toBe(other.id);
+        await expect(moveCmsFieldToSection(field.id, `${RUN}-ghost-sec`, null)).rejects.toThrow(
+          /no encontrada/i,
+        );
+      });
+
+      it("duplicateCmsField: copia como borrador con metadata e items; valida la key", async () => {
+        // Origen: campo LISTA con filas (cubre la copia de metadata + items).
+        const source = await makeField({
+          type: "JSON",
+          body: '[{"label":"A","href":"/a"}]',
+        });
+        await prisma.cmsField.update({
+          where: { id: source.id },
+          data: {
+            metadata: {
+              listSchema: [
+                { name: "label", type: "TEXT", label: "Texto" },
+                { name: "href", type: "URL", label: "Ruta" },
+              ],
+            },
+          },
+        });
+        await saveCmsFieldItems(source.id, [{ label: "Uno", href: "/uno" }], null);
+
+        const copyKey = fieldKey("copia");
+        const copy = await duplicateCmsField(source.id, copyKey, "editor");
+        expect(copy.isPublished).toBe(false);
+        expect(copy.label).toContain("(copia)");
+        expect(copy.type).toBe("JSON");
+
+        const copyDetail = await getCmsFieldById(copy.id);
+        // Nace en borrador: 1 versión sin publicar → el sitio NO la ve.
+        expect(copyDetail!.versions).toHaveLength(1);
+        expect(copyDetail!.versions[0]!.publishedAt).toBeNull();
+        expect(await getCmsBlock(copyKey)).toBeNull();
+        // Metadata (listSchema) e items copiados.
+        expect(getCmsListSchema(copyDetail!.metadata)).not.toBeNull();
+        const items = await getCmsFieldItems(copy.id);
+        expect(items.map((i) => i.values)).toEqual([{ label: "Uno", href: "/uno" }]);
+
+        // Validaciones de key: duplicada y malformada.
+        await expect(duplicateCmsField(source.id, source.key, null)).rejects.toThrow(/ya existe/i);
+        await expect(duplicateCmsField(source.id, "  ", null)).rejects.toThrow(/inválido/i);
       });
     });
   },

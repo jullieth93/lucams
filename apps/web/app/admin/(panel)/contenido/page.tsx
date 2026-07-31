@@ -11,7 +11,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { ExternalLink, FileText, RefreshCw, Search } from "lucide-react";
+import { ExternalLink, FileText, FileWarning, RefreshCw, Search } from "lucide-react";
 import {
   AdminBadge,
   AdminCard,
@@ -48,6 +48,14 @@ export default async function ContenidoIndexPage({ searchParams }: { searchParam
 
   const pages = await listCmsPages();
   const results = q ? await searchCmsFields(q) : null;
+  // Total de cambios sin publicar (roadmap C4 — enlace a la vista «Solo borradores»).
+  const totalPending = pages.reduce(
+    (acc, p) =>
+      acc +
+      p.sections.flatMap((s) => s.fields).filter((f) => !f.isPublished || cmsFieldHasDraft(f))
+        .length,
+    0,
+  );
 
   return (
     <AdminPage>
@@ -57,15 +65,22 @@ export default async function ContenidoIndexPage({ searchParams }: { searchParam
         subtitle="Edita el contenido de tu sitio por página: elige una tarjeta y cambia los textos sin tocar código."
         breadcrumbs={[{ label: "Admin", href: "/admin/dashboard" }, { label: "Contenido" }]}
         actions={
-          // Lucy 2026-07-23 — invalidar el caché público del CMS tras editar la DB
-          // directo con scripts (los scripts no pueden llamar updateTag).
-          <form action={refreshCmsCacheAction}>
-            <input type="hidden" name="from" value="/admin/contenido" />
-            <AdminButton type="submit" variant="secondary">
-              <RefreshCw className="h-4 w-4" />
-              Actualizar caché de contenido
+          <div className="flex flex-wrap items-center gap-2">
+            {/* C4 — bandeja de cambios sin publicar del sitio entero */}
+            <AdminButton href="/admin/contenido/borradores" variant="secondary">
+              <FileWarning className="h-4 w-4" />
+              Solo borradores{totalPending > 0 ? ` (${totalPending})` : ""}
             </AdminButton>
-          </form>
+            {/* Lucy 2026-07-23 — invalidar el caché público del CMS tras editar la DB
+                directo con scripts (los scripts no pueden llamar updateTag). */}
+            <form action={refreshCmsCacheAction}>
+              <input type="hidden" name="from" value="/admin/contenido" />
+              <AdminButton type="submit" variant="secondary">
+                <RefreshCw className="h-4 w-4" />
+                Actualizar caché de contenido
+              </AdminButton>
+            </form>
+          </div>
         }
       />
 

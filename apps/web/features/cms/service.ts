@@ -573,6 +573,137 @@ export async function updateCmsSection(input: CmsSectionUpdateInput) {
   });
 }
 
+// ─────────────────── Utilidades del admin (roadmap C4) ───────────────────
+
+/**
+ * Vista «Solo borradores»: campos con cambios sin publicar (borrador más
+ * nuevo que lo vivo) o nunca publicados, con su página/sección para enlazar
+ * al editor. El filtro fino es en JS (cmsFieldHasDraft) — la consulta trae la
+ * última versión de cada campo.
+ */
+export async function listCmsDraftFields() {
+  const fields = await prisma.cmsField.findMany({
+    where: { deletedAt: null },
+    include: {
+      versions: { orderBy: { version: "desc" }, take: 1, select: { id: true } },
+      section: {
+        select: {
+          id: true,
+          title: true,
+          page: { select: { slug: true, title: true, sortOrder: true } },
+        },
+      },
+    },
+    orderBy: { key: "asc" },
+  });
+  return fields
+    .filter((f) => !f.isPublished || cmsFieldHasDraft(f))
+    .sort(
+      (a, b) =>
+        a.section.page.sortOrder - b.section.page.sortOrder || a.key.localeCompare(b.key, "es"),
+    );
+}
+
+/** Listado ligero página → secciones para el select de «Mover a otra sección». */
+export async function listCmsPageSections() {
+  return prisma.cmsPage.findMany({
+    orderBy: [{ sortOrder: "asc" }, { title: "asc" }],
+    select: {
+      id: true,
+      slug: true,
+      title: true,
+      sections: { orderBy: { sortOrder: "asc" }, select: { id: true, title: true } },
+    },
+  });
+}
+
+/**
+ * Mueve un campo a otra sección (puede ser de otra página). No toca body ni
+ * publicación: es solo reordenamiento administrativo.
+ */
+export async function moveCmsFieldToSection(
+  fieldId: string,
+  sectionId: string,
+  updatedBy: string | null,
+) {
+  const field = await prisma.cmsField.findFirst({ where: { id: fieldId, deletedAt: null } });
+  if (!field) throw new CmsValidationError("general", "Campo no encontrado");
+  const section = await prisma.cmsSection.findUnique({ where: { id: sectionId } });
+  if (!section) throw new CmsValidationError("general", "Sección destino no encontrada");
+  if (field.sectionId === sectionId) return field;
+  return prisma.cmsField.update({
+    where: { id: fieldId },
+    data: { sectionId, ...(updatedBy ? { updatedBy } : {}) },
+  });
+}
+
+/**
+ * Duplica un campo como BORRADOR SIN PUBLICAR (la copia no sale al sitio hasta
+ * que la publiquen — duplicar nunca cambia el contenido vivo). Copia tipo,
+ * metadata (listSchema incluido) e items de lista (B4); la versión 1 de la
+ * copia es el body actual del origen.
+ */
+export async function duplicateCmsField(fieldId: string, newKey: string, createdBy: string | null) {
+  const source = await prisma.cmsField.findFirst({
+    where: { id: fieldId, deletedAt: null },
+    include: { items: true },
+  });
+  if (!source) throw new CmsValidationError("general", "Campo no encontrado");
+
+  const key = newKey.trim();
+  if (!/^[a-z][a-z0-9._-]*$/i.test(key) || key.length < 3 || key.length > 120) {
+    throw new CmsValidationError(
+      "key",
+      "Identificador inválido: 3-120 caracteres — letras, números, puntos, guiones y guiones bajos.",
+    );
+  }
+  const taken = await prisma.cmsField.findUnique({ where: { key }, select: { id: true } });
+  if (taken) {
+    throw new CmsValidationError("key", `El identificador "${key}" ya existe`);
+  }
+
+  return prisma.$transaction(async (tx) => {
+    const copy = await tx.cmsField.create({
+      data: {
+        sectionId: source.sectionId,
+        key,
+        kind: source.kind,
+        label: `${source.label} (copia)`,
+        helpText: source.helpText,
+        type: source.type,
+        category: source.category,
+        body: source.body,
+        metadata: source.metadata ?? {},
+        sortOrder: source.sortOrder + 1,
+        isPublished: false,
+        ...(createdBy ? { createdBy, updatedBy: createdBy } : {}),
+      },
+    });
+    await tx.cmsFieldVersion.create({
+      data: {
+        fieldId: copy.id,
+        version: 1,
+        title: source.label,
+        body: source.body,
+        publishedAt: null, // nace en borrador — duplicar nunca publica
+        ...(createdBy ? { createdBy } : {}),
+      },
+    });
+    if (source.items.length > 0) {
+      await tx.cmsListItem.createMany({
+        data: source.items.map((it) => ({
+          fieldId: copy.id,
+          position: it.position,
+          values: it.values as Prisma.InputJsonValue,
+        })),
+      });
+    }
+    return copy;
+  });
+}
+
+// ─────────────────── Lookups por key ───────────────────
+
 /** Busca un campo por su key natural (no id). */
 export async function getCmsFieldByKey(key: string) {
   return prisma.cmsField.findFirst({

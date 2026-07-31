@@ -8,6 +8,9 @@
  *    (metadata.listSchema) usan el editor de filas (list-editor-form).
  *  - Historial: versiones anteriores con botón "Volver a esta".
  *
+ * Utilidades (roadmap C4): «Mover a otra sección» (de esta u otra página) y
+ * «Duplicar este campo» (la copia nace borrador sin publicar).
+ *
  * Acciones de header: Publicar última versión (si hay borrador más nuevo),
  * PROGRAMAR la publicación para una fecha futura (roadmap C3 — la publica el
  * cron lucams-cms-publish-scheduled; hora de Colombia), Despublicar (SOLO
@@ -17,7 +20,18 @@
 
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
-import { ArrowLeft, CalendarClock, FileText, History, Send, EyeOff, Trash2, X } from "lucide-react";
+import {
+  ArrowLeft,
+  CalendarClock,
+  Copy,
+  FileText,
+  FolderInput,
+  History,
+  Send,
+  EyeOff,
+  Trash2,
+  X,
+} from "lucide-react";
 import {
   AdminBadge,
   AdminButton,
@@ -28,13 +42,22 @@ import {
   AdminPageHeader,
 } from "@/components/admin-page";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { ConfirmAction } from "@/components/admin/confirm-action";
 import { getCurrentAdmin } from "@/lib/auth";
-import { getCmsFieldById, getCmsFieldItems, getCmsListSchema } from "@/features/cms/service";
+import {
+  getCmsFieldById,
+  getCmsFieldItems,
+  getCmsListSchema,
+  listCmsPageSections,
+} from "@/features/cms/service";
 import { cmsMediaPublicUrl, listCmsMedia } from "@/lib/cms-media";
 import { prisma } from "@/lib/db";
 import {
   deleteCmsFieldAction,
+  duplicateCmsFieldAction,
+  moveCmsFieldAction,
   publishCmsFieldAction,
   scheduleCmsPublishAction,
   unpublishCmsFieldAction,
@@ -85,6 +108,7 @@ export default async function EditarCampoPage({
   const justUnpublished = sp.unpublished === "1";
   const justScheduled = sp.scheduled === "1";
   const justUnscheduled = sp.unscheduled === "1";
+  const justMoved = sp.moved === "1";
   const errorMsg = typeof sp.error === "string" ? sp.error : null;
 
   const field = await getCmsFieldById(id);
@@ -103,6 +127,9 @@ export default async function EditarCampoPage({
   // del body JSON (migración perezosa al abrir el editor).
   const listSchema = getCmsListSchema(field.metadata);
   const listItems = listSchema ? await getCmsFieldItems(field.id) : null;
+
+  // C4: todas las páginas → secciones para el select de «Mover a otra sección».
+  const allPageSections = await listCmsPageSections();
 
   // Campo IMAGE (roadmap B5): body = CmsMedia.id. Se resuelve el asset actual
   // y la mediateca reciente para el control (subir / reutilizar).
@@ -285,6 +312,11 @@ export default async function EditarCampoPage({
             quieras).
           </AdminNotice>
         )}
+        {justMoved && (
+          <AdminNotice tone="success">
+            Campo movido. Ya aparece en su nueva sección (el contenido del sitio no cambió).
+          </AdminNotice>
+        )}
         {errorMsg && <AdminNotice tone="error">{errorMsg}</AdminNotice>}
 
         {/* Editor: lista (campos con listSchema) o editor de body normal */}
@@ -328,6 +360,88 @@ export default async function EditarCampoPage({
             imageLibrary={imageLibrary ?? undefined}
           />
         )}
+
+        {/* C4 — Utilidades: mover a otra sección / duplicar (borrador sin publicar) */}
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+          <details className="border-brand-purple/10 group rounded-xl border bg-white shadow-sm">
+            <summary className="text-brand-purple-dark hover:bg-brand-purple/5 flex cursor-pointer items-center gap-2 rounded-xl px-5 py-3 text-sm font-semibold transition-colors">
+              <FolderInput className="text-brand-muted h-4 w-4" />
+              Mover a otra sección
+            </summary>
+            <form
+              action={moveCmsFieldAction}
+              className="border-brand-purple/10 flex flex-wrap items-end gap-2 border-t px-5 py-4"
+            >
+              <input type="hidden" name="fieldId" value={field.id} />
+              <input type="hidden" name="redirectTo" value={selfHref} />
+              <div className="min-w-52 flex-1 space-y-1.5">
+                <Label htmlFor="move-section" className="text-brand-purple-dark font-semibold">
+                  Sección destino
+                </Label>
+                <select
+                  id="move-section"
+                  name="sectionId"
+                  defaultValue={field.sectionId}
+                  className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 h-9 w-full rounded-md border bg-white px-3 py-1 text-sm shadow-sm focus:ring-2 focus:outline-none"
+                >
+                  {allPageSections.map((p) => (
+                    <optgroup key={p.id} label={p.title}>
+                      {p.sections.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {s.title}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
+                <p className="text-brand-muted text-xs">
+                  Hoy está en «{page.title} · {field.section.title}». Moverlo no cambia el contenido
+                  del sitio, solo dónde se edita.
+                </p>
+              </div>
+              <Button type="submit" className="bg-gradient-brand text-white hover:brightness-110">
+                Mover
+              </Button>
+            </form>
+          </details>
+
+          <details className="border-brand-purple/10 group rounded-xl border bg-white shadow-sm">
+            <summary className="text-brand-purple-dark hover:bg-brand-purple/5 flex cursor-pointer items-center gap-2 rounded-xl px-5 py-3 text-sm font-semibold transition-colors">
+              <Copy className="text-brand-muted h-4 w-4" />
+              Duplicar este campo
+            </summary>
+            <form
+              action={duplicateCmsFieldAction}
+              className="border-brand-purple/10 flex flex-wrap items-end gap-2 border-t px-5 py-4"
+            >
+              <input type="hidden" name="fieldId" value={field.id} />
+              <input type="hidden" name="redirectTo" value={selfHref} />
+              <div className="min-w-52 flex-1 space-y-1.5">
+                <Label htmlFor="duplicate-key" className="text-brand-purple-dark font-semibold">
+                  Identificador de la copia
+                </Label>
+                <Input
+                  id="duplicate-key"
+                  name="newKey"
+                  defaultValue={`${field.key}-copia`}
+                  required
+                  minLength={3}
+                  maxLength={120}
+                  pattern="[A-Za-z][A-Za-z0-9._\-]*"
+                  title="Letras, números, puntos, guiones y guiones bajos (empezando por letra)"
+                  className="border-brand-purple/20 focus-visible:ring-brand-purple/30 font-mono text-xs"
+                />
+                <p className="text-brand-muted text-xs">
+                  La copia nace como <b>borrador sin publicar</b> (no se ve en el sitio hasta que la
+                  publiques).
+                </p>
+              </div>
+              <Button type="submit" className="bg-gradient-brand text-white hover:brightness-110">
+                Duplicar
+              </Button>
+            </form>
+          </details>
+        </div>
 
         {/* Historial */}
         <section>

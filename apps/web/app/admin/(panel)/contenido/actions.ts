@@ -25,11 +25,16 @@ import {
   CmsFieldCreateSchema,
   CmsFieldItemsSaveSchema,
   CmsFieldSaveSchema,
+  CmsPageUpdateSchema,
+  CmsSectionUpdateSchema,
 } from "@/features/cms/schemas";
 import {
   CmsValidationError,
   createCmsField,
+  duplicateCmsField,
   getCmsFieldById,
+  listCmsDraftFields,
+  moveCmsFieldToSection,
   publishCmsFieldVersion,
   saveCmsFieldDraft,
   saveCmsFieldItems,
@@ -37,6 +42,8 @@ import {
   softDeleteCmsField,
   unpublishCmsField,
   unscheduleCmsFieldPublish,
+  updateCmsPage,
+  updateCmsSection,
 } from "@/features/cms/service";
 import { StorageError } from "@/lib/storage";
 import { deleteCmsMedia, updateCmsMediaAlt, uploadCmsMedia } from "@/lib/cms-media";
@@ -421,6 +428,191 @@ export async function unscheduleCmsPublishAction(formData: FormData): Promise<vo
       });
     }
     redirect(`${back}?error=${encodeURIComponent(msg)}`);
+  }
+}
+
+// ─────────────────── Utilidades de estructura (roadmap C4) ───────────────────
+
+export async function updateCmsPageAction(formData: FormData): Promise<void> {
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.CONTENT });
+
+  const parsed = CmsPageUpdateSchema.safeParse({
+    id: String(formData.get("id") ?? ""),
+    title: String(formData.get("title") ?? "").trim(),
+    description: String(formData.get("description") ?? "").trim() || null,
+  });
+  const back = safeBackPath(formData.get("redirectTo"), "/admin/contenido");
+  if (!parsed.success) {
+    redirect(`${back}?error=${encodeURIComponent("Revisa el nombre de la página.")}`);
+  }
+
+  try {
+    await updateCmsPage(parsed.data);
+    await recordAdminAction({
+      actorId: session.admin.id,
+      action: "cms.page.update",
+      entityType: "CmsPage",
+      entityId: parsed.data.id,
+      metadata: { title: parsed.data.title },
+    });
+    revalidatePath("/admin/contenido");
+    revalidatePath(back);
+    redirect(`${back}?renamed=1`);
+  } catch (err) {
+    if (err instanceof Error && err.message === "NEXT_REDIRECT") throw err;
+    logger.error({
+      event: "admin.cms.page.update_fail",
+      adminId: session.admin.id,
+      err: err instanceof Error ? err.message : String(err),
+    });
+    redirect(`${back}?error=${encodeURIComponent("No pudimos renombrar la página.")}`);
+  }
+}
+
+export async function updateCmsSectionAction(formData: FormData): Promise<void> {
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.CONTENT });
+
+  const parsed = CmsSectionUpdateSchema.safeParse({
+    id: String(formData.get("id") ?? ""),
+    title: String(formData.get("title") ?? "").trim(),
+    description: String(formData.get("description") ?? "").trim() || null,
+  });
+  const back = safeBackPath(formData.get("redirectTo"), "/admin/contenido");
+  if (!parsed.success) {
+    redirect(`${back}?error=${encodeURIComponent("Revisa el nombre de la sección.")}`);
+  }
+
+  try {
+    await updateCmsSection(parsed.data);
+    await recordAdminAction({
+      actorId: session.admin.id,
+      action: "cms.section.update",
+      entityType: "CmsSection",
+      entityId: parsed.data.id,
+      metadata: { title: parsed.data.title },
+    });
+    revalidatePath("/admin/contenido");
+    revalidatePath(back);
+    redirect(`${back}?renamed=1`);
+  } catch (err) {
+    if (err instanceof Error && err.message === "NEXT_REDIRECT") throw err;
+    logger.error({
+      event: "admin.cms.section.update_fail",
+      adminId: session.admin.id,
+      err: err instanceof Error ? err.message : String(err),
+    });
+    redirect(`${back}?error=${encodeURIComponent("No pudimos renombrar la sección.")}`);
+  }
+}
+
+/** Mueve un campo a otra sección (de esta u otra página). */
+export async function moveCmsFieldAction(formData: FormData): Promise<void> {
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.CONTENT });
+
+  const fieldId = String(formData.get("fieldId") ?? "");
+  const sectionId = String(formData.get("sectionId") ?? "");
+  if (!fieldId || !sectionId) redirect("/admin/contenido");
+  const back = safeBackPath(formData.get("redirectTo"), `/admin/contenido/campos/${fieldId}`);
+
+  try {
+    await moveCmsFieldToSection(fieldId, sectionId, session.admin.id);
+    await recordAdminAction({
+      actorId: session.admin.id,
+      action: "cms.field.move",
+      entityType: "CmsField",
+      entityId: fieldId,
+      metadata: { sectionId },
+    });
+    // El contenido público NO cambia (es reordenamiento admin) → no updateTag.
+    revalidatePath("/admin/contenido");
+    const field = await getCmsFieldById(fieldId);
+    if (field) revalidatePath(`/admin/contenido/paginas/${field.section.page.slug}`);
+    redirect(`${back}?moved=1`);
+  } catch (err) {
+    if (err instanceof Error && err.message === "NEXT_REDIRECT") throw err;
+    const msg = err instanceof CmsValidationError ? err.message : "No pudimos mover el campo.";
+    if (!(err instanceof CmsValidationError)) {
+      logger.error({
+        event: "admin.cms.field.move_fail",
+        adminId: session.admin.id,
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
+    redirect(`${back}?error=${encodeURIComponent(msg)}`);
+  }
+}
+
+/** Duplica un campo como borrador sin publicar y lleva a su editor. */
+export async function duplicateCmsFieldAction(formData: FormData): Promise<void> {
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.CONTENT });
+
+  const fieldId = String(formData.get("fieldId") ?? "");
+  const newKey = String(formData.get("newKey") ?? "");
+  if (!fieldId) redirect("/admin/contenido");
+  const back = safeBackPath(formData.get("redirectTo"), `/admin/contenido/campos/${fieldId}`);
+
+  try {
+    const copy = await duplicateCmsField(fieldId, newKey, session.admin.id);
+    await recordAdminAction({
+      actorId: session.admin.id,
+      action: "cms.field.duplicate",
+      entityType: "CmsField",
+      entityId: copy.id,
+      metadata: { sourceFieldId: fieldId, key: copy.key },
+    });
+    revalidatePath("/admin/contenido");
+    redirect(`/admin/contenido/campos/${copy.id}?created=1`);
+  } catch (err) {
+    if (err instanceof Error && err.message === "NEXT_REDIRECT") throw err;
+    const msg = err instanceof CmsValidationError ? err.message : "No pudimos duplicar el campo.";
+    if (!(err instanceof CmsValidationError)) {
+      logger.error({
+        event: "admin.cms.field.duplicate_fail",
+        adminId: session.admin.id,
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
+    redirect(`${back}?error=${encodeURIComponent(msg)}`);
+  }
+}
+
+/** Publica en lote TODOS los borradores del sitio (vista «Solo borradores»). */
+export async function publishAllCmsDraftsAction(formData: FormData): Promise<void> {
+  const session = await requireAdminAction({ roles: ADMIN_ROLE_SETS.CONTENT });
+  const back = safeBackPath(formData.get("redirectTo"), "/admin/contenido/borradores");
+
+  try {
+    const drafts = await listCmsDraftFields();
+    let published = 0;
+    for (const field of drafts) {
+      const latest = field.versions[0];
+      if (!latest) continue;
+      await publishCmsFieldVersion(field.id, latest.id, session.admin.id);
+      published += 1;
+    }
+    if (published > 0) {
+      await recordAdminAction({
+        actorId: session.admin.id,
+        action: "cms.field.publish_all",
+        entityType: "CmsField",
+        entityId: "batch",
+        metadata: { count: published },
+      });
+      updateTag("cms");
+    }
+    revalidatePath("/admin/contenido");
+    revalidatePath("/admin/contenido/borradores");
+    redirect(`${back}?published=${published}`);
+  } catch (err) {
+    if (err instanceof Error && err.message === "NEXT_REDIRECT") throw err;
+    logger.error({
+      event: "admin.cms.field.publish_all_fail",
+      adminId: session.admin.id,
+      err: err instanceof Error ? err.message : String(err),
+    });
+    redirect(
+      `${back}?error=${encodeURIComponent("No pudimos publicar en lote. Intenta de nuevo.")}`,
+    );
   }
 }
 

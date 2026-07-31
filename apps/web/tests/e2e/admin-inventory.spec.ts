@@ -50,6 +50,7 @@ const ROUTES = [
   "/admin/finanzas/conciliacion",
   "/admin/finanzas/bloqueos",
   "/admin/contenido",
+  "/admin/contenido/borradores",
   "/admin/contenido/mediateca",
   "/admin/metricas",
   "/admin/observability",
