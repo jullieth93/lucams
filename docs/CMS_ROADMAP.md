@@ -18,7 +18,8 @@
 - ✅ **D1** auditoría de cobertura de contenido — commit `4a6d242`
 - ✅ **D3** documentación estructural — commit `c7ca6d5`
 - ✅ **E1** auditoría móvil del admin — commit `39f7e77`
-- ⏳ E2, E3 — pendientes · ⏸️ A1/A2/A3, D4 — bloqueadas (requieren producción/cuenta Supabase externa)
+- ✅ **E2** fixes móviles admin — commit `82b0248`
+- ⏳ E3 — pendiente · ⏸️ A1/A2/A3, D4 — bloqueadas (requieren producción/cuenta Supabase externa)
 
 **Base sobre la que se parte (ya en producción, commit `bd1e427`):**
 
@@ -233,6 +234,8 @@ Tablas legacy (CmsBlock/CmsBlockVersion/SiteSetting): DROP en A2
 - Formularios de contenido: campos y acciones apilados, botones de ancho completo, teclado correcto por tipo (email/url/tel ya da el tipo de input — verificar).
 - Editor de campo/lista usable en móvil (preview apilado debajo del editor).
 - Esfuerzo **L**.
+
+> **✅ RESULTADO — certificado 2026-07-31, commit `82b0248`.** Fixes de los hallazgos P0-P3 de E1, verificados **re-corriendo la misma spec de auditoría** (antes/después en `tmp/screenshots/e1-antes/` vs `tmp/screenshots/e1/`): **(P0+P2) Shell** — la causa raíz era UNA clase: el contenedor raíz de `admin-shell.tsx` era `flex` (fila) siempre, así que la topbar móvil renderizaba como columna comiéndose ~60% del ancho; ahora `flex-col lg:flex-row` y la topbar queda **barra superior fija** con logo, **sección actual** (`labelForPath` — antes no había contexto en móvil) y hamburguesa (el drawer ya existía). Ancho útil: ~147px → 375px en todo el admin; el editor de página pasa de 11.941px a 7.035px de alto. **(P1) Tablas** — `AdminTable` ya tenía scroll horizontal (`overflow-x-auto` + `minWidth`) pero nada lo indicaba: ahora degradado de borde derecho + pista «Desliza para ver más columnas →`, solo `< sm`. Con eso pedidos/cotizaciones/productos/borradores son usables en móvil (Publicar individual de borradores accesible con el scroll). **(P3)** la edición inline, filtros y formularios de contenido quedaron usables sin cambios extra al recuperar el ancho (verificado visual: input + Guardar completos). **Pendiente deliberado documentado:** tablas como tarjetas apiladas (salto de comodidad, M por pantalla) — el scroll con pista es el piso usable. Esfuerzo real **S** (una clase de layout + affordance de tabla): la auditoría E1 pagó exactamente lo prometido. **Evidencia:** re-auditoría Playwright 9/9 pantallas ✅ con verificación visual de las 4 críticas (dashboard, índice, editor, pedidos) · `tsc`✓ ·`eslint`✓ ·`prettier`✓ ·`next build` ✓.
 
 ### E3 — Auditoría + fixes móviles storefront (capa cliente)
 
