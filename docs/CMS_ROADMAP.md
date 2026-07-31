@@ -17,7 +17,8 @@
 - ✅ **C4** utilidades del admin de contenido — commit `6c04bde`
 - ✅ **D1** auditoría de cobertura de contenido — commit `4a6d242`
 - ✅ **D3** documentación estructural — commit `c7ca6d5`
-- ⏳ Ninguna libre · ⏸️ A1/A2/A3, D4 — bloqueadas (requieren producción/cuenta Supabase externa)
+- ✅ **E1** auditoría móvil del admin — commit `39f7e77`
+- ⏳ E2, E3 — pendientes · ⏸️ A1/A2/A3, D4 — bloqueadas (requieren producción/cuenta Supabase externa)
 
 **Base sobre la que se parte (ya en producción, commit `bd1e427`):**
 
@@ -222,6 +223,8 @@ Tablas legacy (CmsBlock/CmsBlockVersion/SiteSetting): DROP en A2
 - Recorrido con viewport móvil (375px) por las pantallas admin críticas: contenido (índice, editor de página, editor de campo, editor de lista), pedidos, cotizaciones, productos, dashboard.
 - Inventario de problemas: tablas con scroll horizontal, formularios que no apilan, botones/toolbars que desbordan, modales que no caben, sidebar que tapa contenido.
 - Esfuerzo **S** (auditoría con screenshots por pantalla).
+
+> **✅ RESULTADO — certificado 2026-07-31, commit `39f7e77`.** Tour automatizado con Playwright (`tests/e2e/mobile-admin-audit.spec.ts`, queda como herramienta de regresión visual para E2): viewport 375×812, admin temporal creado/borrado por la propia spec, screenshot full-page + medición objetiva por pantalla (9 pantallas: dashboard, índice contenido, editor de página, editor de lista, mediateca, borradores, pedidos, cotizaciones, productos). **Hallazgo dominante (P0):** el shell móvil está roto — la topbar móvil es hija de un contenedor `flex` en fila (`admin-shell.tsx`) y renderiza como **columna vertical que se come ~60% del ancho**, dejando ~147px útiles de 375px en TODAS las pantallas (el drawer hamburguesa ya existe; solo está roto el layout que lo contiene — la topbar debería ser barra superior fija). **P1:** las tablas (pedidos, productos, cotizaciones) muestran solo la primera columna cortada sin indicación; en borradores el botón Publicar individual queda cortado (solo se puede «Publicar todo»). **P2:** sin breadcrumb/contexto en móvil (el topbar desktop se oculta sin reemplazo). **P3/P4/P5 (buenas noticias):** los editores de contenido (índice, página, lista, mediateca), el dashboard y los filtros **ya apilan correctamente** — con el shell arreglado quedan usables; la vista previa C1 apila debajo como se diseñó. Inventario completo con evidencia por screenshot en `docs/audits/2026-07-31-e1-mobile-admin-audit.md` (+ `tmp/screenshots/e1/`). Orden propuesto para E2: shell (P0+P2) → tablas→tarjetas (P1) → barrido fino re-corriendo la spec.
 
 ### E2 — Fixes móviles admin
 
