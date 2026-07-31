@@ -6,9 +6,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import ReactMarkdown from "react-markdown";
+import rehypeSanitize from "rehype-sanitize";
+import remarkGfm from "remark-gfm";
 import { ChevronLeft, TriangleAlert } from "lucide-react";
 import { getCurrentCustomer } from "@/lib/auth";
 import { DeleteAccountForm } from "./delete-account-form";
+import { getAccountTexts } from "../account-texts.server";
 
 export const metadata: Metadata = {
   title: "Eliminar cuenta",
@@ -21,6 +25,8 @@ export default async function EliminarCuentaPage() {
   const session = await getCurrentCustomer();
   if (!session) redirect("/login?next=/mi-cuenta/seguridad");
 
+  const texts = await getAccountTexts();
+
   return (
     <div className="mx-auto max-w-xl">
       <Link
@@ -28,43 +34,51 @@ export default async function EliminarCuentaPage() {
         className="text-brand-muted hover:text-brand-purple mb-3 inline-flex items-center gap-1 text-xs"
       >
         <ChevronLeft className="h-3 w-3" />
-        Seguridad
+        {texts.security.title}
       </Link>
       <header className="mb-6">
         <h1 className="font-display flex items-center gap-2 text-3xl text-rose-800">
           <TriangleAlert className="h-7 w-7" />
-          Eliminar mi cuenta
+          {texts.delete.title}
         </h1>
-        <p className="text-brand-muted mt-2 text-sm">
-          Esta acción es <strong>permanente</strong> y no se puede deshacer.
-        </p>
+        <div className="text-brand-muted [&_strong]:text-brand-purple-dark mt-2 text-sm">
+          <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
+            {texts.delete.warn}
+          </ReactMarkdown>
+        </div>
       </header>
 
       <div className="border-brand-purple/15 mb-6 rounded-2xl border bg-white p-5 text-sm shadow-sm sm:p-6">
-        <p className="text-brand-purple-dark font-semibold">Qué pasa cuando eliminas tu cuenta:</p>
-        <ul className="text-brand-muted mt-2 space-y-1.5">
-          <li>· Borramos tu nombre, teléfono, documento y direcciones guardadas.</li>
+        <p className="text-brand-purple-dark font-semibold">{texts.delete.listTitle}</p>
+        <ul className="text-brand-muted [&_strong]:text-brand-purple-dark mt-2 space-y-1.5">
+          <li>{texts.delete.item1}</li>
           <li>
-            · Borramos las <strong>fotos que subiste</strong> al Estudio de personalización.
+            <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
+              {texts.delete.item2}
+            </ReactMarkdown>
           </li>
-          <li>· No podrás volver a iniciar sesión con este correo.</li>
-          <li>· Tus reseñas se conservan, pero sin tu nombre.</li>
+          <li>{texts.delete.item3}</li>
+          <li>{texts.delete.item4}</li>
           <li>
-            · Por ley (facturación DIAN) debemos <strong>conservar tus pedidos</strong>. Los datos
-            de envío se anonimizan una vez el pedido finaliza.
+            <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
+              {texts.delete.item5}
+            </ReactMarkdown>
           </li>
         </ul>
         <p className="text-brand-muted mt-3 text-xs">
-          ¿Prefieres que lo hagamos por ti o tienes dudas? Escríbenos a{" "}
-          <a href="mailto:habeas-data@lucamsshop.com" className="text-brand-pink-ink font-medium">
-            habeas-data@lucamsshop.com
+          {texts.delete.contact}{" "}
+          <a
+            href={`mailto:${texts.delete.contactEmail}`}
+            className="text-brand-pink-ink font-medium"
+          >
+            {texts.delete.contactEmail}
           </a>
           .
         </p>
       </div>
 
       <div className="rounded-2xl border border-rose-200 bg-rose-50/50 p-5 shadow-sm sm:p-6">
-        <DeleteAccountForm />
+        <DeleteAccountForm texts={texts.delete} />
       </div>
     </div>
   );

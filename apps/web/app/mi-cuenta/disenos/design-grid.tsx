@@ -5,6 +5,7 @@ import { Share2, Archive, ExternalLink, MessageCircle, Loader2 } from "lucide-re
 import { toast } from "sonner";
 import { buildPublicShareUrl } from "@/lib/public-url";
 import { shareDesignAction, archiveDesignAction, revokeShareAction } from "./actions";
+import type { AccountTexts } from "../account-texts";
 
 export type DesignCardData = {
   id: string;
@@ -16,17 +17,23 @@ export type DesignCardData = {
   used: boolean;
 };
 
-export function DesignGrid({ designs }: { designs: DesignCardData[] }) {
+export function DesignGrid({
+  designs,
+  texts,
+}: {
+  designs: DesignCardData[];
+  texts: AccountTexts["designs"];
+}) {
   return (
     <ul className="grid grid-cols-2 gap-4 sm:grid-cols-3">
       {designs.map((d) => (
-        <DesignCard key={d.id} design={d} />
+        <DesignCard key={d.id} design={d} texts={texts} />
       ))}
     </ul>
   );
 }
 
-function DesignCard({ design }: { design: DesignCardData }) {
+function DesignCard({ design, texts }: { design: DesignCardData; texts: AccountTexts["designs"] }) {
   const [pending, startTransition] = useTransition();
   const [token, setToken] = useState<string | null>(design.shareToken);
   const [archived, setArchived] = useState(false);
@@ -127,7 +134,7 @@ function DesignCard({ design }: { design: DesignCardData }) {
           </p>
           {design.used && (
             <span className="flex-shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-800">
-              Ya pedido
+              {texts.used}
             </span>
           )}
         </div>
@@ -144,13 +151,13 @@ function DesignCard({ design }: { design: DesignCardData }) {
             ) : (
               <Share2 className="h-3.5 w-3.5" />
             )}
-            Compartir
+            {texts.share}
           </button>
           <button
             type="button"
             onClick={handleWhatsApp}
             disabled={pending}
-            aria-label="Compartir por WhatsApp"
+            aria-label={texts.shareWa}
             className="inline-flex items-center gap-1 rounded-full bg-emerald-500 px-2.5 py-1.5 text-xs font-semibold text-white hover:bg-emerald-600 disabled:opacity-60"
           >
             <MessageCircle className="h-3.5 w-3.5" />
@@ -163,7 +170,7 @@ function DesignCard({ design }: { design: DesignCardData }) {
                 rel="noopener"
                 className="text-brand-purple-dark hover:bg-brand-purple/8 border-brand-purple/20 inline-flex items-center gap-1 rounded-full border px-2.5 py-1.5 text-xs font-semibold"
               >
-                <ExternalLink className="h-3.5 w-3.5" /> Ver
+                <ExternalLink className="h-3.5 w-3.5" /> {texts.view}
               </a>
               {/* #17 — dejar de compartir sin archivar: revoca el link /d/<token> y conserva el diseño. */}
               <button
@@ -172,35 +179,35 @@ function DesignCard({ design }: { design: DesignCardData }) {
                 disabled={pending}
                 className="text-brand-muted hover:text-brand-purple-dark inline-flex items-center gap-1 rounded-full px-2 py-1.5 text-xs font-medium disabled:opacity-60"
               >
-                Dejar de compartir
+                {texts.revoke}
               </button>
             </>
           )}
 
           {confirmArchive ? (
             <span className="ml-auto inline-flex items-center gap-1.5 text-xs">
-              <span className="text-brand-muted">¿Archivar?</span>
+              <span className="text-brand-muted">{texts.archiveConfirm}</span>
               <button
                 type="button"
                 onClick={handleArchive}
                 disabled={pending}
                 className="font-semibold text-rose-600 hover:text-rose-700 disabled:opacity-60"
               >
-                Sí
+                {texts.yes}
               </button>
               <button
                 type="button"
                 onClick={() => setConfirmArchive(false)}
                 className="text-brand-muted"
               >
-                No
+                {texts.no}
               </button>
             </span>
           ) : (
             <button
               type="button"
               onClick={() => setConfirmArchive(true)}
-              aria-label="Archivar diseño"
+              aria-label={texts.archiveAria}
               className="text-brand-muted ml-auto inline-flex items-center rounded-full p-1.5 hover:text-rose-600"
             >
               <Archive className="h-3.5 w-3.5" />

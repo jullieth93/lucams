@@ -15,6 +15,7 @@ import { prisma } from "@/lib/db";
 import { getCurrentCustomer } from "@/lib/auth";
 import { formatCOP } from "@/lib/format";
 import { orderStatusBadgeClass, orderStatusLabel } from "@/features/orders/order-status-display";
+import { getAccountTexts } from "../account-texts.server";
 
 export const metadata: Metadata = {
   title: "Mis pedidos",
@@ -27,6 +28,7 @@ export default async function MisPedidosPage() {
   const session = await getCurrentCustomer();
   if (!session) redirect("/login?next=/mi-cuenta/pedidos");
 
+  const texts = await getAccountTexts();
   const PAGE_LIMIT = 50;
   const where = { customerId: session.customer.id, deletedAt: null };
   const total = await prisma.order.count({ where });
@@ -60,8 +62,12 @@ export default async function MisPedidosPage() {
         </h1>
         {total > 0 && (
           <p className="text-brand-muted mt-1 text-sm">
-            {total} {total === 1 ? "pedido" : "pedidos"} en tu historial
-            {total > PAGE_LIMIT && ` · mostrando los ${PAGE_LIMIT} más recientes`}
+            {(total === 1 ? texts.orders.countSingle : texts.orders.countMany).replace(
+              "{n}",
+              String(total),
+            )}
+            {total > PAGE_LIMIT &&
+              ` · ${texts.orders.limitNote.replace("{n}", String(PAGE_LIMIT))}`}
           </p>
         )}
       </header>
@@ -83,7 +89,7 @@ export default async function MisPedidosPage() {
             className="bg-brand-purple hover:bg-brand-purple-dark mt-5 inline-flex items-center gap-2 rounded-full px-5 py-2.5 text-sm font-semibold text-white shadow-sm"
           >
             <ShoppingBag className="h-4 w-4" />
-            Ver catálogo
+            {texts.orders.catalogCta}
           </Link>
         </div>
       ) : (
@@ -111,11 +117,12 @@ export default async function MisPedidosPage() {
                     </div>
                     <div className="text-brand-muted mt-0.5 text-xs">
                       {dateFmt.format(o.createdAt)} · {o._count.items}{" "}
-                      {o._count.items === 1 ? "producto" : "productos"}
+                      {o._count.items === 1 ? texts.orders.itemSingle : texts.orders.itemMany}
                       {o.trackingNumber && (
                         <>
                           {" "}
-                          · guía <span className="font-mono">{o.trackingNumber}</span>
+                          · {texts.orders.guide}{" "}
+                          <span className="font-mono">{o.trackingNumber}</span>
                         </>
                       )}
                     </div>

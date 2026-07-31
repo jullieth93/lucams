@@ -932,6 +932,31 @@ describe.skipIf(!hasDb)(
       });
     });
 
+    // ───────────────────────── Copy del área de cliente (roadmap B9) ─────────────────────────
+
+    describe("getAccountTexts (B9: copy de /mi-cuenta al CMS)", () => {
+      it("resuelve los campos account.* migrados con la estructura completa (valores sembrados = defaults)", async () => {
+        // Mismo patrón B7: UNA query por prefijo account.* sobre defaults exactos.
+        const { getAccountTexts } = await import("@/app/mi-cuenta/account-texts.server");
+        const texts = await getAccountTexts();
+        expect(texts.nav.logout).toBe("Cerrar sesión");
+        expect(texts.back.miCuenta).toBe("Mi cuenta");
+        expect(texts.perfil.subtitle).toContain("{email}");
+        expect(texts.orders.countMany).toBe("{n} pedidos en tu historial");
+        expect(texts.order.codBanner).toContain("{total}");
+        expect(texts.retract.policyNote).toContain(
+          "[política de devoluciones](/legal/devoluciones)",
+        );
+        expect(texts.address.legacyTitle).toBe("Actualiza esta dirección al nuevo formato");
+        expect(texts.designs.emptyCta).toBe("Explorar productos");
+        expect(texts.favorites.title).toBe("Mis favoritos");
+        expect(texts.reviews.pending).toBe("En revisión");
+        expect(texts.security.dangerCta).toBe("Continuar a eliminar cuenta");
+        expect(texts.delete.warn).toContain("**permanente**");
+        expect(texts.delete.confirmWord).toBe("ELIMINAR");
+      });
+    });
+
     // ───────────────────────── Utilidades del admin (roadmap C4) ─────────────────────────
 
     describe("utilidades admin (C4: borradores, mover, duplicar)", () => {

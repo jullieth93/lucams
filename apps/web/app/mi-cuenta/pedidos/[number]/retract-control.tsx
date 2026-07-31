@@ -9,8 +9,12 @@
  */
 
 import { useActionState } from "react";
+import ReactMarkdown from "react-markdown";
+import rehypeSanitize from "rehype-sanitize";
+import remarkGfm from "remark-gfm";
 import { Undo2, Loader2 } from "lucide-react";
 import { requestRetractAction } from "./actions";
+import type { AccountTexts } from "../../account-texts";
 
 type RetractItem = {
   orderItemId: string;
@@ -27,7 +31,13 @@ const STATUS_LABEL: Record<string, string> = {
   REJECTED: "❌ Retracto rechazado",
 };
 
-export function RetractControl({ item }: { item: RetractItem }) {
+export function RetractControl({
+  item,
+  texts,
+}: {
+  item: RetractItem;
+  texts: AccountTexts["retract"];
+}) {
   const [state, action, pending] = useActionState(requestRetractAction, null);
 
   if (item.existingStatus) {
@@ -44,11 +54,7 @@ export function RetractControl({ item }: { item: RetractItem }) {
 
   if (!item.eligible) {
     if (item.reason === "PERSONALIZED") {
-      return (
-        <p className="text-brand-muted mt-1 text-[11px]">
-          Personalizado — sin derecho de retracto (ley).
-        </p>
-      );
+      return <p className="text-brand-muted mt-1 text-[11px]">{texts.personalized}</p>;
     }
     return null; // fuera de ventana / no entregado → sin ruido
   }
@@ -57,7 +63,7 @@ export function RetractControl({ item }: { item: RetractItem }) {
     <details className="mt-1.5">
       <summary className="text-brand-muted hover:text-brand-purple inline-flex cursor-pointer list-none items-center gap-1 text-[11px] font-medium">
         <Undo2 className="h-3 w-3" />
-        Solicitar retracto
+        {texts.cta}
       </summary>
       <form action={action} className="mt-2 space-y-2">
         <input type="hidden" name="orderItemId" value={item.orderItemId} />
@@ -65,31 +71,28 @@ export function RetractControl({ item }: { item: RetractItem }) {
           htmlFor={`retract-reason-${item.orderItemId}`}
           className="text-brand-muted block text-[11px]"
         >
-          ¿Por qué lo devuelves? (opcional)
+          {texts.reasonLabel}
         </label>
         <textarea
           id={`retract-reason-${item.orderItemId}`}
           name="reason"
           rows={2}
           maxLength={300}
-          placeholder="Ej. no era lo que esperaba"
+          placeholder={texts.reasonPlaceholder}
           className="border-brand-purple/20 focus:ring-brand-purple/30 w-full rounded-md border px-2 py-1.5 text-xs focus:ring-2 focus:outline-none"
         />
-        <p className="text-brand-muted text-[10px]">
-          Tienes 5 días hábiles desde la entrega. Coordinamos la devolución contigo; el costo del
-          envío corre por tu cuenta, salvo que el producto llegara defectuoso o equivocado. Ver{" "}
-          <a href="/legal/devoluciones" className="underline">
-            política de devoluciones
-          </a>
-          .
-        </p>
+        <div className="text-brand-muted text-[10px] [&_a]:underline">
+          <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
+            {texts.policyNote}
+          </ReactMarkdown>
+        </div>
         {state?.error && <p className="text-[11px] text-red-700">{state.error}</p>}
         <button
           type="submit"
           disabled={pending}
           className="bg-brand-purple-dark hover:bg-brand-purple inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold text-white transition-colors disabled:opacity-60"
         >
-          {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Enviar solicitud"}
+          {pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : texts.submit}
         </button>
       </form>
     </details>

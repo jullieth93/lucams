@@ -18,6 +18,7 @@ import {
   setDefaultAddressAction,
   type AddressActionState,
 } from "./actions";
+import type { AccountTexts } from "../account-texts";
 
 export type AddressView = {
   id: string;
@@ -30,7 +31,13 @@ export type AddressView = {
   structured: Record<string, unknown> | null;
 };
 
-export function AddressManager({ addresses }: { addresses: AddressView[] }) {
+export function AddressManager({
+  addresses,
+  texts,
+}: {
+  addresses: AddressView[];
+  texts: AccountTexts["address"];
+}) {
   // null = form cerrado; "new" = agregar; AddressView = editar esa dirección.
   const [editing, setEditing] = useState<AddressView | "new" | null>(null);
 
@@ -39,12 +46,8 @@ export function AddressManager({ addresses }: { addresses: AddressView[] }) {
       {addresses.length === 0 && !editing && (
         <div className="border-brand-purple/15 rounded-2xl border border-dashed bg-white p-8 text-center">
           <MapPin className="text-brand-purple/60 mx-auto h-8 w-8" />
-          <p className="text-brand-purple-dark mt-3 font-semibold">
-            Aún no tienes direcciones guardadas
-          </p>
-          <p className="text-brand-muted mt-1 text-sm">
-            Guarda una para que tu próximo checkout sea más rápido.
-          </p>
+          <p className="text-brand-purple-dark mt-3 font-semibold">{texts.emptyTitle}</p>
+          <p className="text-brand-muted mt-1 text-sm">{texts.emptySub}</p>
         </div>
       )}
 
@@ -54,6 +57,7 @@ export function AddressManager({ addresses }: { addresses: AddressView[] }) {
             <AddressCard
               key={a.id}
               address={a}
+              texts={texts}
               onEdit={() => setEditing(a)}
               editingThis={editing !== null && editing !== "new" && editing.id === a.id}
             />
@@ -65,6 +69,7 @@ export function AddressManager({ addresses }: { addresses: AddressView[] }) {
         <AddressForm
           key={editing === "new" ? "new" : editing.id}
           address={editing === "new" ? null : editing}
+          texts={texts}
           onDone={() => setEditing(null)}
         />
       ) : (
@@ -74,7 +79,7 @@ export function AddressManager({ addresses }: { addresses: AddressView[] }) {
           onClick={() => setEditing("new")}
           className="border-brand-purple/30 text-brand-purple-dark hover:bg-brand-purple/5 w-full border-dashed"
         >
-          <Plus className="h-4 w-4" /> Agregar dirección
+          <Plus className="h-4 w-4" /> {texts.add}
         </Button>
       )}
     </div>
@@ -83,10 +88,12 @@ export function AddressManager({ addresses }: { addresses: AddressView[] }) {
 
 function AddressCard({
   address,
+  texts,
   onEdit,
   editingThis,
 }: {
   address: AddressView;
+  texts: AccountTexts["address"];
   onEdit: () => void;
   editingThis: boolean;
 }) {
@@ -113,7 +120,7 @@ function AddressCard({
             <span className="text-brand-purple-dark font-semibold">{address.name}</span>
             {address.isDefault && (
               <span className="bg-brand-purple/15 text-brand-purple-dark inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold">
-                <Star className="h-3 w-3" /> Predeterminada
+                <Star className="h-3 w-3" /> {texts.defaultBadge}
               </span>
             )}
           </div>
@@ -132,7 +139,7 @@ function AddressCard({
             onClick={() => run(() => setDefaultAddressAction(address.id))}
             className="text-brand-muted hover:text-brand-purple-dark inline-flex items-center gap-1 text-xs font-medium disabled:opacity-50"
           >
-            <Check className="h-3.5 w-3.5" /> Hacer predeterminada
+            <Check className="h-3.5 w-3.5" /> {texts.makeDefault}
           </button>
         )}
         <button
@@ -140,25 +147,25 @@ function AddressCard({
           onClick={onEdit}
           className="text-brand-muted hover:text-brand-purple-dark ml-auto inline-flex items-center gap-1 text-xs font-medium"
         >
-          <Pencil className="h-3.5 w-3.5" /> Editar
+          <Pencil className="h-3.5 w-3.5" /> {texts.edit}
         </button>
         {confirmDelete ? (
           <span className="inline-flex items-center gap-2 text-xs">
-            <span className="text-brand-muted">¿Seguro?</span>
+            <span className="text-brand-muted">{texts.confirm}</span>
             <button
               type="button"
               disabled={pending}
               onClick={() => run(() => deleteAddressAction(address.id))}
               className="font-semibold text-rose-600 hover:text-rose-700 disabled:opacity-50"
             >
-              Sí, eliminar
+              {texts.confirmYes}
             </button>
             <button
               type="button"
               onClick={() => setConfirmDelete(false)}
               className="text-brand-muted"
             >
-              No
+              {texts.confirmNo}
             </button>
           </span>
         ) : (
@@ -167,7 +174,7 @@ function AddressCard({
             onClick={() => setConfirmDelete(true)}
             className="inline-flex items-center gap-1 text-xs font-medium text-rose-500 hover:text-rose-700"
           >
-            <Trash2 className="h-3.5 w-3.5" /> Eliminar
+            <Trash2 className="h-3.5 w-3.5" /> {texts.delete}
           </button>
         )}
       </div>
@@ -176,7 +183,15 @@ function AddressCard({
   );
 }
 
-function AddressForm({ address, onDone }: { address: AddressView | null; onDone: () => void }) {
+function AddressForm({
+  address,
+  texts,
+  onDone,
+}: {
+  address: AddressView | null;
+  texts: AccountTexts["address"];
+  onDone: () => void;
+}) {
   const [state, formAction, pending] = useActionState<AddressActionState | null, FormData>(
     saveAddressAction,
     null,
@@ -221,7 +236,7 @@ function AddressForm({ address, onDone }: { address: AddressView | null; onDone:
       className="border-brand-purple/20 space-y-4 rounded-2xl border bg-white p-5 shadow-sm"
     >
       <h3 className="text-brand-purple-dark font-display text-lg">
-        {address ? "Editar dirección" : "Nueva dirección"}
+        {address ? texts.editTitle : texts.newTitle}
       </h3>
       {address && <input type="hidden" name="id" value={address.id} />}
       {state?.error && !state.fieldErrors && (
@@ -243,13 +258,12 @@ function AddressForm({ address, onDone }: { address: AddressView | null; onDone:
 
       {isLegacyEdit && (
         <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
-          <p className="font-semibold">Actualiza esta dirección al nuevo formato</p>
-          <p className="mt-0.5 text-amber-700">
-            Ya llenamos el departamento y la ciudad. Vuelve a escribir la vía (Calle/Carrera y
-            números) para que se reuse automáticamente en tu próximo pago.
-          </p>
+          <p className="font-semibold">{texts.legacyTitle}</p>
+          <p className="mt-0.5 text-amber-700">{texts.legacyNote}</p>
           {address?.line1 && (
-            <p className="mt-1 text-xs text-amber-600">Dirección anterior: {address.line1}</p>
+            <p className="mt-1 text-xs text-amber-600">
+              {texts.legacyPrev} {address.line1}
+            </p>
           )}
         </div>
       )}
@@ -278,19 +292,19 @@ function AddressForm({ address, onDone }: { address: AddressView | null; onDone:
           defaultChecked={address?.isDefault ?? false}
           className="accent-brand-purple h-4 w-4 rounded"
         />
-        Usar como dirección predeterminada
+        {texts.defaultCheck}
       </label>
 
       <div className="flex justify-end gap-2">
         <Button type="button" variant="ghost" onClick={onDone} disabled={pending}>
-          Cancelar
+          {texts.cancel}
         </Button>
         <Button
           type="submit"
           disabled={pending}
           className="bg-brand-purple hover:bg-brand-purple-dark font-semibold text-white"
         >
-          {pending ? "Guardando..." : "Guardar"}
+          {pending ? texts.saving : texts.save}
         </Button>
       </div>
     </form>

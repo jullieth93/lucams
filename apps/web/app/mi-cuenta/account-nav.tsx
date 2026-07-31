@@ -3,29 +3,31 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LayoutDashboard, Package, Palette, Heart, MapPin, Star, ShieldCheck } from "lucide-react";
+import type { AccountTexts } from "./account-texts";
 
 /**
  * Navegación del área de cuenta (storefront, NO admin). Barra de pestañas
  * horizontal scrolleable en móvil. Marca la sección activa por pathname:
  * exacta para "Resumen" (/mi-cuenta), por prefijo para el resto (para que el
  * detalle /mi-cuenta/pedidos/[number] mantenga "Pedidos" activo).
+ *
+ * Las etiquetas vienen del CMS (roadmap B9) — el layout las resuelve en server.
  */
-const TABS = [
-  { href: "/mi-cuenta", label: "Resumen", icon: LayoutDashboard, exact: true },
-  { href: "/mi-cuenta/pedidos", label: "Pedidos", icon: Package },
-  { href: "/mi-cuenta/disenos", label: "Mis diseños", icon: Palette },
-  { href: "/mi-cuenta/favoritos", label: "Favoritos", icon: Heart },
-  { href: "/mi-cuenta/direcciones", label: "Direcciones", icon: MapPin },
-  { href: "/mi-cuenta/resenas", label: "Reseñas", icon: Star },
-  { href: "/mi-cuenta/seguridad", label: "Seguridad", icon: ShieldCheck },
-] as const;
-
-export function AccountNav() {
+export function AccountNav({ labels }: { labels: AccountTexts["nav"] }) {
+  const TABS = [
+    { href: "/mi-cuenta", label: labels.resumen, icon: LayoutDashboard, exact: true },
+    { href: "/mi-cuenta/pedidos", label: labels.pedidos, icon: Package },
+    { href: "/mi-cuenta/disenos", label: labels.disenos, icon: Palette },
+    { href: "/mi-cuenta/favoritos", label: labels.favoritos, icon: Heart },
+    { href: "/mi-cuenta/direcciones", label: labels.direcciones, icon: MapPin },
+    { href: "/mi-cuenta/resenas", label: labels.resenas, icon: Star },
+    { href: "/mi-cuenta/seguridad", label: labels.seguridad, icon: ShieldCheck },
+  ] as const;
   const pathname = usePathname();
 
   return (
     <nav
-      aria-label="Secciones de mi cuenta"
+      aria-label={labels.aria}
       className="border-brand-purple/10 border-b bg-white/70 backdrop-blur-sm"
     >
       <div className="mx-auto max-w-4xl px-2">

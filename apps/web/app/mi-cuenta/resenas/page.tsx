@@ -11,6 +11,7 @@ import { ChevronLeft, Star, MessageSquare } from "lucide-react";
 import { getCurrentCustomer } from "@/lib/auth";
 import { listReviewsByCustomer } from "@/features/reviews/customer-service";
 import { DeleteReviewButton } from "./delete-review-button";
+import { getAccountTexts } from "../account-texts.server";
 
 export const metadata: Metadata = {
   title: "Mis reseñas",
@@ -29,7 +30,10 @@ export default async function ResenasPage() {
   const session = await getCurrentCustomer();
   if (!session) redirect("/login?next=/mi-cuenta/resenas");
 
-  const reviews = await listReviewsByCustomer(session.customer.id);
+  const [reviews, texts] = await Promise.all([
+    listReviewsByCustomer(session.customer.id),
+    getAccountTexts(),
+  ]);
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -38,25 +42,23 @@ export default async function ResenasPage() {
         className="text-brand-muted hover:text-brand-purple mb-3 inline-flex items-center gap-1 text-xs"
       >
         <ChevronLeft className="h-3 w-3" />
-        Mi cuenta
+        {texts.back.miCuenta}
       </Link>
       <header className="mb-6">
-        <h1 className="font-display text-brand-purple-dark text-3xl">Mis reseñas</h1>
-        <p className="text-brand-muted mt-1 text-sm">Los productos que has calificado.</p>
+        <h1 className="font-display text-brand-purple-dark text-3xl">{texts.reviews.title}</h1>
+        <p className="text-brand-muted mt-1 text-sm">{texts.reviews.subtitle}</p>
       </header>
 
       {reviews.length === 0 ? (
         <div className="border-brand-purple/15 rounded-2xl border border-dashed bg-white p-8 text-center">
           <MessageSquare className="text-brand-purple/60 mx-auto h-8 w-8" />
-          <p className="text-brand-purple-dark mt-3 font-semibold">Todavía no has dejado reseñas</p>
-          <p className="text-brand-muted mt-1 text-sm">
-            Cuando recibas un pedido podrás calificarlo y ayudar a otros compradores ✨
-          </p>
+          <p className="text-brand-purple-dark mt-3 font-semibold">{texts.reviews.emptyTitle}</p>
+          <p className="text-brand-muted mt-1 text-sm">{texts.reviews.emptySub}</p>
           <Link
             href="/mi-cuenta/pedidos"
             className="text-brand-pink-ink hover:text-brand-coral-ink mt-4 inline-block text-sm font-semibold"
           >
-            Ver mis pedidos →
+            {texts.reviews.emptyCta}
           </Link>
         </div>
       ) : (
@@ -89,11 +91,11 @@ export default async function ResenasPage() {
                     </Link>
                     {r.status === "PUBLISHED" ? (
                       <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold text-emerald-900">
-                        Publicada
+                        {texts.reviews.published}
                       </span>
                     ) : (
                       <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-900">
-                        En revisión
+                        {texts.reviews.pending}
                       </span>
                     )}
                   </div>
@@ -114,7 +116,7 @@ export default async function ResenasPage() {
                 </div>
               </div>
               <div className="border-brand-purple/10 mt-3 flex justify-end border-t pt-2">
-                <DeleteReviewButton id={r.id} />
+                <DeleteReviewButton id={r.id} texts={texts.reviews} />
               </div>
             </li>
           ))}

@@ -6,8 +6,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PasswordInput } from "@/components/password-input";
 import { deleteAccountAction, type DeleteAccountState } from "./actions";
+import type { AccountTexts } from "../account-texts";
 
-export function DeleteAccountForm() {
+export function DeleteAccountForm({ texts }: { texts: AccountTexts["delete"] }) {
   const [state, formAction, pending] = useActionState<DeleteAccountState | null, FormData>(
     deleteAccountAction,
     null,
@@ -26,20 +27,22 @@ export function DeleteAccountForm() {
 
       <div className="space-y-1.5">
         <Label htmlFor="confirm">
-          Escribe <span className="font-mono font-bold">ELIMINAR</span> para confirmar
+          {texts.confirmLabel.split("{palabra}")[0]}
+          <span className="font-mono font-bold">{texts.confirmWord}</span>
+          {texts.confirmLabel.split("{palabra}")[1]}
         </Label>
         <Input
           id="confirm"
           name="confirm"
           required
           autoComplete="off"
-          placeholder="ELIMINAR"
+          placeholder={texts.confirmWord}
           disabled={pending}
         />
       </div>
 
       <div className="space-y-1.5">
-        <Label htmlFor="password">Tu contraseña</Label>
+        <Label htmlFor="password">{texts.passwordLabel}</Label>
         <PasswordInput
           id="password"
           name="password"
@@ -54,7 +57,7 @@ export function DeleteAccountForm() {
         disabled={pending}
         className="w-full bg-rose-600 font-semibold text-white hover:bg-rose-700"
       >
-        {pending ? "Eliminando..." : "Eliminar mi cuenta permanentemente"}
+        {pending ? texts.pending : texts.submit}
       </Button>
     </form>
   );

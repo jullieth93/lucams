@@ -24,6 +24,7 @@ import { getWarrantyItems } from "@/features/warranty/service";
 import { orderStatusLabel } from "@/features/orders/order-status-display";
 import { RetractControl } from "./retract-control";
 import { WarrantyControl } from "./warranty-control";
+import { getAccountTexts } from "../../account-texts.server";
 
 export const metadata: Metadata = {
   title: "Detalle de mi pedido",
@@ -122,6 +123,10 @@ export default async function CustomerPedidoDetallePage({
     order.status === "DELIVERED" ? await getWarrantyItems(order.id, session.customer.id) : [];
   const warrantyByItem = new Map(warrantyItems.map((w) => [w.orderItemId, w]));
 
+  // Roadmap B9 — textos del detalle (CMS) con interpolaciones server-side.
+  const texts = await getAccountTexts();
+  const cancelledState = order.status === "REFUNDED" ? "reembolsado" : "cancelado";
+
   return (
     <div className="mx-auto max-w-3xl">
       <Link
@@ -129,7 +134,7 @@ export default async function CustomerPedidoDetallePage({
         className="text-brand-muted hover:text-brand-purple mb-3 inline-flex items-center gap-1 text-xs"
       >
         <ChevronLeft className="h-3 w-3" />
-        Mis pedidos
+        {texts.back.misPedidos}
       </Link>
       <header className="mb-6">
         <h1 className="font-display text-brand-purple-dark text-3xl sm:text-4xl">
@@ -148,8 +153,9 @@ export default async function CustomerPedidoDetallePage({
         >
           <Wallet className="mt-0.5 h-5 w-5 flex-shrink-0 text-amber-700" aria-hidden />
           <p className="text-sm text-amber-900">
-            Pagas <strong>{formatCOP(order.total)}</strong> en efectivo cuando el mensajero te
-            entregue el pedido.
+            {texts.order.codBanner.split("{total}")[0]}
+            <strong>{formatCOP(order.total)}</strong>
+            {texts.order.codBanner.split("{total}")[1]}
           </p>
         </div>
       )}
@@ -157,7 +163,9 @@ export default async function CustomerPedidoDetallePage({
       {/* Timeline */}
       {!isCancelled && (
         <div className="border-brand-purple/15 mb-6 rounded-2xl border bg-white p-5 shadow-sm">
-          <h2 className="text-brand-purple-dark mb-4 text-sm font-bold">Estado de tu pedido</h2>
+          <h2 className="text-brand-purple-dark mb-4 text-sm font-bold">
+            {texts.order.statusTitle}
+          </h2>
           <ol className="flex justify-between">
             {TIMELINE_STEPS.map((s, i) => {
               const done = progress >= i;
@@ -189,16 +197,17 @@ export default async function CustomerPedidoDetallePage({
       {isCancelled && (
         <div className="mb-6 rounded-xl border border-rose-200 bg-rose-50 p-4">
           <p className="text-sm font-semibold text-rose-900">
-            Este pedido fue {order.status === "REFUNDED" ? "reembolsado" : "cancelado"}.
+            {texts.order.cancelled.replace("{estado}", cancelledState)}
           </p>
-          <p className="mt-1 text-xs text-rose-800">
-            Si tienes dudas, escríbenos por WhatsApp o responde el email que te enviamos.
-          </p>
+          <p className="mt-1 text-xs text-rose-800">{texts.order.cancelledNote}</p>
         </div>
       )}
 
       {/* Items */}
-      <Card icon={<Package className="h-4 w-4" />} title={`Lo que pediste (${order.items.length})`}>
+      <Card
+        icon={<Package className="h-4 w-4" />}
+        title={texts.order.itemsTitle.replace("{n}", String(order.items.length))}
+      >
         <ul className="divide-brand-purple/10 divide-y">
           {order.items.map((it) => {
             const previewUrl = it.designAssetUrl ?? it.design?.previewUrl ?? null; // ADR-070 — snapshot primero
@@ -227,9 +236,11 @@ export default async function CustomerPedidoDetallePage({
                   <div className="text-brand-muted text-xs">
                     {it.variant.name} · {it.qty} × {formatCOP(it.unitPrice)}
                   </div>
-                  {retractByItem.has(it.id) && <RetractControl item={retractByItem.get(it.id)!} />}
+                  {retractByItem.has(it.id) && (
+                    <RetractControl item={retractByItem.get(it.id)!} texts={texts.retract} />
+                  )}
                   {warrantyByItem.has(it.id) && (
-                    <WarrantyControl item={warrantyByItem.get(it.id)!} />
+                    <WarrantyControl item={warrantyByItem.get(it.id)!} texts={texts.warranty} />
                   )}
                 </div>
                 <div className="text-brand-purple-dark flex-shrink-0 text-right text-sm font-semibold tabular-nums">
@@ -240,16 +251,16 @@ export default async function CustomerPedidoDetallePage({
           })}
         </ul>
         <dl className="border-brand-purple/10 mt-3 space-y-1 border-t pt-3 text-sm">
-          <Row label="Subtotal" value={formatCOP(order.subtotal)} />
-          <Row label="Envío" value={formatCOP(order.shipping)} />
+          <Row label={texts.order.subtotal} value={formatCOP(order.subtotal)} />
+          <Row label={texts.order.shipping} value={formatCOP(order.shipping)} />
           {order.discount > 0 && (
             <Row
-              label="Descuento"
+              label={texts.order.discount}
               value={<span className="text-emerald-700">−{formatCOP(order.discount)}</span>}
             />
           )}
           <div className="border-brand-purple/10 mt-2 flex justify-between border-t pt-2">
-            <dt className="text-brand-purple-dark font-bold">Total</dt>
+            <dt className="text-brand-purple-dark font-bold">{texts.order.total}</dt>
             <dd className="text-brand-purple-dark font-bold tabular-nums">
               {formatCOP(order.total)}
             </dd>
@@ -258,7 +269,7 @@ export default async function CustomerPedidoDetallePage({
       </Card>
 
       {/* Dirección */}
-      <Card icon={<MapPin className="h-4 w-4" />} title="Dirección de envío">
+      <Card icon={<MapPin className="h-4 w-4" />} title={texts.order.shippingTitle}>
         <p className="text-brand-purple-dark text-sm">
           {ship.fullName ?? ""}
           {ship.fullName && <br />}
@@ -269,15 +280,19 @@ export default async function CustomerPedidoDetallePage({
           {ship.city}, {ship.department}
           {ship.zip ? ` · ${ship.zip}` : ""}
         </p>
-        {ship.notes && <p className="text-brand-muted mt-2 text-xs italic">Nota: {ship.notes}</p>}
+        {ship.notes && (
+          <p className="text-brand-muted mt-2 text-xs italic">
+            {texts.order.note} {ship.notes}
+          </p>
+        )}
       </Card>
 
       {/* Envío */}
       {order.trackingNumber && (
-        <Card icon={<Truck className="h-4 w-4" />} title="Envío">
-          <Row label="Transportadora" value={carrierLabel} />
+        <Card icon={<Truck className="h-4 w-4" />} title={texts.order.deliveryTitle}>
+          <Row label={texts.order.carrier} value={carrierLabel} />
           <Row
-            label="Número de guía"
+            label={texts.order.tracking}
             value={
               <span className="text-brand-purple-dark/85 font-mono text-xs">
                 {order.trackingNumber}
@@ -291,7 +306,7 @@ export default async function CustomerPedidoDetallePage({
               rel="noopener noreferrer"
               className="text-brand-purple mt-2 inline-block text-sm font-semibold underline"
             >
-              Rastrear mi pedido →
+              {texts.order.trackCta}
             </a>
           )}
         </Card>
@@ -302,17 +317,15 @@ export default async function CustomerPedidoDetallePage({
         <div className="border-brand-purple/15 from-brand-pink/10 to-brand-purple/10 rounded-2xl border bg-gradient-to-br p-5 text-center shadow-sm">
           <Star className="text-brand-purple mx-auto h-6 w-6" />
           <p className="text-brand-purple-dark mt-2 text-sm font-semibold">
-            ¿Cómo te llegó tu pedido?
+            {texts.order.reviewTitle}
           </p>
-          <p className="text-brand-muted mt-1 text-xs">
-            Tu reseña nos ayuda muchísimo (30 segundos).
-          </p>
+          <p className="text-brand-muted mt-1 text-xs">{texts.order.reviewSub}</p>
           <Link
             href={`/producto/${order.items[0]?.variant.product.slug}#resenas`}
             className="bg-brand-purple hover:bg-brand-purple-dark mt-3 inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold text-white shadow-sm"
           >
             <Star className="h-3.5 w-3.5" />
-            Dejar reseña
+            {texts.order.reviewCta}
           </Link>
         </div>
       )}

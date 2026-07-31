@@ -17,6 +17,7 @@ import { BrandMark } from "@/components/brand-mark";
 import { getCurrentCustomer } from "@/lib/auth";
 import { AccountNav } from "./account-nav";
 import { SubmitButton } from "@/components/ui/submit-button";
+import { getAccountTexts } from "./account-texts.server";
 
 export default async function MiCuentaLayout({ children }: { children: React.ReactNode }) {
   const session = await getCurrentCustomer();
@@ -26,6 +27,9 @@ export default async function MiCuentaLayout({ children }: { children: React.Rea
     const path = (await headers()).get("x-pathname") ?? "/mi-cuenta";
     redirect(`/login?next=${encodeURIComponent(path)}`);
   }
+
+  // Roadmap B9 — textos del área administrables desde /admin/contenido.
+  const texts = await getAccountTexts();
 
   return (
     <div className="bg-brand-cream flex min-h-screen flex-col">
@@ -38,13 +42,13 @@ export default async function MiCuentaLayout({ children }: { children: React.Rea
               size="sm"
               className="text-brand-muted hover:text-brand-purple-dark"
             >
-              Cerrar sesión
+              {texts.nav.logout}
             </SubmitButton>
           </form>
         </div>
       </header>
 
-      <AccountNav />
+      <AccountNav labels={texts.nav} />
 
       <main id="contenido" tabIndex={-1} className="flex-1 px-4 py-8 sm:px-6 sm:py-10">
         {children}
