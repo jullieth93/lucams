@@ -23,7 +23,8 @@
 - ✅ **A1** verificación en producción (release + smoke) — smoke `release-check-a1`
 - ✅ **A3** nightly con Supabase local en CI — corrida `30655283758`
 - ✅ **D4** E2E del flujo de edición — corrida `30655678412`
-- ⏳ Ninguna libre · ⏸️ A2 (ejecutar ~2026-08-04 tras estabilidad) — única bloqueada restante
+- ✅ **A2** drop de tablas legacy — commit `c436195` (+ respaldo JSON)
+- ⏳ Ninguna pendiente — **roadmap completo** (quedan solo mejoras del backlog punto 5)
 
 **Base sobre la que se parte (ya en producción, commit `bd1e427`):**
 
@@ -85,6 +86,8 @@ Tablas legacy (CmsBlock/CmsBlockVersion/SiteSetting): DROP en A2
 - Borrar `packages/db/scripts/seed-cms.mjs`, `seed-cms-ruta-a.mjs` y target `seed-cms` del Makefile; quitar comentarios DEPRECATED del schema; ajustar `verify-cms-v2-parity.mjs` (ya no aplica → borrar o convertir en chequeo de integridad v2: campos publicados sin versión = 0).
 - Grep final: 0 referencias a `cmsBlock`/`siteSetting` en código.
 - **Verificación:** suite completa verde + migración aplicada en dev y producción.
+
+> **✅ RESULTADO — certificado 2026-07-31, commit `c436195`.** Ventana acortada por decisión de la dueña (A1 certificado el mismo día, tablas inertes) con mitigación: **respaldo JSON completo previo** (330 filas: 116 CmsBlock + 172 CmsBlockVersion + 42 SiteSetting en `tmp/backups/cms-legacy-20260731.json`, fuera del repo). Migración `20260731130000_drop_cms_legacy` aplicada en la DB compartida (la FK circular `CmsBlock.publishedVersionId → CmsBlockVersion` exigió soltar la constraint antes del drop; la corrida fallida se resolvió con `migrate resolve --rolled-back`) y **verificada: 0 tablas y 0 enums legacy** (`BlockFormat`/`BlockCategory`/`SettingType`/`SettingCategory`). **Limpieza:** 13 scripts one-off que usaban el cliente legacy borrados (los 2 del roadmap + 11 históricos ya ejecutados) + target `seed-cms` del Makefile + comentarios/modelos del schema; `verify-cms-v2-parity.mjs` → **`verify-cms-v2-integrity.mjs`** (publicados sin versión / IMAGE apuntando a asset inexistente / LISTA con JSON inválido → **0 anomalías**: 637 campos publicados, 2 LISTA); migrador reescrito como puro upsert del site map (su uso vigente) y verificado (21 páginas/50 secciones, 0 campos sin versión); `prisma.cmsBlock`/`siteSetting` → **0 usos del cliente en código** (grep final: solo menciones en comentarios históricos). Tests ajustados: cleanup de `checkout/service.integration.test.ts` (39/39 ✓) y lectura `cod_enabled` de `audit-admin.spec.ts` → CmsField. **Evidencia:** suite 2721/2722 ✓ (el único fallo fue contención mía — migrador + focal + build en paralelo contra el pooler; los 2 archivos focales re-corridos limpios: cart 52/52 ✓, checkout 39/39 ✓) · `tsc` ✓ · `eslint` ✓ · `prettier` ✓ · `next build` ✓.
 
 ### A3 — Nightly con Supabase staging (CI rojo actual #14)
 
@@ -265,7 +268,7 @@ Tablas legacy (CmsBlock/CmsBlockVersion/SiteSetting): DROP en A2
 
 > Retoma la ejecución del roadmap CMS de este repo. El plan completo y el progreso por fases (✅/🔄/⏳/⏸️) están en `docs/CMS_ROADMAP.md`; el estado del CMS v2 en `HANDOFF.md`. Revisa `git status` y `git log --oneline -15`: puede haber trabajo sin commitear de la fase en curso — si existe, primero verifícalo (tsc/lint/tests) y commiétéalo. Continúa con la siguiente fase ⏳ en el orden de la sección "Secuencia recomendada", con esta disciplina por fase: implementación → tsc + lint + prettier + tests focal → commit atómico en español → push a develop → vigilar CI verde → marcar progreso (✅ + commit) en este documento. Las fases ⏸️ (A1/A2 producción, A3 staging Supabase, D4 E2E admin) están bloqueadas por acceso externo: no las ejecutes, están documentadas para hacerlas a mano. Al terminar todo: suite completa + build + HANDOFF.md actualizado + bloqueadas con instrucciones.
 
-**Estado del working tree al 2026-07-31:** limpio — **TODAS las fases ejecutables están completadas y certificadas**: C2, B4, B2, B3, B1, B5, B6, C1, C3, C4, D1, D3 (ecosistema CMS) · E1, E2, E3 (móvil) · A1 (release + smoke en prod) · A3 (Nightly contra Supabase local en CI — sin proyecto externo ni secrets; rls-matrix y E2E admin/MFA/CMS corriendo de verdad) · D4 (E2E del flujo de edición en el Nightly). Solo queda **A2** (drop de tablas legacy), programada para ~2026-08-04 tras la ventana de estabilidad del release. Recordar: el smoke post-release queda como `release-check-a1.spec.ts` reutilizable (PLAYWRIGHT_BASE_URL apuntando a prod).
+**Estado del working tree al 2026-07-31:** limpio — **ROADMAP COMPLETO: todas las fases certificadas** — A1 (release + smoke en prod) · A2 (drop legacy con respaldo JSON) · A3 (Nightly contra Supabase local en CI) · B1–B6 (cobertura de contenido: estudio, transaccionales, iconos, listas, imágenes, banners) · C1–C4 (preview, rol editor, publicación programada, utilidades) · D1 (ratchet de cobertura en CI) · D3 (documentación) · D4 (E2E del flujo de edición) · E1–E3 (móvil). Restante como backlog aprobado (punto 5): tablas admin→tarjetas en móvil, C1 paso 2 (edición in-place), gestos del canvas del Estudio, y cierre de huecos de cobertura D1 (auth/checkout/mi-cuenta) como fases B7+. Recordar: el smoke post-release queda como `release-check-a1.spec.ts` reutilizable (PLAYWRIGHT_BASE_URL apuntando a prod).
 
 ---
 
