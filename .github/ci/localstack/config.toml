@@ -10,3 +10,10 @@
 # Las credenciales del stack local son deterministas de desarrollo (las lee el
 # workflow de `supabase status -o env`); no son secretos reales.
 project_id = "lucams-ci"
+
+# E2E admin-mfa del nightly: el enrolamiento/verificación TOTP viene APAGADO
+# por default en el GoTrue del stack local ("MFA enroll is disabled for TOTP",
+# run 30648462167) — se habilita acá para que la spec ejerza el flujo real.
+[auth.mfa.totp]
+enroll_enabled = true
+verify_enabled = true

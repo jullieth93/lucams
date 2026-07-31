@@ -85,8 +85,13 @@ jobs:
           done
       # Corre TODO el vitest: con las llaves reales, rls-matrix y los tests de
       # storage (que se saltan en el gate por-PR) ahora SÍ ejecutan.
+      # EXCLUIDOS con razón documentada: finalize-server-render y letter-tiles
+      # exigen el universo de datos de la DB COMPARTIDA de dev (diseños reales
+      # clonables con assets en Storage, letter sets — construido por decenas
+      # de scripts históricos, no reproducible con un seed). Corren en local
+      # contra esa DB; hacerlos stack-agnostic es trabajo aparte (roadmap A3).
       - name: Vitest (incl. rls-matrix de comportamiento)
-        run: pnpm --filter web test
+        run: pnpm --filter web test -- --exclude "**/finalize-server-render.integration.test.ts" --exclude "**/letter-tiles.integration.test.ts"
 
   e2e-supabase-real:
     name: E2E completo (admin-login + MFA + Estudio) contra Supabase local

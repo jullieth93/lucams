@@ -71,6 +71,8 @@ describe.skipIf(!canRun)("RLS matrix R3 — la API pública no filtra datos sens
   let service: SupabaseClient;
   let authed: SupabaseClient;
   let ephemeralUserId: string | undefined;
+  let fixtureAdminAuthId: string | undefined;
+  let fixtureAdminId: string | undefined;
 
   beforeAll(async () => {
     anon = createClient(URL!, ANON!, { auth: { persistSession: false } });
@@ -86,9 +88,26 @@ describe.skipIf(!canRun)("RLS matrix R3 — la API pública no filtra datos sens
     ephemeralUserId = data.user?.id;
     authed = createClient(URL!, ANON!, { auth: { persistSession: false } });
     await authed.auth.signInWithPassword({ email, password });
+
+    // AdminUser propio (fixture autónoma — la DB del stack puede venir vacía,
+    // p.ej. el stack local efímero del nightly A3). El test "tiene datos vía
+    // Prisma pero CERO vía anon" la necesita para probar que anon NO lee.
+    const adminEmail = `rls-admin-${Date.now()}@example.com`;
+    const { data: adminAuth } = await service.auth.admin.createUser({
+      email: adminEmail,
+      password: "Rls-Admin-Test-9182734650",
+      email_confirm: true,
+    });
+    fixtureAdminAuthId = adminAuth.user?.id;
+    const admin = await prisma.adminUser.create({
+      data: { supabaseUserId: fixtureAdminAuthId!, email: adminEmail, role: "SUPERADMIN", isActive: true },
+    });
+    fixtureAdminId = admin.id;
   });
 
   afterAll(async () => {
+    if (fixtureAdminId) await prisma.adminUser.deleteMany({ where: { id: fixtureAdminId } });
+    if (fixtureAdminAuthId) await service.auth.admin.deleteUser(fixtureAdminAuthId);
     if (ephemeralUserId) await service.auth.admin.deleteUser(ephemeralUserId);
   });
 
