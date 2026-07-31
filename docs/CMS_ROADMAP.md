@@ -24,7 +24,8 @@
 - ✅ **A3** nightly con Supabase local en CI — corrida `30655283758`
 - ✅ **D4** E2E del flujo de edición — corrida `30655678412`
 - ✅ **A2** drop de tablas legacy — commit `c436195` (+ respaldo JSON)
-- ⏳ Ninguna pendiente — **roadmap completo** (quedan solo mejoras del backlog punto 5)
+- ✅ **B7** copy de autenticación al CMS (58 campos) — commit `b83c2e7`
+- ⏳ Backlog punto 5: B8 (checkout), B9 (mi-cuenta), tablas móvil, C1 paso 2, gestos canvas
 
 **Base sobre la que se parte (ya en producción, commit `bd1e427`):**
 
@@ -155,6 +156,13 @@ Tablas legacy (CmsBlock/CmsBlockVersion/SiteSetting): DROP en A2
 - Esfuerzo **M** (con B4/B5 hechas). Dependencias: B4, B5.
 
 > **✅ RESULTADO — certificado 2026-07-31, commit `b7ed459`.** Campo lista `home.banners` (sección `banners` de la página `inicio`, kind BLOCK con flujo borrador→publicar) con subcampos `imagen` (IMAGE — id de la mediateca), `titulo`, `enlace` y `activo` (BOOLEAN, select Sí/No); creado vía site map + `migrate-cms-v2` y publicado con body `[]` — **la home de hoy no cambia hasta que Lucy agregue el primer banner** (regla de oro). **Editor de listas extendido** (B4): subcampos IMAGE renderizan el control de la mediateca (subir/elegir, B5) y BOOLEAN un select Sí/No (default "true" en filas nuevas). **Reader** `getCmsBanners(key)` en `lib/cms.ts` (cache tag `cms`): parsea la lista publicada, filtra `activo ≠ "false"`, resuelve los assets en batch (misma derivación de URL pública que `getCmsImage`), DESCARTA items con asset borrado (un banner roto no tumba la franja) y devuelve `[]` ante cualquier fallo → la sección no se renderiza. **Storefront:** `<HomeBanners>` tras el hero — tira horizontal con scroll-snap (sin librería de carrusel; con 1 banner ocupa el ancho completo), `next/image` con dimensiones reales y título en overlay. **Refuerzo de seguridad de datos detectado en ejecución:** la guarda de borrado de la mediateca (B5) comparaba `body = id` y NO veía los ids embebidos en el JSON de campos lista — ahora `deleteCmsMedia` y `getCmsMediaUsage` usan `contains` (un cuid de 25 chars no aparece en prosa por accidente; el mensaje lista las keys). **Evidencia:** migración aplicada y verificada por query (`home.banners` publicado en sección `banners`/`inicio`, metadata listSchema intacta, paridad del migrador OK) · integración `features/cms/service.integration.test.ts` **44/44** ✓ (+4 B6: resolución de activos/filtro inactivos/descarte fantasmas, sin publicar → [], JSON inválido → [], guarda de borrado con id embebido + mapa de uso) · unit `cms-media` 15/15 ✓ · `tsc` ✓ · `eslint` ✓ · `prettier` ✓ · `next build` ✓.
+
+### B7 — Copy de autenticación al CMS (agregada 2026-07-31, backlog post-roadmap)
+
+- Las pantallas de acceso (`/login`, `/registro`, `/recuperar-password`, `/confirmar-codigo`, `/restablecer-password` + marco común) tenían 49 literales quemados en componentes client (medidos por el auditor D1). Moverlos al CMS con el patrón B1: site map → resolver en server → props tipadas con fallback exacto.
+- Esfuerzo **S-M**. Dependencia: ninguna.
+
+> **✅ RESULTADO — certificado 2026-07-31, commit `b83c2e7`.** Página `auth` en `/admin/contenido` con **6 secciones y 58 campos** (layout, login, registro, recuperar, confirmar, restablecer): todo el copy visible de las pantallas de acceso es administrable. Resolución con el patrón B1: `getAuthTexts()` (`app/(auth)/auth-texts.server.ts`) hace **UNA query por prefijo `auth.*`** (cache tag `cms`, guard E469) y sobreescribe `DEFAULT_AUTH_TEXTS` campo a campo — los defaults son el copy exacto pre-CMS (regla de oro). Cada `page.tsx` (server) resuelve y pasa props tipadas al formulario client; las interpolaciones (`{email}`, `{nombre}`) se reemplazan server-side. El texto legal del checkbox de autorización (Ley 1581) quedó como campo MARKDOWN `auth.registro.consent` (enlaces a términos/privacidad preservados con react-markdown + sanitize client-side). La medición del auditor D1 sube al regenerar el baseline: los 49 literales de `app/(auth)` salen del stock de copy quemado. **Evidencia:** migración verificada por query (58/58 campos publicados, página `auth` con sus 6 secciones, 0 sin versión) · integración `getAuthTexts` contra los campos reales (estructura completa, placeholders intactos) · `tsc` ✓ · `eslint` ✓ · `prettier` ✓ · `next build` ✓.
 
 ---
 
