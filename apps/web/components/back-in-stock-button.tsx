@@ -53,7 +53,9 @@ export function BackInStockButton({
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder="tu@correo.com"
-          className="border-brand-purple/20 focus:ring-brand-purple/30 flex-1 rounded-lg border px-3 py-2 text-sm focus:ring-2 focus:outline-none"
+          // min-w-0: sin esto el input no baja de su ancho intrínseco (size=20)
+          // y la fila desborda el viewport en móvil (auditoría E3, PDP 397px).
+          className="border-brand-purple/20 focus:ring-brand-purple/30 min-w-0 flex-1 rounded-lg border px-3 py-2 text-sm focus:ring-2 focus:outline-none"
         />
         <button
           type="submit"
