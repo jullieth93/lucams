@@ -53,13 +53,23 @@ jobs:
         working-directory: .github/ci/localstack
         run: |
           supabase start
+          supabase status -o env | tee sb-status.env
+          # El formato de `status -o env` varía por versión del CLI (con/sin
+          # comillas; nombres ANON_KEY/SERVICE_ROLE_KEY vs PUBLISHABLE/SECRET).
+          # Parseo tolerante + fail-fast si quedan vacías (run 30647499882).
+          ANON=$(grep -E '^(ANON_KEY|PUBLISHABLE_KEY|SUPABASE_ANON_KEY)=' sb-status.env | head -1 | cut -d'=' -f2- | tr -d '"')
+          SERVICE=$(grep -E '^(SERVICE_ROLE_KEY|SECRET_KEY|SUPABASE_SERVICE_ROLE_KEY)=' sb-status.env | head -1 | cut -d'=' -f2- | tr -d '"')
+          if [ -z "$ANON" ] || [ -z "$SERVICE" ]; then
+            echo "::error::No se pudieron extraer las keys del stack local (ver sb-status.env arriba)."
+            exit 1
+          fi
           {
             echo "DATABASE_URL=postgresql://postgres:postgres@localhost:54322/postgres"
             echo "DIRECT_URL=postgresql://postgres:postgres@localhost:54322/postgres"
             echo "SUPABASE_ADMIN_URL=postgresql://supabase_admin:postgres@localhost:54322/postgres"
             echo "NEXT_PUBLIC_SUPABASE_URL=http://localhost:54321"
-            echo "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=$(supabase status -o env | grep '^ANON_KEY=' | cut -d'\"' -f2)"
-            echo "SUPABASE_SECRET_KEY=$(supabase status -o env | grep '^SERVICE_ROLE_KEY=' | cut -d'\"' -f2)"
+            echo "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=$ANON"
+            echo "SUPABASE_SECRET_KEY=$SERVICE"
           } >> "$GITHUB_ENV"
       - name: Extensiones Postgres prerequisito (pg_trgm/unaccent — las exigen migraciones viejas)
         run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f .github/ci/localstack/prereq-extensions.sql
@@ -111,13 +121,23 @@ jobs:
         working-directory: .github/ci/localstack
         run: |
           supabase start
+          supabase status -o env | tee sb-status.env
+          # El formato de `status -o env` varía por versión del CLI (con/sin
+          # comillas; nombres ANON_KEY/SERVICE_ROLE_KEY vs PUBLISHABLE/SECRET).
+          # Parseo tolerante + fail-fast si quedan vacías (run 30647499882).
+          ANON=$(grep -E '^(ANON_KEY|PUBLISHABLE_KEY|SUPABASE_ANON_KEY)=' sb-status.env | head -1 | cut -d'=' -f2- | tr -d '"')
+          SERVICE=$(grep -E '^(SERVICE_ROLE_KEY|SECRET_KEY|SUPABASE_SERVICE_ROLE_KEY)=' sb-status.env | head -1 | cut -d'=' -f2- | tr -d '"')
+          if [ -z "$ANON" ] || [ -z "$SERVICE" ]; then
+            echo "::error::No se pudieron extraer las keys del stack local (ver sb-status.env arriba)."
+            exit 1
+          fi
           {
             echo "DATABASE_URL=postgresql://postgres:postgres@localhost:54322/postgres"
             echo "DIRECT_URL=postgresql://postgres:postgres@localhost:54322/postgres"
             echo "SUPABASE_ADMIN_URL=postgresql://supabase_admin:postgres@localhost:54322/postgres"
             echo "NEXT_PUBLIC_SUPABASE_URL=http://localhost:54321"
-            echo "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=$(supabase status -o env | grep '^ANON_KEY=' | cut -d'\"' -f2)"
-            echo "SUPABASE_SECRET_KEY=$(supabase status -o env | grep '^SERVICE_ROLE_KEY=' | cut -d'\"' -f2)"
+            echo "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=$ANON"
+            echo "SUPABASE_SECRET_KEY=$SERVICE"
           } >> "$GITHUB_ENV"
       - name: Extensiones Postgres prerequisito (pg_trgm/unaccent — las exigen migraciones viejas)
         run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f .github/ci/localstack/prereq-extensions.sql
