@@ -50,10 +50,11 @@ jobs:
       - run: pnpm --filter @lucams/db db:generate
       - uses: supabase/setup-cli@v1
         with:
-          # La default del action instala un CLI VIEJO (2.20.3 → GoTrue
-          # v2.170.0, cuya verificación TOTP difiere de la hosted y rompe
-          # admin-mfa — run 30650501983). Con latest, CLI e imágenes recientes.
-          version: latest
+          # Versión FIJADA: `latest` obliga a consultar la API de GitHub y se
+          # topa con su rate limit (run 30654889313). La default vieja (2.20.3)
+          # traía GoTrue v2.170.0; 2.111.0 es la que el propio CLI anunció como
+          # disponible — determinista y reciente.
+          version: 2.111.0
       # El start corre desde .github/ci/localstack (workdir pelado SIN
       # migrations — ver su config.toml): el stack arranca sin auto-aplicar
       # nada y el orden correcto queda en manos del workflow (prisma → psql).
@@ -128,10 +129,11 @@ jobs:
       - run: pnpm --filter @lucams/db db:generate
       - uses: supabase/setup-cli@v1
         with:
-          # La default del action instala un CLI VIEJO (2.20.3 → GoTrue
-          # v2.170.0, cuya verificación TOTP difiere de la hosted y rompe
-          # admin-mfa — run 30650501983). Con latest, CLI e imágenes recientes.
-          version: latest
+          # Versión FIJADA: `latest` obliga a consultar la API de GitHub y se
+          # topa con su rate limit (run 30654889313). La default vieja (2.20.3)
+          # traía GoTrue v2.170.0; 2.111.0 es la que el propio CLI anunció como
+          # disponible — determinista y reciente.
+          version: 2.111.0
       - name: Levantar Supabase local y exportar credenciales
         working-directory: .github/ci/localstack
         run: |
