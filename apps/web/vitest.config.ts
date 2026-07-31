@@ -26,7 +26,23 @@ export default defineConfig({
     // real falla los 3 intentos. En CI con Postgres local (directo) no aplica.
     retry: 2,
     include: ["**/*.{test,spec}.{ts,tsx}"],
-    exclude: ["**/node_modules/**", "**/.next/**", "**/tests/e2e/**"],
+    exclude: [
+      "**/node_modules/**",
+      "**/.next/**",
+      "**/tests/e2e/**",
+      // Nightly A3 (stack Supabase local efímero, NIGHTLY_LOCALSTACK=1): estas
+      // dos suites exigen el universo de datos de la DB COMPARTIDA de dev
+      // (diseños reales clonables con assets en Storage, letter sets —
+      // construido por decenas de scripts históricos, no reproducible con un
+      // seed). Corren en local contra esa DB; hacerlas stack-agnostic es
+      // trabajo aparte (ver docs/CMS_ROADMAP.md § A3).
+      ...(process.env.NIGHTLY_LOCALSTACK === "1"
+        ? [
+            "**/features/personalization/finalize-server-render.integration.test.ts",
+            "**/features/personalization/letter-tiles.integration.test.ts",
+          ]
+        : []),
+    ],
     coverage: {
       provider: "v8",
       reporter: ["text-summary", "html"],

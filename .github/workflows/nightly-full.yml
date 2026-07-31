@@ -34,6 +34,9 @@ jobs:
     env:
       CSRF_SECRET: nightly-csrf-secret-32-chars-minimo
       NEXT_TELEMETRY_DISABLED: "1"
+      # Activa las exclusiones de vitest.config.ts para el stack efímero
+      # (finalize-server-render y letter-tiles exigen la DB compartida de dev).
+      NIGHTLY_LOCALSTACK: "1"
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -84,14 +87,11 @@ jobs:
             psql "$SUPABASE_ADMIN_URL" -v ON_ERROR_STOP=1 -f "$f"
           done
       # Corre TODO el vitest: con las llaves reales, rls-matrix y los tests de
-      # storage (que se saltan en el gate por-PR) ahora SÍ ejecutan.
-      # EXCLUIDOS con razón documentada: finalize-server-render y letter-tiles
-      # exigen el universo de datos de la DB COMPARTIDA de dev (diseños reales
-      # clonables con assets en Storage, letter sets — construido por decenas
-      # de scripts históricos, no reproducible con un seed). Corren en local
-      # contra esa DB; hacerlos stack-agnostic es trabajo aparte (roadmap A3).
+      # storage (que se saltan en el gate por-PR) ahora SÍ ejecutan. La env
+      # NIGHTLY_LOCALSTACK=1 activa en vitest.config.ts la exclusión de las 2
+      # suites que exigen la DB compartida de dev (razón documentada ahí).
       - name: Vitest (incl. rls-matrix de comportamiento)
-        run: pnpm --filter web test -- --exclude "**/finalize-server-render.integration.test.ts" --exclude "**/letter-tiles.integration.test.ts"
+        run: pnpm --filter web test
 
   e2e-supabase-real:
     name: E2E completo (admin-login + MFA + Estudio) contra Supabase local
