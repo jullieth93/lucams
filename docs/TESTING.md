@@ -267,17 +267,21 @@ describe("createOrder (integration)", () => {
 
 > **Críticos.** Sin estos tests, RLS solo es un papel.
 
-> **Cobertura de CI (auditoría 2026-07-13).** El gate por-PR ENFORCEA que _toda tabla tenga RLS
-> habilitada_ (la migración `..._10_rls_sweep_new_tables.sql` hace `RAISE EXCEPTION` si queda alguna
-> destapada → un `CREATE TABLE` nuevo sin candado rompe la migración). El COMPORTAMIENTO de las
-> políticas (que un anon no lea filas de otro) lo valida `rls-matrix.integration.test.ts`, que
-> requiere PostgREST/GoTrue reales y se salta en el gate por-PR (Postgres pelado) → ahora corre en
-> **`.github/workflows/nightly-full.yml`** (scheduled + on-demand) contra una Supabase real vía
-> secrets `STAGING_*`. Ese workflow también corre los E2E de admin-login/MFA/Estudio (que necesitan
-> GoTrue). **ACCIÓN HUMANA:** configurar los secrets `STAGING_DATABASE_URL`, `STAGING_DIRECT_URL`,
-> `STAGING_SUPABASE_URL`, `STAGING_SUPABASE_ANON`, `STAGING_SUPABASE_SERVICE` apuntando a una Supabase
-> de **staging/dev (NUNCA producción)** para activarlo; sin ellos el `gate` del nightly lo salta
-> limpio. Verificado local (2026-07-13): rls-matrix 45/45 verde contra la Supabase de dev.
+> **Cobertura de CI (auditoría 2026-07-13; actualizado 2026-07-31 con A3).** El gate por-PR ENFORCEA
+> que _toda tabla tenga RLS habilitada_ (la migración `..._10_rls_sweep_new_tables.sql` hace
+> `RAISE EXCEPTION` si queda alguna destapada → un `CREATE TABLE` nuevo sin candado rompe la
+> migración). El COMPORTAMIENTO de las políticas (que un anon no lea filas de otro) lo valida
+> `rls-matrix.integration.test.ts`, que requiere PostgREST/GoTrue reales y se salta en el gate
+> por-PR (Postgres pelado) → corre en **`.github/workflows/nightly-full.yml`** (scheduled +
+> on-demand). **A3 (2026-07-31):** el "Supabase real" del nightly es el **stack LOCAL de Supabase
+> levantado en el propio runner** (`supabase start` desde `.github/ci/localstack`, + `prisma
+migrate deploy` + las SQL de `supabase/migrations` aplicadas con el rol `supabase_admin`) —
+> ya NO hacen falta un proyecto externo ni secrets `STAGING_*`: cada corrida es efímera y
+> reproducible. Exclusiones documentadas por depender del universo de la DB compartida de dev:
+> `finalize-server-render` y `letter-tiles` (env `NIGHTLY_LOCALSTACK` en `vitest.config.ts`).
+> La postura de grants de prod (PostgREST cerrado para anon/authenticated) quedó codificada en
+> `supabase/migrations/00000000000022_revoke_anon_table_grants.sql` para que cualquier ambiente
+> nuevo la reproduzca.
 
 ```ts
 // __tests__/rls.test.ts

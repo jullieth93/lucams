@@ -21,7 +21,9 @@
 - ✅ **E2** fixes móviles admin — commit `82b0248`
 - ✅ **E3** auditoría + fixes móviles storefront — commit `0bf3868`
 - ✅ **A1** verificación en producción (release + smoke) — smoke `release-check-a1`
-- ⏳ Ninguna libre · ⏸️ A2 (ejecutar ~2026-08-04 tras estabilidad), A3, D4 — bloqueadas (requieren cuenta Supabase externa / ventana de estabilidad)
+- ✅ **A3** nightly con Supabase local en CI — corrida `30655283758`
+- ✅ **D4** E2E del flujo de edición — corrida `30655678412`
+- ⏳ Ninguna libre · ⏸️ A2 (ejecutar ~2026-08-04 tras estabilidad) — única bloqueada restante
 
 **Base sobre la que se parte (ya en producción, commit `bd1e427`):**
 
@@ -89,6 +91,8 @@ Tablas legacy (CmsBlock/CmsBlockVersion/SiteSetting): DROP en A2
 - Crear proyecto Supabase de staging (hoy dev y producción comparten proyecto — riesgo ya documentado en audits).
 - Configurar secrets `STAGING_DATABASE_URL`, `STAGING_DIRECT_URL`, `STAGING_SUPABASE_URL`, `STAGING_SUPABASE_ANON`, `STAGING_SUPABASE_SERVICE` en GitHub.
 - Sin migración (infra). **Verificación:** Nightly verde corriendo rls-matrix + E2E admin/MFA.
+
+> **✅ RESULTADO — certificado 2026-07-31, corrida verde `30655283758` (decisión del usuario: Supabase LOCAL en GitHub Actions, no proyecto externo).** El Nightly ahora levanta el stack completo de Supabase **en el propio runner** (`supabase start` desde `.github/ci/localstack` — workdir pelado para que el boot no auto-aplique migraciones) y aplica todo en orden: extensiones (pg_trgm/unaccent) → `prisma migrate deploy` → SQL de `supabase/migrations` con rol `supabase_admin` (el event trigger 014 exige superuser) → seeds de catálogo + CMS. **Ya no hacen falta secrets `STAGING_*` ni proyecto externo:** cada corrida es efímera, aislada y reproducible — el riesgo "dev/prod comparten proyecto" queda fuera de CI. Cobertura real activada: **rls-matrix de comportamiento** (57/57 tras codificar la postura de grants de prod en la migración `00000000000022_revoke_anon_table_grants.sql` — antes vivía solo en la DB de prod sin versión en el repo — y hacer la fixture AdminUser autónoma), **E2E admin-login + admin-mfa + estudio + cms-editing-flow (D4)** contra GoTrue local, y los tests de storage. **Exclusiones documentadas** (env `NIGHTLY_LOCALSTACK` en `vitest.config.ts`): `finalize-server-render` y `letter-tiles`, que exigen el universo de datos de la DB compartida de dev (diseños clonables con assets, letter sets — no reproducible con un seed; corren en local contra esa DB; hacerlas stack-agnostic queda como trabajo aparte). **Cadena de diagnóstico (10 corridas):** config path del workdir, typo en DIRECT_URL, pg_trgm ausente, event trigger sin privilegios, keys vacías por parseo de `supabase status`, CLI viejo por default y rate limit de `latest` (fijado a `2.111.0`), y la pieza final: **la CSP `connect-src` bloqueaba el auth del browser contra `http://localhost:54321`** — `AuthRetryableFetchError` descubierto instrumentando la spec (consola del browser); fix general: `connect-src` ahora deriva el origen de `NEXT_PUBLIC_SUPABASE_URL` (sirve para cualquier stack futuro, no solo el nightly). **Evidencia:** corrida `30655283758` ambos jobs verdes · spec admin-mfa pasa 2/2 local contra hosted (dev y prod build) · `security-headers` 16/16 con test nuevo del origen dinámico.
 
 ---
 
@@ -217,6 +221,8 @@ Tablas legacy (CmsBlock/CmsBlockVersion/SiteSetting): DROP en A2
 - Playwright (con staging de A3): login admin → editar campo de Inicio → publicar → ver el cambio en `/` → revertir versión.
 - Esfuerzo **M**. Dependencia: A3.
 
+> **✅ RESULTADO — certificado 2026-07-31, corrida verde `30655678412` (A3 resuelta con Supabase local en CI).** Spec `tests/e2e/cms-editing-flow.spec.ts` corriendo en el Nightly contra el stack local: login admin (usuario temporal creado/borrado vía service role) → edición inline de `home.categories.cta-all` en el editor de página → Guardar borrador → Publicar → **el texto nuevo se ve en `/`** → revertir desde el historial de versiones del editor de campo ("Volver a esta") → **`/` vuelve al texto original**. El flujo completo de edición queda gateado de forma continua (nightly 06:00 UTC + on-demand). Compañera de `release-check-a1.spec.ts` (mismo flujo pero contra producción, usada para el smoke A1 del release). **Evidencia:** corrida `30655678412` ambos jobs verdes con la spec incluida en el filtro del Nightly.
+
 ---
 
 ## FASE E — Experiencia móvil (agregada por pedido del usuario, 2026-07-30)
@@ -259,7 +265,7 @@ Tablas legacy (CmsBlock/CmsBlockVersion/SiteSetting): DROP en A2
 
 > Retoma la ejecución del roadmap CMS de este repo. El plan completo y el progreso por fases (✅/🔄/⏳/⏸️) están en `docs/CMS_ROADMAP.md`; el estado del CMS v2 en `HANDOFF.md`. Revisa `git status` y `git log --oneline -15`: puede haber trabajo sin commitear de la fase en curso — si existe, primero verifícalo (tsc/lint/tests) y commiétéalo. Continúa con la siguiente fase ⏳ en el orden de la sección "Secuencia recomendada", con esta disciplina por fase: implementación → tsc + lint + prettier + tests focal → commit atómico en español → push a develop → vigilar CI verde → marcar progreso (✅ + commit) en este documento. Las fases ⏸️ (A1/A2 producción, A3 staging Supabase, D4 E2E admin) están bloqueadas por acceso externo: no las ejecutes, están documentadas para hacerlas a mano. Al terminar todo: suite completa + build + HANDOFF.md actualizado + bloqueadas con instrucciones.
 
-**Estado del working tree al 2026-07-31:** limpio — **TODAS las fases ejecutables sin acceso externo están completadas y certificadas**: C2, B4, B2, B3, B1, B5, B6, C1, C3, C4, D1, D3 (ecosistema CMS) + E1, E2, E3 (móvil — admin y storefront verificados a 375px con specs de regresión en `tests/e2e/mobile-*-audit.spec.ts`). Solo quedan las ⏸️ bloqueadas por acceso externo (A1/A2 producción, A3 staging Supabase, D4 E2E admin) — están documentadas arriba para ejecutarlas a mano. Recordar tras cada deploy: invalidar el caché CMS desde `/admin/contenido` y aplicar las migraciones pendientes en producción (`make migrate` + las SQL de `supabase/migrations`).
+**Estado del working tree al 2026-07-31:** limpio — **TODAS las fases ejecutables están completadas y certificadas**: C2, B4, B2, B3, B1, B5, B6, C1, C3, C4, D1, D3 (ecosistema CMS) · E1, E2, E3 (móvil) · A1 (release + smoke en prod) · A3 (Nightly contra Supabase local en CI — sin proyecto externo ni secrets; rls-matrix y E2E admin/MFA/CMS corriendo de verdad) · D4 (E2E del flujo de edición en el Nightly). Solo queda **A2** (drop de tablas legacy), programada para ~2026-08-04 tras la ventana de estabilidad del release. Recordar: el smoke post-release queda como `release-check-a1.spec.ts` reutilizable (PLAYWRIGHT_BASE_URL apuntando a prod).
 
 ---
 
