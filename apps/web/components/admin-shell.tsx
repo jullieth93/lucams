@@ -14,7 +14,10 @@
  *     Canales, Finanzas, IA y Conocimiento, Analítica, Configuración, Mensajes
  *   - Badges visuales [Próximo / Fase 4 / Fase 5] para items no disponibles
  *
- * Mobile: drawer slide-in con backdrop.
+ * Mobile: topbar fija (logo + sección actual + hamburguesa) + drawer slide-in
+ * con backdrop. El layout raíz es flex-col en móvil y flex-row en lg — antes
+ * era fila siempre y la topbar quedaba como columna comiéndose ~60% del
+ * ancho (auditoría E1 P0, 2026-07-31).
  * A11y: aria-expanded, aria-label, focus rings.
  */
 
@@ -70,7 +73,11 @@ export function AdminShell({ admin, children }: { admin: AdminInfo; children: Re
   }, [pathname]);
 
   return (
-    <div className="bg-brand-cream/40 flex min-h-screen">
+    // Layout: COLUMNA en móvil (topbar arriba, contenido abajo), FILA en lg
+    // (sidebar + contenido). Antes era fila siempre y la topbar móvil quedaba
+    // como columna vertical comiéndose ~60% del ancho (auditoría E1 P0,
+    // docs/audits/2026-07-31-e1-mobile-admin-audit.md).
+    <div className="bg-brand-cream/40 flex min-h-screen flex-col lg:flex-row">
       {/* Sidebar desktop — gradient morado oscuro premium.
           Lucy 2026-06-27: sticky + h-screen para que NO se escape al hacer scroll.
           SidebarContent ya tiene h-full + overflow-y-auto, así que el menú scrollea
@@ -80,23 +87,27 @@ export function AdminShell({ admin, children }: { admin: AdminInfo; children: Re
         <SidebarContent admin={admin} pathname={pathname} onNavigate={() => {}} />
       </aside>
 
-      {/* Topbar mobile */}
-      <div className="from-brand-purple-dark to-brand-purple sticky top-0 z-30 flex items-center justify-between bg-gradient-to-r px-4 py-3 text-white shadow-md lg:hidden">
-        <Link href="/admin/dashboard" className="flex items-center gap-2.5">
+      {/* Topbar mobile — barra superior fija con logo, sección actual (E1 P2:
+          antes no había contexto en móvil) y botón hamburguesa. */}
+      <div className="from-brand-purple-dark to-brand-purple sticky top-0 z-30 flex items-center justify-between gap-3 bg-gradient-to-r px-4 py-3 text-white shadow-md lg:hidden">
+        <Link href="/admin/dashboard" className="flex min-w-0 items-center gap-2.5">
           <BrandIcon />
-          <div>
+          <div className="min-w-0">
             <p className="text-[10px] font-semibold tracking-wider text-white/60 uppercase">
               Panel admin
             </p>
-            <p className="font-display text-base leading-tight font-bold text-white">
+            <p className="font-display truncate text-base leading-tight font-bold text-white">
               Lucams<span className="text-brand-pink">_shop</span>
             </p>
           </div>
         </Link>
+        <p className="min-w-0 flex-1 truncate text-right text-xs font-medium text-white/75">
+          {labelForPath(pathname)}
+        </p>
         <button
           type="button"
           onClick={() => setMobileOpen(true)}
-          className="rounded-md p-2 text-white transition-colors hover:bg-white/10"
+          className="flex-shrink-0 rounded-md p-2 text-white transition-colors hover:bg-white/10"
           aria-label="Abrir menú"
         >
           <Menu className="h-5 w-5" />

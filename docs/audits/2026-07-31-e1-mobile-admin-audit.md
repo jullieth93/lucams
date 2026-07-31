@@ -47,3 +47,15 @@
 ## Pantallas auditadas (9)
 
 dashboard · contenido (índice) · editor de página (inicio) · editor de lista (footer.legal.links) · mediateca · borradores · pedidos · cotizaciones · productos. _(El editor de campo simple quedó fuera porque la key buscada no existía; el editor de lista cubre la misma pantalla.)_
+
+---
+
+## Verificación E2 (2026-07-31, mismo día)
+
+Fixes aplicados y **verificados re-corriendo la misma spec** (screenshots "después" en `tmp/screenshots/e1/`, "antes" preservados en `tmp/screenshots/e1-antes/`):
+
+- **P0+P2 — `admin-shell.tsx`:** raíz `flex` → `flex-col lg:flex-row`; la topbar móvil queda como **barra superior fija** (sticky) con logo, **sección actual** (`labelForPath`) y hamburguesa. El ancho útil pasó de ~147px a 375px en todas las pantallas; el editor de página bajó de 11.941px a 7.035px de alto (contenido denso, sin la tira vacía).
+- **P1 — `admin-page.tsx` (`AdminTable`):** indicación de scroll horizontal solo en móvil (`sm:hidden`): degradado de borde derecho como affordance + pista «Desliza para ver más columnas →». Verificado en `pedidos.png` (se ven NÚMERO + CLIENTE y la pista).
+- **P3 — verificado sin cambios adicionales:** con el ancho recuperado, la edición inline (input + Guardar), los filtros apilados y las tarjetas quedan completamente usables a 375px.
+
+Pendiente deliberado para una iteración futura (no bloqueante): tablas como tarjetas apiladas en vez de scroll (pedidos/cotizaciones/productos son usables con scroll + pista; las tarjetas serían el salto de comodidad, esfuerzo M por pantalla).
