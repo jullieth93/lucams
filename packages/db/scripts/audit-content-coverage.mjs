@@ -26,7 +26,11 @@
  *
  * Baseline: packages/db/scripts/content-coverage-baseline.json (ratchet —
  * puede mejorar [menos literales no cubiertos] pero nunca empeorar sin que
- * alguien lo regenere a propósito).
+ * alguien lo regenere a propósito). El fingerprint es `archivo :: texto`
+ * (multiconjunto: cuenta duplicados) — SIN número de línea a propósito:
+ * con línea, cualquier edición que desplace código encima de un literal ya
+ * fijado lo marcaba como "nuevo" (falso positivo real detectado en CI el
+ * 2026-07-31 tras un fix de una línea en back-in-stock-button.tsx).
  *
  * Alcance deliberado (documentado): copy visible en JSX. NO cubre metadata
  * SEO estática ni strings de .ts (mensajes de error de services/actions) —
@@ -243,8 +247,9 @@ function areaOf(file) {
   return parts.length > 2 ? `components/${parts[1]}` : "components/(raíz)";
 }
 
+/** Identidad de un literal para el ratchet: archivo + texto (sin línea — ver cabecera). */
 function fingerprint(item) {
-  return `${item.file}:${item.line} :: ${item.text}`;
+  return `${item.file} :: ${item.text}`;
 }
 
 const args = process.argv.slice(2);
@@ -305,7 +310,7 @@ if (WRITE_BASELINE) {
   const baseline = {
     generatedAt: new Date().toISOString(),
     threshold: Math.floor(globalPct * 100) / 100,
-    uncovered: uncoveredAll.map((i) => `${i.file}:${i.line} :: ${i.text}`),
+    uncovered: uncoveredAll.map((i) => fingerprint(i)),
   };
   fs.writeFileSync(BASELINE_PATH, JSON.stringify(baseline, null, 2) + "\n");
   console.log(`\nBaseline escrito en ${path.relative(ROOT, BASELINE_PATH)}`);
@@ -324,9 +329,17 @@ if (CHECK) {
     process.exit(1);
   }
   const baseline = JSON.parse(fs.readFileSync(BASELINE_PATH, "utf8"));
-  const known = new Set(baseline.uncovered);
-  const current = uncoveredAll.map((i) => fingerprint(i));
-  const newViolations = current.filter((fp) => !known.has(fp));
+  // Multiconjunto: cada literal conocido "gasta" una ocurrencia del baseline —
+  // un texto que aparece N veces sin cubrir necesita N entradas fijadas.
+  const remaining = new Map();
+  for (const fp of baseline.uncovered) remaining.set(fp, (remaining.get(fp) ?? 0) + 1);
+  const newViolations = [];
+  for (const item of uncoveredAll) {
+    const fp = fingerprint(item);
+    const left = remaining.get(fp) ?? 0;
+    if (left > 0) remaining.set(fp, left - 1);
+    else newViolations.push(`${item.file}:${item.line} :: ${item.text}`);
+  }
 
   let failed = false;
   if (globalPct < baseline.threshold) {
