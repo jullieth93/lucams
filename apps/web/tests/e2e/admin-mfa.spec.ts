@@ -92,7 +92,18 @@ test.describe.serial("admin — reto MFA", () => {
   test("con el código TOTP correcto entra al dashboard", async ({ page }) => {
     await loginToMfa(page);
     await page.getByPlaceholder("123456").fill(totp(totpSecret, Date.now()));
+    // Diagnóstico A3: captura la respuesta REAL de GoTrue al /verify (el
+    // componente muestra un mensaje genérico para cualquier verifyErr).
+    const verifyRespPromise = page
+      .waitForResponse((r) => r.url().includes("/auth/v1/verify"), { timeout: 15_000 })
+      .catch(() => null);
     await page.getByRole("button", { name: /verificar y entrar/i }).click();
+    const verifyResp = await verifyRespPromise;
+    if (verifyResp && verifyResp.status() !== 200) {
+      console.log(
+        `[mfa-diag] /verify → ${verifyResp.status()} :: ${await verifyResp.text().catch(() => "<sin body>")}`,
+      );
+    }
     await page.waitForURL(/\/admin\/dashboard/, { timeout: 20_000 });
     await expect(page).toHaveURL(/\/admin\/dashboard/);
   });
