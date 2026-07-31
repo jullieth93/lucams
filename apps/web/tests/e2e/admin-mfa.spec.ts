@@ -90,6 +90,11 @@ async function loginToMfa(page: Page) {
 
 test.describe.serial("admin — reto MFA", () => {
   test("con el código TOTP correcto entra al dashboard", async ({ page }) => {
+    // Diagnóstico A3: escuchar la consola del browser (el componente loguea
+    // el error REAL de challengeAndVerify con prefijo [mfa]).
+    page.on("console", (msg) => {
+      if (msg.text().includes("[mfa]")) console.log(`[browser-console] ${msg.text()}`);
+    });
     await loginToMfa(page);
     // Diagnóstico A3: ¿la sesión de Supabase quedó en cookies tras el login?
     const cookieNames = (await page.context().cookies()).map((c) => c.name);
