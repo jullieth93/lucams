@@ -821,6 +821,24 @@ Mapa real al 2026-08-01 (tras la separación dev/prod con Supabase local podman)
 - **Solo Production (el preview no las recibe):** `RESEND_API_KEY` (en preview el envío se omite con log — nunca sale un correo real desde stg) · `AVEONLINE_USUARIO`/`AVEONLINE_CLAVE`/`AVEONLINE_ENV` (sin ellas el código cae a modo test con la cuenta demo) · `AVEONLINE_DEMO_IDEMPRESA` (default 15289 en código) · `NEXT_PUBLIC_SITE_URL` (preview usa el `VERCEL_URL` automático del deployment — `lib/origin.ts`) · `NEXT_PUBLIC_WA_NUMBER` (preview lee `WA_NUMBER` del CMS de stg).
 - **Compartidas a propósito:** `GEMINI_API_KEY` (cuota de IA compartida), `EMAIL_FROM`/`EMAIL_REPLY_TO` (identidad de remitente — sin `RESEND_API_KEY` en preview no se envía nada), `LOG_LEVEL`, `NEXT_TELEMETRY_DISABLED`, `AVEONLINE_WEBHOOK_SECRET`.
 - **Alineada con `lib/env.ts`:** las CORE exigidas en todo entorno están en preview (Supabase/DB + `CSRF_SECRET`); las `PROD_REQUIRED` solo aplican a `VERCEL_ENV=production` (en preview advierten, no bloquean); las `FULL_MODE_REQUIRED` no aplican en `catalog`.
+
+#### Homologación de ambientes (verificada 2026-08-01)
+
+Los 3 ambientes están homologados en **catálogo y configuración**; difieren solo en datos transaccionales (cada uno genera los suyos en pruebas) y en los valores que por diseño apuntan a cada ambiente:
+
+| Check                                                                                                                                   | PRD | STG      | LOCAL    |
+| --------------------------------------------------------------------------------------------------------------------------------------- | --- | -------- | -------- |
+| Extensiones app (`pg_trgm`, `unaccent`, `pg_cron`, `pg_net`, `pgmq`)                                                                    | 5   | 5        | 5        |
+| Jobs pg_cron                                                                                                                            | 10  | 10       | 10       |
+| Tablas con RLS                                                                                                                          | 58  | 58       | 58       |
+| Buckets storage                                                                                                                         | 5   | 5        | 5        |
+| Migraciones Prisma aplicadas                                                                                                            | 49  | 49       | 49       |
+| Secretos Vault (`cron_base_url`, `cron_secret`)                                                                                         | ✓   | ✓        | ✓        |
+| Catálogo (612 productos, 572 categorías, 772 variantes, 115 ocasiones, 979 campos CMS, 130 redirects, 24 plantillas, 43 cupones reales) | ✓   | ✓ (sync) | ✓ (sync) |
+
+- **Difieren a propósito (cada valor apunta a SU ambiente):** `cron_base_url` del Vault (PRD → `https://lucamsshop.com` · STG → alias estable del preview de `develop` · LOCAL → `http://host.containers.internal:4000` — los jobs solo funcionan con el dev server arriba; sin él fallan en silencio en `cron.job_run_details`), `cron_secret` (propio por ambiente) y las URLs de DB.
+- **Imágenes de producto:** el catálogo usa URLs externas (0 productos en el bucket propio hoy) → se ven igual en los 3 ambientes sin copiar archivos. Si un día se suben fotos al bucket `product-images` de prod, las URLs públicas absolutas se leen igual desde stg/local (solo lectura).
+- **Re-sincronizar el catálogo PRD → STG/LOCAL** (tras cambios de catálogo en prod que se quieran ensayar): dump data-only de las 19 tablas de catálogo (`pg_dump -Fc --data-only -t …`, el de hoy quedó en `tmp/backups/catalogo-prod-20260801.dump`) → `TRUNCATE … RESTART IDENTITY CASCADE` en el destino → `pg_restore --data-only`. **Ojo:** la FK circular `CmsField↔CmsFieldVersion` obliga a soltar y recrear 3 constraints (`CmsField_publishedVersionId_fkey`, `CmsFieldVersion_fieldId_fkey`, `CmsListItem_fieldId_fkey`) — el rol `postgres` de las imágenes Supabase (cloud y local) **no es superuser** (el superuser es `supabase_admin`) y `--disable-triggers` falla con `permission denied … is a system trigger`. Terminar borrando los cupones con código de prueba.
 - **DEV sí tiene rama git:** el trabajo diario es sobre `develop` en la VM; las ramas feature nacen y vuelven a `develop`. La DB local no depende de ninguna rama (espejo del esquema + seeds).
 - **Supabase «main» ≠ git:** el dashboard de Supabase muestra cada proyecto en una rama interna llamada `main` (su propia rama por defecto). No tiene relación con las ramas git del repo.
 - **Flip de `.env.local`:** el dev alterna local↔nube con `make db-local-on/off`. **Antes de tocar la nube** (migraciones, seeds, invalidar caché en prod) correr `make db-local-off`; al terminar, `make db-local-on`.
