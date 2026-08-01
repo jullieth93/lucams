@@ -32,10 +32,14 @@
  */
 
 import { PrismaClient } from "@prisma/client";
+import { assertDestructiveAllowed } from "./lib/env-guard.mjs";
 
 const stripQuotes = (v) => v?.replace(/^["']|["']$/g, "");
 process.env.DATABASE_URL = stripQuotes(process.env.DATABASE_URL);
 process.env.DIRECT_URL = stripQuotes(process.env.DIRECT_URL);
+
+// Guarda de ambiente: purga masiva de órdenes/fixtures — bloquea PRD/remotos no STG.
+assertDestructiveAllowed("purge-test-orders.mjs");
 
 const prisma = new PrismaClient();
 const APPLY = process.argv.includes("--apply");

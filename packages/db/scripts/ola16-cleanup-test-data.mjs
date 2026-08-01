@@ -18,15 +18,15 @@
  */
 
 import { PrismaClient } from "@prisma/client";
+import { assertDestructiveAllowed } from "./lib/env-guard.mjs";
+
+// Guarda de ambiente: desactiva en masa todo lo que no sea catálogo real —
+// bloquea PRD/remotos no STG (salvo LUCAMS_ALLOW_DESTRUCTIVE_REMOTE=1).
+assertDestructiveAllowed("ola16-cleanup-test-data.mjs");
 
 const prisma = new PrismaClient();
 
-const REAL_CATEGORIES = [
-  "foto-imanes",
-  "calendarios",
-  "juegos-aprendizaje",
-  "separadores",
-];
+const REAL_CATEGORIES = ["foto-imanes", "calendarios", "juegos-aprendizaje", "separadores"];
 
 const REAL_PRODUCTS = [
   "set-fotoimanes-cuadrados",
@@ -53,11 +53,17 @@ async function main() {
 
   if (realCategoryIds.size < REAL_CATEGORIES.length) {
     const found = new Set(realCategoryIds.values());
-    console.warn("Faltan categorías:", REAL_CATEGORIES.filter((s) => !found.has(s)));
+    console.warn(
+      "Faltan categorías:",
+      REAL_CATEGORIES.filter((s) => !found.has(s)),
+    );
   }
   if (realProductIds.size < REAL_PRODUCTS.length) {
     const found = new Set(realProductIds.values());
-    console.warn("Faltan productos:", REAL_PRODUCTS.filter((s) => !found.has(s)));
+    console.warn(
+      "Faltan productos:",
+      REAL_PRODUCTS.filter((s) => !found.has(s)),
+    );
   }
 
   // 1. Desactivar categorías que no sean las reales.

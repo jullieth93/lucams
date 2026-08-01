@@ -2,6 +2,10 @@ import { PrismaClient } from "@lucams/db";
 import { config } from "dotenv";
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
+// Guarda de ambiente compartida con los scripts destructivos de packages/db
+// (packages/db/scripts/lib/env-guard.mjs — ver su header: qué permite/bloquea y el
+// escape hatch LUCAMS_ALLOW_DESTRUCTIVE_REMOTE=1).
+import { checkDestructiveAllowed } from "../../../packages/db/scripts/lib/env-guard.mjs";
 
 /**
  * Global teardown para la suite de vitest.
@@ -88,6 +92,18 @@ export async function teardown() {
   if (!url) {
     console.warn("[vitest teardown] DIRECT_URL/DATABASE_URL no disponible; se omite limpieza.");
     return;
+  }
+
+  // Guarda de ambiente (2026-08-01): este teardown hace soft-delete MASIVO por whitelist
+  // de slugs — contra PRD sería un incidente. Si la guarda bloquea, se OMITE la limpieza
+  // con warn (NO se falla la suite; es un safety net, igual que el catch de abajo).
+  const guard = checkDestructiveAllowed();
+  if (!guard.allowed) {
+    console.warn(`[vitest teardown] Limpieza OMITIDA por guarda de ambiente: ${guard.reason}`);
+    return;
+  }
+  if (guard.bypassed) {
+    console.warn(`[vitest teardown] ${guard.reason}`);
   }
 
   const prisma = new PrismaClient({ datasources: { db: { url } } });

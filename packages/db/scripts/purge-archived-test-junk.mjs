@@ -33,10 +33,14 @@
  */
 
 import { PrismaClient } from "@prisma/client";
+import { assertDestructiveAllowed } from "./lib/env-guard.mjs";
 
 const stripQuotes = (v) => v?.replace(/^["']|["']$/g, "");
 process.env.DATABASE_URL = stripQuotes(process.env.DATABASE_URL);
 process.env.DIRECT_URL = stripQuotes(process.env.DIRECT_URL);
+
+// Guarda de ambiente: borrado EN DURO de fixtures — bloquea PRD/remotos no STG.
+assertDestructiveAllowed("purge-archived-test-junk.mjs");
 
 const prisma = new PrismaClient();
 const APPLY = process.argv.includes("--apply");
@@ -86,8 +90,7 @@ async function main() {
   // Sospechosos por nombre (slug NO fixture) — solo reporte.
   const nameSuspects = allProducts.filter(
     (p) =>
-      !slugLooksLikeTest(p.slug) &&
-      FIXTURE_NAME_PREFIXES.some((pre) => p.name.startsWith(pre)),
+      !slugLooksLikeTest(p.slug) && FIXTURE_NAME_PREFIXES.some((pre) => p.name.startsWith(pre)),
   );
 
   console.log(`Productos fixture detectados por slug: ${junkProducts.length}`);
@@ -128,7 +131,11 @@ async function main() {
           : { count: 0 };
         const designs = await tx.design.deleteMany({ where: { productId: p.id } });
         await tx.product.delete({ where: { id: p.id } });
-        return { cartItems: cartItems.count, inventoryLogs: inventoryLogs.count, designs: designs.count };
+        return {
+          cartItems: cartItems.count,
+          inventoryLogs: inventoryLogs.count,
+          designs: designs.count,
+        };
       });
       totals.cartItems += t.cartItems;
       totals.inventoryLogs += t.inventoryLogs;
@@ -180,7 +187,9 @@ async function main() {
   }
 
   // ── 3. Categorías de negocio a retirar (animales/frutas) ───────────────────
-  console.log(`\nCategorías retiradas por decisión de negocio: ${BUSINESS_CATS_TO_REMOVE.join(", ")}`);
+  console.log(
+    `\nCategorías retiradas por decisión de negocio: ${BUSINESS_CATS_TO_REMOVE.join(", ")}`,
+  );
   let bizRemoved = 0;
   for (const slug of BUSINESS_CATS_TO_REMOVE) {
     const cat = await prisma.category.findUnique({
@@ -197,7 +206,9 @@ async function main() {
       );
       continue;
     }
-    console.log(`  ⊘ ${slug} ("${cat.name}") vacía ${cat.deletedAt ? "(ya archivada) " : ""}→ HARD-DELETE`);
+    console.log(
+      `  ⊘ ${slug} ("${cat.name}") vacía ${cat.deletedAt ? "(ya archivada) " : ""}→ HARD-DELETE`,
+    );
     if (APPLY) {
       await prisma.category.delete({ where: { id: cat.id } });
     }
@@ -206,7 +217,9 @@ async function main() {
 
   // ── 4. Sospechosos por nombre (slug no-fixture) — SOLO REPORTE ─────────────
   if (nameSuspects.length > 0) {
-    console.log(`\n⚠ Sospechosos por NOMBRE (slug sin patrón de test) — NO tocados, revisar a mano:`);
+    console.log(
+      `\n⚠ Sospechosos por NOMBRE (slug sin patrón de test) — NO tocados, revisar a mano:`,
+    );
     for (const p of nameSuspects) console.log(`  ? ${p.name} (/${p.slug}, cat ${p.category.slug})`);
   } else {
     console.log(`\nSospechosos por nombre (slug no-fixture): ninguno ✓`);

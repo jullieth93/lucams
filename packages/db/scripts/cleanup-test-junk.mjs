@@ -24,6 +24,10 @@
  */
 
 import { PrismaClient } from "@prisma/client";
+import { assertDestructiveAllowed } from "./lib/env-guard.mjs";
+
+// Guarda de ambiente: hard-delete de fixtures/admins de test — bloquea PRD/remotos no STG.
+assertDestructiveAllowed("cleanup-test-junk.mjs");
 
 const prisma = new PrismaClient();
 const APPLY = process.argv.includes("--apply");

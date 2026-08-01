@@ -31,6 +31,7 @@
  */
 
 import { PrismaClient } from "@prisma/client";
+import { assertDestructiveAllowed } from "./lib/env-guard.mjs";
 
 const stripQuotes = (v) => v?.replace(/^["']|["']$/g, "");
 
@@ -44,6 +45,9 @@ process.env.DATABASE_URL = stripQuotes(process.env.DATABASE_URL);
 if (process.env.DIRECT_URL) {
   process.env.DIRECT_URL = stripQuotes(process.env.DIRECT_URL);
 }
+
+// Guarda de ambiente: este script BORRA usuarios en masa — bloquea PRD/remotos no STG.
+assertDestructiveAllowed("seed-clean.mjs");
 
 const prisma = new PrismaClient();
 

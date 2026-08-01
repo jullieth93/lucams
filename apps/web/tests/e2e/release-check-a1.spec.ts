@@ -47,6 +47,10 @@ const FIELD_KEY = "home.categories.cta-all";
 const ORIGINAL = "Ver todas las categorías y productos →";
 const VARIANT = "Ver todo el catálogo →";
 
+// true mientras la VARIANT está publicada en prod (entre el publish del paso 3 y su
+// reversa). Si el test muere a mitad, el afterAll la usa para restaurar el copy original.
+let variantPublished = false;
+
 test.setTimeout(300_000);
 
 test.beforeAll(async () => {
@@ -63,9 +67,25 @@ test.beforeAll(async () => {
   adminId = admin.id;
 });
 
-test.afterAll(async () => {
-  // Limpieza garantizada aunque falle el smoke: el campo queda en su texto
-  // original (el test lo revierte) y el admin temporal se borra.
+test.afterAll(async ({ browser }) => {
+  // Reversión GARANTIZADA del campo CMS: si el test murió a mitad (assert/timeout)
+  // con la variante publicada, la home de prod quedaría con el copy de prueba.
+  // Se restaura el ORIGINAL con el mismo flujo del paso 3 (login admin → guardar →
+  // publicar). El paso 1 ya verificó que ORIGINAL es el texto vivo antes de editar.
+  if (variantPublished) {
+    const page = await browser.newPage();
+    try {
+      await adminLogin(page);
+      await editAndPublish(page, "inicio", FIELD_KEY, ORIGINAL);
+      console.log("✓ afterAll: home restaurada al copy original (reversión garantizada)");
+    } catch (err) {
+      console.error("⚠️ afterAll: NO se pudo restaurar el copy original de la home:", err);
+    } finally {
+      variantPublished = false;
+      await page.close().catch(() => {});
+    }
+  }
+  // Limpieza garantizada aunque falle el smoke: el admin temporal se borra.
   if (adminId) await prisma.adminUser.deleteMany({ where: { id: adminId } }).catch(() => {});
   if (supabaseUserId) await service.auth.admin.deleteUser(supabaseUserId).catch(() => {});
   await prisma.$disconnect();
@@ -127,11 +147,13 @@ test("A1 — smoke post-release en producción", async ({ page, browser }) => {
 
   // 3. Editar → publicar → ver en / → revertir → ver original en /.
   await editAndPublish(page, "inicio", FIELD_KEY, VARIANT);
+  variantPublished = true; // desde acá la reversa queda garantizada por el afterAll
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await expect(page.locator("body")).toContainText(VARIANT, { timeout: 30_000 });
   console.log("✓ variante publicada y visible en la home");
 
   await editAndPublish(page, "inicio", FIELD_KEY, ORIGINAL);
+  variantPublished = false;
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await expect(page.locator("body")).toContainText(ORIGINAL, { timeout: 30_000 });
   console.log("✓ reversa publicada — la home vuelve al texto original");
