@@ -95,6 +95,16 @@ db-local-seed: ## Catálogo + plantillas + ocasiones + CMS en el stack local
 	cd packages/db && npx dotenv -e ../../.env.local -- node scripts/seed-catalog-v2.mjs
 	cd packages/db && npx dotenv -e ../../.env.local -- node scripts/migrate-cms-v2.mjs
 
+db-stg-setup: ## Esquema completo en lucams-stg (nube Free) — requiere .env.stg
+	bash scripts/db-stg-setup.sh
+
+db-stg-seed: ## Catálogo + plantillas + ocasiones + CMS en lucams-stg
+	cd packages/db && npx dotenv -e ../../.env.stg -- node scripts/seed-products.mjs
+	cd packages/db && npx dotenv -e ../../.env.stg -- node scripts/seed-templates.mjs
+	cd packages/db && npx dotenv -e ../../.env.stg -- node scripts/seed-ocasiones.mjs
+	cd packages/db && npx dotenv -e ../../.env.stg -- node scripts/seed-catalog-v2.mjs
+	cd packages/db && npx dotenv -e ../../.env.stg -- node scripts/migrate-cms-v2.mjs
+
 test-local: ## Suite vitest contra el stack local (excluye las 2 suites de la DB compartida)
 	NIGHTLY_LOCALSTACK=1 pnpm --filter web test
 

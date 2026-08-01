@@ -827,13 +827,14 @@ Mapa real al 2026-08-01 (tras la separación dev/prod con Supabase local podman)
 
 #### Checklist para crear STG (cuando Lucy decida)
 
-1. **Supabase dashboard** → org `Lucams` → **New project** `lucams-stg` (Free, misma región que prod). Anotar project ref, URL, anon key, service key y password de DB.
-2. **VM/repo:** crear `.env.stg` (queda fuera de git por la regla `.env.*` del `.gitignore`) copiando `.env.local.nube-backup` y reemplazando `DATABASE_URL`, `DIRECT_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` y `SUPABASE_SERVICE_ROLE_KEY` por las del proyecto nuevo. **No tocar el flip** (`db-local-on/off` solo alterna local↔prod).
-3. **Esquema** en el orden del Nightly (§ «Supabase LOCAL del día a día»): extensiones → `prisma migrate deploy` → SQL de `supabase/migrations` con rol `supabase_admin` → grants — todo con `dotenv -e .env.stg`.
-4. **Seeds:** los targets `seed-*` + `migrate-cms-v2` (mismos de `db-local-seed`) con `dotenv -e .env.stg`.
-5. **Vercel dashboard** → Settings → Environment Variables: las 5 vars de Supabase/DB + `CRON_SECRET` con scope **Preview** apuntando a `lucams-stg` (el scope Production sigue apuntando a `lucams-prod`).
-6. **Verificar:** push a `develop` → abrir la URL preview → smoke (home 200, catálogo, un texto del CMS visible).
-7. **Documentar:** marcar STG como ✅ en la tabla de arriba y registrar el proyecto en HANDOFF.
+1. **Supabase dashboard** → org `Lucams` → **New project** `lucams-stg` (Free, misma región que prod — us-east-2). Anotar project ref, URL, publishable key, secret key y password de DB.
+2. **VM/repo:** crear `.env.stg` (queda fuera de git por la regla `.env.*` del `.gitignore`) copiando `.env.local.nube-backup` y reemplazando `DATABASE_URL`, `DIRECT_URL` (pooler del proyecto stg: `:6543` pgbouncer / `:5432` directo), `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` y `SUPABASE_SECRET_KEY` por las del proyecto nuevo. **No tocar el flip** (`db-local-on/off` solo alterna local↔prod).
+3. **Esquema:** `make db-stg-setup` (script `scripts/db-stg-setup.sh`: extensiones → `prisma migrate deploy` → SQL de `supabase/migrations` → grants, mismo orden del Nightly; el rol `postgres` del proyecto es superuser en Supabase cloud, cubre el event trigger de la 014).
+4. **Seeds:** `make db-stg-seed` (catálogo + plantillas + ocasiones + CMS).
+5. **Secretos Vault para pg_cron** (jobs HTTP de las migraciones 015/016/021 — leen `cron_base_url`/`cron_secret` del Vault en runtime y en un proyecto nuevo no existen): crearlos con los comandos del header de `scripts/db-stg-setup.sh`, apuntando `cron_base_url` a la URL estable del preview de `develop` y `cron_secret` al MISMO valor de `CRON_SECRET` que quede scope Preview.
+6. **Vercel dashboard** → Settings → Environment Variables: las 5 vars de Supabase/DB + `CRON_SECRET` con scope **Preview** apuntando a `lucams-stg` (el scope Production sigue apuntando a `lucams-prod`; hoy las 5 tienen scope `production+preview` — por eso los previews tocan la DB de prod).
+7. **Verificar:** push a `develop` → abrir la URL preview → smoke (home 200, catálogo, un texto del CMS visible).
+8. **Documentar:** marcar STG como ✅ en la tabla de arriba y registrar el proyecto en HANDOFF.
 
 ### Feature flags
 
