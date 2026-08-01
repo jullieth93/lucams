@@ -3,11 +3,12 @@
  *
  * Wompi flow para Web Checkout hosted:
  *  1. createCheckout: construimos URL de https://checkout.wompi.co/p/?...
- *     con firma de integridad (HMAC SHA256). El cliente paga ahí.
+ *     con firma de integridad (SHA-256 plano, NO HMAC). El cliente paga ahí.
  *  2. Wompi redirige a redirectUrl con ?id=TX_ID&env=…&status=…
  *  3. Tras redirect, llamamos getPaymentDetails(TX_ID) para confirmar
  *     status real (no confiar en query params).
- *  4. En paralelo, Wompi manda webhook firmado con HMAC SHA256(events_secret).
+ *  4. En paralelo, Wompi manda webhook firmado con SHA-256 plano
+ *     (properties + timestamp + events_secret — NO HMAC, ver lib/wompi.ts).
  *     verifyWebhook valida + normaliza.
  */
 

@@ -2,6 +2,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { DesignSuggestInputSchema, BRAND_COLORS } from "./schemas";
 import { AiUnavailableError } from "./provider";
 
+// Guard de etapa: suggestDesignAction debe rechazar en modo catálogo (la UI la oculta,
+// pero una Server Action es un POST endpoint invocable por un request crafteado).
+// El guard es lo PRIMERO de la acción → el mock basta; no se toca rate-limit/DB/Gemini.
+vi.mock("@/lib/store-mode", () => ({ isCatalogMode: () => true, STORE_MODE: "catalog" }));
+
 const VALID_INPUT = {
   occasion: "cumpleaños de mi mamá",
   productName: "Fotoimanes Cuadrados",
@@ -83,6 +88,15 @@ describe("IA — Gemini con fallback entre modelos", () => {
       AiUnavailableError,
     );
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("IA — guard de modo catálogo (suggestDesignAction)", () => {
+  it("en modo catálogo la Server Action rechaza con el shape de error habitual", async () => {
+    const { suggestDesignAction } = await import("./actions");
+    const res = await suggestDesignAction(VALID_INPUT);
+    expect(res.ok).toBe(false);
+    if (!res.ok) expect(res.message).toContain("no está disponible");
   });
 });
 

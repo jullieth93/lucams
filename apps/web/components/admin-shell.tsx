@@ -324,7 +324,11 @@ function UserFooter({ admin, onNavigate }: { admin: AdminInfo; onNavigate: () =>
             <div className="from-brand-purple-dark to-brand-purple absolute right-0 bottom-full left-0 z-50 mb-2 overflow-hidden rounded-xl bg-gradient-to-br shadow-2xl ring-1 ring-white/15">
               <div className="p-1">
                 <Link
-                  href="/admin/password"
+                  // /admin/password NUNCA existió (caía en el catch-all → 404). No hay
+                  // página admin de cambio de contraseña (esa vive en /mi-cuenta/seguridad
+                  // para clientes); lo que sí cubre la seguridad de la cuenta admin es
+                  // /admin/seguridad (MFA + códigos de respaldo) → el item apunta ahí.
+                  href="/admin/seguridad"
                   onClick={() => {
                     setOpen(false);
                     onNavigate();
@@ -332,7 +336,7 @@ function UserFooter({ admin, onNavigate }: { admin: AdminInfo; onNavigate: () =>
                   className="flex items-center gap-2.5 rounded-md px-3 py-2.5 text-sm text-white/85 transition-colors hover:bg-white/10 hover:text-white"
                 >
                   <KeyRound className="h-3.5 w-3.5 flex-shrink-0 opacity-70" />
-                  Cambiar contraseña
+                  Seguridad
                 </Link>
                 <div className="mx-2 my-1 border-t border-white/10" />
                 <form action={adminLogoutAction}>

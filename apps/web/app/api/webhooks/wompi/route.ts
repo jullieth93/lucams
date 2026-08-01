@@ -52,7 +52,20 @@ export async function POST(req: Request) {
   }
 
   // 2) Verificar firma. Si inválida, rechazamos (potencial atacante).
-  const verification = verifyWebhookSignature(rawBody);
+  let verification: ReturnType<typeof verifyWebhookSignature>;
+  try {
+    verification = verifyWebhookSignature(rawBody);
+  } catch (err) {
+    // verifyWebhookSignature NO lanza por firma inválida (eso es valid:false → 401 abajo);
+    // lo único que lanza es getWompiConfig() cuando falta alguna WOMPI_* — caso normal en
+    // catalog-prod, donde no son requeridas. El endpoint existe pero no está configurado:
+    // 503 limpio (mismo criterio que el webhook de Aveonline), no un 500 crudo.
+    logger.warn({
+      event: "webhook.wompi.not_configured",
+      err: err instanceof Error ? err.message : String(err),
+    });
+    return NextResponse.json({ error: "webhook not configured" }, { status: 503 });
+  }
   if (!verification.valid) {
     logger.warn({
       event: "webhook.wompi.invalid_signature",

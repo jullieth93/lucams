@@ -74,6 +74,18 @@ describe("getWhatsAppNumber", () => {
     process.env.NEXT_PUBLIC_WA_NUMBER = "";
     expect(await getWhatsAppNumber()).toBe(FALLBACK_NUMBER);
   });
+
+  it("sanitiza el número del CMS: '+57 320 887-3826' → dígitos limpios", async () => {
+    getSettingValue.mockImplementation(async (key: string, fallback: string) =>
+      key === "WA_NUMBER" ? "+57 320 887-3826" : fallback,
+    );
+    expect(await getWhatsAppNumber()).toBe("573208873826");
+  });
+
+  it("sanitiza también el fallback de env: '+57 300 123 4567' → dígitos limpios", async () => {
+    process.env.NEXT_PUBLIC_WA_NUMBER = "+57 300 123 4567";
+    expect(await getWhatsAppNumber()).toBe("573001234567");
+  });
 });
 
 describe("buildWhatsAppMessage — plantillas fallback (setting ausente)", () => {

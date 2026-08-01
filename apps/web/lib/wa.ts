@@ -27,9 +27,17 @@ const FALLBACK_NUMBER = "573208873826"; // Lucy WhatsApp temporal — ver .env.e
 /**
  * Número wa.me de destino. Fuente de verdad: setting WA_NUMBER del CMS.
  * Fallback: NEXT_PUBLIC_WA_NUMBER y, en última instancia, FALLBACK_NUMBER.
+ *
+ * wa.me exige SOLO dígitos: si la admin guarda "+57 320 887 3826" en el CMS (o la
+ * env trae '+'/espacios/guiones), el link wa.me/{number} se rompe. Se sanitiza acá
+ * —punto único donde se resuelve el número— para que CMS y env queden cubiertos.
  */
 export async function getWhatsAppNumber(): Promise<string> {
-  return getSettingValue("WA_NUMBER", process.env.NEXT_PUBLIC_WA_NUMBER || FALLBACK_NUMBER);
+  const raw = await getSettingValue(
+    "WA_NUMBER",
+    process.env.NEXT_PUBLIC_WA_NUMBER || FALLBACK_NUMBER,
+  );
+  return raw.replace(/\D/g, "");
 }
 
 export type WhatsAppContext =

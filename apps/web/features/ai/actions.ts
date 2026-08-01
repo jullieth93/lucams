@@ -9,6 +9,7 @@ import { getDesignSuggestion, AiUnavailableError } from "./service";
 import { getClientIp } from "@/lib/client-ip";
 import { getCurrentCustomer } from "@/lib/auth";
 import { peekCartSession } from "@/lib/cart-session";
+import { isCatalogMode } from "@/lib/store-mode";
 
 type Result = { ok: true; suggestion: DesignSuggestion } | { ok: false; message: string };
 
@@ -18,6 +19,19 @@ type Result = { ok: true; suggestion: DesignSuggestion } | { ok: false; message:
  * problema del proveedor → mensaje amable, nunca rompe el editor.
  */
 export async function suggestDesignAction(raw: unknown): Promise<Result> {
+  // Guard de ETAPA (mismo patrón que lib/stage-guard.ts): la UI ya oculta el asistente en
+  // modo catálogo, pero una Server Action es un endpoint POST invocable por un request
+  // crafteado — esconder la UI no es autorizar. No usamos guardTransactionalAction() porque
+  // ésta REDIRIGE al form de cotización y esta acción devuelve un Result JSON al cliente;
+  // acá el rechazo es con el mismo shape de error que el resto de fallos de la acción.
+  if (isCatalogMode()) {
+    logger.warn({ event: "ai.suggest.blocked_catalog_mode" });
+    return {
+      ok: false,
+      message: "El asistente no está disponible ahora. ¡Igual puedes personalizar tú! 💜",
+    };
+  }
+
   const parsed = DesignSuggestInputSchema.safeParse(raw);
   if (!parsed.success) {
     return { ok: false, message: "Cuéntanos un poco más sobre la ocasión (mínimo unas palabras)." };

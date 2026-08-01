@@ -200,6 +200,39 @@ describe.skipIf(!hasDb)("webhook Wompi ROUTE — portería con firma real", () =
     expect(ev).toBeNull();
   });
 
+  it("sin WOMPI_* configuradas (caso catalog-prod) → 503 limpio, no 500 crudo", async () => {
+    // getWompiConfig() lanza si falta cualquier WOMPI_*; la ruta debe traducirlo a
+    // 503 { error: "webhook not configured" } (mismo criterio que Aveonline).
+    const keys = [
+      "WOMPI_PUBLIC_KEY",
+      "WOMPI_PRIVATE_KEY",
+      "WOMPI_EVENTS_SECRET",
+      "WOMPI_INTEGRITY_SECRET",
+    ] as const;
+    const saved = keys.map((k) => [k, process.env[k]] as const);
+    for (const k of keys) delete process.env[k];
+    try {
+      const res = await POST(
+        req(
+          signedEvent({
+            txId: `${RUN}-tx-noconfig`,
+            status: "APPROVED",
+            amountInCents: 55000,
+            reference: `${RUN}-NOCONFIG`,
+          }),
+        ),
+      );
+      expect(res.status).toBe(503);
+      expect(await res.json()).toEqual({ error: "webhook not configured" });
+      expect(sagaCalls).toHaveLength(0);
+    } finally {
+      for (const [k, v] of saved) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+    }
+  });
+
   it("reintento Wompi (mismo timestamp, 3h después) → se PROCESA, no se rechaza (doc eventos)", async () => {
     const ref = `${RUN}-LCM-RETRY`;
     const orderId = await makeOrder(ref, 55000);
