@@ -255,7 +255,7 @@ export function StudioTextEditorForm({
                 aria-label={c.label}
                 title={c.label}
                 className={[
-                  "relative h-7 w-7 rounded-full transition-transform hover:scale-110 focus:outline-none",
+                  "focus:ring-brand-turquoise relative h-7 w-7 rounded-full transition-transform hover:scale-110 focus:ring-2 focus:outline-none",
                   isSelected
                     ? "ring-brand-turquoise scale-110 ring-2 ring-offset-2"
                     : "ring-brand-purple/15 hover:ring-brand-purple/40 ring-1",
@@ -293,7 +293,7 @@ export function StudioTextEditorForm({
                 aria-label={fillStudioText(texts.texto.tipografiaAria, { nombre: f.label })}
                 title={f.mood}
                 className={[
-                  "flex items-center justify-between rounded-md px-2.5 py-2 text-left transition-all focus:outline-none",
+                  "focus:ring-brand-turquoise flex items-center justify-between rounded-md px-2.5 py-2 text-left transition-all focus:ring-2 focus:outline-none",
                   isSelected
                     ? "bg-brand-turquoise/10 ring-brand-turquoise ring-2"
                     : "ring-brand-purple/15 hover:ring-brand-purple/40 ring-1",

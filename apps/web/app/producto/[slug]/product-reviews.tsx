@@ -89,7 +89,8 @@ export async function ProductReviews({
             {reviews.map((r) => (
               <li key={r.id} className="border-brand-purple/10 rounded-lg border bg-white p-4">
                 <div className="mb-1 flex items-center gap-2">
-                  <div className="flex">
+                  {/* Estrellas decorativas: la calificación real va en el sr-only (WCAG 1.1.1). */}
+                  <div className="flex" aria-hidden="true">
                     {[1, 2, 3, 4, 5].map((n) => (
                       <Star
                         key={n}
@@ -101,6 +102,7 @@ export async function ProductReviews({
                       />
                     ))}
                   </div>
+                  <span className="sr-only">Calificación: {r.rating} de 5</span>
                   <span className="text-brand-purple-dark text-sm font-semibold">
                     {r.authorName ?? "Cliente Lucams"}
                   </span>

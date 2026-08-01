@@ -1,7 +1,9 @@
 /*
  * Carousel de reseñas reales (featured).
  *
- * Usa Embla con autoplay lento. Si no hay reseñas, el padre renderea
+ * Usa Embla con autoplay lento + botón pausa/play (WCAG 2.2.2); con
+ * prefers-reduced-motion el autoplay NO se inicializa. Dots con área
+ * táctil ≥ 24×24 (WCAG 2.5.8). Si no hay reseñas, el padre renderea
  * empty state con mascote.
  */
 
@@ -11,18 +13,31 @@ import { useCallback, useEffect, useState } from "react";
 import useEmblaCarousel from "embla-carousel-react";
 import Autoplay from "embla-carousel-autoplay";
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, Star } from "lucide-react";
+import { ChevronLeft, ChevronRight, Pause, Play, Star } from "lucide-react";
+import { usePrefersReducedMotion } from "@/app/estudio/[slug]/use-prefers-reduced-motion";
 import type { StorefrontReview } from "@/features/reviews/public-service";
 
 export function ReviewsCarousel({ reviews }: { reviews: StorefrontReview[] }) {
+  // WCAG 2.2.2 / 2.3.3 — con "reducir movimiento" el autoplay no se registra (hook del Estudio, #16).
+  const prefersReducedMotion = usePrefersReducedMotion();
   const [emblaRef, emblaApi] = useEmblaCarousel(
     { loop: true, align: "start", containScroll: "trimSnaps" },
-    [Autoplay({ delay: 7000, stopOnInteraction: false, stopOnMouseEnter: true })],
+    prefersReducedMotion
+      ? []
+      : [Autoplay({ delay: 7000, stopOnInteraction: false, stopOnMouseEnter: true })],
   );
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [snaps, setSnaps] = useState<number[]>([]);
+  const [isPlaying, setIsPlaying] = useState(false);
   const scrollPrev = useCallback(() => emblaApi?.scrollPrev(), [emblaApi]);
   const scrollNext = useCallback(() => emblaApi?.scrollNext(), [emblaApi]);
+  // WCAG 2.2.2 — control visible para pausar/reanudar el movimiento automático.
+  const toggleAutoplay = useCallback(() => {
+    const autoplay = emblaApi?.plugins().autoplay;
+    if (!autoplay) return;
+    if (autoplay.isPlaying()) autoplay.stop();
+    else autoplay.play();
+  }, [emblaApi]);
 
   useEffect(() => {
     if (!emblaApi) return;
@@ -38,6 +53,23 @@ export function ReviewsCarousel({ reviews }: { reviews: StorefrontReview[] }) {
       emblaApi.off("reInit", onSelect);
     };
   }, [emblaApi]);
+
+  // El estado del botón pausa/play sigue al plugin vía sus eventos — así también
+  // refleja la pausa por hover de stopOnMouseEnter.
+  useEffect(() => {
+    if (!emblaApi) return;
+    const autoplay = emblaApi.plugins().autoplay;
+    if (!autoplay) return;
+    const onPlay = () => setIsPlaying(true);
+    const onStop = () => setIsPlaying(false);
+    emblaApi.on("autoplay:play", onPlay);
+    emblaApi.on("autoplay:stop", onStop);
+    queueMicrotask(() => setIsPlaying(autoplay.isPlaying()));
+    return () => {
+      emblaApi.off("autoplay:play", onPlay);
+      emblaApi.off("autoplay:stop", onStop);
+    };
+  }, [emblaApi, prefersReducedMotion]);
 
   if (reviews.length === 0) return null;
 
@@ -75,19 +107,34 @@ export function ReviewsCarousel({ reviews }: { reviews: StorefrontReview[] }) {
         <ChevronRight className="h-5 w-5" />
       </button>
 
-      <div className="mt-4 flex justify-center gap-1.5">
+      <div className="mt-4 flex items-center justify-center gap-1">
         {snaps.map((_, i) => (
           <button
             key={i}
             type="button"
             onClick={() => emblaApi?.scrollTo(i)}
             aria-label={`Ir a reseña ${i + 1}`}
-            className={
-              "h-2 rounded-full transition-all " +
-              (i === selectedIdx ? "bg-brand-purple w-6" : "bg-brand-purple/30 w-2")
-            }
-          />
+            // Área táctil ≥ 24×24 (WCAG 2.5.8): el botón envuelve al dot visual.
+            className="flex h-6 w-6 items-center justify-center"
+          >
+            <span
+              className={
+                "h-2 rounded-full transition-all " +
+                (i === selectedIdx ? "bg-brand-purple w-6" : "bg-brand-purple/30 w-2")
+              }
+            />
+          </button>
         ))}
+        {!prefersReducedMotion && (
+          <button
+            type="button"
+            onClick={toggleAutoplay}
+            aria-label={isPlaying ? "Pausar carrusel" : "Reproducir carrusel"}
+            className="text-brand-purple hover:bg-brand-purple/10 ml-1 flex h-6 w-6 items-center justify-center rounded-full transition-colors"
+          >
+            {isPlaying ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+          </button>
+        )}
       </div>
     </div>
   );
@@ -96,7 +143,8 @@ export function ReviewsCarousel({ reviews }: { reviews: StorefrontReview[] }) {
 function ReviewCard({ review }: { review: StorefrontReview }) {
   return (
     <article className="border-brand-purple/10 flex h-full flex-col rounded-xl border bg-white p-5">
-      <div className="mb-3 flex items-center gap-0.5">
+      {/* Las estrellas son decorativas: la calificación real va en el sr-only (WCAG 1.1.1). */}
+      <div className="mb-3 flex items-center gap-0.5" aria-hidden="true">
         {Array.from({ length: 5 }, (_, i) => (
           <Star
             key={i}
@@ -109,6 +157,7 @@ function ReviewCard({ review }: { review: StorefrontReview }) {
           />
         ))}
       </div>
+      <span className="sr-only">Calificación: {review.rating} de 5</span>
       <p className="text-brand-purple-dark/85 mb-4 line-clamp-5 text-sm leading-relaxed">
         “{review.comment}”
       </p>

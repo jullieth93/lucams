@@ -637,7 +637,10 @@ function StudioSlotImpl({
                 : "empty"
           }
           className={[
+            // Foco visible DISTINTO al de selección (turquesa): el ring de foco va en
+            // púrpura para no confundir "tiene foco de teclado" con "está seleccionado".
             "group relative cursor-pointer overflow-hidden bg-white outline-none",
+            "focus-visible:ring-brand-purple focus-visible:ring-2 focus-visible:ring-offset-2",
             "transition-shadow duration-200",
             isSelected ? "ring-brand-turquoise ring-2 ring-offset-2" : "",
             isDropping ? "ring-brand-turquoise ring-2 ring-offset-2" : "",

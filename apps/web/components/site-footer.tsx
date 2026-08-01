@@ -214,9 +214,11 @@ export async function SiteFooter() {
                 </li>
               ))}
               <li className="pt-1">
+                {/* a11y contraste: brand-pink sobre purple-dark da 3.69:1 (< 4.5 AA) → los CTAs
+                    del footer van en brand-coral (5.02:1) y el hover sube a blanco. */}
                 <Link
                   href="/productos"
-                  className="text-brand-pink hover:text-brand-coral font-semibold transition-colors"
+                  className="text-brand-coral font-semibold transition-colors hover:text-white"
                 >
                   <CmsText blockKey="footer.shop.cta-all" fallback="Ver todo →" />
                 </Link>
@@ -272,7 +274,7 @@ export async function SiteFooter() {
               <li className="pt-1">
                 <Link
                   href="/ayuda"
-                  className="text-brand-pink hover:text-brand-coral font-semibold transition-colors"
+                  className="text-brand-coral font-semibold transition-colors hover:text-white"
                 >
                   <CmsText blockKey="footer.help.cta" fallback="Centro de ayuda →" />
                 </Link>
@@ -280,7 +282,7 @@ export async function SiteFooter() {
               <li>
                 <Link
                   href="/contacto"
-                  className="text-brand-pink hover:text-brand-coral font-semibold transition-colors"
+                  className="text-brand-coral font-semibold transition-colors hover:text-white"
                 >
                   <CmsText blockKey="footer.contact.cta" fallback="Contacto →" />
                 </Link>
@@ -288,7 +290,7 @@ export async function SiteFooter() {
               <li>
                 <Link
                   href="/rastrear"
-                  className="text-brand-pink hover:text-brand-coral font-semibold transition-colors"
+                  className="text-brand-coral font-semibold transition-colors hover:text-white"
                 >
                   <CmsText blockKey="footer.track.cta" fallback="Rastrear pedido →" />
                 </Link>

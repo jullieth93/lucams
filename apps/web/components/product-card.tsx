@@ -4,6 +4,12 @@
  * Sin imágenes reales todavía: fallback con gradient + nombre + icon.
  * Cuando se conecten imágenes (Supabase Storage) se reemplaza el block
  * placeholder por <Image src={product.images[0]} ... />.
+ *
+ * Navegación: patrón stretched-link INVERSO — el <Link> es un overlay
+ * absoluto que cubre toda la card (zona clickeable idéntica a antes) en
+ * vez de envolver el contenido. Así el <WishlistButton> NO queda anidado
+ * dentro del enlace (contenido interactivo anidado = HTML inválido);
+ * el corazón va por ENCIMA del overlay con z-10 y su click no navega.
  */
 
 import Image from "next/image";
@@ -32,11 +38,7 @@ export function ProductCard({
   const outOfStock = product.inStock === false;
 
   return (
-    <Link
-      href={`/producto/${product.slug}`}
-      aria-label={product.name}
-      className="group border-brand-purple/10 flex flex-col overflow-hidden rounded-xl border bg-white transition-shadow hover:shadow-lg"
-    >
+    <div className="group border-brand-purple/10 relative flex flex-col overflow-hidden rounded-xl border bg-white transition-shadow hover:shadow-lg">
       <div className="from-brand-turquoise/15 via-brand-cream to-brand-pink/15 relative aspect-square w-full overflow-hidden bg-gradient-to-br">
         {product.images.length > 0 ? (
           <Image
@@ -66,7 +68,9 @@ export function ProductCard({
           </span>
         )}
         {wishlisted !== undefined && (
-          <div className="absolute top-1.5 right-1.5">
+          // z-10: el corazón queda POR ENCIMA del overlay-link (ver abajo) para que su
+          // click haga toggle y no navegue a la PDP.
+          <div className="absolute top-1.5 right-1.5 z-10">
             <WishlistButton
               productId={product.id}
               initialWishlisted={wishlisted}
@@ -119,6 +123,15 @@ export function ProductCard({
           )}
         </div>
       </div>
-    </Link>
+
+      {/* Stretched-link: overlay transparente que cubre TODA la card (misma zona
+          clickeable que cuando el Link envolvía el contenido). Va de último para
+          pintar encima; el WishlistButton lo supera con z-10. */}
+      <Link
+        href={`/producto/${product.slug}`}
+        aria-label={product.name}
+        className="absolute inset-0"
+      />
+    </div>
   );
 }

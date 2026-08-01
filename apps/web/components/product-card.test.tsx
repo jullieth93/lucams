@@ -88,6 +88,18 @@ describe("ProductCard", () => {
     expect(screen.getByText("Fotoimanes")).toBeInTheDocument();
   });
 
+  it("stretched-link: el corazón NO queda anidado en el link y este cubre toda la card", () => {
+    // Contenido interactivo anidado (<button> dentro de <a>) es HTML inválido: el
+    // Link es un overlay absoluto y el WishlistButton vive fuera, por encima (z-10).
+    render(<ProductCard product={makeCard()} wishlisted={false} />);
+    const link = screen.getByRole("link", { name: "Imán Corazón" });
+    const btn = screen.getByRole("button", { name: /guardar en favoritos/i });
+    expect(link.contains(btn)).toBe(false);
+    expect(btn.closest("a")).toBeNull();
+    // El overlay sigue cubriendo toda la card (zona clickeable sin cambios).
+    expect(link).toHaveClass("absolute", "inset-0");
+  });
+
   it("muestra el precio base formateado en COP (centavos → pesos)", () => {
     render(<ProductCard product={makeCard({ basePrice: 19_900, variantCount: 1 })} />);
     // formatCOP(19900) = "$ 199" (con espacio no-separable de Intl que testing-library

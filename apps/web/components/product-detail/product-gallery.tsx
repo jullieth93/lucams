@@ -14,7 +14,7 @@
 import { useEffect, useState } from "react";
 import Image from "next/image";
 import { ChevronLeft, ChevronRight, Sparkles, X, ZoomIn } from "lucide-react";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 
 export function ProductGallery({ images, alt }: { images: string[]; alt: string }) {
   const [activeIdx, setActiveIdx] = useState(0);
@@ -82,6 +82,8 @@ export function ProductGallery({ images, alt }: { images: string[]; alt: string 
 
       <Dialog open={lightboxOpen} onOpenChange={setLightboxOpen}>
         <DialogContent showCloseButton={false} className="border-none bg-black/90 p-0 sm:max-w-5xl">
+          {/* Radix exige título accesible aunque el lightbox sea puramente visual. */}
+          <DialogTitle className="sr-only">Galería de {alt}</DialogTitle>
           <LightboxView
             images={images}
             alt={alt}

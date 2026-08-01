@@ -202,7 +202,7 @@ function BorderOption({
       aria-checked={active}
       onClick={onClick}
       className={[
-        "flex items-center justify-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold transition-all focus:outline-none",
+        "focus:ring-brand-turquoise flex items-center justify-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-semibold transition-all focus:ring-2 focus:outline-none",
         active
           ? "bg-brand-purple text-white shadow-sm"
           : "text-brand-purple-dark/70 hover:bg-brand-purple/10",

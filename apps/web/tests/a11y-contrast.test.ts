@@ -36,6 +36,8 @@ const AUDITED_FILES = [
   join("app", "estudio", "[slug]", "studio-sidebar.tsx"),
   join("app", "estudio", "[slug]", "studio-photo-adjust-modal.tsx"),
   join("components", "site-header.tsx"),
+  join("components", "site-footer.tsx"),
+  join("components", "newsletter-form.tsx"),
   join("components", "product-card.tsx"),
   join("components", "product-from-catalog-card.tsx"),
 ];
@@ -110,6 +112,15 @@ describe("ratios de la paleta (calculados, no estimados)", () => {
     expect(r2(contrastRatio(WHITE, chip))).toBe(1.62);
     expect(r2(contrastRatio(t["brand-purple-dark"]!, chip))).toBe(7.43);
     expect(contrastRatio(t["brand-purple-dark"]!, chip)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  it("los enlaces del footer: brand-pink sobre brand-purple-dark NO llega a AA → van en brand-coral", () => {
+    // Auditoría 2026-08: los CTAs del footer ("Ver todo →", "Centro de ayuda →", etc.) y el
+    // "Aviso de Privacidad" del newsletter dark eran text-brand-pink text-sm/xs sobre el fondo
+    // purple-dark → 3.69:1, bajo el 4.5:1 de texto normal. brand-coral llega a 5.02:1.
+    expect(r2(contrastRatio(t["brand-pink"]!, t["brand-purple-dark"]!))).toBe(3.69);
+    expect(r2(contrastRatio(t["brand-coral"]!, t["brand-purple-dark"]!))).toBe(5.02);
+    expect(contrastRatio(t["brand-coral"]!, t["brand-purple-dark"]!)).toBeGreaterThanOrEqual(4.5);
   });
 });
 

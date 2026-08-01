@@ -963,6 +963,10 @@ export function StudioEditor({
 
   return (
     <div className="flex flex-1 flex-col">
+      {/* h1 de la página del editor (WCAG 1.3.1): el nombre del producto visible vive en la
+          toolbar como <p>; la página necesita un encabezado de nivel 1 aunque sea sr-only.
+          Las rutas gate y los editores name/letter-set ya traen su propio h1. */}
+      <h1 className="sr-only">Personalizando {product.name}</h1>
       <StudioToolbar
         store={store}
         productName={product.name}

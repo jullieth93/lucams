@@ -89,7 +89,7 @@ export function NewsletterForm({
             href="/legal/privacidad"
             className={
               "underline-offset-2 hover:underline " +
-              (isDark ? "text-brand-pink hover:text-white" : "text-brand-purple")
+              (isDark ? "text-brand-coral hover:text-white" : "text-brand-purple")
             }
             target="_blank"
             rel="noopener"

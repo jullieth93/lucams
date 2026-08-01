@@ -560,6 +560,8 @@ export function ActiveFilterChips({
           key={c.key}
           type="button"
           onClick={() => removeParam(c.key)}
+          // El contenido visual solo muestra el valor; el aria-label aclara la acción (quitar).
+          aria-label={`Quitar filtro ${c.label}`}
           className="bg-brand-purple/10 text-brand-purple-dark hover:bg-brand-purple/15 inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-medium"
         >
           {c.label}

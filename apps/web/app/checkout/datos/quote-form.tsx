@@ -88,6 +88,10 @@ export function QuoteForm({
       ? "Móvil colombiano: 10 dígitos empezando con 3"
       : null;
 
+  // Error efectivo del campo WhatsApp (cliente o server) — se reusa para el
+  // aria-invalid/aria-describedby del input y para el <FieldError> con id.
+  const whatsappError = phoneClientError ?? err("customerWhatsapp");
+
   return (
     <form action={formAction} className="space-y-6">
       {/* Ola 2A — resumen de lo que estás cotizando, con el PREVIEW del diseño personalizado
@@ -198,9 +202,11 @@ export function QuoteForm({
               maxLength={80}
               placeholder="Ej. Valentina Rojas"
               autoComplete="name"
+              aria-invalid={err("customerName") ? true : undefined}
+              aria-describedby={err("customerName") ? "customerName-error" : undefined}
               className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
             />
-            <FieldError message={err("customerName")} />
+            <FieldError id="customerName-error" message={err("customerName")} />
           </div>
 
           {/* WhatsApp */}
@@ -225,11 +231,14 @@ export function QuoteForm({
               maxLength={12} // 10 dígitos + 2 espacios
               autoComplete="tel-national"
               inputMode="numeric"
+              aria-invalid={whatsappError ? true : undefined}
+              aria-describedby={whatsappError ? "customerWhatsapp-error" : undefined}
               className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
             />
             <input type="hidden" name="customerWhatsapp" value={stripPhone(phoneDisplay)} />
             <FieldError
-              message={phoneClientError ?? err("customerWhatsapp")}
+              id="customerWhatsapp-error"
+              message={whatsappError}
               hint="Acá te escribimos para concretar"
             />
           </div>
@@ -240,7 +249,7 @@ export function QuoteForm({
               htmlFor="customerEmail"
               className="text-brand-purple-dark mb-1 block text-xs font-semibold"
             >
-              Email
+              Email <span className="text-rose-600">*</span>
             </Label>
             <Input
               id="customerEmail"
@@ -250,9 +259,12 @@ export function QuoteForm({
               maxLength={254}
               placeholder={texts.emailPlaceholder}
               autoComplete="email"
+              aria-invalid={err("customerEmail") ? true : undefined}
+              aria-describedby={err("customerEmail") ? "customerEmail-error" : undefined}
               className="border-brand-purple/20 focus-visible:ring-brand-purple/30"
             />
             <FieldError
+              id="customerEmail-error"
               message={err("customerEmail")}
               hint="Te enviamos la cotización por WhatsApp y también por correo"
             />
@@ -274,6 +286,8 @@ export function QuoteForm({
                 setDeptCode(e.target.value);
                 setCityCode("");
               }}
+              aria-invalid={err("department") ? true : undefined}
+              aria-describedby={err("department") ? "department-error" : undefined}
               className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 h-9 w-full rounded-md border bg-white px-2 text-sm focus:ring-2 focus:outline-none"
             >
               <option value="">Elige departamento...</option>
@@ -284,7 +298,7 @@ export function QuoteForm({
               ))}
             </select>
             <input type="hidden" name="department" value={selectedDept?.name ?? ""} />
-            <FieldError message={err("department")} />
+            <FieldError id="department-error" message={err("department")} />
           </div>
 
           {/* Ciudad */}
@@ -301,6 +315,8 @@ export function QuoteForm({
               value={cityCode}
               onChange={(e) => setCityCode(e.target.value)}
               disabled={!deptCode}
+              aria-invalid={err("city") ? true : undefined}
+              aria-describedby={err("city") ? "city-error" : undefined}
               className="border-brand-purple/20 focus:border-brand-purple focus:ring-brand-purple/20 h-9 w-full rounded-md border bg-white px-2 text-sm focus:ring-2 focus:outline-none disabled:bg-slate-50 disabled:text-slate-400"
             >
               <option value="">
@@ -313,7 +329,7 @@ export function QuoteForm({
               ))}
             </select>
             <input type="hidden" name="city" value={selectedCity?.name ?? ""} />
-            <FieldError message={err("city")} />
+            <FieldError id="city-error" message={err("city")} />
           </div>
 
           {/* Notas */}
@@ -330,9 +346,11 @@ export function QuoteForm({
               rows={3}
               maxLength={500}
               placeholder={texts.notePlaceholder}
+              aria-invalid={err("notes") ? true : undefined}
+              aria-describedby={err("notes") ? "notes-error" : undefined}
               className="border-brand-purple/20 focus-visible:ring-brand-purple/30 resize-y"
             />
-            <FieldError message={err("notes")} />
+            <FieldError id="notes-error" message={err("notes")} />
           </div>
         </div>
 
@@ -390,8 +408,15 @@ export function QuoteForm({
   );
 }
 
-function FieldError({ message, hint }: { message: string | null; hint?: string }) {
-  if (message) return <p className="mt-1 text-xs text-rose-600">{message}</p>;
+function FieldError({ message, hint, id }: { message: string | null; hint?: string; id?: string }) {
+  // El id permite que el input asociado apunte al mensaje con aria-describedby
+  // (mismo patrón de aria-invalid que ya usaba el checkbox de consentimiento).
+  if (message)
+    return (
+      <p id={id} className="mt-1 text-xs text-rose-600">
+        {message}
+      </p>
+    );
   if (hint) return <p className="text-brand-muted mt-1 text-xs">{hint}</p>;
   return null;
 }
