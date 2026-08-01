@@ -26,7 +26,11 @@
 - ✅ **A2** drop de tablas legacy — commit `c436195` (+ respaldo JSON)
 - ✅ **B7** copy de autenticación al CMS (58 campos) — commit `b83c2e7`
 - ✅ **B9** copy del área de cliente al CMS (118 campos) — commit `e5a4441`
-- ⏳ Backlog punto 5: B8 (checkout), tablas móvil, C1 paso 2, gestos canvas
+- ✅ **B8** copy del checkout al CMS (160 campos) — commit `c153352`
+- ✅ **E4** tablas del admin como tarjetas en móvil — commit `70cfed0`
+- ✅ **C1 paso 2** modo edición in-place en el storefront — commit `ce38b8c`
+- ✅ **Gestos del canvas del Estudio** verificados interactivamente — commit `406051a`
+- ⏳ **D2** observabilidad del CMS — única fase pendiente del roadmap original
 
 **Base sobre la que se parte (ya en producción, commit `bd1e427`):**
 
