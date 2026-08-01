@@ -65,6 +65,17 @@ db-local-start: ## Levanta el stack Supabase local (podman socket)
 db-local-stop: ## Apaga el stack Supabase local (datos persisten)
 	DOCKER_HOST=$(SB_LOCAL_SOCK) tmp/bin/supabase stop --workdir supabase-local
 
+db-local-restart: ## Reinicia el stack CONSERVANDO datos (podman stop/start nativo)
+	podman stop $$(podman ps -q --filter name=supabase_) || true
+	podman start $$(podman ps -aq --filter name=supabase_)
+
+db-local-reset: ## Reset TOTAL: borra los volúmenes y rehace todo (start+setup+seed)
+	$(MAKE) db-local-stop || true
+	podman volume rm -f supabase_db_lucams-local supabase_storage_lucams-local || true
+	$(MAKE) db-local-start
+	$(MAKE) db-local-setup
+	$(MAKE) db-local-seed
+
 db-local-status: ## Estado y keys del stack local
 	DOCKER_HOST=$(SB_LOCAL_SOCK) tmp/bin/supabase status --workdir supabase-local
 
