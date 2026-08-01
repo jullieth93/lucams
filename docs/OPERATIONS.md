@@ -38,14 +38,19 @@ gh auth login
 
 ```
 lucams_shop/
-├── .env.example          # Versionado en git, valores placeholder
-├── .env.local            # Gitignored, valores reales para tu desarrollo
-└── apps/web/.env.local   # (opcional) overrides específicos del Next.js
+├── .env.example              # Versionado en git, valores placeholder
+├── .env.local                # Gitignored (600) — FUENTE ÚNICA: el flip la alterna local↔nube
+├── .env.local.nube-backup    # Gitignored (600) — respaldo con credenciales de prod (lo escribe el flip)
+├── .env.stg                  # Gitignored (600) — credenciales de lucams-stg (make db-stg-*)
+└── apps/web/.env.local       # SYMLINK → ../../.env.local (Next.js solo lee env de su propio
+                              # directorio; el symlink garantiza que app y scripts usen la MISMA
+                              # fuente. Antes era una copia estática y quedó apuntando a prod
+                              # tras el flip — corregido 2026-08-01)
 ```
 
 - **`.env.example`** se commitea siempre que se agrega/quita una variable.
-- **`.env.local`** nunca se commitea (ver `.gitignore`).
-- En Vercel se configuran por entorno (Production / Preview / Development) en el dashboard.
+- **`.env.local`** nunca se commitea (ver `.gitignore` — la regla `.env.*` cubre todos estos archivos, incluido el symlink).
+- En Vercel se configuran por entorno (Production / Preview / Development) en el dashboard — matriz ejecutada en «Variables de entorno por ambiente».
 
 ### Símil Vercel local: cómo correr el stack
 
