@@ -178,40 +178,30 @@ export function buildCotizarProductos(items: ShipmentItem[]) {
 }
 
 /**
- * Credenciales de la cuenta DEMO pública que Aveonline documenta como ambiente
- * de pruebas (no existe sandbox dedicado — opera contra producción pero sin
- * facturar mientras `bloquegenerarguia=0`). Doc:
+ * `idempresa` de la cuenta DEMO pública que Aveonline documenta como ambiente
+ * de pruebas (no existe sandbox dedicado — opera contra la API de producción
+ * pero no factura mientras `bloquegenerarguia=1`, ver el comentario del payload
+ * de la guía). Es una fixture PÚBLICA, no configuración:
  * https://integraciones.aveonline.co/docs/nacional/autenticacion/
+ * Las credenciales demo viven en el MISMO set de siempre
+ * (AVEONLINE_USUARIO/CLAVE) con sus valores por ambiente: demo en
+ * dev/stg/preview, reales solo en prod.
  *
- * idempresa = 15289 (Demo - Integracion, servicio AVEONLINE COURIER).
  * 7 transportadoras habilitadas: 99MINUTOS, COORDINADORA MERCANTIL, ENVIA,
  * GO ENVIOS, INTERRAPIDISIMO, SERVIENTREGA, TCC SA.
- *
- * NOTA DE SEGURIDAD: los valores concretos viven en variables de entorno
- * (AVEONLINE_DEMO_USUARIO / AVEONLINE_DEMO_CLAVE) para no quedar hardcodeados
- * en el repositorio. En `.env.example` se documentan los valores públicos de
- * Aveonline; en producción real deben rotarse por las credenciales de Lucams.
  */
-function getDemoCredentials(): { usuario: string; clave: string } {
-  const usuario = process.env.AVEONLINE_DEMO_USUARIO ?? "";
-  const clave = process.env.AVEONLINE_DEMO_CLAVE ?? "";
-  if (!usuario || !clave) {
-    throw new Error(
-      "AVEONLINE_DEMO_USUARIO + AVEONLINE_DEMO_CLAVE no configurados. " +
-        "Revisa .env.example y configura las credenciales demo de Aveonline.",
-    );
-  }
-  return { usuario, clave };
-}
+const DEMO_ACCOUNT_IDEMPRESA = 15289;
 
 /**
- * Determina si estamos en modo prueba según `AVEONLINE_ENV`.
- * - `test` (default si no se configura): usa cuenta demo pública +
- *   `bloquegenerarguia=0` (no genera guía real, no factura).
- * - `production`: usa AVEONLINE_USUARIO + AVEONLINE_CLAVE del .env +
- *   `bloquegenerarguia=1` (genera guía real, factura).
- *
- * Permite probar end-to-end el flow checkout sin riesgo de cobros indebidos.
+ * Modo DECLARADO según `AVEONLINE_ENV` ("production" | default "test"). Ya NO
+ * selecciona credenciales (hay un solo set, AVEONLINE_USUARIO/CLAVE, cuyo valor
+ * cambia por ambiente) — su uso es:
+ *   - guard del health check: en modo production la cuenta autenticada NO puede
+ *     ser la demo pública (misconfig cara: la tienda cree que genera guías
+ *     reales contra la cuenta de Lucy y no es así).
+ *   - etiqueta de logs (`env` en shipping.aveonline.auth_refresh).
+ * La facturación NO depende de este flag: la gobiernan AVEONLINE_GENERATE_REAL
+ * + NODE_ENV (+FORCE_BILLING) — ver el payload de la guía (doble gate).
  */
 function isProductionEnv(): boolean {
   return process.env.AVEONLINE_ENV === "production";
@@ -543,17 +533,15 @@ async function getAuthToken(): Promise<{ token: string; idempresa: number }> {
     return { token: tokenCache.token, idempresa: tokenCache.idempresa };
   }
 
-  // En modo test usa la cuenta demo pública desde env vars.
-  // En production usa AVEONLINE_USUARIO + AVEONLINE_CLAVE del .env.
+  // Un solo set de credenciales cuyo valor cambia por ambiente (demo fuera de
+  // prod, reales solo en prod). AVEONLINE_ENV ya no selecciona credenciales.
   const isProd = isProductionEnv();
-  const { usuario, clave } = isProd
-    ? { usuario: process.env.AVEONLINE_USUARIO, clave: process.env.AVEONLINE_CLAVE }
-    : getDemoCredentials();
+  const usuario = process.env.AVEONLINE_USUARIO;
+  const clave = process.env.AVEONLINE_CLAVE;
   if (!usuario || !clave) {
     throw new Error(
-      isProd
-        ? "AVEONLINE_USUARIO + AVEONLINE_CLAVE no configurados (modo production). Ver ADR-039 + .env.example."
-        : "AVEONLINE_DEMO_USUARIO + AVEONLINE_DEMO_CLAVE no configurados (modo test). Ver .env.example.",
+      "AVEONLINE_USUARIO + AVEONLINE_CLAVE no configurados " +
+        `(modo ${isProd ? "production" : "test"}). Ver ADR-039 + .env.example.`,
     );
   }
 
@@ -602,10 +590,6 @@ async function getAuthToken(): Promise<{ token: string; idempresa: number }> {
   return { token: data.token, idempresa };
 }
 
-/** `idempresa` de la cuenta DEMO pública. Valor por defecto 15289; se puede
- *  sobreescribir con `AVEONLINE_DEMO_IDEMPRESA` para staging/tests. */
-export const AVEONLINE_DEMO_IDEMPRESA = Number(process.env.AVEONLINE_DEMO_IDEMPRESA || 15289);
-
 export type AveonlineHealth = {
   /** Modo declarado por AVEONLINE_ENV. En `test` NO se generan guías reales. */
   mode: "production" | "test";
@@ -622,9 +606,9 @@ export type AveonlineHealth = {
  *
  * Existe porque las credenciales viven cifradas en Vercel y no se pueden auditar leyéndolas: la
  * única forma de saber si `AVEONLINE_USUARIO`/`AVEONLINE_CLAVE` son de la cuenta real o quedaron
- * apuntando a la demo es autenticarse y mirar qué `idempresa` devuelve. Con `AVEONLINE_ENV` en
- * `production` la app genera guías REALES y factura (`bloquegenerarguia=1`), así que confundir
- * ambas cuentas es un error caro y silencioso.
+ * apuntando a la demo es autenticarse y mirar qué `idempresa` devuelve. En modo production la app
+ * espera la cuenta real de Lucams (la que generará guías facturables cuando el doble gate de
+ * facturación se abra en el lanzamiento) — confundir ambas cuentas es un error caro y silencioso.
  *
  * NO se agrega a /api/health/all a propósito: cada llamada gasta una autenticación contra un
  * proveedor externo, y un monitor haría cientos al día.
@@ -648,7 +632,7 @@ export async function probeAveonlineHealth(): Promise<AveonlineHealth> {
 
   try {
     const { idempresa } = await getAuthToken();
-    const isDemoAccount = idempresa === AVEONLINE_DEMO_IDEMPRESA;
+    const isDemoAccount = idempresa === DEMO_ACCOUNT_IDEMPRESA;
     if (mode === "production" && isDemoAccount) {
       return {
         ...base,
@@ -819,11 +803,10 @@ export class AveonlineProvider implements ShippingProvider {
     // Mismo endpoint que cotización pero tipo="generarGuia2".
     // idtransportador viene del quoteId que cotización devolvió como codTransportadora.
     const { token, idempresa } = await getAuthToken();
-    // En modo test usa creds demo desde env vars, en prod usa env vars.
-    const isProd = isProductionEnv();
-    const { usuario, clave } = isProd
-      ? { usuario: process.env.AVEONLINE_USUARIO!, clave: process.env.AVEONLINE_CLAVE! }
-      : getDemoCredentials();
+    // Set único: mismas vars en todo ambiente (demo fuera de prod); getAuthToken
+    // ya validó que existen (lanza si faltan).
+    const usuario = process.env.AVEONLINE_USUARIO!;
+    const clave = process.env.AVEONLINE_CLAVE!;
 
     // Resolver idtransportador: si caller pasó quoteId (del flow inmediato
     // post-checkout) lo usamos; sino lo derivamos del carrier name via
