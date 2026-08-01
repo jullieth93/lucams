@@ -9,6 +9,20 @@ import { MousePointerClick, Sparkles, Package } from "lucide-react";
 import { CmsText } from "@/components/cms/cms-text";
 import { getCmsBlock, getSettingValue } from "@/lib/cms";
 import { resolveCmsTokens } from "@/lib/cms-tokens";
+import { isCatalogMode } from "@/lib/store-mode";
+
+// El compromiso propio es el DESPACHO (máx. {{fab}} días hábiles de fabricación);
+// el tránsito final lo pone la transportadora y varía según la ciudad — NUNCA se
+// promete una fecha de entrega total (regla de certificación; la versión vieja
+// "entregamos en máx. 3 días" incluía la pierna del courier y era riesgosa).
+// Además el cierre de compra depende del modo: catálogo = WhatsApp, full = pago
+// en línea (Wompi) — el texto viejo decía "Pagas en línea" sin gatear y mentía
+// en producción (catálogo). La coletilla COD se mantiene al final para que
+// stripCodMention la recorte si COD_ENABLED está apagado.
+const STEP3_DESC_CATALOG =
+  "Lo producimos a mano y despachamos en máximo {{fab}} días hábiles; desde ahí, la transportadora tarda ~{{entrega}} días más según tu ciudad (te lo confirmamos por WhatsApp). Cierras la compra por WhatsApp — contraentrega disponible.";
+const STEP3_DESC_FULL =
+  "Lo producimos a mano y despachamos en máximo {{fab}} días hábiles; desde ahí, la transportadora tarda ~{{entrega}} días más según tu ciudad. Pagas en línea de forma segura — contraentrega disponible.";
 
 const STEPS = [
   {
@@ -32,13 +46,7 @@ const STEPS = [
     titleKey: "home.howitworks.step3.title",
     titleFallback: "Llega a tus manos",
     descKey: "home.howitworks.step3.description",
-    // El compromiso propio es DESPACHO+ENTREGA (máx. 3 días hábiles: 2 de fabricación + 1 de
-    // entrega); el tránsito final lo pone la transportadora y varía según la ciudad. El pago es
-    // EN LÍNEA (Wompi) — el texto viejo de "se acuerdan por WhatsApp" era de la Etapa 1 (modo
-    // catálogo) y era FALSO en modo full (Lucy 2026-07-29). La coletilla COD se mantiene para
-    // que stripCodMention la recorte si COD_ENABLED está apagado.
-    descFallback:
-      "Lo producimos a mano y lo entregamos en máximo {{total}} días hábiles ({{fab}} de fabricación + {{entrega}} de entrega). El tiempo final depende de la transportadora y de tu ciudad. Pagas en línea de forma segura — contraentrega disponible.",
+    descFallback: isCatalogMode() ? STEP3_DESC_CATALOG : STEP3_DESC_FULL,
     // La descripción promete contraentrega: depende del toggle COD_ENABLED (igual que
     // el chip del hero) — con COD apagado se recorta esa coletilla.
     codAware: true,

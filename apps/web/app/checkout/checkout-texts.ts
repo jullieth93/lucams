@@ -315,7 +315,7 @@ export const DEFAULT_CHECKOUT_TEXTS: CheckoutTexts = {
     errorWa: "Contáctanos por WhatsApp",
     listTitle: "Opciones de envío",
     free: "Gratis",
-    note: "Son tiempos **estimados por la transportadora**, no una fecha garantizada. Antes fabricamos tu pedido a mano: lo **entregamos en máximo 3 días hábiles** (2 de fabricación + 1 de entrega) y de ahí corre el tránsito.",
+    note: "Son tiempos **estimados por la transportadora**, no una fecha garantizada. Antes fabricamos tu pedido a mano: lo **despachamos en máximo 2 días hábiles** y de ahí corre el tránsito.",
     back: "← Cambiar dirección",
     next: "Continuar al pago →",
   },

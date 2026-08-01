@@ -66,8 +66,8 @@ function buildFallbackFaqs(
       slug: "cuanto-demora",
       question: "¿Cuánto demora mi pedido?",
       answer: catalog
-        ? "Lo producimos a mano y lo **entregamos en máximo {{total}} días hábiles** ({{fab}} de fabricación + {{entrega}} de entrega) desde que confirmas. El envío lo coordinamos por WhatsApp con nuestras transportadoras aliadas y te pasamos el número de guía para que sigas tu pedido."
-        : "Lo producimos a mano y lo **entregamos en máximo {{total}} días hábiles** ({{fab}} de fabricación + {{entrega}} de entrega) desde que confirmas. El tránsito final lo pone la transportadora; al despachar te enviamos el número de guía para que sigas tu pedido.",
+        ? "Lo producimos a mano y lo **despachamos en máximo {{fab}} días hábiles** desde que confirmas. El envío lo coordinamos por WhatsApp con nuestras transportadoras aliadas (tránsito estimado: ~{{entrega}} días según tu ciudad) y te pasamos el número de guía para que sigas tu pedido."
+        : "Lo producimos a mano y lo **despachamos en máximo {{fab}} días hábiles** desde que confirmas. Desde ahí, la transportadora tarda ~{{entrega}} días según tu ciudad; al despachar te enviamos el número de guía para que sigas tu pedido.",
     },
     {
       slug: "metodos-pago",

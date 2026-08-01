@@ -95,12 +95,12 @@ export async function HomeHero() {
               </span>
             )}
             <span className="bg-brand-yellow/30 text-brand-purple-dark rounded-full px-3 py-1">
-              {/* El compromiso propio es el DESPACHO+ENTREGA (máx. 3 días hábiles: 2 de fabricación +
-                  1 de entrega — el desglose va siempre visible, pedido Lucy 2026-07-29). El tránsito
-                  final lo pone la transportadora y cambia según la ciudad. */}
+              {/* El compromiso propio es el DESPACHO (máx. {{fab}} días hábiles de fabricación);
+                  el tránsito (~{{entrega}} días) lo pone la transportadora y cambia según la ciudad.
+                  NUNCA se promete una fecha de entrega total (regla de certificación 2026-08-01). */}
               <CmsText
                 blockKey="home.hero.chip-eta"
-                fallback="Entrega en máx. {{total}} días hábiles ({{fab}} de fabricación + {{entrega}} de entrega)"
+                fallback="Despacho en máx. {{fab}} días hábiles · la transportadora tarda ~{{entrega}} días según tu ciudad"
               />
             </span>
           </div>

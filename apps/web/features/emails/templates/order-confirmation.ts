@@ -67,7 +67,7 @@ export async function orderConfirmationEmail(data: OrderConfirmationData) {
       : `recibimos tu pago para el pedido <strong>${escapeHtml(data.orderNumber)}</strong>.`
   }</p>
 ${codCallout}
-<p>Ya empezamos a preparar tu pedido: lo entregamos en máximo <strong>3 días hábiles</strong> (2 de fabricación + 1 de entrega) y te avisamos con el número de guía apenas salga. De ahí en adelante el tiempo final lo pone la transportadora y depende de tu ciudad.</p>
+<p>Ya empezamos a preparar tu pedido: lo despachamos en máximo <strong>2 días hábiles</strong> y te avisamos con el número de guía apenas salga. De ahí en adelante el tiempo lo pone la transportadora y depende de tu ciudad.</p>
 
 <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:20px 0;border-collapse:collapse;">
   ${itemsRows}

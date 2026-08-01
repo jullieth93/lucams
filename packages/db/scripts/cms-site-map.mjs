@@ -1738,7 +1738,7 @@ Antes de escribir, revisa el [Centro de ayuda](/ayuda) — quizás ya está resp
               type: "MARKDOWN",
               label: "Nota de tiempos",
               category: "SUPPORT",
-              body: "Son tiempos **estimados por la transportadora**, no una fecha garantizada. Antes fabricamos tu pedido a mano: lo **entregamos en máximo 3 días hábiles** (2 de fabricación + 1 de entrega) y de ahí corre el tránsito.",
+              body: "Son tiempos **estimados por la transportadora**, no una fecha garantizada. Antes fabricamos tu pedido a mano: lo **despachamos en máximo 2 días hábiles** y de ahí corre el tránsito.",
               sortOrder: 100,
             },
             {

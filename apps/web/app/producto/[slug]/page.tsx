@@ -220,7 +220,7 @@ export default async function ProductoDetallePage({
         <div className="mx-auto max-w-5xl">
           <nav
             className="text-brand-muted mb-6 flex items-center gap-1 text-xs"
-            aria-label="Breadcrumb"
+            aria-label="Ruta de navegación"
           >
             <Link href="/productos" className="hover:text-brand-purple">
               Tienda
@@ -389,9 +389,12 @@ export default async function ProductoDetallePage({
                       {catalog ? (
                         <>
                           Lo producimos a mano y lo{" "}
-                          <strong>entregamos en máximo 3 días hábiles</strong> (2 de fabricación + 1
-                          de entrega). El tiempo final depende de la transportadora y de tu ciudad;
-                          el envío lo coordinamos por WhatsApp con nuestras aliadas.
+                          <strong>
+                            despachamos en máximo {product.productionDays} días hábiles
+                          </strong>
+                          . Desde ahí, las transportadoras aliadas estiman {product.shippingDaysMin}
+                          –{product.shippingDaysMax} días según tu ciudad; el envío lo coordinamos
+                          por WhatsApp.
                         </>
                       ) : (
                         <>

@@ -1,10 +1,13 @@
 /*
  * resolveCmsTokens — tokens canónicos en contenido CMS (Ruta A+, 2026-07-29).
  *
- * Problema que resuelve (reportado por Lucy): la misma promesa ("3 días
- * hábiles = 2 fabricación + 1 entrega", "1.100+ destinos") estaba DUPLICADA
- * literal en bloques, fallbacks y settings — editar un lugar no movía los
- * demás, y la setting "Tiempo de fabricación" ni siquiera tenía lectores.
+ * Problema que resuelve (reportado por Lucy): la misma promesa ("despacho en
+ * máx. 2 días hábiles + tránsito estimado de la transportadora", "1.100+
+ * destinos") estaba DUPLICADA literal en bloques, fallbacks y settings —
+ * editar un lugar no movía los demás, y la setting "Tiempo de fabricación"
+ * ni siquiera tenía lectores. (2026-08-01: la promesa pasó de "entregamos en
+ * máx. 3 días" a despacho + tránsito del courier — NUNCA se promete fecha de
+ * entrega total, el tránsito no lo controlamos nosotros.)
  *
  * Diseño: los valores viven UNA vez en SiteSettings (COMMERCE) y el
  * contenido referencia tokens en vez de números literales:
