@@ -782,26 +782,21 @@ Cuando se rompan estos límites, abrir issue automático:
 
 ## DevOps — branching, releases, environments, feature flags
 
-### Branching strategy: trunk-based con PRs
+### Branching strategy (vigente — detalle en «Estrategia de ramas y releases (2026-07-03)» arriba)
 
-- **`main`** es la rama de producción. Siempre deployable.
-- **Feature branches:** `feat/<slug>`, `fix/<slug>`, `chore/<slug>`, `docs/<slug>`, `refactor/<slug>`.
-- **PRs obligatorios** a `main` con:
-  - Status checks pasando (typecheck, lint, unit, integration, RLS, e2e, audit, secrets).
-  - Review (cuando haya equipo > 1).
-  - Branch up to date con `main`.
-- **Squash merge** por default (mantiene `main` con historial limpio).
-- **Branch protection** en `main`: no force push, no deletes, signed commits requeridos.
-- **Branches efímeros:** se eliminan tras merge.
+- **`develop`** es la rama de trabajo diario: commits atómicos, push al cerrar cada tanda, CI en cada push. **No existe `main`** (decisión de Lucy).
+- **`production`** es la rama en vivo: solo avanza por release (`git merge --ff-only develop`, con OK explícito de Lucy). Es la **Production Branch** de Vercel (Settings → Git).
+- **Ramas de feature de largo aliento** (ej. `catalogo-whatsapp`): nacen de `develop` y vuelven con merge; `ci.yml` las vigila igual (dispara en `develop`, `production`, `catalogo-whatsapp`).
+- **Rollback:** tag de restauración antes de cada cambio grande (ej. `pre-cms-v2`); el procedimiento se documenta en HANDOFF al usarlo.
 
-### Release strategy: continuous deployment + canary cuando aplique
+### Release strategy
 
-| Tipo           | Trigger                   | Audiencia                                                 |
-| -------------- | ------------------------- | --------------------------------------------------------- |
-| **Preview**    | Cada PR                   | Reviewer / QA manual / Lighthouse CI                      |
-| **Production** | Merge a `main`            | 100% del tráfico                                          |
-| **Canary**     | Manual (cuando se quiere) | 10% del tráfico vía Vercel split o feature flag (Fase 7+) |
+| Tipo           | Trigger                                        | Audiencia / DB                                                                  |
+| -------------- | ---------------------------------------------- | ------------------------------------------------------------------------------- |
+| **Preview**    | Push a `develop` o rama feature                | Dev / reviewer — ⚠️ hoy apuntan a la DB de **PRD** (hasta crear STG: ver abajo) |
+| **Production** | Release: `production` fast-forward a `develop` | 100% del tráfico (`lucamsshop.com`)                                             |
 
+- **Smoke post-release:** `tests/e2e/release-check-a1.spec.ts` con `PLAYWRIGHT_BASE_URL` apuntando a prod (herramienta A1 del roadmap CMS, reutilizable en cada release).
 - **Versionado:** tags `vX.Y.Z` (semver) en cada release de producción significativa.
   - `X` mayor: cambios que rompen compatibilidad de schema o API público.
   - `Y` menor: features nuevas no rompedoras.
@@ -810,18 +805,35 @@ Cuando se rompan estos límites, abrir issue automático:
 
 ### Environments
 
-| Environment        | Cómo se levanta               | Usado para                            | DB                                                              |
-| ------------------ | ----------------------------- | ------------------------------------- | --------------------------------------------------------------- |
-| **Local (dev)**    | `pnpm dev` + `supabase start` | Desarrollo del usuario                | Supabase local en Docker                                        |
-| **Vercel Preview** | Push a feature branch         | QA por PR, Lighthouse CI, smoke tests | **Supabase Free del proyecto** (mismo que prod hasta tener Pro) |
-| **Production**     | Merge a `main`                | Tráfico real                          | Supabase Pro (al lanzar)                                        |
+Mapa real al 2026-08-01 (tras la separación dev/prod con Supabase local podman):
+
+| Ambiente | Deploy / URL                                                              | Rama git                                    | Base de datos                                                                                                |
+| -------- | ------------------------------------------------------------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| **DEV**  | `http://127.0.0.1:4000` (+ Studio `:54323`, Mailpit `:54324`)             | `develop` (+ ramas feature)                 | Supabase **LOCAL** podman (`127.0.0.1:54322`) — `make db-local-*`                                            |
+| **STG**  | Previews de Vercel (`lucams-git-<rama>-….vercel.app`) — **aún NO existe** | `develop` y ramas feature                   | Supabase Free **`lucams-stg`** (2º proyecto de la org) — **pendiente, lo crea Lucy si decide usar previews** |
+| **PRD**  | `https://lucamsshop.com` (Vercel Production)                              | `production` (release = ff desde `develop`) | Supabase nube **`lucams-prod`** (org `Lucams`, hoy tier Free)                                                |
+
+- **Hoy, sin STG:** los previews de Vercel (`develop`/ramas) usan las env vars de producción → **leen y escriben la DB de PRD**. Mirar está bien; crear pedidos/cotizaciones o editar contenido desde un preview **toca datos reales**. Ese riesgo es exactamente el que cierra STG.
+- **DEV sí tiene rama git:** el trabajo diario es sobre `develop` en la VM; las ramas feature nacen y vuelven a `develop`. La DB local no depende de ninguna rama (espejo del esquema + seeds).
+- **Supabase «main» ≠ git:** el dashboard de Supabase muestra cada proyecto en una rama interna llamada `main` (su propia rama por defecto). No tiene relación con las ramas git del repo.
+- **Flip de `.env.local`:** el dev alterna local↔nube con `make db-local-on/off`. **Antes de tocar la nube** (migraciones, seeds, invalidar caché en prod) correr `make db-local-off`; al terminar, `make db-local-on`.
 
 #### ¿Necesitamos staging?
 
-- **Pre-lanzamiento (Fase 0–6):** **No.** Vercel Previews + Supabase local cubren el caso. Agregar staging multiplica costos sin beneficio claro.
-- **Post-lanzamiento:** **Re-evaluar** si se introducen migraciones complejas o features que requieren validación real con datos de producción anonimizados.
+- **Hoy (pre-apertura al público): NO es necesario.** DEV local + PRD cubren el flujo: verificar en local → CI verde → release → smoke post-release.
+- **Crear `lucams-stg` cuando** Lucy quiera revisar cambios desde un link público (su celular) antes del release, o haya que probar webhooks/integraciones contra una URL pública sin ngrok, o migraciones delicadas que convenga ensayar fuera de prod.
+- **Costo: $0.** Supabase Free permite **2 proyectos activos** por org (prod + stg) y Vercel Hobby ya incluye previews. NO hace falta Vercel Pro ni Supabase Pro para tener STG.
+- **Cuándo pagar (momento oportuno = abrir al público):** Vercel **Pro** (Hobby está limitado a uso no comercial — una tienda abierta al público debe migrar) y Supabase **Pro** en `lucams-prod` (backups diarios + PITR, garantía de no-pausa, recursos). `lucams-stg` puede quedarse Free.
 
-> **Si se decide staging después:** ADR nuevo. Implicaría Vercel Pro + Supabase Pro extra + sync manual o automático de schema (no de datos PII).
+#### Checklist para crear STG (cuando Lucy decida)
+
+1. **Supabase dashboard** → org `Lucams` → **New project** `lucams-stg` (Free, misma región que prod). Anotar project ref, URL, anon key, service key y password de DB.
+2. **VM/repo:** crear `.env.stg` (queda fuera de git por la regla `.env.*` del `.gitignore`) copiando `.env.local.nube-backup` y reemplazando `DATABASE_URL`, `DIRECT_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` y `SUPABASE_SERVICE_ROLE_KEY` por las del proyecto nuevo. **No tocar el flip** (`db-local-on/off` solo alterna local↔prod).
+3. **Esquema** en el orden del Nightly (§ «Supabase LOCAL del día a día»): extensiones → `prisma migrate deploy` → SQL de `supabase/migrations` con rol `supabase_admin` → grants — todo con `dotenv -e .env.stg`.
+4. **Seeds:** los targets `seed-*` + `migrate-cms-v2` (mismos de `db-local-seed`) con `dotenv -e .env.stg`.
+5. **Vercel dashboard** → Settings → Environment Variables: las 5 vars de Supabase/DB + `CRON_SECRET` con scope **Preview** apuntando a `lucams-stg` (el scope Production sigue apuntando a `lucams-prod`).
+6. **Verificar:** push a `develop` → abrir la URL preview → smoke (home 200, catálogo, un texto del CMS visible).
+7. **Documentar:** marcar STG como ✅ en la tabla de arriba y registrar el proyecto en HANDOFF.
 
 ### Feature flags
 
