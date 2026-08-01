@@ -39,6 +39,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { AdminSubmitButton } from "@/components/admin-submit-button";
+import { AdminTableAutoCards } from "@/components/admin-table-auto-cards";
 
 // ─────────────────── Layout primitives ───────────────────
 
@@ -171,10 +172,10 @@ export function AdminTable({
   minWidth?: number;
 }) {
   return (
-    <div>
+    <div data-admin-table="">
       <div className="relative">
         <div
-          className={`border-brand-purple/10 overflow-x-auto rounded-xl border bg-white shadow-sm ${className}`}
+          className={`admin-table-scroll border-brand-purple/10 overflow-x-auto rounded-xl border bg-white shadow-sm ${className}`}
         >
           <table className="w-full text-sm" style={{ minWidth: `${minWidth}px` }}>
             {children}
@@ -183,15 +184,20 @@ export function AdminTable({
         {/* Indicación de scroll horizontal en móvil (roadmap E2, auditoría E1
             P1): las tablas tienen minWidth ≥ 640 → a 375px SIEMPRE hay más
             columnas a la derecha, pero nada lo decía. Degradado de borde como
-            affordance + pista textual. Solo visible < sm. */}
+            affordance + pista textual. Solo visible < sm y solo mientras no
+            estén activas las tarjetas (AdminTableAutoCards). */}
         <div
           aria-hidden
-          className="pointer-events-none absolute inset-y-0 right-0 w-10 rounded-r-xl bg-gradient-to-l from-white to-transparent sm:hidden"
+          className="admin-table-scroll-affordance pointer-events-none absolute inset-y-0 right-0 w-10 rounded-r-xl bg-gradient-to-l from-white to-transparent sm:hidden"
         />
       </div>
-      <p aria-hidden className="text-brand-muted mt-1 text-right text-[11px] italic sm:hidden">
+      <p
+        aria-hidden
+        className="admin-table-hint text-brand-muted mt-1 text-right text-[11px] italic sm:hidden"
+      >
         Desliza para ver más columnas →
       </p>
+      <AdminTableAutoCards />
     </div>
   );
 }

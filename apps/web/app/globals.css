@@ -432,3 +432,90 @@ h6 {
     scroll-behavior: auto !important;
   }
 }
+
+/*
+ * Tablas admin → tarjetas apiladas en móvil (backlog punto 5; pendiente
+ * deliberado de E2 — el scroll con pista era el piso usable, esto es el salto
+ * de comodidad: cada fila se lee como una tarjeta con sus rótulos).
+ *
+ * Se activa SOLO cuando <AdminTableAutoCards> etiquetó las celdas con
+ * data-label y agregó .admin-cards-on al wrapper. Sin JS la tabla queda como
+ * siempre: scroll horizontal + pista «Desliza…» de E2.
+ */
+@media (max-width: 639px) {
+  /* La pista de scroll y su degradado sobran cuando hay tarjetas. */
+  [data-admin-table].admin-cards-on .admin-table-hint,
+  [data-admin-table].admin-cards-on .admin-table-scroll-affordance {
+    display: none;
+  }
+
+  /* El contenedor de scroll se vuelve transparente: cada fila es su tarjeta. */
+  [data-admin-table].admin-cards-on .admin-table-scroll {
+    overflow: visible;
+    border: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  [data-admin-table].admin-cards-on table {
+    display: block;
+    min-width: 0 !important;
+  }
+
+  [data-admin-table].admin-cards-on thead {
+    display: none;
+  }
+
+  [data-admin-table].admin-cards-on tbody {
+    display: block;
+  }
+
+  [data-admin-table].admin-cards-on tbody > tr {
+    display: block;
+    background: #fff;
+    border: 1px solid color-mix(in srgb, var(--brand-purple) 12%, transparent);
+    border-radius: 0.75rem;
+    box-shadow: 0 1px 2px rgb(0 0 0 / 0.05);
+    margin-bottom: 0.75rem;
+    padding: 0.25rem 1rem;
+  }
+
+  /* La separación divide-y de desktop sobra entre tarjetas. */
+  [data-admin-table].admin-cards-on tbody > tr + tr {
+    border-top-width: 0;
+  }
+
+  [data-admin-table].admin-cards-on tbody > tr > td {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.625rem 0;
+    border-bottom: 1px solid color-mix(in srgb, var(--brand-purple) 8%, transparent);
+    text-align: right;
+  }
+
+  [data-admin-table].admin-cards-on tbody > tr > td:last-child {
+    border-bottom: 0;
+  }
+
+  /* Rótulo de la columna a la izquierda del valor. */
+  [data-admin-table].admin-cards-on tbody > tr > td::before {
+    content: attr(data-label);
+    flex-shrink: 0;
+    max-width: 45%;
+    font-weight: 600;
+    color: var(--brand-purple-dark);
+    text-align: left;
+  }
+
+  /* Filas sin etiquetar (colspan / empty states): celda a ancho completo. */
+  [data-admin-table].admin-cards-on tbody > tr[data-cells-unlabeled] > td {
+    display: block;
+    text-align: left;
+  }
+
+  [data-admin-table].admin-cards-on tbody > tr[data-cells-unlabeled] > td::before {
+    content: none;
+  }
+}
