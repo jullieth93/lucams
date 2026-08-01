@@ -116,3 +116,11 @@ vitest ✓, E2E ✓, Lighthouse ✓.
 - **Editar contenido**: `/admin/contenido` → elige la página → edita inline (los cambios simples aplican al guardar; los textos largos tienen Publicar/Despublicar e historial).
 - **Agregar un campo nuevo al CMS (dev)**: declararlo en `packages/db/scripts/cms-site-map.mjs` (sección correspondiente, con label + helpText + body por defecto) → `make migrate-cms-v2` → consumirlo con `<CmsText>` / `getSettingValue` (fallback = texto actual) → invalidar caché desde el admin.
 - **Agregar una página/sección entera**: mismo archivo (`SITE_MAP.pages`), el migrador la crea; el admin la muestra sola en el índice.
+
+---
+
+## 5. Cómo retomar el trabajo (sesión nueva)
+
+El estado completo del proyecto vive en el repo: `docs/CMS_ROADMAP.md` (plan CMS y certificaciones con evidencias), este `HANDOFF.md` (estado operativo) y `docs/OPERATIONS.md` (runbook del stack local). Pega este prompt de arranque en la sesión nueva:
+
+> Retoma el trabajo de este repo. La fuente de verdad: `docs/CMS_ROADMAP.md` y `HANDOFF.md` (roadmap CMS y backlog del punto 5 **completos y certificados** — 18 fases A1–E4 + B7/B8/B9/E4/C1-2/gestos). Revisa `git status` y `git log --oneline -15`: debe estar limpio; si hay trabajo sin commitear, verifícalo (tsc/lint/tests) y commiétalo antes de seguir. **Entornos**: dev diario con Supabase LOCAL en podman (`make db-local-start`, esquema+seeds aplicados; Studio GUI :54323, Mailpit :54324; flip de `.env.local` con `make db-local-on/off` — respaldo en `.env.local.nube-backup`; runbook en `docs/OPERATIONS.md` § «Supabase LOCAL del día a día»; ANTES de tocar la nube — migraciones/seeds/invalidar caché en prod — corre `db-local-off`). CI/Nightly con Supabase local en el runner (A3). Disciplina por tarea: implementación → tsc + lint + prettier + tests focal → commit atómico en español → push a develop → vigilar CI verde → certificar en el documento que corresponda. Pendientes opcionales: staging Supabase Free para previews de Vercel (Lucy lo crea si decide usar previews) y smoke post-release (`release-check-a1.spec.ts` con PLAYWRIGHT_BASE_URL a prod).
