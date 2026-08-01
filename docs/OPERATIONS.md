@@ -118,12 +118,11 @@ make db-local-stop    # apaga el stack (los datos quedan en los volúmenes)
 **Notas operativas:**
 
 - `db-local-start` tras `db-local-stop`: si el CLI falla con `volume already
-  exists` (manejo de volúmenes distinto a docker), basta `podman volume rm
-  supabase_db_lucams-local supabase_storage_lucams-local` y repetir (reset
+exists` (manejo de volúmenes distinto a docker), basta `podman volume rm
+supabase_db_lucams-local supabase_storage_lucams-local` y repetir (reset
   total; re-correr `db-local-setup` + `db-local-seed`).
 - El Nightly CI usa el MISMO enfoque con docker real en el runner
   (`.github/ci/localstack`) — los resultados son comparables.
-
 
 ### Logs locales (símil Vercel Logs)
 
