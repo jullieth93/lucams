@@ -21,6 +21,10 @@ const rateLimit = vi.hoisted(() => vi.fn(async () => ({ allowed: true })));
 vi.mock("next/headers", () => ({
   headers: async () => new Headers({ "user-agent": "vitest", "x-forwarded-for": "1.2.3.4" }),
 }));
+// after() lanza fuera de un request scope (Next exige el store del request); el aviso al admin
+// se mockea aparte — su disparo/idempotencia se prueba en idempotency.test.ts.
+vi.mock("next/server", () => ({ after: vi.fn() }));
+vi.mock("./emails", () => ({ sendQuoteAdminNotification: vi.fn() }));
 vi.mock("@/lib/logger", () => ({
   logger: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));

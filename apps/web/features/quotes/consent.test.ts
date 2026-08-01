@@ -16,7 +16,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const consentCreate = vi.hoisted(() => vi.fn());
-const quoteCreate = vi.hoisted(() => vi.fn());
+// Devuelve la fila creada: el service lee `created.id` para devolverlo (aviso al admin).
+const quoteCreate = vi.hoisted(() =>
+  vi.fn(async (_args: { data: Record<string, unknown> }) => ({ id: "q1" })),
+);
 // El service reclama el carrito (soft-delete condicional) dentro de la misma transacción; count>0
 // = este envío se quedó con el carrito. La idempotencia se prueba en idempotency.test.ts.
 const cartUpdateMany = vi.hoisted(() => vi.fn(async () => ({ count: 1 })));

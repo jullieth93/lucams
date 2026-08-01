@@ -13,9 +13,12 @@
  *     vacía, y ese vaciado condicional es el reclamo que impide cotizaciones
  *     duplicadas por doble envío) y devuelve { number, token } para la página
  *     de confirmación (botón "Enviar por WhatsApp" + vista /cotizacion/[token]).
+ *  6. Avisa por email al admin (after, fire-and-forget): si el cliente no
+ *     pulsa el botón de WhatsApp, el negocio igual se entera de la cotización.
  */
 
 import { headers } from "next/headers";
+import { after } from "next/server";
 import { z } from "zod";
 import { rateLimit } from "@/lib/rate-limit";
 import { ipKey, phoneKey } from "@/lib/rate-limit-keys";
@@ -25,6 +28,7 @@ import { verifyTurnstileToken } from "@/lib/turnstile";
 import { getOrCreateCartSession } from "@/lib/cart-session";
 import { QuoteFormSchema, type QuoteFormInput } from "./schemas";
 import { QuoteError, createQuoteFromCart } from "./service";
+import { sendQuoteAdminNotification } from "./emails";
 
 /**
  * Errores por campo. Incluye `dataConsent`, que NO es un campo del schema Zod (es una casilla de
@@ -107,10 +111,17 @@ export async function createQuoteAction(
 
   try {
     const sessionId = await getOrCreateCartSession();
-    const { number, token } = await createQuoteFromCart(parsed.data, sessionId, {
+    const { id, number, token } = await createQuoteFromCart(parsed.data, sessionId, {
       ip,
       userAgent: hdrs.get("user-agent"),
     });
+    // Aviso interno al admin: si el cliente no pulsa "Enviar por WhatsApp", la cotización igual
+    // llega al correo del negocio. Fire-and-forget DESPUÉS de responder — after() porque un
+    // `void (async …)()` muere congelado en Vercel (mismo patrón que features/support/actions.ts).
+    // Solo corre en esta rama ("se creó nueva"): el doble envío simultáneo muere abajo con
+    // DUPLICATE_SUBMIT, sin email; y el idempotencyKey de Resend deduplica cualquier retry
+    // residual. Un fallo de Resend NUNCA rompe ni retrasa la creación (try/catch interno).
+    after(() => sendQuoteAdminNotification(id));
     logger.info({ event: "quote.create.success", number, ip });
     return { ok: true, token, number };
   } catch (err) {

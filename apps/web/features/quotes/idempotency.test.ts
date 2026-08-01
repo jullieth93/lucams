@@ -17,10 +17,17 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const quoteCreate = vi.hoisted(() => vi.fn());
+const quoteCreate = vi.hoisted(() => vi.fn(async () => ({ id: "q1" })));
 const consentCreate = vi.hoisted(() => vi.fn());
 const cartUpdateMany = vi.hoisted(() => vi.fn(async (_args: unknown) => ({ count: 1 })));
 const getCartDetail = vi.hoisted(() => vi.fn());
+const sendEmail = vi.hoisted(() =>
+  vi.fn(async (_input: unknown): Promise<unknown> => ({ sent: true, id: "e1" })),
+);
+const quoteFindFirst = vi.hoisted(() => vi.fn());
+// after() de next/server se captura (fuera de un request scope lanza) y las tareas se corren a
+// mano en el test — así se verifica QUÉ se difiere y CUÁNDO, sin servidor.
+const afterTasks = vi.hoisted(() => [] as Array<() => unknown>);
 const logger = vi.hoisted(() => ({
   debug: vi.fn(),
   info: vi.fn(),
@@ -33,6 +40,7 @@ vi.mock("@/lib/logger", () => ({ logger }));
 vi.mock("@/lib/cms", () => ({
   getSettingValue: async (_key: string, fallback: string) => fallback,
 }));
+vi.mock("@/lib/resend", () => ({ sendEmail }));
 vi.mock("@/features/cart/service", () => ({ getCartDetail }));
 vi.mock("@/lib/db", () => ({
   prisma: {
@@ -42,6 +50,8 @@ vi.mock("@/lib/db", () => ({
         consent: { create: consentCreate },
         cart: { updateMany: cartUpdateMany },
       }),
+    // El aviso al admin (features/quotes/emails.ts) re-lee la Quote por id.
+    quote: { findFirst: quoteFindFirst },
   },
   Prisma: { PrismaClientKnownRequestError: class extends Error {} },
 }));
@@ -51,6 +61,7 @@ vi.mock("@/lib/db", () => ({
 vi.mock("next/headers", () => ({
   headers: async () => new Headers({ "user-agent": "vitest", "x-forwarded-for": "1.2.3.4" }),
 }));
+vi.mock("next/server", () => ({ after: (fn: () => unknown) => afterTasks.push(fn) }));
 vi.mock("@/lib/turnstile", () => ({ verifyTurnstileToken: async () => ({ success: true }) }));
 vi.mock("@/lib/rate-limit", () => ({ rateLimit: async () => ({ allowed: true }) }));
 vi.mock("@/lib/cart-session", () => ({ getOrCreateCartSession: async () => "sess_1" }));
@@ -100,7 +111,32 @@ beforeEach(() => {
   vi.clearAllMocks();
   getCartDetail.mockResolvedValue(CART);
   cartUpdateMany.mockResolvedValue({ count: 1 });
+  sendEmail.mockResolvedValue({ sent: true, id: "e1" });
+  afterTasks.length = 0;
+  // La fila que el aviso al admin re-lee por id (emails.ts): shape Quote + items.
+  quoteFindFirst.mockResolvedValue({
+    id: "q1",
+    number: "COT-ABC234",
+    customerName: INPUT.customerName,
+    customerWhatsapp: INPUT.customerWhatsapp,
+    customerEmail: "lucia@example.com",
+    city: INPUT.city,
+    department: INPUT.department,
+    notes: null,
+    total: CART.subtotal,
+    items: CART.items.map((i) => ({
+      productName: i.productName,
+      variantName: i.variantName,
+      quantity: i.qty,
+      unitPrice: i.unitPrice,
+    })),
+  });
 });
+
+/** Corre las tareas diferidas con after() (en producción van tras responder). */
+async function runAfterTasks() {
+  await Promise.all(afterTasks.splice(0).map((fn) => fn()));
+}
 
 describe("createQuoteFromCart — reclamo del carrito", () => {
   it("reclama el carrito de forma CONDICIONAL (solo si sigue sin vaciar) y lo marca 'quote:create'", async () => {
@@ -171,5 +207,43 @@ describe("createQuoteAction — doble envío simultáneo", () => {
 
   it("QuoteError expone el código para que la action pueda distinguirlo", () => {
     expect(new QuoteError("DUPLICATE_SUBMIT").code).toBe("DUPLICATE_SUBMIT");
+  });
+});
+
+describe("createQuoteAction — aviso al admin (fire-and-forget)", () => {
+  it("crear la cotización agenda el aviso y el correo sale UNA vez con número, ítems y total", async () => {
+    const res = await createQuoteAction(null, quoteForm());
+    expect(res).toMatchObject({ ok: true });
+    // El aviso NO corre inline (no retrasa la creación): quedó diferido vía after().
+    expect(sendEmail).not.toHaveBeenCalled();
+    expect(afterTasks).toHaveLength(1);
+
+    await runAfterTasks();
+
+    expect(sendEmail).toHaveBeenCalledTimes(1);
+    const arg = sendEmail.mock.calls[0][0] as Record<string, unknown>;
+    expect(arg.to).toBe("hola@lucamsshop.com"); // fallback de ALERT_EMAIL
+    expect(arg.subject).toContain("COT-ABC234"); // número de la fila re-leída por el wrapper
+    expect(arg.idempotencyKey).toBe("quote:admin-notification:q1");
+    expect(arg.html).toContain("Set fotoimanes");
+    expect(arg.html).toMatch(/\$\s*45\.000/); // total del carrito en COP
+    expect(logger.error).not.toHaveBeenCalled();
+  });
+
+  it("un retry del cliente NO manda un segundo correo: solo la rama 'se creó nueva' dispara", async () => {
+    // Primer envío: crea la cotización y agenda el aviso.
+    const first = await createQuoteAction(null, quoteForm());
+    expect(first).toMatchObject({ ok: true });
+    await runAfterTasks();
+    expect(sendEmail).toHaveBeenCalledTimes(1);
+
+    // Retry (otra pestaña / POST repetido): el reclamo atómico del carrito ya se hizo →
+    // DUPLICATE_SUBMIT, sin after ni segundo correo. Doble defensa residual: el
+    // idempotencyKey de Resend (ver emails.ts).
+    cartUpdateMany.mockResolvedValue({ count: 0 });
+    const second = await createQuoteAction(null, quoteForm());
+    expect(second).toMatchObject({ ok: false });
+    expect(afterTasks).toHaveLength(0);
+    expect(sendEmail).toHaveBeenCalledTimes(1);
   });
 });

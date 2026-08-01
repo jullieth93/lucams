@@ -70,6 +70,8 @@ export type QuoteConsentContext = {
 };
 
 export type CreateQuoteResult = {
+  /** Id interno — la action lo pasa al aviso por email al admin (link al detalle). */
+  id: string;
   number: string;
   token: string;
 };
@@ -117,6 +119,8 @@ export async function createQuoteFromCart(
     // mismo patrón que Order.publicAccessToken: 32 chars hex (128 bits).
     const publicAccessToken = crypto.randomBytes(16).toString("hex");
     try {
+      // El id de la Quote creada se captura para devolverlo (aviso al admin).
+      let createdId = "";
       await prisma.$transaction(async (tx) => {
         // ─── Reclamo del carrito (idempotencia del submit) ───
         // Vaciar el carrito ya era el último paso; acá es el PRIMERO y CONDICIONAL, y con eso
@@ -137,7 +141,7 @@ export async function createQuoteFromCart(
           throw new QuoteError("DUPLICATE_SUBMIT", "El carrito ya fue cotizado por otro envío");
         }
 
-        await tx.quote.create({
+        const created = await tx.quote.create({
           data: {
             number,
             publicAccessToken,
@@ -168,6 +172,7 @@ export async function createQuoteFromCart(
         // Ledger central de consentimientos, en la misma transacción: si algo falla, no queda
         // ni la cotización ni una autorización huérfana.
         await tx.consent.create({ data: { ...consentRow, acceptedAt: consentAt } });
+        createdId = created.id;
       });
       logger.info({
         event: "quote.created",
@@ -176,7 +181,7 @@ export async function createQuoteFromCart(
         total,
         city: input.city,
       });
-      return { number, token: publicAccessToken };
+      return { id: createdId, number, token: publicAccessToken };
     } catch (err) {
       // Colisión de number o publicAccessToken → reintentar con valores nuevos.
       if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === "P2002") {
