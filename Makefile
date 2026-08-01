@@ -25,7 +25,7 @@ help:
 	@echo "    make test         Todos los tests"
 	@echo "    make test-unit    Vitest"
 	@echo "    make test-e2e     Playwright"
-	@echo "    make test-rls     RLS impostor"
+	@echo "    make test-rls     Tests RLS (rls-coverage + rls-matrix, vía vitest)"
 
 install:
 	pnpm install --frozen-lockfile
@@ -212,8 +212,10 @@ test-e2e:
 test-coverage:
 	pnpm --filter web test:coverage
 
+# Tests RLS reales vía vitest: rls-coverage (toda tabla de public con RLS — gate por-PR)
+# + rls-matrix (comportamiento de las policies — nightly; se salta limpio sin Supabase real).
 test-rls:
-	@echo "RLS automated tests pendientes — sub-bloque L (QA exhaustivo)"
+	pnpm --filter web exec vitest run features/security/rls-coverage.integration.test.ts features/security/rls-matrix.integration.test.ts
 
 test-load:
 	@command -v k6 >/dev/null 2>&1 || { echo "k6 no instalado. https://k6.io/docs/get-started/installation/"; exit 1; }

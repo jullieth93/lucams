@@ -153,7 +153,7 @@ LOG_LEVEL=debug pnpm --filter web dev
 # Una vez levantado el dev server
 curl -f http://localhost:3000/api/health           # 200 si DB y app OK
 curl -f http://localhost:3000/api/health/db        # 200 si Postgres responde
-curl -f http://localhost:3000/api/health/integrations
+curl -f http://localhost:3000/api/health/all       # 200 si db + storage OK (agregado)
 # Encadenado:
 curl -f http://localhost:3000/api/health && echo OK
 ```
@@ -200,10 +200,21 @@ en el dashboard, y crear los 2 secretos del Vault (así el SQL versionado nunca 
 ```sql
 select vault.create_secret('https://lucamsshop.com', 'cron_base_url');
 select vault.create_secret('<CRON_SECRET real>',    'cron_secret');
+-- SOLO ambientes detrás de Vercel Authentication (previews STG) — migración 023:
+select vault.create_secret('<VERCEL_BYPASS_TOKEN>', 'cron_vercel_bypass');
 ```
 
 Luego re-aplicar la migración 15 (agenda los 6 jobs). Para rotar el secreto: `vault.update_secret`.
 Sin los secretos, los jobs quedan agendados pero fallan en runtime hasta setearlos.
+
+> **Tercer secreto `cron_vercel_bypass` (migración 023, 2026-08-01):** los previews de Vercel tienen
+> Deployment Protection (SSO) — sin bypass, los jobs HTTP reciben la página de login de Vercel (200
+> HTML) en vez de ejecutar el endpoint, y `/api/health/crons` reporta `lastRunAt: null` en todos.
+> La migración 023 re-agenda los 8 jobs añadiendo el header `x-vercel-protection-bypass` SOLO si el
+> secreto existe en el Vault. En PRD (dominio público) no se crea → headers sin cambios. En STG ya
+> está creado (verificado 2026-08-01: `net._http_response` devuelve JSON real de los endpoints).
+> El valor es el "protection bypass for automation" del proyecto Vercel (también en `.env.stg` como
+> `VERCEL_BYPASS_TOKEN`).
 
 ### Symlink de Supabase local con datos de prueba
 
@@ -293,11 +304,9 @@ Dos ramas en `github.com/jullieth93/lucams`:
 
 ### `vercel.json` del repo
 
-Vive en el root: [`vercel.json`](../vercel.json). Es **minimal por diseño** — solo declara el `ignoreCommand`. La configuración de framework/build/install/output viene del **Root Directory** del proyecto en Vercel UI (debe estar seteado a `apps/web`).
+El único `vercel.json` versionado es [`apps/web/vercel.json`](../apps/web/vercel.json) y es **minimal**: solo declara `{ "framework": "nextjs" }` (+ `$schema`). **No hay `vercel.json` en la raíz del repo** ni `ignoreCommand` en el código. La configuración de build/install/output viene del **Root Directory** del proyecto en Vercel UI (debe estar seteado a `apps/web`).
 
-| Campo           | Valor                                                                                                                      | Por qué                                                                                                                                                         |
-| --------------- | -------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ignoreCommand` | `git diff HEAD^ HEAD --quiet -- ./apps/web ./packages ./pnpm-lock.yaml ./package.json ./pnpm-workspace.yaml ./vercel.json` | Skip deploy cuando solo cambian docs (ahorra build minutes). Se ejecuta desde la raíz del repo (no del Root Directory), por eso los paths son `./apps/web` etc. |
+> **Skip de deploys docs-only:** si está activo, vive en la UI de Vercel (Settings → Git → Ignored Build Step) y **no es auditable desde el repo** — verificarlo ahí, no en el código.
 
 > **Por qué Root Directory en UI y no `framework`/`buildCommand` en `vercel.json`:** Vercel valida la presencia de `next` en el `package.json` del **Root Directory** **antes** de leer `vercel.json`. Como nuestro `package.json` del repo root es del workspace (no de Next.js), declarar `framework: nextjs` en `vercel.json` no supera esa validación — produce el error _"No Next.js version detected"_. La solución correcta para monorepos es Root Directory = `apps/web`. Aprendido el 2026-05-09 al fallar el primer deploy con `vercel.json` "completo" — ver [`STATE.md` § sesión 12](STATE.md).
 
@@ -409,7 +418,8 @@ WOMPI_PUBLIC_KEY=pub_test_xxxxxxxxxxxxxx
 WOMPI_PRIVATE_KEY=prv_test_xxxxxxxxxxxxxx
 WOMPI_INTEGRITY_SECRET=test_integrity_xxxxxxxxxxxxxx
 WOMPI_EVENTS_SECRET=test_events_xxxxxxxxxxxxxx
-NEXT_PUBLIC_WOMPI_PUBLIC_KEY=$WOMPI_PUBLIC_KEY    # Para widget en cliente
+# (La llave pública de Wompi NO se expone al navegador: el checkout es redirección al
+# hosted checkout de Wompi. No declarar NEXT_PUBLIC_WOMPI_* — ver apps/web/.env.example.)
 
 # ─── Aveonline (Etapa 2 — requerido en prod solo en modo "full") ───
 AVEONLINE_USUARIO=xxxxxxxxxxxxxx
@@ -421,12 +431,12 @@ AVEONLINE_ENV=test                                 # test | production
 RESEND_API_KEY=re_xxxxxxxxxxxxxx
 EMAIL_FROM=Lucams_shop <onboarding@resend.dev>     # dev
 # EMAIL_FROM=Lucams_shop <hola@mail.lucamsshop.com>  # prod
-EMAIL_REPLY_TO=hola@mail.lucamsshop.com            # prod (respuestas de clientes)
+EMAIL_REPLY_TO=hola@lucamsshop.com                     # prod (respuestas de clientes)
 
 # ─── Gemini (IA del Estudio — proveedor elegido ADR-058; modo "full" o dev) ───
 GEMINI_API_KEY=xxxxxxxxxxxxxx
 GEMINI_MODEL_PRIMARY=gemini-2.5-flash              # verificar nombre vigente en doc oficial
-GEMINI_MODEL_FALLBACK=gemini-2.0-flash             # idem
+GEMINI_MODEL_FALLBACK=gemini-2.5-flash             # idem
 
 # ─── Cloudflare Turnstile (CAPTCHA invisible en checkout y registro) ───
 NEXT_PUBLIC_TURNSTILE_SITE_KEY=0x4AAAAAAAxxxxxxxxx  # Para widget en cliente
@@ -469,7 +479,7 @@ NEXT_TELEMETRY_DISABLED=1                          # Anonymous telemetry de Next
 | Wompi production keys   | Anual          | Compromiso sospechoso                                                                                                           |
 | Supabase secret key     | Anual o ad-hoc | Compromiso sospechoso. Las nuevas secret keys (`sb_secret_*`) son revocables/rotables sin downtime — múltiples activas a la vez |
 | Resend API key          | Anual          | Compromiso sospechoso                                                                                                           |
-| Anthropic API key       | 6 meses        | Cambio de equipo                                                                                                                |
+| Gemini API key          | 6 meses        | Cambio de equipo                                                                                                                |
 | Aveonline usuario/clave | Anual          | Compromiso sospechoso                                                                                                           |
 
 ---
@@ -513,7 +523,9 @@ pnpm lighthouse
 ### Despliegue
 
 ```bash
-# Vercel hace deploy automático en push a main + preview en cada PR.
+# Vercel despliega producción desde la rama `production` (release = fast-forward
+# de `develop`; no existe `main`) y previews en cada push a `develop` / PR.
+# Ver «Estrategia de ramas y releases» y «Environments» más abajo.
 # Despliegue manual:
 vercel deploy --prod
 
@@ -732,11 +744,15 @@ Eso llama `refreshCmsCacheAction` → `updateTag("cms")` + queda en `AdminAction
 
 ## Healthchecks
 
-> A implementar en Fase 1.
+> Implementados en `apps/web/app/api/health/`.
 
-- `GET /api/health` — devuelve 200 si DB y Supabase responden.
-- `GET /api/health/wompi` — verifica que Wompi responde (consulta a `/v1/merchants/[id]`).
-- `GET /api/health/aveonline` — verifica que Aveonline responde.
+- `GET /api/health` — liveness de la app (200 si el servidor corre; no chequea dependencias externas).
+- `GET /api/health/db` — 200 si Postgres responde (`SELECT 1` vía Prisma).
+- `GET /api/health/storage` — 200 si el bucket de Supabase Storage responde.
+- `GET /api/health/resend` — 200 si la API key de Resend es válida y el dominio de `EMAIL_FROM` está verificado (no envía emails).
+- `GET /api/health/aveonline` — autentica contra Aveonline y reporta qué cuenta responde (detecta la cuenta demo en `production`). No se agrega a `/all`: cada llamada gasta una autenticación contra un tercero.
+- `GET /api/health/crons` — dead-man switch de los jobs pg_cron: 503 si alguno no corrió en 2× su intervalo.
+- `GET /api/health/all` — agrega los checks en un solo JSON: 200 si db + storage están OK (Resend es "warn", no bloqueante). El endpoint pensado para monitors externos.
 
 Configurar en BetterStack (free) o UptimeRobot (free) para alertas si alguno cae > 3 min.
 
@@ -1142,6 +1158,7 @@ cerrado mientras seguía atendiendo tráfico.
 
 - **2026-08-01** — **Webhook de Resend ACTIVO + higiene de `.env*`.** `RESEND_WEBHOOK_SECRET` distribuido (Vercel Production + `.env.local` + `.env.local.nube-backup`) y verificado end-to-end tras redeploy: evento `email.delivered` firmado Svix → 200 + `EmailEvent` creada (fila de prueba borrada). El webhook llevaba inoperativo desde siempre (sin secreto, rechazaba fail-closed). **OJO:** la selección de eventos del webhook en el dashboard de Resend debe quedar SOLO en el grupo _emails_ — contacts/domains/suppression no traen `email_id` y la ruta responde 400 (reintentos Svix → auto-deshabilitaría el endpoint). Higiene `.env*`: eliminadas vars muertas (`ANTHROPIC_*`, `NEXT_PUBLIC_WOMPI_PUBLIC_KEY`), `.env.stg` sin Resend/Aveonline reales ni R2/ngrok, archivos reordenados por secciones, `apps/web/.env.local` → symlink a la raíz (era copia estática apuntando a prod).
 - **2026-08-01** — **STG creado + limpieza pre-apertura de PRD.** `lucams-stg` (Supabase Free, us-east-2) montado end-to-end: esquema + seeds + pg_cron/pg_net + 10 jobs + secretos Vault; matriz de env vars de Vercel por ambiente (17 preview-only / 24 production-only / 6 compartidas — ver «Variables de entorno por ambiente»); smoke verificado (previews `stg-verify*`: rutas 200, catálogo desde stg, sitekey Turnstile test en el bundle). Catálogo real sincronizado PRD→STG (612 productos, 572 categorías, 772 variantes, 115 ocasiones, 979 campos CMS, 130 redirects, 24 plantillas, 43 cupones reales; la FK circular `CmsField↔CmsFieldVersion` exigió soltar y recrear constraints — Supabase cloud no permite `DISABLE TRIGGER` sin superuser). **PRD limpio de datos de prueba** (decisión de Lucy; backup previo verificado `tmp/backups/prod-pre-cleanup-20260801.dump` — 2.4MB, 94 tablas, fuera de git; dump del catálogo en `catalogo-prod-20260801.dump`): borrados 229 pedidos, 107 customers, 22 cotizaciones, 328 carts, 435 designs, 26 reviews, 61 cupones test, 24 admins `mfaitest_*` (residuo de specs MFA) y telemetría de dev (WebVital 23.9k, Consent 2.8k, ErrorLog 560, WebhookEvent, rate_limit_buckets) — conservados catálogo, CMS, redirects, plantillas, 43 cupones reales, `AdminActionLog` (101) y el único admin real. Verificado: transaccional en 0, sitio vivo 200. **Pendiente:** flip Production Branch `develop`→`production` en Vercel (Lucy).
+- **2026-08-01 (tarde)** — **Auditoría integral pre-producción (certificación) — fixes de infraestructura.** (a) **Crons STG rotos → arreglados:** los 8 jobs HTTP recibían la página de login de Vercel (SSO de los previews) en vez de ejecutar los endpoints — migración nueva `00000000000023_pgcron_cron_vercel_bypass.sql` (header `x-vercel-protection-bypass` opcional vía secreto Vault `cron_vercel_bypass`, solo ambientes con SSO) aplicada a LOCAL/STG/PRD + secreto creado en STG — verificado: `net._http_response` devuelve JSON real (`/api/health/crons` ya marca `alerts` al día). (b) **`SUPABASE_SECRET_KEY` y `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` del scope Preview de Vercel estaban MAL** (storage health 500 "Invalid Compact JWS") — corregidas vía API con los valores verificados de `.env.stg` (efectivas en el próximo deploy de preview). (c) **Contenido CMS corregido en LOCAL/STG/PRD** con `packages/db/scripts/update-delivery-copy-20260801.mjs` (4 campos: la home prometía "Pagas en línea" en modo catálogo y "entregamos en máx. 3 días" — ahora despacho en máx. {{fab}} + tránsito estimado del courier; revertible desde el historial de versiones del CMS). (d) `VERCEL_BYPASS_TOKEN` regenerado y persistido en `.env.stg` para smokes del preview. (e) LOCAL: pg_cron/pgmq habilitados y 10 jobs re-agendados (el reset los había dejado fuera). **Pendiente humano:** invalidar caché CMS en PRD (/admin/contenido → «Actualizar caché de contenido») o esperar ≤1 h; el próximo deploy la resetea igual.
 - **2026-05-09** — Cierre de Fase 0a. Auditoría de coherencia aplicada (21 hallazgos resueltos). 6 ADRs nuevos (014–019). Variables de entorno expandidas con Turnstile (`TURNSTILE_*`) y R2 (`R2_*`). Política de stock cerrada (reserva al `PENDING_PAYMENT` + descuento al `PAID`). Background jobs migran de Vercel Cron a `pgmq` + `pg_cron`. Rate-limit y cache se mueven a Postgres. Documento `SECURITY.md` creado como fuente única de seguridad.
 - **2026-05-09** — Documento creado en Fase 0a.
 

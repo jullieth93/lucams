@@ -16,7 +16,8 @@
 //   - onDelete explícito en cada relación.
 //
 // Tablas NO-Prisma (creadas vía supabase/migrations/*.sql):
-//   - rate_limit_buckets, cache_entries (ADR-016): bajo nivel, snake_case.
+//   - rate_limit_buckets (ADR-016): bajo nivel, snake_case.
+//   - cache_entries (ADR-016): DIFERIDA — no implementada todavía.
 
 generator client {
   provider = "prisma-client-js"

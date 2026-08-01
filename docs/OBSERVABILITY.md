@@ -87,9 +87,14 @@ Las señales que medimos. Cada SLO se calcula a partir de SLIs.
 
 ### Tracking
 
-- Cron mensual (`pg_cron`) calcula error budgets a partir de los SLIs de los últimos 30 días.
-- Resultado se publica en `/admin/observability/slos`.
-- Cuando un budget consume > 50%, alerta automática (Resend al usuario operador).
+> **Pendiente — NO implementado (verificado 2026-08-01).** Lo de abajo es el diseño objetivo: hoy
+> no existe el cron de error budgets (ninguna migración en `supabase/migrations/` ni endpoint en
+> `app/api/cron/` lo calcula) ni la página `/admin/observability/slos`. El seguimiento del budget
+> es manual.
+
+- (Objetivo) Cron mensual (`pg_cron`) calcula error budgets a partir de los SLIs de los últimos 30 días.
+- (Objetivo) Resultado se publica en `/admin/observability/slos`.
+- (Objetivo) Cuando un budget consume > 50%, alerta automática (Resend al usuario operador).
 
 ---
 

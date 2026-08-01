@@ -4,14 +4,14 @@ Detalle de cada integración externa: cómo se conecta, qué endpoints/webhooks 
 
 ## Tabla resumen
 
-| Integración    | Propósito                             | SDK / método            | Webhooks                   | Sandbox                 |
-| -------------- | ------------------------------------- | ----------------------- | -------------------------- | ----------------------- |
-| **Wompi**      | Pasarela de pago                      | REST + Web Checkout     | `transaction.updated`      | Sí                      |
-| **Aveonline**  | Logística multi-carrier + COD         | REST API                | Tracking (webhook AveCRM)  | Cuenta DEMO pública     |
-| **Supabase**   | DB + Auth + Storage + Realtime        | `@supabase/supabase-js` | —                          | Mismo proyecto Free     |
-| **Resend**     | Email transaccional                   | `resend` SDK            | — (sin webhooks por ahora) | Subdominio `resend.dev` |
-| **Claude API** | Asistente de diseño en estudio        | `@anthropic-ai/sdk`     | —                          | Mismo endpoint          |
-| **WhatsApp**   | Botón flotante con mensaje pre-armado | `wa.me` URL scheme      | —                          | —                       |
+| Integración   | Propósito                             | SDK / método                     | Webhooks                        | Sandbox                 |
+| ------------- | ------------------------------------- | -------------------------------- | ------------------------------- | ----------------------- |
+| **Wompi**     | Pasarela de pago                      | REST + Web Checkout              | `transaction.updated`           | Sí                      |
+| **Aveonline** | Logística multi-carrier + COD         | REST API                         | Tracking (webhook AveCRM)       | Cuenta DEMO pública     |
+| **Supabase**  | DB + Auth + Storage + Realtime        | `@supabase/supabase-js`          | —                               | Mismo proyecto Free     |
+| **Resend**    | Email transaccional                   | `resend` SDK                     | Eventos de email (Svix, activo) | Subdominio `resend.dev` |
+| **Gemini**    | Asistente IA de ideas del estudio     | REST `generateContent` (sin SDK) | —                               | Free tier de AI Studio  |
+| **WhatsApp**  | Botón flotante con mensaje pre-armado | `wa.me` URL scheme               | —                               | —                       |
 
 ---
 
@@ -218,6 +218,7 @@ const channel = supabase
 
 ```bash
 RESEND_API_KEY=re_xxxxxxxxxxxxxx
+RESEND_WEBHOOK_SECRET=whsec_xxxxxxxxxxxxxx   # Firma Svix del webhook (dashboard → Webhooks)
 
 # Dev (Free tier)
 EMAIL_FROM=Lucams_shop <onboarding@resend.dev>
@@ -264,62 +265,41 @@ Resend genera estos valores en el panel cuando se agrega el dominio. Configurarl
 - **List-Unsubscribe header** en emails de marketing (carrito abandonado, reactivación).
 - **Resend dashboard** muestra bounce rate, complaint rate, open/click rate. Alertar si bounce > 5%.
 
+### Webhook de eventos (Svix) — ACTIVO
+
+Resend notifica los eventos de cada email (`email.sent`, `email.delivered`, `email.bounced`, `email.complained`, `email.opened`, `email.clicked`) a `POST /api/webhooks/resend` (`apps/web/app/api/webhooks/resend/route.ts`). **Verificado E2E desde 2026-08-01.**
+
+- **Firma:** HMAC-SHA256 con el esquema oficial de Svix — header `svix-signature`, contenido firmado `${svix-id}.${svix-timestamp}.${body}`, secreto `RESEND_WEBHOOK_SECRET` (formato `whsec_…`, lo genera el dashboard de Resend → Webhooks).
+- **Anti-replay:** el timestamp Svix debe caer dentro de una ventana de 5 minutos.
+- **Fail-closed en prod:** sin `RESEND_WEBHOOK_SECRET` configurado, el endpoint rechaza en producción (en dev permite sin verificar, para testing local con curl).
+- **Idempotencia:** upsert de `EmailEvent` por `resendId` (`data.email_id`) — los reintentos de Resend no duplican filas.
+- **Al pasar a producción:** crear el webhook en el dashboard apuntando a `https://lucamsshop.com/api/webhooks/resend` y copiar el signing secret a `RESEND_WEBHOOK_SECRET` en Vercel.
+
 ---
 
-## 5. Claude API (asistente de diseño en el estudio)
+## 5. Gemini (asistente IA de ideas del Estudio) — ADR-058
+
+> Decisión: Google Gemini como proveedor del asistente ([ADR-058](./DECISIONS.md), 2026-07-13), detrás de la interfaz `AiProvider` (`features/ai/provider.ts`) — la lógica del asistente (service, action, UI) depende solo de esa interfaz, así que cambiar de proveedor no toca nada más.
 
 ### Variables de entorno
 
 ```bash
-ANTHROPIC_API_KEY=sk-ant-xxxxxxxxxxxxxx
-ANTHROPIC_MODEL=claude-sonnet-4-6  # Bueno-rápido-económico para sugerencias
+GEMINI_API_KEY=xxxxxxxxxxxxxx               # Server-only, NUNCA al cliente
+GEMINI_MODEL_PRIMARY=gemini-2.5-flash-lite  # default del código si falta
+GEMINI_MODEL_FALLBACK=gemini-2.5-flash      # default del código si falta
 ```
 
-### Endpoint: `app/api/ai/design-suggest/route.ts`
+### Implementación
 
-```ts
-export async function POST(req: Request) {
-  // 1. Rate limit por IP via lib/rate-limit.ts (Postgres + pg_cron, ADR-016)
-  // 2. Validar body con Zod: { occasion, palette, productType, photosCount }
-  // 3. Buscar en cache_entries (Postgres) por (occasion, productType, photosCount); TTL 24h
-  // 4. Si miss: construir system prompt con few-shot de plantillas existentes
-  // 5. Llamar a Claude con stream
-  // 6. Parsear respuesta JSON estructurada
-  // 7. Cachear resultado en cache_entries con expires_at = now() + 24h
-  // 8. Devolver 3 sugerencias { layout, colors, copy, templateId }
-  // 9. Loggear costo aproximado (input_tokens, output_tokens) para tracking sin PII
-}
-```
+- **Sin SDK npm:** `features/ai/gemini-provider.ts` llama por `fetch` server-side a `generateContent` (`https://generativelanguage.googleapis.com/v1beta/models`) con header `x-goog-api-key`. La key vive solo en el servidor — la llamada es servidor→Google, no toca la CSP del navegador.
+- **Fallback entre modelos:** intenta el primario; si falla (429/5xx/timeout/respuesta inválida) reintenta con el de respaldo. Si ambos fallan → `AiUnavailableError`. El system prompt (español de Colombia, tuteo, tono cálido) y la respuesta JSON validada con Zod (`responseSchema`) viven en el mismo archivo.
+- **Entry point:** la Server Action `suggestDesignAction` (`features/ai/actions.ts`) — valida la entrada con Zod y aplica rate-limit (20 sugerencias/hora por IP en prod + segunda capa por identidad contra rotación de IP; el asistente cuesta por llamada).
+- **Panel del Estudio:** `StudioAiPanel` (`app/estudio/[slug]/studio-ai-panel.tsx`) — el cliente cuenta la ocasión y recibe color de marca, frase (si el producto lleva texto), idea de composición y un tip. **Oculto en modo catálogo** (`aiEnabled = !isCatalogMode()` en `studio-editor.tsx`).
+- **Degradación amable:** sin `GEMINI_API_KEY` (o si el proveedor falla) el panel muestra "El asistente no está disponible ahora. ¡Igual puedes personalizar tú!" — nunca rompe el editor.
 
-### Prompt structure (boceto)
+### Costo
 
-```
-SYSTEM:
-Eres un asistente de diseño para Lucams_shop, una tienda de imanes personalizados.
-Cuando el cliente describe una ocasión, propones 3 plantillas de diseño que pueden
-adaptar usando nuestro editor.
-
-Cada sugerencia debe tener:
-- templateId: uno de [photo-grid-3, polaroid-stack, calendar-month, ...]
-- colors: paleta de 3 HEX coherente con la ocasión
-- copy: texto sugerido (máx 30 chars)
-- rationale: 1 frase de por qué encaja
-
-Devuelve JSON: { suggestions: Suggestion[] }
-
-USER:
-Ocasión: {occasion}
-Cantidad de fotos: {photosCount}
-Tipo de producto: {productType}
-```
-
-### Costo aproximado
-
-Claude Sonnet 4.6: ~$3/MTok input, $15/MTok output. Cada sugerencia consume ~500 tokens input + 300 output ≈ $0.006. Manejable.
-
-### Caching
-
-Las respuestas a la misma combinación `(occasion, productType, photosCount)` se cachean 24h en la tabla Postgres `cache_entries` (ADR-016), con limpieza vía `pg_cron`. Reduce costo y latencia. Si en producción la latencia de Postgres se vuelve un cuello de botella (p95 > 50 ms), se evalúa Redis externo (ADR-023 reservado).
+Gemini 2.5 Flash-Lite / Flash vía AI Studio tienen free tier generoso; con el rate-limit de arriba el costo a este volumen es despreciable. Verificar el pricing vigente en la doc oficial de Google antes del lanzamiento.
 
 ---
 
@@ -471,7 +451,7 @@ Reembolsos parciales o totales requieren nota crédito electrónica. Se emite v�
 | Wompi POST transaction | 10 s    | 1 intento (no idempotente)          | Idem                        |
 | Aveonline cotización   | 5 s     | 3 intentos                          | threshold=5, resetMs=30000  |
 | Aveonline generar guía | 15 s    | 3 intentos vía pgmq (durables)      | threshold=3, resetMs=60000  |
-| Anthropic              | 30 s    | 2 intentos para 5xx, 0 para 4xx     | threshold=10, resetMs=60000 |
+| Gemini                 | 12 s    | 1 reintento con el modelo fallback  | —                           |
 | Resend                 | 10 s    | 3 intentos vía pgmq                 | threshold=5, resetMs=30000  |
 | Proveedor DIAN         | 15 s    | 5 intentos vía pgmq                 | threshold=3, resetMs=120000 |
 
@@ -777,7 +757,7 @@ const answer = await anthropic.messages.create({
 
 - [ ] Cuenta de comercio aprobada (`comercios.wompi.co`)
 - [ ] Llaves de producción configuradas en Vercel
-- [ ] Webhook configurado en panel Wompi apuntando a `https://lucamsshop.com/api/wompi/webhook`
+- [ ] Webhook configurado en panel Wompi apuntando a `https://lucamsshop.com/api/webhooks/wompi`
 - [ ] Probar compra real con valor mínimo
 - [ ] Cambiar `WOMPI_ENV=production`
 
@@ -795,12 +775,13 @@ const answer = await anthropic.messages.create({
 - [ ] Dominio verificado en Resend
 - [ ] Plan Pro activado
 - [ ] `EMAIL_FROM` actualizado a dominio propio
+- [ ] Webhook Svix creado apuntando a `https://lucamsshop.com/api/webhooks/resend` + `RESEND_WEBHOOK_SECRET` en Vercel
 
-### Claude API
+### Gemini
 
-- [ ] API key con presupuesto mensual configurado
+- [ ] `GEMINI_API_KEY` con presupuesto mensual configurado
 - [ ] Alertas de costo activas
-- [ ] Rate limit en endpoint validado
+- [ ] Rate limit de la Server Action validado (20 sugerencias/hora por IP en prod)
 
 ### WhatsApp
 

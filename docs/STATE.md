@@ -13,6 +13,26 @@
 
 ## Resumen actual
 
+**✅ AUDITORÍA INTEGRAL PRE-PRODUCCIÓN EJECUTADA Y CERRADA (2026-08-01, noche).** Auditoría en 6
+frentes (código/seguridad, DB/RLS, integraciones, UX/UI-a11y, env vars/ops, tests) con todo
+verificado contra los 3 ambientes. **2 hallazgos graves de copy corregidos en código Y contenido:**
+la home prometía "Pagas en línea" estando en modo catálogo (bloqueante, Ley 1480) y se prometía
+"entrega en máx. 3 días" incluyendo el tránsito del courier (hoy: **despacho en máx. 2 días
+hábiles + tránsito estimado de la transportadora**). **2 fallas de infraestructura STG corregidas:**
+crons comidos por el SSO de Vercel (migración 023 + secreto Vault `cron_vercel_bypass`) y llaves
+Supabase del scope Preview erradas. Además: email al admin al crear cotización (la venta ya no
+depende de que el cliente pulse el botón de WhatsApp), guarda anti-destrucción en tests/scripts
+contra PRD, guard server-side de la acción IA en catálogo, webhook Wompi con 503 limpio, 11 fixes
+de accesibilidad (foco Estudio, contraste footer 5.02:1, carruseles con pausa, wishlist fuera del
+Link) y drift documental cerrado. **Evidencia: `make test-local` 2741/2741 verde, build OK, E2E
+smoke 9/9 + catalog-mode 2/2, gates CI (voseo, content-coverage, prettier) verdes; PRD y STG
+sanitizados y verificados en vivo.** Detalle completo:
+[docs/audits/2026-08-01-auditoria-integral-pre-produccion.md](audits/2026-08-01-auditoria-integral-pre-produccion.md).
+**Pendientes humanos (sin cambio):** flip Production Branch en Vercel, backups R2, monitor externo,
+trámites Etapa 2 (NIT/abogado/DIAN/Wompi/Aveonline reales).
+
+---
+
 **🔴→✅ EL ESTUDIO NUNCA FUNCIONÓ EN PRODUCCIÓN — ARREGLADO (2026-07-25, ADR-081).** El
 diferenciador de la tienda llevaba meses roto en vivo y ninguna prueba lo veía: el navegador mandaba
 los N PNG de imprenta por el body de la Server Action (hasta **56.6 MB** en un calendario) contra el

@@ -270,9 +270,12 @@ describe("createOrder (integration)", () => {
 > **Cobertura de CI (auditoría 2026-07-13; actualizado 2026-07-31 con A3).** El gate por-PR ENFORCEA
 > que _toda tabla tenga RLS habilitada_ (la migración `..._10_rls_sweep_new_tables.sql` hace
 > `RAISE EXCEPTION` si queda alguna destapada → un `CREATE TABLE` nuevo sin candado rompe la
-> migración). El COMPORTAMIENTO de las políticas (que un anon no lea filas de otro) lo valida
-> `rls-matrix.integration.test.ts`, que requiere PostgREST/GoTrue reales y se salta en el gate
-> por-PR (Postgres pelado) → corre en **`.github/workflows/nightly-full.yml`** (scheduled +
+> migración). Además, `features/security/rls-coverage.integration.test.ts` corre en el vitest
+> por-PR y falla si cualquier tabla de `public` queda sin RLS habilitada. El COMPORTAMIENTO de
+> las políticas (que un anon no lea filas de otro) lo valida
+> `features/security/rls-matrix.integration.test.ts`, que requiere PostgREST/GoTrue reales y se
+> salta en el gate por-PR (Postgres pelado) → corre en **`.github/workflows/nightly-full.yml`**
+> (scheduled +
 > on-demand). **A3 (2026-07-31):** el "Supabase real" del nightly es el **stack LOCAL de Supabase
 > levantado en el propio runner** (`supabase start` desde `.github/ci/localstack`, + `prisma
 migrate deploy` + las SQL de `supabase/migrations` aplicadas con el rol `supabase_admin`) —
@@ -326,43 +329,45 @@ describe("RLS: Customer isolation", () => {
 });
 ```
 
-> **CI:** correr en cada PR. Si falla, bloquea merge.
+> **CI:** `rls-coverage` corre en cada PR y bloquea merge si falla; `rls-matrix` corre en el nightly. `make test-rls` corre ambos localmente vía vitest.
 
 ---
 
 ## Tests E2E (Playwright)
 
-> **⚠️ Estado real en CI (2026-07-13).** La tabla de "Flujos críticos" de abajo es el ESTADO
-> OBJETIVO; no todo corre en CI todavía. Lo que **sí se gatea en cada PR** hoy (job `e2e` en
-> `.github/workflows/ci.yml`, contra el build de producción + Postgres real):
+> **⚠️ Estado real en CI (actualizado 2026-08-01).** La tabla de "Flujos críticos" de abajo es el
+> ESTADO OBJETIVO; la mayoría de esos flujos **no tiene E2E real todavía** (columna "Estado
+> real"). Lo que **sí se gatea en cada PR** hoy (job `e2e` en `.github/workflows/ci.yml`, contra
+> el build de producción + Postgres real):
 >
 > - **`smoke`** — páginas públicas cargan (home, /productos, /ayuda, /contacto, /legal, /status,
 >   health, sitemap, robots).
 > - **`a11y`** — invariantes por página (lang es-CO, `<main id=contenido>`, alt, ≥1 h1).
 > - **`axe`** — auditoría WCAG 2.1 A/AA (gate estricta: 0 serious/critical) en las páginas públicas.
 > - **`compra`** — núcleo del carrito → checkout de datos.
+> - **`estudio`** — el editor de personalización (canvas Konva), el diferenciador #1.
 >
-> **Fuera del gate por ahora (corren local / preview, follow-up):** `estudio` (afirma el canvas
-> Konva → requiere sembrar un producto de superficie foto, no el EVENT_FAVOR del seed base),
-> **regresión visual** (`visual.spec`, snapshots por-píxel → requieren baseline en imagen
-> pinneada para ser deterministas cross-máquina) y **`admin-login`/`admin-mfa`** (requieren el
-> stack Supabase real / GoTrue; se resolvería con `supabase start` en CI). El E2E de **compra
-> pagada real** (Wompi sandbox, redirect + retorno + webhook) sigue pendiente por fragilidad de
-> red — hoy el pago se valida a nivel de webhook en integración, no end-to-end en navegador.
+> **Solo en nightly** (`.github/workflows/nightly-full.yml`, con el stack Supabase local levantado
+> en el propio runner): **`admin-login`/`admin-mfa`** y **`cms-editing-flow`** (crean usuarios vía
+> service role → necesitan GoTrue real). **Sin correr en CI:** la **regresión visual**
+> (`visual.spec`, snapshots por-píxel → requieren baseline en imagen pinneada para ser
+> deterministas cross-máquina) y el E2E de **compra pagada real** (Wompi sandbox, redirect +
+> retorno + webhook) — pendiente por fragilidad de red; hoy el pago se valida a nivel de webhook
+> en integración, no end-to-end en navegador.
 
-### Flujos críticos cubiertos
+### Flujos críticos (ESTADO OBJETIVO — no todos tienen E2E real)
 
-| Flujo                                 | Descripción                                                                          | Frecuencia                  |
-| ------------------------------------- | ------------------------------------------------------------------------------------ | --------------------------- |
-| **Compra Wompi sandbox completa**     | Catálogo → PDP → carrito → checkout → tarjeta `4242` → orden PAID                    | Cada PR + cada deploy       |
-| **Compra COD completa**               | Idem pero contraentrega                                                              | Cada PR                     |
-| **Personalización + compra**          | Estudio canvas → guardar diseño → checkout                                           | Cada PR                     |
-| **Registro + login + reset password** | Auth completo                                                                        | Cada PR                     |
-| **Aplicar cupón**                     | Cupón válido, vencido, agotado                                                       | Cada PR                     |
-| **Admin: crear producto**             | Login admin → CRUD producto → revalidate                                             | Cada PR                     |
-| **Admin: cambiar estado de orden**    | Manual con razón → email notificación                                                | Cada PR                     |
-| **Retracto**                          | Solicitar retracto → aprobar → recibir → reembolsar                                  | Fase 4+                     |
-| **Stock oversold (negative path)**    | Dos clientes compran último item simultáneamente → uno gana, otro recibe error claro | Cada PR (después de Fase 4) |
+| Flujo                                 | Descripción                                                                          | Frecuencia objetivo         | Estado real (2026-08-01)                                                       |
+| ------------------------------------- | ------------------------------------------------------------------------------------ | --------------------------- | ------------------------------------------------------------------------------ |
+| **Compra Wompi sandbox completa**     | Catálogo → PDP → carrito → checkout → tarjeta `4242` → orden PAID                    | Cada PR + cada deploy       | Objetivo — sin E2E; el pago se valida a nivel de webhook en integración        |
+| **Compra COD completa**               | Idem pero contraentrega                                                              | Cada PR                     | Objetivo — sin E2E dedicado                                                    |
+| **Personalización + compra**          | Estudio canvas → guardar diseño → checkout                                           | Cada PR                     | Parcial — `estudio` corre por PR; el flujo combinado hasta checkout pagado no  |
+| **Registro + login + reset password** | Auth completo                                                                        | Cada PR                     | Objetivo — auth de cliente sin E2E (`admin-login`/`admin-mfa` solo en nightly) |
+| **Aplicar cupón**                     | Cupón válido, vencido, agotado                                                       | Cada PR                     | Objetivo — sin E2E                                                             |
+| **Admin: crear producto**             | Login admin → CRUD producto → revalidate                                             | Cada PR                     | Objetivo — los E2E de admin corren solo en nightly                             |
+| **Admin: cambiar estado de orden**    | Manual con razón → email notificación                                                | Cada PR                     | Objetivo — sin E2E                                                             |
+| **Retracto**                          | Solicitar retracto → aprobar → recibir → reembolsar                                  | Fase 4+                     | Objetivo (Fase 4+)                                                             |
+| **Stock oversold (negative path)**    | Dos clientes compran último item simultáneamente → uno gana, otro recibe error claro | Cada PR (después de Fase 4) | Objetivo — sin E2E                                                             |
 
 ### Estructura
 
@@ -639,10 +644,12 @@ jobs:
 | `components/`                   | 50% (rendering + a11y)  |
 | **Total proyecto**              | ≥ 70%                   |
 
-La tabla de arriba son las METAS. **Estado real (2026-07-13):** `vitest.config.ts` aún NO
-define `coverage.thresholds` y el job de CI corre `vitest run` **sin** `--coverage`, así que la
-cobertura no se mide ni se enforza todavía (deuda P1.2). Para activarla sin romper CI hay que
-medir primero la cobertura actual y fijar el umbral por debajo (ratchet), luego subirlo.
+La tabla de arriba son las METAS por capa. **Estado real (actualizado 2026-08-01):** el coverage
+SÍ se mide y se enforza — `apps/web/vitest.config.ts` define `coverage.thresholds` globales
+(lines 71 / statements 69.5 / functions 68.5 / branches 62, calibrados por ratchet contra la
+medición real de CI) y el job de tests de CI corre `pnpm --filter web test:coverage`
+(`.github/workflows/ci.yml`), que falla si la cobertura cae por debajo del piso. Los thresholds
+se aprietan de nuevo a medida que sube la cobertura real (ratchet).
 
 ---
 
