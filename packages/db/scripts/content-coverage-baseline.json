@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-07-31T22:50:21.154Z",
-  "threshold": 36.77,
+  "generatedAt": "2026-08-01T00:55:42.300Z",
+  "threshold": 36.66,
   "uncovered": [
     "apps/web/app/error.tsx :: Algo salió mal de nuestro lado",
     "apps/web/app/error.tsx :: Ya quedó registrado. Puedes intentar de nuevo o volver al inicio.",
@@ -203,6 +203,7 @@
     "apps/web/components/address/structured-address-fields.tsx :: Ej. Finca Las Flores",
     "apps/web/components/address/structured-address-fields.tsx :: Indicaciones para llegar *",
     "apps/web/components/address/structured-address-fields.tsx :: Ej. A 200m del puente, casa de dos pisos color azul, portón de madera.",
+    "apps/web/components/cms/cms-edit-overlay.tsx :: Modo edición: haz clic en un texto del sitio para abrir su editor en el CMS.",
     "apps/web/components/home/category-grid.tsx :: Ver categoría →",
     "apps/web/components/home/featured-carousel.tsx :: Anterior",
     "apps/web/components/home/featured-carousel.tsx :: Siguiente",

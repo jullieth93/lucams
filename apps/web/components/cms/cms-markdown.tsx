@@ -14,6 +14,7 @@ import rehypeSanitize from "rehype-sanitize";
 import remarkGfm from "remark-gfm";
 import { getCmsBlock } from "@/lib/cms";
 import { resolveCmsTokens } from "@/lib/cms-tokens";
+import { isCmsEditMode } from "@/lib/cms-edit-mode";
 
 export async function CmsMarkdown({
   blockKey,
@@ -26,9 +27,14 @@ export async function CmsMarkdown({
 }) {
   const block = await getCmsBlock(blockKey);
   const body = await resolveCmsTokens(block?.body ?? fallback);
+  // Roadmap C1 paso 2 — en modo edición el wrapper anota la key (overlay).
+  const editMode = await isCmsEditMode();
 
   return (
-    <div className={"cms-markdown " + className}>
+    <div
+      className={"cms-markdown " + className}
+      {...(editMode ? { "data-cms-key": blockKey } : {})}
+    >
       <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeSanitize]}>
         {body}
       </ReactMarkdown>

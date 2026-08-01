@@ -7,6 +7,8 @@ import { CookiesBanner } from "@/components/cookies-banner";
 import { RouteToasts } from "@/components/route-toasts";
 import { getCanonicalSiteUrl } from "@/lib/origin";
 import { isCatalogMode } from "@/lib/store-mode";
+import { isCmsEditMode } from "@/lib/cms-edit-mode";
+import { CmsEditOverlay } from "@/components/cms/cms-edit-overlay";
 import "./globals.css";
 
 /*
@@ -85,11 +87,14 @@ export const viewport: Viewport = {
   initialScale: 1,
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
+  // Roadmap C1 paso 2 — modo edición in-place: cookie sembrada solo por un
+  // admin de contenido; monta el overlay (banner + click → editor del campo).
+  const editMode = await isCmsEditMode();
   return (
     <html lang="es-CO" className={`${fredoka.variable} ${inter.variable} h-full antialiased`}>
       <body className="flex min-h-full flex-col">
@@ -109,6 +114,7 @@ export default function RootLayout({
           <RouteToasts />
         </Suspense>
         <CookiesBanner />
+        {editMode ? <CmsEditOverlay /> : null}
       </body>
     </html>
   );

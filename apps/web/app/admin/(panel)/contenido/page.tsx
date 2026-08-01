@@ -11,7 +11,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { ExternalLink, FileText, FileWarning, RefreshCw, Search } from "lucide-react";
+import { ExternalLink, FileText, FileWarning, Pencil, RefreshCw, Search } from "lucide-react";
 import {
   AdminBadge,
   AdminCard,
@@ -66,6 +66,18 @@ export default async function ContenidoIndexPage({ searchParams }: { searchParam
         breadcrumbs={[{ label: "Admin", href: "/admin/dashboard" }, { label: "Contenido" }]}
         actions={
           <div className="flex flex-wrap items-center gap-2">
+            {/* C1 paso 2 — modo edición in-place: siembra la cookie y abre la
+                portada; cualquier texto CMS clickeado salta a su editor.
+                Form MPA (no Server Action): el 303 trae HTML fresco, sin el
+                Router Cache del cliente de por medio. */}
+            <form method="POST" action="/api/admin/cms/edit-mode">
+              <input type="hidden" name="op" value="enable" />
+              <input type="hidden" name="next" value="/" />
+              <AdminButton type="submit" variant="secondary">
+                <Pencil className="h-4 w-4" />
+                Editar en el sitio
+              </AdminButton>
+            </form>
             {/* C4 — bandeja de cambios sin publicar del sitio entero */}
             <AdminButton href="/admin/contenido/borradores" variant="secondary">
               <FileWarning className="h-4 w-4" />
