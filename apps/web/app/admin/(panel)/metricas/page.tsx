@@ -12,13 +12,15 @@
  */
 
 import type { Metadata } from "next";
+import Link from "next/link";
 import { redirect } from "next/navigation";
-import { BarChart3, Trophy } from "lucide-react";
+import { BarChart3, FileText, Trophy } from "lucide-react";
 import type { OrderStatus, QuoteStatus } from "@lucams/db";
 import { prisma } from "@/lib/db";
 import { getCurrentAdmin } from "@/lib/auth";
 import { formatCOP } from "@/lib/format";
 import { isCatalogMode } from "@/lib/store-mode";
+import { getCmsObservabilityStats } from "@/features/cms/service";
 import { ORDER_STATUS_LABEL } from "@/features/orders/order-status-display";
 import {
   AdminBadge,
@@ -91,7 +93,7 @@ export default async function AdminMetricasPage() {
 
   // Consultas independientes → Promise.all para no serializar round-trips a DB.
   // En modo catálogo las queries de Order ni siquiera se disparan (orderData=null).
-  const [quotesByStatus, orderData] = await Promise.all([
+  const [quotesByStatus, orderData, cmsStats] = await Promise.all([
     prisma.quote.groupBy({
       by: ["status"],
       where: { deletedAt: null },
@@ -122,11 +124,26 @@ export default async function AdminMetricasPage() {
             take: 10,
           }),
         ]),
+    getCmsObservabilityStats(),
   ]);
   const ordersByStatus = orderData?.[0] ?? [];
   const ordersLast30 = orderData?.[1] ?? 0;
   const revenueCents = orderData?.[2]._sum.total ?? 0;
   const topByVariant = orderData?.[3] ?? [];
+
+  // Fecha corta para el KPI de caché: hora local; el año solo si no es el actual.
+  const cacheRefreshLabel = cmsStats.lastCacheRefresh
+    ? new Intl.DateTimeFormat("es-CO", {
+        day: "numeric",
+        month: "short",
+        ...(cmsStats.lastCacheRefresh.getFullYear() !== now.getFullYear()
+          ? { year: "numeric" as const }
+          : {}),
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      }).format(cmsStats.lastCacheRefresh)
+    : "Nunca";
 
   const orderCount = new Map<OrderStatus, number>(
     ordersByStatus.map((g) => [g.status, g._count._all]),
@@ -302,6 +319,62 @@ export default async function AdminMetricasPage() {
             productos cuenta solo unidades de pedidos pagados.
           </AdminNotice>
         )}
+
+        {/* Observabilidad del CMS (roadmap D2): pulso del contenido administrable.
+            Aplica también en modo catálogo — el CMS existe en las dos etapas. */}
+        <section>
+          <h2 className="text-brand-purple-dark font-display mb-3 flex items-center gap-2 text-base font-bold">
+            <FileText className="h-5 w-5" />
+            Contenido del sitio (CMS)
+          </h2>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <KpiCard
+              label="Campos administrables"
+              value={cmsStats.totalFields.toLocaleString("es-CO")}
+              trendLabel="Textos, imágenes y ajustes editables del sitio"
+            />
+            <KpiCard
+              label="Cambios sin publicar"
+              value={cmsStats.draftsPending.toLocaleString("es-CO")}
+              trend={
+                cmsStats.staleDrafts > 0 ? "down" : cmsStats.draftsPending === 0 ? "up" : "neutral"
+              }
+              trendLabel={
+                cmsStats.draftsPending === 0
+                  ? "Todo el contenido está publicado"
+                  : cmsStats.staleDrafts > 0
+                    ? `${cmsStats.staleDrafts.toLocaleString("es-CO")} llevan más de 7 días sin publicar`
+                    : "Ninguno lleva más de 7 días"
+              }
+            />
+            <KpiCard
+              label="Sin editar desde su carga inicial"
+              value={cmsStats.neverEdited.toLocaleString("es-CO")}
+              trendLabel="Candidatos a revisar si el texto aún aplica"
+            />
+            <KpiCard
+              label="Última actualización de caché"
+              value={cacheRefreshLabel}
+              trendLabel="Botón «Actualizar caché de contenido» del índice"
+            />
+          </div>
+          <p className="text-brand-muted mt-3 text-xs">
+            Ver el detalle en{" "}
+            <Link
+              href="/admin/contenido"
+              className="text-brand-purple font-semibold hover:underline"
+            >
+              Páginas del sitio
+            </Link>
+            {" · "}
+            <Link
+              href="/admin/contenido/borradores"
+              className="text-brand-purple font-semibold hover:underline"
+            >
+              Cambios sin publicar
+            </Link>
+          </p>
+        </section>
       </AdminPageBody>
     </AdminPage>
   );

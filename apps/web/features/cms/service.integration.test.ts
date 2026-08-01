@@ -39,6 +39,11 @@
  *   - Utilidades admin (roadmap C4): listCmsDraftFields (bandeja «Solo
  *     borradores»), moveCmsFieldToSection, duplicateCmsField (copia borrador
  *     con metadata + items de lista; validación de key).
+ *   - Observabilidad (roadmap D2): getCmsObservabilityStats — totales,
+ *     borradores pendientes y viejos (> 7 días), «sin editar desde su carga
+ *     inicial» (1 versión con createdBy NULL) y última invalidación manual de
+ *     caché (auditoría cms.cache.refresh); aserciones como deltas sobre la
+ *     baseline para no depender del estado de la DB.
  *
  * Estrategia: integración DB pura. Requiere DATABASE_URL (corre vía
  * `dotenv -e .env.local -- vitest`); sin ella se salta (skipIf) para no romper
@@ -66,6 +71,7 @@ import {
   getCmsFieldByKey,
   getCmsFieldItems,
   getCmsListSchema,
+  getCmsObservabilityStats,
   getCmsPageBySlug,
   listCmsDraftFields,
   listCmsPages,
@@ -1056,6 +1062,61 @@ describe.skipIf(!hasDb)(
         // Validaciones de key: duplicada y malformada.
         await expect(duplicateCmsField(source.id, source.key, null)).rejects.toThrow(/ya existe/i);
         await expect(duplicateCmsField(source.id, "  ", null)).rejects.toThrow(/inválido/i);
+      });
+    });
+
+    // ───────────────────────── Observabilidad del CMS (roadmap D2) ─────────────────────────
+
+    describe("getCmsObservabilityStats (D2: pulso del contenido)", () => {
+      it("cuenta campos, borradores, viejos y sin editar — como deltas sobre la baseline", async () => {
+        const base = await getCmsObservabilityStats();
+
+        // f1: BLOCK creado sin autor (como el seed), nunca publicado, 1 versión
+        //     → borrador pendiente Y «sin editar desde su carga inicial».
+        const f1 = await makeField();
+        // f2: SETTING creado por un admin (createdBy definido) → publicado al
+        //     guardar; 1 versión con autor → NO entra en «sin editar».
+        await makeField({ kind: "SETTING", type: "TEXT" }, "editor-d2");
+        // f3: BLOCK publicado y luego editado → 2 versiones, borrador pendiente,
+        //     NO «sin editar».
+        const f3 = await makeField();
+        const f3Detail = await getCmsFieldById(f3.id);
+        await publishCmsFieldVersion(f3.id, f3Detail!.versions[0]!.id, null);
+        await saveCmsFieldDraft({ id: f3.id, body: "cambio sin publicar" }, null);
+
+        let stats = await getCmsObservabilityStats();
+        expect(stats.totalFields).toBe(base.totalFields + 3);
+        expect(stats.draftsPending).toBe(base.draftsPending + 2); // f1 (nunca publicado) + f3 (cambio)
+        expect(stats.neverEdited).toBe(base.neverEdited + 1); // solo f1
+        expect(stats.staleDrafts).toBe(base.staleDrafts); // todas las versiones son recientes
+
+        // Envejecer la última versión de f1 a 8 días → borrador viejo (> 7 días).
+        const eightDaysAgo = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000);
+        await prisma.cmsFieldVersion.updateMany({
+          where: { fieldId: f1.id },
+          data: { createdAt: eightDaysAgo },
+        });
+        stats = await getCmsObservabilityStats();
+        expect(stats.staleDrafts).toBe(base.staleDrafts + 1);
+      });
+
+      it("lastCacheRefresh: toma la última acción cms.cache.refresh de la auditoría", async () => {
+        const row = await prisma.adminActionLog.create({
+          data: {
+            actorId: RUN,
+            action: "cms.cache.refresh",
+            entityType: "cms",
+            entityId: "cms-cache",
+            metadata: {},
+          },
+        });
+        try {
+          const stats = await getCmsObservabilityStats();
+          expect(stats.lastCacheRefresh?.getTime()).toBe(row.createdAt.getTime());
+        } finally {
+          // Limpieza exacta por id (la fila no lleva prefijo RUN en ninguna key).
+          await prisma.adminActionLog.delete({ where: { id: row.id } });
+        }
       });
     });
   },

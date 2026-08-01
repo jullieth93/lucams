@@ -716,3 +716,78 @@ export async function getCmsFieldByKey(key: string) {
 export type CmsFieldWithPage = Prisma.CmsFieldGetPayload<{
   include: { section: { include: { page: true } } };
 }>;
+
+// ─────────────────── Observabilidad del CMS (roadmap D2) ───────────────────
+
+/** Antigüedad a partir de la cual un cambio sin publicar se reporta como viejo. */
+export const CMS_STALE_DRAFT_DAYS = 7;
+
+export interface CmsObservabilityStats {
+  /** Campos vivos (no archivados). */
+  totalFields: number;
+  /** Campos con cambios sin publicar (borrador más nuevo que lo vivo o nunca publicados). */
+  draftsPending: number;
+  /** De los anteriores, cuya última edición supera CMS_STALE_DRAFT_DAYS días. */
+  staleDrafts: number;
+  /** Campos intactos desde su carga inicial (1 sola versión, creada por el seed/migrador). */
+  neverEdited: number;
+  /** Última invalidación manual de caché (botón «Actualizar caché de contenido»). */
+  lastCacheRefresh: Date | null;
+}
+
+/**
+ * Pulso del contenido para /admin/metricas (roadmap D2). Solo lectura, agregado
+ * en vuelo — cientos de campos, mismo criterio que las métricas de ventas (no
+ * justifica tabla de analytics). El filtro fino es en JS, como listCmsDraftFields.
+ *
+ * Definiciones:
+ *   - Cambio sin publicar: !isPublished o la última versión no es la publicada
+ *     (la regla de cmsFieldHasDraft); su antigüedad es la de la última versión.
+ *   - «Sin editar desde su carga inicial»: UNA sola versión y creada por el
+ *     seed/migrador (createdBy NULL). Toda edición crea versión nueva
+ *     (append-only) y toda creación manual deja createdBy, así que 1 versión
+ *     con createdBy NULL ⟺ nadie la tocó desde la carga.
+ */
+export async function getCmsObservabilityStats(now = new Date()): Promise<CmsObservabilityStats> {
+  const staleBefore = new Date(now.getTime() - CMS_STALE_DRAFT_DAYS * 24 * 60 * 60 * 1000);
+  const [fields, lastRefresh] = await Promise.all([
+    prisma.cmsField.findMany({
+      where: { deletedAt: null },
+      select: {
+        isPublished: true,
+        publishedVersionId: true,
+        versions: {
+          orderBy: { version: "desc" },
+          take: 1,
+          select: { id: true, createdAt: true, createdBy: true },
+        },
+        _count: { select: { versions: true } },
+      },
+    }),
+    prisma.adminActionLog.findFirst({
+      where: { action: "cms.cache.refresh" },
+      orderBy: { createdAt: "desc" },
+      select: { createdAt: true },
+    }),
+  ]);
+
+  let draftsPending = 0;
+  let staleDrafts = 0;
+  let neverEdited = 0;
+  for (const f of fields) {
+    const latest = f.versions[0];
+    if (f._count.versions === 1 && latest && latest.createdBy == null) neverEdited += 1;
+    if (!f.isPublished || cmsFieldHasDraft(f)) {
+      draftsPending += 1;
+      if (latest && latest.createdAt < staleBefore) staleDrafts += 1;
+    }
+  }
+
+  return {
+    totalFields: fields.length,
+    draftsPending,
+    staleDrafts,
+    neverEdited,
+    lastCacheRefresh: lastRefresh?.createdAt ?? null,
+  };
+}
