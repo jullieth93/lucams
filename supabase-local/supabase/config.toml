@@ -1,0 +1,17 @@
+# Stack LOCAL de Supabase para desarrollo diario (espejo de la nube).
+#
+# Mismo criterio que el workdir del Nightly (.github/ci/localstack): se corre
+# `supabase start` desde ESTE directorio SIN supabase/migrations propio, porque
+# las migraciones del repo (supabase/migrations/*) tocan tablas Prisma que aún
+# no existen al boot — se aplican después, en orden (ver Makefile db-local-setup):
+#   prisma migrate deploy → psql supabase/migrations/* → grants/RLS → seeds.
+#
+# Las credenciales del stack local son deterministas de desarrollo (salen de
+# `supabase status -o env`); no son secretos reales.
+project_id = "lucams-local"
+
+# MFA TOTP habilitado igual que en el localstack de CI (el E2E admin-mfa y el
+# flujo real de seguridad lo necesitan).
+[auth.mfa.totp]
+enroll_enabled = true
+verify_enabled = true

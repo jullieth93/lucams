@@ -133,3 +133,7 @@ lucams_shop.code-workspace
 .vercel
 tmp/
 apps/web/tmp/
+
+# Runtime del CLI Supabase local (branches + secretos efímeros del start)
+supabase-local/supabase/.branches/
+supabase-local/supabase/.temp/

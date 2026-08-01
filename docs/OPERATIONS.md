@@ -70,6 +70,61 @@ pnpm --filter @lucams/db prisma migrate dev
 pnpm --filter @lucams/db prisma db seed
 ```
 
+### Supabase LOCAL del día a día (espejo nube, podman rootless)
+
+> Implementado 2026-08-01. La VM no tiene Docker; el stack corre con **podman
+> rootless** (socket del usuario) — espejo de la nube para TODO lo que la app
+> toca: Postgres 15 + pg_cron, GoTrue (auth), Kong (API :54321), PostgREST,
+> Storage (uploads), Mailpit (emails :54324), pg_meta, **Studio (:54323)** y
+> Logflare. Excluidos deliberadamente: `imgproxy`, `edge-runtime`, `realtime`
+> (la app no los usa y su init rompe el start del CLI en podman).
+
+**Setup una sola vez (ya hecho en esta VM):**
+
+- CLI Supabase **2.111.0** en `tmp/bin/supabase` (herramienta local gitignored;
+  es la versión fijada en CI — las nuevas traen GoTrue incompatible).
+- Socket podman: `systemctl --user enable --now podman.socket`.
+- Workdir `supabase-local/` (config.toml + `supabase/snippets/` vacío — el CLI
+  bind-mountea esa carpeta y sin ella el start falla en podman).
+
+**Flujo diario (Makefile):**
+
+```bash
+make db-local-start   # levanta el stack (idempotente; datos persisten en volúmenes)
+make db-local-setup   # extensiones + prisma migrate deploy + supabase/migrations (orden CI)
+make db-local-on      # .env.local → stack local (respaldo en .env.local.nube-backup)
+make db-local-seed    # catálogo + plantillas Estudio + ocasiones + CMS (854 campos)
+pnpm --filter web dev # la app ya habla con el stack local
+make test-local       # suite vitest completa contra la DB local (excluye las 2 suites de la DB compartida)
+make db-local-off     # .env.local → nube compartida (restaura el respaldo)
+make db-local-stop    # apaga el stack (los datos quedan en los volúmenes)
+```
+
+**Supabase Studio (GUI) — completo y verificado:**
+
+- **URL:** http://localhost:54323 → redirige a `/project/default`. Sin login
+  (default del CLI local; SOLO dev, nunca exponer fuera de la VM).
+- **Table editor / SQL editor:** pg_meta responde (verificado: lista todas las
+  tablas del esquema, `auth.*` incluidas).
+- **Auth users:** pestaña Authentication lee `auth.users` del GoTrue local.
+- **Storage:** buckets del repo (customer-uploads, product-images, cms-media,
+  production-assets) con las mismas policies (migraciones `supabase/migrations`).
+- **Emails:** Mailpit en http://localhost:54324 (bandeja de los correos que
+  emita la app en dev — registro, recuperación, cotizaciones).
+- **Logs:** Logflare en :54323 (pestaña Logs del Studio).
+- **pg_cron:** instalado + job `lucams-cms-publish-scheduled` (cada 5 min,
+  igual que nube — habilitado con `CREATE EXTENSION pg_cron` en el setup).
+
+**Notas operativas:**
+
+- `db-local-start` tras `db-local-stop`: si el CLI falla con `volume already
+  exists` (manejo de volúmenes distinto a docker), basta `podman volume rm
+  supabase_db_lucams-local supabase_storage_lucams-local` y repetir (reset
+  total; re-correr `db-local-setup` + `db-local-seed`).
+- El Nightly CI usa el MISMO enfoque con docker real en el runner
+  (`.github/ci/localstack`) — los resultados son comparables.
+
+
 ### Logs locales (símil Vercel Logs)
 
 Durante `pnpm dev` los logs salen a stdout. Para una experiencia más cercana a Vercel:

@@ -45,6 +45,48 @@ format:
 migrate:
 	pnpm --filter @lucams/db db:migrate:deploy
 
+# ─── Supabase LOCAL para dev diario (espejo de la nube, podman rootless) ───
+# Flujo: make db-local-start → make db-local-setup → make db-local-on →
+#        make db-local-seed → (trabajar) → make db-local-off / db-local-stop.
+# El CLI (2.111.0, la misma de CI) vive en tmp/bin/supabase (herramienta local
+# gitignored); el socket es el de podman del usuario.
+
+SB_LOCAL_SOCK := unix:///run/user/$(shell id -u)/podman/podman.sock
+
+db-local-start: ## Levanta el stack Supabase local (podman socket)
+	systemctl --user enable --now podman.socket
+	# -x imgproxy,edge-runtime,realtime: la app no los usa (URLs públicas directas,
+	# server actions en vez de edge functions, sin suscripciones realtime) y en
+	# podman rootless rompen el start del CLI (su init espera el workdir montado
+	# con semántica de docker). El resto es espejo completo: postgres+pg_cron,
+	# GoTrue, Kong, PostgREST, Storage, Mailpit, pg_meta, Studio, Logflare.
+	DOCKER_HOST=$(SB_LOCAL_SOCK) tmp/bin/supabase start --workdir supabase-local -x imgproxy,edge-runtime,realtime
+
+db-local-stop: ## Apaga el stack Supabase local (datos persisten)
+	DOCKER_HOST=$(SB_LOCAL_SOCK) tmp/bin/supabase stop --workdir supabase-local
+
+db-local-status: ## Estado y keys del stack local
+	DOCKER_HOST=$(SB_LOCAL_SOCK) tmp/bin/supabase status --workdir supabase-local
+
+db-local-setup: ## Extensiones + prisma migrate + supabase/migrations (orden CI)
+	bash scripts/db-local-setup.sh
+
+db-local-on: ## .env.local → stack local (respaldo en .env.local.nube-backup)
+	bash scripts/db-local-env.sh on
+
+db-local-off: ## .env.local → nube compartida (restaura el respaldo)
+	bash scripts/db-local-env.sh off
+
+db-local-seed: ## Catálogo + plantillas + ocasiones + CMS en el stack local
+	cd packages/db && npx dotenv -e ../../.env.local -- node scripts/seed-products.mjs
+	cd packages/db && npx dotenv -e ../../.env.local -- node scripts/seed-templates.mjs
+	cd packages/db && npx dotenv -e ../../.env.local -- node scripts/seed-ocasiones.mjs
+	cd packages/db && npx dotenv -e ../../.env.local -- node scripts/seed-catalog-v2.mjs
+	cd packages/db && npx dotenv -e ../../.env.local -- node scripts/migrate-cms-v2.mjs
+
+test-local: ## Suite vitest contra el stack local (excluye las 2 suites de la DB compartida)
+	NIGHTLY_LOCALSTACK=1 pnpm --filter web test
+
 seed-products:
 	pnpm --filter @lucams/db exec node scripts/seed-products.mjs
 
