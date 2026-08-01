@@ -807,34 +807,33 @@ Cuando se rompan estos límites, abrir issue automático:
 
 Mapa real al 2026-08-01 (tras la separación dev/prod con Supabase local podman):
 
-| Ambiente | Deploy / URL                                                              | Rama git                                    | Base de datos                                                                                                |
-| -------- | ------------------------------------------------------------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| **DEV**  | `http://127.0.0.1:4000` (+ Studio `:54323`, Mailpit `:54324`)             | `develop` (+ ramas feature)                 | Supabase **LOCAL** podman (`127.0.0.1:54322`) — `make db-local-*`                                            |
-| **STG**  | Previews de Vercel (`lucams-git-<rama>-….vercel.app`) — **aún NO existe** | `develop` y ramas feature                   | Supabase Free **`lucams-stg`** (2º proyecto de la org) — **pendiente, lo crea Lucy si decide usar previews** |
-| **PRD**  | `https://lucamsshop.com` (Vercel Production)                              | `production` (release = ff desde `develop`) | Supabase nube **`lucams-prod`** (org `Lucams`, hoy tier Free)                                                |
+| Ambiente | Deploy / URL                                                                  | Rama git                                    | Base de datos                                                                                     |
+| -------- | ----------------------------------------------------------------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| **DEV**  | `http://127.0.0.1:4000` (+ Studio `:54323`, Mailpit `:54324`)                 | `develop` (+ ramas feature)                 | Supabase **LOCAL** podman (`127.0.0.1:54322`) — `make db-local-*`                                 |
+| **STG**  | Previews de Vercel (`lucams-shop-git-<rama>-jullieth93s-projects.vercel.app`) | `develop` y ramas feature                   | Supabase Free **`lucams-stg`** (ref `mjbdiqdkykhsixvqlrrp`, us-east-2) — **✅ creado 2026-08-01** |
+| **PRD**  | `https://lucamsshop.com` (Vercel Production)                                  | `production` (release = ff desde `develop`) | Supabase nube **`lucams-prod`** (org `Lucams`, hoy tier Free)                                     |
 
-- **Hoy, sin STG:** los previews de Vercel (`develop`/ramas) usan las env vars de producción → **leen y escriben la DB de PRD**. Mirar está bien; crear pedidos/cotizaciones o editar contenido desde un preview **toca datos reales**. Ese riesgo es exactamente el que cierra STG.
+- **Previews aislados desde 2026-08-01:** las 6 env vars (`DATABASE_URL`, `DIRECT_URL`, `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`, `CRON_SECRET`) tienen scope separado en Vercel — Production → `lucams-prod` · Preview → `lucams-stg`. Los previews ya NO tocan la DB de prod. **OJO:** mientras la Production Branch de Vercel siga en `develop` (flip pendiente en Settings → Git), los push a `develop` despliegan a **producción**, no a preview.
 - **DEV sí tiene rama git:** el trabajo diario es sobre `develop` en la VM; las ramas feature nacen y vuelven a `develop`. La DB local no depende de ninguna rama (espejo del esquema + seeds).
 - **Supabase «main» ≠ git:** el dashboard de Supabase muestra cada proyecto en una rama interna llamada `main` (su propia rama por defecto). No tiene relación con las ramas git del repo.
 - **Flip de `.env.local`:** el dev alterna local↔nube con `make db-local-on/off`. **Antes de tocar la nube** (migraciones, seeds, invalidar caché en prod) correr `make db-local-off`; al terminar, `make db-local-on`.
 
 #### ¿Necesitamos staging?
 
-- **Hoy (pre-apertura al público): NO es necesario.** DEV local + PRD cubren el flujo: verificar en local → CI verde → release → smoke post-release.
-- **Crear `lucams-stg` cuando** Lucy quiera revisar cambios desde un link público (su celular) antes del release, o haya que probar webhooks/integraciones contra una URL pública sin ngrok, o migraciones delicadas que convenga ensayar fuera de prod.
+- **Ya existe (creado 2026-08-01):** `lucams-stg` montado end-to-end con token de Management API — esquema + seeds + pg_cron + secretos Vault + env vars Preview en Vercel — y verificado con smoke (preview `stg-verify`: home/catálogo/admin 200, catálogo servido desde stg vía pooler `aws-0`, host exclusivo de ese proyecto).
 - **Costo: $0.** Supabase Free permite **2 proyectos activos** por org (prod + stg) y Vercel Hobby ya incluye previews. NO hace falta Vercel Pro ni Supabase Pro para tener STG.
 - **Cuándo pagar (momento oportuno = abrir al público):** Vercel **Pro** (Hobby está limitado a uso no comercial — una tienda abierta al público debe migrar) y Supabase **Pro** en `lucams-prod` (backups diarios + PITR, garantía de no-pausa, recursos). `lucams-stg` puede quedarse Free.
 
-#### Checklist para crear STG (cuando Lucy decida)
+#### Checklist STG (ejecutada 2026-08-01 — queda como referencia para rehacer o clonar el ambiente)
 
-1. **Supabase dashboard** → org `Lucams` → **New project** `lucams-stg` (Free, misma región que prod — us-east-2). Anotar project ref, URL, publishable key, secret key y password de DB.
-2. **VM/repo:** crear `.env.stg` (queda fuera de git por la regla `.env.*` del `.gitignore`) copiando `.env.local.nube-backup` y reemplazando `DATABASE_URL`, `DIRECT_URL` (pooler del proyecto stg: `:6543` pgbouncer / `:5432` directo), `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` y `SUPABASE_SECRET_KEY` por las del proyecto nuevo. **No tocar el flip** (`db-local-on/off` solo alterna local↔prod).
-3. **Esquema:** `make db-stg-setup` (script `scripts/db-stg-setup.sh`: extensiones → `prisma migrate deploy` → SQL de `supabase/migrations` → grants, mismo orden del Nightly; el rol `postgres` del proyecto es superuser en Supabase cloud, cubre el event trigger de la 014).
-4. **Seeds:** `make db-stg-seed` (catálogo + plantillas + ocasiones + CMS).
-5. **Secretos Vault para pg_cron** (jobs HTTP de las migraciones 015/016/021 — leen `cron_base_url`/`cron_secret` del Vault en runtime y en un proyecto nuevo no existen): crearlos con los comandos del header de `scripts/db-stg-setup.sh`, apuntando `cron_base_url` a la URL estable del preview de `develop` y `cron_secret` al MISMO valor de `CRON_SECRET` que quede scope Preview.
-6. **Vercel dashboard** → Settings → Environment Variables: las 5 vars de Supabase/DB + `CRON_SECRET` con scope **Preview** apuntando a `lucams-stg` (el scope Production sigue apuntando a `lucams-prod`; hoy las 5 tienen scope `production+preview` — por eso los previews tocan la DB de prod).
-7. **Verificar:** push a `develop` → abrir la URL preview → smoke (home 200, catálogo, un texto del CMS visible).
-8. **Documentar:** marcar STG como ✅ en la tabla de arriba y registrar el proyecto en HANDOFF.
+1. **Proyecto:** creado vía Management API (`POST /v1/projects`, org `qaomfftpzubbkhimucsi`, Free, us-east-2) con token temporal de Lucy (revocable en supabase.com/dashboard/account/tokens). Por dashboard: org `Lucams` → **New project** (misma región que prod).
+2. **VM/repo:** `.env.stg` (fuera de git por `.env.*`) copiando `.env.local.nube-backup` con las 5 vars del proyecto nuevo. **No tocar el flip** (`db-local-on/off` solo alterna local↔prod). ⚠️ **Pooler:** el host puede ser `aws-0` o `aws-1` según el clúster asignado — descubrirlo con `GET /v1/projects/{ref}/config/database/pooler` (stg quedó en `aws-0`; prod está en `aws-1`). Y la conexión directa `db.<ref>.supabase.co` es **IPv6-only** (la VM no tiene ruta IPv6) — siempre pooler.
+3. **Esquema:** `make db-stg-setup` (script `scripts/db-stg-setup.sh`: extensiones → `prisma migrate deploy` → SQL de `supabase/migrations` → grants, mismo orden del Nightly; el rol `postgres` del proyecto es superuser en Supabase cloud, cubre el event trigger de la 014). Luego **habilitar pg_cron + pg_net** (`create extension if not exists pg_cron; create extension if not exists pg_net;` — en cloud vienen deshabilitadas y las migraciones 015/016/021 se auto-omiten) y **re-aplicar esas 3 migraciones**: quedan los 8 jobs agendados como en prod.
+4. **Seeds:** `make db-stg-seed` (catálogo + plantillas + ocasiones + CMS — 59 productos, 75 categorías, 16 ocasiones, 854 campos CMS).
+5. **Secretos Vault para pg_cron** (los jobs leen `cron_base_url`/`cron_secret` del Vault en runtime): creados con los comandos del header de `scripts/db-stg-setup.sh` — `cron_base_url` = `https://lucams-shop-git-develop-jullieth93s-projects.vercel.app` (alias estable del preview de `develop`) y `cron_secret` = el MISMO valor de `CRON_SECRET` scope Preview.
+6. **Vercel env vars (vía CLI/API):** las 6 vars quedaron con scope separado — la existente se acota a `["production"]` (`PATCH /v9/projects/{id}/env/{envId}`) y se crea el valor stg con `["preview"]` (`POST /v10/projects/{id}/env`, type `sensitive`).
+7. **Verificar:** los previews tienen **Vercel Authentication** (SSO) — para el smoke automatizado generar un bypass: `PATCH /v1/projects/{id}/protection-bypass` con `{}` y usar el header `x-vercel-protection-bypass: <secret>`. Smoke ejecutado: home/`/productos`/`/admin/login` 200 + categoría «Separadores Magnéticos» servida desde stg. (`vercel deploy` CLI desde la raíz NO sirve: sube 250 MB y revienta el límite de 100 MB — el deploy debe ser vía git o `POST /v13/deployments` con `gitSource`.)
+8. **Documentar:** STG ✅ en la tabla de arriba + HANDOFF al día.
 
 ### Feature flags
 
