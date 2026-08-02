@@ -15,3 +15,19 @@ project_id = "lucams-local"
 [auth.mfa.totp]
 enroll_enabled = true
 verify_enabled = true
+
+# URL del sitio en dev (auditoría 2026-08-01): el default del CLI
+# (http://127.0.0.1:3000) NO es este proyecto — la app corre en :4000 y se
+# navega desde otros dispositivos por la IP de red. De aquí sale la etiqueta
+# que muestra el authenticator al enrolar TOTP y el destino de cualquier link
+# de email (los flujos del proyecto usan códigos OTP, no links — ADR-030).
+# OJO: aplica al RECREAR el stack (los contenedores leen esto al crearse) —
+# en un stack ya corriendo no hace falta re-enrolar: el secreto TOTP sigue
+# válido; basta renombrar la entrada en el authenticator.
+[auth]
+site_url = "http://192.168.20.180:4000"
+additional_redirect_urls = [
+  "http://localhost:4000",
+  "http://127.0.0.1:4000",
+  "http://192.168.20.180:4000",
+]
