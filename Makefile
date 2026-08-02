@@ -53,24 +53,33 @@ migrate:
 
 SB_LOCAL_SOCK := unix:///run/user/$(shell id -u)/podman/podman.sock
 
-db-local-start: ## Levanta el stack Supabase local (podman socket)
+db-local-start: ## Levanta el stack Supabase local (reanuda si ya existe; lo crea si no)
 	systemctl --user enable --now podman.socket
-	# -x imgproxy,edge-runtime,realtime: la app no los usa (URLs públicas directas,
-	# server actions en vez de edge functions, sin suscripciones realtime) y en
-	# podman rootless rompen el start del CLI (su init espera el workdir montado
-	# con semántica de docker). El resto es espejo completo: postgres+pg_cron,
-	# GoTrue, Kong, PostgREST, Storage, Mailpit, pg_meta, Studio, Logflare.
-	DOCKER_HOST=$(SB_LOCAL_SOCK) tmp/bin/supabase start --workdir supabase-local -x imgproxy,edge-runtime,realtime
+	# Si los contenedores ya existen (apagados con `db-local-stop`), los reanuda
+	# con podman nativo CONSERVANDO los datos. Solo si no existen crea el stack
+	# con el CLI (que en podman falla si el volumen ya existe — ver db-local-stop).
+	@if [ -n "$$(podman ps -aq --filter name=supabase_db_lucams-local)" ]; then \
+		echo "→ Contenedores existentes: reanudando con podman start (datos conservados)"; \
+		podman start $$(podman ps -aq --filter name=supabase_); \
+	else \
+		DOCKER_HOST=$(SB_LOCAL_SOCK) tmp/bin/supabase start --workdir supabase-local -x imgproxy,edge-runtime,realtime; \
+	fi
 
-db-local-stop: ## Apaga el stack Supabase local (datos persisten)
-	DOCKER_HOST=$(SB_LOCAL_SOCK) tmp/bin/supabase stop --workdir supabase-local
+db-local-stop: ## Apaga el stack CONSERVANDO contenedores y datos (podman stop nativo)
+	# OJO: NO usar `supabase stop` (CLI) para el apagado diario — esa vía BORRA los
+	# contenedores, y al volver (`db-local-start`) el CLI intenta crear el volumen
+	# ya existente y falla en podman ("volume already exists") → fuerza un reset
+	# con pérdida de datos. Con `podman stop` los contenedores quedan y
+	# `db-local-start` los reanuda tal cual.
+	podman stop $$(podman ps -q --filter name=supabase_) || true
 
 db-local-restart: ## Reinicia el stack CONSERVANDO datos (podman stop/start nativo)
 	podman stop $$(podman ps -q --filter name=supabase_) || true
 	podman start $$(podman ps -aq --filter name=supabase_)
 
 db-local-reset: ## Reset TOTAL: borra los volúmenes y rehace todo (start+setup+seed)
-	$(MAKE) db-local-stop || true
+	podman stop $$(podman ps -q --filter name=supabase_) || true
+	podman rm $$(podman ps -aq --filter name=supabase_) || true
 	podman volume rm -f supabase_db_lucams-local supabase_storage_lucams-local || true
 	$(MAKE) db-local-start
 	$(MAKE) db-local-setup

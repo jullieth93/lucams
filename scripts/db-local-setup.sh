@@ -18,6 +18,11 @@ LOCAL_ADMIN="postgresql://supabase_admin:postgres@localhost:54322/postgres"
 
 echo "→ 1/3 extensiones prerequisito"
 psql "$LOCAL_DB" -v ON_ERROR_STOP=1 -f .github/ci/localstack/prereq-extensions.sql
+# pg_cron + pgmq: el stack local las trae DISPONIBLES pero no habilitadas, y los
+# jobs de supabase/migrations 012/015/016/021/023 las necesitan (si faltan, esas
+# migraciones se saltan con NOTICE y la paridad con la nube queda rota en silencio
+# — detectado en la auditoría 2026-08-01). pgmq es mandato #11 (colas en Postgres).
+psql "$LOCAL_DB" -v ON_ERROR_STOP=1 -c "CREATE EXTENSION IF NOT EXISTS pg_cron; CREATE EXTENSION IF NOT EXISTS pgmq;"
 
 echo "→ 2/3 prisma migrate deploy"
 DATABASE_URL="$LOCAL_DB" DIRECT_URL="$LOCAL_DB" pnpm --filter @lucams/db exec prisma migrate deploy
