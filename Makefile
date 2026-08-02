@@ -88,6 +88,51 @@ db-local-reset: ## Reset TOTAL: borra los volúmenes y rehace todo (start+setup+
 db-local-status: ## Estado y keys del stack local
 	DOCKER_HOST=$(SB_LOCAL_SOCK) tmp/bin/supabase status --workdir supabase-local
 
+# ─── App web (Next dev) y entorno local COMPLETO (DB + app) ─────────────────
+# La app corre con nohup + setsid (grupo de procesos propio → el stop mata el
+# grupo entero: pnpm → next → workers). PID en tmp/pids, log en tmp/logs
+# (tmp/ está gitignored). El PORT sale de .env.local exportado al shell (un
+# `pnpm dev` pelado arranca en :3000 — Next NO lee PORT del .env).
+
+WEB_PID := tmp/pids/web-dev.pid
+WEB_LOG := tmp/logs/web-dev.log
+
+web-start: ## Levanta la app Next en :4000 (nohup; log en tmp/logs/web-dev.log)
+	@mkdir -p tmp/pids tmp/logs
+	@if [ -f "$(WEB_PID)" ] && kill -0 $$(cat $(WEB_PID)) 2>/dev/null; then \
+		echo "web: ya corriendo (pid $$(cat $(WEB_PID))) → http://localhost:4000"; \
+	else \
+		nohup setsid bash -c 'set -a && source .env.local && set +a && exec pnpm --filter web dev' > "$(WEB_LOG)" 2>&1 & echo $$! > $(WEB_PID); \
+		echo "web: arrancando (pid $$(cat $(WEB_PID))) — log: $(WEB_LOG)"; \
+	fi
+
+web-stop: ## Apaga la app Next (mata el grupo de procesos completo)
+	@if [ -f "$(WEB_PID)" ] && kill -0 $$(cat $(WEB_PID)) 2>/dev/null; then \
+		kill -- -$$(cat $(WEB_PID)) 2>/dev/null || kill $$(cat $(WEB_PID)); \
+		echo "web: detenida"; \
+	else \
+		echo "web: no estaba corriendo"; \
+	fi
+	@rm -f $(WEB_PID)
+
+web-restart: web-stop web-start ## Reinicia la app Next
+
+local-up: db-local-start web-start ## Sube TODO el entorno local (DB + GUIs + app)
+	@echo "✓ Entorno completo: app http://localhost:4000 · Studio :54323 · Mailpit :54324"
+
+local-down: web-stop db-local-stop ## Baja TODO el entorno local (los datos de la DB persisten)
+	@echo "✓ Entorno local abajo (los datos de la DB persisten)"
+
+local-restart: db-local-restart web-restart ## Reinicia TODO el entorno local conservando datos
+
+local-status: ## Estado del entorno completo (DB + app)
+	@$(MAKE) db-local-status || true
+	@if [ -f "$(WEB_PID)" ] && kill -0 $$(cat $(WEB_PID)) 2>/dev/null; then \
+		echo "web: corriendo (pid $$(cat $(WEB_PID))) → http://localhost:4000"; \
+	else \
+		echo "web: detenida"; \
+	fi
+
 db-local-setup: ## Extensiones + prisma migrate + supabase/migrations (orden CI)
 	bash scripts/db-local-setup.sh
 
