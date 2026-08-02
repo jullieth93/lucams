@@ -58,9 +58,16 @@ db-local-start: ## Levanta el stack Supabase local (reanuda si ya existe; lo cre
 	# Si los contenedores ya existen (apagados con `db-local-stop`), los reanuda
 	# con podman nativo CONSERVANDO los datos. Solo si no existen crea el stack
 	# con el CLI (que en podman falla si el volumen ya existe — ver db-local-stop).
-	@if [ -n "$$(podman ps -aq --filter name=supabase_db_lucams-local)" ]; then \
+	# Si faltan contenedores (ej. uno borrado a mano), el CLI tampoco puede
+	# recrearlo sin chocar con el bug del volumen → toca db-local-reset.
+	@N=$$(podman ps -aq --filter name=supabase_ | wc -l); \
+	if [ "$$N" -ge 9 ]; then \
 		echo "→ Contenedores existentes: reanudando con podman start (datos conservados)"; \
 		podman start $$(podman ps -aq --filter name=supabase_); \
+	elif [ "$$N" -gt 0 ]; then \
+		echo "✗ Stack INCOMPLETO ($$N contenedores — falta alguno). El CLI no puede recrearlo en podman (bug del volumen)."; \
+		echo "  Solución: make db-local-reset (rehace todo conservando el esquema del repo; los datos se resiembran)."; \
+		exit 1; \
 	else \
 		DOCKER_HOST=$(SB_LOCAL_SOCK) tmp/bin/supabase start --workdir supabase-local -x imgproxy,edge-runtime,realtime; \
 	fi
