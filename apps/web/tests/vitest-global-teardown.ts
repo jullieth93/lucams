@@ -13,16 +13,19 @@ import { checkDestructiveAllowed } from "../../../packages/db/scripts/lib/env-gu
  * Problema: los tests de integración crean productos, categorías, ocasiones,
  * variantes, etc. con slugs que incluyen timestamps o prefijos de test. Muchos
  * tests limpian su propio `RUN`, pero otros no, y bajo concurrencia/flakes los
- * afterAll fallan y dejan basura. Esa basura acaba en el catálogo público y
- * rompe los e2e / la experiencia de producción.
+ * afterAll fallan y dejan basura.
  *
- * Solución mínima: después de TODA la suite de vitest, conectamos a la misma
- * DB y purgamos suavemente todo lo que no sea parte del catálogo real. Así
- * los tests de integración pueden seguir usando la DB compartida sin dejar
- * residuos peligrosos para la rama `catalogo-whatsapp`.
+ * Solución: después de TODA la suite, purga suave POR PATRÓN DE TEST — solo
+ * entidades cuyo slug/email/número contiene un run-id (timestamp de 13+ dígitos
+ * embebido) o un prefijo de test conocido. El catálogo sembrado NUNCA se toca.
  *
- * NOTA: esto NO sustituye a una DB de test dedicada (ideal). Es una red de
- * seguridad mientras no exista staging/test separado (ver vitest.config.ts).
+ * HISTORIA (por qué era distinto): antes dev y prod COMPARTÍAN la DB, así que
+ * la fase de catálogo borraba todo lo que no estuviera en una whitelist de
+ * slugs reales — eso protegía el catálogo real pero destruía el catálogo
+ * sembrado en ambientes segregados. Desde 2026-08-01 los ambientes están
+ * segregados (LOCAL podman / STG cloud / PRD cloud) y además hay guarda de
+ * ambiente (env-guard.mjs) que bloquea PRD → el criterio correcto y UNIFORME
+ * en local/stg es "solo patrones de test", idéntico al de la fase transaccional.
  *
  * FIX 2026-07-28 — la red estaba rota en corridas LOCALES: el teardown corre en
  * el proceso PRINCIPAL de vitest (globalSetup), pero `.env.local` se cargaba en
@@ -33,42 +36,6 @@ import { checkDestructiveAllowed } from "../../../packages/db/scripts/lib/env-gu
  * "Cat cart…", ocasiones "itestoca…", "Ocasión Base" ×N). Acá el teardown carga
  * el env él mismo (sin pisar vars ya inyectadas por la shell/CI).
  */
-
-const REAL_PRODUCT_SLUGS = [
-  "abecedario-completo",
-  "set-fotoimanes-cuadrados",
-  "set-fotoimanes-polaroid",
-  "set-fotoimanes-circulares",
-  "set-fotoimanes-corazon",
-  "calendario-mes-a-mes-fotos",
-  "nombre-personalizado",
-  "pack-vocales",
-  "tiras-magneticas-fotos",
-  "separadores-alargados",
-  "separadores-magneticos",
-  "pack-separadores-libros",
-];
-
-const REAL_CATEGORY_SLUGS = ["foto-imanes", "calendarios", "separadores", "juegos-aprendizaje"];
-
-const REAL_OCASION_SLUGS = [
-  "cumpleanos",
-  "matrimonio",
-  "bautizo",
-  "baby-shower",
-  "grado",
-  "quinceanera",
-  "aniversario",
-  "dia-madre",
-  "dia-padre",
-  "dia-nino",
-  "amor-y-amistad",
-  "halloween",
-  "navidad",
-  "ano-nuevo",
-  "empresarial",
-  "para-mi-mismo",
-];
 
 export async function setup() {
   // No-op: el env que este proceso necesita lo carga teardown() directamente
@@ -94,9 +61,9 @@ export async function teardown() {
     return;
   }
 
-  // Guarda de ambiente (2026-08-01): este teardown hace soft-delete MASIVO por whitelist
-  // de slugs — contra PRD sería un incidente. Si la guarda bloquea, se OMITE la limpieza
-  // con warn (NO se falla la suite; es un safety net, igual que el catch de abajo).
+  // Guarda de ambiente (2026-08-01): este teardown borra datos — contra PRD sería
+  // un incidente. Si la guarda bloquea, se OMITE la limpieza con warn (NO se falla
+  // la suite; es un safety net, igual que el catch de abajo).
   const guard = checkDestructiveAllowed();
   if (!guard.allowed) {
     console.warn(`[vitest teardown] Limpieza OMITIDA por guarda de ambiente: ${guard.reason}`);
@@ -108,45 +75,30 @@ export async function teardown() {
 
   const prisma = new PrismaClient({ datasources: { db: { url } } });
   try {
+    // Fase 1 — catálogo de TEST solamente (2026-08-04, ambientes segregados):
+    // un slug es de test si contiene un run-id (timestamp de 13+ dígitos
+    // seguidos — todos los RUN de la suite llevan Date.now()) o un prefijo de
+    // test conocido. El catálogo sembrado jamás cumple esos patrones → seguro.
+    const TEST_SLUG = "[0-9]{13,}";
     const [products, categories, ocasiones] = await Promise.all([
-      prisma.product.updateMany({
-        where: {
-          deletedAt: null,
-          slug: { notIn: REAL_PRODUCT_SLUGS },
-        },
-        data: { isActive: false, deletedAt: new Date(), updatedAt: new Date() },
-      }),
-      prisma.category.updateMany({
-        where: {
-          deletedAt: null,
-          slug: { notIn: REAL_CATEGORY_SLUGS },
-        },
-        data: { isActive: false, deletedAt: new Date(), updatedAt: new Date() },
-      }),
-      prisma.ocasionTag.updateMany({
-        where: {
-          deletedAt: null,
-          slug: { notIn: REAL_OCASION_SLUGS },
-        },
-        data: { isActive: false, deletedAt: new Date(), updatedAt: new Date() },
-      }),
+      prisma.$executeRaw`UPDATE "Product" SET "deletedAt" = NOW(), "isActive" = false, "updatedAt" = NOW()
+        WHERE "deletedAt" IS NULL AND (
+          slug ~ ${TEST_SLUG} OR slug ILIKE 'test-%' OR slug ILIKE 'itest%')`,
+      prisma.$executeRaw`UPDATE "Category" SET "deletedAt" = NOW(), "isActive" = false, "updatedAt" = NOW()
+        WHERE "deletedAt" IS NULL AND (
+          slug ~ ${TEST_SLUG} OR slug ILIKE 'test-%' OR slug ILIKE 'itest%')`,
+      prisma.$executeRaw`UPDATE "OcasionTag" SET "deletedAt" = NOW(), "isActive" = false
+        WHERE "deletedAt" IS NULL AND (
+          slug ~ ${TEST_SLUG} OR slug ILIKE 'test-%' OR slug ILIKE 'itest%')`,
     ]);
 
-    await prisma.productVariant.updateMany({
-      where: {
-        deletedAt: null,
-        product: { slug: { notIn: REAL_PRODUCT_SLUGS } },
-      },
-      data: { isActive: false, deletedAt: new Date(), updatedAt: new Date() },
-    });
+    const variants = await prisma.$executeRaw`UPDATE "ProductVariant" SET "deletedAt" = NOW(), "isActive" = false, "updatedAt" = NOW()
+      WHERE "deletedAt" IS NULL AND (
+        sku ~ ${TEST_SLUG} OR "productId" IN (SELECT id FROM "Product" WHERE slug ~ ${TEST_SLUG}))`;
 
-    await prisma.personalizationTemplate.updateMany({
-      where: {
-        deletedAt: null,
-        product: { slug: { notIn: REAL_PRODUCT_SLUGS } },
-      },
-      data: { isActive: false, deletedAt: new Date(), updatedAt: new Date() },
-    });
+    const templates = await prisma.$executeRaw`UPDATE "PersonalizationTemplate" SET "deletedAt" = NOW(), "isActive" = false, "updatedAt" = NOW()
+      WHERE "deletedAt" IS NULL AND (
+        slug ~ ${TEST_SLUG} OR "productId" IN (SELECT id FROM "Product" WHERE slug ~ ${TEST_SLUG}))`;
 
     // ─────────────────────────────────────────────────────────────────────
     // Fase 2 de la red (2026-07-28) — basura TRANSACCIONAL de tests. La red
@@ -202,7 +154,7 @@ export async function teardown() {
     ]);
 
     console.log(
-      `[vitest teardown] Limpieza: ${products.count} productos, ${categories.count} categorías, ${ocasiones.count} ocasiones. ` +
+      `[vitest teardown] Limpieza (solo patrones de test): ${products} productos, ${categories} categorías, ${ocasiones} ocasiones, ${variants} variantes, ${templates} plantillas. ` +
         `Transaccional: ${ordersTest} pedidos, ${customersTest} clientes, ${couponsTest} cupones, ` +
         `${reviewsTest} reseñas, ${quotesTest} cotizaciones, ${designsTest} diseños, ` +
         `${setsTest} sets fichas (+${tilesTest} fichas), ${codTest} ledger COD, ${retractsTest} retractos.`,

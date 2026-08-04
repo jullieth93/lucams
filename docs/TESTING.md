@@ -280,7 +280,8 @@ describe("createOrder (integration)", () => {
 > levantado en el propio runner** (`supabase start` desde `.github/ci/localstack`, + `prisma
 migrate deploy` + las SQL de `supabase/migrations` aplicadas con el rol `supabase_admin`) —
 > ya NO hacen falta un proyecto externo ni secrets `STAGING_*`: cada corrida es efímera y
-> reproducible. Exclusiones documentadas por depender del universo de la DB compartida de dev:
+> reproducible. Exclusiones documentadas por depender del universo del catálogo real completo
+> (612 productos — los seeds del runner/local siembran el subconjunto base):
 > `finalize-server-render` y `letter-tiles` (env `NIGHTLY_LOCALSTACK` en `vitest.config.ts`).
 > La postura de grants de prod (PostgREST cerrado para anon/authenticated) quedó codificada en
 > `supabase/migrations/00000000000022_revoke_anon_table_grants.sql` para que cualquier ambiente
