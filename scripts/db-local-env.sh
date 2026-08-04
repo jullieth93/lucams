@@ -30,13 +30,22 @@ case "$MODE" in
       exit 1
     fi
     TMP=$(mktemp)
-    grep -v -E "$VARS" "$ENV" > "$TMP" || true
+    grep -v -E "$VARS" "$ENV" | grep -v -E '^# ─── Supabase ───' > "$TMP" || true
+    # Las 5 vars van en su sección con comentarios (antes quedaban sueltas al
+    # final del archivo, bajo la sección equivocada). La URL pública usa la IP
+    # de red: el navegador (de este u otro dispositivo) llama DIRECTO a la API
+    # de Supabase — con `localhost` solo funcionaría navegando en la propia VM.
+    # Las URLs de DB quedan en localhost: las consumen procesos EN la VM
+    # (prisma/scripts) y así no dependen de la IP, que puede cambiar.
+    LAN_IP=$(hostname -I 2>/dev/null | awk '{print $1}')
+    SB_URL="http://${LAN_IP:-localhost}:54321"
     {
-      echo "DATABASE_URL=postgresql://postgres:postgres@localhost:54322/postgres"
-      echo "DIRECT_URL=postgresql://postgres:postgres@localhost:54322/postgres"
-      echo "NEXT_PUBLIC_SUPABASE_URL=http://localhost:54321"
-      echo "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=$ANON"
-      echo "SUPABASE_SECRET_KEY=$SERVICE"
+      echo "# ─── Supabase ───"
+      echo "DATABASE_URL=postgresql://postgres:postgres@localhost:54322/postgres  # conexión app (Prisma) — SOLO servidor"
+      echo "DIRECT_URL=postgresql://postgres:postgres@localhost:54322/postgres    # conexión directa DDL (prisma migrate, scripts) — SOLO servidor"
+      echo "NEXT_PUBLIC_SUPABASE_URL=$SB_URL  # URL base APIs Supabase (auth/rest/storage). IP de red = navegas desde cualquier dispositivo de tu LAN"
+      echo "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=$ANON  # llave pública (rol anon) — puede ir al navegador; RLS/grants protegen la data"
+      echo "SUPABASE_SECRET_KEY=$SERVICE  # llave secreta (service_role, bypass RLS) — SOLO servidor, jamás NEXT_PUBLIC"
     } >> "$TMP"
     mv "$TMP" "$ENV"
     chmod 600 "$ENV" 2>/dev/null || true
