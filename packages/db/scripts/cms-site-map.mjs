@@ -9076,7 +9076,25 @@ Antes de escribir, revisa el [Centro de ayuda](/ayuda) — quizás ya está resp
       icon: "Settings",
       sortOrder: 190,
       sections: [
-        { key: "contacto", title: "Contacto", settingCategories: ["CONTACT"], sortOrder: 10 },
+        {
+          key: "contacto",
+          title: "Contacto",
+          settingCategories: ["CONTACT"],
+          sortOrder: 10,
+          fields: [
+            {
+              key: "ALERT_EMAIL",
+              kind: "SETTING",
+              type: "EMAIL",
+              label: "Email de avisos al negocio",
+              helpText:
+                "Acá llegan los avisos internos: nueva cotización, alertas del sistema y el resumen diario. Si está vacío, se usa hola@lucamsshop.com.",
+              category: "CONTACT",
+              body: "hola@lucamsshop.com",
+              sortOrder: 5,
+            },
+          ],
+        },
         {
           key: "redes-sociales",
           title: "Redes sociales",
