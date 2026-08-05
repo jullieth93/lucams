@@ -153,7 +153,24 @@ export function StudioSidebar({
         formData.append("file", file);
         if (designId) formData.append("designId", designId);
         formData.append("rightsAccepted", rightsAccepted ? "true" : "false");
-        const result = await uploadDesignAssetAction(formData);
+        let result;
+        try {
+          result = await uploadDesignAssetAction(formData);
+        } catch (err) {
+          // Framework/plataforma mató el request ANTES de la acción (413 payload
+          // too large en Vercel ~4.5 MB, 500 "Unexpected end of form", red):
+          // sin este catch el usuario no veía NADA (silencio total — verificación
+          // de uploads 2026-08-05). Damos el motivo y la salida práctica.
+          const reason = err instanceof Error ? err.message : String(err);
+          const tooBig = /413|too large|end of form|network|fetch failed/i.test(reason);
+          setUploadError(
+            tooBig
+              ? `No pudimos subir "${file.name}": es muy grande para el servidor. Prueba con una foto de menos de ~4 MB (o baja la resolución en tu cámara).`
+              : `No pudimos subir "${file.name}". Revisa tu conexión e inténtalo de nuevo.`,
+          );
+          setUploading((n) => Math.max(0, n - 1));
+          continue;
+        }
         if (result.ok) {
           addAsset({
             id: result.assetId,
