@@ -13,6 +13,18 @@
 
 ## Resumen actual
 
+**✅ RE-AUDITORÍA 2026-08-05 — CI verde y drift operativo cerrado.** La CI roja por prettier
+quedó resuelta; corregidos los CTAs con contraste insuficiente y cerrado el stage-guard en
+`processPaidOrder`. Ops al día: el backup R2 ahora es **diario** (retención 30 ≈ 1 mes) con el
+**DR drill automatizado y verificado** (run 30972179553 — restaura los 612 productos de prod,
+0 errores SQL); los 5 crons de email quedaron **desagendados en STG** (enviaban correos reales
+desde que los previews recibieron `RESEND_API_KEY` el 2026-08-04); y el flip de Production
+Branch `develop`→`production` en Vercel ya está hecho (develop = previews, production = PRD).
+**Sigue pendiente:** el monitor externo (BetterStack/UptimeRobot sobre `/api/health/*`) y
+Supabase Pro para Etapa 2.
+
+---
+
 **✅ AUDITORÍA INTEGRAL PRE-PRODUCCIÓN EJECUTADA Y CERRADA (2026-08-01, noche).** Auditoría en 6
 frentes (código/seguridad, DB/RLS, integraciones, UX/UI-a11y, env vars/ops, tests) con todo
 verificado contra los 3 ambientes. **2 hallazgos graves de copy corregidos en código Y contenido:**
