@@ -101,4 +101,4 @@ jobs:
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          DRILL_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/drill
+          DRILL_DATABASE_URL: postgresql://supabase_admin:postgres@localhost:5432/postgres

@@ -46,7 +46,8 @@ async function main() {
   const secretAccessKey = requireEnv("R2_SECRET_ACCESS_KEY");
   const prefix = (process.env.BACKUP_PREFIX || "db").replace(/\/+$/, "");
   const drillUrl =
-    process.env.DRILL_DATABASE_URL || "postgresql://postgres:postgres@localhost:5432/drill";
+    process.env.DRILL_DATABASE_URL ||
+    "postgresql://supabase_admin:postgres@localhost:5432/postgres";
   const minProducts = Number.parseInt(process.env.DRILL_MIN_PRODUCTS || "100", 10);
 
   const client = new S3Client({
@@ -82,31 +83,34 @@ async function main() {
   const sql = Buffer.concat(chunks);
   console.log(`→ descargado y descomprimido (${(sql.length / 1024 / 1024).toFixed(2)} MB de SQL)`);
 
-  // 3. Recrear la DB de prueba y restaurar (vía archivo temporal — el SQL no
-  //    cabe en argv y psql lee de archivo con -f).
-  const adminUrl = drillUrl.replace(/\/[^/]+$/, "/postgres");
-  await run("psql", [adminUrl, "-v", "ON_ERROR_STOP=1", "-c", "DROP DATABASE IF EXISTS drill;"]);
-  const created = await run("psql", [
-    adminUrl,
-    "-v",
-    "ON_ERROR_STOP=1",
-    "-c",
-    "CREATE DATABASE drill;",
-  ]);
-  if (created.code !== 0) throw new Error(`No se pudo crear la DB drill: ${created.stderr}`);
-
-  // El dump viene de Supabase (--no-owner --no-privileges): contra el engine
-  // supabase/postgres del runner restaura limpio; contamos errores por si hay
-  // incompatibilidades parciales (objetos de extensiones ajenas, etc.).
+  // 3. Restaurar (vía archivo temporal — el SQL no cabe en argv y psql lee de
+  //    archivo con -f).
+  //    Lecciones del primer drill (2026-08-05, verificado con el dump real):
+  //    - pg_cron SOLO puede crearse en la DB "postgres" del engine supabase —
+  //      en una DB scratch el COPY cron.job revienta y, como psql sigue, las
+  //      filas de datos se parsean como SQL y el resto del dump no carga nada.
+  //    - Los schemas auth/storage/realtime exigen el rol supabase_admin (el
+  //      rol postgres del contenedor no tiene permisos sobre ellos).
+  //    Por eso el restore va a la DB "postgres" del contenedor fresco (que ya
+  //    trae pg_cron disponible) con el rol supabase_admin.
   const { writeFileSync, unlinkSync } = await import("node:fs");
   const tmp = `/tmp/dr-drill-${Date.now()}.sql`;
   writeFileSync(tmp, sql);
+  // Errores esperados (ruido tolerable de un dump Supabase --no-owner en un
+  // contenedor scratch: FKs de auth/*, policies que referencian roles de la
+  // nube). Se cuentan Y se muestran las primeras para no volar a ciegas.
   const restoreRun = await run("bash", [
     "-c",
-    `psql "${drillUrl}" -v ON_ERROR_STOP=0 -q -f "${tmp}" 2>&1 | grep -c ERROR || true`,
+    `psql "${drillUrl}" -v ON_ERROR_STOP=0 -q -f "${tmp}" 2>&1 | grep "^ERROR" > /tmp/drill-errors.txt; grep -c "^ERROR" /tmp/drill-errors.txt`,
   ]);
   unlinkSync(tmp);
   const errors = Number.parseInt(restoreRun.stdout.trim() || "0", 10) || 0;
+  const topErrors = await run("bash", [
+    "-c",
+    `sort /tmp/drill-errors.txt | uniq -c | sort -rn | head -6 | sed 's/^ */    /'`,
+  ]);
+  if (errors > 0)
+    console.log(`→ errores SQL durante restore: ${errors} (top:)\n${topErrors.stdout}`);
 
   // 4. Verificar conteos de tablas clave.
   const tables = ["Product", "Category", "OcasionTag", "CmsField", "Order", "Customer"];
