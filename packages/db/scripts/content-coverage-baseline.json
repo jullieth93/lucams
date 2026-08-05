@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-08-01T21:30:17.741Z",
+  "generatedAt": "2026-08-05T11:51:20.002Z",
   "threshold": 35.9,
   "uncovered": [
     "apps/web/app/error.tsx :: Algo salió mal de nuestro lado",
@@ -146,9 +146,11 @@
     "apps/web/components/global-search.tsx :: Buscar en Lucams",
     "apps/web/components/global-search.tsx :: Nada por aquí — prueba con otra palabra.",
     "apps/web/components/newsletter-form.tsx :: tu-email@ejemplo.com",
-    "apps/web/components/newsletter-form.tsx :: Acepto recibir comunicaciones de Lucams_shop. Podré dar de baja cuando quiera. Ver",
+    "apps/web/components/newsletter-form.tsx :: Acepto recibir comunicaciones de Lucams_shop. Podré dar de baja cuando quiera (Ley 1581).",
+    "apps/web/components/newsletter-form.tsx :: Ver",
     "apps/web/components/newsletter-form.tsx :: Aviso de Privacidad",
     "apps/web/components/ocasion-filter-strip.tsx :: Ocasión",
+    "apps/web/components/ocasion-filter-strip.tsx :: Filtrar por ocasión",
     "apps/web/components/password-input.tsx :: Bloq Mayús activado",
     "apps/web/components/product-card.tsx :: Agotado",
     "apps/web/components/product-from-catalog-card.tsx :: Agotado",
@@ -210,8 +212,6 @@
     "apps/web/components/address/structured-address-fields.tsx :: Ej. A 200m del puente, casa de dos pisos color azul, portón de madera.",
     "apps/web/components/cms/cms-edit-overlay.tsx :: Modo edición: haz clic en un texto del sitio para abrir su editor en el CMS.",
     "apps/web/components/home/category-grid.tsx :: Ver categoría →",
-    "apps/web/components/home/featured-carousel.tsx :: Anterior",
-    "apps/web/components/home/featured-carousel.tsx :: Siguiente",
     "apps/web/components/home/reviews-carousel.tsx :: Reseña anterior",
     "apps/web/components/home/reviews-carousel.tsx :: Siguiente reseña",
     "apps/web/components/home/reviews-carousel.tsx :: Calificación:",
