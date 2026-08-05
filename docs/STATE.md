@@ -13,6 +13,17 @@
 
 ## Resumen actual
 
+**🔔 CENTRO DE NOTIFICACIONES EN EL ADMIN (2026-08-05) — el spam de correo quedó eliminado.**
+Los eventos del sistema ahora viven en la tabla `Notification` y en `/admin/notificaciones`
+(badge de no leídas en el nav): alertas del sistema → in-app siempre y email SOLO si crítica;
+resumen diario → in-app (sin email); fallos de cron → in-app; cotización nueva → in-app + email
+(canal de venta intacto). En STG los 5 crons de email quedaron desagendados (el preview enviaba
+correos reales). Backups R2 **diarios** + DR drill mensual verificado (612 productos restauran,
+0 errores SQL). Plan: `docs/PLAN_CENTRO_NOTIFICACIONES.md`. Pendientes humanos sin cambio:
+monitor externo, Supabase Pro para Etapa 2 (PITR), trámites NIT/abogado/DIAN.
+
+---
+
 **✅ RE-AUDITORÍA 2026-08-05 — CI verde y drift operativo cerrado.** La CI roja por prettier
 quedó resuelta; corregidos los CTAs con contraste insuficiente y cerrado el stage-guard en
 `processPaidOrder`. Ops al día: el backup R2 ahora es **diario** (retención 30 ≈ 1 mes) con el
