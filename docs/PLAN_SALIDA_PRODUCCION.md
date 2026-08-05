@@ -35,7 +35,7 @@ Modo por flag `NEXT_PUBLIC_STORE_MODE=catalog` (default `full`) sobre la base de
 
 ### Riesgos aceptados Etapa 1
 
-- Backups R2 aún rotos (P0-4 sigue abierto — cerrar la misma semana).
+- ~~Backups R2 aún rotos~~ **CERRADO 2026-07-27** (verificado 2026-08-04: secrets GitHub configurados, workflow semanal verde, dumps subiéndose a R2 con retención). Pendiente solo el DR drill.
 - Supabase compartida dev/prod (riesgo aceptado por Lucy 2026-07-21; los tests de integración ya usan prefijo RUN + cleanup).
 - Emails de recuperación de carrito y back-in-stock siguen activos (usan Resend, ya verificado).
 
