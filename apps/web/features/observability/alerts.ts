@@ -111,8 +111,9 @@ export async function evaluateAlerts(now: Date = new Date()): Promise<FiringAler
   }
 
   // #15 — dead-man switch (capa interna): un cron que no corre en 2× su intervalo probablemente dejó
-  // de ejecutarse (CRON_SECRET rotado, dominio cambiado, secreto de Vault ausente). Detecta 5 de los
-  // 6 crons; la caída del PROPIO cron de alertas la cubre el monitor externo vía /api/health/crons.
+  // de ejecutarse (CRON_SECRET rotado, dominio cambiado, secreto de Vault ausente). Detecta todos
+  // los jobs menos el PROPIO cron de alertas; su caída la cubre el monitor externo vía
+  // /api/health/crons. Los jobs de CRON_JOBS_DISABLED llegan con overdue=false: no alertan.
   const cronHealth = await getCronHealth(now);
   for (const c of cronHealth) {
     if (c.job === "alerts") continue; // el cron de alertas no puede detectar su propia caída
@@ -149,7 +150,7 @@ function buildAlertEmail(alerts: FiringAlert[]): { subject: string; html: string
     )
     .join("");
   const html = `<h1 style="font-size:20px;color:#3D2E5C;">Alertas del sistema</h1>${rows}
-<p style="font-size:12px;color:#3D2E5C;opacity:0.6;">Panel: /admin/observability</p>`;
+<p style="font-size:12px;color:#3D2E5C;opacity:0.6;">Bandeja de avisos: /admin/notificaciones</p>`;
   const text = alerts
     .map((a) => `[${a.severity}] ${a.title}\n${a.detail}\nQué hacer: ${a.action}`)
     .join("\n\n");

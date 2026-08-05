@@ -114,7 +114,23 @@ export default async function AdminNotificacionesPage({
       <AdminPageHeader
         icon={<Bell className="h-5 w-5" />}
         title="Notificaciones"
-        subtitle="Todo lo que pasa en el sistema llega acá: alertas, crons que fallan, cotizaciones nuevas y tu resumen diario — sin llenar tu correo."
+        subtitle={
+          <>
+            Todo lo que pasa en el sistema llega acá: alertas, crons que fallan, cotizaciones nuevas
+            y tu resumen diario — sin llenar tu correo.
+            <span className="mt-1 block text-xs text-slate-500">
+              Acá queda el historial de avisos del sistema. Para ver cómo está el sistema AHORA, ve
+              a{" "}
+              <Link
+                href="/admin/observability"
+                className="text-brand-purple-dark hover:text-brand-purple font-semibold underline"
+              >
+                Salud técnica
+              </Link>
+              .
+            </span>
+          </>
+        }
         actions={
           unreadCount > 0 ? (
             <form action={markAllReadAction}>

@@ -59,7 +59,20 @@ export default async function AdminObservabilityPage() {
       <AdminPageHeader
         icon={<Activity className="h-5 w-5" />}
         title="Salud técnica"
-        subtitle="Tu resumen de las últimas 24h (el mismo del correo diario) + la salud técnica. Se refresca al cargar."
+        subtitle={
+          <>
+            Tu resumen de las últimas 24h (el mismo del correo diario) + la salud técnica. Se
+            refresca al cargar.
+            <span className="mt-1 block text-xs text-slate-500">
+              <Link
+                href="/admin/notificaciones"
+                className="text-brand-purple-dark hover:text-brand-purple font-semibold underline"
+              >
+                Ver historial de avisos → /admin/notificaciones
+              </Link>
+            </span>
+          </>
+        }
       />
       <AdminPageBody>
         {/* ─── Operación · últimas 24h (lo mismo que el email diario) ─── */}
@@ -304,7 +317,7 @@ export default async function AdminObservabilityPage() {
             >
               /api/health/all
             </a>{" "}
-            (DB · storage · Resend).
+            (DB · storage · Resend · Aveonline · Wompi).
           </p>
         </details>
       </AdminPageBody>

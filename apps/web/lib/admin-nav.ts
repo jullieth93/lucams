@@ -322,7 +322,7 @@ export const ADMIN_NAV: NavGroup[] = [
         href: "/admin/notificaciones",
         icon: Bell,
         description:
-          "Buzón de avisos del sistema: alertas, crons que fallan, cotizaciones nuevas y tu resumen diario. Todo llega acá en vez de llenar tu correo.",
+          "Historial de avisos del sistema (alertas, crons que fallan, cotizaciones nuevas y tu resumen diario) con pendientes por leer. No es el estado en vivo del sistema: eso es Salud técnica.",
       },
       {
         label: "Métricas",

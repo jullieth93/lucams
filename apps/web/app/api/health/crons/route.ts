@@ -6,6 +6,10 @@
  * esta ruta cada ~15 min: así se cubre incluso la caída del PROPIO cron de alertas (que la capa
  * interna de evaluateAlerts no puede detectar por sí misma).
  *
+ * Jobs desagendados A PROPÓSITO en el ambiente (env CRON_JOBS_DISABLED, comma-separado — ej. los
+ * 5 crons de email en STG): se listan en `disabled` y NUNCA cuentan como overdue, así el monitor
+ * externo no queda en falso degraded eterno.
+ *
  * Sin auth (público, como /api/health): no expone datos sensibles, solo el estado de vida de los
  * jobs. force-dynamic para no cachear.
  */
@@ -28,11 +32,19 @@ export async function GET(req: Request): Promise<Response> {
   }
 
   const health = await getCronHealth();
+  // Los jobs disabled (CRON_JOBS_DISABLED) llegan con overdue=false → el status solo
+  // degrada por jobs NO disabled vencidos; los desagendados a propósito se reportan aparte.
   const overdue = health.filter((c) => c.overdue);
   const body = {
     status: overdue.length === 0 ? "ok" : "degraded",
     overdue: overdue.map((c) => ({ job: c.job, lastRunAt: c.lastRunAt })),
-    jobs: health.map((c) => ({ job: c.job, overdue: c.overdue, lastRunAt: c.lastRunAt })),
+    disabled: health.filter((c) => c.disabled).map((c) => c.job),
+    jobs: health.map((c) => ({
+      job: c.job,
+      overdue: c.overdue,
+      disabled: c.disabled,
+      lastRunAt: c.lastRunAt,
+    })),
     timestamp: new Date().toISOString(),
   };
   return Response.json(body, { status: overdue.length === 0 ? 200 : 503 });

@@ -3,7 +3,10 @@
  * devuelve un solo JSON con el estado completo.
  *
  * 200 si TODOS los servicios críticos están OK (db + storage).
- * 503 si alguno crítico falla. Resend es "warn" pero no bloqueante.
+ * 503 si alguno crítico falla. Resend, Aveonline y Wompi son "warn"/"fail"
+ * NO bloqueantes: se reportan en `checks` pero no tumban el status global.
+ * Incluye `version` y `environment` (mismos campos que /api/health) para que
+ * el monitor externo sepa QUÉ deploy está mirando.
  *
  * Útil para uptime monitors externos (BetterStack, UptimeRobot) que
  * solo aceptan un endpoint para verificar.
@@ -86,7 +89,7 @@ async function probe(name: string, path: string, baseUrl: string): Promise<Check
 }
 
 export async function GET(req: Request): Promise<Response> {
-  // Rate-limit por IP (auditoría 2026-07-13): endpoint público que dispara 3 sub-probes →
+  // Rate-limit por IP (auditoría 2026-07-13): endpoint público que dispara 5 sub-probes →
   // sin límite era amplificable. 30/min es holgado para un uptime monitor (típico cada 30-60s).
   const { allowed } = await rateLimit(`health_all:${getClientIp(req.headers)}`, 30, 60);
   if (!allowed) {
@@ -101,10 +104,13 @@ export async function GET(req: Request): Promise<Response> {
   const baseUrl = getTrustedSelfBaseUrl();
   const start = Date.now();
 
-  const [db, storage, resend] = await Promise.all([
+  // Críticos: postgres + storage (tumban el status a 503). El resto se reporta pero no bloquea.
+  const [db, storage, resend, aveonline, wompi] = await Promise.all([
     probe("postgres", "/api/health/db", baseUrl),
     probe("storage", "/api/health/storage", baseUrl),
     probe("resend", "/api/health/resend", baseUrl),
+    probe("aveonline", "/api/health/aveonline", baseUrl),
+    probe("wompi", "/api/health/wompi", baseUrl),
   ]);
 
   const critical = [db, storage];
@@ -114,7 +120,9 @@ export async function GET(req: Request): Promise<Response> {
     status: anyCriticalDown ? "degraded" : "ok",
     totalLatencyMs: Date.now() - start,
     timestamp: new Date().toISOString(),
-    checks: [db, storage, resend],
+    version: process.env.VERCEL_GIT_COMMIT_SHA ?? process.env.NEXT_PUBLIC_GIT_SHA ?? "dev",
+    environment: process.env.VERCEL_ENV ?? process.env.NODE_ENV ?? "unknown",
+    checks: [db, storage, resend, aveonline, wompi],
   };
 
   if (anyCriticalDown) {

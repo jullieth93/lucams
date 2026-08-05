@@ -7,7 +7,8 @@
  *   - modo `production` con cuenta real → listo para despachar;
  *   - modo `production` con cuenta DEMO → la tienda cree que despacha y NO lo hace (status "warn").
  *
- * No se agrega a /api/health/all: cada llamada gasta una autenticación contra un tercero.
+ * Se agrega a /api/health/all como check NO bloqueante (2026-08-05): cada llamada gasta una
+ * autenticación contra un tercero, amortizada por el rate-limit compartido (30/min por IP).
  */
 
 import { logger } from "@/lib/logger";
