@@ -35,13 +35,20 @@ export function OcasionFilterStrip({ ocasiones }: { ocasiones: OcasionData[] }) 
       </div>
       {/* Mobile/tablet: scroll horizontal con fade en bordes. Desktop lg+: wrap a 2 líneas. */}
       <div className="relative">
-        <div className="flex flex-nowrap gap-1.5 overflow-x-auto pb-2 lg:flex-wrap lg:overflow-x-visible lg:pb-0">
+        {/* role=group + aria-pressed en cada chip: el estado activo se anuncia,
+            no depende solo del color (WCAG 4.1.2). */}
+        <div
+          role="group"
+          aria-label="Filtrar por ocasión"
+          className="flex flex-nowrap gap-1.5 overflow-x-auto pb-2 lg:flex-wrap lg:overflow-x-visible lg:pb-0"
+        >
           {ocasiones.map((o) => {
             const isActive = selected === o.slug;
             return (
               <button
                 key={o.slug}
                 onClick={() => toggleOcasion(o.slug)}
+                aria-pressed={isActive}
                 className={`flex-shrink-0 rounded-full px-3 py-1 text-xs font-medium whitespace-nowrap transition-colors ${
                   isActive
                     ? "bg-brand-purple text-white"

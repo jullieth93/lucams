@@ -126,11 +126,12 @@ export function ProductCard({
 
       {/* Stretched-link: overlay transparente que cubre TODA la card (misma zona
           clickeable que cuando el Link envolvía el contenido). Va de último para
-          pintar encima; el WishlistButton lo supera con z-10. */}
+          pintar encima; el WishlistButton lo supera con z-10. ring-inset: el foco
+          visible (WCAG 2.4.7) se dibuja DENTRO de la card, no por fuera. */}
       <Link
         href={`/producto/${product.slug}`}
         aria-label={product.name}
-        className="absolute inset-0"
+        className="focus-visible:ring-brand-purple absolute inset-0 focus-visible:ring-2 focus-visible:ring-inset"
       />
     </div>
   );

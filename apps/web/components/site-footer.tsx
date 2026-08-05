@@ -39,6 +39,15 @@ const FALLBACK_LEGAL_LINKS: LegalLink[] = [
   { href: "/legal/security", label: "Seguridad" },
 ];
 
+// WCAG 2.4.7 — el outline por defecto del navegador queda bajo 3:1 sobre el
+// fondo purple-dark del footer, así que TODOS sus enlaces llevan outline blanco
+// explícito (blanco sobre purple-dark ≈ 10:1).
+const FOCUS_VISIBLE =
+  "focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-white";
+// Variante para los botones sociales circulares: el outline sigue el rounded-full
+// (rounded-sm los descuadraría al enfocarlos).
+const FOCUS_VISIBLE_CIRCLE = "focus-visible:outline-2 focus-visible:outline-white";
+
 // Validación de un enlace legal del CMS: solo { label: string, href: string }.
 // Cualquier otra cosa hace que getCmsList caiga al fallback hardcoded (la
 // columna legal nunca puede quedar vacía por un typo en el admin).
@@ -156,7 +165,7 @@ export async function SiteFooter() {
                   target="_blank"
                   rel="noopener noreferrer"
                   aria-label="Instagram"
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/10 transition-colors hover:bg-white/20"
+                  className={`inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/10 transition-colors hover:bg-white/20 ${FOCUS_VISIBLE_CIRCLE}`}
                 >
                   <InstagramIcon className="h-4 w-4" />
                 </a>
@@ -167,7 +176,7 @@ export async function SiteFooter() {
                   target="_blank"
                   rel="noopener noreferrer"
                   aria-label="TikTok"
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/10 transition-colors hover:bg-white/20"
+                  className={`inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/10 transition-colors hover:bg-white/20 ${FOCUS_VISIBLE_CIRCLE}`}
                 >
                   <TikTokIcon className="h-4 w-4" />
                 </a>
@@ -178,7 +187,7 @@ export async function SiteFooter() {
                   target="_blank"
                   rel="noopener noreferrer"
                   aria-label="Facebook"
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/10 transition-colors hover:bg-white/20"
+                  className={`inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/10 transition-colors hover:bg-white/20 ${FOCUS_VISIBLE_CIRCLE}`}
                 >
                   <FacebookIcon className="h-4 w-4" />
                 </a>
@@ -188,7 +197,7 @@ export async function SiteFooter() {
                 target="_blank"
                 rel="noopener noreferrer"
                 aria-label="WhatsApp"
-                className="inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/10 transition-colors hover:bg-white/20"
+                className={`inline-flex h-9 w-9 items-center justify-center rounded-full bg-white/10 transition-colors hover:bg-white/20 ${FOCUS_VISIBLE_CIRCLE}`}
               >
                 <MessageCircle className="h-4 w-4" />
               </a>
@@ -207,7 +216,7 @@ export async function SiteFooter() {
                 <li key={c.id}>
                   <Link
                     href={`/productos?categoria=${c.slug}`}
-                    className="transition-colors hover:text-white"
+                    className={`transition-colors hover:text-white ${FOCUS_VISIBLE}`}
                   >
                     {c.name}
                   </Link>
@@ -218,7 +227,7 @@ export async function SiteFooter() {
                     del footer van en brand-coral (5.02:1) y el hover sube a blanco. */}
                 <Link
                   href="/productos"
-                  className="text-brand-coral font-semibold transition-colors hover:text-white"
+                  className={`text-brand-coral font-semibold transition-colors hover:text-white ${FOCUS_VISIBLE}`}
                 >
                   <CmsText blockKey="footer.shop.cta-all" fallback="Ver todo →" />
                 </Link>
@@ -234,7 +243,10 @@ export async function SiteFooter() {
             <ul className="space-y-2 text-sm text-white/80">
               {legalLinks.map((l) => (
                 <li key={l.href}>
-                  <Link href={l.href} className="transition-colors hover:text-white">
+                  <Link
+                    href={l.href}
+                    className={`transition-colors hover:text-white ${FOCUS_VISIBLE}`}
+                  >
                     {l.label}
                   </Link>
                 </li>
@@ -253,7 +265,7 @@ export async function SiteFooter() {
                   href={waSupportUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1.5 transition-colors hover:text-white"
+                  className={`inline-flex items-center gap-1.5 transition-colors hover:text-white ${FOCUS_VISIBLE}`}
                 >
                   <MessageCircle className="h-4 w-4" />
                   {waNumberDisplay}
@@ -262,7 +274,7 @@ export async function SiteFooter() {
               <li>
                 <a
                   href={`mailto:${contactEmail}`}
-                  className="inline-flex items-center gap-1.5 transition-colors hover:text-white"
+                  className={`inline-flex items-center gap-1.5 transition-colors hover:text-white ${FOCUS_VISIBLE}`}
                 >
                   <Mail className="h-4 w-4" />
                   <CmsSetting settingKey="CONTACT_EMAIL" fallback="hola@lucamsshop.com" />
@@ -274,7 +286,7 @@ export async function SiteFooter() {
               <li className="pt-1">
                 <Link
                   href="/ayuda"
-                  className="text-brand-coral font-semibold transition-colors hover:text-white"
+                  className={`text-brand-coral font-semibold transition-colors hover:text-white ${FOCUS_VISIBLE}`}
                 >
                   <CmsText blockKey="footer.help.cta" fallback="Centro de ayuda →" />
                 </Link>
@@ -282,7 +294,7 @@ export async function SiteFooter() {
               <li>
                 <Link
                   href="/contacto"
-                  className="text-brand-coral font-semibold transition-colors hover:text-white"
+                  className={`text-brand-coral font-semibold transition-colors hover:text-white ${FOCUS_VISIBLE}`}
                 >
                   <CmsText blockKey="footer.contact.cta" fallback="Contacto →" />
                 </Link>
@@ -290,7 +302,7 @@ export async function SiteFooter() {
               <li>
                 <Link
                   href="/rastrear"
-                  className="text-brand-coral font-semibold transition-colors hover:text-white"
+                  className={`text-brand-coral font-semibold transition-colors hover:text-white ${FOCUS_VISIBLE}`}
                 >
                   <CmsText blockKey="footer.track.cta" fallback="Rastrear pedido →" />
                 </Link>
@@ -331,7 +343,7 @@ export async function SiteFooter() {
               href={sicUrl}
               target="_blank"
               rel="noreferrer"
-              className="underline hover:text-white/80"
+              className={`underline hover:text-white/80 ${FOCUS_VISIBLE}`}
             >
               <CmsText
                 blockKey="footer.legal.sic-label"

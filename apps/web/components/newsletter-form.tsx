@@ -84,21 +84,26 @@ export function NewsletterForm({
           }
         />
         <span>
-          Acepto recibir comunicaciones de Lucams_shop. Podré dar de baja cuando quiera. Ver{" "}
-          <a
-            href="/legal/privacidad"
-            className={
-              "underline-offset-2 hover:underline " +
-              (isDark ? "text-brand-coral hover:text-white" : "text-brand-purple")
-            }
-            target="_blank"
-            rel="noopener"
-          >
-            Aviso de Privacidad
-          </a>{" "}
-          (Ley 1581).
+          Acepto recibir comunicaciones de Lucams_shop. Podré dar de baja cuando quiera (Ley 1581).
         </span>
       </label>
+      {/* El enlace va FUERA del label del checkbox: dentro, clicarlo también
+          alternaba el consentimiento (y no debe). */}
+      <p className={"mt-1 text-xs " + (isDark ? "text-white/80" : "text-brand-purple-dark/70")}>
+        Ver{" "}
+        <a
+          href="/legal/privacidad"
+          className={
+            "underline-offset-2 hover:underline " +
+            (isDark ? "text-brand-coral hover:text-white" : "text-brand-purple")
+          }
+          target="_blank"
+          rel="noopener"
+        >
+          Aviso de Privacidad
+        </a>
+        .
+      </p>
       <div className="mt-2">
         <TurnstileWidget size="compact" theme={isDark ? "dark" : "light"} />
       </div>

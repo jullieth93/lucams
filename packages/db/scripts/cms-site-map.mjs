@@ -647,6 +647,17 @@ Antes de escribir, revisa el [Centro de ayuda](/ayuda) — quizás ya está resp
               sortOrder: 40,
             },
             {
+              // Badge de cabecera en modo catálogo (sin pago en línea) — mismo
+              // gate por isCatalogMode() que el pie (footer-catalog/payments).
+              key: "checkout.layout.secure-catalog",
+              kind: "BLOCK",
+              type: "TEXT",
+              label: "Badge (modo catálogo)",
+              category: "SUPPORT",
+              body: "Cotización sin pago en línea",
+              sortOrder: 45,
+            },
+            {
               key: "checkout.layout.footer-catalog",
               kind: "BLOCK",
               type: "TEXT",

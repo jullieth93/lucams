@@ -155,7 +155,8 @@ export default async function CarritoPage() {
                   asChild
                   className={
                     catalog
-                      ? "w-full bg-emerald-600 text-white hover:bg-emerald-700"
+                      ? // a11y contraste: emerald-700 + blanco da 5.49:1 (AA); emerald-600 quedaba en 3.77:1.
+                        "w-full bg-emerald-700 text-white hover:bg-emerald-800"
                       : "bg-gradient-brand w-full text-white hover:brightness-110"
                   }
                   size="lg"

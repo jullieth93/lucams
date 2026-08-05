@@ -114,6 +114,8 @@ export function ReviewsCarousel({ reviews }: { reviews: StorefrontReview[] }) {
             type="button"
             onClick={() => emblaApi?.scrollTo(i)}
             aria-label={`Ir a reseña ${i + 1}`}
+            // Estado actual anunciado (WCAG 4.1.2): el dot activo no depende solo del color.
+            aria-current={i === selectedIdx ? "true" : undefined}
             // Área táctil ≥ 24×24 (WCAG 2.5.8): el botón envuelve al dot visual.
             className="flex h-6 w-6 items-center justify-center"
           >

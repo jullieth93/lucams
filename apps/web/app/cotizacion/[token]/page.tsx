@@ -171,7 +171,8 @@ export default async function CotizacionPage({ params }: { params: Params }) {
             <Button
               asChild
               size="lg"
-              className="w-full bg-emerald-600 text-white shadow-lg hover:bg-emerald-700 sm:w-auto sm:px-8"
+              // a11y contraste: emerald-700 + blanco da 5.49:1 (AA); emerald-600 quedaba en 3.77:1.
+              className="w-full bg-emerald-700 text-white shadow-lg hover:bg-emerald-800 sm:w-auto sm:px-8"
             >
               <a href={waUrl} target="_blank" rel="noopener noreferrer">
                 <MessageCircle className="mr-2 h-5 w-5" />

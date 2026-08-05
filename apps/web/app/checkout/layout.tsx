@@ -43,7 +43,9 @@ export default async function CheckoutLayout({ children }: { children: React.Rea
 
           <div className="text-brand-muted hidden items-center gap-1.5 text-xs font-medium md:inline-flex">
             <Lock className="h-3.5 w-3.5" />
-            {texts.layout.secure}
+            {/* Modo catálogo no procesa pagos: el badge promete cotización, no
+                "compra" (mismo gate por modo que el footer de abajo). */}
+            {isCatalogMode() ? texts.layout.secureCatalog : texts.layout.secure}
           </div>
         </div>
       </header>

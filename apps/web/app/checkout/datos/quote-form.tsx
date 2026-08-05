@@ -192,7 +192,10 @@ export function QuoteForm({
               htmlFor="customerName"
               className="text-brand-purple-dark mb-1 block text-xs font-semibold"
             >
-              Nombre completo <span className="text-rose-600">*</span>
+              Nombre completo{" "}
+              <span aria-hidden="true" className="text-rose-600">
+                *
+              </span>
             </Label>
             <Input
               id="customerName"
@@ -215,7 +218,10 @@ export function QuoteForm({
               htmlFor="whatsapp-display"
               className="text-brand-purple-dark mb-1 block text-xs font-semibold"
             >
-              {texts.whatsappLabel} <span className="text-rose-600">*</span>
+              {texts.whatsappLabel}{" "}
+              <span aria-hidden="true" className="text-rose-600">
+                *
+              </span>
             </Label>
             <Input
               id="whatsapp-display"
@@ -249,7 +255,10 @@ export function QuoteForm({
               htmlFor="customerEmail"
               className="text-brand-purple-dark mb-1 block text-xs font-semibold"
             >
-              Email <span className="text-rose-600">*</span>
+              Email{" "}
+              <span aria-hidden="true" className="text-rose-600">
+                *
+              </span>
             </Label>
             <Input
               id="customerEmail"
@@ -276,7 +285,10 @@ export function QuoteForm({
               htmlFor="deptCode"
               className="text-brand-purple-dark mb-1 block text-xs font-semibold"
             >
-              Departamento <span className="text-rose-600">*</span>
+              Departamento{" "}
+              <span aria-hidden="true" className="text-rose-600">
+                *
+              </span>
             </Label>
             <select
               id="deptCode"
@@ -307,7 +319,10 @@ export function QuoteForm({
               htmlFor="cityCode"
               className="text-brand-purple-dark mb-1 block text-xs font-semibold"
             >
-              {texts.cityLabel} <span className="text-rose-600">*</span>
+              {texts.cityLabel}{" "}
+              <span aria-hidden="true" className="text-rose-600">
+                *
+              </span>
             </Label>
             <select
               id="cityCode"
@@ -370,7 +385,8 @@ export function QuoteForm({
           type="submit"
           disabled={pending}
           size="lg"
-          className="w-full bg-emerald-600 text-white hover:bg-emerald-700 sm:w-auto"
+          // a11y contraste: emerald-700 + blanco da 5.49:1 (AA); emerald-600 quedaba en 3.77:1.
+          className="w-full bg-emerald-700 text-white hover:bg-emerald-800 sm:w-auto"
         >
           {pending ? (
             <>

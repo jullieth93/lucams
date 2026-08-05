@@ -106,8 +106,10 @@ export function ProductFromCatalogCard({
           )}
         </div>
 
+        {/* a11y: brand-turquoise-dark no existe como token — el más cercano con
+            contraste AA sobre blanco es brand-purple (≈4.6:1). */}
         {showReason && product.reasons && product.reasons.length > 0 && (
-          <p className="text-brand-turquoise-dark mt-2 line-clamp-2 text-xs italic">
+          <p className="text-brand-purple mt-2 line-clamp-2 text-xs italic">
             ✨ {product.reasons[0]}
           </p>
         )}

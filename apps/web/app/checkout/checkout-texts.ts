@@ -13,6 +13,7 @@ export type CheckoutTexts = {
     backCart: string;
     cartShort: string;
     secure: string;
+    secureCatalog: string;
     footerCatalog: string;
     footerPayments: string;
     linkTerminos: string;
@@ -186,6 +187,9 @@ export const DEFAULT_CHECKOUT_TEXTS: CheckoutTexts = {
     backCart: "Volver al carrito",
     cartShort: "Carrito",
     secure: "Compra segura",
+    // Badge de cabecera en modo catálogo (no hay compra en línea) — mismo gate
+    // por isCatalogMode() que footerCatalog/footerPayments en checkout/layout.tsx.
+    secureCatalog: "Cotización sin pago en línea",
     footerCatalog: "Cotización sin pago en línea · coordinamos por WhatsApp",
     footerPayments: "Pago seguro Wompi · Envío Aveonline",
     linkTerminos: "Términos",
@@ -373,6 +377,7 @@ export const CHECKOUT_TEXT_KEYS: Record<string, string> = {
   "layout.backCart": "checkout.layout.back-cart",
   "layout.cartShort": "checkout.layout.cart-short",
   "layout.secure": "checkout.layout.secure",
+  "layout.secureCatalog": "checkout.layout.secure-catalog",
   "layout.footerCatalog": "checkout.layout.footer-catalog",
   "layout.footerPayments": "checkout.layout.footer-payments",
   "layout.linkTerminos": "checkout.layout.link-terminos",

@@ -103,7 +103,7 @@ export function FeaturedCarousel({ products }: { products: StorefrontProductCard
       <button
         type="button"
         onClick={scrollPrev}
-        aria-label="Anterior"
+        aria-label="Producto anterior"
         className="bg-brand-purple/90 hover:bg-brand-purple absolute top-1/2 left-0 hidden h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full text-white shadow-lg transition-colors sm:flex"
       >
         <ChevronLeft className="h-5 w-5" />
@@ -111,7 +111,7 @@ export function FeaturedCarousel({ products }: { products: StorefrontProductCard
       <button
         type="button"
         onClick={scrollNext}
-        aria-label="Siguiente"
+        aria-label="Producto siguiente"
         className="bg-brand-purple/90 hover:bg-brand-purple absolute top-1/2 right-0 hidden h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full text-white shadow-lg transition-colors sm:flex"
       >
         <ChevronRight className="h-5 w-5" />
@@ -124,6 +124,8 @@ export function FeaturedCarousel({ products }: { products: StorefrontProductCard
             type="button"
             onClick={() => scrollTo(i)}
             aria-label={`Ir al producto ${i + 1}`}
+            // Estado actual anunciado (WCAG 4.1.2): el dot activo no depende solo del color.
+            aria-current={i === selectedIdx ? "true" : undefined}
             // Área táctil ≥ 24×24 (WCAG 2.5.8): el botón envuelve al dot visual; en
             // móvil los dots son la única navegación (las flechas son hidden sm:flex).
             className="flex h-6 w-6 items-center justify-center"

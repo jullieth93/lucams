@@ -45,7 +45,9 @@ export function QuoteList({
             <li key={q.quoteId}>
               <label
                 className={
-                  "flex cursor-pointer items-center gap-3 rounded-xl border p-4 transition-all " +
+                  // has-[:focus-visible]: el radio real es sr-only, así que el anillo de foco
+                  // se pinta sobre el label (WCAG 2.4.7 — indicador de foco visible).
+                  "has-[:focus-visible]:ring-brand-purple flex cursor-pointer items-center gap-3 rounded-xl border p-4 transition-all has-[:focus-visible]:ring-2 " +
                   (isSelected
                     ? "border-brand-purple bg-brand-purple/5 ring-brand-purple/30 ring-2"
                     : "border-brand-purple/15 hover:border-brand-purple/30 hover:bg-brand-purple/[0.02]")
