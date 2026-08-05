@@ -16,6 +16,7 @@ import { AdminShell } from "@/components/admin-shell";
 import { getCurrentAdmin } from "@/lib/auth";
 import { canAccessAdminPath, adminHomePath } from "@/lib/admin-rbac";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getUnreadCount } from "@/features/notifications/service";
 
 // Todo el panel admin es SIEMPRE dinámico: exige sesión + datos vivos de la BD, nunca debe
 // prerenderizarse en el build. Además evita el bug de prerender estático de Next 16 (useContext
@@ -45,8 +46,17 @@ export default async function AdminPanelLayout({ children }: { children: ReactNo
     redirect(`${adminHomePath(session.admin.role)}?denied=1`);
   }
 
+  // Badge del centro de notificaciones (2026-08-05): conteo de no leídas en el
+  // item del sidebar. Count con índice (readAt, createdAt) — barato por request.
+  // Solo SUPERADMIN ve ese módulo (deny-by-default en la matriz) → no se consulta
+  // para otros roles.
+  const unreadNotifications = session.admin.role === "SUPERADMIN" ? await getUnreadCount() : 0;
+
   return (
-    <AdminShell admin={{ email: session.admin.email, role: session.admin.role }}>
+    <AdminShell
+      admin={{ email: session.admin.email, role: session.admin.role }}
+      unreadNotifications={unreadNotifications}
+    >
       {children}
     </AdminShell>
   );

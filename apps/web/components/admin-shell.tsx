@@ -13,6 +13,8 @@
  *   - 11 áreas top-level: Dashboard, Ventas, Catálogo, Comercial, Producción,
  *     Canales, Finanzas, IA y Conocimiento, Analítica, Configuración, Mensajes
  *   - Badges visuales [Próximo / Fase 4 / Fase 5] para items no disponibles
+ *   - Badge numérico de no leídas en el item "Notificaciones" (prop
+ *     `unreadNotifications`, la calcula el layout del panel con getUnreadCount)
  *
  * Mobile: topbar fija (logo + sección actual + hamburguesa) + drawer slide-in
  * con backdrop. El layout raíz es flex-col en móvil y flex-row en lg — antes
@@ -61,7 +63,16 @@ type Badge = NavBadge;
 
 // ─────────────────── Shell ───────────────────
 
-export function AdminShell({ admin, children }: { admin: AdminInfo; children: React.ReactNode }) {
+export function AdminShell({
+  admin,
+  unreadNotifications = 0,
+  children,
+}: {
+  admin: AdminInfo;
+  /** No leídas del centro de notificaciones (badge en el item del nav). 0 = sin pill. */
+  unreadNotifications?: number;
+  children: React.ReactNode;
+}) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -84,7 +95,12 @@ export function AdminShell({ admin, children }: { admin: AdminInfo; children: Re
           adentro si es más alto que la pantalla. */}
       <aside className="from-brand-purple-dark via-brand-purple-dark to-brand-purple relative hidden overflow-hidden bg-gradient-to-b text-white lg:sticky lg:top-0 lg:flex lg:h-screen lg:w-64 lg:flex-shrink-0 lg:flex-col">
         <SidebarDecorations />
-        <SidebarContent admin={admin} pathname={pathname} onNavigate={() => {}} />
+        <SidebarContent
+          admin={admin}
+          pathname={pathname}
+          unreadNotifications={unreadNotifications}
+          onNavigate={() => {}}
+        />
       </aside>
 
       {/* Topbar mobile — barra superior fija con logo, sección actual (E1 P2:
@@ -137,6 +153,7 @@ export function AdminShell({ admin, children }: { admin: AdminInfo; children: Re
             <SidebarContent
               admin={admin}
               pathname={pathname}
+              unreadNotifications={unreadNotifications}
               onNavigate={() => setMobileOpen(false)}
             />
           </aside>
@@ -232,10 +249,12 @@ function BrandIcon() {
 function SidebarContent({
   admin,
   pathname,
+  unreadNotifications,
   onNavigate,
 }: {
   admin: AdminInfo;
   pathname: string;
+  unreadNotifications: number;
   onNavigate: () => void;
 }) {
   return (
@@ -268,6 +287,7 @@ function SidebarContent({
               key={group.title}
               group={group}
               pathname={pathname}
+              unreadNotifications={unreadNotifications}
               onNavigate={onNavigate}
             />
           ))}
@@ -359,13 +379,33 @@ function UserFooter({ admin, onNavigate }: { admin: AdminInfo; onNavigate: () =>
 
 // ─────────────────── NavGroupItem ───────────────────
 
+// Item del nav cuyo badge numérico muestra las notificaciones NO leídas
+// (centro de notificaciones 2026-08-05). NavBadge (soon/phase) no sirve para
+// esto: esos tonos deshabilitan el link — este pill es informativo, no de estado.
+const NOTIFICATIONS_HREF = "/admin/notificaciones";
+
+function UnreadNotificationsPill({ count }: { count: number }) {
+  if (count <= 0) return null;
+  return (
+    <span
+      className="bg-brand-pink min-w-[1.25rem] rounded-full px-1.5 py-0.5 text-center text-[10px] leading-none font-bold text-white"
+      aria-label={`${count} notificaciones sin leer`}
+      title={`${count} sin leer`}
+    >
+      {count > 99 ? "99+" : count}
+    </span>
+  );
+}
+
 function NavGroupItem({
   group,
   pathname,
+  unreadNotifications,
   onNavigate,
 }: {
   group: NavGroup;
   pathname: string;
+  unreadNotifications: number;
   onNavigate: () => void;
 }) {
   if (!group.items) {
@@ -404,21 +444,33 @@ function NavGroupItem({
           <Icon className={`h-4 w-4 ${isActive ? "text-brand-purple" : ""}`} />
           <span className="flex-1">{group.title}</span>
           {group.badge && <BadgePill badge={group.badge} />}
+          {group.href === NOTIFICATIONS_HREF && (
+            <UnreadNotificationsPill count={unreadNotifications} />
+          )}
         </Link>
       </li>
     );
   }
 
-  return <NavGroupExpandable group={group} pathname={pathname} onNavigate={onNavigate} />;
+  return (
+    <NavGroupExpandable
+      group={group}
+      pathname={pathname}
+      unreadNotifications={unreadNotifications}
+      onNavigate={onNavigate}
+    />
+  );
 }
 
 function NavGroupExpandable({
   group,
   pathname,
+  unreadNotifications,
   onNavigate,
 }: {
   group: NavGroup;
   pathname: string;
+  unreadNotifications: number;
   onNavigate: () => void;
 }) {
   const items = group.items ?? [];
@@ -475,6 +527,9 @@ function NavGroupExpandable({
                     <ItemIcon className={`h-3.5 w-3.5 ${isActive ? "text-brand-purple" : ""}`} />
                     <span className="flex-1 truncate">{it.label}</span>
                     {it.badge && <BadgePill badge={it.badge} />}
+                    {it.href === NOTIFICATIONS_HREF && (
+                      <UnreadNotificationsPill count={unreadNotifications} />
+                    )}
                   </Link>
                 )}
               </li>

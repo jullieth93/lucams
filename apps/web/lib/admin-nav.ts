@@ -56,6 +56,7 @@ import {
   FileText,
   Headset,
   Image,
+  Bell,
 } from "lucide-react";
 import { isCatalogMode } from "@/lib/store-mode";
 
@@ -312,6 +313,17 @@ export const ADMIN_NAV: NavGroup[] = [
     title: "Analítica",
     icon: BarChart2,
     items: [
+      {
+        // Centro de notificaciones (2026-08-05 — PLAN_CENTRO_NOTIFICACIONES):
+        // el buzón de avisos del sistema. El badge con el conteo de no leídas
+        // lo pinta admin-shell (prop unreadNotifications — NavBadge "soon/phase"
+        // no sirve: esos tonos deshabilitan el link).
+        label: "Notificaciones",
+        href: "/admin/notificaciones",
+        icon: Bell,
+        description:
+          "Buzón de avisos del sistema: alertas, crons que fallan, cotizaciones nuevas y tu resumen diario. Todo llega acá en vez de llenar tu correo.",
+      },
       {
         label: "Métricas",
         href: "/admin/metricas",
