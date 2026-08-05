@@ -83,4 +83,12 @@ describe("frontera de etapa — backstop en la capa de servicio", () => {
     expect(checkout).toContain('assertTransactionalAllowed("finalizeCheckout")');
     expect(orders).toContain('assertTransactionalAllowed("createOrderFromCart")');
   });
+
+  it("processPaidOrder (saga post-PAID) tampoco corre sin el backstop de etapa", () => {
+    const saga = readFileSync(
+      join(__dirname, "..", "..", "features", "orders", "saga.ts"),
+      "utf-8",
+    );
+    expect(saga).toContain('assertTransactionalAllowed("processPaidOrder")');
+  });
 });

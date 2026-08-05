@@ -24,6 +24,7 @@ import { logger } from "@/lib/logger";
 import { getShippingProvider } from "@/features/shipping/provider";
 import { getEffectiveShippingDims } from "@/features/products/shipping-schemas";
 import { getSettingValue } from "@/lib/cms";
+import { assertTransactionalAllowed } from "@/lib/stage-guard";
 import { transitionOrder, clearCartAfterPaid, OrderTransitionError } from "./service";
 import { FetchTimeoutError } from "@/lib/fetch-with-timeout";
 import { decrementStockForOrder } from "./stock";
@@ -116,6 +117,12 @@ async function flagOrderNeedsReconciliation(
 export async function processPaidOrder(
   input: ProcessPaidOrderInput,
 ): Promise<ProcessPaidOrderResult> {
+  // Backstop de etapa: los 3 caminos que llegan acá (webhook Wompi, fallback /checkout/gracias,
+  // retryShipmentAction de admin) NO tienen guard propio. Si la tienda está en modo catálogo la
+  // saga no debe correr: generaría una guía REAL facturable en una tienda que no vende
+  // (auditoría 2026-08-05 — mismo patrón que finalizeCheckout / createOrderFromCart).
+  assertTransactionalAllowed("processPaidOrder");
+
   // 1) Cargar Order + items con dims para createShipment.
   const order = await prisma.order.findFirst({
     where: { id: input.orderId, deletedAt: null },
