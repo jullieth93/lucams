@@ -273,12 +273,19 @@ export async function uploadCustomerPhoto(opts: {
   let width: number;
   let height: number;
   try {
-    const pipeline = sharp(opts.buffer).rotate(); // auto-orient + strip EXIF
     const isHeic = realMime === "image/heic" || realMime === "image/heif";
     if (isHeic) {
-      // HEIC requiere libvips compilado con heif (Vercel build incluye).
-      // Si falla, sharp lanza error claro al cliente.
-      const out = await pipeline
+      // HEIC: el sharp prebuilt para Linux NO incluye el decodificador HEVC
+      // (de265 ausente — verificado 2026-08-05; Vercel también es Linux).
+      // Decodificamos con heic-decode (JS/WASM puro, funciona en cualquier
+      // plataforma) y componemos el JPEG desde los píxeles crudos.
+      // Nota: la orientación EXIF del HEIC la aplica el decodificador (libheif
+      // rota al decodificar), no hace falta rotate() extra.
+      const { default: heicDecode } = await import("heic-decode");
+      const decoded = await heicDecode({ buffer: opts.buffer });
+      const out = await sharp(Buffer.from(decoded.data.buffer), {
+        raw: { width: decoded.width, height: decoded.height, channels: 4 },
+      })
         .jpeg({ quality: 92, mozjpeg: true })
         .toBuffer({ resolveWithObject: true });
       processed = out.data;
@@ -286,6 +293,7 @@ export async function uploadCustomerPhoto(opts: {
       width = out.info.width;
       height = out.info.height;
     } else {
+      const pipeline = sharp(opts.buffer).rotate(); // auto-orient + strip EXIF
       const out = await pipeline.toBuffer({ resolveWithObject: true });
       processed = out.data;
       finalMime = realMime; // MIME REAL detectado por bytes, no el declarado

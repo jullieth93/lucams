@@ -28,6 +28,7 @@
  */
 
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { existsSync, readFileSync } from "node:fs";
 
 // ── Mock de Supabase Storage ────────────────────────────────────────────────
 // Capturamos las llamadas a upload/getPublicUrl/remove para afirmar el
@@ -800,6 +801,55 @@ describe("refreshCustomerUploadSignedUrl", () => {
     expect(err.code).toBe("UPLOAD_FAILED");
     expect(err.message).toContain("No pudimos refirmar URL");
     expect(err.message).toContain("object not found");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// uploadCustomerPhoto — rama HEIC (iPhone) vía heic-decode
+// ─────────────────────────────────────────────────────────────────────────────
+// Regresión del bug 2026-08-05: el sharp prebuilt para Linux NO incluye el
+// decodificador HEVC (de265 ausente), así que las fotos HEIC de iPhone fallaban
+// en los 3 ambientes aunque la UI las promete. La rama decodifica con
+// heic-decode (JS/WASM) y compone el JPEG desde píxeles crudos.
+// El fixture es un HEIC real (1280×854) commiteado en tests/fixtures/.
+// ─────────────────────────────────────────────────────────────────────────────
+describe("uploadCustomerPhoto — HEIC de iPhone (heic-decode)", () => {
+  const FIXTURE = new URL("../tests/fixtures/sample.heic", import.meta.url);
+  const heic = existsSync(FIXTURE) ? readFileSync(FIXTURE) : null;
+
+  it("decodifica HEIC real y sube JPEG (contentType forzado a image/jpeg)", async (ctx) => {
+    if (!heic) return ctx.skip();
+    const result = await uploadCustomerPhoto({
+      buffer: heic,
+      originalMimeType: "image/heic",
+      ownerId: "owner-123",
+      designId: null,
+    });
+    expect(result.mimeType).toBe("image/jpeg");
+    expect(result.width).toBe(1280);
+    expect(result.height).toBe(854);
+    expect(result.exifStripped).toBe(true);
+    // El upload se hizo con el JPEG procesado, no con el HEIC original.
+    expect(uploadMock).toHaveBeenCalledTimes(1);
+    const [, body, opts] = uploadMock.mock.calls[0];
+    expect((opts as { contentType?: string }).contentType).toBe("image/jpeg");
+    expect(Buffer.isBuffer(body)).toBe(true);
+    expect((body as Buffer).length).toBeGreaterThan(10_000); // JPEG real, no el HEIC
+    expect(result.signedUrl).toContain("https://ref.supabase.co/sign/");
+  });
+
+  it("HEIC corrupto lanza StorageError con mensaje claro (no crash)", async (ctx) => {
+    if (!heic) return ctx.skip();
+    const corrupto = Buffer.concat([heic.subarray(0, 64), Buffer.alloc(64, 0)]);
+    const err = await expectStorageError(
+      uploadCustomerPhoto({
+        buffer: corrupto,
+        originalMimeType: "image/heic",
+        ownerId: "owner-123",
+        designId: null,
+      }),
+    );
+    expect(err.message).toContain("No pudimos procesar la imagen");
   });
 });
 
