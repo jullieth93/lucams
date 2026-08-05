@@ -27,6 +27,11 @@ import { Rate } from "k6/metrics";
 
 const BASE_URL = __ENV.BASE_URL ?? "http://localhost:3000";
 
+// Bypass de la Deployment Protection de Vercel (smokes del preview):
+//   k6 run -e BASE_URL=https://<preview> -e VERCEL_BYPASS_TOKEN=xxx tests/load/storefront-browsing.js
+const BYPASS = __ENV.VERCEL_BYPASS_TOKEN;
+const params = BYPASS ? { headers: { "x-vercel-protection-bypass": BYPASS } } : {};
+
 const errors = new Rate("errors");
 
 export const options = {
@@ -70,10 +75,10 @@ export default function () {
 }
 
 function homeAndCatalog() {
-  const home = http.get(`${BASE_URL}/`);
+  const home = http.get(`${BASE_URL}/`, params);
   check(home, { "home 200": (r) => r.status === 200 }) || errors.add(1);
 
-  const catalog = http.get(`${BASE_URL}/productos`);
+  const catalog = http.get(`${BASE_URL}/productos`, params);
   check(catalog, { "/productos 200": (r) => r.status === 200 }) || errors.add(1);
 
   // Extraer un slug random del HTML para ir a un PDP
@@ -81,7 +86,7 @@ function homeAndCatalog() {
     const match = catalog.body.match(/href="\/producto\/([a-z0-9-]+)"/);
     if (match) {
       SLUGS_CACHE.push(match[1]);
-      const pdp = http.get(`${BASE_URL}/producto/${match[1]}`);
+      const pdp = http.get(`${BASE_URL}/producto/${match[1]}`, params);
       check(pdp, { "PDP 200": (r) => r.status === 200 }) || errors.add(1);
     }
   }
@@ -89,17 +94,17 @@ function homeAndCatalog() {
 
 function searchCatalog() {
   const term = SEARCH_TERMS[Math.floor(Math.random() * SEARCH_TERMS.length)];
-  const r = http.get(`${BASE_URL}/productos?q=${encodeURIComponent(term)}`);
+  const r = http.get(`${BASE_URL}/productos?q=${encodeURIComponent(term)}`, params);
   check(r, { "search 200": (res) => res.status === 200 }) || errors.add(1);
 
   // Hit al API de CMS también (futuro chatbot consumirá esto bajo carga)
-  const cms = http.get(`${BASE_URL}/api/cms/blocks?category=legal`);
+  const cms = http.get(`${BASE_URL}/api/cms/blocks?category=legal`, params);
   check(cms, { "cms api 200": (res) => res.status === 200 }) || errors.add(1);
 }
 
 function addToCart() {
   // No simulamos POST porque requeriría coordinar sessionId entre VUs.
   // En vez de eso, validamos que GET /carrito responde rápido para anon
-  const r = http.get(`${BASE_URL}/carrito`);
+  const r = http.get(`${BASE_URL}/carrito`, params);
   check(r, { "/carrito 200": (res) => res.status === 200 }) || errors.add(1);
 }

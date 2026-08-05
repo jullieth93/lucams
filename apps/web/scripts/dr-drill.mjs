@@ -93,24 +93,35 @@ async function main() {
   //      rol postgres del contenedor no tiene permisos sobre ellos).
   //    Por eso el restore va a la DB "postgres" del contenedor fresco (que ya
   //    trae pg_cron disponible) con el rol supabase_admin.
-  const { writeFileSync, unlinkSync } = await import("node:fs");
-  const tmp = `/tmp/dr-drill-${Date.now()}.sql`;
-  writeFileSync(tmp, sql);
+  //    (Re-auditoría 2026-08-05: restore SIN shell — psql va por spawn + argv,
+  //    nunca interpolado en un `bash -c`, y el dump temporal se escribe 0600
+  //    en un dir propio. El conteo/top de errores se hace en JS.)
+  const { mkdtempSync, writeFileSync, rmSync } = await import("node:fs");
+  const { join: joinPath } = await import("node:path");
+  const { tmpdir } = await import("node:os");
+  const tmpDir = mkdtempSync(joinPath(tmpdir(), "dr-drill-"));
+  const tmp = joinPath(tmpDir, "dump.sql");
+  writeFileSync(tmp, sql, { mode: 0o600 });
+  const restoreRun = await run("psql", [drillUrl, "-v", "ON_ERROR_STOP=0", "-q", "-f", tmp]);
+  rmSync(tmpDir, { recursive: true, force: true });
   // Errores esperados (ruido tolerable de un dump Supabase --no-owner en un
   // contenedor scratch: FKs de auth/*, policies que referencian roles de la
   // nube). Se cuentan Y se muestran las primeras para no volar a ciegas.
-  const restoreRun = await run("bash", [
-    "-c",
-    `psql "${drillUrl}" -v ON_ERROR_STOP=0 -q -f "${tmp}" 2>&1 | grep "^ERROR" > /tmp/drill-errors.txt; grep -c "^ERROR" /tmp/drill-errors.txt`,
-  ]);
-  unlinkSync(tmp);
-  const errors = Number.parseInt(restoreRun.stdout.trim() || "0", 10) || 0;
-  const topErrors = await run("bash", [
-    "-c",
-    `sort /tmp/drill-errors.txt | uniq -c | sort -rn | head -6 | sed 's/^ */    /'`,
-  ]);
-  if (errors > 0)
-    console.log(`→ errores SQL durante restore: ${errors} (top:)\n${topErrors.stdout}`);
+  // (Equivale al viejo `grep -c ^ERROR` + `sort | uniq -c | sort -rn | head -6`.)
+  const errorLines = `${restoreRun.stdout}\n${restoreRun.stderr}`
+    .split("\n")
+    .filter((l) => l.startsWith("ERROR"));
+  const errors = errorLines.length;
+  if (errors > 0) {
+    const freq = new Map();
+    for (const l of errorLines) freq.set(l, (freq.get(l) ?? 0) + 1);
+    const topErrors = [...freq.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 6)
+      .map(([line, count]) => `    ${count} ${line}`)
+      .join("\n");
+    console.log(`→ errores SQL durante restore: ${errors} (top:)\n${topErrors}`);
+  }
 
   // 4. Verificar conteos de tablas clave.
   const tables = ["Product", "Category", "OcasionTag", "CmsField", "Order", "Customer"];

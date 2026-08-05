@@ -10,7 +10,7 @@
  *   3. Lo sube a R2 (S3-compatible) con una llave UTC ordenable.
  *   4. Poda backups viejos según retención (conserva los N más nuevos).
  *
- * Se corre desde un workflow programado de GitHub Actions (semanal). Requiere pg_dump
+ * Se corre desde un workflow programado de GitHub Actions (diario). Requiere pg_dump
  * 17 (el servidor Supabase es PG17; pg_dump < 17 rechaza el volcado) → el workflow
  * instala postgresql-client-17. Local: `pnpm --filter web db:backup` con el entorno
  * cargado (necesita pg_dump 17 local).
@@ -18,7 +18,8 @@
  * NUNCA imprime secretos. Env requerido:
  *   BACKUP_DATABASE_URL (o DIRECT_URL): conexión DIRECTA a Postgres (con password).
  *   R2_ACCOUNT_ID, R2_BUCKET, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY.
- * Opcional: BACKUP_PREFIX (default "db"), BACKUP_KEEP (default 8 = ~2 meses semanales).
+ * Opcional: BACKUP_PREFIX (default "db"), BACKUP_KEEP (default 8; el workflow
+ * diario fija 30 ≈ 1 mes de diarios).
  */
 
 import { spawn } from "node:child_process";

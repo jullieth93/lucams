@@ -1,12 +1,11 @@
-.PHONY: help install build typecheck lint format migrate seed-products seed-templates seed-ocasiones seed-catalog-v2 seed-cms migrate-cms-v2 seed-abecedario seed-letter-sets cleanup-test-junk seed-separadores consolidate-product-families fix-voseo-cms rename-family-base-slugs backfill-variant-prices cleanup-slugs audit-slugs test test-unit test-e2e test-rls test-load test-coverage clean
+.PHONY: help install build typecheck lint format migrate db-local-start db-local-stop db-local-restart db-local-reset db-local-status db-local-setup db-local-on db-local-off db-local-seed web-start web-stop web-restart local-up local-down local-restart local-status test-local db-stg-setup db-stg-seed seed-products seed-templates seed-ocasiones seed-catalog-v2 migrate-cms-v2 seed-abecedario seed-letter-sets cleanup-test-junk seed-separadores consolidate-product-families update-legal-ley-2439 seed-legal-2026-07 fix-voseo-cms rename-family-base-slugs backfill-variant-prices cleanup-slugs audit-slugs audit-content test test-unit test-e2e test-rls test-load test-coverage clean fix-fotoimanes
 
-# Makefile en repo — targets primitivos para CI y devs locales.
-# El Makefile completo de runtime (con state/log/pid management,
-# health checks, etc.) vive fuera del repo en
-# /home/ansible/workspaces/lucams-shop-local/Makefile.
+# Makefile del repo — build/test para CI y devs, más el runtime del entorno
+# local completo: Supabase local en podman (grupo db-local-*) y app Next
+# (grupos web-* / local-*), con state/log/pid en tmp/ (gitignored).
 
 help:
-	@echo "Lucams_shop — targets de build/test (no runtime)"
+	@echo "Lucams_shop — build/test + entorno local (DB podman + app Next)"
 	@echo ""
 	@echo "  make install      pnpm install --frozen-lockfile"
 	@echo "  make build        Next.js production build"
@@ -18,8 +17,27 @@ help:
 	@echo "  make seed-templates   Pobla plantillas Estudio Personalización"
 	@echo "  make seed-ocasiones   Pobla 15 OcasionTag (PLAN_CATALOG_V2 1.5)"
 	@echo "  make seed-catalog-v2  Delta PLAN_CATALOG_V2 (sub-cats + placeholders + links)"
-	@echo "  make seed-cms         Pobla CmsBlocks + SiteSettings (J.1+)"
+	@echo "  make migrate-cms-v2   Upsert del site map CMS v2 (idempotente)"
 	@echo "  make seed-abecedario  Abecedario a 3 productos (ADR-057, idempotente)"
+	@echo ""
+	@echo "  Entorno local (Supabase local en podman, espejo de la nube):"
+	@echo "    make db-local-start   Levanta el stack (reanuda si ya existe)"
+	@echo "    make db-local-stop    Apaga conservando contenedores y datos"
+	@echo "    make db-local-reset   Reset TOTAL: borra volúmenes y rehace todo"
+	@echo "    make db-local-status  Estado y keys del stack local"
+	@echo "    make db-local-setup   Extensiones + migraciones en el stack local"
+	@echo "    make db-local-on/off  .env.local ↔ stack local / nube compartida"
+	@echo "    make db-local-seed    Catálogo + plantillas + CMS en el stack local"
+	@echo ""
+	@echo "  App Next y entorno completo:"
+	@echo "    make web-start/stop   App en :4000 (nohup; log en tmp/logs/)"
+	@echo "    make local-up/down    Sube/baja TODO (DB + GUIs + app)"
+	@echo "    make local-status     Estado del entorno completo"
+	@echo "    make test-local       Suite vitest contra el stack local"
+	@echo ""
+	@echo "  Staging (nube Free — requiere .env.stg):"
+	@echo "    make db-stg-setup     Esquema completo en lucams-stg"
+	@echo "    make db-stg-seed      Catálogo + plantillas + CMS en lucams-stg"
 	@echo ""
 	@echo "  Tests (Vitest/Playwright se setean en sub-bloques siguientes):"
 	@echo "    make test         Todos los tests"
@@ -61,7 +79,7 @@ db-local-start: ## Levanta el stack Supabase local (reanuda si ya existe; lo cre
 	# Si faltan contenedores (ej. uno borrado a mano), el CLI tampoco puede
 	# recrearlo sin chocar con el bug del volumen → toca db-local-reset.
 	@N=$$(podman ps -aq --filter name=supabase_ | wc -l); \
-	if [ "$$N" -ge 9 ]; then \
+	if [ "$$N" -ge 10 ]; then \
 		echo "→ Contenedores existentes: reanudando con podman start (datos conservados)"; \
 		podman start $$(podman ps -aq --filter name=supabase_); \
 	elif [ "$$N" -gt 0 ]; then \

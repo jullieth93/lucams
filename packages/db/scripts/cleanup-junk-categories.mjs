@@ -1,4 +1,9 @@
 import { PrismaClient } from "@prisma/client";
+import { assertDestructiveAllowed } from "./lib/env-guard.mjs";
+
+// Guarda de ambiente: soft-delete masivo de categorías/productos — bloquea PRD/remotos no STG.
+assertDestructiveAllowed("cleanup-junk-categories.mjs");
+
 const prisma = new PrismaClient();
 
 const JUNK_SLUGS = [
@@ -17,10 +22,16 @@ const JUNK_SLUGS = [
 async function main() {
   const now = new Date();
   for (const slug of JUNK_SLUGS) {
-    const cat = await prisma.category.findFirst({ where: { slug, deletedAt: null }, select: { id: true, name: true } });
+    const cat = await prisma.category.findFirst({
+      where: { slug, deletedAt: null },
+      select: { id: true, name: true },
+    });
     if (!cat) continue;
 
-    const products = await prisma.product.findMany({ where: { categoryId: cat.id }, select: { id: true, name: true, slug: true } });
+    const products = await prisma.product.findMany({
+      where: { categoryId: cat.id },
+      select: { id: true, name: true, slug: true },
+    });
     console.log(`Category ${cat.name} (${slug}) has ${products.length} products:`);
     for (const p of products) {
       console.log(`  - ${p.name} (${p.slug})`);
