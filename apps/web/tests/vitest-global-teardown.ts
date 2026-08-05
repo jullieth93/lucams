@@ -92,11 +92,13 @@ export async function teardown() {
           slug ~ ${TEST_SLUG} OR slug ILIKE 'test-%' OR slug ILIKE 'itest%')`,
     ]);
 
-    const variants = await prisma.$executeRaw`UPDATE "ProductVariant" SET "deletedAt" = NOW(), "isActive" = false, "updatedAt" = NOW()
+    const variants =
+      await prisma.$executeRaw`UPDATE "ProductVariant" SET "deletedAt" = NOW(), "isActive" = false, "updatedAt" = NOW()
       WHERE "deletedAt" IS NULL AND (
         sku ~ ${TEST_SLUG} OR "productId" IN (SELECT id FROM "Product" WHERE slug ~ ${TEST_SLUG}))`;
 
-    const templates = await prisma.$executeRaw`UPDATE "PersonalizationTemplate" SET "deletedAt" = NOW(), "isActive" = false, "updatedAt" = NOW()
+    const templates =
+      await prisma.$executeRaw`UPDATE "PersonalizationTemplate" SET "deletedAt" = NOW(), "isActive" = false, "updatedAt" = NOW()
       WHERE "deletedAt" IS NULL AND (
         slug ~ ${TEST_SLUG} OR "productId" IN (SELECT id FROM "Product" WHERE slug ~ ${TEST_SLUG}))`;
 
