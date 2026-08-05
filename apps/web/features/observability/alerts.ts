@@ -1,7 +1,12 @@
 /*
- * Alertas por email (Bloque D, sin Sentry). Evalúa reglas contra la DB y envía un
- * email al operador cuando algo se rompe. Mandato: cada alerta dice QUÉ SE ROMPIÓ
- * + QUÉ HACER. Anti-spam: no re-enviar la misma alerta dentro de 30 min (AlertState).
+ * Alertas del sistema (Bloque D, sin Sentry). Evalúa reglas contra la DB y avisa al
+ * operador cuando algo se rompe. Mandato: cada alerta dice QUÉ SE ROMPIÓ + QUÉ HACER.
+ *
+ * Política 2026-08-05 (centro de notificaciones — docs/PLAN_CENTRO_NOTIFICACIONES.md):
+ * CADA alerta que dispara deja notificación in-app en /admin/notificaciones (fuente
+ * de verdad; dedupKey = key de la alerta → la que persiste actualiza, no duplica).
+ * El EMAIL del lote solo sale si alguna es "crítica" — anti-spam: no re-enviar la
+ * misma alerta dentro de 30 min (AlertState).
  *
  * Se dispara desde /api/cron/alerts, agendado por pg_cron en Supabase (no Vercel
  * Cron, mandato #11) — ver docs/OPERATIONS.md para el SQL de agendamiento.
@@ -13,8 +18,22 @@ import { sendEmail } from "@/lib/resend";
 import { getCronHealth } from "./cron-heartbeat";
 import { getSettingValue } from "@/lib/cms";
 import { logger } from "@/lib/logger";
+import { notify, type NotificationSeverity } from "@/features/notifications/service";
 
 const DEDUP_WINDOW_MS = 30 * 60 * 1000; // 30 min
+
+// Severidad de la regla (es-CO) → severidad del centro de notificaciones.
+const SEVERITY_TO_NOTIFICATION: Record<FiringAlert["severity"], NotificationSeverity> = {
+  crítica: "critical",
+  alta: "warning",
+  media: "info",
+};
+
+/** Módulo del admin donde se atiende cada alerta (deep link desde el centro). */
+function actionUrlFor(key: string): string {
+  if (key === "reconciliation" || key === "pending_payment_wompi_stale") return "/admin/pedidos";
+  return "/admin/observability";
+}
 
 export type FiringAlert = {
   key: string;
@@ -138,8 +157,9 @@ function buildAlertEmail(alerts: FiringAlert[]): { subject: string; html: string
 }
 
 /**
- * Evalúa + envía las alertas que disparan, respetando el anti-spam por `key`
- * (30 min). `now` inyectable para tests.
+ * Evalúa + registra las alertas que disparan. CADA una deja notificación in-app;
+ * el EMAIL del lote solo sale si alguna es "crítica", respetando el anti-spam por
+ * `key` (30 min, AlertState). `now` inyectable para tests.
  */
 export async function dispatchAlerts(
   now: Date = new Date(),
@@ -149,6 +169,21 @@ export async function dispatchAlerts(
   const skipped: string[] = [];
   if (firing.length === 0) return { sent, skipped };
 
+  // SIEMPRE notificación in-app (fuente de verdad). dedupKey = key de la alerta:
+  // una alerta que persiste varios ciclos actualiza la misma fila no leída.
+  for (const a of firing) {
+    await notify({
+      type: "ALERT",
+      severity: SEVERITY_TO_NOTIFICATION[a.severity],
+      title: a.title,
+      detail: `${a.detail} Qué hacer: ${a.action}`,
+      actionUrl: actionUrlFor(a.key),
+      actionLabel: "Revisar",
+      dedupKey: a.key,
+    });
+  }
+
+  // El dedup AlertState (30 min) ahora gatea SOLO el email (el feed ya registró todo).
   const toSend: FiringAlert[] = [];
   for (const a of firing) {
     const state = await prisma.alertState.findUnique({ where: { key: a.key } });
@@ -159,6 +194,14 @@ export async function dispatchAlerts(
     }
   }
   if (toSend.length === 0) return { sent, skipped };
+
+  // Política anti-spam 2026-08-05: sin críticas en el lote NO hay email (las no
+  // críticas ya quedaron en el centro; si luego aparece una crítica, viajan en
+  // ese mismo correo como contexto — por eso tampoco se sella lastSentAt acá).
+  if (!toSend.some((a) => a.severity === "crítica")) {
+    logger.info({ event: "alerts.email_skipped_no_critical", keys: toSend.map((a) => a.key) });
+    return { sent, skipped };
+  }
 
   const to = await getSettingValue("ALERT_EMAIL", "hola@lucamsshop.com");
   const { subject, html, text } = buildAlertEmail(toSend);

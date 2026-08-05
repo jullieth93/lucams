@@ -4,7 +4,9 @@
  * getDailySummary cuenta GLOBALMENTE (no hay scoping por RUN), así que asertamos
  * LOWER BOUNDS tras crear fixtures RUN-prefijados (robusto ante datos concurrentes de
  * otros tests). sendDailySummary se prueba con el email mockeado + la idempotencia de
- * 12h. afterAll borra las órdenes creadas + el AlertState "daily_summary".
+ * 12h. Política 2026-08-05 (centro de notificaciones): el resumen ya NO sale por
+ * email — se publica como notificación in-app (dedupKey "daily_summary").
+ * afterAll borra las órdenes creadas + el AlertState + la notificación.
  */
 
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -21,6 +23,9 @@ vi.mock("next/cache", () => ({
 }));
 
 const emailsSent: Array<{ to: string; subject: string }> = [];
+// El módulo ya NO importa @/lib/resend (política 2026-08-05: cero email diario);
+// el mock queda como guardián: si alguien re-introduce un sendEmail, la aserción
+// "emailsSent vacío" lo delata.
 vi.mock("@/lib/resend", () => ({
   sendEmail: async (args: { to: string; subject: string }) => {
     emailsSent.push({ to: args.to, subject: args.subject });
@@ -70,6 +75,7 @@ describe.skipIf(!hasDb)("daily-summary — integración DB", () => {
     // La clave del resumen es singleton (no RUN-scoped). En dev el cron real no está
     // agendado, así que borrarla es seguro y evita contaminar el estado.
     await prisma.alertState.deleteMany({ where: { key: "daily_summary" } }).catch(() => {});
+    await prisma.notification.deleteMany({ where: { dedupKey: "daily_summary" } }).catch(() => {});
   });
 
   it("getDailySummary refleja las órdenes creadas (lower bounds) y tiene forma válida", async () => {
@@ -94,20 +100,30 @@ describe.skipIf(!hasDb)("daily-summary — integración DB", () => {
     }
   }, 30000);
 
-  it("sendDailySummary envía el email y luego DEDUP (no re-envía dentro de 12h)", async () => {
+  it("sendDailySummary publica notificación (SIN email) y luego DEDUP (no re-publica dentro de 12h)", async () => {
     await prisma.alertState.deleteMany({ where: { key: "daily_summary" } });
+    await prisma.notification.deleteMany({ where: { dedupKey: "daily_summary" } });
     emailsSent.length = 0;
     const now = new Date();
 
     const first = await sendDailySummary(now);
     expect(first.sent).toBe(true);
-    expect(emailsSent).toHaveLength(1);
-    expect(emailsSent[0].subject).toContain("Resumen Lucams");
+    expect(emailsSent).toHaveLength(0); // política 2026-08-05: el resumen ya NO va por email
 
-    // 2da llamada inmediata (mismo now) → dentro de la ventana de 12h → skip.
+    // La notificación in-app es el registro duradero del resumen.
+    const n = await prisma.notification.findFirst({ where: { dedupKey: "daily_summary" } });
+    expect(n).toBeTruthy();
+    expect(n!.type).toBe("SYSTEM");
+    expect(n!.severity).toBe("info");
+    expect(n!.title).toContain("Resumen Lucams");
+    expect(n!.actionUrl).toBe("/admin/metricas");
+    expect(n!.detail).toContain("Pedidos nuevos");
+
+    // 2da llamada inmediata (mismo now) → dentro de la ventana de 12h → skip, sin duplicar fila.
     const second = await sendDailySummary(now);
     expect(second.sent).toBe(false);
     expect(second.skipped).toBe("already_sent");
-    expect(emailsSent).toHaveLength(1); // NO se re-envió
+    expect(emailsSent).toHaveLength(0);
+    expect(await prisma.notification.count({ where: { dedupKey: "daily_summary" } })).toBe(1);
   }, 30000);
 });

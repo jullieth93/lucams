@@ -10,6 +10,7 @@ import { sendBackInStockNotifications } from "@/features/back-in-stock/service";
 import { logger } from "@/lib/logger";
 import { captureServerError } from "@/lib/error-capture";
 import { recordCronHeartbeat } from "@/features/observability/cron-heartbeat";
+import { notifyCronFailure } from "@/features/notifications/service";
 
 export const dynamic = "force-dynamic";
 
@@ -43,6 +44,9 @@ export async function GET(req: NextRequest) {
       routePath: "/api/cron/back-in-stock",
       routeType: "cron",
     });
+    // Centro de notificaciones (2026-08-05): el FALLO del cron queda en el feed
+    // (los éxitos NO se registran — anti-ruido). Best-effort, nunca lanza.
+    await notifyCronFailure("back-in-stock", err);
     return Response.json({ ok: false, error: "internal" }, { status: 500 });
   }
 }

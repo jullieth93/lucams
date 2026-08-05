@@ -25,6 +25,9 @@ const sendEmail = vi.hoisted(() =>
   vi.fn(async (_input: unknown): Promise<unknown> => ({ sent: true, id: "e1" })),
 );
 const quoteFindFirst = vi.hoisted(() => vi.fn());
+// Notificación in-app del aviso (centro de notificaciones 2026-08-05): dedup + create.
+const notificationFindFirst = vi.hoisted(() => vi.fn(async () => null));
+const notificationCreate = vi.hoisted(() => vi.fn(async () => ({})));
 // after() de next/server se captura (fuera de un request scope lanza) y las tareas se corren a
 // mano en el test — así se verifica QUÉ se difiere y CUÁNDO, sin servidor.
 const afterTasks = vi.hoisted(() => [] as Array<() => unknown>);
@@ -52,6 +55,8 @@ vi.mock("@/lib/db", () => ({
       }),
     // El aviso al admin (features/quotes/emails.ts) re-lee la Quote por id.
     quote: { findFirst: quoteFindFirst },
+    // ...y además del email deja notificación in-app (centro de notificaciones).
+    notification: { findFirst: notificationFindFirst, create: notificationCreate },
   },
   Prisma: { PrismaClientKnownRequestError: class extends Error {} },
 }));

@@ -1,9 +1,13 @@
 /*
  * Resumen diario de operación (Bloque D — OBSERVABILITY.md § Dashboard "Operación
- * diaria"). Un email que la dueña lee cada mañana con lo de las últimas 24h: pedidos,
+ * diaria"). Lo que la dueña revisa cada mañana con lo de las últimas 24h: pedidos,
  * ingresos, qué falta despachar, stock crítico, reseñas pendientes, carritos
  * abandonados y errores. A diferencia de las alertas (solo cuando algo se rompe), esto
- * se envía SIEMPRE una vez al día.
+ * se publica SIEMPRE una vez al día.
+ *
+ * Política 2026-08-05 (centro de notificaciones — docs/PLAN_CENTRO_NOTIFICACIONES.md):
+ * el resumen ya NO va por email — queda como notificación in-app en
+ * /admin/notificaciones (fuente de verdad, cero spam de correo).
  *
  * Se dispara desde /api/cron/daily-summary, agendado por pg_cron (no Vercel Cron,
  * mandato #11) — ver docs/OPERATIONS.md para el SQL de agendamiento (8am America/Bogota).
@@ -11,9 +15,8 @@
 
 import "server-only";
 import { prisma } from "@/lib/db";
-import { sendEmail } from "@/lib/resend";
-import { getSettingValue } from "@/lib/cms";
 import { logger } from "@/lib/logger";
+import { notify } from "@/features/notifications/service";
 import { getCodReconciliationTotals } from "@/features/orders/cod-reconciliation";
 import { getSloStatus } from "./slos";
 
@@ -277,9 +280,10 @@ export function buildDailySummaryEmail(
 }
 
 /**
- * Construye + envía el resumen diario al email del operador (ALERT_EMAIL). Idempotente:
- * si ya se envió hace < 12h, no re-envía (protege ante reintentos del cron). `now`
- * inyectable para tests.
+ * Construye + publica el resumen diario como notificación in-app (centro de
+ * notificaciones — ya NO se envía email, política 2026-08-05). Idempotente:
+ * si ya se publicó hace < 12h, no re-publica (protege ante reintentos del cron).
+ * `now` inyectable para tests.
  */
 export async function sendDailySummary(
   now: Date = new Date(),
@@ -292,29 +296,40 @@ export async function sendDailySummary(
     return { sent: false, skipped: "already_sent", summary };
   }
 
-  const to = await getSettingValue("ALERT_EMAIL", "hola@lucamsshop.com");
-  const { subject, html, text } = buildDailySummaryEmail(summary, now);
-  const result = await sendEmail({ to, subject, html, text });
-
-  // #17 — si el email NO se envió (Resend caído a las 8am), NO sellar lastSentAt → el próximo ciclo
-  // del cron reintenta en vez de quedar bloqueado 12h por RESEND_GUARD_MS. Mismo patrón que alerts.ts.
-  if (!result.sent) {
-    logger.error({ event: "daily_summary.email_failed", reason: result.reason ?? "unknown" });
+  const { text } = buildDailySummaryEmail(summary, now);
+  try {
+    await notify({
+      type: "SYSTEM",
+      severity: "info",
+      title: "☀️ Resumen Lucams",
+      detail: text, // resumen en texto plano (el detalle del feed es solo texto)
+      actionUrl: "/admin/metricas",
+      actionLabel: "Ver métricas",
+      dedupKey: "daily_summary", // si quedó sin leer, se actualiza en vez de duplicar
+    });
+  } catch (err) {
+    // #17 — mismo criterio que antes con el email: si la notificación NO se creó,
+    // NO sellar lastSentAt → el próximo ciclo del cron reintenta en vez de quedar
+    // bloqueado 12h por RESEND_GUARD_MS.
+    logger.error({
+      event: "daily_summary.notify_failed",
+      err: err instanceof Error ? err.message : String(err),
+    });
     return { sent: false, summary };
   }
 
   await prisma.alertState.upsert({
     where: { key: "daily_summary" },
-    create: { key: "daily_summary", lastSentAt: now, lastDetail: subject },
-    update: { lastSentAt: now, lastDetail: subject },
+    create: { key: "daily_summary", lastSentAt: now, lastDetail: "☀️ Resumen Lucams" },
+    update: { lastSentAt: now, lastDetail: "☀️ Resumen Lucams" },
   });
   logger.info({
     event: "daily_summary.sent",
-    emailed: result.sent,
+    notified: true,
     orders: summary.ordersLast24h,
     revenueCop: summary.revenueLast24hCop,
   });
-  return { sent: result.sent, summary };
+  return { sent: true, summary };
 }
 
 function escapeHtml(s: string): string {

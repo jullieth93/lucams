@@ -13,7 +13,8 @@
  *     "Default" oculta y escape de HTML en los datos del cliente.
  *   - sendQuoteAdminNotification (wrapper, Resend mockeado): destinatario ALERT_EMAIL
  *     (fallback hola@lucamsshop.com, misma fuente que el resumen diario), idempotencyKey
- *     derivado del quote id, y un fallo de Resend NUNCA se propaga (fire-and-forget).
+ *     derivado del quote id, notificación in-app además del email (centro de
+ *     notificaciones 2026-08-05), y un fallo de Resend NUNCA se propaga (fire-and-forget).
  *
  * Ojo con el dinero: formatCOP usa Intl es-CO y emite "$ X.XXX" con ESPACIO DURO U+00A0;
  * las aserciones usan \s en regex (mismo criterio que templates.test.ts).
@@ -25,6 +26,9 @@ const sendEmail = vi.hoisted(() =>
   vi.fn(async (_input: unknown): Promise<unknown> => ({ sent: true, id: "email_1" })),
 );
 const quoteFindFirst = vi.hoisted(() => vi.fn());
+// Notificación in-app del aviso (centro de notificaciones 2026-08-05): dedup + create.
+const notificationFindFirst = vi.hoisted(() => vi.fn(async () => null));
+const notificationCreate = vi.hoisted(() => vi.fn(async (_args: unknown) => ({})));
 const logger = vi.hoisted(() => ({
   debug: vi.fn(),
   info: vi.fn(),
@@ -35,7 +39,10 @@ const logger = vi.hoisted(() => ({
 vi.mock("@/lib/logger", () => ({ logger }));
 vi.mock("@/lib/resend", () => ({ sendEmail }));
 vi.mock("@/lib/db", () => ({
-  prisma: { quote: { findFirst: quoteFindFirst } },
+  prisma: {
+    quote: { findFirst: quoteFindFirst },
+    notification: { findFirst: notificationFindFirst, create: notificationCreate },
+  },
   Prisma: { PrismaClientKnownRequestError: class extends Error {} },
 }));
 // CMS mockeado: setting ausente → fallback (mismo criterio que lib/wa.test.ts). Así el
@@ -161,6 +168,15 @@ describe("sendQuoteAdminNotification", () => {
     expect(logger.info).toHaveBeenCalledWith(
       expect.objectContaining({ event: "quote.email.admin_notification.sent", result: "ok" }),
     );
+
+    // Además del email: notificación in-app (registro duradero, centro de notificaciones).
+    expect(notificationCreate).toHaveBeenCalledTimes(1);
+    const nArg = notificationCreate.mock.calls[0]![0] as { data: Record<string, unknown> };
+    expect(nArg.data.type).toBe("QUOTE");
+    expect(nArg.data.severity).toBe("info");
+    expect(nArg.data.title).toBe("Nueva cotización COT-ABC234 — Lucía Pérez (Bogotá D.C.)");
+    expect(nArg.data.actionUrl).toBe("/admin/cotizaciones/quote_1");
+    expect(nArg.data.dedupKey).toBe("quote:quote_1");
   });
 
   it("un fallo de Resend NO se propaga: loguea error y resuelve (la cotización ya existe)", async () => {

@@ -1,5 +1,8 @@
 /*
- * Email transaccional INTERNO: aviso al admin cuando nace una cotización.
+ * Aviso al admin cuando nace una cotización: EMAIL (se mantiene — es el canal
+ * de venta que Lucy pidió) + NOTIFICACIÓN in-app (centro de notificaciones,
+ * 2026-08-05 — docs/PLAN_CENTRO_NOTIFICACIONES.md: registro duradero aunque el
+ * email falle).
  *
  * Por qué existe (Etapa 1, modo catálogo): la venta se cierra por WhatsApp,
  * pero si el cliente crea la cotización y NO pulsa "Enviar por WhatsApp",
@@ -16,7 +19,8 @@
  *     carrito) y el secuencial con CART_NOT_FOUND — ninguno llega acá.
  *  2. idempotencyKey de Resend derivado del quote id, por si un retry
  *     residual llegara a disparar dos veces (mismo criterio que los emails
- *     de Order: `${number}-${evento}`).
+ *     de Order: `${number}-${evento}`). La notificación usa dedupKey con el
+ *     mismo quote id (mismo criterio anti-duplicados).
  */
 
 import "server-only";
@@ -24,6 +28,7 @@ import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { sendEmail } from "@/lib/resend";
 import { getSettingValue } from "@/lib/cms";
+import { notify } from "@/features/notifications/service";
 import { quoteAdminNotificationEmail } from "@/features/emails/templates/quote-admin-notification";
 
 /** Envia el aviso de cotización nueva al admin. Best-effort: nunca lanza. */
@@ -76,6 +81,19 @@ export async function sendQuoteAdminNotification(quoteId: string): Promise<void>
       number: quote.number,
       to,
       result: result.sent ? "ok" : `skip:${result.reason}`,
+    });
+
+    // Notificación in-app (centro de notificaciones): el registro DURADERO del
+    // aviso. Se crea aunque el email haya fallado (el email es best-effort; el
+    // feed es la fuente de verdad). dedupKey por quote: un retry residual no duplica.
+    await notify({
+      type: "QUOTE",
+      severity: "info",
+      title: `Nueva cotización ${quote.number} — ${quote.customerName} (${quote.city})`,
+      detail: `Total: $${Math.round(quote.total / 100).toLocaleString("es-CO")} · ${quote.items.length} item(s) · WhatsApp: ${quote.customerWhatsapp}`,
+      actionUrl: `/admin/cotizaciones/${quote.id}`,
+      actionLabel: "Ver cotización",
+      dedupKey: `quote:${quote.id}`,
     });
   } catch (err) {
     logger.error({
