@@ -1,13 +1,15 @@
 name: Backup DB → R2
 
-# Backup off-site semanal de la base de datos a Cloudflare R2 (ADR-059, OPERATIONS.md).
+# Backup off-site DIARIO de la base de datos a Cloudflare R2 (ADR-059, OPERATIONS.md).
+# (2026-08-04: semanal → diario — una tienda viva no puede perder hasta 7 días de datos;
+#  el dump pesa ~1.2 MB y el costo es el mismo. Retención 30 ≈ 1 mes de diarios.)
 # Complementa el PITR de Supabase Pro con una copia independiente fuera de Supabase
 # (DR drill #2: restore desde R2). NO usa Vercel Cron (mandato #11): es una tarea de
 # OPS en GitHub Actions, no un background job de la app.
 on:
   schedule:
     # Lunes 07:00 UTC (~02:00 America/Bogotá). Los cron de GitHub corren en UTC.
-    - cron: "0 7 * * 1"
+    - cron: "13 7 * * *"
   workflow_dispatch: {} # permite dispararlo manualmente desde la pestaña Actions
 
 # Least privilege: solo lectura del repo. Las credenciales viajan por secrets.
@@ -101,4 +103,4 @@ jobs:
           R2_BUCKET: ${{ secrets.R2_BUCKET }}
           R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
-          BACKUP_KEEP: "8" # ~2 meses de backups semanales
+          BACKUP_KEEP: "30" # ~1 mes de backups diarios

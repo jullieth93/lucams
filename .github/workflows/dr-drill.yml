@@ -1,0 +1,104 @@
+name: DR drill — restore desde R2
+
+# DR drill #2 (ADR-059, OPERATIONS.md): verifica MENSUALMENTE que el backup de R2
+# es restaurable de verdad — baja el dump más nuevo, lo restaura en un Postgres
+# vacío del runner (imagen supabase/postgres, el mismo engine de prod) y chequea
+# conteos de tablas clave. Un backup que no se restaura no es un backup.
+# Las credenciales viajan por los mismos secrets de backup.yml (solo lectura de R2).
+
+on:
+  schedule:
+    # El día 2 de cada mes a las 08:27 UTC (el backup diario ya habrá corrido).
+    - cron: "27 8 2 * *"
+  workflow_dispatch: {} # drill manual cuando se quiera (post-cambios de backup, etc.)
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dr-drill
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: "22"
+  PNPM_VERSION: "11.0.9"
+
+jobs:
+  gate:
+    name: ¿Secrets configurados?
+    runs-on: ubuntu-latest
+    outputs:
+      configured: ${{ steps.check.outputs.configured }}
+    steps:
+      - id: check
+        env:
+          HAS_R2: ${{ secrets.R2_ACCOUNT_ID != '' && secrets.R2_ACCESS_KEY_ID != '' && secrets.R2_SECRET_ACCESS_KEY != '' && secrets.R2_BUCKET != '' }}
+        run: |
+          if [ "$HAS_R2" = "true" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::DR drill inactivo: faltan secrets R2_* (mismos de backup.yml)."
+          fi
+
+  drill:
+    name: Descargar último dump + restaurar + verificar
+    needs: gate
+    if: needs.gate.outputs.configured == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      # El mismo engine de prod (Supabase PG17): el restore es fiel, no una
+      # aproximación con un Postgres pelado que no tiene las extensiones.
+      postgres:
+        image: public.ecr.aws/supabase/postgres:17.6.1.156
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      # Solo necesita @aws-sdk/client-s3 (devDep de apps/web), como backup.yml.
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # psql 17 para el restore (mismo motivo que en backup.yml: el dump es PG17).
+      - name: Instalar psql 17 (PGDG)
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -fsSL --output /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+            https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+            | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client-17
+          echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
+          /usr/lib/postgresql/17/bin/psql --version
+
+      - name: DR drill — descargar, restaurar, verificar
+        run: node apps/web/scripts/dr-drill.mjs
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          DRILL_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/drill
