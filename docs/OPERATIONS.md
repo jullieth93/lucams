@@ -763,15 +763,51 @@ Eso llama `refreshCmsCacheAction` → `updateTag("cms")` + queda en `AdminAction
 
 > Implementados en `apps/web/app/api/health/`.
 
-- `GET /api/health` — liveness de la app (200 si el servidor corre; no chequea dependencias externas).
+- `GET /api/health` — liveness de la app (200 si el servidor corre; no chequea dependencias externas). Incluye `version` y `environment`.
 - `GET /api/health/db` — 200 si Postgres responde (`SELECT 1` vía Prisma).
 - `GET /api/health/storage` — 200 si el bucket de Supabase Storage responde.
 - `GET /api/health/resend` — 200 si la API key de Resend es válida y el dominio de `EMAIL_FROM` está verificado (no envía emails).
-- `GET /api/health/aveonline` — autentica contra Aveonline y reporta qué cuenta responde (detecta la cuenta demo en `production`). No se agrega a `/all`: cada llamada gasta una autenticación contra un tercero.
-- `GET /api/health/crons` — dead-man switch de los jobs pg_cron: 503 si alguno no corrió en 2× su intervalo.
-- `GET /api/health/all` — agrega los checks en un solo JSON: 200 si db + storage están OK (Resend es "warn", no bloqueante). El endpoint pensado para monitors externos.
+- `GET /api/health/aveonline` — autentica contra Aveonline y reporta qué cuenta responde (detecta la cuenta demo en `production`).
+- `GET /api/health/wompi` — 200 si `GET /merchants/{publicKey}` responde OK contra el ambiente `WOMPI_ENV` (no crea transacciones). Sin `WOMPI_*` (modo catálogo) devuelve `skipped`.
+- `GET /api/health/crons` — dead-man switch de los jobs pg_cron: 503 si alguno no corrió en 2× su intervalo. Los jobs de `CRON_JOBS_DISABLED` se listan aparte y no degradan.
+- `GET /api/health/all` — agrega los checks en un solo JSON: 200 si db + storage están OK (Resend/Aveonline/Wompi son no bloqueantes). Incluye `version` y `environment`. El endpoint pensado para monitors externos.
 
 Configurar en BetterStack (free) o UptimeRobot (free) para alertas si alguno cae > 3 min.
+
+### Health API (para monitores externos)
+
+Contrato de los endpoints `/api/health*` para integrar un monitor (BetterStack, UptimeRobot, etc.).
+Todos son **públicos** (sin auth), `force-dynamic`, con **rate-limit de 30 req/min por IP**
+(429 + `Retry-After: 60` al exceder) y responden JSON con al menos `status` y `timestamp`.
+
+| Endpoint                | Qué verifica                                                            | HTTP sano → degradado             |
+| ----------------------- | ----------------------------------------------------------------------- | --------------------------------- |
+| `/api/health`           | Liveness del servidor Next (sin dependencias)                           | 200 siempre (si hay proceso)      |
+| `/api/health/db`        | Postgres responde (`SELECT 1` vía Prisma)                               | 200 → 500                         |
+| `/api/health/storage`   | Bucket de Supabase Storage responde                                     | 200 → 500                         |
+| `/api/health/resend`    | API key válida + dominio de `EMAIL_FROM` verificado                     | 200 (`ok`/`warn`/`skipped`) → 500 |
+| `/api/health/aveonline` | Autentica contra Aveonline; reporta modo (`test`/`production`) y cuenta | 200 (`ok`/`warn`) → 500           |
+| `/api/health/wompi`     | `GET /merchants/{publicKey}` (6s timeout); `skipped` sin `WOMPI_*`      | 200 (`ok`/`skipped`) → 503        |
+| `/api/health/crons`     | Latido de los 8 jobs pg_cron (2× intervalo sin correr = overdue)        | 200 → 503                         |
+| `/api/health/all`       | Agrega db + storage + resend + aveonline + wompi en un solo JSON        | 200 → 503                         |
+
+- **Shape de `/api/health/all`:**
+  `{ status, totalLatencyMs, timestamp, version, environment, checks: [{ service, status, latencyMs, detail? }] }`
+  con `status` global `"ok" | "degraded"` y cada check `"ok" | "warn" | "fail" | "skipped"`.
+- **Pesos:** solo **postgres y storage son críticos** — si alguno reporta `fail`, `/all` responde
+  **503** (`status: "degraded"`). **resend, aveonline y wompi son no bloqueantes** (`warn`/`fail`
+  quedan visibles en `checks` pero el global sigue 200). `skipped` = integración no configurada
+  a propósito en ese ambiente (p.ej. Wompi en modo catálogo); tampoco degrada.
+- **Shape de `/api/health/crons`:**
+  `{ status, overdue: [{ job, lastRunAt }], disabled: [job], jobs: [{ job, overdue, disabled, lastRunAt }], timestamp }` —
+  503 si `overdue` es no vacío. Los jobs de **`CRON_JOBS_DISABLED`** (comma-separado, ver
+  `.env.example`) llegan con `disabled: true, overdue: false` y se listan en `disabled`: en
+  ambientes con jobs desagendados a propósito (STG: los 5 crons de email, ver «Jobs HTTP pg_cron»)
+  el monitor no queda en falso degraded eterno.
+- **Previews con Deployment Protection:** los previews de Vercel exigen SSO → el monitor debe
+  mandar el header `x-vercel-protection-bypass: <VERCEL_BYPASS_TOKEN>` (valor en `.env.stg` /
+  Vercel → Settings → Deployment Protection) o recibirá la página de login (200 HTML) en vez del
+  JSON. En PRD (dominio público) no hace falta.
 
 ---
 
