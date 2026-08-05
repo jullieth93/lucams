@@ -1054,6 +1054,35 @@ model AlertState {
   updatedAt  DateTime @updatedAt
 }
 
+// Centro de notificaciones del admin (2026-08-05 — ver
+// docs/PLAN_CENTRO_NOTIFICACIONES.md): los eventos del sistema (alertas que
+// disparan, crons que fallan, cotizaciones nuevas, resumen diario) dejan un
+// registro DURADERO acá en vez de llenar el correo de la dueña. El email queda
+// solo para alertas críticas y para el aviso de cotización nueva (canal de
+// venta). Política anti-ruido: los éxitos NO se registran y `dedupKey` agrupa
+// repeticiones de la misma alerta (se actualiza la fila no leída en vez de
+// duplicarla). Append-only salvo `readAt` (única mutación: marcar leída) —
+// no es entidad de negocio: sin audit fields ni soft delete, mismo criterio
+// que AlertState/SiteEvent. type/severity como String (no enum) para agregar
+// tipos sin migración. Ver features/notifications/service.ts.
+model Notification {
+  id          String    @id @default(cuid())
+  type        String // "ALERT" | "CRON" | "QUOTE" | "SYSTEM"
+  severity    String // "info" | "warning" | "critical"
+  title       String
+  detail      String
+  actionUrl   String? // deep link admin, e.g. /admin/pedidos
+  actionLabel String?
+  metadata    Json      @default("{}")
+  dedupKey    String? // anti-ruido: agrupa repeticiones de la misma alerta
+  readAt      DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([readAt, createdAt])
+  @@index([type, createdAt])
+  @@index([dedupKey, createdAt])
+}
+
 // Eventos custom de funnel (add-to-cart, search, newsletter-signup,
 // product-view) — alternativa propia a Google Analytics. Solo se
 // escriben si el customer dió consentimiento ANALYTICS o MARKETING
