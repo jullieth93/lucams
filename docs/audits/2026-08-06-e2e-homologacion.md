@@ -80,6 +80,10 @@ Corridas canónicas del 2026-08-06 con el código final. Evidencia por fila en
 | **matriz de uploads del Estudio** — mobile (sidebar vía FAB+Sheet, banner cookies cerrado primero) | ✅ 16/16 pasos | ✅ 16/16 pasos | ⛔ idem |
 | **cookies Ley 1581** — `homolog-cookies.spec`: banner 3 botones → modal 4 switches (necesarias bloqueadas ON) → granular (funcional+analíticas ON, marketing OFF) → cookie persistida + reload sin banner → /legal/cookies tabla + reabrir → **4 filas Consent por alcance con accepted correctos** (escenarios aceptar-todas / solo-necesarias / granular) — desktop y mobile | ✅ 8/8 pasos (3 escenarios) | ✅ 8/8 pasos (3 escenarios) | ⛔ escribe Consent (skip forzado) |
 | **cruces admin→cliente §5.3** — `homolog-admin-cruces.spec` (desktop y mobile): ① toggle `COD_ENABLED` → chip contraentrega del hero flip+revert; ② desactivar producto → PDP soft-404 con la fila intacta en DB; ③ aprobar reseña pendiente → visible en la PDP con autor; ④ marcar leída notificación QUOTE → pill del nav desaparece/decrementa | ✅ 4/4 cruces | ✅ 4/4 cruces (COD revertido a `true`, 0 residuo) | ⛔ mutaciones (skip forzado) |
+| **newsletter + unsubscribe** — `homolog-newsletter.spec`: suscribir con consent → Consent NEWSLETTER → **duplicado → "ya estabas suscrito" sin reenviar welcome** (fix H9) → baja HMAC (página + revocación revokesId) → re-suscripción → One-Click POST /api/unsubscribe | ✅ 7/7 pasos | ✅ 7/7 pasos | ⛔ escribe Consent/contacto Resend |
+| **wishlist** — `homolog-wishlist.spec`: marcar en PDP → WishlistItem en DB → /mi-cuenta/favoritos lista → quitar → fila borrada; anónimo → /login?next=… sin romper | ✅ 4/4 pasos | ✅ 4/4 pasos | ⛔ escribe WishlistItem |
+| **reseñas cliente** — `homolog-resenas.spec`: compra verificada (orden PAID) → submit 5★ → "gracias, la revisamos" (gate) → Review isApproved=false → PENDING invisible en PDP → duplicado bloqueado por gate (1 fila) | ✅ 6/6 pasos | ✅ 6/6 pasos | ⛔ crea Review/Order |
+| **back-in-stock** — `homolog-back-in-stock.spec`: PDP agotado → suscribir con email → Subscription + Consent BACK_IN_STOCK → **re-stock por la UI admin (/admin/inventario)** → cron `x-cron-secret` → notifiedAt (aviso enviado) | ✅ 6/6 pasos | ✅ 6/6 pasos | ⛔ crea datos + email |
 | **paridad de datos** (query directa a la DB del ambiente) | 612 productos / 572 categorías / 772 variantes / 115 ocasiones / 981 campos CMS / 50 migraciones | **idéntico a LOCAL** | homologado el 2026-08-05 (19 tablas idénticas, bitácora STATE) |
 
 **Filas de §5.3 que NO aplican en modo catálogo** (documentadas, no forzadas):
@@ -137,6 +141,17 @@ Evidencia de cookies y cruces:
   `1786020880341` (mobile); STG `1786021181788` / `1786021230974`. Post-corrida
   verificado por query en STG: `COD_ENABLED=true` (revertido), 0 reviews /
   notificaciones / productos residuales.
+- Newsletter (`results-…-e2e-newsletter-….json`): LOCAL `1786034739244` /
+  `1786034759851`; STG `1786035135998` / `1786035166656`. Filas Consent quedan
+  en el ledger (email `<run>@e2e.test`); contacto Resend borrado por API.
+- Wishlist (`results-…-e2e-wishlist-….json`): LOCAL `1786034944222` /
+  `1786035021463`; STG `1786035607405` / `1786035625444`.
+- Reseñas (`results-…-e2e-review-….json`): LOCAL `1786037597827` /
+  `1786037606956`; STG `1786037770185` / `1786037794594`. Orden TEST borrada
+  completa (0 residuo verificado).
+- Back-in-stock (`results-…-e2e-bis-….json`): LOCAL `1786041529333` /
+  `1786041534390`; STG `1786041744227` / `1786041773580`. **0 residuo
+  verificado en ambos** (suscripción, producto, categoría e InventoryLog).
 
 ## 5. Hallazgos
 
@@ -207,6 +222,41 @@ verdad el evento documentado `cookie-consent-changed` y el FAB sube
 (`bottom-28`) mientras no haya consentimiento persistido, volviendo a su sitio
 al elegir. Verificado E2E en LOCAL y en STG tras el deploy.
 
+**H9 — (app, CORREGIDO y verificado en STG) la idempotencia del newsletter
+estaba rota: Resend hace UPSERT, nunca 409.** El servicio asumía que un
+duplicado devolvía 409/422 para marcar `alreadySubscribed`; verificado contra
+`api.resend.com` que devuelve **201 siempre** (upsert) → el duplicado mostraba
+"¡Listo! Te avisaremos del lanzamiento" y reenviaba el welcome, y la
+re-suscripción tras una baja no creaba el nuevo `accepted` en el ledger (la
+fila `accepted` original nunca se voltea; la baja es otra fila). Fix
+(`5485166`): regla única `isNewsletterSubscribed()` — vigente = `accepted`
+(misma versión del aviso) SIN revocación posterior — usada por el pre-check y
+por `persistConsent`. Duplicado ahora: "Ya estabas suscrito" sin tocar Resend
+ni reenviar. Verificado E2E en LOCAL y STG (7/7 pasos).
+
+**H10 — (harness, no es bug de app) hidratación lenta del preview en arranque
+frío.** El `CompactStockEditor` de /admin/inventario parecía "no hidratar" en
+STG: es LATENCIA del primer hit serverless (>12-20s hasta que el island cobra
+vida; en LOCAL es inmediata). Con espera activa de la señal React (sonda
+estricta de una tecla exigiendo el botón habilitado) el flujo corre idéntico
+en ambos. Queda como observación operativa: las páginas admin del preview
+tienen cold-start de hidratación alto en el primer hit; usuarios reales lo
+perciben como un input "muerto" por unos segundos en la primera visita fría.
+
+**H11 — (app, cosmético, documentado — no requiere acción) el thanks-div del
+ReviewForm es inalcanzable.** Tras el submit de una reseña, `revalidatePath`
+re-renderiza la PDP y el gate de `product-reviews.tsx` reemplaza de inmediato
+el mensaje de éxito del ReviewForm por "Ya dejaste tu reseña de este producto
+✨ ¡Gracias por opinar!". El usuario ve una confirmación equivalente (la del
+gate), así que el div de éxito propio del ReviewForm es código muerto en la
+práctica. La aserción E2E usa el texto del gate (la señal real y persistente).
+
+**Limpieza InventoryLog (suite, corregida):** las variantes con re-stock por la
+UI admin acumulan filas `InventoryLog` (Restrict) que bloqueaban el borrado del
+producto efímero — el `catch` de la factory lo tragaba dejando residuo vivo.
+`deleteEphemeralProduct` ahora borra `inventoryLog` antes de la variante;
+verificado 0 residuo en LOCAL y STG tras corridas canónicas.
+
 **Sin hallazgos de homologación de flujo**: todos los flujos ejecutados se
 comportan idéntico en LOCAL y STG; las únicas diferencias observadas son las
 intencionales de §3 del prompt (dev server Turbopack vs build Vercel, latencia,
@@ -236,6 +286,22 @@ cd apps/web && E2E_ENV=stg pnpm exec playwright test homolog-cookies
 # Cruces admin→cliente §5.3 (requiere storageState — E2E_AUTH=1):
 cd apps/web && E2E_ENV=local E2E_AUTH=1 pnpm exec playwright test homolog-admin-cruces
 cd apps/web && E2E_ENV=stg E2E_AUTH=1 pnpm exec playwright test homolog-admin-cruces
+
+# Newsletter (anónimo; Consent queda en el ledger, contacto Resend se borra):
+cd apps/web && E2E_ENV=local pnpm exec playwright test homolog-newsletter
+cd apps/web && E2E_ENV=stg pnpm exec playwright test homolog-newsletter
+
+# Wishlist (cliente efímero del setup — E2E_AUTH=1):
+cd apps/web && E2E_ENV=local E2E_AUTH=1 pnpm exec playwright test homolog-wishlist
+cd apps/web && E2E_ENV=stg E2E_AUTH=1 pnpm exec playwright test homolog-wishlist
+
+# Reseñas cliente (E2E_AUTH=1 — siembra orden PAID del cliente efímero):
+cd apps/web && E2E_ENV=local E2E_AUTH=1 pnpm exec playwright test homolog-resenas
+cd apps/web && E2E_ENV=stg E2E_AUTH=1 pnpm exec playwright test homolog-resenas
+
+# Back-in-stock (E2E_AUTH=1 — re-stock por la UI admin + cron x-cron-secret):
+cd apps/web && E2E_ENV=local E2E_AUTH=1 pnpm exec playwright test homolog-back-in-stock
+cd apps/web && E2E_ENV=stg E2E_AUTH=1 pnpm exec playwright test homolog-back-in-stock
 
 # Smoke read-only en PRD (sin E2E_AUTH — nunca muta):
 cd apps/web && E2E_ENV=prd pnpm exec playwright test smoke --project=desktop-chrome

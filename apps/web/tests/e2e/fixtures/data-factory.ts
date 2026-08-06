@@ -67,6 +67,12 @@ export async function deleteEphemeralProduct(p: EphemeralProduct): Promise<void>
   await db()
     .cartItem.deleteMany({ where: { variantId: p.variantId } })
     .catch(() => {});
+  // InventoryLog referencia la variante (Restrict): los re-stocks por la UI del
+  // admin la escriben → sin borrarla, la variante no se puede eliminar (y el
+  // catch lo tragaba dejando residuo vivo — detectado 2026-08-06).
+  await db()
+    .inventoryLog.deleteMany({ where: { variantId: p.variantId } })
+    .catch(() => {});
   await db()
     .productVariant.deleteMany({ where: { productId: p.productId } })
     .catch(() => {});

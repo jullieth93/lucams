@@ -91,7 +91,6 @@ test("newsletter: suscribir → welcome + Consent → duplicado → baja HMAC �
     return path;
   };
 
-  const toast = (text: RegExp) => anonPage.getByText(text).first();
   const subscribe = async (expectToast: RegExp) => {
     // Página FRESCA por suscripción: el token Turnstile es de UN SOLO USO
     // (el widget conserva el ya consumido y el segundo submit moría con

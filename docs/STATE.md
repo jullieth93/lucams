@@ -2037,6 +2037,29 @@ a `true`, 0 residuo). Dos filas de §5.3 NO aplican en catálogo y quedaron docu
 diseño). Selectores móviles reales cubiertos: drawer hamburguesa (abrir/cerrar para la pill),
 tablas→tarjetas en reseñas, señal de éxito por DB cuando el form no muestra mensaje.
 
+**Ampliación misma sesión — newsletter/wishlist/reseñas/back-in-stock + normalizaciones H3/H9:**
+
+- `homolog-newsletter.spec.ts`: suscribir → Consent NEWSLETTER → duplicado → baja HMAC →
+  re-suscripción → One-Click POST. Verde 2/2 LOCAL y STG. **Hallazgo H9 (app, corregido): la API
+  de Resend hace UPSERT (201) en duplicado, nunca 409/422** — la idempotencia por status de Resend
+  nunca funcionó: duplicado mostraba "¡Listo!" y reenviaba welcome, y la re-suscripción tras una
+  baja no creaba el `accepted` nuevo. Regla única `isNewsletterSubscribed()` (vigente = accepted
+  sin revocación posterior) en pre-check y persistConsent (commit `5485166`).
+- `homolog-wishlist.spec.ts`: marcar en PDP → WishlistItem en DB → /mi-cuenta/favoritos → quitar →
+  fila borrada; anónimo → /login?next=. Verde 2/2 LOCAL y STG. El cliente efímero del setup ahora
+  trae fila Customer (la exigen los flujos de cuenta). Fila "badge del header" documentada N/A (no
+  existe en el header actual).
+- `homolog-resenas.spec.ts`: orden PAID sembrada → submit 5★ → gate "ya dejaste tu reseña" →
+  Review isApproved=false → PENDING invisible → duplicado bloqueado por gate. Verde 2/2 LOCAL y
+  STG. H11 documentado (cosmético): el thanks-div del ReviewForm es inalcanzable tras revalidatePath.
+- `homolog-back-in-stock.spec.ts`: PDP agotado → suscribir → Subscription + Consent BACK_IN_STOCK →
+  re-stock por la UI admin (/admin/inventario) → cron x-cron-secret → notifiedAt. Verde 2/2 LOCAL y
+  STG con **0 residuo** (fix de factory: InventoryLog Restrict bloqueaba el borrado de variantes).
+- **H3 normalizado** (`5efe33d`): `.next/dev/types` excluido del tsconfig — typecheck inmune al
+  validator.ts que Turbopack dev escribe no-atómicamente. **H10 (no es bug)**: la "no hidratación"
+  del editor de stock en STG era latencia de arranque frío del preview (>12-20s); los specs ahora
+  esperan activamente la señal React (sonda estricta) — observación operativa documentada.
+
 **Hallazgos** (detalle en el doc de auditoría): H1 carrera `fill()`↔React tras SPA nav (artefacto
 harness, fix en POM con teclado real + reload duro); H2 baseline requiere invalidar caché CMS antes
 (patrón release-check-a1, ya incorporado); H3 `.next/dev/types/validator.ts` corrupto por Turbopack
