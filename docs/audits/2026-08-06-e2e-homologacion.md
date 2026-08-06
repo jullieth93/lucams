@@ -76,6 +76,8 @@ Corridas canónicas del 2026-08-06 con el código final. Evidencia por fila en
 | **panel admin /admin/cotizaciones** (login + lista + filtros) — `catalog-mode.spec` | ✅ 2/2 | ✅ 2/2 | ⛔ crea admin efímero |
 | **cotización Etapa 1 COMPLETA (submit real)** — `homolog-cotizacion.spec`: PDP→carrito→form (consent Ley 1581 + Turnstile test)→Quote PENDING en DB + Consent HABEAS_DATA + Notification QUOTE + confirmación con wa.me bien formado (número del ambiente, ítem, total, link) + carrito vacío + idempotencia (2º intento no duplica) — desktop | ✅ 11/11 pasos (COT-VR34B2) | ✅ 11/11 pasos (COT-W4Z96J) | ⛔ crea datos (skip forzado) |
 | **cotización Etapa 1 COMPLETA** — mobile | ✅ 11/11 pasos (COT-PNUUPR) | ✅ 11/11 pasos (COT-SXE3M9) | ⛔ idem |
+| **matriz de uploads del Estudio** — `homolog-estudio-uploads.spec`: consentimiento Ley 1581 obligatorio (CTA deshabilitado hasta aceptar derechos) → JPG/PNG/WebP → HEIC iPhone→JPEG server → >4.5 MB compresión cliente (11.22 MB→2.03 MB, 2400×1829px en DB) → >10 MB rechazo visible sin asset → no-imagen rechazada por magic bytes con mensaje — desktop | ✅ 15/15 pasos | ✅ 15/15 pasos | ⛔ crea assets (skip forzado) |
+| **matriz de uploads del Estudio** — mobile (sidebar vía FAB+Sheet, banner cookies cerrado primero) | ✅ 16/16 pasos | ✅ 16/16 pasos | ⛔ idem |
 | **paridad de datos** (query directa a la DB del ambiente) | 612 productos / 572 categorías / 772 variantes / 115 ocasiones / 981 campos CMS / 50 migraciones | **idéntico a LOCAL** | homologado el 2026-08-05 (19 tablas idénticas, bitácora STATE) |
 
 Evidencia canónica del flujo admin→cliente (JSON con pasos, valores de DB y
@@ -102,6 +104,20 @@ Evidencia del flujo de cotización completo (`results-…-e2e-quote-….json`):
 - STG: cada corrida disparó el email real de "nueva cotización" al admin (canal
   de venta — RESEND_API_KEY activa en previews). Esperado y documentado: 1
   correo por quote de prueba, cliente `Cliente Prueba <run-en-letras>`.
+
+Evidencia de la matriz de uploads del Estudio (`results-…-e2e-upload-….json`,
+producto del ambiente: `set-fotoimanes-cuadrados` leído de la DB):
+
+- LOCAL: desktop `e2e-upload-1786015900605` / mobile `e2e-upload-1786015913636`.
+- STG: desktop `e2e-upload-1786016085811` / mobile `e2e-upload-1786016115433`.
+- Evidencia clave (idéntica en ambos): `11.22 MB → 2.03 MB · 2400×1829px` en la
+  fila DesignAsset del grande (compresión cliente, regresión §4c cerrada contra
+  la infraestructura REAL de Vercel, que fue donde el bug nació); HEIC del
+  fixture real → `image/jpeg` en DB (§4b); >10 MB y no-imagen rechazados con
+  alerta visible y SIN asset (§4d); warnings DPI legítimos registrados como
+  información, no como fallo.
+- Limpieza verificada por query: 0 DesignAsset residuales en LOCAL y STG; los
+  objetos del bucket se borraron por path exacto (de las filas creadas).
 
 ## 5. Hallazgos
 
@@ -157,6 +173,26 @@ timestamp en dígitos fue rechazado ("El nombre solo puede tener letras").
 limpieza va en el email (`<run>@e2e.test`), que sí admite el RUN completo.
 Detectado gracias al error ruidoso de H5.
 
+**H7 — (app, menor, PENDIENTE) el mensaje de rechazo >10 MB difiere entre
+LOCAL y STG.** En LOCAL el usuario ve el hint específico ("es muy grande para
+el servidor. Prueba con una foto de menos de ~4 MB…"); en STG ve el genérico
+("Revisa tu conexión e inténtalo de nuevo") porque Vercel responde el 413 con
+HTML no-RSC y el regex `tooBig` de `studio-sidebar.tsx` no reconoce el "An
+unexpected response was received from the server" de Next. El requisito
+(rechazo visible, sin pantalla en blanco, sin asset) se cumple en ambos —
+pero la guía práctica al usuario se pierde justo donde el límite existe.
+Fix sugerido (1 línea): tratar cualquier throw de la acción con archivo
+>10 MB como caso de tamaño, o ampliar el regex. No es fallo de homologación.
+
+**H8 — (app, menor, PENDIENTE) el banner de cookies tapa el FAB de edición del
+Estudio en mobile.** Ambos son `fixed` abajo: el FAB queda inalcanzable hasta
+cerrar el banner (reproducido: el click del harness era interceptado hasta el
+timeout). Un usuario real puede cerrar el banner y seguir, pero el primer
+contacto con el diferenciador #1 en móvil arranca con un elemento tapado.
+Candidato: subir el FAB mientras el banner esté visible (z/offset), o el
+banner sin overlay de fondo. No es fallo de homologación; el spec lo resuelve
+cerrando el banner como haría el usuario.
+
 **Sin hallazgos de homologación de flujo**: todos los flujos ejecutados se
 comportan idéntico en LOCAL y STG; las únicas diferencias observadas son las
 intencionales de §3 del prompt (dev server Turbopack vs build Vercel, latencia,
@@ -174,6 +210,10 @@ cd apps/web && E2E_ENV=stg E2E_AUTH=1 pnpm exec playwright test homolog-admin-cm
 # Flujo de cotización Etapa 1 (submit real; anónimo — no necesita E2E_AUTH):
 cd apps/web && E2E_ENV=local pnpm exec playwright test homolog-cotizacion
 cd apps/web && E2E_ENV=stg pnpm exec playwright test homolog-cotizacion
+
+# Matriz de uploads del Estudio (anónimo; genera y borra assets/objetos):
+cd apps/web && E2E_ENV=local pnpm exec playwright test homolog-estudio-uploads
+cd apps/web && E2E_ENV=stg pnpm exec playwright test homolog-estudio-uploads
 
 # Smoke read-only en PRD (sin E2E_AUTH — nunca muta):
 cd apps/web && E2E_ENV=prd pnpm exec playwright test smoke --project=desktop-chrome

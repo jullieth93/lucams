@@ -2006,6 +2006,18 @@ la carrera fill↔hidratación también aplicaba al form de cotización (fix: to
 efectos React + submit que falla ruidoso) y el factory de nombres debe respetar el schema Zod
 (solo letras → timestamp codificado en letras).
 
+**Ampliación misma sesión — matriz de uploads del Estudio** (`homolog-estudio-uploads.spec.ts`):
+consentimiento Ley 1581 obligatorio (CTA deshabilitado hasta aceptar derechos) → JPG/PNG/WebP →
+HEIC real de iPhone → `image/jpeg` en DB → **>4.5 MB comprimido en cliente (11.22 MB → 2.03 MB,
+2400×1829px en la fila DesignAsset — la regresión §4c cerrada contra Vercel REAL, donde el bug
+nació)** → >10 MB rechazado con alerta visible y sin asset → no-imagen renombrada rechazada por
+magic bytes con mensaje claro. Verde en LOCAL (2/2) y STG (2/2); en mobile el sidebar se ejerce
+vía FAB+Sheet (A2.8) y el banner de cookies se cierra primero (tapaba el FAB). Limpieza verificada:
+0 DesignAsset residuales en LOCAL/STG; objetos del bucket borrados por path exacto. Hallazgos
+menores PENDIENTES (app, no de homologación): H7 el mensaje del rechazo >10 MB en STG es el
+genérico (el regex `tooBig` no reconoce el 413-HTML de Vercel) y H8 el banner de cookies tapa el
+FAB de edición en mobile hasta cerrarlo.
+
 **Hallazgos** (detalle en el doc de auditoría): H1 carrera `fill()`↔React tras SPA nav (artefacto
 harness, fix en POM con teclado real + reload duro); H2 baseline requiere invalidar caché CMS antes
 (patrón release-check-a1, ya incorporado); H3 `.next/dev/types/validator.ts` corrupto por Turbopack
