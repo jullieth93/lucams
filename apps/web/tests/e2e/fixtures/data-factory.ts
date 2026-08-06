@@ -80,8 +80,12 @@ export async function deleteEphemeralProduct(p: EphemeralProduct): Promise<void>
 
 /** Datos de cliente/cotización de prueba. Email en .test → red de limpieza. */
 export function fakeCustomer(run: string) {
+  // El nombre NO admite dígitos (QuoteFormSchema: "El nombre solo puede tener
+  // letras") → el timestamp del run se codifica en letras (0→a … 9→j) y el
+  // marcador es "Prueba" (sin dígitos): único, trazable y válido.
+  const runLetters = run.replace(/\D/g, "").replace(/\d/g, (d) => "abcdefghij"[Number(d)]!);
   return {
-    name: `Cliente E2E ${run}`,
+    name: `Cliente Prueba ${runLetters}`,
     email: `${run}@e2e.test`,
     // Celular colombiano sintético (300 + 7 dígitos del run): nunca real.
     whatsapp: `300${run.replace(/\D/g, "").slice(-7)}`,

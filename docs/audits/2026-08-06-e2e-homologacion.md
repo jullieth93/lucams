@@ -74,6 +74,8 @@ Corridas canónicas del 2026-08-06 con el código final. Evidencia por fila en
 | **smoke storefront** — mobile | ✅ 9/9 | ✅ 9/9 | ◻️ no corrido (read-only innecesario duplicado) |
 | **flujo cotización Etapa 1** (home→catálogo→PDP→carrito→CTA WhatsApp→form + validación de vacíos) — `catalog-mode.spec` | ✅ 2/2 | ✅ 2/2 | ⛔ crea datos efímeros |
 | **panel admin /admin/cotizaciones** (login + lista + filtros) — `catalog-mode.spec` | ✅ 2/2 | ✅ 2/2 | ⛔ crea admin efímero |
+| **cotización Etapa 1 COMPLETA (submit real)** — `homolog-cotizacion.spec`: PDP→carrito→form (consent Ley 1581 + Turnstile test)→Quote PENDING en DB + Consent HABEAS_DATA + Notification QUOTE + confirmación con wa.me bien formado (número del ambiente, ítem, total, link) + carrito vacío + idempotencia (2º intento no duplica) — desktop | ✅ 11/11 pasos (COT-VR34B2) | ✅ 11/11 pasos (COT-W4Z96J) | ⛔ crea datos (skip forzado) |
+| **cotización Etapa 1 COMPLETA** — mobile | ✅ 11/11 pasos (COT-PNUUPR) | ✅ 11/11 pasos (COT-SXE3M9) | ⛔ idem |
 | **paridad de datos** (query directa a la DB del ambiente) | 612 productos / 572 categorías / 772 variantes / 115 ocasiones / 981 campos CMS / 50 migraciones | **idéntico a LOCAL** | homologado el 2026-08-05 (19 tablas idénticas, bitácora STATE) |
 
 Evidencia canónica del flujo admin→cliente (JSON con pasos, valores de DB y
@@ -87,6 +89,19 @@ screenshots del CTA visible):
 - Estado post-corrida verificado por query: `publishedBody` = texto original en
   AMBOS ambientes; 0 usuarios efímeros residuales; 0 productos/categorías de
   test creados hoy.
+
+Evidencia del flujo de cotización completo (`results-…-e2e-quote-….json`):
+
+- LOCAL: desktop `e2e-quote-1785992357040` (COT-VR34B2) / mobile
+  `e2e-quote-1785992367550` (COT-PNUUPR).
+- STG: desktop `e2e-quote-1785992509285` (COT-W4Z96J) / mobile
+  `e2e-quote-1785992537993` (COT-SXE3M9).
+- Limpieza verificada por query en ambos: 0 quotes de test vivas (soft-deleted),
+  0 notificaciones/productos residuales, 0 buckets `quote:%`; las 2 filas
+  `Consent` por ambiente QUEDAN (ledger legal append-only, marcadas con el RUN).
+- STG: cada corrida disparó el email real de "nueva cotización" al admin (canal
+  de venta — RESEND_API_KEY activa en previews). Esperado y documentado: 1
+  correo por quote de prueba, cliente `Cliente Prueba <run-en-letras>`.
 
 ## 5. Hallazgos
 
@@ -124,10 +139,28 @@ LOCAL. Borrados a mano (verificado: 0 residuales; los 46 productos/categorías
 previas — 0 creados hoy — invisibles en el storefront y cubiertos por la red
 de limpieza del repo).
 
+**H5 — (harness, corregido) la misma carrera de hidratación aplica al form de
+cotización.** `quote-form.tsx` manda `customerWhatsapp`/`department`/`city` en
+hidden inputs alimentados por estado React: un `fill()` pre-hidratación los
+deja vacíos y el submit muere en Zod con el genérico "Revisa los campos
+marcados". Fix en el POM `pages/cotizacion.ts`: llenado dentro de `toPass`
+exigiendo los EFECTOS React (hidden con valor, checkbox marcado) + submit que
+falla RUIDOSO con el mensaje real del servidor en vez de un timeout opaco.
+Lección reusable: en esta stack (Next 16 + React 19 + useActionState) ningún
+spec debe confiar en `fill()` a pelo sobre inputs controlados — siempre con
+aserción del efecto.
+
+**H6 — (datos de prueba, corregido) el schema Zod manda sobre el RUN.**
+`QuoteFormSchema.customerName` solo admite letras; el nombre de prueba con el
+timestamp en dígitos fue rechazado ("El nombre solo puede tener letras").
+`fakeCustomer` ahora codifica el timestamp en letras (0→a…9→j) y la llave de
+limpieza va en el email (`<run>@e2e.test`), que sí admite el RUN completo.
+Detectado gracias al error ruidoso de H5.
+
 **Sin hallazgos de homologación de flujo**: todos los flujos ejecutados se
 comportan idéntico en LOCAL y STG; las únicas diferencias observadas son las
 intencionales de §3 del prompt (dev server Turbopack vs build Vercel, latencia,
-bypass header).
+bypass header, email real al admin solo donde el ambiente lo envía).
 
 ## 6. Cómo reproducir
 
@@ -137,6 +170,10 @@ cd apps/web && E2E_ENV=local E2E_AUTH=1 pnpm exec playwright test homolog-admin-
 
 # STG (preview develop con bypass — lo toma de .env.stg):
 cd apps/web && E2E_ENV=stg E2E_AUTH=1 pnpm exec playwright test homolog-admin-cms
+
+# Flujo de cotización Etapa 1 (submit real; anónimo — no necesita E2E_AUTH):
+cd apps/web && E2E_ENV=local pnpm exec playwright test homolog-cotizacion
+cd apps/web && E2E_ENV=stg pnpm exec playwright test homolog-cotizacion
 
 # Smoke read-only en PRD (sin E2E_AUTH — nunca muta):
 cd apps/web && E2E_ENV=prd pnpm exec playwright test smoke --project=desktop-chrome

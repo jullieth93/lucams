@@ -1994,6 +1994,18 @@ homolog-admin-cms`.
 en LOCAL/STG/PRD (read-only); catalog-mode 2/2 en LOCAL/STG; paridad de datos exacta LOCAL≡STG.
 DBs verificadas limpias post-corrida (texto original publicado, 0 residuos de la sesión).
 
+**Ampliación misma sesión — flujo de cotización Etapa 1 COMPLETO** (`homolog-cotizacion.spec.ts`):
+submit real del form (consent Ley 1581 + Turnstile test) → Quote PENDING en DB + Consent
+HABEAS_DATA atómico + Notification QUOTE con deep link + confirmación con wa.me bien formado
+(número del ambiente, ítem, total, link; URL < 2000 chars) + carrito vacío + idempotencia (2º
+intento → redirect a /carrito, 1 sola Quote). Verde en LOCAL (2/2) y STG (2/2). Limpieza verificada:
+quotes soft-deleted, notificaciones y producto efímero borrados, buckets rate-limit reseteados; el
+Consent queda (ledger legal, marcado con RUN). STG envía 1 email real al admin por cotización de
+prueba (canal de venta activo en previews — esperado, documentado). Hallazgos H5/H6 en el doc:
+la carrera fill↔hidratación también aplicaba al form de cotización (fix: toPass con aserción de
+efectos React + submit que falla ruidoso) y el factory de nombres debe respetar el schema Zod
+(solo letras → timestamp codificado en letras).
+
 **Hallazgos** (detalle en el doc de auditoría): H1 carrera `fill()`↔React tras SPA nav (artefacto
 harness, fix en POM con teclado real + reload duro); H2 baseline requiere invalidar caché CMS antes
 (patrón release-check-a1, ya incorporado); H3 `.next/dev/types/validator.ts` corrupto por Turbopack
