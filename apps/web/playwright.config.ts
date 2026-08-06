@@ -1,26 +1,43 @@
 /*
- * Playwright config para E2E browser tests.
+ * Playwright config — suite E2E y homologación de ambientes
+ * (docs/PROMPT_E2E_HOMOLOGACION.md §9.2).
  *
  * Estrategia:
- *  - Tests en `tests/e2e/*.spec.ts` (separados de unit tests vitest)
- *  - Levanta el server automáticamente antes de correr (webServer config):
- *    local → `next dev`; CI → `next start` sobre el build de producción
- *    (más estable para mutaciones de carrito). Si se pasa `PLAYWRIGHT_BASE_URL`
- *    (ej. una Vercel preview), NO levanta server y apunta ahí.
- *  - Chromium only por default (suficiente para smoke). Firefox/Safari
- *    se suman en sub-bloque L (QA exhaustivo cross-browser).
+ *  - Tests en `tests/e2e/*.spec.ts` (separados de unit tests vitest).
+ *  - Ambiente explícito vía E2E_ENV=local|stg|prd (default local — ver
+ *    tests/e2e/_setup/env.ts): decide el .env que carga el runner, el baseURL
+ *    y el bypass de Vercel (STG inyecta x-vercel-protection-bypass vía
+ *    extraHTTPHeaders si VERCEL_BYPASS_TOKEN está presente).
+ *    `PLAYWRIGHT_BASE_URL` explícita siempre gana y apaga el webServer local
+ *    (compat con previews puntuales y release-check-a1).
+ *  - Projects: desktop-chrome (1280×800) y mobile-chrome (390×844) — la matriz
+ *    flujo × viewport corre gratis: cada spec corre en ambos. El gate de CI
+ *    fija --project=desktop-chrome (ci.yml / nightly-full.yml).
+ *  - Auth compartida SOLO vía storageState por ambiente, generado en
+ *    global.setup cuando E2E_AUTH=1 (homologación). Sin E2E_AUTH el setup es
+ *    no-op y los specs que requieren auth se saltan con mensaje claro — así el
+ *    gate de CI (sin GoTrue) sigue verde.
+ *  - Evidencia: trace retain-on-failure, screenshot al fallo, video en primer
+ *    retry, reporters line+html+json en CI.
+ *  - Levanta el server automáticamente solo en LOCAL sin PLAYWRIGHT_BASE_URL:
+ *    local → `next dev`; CI → `next start` sobre el build de producción.
  *  - Retries 2 en CI, 0 local (debugging más claro).
- *  - Reporter html + line en CI, list local.
  */
 
 import { defineConfig, devices } from "@playwright/test";
+import { baseUrlFor, currentEnv, extraHeadersFor, loadEnvFor } from "./tests/e2e/_setup/env";
 
-// El dev server de esta VM corre en :4000 (gestionado por make en
-// lucams-shop-local). Default a 4000 y reusa el server ya levantado; en CI se
-// usa PLAYWRIGHT_BASE_URL (Vercel preview).
+const E2E_ENV = currentEnv();
+// Carga el .env del ambiente en el proceso runner (lo heredan workers y el
+// webServer). No-op si el archivo no existe (CI inyecta sus propias vars).
+loadEnvFor(E2E_ENV);
+
 const PORT = process.env.PORT ?? "4000";
-const BASE_URL = process.env.PLAYWRIGHT_BASE_URL ?? `http://localhost:${PORT}`;
+const BASE_URL = baseUrlFor(E2E_ENV);
 const isCI = !!process.env.CI;
+// Servidor gestionado por Playwright SOLO en local sin URL explícita. STG/PRD
+// apuntan a infraestructura viva — nunca se levanta server para ellos.
+const manageLocalServer = E2E_ENV === "local" && !process.env.PLAYWRIGHT_BASE_URL;
 
 export default defineConfig({
   testDir: "./tests/e2e",
@@ -39,27 +56,44 @@ export default defineConfig({
   // que uno pierda su redirect `?added=1` (verificado: serial pasa, paralelo flakea).
   // CI corre contra el build prod de Vercel (sí aguanta concurrencia) → 2 workers.
   workers: isCI ? 2 : 1,
-  reporter: isCI ? [["html", { open: "never" }], ["line"]] : "list",
+  reporter: isCI
+    ? [
+        ["html", { open: "never" }],
+        ["line"],
+        ["json", { outputFile: "test-results/playwright-results.json" }],
+      ]
+    : "list",
+  globalSetup: "./tests/e2e/_setup/global.setup.ts",
+  globalTeardown: "./tests/e2e/_setup/global.teardown.ts",
   use: {
     baseURL: BASE_URL,
+    // Bypass de protección de Vercel (STG). En local/PRD es {}.
+    extraHTTPHeaders: extraHeadersFor(E2E_ENV),
     // PW_CHANNEL=chromium → build completo en vez de chromium_headless_shell.
     // Páginas de terceros con anti-bot (checkout hospedado de Wompi) detectan
     // el headless shell y bloquean el CTA ~50% de las corridas (verificado
     // 2026-07-28, intentos e2e 15-19 vs 13/14/18).
     ...(process.env.PW_CHANNEL ? { channel: process.env.PW_CHANNEL } : {}),
-    trace: "on-first-retry",
+    trace: "retain-on-failure",
     screenshot: "only-on-failure",
-    video: "retain-on-failure",
+    video: "on-first-retry",
   },
   projects: [
     {
-      name: "chromium",
-      use: { ...devices["Desktop Chrome"] },
+      // Matriz §6 del prompt: Desktop 1280×800.
+      name: "desktop-chrome",
+      use: { ...devices["Desktop Chrome"], viewport: { width: 1280, height: 800 } },
+    },
+    {
+      // Matriz §6 del prompt: Mobile 390×844 (Chrome móvil con touch).
+      // Los audits de admin en 375×812 fijan su propio viewport dentro del spec
+      // (precedente: mobile-admin-audit.spec.ts).
+      name: "mobile-chrome",
+      use: { ...devices["Mobile Chrome"], viewport: { width: 390, height: 844 } },
     },
   ],
-  ...(process.env.PLAYWRIGHT_BASE_URL
-    ? {}
-    : {
+  ...(manageLocalServer
+    ? {
         webServer: {
           // CI: build de producción ya generado → `next start` (estable bajo carga).
           // Local: `next dev` con hot-reload. Ambos en el PORT configurado.
@@ -68,5 +102,6 @@ export default defineConfig({
           reuseExistingServer: !isCI,
           timeout: 180_000,
         },
-      }),
+      }
+    : {}),
 });

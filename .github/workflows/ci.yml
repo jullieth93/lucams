@@ -251,7 +251,7 @@ jobs:
 
       - name: Playwright (smoke + a11y + axe + compra)
         # El webServer del config levanta `next start` en :4000 y lo gestiona.
-        run: pnpm --filter web exec playwright test smoke a11y axe compra estudio --project=chromium
+        run: pnpm --filter web exec playwright test smoke a11y axe compra estudio --project=desktop-chrome
 
       - name: Subir reporte Playwright (si falla)
         if: ${{ failure() }}

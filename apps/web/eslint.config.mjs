@@ -12,6 +12,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Artefactos de trabajo locales (gitignored): scripts de verificación
+    // manual, evidencia E2E, etc. No son código del repo.
+    "tmp/**",
   ]),
   // Honrar convención de underscore-prefix para args/vars no usados
   // (Lucy 2026-05-21: objetivo 0 warnings en producción).
@@ -48,6 +51,14 @@ const eslintConfig = defineConfig([
             "No leas x-forwarded-for / x-real-ip crudos (spoofeables): usa getClientIp(headers) de @/lib/client-ip.",
         },
       ],
+    },
+  },
+  // Playwright fixtures: el callback `use(...)` de test.extend dispara un falso
+  // positivo de react-hooks/rules-of-hooks (no es React). Solo en tests E2E.
+  {
+    files: ["tests/e2e/**/*.ts"],
+    rules: {
+      "react-hooks/rules-of-hooks": "off",
     },
   },
 ]);

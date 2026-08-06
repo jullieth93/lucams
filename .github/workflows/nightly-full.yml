@@ -180,7 +180,7 @@ jobs:
       # por eso NO corren en el gate por-PR) + cms-editing-flow (D4: flujo de edición del CMS).
       # Excluye 'visual' (baselines por-píxel).
       - name: Playwright (completo, incl. admin/MFA/Estudio/CMS)
-        run: pnpm --filter web exec playwright test smoke a11y axe compra admin-login admin-mfa estudio cms-editing-flow --project=chromium
+        run: pnpm --filter web exec playwright test smoke a11y axe compra admin-login admin-mfa estudio cms-editing-flow --project=desktop-chrome
       - name: Subir reporte Playwright (si falla)
         if: failure()
         uses: actions/upload-artifact@v4

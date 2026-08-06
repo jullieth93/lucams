@@ -13,6 +13,26 @@
 
 ## Resumen actual
 
+**🧪 SUITE E2E DE HOMOLOGACIÓN (2026-08-06) — infraestructura POM/fixtures + primer cruce
+admin→cliente certificado en LOCAL y STG.** Se ejecutó el PROMPT_E2E_HOMOLOGACION (entregables 1-5):
+`playwright.config.ts` con projects `desktop-chrome` (1280×800) + `mobile-chrome` (390×844), ambiente
+explícito `E2E_ENV=local|stg|prd`, bypass Vercel condicional en config, storageState por ambiente vía
+`global.setup` (admin+cliente efímeros vía service role, borrados en teardown, PROHIBIDO en PRD con
+throw) y red de seguridad CMS que restaura el campo si el spec muere a mitad (doble red: afterAll +
+global.teardown). POM (11) + fixtures (`run/db/data-factory/storage/auth`) nuevos bajo `tests/e2e/`.
+El spec `homolog-admin-cms` (admin edita `home.categories.cta-all` por UI → cliente anónimo lo ve en
+/ → revertir → original visible, con verificación DB en cada paso) corre verde en LOCAL (2/2) y STG
+(2/2), determinista. Matriz ampliada: smoke 9/9 × {LOCAL, STG, PRD read-only} y catalog-mode 2/2 ×
+{LOCAL, STG}; paridad de datos por query: 612 productos / 572 categorías / 772 variantes / 115
+ocasiones / 981 campos CMS / 50 migraciones — idénticos LOCAL≡STG. Hallazgos: carrera `fill()`↔React
+tras navegación SPA en el editor CMS (artefacto del harness — el tipeo real siempre funciona — fix:
+teclado real + reload en el POM), `validator.ts` de Turbopack dev corrupto intermitente (workaround
+documentado), eslint ya no escanea `tmp/`. Detalle y matriz con evidencia:
+[docs/audits/2026-08-06-e2e-homologacion.md](audits/2026-08-06-e2e-homologacion.md).
+Gates: typecheck + eslint + prettier (comando del gate CI) verdes. **Sin commit — esperando OK de Lucy.**
+
+---
+
 **🔬 VERIFICACIÓN DE FLUJOS REALES EN LOS 3 AMBIENTES (2026-08-05, multi-agente con reproducción E2E).**
 Lucy exigió pruebas de flujo (no solo config): el barrido encontró y se corrigieron 6 bugs reales:
 (1) **BLOQUEANTE** — comprador primerizo no podía crear diseño ("Nombre Personalizado"): las actions
@@ -1898,9 +1918,12 @@ sidebar fijo, Cancelar en cupones.
 
 **Autónomo (candidatos, calidad-primero):**
 
-1. **Backlog auditoría v3: 100% barrido en código** (Tandas 1-8 + FB1-FB5 + piezas mayores + tail de calidad T5/T6/T7). No queda deuda de auditoría accionable sin decisión/verificación de Lucy.
-2. Otros pulidos de Fase 3 storefront/estudio que no dependan de la curaduría de plantillas.
-3. Barrido de coherencia de datos revenue/COD end-to-end si aparece señal.
+1. **Ampliar la suite E2E de homologación** (infra lista desde 2026-08-06, ver Bitácora): cubrir el
+   resto de la matriz §6/§7 de `docs/PROMPT_E2E_HOMOLOGACION.md` (flujos cliente y admin completos)
+   reusando POMs/fixtures; evaluar meter `homolog-admin-cms` al nightly contra STG.
+2. **Backlog auditoría v3: 100% barrido en código** (Tandas 1-8 + FB1-FB5 + piezas mayores + tail de calidad T5/T6/T7). No queda deuda de auditoría accionable sin decisión/verificación de Lucy.
+3. Otros pulidos de Fase 3 storefront/estudio que no dependan de la curaduría de plantillas.
+4. Barrido de coherencia de datos revenue/COD end-to-end si aparece señal.
 
 **Cuentas creadas just-in-time durante fases posteriores:**
 
@@ -1936,6 +1959,50 @@ sidebar fijo, Cancelar en cupones.
 ---
 
 ## Bitácora (append-only, más reciente arriba)
+
+### 2026-08-06 — Suite E2E de homologación: infra POM/fixtures + cruce admin→cliente en LOCAL y STG
+
+Ejecución del `docs/PROMPT_E2E_HOMOLOGACION.md` (entregables 1-5 del mandato). Documento con matriz
+flujo × ambiente, evidencia y hallazgos: `docs/audits/2026-08-06-e2e-homologacion.md`.
+
+**Infraestructura nueva (todo bajo `apps/web/tests/e2e/`):**
+
+- `_setup/env.ts` — ambiente explícito `E2E_ENV` (default local), carga del `.env` del ambiente sin
+  pisar shell, baseURL y bypass Vercel por ambiente. `PLAYWRIGHT_BASE_URL` explícita siempre gana.
+- `_setup/global.setup.ts` — con `E2E_AUTH=1` crea admin+cliente efímeros vía service role (patrón
+  vigente del repo; el admin real tiene MFA y su secret no está disponible para automatización),
+  login por UI y storageState en `tests/e2e/.auth/<env>/` (gitignored). Throw en PRD.
+- `_setup/global.teardown.ts` — borra los efímeros (manifest) y red de seguridad CMS: si un spec
+  muere con la variante publicada, restaura el estado original por DB (guard file en tmp/).
+- `fixtures/{run,db,data-factory,storage,auth}.ts` — RUN `e2e-<tag>-<Date.now()>` obligatorio, datos
+  esperados leídos de la DB del ambiente (cero hardcoding), imágenes con sharp al bucket real
+  `customer-uploads`, fixtures `adminPage`/`clientPage`/`anonPage`.
+- `pages/{home,catalogo,pdp,estudio,carrito,cotizacion,admin-login,admin-dashboard,
+admin-cotizaciones,admin-contenido,admin-notificaciones}.ts` — POMs con selectores ya verificados
+  en los specs existentes.
+- `playwright.config.ts` — projects `desktop-chrome` (1280×800) + `mobile-chrome` (390×844);
+  `ci.yml` y `nightly-full.yml` actualizados (`--project=desktop-chrome`). Evidencia §8: trace
+  retain-on-failure, screenshot on-failure, video on-first-retry, reporter json en CI.
+
+**Spec de certificación** `homolog-admin-cms.spec.ts`: admin edita `home.categories.cta-all` por la
+UI → cliente anónimo lo ve en / → revertir → original visible. Lee el original de la DB (no de una
+constante), variante con RUN, verificación DB en cada paso, evidencia JSON+screenshots por corrida en
+`apps/web/tmp/e2e-homologacion/`. Corre: `E2E_ENV=<local|stg> E2E_AUTH=1 pnpm exec playwright test
+homolog-admin-cms`.
+
+**Resultados**: LOCAL 2/2 (52s) y STG 2/2 (1.2m), todo al primer intento tras los fixes; smoke 9/9
+en LOCAL/STG/PRD (read-only); catalog-mode 2/2 en LOCAL/STG; paridad de datos exacta LOCAL≡STG.
+DBs verificadas limpias post-corrida (texto original publicado, 0 residuos de la sesión).
+
+**Hallazgos** (detalle en el doc de auditoría): H1 carrera `fill()`↔React tras SPA nav (artefacto
+harness, fix en POM con teclado real + reload duro); H2 baseline requiere invalidar caché CMS antes
+(patrón release-check-a1, ya incorporado); H3 `.next/dev/types/validator.ts` corrupto por Turbopack
+dev rompe typecheck local intermitente (borrar y re-correr); H4 huérfanos de una corrida matada por
+timeout limpiados a mano. **Sin hallazgos de homologación de flujo** LOCAL↔STG.
+
+**Pendiente de esta línea**: ampliar la cobertura al resto de la matriz §6/§7 del prompt (21 flujos
+cliente + 8 admin) reusando esta infra; decidir si el spec de homologación entra al nightly
+(contra STG, no al gate por-PR); enrolar MFA del admin real en STG (cuenta Lucy) sigue pendiente.
 
 ### 2026-07-25 — El Estudio nunca funcionó en producción (ADR-081) + narrativa de envíos + carrito agrupado + legal v4
 

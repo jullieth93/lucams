@@ -51,6 +51,8 @@ coverage/
 test-results/
 playwright-report/
 playwright/.cache/
+# storageState de la homologación E2E (cookies de sesión efímeras)
+apps/web/tests/e2e/.auth/
 
 # ──────────────── Logs locales ────────────────
 # Logs de dev local (mandato #10: la VM como símil-Vercel local)
