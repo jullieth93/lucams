@@ -40,6 +40,7 @@ import {
   type StudioStoreState,
 } from "./lib/store";
 import { STUDIO_ACCEPTED_IMAGE_TYPES, uploadGuidanceText } from "./lib/upload-guidance";
+import { compressImageForUpload } from "./client-image-compress";
 import type { StudioAsset, StudioTemplate } from "./types";
 import { useStudioTexts } from "./studio-texts-provider";
 import { fillStudioText } from "./studio-texts";
@@ -149,8 +150,12 @@ export function StudioSidebar({
     setUploadError(null);
     try {
       for (const file of Array.from(files)) {
+        // Compresión cliente si la foto supera ~4 MB (el tope real de Vercel
+        // es ~4.5 MB por request — fotos full-res de iPhone). HEIC pasa intacto
+        // (el servidor lo decodifica con heic-decode). Ver client-image-compress.ts.
+        const prepared = await compressImageForUpload(file);
         const formData = new FormData();
-        formData.append("file", file);
+        formData.append("file", prepared);
         if (designId) formData.append("designId", designId);
         formData.append("rightsAccepted", rightsAccepted ? "true" : "false");
         let result;
