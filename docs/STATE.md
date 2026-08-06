@@ -13,6 +13,20 @@
 
 ## Resumen actual
 
+**🔬 VERIFICACIÓN DE FLUJOS REALES EN LOS 3 AMBIENTES (2026-08-05, multi-agente con reproducción E2E).**
+Lucy exigió pruebas de flujo (no solo config): el barrido encontró y se corrigieron 6 bugs reales:
+(1) **BLOQUEANTE** — comprador primerizo no podía crear diseño ("Nombre Personalizado"): las actions
+usaban `peekCartSession()` en vez de `getOrCreateCartSession()`; (2) HEIC de iPhone roto en Linux
+(sharp sin de265) → `heic-decode` server-side (JS/WASM) + test de regresión; (3) fotos >4.5 MB
+morían con 413 en Vercel → compresión cliente (2400px, JPEG q0.85) probada E2E: 8.23 MB → 1.76 MB
+sube OK; (4) UI muda ante fallos de framework en el estudio → catch con mensaje por archivo;
+(5) previews del diseño 500/400 → remotePatterns con host STG + stack local; (6) CSP bloqueaba
+vercel.live en previews. Además: catálogo re-sincronizado PRD→LOCAL (19 tablas idénticas), emails
+OTP de auth local con plantilla {{ .Token }}, y la matriz uploads verificada: JPG/PNG/WebP/HEIC/≤4MB
+suben en los 3 ambientes. Suite: 2760 verdes. Todo en producción (`9cac62e2`).
+
+---
+
 **🔔 CENTRO DE NOTIFICACIONES EN EL ADMIN (2026-08-05) — el spam de correo quedó eliminado.**
 Los eventos del sistema ahora viven en la tabla `Notification` y en `/admin/notificaciones`
 (badge de no leídas en el nav): alertas del sistema → in-app siempre y email SOLO si crítica;
