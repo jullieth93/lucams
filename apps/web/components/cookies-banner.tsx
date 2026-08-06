@@ -84,6 +84,10 @@ export function CookiesBanner() {
     setPrefs(next);
     setShow(false);
     setModalOpen(false);
+    // Aviso global (contrato documentado en el header): componentes que se
+    // reubican mientras el banner está visible (ej. el FAB del Estudio en
+    // mobile, H8 2026-08-06) vuelven a su sitio.
+    window.dispatchEvent(new CustomEvent("cookie-consent-changed"));
     // Audit DB fire-and-forget (no bloquea UX)
     void persistCookieConsentAction(next);
   }

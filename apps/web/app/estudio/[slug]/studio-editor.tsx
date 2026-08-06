@@ -41,6 +41,7 @@ import { StudioStyleToolbar } from "./studio-style-toolbar";
 import { StudioOnboarding } from "./studio-onboarding";
 import { StudioGesturesHint, GESTURES_HINT_STORAGE_KEY } from "./studio-gestures-hint";
 import { StudioAssetPickerModal } from "./studio-asset-picker-modal";
+import { readClientCookiePreferences } from "@/lib/cookie-consent";
 import { StudioPreviewModal } from "./studio-preview-modal";
 import {
   Sheet,
@@ -198,6 +199,17 @@ export function StudioEditor({
   const showRealismGuides = false;
   // A2.8 — Sheet drawer mobile state (sidebar bottom slide-up).
   const [mobileSheetOpen, setMobileSheetOpen] = useState(false);
+  // H8 (2026-08-06) — el banner de cookies (fixed bottom z-[9000]) tapa el FAB
+  // de edición en mobile hasta que el visitante elige. Mientras no haya
+  // consentimiento persistido, el FAB sube por encima del banner; el evento
+  // "cookie-consent-changed" lo devuelve a su sitio.
+  const [fabRaisedForCookies, setFabRaisedForCookies] = useState(false);
+  useEffect(() => {
+    queueMicrotask(() => setFabRaisedForCookies(!readClientCookiePreferences()));
+    const handler = () => setFabRaisedForCookies(false);
+    window.addEventListener("cookie-consent-changed", handler);
+    return () => window.removeEventListener("cookie-consent-changed", handler);
+  }, []);
   const slotStagesRef = useRef<Map<number, Konva.Stage | null>>(new Map());
   // Si el finalize ya pasó pero el CARRITO falló, reintentar desde la modal no puede volver a
   // finalizar: el diseño quedó en READY y `finalizeDesign` solo acepta borradores, así que el
@@ -1199,7 +1211,7 @@ export function StudioEditor({
             // brand-purple-dark → 7.06:1. Y el nombre accesible sale del CONTENIDO en vez de un
             // aria-label que no decía "Editar": con control por voz "haz clic en Editar" no
             // activaba nada (WCAG 2.5.3 Label in Name).
-            className="bg-brand-turquoise ring-brand-turquoise/30 text-brand-purple-dark fixed bottom-4 left-4 z-30 inline-flex h-14 items-center gap-2 rounded-full px-5 text-sm font-bold shadow-xl ring-4 transition-transform hover:scale-105 active:scale-95 lg:hidden"
+            className={`bg-brand-turquoise ring-brand-turquoise/30 text-brand-purple-dark fixed ${fabRaisedForCookies ? "bottom-28" : "bottom-4"} left-4 z-30 inline-flex h-14 items-center gap-2 rounded-full px-5 text-sm font-bold shadow-xl ring-4 transition-all hover:scale-105 active:scale-95 lg:hidden`}
           >
             <Sparkles className="h-5 w-5" aria-hidden />
             <span>{texts.comun.editar}</span>

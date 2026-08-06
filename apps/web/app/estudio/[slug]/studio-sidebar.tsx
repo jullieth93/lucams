@@ -167,7 +167,14 @@ export function StudioSidebar({
           // sin este catch el usuario no veía NADA (silencio total — verificación
           // de uploads 2026-08-05). Damos el motivo y la salida práctica.
           const reason = err instanceof Error ? err.message : String(err);
-          const tooBig = /413|too large|end of form|network|fetch failed/i.test(reason);
+          // El 413 de Vercel llega como HTML no-RSC y Next lo traduce a "An
+          // unexpected response was received from the server" (sin "413" en el
+          // texto — hallazgo H7, 2026-08-06): el mensaje de tamaño también aplica
+          // ahí y, desde luego, si el archivo preparado supera el tope del server
+          // (10 MB), la causa ES el tamaño aunque el error no lo diga.
+          const tooBig =
+            prepared.size > 10 * 1024 * 1024 ||
+            /413|too large|end of form|network|fetch failed|unexpected response/i.test(reason);
           setUploadError(
             tooBig
               ? `No pudimos subir "${file.name}": es muy grande para el servidor. Prueba con una foto de menos de ~4 MB (o baja la resolución en tu cámara).`
