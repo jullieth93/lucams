@@ -78,7 +78,15 @@ Corridas canónicas del 2026-08-06 con el código final. Evidencia por fila en
 | **cotización Etapa 1 COMPLETA** — mobile | ✅ 11/11 pasos (COT-PNUUPR) | ✅ 11/11 pasos (COT-SXE3M9) | ⛔ idem |
 | **matriz de uploads del Estudio** — `homolog-estudio-uploads.spec`: consentimiento Ley 1581 obligatorio (CTA deshabilitado hasta aceptar derechos) → JPG/PNG/WebP → HEIC iPhone→JPEG server → >4.5 MB compresión cliente (11.22 MB→2.03 MB, 2400×1829px en DB) → >10 MB rechazo visible sin asset → no-imagen rechazada por magic bytes con mensaje — desktop | ✅ 15/15 pasos | ✅ 15/15 pasos | ⛔ crea assets (skip forzado) |
 | **matriz de uploads del Estudio** — mobile (sidebar vía FAB+Sheet, banner cookies cerrado primero) | ✅ 16/16 pasos | ✅ 16/16 pasos | ⛔ idem |
+| **cookies Ley 1581** — `homolog-cookies.spec`: banner 3 botones → modal 4 switches (necesarias bloqueadas ON) → granular (funcional+analíticas ON, marketing OFF) → cookie persistida + reload sin banner → /legal/cookies tabla + reabrir → **4 filas Consent por alcance con accepted correctos** (escenarios aceptar-todas / solo-necesarias / granular) — desktop y mobile | ✅ 8/8 pasos (3 escenarios) | ✅ 8/8 pasos (3 escenarios) | ⛔ escribe Consent (skip forzado) |
+| **cruces admin→cliente §5.3** — `homolog-admin-cruces.spec` (desktop y mobile): ① toggle `COD_ENABLED` → chip contraentrega del hero flip+revert; ② desactivar producto → PDP soft-404 con la fila intacta en DB; ③ aprobar reseña pendiente → visible en la PDP con autor; ④ marcar leída notificación QUOTE → pill del nav desaparece/decrementa | ✅ 4/4 cruces | ✅ 4/4 cruces (COD revertido a `true`, 0 residuo) | ⛔ mutaciones (skip forzado) |
 | **paridad de datos** (query directa a la DB del ambiente) | 612 productos / 572 categorías / 772 variantes / 115 ocasiones / 981 campos CMS / 50 migraciones | **idéntico a LOCAL** | homologado el 2026-08-05 (19 tablas idénticas, bitácora STATE) |
+
+**Filas de §5.3 que NO aplican en modo catálogo** (documentadas, no forzadas):
+cupones (Etapa 2 — el flujo de cotización no tiene campo de cupón) y "estado de
+cotización visible en `/cotizacion/[token]`" (la página pública de confirmación
+no muestra estado por diseño: solo número, ítems y CTA de WhatsApp — verificado
+leyendo `app/cotizacion/[token]/page.tsx`).
 
 Evidencia canónica del flujo admin→cliente (JSON con pasos, valores de DB y
 screenshots del CTA visible):
@@ -118,6 +126,17 @@ producto del ambiente: `set-fotoimanes-cuadrados` leído de la DB):
   información, no como fallo.
 - Limpieza verificada por query: 0 DesignAsset residuales en LOCAL y STG; los
   objetos del bucket se borraron por path exacto (de las filas creadas).
+
+Evidencia de cookies y cruces:
+
+- Cookies (`results-…-e2e-cookies-….json`): LOCAL `1786017969143` (desktop) /
+  `1786018000559` (mobile); STG `1786018131810` / `1786018148031`. Las filas
+  Consent de las corridas QUEDAN en el ledger (append-only) marcadas con el
+  User-Agent de prueba `lucams-e2e-homolog/<run>`.
+- Cruces (`results-…-e2e-cruces-….json`): LOCAL `1786020310276` (desktop) /
+  `1786020880341` (mobile); STG `1786021181788` / `1786021230974`. Post-corrida
+  verificado por query en STG: `COD_ENABLED=true` (revertido), 0 reviews /
+  notificaciones / productos residuales.
 
 ## 5. Hallazgos
 
@@ -173,25 +192,20 @@ timestamp en dígitos fue rechazado ("El nombre solo puede tener letras").
 limpieza va en el email (`<run>@e2e.test`), que sí admite el RUN completo.
 Detectado gracias al error ruidoso de H5.
 
-**H7 — (app, menor, PENDIENTE) el mensaje de rechazo >10 MB difiere entre
-LOCAL y STG.** En LOCAL el usuario ve el hint específico ("es muy grande para
-el servidor. Prueba con una foto de menos de ~4 MB…"); en STG ve el genérico
-("Revisa tu conexión e inténtalo de nuevo") porque Vercel responde el 413 con
-HTML no-RSC y el regex `tooBig` de `studio-sidebar.tsx` no reconoce el "An
-unexpected response was received from the server" de Next. El requisito
-(rechazo visible, sin pantalla en blanco, sin asset) se cumple en ambos —
-pero la guía práctica al usuario se pierde justo donde el límite existe.
-Fix sugerido (1 línea): tratar cualquier throw de la acción con archivo
->10 MB como caso de tamaño, o ampliar el regex. No es fallo de homologación.
+**H7 — (app, CORREGIDO y verificado en STG) el mensaje de rechazo >10 MB
+difería entre LOCAL y STG.** En STG el usuario veía el genérico ("Revisa tu
+conexión…") porque Vercel responde el 413 con HTML no-RSC y el regex `tooBig`
+de `studio-sidebar.tsx` no reconocía el "An unexpected response…" de Next. Fix
+(`ad76d77`): `tooBig` cubre también "unexpected response" y cualquier archivo
+preparado >10 MB. Verificado: tras el deploy, STG muestra el hint de tamaño
+("es muy grande para el servidor. Prueba con una foto de menos de ~4 MB…").
 
-**H8 — (app, menor, PENDIENTE) el banner de cookies tapa el FAB de edición del
-Estudio en mobile.** Ambos son `fixed` abajo: el FAB queda inalcanzable hasta
-cerrar el banner (reproducido: el click del harness era interceptado hasta el
-timeout). Un usuario real puede cerrar el banner y seguir, pero el primer
-contacto con el diferenciador #1 en móvil arranca con un elemento tapado.
-Candidato: subir el FAB mientras el banner esté visible (z/offset), o el
-banner sin overlay de fondo. No es fallo de homologación; el spec lo resuelve
-cerrando el banner como haría el usuario.
+**H8 — (app, CORREGIDO y desplegado) el banner de cookies tapaba el FAB de
+edición del Estudio en mobile.** Ambos `fixed` abajo: el FAB quedaba
+inalcanzable hasta cerrar el banner. Fix (`ad76d77`): el banner dispara de
+verdad el evento documentado `cookie-consent-changed` y el FAB sube
+(`bottom-28`) mientras no haya consentimiento persistido, volviendo a su sitio
+al elegir. Verificado E2E en LOCAL y en STG tras el deploy.
 
 **Sin hallazgos de homologación de flujo**: todos los flujos ejecutados se
 comportan idéntico en LOCAL y STG; las únicas diferencias observadas son las
@@ -214,6 +228,14 @@ cd apps/web && E2E_ENV=stg pnpm exec playwright test homolog-cotizacion
 # Matriz de uploads del Estudio (anónimo; genera y borra assets/objetos):
 cd apps/web && E2E_ENV=local pnpm exec playwright test homolog-estudio-uploads
 cd apps/web && E2E_ENV=stg pnpm exec playwright test homolog-estudio-uploads
+
+# Cookies Ley 1581 (anónimo; Consent queda en el ledger marcado con UA de prueba):
+cd apps/web && E2E_ENV=local pnpm exec playwright test homolog-cookies
+cd apps/web && E2E_ENV=stg pnpm exec playwright test homolog-cookies
+
+# Cruces admin→cliente §5.3 (requiere storageState — E2E_AUTH=1):
+cd apps/web && E2E_ENV=local E2E_AUTH=1 pnpm exec playwright test homolog-admin-cruces
+cd apps/web && E2E_ENV=stg E2E_AUTH=1 pnpm exec playwright test homolog-admin-cruces
 
 # Smoke read-only en PRD (sin E2E_AUTH — nunca muta):
 cd apps/web && E2E_ENV=prd pnpm exec playwright test smoke --project=desktop-chrome

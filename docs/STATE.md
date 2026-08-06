@@ -2013,10 +2013,29 @@ HEIC real de iPhone → `image/jpeg` en DB → **>4.5 MB comprimido en cliente (
 nació)** → >10 MB rechazado con alerta visible y sin asset → no-imagen renombrada rechazada por
 magic bytes con mensaje claro. Verde en LOCAL (2/2) y STG (2/2); en mobile el sidebar se ejerce
 vía FAB+Sheet (A2.8) y el banner de cookies se cierra primero (tapaba el FAB). Limpieza verificada:
-0 DesignAsset residuales en LOCAL/STG; objetos del bucket borrados por path exacto. Hallazgos
-menores PENDIENTES (app, no de homologación): H7 el mensaje del rechazo >10 MB en STG es el
-genérico (el regex `tooBig` no reconoce el 413-HTML de Vercel) y H8 el banner de cookies tapa el
-FAB de edición en mobile hasta cerrarlo.
+0 DesignAsset residuales en LOCAL/STG; objetos del bucket borrados por path exacto.
+
+**Normalización de pendientes (H7/H8, commit `ad76d77`, verificada en STG real):** H7 — el rechazo
+
+> 10 MB en STG mostraba el genérico de conexión (el regex `tooBig` no reconocía el 413-HTML de
+> Vercel); ahora cubre "unexpected response" y cualquier archivo >10 MB → STG muestra el hint de
+> tamaño. H8 — el banner de cookies tapaba el FAB de edición del Estudio en mobile; el banner ahora
+> dispara el evento documentado `cookie-consent-changed` y el FAB sube mientras no haya
+> consentimiento. Vitest 144/144 + E2E uploads 2/2 en LOCAL y STG tras el deploy.
+
+**Ampliación misma sesión — cookies Ley 1581 + cruces §5.3:**
+`homolog-cookies.spec.ts` (banner 3 botones → modal 4 switches con necesarias bloqueadas →
+granular/aceptar-todas/solo-necesarias → cookie persistida + reload sin banner → /legal/cookies
+tabla + reabrir → **4 filas Consent por alcance con `accepted` correctos en DB**; las filas quedan
+en el ledger marcadas con User-Agent de prueba) — verde 2/2 en LOCAL y STG.
+`homolog-admin-cruces.spec.ts` — los 4 cruces verificables en modo catálogo: ① toggle
+`COD_ENABLED` → chip contraentrega del hero flip+revert; ② desactivar producto → PDP soft-404 con
+la fila intacta en DB; ③ aprobar reseña pendiente → visible en la PDP con autor; ④ marcar leída
+una notificación QUOTE → la pill del nav desaparece. Verde 8/8 en LOCAL y 8/8 en STG (COD revertido
+a `true`, 0 residuo). Dos filas de §5.3 NO aplican en catálogo y quedaron documentadas: cupones
+(Etapa 2) y "estado de cotización en /cotizacion/[token]" (la página pública no muestra estado por
+diseño). Selectores móviles reales cubiertos: drawer hamburguesa (abrir/cerrar para la pill),
+tablas→tarjetas en reseñas, señal de éxito por DB cuando el form no muestra mensaje.
 
 **Hallazgos** (detalle en el doc de auditoría): H1 carrera `fill()`↔React tras SPA nav (artefacto
 harness, fix en POM con teclado real + reload duro); H2 baseline requiere invalidar caché CMS antes

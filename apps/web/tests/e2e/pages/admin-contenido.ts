@@ -37,6 +37,29 @@ export class AdminContenidoPage {
   }
 
   /**
+   * Edita un setting BOOLEAN del editor (select Sí/No) y lo publica.
+   * Los SETTING publican de inmediato al Guardar ("ya se ve en el sitio") —
+   * no hay paso Publicar como en los BLOCK (service.ts: publishNow = kind ===
+   * "SETTING"). El select es controlado por React: mismo patrón toPass con
+   * aserción del efecto (botón habilitado) que editFieldAndPublish.
+   */
+  async editBooleanSettingAndPublish(pageSlug: string, fieldKey: string, value: boolean) {
+    await this.gotoPageEditor(pageSlug);
+    const row = this.fieldRow(fieldKey);
+    await expect(row).toBeVisible({ timeout: 20_000 });
+    const select = row.locator('select[name="body"]');
+    const saveButton = row.getByRole("button", { name: /Guardar/i });
+    const option = value ? "true" : "false";
+    await expect(async () => {
+      await select.selectOption(option);
+      await expect(select).toHaveValue(option, { timeout: 2_000 });
+      await expect(saveButton).toBeEnabled({ timeout: 2_000 });
+    }).toPass({ timeout: 20_000 });
+    await saveButton.click();
+    await expect(row.getByText(/ya se ve en el sitio/i)).toBeVisible({ timeout: 30_000 });
+  }
+
+  /**
    * Edita inline un campo del editor de página y publica el borrador
    * (flujo BLOCK: Guardar → "Borrador guardado" → Publicar → ?published=1).
    *
