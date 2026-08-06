@@ -42,6 +42,39 @@ const nextConfig: NextConfig = {
         pathname: "/storage/v1/object/public/cms-media/**",
       },
       {
+        // Supabase STG (lucams-stg) — mismos buckets públicos que prod, para que
+        // los previews muestren previews del diseño/imágenes (antes: optimizer 400
+        // en /carrito y /checkout, verificación E2E 2026-08-05).
+        protocol: "https",
+        hostname: "mjbdiqdkykhsixvqlrrp.supabase.co",
+        pathname: "/storage/v1/object/public/{product-images,design-previews,cms-media}/**",
+      },
+      {
+        // Stack LOCAL de Supabase (dev diario): la API Kong escucha en :54321.
+        // Sin esto, next/image rechazaba los previews del diseño y /carrito moría
+        // con HTTP 500 en local (verificación E2E 2026-08-05).
+        protocol: "http",
+        hostname: "127.0.0.1",
+        port: "54321",
+        pathname: "/storage/v1/object/public/{product-images,design-previews,cms-media}/**",
+      },
+      {
+        // Mismo stack local vía nombre (algunos flujos generan URLs con localhost).
+        protocol: "http",
+        hostname: "localhost",
+        port: "54321",
+        pathname: "/storage/v1/object/public/{product-images,design-previews,cms-media}/**",
+      },
+      {
+        // Mismo stack local vía IP LAN de la VM (navegación desde otros dispositivos
+        // — la URL pública del stack usa la IP desde 2026-08-02). Si la VM cambia de
+        // IP, actualizar esta entrada y NEXT_PUBLIC_SUPABASE_URL en .env.local.
+        protocol: "http",
+        hostname: "192.168.20.180",
+        port: "54321",
+        pathname: "/storage/v1/object/public/{product-images,design-previews,cms-media}/**",
+      },
+      {
         protocol: "https",
         hostname: "images.unsplash.com",
       },

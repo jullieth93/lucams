@@ -345,7 +345,13 @@ export async function createNameDesignAction(
   const parsed = NameDesignInputSchema.safeParse(input);
   if (!parsed.success) return { ok: false, message: "Datos inválidos." };
 
-  const { customerId, sessionId } = await resolveOwner();
+  const { customerId, sessionId: existingSession } = await resolveOwner();
+  // Mismo patrón que createDraftDesignAction (líneas 77-81): si anon sin cookie,
+  // crearla ahora — createNameDesign exige customerId o sessionId, y sin esto un
+  // comprador PRIMERIZO siempre recibía "No pudimos crear el diseño" (bug
+  // determinista reproducido en LOCAL y STG, verificación E2E 2026-08-05).
+  const sessionId =
+    !customerId && !existingSession ? await getOrCreateCartSession() : existingSession;
 
   // Rate-limit: bucket propio (crear diseño + fila DB). Menos estricto que checkout.
   const rl = await rateLimit(
@@ -394,7 +400,12 @@ export async function createLetterSetDesignAction(
   const parsed = LetterSetDesignInputSchema.safeParse(input);
   if (!parsed.success) return { ok: false, message: "Datos inválidos." };
 
-  const { customerId, sessionId } = await resolveOwner();
+  const { customerId, sessionId: existingSession } = await resolveOwner();
+  // Mismo fix que createNameDesignAction (2026-08-05): crear la sesión de carrito
+  // si el anónimo no la tiene — createLetterSetDesign la exige (latente mientras
+  // ningún producto activo enrute acá, pero el defecto era idéntico).
+  const sessionId =
+    !customerId && !existingSession ? await getOrCreateCartSession() : existingSession;
   const rl = await rateLimit(
     ownerKey("create_letterset_design", customerId ?? sessionId ?? "anon"),
     30,

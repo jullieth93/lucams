@@ -38,8 +38,12 @@ export const SECURITY_HEADERS: Record<string, string> = {
  * (sin unsafe-inline ni unsafe-eval).
  */
 export function buildCsp(nonce: string, isProd: boolean): string {
+  // Vercel Live inyecta su script de feedback en los previews (VERCEL_ENV=preview):
+  // sin esta entrada el script-src lo bloqueaba en TODAS las páginas del preview
+  // (error CSP permanente en consola, verificación E2E 2026-08-05).
+  const vercelLive = process.env.VERCEL_ENV === "preview" ? " https://vercel.live" : "";
   const scriptSrc = isProd
-    ? `script-src 'self' 'nonce-${nonce}' https://challenges.cloudflare.com https://checkout.wompi.co`
+    ? `script-src 'self' 'nonce-${nonce}' https://challenges.cloudflare.com https://checkout.wompi.co${vercelLive}`
     : "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://challenges.cloudflare.com https://checkout.wompi.co";
   // El host de Supabase NO siempre es *.supabase.co: el stack local del
   // nightly A3 corre en http://localhost:54321 y la CSP bloqueaba las llamadas

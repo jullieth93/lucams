@@ -31,3 +31,20 @@ additional_redirect_urls = [
   "http://127.0.0.1:4000",
   "http://192.168.20.180:4000",
 ]
+
+# Emails de auth como en PRD (homologación 2026-08-05): exigir confirmación por
+# email y plantillas con código OTP numérico ({{ .Token }}) — sin esto, gotrue
+# autoconfirmaba el registro (sin email) y la recuperación mandaba un link PKCE
+# genérico, nada que ver con el flujo real (verificación auth E2E).
+# Aplica al RECREAR el stack (igual que site_url).
+[auth.email]
+enable_signup = true
+enable_confirmations = true
+
+[auth.email.template.confirmation]
+subject = "Tu código de confirmación — Lucams (pruebas)"
+content_path = "./templates/confirmation.html"
+
+[auth.email.template.recovery]
+subject = "Tu código para restablecer la contraseña — Lucams (pruebas)"
+content_path = "./templates/recovery.html"
