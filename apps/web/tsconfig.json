@@ -22,13 +22,12 @@
       "@/*": ["./*"]
     }
   },
-  "include": [
-    "next-env.d.ts",
-    "**/*.ts",
-    "**/*.tsx",
-    ".next/types/**/*.ts",
-    ".next/dev/types/**/*.ts",
-    "**/*.mts"
-  ],
-  "exclude": ["node_modules"]
+  "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts", "**/*.mts"],
+  // .next/dev/types/** queda FUERA a propósito (H3, 2026-08-06): el dev server
+  // (Turbopack) reescribe validator.ts de forma NO atómica y deja el archivo
+  // truncado a mitad de escritura → `tsc --noEmit` fallaba intermitentemente
+  // con errores de sintaxis en un archivo generado, ajeno al código del repo.
+  // La validación de tipos del build la sigue haciendo `next build` con su
+  // propio chequeo (y CI corre contra build limpio, no contra .next/dev).
+  "exclude": ["node_modules", ".next/dev/types"]
 }
