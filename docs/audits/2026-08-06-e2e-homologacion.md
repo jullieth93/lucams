@@ -84,6 +84,11 @@ Corridas canónicas del 2026-08-06 con el código final. Evidencia por fila en
 | **wishlist** — `homolog-wishlist.spec`: marcar en PDP → WishlistItem en DB → /mi-cuenta/favoritos lista → quitar → fila borrada; anónimo → /login?next=… sin romper | ✅ 4/4 pasos | ✅ 4/4 pasos | ⛔ escribe WishlistItem |
 | **reseñas cliente** — `homolog-resenas.spec`: compra verificada (orden PAID) → submit 5★ → "gracias, la revisamos" (gate) → Review isApproved=false → PENDING invisible en PDP → duplicado bloqueado por gate (1 fila) | ✅ 6/6 pasos | ✅ 6/6 pasos | ⛔ crea Review/Order |
 | **back-in-stock** — `homolog-back-in-stock.spec`: PDP agotado → suscribir con email → Subscription + Consent BACK_IN_STOCK → **re-stock por la UI admin (/admin/inventario)** → cron `x-cron-secret` → notifiedAt (aviso enviado) | ✅ 6/6 pasos | ✅ 6/6 pasos | ⛔ crea datos + email |
+| **área /mi-cuenta** — `homolog-mi-cuenta.spec`: perfil (editar nombre/teléfono → DB) · direcciones (crear urbana → lista+DB → **default única** → editar → borrar con confirmación/soft-delete) · seguridad (cambio contraseña con re-auth → re-login con la nueva; usuario efímero dedicado auto-contenido) | ✅ 3/3 módulos | ✅ 3/3 módulos | ⛔ muta cuenta |
+| **rastrear pedido** — `homolog-rastrear.spec`: número+email → /pedido/[token] con estado → **anti-enumeración: mensaje idéntico** para número inexistente y email equivocado → rate-limit 10/hora con mensaje claro | ✅ 3/3 pasos | ✅ 3/3 pasos | ⛔ crea orden + consume rate-limit |
+| **recomendador wizard** — `homolog-recomendador.spec`: 4 pasos con h2 enfocado (WCAG 2.4.3) → resultados con productos REALES (link verificado en DB) → vacío con "Ajustar respuestas" → error del API con "Reintentar" (route.fulfill) | ✅ 4/4 pasos | ✅ 4/4 pasos | ◻️ read-only (no corre en PRD por alcance de corrida) |
+| **landings de ocasión** — `homolog-ocasion.spec`: 2 landings top con h1 + productos reales (links verificados en DB) + breadcrumb sin link roto + JSON-LD BreadcrumbList + CollectionPage | ✅ 2/2 landings | ✅ 2/2 landings | ◻️ read-only |
+| **vistas 3D** — `homolog-3d.spec`: foto-imán → galería con Nevera/Mural/Repisa/Regalo + cambio aria-pressed → **foco atrapado (10 Tab dentro del dialog)** + Esc cierra → separadores → libro 3D directo + sin desborde móvil | ✅ 3/3 pasos | ✅ 3/3 pasos | ◻️ read-only |
 | **paridad de datos** (query directa a la DB del ambiente) | 612 productos / 572 categorías / 772 variantes / 115 ocasiones / 981 campos CMS / 50 migraciones | **idéntico a LOCAL** | homologado el 2026-08-05 (19 tablas idénticas, bitácora STATE) |
 
 **Filas de §5.3 que NO aplican en modo catálogo** (documentadas, no forzadas):
@@ -152,6 +157,18 @@ Evidencia de cookies y cruces:
 - Back-in-stock (`results-…-e2e-bis-….json`): LOCAL `1786041529333` /
   `1786041534390`; STG `1786041744227` / `1786041773580`. **0 residuo
   verificado en ambos** (suscripción, producto, categoría e InventoryLog).
+- /mi-cuenta (`results-…-e2e-cuenta-….json`): LOCAL/STG — perfil, direcciones
+  y seguridad (cambio de clave con usuario dedicado auto-contenido). Direcciones
+  borradas; usuarios dedicados eliminados.
+- Rastrear (`results-…-e2e-track-….json`): LOCAL `1786048878333` (mobile) y
+  desktop par; STG `1786049069380` y desktop par. Orden TEST borrada (0 residuo)
+  y buckets `rastrear:%` reseteados.
+- Recomendador (`results-…-e2e-wizard-….json`): LOCAL `1786050854180`; STG
+  `1786051081288`. Read-only.
+- Ocasiones (`results-…-e2e-ocasion-….json`): LOCAL `1786051583896`; STG
+  `1786051690967`. Read-only.
+- 3D (`results-…-e2e-3d-….json`): LOCAL `1786052456456`; STG `1786052605434`.
+  Read-only.
 
 ## 5. Hallazgos
 
@@ -302,6 +319,18 @@ cd apps/web && E2E_ENV=stg E2E_AUTH=1 pnpm exec playwright test homolog-resenas
 # Back-in-stock (E2E_AUTH=1 — re-stock por la UI admin + cron x-cron-secret):
 cd apps/web && E2E_ENV=local E2E_AUTH=1 pnpm exec playwright test homolog-back-in-stock
 cd apps/web && E2E_ENV=stg E2E_AUTH=1 pnpm exec playwright test homolog-back-in-stock
+
+# Área /mi-cuenta (E2E_AUTH=1 — perfil, direcciones, seguridad):
+cd apps/web && E2E_ENV=local E2E_AUTH=1 pnpm exec playwright test homolog-mi-cuenta
+cd apps/web && E2E_ENV=stg E2E_AUTH=1 pnpm exec playwright test homolog-mi-cuenta
+
+# Rastrear (E2E_AUTH=1 — siembra orden del cliente efímero + rate-limit):
+cd apps/web && E2E_ENV=local E2E_AUTH=1 pnpm exec playwright test homolog-rastrear
+cd apps/web && E2E_ENV=stg E2E_AUTH=1 pnpm exec playwright test homolog-rastrear
+
+# Recomendador / ocasiones / 3D (read-only, sin E2E_AUTH):
+cd apps/web && E2E_ENV=local pnpm exec playwright test homolog-recomendador homolog-ocasion homolog-3d
+cd apps/web && E2E_ENV=stg pnpm exec playwright test homolog-recomendador homolog-ocasion homolog-3d
 
 # Smoke read-only en PRD (sin E2E_AUTH — nunca muta):
 cd apps/web && E2E_ENV=prd pnpm exec playwright test smoke --project=desktop-chrome

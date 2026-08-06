@@ -2060,6 +2060,34 @@ tablas→tarjetas en reseñas, señal de éxito por DB cuando el form no muestra
   del editor de stock en STG era latencia de arranque frío del preview (>12-20s); los specs ahora
   esperan activamente la señal React (sonda estricta) — observación operativa documentada.
 
+**Ampliación misma sesión — cuenta/rastreo/recomendador/landings/3D (5 specs más, todo verde
+LOCAL+STG × desktop/mobile):**
+
+- `homolog-mi-cuenta.spec.ts`: perfil (editar nombre/teléfono → DB), direcciones (crear urbana →
+  lista+DB → default única → editar → borrar con confirmación/soft-delete), seguridad (cambio de
+  contraseña con re-auth → re-login con la nueva). Lecciones integradas: el banner de cookies tapa
+  CTAs bajo el fold (helper `dismissCookieBanner` con espera), el teléfono es obligatorio en el
+  schema de direcciones (el POST devolvía 200 con error y DB=0), y el cambio de clave invalida las
+  cookies del storageState compartido → el test de seguridad usa un usuario efímero DEDICADO
+  auto-contenido (sin tocar el fixture). Verde 6/6 en ambos.
+- `homolog-rastrear.spec.ts`: número+email → /pedido/[token] (la semilla necesita
+  publicAccessToken explícito — nullable sin default), anti-enumeración (mensaje IDÉNTICO por
+  línea), rate-limit detectado por ventana (los retries consumen el bucket; la aserción es el
+  mecanismo, no el umbral exacto). Verde 2/2 en ambos.
+- `homolog-recomendador.spec.ts`: 4 pasos con h2 enfocado (WCAG 2.4.3 — verificado ANTES del cierre
+  del banner, que roba el foco), resultados con productos reales (link verificado en DB — el rango
+  de precio se elige contra el catálogo real, "Menos de $30k"), vacío con "Ajustar respuestas" y
+  error del API con "Reintentar" (route.fulfill). Verde 2/2 en ambos.
+- `homolog-ocasion.spec.ts`: 2 landings top con productos reales filtrados (links a PDPs
+  verificados), breadcrumb sin link roto, JSON-LD BreadcrumbList + CollectionPage (el script viene
+  como array — parse normalizado). Verde 2/2 en ambos.
+- `homolog-3d.spec.ts`: foto-imán → galería "Ver en tu espacio" con Nevera/Mural/Repisa/Regalo +
+  aria-pressed por escena + **foco atrapado (10 Tab dentro del dialog)** + Esc cierra; separadores
+  → libro 3D directo (BookView3D, sin chips) + sin desborde móvil. Verde 2/2 en ambos.
+- Teardown endurecido: el borrado del cliente efímero fallaba en silencio por dependientes con
+  Restrict (quedaban filas "Prueba…") — ahora borra dependientes primero (address/review/wishlist/
+  back-in-stock/orders). Verificado 0 residuo en LOCAL y STG.
+
 **Hallazgos** (detalle en el doc de auditoría): H1 carrera `fill()`↔React tras SPA nav (artefacto
 harness, fix en POM con teclado real + reload duro); H2 baseline requiere invalidar caché CMS antes
 (patrón release-check-a1, ya incorporado); H3 `.next/dev/types/validator.ts` corrupto por Turbopack

@@ -106,3 +106,11 @@ export function hasServiceSecrets(): boolean {
 export function strip(v: string | undefined): string | undefined {
   return v?.replace(/^["']|["']$/g, "");
 }
+
+/**
+ * Contraseñas de los usuarios EFÍMEROS del global.setup (no son secretos: los
+ * usuarios se crean y borran por corrida). Centralizadas acá para que los
+ * specs que ejercen login/cambio de contraseña las compartan con el setup.
+ */
+export const E2E_SETUP_ADMIN_PASSWORD = "E2E-Setup-Admin-918273650";
+export const E2E_SETUP_CLIENT_PASSWORD = "E2E-Setup-Client-918273650";

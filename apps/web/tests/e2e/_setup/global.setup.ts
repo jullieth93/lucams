@@ -30,15 +30,14 @@ import {
   authStatePath,
   baseUrlFor,
   currentEnv,
+  E2E_SETUP_ADMIN_PASSWORD as ADMIN_PASSWORD,
+  E2E_SETUP_CLIENT_PASSWORD as CLIENT_PASSWORD,
   ensureAuthStateDir,
   extraHeadersFor,
   hasServiceSecrets,
   loadEnvFor,
   strip,
 } from "./env";
-
-const ADMIN_PASSWORD = "E2E-Setup-Admin-918273650";
-const CLIENT_PASSWORD = "E2E-Setup-Client-918273650";
 
 export default async function globalSetup() {
   const env = currentEnv();

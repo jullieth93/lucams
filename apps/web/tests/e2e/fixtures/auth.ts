@@ -60,4 +60,20 @@ export const test = base.extend<{ adminPage: Page; clientPage: Page; anonPage: P
   },
 });
 
+/**
+ * Cierra el banner de cookies si está visible ("Solo necesarias"). Fixed abajo
+ * (z-9000): tapa botones/CTA que quedan bajo el fold en formularios largos o
+ * FABs — interfiere con clicks hasta timeout (reproducido 2026-08-06 en la
+ * dirección de /mi-cuenta y en el FAB del Estudio). El banner se monta tras
+ * la hidratación: se le da una ventana corta para aparecer. No-op si no sale.
+ */
+export async function dismissCookieBanner(page: Page): Promise<void> {
+  const reject = page.getByRole("button", { name: /solo necesarias/i });
+  const appeared = await reject
+    .waitFor({ state: "visible", timeout: 6_000 })
+    .then(() => true)
+    .catch(() => false);
+  if (appeared) await reject.click();
+}
+
 export { expect };

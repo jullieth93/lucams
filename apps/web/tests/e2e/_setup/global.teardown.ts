@@ -85,6 +85,38 @@ export default async function globalTeardown() {
         await service.auth.admin.deleteUser(manifest.admin.supabaseUserId).catch(() => {});
       }
       if (manifest.client) {
+        // Dependientes primero (Restrict): sin esto el delete del Customer
+        // fallaba en silencio y quedaban filas "Prueba…" vivas (2026-08-06).
+        const cust = await prisma.customer.findMany({
+          where: { supabaseUserId: manifest.client.supabaseUserId },
+          select: { id: true },
+        });
+        const custIds = cust.map((c) => c.id);
+        if (custIds.length > 0) {
+          await prisma.address
+            .deleteMany({ where: { customerId: { in: custIds } } })
+            .catch(() => {});
+          await prisma.review
+            .deleteMany({ where: { customerId: { in: custIds } } })
+            .catch(() => {});
+          await prisma.wishlistItem
+            .deleteMany({ where: { customerId: { in: custIds } } })
+            .catch(() => {});
+          await prisma.backInStockSubscription
+            .deleteMany({ where: { customerId: { in: custIds } } })
+            .catch(() => {});
+          const orders = await prisma.order.findMany({
+            where: { customerId: { in: custIds } },
+            select: { id: true },
+          });
+          const orderIds = orders.map((o) => o.id);
+          if (orderIds.length > 0) {
+            await prisma.orderItem
+              .deleteMany({ where: { orderId: { in: orderIds } } })
+              .catch(() => {});
+            await prisma.order.deleteMany({ where: { id: { in: orderIds } } }).catch(() => {});
+          }
+        }
         await prisma.customer
           .deleteMany({ where: { supabaseUserId: manifest.client.supabaseUserId } })
           .catch(() => {});
