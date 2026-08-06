@@ -149,10 +149,46 @@ de email apagados, local a Mailpit), Turnstile (test vs real), llaves Wompi
    notas, consentimiento, Turnstile) → Quote PENDING en DB + página de confirmación +
    mensaje wa.me bien formado (número, ítems, total, link) + `Notification` QUOTE en
    DB + email admin (donde aplique) + idempotencia (doble submit no duplica).
-7. **SEO/estáticos**: sitemap, robots, OG image real, canonical, JSON-LD home/PDP.
-8. **Legales/ayuda/contacto**: 8 páginas legales 200, FAQ coherente con modo catálogo,
-   form contacto con Turnstile.
-9. **Errores**: 404 personalizado, error boundaries, noindex en checkout/cotización.
+7. **Cuenta (/mi-cuenta)**: perfil (editar nombre/teléfono), direcciones (crear,
+   default única, editar, borrar), favoritos (lista = lo marcado en PDP), seguridad
+   (cambio de contraseña con sesiones cerradas globalmente), y borrado de cuenta
+   (flujo de supresión: qué se anonimiza/borra y qué queda por ley).
+8. **Cookies Ley 1581**: banner con 3 botones (solo necesarias / personalizar /
+   aceptar todas), modal con 4 switches (necesarias bloqueadas ON), persistencia en
+   refresh, /legal/cookies con tabla + reabrir preferencias, y filas `Consent`
+   correctas en DB por alcance.
+9. **Newsletter + unsubscribe**: suscripción con consent obligatorio → welcome;
+   duplicado → "ya estabas suscrito"; baja por link del email (HMAC) → consent
+   revocado + no vuelve a llegar; List-Unsubscribe One-Click presente en headers.
+10. **Wishlist**: marcar/desmarcar en PDP y tarjeta, badge del header actualiza,
+    página /mi-cuenta/favoritos, persistencia por cuenta (y anon sin romper).
+11. **Reseñas**: submit con validación (rating, comentario mínimo), estado PENDING
+    hasta moderación, admin aprueba → visible en PDP con fecha es-CO y conteo real.
+12. **Back-in-stock**: suscribir a reposición de variante agotada (consent), fila en
+    DB, y tras re-stock (cambio admin) sale el aviso (email en PRD; registro en DB).
+13. **Recomendador wizard** (/recomendador): los 4 pasos navegan, gestión de foco
+    por paso, resultado con productos reales de DB, sin resultados → salidas claras,
+    error del API → reintento visible.
+14. **Rastrear** (/rastrear): pedido por número+email (anti-enumeración: mismo
+    mensaje exista o no), estados visibles, rate-limit del form.
+15. **Ocasiones** (/ocasion/[slug]): landings por ocasión sembrada (6 top), productos
+    reales filtrados, breadcrumb sin link roto, JSON-LD CollectionPage.
+16. **Vistas 3D** ("Ver en tu espacio"): el modal 3D abre por producto elegible,
+    escenas correctas por tipo (nevera/mural/repisa/regalo), foco atrapado y cierre
+    Esc, sin desborde móvil; tiras como pieza completa y separadores con doblez.
+17. **SEO/estáticos**: sitemap, robots, OG image real, canonical, JSON-LD home/PDP.
+18. **Legales/ayuda/contacto**: 8 páginas legales 200, FAQ coherente con modo
+    catálogo, form contacto con Turnstile → ticket en DB + 2 emails (donde aplique).
+19. **Errores y resiliencia de red**: 404 personalizado, error boundaries, noindex en
+    checkout/cotización; con `route.fulfill` caídas/lentitud en Resend/Turnstile/
+    cotización → mensaje visible, nunca pantalla en blanco.
+20. **a11y E2E + performance**: axe WCAG 2.1 AA (0 serious/critical) en home,
+    catálogo, PDP, estudio, cotización, admin; contraste de CTAs (esmerald-700 AA);
+    Lighthouse móvil+desktop ≥90 en perf/a11y/best-practices/SEO en home, /productos,
+    1 PDP y 1 estudio (los budgets del CI no bajan).
+21. **Rate-limit y CSRF (comportamiento)**: 429 tras N intentos en login/registro/
+    cotización/contacto con mensaje claro; server action con origen adulterado
+    rechazada; doble submit de cotización no duplica (idempotencia en UI + DB).
 
 ## 7. CAPA ADMIN — flujos a cubrir (Desktop 1280×800 + Mobile 375×812)
 
@@ -180,6 +216,32 @@ El admin es responsive y se certifica en AMBOS viewports (precedente del repo:
    **cero overflow horizontal en 375px** en dashboard, cotizaciones, contenido,
    productos y notificaciones.
 
+## 7.5 CAPA TRANSACCIONAL — MODO `full` (Etapa 2, suite separada)
+
+La misma app con `NEXT_PUBLIC_STORE_MODE=full`. Se corre como suite dedicada
+(build propio, no mezclada con la de catálogo) — el precedente es
+`tests/e2e/wompi-sandbox.spec.ts`, que ya hace el flujo real contra sandbox.
+
+1. **Checkout completo** (invitado y registrado): datos → envío (cotización
+   Aveonline real sandbox/test con selección sellada HMAC) → pago Wompi hosted
+   (tarjeta 4242 sandbox) → /gracias con estado y guía.
+2. **Pasarela por interceptación**: éxito, rechazo (DECLINED → reintento con misma
+   reference), timeout de creación, monto adulterado → `needsReconciliation` y NO
+   descuento de stock prematuro; firma de webhook válida e inválida (401).
+3. **COD (contraentrega)**: toggle COD_ENABLED on/off (chip hero modular), pedido
+   COD creado sin pago, ledger COD y conciliación visible en admin.
+4. **Cupones**: válido (descuento aplicado al total), inválido/expirado/agotado
+   (mensaje claro), uso registrado en `CouponUsage`.
+5. **Stock**: reserva al iniciar checkout, decremento al pago aprobado, oversold
+   imposible (2 clientes por la última unidad → el segundo no paga), liberación de
+   reserva al expirar (cron `stock_reservation_cleanup`).
+6. **Envíos**: cotización multi-transportadora con precio, selección sellada
+   re-validada al finalizar, guía NO facturable fuera de prod
+   (`bloquegenerarguia="1"` verificable en el payload), webhook Aveonline con
+   secret (dedup + timing-safe).
+7. **Emails transaccionales**: confirmación de pedido, despacho, entrega (donde el
+   ambiente envíe); datos coherentes con el pedido.
+
 ## 8. REQUISITOS TÉCNICOS ESTRICTOS
 
 - **Cero hardcoding ni suposiciones**: datos esperados se leen de la DB del ambiente;
@@ -199,6 +261,10 @@ El admin es responsive y se certifica en AMBOS viewports (precedente del repo:
   header vía `extraHTTPHeaders`); PRD solo lectura y flujos idempotentes seguros.
 - **Guardas anti-desastre**: la suite NUNCA debe correr limpieza destructiva fuera de
   los patrones test (el env-guard del repo ya bloquea PRD; respétalo).
+- **Webhooks como flujo**: firma Wompi sintética bien/mal formada (200/401),
+  dedup por reintento del mismo evento, environment-match (sandbox≠prod); Resend
+  Svix (firma + tolerancia anti-replay + idempotencia por resendId); Aveonline con
+  secret por header (dedup + timing-safe). Sin compras ni guías reales.
 - **Cross-browser**: Chromium obligatorio; WebKit/Firefox como matriz ampliada.
 
 ## 9. ENTREGABLES
