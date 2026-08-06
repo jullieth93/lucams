@@ -45,12 +45,15 @@ import { isCatalogMode } from "@/lib/store-mode";
    Ruta A (2026-07-29): el bloque `seo.page.home` (title=meta title, body=meta description)
    sobreescribe ambos desde /admin/contenido/paginas/seo; el fallback mantiene el gate de modo. */
 export async function generateMetadata(): Promise<Metadata> {
-  return getPageSeo("seo.page.home", {
+  const seo = await getPageSeo("seo.page.home", {
     title: "Lucams_shop — Tus recuerdos en imán",
     description: isCatalogMode()
       ? "Imanes magnéticos personalizados, fotoimanes, recuerdos para eventos, calendarios y planners. Hechos a mano en Colombia; el envío lo coordinamos contigo por WhatsApp."
       : "Imanes magnéticos personalizados, fotoimanes, recuerdos para eventos, calendarios y planners. Hechos a mano en Colombia con entrega a {{cobertura}} destinos.",
   });
+  // Canonical explícito (H13, 2026-08-06): todas las rutas lo tenían MENOS la
+  // home — justo la página que más lo necesita para consolidar el dominio.
+  return { ...seo, alternates: { canonical: "/" } };
 }
 
 // Home consulta DB en SSR — dynamic para que Next no pre-renderice
