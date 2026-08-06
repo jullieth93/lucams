@@ -114,6 +114,17 @@ export default async function globalSetup() {
     await service.auth.admin.deleteUser(adminAuth.user.id).catch(() => {});
     throw new Error(`[e2e setup] no se pudo crear el cliente efímero: ${clientErr?.message}`);
   }
+  // La fila Customer (vínculo auth → tienda): la exigen los flujos de cuenta
+  // (wishlist, /mi-cuenta, direcciones) — sin ella getCurrentCustomer() da null.
+  const client = await prisma.customer.create({
+    data: {
+      email: clientEmail,
+      supabaseUserId: clientAuth.user.id,
+      firstName: "Cliente Setup E2E",
+      referralCode: `E2E${Date.now().toString(36).toUpperCase()}`,
+    },
+    select: { id: true },
+  });
 
   ensureAuthStateDir(env);
 
@@ -160,7 +171,7 @@ export default async function globalSetup() {
         env,
         createdAt: new Date().toISOString(),
         admin: { supabaseUserId: adminAuth.user.id, adminId: admin.id, email: adminEmail },
-        client: { supabaseUserId: clientAuth.user.id, email: clientEmail },
+        client: { supabaseUserId: clientAuth.user.id, customerId: client.id, email: clientEmail },
       },
       null,
       2,

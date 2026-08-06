@@ -34,6 +34,39 @@ export type NewsletterResult =
   | { ok: true; alreadySubscribed: boolean }
   | { ok: false; code: "RESEND_FAIL" | "RESEND_NOT_CONFIGURED"; message: string };
 
+/**
+ * ¿Está el email vigente como suscrito? Regla única de verdad (H9, 2026-08-06):
+ * hay un Consent NEWSLETTER accepted (misma versión del aviso) SIN una
+ * revocación posterior. La fila accepted original nunca se voltea — la baja es
+ * otra fila (accepted=false con revokesId) — así que "vigente" = último
+ * accepted sin revocación más nueva. La usan tanto el pre-check de duplicados
+ * como persistConsent (antes, ambos miraban solo accepted:true y tras una baja
+ * la re-suscripción quedaba rota: no se creaba el nuevo accepted).
+ */
+async function isNewsletterSubscribed(normalizedEmail: string): Promise<boolean> {
+  const lastAccepted = await prisma.consent.findFirst({
+    where: {
+      email: normalizedEmail,
+      scope: "NEWSLETTER",
+      accepted: true,
+      version: PRIVACY_VERSION,
+    },
+    orderBy: { acceptedAt: "desc" },
+    select: { id: true, acceptedAt: true },
+  });
+  if (!lastAccepted) return false;
+  const laterRevocation = await prisma.consent.findFirst({
+    where: {
+      email: normalizedEmail,
+      scope: "NEWSLETTER",
+      accepted: false,
+      acceptedAt: { gt: lastAccepted.acceptedAt },
+    },
+    select: { id: true },
+  });
+  return !laterRevocation;
+}
+
 export async function subscribeNewsletter(opts: {
   email: string;
   ipAddress: string | null;
@@ -41,6 +74,18 @@ export async function subscribeNewsletter(opts: {
 }): Promise<NewsletterResult> {
   const apiKey = process.env.RESEND_API_KEY;
   const segmentId = process.env.RESEND_NEWSLETTER_SEGMENT_ID; // opcional
+
+  // Idempotencia en NUESTRA capa (Lucams es el responsable del dato; Resend el
+  // procesador): la API de Resend hace UPSERT (201) en vez de 409/422 ante un
+  // duplicado (verificado 2026-08-06 contra api.resend.com — hallazgo H9), así
+  // que detectar "ya suscrito" por el status de Resend NUNCA funcionó. Si hay
+  // suscripción vigente, no se toca Resend, no se reenvía el welcome y la UX
+  // dice la verdad ("ya estabas suscrito").
+  const normalizedEmail = opts.email.toLowerCase();
+  if (await isNewsletterSubscribed(normalizedEmail)) {
+    logger.info({ event: "newsletter.subscribe.already_subscribed" });
+    return { ok: true, alreadySubscribed: true };
+  }
 
   // Soft-fail si RESEND_API_KEY no está seteada: registramos el Consent
   // de todas formas (cumple Ley 1581) y mostramos éxito al usuario, pero
@@ -133,18 +178,11 @@ async function persistConsent(opts: {
   ipAddress: string | null;
   userAgent: string | null;
 }): Promise<void> {
-  // Check si el email ya tiene un Consent NEWSLETTER vigente; si sí,
-  // no duplicamos. Si lo había revocado, creamos uno nuevo.
-  const existing = await prisma.consent.findFirst({
-    where: {
-      email: opts.email.toLowerCase(),
-      scope: "NEWSLETTER",
-      accepted: true,
-      version: PRIVACY_VERSION,
-    },
-    orderBy: { acceptedAt: "desc" },
-  });
-  if (existing) return;
+  // Check si el email ya está vigente (misma regla isNewsletterSubscribed: un
+  // accepted SIN revocación posterior); si sí, no duplicamos. Si lo había
+  // revocado, SÍ creamos el nuevo accepted (antes solo se miraba accepted:true
+  // y la re-suscripción tras una baja no dejaba fila nueva — parte de H9).
+  if (await isNewsletterSubscribed(opts.email.toLowerCase())) return;
 
   await prisma.consent.create({
     data: {
