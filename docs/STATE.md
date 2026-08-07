@@ -13,6 +13,29 @@
 
 ## Resumen actual
 
+**🧪 COLA E2E AVANZADA (2026-08-07) — §6.21 + §8 + cross-browser certificados en LOCAL y STG;
+hallazgo de config STG (H16) corregido; CI develop recuperada.** Se ejecutó la cola restante del
+PROMPT_E2E_HOMOLOGACION: `homolog-rate-limit.spec.ts` (login bloquea en el intento 51, registro
+pre-sembrado con la función SQL real sin crear usuario, contacto 3+1, cotización doble-submit =
+1 Quote + 3+1; CSRF: server action con origen adulterado → 500 pre-dispatcher vs 404 con origen
+bueno, CORS /api 403/400) y `homolog-webhooks.spec.ts` (Wompi firma 200/401 + dedup + env-match
+dinámico + ventana 25 h; Resend Svix firma/anti-replay/upsert; Aveonline secret timing-safe +
+dedup; **§7.5.2 monto adulterado → needsReconciliation + stock intacto**). **12/12 LOCAL y 12/12
+STG verdes × desktop/mobile** (la celda STG-mobile de rate-limit por corrida dirigida tras el fix
+del banner de cookies). **H16 (config, corregido): `RESEND_WEBHOOK_SECRET` no existía en Vercel
+Preview** → el webhook Resend en STG rechazaba firmas válidas (401 fail-closed); var agregada
+(sensitive) + preview fresco. **CI develop estaba roja desde el aterrizaje de los homolog-\***
+(filtro `estudio` por substring corría `homolog-estudio-uploads` en el gate) → filtros anclados
+`<nombre>.spec` en `ci.yml`/`nightly-full.yml`. **Cross-browser**: Firefox 9/9 en LOCAL y STG;
+WebKit NO ejecutable en Oracle Linux 9 (deps del SO — documentado). **Evaluación nightly: NO
+cablear los homolog-\* todavía** (soak ~1 semana; diseño y bloqueantes en el doc). 5 flakes de
+harness corregidos con causa raíz. Limpieza verificada por query en ambas DBs (solo queda el
+ledger Consent). Doc: [docs/audits/2026-08-07-e2e-homologacion.md](audits/2026-08-07-e2e-homologacion.md).
+Commits: `7ba56f1`, `af85c83`, `ed651c0`. **Sigue para otra sesión: la suite modo `full` de
+Etapa 2 (§7.5 completa — plan y factibilidad del build propio documentados en el doc §6).**
+
+---
+
 **🧪 SUITE E2E DE HOMOLOGACIÓN CERTIFICADA (2026-08-06) — matriz §6 modo catálogo completa en
 LOCAL y STG.** Se ejecutó el PROMPT_E2E_HOMOLOGACION (entregables 1-5): `playwright.config.ts` con
 projects `desktop-chrome` + `mobile-chrome`, `E2E_ENV=local|stg|prd`, bypass Vercel condicional,
@@ -1932,16 +1955,20 @@ sidebar fijo, Cancelar en cupones.
 
 **Autónomo (candidatos, calidad-primero):**
 
-1. **Cola restante de la suite E2E de homologación** (matriz §6 modo catálogo YA cerrada el
-   2026-08-06 — 19 flujos + a11y + Lighthouse, ver Bitácora y doc de auditoría): spec §6.21
-   (CSRF/origen adulterado + doble submit), webhooks sintéticos §8 (Wompi firma 200/401 + dedup +
-   environment-match, Resend Svix, Aveonline secret — todo sin compras reales), cross-browser
-   ampliado (WebKit/Firefox como matriz extra), y la suite modo `full` de Etapa 2 (§7.5: checkout
-   Wompi sandbox, COD, cupones, stock, envíos, emails — build propio, no mezclada con catálogo).
-   Evaluar meter los `homolog-*` al nightly contra STG (anotado: después de unos días estable).
-2. **Backlog auditoría v3: 100% barrido en código** (Tandas 1-8 + FB1-FB5 + piezas mayores + tail de calidad T5/T6/T7). No queda deuda de auditoría accionable sin decisión/verificación de Lucy.
-3. Otros pulidos de Fase 3 storefront/estudio que no dependan de la curaduría de plantillas.
-4. Barrido de coherencia de datos revenue/COD end-to-end si aparece señal.
+1. **Suite modo `full` de Etapa 2 (§7.5)** — la pieza grande que queda del PROMPT_E2E_HOMOLOGACION:
+   checkout registrado, pasarela por interceptación completa (éxito/DECLINED→reintento/timeout),
+   COD, cupones, stock (reserva/decremento/oversold/liberación), envíos (cotización, selección
+   sellada, `bloquegenerarguia`), emails transaccionales. Build propio local (factibilidad ya
+   verificada) — plan por ítem en `docs/audits/2026-08-07-e2e-homologacion.md` §6. Ya cubierto:
+   monto adulterado → needsReconciliation (en `homolog-webhooks`), y el checkout sandbox real de
+   `wompi-sandbox.spec.ts` (re-verificar que sigue corriendo).
+2. **Soak de la suite homolog (~1 semana)** y luego cablear el subset verde al nightly contra el
+   localstack efímero (Opción A del doc §5: extender seed CI + llaves Turnstile de prueba).
+   WebKit/Firefox ampliado: Firefox ya corre en esta VM; WebKit exige host con deps (CI Ubuntu o
+   macOS).
+3. **Backlog auditoría v3: 100% barrido en código** (Tandas 1-8 + FB1-FB5 + piezas mayores + tail de calidad T5/T6/T7). No queda deuda de auditoría accionable sin decisión/verificación de Lucy.
+4. Otros pulidos de Fase 3 storefront/estudio que no dependan de la curaduría de plantillas.
+5. Barrido de coherencia de datos revenue/COD end-to-end si aparece señal.
 
 **Cuentas creadas just-in-time durante fases posteriores:**
 
@@ -1977,6 +2004,55 @@ sidebar fijo, Cancelar en cupones.
 ---
 
 ## Bitácora (append-only, más reciente arriba)
+
+### 2026-08-07 — Cola E2E: §6.21 + §8 webhooks + cross-browser + §7.5 parcial + fix CI/nightly
+
+Continuación del PROMPT_E2E_HOMOLOGACION (cola escrita en Próximo paso). Doc con matriz, evidencia
+y hallazgos: `docs/audits/2026-08-07-e2e-homologacion.md`.
+
+- **`homolog-rate-limit.spec.ts` (§6.21)**: adaptación honesta al sistema real — las Server Actions
+  no devuelven 429 sino `{error}` con mensaje en `role="alert"`; se certifica el comportamiento con
+  el bucket `rate_limit_buckets` como prueba. Login 51 intentos reales por UI → bloqueo con buckets
+  ip+email en 51; registro con bucket pre-sembrado vía `rate_limit_check` real → mensaje y 0
+  Customer; contacto ×4 → 3 tickets + bloqueo; cotización: doble submit (click + requestSubmit con
+  POST retardado 1.5 s) → exactamente 1 Quote; ×4 mismo WhatsApp → 3 + bloqueo. CSRF: origen
+  adulterado → 500 pre-dispatcher (contraste 404 con origen bueno) y `/api/vitals` 403/400.
+- **`homolog-webhooks.spec.ts` (§8 + §7.5.2)**: rutas reales por HTTP con eventos firmados con los
+  secrets del ambiente. Wompi 405/401/200 + dedup + environment-match dinámico (descubre cuál env
+  acepta el ambiente) + anti-replay 25 h; Resend Svix (firma, tolerancia 5 min, upsert por
+  resendId); Aveonline (secret timing-safe misma-longitud, dedup, rama query-string); y el
+  incremento §7.5: orden PENDING_PAYMENT sembrada + APPROVED con monto adulterado →
+  `needsReconciliation=true`, orden sin transicionar, stock intacto, evento sellado. Sin llamadas
+  externas ni compras reales.
+- **H16 (config STG, corregido)**: `RESEND_WEBHOOK_SECRET` solo existía en Production → el webhook
+  Resend del preview era fail-closed 401 hasta para firmas válidas. Agregada a Preview vía API
+  (sensitive, valor exacto parseado con dotenv — `.env.stg` tiene comentarios inline) + deploy
+  fresco por push (`7ba56f1`); el spec Resend quedó verde en STG × ambos proyectos. Trampas
+  documentadas en el doc: `vercel env pull` muestra `""` en vars sensitive (H17 descartado así),
+  `vercel env add` pide rama interactiva, y `vercel redeploy` NO re-lee env (exige deploy fresco).
+- **Cross-browser §8**: `desktop-firefox` + `desktop-webkit` (solo smoke read-only) en
+  `playwright.config.ts`. Firefox 9/9 LOCAL y STG. WebKit: `browserType.launch` aborta en Oracle
+  Linux 9 (libicu74/libgtk-4 ausentes) — verificado empíricamente; usable en CI/macOS, documentado.
+- **CI develop rota por el aterrizaje homolog-\*** (3 corridas): el filtro `estudio` del gate
+  matcheaba `homolog-estudio-uploads.spec.ts`. Anclados los filtros a `<nombre>.spec` en `ci.yml` y
+  `nightly-full.yml` (verificado con `--list`). Commit `af85c83`.
+- **Flakes de harness corregidos (5, causa raíz en el doc)**: strict-violation del POM cotización
+  (heading vs alert), token Turnstile rotado en registro (recuperación que la propia app prescribe),
+  bucket `vitals:<ip>` envenenado por los beacons RUM de los tests de página (cleanBuckets
+  "vitals"), cold-start STG (precalentar rutas), y banner de cookies tapando el submit de /login
+  en 390px (dismissCookieBanner — `ed651c0`).
+- **Evaluación nightly**: NO cablear homolog-* todavía — suite de 1 día con 3 flakes + 1 gap de
+  config + 1 rotura CI en su primera semana. Opción A (localstack efímero del nightly) requiere
+  extender el seed CI (sin `home.categories.cta-all`) y llaves Turnstile de prueba; Opción B
+  (contra STG) mandaría 4-6 correos reales nocturnos al admin. Recomendación: soak ~1 semana y
+  Opción A con subset verde conocido. Detalle en el doc §5.
+- **§7.5 suite modo full**: factibilidad del build propio verificada (`NEXT_PUBLIC_STORE_MODE=full
+PORT=4100 pnpm dev` sirve la UI de pago) y plan por ítem en el doc §6 — queda para una sesión
+  dedicada. Ya existen: `wompi-sandbox.spec.ts` (checkout real sandbox), `compra.spec.ts`,
+  `admin-transactional.spec.ts`.
+- **Limpieza verificada por query en LOCAL y STG**: 0 WebhookEvent/EmailEvent/Order/Quote-activa/
+  ticket residual; buckets vacíos; solo queda el ledger legal Consent (51 LOCAL / 28 STG, marcado
+  RUN) y sus Quotes soft-deleted.
 
 ### 2026-08-06 — Suite E2E de homologación: infra POM/fixtures + cruce admin→cliente en LOCAL y STG
 
