@@ -70,7 +70,11 @@ export function buildCsp(nonce: string, isProd: boolean): string {
     // Solo hosts que el NAVEGADOR contacta: Supabase (auth/storage/realtime) + Wompi (widget/checkout).
     // El envío (Aveonline) y la IA (Gemini) se llaman SERVER-SIDE → no van en connect-src.
     `connect-src 'self' https://*.supabase.co https://api.wompi.co${supabaseOrigin}`,
-    "frame-src 'self' https://challenges.cloudflare.com https://checkout.wompi.co",
+    // frame-src también lleva vercel.live en previews (H14, 2026-08-06): el fix
+    // de 2026-08-05 lo había agregado SOLO a script-src, pero la toolbar de
+    // Vercel Live es un IFRAME y seguía bloqueada por frame-src (error CSP en
+    // consola capturado por Lighthouse contra el preview de STG).
+    `frame-src 'self' https://challenges.cloudflare.com https://checkout.wompi.co${vercelLive}`,
     // Quién nos puede enmarcar: solo el propio origen (preview en vivo del
     // admin, roadmap C1). Equivalente moderno de X-Frame-Options SAMEORIGIN;
     // el framing externo (clickjacking) queda bloqueado.
