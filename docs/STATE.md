@@ -13,6 +13,16 @@
 
 ## Resumen actual
 
+**🚀 RELEASE A PRODUCCIÓN (2026-08-07): `production` fast-forward `9cac62e` → `c86d206` — PRD sirve
+toda la certificación E2E + los 6 fixes de la homologación.** Verificado en vivo tras el deploy:
+dominio → nuevo deployment, `/api/health/all` ok, `/api/health/crons` ok (0 vencidos), canonical
+explícito de la home ya en lucamsshop.com (H13), smoke read-only 9/9 en PRD, CI del push a
+production verde. Los fixes que PRD no tenía: H7 (mensaje >10 MB en Estudio), H8 (banner cookies
+vs FAB móvil), H9 (idempotencia newsletter), H13 (canonical), H14 (CSP previews), H15a (⌘K a11y).
+El resto del merge es infra de tests/docs/CI. Ramas alineadas: `develop` = `production` = `c86d206`.
+
+---
+
 **🛡️ CAPA ADMIN §7 CERRADA (2026-08-07, 4ª jornada) — PROMPT_E2E_HOMOLOGACION 100% ENTREGADO.**
 Nuevo `homolog-admin-modulos.spec.ts` (8/8 verde en LOCAL y STG × desktop/mobile): §7.2
 cotizaciones (cotización real por UI → lista admin → detalle con wa.me → "Marcar contactada" →
@@ -2036,6 +2046,18 @@ sidebar fijo, Cancelar en cupones.
 ---
 
 ## Bitácora (append-only, más reciente arriba)
+
+### 2026-08-07 (cierre) — RELEASE A PRODUCCIÓN: `production` = `c86d206`
+
+Lucy preguntó si todos los cambios reposaban en PRD — no: PRD servía `9cac62e` (2026-08-05) y los
+fixes de la homologación (2026-08-06) solo estaban en develop. Merge fast-forward
+`develop`→`production` (autorizado): la app que cambió es mínima y quirúrgica (8 archivos, +98/−20:
+H7 mensaje >10 MB Estudio, H8 FAB sobre banner cookies, H9 idempotencia newsletter, H13 canonical
+home, H14 CSP frame-src previews, H15a hint ⌘K a11y); el resto es tests/docs/CI. Sin hotfixes en
+production que faltaran en develop. Verificación en vivo post-deploy: dominio sirviendo el nuevo
+deployment, `/api/health/all` ok, `/api/health/crons` ok (0 vencidos, 0 disabled en PRD), canonical
+`https://lucamsshop.com/` en el HTML (H13 vivo), smoke read-only **9/9** en PRD, CI del push a
+production verde (run 31194148117). Ramas alineadas `develop` = `production`.
 
 ### 2026-08-07 (4ª jornada) — Capa admin §7 cerrada (homolog-admin-modulos) — prompt 100% entregado
 
