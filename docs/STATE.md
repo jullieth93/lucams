@@ -1978,11 +1978,10 @@ sidebar fijo, Cancelar en cupones.
 
 **Requiere a Lucy (decisiones / verificación):**
 
-0. **DMARC: subir de `p=none` a `p=quarantine`** (ya analizado 2026-08-07 con el reporte de Google
-   — 100% pass en todos los emisores: Resend DKIM+SPF amazonses alineados, Cloudflare forwarding
-   alineado). Es un cambio de 1 campo en Cloudflare → DNS → TXT `_dmarc.lucamsshop.com` →
+0. ~~DMARC p=none → quarantine~~ — **HECHO y verificado (2026-08-07)**: Lucy aplicó el cambio en
+   Cloudflare y `dig _dmarc.lucamsshop.com` (resolver local y 1.1.1.1) devuelve
    `v=DMARC1; p=quarantine; rua=mailto:dmarc@lucamsshop.com;`. En 1-2 semanas de reportes limpios,
-   `p=reject`. Sin prisa pero sin olvidar: hoy un suplantador del dominio solo se reporta, no se bloquea.
+   último paso: `p=reject` (misma edición de 1 campo).
 
 1. **Prueba visual del feature de compartir** (ver Bitácora 2026-07-12): `/mi-cuenta/disenos` con un
    diseño finalizado → Compartir (copia link) / WhatsApp / Ver / Archivar; abrir `/d/<token>` en incógnito
