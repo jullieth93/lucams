@@ -1993,11 +1993,19 @@ sidebar fijo, Cancelar en cupones.
    privacidad pre-lanzamiento? (Relevante Ley 1581 — fotos personales.)
 3. **🔴 PENDIENTE SERIO — plantillas del Estudio** (sección arriba, Lucy 2026-07-04): curaduría de
    plantillas reales + visión del flujo móvil. Necesita input de Lucy antes de producir.
-4. **Decisión H12 — aplicar la config OTP de auth al stack LOCAL.** `supabase-local/.../config.toml`
-   ya tiene `enable_confirmations = true` + plantillas OTP `{{ .Token }}`, pero solo toman efecto
-   RECREANDO el stack: `make db-local-reset` (borra volúmenes y resiembra — destructivo pero
-   idempotente; el catálogo local se repuebla solo). Mientras no se haga, LOCAL registra con sesión
-   directa (autoconfirm) y el spec `homolog-auth` certifica ese comportamiento. ¿Se ejecuta el reset?
+4. ~~Decisión H12 — aplicar la config OTP de auth al stack LOCAL.~~ **CERRADO (2026-08-07,
+   autorizado por Lucy)**: `make db-local-reset` ejecutado — el stack LOCAL ahora exige OTP de
+   verdad (signup ya no autoconfirma: verificado por API y por UI). Fix previo necesario: el
+   `content_path` de las plantillas en `supabase-local/supabase/config.toml` se resolvía contra el
+   workdir (el stack nunca se había recreado desde que se escribió la config). El catálogo local se
+   re-sincronizó desde PRD post-reset (dump data-only de las 19 tablas de catálogo → 566/526/726,
+   paridad exacta LOCAL≡STG≡PRD). `homolog-auth.spec.ts` reescrito al flujo OTP real
+   (registro→/confirmar-codigo, código leído de Mailpit, recovery por OTP→/restablecer-password)
+   con 4 fixes de harness: sort de mensajes Mailpit por fecha (un `.sort()` pelado devolvía orden
+   arbitrario y agarraba el código viejo cuando había 2 correos), esperar la respuesta de la action
+   antes de sondar sesión (una navegación prematura cancela el fetch y la Set-Cookie no aterriza),
+   toPass con efectos en el form de recuperación, y limpieza de buckets signup/reset-password/
+   verify-otp al inicio (los llenan las iteraciones de la suite).
 5. ~~Enrolar MFA TOTP del admin real en STG~~ — **CERRADO (2026-08-07)**: el factor ya estaba
    enrolado desde el 2026-08-02 (verificado por `listFactors`, status verified) y Lucy confirmó que
    tiene el secreto en su authenticator. Lo que faltaba: **códigos de respaldo** — generados 10 e
@@ -2053,6 +2061,34 @@ sidebar fijo, Cancelar en cupones.
 ---
 
 ## Bitácora (append-only, más reciente arriba)
+
+### 2026-08-07 (cierre 4) — H12 (OTP local) + PRD barrido de fixtures + MFA STG cerrado
+
+- **H12 ejecutado (autorizado por Lucy)**: `make db-local-reset` aplicó la config OTP al stack
+  LOCAL — el registro ahora exige código (`enable_confirmations` + plantillas `{{ .Token }}`),
+  verificado por API (signup sin sesión) y por UI. Antes hubo que corregir el `content_path` de las
+  plantillas en `supabase-local/supabase/config.toml` (se resuelve contra el workdir; el stack
+  nunca se había recreado con esa config). El reset siembra solo un SUBCONJUNTO del catálogo
+  (59 productos) → se re-sincronizó desde PRD con el procedimiento documentado (dump data-only de
+  las 19 tablas de catálogo por el pg_dump 17.6 del contenedor, TRUNCATE+restore con las 4
+  constraints circulares soltadas y recreadas): LOCAL vuelve a 566/526/726.
+- **`homolog-auth` reescrito al flujo OTP real** y verde en LOCAL ×2 proyectos. Fixes de harness
+  con causa raíz: (1) el helper de Mailpit ordenaba mensajes con `.sort()` sobre objetos (orden
+  arbitrario → agarraba el código VIEJO cuando había signup+recovery — descubierto por el
+  screenshot del error: "código no válido o ya expiró" con un código bien formado); (2) sondar la
+  sesión navegando mientras la Server Action está en vuelo cancela el fetch y la Set-Cookie nunca
+  aterriza (ahora se espera la respuesta/redirect primero); (3) toPass con efectos en
+  recuperación; (4) limpieza de buckets `signup`/`reset-password`/`verify-otp` al inicio (las
+  iteraciones de la propia suite los llenan).
+- **PRD barrido (autorizado por Lucy)**: los 46 fixtures `wompi-e2e-*` borrados de PRD con la
+  cascada FK-safe (acceso por las credenciales del backup local `.env.local.nube-backup`).
+  Verificado: PRD 612→**566** productos. **Paridad exacta en los 3 ambientes: 566/526/726,
+  11 vivos (9 activos + 2 soft-hidden), 115 ocasiones, 981 CMS, 130 redirects, 24 plantillas,
+  43 cupones reales.**
+- **MFA STG cerrado**: el factor TOTP ya existía (2026-08-02) y Lucy tiene el secreto; se generaron
+  los 10 códigos de respaldo que faltaban (entregados una vez; hashes en AdminRecoveryCode).
+- **DMARC `p=quarantine`** aplicado por Lucy y verificado por dig; recordatorio para `p=reject`
+  programado al 2026-08-21 (cron 38b5d225).
 
 ### 2026-08-07 (cierre 3) — Soak día 1 + H18 (cuota Resend) + corrección de catálogo en docs canónicos
 

@@ -43,8 +43,10 @@ enable_confirmations = true
 
 [auth.email.template.confirmation]
 subject = "Tu código de confirmación — Lucams (pruebas)"
-content_path = "./templates/confirmation.html"
+# El CLI resuelve content_path relativo al workdir (supabase-local), no al
+# directorio del config — verificado 2026-08-07 al recrear el stack.
+content_path = "./supabase/templates/confirmation.html"
 
 [auth.email.template.recovery]
 subject = "Tu código para restablecer la contraseña — Lucams (pruebas)"
-content_path = "./templates/recovery.html"
+content_path = "./supabase/templates/recovery.html"

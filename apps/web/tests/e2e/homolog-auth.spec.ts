@@ -64,27 +64,41 @@ test.afterAll(async () => {
   await disconnectDb();
 });
 
-/** Extrae el link de recuperación (PKCE verify) del Mailpit para un destinatario. */
-async function mailpitRecoveryLink(toEmail: string): Promise<string> {
-  const res = await fetch(`${MAILPIT_API}/messages?limit=50`);
-  const data = (await res.json()) as {
-    messages: Array<{ ID: string; To: Array<{ Address: string }>; Subject: string }>;
-  };
-  const mine = data.messages
-    .filter((m) => m.To.some((t) => t.Address === toEmail))
-    .sort()
-    .reverse();
-  if (mine.length === 0) throw new Error(`sin emails para ${toEmail} en Mailpit`);
-  const full = (await (await fetch(`${MAILPIT_API}/message/${mine[0]!.ID}`)).json()) as {
-    Subject: string;
-    Text?: string;
-    HTML?: string;
-  };
-  const body = `${full.Text ?? ""}${full.HTML ?? ""}`;
-  const m = body.match(/https?:\/\/[^\s)"]*\/auth\/v1\/verify\?[^\s)"]+/);
-  if (!m) throw new Error(`sin link de recuperación en el email de ${toEmail}`);
-  // El link viene con &amp; en el HTML — normalizar.
-  return m[0].replace(/&amp;/g, "&");
+/** Extrae el código OTP (6 dígitos, plantilla {{ .Token }}) del Mailpit para un destinatario. */
+async function mailpitOtpCode(toEmail: string): Promise<string> {
+  // El correo tarda un instante tras el submit (y más bajo carga) — sondear.
+  const deadline = Date.now() + 30_000;
+  let lastErr: unknown = null;
+  while (Date.now() < deadline) {
+    try {
+      const res = await fetch(`${MAILPIT_API}/messages?limit=50`);
+      const data = (await res.json()) as {
+        messages: Array<{ ID: string; Created: string; To: Array<{ Address: string }> }>;
+      };
+      const mine = data.messages
+        .filter((m) => m.To.some((t) => t.Address === toEmail))
+        // Por fecha DESC — un .sort() pelado compara objetos como "[object
+        // Object]" y devuelve orden arbitrario: con 2 correos (signup + recovery)
+        // agarraba el código VIEJO (flake reproducido 2026-08-07).
+        .sort((a, b) => new Date(b.Created).getTime() - new Date(a.Created).getTime());
+      if (mine.length > 0) {
+        const full = (await (await fetch(`${MAILPIT_API}/message/${mine[0]!.ID}`)).json()) as {
+          Text?: string;
+          HTML?: string;
+        };
+        const body = `${full.Text ?? ""}${full.HTML ?? ""}`;
+        const m = body.match(/\b(\d{6})\b/);
+        if (m) return m[1]!;
+        lastErr = new Error(`sin código OTP en el email de ${toEmail}`);
+      } else {
+        lastErr = new Error(`sin emails para ${toEmail} en Mailpit`);
+      }
+    } catch (err) {
+      lastErr = err;
+    }
+    await new Promise((r) => setTimeout(r, 1_000));
+  }
+  throw lastErr;
 }
 
 test("auth: registro+OTP+sesión+logout+login+recuperar+restablecer (LOCAL full / STG parcial)", async ({
@@ -121,11 +135,14 @@ test("auth: registro+OTP+sesión+logout+login+recuperar+restablecer (LOCAL full 
 
   try {
     if (E2E_ENV === "local") {
-      // ─── LOCAL: flujo del stack CORRIENTE (autoconfirm + link PKCE). ───
-      // Nota H12: la config OTP (enable_confirmations + plantillas {{ .Token }})
-      // está en supabase-local/supabase/config.toml pero aplica al RECREAR el
-      // stack — hoy el registro autoconfirma (sesión directa, sin email OTP) y
-      // la recuperación llega como link PKCE genérico de GoTrue.
+      // Los buckets de auth (signup / reset-password, 30/h por IP en dev) se
+      // llenan con las iteraciones de la propia suite y bloquean el flujo sin
+      // redirect — limpiarlos al inicio (mismo patrón que homolog-rate-limit).
+      await db()
+        .$executeRaw`DELETE FROM rate_limit_buckets WHERE key LIKE 'signup:%' OR key LIKE 'reset-password:%' OR key LIKE 'verify-otp:%'`;
+      // ─── LOCAL: flujo OTP REAL (H12 cerrado 2026-08-07: el stack recreado
+      // aplica enable_confirmations + plantillas {{ .Token }} — el registro ya
+      // NO autoconfirma; el código llega a Mailpit y se tipea en la app). ───
       // 1. Registro por UI (nombre + email + contraseña + consent Ley 1581).
       await anonPage.goto("/registro", { waitUntil: "domcontentloaded" });
       await expect(async () => {
@@ -150,16 +167,33 @@ test("auth: registro+OTP+sesión+logout+login+recuperar+restablecer (LOCAL full 
         expect(token.length).toBeGreaterThan(0);
       }).toPass({ timeout: 20_000 });
       await anonPage.getByRole("button", { name: /crear cuenta|registrar/i }).click();
-      await anonPage.waitForURL((url) => url.pathname === "/", { timeout: 30_000 });
-      expect(await isLoggedIn(), "sesión directa tras registro (autoconfirm)").toBe(true);
+      // Con OTP activo NO hay sesión directa: la app redirige a /confirmar-codigo.
+      await anonPage.waitForURL(/\/confirmar-codigo/, { timeout: 30_000 });
+      const confirmUrl = anonPage.url();
+      expect(await isLoggedIn(), "SIN sesión antes de confirmar el código").toBe(false);
       record(
-        "signup-direct-session",
+        "signup-redirect-otp",
         true,
-        "registro → sesión en / (stack autoconfirm, ver H12)",
+        "registro → /confirmar-codigo (sin autoconfirm — H12 cerrado)",
         await shot(anonPage, "1-signup"),
       );
 
-      // 2. DB: Customer + Consent HABEAS_DATA (Ley 1581) del registro.
+      // 2. OTP desde Mailpit → confirmar → sesión. (isLoggedIn navega a
+      // /mi-cuenta para la sonda → volver a la página del código.)
+      await anonPage.goto(confirmUrl, { waitUntil: "domcontentloaded" });
+      await expect(anonPage.locator('input[name="token"]')).toBeVisible({ timeout: 20_000 });
+      const code = await mailpitOtpCode(EMAIL);
+      await anonPage.locator('input[name="token"]').fill(code);
+      await anonPage.locator('button[type="submit"]').first().click();
+      // Esperar la respuesta de la action ANTES de cualquier sonda: una
+      // navegación prematura cancela el fetch y la Set-Cookie de sesión nunca
+      // aterriza (flake reproducido 2026-08-07: la toPass-sonda navegaba a
+      // /mi-cuenta en pleno vuelo del POST).
+      await anonPage.waitForURL((url) => url.pathname === "/", { timeout: 30_000 });
+      expect(await isLoggedIn(), "sesión tras OTP correcto").toBe(true);
+      record("otp-confirm-session", true, "código del Mailpit → sesión activa");
+
+      // 3. DB: Customer + Consent HABEAS_DATA (Ley 1581) del registro.
       await expect(async () => {
         const customer = await db().customer.findFirst({
           where: { email: EMAIL, deletedAt: null },
@@ -174,11 +208,16 @@ test("auth: registro+OTP+sesión+logout+login+recuperar+restablecer (LOCAL full 
       }).toPass({ timeout: 20_000 });
       record("db-customer-consent", true, "Customer + Consent HABEAS_DATA en DB");
 
-      // 3. Logout → login con contraseña.
-      await anonPage
-        .getByRole("button", { name: /cerrar sesión|salir/i })
-        .first()
-        .click();
+      // 4. Logout → login con contraseña. Esperar la respuesta del POST de
+      // logout ANTES de la sonda (navegar a /mi-cuenta en pleno vuelo cancela
+      // el fetch y la sesión sigue viva — flake 2026-08-07).
+      await Promise.all([
+        anonPage.waitForResponse((r) => r.request().method() === "POST", { timeout: 20_000 }),
+        anonPage
+          .getByRole("button", { name: /cerrar sesión|salir/i })
+          .first()
+          .click(),
+      ]);
       await expect(async () => {
         expect(await isLoggedIn(), "sin sesión tras logout").toBe(false);
       }).toPass({ timeout: 20_000 });
@@ -186,29 +225,44 @@ test("auth: registro+OTP+sesión+logout+login+recuperar+restablecer (LOCAL full 
       expect(await isLoggedIn(), "login con contraseña tras logout").toBe(true);
       record("logout-login", true);
 
-      // 4. Recuperar: request → link PKCE en Mailpit → seguirlo → sesión.
+      // 5. Recuperar por OTP: request → /restablecer-password → código de
+      //    Mailpit → nueva contraseña → sesión. El bucket reset-password
+      //    (30/h por IP en dev) se llena con las iteraciones de la propia
+      //    suite → limpiarlo antes (mismo patrón que homolog-rate-limit).
+      await db().$executeRaw`DELETE FROM rate_limit_buckets WHERE key LIKE 'reset-password:%'`;
       await anonPage.goto("/recuperar-password", { waitUntil: "domcontentloaded" });
       // El form de recuperación tiene SU widget Turnstile; el footer tiene otro
       // (newsletter) — el token se lee DENTRO del form de recuperación.
       const recoverForm = anonPage.locator("form", {
         has: anonPage.getByRole("button", { name: /enviar código|enviar/i }),
       });
-      await recoverForm.locator('input[name="email"]').fill(EMAIL);
+      // toPass con efectos: un fill que cae antes de la hidratación se revierte
+      // en silencio y el submit muere en zod sin redirect (flake 2026-08-07).
       await expect(async () => {
+        await recoverForm.locator('input[name="email"]').fill(EMAIL);
+        await expect(recoverForm.locator('input[name="email"]')).toHaveValue(EMAIL, {
+          timeout: 1_500,
+        });
         const token = await recoverForm.locator('input[name="cf-turnstile-response"]').inputValue();
         expect(token.length).toBeGreaterThan(0);
       }).toPass({ timeout: 20_000 });
       await recoverForm.getByRole("button", { name: /enviar código|enviar|recuperar/i }).click();
-      await expect(anonPage.locator("body")).toContainText(/revisa tu correo|te enviamos/i, {
-        timeout: 20_000,
-      });
-      const recoveryLink = await mailpitRecoveryLink(EMAIL);
-      await anonPage.goto(recoveryLink, { waitUntil: "domcontentloaded" });
-      expect(await isLoggedIn(), "sesión tras el link de recuperación (PKCE)").toBe(true);
+      await anonPage.waitForURL(/\/restablecer-password/, { timeout: 30_000 });
+      const recoveryCode = await mailpitOtpCode(EMAIL);
+      const newPassword = `${PASSWORD}Nv`;
+      await anonPage.locator('input[name="token"]').fill(recoveryCode);
+      await anonPage.locator('input[name="password"]').fill(newPassword);
+      await anonPage.locator('input[name="passwordConfirm"]').fill(newPassword);
+      await anonPage.locator('button[type="submit"]').first().click();
+      // La acción cierra TODAS las sesiones (global signOut) y redirige a
+      // /login?reset=ok — la prueba de fuego es entrar con la NUEVA clave.
+      await anonPage.waitForURL(/\/login\?reset=ok/, { timeout: 30_000 });
+      await login(EMAIL, newPassword);
+      expect(await isLoggedIn(), "login con la contraseña nueva tras el reset").toBe(true);
       record(
-        "recover-pkce-session",
+        "recover-otp-session",
         true,
-        "link PKCE del Mailpit → sesión activa",
+        "OTP recovery → /login?reset=ok → login con la nueva contraseña",
         await shot(anonPage, "2-recover"),
       );
     } else {
