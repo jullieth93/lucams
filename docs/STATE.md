@@ -13,6 +13,21 @@
 
 ## Resumen actual
 
+**🛡️ CAPA ADMIN §7 CERRADA (2026-08-07, 4ª jornada) — PROMPT_E2E_HOMOLOGACION 100% ENTREGADO.**
+Nuevo `homolog-admin-modulos.spec.ts` (8/8 verde en LOCAL y STG × desktop/mobile): §7.2
+cotizaciones (cotización real por UI → lista admin → detalle con wa.me → "Marcar contactada" →
+DB + AdminActionLog), §7.4 notificaciones (filtro QUOTE, deep link, marcar todas → pill ausente),
+§7.6 observability (página con `<details>` abierto + `/api/health/crons` con contrato 200↔ok /
+503↔degraded verificado fiel a AlertState en DB — el 503 en LOCAL con el stack recién levantado es
+la verdad, no un fallo) y §7.7 RBAC (MANAGER efímero: /admin/finanzas → redirect + sin nav item;
+cotizaciones sí). Con esto, el PROMPT MAESTRO queda completo: §6 (19 flujos, 2026-08-06) + §6.21 +
+§7 admin + §7.5 full-mode + §8 webhooks + cross-browser (Firefox LOCAL/STG, WebKit vía nightly
+18/18 verificado). Hallazgos de harness corregidos en el doc (5 en §6.21/§8 + 4 en §7). Limpieza
+verificada por query en ambas DBs (0 residuo; solo ledger Consent). Detalle:
+[docs/audits/2026-08-07-e2e-homologacion.md](audits/2026-08-07-e2e-homologacion.md) §8.
+
+---
+
 **🛒 SUITE MODO `FULL` (ETAPA 2, §7.5) CONSTRUIDA Y CERTIFICADA EN LOCAL (2026-08-07, segunda
 jornada).** `scripts/e2e-fullmode.sh` (+ `make test-e2e-fullmode`) levanta un dev server dedicado
 en `:4100` con `NEXT_PUBLIC_STORE_MODE=full` y corre los 6 specs `fullmode-*` nuevos (POMs
@@ -2021,6 +2036,24 @@ sidebar fijo, Cancelar en cupones.
 ---
 
 ## Bitácora (append-only, más reciente arriba)
+
+### 2026-08-07 (4ª jornada) — Capa admin §7 cerrada (homolog-admin-modulos) — prompt 100% entregado
+
+- **`homolog-admin-modulos.spec.ts`**: 4 tests × desktop/mobile, verde en LOCAL (8/8) y STG (8/8).
+  §7.2: cotización real por UI anónima → lista/detalle admin (link wa.me/57 bien formado) →
+  "Marcar contactada" con confirm() aceptado → CONTACTED en DB + AdminActionLog (§7.1 log).
+  §7.4: filtro ?view=all&type=QUOTE + deep link "Ver cotización" → detalle + marcar todas leídas
+  → 0 no leídas en DB + pill ausente (drawer hamburguesa en mobile). §7.6: observability carga
+  (abriendo el `<details>` "Detalle técnico") + /api/health/crons con contrato certificado contra
+  DB (200↔ok / 503↔degraded; payload = AlertState). §7.7: admin MANAGER efímero → finanzas
+  redirect al dashboard + nav filtrado + cotizaciones accesible (deny-by-default probado).
+- **Hallazgos de harness corregidos**: headings dentro del `<details>` colapsado (hidden hasta
+  abrirlo); la expectativa "health/crons siempre 200" era suposición indebida (503=degraded es la
+  verdad en LOCAL con stack recién levantado — se certifica contrato+veracidad, no el estado);
+  retry aislado siembra su propia cotización+notificación si falta la del test hermano; contextos
+  manuales con baseURL/bypass explícitos.
+- Limpieza post-corrida por query en LOCAL y STG: 0 residuo (Quotes soft-deleted + ledger Consent
+  quedan, por diseño). Detalle: doc de auditoría 2026-08-07 §8.
 
 ### 2026-08-07 (3ª jornada) — Re-verificación wompi-sandbox live (bloqueo externo documentado) + cross-browser en CI
 

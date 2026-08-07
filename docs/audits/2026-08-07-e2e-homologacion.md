@@ -1,11 +1,12 @@
-# Homologación E2E — §6.21 rate-limit/CSRF + §8 webhooks + cross-browser + §7.5 (parcial) (2026-08-07)
+# Homologación E2E — §6.21 + §8 webhooks + cross-browser + §7.5 full-mode + §7 admin (2026-08-07)
 
-> Continuación del PROMPT MAESTRO (`docs/PROMPT_E2E_HOMOLOGACION.md`), segunda
-> jornada. La matriz §6 modo catálogo quedó cerrada el 2026-08-06 (ver
-> `2026-08-06-e2e-homologacion.md`). Esta sesión cubre la cola restante:
-> §6.21, §8 (webhooks sintéticos), cross-browser ampliado, un incremento de
-> §7.5 y la evaluación del nightly. Regla aplicada: CERO suposiciones — toda
-> afirmación con evidencia (response, query, screenshot o log).
+> Continuación del PROMPT MAESTRO (`docs/PROMPT_E2E_HOMOLOGACION.md`). La
+> matriz §6 modo catálogo quedó cerrada el 2026-08-06 (ver
+> `2026-08-06-e2e-homologacion.md`). Esta jornada cubre la cola restante
+> completa: §6.21, §8 (webhooks sintéticos), cross-browser ampliado, la suite
+> §7.5 modo `full` y los módulos §7 de la capa admin. Regla aplicada: CERO
+> suposiciones — toda afirmación con evidencia (response, query, screenshot o
+> log).
 
 ## 1. Qué se entregó en esta sesión
 
@@ -19,15 +20,24 @@
    (sensitive, mismo valor que `.env.stg`) y se desplegó preview fresco.
 4. **Cross-browser §8**: projects `desktop-firefox` + `desktop-webkit` en
    `playwright.config.ts` (smoke read-only). Firefox 9/9 en LOCAL y STG;
-   WebKit verificado NO ejecutable en Oracle Linux 9 (deps del SO).
+   WebKit no corre en Oracle Linux 9 (deps del SO) → quedó cableado en el
+   nightly (Ubuntu) y verificado con dispatch real: **18/18 verde** (run
+   31187961284).
 5. **Fix CI roja en develop** (causada por el aterrizaje de la familia
    `homolog-*`): el filtro `estudio` de `ci.yml`/`nightly-full.yml` matcheaba
    `homolog-estudio-uploads.spec.ts` → filtros anclados a `<nombre>.spec`.
 6. **Evaluación homolog-* en nightly** (sección 5): NO cablear todavía;
    criterio y diseño propuesto.
-7. **§7.5 (Etapa 2)**: incremento verificable en build catálogo entregado
-   (monto adulterado → `needsReconciliation`); el resto de la suite modo
-   `full` queda planificado (sección 6).
+7. **Suite §7.5 modo `full` construida y certificada** (sección 6): 6 specs
+   `fullmode-*` × desktop/mobile, 12/12 verde en corridas canónicas repetidas;
+   `wompi-sandbox` live re-verificado (app OK tras 2 fixes de harness; la
+   pierna hospedada queda bloqueada por el WAF de CloudFront — externo,
+   documentado).
+8. **Capa admin §7 cerrada** (sección 8): `homolog-admin-modulos.spec.ts` —
+   cotizaciones (detalle/wa.me/cambio de estado con AdminActionLog),
+   notificaciones (filtros/deep link/marcar todas), observability (página +
+   contrato del health de crons fiel a DB) y RBAC (MANAGER deny-by-default) —
+   8/8 verde en LOCAL y STG × desktop/mobile.
 
 ## 2. Adaptación honesta de §6.21 al sistema real
 
@@ -304,3 +314,45 @@ las corridas del día, marcadas con RUN — append-only por diseño) y las Quote
 soft-deleted que les corresponden. La celda STG-mobile de rate-limit quedó
 certificada por la corrida dirigida posterior al fix del banner (2/2 verde);
 el resto de celdas por la canónica.
+
+## 8. Capa admin §7 — cierre de la matriz (2026-08-07, 4ª jornada)
+
+La §7 del prompt (8 flujos admin × desktop/mobile) quedaba parcialmente
+cubierta: auth+MFA (`admin-login`/`admin-mfa`), contenido CMS
+(`homolog-admin-cms`), cruces §5.3 (`homolog-admin-cruces`), inventario
+(`homolog-back-in-stock`), lista de cotizaciones (`catalog-mode`) y mobile
+admin integral (`mobile-admin-audit`, 2026-07-31). El spec nuevo
+`homolog-admin-modulos.spec.ts` cierra los huecos. Resultados: **8/8 verde en
+LOCAL y en STG × desktop/mobile** (evidencia JSON por paso en
+`apps/web/tmp/e2e-homologacion/results-*-admin7-*.json`).
+
+| Flujo §7 | Aserciones certificadas (LOCAL + STG, ambos proyectos) |
+| -------- | ------------------------------------------------------ |
+| §7.2 Cotizaciones | cotización REAL creada por UI anónima → aparece en `/admin/cotizaciones` → detalle con link `wa.me/57<10 dígitos>` del cliente → "Marcar contactada" (confirm nativo aceptado) → success en UI + `status=CONTACTED` en DB + **AdminActionLog escrito** (entityId = quote.id — también cubre §7.1 log) |
+| §7.4 Notificaciones | filtro `?view=all&type=QUOTE` muestra la QUOTE del RUN → deep link "Ver cotización" lleva al detalle → "Marcar todas como leídas" → 0 no leídas en DB + pill del nav ausente (en mobile se abre el drawer hamburguesa primero) |
+| §7.6 Observability | `/admin/observability` carga (abriendo el `<details>` "Detalle técnico": h2 Salud técnica + Trabajos automáticos) sin error boundary + `/api/health/crons` con **contrato verificado contra DB**: 200↔`ok` / 503↔`degraded` y cada `lastRunAt` del payload igual a `AlertState` en la DB |
+| §7.7 RBAC | admin efímero **MANAGER** (service role, auto-borrado): login UI → `/admin/dashboard`; `/admin/finanzas` → redirect al dashboard + sin item "Finanzas" en el nav (filterNavByRole); `/admin/cotizaciones` sí carga |
+
+Hallazgos de la jornada (todos de harness/expectativa, ninguno de app):
+
+1. **El bloque técnico de observability vive colapsado** en un `<details>`
+   ("Detalle técnico (para soporte)") — los headings son "hidden" hasta
+   abrirlo. El spec lo abre antes de asertar.
+2. **`/api/health/crons` 503 en LOCAL es la verdad, no un fallo**: con el
+   stack recién levantado, los heartbeats (`AlertState` `cron:<job>`) quedan
+   vencidos (2× intervalo) y el endpoint reporta `degraded` con la lista
+   exacta — certificado que el payload es fiel a la DB. La expectativa
+   "siempre 200" era una suposición indebida; lo que se certifica es el
+   contrato + la veracidad. (En PRD, ops: `crons: ok, atrasados: 0`.)
+3. **Retry aislado**: un retry corre SOLO el test que falló (worker nuevo, sin
+   el estado del test hermano) — el test de notificaciones ahora siembra su
+   propia cotización+notificación si la del test de cotizaciones no existe.
+4. **Contextos manuales**: `browser.newContext()` no hereda nada del config —
+   se pasa `baseURL` + bypass explícitos (patrón de `fixtures/auth.ts`).
+
+Nota de mutación deliberada en STG: "marcar todas como leídas" marca TODAS
+las notificaciones no leídas del ambiente (en STG son artefactos de tests;
+en PRD el spec no corre — skip). Limpieza post-corrida verificada por query
+en ambas DBs: 0 Quotes activas / 0 notificaciones `Prueba` / 0 AdminActionLog
+del RUN / 0 admins MANAGER / 0 productos / 0 buckets `quote:*`; quedan las
+Quotes soft-deleted (patrón del repo) y el ledger Consent.
