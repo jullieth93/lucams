@@ -54,7 +54,7 @@ import { resolve } from "node:path";
 import type { Page } from "@playwright/test";
 import { createClient } from "@supabase/supabase-js";
 import { strip } from "./_setup/env";
-import { E2E_ENV, expect, test } from "./fixtures/auth";
+import { E2E_ENV, dismissCookieBanner, expect, test } from "./fixtures/auth";
 import { db, disconnectDb } from "./fixtures/db";
 import { newRunId } from "./fixtures/run";
 import {
@@ -170,6 +170,11 @@ test("rate-limit §6.21: login loop real · registro pre-sembrado · contacto×4
     // ═══ 1. LOGIN — loop real por UI hasta el bloqueo (sin Turnstile en login).
     await cleanBuckets("login");
     await anonPage.goto("/login", { waitUntil: "domcontentloaded" });
+    // El banner de cookies (fixed abajo) tapa el submit en 390px y el click
+    // queda interceptado → el POST nunca sale (flake STG mobile 2026-08-07).
+    // Una sola vez: el consentimiento persiste en el contexto para las fases
+    // siguientes (registro/contacto/cotización).
+    await dismissCookieBanner(anonPage);
     const loginForm = anonPage.locator("form").first();
     const loginBtn = loginForm.locator('button[type="submit"]');
     await expect(async () => {
