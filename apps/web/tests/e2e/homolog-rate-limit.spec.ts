@@ -59,7 +59,7 @@ import { db, disconnectDb } from "./fixtures/db";
 import { newRunId } from "./fixtures/run";
 import {
   createEphemeralProduct,
-  deleteEphemeralProduct,
+  deleteEphemeralProductsByTag,
   fakeCustomer,
   type EphemeralProduct,
 } from "./fixtures/data-factory";
@@ -126,7 +126,9 @@ async function bucketCounts(scope: string): Promise<{ key: string; count: number
 let product: EphemeralProduct | null = null;
 
 test.afterAll(async () => {
-  if (product) await deleteEphemeralProduct(product);
+  // Barrido por tag: cubre los retries (cada intento crea su producto y
+  // el último proceso solo ve el suyo — fuga reproducida 2026-08-07).
+  await deleteEphemeralProductsByTag("e2e-rl");
   await db()
     .supportTicket.deleteMany({ where: { email: EMAIL } })
     .catch(() => {});

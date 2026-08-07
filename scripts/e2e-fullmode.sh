@@ -53,9 +53,17 @@ else
 fi
 
 cleanup() {
-  if [ -n "$STARTED" ] && [ -f "${PID_FILE}" ]; then
-    kill -- -"$(cat "${PID_FILE}")" 2>/dev/null || kill "$(cat "${PID_FILE}")" 2>/dev/null || true
-    rm -f "${PID_FILE}"
+  if [ -n "$STARTED" ]; then
+    if [ -f "${PID_FILE}" ]; then
+      kill -- -"$(cat "${PID_FILE}")" 2>/dev/null || kill "$(cat "${PID_FILE}")" 2>/dev/null || true
+      rm -f "${PID_FILE}"
+    fi
+    # Fallback por puerto: si la corrida murió por timeout/señal el grupo no se
+    # mató y el server quedó escuchando (reproducido 2026-08-07: un timeout dejó
+    # el dev server vivo y el lock de next dev bloqueó la corrida siguiente).
+    sleep 1
+    PIDS=$(ss -tlnHp "sport = :${PORT}" 2>/dev/null | grep -oE 'pid=[0-9]+' | cut -d= -f2 | sort -u)
+    if [ -n "${PIDS}" ]; then kill ${PIDS} 2>/dev/null || true; fi
     echo "fullmode: server :${PORT} detenido"
   fi
 }

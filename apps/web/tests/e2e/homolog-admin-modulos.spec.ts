@@ -28,7 +28,7 @@ import { db, disconnectDb } from "./fixtures/db";
 import { newRunId } from "./fixtures/run";
 import {
   createEphemeralProduct,
-  deleteEphemeralProduct,
+  deleteEphemeralProductsByTag,
   fakeCustomer,
   type EphemeralProduct,
 } from "./fixtures/data-factory";
@@ -111,7 +111,9 @@ test.afterAll(async () => {
       /* limpieza best-effort */
     }
   }
-  if (product) await deleteEphemeralProduct(product);
+  // Barrido por tag: cubre los retries (cada intento crea su producto y
+  // el último proceso solo ve el suyo — fuga reproducida 2026-08-07).
+  await deleteEphemeralProductsByTag("e2e-admin7");
   for (const scope of ["quote"]) {
     await db()
       .$executeRawUnsafe(`DELETE FROM rate_limit_buckets WHERE key LIKE '${scope}:%'`)
@@ -290,9 +292,15 @@ test("§7.4 notificaciones: filtro QUOTE · deep link al detalle · marcar todas
     // 3. Marcar todas como leídas → pill del nav desaparece (o queda en 0).
     await adminPage.goto("/admin/notificaciones", { waitUntil: "domcontentloaded" });
     await adminPage.getByRole("button", { name: /marcar todas como leídas/i }).click();
+    // El contrato es "las que existían quedan leídas" — NO "0 globales para
+    // siempre": un cron puede crear una alerta nueva entre el click y la
+    // consulta (flake reproducido 2026-08-07: 2 no leídas nuevas en la ventana).
+    const clickedAt = new Date();
     await expect(async () => {
-      const unread = await db().notification.count({ where: { readAt: null } });
-      expect(unread, "0 no leídas en DB tras marcar todas").toBe(0);
+      const unread = await db().notification.count({
+        where: { readAt: null, createdAt: { lte: clickedAt } },
+      });
+      expect(unread, "toda notificación previa al click quedó leída").toBe(0);
     }).toPass({ timeout: 20_000 });
     // Pill del nav: en mobile vive dentro del drawer (hamburguesa).
     const hamburger = adminPage.getByRole("button", { name: /abrir menú/i });
@@ -301,7 +309,11 @@ test("§7.4 notificaciones: filtro QUOTE · deep link al detalle · marcar todas
     await expect(pill, "la pill de no leídas desaparece del nav").toHaveCount(0, {
       timeout: 15_000,
     });
-    record("marcar-todas-pill-0", true, "0 no leídas en DB + pill ausente del nav");
+    record(
+      "marcar-todas-pill-0",
+      true,
+      "todas las previas al click leídas en DB + pill ausente del nav",
+    );
 
     writeEvidence("pass");
   } catch (err) {

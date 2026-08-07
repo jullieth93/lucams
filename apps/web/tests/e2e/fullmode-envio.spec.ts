@@ -32,7 +32,7 @@ import { db, disconnectDb } from "./fixtures/db";
 import { newRunId } from "./fixtures/run";
 import {
   createEphemeralProduct,
-  deleteEphemeralProduct,
+  deleteEphemeralProductsByTag,
   fakeCustomer,
   type EphemeralProduct,
 } from "./fixtures/data-factory";
@@ -65,7 +65,9 @@ test.afterAll(async () => {
       data: { deletedAt: new Date(), updatedAt: new Date() },
     })
     .catch(() => {});
-  if (product) await deleteEphemeralProduct(product);
+  // Barrido por tag: cubre los retries (cada intento crea su producto y
+  // el último proceso solo ve el suyo — fuga reproducida 2026-08-07).
+  await deleteEphemeralProductsByTag("e2e-fm-envio");
   // Este spec nunca paga → su carrito anónimo queda sin cerrar. Se borra el
   // shell vacío creado durante la corrida (los CartItem ya los quitó el
   // deleteEphemeralProduct por variantId).

@@ -30,7 +30,7 @@ import { strip } from "./_setup/env";
 import { E2E_ENV, expect, test } from "./fixtures/auth";
 import { db, disconnectDb, getCmsFieldState } from "./fixtures/db";
 import { newRunId } from "./fixtures/run";
-import { deleteEphemeralProduct, type EphemeralProduct } from "./fixtures/data-factory";
+import { deleteEphemeralProductsByTag, type EphemeralProduct } from "./fixtures/data-factory";
 import { aveonlineEvent } from "./_helpers/synthetic-events";
 import { driveCheckoutToPago } from "./_helpers/checkout-flow";
 import { CheckoutPagoPage } from "./pages/checkout-pago";
@@ -48,18 +48,15 @@ const run = newRunId("fm-cod");
 const AVE_SECRET = strip(process.env.AVEONLINE_WEBHOOK_SECRET);
 
 let product: EphemeralProduct | null = null;
-let orderId = "";
 let trackingNumber = "";
 
 test.afterAll(async () => {
-  if (orderId) {
-    await db()
-      .orderItem.deleteMany({ where: { orderId } })
-      .catch(() => {});
-    await db()
-      .order.deleteMany({ where: { id: orderId } })
-      .catch(() => {});
-  }
+  await db()
+    .orderItem.deleteMany({ where: { order: { email: { startsWith: "e2e-fm-cod-" } } } })
+    .catch(() => {});
+  await db()
+    .order.deleteMany({ where: { email: { startsWith: "e2e-fm-cod-" } } })
+    .catch(() => {});
   if (trackingNumber) {
     await db()
       .webhookEvent.deleteMany({
@@ -78,7 +75,9 @@ test.afterAll(async () => {
       data: { deletedAt: new Date(), updatedAt: new Date() },
     })
     .catch(() => {});
-  if (product) await deleteEphemeralProduct(product);
+  // Barrido por tag: cubre los retries (cada intento crea su producto y
+  // el último proceso solo ve el suyo — fuga reproducida 2026-08-07).
+  await deleteEphemeralProductsByTag("e2e-fm-cod");
   // Carritos anónimos vacíos dejados por flujos que no llegaron a PAID (el
   // carrito se cierra solo al pagar): shells sin ítems ni PII de esta corrida.
   await db()
@@ -131,7 +130,6 @@ test("§7.5.3 COD: pedido sin pago → guía con recaudo test → entrega por we
         total: true,
       },
     });
-    orderId = order.id;
     trackingNumber = order.trackingNumber ?? "";
     expect(order.paymentMethod).toBe("COD");
     expect(order.wompiTransactionId, "COD sin transacción Wompi").toBeNull();

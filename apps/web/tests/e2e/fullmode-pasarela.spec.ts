@@ -27,7 +27,7 @@ import { strip } from "./_setup/env";
 import { E2E_ENV, expect, test } from "./fixtures/auth";
 import { db, disconnectDb } from "./fixtures/db";
 import { newRunId } from "./fixtures/run";
-import { deleteEphemeralProduct, type EphemeralProduct } from "./fixtures/data-factory";
+import { deleteEphemeralProductsByTag, type EphemeralProduct } from "./fixtures/data-factory";
 import { postWompiEvent } from "./_helpers/synthetic-events";
 import { driveCheckoutToPago } from "./_helpers/checkout-flow";
 import { CheckoutPagoPage } from "./pages/checkout-pago";
@@ -45,17 +45,14 @@ const run = newRunId("fm-pasarela");
 const WOMPI_SECRET = strip(process.env.WOMPI_EVENTS_SECRET);
 
 let product: EphemeralProduct | null = null;
-let orderId = "";
 
 test.afterAll(async () => {
-  if (orderId) {
-    await db()
-      .orderItem.deleteMany({ where: { orderId } })
-      .catch(() => {});
-    await db()
-      .order.deleteMany({ where: { id: orderId } })
-      .catch(() => {});
-  }
+  await db()
+    .orderItem.deleteMany({ where: { order: { email: { startsWith: "e2e-fm-pasarela-" } } } })
+    .catch(() => {});
+  await db()
+    .order.deleteMany({ where: { email: { startsWith: "e2e-fm-pasarela-" } } })
+    .catch(() => {});
   await db()
     .webhookEvent.deleteMany({ where: { source: "WOMPI", externalId: { contains: run } } })
     .catch(() => {});
@@ -70,7 +67,9 @@ test.afterAll(async () => {
       data: { deletedAt: new Date(), updatedAt: new Date() },
     })
     .catch(() => {});
-  if (product) await deleteEphemeralProduct(product);
+  // Barrido por tag: cubre los retries (cada intento crea su producto y
+  // el último proceso solo ve el suyo — fuga reproducida 2026-08-07).
+  await deleteEphemeralProductsByTag("e2e-fm-pasarela");
   // Carritos anónimos vacíos dejados por flujos que no llegaron a PAID (el
   // carrito se cierra solo al pagar): shells sin ítems ni PII de esta corrida.
   await db()
@@ -115,7 +114,6 @@ test("§7.5.2 pasarela: DECLINED noop → reintento misma reference → APPROVED
       where: { number: reference, deletedAt: null },
       select: { id: true, number: true, total: true, status: true },
     });
-    orderId = order.id;
     expect(order.status).toBe("PENDING_PAYMENT");
     record("orden-pending", `reference=${reference} · total=${order.total}`);
 

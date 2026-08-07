@@ -20,7 +20,7 @@ import { strip } from "./_setup/env";
 import { E2E_ENV, expect, test } from "./fixtures/auth";
 import { db, disconnectDb } from "./fixtures/db";
 import { newRunId } from "./fixtures/run";
-import { deleteEphemeralProduct, type EphemeralProduct } from "./fixtures/data-factory";
+import { deleteEphemeralProductsByTag } from "./fixtures/data-factory";
 import { postWompiEvent } from "./_helpers/synthetic-events";
 import { driveCheckoutToPago } from "./_helpers/checkout-flow";
 import { CheckoutPagoPage } from "./pages/checkout-pago";
@@ -42,8 +42,6 @@ const CODE_EXPIRED = `E2E${digits}OLD`;
 const CODE_EXHAUSTED = `E2E${digits}MAX`;
 const WOMPI_SECRET = strip(process.env.WOMPI_EVENTS_SECRET);
 
-let product: EphemeralProduct | null = null;
-let orderId = "";
 let couponIds: string[] = [];
 
 test.beforeAll(async () => {
@@ -110,14 +108,12 @@ test.afterAll(async () => {
   await db()
     .coupon.deleteMany({ where: { id: { in: couponIds } } })
     .catch(() => {});
-  if (orderId) {
-    await db()
-      .orderItem.deleteMany({ where: { orderId } })
-      .catch(() => {});
-    await db()
-      .order.deleteMany({ where: { id: orderId } })
-      .catch(() => {});
-  }
+  await db()
+    .orderItem.deleteMany({ where: { order: { email: { startsWith: "e2e-fm-coupon-" } } } })
+    .catch(() => {});
+  await db()
+    .order.deleteMany({ where: { email: { startsWith: "e2e-fm-coupon-" } } })
+    .catch(() => {});
   await db()
     .webhookEvent.deleteMany({ where: { source: "WOMPI", externalId: { contains: run } } })
     .catch(() => {});
@@ -134,7 +130,9 @@ test.afterAll(async () => {
       data: { deletedAt: new Date(), updatedAt: new Date() },
     })
     .catch(() => {});
-  if (product) await deleteEphemeralProduct(product);
+  // Barrido por tag: cubre los retries (cada intento crea su producto y
+  // el último proceso solo ve el suyo — fuga reproducida 2026-08-07).
+  await deleteEphemeralProductsByTag("e2e-fm-coupon");
   // Carritos anónimos vacíos dejados por flujos que no llegaron a PAID (el
   // carrito se cierra solo al pagar): shells sin ítems ni PII de esta corrida.
   await db()
@@ -160,8 +158,7 @@ test("§7.5.4 cupones: inválido/pausado/vencido/agotado con mensaje + válido d
   const record = (step: string, detail?: string) => steps.push({ step, ok: true, detail });
 
   try {
-    const driven = await driveCheckoutToPago(anonPage, run);
-    product = driven.product;
+    await driveCheckoutToPago(anonPage, run);
     const pago = new CheckoutPagoPage(anonPage);
 
     // ── Rechazos con mensaje claro (matriz de errores real del código).
@@ -213,7 +210,6 @@ test("§7.5.4 cupones: inválido/pausado/vencido/agotado con mensaje + válido d
         couponId: true,
       },
     });
-    orderId = order.id;
     expect(order.discount, "descuento = 10% del subtotal").toBe(1_990);
     expect(order.total, "total = subtotal + envío − descuento").toBe(
       order.subtotal + order.shipping - order.discount,

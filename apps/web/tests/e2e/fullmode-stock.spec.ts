@@ -31,7 +31,7 @@ import { db, disconnectDb } from "./fixtures/db";
 import { newRunId } from "./fixtures/run";
 import {
   createEphemeralProduct,
-  deleteEphemeralProduct,
+  deleteEphemeralProductsByTag,
   type EphemeralProduct,
 } from "./fixtures/data-factory";
 import { postWompiEvent } from "./_helpers/synthetic-events";
@@ -54,14 +54,12 @@ let product: EphemeralProduct | null = null;
 const orderIds: string[] = [];
 
 test.afterAll(async () => {
-  for (const id of orderIds) {
-    await db()
-      .orderItem.deleteMany({ where: { orderId: id } })
-      .catch(() => {});
-    await db()
-      .order.deleteMany({ where: { id } })
-      .catch(() => {});
-  }
+  await db()
+    .orderItem.deleteMany({ where: { order: { email: { startsWith: "e2e-fm-stock-" } } } })
+    .catch(() => {});
+  await db()
+    .order.deleteMany({ where: { email: { startsWith: "e2e-fm-stock-" } } })
+    .catch(() => {});
   await db()
     .webhookEvent.deleteMany({ where: { source: "WOMPI", externalId: { contains: run } } })
     .catch(() => {});
@@ -76,7 +74,9 @@ test.afterAll(async () => {
       data: { deletedAt: new Date(), updatedAt: new Date() },
     })
     .catch(() => {});
-  if (product) await deleteEphemeralProduct(product);
+  // Barrido por tag: cubre los retries (cada intento crea su producto y
+  // el último proceso solo ve el suyo — fuga reproducida 2026-08-07).
+  await deleteEphemeralProductsByTag("e2e-fm-stock");
   // Carritos anónimos vacíos dejados por flujos que no llegaron a PAID (el
   // carrito se cierra solo al pagar): shells sin ítems ni PII de esta corrida.
   await db()
