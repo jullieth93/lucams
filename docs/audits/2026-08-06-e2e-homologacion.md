@@ -89,7 +89,29 @@ Corridas canónicas del 2026-08-06 con el código final. Evidencia por fila en
 | **recomendador wizard** — `homolog-recomendador.spec`: 4 pasos con h2 enfocado (WCAG 2.4.3) → resultados con productos REALES (link verificado en DB) → vacío con "Ajustar respuestas" → error del API con "Reintentar" (route.fulfill) | ✅ 4/4 pasos | ✅ 4/4 pasos | ◻️ read-only (no corre en PRD por alcance de corrida) |
 | **landings de ocasión** — `homolog-ocasion.spec`: 2 landings top con h1 + productos reales (links verificados en DB) + breadcrumb sin link roto + JSON-LD BreadcrumbList + CollectionPage | ✅ 2/2 landings | ✅ 2/2 landings | ◻️ read-only |
 | **vistas 3D** — `homolog-3d.spec`: foto-imán → galería con Nevera/Mural/Repisa/Regalo + cambio aria-pressed → **foco atrapado (10 Tab dentro del dialog)** + Esc cierra → separadores → libro 3D directo + sin desborde móvil | ✅ 3/3 pasos | ✅ 3/3 pasos | ◻️ read-only |
+| **auth de clientes** — `homolog-auth.spec`: LOCAL (stack actual, ver H12): registro por UI → **sesión directa** (autoconfirm) → Customer + Consent HABEAS_DATA en DB → logout → login con contraseña → recuperar → **link PKCE leído de Mailpit** → sesión activa · STG: login/logout/recover-request con usuario service-role (el email sale por Resend real, no legible) — desktop y mobile | ✅ 4/4 pasos | ✅ 2/2 pasos (parcial por diseño §6.1) | ⛔ crea usuarios (skip forzado) |
+| **contacto + legales/ayuda** — `homolog-contacto.spec`: form con Turnstile → **SupportTicket OPEN en DB** (+ 2 emails Resend donde el ambiente los envía — el ticket es la prueba durable) → 8 páginas legales 200 con su h1 → /ayuda: 10 preguntas del FAQ en acordeón, coherente con modo catálogo ("sin paga en línea") — desktop y mobile | ✅ 4/4 pasos | ✅ 4/4 pasos | ⛔ crea ticket (skip forzado) |
+| **SEO/estáticos** — `homolog-seo.spec`: sitemap.xml (productos + legales + PDPs) · robots.txt (bloquea /admin y /api) · OG image real 200 · **canonical al dominio canónico** (H13: STG emite `https://lucamsshop.com` por diseño, nunca VERCEL_URL) · JSON-LD home + **PDP sin Offer/InStock en modo catálogo** — desktop y mobile | ✅ 6/6 pasos | ✅ 6/6 pasos | ◻️ read-only |
+| **errores y resiliencia** — `homolog-errores.spec`: 404 de marca (soft-404 con la página de marca, no la de Next) · **noindex+nofollow en /estudio** · caída 500 de la acción de cotización (route.fulfill) → **error boundary de marca con reintento — nunca blanco ni stack** — desktop y mobile | ✅ 3/3 pasos | ✅ 3/3 pasos | ⛔ crea quote para el fallo controlado |
+| **a11y — invariantes manuales + axe-core** (~90 reglas WCAG 2.1 A/AA) en 9 páginas (home, catálogo, carrito, ayuda, contacto, login, registro, PDP, Estudio) × 2 proyectos — `a11y.spec` + `axe.spec` | ✅ 36/36 tests, **0 violaciones serious/critical** | ✅ 36/36 tests, **0 violaciones serious/critical** | ◻️ no corrido (read-only duplicado) |
+| **Lighthouse** (lhci collect, desktop) — tabla de scores en §4.1 | ✅ home **100/100/100/100** (tras fix H15a) | ✅ home 95/97/93/SEO 61 · productos 96/100/93/SEO 61 — **SEO 61 por diseño**: el preview emite `X-Robots-Tag: noindex` (verificado por curl) | ◻️ no corrido |
 | **paridad de datos** (query directa a la DB del ambiente) | 612 productos / 572 categorías / 772 variantes / 115 ocasiones / 981 campos CMS / 50 migraciones | **idéntico a LOCAL** | homologado el 2026-08-05 (19 tablas idénticas, bitácora STATE) |
+
+### 4.1 Lighthouse — scores por página (desktop, lhci 0.15.1)
+
+| Página | LOCAL (perf/a11y/BP/SEO) | STG (perf/a11y/BP/SEO) |
+| ------ | ------------------------ | ---------------------- |
+| home `/` | **100/100/100/100** (tras fix H15a; antes 99/100/100/100) | 95/97/93/**61** |
+| catálogo `/productos` | 93/100/100/100 | 96/100/93/**61** |
+| PDP | 87/100/100/100 | — |
+| estudio | 84/100/100/**66** (noindex deliberado de /estudio) | — |
+
+El SEO 61 de STG es `is-crawlable: 0` + `robots-txt: 0` **por diseño del preview**:
+Vercel envía `X-Robots-Tag: noindex` en todo preview (verificado por curl con
+bypass) y el robots.txt del preview lo refleja; no es un defecto de la app (en
+PRD el dominio es indexable y el canonical apunta ahí — H13). Los dos audits de
+best-practices a 0 que STG mostró en home (`label-content-name-mismatch`,
+`target-size`) están resueltos en H15.
 
 **Filas de §5.3 que NO aplican en modo catálogo** (documentadas, no forzadas):
 cupones (Etapa 2 — el flujo de cotización no tiene campo de cupón) y "estado de
@@ -169,6 +191,26 @@ Evidencia de cookies y cruces:
   `1786051690967`. Read-only.
 - 3D (`results-…-e2e-3d-….json`): LOCAL `1786052456456`; STG `1786052605434`.
   Read-only.
+- Auth (`results-…-e2e-auth-….json`): corrida canónica post-código-final —
+  LOCAL `1786061504402` (desktop) / `1786061543521` (mobile); STG
+  `1786061633222` / `1786061699159`. Usuarios `<run>@e2e.test` borrados por
+  service role en afterAll (auth.users + Customer); las filas Consent
+  HABEAS_DATA quedan en el ledger marcadas con el RUN.
+- Contacto (`results-…-e2e-contacto-….json`): LOCAL `1786061521311` /
+  `1786061559442`; STG `1786061651871` / `1786061714964`. Ticket de prueba
+  borrado en afterAll; en STG los 2 emails (ack al cliente + aviso al admin)
+  salen por Resend real — esperado y documentado.
+- SEO (`results-…-e2e-seo-….json`): LOCAL `1786061539970` / `1786061578428`;
+  STG `1786061691107` / `1786061754491`. Read-only.
+- Errores (`results-…-e2e-errores-….json`): LOCAL `1786061530631` /
+  `1786061568757`; STG `1786061669369` / `1786061731741`. La quote del caso de
+  fallo se crea con la acción interceptada (500 forzado por route.fulfill) y se
+  borra en afterAll; 0 residuo verificado.
+- a11y/axe: 36/36 verde en ambos ambientes (salida de los runners; las
+  violaciones moderate/minor quedan logueadas por página — ninguna bloqueante).
+- Lighthouse: LHRs en `.lighthouseci/` (gitignored); corrida LOCAL home post-fix
+  H15a con `label-content-name-mismatch: 1`, `target-size: 1`,
+  `errors-in-console: 1` y categorías 100/100/100/100.
 
 ## 5. Hallazgos
 
@@ -268,6 +310,53 @@ el mensaje de éxito del ReviewForm por "Ya dejaste tu reseña de este producto
 gate), así que el div de éxito propio del ReviewForm es código muerto en la
 práctica. La aserción E2E usa el texto del gate (la señal real y persistente).
 
+**H12 — (entorno local, documentado — decisión humana pendiente) el stack
+Supabase LOCAL corre con autoconfirm viejo.** El `supabase-local/.../config.toml`
+ya trae `enable_confirmations = true` + plantillas OTP `{{ .Token }}`, pero eso
+solo aplica al RECREAR el stack (`make db-local-reset`, que borra volúmenes y
+resiembra — destructivo; NO ejecutado en esta sesión por requerir OK de Lucy).
+El spec `homolog-auth` certifica el comportamiento del stack CORRIENTE (ver
+comentario en el propio spec): registro → sesión directa sin email, recover →
+link PKCE leído de Mailpit. Cuando se aplique el reset, el spec se ajusta al
+flujo OTP `/confirmar-codigo` que describe su encabezado (el objetivo §6.1).
+
+**H13 — (app, CORREGIDO y verificado en ambos) la home no emitía canonical.**
+Fix (`82b98e8`): canonical explícito vía `getCanonicalSiteUrl()`
+(`lib/public-url.ts` — nunca `VERCEL_URL`). Verificado por `homolog-seo` en
+LOCAL (`http://localhost:4000`) y STG (`https://lucamsshop.com` por diseño:
+el preview canonicaliza al dominio de producción).
+
+**H14 — (app, CORREGIDO y verificado en STG) el CSP de previews tenía
+`vercel.live` en `script-src` pero NO en `frame-src`.** El fix del 2026-08-05
+cubrió solo el script; la toolbar de Vercel carga en un iframe y seguía
+bloqueada (capturado por Lighthouse STG como `errors-in-console: 0`). Fix
+(`30ba0b1`) + tests CSP 16/16 verdes. Verificación post-deploy con bypass:
+`frame-src 'self' https://challenges.cloudflare.com https://checkout.wompi.co
+https://vercel.live` en el header de STG.
+
+**H15 — (app, un fix + un artefacto de medición) dos audits best-practices a 0
+en Lighthouse STG home.**
+
+- **(a) `label-content-name-mismatch` — CORREGIDO.** El botón Buscar del header
+  tenía el hint `⌘K` como texto visible fuera del nombre accesible
+  (`aria-label="Buscar"`): un usuario de control por voz que dice "click ⌘K" no
+  accionaba el botón (menor, pero real). OJO: `aria-hidden` en el `<kbd>` NO
+  bastaba — la regla compara el texto VISUAL, que no cambia con aria-hidden.
+  Fix: el hint se pinta por CSS `::after` (`after:content-['⌘K']`), así el texto
+  DOM del botón es exactamente "Buscar" (verificado en el DOM servido:
+  `textContent === "Buscar"`, `::after` pinta `⌘K`). Test unitario con la
+  aserción que bloquea la regresión. Verificado con re-corrida Lighthouse LOCAL:
+  audit en 1 y home **100/100/100/100**. La verificación en STG queda atada al
+  deploy de este commit (mismo componente compartido).
+- **(b) `target-size` — artefacto de medición, sin cambio de código.** LH
+  reportó la flecha "Producto anterior" del carrusel de destacados "parcialmente
+  oscurecida (1.1px)". NO reproducible: sondeo `elementFromPoint` en LOCAL y STG
+  (build real con bypass) — 10/10 puntos de la superficie 40×40 resuelven al
+  botón; además el `boundingRect` reportado por LH (y≈2083, viewport emulado
+  1350×940) no existe en la página asentada (el carrusel está en y≈379): LH
+  midió durante el movimiento del autoplay/carga. Re-corridas Lighthouse dan
+  `target-size: 1`.
+
 **Limpieza InventoryLog (suite, corregida):** las variantes con re-stock por la
 UI admin acumulan filas `InventoryLog` (Restrict) que bloqueaban el borrado del
 producto efímero — el `catch` de la factory lo tragaba dejando residuo vivo.
@@ -331,6 +420,22 @@ cd apps/web && E2E_ENV=stg E2E_AUTH=1 pnpm exec playwright test homolog-rastrear
 # Recomendador / ocasiones / 3D (read-only, sin E2E_AUTH):
 cd apps/web && E2E_ENV=local pnpm exec playwright test homolog-recomendador homolog-ocasion homolog-3d
 cd apps/web && E2E_ENV=stg pnpm exec playwright test homolog-recomendador homolog-ocasion homolog-3d
+
+# Auth / contacto / SEO / errores (anónimos o con usuarios propios auto-contenidos;
+# NINGUNO necesita E2E_AUTH — no usan el storageState compartido):
+cd apps/web && E2E_ENV=local pnpm exec playwright test homolog-auth homolog-contacto homolog-seo homolog-errores
+cd apps/web && E2E_ENV=stg pnpm exec playwright test homolog-auth homolog-contacto homolog-seo homolog-errores
+
+# a11y manual + axe (9 páginas × 2 proyectos por ambiente):
+cd apps/web && E2E_ENV=local pnpm exec playwright test a11y axe
+cd apps/web && E2E_ENV=stg pnpm exec playwright test a11y axe
+
+# Lighthouse (lhci contra filesystem; en STG agregar el bypass):
+CHROME_PATH=$(ls -d ~/.cache/ms-playwright/chromium-*/chrome-linux64/chrome) \
+  npx @lhci/cli@0.15.1 collect --url=http://localhost:4000/ --settings.preset=desktop \
+  --upload.target=filesystem --upload.outputDir=.lighthouseci
+# STG: mismo comando con --url=$NEXT_PUBLIC_SITE_URL/ y
+# --settings.extraHeaders='{"x-vercel-protection-bypass":"<VERCEL_BYPASS_TOKEN>"}'
 
 # Smoke read-only en PRD (sin E2E_AUTH — nunca muta):
 cd apps/web && E2E_ENV=prd pnpm exec playwright test smoke --project=desktop-chrome

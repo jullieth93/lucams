@@ -87,9 +87,14 @@ export function GlobalSearch() {
             en la barra de búsqueda el icono debe comunicar "buscar", no marca). */}
         <Search className="h-4 w-4" aria-hidden="true" />
         <span className="hidden text-xs sm:inline">Buscar</span>
-        <kbd className="border-brand-purple/20 text-brand-muted hidden rounded border px-1.5 py-0.5 text-[10px] sm:inline">
-          ⌘K
-        </kbd>
+        {/* El hint de atajo es decorativo para AT y para el nombre accesible:
+            se pinta por CSS (::after) para que NO forme parte del texto visible
+            del botón (axe/LH label-content-name-mismatch — un usuario de control
+            por voz dice "click Buscar", que es el aria-label). */}
+        <kbd
+          aria-hidden="true"
+          className="border-brand-purple/20 text-brand-muted hidden rounded border px-1.5 py-0.5 text-[10px] after:content-['⌘K'] sm:inline"
+        />
       </button>
 
       <CommandDialog

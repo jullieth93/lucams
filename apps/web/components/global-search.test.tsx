@@ -96,7 +96,12 @@ describe("GlobalSearch", () => {
     render(<GlobalSearch />);
     const trigger = screen.getByRole("button", { name: "Buscar" });
     expect(trigger).toBeInTheDocument();
-    expect(screen.getByText("⌘K")).toBeInTheDocument();
+    // El hint ⌘K se pinta por CSS (::after) — NO es texto del botón: así el
+    // nombre accesible ("Buscar") cubre todo el texto visible (regla axe/LH
+    // label-content-name-mismatch para usuarios de control por voz).
+    const kbd = trigger.querySelector("kbd");
+    expect(kbd).toHaveAttribute("aria-hidden", "true");
+    expect(kbd?.className).toContain("after:content-['⌘K']");
     // Lucy 2026-07-29: el trigger lleva la LUPITA estándar (en la barra de búsqueda
     // el icono comunica "buscar", no marca). La mascota se queda solo en el diálogo.
     expect(trigger.querySelector("svg.lucide-search")).toBeInTheDocument();

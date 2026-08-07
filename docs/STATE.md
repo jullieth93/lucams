@@ -13,23 +13,28 @@
 
 ## Resumen actual
 
-**🧪 SUITE E2E DE HOMOLOGACIÓN (2026-08-06) — infraestructura POM/fixtures + primer cruce
-admin→cliente certificado en LOCAL y STG.** Se ejecutó el PROMPT_E2E_HOMOLOGACION (entregables 1-5):
-`playwright.config.ts` con projects `desktop-chrome` (1280×800) + `mobile-chrome` (390×844), ambiente
-explícito `E2E_ENV=local|stg|prd`, bypass Vercel condicional en config, storageState por ambiente vía
-`global.setup` (admin+cliente efímeros vía service role, borrados en teardown, PROHIBIDO en PRD con
-throw) y red de seguridad CMS que restaura el campo si el spec muere a mitad (doble red: afterAll +
-global.teardown). POM (11) + fixtures (`run/db/data-factory/storage/auth`) nuevos bajo `tests/e2e/`.
-El spec `homolog-admin-cms` (admin edita `home.categories.cta-all` por UI → cliente anónimo lo ve en
-/ → revertir → original visible, con verificación DB en cada paso) corre verde en LOCAL (2/2) y STG
-(2/2), determinista. Matriz ampliada: smoke 9/9 × {LOCAL, STG, PRD read-only} y catalog-mode 2/2 ×
-{LOCAL, STG}; paridad de datos por query: 612 productos / 572 categorías / 772 variantes / 115
-ocasiones / 981 campos CMS / 50 migraciones — idénticos LOCAL≡STG. Hallazgos: carrera `fill()`↔React
-tras navegación SPA en el editor CMS (artefacto del harness — el tipeo real siempre funciona — fix:
-teclado real + reload en el POM), `validator.ts` de Turbopack dev corrupto intermitente (workaround
-documentado), eslint ya no escanea `tmp/`. Detalle y matriz con evidencia:
+**🧪 SUITE E2E DE HOMOLOGACIÓN CERTIFICADA (2026-08-06) — matriz §6 modo catálogo completa en
+LOCAL y STG.** Se ejecutó el PROMPT_E2E_HOMOLOGACION (entregables 1-5): `playwright.config.ts` con
+projects `desktop-chrome` + `mobile-chrome`, `E2E_ENV=local|stg|prd`, bypass Vercel condicional,
+storageState por ambiente vía `global.setup` (efímeros service-role, PROHIBIDO en PRD) y red de
+seguridad CMS. POM (11) + fixtures (`run/db/data-factory/storage/auth`) bajo `tests/e2e/`.
+**19 flujos homologados verdes en LOCAL y STG × desktop/mobile** (admin-cms, cotización completa,
+uploads del Estudio, cookies Ley 1581, cruces admin→cliente §5.3, newsletter+unsubscribe, wishlist,
+reseñas, back-in-stock, mi-cuenta, rastrear, recomendador, ocasiones, 3D, auth, contacto+legales,
+SEO/estáticos, errores/resiliencia) + smoke 9/9 × {LOCAL, STG, PRD read-only} + catalog-mode 2/2 +
+a11y manual+axe **36/36 con 0 violaciones serious/critical** en ambos + Lighthouse desktop
+(LOCAL home **100/100/100/100**; STG home 95/97/93/SEO 61 — el SEO 61 es el noindex deliberado del
+preview, verificado por curl). Paridad de datos exacta LOCAL≡STG (612 productos). Todo con evidencia
+(JSON+screenshots por corrida) y limpieza verificada por query (solo queda el ledger legal Consent).
+Hallazgos H1-H15 en el doc: los de app ya corregidos son H7 (mensaje 413 en STG), H8 (banner cookies
+tapaba FAB), H9 (idempotencia newsletter — Resend hace UPSERT), H13 (canonical home), H14 (CSP
+frame-src vercel.live) y H15a (hint ⌘K del botón Buscar fuera del nombre accesible — corregido
+pintándolo por CSS `::after`; el target-size del carrusel resultó artefacto de medición, probado).
+**H12 abierto (decisión de Lucy):** el stack Supabase LOCAL corre con autoconfirm viejo — la config
+OTP (`enable_confirmations` + plantillas `{{ .Token }}`) solo aplica con `make db-local-reset`
+(destructivo: borra volúmenes y resiembra). Detalle, matriz y evidencia:
 [docs/audits/2026-08-06-e2e-homologacion.md](audits/2026-08-06-e2e-homologacion.md).
-Gates: typecheck + eslint + prettier (comando del gate CI) verdes. **Sin commit — esperando OK de Lucy.**
+Gates: typecheck + eslint + prettier verdes. Commits en `develop` (cadencia autorizada por Lucy).
 
 ---
 
@@ -1915,12 +1920,25 @@ sidebar fijo, Cancelar en cupones.
    privacidad pre-lanzamiento? (Relevante Ley 1581 — fotos personales.)
 3. **🔴 PENDIENTE SERIO — plantillas del Estudio** (sección arriba, Lucy 2026-07-04): curaduría de
    plantillas reales + visión del flujo móvil. Necesita input de Lucy antes de producir.
+4. **Decisión H12 — aplicar la config OTP de auth al stack LOCAL.** `supabase-local/.../config.toml`
+   ya tiene `enable_confirmations = true` + plantillas OTP `{{ .Token }}`, pero solo toman efecto
+   RECREANDO el stack: `make db-local-reset` (borra volúmenes y resiembra — destructivo pero
+   idempotente; el catálogo local se repuebla solo). Mientras no se haga, LOCAL registra con sesión
+   directa (autoconfirm) y el spec `homolog-auth` certifica ese comportamiento. ¿Se ejecuta el reset?
+5. **Enrolar MFA TOTP del admin real en STG** (cuenta de Lucy): ya está enrolado en LOCAL y PRD;
+   falta STG para que la operación admin del preview exija el segundo factor igual que producción.
+6. **Decisión — monitor externo** (BetterStack/UptimeRobot sobre `/api/health/*`) y **Supabase Pro
+   para Etapa 2** (PITR). Sin cambio desde la auditoría 2026-08-01.
 
 **Autónomo (candidatos, calidad-primero):**
 
-1. **Ampliar la suite E2E de homologación** (infra lista desde 2026-08-06, ver Bitácora): cubrir el
-   resto de la matriz §6/§7 de `docs/PROMPT_E2E_HOMOLOGACION.md` (flujos cliente y admin completos)
-   reusando POMs/fixtures; evaluar meter `homolog-admin-cms` al nightly contra STG.
+1. **Cola restante de la suite E2E de homologación** (matriz §6 modo catálogo YA cerrada el
+   2026-08-06 — 19 flujos + a11y + Lighthouse, ver Bitácora y doc de auditoría): spec §6.21
+   (CSRF/origen adulterado + doble submit), webhooks sintéticos §8 (Wompi firma 200/401 + dedup +
+   environment-match, Resend Svix, Aveonline secret — todo sin compras reales), cross-browser
+   ampliado (WebKit/Firefox como matriz extra), y la suite modo `full` de Etapa 2 (§7.5: checkout
+   Wompi sandbox, COD, cupones, stock, envíos, emails — build propio, no mezclada con catálogo).
+   Evaluar meter los `homolog-*` al nightly contra STG (anotado: después de unos días estable).
 2. **Backlog auditoría v3: 100% barrido en código** (Tandas 1-8 + FB1-FB5 + piezas mayores + tail de calidad T5/T6/T7). No queda deuda de auditoría accionable sin decisión/verificación de Lucy.
 3. Otros pulidos de Fase 3 storefront/estudio que no dependan de la curaduría de plantillas.
 4. Barrido de coherencia de datos revenue/COD end-to-end si aparece señal.
@@ -2097,6 +2115,39 @@ timeout limpiados a mano. **Sin hallazgos de homologación de flujo** LOCAL↔ST
 **Pendiente de esta línea**: ampliar la cobertura al resto de la matriz §6/§7 del prompt (21 flujos
 cliente + 8 admin) reusando esta infra; decidir si el spec de homologación entra al nightly
 (contra STG, no al gate por-PR); enrolar MFA del admin real en STG (cuenta Lucy) sigue pendiente.
+
+**Ampliación misma sesión (cierre de la matriz §6 modo catálogo) — auth/contacto/seo/errores +
+a11y/axe + Lighthouse:**
+
+- 4 specs nuevos certificados con corrida canónica post-código-final (LOCAL 8/8 y STG 8/8, todo al
+  primer intento): `homolog-auth.spec.ts` (LOCAL full sobre el stack ACTUAL: registro UI → sesión
+  directa autoconfirm → Customer + Consent HABEAS_DATA en DB → logout → login → recuperar → link
+  PKCE leído de Mailpit → sesión; STG parcial: login/logout/recover-request con usuario
+  service-role — el email sale por Resend real, no legible), `homolog-contacto.spec.ts` (form con
+  Turnstile → SupportTicket OPEN en DB + 8 legales 200 + FAQ de /ayuda coherente con modo catálogo),
+  `homolog-seo.spec.ts` (sitemap con productos+legales, robots bloquea /admin, OG image 200,
+  canonical canónico — H13 —, JSON-LD home + PDP sin Offer/InStock en catálogo) y
+  `homolog-errores.spec.ts` (404 de marca, noindex+nofollow en /estudio, 500 forzado con
+  route.fulfill → error boundary de marca con reintento, nunca blanco ni stack).
+- a11y manual + axe-core (~90 reglas WCAG 2.1 A/AA, 9 páginas × 2 proyectos): 36/36 verde en ambos
+  ambientes, 0 violaciones serious/critical.
+- Lighthouse desktop (lhci): LOCAL home **100/100/100/100** (tras el fix H15a), catálogo
+  93/100/100/100, PDP 87/100/100/100, estudio 84/100/100/SEO 66 (noindex deliberado); STG home
+  95/97/93/SEO 61 y catálogo 96/100/93/SEO 61 — el SEO 61 es `X-Robots-Tag: noindex` que Vercel
+  pone a todo preview (verificado por curl), no un defecto.
+- **Hallazgos H12-H15** (detalle en el doc): H12 — el stack Supabase LOCAL corre con autoconfirm
+  viejo; la config OTP solo aplica con `make db-local-reset` (destructivo, resiembra — decisión de
+  Lucy, NO ejecutado; el spec certifica el comportamiento vigente y documenta el objetivo OTP).
+  H13 — home sin canonical → fix `82b98e8` (canonical explícito vía `getCanonicalSiteUrl()`, nunca
+  VERCEL_URL), verificado en ambos. H14 — CSP de previews con `vercel.live` en script-src pero no
+  en frame-src (la toolbar iframe seguía bloqueada; lo capturó Lighthouse como errors-in-console 0)
+  → fix `30ba0b1`, verificado post-deploy por curl del header. H15 — (a) el hint ⌘K del botón
+  Buscar era texto visible fuera del nombre accesible (`label-content-name-mismatch`): corregido
+  pintándolo por CSS `::after` (aria-hidden NO bastaba — la regla mide texto visual), test unitario
+  bloquea la regresión y la re-corrida Lighthouse LOCAL dio el audit en 1 con home 100/100/100/100;
+  (b) el `target-size` de la flecha del carrusel resultó artefacto de medición (sondeo
+  elementFromPoint 10/10 en LOCAL y STG + boundingRect reportado inexistente en la página asentada +
+  re-corridas con target-size 1) — sin cambio de código.
 
 ### 2026-07-25 — El Estudio nunca funcionó en producción (ADR-081) + narrativa de envíos + carrito agrupado + legal v4
 
