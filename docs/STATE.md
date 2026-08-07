@@ -1998,8 +1998,10 @@ sidebar fijo, Cancelar en cupones.
    RECREANDO el stack: `make db-local-reset` (borra volúmenes y resiembra — destructivo pero
    idempotente; el catálogo local se repuebla solo). Mientras no se haga, LOCAL registra con sesión
    directa (autoconfirm) y el spec `homolog-auth` certifica ese comportamiento. ¿Se ejecuta el reset?
-5. **Enrolar MFA TOTP del admin real en STG** (cuenta de Lucy): ya está enrolado en LOCAL y PRD;
-   falta STG para que la operación admin del preview exija el segundo factor igual que producción.
+5. ~~Enrolar MFA TOTP del admin real en STG~~ — **CERRADO (2026-08-07)**: el factor ya estaba
+   enrolado desde el 2026-08-02 (verificado por `listFactors`, status verified) y Lucy confirmó que
+   tiene el secreto en su authenticator. Lo que faltaba: **códigos de respaldo** — generados 10 e
+   insertados en STG (hashes en `AdminRecoveryCode`; entregados a Lucy una vez por terminal).
 6. **Decisión — monitor externo** (BetterStack/UptimeRobot sobre `/api/health/*`) y **Supabase Pro
    para Etapa 2** (PITR). Sin cambio desde la auditoría 2026-08-01.
 
