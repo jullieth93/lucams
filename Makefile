@@ -1,4 +1,4 @@
-.PHONY: help install build typecheck lint format migrate db-local-start db-local-stop db-local-restart db-local-reset db-local-status db-local-setup db-local-on db-local-off db-local-seed web-start web-stop web-restart local-up local-down local-restart local-status test-local db-stg-setup db-stg-seed seed-products seed-templates seed-ocasiones seed-catalog-v2 migrate-cms-v2 seed-abecedario seed-letter-sets cleanup-test-junk seed-separadores consolidate-product-families update-legal-ley-2439 seed-legal-2026-07 fix-voseo-cms rename-family-base-slugs backfill-variant-prices cleanup-slugs audit-slugs audit-content test test-unit test-e2e test-rls test-load test-coverage clean fix-fotoimanes
+.PHONY: help install build typecheck lint format migrate db-local-start db-local-stop db-local-restart db-local-reset db-local-status db-local-setup db-local-on db-local-off db-local-seed web-start web-stop web-restart local-up local-down local-restart local-status test-local db-stg-setup db-stg-seed seed-products seed-templates seed-ocasiones seed-catalog-v2 migrate-cms-v2 seed-abecedario seed-letter-sets cleanup-test-junk seed-separadores consolidate-product-families update-legal-ley-2439 seed-legal-2026-07 fix-voseo-cms rename-family-base-slugs backfill-variant-prices cleanup-slugs audit-slugs audit-content test test-unit test-e2e test-e2e-fullmode test-rls test-load test-coverage clean fix-fotoimanes
 
 # Makefile del repo — build/test para CI y devs, más el runtime del entorno
 # local completo: Supabase local en podman (grupo db-local-*) y app Next
@@ -287,6 +287,9 @@ test-unit:
 
 test-e2e:
 	pnpm --filter web test:e2e
+
+test-e2e-fullmode: ## Suite E2E modo FULL (Etapa 2, §7.5) — server dedicado en :4100, LOCAL only
+	scripts/e2e-fullmode.sh
 
 test-coverage:
 	pnpm --filter web test:coverage

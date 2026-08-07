@@ -24,8 +24,16 @@ export type EphemeralProduct = {
  * Categoría + producto NO personalizable efímeros (la PDP muestra "Añadir al
  * carrito"; el catálogo real es 100% personalizable y va al Estudio).
  * Mismo patrón que compra.spec.ts / catalog-mode.spec.ts.
+ *
+ * `opts.withShippingDims` (suite full-mode §7.5): agrega `physicalSpecs`
+ * (100 g, 10×2×10 cm) — sin dims la cotización Aveonline falla por diseño
+ * (SHIPPING_QUOTE_FAILED). `opts.stock` fija el stock de la variante
+ * (default 100; la matriz oversold usa 1).
  */
-export async function createEphemeralProduct(run: string): Promise<EphemeralProduct> {
+export async function createEphemeralProduct(
+  run: string,
+  opts: { withShippingDims?: boolean; stock?: number } = {},
+): Promise<EphemeralProduct> {
   const category = await db().category.create({
     data: { slug: `${run}-cat`, name: `Cat ${run}` },
     select: { id: true },
@@ -38,13 +46,16 @@ export async function createEphemeralProduct(run: string): Promise<EphemeralProd
       basePrice: 19_900,
       sku: `${run}-SIMPLE`.toUpperCase(),
       categoryId: category.id,
+      ...(opts.withShippingDims
+        ? { physicalSpecs: { weightGrams: 100, widthCm: 10, heightCm: 2, depthCm: 10 } }
+        : {}),
       variants: {
         create: [
           {
             name: "Default",
             sku: `${run}-SIMPLE-DEFAULT`.toUpperCase(),
             price: 19_900,
-            stock: 100,
+            stock: opts.stock ?? 100,
             attributes: {},
           },
         ],
