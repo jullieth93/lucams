@@ -65,7 +65,11 @@ export function buildCsp(nonce: string, isProd: boolean): string {
     // coherente con next.config images.remotePatterns (que ya permite Unsplash vía proxy
     // /_next/image); acá se permite además la carga directa (previews admin/cotización).
     // TODO (contenido): retirar Unsplash cuando las fotos reales estén montadas.
-    "img-src 'self' data: blob: https://*.supabase.co https://*.coordinadora.com https://images.unsplash.com",
+    // `${supabaseOrigin}` (2026-08-07): en LOCAL las signed URLs del bucket privado
+    // customer-uploads salen con el host del stack local (http://<lan-ip>:54321) y la
+    // CSP las bloqueaba — las minis del Estudio no pintaban en local mientras STG/PRD
+    // (https://*.supabase.co) sí. Duplicado en prod es inocuo (ya cubierto por el wildcard).
+    `img-src 'self' data: blob: https://*.supabase.co https://*.coordinadora.com https://images.unsplash.com${supabaseOrigin}`,
     "font-src 'self' https://fonts.gstatic.com",
     // Solo hosts que el NAVEGADOR contacta: Supabase (auth/storage/realtime) + Wompi (widget/checkout).
     // El envío (Aveonline) y la IA (Gemini) se llaman SERVER-SIDE → no van en connect-src.

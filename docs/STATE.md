@@ -2062,6 +2062,17 @@ sidebar fijo, Cancelar en cupones.
 
 ## Bitácora (append-only, más reciente arriba)
 
+### 2026-08-07 (cierre 5) — H19: CSP bloqueaba las fotos del Estudio en LOCAL
+
+Reporte de Lucy validando en local: al subir foto en el Estudio no se veía el preview (STG/PRD OK).
+Causa raíz con evidencia (sonda contra el producto calendario + error de consola): la CSP
+`img-src` solo cubría `https://*.supabase.co` — las signed URLs del stack local quedaban bloqueadas.
+Fix: `img-src` incluye el origen derivado de `NEXT_PUBLIC_SUPABASE_URL` (el mismo mecanismo que
+`connect-src` ya tenía) + test unitario + regresión E2E a nivel píxel (`naturalWidth > 0` del
+thumbnail — antes el spec solo contaba el elemento en el DOM, por eso no se vio). Verificado:
+spec uploads 2/2 verde y thumb del calendario cargando píxeles (naturalWidth=1400) en LOCAL.
+Residuo de las sondas limpiado (5 DesignAsset + objetos del bucket).
+
 ### 2026-08-07 (cierre 4) — H12 (OTP local) + PRD barrido de fixtures + MFA STG cerrado
 
 - **H12 ejecutado (autorizado por Lucy)**: `make db-local-reset` aplicó la config OTP al stack

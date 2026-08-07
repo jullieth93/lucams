@@ -407,3 +407,20 @@ certificación pesada, o alerta de cuota. El comportamiento CORRECTO de la app
 bajo la pared quedó certificado: la suscripción back-in-stock NO se marca
 `notifiedAt` sin envío (el cron del día siguiente la reintenta) — asertado en
 el spec, que ahora clasifica la pared con sonda 429 en vez de fallar opaco.
+
+### H19 (app, corregido 2026-08-07) — CSP `img-src` bloqueaba las fotos subidas en LOCAL
+
+**Reporte de Lucy validando en local**: al subir una foto en el Estudio, el
+preview no se veía (ni en la lista ni al arrastrar al slot) — en STG/PRD sí.
+**Causa raíz** (evidencia: error de consola reproducido con sonda contra el
+producto calendario): la CSP `img-src` permitía solo `https://*.supabase.co`
+(+Unsplash/Coordinadora), así que las signed URLs del stack local
+(`http://<lan-ip>:54321`) eran bloqueadas por el navegador. `connect-src` sí
+derivaba el origen del env (nightly A3) pero `img-src` nunca recibió el mismo
+tratamiento. **Fix**: `img-src` ahora incluye `${supabaseOrigin}` derivado de
+`NEXT_PUBLIC_SUPABASE_URL` (en prod es duplicado inocuo del wildcard). +
+test unitario en `security-headers.test.ts` + **regresión E2E a nivel píxel**:
+el spec de uploads ahora exige `naturalWidth > 0` del thumbnail (antes contaba
+elementos `<img>` en el DOM — el elemento existía aunque la imagen estuviera
+bloqueada: por eso la suite no lo vio). Verificado post-fix: thumb del
+calendario con naturalWidth=1400 en LOCAL, spec uploads 2/2 verde.

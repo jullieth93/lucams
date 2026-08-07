@@ -231,6 +231,14 @@ test("matriz de uploads del Estudio: consent + JPG/PNG/WebP/HEIC/>4.5MB/>10MB/no
       await expect(async () => {
         expect(await thumbCount(), `thumbnail nuevo tras subir ${label}`).toBe(before + 1);
       }).toPass({ timeout: 30_000 });
+      // Nivel píxel: el <img> existe Y carga (naturalWidth > 0). Contar solo el
+      // elemento dejaba pasar la CSP-bloqueada de 2026-08-07 (img-src sin el
+      // origen del stack local: el thumb estaba en el DOM pero en blanco).
+      const thumb = assetsList.locator("img").first();
+      await expect(async () => {
+        const w = await thumb.evaluate((el) => (el as HTMLImageElement).naturalWidth);
+        expect(w, `el thumbnail ${label} carga píxeles (no bloqueado por CSP)`).toBeGreaterThan(0);
+      }).toPass({ timeout: 15_000 });
       const warn = (await alert.count()) > 0 ? (await alert.innerText()).trim() : null;
       if (warn) record(`upload-quality-warning-${label}`, true, warn);
     }

@@ -45,6 +45,22 @@ describe("buildCsp — prod (nonce + 'self', sin strict-dynamic)", () => {
     delete process.env.NEXT_PUBLIC_SUPABASE_URL;
     expect(buildCsp("N", true)).not.toContain("localhost");
   });
+
+  it("img-src incluye el origen de NEXT_PUBLIC_SUPABASE_URL (minis del Estudio en local)", () => {
+    // 2026-08-07 (reporte de Lucy): las signed URLs de customer-uploads salen
+    // con el host del stack local y el img-src fijo las bloqueaba — los
+    // thumbnails del Estudio no pintaban en LOCAL (STG/PRD sí, por el wildcard
+    // *.supabase.co). El origen derivado del env debe quedar también en img-src.
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "http://localhost:54321";
+    const csp = buildCsp("N", true);
+    const imgSrc = csp.split("; ").find((d) => d.startsWith("img-src"))!;
+    expect(imgSrc).toContain("http://localhost:54321");
+    delete process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const imgSrcOff = buildCsp("N", true)
+      .split("; ")
+      .find((d) => d.startsWith("img-src"))!;
+    expect(imgSrcOff).not.toContain("localhost");
+  });
 });
 
 describe("buildCsp — dev (permisivo para HMR)", () => {
