@@ -94,14 +94,14 @@ Corridas canónicas del 2026-08-06 con el código final. Evidencia por fila en
 | **SEO/estáticos** — `homolog-seo.spec`: sitemap.xml (productos + legales + PDPs) · robots.txt (bloquea /admin y /api) · OG image real 200 · **canonical al dominio canónico** (H13: STG emite `https://lucamsshop.com` por diseño, nunca VERCEL_URL) · JSON-LD home + **PDP sin Offer/InStock en modo catálogo** — desktop y mobile | ✅ 6/6 pasos | ✅ 6/6 pasos | ◻️ read-only |
 | **errores y resiliencia** — `homolog-errores.spec`: 404 de marca (soft-404 con la página de marca, no la de Next) · **noindex+nofollow en /estudio** · caída 500 de la acción de cotización (route.fulfill) → **error boundary de marca con reintento — nunca blanco ni stack** — desktop y mobile | ✅ 3/3 pasos | ✅ 3/3 pasos | ⛔ crea quote para el fallo controlado |
 | **a11y — invariantes manuales + axe-core** (~90 reglas WCAG 2.1 A/AA) en 9 páginas (home, catálogo, carrito, ayuda, contacto, login, registro, PDP, Estudio) × 2 proyectos — `a11y.spec` + `axe.spec` | ✅ 36/36 tests, **0 violaciones serious/critical** | ✅ 36/36 tests, **0 violaciones serious/critical** | ◻️ no corrido (read-only duplicado) |
-| **Lighthouse** (lhci collect, desktop) — tabla de scores en §4.1 | ✅ home **100/100/100/100** (tras fix H15a) | ✅ home 95/97/93/SEO 61 · productos 96/100/93/SEO 61 — **SEO 61 por diseño**: el preview emite `X-Robots-Tag: noindex` (verificado por curl) | ◻️ no corrido |
+| **Lighthouse** (lhci collect, desktop) — tabla de scores en §4.1 | ✅ home **100/100/100/100** (tras fix H15a) | ✅ home 96/100/**100**/SEO 61 · productos 96/100/93/SEO 61 — **SEO 61 por diseño**: el preview emite `X-Robots-Tag: noindex` (verificado por curl) | ◻️ no corrido |
 | **paridad de datos** (query directa a la DB del ambiente) | 612 productos / 572 categorías / 772 variantes / 115 ocasiones / 981 campos CMS / 50 migraciones | **idéntico a LOCAL** | homologado el 2026-08-05 (19 tablas idénticas, bitácora STATE) |
 
 ### 4.1 Lighthouse — scores por página (desktop, lhci 0.15.1)
 
 | Página | LOCAL (perf/a11y/BP/SEO) | STG (perf/a11y/BP/SEO) |
 | ------ | ------------------------ | ---------------------- |
-| home `/` | **100/100/100/100** (tras fix H15a; antes 99/100/100/100) | 95/97/93/**61** |
+| home `/` | **100/100/100/100** (tras fix H15a; antes 99/100/100/100) | **96/100/100/61** (post-deploy H14+H15a; antes 95/97/93/61) |
 | catálogo `/productos` | 93/100/100/100 | 96/100/93/**61** |
 | PDP | 87/100/100/100 | — |
 | estudio | 84/100/100/**66** (noindex deliberado de /estudio) | — |
@@ -111,7 +111,10 @@ Vercel envía `X-Robots-Tag: noindex` en todo preview (verificado por curl con
 bypass) y el robots.txt del preview lo refleja; no es un defecto de la app (en
 PRD el dominio es indexable y el canonical apunta ahí — H13). Los dos audits de
 best-practices a 0 que STG mostró en home (`label-content-name-mismatch`,
-`target-size`) están resueltos en H15.
+`target-size`) están resueltos en H15 — la corrida post-deploy dio los dos en 1
+(junto con `errors-in-console: 1`, que además re-verifica H14 a nivel Lighthouse).
+El 93 de BP en `/productos` STG es el mismo par de audits pendiente de re-corrida
+en esa página (mismo componente del header — fix ya desplegado).
 
 **Filas de §5.3 que NO aplican en modo catálogo** (documentadas, no forzadas):
 cupones (Etapa 2 — el flujo de cotización no tiene campo de cupón) y "estado de
@@ -345,9 +348,9 @@ en Lighthouse STG home.**
   Fix: el hint se pinta por CSS `::after` (`after:content-['⌘K']`), así el texto
   DOM del botón es exactamente "Buscar" (verificado en el DOM servido:
   `textContent === "Buscar"`, `::after` pinta `⌘K`). Test unitario con la
-  aserción que bloquea la regresión. Verificado con re-corrida Lighthouse LOCAL:
-  audit en 1 y home **100/100/100/100**. La verificación en STG queda atada al
-  deploy de este commit (mismo componente compartido).
+  aserción que bloquea la regresión. Verificado con re-corridas Lighthouse:
+  LOCAL home **100/100/100/100** y, tras el deploy, STG home con el audit en 1
+  (BP 93→100; misma corrida re-verificó `errors-in-console: 1` de H14).
 - **(b) `target-size` — artefacto de medición, sin cambio de código.** LH
   reportó la flecha "Producto anterior" del carrusel de destacados "parcialmente
   oscurecida (1.1px)". NO reproducible: sondeo `elementFromPoint` en LOCAL y STG

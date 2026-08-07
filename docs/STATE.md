@@ -23,8 +23,8 @@ uploads del Estudio, cookies Ley 1581, cruces admin→cliente §5.3, newsletter+
 reseñas, back-in-stock, mi-cuenta, rastrear, recomendador, ocasiones, 3D, auth, contacto+legales,
 SEO/estáticos, errores/resiliencia) + smoke 9/9 × {LOCAL, STG, PRD read-only} + catalog-mode 2/2 +
 a11y manual+axe **36/36 con 0 violaciones serious/critical** en ambos + Lighthouse desktop
-(LOCAL home **100/100/100/100**; STG home 95/97/93/SEO 61 — el SEO 61 es el noindex deliberado del
-preview, verificado por curl). Paridad de datos exacta LOCAL≡STG (612 productos). Todo con evidencia
+(LOCAL home **100/100/100/100**; STG home 96/100/100/SEO 61 post-fixes — el SEO 61 es el noindex
+deliberado del preview, verificado por curl). Paridad de datos exacta LOCAL≡STG (612 productos). Todo con evidencia
 (JSON+screenshots por corrida) y limpieza verificada por query (solo queda el ledger legal Consent).
 Hallazgos H1-H15 en el doc: los de app ya corregidos son H7 (mensaje 413 en STG), H8 (banner cookies
 tapaba FAB), H9 (idempotencia newsletter — Resend hace UPSERT), H13 (canonical home), H14 (CSP
@@ -2133,8 +2133,9 @@ a11y/axe + Lighthouse:**
   ambientes, 0 violaciones serious/critical.
 - Lighthouse desktop (lhci): LOCAL home **100/100/100/100** (tras el fix H15a), catálogo
   93/100/100/100, PDP 87/100/100/100, estudio 84/100/100/SEO 66 (noindex deliberado); STG home
-  95/97/93/SEO 61 y catálogo 96/100/93/SEO 61 — el SEO 61 es `X-Robots-Tag: noindex` que Vercel
-  pone a todo preview (verificado por curl), no un defecto.
+  **96/100/100/SEO 61** post-deploy de H14+H15a (BP 93→100, misma corrida re-verificó
+  `errors-in-console: 1` de H14) y catálogo 96/100/93/SEO 61 — el SEO 61 es `X-Robots-Tag: noindex`
+  que Vercel pone a todo preview (verificado por curl), no un defecto.
 - **Hallazgos H12-H15** (detalle en el doc): H12 — el stack Supabase LOCAL corre con autoconfirm
   viejo; la config OTP solo aplica con `make db-local-reset` (destructivo, resiembra — decisión de
   Lucy, NO ejecutado; el spec certifica el comportamiento vigente y documenta el objetivo OTP).
@@ -2144,7 +2145,8 @@ a11y/axe + Lighthouse:**
   → fix `30ba0b1`, verificado post-deploy por curl del header. H15 — (a) el hint ⌘K del botón
   Buscar era texto visible fuera del nombre accesible (`label-content-name-mismatch`): corregido
   pintándolo por CSS `::after` (aria-hidden NO bastaba — la regla mide texto visual), test unitario
-  bloquea la regresión y la re-corrida Lighthouse LOCAL dio el audit en 1 con home 100/100/100/100;
+  bloquea la regresión y las re-corridas Lighthouse dieron el audit en 1 (LOCAL home 100/100/100/100;
+  STG home BP 93→100 tras el deploy);
   (b) el `target-size` de la flecha del carrusel resultó artefacto de medición (sondeo
   elementFromPoint 10/10 en LOCAL y STG + boundingRect reportado inexistente en la página asentada +
   re-corridas con target-size 1) — sin cambio de código.
