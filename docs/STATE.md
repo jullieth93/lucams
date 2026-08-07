@@ -2033,8 +2033,9 @@ sidebar fijo, Cancelar en cupones.
   `fullmode-checkout-wompi` (URL firmada verificada) + webhooks sintéticos. Evidencia y detalle en
   el doc §6. La pierna live 4242 se reintenta desde otra red al retomar Etapa 2.
 - **Cross-browser §8 completado vía CI**: `nightly-full.yml` instala Firefox + WebKit y corre el
-  smoke read-only en ambos proyectos (el runner Ubuntu sí tiene las deps que OL9 no tiene). Queda
-  ejercido cada noche sin depender del SO de la VM.
+  smoke read-only en ambos proyectos (el runner Ubuntu sí tiene las deps que OL9 no tiene).
+  Verificado con dispatch real (run 31187961284): cross-browser smoke **18/18 verde** (9 Firefox +
+  9 WebKit, 36.6 s) y el nightly completo success.
 
 ### 2026-08-07 (2ª jornada) — Suite modo `full` §7.5 construida y certificada en LOCAL
 
