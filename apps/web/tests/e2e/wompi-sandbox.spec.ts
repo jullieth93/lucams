@@ -26,6 +26,7 @@ import { test, expect, type Page } from "@playwright/test";
 import "../setup-env";
 import crypto from "node:crypto";
 import { PrismaClient } from "@lucams/db";
+import { dismissCookieBanner } from "./fixtures/auth";
 
 const prisma = new PrismaClient();
 const RUN = `wompi-e2e-${Date.now()}`;
@@ -262,8 +263,10 @@ test("checkout transaccional E2E sandbox: datos → envío Aveonline → pago Wo
   // 1. PDP → add to cart
   await page.goto(`/producto/${slug}`);
   // Higiene e2e: el banner de cookies (bottom-fixed) tapa los CTAs inferiores.
-  const cookieBtn = page.getByRole("button", { name: /solo necesarias/i }).first();
-  if (await cookieBtn.isVisible().catch(() => false)) await cookieBtn.click();
+  // El helper espera el montaje tardío del banner (el one-shot `isVisible` lo
+  // perdía a veces y el banner interceptaba el submit de /checkout/datos —
+  // flake reproducido 2026-08-07, 3 intentos quemados en clicks interceptados).
+  await dismissCookieBanner(page);
   await page.getByRole("button", { name: /añadir al carrito/i }).click();
   await page.waitForURL(/[?&]added=1/, { timeout: 20_000 });
 
@@ -313,6 +316,12 @@ test("checkout transaccional E2E sandbox: datos → envío Aveonline → pago Wo
   const wompiCard = page.getByText(/wompi|tarjeta|en línea/i).first();
   if (await wompiCard.isVisible().catch(() => false)) await wompiCard.click().catch(() => {});
   await page.screenshot({ path: "/tmp/e2e-tx-03-pago.png", fullPage: true });
+  // Turnstile: sin token el server action rebota con "no eres un robot"
+  // (flake 2026-08-07: el click ganaba la carrera contra el widget).
+  await expect(async () => {
+    const t = await page.locator('input[name="cf-turnstile-response"]').last().inputValue();
+    expect(t.length).toBeGreaterThan(0);
+  }).toPass({ timeout: 20_000 });
   await page.getByRole("button", { name: /pagar con wompi/i }).click();
   await page.waitForURL(/checkout\.wompi\.co/, { timeout: 45_000 });
   await page.screenshot({ path: "/tmp/e2e-tx-04-wompi-hosted.png", fullPage: true });

@@ -62,7 +62,14 @@ cleanup() {
 trap cleanup EXIT
 
 cd apps/web
+# Sin args: la suite fullmode-* completa. Con args: los filtros dados (p.ej.
+# `scripts/e2e-fullmode.sh wompi-sandbox` para la certificación live 4242).
+if [ "$#" -gt 0 ]; then
+  FILTERS=("$@")
+else
+  FILTERS=("fullmode-")
+fi
 NEXT_PUBLIC_STORE_MODE=full \
 PLAYWRIGHT_BASE_URL="http://localhost:${PORT}" \
 E2E_ENV=local E2E_AUTH=1 \
-  pnpm exec playwright test fullmode- "$@"
+  pnpm exec playwright test "${FILTERS[@]}"

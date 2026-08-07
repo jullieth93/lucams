@@ -222,6 +222,36 @@ live 4242 (`wompi-sandbox.spec.ts`), admin transaccional
 (`admin-transactional.spec.ts`), núcleo determinista (`compra.spec.ts`), monto
 adulterado → needsReconciliation y firma 200/401 (`homolog-webhooks`, §8).
 
+### Re-verificación de `wompi-sandbox` (live 4242) — BLOQUEO EXTERNO documentado
+
+Se intentó re-certificar el checkout invitado live contra sandbox (3er run del
+día, server full :4100, `PW_CHANNEL=chromium`). Resultado:
+
+- **Dos bugs de harness del spec viejo corregidos**: (1) el banner de cookies
+  interceptaba el submit de /checkout/datos (el `isVisible` one-shot perdía el
+  montaje tardío del banner → `dismissCookieBanner`); (2) click en "Pagar con
+  Wompi" sin esperar el token Turnstile → rebote "no eres un robot" (espera del
+  hidden antes del click, patrón de la suite).
+- **Bloqueo externo (no es defecto de la app)**: con el flujo UI ya perfecto,
+  el navegador llega a `checkout.wompi.co` y CloudFront responde **403
+  "Request blocked"** (WAF anti-bot — evidencia: snapshot del error-context en
+  los 3 intentos; `Request ID: 7VO9LBxHjsI5zZzA5qE-lI3hb3q6MH9wZ5VCMnbkqWDr_t3bmcfX3Q==`).
+  El propio spec documenta el historial: el hosted checkout bloquea headless
+  ~50% de las corridas desde el 2026-07-28. Desde esta VM hoy es consistente.
+  El contrato app↔Wompi queda certificado sin la página hospedada: la URL
+  firmada se verifica en `fullmode-checkout-wompi` (reference, amount,
+  signature:integrity recomputada) y la saga post-pago por webhooks
+  sintéticos. Reintentar la pierna live desde otra red cuando se retome
+  Etapa 2 (o aceptar su naturaleza flaky-on-demand).
+
+### Cross-browser — la pierna WebKit queda cubierta por CI
+
+`nightly-full.yml` (job `e2e-supabase-real`) ahora instala Firefox + WebKit y
+corre el smoke read-only en ambos (`--project=desktop-firefox
+--project=desktop-webkit`). El runner Ubuntu sí trae las deps que faltan en
+Oracle Linux 9 — así la matriz ampliada del §8 queda ejercida cada noche sin
+depender del SO de la VM.
+
 ### Resultados §7.5 — corrida canónica LOCAL (2 proyectos)
 
 | Spec | desktop | mobile |

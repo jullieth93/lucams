@@ -1979,9 +1979,10 @@ sidebar fijo, Cancelar en cupones.
    contra el localstack efímero (Opción A del doc §5: extender seed CI + llaves Turnstile de
    prueba). La suite full-mode es LOCAL-only por diseño (STG/PRD corren en catálogo): candidata a
    nightly localstack con build `NEXT_PUBLIC_STORE_MODE=full` propio, o a ejecución local por
-   sesión (`make test-e2e-fullmode`). Re-verificar `wompi-sandbox.spec.ts` (live 4242, frágil por
-   anti-bot del hosted checkout) cuando se retome Etapa 2. WebKit exige host con deps (CI Ubuntu
-   o macOS); Firefox ya corre en esta VM.
+   sesión (`make test-e2e-fullmode`). `wompi-sandbox` live 4242: re-verificado 2026-08-07 — la app
+   va bien (2 fixes de harness aplicados) pero el hosted checkout de Wompi bloquea esta VM por
+   WAF (CloudFront 403, documentado); reintentar desde otra red al retomar Etapa 2. Cross-browser:
+   Firefox corre en esta VM; WebKit queda cubierto por el nightly (Ubuntu).
 2. **Backlog auditoría v3: 100% barrido en código** (Tandas 1-8 + FB1-FB5 + piezas mayores + tail de calidad T5/T6/T7). No queda deuda de auditoría accionable sin decisión/verificación de Lucy.
 3. Otros pulidos de Fase 3 storefront/estudio que no dependan de la curaduría de plantillas.
 4. Barrido de coherencia de datos revenue/COD end-to-end si aparece señal.
@@ -2020,6 +2021,20 @@ sidebar fijo, Cancelar en cupones.
 ---
 
 ## Bitácora (append-only, más reciente arriba)
+
+### 2026-08-07 (3ª jornada) — Re-verificación wompi-sandbox live (bloqueo externo documentado) + cross-browser en CI
+
+- **`wompi-sandbox.spec.ts` re-corrido contra server full (harness `e2e-fullmode.sh`)**: 2 bugs de
+  harness del spec viejo corregidos (banner cookies con montaje tardío interceptaba el submit de
+  /checkout/datos → `dismissCookieBanner`; click de pago sin esperar token Turnstile → espera del
+  hidden). Con la UI ya limpia, el navegador llega a `checkout.wompi.co` y **CloudFront responde
+  403 "Request blocked"** (WAF anti-bot, consistente hoy desde esta VM; el spec ya documentaba ~50%
+  de bloqueo desde 2026-07-28). NO es defecto de la app: el contrato queda certificado por
+  `fullmode-checkout-wompi` (URL firmada verificada) + webhooks sintéticos. Evidencia y detalle en
+  el doc §6. La pierna live 4242 se reintenta desde otra red al retomar Etapa 2.
+- **Cross-browser §8 completado vía CI**: `nightly-full.yml` instala Firefox + WebKit y corre el
+  smoke read-only en ambos proyectos (el runner Ubuntu sí tiene las deps que OL9 no tiene). Queda
+  ejercido cada noche sin depender del SO de la VM.
 
 ### 2026-08-07 (2ª jornada) — Suite modo `full` §7.5 construida y certificada en LOCAL
 
