@@ -2062,6 +2062,15 @@ sidebar fijo, Cancelar en cupones.
 
 ## Bitácora (append-only, más reciente arriba)
 
+### 2026-08-07 (cierre 7) — RELEASE: H19 + H20 + deps a producción (`c86d206` → `8430163`)
+
+Lucy pidió llevar el día a PRD. Fast-forward `develop`→`production` con: H20 (pan en vivo del drag
+del calendario — el fix UX del día), H19 (CSP img-src con el origen local — en prod es duplicado
+inocuo del wildcard), overrides postcss 8.5.26/nanoid 3.3.17 (gate de audit) y la infra de
+tests/docs del día. App code: 3 archivos. Verificación en vivo: dominio sirviendo el nuevo
+deployment, `/api/health/all` ok, smoke read-only 9/9 en PRD. Ramas alineadas `develop` =
+`production` = `8430163`.
+
 ### 2026-08-07 (cierre 6) — H20: drag de foto en calendario se veía roto (tarjeta entera flotaba)
 
 Lucy: al arrastrar la foto para reencuadrar (cualquier dirección, desktop y móvil) se movía la
