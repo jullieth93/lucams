@@ -13,6 +13,26 @@
 
 ## Resumen actual
 
+**🛒 SUITE MODO `FULL` (ETAPA 2, §7.5) CONSTRUIDA Y CERTIFICADA EN LOCAL (2026-08-07, segunda
+jornada).** `scripts/e2e-fullmode.sh` (+ `make test-e2e-fullmode`) levanta un dev server dedicado
+en `:4100` con `NEXT_PUBLIC_STORE_MODE=full` y corre los 6 specs `fullmode-*` nuevos (POMs
+`checkout-datos/envio/pago` + helpers `synthetic-events`/`checkout-flow`): envío (cotización
+Aveonline live multi-transportadora + sello HMAC anti-tamper de flete), checkout Wompi registrado
+(firma de integridad recomputada + saga APPROVED: PAID + guía test + stock −1 + carrito cerrado
+en la tx), cupones (4 rechazos con mensaje es-CO + válido con `order.discount` exacto +
+CouponUsage/usedCount al pagar), pasarela (DECLINED noop, reintento con MISMA reference por
+cartId, VOIDED foráneo ignorado, VOIDED real → CANCELLED + stock revertido), stock oversold (2
+clientes/última unidad: el segundo pago NO confirma, queda PENDING_PAYMENT + needsReconciliation,
+stock nunca negativo — divergencia documentada: el repo NO tiene reservas ni el cron
+`stock_reservation_cleanup`; se certifica el modelo real de decremento atómico) y COD (pedido sin
+pago → guía test con recaudo → entrega por webhook Aveonline → visible en
+/admin/finanzas/conciliacion). Emails: server full con `RESEND_API_KEY` vacío — se certifica el
+contrato best-effort (la saga no se rompe) sin correos reales; la vía live 4242 sigue en
+`wompi-sandbox.spec.ts`. Detalle: [docs/audits/2026-08-07-e2e-homologacion.md](audits/2026-08-07-e2e-homologacion.md)
+§6. Con esto la cola del PROMPT_E2E_HOMOLOGACION queda CERRADA salvo el soak para el nightly.
+
+---
+
 **🧪 COLA E2E AVANZADA (2026-08-07) — §6.21 + §8 + cross-browser certificados en LOCAL y STG;
 hallazgo de config STG (H16) corregido; CI develop recuperada.** Se ejecutó la cola restante del
 PROMPT_E2E_HOMOLOGACION: `homolog-rate-limit.spec.ts` (login bloquea en el intento 51, registro
@@ -1955,20 +1975,16 @@ sidebar fijo, Cancelar en cupones.
 
 **Autónomo (candidatos, calidad-primero):**
 
-1. **Suite modo `full` de Etapa 2 (§7.5)** — la pieza grande que queda del PROMPT_E2E_HOMOLOGACION:
-   checkout registrado, pasarela por interceptación completa (éxito/DECLINED→reintento/timeout),
-   COD, cupones, stock (reserva/decremento/oversold/liberación), envíos (cotización, selección
-   sellada, `bloquegenerarguia`), emails transaccionales. Build propio local (factibilidad ya
-   verificada) — plan por ítem en `docs/audits/2026-08-07-e2e-homologacion.md` §6. Ya cubierto:
-   monto adulterado → needsReconciliation (en `homolog-webhooks`), y el checkout sandbox real de
-   `wompi-sandbox.spec.ts` (re-verificar que sigue corriendo).
-2. **Soak de la suite homolog (~1 semana)** y luego cablear el subset verde al nightly contra el
-   localstack efímero (Opción A del doc §5: extender seed CI + llaves Turnstile de prueba).
-   WebKit/Firefox ampliado: Firefox ya corre en esta VM; WebKit exige host con deps (CI Ubuntu o
-   macOS).
-3. **Backlog auditoría v3: 100% barrido en código** (Tandas 1-8 + FB1-FB5 + piezas mayores + tail de calidad T5/T6/T7). No queda deuda de auditoría accionable sin decisión/verificación de Lucy.
-4. Otros pulidos de Fase 3 storefront/estudio que no dependan de la curaduría de plantillas.
-5. Barrido de coherencia de datos revenue/COD end-to-end si aparece señal.
+1. **Soak de la suite homolog + fullmode (~1 semana)** y luego cablear un subset verde al nightly
+   contra el localstack efímero (Opción A del doc §5: extender seed CI + llaves Turnstile de
+   prueba). La suite full-mode es LOCAL-only por diseño (STG/PRD corren en catálogo): candidata a
+   nightly localstack con build `NEXT_PUBLIC_STORE_MODE=full` propio, o a ejecución local por
+   sesión (`make test-e2e-fullmode`). Re-verificar `wompi-sandbox.spec.ts` (live 4242, frágil por
+   anti-bot del hosted checkout) cuando se retome Etapa 2. WebKit exige host con deps (CI Ubuntu
+   o macOS); Firefox ya corre en esta VM.
+2. **Backlog auditoría v3: 100% barrido en código** (Tandas 1-8 + FB1-FB5 + piezas mayores + tail de calidad T5/T6/T7). No queda deuda de auditoría accionable sin decisión/verificación de Lucy.
+3. Otros pulidos de Fase 3 storefront/estudio que no dependan de la curaduría de plantillas.
+4. Barrido de coherencia de datos revenue/COD end-to-end si aparece señal.
 
 **Cuentas creadas just-in-time durante fases posteriores:**
 
@@ -2004,6 +2020,38 @@ sidebar fijo, Cancelar en cupones.
 ---
 
 ## Bitácora (append-only, más reciente arriba)
+
+### 2026-08-07 (2ª jornada) — Suite modo `full` §7.5 construida y certificada en LOCAL
+
+Cierre de la última pieza del PROMPT_E2E_HOMOLOGACION. Doc: `docs/audits/2026-08-07-e2e-homologacion.md` §6.
+
+- **Harness**: `scripts/e2e-fullmode.sh` + `make test-e2e-fullmode` — dev server dedicado en :4100
+  con `NEXT_PUBLIC_STORE_MODE=full` y `RESEND_API_KEY` vacío (sin correos reales; baja el web-dev
+  de :4000 si está arriba: un solo `next dev` por proyecto). POMs nuevos
+  `pages/checkout-{datos,envio,pago}.ts`; helpers `_helpers/{synthetic-events,checkout-flow}.ts`
+  (firma Wompi oficial, payload Aveonline, conducción UI del checkout completo).
+- **6 specs `fullmode-*` verdes × desktop+mobile** (evidencia JSON+shots en
+  `apps/web/tmp/e2e-homologacion/`): `fullmode-envio` (cotización Aveonline live + sello HMAC:
+  `fleteCop` adulterado en el DOM → `?error=…` sin avanzar), `fullmode-checkout-wompi` (cliente
+  registrado; firma de integridad recomputada con el secret del ambiente; APPROVED sintético →
+  PAID + guía test + stock 100→99 + InventoryLog + carrito cerrado en la misma tx), `fullmode-cupones`
+  (inexistente/pausado/vencido/agotado con mensaje + válido 10%: discount=1990 exacto en la orden,
+  Wompi cobra total con descuento, CouponUsage+usedCount al pagar), `fullmode-pasarela` (DECLINED
+  noop → reintento con la MISMA reference; VOIDED foráneo ignorado por guard B2; VOIDED de la tx
+  que pagó → CANCELLED + stock revertido), `fullmode-stock` (oversold: 2 clientes/última unidad →
+  el 2º NO confirma, needsReconciliation, stock jamás −1, y la UI lo devuelve al carrito con
+  mensaje), `fullmode-cod` (COD sin pago → guía test con recaudo + stock comprometido; ENTREGADA
+  por webhook Aveonline → DELIVERED → visible en /admin/finanzas/conciliacion pendientes; antes
+  de la entrega NO aparece — el "por remitir" deriva de deliveredAt).
+- **Divergencias prompt↔repo documentadas (no se acomodó la prueba)**: no existen reservas de stock
+  ni el cron `stock_reservation_cleanup` (modelo real: decremento atómico al PAID + reversión al
+  anular); la "interceptación de pasarela" server-side no es stubbeable por browser (URLs
+  hardcodeadas) — se certifica por firma del redirect + webhooks sintéticos; emails §7.5.7 por
+  contrato best-effort (contenido en vitest; envío real en wompi-sandbox).
+- **Fix de harness**: POM datos exige efectos React también en viaNumber/cruceNumber (un retry
+  podía remontarlos vacíos tras el click en "Urbana").
+- Limpieza verificada por query post-corrida (0 órdenes/cupones/eventos/clientes/carritos del RUN;
+  solo el ledger Consent).
 
 ### 2026-08-07 — Cola E2E: §6.21 + §8 webhooks + cross-browser + §7.5 parcial + fix CI/nightly
 

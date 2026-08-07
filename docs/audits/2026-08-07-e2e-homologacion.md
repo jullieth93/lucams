@@ -171,26 +171,71 @@ evaluado con evidencia para cuando toque:
   `homolog-rate-limit`) + extender el seed CI. Opción B solo si Lucy acepta
   los correos nocturnos o se agrega un mute de emails en previews.
 
-## 6. §7.5 (Etapa 2, modo `full`) — estado y plan
+## 6. §7.5 (Etapa 2, modo `full`) — suite dedicada construida y certificada
 
-- **Entregado hoy** (corre en el build catálogo actual, LOCAL+STG): monto
-  adulterado → `needsReconciliation` + stock intacto (parte de §7.5.2).
-- **Ya existía**: `wompi-sandbox.spec.ts` (checkout real invitado contra
-  sandbox Wompi + Aveonline, ~10 min, frágil por anti-bot del hosted checkout;
-  requiere `PW_CHANNEL=chromium`), `compra.spec.ts` (núcleo determinista),
-  `admin-transactional.spec.ts` (admin sobre la orden PAID del e2e).
-- **Factibilidad del build propio verificada hoy**: `NEXT_PUBLIC_STORE_MODE=full
-  PORT=4100 pnpm dev` arranca y sirve la UI de pago (200, "Pago" visible).
-  La suite dedicada corre con `NEXT_PUBLIC_STORE_MODE=full
-  PLAYWRIGHT_BASE_URL=http://localhost:4100 E2E_ENV=local` (el runner lee el
-  modo de la shell; `loadEnvFor` no pisa vars de shell).
-- **Pendiente (próxima sesión dedicada)**: checkout registrado, pasarela por
-  interceptación completa (éxito/DECLINED→reintento misma reference/timeout),
-  COD (toggle + pedido sin pago + ledger), cupones, stock (reserva/decremento/
-  oversold/liberación por cron), envíos (cotización multi-transportadora,
-  selección sellada HMAC re-validada, `bloquegenerarguia="1"` en el payload),
-  emails transaccionales. Todo LOCAL-only por definición: STG/PRD corren en
-  modo catálogo y no deben cambiar.
+Se construyó la suite de modo `full` (build propio, no mezclada con catálogo):
+`scripts/e2e-fullmode.sh` (+ `make test-e2e-fullmode`) levanta un dev server
+DEDICADO en `:4100` con `NEXT_PUBLIC_STORE_MODE=full` y corre los specs
+`fullmode-*` contra él (`PLAYWRIGHT_BASE_URL`, `E2E_AUTH=1`; el stack catálogo
+de `:4000` no se toca — Next 16 dev permite un solo servidor por proyecto).
+Decisiones de diseño (todas verificadas en código antes de escribir un spec):
+
+- **Emails OFF en el server full** (`RESEND_API_KEY=` vacío): los
+  transaccionales se certifican por CONTRATO — la saga completa con el envío
+  saltado (`confirmationSentAt` null, orden PAID igual). Contenido/templates:
+  vitest. Vía con envío real: `wompi-sandbox.spec.ts` (live 4242). Ningún
+  correo sale a direcciones sintéticas.
+- **La "pasarela por interceptación" no es browser-interceptable**: las
+  llamadas a Wompi/Aveonline salen del SERVIDOR (Server Actions/RSC) y las
+  URLs base están hardcodeadas. Lo que sí se ejerce E2E: el redirect firmado
+  al hosted checkout (se intercepta la navegación y se verifica
+  `signature:integrity` recomputándola con el secret del ambiente) y TODA la
+  saga vía webhooks sintéticos firmados (patrón §8). El timeout de creación
+  queda cubierto por vitest (mock de provider) — no reproducible sin DNS-stub.
+- **Aveonline sandbox/test real**: la cotización del paso de envío y las guías
+  (contraentrega COD) pegan al sandbox (`AVEONLINE_ENV=test`, cuenta demo) —
+  NO facturable (`bloquegenerarguia="1"`, doble gate `aveonline.ts:952`);
+  precedente: wompi-sandbox. Evidencia de modo: `/api/health/aveonline`.
+- **DIVERGENCIA prompt↔repo (documentada, no se acomodó la prueba)**: §7.5.5
+  asume reservas de stock y un cron `stock_reservation_cleanup`. El repo NO
+  tiene reservas (`StockReservation` sin consumidores, `stock.ts:25`; el cron
+  no existe). El modelo real: lectura validadora por paso + decremento
+  ATÓMICO condicional (`UPDATE … WHERE stock>=qty`) en la tx del PAID +
+  reversión al anular. El spec `fullmode-stock` certifica ESE modelo (el
+  segundo pago sobre la última unidad NO confirma: queda PENDING_PAYMENT +
+  needsReconciliation, y el stock jamás queda negativo).
+
+Specs (todos con evidencia JSON + screenshots en `apps/web/tmp/e2e-homologacion/`,
+limpieza hijas→madres en afterAll; el Consent del checkout queda en el ledger):
+
+| Spec | Cubre | Aserciones clave |
+| ---- | ----- | ---------------- |
+| `fullmode-envio` | §7.5.6 | cotización live ≥1 transportadora con precio + tránsito; `offersToken` sellado HMAC presente; `fleteCop` adulterado → `?error=…` (nunca se confía en el cliente); selección legítima → /checkout/pago |
+| `fullmode-checkout-wompi` | §7.5.1 registrado, §7.5.2 firma, §7.5.5 decremento, §7.5.7 contrato emails | redirect Wompi con reference=Order.number, amount=order.total, firma de integridad recomputada OK; stock intacto pre-pago; webhook APPROVED → PAID/FULFILLING + guía test + stock 100→99 + InventoryLog + carrito cerrado en la tx + WebhookEvent sellado |
+| `fullmode-cupones` | §7.5.4 | inexistente/pausado/vencido/agotado → mensaje claro es-CO; válido (10%) → caja verde + línea Descuento + `order.discount`=1990 + total coherente + Wompi cobra el total con descuento; tras APPROVED: CouponUsage(amount) + usedCount +1 atómico |
+| `fullmode-pasarela` | §7.5.2 | DECLINED → noop (orden cobrable); reintento por UI → MISMA reference (reuso por cartId, 1 sola orden); APPROVED → saga; VOIDED con tx foránea → ignorado (guard B2); VOIDED de la tx que pagó → CANCELLED + stock revertido + InventoryLog |
+| `fullmode-stock` | §7.5.5 (modelo real) | 2 clientes/última unidad: A paga → stock 1→0; B paga después → PENDING_PAYMENT + needsReconciliation + sin guía + stock nunca −1; B al recargar /checkout/pago → /carrito?error=…no está disponible |
+| `fullmode-cod` | §7.5.3 | pedido COD sin pago (paymentMethod=COD, sin tx Wompi) → PAID/FULFILLING + guía test con recaudo + stock comprometido; invisible en conciliación pre-entrega; webhook Aveonline ENTREGADA → DELIVERED+deliveredAt → visible en /admin/finanzas/conciliacion pendientes (admin SUPERADMIN efímero) |
+
+Cobertura preexistente que la suite referencia (no duplica): checkout invitado
+live 4242 (`wompi-sandbox.spec.ts`), admin transaccional
+(`admin-transactional.spec.ts`), núcleo determinista (`compra.spec.ts`), monto
+adulterado → needsReconciliation y firma 200/401 (`homolog-webhooks`, §8).
+
+### Resultados §7.5 — corrida canónica LOCAL (2 proyectos)
+
+| Spec | desktop | mobile |
+| ---- | ------- | ------ |
+| fullmode-envio | ✅ | ✅ |
+| fullmode-checkout-wompi | ✅ | ✅ |
+| fullmode-cupones | ✅ | ✅ |
+| fullmode-pasarela | ✅ | ✅ |
+| fullmode-stock | ✅ | ✅ |
+| fullmode-cod | ✅ | ✅ |
+
+Comando canónico: `make test-e2e-fullmode` (o `scripts/e2e-fullmode.sh`).
+Post-corrida: DB LOCAL verificada sin residuo por query (0 órdenes/cupones/
+eventos/clientes del RUN; solo el ledger Consent).
 
 ## 7. Matriz de homologación — corrida canónica 2026-08-07
 
