@@ -424,3 +424,17 @@ el spec de uploads ahora exige `naturalWidth > 0` del thumbnail (antes contaba
 elementos `<img>` en el DOM — el elemento existía aunque la imagen estuviera
 bloqueada: por eso la suite no lo vio). Verificado post-fix: thumb del
 calendario con naturalWidth=1400 en LOCAL, spec uploads 2/2 verde.
+
+### H20 (app, corregido 2026-08-07) — drag de foto en calendario: la tarjeta entera flotaba
+
+**Reporte de Lucy**: al arrastrar la foto para reencuadrar (cualquier dirección,
+desktop y móvil), se movía la TARJETA COMPLETA (foto + calendario + marco) y al
+soltar "todo volvía" — se percibía roto. Diagnóstico con sonda de píxeles: la
+persistencia funcionaba (el encuadre sí quedaba), pero el feedback visual
+movía el nodo compuesto entero durante el gesto. **Fix** en
+`studio-calendar-card-layer.tsx` (componente compartido por la grilla Y el
+modal "Editar mes"): pan EN VIVO — el delta del drag se aplica al encuadre de
+la foto dentro de su franja durante el gesto (estado local + ref espejo) y se
+comitea al store solo en dragEnd (sin inundar el undo stack). Verificado con
+sonda de píxeles: centroide del marcador 24→64 DURANTE el drag y 64 al soltar
+(persiste). Vitest estudio 133/133 + spec uploads E2E verde tras el fix.

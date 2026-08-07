@@ -12,10 +12,14 @@
  * RE-RENDERIZA EN VIVO ante cada cambio (foto, encuadre, año) sin debounce — decisión
  * documentada en el README del estudio (§ Ola 4).
  *
- * Interacción: la imagen compuesta es draggable → el delta del drag se ACUMULA en
- * photoTransform (pan de la foto dentro de su franja), igual que el ImagePlaceholder
- * genérico. Zoom (wheel/pinch) lo captura el Stage del slot como siempre. El smart-crop
- * inicial de fotos nuevas también se conserva (misma heurística que ImagePlaceholder).
+ * Interacción: la imagen compuesta es draggable, pero el marco NO se mueve:
+ * el delta del drag se aplica EN VIVO al encuadre de la foto dentro de su
+ * franja (estado local por gesto) y se comitea a photoTransform al soltar
+ * (dragEnd) — antes el nodo de la tarjeta completa flotaba durante el drag y
+ * "volvía" al soltar, lo que se percibía como roto (Lucy 2026-08-07). Zoom
+ * (wheel/pinch) lo captura el Stage del slot como siempre. El smart-crop
+ * inicial de fotos nuevas también se conserva (misma heurística que
+ * ImagePlaceholder).
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -68,6 +72,25 @@ export function CalendarCardLayer({
   const [photo] = useImage(assetUrl ?? "", "anonymous");
   const imageNodeRef = useRef<Konva.Image | null>(null);
   const [brandFonts, setBrandFonts] = useState<BrandCanvasFonts | null>(null);
+  // Pan en vivo durante el drag (Lucy 2026-08-07): antes el NODO de la tarjeta
+  // completa (foto+calendario+marco) flotaba con el cursor y al soltar "volvía"
+  // — se veía roto. Ahora el marco queda quieto y la foto se re-encuadra en
+  // vivo: el delta del drag vive en estado LOCAL mientras dura el gesto y solo
+  // se comitea al store en dragEnd (el undo stack no se inunda).
+  const [dragDelta, setDragDelta] = useState<{ x: number; y: number } | null>(null);
+  // Espejo síncrono del delta (el state puede ir un frame atrás al dragEnd).
+  const dragDeltaRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const liveTransform = useMemo(
+    () =>
+      dragDelta
+        ? {
+            offsetX: (photoTransform?.offsetX ?? 0) + dragDelta.x,
+            offsetY: (photoTransform?.offsetY ?? 0) + dragDelta.y,
+            scale: photoTransform?.scale ?? 1,
+          }
+        : (photoTransform ?? null),
+    [dragDelta, photoTransform],
+  );
 
   // Canvas offscreen estable (la identidad del elemento NO cambia entre renders —
   // Konva solo necesita batchDraw tras cada repintado).
@@ -104,14 +127,14 @@ export function CalendarCardLayer({
     ctx.setTransform(RENDER_SCALE, 0, 0, RENDER_SCALE, 0, 0);
     drawCalendarPage(ctx, {
       photo: photo ?? null,
-      photoTransform: scalePhotoTransformToPage(photoTransform, templateStageWidth),
+      photoTransform: scalePhotoTransformToPage(liveTransform, templateStageWidth),
       year,
       monthIndex0,
       fontsOk: true,
       fonts: brandFonts ?? undefined,
     });
     imageNodeRef.current?.getLayer()?.batchDraw();
-  }, [canvas, photo, photoTransform, year, monthIndex0, brandFonts, templateStageWidth]);
+  }, [canvas, photo, liveTransform, year, monthIndex0, brandFonts, templateStageWidth]);
 
   // Smart auto-crop inicial (paridad con ImagePlaceholder): solo foto NUEVA sin encuadre
   // persistido, y solo si el offset sugerido es significativo (>5% de la ventana).
@@ -149,19 +172,33 @@ export function CalendarCardLayer({
       // proteger → preventDefault={false} y el dedo scrollea la página (pan-y).
       preventDefault={isDraggable}
       onDragStart={() => {
+        dragDeltaRef.current = { x: 0, y: 0 };
+        setDragDelta({ x: 0, y: 0 });
         if (onPhotoDragStart) onPhotoDragStart();
+      }}
+      onDragMove={(e) => {
+        if (!onPhotoTransformChange) return;
+        const node = e.target;
+        // Konva reasigna la posición del nodo en cada move (absoluta desde el
+        // inicio del gesto), así que node.x/y ES el delta total — lo pasamos al
+        // estado local y devolvemos el nodo al origen: el marco nunca se mueve.
+        dragDeltaRef.current = { x: node.x(), y: node.y() };
+        setDragDelta(dragDeltaRef.current);
+        node.position({ x: 0, y: 0 });
       }}
       onDragEnd={(e) => {
         if (!onPhotoTransformChange) return;
-        // El drag mueve el NODO; el pan de la foto vive en photoTransform (stage units).
-        // Acumulamos el delta y devolvemos el nodo al origen — la tarjeta no se mueve,
-        // solo cambia el encuadre de la foto dentro de su franja.
-        const node = e.target;
-        onPhotoTransformChange({
-          offsetX: (photoTransform?.offsetX ?? 0) + node.x(),
-          offsetY: (photoTransform?.offsetY ?? 0) + node.y(),
-        });
-        node.position({ x: 0, y: 0 });
+        // Commit al store: transform base + el delta ACUMULADO del gesto (el
+        // ref, no node.x/y — ese quedó reseteado por el pan en vivo).
+        const d = dragDeltaRef.current;
+        e.target.position({ x: 0, y: 0 });
+        if (d.x !== 0 || d.y !== 0) {
+          onPhotoTransformChange({
+            offsetX: (photoTransform?.offsetX ?? 0) + d.x,
+            offsetY: (photoTransform?.offsetY ?? 0) + d.y,
+          });
+        }
+        setDragDelta(null);
         if (onPhotoDragEnd) onPhotoDragEnd();
       }}
       onMouseEnter={(e) => {

@@ -2062,6 +2062,16 @@ sidebar fijo, Cancelar en cupones.
 
 ## Bitácora (append-only, más reciente arriba)
 
+### 2026-08-07 (cierre 6) — H20: drag de foto en calendario se veía roto (tarjeta entera flotaba)
+
+Lucy: al arrastrar la foto para reencuadrar (cualquier dirección, desktop y móvil) se movía la
+tarjeta completa y al soltar "todo volvía". Sonda de píxeles probó que la persistencia funcionaba;
+el problema era el FEEDBACK: el nodo compuesto entero (foto+calendario) flotaba durante el gesto.
+Fix en `studio-calendar-card-layer.tsx` (grilla + modal "Editar mes" comparten el componente): pan
+EN VIVO dentro del marco (estado local por gesto + ref espejo) y commit al store solo en dragEnd.
+Verificado con sonda (centroide del marcador 24→64 durante y al soltar), vitest estudio 133/133 y
+regresión del spec de uploads. Residuo de sondas limpiado (14 assets + 70 designs de pruebas del día).
+
 ### 2026-08-07 (cierre 5) — H19: CSP bloqueaba las fotos del Estudio en LOCAL
 
 Reporte de Lucy validando en local: al subir foto en el Estudio no se veía el preview (STG/PRD OK).
