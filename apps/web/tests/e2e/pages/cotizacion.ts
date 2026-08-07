@@ -18,7 +18,9 @@ export class CotizacionPage {
   async expectLoaded() {
     await expect(async () => {
       await expect(this.page).toHaveURL(/\/checkout\/datos/);
-      await expect(this.page.getByText(/pide tu cotización/i)).toBeVisible();
+      // getByRole heading: un role="alert" con la misma frase (p.ej. error de
+      // validación previo) hacía strict-violation al getByText (flake 2026-08-07).
+      await expect(this.page.getByRole("heading", { name: /pide tu cotización/i })).toBeVisible();
     }).toPass({ timeout: 30_000 });
     await expect(this.page.locator('input[name="customerName"]')).toBeVisible();
     await expect(this.page.locator("#whatsapp-display")).toBeVisible();

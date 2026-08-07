@@ -91,6 +91,28 @@ export default defineConfig({
       name: "mobile-chrome",
       use: { ...devices["Mobile Chrome"], viewport: { width: 390, height: 844 } },
     },
+    {
+      // Cross-browser §8 ("WebKit/Firefox como matriz ampliada"): storefront
+      // público read-only (smoke) en Firefox — no corre specs de mutación.
+      // Fuera del gate CI (que fija --project=desktop-chrome).
+      // Requiere libs de SO (playwright install-deps firefox / equivalente dnf:
+      // gtk3). Verificado en Oracle Linux 9 el 2026-08-07.
+      name: "desktop-firefox",
+      use: { ...devices["Desktop Firefox"], viewport: { width: 1280, height: 800 } },
+      testMatch: /smoke\.spec\.ts/,
+    },
+    {
+      // Cross-browser §8: idem en WebKit (motor de Safari iOS/macOS).
+      // OJO (2026-08-07): en Oracle Linux 9 NO arranca — browserType.launch
+      // aborta pidiendo libgtk-4-1 / libicu74 / libmanette-0.2-0 … (OL9 trae
+      // icu 67 y no empaqueta webkitgtk-6.0; verificado corriendo el project:
+      // los 6 tests de página fallan en launch, los 3 de solo-request pasan).
+      // Correrlo donde existan las deps (imagen oficial mcr playwright, macOS,
+      // Ubuntu reciente); en OL9 usar --project=desktop-firefox.
+      name: "desktop-webkit",
+      use: { ...devices["Desktop Safari"], viewport: { width: 1280, height: 800 } },
+      testMatch: /smoke\.spec\.ts/,
+    },
   ],
   ...(manageLocalServer
     ? {
