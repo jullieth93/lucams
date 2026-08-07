@@ -2047,6 +2047,24 @@ sidebar fijo, Cancelar en cupones.
 
 ## Bitácora (append-only, más reciente arriba)
 
+### 2026-08-07 (cierre 2) — Paridad de DBs corregida: el catálogo contado incluía fixtures de tests
+
+Pregunta de Lucy: "¿a nivel de DB igualmente ok?" — la verificación encontró que NO del todo:
+los conteos canónicos (612 productos/572 categorías/772 variantes, totales con soft-deleted)
+incluían **fixtures de tests**: 46 `wompi-e2e-*` en STG (residuo de las corridas de certificación
+del 2026-07-28/29) y 55 en LOCAL (incluida 1 fuga VIVA de una corrida de hoy). Barrido FK-safe en
+ambos ambientes → **catálogo real 566/526/726, idéntico en LOCAL y STG** (verificado por conteo
+directo; ocasiones 115, CMS 981, RLS 59, migraciones 50 ya eran exactos; crons 10 LOCAL / 5 STG por
+la diferencia intencional de email). La fuga venía de un bug de cleanup en los specs nuevos: la
+variable de módulo solo cubre el último intento cuando el retry comparte proceso → nuevo helper
+`deleteEphemeralProductsByTag(tag)` (cascada FK-safe) cableado en los 8 specs; órdenes por patrón de
+email del tag. Re-verificado tras el fix: fullmode 12/12, homolog rate-limit+admin-modulos verdes,
+0 fixtures residuales en ambas DBs. Además: contrato exacto del "marcar todas leídas" (todas las
+previas al click, no "0 globales" — un cron puede crear alertas en la ventana) y `e2e-fullmode.sh`
+con cleanup por puerto (un timeout dejaba el dev server vivo y el lock bloqueaba la corrida
+siguiente). PRD sin cambios de DB en este release (el merge no trae migraciones). Detalle: doc de
+auditoría 2026-08-07 §9.
+
 ### 2026-08-07 (cierre) — RELEASE A PRODUCCIÓN: `production` = `c86d206`
 
 Lucy preguntó si todos los cambios reposaban en PRD — no: PRD servía `9cac62e` (2026-08-05) y los

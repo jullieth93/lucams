@@ -329,7 +329,7 @@ LOCAL y en STG × desktop/mobile** (evidencia JSON por paso en
 | Flujo §7 | Aserciones certificadas (LOCAL + STG, ambos proyectos) |
 | -------- | ------------------------------------------------------ |
 | §7.2 Cotizaciones | cotización REAL creada por UI anónima → aparece en `/admin/cotizaciones` → detalle con link `wa.me/57<10 dígitos>` del cliente → "Marcar contactada" (confirm nativo aceptado) → success en UI + `status=CONTACTED` en DB + **AdminActionLog escrito** (entityId = quote.id — también cubre §7.1 log) |
-| §7.4 Notificaciones | filtro `?view=all&type=QUOTE` muestra la QUOTE del RUN → deep link "Ver cotización" lleva al detalle → "Marcar todas como leídas" → 0 no leídas en DB + pill del nav ausente (en mobile se abre el drawer hamburguesa primero) |
+| §7.4 Notificaciones | filtro `?view=all&type=QUOTE` muestra la QUOTE del RUN → deep link "Ver cotización" lleva al detalle → "Marcar todas como leídas" → **toda notificación previa al click queda leída** en DB (el contrato exacto — un cron puede crear alertas nuevas en la ventana) + pill del nav ausente (en mobile se abre el drawer hamburguesa primero) |
 | §7.6 Observability | `/admin/observability` carga (abriendo el `<details>` "Detalle técnico": h2 Salud técnica + Trabajos automáticos) sin error boundary + `/api/health/crons` con **contrato verificado contra DB**: 200↔`ok` / 503↔`degraded` y cada `lastRunAt` del payload igual a `AlertState` en la DB |
 | §7.7 RBAC | admin efímero **MANAGER** (service role, auto-borrado): login UI → `/admin/dashboard`; `/admin/finanzas` → redirect al dashboard + sin item "Finanzas" en el nav (filterNavByRole); `/admin/cotizaciones` sí carga |
 
@@ -356,3 +356,36 @@ en PRD el spec no corre — skip). Limpieza post-corrida verificada por query
 en ambas DBs: 0 Quotes activas / 0 notificaciones `Prueba` / 0 AdminActionLog
 del RUN / 0 admins MANAGER / 0 productos / 0 buckets `quote:*`; quedan las
 Quotes soft-deleted (patrón del repo) y el ledger Consent.
+
+## 9. Hallazgo de datos (post-release 2026-08-07): fixtures inflaban el catálogo contado
+
+Al verificar la paridad de DBs se descubrió que los conteos canónicos
+"612 productos / 572 categorías / 772 variantes" (totales con filas
+soft-deleted) **incluían fixtures de tests**: 46 productos+categorías+variantes
+`wompi-e2e-*` en STG (residuo soft-deleted de las corridas de certificación
+Wompi del 2026-07-28/29) y 55 en LOCAL (incluida 1 fuga viva de una corrida de
+hoy — ver el fix de specs abajo). Barridos con cascada FK-safe
+(orderItems→orders→cartItems→inventoryLogs→variantes→productos→categorías) y
+verificado por conteo directo:
+
+- **Catálogo real post-barrido: 566 productos / 526 categorías / 726
+  variantes** (totales; 11 vivos = 9 activos + 2 soft-hidden
+  circulares/corazón), **idéntico en LOCAL y STG** (antes: LOCAL 622 ≠ STG 612).
+- Ocasiones 115 y CMS 981 (conteo `deletedAt:null`) ya eran exactos; RLS 59
+  tablas y 50 migraciones Prisma también en ambos. Crons: 10 LOCAL / 5 STG (5
+  de email desagendados a propósito en STG — diferencia intencional §3).
+- PRD: el release no tocó la DB (el merge no trae migraciones); sin
+  credenciales PRD en el repo por diseño — su verificación profunda quedó del
+  DR drill (2026-08-05, restaura el catálogo completo) y de los checks
+  públicos de hoy (health + smoke 9/9).
+
+**Fix de specs (la fuga)**: el cleanup por variable de módulo
+(`if (product) deleteEphemeralProduct(product)`) solo borraba el producto del
+ÚLTIMO intento — un retry en el mismo proceso sobreescribe la variable y el
+producto del intento fallido quedaba vivo (reproducido: `e2e-fm-wompi-…`
+visible en el catálogo local tras el intento que falló). Nuevo helper
+`deleteEphemeralProductsByTag(tag)` en `fixtures/data-factory.ts` que barre
+por prefijo de slug del spec (constante entre procesos) con la cascada
+FK-safe completa; cableado en los 6 specs `fullmode-*`, `homolog-rate-limit`
+y `homolog-admin-modulos` (las órdenes ahora se borran por patrón de email
+del tag, no por id de variable).
