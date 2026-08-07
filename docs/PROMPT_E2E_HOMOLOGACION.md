@@ -25,8 +25,11 @@ Monorepo pnpm (`apps/web` + `packages/db`):
   - `full` (Etapa 2, pendiente de trámites): checkout Wompi + guías Aveonline + IA.
 - **CMS v2 propio** (`CmsPage/CmsSection/CmsField/CmsFieldVersion`): todo el copy del
   sitio es administrable desde `/admin/contenido`; los fallbacks de código existen.
-- **Catálogo real**: 612 productos (9 activos reales + placeholders inactivos),
-  572 categorías, 772 variantes, 115 ocasiones, 981 campos CMS.
+- **Catálogo real**: 566 productos (9 activos reales + 2 soft-hidden +
+  placeholders inactivos), 526 categorías, 726 variantes, 115 ocasiones, 981
+  campos CMS. _(Corregido 2026-08-07: la cifra histórica 612/572/772 incluía
+  46 fixtures de tests ya barridos — evidencia en
+  `audits/2026-08-07-e2e-homologacion.md` §9.)_
 - **Centro de notificaciones** (`/admin/notificaciones`, tabla `Notification`):
   alertas/crons/cotizaciones/resumen viven ahí; el email solo sale para críticas y
   para cotización nueva.
@@ -53,7 +56,7 @@ Monorepo pnpm (`apps/web` + `packages/db`):
 las diferencias INTENCIONALES documentadas. La suite debe correr la matriz de flujos
 completa en LOCAL y STG, y el subconjunto no-destructivo en PRD.
 
-**Debe ser idéntico**: catálogo (612/572/772/115/981 CMS), esquema+RLS (59 tablas),
+**Debe ser idéntico**: catálogo (566/526/726/115/981 CMS — corregido 2026-08-07), esquema+RLS (59 tablas),
 migraciones Prisma (50), jobs pg_cron (10, menos los de email desagendados SOLO en
 STG), módulos del admin, Health API, crons al día, flujos cliente (catálogo, PDP,
 estudio, carrito, cotización, confirmación, wa.me), uploads (JPG/PNG/WebP/HEIC/≤4MB/>4.5MB).
@@ -91,7 +94,7 @@ de email apagados, local a Mailpit), Turnstile (test vs real), llaves Wompi
 - **Fixtures dinámicos con prefijo de corrida**: `RUN = e2e-<slug>-<Date.now()>` en
   cada spec; TODA entidad creada lleva el RUN en slug/email/nombre (el teardown
   global del repo limpia SOLO patrones de test — slug/email/número con 13+ dígitos o
-  prefijos `test-`/`itest`). NUNCA tocar datos sembrados reales (los 612 productos).
+  prefijos `test-`/`itest`). NUNCA tocar datos sembrados reales (los 566 productos).
 - **Datos desde la DB, no inventados**: productos/variantes/categorías se leen de la
   DB del ambiente (paridad verificada); los precios esperados se consultan, no se
   hardcodean. Faker solo para datos de cliente/cotización de prueba.

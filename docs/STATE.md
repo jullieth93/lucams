@@ -2047,6 +2047,28 @@ sidebar fijo, Cancelar en cupones.
 
 ## Bitácora (append-only, más reciente arriba)
 
+### 2026-08-07 (cierre 3) — Soak día 1 + H18 (cuota Resend) + corrección de catálogo en docs canónicos
+
+- **Soak día 1 (suite homolog completa tras el rewiring del cleanup)**: LOCAL 61 verde + 3 flaky
+  que pasan en retry (reseñas/wishlist/rate-limit-mobile — la carrera `?added=1` documentada, la
+  red de retries es la mitigación acordada) + 2 rojos de `homolog-back-in-stock` que destaparon
+  H18. STG (specs tocados hoy): 12 verde + 1 skip ambiental + la pierna de email de back-in-stock
+  completa (cron → Resend → notifiedAt) verificada cuando la cuota se liberó a media corrida.
+  Residuo 0 en ambas DBs post-soak.
+- **H18 (operativo, con evidencia directa)**: las corridas del día enviaron 100 correos reales en
+  ~1 h (01:49-02:41 UTC) → **429 `daily_quota_exceeded`** de Resend Free (100/día) — el log del
+  server lo muestra (`email.send.fail … daily email sending quota`). Riesgo si coincide con
+  operación: el correo de "nueva cotización" al admin (canal de venta rápido) cae junto con los de
+  prueba (el centro de notificaciones in-app sigue registrando todo). Candidatos: llave/dominio de
+  test separado, plan de pago en semanas de certificación, o alerta de cuota (decisión de Lucy).
+  El spec ahora clasifica la pared con sonda 429 y ASERTA la degradación correcta (no marcar
+  `notifiedAt` sin envío) en vez de fallar opaco. Comportamiento de la app bajo la pared: correcto
+  (log, no-marcado, circuit breaker 30s).
+- **Docs canónicos corregidos**: PROMPT_E2E_HOMOLOGACION.md, TESTING.md y OPERATIONS.md (tabla de
+  paridad) ahora citan el catálogo real 566/526/726 con referencia a la evidencia (§9 del doc de
+  auditoría). Las entradas históricas (612) quedan como estaban — eran ciertas como medición de
+  totales con fixtures incluidos.
+
 ### 2026-08-07 (cierre 2) — Paridad de DBs corregida: el catálogo contado incluía fixtures de tests
 
 Pregunta de Lucy: "¿a nivel de DB igualmente ok?" — la verificación encontró que NO del todo:

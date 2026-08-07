@@ -389,3 +389,21 @@ por prefijo de slug del spec (constante entre procesos) con la cascada
 FK-safe completa; cableado en los 6 specs `fullmode-*`, `homolog-rate-limit`
 y `homolog-admin-modulos` (las órdenes ahora se borran por patrón de email
 del tag, no por id de variable).
+
+### H18 (operativo, 2026-08-07) — la cuenta Free de Resend se agota en días de pruebas pesadas
+
+El soak del día (matriz §6 + §6.21/§8 + §7 en LOCAL y STG) envió **100 correos
+reales entre 01:49 y 02:41 UTC** — el tope diario del plan Free (100/día).
+Desde ahí, todo envío devuelve **429 `daily_quota_exceeded`** (verificado con
+sonda directa a la API). Efectos medidos hoy: `homolog-back-in-stock` no podía
+recibir su aviso (sent=0 determinista — así se detectó).
+
+Impacto real si coincide con operación: el correo de "nueva cotización" al
+admin (canal de venta) y los ack de cliente también caen mientras dure la
+pared — el centro de notificaciones sigue registrando todo in-app (diseño
+duradero), pero el email es el canal rápido. Mitigaciones candidatas (decisión
+de Lucy): llave/dominio Resend separado para tests, plan de pago en semanas de
+certificación pesada, o alerta de cuota. El comportamiento CORRECTO de la app
+bajo la pared quedó certificado: la suscripción back-in-stock NO se marca
+`notifiedAt` sin envío (el cron del día siguiente la reintenta) — asertado en
+el spec, que ahora clasifica la pared con sonda 429 en vez de fallar opaco.
