@@ -4,8 +4,7 @@
  * cancelaciones por pago rechazado (esas usan order-payment-failed). Tono empático es-CO.
  */
 
-import { renderEmailLayout } from "../layout";
-import { getSettingValue } from "@/lib/cms";
+import { renderEmailLayout, getSiteUrl } from "../layout";
 
 export type OrderCancelledData = {
   orderNumber: string;
@@ -14,7 +13,7 @@ export type OrderCancelledData = {
 };
 
 export async function orderCancelledEmail(data: OrderCancelledData) {
-  const siteUrl = await getSettingValue("SITE_URL", "https://lucamsshop.com");
+  const siteUrl = await getSiteUrl();
   const reasonHtml = data.reason
     ? `<p style="font-size:14px;color:#3D2E5C;opacity:0.8;">Motivo: ${escapeHtml(data.reason)}</p>`
     : "";

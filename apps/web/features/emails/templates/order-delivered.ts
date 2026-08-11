@@ -3,8 +3,7 @@
  * Pide reseña al cliente.
  */
 
-import { renderEmailLayout, ctaButton } from "../layout";
-import { getSettingValue } from "@/lib/cms";
+import { renderEmailLayout, ctaButton, getSiteUrl } from "../layout";
 
 export type OrderDeliveredData = {
   orderNumber: string;
@@ -13,7 +12,7 @@ export type OrderDeliveredData = {
 };
 
 export async function orderDeliveredEmail(data: OrderDeliveredData) {
-  const siteUrl = await getSettingValue("SITE_URL", "https://lucamsshop.com");
+  const siteUrl = await getSiteUrl();
 
   const bodyHtml = `
 <h1 style="margin:0 0 12px 0;font-size:22px;color:#3D2E5C;">¡Tu pedido llegó! 💜</h1>

@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { sendEmail } from "@/lib/resend";
-import { getSettingValue } from "@/lib/cms";
+import { getSiteUrl } from "@/features/emails/layout";
 import { peekCartSession } from "@/lib/cart-session";
 import {
   buildCommercialEmailHeaders,
@@ -79,7 +79,7 @@ export async function sendCartRecoveryReminders(
   });
 
   // #7 — base para el link de baja del header List-Unsubscribe (una vez por corrida, cacheado).
-  const siteUrl = await getSettingValue("SITE_URL", "https://lucamsshop.com");
+  const siteUrl = await getSiteUrl();
   let sent = 0;
   let recovered = 0;
   for (const row of rows) {

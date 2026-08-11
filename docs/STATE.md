@@ -13,6 +13,32 @@
 
 ## Resumen actual
 
+**🔧 RONDA 3 POST-VALIDACIÓN (2026-08-11, noche) — bug de sesión, emails homologados, nav y
+webhook.** Del feedback de Lucy validando STG:
+- **Bug "login que no pega"** (real): las cuentas creadas por Admin API (la de Lucy en STG y
+  PRD) tenían auth user pero NO fila Customer → header siempre "Ingresar". JIT-provisioning en
+  `loginAction` (upsert Customer por email, vincula o crea) + backfill inmediato de su fila en
+  ambas DBs. El signup de clientes reales siempre creó la fila — era un gap de cuentas
+  provisionadas.
+- **Emails homologados por ambiente**: `getSiteUrl()` (features/emails/layout) prefiere
+  `NEXT_PUBLIC_SITE_URL` (por despliegue) sobre el setting CMS compartido — los emails de STG
+  ya no enlazan a PRD ("Ver mi pedido" → 404). 12 plantillas + 4 services migrados. Teléfono
+  del email a admin ahora es `tel:` + botón WhatsApp aparte.
+- **Notificaciones top-level**: salió del grupo colapsado "Analítica" — la campana no se veía
+  (la notificación ORDER sí se estaba creando; el problema era el acceso).
+- **Header**: acceso directo a /rastrear (ícono camión junto al carrito; antes solo en footer).
+- **Webhook Aveonline**: el endpoint ahora también acepta `payload.token` (el Token que se pega
+  en el panel Mis integraciones → Webhook Personalizado, re-enviado en cada notificación) — así
+  el registro manual de Lucy funciona sin query string en la URL.
+- **Referidos/puntos (análisis pedido por Lucy)**: el schema lo tiene TODO
+  (Customer.referralCode/referredById, Referral, loyaltyPoints+LoyaltyTxn) y el detalle admin
+  del cliente YA muestra código/puntos/referidos — pero nada lo gana ni lo usa (UI muerta).
+  Pendiente decisión: v1 de referidos (compartir código + recompensa en cupón) vs ocultar hasta
+  Fase 5.
+- Verificado: tsc limpio, 150/150 tests (emails + webhook), 120/120 orders/notifications.
+
+---
+
 **📬 RONDA POST-VALIDACIÓN STG (2026-08-11, tarde) — notificaciones, pedidos admin, email y
 webhook Aveonline.** Tras la compra de prueba OK en STG:
 - **Aviso a admin de pedido nuevo**: in-app (tipo `ORDER` en el centro de notificaciones, con

@@ -4,8 +4,7 @@
  * derechos). Tono empático es-CO, con el motivo y una salida clara (ajustar o reembolso).
  */
 
-import { renderEmailLayout } from "../layout";
-import { getSettingValue } from "@/lib/cms";
+import { renderEmailLayout, getSiteUrl } from "../layout";
 
 export type DesignRejectedData = {
   orderNumber: string;
@@ -21,7 +20,7 @@ export type DesignRejectedData = {
 };
 
 export async function designRejectedEmail(data: DesignRejectedData) {
-  const siteUrl = await getSettingValue("SITE_URL", "https://lucamsshop.com");
+  const siteUrl = await getSiteUrl();
   const orderUrl = data.publicTrackingToken
     ? `${siteUrl}/pedido/${data.publicTrackingToken}`
     : `${siteUrl}/mi-cuenta/pedidos`;

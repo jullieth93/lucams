@@ -18,6 +18,7 @@
 
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { randomBytes } from "node:crypto";
 import { z } from "zod";
 import { mergeAnonCartIntoCustomer } from "@/features/cart/service";
 import { peekCartSession, setCartSessionCookie } from "@/lib/cart-session";
@@ -94,6 +95,13 @@ export async function loginAction(
 
   logger.info({ event: "security.login.success", ip });
 
+  // JIT-provisioning del Customer (bug 2026-08-11): una cuenta creada por
+  // Admin API (admins, fixtures) tiene auth user pero NO fila Customer →
+  // getCurrentCustomer devolvía null y el header mostraba "Ingresar" siempre
+  // ("hace login pero sigue apareciendo Ingresar"). Idempotente y best-effort:
+  // un fallo acá NUNCA bloquea el login.
+  await ensureCustomerForAuthUser(authData.user);
+
   // Merge anon cart si existía. Errores acá NO bloquean login —
   // un cart roto no debe impedir entrar a la cuenta.
   await mergeCartSafely(authData.user.id);
@@ -103,6 +111,47 @@ export async function loginAction(
   // cae a "/" ante cualquier valor sospechoso o ausente.
   const nextRaw = formData.get("next");
   redirect(safeRedirectTarget(typeof nextRaw === "string" ? nextRaw : null));
+}
+
+/**
+ * JIT-provisioning de la fila Customer para auth users provisionados por fuera
+ * del signup (Admin API: admins, fixtures e2e). Si ya existe vinculada (o hay
+ * una fila con el mismo email sin vincular), no duplica: la vincula. Nunca
+ * lanza — un fallo aquí no debe impedir entrar a la cuenta.
+ */
+async function ensureCustomerForAuthUser(user: {
+  id: string;
+  email?: string;
+  user_metadata?: unknown;
+}): Promise<void> {
+  try {
+    if (!user.email) return;
+    const meta = (user.user_metadata ?? {}) as Record<string, unknown>;
+    const firstName =
+      typeof meta.firstName === "string"
+        ? meta.firstName
+        : typeof meta.full_name === "string"
+          ? (meta.full_name.split(" ")[0] ?? null)
+          : null;
+    const lastName = typeof meta.lastName === "string" ? meta.lastName : null;
+    await prisma.customer.upsert({
+      where: { email: user.email },
+      create: {
+        email: user.email,
+        firstName,
+        lastName,
+        supabaseUserId: user.id,
+        referralCode: `LCS-${randomBytes(4).toString("hex").toUpperCase()}`,
+        createdBy: user.id,
+      },
+      update: { supabaseUserId: user.id, deletedAt: null },
+    });
+  } catch (err) {
+    logger.error({
+      event: "auth.login.customer_jit_fail",
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
 }
 
 async function mergeCartSafely(supabaseUserId: string): Promise<void> {

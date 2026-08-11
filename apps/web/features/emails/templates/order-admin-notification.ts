@@ -13,8 +13,7 @@
  * Lleva el wa.me del cliente pre-armado para escribirle sin abrir el admin.
  */
 
-import { renderEmailLayout, escapeHtml, ctaButton } from "../layout";
-import { getSettingValue } from "@/lib/cms";
+import { renderEmailLayout, escapeHtml, ctaButton, getSiteUrl } from "../layout";
 import { formatCOP, formatCityDept } from "@/lib/format";
 
 export type OrderAdminNotificationData = {
@@ -36,7 +35,7 @@ export type OrderAdminNotificationData = {
 };
 
 export async function orderAdminNotificationEmail(data: OrderAdminNotificationData) {
-  const siteUrl = await getSettingValue("SITE_URL", "https://lucamsshop.com");
+  const siteUrl = await getSiteUrl();
   const adminUrl = `${siteUrl}/admin/pedidos/${data.orderNumber}`;
   const waDigits = data.customerPhone.replace(/\D/g, "");
   const waText = encodeURIComponent(
@@ -62,11 +61,12 @@ export async function orderAdminNotificationEmail(data: OrderAdminNotificationDa
 <h1 style="margin:0 0 12px 0;font-size:20px;">📦 Nuevo pedido ${escapeHtml(data.orderNumber)}</h1>
 <table cellpadding="6" cellspacing="0" border="0" style="font-size:14px;width:100%;border-collapse:collapse;">
   <tr><td style="color:#3D2E5C;opacity:0.6;width:110px;">Cliente:</td><td><strong>${escapeHtml(data.customerName)}</strong></td></tr>
-  <tr><td style="color:#3D2E5C;opacity:0.6;">Teléfono:</td><td>${
+  <tr><td style="color:#3D2E5C;opacity:0.6;">Teléfono:</td><td><a href="tel:+${waDigits}" style="color:#3D2E5C;">${escapeHtml(data.customerPhone)}</a></td></tr>
+  ${
     customerWaUrl
-      ? `<a href="${customerWaUrl}" style="color:#7C6AAD;">${escapeHtml(data.customerPhone)}</a>`
-      : escapeHtml(data.customerPhone)
-  }</td></tr>
+      ? `<tr><td style="color:#3D2E5C;opacity:0.6;">WhatsApp:</td><td><a href="${customerWaUrl}" style="display:inline-block;background:#25D366;color:#ffffff;text-decoration:none;font-weight:700;font-size:12px;padding:4px 10px;border-radius:6px;">✆ Abrir chat</a></td></tr>`
+      : ""
+  }
   <tr><td style="color:#3D2E5C;opacity:0.6;">Email:</td><td><a href="mailto:${escapeHtml(data.customerEmail)}" style="color:#7C6AAD;">${escapeHtml(data.customerEmail)}</a></td></tr>
   <tr><td style="color:#3D2E5C;opacity:0.6;">Ciudad:</td><td>${escapeHtml(location)}</td></tr>
   <tr><td style="color:#3D2E5C;opacity:0.6;">Pago:</td><td>${paymentLabel}</td></tr>

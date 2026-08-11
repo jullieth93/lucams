@@ -3,8 +3,7 @@
  * que el cliente se suscribió ("avísame cuando vuelva") vuelve a tener stock. es-CO tuteo.
  */
 
-import { renderEmailLayout, ctaButton } from "../layout";
-import { getSettingValue } from "@/lib/cms";
+import { renderEmailLayout, ctaButton, getSiteUrl } from "../layout";
 
 export type BackInStockData = {
   productName: string;
@@ -14,7 +13,7 @@ export type BackInStockData = {
 };
 
 export async function backInStockEmail(data: BackInStockData) {
-  const siteUrl = await getSettingValue("SITE_URL", "https://lucamsshop.com");
+  const siteUrl = await getSiteUrl();
   const url = `${siteUrl}/producto/${encodeURIComponent(data.productSlug)}`;
 
   const bodyHtml = `

@@ -16,6 +16,19 @@
 
 import { getSettingValue } from "@/lib/cms";
 
+/**
+ * URL pública del sitio para enlaces en emails (homologación 2026-08-11).
+ * Manda la env NEXT_PUBLIC_SITE_URL (por despliegue: PRD→lucamsshop.com,
+ * Preview/STG→su alias) sobre el setting CMS SITE_URL (compartido por DB) —
+ * sin esto, los emails transaccionales enviados DESDE STG enlazaban a PRD
+ * ("Ver mi pedido" → 404, porque la orden vive en la DB de STG).
+ */
+export async function getSiteUrl(): Promise<string> {
+  const env = process.env.NEXT_PUBLIC_SITE_URL?.trim();
+  if (env) return env.replace(/\/+$/, "");
+  return getSettingValue("SITE_URL", "https://lucamsshop.com");
+}
+
 export type EmailLayoutOptions = {
   preview?: string; // texto del preview pane de Gmail / Apple Mail
   unsubscribeUrl?: string; // si null, no se muestra (transaccional puro)

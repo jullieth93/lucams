@@ -38,6 +38,11 @@
 
 import { describe, expect, it, vi } from "vitest";
 
+// getSiteUrl() (features/emails/layout) prefiere NEXT_PUBLIC_SITE_URL sobre el
+// setting CMS — se pinea al mismo valor del mock para que el test siga siendo
+// determinista y offline.
+process.env.NEXT_PUBLIC_SITE_URL = "https://lucamsshop.com";
+
 // El único acoplamiento externo de las plantillas (y del layout) es getSettingValue.
 // Lo mockeamos con constantes → render determinista y sin DB.
 const SITE_URL = "https://lucamsshop.com";

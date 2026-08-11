@@ -12,7 +12,7 @@
  */
 
 import Link from "next/link";
-import { ShoppingBag, Sparkles, User } from "lucide-react";
+import { ShoppingBag, Sparkles, Truck, User } from "lucide-react";
 import { logoutAction } from "@/app/auth/logout/actions";
 import { BrandMark } from "@/components/brand-mark";
 import { CmsText } from "@/components/cms/cms-text";
@@ -122,6 +122,18 @@ export async function SiteHeader() {
           </Link>
 
           <GlobalSearch />
+
+          {/* Seguimiento de pedido sin cuenta (Lucy 2026-08-11): estaba solo en
+              el footer y los invitados no lo encontraban. Ícono directo junto
+              al carrito, visible en móvil y desktop. */}
+          <Link
+            href="/rastrear"
+            className="text-brand-purple-dark hover:text-brand-purple inline-flex items-center p-1.5"
+            aria-label="Rastrear mi pedido"
+            title="Rastrear mi pedido"
+          >
+            <Truck className="h-5 w-5" />
+          </Link>
 
           <Link
             href="/carrito"

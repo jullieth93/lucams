@@ -4,8 +4,7 @@
  * recuperación restaura la sesión del carrito (incl. anónimo). es-CO tuteo.
  */
 
-import { renderEmailLayout, ctaButton } from "../layout";
-import { getSettingValue } from "@/lib/cms";
+import { renderEmailLayout, ctaButton, getSiteUrl } from "../layout";
 
 export type CartRecoveryData = {
   recoverToken: string;
@@ -15,7 +14,7 @@ export type CartRecoveryData = {
 };
 
 export async function cartRecoveryEmail(data: CartRecoveryData) {
-  const siteUrl = await getSettingValue("SITE_URL", "https://lucamsshop.com");
+  const siteUrl = await getSiteUrl();
   const recoverUrl = `${siteUrl}/carrito/recuperar/${encodeURIComponent(data.recoverToken)}`;
 
   const itemsHtml = data.items

@@ -5,8 +5,7 @@
  * pasa a CANCELLED. El cliente puede reintentar haciendo otro checkout.
  */
 
-import { renderEmailLayout, ctaButton } from "../layout";
-import { getSettingValue } from "@/lib/cms";
+import { renderEmailLayout, ctaButton, getSiteUrl } from "../layout";
 import { formatCOP } from "@/lib/format";
 
 export type OrderPaymentFailedData = {
@@ -18,7 +17,7 @@ export type OrderPaymentFailedData = {
 };
 
 export async function orderPaymentFailedEmail(data: OrderPaymentFailedData) {
-  const siteUrl = await getSettingValue("SITE_URL", "https://lucamsshop.com");
+  const siteUrl = await getSiteUrl();
 
   // Razones técnicas → mensaje amigable
   const friendlyReason = (() => {

@@ -6,8 +6,8 @@
  * agradecimiento + setting expectativas + unsubscribe ya operativo.
  */
 
-import { renderEmailLayout, ctaButton } from "../layout";
-import { getSettingValue, getCmsBlock } from "@/lib/cms";
+import { renderEmailLayout, ctaButton, getSiteUrl } from "../layout";
+import { getCmsBlock } from "@/lib/cms";
 import { resolveCmsTokens } from "@/lib/cms-tokens";
 
 export type NewsletterWelcomeData = {
@@ -23,7 +23,7 @@ export async function newsletterWelcomeEmail(data: NewsletterWelcomeData) {
   // un HTML libre editable rompería clientes de correo. Fallbacks = textos
   // originales, así el email sale igual aunque el bloque falte o la DB caiga.
   const [siteUrl, subjectBlock, previewBlock] = await Promise.all([
-    getSettingValue("SITE_URL", "https://lucamsshop.com"),
+    getSiteUrl(),
     getCmsBlock("email.welcome.subject"),
     getCmsBlock("email.welcome.preview"),
   ]);

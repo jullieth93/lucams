@@ -93,6 +93,16 @@ export const ADMIN_NAV: NavGroup[] = [
     href: "/admin/dashboard",
   },
   {
+    // Top-level (Lucy 2026-08-11): dentro del grupo colapsado "Analítica" la
+    // campana no se veía — el negocio no se enteraba de los avisos. Ahora es
+    // hoja visible con el pill de no-leídas siempre a la vista.
+    title: "Notificaciones",
+    icon: Bell,
+    href: "/admin/notificaciones",
+    description:
+      "Avisos de tu tienda (pedidos nuevos, alertas, cotizaciones, resumen diario) con pendientes por leer.",
+  },
+  {
     title: "Ventas",
     icon: ShoppingCart,
     defaultOpen: true,
@@ -313,17 +323,6 @@ export const ADMIN_NAV: NavGroup[] = [
     title: "Analítica",
     icon: BarChart2,
     items: [
-      {
-        // Centro de notificaciones (2026-08-05 — PLAN_CENTRO_NOTIFICACIONES):
-        // el buzón de avisos del sistema. El badge con el conteo de no leídas
-        // lo pinta admin-shell (prop unreadNotifications — NavBadge "soon/phase"
-        // no sirve: esos tonos deshabilitan el link).
-        label: "Notificaciones",
-        href: "/admin/notificaciones",
-        icon: Bell,
-        description:
-          "Historial de avisos del sistema (alertas, crons que fallan, cotizaciones nuevas y tu resumen diario) con pendientes por leer. No es el estado en vivo del sistema: eso es Salud técnica.",
-      },
       {
         label: "Métricas",
         href: "/admin/metricas",

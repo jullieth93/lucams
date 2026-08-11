@@ -2,8 +2,9 @@
  * Webhook Aveonline — recibe actualizaciones de estado de guías.
  *
  * Aveonline NO documenta HMAC. Mitigación (ADR-039 docs/INTEGRATIONS_AVEONLINE §6.2):
- *   1. Secret en `paramN` (registrado al crear webhook con `createWebhook.php`).
- *      Validamos `?secret=<AVEONLINE_WEBHOOK_SECRET>` o header `x-aveonline-secret`.
+ *   1. Credencial compartida — cualquiera de: `?secret=<AVEONLINE_WEBHOOK_SECRET>`,
+ *      header `x-aveonline-secret`, o `payload.token` (el Token del registro en el
+ *      panel Mis integraciones, re-enviado en cada notificación).
  *   2. trackingNumber debe existir en DB (la saga lo persistió al crear guía).
  *   3. Estados monotónicos: NO retroceder de DELIVERED → SHIPPED, etc.
  *
@@ -26,8 +27,24 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export async function POST(req: Request) {
-  // 1) Validar secret compartido. Aveonline lo envía en paramN custom que
-  //    nosotros definimos al registrar el webhook. Aceptamos ?secret=… o header.
+  // Leer body primero: del payload puede salir el tercer factor de validación
+  // (`token` de la integración — lo re-envía Aveonline en cada notificación).
+  let rawBody: string;
+  try {
+    rawBody = await req.text();
+  } catch (err) {
+    logger.warn({
+      event: "webhook.aveonline.body_read_fail",
+      err: err instanceof Error ? err.message : String(err),
+    });
+    return NextResponse.json({ error: "bad request" }, { status: 400 });
+  }
+
+  // 1) Validar credencial compartida (3 vías aceptadas):
+  //    - ?secret=<AVEONLINE_WEBHOOK_SECRET> (URL registrada con query)
+  //    - header x-aveonline-secret
+  //    - payload.token (registro desde el panel Mis integraciones: el Token que
+  //      Lucy pega ahí se re-envía en cada notificación — doc webhookEstadosGuias)
   const expected = process.env.AVEONLINE_WEBHOOK_SECRET?.trim();
   if (!expected) {
     logger.warn({ event: "webhook.aveonline.no_secret_configured" });
@@ -40,37 +57,36 @@ export async function POST(req: Request) {
     const url = new URL(req.url);
     const providedQ = url.searchParams.get("secret");
     const providedH = req.headers.get("x-aveonline-secret");
+    const providedT = (() => {
+      try {
+        const t = (JSON.parse(rawBody) as { token?: unknown }).token;
+        return typeof t === "string" ? t : null;
+      } catch {
+        return null;
+      }
+    })();
     // Comparación en tiempo constante (ADR-062 P1): `!==` filtraba bytes correctos por timing.
     const okH = providedH != null && secureEquals(providedH, expected);
     const okQ = providedQ != null && secureEquals(providedQ, expected);
-    if (!okH && !okQ) {
+    const okT = providedT != null && secureEquals(providedT, expected);
+    if (!okH && !okQ && !okT) {
       logger.warn({
         event: "webhook.aveonline.invalid_secret",
         gotQ: !!providedQ,
         gotH: !!providedH,
+        gotT: !!providedT,
       });
       return NextResponse.json({ error: "invalid secret" }, { status: 401 });
     }
     // El secreto por query-string viaja en logs de CDN/proxy y en el Referer → preferir el
-    // header x-aveonline-secret. ACCIÓN HUMANA: reconfigurar el webhook en Aveonline para que
+    // header o el payload token. ACCIÓN HUMANA: reconfigurar el webhook en Aveonline para que
     // mande el header en vez de ?secret=. Se registra para dar visibilidad al pendiente.
-    if (okQ && !okH) {
+    if (okQ && !okH && !okT) {
       logger.warn({ event: "webhook.aveonline.secret_via_query_string" });
     }
   }
 
-  // 2) Leer body + parsear via provider.handleWebhook.
-  let rawBody: string;
-  try {
-    rawBody = await req.text();
-  } catch (err) {
-    logger.warn({
-      event: "webhook.aveonline.body_read_fail",
-      err: err instanceof Error ? err.message : String(err),
-    });
-    return NextResponse.json({ error: "bad request" }, { status: 400 });
-  }
-
+  // 2) Parsear via provider.handleWebhook.
   let event;
   try {
     const provider = await getShippingProvider();

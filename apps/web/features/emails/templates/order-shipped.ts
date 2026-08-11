@@ -2,8 +2,7 @@
  * Template: pedido enviado (cuando webhook Aveonline reporta IN_TRANSIT).
  */
 
-import { renderEmailLayout, ctaButton } from "../layout";
-import { getSettingValue } from "@/lib/cms";
+import { renderEmailLayout, ctaButton, getSiteUrl } from "../layout";
 
 export type OrderShippedData = {
   orderNumber: string;
@@ -16,7 +15,7 @@ export type OrderShippedData = {
 };
 
 export async function orderShippedEmail(data: OrderShippedData) {
-  const siteUrl = await getSettingValue("SITE_URL", "https://lucamsshop.com");
+  const siteUrl = await getSiteUrl();
   const etaText = data.estimatedDays
     ? `<p>Estimado de la transportadora: <strong>${data.estimatedDays} día${data.estimatedDays === 1 ? "" : "s"} hábil${data.estimatedDays === 1 ? "" : "es"}</strong> desde el despacho. Es un estimado del courier, no una fecha garantizada.</p>`
     : "";

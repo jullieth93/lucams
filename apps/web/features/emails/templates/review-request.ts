@@ -4,8 +4,7 @@
  * reseña de los productos comprados, con link directo a cada uno. es-CO tuteo.
  */
 
-import { renderEmailLayout, ctaButton } from "../layout";
-import { getSettingValue } from "@/lib/cms";
+import { renderEmailLayout, ctaButton, getSiteUrl } from "../layout";
 
 export type ReviewRequestData = {
   orderNumber: string;
@@ -22,7 +21,7 @@ export type ReviewRequestData = {
 };
 
 export async function reviewRequestEmail(data: ReviewRequestData) {
-  const siteUrl = await getSettingValue("SITE_URL", "https://lucamsshop.com");
+  const siteUrl = await getSiteUrl();
   const orderUrl = data.publicTrackingToken
     ? `${siteUrl}/pedido/${data.publicTrackingToken}`
     : `${siteUrl}/mi-cuenta/pedidos`;

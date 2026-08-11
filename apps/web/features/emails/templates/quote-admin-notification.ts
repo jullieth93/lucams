@@ -18,8 +18,7 @@
  * dejó — mismo criterio que support-ticket-internal.
  */
 
-import { renderEmailLayout, escapeHtml, ctaButton } from "../layout";
-import { getSettingValue } from "@/lib/cms";
+import { renderEmailLayout, escapeHtml, ctaButton, getSiteUrl } from "../layout";
 import { formatCOP, formatCityDept } from "@/lib/format";
 
 export type QuoteAdminNotificationData = {
@@ -42,7 +41,7 @@ export type QuoteAdminNotificationData = {
 };
 
 export async function quoteAdminNotificationEmail(data: QuoteAdminNotificationData) {
-  const siteUrl = await getSettingValue("SITE_URL", "https://lucamsshop.com");
+  const siteUrl = await getSiteUrl();
   const adminUrl = `${siteUrl}/admin/cotizaciones/${data.quoteId}`;
   const customerWaUrl = `https://wa.me/57${data.customerWhatsapp}`;
   const location = formatCityDept(data.city, data.department);
