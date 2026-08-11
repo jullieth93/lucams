@@ -13,6 +13,20 @@
 
 ## Resumen actual
 
+**🔐 WEBHOOK AVEONLINE REGISTRADO Y VALIDADO (2026-08-11, noche).**
+- **Secretos separados por ambiente** (eran el mismo en STG/PRD): PRD roto a valor nuevo único
+  y legible (Vercel Production, `--no-sensitive` para que Lucy lo vea; `.env.local.nube-backup`
+  sincronizado); STG conserva el anterior. Redeploy de PRD aplicado.
+- **Validación en vivo**: PRD acepta `payload.token` con el secreto nuevo (200) y rechaza tokens
+  incorrectos (401). STG end-to-end: simulación EN TRANSITO sobre la guía real 2245605345 →
+  pedido LCM-2026-0001 pasó FULFILLING→**SHIPPED**, `WebhookEvent` procesado y email de despacho
+  disparado. El endpoint acepta las 3 credenciales: `?secret=`, header y `payload.token`.
+- Ojo STG: la URL del preview lleva protección SSO de Vercel — el webhook registrado debe incluir
+  `x-vercel-protection-bypass` o Aveonline solo ve un 302 (PRD con dominio propio no tiene ese
+  problema). La prueba definitiva (evento real del carrier) se verá con la primera orden real.
+
+---
+
 **🎁 REFERIDOS V1 IMPLEMENTADO (2026-08-11, noche — decisión Lucy "Referidos v1 simple").**
 El programa completo de punta a punta, reutilizando el schema existente:
 - **/mi-cuenta**: tarjeta "Invita y gana" — tu código `LCS-XXXXXXXX`, copiar código/link, botón
