@@ -13,6 +13,27 @@
 
 ## Resumen actual
 
+**🎁 REFERIDOS V1 IMPLEMENTADO (2026-08-11, noche — decisión Lucy "Referidos v1 simple").**
+El programa completo de punta a punta, reutilizando el schema existente:
+- **/mi-cuenta**: tarjeta "Invita y gana" — tu código `LCS-XXXXXXXX`, copiar código/link, botón
+  compartir por WhatsApp, y estado de tus referidos (pendiente / cupón entregado / expirado,
+  con emails enmascarados).
+- **Registro acepta código** (opcional, validado ANTES de crear el usuario: código inexistente
+  o propio → error de campo): crea `Referral` PENDING + `Customer.referredById`. Prefill desde
+  el link de compartir (`/registro?ref=LCS-…`).
+- **Recompensa automática** en `processPaidOrder`: si el referido paga su PRIMER pedido, ambos
+  reciben cupón personal (PERCENT 10, 1 uso, 90 días, isPublic=false, descripción interna con
+  trazabilidad) por email (plantilla `referral-reward`) y la Referral queda REWARDED — si ya
+  tenía compras previas queda EXPIRED. Idempotente por status (retry de saga no duplica).
+- `features/referrals/service.ts` nuevo (findReferrerByCode / attachReferral /
+  issueReferralRewardsIfFirstPaidOrder). El modelo `Referral` no tiene `@relation` a Customer
+  (referrerId es String pelado) — el referente se resuelve aparte.
+- Tests: integración 5/5 (attach, validaciones, recompensa, expirado, idempotencia).
+- Pendiente natural del v1: superficie del cupón al cliente en /mi-cuenta (hoy llega por
+  email), y el programa de puntos (sigue oculto hasta Fase 5).
+
+---
+
 **🔧 RONDA 3 POST-VALIDACIÓN (2026-08-11, noche) — bug de sesión, emails homologados, nav y
 webhook.** Del feedback de Lucy validando STG:
 - **Bug "login que no pega"** (real): las cuentas creadas por Admin API (la de Lucy en STG y

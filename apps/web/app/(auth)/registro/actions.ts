@@ -31,6 +31,7 @@ import { rateLimit } from "@/lib/rate-limit";
 import { emailKey, ipKey } from "@/lib/rate-limit-keys";
 import { verifyTurnstileToken } from "@/lib/turnstile";
 import { recordHabeasDataConsent } from "@/features/consent/service";
+import { attachReferral, findReferrerByCode } from "@/features/referrals/service";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { supabaseService } from "@/lib/supabase/service";
 import { getClientIp } from "@/lib/client-ip";
@@ -42,6 +43,8 @@ const SignupSchema = z
     passwordConfirm: z.string(),
     firstName: z.string().min(1, "Tu nombre es obligatorio").max(50, "Máximo 50 caracteres"),
     lastName: z.string().max(50, "Máximo 50 caracteres").optional(),
+    // Referidos v1 (2026-08-11): código opcional, se valida contra DB en la action.
+    referralCode: z.string().max(20, "Máximo 20 caracteres").optional(),
   })
   .refine((d) => d.password === d.passwordConfirm, {
     message: "Las contraseñas no coinciden.",
@@ -55,7 +58,13 @@ export type SignupActionState = {
     // `dataConsent` no viene del schema Zod: es la casilla de autorización, que se valida aparte
     // y antes, para no tocar la PII sin permiso del titular.
     Record<
-      "email" | "password" | "passwordConfirm" | "firstName" | "lastName" | "dataConsent",
+      | "email"
+      | "password"
+      | "passwordConfirm"
+      | "firstName"
+      | "lastName"
+      | "dataConsent"
+      | "referralCode",
       string[]
     >
   >;
@@ -75,6 +84,7 @@ export async function signupAction(
     passwordConfirm: formData.get("passwordConfirm"),
     firstName: formData.get("firstName"),
     lastName: formData.get("lastName") || undefined,
+    referralCode: formData.get("referralCode") || undefined,
   };
 
   const parsed = SignupSchema.safeParse(raw);
@@ -159,6 +169,26 @@ export async function signupAction(
   }
 
   const origin = await getRequestOrigin();
+
+  // Referidos v1 (2026-08-11) — validar el código ANTES de crear el usuario:
+  // un código inválido no debe dejar una cuenta creada a medias (campo opcional;
+  // el ata real ocurre tras crear el Customer, ver abajo).
+  if (parsed.data.referralCode?.trim()) {
+    const referrer = await findReferrerByCode(parsed.data.referralCode);
+    if (!referrer) {
+      return {
+        error: "Revisa el código de referido.",
+        fieldErrors: { referralCode: ["Ese código de referido no existe."] },
+      };
+    }
+    if (referrer.email.toLowerCase() === parsed.data.email.toLowerCase()) {
+      return {
+        error: "Revisa el código de referido.",
+        fieldErrors: { referralCode: ["No puedes usar tu propio código de referido."] },
+      };
+    }
+  }
+
   const supabase = await createSupabaseServerClient();
   const { data: authData, error: authError } = await supabase.auth.signUp({
     email: parsed.data.email,
@@ -218,6 +248,25 @@ export async function signupAction(
         createdBy: userId,
       },
     });
+
+    // Referidos v1 — ata del código (Referral PENDING + referredById). La
+    // validación ya ocurrió antes del signUp; esto solo persiste el vínculo.
+    // Best-effort: un fallo aquí NUNCA aborta el registro.
+    if (parsed.data.referralCode?.trim()) {
+      try {
+        await attachReferral({
+          refereeCustomerId: customer.id,
+          refereeEmail: parsed.data.email,
+          rawCode: parsed.data.referralCode,
+        });
+      } catch (refErr) {
+        logger.error({
+          event: "auth.signup.referral_attach_fail",
+          userId,
+          err: refErr instanceof Error ? refErr.message : String(refErr),
+        });
+      }
+    }
 
     // Audit trail Ley 1581: persistir la autorización de tratamiento de datos (habeas data)
     // que el titular otorgó al aceptar los términos en el formulario. Best-effort: si la

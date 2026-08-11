@@ -31,6 +31,10 @@ export type AuthTexts = {
     lastNameLabel: string;
     lastNameOptional: string;
     lastNamePlaceholder: string;
+    referralLabel: string;
+    referralOptional: string;
+    referralPlaceholder: string;
+    referralHint: string;
     emailLabel: string;
     emailPlaceholder: string;
     passwordLabel: string;
@@ -104,6 +108,10 @@ export const DEFAULT_AUTH_TEXTS: AuthTexts = {
     lastNameLabel: "Apellido",
     lastNameOptional: "(opcional)",
     lastNamePlaceholder: "Pérez",
+    referralLabel: "Código de referido",
+    referralOptional: "(si tienes uno)",
+    referralPlaceholder: "LCS-XXXXXXXX",
+    referralHint: "Si un amigo te compartió su código, ambos ganan {percent}% OFF cuando completes tu primera compra.",
     emailLabel: "Correo electrónico",
     emailPlaceholder: "tu@email.com",
     passwordLabel: "Contraseña",
@@ -174,6 +182,10 @@ export const AUTH_TEXT_KEYS: Record<string, string> = {
   "registro.lastNameLabel": "auth.registro.lastname-label",
   "registro.lastNameOptional": "auth.registro.lastname-optional",
   "registro.lastNamePlaceholder": "auth.registro.lastname-placeholder",
+  "registro.referralLabel": "auth.registro.referral-label",
+  "registro.referralOptional": "auth.registro.referral-optional",
+  "registro.referralPlaceholder": "auth.registro.referral-placeholder",
+  "registro.referralHint": "auth.registro.referral-hint",
   "registro.emailLabel": "auth.registro.email-label",
   "registro.emailPlaceholder": "auth.registro.email-placeholder",
   "registro.passwordLabel": "auth.registro.password-label",

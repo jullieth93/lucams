@@ -10,8 +10,16 @@ export const metadata: Metadata = {
 // CSP por nonce (C3): requiere render dinámico (los scripts necesitan el nonce).
 export const dynamic = "force-dynamic";
 
-export default async function RegistroPage() {
+export default async function RegistroPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ ref?: string }>;
+}) {
   // Roadmap B7 — textos de la pantalla resueltos del CMS (fallback = defaults).
   const texts = await getAuthTexts();
-  return <RegistroForm texts={texts.registro} />;
+  // Referidos v1 — prefill del código desde el link de compartir (?ref=LCS-…).
+  const { ref } = await searchParams;
+  const initialReferralCode =
+    typeof ref === "string" && /^[A-Za-z0-9-]{4,20}$/.test(ref.trim()) ? ref.trim().toUpperCase() : undefined;
+  return <RegistroForm texts={texts.registro} initialReferralCode={initialReferralCode} />;
 }

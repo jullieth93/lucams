@@ -39,6 +39,7 @@ import {
   sendOrderCancelled,
   sendOrderRefunded,
 } from "./emails";
+import { issueReferralRewardsIfFirstPaidOrder } from "@/features/referrals/service";
 
 /**
  * 2026-05-22 — actualizado: descubrimos que la cuenta demo `demointegracion`
@@ -361,6 +362,11 @@ export async function processPaidOrder(
   // nunca aborta la creación de guía. Va tras la confirmación al cliente por
   // el mismo motivo: corre en first-pass y en retries sin duplicar.
   await notifyNewOrderToAdmin(order.id);
+
+  // Referidos v1 (2026-08-11): si el comprador llegó con un código y este es
+  // su PRIMER pedido pagado, ambos reciben su cupón (10%, 1 uso, 90 días).
+  // Idempotente por Referral.status y best-effort (nunca interrumpe la saga).
+  await issueReferralRewardsIfFirstPaidOrder(order.id);
 
   // 4) Construir items para Aveonline desde OrderItem con dims efectivos.
   //    Si algún variant carece de dims (caso edge, legacy data), retornamos

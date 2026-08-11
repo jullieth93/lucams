@@ -10,17 +10,26 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Package, MapPin, Star, ShieldCheck, Pencil, ChevronRight } from "lucide-react";
+import { Package, MapPin, Star, ShieldCheck, Pencil, ChevronRight, Gift } from "lucide-react";
 import { prisma } from "@/lib/db";
 import { getCurrentCustomer } from "@/lib/auth";
 import { getCmsBlock } from "@/lib/cms";
 import { resolveCmsTokens } from "@/lib/cms-tokens";
+import { getSiteUrl } from "@/features/emails/layout";
+import { ReferralCopyButton } from "./referral-copy-button";
 
 // Resuelve un bloque CMS a string plano: mismo patrón que cmsMenuText del
 // site-header, para textos que se usan como strings (props, rótulos).
 async function cmsAccountText(key: string, fallback: string): Promise<string> {
   const block = await getCmsBlock(key);
   return resolveCmsTokens(block?.body ?? fallback);
+}
+
+/** Enmascara un email para listarlo sin exponerlo completo (privacidad). */
+function maskEmail(email: string): string {
+  const [local, domain] = email.split("@");
+  if (!domain) return email;
+  return `${local?.slice(0, 2) ?? ""}***@${domain}`;
 }
 
 export const metadata: Metadata = {
@@ -78,6 +87,18 @@ export default async function MiCuentaPage() {
   const ordersCount = await prisma.order.count({
     where: { customerId: customer.id, deletedAt: null },
   });
+
+  // Referidos v1 (2026-08-11): código propio + estado de los referidos hechos.
+  const [siteUrl, referrals] = await Promise.all([
+    getSiteUrl(),
+    prisma.referral.findMany({
+      where: { referrerId: customer.id },
+      orderBy: { createdAt: "desc" },
+      take: 10,
+      select: { referredEmail: true, status: true, createdAt: true },
+    }),
+  ]);
+  const referralUrl = `${siteUrl}/registro?ref=${encodeURIComponent(customer.referralCode)}`;
 
   // Textos del hub: editables desde /admin/contenido (página "Mi cuenta",
   // sección "Resumen de cuenta"). Fallback = texto exacto anterior.
@@ -139,6 +160,56 @@ export default async function MiCuentaPage() {
         })}
       </div>
 
+      {/* Invita y gana — referidos v1 (2026-08-11): tu código + compartir +
+          estado de tus referidos. Cuando tu amigo haga su primera compra,
+          ambos reciben un cupón de 10% OFF por email. */}
+      <section className="border-brand-purple/15 rounded-2xl border bg-white p-5 shadow-sm sm:p-6">
+        <div className="flex items-start gap-3">
+          <span className="bg-brand-turquoise/15 text-brand-purple flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full">
+            <Gift className="h-5 w-5" aria-hidden />
+          </span>
+          <div className="min-w-0 flex-1">
+            <h2 className="font-display text-brand-purple-dark text-xl">Invita y gana</h2>
+            <p className="text-brand-muted mt-1 text-sm leading-snug">
+              Comparte tu código: cuando un amigo se registre con él y haga su primera compra,
+              los dos reciben un cupón de <strong>10% OFF</strong>.
+            </p>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <code className="bg-brand-purple/5 text-brand-purple-dark rounded-md px-3 py-1.5 font-mono text-sm font-bold tracking-wider">
+                {customer.referralCode}
+              </code>
+              <ReferralCopyButton value={customer.referralCode} label="Copiar código" />
+              <ReferralCopyButton value={referralUrl} label="Copiar link" />
+              <a
+                href={`https://wa.me/?text=${encodeURIComponent(
+                  `Regístrate en Lucams con mi código ${customer.referralCode} y los dos ganamos 10% OFF en tu primera compra: ${referralUrl}`,
+                )}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 rounded-md border border-emerald-600/30 bg-emerald-50 px-2.5 py-1.5 text-xs font-semibold text-emerald-800 hover:bg-emerald-100"
+              >
+                Compartir por WhatsApp
+              </a>
+            </div>
+            {referrals.length > 0 && (
+              <ul className="mt-3 space-y-1 text-xs">
+                {referrals.map((r) => (
+                  <li key={r.referredEmail} className="text-brand-muted flex items-center gap-2">
+                    <span className="inline-block h-1.5 w-1.5 rounded-full bg-brand-purple/40" aria-hidden />
+                    {maskEmail(r.referredEmail)} —{" "}
+                    {r.status === "REWARDED"
+                      ? "🎁 Cupón entregado"
+                      : r.status === "EXPIRED"
+                        ? "Ya tenía compras previas"
+                        : "Registrado, pendiente su primera compra"}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      </section>
+
       {/* Perfil */}
       <section className="border-brand-purple/15 rounded-2xl border bg-white p-5 shadow-sm sm:p-6">
         <div className="mb-4 flex items-center justify-between">
@@ -160,12 +231,9 @@ export default async function MiCuentaPage() {
         </dl>
       </section>
 
-      {/* Puntos + referido: OCULTO a propósito hasta que existan los programas (Fase 5).
-          Hoy loyaltyPoints es siempre 0 (nada los gana) y referralCode no sirve (el registro no
-          acepta código entrante ni hay recompensa). Mostrar UI muerta contradice el mandato #1
-          (nacer 100% productivo). Se re-activa cuando se implementen fidelidad + referidos.
-          Ver docs/ROADMAP.md Fase 5. Los campos customer.loyaltyPoints/referralCode siguen en el
-          modelo, solo no se pintan. */}
+      {/* Puntos: SIGUE OCULTO hasta el programa de fidelidad (Fase 5) — loyaltyPoints
+          es siempre 0 y mostrar UI muerta contradice el mandato #1. Referidos v1
+          (2026-08-11) YA vive en la tarjeta "Invita y gana" de arriba. */}
     </div>
   );
 }

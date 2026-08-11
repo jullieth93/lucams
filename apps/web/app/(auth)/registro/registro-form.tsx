@@ -22,7 +22,14 @@ import { TurnstileWidget } from "@/components/turnstile-widget";
 import { signupAction, type SignupActionState } from "./actions";
 import type { AuthTexts } from "../auth-texts";
 
-export function RegistroForm({ texts }: { texts: AuthTexts["registro"] }) {
+export function RegistroForm({
+  texts,
+  initialReferralCode,
+}: {
+  texts: AuthTexts["registro"];
+  /** Referidos v1: prefill del código desde ?ref= (link de compartir). */
+  initialReferralCode?: string;
+}) {
   const [state, formAction, pending] = useActionState<SignupActionState | null, FormData>(
     signupAction,
     null,
@@ -103,6 +110,31 @@ export function RegistroForm({ texts }: { texts: AuthTexts["registro"] }) {
             />
             {state?.fieldErrors?.email && (
               <p className="text-destructive text-sm">{state.fieldErrors.email[0]}</p>
+            )}
+          </div>
+
+          {/* Referidos v1 — código opcional (prefill desde ?ref=). */}
+          <div className="space-y-2">
+            <Label htmlFor="referralCode" className="flex items-center gap-1">
+              {texts.referralLabel}
+              <span className="text-muted-foreground text-xs">{texts.referralOptional}</span>
+            </Label>
+            <Input
+              id="referralCode"
+              name="referralCode"
+              type="text"
+              inputMode="text"
+              autoComplete="off"
+              defaultValue={initialReferralCode}
+              placeholder={texts.referralPlaceholder}
+              disabled={pending}
+              aria-invalid={Boolean(state?.fieldErrors?.referralCode)}
+            />
+            <p className="text-muted-foreground text-xs">
+              {texts.referralHint.replace("{percent}", "10")}
+            </p>
+            {state?.fieldErrors?.referralCode && (
+              <p className="text-destructive text-sm">{state.fieldErrors.referralCode[0]}</p>
             )}
           </div>
 
