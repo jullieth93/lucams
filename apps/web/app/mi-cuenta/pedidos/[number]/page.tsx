@@ -22,6 +22,7 @@ import { formatCOP } from "@/lib/format";
 import { getRetractableItems } from "@/features/retract/service";
 import { getWarrantyItems } from "@/features/warranty/service";
 import { orderStatusLabel } from "@/features/orders/order-status-display";
+import { carrierTrackingPageUrl } from "@/features/shipping/tracking-urls";
 import { RetractControl } from "./retract-control";
 import { WarrantyControl } from "./warranty-control";
 import { getAccountTexts } from "../../account-texts.server";
@@ -299,14 +300,26 @@ export default async function CustomerPedidoDetallePage({
               </span>
             }
           />
-          {order.trackingUrl && (
+          {/* Rastreo: portal oficial de la transportadora como enlace principal
+              (trackingUrl guardado = PDF del documento de guía, etiquetado como tal). */}
+          {carrierTrackingPageUrl(order.shippingCarrier) && (
             <a
-              href={order.trackingUrl}
+              href={carrierTrackingPageUrl(order.shippingCarrier)!}
               target="_blank"
               rel="noopener noreferrer"
               className="text-brand-purple mt-2 inline-block text-sm font-semibold underline"
             >
               {texts.order.trackCta}
+            </a>
+          )}
+          {order.trackingUrl && (
+            <a
+              href={order.trackingUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-brand-muted hover:text-brand-purple mt-1 block text-xs underline"
+            >
+              Documento de guía (PDF)
             </a>
           )}
         </Card>

@@ -25,6 +25,7 @@ import { LucamsLogo } from "@/components/lucams-logo";
 import { getCmsBlock } from "@/lib/cms";
 import { prisma } from "@/lib/db";
 import { formatCOP, maskEmail } from "@/lib/format";
+import { carrierTrackingPageUrl } from "@/features/shipping/tracking-urls";
 import { buildWhatsAppUrl } from "@/lib/wa";
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -363,20 +364,25 @@ export default async function PublicOrderPage({
               <CmsText blockKey="order.status.address-heading" fallback="Dirección de envío" />
             }
           >
-            {/* #16 — esta vista es pública por token (link reenviable). Minimización PII (Ley 1581):
-                mostramos nombre + ciudad/departamento y ENMASCARAMOS la calle exacta. Basta para
-                reconocer el pedido; el cliente ya conoce su dirección completa (decisión Lucy). */}
+            {/* #16 — esta vista es pública por token (link reenviable). Minimización PII
+                (Ley 1581) PERO con certeza para el comprador: nombre + ciudad visibles y la
+                dirección completa bajo un desplegable "Ver dirección exacta" (feedback Lucy
+                2026-08-11 — el correo de confirmación YA la incluye, así que ocultarla solo
+                acá era inconsistente; el desplegable cubre el hombro curioso). */}
             <p className="text-brand-purple-dark text-sm">
               {ship.fullName ?? ""}
               {ship.fullName && <br />}
               {ship.city}, {ship.department}
             </p>
-            <p className="text-brand-muted mt-1 text-xs">
-              <CmsText
-                blockKey="order.status.address-privacy-note"
-                fallback="Dirección exacta oculta por privacidad"
-              />
-            </p>
+            <details className="group mt-1">
+              <summary className="text-brand-purple-dark hover:text-brand-purple cursor-pointer text-xs font-semibold underline underline-offset-2">
+                Ver dirección exacta
+              </summary>
+              <p className="text-brand-purple-dark mt-1 text-sm">
+                {[ship.addressLine1, ship.addressLine2].filter(Boolean).join(", ")}
+                {ship.zip ? ` · ${ship.zip}` : ""}
+              </p>
+            </details>
           </Card>
 
           {order.trackingNumber && (
@@ -396,14 +402,27 @@ export default async function PublicOrderPage({
                   </span>
                 }
               />
-              {order.trackingUrl && (
+              {/* Rastreo (feedback Lucy 2026-08-11): el portal oficial de la
+                  transportadora como enlace principal (el trackingUrl guardado
+                  es el PDF del documento de guía — ahora va etiquetado como tal). */}
+              {carrierTrackingPageUrl(order.shippingCarrier) && (
                 <a
-                  href={order.trackingUrl}
+                  href={carrierTrackingPageUrl(order.shippingCarrier)!}
                   target="_blank"
                   rel="noopener noreferrer"
                   className="text-brand-purple mt-2 inline-block text-sm font-semibold underline"
                 >
                   <CmsText blockKey="order.status.tracking-cta" fallback="Rastrear mi pedido →" />
+                </a>
+              )}
+              {order.trackingUrl && (
+                <a
+                  href={order.trackingUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-brand-muted hover:text-brand-purple mt-1 block text-xs underline"
+                >
+                  Documento de guía (PDF)
                 </a>
               )}
             </Card>

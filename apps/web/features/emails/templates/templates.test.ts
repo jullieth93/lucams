@@ -402,11 +402,18 @@ describe("orderShippedEmail", () => {
     expect(r.html).toContain("TN-99");
   });
 
-  it("con trackingUrl el CTA principal apunta a esa URL de rastreo", async () => {
-    const r = await orderShippedEmail(shData({ trackingUrl: "https://track.example/ABC" }));
+  it("el documento de guía va etiquetado como PDF y el CTA principal de rastreo va a /pedido/<token>", async () => {
+    // Cambio 2026-08-11 (feedback Lucy): antes el botón principal descargaba el
+    // PDF de la guía; ahora va a nuestra vista de seguimiento y el PDF es un
+    // enlace secundario etiquetado.
+    const r = await orderShippedEmail(
+      shData({ trackingUrl: "https://track.example/ABC", publicTrackingToken: "PTOK" }),
+    );
     expect(r.html).toContain("https://track.example/ABC");
-    expect(r.html).toContain("Rastrear mi paquete");
-    expect(r.text).toContain("Rastrear: https://track.example/ABC");
+    expect(r.html).toContain("Documento de guía (PDF)");
+    expect(r.html).toContain(`${SITE_URL}/pedido/PTOK`);
+    expect(r.html).toContain("Rastrear mi pedido");
+    expect(r.text).toContain(`Rastrear mi pedido: ${SITE_URL}/pedido/PTOK`);
   });
 
   it("sin trackingUrl (null) NO hay botón de rastreo; solo el número de guía en code", async () => {
@@ -437,10 +444,15 @@ describe("orderShippedEmail", () => {
     expect(r.text).not.toContain("Estimado:");
   });
 
-  it("con publicTrackingToken agrega un CTA secundario a /pedido/<token>", async () => {
-    const r = await orderShippedEmail(shData({ publicTrackingToken: "PTOK" }));
+  it("con publicTrackingToken el CTA va a /pedido/<token> + portal oficial de la transportadora", async () => {
+    const r = await orderShippedEmail(
+      shData({ publicTrackingToken: "PTOK", carrier: "Servientrega", trackingNumber: "TN-99" }),
+    );
     expect(r.html).toContain(`${SITE_URL}/pedido/PTOK`);
-    expect(r.html).toContain("Ver mi pedido completo");
+    expect(r.html).toContain("Rastrear mi pedido");
+    // Portal oficial (form-based) para rastrear digitando la guía.
+    expect(r.html).toContain("servientrega.com");
+    expect(r.html).toContain("TN-99");
   });
 
   it("sin publicTrackingToken NO agrega el CTA secundario /pedido/", async () => {

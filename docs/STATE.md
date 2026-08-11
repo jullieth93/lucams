@@ -13,6 +13,20 @@
 
 ## Resumen actual
 
+**🚚 RASTREO QUE TIENE SENTIDO + DIRECCIÓN BAJO DEMANDA (2026-08-11, última ronda).**
+- El `trackingUrl` guardado era el PDF del documento de guía (`rutaguia` de Aveonline) y se
+  usaba como botón "Rastrear" — el cliente descargaba la etiqueta. Ahora: el CTA principal es
+  nuestra vista `/pedido/<token>` (guía + estados en vivo vía webhook), el portal oficial de la
+  transportadora queda de enlace secundario (`features/shipping/tracking-urls.ts` con test) y
+  el PDF va etiquetado "Documento de guía (PDF)". Aplicado en email de despacho, /pedido/<token>
+  y /mi-cuenta/pedidos. Las páginas de rastreo de las transportadoras colombianas son form-based
+  (no hay deep-link confiable) — por eso nuestra vista es el CTA.
+- Dirección en /pedido/<token>: nombre+ciudad visibles y la dirección exacta bajo un desplegable
+  "Ver dirección exacta" (antes "oculta por privacidad" — inconsistente: el correo de
+  confirmación ya la incluía). Cubre hombro curioso sin sacrificar la certeza del comprador.
+
+---
+
 **🔐 WEBHOOK AVEONLINE REGISTRADO Y VALIDADO (2026-08-11, noche).**
 - **Secretos separados por ambiente** (eran el mismo en STG/PRD): PRD roto a valor nuevo único
   y legible (Vercel Production, `--no-sensitive` para que Lucy lo vea; `.env.local.nube-backup`
