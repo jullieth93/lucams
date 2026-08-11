@@ -25,6 +25,25 @@
 export const LOW_STOCK_THRESHOLD = 5;
 export const MAX_STOCK_VALUE = 99999;
 
+/**
+ * Ayuda junto al editor de stock para productos vendidos POR PACKS (variantes
+ * con `attributes.quantity`): cada cantidad ("Cantidad 20") es una variante-SKU
+ * con inventario PROPIO e independiente — vender descuenta 1 del pack elegido,
+ * no 20 unidades físicas. Lucy 2026-08: confundía el stock con unidades físicas
+ * sueltas; este texto lo aclara en el punto exacto donde edita el número.
+ */
+export function packStockHelpText(quantity: number): string {
+  return `Cada cantidad maneja su propio inventario. Este número son los packs disponibles de «${quantity} unidades», no unidades sueltas.`;
+}
+
+/**
+ * Nota única sobre la tabla de opciones de un producto POR PACKS (panel del
+ * producto) — misma idea que packStockHelpText pero a nivel producto, para no
+ * repetir el texto bajo cada fila. Lucy 2026-08.
+ */
+export const PACK_STOCK_PANEL_NOTE =
+  "Este producto se vende por packs: cada cantidad maneja su propio inventario independiente. El stock de cada fila son los packs disponibles de esa cantidad, no unidades sueltas.";
+
 /** Estado del stock para badges/alertas. */
 export type StockStatus = "out" | "low" | "ok";
 

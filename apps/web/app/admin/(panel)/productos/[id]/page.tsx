@@ -24,6 +24,8 @@ import { ProductReviewsPanel } from "@/components/admin/product-reviews-panel";
 import { ProductCouponsWidget } from "@/components/admin/product-coupons-widget";
 import { getCurrentAdmin } from "@/lib/auth";
 import { getProductById, listCategoriesForSelect } from "@/features/products/service";
+import { getStorefrontVisibility } from "@/features/products/storefront-visibility";
+import { StorefrontVisibilityChip } from "@/components/admin/storefront-visibility-chip";
 import { parsePhysicalSpecs } from "@/features/products/shipping-schemas";
 import { getStockEmoji, summarizeStock } from "@/features/products/stock-constants";
 import { prisma } from "@/lib/db";
@@ -66,6 +68,19 @@ export default async function ProductoDetallePage({
 
   // Counts para los badges del sub-nav (en paralelo con resto).
   const activeVariants = product.variants.filter((v) => !v.deletedAt);
+
+  // Indicador "Visible en tienda" del header — misma regla que el storefront
+  // (storefront-visibility.ts): las opciones que cuenta la PDP son las no
+  // archivadas Y activas. La razón se muestra en texto al lado del chip.
+  const buyableVariants = product.variants.filter((v) => !v.deletedAt && v.isActive);
+  const visibility = getStorefrontVisibility({
+    productIsActive: product.isActive,
+    productDeletedAt: product.deletedAt,
+    categoryIsActive: product.category.isActive,
+    categoryDeletedAt: product.category.deletedAt,
+    activeVariantCount: buyableVariants.length,
+    inStockAny: buyableVariants.some((v) => v.stock > 0),
+  });
   const pendingReviewsCount = await prisma.review.count({
     where: {
       productId: id,
@@ -104,6 +119,12 @@ export default async function ProductoDetallePage({
             <code className="font-mono text-xs">/productos/{product.slug}</code> ·{" "}
             <span aria-hidden>{getStockEmoji(stockSummary.worstStatus)}</span>{" "}
             {stockSummary.totalUnits.toLocaleString("es-CO")} unidades
+            <span className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+              <StorefrontVisibilityChip visibility={visibility} />
+              {"reason" in visibility && (
+                <span className="text-brand-muted text-xs">{visibility.reason}</span>
+              )}
+            </span>
           </>
         }
         breadcrumbs={[
@@ -114,7 +135,7 @@ export default async function ProductoDetallePage({
         actions={
           <ConfirmAction
             action={deleteProductAction}
-            message={`¿Archivar "${product.name}"? Quedará oculto de tu tienda. Puedes restaurarlo después editando el producto.`}
+            message={`¿Archivar "${product.name}"? Quedará oculto de tu tienda. Puedes restaurarlo cuando quieras desde el listado de productos (filtro «Archivados»).`}
           >
             <input type="hidden" name="id" value={product.id} />
             <Button

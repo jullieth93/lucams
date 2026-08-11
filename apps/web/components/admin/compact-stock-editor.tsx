@@ -31,10 +31,17 @@ export function CompactStockEditor({
   variantId,
   productId,
   currentStock,
+  helpText,
 }: {
   variantId: string;
   productId: string;
   currentStock: number;
+  /**
+   * Ayuda contextual opcional, siempre visible bajo el editor (ej. productos
+   * por packs: "este número son packs, no unidades sueltas"). Solo presentación
+   * — no cambia ningún comportamiento del editor.
+   */
+  helpText?: string;
 }) {
   const [state, formAction, pending] = useActionState<StockActionState | null, FormData>(
     setVariantStockAction,
@@ -112,6 +119,17 @@ export function CompactStockEditor({
           </p>
         )}
       </div>
+
+      {/*
+       * Ayuda contextual permanente (ej. productos por packs — 2026-08). Va
+       * FUERA del div de altura reservada: esa reserva es para el hint
+       * transitorio de delta/error; la ayuda no aparece ni desaparece.
+       */}
+      {helpText && (
+        <p className="text-brand-muted mt-1 max-w-[190px] text-right text-[11px] leading-snug">
+          {helpText}
+        </p>
+      )}
     </form>
   );
 }

@@ -33,6 +33,8 @@ import {
 import { getCurrentAdmin } from "@/lib/auth";
 import { formatCOP } from "@/lib/format";
 import { listProducts } from "@/features/products/service";
+import { getStorefrontVisibility } from "@/features/products/storefront-visibility";
+import { StorefrontVisibilityChip } from "@/components/admin/storefront-visibility-chip";
 import { ProductQuickActions } from "./quick-actions";
 import { BulkActionBar, BulkSelectAllCheckbox } from "./bulk-action-bar";
 
@@ -303,7 +305,20 @@ export default async function AdminProductosPage({ searchParams }: { searchParam
               </tr>
             </AdminTableHead>
             <AdminTableBody>
-              {items.map((p) => (
+              {items.map((p) => {
+                // Chip "¿se ve en la tienda?" — el badge de Estado solo refleja
+                // isActive; este resume el gate real del storefront (categoría,
+                // opciones activas, stock). Razón visible solo en filas con
+                // problema; el resto la tiene como tooltip.
+                const visibility = getStorefrontVisibility({
+                  productIsActive: p.isActive,
+                  productDeletedAt: p.deletedAt,
+                  categoryIsActive: p.categoryIsActive,
+                  categoryDeletedAt: p.categoryDeletedAt,
+                  activeVariantCount: p.activeVariantCount,
+                  inStockAny: p.inStockAny,
+                });
+                return (
                 <AdminTableRow key={p.id}>
                   {showBulkColumn && (
                     <td className="w-10 px-3 py-3 align-middle">
@@ -332,11 +347,17 @@ export default async function AdminProductosPage({ searchParams }: { searchParam
                     {formatCOP(p.priceFrom)}
                   </td>
                   <td className="px-4 py-3 text-center">
-                    <ProductStatus
-                      isActive={p.isActive}
-                      isFeatured={p.isFeatured}
-                      isArchived={p.deletedAt !== null}
-                    />
+                    <div className="flex flex-col items-center gap-1">
+                      <ProductStatus
+                        isActive={p.isActive}
+                        isFeatured={p.isFeatured}
+                        isArchived={p.deletedAt !== null}
+                      />
+                      <StorefrontVisibilityChip
+                        visibility={visibility}
+                        showReason={visibility.status === "no-visible"}
+                      />
+                    </div>
                   </td>
                   <td className="px-4 py-3 text-right">
                     {/*
@@ -361,7 +382,8 @@ export default async function AdminProductosPage({ searchParams }: { searchParam
                     </div>
                   </td>
                 </AdminTableRow>
-              ))}
+                );
+              })}
             </AdminTableBody>
           </AdminTable>
         )}

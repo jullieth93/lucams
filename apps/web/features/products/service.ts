@@ -34,6 +34,14 @@ export type ProductListItem = {
   /** null = no archivado (vivo); Date = archivado en esa fecha. */
   deletedAt: Date | null;
   category: { id: string; name: string; slug: string };
+  /** Flags de la categoría para el indicador "Visible en tienda" del listado
+   *  (storefront-visibility.ts) — vienen de la misma query, sin N+1. */
+  categoryIsActive: boolean;
+  categoryDeletedAt: Date | null;
+  /** Nº de opciones activas (deletedAt=null, isActive=true) — las que la PDP mostraría. */
+  activeVariantCount: number;
+  /** ¿Alguna opción activa con stock > 0? (false → la tienda lo muestra "Agotado"). */
+  inStockAny: boolean;
   imagesCount: number;
   variantsCount: number;
   createdAt: Date;
@@ -122,12 +130,15 @@ export async function listProducts(opts: {
         images: true,
         createdAt: true,
         updatedAt: true,
-        category: { select: { id: true, name: true, slug: true } },
+        category: { select: { id: true, name: true, slug: true, isActive: true, deletedAt: true } },
         _count: { select: { variants: true } },
         // Solo variantes ACTIVAS para el "desde $X" — una opción desactivada no
         // se puede comprar, así que no debe bajar el precio mostrado. (Bug hallado
         // por tests: antes solo filtraba deletedAt, Lucy 2026-06-30.)
-        variants: { where: { deletedAt: null, isActive: true }, select: { price: true } },
+        // Se reusa esta MISMA selección (una sola query, sin N+1) para el
+        // indicador "Visible en tienda": activeVariantCount = length e
+        // inStockAny = alguna con stock > 0 (misma regla que la PDP).
+        variants: { where: { deletedAt: null, isActive: true }, select: { price: true, stock: true } },
       },
     }),
     prisma.product.count({ where }),
@@ -149,7 +160,13 @@ export async function listProducts(opts: {
       isFeatured: p.isFeatured,
       isPersonalizable: p.isPersonalizable,
       deletedAt: p.deletedAt,
-      category: p.category,
+      // El tipo público expone solo id/name/slug; isActive/deletedAt van en
+      // sus propios campos (categoryIsActive / categoryDeletedAt).
+      category: { id: p.category.id, name: p.category.name, slug: p.category.slug },
+      categoryIsActive: p.category.isActive,
+      categoryDeletedAt: p.category.deletedAt,
+      activeVariantCount: p.variants.length,
+      inStockAny: p.variants.some((v) => v.stock > 0),
       imagesCount: p.images.length,
       variantsCount: p._count.variants,
       createdAt: p.createdAt,

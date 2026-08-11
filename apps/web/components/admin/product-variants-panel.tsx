@@ -30,6 +30,7 @@ import {
 } from "@/components/admin-page";
 import { formatCOP } from "@/lib/format";
 import { parseVariantAttributes, generateVariantLabel } from "@/features/products/variant-schemas";
+import { PACK_STOCK_PANEL_NOTE } from "@/features/products/stock-constants";
 import { listVariantsByProduct } from "@/features/products/service";
 import { ConfirmAction } from "@/components/admin/confirm-action";
 import { CompactStockEditor } from "@/components/admin/compact-stock-editor";
@@ -53,6 +54,13 @@ export async function ProductVariantsPanel({
   const editingId = typeof searchParams.edit === "string" ? searchParams.edit : null;
   const editingVariant = editingId ? (variants.find((v) => v.id === editingId) ?? null) : null;
   const newOpen = searchParams.new === "1";
+
+  // Producto por packs (alguna opción con attributes.quantity): el stock de
+  // cada fila son packs de ESA cantidad, no unidades sueltas — se aclara UNA
+  // vez sobre la tabla + en el encabezado de la columna (Lucy 2026-08).
+  const isPackBased = variants.some(
+    (v) => parseVariantAttributes(v.attributes).quantity !== undefined,
+  );
   // Lucy 2026-06-27: al crear/editar mostramos SOLO el form (no la tabla con su
   // encabezado flotando encima — se veía como un "error de UI").
   const formMode = newOpen || editingVariant !== null;
@@ -154,6 +162,12 @@ export async function ProductVariantsPanel({
             description="Es raro — todo producto debería tener al menos la opción Única. Crea una con el botón de arriba."
           />
         ) : (
+          <>
+            {isPackBased && (
+              <p className="text-brand-muted mb-3 text-xs leading-snug">
+                {PACK_STOCK_PANEL_NOTE}
+              </p>
+            )}
           <AdminTable>
             <AdminTableHead>
               <tr>
@@ -161,7 +175,9 @@ export async function ProductVariantsPanel({
                 <th className="px-4 py-3 text-left font-semibold">Código</th>
                 <th className="px-4 py-3 text-left font-semibold">Características</th>
                 <th className="px-4 py-3 text-right font-semibold">Precio</th>
-                <th className="px-4 py-3 text-right font-semibold">Stock</th>
+                <th className="px-4 py-3 text-right font-semibold">
+                  {isPackBased ? "Stock (packs)" : "Stock"}
+                </th>
                 <th className="px-4 py-3 text-center font-semibold">Estado</th>
                 <th className="px-4 py-3 text-right font-semibold">Acción</th>
               </tr>
@@ -244,6 +260,7 @@ export async function ProductVariantsPanel({
               })}
             </AdminTableBody>
           </AdminTable>
+          </>
         ))}
     </section>
   );

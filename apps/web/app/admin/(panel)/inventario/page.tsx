@@ -42,7 +42,8 @@ import {
   type InventoryStatusFilter,
   type InventorySortKey,
 } from "@/features/products/inventory-service";
-import { getStockEmoji, getStockLabel } from "@/features/products/stock-constants";
+import { getStockEmoji, getStockLabel, packStockHelpText } from "@/features/products/stock-constants";
+import { parseVariantAttributes } from "@/features/products/variant-schemas";
 import { CompactStockEditor } from "@/components/admin/compact-stock-editor";
 
 export const metadata: Metadata = {
@@ -255,6 +256,7 @@ export default async function InventarioPage({ searchParams }: { searchParams: S
                       variantId={row.variantId}
                       productId={row.productId}
                       currentStock={row.stock}
+                      packQuantity={parseVariantAttributes(row.variantAttributes).quantity}
                     />
                   </td>
                 </AdminTableRow>
@@ -379,16 +381,25 @@ function InlineStockEditor({
   variantId,
   productId,
   currentStock,
+  packQuantity,
 }: {
   variantId: string;
   productId: string;
   currentStock: number;
+  /** Si la variante es un pack (attributes.quantity): aclara bajo el editor
+   *  que el número son packs de N, no unidades sueltas (Lucy 2026-08). */
+  packQuantity?: number;
 }) {
   // CompactStockEditor: 1 fila densa (input + icon-only Save), pensado para
   // celda de tabla. Reusa setVariantStockAction (audit InventoryLog + audit
   // log admin). Botón disabled si no hay cambios.
   return (
-    <CompactStockEditor variantId={variantId} productId={productId} currentStock={currentStock} />
+    <CompactStockEditor
+      variantId={variantId}
+      productId={productId}
+      currentStock={currentStock}
+      helpText={packQuantity !== undefined ? packStockHelpText(packQuantity) : undefined}
+    />
   );
 }
 
