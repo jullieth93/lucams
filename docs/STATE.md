@@ -13,8 +13,9 @@
 
 ## Resumen actual
 
-**🧹 PRE-PRODUCCIÓN: FEEDBACK DE LUCY IMPLEMENTADO + DEPURACIÓN TOTAL DE DATOS (2026-08-08,
-rama `develop`, SIN commit aún — cambios en working tree).** Sesión de feedback de la dueña
+**🧹 PRE-PRODUCCIÓN: FEEDBACK DE LUCY IMPLEMENTADO + DEPURACIÓN TOTAL DE DATOS (2026-08-08).
+RELEASED: 5 commits `99c3712..0229a07` en `develop` y `production` (ff); deploy PRD verificado
+en vivo (`health/all` ok con versión `0229a07`, aveonline real autenticado, rutas 200).** Sesión de feedback de la dueña
 previo al lanzamiento, 8 comentarios resueltos:
 
 - **Stock por variante en tienda** (antes: gate binario a nivel producto — reponer UNA variante
@@ -2028,15 +2029,17 @@ sidebar fijo, Cancelar en cupones.
 
 **Requiere a Lucy (decisiones / verificación):**
 
-- **Stack LOCAL de Supabase quedó a medias (2026-08-08)**: los contenedores podman se perdieron
-  (solo se reconstruyó `supabase_db_lucams-local` reusando el volumen; auth/storage/rest no
-  existen). Los tests que suben archivos o crean usuarios (9 en `features/personalization/*` y
-  `features/security/rls-matrix`) y los e2e con auth fallan por `fetch failed` — es AMBIENTE, no
-  código. Para recuperarlo completo: `make db-local-reset` (borra volúmenes y reseedéa; la DB
-  local ya quedó depurada y se puede re-sincronizar desde PRD como el 2026-08-07). El CLI de
-  supabase no recrea contenedores sobre volúmenes existentes en podman (bug conocido, ver
-  comentario en Makefile `db-local-start`).
-- **Redeploy de `develop` pendiente** para que STG tome `STORE_MODE=full` (homologación 2026-08-08).
+- ~~Stack LOCAL de Supabase quedó a medias (2026-08-08)~~ **RESUELTO el mismo día**:
+  `make db-local-reset` + resincronización PRD→LOCAL de las 19 tablas de catálogo (dump
+  `tmp/backups/catalogo-prd-20260811.dump`, procedimiento de OPERATIONS.md con las 3 FK
+  circulares soltadas/recreadas) + fixtures de diseño recreados
+  (`create-test-design-separadores.mjs` / `create-test-design-polaroid-ig.mjs`). Suite vitest
+  completa: **2795/2795 verde**. Nota operativa: el `pg_dump` del host es 13.x y no lee PG 17 —
+  usar el del contenedor (`podman exec supabase_db_lucams-local pg_dump …`).
+- ~~Redeploy de `develop` pendiente para que STG tome `STORE_MODE=full`~~ **HECHO**: el push a
+  `develop` disparó el deploy y STG quedó verificado en modo full (checkout con Wompi sandbox +
+  Aveonline test autenticando; smoke con bypass: home/catálogo/PDP 200 y "· Agotado" por
+  variante en vivo).
 
 0. ~~DMARC p=none → quarantine~~ — **HECHO y verificado (2026-08-07)**: Lucy aplicó el cambio en
    Cloudflare y `dig _dmarc.lucamsshop.com` (resolver local y 1.1.1.1) devuelve
