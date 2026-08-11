@@ -462,6 +462,18 @@ Errores no numéricos comunes:
 
 ### 6.2 Webhook AveCRM (recomendado para e-commerce)
 
+> **Actualización 2026-08-11 (registro actual del webhook de Lucams):** el registro hoy es
+> **Webhook Personalizado** — por panel (guias.aveonline.co/panel/mis-integraciones → tipo
+> "Webhook Personalizado", URL + Token que Aveonline re-envía como `payload.token` en cada
+> notificación, docs oficiales `webhookEstadosGuias` / `webhookPersonalizadoApi`). El endpoint
+> propio (`/api/webhooks/aveonline`) valida `?secret=` / header / `payload.token`.
+> **Gap confirmado de la API nueva:** los hosts nuevos (`api.aveonline.co`,
+> `envios.api.aveonline.co`) RECHAZAN el JWT legacy de `autenticarusuario.php`
+> ("Incorrect key for this algorithm", firebase/php-jwt) — el alta/lectura vía
+> `api-integrations/…/custom-webhook` NO es usable con nuestras credenciales hoy; se registró
+> por panel. También quedó verificado en vivo: PRD acepta el token nuevo (200) y rechaza falsos
+> (401); STG end-to-end FULFILLING→SHIPPED por evento simulado.
+
 | Campo              | Valor                                                                                                                                                                                                 |
 | ------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | URL de registro    | `POST https://app.aveonline.co/avestock/api/createWebhook.php`                                                                                                                                        |
