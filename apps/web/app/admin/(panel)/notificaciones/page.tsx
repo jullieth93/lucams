@@ -17,6 +17,7 @@ import {
   CheckCheck,
   Clock,
   Info,
+  Package,
   ShoppingBag,
   type LucideIcon,
 } from "lucide-react";
@@ -63,6 +64,11 @@ const TYPE_META: Record<NotificationType, { label: string; Icon: LucideIcon; ico
       Icon: ShoppingBag,
       iconClass: "bg-brand-turquoise/15 text-cyan-700",
     },
+    ORDER: {
+      label: "Pedido",
+      Icon: Package,
+      iconClass: "bg-emerald-100 text-emerald-700",
+    },
     SYSTEM: { label: "Sistema", Icon: Info, iconClass: "bg-slate-100 text-slate-500" },
   };
 const TYPE_FALLBACK = { label: "Aviso", Icon: Bell, iconClass: "bg-slate-100 text-slate-500" };
@@ -77,6 +83,7 @@ const SEVERITY_FALLBACK = SEVERITY_META.info;
 
 const TYPE_FILTERS: Array<{ key: NotificationType | null; label: string }> = [
   { key: null, label: "Todos" },
+  { key: "ORDER", label: "Pedidos" },
   { key: "ALERT", label: "Alertas" },
   { key: "CRON", label: "Crons" },
   { key: "QUOTE", label: "Cotizaciones" },
@@ -102,7 +109,8 @@ export default async function AdminNotificacionesPage({
   const sp = await searchParams;
   const view = pickString(sp, "vista") === "all" ? "all" : "unread";
   const typeRaw = pickString(sp, "tipo");
-  const type = (["ALERT", "CRON", "QUOTE", "SYSTEM"] as const).find((t) => t === typeRaw) ?? null;
+  const type =
+    (["ALERT", "CRON", "QUOTE", "SYSTEM", "ORDER"] as const).find((t) => t === typeRaw) ?? null;
 
   const [notifications, unreadCount] = await Promise.all([
     listNotifications({ unreadOnly: view === "unread", type: type ?? undefined, limit: 100 }),

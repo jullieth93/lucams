@@ -32,6 +32,7 @@ import { InsufficientStockError, StockAlreadyAppliedError } from "./errors";
 import type { ShippingAddressInput } from "./schemas";
 import {
   sendOrderConfirmationOnce,
+  notifyNewOrderToAdmin,
   sendOrderShipped,
   sendOrderDelivered,
   sendOrderPaymentFailed,
@@ -354,6 +355,12 @@ export async function processPaidOrder(
   //    (confirmationSentAt sigue null). No duplica (se marca al enviar + Resend
   //    idempotencyKey). Fire-and-forget: no aborta la creación de guía si falla.
   await sendOrderConfirmationOnce(order.id);
+
+  // Aviso al admin (Lucy 2026-08-11: "¿cómo me entero de un nuevo pedido?"):
+  // notificación in-app (dedup por orden) + email a ALERT_EMAIL. Best-effort:
+  // nunca aborta la creación de guía. Va tras la confirmación al cliente por
+  // el mismo motivo: corre en first-pass y en retries sin duplicar.
+  await notifyNewOrderToAdmin(order.id);
 
   // 4) Construir items para Aveonline desde OrderItem con dims efectivos.
   //    Si algún variant carece de dims (caso edge, legacy data), retornamos

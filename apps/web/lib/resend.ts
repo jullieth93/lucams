@@ -191,6 +191,32 @@ export async function sendEmail(input: SendEmailInput): Promise<SendEmailResult>
     if (!transient) break; // 4xx no retry
   }
 
+  // Fallback idempotency (2026-08-11): Resend rechaza con "idempotency key has
+  // been used … but the request body was modified" cuando la saga re-intenta un
+  // envío cuyo body CAMBIÓ respecto al intento original (ej. la primera pasada
+  // fue ANTES de generar la guía — carrier null — y el retry trae carrier). Sin
+  // este escape, la confirmación de esa orden quedaba muerta ~24 h aunque el
+  // primer fallo hubiera sido transitorio. Un único retry con clave ":r2"
+  // (determinista: un doble fallback tampoco duplica).
+  if (
+    !last.sent &&
+    input.idempotencyKey &&
+    /idempotency key has been used/i.test(last.reason) &&
+    /doesn't match/i.test(last.reason)
+  ) {
+    last = await attemptSend(apiKey, payload, `${input.idempotencyKey}:r2`);
+    if (last.sent) {
+      recordResult(true);
+      logger.info({
+        event: "email.send.success_idempotency_retry",
+        to: Array.isArray(input.to) ? input.to.join(",") : input.to,
+        subject: input.subject,
+        id: last.id,
+      });
+      return last;
+    }
+  }
+
   recordResult(false);
   logger.error({
     event: "email.send.fail",

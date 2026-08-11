@@ -23,7 +23,7 @@ import "server-only";
 import { prisma, Prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 
-export type NotificationType = "ALERT" | "CRON" | "QUOTE" | "SYSTEM";
+export type NotificationType = "ALERT" | "CRON" | "QUOTE" | "SYSTEM" | "ORDER";
 export type NotificationSeverity = "info" | "warning" | "critical";
 
 export type NotifyInput = {

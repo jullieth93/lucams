@@ -265,10 +265,22 @@ export default async function AdminPedidosPage({ searchParams }: { searchParams:
             </AdminTableHead>
             <AdminTableBody>
               {items.map((o) => {
+                // Invitado (customerId null): el nombre vive en el snapshot de
+                // envío del checkout, no en la relación customer — sin este
+                // fallback la columna quedaba "—" para todas las compras de
+                // invitado (reportado por Lucy 2026-08-11).
+                const shipName =
+                  o.shippingAddress &&
+                  typeof o.shippingAddress === "object" &&
+                  !Array.isArray(o.shippingAddress)
+                    ? String(
+                        (o.shippingAddress as Record<string, unknown>).fullName ?? "",
+                      ).trim()
+                    : "";
                 const fullName =
                   o.customer?.firstName || o.customer?.lastName
                     ? [o.customer.firstName, o.customer.lastName].filter(Boolean).join(" ")
-                    : "—";
+                    : shipName || "—";
                 return (
                   <AdminTableRow key={o.id}>
                     <td className="px-4 py-3">

@@ -100,6 +100,9 @@ vi.mock("./emails", async () => {
         });
       }
     },
+    notifyNewOrderToAdmin: async (orderId: string) => {
+      emailCalls.push({ fn: "notifyNewOrderToAdmin", orderId });
+    },
     sendOrderShipped: async (orderId: string) => {
       emailCalls.push({ fn: "sendOrderShipped", orderId });
     },
@@ -374,6 +377,8 @@ describe.skipIf(!hasDb)("saga POST-PAID — integración DB (ruta de ingresos)",
 
       // Email de confirmación disparado una vez.
       expect(emailCalls.filter((c) => c.fn === "sendOrderConfirmationOnce")).toHaveLength(1);
+      // Y el aviso al admin (in-app + email) también corre una vez por orden.
+      expect(emailCalls.filter((c) => c.fn === "notifyNewOrderToAdmin")).toHaveLength(1);
     }, 30000);
 
     it("F1 — al PAGAR con cupón: crea CouponUsage e incrementa usedCount (una sola vez)", async () => {

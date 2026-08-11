@@ -13,6 +13,30 @@
 
 ## Resumen actual
 
+**📬 RONDA POST-VALIDACIÓN STG (2026-08-11, tarde) — notificaciones, pedidos admin, email y
+webhook Aveonline.** Tras la compra de prueba OK en STG:
+- **Aviso a admin de pedido nuevo**: in-app (tipo `ORDER` en el centro de notificaciones, con
+  filtro "Pedidos") + email a `ALERT_EMAIL` con items/total/wa.me del cliente — hook en
+  `processPaidOrder` (saga) best-effort. Antes NO existía ningún aviso (gap real).
+- **Email al comprador**: la confirmación de LCM-2026-0001 no salió por un caso borde de
+  idempotencia Resend (el retry post-guía cambiaba el body con la misma key → rechazo 24 h).
+  Nuevo fallback en `lib/resend.ts`: ante "idempotency key used but body modified" reintenta una
+  vez con `:r2`. Confirmación re-enviada y `confirmationSentAt` marcado. El pipeline Resend en
+  STG quedó probado de punta a punta (key, dominio verificado, envío real).
+- **Admin pedidos**: columna Cliente ahora cae al nombre del snapshot de envío para invitados
+  (antes "—"); botón "Escribir al WhatsApp del cliente" (wa.me pre-armado) en el detalle.
+- **Webhook Aveonline**: 0 eventos registrados en PRD — el webhook personalizado NUNCA se
+  registró. El endpoint propio (`/api/webhooks/aveonline`) ya valida secret y parsea el shape
+  oficial (`estado:[{estado_id,nombre_estado}]`, docs webhookEstadosGuias/webhookPersonalizadoApi).
+  El registro API rechaza el token de auth (hosts distintos) → **pendiente manual por Lucy** en
+  guias.aveonline.co/panel/mis-integraciones (URL + `?secret=` de Vercel). Referencia de estados:
+  GET envios.api.aveonline.co/api/v1/states/types (+ novedades con responsable) — para enriquecer
+  el tracking después.
+- Verificado: typecheck limpio, 120/120 tests orders+notifications (mock de `./emails` en saga
+  integration extendido con `notifyNewOrderToAdmin`).
+
+---
+
 **🔥 CAUSA RAÍZ DEL BUG DE COTIZACIÓN (2026-08-11): dims de envío fraccionadas/faltantes en 4
 productos.** `PhysicalSpecsSchema` exige cm ENTEROS (`z.number().int()`); `calendario` (7.5×0.5),
 `tiras` (6.5, sin depthCm) y ambos `separadores` (0.1) violaban eso → `safeParse` falla ENTERO →

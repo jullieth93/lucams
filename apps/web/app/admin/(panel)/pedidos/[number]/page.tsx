@@ -16,7 +16,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import Image from "next/image";
 import { notFound, redirect } from "next/navigation";
-import { Box, User, MapPin, CreditCard, Truck, Package, Undo2 } from "lucide-react";
+import { Box, User, MapPin, CreditCard, Truck, Package, Undo2, MessageCircle } from "lucide-react";
 import { AdminPage, AdminPageHeader, AdminPageBody, AdminBadge } from "@/components/admin-page";
 import { getCurrentAdmin } from "@/lib/auth";
 import { getOrder } from "@/features/orders/service";
@@ -304,6 +304,21 @@ export default async function AdminPedidoDetallePage({
                   }
                 />
               </dl>
+              {/* Contacto directo: wa.me con el teléfono del comprador y mensaje
+                  pre-armado con el número de pedido (Lucy 2026-08-11). */}
+              {order.phone.replace(/\D/g, "").length >= 10 && (
+                <a
+                  href={`https://wa.me/${order.phone.replace(/\D/g, "")}?text=${encodeURIComponent(
+                    `Hola ${ship.fullName ?? ""}, te escribo de Lucams por tu pedido ${order.number}. `,
+                  )}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-brand-purple-dark hover:bg-brand-purple/5 mt-3 inline-flex items-center gap-1.5 rounded-md border border-emerald-600/30 bg-emerald-50 px-3 py-1.5 text-xs font-semibold"
+                >
+                  <MessageCircle className="h-3.5 w-3.5 text-emerald-700" aria-hidden />
+                  Escribir al WhatsApp del cliente
+                </a>
+              )}
             </Card>
 
             {/* Dirección */}

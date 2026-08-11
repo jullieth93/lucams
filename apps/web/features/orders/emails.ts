@@ -393,3 +393,104 @@ export async function sendOrderRefunded(orderId: string): Promise<void> {
     });
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────
+// Aviso al ADMIN de pedido nuevo pagado (Lucy 2026-08-11: "¿cómo me
+// entero de un nuevo pedido?") — email a ALERT_EMAIL + registro en el
+// centro de notificaciones. Best-effort total: nunca lanza ni retrasa la saga.
+// ─────────────────────────────────────────────────────────────────────
+
+import { getSettingValue } from "@/lib/cms";
+import { notify } from "@/features/notifications/service";
+import { orderAdminNotificationEmail } from "@/features/emails/templates/order-admin-notification";
+
+/**
+ * Avisa al negocio que un pedido quedó PAGADO (o COD confirmado). Se llama en
+ * processPaidOrder junto al email de confirmación del cliente. dedupKey por
+ * orden: un retry de la saga no duplica el aviso in-app; el email usa
+ * idempotencyKey propio por orden.
+ */
+export async function notifyNewOrderToAdmin(orderId: string): Promise<void> {
+  try {
+    const order = await prisma.order.findFirst({
+      where: { id: orderId, deletedAt: null },
+      include: {
+        items: {
+          include: {
+            variant: { select: { product: { select: { name: true } } } },
+          },
+        },
+      },
+    });
+    if (!order) return;
+
+    const ship = order.shippingAddress as ShippingAddrSnapshot;
+    const customerName = ship.fullName ?? "Cliente";
+    const totalLabel = new Intl.NumberFormat("es-CO", {
+      style: "currency",
+      currency: "COP",
+      maximumFractionDigits: 0,
+    }).format(order.total / 100);
+
+    // 1) Registro duradero en el centro de notificaciones (la fuente de verdad
+    //    del aviso; se crea aunque el email falle).
+    await notify({
+      type: "ORDER",
+      severity: "info",
+      title: `Nuevo pedido ${order.number}`,
+      detail: `${customerName} · ${totalLabel} · ${ship.city ?? "ciudad?"}, ${ship.department ?? "depto?"}`,
+      actionUrl: `/admin/pedidos/${order.number}`,
+      actionLabel: "Ver pedido",
+      dedupKey: `new-order-${order.id}`,
+      metadata: {
+        orderId: order.id,
+        orderNumber: order.number,
+        total: order.total,
+        paymentMethod: order.paymentMethod,
+      },
+    });
+
+    // 2) Email al buzón interno (mismo destinatario que las alertas operativas).
+    const to = await getSettingValue("ALERT_EMAIL", "hola@lucamsshop.com");
+    const tpl = await orderAdminNotificationEmail({
+      orderId: order.id,
+      orderNumber: order.number,
+      customerName,
+      customerPhone: order.phone,
+      customerEmail: order.email,
+      city: ship.city ?? "",
+      department: ship.department ?? "",
+      paymentMethod: order.paymentMethod,
+      total: order.total,
+      items: order.items.map((it) => ({
+        name: it.variant.product.name,
+        qty: it.qty,
+        lineTotal: it.unitPrice * it.qty,
+      })),
+    });
+    const result = await sendEmail({
+      to,
+      subject: tpl.subject,
+      html: tpl.html,
+      text: tpl.text,
+      replyTo: tpl.replyTo,
+      idempotencyKey: `order:admin-notification:${order.id}`,
+      tags: [
+        { name: "type", value: "order_admin_notification" },
+        { name: "order_number", value: order.number },
+      ],
+    });
+    logger.info({
+      event: "order.admin_notification.sent",
+      orderNumber: order.number,
+      to,
+      result: result.sent ? "ok" : `skip:${result.reason}`,
+    });
+  } catch (err) {
+    logger.error({
+      event: "order.admin_notification.fail",
+      orderId,
+      err: err instanceof Error ? err.message : String(err),
+    });
+  }
+}
