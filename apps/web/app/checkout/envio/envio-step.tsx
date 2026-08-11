@@ -24,6 +24,7 @@ export function EnvioStep({
   cart,
   quotes,
   offersToken,
+  quotesEstimated,
   preselectedQuoteId,
   destinationCity,
   destinationDepartment,
@@ -36,6 +37,9 @@ export function EnvioStep({
   quotes: ShippingSelectionInput[];
   /** Set de cotizaciones sellado HMAC por el servidor (anti-manipulación de flete). */
   offersToken: string;
+  /** true = las cotizaciones vienen de la caché de fallback (la viva falló) —
+   *  se muestra la nota "tarifa estimada" junto a la lista. */
+  quotesEstimated: boolean;
   preselectedQuoteId?: string;
   destinationCity: string;
   destinationDepartment: string;
@@ -73,6 +77,14 @@ export function EnvioStep({
             onSelectionChange={setSelectedQuoteId}
             texts={shippingTexts}
           />
+          {quotesEstimated && (
+            <p
+              role="note"
+              className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900"
+            >
+              {shippingTexts.estimatedNote}
+            </p>
+          )}
         </section>
       </div>
       <div className="lg:col-span-1">

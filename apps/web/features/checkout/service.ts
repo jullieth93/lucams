@@ -222,7 +222,7 @@ export async function quoteShipping(input: {
   // contacto/dirección; se lo pasa para NO re-consultar cart+customer en el hot path
   // justo antes de la llamada lenta a Aveonline (revisión adversarial #7).
   ctx?: Awaited<ReturnType<typeof loadCheckoutContext>>;
-}): Promise<ShippingSelectionInput[]> {
+}): Promise<{ quotes: ShippingSelectionInput[]; estimated: boolean }> {
   const ctx = input.ctx ?? (await loadCheckoutContext());
   const provider = await getShippingProvider();
 
@@ -306,14 +306,22 @@ export async function quoteShipping(input: {
       items,
       contraentrega: input.contraentrega ?? false,
     });
-    return quotes.map((q) => ({
-      carrier: q.carrier,
-      carrierName: q.carrierName,
-      fleteCop: q.fleteCop,
-      deliveryDays: q.deliveryDays,
-      contraentrega: q.contraentrega,
-      quoteId: q.quoteId,
-    }));
+    // `estimated` (2026-08-08): TODAS las cotizaciones vienen de la caché de
+    // fallback del provider (la viva falló). El flag NO entra al
+    // ShippingSelectionInput sellado — es solo display para la UI ("tarifa
+    // estimada"); el anti-tamper del offersToken queda intacto.
+    const estimated = quotes.length > 0 && quotes.every((q) => q.estimated === true);
+    return {
+      estimated,
+      quotes: quotes.map((q) => ({
+        carrier: q.carrier,
+        carrierName: q.carrierName,
+        fleteCop: q.fleteCop,
+        deliveryDays: q.deliveryDays,
+        contraentrega: q.contraentrega,
+        quoteId: q.quoteId,
+      })),
+    };
   } catch (err) {
     // warn (no error): la página /checkout/envio maneja esto con banner
     // amarillo "No pudimos cotizar el envío" — no es crash.

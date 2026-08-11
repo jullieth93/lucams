@@ -54,6 +54,38 @@ const aveonlineQuoteCB = new CircuitBreaker({
   resetMs: 30_000,
 });
 
+// ── Caché de última cotización buena (fallback de resiliencia, 2026-08-08) ──
+// `cotizarDoble` mide 7–11 s SANO y tiene días degradados: un timeout transitorio
+// no debe tumbar el checkout. Si la cotización EN VIVO lanza (red/timeout/breaker/
+// HTTP/respuesta inválida), servimos la última cotización exitosa de la MISMA clave
+// (origen, destino, paquete, modalidad) con TTL corto y flag `estimated` (la UI la
+// anuncia como "tarifa estimada"). NUNCA se sirve caché cuando la llamada en vivo
+// funcionó, y las respuestas vacías (sin cobertura) no se cachean: son una
+// respuesta definitiva, no un fallo transitorio. Per-instancia serverless (misma
+// filosofía que el token cache de auth).
+const QUOTE_CACHE_TTL_MS = 10 * 60 * 1000;
+const QUOTE_CACHE_MAX_KEYS = 200;
+const lastGoodQuoteCache = new Map<string, { at: number; quotes: ShippingQuote[] }>();
+
+function readLastGoodQuote(key: string): ShippingQuote[] | null {
+  const hit = lastGoodQuoteCache.get(key);
+  if (!hit) return null;
+  if (Date.now() - hit.at > QUOTE_CACHE_TTL_MS) {
+    lastGoodQuoteCache.delete(key);
+    return null;
+  }
+  return hit.quotes;
+}
+
+function writeLastGoodQuote(key: string, quotes: ShippingQuote[]): void {
+  // Cota de memoria defensiva (la instancia puede vivir horas): FIFO tosco.
+  if (lastGoodQuoteCache.size >= QUOTE_CACHE_MAX_KEYS) {
+    const oldest = lastGoodQuoteCache.keys().next().value;
+    if (oldest !== undefined) lastGoodQuoteCache.delete(oldest);
+  }
+  lastGoodQuoteCache.set(key, { at: Date.now(), quotes });
+}
+
 /**
  * Wrapper único de red para Aveonline: timeout obligatorio (mandato "nunca un
  * fetch sin timeout") + circuit breaker + retry opcional con backoff.
@@ -659,7 +691,6 @@ export class AveonlineProvider implements ShippingProvider {
     items: ShipmentItem[];
     contraentrega: boolean;
   }): Promise<ShippingQuote[]> {
-    const { token, idempresa } = await getAuthToken();
     // UN bulto con el modelo "caja apilada" (computePackedPackage): peso y espesor
     // Σ(qty), huella máxima. La guía usa el MISMO modelo → flete cotizado == facturado.
     const productos = buildCotizarProductos(params.items);
@@ -671,6 +702,49 @@ export class AveonlineProvider implements ShippingProvider {
     // Ciudad UPPERCASE con formato `CIUDAD(DEPTO)` — sino numbererror=-1 o -2.
     const origenFmt = formatAveonlineCity(params.origin.city, params.origin.department);
     const destinoFmt = formatAveonlineCity(params.destination.city, params.destination.department);
+
+    // Fallback de resiliencia (2026-08-08): quoteLive lanza SOLO por causas
+    // transitorias (red/timeout/breaker/HTTP/respuesta inválida); la "sin
+    // cobertura" retorna [] como respuesta definitiva. Solo los lanzamientos
+    // consultan la caché de última cotización buena.
+    const cacheKey =
+      `${origenFmt}→${destinoFmt}|cod:${params.contraentrega ? 1 : 0}|` +
+      JSON.stringify(productos);
+    try {
+      const quotes = await this.quoteLive({ params, productos, origenFmt, destinoFmt });
+      // Solo se cachea cotización viva NO vacía (una vacía = sin cobertura: no es
+      // un fallo y no sirve como fallback de ninguna clave).
+      if (quotes.length > 0) writeLastGoodQuote(cacheKey, quotes);
+      return quotes;
+    } catch (err) {
+      const cached = readLastGoodQuote(cacheKey);
+      if (cached) {
+        logger.warn({
+          event: "shipping.aveonline.quote.cache_fallback",
+          origen: origenFmt,
+          destino: destinoFmt,
+          quotes: cached.length,
+          err: err instanceof Error ? err.message : String(err),
+        });
+        return cached.map((q) => ({ ...q, estimated: true }));
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Cotización EN VIVO contra Aveonline. El caller (quote) la envuelve con el
+   * fallback de caché; por eso la regla de salida es: [] = sin cobertura
+   * (definitivo), throw = fallo transitorio (elegible a caché).
+   */
+  private async quoteLive(input: {
+    params: { contraentrega: boolean };
+    productos: ReturnType<typeof buildCotizarProductos>;
+    origenFmt: string;
+    destinoFmt: string;
+  }): Promise<ShippingQuote[]> {
+    const { params, productos, origenFmt, destinoFmt } = input;
+    const { token, idempresa } = await getAuthToken();
 
     // Timeout 15 s (NO el 5 s genérico): `cotizarDoble` cotiza TODAS las
     // transportadoras habilitadas server-side, así que es LENTO. Medido contra la
@@ -744,6 +818,14 @@ export class AveonlineProvider implements ShippingProvider {
 
     // Log estructurado: si todas fallaron, capturamos numbererror+dataerror para
     // que admin vea la causa exacta en /admin/logs (con stdbuf line-buffer).
+    // TODAS las transportadoras fallaron con numbererror/dataerror = respuesta
+    // DEFINITIVA de cobertura/datos (999 genérico — verificado con sonda live
+    // 2026-08-08: un destino inexistente devuelve 16 carriers con 999; también
+    // -2 destino inválido, -5/-6/-7 límites de valor/unidades/peso). NO es un
+    // fallo transitorio → devolvemos [] y la UI muestra "No encontramos
+    // transportadoras que cubran esa ciudad". Antes se lanzaba excepción y el
+    // cliente veía el banner "reintenta en unos segundos" que JAMÁS se resolvía
+    // (el bug de producción reportado 2026-08-08).
     if (ok.length === 0 && failed.length > 0) {
       logger.warn({
         event: "shipping.aveonline.quote.all_failed",
@@ -756,10 +838,7 @@ export class AveonlineProvider implements ShippingProvider {
           msg: c.dataerror?.slice(0, 160),
         })),
       });
-      throw new Error(
-        `Aveonline: ninguna transportadora cubre ${destinoFmt} desde ${origenFmt} para los productos del carrito. ` +
-          `Verificá cobertura o contactá soporte.`,
-      );
+      return [];
     }
 
     if (ok.length > 0 && failed.length > 0) {

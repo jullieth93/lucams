@@ -759,11 +759,13 @@ describe.skipIf(!hasDb)("checkout/service — integración DB (ruta de ingresos)
         },
       ];
 
-      const quotes = await quoteShipping({
+      const result = await quoteShipping({
         destinationCity: "Medellín",
         destinationDepartment: "Antioquia",
       });
 
+      expect(result.estimated).toBe(false); // cotización viva del mock, no caché
+      const { quotes } = result;
       expect(quotes).toHaveLength(2);
       expect(quotes[0]).toEqual({
         carrier: "envia",

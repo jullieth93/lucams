@@ -130,6 +130,7 @@ export type CheckoutTexts = {
     loadingSub: string;
     errorTitle: string;
     errorNote: string;
+    estimatedNote: string;
     errorReselectSuffix: string;
     errorAddress: string;
     errorWa: string;
@@ -314,6 +315,8 @@ export const DEFAULT_CHECKOUT_TEXTS: CheckoutTexts = {
       "Estamos consultando las mejores opciones para tu ciudad. Esto toma unos segundos 🦝",
     errorTitle: "No pudimos cotizar el envío",
     errorNote: "Suele resolverse reintentando en unos segundos.",
+    estimatedNote:
+      "Tarifa estimada: la cotización en vivo no respondió; el valor exacto se confirma al generar la guía.",
     errorReselectSuffix: "— elige de nuevo tu transportadora.",
     errorAddress: "Revisar dirección",
     errorWa: "Contáctanos por WhatsApp",
@@ -489,6 +492,7 @@ export const CHECKOUT_TEXT_KEYS: Record<string, string> = {
   "shipping.loadingSub": "checkout.shipping.loading-sub",
   "shipping.errorTitle": "checkout.shipping.error-title",
   "shipping.errorNote": "checkout.shipping.error-note",
+  "shipping.estimatedNote": "checkout.shipping.estimated-note",
   "shipping.errorReselectSuffix": "checkout.shipping.error-reselect-suffix",
   "shipping.errorAddress": "checkout.shipping.error-address",
   "shipping.errorWa": "checkout.shipping.error-wa",

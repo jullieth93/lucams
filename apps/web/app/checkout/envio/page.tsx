@@ -75,15 +75,20 @@ export default async function CheckoutEnvioPage({
   }
 
   // Cotizar Aveonline. Si falla, mostramos fallback (no crash).
-  let quotes: Awaited<ReturnType<typeof quoteShipping>> | null = null;
+  let quotes: Awaited<ReturnType<typeof quoteShipping>>["quotes"] | null = null;
+  // true = las cotizaciones vienen de la caché de fallback del provider (la
+  // cotización en vivo falló) → la UI las anuncia como "tarifa estimada".
+  let quotesEstimated = false;
   let quoteErrorMessage: string | null = null;
   try {
-    quotes = await quoteShipping({
+    const result = await quoteShipping({
       destinationCity: ctx.state.address.city,
       destinationDepartment: ctx.state.address.department,
       contraentrega: false,
       ctx, // ya cargado arriba → no re-consultar cart+customer (revisión #7)
     });
+    quotes = result.quotes;
+    quotesEstimated = result.estimated;
   } catch (err) {
     // La causa real (dims faltantes, timeout, cobertura, pickup mal configurado) YA se
     // loguea en el service con detalle. Al CLIENTE nunca le mostramos el mensaje interno
@@ -172,6 +177,7 @@ export default async function CheckoutEnvioPage({
             cart={ctx.cart}
             quotes={quotes}
             offersToken={offersToken!}
+            quotesEstimated={quotesEstimated}
             preselectedQuoteId={ctx.state.shippingSelection?.quoteId}
             destinationCity={ctx.state.address.city}
             destinationDepartment={ctx.state.address.department}

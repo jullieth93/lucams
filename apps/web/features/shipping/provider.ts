@@ -42,6 +42,12 @@ export type ShippingQuote = {
   deliveryDays: number;
   contraentrega: boolean;
   quoteId: string; // Para createShipment posterior
+  /**
+   * true SOLO cuando la cotización viene de la caché de fallback (la cotización
+   * en vivo falló por red/timeout/breaker). Hint de display para la UI
+   * ("tarifa estimada"); nunca lo setea una cotización en vivo exitosa.
+   */
+  estimated?: boolean;
 };
 
 export type ShippingResult = {
