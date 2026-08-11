@@ -64,7 +64,11 @@ export const ProductCreateSchema = z.object({
   // PR C (Lucy 2026-05-21) — Envío: peso + dims del paquete final.
   // Opcionales individualmente; el checkout valida que estén COMPLETOS
   // (los 4) antes de cotizar Aveonline.
-  weightGrams: z.number().int().min(50).max(50_000).optional().nullable(),
+  // 2026-08-11: weightGrams min 50→10 alineado con ShippingDimsSchema (los
+  // separadores pesan 12g — con min 50 el form rechazaba guardar ese producto)
+  // e INT estricto en dims: cm fraccionados (7.5/0.5) rompían la cotización
+  // de envío (safeParse falla entero → dims null → banner en checkout).
+  weightGrams: z.number().int().min(10).max(50_000).optional().nullable(),
   widthCm: z.number().int().min(1).max(100).optional().nullable(),
   heightCm: z.number().int().min(1).max(100).optional().nullable(),
   depthCm: z.number().int().min(1).max(100).optional().nullable(),

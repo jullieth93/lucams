@@ -13,6 +13,18 @@
 
 ## Resumen actual
 
+**🔥 CAUSA RAÍZ DEL BUG DE COTIZACIÓN (2026-08-11): dims de envío fraccionadas/faltantes en 4
+productos.** `PhysicalSpecsSchema` exige cm ENTEROS (`z.number().int()`); `calendario` (7.5×0.5),
+`tiras` (6.5, sin depthCm) y ambos `separadores` (0.1) violaban eso → `safeParse` falla ENTERO →
+`getEffectiveShippingDims` null → `quoteShipping` lanza → banner en checkout. Cualquier carrito
+con esos productos (los únicos con stock vendible) fallaba en los 3 ambientes. Fix de DATOS
+(redondeo a cm enteros: 7.5→8, 6.5→7, depth→1) aplicado y verificado en LOCAL/STG/PRD (85/85
+variantes con dims) — no requiere deploy. Además: min `weightGrams` del form admin 50→10 (los
+separadores de 12g no se podían guardar). Los tests de quote (unit/integration/live/e2e) pasaban
+porque usan productos con dims enteras — la brecha era de datos, no cubierta por fixtures.
+
+---
+
 **🧹 PRE-PRODUCCIÓN: FEEDBACK DE LUCY IMPLEMENTADO + DEPURACIÓN TOTAL DE DATOS (2026-08-08).
 RELEASED: 5 commits `99c3712..0229a07` en `develop` y `production` (ff); deploy PRD verificado
 en vivo (`health/all` ok con versión `0229a07`, aveonline real autenticado, rutas 200).** Sesión de feedback de la dueña
