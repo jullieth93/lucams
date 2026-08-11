@@ -70,6 +70,11 @@ const BP_NARROW = 380; // <380px → 1 columna (slot fullwidth)
 const BP_MOBILE = 640; // 380-639 → 2 columnas
 const BP_TABLET = 1024; // 640-1023 → 3 columnas
 const MIN_SLOT_SIZE = 120; // garantía mínima para tappeables
+// Calendario (12 meses): las tarjetas deben leer la foto + la grilla del mes,
+// así que el piso es mucho más alto que el genérico — una tarjeta de 120px era
+// ilegible. Con 1 col en móvil y 3 en desktop el ancho disponible ya supera
+// este piso; queda como garantía para viewports angostos extremos.
+const CALENDAR_MIN_SLOT_SIZE = 280;
 
 type StudioCanvasGridProps = {
   store: StoreApi<StudioStoreState>;
@@ -211,6 +216,11 @@ export function StudioCanvasGrid({
     return () => window.removeEventListener("resize", update);
   }, []);
 
+  // Calendario (tarjeta mes compuesta): layout propio con tarjetas grandes —
+  // 1 col en móvil, 2 en tablet, 3 en desktop; el resto de productos sigue la
+  // regla progresiva de abajo. Se declara antes del useMemo para capear cols.
+  const isCalendar = calendarPreview !== null;
+
   const layout = useMemo(() => {
     if (!canvasData) return null;
     // M.3.b.UX.7 — Responsive progresivo: cap de cols según viewport.
@@ -219,7 +229,14 @@ export function StudioCanvasGrid({
     //   <1024px → max 3 cols
     //   ≥1024px → cols del gridLayout original (3-5 según slotCount)
     let maxCols: number;
-    if (containerWidth < BP_NARROW) maxCols = 1;
+    if (isCalendar) {
+      // Calendario 12 meses: tarjetas GRANDES aunque el grid haga scroll
+      // vertical. 1 col móvil / 2 tablet / 3 desktop (también capea drafts
+      // viejos persistidos con gridLayout 4×3).
+      if (containerWidth < BP_MOBILE) maxCols = 1;
+      else if (containerWidth < BP_TABLET) maxCols = 2;
+      else maxCols = 3;
+    } else if (containerWidth < BP_NARROW) maxCols = 1;
     else if (containerWidth < BP_MOBILE) maxCols = 2;
     else if (containerWidth < BP_TABLET) maxCols = 3;
     else maxCols = canvasData.gridLayout.cols; // sin cap en desktop
@@ -228,7 +245,7 @@ export function StudioCanvasGrid({
     if (cols === canvasData.gridLayout.cols) return canvasData.gridLayout;
     const rows = Math.ceil(canvasData.slotCount / cols);
     return { ...canvasData.gridLayout, cols, rows };
-  }, [canvasData, containerWidth]);
+  }, [canvasData, containerWidth, isCalendar]);
 
   // A2.6 — Crossfade visual al cambiar plantilla. Detectamos cambio en
   // unitTemplate (referencia distinta = template aplicado nuevo) y disparamos
@@ -320,11 +337,13 @@ export function StudioCanvasGrid({
   const navCols = grouped ? unitCols * 2 : layout.cols;
 
   const availableW = containerWidth - layout.gap * (layout.cols - 1);
-  const isCalendar = calendarPreview !== null;
 
   // Ola 6 — límite de alto del slot según cantidad de slots, para evitar que
   // productos de pocos slots (ej. Polaroid de 1 slot) ocupen toda la pantalla.
-  // Calendario: más alto porque son 12 tarjetas con texto/fechas.
+  // Calendario: caps altos — la tarjeta del mes (foto + grilla) necesita
+  // ~340px de ancho para leerse; como el marco ya no se limita por el viewport
+  // (ver maxFrameH abajo), estos caps solo evitan tarjetas desproporcionadas
+  // y casi siempre manda el ancho disponible.
   const slotMaxHeight = (() => {
     if (canvasData.slotCount <= 2) {
       if (containerWidth < BP_NARROW) return SLOT_HEIGHT_CAP_BY_COUNT.few.mobile;
@@ -337,9 +356,9 @@ export function StudioCanvasGrid({
       return SLOT_HEIGHT_CAP_BY_COUNT.medium.desktop;
     }
     if (isCalendar) {
-      if (containerWidth < BP_NARROW) return 400;
-      if (containerWidth < BP_TABLET) return 540;
-      return 760;
+      if (containerWidth < BP_MOBILE) return 560; // 1 col: tarjeta casi full-width
+      if (containerWidth < BP_TABLET) return 640; // 2 cols
+      return 920; // 3 cols: el ancho (≈333px) gobierna antes que este cap
     }
     if (containerWidth < BP_NARROW) return SLOT_HEIGHT_CAP_BY_COUNT.many.mobile;
     if (containerWidth < BP_TABLET) return SLOT_HEIGHT_CAP_BY_COUNT.many.tablet;
@@ -348,17 +367,19 @@ export function StudioCanvasGrid({
 
   // Ola 4 — marco máximo en ALTO (82% del viewport, acotado): las celdas se achican
   // si el grid completo no cabe en pantalla. Ola 6: se respeta también el cap por slot.
-  // Calendario: usa casi todo el viewport porque son 12 tarjetas apiladas verticalmente.
+  // Calendario: el marco lo define el CONTENIDO (maxFrameHBySlots), no el viewport —
+  // las 12 tarjetas se apilan a tamaño completo y el grid scrollea vertical.
   const reserve = stripMode ? 0 : ACTION_BAR_RESERVE;
   const maxFrameHBySlots =
     slotMaxHeight * layout.rows + layout.gap * (layout.rows - 1) + layout.rows * reserve;
-  const frameHeightVh = isCalendar ? 0.94 : FRAME_HEIGHT_VH;
   const maxFrameH = viewportH
-    ? Math.min(
-        FRAME_HEIGHT_MAX,
-        Math.max(FRAME_HEIGHT_MIN, Math.round(viewportH * frameHeightVh)),
-        maxFrameHBySlots,
-      )
+    ? isCalendar
+      ? maxFrameHBySlots
+      : Math.min(
+          FRAME_HEIGHT_MAX,
+          Math.max(FRAME_HEIGHT_MIN, Math.round(viewportH * FRAME_HEIGHT_VH)),
+          maxFrameHBySlots,
+        )
     : null;
 
   const slotDisplaySize = grouped
@@ -376,13 +397,16 @@ export function StudioCanvasGrid({
         return Math.max(MIN_SLOT_SIZE, Math.min(byWidth, byHeight));
       })()
     : (() => {
+        // Calendario: piso propio (280px) — con el genérico (120px) la tarjeta
+        // del mes quedaba ilegible cuando el cap de alto gobernaba.
+        const minSize = isCalendar ? CALENDAR_MIN_SLOT_SIZE : MIN_SLOT_SIZE;
         const byWidth = Math.floor(availableW / layout.cols);
-        if (!maxFrameH) return Math.max(MIN_SLOT_SIZE, byWidth);
+        if (!maxFrameH) return Math.max(minSize, byWidth);
         // Alto útil del marco: menos gaps entre filas y la reserva de la barra de
         // acciones por fila (en modo tira no hay reserva: la barra flota).
         const usableH = maxFrameH - layout.gap * (layout.rows - 1) - layout.rows * reserve;
         const byHeight = Math.floor(usableH / layout.rows / slotAspect);
-        return Math.max(MIN_SLOT_SIZE, Math.min(byWidth, byHeight));
+        return Math.max(minSize, Math.min(byWidth, byHeight));
       })();
   const slotHeight = slotDisplaySize * slotAspect;
   // Ola 4 — ancho EXPLÍCITO del grid (celdas + gaps): si el cap de alto achicó las

@@ -1240,7 +1240,9 @@ export function StudioEditor({
               </button>
             </SheetClose>
           </SheetHeader>
-          {/* Reusa el mismo StudioSidebar — no se duplica el código */}
+          {/* Reusa el mismo StudioSidebar — no se duplica el código.
+              Debe recibir las MISMAS props que la instancia desktop (paridad:
+              sin `predesigned` la galería de diseños no aparecía en móvil). */}
           <div className="pb-6">
             <StudioSidebar
               store={store}
@@ -1249,6 +1251,7 @@ export function StudioEditor({
               productSizeCm={productConfig.sizeCm}
               productShape={productConfig.shape}
               allowText={allowText}
+              predesigned={predesigned}
             />
           </div>
         </SheetContent>
@@ -1379,7 +1382,9 @@ function defaultGridFor(
     4: { cols: 2, rows: 2 },
     6: { cols: 3, rows: 2 },
     9: { cols: 3, rows: 3 },
-    12: { cols: 4, rows: 3 },
+    // 12 → 3×4: tarjetas más grandes (calendario mes a mes); réplica de
+    // lib/grid-layout.ts. Mantener alineadas las 4 copias (ver service.ts).
+    12: { cols: 3, rows: 4 },
     20: { cols: 5, rows: 4 },
   };
   let cols = presets[slotCount]?.cols ?? Math.ceil(Math.sqrt(slotCount));

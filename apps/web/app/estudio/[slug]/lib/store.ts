@@ -482,7 +482,9 @@ function recalcGridLayout(
     8: { cols: 4, rows: 2 },
     9: { cols: 3, rows: 3 },
     10: { cols: 5, rows: 2 },
-    12: { cols: 4, rows: 3 },
+    // 12 → 3×4: tarjetas más grandes (calendario mes a mes); réplica de
+    // lib/grid-layout.ts. Mantener alineadas las 4 copias (ver service.ts).
+    12: { cols: 3, rows: 4 },
     16: { cols: 4, rows: 4 },
     20: { cols: 5, rows: 4 },
   };

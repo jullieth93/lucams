@@ -16,7 +16,7 @@
  *        N=4   → 2×2 cuadrado
  *        N=6   → 3×2 (3 cols × 2 rows)        [Set 6 Polaroid Grande]
  *        N=9   → 3×3
- *        N=12  → 4×3 (calendarios CALENDAR_PHOTO_MONTH)
+ *        N=12  → 3×4 (calendarios CALENDAR_PHOTO_MONTH: más vertical, tarjetas más grandes)
  *        N=20  → 5×4 (Set 20 Mini Polaroids)
  *
  *   3. Caso fallback (N no en la tabla): aprox sqrt(N) cols/rows balanceadas.

@@ -409,7 +409,9 @@ const PRESET_LAYOUTS: Record<number, { cols: number; rows: number }> = {
   8: { cols: 4, rows: 2 },
   9: { cols: 3, rows: 3 },
   10: { cols: 5, rows: 2 },
-  12: { cols: 4, rows: 3 },
+  // 12 → 3×4: tarjetas más grandes (calendario mes a mes); réplica server-side
+  // de lib/grid-layout.ts. Mantener alineadas las 4 copias.
+  12: { cols: 3, rows: 4 },
   15: { cols: 5, rows: 3 },
   16: { cols: 4, rows: 4 },
   20: { cols: 5, rows: 4 },

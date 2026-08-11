@@ -213,9 +213,11 @@ export function StudioSidebar({
   };
 
   const emptySlots = totalSlots - filledSlots;
-  // Ola 21 — el botón mágico solo aparece cuando hay fotos suficientes para llenar TODOS
-  // los slots vacíos (evita que el cliente llene un lote incompleto con repeticiones).
-  const canAutoFill = assets.length >= emptySlots && emptySlots > 0;
+  // Botón mágico: con 1+ fotos alcanza para mostrarlo — autoFillSlots llena los slots
+  // vacíos que pueda con lo subido, sin repetir fotos (el resto queda vacío). La regla
+  // Ola 21 (exigir fotos para TODOS los vacíos) se retiró: en un calendario de 12 slots
+  // obligaba a subir las 12 fotos antes de siquiera ver el botón.
+  const canAutoFill = assets.length > 0 && emptySlots > 0;
 
   return (
     <div className="flex h-full flex-col gap-6 p-5">
@@ -322,7 +324,9 @@ export function StudioSidebar({
           <motion.button
             type="button"
             onClick={autoFillSlots}
-            aria-label={fillStudioText(texts.fotos.autofillAria, { n: emptySlots })}
+            aria-label={fillStudioText(texts.fotos.autofillAria, {
+              n: Math.min(emptySlots, assets.length),
+            })}
             initial={{ opacity: 0, y: -4 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.2 }}
