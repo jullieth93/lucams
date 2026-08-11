@@ -30,6 +30,9 @@
  * Uso:
  *   node scripts/purge-archived-test-junk.mjs            # DRY-RUN: solo lista qué haría
  *   node scripts/purge-archived-test-junk.mjs --apply    # ejecuta el borrado
+ *   node scripts/purge-archived-test-junk.mjs --apply --include-archived-business
+ *     # además: hard delete del catálogo VIEJO de negocio archivado sin pedidos
+ *     # (aprobado por Lucy 2026-08-08, Fase 6 pre-producción).
  */
 
 import { PrismaClient } from "@prisma/client";
@@ -44,6 +47,9 @@ assertDestructiveAllowed("purge-archived-test-junk.mjs");
 
 const prisma = new PrismaClient();
 const APPLY = process.argv.includes("--apply");
+// 2026-08-08 (aprobado por Lucy, Fase 6): incluir el catálogo VIEJO de negocio
+// archivado (no-fixture) — hard delete solo si ninguna variante tiene pedidos.
+const INCLUDE_ARCHIVED_BUSINESS = process.argv.includes("--include-archived-business");
 
 const RUN_PREFIXES = [
   "cart",
@@ -60,9 +66,18 @@ const RUN_PREFIXES = [
   "test",
   "shots",
   "clone",
+  // 2026-08-08 (Fase 6 pre-producción): prefijos de fixtures que se escapaban
+  // — itestcat/itestquote/itestoca/itestcust (integration suites), finalorch,
+  // perso<epoch>, cpn<epoch>. El match es case-insensitive (había ITESTCUST…).
+  "itest",
+  "finalorch",
+  "perso",
+  "cpn",
 ];
-const slugLooksLikeTest = (slug) =>
-  /1[0-9]{12}/.test(slug) && RUN_PREFIXES.some((p) => slug.startsWith(p));
+const slugLooksLikeTest = (slug) => {
+  const s = slug.toLowerCase();
+  return /1[0-9]{12}/.test(s) && RUN_PREFIXES.some((p) => s.startsWith(p));
+};
 
 // Nombres típicos de fixture que NO llevan epoch en el slug (reporte manual, nunca auto-borrado).
 const FIXTURE_NAME_PREFIXES = ["Simple ", "E2E ", "Perso ", "Name ", "Cat ", "Beta ", "ZZ "];
@@ -143,6 +158,56 @@ async function main() {
       totals.products += 1;
     }
     hardProducts++;
+  }
+
+  // ── 1b. Catálogo VIEJO de negocio archivado (opt-in) ───────────────────────
+  // Con --include-archived-business: productos archivados que NO son fixtures
+  // (packs temáticos, versiones anteriores del catálogo). Misma regla: con
+  // pedidos se quedan archivados (FK Restrict + historial de órdenes).
+  if (INCLUDE_ARCHIVED_BUSINESS) {
+    const archivedBusiness = allProducts.filter((p) => p.deletedAt && !slugLooksLikeTest(p.slug));
+    console.log(`\nCatálogo viejo archivado (no-fixture): ${archivedBusiness.length}`);
+    for (const p of archivedBusiness) {
+      const variants = await prisma.productVariant.findMany({
+        where: { productId: p.id },
+        select: { id: true },
+      });
+      const vids = variants.map((v) => v.id);
+      const inOrder = vids.length
+        ? await prisma.orderItem.count({ where: { variantId: { in: vids } } })
+        : 0;
+      if (inOrder > 0) {
+        console.log(
+          `  ~ ${p.slug} → ${inOrder} orderItem(s) → SE QUEDA archivado (preserva órdenes)`,
+        );
+        continue;
+      }
+      console.log(`  ⊘ ${p.slug} (${vids.length} var, archivado) → HARD-DELETE`);
+      if (APPLY) {
+        const t = await prisma.$transaction(async (tx) => {
+          const cartItems = await tx.cartItem.deleteMany({
+            where: {
+              OR: [{ variant: { productId: p.id } }, { design: { productId: p.id } }],
+            },
+          });
+          const inventoryLogs = vids.length
+            ? await tx.inventoryLog.deleteMany({ where: { variantId: { in: vids } } })
+            : { count: 0 };
+          const designs = await tx.design.deleteMany({ where: { productId: p.id } });
+          await tx.product.delete({ where: { id: p.id } });
+          return {
+            cartItems: cartItems.count,
+            inventoryLogs: inventoryLogs.count,
+            designs: designs.count,
+          };
+        });
+        totals.cartItems += t.cartItems;
+        totals.inventoryLogs += t.inventoryLogs;
+        totals.designs += t.designs;
+        totals.products += 1;
+      }
+      hardProducts++;
+    }
   }
 
   // ── 2. Categorías fixture (archivadas o vivas) ─────────────────────────────

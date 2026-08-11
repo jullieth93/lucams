@@ -13,6 +13,56 @@
 
 ## Resumen actual
 
+**🧹 PRE-PRODUCCIÓN: FEEDBACK DE LUCY IMPLEMENTADO + DEPURACIÓN TOTAL DE DATOS (2026-08-08,
+rama `develop`, SIN commit aún — cambios en working tree).** Sesión de feedback de la dueña
+previo al lanzamiento, 8 comentarios resueltos:
+
+- **Stock por variante en tienda** (antes: gate binario a nivel producto — reponer UNA variante
+  "habilitaba" todas): el selector de la PDP deshabilita por combinación agotada con sufijo
+  "· Agotado" (chips, lista vertical y stepper; el stepper SALTA cantidades agotadas), el botón
+  de compra se bloquea con "Agotado" y `addProductToCart`/`addPersonalizedToCart` rechazan
+  server-side (`CartError("STOCK_UNAVAILABLE")`, mensaje en `carrito/actions.ts`).
+- **Estudio**: botón "Llenar slots con mis fotos" restaurado (la regla Ola 21 lo escondía hasta
+  tener fotos para TODOS los slots — en calendario de 12 meses nunca aparecía; ahora llena lo
+  que pueda) + paridad de `predesigned` en el drawer móvil. **Calendario con tarjetas grandes**:
+  3 col desktop (~330px) / 2 tablet / 1 móvil full-width con scroll vertical (el marco ya no se
+  limita al alto del viewport para calendario), preset 12 → 3×4 alineado en las 4 réplicas;
+  piso de tarjeta 280px. QA visual con screenshots en 375/768/1440.
+- **Admin**: aclaración del modelo pack=variante (ayuda "packs, no unidades sueltas" en el editor
+  de stock de Inventario + nota única y encabezado "Stock (packs)" en el panel de opciones);
+  chip **"Visible en tienda"** (helper puro `features/products/storefront-visibility.ts` que
+  replica el gate real: producto/categoría pausada o archivada, sin opciones activas, todo
+  agotado) en listado y ficha; copy de restaurar producto corregido.
+- **Envíos (bug PRD)**: la causa raíz del "No pudimos cotizar el envío" era que un destino SIN
+  cobertura devuelve todas las transportadoras con `numbererror=999` y el provider LANZABA →
+  banner transitorio que nunca se resolvía (verificado con sonda live: un destino inexistente
+  devuelve 16 carriers con 999). Ahora `all_failed` → `[]` y la UI muestra "No encontramos
+  transportadoras que cubran esa ciudad". Además: caché en memoria de última cotización buena
+  (TTL 10 min, por ruta+paquete+modalidad) como fallback ante fallos transitorios — se sirve con
+  flag `estimated` y nota "Tarifa estimada" en la UI. Sonda conservada como
+  `aveonline.coverage-probe.live.test.ts` (guardada por env).
+- **Depuración de datos (LOCAL ≡ STG ≡ PRD, con backup PRD en
+  `tmp/backups/prd-pre-cleanup-20260808.dump`)**: 555 productos fixture + 442 categorías test
+  hard-deleted por DB (script `purge-archived-test-junk.mjs` ampliado: prefijos itest*/finalorch/
+  perso/cpn + case-insensitive, y flag `--include-archived-business` para el catálogo viejo sin
+  pedidos — 68 productos); 172 variantes legacy (105 pausadas + 67 archivadas) hard-deleted por
+  DB con script nuevo `cleanup-legacy-paused-variants.mjs` (hard si sin pedidos, soft si hay FK).
+  Estado final por DB: **9 productos activos, 2 archivados (Circulares/Corazón, vacíos), 85
+  variantes activas, 4 categorías vivas**; calendario `CAL-FOT-12-DEFAULT` stock 100000→100 con
+  InventoryLog. Quedaron 42 variantes activas con stock 0 (Abecedario, Vocales, Cuadrados):
+  decisión de inventario de Lucy — en tienda se ven "· Agotado" por opción.
+- **Homologación Vercel Preview (rama develop)**: `NEXT_PUBLIC_STORE_MODE=full`,
+  `AVEONLINE_ENV=test`, `NEXT_PUBLIC_SITE_URL` explícitos (Wompi sandbox ya estaba). **Aplican en
+  el PRÓXIMO deploy de develop** (las NEXT_PUBLIC_* se inlinean en build) → STG queda con checkout
+  completo contra sandbox. Production NO se tocó.
+- **Verificación**: `tsc --noEmit` limpio, eslint limpio, `next build` ok, vitest 2724 pasando
+  (9 fallos SOLO por el stack local incompleto: storage/auth de Supabase local caídos en esta
+  máquina — ver Próximo paso), tests nuevos: selector stock por variante (5), visibilidad
+  storefront (helper), resiliencia de cotización (5 con fetch mockeado), integración carrito
+  (rechazo stock=0 en ambas rutas).
+
+---
+
 **🚀 RELEASE A PRODUCCIÓN (2026-08-07): `production` fast-forward `9cac62e` → `c86d206` — PRD sirve
 toda la certificación E2E + los 6 fixes de la homologación.** Verificado en vivo tras el deploy:
 dominio → nuevo deployment, `/api/health/all` ok, `/api/health/crons` ok (0 vencidos), canonical
@@ -1977,6 +2027,16 @@ sidebar fijo, Cancelar en cupones.
 ## Próximo paso
 
 **Requiere a Lucy (decisiones / verificación):**
+
+- **Stack LOCAL de Supabase quedó a medias (2026-08-08)**: los contenedores podman se perdieron
+  (solo se reconstruyó `supabase_db_lucams-local` reusando el volumen; auth/storage/rest no
+  existen). Los tests que suben archivos o crean usuarios (9 en `features/personalization/*` y
+  `features/security/rls-matrix`) y los e2e con auth fallan por `fetch failed` — es AMBIENTE, no
+  código. Para recuperarlo completo: `make db-local-reset` (borra volúmenes y reseedéa; la DB
+  local ya quedó depurada y se puede re-sincronizar desde PRD como el 2026-08-07). El CLI de
+  supabase no recrea contenedores sobre volúmenes existentes en podman (bug conocido, ver
+  comentario en Makefile `db-local-start`).
+- **Redeploy de `develop` pendiente** para que STG tome `STORE_MODE=full` (homologación 2026-08-08).
 
 0. ~~DMARC p=none → quarantine~~ — **HECHO y verificado (2026-08-07)**: Lucy aplicó el cambio en
    Cloudflare y `dig _dmarc.lucamsshop.com` (resolver local y 1.1.1.1) devuelve
