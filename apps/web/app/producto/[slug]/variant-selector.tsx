@@ -36,6 +36,11 @@
  *     único preseleccionado NO clicable — el tamaño físico es información de
  *     compra ("Tamaño: 7.5×10 cm" en polaroid, "6.5×20 cm" en tiras) y deja
  *     el grupo listo para cuando el producto acople más tamaños.
+ *
+ * Stock por variante (Fase 1): un valor de dimensión cuya combinación con la
+ * selección actual existe pero está AGOTADA (ninguna variante con stock > 0)
+ * se deshabilita igual que una combinación inexistente; la única diferencia
+ * visual es el sufijo "· Agotado" (mismo término del badge de las cards).
  */
 
 import { useMemo } from "react";
@@ -53,6 +58,8 @@ type Variant = {
   name: string;
   sku: string;
   price: number | null;
+  /** Fase 1 — stock por variante: deshabilita los valores agotados del selector. */
+  stock: number;
   attributes: unknown;
 };
 
@@ -334,6 +341,13 @@ export function VariantSelector({
     });
   }
 
+  // ¿La combinación "dimKey=value + resto de la selección actual" tiene stock?
+  // Misma mecánica que isCombinationAvailable pero exigiendo stock > 0 (Fase 1).
+  function hasStockForCombination(dimKey: string, value: string): boolean {
+    const match = findExactVariant(dimKey, value);
+    return match !== undefined && match.stock > 0;
+  }
+
   if (variants.length < 2 && dimensions.length === 0) return null;
 
   // Polaroid qty 1–10 (Lucy 2026-07-22): con UNA sola dimensión visible que es la
@@ -371,17 +385,23 @@ export function VariantSelector({
             const label = v.name && v.name !== "Default" ? v.name : fallbackLabel;
             const price = v.price ?? productBasePrice;
             const isSelected = v.id === selectedId;
+            // Fase 1 — variante agotada: fila deshabilitada con sufijo "· Agotado"
+            // (mismo estilo muted de los chips deshabilitados del modo multi-dim).
+            const soldOut = v.stock <= 0;
             return (
               <button
                 key={v.id}
                 type="button"
                 aria-pressed={isSelected}
-                onClick={() => selectVariant(v.id)}
+                disabled={soldOut}
+                onClick={() => !soldOut && selectVariant(v.id)}
                 className={[
-                  "focus:ring-brand-purple flex w-full cursor-pointer items-center justify-between rounded-lg p-3 text-left transition-all focus:ring-2 focus:outline-none",
+                  "focus:ring-brand-purple flex w-full items-center justify-between rounded-lg p-3 text-left transition-all focus:ring-2 focus:outline-none",
                   isSelected
-                    ? "ring-brand-purple bg-brand-purple/5 shadow-md ring-2"
-                    : "ring-brand-purple/15 hover:ring-brand-purple/40 hover:bg-brand-cream/40 ring-1 hover:shadow-sm",
+                    ? "ring-brand-purple bg-brand-purple/5 cursor-pointer shadow-md ring-2"
+                    : soldOut
+                      ? "ring-brand-purple/10 bg-brand-cream/40 cursor-not-allowed ring-1"
+                      : "ring-brand-purple/15 hover:ring-brand-purple/40 hover:bg-brand-cream/40 cursor-pointer ring-1 hover:shadow-sm",
                 ].join(" ")}
               >
                 <span className="flex items-center gap-2">
@@ -397,10 +417,15 @@ export function VariantSelector({
                   <span
                     className={[
                       "text-sm font-semibold",
-                      isSelected ? "text-brand-purple-dark" : "text-brand-purple-dark/85",
+                      isSelected
+                        ? "text-brand-purple-dark"
+                        : soldOut
+                          ? "text-brand-muted"
+                          : "text-brand-purple-dark/85",
                     ].join(" ")}
                   >
                     {label}
+                    {soldOut ? " · Agotado" : ""}
                   </span>
                 </span>
                 <span
@@ -452,8 +477,30 @@ export function VariantSelector({
             );
           const totalPrice = qtyVariant?.price ?? productBasePrice;
           const unitPrice = Math.round(totalPrice / qty);
-          const canDecrease = qty > 1 && isCombinationAvailable(dim.key, String(qty - 1));
-          const canIncrease = qty < maxQty && isCombinationAvailable(dim.key, String(qty + 1));
+          // Fase 1 — el stepper salta cantidades agotadas: "+"/"−" apuntan a la
+          // siguiente/anterior cantidad que EXISTA y TENGA stock (no al entero
+          // adyacente); si el adyacente está agotado se avisa "· Agotado" (mismo
+          // término de las cards). Sin el salto, una cantidad agotada intermedia
+          // (ej. "2 unidades" en 0) bloqueaba el acceso a todas las superiores.
+          const stepTarget = (dir: 1 | -1): number | null => {
+            for (let q = qty + dir; q >= 1 && q <= maxQty; q += dir) {
+              if (
+                isCombinationAvailable(dim.key, String(q)) &&
+                hasStockForCombination(dim.key, String(q))
+              ) {
+                return q;
+              }
+            }
+            return null;
+          };
+          const decreaseTo = stepTarget(-1);
+          const increaseTo = stepTarget(1);
+          const canDecrease = decreaseTo !== null;
+          const canIncrease = increaseTo !== null;
+          const nextSoldOut =
+            qty < maxQty &&
+            isCombinationAvailable(dim.key, String(qty + 1)) &&
+            !hasStockForCombination(dim.key, String(qty + 1));
           return (
             <div key={dim.key}>
               <p className="text-brand-purple-dark/70 mb-2 text-xs font-bold tracking-wider uppercase">
@@ -469,7 +516,7 @@ export function VariantSelector({
                     type="button"
                     aria-label="Disminuir cantidad"
                     disabled={!canDecrease}
-                    onClick={() => canDecrease && handleSelectValue(dim.key, String(qty - 1))}
+                    onClick={() => decreaseTo !== null && handleSelectValue(dim.key, String(decreaseTo))}
                     className="text-brand-purple-dark hover:bg-brand-purple/5 focus:ring-brand-turquoise disabled:text-brand-muted flex h-10 w-10 cursor-pointer items-center justify-center rounded-l-lg transition-colors focus:ring-2 focus:outline-none disabled:cursor-not-allowed disabled:hover:bg-transparent"
                   >
                     <Minus className="h-4 w-4" aria-hidden />
@@ -484,7 +531,7 @@ export function VariantSelector({
                     type="button"
                     aria-label="Aumentar cantidad"
                     disabled={!canIncrease}
-                    onClick={() => canIncrease && handleSelectValue(dim.key, String(qty + 1))}
+                    onClick={() => increaseTo !== null && handleSelectValue(dim.key, String(increaseTo))}
                     className="text-brand-purple-dark hover:bg-brand-purple/5 focus:ring-brand-turquoise disabled:text-brand-muted flex h-10 w-10 cursor-pointer items-center justify-center rounded-r-lg transition-colors focus:ring-2 focus:outline-none disabled:cursor-not-allowed disabled:hover:bg-transparent"
                   >
                     <Plus className="h-4 w-4" aria-hidden />
@@ -493,6 +540,7 @@ export function VariantSelector({
                 <span className="text-brand-muted text-xs tabular-nums">
                   {formatCOP(unitPrice)} c/u
                 </span>
+                {nextSoldOut && <span className="text-brand-muted text-xs">· Agotado</span>}
                 <span className="text-brand-purple-dark text-sm font-bold tabular-nums">
                   Total: {formatCOP(totalPrice)}
                 </span>
@@ -513,7 +561,12 @@ export function VariantSelector({
                 // los chips se vuelven interactivos solos (>1 valor).
                 const isSingle = dim.values.length === 1;
                 const isSelected = isSingle || currentValues[dim.key] === value;
-                const available = isSingle || isSelected || isCombinationAvailable(dim.key, value);
+                const exists = isCombinationAvailable(dim.key, value);
+                // Fase 1 — la combinación existe pero TODAS sus variants están
+                // agotadas (stock <= 0): se deshabilita igual que una inexistente;
+                // la única diferencia visual es el sufijo "· Agotado".
+                const soldOut = exists && !hasStockForCombination(dim.key, value);
+                const available = isSingle || isSelected || (exists && !soldOut);
                 return (
                   <button
                     key={value}
@@ -524,7 +577,9 @@ export function VariantSelector({
                     onClick={() => !isSingle && available && handleSelectValue(dim.key, value)}
                     title={
                       !available
-                        ? `No disponible en esta combinación. Cambia primero otra opción para acceder a "${formatDimensionValue(dim.key, value)}".`
+                        ? soldOut
+                          ? "Agotado en esta combinación."
+                          : `No disponible en esta combinación. Cambia primero otra opción para acceder a "${formatDimensionValue(dim.key, value)}".`
                         : undefined
                     }
                     className={[
@@ -539,6 +594,7 @@ export function VariantSelector({
                     ].join(" ")}
                   >
                     {formatDimensionValue(dim.key, value)}
+                    {soldOut ? " · Agotado" : ""}
                   </button>
                 );
               })}

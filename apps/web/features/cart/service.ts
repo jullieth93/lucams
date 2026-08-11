@@ -65,7 +65,12 @@ export type CartDetail = {
 
 export class CartError extends Error {
   constructor(
-    public code: "PRODUCT_NOT_FOUND" | "NO_DEFAULT_VARIANT" | "QTY_INVALID" | "ITEM_NOT_FOUND",
+    public code:
+      | "PRODUCT_NOT_FOUND"
+      | "NO_DEFAULT_VARIANT"
+      | "QTY_INVALID"
+      | "ITEM_NOT_FOUND"
+      | "STOCK_UNAVAILABLE",
   ) {
     super(code);
     this.name = "CartError";
@@ -280,7 +285,7 @@ export async function addProductToCart(opts: {
         where: opts.variantId
           ? { id: opts.variantId, deletedAt: null, isActive: true }
           : { deletedAt: null, sku: { endsWith: "-DEFAULT" } },
-        select: { id: true, price: true },
+        select: { id: true, price: true, stock: true },
         take: 1,
       },
     },
@@ -288,6 +293,10 @@ export async function addProductToCart(opts: {
   if (!product) throw new CartError("PRODUCT_NOT_FOUND");
   const variant = product.variants[0];
   if (!variant) throw new CartError("NO_DEFAULT_VARIANT");
+  // Fase 1 (stock por variante): la variante elegida agotada no es comprable.
+  // El checkout ya lo validaba con STOCK_UNAVAILABLE; aquí evitamos que entre
+  // al carrito en primer lugar (mismo código de error para un manejo coherente).
+  if (variant.stock <= 0) throw new CartError("STOCK_UNAVAILABLE");
 
   const unitPrice = variant.price ?? product.basePrice;
 
@@ -374,7 +383,7 @@ export async function addPersonalizedToCart(opts: {
           deletedAt: true,
           variants: {
             where: { deletedAt: null },
-            select: { id: true, price: true, sku: true, attributes: true },
+            select: { id: true, price: true, sku: true, attributes: true, stock: true },
             orderBy: { createdAt: "asc" },
           },
         },
@@ -395,7 +404,7 @@ export async function addPersonalizedToCart(opts: {
   // pertenece al producto del Design. Si no se pasó, fallback histórico:
   // primera variant disponible (post-M.3.b.CAT la mayoría de productos
   // tienen al menos 1 variant; pre-consolidación había un "-DEFAULT").
-  let variant: { id: string; price: number | null; attributes: unknown } | undefined;
+  let variant: { id: string; price: number | null; attributes: unknown; stock: number } | undefined;
   if (opts.variantId) {
     variant = design.product.variants.find((v) => v.id === opts.variantId);
     if (!variant) {
@@ -409,6 +418,9 @@ export async function addPersonalizedToCart(opts: {
     variant = design.product.variants[0];
   }
   if (!variant) throw new CartError("NO_DEFAULT_VARIANT");
+  // Fase 1 (stock por variante): misma regla que addProductToCart — la variante
+  // agotada no entra al carrito (el checkout sigue como backstop de concurrencia).
+  if (variant.stock <= 0) throw new CartError("STOCK_UNAVAILABLE");
 
   // ADR-057 — precio POR FICHA. El gate es la VARIANTE (verdad del servidor, anti-tamper),
   // NO metadata.surface: un draft genérico (createDraftDesign) sobre el producto Nombre no

@@ -38,6 +38,9 @@ function errorMessage(err: unknown): string {
         return "Cantidad inválida.";
       case "ITEM_NOT_FOUND":
         return "Ese ítem ya no está en tu carrito.";
+      // Fase 1 — la opción elegida quedó agotada (gate por variante en carrito).
+      case "STOCK_UNAVAILABLE":
+        return "Esa opción se agotó. Elige otra cantidad o tamaño.";
     }
   }
   return "Algo salió mal. Reintenta.";

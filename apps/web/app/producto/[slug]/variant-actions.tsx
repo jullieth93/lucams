@@ -16,6 +16,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Sparkles } from "lucide-react";
 import { createContext, useCallback, useContext, useState, useTransition } from "react";
+import { SubmitButton } from "@/components/admin/submit-button";
 
 type SelectedVariantCtx = {
   selectedId: string | null;
@@ -90,4 +91,31 @@ export function CartVariantIdInput() {
   const { selectedId } = useSelectedVariant();
   if (!selectedId) return null;
   return <input type="hidden" name="variantId" value={selectedId} />;
+}
+
+/**
+ * Botón "Añadir al carrito" reactivo al STOCK de la variante elegida (Fase 1 — stock
+ * por variante): si la selección actual está agotada, el botón se bloquea con el texto
+ * "Agotado" (mismo término del badge de las cards). El gate global de producto agotado
+ * (BackInStockButton) sigue en page.tsx para cuando TODAS las variantes están en 0.
+ */
+export function CartSubmitButton({
+  stockByVariantId,
+  className,
+}: {
+  stockByVariantId: Record<string, number>;
+  className?: string;
+}) {
+  const { selectedId } = useSelectedVariant();
+  const stock = selectedId ? stockByVariantId[selectedId] : undefined;
+  const soldOut = stock !== undefined && stock <= 0;
+  return (
+    <SubmitButton
+      label={soldOut ? "Agotado" : "Añadir al carrito"}
+      pendingLabel="Añadiendo…"
+      size="lg"
+      disabled={soldOut}
+      className={className}
+    />
+  );
 }

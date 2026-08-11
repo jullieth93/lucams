@@ -617,6 +617,38 @@ describe.skipIf(!hasDb)("cart/service — integración DB", { timeout: T }, () =
         }),
       ).rejects.toMatchObject({ code: "NO_DEFAULT_VARIANT" });
     });
+
+    it("variante agotada (stock=0) lanza STOCK_UNAVAILABLE y NO crea cart (Fase 1)", async () => {
+      // Gate por variante: el checkout era el único backstop; ahora la variante
+      // agotada no entra al carrito en primer lugar.
+      const oos = await prisma.product.create({
+        data: {
+          slug: `${RUN}-oos-${uniq()}`,
+          name: `Oos ${RUN}`,
+          description: "fixture variante agotada",
+          basePrice: 4_000,
+          sku: `${RUN}-OOS-${uniq()}`.toUpperCase(),
+          categoryId,
+          variants: {
+            create: [
+              {
+                name: "Default",
+                sku: `${RUN}-OOSD-${uniq()}-DEFAULT`.toUpperCase(),
+                price: 4_000,
+                stock: 0,
+                attributes: {},
+              },
+            ],
+          },
+        },
+        select: { slug: true },
+      });
+      const sessionId = sid("add");
+      await expect(
+        addProductToCart({ sessionId, customerId: null, productSlug: oos.slug, qty: 1 }),
+      ).rejects.toMatchObject({ code: "STOCK_UNAVAILABLE" });
+      expect(await prisma.cart.count({ where: { sessionId } })).toBe(0);
+    });
   });
 
   // ════════════════════════════════════════════════════════════════════════
@@ -821,6 +853,28 @@ describe.skipIf(!hasDb)("cart/service — integración DB", { timeout: T }, () =
           qty: 0,
         }),
       ).rejects.toMatchObject({ code: "QTY_INVALID" });
+    });
+
+    it("variante agotada (stock=0) lanza STOCK_UNAVAILABLE aunque el design esté READY (Fase 1)", async () => {
+      // La variante se agotó entre la personalización y el "¡Listo!" → no entra
+      // al carrito. Se restaura el stock del fixture en finally (retry-safe).
+      await prisma.productVariant.update({ where: { id: persoVariantAId }, data: { stock: 0 } });
+      try {
+        await expect(
+          addPersonalizedToCart({
+            sessionId: sid("perso"),
+            customerId: null,
+            designId: readyDesignId,
+            variantId: persoVariantAId,
+            qty: 1,
+          }),
+        ).rejects.toMatchObject({ code: "STOCK_UNAVAILABLE" });
+      } finally {
+        await prisma.productVariant.update({
+          where: { id: persoVariantAId },
+          data: { stock: 50 },
+        });
+      }
     });
   });
 

@@ -44,6 +44,7 @@ type TestVariant = {
   name: string;
   sku: string;
   price: number | null;
+  stock: number;
   attributes: unknown;
 };
 
@@ -51,8 +52,9 @@ function makeVariant(
   id: string,
   attributes: Record<string, unknown>,
   price = 100_000,
+  stock = 100,
 ): TestVariant {
-  return { id, name: id, sku: id.toUpperCase(), price, attributes };
+  return { id, name: id, sku: id.toUpperCase(), price, stock, attributes };
 }
 
 // Datos reales (2026-07) de separadores-libros: quantity == photoSlots en
@@ -521,5 +523,96 @@ describe("VariantSelector — dimensión de 1 valor visible (Tamaño fijo)", () 
     expect(screen.queryByRole("group", { name: "Forma" })).not.toBeInTheDocument();
     expect(screen.getAllByRole("group", { name: "Cantidad" })).toHaveLength(1);
     expect(screen.getAllByRole("group", { name: "Tamaño" })).toHaveLength(1);
+  });
+});
+
+/*
+ * Stock por variante (Fase 1, 2026-08-08): un valor cuya combinación con la
+ * selección actual existe pero está AGOTADA se deshabilita con el sufijo
+ * "· Agotado" (mismo término del badge de las cards). Antes el gate era solo
+ * a nivel producto: con UNA variante repuesta, TODAS parecían comprables.
+ */
+describe("VariantSelector — stock por variante (Fase 1)", () => {
+  function renderWithProvider(variants: TestVariant[], initialId: string) {
+    return render(
+      <SelectedVariantProvider variantIds={variants.map((v) => v.id)} initialId={initialId}>
+        <VariantSelector productBasePrice={100_000} variants={variants} />
+      </SelectedVariantProvider>,
+    );
+  }
+
+  // Matriz size A/B × qty 1/3 (chips: qty NO contigua). v-b1 agotada.
+  const matrix = () => [
+    makeVariant("v-a1", { sizeCm: "A", quantity: 1, photoSlots: 1 }),
+    makeVariant("v-a3", { sizeCm: "A", quantity: 3, photoSlots: 3 }),
+    makeVariant("v-b1", { sizeCm: "B", quantity: 1, photoSlots: 1 }, 100_000, 0),
+    makeVariant("v-b3", { sizeCm: "B", quantity: 3, photoSlots: 3 }),
+  ];
+
+  it("deshabilita con '· Agotado' el valor cuya combinación actual está sin stock", () => {
+    // Selección A+1: el chip "B" combina con qty=1 → v-b1 (stock 0) → deshabilitado.
+    renderWithProvider(matrix(), "v-a1");
+    const tamano = screen.getByRole("group", { name: "Tamaño" });
+    const chipB = within(tamano).getByRole("button", { name: /B cm · Agotado/ });
+    expect(chipB).toBeDisabled();
+    // El chip "A" (combinación con stock) sigue normal.
+    expect(within(tamano).getByRole("button", { name: "A cm" })).toBeEnabled();
+  });
+
+  it("mantiene habilitado el valor si SU combinación actual sí tiene stock", () => {
+    // Selección A+3: el chip "B" combina con qty=3 → v-b3 (stock>0) → habilitado,
+    // aunque v-b1 (B+1) esté agotada. El stock se evalúa por combinación exacta.
+    renderWithProvider(matrix(), "v-a3");
+    const tamano = screen.getByRole("group", { name: "Tamaño" });
+    const chipB = within(tamano).getByRole("button", { name: "B cm" });
+    expect(chipB).toBeEnabled();
+    fireEvent.click(chipB);
+    expect(replace).toHaveBeenCalledWith(
+      expect.stringContaining("variant=v-b3"),
+      expect.anything(),
+    );
+  });
+
+  it("el stepper salta la cantidad agotada y avisa '· Agotado'", () => {
+    // qty 1..3 contigua con v-s2 agotada: desde 1, "+" apunta a 3 (salta la 2)
+    // y se muestra el aviso junto al stepper.
+    const variants = [
+      makeVariant("v-s1", { shape: "rectangle", sizeCm: "6×6", quantity: 1, photoSlots: 1 }),
+      makeVariant("v-s2", { shape: "rectangle", sizeCm: "6×6", quantity: 2, photoSlots: 2 }, 100_000, 0),
+      makeVariant("v-s3", { shape: "rectangle", sizeCm: "6×6", quantity: 3, photoSlots: 3 }),
+    ];
+    renderWithProvider(variants, "v-s1");
+    const cantidad = screen.getByRole("group", { name: "Cantidad" });
+    expect(within(cantidad).getByText("· Agotado")).toBeInTheDocument();
+    fireEvent.click(within(cantidad).getByLabelText("Aumentar cantidad"));
+    expect(within(cantidad).getByText("3 unidades")).toBeInTheDocument();
+    expect(replace).toHaveBeenLastCalledWith(
+      expect.stringContaining("variant=v-s3"),
+      expect.anything(),
+    );
+  });
+
+  it("el stepper bloquea '+' cuando TODAS las cantidades superiores están agotadas", () => {
+    const variants = [
+      makeVariant("v-t1", { shape: "rectangle", sizeCm: "6×6", quantity: 1, photoSlots: 1 }),
+      makeVariant("v-t2", { shape: "rectangle", sizeCm: "6×6", quantity: 2, photoSlots: 2 }, 100_000, 0),
+      makeVariant("v-t3", { shape: "rectangle", sizeCm: "6×6", quantity: 3, photoSlots: 3 }, 100_000, 0),
+    ];
+    renderWithProvider(variants, "v-t1");
+    const cantidad = screen.getByRole("group", { name: "Cantidad" });
+    expect(within(cantidad).getByLabelText("Aumentar cantidad")).toBeDisabled();
+    expect(within(cantidad).getByText("· Agotado")).toBeInTheDocument();
+  });
+
+  it("marca '· Agotado' y deshabilita la fila en la lista vertical de una sola dimensión", () => {
+    const variants = [
+      makeVariant("v-l1", { sizeCm: "6×6" }, 1_000_000),
+      makeVariant("v-l2", { sizeCm: "5×14" }, 1_500_000, 0),
+    ];
+    render(<VariantSelector productBasePrice={100_000} variants={variants} />);
+    const row = screen.getByRole("button", { name: /v-l2 · Agotado/ });
+    expect(row).toBeDisabled();
+    // La fila con stock sigue clicable.
+    expect(screen.getByRole("button", { name: /v-l1/ })).toBeEnabled();
   });
 });

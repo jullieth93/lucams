@@ -24,13 +24,12 @@ import { WishlistButton } from "@/components/wishlist-button";
 import { BackInStockButton } from "@/components/back-in-stock-button";
 import { getCurrentCustomer } from "@/lib/auth";
 import { getWishlistedProductIds } from "@/features/wishlist/service";
-import { SubmitButton } from "@/components/admin/submit-button";
 import { ProductGallery } from "@/components/product-detail/product-gallery";
 import { RelatedProducts } from "@/components/product-detail/related-products";
 import { ProductReviews } from "./product-reviews";
 import { TemplatesStrip } from "@/components/product-detail/templates-strip";
 import { VariantSelector } from "./variant-selector";
-import { SelectedVariantProvider, EstudioCtaLink, CartVariantIdInput } from "./variant-actions";
+import { SelectedVariantProvider, EstudioCtaLink, CartVariantIdInput, CartSubmitButton } from "./variant-actions";
 import { formatCOP } from "@/lib/format";
 import { isCatalogMode } from "@/lib/store-mode";
 import { buildWhatsAppUrl } from "@/lib/wa";
@@ -105,6 +104,9 @@ export default async function ProductoDetallePage({
   // carrito), que reaccionan al selector SIN esperar el re-render del RSC.
   const variantIds = selectable.map((v) => v.id);
   const firstVariantId = selectedVariant?.id ?? null;
+  // Fase 1 — stock por variante para el buy-box: el botón "Añadir" se bloquea
+  // ("Agotado") cuando la variante elegida no tiene stock, aunque otras sí.
+  const stockByVariantId = Object.fromEntries(selectable.map((v) => [v.id, v.stock]));
 
   // D1 (Lucy 2026-06-27): la galería muestra las fotos de la OPCIÓN elegida si
   // tiene propias; si no, hereda las del producto (espeja la herencia de price).
@@ -352,11 +354,11 @@ export default async function ProductoDetallePage({
                         {/* ADR-057 — variante elegida en el selector (H12: sync vía Context). */}
                         <CartVariantIdInput />
                         {/* SubmitButton: spinner + disabled al enviar → evita doble-clic
-                          (compra duplicada). Lucy 2026-06-27. */}
-                        <SubmitButton
-                          label="Añadir al carrito"
-                          pendingLabel="Añadiendo…"
-                          size="lg"
+                          (compra duplicada). Lucy 2026-06-27.
+                          Fase 1 — CartSubmitButton además bloquea con "Agotado" cuando la
+                          variante elegida no tiene stock (gate por variante, no por producto). */}
+                        <CartSubmitButton
+                          stockByVariantId={stockByVariantId}
                           className="bg-brand-purple hover:bg-brand-purple-dark w-full text-white"
                         />
                       </form>
