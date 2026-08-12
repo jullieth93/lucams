@@ -70,10 +70,29 @@ export function useSelectedVariant(): SelectedVariantCtx {
 /** CTA "Personalizar" al Estudio, con el ?variant= SIEMPRE en sync con el selector. */
 export function EstudioCtaLink({ slug, ctaNoun }: { slug: string; ctaNoun: string }) {
   const { selectedId } = useSelectedVariant();
+  // UX selección guiada (Lucy 2026-08-12): sin variante elegida el Estudio no
+  // puede abrir (photoSlots/precio dependen de la variante) → CTA deshabilitado
+  // con la instrucción clara en vez de un default invisible.
+  if (!selectedId) {
+    return (
+      <>
+        <span
+          aria-disabled="true"
+          className="bg-brand-purple/60 inline-flex h-12 w-full cursor-not-allowed items-center justify-center gap-2 rounded-md px-6 text-base font-semibold text-white shadow-lg"
+        >
+          <Sparkles className="h-5 w-5" />
+          Personalizar {ctaNoun} →
+        </span>
+        <p className="text-brand-purple-dark text-center text-xs font-semibold">
+          Elige las opciones primero ↑
+        </p>
+      </>
+    );
+  }
   return (
     <>
       <Link
-        href={`/estudio/${slug}${selectedId ? `?variant=${selectedId}` : ""}`}
+        href={`/estudio/${slug}?variant=${selectedId}`}
         className="bg-brand-purple hover:bg-brand-purple-dark shadow-brand-purple/30 hover:shadow-brand-purple/40 inline-flex h-12 w-full items-center justify-center gap-2 rounded-md px-6 text-base font-semibold text-white shadow-lg transition-all hover:shadow-xl"
       >
         <Sparkles className="h-5 w-5" />
@@ -109,12 +128,15 @@ export function CartSubmitButton({
   const { selectedId } = useSelectedVariant();
   const stock = selectedId ? stockByVariantId[selectedId] : undefined;
   const soldOut = stock !== undefined && stock <= 0;
+  // UX selección guiada (2026-08-12): sin variante elegida el botón pide la
+  // elección en vez de agregar un default invisible al carrito.
+  const noSelection = !selectedId;
   return (
     <SubmitButton
-      label={soldOut ? "Agotado" : "Añadir al carrito"}
+      label={noSelection ? "Elige tus opciones" : soldOut ? "Agotado" : "Añadir al carrito"}
       pendingLabel="Añadiendo…"
       size="lg"
-      disabled={soldOut}
+      disabled={noSelection || soldOut}
       className={className}
     />
   );

@@ -96,14 +96,14 @@ export default async function ProductoDetallePage({
   // "Default" vacía) para que galería/precio coincidan con el chip resaltado por defecto.
   const requestedVariantId = typeof sp.variant === "string" ? sp.variant : undefined;
   const selectable = selectableVariants(product.variants);
+  // UX selección guiada (Lucy 2026-08-12): SIN preselección cuando hay varias
+  // opciones — el cliente elige cada dimensión a propósito (antes la primera
+  // variante quedaba morada por defecto y el resto del selector se evaluaba
+  // contra una elección que el cliente no hizo). Con UNA sola variante se
+  // auto-selecciona (no hay nada que elegir). El deep-link ?variant= manda.
   const selectedVariant =
     selectable.find((v) => v.id === requestedVariantId) ??
-    // Preferir la primera variante CON STOCK como preselección: si la primera
-    // del listado está agotada, el cliente aterrizaba en un buy-box "Agotado"
-    // aunque otra opción sí tuviera disponibilidad (QA 2026-08-12).
-    selectable.find((v) => v.stock > 0) ??
-    selectable[0] ??
-    null;
+    (selectable.length === 1 ? (selectable[0] ?? null) : null);
   // Precio final: variant.price override o basePrice
   const displayPrice = selectedVariant?.price ?? product.basePrice;
   // H12 (auditoría v3) — ids para las acciones reactivas a la URL (CTA Estudio + variantId del
@@ -130,7 +130,12 @@ export default async function ProductoDetallePage({
   const letterSet = (product.personalizationSchema as { letterSet?: string } | null)?.letterSet;
   const isLetterSetProduct = letterSet === "full" || letterSet === "vowels";
   // Nombre Personalizado: precio POR FICHA → selector de cantidad en la ficha.
-  const isNamePerTile = selectedAttrs.variant === "name";
+  // Se deriva del CATÁLOGO de variantes (no de la selección): con selección
+  // guiada la página abre sin variante elegida (selectedAttrs vacío) y el
+  // producto por-ficha debe seguir mostrando su NamePricePicker.
+  const isNamePerTile = selectable.some(
+    (v) => parseVariantAttributes(v.attributes).variant === "name",
+  );
   const nameMin = selectedAttrs.letterCountMin ?? 3;
   const nameMax = selectedAttrs.letterCountMax ?? 10;
   // CTA genérico: no todos los productos son imanes (separadores, fichas, sets)

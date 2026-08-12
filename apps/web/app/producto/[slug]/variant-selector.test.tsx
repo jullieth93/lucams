@@ -549,16 +549,16 @@ describe("VariantSelector — stock por variante (Fase 1)", () => {
     makeVariant("v-b3", { sizeCm: "B", quantity: 3, photoSlots: 3 }),
   ];
 
-  it("el valor cuya combinación exacta está agotada SALTA a otra variante con stock de ese valor", () => {
+  it("el valor cuya combinación exacta está agotada re-ancla a otra variante con stock (sin tachado)", () => {
     // Selección A+1: la combinación B+1 (v-b1) está en 0, pero v-b3 (B+3) SÍ
-    // tiene stock → el chip "B" queda habilitado PERO tachado (hay stock en
-    // otra combinación, no en esta) y el click salta a v-b3 (trampa de matriz
-    // incompleta + feedback UX Lucy 2026-08-12).
+    // tiene stock → el chip "B" queda habilitado SIN tachado (no engaña: hay
+    // stock con ese valor) y el click re-ancla a v-b3 (selección guiada,
+    // Lucy 2026-08-12).
     renderWithProvider(matrix(), "v-a1");
     const tamano = screen.getByRole("group", { name: "Tamaño" });
     const chipB = within(tamano).getByRole("button", { name: "B cm" });
     expect(chipB).toBeEnabled();
-    expect(chipB.className).toContain("line-through");
+    expect(chipB.className).not.toContain("line-through");
     fireEvent.click(chipB);
     expect(replace).toHaveBeenCalledWith(
       expect.stringContaining("variant=v-b3"),
@@ -566,13 +566,36 @@ describe("VariantSelector — stock por variante (Fase 1)", () => {
     );
   });
 
-  it("deshabilita con '· Agotado' el valor sin stock en NINGUNA de sus variantes", () => {
-    // TODAS las variantes con size B agotadas → el chip "B" se deshabilita.
+  it("deshabilita tachado con '· Agotado' el valor sin stock en NINGUNA de sus variantes", () => {
+    // TODAS las variantes con size B agotadas → el chip "B" se deshabilita tachado.
     const allOut = matrix().map((v) => (v.id.startsWith("v-b") ? { ...v, stock: 0 } : v));
     renderWithProvider(allOut, "v-a1");
     const tamano = screen.getByRole("group", { name: "Tamaño" });
-    expect(within(tamano).getByRole("button", { name: /B cm · Agotado/ })).toBeDisabled();
+    const chipB = within(tamano).getByRole("button", { name: /B cm · Agotado/ });
+    expect(chipB).toBeDisabled();
+    expect(chipB.className).toContain("line-through");
     expect(within(tamano).getByRole("button", { name: "A cm" })).toBeEnabled();
+  });
+
+  it("sin selección inicial los chips reflejan disponibilidad global por valor", () => {
+    // UX selección guiada: la página abre SIN variante elegida. Cada chip se
+    // habilita si ALGÚN variant con ese valor tiene stock (independiente de
+    // las otras dimensiones); los sin stock en ninguna variante quedan tachados.
+    render(
+      <SelectedVariantProvider variantIds={matrix().map((v) => v.id)} initialId={null}>
+        <VariantSelector productBasePrice={100_000} variants={matrix()} />
+      </SelectedVariantProvider>,
+    );
+    const tamano = screen.getByRole("group", { name: "Tamaño" });
+    // A tiene stock (v-a1/v-a3) y B tiene stock en v-b3 → ambos habilitados.
+    expect(within(tamano).getByRole("button", { name: "A cm" })).toBeEnabled();
+    expect(within(tamano).getByRole("button", { name: "B cm" })).toBeEnabled();
+    // Elegir B re-ancla a la variante con stock (v-b3) aunque v-b1 esté en 0.
+    fireEvent.click(within(tamano).getByRole("button", { name: "B cm" }));
+    expect(replace).toHaveBeenCalledWith(
+      expect.stringContaining("variant=v-b3"),
+      expect.anything(),
+    );
   });
 
   it("mantiene habilitado el valor si SU combinación actual sí tiene stock", () => {

@@ -306,25 +306,41 @@ export function VariantSelector({
   }
 
   function handleSelectValue(dimKey: string, value: string) {
-    // QA 2026-08-12: prioriza STOCK sobre el match exacto. Si la combinación
-    // exacta existe pero está agotada y otra variante con ese valor sí tiene
-    // stock, el click salta a la que tiene (aterrizar en una opción agotada
-    // dejaba el buy-box bloqueado sin necesidad).
-    const exact = findExactVariant(dimKey, value);
-    if (exact && exact.stock > 0) {
-      selectVariant(exact.id);
-      return;
-    }
-    const matchesValue = (v: Variant) => {
+    // UX selección guiada (Lucy 2026-08-12): prioriza la variante con stock
+    // COMPATIBLE con las demás dimensiones elegidas; si ninguna es compatible,
+    // re-ancla a la primera variante con stock que tenga ese valor (las demás
+    // dimensiones se re-evalúan contra esa nueva combinación).
+    const target =
+      findCompatibleInStock(dimKey, value) ?? findGlobalInStock(dimKey, value);
+    if (target) selectVariant(target.id);
+  }
+
+  /** Primera variante CON STOCK que cumple dimKey=value Y las demás dimensiones
+   *  elegidas (match parcial — solo las que tienen valor actual). */
+  function findCompatibleInStock(dimKey: string, value: string) {
+    return variants.find((v) => {
+      if (v.stock <= 0) return false;
+      const attrs = parseVariantAttributes(v.attributes);
+      const dimValue = attrs[dimKey as keyof ProductVariantAttributes];
+      if (dimValue === undefined || String(dimValue) !== value) return false;
+      for (const [k, val] of Object.entries(currentValues)) {
+        if (k === dimKey) continue;
+        const variantValue = attrs[k as keyof ProductVariantAttributes];
+        if (variantValue === undefined || String(variantValue) !== val) return false;
+      }
+      return true;
+    });
+  }
+
+  /** Primera variante CON STOCK que tenga el valor, sin importar las demás
+   *  dimensiones (sirve para re-anclar la selección). */
+  function findGlobalInStock(dimKey: string, value: string) {
+    return variants.find((v) => {
+      if (v.stock <= 0) return false;
       const attrs = parseVariantAttributes(v.attributes);
       const dimValue = attrs[dimKey as keyof ProductVariantAttributes];
       return dimValue !== undefined && String(dimValue) === value;
-    };
-    // Fallback: primera variante con stock con ese valor; si ninguna, la
-    // exacta (agotada — el buy-box mostrará "Agotado") o cualquiera con el valor.
-    const fallback =
-      variants.find((v) => matchesValue(v) && v.stock > 0) ?? exact ?? variants.find(matchesValue);
-    if (fallback) selectVariant(fallback.id);
+    });
   }
 
   /** Match exacto: dimKey=value Y las demás dimensiones como están (currentValues). */
@@ -560,26 +576,16 @@ export function VariantSelector({
                 // los chips se vuelven interactivos solos (>1 valor).
                 const isSingle = dim.values.length === 1;
                 const isSelected = isSingle || currentValues[dim.key] === value;
-                // QA 2026-08-12 (trampa de matriz incompleta + feedback UX Lucy):
-                // tres estados visuales HONESTOS según el stock:
-                //  1. La combinación exacta tiene stock → chip normal clickeable.
-                //  2. La exacta NO tiene stock pero OTRA variante con ese valor sí
-                //     → chip TACHADO y clickeable (el click salta a la combinación
-                //     con stock). Antes se veía activo pleno y el salto confundía:
-                //     "7×10 se ve disponible en Español pero no lo está".
-                //  3. Ninguna variante con ese valor tiene stock → deshabilitado
-                //     con sufijo "· Agotado".
-                const exactInStock = hasStockForCombination(dim.key, value);
-                const anyInStock =
-                  exactInStock ||
-                  variants.some((v) => {
-                    const attrs = parseVariantAttributes(v.attributes);
-                    const dimValue = attrs[dim.key as keyof ProductVariantAttributes];
-                    return dimValue !== undefined && String(dimValue) === value && v.stock > 0;
-                  });
-                const soldOut = !isSelected && !anyInStock;
-                const jumpTarget = !isSelected && !exactInStock && anyInStock;
-                const available = isSingle || isSelected || anyInStock;
+                // UX selección guiada (Lucy 2026-08-12): tachado + deshabilitado
+                // SOLO cuando NINGUNA variante con ese valor tiene stock
+                // ("· Agotado"). Si hay stock en otra combinación, el chip queda
+                // normal y el click re-ancla la selección a esa combinación —
+                // nada se ve disponible sin estarlo (feedback del tachado que
+                // sí clickeaba: contradictorio).
+                const globalVariant =
+                  findCompatibleInStock(dim.key, value) ?? findGlobalInStock(dim.key, value);
+                const soldOut = !isSelected && !globalVariant;
+                const available = isSingle || isSelected || Boolean(globalVariant);
                 return (
                   <button
                     key={value}
@@ -588,13 +594,7 @@ export function VariantSelector({
                     aria-disabled={!available || isSingle}
                     disabled={!available || isSingle}
                     onClick={() => !isSingle && available && handleSelectValue(dim.key, value)}
-                    title={
-                      soldOut
-                        ? "Agotado en esta combinación."
-                        : jumpTarget
-                          ? "En esta combinación no hay stock — toca para ver la opción disponible."
-                          : undefined
-                    }
+                    title={soldOut ? "Agotado en esta combinación." : undefined}
                     className={[
                       "focus:ring-brand-turquoise rounded-lg px-3 py-2 text-sm font-semibold transition-all focus:ring-2 focus:outline-none",
                       isSelected
@@ -602,10 +602,8 @@ export function VariantSelector({
                           ? "bg-brand-purple cursor-default text-white shadow-md"
                           : "bg-brand-purple cursor-pointer text-white shadow-md"
                         : soldOut
-                          ? "ring-brand-purple/10 text-brand-muted bg-brand-cream/40 cursor-not-allowed ring-1"
-                          : jumpTarget
-                            ? "ring-brand-purple/15 text-brand-muted bg-brand-cream/40 cursor-pointer line-through decoration-brand-purple/50 decoration-2 ring-1"
-                            : "ring-brand-purple/20 text-brand-purple-dark hover:ring-brand-purple/50 hover:bg-brand-cream/50 cursor-pointer bg-white ring-1",
+                          ? "ring-brand-purple/10 text-brand-muted bg-brand-cream/40 cursor-not-allowed line-through decoration-brand-purple/50 decoration-2 ring-1"
+                          : "ring-brand-purple/20 text-brand-purple-dark hover:ring-brand-purple/50 hover:bg-brand-cream/50 cursor-pointer bg-white ring-1",
                     ].join(" ")}
                   >
                     {formatDimensionValue(dim.key, value)}
@@ -618,13 +616,11 @@ export function VariantSelector({
         );
       })}
 
-      {/* Microcopy: dos estados atenuados — tachado = sin stock EN ESA
-          combinación (el click salta a la que sí tiene); Agotado = sin stock
-          en ninguna variante con ese valor. */}
+      {/* Microcopy: tachado = agotado (sin stock en ninguna variante con ese
+          valor). Selección guiada 2026-08-12. */}
       {hasSoldOutOptions && (
         <p className="text-brand-muted text-[11px]">
-          Las opciones tachadas no tienen stock en esa combinación (tócalas para ver la que sí
-          tiene); las marcadas como Agotado no tienen stock.
+          Las opciones tachadas están agotadas por ahora.
         </p>
       )}
 
