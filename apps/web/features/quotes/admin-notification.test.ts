@@ -38,6 +38,11 @@ const logger = vi.hoisted(() => ({
 
 vi.mock("@/lib/logger", () => ({ logger }));
 vi.mock("@/lib/resend", () => ({ sendEmail }));
+
+// getSiteUrl() (features/emails/layout) prefiere NEXT_PUBLIC_SITE_URL sobre el
+// setting CMS — se pinea para que los links salgan con el dominio de producción
+// esperado por las aserciones (determinista, offline).
+process.env.NEXT_PUBLIC_SITE_URL = "https://lucamsshop.com";
 vi.mock("@/lib/db", () => ({
   prisma: {
     quote: { findFirst: quoteFindFirst },

@@ -549,13 +549,28 @@ describe("VariantSelector — stock por variante (Fase 1)", () => {
     makeVariant("v-b3", { sizeCm: "B", quantity: 3, photoSlots: 3 }),
   ];
 
-  it("deshabilita con '· Agotado' el valor cuya combinación actual está sin stock", () => {
-    // Selección A+1: el chip "B" combina con qty=1 → v-b1 (stock 0) → deshabilitado.
+  it("el valor cuya combinación exacta está agotada SALTA a otra variante con stock de ese valor", () => {
+    // Selección A+1: la combinación B+1 (v-b1) está en 0, pero v-b3 (B+3) SÍ
+    // tiene stock → el chip "B" queda habilitado y el click salta a v-b3
+    // (trampa de matriz incompleta, QA 2026-08-12). Solo se deshabilita con
+    // "· Agotado" cuando NINGUNA variante con ese valor tiene stock.
     renderWithProvider(matrix(), "v-a1");
     const tamano = screen.getByRole("group", { name: "Tamaño" });
-    const chipB = within(tamano).getByRole("button", { name: /B cm · Agotado/ });
-    expect(chipB).toBeDisabled();
-    // El chip "A" (combinación con stock) sigue normal.
+    const chipB = within(tamano).getByRole("button", { name: "B cm" });
+    expect(chipB).toBeEnabled();
+    fireEvent.click(chipB);
+    expect(replace).toHaveBeenCalledWith(
+      expect.stringContaining("variant=v-b3"),
+      expect.anything(),
+    );
+  });
+
+  it("deshabilita con '· Agotado' el valor sin stock en NINGUNA de sus variantes", () => {
+    // TODAS las variantes con size B agotadas → el chip "B" se deshabilita.
+    const allOut = matrix().map((v) => (v.id.startsWith("v-b") ? { ...v, stock: 0 } : v));
+    renderWithProvider(allOut, "v-a1");
+    const tamano = screen.getByRole("group", { name: "Tamaño" });
+    expect(within(tamano).getByRole("button", { name: /B cm · Agotado/ })).toBeDisabled();
     expect(within(tamano).getByRole("button", { name: "A cm" })).toBeEnabled();
   });
 

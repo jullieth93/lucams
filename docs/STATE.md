@@ -13,6 +13,24 @@
 
 ## Resumen actual
 
+**🔍 CERTIFICACIÓN QA DEL CATÁLOGO (2026-08-12) — 9 PDPs + 9 estudios recorridos con Playwright
+(desktop+móvil).** Hallazgos y fixes:
+- **Idioma invisible en Abecedario/Vocales** (reporte Lucy): la dimensión se ocultaba por la
+  regla "se elige en el Estudio", pero ambos productos son compra directa (`kind NONE` +
+  marcador letterSet) → el cliente no podía elegir idioma en ningún lado. `PDP_HIDDEN_DIMENSION_KEYS`
+  ya no oculta `language` en esos 2 slugs. Verificado en vivo: Idioma/Tamaño/Imán con "· Agotado"
+  por combinación.
+- **Trampa de matriz incompleta** (Tiras: 3fotos/6.5×20 vs 4fotos/6.5×26.5): el chip de la otra
+  opción quedaba inalcanzable. Ahora el selector salta a la variante CON STOCK que tenga ese
+  valor (el click ajusta la otra dimensión); solo se deshabilita con "· Agotado" cuando ninguna
+  variante con ese valor tiene stock. Verificado con click real (4 fotos → 6.5×26.5 seleccionado).
+- **Preselección con stock**: la PDP ahora preselecciona la primera variante con stock > 0 (antes
+  la primera del listado — podía aterrizar en "Agotado" teniendo otra opción disponible).
+- Suite del selector: 26/26 (2 tests nuevos del salto + agotado-total). 9/9 estudios renderizan
+  sin errores JS. Home/productos/carrito/rastrear sin errores.
+
+---
+
 **🚚 RASTREO QUE TIENE SENTIDO + DIRECCIÓN BAJO DEMANDA (2026-08-11, última ronda).**
 - El `trackingUrl` guardado era el PDF del documento de guía (`rutaguia` de Aveonline) y se
   usaba como botón "Rastrear" — el cliente descargaba la etiqueta. Ahora: el CTA principal es

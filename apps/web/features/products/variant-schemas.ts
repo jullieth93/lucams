@@ -143,16 +143,17 @@ const FORM_MANAGED_ATTRIBUTE_KEYS: ReadonlySet<string> = new Set([
  * cotización); solo se oculta el grupo del selector:
  *   - Polaroid: "Estilo" (variantStyle) → marco de color en el Estudio.
  *   - Fotoimanes Cuadrados: "Marco" (frameStyle) → marco de color en el Estudio.
- *   - Pack Vocales: "Tema" (theme) e "Idioma" (language) → tema/idioma en el Estudio
- *     (las 5 vocales son las mismas en español e inglés).
- *   - Abecedario Completo: "Idioma" (language) → idioma en el Estudio.
+ *   - Pack Vocales: "Tema" (theme) → tema en el Estudio.
+ * (2026-08-12) "Idioma" (language) YA NO se oculta en abecedario-completo ni
+ * pack-vocales: ambos productos dejaron de ser personalizables (kind NONE,
+ * compra directa) — ocultar Idioma dejaba al cliente sin forma de elegirlo
+ * (bug reportado por Lucy en STG: solo se podía comprar el idioma por defecto).
  * Llave = slug del producto (familia). Valor = claves de attributes a ocultar.
  */
 export const PDP_HIDDEN_DIMENSION_KEYS: Readonly<Record<string, readonly string[]>> = {
   "set-fotoimanes-polaroid": ["variantStyle"],
   "set-fotoimanes-cuadrados": ["frameStyle"],
-  "pack-vocales": ["theme", "language"],
-  "abecedario-completo": ["language"],
+  "pack-vocales": ["theme"],
   "separadores-magneticos": ["photoSlots"],
   "separadores-alargados": ["photoSlots"],
 };

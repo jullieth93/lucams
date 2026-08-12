@@ -306,23 +306,24 @@ export function VariantSelector({
   }
 
   function handleSelectValue(dimKey: string, value: string) {
-    // Buscar el variant EXACTO: dimKey=value Y todas las otras dimensiones
-    // = currentValues. Si no existe (combinación no disponible), el chip
-    // ya debería estar deshabilitado en el UI; pero por seguridad: no
-    // hacer nada (no auto-cambiar las otras dimensiones).
+    // QA 2026-08-12: prioriza STOCK sobre el match exacto. Si la combinación
+    // exacta existe pero está agotada y otra variante con ese valor sí tiene
+    // stock, el click salta a la que tiene (aterrizar en una opción agotada
+    // dejaba el buy-box bloqueado sin necesidad).
     const exact = findExactVariant(dimKey, value);
-    if (exact) {
+    if (exact && exact.stock > 0) {
       selectVariant(exact.id);
       return;
     }
-    // Fallback: si por algún motivo el chip era clickeable pero no hay
-    // match exacto (race condition), buscar la primera variant con
-    // dimKey=value. No es ideal pero evita que el click sea no-op total.
-    const fallback = variants.find((v) => {
+    const matchesValue = (v: Variant) => {
       const attrs = parseVariantAttributes(v.attributes);
       const dimValue = attrs[dimKey as keyof ProductVariantAttributes];
       return dimValue !== undefined && String(dimValue) === value;
-    });
+    };
+    // Fallback: primera variante con stock con ese valor; si ninguna, la
+    // exacta (agotada — el buy-box mostrará "Agotado") o cualquiera con el valor.
+    const fallback =
+      variants.find((v) => matchesValue(v) && v.stock > 0) ?? exact ?? variants.find(matchesValue);
     if (fallback) selectVariant(fallback.id);
   }
 
@@ -447,12 +448,10 @@ export function VariantSelector({
   // ── Modo multi-dimension: chips por dimensión + card de Precio ──
   const currentPrice = selectedVariant?.price ?? productBasePrice;
 
-  // Detectar si el catálogo tiene combinaciones faltantes (matriz
-  // incompleta). Si todos los variants posibles existen, no mostrar el
-  // microcopy explicativo (innecesario). El cálculo es barato porque
-  // dimensions ya está memoizado.
-  const cartesianTotal = dimensions.reduce((acc, d) => acc * d.values.length, 1);
-  const hasUnavailable = variants.length < cartesianTotal;
+  // Con el salto por fallback (QA 2026-08-12) toda opción listada es alcanzable;
+  // el único estado deshabilitado restante es "Agotado" (sin stock en ninguna
+  // variante con ese valor) — la nota explica eso y solo se muestra si aplica.
+  const hasSoldOutOptions = variants.some((v) => v.stock <= 0);
 
   return (
     <div className="mb-4 space-y-4">
@@ -561,12 +560,21 @@ export function VariantSelector({
                 // los chips se vuelven interactivos solos (>1 valor).
                 const isSingle = dim.values.length === 1;
                 const isSelected = isSingle || currentValues[dim.key] === value;
-                const exists = isCombinationAvailable(dim.key, value);
-                // Fase 1 — la combinación existe pero TODAS sus variants están
-                // agotadas (stock <= 0): se deshabilita igual que una inexistente;
-                // la única diferencia visual es el sufijo "· Agotado".
-                const soldOut = exists && !hasStockForCombination(dim.key, value);
-                const available = isSingle || isSelected || (exists && !soldOut);
+                // QA 2026-08-12 (trampa de matriz incompleta): el chip es clickeable
+                // si la combinación EXACTA tiene stock O si ALGUNA otra variante con
+                // ese valor tiene stock (el click salta a ella vía el fallback de
+                // handleSelectValue). Solo se deshabilita cuando NINGUNA variante
+                // con ese valor tiene stock → sufijo "· Agotado".
+                const exactInStock = hasStockForCombination(dim.key, value);
+                const anyInStock =
+                  exactInStock ||
+                  variants.some((v) => {
+                    const attrs = parseVariantAttributes(v.attributes);
+                    const dimValue = attrs[dim.key as keyof ProductVariantAttributes];
+                    return dimValue !== undefined && String(dimValue) === value && v.stock > 0;
+                  });
+                const soldOut = !isSelected && !anyInStock;
+                const available = isSingle || isSelected || anyInStock;
                 return (
                   <button
                     key={value}
@@ -576,11 +584,7 @@ export function VariantSelector({
                     disabled={!available || isSingle}
                     onClick={() => !isSingle && available && handleSelectValue(dim.key, value)}
                     title={
-                      !available
-                        ? soldOut
-                          ? "Agotado en esta combinación."
-                          : `No disponible en esta combinación. Cambia primero otra opción para acceder a "${formatDimensionValue(dim.key, value)}".`
-                        : undefined
+                      !available ? "Agotado en esta combinación." : undefined
                     }
                     className={[
                       "focus:ring-brand-turquoise rounded-lg px-3 py-2 text-sm font-semibold transition-all focus:ring-2 focus:outline-none",
@@ -603,12 +607,11 @@ export function VariantSelector({
         );
       })}
 
-      {/* Microcopy: explica los chips atenuados cuando hay combinaciones
-          imposibles en el catálogo. No mostrar si la matriz está completa. */}
-      {hasUnavailable && (
+      {/* Microcopy: con el salto por fallback toda opción es alcanzable; solo
+          quedan deshabilitadas las agotadas — la nota explica esas. */}
+      {hasSoldOutOptions && (
         <p className="text-brand-muted text-[11px]">
-          Las opciones atenuadas no están disponibles en esta combinación. Cambia primero la otra
-          opción para acceder a ellas.
+          Las opciones marcadas como Agotado no están disponibles por ahora.
         </p>
       )}
 

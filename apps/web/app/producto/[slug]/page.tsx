@@ -97,7 +97,13 @@ export default async function ProductoDetallePage({
   const requestedVariantId = typeof sp.variant === "string" ? sp.variant : undefined;
   const selectable = selectableVariants(product.variants);
   const selectedVariant =
-    selectable.find((v) => v.id === requestedVariantId) ?? selectable[0] ?? null;
+    selectable.find((v) => v.id === requestedVariantId) ??
+    // Preferir la primera variante CON STOCK como preselección: si la primera
+    // del listado está agotada, el cliente aterrizaba en un buy-box "Agotado"
+    // aunque otra opción sí tuviera disponibilidad (QA 2026-08-12).
+    selectable.find((v) => v.stock > 0) ??
+    selectable[0] ??
+    null;
   // Precio final: variant.price override o basePrice
   const displayPrice = selectedVariant?.price ?? product.basePrice;
   // H12 (auditoría v3) — ids para las acciones reactivas a la URL (CTA Estudio + variantId del
