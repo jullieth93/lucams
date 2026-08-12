@@ -2140,6 +2140,14 @@ sidebar fijo, Cancelar en cupones.
 
 **Requiere a Lucy (decisiones / verificación):**
 
+- **Prueba funcional REAL del webhook Aveonline en PRD (pendiente 2026-08-11)**: validar que un
+  evento real de la transportadora llegue solo (fila `WebhookEvent` con source AVEONLINE en PRD).
+  La guía de prueba se anuló y el panel la eliminó (sin evento). Cuando se quiera cerrar: crear
+  guía real en el panel SIN anular (opción A: que el carrier la escanee; opción B: novedad manual
+  si el panel la permite) o esperar la primera orden real. Todo lo demás del webhook ya está
+  probado (auth 200/401, parseo, dedup, transición y emails en STG).
+
+
 - ~~Stack LOCAL de Supabase quedó a medias (2026-08-08)~~ **RESUELTO el mismo día**:
   `make db-local-reset` + resincronización PRD→LOCAL de las 19 tablas de catálogo (dump
   `tmp/backups/catalogo-prd-20260811.dump`, procedimiento de OPERATIONS.md con las 3 FK
