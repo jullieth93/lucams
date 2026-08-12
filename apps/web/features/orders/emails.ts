@@ -461,6 +461,10 @@ export async function notifyNewOrderToAdmin(orderId: string): Promise<void> {
       city: ship.city ?? "",
       department: ship.department ?? "",
       paymentMethod: order.paymentMethod,
+      subtotal: order.subtotal,
+      shipping: order.shipping,
+      shippingCarrier: order.shippingCarrier,
+      discount: order.discount,
       total: order.total,
       items: order.items.map((it) => ({
         name: it.variant.product.name,

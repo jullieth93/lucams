@@ -26,6 +26,13 @@ export type OrderAdminNotificationData = {
   city: string;
   department: string;
   paymentMethod: "WOMPI" | "COD";
+  /** Suma de items (sin envío ni descuentos), centavos COP. */
+  subtotal: number;
+  /** Costo del envío cobrado al cliente, centavos COP. */
+  shipping: number;
+  shippingCarrier: string | null;
+  /** Descuento por cupón aplicado (0 = no mostrar la fila), centavos COP. */
+  discount: number;
   total: number; // centavos COP
   items: Array<{
     name: string;
@@ -75,6 +82,22 @@ export async function orderAdminNotificationEmail(data: OrderAdminNotificationDa
 <table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="margin:16px 0 0 0;border-collapse:collapse;">
   ${itemsRows}
   <tr>
+    <td style="padding:10px 0 2px 0;color:#3D2E5C;opacity:0.7;font-size:13px;border-top:1px solid #e5d9cf;">Subtotal (productos)</td>
+    <td style="padding:10px 0 2px 0;text-align:right;color:#3D2E5C;font-size:13px;border-top:1px solid #e5d9cf;">${formatCOP(data.subtotal)}</td>
+  </tr>
+  <tr>
+    <td style="padding:2px 0;color:#3D2E5C;opacity:0.7;font-size:13px;">Envío${data.shippingCarrier ? ` (${escapeHtml(data.shippingCarrier.toUpperCase().replace(/-/g, " "))})` : ""}</td>
+    <td style="padding:2px 0;text-align:right;color:#3D2E5C;font-size:13px;">${formatCOP(data.shipping)}</td>
+  </tr>${
+    data.discount > 0
+      ? `
+  <tr>
+    <td style="padding:2px 0;color:#2E7D32;font-size:13px;">Descuento (cupón)</td>
+    <td style="padding:2px 0;text-align:right;color:#2E7D32;font-size:13px;">−${formatCOP(data.discount)}</td>
+  </tr>`
+      : ""
+  }
+  <tr>
     <td style="padding:12px 0 4px 0;color:#3D2E5C;font-size:16px;font-weight:700;border-top:2px solid #3D2E5C;">Total</td>
     <td style="padding:12px 0 4px 0;text-align:right;color:#3D2E5C;font-size:16px;font-weight:700;border-top:2px solid #3D2E5C;">${formatCOP(data.total)}</td>
   </tr>
@@ -99,6 +122,8 @@ Pago: ${paymentLabel}
 Items:
 ${data.items.map((it) => `  - ${it.name} ×${it.qty} → ${formatCOP(it.lineTotal)}`).join("\n")}
 
+Subtotal (productos): ${formatCOP(data.subtotal)}
+Envío${data.shippingCarrier ? ` (${data.shippingCarrier.toUpperCase().replace(/-/g, " ")})` : ""}: ${formatCOP(data.shipping)}${data.discount > 0 ? `\nDescuento (cupón): −${formatCOP(data.discount)}` : ""}
 Total: ${formatCOP(data.total)}
 
 Ver en el admin: ${adminUrl}${customerWaUrl ? `\nEscribirle por WhatsApp: ${customerWaUrl}` : ""}`;
