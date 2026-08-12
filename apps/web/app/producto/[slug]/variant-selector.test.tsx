@@ -551,13 +551,14 @@ describe("VariantSelector — stock por variante (Fase 1)", () => {
 
   it("el valor cuya combinación exacta está agotada SALTA a otra variante con stock de ese valor", () => {
     // Selección A+1: la combinación B+1 (v-b1) está en 0, pero v-b3 (B+3) SÍ
-    // tiene stock → el chip "B" queda habilitado y el click salta a v-b3
-    // (trampa de matriz incompleta, QA 2026-08-12). Solo se deshabilita con
-    // "· Agotado" cuando NINGUNA variante con ese valor tiene stock.
+    // tiene stock → el chip "B" queda habilitado PERO tachado (hay stock en
+    // otra combinación, no en esta) y el click salta a v-b3 (trampa de matriz
+    // incompleta + feedback UX Lucy 2026-08-12).
     renderWithProvider(matrix(), "v-a1");
     const tamano = screen.getByRole("group", { name: "Tamaño" });
     const chipB = within(tamano).getByRole("button", { name: "B cm" });
     expect(chipB).toBeEnabled();
+    expect(chipB.className).toContain("line-through");
     fireEvent.click(chipB);
     expect(replace).toHaveBeenCalledWith(
       expect.stringContaining("variant=v-b3"),

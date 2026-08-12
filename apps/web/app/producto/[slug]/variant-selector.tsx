@@ -560,11 +560,15 @@ export function VariantSelector({
                 // los chips se vuelven interactivos solos (>1 valor).
                 const isSingle = dim.values.length === 1;
                 const isSelected = isSingle || currentValues[dim.key] === value;
-                // QA 2026-08-12 (trampa de matriz incompleta): el chip es clickeable
-                // si la combinación EXACTA tiene stock O si ALGUNA otra variante con
-                // ese valor tiene stock (el click salta a ella vía el fallback de
-                // handleSelectValue). Solo se deshabilita cuando NINGUNA variante
-                // con ese valor tiene stock → sufijo "· Agotado".
+                // QA 2026-08-12 (trampa de matriz incompleta + feedback UX Lucy):
+                // tres estados visuales HONESTOS según el stock:
+                //  1. La combinación exacta tiene stock → chip normal clickeable.
+                //  2. La exacta NO tiene stock pero OTRA variante con ese valor sí
+                //     → chip TACHADO y clickeable (el click salta a la combinación
+                //     con stock). Antes se veía activo pleno y el salto confundía:
+                //     "7×10 se ve disponible en Español pero no lo está".
+                //  3. Ninguna variante con ese valor tiene stock → deshabilitado
+                //     con sufijo "· Agotado".
                 const exactInStock = hasStockForCombination(dim.key, value);
                 const anyInStock =
                   exactInStock ||
@@ -574,6 +578,7 @@ export function VariantSelector({
                     return dimValue !== undefined && String(dimValue) === value && v.stock > 0;
                   });
                 const soldOut = !isSelected && !anyInStock;
+                const jumpTarget = !isSelected && !exactInStock && anyInStock;
                 const available = isSingle || isSelected || anyInStock;
                 return (
                   <button
@@ -584,7 +589,11 @@ export function VariantSelector({
                     disabled={!available || isSingle}
                     onClick={() => !isSingle && available && handleSelectValue(dim.key, value)}
                     title={
-                      !available ? "Agotado en esta combinación." : undefined
+                      soldOut
+                        ? "Agotado en esta combinación."
+                        : jumpTarget
+                          ? "En esta combinación no hay stock — toca para ver la opción disponible."
+                          : undefined
                     }
                     className={[
                       "focus:ring-brand-turquoise rounded-lg px-3 py-2 text-sm font-semibold transition-all focus:ring-2 focus:outline-none",
@@ -592,9 +601,11 @@ export function VariantSelector({
                         ? isSingle
                           ? "bg-brand-purple cursor-default text-white shadow-md"
                           : "bg-brand-purple cursor-pointer text-white shadow-md"
-                        : available
-                          ? "ring-brand-purple/20 text-brand-purple-dark hover:ring-brand-purple/50 hover:bg-brand-cream/50 cursor-pointer bg-white ring-1"
-                          : "ring-brand-purple/10 text-brand-muted bg-brand-cream/40 cursor-not-allowed ring-1",
+                        : soldOut
+                          ? "ring-brand-purple/10 text-brand-muted bg-brand-cream/40 cursor-not-allowed ring-1"
+                          : jumpTarget
+                            ? "ring-brand-purple/15 text-brand-muted bg-brand-cream/40 cursor-pointer line-through decoration-brand-purple/50 decoration-2 ring-1"
+                            : "ring-brand-purple/20 text-brand-purple-dark hover:ring-brand-purple/50 hover:bg-brand-cream/50 cursor-pointer bg-white ring-1",
                     ].join(" ")}
                   >
                     {formatDimensionValue(dim.key, value)}
@@ -607,11 +618,13 @@ export function VariantSelector({
         );
       })}
 
-      {/* Microcopy: con el salto por fallback toda opción es alcanzable; solo
-          quedan deshabilitadas las agotadas — la nota explica esas. */}
+      {/* Microcopy: dos estados atenuados — tachado = sin stock EN ESA
+          combinación (el click salta a la que sí tiene); Agotado = sin stock
+          en ninguna variante con ese valor. */}
       {hasSoldOutOptions && (
         <p className="text-brand-muted text-[11px]">
-          Las opciones marcadas como Agotado no están disponibles por ahora.
+          Las opciones tachadas no tienen stock en esa combinación (tócalas para ver la que sí
+          tiene); las marcadas como Agotado no tienen stock.
         </p>
       )}
 
