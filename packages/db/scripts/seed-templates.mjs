@@ -379,7 +379,14 @@ const templatesData = [
             stage: stage(400, 420),
             layers: [
               background("#FFFFFF"),
-              photoSlot({ id: "p1", x: 0, y: 0, width: 400, height: 420, label: "Foto de la cara" }),
+              photoSlot({
+                id: "p1",
+                x: 0,
+                y: 0,
+                width: 400,
+                height: 420,
+                label: "Foto de la cara",
+              }),
             ],
           },
         },
@@ -395,7 +402,14 @@ const templatesData = [
             stage: stage(600, 200),
             layers: [
               background("#FFFFFF"),
-              photoSlot({ id: "p1", x: 0, y: 0, width: 600, height: 200, label: "Foto de la cara" }),
+              photoSlot({
+                id: "p1",
+                x: 0,
+                y: 0,
+                width: 600,
+                height: 200,
+                label: "Foto de la cara",
+              }),
             ],
           },
         },
@@ -468,7 +482,14 @@ const templatesData = [
               // las fotos de celdas vecinas SE TOCAN (gap 0 real, tira de una pieza).
               // Los lados llevan 12px (~2mm) de color; el borde EXTERIOR (arriba/abajo)
               // lo aplica el código por posición (stripPhotoRect, first/last 12px).
-              photoSlot({ id: "photo", x: 12, y: 0, width: 366, height: 400, label: "Foto de la tira" }),
+              photoSlot({
+                id: "photo",
+                x: 12,
+                y: 0,
+                width: 366,
+                height: 400,
+                label: "Foto de la tira",
+              }),
             ],
           },
         },
@@ -535,6 +556,38 @@ const templatesData = [
                 width: 600,
                 height: 450,
                 cornerRadius: 0,
+                label: "Foto del mes",
+              }),
+            ],
+          },
+        },
+        {
+          slug: "calendario-mes-lateral",
+          productId: calendarioProduct.id,
+          kind: "CALENDAR_PHOTO_MONTH",
+          name: "Calendario mes a mes — lateral",
+          order: 2, // la clásica (order 1) sigue siendo el default del producto
+          previewUrl: "/templates/calendar_month_split.svg",
+          // Layout SPLIT (2026-08, referencia visual Lucy) — misma tarjeta 7.5×10 (3:4) pero la
+          // foto va en rectángulo REDONDEADO con margen blanco y la banda inferior se compone en
+          // dos columnas (mes gigante + año a la izquierda, grilla sin bordes a la derecha, sin
+          // leyenda). El flag `calendarLayout: "split"` viaja top-level en el canvasData → el
+          // Estudio, el preview 3D y producción lo leen con calendarLayoutFromUnitTemplate
+          // (WYSIWYG). El photoSlot 30,30,540×420 (9:7, cornerRadius 31) espeja la región
+          // CALENDAR_PHOTO_SPLIT de producción (54,54,972×756, r56 — todo ×1.8) → encuadre 1:1.
+          canvasData: {
+            version: 1,
+            stage: stage(600, 800),
+            calendarLayout: "split",
+            layers: [
+              background("#FFFFFF"),
+              photoSlot({
+                id: "p1",
+                x: 30,
+                y: 30,
+                width: 540,
+                height: 420,
+                cornerRadius: 31,
                 label: "Foto del mes",
               }),
             ],

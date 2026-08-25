@@ -69,6 +69,7 @@ import {
 } from "@/features/personalization/frame-palette";
 import { RealismShadowLayer, RealismOverlayLayer } from "./studio-realism-overlay";
 import { CalendarCardLayer } from "./studio-calendar-card-layer";
+import type { CalendarLayoutKey } from "@/features/personalization/calendar-layout";
 
 import { getFilterParams } from "./lib/photo-filters";
 import { analyzeSmartCrop, checkPhotoQuality } from "./lib/smart-crop";
@@ -134,7 +135,7 @@ type StudioSlotProps = {
    * la foto a sangre sobre fondo blanco. Cuando está set, reemplaza las capas del
    * unitTemplate (background + image-placeholder) por el canvas compuesto.
    */
-  calendarCard?: { year: number; monthIndex0: number } | null;
+  calendarCard?: { year: number; monthIndex0: number; layout?: CalendarLayoutKey } | null;
   onClick: () => void;
   onClear: () => void;
   /**
@@ -749,6 +750,7 @@ function StudioSlotImpl({
                   photoTransform={slotState.photoTransform ?? null}
                   year={calendarCard.year}
                   monthIndex0={calendarCard.monthIndex0}
+                  layout={calendarCard.layout}
                   templateStageWidth={unitTemplate.stage.width}
                   stageWidth={unitTemplate.stage.width}
                   stageHeight={unitTemplate.stage.height}
@@ -1142,7 +1144,8 @@ export const StudioSlot = memo(StudioSlotImpl, (prev, next) => {
     prev.allowText === next.allowText &&
     prev.interactiveSlots === next.interactiveSlots &&
     prev.calendarCard?.year === next.calendarCard?.year &&
-    prev.calendarCard?.monthIndex0 === next.calendarCard?.monthIndex0
+    prev.calendarCard?.monthIndex0 === next.calendarCard?.monthIndex0 &&
+    prev.calendarCard?.layout === next.calendarCard?.layout
   );
 });
 StudioSlot.displayName = "StudioSlot";

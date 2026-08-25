@@ -35,6 +35,7 @@ import { listStagedSlotPaths, stagedSlotPath } from "./staged-slots";
 import { resolvePersonalizationSurface } from "./surface";
 import { normalizeName } from "./name-input";
 import { remapCanvasAssetIds } from "./canvas-remap";
+import { calendarLayoutFromUnitTemplate } from "./calendar-layout";
 import { ALPHABET } from "./letter-tiles";
 import {
   mergeVariantOverProduct,
@@ -171,6 +172,8 @@ async function tryServerRenderProduction(
         startMonth,
         // Reescala el encuadre (pan) de unidades de la plantilla del editor a la página 1080.
         templateStageWidth: canvasData.unitTemplate?.stage?.width,
+        // Layout de la tarjeta ("classic" default | "split" lateral) — lo declara la plantilla.
+        layout: calendarLayoutFromUnitTemplate(canvasData.unitTemplate),
       });
       logger.info(
         {

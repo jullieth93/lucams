@@ -8,9 +8,20 @@
  * ya decodificada (napi Image o HTMLImageElement) → dibuja foto + título (mes + año) + encabezados +
  * grilla de días, todo con las MISMAS constantes de layout. Así lo que el cliente ve en 3D es
  * exactamente lo que se imprime (WYSIWYG). No importa nada server-only → usable en el navegador.
+ *
+ * Layouts (2026-08): `opts.layout` elige la composición — "classic" (default: foto full-bleed,
+ * título centrado, grilla con bordes y leyenda) o "split" (foto redondeada con margen; banda
+ * inferior en 2 columnas: mes gigante + año a la izquierda, grilla sin bordes a la derecha).
  */
 
-import { CALENDAR_PAGE, CALENDAR_PHOTO, CALENDAR_LAYOUT } from "./calendar-layout";
+import {
+  CALENDAR_PAGE,
+  CALENDAR_PHOTO,
+  CALENDAR_PHOTO_SPLIT,
+  CALENDAR_LAYOUT,
+  CALENDAR_LAYOUT_SPLIT,
+  type CalendarLayoutKey,
+} from "./calendar-layout";
 import { calendarMonthGrid, MONTH_NAMES_ES, WEEKDAY_HEADERS_ES } from "./calendar-grid";
 import { holidaysForMonth } from "./colombian-holidays";
 
@@ -35,6 +46,12 @@ export interface CalendarDrawCtx {
   restore(): void;
   beginPath(): void;
   rect(x: number, y: number, w: number, h: number): void;
+  // Trazado de la esquina redondeada de la foto en layout "split" (ambos backends los
+  // soportan: CanvasRenderingContext2D del navegador y SKRSContext2D de @napi-rs/canvas).
+  moveTo(x: number, y: number): void;
+  lineTo(x: number, y: number): void;
+  arcTo(x1: number, y1: number, x2: number, y2: number, radius: number): void;
+  closePath(): void;
   clip(): void;
   fillRect(x: number, y: number, w: number, h: number): void;
   strokeRect(x: number, y: number, w: number, h: number): void;
@@ -77,6 +94,29 @@ function setBrandFont(
   }
 }
 
+/** Rectángulo redondeado como PATH (para clip/relleno) — esquinas con arcTo, radio acotado. */
+function roundRectPath(
+  ctx: CalendarDrawCtx,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number,
+): void {
+  const rr = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + rr, y);
+  ctx.lineTo(x + w - rr, y);
+  ctx.arcTo(x + w, y, x + w, y + rr, rr);
+  ctx.lineTo(x + w, y + h - rr);
+  ctx.arcTo(x + w, y + h, x + w - rr, y + h, rr);
+  ctx.lineTo(x + rr, y + h);
+  ctx.arcTo(x, y + h, x, y + h - rr, rr);
+  ctx.lineTo(x, y + rr);
+  ctx.arcTo(x, y, x + rr, y, rr);
+  ctx.closePath();
+}
+
 /**
  * Dibuja una página de mes en `ctx` (que debe estar en coords lógicas de CALENDAR_PAGE: 1080×1520).
  * `photo` = imagen decodificada del mes (o null → recuadro suave). `fontsOk` decide si usar las
@@ -99,9 +139,23 @@ export function drawCalendarPage(
      * server (TTF registrados como "Fredoka"/"Inter") no lo necesita. Solo aplica si fontsOk.
      */
     fonts?: { title?: string; body?: string };
+    /**
+     * Layout de la tarjeta (2026-08): "classic" (default) o "split" (lateral). Lo declara la
+     * plantilla del producto (`unitTemplate.calendarLayout`) y lo resuelve el caller con
+     * `calendarLayoutFromUnitTemplate` → mismo layout en estudio, preview 3D y producción.
+     */
+    layout?: CalendarLayoutKey;
   },
 ): void {
   const { photo, photoTransform, year, monthIndex0, fontsOk } = opts;
+  const layout = opts.layout ?? "classic";
+
+  // Rama SPLIT (lateral): composición distinta → función dedicada abajo. La rama clásica
+  // queda intacta (misma salida pixel a pixel que antes de existir el split).
+  if (layout === "split") {
+    drawCalendarPageSplit(ctx, opts);
+    return;
+  }
 
   // Fondo blanco.
   ctx.fillStyle = "#FFFFFF";
@@ -198,5 +252,104 @@ export function drawCalendarPage(
     ctx.textBaseline = "alphabetic";
     setBrandFont(ctx, 600, L.legendFontSize, bodyFont, fontsOk);
     ctx.fillText(legend, CALENDAR_PAGE.width / 2, L.legendY);
+  }
+}
+
+/**
+ * Rama SPLIT / lateral (2026-08, referencia visual Lucy) — misma tarjeta 1080×1440 pero:
+ *   - FOTO: rectángulo redondeado CON margen blanco (CALENDAR_PHOTO_SPLIT, 9:7), no full-bleed.
+ *   - Banda inferior en DOS COLUMNAS: izquierda el mes abreviado GIGANTE + el año debajo;
+ *     derecha encabezados + grilla de días SIN bordes de celda ni fondos (domingos y festivos
+ *     en magenta #D81159, resto tinta oscura #2A2140). SIN leyenda de festivos al pie.
+ */
+function drawCalendarPageSplit(
+  ctx: CalendarDrawCtx,
+  opts: Parameters<typeof drawCalendarPage>[1],
+): void {
+  const { photo, photoTransform, year, monthIndex0, fontsOk } = opts;
+
+  // Fondo blanco.
+  ctx.fillStyle = "#FFFFFF";
+  ctx.fillRect(0, 0, CALENDAR_PAGE.width, CALENDAR_PAGE.height);
+
+  // Foto del mes: mismo cover + encuadre del cliente que la rama clásica, pero con clip
+  // REDONDEADO (esquinas de la tarjeta física del diseño split).
+  const ph = CALENDAR_PHOTO_SPLIT;
+  let photoDrawn = false;
+  if (photo && photo.width && photo.height) {
+    const coverBase = Math.max(ph.width / photo.width, ph.height / photo.height);
+    const eff = Math.max(0.5, Math.min(3, photoTransform?.scale ?? 1));
+    const finalScale = coverBase * eff;
+    const rw = photo.width * finalScale;
+    const rh = photo.height * finalScale;
+    const offX = photoTransform?.offsetX ?? 0;
+    const offY = photoTransform?.offsetY ?? 0;
+    ctx.save();
+    roundRectPath(ctx, ph.x, ph.y, ph.width, ph.height, ph.cornerRadius);
+    ctx.clip();
+    const cx = ph.x + ph.width / 2 + offX;
+    const cy = ph.y + ph.height / 2 + offY;
+    ctx.drawImage(photo, cx - rw / 2, cy - rh / 2, rw, rh);
+    ctx.restore();
+    photoDrawn = true;
+  }
+  if (!photoDrawn) {
+    // Placeholder suave redondeado (mismo color del clásico) respetando las esquinas.
+    ctx.save();
+    roundRectPath(ctx, ph.x, ph.y, ph.width, ph.height, ph.cornerRadius);
+    ctx.clip();
+    ctx.fillStyle = "#F3EFEA";
+    ctx.fillRect(ph.x, ph.y, ph.width, ph.height);
+    ctx.restore();
+  }
+
+  const titleFont = fontsOk ? (opts.fonts?.title ?? "Fredoka") : "sans-serif";
+  const bodyFont = fontsOk ? (opts.fonts?.body ?? "Inter") : "sans-serif";
+  const S = CALENDAR_LAYOUT_SPLIT;
+  const INK = "#2A2140"; // tinta oscura del diseño split
+  const ACCENT = "#D81159"; // magenta de marca: domingos y festivos
+
+  // Columna IZQUIERDA — mes abreviado gigante protagonista + año debajo (referencia Lucy:
+  // el mes manda sobre la grilla, acá en lettering enorme en vez de título centrado).
+  const monthShort = (MONTH_NAMES_ES[monthIndex0] ?? "").slice(0, 3).toUpperCase();
+  ctx.fillStyle = INK;
+  ctx.textAlign = "left";
+  ctx.textBaseline = "alphabetic";
+  setBrandFont(ctx, 700, S.monthFontSize, titleFont, fontsOk);
+  ctx.fillText(monthShort, S.monthX, S.monthY);
+  setBrandFont(ctx, 500, S.yearFontSize, titleFont, fontsOk);
+  ctx.fillText(String(year), S.yearX, S.yearY);
+
+  // Columna DERECHA — encabezados de día (D L M M J V S), sin línea separadora.
+  const gridW = S.gridRight - S.gridLeft;
+  const colW = gridW / 7;
+  setBrandFont(ctx, 700, S.weekdayFontSize, bodyFont, fontsOk);
+  ctx.fillStyle = INK;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "alphabetic";
+  for (let c = 0; c < 7; c++) {
+    ctx.fillText(WEEKDAY_HEADERS_ES[c]!, S.gridLeft + colW * c + colW / 2, S.weekdayY);
+  }
+
+  // Grilla de días SIN bordes de celda ni fondos. Domingos (columna 0) y festivos
+  // colombianos en magenta; el festivo además en negrita. Sin leyenda al pie.
+  const holidays = holidaysForMonth(year, monthIndex0);
+  const holidayDays = new Set(holidays.map((h) => h.day));
+  const weeks = calendarMonthGrid(year, monthIndex0);
+  const rows = Math.max(1, weeks.length);
+  const rowH = (S.gridBottom - S.gridTop) / rows;
+  const daySize = Math.min(S.dayFontSize, rowH * 0.45);
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < 7; c++) {
+      const day = weeks[r]?.[c];
+      if (day == null) continue;
+      const isHoliday = holidayDays.has(day);
+      const accent = isHoliday || c === 0;
+      ctx.fillStyle = accent ? ACCENT : INK;
+      setBrandFont(ctx, isHoliday ? 700 : 400, daySize, bodyFont, fontsOk);
+      ctx.fillText(String(day), S.gridLeft + colW * c + colW / 2, S.gridTop + rowH * r + rowH / 2);
+    }
   }
 }

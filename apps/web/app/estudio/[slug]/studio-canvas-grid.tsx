@@ -25,6 +25,7 @@ import { useStore } from "zustand";
 import { StudioSlot } from "./studio-slot";
 import { StudioSlotEditModal } from "./studio-slot-edit-modal";
 import type { CanvasDataV2, StudioAsset, TextLayer } from "./types";
+import type { CalendarLayoutKey } from "@/features/personalization/calendar-layout";
 import { selectUnitImagePlaceholder, type StudioStoreState } from "./lib/store";
 import { usePrefersReducedMotion } from "./use-prefers-reduced-motion";
 import { unitIndexOfSlot } from "./lib/faces";
@@ -95,7 +96,7 @@ type StudioCanvasGridProps = {
    * (foto + título + grilla) en vez de la foto suelta. `startMonth` = mes (0-11) del slot 0;
    * `year` = año elegido en el banner del Estudio (estado selectedYear del editor).
    */
-  calendarPreview?: { year: number; startMonth: number } | null;
+  calendarPreview?: { year: number; startMonth: number; layout?: CalendarLayoutKey } | null;
   /** #14 — sustantivo del slot ("imán" | "separador") para el fallback y aria de cada StudioSlot. */
   slotNoun?: string;
   /** Ola 3 — ¿el producto admite texto editable? false oculta las capas de texto (Cuadrados). */
@@ -482,6 +483,7 @@ export function StudioCanvasGrid({
                     // Misma matemática de mes que producción y el preview de confirmación:
                     // monthIndex0 = (startMonth + slotIndex) mod 12.
                     monthIndex0: (((calendarPreview.startMonth + slot.slotIndex) % 12) + 12) % 12,
+                    layout: calendarPreview.layout,
                   }
                 : null
             }
@@ -720,7 +722,7 @@ function StudioSlotEditModalWrapper({
   slotLabels?: string[];
   allowText?: boolean;
   frameFullBleed?: boolean;
-  calendarPreview?: { year: number; startMonth: number } | null;
+  calendarPreview?: { year: number; startMonth: number; layout?: CalendarLayoutKey } | null;
   /** Ola 10 — solicitud de cambiar la foto: el padre abre el picker. */
   onChangePhoto?: (slotIndex: number) => void;
 }) {
@@ -850,6 +852,7 @@ function StudioSlotEditModalWrapper({
                       year: calendarPreview.year,
                       // Misma matemática de mes que el slot de la grilla y producción.
                       monthIndex0: (((calendarPreview.startMonth + slotIndex) % 12) + 12) % 12,
+                      layout: calendarPreview.layout,
                     }
                   : null,
               onTransformChange: (t) => {

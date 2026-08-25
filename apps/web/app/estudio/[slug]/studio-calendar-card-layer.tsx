@@ -29,8 +29,9 @@ import type Konva from "konva";
 import { drawCalendarPage } from "@/features/personalization/calendar-draw";
 import {
   CALENDAR_PAGE,
-  CALENDAR_PHOTO,
+  calendarPhotoFor,
   scalePhotoTransformToPage,
+  type CalendarLayoutKey,
 } from "@/features/personalization/calendar-layout";
 import { ensureBrandCanvasFontsLoaded, type BrandCanvasFonts } from "./lib/calendar-card-preview";
 import { analyzeSmartCrop } from "./lib/smart-crop";
@@ -47,6 +48,8 @@ export function CalendarCardLayer({
   photoTransform,
   year,
   monthIndex0,
+  /** Layout de la tarjeta ("classic" default | "split" lateral) — viene de la plantilla. */
+  layout = "classic",
   /** Ancho del stage de la plantilla (600): los offsets del transform viven en esas unidades. */
   templateStageWidth,
   /** Dimensiones del stage Konva donde se dibuja la tarjeta (600×800 en la plantilla actual). */
@@ -60,6 +63,7 @@ export function CalendarCardLayer({
   photoTransform?: PhotoTransform | null;
   year: number;
   monthIndex0: number;
+  layout?: CalendarLayoutKey;
   templateStageWidth: number;
   stageWidth: number;
   stageHeight: number;
@@ -113,13 +117,15 @@ export function CalendarCardLayer({
   }, []);
 
   // Ventana de foto en unidades del stage de la plantilla (para el smart-crop inicial,
-  // misma matemática que ImagePlaceholder: la franja 4:3 top, espejo de CALENDAR_PHOTO).
+  // misma matemática que ImagePlaceholder: la franja de foto top, espejo de la región de
+  // foto del layout — full-bleed 4:3 en clásico, redondeada 9:7 con margen en split).
   const photoWindowStage = useMemo(() => {
     const f = templateStageWidth / CALENDAR_PAGE.width;
-    return { width: CALENDAR_PHOTO.width * f, height: CALENDAR_PHOTO.height * f };
-  }, [templateStageWidth]);
+    const ph = calendarPhotoFor(layout);
+    return { width: ph.width * f, height: ph.height * f };
+  }, [templateStageWidth, layout]);
 
-  // Repintado en vivo: foto, encuadre, año/mes o fuentes → redraw + batchDraw.
+  // Repintado en vivo: foto, encuadre, año/mes, layout o fuentes → redraw + batchDraw.
   // Sin debounce: ~50 ops vectoriales + 1 drawImage a 540×720 (<3ms por tarjeta).
   useEffect(() => {
     const ctx = canvas.getContext("2d");
@@ -132,9 +138,10 @@ export function CalendarCardLayer({
       monthIndex0,
       fontsOk: true,
       fonts: brandFonts ?? undefined,
+      layout,
     });
     imageNodeRef.current?.getLayer()?.batchDraw();
-  }, [canvas, photo, liveTransform, year, monthIndex0, brandFonts, templateStageWidth]);
+  }, [canvas, photo, liveTransform, year, monthIndex0, brandFonts, templateStageWidth, layout]);
 
   // Smart auto-crop inicial (paridad con ImagePlaceholder): solo foto NUEVA sin encuadre
   // persistido, y solo si el offset sugerido es significativo (>5% de la ventana).

@@ -26,6 +26,10 @@ function makeRecordingCtx(supportsVarSettings: boolean): {
     restore() {},
     beginPath() {},
     rect() {},
+    moveTo() {},
+    lineTo() {},
+    arcTo() {},
+    closePath() {},
     clip() {},
     fillRect() {},
     strokeRect() {},
@@ -119,5 +123,69 @@ describe("drawCalendarPage — familias inyectadas por el caller (Ola 4)", () =>
     });
     expect(fontsSeen.length).toBeGreaterThan(0);
     expect(fontsSeen.every((f) => f.includes("sans-serif"))).toBe(true);
+  });
+});
+
+// Layout SPLIT (2026-08) — composición lateral: foto redondeada con margen (clip con arcTo),
+// banda inferior en 2 columnas, grilla SIN bordes ni leyenda, domingos y festivos en magenta.
+// Enero 2027: domingos 3/10/17/24/31; festivos 1 (Año Nuevo) y 11 (Reyes, Emiliani → lunes).
+describe("drawCalendarPage — layout split (lateral)", () => {
+  function makeSplitCtx() {
+    const { ctx } = makeRecordingCtx(false);
+    const calls = {
+      arcTo: 0,
+      strokeRect: 0,
+      texts: [] as Array<{ text: string; fill: string }>,
+    };
+    const origArcTo = ctx.arcTo;
+    ctx.arcTo = (...a) => {
+      calls.arcTo++;
+      origArcTo(...a);
+    };
+    const origStroke = ctx.strokeRect;
+    ctx.strokeRect = (...a) => {
+      calls.strokeRect++;
+      origStroke(...a);
+    };
+    const origFill = ctx.fillText;
+    ctx.fillText = (t, x, y) => {
+      calls.texts.push({ text: t, fill: String(ctx.fillStyle) });
+      origFill(t, x, y);
+    };
+    return { ctx, calls };
+  }
+
+  it("dibuja la foto/placeholder con clip REDONDEADO (arcTo) y SIN bordes de celda (strokeRect)", () => {
+    const { ctx, calls } = makeSplitCtx();
+    drawCalendarPage(ctx, { ...opts, fontsOk: true, layout: "split" });
+    expect(calls.arcTo).toBeGreaterThan(0); // esquinas del clip/redondeado de la foto
+    expect(calls.strokeRect).toBe(0); // la grilla split no lleva bordes de celda
+  });
+
+  it("NO dibuja leyenda de festivos al pie", () => {
+    const { ctx, calls } = makeSplitCtx();
+    drawCalendarPage(ctx, { ...opts, fontsOk: true, layout: "split" });
+    expect(calls.texts.some((t) => t.text.includes("Reyes"))).toBe(false);
+    expect(calls.texts.some((t) => t.text.includes("·"))).toBe(false);
+  });
+
+  it("domingos y festivos en magenta #D81159; días normales en tinta #2A2140", () => {
+    const { ctx, calls } = makeSplitCtx();
+    drawCalendarPage(ctx, { ...opts, fontsOk: true, layout: "split" });
+    const inkOf = (day: string) => calls.texts.find((t) => t.text === day)?.fill;
+    expect(inkOf("3")).toBe("#D81159"); // domingo
+    expect(inkOf("1")).toBe("#D81159"); // festivo (Año Nuevo)
+    expect(inkOf("11")).toBe("#D81159"); // festivo (Reyes trasladado)
+    expect(inkOf("4")).toBe("#2A2140"); // lunes normal
+    expect(inkOf("15")).toBe("#2A2140"); // viernes normal
+  });
+
+  it("el mes gigante y el año salen en tinta oscura, alineados a la izquierda", () => {
+    const { ctx, calls } = makeSplitCtx();
+    drawCalendarPage(ctx, { ...opts, fontsOk: true, layout: "split" });
+    expect(calls.texts.some((t) => t.text === "ENE" && t.fill === "#2A2140")).toBe(true);
+    expect(calls.texts.some((t) => t.text === "2027" && t.fill === "#2A2140")).toBe(true);
+    // La composición split NO usa el título centrado "ENE 2027" del clásico.
+    expect(calls.texts.some((t) => t.text === "ENE 2027")).toBe(false);
   });
 });

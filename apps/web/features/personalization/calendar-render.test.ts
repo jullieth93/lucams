@@ -66,4 +66,25 @@ describe("renderCalendarMonthPagesCanvas", () => {
     });
     expect(bufs).toHaveLength(2);
   });
+
+  // Layout SPLIT (2026-08) — la variante lateral (foto redondeada con margen + banda en 2
+  // columnas) compone con el MISMO pipeline; acá lockeamos que produce PNGs válidos.
+  it("layout 'split': produce PNGs válidos, con y sin foto", async () => {
+    const photo = await solidPhoto();
+    const bufs = await renderCalendarMonthPagesCanvas({
+      slots: [
+        { slotIndex: 0, assetId: "p", photoTransform: { offsetX: 0, offsetY: 0, scale: 1 } },
+        { slotIndex: 1, assetId: null },
+      ],
+      loadAsset: async () => photo,
+      year: 2027,
+      startMonth: 0,
+      layout: "split",
+    });
+    expect(bufs).toHaveLength(2);
+    for (const b of bufs) {
+      expect(isPng(b)).toBe(true);
+      expect(b.length).toBeGreaterThan(5000);
+    }
+  });
 });

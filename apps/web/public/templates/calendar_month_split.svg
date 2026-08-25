@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Preview de la plantilla "Calendario mes a mes — lateral" (layout SPLIT, 2026-08).
+  Tarjeta 7.5×10 cm (3:4, stage 600×800). Foto en rectángulo REDONDEADO con margen
+  blanco arriba; banda inferior en dos columnas: mes abreviado gigante + año a la
+  izquierda, grilla de días SIN bordes a la derecha (domingos y festivos en magenta,
+  sin leyenda al pie). Solo preview estático; la composición real con la foto del
+  cliente se genera en el Estudio y en producción (drawCalendarPage, layout "split").
+  Colores de marca: lavanda #7C6AAD, tinta oscura #2A2140, magenta #D81159, crema #FFF8F0.
+-->
+<svg width="600" height="800" viewBox="0 0 600 800" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Tarjeta con fondo crema y borde suave lavanda -->
+  <rect x="1" y="1" width="598" height="798" rx="18" fill="#FFF8F0" stroke="#7C6AAD" stroke-width="2"/>
+
+  <!-- Zona de foto (placeholder redondeado con margen: 30,30 540×420, ratio 9:7) -->
+  <rect x="30" y="30" width="540" height="420" rx="31" fill="url(#photoGradient)"/>
+  <defs>
+    <linearGradient id="photoGradient" x1="30" y1="30" x2="570" y2="450" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F4ECFF"/>
+      <stop offset="0.35" stop-color="#FFE5EC"/>
+      <stop offset="0.7" stop-color="#FFF2D9"/>
+      <stop offset="1" stop-color="#DDF5F3"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Icono de foto sutil en el centro del placeholder -->
+  <g transform="translate(260, 205)" opacity="0.55">
+    <rect x="0" y="0" width="80" height="70" rx="10" fill="none" stroke="#7C6AAD" stroke-width="3" stroke-dasharray="6 4"/>
+    <circle cx="28" cy="24" r="9" fill="#7C6AAD"/>
+    <path d="M8 62 L28 36 L45 52 L60 38 L72 62 Z" fill="#7C6AAD"/>
+  </g>
+
+  <!-- Columna izquierda: mes abreviado gigante + año debajo -->
+  <text x="47" y="561" font-family="Fredoka, sans-serif" font-size="94" font-weight="700" fill="#2A2140">ENE</text>
+  <text x="49" y="609" font-family="Fredoka, sans-serif" font-size="31" font-weight="500" fill="#2A2140">2027</text>
+
+  <!-- Columna derecha: encabezados de días de la semana -->
+  <g font-family="Inter, sans-serif" font-size="17" font-weight="700" fill="#2A2140" text-anchor="middle">
+    <text x="283" y="494">D</text>
+    <text x="327" y="494">L</text>
+    <text x="370" y="494">M</text>
+    <text x="414" y="494">M</text>
+    <text x="458" y="494">J</text>
+    <text x="501" y="494">V</text>
+    <text x="545" y="494">S</text>
+  </g>
+
+  <!-- Grilla de días SIN bordes (enero 2027: empieza viernes 1). Columna D en magenta;
+       festivos (1 Año Nuevo, 11 Reyes) en magenta negrita. Sin leyenda al pie. -->
+  <g font-family="Inter, sans-serif" font-size="16" font-weight="500" fill="#2A2140" text-anchor="middle">
+    <!-- Semana 1: empieza viernes 1 -->
+    <text x="501" y="532" fill="#D81159" font-weight="700">1</text>
+    <text x="545" y="532">2</text>
+    <!-- Semana 2 -->
+    <text x="283" y="571" fill="#D81159">3</text>
+    <text x="327" y="571">4</text>
+    <text x="370" y="571">5</text>
+    <text x="414" y="571">6</text>
+    <text x="458" y="571">7</text>
+    <text x="501" y="571">8</text>
+    <text x="545" y="571">9</text>
+    <!-- Semana 3 -->
+    <text x="283" y="610" fill="#D81159">10</text>
+    <text x="327" y="610" fill="#D81159" font-weight="700">11</text>
+    <text x="370" y="610">12</text>
+    <text x="414" y="610">13</text>
+    <text x="458" y="610">14</text>
+    <text x="501" y="610">15</text>
+    <text x="545" y="610">16</text>
+    <!-- Semana 4 -->
+    <text x="283" y="649" fill="#D81159">17</text>
+    <text x="327" y="649">18</text>
+    <text x="370" y="649">19</text>
+    <text x="414" y="649">20</text>
+    <text x="458" y="649">21</text>
+    <text x="501" y="649">22</text>
+    <text x="545" y="649">23</text>
+    <!-- Semana 5 -->
+    <text x="283" y="688" fill="#D81159">24</text>
+    <text x="327" y="688">25</text>
+    <text x="370" y="688">26</text>
+    <text x="414" y="688">27</text>
+    <text x="458" y="688">28</text>
+    <text x="501" y="688">29</text>
+    <text x="545" y="688">30</text>
+    <!-- Semana 6 -->
+    <text x="283" y="727" fill="#D81159">31</text>
+  </g>
+</svg>

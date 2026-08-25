@@ -11,6 +11,7 @@ import { drawCalendarPage } from "@/features/personalization/calendar-draw";
 import {
   CALENDAR_PAGE,
   scalePhotoTransformToPage,
+  type CalendarLayoutKey,
 } from "@/features/personalization/calendar-layout";
 import { ensureBrandCanvasFontsLoaded } from "./calendar-card-preview";
 
@@ -96,10 +97,12 @@ function loadImage(url: string): Promise<HTMLImageElement> {
 /**
  * Compone las páginas (en el orden dado) → dataURLs PNG. Espera a que las fuentes de marca estén
  * listas para que el título/días salgan con Fredoka/Inter (no un fallback).
+ * `layout` = composición de la tarjeta declarada por la plantilla ("classic" default | "split").
  */
 export async function composeCalendarPages(
   pages: CalendarPageInput[],
   year: number,
+  layout?: CalendarLayoutKey,
 ): Promise<string[]> {
   // Asegurar fuentes de marca cargadas antes de dibujar texto en el canvas. Ola 4
   // (Lucy 2026-07-23): next/font hashea los nombres de familia → se resuelven via las
@@ -133,6 +136,7 @@ export async function composeCalendarPages(
       monthIndex0: p.monthIndex0,
       fontsOk: true,
       fonts: brandFonts ?? undefined,
+      layout,
     });
     out.push(canvas.toDataURL("image/png"));
   }

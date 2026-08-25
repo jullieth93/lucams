@@ -62,7 +62,10 @@ import {
   buildCalendarPageInputs,
   buildCalendarPreviewMontage,
 } from "./lib/compose-calendar-page";
-import { CALENDAR_PAGE } from "@/features/personalization/calendar-layout";
+import {
+  CALENDAR_PAGE,
+  calendarLayoutFromUnitTemplate,
+} from "@/features/personalization/calendar-layout";
 import { SceneGallery, type SceneKind } from "./scene-gallery";
 import { initialFrameColorFromSchema } from "@/features/personalization/frame-palette";
 import { faceSlotLabels, facePairOfUnit } from "./lib/faces";
@@ -321,6 +324,11 @@ export function StudioEditor({
   // PR A.3 — Subscribir reactivamente al flag de finalizing del store
   // para que el modal preview muestre el spinner durante upload.
   const isFinalizingFlag = useStore(store, (s) => s.isFinalizing);
+  // Layout de la tarjeta de calendario ("classic" | "split") — lo declara la plantilla activa
+  // (unitTemplate.calendarLayout); default "classic" si la plantilla no lo trae.
+  const calendarLayout = useStore(store, (s) =>
+    calendarLayoutFromUnitTemplate(s.canvasData?.unitTemplate),
+  );
 
   // ──────────── Boot: crear draft (o recuperar existente) ────────────
   useEffect(() => {
@@ -542,7 +550,7 @@ export function StudioEditor({
           startMonth,
           state.canvasData.unitTemplate.stage.width,
         );
-        const pages = await composeCalendarPages(inputs, selectedYear);
+        const pages = await composeCalendarPages(inputs, selectedYear, calendarLayout);
         setPreviewDataUrl(await buildCalendarPreviewMontage(pages));
         setPreviewModalOpen(true);
         return;
@@ -584,6 +592,7 @@ export function StudioEditor({
     isCalendarMonth,
     facesPerUnit,
     selectedYear,
+    calendarLayout,
     product.personalizationSchema,
     texts,
   ]);
@@ -703,7 +712,7 @@ export function StudioEditor({
         startMonth,
         state.canvasData.unitTemplate.stage.width,
       );
-      const pages = await composeCalendarPages(inputs, selectedYear);
+      const pages = await composeCalendarPages(inputs, selectedYear, calendarLayout);
       // Cada tarjeta compuesta (1080×1440 = 3:4 exacto) es un imán de nevera de 7.5×10 cm.
       const cards: Magnet3D[] = pages.map((dataUrl) => ({
         dataUrl,
@@ -723,7 +732,7 @@ export function StudioEditor({
     } finally {
       setCalendarBuilding(false);
     }
-  }, [store, product.personalizationSchema, selectedYear, calendarBuilding, texts]);
+  }, [store, product.personalizationSchema, selectedYear, calendarLayout, calendarBuilding, texts]);
 
   // El Escape de ambos overlays 3D lo maneja ahora useDialogA11y (#15, arriba); la galería de
   // escenas maneja el suyo internamente.
@@ -1120,6 +1129,7 @@ export function StudioEditor({
                     year: selectedYear,
                     startMonth:
                       (product.personalizationSchema as { startMonth?: number })?.startMonth ?? 0,
+                    layout: calendarLayout,
                   }
                 : null
             }

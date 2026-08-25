@@ -24,6 +24,7 @@ import { StudioPhotoAdjustForm } from "./studio-photo-adjust-modal";
 import { StudioPhotoPreview } from "./studio-photo-preview";
 import { StudioTextEditorForm } from "./studio-text-editor-modal";
 import type { CanvasDataV1, PhotoFilterPreset, TextLayer, TextOverride } from "./types";
+import type { CalendarLayoutKey } from "@/features/personalization/calendar-layout";
 import { useStudioTexts } from "./studio-texts-provider";
 import { fillStudioText } from "./studio-texts";
 
@@ -61,7 +62,7 @@ type StudioSlotEditModalProps = {
     borderColor: string | null;
     allowText: boolean;
     frameFullBleed: boolean;
-    calendarCard: { year: number; monthIndex0: number } | null;
+    calendarCard: { year: number; monthIndex0: number; layout?: CalendarLayoutKey } | null;
     onTransformChange: (t: Partial<{ offsetX: number; offsetY: number; scale: number }>) => void;
   };
 };

@@ -32,6 +32,7 @@ import {
   isInstagramNoBorder,
 } from "@/features/personalization/frame-palette";
 import type { CanvasDataV1, SlotState } from "./types";
+import type { CalendarLayoutKey } from "@/features/personalization/calendar-layout";
 import { useStudioTexts } from "./studio-texts-provider";
 
 type PhotoTransformPartial = Partial<{ offsetX: number; offsetY: number; scale: number }>;
@@ -46,7 +47,7 @@ export type StudioPhotoPreviewProps = {
   allowText?: boolean;
   frameFullBleed?: boolean;
   /** Calendarios: compone la tarjeta del mes (mismo dibujo que producción). */
-  calendarCard?: { year: number; monthIndex0: number } | null;
+  calendarCard?: { year: number; monthIndex0: number; layout?: CalendarLayoutKey } | null;
   onTransformChange: (transform: PhotoTransformPartial) => void;
   /** Doble click/tap: vuelve la foto al centro con zoom 100%. */
   onResetTransform: () => void;
@@ -244,6 +245,7 @@ export function StudioPhotoPreview({
                 photoTransform={slotState.photoTransform ?? null}
                 year={calendarCard.year}
                 monthIndex0={calendarCard.monthIndex0}
+                layout={calendarCard.layout}
                 templateStageWidth={unitTemplate.stage.width}
                 stageWidth={unitTemplate.stage.width}
                 stageHeight={unitTemplate.stage.height}

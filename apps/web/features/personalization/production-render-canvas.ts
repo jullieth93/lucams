@@ -17,7 +17,11 @@ import path from "node:path";
 import fs from "node:fs";
 import type { SKRSContext2D } from "@napi-rs/canvas";
 import { RenderNeedsKonvaError, type LoadAssetBytes } from "./production-render";
-import { CALENDAR_PAGE, scalePhotoTransformToPage } from "./calendar-layout";
+import {
+  CALENDAR_PAGE,
+  scalePhotoTransformToPage,
+  type CalendarLayoutKey,
+} from "./calendar-layout";
 import { drawCalendarPage } from "./calendar-draw";
 import {
   isDarkColor,
@@ -601,6 +605,7 @@ async function renderCalendarPage(
   fontsOk: boolean,
   loadAsset: LoadAssetBytes,
   templateStageWidth?: number,
+  layout?: CalendarLayoutKey,
 ): Promise<Buffer> {
   const S = PRODUCTION_SCALE;
   const W = clampInt(CALENDAR_PAGE.width * S, 1, MAX_STAGE_DIM * S);
@@ -630,6 +635,7 @@ async function renderCalendarPage(
     year,
     monthIndex0,
     fontsOk,
+    layout,
   });
 
   return canvas.toBuffer("image/png");
@@ -647,6 +653,8 @@ export async function renderCalendarMonthPagesCanvas(opts: {
   startMonth?: number;
   /** Ancho del stage de la plantilla del editor (para reescalar el encuadre). Default = página. */
   templateStageWidth?: number;
+  /** Layout de la tarjeta declarado por la plantilla ("classic" default | "split" lateral). */
+  layout?: CalendarLayoutKey;
 }): Promise<Buffer[]> {
   const mod = await loadCanvas();
   const fontsOk = ensureFonts(mod);
@@ -664,6 +672,7 @@ export async function renderCalendarMonthPagesCanvas(opts: {
         fontsOk,
         opts.loadAsset,
         opts.templateStageWidth,
+        opts.layout,
       ),
     );
   }
