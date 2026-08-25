@@ -13,8 +13,30 @@
 
 ## Resumen actual
 
+**🗓️ CALENDARIO CON 2 PLANTILLAS + PORTADAS POR DISEÑO, NO POR CANTIDAD (2026-08-25).**
+
+- **Nueva plantilla `calendario-mes-lateral`** (referencia visual Lucy): misma tarjeta 7.5×10 (3:4)
+  pero la foto va en rectángulo REDONDEADO con margen blanco y la banda inferior va en 2 columnas
+  (mes gigante + año a la izquierda, grilla sin bordes a la derecha, domingos+festivos en magenta,
+  sin leyenda). El layout viaja como DATO de la plantilla (`canvasData.unitTemplate.calendarLayout`
+  = `"classic" | "split"`, default classic → diseños existentes intactos) y lo leen Estudio, 3D,
+  finalize y producción desde la misma fuente `drawCalendarPage` (WYSIWYG). Sembrada en STG con
+  `order: 2` (la clásica queda `order: 1` = default); el cliente la elige en el sidebar del Estudio.
+- **Fotos de portada por diseño** (reporte Lucy: separadores pedía fotos en las 12 variantes =
+  2 tamaños × 6 cantidades; había 45 archivos subidos en STG): nueva firma visual de variante
+  (`attributes` sin `quantity`/`photoSlots`/`pricePerTile`). El editor de fotos de una opción ahora
+  **propaga a todas las variantes del mismo diseño** (1 solo archivo en Storage compartido) y, si el
+  grupo viene divergente (datos viejos), ofrece el botón explícito "Unificar: usar estas fotos en
+  todas las opciones de este diseño" que además borra las huérfanas del Storage. Storefront intacto.
+- Tests focales 70/70 (calendar-layout/draw/render + variant-schemas + image-actions + gate MFA aal2);
+  tsc/eslint/prettier limpios. Pendiente operativo: en STG, entrar a una opción de cada tamaño de
+  separadores y pulsar "Unificar…" para consolidar los 2 juegos de fotos y liberar Storage.
+
+---
+
 **🔍 CERTIFICACIÓN QA DEL CATÁLOGO (2026-08-12) — 9 PDPs + 9 estudios recorridos con Playwright
 (desktop+móvil).** Hallazgos y fixes:
+
 - **Idioma invisible en Abecedario/Vocales** (reporte Lucy): la dimensión se ocultaba por la
   regla "se elige en el Estudio", pero ambos productos son compra directa (`kind NONE` +
   marcador letterSet) → el cliente no podía elegir idioma en ningún lado. `PDP_HIDDEN_DIMENSION_KEYS`
@@ -32,6 +54,7 @@
 ---
 
 **🚚 RASTREO QUE TIENE SENTIDO + DIRECCIÓN BAJO DEMANDA (2026-08-11, última ronda).**
+
 - El `trackingUrl` guardado era el PDF del documento de guía (`rutaguia` de Aveonline) y se
   usaba como botón "Rastrear" — el cliente descargaba la etiqueta. Ahora: el CTA principal es
   nuestra vista `/pedido/<token>` (guía + estados en vivo vía webhook), el portal oficial de la
@@ -46,6 +69,7 @@
 ---
 
 **🔐 WEBHOOK AVEONLINE REGISTRADO Y VALIDADO (2026-08-11, noche).**
+
 - **Secretos separados por ambiente** (eran el mismo en STG/PRD): PRD roto a valor nuevo único
   y legible (Vercel Production, `--no-sensitive` para que Lucy lo vea; `.env.local.nube-backup`
   sincronizado); STG conserva el anterior. Redeploy de PRD aplicado.
@@ -61,6 +85,7 @@
 
 **🎁 REFERIDOS V1 IMPLEMENTADO (2026-08-11, noche — decisión Lucy "Referidos v1 simple").**
 El programa completo de punta a punta, reutilizando el schema existente:
+
 - **/mi-cuenta**: tarjeta "Invita y gana" — tu código `LCS-XXXXXXXX`, copiar código/link, botón
   compartir por WhatsApp, y estado de tus referidos (pendiente / cupón entregado / expirado,
   con emails enmascarados).
@@ -82,6 +107,7 @@ El programa completo de punta a punta, reutilizando el schema existente:
 
 **🔧 RONDA 3 POST-VALIDACIÓN (2026-08-11, noche) — bug de sesión, emails homologados, nav y
 webhook.** Del feedback de Lucy validando STG:
+
 - **Bug "login que no pega"** (real): las cuentas creadas por Admin API (la de Lucy en STG y
   PRD) tenían auth user pero NO fila Customer → header siempre "Ingresar". JIT-provisioning en
   `loginAction` (upsert Customer por email, vincula o crea) + backfill inmediato de su fila en
@@ -108,6 +134,7 @@ webhook.** Del feedback de Lucy validando STG:
 
 **📬 RONDA POST-VALIDACIÓN STG (2026-08-11, tarde) — notificaciones, pedidos admin, email y
 webhook Aveonline.** Tras la compra de prueba OK en STG:
+
 - **Aviso a admin de pedido nuevo**: in-app (tipo `ORDER` en el centro de notificaciones, con
   filtro "Pedidos") + email a `ALERT_EMAIL` con items/total/wa.me del cliente — hook en
   `processPaidOrder` (saga) best-effort. Antes NO existía ningún aviso (gap real).
@@ -2164,7 +2191,6 @@ sidebar fijo, Cancelar en cupones.
   guía real en el panel SIN anular (opción A: que el carrier la escanee; opción B: novedad manual
   si el panel la permite) o esperar la primera orden real. Todo lo demás del webhook ya está
   probado (auth 200/401, parseo, dedup, transición y emails en STG).
-
 
 - ~~Stack LOCAL de Supabase quedó a medias (2026-08-08)~~ **RESUELTO el mismo día**:
   `make db-local-reset` + resincronización PRD→LOCAL de las 19 tablas de catálogo (dump
