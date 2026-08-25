@@ -7,7 +7,13 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { mergePreservingUnmanagedAttributes, parseVariantAttributes } from "./variant-schemas";
+import {
+  groupVariantsByCoverSignature,
+  mergePreservingUnmanagedAttributes,
+  parseVariantAttributes,
+  sameImageArrays,
+  variantCoverSignature,
+} from "./variant-schemas";
 
 describe("mergePreservingUnmanagedAttributes", () => {
   it("preserva las dimensiones sin campo en el form y aplica las del form", () => {
@@ -98,5 +104,84 @@ describe("parseVariantAttributes", () => {
       theme: "animales",
       variantShape: "rectangular",
     });
+  });
+});
+
+/*
+ * Portadas compartidas por DISEÑO (reporte Lucy 2026-08-25, separadores-magneticos):
+ * la firma ignora quantity/photoSlots/pricePerTile — las 6 cantidades de un mismo
+ * tamaño son UN diseño y comparten fotos; sizeCm/variantShape SÍ lo distinguen.
+ */
+describe("variantCoverSignature", () => {
+  it("la cantidad (quantity/photoSlots) NO distingue la firma", () => {
+    const base = variantCoverSignature({ sizeCm: "4×4.2", quantity: 1, photoSlots: 1 });
+    for (const n of [2, 3, 4, 5, 6]) {
+      expect(variantCoverSignature({ sizeCm: "4×4.2", quantity: n, photoSlots: n })).toBe(base);
+    }
+  });
+
+  it("sizeCm y variantShape SÍ distinguen la firma", () => {
+    const cuadrado = variantCoverSignature({ sizeCm: "4×4.2", variantShape: "cuadrado" });
+    const rectangular = variantCoverSignature({ sizeCm: "6x2", variantShape: "rectangular" });
+    expect(cuadrado).not.toBe(rectangular);
+    // Solo cambia sizeCm (misma forma) → firma distinta.
+    expect(variantCoverSignature({ sizeCm: "6x2", variantShape: "cuadrado" })).not.toBe(cuadrado);
+  });
+
+  it("pricePerTile (pricing, ADR-057) NO distingue la firma", () => {
+    expect(variantCoverSignature({ variant: "name", size: "mini" })).toBe(
+      variantCoverSignature({ variant: "name", size: "mini", pricePerTile: true }),
+    );
+  });
+
+  it("el orden de las claves es irrelevante (JSON estable)", () => {
+    const a = variantCoverSignature({ color: "rosa", sizeCm: "5×5", shape: "circle" });
+    const b = variantCoverSignature({ shape: "circle", sizeCm: "5×5", color: "rosa" });
+    expect(a).toBe(b);
+  });
+
+  it("attributes malformed (vía parseVariantAttributes) → firma vacía", () => {
+    expect(variantCoverSignature(parseVariantAttributes("basura"))).toBe("[]");
+    expect(variantCoverSignature(parseVariantAttributes(null))).toBe("[]");
+    // Solo claves ignoradas → también firma vacía (mismo grupo que las sin attributes).
+    expect(variantCoverSignature({ quantity: 3, photoSlots: 3 })).toBe("[]");
+  });
+});
+
+describe("groupVariantsByCoverSignature", () => {
+  it("agrupa las 12 opciones de separadores-magneticos en 2 diseños (2 tamaños × 6 cantidades)", () => {
+    const variants = ["4×4.2", "6x2"].flatMap((sizeCm) =>
+      [1, 2, 3, 4, 5, 6].map((n) => ({
+        id: `${sizeCm}-x${n}`,
+        attributes: { sizeCm, quantity: n, photoSlots: n },
+      })),
+    );
+    const groups = groupVariantsByCoverSignature(variants);
+    expect(groups.size).toBe(2);
+    for (const group of groups.values()) {
+      expect(group).toHaveLength(6);
+      expect(group.every((v) => v.id.startsWith(group[0].id.split("-x")[0]))).toBe(true);
+    }
+  });
+
+  it("attributes malformed caen juntos en el grupo de firma vacía", () => {
+    const variants = [
+      { id: "ok", attributes: { sizeCm: "5×5" } },
+      { id: "mala", attributes: "basura" },
+      { id: "nula", attributes: null },
+    ];
+    const groups = groupVariantsByCoverSignature(variants);
+    expect(groups.size).toBe(2);
+    expect(groups.get("[]")?.map((v) => v.id)).toEqual(["mala", "nula"]);
+  });
+});
+
+describe("sameImageArrays", () => {
+  it("mismo contenido y orden → true; distinto orden o largo → false", () => {
+    expect(sameImageArrays(["a", "b"], ["a", "b"])).toBe(true);
+    expect(sameImageArrays([], [])).toBe(true);
+    expect(sameImageArrays(["b", "a"], ["a", "b"])).toBe(false);
+    expect(sameImageArrays(["a"], ["a", "b"])).toBe(false);
+    expect(sameImageArrays(["a", "b"], ["a", "c"])).toBe(false);
   });
 });

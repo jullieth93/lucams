@@ -121,6 +121,68 @@ export function parseVariantAttributes(raw: unknown): ProductVariantAttributes {
 }
 
 /**
+ * Reporte Lucy 2026-08-25 (separadores-magneticos: 12 opciones = 2 diseños ×
+ * 6 cantidades; tuvo que subir 45 fotos distintas en Supabase Storage cuando
+ * solo había 2 diseños): las fotos de PORTADA se gestionan por DISEÑO —lo que
+ * cambia cómo luce el producto: tamaño, forma, color…— NO por cantidad.
+ *
+ * Estas claves de attributes NO distinguen diseño y se excluyen de la firma:
+ *  - quantity / photoSlots: cuántas unidades/fotos lleva el set (el diseño es el mismo).
+ *  - pricePerTile: es pricing por ficha (ADR-057), no presentación.
+ *
+ * Las opciones del mismo diseño comparten el mismo array de fotos (las URLs de
+ * Storage se escriben una sola vez y se referencian desde cada opción).
+ */
+const COVER_SIGNATURE_IGNORED_KEYS: ReadonlySet<string> = new Set([
+  "quantity",
+  "photoSlots",
+  "pricePerTile",
+]);
+
+/**
+ * Firma visual de una variante: JSON estable de las entries de sus attributes
+ * con las claves ordenadas alfabéticamente, EXCLUYENDO las que no cambian el
+ * diseño (COVER_SIGNATURE_IGNORED_KEYS) y los valores undefined. Dos variantes
+ * del mismo producto con la misma firma son el mismo diseño → comparten fotos
+ * de portada (ver variant-images.tsx e image-actions.ts del admin).
+ */
+export function variantCoverSignature(attrs: ProductVariantAttributes): string {
+  const entries = Object.entries(attrs)
+    .filter(([key, value]) => value !== undefined && !COVER_SIGNATURE_IGNORED_KEYS.has(key))
+    .sort(([keyA], [keyB]) => (keyA < keyB ? -1 : keyA > keyB ? 1 : 0));
+  return JSON.stringify(entries);
+}
+
+/**
+ * Agrupa variantes por firma de portada (mismo diseño). Parsea attributes con
+ * parseVariantAttributes: attributes malformed → {} → firma vacía ("[]"), el
+ * grupo de las opciones "sin diseño declarado".
+ */
+export function groupVariantsByCoverSignature<T extends { id: string; attributes: unknown }>(
+  variants: T[],
+): Map<string, T[]> {
+  const groups = new Map<string, T[]>();
+  for (const variant of variants) {
+    const signature = variantCoverSignature(parseVariantAttributes(variant.attributes));
+    const group = groups.get(signature);
+    if (group) {
+      group.push(variant);
+    } else {
+      groups.set(signature, [variant]);
+    }
+  }
+  return groups;
+}
+
+/**
+ * true si dos arrays de fotos (URLs) tienen el mismo contenido EN EL MISMO
+ * ORDEN — el orden importa: la primera foto es la portada del diseño.
+ */
+export function sameImageArrays(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((url, idx) => url === b[idx]);
+}
+
+/**
  * Claves de attributes que el form de /admin/productos/[id]/variants EDITA
  * explícitamente (parseAttributesFromForm). Toda otra clave conocida del schema
  * (frameStyle, variantStyle, theme, language, magnet, size, letterCount…) NO

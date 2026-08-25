@@ -5,6 +5,12 @@
  * si la opción NO tiene fotos propias, HEREDA las del producto (igual que el
  * precio). Por eso el empty state lo explica en vez de alarmar.
  *
+ * Portadas por DISEÑO (Lucy 2026-08-25): las opciones del mismo diseño (mismo
+ * tamaño/forma/color, distinta cantidad) comparten las fotos — groupSize /
+ * groupNames / divergent los calcula el panel en servidor. Si el grupo está
+ * divergente (datos viejos), subir/reordenar/borrar tocan SOLO esta opción y
+ * el botón "Unificar" es el camino explícito.
+ *
  * Server actions en ./image-actions.ts.
  */
 
@@ -17,17 +23,27 @@ import {
   uploadVariantImagesAction,
   reorderVariantImagesAction,
   deleteVariantImageAction,
+  unifyVariantCoverGroupAction,
 } from "./image-actions";
 
 export function VariantImages({
   variantId,
   images,
   productImageCount,
+  groupSize = 1,
+  groupNames = [],
+  divergent = false,
 }: {
   variantId: string;
   images: string[];
   /** Cuántas fotos tiene el producto — para explicar la herencia. */
   productImageCount: number;
+  /** Opciones que comparten este diseño (incluye esta). 1 = comportamiento clásico. */
+  groupSize?: number;
+  /** Nombres visibles de esas opciones ("Default" ya viene como "Única"). */
+  groupNames?: string[];
+  /** true si las opciones del diseño tienen fotos distintas entre sí (datos viejos). */
+  divergent?: boolean;
 }) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -73,6 +89,25 @@ export function VariantImages({
     });
   };
 
+  const handleUnify = () => {
+    if (
+      !confirm(
+        "¿Usar las fotos de ESTA opción en todas las opciones de este diseño? " +
+          "Las fotos que tengan las otras opciones se reemplazan por estas, y los " +
+          "archivos que ya no use nadie se borran del almacenamiento. Esta acción " +
+          "no se puede deshacer.",
+      )
+    )
+      return;
+    setError(null);
+    const formData = new FormData();
+    formData.set("variantId", variantId);
+    startTransition(async () => {
+      const res = await unifyVariantCoverGroupAction(formData);
+      if (res?.error) setError(res.error);
+    });
+  };
+
   return (
     <section className="border-brand-purple/15 rounded-lg border bg-white p-5">
       <div className="mb-4 flex items-start justify-between gap-3">
@@ -80,11 +115,23 @@ export function VariantImages({
           <h3 className="text-brand-purple-dark text-base font-semibold">Fotos de esta opción</h3>
           <p className="text-brand-muted mt-0.5 text-xs">
             {images.length === 0
-              ? `Si no subes ninguna, esta opción usa las ${productImageCount} foto${
-                  productImageCount === 1 ? "" : "s"
-                } del producto. Sube fotos solo si esta opción se ve distinta.`
-              : `Al elegir esta opción, el cliente verá SOLO estas fotos (reemplazan las ${productImageCount} del producto). La primera es la portada.`}
+              ? groupSize > 1
+                ? `Si no subes ninguna, las ${groupSize} opciones de este diseño usan las ${productImageCount} foto${
+                    productImageCount === 1 ? "" : "s"
+                  } del producto. Sube fotos solo si este diseño se ve distinto.`
+                : `Si no subes ninguna, esta opción usa las ${productImageCount} foto${
+                    productImageCount === 1 ? "" : "s"
+                  } del producto. Sube fotos solo si esta opción se ve distinta.`
+              : groupSize > 1
+                ? `Al elegir cualquiera de las ${groupSize} opciones de este diseño, el cliente verá SOLO estas fotos (reemplazan las ${productImageCount} del producto). La primera es la portada.`
+                : `Al elegir esta opción, el cliente verá SOLO estas fotos (reemplazan las ${productImageCount} del producto). La primera es la portada.`}
           </p>
+          {groupSize > 1 && (
+            <p className="text-brand-muted mt-1 text-xs">
+              📷 Estas fotos aplican a las {groupSize} opciones de este mismo diseño (
+              {groupNames.join(", ")}). No hace falta subirlas en cada opción.
+            </p>
+          )}
         </div>
         <div>
           <input
@@ -116,6 +163,35 @@ export function VariantImages({
       {error && (
         <div className="mb-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
           {error}
+        </div>
+      )}
+
+      {/* Grupo divergente (datos viejos): cada opción del diseño tiene fotos
+          distintas. Mientras no se unifiquen, subir/reordenar/borrar aquí toca
+          SOLO esta opción (lo decide el servidor); el botón es el camino
+          explícito para dejar un solo set de fotos en todo el diseño. */}
+      {divergent && groupSize > 1 && (
+        <div className="mb-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          <p className="font-semibold">
+            ⚠️ Las opciones de este diseño tienen fotos distintas entre sí.
+          </p>
+          <p className="mt-0.5">
+            Mientras no las unifiques, los cambios que hagas aquí solo aplican a ESTA opción. Si
+            unificas, todas las opciones del diseño mostrarán las fotos de esta.
+          </p>
+          <button
+            type="button"
+            className="mt-2 inline-flex items-center gap-1 rounded-md border border-amber-300 bg-white px-2.5 py-1 font-semibold text-amber-900 hover:bg-amber-100 disabled:opacity-40"
+            onClick={handleUnify}
+            disabled={pending}
+          >
+            {pending ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <ImageIcon className="h-3.5 w-3.5" />
+            )}
+            Unificar: usar estas fotos en todas las opciones de este diseño
+          </button>
         </div>
       )}
 

@@ -29,7 +29,13 @@ import {
   AdminNotice,
 } from "@/components/admin-page";
 import { formatCOP } from "@/lib/format";
-import { parseVariantAttributes, generateVariantLabel } from "@/features/products/variant-schemas";
+import {
+  groupVariantsByCoverSignature,
+  parseVariantAttributes,
+  generateVariantLabel,
+  sameImageArrays,
+  variantCoverSignature,
+} from "@/features/products/variant-schemas";
 import { PACK_STOCK_PANEL_NOTE } from "@/features/products/stock-constants";
 import { listVariantsByProduct } from "@/features/products/service";
 import { ConfirmAction } from "@/components/admin/confirm-action";
@@ -65,6 +71,19 @@ export async function ProductVariantsPanel({
   // encabezado flotando encima — se veía como un "error de UI").
   const formMode = newOpen || editingVariant !== null;
   const errorMsg = typeof searchParams.error === "string" ? searchParams.error : null;
+
+  // Portadas por DISEÑO (Lucy 2026-08-25): la opción en edición comparte sus
+  // fotos con las opciones de la misma firma visual (attributes sin
+  // quantity/photoSlots/pricePerTile). Si el grupo tiene fotos distintas entre
+  // opciones (datos viejos), VariantImages muestra el aviso para unificarlas.
+  const editingCoverGroup = editingVariant
+    ? (groupVariantsByCoverSignature(variants).get(
+        variantCoverSignature(parseVariantAttributes(editingVariant.attributes)),
+      ) ?? [editingVariant])
+    : [];
+  const editingCoverDivergent =
+    editingVariant !== null &&
+    editingCoverGroup.some((v) => !sameImageArrays(v.images, editingVariant.images));
 
   return (
     <section className="space-y-5">
@@ -142,12 +161,16 @@ export async function ProductVariantsPanel({
               attributes: parseVariantAttributes(editingVariant.attributes),
             }}
           />
-          {/* D1: fotos propias de esta opción (vacío = hereda del producto). */}
+          {/* D1: fotos propias de esta opción (vacío = hereda del producto).
+              Portadas por diseño (Lucy 2026-08-25): el grupo comparte fotos. */}
           <div className="mt-4">
             <VariantImages
               variantId={editingVariant.id}
               images={editingVariant.images}
               productImageCount={productImageCount}
+              groupSize={editingCoverGroup.length}
+              groupNames={editingCoverGroup.map((v) => (v.name === "Default" ? "Única" : v.name))}
+              divergent={editingCoverDivergent}
             />
           </div>
         </AdminCard>
@@ -164,102 +187,102 @@ export async function ProductVariantsPanel({
         ) : (
           <>
             {isPackBased && (
-              <p className="text-brand-muted mb-3 text-xs leading-snug">
-                {PACK_STOCK_PANEL_NOTE}
-              </p>
+              <p className="text-brand-muted mb-3 text-xs leading-snug">{PACK_STOCK_PANEL_NOTE}</p>
             )}
-          <AdminTable>
-            <AdminTableHead>
-              <tr>
-                <th className="px-4 py-3 text-left font-semibold">Opción</th>
-                <th className="px-4 py-3 text-left font-semibold">Código</th>
-                <th className="px-4 py-3 text-left font-semibold">Características</th>
-                <th className="px-4 py-3 text-right font-semibold">Precio</th>
-                <th className="px-4 py-3 text-right font-semibold">
-                  {isPackBased ? "Stock (packs)" : "Stock"}
-                </th>
-                <th className="px-4 py-3 text-center font-semibold">Estado</th>
-                <th className="px-4 py-3 text-right font-semibold">Acción</th>
-              </tr>
-            </AdminTableHead>
-            <AdminTableBody>
-              {variants.map((v) => {
-                const attrs = parseVariantAttributes(v.attributes);
-                const label = generateVariantLabel(attrs);
-                const effectivePrice = v.price ?? basePrice;
-                const inheritsPrice = v.price === null;
-                const visibleName = v.name === "Default" ? "Única" : v.name;
+            <AdminTable>
+              <AdminTableHead>
+                <tr>
+                  <th className="px-4 py-3 text-left font-semibold">Opción</th>
+                  <th className="px-4 py-3 text-left font-semibold">Código</th>
+                  <th className="px-4 py-3 text-left font-semibold">Características</th>
+                  <th className="px-4 py-3 text-right font-semibold">Precio</th>
+                  <th className="px-4 py-3 text-right font-semibold">
+                    {isPackBased ? "Stock (packs)" : "Stock"}
+                  </th>
+                  <th className="px-4 py-3 text-center font-semibold">Estado</th>
+                  <th className="px-4 py-3 text-right font-semibold">Acción</th>
+                </tr>
+              </AdminTableHead>
+              <AdminTableBody>
+                {variants.map((v) => {
+                  const attrs = parseVariantAttributes(v.attributes);
+                  const label = generateVariantLabel(attrs);
+                  const effectivePrice = v.price ?? basePrice;
+                  const inheritsPrice = v.price === null;
+                  const visibleName = v.name === "Default" ? "Única" : v.name;
 
-                return (
-                  <AdminTableRow key={v.id}>
-                    <td className="px-4 py-3">
-                      <div className="text-brand-purple-dark font-medium">{visibleName}</div>
-                      {v.description && (
-                        <div className="text-brand-muted line-clamp-1 text-xs">{v.description}</div>
-                      )}
-                    </td>
-                    <td className="text-brand-purple-dark/85 px-4 py-3 font-mono text-xs">
-                      {v.sku}
-                    </td>
-                    <td className="text-brand-purple-dark/85 px-4 py-3 text-xs">
-                      <span className="bg-brand-purple/8 inline-block rounded px-2 py-0.5">
-                        {label}
-                      </span>
-                    </td>
-                    <td className="text-brand-purple-dark px-4 py-3 text-right font-semibold tabular-nums">
-                      {formatCOP(effectivePrice)}
-                      {inheritsPrice && (
-                        <div className="text-brand-muted text-[10px] font-normal">
-                          (hereda del producto)
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 align-top">
-                      {/* Editor rápido de stock — mismo que en Inventario, para
+                  return (
+                    <AdminTableRow key={v.id}>
+                      <td className="px-4 py-3">
+                        <div className="text-brand-purple-dark font-medium">{visibleName}</div>
+                        {v.description && (
+                          <div className="text-brand-muted line-clamp-1 text-xs">
+                            {v.description}
+                          </div>
+                        )}
+                      </td>
+                      <td className="text-brand-purple-dark/85 px-4 py-3 font-mono text-xs">
+                        {v.sku}
+                      </td>
+                      <td className="text-brand-purple-dark/85 px-4 py-3 text-xs">
+                        <span className="bg-brand-purple/8 inline-block rounded px-2 py-0.5">
+                          {label}
+                        </span>
+                      </td>
+                      <td className="text-brand-purple-dark px-4 py-3 text-right font-semibold tabular-nums">
+                        {formatCOP(effectivePrice)}
+                        {inheritsPrice && (
+                          <div className="text-brand-muted text-[10px] font-normal">
+                            (hereda del producto)
+                          </div>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 align-top">
+                        {/* Editor rápido de stock — mismo que en Inventario, para
                         que ajustar stock se sienta igual en los dos lados. */}
-                      <CompactStockEditor
-                        variantId={v.id}
-                        productId={productId}
-                        currentStock={v.stock}
-                      />
-                    </td>
-                    <td className="px-4 py-3 text-center align-top">
-                      {v.isActive ? (
-                        <AdminBadge tone="emerald">Activa</AdminBadge>
-                      ) : (
-                        <AdminBadge tone="slate">Pausada</AdminBadge>
-                      )}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <Link
-                          href={`/admin/productos/${productId}?section=opciones&edit=${v.id}`}
-                          className="text-brand-purple-dark hover:text-brand-purple inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium"
-                        >
-                          <Edit3 className="h-3.5 w-3.5" />
-                          Editar
-                        </Link>
-                        <ConfirmAction
-                          action={archiveVariantAction}
-                          message={`¿Archivar la opción "${visibleName}"? Los pedidos que la usan siguen válidos, pero clientes nuevos no podrán seleccionarla.`}
-                        >
-                          <input type="hidden" name="id" value={v.id} />
-                          <input type="hidden" name="productId" value={productId} />
-                          <button
-                            type="submit"
-                            className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-rose-600 hover:bg-rose-50"
-                            title="Archivar"
+                        <CompactStockEditor
+                          variantId={v.id}
+                          productId={productId}
+                          currentStock={v.stock}
+                        />
+                      </td>
+                      <td className="px-4 py-3 text-center align-top">
+                        {v.isActive ? (
+                          <AdminBadge tone="emerald">Activa</AdminBadge>
+                        ) : (
+                          <AdminBadge tone="slate">Pausada</AdminBadge>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <Link
+                            href={`/admin/productos/${productId}?section=opciones&edit=${v.id}`}
+                            className="text-brand-purple-dark hover:text-brand-purple inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium"
                           >
-                            <Archive className="h-3.5 w-3.5" />
-                          </button>
-                        </ConfirmAction>
-                      </div>
-                    </td>
-                  </AdminTableRow>
-                );
-              })}
-            </AdminTableBody>
-          </AdminTable>
+                            <Edit3 className="h-3.5 w-3.5" />
+                            Editar
+                          </Link>
+                          <ConfirmAction
+                            action={archiveVariantAction}
+                            message={`¿Archivar la opción "${visibleName}"? Los pedidos que la usan siguen válidos, pero clientes nuevos no podrán seleccionarla.`}
+                          >
+                            <input type="hidden" name="id" value={v.id} />
+                            <input type="hidden" name="productId" value={productId} />
+                            <button
+                              type="submit"
+                              className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-rose-600 hover:bg-rose-50"
+                              title="Archivar"
+                            >
+                              <Archive className="h-3.5 w-3.5" />
+                            </button>
+                          </ConfirmAction>
+                        </div>
+                      </td>
+                    </AdminTableRow>
+                  );
+                })}
+              </AdminTableBody>
+            </AdminTable>
           </>
         ))}
     </section>

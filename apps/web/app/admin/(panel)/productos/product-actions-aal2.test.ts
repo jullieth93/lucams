@@ -1,8 +1,8 @@
 /*
  * Regresión (plan de producción · P0 seguridad · MFA aal2).
  *
- * Las 11 acciones mutantes de catálogo (imágenes de producto, stock, bulk,
- * imágenes de variante) usaban getCurrentAdmin() —que NO valida el 2º factor— en
+ * Las 12 acciones mutantes de catálogo (imágenes de producto, stock, bulk,
+ * imágenes de variante — incl. unificar portadas por diseño, 2026-08-25) usaban getCurrentAdmin() —que NO valida el 2º factor— en
  * vez del guard central. Como Next expone cada Server Action como un endpoint POST
  * invocable directo, una sesión aal1 (contraseña robada, MFA inscrito pero sin
  * completar el 2º factor) podía mutar Product.images / ProductVariant.images /
@@ -57,6 +57,7 @@ import {
   uploadVariantImagesAction,
   reorderVariantImagesAction,
   deleteVariantImageAction,
+  unifyVariantCoverGroupAction,
 } from "./[id]/variants/image-actions";
 
 const fd = () => new FormData();
@@ -74,6 +75,7 @@ const CASES: Array<[string, () => Promise<unknown>]> = [
   ["uploadVariantImagesAction", () => uploadVariantImagesAction(fd())],
   ["reorderVariantImagesAction", () => reorderVariantImagesAction(fd())],
   ["deleteVariantImageAction", () => deleteVariantImageAction(fd())],
+  ["unifyVariantCoverGroupAction", () => unifyVariantCoverGroupAction(fd())],
 ];
 
 describe("acciones de catálogo — gate MFA aal2 (P0)", () => {
